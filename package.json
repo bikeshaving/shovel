@@ -1,0 +1,13 @@
+{
+  "name": "@b9g/shovel",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "esbuild": "^0.17.11"
+  }
+}
