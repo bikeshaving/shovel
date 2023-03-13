@@ -1,70 +1,109 @@
-import * as FS from "fs/promises";
+import * as Path from "path";
+import * as VM from "vm";
 import * as ESBuild from "esbuild";
+import {createServer} from "http";
 
-export async function resolve(specifier, context, nextResolve) {
-	let defaultErr;
-	let result;
-	try {
-		result = await nextResolve(specifier, context);
-		const url = new URL(result.url, context.parentURL);
-		if (
-			url.protocol === "nodejs:" ||
-			url.protocol === "node:" ||
-			url.pathname.includes("/node_modules")
-		) {
-			return result;
-		}
-	} catch (err) {
-		if (err.code !== "ERR_MODULE_NOT_FOUND") {
-			throw err;
-		}
+const path = Path.resolve(process.argv[2]);
 
-		defaultErr = err;
-	}
+let localFetch;
 
-	// tries to resolve the specifier with every extension
-	if (/\.(js|ts|jsx|tsx)$/.test(specifier)) {
-		const extensions = ["ts", "js", "tsx", "jsx"];
-		for (const ext of extensions) {
-			const url = new URL(
-				specifier.replace(/\.(js|ts|jsx|tsx)$/, `.${ext}`),
-				context.parentURL,
-			);
-			try {
-				result = await nextResolve(url.href, context);
-			} catch (err) {
-				if (err.code !== "ERR_MODULE_NOT_FOUND") {
-					throw err;
-				}
-			}
-		}
-	}
+const plugin = {
+	name: "loader",
+	setup(build) {
+		//build.onResolve({filter: /.*/}, (args) => {
+		//	//console.log("build.onResolve", args);
+		//});
 
-	if (result && /\.(js|ts|jsx|tsx)$/.test(specifier)) {
-		const url = new URL(result.url, context.parentURL);
-		return {
-			...result,
-			format: "module",
-			url: url.href + "?version=0",
-		};
-	}
+		//build.onLoad({filter: /.*/}, (args) => {
+		//	//console.log("build.onLoad", args);
+		//});
 
-	throw defaultErr;
-}
-
-export async function load(url, context, nextLoad) {
-	console.log("load", url, context);
-	if (context.format === "module") {
-		const path = new URL(url).pathname;
-		const result = await ESBuild.transform((await nextLoad(url)).source, {
-			format: "esm",
+		build.onEnd(async (result) => {
+			console.log("built:", build.initialOptions.entryPoints[0]);
+			const module = new VM.SourceTextModule(result.outputFiles[0].text);
+			await module.link(async (specifier) => {
+				// Where is import relative to???
+				const child = await import(specifier);
+				const exports = Object.keys(child);
+				return new VM.SyntheticModule(
+					exports,
+					function () {
+						for (const key of exports) {
+							this.setExport(key, child[key]);
+						}
+					},
+				);
+			});
+			await module.evaluate();
+			const rootExports = module.namespace;
+			localFetch = rootExports.default?.fetch;
 		});
-		return {
-			format: "module",
-			responseURL: url,
-			source: result.code,
-		};
+	},
+};
+
+const ctx = await ESBuild.context({
+	format: "esm",
+	//format: "cjs",
+	platform: "node",
+	entryPoints: [path],
+	bundle: true,
+	metafile: true,
+	packages: "external",
+	write: false,
+	plugins: [plugin],
+});
+
+await ctx.watch();
+
+function readableStreamFromMessage(req) {
+	return new ReadableStream({
+		start(controller) {
+			req.on("data", (chunk) => {
+				controller.enqueue(chunk);
+			});
+			req.on("end", () => {
+				controller.close();
+			});
+		},
+
+		cancel() {
+			req.destroy();
+		},
+	});
+}
+
+async function webRequestFromNode(req) {
+	const url = new URL(req.url || "/", "http://localhost");
+
+	const headers = new Headers();
+	for (const key in req.headers) {
+		if (req.headers[key]) {
+			headers.append(key, req.headers[key]);
+		}
 	}
 
-	return nextLoad(url);
+	return new Request(url, {
+		method: req.method,
+		headers,
+		body: req.method === "GET" || req.method === "HEAD" ? undefined : readableStreamFromMessage(req),
+	});
 }
+
+async function callNodeResponse(res, webRes) {
+	const headers = {};
+	webRes.headers.forEach((value, key) => {
+		headers[key] = value;
+	});
+	res.writeHead(webRes.status, headers);
+	res.end(await webRes.text());
+}
+
+const server = createServer(async (req, res) => {
+	const webReq = await webRequestFromNode(req);
+	if (localFetch) {
+		const webRes = await localFetch(webReq);
+		callNodeResponse(res, webRes);
+	}
+});
+
+server.listen(8080);
