@@ -1,15 +1,18 @@
 {
-  "name": "@b9g/shovel",
-  "version": "0.1.0",
-  "type": "module",
-  "description": "",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "license": "UNLICENSED",
-  "dependencies": {
-    "@b9g/crank": "^0.5.3",
-    "chokidar": "^3.5.3",
-    "esbuild": "^0.17.11"
-  }
+	"name": "@b9g/shovel",
+	"version": "0.1.0",
+	"type": "module",
+	"description": "",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"license": "UNLICENSED",
+	"dependencies": {
+		"@b9g/crank": "^0.5.3",
+		"chokidar": "^3.5.3",
+		"esbuild": "^0.17.11"
+	},
+	"bin": {
+		"shovel": "bin/shovel.js"
+	}
 }

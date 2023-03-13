@@ -1,28 +1,42 @@
+#!/usr/bin/env node --experimental-vm-modules --experimental-fetch --no-warnings
 import * as Path from "path";
 import * as VM from "vm";
 import * as ESBuild from "esbuild";
 import {createServer} from "http";
+import {promisify} from "util";
+import resolve from "../resolve.js";
 
 const path = Path.resolve(process.argv[2]);
-
+const cwd = process.cwd();
 let localFetch;
 
 const plugin = {
 	name: "loader",
 	setup(build) {
 		//build.onResolve({filter: /.*/}, (args) => {
-		//	//console.log("build.onResolve", args);
+		//	console.log("build.onResolve", args);
 		//});
 
 		//build.onLoad({filter: /.*/}, (args) => {
-		//	//console.log("build.onLoad", args);
+		//	console.log("build.onLoad", args);
 		//});
 
 		build.onEnd(async (result) => {
 			console.log("built:", build.initialOptions.entryPoints[0]);
 			const module = new VM.SourceTextModule(result.outputFiles[0].text);
 			await module.link(async (specifier) => {
-				// Where is import relative to???
+
+				//const resolved = await new Promise((r) => {
+				//	resolve(specifier, {basedir: cwd}, (err, res) => {
+				//		if (err) {
+				//			r(Promise.reject(null));
+				//		} else {
+				//			r(res);
+				//		}
+				//	});
+				//});
+				//const resolved = await resolve(specifier, {basedir: cwd});
+				//console.log("resolved:", resolved);
 				const child = await import(specifier);
 				const exports = Object.keys(child);
 				return new VM.SyntheticModule(
@@ -43,6 +57,7 @@ const plugin = {
 
 const ctx = await ESBuild.context({
 	format: "esm",
+	absWorkingDir: process.cwd(),
 	//format: "cjs",
 	platform: "node",
 	entryPoints: [path],
