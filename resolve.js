@@ -169,13 +169,10 @@ async function loadNodeModules(x, start) {
 	return processDirs(dirs) || x;
 }
 
-export default async function resolve(specifier, opts) {
+export default async function resolve(specifier, basedir) {
 	if (typeof specifier !== 'string') {
 		throw new TypeError('specifier must be a string');
 	}
-
-	const basedir = opts.basedir;
-	const parent = opts.filename || basedir;
 
 	// ensure that `basedir` is an absolute path at this point, resolving against the process' current working directory
 	let absoluteStart = Path.resolve(basedir);

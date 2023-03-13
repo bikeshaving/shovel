@@ -20,10 +20,11 @@ const plugin = {
 		//});
 
 		build.onLoad({filter: /.*/}, async (args) => {
+			//console.log("build.onLoad", args);
 			let file = await FS.readFile(args.path, "utf8");
 			// TODO: sourcemap
-			// TODO: get the correct loader
 			file = `import.meta.url = "${new URL(args.path, "file:///").href}";\n` + file;
+			// TODO: get the correct loader
 			return {contents: file, loader: "ts"};
 		});
 
@@ -35,8 +36,8 @@ const plugin = {
 				identifier: build.initialOptions.entryPoints[0],
 			});
 			await module.link(async (specifier) => {
-				const resolved = await resolve(specifier, {basedir: cwd});
-				console.log("resolved:", specifier, resolved);
+				const resolved = await resolve(specifier, cwd);
+				//console.log("resolved:", specifier, resolved);
 				try {
 					const child = await import(resolved);
 					const exports = Object.keys(child);
@@ -68,7 +69,7 @@ const plugin = {
 const ctx = await ESBuild.context({
 	format: "esm",
 	platform: "node",
-	absWorkingDir: process.cwd(),
+	absWorkingDir: cwd,
 	entryPoints: [path],
 	bundle: true,
 	metafile: true,
