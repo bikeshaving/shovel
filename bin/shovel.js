@@ -8,7 +8,6 @@ import {parseArgs} from "@pkgjs/parseargs";
 import * as ESBuild from "esbuild";
 import {SourceMapConsumer} from "source-map";
 import MagicString from "magic-string";
-import StackTracey from "stacktracey";
 import resolve from "../resolve.js";
 
 // TODO: replace with yargs or commander
