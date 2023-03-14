@@ -28,20 +28,26 @@ const plugin = {
 	name: "loader",
 	setup(build) {
 		// TODO: correct filters
-		build.onLoad({filter: /.*/}, async (args) => {
-			let file = await FS.readFile(args.path, "utf8");
-			const magicString = new MagicString(file);
-			magicString.prepend(`import.meta.url = "${pathToFileURL(args.path).href}";`);
+		build.onLoad({filter: /\.(js|ts|jsx|tsx)$/}, async (args) => {
+			let code = await FS.readFile(args.path, "utf8");
+			const magicString = new MagicString(code);
+			magicString.prepend(
+				`import.meta.url = "${pathToFileURL(args.path).href}";`,
+			);
 
-			file = magicString.toString();
+			code = magicString.toString();
 			const map = magicString.generateMap({
 				file: args.path,
 				source: args.path,
+				hires: true,
+				includeContent: true,
 			});
 
-			file = file + "\n//# sourceMappingURL=" + map.toUrl();
-			// TODO: get the correct loader
-			return {contents: file, loader: "ts"};
+			code = code + "\n//# sourceMappingURL=" + map.toUrl();
+			return {
+				contents: code,
+				loader: Path.extname(args.path).slice(1),
+			};
 		});
 
 		// TODO: Error handling
@@ -96,7 +102,11 @@ const plugin = {
 								column: parseInt(column),
 							});
 
-							return `${pos.source}:${pos.line}:${pos.column}`;
+							const source = pos.source ? Path.relative(
+								Path.dirname(path),
+								pos.source
+							) : url;
+							return `${source}:${pos.line}:${pos.column}`;
 						});
 					});
 					err.stack = [message, ...lines].join("\n");
@@ -107,7 +117,7 @@ const plugin = {
 				//console.log(stack.items);
 			}
 
-			namespace?.cleanup?.();
+			namespace?.default?.cleanup?.();
 			namespace = module.namespace;
 		});
 	},
@@ -169,14 +179,14 @@ async function callNodeResponse(res, webRes) {
 		headers[key] = value;
 	});
 	res.writeHead(webRes.status, headers);
+	// TODO: stream the body
 	res.end(await webRes.text());
 }
 
 const server = createServer(async (req, res) => {
 	const webReq = await webRequestFromNode(req);
-	// TODO: wait for localFetch to be set
-	if (namespace?.fetch) {
-		const webRes = await namespace?.fetch(webReq);
+	if (typeof namespace?.default?.fetch === "function") {
+		const webRes = await namespace?.default?.fetch(webReq);
 		callNodeResponse(res, webRes);
 	} else {
 		res.write("waiting for namespace to be set");

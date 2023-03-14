@@ -12,4 +12,4 @@ export default {
 	}
 };
 
-true && true && noop();
+true && true && true && true && noop();
