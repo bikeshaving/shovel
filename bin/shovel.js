@@ -1,17 +1,28 @@
 #!/usr/bin/env node --experimental-vm-modules --experimental-fetch --no-warnings
 import * as Path from "path";
 import * as FS from "fs/promises";
-import * as VM from "vm";
-import * as ESBuild from "esbuild";
 import {createServer} from "http";
-import {promisify} from "util";
+import * as VM from "vm";
+import {pathToFileURL} from "url";
+import {parseArgs} from "@pkgjs/parseargs";
+import * as ESBuild from "esbuild";
+
 import resolve from "../resolve.js";
 
-// TODO: get port from argv
-const path = Path.resolve(process.argv[2]);
-const cwd = process.cwd();
-let localFetch;
+const {values, positionals} = parseArgs({
+	allowPositionals: true,
+	options: {
+		port: {
+			type: "string",
+		},
+	},
+});
 
+const path = Path.resolve(positionals[0] || "");
+const cwd = process.cwd();
+const port = parseInt(values["port"] || "1337");
+
+let localFetch, localCleanup;
 const plugin = {
 	name: "loader",
 	setup(build) {
@@ -19,19 +30,25 @@ const plugin = {
 		//	console.log("build.onResolve", args);
 		//});
 
+		// inject import.meta.url
+		// TODO: correct filters
 		build.onLoad({filter: /.*/}, async (args) => {
-			//console.log("build.onLoad", args);
 			let file = await FS.readFile(args.path, "utf8");
-			// TODO: sourcemap
-			file = `import.meta.url = "${new URL(args.path, "file:///").href}";\n` + file;
+			// TODO: sourcemap!!!
+			file = `import.meta.url = "${pathToFileURL(args.path).href}";${file}`;
 			// TODO: get the correct loader
 			return {contents: file, loader: "ts"};
 		});
 
+		// TODO: Error handling
 		build.onEnd(async (result) => {
 			console.log("built:", build.initialOptions.entryPoints[0]);
 			// TODO: handle build errors
-			//console.log(result.errors);
+			if (result.errors) {
+				console.log("build has errors", result.errors);
+				return;
+			}
+
 			const module = new VM.SourceTextModule(result.outputFiles[0].text, {
 				identifier: build.initialOptions.entryPoints[0],
 			});
@@ -50,6 +67,7 @@ const plugin = {
 						},
 					);
 				} catch (err) {
+					// TODO: Figure out how to catch this error in the outer scope
 					console.error("await import threw", err);
 					return new VM.SyntheticModule([], function () {});
 				}
@@ -60,8 +78,13 @@ const plugin = {
 			} catch (err) {
 				console.error("module.evaluate() threw", err);
 			}
-			const rootExports = module.namespace;
-			localFetch = rootExports.default?.fetch;
+
+			if (localCleanup) {
+				localCleanup();
+			}
+
+			localFetch = module.namespace.default?.fetch;
+			localCleanup = module.namespace.default?.cleanup;
 		});
 	},
 };
@@ -132,4 +155,5 @@ const server = createServer(async (req, res) => {
 	}
 });
 
-server.listen(8080);
+console.log("listening on port:", port);
+server.listen(port);
