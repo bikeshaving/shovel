@@ -44,8 +44,8 @@ const plugin = {
 		build.onEnd(async (result) => {
 			console.log("built:", build.initialOptions.entryPoints[0]);
 			// TODO: handle build errors
-			if (result.errors) {
-				console.log("build has errors", result.errors);
+			if (result.errors && result.errors.length) {
+				console.error("build has errors", result.errors);
 				return;
 			}
 
