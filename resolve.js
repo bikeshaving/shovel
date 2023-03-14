@@ -1,5 +1,6 @@
 // Adapted from https://github.com/browserify/resolve because the original code
 // was truly ass and didn't support ES modules.
+// TODO: Support ES modules, clean up, double check it works according to the node resolution algorithm.
 // MIT License
 // Copyright (c) 2012 James Halliday
 import * as FS from "fs/promises";

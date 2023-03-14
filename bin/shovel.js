@@ -8,8 +8,10 @@ import {parseArgs} from "@pkgjs/parseargs";
 import * as ESBuild from "esbuild";
 import {SourceMapConsumer} from "source-map";
 import MagicString from "magic-string";
+import StackTracey from "stacktracey";
 import resolve from "../resolve.js";
 
+// TODO: replace with yargs or commander
 const {values, positionals} = parseArgs({
 	allowPositionals: true,
 	options: {
@@ -23,6 +25,7 @@ const path = Path.resolve(positionals[0] || "");
 const cwd = process.cwd();
 const port = parseInt(values["port"] || "1337");
 
+let sourceMapConsumer;
 let namespace;
 const plugin = {
 	name: "loader",
@@ -56,12 +59,19 @@ const plugin = {
 			console.log("built:", url);
 			// TODO: handle build errors
 			if (result.errors && result.errors.length) {
-				console.error("build has errors", result.errors);
+				const formatted = await ESBuild.formatMessages(result.errors, {
+					kind: "error",
+					color: true,
+				});
+				console.error(formatted.join("\n"));
 				return;
 			}
 
-			const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
 			const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+			const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
+			if (map) {
+				sourceMapConsumer = await new SourceMapConsumer(map);
+			}
 
 			const module = new VM.SourceTextModule(code, {
 				identifier: url,
@@ -69,7 +79,6 @@ const plugin = {
 
 			await module.link(async (specifier) => {
 				const resolved = await resolve(specifier, cwd);
-				//console.log("resolved:", specifier, resolved);
 				try {
 					const child = await import(resolved);
 					const exports = Object.keys(child);
@@ -82,7 +91,7 @@ const plugin = {
 						},
 					);
 				} catch (err) {
-					// TODO: Figure out how to catch this error in the outer scope
+					// TODO: Log a message
 					console.error("await import threw", err);
 					return new VM.SyntheticModule([], function () {});
 				}
@@ -91,30 +100,12 @@ const plugin = {
 			try {
 				await module.evaluate();
 			} catch (err) {
-				if (map) {
-					const consumer = await new SourceMapConsumer(map);
-					let [message, ...lines] = err.stack.split("\n");
-					lines = lines.map((line) => {
-						// parse the stack trace line
-						return line.replace(new RegExp(`${url}:(\\d+):(\\d+)`), (match, line, column) => {
-							const pos = consumer.originalPositionFor({
-								line: parseInt(line),
-								column: parseInt(column),
-							});
-
-							const source = pos.source ? Path.relative(
-								Path.dirname(path),
-								pos.source
-							) : url;
-							return `${source}:${pos.line}:${pos.column}`;
-						});
-					});
-					err.stack = [message, ...lines].join("\n");
+				if (sourceMapConsumer) {
+					fixStack(err, sourceMapConsumer);
 				}
 
-				console.log("module.evaluate threw", err);
-				//const stack = new StackTracey(err);
-				//console.log(stack.items);
+				console.error(err);
+				return;
 			}
 
 			namespace?.default?.cleanup?.();
@@ -122,6 +113,26 @@ const plugin = {
 		});
 	},
 };
+
+function fixStack(err, sourceMapConsumer) {
+	let [message, ...lines] = err.stack.split("\n");
+	lines = lines.map((line, i) => {
+		// parse the stack trace line
+		return line.replace(new RegExp(`${path}:(\\d+):(\\d+)`), (match, line, column) => {
+			const pos = sourceMapConsumer.originalPositionFor({
+				line: parseInt(line),
+				column: parseInt(column),
+			});
+
+			const source = pos.source ? Path.resolve(
+				Path.dirname(path),
+				pos.source
+			) : url;
+			return `${source}:${pos.line}:${pos.column}`;
+		});
+	});
+	err.stack = [message, ...lines].join("\n");
+}
 
 const ctx = await ESBuild.context({
 	format: "esm",
@@ -135,6 +146,7 @@ const ctx = await ESBuild.context({
 	sourcemap: "both",
 	plugins: [plugin],
 	outdir: cwd,
+	logLevel: "silent",
 });
 
 await ctx.watch();
@@ -186,7 +198,16 @@ async function callNodeResponse(res, webRes) {
 const server = createServer(async (req, res) => {
 	const webReq = await webRequestFromNode(req);
 	if (typeof namespace?.default?.fetch === "function") {
-		const webRes = await namespace?.default?.fetch(webReq);
+		let webRes;
+		try {
+			webRes = await namespace?.default?.fetch(webReq);
+		} catch (err)	{
+			console.error(err);
+			res.writeHead(500);
+			res.end();
+			return;
+		}
+
 		callNodeResponse(res, webRes);
 	} else {
 		res.write("waiting for namespace to be set");
@@ -196,3 +217,19 @@ const server = createServer(async (req, res) => {
 
 console.log("listening on port:", port);
 server.listen(port);
+
+process.on("uncaughtException", (err) => {
+	if (sourceMapConsumer) {
+		fixStack(err, sourceMapConsumer);
+	}
+
+	console.error(err);
+});
+
+process.on("unhandledRejection", (err) => {
+	if (sourceMapConsumer) {
+		fixStack(err, sourceMapConsumer);
+	}
+
+	console.error(err);
+});

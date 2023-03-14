@@ -3,11 +3,11 @@
 	"private": true,
 	"version": "0.1.0",
 	"type": "module",
-	"description": "",
+	"description": "Dig for treasure",
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1"
 	},
-	"license": "UNLICENSED",
+	"license": "MIT",
 	"dependencies": {
 		"@b9g/crank": "^0.5.3",
 		"@pkgjs/parseargs": "^0.11.0",
