@@ -19,5 +19,8 @@
 	},
 	"bin": {
 		"shovel": "bin/shovel.js"
+	},
+	"publishConfig": {
+		"access": "public"
 	}
 }
