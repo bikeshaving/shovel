@@ -29,7 +29,6 @@ let namespace;
 const plugin = {
 	name: "loader",
 	setup(build) {
-		// TODO: correct filters
 		build.onLoad({filter: /\.(js|ts|jsx|tsx)$/}, async (args) => {
 			let code = await FS.readFile(args.path, "utf8");
 			const magicString = new MagicString(code);
@@ -200,7 +199,8 @@ const server = createServer(async (req, res) => {
 		}
 
 	} else {
-		webRes = new Response("Server is not running", {
+		// TODO: wait for the server to be ready
+		webRes = new Response("Server not running", {
 			status: 500,
 		});
 	}

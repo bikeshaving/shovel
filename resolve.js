@@ -96,7 +96,7 @@ function getPackageCandidates(x, start) {
 }
 
 async function loadAsFile(x) {
-	const extensions = ["", ".js"];
+	const extensions = ["", ".js", ".ts"];
 	for (const ext of extensions) {
 		const file = x + ext;
 		if (await isFile(file)) {
@@ -190,8 +190,22 @@ export default async function resolve(specifier, basedir) {
 	if (isCore(specifier)) {
 		return specifier;
 	} else if ((/^(?:\.\.?(?:\/|$)|\/|([A-Za-z]:)?[/\\])/).test(specifier)) {
-		throw new Error("This shouldn't happen");
-	}
+		// TODO: resolving a local file doesn’t work yet because it won’t be
+		// transpiled by ESBuild. This branch is avoided by bundling the entry.
+		let specifier1 = Path.resolve(basedir, specifier);
 
+		if (specifier === '.' || specifier === '..' || specifier.slice(-1) === '/')  {
+			specifier1 += '/';
+		}
+
+		let result;
+		if ((/\/$/).test(specifier) && specifier1 === basedir) {
+			result = await loadAsDirectory(specifier1);
+		} else {
+			result = await loadAsFile(specifier1);
+		}	
+
+		return result || specifier;
+	}
 	return loadNodeModules(specifier, basedir);
 }
