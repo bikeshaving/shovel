@@ -1,7 +1,6 @@
-function thrower(): never {
+function thrower() {
 	console.log("hi");
 	//throw new Error("This is an error");
-	return 1;
 }
 
 export default function noop() {

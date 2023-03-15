@@ -24,22 +24,55 @@ program.command("develop <file>")
 
 await program.parseAsync(process.argv);
 
+class Hot {
+	constructor() {
+		this.disposeCallbacks = [];
+	}
+
+	accept(callback) {
+		if (callback) {
+			throw new Error("Not implemented");
+		}
+	}
+
+	invalidate() {
+		throw new Error("Not implemented");
+	}
+
+	dispose(callback) {
+		this.disposeCallbacks.push(callback);
+	}
+
+	decline() {
+		// pass
+	}
+}
+
+function disposeHot(hot) {
+	for (const callback of hot.disposeCallbacks) {
+		callback();
+	}
+}
+
 async function develop(file, options) {
-	const cwd = process.cwd();
 	const url = pathToFileURL(file);
 	const port = parseInt(options.port);
 
 	let sourceMapConsumer;
 	let namespace;
+	let hot;
 
-	const plugin = {
-		name: "loader",
+	// Sets import.meta.url to be correct
+	// This might be unnecessary if we use the VM module initializeImportMeta and
+	// load each independent module into its own module instance.
+	const importMetaPlugin = {
+		name: "import-meta",
 		setup(build) {
 			build.onLoad({filter: /\.(js|ts|jsx|tsx)$/}, async (args) => {
 				let code = await FS.readFile(args.path, "utf8");
 				const magicString = new MagicString(code);
 				magicString.prepend(
-					`import.meta.url = "${pathToFileURL(args.path).href}";`,
+					`import.meta && (import.meta.url = "${pathToFileURL(args.path).href}");`,
 				);
 
 				code = magicString.toString();
@@ -55,10 +88,15 @@ async function develop(file, options) {
 					loader: Path.extname(args.path).slice(1),
 				};
 			});
+		},
+	};
 
+	const watchPlugin = {
+		name: "watch",
+		setup(build) {
+			// This is called every time a module is edited.
 			build.onEnd(async (result) => {
 				const url = pathToFileURL(build.initialOptions.entryPoints[0]).href;
-				console.info("built:", url);
 				if (result.errors && result.errors.length) {
 					const formatted = await ESBuild.formatMessages(result.errors, {
 						kind: "error",
@@ -80,17 +118,18 @@ async function develop(file, options) {
 
 				try {
 					await module.link(async (specifier) => {
-						const resolved = await resolve(specifier, cwd);
+						// Currently, only dependencies are linked, source code is bundled.
+							// If we want to create a module instance for each file, we will
+						// have to create a recursive call to ESBuild, and manage the
+						// ESBuild contexts and module instances.
+						const resolved = await resolve(specifier, process.cwd());
 						const child = await import(resolved);
 						const exports = Object.keys(child);
-						return new VM.SyntheticModule(
-							exports,
-							function () {
-								for (const key of exports) {
-									this.setExport(key, child[key]);
-								}
-							},
-						);
+						return new VM.SyntheticModule(exports, function () {
+							for (const key of exports) {
+								this.setExport(key, child[key]);
+							}
+						});
 					});
 
 					await module.evaluate();
@@ -103,7 +142,14 @@ async function develop(file, options) {
 					return;
 				}
 
+				if (hot) {
+					disposeHot(hot);
+				}
+
 				namespace = module.namespace;
+				hot = new Hot();
+				namespace.default?.develop?.(hot);
+				console.info("built:", url);
 			});
 		},
 	};
@@ -111,20 +157,20 @@ async function develop(file, options) {
 	const ctx = await ESBuild.context({
 		format: "esm",
 		platform: "node",
-		absWorkingDir: cwd,
+		absWorkingDir: process.cwd(),
 		entryPoints: [file],
 		bundle: true,
 		metafile: true,
 		write: false,
 		packages: "external",
 		sourcemap: "both",
-		plugins: [plugin],
+		plugins: [importMetaPlugin, watchPlugin],
 		// We need this to export map files.
-		outdir: cwd,
+		outdir: "dist",
 		logLevel: "silent",
 	});
-
 	await ctx.watch();
+
 	const server = createServer(async (req, res) => {
 		const webReq = await webRequestFromNode(req);
 		let webRes;
@@ -140,7 +186,8 @@ async function develop(file, options) {
 			}
 
 		} else {
-			// TODO: wait for the server to be ready
+			// TODO: Wait for the server to be ready.
+			// How?
 			webRes = new Response("Server not running", {
 				status: 500,
 			});
@@ -151,6 +198,21 @@ async function develop(file, options) {
 
 	console.info("listening on port:", port);
 	server.listen(port);
+	process.on("uncaughtException", (err) => {
+		if (sourceMapConsumer) {
+			fixStack(err, sourceMapConsumer);
+		}
+
+		console.error(err);
+	});
+
+	process.on("unhandledRejection", (err) => {
+		if (sourceMapConsumer) {
+			fixStack(err, sourceMapConsumer);
+		}
+
+		console.error(err);
+	});
 }
 
 function fixStack(err, sourceMapConsumer) {
@@ -165,7 +227,7 @@ function fixStack(err, sourceMapConsumer) {
 					column: parseInt(column),
 				});
 
-				const source = pos.source ? Path.resolve(cwd, pos.source) : url;
+				const source = pos.source ? Path.resolve(process.cwd(), pos.source) : url;
 				return `${pathToFileURL(source)}:${pos.line}:${pos.column}`;
 			},
 		);
@@ -216,19 +278,3 @@ async function callNodeResponse(res, webRes) {
 	// TODO: stream the body
 	res.end(await webRes.text());
 }
-
-process.on("uncaughtException", (err) => {
-	if (sourceMapConsumer) {
-		fixStack(err, sourceMapConsumer);
-	}
-
-	console.error(err);
-});
-
-process.on("unhandledRejection", (err) => {
-	if (sourceMapConsumer) {
-		fixStack(err, sourceMapConsumer);
-	}
-
-	console.error(err);
-});
