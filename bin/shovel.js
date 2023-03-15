@@ -42,7 +42,6 @@ const plugin = {
 				file: args.path,
 				source: args.path,
 				hires: true,
-				includeContent: true,
 			});
 
 			code = code + "\n//# sourceMappingURL=" + map.toUrl();
@@ -52,11 +51,9 @@ const plugin = {
 			};
 		});
 
-		// TODO: Error handling
 		build.onEnd(async (result) => {
 			const url = pathToFileURL(build.initialOptions.entryPoints[0]).href;
 			console.log("built:", url);
-			// TODO: handle build errors
 			if (result.errors && result.errors.length) {
 				const formatted = await ESBuild.formatMessages(result.errors, {
 					kind: "error",
@@ -73,12 +70,12 @@ const plugin = {
 			}
 
 			const module = new VM.SourceTextModule(code, {
-				identifier: url,
+				identifier: "ESBUILD_VM_RUN",
 			});
 
-			await module.link(async (specifier) => {
-				const resolved = await resolve(specifier, cwd);
-				try {
+			try {
+				await module.link(async (specifier) => {
+					const resolved = await resolve(specifier, cwd);
 					const child = await import(resolved);
 					const exports = Object.keys(child);
 					return new VM.SyntheticModule(
@@ -89,14 +86,8 @@ const plugin = {
 							}
 						},
 					);
-				} catch (err) {
-					// TODO: Log a message
-					console.error("await import threw", err);
-					return new VM.SyntheticModule([], function () {});
-				}
-			});
+				});
 
-			try {
 				await module.evaluate();
 			} catch (err) {
 				if (sourceMapConsumer) {
@@ -107,7 +98,6 @@ const plugin = {
 				return;
 			}
 
-			namespace?.default?.cleanup?.();
 			namespace = module.namespace;
 		});
 	},
@@ -117,18 +107,18 @@ function fixStack(err, sourceMapConsumer) {
 	let [message, ...lines] = err.stack.split("\n");
 	lines = lines.map((line, i) => {
 		// parse the stack trace line
-		return line.replace(new RegExp(`${path}:(\\d+):(\\d+)`), (match, line, column) => {
-			const pos = sourceMapConsumer.originalPositionFor({
-				line: parseInt(line),
-				column: parseInt(column),
-			});
+		return line.replace(
+			new RegExp(`ESBUILD_VM_RUN:(\\d+):(\\d+)`),
+			(match, line, column) => {
+				const pos = sourceMapConsumer.originalPositionFor({
+					line: parseInt(line),
+					column: parseInt(column),
+				});
 
-			const source = pos.source ? Path.resolve(
-				Path.dirname(path),
-				pos.source
-			) : url;
-			return `${source}:${pos.line}:${pos.column}`;
-		});
+				const source = pos.source ? Path.resolve(cwd, pos.source) : url;
+				return `${pathToFileURL(source)}:${pos.line}:${pos.column}`;
+			},
+		);
 	});
 	err.stack = [message, ...lines].join("\n");
 }
@@ -144,6 +134,7 @@ const ctx = await ESBuild.context({
 	packages: "external",
 	sourcemap: "both",
 	plugins: [plugin],
+	// We need this to export map files.
 	outdir: cwd,
 	logLevel: "silent",
 });
@@ -196,22 +187,25 @@ async function callNodeResponse(res, webRes) {
 
 const server = createServer(async (req, res) => {
 	const webReq = await webRequestFromNode(req);
+	let webRes;
 	if (typeof namespace?.default?.fetch === "function") {
-		let webRes;
 		try {
 			webRes = await namespace?.default?.fetch(webReq);
 		} catch (err)	{
+			fixStack(err, sourceMapConsumer);
+			webRes = new Response(err.stack, {
+				status: 500,
+			});
 			console.error(err);
-			res.writeHead(500);
-			res.end();
-			return;
 		}
 
-		callNodeResponse(res, webRes);
 	} else {
-		res.write("waiting for namespace to be set");
-		res.end();
+		webRes = new Response("Server is not running", {
+			status: 500,
+		});
 	}
+
+	callNodeResponse(res, webRes);
 });
 
 console.log("listening on port:", port);

@@ -4,7 +4,8 @@ import noop from "./noop.ts";
 
 export default {
 	fetch(req: Request) {
-		console.log("serving:", req.url);
+		noop();
+		throw new Error("Poop");
 		const html = renderer.render(jsx`<div>Hello from Crank</div>`);
 		return new Response(html, {
 			headers: {"content-type": "text/html; charset=UTF-8"},
