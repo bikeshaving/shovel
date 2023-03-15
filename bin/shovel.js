@@ -1,105 +1,157 @@
 #!/usr/bin/env node --no-warnings --experimental-vm-modules --experimental-fetch
 import * as Path from "path";
 import * as FS from "fs/promises";
+import {pathToFileURL} from "url";
 import {createServer} from "http";
 import * as VM from "vm";
-import {pathToFileURL} from "url";
 import * as ESBuild from "esbuild";
 import {SourceMapConsumer} from "source-map";
 import MagicString from "magic-string";
-import resolve from "../resolve.js";
+import {Command} from "commander";
 
 import pkg from "../package.json" assert {type: "json"};
-import {Command} from "commander";
+import resolve from "../resolve.js";
+
 const program = new Command();
 program
 	.name("shovel")
 	.version(pkg.version)
-	.description("Dig for treasure.")
-	.argument("<entry>")
-	.option("-p, --port <port>", "Port to listen on", "1337");
-program.parse(process.argv);
-const path = Path.resolve(program.args[0] || "");
-const cwd = process.cwd();
-const port = parseInt(program.opts().port);
+	.description("Dig for treasure.");
 
-let sourceMapConsumer;
-let namespace;
-const plugin = {
-	name: "loader",
-	setup(build) {
-		build.onLoad({filter: /\.(js|ts|jsx|tsx)$/}, async (args) => {
-			let code = await FS.readFile(args.path, "utf8");
-			const magicString = new MagicString(code);
-			magicString.prepend(
-				`import.meta.url = "${pathToFileURL(args.path).href}";`,
-			);
+program.command("develop <file>")
+	.option("-p, --port <port>", "Port to listen on", "1337")
+	.action(develop);
 
-			code = magicString.toString();
-			const map = magicString.generateMap({
-				file: args.path,
-				source: args.path,
-				hires: true,
-			});
+await program.parseAsync(process.argv);
 
-			code = code + "\n//# sourceMappingURL=" + map.toUrl();
-			return {
-				contents: code,
-				loader: Path.extname(args.path).slice(1),
-			};
-		});
+async function develop(file, options) {
+	const cwd = process.cwd();
+	const url = pathToFileURL(file);
+	const port = parseInt(options.port);
 
-		build.onEnd(async (result) => {
-			const url = pathToFileURL(build.initialOptions.entryPoints[0]).href;
-			console.info("built:", url);
-			if (result.errors && result.errors.length) {
-				const formatted = await ESBuild.formatMessages(result.errors, {
-					kind: "error",
-					color: true,
-				});
-				console.error(formatted.join("\n"));
-				return;
-			}
+	let sourceMapConsumer;
+	let namespace;
 
-			const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
-			const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
-			if (map) {
-				sourceMapConsumer = await new SourceMapConsumer(map);
-			}
+	const plugin = {
+		name: "loader",
+		setup(build) {
+			build.onLoad({filter: /\.(js|ts|jsx|tsx)$/}, async (args) => {
+				let code = await FS.readFile(args.path, "utf8");
+				const magicString = new MagicString(code);
+				magicString.prepend(
+					`import.meta.url = "${pathToFileURL(args.path).href}";`,
+				);
 
-			const module = new VM.SourceTextModule(code, {
-				identifier: "ESBUILD_VM_RUN",
-			});
-
-			try {
-				await module.link(async (specifier) => {
-					const resolved = await resolve(specifier, cwd);
-					const child = await import(resolved);
-					const exports = Object.keys(child);
-					return new VM.SyntheticModule(
-						exports,
-						function () {
-							for (const key of exports) {
-								this.setExport(key, child[key]);
-							}
-						},
-					);
+				code = magicString.toString();
+				const map = magicString.generateMap({
+					file: args.path,
+					source: args.path,
+					hires: true,
 				});
 
-				await module.evaluate();
-			} catch (err) {
-				if (sourceMapConsumer) {
-					fixStack(err, sourceMapConsumer);
+				code = code + "\n//# sourceMappingURL=" + map.toUrl();
+				return {
+					contents: code,
+					loader: Path.extname(args.path).slice(1),
+				};
+			});
+
+			build.onEnd(async (result) => {
+				const url = pathToFileURL(build.initialOptions.entryPoints[0]).href;
+				console.info("built:", url);
+				if (result.errors && result.errors.length) {
+					const formatted = await ESBuild.formatMessages(result.errors, {
+						kind: "error",
+						color: true,
+					});
+					console.error(formatted.join("\n"));
+					return;
 				}
 
+				const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+				const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
+				if (map) {
+					sourceMapConsumer = await new SourceMapConsumer(map);
+				}
+
+				const module = new VM.SourceTextModule(code, {
+					identifier: "ESBUILD_VM_RUN",
+				});
+
+				try {
+					await module.link(async (specifier) => {
+						const resolved = await resolve(specifier, cwd);
+						const child = await import(resolved);
+						const exports = Object.keys(child);
+						return new VM.SyntheticModule(
+							exports,
+							function () {
+								for (const key of exports) {
+									this.setExport(key, child[key]);
+								}
+							},
+						);
+					});
+
+					await module.evaluate();
+				} catch (err) {
+					if (sourceMapConsumer) {
+						fixStack(err, sourceMapConsumer);
+					}
+
+					console.error(err);
+					return;
+				}
+
+				namespace = module.namespace;
+			});
+		},
+	};
+
+	const ctx = await ESBuild.context({
+		format: "esm",
+		platform: "node",
+		absWorkingDir: cwd,
+		entryPoints: [file],
+		bundle: true,
+		metafile: true,
+		write: false,
+		packages: "external",
+		sourcemap: "both",
+		plugins: [plugin],
+		// We need this to export map files.
+		outdir: cwd,
+		logLevel: "silent",
+	});
+
+	await ctx.watch();
+	const server = createServer(async (req, res) => {
+		const webReq = await webRequestFromNode(req);
+		let webRes;
+		if (typeof namespace?.default?.fetch === "function") {
+			try {
+				webRes = await namespace?.default?.fetch(webReq);
+			} catch (err)	{
+				fixStack(err, sourceMapConsumer);
+				webRes = new Response(err.stack, {
+					status: 500,
+				});
 				console.error(err);
-				return;
 			}
 
-			namespace = module.namespace;
-		});
-	},
-};
+		} else {
+			// TODO: wait for the server to be ready
+			webRes = new Response("Server not running", {
+				status: 500,
+			});
+		}
+
+		callNodeResponse(res, webRes);
+	});
+
+	console.info("listening on port:", port);
+	server.listen(port);
+}
 
 function fixStack(err, sourceMapConsumer) {
 	let [message, ...lines] = err.stack.split("\n");
@@ -120,24 +172,6 @@ function fixStack(err, sourceMapConsumer) {
 	});
 	err.stack = [message, ...lines].join("\n");
 }
-
-const ctx = await ESBuild.context({
-	format: "esm",
-	platform: "node",
-	absWorkingDir: cwd,
-	entryPoints: [path],
-	bundle: true,
-	metafile: true,
-	write: false,
-	packages: "external",
-	sourcemap: "both",
-	plugins: [plugin],
-	// We need this to export map files.
-	outdir: cwd,
-	logLevel: "silent",
-});
-
-await ctx.watch();
 
 function readableStreamFromMessage(req) {
 	return new ReadableStream({
@@ -182,33 +216,6 @@ async function callNodeResponse(res, webRes) {
 	// TODO: stream the body
 	res.end(await webRes.text());
 }
-
-const server = createServer(async (req, res) => {
-	const webReq = await webRequestFromNode(req);
-	let webRes;
-	if (typeof namespace?.default?.fetch === "function") {
-		try {
-			webRes = await namespace?.default?.fetch(webReq);
-		} catch (err)	{
-			fixStack(err, sourceMapConsumer);
-			webRes = new Response(err.stack, {
-				status: 500,
-			});
-			console.error(err);
-		}
-
-	} else {
-		// TODO: wait for the server to be ready
-		webRes = new Response("Server not running", {
-			status: 500,
-		});
-	}
-
-	callNodeResponse(res, webRes);
-});
-
-console.info("listening on port:", port);
-server.listen(port);
 
 process.on("uncaughtException", (err) => {
 	if (sourceMapConsumer) {
