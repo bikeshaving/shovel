@@ -1,28 +1,27 @@
-#!/usr/bin/env node --experimental-vm-modules --experimental-fetch --no-warnings
+#!/usr/bin/env node --no-warnings --experimental-vm-modules --experimental-fetch
 import * as Path from "path";
 import * as FS from "fs/promises";
 import {createServer} from "http";
 import * as VM from "vm";
 import {pathToFileURL} from "url";
-import {parseArgs} from "@pkgjs/parseargs";
 import * as ESBuild from "esbuild";
 import {SourceMapConsumer} from "source-map";
 import MagicString from "magic-string";
 import resolve from "../resolve.js";
 
-// TODO: replace with yargs or commander
-const {values, positionals} = parseArgs({
-	allowPositionals: true,
-	options: {
-		port: {
-			type: "string",
-		},
-	},
-});
-
-const path = Path.resolve(positionals[0] || "");
+import pkg from "../package.json" assert {type: "json"};
+import {Command} from "commander";
+const program = new Command();
+program
+	.name("shovel")
+	.version(pkg.version)
+	.description("Dig for treasure.")
+	.argument("<entry>")
+	.option("-p, --port <port>", "Port to listen on", "1337");
+program.parse(process.argv);
+const path = Path.resolve(program.args[0] || "");
 const cwd = process.cwd();
-const port = parseInt(values["port"] || "1337");
+const port = parseInt(program.opts().port);
 
 let sourceMapConsumer;
 let namespace;
@@ -52,7 +51,7 @@ const plugin = {
 
 		build.onEnd(async (result) => {
 			const url = pathToFileURL(build.initialOptions.entryPoints[0]).href;
-			console.log("built:", url);
+			console.info("built:", url);
 			if (result.errors && result.errors.length) {
 				const formatted = await ESBuild.formatMessages(result.errors, {
 					kind: "error",
@@ -208,7 +207,7 @@ const server = createServer(async (req, res) => {
 	callNodeResponse(res, webRes);
 });
 
-console.log("listening on port:", port);
+console.info("listening on port:", port);
 server.listen(port);
 
 process.on("uncaughtException", (err) => {

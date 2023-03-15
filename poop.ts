@@ -13,10 +13,7 @@ export default {
 	},
 
 	develop(hot) {
-		hot.accept(({module}) => {
-			console.log("Accepting updated module");
-		});
-
+		hot.decline();
 		hot.dispose(() => {
 			console.log("module disposed");
 		});
