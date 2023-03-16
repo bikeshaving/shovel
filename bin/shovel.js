@@ -1,13 +1,16 @@
-#!/usr/bin/env node --no-warnings --experimental-vm-modules --experimental-fetch
+#!/usr/bin/env node --experimental-vm-modules --experimental-fetch --no-warnings
+// TODO: Squash warnings from process
+// https://github.com/yarnpkg/berry/blob/2cf0a8fe3e4d4bd7d4d344245d24a85a45d4c5c9/packages/yarnpkg-pnp/sources/loader/applyPatch.ts#L414-L435
 import * as Path from "path";
 import * as FS from "fs/promises";
 import {pathToFileURL} from "url";
 import {createServer} from "http";
 import * as VM from "vm";
 import * as ESBuild from "esbuild";
+
+import {Command} from "commander";
 import {SourceMapConsumer} from "source-map";
 import MagicString from "magic-string";
-import {Command} from "commander";
 
 import pkg from "../package.json" assert {type: "json"};
 import resolve from "../resolve.js";
@@ -54,18 +57,11 @@ function disposeHot(hot) {
 	}
 }
 
-async function develop(file, options) {
-	const url = pathToFileURL(file);
-	const port = parseInt(options.port);
-
-	let sourceMapConsumer;
-	let namespace;
-	let hot;
-
+function importMetaPlugin() {
 	// Sets import.meta.url to be correct
 	// This might be unnecessary if we use the VM module initializeImportMeta and
 	// load each independent module into its own module instance.
-	const importMetaPlugin = {
+	return {
 		name: "import-meta",
 		setup(build) {
 			build.onLoad({filter: /\.(js|ts|jsx|tsx)$/}, async (args) => {
@@ -90,110 +86,115 @@ async function develop(file, options) {
 			});
 		},
 	};
+}
 
-	const watchPlugin = {
-		name: "watch",
-		setup(build) {
-			// This is called every time a module is edited.
-			build.onEnd(async (result) => {
-				const url = pathToFileURL(build.initialOptions.entryPoints[0]).href;
-				if (result.errors && result.errors.length) {
-					const formatted = await ESBuild.formatMessages(result.errors, {
-						kind: "error",
-						color: true,
-					});
-					console.error(formatted.join("\n"));
-					return;
-				}
 
-				const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
-				const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
-				if (map) {
-					sourceMapConsumer = await new SourceMapConsumer(map);
-				}
+async function develop(file, options) {
+	const url = pathToFileURL(file);
+	const port = parseInt(options.port);
 
-				const module = new VM.SourceTextModule(code, {
-					identifier: "ESBUILD_VM_RUN",
-				});
+	let sourceMapConsumer;
+	let namespace;
+	let hot;
 
-				try {
-					await module.link(async (specifier) => {
-						// Currently, only dependencies are linked, source code is bundled.
-							// If we want to create a module instance for each file, we will
-						// have to create a recursive call to ESBuild, and manage the
-						// ESBuild contexts and module instances.
-						const resolved = await resolve(specifier, process.cwd());
-						const child = await import(resolved);
-						const exports = Object.keys(child);
-						return new VM.SyntheticModule(exports, function () {
-							for (const key of exports) {
-								this.setExport(key, child[key]);
-							}
+	{
+		const watchPlugin = {
+			name: "watch",
+			setup(build) {
+				// This is called every time a module is edited.
+				build.onEnd(async (result) => {
+					const url = pathToFileURL(build.initialOptions.entryPoints[0]).href;
+					if (result.errors && result.errors.length) {
+						const formatted = await ESBuild.formatMessages(result.errors, {
+							kind: "error",
+							color: true,
 						});
-					});
-
-					await module.evaluate();
-				} catch (err) {
-					if (sourceMapConsumer) {
-						fixStack(err, sourceMapConsumer);
+						console.error(formatted.join("\n"));
+						return;
 					}
 
-					console.error(err);
-					return;
-				}
+					const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+					const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
+					if (map) {
+						sourceMapConsumer = await new SourceMapConsumer(map);
+					}
 
-				if (hot) {
-					disposeHot(hot);
-				}
+					const module = new VM.SourceTextModule(code, {
+						identifier: url,
+					});
 
-				namespace = module.namespace;
-				hot = new Hot();
-				namespace.default?.develop?.(hot);
-				console.info("built:", url);
-			});
-		},
-	};
+					try {
+						await module.link(async (specifier) => {
+							// Currently, only dependencies are linked, source code is bundled.
+								// If we want to create a module instance for each file, we will
+							// have to create a recursive call to ESBuild, and manage the
+							// ESBuild contexts and module instances.
+							const resolved = await resolve(specifier, process.cwd());
+							const child = await import(resolved);
+							const exports = Object.keys(child);
+							return new VM.SyntheticModule(exports, function () {
+								for (const key of exports) {
+									this.setExport(key, child[key]);
+								}
+							});
+						});
 
-	const ctx = await ESBuild.context({
-		format: "esm",
-		platform: "node",
-		absWorkingDir: process.cwd(),
-		entryPoints: [file],
-		bundle: true,
-		metafile: true,
-		write: false,
-		packages: "external",
-		sourcemap: "both",
-		plugins: [importMetaPlugin, watchPlugin],
-		// We need this to export map files.
-		outdir: "dist",
-		logLevel: "silent",
-	});
-	await ctx.watch();
+						await module.evaluate();
+					} catch (err) {
+						if (sourceMapConsumer) {
+							fixStack(err, sourceMapConsumer);
+						}
 
-	const server = createServer(async (req, res) => {
-		const webReq = await webRequestFromNode(req);
-		let webRes;
+						console.error(err);
+						return;
+					}
+
+					if (hot) {
+						disposeHot(hot);
+					}
+
+					namespace = module.namespace;
+					hot = new Hot();
+					namespace.default?.develop?.(hot);
+					console.info("built:", url);
+				});
+			},
+		};
+
+		const ctx = await ESBuild.context({
+			format: "esm",
+			platform: "node",
+			entryPoints: [file],
+			bundle: true,
+			metafile: true,
+			write: false,
+			packages: "external",
+			sourcemap: "both",
+			plugins: [importMetaPlugin(), watchPlugin],
+			// We need this to export map files.
+			outdir: "dist",
+			logLevel: "silent",
+		});
+
+		await ctx.watch();
+	}
+
+	const server = createFetchServer(async (req) => {
 		if (typeof namespace?.default?.fetch === "function") {
 			try {
-				webRes = await namespace?.default?.fetch(webReq);
+				return await namespace?.default?.fetch(req);
 			} catch (err)	{
 				fixStack(err, sourceMapConsumer);
-				webRes = new Response(err.stack, {
+				return new Response(err.stack, {
 					status: 500,
 				});
 				console.error(err);
 			}
-
-		} else {
-			// TODO: Wait for the server to be ready.
-			// How?
-			webRes = new Response("Server not running", {
-				status: 500,
-			});
 		}
 
-		callNodeResponse(res, webRes);
+		return new Response("Server not ready", {
+			status: 500,
+		});
 	});
 
 	console.info("listening on port:", port);
@@ -213,26 +214,6 @@ async function develop(file, options) {
 
 		console.error(err);
 	});
-}
-
-function fixStack(err, sourceMapConsumer) {
-	let [message, ...lines] = err.stack.split("\n");
-	lines = lines.map((line, i) => {
-		// parse the stack trace line
-		return line.replace(
-			new RegExp(`ESBUILD_VM_RUN:(\\d+):(\\d+)`),
-			(match, line, column) => {
-				const pos = sourceMapConsumer.originalPositionFor({
-					line: parseInt(line),
-					column: parseInt(column),
-				});
-
-				const source = pos.source ? Path.resolve(process.cwd(), pos.source) : url;
-				return `${pathToFileURL(source)}:${pos.line}:${pos.column}`;
-			},
-		);
-	});
-	err.stack = [message, ...lines].join("\n");
 }
 
 function readableStreamFromMessage(req) {
@@ -277,4 +258,34 @@ async function callNodeResponse(res, webRes) {
 	res.writeHead(webRes.status, headers);
 	// TODO: stream the body
 	res.end(await webRes.text());
+}
+
+function createFetchServer(handler) {
+	const server = createServer(async (req, res) => {
+		const webRes = await handler(webRequestFromNode(req));
+		callNodeResponse(res, webRes);
+	});
+
+	return server;
+}
+
+function fixStack(err, sourceMapConsumer) {
+	let [message, ...lines] = err.stack.split("\n");
+	lines = lines.map((line, i) => {
+		// parse the stack trace line
+		return line.replace(
+			new RegExp(`ESBUILD_VM_RUN:(\\d+):(\\d+)`),
+			(match, line, column) => {
+				const pos = sourceMapConsumer.originalPositionFor({
+					line: parseInt(line),
+					column: parseInt(column),
+				});
+
+				const source = pos.source ? Path.resolve(process.cwd(), pos.source) : url;
+				return `${pathToFileURL(source)}:${pos.line}:${pos.column}`;
+			},
+		);
+	});
+
+	err.stack = [message, ...lines].join("\n");
 }
