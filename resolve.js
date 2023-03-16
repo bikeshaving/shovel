@@ -1,18 +1,19 @@
-// Adapted from https://github.com/browserify/resolve because the original code
-// was truly ass and didn't support ES modules.
-// TODO: Support ES modules, clean up, double check it works according to the node resolution algorithm.
-// MIT License
-// Copyright (c) 2012 James Halliday
+/**
+ * Adapted from https://github.com/browserify/resolve.
+ * @license
+ * MIT License
+ * Copyright (c) 2012 James Halliday
+ */
 import * as FS from "fs/promises";
 import * as Path from "path";
 import isCore from 'is-core-module';
 
 function nodeModulesPaths(start) {
-	let prefix = '/';
+	let prefix = "/";
 	if ((/^([A-Za-z]:)/).test(start)) {
-		prefix = '';
+		prefix = "";
 	} else if ((/^\\\\/).test(start)) {
-		prefix = '\\\\';
+		prefix = "\\\\";
 	}
 
 	const paths = [start];
@@ -207,5 +208,6 @@ export default async function resolve(specifier, basedir) {
 
 		return result || specifier;
 	}
+
 	return loadNodeModules(specifier, basedir);
 }
