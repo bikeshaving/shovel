@@ -197,8 +197,10 @@ async function develop(file, options) {
 		});
 	});
 
-	console.info("listening on port:", port);
-	server.listen(port);
+	server.listen(port, () => {
+		console.info("listening on port:", port);
+	});
+
 	process.on("uncaughtException", (err) => {
 		if (sourceMapConsumer) {
 			fixStack(err, sourceMapConsumer);
