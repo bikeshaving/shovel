@@ -171,7 +171,7 @@ async function loadNodeModules(x, start) {
 	return processDirs(dirs) || x;
 }
 
-export default async function resolve(specifier, basedir) {
+export async function resolve(specifier, basedir) {
 	if (typeof specifier !== 'string') {
 		throw new TypeError('specifier must be a string');
 	}
