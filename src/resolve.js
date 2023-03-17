@@ -91,7 +91,7 @@ function getPackageCandidates(x, start) {
 }
 
 async function loadAsFile(x) {
-	const extensions = ["", ".js", ".json", ".node"];
+	const extensions = ["", ".json", ".js", ".ts", ".jsx", ".tsx"];
 	for (const ext of extensions) {
 		const file = x + ext;
 		if (await isFile(file)) {
@@ -99,7 +99,7 @@ async function loadAsFile(x) {
 		}
 	}
 
-	return x;
+	return null;
 }
 
 async function loadAsDirectory(x) {
@@ -131,7 +131,10 @@ async function loadAsDirectory(x) {
 async function processDirs(dirs) {
 	for (const dir of dirs) {
 		if (await isDirectory(dir)) {
-			return loadAsDirectory(dir);
+			const result = loadAsDirectory(dir);
+			if (result) {
+				return result;
+			}
 		}
 
 		const result = await loadAsFile(dir);
@@ -166,10 +169,9 @@ export async function resolve(specifier, basedir) {
 	}
 
 	if (isPathSpecifier(specifier)) {
-		// TODO: resolving a local file doesn’t work yet because it won’t be
-		// transpiled by ESBuild. This branch is avoided by bundling the entry.
 		let specifier1 = Path.resolve(basedir, specifier);
 
+		// TODO: What is this for?
 		if (specifier === '.' || specifier === '..' || specifier.slice(-1) === '/')  {
 			specifier1 += '/';
 		}
@@ -178,10 +180,21 @@ export async function resolve(specifier, basedir) {
 		if ((/\/$/).test(specifier) && specifier1 === basedir) {
 			result = await loadAsDirectory(specifier1);
 		} else {
+
+			// remove the extension
+			const ext = Path.extname(specifier1);
+			if (ext) {
+				specifier1 = specifier1.slice(0, -ext.length);
+			}
+
 			result = await loadAsFile(specifier1);
 		}	
 
-		return result || specifier;
+		if (!result) {
+			throw new Error(`Cannot resolve ${specifier} from ${basedir}`);
+		}
+
+		return result;
 	}
 
 	return loadNodeModules(specifier, basedir);
