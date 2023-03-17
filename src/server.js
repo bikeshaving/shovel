@@ -17,7 +17,7 @@ function readableStreamFromMessage(req) {
 	});
 }
 
-async function webRequestFromNode(req) {
+function webRequestFromNode(req) {
 	const url = new URL(req.url || "/", "http://" + req.headers.host);
 	const headers = new Headers();
 	for (const key in req.headers) {
