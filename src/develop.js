@@ -1,11 +1,11 @@
 import * as Path from "path";
 import * as FS from "fs/promises";
-import {pathToFileURL} from "url";
+import {fileURLToPath, pathToFileURL} from "url";
 import * as VM from "vm";
 import * as ESBuild from "esbuild";
 import {SourceMapConsumer} from "source-map";
 import MagicString from "magic-string";
-import {resolve} from "./resolve.js";
+import {isPathSpecifier, resolve} from "./resolve.js";
 import {createFetchServer} from "./server.js";
 
 class Hot {
@@ -13,6 +13,7 @@ class Hot {
 		this.disposeCallbacks = [];
 	}
 
+	// TODO: handle accept with basic callback and deps parameter
 	accept(callback) {
 		if (callback) {
 			throw new Error("Not implemented");
@@ -69,6 +70,44 @@ function importMetaPlugin() {
 	};
 }
 
+async function linker(specifier, referencingModule) {
+	const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
+	const resolved = await resolve(specifier, basedir);
+	if (isPathSpecifier(specifier)) {
+		// TODO: These linked files aren’t being watched.
+		const result = await ESBuild.build({
+			entryPoints: [resolved],
+			format: "esm",
+			platform: "node",
+			//bundle: true,
+			bundle: false,
+			metafile: true,
+			write: false,
+			packages: "external",
+			sourcemap: "both",
+			plugins: [importMetaPlugin()],
+			// We need this to export map files.
+			outdir: "dist",
+			logLevel: "silent",
+		});
+		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+		return new VM.SourceTextModule(
+			code || "",
+			{
+				identifier: pathToFileURL(resolved).href,
+			},
+		);
+	}
+
+	const child = await import(resolved);
+	const exports = Object.keys(child);
+	return new VM.SyntheticModule(exports, function () {
+		for (const key of exports) {
+			this.setExport(key, child[key]);
+		}
+	});
+}
+
 export default async function develop(file, options) {
 	const url = pathToFileURL(file);
 	const port = parseInt(options.port);
@@ -81,6 +120,7 @@ export default async function develop(file, options) {
 		const watchPlugin = {
 			name: "watch",
 			setup(build) {
+				console.log("watching:", build.initialOptions.entryPoints[0]);
 				// This is called every time a module is edited.
 				build.onEnd(async (result) => {
 					const url = pathToFileURL(build.initialOptions.entryPoints[0]).href;
@@ -104,21 +144,7 @@ export default async function develop(file, options) {
 					});
 
 					try {
-						await module.link(async (specifier) => {
-							// Currently, only dependencies are linked, source code is bundled.
-								// If we want to create a module instance for each file, we will
-							// have to create a recursive call to ESBuild, and manage the
-							// ESBuild contexts and module instances.
-							const resolved = await resolve(specifier, process.cwd());
-							const child = await import(resolved);
-							const exports = Object.keys(child);
-							return new VM.SyntheticModule(exports, function () {
-								for (const key of exports) {
-									this.setExport(key, child[key]);
-								}
-							});
-						});
-
+						await module.link(linker);
 						await module.evaluate();
 					} catch (err) {
 						if (sourceMapConsumer) {
@@ -145,7 +171,8 @@ export default async function develop(file, options) {
 			format: "esm",
 			platform: "node",
 			entryPoints: [file],
-			bundle: true,
+			//bundle: true,
+			bundle: false,
 			metafile: true,
 			write: false,
 			packages: "external",
