@@ -3,32 +3,10 @@ import * as FS from "fs/promises";
 import {fileURLToPath, pathToFileURL} from "url";
 import * as VM from "vm";
 import * as ESBuild from "esbuild";
-import {SourceMapConsumer} from "source-map";
 import MagicString from "magic-string";
 import {Repeater} from "@repeaterjs/repeater";
 import {isPathSpecifier, resolve} from "./resolve.js";
 import {createFetchServer} from "./server.js";
-
-function fixStack(err, sourceMapConsumer) {
-	let [message, ...lines] = err.stack.split("\n");
-	lines = lines.map((line, i) => {
-		// parse the stack trace line
-		return line.replace(
-			new RegExp(`ESBUILD_VM_RUN:(\\d+):(\\d+)`),
-			(match, line, column) => {
-				const pos = sourceMapConsumer.originalPositionFor({
-					line: parseInt(line),
-					column: parseInt(column),
-				});
-
-				const source = pos.source ? Path.resolve(process.cwd(), pos.source) : url;
-				return `${pathToFileURL(source)}:${pos.line}:${pos.column}`;
-			},
-		);
-	});
-
-	err.stack = [message, ...lines].join("\n");
-}
 
 class Hot {
 	constructor() {
@@ -143,16 +121,13 @@ function watch(entry, watcherCache = {}) {
 export default async function develop(file, options) {
 	const url = pathToFileURL(file).href;
 	const port = parseInt(options.port);
-
-	let sourceMapConsumer;
-	let namespace;
-	let hot;
+	let hot = null;
+	let namespace = null;
 	const server = createFetchServer(async (req) => {
 		if (typeof namespace?.default?.fetch === "function") {
 			try {
 				return await namespace?.default?.fetch(req);
 			} catch (err)	{
-				fixStack(err, sourceMapConsumer);
 				console.error(err);
 				return new Response(err.stack, {
 					status: 500,
@@ -170,18 +145,10 @@ export default async function develop(file, options) {
 	});
 
 	process.on("uncaughtException", (err) => {
-		if (sourceMapConsumer) {
-			fixStack(err, sourceMapConsumer);
-		}
-
 		console.error(err);
 	});
 
 	process.on("unhandledRejection", (err) => {
-		if (sourceMapConsumer) {
-			fixStack(err, sourceMapConsumer);
-		}
-
 		console.error(err);
 	});
 
@@ -198,10 +165,6 @@ export default async function develop(file, options) {
 
 		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
 		const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
-		if (map) {
-			sourceMapConsumer = await new SourceMapConsumer(map);
-		}
-
 		let module = new VM.SourceTextModule(code, {
 			identifier: url,
 		});
@@ -252,10 +215,6 @@ export default async function develop(file, options) {
 				await linkModule(module);
 				await module.evaluate();
 			} catch (err) {
-				if (sourceMapConsumer) {
-					fixStack(err, sourceMapConsumer);
-				}
-
 				console.error(err);
 				return;
 			}
@@ -274,10 +233,6 @@ export default async function develop(file, options) {
 			await linkModule(module);
 			await module.evaluate();
 		} catch (err) {
-			if (sourceMapConsumer) {
-				fixStack(err, sourceMapConsumer);
-			}
-
 			console.error(err);
 			return;
 		}
