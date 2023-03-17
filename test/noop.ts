@@ -1,8 +1,10 @@
-function thrower() {
-	console.log("hi");
-	//throw new Error("This is an error");
+function thrower(shouldThrow) {
+	if (shouldThrow) {
+		throw new Error("throwing");
+	}
 }
 
 export default function noop() {
-	thrower();
+	thrower(false);
+	return "helloooo";
 }

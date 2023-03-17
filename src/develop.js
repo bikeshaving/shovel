@@ -92,18 +92,30 @@ function importMetaPlugin() {
 	};
 }
 
-function watch(entry) {
+function watch(entry, watcherCache = {}) {
 	return new Repeater(async (push, stop) => {
+		if (watcherCache[entry]) {
+			push(await watcherCache[entry]);
+			stop();
+			return;
+		}
+
+		let resolve;
+		watcherCache[entry] = new Promise(async (r) => {
+			resolve = r;
+		});
+
 		const watchPlugin = {
 			name: "watch",
 			setup(build) {
 				// This is called every time a module is edited.
 				build.onEnd(async (result) => {
+					resolve(result);
 					push(result);
+					watcherCache[entry] = result;
 				});
 			},
 		};
-
 		const ctx = await ESBuild.context({
 			format: "esm",
 			platform: "node",
@@ -123,8 +135,10 @@ function watch(entry) {
 		await ctx.watch();
 		await stop;
 		ctx.dispose();
+		watcherCache[entry] = null;
 	});
 }
+
 
 export default async function develop(file, options) {
 	const url = pathToFileURL(file).href;
@@ -139,10 +153,10 @@ export default async function develop(file, options) {
 				return await namespace?.default?.fetch(req);
 			} catch (err)	{
 				fixStack(err, sourceMapConsumer);
+				console.error(err);
 				return new Response(err.stack, {
 					status: 500,
 				});
-				console.error(err);
 			}
 		}
 
@@ -171,7 +185,8 @@ export default async function develop(file, options) {
 		console.error(err);
 	});
 
-	for await (const result of watch(file)) {
+	const watcherCache = {};
+	for await (const result of watch(file, watcherCache)) {
 		if (result.errors && result.errors.length) {
 			const formatted = await ESBuild.formatMessages(result.errors, {
 				kind: "error",
@@ -187,27 +202,25 @@ export default async function develop(file, options) {
 			sourceMapConsumer = await new SourceMapConsumer(map);
 		}
 
-		const module = new VM.SourceTextModule(code, {
+		let module = new VM.SourceTextModule(code, {
 			identifier: url,
 		});
 
-		try {
+		async function linkModule(module) {
 			await module.link(async (specifier, referencingModule) => {
 				const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
 				const resolved = await resolve(specifier, basedir);
 				if (isPathSpecifier(specifier)) {
-					// TODO: This is a bad approach because it will cause new watch
-					// loops. We have to cache the watcher and reuse it.
 					const firstResult = await new Promise(async (resolve) => {
 						let initial = true;
-						for await (const result of watch(resolved)) {
+						for await (const result of watch(resolved, watcherCache)) {
 							if (initial) {
 								initial = false;
 								resolve(result);
 							} else {
-								// TODO: we need to invalidate the module
-								console.log(result);
-								console.log(firstResult.metafile);
+								// TODO: Allow import.meta.hot.accept to be called and prevent
+								// reloading the root module.
+								await reloadRootModule();
 							}
 						}
 					});
@@ -229,6 +242,36 @@ export default async function develop(file, options) {
 					}
 				});
 			});
+		}
+
+		async function reloadRootModule() {
+			try {
+				module = new VM.SourceTextModule(code, {
+					identifier: url,
+				});
+				await linkModule(module);
+				await module.evaluate();
+			} catch (err) {
+				if (sourceMapConsumer) {
+					fixStack(err, sourceMapConsumer);
+				}
+
+				console.error(err);
+				return;
+			}
+
+			if (hot) {
+				disposeHot(hot);
+			}
+
+			namespace = module.namespace;
+			hot = new Hot();
+			namespace.default?.develop?.(hot);
+			console.info("rebuilt:", url);
+		}
+
+		try {
+			await linkModule(module);
 			await module.evaluate();
 		} catch (err) {
 			if (sourceMapConsumer) {
