@@ -6,5 +6,5 @@ function thrower(shouldThrow) {
 
 export default function noop() {
 	thrower(false);
-	return "helloooo";
+	return "helo";
 }

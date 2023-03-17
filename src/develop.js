@@ -169,6 +169,7 @@ export default async function develop(file, options) {
 			identifier: url,
 		});
 
+		// TODO: move linkModule and resolveRootModule to the top-level scope
 		async function linkModule(module) {
 			await module.link(async (specifier, referencingModule) => {
 				const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
