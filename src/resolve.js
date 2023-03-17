@@ -7,6 +7,7 @@
 import * as FS from "fs/promises";
 import * as Path from "path";
 import isCore from 'is-core-module';
+import * as ResolveExports from "resolve.exports";
 
 function nodeModulesPaths(start) {
 	let prefix = "/";
@@ -62,6 +63,7 @@ const localRealpath =
 	process.platform !== 'win32' && FS.realpath && typeof FS.realpath.native === 'function'
 		? FS.realpath.native
 		: FS.realpath;
+
 async function realpath(x) {
 	try {
 		return await localRealpath(x);
@@ -71,14 +73,6 @@ async function realpath(x) {
 		}
 
 		throw err;
-	}
-}
-
-function maybeRealpath(realpath, x, opts) {
-	if (!opts || !opts.preserveSymlinks) {
-		return realpath(x);
-	} else {
-		return x;
 	}
 }
 
@@ -97,7 +91,7 @@ function getPackageCandidates(x, start) {
 }
 
 async function loadAsFile(x) {
-	const extensions = ["", ".js", ".ts"];
+	const extensions = ["", ".js", ".json", ".node"];
 	for (const ext of extensions) {
 		const file = x + ext;
 		if (await isFile(file)) {
@@ -108,32 +102,10 @@ async function loadAsFile(x) {
 	return x;
 }
 
-async function loadpkg(dir) {
-	if (dir === '' || dir === '/') {
-		return null;
-	}
-
-	if (process.platform === 'win32' && (/^\w:[/\\]*$/).test(dir)) {
-		return null;
-	}
-
-	if ((/[/\\]node_modules[/\\]*$/).test(dir)) {
-		return null;
-	}
-
-	dir = await maybeRealpath(realpath, dir);
-	const pkgfile = Path.join(dir, 'package.json');
-	if (!await isFile(pkgfile)) {
-		return loadpkg(Path.dirname(dir));
-	}
-
-	return await readPackage(pkgfile);
-}
-
 async function loadAsDirectory(x) {
 	let pkgdir;
 	try { 
-		pkgdir = await maybeRealpath(realpath, x);
+		pkgdir = await realpath(x);
 	} catch (err) {
 		throw err;
 	}
@@ -144,7 +116,10 @@ async function loadAsDirectory(x) {
 	}
 
 	const pkg = await readPackage(pkgfile);
-	if (pkg && pkg.main) {
+	if (pkg.exports) {
+		const exports = ResolveExports.exports(pkg, ".");
+		return loadAsFile(Path.join(x, exports[0]));
+	} else if (pkg && pkg.main) {
 		return loadAsFile(Path.join(x, pkg.main));
 	} else if (pkg && pkg.module) {
 		return loadAsFile(Path.join(x, pkg.module));
@@ -171,26 +146,26 @@ async function loadNodeModules(x, start) {
 	return processDirs(dirs) || x;
 }
 
+export function isPathSpecifier(x) {
+	return (/^(?:\.\.?(?:\/|$)|\/|([A-Za-z]:)?[/\\])/).test(x);
+}
+
 export async function resolve(specifier, basedir) {
 	if (typeof specifier !== 'string') {
 		throw new TypeError('specifier must be a string');
+	} else if (isCore(specifier)) {
+		return specifier;
 	}
 
 	// ensure that `basedir` is an absolute path at this point, resolving against the process' current working directory
 	let absoluteStart = Path.resolve(basedir);
-
-	absoluteStart = await maybeRealpath(
-		realpath,
-		absoluteStart,
-	);
+	absoluteStart = await realpath(absoluteStart);
 
 	if (!isDirectory(absoluteStart)) {
 		throw new Error(`Cannot resolve ${basedir} to a directory`);
 	}
 
-	if (isCore(specifier)) {
-		return specifier;
-	} else if ((/^(?:\.\.?(?:\/|$)|\/|([A-Za-z]:)?[/\\])/).test(specifier)) {
+	if (isPathSpecifier(specifier)) {
 		// TODO: resolving a local file doesn’t work yet because it won’t be
 		// transpiled by ESBuild. This branch is avoided by bundling the entry.
 		let specifier1 = Path.resolve(basedir, specifier);
