@@ -5,8 +5,30 @@ import * as VM from "vm";
 import * as ESBuild from "esbuild";
 import {SourceMapConsumer} from "source-map";
 import MagicString from "magic-string";
+import {Repeater} from "@repeaterjs/repeater";
 import {isPathSpecifier, resolve} from "./resolve.js";
 import {createFetchServer} from "./server.js";
+
+function fixStack(err, sourceMapConsumer) {
+	let [message, ...lines] = err.stack.split("\n");
+	lines = lines.map((line, i) => {
+		// parse the stack trace line
+		return line.replace(
+			new RegExp(`ESBUILD_VM_RUN:(\\d+):(\\d+)`),
+			(match, line, column) => {
+				const pos = sourceMapConsumer.originalPositionFor({
+					line: parseInt(line),
+					column: parseInt(column),
+				});
+
+				const source = pos.source ? Path.resolve(process.cwd(), pos.source) : url;
+				return `${pathToFileURL(source)}:${pos.line}:${pos.column}`;
+			},
+		);
+	});
+
+	err.stack = [message, ...lines].join("\n");
+}
 
 class Hot {
 	constructor() {
@@ -70,99 +92,14 @@ function importMetaPlugin() {
 	};
 }
 
-async function linker(specifier, referencingModule) {
-	const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
-	const resolved = await resolve(specifier, basedir);
-	if (isPathSpecifier(specifier)) {
-		// TODO: These linked files aren’t being watched.
-		const result = await ESBuild.build({
-			entryPoints: [resolved],
-			format: "esm",
-			platform: "node",
-			//bundle: true,
-			bundle: false,
-			metafile: true,
-			write: false,
-			packages: "external",
-			sourcemap: "both",
-			plugins: [importMetaPlugin()],
-			// We need this to export map files.
-			outdir: "dist",
-			logLevel: "silent",
-		});
-		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
-		return new VM.SourceTextModule(
-			code || "",
-			{
-				identifier: pathToFileURL(resolved).href,
-			},
-		);
-	}
-
-	const child = await import(resolved);
-	const exports = Object.keys(child);
-	return new VM.SyntheticModule(exports, function () {
-		for (const key of exports) {
-			this.setExport(key, child[key]);
-		}
-	});
-}
-
-export default async function develop(file, options) {
-	const url = pathToFileURL(file);
-	const port = parseInt(options.port);
-
-	let sourceMapConsumer;
-	let namespace;
-	let hot;
-
-	{
+function watch(entry) {
+	return new Repeater(async (push, stop) => {
 		const watchPlugin = {
 			name: "watch",
 			setup(build) {
-				console.log("watching:", build.initialOptions.entryPoints[0]);
 				// This is called every time a module is edited.
 				build.onEnd(async (result) => {
-					const url = pathToFileURL(build.initialOptions.entryPoints[0]).href;
-					if (result.errors && result.errors.length) {
-						const formatted = await ESBuild.formatMessages(result.errors, {
-							kind: "error",
-							color: true,
-						});
-						console.error(formatted.join("\n"));
-						return;
-					}
-
-					const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
-					const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
-					if (map) {
-						sourceMapConsumer = await new SourceMapConsumer(map);
-					}
-
-					const module = new VM.SourceTextModule(code, {
-						identifier: url,
-					});
-
-					try {
-						await module.link(linker);
-						await module.evaluate();
-					} catch (err) {
-						if (sourceMapConsumer) {
-							fixStack(err, sourceMapConsumer);
-						}
-
-						console.error(err);
-						return;
-					}
-
-					if (hot) {
-						disposeHot(hot);
-					}
-
-					namespace = module.namespace;
-					hot = new Hot();
-					namespace.default?.develop?.(hot);
-					console.info("built:", url);
+					push(result);
 				});
 			},
 		};
@@ -170,7 +107,7 @@ export default async function develop(file, options) {
 		const ctx = await ESBuild.context({
 			format: "esm",
 			platform: "node",
-			entryPoints: [file],
+			entryPoints: [entry],
 			//bundle: true,
 			bundle: false,
 			metafile: true,
@@ -184,8 +121,18 @@ export default async function develop(file, options) {
 		});
 
 		await ctx.watch();
-	}
+		await stop;
+		ctx.dispose();
+	});
+}
 
+export default async function develop(file, options) {
+	const url = pathToFileURL(file).href;
+	const port = parseInt(options.port);
+
+	let sourceMapConsumer;
+	let namespace;
+	let hot;
 	const server = createFetchServer(async (req) => {
 		if (typeof namespace?.default?.fetch === "function") {
 			try {
@@ -223,25 +170,82 @@ export default async function develop(file, options) {
 
 		console.error(err);
 	});
-}
 
-function fixStack(err, sourceMapConsumer) {
-	let [message, ...lines] = err.stack.split("\n");
-	lines = lines.map((line, i) => {
-		// parse the stack trace line
-		return line.replace(
-			new RegExp(`ESBUILD_VM_RUN:(\\d+):(\\d+)`),
-			(match, line, column) => {
-				const pos = sourceMapConsumer.originalPositionFor({
-					line: parseInt(line),
-					column: parseInt(column),
+	for await (const result of watch(file)) {
+		if (result.errors && result.errors.length) {
+			const formatted = await ESBuild.formatMessages(result.errors, {
+				kind: "error",
+				color: true,
+			});
+			console.error(formatted.join("\n"));
+			continue;
+		}
+
+		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+		const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
+		if (map) {
+			sourceMapConsumer = await new SourceMapConsumer(map);
+		}
+
+		const module = new VM.SourceTextModule(code, {
+			identifier: url,
+		});
+
+		try {
+			await module.link(async (specifier, referencingModule) => {
+				const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
+				const resolved = await resolve(specifier, basedir);
+				if (isPathSpecifier(specifier)) {
+					// TODO: This is a bad approach because it will cause new watch
+					// loops. We have to cache the watcher and reuse it.
+					const firstResult = await new Promise(async (resolve) => {
+						let initial = true;
+						for await (const result of watch(resolved)) {
+							if (initial) {
+								initial = false;
+								resolve(result);
+							} else {
+								// TODO: we need to invalidate the module
+								console.log(result);
+								console.log(firstResult.metafile);
+							}
+						}
+					});
+
+					const code = firstResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+					return new VM.SourceTextModule(
+						code || "",
+						{
+							identifier: pathToFileURL(resolved).href,
+						},
+					);
+				}
+
+				const child = await import(resolved);
+				const exports = Object.keys(child);
+				return new VM.SyntheticModule(exports, function () {
+					for (const key of exports) {
+						this.setExport(key, child[key]);
+					}
 				});
+			});
+			await module.evaluate();
+		} catch (err) {
+			if (sourceMapConsumer) {
+				fixStack(err, sourceMapConsumer);
+			}
 
-				const source = pos.source ? Path.resolve(process.cwd(), pos.source) : url;
-				return `${pathToFileURL(source)}:${pos.line}:${pos.column}`;
-			},
-		);
-	});
+			console.error(err);
+			return;
+		}
 
-	err.stack = [message, ...lines].join("\n");
+		if (hot) {
+			disposeHot(hot);
+		}
+
+		namespace = module.namespace;
+		hot = new Hot();
+		namespace.default?.develop?.(hot);
+		console.info("built:", url);
+	}
 }
