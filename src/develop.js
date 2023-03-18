@@ -55,6 +55,43 @@ function watch(entry, watcherCache = new Map()) {
 	});
 }
 
+//const watcherCache = new Map();
+function watch1(entry, callback) {
+	if (watcherCache.has(entry)) {
+		return watcherCache.get(entry);
+	}
+
+	const watchPlugin = {
+		name: "watch",
+		setup(build) {
+			// This is called every time a module is edited.
+			build.onEnd(async (result) => {
+				callback(result);
+			});
+		},
+	};
+
+	const ctx = ESBuild.build({
+		format: "esm",
+		platform: "node",
+		entryPoints: [entry],
+		//bundle: true,
+		bundle: false,
+		metafile: true,
+		write: false,
+		packages: "external",
+		sourcemap: "both",
+		plugins: [watchPlugin],
+		// We need this to export map files.
+		outdir: "dist",
+		logLevel: "silent",
+	});
+
+	//await ctx.watch();
+	watcherCache.set(entry, ctx);
+	return ctx;
+}
+
 export default async function develop(file, options) {
 	const url = pathToFileURL(file).href;
 	const port = parseInt(options.port);
@@ -88,6 +125,28 @@ export default async function develop(file, options) {
 	process.on("unhandledRejection", (err) => {
 		console.error(err);
 	});
+
+	//const entry = watch1(file, async (result) => {
+	//	if (result.errors.length > 0) {
+	//		const formatted = await ESBuild.formatMessages(result.errors, {
+	//			kind: "error",
+	//			color: true,
+	//		});
+	//		console.error(formatted.join("\n"));
+	//		return;
+	//	}
+
+	//	if (result.warnings.length > 0) {
+	//		const formatted = await ESBuild.formatMessages(result.warnings, {
+	//			kind: "warning",
+	//			color: true,
+	//		});
+	//		console.warn(formatted.join("\n"));
+	//		return;
+	//	}
+
+	//	console.log(result);
+	//});
 
 	const watcherCache = new Map();
 	for await (const result of watch(file, watcherCache)) {
