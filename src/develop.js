@@ -102,7 +102,7 @@ export default async function develop(file, options) {
 
 		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
 		const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
-		// TODO: move linkModule and resolveRootModule to the top-level scope
+		// TODO: Refactor by moving link and reloadRootModule to the top-level scope.
 		async function link(specifier, referencingModule) {
 			const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
 			const resolved = await resolve(specifier, basedir);
@@ -123,16 +123,19 @@ export default async function develop(file, options) {
 
 				const code = firstResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
 				const depURL = pathToFileURL(resolved).href;
-				return new VM.SourceTextModule(
-					code || "",
-					{
-						identifier: depURL,
-						initializeImportMeta(meta) {
-							meta.url = depURL;
-							meta.hot = hot;
-						},
+				return new VM.SourceTextModule(code || "", {
+					identifier: depURL,
+					initializeImportMeta(meta) {
+						meta.url = depURL;
+						meta.hot = hot;
 					},
-				);
+					async importModuleDynamically(specifier, module) {
+						const linked = await link(specifier, module);
+						await linked.link(link);
+						await linked.evaluate();
+						return linked;
+					},
+				});
 			}
 
 			const child = await import(resolved);
@@ -155,10 +158,11 @@ export default async function develop(file, options) {
 					meta.url = url;
 					meta.hot = hot;
 				},
-				importModuleDynamically(specifier, module) {
-					// TODO: This is resolving imports to itself, which is not correct.
-					console.log(specifier, module);
-					return module;
+				async importModuleDynamically(specifier, module) {
+					const linked = await link(specifier, module);
+					await linked.link(link);
+					await linked.evaluate();
+					return linked;
 				},
 			});
 
