@@ -1,14 +1,13 @@
-console.log(import.meta.url);
 function thrower(shouldThrow) {
 	if (shouldThrow) {
 		throw new Error("throwing");
 	}
 }
 
-export default function noop() {
-	thrower(true);
+export default async function noop() {
+	thrower(false);
 
-	return "hello";
+	return (await import("./doop")).doop;
 }
 
-export let test = "test";
+export let test = "to";
