@@ -10,3 +10,5 @@ export default function noop() {
 
 	return "hello";
 }
+
+export let test = "test";

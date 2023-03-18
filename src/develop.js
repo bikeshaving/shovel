@@ -103,45 +103,44 @@ export default async function develop(file, options) {
 		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
 		const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
 		// TODO: move linkModule and resolveRootModule to the top-level scope
-		async function linkModule(module) {
-			await module.link(async (specifier, referencingModule) => {
-				const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
-				const resolved = await resolve(specifier, basedir);
-				if (isPathSpecifier(specifier)) {
-					const firstResult = await new Promise(async (resolve) => {
-						let initial = true;
-						for await (const result of watch(resolved, watcherCache)) {
-							if (initial) {
-								initial = false;
-								resolve(result);
-							} else {
-								// TODO: Allow import.meta.hot.accept to be called and prevent
-								// reloading the root module.
-								await reloadRootModule();
-							}
+		async function link(specifier, referencingModule) {
+			const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
+			const resolved = await resolve(specifier, basedir);
+			if (isPathSpecifier(specifier)) {
+				const firstResult = await new Promise(async (resolve) => {
+					let initial = true;
+					for await (const result of watch(resolved, watcherCache)) {
+						if (initial) {
+							initial = false;
+							resolve(result);
+						} else {
+							// TODO: Allow import.meta.hot.accept to be called and prevent
+							// reloading the root module.
+							await reloadRootModule();
 						}
-					});
-					const code = firstResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
-					const depURL = pathToFileURL(resolved).href;
-					return new VM.SourceTextModule(
-						code || "",
-						{
-							identifier: depURL,
-							initializeImportMeta(meta) {
-								meta.url = depURL;
-								meta.hot = hot;
-							},
-						},
-					);
-				}
-
-				const child = await import(resolved);
-				const exports = Object.keys(child);
-				return new VM.SyntheticModule(exports, function () {
-					for (const key of exports) {
-						this.setExport(key, child[key]);
 					}
 				});
+
+				const code = firstResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+				const depURL = pathToFileURL(resolved).href;
+				return new VM.SourceTextModule(
+					code || "",
+					{
+						identifier: depURL,
+						initializeImportMeta(meta) {
+							meta.url = depURL;
+							meta.hot = hot;
+						},
+					},
+				);
+			}
+
+			const child = await import(resolved);
+			const exports = Object.keys(child);
+			return new VM.SyntheticModule(exports, function () {
+				for (const key of exports) {
+					this.setExport(key, child[key]);
+				}
 			});
 		}
 
@@ -156,10 +155,15 @@ export default async function develop(file, options) {
 					meta.url = url;
 					meta.hot = hot;
 				},
+				importModuleDynamically(specifier, module) {
+					// TODO: This is resolving imports to itself, which is not correct.
+					console.log(specifier, module);
+					return module;
+				},
 			});
 
 			try {
-				await linkModule(module);
+				await module.link(link);
 				await module.evaluate();
 			} catch (err) {
 				console.error(err);
