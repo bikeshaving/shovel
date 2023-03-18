@@ -4,26 +4,32 @@
 	"type": "module",
 	"description": "Dig for treasure",
 	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"test": "node --experimental-fetch $(npm bin)/uvu"
 	},
 	"license": "MIT",
 	"dependencies": {
 		"@b9g/crank": "^0.5.3",
 		"@emotion/css": "^11.10.6",
-		"@pkgjs/parseargs": "^0.11.0",
 		"@repeaterjs/repeater": "^3.0.4",
 		"chokidar": "^3.5.3",
 		"commander": "^10.0.0",
 		"esbuild": "^0.17.11",
+		"fkill": "^8.1.0",
 		"is-core-module": "^2.11.0",
 		"magic-string": "^0.30.0",
+		"node-fetch": "^3.3.1",
 		"resolve.exports": "^2.0.1",
-		"source-map": "^0.7.4"
+		"sinon": "^15.0.2",
+		"source-map": "^0.7.4",
+		"why-is-node-running": "^2.2.2"
 	},
 	"bin": {
 		"shovel": "bin/shovel.js"
 	},
 	"publishConfig": {
 		"access": "public"
+	},
+	"devDependencies": {
+		"uvu": "^0.5.6"
 	}
 }

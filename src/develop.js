@@ -9,6 +9,7 @@ import {isPathSpecifier, resolve} from "./resolve.js";
 import {createFetchServer} from "./server.js";
 import {Hot, disposeHot} from "./hot.js";
 
+const ctxs = [];
 function watch(entry, watcherCache = new Map()) {
 	return new Repeater(async (push, stop) => {
 		if (watcherCache.has(entry)) {
@@ -47,7 +48,7 @@ function watch(entry, watcherCache = new Map()) {
 			outdir: "dist",
 			logLevel: "silent",
 		});
-
+		ctxs.push(ctx);
 		await ctx.watch();
 		await stop;
 		ctx.dispose();
@@ -114,16 +115,30 @@ export default async function develop(file, options) {
 		});
 	});
 
-	server.listen(port, () => {
-		console.info("listening on port:", port);
-	});
-
 	process.on("uncaughtException", (err) => {
 		console.error(err);
 	});
 
 	process.on("unhandledRejection", (err) => {
 		console.error(err);
+	});
+
+	process.on("SIGINT", () => {
+		console.log("SIGINT");
+		server.close();
+		ctxs.forEach((ctx) => ctx.dispose());
+		process.exit(0);
+	});
+
+	process.on("SIGTERM", () => {
+		console.log("SIGTERM");
+		server.close();
+		ctxs.forEach((ctx) => ctx.dispose());
+		process.exit(0);
+	});
+
+	server.listen(port, () => {
+		console.info("listening on port:", port);
 	});
 
 	//const entry = watch1(file, async (result) => {
@@ -235,7 +250,7 @@ export default async function develop(file, options) {
 
 			namespace = module.namespace;
 			hot = new Hot();
-			console.info("rebuilt:", url);
+			console.info("built:", url);
 		}
 
 		await reloadRootModule();
