@@ -7,38 +7,7 @@ import MagicString from "magic-string";
 import {Repeater} from "@repeaterjs/repeater";
 import {isPathSpecifier, resolve} from "./resolve.js";
 import {createFetchServer} from "./server.js";
-
-class Hot {
-	constructor() {
-		this.disposeCallbacks = [];
-	}
-
-	// TODO: handle accept with basic callback and deps parameter
-	accept(callback) {
-		if (callback) {
-			throw new Error("Not implemented");
-		}
-	}
-
-	invalidate() {
-		throw new Error("Not implemented");
-	}
-
-	dispose(callback) {
-		this.disposeCallbacks.push(callback);
-	}
-
-	decline() {
-		// pass
-	}
-}
-
-function disposeHot(hot) {
-	for (const callback of hot.disposeCallbacks) {
-		callback();
-	}
-}
-
+import {Hot, disposeHot} from "./hot.js";
 function importMetaPlugin() {
 	// Sets import.meta.url to be correct
 	// This might be unnecessary if we use the VM module initializeImportMeta and
