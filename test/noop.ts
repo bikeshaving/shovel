@@ -1,3 +1,4 @@
+console.log(import.meta.url);
 function thrower(shouldThrow) {
 	if (shouldThrow) {
 		throw new Error("throwing");
@@ -5,6 +6,7 @@ function thrower(shouldThrow) {
 }
 
 export default function noop() {
-	thrower(false);
-	return "helo";
+	thrower(true);
+
+	return "hello";
 }

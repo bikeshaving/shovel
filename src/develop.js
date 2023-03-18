@@ -8,6 +8,7 @@ import {Repeater} from "@repeaterjs/repeater";
 import {isPathSpecifier, resolve} from "./resolve.js";
 import {createFetchServer} from "./server.js";
 import {Hot, disposeHot} from "./hot.js";
+
 function importMetaPlugin() {
 	// Sets import.meta.url to be correct
 	// This might be unnecessary if we use the VM module initializeImportMeta and
@@ -39,19 +40,18 @@ function importMetaPlugin() {
 	};
 }
 
-function watch(entry, watcherCache = {}) {
+function watch(entry, watcherCache = new Map()) {
 	return new Repeater(async (push, stop) => {
-		if (watcherCache[entry]) {
-			push(await watcherCache[entry]);
+		if (watcherCache.has(entry)) {
+			push((await watcherCache.get(entry)).result);
 			stop();
 			return;
 		}
 
 		let resolve;
-		watcherCache[entry] = new Promise(async (r) => {
-			resolve = r;
+		watcherCache.set(entry, {
+			result: new Promise((r) => (resolve = r)),
 		});
-
 		const watchPlugin = {
 			name: "watch",
 			setup(build) {
@@ -59,7 +59,7 @@ function watch(entry, watcherCache = {}) {
 				build.onEnd(async (result) => {
 					resolve(result);
 					push(result);
-					watcherCache[entry] = result;
+					watcherCache.set(entry, {result});
 				});
 			},
 		};
@@ -73,7 +73,7 @@ function watch(entry, watcherCache = {}) {
 			write: false,
 			packages: "external",
 			sourcemap: "both",
-			plugins: [importMetaPlugin(), watchPlugin],
+			plugins: [watchPlugin],
 			// We need this to export map files.
 			outdir: "dist",
 			logLevel: "silent",
@@ -82,7 +82,7 @@ function watch(entry, watcherCache = {}) {
 		await ctx.watch();
 		await stop;
 		ctx.dispose();
-		watcherCache[entry] = null;
+		watcherCache.delete(entry);
 	});
 }
 
@@ -120,7 +120,7 @@ export default async function develop(file, options) {
 		console.error(err);
 	});
 
-	const watcherCache = {};
+	const watcherCache = new Map();
 	for await (const result of watch(file, watcherCache)) {
 		if (result.errors && result.errors.length) {
 			const formatted = await ESBuild.formatMessages(result.errors, {
@@ -152,12 +152,16 @@ export default async function develop(file, options) {
 							}
 						}
 					});
-
 					const code = firstResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+					const depURL = pathToFileURL(resolved).href;
 					return new VM.SourceTextModule(
 						code || "",
 						{
-							identifier: pathToFileURL(resolved).href,
+							identifier: depURL,
+							initializeImportMeta(meta) {
+								meta.url = depURL;
+								meta.hot = hot;
+							},
 						},
 					);
 				}
@@ -173,8 +177,16 @@ export default async function develop(file, options) {
 		}
 
 		async function reloadRootModule() {
+			if (hot) {
+				disposeHot(hot);
+			}
+
 			const module = new VM.SourceTextModule(code, {
 				identifier: url,
+				initializeImportMeta(meta) {
+					meta.url = url;
+					meta.hot = hot;
+				},
 			});
 
 			try {
@@ -183,10 +195,6 @@ export default async function develop(file, options) {
 			} catch (err) {
 				console.error(err);
 				return;
-			}
-
-			if (hot) {
-				disposeHot(hot);
 			}
 
 			namespace = module.namespace;

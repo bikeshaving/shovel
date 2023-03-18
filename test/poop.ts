@@ -3,6 +3,7 @@ import {renderer} from "@b9g/crank/html";
 import noop from "./noop.ts";
 import {css} from "@emotion/css";
 
+console.log("Hello", import.meta);
 export default {
 	fetch(req: Request) {
 		console.log("serving:", req.url);
