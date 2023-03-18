@@ -86,13 +86,12 @@ function watch(entry, watcherCache = {}) {
 	});
 }
 
-
 export default async function develop(file, options) {
 	const url = pathToFileURL(file).href;
 	const port = parseInt(options.port);
-	let hot = null;
 	let namespace = null;
-	const server = createFetchServer(async (req) => {
+	let hot = null;
+	const server = createFetchServer(async function fetcher(req) {
 		if (typeof namespace?.default?.fetch === "function") {
 			try {
 				return await namespace?.default?.fetch(req);
@@ -134,10 +133,6 @@ export default async function develop(file, options) {
 
 		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
 		const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
-		let module = new VM.SourceTextModule(code, {
-			identifier: url,
-		});
-
 		// TODO: move linkModule and resolveRootModule to the top-level scope
 		async function linkModule(module) {
 			await module.link(async (specifier, referencingModule) => {
@@ -178,10 +173,11 @@ export default async function develop(file, options) {
 		}
 
 		async function reloadRootModule() {
+			const module = new VM.SourceTextModule(code, {
+				identifier: url,
+			});
+
 			try {
-				module = new VM.SourceTextModule(code, {
-					identifier: url,
-				});
 				await linkModule(module);
 				await module.evaluate();
 			} catch (err) {
@@ -195,25 +191,9 @@ export default async function develop(file, options) {
 
 			namespace = module.namespace;
 			hot = new Hot();
-			namespace.default?.develop?.(hot);
 			console.info("rebuilt:", url);
 		}
 
-		try {
-			await linkModule(module);
-			await module.evaluate();
-		} catch (err) {
-			console.error(err);
-			return;
-		}
-
-		if (hot) {
-			disposeHot(hot);
-		}
-
-		namespace = module.namespace;
-		hot = new Hot();
-		namespace.default?.develop?.(hot);
-		console.info("built:", url);
+		await reloadRootModule();
 	}
 }
