@@ -9,37 +9,6 @@ import {isPathSpecifier, resolve} from "./resolve.js";
 import {createFetchServer} from "./server.js";
 import {Hot, disposeHot} from "./hot.js";
 
-function importMetaPlugin() {
-	// Sets import.meta.url to be correct
-	// This might be unnecessary if we use the VM module initializeImportMeta and
-	// load each independent module into its own module instance.
-	return {
-		name: "import-meta",
-		setup(build) {
-			build.onLoad({filter: /\.(js|ts|jsx|tsx)$/}, async (args) => {
-				let code = await FS.readFile(args.path, "utf8");
-				const magicString = new MagicString(code);
-				magicString.prepend(
-					`import.meta && (import.meta.url = "${pathToFileURL(args.path).href}");`,
-				);
-
-				code = magicString.toString();
-				const map = magicString.generateMap({
-					file: args.path,
-					source: args.path,
-					hires: true,
-				});
-
-				code = code + "\n//# sourceMappingURL=" + map.toUrl();
-				return {
-					contents: code,
-					loader: Path.extname(args.path).slice(1),
-				};
-			});
-		},
-	};
-}
-
 function watch(entry, watcherCache = new Map()) {
 	return new Repeater(async (push, stop) => {
 		if (watcherCache.has(entry)) {
