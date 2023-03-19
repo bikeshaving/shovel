@@ -5,7 +5,6 @@ import * as Sinon from "sinon";
 import * as ChildProcess from "child_process";
 import whyIsNodeRunning from "why-is-node-running";
 import fkill from "fkill";
-import fetch from "node-fetch";
 
 const test = suite("develop");
 
@@ -15,12 +14,7 @@ test.after.each(async () => {
 });
 
 test("basic", async () => {
-	const shovel = ChildProcess.spawn(
-		"shovel",
-		["develop", "./fixtures/poop.ts", "--port", PORT],
-		{stdio: "inherit", detached: true},
-	);
-
+	const shovel = ChildProcess.spawn("shovel", ["develop", "./fixtures/poop.ts", "--port", PORT]);
 	const serverIsRunning = async () => {
 		try {
 			const response = await fetch(`http://localhost:${PORT}`);
@@ -47,11 +41,7 @@ test("basic", async () => {
 });
 
 test("restarts on file change", async () => {
-	const shovel = ChildProcess.spawn(
-		"shovel",
-		["develop", "./fixtures/poop.ts", "--port", PORT],
-		{stdio: "inherit", detached: true},
-	);
+	const shovel = ChildProcess.spawn("shovel", ["develop", "./fixtures/poop.ts", "--port", PORT]);
 
 	const serverIsRunning = async () => {
 		try {

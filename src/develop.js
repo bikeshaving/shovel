@@ -5,7 +5,7 @@ import * as VM from "vm";
 import * as ESBuild from "esbuild";
 import MagicString from "magic-string";
 import {Repeater} from "@repeaterjs/repeater";
-import {isPathSpecifier, resolve} from "./resolve.js";
+import * as Resolve from "./resolve.js";
 import {createFetchServer} from "./server.js";
 
 const ctxs = [];
@@ -33,19 +33,18 @@ function watch(entry, watcherCache = new Map()) {
 			},
 		};
 		const ctx = await ESBuild.context({
+			entryPoints: [entry],
 			format: "esm",
 			platform: "node",
-			entryPoints: [entry],
-			//bundle: true,
 			bundle: false,
 			metafile: true,
 			write: false,
 			packages: "external",
 			sourcemap: "both",
-			plugins: [watchPlugin],
 			// We need this to export map files.
 			outdir: "dist",
 			logLevel: "silent",
+			plugins: [watchPlugin],
 		});
 		ctxs.push(ctx);
 		await ctx.watch();
@@ -58,8 +57,8 @@ function watch(entry, watcherCache = new Map()) {
 function createLink(reloadRootModule, watcherCache) {
 	return async function link(specifier, referencingModule) {
 		const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
-		const resolved = await resolve(specifier, basedir);
-		if (isPathSpecifier(specifier)) {
+		const resolved = await Resolve.resolve(specifier, basedir);
+		if (Resolve.isPathSpecifier(specifier)) {
 			const firstResult = await new Promise(async (resolve) => {
 				let initial = true;
 				for await (const result of watch(resolved, watcherCache)) {
@@ -130,14 +129,12 @@ export default async function develop(file, options) {
 	});
 
 	process.on("SIGINT", () => {
-		console.log("SIGINT");
 		server.close();
 		ctxs.forEach((ctx) => ctx.dispose());
 		process.exit(0);
 	});
 
 	process.on("SIGTERM", () => {
-		console.log("SIGTERM");
 		server.close();
 		ctxs.forEach((ctx) => ctx.dispose());
 		process.exit(0);
