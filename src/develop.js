@@ -25,7 +25,7 @@ function watch(entry, watcherCache = new Map()) {
 			name: "watch",
 			setup(build) {
 				// This is called every time a module is edited.
-				build.onEnd(async (result) => {
+				build.onEnd((result) => {
 					resolve(result);
 					push(result);
 					watcherCache.set(entry, {result});
@@ -59,19 +59,14 @@ function createLink(reloadRootModule, watcherCache) {
 		const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
 		const resolved = await Resolve.resolve(specifier, basedir);
 		if (Resolve.isPathSpecifier(specifier)) {
-			const firstResult = await new Promise(async (resolve) => {
-				let initial = true;
-				for await (const result of watch(resolved, watcherCache)) {
-					if (initial) {
-						initial = false;
-						resolve(result);
-					} else {
-						// TODO: Allow import.meta.hot.accept to be called and prevent
-						// reloading the root module.
-						await reloadRootModule();
-					}
+			const iterator = watch(resolved, watcherCache);
+			const {value: firstResult} = await iterator.next();
+
+			(async () => {
+				for await (const result of iterator) {
+					await reloadRootModule();
 				}
-			});
+			})();
 
 			const code = firstResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
 			const depURL = pathToFileURL(resolved).href;
@@ -80,8 +75,8 @@ function createLink(reloadRootModule, watcherCache) {
 				initializeImportMeta(meta) {
 					meta.url = depURL;
 				},
-				async importModuleDynamically(specifier, module) {
-					const linked = await link(specifier, module);
+				async importModuleDynamically(specifier, referencingModule) {
+					const linked = await link(specifier, referencingModule);
 					await linked.link(link);
 					await linked.evaluate();
 					return linked;
@@ -100,7 +95,6 @@ function createLink(reloadRootModule, watcherCache) {
 }
 
 export default async function develop(file, options) {
-	const url = pathToFileURL(file).href;
 	const port = parseInt(options.port);
 	let namespace = null;
 	const server = createFetchServer(async function fetcher(req) {
@@ -157,16 +151,17 @@ export default async function develop(file, options) {
 
 		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
 		const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
-		// TODO: Refactor by moving link and reloadRootModule to the top-level scope.
 		const link = createLink(reloadRootModule, watcherCache);
+		// TODO: Move to top-level scope.
 		async function reloadRootModule() {
+			const rootURL = pathToFileURL(file).href;
 			const module = new VM.SourceTextModule(code, {
-				identifier: url,
+				identifier: rootURL,
 				initializeImportMeta(meta) {
-					meta.url = url;
+					meta.url = rootURL;
 				},
-				async importModuleDynamically(specifier, module) {
-					const linked = await link(specifier, module);
+				async importModuleDynamically(specifier, referencingModule) {
+					const linked = await link(specifier, referencingModule);
 					await linked.link(link);
 					await linked.evaluate();
 					return linked;
@@ -182,7 +177,7 @@ export default async function develop(file, options) {
 			}
 
 			namespace = module.namespace;
-			console.info("built:", url);
+			console.info("built:", rootURL);
 		}
 
 		await reloadRootModule();
