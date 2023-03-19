@@ -7,7 +7,6 @@ import MagicString from "magic-string";
 import {Repeater} from "@repeaterjs/repeater";
 import {isPathSpecifier, resolve} from "./resolve.js";
 import {createFetchServer} from "./server.js";
-import {Hot, disposeHot} from "./hot.js";
 
 const ctxs = [];
 function watch(entry, watcherCache = new Map()) {
@@ -56,11 +55,55 @@ function watch(entry, watcherCache = new Map()) {
 	});
 }
 
+function createLink(reloadRootModule, watcherCache) {
+	return async function link(specifier, referencingModule) {
+		const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
+		const resolved = await resolve(specifier, basedir);
+		if (isPathSpecifier(specifier)) {
+			const firstResult = await new Promise(async (resolve) => {
+				let initial = true;
+				for await (const result of watch(resolved, watcherCache)) {
+					if (initial) {
+						initial = false;
+						resolve(result);
+					} else {
+						// TODO: Allow import.meta.hot.accept to be called and prevent
+						// reloading the root module.
+						await reloadRootModule();
+					}
+				}
+			});
+
+			const code = firstResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+			const depURL = pathToFileURL(resolved).href;
+			return new VM.SourceTextModule(code || "", {
+				identifier: depURL,
+				initializeImportMeta(meta) {
+					meta.url = depURL;
+				},
+				async importModuleDynamically(specifier, module) {
+					const linked = await link(specifier, module);
+					await linked.link(link);
+					await linked.evaluate();
+					return linked;
+				},
+			});
+		}
+
+		const child = await import(resolved);
+		const exports = Object.keys(child);
+		return new VM.SyntheticModule(exports, function () {
+			for (const key of exports) {
+				this.setExport(key, child[key]);
+			}
+		});
+	};
+}
+
 export default async function develop(file, options) {
 	const url = pathToFileURL(file).href;
 	const port = parseInt(options.port);
 	let namespace = null;
-	let hot = null;
 	const server = createFetchServer(async function fetcher(req) {
 		if (typeof namespace?.default?.fetch === "function") {
 			try {
@@ -118,60 +161,12 @@ export default async function develop(file, options) {
 		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
 		const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
 		// TODO: Refactor by moving link and reloadRootModule to the top-level scope.
-		async function link(specifier, referencingModule) {
-			const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
-			const resolved = await resolve(specifier, basedir);
-			if (isPathSpecifier(specifier)) {
-				const firstResult = await new Promise(async (resolve) => {
-					let initial = true;
-					for await (const result of watch(resolved, watcherCache)) {
-						if (initial) {
-							initial = false;
-							resolve(result);
-						} else {
-							// TODO: Allow import.meta.hot.accept to be called and prevent
-							// reloading the root module.
-							await reloadRootModule();
-						}
-					}
-				});
-
-				const code = firstResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
-				const depURL = pathToFileURL(resolved).href;
-				return new VM.SourceTextModule(code || "", {
-					identifier: depURL,
-					initializeImportMeta(meta) {
-						meta.url = depURL;
-						meta.hot = hot;
-					},
-					async importModuleDynamically(specifier, module) {
-						const linked = await link(specifier, module);
-						await linked.link(link);
-						await linked.evaluate();
-						return linked;
-					},
-				});
-			}
-
-			const child = await import(resolved);
-			const exports = Object.keys(child);
-			return new VM.SyntheticModule(exports, function () {
-				for (const key of exports) {
-					this.setExport(key, child[key]);
-				}
-			});
-		}
-
+		const link = createLink(reloadRootModule, watcherCache);
 		async function reloadRootModule() {
-			if (hot) {
-				disposeHot(hot);
-			}
-
 			const module = new VM.SourceTextModule(code, {
 				identifier: url,
 				initializeImportMeta(meta) {
 					meta.url = url;
-					meta.hot = hot;
 				},
 				async importModuleDynamically(specifier, module) {
 					const linked = await link(specifier, module);
@@ -190,7 +185,6 @@ export default async function develop(file, options) {
 			}
 
 			namespace = module.namespace;
-			hot = new Hot();
 			console.info("built:", url);
 		}
 
