@@ -8,45 +8,53 @@ import {Repeater} from "@repeaterjs/repeater";
 import * as Resolve from "./resolve.js";
 import {createFetchServer} from "./server.js";
 
-const ctxs = [];
+function createNodeCtx(entry, plugins) {
+	return ESBuild.context({
+		entryPoints: [entry],
+		plugins,
+		format: "esm",
+		platform: "node",
+		bundle: false,
+		metafile: true,
+		write: false,
+		packages: "external",
+		sourcemap: "both",
+		// We need this to export map files.
+		outdir: "dist",
+		logLevel: "silent",
+	});
+}
+
 function watch(entry, watcherCache = new Map()) {
 	return new Repeater(async (push, stop) => {
 		if (watcherCache.has(entry)) {
-			push((await watcherCache.get(entry)).result);
+			push(watcherCache.get(entry).result);
 			stop();
 			return;
 		}
 
-		let resolve;
+		let resolve = null;
+		let ctx = null;
 		watcherCache.set(entry, {
 			result: new Promise((r) => (resolve = r)),
+			// TODO: Is there a way to have ctx defined
+			ctx,
 		});
 		const watchPlugin = {
 			name: "watch",
 			setup(build) {
 				// This is called every time a module is edited.
 				build.onEnd((result) => {
-					resolve(result);
 					push(result);
-					watcherCache.set(entry, {result});
+					watcherCache.set(entry, {result, ctx});
+					if (resolve) {
+						resolve(result);
+						resolve = null;
+					}
 				});
 			},
 		};
-		const ctx = await ESBuild.context({
-			entryPoints: [entry],
-			format: "esm",
-			platform: "node",
-			bundle: false,
-			metafile: true,
-			write: false,
-			packages: "external",
-			sourcemap: "both",
-			// We need this to export map files.
-			outdir: "dist",
-			logLevel: "silent",
-			plugins: [watchPlugin],
-		});
-		ctxs.push(ctx);
+		ctx = await createNodeCtx(entry, [watchPlugin]);
 		await ctx.watch();
 		await stop;
 		ctx.dispose();
@@ -60,7 +68,7 @@ function createLink(reloadRootModule, watcherCache) {
 		const resolved = await Resolve.resolve(specifier, basedir);
 		if (Resolve.isPathSpecifier(specifier)) {
 			const iterator = watch(resolved, watcherCache);
-			const {value: firstResult} = await iterator.next();
+			const {value: result} = await iterator.next();
 
 			(async () => {
 				for await (const result of iterator) {
@@ -68,7 +76,7 @@ function createLink(reloadRootModule, watcherCache) {
 				}
 			})();
 
-			const code = firstResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+			const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
 			const depURL = pathToFileURL(resolved).href;
 			return new VM.SourceTextModule(code || "", {
 				identifier: depURL,
@@ -84,6 +92,7 @@ function createLink(reloadRootModule, watcherCache) {
 			});
 		}
 
+		// This is a bare module specifier so we import from node modules.
 		const child = await import(resolved);
 		const exports = Object.keys(child);
 		return new VM.SyntheticModule(exports, function () {
@@ -96,6 +105,10 @@ function createLink(reloadRootModule, watcherCache) {
 
 export default async function develop(file, options) {
 	const port = parseInt(options.port);
+	if (Number.isNaN(port)) {
+		throw new Error("Invalid port", options.port);
+	}
+
 	let namespace = null;
 	const server = createFetchServer(async function fetcher(req) {
 		if (typeof namespace?.default?.fetch === "function") {
@@ -122,15 +135,20 @@ export default async function develop(file, options) {
 		console.error(err);
 	});
 
+	const watcherCache = new Map();
 	process.on("SIGINT", () => {
 		server.close();
-		ctxs.forEach((ctx) => ctx.dispose());
+		for (const entry of watcherCache.values()) {
+			entry.ctx?.dispose();
+		}
 		process.exit(0);
 	});
 
 	process.on("SIGTERM", () => {
 		server.close();
-		ctxs.forEach((ctx) => ctx.dispose());
+		for (const entry of watcherCache.values()) {
+			entry.ctx?.dispose();
+		}
 		process.exit(0);
 	});
 
@@ -138,7 +156,7 @@ export default async function develop(file, options) {
 		console.info("listening on port:", port);
 	});
 
-	const watcherCache = new Map();
+	file = Path.resolve(process.cwd(), file);
 	for await (const result of watch(file, watcherCache)) {
 		if (result.errors && result.errors.length) {
 			const formatted = await ESBuild.formatMessages(result.errors, {
@@ -150,7 +168,6 @@ export default async function develop(file, options) {
 		}
 
 		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
-		const map = result.outputFiles.find((file) => file.path.endsWith(".map"))?.text;
 		const link = createLink(reloadRootModule, watcherCache);
 		// TODO: Move to top-level scope.
 		async function reloadRootModule() {

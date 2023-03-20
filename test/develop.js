@@ -10,11 +10,19 @@ const test = suite("develop");
 
 const PORT = "1339";
 test.after.each(async () => {
-	await fkill(`:${PORT}`);
+	try {
+		await fkill(`:${PORT}`);
+	} catch (err) {
+		// uvu test hooks seem to fail silently...
+		console.error(err);
+	}
 });
 
 test("basic", async () => {
-	const shovel = ChildProcess.spawn("shovel", ["develop", "./fixtures/poop.ts", "--port", PORT]);
+	const shovel = ChildProcess.spawn(
+		"shovel",
+		["develop", "./fixtures/poop.ts", "--port", PORT],
+	);
 	const serverIsRunning = async () => {
 		try {
 			const response = await fetch(`http://localhost:${PORT}`);
@@ -41,7 +49,11 @@ test("basic", async () => {
 });
 
 test("restarts on file change", async () => {
-	const shovel = ChildProcess.spawn("shovel", ["develop", "./fixtures/poop.ts", "--port", PORT]);
+	const shovel = ChildProcess.spawn(
+		"shovel",
+		["develop", "./fixtures/poop.ts", "--port", PORT],
+		{stdio: "inherit"},
+	);
 
 	const serverIsRunning = async () => {
 		try {
