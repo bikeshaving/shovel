@@ -62,7 +62,29 @@ function watch(entry, watcherCache = new Map()) {
 	});
 }
 
-function createLink(reloadRootModule, watcherCache) {
+async function reloadRoot(entry, watcherCache, link) {
+	const url = pathToFileURL(entry).href;
+	const result = await watcherCache.get(entry).result;
+	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+	const module = new VM.SourceTextModule(code, {
+		identifier: url,
+		initializeImportMeta(meta) {
+			meta.url = url;
+		},
+		async importModuleDynamically(specifier, referencingModule) {
+			const linked = await link(specifier, referencingModule);
+			await linked.link(link);
+			await linked.evaluate();
+			return linked;
+		},
+	});
+
+	await module.link(link);
+	await module.evaluate();
+	return module;
+}
+
+function createLink(entry, watcherCache) {
 	return async function link(specifier, referencingModule) {
 		const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
 		const resolved = await Resolve.resolve(specifier, basedir);
@@ -71,8 +93,15 @@ function createLink(reloadRootModule, watcherCache) {
 			const {value: result} = await iterator.next();
 
 			(async () => {
+				// TODO: Handle errors
 				for await (const result of iterator) {
-					await reloadRootModule();
+					// TODO: Implement import.meta.hot logic
+					try {
+						// TODO: This needs to update the fetch server somehow.
+						await reloadRoot(entry, watcherCache, link);
+					} catch (err) {
+						console.error(err);
+					}
 				}
 			})();
 
@@ -104,6 +133,7 @@ function createLink(reloadRootModule, watcherCache) {
 }
 
 export default async function develop(file, options) {
+	file = Path.resolve(process.cwd(), file);
 	const port = parseInt(options.port);
 	if (Number.isNaN(port)) {
 		throw new Error("Invalid port", options.port);
@@ -135,6 +165,7 @@ export default async function develop(file, options) {
 		console.error(err);
 	});
 
+	// We need richer data. Essentially we need to create a dependency graph.
 	const watcherCache = new Map();
 	process.on("SIGINT", () => {
 		server.close();
@@ -156,7 +187,7 @@ export default async function develop(file, options) {
 		console.info("listening on port:", port);
 	});
 
-	file = Path.resolve(process.cwd(), file);
+	const link = createLink(file, watcherCache);
 	for await (const result of watch(file, watcherCache)) {
 		if (result.errors && result.errors.length) {
 			const formatted = await ESBuild.formatMessages(result.errors, {
@@ -167,36 +198,15 @@ export default async function develop(file, options) {
 			continue;
 		}
 
-		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
-		const link = createLink(reloadRootModule, watcherCache);
-		// TODO: Move to top-level scope.
-		async function reloadRootModule() {
-			const rootURL = pathToFileURL(file).href;
-			const module = new VM.SourceTextModule(code, {
-				identifier: rootURL,
-				initializeImportMeta(meta) {
-					meta.url = rootURL;
-				},
-				async importModuleDynamically(specifier, referencingModule) {
-					const linked = await link(specifier, referencingModule);
-					await linked.link(link);
-					await linked.evaluate();
-					return linked;
-				},
-			});
-
-			try {
-				await module.link(link);
-				await module.evaluate();
-			} catch (err) {
-				console.error(err);
-				return;
-			}
-
+		const code = result.outputFiles
+			.find((file) => file.path.endsWith(".js"))
+			?.text;
+		try {
+			const module = await reloadRoot(file, watcherCache, link);
 			namespace = module.namespace;
-			console.info("built:", rootURL);
+		} catch (err) {
+			console.error(err);
+			namespace = null;
 		}
-
-		await reloadRootModule();
 	}
 }
