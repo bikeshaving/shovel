@@ -147,7 +147,7 @@ test("restarts on change to dependency", async () => {
 		const response = await fetch(`http://localhost:${PORT}`);
 		const text = await response.text();
 
-		Assert.equal(text, "<marquee>Goodbye from dependency-hello.ts</marquee>");
+		Assert.equal("<marquee>Goodbye from dependency-hello.ts</marquee>", text);
 	} finally {
 		await FS.writeFile(
 			"./fixtures/server-dependency-hello.ts",

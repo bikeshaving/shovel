@@ -4,11 +4,61 @@ import {fileURLToPath, pathToFileURL} from "url";
 import * as VM from "vm";
 import * as ESBuild from "esbuild";
 import MagicString from "magic-string";
-import {Repeater} from "@repeaterjs/repeater";
 import * as Resolve from "./resolve.js";
 import {createFetchServer} from "./server.js";
 
-function createNodeCtx(entry, plugins) {
+class Watcher {
+	// TODO: what is the type of the callback?
+	constructor(callback) {
+		this.cache = new Map();
+		this.callback = callback;
+		this.plugin = {
+			name: "watcher",
+			setup: (build) => {
+				build.onEnd((result) => {
+					// TODO: errors in this callback seem to be swallowed
+					const entry = build.initialOptions.entryPoints[0];
+					const cacheValue = this.cache.get(entry);
+					const isInitial = cacheValue.resolve != null;
+					if (cacheValue.resolve) {
+						cacheValue.resolve(result);
+						cacheValue.resolve = null;
+					}
+					cacheValue.result = result;
+					callback({
+						entry,
+						result,
+						isInitial,
+					}, this);
+				});
+			},
+		};
+	}
+
+	build(entry) {
+		if (this.cache.has(entry)) {
+			return this.cache.get(entry).result;
+		}
+
+		const ctxP = createESBuildContext(entry, [this.plugin]);
+		let resolve = null;
+		const cacheValue = {
+			entry,
+			ctx: ctxP,
+			result: new Promise((r) => (resolve = r)),
+			resolve,
+		};
+		this.cache.set(entry, cacheValue);
+		ctxP.then((ctx) => {
+			ctx.watch();
+			cacheValue.ctx = ctx;
+		});
+
+		return cacheValue.result;
+	}
+}
+
+function createESBuildContext(entry, plugins) {
 	return ESBuild.context({
 		entryPoints: [entry],
 		plugins,
@@ -25,92 +75,18 @@ function createNodeCtx(entry, plugins) {
 	});
 }
 
-function watch(entry, watcherCache = new Map()) {
-	return new Repeater(async (push, stop) => {
-		if (watcherCache.has(entry)) {
-			push(watcherCache.get(entry).result);
-			stop();
-			return;
-		}
-
-		let resolve = null;
-		let ctx = null;
-		watcherCache.set(entry, {
-			result: new Promise((r) => (resolve = r)),
-			// TODO: Is there a way to have ctx defined
-			ctx,
-		});
-		const watchPlugin = {
-			name: "watch",
-			setup(build) {
-				// This is called every time a module is edited.
-				build.onEnd((result) => {
-					push(result);
-					watcherCache.set(entry, {result, ctx});
-					if (resolve) {
-						resolve(result);
-						resolve = null;
-					}
-				});
-			},
-		};
-		ctx = await createNodeCtx(entry, [watchPlugin]);
-		await ctx.watch();
-		await stop;
-		ctx.dispose();
-		watcherCache.delete(entry);
-	});
-}
-
-async function reloadRoot(entry, watcherCache, link) {
-	const url = pathToFileURL(entry).href;
-	const result = await watcherCache.get(entry).result;
-	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
-	const module = new VM.SourceTextModule(code, {
-		identifier: url,
-		initializeImportMeta(meta) {
-			meta.url = url;
-		},
-		async importModuleDynamically(specifier, referencingModule) {
-			const linked = await link(specifier, referencingModule);
-			await linked.link(link);
-			await linked.evaluate();
-			return linked;
-		},
-	});
-
-	await module.link(link);
-	await module.evaluate();
-	return module;
-}
-
-function createLink(entry, watcherCache) {
+function createLink(watcher) {
 	return async function link(specifier, referencingModule) {
 		const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
 		const resolved = await Resolve.resolve(specifier, basedir);
 		if (Resolve.isPathSpecifier(specifier)) {
-			const iterator = watch(resolved, watcherCache);
-			const {value: result} = await iterator.next();
-
-			(async () => {
-				// TODO: Handle errors
-				for await (const result of iterator) {
-					// TODO: Implement import.meta.hot logic
-					try {
-						// TODO: This needs to update the fetch server somehow.
-						await reloadRoot(entry, watcherCache, link);
-					} catch (err) {
-						console.error(err);
-					}
-				}
-			})();
-
+			const url = pathToFileURL(resolved).href;
+			const result = await watcher.build(resolved);
 			const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
-			const depURL = pathToFileURL(resolved).href;
-			return new VM.SourceTextModule(code || "", {
-				identifier: depURL,
+			return new VM.SourceTextModule(code, {
+				identifier: url,
 				initializeImportMeta(meta) {
-					meta.url = depURL;
+					meta.url = url;
 				},
 				async importModuleDynamically(specifier, referencingModule) {
 					const linked = await link(specifier, referencingModule);
@@ -139,6 +115,24 @@ export default async function develop(file, options) {
 		throw new Error("Invalid port", options.port);
 	}
 
+	process.on("uncaughtException", (err) => {
+		console.error(err);
+	});
+
+	process.on("unhandledRejection", (err) => {
+		console.error(err);
+	});
+
+	process.on("SIGINT", () => {
+		server.close();
+		process.exit(0);
+	});
+
+	process.on("SIGTERM", () => {
+		server.close();
+		process.exit(0);
+	});
+
 	let namespace = null;
 	const server = createFetchServer(async function fetcher(req) {
 		if (typeof namespace?.default?.fetch === "function") {
@@ -157,56 +151,55 @@ export default async function develop(file, options) {
 		});
 	});
 
-	process.on("uncaughtException", (err) => {
-		console.error(err);
-	});
-
-	process.on("unhandledRejection", (err) => {
-		console.error(err);
-	});
-
-	// We need richer data. Essentially we need to create a dependency graph.
-	const watcherCache = new Map();
-	process.on("SIGINT", () => {
-		server.close();
-		for (const entry of watcherCache.values()) {
-			entry.ctx?.dispose();
-		}
-		process.exit(0);
-	});
-
-	process.on("SIGTERM", () => {
-		server.close();
-		for (const entry of watcherCache.values()) {
-			entry.ctx?.dispose();
-		}
-		process.exit(0);
-	});
-
 	server.listen(port, () => {
 		console.info("listening on port:", port);
 	});
 
-	const link = createLink(file, watcherCache);
-	for await (const result of watch(file, watcherCache)) {
-		if (result.errors && result.errors.length) {
-			const formatted = await ESBuild.formatMessages(result.errors, {
-				kind: "error",
-				color: true,
+	const watcher = new Watcher(async (record, watcher) => {
+		console.info(`${record.isInitial ? "building" : "rebuilding"}: ${record.entry}`);
+		// TODO: Rather than reloading the root module, we should bubble changes
+		// from dependencies to dependents according to import.meta.hot
+		if (!record.isInitial) {
+			const rootResult = await watcher.build(file);
+			const code = rootResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+			const url = pathToFileURL(file).href;
+			const module = new VM.SourceTextModule(code, {
+				identifier: url,
+				initializeImportMeta(meta) {
+					meta.url = url;
+				},
+				async importModuleDynamically(specifier, referencingModule) {
+					const linked = await link(specifier, referencingModule);
+					await linked.link(link);
+					await linked.evaluate();
+					return linked;
+				},
 			});
-			console.error(formatted.join("\n"));
-			continue;
-		}
 
-		const code = result.outputFiles
-			.find((file) => file.path.endsWith(".js"))
-			?.text;
-		try {
-			const module = await reloadRoot(file, watcherCache, link);
+			await module.link(link);
+			await module.evaluate();
 			namespace = module.namespace;
-		} catch (err) {
-			console.error(err);
-			namespace = null;
 		}
-	}
+	});
+
+	const link = createLink(watcher);
+	const result = await watcher.build(file);
+	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+	const url = pathToFileURL(file).href;
+	const module = new VM.SourceTextModule(code, {
+		identifier: url,
+		initializeImportMeta(meta) {
+			meta.url = url;
+		},
+		async importModuleDynamically(specifier, referencingModule) {
+			const linked = await link(specifier, referencingModule);
+			await linked.link(link);
+			await linked.evaluate();
+			return linked;
+		},
+	});
+
+	await module.link(link);
+	await module.evaluate();
+	namespace = module.namespace;
 }
