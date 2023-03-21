@@ -3,7 +3,6 @@ import * as FS from "fs/promises";
 import {fileURLToPath, pathToFileURL} from "url";
 import * as VM from "vm";
 import * as ESBuild from "esbuild";
-import MagicString from "magic-string";
 import * as Resolve from "./resolve.js";
 import {createFetchServer} from "./server.js";
 
@@ -157,11 +156,22 @@ export default async function develop(file, options) {
 
 	const watcher = new Watcher(async (record, watcher) => {
 		console.info(`${record.isInitial ? "building" : "rebuilding"}: ${record.entry}`);
+		if (record.result.errors.length > 0) {
+			const formatted = await ESBuild.formatMessages(record.result.errors, {
+				kind: "error",
+			});
+			console.error(formatted.join("\n"));
+		} else if (record.result.warnings.length > 0) {
+			const formatted = await ESBuild.formatMessages(record.result.warnings, {
+				kind: "warning",
+			});
+			console.warn(formatted.join("\n"));
+		}
 		// TODO: Rather than reloading the root module, we should bubble changes
 		// from dependencies to dependents according to import.meta.hot
 		if (!record.isInitial) {
 			const rootResult = await watcher.build(file);
-			const code = rootResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+			const code = rootResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
 			const url = pathToFileURL(file).href;
 			const module = new VM.SourceTextModule(code, {
 				identifier: url,
@@ -184,7 +194,7 @@ export default async function develop(file, options) {
 
 	const link = createLink(watcher);
 	const result = await watcher.build(file);
-	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
 	const url = pathToFileURL(file).href;
 	const module = new VM.SourceTextModule(code, {
 		identifier: url,
