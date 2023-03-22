@@ -14,7 +14,7 @@ class Watcher {
 		this.plugin = {
 			name: "watcher",
 			setup: (build) => {
-				build.onEnd((result) => {
+				build.onEnd(async (result) => {
 					// TODO: errors in this callback seem to be swallowed
 					const entry = build.initialOptions.entryPoints[0];
 					const cacheValue = this.cache.get(entry);
@@ -23,12 +23,13 @@ class Watcher {
 						cacheValue.resolve(result);
 						cacheValue.resolve = null;
 					}
+
 					cacheValue.result = result;
-					callback({
-						entry,
-						result,
-						isInitial,
-					}, this);
+					try {
+						await callback({entry, result, isInitial}, this);
+					} catch (err) {
+						console.error(err);
+					}
 				});
 			},
 		};
@@ -77,6 +78,8 @@ function createESBuildContext(entry, plugins) {
 function createLink(watcher) {
 	return async function link(specifier, referencingModule) {
 		const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
+		// TODO: figure out if we can use require.resolve
+		// TODO: better error messages
 		const resolved = await Resolve.resolve(specifier, basedir);
 		if (Resolve.isPathSpecifier(specifier)) {
 			const url = pathToFileURL(resolved).href;
@@ -97,11 +100,11 @@ function createLink(watcher) {
 		}
 
 		// This is a bare module specifier so we import from node modules.
-		const child = await import(resolved);
-		const exports = Object.keys(child);
+		const namespace = await import(resolved);
+		const exports = Object.keys(namespace);
 		return new VM.SyntheticModule(exports, function () {
 			for (const key of exports) {
-				this.setExport(key, child[key]);
+				this.setExport(key, namespace[key]);
 			}
 		});
 	};
@@ -186,9 +189,14 @@ export default async function develop(file, options) {
 				},
 			});
 
-			await module.link(link);
-			await module.evaluate();
-			namespace = module.namespace;
+			try {
+				await module.link(link);
+				await module.evaluate();
+				namespace = module.namespace;
+			} catch (err) {
+				console.error(err);
+				namespace = null;
+			}
 		}
 	});
 
@@ -209,7 +217,13 @@ export default async function develop(file, options) {
 		},
 	});
 
-	await module.link(link);
-	await module.evaluate();
-	namespace = module.namespace;
+	try {
+		await module.link(link);
+		await module.evaluate();
+		namespace = module.namespace;
+	} catch (err) {
+		console.error(err);
+		namespace = null;
+	}
+
 }
