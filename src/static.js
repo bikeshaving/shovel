@@ -4,7 +4,6 @@ import {fileURLToPath, pathToFileURL} from "url";
 import * as VM from "vm";
 import {formatMessages} from "esbuild";
 import * as Resolve from "./resolve.js";
-import {createFetchServer} from "./server.js";
 import {Watcher} from "./_esbuild.js";
 
 //interface ModuleCacheValue {
@@ -62,53 +61,16 @@ function createLink(watcher) {
 	};
 }
 
-export async function develop(file, options) {
+export async function static_(file, options) {
 	file = Path.resolve(process.cwd(), file);
-	const port = parseInt(options.port);
-	if (Number.isNaN(port)) {
-		throw new Error("Invalid port", options.port);
-	}
-
-	process.on("uncaughtException", (err) => {
-		console.error(err);
-	});
-
-	process.on("unhandledRejection", (err) => {
-		console.error(err);
-	});
-
 	process.on("SIGINT", async () => {
-		server.close();
 		await watcher.dispose();
 		process.exit(0);
 	});
 
 	process.on("SIGTERM", async () => {
-		server.close();
 		await watcher.dispose();
 		process.exit(0);
-	});
-
-	let namespace = null;
-	const server = createFetchServer(async function fetcher(req) {
-		if (typeof namespace?.default?.fetch === "function") {
-			try {
-				return await namespace?.default?.fetch(req);
-			} catch (err)	{
-				console.error(err);
-				return new Response(err.stack, {
-					status: 500,
-				});
-			}
-		}
-
-		return new Response("Server not ready", {
-			status: 500,
-		});
-	});
-
-	server.listen(port, () => {
-		console.info("listening on port:", port);
 	});
 
 	const watcher = new Watcher(async (record, watcher) => {
@@ -117,62 +79,50 @@ export async function develop(file, options) {
 				kind: "error",
 			});
 			console.error(formatted.join("\n"));
+			process.exit(1);
 		} else if (record.result.warnings.length > 0) {
 			const formatted = await formatMessages(record.result.warnings, {
 				kind: "warning",
 			});
 			console.warn(formatted.join("\n"));
-		}
-
-		// TODO: Rather than reloading the root module, we should bubble changes
-		// from dependencies to dependents according to import.meta.hot
-		if (!record.initial) {
-			const queue = [record.entry];
-			while (queue.length > 0) {
-				const entry = queue.shift();
-				const dependents = moduleCache.get(entry)?.dependents;
-				if (dependents) {
-					for (const dependent of dependents) {
-						queue.push(dependent);
-					}
-				}
-
-				moduleCache.delete(entry);
-			}
-
-			const rootResult = await watcher.build(file);
-			await reload(rootResult);
+			process.exit(0);
 		}
 	});
 
-	const link = createLink(watcher);
-	async function reload(result) {
-		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
-		const url = pathToFileURL(file).href;
-		const module = new VM.SourceTextModule(code, {
-			identifier: url,
-			initializeImportMeta(meta) {
-				meta.url = url;
-			},
-			async importModuleDynamically(specifier, referencingModule) {
-				const linked = await link(specifier, referencingModule);
-				await linked.link(link);
-				await linked.evaluate();
-				return linked;
-			},
-		});
+	const result = await watcher.build(file);
+	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
+	const url = pathToFileURL(file).href;
+	const module = new VM.SourceTextModule(code, {
+		identifier: url,
+		initializeImportMeta(meta) {
+			meta.url = url;
+		},
+		async importModuleDynamically(specifier, referencingModule) {
+			const linked = await link(specifier, referencingModule);
+			await linked.link(link);
+			await linked.evaluate();
+			return linked;
+		},
+	});
 
-		try {
-			await module.link(link);
-			await module.evaluate();
-			namespace = module.namespace;
-		} catch (err) {
-			console.error(err);
-			namespace = null;
+	await module.link(createLink(watcher));
+	await module.evaluate();
+	const namespace = module.namespace;
+	const paths = await namespace.default?.staticPaths?.();
+	if (paths) {
+		const dist = Path.resolve(process.cwd(), options.outDir);
+		console.log(dist);
+		for (const path of paths) {
+			const url = new URL(path, "file:///dist");
+			const request = new Request(url.href);
+			const response = await namespace.default?.fetch?.(request);
+			const body = await response.text();
+			const file = Path.resolve(dist, path.replace(/^\//, ""), "index.html");
+			console.info(`Writing ${file}`);
+			// ensure directory exists
+			await FS.mkdir(Path.dirname(file), {recursive: true});
+			await FS.writeFile(file, body);
 		}
 	}
-
-	const result = await watcher.build(file);
-	await reload(result);
-	return server;
+	process.exit(0);
 }
