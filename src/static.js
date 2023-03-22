@@ -108,15 +108,14 @@ export async function static_(file, options) {
 	await module.link(createLink(watcher));
 	await module.evaluate();
 	const namespace = module.namespace;
-	const paths = await namespace.default?.staticPaths?.();
+	const dist = Path.resolve(process.cwd(), options.outDir);
+	const paths = await namespace.default?.staticPaths?.(dist);
 	if (paths) {
-		const dist = Path.resolve(process.cwd(), options.outDir);
-		console.log(dist);
-		for (const path of paths) {
-			const url = new URL(path, "file:///dist");
-			const request = new Request(url.href);
-			const response = await namespace.default?.fetch?.(request);
-			const body = await response.text();
+		for await (const path of paths) {
+			const url = pathToFileURL(path);
+			const req = new Request(url.href);
+			const res = await namespace.default?.fetch?.(req);
+			const body = await res.text();
 			const file = Path.resolve(dist, path.replace(/^\//, ""), "index.html");
 			console.info(`Writing ${file}`);
 			// ensure directory exists
@@ -124,5 +123,6 @@ export async function static_(file, options) {
 			await FS.writeFile(file, body);
 		}
 	}
+
 	process.exit(0);
 }
