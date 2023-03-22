@@ -89,7 +89,6 @@ function createESBuildContext(entry, plugins) {
 const moduleCache = new Map();
 function createLink(watcher) {
 	return async function link(specifier, referencingModule) {
-		//console.log(`linking ${specifier} from ${referencingModule.identifier}`);
 		const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
 		// TODO: Let’s try to use require.resolve() here.
 		const resolved = await Resolve.resolve(specifier, basedir);
@@ -101,7 +100,7 @@ function createLink(watcher) {
 			// We don’t have to link this module because it will be linked by the
 			// root module.
 			if (moduleCache.has(resolved)) {
-				console.log("moduleCache hit", resolved);
+				moduleCache.get(resolved).dependents.add(fileURLToPath(referencingModule.identifier));
 				return moduleCache.get(resolved).module;
 			}
 
@@ -119,7 +118,10 @@ function createLink(watcher) {
 				},
 			});
 
-			moduleCache.set(resolved, {module, dependents: new Set()});
+			moduleCache.set(resolved, {
+				module,
+				dependents: new Set([fileURLToPath(referencingModule.identifier)])
+			});
 			return module;
 		} else {
 			// This is a bare module specifier so we import from node modules.
@@ -199,7 +201,19 @@ export default async function develop(file, options) {
 		// TODO: Rather than reloading the root module, we should bubble changes
 		// from dependencies to dependents according to import.meta.hot
 		if (!record.initial) {
-			moduleCache.delete(record.entry);
+			const queue = [record.entry];
+			while (queue.length > 0) {
+				const entry = queue.shift();
+				const dependents = moduleCache.get(entry)?.dependents;
+				if (dependents) {
+					for (const dependent of dependents) {
+						queue.push(dependent);
+					}
+				}
+
+				moduleCache.delete(entry);
+			}
+
 			const rootResult = await watcher.build(file);
 			await reload(rootResult);
 		}
