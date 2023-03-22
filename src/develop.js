@@ -7,7 +7,6 @@ import * as Resolve from "./resolve.js";
 import {createFetchServer} from "./server.js";
 
 class Watcher {
-	// TODO: what is the type of the callback?
 	constructor(callback) {
 		this.cache = new Map();
 		this.callback = callback;
@@ -18,7 +17,7 @@ class Watcher {
 					// TODO: errors in this callback seem to be swallowed
 					const entry = build.initialOptions.entryPoints[0];
 					const cacheValue = this.cache.get(entry);
-					const isInitial = cacheValue.resolve != null;
+					const initial = cacheValue.resolve != null;
 					if (cacheValue.resolve) {
 						cacheValue.resolve(result);
 						cacheValue.resolve = null;
@@ -26,7 +25,7 @@ class Watcher {
 
 					cacheValue.result = result;
 					try {
-						await callback({entry, result, isInitial}, this);
+						await callback({entry, result, initial}, this);
 					} catch (err) {
 						console.error(err);
 					}
@@ -56,6 +55,12 @@ class Watcher {
 
 		return cacheValue.result;
 	}
+
+	async dispose() {
+		for (const {ctx} of this.cache.values()) {
+			await ctx.dispose();
+		}
+	}
 }
 
 function createESBuildContext(entry, plugins) {
@@ -75,17 +80,33 @@ function createESBuildContext(entry, plugins) {
 	});
 }
 
+
+//interface ModuleCacheValue {
+//	module: VM.SourceTextModule;
+//	dependents: Set<string>;
+//	hot: Hot;
+//}
+const moduleCache = new Map();
 function createLink(watcher) {
 	return async function link(specifier, referencingModule) {
+		//console.log(`linking ${specifier} from ${referencingModule.identifier}`);
 		const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
-		// TODO: figure out if we can use require.resolve
-		// TODO: better error messages
+		// TODO: Let’s try to use require.resolve() here.
 		const resolved = await Resolve.resolve(specifier, basedir);
 		if (Resolve.isPathSpecifier(specifier)) {
 			const url = pathToFileURL(resolved).href;
 			const result = await watcher.build(resolved);
-			const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
-			return new VM.SourceTextModule(code, {
+			const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
+
+			// We don’t have to link this module because it will be linked by the
+			// root module.
+			if (moduleCache.has(resolved)) {
+				console.log("moduleCache hit", resolved);
+				return moduleCache.get(resolved).module;
+			}
+
+			// TODO: We need to cache modules
+			const module = new VM.SourceTextModule(code, {
 				identifier: url,
 				initializeImportMeta(meta) {
 					meta.url = url;
@@ -97,16 +118,19 @@ function createLink(watcher) {
 					return linked;
 				},
 			});
-		}
 
-		// This is a bare module specifier so we import from node modules.
-		const namespace = await import(resolved);
-		const exports = Object.keys(namespace);
-		return new VM.SyntheticModule(exports, function () {
-			for (const key of exports) {
-				this.setExport(key, namespace[key]);
-			}
-		});
+			moduleCache.set(resolved, {module, dependents: new Set()});
+			return module;
+		} else {
+			// This is a bare module specifier so we import from node modules.
+			const namespace = await import(resolved);
+			const exports = Object.keys(namespace);
+			return new VM.SyntheticModule(exports, function () {
+				for (const key of exports) {
+					this.setExport(key, namespace[key]);
+				}
+			});
+		}
 	};
 }
 
@@ -125,13 +149,15 @@ export default async function develop(file, options) {
 		console.error(err);
 	});
 
-	process.on("SIGINT", () => {
+	process.on("SIGINT", async () => {
 		server.close();
+		await watcher.dispose();
 		process.exit(0);
 	});
 
-	process.on("SIGTERM", () => {
+	process.on("SIGTERM", async () => {
 		server.close();
+		await watcher.dispose();
 		process.exit(0);
 	});
 
@@ -158,7 +184,6 @@ export default async function develop(file, options) {
 	});
 
 	const watcher = new Watcher(async (record, watcher) => {
-		console.info(`${record.isInitial ? "building" : "rebuilding"}: ${record.entry}`);
 		if (record.result.errors.length > 0) {
 			const formatted = await ESBuild.formatMessages(record.result.errors, {
 				kind: "error",
@@ -170,60 +195,43 @@ export default async function develop(file, options) {
 			});
 			console.warn(formatted.join("\n"));
 		}
+
 		// TODO: Rather than reloading the root module, we should bubble changes
 		// from dependencies to dependents according to import.meta.hot
-		if (!record.isInitial) {
+		if (!record.initial) {
+			moduleCache.delete(record.entry);
 			const rootResult = await watcher.build(file);
-			const code = rootResult.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
-			const url = pathToFileURL(file).href;
-			const module = new VM.SourceTextModule(code, {
-				identifier: url,
-				initializeImportMeta(meta) {
-					meta.url = url;
-				},
-				async importModuleDynamically(specifier, referencingModule) {
-					const linked = await link(specifier, referencingModule);
-					await linked.link(link);
-					await linked.evaluate();
-					return linked;
-				},
-			});
-
-			try {
-				await module.link(link);
-				await module.evaluate();
-				namespace = module.namespace;
-			} catch (err) {
-				console.error(err);
-				namespace = null;
-			}
+			await reload(rootResult);
 		}
 	});
 
 	const link = createLink(watcher);
-	const result = await watcher.build(file);
-	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
-	const url = pathToFileURL(file).href;
-	const module = new VM.SourceTextModule(code, {
-		identifier: url,
-		initializeImportMeta(meta) {
-			meta.url = url;
-		},
-		async importModuleDynamically(specifier, referencingModule) {
-			const linked = await link(specifier, referencingModule);
-			await linked.link(link);
-			await linked.evaluate();
-			return linked;
-		},
-	});
+	async function reload(result) {
+		const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
+		const url = pathToFileURL(file).href;
+		const module = new VM.SourceTextModule(code, {
+			identifier: url,
+			initializeImportMeta(meta) {
+				meta.url = url;
+			},
+			async importModuleDynamically(specifier, referencingModule) {
+				const linked = await link(specifier, referencingModule);
+				await linked.link(link);
+				await linked.evaluate();
+				return linked;
+			},
+		});
 
-	try {
-		await module.link(link);
-		await module.evaluate();
-		namespace = module.namespace;
-	} catch (err) {
-		console.error(err);
-		namespace = null;
+		try {
+			await module.link(link);
+			await module.evaluate();
+			namespace = module.namespace;
+		} catch (err) {
+			console.error(err);
+			namespace = null;
+		}
 	}
 
+	const result = await watcher.build(file);
+	await reload(result);
 }

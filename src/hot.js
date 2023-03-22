@@ -1,31 +1,34 @@
 export class Hot {
 	constructor() {
-		this.disposeCallbacks = [];
+		// TODO: Hide these
+		this.declined = false;
+		this.acceptCalls = [];
+		this.disposeCalls = [];
 	}
 
-	// TODO: handle accept with basic callback and deps parameter
-	accept(callback) {
+	accept(deps, callback) {
+		if (callback == null) {
+			callback = deps;
+			deps = undefined;
+		} else if	(typeof deps === "string") {
+			deps = [deps];
+		}
+
+		this.acceptCalls.push({deps, callback});
 		if (callback) {
 			throw new Error("Not implemented");
 		}
 	}
 
 	invalidate() {
-		throw new Error("Not implemented");
+		this.declined = true;
 	}
 
 	dispose(callback) {
-		this.disposeCallbacks.push(callback);
+		this.disposeCalls.push(args);
 	}
 
 	decline() {
-		// pass
+		this.declined = true;
 	}
 }
-
-export function disposeHot(hot) {
-	for (const callback of hot.disposeCallbacks) {
-		callback();
-	}
-}
-
