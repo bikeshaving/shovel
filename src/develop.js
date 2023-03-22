@@ -136,7 +136,7 @@ function createLink(watcher) {
 	};
 }
 
-export default async function develop(file, options) {
+export async function develop(file, options) {
 	file = Path.resolve(process.cwd(), file);
 	const port = parseInt(options.port);
 	if (Number.isNaN(port)) {

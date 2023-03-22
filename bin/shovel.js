@@ -8,7 +8,7 @@ import {Command} from "commander";
 import whyIsNodeRunning from "why-is-node-running";
 
 import pkg from "../package.json" assert {type: "json"};
-import develop from "../src/develop.js";
+
 const program = new Command();
 program
 	.name("shovel")
@@ -17,6 +17,9 @@ program
 
 program.command("develop <file>")
 	.option("-p, --port <port>", "Port to listen on", "1337")
-	.action(develop);
+	.action(async (file, options) => {
+		const {develop} = await import("../src/develop.js");
+		await develop(file, options);
+	});
 
 await program.parseAsync(process.argv);
