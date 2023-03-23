@@ -34,19 +34,29 @@ function webRequestFromNode(req) {
 }
 
 async function callNodeResponse(res, webRes) {
-	const headers = {};
-	webRes.headers.forEach((value, key) => {
-		headers[key] = value;
-	});
-	res.writeHead(webRes.status, headers);
-	// TODO: stream the body
-	res.end(await webRes.text());
+  const headers = {};
+  webRes.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  res.writeHead(webRes.status, headers);
+
+  const reader = webRes.body.getReader();
+	// Why isn’t the reader async iterable???
+	while (true) {
+		const {value, done} = await reader.read();
+		if (done) {
+			res.end();
+			return;
+		}
+
+		res.write(value);
+	}
 }
 
 export function createFetchServer(handler) {
 	const server = createServer(async (req, res) => {
 		const webRes = await handler(webRequestFromNode(req));
-		callNodeResponse(res, webRes);
+		await callNodeResponse(res, webRes);
 	});
 
 	return server;
