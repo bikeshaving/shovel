@@ -3,10 +3,13 @@ import * as FS from "fs/promises";
 import {fileURLToPath, pathToFileURL} from "url";
 import * as VM from "vm";
 import {formatMessages} from "esbuild";
-import * as Resolve from "./resolve.js";
+import * as Resolve from "./_resolve.js";
 import {createFetchServer} from "./server.js";
 import {Watcher} from "./_esbuild.js";
 
+// The key is the absolute path to the module as a string.
+// The value is an object with the following interface.
+//
 //interface ModuleCacheValue {
 //	module: VM.SourceTextModule;
 //	dependents: Set<string>;

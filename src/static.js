@@ -4,7 +4,12 @@ import {fileURLToPath, pathToFileURL} from "url";
 import * as VM from "vm";
 import {formatMessages} from "esbuild";
 import * as Resolve from "./resolve.js";
+
+// TODO: The static workflow is run once so we don’t need to watch files.
 import {Watcher} from "./_esbuild.js";
+
+// TODO: This code is duplicated in ./develop.js so it should be moved to a
+// module-specific file.
 
 //interface ModuleCacheValue {
 //	module: VM.SourceTextModule;
