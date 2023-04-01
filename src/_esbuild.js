@@ -72,3 +72,13 @@ export class Watcher {
 		}
 	}
 }
+
+/**
+ * @param {string} entry - An absolute path to the entry point.
+ * @returns {Promise<import("esbuild").BuildResult>}
+ */
+export async function build(entry) {
+	const ctx = await createESBuildContext(entry, []);
+	const result = await ctx.build();
+	return result;
+}

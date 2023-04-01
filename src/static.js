@@ -3,10 +3,10 @@ import * as FS from "fs/promises";
 import {fileURLToPath, pathToFileURL} from "url";
 import * as VM from "vm";
 import {formatMessages} from "esbuild";
-import * as Resolve from "./resolve.js";
 
 // TODO: The static workflow is run once so we don’t need to watch files.
 import {Watcher} from "./_esbuild.js";
+import * as Resolve from "./_resolve.js";
 
 // TODO: This code is duplicated in ./develop.js so it should be moved to a
 // module-specific file.
@@ -97,12 +97,14 @@ export async function static_(file, options) {
 	const result = await watcher.build(file);
 	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
 	const url = pathToFileURL(file).href;
+	const link = createLink(watcher);
 	const module = new VM.SourceTextModule(code, {
 		identifier: url,
 		initializeImportMeta(meta) {
 			meta.url = url;
 		},
 		async importModuleDynamically(specifier, referencingModule) {
+			// TODO: link is not defined so I dunno how this works.
 			const linked = await link(specifier, referencingModule);
 			await linked.link(link);
 			await linked.evaluate();
@@ -110,7 +112,7 @@ export async function static_(file, options) {
 		},
 	});
 
-	await module.link(createLink(watcher));
+	await module.link(link);
 	await module.evaluate();
 	const namespace = module.namespace;
 	const dist = Path.resolve(process.cwd(), options.outDir);
