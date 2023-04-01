@@ -7,152 +7,156 @@ import whyIsNodeRunning from "why-is-node-running";
 import fkill from "fkill";
 
 const test = suite("develop");
-
-const PORT = "1339";
-test.after.each(async () => {
-	try {
-		await fkill(`:${PORT}`);
-	} catch (err) {
-		// uvu test hooks seem to fail silently...
-		console.error(err);
-	}
-});
-
 // TODO: wait for server to be ready rather than retrying
 test("basic", async () => {
-	const shovel = ChildProcess.spawn(
-		"shovel",
-		["develop", "./fixtures/server-hello.ts", "--port", PORT],
-	);
-	const serverIsRunning = async () => {
-		try {
-			const response = await fetch(`http://localhost:${PORT}`);
-			return await response.text();
-		} catch (err) {
-			return false;
-		}
-	};
+	const PORT = 13307;
+	try {
+		const shovel = ChildProcess.spawn(
+			"shovel",
+			["develop", "./fixtures/server-hello.ts", "--port", PORT],
+		);
+		const serverIsRunning = async () => {
+			try {
+				const response = await fetch(`http://localhost:${PORT}`);
+				return await response.text();
+			} catch (err) {
+				return false;
+			}
+		};
 
-	let isRunning = false;
-	let tries = 0;
-	while (!isRunning) {
-		if (tries > 30) {
-			throw new Error("Server never started");
+		let isRunning = false;
+		let tries = 0;
+		while (!isRunning) {
+			if (tries > 30) {
+				throw new Error("Server never started");
+			}
+
+			isRunning = await serverIsRunning();
+			if (!isRunning) {
+				await new Promise((resolve) => setTimeout(resolve, 1000));
+			}
 		}
 
-		isRunning = await serverIsRunning();
-		if (!isRunning) {
-			await new Promise((resolve) => setTimeout(resolve, 100));
-		}
+		Assert.equal(isRunning, "<marquee>Hello world</marquee>");
+	} finally {
+		await fkill(`:${PORT}`);
 	}
-
-	Assert.equal(isRunning, "<marquee>Hello world</marquee>");
 });
 
 test("restarts on change to root", async () => {
-	const shovel = ChildProcess.spawn(
-		"shovel",
-		["develop", "./fixtures/server-hello.ts", "--port", PORT],
-		{stdio: "inherit"},
-	);
-
-	const serverIsRunning = async () => {
-		try {
-			const response = await fetch(`http://localhost:${PORT}`);
-			return await response.text();
-		} catch (err) {
-			return false;
-		}
-	};
-
-	let isRunning = false;
-	let tries = 0;
-	while (!isRunning) {
-		if (tries > 30) {
-			throw new Error("Server never started");
-		}
-
-		isRunning = await serverIsRunning();
-		if (!isRunning) {
-			await new Promise((resolve) => setTimeout(resolve, 100));
-		}
-	}
-
-	Assert.equal(isRunning, "<marquee>Hello world</marquee>");
-
-	const serverHelloContents = await FS.readFile(
-		"./fixtures/server-hello.ts",
-		"utf8",
-	);
-
+	const PORT = 13308;
 	try {
-		await FS.copyFile(
-			"./fixtures/server-goodbye.ts",
-			"./fixtures/server-hello.ts",
+		const shovel = ChildProcess.spawn(
+			"shovel",
+			["develop", "./fixtures/server-hello.ts", "--port", PORT],
+			{stdio: "inherit"},
 		);
-		// TODO: wait for server to restart
-		await new Promise((resolve) => setTimeout(resolve, 1000));
 
-		const response = await fetch(`http://localhost:${PORT}`);
-		const text = await response.text();
+		const serverIsRunning = async () => {
+			try {
+				const response = await fetch(`http://localhost:${PORT}`);
+				return await response.text();
+			} catch (err) {
+				return false;
+			}
+		};
 
-		Assert.equal(text, "<marquee>Goodbye world</marquee>");
+		let isRunning = false;
+		let tries = 0;
+		while (!isRunning) {
+			if (tries > 30) {
+				throw new Error("Server never started");
+			}
+
+			isRunning = await serverIsRunning();
+			if (!isRunning) {
+				await new Promise((resolve) => setTimeout(resolve, 1000));
+			}
+		}
+
+		Assert.equal(isRunning, "<marquee>Hello world</marquee>");
+
+		const serverHelloContents = await FS.readFile(
+			"./fixtures/server-hello.ts",
+			"utf8",
+		);
+
+		try {
+			await FS.copyFile(
+				"./fixtures/server-goodbye.ts",
+				"./fixtures/server-hello.ts",
+			);
+			// TODO: wait for server to restart
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+
+			const response = await fetch(`http://localhost:${PORT}`);
+			const text = await response.text();
+
+			Assert.equal(text, "<marquee>Goodbye world</marquee>");
+		} finally {
+			await FS.writeFile("./fixtures/server-hello.ts", serverHelloContents);
+		}
 	} finally {
-		await FS.writeFile("./fixtures/server-hello.ts", serverHelloContents);
+		await fkill(`:${PORT}`);
 	}
 });
 
 test("restarts on change to dependency", async () => {
-	const shovel = ChildProcess.spawn(
-		"shovel",
-		["develop", "./fixtures/server-dependent.ts", "--port", PORT],
-		{stdio: "inherit"},
-	);
-
-	const serverIsRunning = async () => {
-		try {
-			const response = await fetch(`http://localhost:${PORT}`);
-			return await response.text();
-		} catch (err) {
-			return false;
-		}
-	};
-
-	let isRunning = false;
-	let tries = 0;
-	while (!isRunning) {
-		if (tries > 30) {
-			throw new Error("Server never started");
-		}
-
-		isRunning = await serverIsRunning();
-		if (!isRunning) {
-			await new Promise((resolve) => setTimeout(resolve, 100));
-		}
-	}
-
-	Assert.equal(isRunning, "<marquee>Hello from dependency-hello.ts</marquee>");
-	const serverDependencyContents = await FS.readFile(
-		"./fixtures/server-dependency-hello.ts",
-		"utf8",
-	);
-
+	const PORT = 13309;
 	try {
-		await FS.copyFile(
-			"./fixtures/server-dependency-goodbye.ts",
-			"./fixtures/server-dependency-hello.ts",
+		const shovel = ChildProcess.spawn(
+			"shovel",
+			["develop", "./fixtures/server-dependent.ts", "--port", PORT],
+			{stdio: "inherit"},
 		);
 
-		await new Promise((resolve) => setTimeout(resolve, 1000));
-		const response = await fetch(`http://localhost:${PORT}`);
-		const text = await response.text();
+		const serverIsRunning = async () => {
+			try {
+				const response = await fetch(`http://localhost:${PORT}`);
+				return await response.text();
+			} catch (err) {
+				return false;
+			}
+		};
 
-		Assert.equal("<marquee>Goodbye from dependency-hello.ts</marquee>", text);
+		let isRunning = false;
+		let tries = 0;
+		while (!isRunning) {
+			if (tries > 30) {
+				throw new Error("Server never started");
+			}
+
+			isRunning = await serverIsRunning();
+			if (!isRunning) {
+				await new Promise((resolve) => setTimeout(resolve, 1000));
+			}
+		}
+
+		Assert.equal(isRunning, "<marquee>Hello from dependency-hello.ts</marquee>");
+		const serverDependencyContents = await FS.readFile(
+			"./fixtures/server-dependency-hello.ts",
+			"utf8",
+		);
+
+		try {
+			await FS.copyFile(
+				"./fixtures/server-dependency-goodbye.ts",
+				"./fixtures/server-dependency-hello.ts",
+			);
+
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			const response = await fetch(`http://localhost:${PORT}`);
+			const text = await response.text();
+
+			Assert.equal("<marquee>Goodbye from dependency-hello.ts</marquee>", text);
+		} finally {
+			await FS.writeFile(
+				"./fixtures/server-dependency-hello.ts",
+				serverDependencyContents,
+			);
+		}
 	} finally {
-		await FS.writeFile(
-			"./fixtures/server-dependency-hello.ts",
-			serverDependencyContents,
-		);
+		await fkill(`:${PORT}`);
 	}
 });
 
