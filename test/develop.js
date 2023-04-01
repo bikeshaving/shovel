@@ -14,6 +14,7 @@ test("basic", async () => {
 		const shovel = ChildProcess.spawn(
 			"shovel",
 			["develop", "./fixtures/server-hello.ts", "--port", PORT],
+			{stdio: "inherit"},
 		);
 		const serverIsRunning = async () => {
 			try {
