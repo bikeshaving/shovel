@@ -119,12 +119,12 @@ export async function static_(file, options) {
 	const paths = await namespace.default?.staticPaths?.(dist);
 	if (paths) {
 		for await (const path of paths) {
-			const url = pathToFileURL(path);
-			const req = new Request(url.href);
+			const req = new Request(pathToFileURL(path).href);
 			const res = await namespace.default?.fetch?.(req);
 			const body = await res.text();
+			// TODO: we need an alternative to /index.html style builds.
 			const file = Path.resolve(dist, path.replace(/^\//, ""), "index.html");
-			console.info(`Writing ${file}`);
+			console.info(`Writing: ${file}`);
 			// ensure directory exists
 			await FS.mkdir(Path.dirname(file), {recursive: true});
 			await FS.writeFile(file, body);
