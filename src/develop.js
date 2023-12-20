@@ -1,11 +1,11 @@
 import * as Path from "path";
-import * as FS from "fs/promises";
-import {fileURLToPath, pathToFileURL} from "url";
+import {pathToFileURL} from "url";
 import * as VM from "vm";
 import {formatMessages} from "esbuild";
-import * as Resolve from "./_resolve.js";
-import {createFetchServer} from "./_server.js";
+
 import {Watcher} from "./_esbuild.js";
+import {createLink} from "./_vm.js";
+import {createFetchServer} from "./_server.js";
 
 export async function develop(file, options) {
 	file = Path.resolve(process.cwd(), file);
@@ -53,7 +53,7 @@ export async function develop(file, options) {
 	});
 
 	server.listen(port, () => {
-		console.info("listening on port:", port);
+		console.info("Listening on port:", port);
 	});
 
 	const moduleCache = new Map();
@@ -73,13 +73,17 @@ export async function develop(file, options) {
 		// TODO: Rather than reloading the root module, we should bubble changes
 		// from dependencies to dependents according to import.meta.hot
 		if (!record.initial) {
+			const seen = new Set([record.entry]);
 			const queue = [record.entry];
 			while (queue.length > 0) {
 				const entry = queue.shift();
 				const dependents = moduleCache.get(entry)?.dependents;
 				if (dependents) {
 					for (const dependent of dependents) {
-						queue.push(dependent);
+						if (!seen.has(dependent)) {
+							seen.add(dependent);
+							queue.push(dependent);
+						}
 					}
 				}
 
@@ -87,63 +91,12 @@ export async function develop(file, options) {
 			}
 
 			const rootResult = await watcher.build(file);
-			await reload(rootResult);
+			await executeBuildResult(rootResult);
 		}
 	});
 
-	async function link(specifier, referencingModule) {
-		const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
-		// TODO: Let’s try to use require.resolve() here.
-		const resolved = await Resolve.resolve(specifier, basedir);
-		if (Resolve.isPathSpecifier(specifier)) {
-			const result = await watcher.build(resolved);
-			const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
-
-			// We don’t have to link this module because it will be linked by the
-			// root module.
-			if (moduleCache.has(resolved)) {
-				const {module, dependents} = moduleCache.get(resolved);
-				dependents.add(fileURLToPath(referencingModule.identifier).href);
-				return module;
-			}
-
-			const url = pathToFileURL(resolved).href;
-			// TODO: We need to cache modules
-			const module = new VM.SourceTextModule(code, {
-				identifier: url,
-				initializeImportMeta(meta) {
-					meta.url = url;
-				},
-				async importModuleDynamically(specifier, referencingModule) {
-					const linked = await link(specifier, referencingModule);
-					await linked.link(link);
-					await linked.evaluate();
-					return linked;
-				},
-			});
-
-			moduleCache.set(resolved, {
-				module,
-				dependents: new Set([fileURLToPath(referencingModule.identifier)])
-			});
-			return module;
-		} else {
-			// This is a bare module specifier so we import from node modules.
-			if (resolved == null) {
-				throw new Error(`Could not resolve ${specifier}`);
-			}
-
-			const namespace = await import(resolved);
-			const exports = Object.keys(namespace);
-			return new VM.SyntheticModule(exports, function () {
-				for (const key of exports) {
-					this.setExport(key, namespace[key]);
-				}
-			});
-		}
-	}
-
-	async function reload(result) {
+	const link = createLink(watcher, moduleCache);
+	async function executeBuildResult(result) {
 		const javascript = result.outputFiles.find((file) =>
 			file.path.endsWith(".js")
 		)?.text || "";
@@ -172,6 +125,5 @@ export async function develop(file, options) {
 	}
 
 	const result = await watcher.build(file);
-	await reload(result);
-	return server;
+	await executeBuildResult(result);
 }

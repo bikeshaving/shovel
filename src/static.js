@@ -1,12 +1,12 @@
 import * as Path from "path";
 import * as FS from "fs/promises";
-import {fileURLToPath, pathToFileURL} from "url";
+import {pathToFileURL} from "url";
 import * as VM from "vm";
 import {formatMessages} from "esbuild";
 
 // TODO: The static workflow is run once so we don’t need to watch files.
 import {Watcher} from "./_esbuild.js";
-import * as Resolve from "./_resolve.js";
+import {createLink} from "./_vm.js";
 
 // TODO: This code is duplicated in ./develop.js so it should be moved to a
 // module-specific file.
@@ -17,21 +17,6 @@ import * as Resolve from "./_resolve.js";
 //	hot: Hot;
 //}
 export async function static_(file, options) {
-	// TODO: Do we need to use a Watcher or would a more simple abstraction suffice?
-	const watcher = new Watcher(async (record) => {
-		if (record.result.errors.length > 0) {
-			const formatted = await formatMessages(record.result.errors, {
-				kind: "error",
-			});
-			console.error(formatted.join("\n"));
-		} else if (record.result.warnings.length > 0) {
-			const formatted = await formatMessages(record.result.warnings, {
-				kind: "warning",
-			});
-			console.warn(formatted.join("\n"));
-		}
-	});
-
 	file = Path.resolve(process.cwd(), file);
 	process.on("SIGINT", async () => {
 		await watcher.dispose();
@@ -43,58 +28,25 @@ export async function static_(file, options) {
 		process.exit(0);
 	});
 
+	const watcher = new Watcher(async (record) => {
+		if (record.result.errors.length > 0) {
+			const formatted = await formatMessages(record.result.errors, {
+				kind: "error",
+			});
+			console.error(formatted.join("\n"));
+			process.exit(1);
+		} else if (record.result.warnings.length > 0) {
+			const formatted = await formatMessages(record.result.warnings, {
+				kind: "warning",
+			});
+			console.warn(formatted.join("\n"));
+		}
+	});
+
+	const link = createLink(watcher);
 	const result = await watcher.build(file);
 	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
 	const url = pathToFileURL(file).href;
-
-	const moduleCache = new Map();
-	async function link(specifier, referencingModule) {
-		const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
-		// TODO: Let’s try to use require.resolve() here.
-		const resolved = await Resolve.resolve(specifier, basedir);
-		if (Resolve.isPathSpecifier(specifier)) {
-			const url = pathToFileURL(resolved).href;
-			const result = await watcher.build(resolved);
-			const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
-
-			// We don’t have to link this module because it will be linked by the
-			// root module.
-			if (moduleCache.has(resolved)) {
-				moduleCache.get(resolved).dependents.add(fileURLToPath(referencingModule.identifier));
-				return moduleCache.get(resolved).module;
-			}
-
-			// TODO: We need to cache modules
-			const module = new VM.SourceTextModule(code, {
-				identifier: url,
-				initializeImportMeta(meta) {
-					meta.url = url;
-				},
-				async importModuleDynamically(specifier, referencingModule) {
-					const linked = await link(specifier, referencingModule);
-					await linked.link(link);
-					await linked.evaluate();
-					return linked;
-				},
-			});
-
-			moduleCache.set(resolved, {
-				module,
-				dependents: new Set([fileURLToPath(referencingModule.identifier)])
-			});
-			return module;
-		} else {
-			// This is a bare module specifier so we import from node modules.
-			const namespace = await import(resolved);
-			const exports = Object.keys(namespace);
-			return new VM.SyntheticModule(exports, function () {
-				for (const key of exports) {
-					this.setExport(key, namespace[key]);
-				}
-			});
-		}
-	}
-
 	const module = new VM.SourceTextModule(code, {
 		identifier: url,
 		initializeImportMeta(meta) {
