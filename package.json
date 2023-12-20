@@ -8,7 +8,7 @@
 		"shovel": "bin/shovel.js"
 	},
 	"scripts": {
-		"test": "node --experimental-fetch $(npm bin)/uvu"
+		"test": "node --experimental-fetch node_modules/.bin/uvu"
 	},
 	"dependencies": {
 		"commander": "^10.0.0",

@@ -1,7 +1,9 @@
 #!/usr/bin/env node --experimental-vm-modules --experimental-fetch --no-warnings
-// TODO: Figure out how to pass node flags. Is that even possible?
+// TODO: Figure out how to allow debug mode via flags.
 //#!/usr/bin/env node --experimental-vm-modules --experimental-fetch --no-warnings --inspect --inspect-brk
+//
 // TODO: Squash warnings from process
+// This code might help
 // https://github.com/yarnpkg/berry/blob/2cf0a8fe3e4d4bd7d4d344245d24a85a45d4c5c9/packages/yarnpkg-pnp/sources/loader/applyPatch.ts#L414-L435
 import {Command} from "commander";
 

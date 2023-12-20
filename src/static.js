@@ -16,9 +16,39 @@ import * as Resolve from "./_resolve.js";
 //	dependents: Set<string>;
 //	hot: Hot;
 //}
-const moduleCache = new Map();
-function createLink(watcher) {
-	return async function link(specifier, referencingModule) {
+export async function static_(file, options) {
+	// TODO: Do we need to use a Watcher or would a more simple abstraction suffice?
+	const watcher = new Watcher(async (record) => {
+		if (record.result.errors.length > 0) {
+			const formatted = await formatMessages(record.result.errors, {
+				kind: "error",
+			});
+			console.error(formatted.join("\n"));
+		} else if (record.result.warnings.length > 0) {
+			const formatted = await formatMessages(record.result.warnings, {
+				kind: "warning",
+			});
+			console.warn(formatted.join("\n"));
+		}
+	});
+
+	file = Path.resolve(process.cwd(), file);
+	process.on("SIGINT", async () => {
+		await watcher.dispose();
+		process.exit(0);
+	});
+
+	process.on("SIGTERM", async () => {
+		await watcher.dispose();
+		process.exit(0);
+	});
+
+	const result = await watcher.build(file);
+	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
+	const url = pathToFileURL(file).href;
+
+	const moduleCache = new Map();
+	async function link(specifier, referencingModule) {
 		const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
 		// TODO: Let’s try to use require.resolve() here.
 		const resolved = await Resolve.resolve(specifier, basedir);
@@ -63,41 +93,8 @@ function createLink(watcher) {
 				}
 			});
 		}
-	};
-}
+	}
 
-export async function static_(file, options) {
-	file = Path.resolve(process.cwd(), file);
-	process.on("SIGINT", async () => {
-		await watcher.dispose();
-		process.exit(0);
-	});
-
-	process.on("SIGTERM", async () => {
-		await watcher.dispose();
-		process.exit(0);
-	});
-
-	const watcher = new Watcher(async (record, watcher) => {
-		if (record.result.errors.length > 0) {
-			const formatted = await formatMessages(record.result.errors, {
-				kind: "error",
-			});
-			console.error(formatted.join("\n"));
-			process.exit(1);
-		} else if (record.result.warnings.length > 0) {
-			const formatted = await formatMessages(record.result.warnings, {
-				kind: "warning",
-			});
-			console.warn(formatted.join("\n"));
-			process.exit(0);
-		}
-	});
-
-	const result = await watcher.build(file);
-	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
-	const url = pathToFileURL(file).href;
-	const link = createLink(watcher);
 	const module = new VM.SourceTextModule(code, {
 		identifier: url,
 		initializeImportMeta(meta) {

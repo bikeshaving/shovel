@@ -1,32 +1,31 @@
 import * as ESBuild from "esbuild";
-function createESBuildContext(entry, plugins) {
-	return ESBuild.context({
-		entryPoints: [entry],
-		plugins,
-		format: "esm",
-		platform: "node",
-		bundle: false,
-		metafile: true,
-		write: false,
-		packages: "external",
-		sourcemap: "both",
-		// We need this to export map files.
-		outdir: "dist",
-		logLevel: "silent",
-	});
-}
+
+/**
+ * @typedef {Object} WatcherEntry
+ * @property {string} entry
+ * @property {ESBuild.BuildResult} result
+ * @property {initial} boolean
+ */
 
 export class Watcher {
+	/**
+	 * @param {(record: WatcherEntry, watcher: Watcher) => any} callback
+	 * callback
+	 */
 	constructor(callback) {
-		this.cache = new Map();
+		/** @type {Map<string, WatcherEntry>}	*/
+		this._cache = new Map();
 		this.callback = callback;
 		this.plugin = {
 			name: "watcher",
 			setup: (build) => {
+				/**
+				 * @param {ESBuild.BuildResult} result
+				 */
 				build.onEnd(async (result) => {
 					// TODO: errors in this callback seem to be swallowed
 					const entry = build.initialOptions.entryPoints[0];
-					const cacheValue = this.cache.get(entry);
+					const cacheValue = this._cache.get(entry);
 					const initial = cacheValue.resolve != null;
 					if (cacheValue.resolve) {
 						cacheValue.resolve(result);
@@ -44,12 +43,29 @@ export class Watcher {
 		};
 	}
 
-	build(entry) {
-		if (this.cache.has(entry)) {
-			return this.cache.get(entry).result;
+	/**
+	 * @returns {Promise<ESBuild.BuildResult>}
+	 */
+	async build(entry) {
+		if (this._cache.has(entry)) {
+			return this._cache.get(entry).result;
 		}
 
-		const ctxP = createESBuildContext(entry, [this.plugin]);
+		const ctxP = ESBuild.context({
+			entryPoints: [entry],
+			plugins: [this.plugin],
+			format: "esm",
+			platform: "node",
+			bundle: false,
+			metafile: true,
+			write: false,
+			packages: "external",
+			sourcemap: "both",
+			// We need this to export map files.
+			outdir: "dist",
+			logLevel: "silent",
+		});
+
 		let resolve = null;
 		const cacheValue = {
 			entry,
@@ -57,18 +73,18 @@ export class Watcher {
 			result: new Promise((r) => (resolve = r)),
 			resolve,
 		};
-		this.cache.set(entry, cacheValue);
-		ctxP.then((ctx) => {
-			ctx.watch();
-			cacheValue.ctx = ctx;
-		});
 
+		this._cache.set(entry, cacheValue);
+		const ctx = await ctxP;
+		ctx.watch();
+		cacheValue.ctx = ctx;
 		return cacheValue.result;
 	}
 
 	async dispose() {
-		for (const {ctx} of this.cache.values()) {
-			await ctx.dispose();
-		}
+		await Promise.all([...this._cache.values()].map(async (value) => {
+			await value.ctx;
+			return value.ctx.dispose();
+		}));
 	}
 }

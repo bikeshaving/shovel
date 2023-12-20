@@ -1,4 +1,5 @@
 import {createServer} from "http";
+
 function readableStreamFromMessage(req) {
 	return new ReadableStream({
 		start(controller) {
@@ -17,7 +18,7 @@ function readableStreamFromMessage(req) {
 	});
 }
 
-function webRequestFromNode(req) {
+function createRequestFromNode(req) {
 	const url = new URL(req.url || "/", "http://" + req.headers.host);
 	const headers = new Headers();
 	for (const key in req.headers) {
@@ -33,7 +34,7 @@ function webRequestFromNode(req) {
 	});
 }
 
-async function callNodeResponse(res, webRes) {
+async function writeNodeResponse(res, webRes) {
   const headers = {};
   webRes.headers.forEach((value, key) => {
     headers[key] = value;
@@ -54,10 +55,8 @@ async function callNodeResponse(res, webRes) {
 }
 
 export function createFetchServer(handler) {
-	const server = createServer(async (req, res) => {
-		const webRes = await handler(webRequestFromNode(req));
-		await callNodeResponse(res, webRes);
+	return createServer(async (req, res) => {
+		const webRes = await handler(createRequestFromNode(req));
+		await writeNodeResponse(res, webRes);
 	});
-
-	return server;
 }
