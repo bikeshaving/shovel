@@ -104,7 +104,7 @@ async function loadAsFile(x) {
 
 async function loadAsDirectory(x) {
 	let pkgdir;
-	try { 
+	try {
 		pkgdir = await realpath(x);
 	} catch (err) {
 		throw err;
@@ -171,7 +171,6 @@ export async function resolve(specifier, basedir) {
 	if (isPathSpecifier(specifier)) {
 		let specifier1 = Path.resolve(basedir, specifier);
 
-		// TODO: What is this for?
 		if (specifier === '.' || specifier === '..' || specifier.slice(-1) === '/')  {
 			specifier1 += '/';
 		}
@@ -188,7 +187,7 @@ export async function resolve(specifier, basedir) {
 			}
 
 			result = await loadAsFile(specifier1);
-		}	
+		}
 
 		if (!result) {
 			throw new Error(`Cannot resolve ${specifier} from ${basedir}`);

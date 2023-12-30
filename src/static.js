@@ -4,8 +4,8 @@ import {pathToFileURL} from "url";
 import * as VM from "vm";
 import {formatMessages} from "esbuild";
 
-// TODO: The static workflow is run once so we don’t need to watch files.
-import {Watcher} from "./_esbuild.js";
+// TODO: The static workflow is run once so we don’t need to observe files.
+import {BuildObserver} from "./_esbuild.js";
 import {createLink} from "./_vm.js";
 
 // TODO: This code is duplicated in ./develop.js so it should be moved to a
@@ -19,16 +19,16 @@ import {createLink} from "./_vm.js";
 export async function static_(file, options) {
 	file = Path.resolve(process.cwd(), file);
 	process.on("SIGINT", async () => {
-		await watcher.dispose();
+		await observer.dispose();
 		process.exit(0);
 	});
 
 	process.on("SIGTERM", async () => {
-		await watcher.dispose();
+		await observer.dispose();
 		process.exit(0);
 	});
 
-	const watcher = new Watcher(async (record) => {
+	const observer = new BuildObserver(async (record) => {
 		if (record.result.errors.length > 0) {
 			const formatted = await formatMessages(record.result.errors, {
 				kind: "error",
@@ -43,8 +43,8 @@ export async function static_(file, options) {
 		}
 	});
 
-	const link = createLink(watcher);
-	const result = await watcher.build(file);
+	const link = createLink(observer);
+	const result = await observer.build(file);
 	const code = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text || "";
 	const url = pathToFileURL(file).href;
 	const module = new VM.SourceTextModule(code, {

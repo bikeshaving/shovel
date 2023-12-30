@@ -3,7 +3,7 @@ import {pathToFileURL} from "url";
 import * as VM from "vm";
 import {formatMessages} from "esbuild";
 
-import {Watcher} from "./_esbuild.js";
+import {BuildObserver} from "./_esbuild.js";
 import {createLink} from "./_vm.js";
 import {createFetchServer} from "./_server.js";
 
@@ -24,13 +24,13 @@ export async function develop(file, options) {
 
 	process.on("SIGINT", async () => {
 		server.close();
-		await watcher.dispose();
+		await observer.dispose();
 		process.exit(0);
 	});
 
 	process.on("SIGTERM", async () => {
 		server.close();
-		await watcher.dispose();
+		await observer.dispose();
 		process.exit(0);
 	});
 
@@ -40,7 +40,6 @@ export async function develop(file, options) {
 			try {
 				return await namespace?.default?.fetch(req);
 			} catch (err)	{
-				console.error(err);
 				return new Response(err.stack, {
 					status: 500,
 				});
@@ -57,7 +56,7 @@ export async function develop(file, options) {
 	});
 
 	const moduleCache = new Map();
-	const watcher = new Watcher(async (record, watcher) => {
+	const observer = new BuildObserver(async (record, observer) => {
 		if (record.result.errors.length > 0) {
 			const formatted = await formatMessages(record.result.errors, {
 				kind: "error",
@@ -90,12 +89,12 @@ export async function develop(file, options) {
 				moduleCache.delete(entry);
 			}
 
-			const rootResult = await watcher.build(file);
+			const rootResult = await observer.build(file);
 			await executeBuildResult(rootResult);
 		}
 	});
 
-	const link = createLink(watcher, moduleCache);
+	const link = createLink(observer, moduleCache);
 	async function executeBuildResult(result) {
 		const javascript = result.outputFiles.find((file) =>
 			file.path.endsWith(".js")
@@ -124,6 +123,6 @@ export async function develop(file, options) {
 		}
 	}
 
-	const result = await watcher.build(file);
+	const result = await observer.build(file);
 	await executeBuildResult(result);
 }

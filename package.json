@@ -21,8 +21,10 @@
 	"devDependencies": {
 		"@b9g/crank": "^0.5.3",
 		"@emotion/css": "^11.10.6",
+		"@flydotio/dockerfile": "^0.5.0",
 		"fkill": "^8.1.0",
 		"sinon": "^15.0.2",
+		"typescript": "^5.3.3",
 		"uvu": "^0.5.6"
 	},
 	"publishConfig": {

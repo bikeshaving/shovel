@@ -29,8 +29,8 @@ function createRequestFromNode(req) {
 
 	return new Request(url, {
 		method: req.method,
-		headers,
 		body: req.method === "GET" || req.method === "HEAD" ? undefined : readableStreamFromMessage(req),
+		headers,
 	});
 }
 

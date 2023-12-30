@@ -7,9 +7,9 @@ import * as ESBuild from "esbuild";
  * @property {initial} boolean
  */
 
-export class Watcher {
+export class BuildObserver {
 	/**
-	 * @param {(record: WatcherEntry, watcher: Watcher) => any} callback
+	 * @param {(record: WatcherEntry, observer: BuildObserver) => any} callback
 	 * callback
 	 */
 	constructor(callback) {
@@ -44,6 +44,8 @@ export class Watcher {
 	}
 
 	/**
+	 * @param {string} entry
+	 * @param {ESBuild.BuildOptions} options
 	 * @returns {Promise<ESBuild.BuildResult>}
 	 */
 	async build(entry) {
