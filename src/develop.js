@@ -28,7 +28,7 @@ async function executeBuildResult(result, entry, link) {
 	try {
 		await module.link(link);
 		await module.evaluate();
-		return module.namespace;
+		return module;
 	} catch (err) {
 		console.error(err);
 		return null;
@@ -62,11 +62,11 @@ export async function develop(entry, options) {
 		process.exit(0);
 	});
 
-	let namespace = null;
+	let module = null;
 	const server = createFetchServer(async function fetcher(req) {
-		if (typeof namespace?.default?.fetch === "function") {
+		if (typeof module?.namespace.default?.fetch === "function") {
 			try {
-				return await namespace?.default?.fetch(req);
+				return await module?.namespace?.default?.fetch(req);
 			} catch (err)	{
 				return new Response(err.stack, {
 					status: 500,
@@ -118,11 +118,11 @@ export async function develop(entry, options) {
 			}
 
 			const rootResult = await observer.build(entry);
-			namespace = await executeBuildResult(rootResult, entry, link);
+			module = await executeBuildResult(rootResult, entry, link);
 		}
 	});
 
 	const link = createLink(observer, moduleCache);
 	const result = await observer.build(entry);
-	namespace = await executeBuildResult(result, entry, link);
+	module = await executeBuildResult(result, entry, link);
 }
