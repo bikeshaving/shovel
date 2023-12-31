@@ -7,8 +7,36 @@ import {BuildObserver} from "./_esbuild.js";
 import {createLink} from "./_vm.js";
 import {createFetchServer} from "./_server.js";
 
-export async function develop(file, options) {
-	file = Path.resolve(process.cwd(), file);
+async function executeBuildResult(result, entry, link) {
+	const javascript = result.outputFiles.find((file) =>
+		file.path.endsWith(".js")
+	)?.text || "";
+	const url = pathToFileURL(entry).href;
+	const module = new VM.SourceTextModule(javascript, {
+		identifier: url,
+		initializeImportMeta(meta) {
+			meta.url = url;
+		},
+		async importModuleDynamically(specifier, referencingModule) {
+			const linked = await link(specifier, referencingModule);
+			await linked.link(link);
+			await linked.evaluate();
+			return linked;
+		},
+	});
+
+	try {
+		await module.link(link);
+		await module.evaluate();
+		return module.namespace;
+	} catch (err) {
+		console.error(err);
+		return null;
+	}
+}
+
+export async function develop(entry, options) {
+	entry = Path.resolve(process.cwd(), entry);
 	const port = parseInt(options.port);
 	if (Number.isNaN(port)) {
 		throw new Error("Invalid port", options.port);
@@ -89,40 +117,12 @@ export async function develop(file, options) {
 				moduleCache.delete(entry);
 			}
 
-			const rootResult = await observer.build(file);
-			await executeBuildResult(rootResult);
+			const rootResult = await observer.build(entry);
+			namespace = await executeBuildResult(rootResult, entry, link);
 		}
 	});
 
 	const link = createLink(observer, moduleCache);
-	async function executeBuildResult(result) {
-		const javascript = result.outputFiles.find((file) =>
-			file.path.endsWith(".js")
-		)?.text || "";
-		const url = pathToFileURL(file).href;
-		const module = new VM.SourceTextModule(javascript, {
-			identifier: url,
-			initializeImportMeta(meta) {
-				meta.url = url;
-			},
-			async importModuleDynamically(specifier, referencingModule) {
-				const linked = await link(specifier, referencingModule);
-				await linked.link(link);
-				await linked.evaluate();
-				return linked;
-			},
-		});
-
-		try {
-			await module.link(link);
-			await module.evaluate();
-			namespace = module.namespace;
-		} catch (err) {
-			console.error(err);
-			namespace = null;
-		}
-	}
-
-	const result = await observer.build(file);
-	await executeBuildResult(result);
+	const result = await observer.build(entry);
+	namespace = await executeBuildResult(result, entry, link);
 }
