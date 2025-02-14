@@ -1,6 +1,6 @@
 {
 	"name": "@b9g/shovel",
-	"version": "0.1.6",
+	"version": "0.1.7",
 	"description": "Dig for treasure",
 	"license": "MIT",
 	"type": "module",
@@ -11,6 +11,7 @@
 		"test": "node --experimental-fetch node_modules/.bin/uvu"
 	},
 	"dependencies": {
+		"@b9g/shovel": "^0.1.6",
 		"commander": "^10.0.0",
 		"esbuild": "^0.17.11",
 		"is-core-module": "^2.11.0",

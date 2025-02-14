@@ -7,7 +7,7 @@
 // https://github.com/yarnpkg/berry/blob/2cf0a8fe3e4d4bd7d4d344245d24a85a45d4c5c9/packages/yarnpkg-pnp/sources/loader/applyPatch.ts#L414-L435
 import {Command} from "commander";
 
-import pkg from "../package.json" assert {type: "json"};
+import pkg from "../package.json" with {type: "json"};
 
 process.title = "shovel";
 const program = new Command();
