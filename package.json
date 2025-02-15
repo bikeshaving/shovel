@@ -5,27 +5,27 @@
 	"license": "MIT",
 	"type": "module",
 	"bin": {
-		"shovel": "bin/shovel.js"
+		"shovel": "bin/shovel"
 	},
 	"scripts": {
 		"test": "node --experimental-fetch node_modules/.bin/uvu"
 	},
 	"dependencies": {
-		"commander": "^10.0.0",
-		"esbuild": "^0.17.11",
-		"is-core-module": "^2.11.0",
-		"magic-string": "^0.30.0",
-		"resolve.exports": "^2.0.1",
+		"commander": "^13.1.0",
+		"esbuild": "^0.25.0",
+		"is-core-module": "^2.16.1",
+		"magic-string": "^0.30.17",
+		"resolve.exports": "^2.0.3",
 		"source-map": "^0.7.4"
 	},
 	"devDependencies": {
-		"@b9g/crank": "^0.5.3",
-		"@emotion/css": "^11.10.6",
-		"@flydotio/dockerfile": "^0.5.0",
+		"@b9g/crank": "^0.6.0",
+		"@emotion/css": "^11.13.5",
+		"@flydotio/dockerfile": "^0.7.8",
 		"@types/bun": "^1.2.2",
-		"fkill": "^8.1.0",
-		"sinon": "^15.0.2",
-		"typescript": "^5.3.3",
+		"fkill": "^9.0.0",
+		"sinon": "^19.0.2",
+		"typescript": "^5.7.3",
 		"uvu": "^0.5.6"
 	},
 	"publishConfig": {
