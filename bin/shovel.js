@@ -15,7 +15,7 @@ program.command("develop <file>")
 	.action(async (file, options) => {
 		if (!process.env.SHOVEL_DEVELOP_WATCH) {
 			const shovelPath = new URL(import.meta.resolve("./shovel.js")).pathname;
-			const proc = Bun.spawn(["bun", "run", "--watch", shovelPath, "develop", file], {
+			const proc = Bun.spawn(["bun", "run", "--watch", shovelPath, "develop", file, "--port", options.port], {
 				stdout: "inherit",
 				stderr: "inherit",
 				env: {
@@ -24,7 +24,7 @@ program.command("develop <file>")
 				},
 			});
 
-			return proc.exited;
+			await proc.exited;
 		}
 
 		const {develop} = await import("../src/develop.js");

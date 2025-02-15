@@ -41,7 +41,7 @@ test("basic", async () => {
 
 		Assert.equal(isRunning, "<marquee>Hello world</marquee>");
 	} finally {
-		await fkill(`:${PORT}`);
+		//await fkill(`:${PORT}`);
 	}
 });
 
@@ -99,7 +99,7 @@ test("restarts on change to root", async () => {
 			await FS.writeFile("./fixtures/server-hello.ts", serverHelloContents);
 		}
 	} finally {
-		await fkill(`:${PORT}`);
+		//await fkill(`:${PORT}`);
 	}
 });
 
@@ -158,7 +158,7 @@ test("restarts on change to dependency", async () => {
 			);
 		}
 	} finally {
-		await fkill(`:${PORT}`);
+		//await fkill(`:${PORT}`);
 	}
 });
 
