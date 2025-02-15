@@ -25,6 +25,7 @@ program.command("develop <file>")
 			});
 
 			await proc.exited;
+			return;
 		}
 
 		const {develop} = await import("../src/develop.js");
@@ -35,6 +36,7 @@ program.command("static <file>")
 	.description("Build a static site.")
 	.option("--out-dir <dir>", "Output directory", "dist")
 	.action(async (file, options) => {
+		throw new Error("TODO: fix this");
 		const {static_} = await import("../src/static.js");
 		await static_(file, options);
 	});
