@@ -7,20 +7,25 @@ export async function develop(entry, options) {
 		throw new Error("Invalid port", options.port);
 	}
 
+	const module = await import(entry);
 	const server = Bun.serve({
 		port,
 		async fetch(req) {
 			console.log(`${req.method}: ${req.url}`);
-			const module = await import(entry);
 			if (typeof module?.default?.fetch === "function") {
 				try {
-					return await module?.default?.fetch(req);
+					const res = await module?.default?.fetch(req);
+					return res;
 				} catch (err)	{
 					return new Response(err.stack, {
 						status: 500,
 					});
 				}
 			}
+
+			return new Response("fetch not defined on default export", {
+				status: 500,
+			});
 		},
 	});
 
