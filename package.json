@@ -1,6 +1,6 @@
 {
 	"name": "@b9g/shovel",
-	"version": "0.1.9",
+	"version": "0.1.10",
 	"description": "Dig for treasure",
 	"license": "MIT",
 	"type": "module",
