@@ -5,7 +5,7 @@
 	"license": "MIT",
 	"type": "module",
 	"bin": {
-		"shovel": "bin/shovel"
+		"shovel": "bin/shovel.js"
 	},
 	"scripts": {
 		"test": "node --experimental-fetch node_modules/.bin/uvu"
