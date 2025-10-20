@@ -1,4 +1,4 @@
-# Shovel: A Cache-First Universal, AnyStack, (Meta)-Framework
+# Shovel: A Cache-First Universal, Any Stack, (Meta)-Framework
 
 🚧 UNDER CONSTRUCTION DO NOT INVESTIGATE 🚧
 
@@ -24,14 +24,28 @@ Different backends/runtimes can use different storage mechanisms.
 // Fill this in with the CacheStorage constructor
 ```
 
-### Any Stack
-- Cache backends can be used to support
-  - SSG (Static-site generation)
-  - SSR (Server-side rendering)
-  - ISR (Incremental static regeneration)
-  - CSR (Client-side rendering)
-  - SPA (Single page applications)
-  - MPA (Multi page applications)
+### Configurations for Any Stack
+Cache backends can be used to support:
+- SSG (Static-site generation)
+- ISR (Incremental static regeneration)
+- SSR (Server-side rendering)
+- CSR (Client-side rendering)
+- SPA (Single page applications)
+- MPA (Multi page applications)
+
+### How `cache.add()`/`cache.addAll()` Unify Everything
+
+`cache.add(request)` does three things:
+1. Fetches the request through your router
+2. Your handler runs and produces a response
+3. Stores the response in the cache
+
+This same operation is:
+- **SSG** when called at build time
+- **ISR** when called after TTL expiry
+- **SSR** when called on first request
+
+Same handlers, same API. Only **when** you call it differs.
 
 ### Universal Routing
 - URLPattern-based route syntax
@@ -41,10 +55,11 @@ Different backends/runtimes can use different storage mechanisms.
 ## Modules
 ### 1. `@b9g/match-pattern`
 
-Extended URLPattern for better routing:
-- Subclass of `URLPattern` with enhanced string parameter parsing
-- Saner search parameter matching (non-exhaustive, order-independent)
-- Provides the pattern matching primitive for the router
+Extended `MatchPattern` for better routing:
+- Subclass of `URLPattern`
+- Rich, standards based :param syntax
+- Full URL string pattern API
+- Saner search parameter matching (order-independent)
 
 **Status:** Design phase
 
