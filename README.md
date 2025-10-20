@@ -1,5 +1,7 @@
 # Shovel: A Cache-First Universal, AnyStack, (Meta)-Framework
 
+🚧 UNDER CONSTRUCTION DO NOT INVESTIGATE 🚧
+
 > server - noun. a thing which populates caches with responses based on requests
 
 Shovel is a built on web standards (Cache API, Fetch API,
