@@ -4,10 +4,8 @@
 
 > server - noun. a thing which populates caches with responses based on requests
 
-Shovel is a built on web standards (Cache API, Fetch API,
-URLPattern) that treats caching as the key architectural decision for routes, not an
-optimization. It works universally across browsers, Node, Bun, Deno, and edge
-runtimes.
+Shovel is a server framework built on web APIS (`fetch`/`Request`/`Response`) and Service Worker APIs (`Cache`/`CacheStorage`). Shovel is “cache-first” because it treats caching as a key decision for routes, not an
+optimization. It works universally across browsers, Node, Bun, Deno, and other edge platforms and runtimes.
 
 ## Philosophy
 
@@ -95,7 +93,7 @@ router.app(options, async (request, context) => {
 // Options
 {
   pattern: URLPattern | string,
-  verbs: string[] | string,
+  methods: string[] | string,
   cache: {
     name: 'my-cache',      // Named cache (router opens this)
     ignoreSearch: true,    // Cache API match options
@@ -119,10 +117,10 @@ ESBuild/Bun plugin for asset pipeline:
 ### 4. `@b9g/cache-storage`
 
 Universal Cache API implementation:
-- Provides CacheStorage/Cache APIs everywhere via shim (Node, Bun, Deno)
-- Cache is an abstract interface with multiple implementations
+- Provides CacheStorage/Cache APIs everywhere
+- Cache is an abstract interface with multiple implementations for different backends
 - CacheStorage is a registry for named caches
-- Request/Response-aware caching with HTTP semantics
+- Request/Response-oriented caching with HTTP semantics
 - Same API works in browser, service worker, and server
 
 **Architecture:**
@@ -149,33 +147,30 @@ class CacheStorage {
 ```
 
 **Cache Implementations:**
-- `FilesystemCache` - Filesystem-backed (for SSG, Node servers)
-- `MemoryCache` - In-memory (for dev, testing)
+- `FileSystemCache` - FileSystem-backed (for SSG, Node servers)
+- `InMemoryCache` - In-memory (for dev, testing)
 - `CloudflareKVCache` - Cloudflare KV storage
-- `DenoKVCache` - Deno KV storage
 - Native browser CacheStorage (when available)
 
 **Usage:**
 ```javascript
 import { CacheStorage, FilesystemCache, MemoryCache } from '@b9g/cache-storage';
 
-const cacheStorage = new CacheStorage();
+const caches = new CacheStorage();
 
 // Register different implementations for different cache names
-cacheStorage.register('posts', () =>
-  new FilesystemCache('posts', { directory: './dist/.cache' })
+caches.register('posts', () =>
+  new FilesystemCache('posts', { directory: './dist/posts' })
 );
 
-cacheStorage.register('api', () =>
-  new MemoryCache('api')
-);
+caches.register('api', () => new MemoryCache('api'));
 
 // Router uses the cache storage
-const router = new Router({ cacheStorage });
+const router = new Router({caches});
 
-// When handler declares cache: { name: 'posts' }
-// Router calls: context.cache = await cacheStorage.open('posts')
-// Gets the registered FilesystemCache instance
+// When handler declares a cache name:
+// Router opens the specified cache and places it under `context.cache`.
+// Other caches are accessible under `context.caches`
 ```
 
 **Status:** Design phase
@@ -190,28 +185,15 @@ Command-line tool for development and deployment:
 
 **SSG Example:**
 ```javascript
-// generate-paths.js
-export default async function() {
-  return [
-    '/',
-    '/about',
-    '/blog/hello-world',
-    '/blog/another-post'
-  ];
-}
+// TODO: Determine what the ideal SSG script looks like
 ```
-
-```bash
-shovel static --paths-from ./generate-paths.js
-# What happens:
-# 1. Loads your router
-# 2. Creates CacheStorage with FilesystemCache
-# 3. Calls cache.addAll(paths)
-# 4. cache.add() fetches through the router
-# 5. Router handlers run and produce responses
-# 6. cache.put() stores responses to filesystem
-# Result: Filesystem cache pre-populated with rendered pages
-```
+1. Loads your router
+2. Creates CacheStorage with FilesystemCache
+3. Calls cache.addAll(paths)
+4. cache.add() fetches through the router
+5. Router handlers run and produce responses
+6. cache.put() stores responses to filesystem
+Result: Filesystem cache pre-populated with rendered pages
 
 **How it works:**
 ```javascript
@@ -249,10 +231,10 @@ router.app({
 
 ```
 1. Request arrives
-2. Router matches pattern â†’ opens named cache (context.cache)
+2. Router matches pattern, and opens named cache (context.cache)
 3. Middleware checks context.cache.match(request, context.cacheOptions)
-4. Cache hit? â†’ Return cached response (fast path)
-5. Cache miss? â†’ Call context.next() â†’ Handler runs
+4. Cache hit? Return cached response (fast path)
+5. Cache miss? Call context.next() â†’ Handler runs
 6. Handler returns response (may invalidate related caches for mutations)
 7. Middleware stores in context.cache.put(request, response)
 8. Return response
@@ -284,12 +266,12 @@ All modes use the same code - only the cache backend changes:
 
 **CSR (Client-Side Rendering):**
 - Cache backend: Browser CacheStorage
-- Service worker: Serve from cache, populate on miss
+- Runtime: Service worker, serve from cache, populate on miss
 
 ### Universal Example
 
 ```javascript
-import { Router } from '@b9g/router';
+import {Router} from '@b9g/router';
 
 const router = new Router();
 
@@ -322,7 +304,7 @@ router.use({}, async (request, context) => {
 // Read handler - produces response, middleware handles caching
 router.app({
   pattern: '/api/posts/:id',
-  verbs: 'GET',
+  methods: 'GET',
   cache: { name: 'posts' }
 }, async (request, context) => {
   const post = await db.posts.get(context.params.id);
@@ -337,7 +319,7 @@ router.app({
 // Write handler - invalidates cache after mutation
 router.app({
   pattern: '/api/posts/:id',
-  verbs: 'PUT',
+  methods: 'PUT',
   cache: { name: 'posts' }
 }, async (request, context) => {
   const data = await request.json();
@@ -363,13 +345,12 @@ This same code works:
 
 1. **Middleware chains, handlers terminate** - Middleware has `context.next()` for flow control, handlers are terminal response producers
 2. **Both can access caches** - Middleware for cross-cutting cache logic, handlers for route-specific invalidation
-3. **Cache API is the abstraction** - All storage goes through CacheStorage/Cache
-4. **Web standards only** - URLPattern, Request, Response, Fetch, Cache API
-5. **Universal by default** - Same code runs everywhere, with runtime/platform specific fallbacks for maximum compatibility.
+3. **Web standards only** - URLPattern, Request, Response, Fetch, Cache API
+4. **Universal by default** - Same code runs everywhere, with runtime/platform specific fallbacks for maximum compatibility.
 
 ## Project Status
 
-All components are currently in the **design phase**. This README captures the architectural decisions and API design for the metaframework.
+All components are currently in the **design phase**. This README captures the architectural decisions and API design for the meta-framework.
 
 ## Philosophy in Practice
 
@@ -391,7 +372,7 @@ Shovel (cache-first):
 // Read handler focuses on business logic
 router.app({
   pattern: '/post/:id',
-  verbs: 'GET',
+  methods: 'GET',
   cache: { name: 'posts' }
 }, async (req, ctx) => {
   // Just produce the response with cache headers
@@ -404,7 +385,7 @@ router.app({
 // Write handler invalidates related caches
 router.app({
   pattern: '/post/:id',
-  verbs: 'PUT',
+  methods: 'PUT',
   cache: { name: 'posts' }
 }, async (req, ctx) => {
   const post = await db.update(ctx.params.id, await req.json());
