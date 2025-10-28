@@ -1,0 +1,24 @@
+{
+  "name": "shovel-blog-app",
+  "version": "0.1.0",
+  "description": "Example Shovel blog app using cache-first architecture",
+  "type": "module",
+  "scripts": {
+    "dev": "shovel develop server.js",
+    "build": "bun run build:app && bun run build:static",
+    "build:app": "bun build.js",
+    "build:static": "shovel static server.js --out-dir dist",
+    "preview": "cd dist && python3 -m http.server 3000"
+  },
+  "dependencies": {
+    "@b9g/cache": "file:../../packages/cache",
+    "@b9g/libuild": "^0.1.6",
+    "@b9g/match-pattern": "file:../../packages/match-pattern",
+    "@b9g/router": "file:../../packages/router",
+    "@b9g/staticfiles": "file:../../packages/staticfiles"
+  },
+  "devDependencies": {
+    "esbuild": "^0.19.12",
+    "bun-types": "latest"
+  }
+}

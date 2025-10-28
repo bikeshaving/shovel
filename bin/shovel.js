@@ -32,6 +32,15 @@ program.command("develop <file>")
 		await develop(file, options);
 	});
 
+program.command("build [file]")
+	.description("Build app with static assets (looks for build.js or builds entry file)")
+	.option("--out-dir <dir>", "Output directory", "dist")
+	.option("--entry <file>", "Entry file to build", "src/app.js")
+	.action(async (file, options) => {
+		const {build} = await import("../src/build.js");
+		await build(file, options);
+	});
+
 program.command("static <file>")
 	.description("Build a static site.")
 	.option("--out-dir <dir>", "Output directory", "dist")
