@@ -1,11 +1,13 @@
 /**
- * Node.js platform implementation for Shovel with hot reloading
+ * Node.js platform implementation - ServiceWorker entrypoint loader for Node.js
+ * 
+ * Handles the complex ESBuild VM system, hot reloading, and module linking
+ * to make ServiceWorker-style apps run in Node.js environments.
  */
 
 import { 
   Platform, 
   CacheConfig, 
-  StaticConfig, 
   Handler, 
   Server, 
   ServerOptions,
@@ -17,7 +19,6 @@ import {
 import { CacheStorage } from '@b9g/cache/cache-storage';
 import { MemoryCache } from '@b9g/cache/memory-cache';
 import { FilesystemCache } from '@b9g/cache/filesystem-cache';
-import { createStaticFilesHandler } from '@b9g/staticfiles';
 import { createRequestHandler } from '@remix-run/node-fetch-server';
 import * as Http from 'http';
 import * as Path from 'path';
@@ -40,16 +41,10 @@ export interface NodePlatformOptions {
 
 /**
  * Node.js platform implementation
+ * ServiceWorker entrypoint loader for Node.js with ESBuild VM system
  */
 export class NodePlatform implements Platform {
   readonly name = 'node';
-  readonly capabilities = {
-    hotReload: true,
-    sourceMaps: true,
-    filesystem: true,
-    serverSideRendering: true,
-    staticGeneration: true,
-  };
 
   private options: Required<NodePlatformOptions>;
   private watcher?: Watcher;
@@ -65,191 +60,8 @@ export class NodePlatform implements Platform {
   }
 
   /**
-   * Create cache storage optimized for Node.js
-   */
-  createCaches(config: CacheConfig = {}): CacheStorage {
-    const caches = new CacheStorage();
-
-    // Register default caches optimized for Node.js
-    caches.register('memory', () => new MemoryCache('memory', {
-      maxEntries: config.maxEntries || 1000,
-      maxSize: config.maxSize || 50 * 1024 * 1024, // 50MB
-    }));
-
-    caches.register('filesystem', () => new FilesystemCache('filesystem', {
-      cacheDir: config.cacheDir || Path.join(this.options.cwd, '.cache'),
-      maxEntries: config.maxEntries || 10000,
-      maxSize: config.maxSize || 500 * 1024 * 1024, // 500MB
-    }));
-
-    // Set filesystem as default for Node.js persistence
-    caches.setDefault('filesystem');
-
-    return caches;
-  }
-
-  /**
-   * Create static files handler optimized for Node.js
-   */
-  createStaticHandler(config: StaticConfig = {}): Handler {
-    return createStaticFilesHandler({
-      outputDir: config.outputDir || 'dist/static',
-      publicPath: config.publicPath || '/static/',
-      manifest: config.manifest || 'dist/static-manifest.json',
-      dev: config.dev ?? (process.env.NODE_ENV !== 'production'),
-      cache: {
-        name: config.cacheName || 'filesystem',
-        ttl: config.cacheTtl || 86400, // 24 hours
-      },
-    });
-  }
-
-  /**
-   * Create HTTP server with hot reloading support
-   */
-  createServer(handler: Handler, options: ServerOptions = {}): Server {
-    const port = options.port ?? this.options.port;
-    const host = options.host ?? this.options.host;
-
-    if (this.options.hotReload && options.entry) {
-      return this.createHotReloadServer(handler, options.entry, { port, host });
-    }
-
-    // Production server without hot reloading
-    const requestHandler = createRequestHandler(handler);
-    const httpServer = Http.createServer(requestHandler);
-
-    return {
-      listen: (callback?: () => void) => {
-        httpServer.listen(port, host, callback);
-        return httpServer;
-      },
-      close: () => new Promise<void>((resolve) => {
-        httpServer.close(() => resolve());
-      }),
-      address: () => ({ port, host }),
-    };
-  }
-
-  /**
-   * Create development server with hot reloading
-   */
-  private createHotReloadServer(handler: Handler, entry: string, options: { port: number; host: string }): Server {
-    let httpServer: Http.Server | null = null;
-    let currentModule: VM.Module | null = null;
-    let sourceMapConsumer: SourceMapConsumer | null = null;
-
-    // Create watcher for hot reloading
-    this.watcher = new Watcher(async (record, watcher) => {
-      try {
-        console.log(`[HMR] ${record.isInitial ? 'Building' : 'Rebuilding'} ${record.entry}`);
-        
-        if (record.result.errors.length > 0) {
-          console.error('[HMR] Build errors:', record.result.errors);
-          return;
-        }
-
-        // Get the compiled code
-        const outputFile = record.result.outputFiles?.find(file => file.path.endsWith('.js'));
-        if (!outputFile) {
-          console.error('[HMR] No output file found');
-          return;
-        }
-
-        // Load source map if available
-        const mapFile = record.result.outputFiles?.find(file => file.path.endsWith('.js.map'));
-        if (mapFile) {
-          try {
-            sourceMapConsumer = await new SourceMapConsumer(mapFile.text);
-          } catch (error) {
-            console.warn('[HMR] Failed to load source map:', error);
-          }
-        }
-
-        // Create new module
-        const moduleUrl = pathToFileURL(record.entry).href;
-        const linker = createModuleLinker(watcher);
-        
-        // Dispose previous module if it exists
-        if (currentModule && (currentModule as any).hot) {
-          (currentModule as any).hot._dispose();
-        }
-
-        currentModule = new VM.SourceTextModule(outputFile.text, {
-          identifier: moduleUrl,
-          initializeImportMeta(meta: any) {
-            meta.url = moduleUrl;
-            meta.hot = new Hot();
-          },
-        });
-
-        await currentModule.link(linker);
-        const result = await currentModule.evaluate();
-
-        // Get the handler from the module
-        const namespace = currentModule.namespace;
-        const newHandler = namespace.default || namespace.handler || handler;
-
-        // Create or update HTTP server
-        const requestHandler = createRequestHandler(newHandler);
-        
-        if (!httpServer) {
-          httpServer = Http.createServer(requestHandler);
-          httpServer.listen(options.port, options.host, () => {
-            console.log(`[HMR] Server running at http://${options.host}:${options.port}`);
-          });
-        } else {
-          // Hot swap the request handler
-          httpServer.removeAllListeners('request');
-          httpServer.on('request', requestHandler);
-          console.log('[HMR] Handler updated');
-        }
-      } catch (error) {
-        if (sourceMapConsumer) {
-          fixErrorStack(error as Error, sourceMapConsumer);
-        }
-        console.error('[HMR] Failed to reload module:', error);
-      }
-    });
-
-    // Start initial build
-    const entryPath = Path.resolve(this.options.cwd, entry);
-    this.watcher.build(entryPath).catch(console.error);
-
-    return {
-      listen: (callback?: () => void) => {
-        // Server will be created by the watcher callback
-        if (callback) {
-          const checkServer = () => {
-            if (httpServer) {
-              callback();
-            } else {
-              setTimeout(checkServer, 100);
-            }
-          };
-          checkServer();
-        }
-        return httpServer || new Http.Server();
-      },
-      close: async () => {
-        if (this.watcher) {
-          await this.watcher.dispose();
-        }
-        if (sourceMapConsumer) {
-          sourceMapConsumer.destroy();
-        }
-        if (httpServer) {
-          return new Promise<void>((resolve) => {
-            httpServer!.close(() => resolve());
-          });
-        }
-      },
-      address: () => options,
-    };
-  }
-
-  /**
-   * Load and run a ServiceWorker-style entrypoint
+   * THE MAIN JOB - Load and run a ServiceWorker-style entrypoint in Node.js
+   * This is where all the Node.js-specific complexity lives (ESBuild VM, hot reloading, etc.)
    */
   async loadServiceWorker(entrypoint: string, options: ServiceWorkerOptions = {}): Promise<ServiceWorkerInstance> {
     const runtime = new ServiceWorkerRuntime();
@@ -321,7 +133,7 @@ export class NodePlatform implements Platform {
           const caches = options.caches ? this.createCaches(options.caches) : undefined;
           runtime.emitPlatformEvent({
             platform: this.name,
-            capabilities: this.capabilities,
+            capabilities: { hotReload: true, sourceMaps: true, filesystem: true },
             caches,
           });
 
@@ -352,7 +164,7 @@ export class NodePlatform implements Platform {
       const caches = options.caches ? this.createCaches(options.caches) : undefined;
       runtime.emitPlatformEvent({
         platform: this.name,
-        capabilities: this.capabilities,
+        capabilities: { hotReload: false, sourceMaps: true, filesystem: true },
         caches,
       });
 
@@ -361,6 +173,53 @@ export class NodePlatform implements Platform {
     }
 
     return instance;
+  }
+
+  /**
+   * SUPPORTING UTILITY - Create cache storage optimized for Node.js
+   */
+  createCaches(config: CacheConfig = {}): CacheStorage {
+    const caches = new CacheStorage();
+
+    // Register default caches optimized for Node.js
+    caches.register('memory', () => new MemoryCache('memory', {
+      maxEntries: config.maxEntries || 1000,
+      maxSize: config.maxSize || 50 * 1024 * 1024, // 50MB
+    }));
+
+    caches.register('filesystem', () => new FilesystemCache('filesystem', {
+      cacheDir: config.cacheDir || Path.join(this.options.cwd, '.cache'),
+      maxEntries: config.maxEntries || 10000,
+      maxSize: config.maxSize || 500 * 1024 * 1024, // 500MB
+    }));
+
+    // Set filesystem as default for Node.js persistence
+    caches.setDefault('filesystem');
+
+    return caches;
+  }
+
+  /**
+   * SUPPORTING UTILITY - Create HTTP server for Node.js
+   */
+  createServer(handler: Handler, options: ServerOptions = {}): Server {
+    const port = options.port ?? this.options.port;
+    const host = options.host ?? this.options.host;
+
+    // Simple HTTP server using Remix request handler
+    const requestHandler = createRequestHandler(handler);
+    const httpServer = Http.createServer(requestHandler);
+
+    return {
+      listen: (callback?: () => void) => {
+        httpServer.listen(port, host, callback);
+        return httpServer;
+      },
+      close: () => new Promise<void>((resolve) => {
+        httpServer.close(() => resolve());
+      }),
+      address: () => ({ port, host }),
+    };
   }
 
   /**

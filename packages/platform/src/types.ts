@@ -156,49 +156,31 @@ export interface Server {
 }
 
 /**
- * Platform interface that all deployment adapters must implement
+ * Platform interface - ServiceWorker entrypoint loader for JavaScript runtimes
+ * 
+ * The core responsibility: "Take a ServiceWorker-style app file and make it run in this environment"
  */
 export interface Platform {
-  /**
-   * Create cache storage with platform-optimized backends
-   */
-  createCaches(config?: CacheConfig): CacheStorage;
-
-  /**
-   * Create static file handler with platform optimizations
-   */
-  createStaticHandler(config?: StaticConfig): Handler;
-
-  /**
-   * Create server instance for this platform
-   */
-  createServer(handler: Handler, options?: ServerOptions): Server;
-
-  /**
-   * Load and run a ServiceWorker-style entrypoint
-   */
-  loadServiceWorker(entrypoint: string, options?: ServiceWorkerOptions): Promise<ServiceWorkerInstance>;
-
   /**
    * Platform name for identification
    */
   readonly name: string;
 
   /**
-   * Platform capabilities
+   * THE MAIN JOB - Load and run a ServiceWorker-style entrypoint
+   * This is where all the platform-specific complexity lives
    */
-  readonly capabilities: {
-    /** Supports hot module reloading */
-    hotReload: boolean;
-    /** Supports source maps */
-    sourceMaps: boolean;
-    /** Supports compression */
-    compression: boolean;
-    /** Supports TypeScript/JSX compilation */
-    compilation: boolean;
-    /** Available cache backends */
-    cacheBackends: CacheBackendConfig['type'][];
-  };
+  loadServiceWorker(entrypoint: string, options?: ServiceWorkerOptions): Promise<ServiceWorkerInstance>;
+
+  /**
+   * SUPPORTING UTILITY - Create cache storage with platform-optimized backends
+   */
+  createCaches(config?: CacheConfig): CacheStorage;
+
+  /**
+   * SUPPORTING UTILITY - Create server instance for this platform
+   */
+  createServer(handler: Handler, options?: ServerOptions): Server;
 }
 
 /**

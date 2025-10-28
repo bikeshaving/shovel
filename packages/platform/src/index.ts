@@ -1,9 +1,8 @@
 /**
- * @b9g/platform - Base Platform interface and utilities for Shovel deployment adapters
+ * @b9g/platform - Platform interface for ServiceWorker entrypoint loading
  * 
- * This package provides the core Platform interface and shared utilities that all
- * platform-specific adapters implement. Platform adapters handle deployment-specific
- * concerns like server setup, cache backends, and static file serving.
+ * Platform = "ServiceWorker entrypoint loader for JavaScript runtimes"
+ * Core responsibility: Take a ServiceWorker-style app file and make it run in this environment.
  */
 
 // Core types and interfaces
@@ -11,7 +10,6 @@ export type {
   Platform,
   CacheConfig,
   CacheBackendConfig,
-  StaticConfig,
   ServerOptions,
   CorsConfig,
   Handler,
