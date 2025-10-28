@@ -16,9 +16,9 @@ describe('BrowserCache', () => {
   });
 
   describe('with mocked CacheStorage', () => {
-    let mockCache;
-    let mockCacheStorage;
-    let browserCache;
+    let mockCache: Cache;
+    let mockCacheStorage: CacheStorage;
+    let browserCache: BrowserCache;
 
     beforeEach(() => {
       // Create mock cache
@@ -112,7 +112,7 @@ describe('BrowserCache', () => {
   });
 
   describe('fallback behavior', () => {
-    let browserCache;
+    let browserCache: BrowserCache;
 
     beforeEach(() => {
       // Create cache without CacheStorage - should fall back to memory
@@ -159,7 +159,7 @@ describe('BrowserCache', () => {
   });
 
   describe('without fallback', () => {
-    let browserCache;
+    let browserCache: BrowserCache;
 
     beforeEach(() => {
       browserCache = new BrowserCache('no-fallback', {
@@ -211,12 +211,12 @@ describe('BrowserCache', () => {
   });
 
   describe('cache options conversion', () => {
-    let mockCache;
-    let mockCacheStorage;
-    let browserCache;
+    let mockCache: Cache & { _getLastOptions?: () => any };
+    let mockCacheStorage: CacheStorage;
+    let browserCache: BrowserCache & { _getLastOptions?: () => any };
 
     beforeEach(() => {
-      let lastOptions;
+      let lastOptions: any;
       
       mockCache = {
         match: async (request, options) => {

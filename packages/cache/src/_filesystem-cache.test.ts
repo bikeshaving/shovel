@@ -5,7 +5,7 @@ import * as path from 'path';
 
 describe('FilesystemCache', () => {
   const testDir = './test-cache';
-  let cache;
+  let cache: FilesystemCache;
 
   beforeEach(() => {
     // Clean up any existing test cache

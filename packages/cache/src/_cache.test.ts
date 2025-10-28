@@ -3,7 +3,7 @@ import { CacheStorage } from './cache-storage.js';
 import { MemoryCache } from './memory-cache.js';
 
 describe('CacheStorage', () => {
-  let cacheStorage;
+  let cacheStorage: CacheStorage;
 
   beforeEach(() => {
     cacheStorage = new CacheStorage();
@@ -57,7 +57,7 @@ describe('CacheStorage', () => {
 });
 
 describe('MemoryCache', () => {
-  let cache;
+  let cache: MemoryCache;
 
   beforeEach(() => {
     cache = new MemoryCache('test');

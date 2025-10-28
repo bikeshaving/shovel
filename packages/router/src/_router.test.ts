@@ -11,7 +11,7 @@ describe('Router', () => {
 
   test('can register routes with chaining API', () => {
     const router = new Router();
-    const handler = async (request, context) => new Response('Hello');
+    const handler = async (request: Request, context: any) => new Response('Hello');
 
     router.route('/api/users/:id')
       .get(handler)
@@ -22,7 +22,7 @@ describe('Router', () => {
 
   test('can match GET requests', async () => {
     const router = new Router();
-    const handler = async (request, context) => {
+    const handler = async (request: Request, context: any) => {
       return new Response(`Hello user ${context.params.id}`);
     };
 
@@ -37,7 +37,7 @@ describe('Router', () => {
 
   test('returns null for non-matching routes', async () => {
     const router = new Router();
-    router.route('/api/users/:id').get(async () => new Response('Hello'));
+    router.route('/api/users/:id').get(async (request: Request, context: any) => new Response('Hello'));
 
     const request = new Request('http://example.com/api/posts/123');
     const response = await router.match(request);
@@ -47,8 +47,8 @@ describe('Router', () => {
 
   test('filters by HTTP method', async () => {
     const router = new Router();
-    const getHandler = async () => new Response('GET response');
-    const postHandler = async () => new Response('POST response');
+    const getHandler = async (request: Request, context: any) => new Response('GET response');
+    const postHandler = async (request: Request, context: any) => new Response('POST response');
 
     router.route('/api/users/:id')
       .get(getHandler)
@@ -71,14 +71,14 @@ describe('Router', () => {
     const router = new Router();
     const executionOrder = [];
 
-    const middleware = async (request, context, next) => {
+    const middleware = async (request: Request, context: any, next: Function) => {
       executionOrder.push('middleware');
       const response = await next();
       executionOrder.push('middleware-after');
       return response;
     };
 
-    const handler = async (request, context) => {
+    const handler = async (request: Request, context: any) => {
       executionOrder.push('handler');
       return new Response('Hello');
     };
@@ -96,12 +96,12 @@ describe('Router', () => {
     const router = new Router();
     const executionOrder = [];
 
-    const middleware = async (request, context, next) => {
+    const middleware = async (request: Request, context: any, next: Function) => {
       executionOrder.push('middleware');
       return new Response('Short-circuited');
     };
 
-    const handler = async (request, context) => {
+    const handler = async (request: Request, context: any) => {
       executionOrder.push('handler');
       return new Response('Hello');
     };
@@ -120,7 +120,7 @@ describe('Router', () => {
     const router = new Router();
     let capturedParams = null;
 
-    const handler = async (request, context) => {
+    const handler = async (request: Request, context: any) => {
       capturedParams = context.params;
       return new Response('OK');
     };
@@ -138,7 +138,7 @@ describe('Router', () => {
 
   test('handles trailing slashes correctly', async () => {
     const router = new Router();
-    const handler = async () => new Response('OK');
+    const handler = async (request: Request, context: any) => new Response('OK');
 
     router.route('/api/users/:id').get(handler);
 

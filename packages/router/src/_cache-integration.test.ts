@@ -4,8 +4,8 @@ import { CacheStorage } from '@b9g/cache/cache-storage.js';
 import { MemoryCache } from '@b9g/cache/memory-cache.js';
 
 describe('Router Cache Integration', () => {
-  let router;
-  let caches;
+  let router: Router;
+  let caches: CacheStorage;
 
   beforeEach(() => {
     caches = new CacheStorage();
@@ -21,7 +21,7 @@ describe('Router Cache Integration', () => {
   });
 
   test('can register routes with cache configuration', () => {
-    const handler = async (request, context) => new Response('Hello');
+    const handler = async (request: Request, context: any) => new Response('Hello');
 
     router.route({
       pattern: '/api/posts/:id',
@@ -32,9 +32,9 @@ describe('Router Cache Integration', () => {
   });
 
   test('provides cache context to handlers', async () => {
-    let capturedContext = null;
+    let capturedContext: any = null;
 
-    const handler = async (request, context) => {
+    const handler = async (request: Request, context: any) => {
       capturedContext = context;
       return new Response('OK');
     };
@@ -54,9 +54,9 @@ describe('Router Cache Integration', () => {
   });
 
   test('provides caches but no specific cache when not configured', async () => {
-    let capturedContext = null;
+    let capturedContext: any = null;
 
-    const handler = async (request, context) => {
+    const handler = async (request: Request, context: any) => {
       capturedContext = context;
       return new Response('OK');
     };
@@ -72,9 +72,9 @@ describe('Router Cache Integration', () => {
 
   test('works without cache storage', async () => {
     const routerWithoutCache = new Router();
-    let capturedContext = null;
+    let capturedContext: any = null;
 
-    const handler = async (request, context) => {
+    const handler = async (request: Request, context: any) => {
       capturedContext = context;
       return new Response('OK');
     };
@@ -90,11 +90,11 @@ describe('Router Cache Integration', () => {
   });
 
   test('cache integration with middleware', async () => {
-    const executionOrder = [];
-    let middlewareContext = null;
-    let handlerContext = null;
+    const executionOrder: string[] = [];
+    let middlewareContext: any = null;
+    let handlerContext: any = null;
 
-    const middleware = async (request, context, next) => {
+    const middleware = async (request: Request, context: any, next: () => Promise<Response>) => {
       middlewareContext = context;
       executionOrder.push('middleware');
       const response = await next();
@@ -102,7 +102,7 @@ describe('Router Cache Integration', () => {
       return response;
     };
 
-    const handler = async (request, context) => {
+    const handler = async (request: Request, context: any) => {
       handlerContext = context;
       executionOrder.push('handler');
       return new Response('OK');
@@ -131,8 +131,8 @@ describe('Router Cache Integration', () => {
       throw new Error('Cache creation failed');
     });
 
-    let capturedContext = null;
-    const handler = async (request, context) => {
+    let capturedContext: any = null;
+    const handler = async (request: Request, context: any) => {
       capturedContext = context;
       return new Response('OK');
     };
@@ -155,9 +155,9 @@ describe('Router Cache Integration', () => {
   });
 
   test('can access different caches through context.caches', async () => {
-    let capturedContext = null;
+    let capturedContext: any = null;
 
-    const handler = async (request, context) => {
+    const handler = async (request: Request, context: any) => {
       capturedContext = context;
       
       // Access a different cache through context.caches

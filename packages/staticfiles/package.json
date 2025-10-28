@@ -1,0 +1,68 @@
+{
+  "name": "@b9g/staticfiles",
+  "version": "0.1.0",
+  "description": "Static file handling for Shovel - build plugin and runtime handler (like Django's staticfiles)",
+  "type": "module",
+  "scripts": {
+    "build": "libuild build",
+    "build:save": "libuild build --save",
+    "publish": "libuild publish",
+    "test": "bun test"
+  },
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/src/plugin.d.ts",
+      "import": "./dist/src/plugin.js"
+    },
+    "./plugin.js": {
+      "types": "./dist/src/plugin.d.ts",
+      "import": "./dist/src/plugin.js"
+    },
+    "./handler": {
+      "types": "./dist/src/handler.d.ts",
+      "import": "./dist/src/handler.js"
+    },
+    "./handler.js": {
+      "types": "./dist/src/handler.d.ts",
+      "import": "./dist/src/handler.js"
+    },
+    "./global": {
+      "types": "./dist/src/global.d.ts",
+      "import": "./dist/src/global.js"
+    },
+    "./global.js": {
+      "types": "./dist/src/global.d.ts",
+      "import": "./dist/src/global.js"
+    },
+    "./package.json": "./dist/package.json"
+  },
+  "keywords": [
+    "shovel",
+    "assets",
+    "static-files",
+    "esbuild",
+    "plugin",
+    "import-attributes",
+    "cache-first"
+  ],
+  "dependencies": {
+    "mime-types": "^2.1.35"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.0",
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "esbuild": ">=0.19.7"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

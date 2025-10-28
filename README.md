@@ -59,12 +59,12 @@ Extended `MatchPattern` for better routing:
 - Full URL string pattern API
 - Saner search parameter matching (order-independent)
 
-**Status:** Design phase
+**Status:** ✅ Implemented
 
 ### 2. `@b9g/router`
 
 Universal request router built on web standards:
-- Two primitives: `router.use()` (middleware) and `router.app()` (handlers)
+- Two primitives: `router.use()` (middleware) and `router.route()` (handlers)
 - Async-capable middleware chain
 - Works in any JavaScript runtime
 - Cache-aware routing with automatic cache population
@@ -82,13 +82,20 @@ router.use(options, async (request, context) => {
 });
 
 // Handler: terminal response producer with cache access
-router.app(options, async (request, context) => {
+router.route(options, async (request, context) => {
   // context.caches  - CacheStorage API
   // context.cache   - Opened Cache instance for this route
   // context.params  - URL parameters
   // NO context.next - handlers are terminal
   return response;
 });
+
+// HTTP method convenience methods
+router.get(pattern, handler);
+router.post(pattern, handler);
+router.put(pattern, handler);
+router.delete(pattern, handler);
+router.patch(pattern, handler);
 
 // Options
 {
@@ -114,7 +121,7 @@ ESBuild/Bun plugin for asset pipeline:
 
 **Status:** Design phase
 
-### 4. `@b9g/cache-storage`
+### 4. `@b9g/cache`
 
 Universal Cache API implementation:
 - Provides CacheStorage/Cache APIs everywhere
@@ -154,7 +161,7 @@ class CacheStorage {
 
 **Usage:**
 ```javascript
-import { CacheStorage, FilesystemCache, MemoryCache } from '@b9g/cache-storage';
+import { CacheStorage, FilesystemCache, MemoryCache } from '@b9g/cache';
 
 const caches = new CacheStorage();
 
@@ -208,7 +215,7 @@ class FilesystemCache {
 }
 
 // Your router IS the SSG renderer
-router.app({
+router.route({
   pattern: '/blog/:slug',
   cache: { name: 'posts' }
 }, async (request, context) => {
@@ -302,7 +309,7 @@ router.use({}, async (request, context) => {
 });
 
 // Read handler - produces response, middleware handles caching
-router.app({
+router.route({
   pattern: '/api/posts/:id',
   methods: 'GET',
   cache: { name: 'posts' }
@@ -317,7 +324,7 @@ router.app({
 });
 
 // Write handler - invalidates cache after mutation
-router.app({
+router.route({
   pattern: '/api/posts/:id',
   methods: 'PUT',
   cache: { name: 'posts' }
@@ -370,7 +377,7 @@ app.get('/post/:id', async (req, res) => {
 Shovel (cache-first):
 ```javascript
 // Read handler focuses on business logic
-router.app({
+router.route({
   pattern: '/post/:id',
   methods: 'GET',
   cache: { name: 'posts' }
@@ -383,7 +390,7 @@ router.app({
 });
 
 // Write handler invalidates related caches
-router.app({
+router.route({
   pattern: '/post/:id',
   methods: 'PUT',
   cache: { name: 'posts' }
