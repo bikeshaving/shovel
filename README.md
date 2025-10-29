@@ -1,11 +1,10 @@
-# Shovel: A Cache-First Universal, Any Stack, (Meta)-Framework
+# Shovel: The web framework built on the web platform
 
 🚧 UNDER CONSTRUCTION DO NOT INVESTIGATE 🚧
 
 > server - noun. a thing which populates caches with responses based on requests
 
-Shovel is a server framework built on web APIS (`fetch`/`Request`/`Response`) and Service Worker APIs (`Cache`/`CacheStorage`). Shovel is “cache-first” because it treats caching as a key decision for routes, not an
-optimization. It works universally across browsers, Node, Bun, Deno, and other edge platforms and runtimes.
+Shovel is a cache-first web framework built entirely on web platform APIs (`fetch`/`Request`/`Response`) and Service Worker APIs (`Cache`/`CacheStorage`). Shovel treats caching as a first-class routing concern, not an optimization. It runs universally across browsers, Node, Bun, Deno, and edge platforms using the same code.
 
 ## Philosophy
 
@@ -64,53 +63,52 @@ Extended `MatchPattern` for better routing:
 ### 2. `@b9g/router`
 
 Universal request router built on web standards:
-- Two primitives: `router.use()` (middleware) and `router.route()` (handlers)
-- Async-capable middleware chain
-- Works in any JavaScript runtime
+- Bound handler function API: `router.handler(request)` 
+- RouteBuilder pattern: `router.route(pattern).use(middleware).get(handler)`
+- Global and route-specific middleware support
 - Cache-aware routing with automatic cache population
+- HTTP method conveniences (get, post, put, delete, etc.)
 
 **API:**
 
 ```javascript
-// Middleware: flow control with cache access
-router.use(options, async (request, context) => {
+const router = new Router({ caches });
+
+// Global middleware
+router.use(async (request, context, next) => {
   // context.caches  - CacheStorage API
   // context.cache   - Opened Cache instance for this route
   // context.params  - URL parameters
-  // context.next()  - Next middleware/handler in chain
+  // next()          - Next middleware/handler in chain
+  const response = await next();
   return response;
 });
 
-// Handler: terminal response producer with cache access
-router.route(options, async (request, context) => {
-  // context.caches  - CacheStorage API
-  // context.cache   - Opened Cache instance for this route
-  // context.params  - URL parameters
-  // NO context.next - handlers are terminal
-  return response;
+// Route-specific middleware and handlers
+router.route({
+  pattern: '/api/posts/:id',
+  cache: { name: 'posts' }
+})
+.use(authMiddleware)
+.use(rateLimitMiddleware)
+.get(async (request, context) => {
+  // Terminal handler - no next() function
+  const post = await db.posts.get(context.params.id);
+  return new Response(JSON.stringify(post));
 });
 
-// HTTP method convenience methods
-router.get(pattern, handler);
-router.post(pattern, handler);
-router.put(pattern, handler);
-router.delete(pattern, handler);
-router.patch(pattern, handler);
+// Pattern-based middleware (applies to all methods on pattern)
+router.use('/admin/*', adminAuthMiddleware);
 
-// Options
-{
-  pattern: URLPattern | string,
-  methods: string[] | string,
-  cache: {
-    name: 'my-cache',      // Named cache (router opens this)
-    ignoreSearch: true,    // Cache API match options
-    ignoreMethod: false,
-    ignoreVary: false
-  }
-}
+// HTTP method shortcuts
+router.get('/posts', listPostsHandler);
+router.post('/posts', createPostHandler);
+
+// Bound handler for integration
+await router.handler(request); // Returns Response
 ```
 
-**Status:** Design phase
+**Status:** ✅ Implemented
 
 ### 3. `@b9g/import-with-type-url`
 
@@ -119,9 +117,47 @@ ESBuild/Bun plugin for asset pipeline:
 - Enables proper asset handling in universal code
 - Works with the router for serving static assets
 
-**Status:** Design phase
+**Status:** ✅ Implemented
 
-### 4. `@b9g/cache`
+### 4. `@b9g/platform`
+
+Universal platform abstraction for ServiceWorker-style applications:
+- Platform-agnostic ServiceWorker entrypoint loading
+- Hot reloading with VM module isolation 
+- Multiple platform targets: Node.js, Bun, Cloudflare Workers
+- Automatic platform detection for development
+- ESBuild integration with static file handling
+
+**Platform Implementations:**
+- `@b9g/platform-node` - Node.js with VM modules and hot reloading
+- `@b9g/platform-bun` - Bun runtime with native ESBuild integration  
+- `@b9g/platform-cloudflare` - Cloudflare Workers with Wrangler
+
+**ServiceWorker Pattern:**
+```javascript
+// Your app as a ServiceWorker-style entrypoint
+import { Router } from '@b9g/router';
+
+const router = new Router();
+router.get('/', () => new Response('Hello World'));
+
+// Platform loads this as a ServiceWorker
+addEventListener('install', event => {
+  console.log('App installing...');
+});
+
+addEventListener('activate', event => {
+  console.log('App activated!');
+});
+
+addEventListener('fetch', event => {
+  event.respondWith(router.handler(event.request));
+});
+```
+
+**Status:** ✅ Implemented
+
+### 5. `@b9g/cache`
 
 Universal Cache API implementation:
 - Provides CacheStorage/Cache APIs everywhere
@@ -180,15 +216,31 @@ const router = new Router({caches});
 // Other caches are accessible under `context.caches`
 ```
 
-**Status:** Design phase
+**Status:** ✅ Implemented
 
-### 5. `shovel` CLI
+### 6. `shovel` CLI
 
-Command-line tool for development and deployment:
-- `shovel dev` - Development server with HMR
-- `shovel build` - Production bundling and optimization
-- `shovel static` - SSG: populate caches from static paths
-- `shovel deploy` - Deploy to various platforms
+Universal command-line tool with platform auto-detection:
+- `shovel develop` - Development server with hot reloading
+- `shovel build` - Production bundling and optimization  
+- `shovel static` - Static site generation via cache population
+- `shovel info` - Platform and runtime information
+- Platform targeting: `--platform=node|bun|cloudflare`
+- Auto-detects runtime (Node.js, Bun) for optimal defaults
+
+**Development Server:**
+```bash
+# Auto-detect platform
+shovel develop src/app.js
+
+# Explicit platform targeting  
+shovel develop src/app.js --platform=bun --port=3000
+
+# Verbose output for debugging
+shovel develop src/app.js --verbose
+```
+
+The CLI uses the platform abstraction to provide consistent development experience across all runtimes.
 
 **SSG Example:**
 ```javascript
@@ -355,9 +407,29 @@ This same code works:
 3. **Web standards only** - URLPattern, Request, Response, Fetch, Cache API
 4. **Universal by default** - Same code runs everywhere, with runtime/platform specific fallbacks for maximum compatibility.
 
+## Recent Developments
+
+### Implemented Features
+- **Router API**: Complete rewrite with bound handler functions and fluent RouteBuilder pattern
+- **Platform Abstraction**: Universal ServiceWorker-style application loading across Node.js, Bun, and Cloudflare
+- **Hot Reloading**: VM module isolation for clean reloads in Node.js platform  
+- **CLI Tool**: Auto-detecting development server with platform targeting
+- **Cache Integration**: Full Cache/CacheStorage API implementation with multiple backends
+- **Static Files**: ESBuild plugin for asset handling with URL imports
+
+### Architecture Decisions
+- **ServiceWorker Pattern**: Applications written as ServiceWorker entrypoints work universally
+- **Bound Handler API**: `router.handler(request)` replaces factory pattern for cleaner integration
+- **Route-Specific Middleware**: `router.route().use().get()` for composable request handling
+- **VM Isolation**: Hot reloading uses VM modules for proper module boundary isolation
+- **Platform Detection**: Automatic runtime detection with explicit override capabilities
+
+### Current Focus
+Working on improving hot reloading performance and implementing worker thread architecture for development scaling.
+
 ## Project Status
 
-All components are currently in the **design phase**. This README captures the architectural decisions and API design for the meta-framework.
+Core components are **implemented and functional**. The framework successfully runs universal applications across multiple platforms with a consistent API.
 
 ## Philosophy in Practice
 
