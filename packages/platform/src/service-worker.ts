@@ -30,17 +30,6 @@ export interface ShovelActivateEvent extends Event {
   waitUntil(promise: Promise<any>): void;
 }
 
-/**
- * Custom Shovel events for platform-specific functionality
- */
-export interface ShovelPlatformEvent extends Event {
-  readonly type: 'platform';
-  readonly detail: {
-    platform: string;
-    capabilities: Record<string, any>;
-    caches?: any;
-  };
-}
 
 /**
  * Static generation event for collecting routes
@@ -167,15 +156,6 @@ export class ServiceWorkerRuntime extends EventTarget {
     });
   }
 
-  /**
-   * Emit platform-specific event
-   */
-  emitPlatformEvent(detail: ShovelPlatformEvent['detail']): void {
-    const event: ShovelPlatformEvent = Object.assign(new Event('platform'), {
-      detail,
-    });
-    this.dispatchEvent(event);
-  }
 
   /**
    * Collect static routes for pre-rendering

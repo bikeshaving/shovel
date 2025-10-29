@@ -19,7 +19,7 @@ import {
 import { CacheStorage } from '@b9g/cache/cache-storage';
 import { MemoryCache } from '@b9g/cache/memory-cache';
 import { FilesystemCache } from '@b9g/cache/filesystem-cache';
-import { createRequestHandler } from '@remix-run/node-fetch-server';
+import { createRequestListener } from '@remix-run/node-fetch-server';
 import * as Http from 'http';
 import * as Path from 'path';
 import * as FS from 'fs/promises';
@@ -129,13 +129,8 @@ export class NodePlatform implements Platform {
           
           VM.runInContext(outputFile.text, context);
 
-          // Emit platform event to the ServiceWorker
-          const caches = options.caches ? this.createCaches(options.caches) : undefined;
-          runtime.emitPlatformEvent({
-            platform: this.name,
-            capabilities: { hotReload: true, sourceMaps: true, filesystem: true },
-            caches,
-          });
+          // Platform provides standard web APIs transparently
+          // No need to tell the app about platform details
 
           // Install and activate
           await runtime.install();
@@ -160,13 +155,7 @@ export class NodePlatform implements Platform {
       
       VM.runInContext(code, context);
 
-      // Emit platform event
-      const caches = options.caches ? this.createCaches(options.caches) : undefined;
-      runtime.emitPlatformEvent({
-        platform: this.name,
-        capabilities: { hotReload: false, sourceMaps: true, filesystem: true },
-        caches,
-      });
+      // Platform provides standard web APIs transparently
 
       await runtime.install();
       await runtime.activate();
@@ -206,9 +195,9 @@ export class NodePlatform implements Platform {
     const port = options.port ?? this.options.port;
     const host = options.host ?? this.options.host;
 
-    // Simple HTTP server using Remix request handler
-    const requestHandler = createRequestHandler(handler);
-    const httpServer = Http.createServer(requestHandler);
+    // Simple HTTP server using Remix request listener
+    const requestListener = createRequestListener(handler);
+    const httpServer = Http.createServer(requestListener);
 
     return {
       listen: (callback?: () => void) => {

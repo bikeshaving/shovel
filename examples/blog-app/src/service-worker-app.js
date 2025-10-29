@@ -83,16 +83,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(router.handler()(event.request));
 });
 
-/**
- * Platform event - receive platform-specific setup
- */
-self.addEventListener('platform', (event) => {
-  const { platform, capabilities, caches: platformCaches } = event.detail;
-  console.log(`[SW] Running on platform: ${platform}`, capabilities);
-  
-  // Store platform caches for use in handlers
-  caches = platformCaches;
-});
 
 /**
  * Static event - provide routes for static site generation
