@@ -20,7 +20,7 @@ import { mergeConfig } from './shared.js';
  * });
  * 
  * // In your code:
- * import logo from './logo.svg' with { type: 'url' };
+ * import logo from './logo.svg' with { url: '/static/' };
  * // Returns: "/static/logo-abc12345.svg"
  */
 export function staticFilesPlugin(options: AssetsConfig = {}) {
@@ -37,10 +37,27 @@ export function staticFilesPlugin(options: AssetsConfig = {}) {
   return {
     name: 'shovel-staticfiles',
     setup(build) {
+      // Handle resolution to ensure files get processed
+      build.onResolve({ filter: /.*/ }, (args) => {
+        console.log(`[staticFilesPlugin] onResolve called:`, {
+          path: args.path,
+          with: args.with,
+          importer: args.importer
+        });
+        
+        return null; // Let default resolution handle all imports
+      });
+      
       // Intercept all imports
       build.onLoad({ filter: /.*/ }, (args) => {
-        // Only process imports with { type: 'url' }
-        if (args.with?.type !== 'url') {
+        console.log(`[staticFilesPlugin] onLoad called:`, {
+          path: args.path,
+          with: args.with,
+          namespace: args.namespace
+        });
+        
+        // Only process imports with { url: 'base-path' }
+        if (!args.with?.url || typeof args.with.url !== 'string') {
           return null; // Let other loaders handle it
         }
 
@@ -73,8 +90,9 @@ export function staticFilesPlugin(options: AssetsConfig = {}) {
           const outputPath = join(config.outputDir, filename);
           writeFileSync(outputPath, content);
           
-          // Generate public URL
-          const publicUrl = `${config.publicPath}${filename}`;
+          // Generate public URL using the base path from import attribute
+          const basePath = args.with.url;
+          const publicUrl = `${basePath}${filename}`;
           
           // Create manifest entry
           const sourcePath = relative(process.cwd(), args.path);

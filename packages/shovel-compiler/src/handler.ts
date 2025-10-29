@@ -5,23 +5,23 @@ import type { RuntimeConfig, AssetManifest } from './shared.js';
 import { mergeRuntimeConfig } from './shared.js';
 
 /**
- * Create a static assets handler for serving files
+ * Create static files middleware for serving assets
  * 
  * @param options - Runtime configuration options
- * @returns Handler function that can be used as middleware or route handler
+ * @returns Middleware function that handles asset requests or calls next()
  * 
  * @example
  * ```typescript
- * import { createStaticFilesHandler } from '@b9g/staticfiles';
+ * import { createStaticFilesMiddleware } from '@b9g/shovel-compiler';
  * 
  * // Use as middleware
- * router.use('/static/*', createStaticFilesHandler());
- * 
- * // Use as route handler
- * router.route('/static/*').get(createStaticFilesHandler());
+ * router.use(createStaticFilesMiddleware({
+ *   outputDir: 'dist/static',
+ *   manifest: 'dist/static-manifest.json'
+ * }));
  * ```
  */
-export function createStaticFilesHandler(options: RuntimeConfig = {}) {
+export function createStaticFilesMiddleware(options: RuntimeConfig = {}) {
   const config = mergeRuntimeConfig(options);
   let manifest: AssetManifest | null = null;
   
@@ -35,24 +35,24 @@ export function createStaticFilesHandler(options: RuntimeConfig = {}) {
     }
   }
 
-  return async (request: Request, context?: any): Promise<Response> => {
+  return async (request: Request, context: any, next: () => Promise<Response>): Promise<Response> => {
     const url = new URL(request.url);
     
-    // Check if this request is for our assets
-    if (!url.pathname.startsWith(config.publicPath)) {
-      return new Response('Not Found', { status: 404 });
-    }
-
-    // Extract the asset path
-    const assetPath = url.pathname.slice(config.publicPath.length);
-    
+    let response: Response | null;
     if (config.dev) {
       // Development mode: serve from source files
-      return serveFromSource(assetPath, config, context);
+      response = serveFromSource(url.pathname, config, manifest, context);
     } else {
       // Production mode: serve from manifest
-      return serveFromManifest(assetPath, config, manifest, context);
+      response = serveFromManifest(url.pathname, config, manifest, context);
     }
+    
+    // If we couldn't handle this request, call next middleware
+    if (!response) {
+      return next();
+    }
+    
+    return response;
   };
 }
 
@@ -60,17 +60,32 @@ export function createStaticFilesHandler(options: RuntimeConfig = {}) {
  * Serve assets directly from source in development mode
  */
 function serveFromSource(
-  assetPath: string, 
+  pathname: string, 
   config: RuntimeConfig & Required<import('./shared.js').AssetsConfig>,
+  manifest: AssetManifest | null,
   context?: any
-): Response {
+): Response | null {
   try {
-    // In dev mode, the asset path should match the source file structure
-    // For example: /static/logo.svg -> src/logo.svg
-    const sourcePath = join(config.sourceDir!, assetPath);
+    // Check if we have this asset in our manifest (even in dev mode)
+    // This ensures we only serve assets that were imported with { url: '...' }
+    if (!manifest?.assets) {
+      return null; // No manifest available, fall through
+    }
+
+    // Find asset by URL pathname
+    const assetEntry = Object.values(manifest.assets).find(
+      asset => asset.url === pathname
+    );
+
+    if (!assetEntry) {
+      return null; // Not our asset, fall through
+    }
+
+    // Serve from source file
+    const sourcePath = join(process.cwd(), assetEntry.source);
     
     if (!existsSync(sourcePath)) {
-      return new Response('Asset not found', { status: 404 });
+      return null; // Source not found, fall through
     }
 
     const content = readFileSync(sourcePath);
@@ -86,8 +101,8 @@ function serveFromSource(
 
     return new Response(content, { headers });
   } catch (error) {
-    console.error(`Error serving asset ${assetPath}:`, error);
-    return new Response('Internal Server Error', { status: 500 });
+    console.error(`Error serving asset ${pathname}:`, error);
+    return null; // Error occurred, fall through
   }
 }
 
@@ -95,29 +110,29 @@ function serveFromSource(
  * Serve assets from built files using manifest in production mode
  */
 function serveFromManifest(
-  assetPath: string,
+  pathname: string,
   config: RuntimeConfig & Required<import('./shared.js').AssetsConfig>,
   manifest: AssetManifest | null,
   context?: any
-): Response {
+): Response | null {
   try {
-    if (!manifest) {
-      return new Response('Asset manifest not found', { status: 404 });
+    if (!manifest?.assets) {
+      return null; // No manifest, fall through
     }
 
-    // Find the asset in the manifest by output filename
+    // Find the asset in the manifest by URL pathname
     const assetEntry = Object.values(manifest.assets).find(
-      asset => asset.output === assetPath
+      asset => asset.url === pathname
     );
 
     if (!assetEntry) {
-      return new Response('Asset not found', { status: 404 });
+      return null; // Not our asset, fall through
     }
 
     const filePath = join(config.outputDir, assetEntry.output);
     
     if (!existsSync(filePath)) {
-      return new Response('Asset file not found', { status: 404 });
+      return null; // File not found, fall through
     }
 
     const content = readFileSync(filePath);
@@ -130,28 +145,32 @@ function serveFromManifest(
       'Cache-Control': 'public, max-age=31536000, immutable', // 1 year cache for hashed assets
     });
 
-    // Handle conditional requests
-    const ifNoneMatch = request.headers.get('If-None-Match');
-    if (ifNoneMatch === `"${assetEntry.hash}"`) {
-      return new Response(null, { status: 304, headers });
-    }
-
     return new Response(content, { headers });
   } catch (error) {
-    console.error(`Error serving asset ${assetPath}:`, error);
-    return new Response('Internal Server Error', { status: 500 });
+    console.error(`Error serving asset ${pathname}:`, error);
+    return null; // Error occurred, fall through
   }
 }
 
 /**
- * Create assets handler with cache integration
+ * Create cached static files middleware with cache integration
  * This version automatically integrates with the cache system when available
  */
-export function createCachedStaticFilesHandler(options: RuntimeConfig = {}) {
-  const baseHandler = createStaticFilesHandler(options);
+export function createCachedStaticFilesMiddleware(options: RuntimeConfig = {}) {
   const config = mergeRuntimeConfig(options);
+  let manifest: AssetManifest | null = null;
   
-  return async (request: Request, context?: any): Promise<Response> => {
+  // Load manifest in production mode
+  if (!config.dev && existsSync(config.manifest)) {
+    try {
+      const manifestContent = readFileSync(config.manifest, 'utf-8');
+      manifest = JSON.parse(manifestContent);
+    } catch (error) {
+      console.warn(`Failed to load asset manifest: ${error.message}`);
+    }
+  }
+  
+  return async (request: Request, context: any, next: () => Promise<Response>): Promise<Response> => {
     // If cache is available and this is a GET request, try cache first
     if (context?.cache && request.method === 'GET') {
       try {
@@ -166,8 +185,21 @@ export function createCachedStaticFilesHandler(options: RuntimeConfig = {}) {
       }
     }
 
-    // Get response from handler
-    const response = await baseHandler(request, context);
+    const url = new URL(request.url);
+    
+    let response: Response | null;
+    if (config.dev) {
+      // Development mode: serve from source files
+      response = serveFromSource(url.pathname, config, manifest, context);
+    } else {
+      // Production mode: serve from manifest
+      response = serveFromManifest(url.pathname, config, manifest, context);
+    }
+    
+    // If we couldn't handle this request, call next middleware
+    if (!response) {
+      return next();
+    }
 
     // Cache successful responses in production mode
     if (context?.cache && response.ok && !config.dev) {
@@ -185,4 +217,4 @@ export function createCachedStaticFilesHandler(options: RuntimeConfig = {}) {
 }
 
 // Default export
-export default createStaticFilesHandler;
+export default createStaticFilesMiddleware;

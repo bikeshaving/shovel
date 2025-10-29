@@ -1,0 +1,81 @@
+{
+  "name": "@b9g/shovel-compiler",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shovel's compilation and development infrastructure",
+  "keywords": ["shovel", "compiler", "bundler", "hot-reload", "static-files"],
+  "scripts": {
+    "build": "libuild build",
+    "dev": "libuild build --watch",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "esbuild": "^0.19.12",
+    "source-map": "^0.7.4",
+    "magic-string": "^0.30.5",
+    "mime-types": "^2.1.35"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "file:../libuild"
+  },
+  "peerDependencies": {
+    "@types/node": "*"
+  },
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./global": {
+      "types": "./dist/src/global.d.ts",
+      "import": "./dist/src/global.js"
+    },
+    "./global.js": {
+      "types": "./dist/src/global.d.ts",
+      "import": "./dist/src/global.js"
+    },
+    "./handler": {
+      "types": "./dist/src/handler.d.ts",
+      "import": "./dist/src/handler.js"
+    },
+    "./handler.js": {
+      "types": "./dist/src/handler.d.ts",
+      "import": "./dist/src/handler.js"
+    },
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./shared": {
+      "types": "./dist/src/shared.d.ts",
+      "import": "./dist/src/shared.js"
+    },
+    "./shared.js": {
+      "types": "./dist/src/shared.d.ts",
+      "import": "./dist/src/shared.js"
+    },
+    "./static-files": {
+      "types": "./dist/src/static-files.d.ts",
+      "import": "./dist/src/static-files.js"
+    },
+    "./static-files.js": {
+      "types": "./dist/src/static-files.d.ts",
+      "import": "./dist/src/static-files.js"
+    },
+    "./watcher": {
+      "types": "./dist/src/watcher.d.ts",
+      "import": "./dist/src/watcher.js"
+    },
+    "./watcher.js": {
+      "types": "./dist/src/watcher.d.ts",
+      "import": "./dist/src/watcher.js"
+    },
+    "./package.json": "./package.json"
+  }
+}
