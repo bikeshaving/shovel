@@ -23,7 +23,7 @@ import { createRequestListener } from '@remix-run/node-fetch-server';
 import * as Http from 'http';
 import * as Path from 'path';
 import * as FS from 'fs/promises';
-import { Watcher, Hot, createModuleLinker, fixErrorStack } from './watcher.js';
+import { Watcher, Hot, createModuleLinker, fixErrorStack } from '@b9g/shovel-compiler';
 import * as VM from 'vm';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { SourceMapConsumer } from 'source-map';

@@ -9,11 +9,11 @@
 import { Router } from '@b9g/router';
 import { CacheStorage } from '@b9g/cache/cache-storage';
 import { MemoryCache } from '@b9g/cache/memory-cache';
-import { createStaticFilesHandler } from '@b9g/staticfiles';
+import { createStaticFilesMiddleware } from '@b9g/shovel-compiler';
 
 // Import static assets using import attributes
-import styles from './assets/styles.css' with { type: 'url' };
-import logo from './assets/logo.svg' with { type: 'url' };
+import styles from './assets/styles.css' with { url: '/static/' };
+import logo from './assets/logo.svg' with { url: '/static/' };
 
 // Set up cache storage with different caches for different content types
 const caches = new CacheStorage();
@@ -24,9 +24,8 @@ caches.register('static', () => new MemoryCache('static'));
 // Create router with cache support
 const router = new Router({ caches });
 
-// Static files handler - automatically serves /static/* assets
-router.use('/static/*', createStaticFilesHandler({
-  publicPath: '/static/',
+// Static files middleware - serves any assets imported with { url: '...' }
+router.use(createStaticFilesMiddleware({
   outputDir: 'dist/static',
   manifest: 'dist/static-manifest.json',
   dev: process.env?.NODE_ENV !== 'production',

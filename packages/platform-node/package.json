@@ -20,11 +20,8 @@
   "dependencies": {
     "@b9g/platform": "file:../platform",
     "@b9g/cache": "file:../cache",
-    "@b9g/staticfiles": "file:../staticfiles",
-    "@remix-run/node-fetch-server": "^0.11.0",
-    "esbuild": "^0.19.12",
-    "magic-string": "^0.30.17",
-    "source-map": "^0.7.4"
+    "@b9g/shovel-compiler": "file:../shovel-compiler",
+    "@remix-run/node-fetch-server": "^0.11.0"
   },
   "devDependencies": {
     "@b9g/libuild": "^0.1.0",
