@@ -10,6 +10,7 @@ import * as VM from 'vm';
 import * as ESBuild from 'esbuild';
 import { SourceMapConsumer } from 'source-map';
 import MagicString from 'magic-string';
+import { staticFilesPlugin } from '@b9g/staticfiles';
 
 /**
  * Watcher record for tracking build results
@@ -161,7 +162,15 @@ export class Watcher {
   private async createESBuildContext(entry: string): Promise<ESBuild.BuildContext> {
     return ESBuild.context({
       entryPoints: [entry],
-      plugins: [this.createImportMetaPlugin(), this.plugin],
+      plugins: [
+        staticFilesPlugin({
+          outputDir: 'dist/static',
+          publicPath: '/static/',
+          manifest: 'dist/static-manifest.json',
+        }),
+        this.createImportMetaPlugin(), 
+        this.plugin
+      ],
       format: 'esm',
       platform: 'node',
       bundle: false,
@@ -174,6 +183,14 @@ export class Watcher {
       target: 'es2022',
       jsx: 'automatic',
       jsxImportSource: 'react',
+      loader: {
+        '.svg': 'file',
+        '.png': 'file',
+        '.jpg': 'file',
+        '.jpeg': 'file',
+        '.gif': 'file',
+        '.css': 'file',
+      },
     });
   }
 
@@ -266,7 +283,7 @@ export function fixErrorStack(error: Error, sourceMapConsumer?: SourceMapConsume
 /**
  * Create module linker for VM modules
  */
-export function createModuleLinker(watcher: Watcher) {
+export function createModuleLinker(watcher: Watcher, context?: VM.Context) {
   return async function link(specifier: string, referencingModule: VM.Module): Promise<VM.Module> {
     const basedir = Path.dirname(fileURLToPath(referencingModule.identifier));
     const resolved = await resolveSpecifier(specifier, basedir);
@@ -279,6 +296,7 @@ export function createModuleLinker(watcher: Watcher) {
       
       return new VM.SourceTextModule(code, {
         identifier: url,
+        context, // Use the shared context
         initializeImportMeta(meta: any) {
           meta.url = url;
           meta.hot = new Hot();
@@ -300,6 +318,9 @@ export function createModuleLinker(watcher: Watcher) {
       for (const key of exports) {
         this.setExport(key, importedModule[key]);
       }
+    }, {
+      identifier: resolved,
+      context, // Use the shared context
     });
   };
 }

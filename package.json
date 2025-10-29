@@ -1,25 +1,26 @@
 {
 	"name": "@b9g/shovel",
 	"version": "0.1.10",
-	"description": "Dig for treasure",
+	"description": "The obsessively web platform-based web framework",
 	"license": "MIT",
 	"type": "module",
 	"bin": {
-		"shovel": "bin/shovel.js"
+		"shovel": "dist/cli.js"
 	},
+	"workspaces": [
+		"packages/*",
+		"examples/*"
+	],
 	"scripts": {
+		"build": "libuild build",
 		"test": "node --experimental-fetch node_modules/.bin/uvu"
 	},
 	"dependencies": {
-		"commander": "^13.1.0",
-		"esbuild": "^0.25.0",
-		"is-core-module": "^2.16.1",
-		"magic-string": "^0.30.17",
-		"resolve.exports": "^2.0.3",
-		"source-map": "^0.7.4"
+		"commander": "^13.1.0"
 	},
 	"devDependencies": {
 		"@b9g/crank": "^0.6.0",
+		"@b9g/libuild": "^0.1.7",
 		"@emotion/css": "^11.13.5",
 		"@flydotio/dockerfile": "^0.7.8",
 		"@types/bun": "^1.2.2",

@@ -1,10 +1,17 @@
-// Modern Shovel app using cache-first architecture
+/**
+ * Shovel Blog App - ServiceWorker-style entrypoint
+ * 
+ * This demonstrates the new ServiceWorker-based architecture where the
+ * entrypoint uses standard ServiceWorker APIs (install, activate, fetch)
+ * but runs universally across all platforms.
+ */
+
 import { Router } from '@b9g/router';
 import { CacheStorage } from '@b9g/cache/cache-storage';
 import { MemoryCache } from '@b9g/cache/memory-cache';
 import { createStaticFilesHandler } from '@b9g/staticfiles';
 
-// Import static assets (using our new staticfiles system!)
+// Import static assets using import attributes
 import styles from './assets/styles.css' with { type: 'url' };
 import logo from './assets/logo.svg' with { type: 'url' };
 
@@ -22,10 +29,31 @@ router.use('/static/*', createStaticFilesHandler({
   publicPath: '/static/',
   outputDir: 'dist/static',
   manifest: 'dist/static-manifest.json',
-  dev: process.env.NODE_ENV !== 'production',
+  dev: process.env?.NODE_ENV !== 'production',
   sourceDir: 'src',
   cache: { name: 'static' }
 }));
+
+// Cache middleware for pages
+const pageCache = async (request, context, next) => {
+  if (request.method !== 'GET' || !context.cache) {
+    return next();
+  }
+
+  const cached = await context.cache.match(request);
+  if (cached) {
+    cached.headers.set('X-Cache', 'HIT');
+    return cached;
+  }
+
+  const response = await next();
+  if (response.ok) {
+    await context.cache.put(request, response.clone());
+  }
+  
+  response.headers.set('X-Cache', 'MISS');
+  return response;
+};
 
 // Sample blog data
 const posts = [
@@ -52,32 +80,11 @@ const posts = [
   }
 ];
 
-// Cache middleware for pages
-const pageCache = async (request, context, next) => {
-  if (request.method !== 'GET' || !context.cache) {
-    return next();
-  }
-
-  const cached = await context.cache.match(request);
-  if (cached) {
-    cached.headers.set('X-Cache', 'HIT');
-    return cached;
-  }
-
-  const response = await next();
-  if (response.ok) {
-    await context.cache.put(request, response.clone());
-  }
-  
-  response.headers.set('X-Cache', 'MISS');
-  return response;
-};
-
 // Routes with cache integration
 router.route({
   pattern: '/',
   cache: { name: 'pages' }
-}).get(pageCache, async (request, context) => {
+}).use(pageCache).get(async (request, context) => {
   return new Response(renderPage('Home', `
     <div class="cache-info">
       <strong>Cache Status:</strong> ${context.cache ? 'Enabled' : 'Disabled'} | 
@@ -104,7 +111,7 @@ router.route({
 router.route({
   pattern: '/posts/:id',
   cache: { name: 'pages' }
-}).get(pageCache, async (request, context) => {
+}).use(pageCache).get(async (request, context) => {
   const post = posts.find(p => p.id === parseInt(context.params.id));
   
   if (!post) {
@@ -165,7 +172,7 @@ router.route({
 router.route({
   pattern: '/about',
   cache: { name: 'pages' }
-}).get(pageCache, async (request, context) => {
+}).use(pageCache).get(async (request, context) => {
   return new Response(renderPage('About', `
     <div class="post">
       <h2>About This App</h2>
@@ -191,6 +198,56 @@ router.route({
       'Cache-Control': 'public, max-age=3600' // 1 hour
     }
   });
+});
+
+/**
+ * ServiceWorker install event - setup and initialization
+ */
+self.addEventListener('install', (event) => {
+  console.log('[SW] Installing Shovel blog app...');
+  
+  event.waitUntil((async () => {
+    console.log('[SW] Shovel blog app installed successfully!');
+  })());
+});
+
+/**
+ * ServiceWorker activate event - ready to handle requests
+ */
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Activating Shovel blog app...');
+  
+  event.waitUntil((async () => {
+    console.log('[SW] Shovel blog app activated and ready!');
+  })());
+});
+
+/**
+ * ServiceWorker fetch event - handle HTTP requests
+ */
+self.addEventListener('fetch', (event) => {
+  event.respondWith(router.handler(event.request));
+});
+
+/**
+ * Static event - provide routes for static site generation
+ */
+self.addEventListener('static', (event) => {
+  const { outDir } = event.detail;
+  console.log('[SW] Collecting static routes for blog app...');
+  
+  event.waitUntil((async () => {
+    // Return all routes that should be pre-rendered
+    const staticRoutes = [
+      '/',
+      '/about',
+      '/api/posts',
+      ...posts.map(post => `/posts/${post.id}`)
+    ];
+    
+    console.log(`[SW] Found ${staticRoutes.length} routes for static generation`);
+    return staticRoutes;
+  })());
 });
 
 // Helper function to render HTML pages

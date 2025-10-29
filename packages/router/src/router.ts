@@ -63,6 +63,8 @@ class LinearExecutor {
  *     .delete(deleteUserHandler);
  */
 class RouteBuilder {
+  private middleware: Middleware[] = [];
+  
   constructor(
     private router: Router,
     private pattern: string,
@@ -70,10 +72,18 @@ class RouteBuilder {
   ) {}
 
   /**
+   * Add middleware to this route
+   */
+  use(middleware: Middleware): RouteBuilder {
+    this.middleware.push(middleware);
+    return this;
+  }
+
+  /**
    * Register a GET handler for this route pattern
    */
   get(handler: Handler): RouteBuilder {
-    this.router.addRoute('GET', this.pattern, handler, this.cacheConfig);
+    this.router.addRoute('GET', this.pattern, handler, this.cacheConfig, this.middleware);
     return this;
   }
 
@@ -81,7 +91,7 @@ class RouteBuilder {
    * Register a POST handler for this route pattern
    */
   post(handler: Handler): RouteBuilder {
-    this.router.addRoute('POST', this.pattern, handler, this.cacheConfig);
+    this.router.addRoute('POST', this.pattern, handler, this.cacheConfig, this.middleware);
     return this;
   }
 
@@ -89,7 +99,7 @@ class RouteBuilder {
    * Register a PUT handler for this route pattern
    */
   put(handler: Handler): RouteBuilder {
-    this.router.addRoute('PUT', this.pattern, handler, this.cacheConfig);
+    this.router.addRoute('PUT', this.pattern, handler, this.cacheConfig, this.middleware);
     return this;
   }
 
@@ -97,7 +107,7 @@ class RouteBuilder {
    * Register a DELETE handler for this route pattern
    */
   delete(handler: Handler): RouteBuilder {
-    this.router.addRoute('DELETE', this.pattern, handler, this.cacheConfig);
+    this.router.addRoute('DELETE', this.pattern, handler, this.cacheConfig, this.middleware);
     return this;
   }
 
@@ -105,7 +115,7 @@ class RouteBuilder {
    * Register a PATCH handler for this route pattern
    */
   patch(handler: Handler): RouteBuilder {
-    this.router.addRoute('PATCH', this.pattern, handler, this.cacheConfig);
+    this.router.addRoute('PATCH', this.pattern, handler, this.cacheConfig, this.middleware);
     return this;
   }
 
@@ -113,7 +123,7 @@ class RouteBuilder {
    * Register a HEAD handler for this route pattern
    */
   head(handler: Handler): RouteBuilder {
-    this.router.addRoute('HEAD', this.pattern, handler, this.cacheConfig);
+    this.router.addRoute('HEAD', this.pattern, handler, this.cacheConfig, this.middleware);
     return this;
   }
 
@@ -121,7 +131,7 @@ class RouteBuilder {
    * Register an OPTIONS handler for this route pattern
    */
   options(handler: Handler): RouteBuilder {
-    this.router.addRoute('OPTIONS', this.pattern, handler, this.cacheConfig);
+    this.router.addRoute('OPTIONS', this.pattern, handler, this.cacheConfig, this.middleware);
     return this;
   }
 
@@ -131,7 +141,7 @@ class RouteBuilder {
   all(handler: Handler): RouteBuilder {
     const methods: HttpMethod[] = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
     methods.forEach(method => {
-      this.router.addRoute(method, this.pattern, handler, this.cacheConfig);
+      this.router.addRoute(method, this.pattern, handler, this.cacheConfig, this.middleware);
     });
     return this;
   }
@@ -156,9 +166,28 @@ export class Router {
    * Register middleware that applies to all routes
    * Middleware executes in the order it was registered
    */
-  use(middleware: Middleware): void {
-    this.middlewares.push({ middleware });
-    this.dirty = true;
+  use(middleware: Middleware): void;
+  
+  /**
+   * Register a handler for a specific pattern
+   */
+  use(pattern: string, handler: Handler): void;
+  
+  use(patternOrMiddleware: string | Middleware, handler?: Handler): void {
+    if (typeof patternOrMiddleware === 'string' && handler) {
+      // Pattern-based handler registration
+      this.addRoute('GET', patternOrMiddleware, handler);
+      this.addRoute('POST', patternOrMiddleware, handler);
+      this.addRoute('PUT', patternOrMiddleware, handler);
+      this.addRoute('DELETE', patternOrMiddleware, handler);
+      this.addRoute('PATCH', patternOrMiddleware, handler);
+      this.addRoute('HEAD', patternOrMiddleware, handler);
+      this.addRoute('OPTIONS', patternOrMiddleware, handler);
+    } else if (typeof patternOrMiddleware === 'function') {
+      // Global middleware registration
+      this.middlewares.push({ middleware: patternOrMiddleware });
+      this.dirty = true;
+    }
   }
 
   /**
@@ -188,16 +217,47 @@ export class Router {
    * Internal method called by RouteBuilder to register routes
    * Public for RouteBuilder access, but not intended for direct use
    */
-  addRoute(method: HttpMethod, pattern: string, handler: Handler, cache?: RouteCacheConfig): void {
+  addRoute(method: HttpMethod, pattern: string, handler: Handler, cache?: RouteCacheConfig, middleware?: Middleware[]): void {
     const matchPattern = new MatchPattern(pattern);
+    
+    // Create composite handler that runs middleware chain before final handler
+    const compositeHandler: Handler = async (request: Request, context: RouteContext) => {
+      if (!middleware || middleware.length === 0) {
+        return handler(request, context);
+      }
+      
+      let middlewareIndex = 0;
+      const next = async (): Promise<Response> => {
+        if (middlewareIndex >= middleware.length) {
+          return handler(request, context);
+        }
+        const currentMiddleware = middleware[middlewareIndex++];
+        return currentMiddleware(request, context, next);
+      };
+      
+      return next();
+    };
+    
     this.routes.push({
       pattern: matchPattern,
       method: method.toUpperCase(),
-      handler,
+      handler: compositeHandler,
       cache
     });
     this.dirty = true;
   }
+
+  /**
+   * Handle a request - main entrypoint for ServiceWorker usage
+   * Returns a response or throws if no route matches
+   */
+  handler = async (request: Request): Promise<Response> => {
+    const response = await this.match(request);
+    if (!response) {
+      return new Response('Not Found', { status: 404 });
+    }
+    return response;
+  };
 
   /**
    * Match a request against registered routes and execute the handler chain

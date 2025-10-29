@@ -109,10 +109,18 @@ export class NodePlatform implements Platform {
           // Create VM context with ServiceWorker globals
           const globals = createServiceWorkerGlobals(runtime);
           const moduleUrl = pathToFileURL(record.entry).href;
-          const linker = createModuleLinker(w);
+          
+          const context = VM.createContext({
+            ...globals,
+            ...global, // Include Node.js globals
+            process, // Explicitly include process
+          });
+          
+          const linker = createModuleLinker(w, context);
 
           const currentModule = new VM.SourceTextModule(outputFile.text, {
             identifier: moduleUrl,
+            context,
             initializeImportMeta(meta: any) {
               meta.url = moduleUrl;
               meta.hot = new Hot();
@@ -122,12 +130,7 @@ export class NodePlatform implements Platform {
           await currentModule.link(linker);
           
           // Execute module with ServiceWorker globals
-          const context = VM.createContext({
-            ...globals,
-            ...global, // Include Node.js globals
-          });
-          
-          VM.runInContext(outputFile.text, context);
+          await currentModule.evaluate();
 
           // Platform provides standard web APIs transparently
           // No need to tell the app about platform details
@@ -147,13 +150,29 @@ export class NodePlatform implements Platform {
       // Static loading without hot reloading
       const code = await FS.readFile(entryPath, 'utf8');
       const globals = createServiceWorkerGlobals(runtime);
+      const moduleUrl = pathToFileURL(entryPath).href;
       
       const context = VM.createContext({
         ...globals,
         ...global,
+        process, // Explicitly include process
       });
       
-      VM.runInContext(code, context);
+      const module = new VM.SourceTextModule(code, {
+        identifier: moduleUrl,
+        context,
+        initializeImportMeta(meta: any) {
+          meta.url = moduleUrl;
+        },
+      });
+
+      // Create a simple linker for static loading (no module resolution needed for simple cases)
+      await module.link(async (specifier: string) => {
+        throw new Error(`Dynamic imports not supported in static loading: ${specifier}`);
+      });
+      
+      // Execute module with ServiceWorker globals  
+      await module.evaluate();
 
       // Platform provides standard web APIs transparently
 

@@ -27,7 +27,6 @@ export {
   type ShovelFetchEvent,
   type ShovelInstallEvent,
   type ShovelActivateEvent,
-  type ShovelPlatformEvent,
   type ShovelStaticEvent,
 } from './service-worker.js';
 
