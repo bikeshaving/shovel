@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "npx shovel develop src/app.js --port 3000",
+    "build": "npx shovel build src/app.js --out-dir dist",
+    "start": "node dist/app.js",
     "static": "npx shovel static src/app.js --out-dir dist",
     "preview": "cd dist && python3 -m http.server 3000"
   },
