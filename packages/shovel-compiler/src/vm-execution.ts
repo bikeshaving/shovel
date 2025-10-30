@@ -7,6 +7,20 @@ import * as VM from 'vm';
 import { pathToFileURL } from 'url';
 
 /**
+ * Standard ServiceWorker API interfaces
+ */
+interface ExtendableEventInit extends EventInit {}
+
+interface FetchEventInit extends ExtendableEventInit {
+  request: Request;
+  clientId?: string;
+  isReload?: boolean;
+  replacesClientId?: string;
+  resultingClientId?: string;
+  preloadResponse?: Promise<Response>;
+}
+
+/**
  * ServiceWorker runtime interface
  * Platforms implement this to provide ServiceWorker-like APIs
  */
@@ -104,7 +118,9 @@ export async function executeInVM(
   options: VMExecutionOptions
 ): Promise<VMExecutionResult> {
   // Create isolated VM context with ServiceWorker globals
+  const serviceWorkerGlobals = createServiceWorkerGlobals();
   const context = VM.createContext({
+    ...serviceWorkerGlobals,
     ...options.globals,
     ...global, // Include Node.js globals for compatibility
     process, // Explicitly include process
@@ -240,6 +256,78 @@ function extractServiceWorkerRuntime(context: VM.Context): ServiceWorkerRuntime 
 export function createServiceWorkerGlobals(runtime?: ServiceWorkerRuntime): Record<string, any> {
   const events = new Map<string, Function[]>();
 
+  // Base Event class
+  const EventClass = globalThis.Event || class Event {
+    constructor(public type: string, options?: EventInit) {}
+  };
+
+  // ExtendableEvent class
+  class ExtendableEvent extends EventClass {
+    constructor(type: string, eventInit?: ExtendableEventInit) {
+      super(type, eventInit);
+      this.#promises = [];
+    }
+    
+    #promises: Promise<any>[] = [];
+    
+    waitUntil(promise: Promise<any>): void {
+      this.#promises.push(promise);
+    }
+    
+    // Internal method to await all promises (used by ServiceWorker runtime)
+    _waitForPromises(): Promise<void> {
+      return Promise.all(this.#promises).then(() => {});
+    }
+  }
+
+  // FetchEvent class
+  class FetchEvent extends ExtendableEvent {
+    constructor(type: 'fetch', eventInit: FetchEventInit) {
+      super(type, eventInit);
+      this.request = eventInit.request;
+      this.clientId = eventInit.clientId || '';
+      this.isReload = eventInit.isReload || false;
+      this.replacesClientId = eventInit.replacesClientId || '';
+      this.resultingClientId = eventInit.resultingClientId || '';
+      this.preloadResponse = eventInit.preloadResponse;
+      this.handled = new Promise((resolve) => {
+        this.#handledResolve = resolve;
+      });
+    }
+    
+    // Standard FetchEvent properties (all read-only)
+    readonly request: Request;
+    readonly clientId: string;
+    readonly handled: Promise<Response | undefined>;
+    readonly isReload: boolean; // Deprecated but still in spec
+    readonly preloadResponse?: Promise<Response>;
+    readonly replacesClientId: string;
+    readonly resultingClientId: string;
+    
+    #response?: Promise<Response>;
+    #handledResolve!: (value: Response | undefined) => void;
+    #responseHandled = false;
+    
+    respondWith(response: Promise<Response> | Response): void {
+      if (this.#responseHandled) {
+        throw new Error('FetchEvent.respondWith() has already been called');
+      }
+      this.#responseHandled = true;
+      this.#response = Promise.resolve(response);
+      
+      // Resolve handled promise when response settles
+      this.#response.then(
+        (res) => this.#handledResolve(res),
+        () => this.#handledResolve(undefined)
+      );
+    }
+    
+    // Internal method to get response (used by ServiceWorker runtime)
+    _getResponse(): Promise<Response> | undefined {
+      return this.#response;
+    }
+  }
+
   return {
     self: {
       addEventListener(type: string, listener: Function) {
@@ -282,29 +370,10 @@ export function createServiceWorkerGlobals(runtime?: ServiceWorkerRuntime): Reco
     Response: globalThis.Response,
     Headers: globalThis.Headers,
 
-    // Event constructors
-    Event: class Event {
-      constructor(public type: string, options?: EventInit) {}
-      waitUntil?(promise: Promise<any>): void {}
-    },
-
-    FetchEvent: class FetchEvent extends Event {
-      constructor(type: 'fetch', init: { request: Request }) {
-        super(type);
-        this.request = init.request;
-      }
-      
-      request: Request;
-      private _response?: Promise<Response>;
-      
-      respondWith(response: Promise<Response> | Response) {
-        this._response = Promise.resolve(response);
-      }
-      
-      get response(): Promise<Response> | undefined {
-        return this._response;
-      }
-    },
+    // Event constructors - Standard ServiceWorker API
+    Event: EventClass,
+    ExtendableEvent,
+    FetchEvent,
 
     // Console (from Node.js)
     console,

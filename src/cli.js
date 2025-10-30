@@ -117,24 +117,21 @@ program
         displayPlatformInfo(platformName);
       }
       
-      const platform = await createPlatform(platformName, {
-        hotReload: false,
-      });
-      
       console.log(`📦 Building for ${platformName}...`);
       
-      // Load ServiceWorker app
-      const serviceWorker = await platform.loadServiceWorker(entrypoint, {
-        hotReload: false,
+      // Import build functionality
+      const { buildForProduction } = await import("./_build.js");
+      
+      // Build ServiceWorker app to plain JavaScript
+      await buildForProduction({
+        entrypoint,
+        platformName,
+        outDir: options.outDir,
+        verbose: options.verbose
       });
       
-      // For now, just report success
-      // TODO: Implement actual build process
       console.log(`✅ Build complete for ${platformName}`);
       console.log(`📁 Output: ${options.outDir}`);
-      
-      await serviceWorker.dispose();
-      await platform.dispose();
       
     } catch (error) {
       console.error(`❌ Build failed:`, error.message);

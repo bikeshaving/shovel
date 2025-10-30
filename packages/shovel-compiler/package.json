@@ -3,7 +3,13 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Shovel's compilation and development infrastructure",
-  "keywords": ["shovel", "compiler", "bundler", "hot-reload", "static-files"],
+  "keywords": [
+    "shovel",
+    "compiler",
+    "bundler",
+    "hot-reload",
+    "static-files"
+  ],
   "scripts": {
     "build": "libuild build",
     "dev": "libuild build --watch",
@@ -76,6 +82,39 @@
       "types": "./dist/src/watcher.d.ts",
       "import": "./dist/src/watcher.js"
     },
-    "./package.json": "./package.json"
-  }
+    "./package.json": "./dist/package.json",
+    "./http-errors": {
+      "types": "./dist/src/http-errors.d.ts",
+      "import": "./dist/src/http-errors.js"
+    },
+    "./http-errors.js": {
+      "types": "./dist/src/http-errors.d.ts",
+      "import": "./dist/src/http-errors.js"
+    },
+    "./vm-execution": {
+      "types": "./dist/src/vm-execution.d.ts",
+      "import": "./dist/src/vm-execution.js"
+    },
+    "./vm-execution.js": {
+      "types": "./dist/src/vm-execution.d.ts",
+      "import": "./dist/src/vm-execution.js"
+    },
+    "./worker-runtime": {
+      "types": "./dist/src/worker-runtime.d.ts",
+      "import": "./dist/src/worker-runtime.js"
+    },
+    "./worker-runtime.js": {
+      "types": "./dist/src/worker-runtime.d.ts",
+      "import": "./dist/src/worker-runtime.js"
+    },
+    "./worker-script": {
+      "types": "./dist/src/worker-script.d.ts",
+      "import": "./dist/src/worker-script.js"
+    },
+    "./worker-script.js": {
+      "types": "./dist/src/worker-script.d.ts",
+      "import": "./dist/src/worker-script.js"
+    }
+  },
+  "private": true
 }

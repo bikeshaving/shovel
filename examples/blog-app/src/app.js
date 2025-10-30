@@ -9,7 +9,7 @@
 import { Router } from '@b9g/router';
 import { CacheStorage } from '@b9g/cache/cache-storage';
 import { MemoryCache } from '@b9g/cache/memory-cache';
-import { createStaticFilesMiddleware } from '@b9g/shovel-compiler';
+import { createStaticFilesMiddleware } from '@b9g/shovel-compiler/handler';
 
 // Import static assets using import attributes
 import styles from './assets/styles.css' with { url: '/static/' };
