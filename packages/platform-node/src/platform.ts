@@ -20,10 +20,15 @@ import { FilesystemCache } from '@b9g/cache/filesystem-cache';
 import * as Http from 'http';
 import * as Path from 'path';
 import * as FS from 'fs/promises';
+import { existsSync } from 'fs';
 import { createServiceWorkerGlobals } from '@b9g/shovel/serviceworker';
 import { CacheManager } from '@b9g/shovel/cache-manager';
 import { Worker } from 'worker_threads';
 import { pathToFileURL, fileURLToPath } from 'url';
+
+// ES module dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = Path.dirname(__filename);
 
 export interface NodePlatformOptions {
   /** Enable hot reloading (default: true in development) */
@@ -46,9 +51,11 @@ class WorkerManager {
   private requestId = 0;
   private pendingRequests = new Map<number, { resolve: (response: Response) => void; reject: (error: Error) => void }>();
   private cacheManager: CacheManager;
+  private options: Required<NodePlatformOptions>;
 
-  constructor(cacheStorage: CacheStorage, workerCount = 1) {
+  constructor(cacheStorage: CacheStorage, options: Required<NodePlatformOptions>, workerCount = 1) {
     this.cacheManager = new CacheManager(cacheStorage);
+    this.options = options;
     this.initWorkers(workerCount);
   }
 
@@ -59,23 +66,17 @@ class WorkerManager {
   }
 
   private createWorker() {
-    // Import Worker from shovel package - resolve from the app's context
-    let worker: Worker;
+    // Resolve worker script from shovel package using modern ES module resolution
+    let workerScript: string;
+    
     try {
-      // Try to resolve from the app's working directory
-      const Module = require('module');
-      const workerScript = Module._resolveFilename('@b9g/shovel/worker.js', {
-        id: this.options.cwd + '/fake.js',
-        filename: this.options.cwd + '/fake.js',
-        paths: Module._nodeModulePaths(this.options.cwd)
-      });
-      worker = new Worker(workerScript);
+      const workerUrl = import.meta.resolve('@b9g/shovel/worker.js');
+      workerScript = fileURLToPath(workerUrl);
     } catch (error) {
-      console.warn('[Platform-Node] Failed to resolve worker script from app context:', error.message);
-      // Use a hardcoded relative path as fallback
-      const workerScript = Path.resolve(__dirname, '../../../src/worker.js');
-      worker = new Worker(workerScript);
+      throw new Error(`Could not resolve @b9g/shovel/worker.js: ${error.message}`);
     }
+
+    const worker = new Worker(workerScript);
 
     // Node.js Worker thread message handling
     worker.on('message', (message) => {
@@ -229,7 +230,7 @@ export class NodePlatform implements Platform {
     // Create WorkerManager with shared cache storage
     if (!this.workerManager) {
       const workerCount = options.workerCount || 1;
-      this.workerManager = new WorkerManager(this.cacheStorage, workerCount);
+      this.workerManager = new WorkerManager(this.cacheStorage, this.options, workerCount);
     }
     
     // Load ServiceWorker in all workers

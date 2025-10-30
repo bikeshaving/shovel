@@ -8,6 +8,7 @@
 
 import { spawn } from "child_process";
 import { Command } from "commander";
+import { cpus } from "os";
 import pkg from "../package.json" with { type: "json" };
 import { 
   resolvePlatform, 
@@ -15,6 +16,30 @@ import {
   getPlatformDefaults,
   displayPlatformInfo 
 } from "./_platform-detection.js";
+
+/**
+ * Determine worker count based on environment and options
+ */
+function getWorkerCount(options) {
+  // Explicit CLI option takes precedence
+  if (options.workers) {
+    const count = parseInt(options.workers);
+    if (isNaN(count) || count < 1) {
+      throw new Error(`Invalid worker count: ${options.workers}. Must be a positive integer.`);
+    }
+    return count;
+  }
+  
+  // Environment-based defaults
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction) {
+    // Production: use CPU count for maximum throughput
+    return cpus().length;
+  } else {
+    // Development: use 2 workers to encourage concurrency thinking
+    return 2;
+  }
+}
 
 // Check for experimental flags and respawn if needed
 if (!process.env.SHOVEL_RESPAWNED && process.argv.includes('develop')) {
@@ -43,14 +68,17 @@ program
   .option("-p, --port <port>", "Port to listen on", "3000")
   .option("--platform <platform>", "Explicit platform (node, bun, cloudflare)")
   .option("--host <host>", "Host to bind to", "localhost")
+  .option("-w, --workers <count>", "Number of worker threads (default: 2 in dev, CPU count in prod)")
   .option("--verbose", "Verbose logging")
   .action(async (entrypoint, options) => {
     try {
       const platformName = resolvePlatform(options);
       const platformDefaults = getPlatformDefaults(platformName);
+      const workerCount = getWorkerCount(options);
       
       if (options.verbose) {
         displayPlatformInfo(platformName);
+        console.log(`🔧 Worker configuration: ${workerCount} workers`);
       }
       
       // Create platform with smart defaults
@@ -61,10 +89,12 @@ program
       });
       
       console.log(`🔥 Starting development server...`);
+      console.log(`⚙️  Workers: ${workerCount}`);
       
       // Load ServiceWorker app
       const serviceWorker = await platform.loadServiceWorker(entrypoint, {
         hotReload: true,
+        workerCount,
         caches: {
           pages: { type: 'memory', maxEntries: 100 },
           api: { type: 'memory', ttl: 300000 },
@@ -108,6 +138,7 @@ program
   .description("Build app for deployment")
   .option("--target <platform>", "Target platform (node, bun, cloudflare, vercel)")
   .option("--out-dir <dir>", "Output directory", "dist")
+  .option("-w, --workers <count>", "Number of worker threads (default: CPU count in prod)")
   .option("--verbose", "Verbose logging")
   .action(async (entrypoint, options) => {
     try {
@@ -150,13 +181,16 @@ program
   .option("--target <platform>", "Target platform for hosting (node, bun, cloudflare)")
   .option("--out-dir <dir>", "Output directory", "dist")
   .option("--base-url <url>", "Base URL for absolute URLs", "http://localhost:3000")
+  .option("-w, --workers <count>", "Number of worker threads (default: CPU count)")
   .option("--verbose", "Verbose logging")
   .action(async (entrypoint, options) => {
     try {
       const platformName = resolvePlatform(options);
+      const workerCount = getWorkerCount(options);
       
       if (options.verbose) {
         displayPlatformInfo(platformName);
+        console.log(`🔧 Worker configuration: ${workerCount} workers`);
       }
       
       const platform = await createPlatform(platformName, {
@@ -168,6 +202,7 @@ program
       // Load ServiceWorker app
       const serviceWorker = await platform.loadServiceWorker(entrypoint, {
         hotReload: false,
+        workerCount,
       });
       
       // Collect routes for static generation
@@ -228,6 +263,7 @@ program
     console.log("💡 Usage Examples:");
     console.log("   shovel develop app.js                    # Auto-detect platform");
     console.log("   shovel develop app.js --platform=bun     # Explicit platform");
+    console.log("   shovel develop app.js --workers=4        # Custom worker count");
     console.log("   shovel build app.js --target=cloudflare  # Target deployment");
   });
 
