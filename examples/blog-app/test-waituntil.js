@@ -3,7 +3,7 @@
  * Test script to verify waitUntil functionality works correctly
  */
 
-import { createServiceWorkerGlobals } from '@b9g/shovel-compiler/vm-execution';
+import { createServiceWorkerGlobals } from '@b9g/shovel/serviceworker';
 
 console.log('Testing standard ServiceWorker events...');
 

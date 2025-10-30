@@ -15,8 +15,7 @@
     "@b9g/libuild": "^0.1.6",
     "@b9g/match-pattern": "file:../../packages/match-pattern",
     "@b9g/router": "file:../../packages/router",
-    "@b9g/shovel": "file:../../",
-    "@b9g/shovel-compiler": "file:../../packages/shovel-compiler"
+    "@b9g/shovel": "file:../../"
   },
   "devDependencies": {
     "esbuild": "^0.19.12",
