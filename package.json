@@ -5,8 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "shovel": "./dist/src/cli.js",
-    "shovel-server": "./src/server.js"
+    "shovel": "./dist/src/cli.js"
   },
   "workspaces": [
     "packages/*",
@@ -102,17 +101,29 @@
       "types": "./dist/src/serviceworker.d.ts",
       "import": "./dist/src/serviceworker.js"
     },
-    "./server": {
-      "import": "./src/server.js"
-    },
-    "./server.js": {
-      "import": "./src/server.js"
-    },
     "./worker": {
       "import": "./src/worker.js"
     },
     "./worker.js": {
       "import": "./src/worker.js"
+    },
+    "./cache-manager": {
+      "import": "./dist/src/cache-manager.js"
+    },
+    "./cache-manager.js": {
+      "import": "./dist/src/cache-manager.js"
+    },
+    "./worker-cache-storage": {
+      "import": "./dist/src/worker-cache-storage.js"
+    },
+    "./worker-cache-storage.js": {
+      "import": "./dist/src/worker-cache-storage.js"
+    },
+    "./worker-cache": {
+      "import": "./dist/src/worker-cache.js"
+    },
+    "./worker-cache.js": {
+      "import": "./dist/src/worker-cache.js"
     },
     "./package.json": "./dist/package.json"
   }

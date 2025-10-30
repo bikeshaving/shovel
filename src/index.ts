@@ -44,5 +44,10 @@ export {
 
 export { createServiceWorkerGlobals } from './serviceworker.js';
 
+// Cache coordination for Worker threads
+export { CacheManager } from './cache-manager.js';
+export { WorkerCacheStorage } from './worker-cache-storage.js';
+export { WorkerCache } from './worker-cache.js';
+
 // TypeScript global declarations
 export type {} from './global.js';

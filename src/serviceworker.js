@@ -11,7 +11,7 @@
  * Create ServiceWorker-compatible globals
  * This provides the standard ServiceWorker API surface for any execution context
  */
-export function createServiceWorkerGlobals() {
+export function createServiceWorkerGlobals(options = {}) {
   const events = new Map();
 
   // Base Event class
@@ -133,7 +133,7 @@ export function createServiceWorkerGlobals() {
     }
   };
 
-  return {
+  const globals = {
     // ServiceWorker-specific globals (not available in Node.js)
     self,
     addEventListener: self.addEventListener.bind(self),
@@ -146,4 +146,11 @@ export function createServiceWorkerGlobals() {
     // Override Event class only if needed (Node.js has Event but might not be compatible)
     Event: EventClass,
   };
+
+  // Inject cache storage if provided (for Worker coordination)
+  if (options.caches) {
+    globals.caches = options.caches;
+  }
+
+  return globals;
 }

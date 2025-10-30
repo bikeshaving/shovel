@@ -4,10 +4,14 @@
  */
 
 import { createServiceWorkerGlobals } from './serviceworker.js';
+import { WorkerCacheStorage } from './worker-cache-storage.js';
 import { parentPort } from 'worker_threads';
 
-// Set up ServiceWorker globals once
-const globals = createServiceWorkerGlobals();
+// Create coordinated cache storage for this Worker
+const caches = new WorkerCacheStorage();
+
+// Set up ServiceWorker globals with coordinated cache
+const globals = createServiceWorkerGlobals({ caches });
 Object.assign(globalThis, globals);
 
 let currentApp = null;
@@ -115,6 +119,10 @@ parentPort.on('message', async (message) => {
         },
         requestId: message.requestId 
       });
+      
+    } else if (message.type.startsWith('cache:') || message.type.startsWith('cachestorage:')) {
+      // Cache operations are handled by the WorkerCacheStorage and WorkerCache instances
+      // They listen to parentPort messages directly, so we don't need to handle them here
       
     } else {
       console.warn('[Worker] Unknown message type:', message.type);

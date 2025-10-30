@@ -21,6 +21,7 @@ import * as Http from 'http';
 import * as Path from 'path';
 import * as FS from 'fs/promises';
 import { createServiceWorkerGlobals } from '@b9g/shovel/serviceworker';
+import { CacheManager } from '@b9g/shovel/cache-manager';
 import { Worker } from 'worker_threads';
 import { pathToFileURL, fileURLToPath } from 'url';
 
@@ -44,8 +45,10 @@ class WorkerManager {
   private currentWorker = 0;
   private requestId = 0;
   private pendingRequests = new Map<number, { resolve: (response: Response) => void; reject: (error: Error) => void }>();
+  private cacheManager: CacheManager;
 
-  constructor(workerCount = 1) {
+  constructor(cacheStorage: CacheStorage, workerCount = 1) {
+    this.cacheManager = new CacheManager(cacheStorage);
     this.initWorkers(workerCount);
   }
 
@@ -56,13 +59,32 @@ class WorkerManager {
   }
 
   private createWorker() {
-    // Import Worker from shovel package
-    const workerScript = new URL('@b9g/shovel/worker.js', import.meta.url);
-    const worker = new Worker(workerScript);
+    // Import Worker from shovel package - resolve from the app's context
+    let worker: Worker;
+    try {
+      // Try to resolve from the app's working directory
+      const Module = require('module');
+      const workerScript = Module._resolveFilename('@b9g/shovel/worker.js', {
+        id: this.options.cwd + '/fake.js',
+        filename: this.options.cwd + '/fake.js',
+        paths: Module._nodeModulePaths(this.options.cwd)
+      });
+      worker = new Worker(workerScript);
+    } catch (error) {
+      console.warn('[Platform-Node] Failed to resolve worker script from app context:', error.message);
+      // Use a hardcoded relative path as fallback
+      const workerScript = Path.resolve(__dirname, '../../../src/worker.js');
+      worker = new Worker(workerScript);
+    }
 
     // Node.js Worker thread message handling
     worker.on('message', (message) => {
-      this.handleWorkerMessage(message);
+      // Handle cache operations
+      if (message.type?.startsWith('cache:') || message.type?.startsWith('cachestorage:')) {
+        this.cacheManager.handleMessage(worker, message);
+      } else {
+        this.handleWorkerMessage(message);
+      }
     });
 
     worker.on('error', (error) => {
@@ -179,6 +201,8 @@ export class NodePlatform implements Platform {
 
   private options: Required<NodePlatformOptions>;
   private watcher?: Watcher;
+  private workerManager?: WorkerManager;
+  private cacheStorage?: CacheStorage;
 
   constructor(options: NodePlatformOptions = {}) {
     this.options = {
@@ -192,36 +216,57 @@ export class NodePlatform implements Platform {
 
   /**
    * THE MAIN JOB - Load and run a ServiceWorker-style entrypoint in Node.js
-   * Uses Worker threads instead of VM for better isolation and standards compliance
+   * Uses Worker threads with coordinated cache storage for isolation and standards compliance
    */
   async loadServiceWorker(entrypoint: string, options: ServiceWorkerOptions = {}): Promise<ServiceWorkerInstance> {
     const entryPath = Path.resolve(this.options.cwd, entrypoint);
     
-    // Temporary: Just return a dummy instance to test platform abstraction
+    // Create shared cache storage if not already created
+    if (!this.cacheStorage) {
+      this.cacheStorage = this.createCaches(options.caches);
+    }
+    
+    // Create WorkerManager with shared cache storage
+    if (!this.workerManager) {
+      const workerCount = options.workerCount || 1;
+      this.workerManager = new WorkerManager(this.cacheStorage, workerCount);
+    }
+    
+    // Load ServiceWorker in all workers
+    const version = Date.now();
+    await this.workerManager.reloadWorkers(version);
+    
     const instance: ServiceWorkerInstance = {
-      runtime: null,
+      runtime: this.workerManager,
       handleRequest: async (request: Request) => {
-        return new Response('Platform abstraction working!', {
-          status: 200,
-          headers: { 'Content-Type': 'text/plain' }
-        });
+        if (!this.workerManager) {
+          throw new Error('WorkerManager not initialized');
+        }
+        return this.workerManager.handleRequest(request);
       },
       install: async () => {
-        console.log('[Platform-Node] ServiceWorker installed');
+        console.log('[Platform-Node] ServiceWorker installed via Worker threads');
       },
       activate: async () => {
-        console.log('[Platform-Node] ServiceWorker activated');
+        console.log('[Platform-Node] ServiceWorker activated via Worker threads');
       },
       collectStaticRoutes: async (outDir: string, baseUrl?: string) => {
+        // TODO: Implement static route collection
         return [];
       },
-      get ready() { return true; },
+      get ready() { 
+        return this.workerManager !== undefined;
+      },
       dispose: async () => {
+        if (this.workerManager) {
+          await this.workerManager.terminate();
+          this.workerManager = undefined;
+        }
         console.log('[Platform-Node] ServiceWorker disposed');
       },
     };
 
-    console.log('[Platform-Node] ServiceWorker loaded (dummy mode)');
+    console.log('[Platform-Node] ServiceWorker loaded with Worker threads and coordinated caches');
     return instance;
   }
 
@@ -242,9 +287,6 @@ export class NodePlatform implements Platform {
       maxEntries: config.maxEntries || 10000,
       maxSize: config.maxSize || 500 * 1024 * 1024, // 500MB
     }));
-
-    // Set filesystem as default for Node.js persistence
-    caches.setDefault('filesystem');
 
     return caches;
   }
@@ -327,6 +369,11 @@ export class NodePlatform implements Platform {
     if (this.watcher) {
       await this.watcher.dispose();
       this.watcher = undefined;
+    }
+    
+    if (this.workerManager) {
+      await this.workerManager.terminate();
+      this.workerManager = undefined;
     }
   }
 }
