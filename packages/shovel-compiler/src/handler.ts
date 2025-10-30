@@ -25,8 +25,8 @@ export function createStaticFilesMiddleware(options: RuntimeConfig = {}) {
   const config = mergeRuntimeConfig(options);
   let manifest: AssetManifest | null = null;
   
-  // Load manifest in production mode
-  if (!config.dev && existsSync(config.manifest)) {
+  // Load manifest (needed in both dev and production modes)
+  if (existsSync(config.manifest)) {
     try {
       const manifestContent = readFileSync(config.manifest, 'utf-8');
       manifest = JSON.parse(manifestContent);
@@ -160,8 +160,8 @@ export function createCachedStaticFilesMiddleware(options: RuntimeConfig = {}) {
   const config = mergeRuntimeConfig(options);
   let manifest: AssetManifest | null = null;
   
-  // Load manifest in production mode
-  if (!config.dev && existsSync(config.manifest)) {
+  // Load manifest (needed in both dev and production modes)
+  if (existsSync(config.manifest)) {
     try {
       const manifestContent = readFileSync(config.manifest, 'utf-8');
       manifest = JSON.parse(manifestContent);

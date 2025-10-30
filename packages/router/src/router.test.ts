@@ -153,4 +153,57 @@ describe('Router', () => {
     expect(await response1.text()).toBe('OK');
     expect(await response2.text()).toBe('OK');
   });
+
+  test('handler method executes middleware for matching routes', async () => {
+    const router = new Router();
+    const executionOrder = [];
+
+    const middleware = async (request: Request, context: any, next: Function) => {
+      executionOrder.push('middleware');
+      const response = await next();
+      return response;
+    };
+
+    const handler = async (request: Request, context: any) => {
+      executionOrder.push('handler');
+      return new Response('Hello');
+    };
+
+    router.use(middleware);
+    router.route('/test').get(handler);
+
+    const request = new Request('http://example.com/test');
+    const response = await router.handler(request);
+
+    expect(executionOrder).toEqual(['middleware', 'handler']);
+    expect(await response.text()).toBe('Hello');
+  });
+
+  test('handler method executes middleware for non-matching routes', async () => {
+    const router = new Router();
+    const executionOrder = [];
+
+    const middleware = async (request: Request, context: any, next: Function) => {
+      executionOrder.push('middleware');
+      const response = await next();
+      return response;
+    };
+
+    const handler = async (request: Request, context: any) => {
+      executionOrder.push('handler');
+      return new Response('Hello');
+    };
+
+    router.use(middleware);
+    router.route('/test').get(handler);
+
+    // Request to non-matching route
+    const request = new Request('http://example.com/static/file.css');
+    const response = await router.handler(request);
+
+    // Middleware should still be called even for non-matching routes
+    expect(executionOrder).toEqual(['middleware']);
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe('Not Found');
+  });
 });

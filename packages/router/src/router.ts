@@ -252,11 +252,26 @@ export class Router {
    * Returns a response or throws if no route matches
    */
   handler = async (request: Request): Promise<Response> => {
-    const response = await this.match(request);
-    if (!response) {
-      return new Response('Not Found', { status: 404 });
+    // Lazy compilation - build executor on first match
+    if (this.dirty || !this.executor) {
+      this.executor = new LinearExecutor(this.routes);
+      this.dirty = false;
     }
-    return response;
+
+    // Find matching route
+    const matchResult = this.executor.match(request);
+    
+    if (matchResult) {
+      // Route found - build context and execute middleware chain + handler
+      const context = await this.buildContext(matchResult.context, matchResult.cacheConfig);
+      return this.executeMiddlewareChain(request, context, matchResult.handler);
+    } else {
+      // No route found - execute global middleware with 404 fallback
+      const notFoundHandler = async (): Promise<Response> => {
+        return new Response('Not Found', { status: 404 });
+      };
+      return this.executeMiddlewareChain(request, {}, notFoundHandler);
+    }
   };
 
   /**

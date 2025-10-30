@@ -6,7 +6,7 @@
  */
 
 // Watcher and hot reload
-export { Watcher, Hot, createModuleLinker, fixErrorStack } from './watcher.js';
+export { Watcher, createModuleLinker, fixErrorStack } from './watcher.js';
 
 // Static files processing (build-time)
 export { staticFilesPlugin } from './static-files.js';
@@ -42,6 +42,23 @@ export {
   GatewayTimeout,
   type HTTPErrorOptions
 } from './http-errors.js';
+
+// VM execution engine
+export {
+  executeInVM,
+  createServiceWorkerGlobals,
+  Hot,
+  type ServiceWorkerRuntime,
+  type VMExecutionOptions,
+  type VMExecutionResult
+} from './vm-execution.js';
+
+// Worker runtime (VM in Worker for double isolation)
+export {
+  WorkerRuntime,
+  createWorkerRuntime,
+  type WorkerRuntimeOptions
+} from './worker-runtime.js';
 
 // TypeScript global declarations
 export type {} from './global.js';

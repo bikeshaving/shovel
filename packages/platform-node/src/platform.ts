@@ -13,8 +13,6 @@ import {
   ServerOptions,
   ServiceWorkerOptions,
   ServiceWorkerInstance,
-  ServiceWorkerRuntime,
-  createServiceWorkerGlobals 
 } from '@b9g/platform';
 import { CacheStorage } from '@b9g/cache/cache-storage';
 import { MemoryCache } from '@b9g/cache/memory-cache';
@@ -23,10 +21,8 @@ import { createRequestListener } from '@remix-run/node-fetch-server';
 import * as Http from 'http';
 import * as Path from 'path';
 import * as FS from 'fs/promises';
-import { Watcher, Hot, createModuleLinker, fixErrorStack } from '@b9g/shovel-compiler';
-import * as VM from 'vm';
-import { fileURLToPath, pathToFileURL } from 'url';
-import { SourceMapConsumer } from 'source-map';
+import { Watcher, executeInVM, createServiceWorkerGlobals } from '@b9g/shovel-compiler';
+import { pathToFileURL } from 'url';
 
 export interface NodePlatformOptions {
   /** Enable hot reloading (default: true in development) */
@@ -64,26 +60,43 @@ export class NodePlatform implements Platform {
    * This is where all the Node.js-specific complexity lives (ESBuild VM, hot reloading, etc.)
    */
   async loadServiceWorker(entrypoint: string, options: ServiceWorkerOptions = {}): Promise<ServiceWorkerInstance> {
-    const runtime = new ServiceWorkerRuntime();
     const entryPath = Path.resolve(this.options.cwd, entrypoint);
+    let vmRuntime: any = null;
+    let watcher: Watcher | undefined;
     
-    // Create ServiceWorker instance
+    // Create ServiceWorker instance that delegates to VM execution
     const instance: ServiceWorkerInstance = {
-      runtime,
-      handleRequest: (request: Request) => runtime.handleRequest(request),
-      install: () => runtime.install(),
-      activate: () => runtime.activate(),
-      collectStaticRoutes: (outDir: string, baseUrl?: string) => runtime.collectStaticRoutes(outDir, baseUrl),
-      get ready() { return runtime.ready; },
+      runtime: null, // We'll set this after VM execution
+      handleRequest: async (request: Request) => {
+        if (!vmRuntime) {
+          throw new Error('ServiceWorker not loaded');
+        }
+        return vmRuntime.handleRequest(request);
+      },
+      install: async () => {
+        if (!vmRuntime) {
+          throw new Error('ServiceWorker not loaded');
+        }
+        return vmRuntime.install();
+      },
+      activate: async () => {
+        if (!vmRuntime) {
+          throw new Error('ServiceWorker not loaded');
+        }
+        return vmRuntime.activate();
+      },
+      collectStaticRoutes: async (outDir: string, baseUrl?: string) => {
+        // TODO: Implement static route collection
+        return [];
+      },
+      get ready() { return vmRuntime !== null; },
       dispose: async () => {
-        runtime.reset();
         if (watcher) {
           await watcher.dispose();
         }
+        vmRuntime = null;
       },
     };
-
-    let watcher: Watcher | undefined;
 
     if (this.options.hotReload && options.hotReload !== false) {
       // Use hot reloading with ServiceWorker lifecycle
@@ -103,41 +116,22 @@ export class NodePlatform implements Platform {
             return;
           }
 
-          // Reset runtime for reload
-          runtime.reset();
-
-          // Create VM context with ServiceWorker globals
-          const globals = createServiceWorkerGlobals(runtime);
+          // Execute bundle in VM with ServiceWorker globals
           const moduleUrl = pathToFileURL(record.entry).href;
+          const globals = createServiceWorkerGlobals();
           
-          const context = VM.createContext({
-            ...globals,
-            ...global, // Include Node.js globals
-            process, // Explicitly include process
-          });
-          
-          const linker = createModuleLinker(w, context);
-
-          const currentModule = new VM.SourceTextModule(outputFile.text, {
+          const vmResult = await executeInVM(outputFile.text, {
             identifier: moduleUrl,
-            context,
-            initializeImportMeta(meta: any) {
-              meta.url = moduleUrl;
-              meta.hot = new Hot();
-            },
+            globals,
+            hmr: true,
           });
 
-          await currentModule.link(linker);
+          // Update our runtime reference
+          vmRuntime = vmResult.runtime;
           
-          // Execute module with ServiceWorker globals
-          await currentModule.evaluate();
-
-          // Platform provides standard web APIs transparently
-          // No need to tell the app about platform details
-
-          // Install and activate
-          await runtime.install();
-          await runtime.activate();
+          // Install and activate the ServiceWorker
+          await vmRuntime.install();
+          await vmRuntime.activate();
           
           console.log(`[SW] ServiceWorker ${record.isInitial ? 'installed' : 'updated'} successfully`);
         } catch (error) {
@@ -149,35 +143,21 @@ export class NodePlatform implements Platform {
     } else {
       // Static loading without hot reloading
       const code = await FS.readFile(entryPath, 'utf8');
-      const globals = createServiceWorkerGlobals(runtime);
       const moduleUrl = pathToFileURL(entryPath).href;
+      const globals = createServiceWorkerGlobals();
       
-      const context = VM.createContext({
-        ...globals,
-        ...global,
-        process, // Explicitly include process
-      });
-      
-      const module = new VM.SourceTextModule(code, {
+      const vmResult = await executeInVM(code, {
         identifier: moduleUrl,
-        context,
-        initializeImportMeta(meta: any) {
-          meta.url = moduleUrl;
-        },
+        globals,
+        hmr: false,
       });
 
-      // Create a simple linker for static loading (no module resolution needed for simple cases)
-      await module.link(async (specifier: string) => {
-        throw new Error(`Dynamic imports not supported in static loading: ${specifier}`);
-      });
+      // Set the runtime reference
+      vmRuntime = vmResult.runtime;
       
-      // Execute module with ServiceWorker globals  
-      await module.evaluate();
-
-      // Platform provides standard web APIs transparently
-
-      await runtime.install();
-      await runtime.activate();
+      // Install and activate the ServiceWorker
+      await vmRuntime.install();
+      await vmRuntime.activate();
     }
 
     return instance;
