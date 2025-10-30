@@ -107,23 +107,17 @@
     "./worker.js": {
       "import": "./src/worker.js"
     },
-    "./cache-manager": {
-      "import": "./dist/src/cache-manager.js"
+    "./memory-cache-manager": {
+      "import": "./dist/src/memory-cache-manager.js"
     },
-    "./cache-manager.js": {
-      "import": "./dist/src/cache-manager.js"
+    "./memory-cache-manager.js": {
+      "import": "./dist/src/memory-cache-manager.js"
     },
-    "./worker-cache-storage": {
-      "import": "./dist/src/worker-cache-storage.js"
+    "./worker-aware-cache-storage": {
+      "import": "./dist/src/worker-aware-cache-storage.js"
     },
-    "./worker-cache-storage.js": {
-      "import": "./dist/src/worker-cache-storage.js"
-    },
-    "./worker-cache": {
-      "import": "./dist/src/worker-cache.js"
-    },
-    "./worker-cache.js": {
-      "import": "./dist/src/worker-cache.js"
+    "./worker-aware-cache-storage.js": {
+      "import": "./dist/src/worker-aware-cache-storage.js"
     },
     "./package.json": "./dist/package.json"
   }

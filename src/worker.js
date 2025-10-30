@@ -4,11 +4,11 @@
  */
 
 import { createServiceWorkerGlobals } from './serviceworker.js';
-import { WorkerCacheStorage } from './worker-cache-storage.js';
+import { WorkerAwareCacheStorage } from './worker-aware-cache-storage.js';
 import { parentPort } from 'worker_threads';
 
-// Create coordinated cache storage for this Worker
-const caches = new WorkerCacheStorage();
+// Create worker-aware cache storage for this Worker
+const caches = new WorkerAwareCacheStorage();
 
 // Set up ServiceWorker globals with coordinated cache
 const globals = createServiceWorkerGlobals({ caches });

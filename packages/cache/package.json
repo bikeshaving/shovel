@@ -68,6 +68,14 @@
     "./filesystem-cache.js": {
       "types": "./dist/src/filesystem-cache.d.ts",
       "import": "./dist/src/filesystem-cache.js"
+    },
+    "./coordinated-memory-cache": {
+      "types": "./dist/src/coordinated-memory-cache.d.ts",
+      "import": "./dist/src/coordinated-memory-cache.js"
+    },
+    "./coordinated-memory-cache.js": {
+      "types": "./dist/src/coordinated-memory-cache.d.ts",
+      "import": "./dist/src/coordinated-memory-cache.js"
     }
   }
 }

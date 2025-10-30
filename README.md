@@ -123,13 +123,14 @@ ESBuild/Bun plugin for asset pipeline:
 
 Universal platform abstraction for ServiceWorker-style applications:
 - Platform-agnostic ServiceWorker entrypoint loading
-- Hot reloading with VM module isolation 
+- Worker thread architecture with configurable concurrency
 - Multiple platform targets: Node.js, Bun, Cloudflare Workers
 - Automatic platform detection for development
 - ESBuild integration with static file handling
+- Cache coordination across worker threads
 
 **Platform Implementations:**
-- `@b9g/platform-node` - Node.js with VM modules and hot reloading
+- `@b9g/platform-node` - Node.js with Worker threads and coordinated caching
 - `@b9g/platform-bun` - Bun runtime with native ESBuild integration  
 - `@b9g/platform-cloudflare` - Cloudflare Workers with Wrangler
 
@@ -226,6 +227,7 @@ Universal command-line tool with platform auto-detection:
 - `shovel static` - Static site generation via cache population
 - `shovel info` - Platform and runtime information
 - Platform targeting: `--platform=node|bun|cloudflare`
+- Worker count configuration: `--workers=N`
 - Auto-detects runtime (Node.js, Bun) for optimal defaults
 
 **Development Server:**
@@ -236,11 +238,14 @@ shovel develop src/app.js
 # Explicit platform targeting  
 shovel develop src/app.js --platform=bun --port=3000
 
+# Custom worker count (default: 2 in dev, CPU count in prod)
+shovel develop src/app.js --workers=4
+
 # Verbose output for debugging
 shovel develop src/app.js --verbose
 ```
 
-The CLI uses the platform abstraction to provide consistent development experience across all runtimes.
+The CLI uses the platform abstraction to provide consistent development experience across all runtimes. Worker configuration encourages concurrency thinking from the start while maximizing production throughput.
 
 **SSG Example:**
 ```javascript
@@ -421,11 +426,15 @@ This same code works:
 - **ServiceWorker Pattern**: Applications written as ServiceWorker entrypoints work universally
 - **Bound Handler API**: `router.handler(request)` replaces factory pattern for cleaner integration
 - **Route-Specific Middleware**: `router.route().use().get()` for composable request handling
-- **VM Isolation**: Hot reloading uses VM modules for proper module boundary isolation
+- **Worker Thread Architecture**: Multi-worker concurrency with coordinated cache storage
 - **Platform Detection**: Automatic runtime detection with explicit override capabilities
 
-### Current Focus
-Working on improving hot reloading performance and implementing worker thread architecture for development scaling.
+### Worker Architecture
+- **Development**: 2 workers by default to encourage concurrency thinking
+- **Production**: CPU count workers for maximum throughput
+- **Configurable**: `--workers` CLI flag for custom worker counts
+- **Coordinated Caching**: PostMessage-based cache coordination across workers
+- **Standard APIs**: Uses Web Worker APIs for cross-platform compatibility
 
 ## Project Status
 

@@ -22,7 +22,7 @@ import * as Path from 'path';
 import * as FS from 'fs/promises';
 import { existsSync } from 'fs';
 import { createServiceWorkerGlobals } from '@b9g/shovel/serviceworker';
-import { CacheManager } from '@b9g/shovel/cache-manager';
+import { MemoryCacheManager } from '@b9g/shovel/memory-cache-manager';
 import { Worker } from 'worker_threads';
 import { pathToFileURL, fileURLToPath } from 'url';
 
@@ -50,11 +50,11 @@ class WorkerManager {
   private currentWorker = 0;
   private requestId = 0;
   private pendingRequests = new Map<number, { resolve: (response: Response) => void; reject: (error: Error) => void }>();
-  private cacheManager: CacheManager;
+  private memoryCacheManager: MemoryCacheManager;
   private options: Required<NodePlatformOptions>;
 
   constructor(cacheStorage: CacheStorage, options: Required<NodePlatformOptions>, workerCount = 1) {
-    this.cacheManager = new CacheManager(cacheStorage);
+    this.memoryCacheManager = new MemoryCacheManager();
     this.options = options;
     this.initWorkers(workerCount);
   }
@@ -80,9 +80,9 @@ class WorkerManager {
 
     // Node.js Worker thread message handling
     worker.on('message', (message) => {
-      // Handle cache operations
-      if (message.type?.startsWith('cache:') || message.type?.startsWith('cachestorage:')) {
-        this.cacheManager.handleMessage(worker, message);
+      // Handle memory cache operations (only MemoryCache needs coordination)
+      if (message.type?.startsWith('cache:')) {
+        this.memoryCacheManager.handleMessage(worker, message);
       } else {
         this.handleWorkerMessage(message);
       }
@@ -188,6 +188,7 @@ class WorkerManager {
   async terminate(): Promise<void> {
     const terminatePromises = this.workers.map(worker => worker.terminate());
     await Promise.allSettled(terminatePromises);
+    await this.memoryCacheManager.dispose();
     this.workers = [];
     this.pendingRequests.clear();
   }
