@@ -16,7 +16,7 @@ import {
   displayPlatformInfo 
 } from "./_platform-detection.js";
 
-// Check if we need VM modules for Node.js platform and respawn with proper flags
+// Check for experimental flags and respawn if needed
 if (!process.env.SHOVEL_RESPAWNED && process.argv.includes('develop')) {
   process.env.SHOVEL_RESPAWNED = '1';
   const child = spawn('node', ['--experimental-vm-modules', ...process.argv.slice(1)], {
@@ -122,15 +122,14 @@ program
       // Import build functionality
       const { buildForProduction } = await import("./_build.js");
       
-      // Build ServiceWorker app to plain JavaScript
+      // Build ServiceWorker app to plain JavaScript (Bun-focused)
       await buildForProduction({
         entrypoint,
-        platformName,
         outDir: options.outDir,
         verbose: options.verbose
       });
       
-      console.log(`✅ Build complete for ${platformName}`);
+      console.log(`✅ Build complete`);
       console.log(`📁 Output: ${options.outDir}`);
       
     } catch (error) {

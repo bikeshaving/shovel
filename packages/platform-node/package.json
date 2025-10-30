@@ -20,7 +20,7 @@
   "dependencies": {
     "@b9g/platform": "file:../platform",
     "@b9g/cache": "file:../cache",
-    "@b9g/shovel-compiler": "file:../shovel-compiler",
+    "@b9g/shovel": "file:../../",
     "@remix-run/node-fetch-server": "^0.11.0"
   },
   "devDependencies": {

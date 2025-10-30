@@ -1,0 +1,32 @@
+{
+  "name": "@b9g/http-errors",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "HTTP error classes for web applications",
+  "keywords": [
+    "http",
+    "errors",
+    "web",
+    "status-codes"
+  ],
+  "scripts": {
+    "build": "libuild build",
+    "dev": "libuild build --watch",
+    "test": "bun test"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@b9g/libuild": "file:../libuild",
+    "bun-types": "latest"
+  },
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./package.json": "./dist/package.json"
+  },
+  "private": true
+}

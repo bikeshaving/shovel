@@ -5,7 +5,8 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "shovel": "./dist/src/cli.js"
+    "shovel": "./dist/src/cli.js",
+    "shovel-server": "./src/server.js"
   },
   "workspaces": [
     "packages/*",
@@ -16,7 +17,12 @@
     "test": "node --experimental-fetch node_modules/.bin/uvu"
   },
   "dependencies": {
-    "commander": "^13.1.0"
+    "@b9g/http-errors": "file:packages/http-errors",
+    "commander": "^13.1.0",
+    "esbuild": "^0.19.12",
+    "source-map": "^0.7.4",
+    "magic-string": "^0.30.5",
+    "mime-types": "^2.1.35"
   },
   "devDependencies": {
     "@b9g/crank": "^0.6.0",
@@ -47,6 +53,66 @@
     "./cli.js": {
       "types": "./dist/src/cli.d.ts",
       "import": "./dist/src/cli.js"
+    },
+    "./global": {
+      "types": "./dist/src/global.d.ts",
+      "import": "./dist/src/global.js"
+    },
+    "./global.js": {
+      "types": "./dist/src/global.d.ts",
+      "import": "./dist/src/global.js"
+    },
+    "./handler": {
+      "types": "./dist/src/handler.d.ts",
+      "import": "./dist/src/handler.js"
+    },
+    "./handler.js": {
+      "types": "./dist/src/handler.d.ts",
+      "import": "./dist/src/handler.js"
+    },
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./shared": {
+      "types": "./dist/src/shared.d.ts",
+      "import": "./dist/src/shared.js"
+    },
+    "./shared.js": {
+      "types": "./dist/src/shared.d.ts",
+      "import": "./dist/src/shared.js"
+    },
+    "./static-files": {
+      "types": "./dist/src/static-files.d.ts",
+      "import": "./dist/src/static-files.js"
+    },
+    "./static-files.js": {
+      "types": "./dist/src/static-files.d.ts",
+      "import": "./dist/src/static-files.js"
+    },
+    "./serviceworker": {
+      "types": "./dist/src/serviceworker.d.ts",
+      "import": "./dist/src/serviceworker.js"
+    },
+    "./serviceworker.js": {
+      "types": "./dist/src/serviceworker.d.ts",
+      "import": "./dist/src/serviceworker.js"
+    },
+    "./server": {
+      "import": "./src/server.js"
+    },
+    "./server.js": {
+      "import": "./src/server.js"
+    },
+    "./worker": {
+      "import": "./src/worker.js"
+    },
+    "./worker.js": {
+      "import": "./src/worker.js"
     },
     "./package.json": "./dist/package.json"
   }

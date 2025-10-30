@@ -5,8 +5,7 @@
  * that are shared across all Shovel platforms (Node, Bun, etc.).
  */
 
-// Watcher and hot reload
-export { Watcher, createModuleLinker, fixErrorStack } from './watcher.js';
+export { SimpleWatcher, type SimpleWatcherOptions } from './simple-watcher.js';
 
 // Static files processing (build-time)
 export { staticFilesPlugin } from './static-files.js';
@@ -21,7 +20,7 @@ export {
 export type { AssetsConfig, RuntimeConfig, AssetManifest, AssetManifestEntry } from './shared.js';
 export { mergeConfig, mergeRuntimeConfig, DEFAULT_CONFIG } from './shared.js';
 
-// HTTP error handling
+// HTTP error handling (re-exported from @b9g/http-errors)
 export {
   HTTPError,
   NotHandled,
@@ -41,24 +40,9 @@ export {
   ServiceUnavailable,
   GatewayTimeout,
   type HTTPErrorOptions
-} from './http-errors.js';
+} from '@b9g/http-errors';
 
-// VM execution engine
-export {
-  executeInVM,
-  createServiceWorkerGlobals,
-  Hot,
-  type ServiceWorkerRuntime,
-  type VMExecutionOptions,
-  type VMExecutionResult
-} from './vm-execution.js';
-
-// Worker runtime (VM in Worker for double isolation)
-export {
-  WorkerRuntime,
-  createWorkerRuntime,
-  type WorkerRuntimeOptions
-} from './worker-runtime.js';
+export { createServiceWorkerGlobals } from './serviceworker.js';
 
 // TypeScript global declarations
 export type {} from './global.js';
