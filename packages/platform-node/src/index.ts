@@ -5,7 +5,6 @@
  */
 
 export { NodePlatform, createNodePlatform, type NodePlatformOptions } from './platform.js';
-export { Watcher, Hot, createModuleLinker, fixErrorStack } from '@b9g/shovel-compiler';
 
 // Re-export common platform types
 export type {

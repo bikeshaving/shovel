@@ -37,7 +37,7 @@ export interface NodePlatformOptions {
 
 /**
  * Worker Manager - handles Node.js Worker threads for ServiceWorker execution
- * Uses the worker.js from shovel-compiler package
+ * Uses the worker.js from shovel package
  */
 class WorkerManager {
   private workers: Worker[] = [];
@@ -56,8 +56,8 @@ class WorkerManager {
   }
 
   private createWorker() {
-    // Import Worker from shovel-compiler package
-    const workerScript = new URL('@b9g/shovel-compiler/worker.js', import.meta.url);
+    // Import Worker from shovel package
+    const workerScript = new URL('@b9g/shovel/worker.js', import.meta.url);
     const worker = new Worker(workerScript);
 
     // Node.js Worker thread message handling

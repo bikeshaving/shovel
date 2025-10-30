@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "build": "libuild build",
-    "test": "node --experimental-fetch node_modules/.bin/uvu"
+    "test": "bun test"
   },
   "dependencies": {
     "@b9g/http-errors": "file:packages/http-errors",
