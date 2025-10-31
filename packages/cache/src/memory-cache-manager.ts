@@ -9,21 +9,43 @@
  * by workers without coordination.
  */
 
-import {MemoryCache} from "@b9g/cache/memory-cache";
+import type { Worker } from "worker_threads";
+import { MemoryCache } from "./memory-cache.js";
+
+interface CacheMessage {
+	type: string;
+	requestId: string;
+	cacheName: string;
+	request?: SerializedRequest;
+	response?: SerializedResponse;
+	options?: any;
+}
+
+interface SerializedRequest {
+	url: string;
+	method: string;
+	headers: Record<string, string>;
+	body?: string;
+}
+
+interface SerializedResponse {
+	status: number;
+	statusText: string;
+	headers: Record<string, string>;
+	body: string;
+}
 
 export class MemoryCacheManager {
-	constructor() {
-		this.memoryCaches = new Map(); // name -> MemoryCache instance
-	}
+	private memoryCaches = new Map<string, MemoryCache>();
 
 	/**
 	 * Handle memory cache-related message from a Worker
 	 */
-	async handleMessage(worker, message) {
-		const {type, requestId} = message;
+	async handleMessage(worker: Worker, message: CacheMessage): Promise<void> {
+		const { type, requestId } = message;
 
 		try {
-			let result;
+			let result: any;
 
 			switch (type) {
 				case "cache:match":
@@ -62,7 +84,7 @@ export class MemoryCacheManager {
 			worker.postMessage({
 				type: "cache:error",
 				requestId,
-				error: error.message,
+				error: error instanceof Error ? error.message : String(error),
 			});
 		}
 	}
@@ -70,14 +92,17 @@ export class MemoryCacheManager {
 	/**
 	 * Get or create a MemoryCache instance
 	 */
-	getMemoryCache(name, options = {}) {
+	getMemoryCache(name: string, options: any = {}): MemoryCache {
 		if (!this.memoryCaches.has(name)) {
 			this.memoryCaches.set(name, new MemoryCache(name, options));
 		}
-		return this.memoryCaches.get(name);
+		return this.memoryCaches.get(name)!;
 	}
 
-	async handleMatch({cacheName, request, options}) {
+	private async handleMatch(message: CacheMessage): Promise<SerializedResponse | undefined> {
+		const { cacheName, request, options } = message;
+		if (!request) throw new Error("Request is required for match operation");
+
 		const cache = this.getMemoryCache(cacheName);
 
 		// Reconstruct Request object from serialized data
@@ -102,7 +127,10 @@ export class MemoryCacheManager {
 		};
 	}
 
-	async handlePut({cacheName, request, response}) {
+	private async handlePut(message: CacheMessage): Promise<boolean> {
+		const { cacheName, request, response } = message;
+		if (!request || !response) throw new Error("Request and response are required for put operation");
+
 		const cache = this.getMemoryCache(cacheName);
 
 		// Reconstruct Request and Response objects
@@ -122,7 +150,10 @@ export class MemoryCacheManager {
 		return true;
 	}
 
-	async handleDelete({cacheName, request, options}) {
+	private async handleDelete(message: CacheMessage): Promise<boolean> {
+		const { cacheName, request, options } = message;
+		if (!request) throw new Error("Request is required for delete operation");
+
 		const cache = this.getMemoryCache(cacheName);
 
 		const req = new Request(request.url, {
@@ -134,10 +165,11 @@ export class MemoryCacheManager {
 		return await cache.delete(req, options);
 	}
 
-	async handleKeys({cacheName, request, options}) {
+	private async handleKeys(message: CacheMessage): Promise<SerializedRequest[]> {
+		const { cacheName, request, options } = message;
 		const cache = this.getMemoryCache(cacheName);
 
-		let req;
+		let req: Request | undefined;
 		if (request) {
 			req = new Request(request.url, {
 				method: request.method,
@@ -157,7 +189,8 @@ export class MemoryCacheManager {
 		}));
 	}
 
-	async handleClear({cacheName}) {
+	private async handleClear(message: CacheMessage): Promise<boolean> {
+		const { cacheName } = message;
 		const cache = this.getMemoryCache(cacheName);
 		await cache.clear();
 		return true;
@@ -166,7 +199,7 @@ export class MemoryCacheManager {
 	/**
 	 * Dispose of all memory caches
 	 */
-	async dispose() {
+	async dispose(): Promise<void> {
 		const disposePromises = Array.from(this.memoryCaches.values()).map(
 			(cache) => cache.dispose(),
 		);

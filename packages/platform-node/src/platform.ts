@@ -19,7 +19,7 @@ import {MemoryCache} from "@b9g/cache/memory-cache";
 import {FilesystemCache} from "@b9g/cache/filesystem-cache";
 import * as Http from "http";
 import * as Path from "path";
-import {MemoryCacheManager} from "@b9g/shovel/memory-cache-manager";
+import {MemoryCacheManager} from "@b9g/cache/memory-cache-manager";
 import {Worker} from "worker_threads";
 import {fileURLToPath} from "url";
 
@@ -409,6 +409,42 @@ export class NodePlatform implements Platform {
 				}),
 			address: () => ({port, host}),
 		};
+	}
+
+	/**
+	 * Get filesystem root for File System Access API
+	 */
+	async getFileSystemRoot(name = 'default'): Promise<FileSystemDirectoryHandle> {
+		// Check if S3/R2 credentials are available for cloud storage
+		if (process.env.AWS_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID) {
+			const { NodeS3FileSystemDirectoryHandle } = await import('./s3-filesystem.js');
+			const { S3Client } = await import('@aws-sdk/client-s3');
+			
+			// Configure S3 client with environment variables
+			const s3Client = new S3Client({
+				region: process.env.AWS_REGION || process.env.S3_REGION || 'us-east-1',
+				endpoint: process.env.S3_ENDPOINT, // For R2 compatibility
+				forcePathStyle: !!process.env.S3_FORCE_PATH_STYLE, // Required for some S3-compatible services
+				credentials: {
+					accessKeyId: process.env.AWS_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID!,
+					secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || process.env.S3_SECRET_ACCESS_KEY!,
+				},
+			});
+			
+			const bucket = process.env.S3_BUCKET || `shovel-filesystem-${name}`;
+			const prefix = `filesystems/${name}`;
+			
+			return new NodeS3FileSystemDirectoryHandle(s3Client, bucket, prefix);
+		} else {
+			// Fallback to local filesystem
+			const { NodeFileSystemDirectoryHandle } = await import('./filesystem.js');
+			const rootDir = Path.join(this.options.cwd, '.shovel', 'filesystems', name);
+			
+			// Ensure directory exists
+			await import('fs/promises').then(fs => fs.mkdir(rootDir, { recursive: true }));
+			
+			return new NodeFileSystemDirectoryHandle(rootDir);
+		}
 	}
 
 	/**

@@ -76,6 +76,22 @@
     "./coordinated-memory-cache.js": {
       "types": "./dist/src/coordinated-memory-cache.d.ts",
       "import": "./dist/src/coordinated-memory-cache.js"
+    },
+    "./memory-cache-manager": {
+      "types": "./dist/src/memory-cache-manager.d.ts",
+      "import": "./dist/src/memory-cache-manager.js"
+    },
+    "./memory-cache-manager.js": {
+      "types": "./dist/src/memory-cache-manager.d.ts",
+      "import": "./dist/src/memory-cache-manager.js"
+    },
+    "./worker-aware-cache-storage": {
+      "types": "./dist/src/worker-aware-cache-storage.d.ts",
+      "import": "./dist/src/worker-aware-cache-storage.js"
+    },
+    "./worker-aware-cache-storage.js": {
+      "types": "./dist/src/worker-aware-cache-storage.d.ts",
+      "import": "./dist/src/worker-aware-cache-storage.js"
     }
   }
 }

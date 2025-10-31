@@ -43,3 +43,9 @@ export {
 	isPreflightRequest,
 	createPreflightResponse,
 } from "./utils.js";
+
+// File System Access API - universal implementation
+export async function getFileSystemRoot(name?: string): Promise<FileSystemDirectoryHandle> {
+	const platform = getPlatform();
+	return await platform.getFileSystemRoot(name);
+}

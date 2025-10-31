@@ -6,24 +6,25 @@
  * - Other caches: Uses direct access (FilesystemCache, SQLiteCache, etc.)
  */
 
-import {isMainThread} from "worker_threads";
+import { isMainThread } from "worker_threads";
+import type { Cache } from "./cache.js";
+
+type CacheFactory = () => Promise<Cache> | Cache;
 
 export class WorkerAwareCacheStorage {
-	constructor() {
-		this.factories = new Map();
-		this.instances = new Map();
-	}
+	private factories = new Map<string, CacheFactory>();
+	private instances = new Map<string, Cache>();
 
 	/**
 	 * Register a factory function for creating caches with the given name
 	 */
-	register(name, factory) {
+	register(name: string, factory: CacheFactory): void {
 		this.factories.set(name, factory);
 
 		// If there's already an instance, dispose of it
 		const existingInstance = this.instances.get(name);
 		if (existingInstance) {
-			if (existingInstance.dispose) {
+			if ('dispose' in existingInstance && typeof existingInstance.dispose === 'function') {
 				existingInstance.dispose().catch(console.error);
 			}
 			this.instances.delete(name);
@@ -34,7 +35,7 @@ export class WorkerAwareCacheStorage {
 	 * Opens a cache with the given name
 	 * Returns existing instance if already opened, otherwise creates a new one
 	 */
-	async open(name) {
+	async open(name: string): Promise<Cache> {
 		// Return existing instance if already opened
 		const existingInstance = this.instances.get(name);
 		if (existingInstance) {
@@ -53,12 +54,10 @@ export class WorkerAwareCacheStorage {
 
 		// If we're in a worker thread and this is a MemoryCache, wrap it with coordination
 		if (!isMainThread && this.isMemoryCache(cache)) {
-			const {CoordinatedMemoryCache} = await import(
-				"@b9g/cache/coordinated-memory-cache"
-			);
+			const { CoordinatedMemoryCache } = await import("./coordinated-memory-cache.js");
 			const coordinatedCache = new CoordinatedMemoryCache(
 				name,
-				cache.options || {},
+				(cache as any).options || {},
 			);
 			this.instances.set(name, coordinatedCache);
 			return coordinatedCache;
@@ -72,14 +71,14 @@ export class WorkerAwareCacheStorage {
 	/**
 	 * Check if a cache instance is a MemoryCache
 	 */
-	isMemoryCache(cache) {
+	private isMemoryCache(cache: Cache): boolean {
 		return cache.constructor.name === "MemoryCache";
 	}
 
 	/**
 	 * Returns true if a cache with the given name exists (is registered)
 	 */
-	async has(name) {
+	async has(name: string): Promise<boolean> {
 		return this.factories.has(name);
 	}
 
@@ -87,10 +86,10 @@ export class WorkerAwareCacheStorage {
 	 * Deletes a cache with the given name
 	 * Disposes of the instance if it exists and removes the factory registration
 	 */
-	async delete(name) {
+	async delete(name: string): Promise<boolean> {
 		const instance = this.instances.get(name);
 		if (instance) {
-			if (instance.dispose) {
+			if ('dispose' in instance && typeof instance.dispose === 'function') {
 				await instance.dispose();
 			}
 			this.instances.delete(name);
@@ -105,14 +104,18 @@ export class WorkerAwareCacheStorage {
 	/**
 	 * Returns a list of all registered cache names
 	 */
-	async keys() {
+	async keys(): Promise<string[]> {
 		return Array.from(this.factories.keys());
 	}
 
 	/**
 	 * Get statistics about the cache storage
 	 */
-	getStats() {
+	getStats(): {
+		registeredCaches: number;
+		openInstances: number;
+		cacheNames: string[];
+	} {
 		return {
 			registeredCaches: this.factories.size,
 			openInstances: this.instances.size,
@@ -124,11 +127,11 @@ export class WorkerAwareCacheStorage {
 	 * Dispose of all open cache instances
 	 * Useful for cleanup during shutdown
 	 */
-	async dispose() {
-		const disposePromises = [];
+	async dispose(): Promise<void> {
+		const disposePromises: Promise<void>[] = [];
 
 		for (const [_name, instance] of this.instances) {
-			if (instance.dispose) {
+			if ('dispose' in instance && typeof instance.dispose === 'function') {
 				disposePromises.push(instance.dispose());
 			}
 		}

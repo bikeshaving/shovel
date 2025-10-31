@@ -254,6 +254,23 @@ export class CloudflarePlatform implements Platform {
 	}
 
 	/**
+	 * Get filesystem root for File System Access API using Cloudflare R2
+	 */
+	async getFileSystemRoot(name = 'default'): Promise<FileSystemDirectoryHandle> {
+		// Use R2 bucket binding if available
+		const bucketBinding = this.options.r2Buckets?.[name] || this.options.r2Buckets?.['default'];
+		
+		if (bucketBinding) {
+			const { CloudflareR2FileSystemDirectoryHandle } = await import('./filesystem.js');
+			const prefix = `filesystems/${name}`;
+			return new CloudflareR2FileSystemDirectoryHandle(bucketBinding, prefix);
+		}
+		
+		// Fallback error - Cloudflare Workers don't have local filesystem
+		throw new DOMException('No R2 bucket binding available for filesystem access. Configure r2Buckets in platform options.', 'NotFoundError');
+	}
+
+	/**
 	 * Dispose of platform resources
 	 */
 	async dispose(): Promise<void> {

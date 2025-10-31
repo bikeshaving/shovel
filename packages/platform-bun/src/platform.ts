@@ -19,7 +19,7 @@ import {
 import {CacheStorage} from "@b9g/cache/cache-storage";
 import {MemoryCache} from "@b9g/cache/memory-cache";
 import {FilesystemCache} from "@b9g/cache/filesystem-cache";
-import {createStaticFilesHandler} from "@b9g/staticfiles";
+// import {createStaticFilesHandler} from "@b9g/staticfiles"; // TODO: implement static files
 import * as Path from "path";
 
 export interface BunPlatformOptions {
@@ -39,6 +39,14 @@ export interface BunPlatformOptions {
  */
 export class BunPlatform implements Platform {
 	readonly name = "bun";
+	readonly capabilities = {
+		hotReload: true,
+		sourceMaps: true,
+		filesystem: true,
+		serverSideRendering: true,
+		staticGeneration: true,
+		s3Storage: true, // Bun's unique capability
+	};
 
 	private options: Required<BunPlatformOptions>;
 
@@ -84,21 +92,7 @@ export class BunPlatform implements Platform {
 		return caches;
 	}
 
-	/**
-	 * Create static files handler optimized for Bun
-	 */
-	createStaticHandler(config: StaticConfig = {}): Handler {
-		return createStaticFilesHandler({
-			outputDir: config.outputDir || "dist/static",
-			publicPath: config.publicPath || "/static/",
-			manifest: config.manifest || "dist/static-manifest.json",
-			dev: config.dev ?? Bun.env.NODE_ENV !== "production",
-			cache: {
-				name: config.cacheName || "memory",
-				ttl: config.cacheTtl || 86400, // 24 hours
-			},
-		});
-	}
+	// TODO: Implement static files handler when @b9g/staticfiles is ready
 
 	/**
 	 * Create HTTP server using Bun.serve
@@ -236,6 +230,35 @@ export class BunPlatform implements Platform {
 		}
 
 		return instance;
+	}
+
+	/**
+	 * Get filesystem root for File System Access API using Bun's S3 support
+	 */
+	async getFileSystemRoot(name = 'default'): Promise<FileSystemDirectoryHandle> {
+		// Check if S3 credentials are available for cloud storage
+		if (Bun.env.AWS_ACCESS_KEY_ID || Bun.env.S3_ACCESS_KEY_ID) {
+			const { BunS3FileSystemDirectoryHandle } = await import('./filesystem.js');
+			const { S3Client } = await import('bun');
+			
+			// Use Bun's built-in S3 client with environment variables
+			const s3Client = new S3Client({
+				bucket: Bun.env.S3_BUCKET || `shovel-filesystem-${name}`,
+				// Bun automatically reads AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, etc.
+			});
+			
+			const prefix = `filesystems/${name}`;
+			return new BunS3FileSystemDirectoryHandle(s3Client, prefix);
+		} else {
+			// Fallback to local filesystem (similar to Node.js implementation)
+			const { NodeFileSystemDirectoryHandle } = await import('@b9g/platform-node/filesystem');
+			const rootDir = Path.join(this.options.cwd, '.shovel', 'filesystems', name);
+			
+			// Ensure directory exists
+			await import('fs/promises').then(fs => fs.mkdir(rootDir, { recursive: true }));
+			
+			return new NodeFileSystemDirectoryHandle(rootDir);
+		}
 	}
 
 	/**

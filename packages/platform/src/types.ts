@@ -3,6 +3,8 @@
  */
 
 import type {CacheStorage} from "@b9g/cache/cache-storage";
+// Import File System Access API types
+import "@types/wicg-file-system-access";
 
 /**
  * Cache backend configuration
@@ -187,6 +189,11 @@ export interface Platform {
 	 * SUPPORTING UTILITY - Create server instance for this platform
 	 */
 	createServer(handler: Handler, options?: ServerOptions): Server;
+
+	/**
+	 * SUPPORTING UTILITY - Get filesystem root for File System Access API
+	 */
+	getFileSystemRoot(name?: string): Promise<FileSystemDirectoryHandle>;
 }
 
 /**
