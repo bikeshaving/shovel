@@ -361,6 +361,81 @@ export class Router {
   }
 
   /**
+   * Mount a subrouter at a specific path prefix
+   * All routes from the subrouter will be prefixed with the mount path
+   * 
+   * Example:
+   *   const apiRouter = new Router();
+   *   apiRouter.route('/users').get(getUsersHandler);
+   *   apiRouter.route('/users/:id').get(getUserHandler);
+   *   
+   *   const mainRouter = new Router();
+   *   mainRouter.mount('/api/v1', apiRouter);
+   *   // Routes become: /api/v1/users, /api/v1/users/:id
+   */
+  mount(mountPath: string, subrouter: Router): void {
+    // Normalize mount path - ensure it starts with / and doesn't end with /
+    const normalizedMountPath = this.normalizeMountPath(mountPath);
+    
+    // Get all routes from the subrouter
+    const subroutes = subrouter.getRoutes();
+    
+    // Add each subroute with the mount path prefix
+    for (const subroute of subroutes) {
+      // Combine mount path with subroute pattern
+      const mountedPattern = this.combinePaths(normalizedMountPath, subroute.pattern.pathname);
+      
+      // Add the route to this router
+      this.routes.push({
+        pattern: new MatchPattern(mountedPattern),
+        method: subroute.method,
+        handler: subroute.handler,
+        cache: subroute.cache
+      });
+    }
+    
+    // Get all middleware from the subrouter and add with mount path prefix
+    const submiddlewares = subrouter.getMiddlewares();
+    for (const submiddleware of submiddlewares) {
+      // For now, add subrouter middleware globally
+      // TODO: Could add path-specific middleware in the future
+      this.middlewares.push(submiddleware);
+    }
+    
+    this.dirty = true;
+  }
+
+  /**
+   * Normalize mount path: ensure it starts with / and doesn't end with /
+   */
+  private normalizeMountPath(mountPath: string): string {
+    if (!mountPath.startsWith('/')) {
+      mountPath = '/' + mountPath;
+    }
+    if (mountPath.endsWith('/') && mountPath.length > 1) {
+      mountPath = mountPath.slice(0, -1);
+    }
+    return mountPath;
+  }
+
+  /**
+   * Combine mount path with route pattern
+   */
+  private combinePaths(mountPath: string, routePattern: string): string {
+    // Handle root path specially
+    if (routePattern === '/') {
+      return mountPath;
+    }
+    
+    // Ensure route pattern starts with /
+    if (!routePattern.startsWith('/')) {
+      routePattern = '/' + routePattern;
+    }
+    
+    return mountPath + routePattern;
+  }
+
+  /**
    * Get route statistics
    */
   getStats() {
