@@ -34,7 +34,6 @@ const posts = [
 ];
 
 let router;
-let caches;
 
 /**
  * ServiceWorker install event - setup and initialization
@@ -92,7 +91,6 @@ self.addEventListener("fetch", (event) => {
  * Static event - provide routes for static site generation
  */
 self.addEventListener("static", (event) => {
-	const {outDir, baseUrl} = event.detail;
 	console.log(`[SW] Collecting static routes for generation...`);
 
 	event.waitUntil(async () => {
@@ -113,7 +111,7 @@ self.addEventListener("static", (event) => {
 
 // Route handlers
 
-async function handleHomepage(request, context) {
+async function handleHomepage(_request, _context) {
 	return new Response(
 		renderPage(
 			"Home",
@@ -147,7 +145,7 @@ async function handleHomepage(request, context) {
 	);
 }
 
-async function handlePost(request, context) {
+async function handlePost(_request, _context) {
 	const post = posts.find((p) => p.id === parseInt(context.params.id));
 
 	if (!post) {
@@ -187,7 +185,7 @@ async function handlePost(request, context) {
 	);
 }
 
-async function handleApiPosts(request, context) {
+async function handleApiPosts() {
 	// Simulate API delay
 	await new Promise((resolve) => setTimeout(resolve, 100));
 
@@ -210,7 +208,7 @@ async function handleApiPosts(request, context) {
 	);
 }
 
-async function handleAbout(request, context) {
+async function handleAbout(_request, _context) {
 	return new Response(
 		renderPage(
 			"About",

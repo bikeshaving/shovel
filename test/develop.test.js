@@ -1,6 +1,6 @@
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
-import {test, expect, beforeAll, afterAll} from "bun:test";
+import {test, expect} from "bun:test";
 
 /**
  * Development server hot reload tests
@@ -56,7 +56,7 @@ async function fetchWithRetry(port, retries = 5, delay = 500) {
 }
 
 // Helper to kill process and wait for port to be free
-async function killServer(process, port) {
+async function killServer(process, _port) {
 	if (process && !process.killed) {
 		process.kill("SIGTERM");
 

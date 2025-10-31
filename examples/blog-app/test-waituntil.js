@@ -65,7 +65,6 @@ console.log(
 
 // Test FetchEvent
 console.log("\n2. Testing FetchEvent:");
-let fetchResponse = null;
 
 self.addEventListener("fetch", (event) => {
 	console.log("Fetch event received for:", event.request.url);

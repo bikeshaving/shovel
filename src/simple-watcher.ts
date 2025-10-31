@@ -33,14 +33,13 @@ export class SimpleWatcher {
 	 */
 	async start() {
 		const entryPath = resolve(this.options.entrypoint);
-		const outputDir = resolve(this.options.outDir);
 
 		// Initial build
 		await this.build();
 
 		// Watch for changes
 		const watchDir = dirname(entryPath);
-		console.log(`[Watcher] Watching ${watchDir} for changes...`);
+		console.info(`[Watcher] Watching ${watchDir} for changes...`);
 
 		this.watcher = watch(watchDir, {recursive: true}, (eventType, filename) => {
 			if (
@@ -84,7 +83,7 @@ export class SimpleWatcher {
 			const outputDir = resolve(this.options.outDir);
 			const version = Date.now();
 
-			console.log(`[Watcher] Building ${entryPath}...`);
+			console.info(`[Watcher] Building ${entryPath}...`);
 
 			const result = await esbuild.build({
 				entryPoints: [entryPath],
@@ -113,7 +112,7 @@ export class SimpleWatcher {
 				console.error("[Watcher] Build errors:", result.errors);
 				this.options.onBuild?.(false, version);
 			} else {
-				console.log(`[Watcher] Build complete (v${version})`);
+				console.info(`[Watcher] Build complete (v${version})`);
 				this.options.onBuild?.(true, version);
 			}
 		} catch (error) {

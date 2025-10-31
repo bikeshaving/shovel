@@ -1,5 +1,5 @@
 import {readFileSync, existsSync, statSync} from "fs";
-import {join, extname} from "path";
+import {join} from "path";
 import {lookup} from "mime-types";
 import type {RuntimeConfig, AssetManifest} from "./shared.js";
 import {mergeRuntimeConfig} from "./shared.js";
@@ -67,7 +67,7 @@ function serveFromSource(
 	pathname: string,
 	config: RuntimeConfig & Required<import("./shared.js").AssetsConfig>,
 	manifest: AssetManifest | null,
-	context?: any,
+	_context?: any,
 ): Response | null {
 	try {
 		// Check if we have this asset in our manifest (even in dev mode)
@@ -117,7 +117,7 @@ function serveFromManifest(
 	pathname: string,
 	config: RuntimeConfig & Required<import("./shared.js").AssetsConfig>,
 	manifest: AssetManifest | null,
-	context?: any,
+	_context?: any,
 ): Response | null {
 	try {
 		if (!manifest?.assets) {

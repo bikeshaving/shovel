@@ -4,6 +4,8 @@
  */
 
 import * as esbuild from "esbuild";
+import {resolve, join} from "path";
+import {mkdir} from "fs/promises";
 import {staticFilesPlugin} from "./static-files.ts";
 
 /**
@@ -15,8 +17,8 @@ export async function buildForProduction({entrypoint, outDir, verbose}) {
 	const outputDir = resolve(outDir);
 
 	if (verbose) {
-		console.log(`📂 Entry: ${entryPath}`);
-		console.log(`📂 Output: ${outputDir}`);
+		console.info(`📂 Entry: ${entryPath}`);
+		console.info(`📂 Output: ${outputDir}`);
 	}
 
 	// Ensure output directory exists
@@ -48,14 +50,14 @@ export async function buildForProduction({entrypoint, outDir, verbose}) {
 	});
 
 	if (verbose && result.metafile) {
-		console.log("📊 Bundle analysis:");
+		console.info("📊 Bundle analysis:");
 		const analysis = await esbuild.analyzeMetafile(result.metafile);
-		console.log(analysis);
+		console.info(analysis);
 	}
 
 	// Build complete - server templates stay in shovel-compiler package
 
 	if (verbose) {
-		console.log(`📦 Built app to ${outputDir}`);
+		console.info(`📦 Built app to ${outputDir}`);
 	}
 }

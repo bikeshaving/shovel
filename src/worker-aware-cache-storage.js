@@ -7,7 +7,6 @@
  */
 
 import {isMainThread} from "worker_threads";
-import {CacheStorage} from "@b9g/cache/cache-storage";
 
 export class WorkerAwareCacheStorage {
 	constructor() {
@@ -128,7 +127,7 @@ export class WorkerAwareCacheStorage {
 	async dispose() {
 		const disposePromises = [];
 
-		for (const [name, instance] of this.instances) {
+		for (const [_name, instance] of this.instances) {
 			if (instance.dispose) {
 				disposePromises.push(instance.dispose());
 			}

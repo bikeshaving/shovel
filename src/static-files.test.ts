@@ -160,7 +160,7 @@ describe("createStaticFilesMiddleware", () => {
 		};
 
 		const request = new Request("http://example.com/static/style.css");
-		const response = await middleware(request, {}, next);
+		await middleware(request, {}, next);
 
 		expect(nextCalled).toBe(true);
 	});

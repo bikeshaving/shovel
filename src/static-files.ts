@@ -1,7 +1,6 @@
 import {readFileSync, writeFileSync, mkdirSync, existsSync} from "fs";
 import {createHash} from "crypto";
 import {join, basename, extname, relative, dirname} from "path";
-import {fileURLToPath} from "url";
 import {lookup} from "mime-types";
 import type {
 	AssetsConfig,
@@ -42,24 +41,12 @@ export function staticFilesPlugin(options: AssetsConfig = {}) {
 		name: "shovel-staticfiles",
 		setup(build) {
 			// Handle resolution to ensure files get processed
-			build.onResolve({filter: /.*/}, (args) => {
-				console.log(`[staticFilesPlugin] onResolve called:`, {
-					path: args.path,
-					with: args.with,
-					importer: args.importer,
-				});
-
+			build.onResolve({filter: /.*/}, (_args) => {
 				return null; // Let default resolution handle all imports
 			});
 
 			// Intercept all imports
 			build.onLoad({filter: /.*/}, (args) => {
-				console.log(`[staticFilesPlugin] onLoad called:`, {
-					path: args.path,
-					with: args.with,
-					namespace: args.namespace,
-				});
-
 				// Only process imports with { url: 'base-path' }
 				if (!args.with?.url || typeof args.with.url !== "string") {
 					return null; // Let other loaders handle it
@@ -140,7 +127,7 @@ export function staticFilesPlugin(options: AssetsConfig = {}) {
 
 					// Write manifest file
 					writeFileSync(config.manifest, JSON.stringify(manifest, null, 2));
-					console.log(
+					console.info(
 						`📦 Generated asset manifest: ${config.manifest} (${Object.keys(manifest.assets).length} assets)`,
 					);
 				} catch (error) {

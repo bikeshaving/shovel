@@ -118,12 +118,12 @@ export function displayPlatformInfo(platformName) {
 	const runtime = detectRuntime();
 	const isExplicit = platformName !== detectDevelopmentPlatform();
 
-	console.log(
+	console.info(
 		`[Shovel] Platform: ${platformName} ${isExplicit ? "(explicit)" : "(detected)"}`,
 	);
-	console.log(`[Shovel] Runtime: ${runtime}`);
+	console.info(`[Shovel] Runtime: ${runtime}`);
 
 	if (isExplicit && runtime !== platformName) {
-		console.log(`[Shovel] Cross-targeting: ${runtime} → ${platformName}`);
+		console.info(`[Shovel] Cross-targeting: ${runtime} → ${platformName}`);
 	}
 }

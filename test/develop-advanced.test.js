@@ -1,6 +1,6 @@
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
-import {test, expect, beforeAll, afterAll} from "bun:test";
+import {test, expect} from "bun:test";
 
 /**
  * Advanced development server tests
@@ -63,7 +63,7 @@ async function fetchWithRetry(port, path = "/", retries = 10, delay = 300) {
 }
 
 // Helper to kill process and wait for port to be free
-async function killServer(process, port) {
+async function killServer(process, _port) {
 	if (process && !process.killed) {
 		process.kill("SIGTERM");
 
@@ -189,7 +189,7 @@ test(
 				"Hello final",
 			];
 
-			for (const [i, text] of modifications.entries()) {
+			for (const [, text] of modifications.entries()) {
 				const content = `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";

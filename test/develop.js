@@ -1,10 +1,8 @@
 import * as FS from "fs/promises";
 import {suite} from "uvu";
 import * as Assert from "uvu/assert";
-import * as Sinon from "sinon";
 import * as ChildProcess from "child_process";
 //import whyIsNodeRunning from "why-is-node-running";
-import fkill from "fkill";
 
 const test = suite("develop");
 
@@ -12,7 +10,7 @@ const test = suite("develop");
 test("basic", async () => {
 	const PORT = 13307;
 	try {
-		const shovel = ChildProcess.spawn(
+		ChildProcess.spawn(
 			"./bin/shovel.js",
 			["develop", "./fixtures/server-hello.ts", "--port", PORT],
 			{stdio: "inherit"},
@@ -48,7 +46,7 @@ test("basic", async () => {
 test("restarts on change to root", async () => {
 	const PORT = 13308;
 	try {
-		const shovel = ChildProcess.spawn(
+		ChildProcess.spawn(
 			"./bin/shovel.js",
 			["develop", "./fixtures/server-hello.ts", "--port", PORT],
 			{stdio: "inherit"},
@@ -106,7 +104,7 @@ test("restarts on change to root", async () => {
 test("restarts on change to dependency", async () => {
 	const PORT = 13309;
 	try {
-		const shovel = ChildProcess.spawn(
+		ChildProcess.spawn(
 			"./bin/shovel.js",
 			["develop", "./fixtures/server-dependent.ts", "--port", PORT],
 			{stdio: "inherit"},

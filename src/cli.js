@@ -6,7 +6,6 @@
  * Override: Explicit targeting for deployment
  */
 
-import {spawn} from "child_process";
 import {Command} from "commander";
 import {cpus} from "os";
 import pkg from "../package.json" with {type: "json"};

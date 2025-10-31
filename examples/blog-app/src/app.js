@@ -286,7 +286,6 @@ self.addEventListener("fetch", (event) => {
  * Static event - provide routes for static site generation
  */
 self.addEventListener("static", (event) => {
-	const {outDir} = event.detail;
 	console.log("[SW] Collecting static routes for blog app...");
 
 	event.waitUntil(
