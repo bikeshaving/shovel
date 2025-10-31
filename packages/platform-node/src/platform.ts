@@ -53,9 +53,10 @@ class WorkerManager {
   private memoryCacheManager: MemoryCacheManager;
   private options: Required<NodePlatformOptions>;
 
-  constructor(cacheStorage: CacheStorage, options: Required<NodePlatformOptions>, workerCount = 1) {
+  constructor(cacheStorage: CacheStorage, options: Required<NodePlatformOptions>, workerCount = 1, private entrypoint?: string) {
     this.memoryCacheManager = new MemoryCacheManager();
     this.options = options;
+    console.log('[WorkerManager] Constructor called with entrypoint:', entrypoint);
     this.initWorkers(workerCount);
   }
 
@@ -173,8 +174,9 @@ class WorkerManager {
           }
         };
 
+        console.log('[Platform-Node] Sending load message:', { version, entrypoint: this.entrypoint });
         worker.on('message', handleReady);
-        worker.postMessage({ type: 'load', version });
+        worker.postMessage({ type: 'load', version, entrypoint: this.entrypoint });
       });
     });
 
@@ -228,11 +230,14 @@ export class NodePlatform implements Platform {
       this.cacheStorage = this.createCaches(options.caches);
     }
     
-    // Create WorkerManager with shared cache storage
-    if (!this.workerManager) {
-      const workerCount = options.workerCount || 1;
-      this.workerManager = new WorkerManager(this.cacheStorage, this.options, workerCount);
+    // Create WorkerManager with shared cache storage  
+    // Always create a new WorkerManager to ensure correct entrypoint
+    if (this.workerManager) {
+      await this.workerManager.terminate();
     }
+    const workerCount = options.workerCount || 1;
+    console.log('[Platform-Node] Creating WorkerManager with entryPath:', entryPath);
+    this.workerManager = new WorkerManager(this.cacheStorage, this.options, workerCount, entryPath);
     
     // Load ServiceWorker in all workers
     const version = Date.now();

@@ -41,15 +41,8 @@ function getWorkerCount(options) {
   }
 }
 
-// Check for experimental flags and respawn if needed
-if (!process.env.SHOVEL_RESPAWNED && process.argv.includes('develop')) {
-  process.env.SHOVEL_RESPAWNED = '1';
-  const child = spawn('node', ['--experimental-vm-modules', ...process.argv.slice(1)], {
-    stdio: 'inherit'
-  });
-  child.on('exit', (code) => process.exit(code || 0));
-  // Don't continue with this process
-} else {
+// Main CLI execution starts here
+{
   // Main CLI execution
   process.title = "shovel";
   const program = new Command();
@@ -91,8 +84,29 @@ program
       console.log(`🔥 Starting development server...`);
       console.log(`⚙️  Workers: ${workerCount}`);
       
+      // Set up file watching and building for development
+      const { SimpleWatcher } = await import('./simple-watcher.ts');
+      let serviceWorker;
+      
+      const watcher = new SimpleWatcher({
+        entrypoint,
+        outDir: 'dist',
+        onBuild: async (success, version) => {
+          if (success && serviceWorker) {
+            console.log(`🔄 Reloading Workers (v${version})...`);
+            await serviceWorker.runtime.reloadWorkers(version);
+            console.log(`✅ Workers reloaded`);
+          }
+        }
+      });
+      
+      // Initial build and start watching
+      console.log(`📦 Building ${entrypoint}...`);
+      await watcher.start();
+      console.log(`✅ Build complete, watching for changes...`);
+      
       // Load ServiceWorker app
-      const serviceWorker = await platform.loadServiceWorker(entrypoint, {
+      serviceWorker = await platform.loadServiceWorker(entrypoint, {
         hotReload: true,
         workerCount,
         caches: {
@@ -115,6 +129,7 @@ program
       // Graceful shutdown
       process.on('SIGINT', async () => {
         console.log('\n🛑 Shutting down...');
+        await watcher.stop();
         await serviceWorker.dispose();
         await platform.dispose();
         await server.close();

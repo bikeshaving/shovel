@@ -44,9 +44,9 @@ async function handleFetchEvent(request) {
     }
   }
   
-  // Fallback to direct router call if event dispatch didn't work
-  if (!response && currentApp.default && currentApp.default.handler) {
-    response = await currentApp.default.handler(request);
+  // Fallback to direct .fetch() call if event dispatch didn't work
+  if (!response && currentApp.default && currentApp.default.fetch) {
+    response = await currentApp.default.fetch(request);
   }
   
   if (!response) {
@@ -61,11 +61,14 @@ async function handleFetchEvent(request) {
 /**
  * Load and activate ServiceWorker with proper lifecycle
  */
-async function loadServiceWorker(version) {
+async function loadServiceWorker(version, entrypoint) {
   try {
-    // Platform-standard cache busting with query parameters
-    // Import from well-known path in current working directory
-    const appModule = await import(`${process.cwd()}/dist/app.js?v=${version}`);
+    console.log('[Worker] loadServiceWorker called with:', { version, entrypoint });
+    const entrypointPath = entrypoint || `${process.cwd()}/dist/app.js`;
+    console.log('[Worker] Loading from:', entrypointPath);
+    
+    // Simple cache busting with version timestamp
+    const appModule = await import(`${entrypointPath}?v=${version}`);
     currentApp = appModule;
     
     // ServiceWorker lifecycle simulation using standard ExtendableEvent
@@ -82,7 +85,7 @@ async function loadServiceWorker(version) {
     }
     
     serviceWorkerReady = true;
-    console.log(`[Worker] ServiceWorker loaded and activated (v${version})`);
+    console.log(`[Worker] ServiceWorker loaded and activated (v${version}) from ${entrypointPath}`);
     
   } catch (error) {
     console.error('[Worker] Failed to load ServiceWorker:', error);
@@ -95,7 +98,7 @@ async function loadServiceWorker(version) {
 parentPort.on('message', async (message) => {
   try {
     if (message.type === 'load') {
-      await loadServiceWorker(message.version);
+      await loadServiceWorker(message.version, message.entrypoint);
       parentPort.postMessage({ type: 'ready', version: message.version });
       
     } else if (message.type === 'request') {

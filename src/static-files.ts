@@ -3,8 +3,8 @@ import { createHash } from 'crypto';
 import { join, basename, extname, relative, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { lookup } from 'mime-types';
-import type { AssetsConfig, AssetManifest, AssetManifestEntry } from './shared.js';
-import { mergeConfig } from './shared.js';
+import type { AssetsConfig, AssetManifest, AssetManifestEntry } from './shared.ts';
+import { mergeConfig } from './shared.ts';
 
 /**
  * ESBuild/Bun plugin for importing assets as URLs with manifest generation

@@ -5,7 +5,7 @@
 import * as esbuild from 'esbuild';
 import { watch } from 'fs';
 import { resolve, dirname } from 'path';
-import { staticFilesPlugin } from './static-files.js';
+import { staticFilesPlugin } from './static-files.ts';
 
 export interface SimpleWatcherOptions {
   /** Entry point to build */

@@ -4,10 +4,7 @@
  */
 
 import * as esbuild from 'esbuild';
-import { mkdir, writeFile, copyFile } from 'fs/promises';
-import { join, dirname, resolve } from 'path';
-import { staticFilesPlugin } from './static-files.js';
-import { fileURLToPath } from 'url';
+import { staticFilesPlugin } from './static-files.ts';
 
 /**
  * Build ServiceWorker app for production deployment
@@ -16,15 +13,15 @@ import { fileURLToPath } from 'url';
 export async function buildForProduction({ entrypoint, outDir, verbose }) {
   const entryPath = resolve(entrypoint);
   const outputDir = resolve(outDir);
-  
+
   if (verbose) {
     console.log(`📂 Entry: ${entryPath}`);
     console.log(`📂 Output: ${outputDir}`);
   }
-  
+
   // Ensure output directory exists
   await mkdir(outputDir, { recursive: true });
-  
+
   // Build ServiceWorker code (keep as ServiceWorker, just bundle dependencies)
   const result = await esbuild.build({
     entryPoints: [entryPath],
@@ -49,19 +46,16 @@ export async function buildForProduction({ entrypoint, outDir, verbose }) {
       'process.env.NODE_ENV': '"production"'
     }
   });
-  
+
   if (verbose && result.metafile) {
     console.log('📊 Bundle analysis:');
     const analysis = await esbuild.analyzeMetafile(result.metafile);
     console.log(analysis);
   }
-  
+
   // Build complete - server templates stay in shovel-compiler package
-  
+
   if (verbose) {
     console.log(`📦 Built app to ${outputDir}`);
   }
 }
-
-
-
