@@ -1,9 +1,4 @@
-import {
-	Cache,
-	generateCacheKey,
-	cloneResponse,
-	type CacheQueryOptions,
-} from "./cache.js";
+import {Cache, type CacheQueryOptions} from "./cache.js";
 import {parentPort, isMainThread} from "worker_threads";
 
 /**

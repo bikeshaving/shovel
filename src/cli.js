@@ -78,7 +78,7 @@ function getWorkerCount(options) {
 
 				if (options.verbose) {
 					displayPlatformInfo(platformName);
-					console.log(`🔧 Worker configuration: ${workerCount} workers`);
+					console.info(`🔧 Worker configuration: ${workerCount} workers`);
 				}
 
 				// Create platform with smart defaults
@@ -88,8 +88,8 @@ function getWorkerCount(options) {
 					host: options.host,
 				});
 
-				console.log(`🔥 Starting development server...`);
-				console.log(`⚙️  Workers: ${workerCount}`);
+				console.info(`🔥 Starting development server...`);
+				console.info(`⚙️  Workers: ${workerCount}`);
 
 				// Set up file watching and building for development
 				const {SimpleWatcher} = await import("./simple-watcher.ts");
@@ -100,17 +100,17 @@ function getWorkerCount(options) {
 					outDir: "dist",
 					onBuild: async (success, version) => {
 						if (success && serviceWorker) {
-							console.log(`🔄 Reloading Workers (v${version})...`);
+							console.info(`🔄 Reloading Workers (v${version})...`);
 							await serviceWorker.runtime.reloadWorkers(version);
-							console.log(`✅ Workers reloaded`);
+							console.info(`✅ Workers reloaded`);
 						}
 					},
 				});
 
 				// Initial build and start watching
-				console.log(`📦 Building ${entrypoint}...`);
+				console.info(`📦 Building ${entrypoint}...`);
 				await watcher.start();
-				console.log(`✅ Build complete, watching for changes...`);
+				console.info(`✅ Build complete, watching for changes...`);
 
 				// Load ServiceWorker app
 				serviceWorker = await platform.loadServiceWorker(entrypoint, {
@@ -130,14 +130,14 @@ function getWorkerCount(options) {
 				});
 
 				await server.listen();
-				console.log(
+				console.info(
 					`🚀 Server running at http://${options.host}:${options.port}`,
 				);
-				console.log(`📁 Serving: ${entrypoint}`);
+				console.info(`📁 Serving: ${entrypoint}`);
 
 				// Graceful shutdown
 				process.on("SIGINT", async () => {
-					console.log("\n🛑 Shutting down...");
+					console.info("\n🛑 Shutting down...");
 					await watcher.stop();
 					await serviceWorker.dispose();
 					await platform.dispose();
@@ -177,7 +177,7 @@ function getWorkerCount(options) {
 					displayPlatformInfo(platformName);
 				}
 
-				console.log(`📦 Building for ${platformName}...`);
+				console.info(`📦 Building for ${platformName}...`);
 
 				// Import build functionality
 				const {buildForProduction} = await import("./_build.js");
@@ -189,8 +189,8 @@ function getWorkerCount(options) {
 					verbose: options.verbose,
 				});
 
-				console.log(`✅ Build complete`);
-				console.log(`📁 Output: ${options.outDir}`);
+				console.info(`✅ Build complete`);
+				console.info(`📁 Output: ${options.outDir}`);
 			} catch (error) {
 				console.error(`❌ Build failed:`, error.message);
 				if (options.verbose) {
@@ -228,14 +228,14 @@ function getWorkerCount(options) {
 
 				if (options.verbose) {
 					displayPlatformInfo(platformName);
-					console.log(`🔧 Worker configuration: ${workerCount} workers`);
+					console.info(`🔧 Worker configuration: ${workerCount} workers`);
 				}
 
 				const platform = await createPlatform(platformName, {
 					hotReload: false,
 				});
 
-				console.log(`🏗️  Generating static site...`);
+				console.info(`🏗️  Generating static site...`);
 
 				// Load ServiceWorker app
 				const serviceWorker = await platform.loadServiceWorker(entrypoint, {
@@ -244,15 +244,15 @@ function getWorkerCount(options) {
 				});
 
 				// Collect routes for static generation
-				console.log(`📋 Collecting routes...`);
+				console.info(`📋 Collecting routes...`);
 				const routes = await serviceWorker.collectStaticRoutes(
 					options.outDir,
 					options.baseUrl,
 				);
-				console.log(`📄 Found ${routes.length} routes:`, routes);
+				console.info(`📄 Found ${routes.length} routes:`, routes);
 
 				// Pre-render each route
-				console.log(`🎨 Pre-rendering pages...`);
+				console.info(`🎨 Pre-rendering pages...`);
 				for (const route of routes) {
 					try {
 						const url = new URL(route, options.baseUrl);
@@ -262,7 +262,7 @@ function getWorkerCount(options) {
 
 						if (response.ok) {
 							// TODO: Write to filesystem
-							console.log(`✅ ${route}`);
+							console.info(`✅ ${route}`);
 						} else {
 							console.warn(`⚠️  ${route} (${response.status})`);
 						}
@@ -271,7 +271,7 @@ function getWorkerCount(options) {
 					}
 				}
 
-				console.log(`🎉 Static site generated in ${options.outDir}`);
+				console.info(`🎉 Static site generated in ${options.outDir}`);
 
 				await serviceWorker.dispose();
 				await platform.dispose();
@@ -295,24 +295,24 @@ function getWorkerCount(options) {
 				"./_platform-detection.js"
 			);
 
-			console.log("🔍 Shovel Platform Information");
-			console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-			console.log(`Current Runtime: ${detectRuntime()}`);
-			console.log(`Default Platform: ${detectDevelopmentPlatform()}`);
-			console.log(`Available Platforms: node, bun, cloudflare`);
-			console.log(`Shovel Version: ${pkg.version}`);
-			console.log("");
-			console.log("💡 Usage Examples:");
-			console.log(
+			console.info("🔍 Shovel Platform Information");
+			console.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+			console.info(`Current Runtime: ${detectRuntime()}`);
+			console.info(`Default Platform: ${detectDevelopmentPlatform()}`);
+			console.info(`Available Platforms: node, bun, cloudflare`);
+			console.info(`Shovel Version: ${pkg.version}`);
+			console.info("");
+			console.info("💡 Usage Examples:");
+			console.info(
 				"   shovel develop app.js                    # Auto-detect platform",
 			);
-			console.log(
+			console.info(
 				"   shovel develop app.js --platform=bun     # Explicit platform",
 			);
-			console.log(
+			console.info(
 				"   shovel develop app.js --workers=4        # Custom worker count",
 			);
-			console.log(
+			console.info(
 				"   shovel build app.js --target=cloudflare  # Target deployment",
 			);
 		});

@@ -55,6 +55,15 @@ export default [
 		},
 	},
 	{
-		ignores: ["node_modules/", "dist/", "build/", "coverage/", "*.min.js"],
+		ignores: [
+			"node_modules/**",
+			"**/node_modules/**",
+			"**/dist/**",
+			"**/build/**",
+			"**/coverage/**",
+			"**/*.min.js",
+			"examples/**/dist/**",
+			"packages/**/dist/**",
+		],
 	},
 ];

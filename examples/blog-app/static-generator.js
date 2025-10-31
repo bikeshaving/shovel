@@ -17,7 +17,7 @@ import * as Path from "path";
 import * as ESBuild from "esbuild";
 
 async function generateStaticSite() {
-	console.log("[Static] Generating static site from ServiceWorker app...");
+	console.info("[Static] Generating static site from ServiceWorker app...");
 
 	const outDir = "dist";
 	const baseUrl = "https://example.com";
@@ -29,7 +29,7 @@ async function generateStaticSite() {
 
 	try {
 		// Load ServiceWorker app
-		console.log("[Static] Loading ServiceWorker entrypoint...");
+		console.info("[Static] Loading ServiceWorker entrypoint...");
 		const serviceWorker = await platform.loadServiceWorker(
 			"./src/service-worker-app.js",
 			{
@@ -43,7 +43,7 @@ async function generateStaticSite() {
 		);
 
 		// Build static assets first
-		console.log("[Static] Building static assets...");
+		console.info("[Static] Building static assets...");
 		await ESBuild.build({
 			entryPoints: ["./src/service-worker-app.js"],
 			plugins: [
@@ -59,21 +59,21 @@ async function generateStaticSite() {
 		});
 
 		// Collect routes for static generation
-		console.log("[Static] Collecting routes...");
+		console.info("[Static] Collecting routes...");
 		const routes = await serviceWorker.collectStaticRoutes(outDir, baseUrl);
-		console.log(`[Static] Found ${routes.length} routes:`, routes);
+		console.info(`[Static] Found ${routes.length} routes:`, routes);
 
 		// Ensure output directory exists
 		await FS.mkdir(outDir, {recursive: true});
 
 		// Pre-render each route
-		console.log("[Static] Pre-rendering routes...");
+		console.info("[Static] Pre-rendering routes...");
 		for (const route of routes) {
 			try {
 				const url = new URL(route, baseUrl);
 				const request = new Request(url.href);
 
-				console.log(`[Static] Rendering ${route}...`);
+				console.info(`[Static] Rendering ${route}...`);
 				const response = await serviceWorker.handleRequest(request);
 
 				if (response.ok) {
@@ -86,7 +86,7 @@ async function generateStaticSite() {
 					await FS.mkdir(Path.dirname(fullPath), {recursive: true});
 					await FS.writeFile(fullPath, content, "utf8");
 
-					console.log(`[Static] ✓ ${route} → ${filePath}`);
+					console.info(`[Static] ✓ ${route} → ${filePath}`);
 				} else {
 					console.warn(
 						`[Static] ✗ ${route} failed with status ${response.status}`,
@@ -97,12 +97,12 @@ async function generateStaticSite() {
 			}
 		}
 
-		console.log(`[Static] ✅ Static site generated in ${outDir}/`);
+		console.info(`[Static] ✅ Static site generated in ${outDir}/`);
 
 		// List generated files
 		const files = await FS.readdir(outDir, {recursive: true});
-		console.log("[Static] Generated files:");
-		files.forEach((file) => console.log(`  ${file}`));
+		console.info("[Static] Generated files:");
+		files.forEach((file) => console.info(`  ${file}`));
 	} finally {
 		await serviceWorker?.dispose();
 		await platform.dispose();

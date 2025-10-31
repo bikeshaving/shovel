@@ -18,4 +18,4 @@ await build({
 	external: ["@b9g/*"], // Keep Shovel packages external for SSG
 });
 
-console.log("✅ Built app with static files");
+console.info("✅ Built app with static files");

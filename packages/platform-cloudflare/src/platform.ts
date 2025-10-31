@@ -146,17 +146,17 @@ export class CloudflarePlatform implements Platform {
 	/**
 	 * Create "server" for Cloudflare Workers (which is really just the handler)
 	 */
-	createServer(handler: Handler, options: ServerOptions = {}): Server {
+	createServer(handler: Handler, _options: ServerOptions = {}): Server {
 		// Cloudflare Workers don't have servers - they are the handler
 		// This is mainly for compatibility with the Platform interface
 
 		return {
 			listen: () => {
-				console.log("[Cloudflare] Worker handler ready");
+				console.info("[Cloudflare] Worker handler ready");
 				return Promise.resolve();
 			},
 			close: () => {
-				console.log("[Cloudflare] Worker handler stopped");
+				console.info("[Cloudflare] Worker handler stopped");
 				return Promise.resolve();
 			},
 			address: () => ({port: 0, host: "cloudflare-workers"}),
@@ -183,7 +183,7 @@ export class CloudflarePlatform implements Platform {
 
 		if (isCloudflareWorker) {
 			// We're in a real Cloudflare Worker - just use the global environment
-			console.log("[Cloudflare] Running in native ServiceWorker environment");
+			console.info("[Cloudflare] Running in native ServiceWorker environment");
 
 			const instance: ServiceWorkerInstance = {
 				runtime: globalThis as any, // The global is already the ServiceWorker runtime
@@ -226,7 +226,7 @@ export class CloudflarePlatform implements Platform {
 			};
 
 			// Set up ServiceWorker globals
-			const globals = createServiceWorkerGlobals(runtime);
+			createServiceWorkerGlobals(runtime);
 			globalThis.self = runtime;
 			globalThis.addEventListener = runtime.addEventListener.bind(runtime);
 			globalThis.removeEventListener =

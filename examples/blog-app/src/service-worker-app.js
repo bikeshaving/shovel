@@ -10,8 +10,8 @@ import {Router} from "@b9g/router";
 import {createStaticFilesHandler} from "@b9g/staticfiles";
 
 // Import static assets
-import styles from "./assets/styles.css" with {type: "url"};
-import logo from "./assets/logo.svg" with {type: "url"};
+import styles from "./assets/styles.css" with {url: "/static/"};
+import logo from "./assets/logo.svg" with {url: "/static/"};
 
 // Sample blog data
 const posts = [
@@ -39,7 +39,7 @@ let router;
  * ServiceWorker install event - setup and initialization
  */
 self.addEventListener("install", (event) => {
-	console.log("[SW] Installing Shovel ServiceWorker app...");
+	console.info("[SW] Installing Shovel ServiceWorker app...");
 
 	event.waitUntil(async () => {
 		// Initialize router
@@ -64,7 +64,7 @@ self.addEventListener("install", (event) => {
 		router.get("/api/posts", handleApiPosts);
 		router.get("/about", handleAbout);
 
-		console.log("[SW] Shovel app installed successfully!");
+		console.info("[SW] Shovel app installed successfully!");
 	});
 });
 
@@ -72,11 +72,11 @@ self.addEventListener("install", (event) => {
  * ServiceWorker activate event - ready to handle requests
  */
 self.addEventListener("activate", (event) => {
-	console.log("[SW] Activating Shovel ServiceWorker app...");
+	console.info("[SW] Activating Shovel ServiceWorker app...");
 
 	event.waitUntil(async () => {
 		// App is ready to serve requests
-		console.log("[SW] Shovel app activated and ready!");
+		console.info("[SW] Shovel app activated and ready!");
 	});
 });
 
@@ -91,7 +91,7 @@ self.addEventListener("fetch", (event) => {
  * Static event - provide routes for static site generation
  */
 self.addEventListener("static", (event) => {
-	console.log(`[SW] Collecting static routes for generation...`);
+	console.info(`[SW] Collecting static routes for generation...`);
 
 	event.waitUntil(async () => {
 		// Return all routes that should be pre-rendered
@@ -102,7 +102,7 @@ self.addEventListener("static", (event) => {
 			...posts.map((post) => `/posts/${post.id}`),
 		];
 
-		console.log(
+		console.info(
 			`[SW] Found ${staticRoutes.length} routes for static generation`,
 		);
 		return staticRoutes;

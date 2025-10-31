@@ -110,11 +110,11 @@ await router.handler(request); // Returns Response
 
 **Status:** ✅ Implemented
 
-### 3. `@b9g/import-with-type-url`
+### 3. `@b9g/staticfiles`
 
 ESBuild/Bun plugin for asset pipeline:
-- Import files and get URLs with type information
-- Enables proper asset handling in universal code
+- Import files with `with { url: "/static/" }` syntax  
+- Automatic content hashing and manifest generation
 - Works with the router for serving static assets
 
 **Status:** ✅ Implemented

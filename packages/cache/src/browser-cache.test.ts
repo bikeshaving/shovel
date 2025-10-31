@@ -28,19 +28,19 @@ describe("BrowserCache", () => {
 		beforeEach(() => {
 			// Create mock cache
 			mockCache = {
-				match: async (request, options) => {
+				match: async (request, _options) => {
 					if (request.url === "http://example.com/cached") {
 						return new Response("Cached response");
 					}
 					return undefined;
 				},
-				put: async (request, response) => {
+				put: async (_request, _response) => {
 					// Mock implementation - just succeed
 				},
-				delete: async (request, options) => {
+				delete: async (request, _options) => {
 					return request.url === "http://example.com/cached";
 				},
-				keys: async (request, options) => {
+				keys: async (_request, _options) => {
 					return [new Request("http://example.com/cached")];
 				},
 			};
@@ -224,16 +224,16 @@ describe("BrowserCache", () => {
 			let lastOptions: any;
 
 			mockCache = {
-				match: async (request, options) => {
+				match: async (_request, options) => {
 					lastOptions = options;
 					return undefined;
 				},
 				put: async () => {},
-				delete: async (request, options) => {
+				delete: async (_request, options) => {
 					lastOptions = options;
 					return false;
 				},
-				keys: async (request, options) => {
+				keys: async (_request, options) => {
 					lastOptions = options;
 					return [];
 				},

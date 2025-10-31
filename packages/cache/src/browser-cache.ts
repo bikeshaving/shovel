@@ -269,7 +269,7 @@ export class BrowserCache extends AbstractCache {
 
 		// The native Cache API uses the same option names, so we can pass through
 		// We just need to exclude our custom options
-		const {cacheName, ...nativeOptions} = options;
+		const {cacheName: _cacheName, ...nativeOptions} = options;
 		return nativeOptions;
 	}
 }

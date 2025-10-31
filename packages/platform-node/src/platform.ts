@@ -19,12 +19,9 @@ import {MemoryCache} from "@b9g/cache/memory-cache";
 import {FilesystemCache} from "@b9g/cache/filesystem-cache";
 import * as Http from "http";
 import * as Path from "path";
-import * as FS from "fs/promises";
-import {existsSync} from "fs";
-import {createServiceWorkerGlobals} from "@b9g/shovel/serviceworker";
 import {MemoryCacheManager} from "@b9g/shovel/memory-cache-manager";
 import {Worker} from "worker_threads";
-import {pathToFileURL, fileURLToPath} from "url";
+import {fileURLToPath} from "url";
 
 // ES module dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
@@ -64,7 +61,7 @@ class WorkerManager {
 	) {
 		this.memoryCacheManager = new MemoryCacheManager();
 		this.options = options;
-		console.log(
+		console.info(
 			"[WorkerManager] Constructor called with entrypoint:",
 			entrypoint,
 		);
@@ -130,9 +127,9 @@ class WorkerManager {
 				this.pendingRequests.delete(message.requestId);
 			}
 		} else if (message.type === "ready") {
-			console.log(`[Platform-Node] ServiceWorker ready (v${message.version})`);
+			console.info(`[Platform-Node] ServiceWorker ready (v${message.version})`);
 		} else if (message.type === "worker-ready") {
-			console.log("[Platform-Node] Worker initialized");
+			console.info("[Platform-Node] Worker initialized");
 		}
 	}
 
@@ -176,7 +173,7 @@ class WorkerManager {
 	 * Reload ServiceWorker with new version (hot reload simulation)
 	 */
 	async reloadWorkers(version = Date.now()): Promise<void> {
-		console.log(`[Platform-Node] Reloading ServiceWorker (v${version})`);
+		console.info(`[Platform-Node] Reloading ServiceWorker (v${version})`);
 
 		const loadPromises = this.workers.map((worker) => {
 			return new Promise<void>((resolve) => {
@@ -187,7 +184,7 @@ class WorkerManager {
 					}
 				};
 
-				console.log("[Platform-Node] Sending load message:", {
+				console.info("[Platform-Node] Sending load message:", {
 					version,
 					entrypoint: this.entrypoint,
 				});
@@ -201,7 +198,7 @@ class WorkerManager {
 		});
 
 		await Promise.all(loadPromises);
-		console.log(`[Platform-Node] All Workers reloaded (v${version})`);
+		console.info(`[Platform-Node] All Workers reloaded (v${version})`);
 	}
 
 	/**
@@ -259,7 +256,7 @@ export class NodePlatform implements Platform {
 			await this.workerManager.terminate();
 		}
 		const workerCount = options.workerCount || 1;
-		console.log(
+		console.info(
 			"[Platform-Node] Creating WorkerManager with entryPath:",
 			entryPath,
 		);
@@ -283,16 +280,16 @@ export class NodePlatform implements Platform {
 				return this.workerManager.handleRequest(request);
 			},
 			install: async () => {
-				console.log(
+				console.info(
 					"[Platform-Node] ServiceWorker installed via Worker threads",
 				);
 			},
 			activate: async () => {
-				console.log(
+				console.info(
 					"[Platform-Node] ServiceWorker activated via Worker threads",
 				);
 			},
-			collectStaticRoutes: async (outDir: string, baseUrl?: string) => {
+			collectStaticRoutes: async () => {
 				// TODO: Implement static route collection
 				return [];
 			},
@@ -304,11 +301,11 @@ export class NodePlatform implements Platform {
 					await this.workerManager.terminate();
 					this.workerManager = undefined;
 				}
-				console.log("[Platform-Node] ServiceWorker disposed");
+				console.info("[Platform-Node] ServiceWorker disposed");
 			},
 		};
 
-		console.log(
+		console.info(
 			"[Platform-Node] ServiceWorker loaded with Worker threads and coordinated caches",
 		);
 		return instance;
@@ -401,7 +398,7 @@ export class NodePlatform implements Platform {
 			listen: () => {
 				return new Promise<void>((resolve) => {
 					httpServer.listen(port, host, () => {
-						console.log(`🚀 Server running at http://${host}:${port}`);
+						console.info(`🚀 Server running at http://${host}:${port}`);
 						resolve();
 					});
 				});

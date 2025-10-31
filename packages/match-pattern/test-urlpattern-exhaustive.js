@@ -8,7 +8,7 @@ if (!URLPattern) {
 	URLPattern = globalThis.URLPattern;
 }
 
-console.log("Testing URLPattern exhaustive search behavior...\n");
+console.info("Testing URLPattern exhaustive search behavior...\n");
 
 // Test if URLPattern allows extra search parameters
 const pattern = new URLPattern({search: "q=:query"});
@@ -20,24 +20,24 @@ const urls = [
 	"http://example.com/search?page=1&q=hello", // Extra param + different order
 ];
 
-console.log('Pattern: { search: "q=:query" }');
-console.log("");
+console.info('Pattern: { search: "q=:query" }');
+console.info("");
 
 urls.forEach((urlStr, i) => {
 	const url = new URL(urlStr);
 	const matches = pattern.test(url);
 	const result = pattern.exec(url);
 
-	console.log(`URL ${i + 1}: ${url.search}`);
-	console.log(`  Matches: ${matches}`);
+	console.info(`URL ${i + 1}: ${url.search}`);
+	console.info(`  Matches: ${matches}`);
 	if (matches && result?.search?.groups) {
-		console.log(`  Captured: ${JSON.stringify(result.search.groups)}`);
+		console.info(`  Captured: ${JSON.stringify(result.search.groups)}`);
 	}
-	console.log("");
+	console.info("");
 });
 
 // Test empty search pattern
-console.log("=== Empty Search Pattern ===");
+console.info("=== Empty Search Pattern ===");
 const emptyPattern = new URLPattern({pathname: "/test"});
 const testUrls = [
 	"http://example.com/test",
@@ -47,5 +47,5 @@ const testUrls = [
 testUrls.forEach((urlStr) => {
 	const url = new URL(urlStr);
 	const matches = emptyPattern.test(url);
-	console.log(`${url.pathname}${url.search} → ${matches}`);
+	console.info(`${url.pathname}${url.search} → ${matches}`);
 });

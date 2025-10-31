@@ -105,7 +105,7 @@ export class CacheStorage {
 	async dispose(): Promise<void> {
 		const disposePromises: Promise<void>[] = [];
 
-		for (const [name, instance] of this.instances) {
+		for (const [_name, instance] of this.instances) {
 			if (instance.dispose) {
 				disposePromises.push(instance.dispose());
 			}

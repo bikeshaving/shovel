@@ -1,5 +1,5 @@
 /**
- * TypeScript declarations for asset imports with { type: 'url' }
+ * TypeScript declarations for asset imports with { url: '/static/' }
  *
  * Add this to your project's global types or import it in your app
  */

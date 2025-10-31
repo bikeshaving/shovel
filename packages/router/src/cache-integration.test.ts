@@ -21,7 +21,7 @@ describe("Router Cache Integration", () => {
 	});
 
 	test("can register routes with cache configuration", () => {
-		const handler = async (request: Request, context: any) =>
+		const handler = async (_request: Request, _context: any) =>
 			new Response("Hello");
 
 		router
@@ -172,10 +172,10 @@ describe("Router Cache Integration", () => {
 	});
 
 	test("can access different caches through context.caches", async () => {
-		let capturedContext: any = null;
+		let _capturedContext: any = null;
 
 		const handler = async (request: Request, context: any) => {
-			capturedContext = context;
+			_capturedContext = context;
 
 			// Access a different cache through context.caches
 			const usersCache = await context.caches.open("users");

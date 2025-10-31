@@ -60,20 +60,23 @@ export function resolvePlatform(options = {}) {
  */
 export async function createPlatform(platformName, options = {}) {
 	switch (platformName) {
-		case "node":
+		case "node": {
 			const {createNodePlatform} = await import("@b9g/platform-node");
 			return createNodePlatform(options);
+		}
 
-		case "bun":
+		case "bun": {
 			const {createBunPlatform} = await import("@b9g/platform-bun");
 			return createBunPlatform(options);
+		}
 
 		case "cloudflare":
-		case "cf":
+		case "cf": {
 			const {createCloudflarePlatform} = await import(
 				"@b9g/platform-cloudflare"
 			);
 			return createCloudflarePlatform(options);
+		}
 
 		default:
 			throw new Error(

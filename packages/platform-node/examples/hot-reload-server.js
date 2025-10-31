@@ -53,8 +53,8 @@ const server = platform.createServer(handler, {
 });
 
 server.listen(() => {
-	console.log("🔥 Hot reload server running at http://localhost:3000");
-	console.log("💡 Edit this file and see changes automatically reflected!");
+	console.info("🔥 Hot reload server running at http://localhost:3000");
+	console.info("💡 Edit this file and see changes automatically reflected!");
 });
 
 // Export handler for hot reloading

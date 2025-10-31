@@ -81,7 +81,7 @@ const posts = [
 		id: 3,
 		title: "Static Files Made Easy",
 		content:
-			'Import any asset with `with { type: "url" }` and Shovel handles the rest - content hashing, manifest generation, and optimized serving.',
+			'Import any asset with `with { url: "/static/" }` and Shovel handles the rest - content hashing, manifest generation, and optimized serving.',
 		author: "Shovel Team",
 		date: "2024-01-13",
 	},
@@ -253,11 +253,11 @@ router
  * ServiceWorker install event - setup and initialization
  */
 self.addEventListener("install", (event) => {
-	console.log("[SW] Installing Shovel blog app...");
+	console.info("[SW] Installing Shovel blog app...");
 
 	event.waitUntil(
 		(async () => {
-			console.log("[SW] Shovel blog app installed successfully!");
+			console.info("[SW] Shovel blog app installed successfully!");
 		})(),
 	);
 });
@@ -266,11 +266,11 @@ self.addEventListener("install", (event) => {
  * ServiceWorker activate event - ready to handle requests
  */
 self.addEventListener("activate", (event) => {
-	console.log("[SW] Activating Shovel blog app...");
+	console.info("[SW] Activating Shovel blog app...");
 
 	event.waitUntil(
 		(async () => {
-			console.log("[SW] Shovel blog app activated and ready!");
+			console.info("[SW] Shovel blog app activated and ready!");
 		})(),
 	);
 });
@@ -286,7 +286,7 @@ self.addEventListener("fetch", (event) => {
  * Static event - provide routes for static site generation
  */
 self.addEventListener("static", (event) => {
-	console.log("[SW] Collecting static routes for blog app...");
+	console.info("[SW] Collecting static routes for blog app...");
 
 	event.waitUntil(
 		(async () => {
@@ -298,7 +298,7 @@ self.addEventListener("static", (event) => {
 				...posts.map((post) => `/posts/${post.id}`),
 			];
 
-			console.log(
+			console.info(
 				`[SW] Found ${staticRoutes.length} routes for static generation`,
 			);
 			return staticRoutes;

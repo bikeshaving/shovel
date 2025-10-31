@@ -21,7 +21,7 @@ describe("Trailing Slash Normalization", () => {
 			const result: boolean = pattern.test(
 				new URL("http://example.com/api/posts/"),
 			);
-			console.log("URLPattern /api/posts matches /api/posts/:", result);
+			console.info("URLPattern /api/posts matches /api/posts/:", result);
 		});
 
 		test("URLPattern pattern with trailing slash vs URL without", () => {
@@ -32,7 +32,7 @@ describe("Trailing Slash Normalization", () => {
 			const result: boolean = pattern.test(
 				new URL("http://example.com/api/posts"),
 			);
-			console.log("URLPattern /api/posts/ matches /api/posts:", result);
+			console.info("URLPattern /api/posts/ matches /api/posts:", result);
 		});
 	});
 
@@ -83,7 +83,7 @@ describe("Trailing Slash Normalization", () => {
 
 		test("should handle root path trailing slash normalization", () => {
 			const pattern1: MatchPattern = new MatchPattern("/");
-			const pattern2: MatchPattern = new MatchPattern("");
+			const _pattern2: MatchPattern = new MatchPattern("");
 
 			const url1: URL = new URL("http://example.com/");
 			const url2: URL = new URL("http://example.com");

@@ -44,11 +44,6 @@ async function handleFetchEvent(request) {
 		}
 	}
 
-	// Fallback to direct .fetch() call if event dispatch didn't work
-	if (!response && currentApp.default && currentApp.default.fetch) {
-		response = await currentApp.default.fetch(request);
-	}
-
 	if (!response) {
 		response = new Response("ServiceWorker did not provide a response", {
 			status: 500,
@@ -63,12 +58,12 @@ async function handleFetchEvent(request) {
  */
 async function loadServiceWorker(version, entrypoint) {
 	try {
-		console.log("[Worker] loadServiceWorker called with:", {
+		console.info("[Worker] loadServiceWorker called with:", {
 			version,
 			entrypoint,
 		});
 		const entrypointPath = entrypoint || `${process.cwd()}/dist/app.js`;
-		console.log("[Worker] Loading from:", entrypointPath);
+		console.info("[Worker] Loading from:", entrypointPath);
 
 		// Simple cache busting with version timestamp
 		const appModule = await import(`${entrypointPath}?v=${version}`);
@@ -88,7 +83,7 @@ async function loadServiceWorker(version, entrypoint) {
 		}
 
 		serviceWorkerReady = true;
-		console.log(
+		console.info(
 			`[Worker] ServiceWorker loaded and activated (v${version}) from ${entrypointPath}`,
 		);
 	} catch (error) {

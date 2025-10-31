@@ -114,7 +114,7 @@ export const cacheInvalidationMiddleware = async (request, context, next) => {
 				);
 			}
 
-			console.log(`Invalidated cache for ${request.method} ${url.pathname}`);
+			console.info(`Invalidated cache for ${request.method} ${url.pathname}`);
 		} catch (error) {
 			console.warn("Failed to invalidate cache:", error);
 		}

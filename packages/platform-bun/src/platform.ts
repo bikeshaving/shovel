@@ -119,7 +119,7 @@ export class BunPlatform implements Platform {
 
 		return {
 			listen: () => {
-				console.log(`🥖 Bun server running at http://${hostname}:${port}`);
+				console.info(`🥖 Bun server running at http://${hostname}:${port}`);
 				return Promise.resolve();
 			},
 			close: () => {
@@ -159,7 +159,7 @@ export class BunPlatform implements Platform {
 
 		if (this.options.hotReload && options.hotReload !== false) {
 			// Use Bun's built-in hot reloading
-			console.log(
+			console.info(
 				"[Bun] Hot reloading enabled - Bun will handle file watching",
 			);
 
@@ -170,7 +170,7 @@ export class BunPlatform implements Platform {
 					runtime.reset();
 
 					// Create ServiceWorker globals
-					const globals = createServiceWorkerGlobals(runtime);
+					createServiceWorkerGlobals(runtime);
 
 					// Bun can import TypeScript/JSX directly
 					globalThis.self = runtime;
@@ -196,7 +196,7 @@ export class BunPlatform implements Platform {
 					await runtime.install();
 					await runtime.activate();
 
-					console.log("[Bun] ServiceWorker loaded successfully");
+					console.info("[Bun] ServiceWorker loaded successfully");
 				} catch (error) {
 					console.error("[Bun] Failed to load ServiceWorker:", error);
 				}
@@ -209,7 +209,7 @@ export class BunPlatform implements Platform {
 			// We might need to use chokidar or similar
 		} else {
 			// Static loading
-			const globals = createServiceWorkerGlobals(runtime);
+			createServiceWorkerGlobals(runtime);
 
 			// Set up globals
 			globalThis.self = runtime;
