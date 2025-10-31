@@ -1,39 +1,39 @@
-import { Cache, generateCacheKey, type CacheQueryOptions } from './cache.js';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as crypto from 'crypto';
+import {Cache, generateCacheKey, type CacheQueryOptions} from "./cache.js";
+import * as fs from "fs";
+import * as path from "path";
+import * as crypto from "crypto";
 
 /**
  * Configuration options for FilesystemCache
  */
 export interface FilesystemCacheOptions {
-  /** Base directory for cache storage */
-  directory?: string;
-  /** Maximum age of entries in milliseconds */
-  maxAge?: number;
-  /** Whether to create directories if they don't exist */
-  createDirectories?: boolean;
+	/** Base directory for cache storage */
+	directory?: string;
+	/** Maximum age of entries in milliseconds */
+	maxAge?: number;
+	/** Whether to create directories if they don't exist */
+	createDirectories?: boolean;
 }
 
 /**
  * Serialized request metadata
  */
 interface SerializedRequest {
-  url: string;
-  method: string;
-  headers: Record<string, string>;
-  timestamp: number;
+	url: string;
+	method: string;
+	headers: Record<string, string>;
+	timestamp: number;
 }
 
 /**
  * Serialized response metadata
  */
 interface SerializedResponse {
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  timestamp: number;
-  hasBody: boolean;
+	status: number;
+	statusText: string;
+	headers: Record<string, string>;
+	timestamp: number;
+	hasBody: boolean;
 }
 
 /**
@@ -41,366 +41,384 @@ interface SerializedResponse {
  * Stores requests and responses as files in a directory structure
  */
 export class FilesystemCache extends Cache {
-  private baseDir: string;
+	private baseDir: string;
 
-  constructor(
-    private name: string,
-    private options: FilesystemCacheOptions = {}
-  ) {
-    super();
-    
-    this.baseDir = path.join(
-      this.options.directory || './cache',
-      this.sanitizeName(name)
-    );
+	constructor(
+		private name: string,
+		private options: FilesystemCacheOptions = {},
+	) {
+		super();
 
-    if (this.options.createDirectories !== false) {
-      this.ensureDirectoryExists(this.baseDir);
-    }
-  }
+		this.baseDir = path.join(
+			this.options.directory || "./cache",
+			this.sanitizeName(name),
+		);
 
-  /**
-   * Find a cached response for the given request
-   */
-  async match(request: Request, options?: CacheQueryOptions): Promise<Response | undefined> {
-    try {
-      const entryPath = this.getEntryPath(request, options);
-      
-      if (!fs.existsSync(entryPath)) {
-        return undefined;
-      }
+		if (this.options.createDirectories !== false) {
+			this.ensureDirectoryExists(this.baseDir);
+		}
+	}
 
-      // Check if entry has expired
-      if (this.isExpired(entryPath)) {
-        await this.deleteEntry(entryPath);
-        return undefined;
-      }
+	/**
+	 * Find a cached response for the given request
+	 */
+	async match(
+		request: Request,
+		options?: CacheQueryOptions,
+	): Promise<Response | undefined> {
+		try {
+			const entryPath = this.getEntryPath(request, options);
 
-      // Load response metadata
-      const responseMetadata = await this.loadResponseMetadata(entryPath);
-      if (!responseMetadata) {
-        return undefined;
-      }
+			if (!fs.existsSync(entryPath)) {
+				return undefined;
+			}
 
-      // Load response body if it exists
-      let body: BodyInit | null = null;
-      if (responseMetadata.hasBody) {
-        const bodyPath = path.join(entryPath, 'body');
-        if (fs.existsSync(bodyPath)) {
-          body = fs.readFileSync(bodyPath);
-        }
-      }
+			// Check if entry has expired
+			if (this.isExpired(entryPath)) {
+				await this.deleteEntry(entryPath);
+				return undefined;
+			}
 
-      // Reconstruct response
-      return new Response(body, {
-        status: responseMetadata.status,
-        statusText: responseMetadata.statusText,
-        headers: responseMetadata.headers
-      });
+			// Load response metadata
+			const responseMetadata = await this.loadResponseMetadata(entryPath);
+			if (!responseMetadata) {
+				return undefined;
+			}
 
-    } catch (error) {
-      console.warn(`FilesystemCache match error:`, error);
-      return undefined;
-    }
-  }
+			// Load response body if it exists
+			let body: BodyInit | null = null;
+			if (responseMetadata.hasBody) {
+				const bodyPath = path.join(entryPath, "body");
+				if (fs.existsSync(bodyPath)) {
+					body = fs.readFileSync(bodyPath);
+				}
+			}
 
-  /**
-   * Store a request/response pair in the cache
-   */
-  async put(request: Request, response: Response): Promise<void> {
-    try {
-      const entryPath = this.getEntryPath(request);
-      
-      // Ensure entry directory exists
-      this.ensureDirectoryExists(entryPath);
+			// Reconstruct response
+			return new Response(body, {
+				status: responseMetadata.status,
+				statusText: responseMetadata.statusText,
+				headers: responseMetadata.headers,
+			});
+		} catch (error) {
+			console.warn(`FilesystemCache match error:`, error);
+			return undefined;
+		}
+	}
 
-      // Serialize request metadata
-      const requestMetadata: SerializedRequest = {
-        url: request.url,
-        method: request.method,
-        headers: Object.fromEntries(request.headers.entries()),
-        timestamp: Date.now()
-      };
+	/**
+	 * Store a request/response pair in the cache
+	 */
+	async put(request: Request, response: Response): Promise<void> {
+		try {
+			const entryPath = this.getEntryPath(request);
 
-      // Clone response to avoid consumption
-      const clonedResponse = response.clone();
-      const responseBody = await clonedResponse.arrayBuffer();
+			// Ensure entry directory exists
+			this.ensureDirectoryExists(entryPath);
 
-      // Serialize response metadata
-      const responseMetadata: SerializedResponse = {
-        status: clonedResponse.status,
-        statusText: clonedResponse.statusText,
-        headers: Object.fromEntries(clonedResponse.headers.entries()),
-        timestamp: Date.now(),
-        hasBody: responseBody.byteLength > 0
-      };
+			// Serialize request metadata
+			const requestMetadata: SerializedRequest = {
+				url: request.url,
+				method: request.method,
+				headers: Object.fromEntries(request.headers.entries()),
+				timestamp: Date.now(),
+			};
 
-      // Write files atomically by writing to temp files first
-      const requestPath = path.join(entryPath, 'request.json');
-      const responsePath = path.join(entryPath, 'response.json');
-      const bodyPath = path.join(entryPath, 'body');
+			// Clone response to avoid consumption
+			const clonedResponse = response.clone();
+			const responseBody = await clonedResponse.arrayBuffer();
 
-      const tempRequestPath = requestPath + '.tmp';
-      const tempResponsePath = responsePath + '.tmp';
-      const tempBodyPath = bodyPath + '.tmp';
+			// Serialize response metadata
+			const responseMetadata: SerializedResponse = {
+				status: clonedResponse.status,
+				statusText: clonedResponse.statusText,
+				headers: Object.fromEntries(clonedResponse.headers.entries()),
+				timestamp: Date.now(),
+				hasBody: responseBody.byteLength > 0,
+			};
 
-      // Write temporary files
-      fs.writeFileSync(tempRequestPath, JSON.stringify(requestMetadata, null, 2));
-      fs.writeFileSync(tempResponsePath, JSON.stringify(responseMetadata, null, 2));
-      
-      if (responseMetadata.hasBody) {
-        fs.writeFileSync(tempBodyPath, new Uint8Array(responseBody));
-      }
+			// Write files atomically by writing to temp files first
+			const requestPath = path.join(entryPath, "request.json");
+			const responsePath = path.join(entryPath, "response.json");
+			const bodyPath = path.join(entryPath, "body");
 
-      // Atomic rename to final locations
-      fs.renameSync(tempRequestPath, requestPath);
-      fs.renameSync(tempResponsePath, responsePath);
-      
-      if (responseMetadata.hasBody) {
-        fs.renameSync(tempBodyPath, bodyPath);
-      }
+			const tempRequestPath = requestPath + ".tmp";
+			const tempResponsePath = responsePath + ".tmp";
+			const tempBodyPath = bodyPath + ".tmp";
 
-    } catch (error) {
-      throw new Error(`FilesystemCache put error: ${error.message}`);
-    }
-  }
+			// Write temporary files
+			fs.writeFileSync(
+				tempRequestPath,
+				JSON.stringify(requestMetadata, null, 2),
+			);
+			fs.writeFileSync(
+				tempResponsePath,
+				JSON.stringify(responseMetadata, null, 2),
+			);
 
-  /**
-   * Delete a cached entry
-   */
-  async delete(request: Request, options?: CacheQueryOptions): Promise<boolean> {
-    try {
-      const entryPath = this.getEntryPath(request, options);
-      
-      if (!fs.existsSync(entryPath)) {
-        return false;
-      }
+			if (responseMetadata.hasBody) {
+				fs.writeFileSync(tempBodyPath, new Uint8Array(responseBody));
+			}
 
-      await this.deleteEntry(entryPath);
-      return true;
+			// Atomic rename to final locations
+			fs.renameSync(tempRequestPath, requestPath);
+			fs.renameSync(tempResponsePath, responsePath);
 
-    } catch (error) {
-      console.warn(`FilesystemCache delete error:`, error);
-      return false;
-    }
-  }
+			if (responseMetadata.hasBody) {
+				fs.renameSync(tempBodyPath, bodyPath);
+			}
+		} catch (error) {
+			throw new Error(`FilesystemCache put error: ${error.message}`);
+		}
+	}
 
-  /**
-   * Get all cached request keys
-   */
-  async keys(request?: Request, options?: CacheQueryOptions): Promise<Request[]> {
-    try {
-      if (!fs.existsSync(this.baseDir)) {
-        return [];
-      }
+	/**
+	 * Delete a cached entry
+	 */
+	async delete(
+		request: Request,
+		options?: CacheQueryOptions,
+	): Promise<boolean> {
+		try {
+			const entryPath = this.getEntryPath(request, options);
 
-      const requests: Request[] = [];
-      const entries = fs.readdirSync(this.baseDir, { withFileTypes: true });
+			if (!fs.existsSync(entryPath)) {
+				return false;
+			}
 
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
+			await this.deleteEntry(entryPath);
+			return true;
+		} catch (error) {
+			console.warn(`FilesystemCache delete error:`, error);
+			return false;
+		}
+	}
 
-        const entryPath = path.join(this.baseDir, entry.name);
-        
-        // Skip expired entries
-        if (this.isExpired(entryPath)) {
-          await this.deleteEntry(entryPath);
-          continue;
-        }
+	/**
+	 * Get all cached request keys
+	 */
+	async keys(
+		request?: Request,
+		options?: CacheQueryOptions,
+	): Promise<Request[]> {
+		try {
+			if (!fs.existsSync(this.baseDir)) {
+				return [];
+			}
 
-        // Load request metadata
-        const requestMetadata = await this.loadRequestMetadata(entryPath);
-        if (!requestMetadata) continue;
+			const requests: Request[] = [];
+			const entries = fs.readdirSync(this.baseDir, {withFileTypes: true});
 
-        const cachedRequest = new Request(requestMetadata.url, {
-          method: requestMetadata.method,
-          headers: requestMetadata.headers
-        });
+			for (const entry of entries) {
+				if (!entry.isDirectory()) continue;
 
-        // If filtering by specific request, check if it matches
-        if (request) {
-          const requestKey = generateCacheKey(request, options);
-          const cachedKey = generateCacheKey(cachedRequest, options);
-          if (requestKey !== cachedKey) {
-            continue;
-          }
-        }
+				const entryPath = path.join(this.baseDir, entry.name);
 
-        requests.push(cachedRequest);
-      }
+				// Skip expired entries
+				if (this.isExpired(entryPath)) {
+					await this.deleteEntry(entryPath);
+					continue;
+				}
 
-      return requests;
+				// Load request metadata
+				const requestMetadata = await this.loadRequestMetadata(entryPath);
+				if (!requestMetadata) continue;
 
-    } catch (error) {
-      console.warn(`FilesystemCache keys error:`, error);
-      return [];
-    }
-  }
+				const cachedRequest = new Request(requestMetadata.url, {
+					method: requestMetadata.method,
+					headers: requestMetadata.headers,
+				});
 
-  /**
-   * Clear all entries from the cache
-   */
-  async clear(): Promise<void> {
-    try {
-      if (fs.existsSync(this.baseDir)) {
-        fs.rmSync(this.baseDir, { recursive: true, force: true });
-      }
-      
-      if (this.options.createDirectories !== false) {
-        this.ensureDirectoryExists(this.baseDir);
-      }
-    } catch (error) {
-      throw new Error(`FilesystemCache clear error: ${error.message}`);
-    }
-  }
+				// If filtering by specific request, check if it matches
+				if (request) {
+					const requestKey = generateCacheKey(request, options);
+					const cachedKey = generateCacheKey(cachedRequest, options);
+					if (requestKey !== cachedKey) {
+						continue;
+					}
+				}
 
-  /**
-   * Get cache statistics
-   */
-  getStats() {
-    try {
-      if (!fs.existsSync(this.baseDir)) {
-        return {
-          name: this.name,
-          entryCount: 0,
-          directory: this.baseDir,
-          maxAge: this.options.maxAge
-        };
-      }
+				requests.push(cachedRequest);
+			}
 
-      const entries = fs.readdirSync(this.baseDir, { withFileTypes: true });
-      const entryCount = entries.filter(entry => entry.isDirectory()).length;
+			return requests;
+		} catch (error) {
+			console.warn(`FilesystemCache keys error:`, error);
+			return [];
+		}
+	}
 
-      return {
-        name: this.name,
-        entryCount,
-        directory: this.baseDir,
-        maxAge: this.options.maxAge
-      };
+	/**
+	 * Clear all entries from the cache
+	 */
+	async clear(): Promise<void> {
+		try {
+			if (fs.existsSync(this.baseDir)) {
+				fs.rmSync(this.baseDir, {recursive: true, force: true});
+			}
 
-    } catch (error) {
-      return {
-        name: this.name,
-        entryCount: 0,
-        directory: this.baseDir,
-        maxAge: this.options.maxAge,
-        error: error.message
-      };
-    }
-  }
+			if (this.options.createDirectories !== false) {
+				this.ensureDirectoryExists(this.baseDir);
+			}
+		} catch (error) {
+			throw new Error(`FilesystemCache clear error: ${error.message}`);
+		}
+	}
 
-  /**
-   * Dispose of the cache and clean up resources
-   */
-  async dispose(): Promise<void> {
-    // For filesystem cache, disposal is essentially clearing
-    // Individual entries remain on disk for persistence
-    // Override this method if you want different cleanup behavior
-  }
+	/**
+	 * Get cache statistics
+	 */
+	getStats() {
+		try {
+			if (!fs.existsSync(this.baseDir)) {
+				return {
+					name: this.name,
+					entryCount: 0,
+					directory: this.baseDir,
+					maxAge: this.options.maxAge,
+				};
+			}
 
-  /**
-   * Generate a file path for a cache entry
-   */
-  private getEntryPath(request: Request, options?: CacheQueryOptions): string {
-    const key = generateCacheKey(request, options);
-    const hash = this.hashKey(key);
-    return path.join(this.baseDir, hash);
-  }
+			const entries = fs.readdirSync(this.baseDir, {withFileTypes: true});
+			const entryCount = entries.filter((entry) => entry.isDirectory()).length;
 
-  /**
-   * Generate a hash from a cache key for filesystem storage
-   */
-  private hashKey(key: string): string {
-    return crypto.createHash('sha256').update(key).digest('hex').substring(0, 16);
-  }
+			return {
+				name: this.name,
+				entryCount,
+				directory: this.baseDir,
+				maxAge: this.options.maxAge,
+			};
+		} catch (error) {
+			return {
+				name: this.name,
+				entryCount: 0,
+				directory: this.baseDir,
+				maxAge: this.options.maxAge,
+				error: error.message,
+			};
+		}
+	}
 
-  /**
-   * Sanitize cache name for filesystem use
-   */
-  private sanitizeName(name: string): string {
-    return name.replace(/[^a-zA-Z0-9-_]/g, '_');
-  }
+	/**
+	 * Dispose of the cache and clean up resources
+	 */
+	async dispose(): Promise<void> {
+		// For filesystem cache, disposal is essentially clearing
+		// Individual entries remain on disk for persistence
+		// Override this method if you want different cleanup behavior
+	}
 
-  /**
-   * Ensure a directory exists, creating it if necessary
-   */
-  private ensureDirectoryExists(dirPath: string): void {
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-  }
+	/**
+	 * Generate a file path for a cache entry
+	 */
+	private getEntryPath(request: Request, options?: CacheQueryOptions): string {
+		const key = generateCacheKey(request, options);
+		const hash = this.hashKey(key);
+		return path.join(this.baseDir, hash);
+	}
 
-  /**
-   * Check if a cache entry has expired
-   */
-  private isExpired(entryPath: string): boolean {
-    if (!this.options.maxAge) {
-      return false;
-    }
+	/**
+	 * Generate a hash from a cache key for filesystem storage
+	 */
+	private hashKey(key: string): string {
+		return crypto
+			.createHash("sha256")
+			.update(key)
+			.digest("hex")
+			.substring(0, 16);
+	}
 
-    try {
-      const responsePath = path.join(entryPath, 'response.json');
-      if (!fs.existsSync(responsePath)) {
-        return true;
-      }
+	/**
+	 * Sanitize cache name for filesystem use
+	 */
+	private sanitizeName(name: string): string {
+		return name.replace(/[^a-zA-Z0-9-_]/g, "_");
+	}
 
-      const stats = fs.statSync(responsePath);
-      const age = Date.now() - stats.mtime.getTime();
-      return age > this.options.maxAge;
+	/**
+	 * Ensure a directory exists, creating it if necessary
+	 */
+	private ensureDirectoryExists(dirPath: string): void {
+		if (!fs.existsSync(dirPath)) {
+			fs.mkdirSync(dirPath, {recursive: true});
+		}
+	}
 
-    } catch (error) {
-      return true; // If we can't read the file, consider it expired
-    }
-  }
+	/**
+	 * Check if a cache entry has expired
+	 */
+	private isExpired(entryPath: string): boolean {
+		if (!this.options.maxAge) {
+			return false;
+		}
 
-  /**
-   * Delete a cache entry directory and all its contents
-   */
-  private async deleteEntry(entryPath: string): Promise<void> {
-    try {
-      if (fs.existsSync(entryPath)) {
-        fs.rmSync(entryPath, { recursive: true, force: true });
-      }
-    } catch (error) {
-      console.warn(`Failed to delete cache entry ${entryPath}:`, error);
-    }
-  }
+		try {
+			const responsePath = path.join(entryPath, "response.json");
+			if (!fs.existsSync(responsePath)) {
+				return true;
+			}
 
-  /**
-   * Load request metadata from filesystem
-   */
-  private async loadRequestMetadata(entryPath: string): Promise<SerializedRequest | null> {
-    try {
-      const requestPath = path.join(entryPath, 'request.json');
-      if (!fs.existsSync(requestPath)) {
-        return null;
-      }
+			const stats = fs.statSync(responsePath);
+			const age = Date.now() - stats.mtime.getTime();
+			return age > this.options.maxAge;
+		} catch (error) {
+			return true; // If we can't read the file, consider it expired
+		}
+	}
 
-      const content = fs.readFileSync(requestPath, 'utf-8');
-      return JSON.parse(content) as SerializedRequest;
+	/**
+	 * Delete a cache entry directory and all its contents
+	 */
+	private async deleteEntry(entryPath: string): Promise<void> {
+		try {
+			if (fs.existsSync(entryPath)) {
+				fs.rmSync(entryPath, {recursive: true, force: true});
+			}
+		} catch (error) {
+			console.warn(`Failed to delete cache entry ${entryPath}:`, error);
+		}
+	}
 
-    } catch (error) {
-      console.warn(`Failed to load request metadata from ${entryPath}:`, error);
-      return null;
-    }
-  }
+	/**
+	 * Load request metadata from filesystem
+	 */
+	private async loadRequestMetadata(
+		entryPath: string,
+	): Promise<SerializedRequest | null> {
+		try {
+			const requestPath = path.join(entryPath, "request.json");
+			if (!fs.existsSync(requestPath)) {
+				return null;
+			}
 
-  /**
-   * Load response metadata from filesystem
-   */
-  private async loadResponseMetadata(entryPath: string): Promise<SerializedResponse | null> {
-    try {
-      const responsePath = path.join(entryPath, 'response.json');
-      if (!fs.existsSync(responsePath)) {
-        return null;
-      }
+			const content = fs.readFileSync(requestPath, "utf-8");
+			return JSON.parse(content) as SerializedRequest;
+		} catch (error) {
+			console.warn(`Failed to load request metadata from ${entryPath}:`, error);
+			return null;
+		}
+	}
 
-      const content = fs.readFileSync(responsePath, 'utf-8');
-      return JSON.parse(content) as SerializedResponse;
+	/**
+	 * Load response metadata from filesystem
+	 */
+	private async loadResponseMetadata(
+		entryPath: string,
+	): Promise<SerializedResponse | null> {
+		try {
+			const responsePath = path.join(entryPath, "response.json");
+			if (!fs.existsSync(responsePath)) {
+				return null;
+			}
 
-    } catch (error) {
-      console.warn(`Failed to load response metadata from ${entryPath}:`, error);
-      return null;
-    }
-  }
+			const content = fs.readFileSync(responsePath, "utf-8");
+			return JSON.parse(content) as SerializedResponse;
+		} catch (error) {
+			console.warn(
+				`Failed to load response metadata from ${entryPath}:`,
+				error,
+			);
+			return null;
+		}
+	}
 }

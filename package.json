@@ -13,7 +13,9 @@
   ],
   "scripts": {
     "build": "libuild build",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "eslint --ext .js,.jsx,.ts,.tsx .",
+    "lint:fix": "eslint --ext .js,.jsx,.ts,.tsx . --fix"
   },
   "dependencies": {
     "@b9g/http-errors": "file:packages/http-errors",

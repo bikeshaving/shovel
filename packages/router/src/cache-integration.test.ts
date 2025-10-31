@@ -1,185 +1,204 @@
-import { test, expect, describe, beforeEach } from 'bun:test';
-import { Router } from './index.js';
-import { CacheStorage } from '@b9g/cache/cache-storage.js';
-import { MemoryCache } from '@b9g/cache/memory-cache.js';
+import {test, expect, describe, beforeEach} from "bun:test";
+import {Router} from "./index.js";
+import {CacheStorage} from "@b9g/cache/cache-storage.js";
+import {MemoryCache} from "@b9g/cache/memory-cache.js";
 
-describe('Router Cache Integration', () => {
-  let router: Router;
-  let caches: CacheStorage;
+describe("Router Cache Integration", () => {
+	let router: Router;
+	let caches: CacheStorage;
 
-  beforeEach(() => {
-    caches = new CacheStorage();
-    caches.register('posts', () => new MemoryCache('posts'));
-    caches.register('users', () => new MemoryCache('users'));
-    
-    router = new Router({ caches });
-  });
+	beforeEach(() => {
+		caches = new CacheStorage();
+		caches.register("posts", () => new MemoryCache("posts"));
+		caches.register("users", () => new MemoryCache("users"));
 
-  test('can create router with cache storage', () => {
-    expect(router).toBeDefined();
-    expect(router.getStats().routeCount).toBe(0);
-  });
+		router = new Router({caches});
+	});
 
-  test('can register routes with cache configuration', () => {
-    const handler = async (request: Request, context: any) => new Response('Hello');
+	test("can create router with cache storage", () => {
+		expect(router).toBeDefined();
+		expect(router.getStats().routeCount).toBe(0);
+	});
 
-    router.route({
-      pattern: '/api/posts/:id',
-      cache: { name: 'posts' }
-    }).get(handler);
+	test("can register routes with cache configuration", () => {
+		const handler = async (request: Request, context: any) =>
+			new Response("Hello");
 
-    expect(router.getStats().routeCount).toBe(1);
-  });
+		router
+			.route({
+				pattern: "/api/posts/:id",
+				cache: {name: "posts"},
+			})
+			.get(handler);
 
-  test('provides cache context to handlers', async () => {
-    let capturedContext: any = null;
+		expect(router.getStats().routeCount).toBe(1);
+	});
 
-    const handler = async (request: Request, context: any) => {
-      capturedContext = context;
-      return new Response('OK');
-    };
+	test("provides cache context to handlers", async () => {
+		let capturedContext: any = null;
 
-    router.route({
-      pattern: '/api/posts/:id',
-      cache: { name: 'posts' }
-    }).get(handler);
+		const handler = async (request: Request, context: any) => {
+			capturedContext = context;
+			return new Response("OK");
+		};
 
-    const request = new Request('http://example.com/api/posts/123');
-    await router.match(request);
+		router
+			.route({
+				pattern: "/api/posts/:id",
+				cache: {name: "posts"},
+			})
+			.get(handler);
 
-    expect(capturedContext).not.toBeNull();
-    expect(capturedContext.params).toEqual({ id: '123' });
-    expect(capturedContext.cache).toBeDefined();
-    expect(capturedContext.caches).toBe(caches);
-  });
+		const request = new Request("http://example.com/api/posts/123");
+		await router.match(request);
 
-  test('provides caches but no specific cache when not configured', async () => {
-    let capturedContext: any = null;
+		expect(capturedContext).not.toBeNull();
+		expect(capturedContext.params).toEqual({id: "123"});
+		expect(capturedContext.cache).toBeDefined();
+		expect(capturedContext.caches).toBe(caches);
+	});
 
-    const handler = async (request: Request, context: any) => {
-      capturedContext = context;
-      return new Response('OK');
-    };
+	test("provides caches but no specific cache when not configured", async () => {
+		let capturedContext: any = null;
 
-    router.route('/api/posts/:id').get(handler);
+		const handler = async (request: Request, context: any) => {
+			capturedContext = context;
+			return new Response("OK");
+		};
 
-    const request = new Request('http://example.com/api/posts/123');
-    await router.match(request);
+		router.route("/api/posts/:id").get(handler);
 
-    expect(capturedContext.cache).toBeUndefined();
-    expect(capturedContext.caches).toBe(caches);
-  });
+		const request = new Request("http://example.com/api/posts/123");
+		await router.match(request);
 
-  test('works without cache storage', async () => {
-    const routerWithoutCache = new Router();
-    let capturedContext: any = null;
+		expect(capturedContext.cache).toBeUndefined();
+		expect(capturedContext.caches).toBe(caches);
+	});
 
-    const handler = async (request: Request, context: any) => {
-      capturedContext = context;
-      return new Response('OK');
-    };
+	test("works without cache storage", async () => {
+		const routerWithoutCache = new Router();
+		let capturedContext: any = null;
 
-    routerWithoutCache.route('/api/posts/:id').get(handler);
+		const handler = async (request: Request, context: any) => {
+			capturedContext = context;
+			return new Response("OK");
+		};
 
-    const request = new Request('http://example.com/api/posts/123');
-    await routerWithoutCache.match(request);
+		routerWithoutCache.route("/api/posts/:id").get(handler);
 
-    expect(capturedContext.cache).toBeUndefined();
-    expect(capturedContext.caches).toBeUndefined();
-    expect(capturedContext.params).toEqual({ id: '123' });
-  });
+		const request = new Request("http://example.com/api/posts/123");
+		await routerWithoutCache.match(request);
 
-  test('cache integration with middleware', async () => {
-    const executionOrder: string[] = [];
-    let middlewareContext: any = null;
-    let handlerContext: any = null;
+		expect(capturedContext.cache).toBeUndefined();
+		expect(capturedContext.caches).toBeUndefined();
+		expect(capturedContext.params).toEqual({id: "123"});
+	});
 
-    const middleware = async (request: Request, context: any, next: () => Promise<Response>) => {
-      middlewareContext = context;
-      executionOrder.push('middleware');
-      const response = await next();
-      executionOrder.push('middleware-after');
-      return response;
-    };
+	test("cache integration with middleware", async () => {
+		const executionOrder: string[] = [];
+		let middlewareContext: any = null;
+		let handlerContext: any = null;
 
-    const handler = async (request: Request, context: any) => {
-      handlerContext = context;
-      executionOrder.push('handler');
-      return new Response('OK');
-    };
+		const middleware = async (
+			request: Request,
+			context: any,
+			next: () => Promise<Response>,
+		) => {
+			middlewareContext = context;
+			executionOrder.push("middleware");
+			const response = await next();
+			executionOrder.push("middleware-after");
+			return response;
+		};
 
-    router.use(middleware);
-    router.route({
-      pattern: '/api/posts/:id',
-      cache: { name: 'posts' }
-    }).get(handler);
+		const handler = async (request: Request, context: any) => {
+			handlerContext = context;
+			executionOrder.push("handler");
+			return new Response("OK");
+		};
 
-    const request = new Request('http://example.com/api/posts/123');
-    await router.match(request);
+		router.use(middleware);
+		router
+			.route({
+				pattern: "/api/posts/:id",
+				cache: {name: "posts"},
+			})
+			.get(handler);
 
-    expect(executionOrder).toEqual(['middleware', 'handler', 'middleware-after']);
-    
-    // Both middleware and handler should get the same context with cache
-    expect(middlewareContext.cache).toBe(handlerContext.cache);
-    expect(middlewareContext.caches).toBe(handlerContext.caches);
-    expect(middlewareContext.params).toEqual({ id: '123' });
-  });
+		const request = new Request("http://example.com/api/posts/123");
+		await router.match(request);
 
-  test('handles cache opening errors gracefully', async () => {
-    // Register a cache that will fail to open
-    caches.register('failing-cache', () => {
-      throw new Error('Cache creation failed');
-    });
+		expect(executionOrder).toEqual([
+			"middleware",
+			"handler",
+			"middleware-after",
+		]);
 
-    let capturedContext: any = null;
-    const handler = async (request: Request, context: any) => {
-      capturedContext = context;
-      return new Response('OK');
-    };
+		// Both middleware and handler should get the same context with cache
+		expect(middlewareContext.cache).toBe(handlerContext.cache);
+		expect(middlewareContext.caches).toBe(handlerContext.caches);
+		expect(middlewareContext.params).toEqual({id: "123"});
+	});
 
-    router.route({
-      pattern: '/api/test',
-      cache: { name: 'failing-cache' }
-    }).get(handler);
+	test("handles cache opening errors gracefully", async () => {
+		// Register a cache that will fail to open
+		caches.register("failing-cache", () => {
+			throw new Error("Cache creation failed");
+		});
 
-    const request = new Request('http://example.com/api/test');
-    const response = await router.match(request);
+		let capturedContext: any = null;
+		const handler = async (request: Request, context: any) => {
+			capturedContext = context;
+			return new Response("OK");
+		};
 
-    // Request should still succeed
-    expect(response).not.toBeNull();
-    expect(await response.text()).toBe('OK');
-    
-    // Cache should be undefined, but caches should still be available
-    expect(capturedContext.cache).toBeUndefined();
-    expect(capturedContext.caches).toBe(caches);
-  });
+		router
+			.route({
+				pattern: "/api/test",
+				cache: {name: "failing-cache"},
+			})
+			.get(handler);
 
-  test('can access different caches through context.caches', async () => {
-    let capturedContext: any = null;
+		const request = new Request("http://example.com/api/test");
+		const response = await router.match(request);
 
-    const handler = async (request: Request, context: any) => {
-      capturedContext = context;
-      
-      // Access a different cache through context.caches
-      const usersCache = await context.caches.open('users');
-      await usersCache.put(request, new Response('User data'));
-      
-      return new Response('OK');
-    };
+		// Request should still succeed
+		expect(response).not.toBeNull();
+		expect(await response.text()).toBe("OK");
 
-    router.route({
-      pattern: '/api/posts/:id',
-      cache: { name: 'posts' }
-    }).get(handler);
+		// Cache should be undefined, but caches should still be available
+		expect(capturedContext.cache).toBeUndefined();
+		expect(capturedContext.caches).toBe(caches);
+	});
 
-    const request = new Request('http://example.com/api/posts/123');
-    await router.match(request);
+	test("can access different caches through context.caches", async () => {
+		let capturedContext: any = null;
 
-    // Should have accessed users cache successfully
-    const usersCache = await caches.open('users');
-    const cachedResponse = await usersCache.match(request);
-    
-    expect(cachedResponse).not.toBeUndefined();
-    expect(await cachedResponse.text()).toBe('User data');
-  });
+		const handler = async (request: Request, context: any) => {
+			capturedContext = context;
+
+			// Access a different cache through context.caches
+			const usersCache = await context.caches.open("users");
+			await usersCache.put(request, new Response("User data"));
+
+			return new Response("OK");
+		};
+
+		router
+			.route({
+				pattern: "/api/posts/:id",
+				cache: {name: "posts"},
+			})
+			.get(handler);
+
+		const request = new Request("http://example.com/api/posts/123");
+		await router.match(request);
+
+		// Should have accessed users cache successfully
+		const usersCache = await caches.open("users");
+		const cachedResponse = await usersCache.match(request);
+
+		expect(cachedResponse).not.toBeUndefined();
+		expect(await cachedResponse.text()).toBe("User data");
+	});
 });

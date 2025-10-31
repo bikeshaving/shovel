@@ -1,1 +1,2 @@
-import {value as bValue} from "./chain-b.ts"; export const value = "A-" + bValue;
+import {value as bValue} from "./chain-b.ts";
+export const value = "A-" + bValue;

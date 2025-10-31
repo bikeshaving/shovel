@@ -134,7 +134,10 @@ test("restarts on change to dependency", async () => {
 			}
 		}
 
-		Assert.equal(isRunning, "<marquee>Hello from dependency-hello.ts</marquee>");
+		Assert.equal(
+			isRunning,
+			"<marquee>Hello from dependency-hello.ts</marquee>",
+		);
 		const serverDependencyContents = await FS.readFile(
 			"./fixtures/server-dependency-hello.ts",
 			"utf8",

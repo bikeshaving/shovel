@@ -1,34 +1,36 @@
 /**
  * ServiceWorker-style Shovel app entrypoint
- * 
+ *
  * This file demonstrates the new ServiceWorker-based approach where the
  * entrypoint uses standard ServiceWorker APIs (install, activate, fetch)
  * but runs universally across all platforms.
  */
 
-import { Router } from '@b9g/router';
-import { createStaticFilesHandler } from '@b9g/staticfiles';
+import {Router} from "@b9g/router";
+import {createStaticFilesHandler} from "@b9g/staticfiles";
 
 // Import static assets
-import styles from './assets/styles.css' with { type: 'url' };
-import logo from './assets/logo.svg' with { type: 'url' };
+import styles from "./assets/styles.css" with {type: "url"};
+import logo from "./assets/logo.svg" with {type: "url"};
 
 // Sample blog data
 const posts = [
-  {
-    id: 1,
-    title: 'ServiceWorker-Style Shovel Apps!',
-    content: 'This app uses ServiceWorker APIs (install, activate, fetch) as its entrypoint. The same code runs in browsers as a real ServiceWorker and on servers with a ServiceWorker runtime shim.',
-    author: 'Shovel Team',
-    date: '2024-01-15'
-  },
-  {
-    id: 2, 
-    title: 'Universal Event-Driven Architecture',
-    content: 'Events like install/activate handle app lifecycle, while fetch handles requests. This makes deployment, hot reloading, and caching feel natural.',
-    author: 'Shovel Team',
-    date: '2024-01-14'
-  }
+	{
+		id: 1,
+		title: "ServiceWorker-Style Shovel Apps!",
+		content:
+			"This app uses ServiceWorker APIs (install, activate, fetch) as its entrypoint. The same code runs in browsers as a real ServiceWorker and on servers with a ServiceWorker runtime shim.",
+		author: "Shovel Team",
+		date: "2024-01-15",
+	},
+	{
+		id: 2,
+		title: "Universal Event-Driven Architecture",
+		content:
+			"Events like install/activate handle app lifecycle, while fetch handles requests. This makes deployment, hot reloading, and caching feel natural.",
+		author: "Shovel Team",
+		date: "2024-01-14",
+	},
 ];
 
 let router;
@@ -37,150 +39,182 @@ let caches;
 /**
  * ServiceWorker install event - setup and initialization
  */
-self.addEventListener('install', (event) => {
-  console.log('[SW] Installing Shovel ServiceWorker app...');
-  
-  event.waitUntil(async () => {
-    // Initialize router
-    router = new Router();
-    
-    // Setup static files handler
-    router.use('/static/*', createStaticFilesHandler({
-      publicPath: '/static/',
-      outputDir: 'dist/static',
-      manifest: 'dist/static-manifest.json',
-      dev: process.env?.NODE_ENV !== 'production',
-      sourceDir: 'src',
-      cache: { name: 'static' }
-    }));
+self.addEventListener("install", (event) => {
+	console.log("[SW] Installing Shovel ServiceWorker app...");
 
-    // Routes
-    router.get('/', handleHomepage);
-    router.get('/posts/:id', handlePost);
-    router.get('/api/posts', handleApiPosts);
-    router.get('/about', handleAbout);
-    
-    console.log('[SW] Shovel app installed successfully!');
-  });
+	event.waitUntil(async () => {
+		// Initialize router
+		router = new Router();
+
+		// Setup static files handler
+		router.use(
+			"/static/*",
+			createStaticFilesHandler({
+				publicPath: "/static/",
+				outputDir: "dist/static",
+				manifest: "dist/static-manifest.json",
+				dev: process.env?.NODE_ENV !== "production",
+				sourceDir: "src",
+				cache: {name: "static"},
+			}),
+		);
+
+		// Routes
+		router.get("/", handleHomepage);
+		router.get("/posts/:id", handlePost);
+		router.get("/api/posts", handleApiPosts);
+		router.get("/about", handleAbout);
+
+		console.log("[SW] Shovel app installed successfully!");
+	});
 });
 
 /**
  * ServiceWorker activate event - ready to handle requests
  */
-self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating Shovel ServiceWorker app...');
-  
-  event.waitUntil(async () => {
-    // App is ready to serve requests
-    console.log('[SW] Shovel app activated and ready!');
-  });
+self.addEventListener("activate", (event) => {
+	console.log("[SW] Activating Shovel ServiceWorker app...");
+
+	event.waitUntil(async () => {
+		// App is ready to serve requests
+		console.log("[SW] Shovel app activated and ready!");
+	});
 });
 
 /**
  * ServiceWorker fetch event - handle HTTP requests
  */
-self.addEventListener('fetch', (event) => {
-  event.respondWith(router.handler()(event.request));
+self.addEventListener("fetch", (event) => {
+	event.respondWith(router.handler()(event.request));
 });
-
 
 /**
  * Static event - provide routes for static site generation
  */
-self.addEventListener('static', (event) => {
-  const { outDir, baseUrl } = event.detail;
-  console.log(`[SW] Collecting static routes for generation...`);
-  
-  event.waitUntil(async () => {
-    // Return all routes that should be pre-rendered
-    const staticRoutes = [
-      '/',
-      '/about',
-      '/api/posts',
-      ...posts.map(post => `/posts/${post.id}`)
-    ];
-    
-    console.log(`[SW] Found ${staticRoutes.length} routes for static generation`);
-    return staticRoutes;
-  });
+self.addEventListener("static", (event) => {
+	const {outDir, baseUrl} = event.detail;
+	console.log(`[SW] Collecting static routes for generation...`);
+
+	event.waitUntil(async () => {
+		// Return all routes that should be pre-rendered
+		const staticRoutes = [
+			"/",
+			"/about",
+			"/api/posts",
+			...posts.map((post) => `/posts/${post.id}`),
+		];
+
+		console.log(
+			`[SW] Found ${staticRoutes.length} routes for static generation`,
+		);
+		return staticRoutes;
+	});
 });
 
 // Route handlers
 
 async function handleHomepage(request, context) {
-  return new Response(renderPage('Home', `
+	return new Response(
+		renderPage(
+			"Home",
+			`
     <div class="platform-info">
       <strong>Platform:</strong> ServiceWorker-style entrypoint | 
       <strong>Runtime:</strong> Universal
     </div>
     
     <div class="posts">
-      ${posts.map(post => `
+      ${posts
+				.map(
+					(post) => `
         <article class="post">
           <h2><a href="/posts/${post.id}">${post.title}</a></h2>
           <div class="meta">By ${post.author} on ${post.date}</div>
           <p>${post.content}</p>
         </article>
-      `).join('')}
+      `,
+				)
+				.join("")}
     </div>
-  `), {
-    headers: { 
-      'Content-Type': 'text/html',
-      'Cache-Control': 'public, max-age=300'
-    }
-  });
+  `,
+		),
+		{
+			headers: {
+				"Content-Type": "text/html",
+				"Cache-Control": "public, max-age=300",
+			},
+		},
+	);
 }
 
 async function handlePost(request, context) {
-  const post = posts.find(p => p.id === parseInt(context.params.id));
-  
-  if (!post) {
-    return new Response(renderPage('Post Not Found', `
+	const post = posts.find((p) => p.id === parseInt(context.params.id));
+
+	if (!post) {
+		return new Response(
+			renderPage(
+				"Post Not Found",
+				`
       <div class="post">
         <h2>Post Not Found</h2>
         <p>The post you're looking for doesn't exist.</p>
         <p><a href="/">← Back to Home</a></p>
       </div>
-    `), { status: 404, headers: { 'Content-Type': 'text/html' } });
-  }
+    `,
+			),
+			{status: 404, headers: {"Content-Type": "text/html"}},
+		);
+	}
 
-  return new Response(renderPage(post.title, `
+	return new Response(
+		renderPage(
+			post.title,
+			`
     <article class="post">
       <h2>${post.title}</h2>
       <div class="meta">By ${post.author} on ${post.date}</div>
       <p>${post.content}</p>
       <p><a href="/">← Back to Home</a></p>
     </article>
-  `), {
-    headers: { 
-      'Content-Type': 'text/html',
-      'Cache-Control': 'public, max-age=600'
-    }
-  });
+  `,
+		),
+		{
+			headers: {
+				"Content-Type": "text/html",
+				"Cache-Control": "public, max-age=600",
+			},
+		},
+	);
 }
 
 async function handleApiPosts(request, context) {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  return Response.json({
-    posts: posts.map(p => ({
-      id: p.id,
-      title: p.title,
-      author: p.author,
-      date: p.date
-    })),
-    serviceWorker: true,
-    timestamp: new Date().toISOString()
-  }, {
-    headers: {
-      'Cache-Control': 'public, max-age=180'
-    }
-  });
+	// Simulate API delay
+	await new Promise((resolve) => setTimeout(resolve, 100));
+
+	return Response.json(
+		{
+			posts: posts.map((p) => ({
+				id: p.id,
+				title: p.title,
+				author: p.author,
+				date: p.date,
+			})),
+			serviceWorker: true,
+			timestamp: new Date().toISOString(),
+		},
+		{
+			headers: {
+				"Cache-Control": "public, max-age=180",
+			},
+		},
+	);
 }
 
 async function handleAbout(request, context) {
-  return new Response(renderPage('About', `
+	return new Response(
+		renderPage(
+			"About",
+			`
     <div class="post">
       <h2>About ServiceWorker-Style Shovel Apps</h2>
       <p>This app demonstrates Shovel's new ServiceWorker-based entrypoint pattern:</p>
@@ -198,17 +232,20 @@ async function handleAbout(request, context) {
       
       <p><a href="/">← Back to Home</a></p>
     </div>
-  `), {
-    headers: { 
-      'Content-Type': 'text/html',
-      'Cache-Control': 'public, max-age=3600'
-    }
-  });
+  `,
+		),
+		{
+			headers: {
+				"Content-Type": "text/html",
+				"Cache-Control": "public, max-age=3600",
+			},
+		},
+	);
 }
 
 // Helper function to render HTML pages
 function renderPage(title, content) {
-  return `<!DOCTYPE html>
+	return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">

@@ -1,1 +1,1 @@
-export { MatchPattern } from './match-pattern.js';
+export {MatchPattern} from "./match-pattern.js";
