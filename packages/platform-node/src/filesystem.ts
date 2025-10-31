@@ -41,6 +41,29 @@ export class NodeFileSystemWritableFileStream extends WritableStream<Uint8Array>
 			}
 		});
 	}
+
+	// File System Access API compatibility methods
+	async write(data: Uint8Array | string): Promise<void> {
+		const writer = this.getWriter();
+		try {
+			if (typeof data === 'string') {
+				await writer.write(new TextEncoder().encode(data));
+			} else {
+				await writer.write(data);
+			}
+		} finally {
+			writer.releaseLock();
+		}
+	}
+
+	async close(): Promise<void> {
+		const writer = this.getWriter();
+		try {
+			await writer.close();
+		} finally {
+			writer.releaseLock();
+		}
+	}
 }
 
 /**

@@ -123,13 +123,53 @@ export function detectPlatform(): Platform | null {
 /**
  * Get platform by name with error handling
  */
-export function getPlatform(name: string): Platform {
-	const platform = platformRegistry.get(name);
-	if (!platform) {
-		const available = platformRegistry.list();
+export function getPlatform(name?: string): Platform {
+	if (name) {
+		const platform = platformRegistry.get(name);
+		if (!platform) {
+			const available = platformRegistry.list();
+			throw new Error(
+				`Platform '${name}' not found. Available platforms: ${available.join(", ")}`,
+			);
+		}
+		return platform;
+	}
+
+	// Auto-detect platform
+	const detected = detectPlatform();
+	if (!detected) {
 		throw new Error(
-			`Platform '${name}' not found. Available platforms: ${available.join(", ")}`,
+			"No platform could be auto-detected. Please register a platform manually or specify a platform name."
 		);
 	}
-	return platform;
+	
+	return detected;
+}
+
+/**
+ * Get platform with async auto-registration fallback
+ */
+export async function getPlatformAsync(name?: string): Promise<Platform> {
+	if (name) {
+		const platform = platformRegistry.get(name);
+		if (!platform) {
+			const available = platformRegistry.list();
+			throw new Error(
+				`Platform '${name}' not found. Available platforms: ${available.join(", ")}`,
+			);
+		}
+		return platform;
+	}
+
+	// Auto-detect platform
+	const detected = detectPlatform();
+	if (!detected) {
+		// Create default Node.js platform if no platforms are registered
+		const { createNodePlatform } = await import("@b9g/platform-node");
+		const nodePlatform = createNodePlatform();
+		platformRegistry.register("node", nodePlatform);
+		return nodePlatform;
+	}
+	
+	return detected;
 }

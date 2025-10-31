@@ -31,7 +31,7 @@ export {
 } from "./service-worker.js";
 
 // Platform registry and detection
-export {platformRegistry, detectPlatform, getPlatform} from "./registry.js";
+export {platformRegistry, detectPlatform, getPlatform, getPlatformAsync} from "./registry.js";
 
 // Utility functions
 export {

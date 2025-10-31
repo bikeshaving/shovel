@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@b9g/http-errors": "file:packages/http-errors",
+    "@b9g/cache": "file:packages/cache",
     "@remix-run/file-storage": "^0.10.0",
     "@remix-run/lazy-file": "^3.6.0",
     "commander": "^13.1.0",
@@ -111,18 +112,6 @@
     },
     "./worker.js": {
       "import": "./src/worker.js"
-    },
-    "./memory-cache-manager": {
-      "import": "./dist/src/memory-cache-manager.js"
-    },
-    "./memory-cache-manager.js": {
-      "import": "./dist/src/memory-cache-manager.js"
-    },
-    "./worker-aware-cache-storage": {
-      "import": "./dist/src/worker-aware-cache-storage.js"
-    },
-    "./worker-aware-cache-storage.js": {
-      "import": "./dist/src/worker-aware-cache-storage.js"
     },
     "./package.json": "./dist/package.json"
   }

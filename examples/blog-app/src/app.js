@@ -9,7 +9,7 @@
 import {Router} from "@b9g/router";
 import {CacheStorage} from "@b9g/cache/cache-storage";
 import {MemoryCache} from "@b9g/cache/memory-cache";
-import {createStaticFilesMiddleware} from "@b9g/shovel/handler";
+import {createStaticFilesMiddleware} from "@b9g/staticfiles";
 
 // Import static assets using import attributes
 import styles from "./assets/styles.css" with {url: "/static/"};
@@ -27,14 +27,15 @@ caches.register("static", () => new MemoryCache("static"));
 // Create router with cache support
 const router = new Router({caches});
 
-// Static files middleware - serves any assets imported with { url: '...' }
+// Static files middleware - serves from File System Access API storage
 router.use(
 	createStaticFilesMiddleware({
-		outputDir: "dist/static",
-		manifest: "dist/static-manifest.json",
+		filesystem: "static",
+		basePath: "/static",
 		dev: process.env?.NODE_ENV !== "production",
-		sourceDir: "src",
-		cache: {name: "static"},
+		cacheControl: process.env?.NODE_ENV === "production" 
+			? "public, max-age=31536000" 
+			: "no-cache"
 	}),
 );
 

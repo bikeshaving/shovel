@@ -49,9 +49,9 @@ export {
 
 export {createServiceWorkerGlobals} from "./serviceworker.js";
 
-// Cache coordination for Worker threads (MemoryCache-specific)
-export {MemoryCacheManager} from "./memory-cache-manager.js";
-export {WorkerAwareCacheStorage} from "./worker-aware-cache-storage.js";
+// Cache coordination for Worker threads (MemoryCache-specific) - now in @b9g/cache
+export {MemoryCacheManager} from "@b9g/cache/memory-cache-manager";
+export {WorkerAwareCacheStorage} from "@b9g/cache/worker-aware-cache-storage";
 
 // TypeScript global declarations
 export type {} from "./global.js";

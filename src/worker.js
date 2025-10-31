@@ -4,7 +4,7 @@
  */
 
 import {createServiceWorkerGlobals} from "./serviceworker.js";
-import {WorkerAwareCacheStorage} from "./worker-aware-cache-storage.js";
+import {WorkerAwareCacheStorage} from "@b9g/cache/worker-aware-cache-storage";
 import {parentPort} from "worker_threads";
 
 // Create worker-aware cache storage for this Worker
