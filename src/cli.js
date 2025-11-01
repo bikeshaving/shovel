@@ -95,9 +95,10 @@ function getWorkerCount(options) {
 				const {SimpleWatcher} = await import("./simple-watcher.ts");
 				let serviceWorker;
 
+				const outDir = "dist";
 				const watcher = new SimpleWatcher({
 					entrypoint,
-					outDir: "dist",
+					outDir,
 					onBuild: async (success, version) => {
 						if (success && serviceWorker) {
 							console.info(`🔄 Reloading Workers (v${version})...`);
@@ -112,8 +113,9 @@ function getWorkerCount(options) {
 				await watcher.start();
 				console.info(`✅ Build complete, watching for changes...`);
 
-				// Load ServiceWorker app
-				serviceWorker = await platform.loadServiceWorker(entrypoint, {
+				// Load ServiceWorker app from built output
+				const builtEntrypoint = `${outDir}/app.js`;
+				serviceWorker = await platform.loadServiceWorker(builtEntrypoint, {
 					hotReload: true,
 					workerCount,
 					caches: {

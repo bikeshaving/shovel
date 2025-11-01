@@ -84,7 +84,7 @@ self.addEventListener("activate", (event) => {
  * ServiceWorker fetch event - handle HTTP requests
  */
 self.addEventListener("fetch", (event) => {
-	event.respondWith(router.handler()(event.request));
+	event.respondWith(router.handler(event.request));
 });
 
 /**

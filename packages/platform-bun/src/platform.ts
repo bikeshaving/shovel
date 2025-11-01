@@ -250,9 +250,17 @@ export class BunPlatform implements Platform {
 			const prefix = `filesystems/${name}`;
 			return new BunS3FileSystemDirectoryHandle(s3Client, prefix);
 		} else {
-			// Fallback to local filesystem (similar to Node.js implementation)
+			// Use dist directory for static files, .shovel for other filesystems
 			const { NodeFileSystemDirectoryHandle } = await import('@b9g/platform-node/filesystem');
-			const rootDir = Path.join(this.options.cwd, '.shovel', 'filesystems', name);
+			
+			let rootDir: string;
+			if (name === 'static') {
+				// Static files come from build output
+				rootDir = Path.join(this.options.cwd, 'dist', 'static');
+			} else {
+				// Other filesystems use .shovel directory
+				rootDir = Path.join(this.options.cwd, '.shovel', 'filesystems', name);
+			}
 			
 			// Ensure directory exists
 			await import('fs/promises').then(fs => fs.mkdir(rootDir, { recursive: true }));

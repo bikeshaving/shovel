@@ -5,6 +5,7 @@
 import * as esbuild from "esbuild";
 import {watch} from "fs";
 import {resolve, dirname} from "path";
+import {readFileSync} from "fs";
 import {staticFilesPlugin} from "./static-files.ts";
 
 export interface SimpleWatcherOptions {
@@ -83,7 +84,20 @@ export class SimpleWatcher {
 			const outputDir = resolve(this.options.outDir);
 			const version = Date.now();
 
+			// Find workspace root by looking for package.json with workspaces
+			let workspaceRoot = process.cwd();
+			while (workspaceRoot !== dirname(workspaceRoot)) {
+				try {
+					const packageJson = JSON.parse(readFileSync(resolve(workspaceRoot, "package.json"), "utf8"));
+					if (packageJson.workspaces) {
+						break;
+					}
+				} catch {}
+				workspaceRoot = dirname(workspaceRoot);
+			}
+
 			console.info(`[Watcher] Building ${entryPath}...`);
+			console.info(`[Watcher] Workspace root: ${workspaceRoot}`);
 
 			const result = await esbuild.build({
 				entryPoints: [entryPath],
@@ -93,10 +107,10 @@ export class SimpleWatcher {
 				platform: "node",
 				outfile: `${outputDir}/app.js`,
 				packages: "external",
+				absWorkingDir: workspaceRoot,
 				plugins: [
 					staticFilesPlugin({
 						outputDir: `${outputDir}/static`,
-						manifest: `${outputDir}/static-manifest.json`,
 						dev: true,
 					}),
 				],

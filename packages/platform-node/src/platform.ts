@@ -139,6 +139,7 @@ class WorkerManager {
 	async handleRequest(request: Request): Promise<Response> {
 		// Round-robin worker selection (ready for pooling)
 		const worker = this.workers[this.currentWorker];
+		console.log(`[WorkerManager] Dispatching to worker ${this.currentWorker} of ${this.workers.length}`);
 		this.currentWorker = (this.currentWorker + 1) % this.workers.length;
 
 		const requestId = ++this.requestId;
@@ -436,9 +437,17 @@ export class NodePlatform implements Platform {
 			
 			return new NodeS3FileSystemDirectoryHandle(s3Client, bucket, prefix);
 		} else {
-			// Fallback to local filesystem
+			// Use dist directory for static files, .shovel for other filesystems
 			const { NodeFileSystemDirectoryHandle } = await import('./filesystem.js');
-			const rootDir = Path.join(this.options.cwd, '.shovel', 'filesystems', name);
+			
+			let rootDir: string;
+			if (name === 'static') {
+				// Static files come from build output
+				rootDir = Path.join(this.options.cwd, 'dist', 'static');
+			} else {
+				// Other filesystems use .shovel directory
+				rootDir = Path.join(this.options.cwd, '.shovel', 'filesystems', name);
+			}
 			
 			// Ensure directory exists
 			await import('fs/promises').then(fs => fs.mkdir(rootDir, { recursive: true }));

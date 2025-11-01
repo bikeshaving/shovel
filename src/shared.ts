@@ -102,7 +102,7 @@ export interface AssetManifest {
 export const DEFAULT_CONFIG: Required<AssetsConfig> = {
 	outputDir: "dist/static",
 	publicPath: "/static/",
-	manifest: "dist/static-manifest.json",
+	manifest: "dist/static/manifest.json",
 	hashLength: 8,
 	includeHash: true,
 };

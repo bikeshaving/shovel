@@ -4,8 +4,8 @@
  */
 
 import * as esbuild from "esbuild";
-import {resolve, join} from "path";
-import {mkdir} from "fs/promises";
+import {resolve, join, dirname} from "path";
+import {mkdir, readFile} from "fs/promises";
 import {staticFilesPlugin} from "./static-files.ts";
 
 /**
@@ -24,6 +24,18 @@ export async function buildForProduction({entrypoint, outDir, verbose}) {
 	// Ensure output directory exists
 	await mkdir(outputDir, {recursive: true});
 
+	// Find workspace root by looking for package.json with workspaces
+	let workspaceRoot = process.cwd();
+	while (workspaceRoot !== dirname(workspaceRoot)) {
+		try {
+			const packageJson = JSON.parse(await readFile(resolve(workspaceRoot, "package.json"), "utf8"));
+			if (packageJson.workspaces) {
+				break;
+			}
+		} catch {}
+		workspaceRoot = dirname(workspaceRoot);
+	}
+
 	// Build ServiceWorker code (keep as ServiceWorker, just bundle dependencies)
 	const result = await esbuild.build({
 		entryPoints: [entryPath],
@@ -33,6 +45,7 @@ export async function buildForProduction({entrypoint, outDir, verbose}) {
 		platform: "node",
 		outfile: join(outputDir, "app.js"),
 		packages: "external",
+		absWorkingDir: workspaceRoot,
 		plugins: [
 			staticFilesPlugin({
 				outputDir: join(outputDir, "static"),
