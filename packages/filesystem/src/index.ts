@@ -13,7 +13,7 @@ export type {
 
 // Core implementations (no external dependencies)
 export {MemoryFileSystemAdapter} from "./memory.js";
-export {NodeFileSystemAdapter} from "./node.js";
+export {NodeFileSystemAdapter, NodeFileSystemDirectoryHandle, NodeFileSystemFileHandle} from "./node.js";
 
 // Registry for managing filesystem adapters
 export {FileSystemRegistry, getFileSystemRoot} from "./registry.js";

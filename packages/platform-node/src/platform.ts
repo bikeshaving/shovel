@@ -6,7 +6,8 @@
  */
 
 import {
-	Platform,
+	BasePlatform,
+	PlatformConfig,
 	CacheConfig,
 	Handler,
 	Server,
@@ -15,7 +16,7 @@ import {
 	ServiceWorkerInstance,
 } from "@b9g/platform";
 import {CustomCacheStorage, MemoryCache, MemoryCacheManager, PostMessageCache} from "@b9g/cache";
-import {FileSystemRegistry, getFileSystemRoot, NodeFileSystemAdapter} from "@b9g/filesystem";
+import {FileSystemRegistry, getFileSystemRoot, NodeFileSystemAdapter, NodeFileSystemDirectoryHandle} from "@b9g/filesystem";
 import * as Http from "http";
 import * as Path from "path";
 import {Worker} from "worker_threads";
@@ -25,7 +26,7 @@ import {fileURLToPath} from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = Path.dirname(__filename);
 
-export interface NodePlatformOptions {
+export interface NodePlatformOptions extends PlatformConfig {
 	/** Enable hot reloading (default: true in development) */
 	hotReload?: boolean;
 	/** Port for development server (default: 3000) */
@@ -218,15 +219,16 @@ class WorkerManager {
  * Node.js platform implementation
  * ServiceWorker entrypoint loader for Node.js with ESBuild VM system
  */
-export class NodePlatform implements Platform {
+export class NodePlatform extends BasePlatform {
 	readonly name = "node";
 
 	private options: Required<NodePlatformOptions>;
-	private watcher?: Watcher;
 	private workerManager?: WorkerManager;
 	private cacheStorage?: CustomCacheStorage;
+	private _dist?: FileSystemDirectoryHandle;
 
 	constructor(options: NodePlatformOptions = {}) {
+		super(options);
 		this.options = {
 			hotReload: process.env.NODE_ENV !== "production",
 			port: 3000,
@@ -242,6 +244,18 @@ export class NodePlatform implements Platform {
 	}
 
 	/**
+	 * Build artifacts filesystem (install-time only)
+	 */
+	get dist(): FileSystemDirectoryHandle {
+		if (!this._dist) {
+			// Create dist filesystem pointing to ./dist directory
+			const distPath = Path.resolve(this.options.cwd, "dist");
+			this._dist = new NodeFileSystemDirectoryHandle(distPath);
+		}
+		return this._dist;
+	}
+
+	/**
 	 * THE MAIN JOB - Load and run a ServiceWorker-style entrypoint in Node.js
 	 * Uses Worker threads with coordinated cache storage for isolation and standards compliance
 	 */
@@ -253,7 +267,7 @@ export class NodePlatform implements Platform {
 
 		// Create shared cache storage if not already created
 		if (!this.cacheStorage) {
-			this.cacheStorage = this.createCaches(options.caches);
+			this.cacheStorage = await this.createCaches(options.caches);
 		}
 
 		// Create WorkerManager with shared cache storage
@@ -318,15 +332,31 @@ export class NodePlatform implements Platform {
 	}
 
 	/**
-	 * SUPPORTING UTILITY - Create cache storage optimized for Node.js
+	 * Get platform-specific default cache configuration for Node.js
 	 */
-	createCaches(config: CacheConfig = {}): CustomCacheStorage {
-		// Use CustomCacheStorage with PostMessage coordination for worker environments
+	protected getDefaultCacheConfig(): CacheConfig {
+		return {
+			pages: { type: "memory" }, // PostMessage cache for worker coordination
+			api: { type: "memory" },
+			static: { type: "memory" },
+		};
+	}
+
+	/**
+	 * SUPPORTING UTILITY - Create cache storage optimized for Node.js
+	 * Now uses the base class implementation with dynamic loading
+	 */
+	async createCaches(config?: CacheConfig): Promise<CustomCacheStorage> {
+		// For backwards compatibility, wrap the new async createCaches in the old sync interface
+		// TODO: Update all callers to be async
+		const cacheStorage = await super.createCaches(config);
+		
+		// Return CustomCacheStorage with PostMessage coordination for worker environments
 		return new CustomCacheStorage((name: string) => {
 			// Return PostMessageCache that coordinates with MemoryCache on main thread
 			return new PostMessageCache(name, {
-				maxEntries: config.maxEntries || 1000,
-				maxSize: config.maxSize || 50 * 1024 * 1024, // 50MB
+				maxEntries: 1000,
+				maxSize: 50 * 1024 * 1024, // 50MB
 			});
 		});
 	}
@@ -416,11 +446,6 @@ export class NodePlatform implements Platform {
 	 * Dispose of platform resources
 	 */
 	async dispose(): Promise<void> {
-		if (this.watcher) {
-			await this.watcher.dispose();
-			this.watcher = undefined;
-		}
-
 		if (this.workerManager) {
 			await this.workerManager.terminate();
 			this.workerManager = undefined;

@@ -6,12 +6,26 @@ import type {CacheStorage} from "@b9g/cache/cache-storage";
 // Import File System Access API types
 import "@types/wicg-file-system-access";
 
+// Re-export adapter registry utilities
+export {
+	loadCacheAdapter,
+	loadFilesystemAdapter,
+	resolveCacheAdapter,
+	resolveFilesystemAdapter,
+	CACHE_ALIASES,
+	FILESYSTEM_ALIASES,
+} from "./adapter-registry.js";
+
+// Re-export base platform class
+export {BasePlatform} from "./base-platform.js";
+
 /**
  * Cache backend configuration
+ * Type can be a blessed alias or full package name
  */
 export interface CacheBackendConfig {
-	/** Cache backend type */
-	type: "memory" | "filesystem" | "redis" | "kv" | "custom";
+	/** Cache backend type - blessed alias (memory, redis, kv) or package name (@custom/cache) */
+	type?: string;
 	/** Maximum number of entries (for memory/LRU caches) */
 	maxEntries?: number;
 	/** Time-to-live in milliseconds or string format (e.g., '5m', '1h') */
@@ -75,6 +89,34 @@ export interface CorsConfig {
 	credentials?: boolean;
 	/** Preflight cache duration */
 	maxAge?: number;
+}
+
+/**
+ * Filesystem adapter configuration
+ */
+export interface FilesystemConfig {
+	/** Filesystem adapter type - blessed alias (memory, s3, r2) or package name (@custom/fs) */
+	type?: string;
+	/** Region for cloud storage */
+	region?: string;
+	/** Access credentials */
+	credentials?: {
+		accessKeyId?: string;
+		secretAccessKey?: string;
+		token?: string;
+	};
+	/** Additional adapter-specific options */
+	[key: string]: any;
+}
+
+/**
+ * Platform configuration from CLI flags
+ */
+export interface PlatformConfig {
+	/** Cache configuration */
+	caches?: CacheConfig;
+	/** Filesystem adapter configuration */
+	filesystem?: FilesystemConfig;
 }
 
 /**
@@ -172,6 +214,12 @@ export interface Platform {
 	readonly name: string;
 
 	/**
+	 * Build artifacts filesystem (install-time only)
+	 * Available during install handlers to copy built files to runtime storage
+	 */
+	readonly dist: FileSystemDirectoryHandle;
+
+	/**
 	 * THE MAIN JOB - Load and run a ServiceWorker-style entrypoint
 	 * This is where all the platform-specific complexity lives
 	 */
@@ -182,8 +230,12 @@ export interface Platform {
 
 	/**
 	 * SUPPORTING UTILITY - Create cache storage with platform-optimized backends
+	 * Automatically selects optimal cache types when not specified:
+	 * - Node.js: filesystem for persistence, memory for API
+	 * - Cloudflare: KV for persistence, memory for fast access
+	 * - Bun: filesystem with optimized writes
 	 */
-	createCaches(config?: CacheConfig): CacheStorage;
+	createCaches(config?: CacheConfig): Promise<CacheStorage>;
 
 	/**
 	 * SUPPORTING UTILITY - Create server instance for this platform
@@ -191,9 +243,11 @@ export interface Platform {
 	createServer(handler: Handler, options?: ServerOptions): Server;
 
 	/**
-	 * SUPPORTING UTILITY - Get filesystem root for File System Access API
+	 * SUPPORTING UTILITY - Get filesystem root for bucket/container name
+	 * Maps directly to cloud storage buckets (S3, R2) or local directories
+	 * @param bucketName - The bucket/container/directory name
 	 */
-	getFileSystemRoot(name?: string): Promise<FileSystemDirectoryHandle>;
+	getFileSystemRoot(bucketName: string): Promise<FileSystemDirectoryHandle>;
 }
 
 /**
