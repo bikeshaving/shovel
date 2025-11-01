@@ -303,53 +303,34 @@ describe("Function Middleware Execution", () => {
 		expect(await response?.text()).toBe("Context: true, Header: true");
 	});
 
-	test("function middleware cannot return responses", async () => {
-		const router = new Router();
-
-		// Function middleware that tries to return a response (should be ignored)
-		async function badMiddleware(request: Request, context: any) {
-			return new Response("This should be ignored") as any;
-		}
-
-		const handler = async () => new Response("From handler");
-
-		router.use(badMiddleware);
-		router.route("/test").get(handler);
-
-		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
-
-		// Function middleware return is ignored, handler response is used
-		expect(await response?.text()).toBe("From handler");
-	});
 });
 
-describe("Guaranteed Execution", () => {
-	test("all middleware executes even with early returns", async () => {
+describe("Middleware Short-Circuiting", () => {
+	test("middleware short-circuits on early Response return from generator", async () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
 		async function* authMiddleware(request: Request, context: any) {
 			executionOrder.push("auth");
-			return new Response("Unauthorized", {status: 401}); // Early return
+			return new Response("Unauthorized", {status: 401}); // Early return should short-circuit
 		}
 
 		async function* corsMiddleware(request: Request, context: any) {
-			executionOrder.push("cors");
+			executionOrder.push("cors"); // Should NOT execute
 			const response = yield request;
 			response.headers.set("Access-Control-Allow-Origin", "*");
 			return response;
 		}
 
 		async function* loggingMiddleware(request: Request, context: any) {
-			executionOrder.push("logging");
+			executionOrder.push("logging"); // Should NOT execute
 			const response = yield request;
 			response.headers.set("X-Request-Logged", "true");
 			return response;
 		}
 
 		const handler = async () => {
-			executionOrder.push("handler"); // Should never execute
+			executionOrder.push("handler"); // Should NOT execute
 			return new Response("Hello");
 		};
 
@@ -361,43 +342,113 @@ describe("Guaranteed Execution", () => {
 		const request = new Request("http://example.com/test");
 		const response = await router.match(request);
 
-		// All middleware executes, handler does not
-		expect(executionOrder).toEqual(["auth", "cors", "logging"]);
+		// Only auth middleware should execute, everything else short-circuited
+		expect(executionOrder).toEqual(["auth"]);
 		expect(response?.status).toBe(401);
 		expect(await response?.text()).toBe("Unauthorized");
-		expect(response?.headers.get("Access-Control-Allow-Origin")).toBe("*");
-		expect(response?.headers.get("X-Request-Logged")).toBe("true");
+		// Headers from cors and logging should NOT be present
+		expect(response?.headers.get("Access-Control-Allow-Origin")).toBeNull();
+		expect(response?.headers.get("X-Request-Logged")).toBeNull();
 	});
 
-	test("middleware receives response from previous early return", async () => {
+	test("middleware short-circuits on early Response return from function middleware", async () => {
 		const router = new Router();
+		const executionOrder: string[] = [];
 
-		async function* middleware1(request: Request, context: any) {
-			return new Response("Early response", {
-				status: 400,
-				headers: {"X-Source": "middleware1"},
-			});
+		async function authMiddleware(request: Request, context: any): Promise<Response | null> {
+			executionOrder.push("auth");
+			return new Response("Unauthorized", {status: 401}); // Early return should short-circuit
 		}
 
-		async function* middleware2(request: Request, context: any) {
-			const response = yield request;
-			// This should receive the early response from middleware1
-			response.headers.set("X-Processed-By", "middleware2");
-			return response;
+		async function corsMiddleware(request: Request, context: any) {
+			executionOrder.push("cors"); // Should NOT execute
 		}
 
-		router.use(middleware1);
-		router.use(middleware2);
-		router.route("/test").get(async () => new Response("Handler"));
+		const handler = async () => {
+			executionOrder.push("handler"); // Should NOT execute
+			return new Response("Hello");
+		};
+
+		router.use(authMiddleware);
+		router.use(corsMiddleware);
+		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
 		const response = await router.match(request);
 
-		expect(response?.status).toBe(400);
-		expect(await response?.text()).toBe("Early response");
-		expect(response?.headers.get("X-Source")).toBe("middleware1");
-		expect(response?.headers.get("X-Processed-By")).toBe("middleware2");
+		// Only auth middleware should execute
+		expect(executionOrder).toEqual(["auth"]);
+		expect(response?.status).toBe(401);
+		expect(await response?.text()).toBe("Unauthorized");
 	});
+
+	test("middleware continues on null/undefined return (fallthrough)", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		async function passthroughMiddleware(request: Request, context: any): Promise<null> {
+			executionOrder.push("passthrough");
+			return null; // Should continue to next middleware
+		}
+
+		async function* processingMiddleware(request: Request, context: any) {
+			executionOrder.push("processing");
+			const response = yield request;
+			response.headers.set("X-Processed", "true");
+			return response;
+		}
+
+		const handler = async () => {
+			executionOrder.push("handler");
+			return new Response("Hello");
+		};
+
+		router.use(passthroughMiddleware);
+		router.use(processingMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		// All should execute because null means fallthrough
+		expect(executionOrder).toEqual(["passthrough", "processing", "handler"]);
+		expect(response?.status).toBe(200);
+		expect(await response?.text()).toBe("Hello");
+		expect(response?.headers.get("X-Processed")).toBe("true");
+	});
+
+	test("middleware continues on undefined return (fallthrough)", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		async function implicitUndefinedMiddleware(request: Request, context: any) {
+			executionOrder.push("implicit");
+			// Implicit undefined return
+		}
+
+		async function explicitUndefinedMiddleware(request: Request, context: any): Promise<undefined> {
+			executionOrder.push("explicit");
+			return undefined; // Explicit undefined return
+		}
+
+		const handler = async () => {
+			executionOrder.push("handler");
+			return new Response("Hello");
+		};
+
+		router.use(implicitUndefinedMiddleware);
+		router.use(explicitUndefinedMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		// All should execute because undefined means fallthrough
+		expect(executionOrder).toEqual(["implicit", "explicit", "handler"]);
+		expect(response?.status).toBe(200);
+		expect(await response?.text()).toBe("Hello");
+	});
+
 
 	test("execution order is preserved", async () => {
 		const router = new Router();
@@ -869,9 +920,9 @@ describe("Advanced Generator Middleware", () => {
 		});
 		const rateLimitedResponse = await router.match(rateLimitedRequest);
 
-		expect(executionOrder).toEqual(["rate-limit", "analytics"]);
+		expect(executionOrder).toEqual(["rate-limit"]); // analytics should NOT run due to short-circuit
 		expect(rateLimitedResponse?.status).toBe(429);
-		expect(rateLimitedResponse?.headers.get("X-Analytics")).toBe("tracked");
+		expect(rateLimitedResponse?.headers.get("X-Analytics")).toBeNull(); // no analytics header since it didn't run
 		expect(await rateLimitedResponse?.text()).toBe("Rate limited");
 
 		// Test normal request

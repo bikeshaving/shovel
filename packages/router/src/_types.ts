@@ -35,13 +35,15 @@ export type GeneratorMiddleware = (
 ) => AsyncGenerator<Request, Response | null | undefined, Response>;
 
 /**
- * Function middleware signature - implicit passthrough behavior
- * Perfect for simple request/context enrichment
+ * Function middleware signature - supports short-circuiting
+ * Can modify request and context, and can return a Response to short-circuit
+ * - Return Response: short-circuits, skipping remaining middleware and handler
+ * - Return null/undefined: continues to next middleware (fallthrough)
  */
 export type FunctionMiddleware = (
 	request: Request,
 	context: RouteContext,
-) => void | Promise<void>;
+) => null | undefined | Response | Promise<null | undefined | Response>;
 
 /**
  * Union type for all supported middleware types

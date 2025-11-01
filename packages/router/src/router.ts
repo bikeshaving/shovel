@@ -508,17 +508,24 @@ export class Router {
 				const result = await generator.next();
 
 				if (result.done) {
-					// Early return (0 yields) - set response and continue processing remaining middleware
+					// Early return (0 yields) - check if Response returned for short-circuiting
 					if (result.value) {
 						currentResponse = result.value;
+						// Short-circuit: stop processing remaining middleware
+						break;
 					}
 				} else {
 					// Generator yielded - save for later resumption
 					runningGenerators.push({generator, index: i});
 				}
 			} else {
-				// Function middleware - execute immediately
-				await (middleware as FunctionMiddleware)(request, context);
+				// Function middleware - execute and check for short-circuit
+				const result = await (middleware as FunctionMiddleware)(request, context);
+				if (result) {
+					// Function middleware returned a Response - short-circuit
+					currentResponse = result;
+					break;
+				}
 			}
 		}
 
