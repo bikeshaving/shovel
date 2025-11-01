@@ -37,6 +37,62 @@
       "types": "./dist/src/types.d.ts",
       "import": "./dist/src/types.js"
     },
-    "./package.json": "./dist/package.json"
+    "./package.json": "./dist/package.json",
+    "./adapter-registry": {
+      "types": "./dist/src/adapter-registry.d.ts",
+      "import": "./dist/src/adapter-registry.js"
+    },
+    "./adapter-registry.js": {
+      "types": "./dist/src/adapter-registry.d.ts",
+      "import": "./dist/src/adapter-registry.js"
+    },
+    "./base-platform": {
+      "types": "./dist/src/base-platform.d.ts",
+      "import": "./dist/src/base-platform.js"
+    },
+    "./base-platform.js": {
+      "types": "./dist/src/base-platform.d.ts",
+      "import": "./dist/src/base-platform.js"
+    },
+    "./filesystem": {
+      "types": "./dist/src/filesystem.d.ts",
+      "import": "./dist/src/filesystem.js"
+    },
+    "./filesystem.js": {
+      "types": "./dist/src/filesystem.d.ts",
+      "import": "./dist/src/filesystem.js"
+    },
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./registry": {
+      "types": "./dist/src/registry.d.ts",
+      "import": "./dist/src/registry.js"
+    },
+    "./registry.js": {
+      "types": "./dist/src/registry.d.ts",
+      "import": "./dist/src/registry.js"
+    },
+    "./service-worker": {
+      "types": "./dist/src/service-worker.d.ts",
+      "import": "./dist/src/service-worker.js"
+    },
+    "./service-worker.js": {
+      "types": "./dist/src/service-worker.d.ts",
+      "import": "./dist/src/service-worker.js"
+    },
+    "./utils": {
+      "types": "./dist/src/utils.d.ts",
+      "import": "./dist/src/utils.js"
+    },
+    "./utils.js": {
+      "types": "./dist/src/utils.d.ts",
+      "import": "./dist/src/utils.js"
+    }
   }
 }

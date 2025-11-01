@@ -40,10 +40,34 @@
       "types": "./dist/src/postmessage.d.ts",
       "import": "./dist/src/postmessage.js"
     },
-    "./storage": {
+    "./package.json": "./dist/package.json",
+    "./cache.js": {
+      "types": "./dist/src/cache.d.ts",
+      "import": "./dist/src/cache.js"
+    },
+    "./cache-storage": {
       "types": "./dist/src/cache-storage.d.ts",
       "import": "./dist/src/cache-storage.js"
     },
-    "./package.json": "./dist/package.json"
+    "./cache-storage.js": {
+      "types": "./dist/src/cache-storage.d.ts",
+      "import": "./dist/src/cache-storage.js"
+    },
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./memory.js": {
+      "types": "./dist/src/memory.d.ts",
+      "import": "./dist/src/memory.js"
+    },
+    "./postmessage.js": {
+      "types": "./dist/src/postmessage.d.ts",
+      "import": "./dist/src/postmessage.js"
+    }
   }
 }

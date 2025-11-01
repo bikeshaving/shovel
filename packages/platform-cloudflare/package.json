@@ -47,6 +47,18 @@
       "types": "./dist/src/wrangler.d.ts",
       "import": "./dist/src/wrangler.js"
     },
-    "./package.json": "./dist/package.json"
+    "./package.json": "./dist/package.json",
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./wrangler.js": {
+      "types": "./dist/src/wrangler.d.ts",
+      "import": "./dist/src/wrangler.js"
+    }
   }
 }

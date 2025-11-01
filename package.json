@@ -76,8 +76,45 @@
       "import": "./dist/src/serviceworker.js"
     },
     "./worker": {
-      "import": "./src/worker.js"
+      "types": "./dist/src/undefined.d.ts",
+      "import": "./dist/src/worker.js"
     },
-    "./package.json": "./dist/package.json"
+    "./package.json": "./dist/package.json",
+    "./cli.js": {
+      "types": "./dist/src/cli.d.ts",
+      "import": "./dist/src/cli.js"
+    },
+    "./global.js": {
+      "types": "./dist/src/global.d.ts",
+      "import": "./dist/src/global.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./serviceworker.js": {
+      "types": "./dist/src/serviceworker.d.ts",
+      "import": "./dist/src/serviceworker.js"
+    },
+    "./shared.js": {
+      "types": "./dist/src/shared.d.ts",
+      "import": "./dist/src/shared.js"
+    },
+    "./simple-watcher": {
+      "types": "./dist/src/simple-watcher.d.ts",
+      "import": "./dist/src/simple-watcher.js"
+    },
+    "./simple-watcher.js": {
+      "types": "./dist/src/simple-watcher.d.ts",
+      "import": "./dist/src/simple-watcher.js"
+    },
+    "./static-files.js": {
+      "types": "./dist/src/static-files.d.ts",
+      "import": "./dist/src/static-files.js"
+    },
+    "./worker.js": {
+      "types": "./dist/src/undefined.d.ts",
+      "import": "./dist/src/worker.js"
+    }
   }
 }
