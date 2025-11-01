@@ -10,12 +10,14 @@ import {parentPort} from "worker_threads";
 // Create worker-aware cache storage for this Worker
 const caches = new WorkerAwareCacheStorage();
 
-// Set up ServiceWorker globals with coordinated cache
-const globals = createServiceWorkerGlobals({caches});
-Object.assign(globalThis, globals);
+// Set up ServiceWorker globals with coordinated cache (worker-scoped)
+const serviceWorkerGlobals = createServiceWorkerGlobals({caches});
+// Don't pollute globalThis - keep ServiceWorker context isolated per worker
+let workerSelf = serviceWorkerGlobals.self;
 
 let currentApp = null;
 let serviceWorkerReady = false;
+let loadedVersion = null;
 
 /**
  * Handle ServiceWorker fetch events
@@ -28,14 +30,14 @@ async function handleFetchEvent(request) {
 	// Simulate fetch event dispatch using standard ServiceWorker API
 	let response = null;
 
-	if (globalThis.self && globalThis.self.dispatchEvent) {
-		const fetchEvent = new globalThis.FetchEvent("fetch", {
+	if (workerSelf && workerSelf.dispatchEvent) {
+		const fetchEvent = new serviceWorkerGlobals.FetchEvent("fetch", {
 			request,
 			clientId: "",
 			isReload: false,
 		});
 
-		globalThis.self.dispatchEvent(fetchEvent);
+		workerSelf.dispatchEvent(fetchEvent);
 
 		// Get response from standard FetchEvent API
 		const eventResponse = fetchEvent._getResponse();
@@ -65,21 +67,59 @@ async function loadServiceWorker(version, entrypoint) {
 		const entrypointPath = entrypoint || `${process.cwd()}/dist/app.js`;
 		console.info("[Worker] Loading from:", entrypointPath);
 
-		// Simple cache busting with version timestamp
-		const appModule = await import(`${entrypointPath}?v=${version}`);
-		currentApp = appModule;
+		// Handle hot reload by creating fresh ServiceWorker context
+		if (loadedVersion !== null && loadedVersion !== version) {
+			console.info(`[Worker] Hot reload detected: ${loadedVersion} -> ${version}`);
+			console.info("[Worker] Creating completely fresh ServiceWorker context");
+			
+			// Create fresh ServiceWorker globals to ensure no old event listeners
+			const freshGlobals = createServiceWorkerGlobals({caches});
+			Object.assign(serviceWorkerGlobals, freshGlobals);
+			workerSelf = freshGlobals.self;
+			
+			currentApp = null;
+			serviceWorkerReady = false;
+		}
+		
+		if (loadedVersion === version) {
+			console.info("[Worker] ServiceWorker already loaded for version", version);
+			return;
+		}
 
-		// ServiceWorker lifecycle simulation using standard ExtendableEvent
-		if (globalThis.self && globalThis.self.dispatchEvent) {
-			// Install event
-			const installEvent = new globalThis.ExtendableEvent("install");
-			globalThis.self.dispatchEvent(installEvent);
-			await installEvent._waitForPromises();
+		// Temporarily inject ServiceWorker globals for module loading
+		const originalGlobals = {};
+		Object.keys(serviceWorkerGlobals).forEach(key => {
+			originalGlobals[key] = globalThis[key];
+			globalThis[key] = serviceWorkerGlobals[key];
+		});
 
-			// Activate event
-			const activateEvent = new globalThis.ExtendableEvent("activate");
-			globalThis.self.dispatchEvent(activateEvent);
-			await activateEvent._waitForPromises();
+		try {
+			// Simple cache busting with version timestamp
+			const appModule = await import(`${entrypointPath}?v=${version}`);
+			loadedVersion = version; // Track the version to prevent reloading
+			currentApp = appModule;
+
+			// ServiceWorker lifecycle simulation using standard ExtendableEvent
+			if (workerSelf && workerSelf.dispatchEvent) {
+				// Install event
+				const installEvent = new serviceWorkerGlobals.ExtendableEvent("install");
+				workerSelf.dispatchEvent(installEvent);
+				await installEvent._waitForPromises();
+
+				// Activate event
+				const activateEvent = new serviceWorkerGlobals.ExtendableEvent("activate");
+				workerSelf.dispatchEvent(activateEvent);
+				await activateEvent._waitForPromises();
+			}
+		} finally {
+			// Restore original globals to keep workers isolated
+			Object.keys(serviceWorkerGlobals).forEach(key => {
+				if (originalGlobals[key] === undefined) {
+					delete globalThis[key];
+				} else {
+					globalThis[key] = originalGlobals[key];
+				}
+			});
 		}
 
 		serviceWorkerReady = true;
@@ -93,6 +133,8 @@ async function loadServiceWorker(version, entrypoint) {
 	}
 }
 
+const workerId = Math.random().toString(36).substring(2, 8);
+
 // Node.js Worker thread message handling
 parentPort.on("message", async (message) => {
 	try {
@@ -100,6 +142,7 @@ parentPort.on("message", async (message) => {
 			await loadServiceWorker(message.version, message.entrypoint);
 			parentPort.postMessage({type: "ready", version: message.version});
 		} else if (message.type === "request") {
+			console.log(`[Worker-${workerId}] Handling request:`, message.request.url);
 			// Reconstruct Request object from serialized data
 			const request = new Request(message.request.url, {
 				method: message.request.method,

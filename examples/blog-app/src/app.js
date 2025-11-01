@@ -10,10 +10,15 @@ import {Router} from "@b9g/router";
 import {CacheStorage} from "@b9g/cache/cache-storage";
 import {MemoryCache} from "@b9g/cache/memory-cache";
 import {createStaticFilesMiddleware} from "@b9g/staticfiles";
+import {platformRegistry} from "@b9g/platform";
+import {createNodePlatform} from "@b9g/platform-node";
 
 // Import static assets using import attributes
 import styles from "./assets/styles.css" with {url: "/static/"};
 import logo from "./assets/logo.svg" with {url: "/static/"};
+
+// Register platform for File System Access API support
+platformRegistry.register("node", createNodePlatform());
 
 // Set up cache storage with different caches for different content types
 const caches = new CacheStorage();
@@ -32,9 +37,10 @@ router.use(
 	createStaticFilesMiddleware({
 		filesystem: "static",
 		basePath: "/static",
+		manifestPath: "manifest.json",
 		dev: process.env?.NODE_ENV !== "production",
 		cacheControl: process.env?.NODE_ENV === "production" 
-			? "public, max-age=31536000" 
+			? "public, max-age=31536000, immutable" 
 			: "no-cache"
 	}),
 );
@@ -279,8 +285,28 @@ self.addEventListener("activate", (event) => {
 /**
  * ServiceWorker fetch event - handle HTTP requests
  */
+const workerId = Math.random().toString(36).substring(2, 8);
+console.log(`[SW-${workerId}] Registering fetch event listener`);
 self.addEventListener("fetch", (event) => {
-	event.respondWith(router.handler(event.request));
+	console.log(`[SW-${workerId}] Fetch event for:`, event.request.url);
+	try {
+		const responsePromise = router.handler(event.request);
+		console.log(`[SW-${workerId}] Router handler returned:`, responsePromise);
+	console.log(`[SW-${workerId}] About to call event.respondWith`);
+		
+		// Add timeout to detect hanging promises
+		const timeoutPromise = new Promise((_, reject) => {
+			setTimeout(() => reject(new Error("Router response timeout")), 5000);
+		});
+		
+		event.respondWith(Promise.race([responsePromise, timeoutPromise]).catch(error => {
+			console.error(`[SW-${workerId}] Router handler error:`, error);
+			return new Response("Router error: " + error.message, { status: 500 });
+		}));
+	} catch (error) {
+		console.error(`[SW-${workerId}] Synchronous error in fetch handler:`, error);
+		event.respondWith(new Response("Sync error: " + error.message, { status: 500 }));
+	}
 });
 
 /**
@@ -343,4 +369,3 @@ function renderPage(title, content) {
 </html>`;
 }
 
-export default router;
