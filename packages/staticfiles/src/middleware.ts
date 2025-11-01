@@ -121,12 +121,14 @@ export function createStaticFilesMiddleware(config: StaticFilesConfig = {}) {
 		}
 	}
 
-	return async function staticFilesMiddleware(request: Request, context: any, next: () => Promise<Response>): Promise<Response> {
+	return async function* staticFilesMiddleware(request: Request, context: any) {
 		const url = new URL(request.url);
 		
 		// Only handle requests that start with our base path
 		if (!url.pathname.startsWith(basePath)) {
-			return await next(); // Pass through to next middleware
+			// Pass through to next middleware
+			const response = yield request;
+			return response;
 		}
 
 		// Extract the file path relative to base path
@@ -190,7 +192,7 @@ export function createStaticFilesMiddleware(config: StaticFilesConfig = {}) {
 				}
 			}
 
-			// Return file response
+			// Return file response (early return - no yield needed)
 			return new Response(file.stream(), {
 				status: 200,
 				headers,
