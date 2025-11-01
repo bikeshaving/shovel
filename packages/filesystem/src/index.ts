@@ -11,12 +11,9 @@ export type {
   FileSystemConfig
 } from "./types.js";
 
-// Platform-specific implementations
-export {NodeFileSystemAdapter} from "./node.js";
-export {S3FileSystemAdapter} from "./s3.js";
-export {CloudflareFileSystemAdapter} from "./cloudflare.js";
-export {BunFileSystemAdapter} from "./bun.js";
+// Core implementations (no external dependencies)
 export {MemoryFileSystemAdapter} from "./memory.js";
+export {NodeFileSystemAdapter} from "./node.js";
 
 // Registry for managing filesystem adapters
 export {FileSystemRegistry, getFileSystemRoot} from "./registry.js";

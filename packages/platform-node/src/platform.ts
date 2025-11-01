@@ -14,12 +14,10 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 } from "@b9g/platform";
-import {CacheStorage} from "@b9g/cache/cache-storage";
-import {MemoryCache} from "@b9g/cache/memory-cache";
-import {FilesystemCache} from "@b9g/cache/filesystem-cache";
+import {CustomCacheStorage, MemoryCache, MemoryCacheManager, PostMessageCache} from "@b9g/cache";
+import {FileSystemRegistry, getFileSystemRoot, NodeFileSystemAdapter} from "@b9g/filesystem";
 import * as Http from "http";
 import * as Path from "path";
-import {MemoryCacheManager} from "@b9g/cache/memory-cache-manager";
 import {Worker} from "worker_threads";
 import {fileURLToPath} from "url";
 
@@ -54,7 +52,7 @@ class WorkerManager {
 	private options: Required<NodePlatformOptions>;
 
 	constructor(
-		cacheStorage: CacheStorage,
+		cacheStorage: CustomCacheStorage,
 		options: Required<NodePlatformOptions>,
 		workerCount = 1,
 		private entrypoint?: string,
@@ -226,7 +224,7 @@ export class NodePlatform implements Platform {
 	private options: Required<NodePlatformOptions>;
 	private watcher?: Watcher;
 	private workerManager?: WorkerManager;
-	private cacheStorage?: CacheStorage;
+	private cacheStorage?: CustomCacheStorage;
 
 	constructor(options: NodePlatformOptions = {}) {
 		this.options = {
@@ -236,6 +234,11 @@ export class NodePlatform implements Platform {
 			cwd: process.cwd(),
 			...options,
 		};
+
+		// Register Node.js filesystem adapter as default
+		FileSystemRegistry.register("node", new NodeFileSystemAdapter({
+			rootPath: this.options.cwd
+		}));
 	}
 
 	/**
@@ -317,30 +320,15 @@ export class NodePlatform implements Platform {
 	/**
 	 * SUPPORTING UTILITY - Create cache storage optimized for Node.js
 	 */
-	createCaches(config: CacheConfig = {}): CacheStorage {
-		const caches = new CacheStorage();
-
-		// Register default caches optimized for Node.js
-		caches.register(
-			"memory",
-			() =>
-				new MemoryCache("memory", {
-					maxEntries: config.maxEntries || 1000,
-					maxSize: config.maxSize || 50 * 1024 * 1024, // 50MB
-				}),
-		);
-
-		caches.register(
-			"filesystem",
-			() =>
-				new FilesystemCache("filesystem", {
-					cacheDir: config.cacheDir || Path.join(this.options.cwd, ".cache"),
-					maxEntries: config.maxEntries || 10000,
-					maxSize: config.maxSize || 500 * 1024 * 1024, // 500MB
-				}),
-		);
-
-		return caches;
+	createCaches(config: CacheConfig = {}): CustomCacheStorage {
+		// Use CustomCacheStorage with PostMessage coordination for worker environments
+		return new CustomCacheStorage((name: string) => {
+			// Return PostMessageCache that coordinates with MemoryCache on main thread
+			return new PostMessageCache(name, {
+				maxEntries: config.maxEntries || 1000,
+				maxSize: config.maxSize || 50 * 1024 * 1024, // 50MB
+			});
+		});
 	}
 
 	/**
@@ -420,51 +408,8 @@ export class NodePlatform implements Platform {
 	async getFileSystemRoot(
 		name = "default",
 	): Promise<FileSystemDirectoryHandle> {
-		// Check if S3/R2 credentials are available for cloud storage
-		if (process.env.AWS_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID) {
-			const {NodeS3FileSystemDirectoryHandle} = await import(
-				"./s3-filesystem.js"
-			);
-			const {S3Client} = await import("@aws-sdk/client-s3");
-
-			// Configure S3 client with environment variables
-			const s3Client = new S3Client({
-				region: process.env.AWS_REGION || process.env.S3_REGION || "us-east-1",
-				endpoint: process.env.S3_ENDPOINT, // For R2 compatibility
-				forcePathStyle: !!process.env.S3_FORCE_PATH_STYLE, // Required for some S3-compatible services
-				credentials: {
-					accessKeyId:
-						process.env.AWS_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID!,
-					secretAccessKey:
-						process.env.AWS_SECRET_ACCESS_KEY ||
-						process.env.S3_SECRET_ACCESS_KEY!,
-				},
-			});
-
-			const bucket = process.env.S3_BUCKET || `shovel-filesystem-${name}`;
-			const prefix = `filesystems/${name}`;
-
-			return new NodeS3FileSystemDirectoryHandle(s3Client, bucket, prefix);
-		} else {
-			// Use dist directory for static files, .shovel for other filesystems
-			const {NodeFileSystemDirectoryHandle} = await import("./filesystem.js");
-
-			let rootDir: string;
-			if (name === "static") {
-				// Static files come from build output
-				rootDir = Path.join(this.options.cwd, "dist", "static");
-			} else {
-				// Other filesystems use .shovel directory
-				rootDir = Path.join(this.options.cwd, ".shovel", "filesystems", name);
-			}
-
-			// Ensure directory exists
-			await import("fs/promises").then((fs) =>
-				fs.mkdir(rootDir, {recursive: true}),
-			);
-
-			return new NodeFileSystemDirectoryHandle(rootDir);
-		}
+		// Use centralized filesystem registry
+		return await getFileSystemRoot(name);
 	}
 
 	/**

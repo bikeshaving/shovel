@@ -17,8 +17,7 @@ import {
 	ServiceWorkerRuntime,
 	createServiceWorkerGlobals,
 } from "@b9g/platform";
-import {CacheStorage} from "@b9g/cache/cache-storage";
-import {MemoryCache} from "@b9g/cache/memory-cache";
+import {FileSystemRegistry, getFileSystemRoot, MemoryFileSystemAdapter} from "@b9g/filesystem";
 import {createStaticFilesHandler} from "@b9g/staticfiles";
 
 export interface CloudflarePlatformOptions {
@@ -34,38 +33,6 @@ export interface CloudflarePlatformOptions {
 	durableObjects?: Record<string, any>;
 }
 
-/**
- * Cloudflare Workers cache implementation using KV
- */
-class CloudflareKVCache extends MemoryCache {
-	constructor(
-		name: string,
-		private kv: any, // KVNamespace
-		options: any = {},
-	) {
-		super(name, options);
-	}
-
-	async match(request: Request): Promise<Response | undefined> {
-		const key = this.createKey(request);
-		const value = await this.kv.get(key);
-		return value ? new Response(value) : undefined;
-	}
-
-	async put(request: Request, response: Response): Promise<void> {
-		const key = this.createKey(request);
-		const value = await response.text();
-		await this.kv.put(key, value, {
-			expirationTtl: this.options.ttl
-				? Math.floor(this.options.ttl / 1000)
-				: undefined,
-		});
-	}
-
-	private createKey(request: Request): string {
-		return `cache:${this.name}:${new URL(request.url).pathname}`;
-	}
-}
 
 /**
  * Cloudflare Workers platform implementation
@@ -87,42 +54,28 @@ export class CloudflarePlatform implements Platform {
 			environment: "production",
 			...options,
 		};
+
+		// Register R2 filesystem adapter if R2 bucket is available
+		if (this.options.r2Buckets?.default) {
+			// Dynamically import R2 adapter to avoid unnecessary dependency
+			import("@b9g/filesystem-r2").then(({R2FileSystemAdapter}) => {
+				FileSystemRegistry.register("r2", new R2FileSystemAdapter(this.options.r2Buckets!.default));
+			}).catch(() => {
+				// R2 filesystem package not available, fall back to memory
+				FileSystemRegistry.register("memory", new MemoryFileSystemAdapter());
+			});
+		} else {
+			// No R2 bucket available, use memory filesystem
+			FileSystemRegistry.register("memory", new MemoryFileSystemAdapter());
+		}
 	}
 
 	/**
-	 * Create cache storage using Cloudflare KV/Cache API
+	 * Create cache storage using Cloudflare's native Cache API
 	 */
 	createCaches(config: CacheConfig = {}): CacheStorage {
-		const caches = new CacheStorage();
-
-		// Use native Cache API if available
-		if (typeof globalThis.caches !== "undefined") {
-			// This should work automatically with native Cache API
-			return globalThis.caches as any;
-		}
-
-		// Fallback to KV-based caching
-		if (this.options.kvNamespaces) {
-			for (const [name, kv] of Object.entries(this.options.kvNamespaces)) {
-				caches.register(
-					name,
-					() => new CloudflareKVCache(name, kv, config[name]),
-				);
-			}
-		}
-
-		// Default memory cache for development
-		caches.register(
-			"memory",
-			() =>
-				new MemoryCache("memory", {
-					maxEntries: config.maxEntries || 100, // Smaller for memory constraints
-					maxSize: config.maxSize || 10 * 1024 * 1024, // 10MB
-				}),
-		);
-
-		caches.setDefault("memory");
-		return caches;
+		// Return native CacheStorage directly - it already implements the interface
+		return globalThis.caches;
 	}
 
 	/**
@@ -254,28 +207,13 @@ export class CloudflarePlatform implements Platform {
 	}
 
 	/**
-	 * Get filesystem root for File System Access API using Cloudflare R2
+	 * Get filesystem root for File System Access API
 	 */
 	async getFileSystemRoot(
 		name = "default",
 	): Promise<FileSystemDirectoryHandle> {
-		// Use R2 bucket binding if available
-		const bucketBinding =
-			this.options.r2Buckets?.[name] || this.options.r2Buckets?.["default"];
-
-		if (bucketBinding) {
-			const {CloudflareR2FileSystemDirectoryHandle} = await import(
-				"./filesystem.js"
-			);
-			const prefix = `filesystems/${name}`;
-			return new CloudflareR2FileSystemDirectoryHandle(bucketBinding, prefix);
-		}
-
-		// Fallback error - Cloudflare Workers don't have local filesystem
-		throw new DOMException(
-			"No R2 bucket binding available for filesystem access. Configure r2Buckets in platform options.",
-			"NotFoundError",
-		);
+		// Use centralized filesystem registry (defaults to memory for Cloudflare)
+		return await getFileSystemRoot(name);
 	}
 
 	/**

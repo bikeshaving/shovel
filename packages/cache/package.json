@@ -21,77 +21,29 @@
     "bun-types": "latest"
   },
   "private": true,
-  "module": "./dist/src/cache.js",
-  "types": "./dist/src/cache.d.ts",
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/src/cache.d.ts",
-      "import": "./dist/src/cache.js"
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
     },
     "./cache": {
       "types": "./dist/src/cache.d.ts",
       "import": "./dist/src/cache.js"
     },
-    "./cache.js": {
-      "types": "./dist/src/cache.d.ts",
-      "import": "./dist/src/cache.js"
+    "./memory": {
+      "types": "./dist/src/memory.d.ts",
+      "import": "./dist/src/memory.js"
     },
-    "./cache-storage": {
+    "./postmessage": {
+      "types": "./dist/src/postmessage.d.ts",
+      "import": "./dist/src/postmessage.js"
+    },
+    "./storage": {
       "types": "./dist/src/cache-storage.d.ts",
       "import": "./dist/src/cache-storage.js"
     },
-    "./cache-storage.js": {
-      "types": "./dist/src/cache-storage.d.ts",
-      "import": "./dist/src/cache-storage.js"
-    },
-    "./memory-cache": {
-      "types": "./dist/src/memory-cache.d.ts",
-      "import": "./dist/src/memory-cache.js"
-    },
-    "./memory-cache.js": {
-      "types": "./dist/src/memory-cache.d.ts",
-      "import": "./dist/src/memory-cache.js"
-    },
-    "./package.json": "./dist/package.json",
-    "./browser-cache": {
-      "types": "./dist/src/browser-cache.d.ts",
-      "import": "./dist/src/browser-cache.js"
-    },
-    "./browser-cache.js": {
-      "types": "./dist/src/browser-cache.d.ts",
-      "import": "./dist/src/browser-cache.js"
-    },
-    "./filesystem-cache": {
-      "types": "./dist/src/filesystem-cache.d.ts",
-      "import": "./dist/src/filesystem-cache.js"
-    },
-    "./filesystem-cache.js": {
-      "types": "./dist/src/filesystem-cache.d.ts",
-      "import": "./dist/src/filesystem-cache.js"
-    },
-    "./coordinated-memory-cache": {
-      "types": "./dist/src/coordinated-memory-cache.d.ts",
-      "import": "./dist/src/coordinated-memory-cache.js"
-    },
-    "./coordinated-memory-cache.js": {
-      "types": "./dist/src/coordinated-memory-cache.d.ts",
-      "import": "./dist/src/coordinated-memory-cache.js"
-    },
-    "./memory-cache-manager": {
-      "types": "./dist/src/memory-cache-manager.d.ts",
-      "import": "./dist/src/memory-cache-manager.js"
-    },
-    "./memory-cache-manager.js": {
-      "types": "./dist/src/memory-cache-manager.d.ts",
-      "import": "./dist/src/memory-cache-manager.js"
-    },
-    "./worker-aware-cache-storage": {
-      "types": "./dist/src/worker-aware-cache-storage.d.ts",
-      "import": "./dist/src/worker-aware-cache-storage.js"
-    },
-    "./worker-aware-cache-storage.js": {
-      "types": "./dist/src/worker-aware-cache-storage.d.ts",
-      "import": "./dist/src/worker-aware-cache-storage.js"
-    }
+    "./package.json": "./dist/package.json"
   }
 }

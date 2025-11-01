@@ -16,9 +16,8 @@ import {
 	ServiceWorkerRuntime,
 	createServiceWorkerGlobals,
 } from "@b9g/platform";
-import {CacheStorage} from "@b9g/cache/cache-storage";
-import {MemoryCache} from "@b9g/cache/memory-cache";
-import {FilesystemCache} from "@b9g/cache/filesystem-cache";
+import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
+import {FileSystemRegistry, getFileSystemRoot, MemoryFileSystemAdapter} from "@b9g/filesystem";
 // import {createStaticFilesHandler} from "@b9g/staticfiles"; // TODO: implement static files
 import * as Path from "path";
 
@@ -58,38 +57,22 @@ export class BunPlatform implements Platform {
 			cwd: process.cwd(),
 			...options,
 		};
+
+		// Register memory filesystem adapter as default for Bun
+		FileSystemRegistry.register("memory", new MemoryFileSystemAdapter());
 	}
 
 	/**
 	 * Create cache storage optimized for Bun
 	 */
-	createCaches(config: CacheConfig = {}): CacheStorage {
-		const caches = new CacheStorage();
-
-		// Register default caches optimized for Bun
-		caches.register(
-			"memory",
-			() =>
-				new MemoryCache("memory", {
-					maxEntries: config.maxEntries || 1000,
-					maxSize: config.maxSize || 50 * 1024 * 1024, // 50MB
-				}),
-		);
-
-		caches.register(
-			"filesystem",
-			() =>
-				new FilesystemCache("filesystem", {
-					cacheDir: config.cacheDir || Path.join(this.options.cwd, ".cache"),
-					maxEntries: config.maxEntries || 10000,
-					maxSize: config.maxSize || 500 * 1024 * 1024, // 500MB
-				}),
-		);
-
-		// Set memory as default for Bun (faster startup)
-		caches.setDefault("memory");
-
-		return caches;
+	createCaches(config: CacheConfig = {}): CustomCacheStorage {
+		// Use CustomCacheStorage with PostMessage coordination for Bun workers
+		return new CustomCacheStorage((name: string) => {
+			return new PostMessageCache(name, {
+				maxEntries: config.maxEntries || 1000,
+				maxSize: config.maxSize || 50 * 1024 * 1024, // 50MB
+			});
+		});
 	}
 
 	// TODO: Implement static files handler when @b9g/staticfiles is ready
@@ -233,46 +216,13 @@ export class BunPlatform implements Platform {
 	}
 
 	/**
-	 * Get filesystem root for File System Access API using Bun's S3 support
+	 * Get filesystem root for File System Access API
 	 */
 	async getFileSystemRoot(
 		name = "default",
 	): Promise<FileSystemDirectoryHandle> {
-		// Check if S3 credentials are available for cloud storage
-		if (Bun.env.AWS_ACCESS_KEY_ID || Bun.env.S3_ACCESS_KEY_ID) {
-			const {BunS3FileSystemDirectoryHandle} = await import("./filesystem.js");
-			const {S3Client} = await import("bun");
-
-			// Use Bun's built-in S3 client with environment variables
-			const s3Client = new S3Client({
-				bucket: Bun.env.S3_BUCKET || `shovel-filesystem-${name}`,
-				// Bun automatically reads AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, etc.
-			});
-
-			const prefix = `filesystems/${name}`;
-			return new BunS3FileSystemDirectoryHandle(s3Client, prefix);
-		} else {
-			// Use dist directory for static files, .shovel for other filesystems
-			const {NodeFileSystemDirectoryHandle} = await import(
-				"@b9g/platform-node/filesystem"
-			);
-
-			let rootDir: string;
-			if (name === "static") {
-				// Static files come from build output
-				rootDir = Path.join(this.options.cwd, "dist", "static");
-			} else {
-				// Other filesystems use .shovel directory
-				rootDir = Path.join(this.options.cwd, ".shovel", "filesystems", name);
-			}
-
-			// Ensure directory exists
-			await import("fs/promises").then((fs) =>
-				fs.mkdir(rootDir, {recursive: true}),
-			);
-
-			return new NodeFileSystemDirectoryHandle(rootDir);
-		}
+		// Use centralized filesystem registry (defaults to memory for Bun)
+		return await getFileSystemRoot(name);
 	}
 
 	/**

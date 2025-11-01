@@ -1,0 +1,39 @@
+{
+  "name": "@b9g/filesystem-bun-s3",
+  "version": "0.1.0",
+  "description": "Bun S3 implementation of File System Access API using native S3 support",
+  "type": "module",
+  "scripts": {
+    "build": "libuild build",
+    "build:save": "libuild build --save",
+    "publish": "libuild publish",
+    "test": "bun test"
+  },
+  "keywords": [
+    "filesystem",
+    "s3",
+    "bun",
+    "storage",
+    "web-standards"
+  ],
+  "dependencies": {
+    "@b9g/filesystem": "^0.1.0"
+  },
+  "peerDependencies": {
+    "bun": "^1.0.0"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.0",
+    "bun-types": "latest"
+  },
+  "private": true,
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./package.json": "./dist/package.json"
+  }
+}

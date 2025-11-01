@@ -4,13 +4,19 @@
  */
 
 import type {FileSystemAdapter} from "./types.js";
+import {MemoryFileSystemAdapter} from "./memory.js";
 
 /**
  * Global registry of filesystem adapters
  */
 class Registry {
   private adapters = new Map<string, FileSystemAdapter>();
-  private defaultAdapter: FileSystemAdapter | null = null;
+  private defaultAdapter: FileSystemAdapter;
+
+  constructor() {
+    // Set memory adapter as default
+    this.defaultAdapter = new MemoryFileSystemAdapter();
+  }
 
   /**
    * Register a filesystem adapter with a name
@@ -31,7 +37,7 @@ class Registry {
     if (!name) {
       return this.defaultAdapter;
     }
-    return this.adapters.get(name) || null;
+    return this.adapters.get(name) || this.defaultAdapter;
   }
 
   /**

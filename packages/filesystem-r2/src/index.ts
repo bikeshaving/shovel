@@ -5,10 +5,12 @@
  * to provide R2 cloud storage with File System Access API compatibility.
  */
 
+import type {FileSystemAdapter, FileSystemConfig} from "@b9g/filesystem";
+
 /**
  * Cloudflare R2 implementation of FileSystemWritableFileStream
  */
-export class CloudflareR2FileSystemWritableFileStream extends WritableStream<Uint8Array> {
+export class R2FileSystemWritableFileStream extends WritableStream<Uint8Array> {
 	private chunks: Uint8Array[] = [];
 
 	constructor(
@@ -46,7 +48,7 @@ export class CloudflareR2FileSystemWritableFileStream extends WritableStream<Uin
 /**
  * Cloudflare R2 implementation of FileSystemFileHandle
  */
-export class CloudflareR2FileSystemFileHandle implements FileSystemFileHandle {
+export class R2FileSystemFileHandle implements FileSystemFileHandle {
 	readonly kind = "file" as const;
 	readonly name: string;
 
@@ -74,7 +76,7 @@ export class CloudflareR2FileSystemFileHandle implements FileSystemFileHandle {
 	}
 
 	async createWritable(): Promise<FileSystemWritableFileStream> {
-		return new CloudflareR2FileSystemWritableFileStream(
+		return new R2FileSystemWritableFileStream(
 			this.r2Bucket,
 			this.key,
 		) as any;
@@ -89,7 +91,7 @@ export class CloudflareR2FileSystemFileHandle implements FileSystemFileHandle {
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "file") return false;
-		if (!(other instanceof CloudflareR2FileSystemFileHandle)) return false;
+		if (!(other instanceof R2FileSystemFileHandle)) return false;
 		return this.key === other.key;
 	}
 
@@ -134,7 +136,7 @@ export class CloudflareR2FileSystemFileHandle implements FileSystemFileHandle {
 /**
  * Cloudflare R2 implementation of FileSystemDirectoryHandle
  */
-export class CloudflareR2FileSystemDirectoryHandle
+export class R2FileSystemDirectoryHandle
 	implements FileSystemDirectoryHandle
 {
 	readonly kind = "directory" as const;
@@ -165,7 +167,7 @@ export class CloudflareR2FileSystemDirectoryHandle
 			throw new DOMException("File not found", "NotFoundError");
 		}
 
-		return new CloudflareR2FileSystemFileHandle(this.r2Bucket, key);
+		return new R2FileSystemFileHandle(this.r2Bucket, key);
 	}
 
 	async getDirectoryHandle(
@@ -183,7 +185,7 @@ export class CloudflareR2FileSystemDirectoryHandle
 			}
 		}
 
-		return new CloudflareR2FileSystemDirectoryHandle(this.r2Bucket, newPrefix);
+		return new R2FileSystemDirectoryHandle(this.r2Bucket, newPrefix);
 	}
 
 	async removeEntry(
@@ -252,7 +254,7 @@ export class CloudflareR2FileSystemDirectoryHandle
 					) {
 						yield [
 							name,
-							new CloudflareR2FileSystemFileHandle(this.r2Bucket, object.key),
+							new R2FileSystemFileHandle(this.r2Bucket, object.key),
 						];
 					}
 				}
@@ -264,7 +266,7 @@ export class CloudflareR2FileSystemDirectoryHandle
 				if (name) {
 					yield [
 						name,
-						new CloudflareR2FileSystemDirectoryHandle(
+						new R2FileSystemDirectoryHandle(
 							this.r2Bucket,
 							prefix.replace(/\/$/, ""),
 						),
@@ -291,7 +293,7 @@ export class CloudflareR2FileSystemDirectoryHandle
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "directory") return false;
-		if (!(other instanceof CloudflareR2FileSystemDirectoryHandle)) return false;
+		if (!(other instanceof R2FileSystemDirectoryHandle)) return false;
 		return this.prefix === other.prefix;
 	}
 
@@ -311,5 +313,34 @@ export class CloudflareR2FileSystemDirectoryHandle
 	}
 	get isDirectory(): boolean {
 		return true;
+	}
+}
+
+/**
+ * R2 filesystem adapter
+ */
+export class R2FileSystemAdapter implements FileSystemAdapter {
+	private config: FileSystemConfig;
+	private r2Bucket: R2Bucket;
+
+	constructor(r2Bucket: R2Bucket, config: FileSystemConfig = {}) {
+		this.config = {
+			name: "r2",
+			...config,
+		};
+		this.r2Bucket = r2Bucket;
+	}
+
+	async getFileSystemRoot(name = "default"): Promise<FileSystemDirectoryHandle> {
+		const prefix = `filesystems/${name}`;
+		return new R2FileSystemDirectoryHandle(this.r2Bucket, prefix);
+	}
+
+	getConfig(): FileSystemConfig {
+		return {...this.config};
+	}
+
+	async dispose(): Promise<void> {
+		// Nothing to dispose for R2
 	}
 }

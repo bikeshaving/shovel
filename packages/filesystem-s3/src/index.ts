@@ -1,28 +1,20 @@
 /**
- * Node.js implementation of File System Access API using AWS SDK S3
+ * AWS S3 implementation of File System Access API using AWS SDK
  *
- * Implements FileSystemDirectoryHandle and FileSystemFileHandle using AWS SDK v3
- * to provide S3-compatible cloud storage with File System Access API compatibility.
- * Works with both AWS S3 and Cloudflare R2.
+ * Implements FileSystemDirectoryHandle and FileSystemFileHandle using AWS S3 SDK
+ * to provide S3 cloud storage with File System Access API compatibility.
  */
 
-import {
-	S3Client,
-	GetObjectCommand,
-	PutObjectCommand,
-	DeleteObjectCommand,
-	ListObjectsV2Command,
-	HeadObjectCommand,
-} from "@aws-sdk/client-s3";
+import type {FileSystemAdapter, FileSystemConfig} from "@b9g/filesystem";
 
 /**
- * Node.js S3 implementation of FileSystemWritableFileStream
+ * AWS S3 implementation of FileSystemWritableFileStream
  */
-export class NodeS3FileSystemWritableFileStream extends WritableStream<Uint8Array> {
+export class S3FileSystemWritableFileStream extends WritableStream<Uint8Array> {
 	private chunks: Uint8Array[] = [];
 
 	constructor(
-		private s3Client: S3Client,
+		private s3Client: any, // S3Client from @aws-sdk/client-s3
 		private bucket: string,
 		private key: string,
 	) {
@@ -44,13 +36,14 @@ export class NodeS3FileSystemWritableFileStream extends WritableStream<Uint8Arra
 					offset += chunk.length;
 				}
 
-				await this.s3Client.send(
-					new PutObjectCommand({
-						Bucket: this.bucket,
-						Key: this.key,
-						Body: buffer,
-					}),
-				);
+				// Use AWS SDK to upload
+				const {PutObjectCommand} = await import("@aws-sdk/client-s3");
+				const command = new PutObjectCommand({
+					Bucket: this.bucket,
+					Key: this.key,
+					Body: buffer,
+				});
+				await this.s3Client.send(command);
 			},
 			abort: async () => {
 				// Clear chunks on abort
@@ -61,14 +54,14 @@ export class NodeS3FileSystemWritableFileStream extends WritableStream<Uint8Arra
 }
 
 /**
- * Node.js S3 implementation of FileSystemFileHandle
+ * AWS S3 implementation of FileSystemFileHandle
  */
-export class NodeS3FileSystemFileHandle implements FileSystemFileHandle {
+export class S3FileSystemFileHandle implements FileSystemFileHandle {
 	readonly kind = "file" as const;
 	readonly name: string;
 
 	constructor(
-		private s3Client: S3Client,
+		private s3Client: any, // S3Client from @aws-sdk/client-s3
 		private bucket: string,
 		private key: string,
 	) {
@@ -77,55 +70,42 @@ export class NodeS3FileSystemFileHandle implements FileSystemFileHandle {
 
 	async getFile(): Promise<File> {
 		try {
-			// Get object metadata first
-			const headResult = await this.s3Client.send(
-				new HeadObjectCommand({
-					Bucket: this.bucket,
-					Key: this.key,
-				}),
-			);
+			const {GetObjectCommand} = await import("@aws-sdk/client-s3");
+			const command = new GetObjectCommand({
+				Bucket: this.bucket,
+				Key: this.key,
+			});
 
-			// Get object data
-			const getResult = await this.s3Client.send(
-				new GetObjectCommand({
-					Bucket: this.bucket,
-					Key: this.key,
-				}),
-			);
-
-			if (!getResult.Body) {
+			const response = await this.s3Client.send(command);
+			
+			if (!response.Body) {
 				throw new DOMException("File not found", "NotFoundError");
 			}
 
-			// Convert ReadableStream to ArrayBuffer
+			// Convert stream to array buffer
 			const chunks: Uint8Array[] = [];
-			const reader = getResult.Body.transformToWebStream().getReader();
-
+			const reader = response.Body.getReader();
+			
 			while (true) {
-				const {done, value} = await reader.read();
+				const { done, value } = await reader.read();
 				if (done) break;
 				chunks.push(value);
 			}
 
 			const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-			const buffer = new Uint8Array(totalLength);
+			const arrayBuffer = new Uint8Array(totalLength);
 			let offset = 0;
 			for (const chunk of chunks) {
-				buffer.set(chunk, offset);
+				arrayBuffer.set(chunk, offset);
 				offset += chunk.length;
 			}
 
-			return new File([buffer], this.name, {
-				lastModified: headResult.LastModified
-					? headResult.LastModified.getTime()
-					: Date.now(),
-				type: headResult.ContentType || this.getMimeType(this.key),
+			return new File([arrayBuffer], this.name, {
+				lastModified: response.LastModified?.getTime() || Date.now(),
+				type: response.ContentType || this.getMimeType(this.key),
 			});
-		} catch (error) {
-			if (
-				(error as any).name === "NoSuchKey" ||
-				(error as any).$metadata?.httpStatusCode === 404
-			) {
+		} catch (error: any) {
+			if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
 				throw new DOMException("File not found", "NotFoundError");
 			}
 			throw error;
@@ -133,7 +113,7 @@ export class NodeS3FileSystemFileHandle implements FileSystemFileHandle {
 	}
 
 	async createWritable(): Promise<FileSystemWritableFileStream> {
-		return new NodeS3FileSystemWritableFileStream(
+		return new S3FileSystemWritableFileStream(
 			this.s3Client,
 			this.bucket,
 			this.key,
@@ -149,7 +129,7 @@ export class NodeS3FileSystemFileHandle implements FileSystemFileHandle {
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "file") return false;
-		if (!(other instanceof NodeS3FileSystemFileHandle)) return false;
+		if (!(other instanceof S3FileSystemFileHandle)) return false;
 		return this.bucket === other.bucket && this.key === other.key;
 	}
 
@@ -192,16 +172,14 @@ export class NodeS3FileSystemFileHandle implements FileSystemFileHandle {
 }
 
 /**
- * Node.js S3 implementation of FileSystemDirectoryHandle
+ * AWS S3 implementation of FileSystemDirectoryHandle
  */
-export class NodeS3FileSystemDirectoryHandle
-	implements FileSystemDirectoryHandle
-{
+export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 	readonly kind = "directory" as const;
 	readonly name: string;
 
 	constructor(
-		private s3Client: S3Client,
+		private s3Client: any, // S3Client from @aws-sdk/client-s3
 		private bucket: string,
 		private prefix: string,
 	) {
@@ -216,37 +194,33 @@ export class NodeS3FileSystemDirectoryHandle
 	): Promise<FileSystemFileHandle> {
 		const key = this.prefix ? `${this.prefix}/${name}` : name;
 
-		// Check if file exists
-		try {
-			await this.s3Client.send(
-				new HeadObjectCommand({
+		if (options?.create) {
+			// Create empty file
+			const {PutObjectCommand} = await import("@aws-sdk/client-s3");
+			const command = new PutObjectCommand({
+				Bucket: this.bucket,
+				Key: key,
+				Body: new Uint8Array(0),
+			});
+			await this.s3Client.send(command);
+		} else {
+			// Check if file exists
+			try {
+				const {HeadObjectCommand} = await import("@aws-sdk/client-s3");
+				const command = new HeadObjectCommand({
 					Bucket: this.bucket,
 					Key: key,
-				}),
-			);
-		} catch (error) {
-			if (
-				(error as any).name === "NotFound" ||
-				(error as any).$metadata?.httpStatusCode === 404
-			) {
-				if (options?.create) {
-					// Create empty file
-					await this.s3Client.send(
-						new PutObjectCommand({
-							Bucket: this.bucket,
-							Key: key,
-							Body: new Uint8Array(0),
-						}),
-					);
-				} else {
+				});
+				await this.s3Client.send(command);
+			} catch (error: any) {
+				if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
 					throw new DOMException("File not found", "NotFoundError");
 				}
-			} else {
 				throw error;
 			}
 		}
 
-		return new NodeS3FileSystemFileHandle(this.s3Client, this.bucket, key);
+		return new S3FileSystemFileHandle(this.s3Client, this.bucket, key);
 	}
 
 	async getDirectoryHandle(
@@ -258,34 +232,16 @@ export class NodeS3FileSystemDirectoryHandle
 		if (options?.create) {
 			// S3 doesn't have directories, but we can create a marker object
 			const markerKey = `${newPrefix}/.shovel_directory_marker`;
-			try {
-				await this.s3Client.send(
-					new HeadObjectCommand({
-						Bucket: this.bucket,
-						Key: markerKey,
-					}),
-				);
-			} catch (error) {
-				if (
-					(error as any).name === "NotFound" ||
-					(error as any).$metadata?.httpStatusCode === 404
-				) {
-					await this.s3Client.send(
-						new PutObjectCommand({
-							Bucket: this.bucket,
-							Key: markerKey,
-							Body: new Uint8Array(0),
-						}),
-					);
-				}
-			}
+			const {PutObjectCommand} = await import("@aws-sdk/client-s3");
+			const command = new PutObjectCommand({
+				Bucket: this.bucket,
+				Key: markerKey,
+				Body: new Uint8Array(0),
+			});
+			await this.s3Client.send(command);
 		}
 
-		return new NodeS3FileSystemDirectoryHandle(
-			this.s3Client,
-			this.bucket,
-			newPrefix,
-		);
+		return new S3FileSystemDirectoryHandle(this.s3Client, this.bucket, newPrefix);
 	}
 
 	async removeEntry(
@@ -294,63 +250,51 @@ export class NodeS3FileSystemDirectoryHandle
 	): Promise<void> {
 		const key = this.prefix ? `${this.prefix}/${name}` : name;
 
-		// First try to delete as a file
-		try {
-			await this.s3Client.send(
-				new DeleteObjectCommand({
-					Bucket: this.bucket,
-					Key: key,
-				}),
-			);
-			return;
-		} catch (error) {
-			// If file doesn't exist, try directory deletion
-		}
-
-		// If not a file, try to delete as directory (with recursive option)
 		if (options?.recursive) {
+			// Delete all objects with this prefix
 			const dirPrefix = `${key}/`;
-			const listResult = await this.s3Client.send(
-				new ListObjectsV2Command({
-					Bucket: this.bucket,
-					Prefix: dirPrefix,
-				}),
-			);
-
-			if (listResult.Contents && listResult.Contents.length > 0) {
-				// Delete all files in the directory
-				const deletePromises = listResult.Contents.map((object) =>
-					this.s3Client.send(
-						new DeleteObjectCommand({
+			const {ListObjectsV2Command, DeleteObjectCommand} = await import("@aws-sdk/client-s3");
+			
+			const listCommand = new ListObjectsV2Command({
+				Bucket: this.bucket,
+				Prefix: dirPrefix,
+			});
+			
+			const response = await this.s3Client.send(listCommand);
+			
+			if (response.Contents && response.Contents.length > 0) {
+				const deletePromises = response.Contents.map((object) => {
+					if (object.Key) {
+						const deleteCommand = new DeleteObjectCommand({
 							Bucket: this.bucket,
-							Key: object.Key!,
-						}),
-					),
-				);
+							Key: object.Key,
+						});
+						return this.s3Client.send(deleteCommand);
+					}
+				}).filter(Boolean);
+				
 				await Promise.all(deletePromises);
 			}
+		}
 
-			// Delete directory marker if it exists
-			try {
-				await this.s3Client.send(
-					new DeleteObjectCommand({
-						Bucket: this.bucket,
-						Key: `${key}/.shovel_directory_marker`,
-					}),
-				);
-			} catch (error) {
-				// Ignore if marker doesn't exist
+		// Delete the object itself (or directory marker)
+		try {
+			const {DeleteObjectCommand} = await import("@aws-sdk/client-s3");
+			const command = new DeleteObjectCommand({
+				Bucket: this.bucket,
+				Key: key,
+			});
+			await this.s3Client.send(command);
+		} catch (error: any) {
+			if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
+				throw new DOMException("Entry not found", "NotFoundError");
 			}
-		} else {
-			throw new DOMException(
-				"Directory is not empty",
-				"InvalidModificationError",
-			);
+			throw error;
 		}
 	}
 
 	async resolve(
-		possibleDescendant: FileSystemHandle,
+		_possibleDescendant: FileSystemHandle,
 	): Promise<string[] | null> {
 		// Complex to implement for S3 - return null for now
 		return null;
@@ -360,19 +304,20 @@ export class NodeS3FileSystemDirectoryHandle
 		const listPrefix = this.prefix ? `${this.prefix}/` : "";
 
 		try {
-			const result = await this.s3Client.send(
-				new ListObjectsV2Command({
-					Bucket: this.bucket,
-					Prefix: listPrefix,
-					Delimiter: "/", // Only get immediate children
-				}),
-			);
+			const {ListObjectsV2Command} = await import("@aws-sdk/client-s3");
+			const command = new ListObjectsV2Command({
+				Bucket: this.bucket,
+				Prefix: listPrefix,
+				Delimiter: "/", // Only get immediate children
+			});
+
+			const response = await this.s3Client.send(command);
 
 			// Handle files
-			if (result.Contents) {
-				for (const item of result.Contents) {
-					if (item.Key && item.Key !== listPrefix) {
-						const name = item.Key.substring(listPrefix.length);
+			if (response.Contents) {
+				for (const object of response.Contents) {
+					if (object.Key && object.Key !== listPrefix) {
+						const name = object.Key.substring(listPrefix.length);
 						// Skip directory markers and items with slashes (subdirectories)
 						if (
 							!name.includes("/") &&
@@ -380,11 +325,7 @@ export class NodeS3FileSystemDirectoryHandle
 						) {
 							yield [
 								name,
-								new NodeS3FileSystemFileHandle(
-									this.s3Client,
-									this.bucket,
-									item.Key,
-								),
+								new S3FileSystemFileHandle(this.s3Client, this.bucket, object.Key),
 							];
 						}
 					}
@@ -392,17 +333,16 @@ export class NodeS3FileSystemDirectoryHandle
 			}
 
 			// Handle subdirectories
-			if (result.CommonPrefixes) {
-				for (const prefix of result.CommonPrefixes) {
+			if (response.CommonPrefixes) {
+				for (const prefix of response.CommonPrefixes) {
 					if (prefix.Prefix) {
-						const name = prefix.Prefix.substring(listPrefix.length).replace(
-							/\/$/,
-							"",
-						);
+						const name = prefix.Prefix
+							.substring(listPrefix.length)
+							.replace(/\/$/, "");
 						if (name) {
 							yield [
 								name,
-								new NodeS3FileSystemDirectoryHandle(
+								new S3FileSystemDirectoryHandle(
 									this.s3Client,
 									this.bucket,
 									prefix.Prefix.replace(/\/$/, ""),
@@ -432,7 +372,7 @@ export class NodeS3FileSystemDirectoryHandle
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "directory") return false;
-		if (!(other instanceof NodeS3FileSystemDirectoryHandle)) return false;
+		if (!(other instanceof S3FileSystemDirectoryHandle)) return false;
 		return this.bucket === other.bucket && this.prefix === other.prefix;
 	}
 
@@ -452,5 +392,36 @@ export class NodeS3FileSystemDirectoryHandle
 	}
 	get isDirectory(): boolean {
 		return true;
+	}
+}
+
+/**
+ * S3 filesystem adapter using AWS SDK
+ */
+export class S3FileSystemAdapter implements FileSystemAdapter {
+	private config: FileSystemConfig;
+	private s3Client: any;
+	private bucket: string;
+
+	constructor(s3Client: any, bucket: string, config: FileSystemConfig = {}) {
+		this.config = {
+			name: "s3",
+			...config,
+		};
+		this.s3Client = s3Client;
+		this.bucket = bucket;
+	}
+
+	async getFileSystemRoot(name = "default"): Promise<FileSystemDirectoryHandle> {
+		const prefix = `filesystems/${name}`;
+		return new S3FileSystemDirectoryHandle(this.s3Client, this.bucket, prefix);
+	}
+
+	getConfig(): FileSystemConfig {
+		return {...this.config};
+	}
+
+	async dispose(): Promise<void> {
+		// Nothing to dispose for S3
 	}
 }

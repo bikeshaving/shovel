@@ -2,9 +2,9 @@ import {Cache, type CacheQueryOptions} from "./cache.js";
 import {parentPort, isMainThread} from "worker_threads";
 
 /**
- * Configuration options for CoordinatedMemoryCache
+ * Configuration options for PostMessageCache
  */
-export interface CoordinatedMemoryCacheOptions {
+export interface PostMessageCacheOptions {
 	/** Maximum number of entries to store */
 	maxEntries?: number;
 	/** Maximum age of entries in milliseconds */
@@ -12,10 +12,10 @@ export interface CoordinatedMemoryCacheOptions {
 }
 
 /**
- * Worker-side coordinated memory cache that forwards operations to main thread
+ * Worker-side cache that forwards operations to main thread via postMessage
  * Only used for MemoryCache in multi-worker environments
  */
-export class CoordinatedMemoryCache extends Cache {
+export class PostMessageCache extends Cache {
 	private requestId = 0;
 	private pendingRequests = new Map<
 		number,
@@ -24,13 +24,13 @@ export class CoordinatedMemoryCache extends Cache {
 
 	constructor(
 		private name: string,
-		private options: CoordinatedMemoryCacheOptions = {},
+		private options: PostMessageCacheOptions = {},
 	) {
 		super();
 
 		if (isMainThread) {
 			throw new Error(
-				"CoordinatedMemoryCache should only be used in worker threads",
+				"PostMessageCache should only be used in worker threads",
 			);
 		}
 
@@ -63,7 +63,7 @@ export class CoordinatedMemoryCache extends Cache {
 	private async sendRequest(type: string, data: any): Promise<any> {
 		if (!parentPort) {
 			throw new Error(
-				"CoordinatedMemoryCache can only be used in worker threads",
+				"PostMessageCache can only be used in worker threads",
 			);
 		}
 

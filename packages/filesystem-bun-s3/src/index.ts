@@ -1,11 +1,11 @@
 /**
- * Bun implementation of File System Access API using built-in S3 support
+ * Bun S3 implementation of File System Access API using built-in S3 support
  *
  * Leverages Bun's native S3Client and S3File for high-performance
  * cloud storage operations with File System Access API compatibility.
  */
 
-import {S3Client} from "bun";
+import type {FileSystemAdapter, FileSystemConfig} from "@b9g/filesystem";
 
 /**
  * Bun S3 implementation of FileSystemWritableFileStream
@@ -40,7 +40,7 @@ export class BunS3FileSystemFileHandle implements FileSystemFileHandle {
 	readonly name: string;
 
 	constructor(
-		private s3Client: S3Client,
+		private s3Client: any, // Bun S3Client
 		private key: string,
 	) {
 		this.name = key.split("/").pop() || key;
@@ -137,14 +137,12 @@ export class BunS3FileSystemFileHandle implements FileSystemFileHandle {
 /**
  * Bun S3 implementation of FileSystemDirectoryHandle
  */
-export class BunS3FileSystemDirectoryHandle
-	implements FileSystemDirectoryHandle
-{
+export class BunS3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 	readonly kind = "directory" as const;
 	readonly name: string;
 
 	constructor(
-		private s3Client: S3Client,
+		private s3Client: any, // Bun S3Client
 		private prefix: string,
 	) {
 		// Remove trailing slash for consistent handling
@@ -323,5 +321,34 @@ export class BunS3FileSystemDirectoryHandle
 	}
 	get isDirectory(): boolean {
 		return true;
+	}
+}
+
+/**
+ * Bun S3 filesystem adapter using Bun's native S3Client
+ */
+export class BunS3FileSystemAdapter implements FileSystemAdapter {
+	private config: FileSystemConfig;
+	private s3Client: any;
+
+	constructor(s3Client: any, config: FileSystemConfig = {}) {
+		this.config = {
+			name: "bun-s3",
+			...config,
+		};
+		this.s3Client = s3Client;
+	}
+
+	async getFileSystemRoot(name = "default"): Promise<FileSystemDirectoryHandle> {
+		const prefix = `filesystems/${name}`;
+		return new BunS3FileSystemDirectoryHandle(this.s3Client, prefix);
+	}
+
+	getConfig(): FileSystemConfig {
+		return {...this.config};
+	}
+
+	async dispose(): Promise<void> {
+		// Nothing to dispose for Bun S3
 	}
 }

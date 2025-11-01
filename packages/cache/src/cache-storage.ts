@@ -1,34 +1,19 @@
 import type {Cache} from "./cache.js";
 
 /**
- * Factory function for creating Cache instances
+ * Factory function for creating Cache instances based on cache name
  */
-export type CacheFactory = () => Cache | Promise<Cache>;
+export type CacheFactory = (name: string) => Cache | Promise<Cache>;
 
 /**
- * CacheStorage provides a registry for managing named caches
- * Implements a factory pattern where different cache types can be registered
- * and instances are created lazily when first opened
+ * CustomCacheStorage implements CacheStorage interface with a configurable factory
+ * The factory function receives the cache name and can return different cache types
  */
-export class CacheStorage {
-	private factories = new Map<string, CacheFactory>();
+export class CustomCacheStorage {
 	private instances = new Map<string, Cache>();
 
-	/**
-	 * Register a factory function for creating caches with the given name
-	 */
-	register(name: string, factory: CacheFactory): void {
-		this.factories.set(name, factory);
+	constructor(private factory: CacheFactory) {}
 
-		// If there's already an instance, dispose of it
-		const existingInstance = this.instances.get(name);
-		if (existingInstance) {
-			if (existingInstance.dispose) {
-				existingInstance.dispose().catch(console.error);
-			}
-			this.instances.delete(name);
-		}
-	}
 
 	/**
 	 * Opens a cache with the given name
@@ -41,29 +26,22 @@ export class CacheStorage {
 			return existingInstance;
 		}
 
-		// Create new instance using registered factory
-		const factory = this.factories.get(name);
-		if (!factory) {
-			throw new Error(
-				`No cache factory registered for '${name}'. Available caches: ${Array.from(this.factories.keys()).join(", ")}`,
-			);
-		}
-
-		const cache = await factory();
+		// Create new instance using factory function
+		const cache = await this.factory(name);
 		this.instances.set(name, cache);
 		return cache;
 	}
 
 	/**
-	 * Returns true if a cache with the given name exists (is registered)
+	 * Returns true if a cache with the given name exists (has been opened)
 	 */
 	async has(name: string): Promise<boolean> {
-		return this.factories.has(name);
+		return this.instances.has(name);
 	}
 
 	/**
 	 * Deletes a cache with the given name
-	 * Disposes of the instance if it exists and removes the factory registration
+	 * Disposes of the instance if it exists
 	 */
 	async delete(name: string): Promise<boolean> {
 		const instance = this.instances.get(name);
@@ -72,19 +50,16 @@ export class CacheStorage {
 				await instance.dispose();
 			}
 			this.instances.delete(name);
+			return true;
 		}
-
-		const hadFactory = this.factories.has(name);
-		this.factories.delete(name);
-
-		return hadFactory;
+		return false;
 	}
 
 	/**
-	 * Returns a list of all registered cache names
+	 * Returns a list of all opened cache names
 	 */
 	async keys(): Promise<string[]> {
-		return Array.from(this.factories.keys());
+		return Array.from(this.instances.keys());
 	}
 
 	/**
@@ -92,9 +67,8 @@ export class CacheStorage {
 	 */
 	getStats() {
 		return {
-			registeredCaches: this.factories.size,
 			openInstances: this.instances.size,
-			cacheNames: Array.from(this.factories.keys()),
+			cacheNames: Array.from(this.instances.keys()),
 		};
 	}
 
