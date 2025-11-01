@@ -10,11 +10,6 @@ export {SimpleWatcher, type SimpleWatcherOptions} from "./simple-watcher.js";
 // Static files processing (build-time)
 export {staticFilesPlugin} from "./static-files.js";
 
-// Static files handling (runtime)
-export {
-	createStaticFilesMiddleware,
-	createCachedStaticFilesMiddleware,
-} from "./handler.js";
 
 // Configuration types
 export type {
