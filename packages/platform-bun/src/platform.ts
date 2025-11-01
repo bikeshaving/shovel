@@ -235,36 +235,42 @@ export class BunPlatform implements Platform {
 	/**
 	 * Get filesystem root for File System Access API using Bun's S3 support
 	 */
-	async getFileSystemRoot(name = 'default'): Promise<FileSystemDirectoryHandle> {
+	async getFileSystemRoot(
+		name = "default",
+	): Promise<FileSystemDirectoryHandle> {
 		// Check if S3 credentials are available for cloud storage
 		if (Bun.env.AWS_ACCESS_KEY_ID || Bun.env.S3_ACCESS_KEY_ID) {
-			const { BunS3FileSystemDirectoryHandle } = await import('./filesystem.js');
-			const { S3Client } = await import('bun');
-			
+			const {BunS3FileSystemDirectoryHandle} = await import("./filesystem.js");
+			const {S3Client} = await import("bun");
+
 			// Use Bun's built-in S3 client with environment variables
 			const s3Client = new S3Client({
 				bucket: Bun.env.S3_BUCKET || `shovel-filesystem-${name}`,
 				// Bun automatically reads AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, etc.
 			});
-			
+
 			const prefix = `filesystems/${name}`;
 			return new BunS3FileSystemDirectoryHandle(s3Client, prefix);
 		} else {
 			// Use dist directory for static files, .shovel for other filesystems
-			const { NodeFileSystemDirectoryHandle } = await import('@b9g/platform-node/filesystem');
-			
+			const {NodeFileSystemDirectoryHandle} = await import(
+				"@b9g/platform-node/filesystem"
+			);
+
 			let rootDir: string;
-			if (name === 'static') {
+			if (name === "static") {
 				// Static files come from build output
-				rootDir = Path.join(this.options.cwd, 'dist', 'static');
+				rootDir = Path.join(this.options.cwd, "dist", "static");
 			} else {
 				// Other filesystems use .shovel directory
-				rootDir = Path.join(this.options.cwd, '.shovel', 'filesystems', name);
+				rootDir = Path.join(this.options.cwd, ".shovel", "filesystems", name);
 			}
-			
+
 			// Ensure directory exists
-			await import('fs/promises').then(fs => fs.mkdir(rootDir, { recursive: true }));
-			
+			await import("fs/promises").then((fs) =>
+				fs.mkdir(rootDir, {recursive: true}),
+			);
+
 			return new NodeFileSystemDirectoryHandle(rootDir);
 		}
 	}

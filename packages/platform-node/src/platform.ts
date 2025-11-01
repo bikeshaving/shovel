@@ -139,7 +139,9 @@ class WorkerManager {
 	async handleRequest(request: Request): Promise<Response> {
 		// Round-robin worker selection (ready for pooling)
 		const worker = this.workers[this.currentWorker];
-		console.log(`[WorkerManager] Dispatching to worker ${this.currentWorker} of ${this.workers.length}`);
+		console.info(
+			`[WorkerManager] Dispatching to worker ${this.currentWorker} of ${this.workers.length}`,
+		);
 		this.currentWorker = (this.currentWorker + 1) % this.workers.length;
 
 		const requestId = ++this.requestId;
@@ -415,43 +417,52 @@ export class NodePlatform implements Platform {
 	/**
 	 * Get filesystem root for File System Access API
 	 */
-	async getFileSystemRoot(name = 'default'): Promise<FileSystemDirectoryHandle> {
+	async getFileSystemRoot(
+		name = "default",
+	): Promise<FileSystemDirectoryHandle> {
 		// Check if S3/R2 credentials are available for cloud storage
 		if (process.env.AWS_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID) {
-			const { NodeS3FileSystemDirectoryHandle } = await import('./s3-filesystem.js');
-			const { S3Client } = await import('@aws-sdk/client-s3');
-			
+			const {NodeS3FileSystemDirectoryHandle} = await import(
+				"./s3-filesystem.js"
+			);
+			const {S3Client} = await import("@aws-sdk/client-s3");
+
 			// Configure S3 client with environment variables
 			const s3Client = new S3Client({
-				region: process.env.AWS_REGION || process.env.S3_REGION || 'us-east-1',
+				region: process.env.AWS_REGION || process.env.S3_REGION || "us-east-1",
 				endpoint: process.env.S3_ENDPOINT, // For R2 compatibility
 				forcePathStyle: !!process.env.S3_FORCE_PATH_STYLE, // Required for some S3-compatible services
 				credentials: {
-					accessKeyId: process.env.AWS_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID!,
-					secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || process.env.S3_SECRET_ACCESS_KEY!,
+					accessKeyId:
+						process.env.AWS_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID!,
+					secretAccessKey:
+						process.env.AWS_SECRET_ACCESS_KEY ||
+						process.env.S3_SECRET_ACCESS_KEY!,
 				},
 			});
-			
+
 			const bucket = process.env.S3_BUCKET || `shovel-filesystem-${name}`;
 			const prefix = `filesystems/${name}`;
-			
+
 			return new NodeS3FileSystemDirectoryHandle(s3Client, bucket, prefix);
 		} else {
 			// Use dist directory for static files, .shovel for other filesystems
-			const { NodeFileSystemDirectoryHandle } = await import('./filesystem.js');
-			
+			const {NodeFileSystemDirectoryHandle} = await import("./filesystem.js");
+
 			let rootDir: string;
-			if (name === 'static') {
+			if (name === "static") {
 				// Static files come from build output
-				rootDir = Path.join(this.options.cwd, 'dist', 'static');
+				rootDir = Path.join(this.options.cwd, "dist", "static");
 			} else {
 				// Other filesystems use .shovel directory
-				rootDir = Path.join(this.options.cwd, '.shovel', 'filesystems', name);
+				rootDir = Path.join(this.options.cwd, ".shovel", "filesystems", name);
 			}
-			
+
 			// Ensure directory exists
-			await import('fs/promises').then(fs => fs.mkdir(rootDir, { recursive: true }));
-			
+			await import("fs/promises").then((fs) =>
+				fs.mkdir(rootDir, {recursive: true}),
+			);
+
 			return new NodeFileSystemDirectoryHandle(rootDir);
 		}
 	}

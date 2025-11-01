@@ -8,6 +8,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import {createWriteStream} from "fs";
+import type {FileSystemAdapter, FileSystemConfig} from "./types.js";
 
 // File System Access API types are available globally after importing in platform types
 
@@ -309,5 +310,38 @@ export class NodeFileSystemDirectoryHandle
 	}
 	get isDirectory(): boolean {
 		return true;
+	}
+}
+
+/**
+ * Node.js filesystem adapter
+ */
+export class NodeFileSystemAdapter implements FileSystemAdapter {
+	private config: FileSystemConfig;
+	private rootPath: string;
+
+	constructor(config: FileSystemConfig = {}) {
+		this.config = {
+			name: "node",
+			...config
+		};
+		this.rootPath = config.rootPath || process.cwd();
+	}
+
+	async getFileSystemRoot(name?: string): Promise<FileSystemDirectoryHandle> {
+		const rootPath = name ? path.resolve(this.rootPath, name) : this.rootPath;
+		
+		// Ensure the directory exists
+		try {
+			await fs.mkdir(rootPath, { recursive: true });
+		} catch (error) {
+			// Directory might already exist, ignore error
+		}
+
+		return new NodeFileSystemDirectoryHandle(rootPath);
+	}
+
+	getConfig(): FileSystemConfig {
+		return {...this.config};
 	}
 }

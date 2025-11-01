@@ -39,9 +39,10 @@ router.use(
 		basePath: "/static",
 		manifestPath: "manifest.json",
 		dev: process.env?.NODE_ENV !== "production",
-		cacheControl: process.env?.NODE_ENV === "production" 
-			? "public, max-age=31536000, immutable" 
-			: "no-cache"
+		cacheControl:
+			process.env?.NODE_ENV === "production"
+				? "public, max-age=31536000, immutable"
+				: "no-cache",
 	}),
 );
 
@@ -65,7 +66,7 @@ async function* pageCache(request, context) {
 
 	// Cache miss - continue to handler
 	const response = yield request;
-	
+
 	// Cache the response for next time
 	if (response.ok) {
 		await context.cache.put(request, response.clone());
@@ -266,52 +267,37 @@ router
  * ServiceWorker install event - setup and initialization
  */
 self.addEventListener("install", (event) => {
-	console.info("[SW] Installing Shovel blog app...");
-
-	event.waitUntil(
-		(async () => {
-			console.info("[SW] Shovel blog app installed successfully!");
-		})(),
-	);
+	event.waitUntil((async () => {})());
 });
 
 /**
  * ServiceWorker activate event - ready to handle requests
  */
 self.addEventListener("activate", (event) => {
-	console.info("[SW] Activating Shovel blog app...");
-
-	event.waitUntil(
-		(async () => {
-			console.info("[SW] Shovel blog app activated and ready!");
-		})(),
-	);
+	event.waitUntil((async () => {})());
 });
 
 /**
  * ServiceWorker fetch event - handle HTTP requests
  */
-const workerId = Math.random().toString(36).substring(2, 8);
-console.log(`[SW-${workerId}] Registering fetch event listener`);
 self.addEventListener("fetch", (event) => {
-	console.log(`[SW-${workerId}] Fetch event for:`, event.request.url);
 	try {
 		const responsePromise = router.handler(event.request);
-		console.log(`[SW-${workerId}] Router handler returned:`, responsePromise);
-	console.log(`[SW-${workerId}] About to call event.respondWith`);
-		
+
 		// Add timeout to detect hanging promises
 		const timeoutPromise = new Promise((_, reject) => {
 			setTimeout(() => reject(new Error("Router response timeout")), 5000);
 		});
-		
-		event.respondWith(Promise.race([responsePromise, timeoutPromise]).catch(error => {
-			console.error(`[SW-${workerId}] Router handler error:`, error);
-			return new Response("Router error: " + error.message, { status: 500 });
-		}));
+
+		event.respondWith(
+			Promise.race([responsePromise, timeoutPromise]).catch((error) => {
+				return new Response("Router error: " + error.message, {status: 500});
+			}),
+		);
 	} catch (error) {
-		console.error(`[SW-${workerId}] Synchronous error in fetch handler:`, error);
-		event.respondWith(new Response("Sync error: " + error.message, { status: 500 }));
+		event.respondWith(
+			new Response("Sync error: " + error.message, {status: 500}),
+		);
 	}
 });
 
@@ -319,8 +305,6 @@ self.addEventListener("fetch", (event) => {
  * Static event - provide routes for static site generation
  */
 self.addEventListener("static", (event) => {
-	console.info("[SW] Collecting static routes for blog app...");
-
 	event.waitUntil(
 		(async () => {
 			// Return all routes that should be pre-rendered
@@ -331,9 +315,6 @@ self.addEventListener("static", (event) => {
 				...posts.map((post) => `/posts/${post.id}`),
 			];
 
-			console.info(
-				`[SW] Found ${staticRoutes.length} routes for static generation`,
-			);
 			return staticRoutes;
 		})(),
 	);
@@ -374,4 +355,3 @@ function renderPage(title, content) {
 </body>
 </html>`;
 }
-

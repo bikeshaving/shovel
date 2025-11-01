@@ -1,6 +1,6 @@
 /**
  * Cloudflare R2 implementation of File System Access API
- * 
+ *
  * Implements FileSystemDirectoryHandle and FileSystemFileHandle using Cloudflare R2 bindings
  * to provide R2 cloud storage with File System Access API compatibility.
  */
@@ -11,7 +11,10 @@
 export class CloudflareR2FileSystemWritableFileStream extends WritableStream<Uint8Array> {
 	private chunks: Uint8Array[] = [];
 
-	constructor(private r2Bucket: R2Bucket, private key: string) {
+	constructor(
+		private r2Bucket: R2Bucket,
+		private key: string,
+	) {
 		super({
 			write: (chunk: Uint8Array) => {
 				this.chunks.push(chunk);
@@ -19,7 +22,10 @@ export class CloudflareR2FileSystemWritableFileStream extends WritableStream<Uin
 			},
 			close: async () => {
 				// Concatenate all chunks and upload to R2
-				const totalLength = this.chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+				const totalLength = this.chunks.reduce(
+					(sum, chunk) => sum + chunk.length,
+					0,
+				);
 				const buffer = new Uint8Array(totalLength);
 				let offset = 0;
 				for (const chunk of this.chunks) {
@@ -32,7 +38,7 @@ export class CloudflareR2FileSystemWritableFileStream extends WritableStream<Uin
 			abort: async () => {
 				// Clear chunks on abort
 				this.chunks = [];
-			}
+			},
 		});
 	}
 }
@@ -44,20 +50,23 @@ export class CloudflareR2FileSystemFileHandle implements FileSystemFileHandle {
 	readonly kind = "file" as const;
 	readonly name: string;
 
-	constructor(private r2Bucket: R2Bucket, private key: string) {
-		this.name = key.split('/').pop() || key;
+	constructor(
+		private r2Bucket: R2Bucket,
+		private key: string,
+	) {
+		this.name = key.split("/").pop() || key;
 	}
 
 	async getFile(): Promise<File> {
 		const r2Object = await this.r2Bucket.get(this.key);
-		
+
 		if (!r2Object) {
-			throw new DOMException('File not found', 'NotFoundError');
+			throw new DOMException("File not found", "NotFoundError");
 		}
 
 		// R2Object extends Response, so we can get the body as ArrayBuffer
 		const arrayBuffer = await r2Object.arrayBuffer();
-		
+
 		return new File([arrayBuffer], this.name, {
 			lastModified: r2Object.uploaded.getTime(),
 			type: r2Object.httpMetadata?.contentType || this.getMimeType(this.key),
@@ -65,85 +74,106 @@ export class CloudflareR2FileSystemFileHandle implements FileSystemFileHandle {
 	}
 
 	async createWritable(): Promise<FileSystemWritableFileStream> {
-		return new CloudflareR2FileSystemWritableFileStream(this.r2Bucket, this.key) as any;
+		return new CloudflareR2FileSystemWritableFileStream(
+			this.r2Bucket,
+			this.key,
+		) as any;
 	}
 
 	async createSyncAccessHandle(): Promise<FileSystemSyncAccessHandle> {
-		throw new DOMException('Synchronous access handles are not supported for R2 storage', 'InvalidStateError');
+		throw new DOMException(
+			"Synchronous access handles are not supported for R2 storage",
+			"InvalidStateError",
+		);
 	}
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
-		if (other.kind !== 'file') return false;
+		if (other.kind !== "file") return false;
 		if (!(other instanceof CloudflareR2FileSystemFileHandle)) return false;
 		return this.key === other.key;
 	}
 
 	async queryPermission(): Promise<PermissionState> {
 		// R2 access is controlled by bindings, assume granted if we have access
-		return 'granted';
+		return "granted";
 	}
 
 	async requestPermission(): Promise<PermissionState> {
 		// R2 access is controlled by bindings, assume granted if we have access
-		return 'granted';
+		return "granted";
 	}
 
 	// Deprecated properties for compatibility
-	get isFile(): boolean { return true; }
-	get isDirectory(): boolean { return false; }
+	get isFile(): boolean {
+		return true;
+	}
+	get isDirectory(): boolean {
+		return false;
+	}
 
 	private getMimeType(key: string): string {
-		const ext = key.split('.').pop()?.toLowerCase();
+		const ext = key.split(".").pop()?.toLowerCase();
 		const mimeTypes: Record<string, string> = {
-			'txt': 'text/plain',
-			'html': 'text/html',
-			'css': 'text/css',
-			'js': 'text/javascript',
-			'json': 'application/json',
-			'png': 'image/png',
-			'jpg': 'image/jpeg',
-			'jpeg': 'image/jpeg',
-			'gif': 'image/gif',
-			'svg': 'image/svg+xml',
-			'pdf': 'application/pdf',
-			'zip': 'application/zip',
+			txt: "text/plain",
+			html: "text/html",
+			css: "text/css",
+			js: "text/javascript",
+			json: "application/json",
+			png: "image/png",
+			jpg: "image/jpeg",
+			jpeg: "image/jpeg",
+			gif: "image/gif",
+			svg: "image/svg+xml",
+			pdf: "application/pdf",
+			zip: "application/zip",
 		};
-		return mimeTypes[ext || ''] || 'application/octet-stream';
+		return mimeTypes[ext || ""] || "application/octet-stream";
 	}
 }
 
 /**
  * Cloudflare R2 implementation of FileSystemDirectoryHandle
  */
-export class CloudflareR2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
+export class CloudflareR2FileSystemDirectoryHandle
+	implements FileSystemDirectoryHandle
+{
 	readonly kind = "directory" as const;
 	readonly name: string;
 
-	constructor(private r2Bucket: R2Bucket, private prefix: string) {
+	constructor(
+		private r2Bucket: R2Bucket,
+		private prefix: string,
+	) {
 		// Remove trailing slash for consistent handling
-		this.prefix = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
-		this.name = this.prefix.split('/').pop() || 'root';
+		this.prefix = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+		this.name = this.prefix.split("/").pop() || "root";
 	}
 
-	async getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle> {
+	async getFileHandle(
+		name: string,
+		options?: {create?: boolean},
+	): Promise<FileSystemFileHandle> {
 		const key = this.prefix ? `${this.prefix}/${name}` : name;
-		
+
 		// Check if file exists
 		const exists = await this.r2Bucket.head(key);
-		
+
 		if (!exists && options?.create) {
 			// Create empty file
 			await this.r2Bucket.put(key, new Uint8Array(0));
 		} else if (!exists) {
-			throw new DOMException('File not found', 'NotFoundError');
+			throw new DOMException("File not found", "NotFoundError");
 		}
 
 		return new CloudflareR2FileSystemFileHandle(this.r2Bucket, key);
 	}
 
-	async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FileSystemDirectoryHandle> {
+	async getDirectoryHandle(
+		name: string,
+		options?: {create?: boolean},
+	): Promise<FileSystemDirectoryHandle> {
 		const newPrefix = this.prefix ? `${this.prefix}/${name}` : name;
-		
+
 		if (options?.create) {
 			// R2 doesn't have directories, but we can create a marker object
 			const markerKey = `${newPrefix}/.shovel_directory_marker`;
@@ -156,12 +186,15 @@ export class CloudflareR2FileSystemDirectoryHandle implements FileSystemDirector
 		return new CloudflareR2FileSystemDirectoryHandle(this.r2Bucket, newPrefix);
 	}
 
-	async removeEntry(name: string, options?: { recursive?: boolean }): Promise<void> {
+	async removeEntry(
+		name: string,
+		options?: {recursive?: boolean},
+	): Promise<void> {
 		const key = this.prefix ? `${this.prefix}/${name}` : name;
-		
+
 		// First try to delete as a file
 		const fileExists = await this.r2Bucket.head(key);
-		
+
 		if (fileExists) {
 			await this.r2Bucket.delete(key);
 			return;
@@ -170,14 +203,14 @@ export class CloudflareR2FileSystemDirectoryHandle implements FileSystemDirector
 		// If not a file, try to delete as directory (with recursive option)
 		if (options?.recursive) {
 			const dirPrefix = `${key}/`;
-			const listed = await this.r2Bucket.list({ prefix: dirPrefix });
-			
+			const listed = await this.r2Bucket.list({prefix: dirPrefix});
+
 			// Delete all files in the directory
-			const deletePromises = listed.objects.map((object) => 
-				this.r2Bucket.delete(object.key)
+			const deletePromises = listed.objects.map((object) =>
+				this.r2Bucket.delete(object.key),
 			);
 			await Promise.all(deletePromises);
-			
+
 			// Delete directory marker if it exists
 			const markerKey = `${key}/.shovel_directory_marker`;
 			const markerExists = await this.r2Bucket.head(markerKey);
@@ -185,22 +218,27 @@ export class CloudflareR2FileSystemDirectoryHandle implements FileSystemDirector
 				await this.r2Bucket.delete(markerKey);
 			}
 		} else {
-			throw new DOMException('Directory is not empty', 'InvalidModificationError');
+			throw new DOMException(
+				"Directory is not empty",
+				"InvalidModificationError",
+			);
 		}
 	}
 
-	async resolve(possibleDescendant: FileSystemHandle): Promise<string[] | null> {
+	async resolve(
+		_possibleDescendant: FileSystemHandle,
+	): Promise<string[] | null> {
 		// Complex to implement for R2 - return null for now
 		return null;
 	}
 
 	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
-		const listPrefix = this.prefix ? `${this.prefix}/` : '';
-		
+		const listPrefix = this.prefix ? `${this.prefix}/` : "";
+
 		try {
-			const result = await this.r2Bucket.list({ 
+			const result = await this.r2Bucket.list({
 				prefix: listPrefix,
-				delimiter: '/' // Only get immediate children
+				delimiter: "/", // Only get immediate children
 			});
 
 			// Handle files
@@ -208,22 +246,34 @@ export class CloudflareR2FileSystemDirectoryHandle implements FileSystemDirector
 				if (object.key !== listPrefix) {
 					const name = object.key.substring(listPrefix.length);
 					// Skip directory markers and items with slashes (subdirectories)
-					if (!name.includes('/') && !name.endsWith('.shovel_directory_marker')) {
-						yield [name, new CloudflareR2FileSystemFileHandle(this.r2Bucket, object.key)];
+					if (
+						!name.includes("/") &&
+						!name.endsWith(".shovel_directory_marker")
+					) {
+						yield [
+							name,
+							new CloudflareR2FileSystemFileHandle(this.r2Bucket, object.key),
+						];
 					}
 				}
 			}
 
 			// Handle subdirectories
 			for (const prefix of result.delimitedPrefixes) {
-				const name = prefix.substring(listPrefix.length).replace(/\/$/, '');
+				const name = prefix.substring(listPrefix.length).replace(/\/$/, "");
 				if (name) {
-					yield [name, new CloudflareR2FileSystemDirectoryHandle(this.r2Bucket, prefix.replace(/\/$/, ''))];
+					yield [
+						name,
+						new CloudflareR2FileSystemDirectoryHandle(
+							this.r2Bucket,
+							prefix.replace(/\/$/, ""),
+						),
+					];
 				}
 			}
 		} catch (error) {
 			// If listing fails, assume directory doesn't exist
-			throw new DOMException('Directory not found', 'NotFoundError');
+			throw new DOMException("Directory not found", "NotFoundError");
 		}
 	}
 
@@ -240,22 +290,26 @@ export class CloudflareR2FileSystemDirectoryHandle implements FileSystemDirector
 	}
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
-		if (other.kind !== 'directory') return false;
+		if (other.kind !== "directory") return false;
 		if (!(other instanceof CloudflareR2FileSystemDirectoryHandle)) return false;
 		return this.prefix === other.prefix;
 	}
 
 	async queryPermission(): Promise<PermissionState> {
 		// R2 access is controlled by bindings, assume granted if we have access
-		return 'granted';
+		return "granted";
 	}
 
 	async requestPermission(): Promise<PermissionState> {
 		// R2 access is controlled by bindings, assume granted if we have access
-		return 'granted';
+		return "granted";
 	}
 
 	// Deprecated properties for compatibility
-	get isFile(): boolean { return false; }
-	get isDirectory(): boolean { return true; }
+	get isFile(): boolean {
+		return false;
+	}
+	get isDirectory(): boolean {
+		return true;
+	}
 }

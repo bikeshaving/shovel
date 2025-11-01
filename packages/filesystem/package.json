@@ -1,0 +1,46 @@
+{
+  "name": "@b9g/filesystem",
+  "version": "0.1.0",
+  "description": "Universal File System Access API implementations for all platforms",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./node": {
+      "types": "./dist/src/node.d.ts",
+      "import": "./dist/src/node.js"
+    },
+    "./s3": {
+      "types": "./dist/src/s3.d.ts", 
+      "import": "./dist/src/s3.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/src/cloudflare.d.ts",
+      "import": "./dist/src/cloudflare.js"
+    },
+    "./bun": {
+      "types": "./dist/src/bun.d.ts",
+      "import": "./dist/src/bun.js"
+    },
+    "./memory": {
+      "types": "./dist/src/memory.d.ts",
+      "import": "./dist/src/memory.js"
+    }
+  },
+  "scripts": {
+    "build": "libuild build",
+    "test": "bun test"
+  },
+  "peerDependencies": {
+    "@types/wicg-file-system-access": "^2023.10.7"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.8",
+    "@types/bun": "^1.2.2"
+  }
+}

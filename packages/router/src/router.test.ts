@@ -67,7 +67,7 @@ describe("Router", () => {
 describe("Middleware Detection", () => {
 	test("detects async generator functions as generator middleware", () => {
 		const router = new Router();
-		
+
 		async function* generatorMiddleware(request: Request, context: any) {
 			const response = yield request;
 			return response;
@@ -79,7 +79,7 @@ describe("Middleware Detection", () => {
 
 	test("detects regular async functions as function middleware", () => {
 		const router = new Router();
-		
+
 		async function functionMiddleware(request: Request, context: any) {
 			context.processed = true;
 		}
@@ -90,7 +90,7 @@ describe("Middleware Detection", () => {
 
 	test("detects regular functions as function middleware", () => {
 		const router = new Router();
-		
+
 		function syncMiddleware(request: Request, context: any) {
 			context.processed = true;
 		}
@@ -101,7 +101,7 @@ describe("Middleware Detection", () => {
 
 	test("throws error for invalid middleware types", () => {
 		const router = new Router();
-		
+
 		expect(() => {
 			router.use("not a function" as any);
 		}).toThrow();
@@ -142,8 +142,8 @@ describe("Generator Middleware Execution", () => {
 
 		expect(executionOrder).toEqual([
 			"middleware-before",
-			"handler", 
-			"middleware-after"
+			"handler",
+			"middleware-after",
 		]);
 		expect(response?.headers.get("X-Middleware")).toBe("processed");
 		expect(await response?.text()).toBe("Hello");
@@ -174,7 +174,7 @@ describe("Generator Middleware Execution", () => {
 		expect(executionOrder).toEqual([
 			"middleware-before",
 			"handler",
-			"middleware-after"
+			"middleware-after",
 		]);
 		expect(await response?.text()).toBe("Hello");
 	});
@@ -186,11 +186,11 @@ describe("Generator Middleware Execution", () => {
 		async function* authMiddleware(request: Request, context: any) {
 			executionOrder.push("auth-middleware");
 			const token = request.headers.get("Authorization");
-			
+
 			if (!token) {
 				return new Response("Unauthorized", {status: 401});
 			}
-			
+
 			context.user = {id: "123"};
 			const response = yield request;
 			return response;
@@ -215,7 +215,7 @@ describe("Generator Middleware Execution", () => {
 
 	test("handles passthrough returns (null/undefined)", async () => {
 		const router = new Router();
-		
+
 		async function* setupMiddleware(request: Request, context: any) {
 			context.setupDone = true;
 			return; // null/undefined passthrough
@@ -282,7 +282,7 @@ describe("Generator Middleware Execution", () => {
 describe("Function Middleware Execution", () => {
 	test("executes function middleware with implicit passthrough", async () => {
 		const router = new Router();
-		
+
 		async function functionMiddleware(request: Request, context: any) {
 			context.processedByFunction = true;
 			request.headers.set("X-Function-Middleware", "true");
@@ -305,7 +305,7 @@ describe("Function Middleware Execution", () => {
 
 	test("function middleware cannot return responses", async () => {
 		const router = new Router();
-		
+
 		// Function middleware that tries to return a response (should be ignored)
 		async function badMiddleware(request: Request, context: any) {
 			return new Response("This should be ignored") as any;
@@ -375,7 +375,7 @@ describe("Guaranteed Execution", () => {
 		async function* middleware1(request: Request, context: any) {
 			return new Response("Early response", {
 				status: 400,
-				headers: {"X-Source": "middleware1"}
+				headers: {"X-Source": "middleware1"},
 			});
 		}
 
@@ -439,12 +439,12 @@ describe("Guaranteed Execution", () => {
 
 		expect(executionOrder).toEqual([
 			"middleware1-before",
-			"middleware2-before", 
+			"middleware2-before",
 			"middleware3-before",
 			"handler",
 			"middleware3-after",
 			"middleware2-after",
-			"middleware1-after"
+			"middleware1-after",
 		]);
 	});
 
@@ -488,7 +488,7 @@ describe("Guaranteed Execution", () => {
 			"generator-before",
 			"function2",
 			"handler",
-			"generator-after"
+			"generator-after",
 		]);
 		expect(await response?.text()).toBe("func1:true func2:true");
 		expect(response?.headers.get("X-Generator")).toBe("true");
@@ -514,12 +514,17 @@ describe("Context Sharing", () => {
 		async function* middleware3(request: Request, context: any) {
 			context.step3 = "completed";
 			const response = yield request;
-			response.headers.set("X-Steps", `${context.step1},${context.step2},${context.step3}`);
+			response.headers.set(
+				"X-Steps",
+				`${context.step1},${context.step2},${context.step3}`,
+			);
 			return response;
 		}
 
 		const handler = async (_request: Request, context: any) => {
-			return new Response(`All steps: ${context.step1} ${context.step2} ${context.step3}`);
+			return new Response(
+				`All steps: ${context.step1} ${context.step2} ${context.step3}`,
+			);
 		};
 
 		router.use(middleware1);
@@ -530,8 +535,12 @@ describe("Context Sharing", () => {
 		const request = new Request("http://example.com/test");
 		const response = await router.match(request);
 
-		expect(await response?.text()).toBe("All steps: completed completed completed");
-		expect(response?.headers.get("X-Steps")).toBe("completed,completed,completed");
+		expect(await response?.text()).toBe(
+			"All steps: completed completed completed",
+		);
+		expect(response?.headers.get("X-Steps")).toBe(
+			"completed,completed,completed",
+		);
 	});
 
 	test("middleware can enrich context for handlers", async () => {
@@ -556,7 +565,9 @@ describe("Context Sharing", () => {
 			if (!context.user) {
 				return new Response("No user", {status: 401});
 			}
-			return new Response(`User: ${context.user.name}, Permissions: ${context.permissions.join(",")}`);
+			return new Response(
+				`User: ${context.user.name}, Permissions: ${context.permissions.join(",")}`,
+			);
 		};
 
 		router.use(authMiddleware);
@@ -564,7 +575,7 @@ describe("Context Sharing", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test", {
-			headers: {"Authorization": "valid-token"}
+			headers: {Authorization: "valid-token"},
 		});
 		const response = await router.match(request);
 
@@ -619,7 +630,9 @@ describe("Automatic Redirects", () => {
 		const response = await router.match(request);
 
 		expect(response?.status).toBe(302);
-		expect(response?.headers.get("Location")).toBe("http://example.com/new-path");
+		expect(response?.headers.get("Location")).toBe(
+			"http://example.com/new-path",
+		);
 	});
 
 	test("returns 301 for protocol changes (http->https)", async () => {
@@ -656,12 +669,14 @@ describe("Automatic Redirects", () => {
 		router.use(apiVersionMiddleware);
 
 		const request = new Request("http://example.com/api/v1/users", {
-			method: "POST"
+			method: "POST",
 		});
 		const response = await router.match(request);
 
 		expect(response?.status).toBe(307);
-		expect(response?.headers.get("Location")).toBe("http://example.com/api/v2/users");
+		expect(response?.headers.get("Location")).toBe(
+			"http://example.com/api/v2/users",
+		);
 	});
 
 	test("throws error for cross-origin URL changes", async () => {
@@ -677,7 +692,7 @@ describe("Automatic Redirects", () => {
 		router.route("/test").get(async () => new Response("Test"));
 
 		const request = new Request("http://example.com/test");
-		
+
 		await expect(router.match(request)).rejects.toThrow(/origin/);
 	});
 
@@ -802,12 +817,12 @@ describe("Advanced Generator Middleware", () => {
 
 		expect(executionOrder).toEqual([
 			"auth-start",
-			"logging-start", 
+			"logging-start",
 			"cors-start",
 			"handler",
 			"cors-end",
 			"logging-end",
-			"auth-end"
+			"auth-end",
 		]);
 		expect(response?.headers.get("X-Auth")).toBe("verified");
 		expect(response?.headers.get("Access-Control-Allow-Origin")).toBe("*");
@@ -822,11 +837,11 @@ describe("Advanced Generator Middleware", () => {
 		async function* rateLimitMiddleware(request: Request, context: any) {
 			executionOrder.push("rate-limit");
 			const rateLimited = request.headers.get("X-Rate-Limited");
-			
+
 			if (rateLimited === "true") {
 				return new Response("Rate limited", {status: 429});
 			}
-			
+
 			const response = yield request;
 			response.headers.set("X-Rate-Limit", "OK");
 			return response;
@@ -850,7 +865,7 @@ describe("Advanced Generator Middleware", () => {
 
 		// Test rate limited request
 		const rateLimitedRequest = new Request("http://example.com/test", {
-			headers: {"X-Rate-Limited": "true"}
+			headers: {"X-Rate-Limited": "true"},
 		});
 		const rateLimitedResponse = await router.match(rateLimitedRequest);
 
@@ -910,7 +925,7 @@ describe("Advanced Generator Middleware", () => {
 			"error-handler-start",
 			"normal-middleware",
 			"faulty-handler",
-			"error-handler-catch"
+			"error-handler-catch",
 		]);
 		expect(response?.status).toBe(500);
 		expect(await response?.text()).toBe("Caught: Handler failure");
@@ -924,35 +939,35 @@ describe("Advanced Generator Middleware", () => {
 
 		async function* dbMiddleware(request: Request, context: any) {
 			executionOrder.push("db-start");
-			
+
 			// Simulate async database call
-			const userData = await new Promise(resolve => 
-				setTimeout(() => resolve({id: 123, name: "John"}), 10)
+			const userData = await new Promise((resolve) =>
+				setTimeout(() => resolve({id: 123, name: "John"}), 10),
 			);
 			context.user = userData;
-			
+
 			const response = yield request;
-			
+
 			// Simulate async cleanup
-			await new Promise(resolve => setTimeout(resolve, 5));
+			await new Promise((resolve) => setTimeout(resolve, 5));
 			executionOrder.push("db-cleanup");
-			
+
 			return response;
 		}
 
 		async function* cacheMiddleware(request: Request, context: any) {
 			executionOrder.push("cache-start");
-			
+
 			// Simulate cache lookup
 			const cacheKey = `user-${context.user?.id}`;
-			await new Promise(resolve => setTimeout(resolve, 5));
-			
+			await new Promise((resolve) => setTimeout(resolve, 5));
+
 			const response = yield request;
-			
+
 			// Simulate cache write
-			await new Promise(resolve => setTimeout(resolve, 5));
+			await new Promise((resolve) => setTimeout(resolve, 5));
 			response.headers.set("X-Cache-Key", cacheKey);
-			
+
 			return response;
 		}
 
@@ -972,7 +987,7 @@ describe("Advanced Generator Middleware", () => {
 			"db-start",
 			"cache-start",
 			"handler",
-			"db-cleanup"
+			"db-cleanup",
 		]);
 		expect(response?.headers.get("X-Cache-Key")).toBe("user-123");
 		expect(await response?.text()).toBe("User: John");
@@ -1010,27 +1025,27 @@ describe("Advanced Generator Middleware", () => {
 
 		expect(executionOrder).toEqual([
 			"setup",
-			"processing-start", 
+			"processing-start",
 			"handler",
-			"processing-end"
+			"processing-end",
 		]);
 		expect(response?.headers.get("X-Setup")).toBe("true");
 	});
 
 	test("complex URL routing with middleware modifications", async () => {
 		const router = new Router();
-		
+
 		async function* routingMiddleware(request: Request, context: any) {
 			// Rewrite legacy API paths
 			if (request.url.includes("/api/v1/")) {
 				request.url = request.url.replace("/api/v1/", "/api/v2/");
 			}
-			
+
 			// Add trailing slash normalization
 			if (!request.url.endsWith("/") && !request.url.includes("?")) {
 				request.url = request.url + "/";
 			}
-			
+
 			const response = yield request;
 			response.headers.set("X-Rewritten", "true");
 			return response;
@@ -1038,12 +1053,14 @@ describe("Advanced Generator Middleware", () => {
 
 		router.use(routingMiddleware);
 		router.route("/api/v2/users/").get(async () => new Response("V2 Users"));
-		
+
 		const request = new Request("http://example.com/api/v1/users");
 		const response = await router.match(request);
 
 		expect(response?.status).toBe(302); // Redirect due to URL change
-		expect(response?.headers.get("Location")).toBe("http://example.com/api/v2/users/");
+		expect(response?.headers.get("Location")).toBe(
+			"http://example.com/api/v2/users/",
+		);
 	});
 
 	test("middleware execution with mixed async/sync functions", async () => {
@@ -1057,7 +1074,7 @@ describe("Advanced Generator Middleware", () => {
 
 		async function asyncFunctionMiddleware(request: Request, context: any) {
 			executionOrder.push("async-function");
-			await new Promise(resolve => setTimeout(resolve, 1));
+			await new Promise((resolve) => setTimeout(resolve, 1));
 			context.asyncFunc = true;
 		}
 
@@ -1065,7 +1082,10 @@ describe("Advanced Generator Middleware", () => {
 			executionOrder.push("generator-start");
 			const response = yield request;
 			executionOrder.push("generator-end");
-			response.headers.set("X-Mixed", `sync:${context.sync} async:${context.asyncFunc}`);
+			response.headers.set(
+				"X-Mixed",
+				`sync:${context.sync} async:${context.asyncFunc}`,
+			);
 			return response;
 		}
 
@@ -1087,7 +1107,7 @@ describe("Advanced Generator Middleware", () => {
 			"async-function",
 			"generator-start",
 			"handler",
-			"generator-end"
+			"generator-end",
 		]);
 		expect(response?.headers.get("X-Mixed")).toBe("sync:true async:true");
 	});
@@ -1097,9 +1117,9 @@ describe("Edge Cases and Error Scenarios", () => {
 	test("empty middleware stack", async () => {
 		const router = new Router();
 		const handler = async () => new Response("No middleware");
-		
+
 		router.route("/test").get(handler);
-		
+
 		const request = new Request("http://example.com/test");
 		const response = await router.match(request);
 
@@ -1118,8 +1138,10 @@ describe("Edge Cases and Error Scenarios", () => {
 		router.route("/test").get(async () => new Response("Success"));
 
 		const request = new Request("http://example.com/test");
-		
-		await expect(router.match(request)).rejects.toThrow("Middleware startup error");
+
+		await expect(router.match(request)).rejects.toThrow(
+			"Middleware startup error",
+		);
 	});
 
 	test("generator throws error after yield", async () => {
@@ -1134,7 +1156,7 @@ describe("Edge Cases and Error Scenarios", () => {
 		router.route("/test").get(async () => new Response("Success"));
 
 		const request = new Request("http://example.com/test");
-		
+
 		await expect(router.match(request)).rejects.toThrow("Post-yield error");
 	});
 
@@ -1149,8 +1171,10 @@ describe("Edge Cases and Error Scenarios", () => {
 		router.route("/test").get(async () => new Response("Success"));
 
 		const request = new Request("http://example.com/test");
-		
-		await expect(router.match(request)).rejects.toThrow("Function middleware error");
+
+		await expect(router.match(request)).rejects.toThrow(
+			"Function middleware error",
+		);
 	});
 
 	test("very large middleware stack", async () => {
@@ -1159,7 +1183,7 @@ describe("Edge Cases and Error Scenarios", () => {
 
 		// Add 50 middleware functions
 		for (let i = 0; i < 50; i++) {
-			const middleware = async function(request: Request, context: any) {
+			const middleware = async function (request: Request, context: any) {
 				executionOrder.push(`middleware-${i}`);
 				context[`step${i}`] = true;
 			};
@@ -1192,7 +1216,7 @@ describe("Edge Cases and Error Scenarios", () => {
 				const response = yield request;
 				return response;
 			}
-			
+
 			request.url = request.url + "?modified=" + modificationCount;
 			const response = yield request;
 			return response;
@@ -1222,7 +1246,7 @@ describe("Edge Cases and Error Scenarios", () => {
 		router.route("/test").get(async () => new Response("Success"));
 
 		const request = new Request("http://example.com/test");
-		
+
 		// Should throw due to malformed URL
 		await expect(router.match(request)).rejects.toThrow();
 	});
@@ -1265,7 +1289,10 @@ describe("Edge Cases and Error Scenarios", () => {
 				context.bodyText = await request.text();
 			}
 			const response = yield request;
-			response.headers.set("X-Body-Length", context.bodyText?.length.toString() || "0");
+			response.headers.set(
+				"X-Body-Length",
+				context.bodyText?.length.toString() || "0",
+			);
 			return response;
 		}
 
@@ -1278,7 +1305,7 @@ describe("Edge Cases and Error Scenarios", () => {
 
 		const request = new Request("http://example.com/test", {
 			method: "POST",
-			body: "test body content"
+			body: "test body content",
 		});
 		const response = await router.match(request);
 

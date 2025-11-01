@@ -28,11 +28,15 @@ export async function buildForProduction({entrypoint, outDir, verbose}) {
 	let workspaceRoot = process.cwd();
 	while (workspaceRoot !== dirname(workspaceRoot)) {
 		try {
-			const packageJson = JSON.parse(await readFile(resolve(workspaceRoot, "package.json"), "utf8"));
+			const packageJson = JSON.parse(
+				await readFile(resolve(workspaceRoot, "package.json"), "utf8"),
+			);
 			if (packageJson.workspaces) {
 				break;
 			}
-		} catch {}
+		} catch {
+			// Ignore errors when reading package.json
+		}
 		workspaceRoot = dirname(workspaceRoot);
 	}
 

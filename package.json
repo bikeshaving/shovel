@@ -55,31 +55,11 @@
       "types": "./dist/src/cli.d.ts",
       "import": "./dist/src/cli.js"
     },
-    "./cli.js": {
-      "types": "./dist/src/cli.d.ts",
-      "import": "./dist/src/cli.js"
-    },
     "./global": {
       "types": "./dist/src/global.d.ts",
       "import": "./dist/src/global.js"
     },
-    "./global.js": {
-      "types": "./dist/src/global.d.ts",
-      "import": "./dist/src/global.js"
-    },
-    "./handler": {
-      "types": "./dist/src/handler.d.ts",
-      "import": "./dist/src/handler.js"
-    },
-    "./handler.js": {
-      "types": "./dist/src/handler.d.ts",
-      "import": "./dist/src/handler.js"
-    },
     "./index": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
-    "./index.js": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
@@ -87,15 +67,7 @@
       "types": "./dist/src/shared.d.ts",
       "import": "./dist/src/shared.js"
     },
-    "./shared.js": {
-      "types": "./dist/src/shared.d.ts",
-      "import": "./dist/src/shared.js"
-    },
     "./static-files": {
-      "types": "./dist/src/static-files.d.ts",
-      "import": "./dist/src/static-files.js"
-    },
-    "./static-files.js": {
       "types": "./dist/src/static-files.d.ts",
       "import": "./dist/src/static-files.js"
     },
@@ -103,14 +75,7 @@
       "types": "./dist/src/serviceworker.d.ts",
       "import": "./dist/src/serviceworker.js"
     },
-    "./serviceworker.js": {
-      "types": "./dist/src/serviceworker.d.ts",
-      "import": "./dist/src/serviceworker.js"
-    },
     "./worker": {
-      "import": "./src/worker.js"
-    },
-    "./worker.js": {
       "import": "./src/worker.js"
     },
     "./package.json": "./dist/package.json"

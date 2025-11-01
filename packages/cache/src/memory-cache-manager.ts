@@ -9,8 +9,8 @@
  * by workers without coordination.
  */
 
-import type { Worker } from "worker_threads";
-import { MemoryCache } from "./memory-cache.js";
+import type {Worker} from "worker_threads";
+import {MemoryCache} from "./memory-cache.js";
 
 interface CacheMessage {
 	type: string;
@@ -42,7 +42,7 @@ export class MemoryCacheManager {
 	 * Handle memory cache-related message from a Worker
 	 */
 	async handleMessage(worker: Worker, message: CacheMessage): Promise<void> {
-		const { type, requestId } = message;
+		const {type, requestId} = message;
 
 		try {
 			let result: any;
@@ -99,8 +99,10 @@ export class MemoryCacheManager {
 		return this.memoryCaches.get(name)!;
 	}
 
-	private async handleMatch(message: CacheMessage): Promise<SerializedResponse | undefined> {
-		const { cacheName, request, options } = message;
+	private async handleMatch(
+		message: CacheMessage,
+	): Promise<SerializedResponse | undefined> {
+		const {cacheName, request, options} = message;
 		if (!request) throw new Error("Request is required for match operation");
 
 		const cache = this.getMemoryCache(cacheName);
@@ -128,8 +130,9 @@ export class MemoryCacheManager {
 	}
 
 	private async handlePut(message: CacheMessage): Promise<boolean> {
-		const { cacheName, request, response } = message;
-		if (!request || !response) throw new Error("Request and response are required for put operation");
+		const {cacheName, request, response} = message;
+		if (!request || !response)
+			throw new Error("Request and response are required for put operation");
 
 		const cache = this.getMemoryCache(cacheName);
 
@@ -151,7 +154,7 @@ export class MemoryCacheManager {
 	}
 
 	private async handleDelete(message: CacheMessage): Promise<boolean> {
-		const { cacheName, request, options } = message;
+		const {cacheName, request, options} = message;
 		if (!request) throw new Error("Request is required for delete operation");
 
 		const cache = this.getMemoryCache(cacheName);
@@ -165,8 +168,10 @@ export class MemoryCacheManager {
 		return await cache.delete(req, options);
 	}
 
-	private async handleKeys(message: CacheMessage): Promise<SerializedRequest[]> {
-		const { cacheName, request, options } = message;
+	private async handleKeys(
+		message: CacheMessage,
+	): Promise<SerializedRequest[]> {
+		const {cacheName, request, options} = message;
 		const cache = this.getMemoryCache(cacheName);
 
 		let req: Request | undefined;
@@ -190,7 +195,7 @@ export class MemoryCacheManager {
 	}
 
 	private async handleClear(message: CacheMessage): Promise<boolean> {
-		const { cacheName } = message;
+		const {cacheName} = message;
 		const cache = this.getMemoryCache(cacheName);
 		await cache.clear();
 		return true;

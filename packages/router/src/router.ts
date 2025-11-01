@@ -75,12 +75,7 @@ class RouteBuilder {
 	 * Register a GET handler for this route pattern
 	 */
 	get(handler: Handler): RouteBuilder {
-		this.router.addRoute(
-			"GET",
-			this.pattern,
-			handler,
-			this.cacheConfig,
-		);
+		this.router.addRoute("GET", this.pattern, handler, this.cacheConfig);
 		return this;
 	}
 
@@ -88,12 +83,7 @@ class RouteBuilder {
 	 * Register a POST handler for this route pattern
 	 */
 	post(handler: Handler): RouteBuilder {
-		this.router.addRoute(
-			"POST",
-			this.pattern,
-			handler,
-			this.cacheConfig,
-		);
+		this.router.addRoute("POST", this.pattern, handler, this.cacheConfig);
 		return this;
 	}
 
@@ -101,12 +91,7 @@ class RouteBuilder {
 	 * Register a PUT handler for this route pattern
 	 */
 	put(handler: Handler): RouteBuilder {
-		this.router.addRoute(
-			"PUT",
-			this.pattern,
-			handler,
-			this.cacheConfig,
-		);
+		this.router.addRoute("PUT", this.pattern, handler, this.cacheConfig);
 		return this;
 	}
 
@@ -114,12 +99,7 @@ class RouteBuilder {
 	 * Register a DELETE handler for this route pattern
 	 */
 	delete(handler: Handler): RouteBuilder {
-		this.router.addRoute(
-			"DELETE",
-			this.pattern,
-			handler,
-			this.cacheConfig,
-		);
+		this.router.addRoute("DELETE", this.pattern, handler, this.cacheConfig);
 		return this;
 	}
 
@@ -127,12 +107,7 @@ class RouteBuilder {
 	 * Register a PATCH handler for this route pattern
 	 */
 	patch(handler: Handler): RouteBuilder {
-		this.router.addRoute(
-			"PATCH",
-			this.pattern,
-			handler,
-			this.cacheConfig,
-		);
+		this.router.addRoute("PATCH", this.pattern, handler, this.cacheConfig);
 		return this;
 	}
 
@@ -140,12 +115,7 @@ class RouteBuilder {
 	 * Register a HEAD handler for this route pattern
 	 */
 	head(handler: Handler): RouteBuilder {
-		this.router.addRoute(
-			"HEAD",
-			this.pattern,
-			handler,
-			this.cacheConfig,
-		);
+		this.router.addRoute("HEAD", this.pattern, handler, this.cacheConfig);
 		return this;
 	}
 
@@ -153,12 +123,7 @@ class RouteBuilder {
 	 * Register an OPTIONS handler for this route pattern
 	 */
 	options(handler: Handler): RouteBuilder {
-		this.router.addRoute(
-			"OPTIONS",
-			this.pattern,
-			handler,
-			this.cacheConfig,
-		);
+		this.router.addRoute("OPTIONS", this.pattern, handler, this.cacheConfig);
 		return this;
 	}
 
@@ -176,12 +141,7 @@ class RouteBuilder {
 			"OPTIONS",
 		];
 		methods.forEach((method) => {
-			this.router.addRoute(
-				method,
-				this.pattern,
-				handler,
-				this.cacheConfig,
-			);
+			this.router.addRoute(method, this.pattern, handler, this.cacheConfig);
 		});
 		return this;
 	}
@@ -226,14 +186,18 @@ export class Router {
 		} else if (typeof patternOrMiddleware === "function") {
 			// Validate middleware type
 			if (!this.isValidMiddleware(patternOrMiddleware)) {
-				throw new Error("Invalid middleware type. Must be function or async generator function.");
+				throw new Error(
+					"Invalid middleware type. Must be function or async generator function.",
+				);
 			}
-			
+
 			// Global middleware registration with automatic type detection
 			this.middlewares.push({middleware: patternOrMiddleware});
 			this.dirty = true;
 		} else {
-			throw new Error("Invalid middleware type. Must be function or async generator function.");
+			throw new Error(
+				"Invalid middleware type. Must be function or async generator function.",
+			);
 		}
 	}
 
@@ -312,7 +276,7 @@ export class Router {
 				context,
 				matchResult.handler,
 				request.url,
-				this.executor
+				this.executor,
 			);
 		} else {
 			// No route found - execute global middleware with 404 fallback
@@ -326,7 +290,7 @@ export class Router {
 				{params: {}},
 				notFoundHandler,
 				request.url,
-				this.executor
+				this.executor,
 			);
 		}
 	};
@@ -372,7 +336,7 @@ export class Router {
 			context,
 			handler,
 			originalUrl,
-			this.executor // Pass executor for re-routing
+			this.executor, // Pass executor for re-routing
 		);
 
 		// If no route was found originally, return null unless middleware handled it
@@ -408,7 +372,6 @@ export class Router {
 
 		return context;
 	}
-
 
 	/**
 	 * Get registered routes for debugging/introspection
@@ -507,16 +470,18 @@ export class Router {
 	 */
 	private isValidMiddleware(middleware: Middleware): boolean {
 		const constructorName = middleware.constructor.name;
-		return constructorName === 'AsyncGeneratorFunction' || 
-		       constructorName === 'AsyncFunction' ||
-		       constructorName === 'Function';
+		return (
+			constructorName === "AsyncGeneratorFunction" ||
+			constructorName === "AsyncFunction" ||
+			constructorName === "Function"
+		);
 	}
 
 	/**
 	 * Detect if a function is a generator middleware
 	 */
 	private isGeneratorMiddleware(middleware: Middleware): boolean {
-		return middleware.constructor.name === 'AsyncGeneratorFunction';
+		return middleware.constructor.name === "AsyncGeneratorFunction";
 	}
 
 	/**
@@ -528,15 +493,16 @@ export class Router {
 		context: RouteContext,
 		handler: Handler,
 		originalUrl: string,
-		executor?: LinearExecutor | null
+		executor?: LinearExecutor | null,
 	): Promise<Response> {
-		const runningGenerators: Array<{generator: AsyncGenerator, index: number}> = [];
+		const runningGenerators: Array<{generator: AsyncGenerator; index: number}> =
+			[];
 		let currentResponse: Response | null = null;
 
 		// Phase 1: Execute all middleware "before" phases (request processing)
 		for (let i = 0; i < middlewares.length; i++) {
 			const middleware = middlewares[i].middleware;
-			
+
 			if (this.isGeneratorMiddleware(middleware)) {
 				const generator = (middleware as GeneratorMiddleware)(request, context);
 				const result = await generator.next();
@@ -561,14 +527,16 @@ export class Router {
 			// Check if URL was modified and re-route if needed
 			let finalHandler = handler;
 			let finalContext = context;
-			
+
 			if (request.url !== originalUrl && executor) {
-				const newMatchResult = executor.match(new Request(request.url, {
-					method: request.method,
-					headers: request.headers,
-					body: request.body
-				}));
-				
+				const newMatchResult = executor.match(
+					new Request(request.url, {
+						method: request.method,
+						headers: request.headers,
+						body: request.body,
+					}),
+				);
+
 				if (newMatchResult) {
 					finalHandler = newMatchResult.handler;
 					finalContext = await this.buildContext(
@@ -577,7 +545,7 @@ export class Router {
 					);
 				}
 			}
-			
+
 			// Execute handler
 			let handlerError: Error | null = null;
 			try {
@@ -585,31 +553,33 @@ export class Router {
 			} catch (error) {
 				handlerError = error;
 			}
-			
+
 			// Handle errors through generator stack if needed
 			if (handlerError) {
-				currentResponse = await this.handleErrorThroughGenerators(handlerError, runningGenerators);
+				currentResponse = await this.handleErrorThroughGenerators(
+					handlerError,
+					runningGenerators,
+				);
 			}
 		}
 
 		// Handle automatic redirects if URL was modified - do this before resuming generators
 		// so that generators can process the redirect response
 		if (request.url !== originalUrl && currentResponse) {
-			currentResponse = this.handleAutomaticRedirect(originalUrl, request.url, request.method);
+			currentResponse = this.handleAutomaticRedirect(
+				originalUrl,
+				request.url,
+				request.method,
+			);
 		}
 
 		// Phase 3: Resume all generators in reverse order (LIFO - Last In First Out)
 		// This implements the Rack-style guaranteed execution
 		for (let i = runningGenerators.length - 1; i >= 0; i--) {
 			const {generator} = runningGenerators[i];
-			try {
-				const result = await generator.next(currentResponse);
-				if (result.value) {
-					currentResponse = result.value;
-				}
-			} catch (error) {
-				// Generator had an error during normal resumption - let it propagate
-				throw error;
+			const result = await generator.next(currentResponse);
+			if (result.value) {
+				currentResponse = result.value;
 			}
 		}
 
@@ -621,12 +591,12 @@ export class Router {
 	 */
 	private async handleErrorThroughGenerators(
 		error: Error,
-		runningGenerators: Array<{generator: AsyncGenerator, index: number}>
+		runningGenerators: Array<{generator: AsyncGenerator; index: number}>,
 	): Promise<Response> {
 		// Try error handling starting from the innermost middleware (reverse order)
 		for (let i = runningGenerators.length - 1; i >= 0; i--) {
 			const {generator} = runningGenerators[i];
-			
+
 			try {
 				const result = await generator.throw(error);
 				if (result.value) {
@@ -642,7 +612,7 @@ export class Router {
 				continue;
 			}
 		}
-		
+
 		// No generator handled the error
 		throw error;
 	}
@@ -673,21 +643,31 @@ export class Router {
 			clone: () => request.clone(),
 			formData: () => request.formData(),
 			json: () => request.json(),
-			text: () => request.text()
+			text: () => request.text(),
 		};
 	}
 
 	/**
 	 * Handle automatic redirects when URL is modified
 	 */
-	private handleAutomaticRedirect(originalUrl: string, newUrl: string, method: string): Response {
+	private handleAutomaticRedirect(
+		originalUrl: string,
+		newUrl: string,
+		method: string,
+	): Response {
 		const originalURL = new URL(originalUrl);
 		const newURL = new URL(newUrl);
 
 		// Security: Only allow same-origin redirects (allow protocol upgrades)
-		if (originalURL.hostname !== newURL.hostname || 
-		    (originalURL.port !== newURL.port && originalURL.port !== '' && newURL.port !== '')) {
-			throw new Error(`Cross-origin redirect not allowed: ${originalUrl} -> ${newUrl}`);
+		if (
+			originalURL.hostname !== newURL.hostname ||
+			(originalURL.port !== newURL.port &&
+				originalURL.port !== "" &&
+				newURL.port !== "")
+		) {
+			throw new Error(
+				`Cross-origin redirect not allowed: ${originalUrl} -> ${newUrl}`,
+			);
 		}
 
 		// Choose appropriate redirect status code
@@ -698,15 +678,15 @@ export class Router {
 			status = 301;
 		}
 		// Non-GET methods get 307 to preserve method and body
-		else if (method.toUpperCase() !== 'GET') {
+		else if (method.toUpperCase() !== "GET") {
 			status = 307;
 		}
 
 		return new Response(null, {
 			status,
 			headers: {
-				Location: newUrl
-			}
+				Location: newUrl,
+			},
 		});
 	}
 

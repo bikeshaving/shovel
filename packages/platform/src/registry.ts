@@ -139,10 +139,10 @@ export function getPlatform(name?: string): Platform {
 	const detected = detectPlatform();
 	if (!detected) {
 		throw new Error(
-			"No platform could be auto-detected. Please register a platform manually or specify a platform name."
+			"No platform could be auto-detected. Please register a platform manually or specify a platform name.",
 		);
 	}
-	
+
 	return detected;
 }
 
@@ -165,11 +165,11 @@ export async function getPlatformAsync(name?: string): Promise<Platform> {
 	const detected = detectPlatform();
 	if (!detected) {
 		// Create default Node.js platform if no platforms are registered
-		const { createNodePlatform } = await import("@b9g/platform-node");
+		const {createNodePlatform} = await import("@b9g/platform-node");
 		const nodePlatform = createNodePlatform();
 		platformRegistry.register("node", nodePlatform);
 		return nodePlatform;
 	}
-	
+
 	return detected;
 }

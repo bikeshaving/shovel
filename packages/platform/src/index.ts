@@ -31,7 +31,12 @@ export {
 } from "./service-worker.js";
 
 // Platform registry and detection
-export {platformRegistry, detectPlatform, getPlatform, getPlatformAsync} from "./registry.js";
+export {
+	platformRegistry,
+	detectPlatform,
+	getPlatform,
+	getPlatformAsync,
+} from "./registry.js";
 
 // Utility functions
 export {
@@ -45,4 +50,4 @@ export {
 } from "./utils.js";
 
 // File System Access API
-export { getFileSystemRoot } from "./filesystem.js";
+export {getFileSystemRoot} from "./filesystem.js";

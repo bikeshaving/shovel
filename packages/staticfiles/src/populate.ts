@@ -1,11 +1,11 @@
 /**
  * Populate static assets to File System Access API storage
- * 
+ *
  * Build-time utility to copy static files from local filesystem
  * to any storage backend (local, S3, R2, etc.) using File System Access API.
  */
 
-import { getFileSystemRoot } from "@b9g/platform";
+import {getFileSystemRoot} from "@b9g/platform";
 import * as fs from "fs/promises";
 import * as path from "path";
 
@@ -29,15 +29,13 @@ export interface PopulateOptions {
  */
 function matchesPattern(filePath: string, patterns: string[]): boolean {
 	if (patterns.length === 0) return false;
-	
-	return patterns.some(pattern => {
+
+	return patterns.some((pattern) => {
 		// Simple glob-like matching
 		const regex = new RegExp(
-			'^' + pattern
-				.replace(/\./g, '\\.')
-				.replace(/\*/g, '.*')
-				.replace(/\?/g, '.')
-			+ '$'
+			"^" +
+				pattern.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") +
+				"$",
 		);
 		return regex.test(filePath);
 	});
@@ -46,14 +44,17 @@ function matchesPattern(filePath: string, patterns: string[]): boolean {
 /**
  * Recursively get all files in a directory
  */
-async function getAllFiles(dir: string, baseDir: string = dir): Promise<string[]> {
+async function getAllFiles(
+	dir: string,
+	baseDir: string = dir,
+): Promise<string[]> {
 	const files: string[] = [];
-	const entries = await fs.readdir(dir, { withFileTypes: true });
-	
+	const entries = await fs.readdir(dir, {withFileTypes: true});
+
 	for (const entry of entries) {
 		const fullPath = path.join(dir, entry.name);
 		const relativePath = path.relative(baseDir, fullPath);
-		
+
 		if (entry.isDirectory()) {
 			const subFiles = await getAllFiles(fullPath, baseDir);
 			files.push(...subFiles);
@@ -61,7 +62,7 @@ async function getAllFiles(dir: string, baseDir: string = dir): Promise<string[]
 			files.push(relativePath);
 		}
 	}
-	
+
 	return files;
 }
 
@@ -69,33 +70,34 @@ async function getAllFiles(dir: string, baseDir: string = dir): Promise<string[]
  * Copy a file from local filesystem to File System Access API storage
  */
 async function copyFile(
-	sourcePath: string, 
-	targetPath: string, 
+	sourcePath: string,
+	targetPath: string,
 	targetRoot: FileSystemDirectoryHandle,
-	verbose: boolean = false
+	verbose: boolean = false,
 ): Promise<void> {
 	// Read source file
 	const sourceData = await fs.readFile(sourcePath);
-	
+
 	// Create target directory structure if needed
-	const pathParts = targetPath.split('/');
+	const pathParts = targetPath.split("/");
 	const fileName = pathParts.pop()!;
-	
+
 	let currentDir = targetRoot;
 	for (const part of pathParts) {
-		if (part) { // Skip empty parts
-			currentDir = await currentDir.getDirectoryHandle(part, { create: true });
+		if (part) {
+			// Skip empty parts
+			currentDir = await currentDir.getDirectoryHandle(part, {create: true});
 		}
 	}
-	
+
 	// Create and write to target file
-	const fileHandle = await currentDir.getFileHandle(fileName, { create: true });
+	const fileHandle = await currentDir.getFileHandle(fileName, {create: true});
 	const writable = await fileHandle.createWritable();
-	
+
 	try {
 		await writable.write(sourceData);
 		await writable.close();
-		
+
 		if (verbose) {
 			console.log(`✓ Copied: ${targetPath}`);
 		}
@@ -108,20 +110,24 @@ async function copyFile(
 /**
  * Populate static assets from source directory to File System Access API storage
  */
-export async function populateStaticAssets(options: PopulateOptions): Promise<void> {
+export async function populateStaticAssets(
+	options: PopulateOptions,
+): Promise<void> {
 	const {
 		sourceDir,
-		filesystem = 'static',
-		include = ['**/*'],
+		filesystem = "static",
+		include = ["**/*"],
 		exclude = [],
 		verbose = false,
 		dryRun = false,
 	} = options;
 
 	if (verbose) {
-		console.log(`🗂️  Populating static assets from ${sourceDir} to filesystem:${filesystem}`);
+		console.log(
+			`🗂️  Populating static assets from ${sourceDir} to filesystem:${filesystem}`,
+		);
 		if (dryRun) {
-			console.log('📋 DRY RUN - no files will be copied');
+			console.log("📋 DRY RUN - no files will be copied");
 		}
 	}
 
@@ -137,26 +143,28 @@ export async function populateStaticAssets(options: PopulateOptions): Promise<vo
 
 	// Get all files in source directory
 	const allFiles = await getAllFiles(sourceDir);
-	
+
 	// Filter files based on include/exclude patterns
-	const filteredFiles = allFiles.filter(filePath => {
+	const filteredFiles = allFiles.filter((filePath) => {
 		const included = include.length === 0 || matchesPattern(filePath, include);
 		const excluded = exclude.length > 0 && matchesPattern(filePath, exclude);
 		return included && !excluded;
 	});
 
 	if (verbose) {
-		console.log(`📁 Found ${allFiles.length} total files, ${filteredFiles.length} after filtering`);
+		console.log(
+			`📁 Found ${allFiles.length} total files, ${filteredFiles.length} after filtering`,
+		);
 	}
 
 	if (filteredFiles.length === 0) {
-		console.warn('⚠️  No files to copy after filtering');
+		console.warn("⚠️  No files to copy after filtering");
 		return;
 	}
 
 	if (dryRun) {
-		console.log('📋 Files that would be copied:');
-		filteredFiles.forEach(file => console.log(`  - ${file}`));
+		console.log("📋 Files that would be copied:");
+		filteredFiles.forEach((file) => console.log(`  - ${file}`));
 		return;
 	}
 

@@ -6,8 +6,8 @@
  * - Other caches: Uses direct access (FilesystemCache, SQLiteCache, etc.)
  */
 
-import { isMainThread } from "worker_threads";
-import type { Cache } from "./cache.js";
+import {isMainThread} from "worker_threads";
+import type {Cache} from "./cache.js";
 
 type CacheFactory = () => Promise<Cache> | Cache;
 
@@ -24,7 +24,10 @@ export class WorkerAwareCacheStorage {
 		// If there's already an instance, dispose of it
 		const existingInstance = this.instances.get(name);
 		if (existingInstance) {
-			if ('dispose' in existingInstance && typeof existingInstance.dispose === 'function') {
+			if (
+				"dispose" in existingInstance &&
+				typeof existingInstance.dispose === "function"
+			) {
 				existingInstance.dispose().catch(console.error);
 			}
 			this.instances.delete(name);
@@ -54,7 +57,9 @@ export class WorkerAwareCacheStorage {
 
 		// If we're in a worker thread and this is a MemoryCache, wrap it with coordination
 		if (!isMainThread && this.isMemoryCache(cache)) {
-			const { CoordinatedMemoryCache } = await import("./coordinated-memory-cache.js");
+			const {CoordinatedMemoryCache} = await import(
+				"./coordinated-memory-cache.js"
+			);
 			const coordinatedCache = new CoordinatedMemoryCache(
 				name,
 				(cache as any).options || {},
@@ -89,7 +94,7 @@ export class WorkerAwareCacheStorage {
 	async delete(name: string): Promise<boolean> {
 		const instance = this.instances.get(name);
 		if (instance) {
-			if ('dispose' in instance && typeof instance.dispose === 'function') {
+			if ("dispose" in instance && typeof instance.dispose === "function") {
 				await instance.dispose();
 			}
 			this.instances.delete(name);
@@ -131,7 +136,7 @@ export class WorkerAwareCacheStorage {
 		const disposePromises: Promise<void>[] = [];
 
 		for (const [_name, instance] of this.instances) {
-			if ('dispose' in instance && typeof instance.dispose === 'function') {
+			if ("dispose" in instance && typeof instance.dispose === "function") {
 				disposePromises.push(instance.dispose());
 			}
 		}
