@@ -25,7 +25,7 @@ export abstract class BasePlatform implements Platform {
 	}
 
 	abstract readonly name: string;
-	abstract readonly dist: FileSystemDirectoryHandle;
+	abstract readonly distDir: FileSystemDirectoryHandle;
 	abstract loadServiceWorker(
 		entrypoint: string,
 		options?: any,

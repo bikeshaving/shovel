@@ -217,7 +217,7 @@ export interface Platform {
 	 * Build artifacts filesystem (install-time only)
 	 * Available during install handlers to copy built files to runtime storage
 	 */
-	readonly dist: FileSystemDirectoryHandle;
+	readonly distDir: FileSystemDirectoryHandle;
 
 	/**
 	 * THE MAIN JOB - Load and run a ServiceWorker-style entrypoint

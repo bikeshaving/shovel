@@ -246,7 +246,7 @@ export class NodePlatform extends BasePlatform {
 	/**
 	 * Build artifacts filesystem (install-time only)
 	 */
-	get dist(): FileSystemDirectoryHandle {
+	get distDir(): FileSystemDirectoryHandle {
 		if (!this._dist) {
 			// Create dist filesystem pointing to ./dist directory
 			const distPath = Path.resolve(this.options.cwd, "dist");
