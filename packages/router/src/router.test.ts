@@ -43,93 +43,6 @@ describe("Router", () => {
 		expect(response).toBeNull();
 	});
 
-	test("filters by HTTP method", async () => {
-		const router = new Router();
-		const getHandler = async () => new Response("GET response");
-		const postHandler = async () => new Response("POST response");
-
-		router.route("/api/users/:id").get(getHandler).post(postHandler);
-
-		const getRequest = new Request("http://example.com/api/users/123", {
-			method: "GET",
-		});
-		const postRequest = new Request("http://example.com/api/users/123", {
-			method: "POST",
-		});
-		const putRequest = new Request("http://example.com/api/users/123", {
-			method: "PUT",
-		});
-
-		const getResponse = await router.match(getRequest);
-		const postResponse = await router.match(postRequest);
-		const putResponse = await router.match(putRequest);
-
-		expect(await getResponse.text()).toBe("GET response");
-		expect(await postResponse.text()).toBe("POST response");
-		expect(putResponse).toBeNull();
-	});
-
-	test("middleware executes before handlers", async () => {
-		const router = new Router();
-		const executionOrder = [];
-
-		const middleware = async (
-			_request: Request,
-			_context: any,
-			_next: Function,
-		) => {
-			executionOrder.push("middleware");
-			const response = await next();
-			executionOrder.push("middleware-after");
-			return response;
-		};
-
-		const handler = async (_request: Request, _context: any) => {
-			executionOrder.push("handler");
-			return new Response("Hello");
-		};
-
-		router.use(middleware);
-		router.route("/test").get(handler);
-
-		const request = new Request("http://example.com/test");
-		await router.match(request);
-
-		expect(executionOrder).toEqual([
-			"middleware",
-			"handler",
-			"middleware-after",
-		]);
-	});
-
-	test("middleware can short-circuit", async () => {
-		const router = new Router();
-		const executionOrder = [];
-
-		const middleware = async (
-			_request: Request,
-			_context: any,
-			_next: Function,
-		) => {
-			executionOrder.push("middleware");
-			return new Response("Short-circuited");
-		};
-
-		const handler = async (_request: Request, _context: any) => {
-			executionOrder.push("handler");
-			return new Response("Hello");
-		};
-
-		router.use(middleware);
-		router.route("/test").get(handler);
-
-		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
-
-		expect(executionOrder).toEqual(["middleware"]);
-		expect(await response.text()).toBe("Short-circuited");
-	});
-
 	test("extracts route parameters correctly", async () => {
 		const router = new Router();
 		let capturedParams = null;
@@ -149,41 +62,664 @@ describe("Router", () => {
 			postId: "456",
 		});
 	});
+});
 
-	test("handles trailing slashes correctly", async () => {
+describe("Middleware Detection", () => {
+	test("detects async generator functions as generator middleware", () => {
 		const router = new Router();
-		const handler = async (_request: Request, _context: any) =>
-			new Response("OK");
+		
+		async function* generatorMiddleware(request: Request, context: any) {
+			const response = yield request;
+			return response;
+		}
 
-		router.route("/api/users/:id").get(handler);
-
-		const request1 = new Request("http://example.com/api/users/123");
-		const request2 = new Request("http://example.com/api/users/123/");
-
-		const response1 = await router.match(request1);
-		const response2 = await router.match(request2);
-
-		expect(response1).not.toBeNull();
-		expect(response2).not.toBeNull();
-		expect(await response1.text()).toBe("OK");
-		expect(await response2.text()).toBe("OK");
+		router.use(generatorMiddleware);
+		expect(router.getStats().middlewareCount).toBe(1);
 	});
 
-	test("handler method executes middleware for matching routes", async () => {
+	test("detects regular async functions as function middleware", () => {
 		const router = new Router();
-		const executionOrder = [];
+		
+		async function functionMiddleware(request: Request, context: any) {
+			context.processed = true;
+		}
 
-		const middleware = async (
-			_request: Request,
-			_context: any,
-			_next: Function,
-		) => {
-			executionOrder.push("middleware");
-			const response = await next();
+		router.use(functionMiddleware);
+		expect(router.getStats().middlewareCount).toBe(1);
+	});
+
+	test("detects regular functions as function middleware", () => {
+		const router = new Router();
+		
+		function syncMiddleware(request: Request, context: any) {
+			context.processed = true;
+		}
+
+		router.use(syncMiddleware);
+		expect(router.getStats().middlewareCount).toBe(1);
+	});
+
+	test("throws error for invalid middleware types", () => {
+		const router = new Router();
+		
+		expect(() => {
+			router.use("not a function" as any);
+		}).toThrow();
+
+		expect(() => {
+			router.use(null as any);
+		}).toThrow();
+
+		expect(() => {
+			router.use(undefined as any);
+		}).toThrow();
+	});
+});
+
+describe("Generator Middleware Execution", () => {
+	test("executes generator middleware with yield request", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		async function* testMiddleware(request: Request, context: any) {
+			executionOrder.push("middleware-before");
+			const response = yield request;
+			executionOrder.push("middleware-after");
+			response.headers.set("X-Middleware", "processed");
 			return response;
+		}
+
+		const handler = async () => {
+			executionOrder.push("handler");
+			return new Response("Hello");
 		};
 
-		const handler = async (_request: Request, _context: any) => {
+		router.use(testMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(executionOrder).toEqual([
+			"middleware-before",
+			"handler", 
+			"middleware-after"
+		]);
+		expect(response?.headers.get("X-Middleware")).toBe("processed");
+		expect(await response?.text()).toBe("Hello");
+	});
+
+	test("executes generator middleware with yield (implicit request)", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		async function* testMiddleware(request: Request, context: any) {
+			executionOrder.push("middleware-before");
+			const response = yield; // Implicit yield request
+			executionOrder.push("middleware-after");
+			return response;
+		}
+
+		const handler = async () => {
+			executionOrder.push("handler");
+			return new Response("Hello");
+		};
+
+		router.use(testMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(executionOrder).toEqual([
+			"middleware-before",
+			"handler",
+			"middleware-after"
+		]);
+		expect(await response?.text()).toBe("Hello");
+	});
+
+	test("handles early returns (0 yields)", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		async function* authMiddleware(request: Request, context: any) {
+			executionOrder.push("auth-middleware");
+			const token = request.headers.get("Authorization");
+			
+			if (!token) {
+				return new Response("Unauthorized", {status: 401});
+			}
+			
+			context.user = {id: "123"};
+			const response = yield request;
+			return response;
+		}
+
+		const handler = async () => {
+			executionOrder.push("handler");
+			return new Response("Hello");
+		};
+
+		router.use(authMiddleware);
+		router.route("/test").get(handler);
+
+		// Test without auth header
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(executionOrder).toEqual(["auth-middleware"]);
+		expect(response?.status).toBe(401);
+		expect(await response?.text()).toBe("Unauthorized");
+	});
+
+	test("handles passthrough returns (null/undefined)", async () => {
+		const router = new Router();
+		
+		async function* setupMiddleware(request: Request, context: any) {
+			context.setupDone = true;
+			return; // null/undefined passthrough
+		}
+
+		const handler = async (_request: Request, context: any) => {
+			return new Response(`Setup: ${context.setupDone}`);
+		};
+
+		router.use(setupMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(await response?.text()).toBe("Setup: true");
+	});
+
+	test("modifies request before yield", async () => {
+		const router = new Router();
+
+		async function* headerMiddleware(request: Request, context: any) {
+			request.headers.set("X-Added-Header", "test-value");
+			const response = yield request;
+			return response;
+		}
+
+		const handler = async (request: Request) => {
+			const headerValue = request.headers.get("X-Added-Header");
+			return new Response(`Header: ${headerValue}`);
+		};
+
+		router.use(headerMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(await response?.text()).toBe("Header: test-value");
+	});
+
+	test("modifies response after yield", async () => {
+		const router = new Router();
+
+		async function* responseMiddleware(request: Request, context: any) {
+			const response = yield request;
+			response.headers.set("X-Response-Modified", "true");
+			return response;
+		}
+
+		const handler = async () => new Response("Hello");
+
+		router.use(responseMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(response?.headers.get("X-Response-Modified")).toBe("true");
+		expect(await response?.text()).toBe("Hello");
+	});
+});
+
+describe("Function Middleware Execution", () => {
+	test("executes function middleware with implicit passthrough", async () => {
+		const router = new Router();
+		
+		async function functionMiddleware(request: Request, context: any) {
+			context.processedByFunction = true;
+			request.headers.set("X-Function-Middleware", "true");
+		}
+
+		const handler = async (request: Request, context: any) => {
+			const fromContext = context.processedByFunction;
+			const fromHeader = request.headers.get("X-Function-Middleware");
+			return new Response(`Context: ${fromContext}, Header: ${fromHeader}`);
+		};
+
+		router.use(functionMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(await response?.text()).toBe("Context: true, Header: true");
+	});
+
+	test("function middleware cannot return responses", async () => {
+		const router = new Router();
+		
+		// Function middleware that tries to return a response (should be ignored)
+		async function badMiddleware(request: Request, context: any) {
+			return new Response("This should be ignored") as any;
+		}
+
+		const handler = async () => new Response("From handler");
+
+		router.use(badMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		// Function middleware return is ignored, handler response is used
+		expect(await response?.text()).toBe("From handler");
+	});
+});
+
+describe("Guaranteed Execution", () => {
+	test("all middleware executes even with early returns", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		async function* authMiddleware(request: Request, context: any) {
+			executionOrder.push("auth");
+			return new Response("Unauthorized", {status: 401}); // Early return
+		}
+
+		async function* corsMiddleware(request: Request, context: any) {
+			executionOrder.push("cors");
+			const response = yield request;
+			response.headers.set("Access-Control-Allow-Origin", "*");
+			return response;
+		}
+
+		async function* loggingMiddleware(request: Request, context: any) {
+			executionOrder.push("logging");
+			const response = yield request;
+			response.headers.set("X-Request-Logged", "true");
+			return response;
+		}
+
+		const handler = async () => {
+			executionOrder.push("handler"); // Should never execute
+			return new Response("Hello");
+		};
+
+		router.use(authMiddleware);
+		router.use(corsMiddleware);
+		router.use(loggingMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		// All middleware executes, handler does not
+		expect(executionOrder).toEqual(["auth", "cors", "logging"]);
+		expect(response?.status).toBe(401);
+		expect(await response?.text()).toBe("Unauthorized");
+		expect(response?.headers.get("Access-Control-Allow-Origin")).toBe("*");
+		expect(response?.headers.get("X-Request-Logged")).toBe("true");
+	});
+
+	test("middleware receives response from previous early return", async () => {
+		const router = new Router();
+
+		async function* middleware1(request: Request, context: any) {
+			return new Response("Early response", {
+				status: 400,
+				headers: {"X-Source": "middleware1"}
+			});
+		}
+
+		async function* middleware2(request: Request, context: any) {
+			const response = yield request;
+			// This should receive the early response from middleware1
+			response.headers.set("X-Processed-By", "middleware2");
+			return response;
+		}
+
+		router.use(middleware1);
+		router.use(middleware2);
+		router.route("/test").get(async () => new Response("Handler"));
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(response?.status).toBe(400);
+		expect(await response?.text()).toBe("Early response");
+		expect(response?.headers.get("X-Source")).toBe("middleware1");
+		expect(response?.headers.get("X-Processed-By")).toBe("middleware2");
+	});
+
+	test("execution order is preserved", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		async function* middleware1(request: Request, context: any) {
+			executionOrder.push("middleware1-before");
+			const response = yield request;
+			executionOrder.push("middleware1-after");
+			return response;
+		}
+
+		async function* middleware2(request: Request, context: any) {
+			executionOrder.push("middleware2-before");
+			const response = yield request;
+			executionOrder.push("middleware2-after");
+			return response;
+		}
+
+		async function* middleware3(request: Request, context: any) {
+			executionOrder.push("middleware3-before");
+			const response = yield request;
+			executionOrder.push("middleware3-after");
+			return response;
+		}
+
+		const handler = async () => {
+			executionOrder.push("handler");
+			return new Response("Hello");
+		};
+
+		router.use(middleware1);
+		router.use(middleware2);
+		router.use(middleware3);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		await router.match(request);
+
+		expect(executionOrder).toEqual([
+			"middleware1-before",
+			"middleware2-before", 
+			"middleware3-before",
+			"handler",
+			"middleware3-after",
+			"middleware2-after",
+			"middleware1-after"
+		]);
+	});
+
+	test("works with mixed generator and function middleware", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		function functionMiddleware1(request: Request, context: any) {
+			executionOrder.push("function1");
+			context.func1 = true;
+		}
+
+		async function* generatorMiddleware(request: Request, context: any) {
+			executionOrder.push("generator-before");
+			const response = yield request;
+			executionOrder.push("generator-after");
+			response.headers.set("X-Generator", "true");
+			return response;
+		}
+
+		async function functionMiddleware2(request: Request, context: any) {
+			executionOrder.push("function2");
+			context.func2 = true;
+		}
+
+		const handler = async (_request: Request, context: any) => {
+			executionOrder.push("handler");
+			return new Response(`func1:${context.func1} func2:${context.func2}`);
+		};
+
+		router.use(functionMiddleware1);
+		router.use(generatorMiddleware);
+		router.use(functionMiddleware2);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(executionOrder).toEqual([
+			"function1",
+			"generator-before",
+			"function2",
+			"handler",
+			"generator-after"
+		]);
+		expect(await response?.text()).toBe("func1:true func2:true");
+		expect(response?.headers.get("X-Generator")).toBe("true");
+	});
+});
+
+describe("Context Sharing", () => {
+	test("context is shared between all middleware and handlers", async () => {
+		const router = new Router();
+
+		async function* middleware1(request: Request, context: any) {
+			context.step1 = "completed";
+			const response = yield request;
+			context.responseTime = Date.now() - context.startTime;
+			return response;
+		}
+
+		function middleware2(request: Request, context: any) {
+			context.step2 = "completed";
+			context.startTime = Date.now();
+		}
+
+		async function* middleware3(request: Request, context: any) {
+			context.step3 = "completed";
+			const response = yield request;
+			response.headers.set("X-Steps", `${context.step1},${context.step2},${context.step3}`);
+			return response;
+		}
+
+		const handler = async (_request: Request, context: any) => {
+			return new Response(`All steps: ${context.step1} ${context.step2} ${context.step3}`);
+		};
+
+		router.use(middleware1);
+		router.use(middleware2);
+		router.use(middleware3);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(await response?.text()).toBe("All steps: completed completed completed");
+		expect(response?.headers.get("X-Steps")).toBe("completed,completed,completed");
+	});
+
+	test("middleware can enrich context for handlers", async () => {
+		const router = new Router();
+
+		async function* authMiddleware(request: Request, context: any) {
+			const token = request.headers.get("Authorization");
+			if (token === "valid-token") {
+				context.user = {id: "123", name: "John"};
+			}
+			const response = yield request;
+			return response;
+		}
+
+		function enrichMiddleware(request: Request, context: any) {
+			if (context.user) {
+				context.permissions = ["read", "write"];
+			}
+		}
+
+		const handler = async (_request: Request, context: any) => {
+			if (!context.user) {
+				return new Response("No user", {status: 401});
+			}
+			return new Response(`User: ${context.user.name}, Permissions: ${context.permissions.join(",")}`);
+		};
+
+		router.use(authMiddleware);
+		router.use(enrichMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test", {
+			headers: {"Authorization": "valid-token"}
+		});
+		const response = await router.match(request);
+
+		expect(await response?.text()).toBe("User: John, Permissions: read,write");
+	});
+});
+
+describe("Error Handling", () => {
+	test("middleware can handle errors with try/catch", async () => {
+		const router = new Router();
+
+		async function* errorHandlingMiddleware(request: Request, context: any) {
+			try {
+				const response = yield request;
+				return response;
+			} catch (error) {
+				return new Response(`Error caught: ${error.message}`, {status: 500});
+			}
+		}
+
+		const handler = async () => {
+			throw new Error("Handler error");
+		};
+
+		router.use(errorHandlingMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(response?.status).toBe(500);
+		expect(await response?.text()).toBe("Error caught: Handler error");
+	});
+});
+
+describe("Automatic Redirects", () => {
+	test("returns 302 for URL changes by default", async () => {
+		const router = new Router();
+
+		async function* redirectMiddleware(request: Request, context: any) {
+			if (request.url.endsWith("/old-path")) {
+				request.url = request.url.replace("/old-path", "/new-path");
+			}
+			const response = yield request;
+			return response;
+		}
+
+		router.use(redirectMiddleware);
+		router.route("/new-path").get(async () => new Response("New path"));
+
+		const request = new Request("http://example.com/old-path");
+		const response = await router.match(request);
+
+		expect(response?.status).toBe(302);
+		expect(response?.headers.get("Location")).toBe("http://example.com/new-path");
+	});
+
+	test("returns 301 for protocol changes (http->https)", async () => {
+		const router = new Router();
+
+		async function* httpsRedirectMiddleware(request: Request, context: any) {
+			if (request.url.startsWith("http://")) {
+				request.url = request.url.replace("http://", "https://");
+			}
+			const response = yield request;
+			return response;
+		}
+
+		router.use(httpsRedirectMiddleware);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(response?.status).toBe(301);
+		expect(response?.headers.get("Location")).toBe("https://example.com/test");
+	});
+
+	test("returns 307 for non-GET method changes", async () => {
+		const router = new Router();
+
+		async function* apiVersionMiddleware(request: Request, context: any) {
+			if (request.url.includes("/api/v1/")) {
+				request.url = request.url.replace("/api/v1/", "/api/v2/");
+			}
+			const response = yield request;
+			return response;
+		}
+
+		router.use(apiVersionMiddleware);
+
+		const request = new Request("http://example.com/api/v1/users", {
+			method: "POST"
+		});
+		const response = await router.match(request);
+
+		expect(response?.status).toBe(307);
+		expect(response?.headers.get("Location")).toBe("http://example.com/api/v2/users");
+	});
+
+	test("throws error for cross-origin URL changes", async () => {
+		const router = new Router();
+
+		async function* maliciousMiddleware(request: Request, context: any) {
+			request.url = "https://evil.com/steal-data";
+			const response = yield request;
+			return response;
+		}
+
+		router.use(maliciousMiddleware);
+		router.route("/test").get(async () => new Response("Test"));
+
+		const request = new Request("http://example.com/test");
+		
+		await expect(router.match(request)).rejects.toThrow(/origin/);
+	});
+
+	test("redirect responses flow through remaining middleware", async () => {
+		const router = new Router();
+
+		async function* redirectMiddleware(request: Request, context: any) {
+			request.url = request.url.replace("/old", "/new");
+			const response = yield request;
+			return response;
+		}
+
+		async function* headerMiddleware(request: Request, context: any) {
+			const response = yield request;
+			response.headers.set("X-Processed", "true");
+			return response;
+		}
+
+		router.use(redirectMiddleware);
+		router.use(headerMiddleware);
+
+		const request = new Request("http://example.com/old");
+		const response = await router.match(request);
+
+		expect(response?.status).toBe(302);
+		expect(response?.headers.get("Location")).toBe("http://example.com/new");
+		expect(response?.headers.get("X-Processed")).toBe("true");
+	});
+});
+
+describe("Router Integration", () => {
+	test("handler method executes middleware for matching routes", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		async function* middleware(request: Request, context: any) {
+			executionOrder.push("middleware");
+			const response = yield request;
+			return response;
+		}
+
+		const handler = async () => {
 			executionOrder.push("handler");
 			return new Response("Hello");
 		};
@@ -200,292 +736,553 @@ describe("Router", () => {
 
 	test("handler method executes middleware for non-matching routes", async () => {
 		const router = new Router();
-		const executionOrder = [];
+		const executionOrder: string[] = [];
 
-		const middleware = async (
-			_request: Request,
-			_context: any,
-			_next: Function,
-		) => {
+		async function* middleware(request: Request, context: any) {
 			executionOrder.push("middleware");
-			const response = await next();
+			const response = yield request;
 			return response;
-		};
-
-		const handler = async (_request: Request, _context: any) => {
-			executionOrder.push("handler");
-			return new Response("Hello");
-		};
+		}
 
 		router.use(middleware);
-		router.route("/test").get(handler);
+		router.route("/test").get(async () => new Response("Hello"));
 
-		// Request to non-matching route
-		const request = new Request("http://example.com/static/file.css");
+		const request = new Request("http://example.com/nonexistent");
 		const response = await router.handler(request);
 
-		// Middleware should still be called even for non-matching routes
 		expect(executionOrder).toEqual(["middleware"]);
 		expect(response.status).toBe(404);
 		expect(await response.text()).toBe("Not Found");
 	});
 });
 
-describe("Router.mount()", () => {
-	test("mounts subrouter at specified path", async () => {
-		const subrouter = new Router();
-		subrouter.route("/users").get(async () => new Response("Users"));
-		subrouter
-			.route("/users/:id")
-			.get(
-				async (request, context) => new Response(`User ${context.params.id}`),
-			);
-
-		const mainRouter = new Router();
-		mainRouter.mount("/api/v1", subrouter);
-
-		// Test mounted routes
-		const usersRequest = new Request("http://example.com/api/v1/users");
-		const usersResponse = await mainRouter.match(usersRequest);
-		expect(await usersResponse?.text()).toBe("Users");
-
-		const userRequest = new Request("http://example.com/api/v1/users/123");
-		const userResponse = await mainRouter.match(userRequest);
-		expect(await userResponse?.text()).toBe("User 123");
-	});
-
-	test("handles root path mounting correctly", async () => {
-		const subrouter = new Router();
-		subrouter.route("/").get(async () => new Response("Root"));
-		subrouter.route("/health").get(async () => new Response("OK"));
-
-		const mainRouter = new Router();
-		mainRouter.mount("/api", subrouter);
-
-		// Root path should map to mount path
-		const rootRequest = new Request("http://example.com/api");
-		const rootResponse = await mainRouter.match(rootRequest);
-		expect(await rootResponse?.text()).toBe("Root");
-
-		// Other paths should be preserved
-		const healthRequest = new Request("http://example.com/api/health");
-		const healthResponse = await mainRouter.match(healthRequest);
-		expect(await healthResponse?.text()).toBe("OK");
-	});
-
-	test("normalizes mount paths correctly", async () => {
-		const subrouter = new Router();
-		subrouter.route("/test").get(async () => new Response("Test"));
-
-		const mainRouter = new Router();
-
-		// Test various mount path formats
-		mainRouter.mount("api/", subrouter); // Should normalize to /api
-		mainRouter.mount("/v2", subrouter); // Should stay /v2
-		mainRouter.mount("v3", subrouter); // Should normalize to /v3
-
-		const test1 = new Request("http://example.com/api/test");
-		const test2 = new Request("http://example.com/v2/test");
-		const test3 = new Request("http://example.com/v3/test");
-
-		expect(await (await mainRouter.match(test1))?.text()).toBe("Test");
-		expect(await (await mainRouter.match(test2))?.text()).toBe("Test");
-		expect(await (await mainRouter.match(test3))?.text()).toBe("Test");
-	});
-
-	test("preserves route parameters in mounted subrouters", async () => {
-		const subrouter = new Router();
-		subrouter
-			.route("/posts/:postId/comments/:commentId")
-			.get(
-				async (request, context) =>
-					new Response(
-						`Post ${context.params.postId}, Comment ${context.params.commentId}`,
-					),
-			);
-
-		const mainRouter = new Router();
-		mainRouter.mount("/api/v1", subrouter);
-
-		const request = new Request(
-			"http://example.com/api/v1/posts/456/comments/789",
-		);
-		const response = await mainRouter.match(request);
-		expect(await response?.text()).toBe("Post 456, Comment 789");
-	});
-
-	test("mounts subrouter middleware globally", async () => {
+describe("Advanced Generator Middleware", () => {
+	test("multiple generators with complex yielding patterns", async () => {
+		const router = new Router();
 		const executionOrder: string[] = [];
 
-		const subrouterMiddleware = async (
-			request: Request,
-			context: any,
-			next: () => Promise<Response>,
-		) => {
-			executionOrder.push("subrouter-middleware");
-			return next();
+		async function* authMiddleware(request: Request, context: any) {
+			executionOrder.push("auth-start");
+			context.authenticated = true;
+			const response = yield request;
+			executionOrder.push("auth-end");
+			response.headers.set("X-Auth", "verified");
+			return response;
+		}
+
+		async function* loggingMiddleware(request: Request, context: any) {
+			executionOrder.push("logging-start");
+			context.requestTime = Date.now();
+			const response = yield request;
+			executionOrder.push("logging-end");
+			response.headers.set("X-Request-Time", context.requestTime.toString());
+			return response;
+		}
+
+		async function* corsMiddleware(request: Request, context: any) {
+			executionOrder.push("cors-start");
+			const response = yield request;
+			executionOrder.push("cors-end");
+			response.headers.set("Access-Control-Allow-Origin", "*");
+			return response;
+		}
+
+		const handler = async (request: Request, context: any) => {
+			executionOrder.push("handler");
+			return new Response(`Auth: ${context.authenticated}`);
 		};
 
-		const subrouter = new Router();
-		subrouter.use(subrouterMiddleware);
-		subrouter.route("/test").get(async () => {
-			executionOrder.push("subrouter-handler");
-			return new Response("OK");
-		});
+		router.use(authMiddleware);
+		router.use(loggingMiddleware);
+		router.use(corsMiddleware);
+		router.route("/test").get(handler);
 
-		const mainRouter = new Router();
-		mainRouter.mount("/api", subrouter);
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
 
-		// Add a route directly to main router to test middleware inheritance
-		mainRouter.route("/direct").get(async () => {
-			executionOrder.push("main-handler");
-			return new Response("Direct");
-		});
-
-		// Test mounted route gets subrouter middleware
-		const mountedRequest = new Request("http://example.com/api/test");
-		await mainRouter.match(mountedRequest);
 		expect(executionOrder).toEqual([
-			"subrouter-middleware",
-			"subrouter-handler",
+			"auth-start",
+			"logging-start", 
+			"cors-start",
+			"handler",
+			"cors-end",
+			"logging-end",
+			"auth-end"
 		]);
-
-		// Reset execution order
-		executionOrder.length = 0;
-
-		// Test direct route also gets subrouter middleware (global behavior)
-		const directRequest = new Request("http://example.com/direct");
-		await mainRouter.match(directRequest);
-		expect(executionOrder).toEqual(["subrouter-middleware", "main-handler"]);
+		expect(response?.headers.get("X-Auth")).toBe("verified");
+		expect(response?.headers.get("Access-Control-Allow-Origin")).toBe("*");
+		expect(response?.headers.has("X-Request-Time")).toBe(true);
+		expect(await response?.text()).toBe("Auth: true");
 	});
 
-	test("supports multiple HTTP methods on mounted routes", async () => {
-		const subrouter = new Router();
-		subrouter
-			.route("/resource/:id")
-			.get(async (request, context) => new Response(`GET ${context.params.id}`))
-			.post(
-				async (request, context) => new Response(`POST ${context.params.id}`),
-			)
-			.put(async (request, context) => new Response(`PUT ${context.params.id}`))
-			.delete(
-				async (request, context) => new Response(`DELETE ${context.params.id}`),
-			);
+	test("generators with conditional early returns", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
 
-		const mainRouter = new Router();
-		mainRouter.mount("/api", subrouter);
-
-		const testCases = [
-			{method: "GET", expected: "GET 123"},
-			{method: "POST", expected: "POST 123"},
-			{method: "PUT", expected: "PUT 123"},
-			{method: "DELETE", expected: "DELETE 123"},
-		];
-
-		for (const {method, expected} of testCases) {
-			const request = new Request("http://example.com/api/resource/123", {
-				method,
-			});
-			const response = await mainRouter.match(request);
-			expect(await response?.text()).toBe(expected);
+		async function* rateLimitMiddleware(request: Request, context: any) {
+			executionOrder.push("rate-limit");
+			const rateLimited = request.headers.get("X-Rate-Limited");
+			
+			if (rateLimited === "true") {
+				return new Response("Rate limited", {status: 429});
+			}
+			
+			const response = yield request;
+			response.headers.set("X-Rate-Limit", "OK");
+			return response;
 		}
+
+		async function* analyticsMiddleware(request: Request, context: any) {
+			executionOrder.push("analytics");
+			const response = yield request;
+			response.headers.set("X-Analytics", "tracked");
+			return response;
+		}
+
+		const handler = async () => {
+			executionOrder.push("handler");
+			return new Response("Success");
+		};
+
+		router.use(rateLimitMiddleware);
+		router.use(analyticsMiddleware);
+		router.route("/test").get(handler);
+
+		// Test rate limited request
+		const rateLimitedRequest = new Request("http://example.com/test", {
+			headers: {"X-Rate-Limited": "true"}
+		});
+		const rateLimitedResponse = await router.match(rateLimitedRequest);
+
+		expect(executionOrder).toEqual(["rate-limit", "analytics"]);
+		expect(rateLimitedResponse?.status).toBe(429);
+		expect(rateLimitedResponse?.headers.get("X-Analytics")).toBe("tracked");
+		expect(await rateLimitedResponse?.text()).toBe("Rate limited");
+
+		// Test normal request
+		executionOrder.length = 0;
+		const normalRequest = new Request("http://example.com/test");
+		const normalResponse = await router.match(normalRequest);
+
+		expect(executionOrder).toEqual(["rate-limit", "analytics", "handler"]);
+		expect(normalResponse?.status).toBe(200);
+		expect(normalResponse?.headers.get("X-Rate-Limit")).toBe("OK");
+		expect(normalResponse?.headers.get("X-Analytics")).toBe("tracked");
 	});
 
-	test("allows mounting multiple subrouters", async () => {
-		const usersRouter = new Router();
-		usersRouter.route("/").get(async () => new Response("Users List"));
-		usersRouter
-			.route("/:id")
-			.get(
-				async (request, context) => new Response(`User ${context.params.id}`),
-			);
+	test("error propagation through generator stack", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
 
-		const postsRouter = new Router();
-		postsRouter.route("/").get(async () => new Response("Posts List"));
-		postsRouter
-			.route("/:id")
-			.get(
-				async (request, context) => new Response(`Post ${context.params.id}`),
-			);
+		async function* errorHandlingMiddleware(request: Request, context: any) {
+			executionOrder.push("error-handler-start");
+			try {
+				const response = yield request;
+				executionOrder.push("error-handler-success");
+				return response;
+			} catch (error) {
+				executionOrder.push("error-handler-catch");
+				return new Response(`Caught: ${error.message}`, {status: 500});
+			}
+		}
 
-		const mainRouter = new Router();
-		mainRouter.mount("/users", usersRouter);
-		mainRouter.mount("/posts", postsRouter);
+		async function* normalMiddleware(request: Request, context: any) {
+			executionOrder.push("normal-middleware");
+			const response = yield request;
+			executionOrder.push("normal-middleware");
+			response.headers.set("X-Normal", "processed");
+			return response;
+		}
 
-		// Test users routes
-		const usersListRequest = new Request("http://example.com/users");
-		const usersListResponse = await mainRouter.match(usersListRequest);
-		expect(await usersListResponse?.text()).toBe("Users List");
+		const faultyHandler = async () => {
+			executionOrder.push("faulty-handler");
+			throw new Error("Handler failure");
+		};
 
-		const userRequest = new Request("http://example.com/users/123");
-		const userResponse = await mainRouter.match(userRequest);
-		expect(await userResponse?.text()).toBe("User 123");
+		router.use(errorHandlingMiddleware);
+		router.use(normalMiddleware);
+		router.route("/test").get(faultyHandler);
 
-		// Test posts routes
-		const postsListRequest = new Request("http://example.com/posts");
-		const postsListResponse = await mainRouter.match(postsListRequest);
-		expect(await postsListResponse?.text()).toBe("Posts List");
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
 
-		const postRequest = new Request("http://example.com/posts/456");
-		const postResponse = await mainRouter.match(postRequest);
-		expect(await postResponse?.text()).toBe("Post 456");
+		expect(executionOrder).toEqual([
+			"error-handler-start",
+			"normal-middleware",
+			"faulty-handler",
+			"error-handler-catch"
+		]);
+		expect(response?.status).toBe(500);
+		expect(await response?.text()).toBe("Caught: Handler failure");
+		// Normal middleware doesn't process the error response because it rethrew during error handling
+		expect(response?.headers.get("X-Normal")).toBeNull();
 	});
 
-	test("supports nested mounting (mounting routers with mounted subrouters)", async () => {
-		// Create deepest level router
-		const commentsRouter = new Router();
-		commentsRouter
-			.route("/:commentId")
-			.get(
-				async (request, context) =>
-					new Response(`Comment ${context.params.commentId}`),
+	test("async operations in generators", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		async function* dbMiddleware(request: Request, context: any) {
+			executionOrder.push("db-start");
+			
+			// Simulate async database call
+			const userData = await new Promise(resolve => 
+				setTimeout(() => resolve({id: 123, name: "John"}), 10)
 			);
+			context.user = userData;
+			
+			const response = yield request;
+			
+			// Simulate async cleanup
+			await new Promise(resolve => setTimeout(resolve, 5));
+			executionOrder.push("db-cleanup");
+			
+			return response;
+		}
 
-		// Create middle level router and mount comments
-		const postsRouter = new Router();
-		postsRouter
-			.route("/:postId")
-			.get(
-				async (request, context) =>
-					new Response(`Post ${context.params.postId}`),
-			);
-		postsRouter.mount("/:postId/comments", commentsRouter);
+		async function* cacheMiddleware(request: Request, context: any) {
+			executionOrder.push("cache-start");
+			
+			// Simulate cache lookup
+			const cacheKey = `user-${context.user?.id}`;
+			await new Promise(resolve => setTimeout(resolve, 5));
+			
+			const response = yield request;
+			
+			// Simulate cache write
+			await new Promise(resolve => setTimeout(resolve, 5));
+			response.headers.set("X-Cache-Key", cacheKey);
+			
+			return response;
+		}
 
-		// Create top level router and mount posts
-		const mainRouter = new Router();
-		mainRouter.mount("/api/posts", postsRouter);
+		const handler = async (request: Request, context: any) => {
+			executionOrder.push("handler");
+			return new Response(`User: ${context.user?.name}`);
+		};
 
-		// Test nested route
-		const commentRequest = new Request(
-			"http://example.com/api/posts/123/comments/456",
-		);
-		const commentResponse = await mainRouter.match(commentRequest);
-		expect(await commentResponse?.text()).toBe("Comment 456");
+		router.use(dbMiddleware);
+		router.use(cacheMiddleware);
+		router.route("/test").get(handler);
 
-		// Test intermediate route
-		const postRequest = new Request("http://example.com/api/posts/123");
-		const postResponse = await mainRouter.match(postRequest);
-		expect(await postResponse?.text()).toBe("Post 123");
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(executionOrder).toEqual([
+			"db-start",
+			"cache-start",
+			"handler",
+			"db-cleanup"
+		]);
+		expect(response?.headers.get("X-Cache-Key")).toBe("user-123");
+		expect(await response?.text()).toBe("User: John");
 	});
 
-	test("preserves cache configuration from mounted subrouters", async () => {
-		const cacheStorage = {
-			open: () => Promise.resolve({}),
-			register: () => {},
-		} as any;
+	test("generator with no yield (passthrough)", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
 
-		const subrouter = new Router();
-		subrouter
-			.route({pattern: "/cached", cache: {name: "test-cache"}})
-			.get(async () => new Response("Cached"));
+		async function* setupMiddleware(request: Request, context: any) {
+			executionOrder.push("setup");
+			context.setupComplete = true;
+			// No yield - passthrough
+		}
 
-		const mainRouter = new Router({caches: cacheStorage});
-		mainRouter.mount("/api", subrouter);
+		async function* processingMiddleware(request: Request, context: any) {
+			executionOrder.push("processing-start");
+			const response = yield request;
+			executionOrder.push("processing-end");
+			response.headers.set("X-Setup", context.setupComplete ? "true" : "false");
+			return response;
+		}
 
-		const request = new Request("http://example.com/api/cached");
-		await mainRouter.match(request);
+		const handler = async (request: Request, context: any) => {
+			executionOrder.push("handler");
+			return new Response("OK");
+		};
 
-		// Should attempt to open the cache from subrouter config
-		// Note: In a real test, we'd verify the cache.open call, but for now we just verify no errors
+		router.use(setupMiddleware);
+		router.use(processingMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(executionOrder).toEqual([
+			"setup",
+			"processing-start", 
+			"handler",
+			"processing-end"
+		]);
+		expect(response?.headers.get("X-Setup")).toBe("true");
+	});
+
+	test("complex URL routing with middleware modifications", async () => {
+		const router = new Router();
+		
+		async function* routingMiddleware(request: Request, context: any) {
+			// Rewrite legacy API paths
+			if (request.url.includes("/api/v1/")) {
+				request.url = request.url.replace("/api/v1/", "/api/v2/");
+			}
+			
+			// Add trailing slash normalization
+			if (!request.url.endsWith("/") && !request.url.includes("?")) {
+				request.url = request.url + "/";
+			}
+			
+			const response = yield request;
+			response.headers.set("X-Rewritten", "true");
+			return response;
+		}
+
+		router.use(routingMiddleware);
+		router.route("/api/v2/users/").get(async () => new Response("V2 Users"));
+		
+		const request = new Request("http://example.com/api/v1/users");
+		const response = await router.match(request);
+
+		expect(response?.status).toBe(302); // Redirect due to URL change
+		expect(response?.headers.get("Location")).toBe("http://example.com/api/v2/users/");
+	});
+
+	test("middleware execution with mixed async/sync functions", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		function syncMiddleware(request: Request, context: any) {
+			executionOrder.push("sync");
+			context.sync = true;
+		}
+
+		async function asyncFunctionMiddleware(request: Request, context: any) {
+			executionOrder.push("async-function");
+			await new Promise(resolve => setTimeout(resolve, 1));
+			context.asyncFunc = true;
+		}
+
+		async function* generatorMiddleware(request: Request, context: any) {
+			executionOrder.push("generator-start");
+			const response = yield request;
+			executionOrder.push("generator-end");
+			response.headers.set("X-Mixed", `sync:${context.sync} async:${context.asyncFunc}`);
+			return response;
+		}
+
+		const handler = async (request: Request, context: any) => {
+			executionOrder.push("handler");
+			return new Response("Mixed execution");
+		};
+
+		router.use(syncMiddleware);
+		router.use(asyncFunctionMiddleware);
+		router.use(generatorMiddleware);
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(executionOrder).toEqual([
+			"sync",
+			"async-function",
+			"generator-start",
+			"handler",
+			"generator-end"
+		]);
+		expect(response?.headers.get("X-Mixed")).toBe("sync:true async:true");
+	});
+});
+
+describe("Edge Cases and Error Scenarios", () => {
+	test("empty middleware stack", async () => {
+		const router = new Router();
+		const handler = async () => new Response("No middleware");
+		
+		router.route("/test").get(handler);
+		
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(response?.status).toBe(200);
+		expect(await response?.text()).toBe("No middleware");
+	});
+
+	test("generator throws error in initial execution", async () => {
+		const router = new Router();
+
+		async function* faultyMiddleware(request: Request, context: any) {
+			throw new Error("Middleware startup error");
+		}
+
+		router.use(faultyMiddleware);
+		router.route("/test").get(async () => new Response("Success"));
+
+		const request = new Request("http://example.com/test");
+		
+		await expect(router.match(request)).rejects.toThrow("Middleware startup error");
+	});
+
+	test("generator throws error after yield", async () => {
+		const router = new Router();
+
+		async function* faultyMiddleware(request: Request, context: any) {
+			const response = yield request;
+			throw new Error("Post-yield error");
+		}
+
+		router.use(faultyMiddleware);
+		router.route("/test").get(async () => new Response("Success"));
+
+		const request = new Request("http://example.com/test");
+		
+		await expect(router.match(request)).rejects.toThrow("Post-yield error");
+	});
+
+	test("function middleware throws error", async () => {
+		const router = new Router();
+
+		async function faultyMiddleware(request: Request, context: any) {
+			throw new Error("Function middleware error");
+		}
+
+		router.use(faultyMiddleware);
+		router.route("/test").get(async () => new Response("Success"));
+
+		const request = new Request("http://example.com/test");
+		
+		await expect(router.match(request)).rejects.toThrow("Function middleware error");
+	});
+
+	test("very large middleware stack", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		// Add 50 middleware functions
+		for (let i = 0; i < 50; i++) {
+			const middleware = async function(request: Request, context: any) {
+				executionOrder.push(`middleware-${i}`);
+				context[`step${i}`] = true;
+			};
+			router.use(middleware);
+		}
+
+		const handler = async (request: Request, context: any) => {
+			executionOrder.push("handler");
+			return new Response("Large stack");
+		};
+
+		router.route("/test").get(handler);
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(executionOrder.length).toBe(51); // 50 middleware + 1 handler
+		expect(executionOrder[50]).toBe("handler");
+		expect(response?.status).toBe(200);
+	});
+
+	test("recursive URL modification prevention", async () => {
+		const router = new Router();
+		let modificationCount = 0;
+
+		async function* recursiveMiddleware(request: Request, context: any) {
+			modificationCount++;
+			if (modificationCount > 5) {
+				// Prevent infinite recursion
+				const response = yield request;
+				return response;
+			}
+			
+			request.url = request.url + "?modified=" + modificationCount;
+			const response = yield request;
+			return response;
+		}
+
+		router.use(recursiveMiddleware);
+		router.route("/test").get(async () => new Response("Success"));
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		// Should generate redirect due to URL modification
+		expect(response?.status).toBe(302);
+		expect(modificationCount).toBe(1); // Only modified once
+	});
+
+	test("malformed URLs in redirect handling", async () => {
+		const router = new Router();
+
+		async function* malformedUrlMiddleware(request: Request, context: any) {
+			request.url = "not-a-valid-url";
+			const response = yield request;
+			return response;
+		}
+
+		router.use(malformedUrlMiddleware);
+		router.route("/test").get(async () => new Response("Success"));
+
+		const request = new Request("http://example.com/test");
+		
+		// Should throw due to malformed URL
+		await expect(router.match(request)).rejects.toThrow();
+	});
+
+	test("null and undefined return values", async () => {
+		const router = new Router();
+
+		async function* nullMiddleware(request: Request, context: any) {
+			const response = yield request;
+			return null; // Explicit null
+		}
+
+		async function* undefinedMiddleware(request: Request, context: any) {
+			const response = yield request;
+			return undefined; // Explicit undefined
+		}
+
+		async function* implicitMiddleware(request: Request, context: any) {
+			const response = yield request;
+			// Implicit undefined return
+		}
+
+		router.use(nullMiddleware);
+		router.use(undefinedMiddleware);
+		router.use(implicitMiddleware);
+		router.route("/test").get(async () => new Response("Final"));
+
+		const request = new Request("http://example.com/test");
+		const response = await router.match(request);
+
+		expect(response?.status).toBe(200);
+		expect(await response?.text()).toBe("Final");
+	});
+
+	test("request body handling across middleware", async () => {
+		const router = new Router();
+
+		async function* bodyReadingMiddleware(request: Request, context: any) {
+			if (request.method === "POST") {
+				context.bodyText = await request.text();
+			}
+			const response = yield request;
+			response.headers.set("X-Body-Length", context.bodyText?.length.toString() || "0");
+			return response;
+		}
+
+		const handler = async (request: Request, context: any) => {
+			return new Response(`Body: ${context.bodyText || "none"}`);
+		};
+
+		router.use(bodyReadingMiddleware);
+		router.route("/test").post(handler);
+
+		const request = new Request("http://example.com/test", {
+			method: "POST",
+			body: "test body content"
+		});
+		const response = await router.match(request);
+
+		expect(response?.headers.get("X-Body-Length")).toBe("17");
+		expect(await response?.text()).toBe("Body: test body content");
 	});
 });

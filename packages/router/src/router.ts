@@ -2,6 +2,8 @@ import {MatchPattern} from "@b9g/match-pattern";
 import type {
 	Handler,
 	Middleware,
+	GeneratorMiddleware,
+	FunctionMiddleware,
 	RouteEntry,
 	MiddlewareEntry,
 	RouteContext,
@@ -63,21 +65,11 @@ class LinearExecutor {
  *     .delete(deleteUserHandler);
  */
 class RouteBuilder {
-	private middleware: Middleware[] = [];
-
 	constructor(
 		private router: Router,
 		private pattern: string,
 		private cacheConfig?: RouteCacheConfig,
 	) {}
-
-	/**
-	 * Add middleware to this route
-	 */
-	use(middleware: Middleware): RouteBuilder {
-		this.middleware.push(middleware);
-		return this;
-	}
 
 	/**
 	 * Register a GET handler for this route pattern
@@ -88,7 +80,6 @@ class RouteBuilder {
 			this.pattern,
 			handler,
 			this.cacheConfig,
-			this.middleware,
 		);
 		return this;
 	}
@@ -102,7 +93,6 @@ class RouteBuilder {
 			this.pattern,
 			handler,
 			this.cacheConfig,
-			this.middleware,
 		);
 		return this;
 	}
@@ -116,7 +106,6 @@ class RouteBuilder {
 			this.pattern,
 			handler,
 			this.cacheConfig,
-			this.middleware,
 		);
 		return this;
 	}
@@ -130,7 +119,6 @@ class RouteBuilder {
 			this.pattern,
 			handler,
 			this.cacheConfig,
-			this.middleware,
 		);
 		return this;
 	}
@@ -144,7 +132,6 @@ class RouteBuilder {
 			this.pattern,
 			handler,
 			this.cacheConfig,
-			this.middleware,
 		);
 		return this;
 	}
@@ -158,7 +145,6 @@ class RouteBuilder {
 			this.pattern,
 			handler,
 			this.cacheConfig,
-			this.middleware,
 		);
 		return this;
 	}
@@ -172,7 +158,6 @@ class RouteBuilder {
 			this.pattern,
 			handler,
 			this.cacheConfig,
-			this.middleware,
 		);
 		return this;
 	}
@@ -196,7 +181,6 @@ class RouteBuilder {
 				this.pattern,
 				handler,
 				this.cacheConfig,
-				this.middleware,
 			);
 		});
 		return this;
@@ -240,9 +224,16 @@ export class Router {
 			this.addRoute("HEAD", patternOrMiddleware, handler);
 			this.addRoute("OPTIONS", patternOrMiddleware, handler);
 		} else if (typeof patternOrMiddleware === "function") {
-			// Global middleware registration
+			// Validate middleware type
+			if (!this.isValidMiddleware(patternOrMiddleware)) {
+				throw new Error("Invalid middleware type. Must be function or async generator function.");
+			}
+			
+			// Global middleware registration with automatic type detection
 			this.middlewares.push({middleware: patternOrMiddleware});
 			this.dirty = true;
+		} else {
+			throw new Error("Invalid middleware type. Must be function or async generator function.");
 		}
 	}
 
@@ -282,35 +273,13 @@ export class Router {
 		pattern: string,
 		handler: Handler,
 		cache?: RouteCacheConfig,
-		middleware?: Middleware[],
 	): void {
 		const matchPattern = new MatchPattern(pattern);
-
-		// Create composite handler that runs middleware chain before final handler
-		const compositeHandler: Handler = async (
-			request: Request,
-			context: RouteContext,
-		) => {
-			if (!middleware || middleware.length === 0) {
-				return handler(request, context);
-			}
-
-			let middlewareIndex = 0;
-			const next = async (): Promise<Response> => {
-				if (middlewareIndex >= middleware.length) {
-					return handler(request, context);
-				}
-				const currentMiddleware = middleware[middlewareIndex++];
-				return currentMiddleware(request, context, next);
-			};
-
-			return next();
-		};
 
 		this.routes.push({
 			pattern: matchPattern,
 			method: method.toUpperCase(),
-			handler: compositeHandler,
+			handler: handler,
 			cache,
 		});
 		this.dirty = true;
@@ -336,19 +305,36 @@ export class Router {
 				matchResult.context,
 				matchResult.cacheConfig,
 			);
-			return this.executeMiddlewareChain(request, context, matchResult.handler);
+			const mutableRequest = this.createMutableRequest(request);
+			return this.executeMiddlewareStack(
+				this.middlewares,
+				mutableRequest,
+				context,
+				matchResult.handler,
+				request.url,
+				this.executor
+			);
 		} else {
 			// No route found - execute global middleware with 404 fallback
 			const notFoundHandler = async (): Promise<Response> => {
 				return new Response("Not Found", {status: 404});
 			};
-			return this.executeMiddlewareChain(request, {}, notFoundHandler);
+			const mutableRequest = this.createMutableRequest(request);
+			return this.executeMiddlewareStack(
+				this.middlewares,
+				mutableRequest,
+				{params: {}},
+				notFoundHandler,
+				request.url,
+				this.executor
+			);
 		}
 	};
 
 	/**
 	 * Match a request against registered routes and execute the handler chain
 	 * Returns the response from the matched handler, or null if no route matches
+	 * Note: Global middleware executes even if no route matches
 	 */
 	async match(request: Request): Promise<Response | null> {
 		// Lazy compilation - build executor on first match
@@ -357,20 +343,44 @@ export class Router {
 			this.dirty = false;
 		}
 
-		// Find matching route
-		const matchResult = this.executor.match(request);
-		if (!matchResult) {
+		// Create mutable request wrapper for URL modifications
+		const mutableRequest = this.createMutableRequest(request);
+		const originalUrl = mutableRequest.url;
+
+		// Try to find a route match first
+		let matchResult = this.executor.match(request);
+		let handler: Handler;
+		let context: RouteContext;
+
+		if (matchResult) {
+			// Route found - use its handler and context
+			handler = matchResult.handler;
+			context = await this.buildContext(
+				matchResult.context,
+				matchResult.cacheConfig,
+			);
+		} else {
+			// No route found - use 404 handler and empty context
+			handler = async () => new Response("Not Found", {status: 404});
+			context = {params: {}};
+		}
+
+		// Execute middleware chain with the handler
+		const response = await this.executeMiddlewareStack(
+			this.middlewares,
+			mutableRequest,
+			context,
+			handler,
+			originalUrl,
+			this.executor // Pass executor for re-routing
+		);
+
+		// If no route was found originally, return null unless middleware handled it
+		if (!matchResult && response?.status === 404) {
 			return null;
 		}
 
-		// Build complete context with cache access
-		const context = await this.buildContext(
-			matchResult.context,
-			matchResult.cacheConfig,
-		);
-
-		// Execute middleware chain followed by the handler
-		return this.executeMiddlewareChain(request, context, matchResult.handler);
+		return response;
 	}
 
 	/**
@@ -399,30 +409,6 @@ export class Router {
 		return context;
 	}
 
-	/**
-	 * Execute the middleware chain and final handler
-	 * Each middleware can short-circuit by returning a Response without calling next()
-	 */
-	private async executeMiddlewareChain(
-		request: Request,
-		context: RouteContext,
-		handler: Handler,
-	): Promise<Response> {
-		let middlewareIndex = 0;
-
-		const next = async (): Promise<Response> => {
-			// If we've executed all middleware, call the final handler
-			if (middlewareIndex >= this.middlewares.length) {
-				return handler(request, context);
-			}
-
-			// Execute the next middleware
-			const middleware = this.middlewares[middlewareIndex++];
-			return middleware.middleware(request, context, next);
-		};
-
-		return next();
-	}
 
 	/**
 	 * Get registered routes for debugging/introspection
@@ -514,6 +500,214 @@ export class Router {
 		}
 
 		return mountPath + routePattern;
+	}
+
+	/**
+	 * Validate that a function is valid middleware
+	 */
+	private isValidMiddleware(middleware: Middleware): boolean {
+		const constructorName = middleware.constructor.name;
+		return constructorName === 'AsyncGeneratorFunction' || 
+		       constructorName === 'AsyncFunction' ||
+		       constructorName === 'Function';
+	}
+
+	/**
+	 * Detect if a function is a generator middleware
+	 */
+	private isGeneratorMiddleware(middleware: Middleware): boolean {
+		return middleware.constructor.name === 'AsyncGeneratorFunction';
+	}
+
+	/**
+	 * Execute middleware stack with guaranteed execution using Rack-style LIFO order
+	 */
+	private async executeMiddlewareStack(
+		middlewares: MiddlewareEntry[],
+		request: any,
+		context: RouteContext,
+		handler: Handler,
+		originalUrl: string,
+		executor?: LinearExecutor | null
+	): Promise<Response> {
+		const runningGenerators: Array<{generator: AsyncGenerator, index: number}> = [];
+		let currentResponse: Response | null = null;
+
+		// Phase 1: Execute all middleware "before" phases (request processing)
+		for (let i = 0; i < middlewares.length; i++) {
+			const middleware = middlewares[i].middleware;
+			
+			if (this.isGeneratorMiddleware(middleware)) {
+				const generator = (middleware as GeneratorMiddleware)(request, context);
+				const result = await generator.next();
+
+				if (result.done) {
+					// Early return (0 yields) - set response and continue processing remaining middleware
+					if (result.value) {
+						currentResponse = result.value;
+					}
+				} else {
+					// Generator yielded - save for later resumption
+					runningGenerators.push({generator, index: i});
+				}
+			} else {
+				// Function middleware - execute immediately
+				await (middleware as FunctionMiddleware)(request, context);
+			}
+		}
+
+		// Phase 2: Get handler response if no middleware returned early
+		if (!currentResponse) {
+			// Check if URL was modified and re-route if needed
+			let finalHandler = handler;
+			let finalContext = context;
+			
+			if (request.url !== originalUrl && executor) {
+				const newMatchResult = executor.match(new Request(request.url, {
+					method: request.method,
+					headers: request.headers,
+					body: request.body
+				}));
+				
+				if (newMatchResult) {
+					finalHandler = newMatchResult.handler;
+					finalContext = await this.buildContext(
+						newMatchResult.context,
+						newMatchResult.cacheConfig || undefined,
+					);
+				}
+			}
+			
+			// Execute handler
+			let handlerError: Error | null = null;
+			try {
+				currentResponse = await finalHandler(request, finalContext);
+			} catch (error) {
+				handlerError = error;
+			}
+			
+			// Handle errors through generator stack if needed
+			if (handlerError) {
+				currentResponse = await this.handleErrorThroughGenerators(handlerError, runningGenerators);
+			}
+		}
+
+		// Handle automatic redirects if URL was modified - do this before resuming generators
+		// so that generators can process the redirect response
+		if (request.url !== originalUrl && currentResponse) {
+			currentResponse = this.handleAutomaticRedirect(originalUrl, request.url, request.method);
+		}
+
+		// Phase 3: Resume all generators in reverse order (LIFO - Last In First Out)
+		// This implements the Rack-style guaranteed execution
+		for (let i = runningGenerators.length - 1; i >= 0; i--) {
+			const {generator} = runningGenerators[i];
+			try {
+				const result = await generator.next(currentResponse);
+				if (result.value) {
+					currentResponse = result.value;
+				}
+			} catch (error) {
+				// Generator had an error during normal resumption - let it propagate
+				throw error;
+			}
+		}
+
+		return currentResponse!;
+	}
+
+	/**
+	 * Handle errors by trying generators in reverse order
+	 */
+	private async handleErrorThroughGenerators(
+		error: Error,
+		runningGenerators: Array<{generator: AsyncGenerator, index: number}>
+	): Promise<Response> {
+		// Try error handling starting from the innermost middleware (reverse order)
+		for (let i = runningGenerators.length - 1; i >= 0; i--) {
+			const {generator} = runningGenerators[i];
+			
+			try {
+				const result = await generator.throw(error);
+				if (result.value) {
+					// This generator handled the error - remove it from the stack
+					// so it doesn't get resumed again in phase 3
+					runningGenerators.splice(i, 1);
+					return result.value;
+				}
+			} catch (generatorError) {
+				// This generator rethrew - continue to next generator
+				// Remove this generator from the stack since it failed
+				runningGenerators.splice(i, 1);
+				continue;
+			}
+		}
+		
+		// No generator handled the error
+		throw error;
+	}
+
+	/**
+	 * Create a mutable request wrapper that allows URL modification
+	 */
+	private createMutableRequest(request: Request): any {
+		return {
+			url: request.url,
+			method: request.method,
+			headers: new Headers(request.headers),
+			body: request.body,
+			bodyUsed: request.bodyUsed,
+			cache: request.cache,
+			credentials: request.credentials,
+			destination: request.destination,
+			integrity: request.integrity,
+			keepalive: request.keepalive,
+			mode: request.mode,
+			redirect: request.redirect,
+			referrer: request.referrer,
+			referrerPolicy: request.referrerPolicy,
+			signal: request.signal,
+			// Add all other Request methods
+			arrayBuffer: () => request.arrayBuffer(),
+			blob: () => request.blob(),
+			clone: () => request.clone(),
+			formData: () => request.formData(),
+			json: () => request.json(),
+			text: () => request.text()
+		};
+	}
+
+	/**
+	 * Handle automatic redirects when URL is modified
+	 */
+	private handleAutomaticRedirect(originalUrl: string, newUrl: string, method: string): Response {
+		const originalURL = new URL(originalUrl);
+		const newURL = new URL(newUrl);
+
+		// Security: Only allow same-origin redirects (allow protocol upgrades)
+		if (originalURL.hostname !== newURL.hostname || 
+		    (originalURL.port !== newURL.port && originalURL.port !== '' && newURL.port !== '')) {
+			throw new Error(`Cross-origin redirect not allowed: ${originalUrl} -> ${newUrl}`);
+		}
+
+		// Choose appropriate redirect status code
+		let status = 302; // Default temporary redirect
+
+		// Protocol changes (http -> https) get 301 permanent
+		if (originalURL.protocol !== newURL.protocol) {
+			status = 301;
+		}
+		// Non-GET methods get 307 to preserve method and body
+		else if (method.toUpperCase() !== 'GET') {
+			status = 307;
+		}
+
+		return new Response(null, {
+			status,
+			headers: {
+				Location: newUrl
+			}
+		});
 	}
 
 	/**

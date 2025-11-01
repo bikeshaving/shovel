@@ -11,6 +11,9 @@ export interface RouteContext {
 
 	/** Access to all registered caches */
 	caches?: import("@b9g/cache").CacheStorage;
+
+	/** Middleware can add arbitrary properties for context sharing */
+	[key: string]: any;
 }
 
 /**
@@ -23,14 +26,28 @@ export type Handler = (
 ) => Response | Promise<Response>;
 
 /**
- * Middleware function signature - can pass control to next middleware/handler
- * Has next() function for flow control
+ * Generator middleware signature - uses yield for continuation
+ * Provides clean syntax and eliminates control flow bugs
  */
-export type Middleware = (
+export type GeneratorMiddleware = (
 	request: Request,
 	context: RouteContext,
-	next: () => Promise<Response>,
-) => Response | Promise<Response>;
+) => AsyncGenerator<Request, Response | null | undefined, Response>;
+
+/**
+ * Function middleware signature - implicit passthrough behavior
+ * Perfect for simple request/context enrichment
+ */
+export type FunctionMiddleware = (
+	request: Request,
+	context: RouteContext,
+) => void | Promise<void>;
+
+/**
+ * Union type for all supported middleware types
+ * Framework automatically detects type and executes appropriately
+ */
+export type Middleware = GeneratorMiddleware | FunctionMiddleware;
 
 /**
  * HTTP methods supported by the router

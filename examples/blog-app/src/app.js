@@ -45,26 +45,35 @@ router.use(
 	}),
 );
 
-// Cache middleware for pages
-const pageCache = async (request, context, next) => {
+// Global page cache middleware
+router.use(pageCache);
+
+// Cache middleware for pages using new generator API
+async function* pageCache(request, context) {
 	if (request.method !== "GET" || !context.cache) {
-		return next();
+		// No caching - just passthrough
+		const response = yield request;
+		return response;
 	}
 
 	const cached = await context.cache.match(request);
 	if (cached) {
+		// Cache hit - return early with cached response
 		cached.headers.set("X-Cache", "HIT");
 		return cached;
 	}
 
-	const response = await next();
+	// Cache miss - continue to handler
+	const response = yield request;
+	
+	// Cache the response for next time
 	if (response.ok) {
 		await context.cache.put(request, response.clone());
 	}
 
 	response.headers.set("X-Cache", "MISS");
 	return response;
-};
+}
 
 // Sample blog data
 const posts = [
@@ -100,7 +109,6 @@ router
 		pattern: "/",
 		cache: {name: "pages"},
 	})
-	.use(pageCache)
 	.get(async (request, context) => {
 		return new Response(
 			renderPage(
@@ -140,7 +148,6 @@ router
 		pattern: "/posts/:id",
 		cache: {name: "pages"},
 	})
-	.use(pageCache)
 	.get(async (request, context) => {
 		const post = posts.find((p) => p.id === parseInt(context.params.id));
 
@@ -221,7 +228,6 @@ router
 		pattern: "/about",
 		cache: {name: "pages"},
 	})
-	.use(pageCache)
 	.get(async (request, context) => {
 		return new Response(
 			renderPage(
