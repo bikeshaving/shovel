@@ -11,12 +11,15 @@
     }
   },
   "scripts": {
-    "dev": "bun run --watch src/app.js",
-    "build": "echo 'No build step needed for Bun deployment'",
+    "dev": "shovel develop src/app.js",
+    "build": "shovel build src/app.js",
     "start": "bun src/app.js",
-    "db:seed": "bun src/db/seed.js"
+    "db:seed": "bun src/db/seed.js",
+    "deploy": "fly deploy"
   },
   "dependencies": {
+    "@b9g/platform": "workspace:*",
+    "@b9g/platform-bun": "workspace:*",
     "@b9g/router": "workspace:*",
     "@b9g/assets": "workspace:*"
   },
