@@ -266,17 +266,22 @@ self.addEventListener("activate", (event) => {
 async function generateStaticSite() {
 	console.info("[Blog App] Starting static site generation...");
 	
-	// Define routes to pre-render
-	const staticRoutes = [
-		"/",
-		"/about",
-		"/api/posts",
-		...posts.map((post) => `/posts/${post.id}`)
-	];
-	
 	try {
-		// Get static directory for output
+		// Get directories
 		const staticDir = await self.dirs.open("static");
+		const assetsDir = await self.dirs.open("assets");
+		
+		// First, copy assets to static/assets/ for self-contained deployment
+		console.info("[Blog App] Copying assets...");
+		await copyAssetsToStatic(assetsDir, staticDir);
+		
+		// Define routes to pre-render
+		const staticRoutes = [
+			"/",
+			"/about",
+			"/api/posts",
+			...posts.map((post) => `/posts/${post.id}`)
+		];
 		
 		console.info(`[Blog App] Pre-rendering ${staticRoutes.length} routes...`);
 		
@@ -319,6 +324,37 @@ async function generateStaticSite() {
 		console.info("[Blog App] ✅ Static site generation complete!");
 	} catch (error) {
 		console.error("[Blog App] ❌ Static site generation failed:", error.message);
+	}
+}
+
+/**
+ * Copy assets from dist/assets/ to dist/static/assets/ for self-contained deployment
+ */
+async function copyAssetsToStatic(assetsDir, staticDir) {
+	try {
+		// Create assets subdirectory in static
+		const staticAssetsDir = await staticDir.getDirectoryHandle("assets", {create: true});
+		
+		// Copy all files from assets to static/assets
+		for await (const [name, handle] of assetsDir.entries()) {
+			if (handle.kind === "file") {
+				// Read from assets
+				const file = await handle.getFile();
+				const content = await file.arrayBuffer();
+				
+				// Write to static/assets
+				const targetHandle = await staticAssetsDir.getFileHandle(name, {create: true});
+				const writable = await targetHandle.createWritable();
+				await writable.write(content);
+				await writable.close();
+				
+				console.info(`[Blog App] Copied asset: ${name}`);
+			}
+		}
+		
+		console.info("[Blog App] ✅ Assets copied to static/assets/");
+	} catch (error) {
+		console.error("[Blog App] ❌ Failed to copy assets:", error.message);
 	}
 }
 
