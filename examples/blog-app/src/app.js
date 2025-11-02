@@ -9,6 +9,20 @@
 import {Router} from "@b9g/router";
 import {createAssetsMiddleware} from "@b9g/assets";
 
+// Cache control constants
+const CACHE_HEADERS = {
+	ASSETS: "public, max-age=31536000, immutable", // 1 year for assets
+	PAGES: "public, max-age=300", // 5 minutes for pages
+	POSTS: "public, max-age=600", // 10 minutes for posts  
+	API: "public, max-age=180", // 3 minutes for API
+	ABOUT: "public, max-age=3600", // 1 hour for about page
+};
+
+// Timeout constants
+const TIMEOUTS = {
+	ROUTER_RESPONSE: 5000, // 5 seconds for router timeout
+};
+
 // Import static assets using import attributes with new /assets/ path
 import styles from "./assets/styles.css" with {url: "/assets/"};
 import logo from "./assets/logo.svg" with {url: "/assets/"};
@@ -27,7 +41,7 @@ router.use(
 		dev: process.env?.NODE_ENV !== "production",
 		cacheControl:
 			process.env?.NODE_ENV === "production"
-				? "public, max-age=31536000, immutable"
+				? CACHE_HEADERS.ASSETS
 				: "no-cache",
 	}),
 );
@@ -126,7 +140,7 @@ router
 			{
 				headers: {
 					"Content-Type": "text/html",
-					"Cache-Control": "public, max-age=300", // 5 minutes
+					"Cache-Control": CACHE_HEADERS.PAGES,
 				},
 			},
 		);
@@ -175,7 +189,7 @@ router
 			{
 				headers: {
 					"Content-Type": "text/html",
-					"Cache-Control": "public, max-age=600", // 10 minutes
+					"Cache-Control": CACHE_HEADERS.POSTS,
 				},
 			},
 		);
@@ -203,7 +217,7 @@ router
 			},
 			{
 				headers: {
-					"Cache-Control": "public, max-age=180", // 3 minutes
+					"Cache-Control": CACHE_HEADERS.API,
 				},
 			},
 		);
@@ -242,7 +256,7 @@ router
 			{
 				headers: {
 					"Content-Type": "text/html",
-					"Cache-Control": "public, max-age=3600", // 1 hour
+					"Cache-Control": CACHE_HEADERS.ABOUT,
 				},
 			},
 		);
@@ -367,7 +381,7 @@ self.addEventListener("fetch", (event) => {
 
 		// Add timeout to detect hanging promises
 		const timeoutPromise = new Promise((_, reject) => {
-			setTimeout(() => reject(new Error("Router response timeout")), 5000);
+			setTimeout(() => reject(new Error("Router response timeout")), TIMEOUTS.ROUTER_RESPONSE);
 		});
 
 		event.respondWith(

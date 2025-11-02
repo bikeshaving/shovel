@@ -7,6 +7,7 @@ import {watch} from "fs";
 import {resolve, dirname} from "path";
 import {readFileSync} from "fs";
 import {assetsPlugin} from "./assets.ts";
+import {DEFAULTS} from "./config.js";
 
 export interface SimpleWatcherOptions {
 	/** Entry point to build */
@@ -24,7 +25,7 @@ export class SimpleWatcher {
 
 	constructor(options: SimpleWatcherOptions) {
 		this.options = {
-			outDir: "dist",
+			outDir: DEFAULTS.PATHS.OUTPUT_DIR,
 			...options,
 		};
 	}

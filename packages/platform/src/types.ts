@@ -27,9 +27,7 @@ export {
 	getBestPlatformDetection,
 	resolvePlatform,
 	createPlatform,
-	getPlatformDefaults,
 	displayPlatformInfo,
-	type PlatformDefaults,
 } from "./detection.js";
 
 /**

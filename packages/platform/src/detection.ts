@@ -141,40 +141,6 @@ export function resolvePlatform(options: { platform?: string; target?: string })
 	return detectDevelopmentPlatform();
 }
 
-/**
- * Platform-specific defaults
- */
-export interface PlatformDefaults {
-	port: number;
-	host: string;
-	hotReload: boolean;
-}
-
-export function getPlatformDefaults(platformName: string): PlatformDefaults {
-	const baseDefaults: PlatformDefaults = {
-		port: 3000,
-		host: "localhost",
-		hotReload: process.env.NODE_ENV !== "production",
-	};
-
-	switch (platformName) {
-		case "bun":
-			return {
-				...baseDefaults,
-				// Bun-specific overrides could go here
-			};
-
-		case "cloudflare":
-			return {
-				...baseDefaults,
-				hotReload: false, // Workers don't support hot reload in same way
-			};
-
-		case "node":
-		default:
-			return baseDefaults;
-	}
-}
 
 /**
  * Create platform instance based on name

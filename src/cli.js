@@ -7,14 +7,13 @@
  */
 
 import {Command} from "commander";
-import {cpus} from "os";
 import pkg from "../package.json" with {type: "json"};
 import {
 	resolvePlatform,
 	createPlatform,
-	getPlatformDefaults,
 	displayPlatformInfo,
 } from "@b9g/platform";
+import {DEFAULTS, getDefaultWorkerCount} from "./config.js";
 
 /**
  * Determine worker count based on environment and options
@@ -31,15 +30,8 @@ function getWorkerCount(options) {
 		return count;
 	}
 
-	// Environment-based defaults
-	const isProduction = process.env.NODE_ENV === "production";
-	if (isProduction) {
-		// Production: use CPU count for maximum throughput
-		return cpus().length;
-	} else {
-		// Development: use 2 workers to encourage concurrency thinking
-		return 2;
-	}
+	// Use centralized default
+	return getDefaultWorkerCount();
 }
 
 // Main CLI execution starts here
@@ -59,12 +51,12 @@ function getWorkerCount(options) {
 	program
 		.command("develop <entrypoint>")
 		.description("Start development server with hot reloading")
-		.option("-p, --port <port>", "Port to listen on", "3000")
+		.option("-p, --port <port>", "Port to listen on", DEFAULTS.SERVER.PORT.toString())
 		.option(
 			"--platform <platform>",
 			"Explicit platform (node, bun, cloudflare)",
 		)
-		.option("--host <host>", "Host to bind to", "localhost")
+		.option("--host <host>", "Host to bind to", DEFAULTS.SERVER.HOST)
 		.option(
 			"-w, --workers <count>",
 			"Number of worker threads (default: 2 in dev, CPU count in prod)",
@@ -75,7 +67,6 @@ function getWorkerCount(options) {
 		.action(async (entrypoint, options) => {
 			try {
 				const platformName = resolvePlatform(options);
-				const platformDefaults = getPlatformDefaults(platformName);
 				const workerCount = getWorkerCount(options);
 
 				if (options.verbose) {
@@ -86,8 +77,8 @@ function getWorkerCount(options) {
 				// Create platform with smart defaults
 				const platformConfig = {
 					hotReload: true,
-					port: parseInt(options.port) || platformDefaults.port,
-					host: options.host,
+					port: parseInt(options.port) || DEFAULTS.SERVER.PORT,
+					host: options.host || DEFAULTS.SERVER.HOST,
 				};
 
 				// Convert CLI flags to platform config format
@@ -136,16 +127,16 @@ function getWorkerCount(options) {
 					hotReload: true,
 					workerCount,
 					caches: {
-						pages: {type: "memory", maxEntries: 100},
-						api: {type: "memory", ttl: 300000},
+						pages: {type: "memory", maxEntries: DEFAULTS.CACHE.MAX_ENTRIES},
+						api: {type: "memory", ttl: DEFAULTS.CACHE.TTL},
 						static: {type: "memory"},
 					},
 				});
 
 				// Create development server
 				const server = platform.createServer(serviceWorker.handleRequest, {
-					port: parseInt(options.port) || platformDefaults.port,
-					host: options.host,
+					port: parseInt(options.port) || DEFAULTS.SERVER.PORT,
+					host: options.host || DEFAULTS.SERVER.HOST,
 				});
 
 				await server.listen();
@@ -182,7 +173,7 @@ function getWorkerCount(options) {
 			"--target <platform>",
 			"Target platform (node, bun, cloudflare, vercel)",
 		)
-		.option("--out-dir <dir>", "Output directory", "dist")
+		.option("--out-dir <dir>", "Output directory", DEFAULTS.PATHS.OUTPUT_DIR)
 		.option(
 			"-w, --workers <count>",
 			"Number of worker threads (default: CPU count in prod)",
