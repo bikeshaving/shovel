@@ -10,6 +10,7 @@ export {
 	type CloudflarePlatformOptions,
 } from "./platform.js";
 export {createOptionsFromEnv, generateWranglerConfig} from "./wrangler.js";
+export {cloudflareWorkerBanner, cloudflareWorkerFooter} from "./wrapper.js";
 
 // Re-export common platform types
 export type {
