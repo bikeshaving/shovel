@@ -14,6 +14,7 @@ import {
 	ServerOptions,
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
+	createDirectoryStorage,
 } from "@b9g/platform";
 import {CustomCacheStorage, MemoryCache, MemoryCacheManager, PostMessageCache} from "@b9g/cache";
 import {FileSystemRegistry, getFileSystemRoot, NodeFileSystemAdapter, NodeFileSystemDirectoryHandle} from "@b9g/filesystem";

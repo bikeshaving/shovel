@@ -8,19 +8,19 @@
 export interface AssetsConfig {
 	/**
 	 * Directory to output assets
-	 * @default 'dist/static'
+	 * @default 'dist/assets'
 	 */
 	outputDir?: string;
 
 	/**
 	 * Public URL path prefix
-	 * @default '/static/'
+	 * @default '/assets/'
 	 */
 	publicPath?: string;
 
 	/**
 	 * Path to asset manifest file
-	 * @default 'dist/static-manifest.json'
+	 * @default 'dist/assets/manifest.json'
 	 */
 	manifest?: string;
 
@@ -100,9 +100,9 @@ export interface AssetManifest {
  * Default configuration values
  */
 export const DEFAULT_CONFIG: Required<AssetsConfig> = {
-	outputDir: "dist/static",
-	publicPath: "/static/",
-	manifest: "dist/static/manifest.json",
+	outputDir: "dist/assets",
+	publicPath: "/assets/",
+	manifest: "dist/assets/manifest.json",
 	hashLength: 8,
 	includeHash: true,
 };

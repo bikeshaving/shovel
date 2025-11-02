@@ -6,7 +6,7 @@ import * as esbuild from "esbuild";
 import {watch} from "fs";
 import {resolve, dirname} from "path";
 import {readFileSync} from "fs";
-import {staticFilesPlugin} from "./static-files.ts";
+import {assetsPlugin} from "./assets.ts";
 
 export interface SimpleWatcherOptions {
 	/** Entry point to build */
@@ -113,8 +113,8 @@ export class SimpleWatcher {
 				packages: "external",
 				absWorkingDir: workspaceRoot,
 				plugins: [
-					staticFilesPlugin({
-						outputDir: `${outputDir}/static`,
+					assetsPlugin({
+						outputDir: `${outputDir}/assets`,
 						dev: true,
 					}),
 				],

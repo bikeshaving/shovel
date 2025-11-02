@@ -6,7 +6,7 @@
 import * as esbuild from "esbuild";
 import {resolve, join, dirname} from "path";
 import {mkdir, readFile} from "fs/promises";
-import {staticFilesPlugin} from "./static-files.ts";
+import {assetsPlugin} from "./assets.ts";
 
 /**
  * Build ServiceWorker app for production deployment
@@ -51,9 +51,9 @@ export async function buildForProduction({entrypoint, outDir, verbose}) {
 		packages: "external",
 		absWorkingDir: workspaceRoot,
 		plugins: [
-			staticFilesPlugin({
-				outputDir: join(outputDir, "static"),
-				manifest: join(outputDir, "static-manifest.json"),
+			assetsPlugin({
+				outputDir: join(outputDir, "assets"),
+				manifest: join(outputDir, "assets/manifest.json"),
 				dev: false,
 			}),
 		],

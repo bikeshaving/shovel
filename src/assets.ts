@@ -16,17 +16,17 @@ import {mergeConfig} from "./shared.ts";
  * @returns ESBuild/Bun plugin
  *
  * @example
- * import { staticFilesPlugin } from '@b9g/staticfiles/plugin';
+ * import { assetsPlugin } from '@b9g/assets/plugin';
  *
  * await build({
- *   plugins: [staticFilesPlugin()]
+ *   plugins: [assetsPlugin()]
  * });
  *
  * // In your code:
- * import logo from './logo.svg' with { url: '/static/' };
- * // Returns: "/static/logo-abc12345.svg"
+ * import logo from './logo.svg' with { url: '/assets/' };
+ * // Returns: "/assets/logo-abc12345.svg"
  */
-export function staticFilesPlugin(options: AssetsConfig = {}) {
+export function assetsPlugin(options: AssetsConfig = {}) {
 	const config = mergeConfig(options);
 	const manifest: AssetManifest = {
 		assets: {},
@@ -38,7 +38,7 @@ export function staticFilesPlugin(options: AssetsConfig = {}) {
 	};
 
 	return {
-		name: "shovel-staticfiles",
+		name: "shovel-assets",
 		setup(build) {
 			// Handle resolution to ensure files get processed
 			build.onResolve({filter: /.*/}, (_args) => {
@@ -139,4 +139,4 @@ export function staticFilesPlugin(options: AssetsConfig = {}) {
 }
 
 // Default export
-export default staticFilesPlugin;
+export default assetsPlugin;
