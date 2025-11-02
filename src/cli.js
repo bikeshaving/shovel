@@ -222,20 +222,14 @@ function getWorkerCount(options) {
 		});
 
 	/**
-	 * Static site generation - collects routes and pre-renders
+	 * Activate ServiceWorker - run install/activate lifecycle for self-generation
 	 */
 	program
-		.command("static <entrypoint>")
-		.description("Generate static site")
+		.command("activate <entrypoint>")
+		.description("Run ServiceWorker install/activate lifecycle with self-generation")
 		.option(
 			"--target <platform>",
 			"Target platform for hosting (node, bun, cloudflare)",
-		)
-		.option("--out-dir <dir>", "Output directory", "dist")
-		.option(
-			"--base-url <url>",
-			"Base URL for absolute URLs",
-			"http://localhost:3000",
 		)
 		.option(
 			"-w, --workers <count>",
@@ -273,7 +267,7 @@ function getWorkerCount(options) {
 
 				const platform = await createPlatform(platformName, platformConfig);
 
-				console.info(`🏗️  Generating static site...`);
+				console.info(`🚀 Activating ServiceWorker...`);
 
 				// Load ServiceWorker app
 				const serviceWorker = await platform.loadServiceWorker(entrypoint, {
@@ -281,77 +275,17 @@ function getWorkerCount(options) {
 					workerCount,
 				});
 
-				// Collect routes for static generation
-				console.info(`📋 Collecting routes...`);
-				const routes = await serviceWorker.collectStaticRoutes(
-					options.outDir,
-					options.baseUrl,
-				);
-				console.info(`📄 Found ${routes.length} routes:`, routes);
-
-				// Pre-render each route
-				console.info(`🎨 Pre-rendering pages...`);
-				for (const route of routes) {
-					try {
-						const url = new URL(route, options.baseUrl);
-						const request = new Request(url.href);
-
-						const response = await serviceWorker.handleRequest(request);
-
-						if (response.ok) {
-							// TODO: Write to filesystem
-							console.info(`✅ ${route}`);
-						} else {
-							console.warn(`⚠️  ${route} (${response.status})`);
-						}
-					} catch (error) {
-						console.error(`❌ ${route} failed:`, error.message);
-					}
-				}
-
-				console.info(`🎉 Static site generated in ${options.outDir}`);
+				// The ServiceWorker install/activate lifecycle will handle any self-generation
+				// Apps can use self.dirs.open("static") in their activate event to pre-render
+				console.info(`✅ ServiceWorker activated - check dist/ for generated content`);
 
 				await serviceWorker.dispose();
 				await platform.dispose();
 			} catch (error) {
-				console.error(`❌ Static generation failed:`, error.message);
+				console.error(`❌ ServiceWorker activation failed:`, error.message);
 				if (options.verbose) {
 					console.error(error.stack);
 				}
-				process.exit(1);
-			}
-		});
-
-	/**
-	 * Generate wrangler.toml for Cloudflare Workers deployment
-	 */
-	program
-		.command("wrangler <entrypoint>")
-		.description("Generate wrangler.toml for Cloudflare Workers deployment")
-		.option("--name <name>", "Worker name", "shovel-app")
-		.option("--cache <adapter>", "Cache adapter (memory, cloudflare)", "cloudflare")
-		.option("--filesystem <adapter>", "Filesystem adapter (memory, r2)", "r2")
-		.option("--out <file>", "Output file", "wrangler.toml")
-		.action(async (entrypoint, options) => {
-			try {
-				const {generateWranglerConfig} = await import("@b9g/platform-cloudflare/wrangler");
-				
-				const config = generateWranglerConfig({
-					name: options.name,
-					entrypoint: entrypoint,
-					cacheAdapter: options.cache,
-					filesystemAdapter: options.filesystem,
-				});
-
-				// Write to file
-				const fs = await import("fs/promises");
-				await fs.writeFile(options.out, config, "utf8");
-				
-				console.info(`✅ Generated ${options.out} for Cloudflare Workers`);
-				console.info(`📋 Cache: ${options.cache}, Filesystem: ${options.filesystem}`);
-				console.info(`🚀 Deploy with: wrangler deploy`);
-			} catch (error) {
-				console.error(`❌ Failed to generate wrangler.toml:`, error.message);
 				process.exit(1);
 			}
 		});

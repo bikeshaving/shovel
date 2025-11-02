@@ -257,11 +257,70 @@ self.addEventListener("install", (event) => {
 });
 
 /**
- * ServiceWorker activate event - ready to handle requests
+ * ServiceWorker activate event - handle self-generation
  */
 self.addEventListener("activate", (event) => {
-	event.waitUntil((async () => {})());
+	event.waitUntil(generateStaticSite());
 });
+
+async function generateStaticSite() {
+	console.info("[Blog App] Starting static site generation...");
+	
+	// Define routes to pre-render
+	const staticRoutes = [
+		"/",
+		"/about",
+		"/api/posts",
+		...posts.map((post) => `/posts/${post.id}`)
+	];
+	
+	try {
+		// Get static directory for output
+		const staticDir = await self.dirs.open("static");
+		
+		console.info(`[Blog App] Pre-rendering ${staticRoutes.length} routes...`);
+		
+		for (const route of staticRoutes) {
+			try {
+				// Generate request for this route
+				const request = new Request(`http://localhost:3000${route}`);
+				
+				// Use our own router to generate the response
+				const response = await router.handler(request);
+				
+				if (response.ok) {
+					const content = await response.text();
+					
+					// Determine filename
+					let fileName;
+					if (route === "/") {
+						fileName = "index.html";
+					} else if (route.startsWith("/api/")) {
+						fileName = `${route.slice(5)}.json`; // /api/posts -> posts.json
+					} else {
+						fileName = `${route.slice(1).replace(/\//g, "-")}.html`; // /posts/1 -> posts-1.html
+					}
+					
+					// Write to static directory
+					const fileHandle = await staticDir.getFileHandle(fileName, {create: true});
+					const writable = await fileHandle.createWritable();
+					await writable.write(content);
+					await writable.close();
+					
+					console.info(`[Blog App] ✅ Generated ${route} -> ${fileName}`);
+				} else {
+					console.warn(`[Blog App] ⚠️  ${route} returned ${response.status}`);
+				}
+			} catch (error) {
+				console.error(`[Blog App] ❌ Failed to generate ${route}:`, error.message);
+			}
+		}
+		
+		console.info("[Blog App] ✅ Static site generation complete!");
+	} catch (error) {
+		console.error("[Blog App] ❌ Static site generation failed:", error.message);
+	}
+}
 
 /**
  * ServiceWorker fetch event - handle HTTP requests
