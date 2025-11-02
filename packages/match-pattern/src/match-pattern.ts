@@ -1,7 +1,7 @@
-import * as URL_builtin from "url";
+// Get URLPattern from global or polyfill (Node.js has it globally now)
+let URLPattern = (globalThis as any).URLPattern;
 
-// Get URLPattern from Node's url module, global, or polyfill
-let URLPattern = URL_builtin.URLPattern || (globalThis as any).URLPattern;
+// Fall back to polyfill if not available (mainly for Bun)
 if (!URLPattern) {
 	await import("urlpattern-polyfill");
 	URLPattern = (globalThis as any).URLPattern;
