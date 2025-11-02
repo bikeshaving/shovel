@@ -1,0 +1,12 @@
+name = "shovel-blog"
+main = "dist/app.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[build]
+command = ""
+
+# R2 for assets
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "shovel-blog-assets"

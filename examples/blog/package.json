@@ -1,0 +1,32 @@
+{
+  "name": "shovel-blog-app",
+  "version": "0.1.0",
+  "description": "Example Shovel blog app using cache-first architecture",
+  "type": "module",
+  "scripts": {
+    "dev": "npx @b9g/shovel develop src/app.js --port 3000",
+    "build": "npx @b9g/shovel build src/app.js --out-dir dist",
+    "start": "node dist/app.js",
+    "static": "npx @b9g/shovel static src/app.js --out-dir dist",
+    "preview": "cd dist && python3 -m http.server 3000"
+  },
+  "dependencies": {
+    "@b9g/cache": "file:../../packages/cache",
+    "@b9g/libuild": "^0.1.6",
+    "@b9g/match-pattern": "file:../../packages/match-pattern",
+    "@b9g/platform": "file:../../packages/platform",
+    "@b9g/router": "file:../../packages/router",
+    "@b9g/shovel": "file:../../",
+    "@b9g/staticfiles": "file:../../packages/staticfiles"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "@typescript-eslint/parser": "^8.46.2",
+    "bun-types": "latest",
+    "esbuild": "^0.19.12",
+    "eslint": "^9.38.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "prettier": "^3.6.2"
+  }
+}
