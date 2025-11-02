@@ -19,6 +19,19 @@ export {
 // Re-export base platform class
 export {BasePlatform} from "./base-platform.js";
 
+// Re-export platform detection utilities
+export {
+	detectRuntime,
+	detectDevelopmentPlatform,
+	detectPlatforms,
+	getBestPlatformDetection,
+	resolvePlatform,
+	createPlatform,
+	getPlatformDefaults,
+	displayPlatformInfo,
+	type PlatformDefaults,
+} from "./detection.js";
+
 /**
  * Cache backend configuration
  * Type can be a blessed alias or full package name

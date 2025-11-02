@@ -67,10 +67,6 @@
       "types": "./dist/src/shared.d.ts",
       "import": "./dist/src/shared.js"
     },
-    "./static-files": {
-      "types": "./dist/src/static-files.d.ts",
-      "import": "./dist/src/static-files.js"
-    },
     "./serviceworker": {
       "types": "./dist/src/serviceworker.d.ts",
       "import": "./dist/src/serviceworker.js"
@@ -107,10 +103,6 @@
     "./simple-watcher.js": {
       "types": "./dist/src/simple-watcher.d.ts",
       "import": "./dist/src/simple-watcher.js"
-    },
-    "./static-files.js": {
-      "types": "./dist/src/static-files.d.ts",
-      "import": "./dist/src/static-files.js"
     },
     "./worker.js": {
       "types": "./dist/src/undefined.d.ts",

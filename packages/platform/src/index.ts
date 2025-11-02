@@ -45,6 +45,19 @@ export {
 	getPlatformAsync,
 } from "./registry.js";
 
+// Platform detection utilities
+export {
+	detectRuntime,
+	detectDevelopmentPlatform,
+	detectPlatforms,
+	getBestPlatformDetection,
+	resolvePlatform,
+	createPlatform,
+	getPlatformDefaults,
+	displayPlatformInfo,
+	type PlatformDefaults,
+} from "./detection.js";
+
 // Utility functions
 export {
 	parseTTL,

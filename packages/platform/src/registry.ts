@@ -3,6 +3,7 @@
  */
 
 import type {Platform, PlatformDetection, PlatformRegistry} from "./types.js";
+import {getBestPlatformDetection} from "./detection.js";
 
 /**
  * Global platform registry
@@ -19,79 +20,7 @@ class DefaultPlatformRegistry implements PlatformRegistry {
 	}
 
 	detect(): PlatformDetection {
-		const detections: PlatformDetection[] = [];
-
-		// Check for Bun
-		if (typeof Bun !== "undefined") {
-			detections.push({
-				platform: "bun",
-				confidence: 0.9,
-				reasons: ["Bun global detected"],
-			});
-		}
-
-		// Check for Cloudflare Workers
-		if (
-			typeof caches !== "undefined" &&
-			typeof Response !== "undefined" &&
-			typeof crypto !== "undefined"
-		) {
-			// Additional check for Workers-specific globals
-			if (
-				typeof addEventListener !== "undefined" &&
-				typeof fetch !== "undefined"
-			) {
-				detections.push({
-					platform: "cloudflare-workers",
-					confidence: 0.8,
-					reasons: ["Worker-like environment detected", "Web APIs available"],
-				});
-			}
-		}
-
-		// Check for Vercel Edge Runtime
-		if (typeof EdgeRuntime !== "undefined") {
-			detections.push({
-				platform: "vercel",
-				confidence: 0.9,
-				reasons: ["Vercel EdgeRuntime detected"],
-			});
-		}
-
-		// Check for Deno
-		if (typeof Deno !== "undefined") {
-			detections.push({
-				platform: "deno",
-				confidence: 0.9,
-				reasons: ["Deno global detected"],
-			});
-		}
-
-		// Check for Node.js (fallback)
-		if (
-			typeof process !== "undefined" &&
-			process.versions &&
-			process.versions.node
-		) {
-			detections.push({
-				platform: "node",
-				confidence: 0.7,
-				reasons: ["Node.js process detected"],
-			});
-		}
-
-		// Return highest confidence detection
-		if (detections.length === 0) {
-			return {
-				platform: "unknown",
-				confidence: 0,
-				reasons: ["No platform detected"],
-			};
-		}
-
-		return detections.reduce((best, current) =>
-			current.confidence > best.confidence ? current : best,
-		);
+		return getBestPlatformDetection();
 	}
 
 	list(): string[] {

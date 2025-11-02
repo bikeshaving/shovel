@@ -14,7 +14,7 @@ import {
 	createPlatform,
 	getPlatformDefaults,
 	displayPlatformInfo,
-} from "./_platform-detection.js";
+} from "@b9g/platform";
 
 /**
  * Determine worker count based on environment and options
@@ -298,7 +298,7 @@ function getWorkerCount(options) {
 		.description("Display platform and runtime information")
 		.action(async () => {
 			const {detectRuntime, detectDevelopmentPlatform} = await import(
-				"./_platform-detection.js"
+				"@b9g/platform"
 			);
 
 			console.info("🔍 Shovel Platform Information");
