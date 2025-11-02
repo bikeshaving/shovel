@@ -17,7 +17,7 @@
     "web-standards"
   ],
   "dependencies": {
-    "@b9g/filesystem": "^0.1.0"
+    "@b9g/filesystem": "workspace:*"
   },
   "peerDependencies": {
     "@aws-sdk/client-s3": "^3.0.0"

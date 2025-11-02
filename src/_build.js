@@ -7,32 +7,9 @@ import * as esbuild from "esbuild";
 import {resolve, join, dirname} from "path";
 import {mkdir, readFile} from "fs/promises";
 import {assetsPlugin} from "./assets.ts";
-import {cloudflareWorkerBanner, cloudflareWorkerFooter} from "@b9g/platform-cloudflare";
+// Platform-specific imports are handled dynamically
 
-/**
- * Plugin to resolve workspace packages
- */
-function workspacePlugin(workspaceRoot) {
-	return {
-		name: 'workspace-resolver',
-		setup(build) {
-			build.onResolve({ filter: /^@b9g\// }, async (args) => {
-				const packageName = args.path;
-				const packageDir = join(workspaceRoot, 'packages', packageName.replace('@b9g/', ''));
-				const packageJsonPath = join(packageDir, 'package.json');
-				
-				try {
-					const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
-					const entryPoint = packageJson.main || packageJson.module || 'index.js';
-					return { path: resolve(packageDir, entryPoint) };
-				} catch {
-					// Package not found in workspace, let esbuild handle it normally
-					return null;
-				}
-			});
-		}
-	};
-}
+// Workspace packages should resolve automatically via Node.js module resolution
 
 /**
  * Build ServiceWorker app for production deployment
@@ -79,7 +56,6 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
 		outfile: join(outputDir, "app.js"),
 		absWorkingDir: workspaceRoot,
 		plugins: [
-			workspacePlugin(workspaceRoot),
 			assetsPlugin({
 				outputDir: join(outputDir, "assets"),
 				manifest: join(outputDir, "assets/manifest.json"),
@@ -103,13 +79,19 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
 		// For Cloudflare, bundle everything and wrap ServiceWorker as ES Module
 		buildConfig.platform = "browser";
 		buildConfig.conditions = ["worker", "browser"];
-		buildConfig.banner = {
-			js: cloudflareWorkerBanner,
-		};
 		
-		buildConfig.footer = {
-			js: cloudflareWorkerFooter,
-		};
+		// Dynamically import Cloudflare platform utilities
+		try {
+			const {cloudflareWorkerBanner, cloudflareWorkerFooter} = await import("@b9g/platform-cloudflare");
+			buildConfig.banner = {
+				js: cloudflareWorkerBanner,
+			};
+			buildConfig.footer = {
+				js: cloudflareWorkerFooter,
+			};
+		} catch (error) {
+			throw new Error("@b9g/platform-cloudflare is required for Cloudflare builds. Install it with: bun add @b9g/platform-cloudflare");
+		}
 	}
 	
 	const result = await esbuild.build(buildConfig);

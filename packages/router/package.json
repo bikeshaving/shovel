@@ -2,11 +2,39 @@
   "name": "@b9g/router",
   "version": "0.1.0",
   "type": "module",
-  "main": "src/index.ts",
-  "exports": {
-    ".": "./src/index.ts"
+  "scripts": {
+    "build": "libuild build"
   },
   "dependencies": {
     "@b9g/match-pattern": "workspace:*"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.10"
+  },
+  "private": true,
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./router": {
+      "types": "./dist/src/router.d.ts",
+      "import": "./dist/src/router.js"
+    },
+    "./router.js": {
+      "types": "./dist/src/router.d.ts",
+      "import": "./dist/src/router.js"
+    },
+    "./package.json": "./dist/package.json"
   }
 }

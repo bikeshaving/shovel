@@ -8,12 +8,18 @@
 
 import {Command} from "commander";
 import pkg from "../package.json" with {type: "json"};
-import {
-	resolvePlatform,
-	createPlatform,
-	displayPlatformInfo,
-} from "@b9g/platform";
 import {DEFAULTS, getDefaultWorkerCount} from "./config.js";
+
+/**
+ * Dynamically import platform utilities if available
+ */
+async function importPlatform() {
+	try {
+		return await import("@b9g/platform");
+	} catch (error) {
+		throw new Error("@b9g/platform is required. Install it with: bun add @b9g/platform");
+	}
+}
 
 /**
  * Determine worker count based on environment and options
@@ -66,11 +72,12 @@ function getWorkerCount(options) {
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
-				const platformName = resolvePlatform(options);
+				const platform = await importPlatform();
+				const platformName = platform.resolvePlatform(options);
 				const workerCount = getWorkerCount(options);
 
 				if (options.verbose) {
-					displayPlatformInfo(platformName);
+					platform.displayPlatformInfo(platformName);
 					console.info(`🔧 Worker configuration: ${workerCount} workers`);
 				}
 
@@ -94,7 +101,7 @@ function getWorkerCount(options) {
 					platformConfig.filesystem = { type: options.filesystem };
 				}
 
-				const platform = await createPlatform(platformName, platformConfig);
+				const platformInstance = await platform.createPlatform(platformName, platformConfig);
 
 				console.info(`🔥 Starting development server...`);
 				console.info(`⚙️  Workers: ${workerCount}`);
@@ -183,10 +190,11 @@ function getWorkerCount(options) {
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
-				const platformName = resolvePlatform(options);
+				const platform = await importPlatform();
+				const platformName = platform.resolvePlatform(options);
 
 				if (options.verbose) {
-					displayPlatformInfo(platformName);
+					platform.displayPlatformInfo(platformName);
 				}
 
 				console.info(`📦 Building for ${platformName}...`);
@@ -232,11 +240,12 @@ function getWorkerCount(options) {
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
-				const platformName = resolvePlatform(options);
+				const platform = await importPlatform();
+				const platformName = platform.resolvePlatform(options);
 				const workerCount = getWorkerCount(options);
 
 				if (options.verbose) {
-					displayPlatformInfo(platformName);
+					platform.displayPlatformInfo(platformName);
 					console.info(`🔧 Worker configuration: ${workerCount} workers`);
 				}
 
@@ -257,7 +266,7 @@ function getWorkerCount(options) {
 					platformConfig.filesystem = { type: options.filesystem };
 				}
 
-				const platform = await createPlatform(platformName, platformConfig);
+				const platformInstance = await platform.createPlatform(platformName, platformConfig);
 
 				console.info(`🚀 Activating ServiceWorker...`);
 
