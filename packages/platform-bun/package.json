@@ -19,12 +19,12 @@
     "jsx"
   ],
   "dependencies": {
-    "@b9g/platform": "file:../platform",
-    "@b9g/cache": "file:../cache",
-    "@b9g/staticfiles": "file:../staticfiles"
+    "@b9g/platform": "workspace:*",
+    "@b9g/cache": "workspace:*",
+    "@b9g/assets": "workspace:*"
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.0",
+    "@b9g/libuild": "^0.1.10",
     "bun-types": "latest"
   },
   "private": true,

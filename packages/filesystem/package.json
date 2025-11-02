@@ -12,7 +12,7 @@
     "@types/wicg-file-system-access": "^2023.10.7"
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.8",
+    "@b9g/libuild": "^0.1.10",
     "@types/bun": "^1.2.2"
   },
   "private": true,
