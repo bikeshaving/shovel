@@ -6,7 +6,8 @@
  */
 
 import {
-	Platform,
+	BasePlatform,
+	PlatformConfig,
 	CacheConfig,
 	Handler,
 	Server,
@@ -17,11 +18,10 @@ import {
 	createServiceWorkerGlobals,
 } from "@b9g/platform";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
-import {FileSystemRegistry, getFileSystemRoot, MemoryFileSystemAdapter} from "@b9g/filesystem";
-// import {createStaticFilesHandler} from "@b9g/staticfiles"; // TODO: implement static files
+import {FileSystemRegistry, getFileSystemRoot, MemoryFileSystemAdapter, NodeFileSystemAdapter, BunS3FileSystemAdapter} from "@b9g/filesystem";
 import * as Path from "path";
 
-export interface BunPlatformOptions {
+export interface BunPlatformOptions extends PlatformConfig {
 	/** Enable hot reloading (default: true in development) */
 	hotReload?: boolean;
 	/** Port for development server (default: 3000) */
@@ -36,20 +36,13 @@ export interface BunPlatformOptions {
  * Bun platform implementation
  * ServiceWorker entrypoint loader for Bun with native TypeScript/JSX support
  */
-export class BunPlatform implements Platform {
+export class BunPlatform extends BasePlatform {
 	readonly name = "bun";
-	readonly capabilities = {
-		hotReload: true,
-		sourceMaps: true,
-		filesystem: true,
-		serverSideRendering: true,
-		staticGeneration: true,
-		s3Storage: true, // Bun's unique capability
-	};
-
 	private options: Required<BunPlatformOptions>;
+	private _dist?: FileSystemDirectoryHandle;
 
 	constructor(options: BunPlatformOptions = {}) {
+		super(options);
 		this.options = {
 			hotReload: Bun.env.NODE_ENV !== "production",
 			port: 3000,
@@ -58,19 +51,55 @@ export class BunPlatform implements Platform {
 			...options,
 		};
 
-		// Register memory filesystem adapter as default for Bun
+		// Register filesystem adapters for Bun
 		FileSystemRegistry.register("memory", new MemoryFileSystemAdapter());
+		FileSystemRegistry.register("node", new NodeFileSystemAdapter({
+			rootPath: Path.join(this.options.cwd, ".buckets")
+		}));
+		
+		// Register Bun's native S3 adapter
+		try {
+			FileSystemRegistry.register("bun-s3", new BunS3FileSystemAdapter(
+				// @ts-ignore - Bun's S3Client
+				new Bun.S3Client({})
+			));
+		} catch {
+			console.warn("[Bun] S3Client not available, using memory filesystem");
+		}
 	}
 
 	/**
-	 * Create cache storage optimized for Bun
+	 * Build artifacts filesystem (install-time only)
 	 */
-	createCaches(config: CacheConfig = {}): CustomCacheStorage {
+	get distDir(): FileSystemDirectoryHandle {
+		if (!this._dist) {
+			// Create dist filesystem pointing to ./dist directory
+			const distPath = Path.resolve(this.options.cwd, "dist");
+			this._dist = new NodeFileSystemAdapter({ rootPath: distPath }).getFileSystemRoot("") as any;
+		}
+		return this._dist;
+	}
+
+	/**
+	 * Get platform-specific default cache configuration for Bun
+	 */
+	protected getDefaultCacheConfig(): CacheConfig {
+		return {
+			pages: { type: "memory" }, // PostMessage cache for coordination
+			api: { type: "memory" },
+			static: { type: "memory" },
+		};
+	}
+
+	/**
+	 * Override cache creation to use PostMessage coordination for Bun
+	 */
+	async createCaches(config?: CacheConfig): Promise<CustomCacheStorage> {
 		// Use CustomCacheStorage with PostMessage coordination for Bun workers
 		return new CustomCacheStorage((name: string) => {
 			return new PostMessageCache(name, {
-				maxEntries: config.maxEntries || 1000,
-				maxSize: config.maxSize || 50 * 1024 * 1024, // 50MB
+				maxEntries: 1000,
+				maxSize: 50 * 1024 * 1024, // 50MB
 			});
 		});
 	}
@@ -117,6 +146,9 @@ export class BunPlatform implements Platform {
 		const runtime = new ServiceWorkerRuntime();
 		const entryPath = Path.resolve(this.options.cwd, entrypoint);
 
+		// Create cache storage using platform configuration
+		const caches = await this.createCaches(options.caches);
+
 		// Create ServiceWorker instance
 		const instance: ServiceWorkerInstance = {
 			runtime,
@@ -136,9 +168,7 @@ export class BunPlatform implements Platform {
 
 		if (this.options.hotReload && options.hotReload !== false) {
 			// Use Bun's built-in hot reloading
-			console.info(
-				"[Bun] Hot reloading enabled - Bun will handle file watching",
-			);
+			console.info("[Bun] Hot reloading enabled - native TypeScript support");
 
 			// For hot reloading, we need to dynamically import and set up globals
 			const loadModule = async () => {
@@ -152,21 +182,16 @@ export class BunPlatform implements Platform {
 					// Bun can import TypeScript/JSX directly
 					globalThis.self = runtime;
 					globalThis.addEventListener = runtime.addEventListener.bind(runtime);
-					globalThis.removeEventListener =
-						runtime.removeEventListener.bind(runtime);
+					globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
 					globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
 
-					// Dynamic import to get fresh module
+					// Dynamic import to get fresh module (Bun supports this natively)
 					const moduleUrl = `${entryPath}?t=${Date.now()}`;
 					await import(moduleUrl);
 
-					// Emit platform event
-					const caches = options.caches
-						? this.createCaches(options.caches)
-						: undefined;
+					// Emit platform event with configured caches
 					runtime.emitPlatformEvent({
 						platform: this.name,
-						capabilities: this.capabilities,
 						caches,
 					});
 
@@ -182,8 +207,7 @@ export class BunPlatform implements Platform {
 			await loadModule();
 
 			// TODO: Set up file watching for hot reloading
-			// Bun doesn't have a built-in file watcher API like Node.js
-			// We might need to use chokidar or similar
+			// For now, rely on Bun's built-in module reload capability
 		} else {
 			// Static loading
 			createServiceWorkerGlobals(runtime);
@@ -191,20 +215,15 @@ export class BunPlatform implements Platform {
 			// Set up globals
 			globalThis.self = runtime;
 			globalThis.addEventListener = runtime.addEventListener.bind(runtime);
-			globalThis.removeEventListener =
-				runtime.removeEventListener.bind(runtime);
+			globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
 			globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
 
 			// Import module
 			await import(entryPath);
 
-			// Emit platform event
-			const caches = options.caches
-				? this.createCaches(options.caches)
-				: undefined;
+			// Emit platform event with configured caches
 			runtime.emitPlatformEvent({
 				platform: this.name,
-				capabilities: this.capabilities,
 				caches,
 			});
 

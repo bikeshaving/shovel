@@ -4,34 +4,6 @@
   "description": "Universal File System Access API implementations for all platforms",
   "license": "MIT",
   "type": "module",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
-    "./node": {
-      "types": "./dist/src/node.d.ts",
-      "import": "./dist/src/node.js"
-    },
-    "./s3": {
-      "types": "./dist/src/s3.d.ts", 
-      "import": "./dist/src/s3.js"
-    },
-    "./cloudflare": {
-      "types": "./dist/src/cloudflare.d.ts",
-      "import": "./dist/src/cloudflare.js"
-    },
-    "./bun": {
-      "types": "./dist/src/bun.d.ts",
-      "import": "./dist/src/bun.js"
-    },
-    "./memory": {
-      "types": "./dist/src/memory.d.ts",
-      "import": "./dist/src/memory.js"
-    }
-  },
   "scripts": {
     "build": "libuild build",
     "test": "bun test"
@@ -42,5 +14,63 @@
   "devDependencies": {
     "@b9g/libuild": "^0.1.8",
     "@types/bun": "^1.2.2"
+  },
+  "private": true,
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./bun-s3": {
+      "types": "./dist/src/bun-s3.d.ts",
+      "import": "./dist/src/bun-s3.js"
+    },
+    "./bun-s3.js": {
+      "types": "./dist/src/bun-s3.d.ts",
+      "import": "./dist/src/bun-s3.js"
+    },
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./memory": {
+      "types": "./dist/src/memory.d.ts",
+      "import": "./dist/src/memory.js"
+    },
+    "./memory.js": {
+      "types": "./dist/src/memory.d.ts",
+      "import": "./dist/src/memory.js"
+    },
+    "./node": {
+      "types": "./dist/src/node.d.ts",
+      "import": "./dist/src/node.js"
+    },
+    "./node.js": {
+      "types": "./dist/src/node.d.ts",
+      "import": "./dist/src/node.js"
+    },
+    "./registry": {
+      "types": "./dist/src/registry.d.ts",
+      "import": "./dist/src/registry.js"
+    },
+    "./registry.js": {
+      "types": "./dist/src/registry.d.ts",
+      "import": "./dist/src/registry.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "import": "./dist/src/types.js"
+    },
+    "./types.js": {
+      "types": "./dist/src/types.d.ts",
+      "import": "./dist/src/types.js"
+    },
+    "./package.json": "./dist/package.json"
   }
 }

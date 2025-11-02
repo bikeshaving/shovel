@@ -7,30 +7,17 @@
  */
 
 import {Router} from "@b9g/router";
-import {CacheStorage} from "@b9g/cache/cache-storage";
-import {MemoryCache} from "@b9g/cache/memory-cache";
 import {createStaticFilesMiddleware} from "@b9g/staticfiles";
-import {platformRegistry} from "@b9g/platform";
-import {createNodePlatform} from "@b9g/platform-node";
 
 // Import static assets using import attributes
 import styles from "./assets/styles.css" with {url: "/static/"};
 import logo from "./assets/logo.svg" with {url: "/static/"};
 
-// Register platform for File System Access API support
-platformRegistry.register("node", createNodePlatform());
+// Create router - caches will be provided by platform
+const router = new Router();
 
-// Set up cache storage with different caches for different content types
-const caches = new CacheStorage();
-caches.register("pages", () => new MemoryCache("pages", {maxEntries: 100}));
-caches.register(
-	"api",
-	() => new MemoryCache("api", {maxEntries: 50, ttl: 5 * 60 * 1000}),
-); // 5 min TTL
-caches.register("static", () => new MemoryCache("static"));
-
-// Create router with cache support
-const router = new Router({caches});
+// Global cache storage (set by platform event)
+let caches;
 
 // Static files middleware - serves from File System Access API storage
 router.use(
@@ -51,17 +38,20 @@ router.use(pageCache);
 
 // Cache middleware for pages using new generator API
 async function* pageCache(request, context) {
-	if (request.method !== "GET" || !context.cache) {
+	if (request.method !== "GET" || !caches) {
 		// No caching - just passthrough
 		const response = yield request;
 		return response;
 	}
 
-	const cached = await context.cache.match(request);
+	// Get the pages cache from platform
+	const cache = await caches.open("pages");
+	const cached = await cache.match(request);
 	if (cached) {
 		// Cache hit - return early with cached response
-		cached.headers.set("X-Cache", "HIT");
-		return cached;
+		const response = cached.clone();
+		response.headers.set("X-Cache", "HIT");
+		return response;
 	}
 
 	// Cache miss - continue to handler
@@ -69,7 +59,7 @@ async function* pageCache(request, context) {
 
 	// Cache the response for next time
 	if (response.ok) {
-		await context.cache.put(request, response.clone());
+		await cache.put(request, response.clone());
 	}
 
 	response.headers.set("X-Cache", "MISS");
@@ -104,11 +94,10 @@ const posts = [
 	},
 ];
 
-// Routes with cache integration
+// Routes
 router
 	.route({
 		pattern: "/",
-		cache: {name: "pages"},
 	})
 	.get(async (request, context) => {
 		return new Response(
@@ -116,8 +105,8 @@ router
 				"Home",
 				`
     <div class="cache-info">
-      <strong>Cache Status:</strong> ${context.cache ? "Enabled" : "Disabled"} | 
-      <strong>Cache Name:</strong> ${context.cache ? "pages" : "N/A"}
+      <strong>Cache Status:</strong> ${caches ? "Enabled" : "Disabled"} | 
+      <strong>Cache Type:</strong> ${caches ? "Platform-configured" : "N/A"}
     </div>
     
     <div class="posts">
@@ -147,7 +136,6 @@ router
 router
 	.route({
 		pattern: "/posts/:id",
-		cache: {name: "pages"},
 	})
 	.get(async (request, context) => {
 		const post = posts.find((p) => p.id === parseInt(context.params.id));
@@ -173,7 +161,7 @@ router
 				post.title,
 				`
     <div class="cache-info">
-      <strong>Cache Status:</strong> ${context.cache ? "Enabled" : "Disabled"} | 
+      <strong>Cache Status:</strong> ${caches ? "Enabled" : "Disabled"} | 
       <strong>Post ID:</strong> ${post.id}
     </div>
     
@@ -194,11 +182,10 @@ router
 		);
 	});
 
-// API route with separate cache
+// API route - no automatic caching, handled by manual logic if needed
 router
 	.route({
 		pattern: "/api/posts",
-		cache: {name: "api"},
 	})
 	.get(async (request, context) => {
 		// Simulate API delay
@@ -212,7 +199,7 @@ router
 					author: p.author,
 					date: p.date,
 				})),
-				cached: !!context.cache,
+				cached: !!caches,
 				timestamp: new Date().toISOString(),
 			},
 			{
@@ -227,7 +214,6 @@ router
 router
 	.route({
 		pattern: "/about",
-		cache: {name: "pages"},
 	})
 	.get(async (request, context) => {
 		return new Response(
@@ -246,7 +232,7 @@ router
       
       <div class="cache-info">
         <strong>Cache Statistics:</strong><br>
-        Pages Cache: ${context.caches ? "Available" : "Not Available"}<br>
+        Platform Caches: ${caches ? "Available" : "Not Available"}<br>
         Static Files: Served from ${process.env.NODE_ENV === "production" ? "optimized build" : "source files"}
       </div>
       
@@ -262,6 +248,22 @@ router
 			},
 		);
 	});
+
+/**
+ * Platform event - receive platform configuration including caches
+ */
+self.addEventListener("platform", (event) => {
+	const {platform, capabilities, caches: platformCaches} = event.detail;
+	console.info(`[Blog App] Platform: ${platform}, Caches:`, platformCaches ? "Available" : "None");
+	
+	// Store cache storage from platform
+	caches = platformCaches;
+	
+	// Update router with cache storage
+	if (caches) {
+		router.caches = caches;
+	}
+});
 
 /**
  * ServiceWorker install event - setup and initialization

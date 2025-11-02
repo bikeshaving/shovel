@@ -15,6 +15,7 @@ export const CACHE_ALIASES = {
 	memory: "@b9g/cache",
 	redis: "@b9g/cache-redis",
 	kv: "@b9g/cache-kv",
+	cloudflare: "@b9g/cache/cloudflare",
 } as const;
 
 /**
@@ -22,6 +23,8 @@ export const CACHE_ALIASES = {
  */
 export const FILESYSTEM_ALIASES = {
 	memory: "@b9g/filesystem",
+	fs: "@b9g/filesystem/node",
+	"bun-s3": "@b9g/filesystem/bun-s3",
 	s3: "@b9g/filesystem-s3",
 	r2: "@b9g/filesystem-r2",
 } as const;

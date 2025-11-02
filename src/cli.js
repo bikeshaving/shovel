@@ -69,6 +69,8 @@ function getWorkerCount(options) {
 			"-w, --workers <count>",
 			"Number of worker threads (default: 2 in dev, CPU count in prod)",
 		)
+		.option("--cache <adapter>", "Cache adapter (memory, redis, kv)")
+		.option("--filesystem <adapter>", "Filesystem adapter (memory, fs, s3, r2, bun-s3)")
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
@@ -82,11 +84,26 @@ function getWorkerCount(options) {
 				}
 
 				// Create platform with smart defaults
-				const platform = await createPlatform(platformName, {
+				const platformConfig = {
 					hotReload: true,
 					port: parseInt(options.port) || platformDefaults.port,
 					host: options.host,
-				});
+				};
+
+				// Convert CLI flags to platform config format
+				if (options.cache) {
+					platformConfig.caches = {
+						pages: { type: options.cache },
+						api: { type: options.cache },
+						static: { type: options.cache },
+					};
+				}
+
+				if (options.filesystem) {
+					platformConfig.filesystem = { type: options.filesystem };
+				}
+
+				const platform = await createPlatform(platformName, platformConfig);
 
 				console.info(`🔥 Starting development server...`);
 				console.info(`⚙️  Workers: ${workerCount}`);
@@ -170,6 +187,8 @@ function getWorkerCount(options) {
 			"-w, --workers <count>",
 			"Number of worker threads (default: CPU count in prod)",
 		)
+		.option("--cache <adapter>", "Cache adapter (memory, redis, kv)")
+		.option("--filesystem <adapter>", "Filesystem adapter (memory, fs, s3, r2, bun-s3)")
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
@@ -222,6 +241,8 @@ function getWorkerCount(options) {
 			"-w, --workers <count>",
 			"Number of worker threads (default: CPU count)",
 		)
+		.option("--cache <adapter>", "Cache adapter (memory, redis, kv)")
+		.option("--filesystem <adapter>", "Filesystem adapter (memory, fs, s3, r2, bun-s3)")
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
@@ -233,9 +254,24 @@ function getWorkerCount(options) {
 					console.info(`🔧 Worker configuration: ${workerCount} workers`);
 				}
 
-				const platform = await createPlatform(platformName, {
+				const platformConfig = {
 					hotReload: false,
-				});
+				};
+
+				// Convert CLI flags to platform config format
+				if (options.cache) {
+					platformConfig.caches = {
+						pages: { type: options.cache },
+						api: { type: options.cache },
+						static: { type: options.cache },
+					};
+				}
+
+				if (options.filesystem) {
+					platformConfig.filesystem = { type: options.filesystem };
+				}
+
+				const platform = await createPlatform(platformName, platformConfig);
 
 				console.info(`🏗️  Generating static site...`);
 
@@ -287,6 +323,40 @@ function getWorkerCount(options) {
 		});
 
 	/**
+	 * Generate wrangler.toml for Cloudflare Workers deployment
+	 */
+	program
+		.command("wrangler <entrypoint>")
+		.description("Generate wrangler.toml for Cloudflare Workers deployment")
+		.option("--name <name>", "Worker name", "shovel-app")
+		.option("--cache <adapter>", "Cache adapter (memory, cloudflare)", "cloudflare")
+		.option("--filesystem <adapter>", "Filesystem adapter (memory, r2)", "r2")
+		.option("--out <file>", "Output file", "wrangler.toml")
+		.action(async (entrypoint, options) => {
+			try {
+				const {generateWranglerConfig} = await import("@b9g/platform-cloudflare/wrangler");
+				
+				const config = generateWranglerConfig({
+					name: options.name,
+					entrypoint: entrypoint,
+					cacheAdapter: options.cache,
+					filesystemAdapter: options.filesystem,
+				});
+
+				// Write to file
+				const fs = await import("fs/promises");
+				await fs.writeFile(options.out, config, "utf8");
+				
+				console.info(`✅ Generated ${options.out} for Cloudflare Workers`);
+				console.info(`📋 Cache: ${options.cache}, Filesystem: ${options.filesystem}`);
+				console.info(`🚀 Deploy with: wrangler deploy`);
+			} catch (error) {
+				console.error(`❌ Failed to generate wrangler.toml:`, error.message);
+				process.exit(1);
+			}
+		});
+
+	/**
 	 * Platform info command
 	 */
 	program
@@ -306,16 +376,22 @@ function getWorkerCount(options) {
 			console.info("");
 			console.info("💡 Usage Examples:");
 			console.info(
-				"   shovel develop app.js                    # Auto-detect platform",
+				"   shovel develop app.js                         # Auto-detect platform",
 			);
 			console.info(
-				"   shovel develop app.js --platform=bun     # Explicit platform",
+				"   shovel develop app.js --platform=bun          # Explicit platform",
 			);
 			console.info(
-				"   shovel develop app.js --workers=4        # Custom worker count",
+				"   shovel develop app.js --cache=redis           # Redis cache adapter",
 			);
 			console.info(
-				"   shovel build app.js --target=cloudflare  # Target deployment",
+				"   shovel develop app.js --filesystem=s3         # S3 filesystem adapter",
+			);
+			console.info(
+				"   shovel build app.js --target=cloudflare       # Target deployment",
+			);
+			console.info(
+				"   shovel wrangler app.js --cache=kv --filesystem=r2  # Generate wrangler.toml",
 			);
 		});
 
