@@ -3,8 +3,7 @@
  */
 
 import type {CacheStorage} from "@b9g/cache/cache-storage";
-// Import File System Access API types
-import "@types/wicg-file-system-access";
+// File System Access API types are available globally in supporting environments
 
 // Re-export adapter registry utilities
 export {

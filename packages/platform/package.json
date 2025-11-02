@@ -16,7 +16,9 @@
     "adapter",
     "interface"
   ],
-  "dependencies": {},
+  "dependencies": {
+    "@types/wicg-file-system-access": "^2023.10.7"
+  },
   "devDependencies": {
     "@b9g/libuild": "^0.1.0",
     "bun-types": "latest"

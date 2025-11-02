@@ -20,6 +20,9 @@ export type {
 	PlatformRegistry,
 } from "./types.js";
 
+// Base platform class
+export {BasePlatform} from "./types.js";
+
 // ServiceWorker runtime
 export {
 	ServiceWorkerRuntime,
