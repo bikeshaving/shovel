@@ -1,1 +1,1 @@
-export {MatchPattern, type MatchPatternResult} from "./match-pattern.js";
+export {MatchPattern, type MatchPatternResult} from "./match-pattern.ts";

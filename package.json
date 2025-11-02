@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@b9g/crank": "^0.6.0",
-    "@b9g/libuild": "^0.1.8",
+    "@b9g/libuild": "^0.1.10",
     "@emotion/css": "^11.13.5",
     "@flydotio/dockerfile": "^0.7.8",
     "@types/bun": "^1.2.2",
