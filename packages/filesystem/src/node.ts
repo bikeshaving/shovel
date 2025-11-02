@@ -325,7 +325,7 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
 			name: "node",
 			...config
 		};
-		this.rootPath = config.rootPath || path.join(process.cwd(), ".buckets");
+		this.rootPath = config.rootPath || path.join(process.cwd(), "dist");
 	}
 
 	async getFileSystemRoot(name = "default"): Promise<FileSystemDirectoryHandle> {

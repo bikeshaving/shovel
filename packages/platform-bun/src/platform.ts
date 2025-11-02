@@ -16,6 +16,7 @@ import {
 	ServiceWorkerInstance,
 	ServiceWorkerRuntime,
 	createServiceWorkerGlobals,
+	createDirectoryStorage,
 } from "@b9g/platform";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
 import {FileSystemRegistry, getFileSystemRoot, MemoryFileSystemAdapter, NodeFileSystemAdapter, BunS3FileSystemAdapter} from "@b9g/filesystem";
@@ -54,7 +55,7 @@ export class BunPlatform extends BasePlatform {
 		// Register filesystem adapters for Bun
 		FileSystemRegistry.register("memory", new MemoryFileSystemAdapter());
 		FileSystemRegistry.register("node", new NodeFileSystemAdapter({
-			rootPath: Path.join(this.options.cwd, ".buckets")
+			rootPath: Path.join(this.options.cwd, "dist")
 		}));
 		
 		// Register Bun's native S3 adapter
@@ -148,6 +149,9 @@ export class BunPlatform extends BasePlatform {
 
 		// Create cache storage using platform configuration
 		const caches = await this.createCaches(options.caches);
+		
+		// Create directory storage using dist filesystem
+		const dirs = createDirectoryStorage(this.distDir);
 
 		// Create ServiceWorker instance
 		const instance: ServiceWorkerInstance = {
@@ -176,8 +180,8 @@ export class BunPlatform extends BasePlatform {
 					// Reset runtime for reload
 					runtime.reset();
 
-					// Create ServiceWorker globals
-					createServiceWorkerGlobals(runtime);
+					// Create ServiceWorker globals with platform resources
+					createServiceWorkerGlobals(runtime, { caches, dirs });
 
 					// Bun can import TypeScript/JSX directly
 					globalThis.self = runtime;
@@ -189,11 +193,6 @@ export class BunPlatform extends BasePlatform {
 					const moduleUrl = `${entryPath}?t=${Date.now()}`;
 					await import(moduleUrl);
 
-					// Emit platform event with configured caches
-					runtime.emitPlatformEvent({
-						platform: this.name,
-						caches,
-					});
 
 					await runtime.install();
 					await runtime.activate();
@@ -210,7 +209,7 @@ export class BunPlatform extends BasePlatform {
 			// For now, rely on Bun's built-in module reload capability
 		} else {
 			// Static loading
-			createServiceWorkerGlobals(runtime);
+			createServiceWorkerGlobals(runtime, { caches, dirs });
 
 			// Set up globals
 			globalThis.self = runtime;
@@ -221,11 +220,6 @@ export class BunPlatform extends BasePlatform {
 			// Import module
 			await import(entryPath);
 
-			// Emit platform event with configured caches
-			runtime.emitPlatformEvent({
-				platform: this.name,
-				caches,
-			});
 
 			await runtime.install();
 			await runtime.activate();

@@ -208,6 +208,7 @@ export class ServiceWorkerRuntime extends EventTarget {
 		}
 	}
 
+
 	/**
 	 * Reset the ServiceWorker state (for hot reloading)
 	 */
@@ -225,10 +226,52 @@ export class ServiceWorkerRuntime extends EventTarget {
 	}
 }
 
+
+/**
+ * Directory storage interface - parallels CacheStorage for filesystem access
+ * This could become a future web standard
+ */
+export interface DirectoryStorage {
+	/**
+	 * Open a named directory - returns FileSystemDirectoryHandle
+	 * Well-known names: 'assets', 'static', 'server', 'client'
+	 */
+	open(name: string): Promise<FileSystemDirectoryHandle>;
+	
+	/**
+	 * Check if a named directory exists
+	 */
+	has(name: string): Promise<boolean>;
+	
+	/**
+	 * Delete a named directory and all its contents
+	 */
+	delete(name: string): Promise<boolean>;
+	
+	/**
+	 * List all available directory names
+	 */
+	keys(): Promise<string[]>;
+}
+
 /**
  * Create ServiceWorker globals for a module context
  */
-export function createServiceWorkerGlobals(runtime: ServiceWorkerRuntime) {
+export function createServiceWorkerGlobals(
+	runtime: ServiceWorkerRuntime,
+	options: {
+		caches?: any;
+		dirs?: DirectoryStorage;
+	} = {}
+) {
+	// Attach platform resources directly to runtime
+	if (options.caches) {
+		(runtime as any).caches = options.caches;
+	}
+	if (options.dirs) {
+		(runtime as any).dirs = options.dirs;
+	}
+
 	return {
 		self: runtime,
 		addEventListener: runtime.addEventListener.bind(runtime),

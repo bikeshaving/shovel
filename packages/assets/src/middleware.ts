@@ -1,16 +1,14 @@
 /**
- * Static files middleware using File System Access API
+ * Assets middleware using self.dirs ServiceWorker API
  *
- * Runtime middleware that serves static files from any storage backend
- * without requiring ESBuild or build-time dependencies.
+ * Runtime middleware that serves assets from structured directories
+ * using the new self.dirs.open(name) web standard API.
  */
 
-import {getFileSystemRoot} from "@b9g/platform";
-
-export interface StaticFilesConfig {
-	/** File system name/bucket for static assets (default: 'static') */
-	filesystem?: string;
-	/** Base path for static files (default: '/static') */
+export interface AssetsConfig {
+	/** Directory name for assets (default: 'assets') */
+	directory?: string;
+	/** Base path for assets (default: '/assets') */
 	basePath?: string;
 	/** Path to asset manifest file (default: 'manifest.json') */
 	manifestPath?: string;
@@ -23,7 +21,7 @@ export interface StaticFilesConfig {
 }
 
 /**
- * Default MIME type mappings for static files
+ * Default MIME type mappings for assets
  */
 const DEFAULT_MIME_TYPES: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
@@ -68,12 +66,12 @@ function getMimeType(
 }
 
 /**
- * Create static files middleware
+ * Create assets middleware using self.dirs API
  */
-export function createStaticFilesMiddleware(config: StaticFilesConfig = {}) {
+export function createAssetsMiddleware(config: AssetsConfig = {}) {
 	const {
-		filesystem = "static",
-		basePath = "/static",
+		directory = "assets",
+		basePath = "/assets",
 		manifestPath = "manifest.json",
 		cacheControl = config.dev ? "no-cache" : "public, max-age=31536000",
 		dev = false,
@@ -84,14 +82,15 @@ export function createStaticFilesMiddleware(config: StaticFilesConfig = {}) {
 	let manifestCache: Record<string, any> | null = null;
 	let manifestError: string | null = null;
 
-	// Load manifest from filesystem
+	// Load manifest from assets directory
 	async function loadManifest(): Promise<Record<string, any>> {
 		if (manifestCache) return manifestCache;
 		if (manifestError && !dev) throw new Error(manifestError);
 
 		try {
-			const root = await getFileSystemRoot(filesystem);
-			const manifestHandle = await root.getFileHandle(manifestPath);
+			// Use self.dirs to access the assets directory
+			const assetsDir = await (self as any).dirs.open(directory);
+			const manifestHandle = await assetsDir.getFileHandle(manifestPath);
 			const manifestFile = await manifestHandle.getFile();
 			const manifestText = await manifestFile.text();
 			const manifest = JSON.parse(manifestText);
@@ -125,7 +124,7 @@ export function createStaticFilesMiddleware(config: StaticFilesConfig = {}) {
 		}
 	}
 
-	return async function* staticFilesMiddleware(request: Request, context: any) {
+	return async function* assetsMiddleware(request: Request, context: any) {
 		const url = new URL(request.url);
 
 		// Only handle requests that start with our base path
@@ -153,15 +152,15 @@ export function createStaticFilesMiddleware(config: StaticFilesConfig = {}) {
 			// Check if file exists in manifest (security: only serve built assets)
 			const manifestEntry = manifest[requestedFilename];
 			if (!manifestEntry && !dev) {
-				// In production, only serve files that went through ESBuild
+				// In production, only serve files that went through build
 				return new Response("Not Found", {status: 404});
 			}
 
-			// Get filesystem root
-			const root = await getFileSystemRoot(filesystem);
+			// Get assets directory using self.dirs
+			const assetsDir = await (self as any).dirs.open(directory);
 
 			// Get file handle (serve requested filename directly)
-			const fileHandle = await root.getFileHandle(requestedFilename);
+			const fileHandle = await assetsDir.getFileHandle(requestedFilename);
 			const file = await fileHandle.getFile();
 
 			// Use content type from manifest if available, otherwise detect
@@ -213,7 +212,8 @@ export function createStaticFilesMiddleware(config: StaticFilesConfig = {}) {
 	};
 }
 
+
 /**
  * Default export for convenience
  */
-export default createStaticFilesMiddleware;
+export default createAssetsMiddleware;

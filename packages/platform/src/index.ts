@@ -28,7 +28,14 @@ export {
 	type ShovelInstallEvent,
 	type ShovelActivateEvent,
 	type ShovelStaticEvent,
+	type DirectoryStorage,
 } from "./service-worker.js";
+
+// Directory storage implementation
+export {
+	PlatformDirectoryStorage,
+	createDirectoryStorage,
+} from "./directory-storage.js";
 
 // Platform registry and detection
 export {

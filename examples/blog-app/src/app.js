@@ -7,23 +7,22 @@
  */
 
 import {Router} from "@b9g/router";
-import {createStaticFilesMiddleware} from "@b9g/staticfiles";
+import {createAssetsMiddleware} from "@b9g/assets";
 
-// Import static assets using import attributes
-import styles from "./assets/styles.css" with {url: "/static/"};
-import logo from "./assets/logo.svg" with {url: "/static/"};
+// Import static assets using import attributes with new /assets/ path
+import styles from "./assets/styles.css" with {url: "/assets/"};
+import logo from "./assets/logo.svg" with {url: "/assets/"};
 
-// Create router - caches will be provided by platform
+// Create router - self.caches and self.dirs are provided directly by platform
 const router = new Router();
 
-// Global cache storage (set by platform event)
-let caches;
+// Platform provides self.caches and self.dirs directly - no event needed
 
-// Static files middleware - serves from File System Access API storage
+// Assets middleware - serves from self.dirs.open("assets")
 router.use(
-	createStaticFilesMiddleware({
-		filesystem: "static",
-		basePath: "/static",
+	createAssetsMiddleware({
+		directory: "assets",
+		basePath: "/assets",
 		manifestPath: "manifest.json",
 		dev: process.env?.NODE_ENV !== "production",
 		cacheControl:
@@ -38,14 +37,14 @@ router.use(pageCache);
 
 // Cache middleware for pages using new generator API
 async function* pageCache(request, context) {
-	if (request.method !== "GET" || !caches) {
+	if (request.method !== "GET" || !self.caches) {
 		// No caching - just passthrough
 		const response = yield request;
 		return response;
 	}
 
 	// Get the pages cache from platform
-	const cache = await caches.open("pages");
+	const cache = await self.caches.open("pages");
 	const cached = await cache.match(request);
 	if (cached) {
 		// Cache hit - return early with cached response
@@ -105,8 +104,8 @@ router
 				"Home",
 				`
     <div class="cache-info">
-      <strong>Cache Status:</strong> ${caches ? "Enabled" : "Disabled"} | 
-      <strong>Cache Type:</strong> ${caches ? "Platform-configured" : "N/A"}
+      <strong>Cache Status:</strong> ${self.caches ? "Enabled" : "Disabled"} | 
+      <strong>Cache Type:</strong> ${self.caches ? "Platform-configured" : "N/A"}
     </div>
     
     <div class="posts">
@@ -161,7 +160,7 @@ router
 				post.title,
 				`
     <div class="cache-info">
-      <strong>Cache Status:</strong> ${caches ? "Enabled" : "Disabled"} | 
+      <strong>Cache Status:</strong> ${self.caches ? "Enabled" : "Disabled"} | 
       <strong>Post ID:</strong> ${post.id}
     </div>
     
@@ -199,7 +198,7 @@ router
 					author: p.author,
 					date: p.date,
 				})),
-				cached: !!caches,
+				cached: !!self.caches,
 				timestamp: new Date().toISOString(),
 			},
 			{
@@ -232,7 +231,7 @@ router
       
       <div class="cache-info">
         <strong>Cache Statistics:</strong><br>
-        Platform Caches: ${caches ? "Available" : "Not Available"}<br>
+        Platform Caches: ${self.caches ? "Available" : "Not Available"}<br>
         Static Files: Served from ${process.env.NODE_ENV === "production" ? "optimized build" : "source files"}
       </div>
       
@@ -249,21 +248,6 @@ router
 		);
 	});
 
-/**
- * Platform event - receive platform configuration including caches
- */
-self.addEventListener("platform", (event) => {
-	const {platform, capabilities, caches: platformCaches} = event.detail;
-	console.info(`[Blog App] Platform: ${platform}, Caches:`, platformCaches ? "Available" : "None");
-	
-	// Store cache storage from platform
-	caches = platformCaches;
-	
-	// Update router with cache storage
-	if (caches) {
-		router.caches = caches;
-	}
-});
 
 /**
  * ServiceWorker install event - setup and initialization

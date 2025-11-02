@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import {build} from "esbuild";
-import {staticFilesPlugin} from "@b9g/staticfiles/plugin";
+import {assetsPlugin} from "@b9g/assets/plugin";
 
 await build({
 	entryPoints: ["src/app.js"],
@@ -9,13 +9,13 @@ await build({
 	format: "esm",
 	target: "es2022",
 	plugins: [
-		staticFilesPlugin({
-			publicPath: "/static/",
-			outputDir: "dist/static",
-			manifest: "dist/static-manifest.json",
+		assetsPlugin({
+			publicPath: "/assets/",
+			outputDir: "dist/assets",
+			manifest: "dist/assets/manifest.json",
 		}),
 	],
 	external: ["@b9g/*"], // Keep Shovel packages external for SSG
 });
 
-console.info("✅ Built app with static files");
+console.info("✅ Built app with assets in dist/assets/");

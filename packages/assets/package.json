@@ -1,7 +1,7 @@
 {
-  "name": "@b9g/staticfiles",
+  "name": "@b9g/assets",
   "version": "0.1.0",
-  "description": "Static files middleware using File System Access API - no ESBuild dependencies",
+  "description": "Assets middleware using File System Access API - no ESBuild dependencies",
   "type": "module",
   "scripts": {
     "build": "libuild build",
@@ -11,7 +11,7 @@
   },
   "keywords": [
     "shovel",
-    "static-files",
+    "assets",
     "middleware",
     "filesystem-api",
     "universal"
@@ -36,6 +36,10 @@
       "types": "./dist/src/middleware.d.ts",
       "import": "./dist/src/middleware.js"
     },
+    "./plugin": {
+      "types": "./dist/src/plugin.d.ts",
+      "import": "./dist/src/plugin.js"
+    },
     "./populate": {
       "types": "./dist/src/populate.d.ts",
       "import": "./dist/src/populate.js"
@@ -52,6 +56,10 @@
     "./middleware.js": {
       "types": "./dist/src/middleware.d.ts",
       "import": "./dist/src/middleware.js"
+    },
+    "./plugin.js": {
+      "types": "./dist/src/plugin.d.ts",
+      "import": "./dist/src/plugin.js"
     },
     "./populate.js": {
       "types": "./dist/src/populate.d.ts",

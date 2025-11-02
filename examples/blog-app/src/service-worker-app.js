@@ -7,11 +7,11 @@
  */
 
 import {Router} from "@b9g/router";
-import {createStaticFilesHandler} from "@b9g/staticfiles";
+import {createAssetsMiddleware} from "@b9g/assets";
 
 // Import static assets
-import styles from "./assets/styles.css" with {url: "/static/"};
-import logo from "./assets/logo.svg" with {url: "/static/"};
+import styles from "./assets/styles.css" with {url: "/assets/"};
+import logo from "./assets/logo.svg" with {url: "/assets/"};
 
 // Sample blog data
 const posts = [
@@ -45,16 +45,13 @@ self.addEventListener("install", (event) => {
 		// Initialize router
 		router = new Router();
 
-		// Setup static files handler
+		// Setup assets middleware
 		router.use(
-			"/static/*",
-			createStaticFilesHandler({
-				publicPath: "/static/",
-				outputDir: "dist/static",
-				manifest: "dist/static-manifest.json",
+			createAssetsMiddleware({
+				directory: "assets",
+				basePath: "/assets",
+				manifestPath: "manifest.json",
 				dev: process.env?.NODE_ENV !== "production",
-				sourceDir: "src",
-				cache: {name: "static"},
 			}),
 		);
 
