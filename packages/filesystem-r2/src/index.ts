@@ -105,13 +105,6 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 		return "granted";
 	}
 
-	// Deprecated properties for compatibility
-	get isFile(): boolean {
-		return true;
-	}
-	get isDirectory(): boolean {
-		return false;
-	}
 
 	private getMimeType(key: string): string {
 		const ext = key.split(".").pop()?.toLowerCase();
@@ -307,13 +300,6 @@ export class R2FileSystemDirectoryHandle
 		return "granted";
 	}
 
-	// Deprecated properties for compatibility
-	get isFile(): boolean {
-		return false;
-	}
-	get isDirectory(): boolean {
-		return true;
-	}
 }
 
 /**

@@ -126,13 +126,6 @@ export class NodeFileSystemFileHandle implements FileSystemFileHandle {
 		return "granted";
 	}
 
-	// Deprecated properties for compatibility
-	get isFile(): boolean {
-		return true;
-	}
-	get isDirectory(): boolean {
-		return false;
-	}
 
 	private getMimeType(filePath: string): string {
 		const ext = path.extname(filePath).toLowerCase();
@@ -304,13 +297,6 @@ export class NodeFileSystemDirectoryHandle
 		return "granted";
 	}
 
-	// Deprecated properties for compatibility
-	get isFile(): boolean {
-		return false;
-	}
-	get isDirectory(): boolean {
-		return true;
-	}
 }
 
 /**

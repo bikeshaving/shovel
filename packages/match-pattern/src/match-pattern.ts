@@ -75,6 +75,7 @@ export class MatchPattern extends URLPattern {
 		this._originalInput = normalizedInput;
 	}
 
+
 	/**
 	 * Enhanced exec that returns unified params object with trailing slash normalization
 	 */
@@ -399,3 +400,4 @@ function parseSearchPattern(pattern: string): Map<string, ParamDefinition> {
 
 	return params;
 }
+

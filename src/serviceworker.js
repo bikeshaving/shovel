@@ -110,7 +110,6 @@ export function createServiceWorkerGlobals(options = {}) {
 		ExtendableEvent,
 		FetchEvent,
 
-		// Override Event class only if needed (Node.js has Event but might not be compatible)
 		Event: EventClass,
 	};
 

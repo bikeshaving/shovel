@@ -348,8 +348,6 @@ export class NodePlatform extends BasePlatform {
 	 * Now uses the base class implementation with dynamic loading
 	 */
 	async createCaches(config?: CacheConfig): Promise<CustomCacheStorage> {
-		// For backwards compatibility, wrap the new async createCaches in the old sync interface
-		// TODO: Update all callers to be async
 		const cacheStorage = await super.createCaches(config);
 		
 		// Return CustomCacheStorage with PostMessage coordination for worker environments

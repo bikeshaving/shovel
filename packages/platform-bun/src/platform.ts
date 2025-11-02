@@ -105,8 +105,6 @@ export class BunPlatform extends BasePlatform {
 		});
 	}
 
-	// TODO: Implement static files handler when @b9g/staticfiles is ready
-
 	/**
 	 * Create HTTP server using Bun.serve
 	 */

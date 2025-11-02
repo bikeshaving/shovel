@@ -143,13 +143,6 @@ export class S3FileSystemFileHandle implements FileSystemFileHandle {
 		return "granted";
 	}
 
-	// Deprecated properties for compatibility
-	get isFile(): boolean {
-		return true;
-	}
-	get isDirectory(): boolean {
-		return false;
-	}
 
 	private getMimeType(key: string): string {
 		const ext = key.split(".").pop()?.toLowerCase();
@@ -386,13 +379,6 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		return "granted";
 	}
 
-	// Deprecated properties for compatibility
-	get isFile(): boolean {
-		return false;
-	}
-	get isDirectory(): boolean {
-		return true;
-	}
 }
 
 /**

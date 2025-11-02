@@ -95,7 +95,7 @@ export class SimpleWatcher {
 						break;
 					}
 				} catch {
-					// Ignore errors when reading package.json
+					// No package.json found, continue up the tree
 				}
 				workspaceRoot = dirname(workspaceRoot);
 			}

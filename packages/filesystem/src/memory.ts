@@ -106,13 +106,6 @@ class MemoryFileSystemFileHandle implements FileSystemFileHandle {
 		return "granted";
 	}
 
-	// Deprecated properties for compatibility
-	get isFile(): boolean {
-		return true;
-	}
-	get isDirectory(): boolean {
-		return false;
-	}
 }
 
 /**
@@ -273,13 +266,6 @@ class MemoryFileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		return "granted";
 	}
 
-	// Deprecated properties for compatibility
-	get isFile(): boolean {
-		return false;
-	}
-	get isDirectory(): boolean {
-		return true;
-	}
 }
 
 /**

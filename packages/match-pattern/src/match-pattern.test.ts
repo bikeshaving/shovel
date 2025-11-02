@@ -12,6 +12,7 @@ if (!URLPattern) {
 // Import our MatchPattern
 import {MatchPattern, type MatchPatternResult} from "./match-pattern.js";
 
+
 describe("MatchPattern vs URLPattern", () => {
 	describe("Search Parameter Matching", () => {
 		test("URLPattern fails with different parameter order", () => {
@@ -42,7 +43,6 @@ describe("MatchPattern vs URLPattern", () => {
 			expect(pattern.test(url)).toBe(false); // Should be true for flexible routing
 		});
 
-		// TODO: MatchPattern should fix these issues
 		test("MatchPattern handles different parameter order", () => {
 			const pattern: MatchPattern = new MatchPattern({
 				pathname: "/api/posts",

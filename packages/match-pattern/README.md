@@ -1,10 +1,10 @@
 # MatchPattern
 
-Extended URLPattern for better routing with enhanced search parameter handling and security mitigations.
+Extended URLPattern for better routing with enhanced search parameter handling.
 
 ## Overview
 
-MatchPattern is a subclass of URLPattern that fixes its limitations for web routing while maintaining full backward compatibility. It enhances URLPattern with order-independent search parameters, unified parameter extraction, and convenient string pattern syntax.
+ MatchPattern is a subclass of URLPattern that fixes its limitations for web routing while maintaining full backward compatibility. It enhances URLPattern with order-independent search parameters, unified parameter extraction, and convenient string pattern syntax.
 
 ## Installation
 
@@ -93,43 +93,21 @@ new MatchPattern({
 })
 ```
 
-## Security Considerations
-
-MatchPattern includes mitigations for known URLPattern security issues:
-
-### Pathname Jailbreaking Protection
-
-URLPattern patterns can sometimes be "jailbroken" to match unintended paths. MatchPattern validates patterns to prevent this.
-
-**Issue:** [whatwg/urlpattern#128](https://github.com/whatwg/urlpattern/issues/128)
-
-**Mitigation:** Pattern validation and sanitization (planned)
-
-### Performance DoS Protection  
-
-Globstar patterns (`**`) can cause exponential runtime behavior leading to DoS attacks.
-
-**Issues:** 
-- [whatwg/urlpattern#237](https://github.com/whatwg/urlpattern/issues/237) - Exponential runtime
-- [kenchris/urlpattern-polyfill#121](https://github.com/kenchris/urlpattern-polyfill/issues/121) - Performance degradation
-
-**Mitigation:** Globstar patterns are disabled by default. Use `.allowGlobstar()` to explicitly enable.
-
-```javascript
-// Throws error by default
-new MatchPattern('/files/**');  
-
-// Explicit opt-in required
-new MatchPattern('/files/**').allowGlobstar();
-```
-
-### Trailing Slash Inconsistencies
+## Trailing Slash Normalization
 
 URLPattern has inconsistent behavior with trailing slashes that can cause unexpected matches.
 
 **Issue:** [kenchris/urlpattern-polyfill#131](https://github.com/kenchris/urlpattern-polyfill/issues/131)
 
-**Mitigation:** ✅ Automatic trailing slash normalization implemented
+**Solution:** ✅ Automatic trailing slash normalization implemented
+
+```javascript
+const pattern = new MatchPattern('/api/posts/:id');
+
+// Both match consistently
+pattern.test('/api/posts/123');   // ✅ true
+pattern.test('/api/posts/123/');  // ✅ true (normalized)
+```
 
 ## Known Limitations
 
@@ -165,10 +143,6 @@ new MatchPattern(input: string | URLPatternInit, baseURL?: string)
 // Enhanced methods with unified params
 test(input: string | URL): boolean
 exec(input: string | URL): MatchPatternResult | null
-
-// Security methods (planned)
-allowGlobstar(): MatchPattern
-validatePattern(): boolean
 ```
 
 ### Types
@@ -192,7 +166,6 @@ MatchPattern follows the [WHATWG URLPattern specification](https://urlpattern.sp
 
 Report issues related to:
 - URLPattern compatibility problems
-- Security vulnerabilities in pattern matching
 - Performance issues with complex patterns
 - Cross-runtime behavior differences
 
@@ -204,4 +177,4 @@ MIT - see LICENSE file for details.
 
 - URLPattern specification by WHATWG
 - [urlpattern-polyfill](https://github.com/kenchris/urlpattern-polyfill) by Ken Christensen
-- Security research by the Web Platform community
+- Web Platform community

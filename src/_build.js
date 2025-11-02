@@ -35,7 +35,7 @@ export async function buildForProduction({entrypoint, outDir, verbose}) {
 				break;
 			}
 		} catch {
-			// Ignore errors when reading package.json
+			// No package.json found, continue up the tree
 		}
 		workspaceRoot = dirname(workspaceRoot);
 	}
