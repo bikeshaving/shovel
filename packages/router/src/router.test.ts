@@ -499,6 +499,72 @@ describe("Middleware Short-Circuiting", () => {
 		]);
 	});
 
+	test("chained generator middleware with yield request should preserve request object", async () => {
+		const router = new Router();
+		let firstMiddlewareUrl: string | undefined;
+		let secondMiddlewareUrl: string | undefined;
+		let firstUrlError: Error | null = null;
+		let secondUrlError: Error | null = null;
+
+		// First generator middleware (like pageCache)
+		async function* firstMiddleware(request: Request, context: any) {
+			try {
+				// Try to access request.url - should work
+				firstMiddlewareUrl = request.url;
+				new URL(request.url); // Should not throw
+				
+				// Pass through
+				const response = yield request;
+				return response;
+			} catch (error) {
+				firstUrlError = error as Error;
+				return new Response("First middleware URL error: " + error.message, { status: 500 });
+			}
+		}
+
+		// Second generator middleware (like assets middleware)
+		async function* secondMiddleware(request: Request, context: any) {
+			try {
+				// Try to access request.url - this is where the bug manifests
+				secondMiddlewareUrl = request.url;
+				const url = new URL(request.url); // This should not throw "Invalid URL: [object Object]"
+				
+				// Only handle specific paths
+				if (!url.pathname.startsWith("/assets")) {
+					const response = yield request;
+					return response;
+				}
+				
+				return new Response("Asset handled", { status: 200 });
+			} catch (error) {
+				secondUrlError = error as Error;
+				return new Response("Second middleware URL error: " + error.message, { status: 500 });
+			}
+		}
+
+		router.use(firstMiddleware);
+		router.use(secondMiddleware);
+		router.route("/test").get(async () => new Response("Hello"));
+
+		const request = new Request("http://example.com/test");
+		const response = await router.handler(request);
+
+		// Debug what we captured
+		console.log("First middleware URL:", firstMiddlewareUrl, typeof firstMiddlewareUrl);
+		console.log("Second middleware URL:", secondMiddlewareUrl, typeof secondMiddlewareUrl);
+		console.log("First URL error:", firstUrlError?.message);
+		console.log("Second URL error:", secondUrlError?.message);
+
+		// Both middleware should see the same valid URL
+		expect(firstUrlError).toBeNull();
+		expect(secondUrlError).toBeNull();
+		expect(firstMiddlewareUrl).toBe("http://example.com/test");
+		expect(secondMiddlewareUrl).toBe("http://example.com/test");
+		expect(typeof firstMiddlewareUrl).toBe("string");
+		expect(typeof secondMiddlewareUrl).toBe("string");
+		expect(response?.status).toBe(200);
+	});
+
 	test("works with mixed generator and function middleware", async () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
