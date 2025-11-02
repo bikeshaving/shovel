@@ -1,0 +1,27 @@
+{
+  "name": "shovel-admin-dashboard",
+  "version": "0.1.0",
+  "description": "Admin dashboard example with SQLite backend for blog posts and documentation",
+  "type": "module",
+  "main": "src/app.js",
+  "exports": {
+    ".": {
+      "bun": "./dist/app.js",
+      "import": "./dist/app.js"
+    }
+  },
+  "scripts": {
+    "dev": "bun run --watch src/app.js",
+    "build": "echo 'No build step needed for Bun deployment'",
+    "start": "bun src/app.js",
+    "db:seed": "bun src/db/seed.js"
+  },
+  "dependencies": {
+    "@b9g/router": "workspace:*",
+    "@b9g/assets": "workspace:*"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.10",
+    "@types/bun": "latest"
+  }
+}
