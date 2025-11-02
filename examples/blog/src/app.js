@@ -23,42 +23,35 @@ const TIMEOUTS = {
 	ROUTER_RESPONSE: 5000, // 5 seconds for router timeout
 };
 
-// Import static assets using import attributes with new /assets/ path
-import styles from "./assets/styles.css" with {url: "/assets/"};
-import logo from "./assets/logo.svg" with {url: "/assets/"};
+// Import static assets - Cloudflare Workers serves them from root
+import styles from "./assets/styles.css" with {url: "/"};
+import logo from "./assets/logo.svg" with {url: "/"};
 
 // Create router - self.caches and self.dirs are provided directly by platform
 const router = new Router();
 
 // Platform provides self.caches and self.dirs directly - no event needed
 
-// Assets middleware - serves from self.dirs.open("assets")
-router.use(
-	createAssetsMiddleware({
-		directory: "assets",
-		basePath: "/assets",
-		manifestPath: "manifest.json",
-		dev: process.env?.NODE_ENV !== "production",
-		cacheControl:
-			process.env?.NODE_ENV === "production"
-				? CACHE_HEADERS.ASSETS
-				: "no-cache",
-	}),
-);
+// No assets middleware needed - Cloudflare Workers will serve static assets directly
 
 // Global page cache middleware
 router.use(pageCache);
 
+
 // Cache middleware for pages using new generator API
 async function* pageCache(request, context) {
+	console.log("[pageCache] Processing:", request.url, "Method:", request.method);
+	
 	if (request.method !== "GET" || !self.caches) {
 		// No caching - just passthrough
+		console.log("[pageCache] No caching, yielding");
 		const response = yield request;
 		return response;
 	}
 
-	// Get the pages cache from platform
-	const cache = await self.caches.open("pages");
+	// Get the pages cache from platform with version for cache invalidation
+	const cacheVersion = "v2"; // Increment when asset paths change
+	const cache = await self.caches.open(`pages-${cacheVersion}`);
 	let cached;
 	try {
 		// Clone the request for cache operations to avoid mutation
@@ -70,10 +63,16 @@ async function* pageCache(request, context) {
 	}
 	
 	if (cached) {
-		// Cache hit - return early with cached response
-		const response = cached.clone();
-		response.headers.set("X-Cache", "HIT");
-		return response;
+		// Cache hit - return early with cached response (clone to modify headers)
+		const clonedResponse = cached.clone();
+		const newHeaders = new Headers(clonedResponse.headers);
+		newHeaders.set("X-Cache", "HIT");
+		
+		return new Response(clonedResponse.body, {
+			status: clonedResponse.status,
+			statusText: clonedResponse.statusText,
+			headers: newHeaders,
+		});
 	}
 
 	// Cache miss - continue to handler
@@ -89,8 +88,16 @@ async function* pageCache(request, context) {
 		await cache.put(requestForCache, response.clone());
 	}
 
-	response.headers.set("X-Cache", "MISS");
-	return response;
+	// Clone response to modify headers (Cloudflare Workers has immutable headers)
+	const clonedResponse = response.clone();
+	const newHeaders = new Headers(clonedResponse.headers);
+	newHeaders.set("X-Cache", "MISS");
+	
+	return new Response(clonedResponse.body, {
+		status: clonedResponse.status,
+		statusText: clonedResponse.statusText,
+		headers: newHeaders,
+	});
 }
 
 // Sample blog data
@@ -400,12 +407,32 @@ self.addEventListener("fetch", (event) => {
 
 		event.respondWith(
 			Promise.race([responsePromise, timeoutPromise]).catch((error) => {
-				return new Response("Router error: " + error.message, {status: 500});
+				// In development, show full error details
+				const isDev = process.env?.NODE_ENV !== "production";
+				const errorDetails = isDev 
+					? `Router error: ${error.message}\n\nStack trace:\n${error.stack}`
+					: `Router error: ${error.message}`;
+				
+				console.error("Router error:", error);
+				return new Response(errorDetails, {
+					status: 500,
+					headers: { "Content-Type": "text/plain" }
+				});
 			}),
 		);
 	} catch (error) {
+		// In development, show full error details
+		const isDev = process.env?.NODE_ENV !== "production";
+		const errorDetails = isDev 
+			? `Sync error: ${error.message}\n\nStack trace:\n${error.stack}`
+			: `Sync error: ${error.message}`;
+		
+		console.error("Sync error:", error);
 		event.respondWith(
-			new Response("Sync error: " + error.message, {status: 500}),
+			new Response(errorDetails, {
+				status: 500,
+				headers: { "Content-Type": "text/plain" }
+			}),
 		);
 	}
 });

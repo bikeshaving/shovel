@@ -6,7 +6,12 @@ compatibility_flags = ["nodejs_compat"]
 [build]
 command = ""
 
-# R2 for assets
-[[r2_buckets]]
+# Static assets served directly by Cloudflare under /assets/ path
+[assets]
+directory = "dist/assets/"
 binding = "ASSETS"
-bucket_name = "shovel-blog-assets"
+
+# R2 for assets (if needed)
+# [[r2_buckets]]
+# binding = "ASSETS"
+# bucket_name = "shovel-blog-assets"

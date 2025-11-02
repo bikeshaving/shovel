@@ -125,14 +125,18 @@ export function createAssetsMiddleware(config: AssetsConfig = {}) {
 	}
 
 	return async function* assetsMiddleware(request: Request, context: any) {
-		const url = new URL(request.url);
+		try {
+			console.log("[assetsMiddleware] Processing request:", request.url, typeof request.url);
+			console.log("[assetsMiddleware] Request type:", typeof request);
+			const url = new URL(request.url);
 
-		// Only handle requests that start with our base path
-		if (!url.pathname.startsWith(basePath)) {
-			// Pass through to next middleware
-			const response = yield request;
-			return response;
-		}
+			// Only handle requests that start with our base path
+			if (!url.pathname.startsWith(basePath)) {
+				// Pass through to next middleware
+				console.log("[assetsMiddleware] Not an assets request, passing through");
+				const response = yield request;
+				return response;
+			}
 
 		// Extract the file path relative to base path
 		const requestedPath = url.pathname.slice(basePath.length);
@@ -207,8 +211,13 @@ export function createAssetsMiddleware(config: AssetsConfig = {}) {
 				return new Response("Not Found", {status: 404});
 			}
 
+			console.error("[assetsMiddleware] Error:", error);
 			return new Response("Internal Server Error", {status: 500});
 		}
+	} catch (error) {
+		console.error("[assetsMiddleware] Outer error:", error);
+		return new Response("Assets middleware error: " + error.message, {status: 500});
+	}
 	};
 }
 
