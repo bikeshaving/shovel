@@ -7,12 +7,38 @@ import * as esbuild from "esbuild";
 import {resolve, join, dirname} from "path";
 import {mkdir, readFile} from "fs/promises";
 import {assetsPlugin} from "./assets.ts";
+import {cloudflareWorkerBanner, cloudflareWorkerFooter} from "@b9g/platform-cloudflare";
+
+/**
+ * Plugin to resolve workspace packages
+ */
+function workspacePlugin(workspaceRoot) {
+	return {
+		name: 'workspace-resolver',
+		setup(build) {
+			build.onResolve({ filter: /^@b9g\// }, async (args) => {
+				const packageName = args.path;
+				const packageDir = join(workspaceRoot, 'packages', packageName.replace('@b9g/', ''));
+				const packageJsonPath = join(packageDir, 'package.json');
+				
+				try {
+					const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
+					const entryPoint = packageJson.main || packageJson.module || 'index.js';
+					return { path: resolve(packageDir, entryPoint) };
+				} catch {
+					// Package not found in workspace, let esbuild handle it normally
+					return null;
+				}
+			});
+		}
+	};
+}
 
 /**
  * Build ServiceWorker app for production deployment
- * Currently focused on Bun platform
+ * Supports multiple target platforms
  */
-export async function buildForProduction({entrypoint, outDir, verbose}) {
+export async function buildForProduction({entrypoint, outDir, verbose, platform = "node"}) {
 	const entryPath = resolve(entrypoint);
 	const outputDir = resolve(outDir);
 
@@ -40,17 +66,20 @@ export async function buildForProduction({entrypoint, outDir, verbose}) {
 		workspaceRoot = dirname(workspaceRoot);
 	}
 
+	// Platform-specific build configuration
+	const isCloudflare = platform === "cloudflare" || platform === "cloudflare-workers";
+	
 	// Build ServiceWorker code (keep as ServiceWorker, just bundle dependencies)
-	const result = await esbuild.build({
+	const buildConfig = {
 		entryPoints: [entryPath],
 		bundle: true,
 		format: "esm",
 		target: "es2022",
-		platform: "node",
+		platform: isCloudflare ? "browser" : "node",
 		outfile: join(outputDir, "app.js"),
-		packages: "external",
 		absWorkingDir: workspaceRoot,
 		plugins: [
+			workspacePlugin(workspaceRoot),
 			assetsPlugin({
 				outputDir: join(outputDir, "assets"),
 				manifest: join(outputDir, "assets/manifest.json"),
@@ -64,7 +93,26 @@ export async function buildForProduction({entrypoint, outDir, verbose}) {
 		define: {
 			"process.env.NODE_ENV": '"production"',
 		},
-	});
+	};
+	
+	// Platform-specific bundling strategy
+	if (!isCloudflare) {
+		// For Node.js/Bun, keep packages external (use npm/workspace resolution)
+		buildConfig.packages = "external";
+	} else {
+		// For Cloudflare, bundle everything and wrap ServiceWorker as ES Module
+		buildConfig.platform = "browser";
+		buildConfig.conditions = ["worker", "browser"];
+		buildConfig.banner = {
+			js: cloudflareWorkerBanner,
+		};
+		
+		buildConfig.footer = {
+			js: cloudflareWorkerFooter,
+		};
+	}
+	
+	const result = await esbuild.build(buildConfig);
 
 	if (verbose && result.metafile) {
 		console.info("📊 Bundle analysis:");

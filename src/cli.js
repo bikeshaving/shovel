@@ -170,7 +170,7 @@ function getWorkerCount(options) {
 		.command("build <entrypoint>")
 		.description("Build app for deployment")
 		.option(
-			"--target <platform>",
+			"--platform <platform>",
 			"Target platform (node, bun, cloudflare, vercel)",
 		)
 		.option("--out-dir <dir>", "Output directory", DEFAULTS.PATHS.OUTPUT_DIR)
@@ -194,11 +194,12 @@ function getWorkerCount(options) {
 				// Import build functionality
 				const {buildForProduction} = await import("./_build.js");
 
-				// Build ServiceWorker app to plain JavaScript (Bun-focused)
+				// Build ServiceWorker app for target platform
 				await buildForProduction({
 					entrypoint,
 					outDir: options.outDir,
 					verbose: options.verbose,
+					platform: options.platform,
 				});
 
 				console.info(`✅ Build complete`);
@@ -219,7 +220,7 @@ function getWorkerCount(options) {
 		.command("activate <entrypoint>")
 		.description("Run ServiceWorker install/activate lifecycle with self-generation")
 		.option(
-			"--target <platform>",
+			"--platform <platform>",
 			"Target platform for hosting (node, bun, cloudflare)",
 		)
 		.option(
@@ -313,7 +314,7 @@ function getWorkerCount(options) {
 				"   shovel develop app.js --filesystem=s3         # S3 filesystem adapter",
 			);
 			console.info(
-				"   shovel build app.js --target=cloudflare       # Target deployment",
+				"   shovel build app.js --platform=cloudflare     # Target deployment",
 			);
 			console.info(
 				"   shovel wrangler app.js --cache=kv --filesystem=r2  # Generate wrangler.toml",

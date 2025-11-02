@@ -1,13 +1,104 @@
+/**
+ * ESBuild/Bun plugin for importing assets as URLs with manifest generation
+ * 
+ * Updated to work with the new dist/assets organization and self.dirs API
+ */
+
 import {readFileSync, writeFileSync, mkdirSync, existsSync} from "fs";
 import {createHash} from "crypto";
 import {join, basename, extname, relative, dirname} from "path";
 import {lookup} from "mime-types";
-import type {
-	AssetsConfig,
-	AssetManifest,
-	AssetManifestEntry,
-} from "./shared.ts";
-import {mergeConfig} from "./shared.ts";
+
+/**
+ * Configuration for assets plugin and runtime handler
+ */
+export interface AssetsConfig {
+	/**
+	 * Directory to output assets
+	 * @default 'dist/assets'
+	 */
+	outputDir?: string;
+
+	/**
+	 * Public URL path prefix
+	 * @default '/assets/'
+	 */
+	publicPath?: string;
+
+	/**
+	 * Path to asset manifest file
+	 * @default 'dist/assets/manifest.json'
+	 */
+	manifest?: string;
+
+	/**
+	 * Length of content hash for cache busting
+	 * @default 8
+	 */
+	hashLength?: number;
+
+	/**
+	 * Whether to include content hash in filename
+	 * @default true
+	 */
+	includeHash?: boolean;
+}
+
+/**
+ * Asset manifest entry
+ */
+export interface AssetManifestEntry {
+	/** Original file path relative to source */
+	source: string;
+	/** Output file path relative to outputDir */
+	output: string;
+	/** Public URL for the asset */
+	url: string;
+	/** Content hash */
+	hash: string;
+	/** File size in bytes */
+	size: number;
+	/** MIME type */
+	type?: string;
+}
+
+/**
+ * Asset manifest structure
+ */
+export interface AssetManifest {
+	/** Assets indexed by their source path */
+	assets: Record<string, AssetManifestEntry>;
+	/** Generation timestamp */
+	generated: string;
+	/** Configuration used */
+	config: {
+		publicPath: string;
+		outputDir: string;
+	};
+}
+
+/**
+ * Default configuration values
+ */
+export const DEFAULT_CONFIG: Required<AssetsConfig> = {
+	outputDir: "dist/assets",
+	publicPath: "/assets/",
+	manifest: "dist/assets/manifest.json",
+	hashLength: 8,
+	includeHash: true,
+};
+
+/**
+ * Merge user config with defaults
+ */
+export function mergeConfig(
+	userConfig: AssetsConfig = {},
+): Required<AssetsConfig> {
+	return {
+		...DEFAULT_CONFIG,
+		...userConfig,
+	};
+}
 
 /**
  * ESBuild/Bun plugin for importing assets as URLs with manifest generation
@@ -137,6 +228,7 @@ export function assetsPlugin(options: AssetsConfig = {}) {
 		},
 	};
 }
+
 
 // Default export
 export default assetsPlugin;
