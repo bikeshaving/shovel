@@ -17,21 +17,9 @@
     "@b9g/libuild": "^0.1.10"
   },
   "private": true,
-  "module": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
+  "module": "./dist/src/match-pattern.js",
+  "types": "./dist/src/match-pattern.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
-    "./index": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
-    "./index.js": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
     "./match-pattern": {
       "types": "./dist/src/match-pattern.d.ts",
       "import": "./dist/src/match-pattern.js"
@@ -40,6 +28,10 @@
       "types": "./dist/src/match-pattern.d.ts",
       "import": "./dist/src/match-pattern.js"
     },
-    "./package.json": "./dist/package.json"
+    "./package.json": "./dist/package.json",
+    ".": {
+      "types": "./dist/src/match-pattern.d.ts",
+      "import": "./dist/src/match-pattern.js"
+    }
   }
 }
