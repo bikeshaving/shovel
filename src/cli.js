@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Shovel CLI - The obsessively web platform-based web framework
  *
@@ -130,7 +130,7 @@ function getWorkerCount(options) {
 
 				// Load ServiceWorker app from built output
 				const builtEntrypoint = `${outDir}/app.js`;
-				serviceWorker = await platform.loadServiceWorker(builtEntrypoint, {
+				serviceWorker = await platformInstance.loadServiceWorker(builtEntrypoint, {
 					hotReload: true,
 					workerCount,
 					caches: {
@@ -141,7 +141,7 @@ function getWorkerCount(options) {
 				});
 
 				// Create development server
-				const server = platform.createServer(serviceWorker.handleRequest, {
+				const server = platformInstance.createServer(serviceWorker.handleRequest, {
 					port: parseInt(options.port) || DEFAULTS.SERVER.PORT,
 					host: options.host || DEFAULTS.SERVER.HOST,
 				});
@@ -157,7 +157,7 @@ function getWorkerCount(options) {
 					console.info("\n🛑 Shutting down...");
 					await watcher.stop();
 					await serviceWorker.dispose();
-					await platform.dispose();
+					await platformInstance.dispose();
 					await server.close();
 					process.exit(0);
 				});
@@ -271,7 +271,7 @@ function getWorkerCount(options) {
 				console.info(`🚀 Activating ServiceWorker...`);
 
 				// Load ServiceWorker app
-				const serviceWorker = await platform.loadServiceWorker(entrypoint, {
+				const serviceWorker = await platformInstance.loadServiceWorker(entrypoint, {
 					hotReload: false,
 					workerCount,
 				});
@@ -281,7 +281,7 @@ function getWorkerCount(options) {
 				console.info(`✅ ServiceWorker activated - check dist/ for generated content`);
 
 				await serviceWorker.dispose();
-				await platform.dispose();
+				await platformInstance.dispose();
 			} catch (error) {
 				console.error(`❌ ServiceWorker activation failed:`, error.message);
 				if (options.verbose) {
