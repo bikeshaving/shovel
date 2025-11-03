@@ -61,23 +61,22 @@ export class MatchPattern extends URLPattern {
 			processedInput = parseStringPattern(input);
 		}
 
-		// Normalize trailing slashes in the pattern
-		const normalizedInput = normalizePatternTrailingSlash(processedInput);
+		// Use the processed input as-is (no automatic trailing slash normalization)
 
 		// Handle baseURL parameter properly - only pass if defined
 		if (baseURL !== undefined) {
-			super(normalizedInput as URLPatternInit, baseURL);
+			super(processedInput as URLPatternInit, baseURL);
 		} else {
-			super(normalizedInput);
+			super(processedInput);
 		}
 
 		// Store original pattern for enhanced matching
-		this._originalInput = normalizedInput;
+		this._originalInput = processedInput;
 	}
 
 
 	/**
-	 * Enhanced exec that returns unified params object with trailing slash normalization
+	 * Enhanced exec that returns unified params object
 	 */
 	override exec(input: string | URL): MatchPatternResult | null {
 		// First check if this would match with our enhanced test
@@ -85,17 +84,13 @@ export class MatchPattern extends URLPattern {
 			return null;
 		}
 
-		// Normalize input URL for consistent matching
-		const url = typeof input === "string" ? new URL(input) : input;
-		const normalizedUrl = normalizeTrailingSlash(url);
-
-		// Try URLPattern first with normalized URL - if it works, use it
-		const result = super.exec(normalizedUrl);
+		// Try URLPattern first - if it works, use it
+		const result = super.exec(input);
 		if (result) {
-			// Add unified params object using canonical types, but use original URL for search params
+			// Add unified params object using canonical types
 			const enhancedResult: MatchPatternResult = {
 				...(result as URLPatternResult),
-				params: extractUnifiedParams(result as URLPatternResult, input), // Use original input for search params
+				params: extractUnifiedParams(result as URLPatternResult, input),
 			};
 			return enhancedResult;
 		}
@@ -106,31 +101,26 @@ export class MatchPattern extends URLPattern {
 	}
 
 	/**
-	 * Enhanced test with order-independent search parameter matching and trailing slash normalization
+	 * Enhanced test with order-independent search parameter matching
 	 */
 	override test(input: string | URL): boolean {
 		const url = typeof input === "string" ? new URL(input) : input;
 
-		// Create normalized URL for testing
-		const normalizedUrl = normalizeTrailingSlash(url);
-
-		// If there's no search pattern, test with normalized URL
+		// If there's no search pattern, use standard URLPattern test
 		if (!this.search || this.search === "*") {
-			return super.test(normalizedUrl);
+			return super.test(input);
 		}
 
 		// For search patterns, we need custom logic for order independence
-		// First check if pathname matches with normalization
+		// First check if pathname matches
 		const pathPatternInit =
 			typeof this._originalInput === "string"
 				? {pathname: this._originalInput}
 				: {...this._originalInput, search: undefined};
 
-		// Create normalized pattern for pathname testing
-		const normalizedPattern = normalizePatternTrailingSlash(pathPatternInit);
-		const pathPattern = new URLPattern(normalizedPattern);
+		const pathPattern = new URLPattern(pathPatternInit);
 
-		if (!pathPattern.test(normalizedUrl)) {
+		if (!pathPattern.test(input)) {
 			return false; // Pathname doesn't match
 		}
 
@@ -237,54 +227,6 @@ function extractUnifiedParams(
 	return params;
 }
 
-/**
- * Normalize trailing slash in URL for consistent matching
- * Ensures consistent behavior regardless of trailing slash presence
- */
-function normalizeTrailingSlash(url: URL): URL {
-	const normalized = new URL(url.href);
-
-	// Don't normalize root path
-	if (normalized.pathname === "/") {
-		return normalized;
-	}
-
-	// Remove trailing slash if present (except for root)
-	if (normalized.pathname.endsWith("/")) {
-		normalized.pathname = normalized.pathname.slice(0, -1);
-	}
-
-	return normalized;
-}
-
-/**
- * Normalize trailing slash in pattern for consistent matching
- */
-function normalizePatternTrailingSlash(
-	patternInit: URLPatternInit | string,
-): URLPatternInit | string {
-	if (typeof patternInit === "string") {
-		// Handle string patterns
-		if (patternInit === "/" || patternInit === "") {
-			return patternInit; // Don't normalize root
-		}
-
-		// Remove trailing slash from string patterns
-		return patternInit.endsWith("/") ? patternInit.slice(0, -1) : patternInit;
-	}
-
-	// Handle object patterns
-	const normalized = {...patternInit};
-
-	if (normalized.pathname && normalized.pathname !== "/") {
-		// Remove trailing slash from pathname
-		if (normalized.pathname.endsWith("/")) {
-			normalized.pathname = normalized.pathname.slice(0, -1);
-		}
-	}
-
-	return normalized;
-}
 
 /**
  * Build custom result when URLPattern fails but MatchPattern succeeds
