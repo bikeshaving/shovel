@@ -7,7 +7,7 @@
  */
 
 import {Router} from "@b9g/router";
-import {createAssetsMiddleware} from "@b9g/assets";
+import {createRootAssetsMiddleware} from "@b9g/assets";
 
 // Cache control constants
 const CACHE_HEADERS = {
@@ -23,16 +23,18 @@ const TIMEOUTS = {
 	ROUTER_RESPONSE: 5000, // 5 seconds for router timeout
 };
 
-// Import static assets - Cloudflare Workers serves them from root
+// Import static assets - served from root
 import styles from "./assets/styles.css" with {url: "/"};
 import logo from "./assets/logo.svg" with {url: "/"};
+import favicon from "./assets/favicon.ico" with {url: "/"};
 
 // Create router - self.caches and self.dirs are provided directly by platform
 const router = new Router();
 
 // Platform provides self.caches and self.dirs directly - no event needed
 
-// No assets middleware needed - Cloudflare Workers will serve static assets directly
+// Root assets middleware for serving root-level assets like /logo.svg
+router.use(createRootAssetsMiddleware({dev: true}));
 
 // Global page cache middleware
 router.use(pageCache);
@@ -464,8 +466,8 @@ function renderPage(title, content) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} - Shovel Blog</title>
+  <link rel="icon" href="${favicon}" type="image/x-icon">
   <link rel="stylesheet" href="${styles}">
-  <link rel="icon" href="${logo}">
 </head>
 <body>
   <header>

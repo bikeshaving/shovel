@@ -72,11 +72,11 @@ export class BunPlatform extends BasePlatform {
 	/**
 	 * Build artifacts filesystem (install-time only)
 	 */
-	get distDir(): FileSystemDirectoryHandle {
+	async getDistDir(): Promise<FileSystemDirectoryHandle> {
 		if (!this._dist) {
 			// Create dist filesystem pointing to ./dist directory
 			const distPath = Path.resolve(this.options.cwd, "dist");
-			this._dist = new NodeFileSystemAdapter({ rootPath: distPath }).getFileSystemRoot("") as any;
+			this._dist = await new NodeFileSystemAdapter({ rootPath: distPath }).getFileSystemRoot("");
 		}
 		return this._dist;
 	}
@@ -93,15 +93,29 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Override cache creation to use PostMessage coordination for Bun
+	 * Override cache creation to use appropriate cache type for Bun
 	 */
 	async createCaches(config?: CacheConfig): Promise<CustomCacheStorage> {
-		// Use CustomCacheStorage with PostMessage coordination for Bun workers
+		// Import MemoryCache for fallback
+		const { MemoryCache } = await import("@b9g/cache");
+		
+		// Use MemoryCache in main thread, PostMessageCache in workers
+		const { isMainThread } = await import("worker_threads");
+		
 		return new CustomCacheStorage((name: string) => {
-			return new PostMessageCache(name, {
-				maxEntries: 1000,
-				maxSize: 50 * 1024 * 1024, // 50MB
-			});
+			if (isMainThread) {
+				// Use MemoryCache in main thread
+				return new MemoryCache(name, {
+					maxEntries: 1000,
+					maxSize: 50 * 1024 * 1024, // 50MB
+				});
+			} else {
+				// Use PostMessageCache in worker threads
+				return new PostMessageCache(name, {
+					maxEntries: 1000,
+					maxSize: 50 * 1024 * 1024, // 50MB
+				});
+			}
 		});
 	}
 
@@ -149,7 +163,8 @@ export class BunPlatform extends BasePlatform {
 		const caches = await this.createCaches(options.caches);
 		
 		// Create directory storage using dist filesystem
-		const dirs = createDirectoryStorage(this.distDir);
+		const distDir = await this.getDistDir();
+		const dirs = createDirectoryStorage(distDir);
 
 		// Create ServiceWorker instance
 		const instance: ServiceWorkerInstance = {

@@ -22,8 +22,14 @@ export class PlatformDirectoryStorage implements DirectoryStorage {
 	/**
 	 * Open a named directory - creates if it doesn't exist
 	 * Well-known names: 'assets', 'static', 'server', 'client'
+	 * Special values: '', '/', '.' return the root directory
 	 */
 	async open(name: string): Promise<FileSystemDirectoryHandle> {
+		// Handle root directory access
+		if (name === '' || name === '/' || name === '.') {
+			return this.rootDir;
+		}
+
 		// Check cache first
 		if (this.cache.has(name)) {
 			return this.cache.get(name)!;
@@ -46,6 +52,11 @@ export class PlatformDirectoryStorage implements DirectoryStorage {
 	 * Check if a named directory exists
 	 */
 	async has(name: string): Promise<boolean> {
+		// Root directory always exists
+		if (name === '' || name === '/' || name === '.') {
+			return true;
+		}
+
 		try {
 			await this.rootDir.getDirectoryHandle(name);
 			return true;
@@ -56,8 +67,14 @@ export class PlatformDirectoryStorage implements DirectoryStorage {
 
 	/**
 	 * Delete a named directory and all its contents
+	 * Note: Cannot delete the root directory
 	 */
 	async delete(name: string): Promise<boolean> {
+		// Cannot delete root directory
+		if (name === '' || name === '/' || name === '.') {
+			return false;
+		}
+
 		try {
 			await this.rootDir.removeEntry(name, {recursive: true});
 			this.cache.delete(name);
