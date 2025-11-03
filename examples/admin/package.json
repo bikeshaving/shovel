@@ -24,7 +24,6 @@
     "@b9g/assets": "workspace:*"
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.10",
     "@types/bun": "latest"
   }
 }
