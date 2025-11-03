@@ -95,6 +95,22 @@
     "./utils.js": {
       "types": "./dist/src/utils.d.ts",
       "import": "./dist/src/utils.js"
+    },
+    "./detection": {
+      "types": "./dist/src/detection.d.ts",
+      "import": "./dist/src/detection.js"
+    },
+    "./detection.js": {
+      "types": "./dist/src/detection.d.ts",
+      "import": "./dist/src/detection.js"
+    },
+    "./directory-storage": {
+      "types": "./dist/src/directory-storage.d.ts",
+      "import": "./dist/src/directory-storage.js"
+    },
+    "./directory-storage.js": {
+      "types": "./dist/src/directory-storage.d.ts",
+      "import": "./dist/src/directory-storage.js"
     }
   }
 }

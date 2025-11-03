@@ -148,19 +148,22 @@ export function resolvePlatform(options: { platform?: string; target?: string })
 export async function createPlatform(platformName: string, options: any = {}): Promise<any> {
 	switch (platformName) {
 		case "node": {
-			const {createNodePlatform} = await import("@b9g/platform-node");
+			const modulePath = import.meta.resolve("@b9g/platform-node");
+			const {createNodePlatform} = await import(modulePath);
 			return createNodePlatform(options);
 		}
 
 		case "bun": {
-			const {createBunPlatform} = await import("@b9g/platform-bun");
+			const modulePath = import.meta.resolve("@b9g/platform-bun");
+			const {createBunPlatform} = await import(modulePath);
 			return createBunPlatform(options);
 		}
 
 		case "cloudflare":
 		case "cloudflare-workers":
 		case "cf": {
-			const {createCloudflarePlatform} = await import("@b9g/platform-cloudflare");
+			const modulePath = import.meta.resolve("@b9g/platform-cloudflare");
+			const {createCloudflarePlatform} = await import(modulePath);
 			return createCloudflarePlatform(options);
 		}
 
