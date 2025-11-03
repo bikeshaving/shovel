@@ -1,69 +1,50 @@
-# Shovel: The web framework built on the web platform
+# Shovel.js: The web framework built on the web platform
+**The obsessively web platform-based web framework**
 
-🚧 UNDER CONSTRUCTION DO NOT INVESTIGATE 🚧
+Shovel is a web (meta-)framework built entirely on web platform APIs. It runs
+universally across browsers, Node, Bun, Deno, and edge platforms using the same
+code.
 
 > server - noun. a thing which populates caches with responses based on requests
 
-Shovel is a cache-first web framework built entirely on web platform APIs (`fetch`/`Request`/`Response`) and Service Worker APIs (`Cache`/`CacheStorage`). Shovel treats caching as a first-class routing concern, not an optimization. It runs universally across browsers, Node, Bun, Deno, and edge platforms using the same code.
-
 ## Philosophy
 
-### Cache-First Architecture
-Shovel implements the Cache and CacheStorage APIs from service workers.
-```js
-// Fill this in with the Cache backend API
-// Add handler which reads `ctx.cache`
-```
+### Web Platform Implementations
 
-Different backends/runtimes can use different storage mechanisms.
+All Shovel APIs are based on specifications and implementations in browsers.
 
-```js
-// Fill this in with the CacheStorage constructor
-```
+A list of standards Shovel uses:
+- `fetch()` (https://fetch.spec.whatwg.org)
+  - handlers take `Request` and return `Response`
+- Service Workers (https://www.w3.org/TR/service-workers/)
+  - entrypoints are ServiceWorker files
+  - `install`/`activate`/`fetch` events
+  - `Cache`/`CacheStorage` implementation
+- `URLPattern` (https://urlpattern.spec.whatwg.org)
+  - `MatchPattern` subclass which provides convenient URL syntax
+  - `Router` with handler/middleware definitions
+- File System Access API (https://fs.spec.whatwg.org)
+  - access local or cloud file systems with `FileSystemDirectoryHandle` and `FileSystemFileHandle`
+  - supports Node.js fs, memory, S3/R2 backends
+- Import Attributes (https://github.com/tc39/proposal-import-attributes)
+  - Reference asset URLs with `import("yourasset.svg", {with: {url: "/static/"}})`
+  - Content hashing and manifest generation for cache busting
 
-### Configurations for Any Stack
-Cache backends can be used to support:
-- SSG (Static-site generation)
-- ISR (Incremental static regeneration)
-- SSR (Server-side rendering)
-- CSR (Client-side rendering)
-- SPA (Single page applications)
-- MPA (Multi page applications)
+## Package Structure
+### 1. `@b9g/match-pattern` [![npm](https://img.shields.io/npm/v/@b9g/match-pattern)](https://www.npmjs.com/package/@b9g/match-pattern)
 
-### How `cache.add()`/`cache.addAll()` Unify Everything
+Enhanced URLPattern for better routing:
+- Subclass of `URLPattern` with unified parameter extraction
+- Order-independent search parameter matching
+- Non-exhaustive search matching (extra params allowed)
+- Convenient `&` syntax for mixed patterns: `/api/posts/:id&format=:format`
 
-`cache.add(request)` does three things:
-1. Fetches the request through your router
-2. Your handler runs and produces a response
-3. Stores the response in the cache
-
-This same operation is:
-- **SSG** when called at build time
-- **ISR** when called after TTL expiry
-- **SSR** when called on first request
-
-Same handlers, same API. Only **when** you call it differs.
-
-### Universal Routing
-- URLPattern-based route syntax
-- Handlers declare caches for responses
-- Middlewares declare caching behaviors across routes
-
-## Modules
-### 1. `@b9g/match-pattern`
-
-Extended `MatchPattern` for better routing:
-- Subclass of `URLPattern`
-- Rich, standards based :param syntax
-- Full URL string pattern API
-- Saner search parameter matching (order-independent)
-
-**Status:** ✅ Implemented
+**Status:** ✅ Published at v0.1.4
 
 ### 2. `@b9g/router`
 
 Universal request router built on web standards:
-- Bound handler function API: `router.handler(request)` 
+- Bound handler function API: `router.handler(request)`
 - RouteBuilder pattern: `router.route(pattern).use(middleware).get(handler)`
 - Global and route-specific middleware support
 - Cache-aware routing with automatic cache population
@@ -108,16 +89,16 @@ router.post('/posts', createPostHandler);
 await router.handler(request); // Returns Response
 ```
 
-**Status:** ✅ Implemented
+**Status:** ✅ Published at v0.1.0
 
 ### 3. `@b9g/staticfiles`
 
 ESBuild/Bun plugin for asset pipeline:
-- Import files with `with { url: "/static/" }` syntax  
+- Import files with `with { url: "/static/" }` syntax
 - Automatic content hashing and manifest generation
 - Works with the router for serving static assets
 
-**Status:** ✅ Implemented
+**Status:** ✅ Published at v0.1.0
 
 ### 4. `@b9g/platform`
 
@@ -131,7 +112,7 @@ Universal platform abstraction for ServiceWorker-style applications:
 
 **Platform Implementations:**
 - `@b9g/platform-node` - Node.js with Worker threads and coordinated caching
-- `@b9g/platform-bun` - Bun runtime with native ESBuild integration  
+- `@b9g/platform-bun` - Bun runtime with native ESBuild integration
 - `@b9g/platform-cloudflare` - Cloudflare Workers with Wrangler
 
 **ServiceWorker Pattern:**
@@ -156,7 +137,7 @@ addEventListener('fetch', event => {
 });
 ```
 
-**Status:** ✅ Implemented
+**Status:** ✅ Published at v0.1.0
 
 ### 5. `@b9g/cache`
 
@@ -217,13 +198,13 @@ const router = new Router({caches});
 // Other caches are accessible under `context.caches`
 ```
 
-**Status:** ✅ Implemented
+**Status:** ✅ Published at v0.1.0
 
 ### 6. `shovel` CLI
 
 Universal command-line tool with platform auto-detection:
 - `shovel develop` - Development server with hot reloading
-- `shovel build` - Production bundling and optimization  
+- `shovel build` - Production bundling and optimization
 - `shovel static` - Static site generation via cache population
 - `shovel info` - Platform and runtime information
 - Platform targeting: `--platform=node|bun|cloudflare`
@@ -235,7 +216,7 @@ Universal command-line tool with platform auto-detection:
 # Auto-detect platform
 shovel develop src/app.js
 
-# Explicit platform targeting  
+# Explicit platform targeting
 shovel develop src/app.js --platform=bun --port=3000
 
 # Custom worker count (default: 2 in dev, CPU count in prod)
@@ -287,7 +268,7 @@ router.route({
 // At runtime: Request arrives → cache.match() → Returns pre-rendered HTML
 ```
 
-**Status:** Design phase
+**Status:** ✅ Ready for v0.2.0 release
 
 ## Architecture
 
@@ -417,7 +398,7 @@ This same code works:
 ### Implemented Features
 - **Router API**: Complete rewrite with bound handler functions and fluent RouteBuilder pattern
 - **Platform Abstraction**: Universal ServiceWorker-style application loading across Node.js, Bun, and Cloudflare
-- **Hot Reloading**: VM module isolation for clean reloads in Node.js platform  
+- **Hot Reloading**: VM module isolation for clean reloads in Node.js platform
 - **CLI Tool**: Auto-detecting development server with platform targeting
 - **Cache Integration**: Full Cache/CacheStorage API implementation with multiple backends
 - **Static Files**: ESBuild plugin for asset handling with URL imports
