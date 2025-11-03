@@ -16,9 +16,6 @@
         "@b9g/http-errors": "workspace:*",
         "@b9g/libuild": "^0.1.10",
         "@b9g/platform": "workspace:*",
-        "@b9g/platform-bun": "workspace:*",
-        "@b9g/platform-cloudflare": "workspace:*",
-        "@b9g/platform-node": "workspace:*",
         "@types/bun": "^1.2.2",
         "typescript": "^5.7.3",
       },
@@ -45,10 +42,11 @@
       "name": "shovel-admin-dashboard",
       "version": "0.1.0",
       "dependencies": {
-        "@b9g/assets": "workspace:*",
-        "@b9g/platform": "workspace:*",
-        "@b9g/platform-bun": "workspace:*",
-        "@b9g/router": "workspace:*",
+        "@b9g/assets": "^0.1.1",
+        "@b9g/platform": "^0.1.1",
+        "@b9g/platform-bun": "^0.1.1",
+        "@b9g/router": "^0.1.3",
+        "urlpattern-polyfill": "^10.0.0",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -76,14 +74,14 @@
     },
     "packages/assets": {
       "name": "@b9g/assets",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "devDependencies": {
         "@b9g/libuild": "^0.1.10",
       },
     },
     "packages/cache": {
       "name": "@b9g/cache",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "devDependencies": {
         "@b9g/libuild": "^0.1.10",
         "bun-types": "latest",
@@ -91,7 +89,7 @@
     },
     "packages/filesystem": {
       "name": "@b9g/filesystem",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "devDependencies": {
         "@b9g/libuild": "^0.1.10",
         "@types/bun": "^1.2.2",
@@ -102,7 +100,7 @@
     },
     "packages/filesystem-r2": {
       "name": "@b9g/filesystem-r2",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@b9g/filesystem": "^0.1.0",
       },
@@ -116,7 +114,7 @@
     },
     "packages/filesystem-s3": {
       "name": "@b9g/filesystem-s3",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@b9g/filesystem": "^0.1.0",
       },
@@ -130,7 +128,7 @@
     },
     "packages/http-errors": {
       "name": "@b9g/http-errors",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "devDependencies": {
         "@b9g/libuild": "^0.1.10",
         "bun-types": "latest",
@@ -138,14 +136,20 @@
     },
     "packages/match-pattern": {
       "name": "@b9g/match-pattern",
-      "version": "0.1.0",
+      "version": "0.1.3",
       "devDependencies": {
         "@b9g/libuild": "^0.1.10",
       },
+      "peerDependencies": {
+        "urlpattern-polyfill": "^10.0.0",
+      },
+      "optionalPeers": [
+        "urlpattern-polyfill",
+      ],
     },
     "packages/platform": {
       "name": "@b9g/platform",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@types/wicg-file-system-access": "^2023.10.7",
       },
@@ -156,11 +160,11 @@
     },
     "packages/platform-bun": {
       "name": "@b9g/platform-bun",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
-        "@b9g/assets": "workspace:*",
-        "@b9g/cache": "workspace:*",
-        "@b9g/platform": "workspace:*",
+        "@b9g/assets": "^0.1.1",
+        "@b9g/cache": "^0.1.1",
+        "@b9g/platform": "^0.1.1",
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.10",
@@ -169,7 +173,7 @@
     },
     "packages/platform-cloudflare": {
       "name": "@b9g/platform-cloudflare",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/cache": "workspace:*",
@@ -183,7 +187,7 @@
     },
     "packages/platform-node": {
       "name": "@b9g/platform-node",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.0.0",
         "@b9g/cache": "workspace:*",
@@ -198,9 +202,9 @@
     },
     "packages/router": {
       "name": "@b9g/router",
-      "version": "0.1.0",
+      "version": "0.1.3",
       "dependencies": {
-        "@b9g/match-pattern": "workspace:*",
+        "@b9g/match-pattern": "^0.1.3",
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.10",
@@ -737,6 +741,8 @@
     "undici-types": ["undici-types@5.26.5", "", {}, "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="],
 
     "uri-js": ["uri-js@4.4.1", "", { "dependencies": { "punycode": "^2.1.0" } }, "sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg=="],
+
+    "urlpattern-polyfill": ["urlpattern-polyfill@10.1.0", "", {}, "sha512-IGjKp/o0NL3Bso1PymYURCJxMPNAf/ILOpendP9f5B6e1rTJgdgiOvgfoT8VxCAdY+Wisb9uhGaJJf3yZ2V9nw=="],
 
     "which": ["which@2.0.2", "", { "dependencies": { "isexe": "^2.0.0" }, "bin": { "node-which": "./bin/node-which" } }, "sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA=="],
 

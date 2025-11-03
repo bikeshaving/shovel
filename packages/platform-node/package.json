@@ -1,6 +1,6 @@
 {
   "name": "@b9g/platform-node",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Node.js platform adapter for Shovel with hot reloading and ESBuild integration",
   "type": "module",
   "scripts": {
@@ -18,8 +18,8 @@
     "esbuild"
   ],
   "dependencies": {
-    "@b9g/platform": "workspace:*",
-    "@b9g/cache": "workspace:*",
+    "@b9g/platform": "^0.1.1",
+    "@b9g/cache": "^0.1.1",
     "@remix-run/node-fetch-server": "^0.11.0",
     "@aws-sdk/client-s3": "^3.0.0"
   },

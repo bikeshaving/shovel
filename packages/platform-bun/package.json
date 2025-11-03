@@ -1,6 +1,6 @@
 {
   "name": "@b9g/platform-bun",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bun platform adapter for Shovel with hot reloading and built-in TypeScript/JSX support",
   "type": "module",
   "scripts": {
@@ -19,9 +19,9 @@
     "jsx"
   ],
   "dependencies": {
-    "@b9g/platform": "workspace:*",
-    "@b9g/cache": "workspace:*",
-    "@b9g/assets": "workspace:*"
+    "@b9g/platform": "^0.1.1",
+    "@b9g/cache": "^0.1.1",
+    "@b9g/assets": "^0.1.1"
   },
   "devDependencies": {
     "@b9g/libuild": "^0.1.10",
