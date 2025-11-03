@@ -93,20 +93,20 @@ new MatchPattern({
 })
 ```
 
-## Trailing Slash Normalization
+## Trailing Slash Handling
 
-URLPattern has inconsistent behavior with trailing slashes that can cause unexpected matches.
-
-**Issue:** [kenchris/urlpattern-polyfill#131](https://github.com/kenchris/urlpattern-polyfill/issues/131)
-
-**Solution:** ✅ Automatic trailing slash normalization implemented
+MatchPattern does not automatically normalize trailing slashes. Use explicit patterns:
 
 ```javascript
-const pattern = new MatchPattern('/api/posts/:id');
+// Exact matching
+const exactPattern = new MatchPattern('/api/posts/:id');
+exactPattern.test('/api/posts/123');   // ✅ true
+exactPattern.test('/api/posts/123/');  // ❌ false
 
-// Both match consistently
-pattern.test('/api/posts/123');   // ✅ true
-pattern.test('/api/posts/123/');  // ✅ true (normalized)
+// Optional trailing slash
+const flexiblePattern = new MatchPattern('/api/posts/:id{/}?');
+flexiblePattern.test('/api/posts/123');   // ✅ true
+flexiblePattern.test('/api/posts/123/');  // ✅ true
 ```
 
 ## Known Limitations
