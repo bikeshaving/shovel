@@ -16,7 +16,9 @@
         "@b9g/http-errors": "workspace:*",
         "@b9g/libuild": "^0.1.10",
         "@b9g/platform": "workspace:*",
+        "@b9g/platform-bun": "workspace:*",
         "@b9g/platform-cloudflare": "workspace:*",
+        "@b9g/platform-node": "workspace:*",
         "@types/bun": "^1.2.2",
         "typescript": "^5.7.3",
       },
@@ -49,7 +51,6 @@
         "@b9g/router": "workspace:*",
       },
       "devDependencies": {
-        "@b9g/libuild": "^0.1.10",
         "@types/bun": "latest",
       },
     },
@@ -59,7 +60,6 @@
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/cache": "workspace:*",
-        "@b9g/libuild": "^0.1.10",
         "@b9g/match-pattern": "workspace:*",
         "@b9g/platform": "workspace:*",
         "@b9g/router": "workspace:*",
@@ -68,7 +68,6 @@
         "@typescript-eslint/eslint-plugin": "^8.46.2",
         "@typescript-eslint/parser": "^8.46.2",
         "bun-types": "latest",
-        "esbuild": "^0.19.12",
         "eslint": "^9.38.0",
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-prettier": "^5.5.4",
