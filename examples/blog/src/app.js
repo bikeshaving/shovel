@@ -382,7 +382,7 @@ async function copyAssetsToStatic(assetsDir, staticDir) {
 				// Write to static/assets
 				const targetHandle = await staticAssetsDir.getFileHandle(name, {create: true});
 				const writable = await targetHandle.createWritable();
-				await writable.write(content);
+				await writable.write(new Uint8Array(content));
 				await writable.close();
 				
 				console.info(`[Blog App] Copied asset: ${name}`);

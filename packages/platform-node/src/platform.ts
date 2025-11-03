@@ -226,7 +226,6 @@ export class NodePlatform extends BasePlatform {
 	private options: Required<NodePlatformOptions>;
 	private workerManager?: WorkerManager;
 	private cacheStorage?: CustomCacheStorage;
-	private _dist?: FileSystemDirectoryHandle;
 
 	constructor(options: NodePlatformOptions = {}) {
 		super(options);
@@ -245,15 +244,13 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Build artifacts filesystem (install-time only)
+	 * Get filesystem directory handle
 	 */
-	get distDir(): FileSystemDirectoryHandle {
-		if (!this._dist) {
-			// Create dist filesystem pointing to ./dist directory
-			const distPath = Path.resolve(this.options.cwd, "dist");
-			this._dist = new NodeFileSystemDirectoryHandle(distPath);
-		}
-		return this._dist;
+	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
+		// Create dist filesystem pointing to ./dist directory
+		const distPath = Path.resolve(this.options.cwd, "dist");
+		const adapter = new NodeFileSystemAdapter({ rootPath: distPath });
+		return await adapter.getDirectoryHandle(name);
 	}
 
 	/**
@@ -414,20 +411,33 @@ export class NodePlatform extends BasePlatform {
 			}
 		});
 
+		let isListening = false;
+
 		return {
-			listen: () => {
+			async listen() {
 				return new Promise<void>((resolve) => {
 					httpServer.listen(port, host, () => {
 						console.info(`🚀 Server running at http://${host}:${port}`);
+						isListening = true;
 						resolve();
 					});
 				});
 			},
-			close: () =>
-				new Promise<void>((resolve) => {
-					httpServer.close(() => resolve());
-				}),
+			async close() {
+				return new Promise<void>((resolve) => {
+					httpServer.close(() => {
+						isListening = false;
+						resolve();
+					});
+				});
+			},
 			address: () => ({port, host}),
+			get url() {
+				return `http://${host}:${port}`;
+			},
+			get ready() {
+				return isListening;
+			},
 		};
 	}
 

@@ -71,4 +71,4 @@ export {
 } from "./utils.js";
 
 // File System Access API
-export {getFileSystemRoot} from "./filesystem.js";
+export {getDirectoryHandle, getBucket, getFileSystemRoot} from "./filesystem.js";

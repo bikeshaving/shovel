@@ -25,13 +25,12 @@ export abstract class BasePlatform implements Platform {
 	}
 
 	abstract readonly name: string;
-	abstract readonly distDir: FileSystemDirectoryHandle;
 	abstract loadServiceWorker(
 		entrypoint: string,
 		options?: any,
 	): Promise<any>;
 	abstract createServer(handler: any, options?: any): any;
-	abstract getFileSystemRoot(bucketName: string): Promise<FileSystemDirectoryHandle>;
+	abstract getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
 
 	/**
 	 * Create cache storage with dynamic adapter loading

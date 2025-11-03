@@ -37,7 +37,6 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
 export class CloudflarePlatform extends BasePlatform {
 	readonly name = "cloudflare";
 	private options: Required<CloudflarePlatformOptions>;
-	private _dist?: FileSystemDirectoryHandle;
 
 	constructor(options: CloudflarePlatformOptions = {}) {
 		super(options);
@@ -69,15 +68,13 @@ export class CloudflarePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Build artifacts filesystem (not available in Workers runtime)
+	 * Get filesystem directory handle (memory-only in Workers runtime)
 	 */
-	get distDir(): FileSystemDirectoryHandle {
-		if (!this._dist) {
-			// In Cloudflare Workers, dist is only available during build/deploy time
-			// At runtime, static assets are served by Cloudflare CDN
-			this._dist = new MemoryFileSystemAdapter().getFileSystemRoot("dist") as any;
-		}
-		return this._dist;
+	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
+		// In Cloudflare Workers, only memory filesystem is available at runtime
+		// Static assets are served by Cloudflare CDN
+		const adapter = new MemoryFileSystemAdapter();
+		return await adapter.getDirectoryHandle(name);
 	}
 
 	/**
@@ -112,15 +109,19 @@ export class CloudflarePlatform extends BasePlatform {
 		// This is mainly for compatibility with the Platform interface
 
 		return {
-			listen: () => {
+			async listen() {
 				console.info("[Cloudflare] Worker handler ready");
-				return Promise.resolve();
 			},
-			close: () => {
+			async close() {
 				console.info("[Cloudflare] Worker handler stopped");
-				return Promise.resolve();
 			},
-			address: () => ({port: 0, host: "cloudflare-workers"}),
+			address: () => ({port: 443, host: "cloudflare-workers"}),
+			get url() {
+				return "https://cloudflare-workers"; // Would be actual worker URL in production
+			},
+			get ready() {
+				return true; // Cloudflare Workers are always ready
+			},
 		};
 	}
 

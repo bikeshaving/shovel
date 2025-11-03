@@ -325,8 +325,8 @@ export class BunS3FileSystemAdapter implements FileSystemAdapter {
 		this.s3Client = s3Client;
 	}
 
-	async getFileSystemRoot(name = "default"): Promise<FileSystemDirectoryHandle> {
-		const prefix = `filesystems/${name}`;
+	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
+		const prefix = name ? `filesystems/${name}` : "filesystems/root";
 		return new BunS3FileSystemDirectoryHandle(this.s3Client, prefix);
 	}
 

@@ -282,18 +282,19 @@ export class MemoryFileSystemAdapter implements FileSystemAdapter {
 		};
 	}
 
-	async getFileSystemRoot(name = "default"): Promise<FileSystemDirectoryHandle> {
-		if (!this.filesystems.has(name)) {
+	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
+		const dirName = name || "root";
+		if (!this.filesystems.has(dirName)) {
 			// Create new in-memory filesystem
 			const root: MemoryDirectory = {
 				name: "root",
 				files: new Map(),
 				directories: new Map(),
 			};
-			this.filesystems.set(name, root);
+			this.filesystems.set(dirName, root);
 		}
 
-		const root = this.filesystems.get(name)!;
+		const root = this.filesystems.get(dirName)!;
 		return new MemoryFileSystemDirectoryHandle(root);
 	}
 

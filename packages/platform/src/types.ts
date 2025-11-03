@@ -203,13 +203,15 @@ export interface ServiceWorkerInstance {
  */
 export interface Server {
 	/** Start listening for requests */
-	listen(): Promise<void> | void;
+	listen(): Promise<void>;
 	/** Stop the server */
-	close(): Promise<void> | void;
+	close(): Promise<void>;
+	/** Get server address information */
+	address(): { port: number; host: string };
 	/** Get server URL */
-	url?: string;
-	/** Platform-specific server instance */
-	instance?: any;
+	readonly url: string;
+	/** Whether server is ready to accept requests */
+	readonly ready: boolean;
 }
 
 /**
@@ -223,11 +225,6 @@ export interface Platform {
 	 */
 	readonly name: string;
 
-	/**
-	 * Build artifacts filesystem (install-time only)
-	 * Available during install handlers to copy built files to runtime storage
-	 */
-	readonly distDir: FileSystemDirectoryHandle;
 
 	/**
 	 * THE MAIN JOB - Load and run a ServiceWorker-style entrypoint
@@ -253,11 +250,11 @@ export interface Platform {
 	createServer(handler: Handler, options?: ServerOptions): Server;
 
 	/**
-	 * SUPPORTING UTILITY - Get filesystem root for bucket/container name
+	 * SUPPORTING UTILITY - Get filesystem directory handle
 	 * Maps directly to cloud storage buckets (S3, R2) or local directories
-	 * @param bucketName - The bucket/container/directory name
+	 * @param name - Directory name. Use "" for root directory
 	 */
-	getFileSystemRoot(bucketName: string): Promise<FileSystemDirectoryHandle>;
+	getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
 }
 
 /**

@@ -69,21 +69,54 @@ class Registry {
 export const FileSystemRegistry = new Registry();
 
 /**
- * Get a file system root handle using the registered adapters
- * @param name Optional adapter name (uses default if not specified)
+ * Get a file system directory handle using the registered adapters
+ * @param name Directory name. Use "" for root directory
+ * @param adapterName Optional adapter name (uses default if not specified)
  */
-export async function getFileSystemRoot(
-  name?: string,
+export async function getDirectoryHandle(
+  name: string,
+  adapterName?: string,
 ): Promise<FileSystemDirectoryHandle> {
-  const adapter = FileSystemRegistry.get(name);
+  const adapter = FileSystemRegistry.get(adapterName);
   
   if (!adapter) {
-    if (name) {
-      throw new Error(`No filesystem adapter registered with name: ${name}`);
+    if (adapterName) {
+      throw new Error(`No filesystem adapter registered with name: ${adapterName}`);
     } else {
       throw new Error("No default filesystem adapter registered");
     }
   }
 
-  return await adapter.getFileSystemRoot(name);
+  return await adapter.getDirectoryHandle(name);
+}
+
+/**
+ * @deprecated Use getDirectoryHandle() instead
+ */
+export async function getBucket(
+  name?: string,
+  adapterName?: string,
+): Promise<FileSystemDirectoryHandle> {
+  const adapter = FileSystemRegistry.get(adapterName);
+  
+  if (!adapter) {
+    throw new Error("No default filesystem adapter registered");
+  }
+
+  return await adapter.getDirectoryHandle(name || "");
+}
+
+/**
+ * @deprecated Use getDirectoryHandle() instead
+ */
+export async function getFileSystemRoot(
+  name?: string,
+): Promise<FileSystemDirectoryHandle> {
+  const adapter = FileSystemRegistry.get();
+  
+  if (!adapter) {
+    throw new Error("No default filesystem adapter registered");
+  }
+
+  return await adapter.getDirectoryHandle(name || "");
 }

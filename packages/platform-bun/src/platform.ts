@@ -40,7 +40,6 @@ export interface BunPlatformOptions extends PlatformConfig {
 export class BunPlatform extends BasePlatform {
 	readonly name = "bun";
 	private options: Required<BunPlatformOptions>;
-	private _dist?: FileSystemDirectoryHandle;
 
 	constructor(options: BunPlatformOptions = {}) {
 		super(options);
@@ -72,13 +71,11 @@ export class BunPlatform extends BasePlatform {
 	/**
 	 * Build artifacts filesystem (install-time only)
 	 */
-	async getDistDir(): Promise<FileSystemDirectoryHandle> {
-		if (!this._dist) {
-			// Create dist filesystem pointing to ./dist directory
-			const distPath = Path.resolve(this.options.cwd, "dist");
-			this._dist = await new NodeFileSystemAdapter({ rootPath: distPath }).getFileSystemRoot("");
-		}
-		return this._dist;
+	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
+		// Create dist filesystem pointing to ./dist directory
+		const distPath = Path.resolve(this.options.cwd, "dist");
+		const adapter = new NodeFileSystemAdapter({ rootPath: distPath });
+		return await adapter.getDirectoryHandle(name);
 	}
 
 	/**
@@ -137,15 +134,19 @@ export class BunPlatform extends BasePlatform {
 		});
 
 		return {
-			listen: () => {
+			async listen() {
 				console.info(`🥖 Bun server running at http://${hostname}:${port}`);
-				return Promise.resolve();
 			},
-			close: () => {
+			async close() {
 				server.stop();
-				return Promise.resolve();
 			},
 			address: () => ({port, host: hostname}),
+			get url() {
+				return `http://${hostname}:${port}`;
+			},
+			get ready() {
+				return true; // Bun.serve starts immediately
+			},
 		};
 	}
 
@@ -163,7 +164,7 @@ export class BunPlatform extends BasePlatform {
 		const caches = await this.createCaches(options.caches);
 		
 		// Create directory storage using dist filesystem
-		const distDir = await this.getDistDir();
+		const distDir = await this.getDirectoryHandle("");
 		const dirs = createDirectoryStorage(distDir);
 
 		// Create ServiceWorker instance
@@ -241,15 +242,6 @@ export class BunPlatform extends BasePlatform {
 		return instance;
 	}
 
-	/**
-	 * Get filesystem root for File System Access API
-	 */
-	async getFileSystemRoot(
-		name = "default",
-	): Promise<FileSystemDirectoryHandle> {
-		// Use centralized filesystem registry (defaults to memory for Bun)
-		return await getFileSystemRoot(name);
-	}
 
 	/**
 	 * Dispose of platform resources

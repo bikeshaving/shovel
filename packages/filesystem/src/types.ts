@@ -18,10 +18,10 @@ export interface FileSystemConfig {
  */
 export interface FileSystemAdapter {
   /**
-   * Get a root directory handle for the filesystem
-   * @param name Optional filesystem name/bucket identifier
+   * Get a directory handle for the filesystem
+   * @param name Directory name. Use "" for root directory
    */
-  getFileSystemRoot(name?: string): Promise<FileSystemDirectoryHandle>;
+  getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
 
   /**
    * Get configuration for this adapter

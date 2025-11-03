@@ -314,17 +314,17 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
 		this.rootPath = config.rootPath || path.join(process.cwd(), "dist");
 	}
 
-	async getFileSystemRoot(name = "default"): Promise<FileSystemDirectoryHandle> {
-		const bucketPath = path.join(this.rootPath, name);
+	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
+		const dirPath = name ? path.join(this.rootPath, name) : this.rootPath;
 		
-		// Ensure the bucket directory exists
+		// Ensure the directory exists
 		try {
-			await fs.mkdir(bucketPath, { recursive: true });
+			await fs.mkdir(dirPath, { recursive: true });
 		} catch (error) {
 			// Directory might already exist, ignore error
 		}
 
-		return new NodeFileSystemDirectoryHandle(bucketPath);
+		return new NodeFileSystemDirectoryHandle(dirPath);
 	}
 
 	getConfig(): FileSystemConfig {
