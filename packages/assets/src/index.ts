@@ -8,6 +8,7 @@
 // Runtime middleware (Web APIs only)
 export {
 	createAssetsMiddleware,
+	createRootAssetsMiddleware,
 	type AssetsConfig,
 	default as assets,
 } from "./middleware.js";

@@ -66,6 +66,166 @@ function getMimeType(
 }
 
 /**
+ * Create root assets middleware that serves assets from root directory
+ * Useful for favicon.ico, robots.txt, and other root-level assets
+ */
+export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'> = {}) {
+	const {
+		directory = "", // Use root directory
+		manifestPath = "manifest.json",
+		cacheControl = config.dev ? "no-cache" : "public, max-age=31536000",
+		dev = false,
+		mimeTypes = {},
+	} = config;
+
+	// Cache for the manifest
+	let manifestCache: Record<string, any> | null = null;
+	let manifestError: string | null = null;
+
+	// Load manifest from root or assets directory
+	async function loadManifest(): Promise<Record<string, any>> {
+		if (manifestCache) return manifestCache;
+		if (manifestError && !dev) throw new Error(manifestError);
+
+		try {
+			// Use self.dirs to access the root directory
+			const rootDir = await (self as any).dirs.open("");
+			const manifestHandle = await rootDir.getFileHandle(manifestPath);
+			const manifestFile = await manifestHandle.getFile();
+			const manifestText = await manifestFile.text();
+			const manifest = JSON.parse(manifestText);
+
+			// Convert manifest.assets to URL lookup map for root-level assets
+			const urlMap: Record<string, any> = {};
+
+			if (manifest.assets) {
+				for (const [, entry] of Object.entries(manifest.assets)) {
+					if (entry && typeof entry === "object" && "url" in entry) {
+						const url = entry.url as string;
+						// Only include assets with root-level URLs (start with /)
+						if (url.startsWith("/") && !url.includes("/", 1)) {
+							const filename = url.slice(1); // Remove leading /
+							if (filename) {
+								urlMap[filename] = entry;
+							}
+						}
+					}
+				}
+			}
+
+			manifestCache = urlMap;
+			manifestError = null;
+			return manifestCache!;
+		} catch (error) {
+			manifestError = `Failed to load manifest: ${error.message}`;
+			if (dev) {
+				return {}; // Empty manifest in dev mode
+			}
+			throw new Error(manifestError);
+		}
+	}
+
+	return async function* rootAssetsMiddleware(request: Request, context: any) {
+		try {
+			const url = new URL(request.url);
+
+			// Only handle root-level requests (no subdirectories)
+			if (url.pathname.includes("/", 1)) {
+				// Pass through to next middleware
+				const response = yield request;
+				return response;
+			}
+
+			// Extract filename (remove leading slash)
+			const requestedFilename = url.pathname.slice(1);
+			
+			// Skip empty path (let index handling middleware deal with it)
+			if (!requestedFilename) {
+				const response = yield request;
+				return response;
+			}
+
+			// Security: prevent directory traversal
+			if (requestedFilename.includes("..") || requestedFilename.includes("/")) {
+				return new Response("Forbidden", {status: 403});
+			}
+
+			try {
+				// Load manifest to validate file exists in build
+				const manifest = await loadManifest();
+
+				// Check if file exists in manifest (security: only serve built assets)
+				const manifestEntry = manifest[requestedFilename];
+				if (!manifestEntry && !dev) {
+					// In production, only serve files that went through build
+					const response = yield request;
+					return response;
+				}
+
+				// Get root directory using self.dirs
+				const rootDir = await (self as any).dirs.open("");
+
+				// Get file handle
+				const fileHandle = await rootDir.getFileHandle(requestedFilename);
+				const file = await fileHandle.getFile();
+
+				// Use content type from manifest if available, otherwise detect
+				const contentType =
+					manifestEntry?.type || getMimeType(requestedFilename, mimeTypes);
+
+				// Create response headers
+				const headers = new Headers({
+					"Content-Type": contentType,
+					"Content-Length":
+						manifestEntry?.size?.toString() || file.size.toString(),
+					"Cache-Control": cacheControl,
+					"Last-Modified": new Date(file.lastModified).toUTCString(),
+				});
+
+				// Add hash-based ETag if available
+				if (manifestEntry?.hash) {
+					headers.set("ETag", `"${manifestEntry.hash}"`);
+				}
+
+				// Handle conditional requests
+				const ifModifiedSince = request.headers.get("if-modified-since");
+				if (ifModifiedSince) {
+					const modifiedSince = new Date(ifModifiedSince);
+					const lastModified = new Date(file.lastModified);
+					if (lastModified <= modifiedSince) {
+						return new Response(null, {
+							status: 304,
+							headers: new Headers({
+								"Cache-Control": cacheControl,
+								"Last-Modified": headers.get("Last-Modified")!,
+							}),
+						});
+					}
+				}
+
+				// Return file response
+				return new Response(file.stream(), {
+					status: 200,
+					headers,
+				});
+			} catch (error) {
+				if ((error as any).name === "NotFoundError") {
+					// File not found, pass through to next middleware
+					const response = yield request;
+					return response;
+				}
+
+				console.error("[rootAssetsMiddleware] Error:", error);
+				return new Response("Internal Server Error", {status: 500});
+			}
+		} catch (error) {
+			console.error("[rootAssetsMiddleware] Outer error:", error);
+			return new Response("Root assets middleware error: " + error.message, {status: 500});
+		}
+	};
+}
+
+/**
  * Create assets middleware using self.dirs API
  */
 export function createAssetsMiddleware(config: AssetsConfig = {}) {
