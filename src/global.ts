@@ -1,5 +1,5 @@
 /**
- * TypeScript declarations for asset imports with { url: '/assets/' }
+ * TypeScript declarations for asset imports with { assetBase: '/assets/' }
  *
  * Add this to your project's global types or import it in your app
  */

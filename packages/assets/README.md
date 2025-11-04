@@ -21,9 +21,9 @@ npm install @b9g/assets
 ### Import Assets
 
 ```javascript
-// Import with URL directive
-import logoUrl from './logo.svg' with { url: '/static/' };
-import stylesUrl from './styles.css' with { url: '/static/' };
+// Import with assetBase directive
+import logoUrl from './logo.svg' with { assetBase: '/static/' };
+import stylesUrl from './styles.css' with { assetBase: '/static/' };
 
 // Use in your application
 const img = document.createElement('img');

@@ -1,7 +1,7 @@
 /**
  * ESBuild/Bun plugin for importing assets as URLs with manifest generation
  * 
- * Updated to work with the new dist/assets organization and self.dirs API
+ * Updated to work with the new dist/assets organization and self.buckets API
  */
 
 import {readFileSync, writeFileSync, mkdirSync, existsSync} from "fs";
@@ -114,7 +114,7 @@ export function mergeConfig(
  * });
  *
  * // In your code:
- * import logo from './logo.svg' with { url: '/assets/' };
+ * import logo from './logo.svg' with { assetBase: '/assets/' };
  * // Returns: "/assets/logo-abc12345.svg"
  */
 export function assetsPlugin(options: AssetsConfig = {}) {
@@ -138,8 +138,8 @@ export function assetsPlugin(options: AssetsConfig = {}) {
 
 			// Intercept all imports
 			build.onLoad({filter: /.*/}, (args) => {
-				// Only process imports with { url: 'base-path' }
-				if (!args.with?.url || typeof args.with.url !== "string") {
+				// Only process imports with { assetBase: 'base-path' }
+				if (!args.with?.assetBase || typeof args.with.assetBase !== "string") {
 					return null; // Let other loaders handle it
 				}
 
@@ -173,7 +173,7 @@ export function assetsPlugin(options: AssetsConfig = {}) {
 					writeFileSync(outputPath, content);
 
 					// Generate public URL using the base path from import attribute
-					const basePath = args.with.url;
+					const basePath = args.with.assetBase;
 					const publicUrl = `${basePath}${filename}`;
 
 					// Create manifest entry

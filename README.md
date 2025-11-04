@@ -27,7 +27,7 @@ A list of standards Shovel uses:
   - access local or cloud file systems with `FileSystemDirectoryHandle` and `FileSystemFileHandle`
   - supports Node.js fs, memory, S3/R2 backends
 - Import Attributes (https://github.com/tc39/proposal-import-attributes)
-  - Reference asset URLs with `import("yourasset.svg", {with: {url: "/static/"}})`
+  - Reference asset URLs with `import("yourasset.svg", {with: {assetBase: "/static/"}})`
   - Content hashing and manifest generation for cache busting
 
 ## Package Structure

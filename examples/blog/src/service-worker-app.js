@@ -10,8 +10,8 @@ import {Router} from "@b9g/router";
 import {createAssetsMiddleware} from "@b9g/assets";
 
 // Import static assets
-import styles from "./assets/styles.css" with {url: "/assets/"};
-import logo from "./assets/logo.svg" with {url: "/assets/"};
+import styles from "./assets/styles.css" with {assetBase: "/assets/"};
+import logo from "./assets/logo.svg" with {assetBase: "/assets/"};
 
 // Sample blog data
 const posts = [

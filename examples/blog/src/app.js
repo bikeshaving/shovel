@@ -24,9 +24,9 @@ const TIMEOUTS = {
 };
 
 // Import static assets - served from root
-import styles from "./assets/styles.css" with {url: "/"};
-import logo from "./assets/logo.svg" with {url: "/"};
-import favicon from "./assets/favicon.ico" with {url: "/"};
+import styles from "./assets/styles.css" with {assetBase: "/"};
+import logo from "./assets/logo.svg" with {assetBase: "/"};
+import favicon from "./assets/favicon.ico" with {assetBase: "/"};
 
 // Create router - self.caches and self.buckets are provided directly by platform
 const router = new Router();
