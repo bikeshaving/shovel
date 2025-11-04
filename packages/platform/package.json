@@ -1,6 +1,6 @@
 {
   "name": "@b9g/platform",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Base Platform interface and types for Shovel deployment adapters",
   "type": "module",
   "scripts": {

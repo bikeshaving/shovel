@@ -1,6 +1,6 @@
 {
   "name": "@b9g/filesystem",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Universal File System Access API implementations for all platforms",
   "license": "MIT",
   "type": "module",
@@ -71,6 +71,14 @@
       "types": "./dist/src/types.d.ts",
       "import": "./dist/src/types.js"
     },
-    "./package.json": "./dist/package.json"
+    "./package.json": "./dist/package.json",
+    "./directory-storage": {
+      "types": "./dist/src/directory-storage.d.ts",
+      "import": "./dist/src/directory-storage.js"
+    },
+    "./directory-storage.js": {
+      "types": "./dist/src/directory-storage.d.ts",
+      "import": "./dist/src/directory-storage.js"
+    }
   }
 }
