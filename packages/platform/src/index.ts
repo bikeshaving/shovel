@@ -32,15 +32,12 @@ export {
 	type ShovelActivateEvent,
 	type ShovelStaticEvent,
 	type BucketStorage as BucketStorageInterface,
-	type DirectoryStorage,
 } from "./service-worker.js";
 
 // Bucket storage implementation
 export {
 	PlatformBucketStorage,
-	PlatformDirectoryStorage,
 	createBucketStorage,
-	createDirectoryStorage,
 } from "./directory-storage.js";
 
 // Platform registry and detection

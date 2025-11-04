@@ -3,7 +3,7 @@ import {MemoryBucket} from "./memory.js";
 import {LocalBucket} from "./node.js";
 import type {Bucket} from "./types.js";
 
-export interface DirectoryConfig {
+export interface BucketConfig {
 	/** Filesystem adapter type */
 	type: "memory" | "local" | "node" | "s3";
 	/** Local filesystem path (for local/node adapters) */
@@ -14,29 +14,29 @@ export interface DirectoryConfig {
 	options?: Record<string, any>;
 }
 
-export interface DirectoryFactoryConfig {
-	/** Directory name to configuration mapping */
-	directories?: Record<string, DirectoryConfig>;
-	/** Default configuration for unmapped directories */
-	default?: DirectoryConfig;
+export interface BucketFactoryConfig {
+	/** Bucket name to configuration mapping */
+	buckets?: Record<string, BucketConfig>;
+	/** Default configuration for unmapped buckets */
+	default?: BucketConfig;
 }
 
 /**
- * Create a default directory factory for common use cases
+ * Create a default bucket factory for common use cases
  * 
  * Example usage:
  * ```typescript
- * import {CustomDirectoryStorage} from "@b9g/filesystem";
- * import {createDefaultDirectoryFactory} from "@b9g/filesystem";
+ * import {BucketStorage} from "@b9g/filesystem";
+ * import {createDefaultBucketFactory} from "@b9g/filesystem";
  * 
- * const directoryStorage = new CustomDirectoryStorage((name) => {
- *   if (name === 'uploads') return new S3FileSystemAdapter('my-bucket');
- *   if (name === 'temp') return new NodeFileSystemAdapter('/tmp');
- *   return new NodeFileSystemAdapter('./dist'); // Default to dist
+ * const bucketStorage = new BucketStorage((name) => {
+ *   if (name === 'uploads') return new S3Bucket('my-bucket');
+ *   if (name === 'temp') return new LocalBucket('/tmp');
+ *   return new LocalBucket('./dist'); // Default to dist
  * });
  * ```
  */
-export function createDefaultDirectoryFactory(): (name: string) => Bucket {
+export function createDefaultBucketFactory(): (name: string) => Bucket {
 	return (name: string): Bucket => {
 		switch (name) {
 			case "uploads":
@@ -50,9 +50,9 @@ export function createDefaultDirectoryFactory(): (name: string) => Bucket {
 }
 
 /**
- * Create a simple directory factory that uses local filesystem with path mapping
+ * Create a simple bucket factory that uses local filesystem with path mapping
  */
-export function createLocalDirectoryFactory(pathMap: Record<string, string> = {}): (name: string) => Bucket {
+export function createLocalBucketFactory(pathMap: Record<string, string> = {}): (name: string) => Bucket {
 	return (name: string): Bucket => {
 		const path = pathMap[name] || `./dist`;
 		return new LocalBucket(path);
@@ -60,9 +60,9 @@ export function createLocalDirectoryFactory(pathMap: Record<string, string> = {}
 }
 
 /**
- * Create a directory factory that uses memory filesystem for all directories
+ * Create a bucket factory that uses memory filesystem for all buckets
  */
-export function createMemoryDirectoryFactory(): (name: string) => Bucket {
+export function createMemoryBucketFactory(): (name: string) => Bucket {
 	return (_name: string): Bucket => {
 		return new MemoryBucket();
 	};

@@ -254,10 +254,6 @@ export interface BucketStorage {
 	keys(): Promise<string[]>;
 }
 
-/**
- * @deprecated Use BucketStorage instead
- */
-export interface DirectoryStorage extends BucketStorage {}
 
 /**
  * Create ServiceWorker globals for a module context

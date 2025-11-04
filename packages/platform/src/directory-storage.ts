@@ -65,14 +65,3 @@ export function createBucketStorage(rootPath: string = "./dist"): BucketStorageI
 	return new PlatformBucketStorage(rootPath);
 }
 
-/**
- * @deprecated Use PlatformBucketStorage instead
- */
-export const PlatformDirectoryStorage = PlatformBucketStorage;
-
-/**
- * @deprecated Use createBucketStorage instead
- */
-export function createDirectoryStorage(rootPath: string = "./dist"): BucketStorageInterface {
-	return createBucketStorage(rootPath);
-}
