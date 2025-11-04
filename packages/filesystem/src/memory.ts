@@ -5,7 +5,7 @@
  * Useful for testing, development, and temporary storage scenarios.
  */
 
-import type {FileSystemAdapter, FileSystemConfig} from "./types.js";
+import type {Bucket, FileSystemConfig} from "./types.js";
 
 /**
  * In-memory file data
@@ -269,9 +269,9 @@ class MemoryFileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 }
 
 /**
- * Memory filesystem adapter
+ * Memory bucket
  */
-export class MemoryFileSystemAdapter implements FileSystemAdapter {
+export class MemoryBucket implements Bucket {
 	private config: FileSystemConfig;
 	private filesystems = new Map<string, MemoryDirectory>();
 

@@ -28,10 +28,10 @@ import styles from "./assets/styles.css" with {url: "/"};
 import logo from "./assets/logo.svg" with {url: "/"};
 import favicon from "./assets/favicon.ico" with {url: "/"};
 
-// Create router - self.caches and self.dirs are provided directly by platform
+// Create router - self.caches and self.buckets are provided directly by platform
 const router = new Router();
 
-// Platform provides self.caches and self.dirs directly - no event needed
+// Platform provides self.caches and self.buckets directly - no event needed
 
 // Root assets middleware for serving root-level assets like /logo.svg
 router.use(createRootAssetsMiddleware({dev: true}));
@@ -304,13 +304,13 @@ async function generateStaticSite() {
 	console.info("[Blog App] Starting static site generation...");
 	
 	try {
-		// Get directories
-		const staticDir = await self.dirs.open("static");
-		const assetsDir = await self.dirs.open("assets");
+		// Get buckets
+		const staticBucket = await self.buckets.open("static");
+		const assetsBucket = await self.buckets.open("assets");
 		
 		// First, copy assets to static/assets/ for self-contained deployment
 		console.info("[Blog App] Copying assets...");
-		await copyAssetsToStatic(assetsDir, staticDir);
+		await copyAssetsToStatic(assetsBucket, staticBucket);
 		
 		// Define routes to pre-render
 		const staticRoutes = [
@@ -344,7 +344,7 @@ async function generateStaticSite() {
 					}
 					
 					// Write to static directory
-					const fileHandle = await staticDir.getFileHandle(fileName, {create: true});
+					const fileHandle = await staticBucket.getFileHandle(fileName, {create: true});
 					const writable = await fileHandle.createWritable();
 					await writable.write(content);
 					await writable.close();
@@ -367,13 +367,13 @@ async function generateStaticSite() {
 /**
  * Copy assets from dist/assets/ to dist/static/assets/ for self-contained deployment
  */
-async function copyAssetsToStatic(assetsDir, staticDir) {
+async function copyAssetsToStatic(assetsBucket, staticBucket) {
 	try {
 		// Create assets subdirectory in static
-		const staticAssetsDir = await staticDir.getDirectoryHandle("assets", {create: true});
+		const staticAssetsDir = await staticBucket.getDirectoryHandle("assets", {create: true});
 		
 		// Copy all files from assets to static/assets
-		for await (const [name, handle] of assetsDir.entries()) {
+		for await (const [name, handle] of assetsBucket.entries()) {
 			if (handle.kind === "file") {
 				// Read from assets
 				const file = await handle.getFile();

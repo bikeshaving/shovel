@@ -4,7 +4,7 @@
  */
 
 import type {FileSystemAdapter} from "./types.js";
-import {MemoryFileSystemAdapter} from "./memory.js";
+import {MemoryBucket} from "./memory.js";
 
 /**
  * Global registry of filesystem adapters
@@ -15,7 +15,7 @@ class Registry {
 
   constructor() {
     // Set memory adapter as default
-    this.defaultAdapter = new MemoryFileSystemAdapter();
+    this.defaultAdapter = new MemoryBucket();
   }
 
   /**

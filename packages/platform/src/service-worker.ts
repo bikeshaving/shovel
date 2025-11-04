@@ -228,31 +228,36 @@ export class ServiceWorkerRuntime extends EventTarget {
 
 
 /**
- * Directory storage interface - parallels CacheStorage for filesystem access
+ * Bucket storage interface - parallels CacheStorage for filesystem access
  * This could become a future web standard
  */
-export interface DirectoryStorage {
+export interface BucketStorage {
 	/**
-	 * Open a named directory - returns FileSystemDirectoryHandle
-	 * Well-known names: 'assets', 'static', 'server', 'client'
+	 * Open a named bucket - returns FileSystemDirectoryHandle (root of that bucket)
+	 * Well-known names: 'assets', 'static', 'uploads', 'temp'
 	 */
 	open(name: string): Promise<FileSystemDirectoryHandle>;
 	
 	/**
-	 * Check if a named directory exists
+	 * Check if a named bucket exists
 	 */
 	has(name: string): Promise<boolean>;
 	
 	/**
-	 * Delete a named directory and all its contents
+	 * Delete a named bucket and all its contents
 	 */
 	delete(name: string): Promise<boolean>;
 	
 	/**
-	 * List all available directory names
+	 * List all available bucket names
 	 */
 	keys(): Promise<string[]>;
 }
+
+/**
+ * @deprecated Use BucketStorage instead
+ */
+export interface DirectoryStorage extends BucketStorage {}
 
 /**
  * Create ServiceWorker globals for a module context
@@ -261,15 +266,15 @@ export function createServiceWorkerGlobals(
 	runtime: ServiceWorkerRuntime,
 	options: {
 		caches?: any;
-		dirs?: DirectoryStorage;
+		buckets?: BucketStorage;
 	} = {}
 ) {
 	// Attach platform resources directly to runtime
 	if (options.caches) {
 		(runtime as any).caches = options.caches;
 	}
-	if (options.dirs) {
-		(runtime as any).dirs = options.dirs;
+	if (options.buckets) {
+		(runtime as any).buckets = options.buckets;
 	}
 
 	return {

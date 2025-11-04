@@ -15,7 +15,7 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 } from "@b9g/platform";
-import {FileSystemRegistry, getFileSystemRoot, MemoryFileSystemAdapter} from "@b9g/filesystem";
+import {FileSystemRegistry, getFileSystemRoot, MemoryBucket} from "@b9g/filesystem";
 
 export interface CloudflarePlatformOptions extends PlatformConfig {
 	/** Cloudflare Workers environment (production, preview, dev) */
@@ -51,7 +51,7 @@ export class CloudflarePlatform extends BasePlatform {
 
 		// Register bundled filesystem adapters for Cloudflare Workers
 		// We can't use dynamic imports in Workers, so we bundle what we need
-		FileSystemRegistry.register("memory", new MemoryFileSystemAdapter());
+		FileSystemRegistry.register("memory", new MemoryBucket());
 		
 		// Register R2 adapter if bucket is available
 		if (this.options.r2Buckets?.default) {
@@ -73,7 +73,7 @@ export class CloudflarePlatform extends BasePlatform {
 	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
 		// In Cloudflare Workers, only memory filesystem is available at runtime
 		// Static assets are served by Cloudflare CDN
-		const adapter = new MemoryFileSystemAdapter();
+		const adapter = new MemoryBucket();
 		return await adapter.getDirectoryHandle(name);
 	}
 

@@ -1,8 +1,8 @@
 /**
- * Assets middleware using self.dirs ServiceWorker API
+ * Assets middleware using self.buckets ServiceWorker API
  *
- * Runtime middleware that serves assets from structured directories
- * using the new self.dirs.open(name) web standard API.
+ * Runtime middleware that serves assets from structured buckets
+ * using the new self.buckets.open(name) web standard API.
  */
 
 export interface AssetsConfig {
@@ -91,7 +91,7 @@ export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'
 			// Debug: check what directories are available
 			console.log("[rootAssetsMiddleware] Checking directories...");
 			try {
-				const rootDir = await (self as any).dirs.open("");
+				const rootDir = await (self as any).buckets.open("");
 				const rootKeys = [];
 				for await (const [name] of rootDir.entries()) {
 					rootKeys.push(name);
@@ -105,7 +105,7 @@ export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'
 			let manifestFile;
 			try {
 				console.log("[rootAssetsMiddleware] Trying assets directory...");
-				const assetsDir = await (self as any).dirs.open("assets");
+				const assetsDir = await (self as any).buckets.open("assets");
 				const manifestHandle = await assetsDir.getFileHandle(manifestPath);
 				manifestFile = await manifestHandle.getFile();
 				console.log("[rootAssetsMiddleware] Found manifest in assets directory");
@@ -113,7 +113,7 @@ export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'
 				console.log("[rootAssetsMiddleware] Assets directory failed:", e.message);
 				// Fallback to root directory
 				console.log("[rootAssetsMiddleware] Trying root directory...");
-				const rootDir = await (self as any).dirs.open("");
+				const rootDir = await (self as any).buckets.open("");
 				const manifestHandle = await rootDir.getFileHandle(manifestPath);
 				manifestFile = await manifestHandle.getFile();
 				console.log("[rootAssetsMiddleware] Found manifest in root directory");
@@ -206,11 +206,11 @@ export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'
 				// Try to get file from assets directory first, then root
 				let fileHandle;
 				try {
-					const assetsDir = await (self as any).dirs.open("assets");
+					const assetsDir = await (self as any).buckets.open("assets");
 					fileHandle = await assetsDir.getFileHandle(requestedFilename);
 				} catch {
 					// Fallback to root directory
-					const rootDir = await (self as any).dirs.open("");
+					const rootDir = await (self as any).buckets.open("");
 					fileHandle = await rootDir.getFileHandle(requestedFilename);
 				}
 				const file = await fileHandle.getFile();
@@ -272,7 +272,7 @@ export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'
 }
 
 /**
- * Create assets middleware using self.dirs API
+ * Create assets middleware using self.buckets API
  */
 export function createAssetsMiddleware(config: AssetsConfig = {}) {
 	const {
@@ -294,8 +294,8 @@ export function createAssetsMiddleware(config: AssetsConfig = {}) {
 		if (manifestError && !dev) throw new Error(manifestError);
 
 		try {
-			// Use self.dirs to access the assets directory
-			const assetsDir = await (self as any).dirs.open(directory);
+			// Use self.buckets to access the assets directory
+			const assetsDir = await (self as any).buckets.open(directory);
 			const manifestHandle = await assetsDir.getFileHandle(manifestPath);
 			const manifestFile = await manifestHandle.getFile();
 			const manifestText = await manifestFile.text();
@@ -366,8 +366,8 @@ export function createAssetsMiddleware(config: AssetsConfig = {}) {
 				return new Response("Not Found", {status: 404});
 			}
 
-			// Get assets directory using self.dirs
-			const assetsDir = await (self as any).dirs.open(directory);
+			// Get assets directory using self.buckets
+			const assetsDir = await (self as any).buckets.open(directory);
 
 			// Get file handle (serve requested filename directly)
 			const fileHandle = await assetsDir.getFileHandle(requestedFilename);

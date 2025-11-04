@@ -13,23 +13,24 @@ export interface FileSystemConfig {
 }
 
 /**
- * Core interface that all filesystem adapters must implement
+ * Core interface that all buckets must implement
  * Provides File System Access API compatibility across all platforms
  */
-export interface FileSystemAdapter {
+export interface Bucket {
   /**
-   * Get a directory handle for the filesystem
+   * Get a directory handle for the bucket
    * @param name Directory name. Use "" for root directory
    */
   getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
 
   /**
-   * Get configuration for this adapter
+   * Get configuration for this bucket
    */
   getConfig(): FileSystemConfig;
 
   /**
-   * Cleanup resources when adapter is no longer needed
+   * Cleanup resources when bucket is no longer needed
    */
   dispose?(): Promise<void>;
 }
+

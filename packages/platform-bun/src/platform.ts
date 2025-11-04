@@ -16,10 +16,10 @@ import {
 	ServiceWorkerInstance,
 	ServiceWorkerRuntime,
 	createServiceWorkerGlobals,
-	createDirectoryStorage,
+	createBucketStorage,
 } from "@b9g/platform";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
-import {FileSystemRegistry, getFileSystemRoot, MemoryFileSystemAdapter, NodeFileSystemAdapter, BunS3FileSystemAdapter} from "@b9g/filesystem";
+import {FileSystemRegistry, MemoryBucket, LocalBucket, S3Bucket} from "@b9g/filesystem";
 import * as Path from "path";
 
 export interface BunPlatformOptions extends PlatformConfig {
@@ -52,8 +52,8 @@ export class BunPlatform extends BasePlatform {
 		};
 
 		// Register filesystem adapters for Bun
-		FileSystemRegistry.register("memory", new MemoryFileSystemAdapter());
-		FileSystemRegistry.register("node", new NodeFileSystemAdapter({
+		FileSystemRegistry.register("memory", new MemoryBucket());
+		FileSystemRegistry.register("node", new LocalBucket({
 			rootPath: Path.join(this.options.cwd, "dist")
 		}));
 		
@@ -74,7 +74,7 @@ export class BunPlatform extends BasePlatform {
 	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
 		// Create dist filesystem pointing to ./dist directory
 		const distPath = Path.resolve(this.options.cwd, "dist");
-		const adapter = new NodeFileSystemAdapter({ rootPath: distPath });
+		const adapter = new LocalBucket({ rootPath: distPath });
 		return await adapter.getDirectoryHandle(name);
 	}
 
@@ -163,9 +163,9 @@ export class BunPlatform extends BasePlatform {
 		// Create cache storage using platform configuration
 		const caches = await this.createCaches(options.caches);
 		
-		// Create directory storage using dist filesystem
-		const distDir = await this.getDirectoryHandle("");
-		const dirs = createDirectoryStorage(distDir);
+		// Create bucket storage using dist filesystem
+		const distPath = Path.resolve(this.options.cwd, "dist");
+		const buckets = createBucketStorage(distPath);
 
 		// Create ServiceWorker instance
 		const instance: ServiceWorkerInstance = {
@@ -195,7 +195,7 @@ export class BunPlatform extends BasePlatform {
 					runtime.reset();
 
 					// Create ServiceWorker globals with platform resources
-					createServiceWorkerGlobals(runtime, { caches, dirs });
+					createServiceWorkerGlobals(runtime, { caches, buckets });
 
 					// Bun can import TypeScript/JSX directly
 					globalThis.self = runtime;
@@ -223,7 +223,7 @@ export class BunPlatform extends BasePlatform {
 			// For now, rely on Bun's built-in module reload capability
 		} else {
 			// Static loading
-			createServiceWorkerGlobals(runtime, { caches, dirs });
+			createServiceWorkerGlobals(runtime, { caches, buckets });
 
 			// Set up globals
 			globalThis.self = runtime;

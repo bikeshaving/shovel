@@ -5,7 +5,7 @@
  * cloud storage operations with File System Access API compatibility.
  */
 
-import type {FileSystemAdapter, FileSystemConfig} from "@b9g/filesystem";
+import type {Bucket, FileSystemConfig} from "./types.js";
 
 /**
  * Bun S3 implementation of FileSystemWritableFileStream
@@ -311,9 +311,9 @@ export class BunS3FileSystemDirectoryHandle implements FileSystemDirectoryHandle
 }
 
 /**
- * Bun S3 filesystem adapter using Bun's native S3Client
+ * S3 bucket using Bun's native S3Client
  */
-export class BunS3FileSystemAdapter implements FileSystemAdapter {
+export class S3Bucket implements Bucket {
 	private config: FileSystemConfig;
 	private s3Client: any;
 

@@ -1,119 +1,78 @@
 /**
- * Directory Storage implementation for ServiceWorker self.dirs API
+ * Bucket Storage implementation for ServiceWorker self.buckets API
  * 
  * This implements the proposed web standard interface that parallels CacheStorage
  * for structured filesystem access in ServiceWorkers.
  */
 
-import type {DirectoryStorage} from "./service-worker.js";
+import type {BucketStorage as BucketStorageInterface} from "./service-worker.js";
+import {BucketStorage, LocalBucket} from "@b9g/filesystem";
 
 /**
- * Platform-agnostic directory storage implementation
- * Uses a single root directory with well-known subdirectories
+ * Platform-agnostic bucket storage implementation
+ * Uses bucket pattern where each bucket name maps to a separate filesystem root
  */
-export class PlatformDirectoryStorage implements DirectoryStorage {
-	private rootDir: FileSystemDirectoryHandle;
-	private cache = new Map<string, FileSystemDirectoryHandle>();
+export class PlatformBucketStorage implements BucketStorageInterface {
+	private buckets: BucketStorage;
 
-	constructor(rootDir: FileSystemDirectoryHandle) {
-		this.rootDir = rootDir;
+	constructor(rootPath: string = "./dist") {
+		// Create bucket storage with namespace-specific paths
+		this.buckets = new BucketStorage((name: string) => {
+			if (name === '' || name === '/' || name === '.') {
+				return new LocalBucket(rootPath);
+			}
+			// Each named directory gets its own bucket under the root
+			return new LocalBucket(`${rootPath}/${name}`);
+		});
 	}
 
 	/**
-	 * Open a named directory - creates if it doesn't exist
-	 * Well-known names: 'assets', 'static', 'server', 'client'
-	 * Special values: '', '/', '.' return the root directory
+	 * Open a named bucket - creates if it doesn't exist
+	 * Well-known names: 'assets', 'static', 'uploads', 'temp'
+	 * Special values: '', '/', '.' return the root bucket
 	 */
 	async open(name: string): Promise<FileSystemDirectoryHandle> {
-		// Handle root directory access
-		if (name === '' || name === '/' || name === '.') {
-			return this.rootDir;
-		}
-
-		// Check cache first
-		if (this.cache.has(name)) {
-			return this.cache.get(name)!;
-		}
-
-		try {
-			// Try to get existing directory
-			const dirHandle = await this.rootDir.getDirectoryHandle(name);
-			this.cache.set(name, dirHandle);
-			return dirHandle;
-		} catch (error) {
-			// Directory doesn't exist, create it
-			const dirHandle = await this.rootDir.getDirectoryHandle(name, {create: true});
-			this.cache.set(name, dirHandle);
-			return dirHandle;
-		}
+		// Delegate to bucket storage - each name gets its own bucket root
+		return await this.buckets.open(name);
 	}
 
 	/**
-	 * Check if a named directory exists
+	 * Check if a named bucket exists
 	 */
 	async has(name: string): Promise<boolean> {
-		// Root directory always exists
-		if (name === '' || name === '/' || name === '.') {
-			return true;
-		}
-
-		try {
-			await this.rootDir.getDirectoryHandle(name);
-			return true;
-		} catch {
-			return false;
-		}
+		return await this.buckets.has(name);
 	}
 
 	/**
-	 * Delete a named directory and all its contents
-	 * Note: Cannot delete the root directory
+	 * Delete a named bucket and all its contents
 	 */
 	async delete(name: string): Promise<boolean> {
-		// Cannot delete root directory
-		if (name === '' || name === '/' || name === '.') {
-			return false;
-		}
-
-		try {
-			await this.rootDir.removeEntry(name, {recursive: true});
-			this.cache.delete(name);
-			return true;
-		} catch {
-			return false;
-		}
+		return await this.buckets.delete(name);
 	}
 
 	/**
-	 * List all available directory names
+	 * List all available bucket names
 	 */
 	async keys(): Promise<string[]> {
-		const keys: string[] = [];
-		
-		try {
-			for await (const [name, handle] of this.rootDir.entries()) {
-				if (handle.kind === "directory") {
-					keys.push(name);
-				}
-			}
-		} catch {
-			// If enumeration fails, return empty array
-		}
-		
-		return keys.sort();
-	}
-
-	/**
-	 * Clear the cache (useful for hot reloading)
-	 */
-	clearCache(): void {
-		this.cache.clear();
+		return await this.buckets.keys();
 	}
 }
 
 /**
- * Create a DirectoryStorage instance from a root directory
+ * Create a BucketStorage instance from a root path
  */
-export function createDirectoryStorage(rootDir: FileSystemDirectoryHandle): DirectoryStorage {
-	return new PlatformDirectoryStorage(rootDir);
+export function createBucketStorage(rootPath: string = "./dist"): BucketStorageInterface {
+	return new PlatformBucketStorage(rootPath);
+}
+
+/**
+ * @deprecated Use PlatformBucketStorage instead
+ */
+export const PlatformDirectoryStorage = PlatformBucketStorage;
+
+/**
+ * @deprecated Use createBucketStorage instead
+ */
+export function createDirectoryStorage(rootPath: string = "./dist"): BucketStorageInterface {
+	return createBucketStorage(rootPath);
 }

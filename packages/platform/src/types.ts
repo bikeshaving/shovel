@@ -115,6 +115,8 @@ export interface FilesystemConfig {
 		secretAccessKey?: string;
 		token?: string;
 	};
+	/** Factory function for creating directory storage */
+	factory?: any; // DirectoryFactory from @b9g/filesystem
 	/** Additional adapter-specific options */
 	[key: string]: any;
 }
@@ -243,6 +245,12 @@ export interface Platform {
 	 * - Bun: filesystem with optimized writes
 	 */
 	createCaches(config?: CacheConfig): Promise<CacheStorage>;
+
+	/**
+	 * SUPPORTING UTILITY - Create bucket storage with platform-optimized backends
+	 * Uses factory pattern to route bucket names to different filesystem adapters
+	 */
+	createBuckets(config?: FilesystemConfig): Promise<any>; // BucketStorage
 
 	/**
 	 * SUPPORTING UTILITY - Create server instance for this platform

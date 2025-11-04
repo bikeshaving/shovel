@@ -3,27 +3,22 @@
  * Uses Node.js Worker threads with ServiceWorker simulation
  */
 
-import {createServiceWorkerGlobals, ServiceWorkerRuntime, createDirectoryStorage} from "@b9g/platform";
+import {createServiceWorkerGlobals, ServiceWorkerRuntime, createBucketStorage} from "@b9g/platform";
 import {WorkerAwareCacheStorage} from "@b9g/cache/worker-aware-cache-storage";
-import {NodeFileSystemAdapter} from "@b9g/filesystem";
 import {parentPort} from "worker_threads";
 import * as Path from "path";
 
 // Create worker-aware cache storage for this Worker
 const caches = new WorkerAwareCacheStorage();
 
-// Create directory storage for dist/ folder
-const distAdapter = new NodeFileSystemAdapter({ 
-	rootPath: Path.join(process.cwd(), "dist") 
-});
-const distRoot = await distAdapter.getFileSystemRoot("");
-const dirs = createDirectoryStorage(distRoot);
+// Create bucket storage for dist/ folder
+const buckets = createBucketStorage(Path.join(process.cwd(), "dist"));
 
 // Create ServiceWorker runtime
 const runtime = new ServiceWorkerRuntime();
 
 // Set up ServiceWorker globals with platform resources
-createServiceWorkerGlobals(runtime, {caches, dirs});
+createServiceWorkerGlobals(runtime, {caches, buckets});
 // Don't pollute globalThis - keep ServiceWorker context isolated per worker
 let workerSelf = runtime;
 
@@ -75,7 +70,7 @@ async function loadServiceWorker(version, entrypoint) {
 			runtime.reset();
 			
 			// Re-attach platform resources
-			createServiceWorkerGlobals(runtime, {caches, dirs});
+			createServiceWorkerGlobals(runtime, {caches, buckets});
 			workerSelf = runtime;
 
 			currentApp = null;

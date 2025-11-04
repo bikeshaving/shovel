@@ -1,0 +1,80 @@
+{
+  "name": "@b9g/cache-redis",
+  "version": "0.2.0",
+  "description": "Redis cache adapter for Shovel cache system",
+  "type": "module",
+  "main": "./dist/src/index.cjs",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "libuild --save",
+    "test": "echo \"Test suite to be implemented\"",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "cache",
+    "redis",
+    "shovel",
+    "metaframework",
+    "cache-adapter"
+  ],
+  "author": "Shovel Team",
+  "license": "MIT",
+  "peerDependencies": {
+    "@b9g/cache": "workspace:*"
+  },
+  "dependencies": {
+    "redis": "^4.6.10"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.10"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/b9g/shovel.git",
+    "directory": "packages/cache-redis"
+  },
+  "private": true,
+  "module": "./dist/src/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "require": "./dist/src/index.cjs"
+    },
+    "./factory": {
+      "types": "./dist/src/factory.d.ts",
+      "import": "./dist/src/factory.js",
+      "require": "./dist/src/factory.cjs"
+    },
+    "./factory.js": {
+      "types": "./dist/src/factory.d.ts",
+      "import": "./dist/src/factory.js",
+      "require": "./dist/src/factory.cjs"
+    },
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "require": "./dist/src/index.cjs"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "require": "./dist/src/index.cjs"
+    },
+    "./redis-cache": {
+      "types": "./dist/src/redis-cache.d.ts",
+      "import": "./dist/src/redis-cache.js",
+      "require": "./dist/src/redis-cache.cjs"
+    },
+    "./redis-cache.js": {
+      "types": "./dist/src/redis-cache.d.ts",
+      "import": "./dist/src/redis-cache.js",
+      "require": "./dist/src/redis-cache.cjs"
+    },
+    "./package.json": "./dist/package.json"
+  }
+}

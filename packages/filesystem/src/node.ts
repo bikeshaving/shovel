@@ -8,7 +8,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import {createWriteStream} from "fs";
-import type {FileSystemAdapter, FileSystemConfig} from "./types.js";
+import type {Bucket, FileSystemConfig} from "./types.js";
 
 // File System Access API types are available globally after importing in platform types
 
@@ -300,9 +300,9 @@ export class NodeFileSystemDirectoryHandle
 }
 
 /**
- * Node.js filesystem adapter
+ * Local filesystem bucket using Node.js fs
  */
-export class NodeFileSystemAdapter implements FileSystemAdapter {
+export class LocalBucket implements Bucket {
 	private config: FileSystemConfig;
 	private rootPath: string;
 
