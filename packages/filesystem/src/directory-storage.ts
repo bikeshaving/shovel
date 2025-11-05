@@ -8,9 +8,9 @@ import type {Bucket} from "./types.js";
  * Example usage:
  * ```typescript
  * const buckets = new BucketStorage((name) => {
- *   if (name === 'uploads') return new S3FileSystemAdapter('my-bucket');
- *   if (name === 'temp') return new NodeFileSystemAdapter('/tmp');
- *   return new NodeFileSystemAdapter('./dist'); // Default to dist
+ *   if (name === 'uploads') return new S3Bucket('my-bucket');
+ *   if (name === 'temp') return new LocalBucket('/tmp');
+ *   return new LocalBucket('./dist'); // Default to dist
  * });
  * ```
  */

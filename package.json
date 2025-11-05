@@ -34,17 +34,31 @@
     "@b9g/http-errors": "^0.1.0"
   },
   "peerDependenciesMeta": {
-    "@b9g/platform": {"optional": true},
-    "@b9g/platform-node": {"optional": true},
-    "@b9g/platform-cloudflare": {"optional": true},
-    "@b9g/platform-bun": {"optional": true},
-    "@b9g/cache": {"optional": true},
-    "@b9g/filesystem": {"optional": true},
-    "@b9g/http-errors": {"optional": true}
+    "@b9g/platform": {
+      "optional": true
+    },
+    "@b9g/platform-node": {
+      "optional": true
+    },
+    "@b9g/platform-cloudflare": {
+      "optional": true
+    },
+    "@b9g/platform-bun": {
+      "optional": true
+    },
+    "@b9g/cache": {
+      "optional": true
+    },
+    "@b9g/filesystem": {
+      "optional": true
+    },
+    "@b9g/http-errors": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@b9g/cache": "workspace:*",
-    "@b9g/filesystem": "workspace:*", 
+    "@b9g/filesystem": "workspace:*",
     "@b9g/http-errors": "workspace:*",
     "@b9g/platform": "workspace:*",
     "@b9g/libuild": "^0.1.10",

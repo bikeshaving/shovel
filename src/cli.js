@@ -207,7 +207,7 @@ function getWorkerCount(options) {
 					entrypoint,
 					outDir: options.outDir,
 					verbose: options.verbose,
-					platform: options.platform,
+					platform: platformName,
 				});
 
 				console.info(`✅ Build complete`);

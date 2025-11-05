@@ -15,7 +15,7 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 } from "@b9g/platform";
-import {FileSystemRegistry, getFileSystemRoot, MemoryBucket} from "@b9g/filesystem";
+import {FileSystemRegistry, getDirectoryHandle, MemoryBucket} from "@b9g/filesystem";
 
 export interface CloudflarePlatformOptions extends PlatformConfig {
 	/** Cloudflare Workers environment (production, preview, dev) */
@@ -178,7 +178,7 @@ export class CloudflarePlatform extends BasePlatform {
 		name = "default",
 	): Promise<FileSystemDirectoryHandle> {
 		// Use centralized filesystem registry (defaults to memory for Cloudflare)
-		return await getFileSystemRoot(name);
+		return await getDirectoryHandle(name);
 	}
 
 	/**
