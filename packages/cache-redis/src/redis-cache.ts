@@ -101,7 +101,7 @@ export class RedisCache extends Cache {
 			status: response.status,
 			statusText: response.statusText,
 			headers,
-			body: Buffer.from(body).toString("base64"),
+			body: btoa(String.fromCharCode(...new Uint8Array(body))),
 			cachedAt: Date.now(),
 			ttl: this.defaultTTL,
 		};
@@ -111,7 +111,7 @@ export class RedisCache extends Cache {
 	 * Deserialize cache entry to Response
 	 */
 	private deserializeResponse(entry: CacheEntry): Response {
-		const body = Buffer.from(entry.body, "base64");
+		const body = Uint8Array.from(atob(entry.body), c => c.charCodeAt(0));
 		
 		return new Response(body, {
 			status: entry.status,

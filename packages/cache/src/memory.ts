@@ -237,7 +237,11 @@ export class MemoryCache extends Cache {
  * Other cache types can be used directly by workers without coordination.
  */
 
-import type {Worker} from "worker_threads";
+// Use web standard Worker type for platform independence
+interface WorkerLike {
+	postMessage(value: any): void;
+	on(event: string, listener: (data: any) => void): void;
+}
 
 interface CacheMessage {
 	type: string;
@@ -268,7 +272,7 @@ export class MemoryCacheManager {
 	/**
 	 * Handle memory cache-related message from a Worker
 	 */
-	async handleMessage(worker: Worker, message: CacheMessage): Promise<void> {
+	async handleMessage(worker: WorkerLike, message: CacheMessage): Promise<void> {
 		const {type, requestId} = message;
 
 		try {

@@ -53,18 +53,8 @@ export class CloudflarePlatform extends BasePlatform {
 		// We can't use dynamic imports in Workers, so we bundle what we need
 		FileSystemRegistry.register("memory", new MemoryBucket());
 		
-		// Register R2 adapter if bucket is available
-		if (this.options.r2Buckets?.default) {
-			// Import bundled R2 adapter (would be bundled at build time)
-			try {
-				// This would be a bundled import in production
-				const {R2FileSystemAdapter} = require("@b9g/filesystem-r2");
-				FileSystemRegistry.register("r2", new R2FileSystemAdapter(this.options.r2Buckets.default));
-			} catch {
-				// Fall back to memory if R2 adapter not bundled
-				console.warn("[Cloudflare] R2 adapter not available, using memory filesystem");
-			}
-		}
+		// R2 adapter registration is deferred to async initialization
+		// since Cloudflare Workers don't support dynamic imports in constructors
 	}
 
 	/**

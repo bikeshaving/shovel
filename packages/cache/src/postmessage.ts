@@ -1,5 +1,14 @@
 import {Cache, type CacheQueryOptions} from "./cache.js";
-import {parentPort, isMainThread} from "worker_threads";
+
+// Platform-agnostic worker communication interface
+interface MessagePortLike {
+	postMessage(value: any): void;
+	on(event: string, listener: (data: any) => void): void;
+}
+
+// Use globalThis for platform detection instead of Node.js-specific imports
+const isMainThread = typeof self === 'undefined';
+const parentPort: MessagePortLike | null = typeof self !== 'undefined' ? self as any : null;
 
 /**
  * Configuration options for PostMessageCache

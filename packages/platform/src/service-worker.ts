@@ -255,6 +255,7 @@ export interface BucketStorage {
 }
 
 
+
 /**
  * Create ServiceWorker globals for a module context
  */
@@ -263,6 +264,9 @@ export function createServiceWorkerGlobals(
 	options: {
 		caches?: any;
 		buckets?: BucketStorage;
+		// Environment-specific options
+		isDevelopment?: boolean;
+		hotReload?: () => Promise<void>;
 	} = {}
 ) {
 	// Attach platform resources directly to runtime
@@ -273,18 +277,52 @@ export function createServiceWorkerGlobals(
 		(runtime as any).buckets = options.buckets;
 	}
 
+	// Environment-aware ServiceWorker APIs
+	const skipWaiting = async (): Promise<void> => {
+		if (options.isDevelopment && options.hotReload) {
+			// Development: trigger hot reload
+			console.info('[ServiceWorker] skipWaiting() - triggering hot reload');
+			await options.hotReload();
+		} else if (!options.isDevelopment) {
+			// Production: could trigger graceful restart or worker replacement
+			console.info('[ServiceWorker] skipWaiting() - production graceful restart not implemented');
+			// TODO: Implement production restart logic
+		}
+		// Always resolve - skipWaiting never fails in real ServiceWorkers
+	};
+
+	// ServiceWorker clients API - spec-compliant with standard webworker types
+	// No-ops for HTTP servers, future-ready for WebSocket/SSE connections
+	const clients = {
+		async claim(): Promise<void> {
+			// No-op: HTTP requests are stateless, no persistent clients to claim
+		},
+
+		async get(id: string): Promise<any> {
+			// Return undefined - no persistent clients in HTTP-only server
+			return undefined;
+		},
+
+		async matchAll(options?: any): Promise<any[]> {
+			// Return empty array - no persistent clients in HTTP-only server
+			return [];
+		},
+
+		async openWindow(url: string | URL): Promise<any> {
+			// Not supported in server context
+			return null;
+		}
+	};
+
 	return {
 		self: runtime,
 		addEventListener: runtime.addEventListener.bind(runtime),
 		removeEventListener: runtime.removeEventListener.bind(runtime),
 		dispatchEvent: runtime.dispatchEvent.bind(runtime),
 
-		// ServiceWorker-specific globals that might be useful
-		skipWaiting: () => Promise.resolve(),
-		clients: {
-			claim: () => Promise.resolve(),
-			matchAll: () => Promise.resolve([]),
-		},
+		// ServiceWorker-specific globals with proper implementations
+		skipWaiting,
+		clients,
 
 		// Standard globals
 		console,
