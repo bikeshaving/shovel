@@ -342,18 +342,27 @@ export class NodePlatform extends BasePlatform {
 
 	/**
 	 * SUPPORTING UTILITY - Create cache storage optimized for Node.js
-	 * Now uses the base class implementation with dynamic loading
+	 * Uses MemoryCache in main thread, PostMessageCache in workers
 	 */
 	async createCaches(config?: CacheConfig): Promise<CustomCacheStorage> {
-		const cacheStorage = await super.createCaches(config);
+		// Import Node.js worker_threads to detect thread type
+		const { isMainThread } = await import("worker_threads");
 		
-		// Return CustomCacheStorage with PostMessage coordination for worker environments
+		// Return CustomCacheStorage with thread-appropriate cache
 		return new CustomCacheStorage((name: string) => {
-			// Return PostMessageCache that coordinates with MemoryCache on main thread
-			return new PostMessageCache(name, {
-				maxEntries: 1000,
-				maxSize: 50 * 1024 * 1024, // 50MB
-			});
+			if (isMainThread) {
+				// Main thread: Use MemoryCache directly
+				return new MemoryCache(name, {
+					maxEntries: 1000,
+					maxAge: 60 * 60 * 1000, // 1 hour
+				});
+			} else {
+				// Worker thread: Use PostMessageCache that coordinates with main thread
+				return new PostMessageCache(name, {
+					maxEntries: 1000,
+					maxAge: 60 * 60 * 1000, // 1 hour
+				});
+			}
 		});
 	}
 

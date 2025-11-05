@@ -15,3 +15,15 @@ export {MemoryCache, MemoryCacheManager, type MemoryCacheOptions} from "./memory
 
 // PostMessage cache (worker thread coordination)
 export {PostMessageCache, type PostMessageCacheOptions} from "./postmessage.js";
+
+// Import for factory function
+import {MemoryCache, type MemoryCacheOptions} from "./memory.js";
+
+/**
+ * Platform adapter factory function
+ * Creates a MemoryCache instance with the given configuration
+ */
+export function createCache(config: MemoryCacheOptions & { name?: string } = {}): MemoryCache {
+	const name = config.name || "default";
+	return new MemoryCache(name, config);
+}

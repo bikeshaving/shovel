@@ -260,7 +260,8 @@ export class RedisCache extends Cache {
 				try {
 					const value = await this.client.get(key);
 					if (value) {
-						totalSize += Buffer.byteLength(value, "utf8");
+						// Use web-standard text encoding instead of Node.js Buffer
+						totalSize += new TextEncoder().encode(value).length;
 					}
 				} catch {
 					// Skip errors for individual keys

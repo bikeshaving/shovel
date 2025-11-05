@@ -96,21 +96,22 @@ export class BunPlatform extends BasePlatform {
 		// Import MemoryCache for fallback
 		const { MemoryCache } = await import("@b9g/cache");
 		
-		// Use MemoryCache in main thread, PostMessageCache in workers
-		const { isMainThread } = await import("worker_threads");
+		// Use platform-agnostic worker detection
+		// In Bun, workers use self global while main thread doesn't
+		const isWorkerThread = typeof self !== 'undefined' && typeof window === 'undefined';
 		
 		return new CustomCacheStorage((name: string) => {
-			if (isMainThread) {
+			if (!isWorkerThread) {
 				// Use MemoryCache in main thread
 				return new MemoryCache(name, {
 					maxEntries: 1000,
-					maxSize: 50 * 1024 * 1024, // 50MB
+					maxAge: 60 * 60 * 1000, // 1 hour
 				});
 			} else {
 				// Use PostMessageCache in worker threads
 				return new PostMessageCache(name, {
 					maxEntries: 1000,
-					maxSize: 50 * 1024 * 1024, // 50MB
+					maxAge: 60 * 60 * 1000, // 1 hour
 				});
 			}
 		});
