@@ -4,12 +4,17 @@
  */
 
 import {createServiceWorkerGlobals, ServiceWorkerRuntime, createBucketStorage} from "@b9g/platform";
-import {WorkerAwareCacheStorage} from "@b9g/cache/worker-aware-cache-storage";
+import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
 import {parentPort} from "worker_threads";
 import * as Path from "path";
 
-// Create worker-aware cache storage for this Worker
-const caches = new WorkerAwareCacheStorage();
+// Create worker-aware cache storage using PostMessage coordination
+const caches = new CustomCacheStorage((name) => {
+	return new PostMessageCache(name, {
+		maxEntries: 1000,
+		maxAge: 60 * 60 * 1000, // 1 hour
+	});
+});
 
 // Create bucket storage for dist/ folder
 const buckets = createBucketStorage(Path.join(process.cwd(), "dist"));
@@ -56,7 +61,10 @@ async function loadServiceWorker(version, entrypoint) {
 			version,
 			entrypoint,
 		});
-		const entrypointPath = entrypoint || `${process.cwd()}/dist/app.js`;
+		// Use SERVICEWORKER_PATH if defined (production), otherwise use provided entrypoint
+		const entrypointPath = process.env.SERVICEWORKER_PATH 
+			|| entrypoint 
+			|| `${process.cwd()}/dist/app.js`;
 		console.info("[Worker] Loading from:", entrypointPath);
 
 		// Handle hot reload by creating fresh ServiceWorker context

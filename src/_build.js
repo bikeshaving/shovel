@@ -54,7 +54,7 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
 		format: "esm",
 		target: "es2022",
 		platform: isCloudflare ? "browser" : "node",
-		outfile: join(outputDir, "app.js"),
+		outfile: join(outputDir, "serviceworker.js"), // ServiceWorker code
 		absWorkingDir: workspaceRoot,
 		plugins: [
 			assetsPlugin({
@@ -74,9 +74,8 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
 	
 	// Platform-specific bundling strategy
 	if (!isCloudflare) {
-		// For Node.js/Bun builds with bootstrap, bundle everything for self-contained executable
-		// Only keep Node.js built-ins external since they're provided by the runtime
-		buildConfig.external = ["node:*"];
+		// For Node.js/Bun builds, keep platform dependencies external (require npm install)
+		buildConfig.external = ["node:*", "@b9g/*"];
 	} else {
 		// For Cloudflare, bundle everything and wrap ServiceWorker as ES Module
 		buildConfig.platform = "browser";
@@ -119,6 +118,20 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
 		}
 	}
 
+	// Copy package.json to dist for self-contained deployment
+	const packageJsonPath = resolve(process.cwd(), "package.json");
+	try {
+		const packageJsonContent = await readFile(packageJsonPath, "utf8");
+		await writeFile(join(outputDir, "package.json"), packageJsonContent, "utf8");
+		if (verbose) {
+			console.info(`📄 Copied package.json to ${outputDir}`);
+		}
+	} catch (error) {
+		if (verbose) {
+			console.warn(`⚠️  Could not copy package.json: ${error.message}`);
+		}
+	}
+
 	if (verbose) {
 		console.info(`📦 Built app to ${outputDir}`);
 	}
@@ -129,52 +142,41 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
  */
 async function addPlatformBootstrap(outputDir, platform, verbose, workspaceRoot) {
 	const appJsPath = join(outputDir, "app.js");
-	const originalContent = await readFile(appJsPath, "utf8");
+	// Note: ServiceWorker is now in worker.js, so we don't read original content
 	
-	// Keep the ServiceWorker code separate
+	// Bundle the platform worker.js template with the ServiceWorker import
 	const workerJsPath = join(outputDir, "worker.js");
-	await writeFile(workerJsPath, originalContent, "utf8");
+	const platformWorkerPath = join(workspaceRoot, "src", "worker.js");
+	
+	// Bundle worker.js with esbuild to include all dependencies and reference serviceworker.js
+	await esbuild.build({
+		entryPoints: [platformWorkerPath],
+		bundle: true,
+		platform: "node",
+		format: "esm",
+		outfile: workerJsPath,
+		external: ["worker_threads", "path", "@b9g/*"], // Keep Node.js built-ins and platform deps external
+		define: {
+			// Tell the platform worker where to find the ServiceWorker code
+			"process.env.SERVICEWORKER_PATH": `"./serviceworker.js"`
+		}
+	});
 	
 	let bootstrapCode;
 	
 	if (platform === "node") {
-		// First, we need to build the platform imports into a separate bundle
-		const platformBootstrapPath = join(outputDir, "platform-bootstrap.js");
-		
-		// Create a temporary file that imports all platform dependencies
-		const platformImports = `
-export { createPlatform, ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } from "@b9g/platform";
-export { Worker } from "worker_threads";
-export { default as os } from "os";
-export { fileURLToPath } from "url";
-export { dirname, join } from "path";
-`;
-		
-		await writeFile(join(outputDir, "platform-imports.js"), platformImports, "utf8");
-		
-		// Bundle the platform imports
-		const platformBuildConfig = {
-			entryPoints: [join(outputDir, "platform-imports.js")],
-			bundle: true,
-			format: "esm",
-			target: "es2022",
-			platform: "node",
-			outfile: platformBootstrapPath,
-			absWorkingDir: workspaceRoot,
-			external: ["node:*", "worker_threads", "os", "url", "path"], // Keep Node.js built-ins external
-			minify: false,
-		};
-		
-		await esbuild.build(platformBuildConfig);
-		
 		bootstrapCode = `#!/usr/bin/env node
 /**
  * Shovel Production Server - Node.js Runtime
- * Generated build artifact - directly executable
+ * Self-contained build - run 'npm install' in this directory first
  */
 
-// Import platform utilities from bundled platform code
-import { createPlatform, ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage, Worker, os, fileURLToPath, dirname, join } from "./platform-bootstrap.js";
+// Import platform utilities directly
+import { createPlatform, ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } from "@b9g/platform";
+import { Worker } from "worker_threads";
+import os from "os";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 
 // Configuration
 const PORT = process.env.PORT || 8080;
@@ -185,6 +187,7 @@ const WORKERS = process.env.WORKERS ? parseInt(process.env.WORKERS) : os.cpus().
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const workerPath = join(__dirname, "worker.js");
+const serviceworkerPath = join(__dirname, "serviceworker.js");
 
 async function startServer() {
   try {
@@ -201,7 +204,7 @@ async function startServer() {
       console.info(\`⚙️  Workers: \${WORKERS}\`);
       console.info(\`🌐 Platform: Node.js (Multi-threaded)\`);
 
-      // Load ServiceWorker from file using worker threads
+      // Load ServiceWorker from worker.js using worker threads
       const serviceWorker = await platformInstance.loadServiceWorker(workerPath, {
         hotReload: false,
         workerCount: WORKERS,
@@ -258,7 +261,7 @@ async function startServer() {
       globalThis.buckets = swGlobals.self.buckets || buckets;
 
       // Load the ServiceWorker code directly (no import cache busting needed)
-      await import(workerPath);
+      await import(serviceworkerPath);
       
       // Run ServiceWorker lifecycle
       await runtime.install();
@@ -426,6 +429,6 @@ startServer();
 	
 	if (verbose) {
 		console.info(`🔧 Added ${platform} bootstrap for direct execution`);
-		console.info(`📄 ServiceWorker code: worker.js`);
+		console.info(`📄 ServiceWorker code: worker.js, Bootstrap: app.js`);
 	}
 }

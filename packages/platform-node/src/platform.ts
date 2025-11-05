@@ -22,6 +22,7 @@ import * as Http from "http";
 import * as Path from "path";
 import {Worker} from "worker_threads";
 import {fileURLToPath} from "url";
+import {existsSync} from "fs";
 
 // ES module dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
@@ -57,13 +58,13 @@ class WorkerManager {
 		cacheStorage: CustomCacheStorage,
 		options: Required<NodePlatformOptions>,
 		workerCount = 1,
-		private entrypoint?: string,
+		private appEntrypoint?: string,
 	) {
 		this.memoryCacheManager = new MemoryCacheManager();
 		this.options = options;
 		console.info(
 			"[WorkerManager] Constructor called with entrypoint:",
-			entrypoint,
+			appEntrypoint,
 		);
 		this.initWorkers(workerCount);
 	}
@@ -75,16 +76,39 @@ class WorkerManager {
 	}
 
 	private createWorker() {
-		// Resolve worker script from shovel package using modern ES module resolution
+		// Resolve worker script - prefer bundled worker.js over package resolution
 		let workerScript: string;
 
-		try {
-			const workerUrl = import.meta.resolve("@b9g/shovel/worker.js");
-			workerScript = fileURLToPath(workerUrl);
-		} catch (error) {
-			throw new Error(
-				`Could not resolve @b9g/shovel/worker.js: ${error.message}`,
-			);
+		// First, try to find bundled worker.js relative to app entrypoint
+		if (this.appEntrypoint) {
+			const entryDir = Path.dirname(this.appEntrypoint);
+			const bundledWorker = Path.join(entryDir, "worker.js");
+			
+			if (existsSync(bundledWorker)) {
+				workerScript = bundledWorker;
+				console.debug(`[Platform-Node] Using bundled worker: ${workerScript}`);
+			} else {
+				// Fallback to package resolution for development
+				try {
+					const workerUrl = import.meta.resolve("@b9g/shovel/worker.js");
+					workerScript = fileURLToPath(workerUrl);
+					console.debug(`[Platform-Node] Using package worker: ${workerScript}`);
+				} catch (error) {
+					throw new Error(
+						`Could not resolve worker.js. Checked bundled path: ${bundledWorker} and package: @b9g/shovel/worker.js. Error: ${error.message}`,
+					);
+				}
+			}
+		} else {
+			// No entrypoint provided, use package resolution
+			try {
+				const workerUrl = import.meta.resolve("@b9g/shovel/worker.js");
+				workerScript = fileURLToPath(workerUrl);
+			} catch (error) {
+				throw new Error(
+					`Could not resolve @b9g/shovel/worker.js: ${error.message}`,
+				);
+			}
 		}
 
 		const worker = new Worker(workerScript);
@@ -189,13 +213,13 @@ class WorkerManager {
 
 				console.info("[Platform-Node] Sending load message:", {
 					version,
-					entrypoint: this.entrypoint,
+					entrypoint: this.appEntrypoint,
 				});
 				worker.on("message", handleReady);
 				worker.postMessage({
 					type: "load",
 					version,
-					entrypoint: this.entrypoint,
+					entrypoint: this.appEntrypoint,
 				});
 			});
 		});

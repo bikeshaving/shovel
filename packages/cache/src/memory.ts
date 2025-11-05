@@ -6,6 +6,18 @@ import {
 } from "./cache.js";
 
 /**
+ * Convert Headers to plain object - works across all TypeScript lib definitions
+ */
+function headersToObject(headers: Headers): Record<string, string> {
+	const obj: Record<string, string> = {};
+	// Use forEach which is universally supported
+	headers.forEach((value, key) => {
+		obj[key] = value;
+	});
+	return obj;
+}
+
+/**
  * Configuration options for MemoryCache
  */
 export interface MemoryCacheOptions {
@@ -81,7 +93,7 @@ export class MemoryCache extends Cache {
 
 		// Clone request and response to avoid external mutation
 		const clonedRequest = request.clone();
-		const clonedResponse = cloneResponse(response);
+		const clonedResponse = await cloneResponse(response);
 
 		const entry: CacheEntry = {
 			request: clonedRequest,
@@ -347,7 +359,7 @@ export class MemoryCacheManager {
 		return {
 			status: response.status,
 			statusText: response.statusText,
-			headers: Object.fromEntries(response.headers.entries()),
+			headers: Object.fromEntries(response.headers),
 			body: await response.text(),
 		};
 	}
@@ -413,7 +425,7 @@ export class MemoryCacheManager {
 		return keys.map((r) => ({
 			url: r.url,
 			method: r.method,
-			headers: Object.fromEntries(r.headers.entries()),
+			headers: Object.fromEntries(r.headers),
 			body: undefined, // Keys typically don't need body
 		}));
 	}

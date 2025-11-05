@@ -106,7 +106,7 @@ export class PostMessageCache extends Cache {
 		const serializedRequest = {
 			url: request.url,
 			method: request.method,
-			headers: Object.fromEntries(request.headers.entries()),
+			headers: Object.fromEntries(request.headers),
 			body:
 				request.method !== "GET" && request.method !== "HEAD"
 					? await request.text()
@@ -135,7 +135,7 @@ export class PostMessageCache extends Cache {
 		const serializedRequest = {
 			url: request.url,
 			method: request.method,
-			headers: Object.fromEntries(request.headers.entries()),
+			headers: Object.fromEntries(request.headers),
 			body:
 				request.method !== "GET" && request.method !== "HEAD"
 					? await request.clone().text()
@@ -145,7 +145,7 @@ export class PostMessageCache extends Cache {
 		const serializedResponse = {
 			status: response.status,
 			statusText: response.statusText,
-			headers: Object.fromEntries(response.headers.entries()),
+			headers: Object.fromEntries(response.headers),
 			body: await response.clone().text(),
 		};
 
@@ -162,7 +162,7 @@ export class PostMessageCache extends Cache {
 		const serializedRequest = {
 			url: request.url,
 			method: request.method,
-			headers: Object.fromEntries(request.headers.entries()),
+			headers: Object.fromEntries(request.headers),
 			body:
 				request.method !== "GET" && request.method !== "HEAD"
 					? await request.text()
@@ -184,7 +184,7 @@ export class PostMessageCache extends Cache {
 			serializedRequest = {
 				url: request.url,
 				method: request.method,
-				headers: Object.fromEntries(request.headers.entries()),
+				headers: Object.fromEntries(request.headers),
 				body:
 					request.method !== "GET" && request.method !== "HEAD"
 						? await request.text()
