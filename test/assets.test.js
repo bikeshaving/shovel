@@ -60,7 +60,7 @@ body {
 			`;
 
 			const jsContent = `
-import "./style.css" with { assetBase: true };
+import "./style.css" with { assetBase: "/assets/" };
 
 self.addEventListener("fetch", (event) => {
 	const url = new URL(event.request.url);
@@ -184,8 +184,8 @@ test(
 
 			// Create source files with assetBase imports
 			const jsContent = `
-import "./style.css" with { assetBase: true };
-import "./images/logo.png" with { assetBase: true };
+import "./style.css" with { assetBase: "/assets/" };
+import "./images/logo.png" with { assetBase: "/assets/" };
 
 self.addEventListener("fetch", (event) => {
 	event.respondWith(new Response("App with assets loaded!"));
@@ -403,15 +403,15 @@ test(
 		// Test that the new assetBase syntax works
 		const testCode = `
 // New syntax (should work)
-import "./style.css" with { assetBase: true };
-import "./image.png" with { assetBase: true };
+import "./style.css" with { assetBase: "/assets/" };
+import "./image.png" with { assetBase: "/assets/" };
 
 // Old syntax (should be deprecated)
 // import "./style.css" with { url: true };
 `;
 
 		// The assetBase syntax should be the standard now
-		expect(testCode).toContain('with { assetBase: true }');
+		expect(testCode).toContain('with { assetBase: "/assets/" }');
 		
 		// This test mainly documents the migration
 		// The actual transformation is handled by the assets plugin
@@ -434,7 +434,7 @@ test(
 
 			// Create JS file that imports non-existent asset
 			const jsContent = `
-import "./nonexistent.css" with { assetBase: true };
+import "./nonexistent.css" with { assetBase: "/assets/" };
 
 self.addEventListener("fetch", (event) => {
 	event.respondWith(new Response("Should fail"));
@@ -528,7 +528,7 @@ test(
 
 			// Create JS file that imports all assets
 			const imports = assetFiles.map(file => 
-				`import "./${file}" with { assetBase: true };`
+				`import "./${file}" with { assetBase: "/assets/" };`
 			).join('\n');
 
 			const jsContent = `

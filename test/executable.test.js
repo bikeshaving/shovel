@@ -278,8 +278,8 @@ test(
 			await createTempFile(testDir, "client.js", jsContent);
 
 			const serviceWorkerContent = `
-import "./style.css" with { assetBase: true };
-import "./client.js" with { assetBase: true };
+import "./style.css" with { assetBase: "/assets/" };
+import "./client.js" with { assetBase: "/assets/" };
 
 self.addEventListener("fetch", async (event) => {
 	const url = new URL(event.request.url);

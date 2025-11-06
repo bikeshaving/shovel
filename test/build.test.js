@@ -251,7 +251,7 @@ test(
 
 		try {
 			const entryContent = `
-import "./style.css" with { assetBase: true };
+import "./style.css" with { assetBase: "/assets/" };
 
 self.addEventListener("fetch", (event) => {
 	event.respondWith(new Response("Styled response", {
