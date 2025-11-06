@@ -60,7 +60,7 @@ body {
 			`;
 
 			const jsContent = `
-import "./style.css" with { assetBase: "/assets/" };
+import "./style.css" with { assetBase: "assets" };
 
 self.addEventListener("fetch", (event) => {
 	const url = new URL(event.request.url);
@@ -184,8 +184,8 @@ test(
 
 			// Create source files with assetBase imports
 			const jsContent = `
-import "./style.css" with { assetBase: "/assets/" };
-import "./images/logo.png" with { assetBase: "/assets/" };
+import "./style.css" with { assetBase: "assets" };
+import "./images/logo.png" with { assetBase: "static" };
 
 self.addEventListener("fetch", (event) => {
 	event.respondWith(new Response("App with assets loaded!"));
@@ -398,23 +398,62 @@ test(
 // ======================
 
 test(
-	"migration from url to assetBase attribute",
+	"assetBase path normalization",
 	async () => {
-		// Test that the new assetBase syntax works
-		const testCode = `
-// New syntax (should work)
-import "./style.css" with { assetBase: "/assets/" };
-import "./image.png" with { assetBase: "/assets/" };
+		const cleanup_paths = [];
 
-// Old syntax (should be deprecated)
-// import "./style.css" with { url: true };
-`;
+		try {
+			const testDir = await createTempDir();
+			cleanup_paths.push(testDir);
 
-		// The assetBase syntax should be the standard now
-		expect(testCode).toContain('with { assetBase: "/assets/" }');
-		
-		// This test mainly documents the migration
-		// The actual transformation is handled by the assets plugin
+			// Test various path formats that should all be normalized
+			const testCases = [
+				{ input: "/assets/", expected: "/assets/" },
+				{ input: "/assets", expected: "/assets/" },
+				{ input: "assets/", expected: "/assets/" },
+				{ input: "assets", expected: "/assets/" },
+				{ input: "/static/img", expected: "/static/img/" },
+				{ input: "dist/public", expected: "/dist/public/" },
+			];
+
+			for (const testCase of testCases) {
+				const jsContent = `
+import "./test.css" with { assetBase: "${testCase.input}" };
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response("Test"));
+});
+				`;
+
+				await createTempFile(testDir, "test.css", "body { color: red; }");
+				const entryPath = await createTempFile(testDir, "app.js", jsContent);
+				const outDir = join(testDir, `dist-${testCase.input.replace(/[/]/g, '-')}`);
+
+				const { buildForProduction } = await import("../src/_build.js");
+				
+				await buildForProduction({
+					entrypoint: entryPath,
+					outDir,
+					verbose: false,
+					platform: "node"
+				});
+
+				// Read the manifest to verify the normalized URL
+				const manifestPath = join(outDir, "assets", "manifest.json");
+				const manifestContent = await FS.readFile(manifestPath, "utf8");
+				const manifest = JSON.parse(manifestContent);
+				
+				// Find the CSS asset
+				const cssAsset = Object.values(manifest.assets).find(asset => 
+					asset.source.endsWith("test.css")
+				);
+				
+				expect(cssAsset).toBeDefined();
+				expect(cssAsset.url).toStartWith(testCase.expected);
+			}
+		} finally {
+			await cleanup(cleanup_paths);
+		}
 	},
 	TIMEOUT
 );

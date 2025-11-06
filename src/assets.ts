@@ -101,6 +101,22 @@ export function mergeConfig(
 }
 
 /**
+ * Normalize asset base path to ensure consistent URL generation
+ * Ensures leading slash and trailing slash for clean concatenation
+ */
+function normalizePath(basePath: string): string {
+	// Ensure leading slash for absolute paths
+	if (!basePath.startsWith('/')) {
+		basePath = '/' + basePath;
+	}
+	// Ensure trailing slash for clean concatenation
+	if (!basePath.endsWith('/')) {
+		basePath = basePath + '/';
+	}
+	return basePath;
+}
+
+/**
  * ESBuild/Bun plugin for importing assets as URLs with manifest generation
  *
  * @param options - Plugin configuration options
@@ -173,7 +189,7 @@ export function assetsPlugin(options: AssetsConfig = {}) {
 					writeFileSync(outputPath, content);
 
 					// Generate public URL using the base path from import attribute
-					const basePath = args.with.assetBase;
+					const basePath = normalizePath(args.with.assetBase);
 					const publicUrl = `${basePath}${filename}`;
 
 					// Create manifest entry
