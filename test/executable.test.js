@@ -129,7 +129,7 @@ self.addEventListener("fetch", (event) => {
 			await buildForProduction({
 				entrypoint: entryPath,
 				outDir,
-				verbose: true,
+				verbose: false,
 				platform: "node"
 			});
 

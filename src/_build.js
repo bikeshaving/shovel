@@ -42,7 +42,7 @@ async function getPlatformExternals(platform) {
 			bun: ["node:*"], 
 			cloudflare: []
 		}[platform] || ["node:*"];
-		console.debug(`🔧 Workspace mode externals for ${platform}:`, externals);
+		// Debug: console.debug(`🔧 Workspace mode externals for ${platform}:`, externals);
 		return externals;
 	} else {
 		// In production environment, keep @b9g packages external
@@ -51,7 +51,7 @@ async function getPlatformExternals(platform) {
 			bun: ["node:*", "@b9g/*"],
 			cloudflare: []
 		}[platform] || ["node:*", "@b9g/*"];
-		console.debug(`🔧 Production mode externals for ${platform}:`, externals);
+		// Debug: console.debug(`🔧 Production mode externals for ${platform}:`, externals);
 		return externals;
 	}
 }
