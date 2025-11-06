@@ -1,127 +1,346 @@
 /**
  * Production build system for Shovel apps
- * Pre-compiles ServiceWorker code for Worker execution at runtime
+ * Creates self-contained, directly executable production builds
  */
 
 import * as esbuild from "esbuild";
 import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile} from "fs/promises";
 import {assetsPlugin} from "./assets.ts";
-// Platform-specific imports are handled dynamically
 
-// Workspace packages should resolve automatically via Node.js module resolution
+// Build configuration constants
+const BUILD_DEFAULTS = {
+	format: "esm",
+	target: "es2022",
+	outputFile: "app.js",
+	sourcemap: false,
+	minify: false,
+	treeShaking: true,
+	environment: {
+		"process.env.NODE_ENV": '"production"'
+	}
+};
+
+const PLATFORM_EXTERNALS = {
+	node: ["node:*", "@b9g/*"],
+	bun: ["node:*", "@b9g/*"],
+	cloudflare: [] // Bundle everything for Cloudflare
+};
 
 /**
  * Build ServiceWorker app for production deployment
- * Supports multiple target platforms
+ * Creates directly executable output with platform-specific bootstrapping
  */
 export async function buildForProduction({entrypoint, outDir, verbose, platform = "node"}) {
+	try {
+		const buildContext = await initializeBuild({entrypoint, outDir, verbose, platform});
+		const buildConfig = await createBuildConfig(buildContext);
+		const result = await esbuild.build(buildConfig);
+		
+		if (verbose && result.metafile) {
+			await logBundleAnalysis(result.metafile);
+		}
+		
+		await copyPackageJson(buildContext);
+		
+		if (verbose) {
+			console.info(`📦 Built app to ${buildContext.outputDir}`);
+		}
+	} catch (error) {
+		console.error(`❌ Build failed: ${error.message}`);
+		throw error;
+	}
+}
+
+/**
+ * Initialize build context with validated paths and settings
+ */
+async function initializeBuild({entrypoint, outDir, verbose, platform}) {
+	// Validate inputs
+	if (!entrypoint) {
+		throw new Error("Entry point is required");
+	}
+	if (!outDir) {
+		throw new Error("Output directory is required");
+	}
+	
 	const entryPath = resolve(entrypoint);
 	const outputDir = resolve(outDir);
-
+	
+	// Validate entry point exists and is accessible
+	try {
+		const stats = await readFile(entryPath, 'utf8');
+		if (stats.length === 0) {
+			console.warn(`⚠️  Entry point is empty: ${entryPath}`);
+		}
+	} catch (error) {
+		throw new Error(`Entry point not found or not accessible: ${entryPath}`);
+	}
+	
+	// Validate platform
+	const validPlatforms = ['node', 'bun', 'cloudflare', 'cloudflare-workers'];
+	if (!validPlatforms.includes(platform)) {
+		throw new Error(`Invalid platform: ${platform}. Valid platforms: ${validPlatforms.join(', ')}`);
+	}
+	
+	const workspaceRoot = await findWorkspaceRoot();
+	
 	if (verbose) {
 		console.info(`📂 Entry: ${entryPath}`);
 		console.info(`📂 Output: ${outputDir}`);
 		console.info(`🎯 Target platform: ${platform}`);
+		console.info(`🏠 Workspace root: ${workspaceRoot}`);
 	}
-
+	
 	// Ensure output directory exists
-	await mkdir(outputDir, {recursive: true});
+	try {
+		await mkdir(outputDir, {recursive: true});
+	} catch (error) {
+		throw new Error(`Failed to create output directory: ${error.message}`);
+	}
+	
+	return {
+		entryPath,
+		outputDir,
+		workspaceRoot,
+		platform,
+		verbose
+	};
+}
 
-	// Find workspace root by looking for package.json with workspaces
+/**
+ * Find workspace root by looking for package.json with workspaces field
+ */
+async function findWorkspaceRoot() {
 	let workspaceRoot = process.cwd();
 	while (workspaceRoot !== dirname(workspaceRoot)) {
 		try {
 			const packageJson = JSON.parse(
-				await readFile(resolve(workspaceRoot, "package.json"), "utf8"),
+				await readFile(resolve(workspaceRoot, "package.json"), "utf8")
 			);
 			if (packageJson.workspaces) {
-				break;
+				return workspaceRoot;
 			}
 		} catch {
 			// No package.json found, continue up the tree
 		}
 		workspaceRoot = dirname(workspaceRoot);
 	}
+	return workspaceRoot;
+}
 
-	// Platform-specific build configuration
+/**
+ * Create esbuild configuration for the target platform
+ */
+async function createBuildConfig({entryPath, outputDir, workspaceRoot, platform}) {
 	const isCloudflare = platform === "cloudflare" || platform === "cloudflare-workers";
 	
-	// Build ServiceWorker code (keep as ServiceWorker, just bundle dependencies)
-	const buildConfig = {
-		entryPoints: [entryPath],
-		bundle: true,
-		format: "esm",
-		target: "es2022",
-		platform: isCloudflare ? "browser" : "node",
-		outfile: join(outputDir, "serviceworker.js"), // ServiceWorker code
-		absWorkingDir: workspaceRoot,
-		plugins: [
-			assetsPlugin({
-				outputDir: join(outputDir, "assets"),
-				manifest: join(outputDir, "assets/manifest.json"),
-				dev: false,
-			}),
-		],
-		metafile: true,
-		sourcemap: false,
-		minify: false,
-		treeShaking: true,
-		define: {
-			"process.env.NODE_ENV": '"production"',
-		},
-	};
-	
-	// Platform-specific bundling strategy
-	if (!isCloudflare) {
-		// For Node.js/Bun builds, keep platform dependencies external (require npm install)
-		buildConfig.external = ["node:*", "@b9g/*"];
-	} else {
-		// For Cloudflare, bundle everything and wrap ServiceWorker as ES Module
-		buildConfig.platform = "browser";
-		buildConfig.conditions = ["worker", "browser"];
+	try {
+		const buildConfig = {
+			entryPoints: [entryPath],
+			bundle: true,
+			format: BUILD_DEFAULTS.format,
+			target: BUILD_DEFAULTS.target,
+			platform: isCloudflare ? "browser" : "node",
+			outfile: join(outputDir, BUILD_DEFAULTS.outputFile),
+			absWorkingDir: workspaceRoot,
+			plugins: [
+				assetsPlugin({
+					outputDir: join(outputDir, "assets"),
+					manifest: join(outputDir, "assets/manifest.json"),
+					dev: false,
+				}),
+			],
+			metafile: true,
+			sourcemap: BUILD_DEFAULTS.sourcemap,
+			minify: BUILD_DEFAULTS.minify,
+			treeShaking: BUILD_DEFAULTS.treeShaking,
+			define: BUILD_DEFAULTS.environment,
+			external: PLATFORM_EXTERNALS[platform] || PLATFORM_EXTERNALS.node,
+		};
 		
-		// Dynamically import Cloudflare platform utilities
-		try {
-			const {cloudflareWorkerBanner, cloudflareWorkerFooter} = await import("@b9g/platform-cloudflare");
-			buildConfig.banner = {
-				js: cloudflareWorkerBanner,
-			};
-			buildConfig.footer = {
-				js: cloudflareWorkerFooter,
-			};
-		} catch (error) {
-			throw new Error("@b9g/platform-cloudflare is required for Cloudflare builds. Install it with: bun add @b9g/platform-cloudflare");
+		if (isCloudflare) {
+			await configureCloudflareTarget(buildConfig);
+		} else {
+			await configureNodeTarget(buildConfig);
 		}
+		
+		return buildConfig;
+	} catch (error) {
+		throw new Error(`Failed to create build configuration: ${error.message}`);
 	}
+}
 	
-	const result = await esbuild.build(buildConfig);
+/**
+ * Configure build for Node.js/Bun targets with production bootstrap
+ */
+async function configureNodeTarget(buildConfig) {
+	try {
+		buildConfig.banner = {
+			js: await generateNodeBootstrap()
+		};
+	} catch (error) {
+		throw new Error(`Failed to configure Node.js target: ${error.message}`);
+	}
+}
 
-	if (verbose && result.metafile) {
+/**
+ * Configure build for Cloudflare Workers target
+ */
+async function configureCloudflareTarget(buildConfig) {
+	buildConfig.platform = "browser";
+	buildConfig.conditions = ["worker", "browser"];
+	
+	try {
+		const {cloudflareWorkerBanner, cloudflareWorkerFooter} = await import("@b9g/platform-cloudflare");
+		buildConfig.banner = { js: cloudflareWorkerBanner };
+		buildConfig.footer = { js: cloudflareWorkerFooter };
+	} catch (error) {
+		throw new Error(
+			"@b9g/platform-cloudflare is required for Cloudflare builds. Install it with: bun add @b9g/platform-cloudflare"
+		);
+	}
+}
+
+/**
+ * Generate Node.js production bootstrap code
+ */
+async function generateNodeBootstrap() {
+	return `#!/usr/bin/env node
+/**
+ * Shovel Production Server
+ * Self-contained build - run 'npm install' in this directory first
+ */
+
+import { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } from '@b9g/platform';
+
+// Check if this is being run as the main executable
+if (import.meta.url === \`file://\${process.argv[1]}\`) {
+  ${await generateServerBootstrap()}
+}
+
+// User's ServiceWorker code follows...
+`;
+}
+
+/**
+ * Generate HTTP server bootstrap code
+ */
+async function generateServerBootstrap() {
+	return `// Production server mode - use proven single-threaded approach
+  const runtime = new ServiceWorkerRuntime();
+  const buckets = createBucketStorage(process.cwd());
+  
+  // Set up ServiceWorker globals (same as development)
+  createServiceWorkerGlobals(runtime, { buckets });
+  globalThis.self = runtime;
+  globalThis.addEventListener = runtime.addEventListener.bind(runtime);
+  globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
+  globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
+  
+  // ServiceWorker code will execute after this banner...
+  
+  // Wait for ServiceWorker to be defined, then start server
+  setTimeout(async () => {
+    await runtime.install();
+    await runtime.activate();
+    
+    ${await generateHttpServer()}
+  }, 0);`;
+}
+
+/**
+ * Generate HTTP server creation code
+ */
+async function generateHttpServer() {
+	return `// Create HTTP server using proven pattern
+    const { createServer } = await import('http');
+    const PORT = process.env.PORT || 8080;
+    const HOST = process.env.HOST || '0.0.0.0';
+    
+    const httpServer = createServer(async (req, res) => {
+      try {
+        const url = \`http://\${req.headers.host}\${req.url}\`;
+        const request = new Request(url, {
+          method: req.method,
+          headers: req.headers,
+          body: req.method !== 'GET' && req.method !== 'HEAD' ? req : undefined,
+        });
+
+        const response = await runtime.handleRequest(request);
+
+        res.statusCode = response.status;
+        res.statusMessage = response.statusText;
+        response.headers.forEach((value, key) => {
+          res.setHeader(key, value);
+        });
+
+        if (response.body) {
+          const reader = response.body.getReader();
+          const pump = async () => {
+            const {done, value} = await reader.read();
+            if (done) {
+              res.end();
+            } else {
+              res.write(value);
+              await pump();
+            }
+          };
+          await pump();
+        } else {
+          res.end();
+        }
+      } catch (error) {
+        console.error('Request error:', error);
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'text/plain');
+        res.end('Internal Server Error');
+      }
+    });
+
+    httpServer.listen(PORT, HOST, () => {
+      console.info(\`🚀 Server running at http://\${HOST}:\${PORT}\`);
+    });
+    
+    // Graceful shutdown
+    const shutdown = async () => {
+      console.info('\\n🛑 Shutting down...');
+      await new Promise(resolve => httpServer.close(resolve));
+      process.exit(0);
+    };
+    
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);`;
+}
+	
+/**
+ * Log bundle analysis if metafile is available
+ */
+async function logBundleAnalysis(metafile) {
+	try {
 		console.info("📊 Bundle analysis:");
-		const analysis = await esbuild.analyzeMetafile(result.metafile);
+		const analysis = await esbuild.analyzeMetafile(metafile);
 		console.info(analysis);
+	} catch (error) {
+		console.warn(`⚠️  Failed to analyze bundle: ${error.message}`);
 	}
+}
 
-	// Add platform-specific bootstrapping to make output directly executable
-	if (verbose) {
-		console.info(`🔍 Platform: ${platform}, isCloudflare: ${isCloudflare}`);
-	}
-	if (!isCloudflare) {
-		if (verbose) {
-			console.info(`🔧 Adding platform bootstrap for ${platform}...`);
-		}
-		await addPlatformBootstrap(outputDir, platform, verbose, workspaceRoot);
-	} else {
-		if (verbose) {
-			console.info(`🚫 Skipping bootstrap for Cloudflare platform`);
-		}
-	}
-
-	// Copy package.json to dist for self-contained deployment
+/**
+ * Copy package.json to output directory for self-contained deployment
+ */
+async function copyPackageJson({outputDir, verbose}) {
 	const packageJsonPath = resolve(process.cwd(), "package.json");
 	try {
 		const packageJsonContent = await readFile(packageJsonPath, "utf8");
+		
+		// Validate package.json is valid JSON
+		try {
+			JSON.parse(packageJsonContent);
+		} catch (parseError) {
+			throw new Error(`Invalid package.json format: ${parseError.message}`);
+		}
+		
 		await writeFile(join(outputDir, "package.json"), packageJsonContent, "utf8");
 		if (verbose) {
 			console.info(`📄 Copied package.json to ${outputDir}`);
@@ -130,305 +349,6 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
 		if (verbose) {
 			console.warn(`⚠️  Could not copy package.json: ${error.message}`);
 		}
-	}
-
-	if (verbose) {
-		console.info(`📦 Built app to ${outputDir}`);
-	}
-}
-
-/**
- * Add platform-specific bootstrapping code to make build output directly executable
- */
-async function addPlatformBootstrap(outputDir, platform, verbose, workspaceRoot) {
-	const appJsPath = join(outputDir, "app.js");
-	// Note: ServiceWorker is now in worker.js, so we don't read original content
-	
-	// Bundle the platform worker.js template with the ServiceWorker import
-	const workerJsPath = join(outputDir, "worker.js");
-	const platformWorkerPath = join(workspaceRoot, "src", "worker.js");
-	
-	// Bundle worker.js with esbuild to include all dependencies and reference serviceworker.js
-	await esbuild.build({
-		entryPoints: [platformWorkerPath],
-		bundle: true,
-		platform: "node",
-		format: "esm",
-		outfile: workerJsPath,
-		external: ["worker_threads", "path", "@b9g/*"], // Keep Node.js built-ins and platform deps external
-		define: {
-			// Tell the platform worker where to find the ServiceWorker code
-			"process.env.SERVICEWORKER_PATH": `"./serviceworker.js"`
-		}
-	});
-	
-	let bootstrapCode;
-	
-	if (platform === "node") {
-		bootstrapCode = `#!/usr/bin/env node
-/**
- * Shovel Production Server - Node.js Runtime
- * Self-contained build - run 'npm install' in this directory first
- */
-
-// Import platform utilities directly
-import { createPlatform, ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } from "@b9g/platform";
-import { Worker } from "worker_threads";
-import os from "os";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-
-// Configuration
-const PORT = process.env.PORT || 8080;
-const HOST = process.env.HOST || "0.0.0.0";
-const WORKERS = process.env.WORKERS ? parseInt(process.env.WORKERS) : os.cpus().length;
-
-// Get paths relative to this script
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const workerPath = join(__dirname, "worker.js");
-const serviceworkerPath = join(__dirname, "serviceworker.js");
-
-async function startServer() {
-  try {
-    // Option 1: Use Worker threads (recommended for production scaling)
-    if (WORKERS > 1) {
-      // Create Node.js platform instance for worker-based deployment
-      const platformInstance = await createPlatform("node", {
-        hotReload: false,
-        port: PORT,
-        host: HOST,
-      });
-
-      console.info(\`🚀 Starting Shovel production server...\`);
-      console.info(\`⚙️  Workers: \${WORKERS}\`);
-      console.info(\`🌐 Platform: Node.js (Multi-threaded)\`);
-
-      // Load ServiceWorker from worker.js using worker threads
-      const serviceWorker = await platformInstance.loadServiceWorker(workerPath, {
-        hotReload: false,
-        workerCount: WORKERS,
-        caches: {
-          pages: { type: "memory", maxEntries: 1000 },
-          api: { type: "memory", ttl: 300 },
-          static: { type: "memory" },
-        },
-      });
-
-      // Create production server
-      const server = platformInstance.createServer(serviceWorker.handleRequest, {
-        port: PORT,
-        host: HOST,
-      });
-
-      await server.listen();
-      console.info(\`🚀 Server running at http://\${HOST}:\${PORT}\`);
-      console.info(\`📁 Workers: \${WORKERS} threads\`);
-
-      // Graceful shutdown
-      const shutdown = async () => {
-        console.info("\\n🛑 Shutting down...");
-        await serviceWorker.dispose();
-        await platformInstance.dispose();
-        await server.close();
-        process.exit(0);
-      };
-
-      process.on("SIGINT", shutdown);
-      process.on("SIGTERM", shutdown);
-
-    } else {
-      // Option 2: Direct execution (single-threaded, no worker overhead)
-      console.info(\`🚀 Starting Shovel production server...\`);
-      console.info(\`⚙️  Workers: 1 (direct execution)\`);
-      console.info(\`🌐 Platform: Node.js (Single-threaded)\`);
-
-      // Create ServiceWorker runtime environment directly
-      const runtime = new ServiceWorkerRuntime();
-      const buckets = createBucketStorage(__dirname);
-      
-      // Set up ServiceWorker globals for the worker module
-      const swGlobals = createServiceWorkerGlobals(runtime, { buckets });
-      
-      // Apply globals to current context for worker.js import
-      globalThis.self = swGlobals.self;
-      globalThis.addEventListener = swGlobals.addEventListener;
-      globalThis.removeEventListener = swGlobals.removeEventListener;
-      globalThis.dispatchEvent = swGlobals.dispatchEvent;
-      globalThis.skipWaiting = swGlobals.skipWaiting;
-      globalThis.clients = swGlobals.clients;
-      globalThis.caches = swGlobals.self.caches || {};
-      globalThis.buckets = swGlobals.self.buckets || buckets;
-
-      // Load the ServiceWorker code directly (no import cache busting needed)
-      await import(serviceworkerPath);
-      
-      // Run ServiceWorker lifecycle
-      await runtime.install();
-      await runtime.activate();
-
-      // Create minimal HTTP server that forwards to ServiceWorker runtime
-      const { createServer } = await import("http");
-      const httpServer = createServer(async (req, res) => {
-        try {
-          // Convert Node.js request to Web API Request
-          const url = \`http://\${req.headers.host}\${req.url}\`;
-          const request = new Request(url, {
-            method: req.method,
-            headers: req.headers,
-            body: req.method !== "GET" && req.method !== "HEAD" ? req : undefined,
-          });
-
-          // Handle request via ServiceWorker runtime
-          const response = await runtime.handleRequest(request);
-
-          // Convert Web API Response to Node.js response
-          res.statusCode = response.status;
-          res.statusMessage = response.statusText;
-
-          // Set headers
-          response.headers.forEach((value, key) => {
-            res.setHeader(key, value);
-          });
-
-          // Stream response body
-          if (response.body) {
-            const reader = response.body.getReader();
-            const pump = async () => {
-              const {done, value} = await reader.read();
-              if (done) {
-                res.end();
-              } else {
-                res.write(value);
-                await pump();
-              }
-            };
-            await pump();
-          } else {
-            res.end();
-          }
-        } catch (error) {
-          console.error("Request error:", error);
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "text/plain");
-          res.end("Internal Server Error");
-        }
-      });
-
-      await new Promise((resolve) => {
-        httpServer.listen(PORT, HOST, () => {
-          console.info(\`🚀 Server running at http://\${HOST}:\${PORT}\`);
-          console.info(\`📁 Direct ServiceWorker execution\`);
-          resolve();
-        });
-      });
-
-      // Graceful shutdown
-      const shutdown = async () => {
-        console.info("\\n🛑 Shutting down...");
-        await new Promise((resolve) => httpServer.close(resolve));
-        process.exit(0);
-      };
-
-      process.on("SIGINT", shutdown);
-      process.on("SIGTERM", shutdown);
-    }
-
-  } catch (error) {
-    console.error(\`❌ Failed to start server:\`, error.message);
-    console.error(error.stack);
-    process.exit(1);
-  }
-}
-
-startServer();
-`;
-	} else if (platform === "bun") {
-		bootstrapCode = `#!/usr/bin/env bun
-/**
- * Shovel Production Server - Bun Runtime
- * Generated build artifact - directly executable
- */
-
-// Import platform utilities
-import { createPlatform } from "@b9g/platform";
-
-// Configuration
-const PORT = process.env.PORT || 8080;
-const HOST = process.env.HOST || "0.0.0.0";
-const WORKERS = process.env.WORKERS ? parseInt(process.env.WORKERS) : navigator.hardwareConcurrency || 4;
-
-// Get worker path relative to this script
-const workerPath = new URL("./worker.js", import.meta.url).pathname;
-
-async function startServer() {
-  try {
-    // Create Bun platform instance
-    const platformInstance = await createPlatform("bun", {
-      hotReload: false,
-      port: PORT,
-      host: HOST,
-    });
-
-    console.info(\`🚀 Starting Shovel production server...\`);
-    console.info(\`⚙️  Workers: \${WORKERS}\`);
-    console.info(\`🌐 Platform: Bun\`);
-
-    // Load ServiceWorker from file
-    const serviceWorker = await platformInstance.loadServiceWorker(workerPath, {
-      hotReload: false,
-      workerCount: WORKERS,
-      caches: {
-        pages: { type: "memory", maxEntries: 1000 },
-        api: { type: "memory", ttl: 300 },
-        static: { type: "memory" },
-      },
-    });
-
-    // Create production server
-    const server = platformInstance.createServer(serviceWorker.handleRequest, {
-      port: PORT,
-      host: HOST,
-    });
-
-    await server.listen();
-    console.info(\`🚀 Server running at http://\${HOST}:\${PORT}\`);
-    console.info(\`📁 Workers: \${WORKERS} threads\`);
-
-    // Graceful shutdown
-    process.on("SIGINT", async () => {
-      console.info("\\n🛑 Shutting down...");
-      await serviceWorker.dispose();
-      await platformInstance.dispose();
-      await server.close();
-      process.exit(0);
-    });
-
-    process.on("SIGTERM", async () => {
-      console.info("\\n🛑 Shutting down...");
-      await serviceWorker.dispose();
-      await platformInstance.dispose();
-      await server.close();
-      process.exit(0);
-    });
-
-  } catch (error) {
-    console.error(\`❌ Failed to start server:\`, error.message);
-    process.exit(1);
-  }
-}
-
-startServer();
-`;
-	} else {
-		throw new Error(`Unsupported platform for direct execution: ${platform}`);
-	}
-	
-	// Write the bootstrapped version
-	await writeFile(appJsPath, bootstrapCode, "utf8");
-	
-	if (verbose) {
-		console.info(`🔧 Added ${platform} bootstrap for direct execution`);
-		console.info(`📄 ServiceWorker code: worker.js, Bootstrap: app.js`);
+		// Don't fail the build if package.json copy fails - it's optional for some deployments
 	}
 }
