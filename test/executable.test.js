@@ -129,7 +129,7 @@ self.addEventListener("fetch", (event) => {
 			await buildForProduction({
 				entrypoint: entryPath,
 				outDir,
-				verbose: false,
+				verbose: true,
 				platform: "node"
 			});
 
@@ -153,10 +153,26 @@ self.addEventListener("fetch", (event) => {
 				stdio: ["ignore", "pipe", "pipe"]
 			});
 
+			let stdout = "";
+			let stderr = "";
+			npmInstall.stdout?.on("data", (data) => {
+				stdout += data.toString();
+			});
+			npmInstall.stderr?.on("data", (data) => {
+				stderr += data.toString();
+			});
+
 			await new Promise((resolve, reject) => {
 				npmInstall.on("exit", (code) => {
-					if (code === 0) resolve();
-					else reject(new Error(`npm install failed with code ${code}`));
+					if (code === 0) {
+						resolve();
+					} else {
+						console.error(`npm install failed with code ${code}`);
+						console.error(`npm stdout:`, stdout);
+						console.error(`npm stderr:`, stderr);
+						console.error(`Working directory:`, join(outDir, "server"));
+						reject(new Error(`npm install failed with code ${code}`));
+					}
 				});
 			});
 

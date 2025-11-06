@@ -5,7 +5,7 @@
 
 import * as esbuild from "esbuild";
 import {resolve, join, dirname} from "path";
-import {mkdir, readFile, writeFile} from "fs/promises";
+import {mkdir, readFile, writeFile, chmod} from "fs/promises";
 import {assetsPlugin} from "./assets.ts";
 
 // Build configuration constants
@@ -66,11 +66,15 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
 		const buildConfig = await createBuildConfig(buildContext);
 		const result = await esbuild.build(buildConfig);
 		
+		// Make the output executable (for directly executable builds)
+		const appPath = join(buildContext.serverDir, "app.js");
+		await chmod(appPath, 0o755);
+		
 		if (verbose && result.metafile) {
 			await logBundleAnalysis(result.metafile);
 		}
 		
-		await generatePackageJson(buildContext);
+		await generatePackageJson({...buildContext, entryPath: buildContext.entryPath});
 		
 		if (verbose) {
 			console.info(`📦 Built app to ${buildContext.outputDir}`);
@@ -79,7 +83,19 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
 		}
 	} catch (error) {
 		console.error(`❌ Build failed: ${error.message}`);
+		if (verbose) {
+			console.error(`📍 Error details:`, error);
+			console.error(`📍 Stack trace:`, error.stack);
+		}
 		throw error;
+	} finally {
+		// Ensure esbuild resources are cleaned up
+		// This helps prevent service corruption in test environments
+		try {
+			await esbuild.stop();
+		} catch (stopError) {
+			// Ignore errors during cleanup
+		}
 	}
 }
 
@@ -364,8 +380,10 @@ async function logBundleAnalysis(metafile) {
 /**
  * Generate or copy package.json to output directory for self-contained deployment
  */
-async function generatePackageJson({serverDir, platform, verbose}) {
-	const sourcePackageJsonPath = resolve(process.cwd(), "package.json");
+async function generatePackageJson({serverDir, platform, verbose, entryPath}) {
+	// Look for package.json in the same directory as the entrypoint, not cwd
+	const entryDir = dirname(entryPath);
+	const sourcePackageJsonPath = resolve(entryDir, "package.json");
 	
 	try {
 		// First try to copy existing package.json from source directory
@@ -393,10 +411,12 @@ async function generatePackageJson({serverDir, platform, verbose}) {
 			await writeFile(join(serverDir, "package.json"), JSON.stringify(generatedPackageJson, null, 2), "utf8");
 			if (verbose) {
 				console.info(`📄 Generated package.json for ${platform} platform`);
+				console.info(`📄 Package.json contents:`, JSON.stringify(generatedPackageJson, null, 2));
 			}
 		} catch (generateError) {
 			if (verbose) {
 				console.warn(`⚠️  Could not generate package.json: ${generateError.message}`);
+				console.warn(`📍 Generation error details:`, generateError);
 			}
 			// Don't fail the build if package.json generation fails
 		}
