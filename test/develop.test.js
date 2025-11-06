@@ -96,7 +96,7 @@ test(
 
 		try {
 			// Start development server with blog app
-			serverProcess = startDevServer("./examples/blog-app/src/app.js", PORT);
+			serverProcess = startDevServer("./examples/blog/src/app.js", PORT);
 
 			// Wait for server to be ready
 			const response = await waitForServer(PORT);

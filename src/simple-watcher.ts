@@ -4,8 +4,9 @@
 
 import * as esbuild from "esbuild";
 import {watch} from "fs";
-import {resolve, dirname} from "path";
+import {resolve, dirname, join} from "path";
 import {readFileSync} from "fs";
+import {mkdir} from "fs/promises";
 import {assetsPlugin} from "./assets.ts";
 import {DEFAULTS} from "./config.js";
 
@@ -104,18 +105,23 @@ export class SimpleWatcher {
 			console.info(`[Watcher] Building ${entryPath}...`);
 			console.info(`[Watcher] Workspace root: ${workspaceRoot}`);
 
+			// Ensure output directory structure exists
+			await mkdir(join(outputDir, "server"), {recursive: true});
+			await mkdir(join(outputDir, "assets"), {recursive: true});
+
 			const result = await esbuild.build({
 				entryPoints: [entryPath],
 				bundle: true,
 				format: "esm",
 				target: "es2022",
 				platform: "node",
-				outfile: `${outputDir}/app.js`,
+				outfile: `${outputDir}/server/app.js`,
 				packages: "external",
 				absWorkingDir: workspaceRoot,
 				plugins: [
 					assetsPlugin({
 						outputDir: `${outputDir}/assets`,
+						manifest: `${outputDir}/server/asset-manifest.json`,
 						dev: true,
 					}),
 				],
