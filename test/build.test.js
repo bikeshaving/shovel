@@ -386,8 +386,8 @@ self.addEventListener("fetch", (event) => {
 			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
 
 			// For Node/Bun builds, @b9g/* should be external (not bundled)
-			// Check that the import is preserved in the banner
-			expect(appContent).toContain("from '@b9g/platform'");
+			// Check that the import is preserved (either single or double quotes)
+			expect(appContent).toMatch(/from ['"]@b9g\/platform['"]/);
 		} finally {
 			await cleanup(cleanup_paths);
 		}

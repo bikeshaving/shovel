@@ -27,34 +27,6 @@ const BUILD_STRUCTURE = {
 	assetsDir: "assets"
 };
 
-/**
- * Get platform externals based on environment
- * In workspace environments, bundle @b9g packages since they're not published
- */
-async function getPlatformExternals(platform) {
-	const workspaceRoot = await findWorkspaceRoot();
-	const isWorkspaceEnvironment = workspaceRoot !== null;
-
-	if (isWorkspaceEnvironment) {
-		// In workspace environment (tests), bundle @b9g packages
-		const externals = {
-			node: ["node:*"],
-			bun: ["node:*"], 
-			cloudflare: []
-		}[platform] || ["node:*"];
-		// Debug: console.debug(`🔧 Workspace mode externals for ${platform}:`, externals);
-		return externals;
-	} else {
-		// In production environment, keep @b9g packages external
-		const externals = {
-			node: ["node:*", "@b9g/*"],
-			bun: ["node:*", "@b9g/*"],
-			cloudflare: []
-		}[platform] || ["node:*", "@b9g/*"];
-		// Debug: console.debug(`🔧 Production mode externals for ${platform}:`, externals);
-		return externals;
-	}
-}
 
 /**
  * Build ServiceWorker app for production deployment
@@ -203,6 +175,8 @@ async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot
 			platform: isCloudflare ? "browser" : "node",
 			outfile: join(serverDir, BUILD_DEFAULTS.outputFile),
 			absWorkingDir: workspaceRoot,
+			mainFields: ["module", "main"],
+			conditions: ["import", "module"],
 			plugins: [
 				assetsPlugin({
 					outputDir: assetsDir,
@@ -215,7 +189,7 @@ async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot
 			minify: BUILD_DEFAULTS.minify,
 			treeShaking: BUILD_DEFAULTS.treeShaking,
 			define: BUILD_DEFAULTS.environment,
-			external: await getPlatformExternals(platform),
+			external: ["node:*"],
 		};
 		
 		if (isCloudflare) {
