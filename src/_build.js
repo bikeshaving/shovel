@@ -27,11 +27,34 @@ const BUILD_STRUCTURE = {
 	assetsDir: "assets"
 };
 
-const PLATFORM_EXTERNALS = {
-	node: ["node:*", "@b9g/*"],
-	bun: ["node:*", "@b9g/*"],
-	cloudflare: [] // Bundle everything for Cloudflare
-};
+/**
+ * Get platform externals based on environment
+ * In workspace environments, bundle @b9g packages since they're not published
+ */
+async function getPlatformExternals(platform) {
+	const workspaceRoot = await findWorkspaceRoot();
+	const isWorkspaceEnvironment = workspaceRoot !== null;
+
+	if (isWorkspaceEnvironment) {
+		// In workspace environment (tests), bundle @b9g packages
+		const externals = {
+			node: ["node:*"],
+			bun: ["node:*"], 
+			cloudflare: []
+		}[platform] || ["node:*"];
+		console.debug(`🔧 Workspace mode externals for ${platform}:`, externals);
+		return externals;
+	} else {
+		// In production environment, keep @b9g packages external
+		const externals = {
+			node: ["node:*", "@b9g/*"],
+			bun: ["node:*", "@b9g/*"],
+			cloudflare: []
+		}[platform] || ["node:*", "@b9g/*"];
+		console.debug(`🔧 Production mode externals for ${platform}:`, externals);
+		return externals;
+	}
+}
 
 /**
  * Build ServiceWorker app for production deployment
@@ -47,7 +70,7 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
 			await logBundleAnalysis(result.metafile);
 		}
 		
-		await copyPackageJson(buildContext);
+		await generatePackageJson(buildContext);
 		
 		if (verbose) {
 			console.info(`📦 Built app to ${buildContext.outputDir}`);
@@ -168,7 +191,7 @@ async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot
 			minify: BUILD_DEFAULTS.minify,
 			treeShaking: BUILD_DEFAULTS.treeShaking,
 			define: BUILD_DEFAULTS.environment,
-			external: PLATFORM_EXTERNALS[platform] || PLATFORM_EXTERNALS.node,
+			external: await getPlatformExternals(platform),
 		};
 		
 		if (isCloudflare) {
@@ -339,12 +362,14 @@ async function logBundleAnalysis(metafile) {
 }
 
 /**
- * Copy package.json to output directory for self-contained deployment
+ * Generate or copy package.json to output directory for self-contained deployment
  */
-async function copyPackageJson({serverDir, verbose}) {
-	const packageJsonPath = resolve(process.cwd(), "package.json");
+async function generatePackageJson({serverDir, platform, verbose}) {
+	const sourcePackageJsonPath = resolve(process.cwd(), "package.json");
+	
 	try {
-		const packageJsonContent = await readFile(packageJsonPath, "utf8");
+		// First try to copy existing package.json from source directory
+		const packageJsonContent = await readFile(sourcePackageJsonPath, "utf8");
 		
 		// Validate package.json is valid JSON
 		try {
@@ -358,9 +383,69 @@ async function copyPackageJson({serverDir, verbose}) {
 			console.info(`📄 Copied package.json to ${serverDir}`);
 		}
 	} catch (error) {
+		// If no package.json exists in source, generate one for executable builds
 		if (verbose) {
 			console.warn(`⚠️  Could not copy package.json: ${error.message}`);
 		}
-		// Don't fail the build if package.json copy fails - it's optional for some deployments
+		
+		try {
+			const generatedPackageJson = await generateExecutablePackageJson(platform);
+			await writeFile(join(serverDir, "package.json"), JSON.stringify(generatedPackageJson, null, 2), "utf8");
+			if (verbose) {
+				console.info(`📄 Generated package.json for ${platform} platform`);
+			}
+		} catch (generateError) {
+			if (verbose) {
+				console.warn(`⚠️  Could not generate package.json: ${generateError.message}`);
+			}
+			// Don't fail the build if package.json generation fails
+		}
 	}
+}
+
+/**
+ * Generate a minimal package.json for executable builds
+ */
+async function generateExecutablePackageJson(platform) {
+	const packageJson = {
+		name: "shovel-executable",
+		version: "1.0.0",
+		type: "module",
+		private: true,
+		dependencies: {}
+	};
+
+	// Check if we're in a workspace environment
+	const workspaceRoot = await findWorkspaceRoot();
+	const isWorkspaceEnvironment = workspaceRoot !== null;
+
+	if (isWorkspaceEnvironment) {
+		// In workspace environment (like tests), create empty dependencies
+		// since workspace packages can't be installed via npm
+		// The bundler will handle all necessary dependencies
+		packageJson.dependencies = {};
+	} else {
+		// In production/published environment, add platform dependencies
+		// Add platform-specific dependencies
+		switch (platform) {
+			case "node":
+				packageJson.dependencies["@b9g/platform-node"] = "^0.1.0";
+				break;
+			case "bun":
+				packageJson.dependencies["@b9g/platform-bun"] = "^0.1.0";
+				break;
+			case "cloudflare":
+				packageJson.dependencies["@b9g/platform-cloudflare"] = "^0.1.0";
+				break;
+			default:
+				// Generic platform dependencies
+				packageJson.dependencies["@b9g/platform"] = "^0.1.0";
+		}
+
+		// Add core dependencies needed for runtime
+		packageJson.dependencies["@b9g/cache"] = "^0.1.0";
+		packageJson.dependencies["@b9g/filesystem"] = "^0.1.0";
+	}
+
+	return packageJson;
 }

@@ -61,6 +61,8 @@
     "@b9g/filesystem": "workspace:*",
     "@b9g/http-errors": "workspace:*",
     "@b9g/platform": "workspace:*",
+    "@b9g/router": "workspace:*",
+    "@b9g/assets": "workspace:*",
     "@b9g/libuild": "^0.1.10",
     "@types/bun": "^1.2.2",
     "typescript": "^5.7.3"

@@ -147,9 +147,9 @@ self.addEventListener("fetch", (event) => {
 			// Make executable
 			await FS.chmod(appPath, 0o755);
 
-			// Install dependencies in dist directory
+			// Install dependencies in dist/server directory
 			const npmInstall = spawn("npm", ["install"], {
-				cwd: outDir,
+				cwd: join(outDir, "server"),
 				stdio: ["ignore", "pipe", "pipe"]
 			});
 
@@ -224,7 +224,7 @@ self.addEventListener("fetch", (event) => {
 			await FS.chmod(appPath, 0o755);
 
 			// Install dependencies
-			const npmInstall = spawn("npm", ["install"], { cwd: outDir, stdio: "ignore" });
+			const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
 			await new Promise((resolve) => npmInstall.on("exit", resolve));
 
 			// Run with custom environment
@@ -343,7 +343,7 @@ self.addEventListener("fetch", async (event) => {
 			await FS.chmod(appPath, 0o755);
 
 			// Install dependencies
-			const npmInstall = spawn("npm", ["install"], { cwd: outDir, stdio: "ignore" });
+			const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
 			await new Promise((resolve) => npmInstall.on("exit", resolve));
 
 			const PORT = 18003;
@@ -423,7 +423,7 @@ self.addEventListener("fetch", (event) => {
 			await FS.chmod(appPath, 0o755);
 
 			// Install dependencies
-			const npmInstall = spawn("npm", ["install"], { cwd: outDir, stdio: "ignore" });
+			const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
 			await new Promise((resolve) => npmInstall.on("exit", resolve));
 
 			const PORT = 18004;
@@ -590,7 +590,7 @@ self.addEventListener("fetch", (event) => {
 			await FS.chmod(appPath, 0o755);
 
 			// Install dependencies
-			const npmInstall = spawn("npm", ["install"], { cwd: outDir, stdio: "ignore" });
+			const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
 			await new Promise((resolve) => npmInstall.on("exit", resolve));
 
 			// Measure startup time
@@ -665,7 +665,7 @@ self.addEventListener("fetch", (event) => {
 			await FS.chmod(appPath, 0o755);
 
 			// Install dependencies
-			const npmInstall = spawn("npm", ["install"], { cwd: outDir, stdio: "ignore" });
+			const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
 			await new Promise((resolve) => npmInstall.on("exit", resolve));
 
 			const PORT = 18006;
