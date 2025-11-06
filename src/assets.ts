@@ -27,7 +27,7 @@ export interface AssetsConfig {
 
 	/**
 	 * Path to asset manifest file
-	 * @default 'dist/assets/manifest.json'
+	 * @default 'dist/server/asset-manifest.json'
 	 */
 	manifest?: string;
 
@@ -83,7 +83,7 @@ export interface AssetManifest {
 export const DEFAULT_CONFIG: Required<AssetsConfig> = {
 	outputDir: "dist/assets",
 	publicPath: "/assets/",
-	manifest: "dist/assets/manifest.json",
+	manifest: "dist/server/asset-manifest.json",
 	hashLength: 8,
 	includeHash: true,
 };

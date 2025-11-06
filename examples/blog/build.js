@@ -12,7 +12,7 @@ await build({
 		assetsPlugin({
 			publicPath: "/assets/",
 			outputDir: "dist/assets",
-			manifest: "dist/assets/manifest.json",
+			manifest: "dist/server/asset-manifest.json",
 		}),
 	],
 	external: ["@b9g/*"], // Keep Shovel packages external for SSG

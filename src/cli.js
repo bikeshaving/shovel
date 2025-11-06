@@ -129,7 +129,7 @@ function getWorkerCount(options) {
 				console.info(`✅ Build complete, watching for changes...`);
 
 				// Load ServiceWorker app from built output
-				const builtEntrypoint = `${outDir}/app.js`;
+				const builtEntrypoint = `${outDir}/server/app.js`;
 				serviceWorker = await platformInstance.loadServiceWorker(builtEntrypoint, {
 					hotReload: true,
 					workerCount,

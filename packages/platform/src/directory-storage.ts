@@ -56,6 +56,13 @@ export class PlatformBucketStorage implements BucketStorageInterface {
 	async keys(): Promise<string[]> {
 		return await this.buckets.keys();
 	}
+
+	/**
+	 * Alias for open() - for compatibility with File System Access API naming
+	 */
+	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
+		return await this.open(name);
+	}
 }
 
 /**

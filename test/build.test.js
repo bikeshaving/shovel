@@ -82,13 +82,14 @@ self.addEventListener("fetch", (event) => {
 				platform: "node"
 			});
 
-			// Check output files exist
-			expect(await fileExists(join(outDir, "app.js"))).toBe(true);
-			expect(await fileExists(join(outDir, "package.json"))).toBe(true);
-			expect(await fileExists(join(outDir, "assets", "manifest.json"))).toBe(true);
+			// Check output files exist in new structure
+			expect(await fileExists(join(outDir, "server", "app.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "asset-manifest.json"))).toBe(true);
+			expect(await fileExists(join(outDir, "assets"))).toBe(true);
 
 			// Check app.js has shebang and bootstrap
-			const appContent = await FS.readFile(join(outDir, "app.js"), "utf8");
+			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
 			expect(appContent).toContain("ServiceWorkerRuntime");
 			expect(appContent).toContain("Hello from test ServiceWorker!");
@@ -127,7 +128,7 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Verify platform-specific output
-				const appContent = await FS.readFile(join(outDir, "app.js"), "utf8");
+				const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
 				expect(appContent).toContain("ServiceWorkerRuntime");
 				expect(appContent).toContain(`Platform: ${platform}`);
 
@@ -232,7 +233,7 @@ test(
 			});
 
 			// Build should complete but app.js should have bootstrap + empty content
-			expect(await fileExists(join(outDir, "app.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "app.js"))).toBe(true);
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -277,12 +278,13 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Check required output structure
-			expect(await fileExists(join(outDir, "app.js"))).toBe(true);
-			expect(await fileExists(join(outDir, "package.json"))).toBe(true);
-			expect(await fileExists(join(outDir, "assets", "manifest.json"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "app.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "asset-manifest.json"))).toBe(true);
+			expect(await fileExists(join(outDir, "assets"))).toBe(true);
 
 			// Validate app.js content
-			const appContent = await FS.readFile(join(outDir, "app.js"), "utf8");
+			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
 			expect(appContent).toContain("Shovel Production Server");
 			expect(appContent).toContain("ServiceWorkerRuntime");
@@ -290,12 +292,12 @@ self.addEventListener("fetch", (event) => {
 			expect(appContent).toContain("createBucketStorage");
 
 			// Validate package.json is valid JSON
-			const packageContent = await FS.readFile(join(outDir, "package.json"), "utf8");
+			const packageContent = await FS.readFile(join(outDir, "server", "package.json"), "utf8");
 			const packageJson = JSON.parse(packageContent);
 			expect(typeof packageJson).toBe("object");
 
 			// Validate assets manifest
-			const manifestContent = await FS.readFile(join(outDir, "assets", "manifest.json"), "utf8");
+			const manifestContent = await FS.readFile(join(outDir, "server", "asset-manifest.json"), "utf8");
 			const manifest = JSON.parse(manifestContent);
 			expect(typeof manifest).toBe("object");
 			expect(manifest).toHaveProperty("generated");
@@ -381,7 +383,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node"
 			});
 
-			const appContent = await FS.readFile(join(outDir, "app.js"), "utf8");
+			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
 
 			// For Node/Bun builds, @b9g/* should be external (not bundled)
 			// Check that the import is preserved in the banner
@@ -454,7 +456,7 @@ self.skipWaiting();
 				platform: "node"
 			});
 
-			const appContent = await FS.readFile(join(outDir, "app.js"), "utf8");
+			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
 
 			// Check that all ServiceWorker features are preserved
 			expect(appContent).toContain("addEventListener(\"install\"");
@@ -517,7 +519,7 @@ self.addEventListener("fetch", (event) => {
 			expect(buildTime).toBeLessThan(10000);
 
 			// Output should exist and be reasonable size
-			const appContent = await FS.readFile(join(outDir, "app.js"), "utf8");
+			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
 			expect(appContent.length).toBeGreaterThan(1000);
 			expect(appContent).toContain("Route 50 response"); // Spot check
 		} finally {
@@ -572,7 +574,7 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Should have found the workspace root and built successfully
-				expect(await fileExists(join(outDir, "app.js"))).toBe(true);
+				expect(await fileExists(join(outDir, "server", "app.js"))).toBe(true);
 			} finally {
 				process.chdir(originalCwd);
 			}

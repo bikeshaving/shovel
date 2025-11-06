@@ -239,6 +239,11 @@ export interface BucketStorage {
 	open(name: string): Promise<FileSystemDirectoryHandle>;
 	
 	/**
+	 * Alias for open() - for compatibility with File System Access API naming
+	 */
+	getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
+	
+	/**
 	 * Check if a named bucket exists
 	 */
 	has(name: string): Promise<boolean>;
@@ -314,7 +319,7 @@ export function createServiceWorkerGlobals(
 		}
 	};
 
-	return {
+	const globals = {
 		self: runtime,
 		addEventListener: runtime.addEventListener.bind(runtime),
 		removeEventListener: runtime.removeEventListener.bind(runtime),
@@ -323,6 +328,10 @@ export function createServiceWorkerGlobals(
 		// ServiceWorker-specific globals with proper implementations
 		skipWaiting,
 		clients,
+
+		// Platform resources
+		...(options.buckets && { buckets: options.buckets }),
+		...(options.caches && { caches: options.caches }),
 
 		// Standard globals
 		console,
@@ -337,4 +346,9 @@ export function createServiceWorkerGlobals(
 		URL,
 		URLSearchParams,
 	};
+
+	// Set globals on globalThis for ServiceWorker compatibility
+	Object.assign(globalThis, globals);
+
+	return globals;
 }

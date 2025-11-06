@@ -134,8 +134,8 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Verify build output
-			const appPath = join(outDir, "app.js");
-			const packagePath = join(outDir, "package.json");
+			const appPath = join(outDir, "server", "app.js");
+			const packagePath = join(outDir, "server", "package.json");
 
 			expect(await FS.access(appPath).then(() => true).catch(() => false)).toBe(true);
 			expect(await FS.access(packagePath).then(() => true).catch(() => false)).toBe(true);
@@ -220,7 +220,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node"
 			});
 
-			const appPath = join(outDir, "app.js");
+			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Install dependencies
@@ -339,7 +339,7 @@ self.addEventListener("fetch", async (event) => {
 				platform: "node"
 			});
 
-			const appPath = join(outDir, "app.js");
+			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Install dependencies
@@ -419,7 +419,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node"
 			});
 
-			const appPath = join(outDir, "app.js");
+			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Install dependencies
@@ -511,8 +511,8 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Verify deployment artifacts
-			const appPath = join(outDir, "app.js");
-			const packagePath = join(outDir, "package.json");
+			const appPath = join(outDir, "server", "app.js");
+			const packagePath = join(outDir, "server", "package.json");
 			const assetsPath = join(outDir, "assets");
 
 			// Check all required files exist
@@ -531,7 +531,7 @@ self.addEventListener("fetch", (event) => {
 			expect(isExecutable).toBe(true);
 
 			// Check assets manifest exists
-			const manifestPath = join(assetsPath, "manifest.json");
+			const manifestPath = join(outDir, "server", "asset-manifest.json");
 			expect(await FS.access(manifestPath).then(() => true).catch(() => false)).toBe(true);
 
 			const manifestContent = await FS.readFile(manifestPath, "utf8");
@@ -586,7 +586,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node"
 			});
 
-			const appPath = join(outDir, "app.js");
+			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Install dependencies
@@ -661,7 +661,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node"
 			});
 
-			const appPath = join(outDir, "app.js");
+			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Install dependencies

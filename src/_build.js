@@ -21,6 +21,12 @@ const BUILD_DEFAULTS = {
 	}
 };
 
+// Directory structure for separate buckets
+const BUILD_STRUCTURE = {
+	serverDir: "server",
+	assetsDir: "assets"
+};
+
 const PLATFORM_EXTERNALS = {
 	node: ["node:*", "@b9g/*"],
 	bun: ["node:*", "@b9g/*"],
@@ -45,6 +51,8 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
 		
 		if (verbose) {
 			console.info(`📦 Built app to ${buildContext.outputDir}`);
+			console.info(`📂 Server files: ${buildContext.serverDir}`);
+			console.info(`📂 Asset files: ${buildContext.assetsDir}`);
 		}
 	} catch (error) {
 		console.error(`❌ Build failed: ${error.message}`);
@@ -92,16 +100,20 @@ async function initializeBuild({entrypoint, outDir, verbose, platform}) {
 		console.info(`🏠 Workspace root: ${workspaceRoot}`);
 	}
 	
-	// Ensure output directory exists
+	// Ensure output directory structure exists
 	try {
 		await mkdir(outputDir, {recursive: true});
+		await mkdir(join(outputDir, BUILD_STRUCTURE.serverDir), {recursive: true});
+		await mkdir(join(outputDir, BUILD_STRUCTURE.assetsDir), {recursive: true});
 	} catch (error) {
-		throw new Error(`Failed to create output directory: ${error.message}`);
+		throw new Error(`Failed to create output directory structure: ${error.message}`);
 	}
 	
 	return {
 		entryPath,
 		outputDir,
+		serverDir: join(outputDir, BUILD_STRUCTURE.serverDir),
+		assetsDir: join(outputDir, BUILD_STRUCTURE.assetsDir),
 		workspaceRoot,
 		platform,
 		verbose
@@ -132,7 +144,7 @@ async function findWorkspaceRoot() {
 /**
  * Create esbuild configuration for the target platform
  */
-async function createBuildConfig({entryPath, outputDir, workspaceRoot, platform}) {
+async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot, platform}) {
 	const isCloudflare = platform === "cloudflare" || platform === "cloudflare-workers";
 	
 	try {
@@ -142,12 +154,12 @@ async function createBuildConfig({entryPath, outputDir, workspaceRoot, platform}
 			format: BUILD_DEFAULTS.format,
 			target: BUILD_DEFAULTS.target,
 			platform: isCloudflare ? "browser" : "node",
-			outfile: join(outputDir, BUILD_DEFAULTS.outputFile),
+			outfile: join(serverDir, BUILD_DEFAULTS.outputFile),
 			absWorkingDir: workspaceRoot,
 			plugins: [
 				assetsPlugin({
-					outputDir: join(outputDir, "assets"),
-					manifest: join(outputDir, "assets/manifest.json"),
+					outputDir: assetsDir,
+					manifest: join(serverDir, "asset-manifest.json"),
 					dev: false,
 				}),
 			],
@@ -329,7 +341,7 @@ async function logBundleAnalysis(metafile) {
 /**
  * Copy package.json to output directory for self-contained deployment
  */
-async function copyPackageJson({outputDir, verbose}) {
+async function copyPackageJson({serverDir, verbose}) {
 	const packageJsonPath = resolve(process.cwd(), "package.json");
 	try {
 		const packageJsonContent = await readFile(packageJsonPath, "utf8");
@@ -341,9 +353,9 @@ async function copyPackageJson({outputDir, verbose}) {
 			throw new Error(`Invalid package.json format: ${parseError.message}`);
 		}
 		
-		await writeFile(join(outputDir, "package.json"), packageJsonContent, "utf8");
+		await writeFile(join(serverDir, "package.json"), packageJsonContent, "utf8");
 		if (verbose) {
-			console.info(`📄 Copied package.json to ${outputDir}`);
+			console.info(`📄 Copied package.json to ${serverDir}`);
 		}
 	} catch (error) {
 		if (verbose) {

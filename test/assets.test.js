@@ -223,13 +223,13 @@ self.addEventListener("fetch", (event) => {
 
 			// Check that assets directory and manifest were created
 			const assetsDir = join(outDir, "assets");
-			const manifestPath = join(assetsDir, "manifest.json");
+			const manifestPath = join(outDir, "server", "asset-manifest.json");
 			
 			expect(await FS.access(assetsDir).then(() => true).catch(() => false)).toBe(true);
 			expect(await FS.access(manifestPath).then(() => true).catch(() => false)).toBe(true);
 
 			// Check app.js was built
-			const appPath = join(outDir, "app.js");
+			const appPath = join(outDir, "server", "app.js");
 			expect(await FS.access(appPath).then(() => true).catch(() => false)).toBe(true);
 
 			const appContent = await FS.readFile(appPath, "utf8");
@@ -439,7 +439,7 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Read the manifest to verify the normalized URL
-				const manifestPath = join(outDir, "assets", "manifest.json");
+				const manifestPath = join(outDir, "server", "asset-manifest.json");
 				const manifestContent = await FS.readFile(manifestPath, "utf8");
 				const manifest = JSON.parse(manifestContent);
 				
@@ -497,7 +497,7 @@ self.addEventListener("fetch", (event) => {
 				});
 				
 				// If build succeeds, check that it handled the missing file appropriately
-				const appContent = await FS.readFile(join(outDir, "app.js"), "utf8");
+				const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
 				expect(typeof appContent).toBe("string");
 			} catch (error) {
 				// If build fails, it should provide a clear error message

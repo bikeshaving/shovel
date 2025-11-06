@@ -16,7 +16,7 @@ const caches = new CustomCacheStorage((name) => {
 	});
 });
 
-// Create bucket storage for dist/ folder
+// Create bucket storage for dist/ folder (serves assets and server content separately)
 const buckets = createBucketStorage(Path.join(process.cwd(), "dist"));
 
 // Create ServiceWorker runtime
@@ -64,7 +64,7 @@ async function loadServiceWorker(version, entrypoint) {
 		// Use SERVICEWORKER_PATH if defined (production), otherwise use provided entrypoint
 		const entrypointPath = process.env.SERVICEWORKER_PATH 
 			|| entrypoint 
-			|| `${process.cwd()}/dist/app.js`;
+			|| `${process.cwd()}/dist/server/app.js`;
 		console.info("[Worker] Loading from:", entrypointPath);
 
 		// Handle hot reload by creating fresh ServiceWorker context
