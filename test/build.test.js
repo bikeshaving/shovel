@@ -132,10 +132,10 @@ self.addEventListener("fetch", (event) => {
 				expect(appContent).toContain("ServiceWorkerRuntime");
 				expect(appContent).toContain(`Platform: ${platform}`);
 
-				// Node and Bun should have external dependencies
-				if (platform === "node" || platform === "bun") {
-					expect(appContent).toContain("@b9g/platform");
-				}
+				// New virtual entry approach should bundle platform dependencies
+				// Look for bundled platform code instead of external references
+				expect(appContent).toContain("createServiceWorkerGlobals");
+				expect(appContent).toContain("createBucketStorage");
 			} catch (error) {
 				console.error(`Platform ${platform} failed:`, error);
 				throw error;
@@ -286,7 +286,7 @@ self.addEventListener("fetch", (event) => {
 			// Validate app.js content
 			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
-			expect(appContent).toContain("Shovel Production Server");
+			// With bundling, comments may be removed, so check for bundled code instead
 			expect(appContent).toContain("ServiceWorkerRuntime");
 			expect(appContent).toContain("createServiceWorkerGlobals");
 			expect(appContent).toContain("createBucketStorage");
@@ -342,7 +342,7 @@ self.addEventListener("fetch", (event) => {
 				expect(allLogs).toContain("Target platform:");
 				expect(allLogs).toContain("Workspace root:");
 				expect(allLogs).toContain("Bundle analysis:");
-				expect(allLogs).toContain("Copied package.json");
+				expect(allLogs).toContain("Generated package.json");
 				expect(allLogs).toContain("Built app to");
 			} finally {
 				console.info = originalLog;

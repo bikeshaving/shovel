@@ -60,9 +60,9 @@ async function getPlatformExternals(platform) {
  * Build ServiceWorker app for production deployment
  * Creates directly executable output with platform-specific bootstrapping
  */
-export async function buildForProduction({entrypoint, outDir, verbose, platform = "node"}) {
+export async function buildForProduction({entrypoint, outDir, verbose, platform = "node", workerCount = 1}) {
 	try {
-		const buildContext = await initializeBuild({entrypoint, outDir, verbose, platform});
+		const buildContext = await initializeBuild({entrypoint, outDir, verbose, platform, workerCount});
 		const buildConfig = await createBuildConfig(buildContext);
 		const result = await esbuild.build(buildConfig);
 		
@@ -102,7 +102,7 @@ export async function buildForProduction({entrypoint, outDir, verbose, platform 
 /**
  * Initialize build context with validated paths and settings
  */
-async function initializeBuild({entrypoint, outDir, verbose, platform}) {
+async function initializeBuild({entrypoint, outDir, verbose, platform, workerCount = 1}) {
 	// Validate inputs
 	if (!entrypoint) {
 		throw new Error("Entry point is required");
@@ -155,7 +155,8 @@ async function initializeBuild({entrypoint, outDir, verbose, platform}) {
 		assetsDir: join(outputDir, BUILD_STRUCTURE.assetsDir),
 		workspaceRoot,
 		platform,
-		verbose
+		verbose,
+		workerCount
 	};
 }
 
@@ -183,12 +184,19 @@ async function findWorkspaceRoot() {
 /**
  * Create esbuild configuration for the target platform
  */
-async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot, platform}) {
+async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot, platform, workerCount}) {
 	const isCloudflare = platform === "cloudflare" || platform === "cloudflare-workers";
 	
 	try {
+		// Create virtual entry point that properly imports platform dependencies
+		const virtualEntry = await createVirtualEntry(entryPath, platform, workerCount);
+		
 		const buildConfig = {
-			entryPoints: [entryPath],
+			stdin: {
+				contents: virtualEntry,
+				resolveDir: workspaceRoot || dirname(entryPath),
+				sourcefile: 'virtual-entry.js'
+			},
 			bundle: true,
 			format: BUILD_DEFAULTS.format,
 			target: BUILD_DEFAULTS.target,
@@ -212,8 +220,6 @@ async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot
 		
 		if (isCloudflare) {
 			await configureCloudflareTarget(buildConfig);
-		} else {
-			await configureNodeTarget(buildConfig);
 		}
 		
 		return buildConfig;
@@ -222,19 +228,6 @@ async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot
 	}
 }
 	
-/**
- * Configure build for Node.js/Bun targets with production bootstrap
- */
-async function configureNodeTarget(buildConfig) {
-	try {
-		buildConfig.banner = {
-			js: await generateNodeBootstrap()
-		};
-	} catch (error) {
-		throw new Error(`Failed to configure Node.js target: ${error.message}`);
-	}
-}
-
 /**
  * Configure build for Cloudflare Workers target
  */
@@ -254,57 +247,63 @@ async function configureCloudflareTarget(buildConfig) {
 }
 
 /**
- * Generate Node.js production bootstrap code
+ * Create virtual entry point with proper imports and worker management
  */
-async function generateNodeBootstrap() {
+async function createVirtualEntry(userEntryPath, platform, workerCount = 1) {
+	const isCloudflare = platform === "cloudflare" || platform === "cloudflare-workers";
+	
+	if (isCloudflare) {
+		// For Cloudflare Workers, import the user code directly
+		// Cloudflare-specific runtime setup is handled by platform package
+		return `
+// Import user's ServiceWorker code
+import "${userEntryPath}";
+`;
+	}
+	
+	// For Node.js/Bun platforms, choose architecture based on worker count
+	if (workerCount === 1) {
+		return await createSingleWorkerEntry(userEntryPath);
+	} else {
+		return await createMultiWorkerEntry(userEntryPath, workerCount);
+	}
+}
+
+/**
+ * Create single-worker entry point (current approach)
+ */
+async function createSingleWorkerEntry(userEntryPath) {
 	return `#!/usr/bin/env node
 /**
- * Shovel Production Server
- * Self-contained build - run 'npm install' in this directory first
+ * Shovel Production Server (Single Worker)
+ * Self-contained build with bundled dependencies
  */
 
 import { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } from '@b9g/platform';
 
+// Production server setup
+const runtime = new ServiceWorkerRuntime();
+const buckets = createBucketStorage(process.cwd());
+
+// Set up ServiceWorker globals
+createServiceWorkerGlobals(runtime, { buckets });
+globalThis.self = runtime;
+globalThis.addEventListener = runtime.addEventListener.bind(runtime);
+globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
+globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
+
+// Dynamically import user's ServiceWorker code after globals are set up
+await import("${userEntryPath}");
+
 // Check if this is being run as the main executable
 if (import.meta.url === \`file://\${process.argv[1]}\`) {
-  ${await generateServerBootstrap()}
-}
-
-// User's ServiceWorker code follows...
-`;
-}
-
-/**
- * Generate HTTP server bootstrap code
- */
-async function generateServerBootstrap() {
-	return `// Production server mode - use proven single-threaded approach
-  const runtime = new ServiceWorkerRuntime();
-  const buckets = createBucketStorage(process.cwd());
-  
-  // Set up ServiceWorker globals (same as development)
-  createServiceWorkerGlobals(runtime, { buckets });
-  globalThis.self = runtime;
-  globalThis.addEventListener = runtime.addEventListener.bind(runtime);
-  globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
-  globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
-  
-  // ServiceWorker code will execute after this banner...
-  
   // Wait for ServiceWorker to be defined, then start server
   setTimeout(async () => {
+    console.info('🔧 Starting single-worker server...');
     await runtime.install();
     await runtime.activate();
     
-    ${await generateHttpServer()}
-  }, 0);`;
-}
-
-/**
- * Generate HTTP server creation code
- */
-async function generateHttpServer() {
-	return `// Create HTTP server using proven pattern
+    // Create HTTP server
     const { createServer } = await import('http');
     const PORT = process.env.PORT || 8080;
     const HOST = process.env.HOST || '0.0.0.0';
@@ -350,18 +349,266 @@ async function generateHttpServer() {
     });
 
     httpServer.listen(PORT, HOST, () => {
-      console.info(\`🚀 Server running at http://\${HOST}:\${PORT}\`);
+      console.info(\`🚀 Single-worker server running at http://\${HOST}:\${PORT}\`);
     });
     
     // Graceful shutdown
     const shutdown = async () => {
-      console.info('\\n🛑 Shutting down...');
+      console.info('\\n🛑 Shutting down single-worker server...');
       await new Promise(resolve => httpServer.close(resolve));
       process.exit(0);
     };
     
     process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);`;
+    process.on('SIGTERM', shutdown);
+  }, 0);
+}
+`;
+}
+
+/**
+ * Create multi-worker entry point with real Node.js Worker threads
+ */
+async function createMultiWorkerEntry(userEntryPath, workerCount) {
+	return `#!/usr/bin/env node
+/**
+ * Shovel Production Server (Multi-Worker)
+ * Spawns ${workerCount} real Node.js Worker threads for true concurrency
+ */
+
+import { Worker, workerData } from 'worker_threads';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+// Check if this is being run as the main executable (not a worker thread)
+if (import.meta.url === \`file://\${process.argv[1]}\` && !workerData?.isWorker) {
+  console.info('🔧 Starting multi-worker server...');
+  console.info(\`⚡ Spawning \${${workerCount}} worker threads...\`);
+  
+  const workers = [];
+  const workerRequests = new Map();
+  let currentWorker = 0;
+  let requestId = 0;
+  
+  // Get the path to the current script to use as worker script
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  
+  // Create worker threads
+  for (let i = 0; i < ${workerCount}; i++) {
+    const worker = new Worker(__filename, {
+      workerData: { 
+        workerId: i,
+        userEntryPath: "${userEntryPath}",
+        isWorker: true
+      }
+    });
+    
+    worker.on('message', (message) => {
+      if (message.type === 'worker-ready') {
+        console.info(\`✅ Worker \${i} ready\`);
+      } else if (message.type === 'response') {
+        const pending = workerRequests.get(message.requestId);
+        if (pending) {
+          workerRequests.delete(message.requestId);
+          
+          // Convert serialized response back to Response object
+          const response = new Response(message.body, {
+            status: message.status,
+            statusText: message.statusText,
+            headers: new Headers(message.headers)
+          });
+          
+          pending.resolve(response);
+        }
+      }
+    });
+    
+    worker.on('error', (error) => {
+      console.error(\`❌ Worker \${i} error:\`, error);
+    });
+    
+    workers.push(worker);
+  }
+  
+  // Round-robin load balancer
+  function getNextWorker() {
+    const worker = workers[currentWorker];
+    currentWorker = (currentWorker + 1) % workers.length;
+    return worker;
+  }
+  
+  // Handle request via workers
+  async function handleRequest(request) {
+    const worker = getNextWorker();
+    const reqId = ++requestId;
+    
+    // Serialize request body if it exists
+    const requestBody = request.body ? await request.text() : null;
+    
+    return new Promise((resolve, reject) => {
+      workerRequests.set(reqId, { resolve, reject });
+      
+      // Serialize request for worker thread
+      worker.postMessage({
+        type: 'request',
+        requestId: reqId,
+        url: request.url,
+        method: request.method,
+        headers: Array.from(request.headers.entries()),
+        body: requestBody
+      });
+      
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        if (workerRequests.has(reqId)) {
+          workerRequests.delete(reqId);
+          reject(new Error('Request timeout'));
+        }
+      }, 30000);
+    });
+  }
+  
+  // Create HTTP server that load balances across workers
+  const { createServer } = await import('http');
+  const PORT = process.env.PORT || 8080;
+  const HOST = process.env.HOST || '0.0.0.0';
+  
+  const httpServer = createServer(async (req, res) => {
+    try {
+      const url = \`http://\${req.headers.host}\${req.url}\`;
+      const request = new Request(url, {
+        method: req.method,
+        headers: req.headers,
+        body: req.method !== 'GET' && req.method !== 'HEAD' ? req : undefined,
+      });
+
+      const response = await handleRequest(request);
+
+      res.statusCode = response.status;
+      res.statusMessage = response.statusText;
+      response.headers.forEach((value, key) => {
+        res.setHeader(key, value);
+      });
+
+      if (response.body) {
+        const reader = response.body.getReader();
+        const pump = async () => {
+          const {done, value} = await reader.read();
+          if (done) {
+            res.end();
+          } else {
+            res.write(value);
+            await pump();
+          }
+        };
+        await pump();
+      } else {
+        res.end();
+      }
+    } catch (error) {
+      console.error('Request error:', error);
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'text/plain');
+      res.end('Internal Server Error');
+    }
+  });
+
+  httpServer.listen(PORT, HOST, () => {
+    console.info(\`🚀 Multi-worker server running at http://\${HOST}:\${PORT}\`);
+    console.info(\`⚡ Load balancing across \${${workerCount}} workers\`);
+  });
+  
+  // Graceful shutdown
+  const shutdown = async () => {
+    console.info('\\n🛑 Shutting down multi-worker server...');
+    
+    // Terminate all workers
+    await Promise.all(workers.map(worker => {
+      return new Promise((resolve) => {
+        worker.terminate().then(resolve).catch(resolve);
+      });
+    }));
+    
+    await new Promise(resolve => httpServer.close(resolve));
+    console.info('✅ All workers terminated');
+    process.exit(0);
+  };
+  
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+  
+}
+
+// WORKER THREAD CODE - this needs to be at top level for imports
+import { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } from '@b9g/platform';
+import { parentPort } from 'worker_threads';
+
+if (workerData?.isWorker && parentPort) {
+    console.info(\`[Worker \${workerData.workerId}] Starting ServiceWorker...\`);
+    
+    // Set up ServiceWorker environment in worker thread
+    const runtime = new ServiceWorkerRuntime();
+    const buckets = createBucketStorage(process.cwd());
+    
+    createServiceWorkerGlobals(runtime, { buckets });
+    globalThis.self = runtime;
+    globalThis.addEventListener = runtime.addEventListener.bind(runtime);
+    globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
+    globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
+    
+    // Import user's ServiceWorker code
+    await import(workerData.userEntryPath);
+    
+    // Initialize ServiceWorker
+    await runtime.install();
+    await runtime.activate();
+    
+    // Handle messages from main thread
+    parentPort.on('message', async (message) => {
+      if (message.type === 'request') {
+        try {
+          // Reconstruct request object
+          const request = new Request(message.url, {
+            method: message.method,
+            headers: new Headers(message.headers),
+            body: message.body
+          });
+          
+          const response = await runtime.handleRequest(request);
+          
+          // Serialize response for main thread
+          const responseBody = response.body ? await response.text() : null;
+          
+          parentPort.postMessage({
+            type: 'response',
+            requestId: message.requestId,
+            status: response.status,
+            statusText: response.statusText,
+            headers: Array.from(response.headers.entries()),
+            body: responseBody
+          });
+          
+        } catch (error) {
+          console.error(\`[Worker \${workerData.workerId}] Request error:\`, error);
+          
+          parentPort.postMessage({
+            type: 'response',
+            requestId: message.requestId,
+            status: 500,
+            statusText: 'Internal Server Error',
+            headers: [['Content-Type', 'text/plain']],
+            body: 'Internal Server Error'
+          });
+        }
+      }
+    });
+    
+    // Signal that worker is ready
+    parentPort.postMessage({ type: 'worker-ready' });
+    console.info(\`[Worker \${workerData.workerId}] Ready to handle requests\`);
+}
+`;
 }
 	
 /**

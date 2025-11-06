@@ -203,11 +203,13 @@ function getWorkerCount(options) {
 				const {buildForProduction} = await import("./_build.js");
 
 				// Build ServiceWorker app for target platform
+				const workerCount = getWorkerCount(options);
 				await buildForProduction({
 					entrypoint,
 					outDir: options.outDir,
 					verbose: options.verbose,
 					platform: platformName,
+					workerCount,
 				});
 
 				console.info(`✅ Build complete`);
