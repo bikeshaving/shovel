@@ -13,7 +13,7 @@ import {createRootAssetsMiddleware} from "@b9g/assets";
 const CACHE_HEADERS = {
 	ASSETS: "public, max-age=31536000, immutable", // 1 year for assets
 	PAGES: "public, max-age=300", // 5 minutes for pages
-	POSTS: "public, max-age=600", // 10 minutes for posts  
+	POSTS: "public, max-age=600", // 10 minutes for posts
 	API: "public, max-age=180", // 3 minutes for API
 	ABOUT: "public, max-age=3600", // 1 hour for about page
 };
@@ -47,7 +47,7 @@ router.use(pageCache);
 // Cache middleware for pages using new generator API
 async function* pageCache(request, context) {
 	console.log("[pageCache] Processing:", request.url, "Method:", request.method);
-	
+
 	if (request.method !== "GET" || !self.caches) {
 		// No caching - just passthrough
 		console.log("[pageCache] No caching, yielding");
@@ -67,13 +67,13 @@ async function* pageCache(request, context) {
 		// Fall through to yield request if cache fails
 		cached = null;
 	}
-	
+
 	if (cached) {
 		// Cache hit - return early with cached response (clone to modify headers)
 		const clonedResponse = cached.clone();
 		const newHeaders = new Headers(clonedResponse.headers);
 		newHeaders.set("X-Cache", "HIT");
-		
+
 		return new Response(clonedResponse.body, {
 			status: clonedResponse.status,
 			statusText: clonedResponse.statusText,
@@ -98,7 +98,7 @@ async function* pageCache(request, context) {
 	const clonedResponse = response.clone();
 	const newHeaders = new Headers(clonedResponse.headers);
 	newHeaders.set("X-Cache", "MISS");
-	
+
 	return new Response(clonedResponse.body, {
 		status: clonedResponse.status,
 		statusText: clonedResponse.statusText,
@@ -145,10 +145,10 @@ router
 				"Home",
 				`
     <div class="cache-info">
-      <strong>Cache Status:</strong> ${self.caches ? "Enabled" : "Disabled"} | 
+      <strong>Cache Status:</strong> ${self.caches ? "Enabled" : "Disabled"} |
       <strong>Cache Type:</strong> ${self.caches ? "Platform-configured" : "N/A"}
     </div>
-    
+
     <div class="posts">
       ${posts
 				.map(
@@ -201,10 +201,10 @@ router
 				post.title,
 				`
     <div class="cache-info">
-      <strong>Cache Status:</strong> ${self.caches ? "Enabled" : "Disabled"} | 
+      <strong>Cache Status:</strong> ${self.caches ? "Enabled" : "Disabled"} |
       <strong>Post ID:</strong> ${post.id}
     </div>
-    
+
     <article class="post">
       <h2>${post.title}</h2>
       <div class="meta">By ${post.author} on ${post.date}</div>
@@ -269,13 +269,13 @@ router
         <li><strong>@b9g/staticfiles</strong> - Django-style static file handling</li>
         <li><strong>@b9g/match-pattern</strong> - Enhanced URLPattern matching</li>
       </ul>
-      
+
       <div class="cache-info">
         <strong>Cache Statistics:</strong><br>
         Platform Caches: ${self.caches ? "Available" : "Not Available"}<br>
         Static Files: Served from ${process.env.NODE_ENV === "production" ? "optimized build" : "source files"}
       </div>
-      
+
       <p><a href="/">← Back to Home</a></p>
     </div>
   `,
@@ -306,16 +306,16 @@ self.addEventListener("activate", (event) => {
 
 async function generateStaticSite() {
 	console.info("[Blog App] Starting static site generation...");
-	
+
 	try {
 		// Get buckets
 		const staticBucket = await self.buckets.open("static");
 		const assetsBucket = await self.buckets.open("assets");
-		
+
 		// First, copy assets to static/assets/ for self-contained deployment
 		console.info("[Blog App] Copying assets...");
 		await copyAssetsToStatic(assetsBucket, staticBucket);
-		
+
 		// Define routes to pre-render
 		const staticRoutes = [
 			"/",
@@ -323,20 +323,20 @@ async function generateStaticSite() {
 			"/api/posts",
 			...posts.map((post) => `/posts/${post.id}`)
 		];
-		
+
 		console.info(`[Blog App] Pre-rendering ${staticRoutes.length} routes...`);
-		
+
 		for (const route of staticRoutes) {
 			try {
 				// Generate request for this route
 				const request = new Request(`http://localhost:3000${route}`);
-				
+
 				// Use our own router to generate the response
 				const response = await router.handler(request);
-				
+
 				if (response.ok) {
 					const content = await response.text();
-					
+
 					// Determine filename
 					let fileName;
 					if (route === "/") {
@@ -346,13 +346,13 @@ async function generateStaticSite() {
 					} else {
 						fileName = `${route.slice(1).replace(/\//g, "-")}.html`; // /posts/1 -> posts-1.html
 					}
-					
+
 					// Write to static directory
 					const fileHandle = await staticBucket.getFileHandle(fileName, {create: true});
 					const writable = await fileHandle.createWritable();
 					await writable.write(content);
 					await writable.close();
-					
+
 					console.info(`[Blog App] ✅ Generated ${route} -> ${fileName}`);
 				} else {
 					console.warn(`[Blog App] ⚠️  ${route} returned ${response.status}`);
@@ -361,7 +361,7 @@ async function generateStaticSite() {
 				console.error(`[Blog App] ❌ Failed to generate ${route}:`, error.message);
 			}
 		}
-		
+
 		console.info("[Blog App] ✅ Static site generation complete!");
 	} catch (error) {
 		console.error("[Blog App] ❌ Static site generation failed:", error.message);
@@ -375,24 +375,24 @@ async function copyAssetsToStatic(assetsBucket, staticBucket) {
 	try {
 		// Create assets subdirectory in static
 		const staticAssetsDir = await staticBucket.getDirectoryHandle("assets", {create: true});
-		
+
 		// Copy all files from assets to static/assets
 		for await (const [name, handle] of assetsBucket.entries()) {
 			if (handle.kind === "file") {
 				// Read from assets
 				const file = await handle.getFile();
 				const content = await file.arrayBuffer();
-				
+
 				// Write to static/assets
 				const targetHandle = await staticAssetsDir.getFileHandle(name, {create: true});
 				const writable = await targetHandle.createWritable();
 				await writable.write(new Uint8Array(content));
 				await writable.close();
-				
+
 				console.info(`[Blog App] Copied asset: ${name}`);
 			}
 		}
-		
+
 		console.info("[Blog App] ✅ Assets copied to static/assets/");
 	} catch (error) {
 		console.error("[Blog App] ❌ Failed to copy assets:", error.message);
@@ -415,10 +415,10 @@ self.addEventListener("fetch", (event) => {
 			Promise.race([responsePromise, timeoutPromise]).catch((error) => {
 				// In development, show full error details
 				const isDev = process.env?.NODE_ENV !== "production";
-				const errorDetails = isDev 
+				const errorDetails = isDev
 					? `Router error: ${error.message}\n\nStack trace:\n${error.stack}`
 					: `Router error: ${error.message}`;
-				
+
 				console.error("Router error:", error);
 				return new Response(errorDetails, {
 					status: 500,
@@ -429,10 +429,10 @@ self.addEventListener("fetch", (event) => {
 	} catch (error) {
 		// In development, show full error details
 		const isDev = process.env?.NODE_ENV !== "production";
-		const errorDetails = isDev 
+		const errorDetails = isDev
 			? `Sync error: ${error.message}\n\nStack trace:\n${error.stack}`
 			: `Sync error: ${error.message}`;
-		
+
 		console.error("Sync error:", error);
 		event.respondWith(
 			new Response(errorDetails, {
@@ -479,17 +479,15 @@ function renderPage(title, content) {
     <h1>Shovel Blog</h1>
     <p class="subtitle">Cache-First Metaframework Demo</p>
   </header>
-  
+
   <nav>
     <a href="/">Home</a>
     <a href="/about">About</a>
     <a href="/api/posts">API</a>
   </nav>
-  
   <main>
     ${content}
   </main>
-  
   <footer>
     <p>Built with ❤️ using <strong>Shovel</strong> - A cache-first metaframework</p>
     <p><small>Static files: ${styles} | ${logo}</small></p>
