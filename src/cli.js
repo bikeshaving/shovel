@@ -96,7 +96,10 @@ function getWorkerCount(options) {
 					onBuild: async (success, version) => {
 						if (success && serviceWorker) {
 							console.info(`🔄 Reloading Workers (v${version})...`);
-							await serviceWorker.runtime.reloadWorkers(version);
+							// The reloadWorkers method is on the platform instance, not the ServiceWorker runtime
+							if (platformInstance && typeof platformInstance.reloadWorkers === 'function') {
+								await platformInstance.reloadWorkers(version);
+							}
 							console.info(`✅ Workers reloaded`);
 						}
 					},
