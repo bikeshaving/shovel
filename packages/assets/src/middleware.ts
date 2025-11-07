@@ -206,12 +206,50 @@ export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'
 				// Try to get file from assets directory first, then root
 				let fileHandle;
 				try {
+					console.log("[rootAssetsMiddleware] Trying assets directory...");
 					const assetsDir = await (self as any).buckets.open("assets");
-					fileHandle = await assetsDir.getFileHandle(requestedFilename);
-				} catch {
+					console.log("[rootAssetsMiddleware] Assets directory opened successfully");
+					
+					// Debug: list what files are actually available
+					const availableFiles = [];
+					for await (const [name] of assetsDir.entries()) {
+						availableFiles.push(name);
+					}
+					console.log("[rootAssetsMiddleware] Available files in assets dir:", availableFiles);
+					
+					// Check if there's a nested assets directory
+					if (availableFiles.includes("assets")) {
+						console.log("[rootAssetsMiddleware] Found nested assets directory, checking inside...");
+						const nestedAssetsDir = await assetsDir.getDirectoryHandle("assets");
+						const nestedFiles = [];
+						for await (const [name] of nestedAssetsDir.entries()) {
+							nestedFiles.push(name);
+						}
+						console.log("[rootAssetsMiddleware] Files in nested assets dir:", nestedFiles);
+						
+						// Try to get file from nested assets directory
+						try {
+							fileHandle = await nestedAssetsDir.getFileHandle(requestedFilename);
+							console.log("[rootAssetsMiddleware] Found file in nested assets directory:", requestedFilename);
+						} catch {
+							fileHandle = await assetsDir.getFileHandle(requestedFilename);
+						}
+					} else {
+						fileHandle = await assetsDir.getFileHandle(requestedFilename);
+					}
+					console.log("[rootAssetsMiddleware] Found file in assets directory:", requestedFilename);
+				} catch (error) {
+					console.log("[rootAssetsMiddleware] Assets directory failed:", error.message);
 					// Fallback to root directory
-					const rootDir = await (self as any).buckets.open("");
-					fileHandle = await rootDir.getFileHandle(requestedFilename);
+					console.log("[rootAssetsMiddleware] Trying root directory...");
+					try {
+						const rootDir = await (self as any).buckets.open("");
+						fileHandle = await rootDir.getFileHandle(requestedFilename);
+						console.log("[rootAssetsMiddleware] Found file in root directory:", requestedFilename);
+					} catch (rootError) {
+						console.log("[rootAssetsMiddleware] Root directory also failed:", rootError.message);
+						throw rootError;
+					}
 				}
 				const file = await fileHandle.getFile();
 

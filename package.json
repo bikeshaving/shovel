@@ -87,10 +87,6 @@
       "types": "./dist/src/global.d.ts",
       "import": "./dist/src/global.js"
     },
-    "./index": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
     "./shared": {
       "types": "./dist/src/shared.d.ts",
       "import": "./dist/src/shared.js"
@@ -109,24 +105,12 @@
       "types": "./dist/src/global.d.ts",
       "import": "./dist/src/global.js"
     },
-    "./index.js": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
     "./serviceworker.js": {
       "import": "./dist/src/serviceworker.js"
     },
     "./shared.js": {
       "types": "./dist/src/shared.d.ts",
       "import": "./dist/src/shared.js"
-    },
-    "./simple-watcher": {
-      "types": "./dist/src/simple-watcher.d.ts",
-      "import": "./dist/src/simple-watcher.js"
-    },
-    "./simple-watcher.js": {
-      "types": "./dist/src/simple-watcher.d.ts",
-      "import": "./dist/src/simple-watcher.js"
     },
     "./worker.js": {
       "import": "./dist/src/worker.js"
@@ -154,6 +138,14 @@
     "./populate.js": {
       "types": "./dist/src/populate.d.ts",
       "import": "./dist/src/populate.js"
+    },
+    "./watcher": {
+      "types": "./dist/src/watcher.d.ts",
+      "import": "./dist/src/watcher.js"
+    },
+    "./watcher.js": {
+      "types": "./dist/src/watcher.d.ts",
+      "import": "./dist/src/watcher.js"
     }
   }
 }

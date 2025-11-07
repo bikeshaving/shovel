@@ -34,7 +34,11 @@ const router = new Router();
 // Platform provides self.caches and self.buckets directly - no event needed
 
 // Root assets middleware for serving root-level assets like /logo.svg
-router.use(createRootAssetsMiddleware({dev: true}));
+router.use(createRootAssetsMiddleware({
+	dev: true,
+	directory: "assets",
+	manifestPath: "server/asset-manifest.json"
+}));
 
 // Global page cache middleware
 router.use(pageCache);

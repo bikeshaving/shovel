@@ -10,7 +10,7 @@ await build({
 	target: "es2022",
 	plugins: [
 		assetsPlugin({
-			publicPath: "/assets/",
+			publicPath: "/",
 			outputDir: "dist/assets",
 			manifest: "dist/server/asset-manifest.json",
 		}),

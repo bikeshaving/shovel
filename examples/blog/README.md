@@ -32,7 +32,7 @@ src/assets/         # Static assets (CSS, images, etc.)
 bun install
 
 # Start development server (serves from source files)
-bun run dev
+bun run develop
 
 # Build for production (optimizes and hashes assets)
 bun run build
@@ -44,7 +44,7 @@ bun run preview
 ## Cache Strategy
 
 - **Pages Cache**: Long-lived HTML pages with 5-10 minute TTL
-- **API Cache**: Short-lived API responses with 3 minute TTL  
+- **API Cache**: Short-lived API responses with 3 minute TTL
 - **Static Cache**: Long-term cached assets with content hashing
 
 ## Routes
