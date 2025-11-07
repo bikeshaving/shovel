@@ -88,35 +88,17 @@ export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'
 		if (manifestError && !dev) throw new Error(manifestError);
 
 		try {
-			// Debug: check what directories are available
-			console.log("[rootAssetsMiddleware] Checking directories...");
-			try {
-				const rootDir = await (self as any).buckets.open("");
-				const rootKeys = [];
-				for await (const [name] of rootDir.entries()) {
-					rootKeys.push(name);
-				}
-				console.log("[rootAssetsMiddleware] Root directory contents:", rootKeys);
-			} catch (e) {
-				console.log("[rootAssetsMiddleware] Error reading root:", e.message);
-			}
-
 			// Try to load manifest from assets directory first, then root
 			let manifestFile;
 			try {
-				console.log("[rootAssetsMiddleware] Trying assets directory...");
 				const assetsDir = await (self as any).buckets.open("assets");
 				const manifestHandle = await assetsDir.getFileHandle(manifestPath);
 				manifestFile = await manifestHandle.getFile();
-				console.log("[rootAssetsMiddleware] Found manifest in assets directory");
-			} catch (e) {
-				console.log("[rootAssetsMiddleware] Assets directory failed:", e.message);
+			} catch {
 				// Fallback to root directory
-				console.log("[rootAssetsMiddleware] Trying root directory...");
 				const rootDir = await (self as any).buckets.open("");
 				const manifestHandle = await rootDir.getFileHandle(manifestPath);
 				manifestFile = await manifestHandle.getFile();
-				console.log("[rootAssetsMiddleware] Found manifest in root directory");
 			}
 			
 			const manifestText = await manifestFile.text();
@@ -129,22 +111,16 @@ export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'
 				for (const [, entry] of Object.entries(manifest.assets)) {
 					if (entry && typeof entry === "object" && "url" in entry) {
 						const url = entry.url as string;
-						console.log("[rootAssetsMiddleware] Processing manifest entry:", url);
 						// Only include assets with root-level URLs (start with /)
 						if (url.startsWith("/") && !url.includes("/", 1)) {
 							const filename = url.slice(1); // Remove leading /
 							if (filename) {
-								console.log("[rootAssetsMiddleware] Adding to urlMap:", filename, "->", entry);
 								urlMap[filename] = entry;
 							}
-						} else {
-							console.log("[rootAssetsMiddleware] Skipping non-root URL:", url);
 						}
 					}
 				}
 			}
-
-			console.log("[rootAssetsMiddleware] Final urlMap keys:", Object.keys(urlMap));
 
 			manifestCache = urlMap;
 			manifestError = null;
@@ -161,23 +137,19 @@ export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'
 	return async function* rootAssetsMiddleware(request: Request, context: any) {
 		try {
 			const url = new URL(request.url);
-			console.log("[rootAssetsMiddleware] Processing:", url.pathname);
 
 			// Only handle root-level requests (no subdirectories)
 			if (url.pathname.includes("/", 1)) {
 				// Pass through to next middleware
-				console.log("[rootAssetsMiddleware] Has subdirectories, passing through");
 				const response = yield request;
 				return response;
 			}
 
 			// Extract filename (remove leading slash)
 			const requestedFilename = url.pathname.slice(1);
-			console.log("[rootAssetsMiddleware] Requested filename:", requestedFilename);
 			
 			// Skip empty path (let index handling middleware deal with it)
 			if (!requestedFilename) {
-				console.log("[rootAssetsMiddleware] Empty path, passing through");
 				const response = yield request;
 				return response;
 			}
@@ -189,16 +161,12 @@ export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'
 
 			try {
 				// Load manifest to validate file exists in build
-				console.log("[rootAssetsMiddleware] Loading manifest...");
 				const manifest = await loadManifest();
-				console.log("[rootAssetsMiddleware] Manifest keys:", Object.keys(manifest));
 
 				// Check if file exists in manifest (security: only serve built assets)
 				const manifestEntry = manifest[requestedFilename];
-				console.log("[rootAssetsMiddleware] Manifest entry for", requestedFilename, ":", manifestEntry);
 				if (!manifestEntry && !dev) {
 					// In production, only serve files that went through build
-					console.log("[rootAssetsMiddleware] Not in manifest and not dev, passing through");
 					const response = yield request;
 					return response;
 				}
@@ -206,50 +174,29 @@ export function createRootAssetsMiddleware(config: Omit<AssetsConfig, 'basePath'
 				// Try to get file from assets directory first, then root
 				let fileHandle;
 				try {
-					console.log("[rootAssetsMiddleware] Trying assets directory...");
 					const assetsDir = await (self as any).buckets.open("assets");
-					console.log("[rootAssetsMiddleware] Assets directory opened successfully");
 					
-					// Debug: list what files are actually available
+					// Check if there's a nested assets directory
 					const availableFiles = [];
 					for await (const [name] of assetsDir.entries()) {
 						availableFiles.push(name);
 					}
-					console.log("[rootAssetsMiddleware] Available files in assets dir:", availableFiles);
 					
-					// Check if there's a nested assets directory
 					if (availableFiles.includes("assets")) {
-						console.log("[rootAssetsMiddleware] Found nested assets directory, checking inside...");
+						// Get file from nested assets directory
 						const nestedAssetsDir = await assetsDir.getDirectoryHandle("assets");
-						const nestedFiles = [];
-						for await (const [name] of nestedAssetsDir.entries()) {
-							nestedFiles.push(name);
-						}
-						console.log("[rootAssetsMiddleware] Files in nested assets dir:", nestedFiles);
-						
-						// Try to get file from nested assets directory
 						try {
 							fileHandle = await nestedAssetsDir.getFileHandle(requestedFilename);
-							console.log("[rootAssetsMiddleware] Found file in nested assets directory:", requestedFilename);
 						} catch {
 							fileHandle = await assetsDir.getFileHandle(requestedFilename);
 						}
 					} else {
 						fileHandle = await assetsDir.getFileHandle(requestedFilename);
 					}
-					console.log("[rootAssetsMiddleware] Found file in assets directory:", requestedFilename);
-				} catch (error) {
-					console.log("[rootAssetsMiddleware] Assets directory failed:", error.message);
+				} catch {
 					// Fallback to root directory
-					console.log("[rootAssetsMiddleware] Trying root directory...");
-					try {
-						const rootDir = await (self as any).buckets.open("");
-						fileHandle = await rootDir.getFileHandle(requestedFilename);
-						console.log("[rootAssetsMiddleware] Found file in root directory:", requestedFilename);
-					} catch (rootError) {
-						console.log("[rootAssetsMiddleware] Root directory also failed:", rootError.message);
-						throw rootError;
-					}
+					const rootDir = await (self as any).buckets.open("");
+					fileHandle = await rootDir.getFileHandle(requestedFilename);
 				}
 				const file = await fileHandle.getFile();
 
