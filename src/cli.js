@@ -1,29 +1,8 @@
-#!/usr/bin/env bun
-/**
- * Shovel CLI - The obsessively web platform-based web framework
- *
- * Smart defaults: Detect current runtime for development
- * Override: Explicit targeting for deployment
- */
-
+#!/usr/bin/env node
 import {Command} from "commander";
 import pkg from "../package.json" with {type: "json"};
 import {DEFAULTS, getDefaultWorkerCount} from "./config.js";
 
-/**
- * Dynamically import platform utilities if available
- */
-async function importPlatform() {
-	try {
-		return await import("@b9g/platform");
-	} catch (error) {
-		throw new Error("@b9g/platform is required. Install it with: bun add @b9g/platform");
-	}
-}
-
-/**
- * Determine worker count based on environment and options
- */
 function getWorkerCount(options) {
 	// Explicit CLI option takes precedence
 	if (options.workers) {
@@ -36,7 +15,7 @@ function getWorkerCount(options) {
 		return count;
 	}
 
-	// Use centralized default
+	// TODO: wtf where does this go
 	return getDefaultWorkerCount();
 }
 
@@ -72,7 +51,7 @@ function getWorkerCount(options) {
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
-				const platform = await importPlatform();
+				const platform = await import("@b9g/platform");
 				const platformName = platform.resolvePlatform(options);
 				const workerCount = getWorkerCount(options);
 
@@ -107,11 +86,11 @@ function getWorkerCount(options) {
 				console.info(`⚙️  Workers: ${workerCount}`);
 
 				// Set up file watching and building for development
-				const {SimpleWatcher} = await import("./simple-watcher.ts");
+				const {Watcher} = await import("./watcher.ts");
 				let serviceWorker;
 
 				const outDir = "dist";
-				const watcher = new SimpleWatcher({
+				const watcher = new Watcher({
 					entrypoint,
 					outDir,
 					onBuild: async (success, version) => {
@@ -190,7 +169,7 @@ function getWorkerCount(options) {
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
-				const platform = await importPlatform();
+				const platform = await import("@b9g/platform");
 				const platformName = platform.resolvePlatform(options);
 
 				if (options.verbose) {
@@ -200,7 +179,7 @@ function getWorkerCount(options) {
 				console.info(`📦 Building for ${platformName}...`);
 
 				// Import build functionality
-				const {buildForProduction} = await import("./_build.js");
+				const {buildForProduction} = await import("./commands/build.js");
 
 				// Build ServiceWorker app for target platform
 				const workerCount = getWorkerCount(options);
@@ -242,7 +221,7 @@ function getWorkerCount(options) {
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
-				const platform = await importPlatform();
+				const platform = await import("@b9g/platform");
 				const platformName = platform.resolvePlatform(options);
 				const workerCount = getWorkerCount(options);
 

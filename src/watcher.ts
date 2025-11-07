@@ -10,7 +10,7 @@ import {mkdir} from "fs/promises";
 import {assetsPlugin} from "./assets.ts";
 import {DEFAULTS} from "./config.js";
 
-export interface SimpleWatcherOptions {
+export interface WatcherOptions {
 	/** Entry point to build */
 	entrypoint: string;
 	/** Output directory */
@@ -19,12 +19,12 @@ export interface SimpleWatcherOptions {
 	onBuild?: (success: boolean, version: number) => void;
 }
 
-export class SimpleWatcher {
+export class Watcher {
 	private watcher?: ReturnType<typeof watch>;
 	private building = false;
-	private options: SimpleWatcherOptions;
+	private options: WatcherOptions;
 
-	constructor(options: SimpleWatcherOptions) {
+	constructor(options: WatcherOptions) {
 		this.options = {
 			outDir: DEFAULTS.PATHS.OUTPUT_DIR,
 			...options,
@@ -44,7 +44,7 @@ export class SimpleWatcher {
 		const watchDir = dirname(entryPath);
 		console.info(`[Watcher] Watching ${watchDir} for changes...`);
 
-		this.watcher = watch(watchDir, {recursive: true}, (eventType, filename) => {
+		this.watcher = watch(watchDir, {recursive: true}, (_eventType, filename) => {
 			if (
 				filename &&
 				(filename.endsWith(".js") ||
@@ -122,7 +122,6 @@ export class SimpleWatcher {
 					assetsPlugin({
 						outputDir: `${outputDir}/assets`,
 						manifest: `${outputDir}/server/asset-manifest.json`,
-						dev: true,
 					}),
 				],
 				sourcemap: "inline",

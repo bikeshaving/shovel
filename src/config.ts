@@ -12,7 +12,7 @@ import {cpus} from "os";
 export const DEFAULTS = {
 	SERVER: {
 		PORT: 7777,
-		HOST: "localhost", 
+		HOST: "localhost",
 		TIMEOUT: 5000,
 	},
 	CACHE: {
@@ -21,7 +21,7 @@ export const DEFAULTS = {
 		TTL: 300000, // 5 minutes
 		HEADERS: {
 			ASSETS: "public, max-age=31536000", // 1 year
-			PAGES: "public, max-age=300", // 5 minutes  
+			PAGES: "public, max-age=300", // 5 minutes
 			API: "public, max-age=180", // 3 minutes
 			ABOUT: "public, max-age=3600", // 1 hour
 		},
@@ -31,12 +31,14 @@ export const DEFAULTS = {
 		ASSETS_DIR: "assets",
 		MANIFEST_FILE: "manifest.json",
 	},
+	// TODO: WHY THE FUCK DOES WORKERS HAVE DEV/PROD KEY SPLITS???
 	WORKERS: {
 		DEVELOPMENT: 2,
 		PRODUCTION: cpus().length,
 	},
 } as const;
 
+// TODO: WTF?
 /**
  * Get default worker count based on environment
  */
