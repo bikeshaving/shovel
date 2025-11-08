@@ -164,7 +164,7 @@ class WorkerManager {
 		// Round-robin worker selection (ready for pooling)
 		const worker = this.workers[this.currentWorker];
 		console.info(
-			`[WorkerManager] Dispatching to worker ${this.currentWorker} of ${this.workers.length}`,
+			`[WorkerManager] Dispatching to worker ${this.currentWorker + 1} of ${this.workers.length}`,
 		);
 		this.currentWorker = (this.currentWorker + 1) % this.workers.length;
 
