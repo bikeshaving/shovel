@@ -18,6 +18,7 @@ import {
 	createServiceWorkerGlobals,
 	createBucketStorage,
 } from "@b9g/platform";
+import { WorkerPool, WorkerPoolOptions } from "@b9g/platform/worker-pool";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
 import {FileSystemRegistry, MemoryBucket, LocalBucket, S3Bucket} from "@b9g/filesystem";
 import * as Path from "path";
@@ -40,6 +41,8 @@ export interface BunPlatformOptions extends PlatformConfig {
 export class BunPlatform extends BasePlatform {
 	readonly name = "bun";
 	private options: Required<BunPlatformOptions>;
+	private workerPool?: WorkerPool;
+	private cacheStorage?: CustomCacheStorage;
 
 	constructor(options: BunPlatformOptions = {}) {
 		super(options);
@@ -153,102 +156,99 @@ export class BunPlatform extends BasePlatform {
 
 	/**
 	 * Load and run a ServiceWorker-style entrypoint with Bun
+	 * Uses native Web Workers with the common WorkerPool
 	 */
 	async loadServiceWorker(
 		entrypoint: string,
 		options: ServiceWorkerOptions = {},
 	): Promise<ServiceWorkerInstance> {
-		const runtime = new ServiceWorkerRuntime();
 		const entryPath = Path.resolve(this.options.cwd, entrypoint);
 
-		// Create cache storage using platform configuration
-		const caches = await this.createCaches(options.caches);
-		
-		// Create bucket storage using dist filesystem
-		const distPath = Path.resolve(this.options.cwd, "dist");
-		const buckets = createBucketStorage(distPath);
+		// Create shared cache storage if not already created
+		if (!this.cacheStorage) {
+			this.cacheStorage = await this.createCaches(options.caches);
+		}
 
-		// Create ServiceWorker instance
-		const instance: ServiceWorkerInstance = {
-			runtime,
-			handleRequest: (request: Request) => runtime.handleRequest(request),
-			install: () => runtime.install(),
-			activate: () => runtime.activate(),
-			collectStaticRoutes: (outDir: string, baseUrl?: string) =>
-				runtime.collectStaticRoutes(outDir, baseUrl),
-			get ready() {
-				return runtime.ready;
-			},
-			dispose: async () => {
-				runtime.reset();
-				// Bun handles cleanup automatically
-			},
+		// Create WorkerPool using Bun's native Web Workers
+		// Bun supports Web Workers natively - no shims needed!
+		if (this.workerPool) {
+			await this.workerPool.terminate();
+		}
+		
+		const workerCount = options.workerCount || 1;
+		const poolOptions: WorkerPoolOptions = {
+			workerCount,
+			requestTimeout: 30000,
+			hotReload: this.options.hotReload,
+			cwd: this.options.cwd,
 		};
 
-		if (this.options.hotReload && options.hotReload !== false) {
-			// Use Bun's built-in hot reloading
-			console.info("[Bun] Hot reloading enabled - native TypeScript support");
+		
+		// Bun has native Worker support - WorkerPool will use new Worker() directly
+		this.workerPool = new WorkerPool(
+			this.cacheStorage,
+			poolOptions,
+			entryPath,
+		);
 
-			// For hot reloading, we need to dynamically import and set up globals
-			const loadModule = async () => {
-				try {
-					// Reset runtime for reload
-					runtime.reset();
+		// Initialize workers (Bun has native Web Workers)
+		await this.workerPool.init();
 
-					// Create ServiceWorker globals with platform resources
-					createServiceWorkerGlobals(runtime, { caches, buckets });
+		// Load ServiceWorker in all workers
+		const version = Date.now();
+		await this.workerPool.reloadWorkers(version);
 
-					// Bun can import TypeScript/JSX directly
-					globalThis.self = runtime;
-					globalThis.addEventListener = runtime.addEventListener.bind(runtime);
-					globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
-					globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
-
-					// Dynamic import to get fresh module (Bun supports this natively)
-					const moduleUrl = `${entryPath}?t=${Date.now()}`;
-					await import(moduleUrl);
-
-
-					await runtime.install();
-					await runtime.activate();
-
-					console.info("[Bun] ServiceWorker loaded successfully");
-				} catch (error) {
-					console.error("[Bun] Failed to load ServiceWorker:", error);
+		const instance: ServiceWorkerInstance = {
+			runtime: this.workerPool,
+			handleRequest: async (request: Request) => {
+				if (!this.workerPool) {
+					throw new Error("WorkerPool not initialized");
 				}
-			};
-
-			await loadModule();
-
-			// TODO: Set up file watching for hot reloading
-			// For now, rely on Bun's built-in module reload capability
-		} else {
-			// Static loading
-			createServiceWorkerGlobals(runtime, { caches, buckets });
-
-			// Set up globals
-			globalThis.self = runtime;
-			globalThis.addEventListener = runtime.addEventListener.bind(runtime);
-			globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
-			globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
-
-			// Import module
-			await import(entryPath);
-
-
-			await runtime.install();
-			await runtime.activate();
-		}
+				return this.workerPool.handleRequest(request);
+			},
+			install: async () => {
+				console.info("[Bun] ServiceWorker installed via native Web Workers");
+			},
+			activate: async () => {
+				console.info("[Bun] ServiceWorker activated via native Web Workers");
+			},
+			collectStaticRoutes: async () => {
+				// TODO: Implement static route collection
+				return [];
+			},
+			get ready() {
+				return this.workerPool?.ready ?? false;
+			},
+			dispose: async () => {
+				if (this.workerPool) {
+					await this.workerPool.terminate();
+					this.workerPool = undefined;
+				}
+				console.info("[Bun] ServiceWorker disposed");
+			},
+		};
 
 		return instance;
 	}
 
 
 	/**
+	 * Reload workers for hot reloading (called by CLI)
+	 */
+	async reloadWorkers(version?: number | string): Promise<void> {
+		if (this.workerPool) {
+			await this.workerPool.reloadWorkers(version);
+		}
+	}
+
+	/**
 	 * Dispose of platform resources
 	 */
 	async dispose(): Promise<void> {
-		// Bun handles cleanup automatically
+		if (this.workerPool) {
+			await this.workerPool.terminate();
+			this.workerPool = undefined;
+		}
 	}
 }
 
