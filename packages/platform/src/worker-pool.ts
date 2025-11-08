@@ -132,11 +132,11 @@ async function createWebWorker(workerScript: string): Promise<Worker> {
 	const isNodeJs = typeof process !== 'undefined' && process.versions?.node;
 	
 	if (isNodeJs) {
-		// Try to dynamically import web-worker shim for Node.js compatibility
+		// Try to dynamically import our own Node.js shim
 		try {
-			const WebWorker = await import('web-worker').then(m => m.default);
-			console.debug('[WorkerPool] Using web-worker shim for Node.js');
-			return new WebWorker(workerScript);
+			const { Worker: NodeWebWorker } = await import('@b9g/node-webworker');
+			console.debug('[WorkerPool] Using @b9g/node-webworker shim for Node.js');
+			return new NodeWebWorker(workerScript, { type: 'module' });
 		} catch (shimError) {
 			console.error("\n❌ MISSING WEB STANDARD: Node.js lacks native Web Worker support");
 			console.error("🔗 CANONICAL ISSUE: https://github.com/nodejs/node/issues/43583");
@@ -151,9 +151,9 @@ async function createWebWorker(workerScript: string): Promise<Worker> {
 🗳️  Please 👍 react and comment to show demand for this basic web standard!
 
 💡 Immediate workaround:
-   npm install web-worker
+   npm install @b9g/node-webworker
    
-   This installs a shim that provides Web Worker compatibility.
+   This installs our minimal, reliable Web Worker shim for Node.js.
 
 📚 Learn more: https://developer.mozilla.org/en-US/docs/Web/API/Worker`);
 		}
