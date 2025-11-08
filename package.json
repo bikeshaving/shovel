@@ -22,7 +22,8 @@
     "esbuild": "^0.19.12",
     "magic-string": "^0.30.5",
     "mime-types": "^2.1.35",
-    "source-map": "^0.7.4"
+    "source-map": "^0.7.4",
+    "web-worker": "^1.5.0"
   },
   "peerDependencies": {
     "@b9g/platform": "^0.1.0",

@@ -145,9 +145,7 @@ function getWorkerCount(options) {
 				});
 			} catch (error) {
 				console.error(`❌ Failed to start development server:`, error.message);
-				if (options.verbose) {
-					console.error(error.stack);
-				}
+				console.error('Stack trace:', error.stack);
 				process.exit(1);
 			}
 		});
