@@ -72,3 +72,6 @@ export {
 
 // File System Access API
 export {getDirectoryHandle, getBucket, getFileSystemRoot} from "./filesystem.js";
+
+// Worker management
+export { WorkerPool, type WorkerFactory, type PlatformWorker, type WorkerPoolOptions } from "./worker-pool.js";

@@ -119,6 +119,14 @@
     "./worker.js": {
       "types": "./dist/src/worker.d.ts",
       "import": "./dist/src/worker.js"
+    },
+    "./worker-pool": {
+      "types": "./dist/src/worker-pool.d.ts",
+      "import": "./dist/src/worker-pool.js"
+    },
+    "./worker-pool.js": {
+      "types": "./dist/src/worker-pool.d.ts",
+      "import": "./dist/src/worker-pool.js"
     }
   }
 }
