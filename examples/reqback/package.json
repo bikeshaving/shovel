@@ -1,0 +1,21 @@
+{
+  "name": "shovel-reqback-node",
+	"private": true,
+  "version": "1.0.0",
+  "description": "HTTP request echo and debugging API - Shovel Node.js Example",
+  "type": "module",
+  "scripts": {
+    "develop": "shovel develop src/app.js --platform node",
+    "build": "shovel build src/app.js --platform node",
+    "start": "shovel serve dist/app.js --platform node"
+  },
+  "dependencies": {
+    "@b9g/router": "workspace:*",
+    "@b9g/platform": "workspace:*",
+    "@b9g/platform-node": "workspace:*",
+    "@b9g/shovel": "../../dist"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0"
+  }
+}

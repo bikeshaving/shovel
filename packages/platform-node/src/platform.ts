@@ -90,23 +90,23 @@ class WorkerManager {
 			} else {
 				// Fallback to package resolution for development
 				try {
-					const workerUrl = import.meta.resolve("@b9g/shovel/worker.js");
+					const workerUrl = import.meta.resolve("@b9g/platform/worker.js");
 					workerScript = fileURLToPath(workerUrl);
 					console.debug(`[Platform-Node] Using package worker: ${workerScript}`);
 				} catch (error) {
 					throw new Error(
-						`Could not resolve worker.js. Checked bundled path: ${bundledWorker} and package: @b9g/shovel/worker.js. Error: ${error.message}`,
+						`Could not resolve worker.js. Checked bundled path: ${bundledWorker} and package: @b9g/platform/worker.js. Error: ${error.message}`,
 					);
 				}
 			}
 		} else {
 			// No entrypoint provided, use package resolution
 			try {
-				const workerUrl = import.meta.resolve("@b9g/shovel/worker.js");
+				const workerUrl = import.meta.resolve("@b9g/platform/worker.js");
 				workerScript = fileURLToPath(workerUrl);
 			} catch (error) {
 				throw new Error(
-					`Could not resolve @b9g/shovel/worker.js: ${error.message}`,
+					`Could not resolve @b9g/platform/worker.js: ${error.message}`,
 				);
 			}
 		}

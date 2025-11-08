@@ -94,9 +94,6 @@
     "./serviceworker": {
       "import": "./dist/src/serviceworker.js"
     },
-    "./worker": {
-      "import": "./dist/src/worker.js"
-    },
     "./package.json": "./dist/package.json",
     "./cli.js": {
       "import": "./dist/src/cli.js"
@@ -111,9 +108,6 @@
     "./shared.js": {
       "types": "./dist/src/shared.d.ts",
       "import": "./dist/src/shared.js"
-    },
-    "./worker.js": {
-      "import": "./dist/src/worker.js"
     },
     "./assets": {
       "types": "./dist/src/assets.d.ts",

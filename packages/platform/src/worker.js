@@ -3,7 +3,7 @@
  * Uses Node.js Worker threads with ServiceWorker simulation
  */
 
-import {createServiceWorkerGlobals, ServiceWorkerRuntime, createBucketStorage} from "@b9g/platform";
+import {createServiceWorkerGlobals, ServiceWorkerRuntime, createBucketStorage} from "./index.js";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
 import {parentPort} from "worker_threads";
 import * as Path from "path";
