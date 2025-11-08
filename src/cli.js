@@ -57,7 +57,7 @@ function getWorkerCount(options) {
 
 				if (options.verbose) {
 					platform.displayPlatformInfo(platformName);
-					console.info(`🔧 Worker configuration: ${workerCount} workers`);
+					console.info(`[CLI] ✅ Worker configuration: ${workerCount} workers`);
 				}
 
 				// Create platform with smart defaults
@@ -82,8 +82,8 @@ function getWorkerCount(options) {
 
 				const platformInstance = await platform.createPlatform(platformName, platformConfig);
 
-				console.info(`🔥 Starting development server...`);
-				console.info(`⚙️  Workers: ${workerCount}`);
+				console.info(`[CLI] ▶️  Starting development server...`);
+				console.info(`[CLI] ✅ Workers: ${workerCount}`);
 
 				// Set up file watching and building for development
 				const {Watcher} = await import("./watcher.ts");
@@ -95,20 +95,20 @@ function getWorkerCount(options) {
 					outDir,
 					onBuild: async (success, version) => {
 						if (success && serviceWorker) {
-							console.info(`🔄 Reloading Workers (v${version})...`);
+							console.info(`[CLI] 🔄 Reloading Workers (v${version})...`);
 							// The reloadWorkers method is on the platform instance, not the ServiceWorker runtime
 							if (platformInstance && typeof platformInstance.reloadWorkers === 'function') {
 								await platformInstance.reloadWorkers(version);
 							}
-							console.info(`✅ Workers reloaded`);
+							console.info(`[CLI] ✅ Workers reloaded`);
 						}
 					},
 				});
 
 				// Initial build and start watching
-				console.info(`📦 Building ${entrypoint}...`);
+				console.info(`[CLI] 🔄 Building ${entrypoint}...`);
 				await watcher.start();
-				console.info(`✅ Build complete, watching for changes...`);
+				console.info(`[CLI] ✅ Build complete, watching for changes...`);
 
 				// Load ServiceWorker app from built output
 				const builtEntrypoint = `${outDir}/server/app.js`;
@@ -130,13 +130,13 @@ function getWorkerCount(options) {
 
 				await server.listen();
 				console.info(
-					`🚀 Server running at http://${options.host}:${options.port}`,
+					`[CLI] ✅ Server running at http://${options.host}:${options.port}`,
 				);
-				console.info(`📁 Serving: ${entrypoint}`);
+				console.info(`[CLI] ➡️  Serving: ${entrypoint}`);
 
 				// Graceful shutdown
 				process.on("SIGINT", async () => {
-					console.info("\n🛑 Shutting down...");
+					console.info("\n[CLI] ⏹️  Shutting down...");
 					await watcher.stop();
 					await serviceWorker.dispose();
 					await platformInstance.dispose();
@@ -144,7 +144,7 @@ function getWorkerCount(options) {
 					process.exit(0);
 				});
 			} catch (error) {
-				console.error(`❌ Failed to start development server:`, error.message);
+				console.error(`[CLI] ❌ Failed to start development server:`, error.message);
 				console.error('Stack trace:', error.stack);
 				process.exit(1);
 			}
@@ -177,7 +177,7 @@ function getWorkerCount(options) {
 					platform.displayPlatformInfo(platformName);
 				}
 
-				console.info(`📦 Building for ${platformName}...`);
+				console.info(`[CLI] 🔄 Building for ${platformName}...`);
 
 				// Import build functionality
 				const {buildForProduction} = await import("./commands/build.js");
@@ -192,10 +192,10 @@ function getWorkerCount(options) {
 					workerCount,
 				});
 
-				console.info(`✅ Build complete`);
-				console.info(`📁 Output: ${options.outDir}`);
+				console.info(`[CLI] ✅ Build complete`);
+				console.info(`[CLI] ➡️  Output: ${options.outDir}`);
 			} catch (error) {
-				console.error(`❌ Build failed:`, error.message);
+				console.error(`[CLI] ❌ Build failed:`, error.message);
 				if (options.verbose) {
 					console.error(error.stack);
 				}
@@ -228,7 +228,7 @@ function getWorkerCount(options) {
 
 				if (options.verbose) {
 					platform.displayPlatformInfo(platformName);
-					console.info(`🔧 Worker configuration: ${workerCount} workers`);
+					console.info(`[CLI] ✅ Worker configuration: ${workerCount} workers`);
 				}
 
 				const platformConfig = {
@@ -250,7 +250,7 @@ function getWorkerCount(options) {
 
 				const platformInstance = await platform.createPlatform(platformName, platformConfig);
 
-				console.info(`🚀 Activating ServiceWorker...`);
+				console.info(`[CLI] ▶️  Activating ServiceWorker...`);
 
 				// Load ServiceWorker app
 				const serviceWorker = await platformInstance.loadServiceWorker(entrypoint, {
@@ -260,12 +260,12 @@ function getWorkerCount(options) {
 
 				// The ServiceWorker install/activate lifecycle will handle any self-generation
 				// Apps can use self.dirs.open("static") in their activate event to pre-render
-				console.info(`✅ ServiceWorker activated - check dist/ for generated content`);
+				console.info(`[CLI] ✅ ServiceWorker activated - check dist/ for generated content`);
 
 				await serviceWorker.dispose();
 				await platformInstance.dispose();
 			} catch (error) {
-				console.error(`❌ ServiceWorker activation failed:`, error.message);
+				console.error(`[CLI] ❌ ServiceWorker activation failed:`, error.message);
 				if (options.verbose) {
 					console.error(error.stack);
 				}
