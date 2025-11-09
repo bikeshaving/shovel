@@ -1,6 +1,6 @@
 {
   "name": "@b9g/node-webworker",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Minimal Web Worker shim for Node.js until native support arrives",
   "type": "module",
   "scripts": {
@@ -34,6 +34,20 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./package.json": "./dist/package.json"
+    "./package.json": "./dist/package.json",
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./worker-wrapper": {
+      "import": "./dist/src/worker-wrapper.js"
+    },
+    "./worker-wrapper.js": {
+      "import": "./dist/src/worker-wrapper.js"
+    }
   }
 }
