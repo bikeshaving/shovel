@@ -5,7 +5,78 @@
  */
 
 /**
+ * ExtendableEvent base class following ServiceWorker spec
+ */
+export class ExtendableEvent extends Event {
+	private promises: Promise<any>[] = [];
+	private pendingPromises: Set<Promise<any>>;
+
+	constructor(type: string, pendingPromises: Set<Promise<any>>) {
+		super(type);
+		this.pendingPromises = pendingPromises;
+	}
+
+	waitUntil(promise: Promise<any>): void {
+		this.promises.push(promise);
+		this.pendingPromises.add(promise);
+		promise.finally(() => this.pendingPromises.delete(promise));
+	}
+
+	getPromises(): Promise<any>[] {
+		return [...this.promises];
+	}
+}
+
+/**
  * ServiceWorker-style fetch event
+ */
+export class FetchEvent extends ExtendableEvent {
+	readonly request: Request;
+	private responsePromise: Promise<Response> | null = null;
+	private responded = false;
+
+	constructor(request: Request, pendingPromises: Set<Promise<any>>) {
+		super("fetch", pendingPromises);
+		this.request = request;
+	}
+
+	respondWith(response: Response | Promise<Response>): void {
+		if (this.responded) {
+			throw new Error("respondWith() already called");
+		}
+		this.responded = true;
+		this.responsePromise = Promise.resolve(response);
+	}
+
+	getResponse(): Promise<Response> | null {
+		return this.responsePromise;
+	}
+
+	hasResponded(): boolean {
+		return this.responded;
+	}
+}
+
+/**
+ * ServiceWorker-style install event
+ */
+export class InstallEvent extends ExtendableEvent {
+	constructor(pendingPromises: Set<Promise<any>>) {
+		super("install", pendingPromises);
+	}
+}
+
+/**
+ * ServiceWorker-style activate event
+ */
+export class ActivateEvent extends ExtendableEvent {
+	constructor(pendingPromises: Set<Promise<any>>) {
+		super("activate", pendingPromises);
+	}
+}
+
+/**
+ * Legacy interfaces for backward compatibility
  */
 export interface ShovelFetchEvent extends Event {
 	readonly type: "fetch";
@@ -14,33 +85,16 @@ export interface ShovelFetchEvent extends Event {
 	waitUntil(promise: Promise<any>): void;
 }
 
-/**
- * ServiceWorker-style install event
- */
 export interface ShovelInstallEvent extends Event {
 	readonly type: "install";
 	waitUntil(promise: Promise<any>): void;
 }
 
-/**
- * ServiceWorker-style activate event
- */
 export interface ShovelActivateEvent extends Event {
 	readonly type: "activate";
 	waitUntil(promise: Promise<any>): void;
 }
 
-/**
- * Static generation event for collecting routes
- */
-export interface ShovelStaticEvent extends Event {
-	readonly type: "static";
-	readonly detail: {
-		outDir: string;
-		baseUrl?: string;
-	};
-	waitUntil(promise: Promise<string[]>): void;
-}
 
 /**
  * ServiceWorker runtime that can be embedded in any platform
@@ -86,36 +140,28 @@ export class ServiceWorkerRuntime extends EventTarget {
 		}
 
 		return new Promise<Response>((resolve, reject) => {
-			let responded = false;
-			const promises: Promise<any>[] = [];
+			const event = new FetchEvent(request, this.pendingPromises);
 
-			const event: ShovelFetchEvent = Object.assign(new Event("fetch"), {
-				request,
-				respondWith: (response: Response | Promise<Response>) => {
-					if (responded) {
-						throw new Error("respondWith() already called");
-					}
-					responded = true;
-					Promise.resolve(response).then(resolve).catch(reject);
-				},
-				waitUntil: (promise: Promise<any>) => {
-					promises.push(promise);
-					this.pendingPromises.add(promise);
-					promise.finally(() => this.pendingPromises.delete(promise));
-				},
+			// Dispatch event asynchronously to allow listener errors to be deferred
+			process.nextTick(() => {
+				this.dispatchEvent(event);
+				
+				// Wait for all waitUntil promises (background tasks, don't block response)
+				const promises = event.getPromises();
+				if (promises.length > 0) {
+					Promise.allSettled(promises).catch(console.error);
+				}
 			});
-
-			this.dispatchEvent(event);
 
 			// Allow async event handlers to execute before checking response
 			setTimeout(() => {
-				if (!responded) {
+				if (event.hasResponded()) {
+					const responsePromise = event.getResponse()!;
+					responsePromise.then(resolve).catch(reject);
+				} else {
 					reject(new Error("No response provided for fetch event"));
 				}
 			}, 0);
-
-			// Wait for all promises
-			Promise.allSettled(promises).catch(console.error);
 		});
 	}
 
@@ -126,27 +172,26 @@ export class ServiceWorkerRuntime extends EventTarget {
 		if (this.isInstalled) return;
 
 		return new Promise<void>((resolve, reject) => {
-			const promises: Promise<any>[] = [];
-			let installCancelled = false;
+			const event = new InstallEvent(this.pendingPromises);
 
-			const event: ShovelInstallEvent = Object.assign(new Event("install"), {
-				waitUntil: (promise: Promise<any>) => {
-					promises.push(promise);
-					this.pendingPromises.add(promise);
-					promise.finally(() => this.pendingPromises.delete(promise));
-				},
+			// Dispatch event asynchronously to allow listener errors to be deferred
+			process.nextTick(() => {
+				this.dispatchEvent(event);
+				
+				const promises = event.getPromises();
+				if (promises.length === 0) {
+					this.isInstalled = true;
+					resolve();
+				} else {
+					// Use Promise.all() so waitUntil rejections fail the install
+					Promise.all(promises)
+						.then(() => {
+							this.isInstalled = true;
+							resolve();
+						})
+						.catch(reject);
+				}
 			});
-
-			this.dispatchEvent(event);
-
-			Promise.allSettled(promises)
-				.then(() => {
-					if (!installCancelled) {
-						this.isInstalled = true;
-						resolve();
-					}
-				})
-				.catch(reject);
 		});
 	}
 
@@ -160,63 +205,29 @@ export class ServiceWorkerRuntime extends EventTarget {
 		if (this.isActivated) return;
 
 		return new Promise<void>((resolve, reject) => {
-			const promises: Promise<any>[] = [];
+			const event = new ActivateEvent(this.pendingPromises);
 
-			const event: ShovelActivateEvent = Object.assign(new Event("activate"), {
-				waitUntil: (promise: Promise<any>) => {
-					promises.push(promise);
-					this.pendingPromises.add(promise);
-					promise.finally(() => this.pendingPromises.delete(promise));
-				},
-			});
-
-			this.dispatchEvent(event);
-
-			Promise.allSettled(promises)
-				.then(() => {
+			// Dispatch event asynchronously to allow listener errors to be deferred
+			process.nextTick(() => {
+				this.dispatchEvent(event);
+				
+				const promises = event.getPromises();
+				if (promises.length === 0) {
 					this.isActivated = true;
 					resolve();
-				})
-				.catch(reject);
-		});
-	}
-
-	/**
-	 * Collect static routes for pre-rendering
-	 */
-	async collectStaticRoutes(
-		outDir: string,
-		baseUrl?: string,
-	): Promise<string[]> {
-		return new Promise<string[]>((resolve, reject) => {
-			let routes: string[] = [];
-			const promises: Promise<any>[] = [];
-
-			const event: ShovelStaticEvent = Object.assign(new Event("static"), {
-				detail: {outDir, baseUrl},
-				waitUntil: (promise: Promise<string[]>) => {
-					promises.push(
-						promise.then((routeList) => {
-							routes = routes.concat(routeList);
-						}),
-					);
-					this.pendingPromises.add(promise);
-					promise.finally(() => this.pendingPromises.delete(promise));
-				},
+				} else {
+					// Use Promise.all() so waitUntil rejections fail the activation
+					Promise.all(promises)
+						.then(() => {
+							this.isActivated = true;
+							resolve();
+						})
+						.catch(reject);
+				}
 			});
-
-			this.dispatchEvent(event);
-
-			if (promises.length === 0) {
-				// No static event listeners, return empty routes
-				resolve([]);
-			} else {
-				Promise.allSettled(promises)
-					.then(() => resolve([...new Set(routes)])) // Deduplicate
-					.catch(reject);
-			}
 		});
 	}
+
 
 	/**
 	 * Check if ready to handle requests

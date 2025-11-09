@@ -401,8 +401,11 @@ test(
 		
 		const request = new Request("http://localhost/error");
 		
-		// Should reject when listener throws - either with the original error or timeout
-		await expect(runtime.handleRequest(request)).rejects.toThrow();
+		// Should reject with timeout error (no response provided) due to throwing listener
+		await expect(runtime.handleRequest(request)).rejects.toThrow("No response provided for fetch event");
+		
+		// Note: The thrown error becomes an uncaught exception per EventTarget spec
+		// We can't easily test this without potentially crashing the test runner
 	},
 	TIMEOUT
 );
@@ -432,6 +435,87 @@ test(
 		// Listener should be removed after reset
 		runtime.dispatchEvent(new Event("test"));
 		expect(listenerCalled).toBe(false);
+	},
+	TIMEOUT
+);
+
+test(
+	"ServiceWorker install waitUntil rejection handling",
+	async () => {
+		const { ServiceWorkerRuntime } = await import("../src/index.js");
+		
+		const runtime = new ServiceWorkerRuntime();
+		
+		runtime.addEventListener("install", (event) => {
+			// Add a promise that will reject asynchronously
+			event.waitUntil(
+				new Promise((_, reject) => {
+					setTimeout(() => reject(new Error("Install task failed")), 10);
+				})
+			);
+		});
+		
+		// Install should fail when waitUntil promise rejects
+		await expect(runtime.install()).rejects.toThrow("Install task failed");
+		
+		// Runtime should not be installed
+		expect(runtime.ready).toBe(false);
+	},
+	TIMEOUT
+);
+
+test(
+	"ServiceWorker activate waitUntil rejection handling",
+	async () => {
+		const { ServiceWorkerRuntime } = await import("../src/index.js");
+		
+		const runtime = new ServiceWorkerRuntime();
+		
+		// Install first without errors
+		await runtime.install();
+		
+		runtime.addEventListener("activate", (event) => {
+			// Add a promise that will reject asynchronously
+			event.waitUntil(
+				new Promise((_, reject) => {
+					setTimeout(() => reject(new Error("Activation task failed")), 10);
+				})
+			);
+		});
+		
+		// Activate should fail when waitUntil promise rejects
+		await expect(runtime.activate()).rejects.toThrow("Activation task failed");
+		
+		// Runtime should not be ready (installed but not activated)
+		expect(runtime.ready).toBe(false);
+	},
+	TIMEOUT
+);
+
+test(
+	"ServiceWorker fetch waitUntil rejection does not block response",
+	async () => {
+		const { ServiceWorkerRuntime } = await import("../src/index.js");
+		
+		const runtime = new ServiceWorkerRuntime();
+		
+		runtime.addEventListener("fetch", (event) => {
+			event.respondWith(new Response("Hello World"));
+			// Add a background task that will reject (should not affect response)
+			event.waitUntil(
+				new Promise((_, reject) => {
+					setTimeout(() => reject(new Error("Background task failed")), 10);
+				})
+			);
+		});
+		
+		await runtime.install();
+		await runtime.activate();
+		
+		const request = new Request("http://localhost/test");
+		// Should successfully get response despite waitUntil rejection
+		const response = await runtime.handleRequest(request);
+		expect(await response.text()).toBe("Hello World");
 	},
 	TIMEOUT
 );
