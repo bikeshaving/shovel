@@ -22,7 +22,7 @@
   "deprecation": "This package will be deprecated when Node.js implements native Web Workers. See: https://github.com/nodejs/node/issues/43583",
   "dependencies": {},
   "devDependencies": {
-    "@b9g/libuild": "^0.1.10",
+    "@b9g/libuild": "^0.1.11",
     "bun-types": "latest",
     "@types/node": "^18.0.0"
   },

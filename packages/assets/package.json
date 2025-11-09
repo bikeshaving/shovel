@@ -6,7 +6,7 @@
     "build": "libuild build"
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.10"
+    "@b9g/libuild": "^0.1.11"
   },
   "private": true,
   "module": "./dist/src/index.js",

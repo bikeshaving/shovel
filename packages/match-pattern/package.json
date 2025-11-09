@@ -14,7 +14,7 @@
     }
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.10",
+    "@b9g/libuild": "^0.1.11",
     "bun-types": "latest"
   },
   "private": true,

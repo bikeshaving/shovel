@@ -1,6 +1,6 @@
 {
   "name": "@b9g/platform-node",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Node.js platform adapter for Shovel with hot reloading and ESBuild integration",
   "type": "module",
   "scripts": {
@@ -24,7 +24,7 @@
     "@aws-sdk/client-s3": "^3.0.0"
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.10",
+    "@b9g/libuild": "^0.1.11",
     "bun-types": "latest",
     "@types/node": "^18.0.0"
   },

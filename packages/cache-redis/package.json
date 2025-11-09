@@ -30,7 +30,7 @@
     "redis": "^4.6.10"
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.10"
+    "@b9g/libuild": "^0.1.11"
   },
   "repository": {
     "type": "git",
