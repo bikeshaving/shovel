@@ -18,7 +18,6 @@
     "lint:fix": "eslint --ext .js,.jsx,.ts,.tsx . --fix"
   },
   "dependencies": {
-    "@b9g/node-webworker": "workspace:*",
     "commander": "^13.1.0",
     "esbuild": "^0.19.12",
     "magic-string": "^0.30.5",
@@ -26,13 +25,14 @@
     "source-map": "^0.7.4"
   },
   "peerDependencies": {
-    "@b9g/platform": "^0.1.0",
-    "@b9g/platform-node": "^0.1.0",
-    "@b9g/platform-cloudflare": "^0.1.0",
-    "@b9g/platform-bun": "^0.1.0",
-    "@b9g/cache": "^0.1.0",
-    "@b9g/filesystem": "^0.1.0",
-    "@b9g/http-errors": "^0.1.0"
+    "@b9g/node-webworker": "workspace:*",
+    "@b9g/platform": "workspace:*",
+    "@b9g/platform-node": "workspace:*",
+    "@b9g/platform-cloudflare": "workspace:*",
+    "@b9g/platform-bun": "workspace:*",
+    "@b9g/cache": "workspace:*",
+    "@b9g/filesystem": "workspace:*",
+    "@b9g/http-errors": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@b9g/platform": {
@@ -68,7 +68,7 @@
     "@b9g/platform-cloudflare": "workspace:*",
     "@b9g/router": "workspace:*",
     "@b9g/assets": "workspace:*",
-    "@b9g/libuild": "^0.1.10",
+    "@b9g/libuild": "^0.1.11",
     "@types/bun": "^1.2.2",
     "typescript": "^5.7.3"
   },
