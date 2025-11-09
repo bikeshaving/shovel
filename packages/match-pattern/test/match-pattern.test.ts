@@ -1,6 +1,6 @@
 import {test, expect, describe} from "bun:test";
 
-import {MatchPattern, type MatchPatternResult} from "./match-pattern.js";
+import {MatchPattern, type MatchPatternResult} from "../src/match-pattern.js";
 
 describe("MatchPattern", () => {
 	test("should be a subclass of URLPattern", () => {

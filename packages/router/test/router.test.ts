@@ -1,5 +1,5 @@
 import {test, expect, describe} from "bun:test";
-import {Router} from "./index.js";
+import {Router} from "../src/index.js";
 
 describe("Router", () => {
 	test("can create a router instance", () => {

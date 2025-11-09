@@ -1,6 +1,6 @@
 import {test, expect, describe, beforeEach} from "bun:test";
-import {CustomCacheStorage} from "./cache-storage.js";
-import {MemoryCache} from "./memory.js";
+import {CustomCacheStorage} from "../src/cache-storage.js";
+import {MemoryCache} from "../src/memory.js";
 
 describe("CustomCacheStorage", () => {
 	let cacheStorage: CustomCacheStorage;

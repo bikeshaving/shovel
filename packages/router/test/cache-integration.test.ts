@@ -1,5 +1,5 @@
 import {test, expect, describe, beforeEach} from "bun:test";
-import {Router} from "./index.js";
+import {Router} from "../src/index.js";
 import {CustomCacheStorage} from "@b9g/cache/cache-storage.js";
 import {MemoryCache} from "@b9g/cache/memory.js";
 

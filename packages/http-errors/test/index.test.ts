@@ -17,7 +17,7 @@ import {
 	BadGateway,
 	ServiceUnavailable,
 	GatewayTimeout,
-} from "./index.js";
+} from "../src/index.js";
 
 describe("HTTPError", () => {
 	test("should create basic error with status code", () => {
