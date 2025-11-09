@@ -1,6 +1,6 @@
 {
   "name": "@b9g/platform-node",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "description": "Node.js platform adapter for Shovel with hot reloading and ESBuild integration",
   "type": "module",
   "scripts": {

@@ -1,6 +1,6 @@
 {
   "name": "@b9g/http-errors",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "HTTP error classes for web applications",
   "keywords": [

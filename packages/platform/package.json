@@ -1,6 +1,6 @@
 {
   "name": "@b9g/platform",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Base Platform interface and types for Shovel deployment adapters",
   "type": "module",
   "scripts": {
@@ -112,14 +112,6 @@
       "types": "./dist/src/directory-storage.d.ts",
       "import": "./dist/src/directory-storage.js"
     },
-    "./worker": {
-      "types": "./dist/src/worker.d.ts",
-      "import": "./dist/src/worker.js"
-    },
-    "./worker.js": {
-      "types": "./dist/src/worker.d.ts",
-      "import": "./dist/src/worker.js"
-    },
     "./worker-pool": {
       "types": "./dist/src/worker-pool.d.ts",
       "import": "./dist/src/worker-pool.js"
@@ -127,6 +119,12 @@
     "./worker-pool.js": {
       "types": "./dist/src/worker-pool.d.ts",
       "import": "./dist/src/worker-pool.js"
+    },
+    "./worker-web": {
+      "import": "./dist/src/worker-web.js"
+    },
+    "./worker-web.js": {
+      "import": "./dist/src/worker-web.js"
     }
   }
 }
