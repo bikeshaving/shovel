@@ -9,7 +9,13 @@
     "test": "bun test"
   },
   "peerDependencies": {
-    "@types/wicg-file-system-access": "^2023.10.7"
+    "@types/wicg-file-system-access": "^2023.10.7",
+    "@types/node": "^18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@types/node": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@b9g/libuild": "^0.1.10",

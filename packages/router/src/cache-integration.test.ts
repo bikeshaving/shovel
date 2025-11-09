@@ -1,16 +1,16 @@
 import {test, expect, describe, beforeEach} from "bun:test";
 import {Router} from "./index.js";
-import {CacheStorage} from "@b9g/cache/cache-storage.js";
-import {MemoryCache} from "@b9g/cache/memory-cache.js";
+import {CustomCacheStorage} from "@b9g/cache/cache-storage.js";
+import {MemoryCache} from "@b9g/cache/memory.js";
 
 describe("Router Cache Integration", () => {
 	let router: Router;
-	let caches: CacheStorage;
+	let caches: CustomCacheStorage;
 
 	beforeEach(() => {
-		caches = new CacheStorage();
-		caches.register("posts", () => new MemoryCache("posts"));
-		caches.register("users", () => new MemoryCache("users"));
+		// Create a factory that creates MemoryCache instances
+		const factory = (name: string) => new MemoryCache(name);
+		caches = new CustomCacheStorage(factory);
 
 		router = new Router({caches});
 	});
@@ -141,10 +141,15 @@ describe("Router Cache Integration", () => {
 	});
 
 	test("handles cache opening errors gracefully", async () => {
-		// Register a cache that will fail to open
-		caches.register("failing-cache", () => {
-			throw new Error("Cache creation failed");
-		});
+		// Create a factory that fails for specific cache names
+		const failingFactory = (name: string) => {
+			if (name === "failing-cache") {
+				throw new Error("Cache creation failed");
+			}
+			return new MemoryCache(name);
+		};
+		const failingCaches = new CustomCacheStorage(failingFactory);
+		const failingRouter = new Router({caches: failingCaches});
 
 		let capturedContext: any = null;
 		const handler = async (request: Request, context: any) => {
@@ -152,7 +157,7 @@ describe("Router Cache Integration", () => {
 			return new Response("OK");
 		};
 
-		router
+		failingRouter
 			.route({
 				pattern: "/api/test",
 				cache: {name: "failing-cache"},
@@ -160,7 +165,7 @@ describe("Router Cache Integration", () => {
 			.get(handler);
 
 		const request = new Request("http://example.com/api/test");
-		const response = await router.match(request);
+		const response = await failingRouter.match(request);
 
 		// Request should still succeed
 		expect(response).not.toBeNull();
@@ -168,7 +173,7 @@ describe("Router Cache Integration", () => {
 
 		// Cache should be undefined, but caches should still be available
 		expect(capturedContext.cache).toBeUndefined();
-		expect(capturedContext.caches).toBe(caches);
+		expect(capturedContext.caches).toBe(failingCaches);
 	});
 
 	test("can access different caches through context.caches", async () => {

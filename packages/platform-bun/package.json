@@ -19,9 +19,9 @@
     "jsx"
   ],
   "dependencies": {
-    "@b9g/platform": "^0.1.1",
-    "@b9g/cache": "^0.1.1",
-    "@b9g/assets": "^0.1.1"
+    "@b9g/platform": "workspace:*",
+    "@b9g/cache": "workspace:*",
+    "@b9g/assets": "workspace:*"
   },
   "devDependencies": {
     "@b9g/libuild": "^0.1.10",

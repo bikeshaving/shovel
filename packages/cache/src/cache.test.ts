@@ -1,45 +1,36 @@
 import {test, expect, describe, beforeEach} from "bun:test";
-import {CacheStorage} from "./cache-storage.js";
-import {MemoryCache} from "./memory-cache.js";
+import {CustomCacheStorage} from "./cache-storage.js";
+import {MemoryCache} from "./memory.js";
 
-describe("CacheStorage", () => {
-	let cacheStorage: CacheStorage;
+describe("CustomCacheStorage", () => {
+	let cacheStorage: CustomCacheStorage;
 
 	beforeEach(() => {
-		cacheStorage = new CacheStorage();
+		// Create factory that handles different cache types
+		const factory = (name: string) => new MemoryCache(name);
+		cacheStorage = new CustomCacheStorage(factory);
 	});
 
-	test("can register and open caches", async () => {
-		cacheStorage.register("test-cache", () => new MemoryCache("test-cache"));
-
+	test("can open caches", async () => {
 		const cache = await cacheStorage.open("test-cache");
 		expect(cache).toBeInstanceOf(MemoryCache);
 	});
 
 	test("returns same instance for same cache name", async () => {
-		cacheStorage.register("test-cache", () => new MemoryCache("test-cache"));
-
 		const cache1 = await cacheStorage.open("test-cache");
 		const cache2 = await cacheStorage.open("test-cache");
 
 		expect(cache1).toBe(cache2);
 	});
 
-	test("throws error for unregistered cache", async () => {
-		expect(async () => {
-			await cacheStorage.open("nonexistent");
-		}).toThrow();
-	});
-
 	test("can check if cache exists", async () => {
 		expect(await cacheStorage.has("test-cache")).toBe(false);
 
-		cacheStorage.register("test-cache", () => new MemoryCache("test-cache"));
+		await cacheStorage.open("test-cache"); // Creates and opens cache
 		expect(await cacheStorage.has("test-cache")).toBe(true);
 	});
 
 	test("can delete caches", async () => {
-		cacheStorage.register("test-cache", () => new MemoryCache("test-cache"));
 		await cacheStorage.open("test-cache"); // Create instance
 
 		expect(await cacheStorage.has("test-cache")).toBe(true);
@@ -48,8 +39,8 @@ describe("CacheStorage", () => {
 	});
 
 	test("can list cache keys", async () => {
-		cacheStorage.register("cache1", () => new MemoryCache("cache1"));
-		cacheStorage.register("cache2", () => new MemoryCache("cache2"));
+		await cacheStorage.open("cache1");
+		await cacheStorage.open("cache2");
 
 		const keys = await cacheStorage.keys();
 		expect(keys).toEqual(["cache1", "cache2"]);

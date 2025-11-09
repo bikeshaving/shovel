@@ -23,7 +23,8 @@
   "dependencies": {},
   "devDependencies": {
     "@b9g/libuild": "^0.1.10",
-    "bun-types": "latest"
+    "bun-types": "latest",
+    "@types/node": "^18.0.0"
   },
   "private": true,
   "module": "./dist/src/index.js",
