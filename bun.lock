@@ -14,6 +14,7 @@
       "devDependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/cache": "workspace:*",
+        "@b9g/crank": "^0.7.2",
         "@b9g/filesystem": "workspace:*",
         "@b9g/http-errors": "workspace:*",
         "@b9g/libuild": "^0.1.10",
@@ -347,6 +348,8 @@
     "@b9g/cache": ["@b9g/cache@workspace:packages/cache"],
 
     "@b9g/cache-redis": ["@b9g/cache-redis@workspace:packages/cache-redis"],
+
+    "@b9g/crank": ["@b9g/crank@0.7.2", "", {}, "sha512-LAYzLNcSii2Y3KRnT/rBf3HZx3MXI0kJdM8BLUmY2/758tUmgK8wqWdUSGPkRkBhbm3bhVFFfltC18NMkr+1Ng=="],
 
     "@b9g/filesystem": ["@b9g/filesystem@workspace:packages/filesystem"],
 

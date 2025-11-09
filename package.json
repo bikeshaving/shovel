@@ -18,12 +18,12 @@
     "lint:fix": "eslint --ext .js,.jsx,.ts,.tsx . --fix"
   },
   "dependencies": {
+    "@b9g/node-webworker": "workspace:*",
     "commander": "^13.1.0",
     "esbuild": "^0.19.12",
     "magic-string": "^0.30.5",
     "mime-types": "^2.1.35",
-    "source-map": "^0.7.4",
-    "@b9g/node-webworker": "workspace:*"
+    "source-map": "^0.7.4"
   },
   "peerDependencies": {
     "@b9g/platform": "^0.1.0",
@@ -59,6 +59,7 @@
   },
   "devDependencies": {
     "@b9g/cache": "workspace:*",
+    "@b9g/crank": "^0.7.2",
     "@b9g/filesystem": "workspace:*",
     "@b9g/http-errors": "workspace:*",
     "@b9g/platform": "workspace:*",

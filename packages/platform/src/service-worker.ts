@@ -84,9 +84,12 @@ export class ServiceWorkerRuntime extends EventTarget {
 
 			this.dispatchEvent(event);
 
-			if (!responded) {
-				reject(new Error("No response provided for fetch event"));
-			}
+			// Allow async event handlers to execute before checking response
+			setTimeout(() => {
+				if (!responded) {
+					reject(new Error("No response provided for fetch event"));
+				}
+			}, 0);
 
 			// Wait for all promises
 			Promise.allSettled(promises).catch(console.error);
@@ -216,13 +219,6 @@ export class ServiceWorkerRuntime extends EventTarget {
 		this.isInstalled = false;
 		this.isActivated = false;
 		this.pendingPromises.clear();
-		// Remove all event listeners
-		const listeners = (this as any)._listeners;
-		if (listeners) {
-			for (const type in listeners) {
-				delete listeners[type];
-			}
-		}
 	}
 }
 

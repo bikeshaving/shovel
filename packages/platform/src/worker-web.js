@@ -33,7 +33,7 @@ const caches = new CustomCacheStorage((name) => {
 const buckets = createBucketStorage(process.cwd() + '/dist');
 
 // Create ServiceWorker runtime
-const runtime = new ServiceWorkerRuntime();
+let runtime = new ServiceWorkerRuntime();
 createServiceWorkerGlobals(runtime, { caches, buckets });
 
 let workerSelf = runtime;
@@ -69,7 +69,8 @@ async function loadServiceWorker(version, entrypoint) {
             console.info(`[Worker] Hot reload detected: ${loadedVersion} -> ${version}`);
             console.info('[Worker] Creating completely fresh ServiceWorker context');
             
-            runtime.reset();
+            // Create a completely new runtime instance instead of trying to reset
+            runtime = new ServiceWorkerRuntime();
             createServiceWorkerGlobals(runtime, { caches, buckets });
             workerSelf = runtime;
             currentApp = null;

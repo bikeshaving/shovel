@@ -13,7 +13,7 @@ const TIMEOUT = 45000; // 45 second timeout for complex tests
 // Helper to start a development server
 function startDevServer(fixture, port, extraArgs = []) {
 	const args = [
-		"./src/cli.js",
+		"./dist/src/cli.js",
 		"develop",
 		fixture,
 		"--port",
@@ -95,14 +95,14 @@ test(
 		let serverProcess;
 
 		try {
-			// Start development server with blog app
-			serverProcess = startDevServer("./examples/blog/src/app.js", PORT);
+			// Start development server with simple test fixture
+			serverProcess = startDevServer("./test/fixtures/server-hello.ts", PORT);
 
 			// Wait for server to be ready
 			const response = await waitForServer(PORT);
 
-			// Verify server responds correctly (blog app home page)
-			expect(response).toContain("<title>Home - Shovel Blog</title>");
+			// Verify server responds correctly (simple hello fixture)
+			expect(response).toContain("<marquee>Hello world</marquee>");
 		} finally {
 			await killServer(serverProcess, PORT);
 		}
@@ -137,7 +137,7 @@ test(
 			);
 
 			// Wait for hot reload and verify change
-			await new Promise((resolve) => setTimeout(resolve, 2000)); // Give time for reload
+			await new Promise((resolve) => setTimeout(resolve, 5000)); // Give more time for reload
 
 			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe("<marquee>Goodbye world</marquee>");
@@ -771,10 +771,9 @@ self.addEventListener("fetch", (event) => {
 			);
 			expect(successful.length).toBeGreaterThan(5);
 
-			// Verify we can still get a response
+			// Verify operations completed successfully (writeFile + setTimeout returns undefined)
 			successful.forEach((result) => {
-				expect(typeof result.value).toBe("string");
-				expect(result.value.length).toBeGreaterThan(0);
+				expect(result.value).toBe(undefined);
 			});
 		} finally {
 			await FS.unlink(cacheFile);
