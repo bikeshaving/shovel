@@ -1,6 +1,9 @@
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
 import {test, expect} from "bun:test";
+import {join, dirname} from "path";
+import {tmpdir} from "os";
+import {mkdtemp} from "fs/promises";
 
 /**
  * Development server hot reload tests
@@ -9,6 +12,38 @@ import {test, expect} from "bun:test";
  */
 
 const TIMEOUT = 45000; // 45 second timeout for complex tests
+
+// Helper to create temporary fixture copy
+async function createTempFixture(fixtureName) {
+	const tempDir = await mkdtemp(join(tmpdir(), "shovel-test-"));
+	const tempFile = join(tempDir, fixtureName);
+	const sourceFile = join("./test/fixtures", fixtureName);
+	
+	await FS.copyFile(sourceFile, tempFile);
+	
+	return {
+		path: tempFile,
+		dir: tempDir,
+		async copyFrom(sourceFixture) {
+			const sourcePath = join("./test/fixtures", sourceFixture);
+			await FS.copyFile(sourcePath, tempFile);
+		},
+		async addDependency(dependencyFixture) {
+			const depFile = join(this.dir, dependencyFixture);
+			const sourceFile = join("./test/fixtures", dependencyFixture);
+			await FS.copyFile(sourceFile, depFile);
+			return depFile;
+		},
+		async copyDependencyFrom(dependencyFixture, sourceFixture) {
+			const depFile = join(this.dir, dependencyFixture);
+			const sourceFile = join("./test/fixtures", sourceFixture);
+			await FS.copyFile(sourceFile, depFile);
+		},
+		async cleanup() {
+			await FS.rm(tempDir, { recursive: true, force: true });
+		}
+	};
+}
 
 // Helper to start a development server
 function startDevServer(fixture, port, extraArgs = []) {
@@ -115,26 +150,21 @@ test(
 	async () => {
 		const PORT = 13311;
 		let serverProcess;
-
-		// Backup original file
-		const originalContents = await FS.readFile(
-			"./test/fixtures/server-hello.ts",
-			"utf8",
-		);
+		let tempFixture;
 
 		try {
-			// Start development server
-			serverProcess = startDevServer("./test/fixtures/server-hello.ts", PORT);
+			// Create temporary fixture copy
+			tempFixture = await createTempFixture("server-hello.ts");
+
+			// Start development server with temporary fixture
+			serverProcess = startDevServer(tempFixture.path, PORT);
 
 			// Wait for initial response
 			const initialResponse = await waitForServer(PORT);
 			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
 
-			// Modify the root file
-			await FS.copyFile(
-				"./test/fixtures/server-goodbye.ts",
-				"./test/fixtures/server-hello.ts",
-			);
+			// Modify the temporary file (simulate file change)
+			await tempFixture.copyFrom("server-goodbye.ts");
 
 			// Wait for hot reload and verify change
 			await new Promise((resolve) => setTimeout(resolve, 5000)); // Give more time for reload
@@ -142,9 +172,10 @@ test(
 			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe("<marquee>Goodbye world</marquee>");
 		} finally {
-			// Restore original file
-			await FS.writeFile("./test/fixtures/server-hello.ts", originalContents);
 			await killServer(serverProcess, PORT);
+			if (tempFixture) {
+				await tempFixture.cleanup();
+			}
 		}
 	},
 	TIMEOUT,
@@ -155,19 +186,15 @@ test(
 	async () => {
 		const PORT = 13312;
 		let serverProcess;
-
-		// Backup original dependency file
-		const originalDependencyContents = await FS.readFile(
-			"./test/fixtures/server-dependency-hello.ts",
-			"utf8",
-		);
+		let tempFixture;
 
 		try {
-			// Start development server with file that has dependencies
-			serverProcess = startDevServer(
-				"./test/fixtures/server-dependent.ts",
-				PORT,
-			);
+			// Create temporary fixture copy with its dependency
+			tempFixture = await createTempFixture("server-dependent.ts");
+			await tempFixture.addDependency("server-dependency-hello.ts");
+
+			// Start development server with temporary fixture that has dependencies
+			serverProcess = startDevServer(tempFixture.path, PORT);
 
 			// Wait for initial response
 			const initialResponse = await waitForServer(PORT);
@@ -175,10 +202,10 @@ test(
 				"<marquee>Hello from dependency-hello.ts</marquee>",
 			);
 
-			// Modify the dependency file
-			await FS.copyFile(
-				"./test/fixtures/server-dependency-goodbye.ts",
-				"./test/fixtures/server-dependency-hello.ts",
+			// Modify the dependency file (simulate dependency change)
+			await tempFixture.copyDependencyFrom(
+				"server-dependency-hello.ts",
+				"server-dependency-goodbye.ts"
 			);
 
 			// Wait for hot reload and verify dependency change propagated
@@ -189,12 +216,10 @@ test(
 				"<marquee>Goodbye from dependency-hello.ts</marquee>",
 			);
 		} finally {
-			// Restore original dependency file
-			await FS.writeFile(
-				"./test/fixtures/server-dependency-hello.ts",
-				originalDependencyContents,
-			);
 			await killServer(serverProcess, PORT);
+			if (tempFixture) {
+				await tempFixture.cleanup();
+			}
 		}
 	},
 	TIMEOUT,
@@ -255,26 +280,21 @@ test(
 	async () => {
 		const PORT = 13314;
 		let serverProcess;
-
-		// Backup original file
-		const originalContents = await FS.readFile(
-			"./test/fixtures/server-hello.ts",
-			"utf8",
-		);
+		let tempFixture;
 
 		try {
-			// Start development server with multiple workers
-			serverProcess = startDevServer("./test/fixtures/server-hello.ts", PORT);
+			// Create temporary fixture copy
+			tempFixture = await createTempFixture("server-hello.ts");
+
+			// Start development server with temporary fixture
+			serverProcess = startDevServer(tempFixture.path, PORT);
 
 			// Wait for initial response
 			const initialResponse = await waitForServer(PORT);
 			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
 
-			// Modify the file
-			await FS.copyFile(
-				"./test/fixtures/server-goodbye.ts",
-				"./test/fixtures/server-hello.ts",
-			);
+			// Modify the temporary file
+			await tempFixture.copyFrom("server-goodbye.ts");
 
 			// Make multiple concurrent requests during reload
 			await new Promise((resolve) => setTimeout(resolve, 1000)); // Start reload
@@ -293,9 +313,10 @@ test(
 			const finalResponse = await fetchWithRetry(PORT);
 			expect(finalResponse).toBe("<marquee>Goodbye world</marquee>");
 		} finally {
-			// Restore original file
-			await FS.writeFile("./test/fixtures/server-hello.ts", originalContents);
 			await killServer(serverProcess, PORT);
+			if (tempFixture) {
+				await tempFixture.cleanup();
+			}
 		}
 	},
 	TIMEOUT,
@@ -306,26 +327,21 @@ test(
 	async () => {
 		const PORT = 13315;
 		let serverProcess;
-
-		// Backup original file
-		const originalContents = await FS.readFile(
-			"./test/fixtures/server-hello.ts",
-			"utf8",
-		);
+		let tempFixture;
 
 		try {
-			// Start development server
-			serverProcess = startDevServer("./test/fixtures/server-hello.ts", PORT);
+			// Create temporary fixture copy
+			tempFixture = await createTempFixture("server-hello.ts");
+
+			// Start development server with temporary fixture
+			serverProcess = startDevServer(tempFixture.path, PORT);
 
 			// Wait for initial response
 			const initialResponse = await waitForServer(PORT);
 			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
 
-			// Write malformed TypeScript
-			await FS.writeFile(
-				"./test/fixtures/server-hello.ts",
-				"this is not valid typescript!!!",
-			);
+			// Write malformed TypeScript to temporary file
+			await FS.writeFile(tempFixture.path, "this is not valid typescript!!!");
 
 			// Wait a bit for attempted reload
 			await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -335,9 +351,10 @@ test(
 			expect(typeof response).toBe("string");
 			expect(response.length).toBeGreaterThan(0);
 		} finally {
-			// Restore original file
-			await FS.writeFile("./test/fixtures/server-hello.ts", originalContents);
 			await killServer(serverProcess, PORT);
+			if (tempFixture) {
+				await tempFixture.cleanup();
+			}
 		}
 	},
 	TIMEOUT,
