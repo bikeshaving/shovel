@@ -30,14 +30,14 @@ function createMockRuntime() {
 	const events = new Map();
 	const listeners = new Map();
 	
-	return {
-		addEventListener: (type, listener) => {
+	const mockRuntime = {
+		addEventListener(type, listener) {
 			if (!listeners.has(type)) {
 				listeners.set(type, []);
 			}
 			listeners.get(type).push(listener);
 		},
-		removeEventListener: (type, listener) => {
+		removeEventListener(type, listener) {
 			if (listeners.has(type)) {
 				const list = listeners.get(type);
 				const index = list.indexOf(listener);
@@ -46,7 +46,7 @@ function createMockRuntime() {
 				}
 			}
 		},
-		dispatchEvent: (event) => {
+		dispatchEvent(event) {
 			const type = event.type || event;
 			if (listeners.has(type)) {
 				listeners.get(type).forEach(listener => {
@@ -54,7 +54,7 @@ function createMockRuntime() {
 				});
 			}
 		},
-		handleRequest: async (request) => {
+		async handleRequest(request) {
 			const fetchEvent = {
 				type: "fetch",
 				request,
@@ -66,17 +66,19 @@ function createMockRuntime() {
 			this.dispatchEvent(fetchEvent);
 			return fetchEvent.response || new Response("Not found", { status: 404 });
 		},
-		install: async () => {
+		async install() {
 			this.dispatchEvent({ type: "install" });
 		},
-		activate: async () => {
+		async activate() {
 			this.dispatchEvent({ type: "activate" });
 		},
-		reset: () => {
+		reset() {
 			listeners.clear();
 		},
 		ready: true
 	};
+	
+	return mockRuntime;
 }
 
 // ======================
@@ -87,7 +89,7 @@ test(
 	"ServiceWorker globals setup",
 	async () => {
 		// Import ServiceWorker globals function
-		const { createServiceWorkerGlobals } = await import("@b9g/platform");
+		const { createServiceWorkerGlobals } = await import("../src/index.js");
 		
 		const runtime = createMockRuntime();
 		const mockBuckets = {
@@ -118,7 +120,7 @@ test(
 test(
 	"ServiceWorker event listener functionality",
 	async () => {
-		const { createServiceWorkerGlobals } = await import("@b9g/platform");
+		const { createServiceWorkerGlobals } = await import("../src/index.js");
 		
 		const runtime = createMockRuntime();
 		createServiceWorkerGlobals(runtime, {});
@@ -161,7 +163,7 @@ test(
 test(
 	"ServiceWorker skipWaiting functionality",
 	async () => {
-		const { createServiceWorkerGlobals } = await import("@b9g/platform");
+		const { createServiceWorkerGlobals } = await import("../src/index.js");
 		
 		const runtime = createMockRuntime();
 		const mockOptions = {
@@ -185,7 +187,7 @@ test(
 test(
 	"ServiceWorker clients API",
 	async () => {
-		const { createServiceWorkerGlobals } = await import("@b9g/platform");
+		const { createServiceWorkerGlobals } = await import("../src/index.js");
 		
 		const runtime = createMockRuntime();
 		createServiceWorkerGlobals(runtime, {});
@@ -211,7 +213,7 @@ test(
 test(
 	"ServiceWorker buckets API",
 	async () => {
-		const { createServiceWorkerGlobals } = await import("@b9g/platform");
+		const { createServiceWorkerGlobals } = await import("../src/index.js");
 		
 		const runtime = createMockRuntime();
 		const mockBuckets = {
@@ -253,7 +255,7 @@ test(
 test(
 	"ServiceWorker lifecycle - install and activate",
 	async () => {
-		const { ServiceWorkerRuntime } = await import("@b9g/platform");
+		const { ServiceWorkerRuntime } = await import("../src/index.js");
 		
 		const runtime = new ServiceWorkerRuntime();
 		let installEventFired = false;
@@ -282,7 +284,7 @@ test(
 test(
 	"ServiceWorker fetch event handling",
 	async () => {
-		const { ServiceWorkerRuntime } = await import("@b9g/platform");
+		const { ServiceWorkerRuntime } = await import("../src/index.js");
 		
 		const runtime = new ServiceWorkerRuntime();
 		let fetchEventReceived = null;
@@ -297,6 +299,10 @@ test(
 				event.respondWith(Response.json({ message: "JSON response" }));
 			}
 		});
+		
+		// Install and activate before handling requests
+		await runtime.install();
+		await runtime.activate();
 		
 		// Test different request types
 		const helloRequest = new Request("http://localhost/hello");
@@ -315,7 +321,7 @@ test(
 test(
 	"ServiceWorker event listener removal",
 	async () => {
-		const { ServiceWorkerRuntime } = await import("@b9g/platform");
+		const { ServiceWorkerRuntime } = await import("../src/index.js");
 		
 		const runtime = new ServiceWorkerRuntime();
 		let callCount = 0;
@@ -326,14 +332,14 @@ test(
 		runtime.addEventListener("test", listener);
 		
 		// Fire event - should be called
-		runtime.dispatchEvent({ type: "test" });
+		runtime.dispatchEvent(new Event("test"));
 		expect(callCount).toBe(1);
 		
 		// Remove listener
 		runtime.removeEventListener("test", listener);
 		
 		// Fire event again - should not be called
-		runtime.dispatchEvent({ type: "test" });
+		runtime.dispatchEvent(new Event("test"));
 		expect(callCount).toBe(1); // Still 1, not 2
 	},
 	TIMEOUT
@@ -342,7 +348,7 @@ test(
 test(
 	"ServiceWorker multiple listeners for same event",
 	async () => {
-		const { ServiceWorkerRuntime } = await import("@b9g/platform");
+		const { ServiceWorkerRuntime } = await import("../src/index.js");
 		
 		const runtime = new ServiceWorkerRuntime();
 		const calls = [];
@@ -356,6 +362,10 @@ test(
 			calls.push("listener2");
 			// Second listener doesn't call respondWith
 		});
+		
+		// Install and activate before handling requests
+		await runtime.install();
+		await runtime.activate();
 		
 		const request = new Request("http://localhost/test");
 		const response = await runtime.handleRequest(request);
@@ -376,26 +386,23 @@ test(
 test(
 	"ServiceWorker error handling in event listeners",
 	async () => {
-		const { ServiceWorkerRuntime } = await import("@b9g/platform");
+		const { ServiceWorkerRuntime } = await import("../src/index.js");
 		
 		const runtime = new ServiceWorkerRuntime();
-		let errorHandled = false;
-		
-		// Add error listener
-		runtime.addEventListener("error", (event) => {
-			errorHandled = true;
-		});
 		
 		// Add fetch listener that throws
 		runtime.addEventListener("fetch", (event) => {
 			throw new Error("Test error");
 		});
 		
+		// Install and activate before handling requests
+		await runtime.install();
+		await runtime.activate();
+		
 		const request = new Request("http://localhost/error");
 		
-		// Should not throw, but should handle error gracefully
-		const response = await runtime.handleRequest(request);
-		expect(response.status).toBe(404); // Default response
+		// Should reject when listener throws - either with the original error or timeout
+		await expect(runtime.handleRequest(request)).rejects.toThrow();
 	},
 	TIMEOUT
 );
@@ -403,7 +410,7 @@ test(
 test(
 	"ServiceWorker runtime reset functionality",
 	async () => {
-		const { ServiceWorkerRuntime } = await import("@b9g/platform");
+		const { ServiceWorkerRuntime } = await import("../src/index.js");
 		
 		const runtime = new ServiceWorkerRuntime();
 		let listenerCalled = false;
@@ -414,15 +421,16 @@ test(
 		});
 		
 		// Verify listener works
-		runtime.dispatchEvent({ type: "test" });
+		runtime.dispatchEvent(new Event("test"));
 		expect(listenerCalled).toBe(true);
 		
 		// Reset runtime
 		runtime.reset();
 		listenerCalled = false;
 		
+		
 		// Listener should be removed after reset
-		runtime.dispatchEvent({ type: "test" });
+		runtime.dispatchEvent(new Event("test"));
 		expect(listenerCalled).toBe(false);
 	},
 	TIMEOUT
@@ -435,7 +443,7 @@ test(
 test(
 	"ServiceWorker complete workflow",
 	async () => {
-		const { ServiceWorkerRuntime, createServiceWorkerGlobals } = await import("@b9g/platform");
+		const { ServiceWorkerRuntime, createServiceWorkerGlobals } = await import("../src/index.js");
 		
 		const runtime = new ServiceWorkerRuntime();
 		

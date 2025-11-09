@@ -49,9 +49,32 @@ export class ServiceWorkerRuntime extends EventTarget {
 	private pendingPromises = new Set<Promise<any>>();
 	private isInstalled = false;
 	private isActivated = false;
+	private eventListeners = new Map<string, Function[]>();
 
 	constructor() {
 		super();
+	}
+	
+	addEventListener(type: string, listener: Function): void {
+		super.addEventListener(type as any, listener as any);
+		if (!this.eventListeners.has(type)) {
+			this.eventListeners.set(type, []);
+		}
+		this.eventListeners.get(type)!.push(listener);
+	}
+	
+	removeEventListener(type: string, listener: Function): void {
+		super.removeEventListener(type as any, listener as any);
+		if (this.eventListeners.has(type)) {
+			const listeners = this.eventListeners.get(type)!;
+			const index = listeners.indexOf(listener);
+			if (index > -1) {
+				listeners.splice(index, 1);
+				if (listeners.length === 0) {
+					this.eventListeners.delete(type);
+				}
+			}
+		}
 	}
 
 	/**
@@ -219,6 +242,14 @@ export class ServiceWorkerRuntime extends EventTarget {
 		this.isInstalled = false;
 		this.isActivated = false;
 		this.pendingPromises.clear();
+		
+		// Remove all tracked event listeners
+		for (const [type, listeners] of this.eventListeners) {
+			for (const listener of listeners) {
+				super.removeEventListener(type as any, listener as any);
+			}
+		}
+		this.eventListeners.clear();
 	}
 }
 

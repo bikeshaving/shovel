@@ -34,7 +34,7 @@ async function cleanup(paths) {
 test(
 	"createBucketStorage factory function",
 	async () => {
-		const { createBucketStorage } = await import("@b9g/platform");
+		const { createBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -54,7 +54,7 @@ test(
 test(
 	"bucket storage getDirectoryHandle basic functionality",
 	async () => {
-		const { createBucketStorage } = await import("@b9g/platform");
+		const { createBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -85,7 +85,7 @@ test(
 test(
 	"bucket storage with non-existent directory",
 	async () => {
-		const { createBucketStorage } = await import("@b9g/platform");
+		const { createBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -117,7 +117,7 @@ test(
 test(
 	"directory handle file operations",
 	async () => {
-		const { createBucketStorage } = await import("@b9g/platform");
+		const { createBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -155,7 +155,7 @@ test(
 test(
 	"directory handle subdirectory operations",
 	async () => {
-		const { createBucketStorage } = await import("@b9g/platform");
+		const { createBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -194,7 +194,7 @@ test(
 test(
 	"directory handle entries iteration",
 	async () => {
-		const { createBucketStorage } = await import("@b9g/platform");
+		const { createBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -237,7 +237,7 @@ test(
 test(
 	"self.buckets in ServiceWorker context",
 	async () => {
-		const { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } = await import("@b9g/platform");
+		const { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -295,7 +295,7 @@ test(
 test(
 	"self.buckets file serving with different content types",
 	async () => {
-		const { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } = await import("@b9g/platform");
+		const { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -449,7 +449,7 @@ test(
 test(
 	"bucket error handling - file not found",
 	async () => {
-		const { createBucketStorage } = await import("@b9g/platform");
+		const { createBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -470,7 +470,7 @@ test(
 test(
 	"bucket error handling - invalid directory name",
 	async () => {
-		const { createBucketStorage } = await import("@b9g/platform");
+		const { createBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -500,7 +500,7 @@ test(
 test(
 	"buckets API replaces old dirs API",
 	async () => {
-		const { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } = await import("@b9g/platform");
+		const { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
