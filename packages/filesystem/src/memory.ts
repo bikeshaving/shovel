@@ -138,11 +138,23 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 	}
 
 	private resolvePath(path: string): MemoryFile | MemoryDirectory | null {
+		// Defense in depth: validate path components
+		if (path.includes('..') || path.includes('\0')) {
+			throw new DOMException("Invalid path: contains path traversal or null bytes", "NotAllowedError");
+		}
+		
 		// Normalize path
 		const parts = path.split('/').filter(Boolean);
 		
 		if (parts.length === 0) {
 			return this.root;
+		}
+		
+		// Validate each path component
+		for (const part of parts) {
+			if (part === '.' || part === '..' || part.includes('/') || part.includes('\\')) {
+				throw new DOMException("Invalid path component", "NotAllowedError");
+			}
 		}
 
 		let current: MemoryDirectory = this.root;

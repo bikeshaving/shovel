@@ -18,6 +18,13 @@ export interface FileSystemConfig {
  */
 export type Bucket = FileSystemDirectoryHandle;
 
+/**
+ * Permission descriptor for File System Access API
+ */
+export interface FileSystemPermissionDescriptor {
+	mode?: "read" | "readwrite";
+}
+
 // ============================================================================
 // BACKEND INTERFACE
 // ============================================================================
@@ -150,19 +157,86 @@ class ShovelWritableFileStream extends WritableStream implements FileSystemWrita
 }
 
 /**
- * Shared FileSystemFileHandle implementation that works with any backend
- * Uses non-standard constructor that takes backend + path
+ * Shared FileSystemHandle base implementation
+ * Provides common functionality for both file and directory handles
  */
-export class ShovelFileHandle implements FileSystemFileHandle {
-	readonly kind = "file" as const;
+export abstract class ShovelHandle implements FileSystemHandle {
+	abstract readonly kind: "file" | "directory";
 	readonly name: string;
 
 	constructor(
-		private backend: FileSystemBackend,
-		private path: string,
+		protected backend: FileSystemBackend,
+		protected path: string,
 	) {
-		// Extract filename from path
-		this.name = path.split('/').pop() || path;
+		// Extract name from path
+		this.name = path.split('/').filter(Boolean).pop() || 'root';
+	}
+
+	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
+		if (other.kind !== this.kind) return false;
+		if (!(other instanceof ShovelHandle)) return false;
+		return this.path === other.path;
+	}
+
+	async queryPermission(descriptor?: FileSystemPermissionDescriptor): Promise<PermissionState> {
+		// For our server-side implementations, permissions are always granted
+		// In a browser environment, this would check actual permissions
+		// In future, this could delegate to backend for access control based on mode
+		
+		const mode = descriptor?.mode || "read";
+		
+		// Server-side backends typically have full access
+		// In future: could check backend capabilities (e.g., read-only storage)
+		return "granted";
+	}
+
+	async requestPermission(descriptor?: FileSystemPermissionDescriptor): Promise<PermissionState> {
+		// For our server-side implementations, permissions are always granted
+		// In a browser environment, this would prompt the user if needed
+		// In future, this could delegate to backend for access control
+		
+		const mode = descriptor?.mode || "read";
+		
+		// Server-side backends don't need user prompts
+		// In future: could implement access control logic
+		return "granted";
+	}
+
+	/**
+	 * Validates that a name is actually a name and not a path
+	 * The File System Access API only accepts names, not paths
+	 */
+	protected validateName(name: string): void {
+		if (!name || name.trim() === '') {
+			throw new DOMException("Name cannot be empty", "NotAllowedError");
+		}
+		
+		if (name.includes('/') || name.includes('\\')) {
+			throw new DOMException("Name cannot contain path separators", "NotAllowedError");
+		}
+		
+		if (name === '.' || name === '..') {
+			throw new DOMException("Name cannot be '.' or '..'", "NotAllowedError");
+		}
+		
+		// Additional platform-specific invalid characters could be checked here
+		// Windows: < > : " | ? * and control characters
+		// But for simplicity, we'll focus on path traversal prevention
+	}
+}
+
+/**
+ * Shared FileSystemFileHandle implementation that works with any backend
+ * Uses non-standard constructor that takes backend + path
+ */
+export class ShovelFileHandle extends ShovelHandle implements FileSystemFileHandle {
+	readonly kind = "file" as const;
+
+	constructor(
+		backend: FileSystemBackend,
+		path: string,
+	) {
+		super(backend, path);
 	}
 
 	async getFile(): Promise<File> {
@@ -192,19 +266,6 @@ export class ShovelFileHandle implements FileSystemFileHandle {
 		);
 	}
 
-	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
-		if (other.kind !== "file") return false;
-		if (!(other instanceof ShovelFileHandle)) return false;
-		return this.path === other.path;
-	}
-
-	async queryPermission(): Promise<PermissionState> {
-		return "granted";
-	}
-
-	async requestPermission(): Promise<PermissionState> {
-		return "granted";
-	}
 
 	private getMimeType(filename: string): string {
 		const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
@@ -229,22 +290,21 @@ export class ShovelFileHandle implements FileSystemFileHandle {
  * Shared FileSystemDirectoryHandle implementation that works with any backend
  * Uses non-standard constructor that takes backend + path
  */
-export class ShovelDirectoryHandle implements FileSystemDirectoryHandle {
+export class ShovelDirectoryHandle extends ShovelHandle implements FileSystemDirectoryHandle {
 	readonly kind = "directory" as const;
-	readonly name: string;
 
 	constructor(
-		private backend: FileSystemBackend,
-		private path: string,
+		backend: FileSystemBackend,
+		path: string,
 	) {
-		// Extract directory name from path
-		this.name = path.split('/').filter(Boolean).pop() || 'root';
+		super(backend, path);
 	}
 
 	async getFileHandle(
 		name: string,
 		options?: {create?: boolean},
 	): Promise<FileSystemFileHandle> {
+		this.validateName(name);
 		const filePath = this.joinPath(this.path, name);
 		const stat = await this.backend.stat(filePath);
 
@@ -267,6 +327,7 @@ export class ShovelDirectoryHandle implements FileSystemDirectoryHandle {
 		name: string,
 		options?: {create?: boolean},
 	): Promise<FileSystemDirectoryHandle> {
+		this.validateName(name);
 		const dirPath = this.joinPath(this.path, name);
 		const stat = await this.backend.stat(dirPath);
 
@@ -291,6 +352,8 @@ export class ShovelDirectoryHandle implements FileSystemDirectoryHandle {
 		name: string,
 		options?: {recursive?: boolean},
 	): Promise<void> {
+		this.validateName(name);
+		
 		if (!this.backend.remove) {
 			throw new DOMException(
 				"Remove operation not supported by this backend",
@@ -355,19 +418,6 @@ export class ShovelDirectoryHandle implements FileSystemDirectoryHandle {
 		}
 	}
 
-	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
-		if (other.kind !== "directory") return false;
-		if (!(other instanceof ShovelDirectoryHandle)) return false;
-		return this.path === other.path;
-	}
-
-	async queryPermission(): Promise<PermissionState> {
-		return "granted";
-	}
-
-	async requestPermission(): Promise<PermissionState> {
-		return "granted";
-	}
 
 	private joinPath(base: string, name: string): string {
 		// Simple path joining - could be enhanced based on backend needs

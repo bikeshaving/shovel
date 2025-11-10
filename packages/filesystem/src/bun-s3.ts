@@ -189,11 +189,24 @@ export class S3FileSystemBackend implements FileSystemBackend {
 	}
 
 	private getS3Key(path: string): string {
+		// Defense in depth: validate path components
+		if (path.includes('..') || path.includes('\0')) {
+			throw new DOMException("Invalid path: contains path traversal or null bytes", "NotAllowedError");
+		}
+		
 		// Remove leading slash and combine with prefix
 		const cleanPath = path.startsWith('/') ? path.slice(1) : path;
 		
 		if (!cleanPath) {
 			return this.prefix;
+		}
+		
+		// Validate each path component for S3 compatibility
+		const parts = cleanPath.split('/');
+		for (const part of parts) {
+			if (part === '.' || part === '..' || part.includes('\\')) {
+				throw new DOMException("Invalid S3 key component", "NotAllowedError");
+			}
 		}
 		
 		return this.prefix ? `${this.prefix}/${cleanPath}` : cleanPath;

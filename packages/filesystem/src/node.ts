@@ -130,7 +130,19 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 			return this.rootPath;
 		}
 		
-		return path.join(this.rootPath, cleanPath);
+		// Defense in depth: validate path components
+		if (cleanPath.includes('..') || cleanPath.includes('\0')) {
+			throw new DOMException("Invalid path: contains path traversal or null bytes", "NotAllowedError");
+		}
+		
+		const resolvedPath = path.resolve(this.rootPath, cleanPath);
+		
+		// Ensure the resolved path is still within our root directory
+		if (!resolvedPath.startsWith(path.resolve(this.rootPath))) {
+			throw new DOMException("Invalid path: outside of root directory", "NotAllowedError");
+		}
+		
+		return resolvedPath;
 	}
 }
 
