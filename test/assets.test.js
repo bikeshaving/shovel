@@ -209,7 +209,7 @@ self.addEventListener("fetch", (event) => {
 			// Create a dummy image file
 			await createTempFile(testDir, "images/logo.png", "fake-png-data");
 
-			const { buildForProduction } = await import("../src/_build.js");
+			const { buildForProduction } = await import("../src/commands/build.js");
 			
 			const outDir = join(testDir, "dist");
 			
@@ -285,31 +285,41 @@ test(
 			globalThis.addEventListener = runtime.addEventListener.bind(runtime);
 
 			// ServiceWorker that serves assets from the assets directory
-			globalThis.addEventListener("fetch", async (event) => {
+			globalThis.addEventListener("fetch", (event) => {
 				const url = new URL(event.request.url);
 				
 				if (url.pathname.startsWith("/assets/")) {
 					const assetPath = url.pathname.slice("/assets/".length);
 					
-					try {
-						const assetsBucket = await globalThis.buckets.getDirectoryHandle("assets");
-						const fileHandle = await assetsBucket.getFileHandle(assetPath);
-						const file = await fileHandle.getFile();
-						const content = await file.text();
-						
-						let contentType = "text/plain";
-						if (assetPath.endsWith(".css")) {
-							contentType = "text/css";
+					// Respond with a promise
+					event.respondWith((async () => {
+						try {
+							const assetsBucket = await globalThis.buckets.getDirectoryHandle("assets");
+							const fileHandle = await assetsBucket.getFileHandle(assetPath);
+							const file = await fileHandle.getFile();
+							const content = await file.text();
+							
+							let contentType = "text/plain";
+							if (assetPath.endsWith(".css")) {
+								contentType = "text/css";
+							}
+							
+							return new Response(content, {
+								headers: { "content-type": contentType }
+							});
+						} catch {
+							return new Response("Asset not found", { status: 404 });
 						}
-						
-						event.respondWith(new Response(content, {
-							headers: { "content-type": contentType }
-						}));
-					} catch {
-						event.respondWith(new Response("Asset not found", { status: 404 }));
-					}
+					})());
+				} else {
+					// Provide default response for non-asset requests
+					event.respondWith(new Response("Default response", { status: 200 }));
 				}
 			});
+
+			// Activate the ServiceWorker
+			await runtime.install();
+			await runtime.activate();
 
 			// Test asset serving
 			const cssRequest = new Request("http://localhost/assets/test.css");
@@ -429,7 +439,7 @@ self.addEventListener("fetch", (event) => {
 				const entryPath = await createTempFile(testDir, "app.js", jsContent);
 				const outDir = join(testDir, `dist-${testCase.input.replace(/[/]/g, '-')}`);
 
-				const { buildForProduction } = await import("../src/_build.js");
+				const { buildForProduction } = await import("../src/commands/build.js");
 				
 				await buildForProduction({
 					entrypoint: entryPath,
@@ -482,7 +492,7 @@ self.addEventListener("fetch", (event) => {
 
 			await createTempFile(testDir, "app.js", jsContent);
 
-			const { buildForProduction } = await import("../src/_build.js");
+			const { buildForProduction } = await import("../src/commands/build.js");
 			
 			const outDir = join(testDir, "dist");
 
@@ -580,7 +590,7 @@ self.addEventListener("fetch", (event) => {
 
 			await createTempFile(testDir, "app.js", jsContent);
 
-			const { buildForProduction } = await import("../src/_build.js");
+			const { buildForProduction } = await import("../src/commands/build.js");
 			
 			const outDir = join(testDir, "dist");
 			const startTime = Date.now();

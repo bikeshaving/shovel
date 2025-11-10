@@ -6,7 +6,7 @@
 import * as esbuild from "esbuild";
 import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile, chmod} from "fs/promises";
-import {assetsPlugin} from "./assets.ts";
+import {assetsPlugin} from "../assets.ts";
 
 // Build configuration constants
 const BUILD_DEFAULTS = {

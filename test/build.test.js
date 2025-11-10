@@ -2,7 +2,7 @@ import * as FS from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { test, expect } from "bun:test";
-import { buildForProduction } from "../src/_build.js";
+import { buildForProduction } from "../src/commands/build.js";
 
 /**
  * Build system tests - comprehensive validation of production builds

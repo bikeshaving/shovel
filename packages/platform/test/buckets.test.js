@@ -262,21 +262,29 @@ test(
 			globalThis.addEventListener = runtime.addEventListener.bind(runtime);
 			
 			// Simulate user ServiceWorker code using self.buckets
-			globalThis.addEventListener("fetch", async (event) => {
+			globalThis.addEventListener("fetch", (event) => {
 				const url = new URL(event.request.url);
 				
 				if (url.pathname === "/") {
 					// Serve static file from bucket
-					const distBucket = await globalThis.buckets.getDirectoryHandle("dist");
-					const fileHandle = await distBucket.getFileHandle("index.html");
-					const file = await fileHandle.getFile();
-					const content = await file.text();
-					
-					event.respondWith(new Response(content, {
-						headers: { "content-type": "text/html; charset=utf-8" }
-					}));
+					event.respondWith((async () => {
+						const distBucket = await globalThis.buckets.getDirectoryHandle("dist");
+						const fileHandle = await distBucket.getFileHandle("index.html");
+						const file = await fileHandle.getFile();
+						const content = await file.text();
+						
+						return new Response(content, {
+							headers: { "content-type": "text/html; charset=utf-8" }
+						});
+					})());
+				} else {
+					event.respondWith(new Response("Not found", { status: 404 }));
 				}
 			});
+			
+			// Activate ServiceWorker
+			await runtime.install();
+			await runtime.activate();
 			
 			// Test request
 			const request = new Request("http://localhost/");
@@ -315,35 +323,43 @@ test(
 			globalThis.addEventListener = runtime.addEventListener.bind(runtime);
 			
 			// ServiceWorker that serves different file types
-			globalThis.addEventListener("fetch", async (event) => {
+			globalThis.addEventListener("fetch", (event) => {
 				const url = new URL(event.request.url);
 				const pathname = url.pathname.slice(1); // Remove leading slash
 				
 				if (pathname) {
-					try {
-						const distBucket = await globalThis.buckets.getDirectoryHandle("dist");
-						const fileHandle = await distBucket.getFileHandle(pathname);
-						const file = await fileHandle.getFile();
-						const content = await file.text();
-						
-						// Determine content type
-						let contentType = "text/plain";
-						if (pathname.endsWith(".css")) {
-							contentType = "text/css";
-						} else if (pathname.endsWith(".js")) {
-							contentType = "application/javascript";
-						} else if (pathname.endsWith(".json")) {
-							contentType = "application/json";
+					event.respondWith((async () => {
+						try {
+							const distBucket = await globalThis.buckets.getDirectoryHandle("dist");
+							const fileHandle = await distBucket.getFileHandle(pathname);
+							const file = await fileHandle.getFile();
+							const content = await file.text();
+							
+							// Determine content type
+							let contentType = "text/plain";
+							if (pathname.endsWith(".css")) {
+								contentType = "text/css";
+							} else if (pathname.endsWith(".js")) {
+								contentType = "application/javascript";
+							} else if (pathname.endsWith(".json")) {
+								contentType = "application/json";
+							}
+							
+							return new Response(content, {
+								headers: { "content-type": contentType }
+							});
+						} catch (error) {
+							return new Response("Not found", { status: 404 });
 						}
-						
-						event.respondWith(new Response(content, {
-							headers: { "content-type": contentType }
-						}));
-					} catch (error) {
-						event.respondWith(new Response("Not found", { status: 404 }));
-					}
+					})());
+				} else {
+					event.respondWith(new Response("Index", { status: 200 }));
 				}
 			});
+			
+			// Activate ServiceWorker
+			await runtime.install();
+			await runtime.activate();
 			
 			// Test different file types
 			const cssRequest = new Request("http://localhost/style.css");

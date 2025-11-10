@@ -56,18 +56,40 @@ function startDevServer(fixture, port, extraArgs = []) {
 		...extraArgs,
 	];
 
-	return spawn("node", args, {
+	const serverProcess = spawn("node", args, {
 		stdio: ["ignore", "pipe", "pipe"],
 		cwd: process.cwd(),
 		env: {...process.env, NODE_ENV: "development"},
 	});
+
+	// Capture stderr to detect CLI failures early
+	let stderrOutput = "";
+	serverProcess.stderr.on("data", (data) => {
+		stderrOutput += data.toString();
+	});
+
+	// If process exits early, it's likely an error
+	serverProcess.on("exit", (code) => {
+		if (code !== 0 && code !== null) {
+			serverProcess.earlyExit = { code, stderr: stderrOutput };
+		}
+	});
+
+	return serverProcess;
 }
 
 // Helper to wait for server to be ready and return response
-async function waitForServer(port, timeoutMs = 15000) {
+async function waitForServer(port, serverProcess, timeoutMs = 15000) {
 	const startTime = Date.now();
 
 	while (Date.now() - startTime < timeoutMs) {
+		// Check if process failed early
+		if (serverProcess?.earlyExit) {
+			throw new Error(
+				`CLI process exited early with code ${serverProcess.earlyExit.code}:\n${serverProcess.earlyExit.stderr}`
+			);
+		}
+
 		try {
 			const response = await fetch(`http://localhost:${port}`);
 			if (response.ok) {
@@ -78,6 +100,13 @@ async function waitForServer(port, timeoutMs = 15000) {
 		}
 
 		await new Promise((resolve) => setTimeout(resolve, 500));
+	}
+
+	// Check one more time for early exit before timeout
+	if (serverProcess?.earlyExit) {
+		throw new Error(
+			`CLI process exited early with code ${serverProcess.earlyExit.code}:\n${serverProcess.earlyExit.stderr}`
+		);
 	}
 
 	throw new Error(
@@ -100,15 +129,23 @@ async function fetchWithRetry(port, retries = 10, delay = 500) {
 
 // Helper to kill process and wait for port to be free
 async function killServer(process, _port) {
-	if (process && !process.killed) {
+	if (process && process.exitCode === null) {
 		process.kill("SIGTERM");
 
 		// Wait for process to exit
 		await new Promise((resolve) => {
-			process.on("exit", resolve);
+			const cleanup = () => {
+				process.removeListener("exit", cleanup);
+				process.removeListener("close", cleanup);
+				resolve();
+			};
+			
+			process.on("exit", cleanup);
+			process.on("close", cleanup);
+			
 			// Force kill if it doesn't exit gracefully
 			setTimeout(() => {
-				if (!process.killed) {
+				if (process.exitCode === null) {
 					process.kill("SIGKILL");
 				}
 			}, 2000);
@@ -134,7 +171,7 @@ test(
 			serverProcess = startDevServer("./test/fixtures/server-hello.ts", PORT);
 
 			// Wait for server to be ready
-			const response = await waitForServer(PORT);
+			const response = await waitForServer(PORT, serverProcess);
 
 			// Verify server responds correctly (simple hello fixture)
 			expect(response).toContain("<marquee>Hello world</marquee>");
@@ -160,7 +197,7 @@ test(
 			serverProcess = startDevServer(tempFixture.path, PORT);
 
 			// Wait for initial response
-			const initialResponse = await waitForServer(PORT);
+			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
 
 			// Modify the temporary file (simulate file change)
@@ -197,7 +234,7 @@ test(
 			serverProcess = startDevServer(tempFixture.path, PORT);
 
 			// Wait for initial response
-			const initialResponse = await waitForServer(PORT);
+			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe(
 				"<marquee>Hello from dependency-hello.ts</marquee>",
 			);
@@ -245,7 +282,7 @@ test(
 			);
 
 			// Wait for initial response
-			const initialResponse = await waitForServer(PORT);
+			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe(
 				'<marquee behavior="alternate">Hello from dependency-hello.ts</marquee>',
 			);
@@ -290,7 +327,7 @@ test(
 			serverProcess = startDevServer(tempFixture.path, PORT);
 
 			// Wait for initial response
-			const initialResponse = await waitForServer(PORT);
+			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
 
 			// Modify the temporary file
@@ -337,7 +374,7 @@ test(
 			serverProcess = startDevServer(tempFixture.path, PORT);
 
 			// Wait for initial response
-			const initialResponse = await waitForServer(PORT);
+			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
 
 			// Write malformed TypeScript to temporary file
@@ -409,7 +446,7 @@ self.addEventListener("fetch", (event) => {
 			serverProcess = startDevServer(testFileMain, PORT);
 
 			// Wait for initial response
-			const initialResponse = await waitForServer(PORT);
+			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>B-A-original</div>");
 
 			// Modify the deepest dependency (A)
@@ -470,7 +507,7 @@ self.addEventListener("fetch", (event) => {
 			serverProcess = startDevServer(mainFile, PORT);
 
 			// Wait for initial response
-			const initialResponse = await waitForServer(PORT);
+			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toContain("Values: original-0, original-1");
 
 			// Modify all files concurrently
@@ -510,7 +547,7 @@ test(
 			]);
 
 			// Wait for server to be ready
-			const initialResponse = await waitForServer(PORT);
+			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
 
 			// Make 50 concurrent requests
@@ -572,7 +609,7 @@ self.addEventListener("fetch", (event) => {
 			serverProcess = startDevServer(testFile, PORT);
 
 			// Wait for initial response
-			const initialResponse = await waitForServer(PORT);
+			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>Original</div>");
 
 			// Delete the file
@@ -644,7 +681,7 @@ self.addEventListener("fetch", (event) => {
 			serverProcess = startDevServer(testFile, PORT);
 
 			// Wait for initial response
-			const initialResponse = await waitForServer(PORT);
+			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>Valid</div>");
 
 			// Write syntax error
@@ -714,7 +751,7 @@ self.addEventListener("fetch", (event) => {
 			serverProcess = startDevServer(largeFile, PORT);
 
 			// Wait for initial response
-			const response = await waitForServer(PORT);
+			const response = await waitForServer(PORT, serverProcess);
 			expect(response).toBe("<div>Variables: 50</div>");
 
 			// Modify the large file
@@ -762,7 +799,7 @@ self.addEventListener("fetch", (event) => {
 			serverProcess = startDevServer(cacheFile, PORT);
 
 			// Wait for initial response
-			await waitForServer(PORT);
+			await waitForServer(PORT, serverProcess);
 
 			// Perform rapid modifications
 			const rapidModifications = Array.from({length: 10}, (_, i) =>
@@ -838,7 +875,7 @@ self.addEventListener("fetch", (event) => {
 			serverProcess = startDevServer(jsFile, PORT);
 
 			// Wait for initial response
-			const initialResponse = await waitForServer(PORT);
+			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>JavaScript file!</div>");
 
 			// Modify the JS file

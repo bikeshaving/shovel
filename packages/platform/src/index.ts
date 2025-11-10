@@ -39,6 +39,14 @@ export {
 	PlatformBucketStorage,
 } from "./directory-storage.js";
 
+// Import for local use
+import { PlatformBucketStorage } from "./directory-storage.js";
+
+// Bucket storage factory function for backwards compatibility
+export function createBucketStorage(rootPath: string = "./dist") {
+	return new PlatformBucketStorage(rootPath);
+}
+
 // Platform registry and detection
 export {
 	platformRegistry,
