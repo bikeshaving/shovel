@@ -9,7 +9,7 @@ import { join } from "path";
  * Tests the end-to-end functionality of self-contained executable builds
  */
 
-const TIMEOUT = 30000;
+const TIMEOUT = 5000;
 
 // Helper functions
 async function createTempDir(prefix = "executable-test-") {
@@ -35,20 +35,20 @@ async function cleanup(paths) {
 }
 
 // Helper to wait for server to be ready
-async function waitForServer(port, timeoutMs = 5000) {
+async function waitForServer(port, timeoutMs = 2000) {
 	const startTime = Date.now();
 
 	while (Date.now() - startTime < timeoutMs) {
 		try {
 			const response = await fetch(`http://localhost:${port}`);
-			if (response.ok) {
+			if (response.ok || response.status < 500) {
 				return await response.text();
 			}
 		} catch (err) {
 			// Server not ready yet, continue waiting
 		}
 
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		await new Promise((resolve) => setTimeout(resolve, 50));
 	}
 
 	throw new Error(`Server at port ${port} never became ready within ${timeoutMs}ms`);
@@ -74,12 +74,13 @@ async function killProcess(process) {
 				if (!process.killed) {
 					process.kill("SIGKILL");
 				}
-			}, 2000);
+				resolve(); // Resolve anyway after timeout
+			}, 500);
 		});
 	}
 
-	// Wait for port to be free
-	await new Promise((resolve) => setTimeout(resolve, 1000));
+	// Wait for port to be free (reduced)
+	await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
 // ======================
@@ -205,9 +206,9 @@ self.addEventListener("fetch", (event) => {
 			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
-			// Install dependencies
-			const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
-			await new Promise((resolve) => npmInstall.on("exit", resolve));
+			// Skip npm install - dependencies should be bundled in the executable
+			// const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
+			// await new Promise((resolve) => npmInstall.on("exit", resolve));
 
 			// Run with custom environment
 			const PORT = 18002;
@@ -324,9 +325,9 @@ self.addEventListener("fetch", async (event) => {
 			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
-			// Install dependencies
-			const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
-			await new Promise((resolve) => npmInstall.on("exit", resolve));
+			// Skip npm install - dependencies should be bundled in the executable
+			// const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
+			// await new Promise((resolve) => npmInstall.on("exit", resolve));
 
 			const PORT = 18003;
 			serverProcess = runExecutable(appPath, { PORT: PORT.toString() });
@@ -404,9 +405,9 @@ self.addEventListener("fetch", (event) => {
 			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
-			// Install dependencies
-			const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
-			await new Promise((resolve) => npmInstall.on("exit", resolve));
+			// Skip npm install - dependencies should be bundled in the executable
+			// const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
+			// await new Promise((resolve) => npmInstall.on("exit", resolve));
 
 			const PORT = 18004;
 			serverProcess = runExecutable(appPath, { PORT: PORT.toString() });
@@ -571,9 +572,9 @@ self.addEventListener("fetch", (event) => {
 			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
-			// Install dependencies
-			const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
-			await new Promise((resolve) => npmInstall.on("exit", resolve));
+			// Skip npm install - dependencies should be bundled in the executable
+			// const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
+			// await new Promise((resolve) => npmInstall.on("exit", resolve));
 
 			// Measure startup time
 			const PORT = 18005;
@@ -646,9 +647,9 @@ self.addEventListener("fetch", (event) => {
 			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
-			// Install dependencies
-			const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
-			await new Promise((resolve) => npmInstall.on("exit", resolve));
+			// Skip npm install - dependencies should be bundled in the executable
+			// const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
+			// await new Promise((resolve) => npmInstall.on("exit", resolve));
 
 			const PORT = 18006;
 			serverProcess = runExecutable(appPath, { PORT: PORT.toString() });

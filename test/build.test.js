@@ -9,7 +9,7 @@ import { buildForProduction } from "../src/commands/build.js";
  * Tests the refactored build system with error handling and platform support
  */
 
-const TIMEOUT = 30000; // 30 second timeout
+const TIMEOUT = 5000; // 5 second timeout
 
 // Helper to create temporary test files
 async function createTempFile(filename, content) {

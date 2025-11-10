@@ -8,7 +8,7 @@ import { join } from "path";
  * Tests the new bucket system that replaced the old dirs API
  */
 
-const TIMEOUT = 15000;
+const TIMEOUT = 3000;
 
 // Helper functions
 async function createTempDir(prefix = "buckets-test-") {

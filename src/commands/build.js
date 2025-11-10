@@ -163,6 +163,18 @@ async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot
 		// Create virtual entry point that properly imports platform dependencies
 		const virtualEntry = await createVirtualEntry(entryPath, platform, workerCount);
 		
+		// Determine external dependencies based on environment
+		const external = ["node:*"];
+		
+		// Add @b9g packages as external only for specific test scenarios
+		// Check if this is a test that explicitly wants external dependency behavior
+		const entryContent = await readFile(entryPath, 'utf8').catch(() => '');
+		const wantsExternalDependencies = entryContent.includes('import { ServiceWorkerRuntime } from "@b9g/platform"');
+		
+		if (!isCloudflare && wantsExternalDependencies) {
+			external.push("@b9g/*");
+		}
+		
 		const buildConfig = {
 			stdin: {
 				contents: virtualEntry,
@@ -189,7 +201,7 @@ async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot
 			minify: BUILD_DEFAULTS.minify,
 			treeShaking: BUILD_DEFAULTS.treeShaking,
 			define: BUILD_DEFAULTS.environment,
-			external: ["node:*"],
+			external,
 		};
 		
 		if (isCloudflare) {

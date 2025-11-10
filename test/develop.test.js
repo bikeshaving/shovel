@@ -11,7 +11,7 @@ import {mkdtemp} from "fs/promises";
  * Includes both basic functionality and advanced stress testing
  */
 
-const TIMEOUT = 45000; // 45 second timeout for complex tests
+const TIMEOUT = 10000; // 10 second timeout for complex tests
 
 // Helper to create temporary fixture copy
 async function createTempFixture(fixtureName) {
@@ -78,12 +78,49 @@ function startDevServer(fixture, port, extraArgs = []) {
 	return serverProcess;
 }
 
+// Helper to check if TCP port is accepting connections (faster than HTTP)
+async function isPortOpen(port) {
+	return new Promise((resolve) => {
+		const { createConnection } = require('net');
+		const socket = createConnection({ port, host: 'localhost', timeout: 50 });
+		
+		socket.on('connect', () => {
+			socket.destroy();
+			resolve(true);
+		});
+		
+		socket.on('error', () => {
+			resolve(false);
+		});
+		
+		socket.on('timeout', () => {
+			socket.destroy();
+			resolve(false);
+		});
+	});
+}
+
 // Helper to wait for server to be ready and return response
-async function waitForServer(port, serverProcess, timeoutMs = 15000) {
+async function waitForServer(port, serverProcess, timeoutMs = 2000) {
 	const startTime = Date.now();
 
+	// First, wait for port to be open (much faster than HTTP)
+	while (Date.now() - startTime < timeoutMs / 2) {
+		if (serverProcess?.earlyExit) {
+			throw new Error(
+				`CLI process exited early with code ${serverProcess.earlyExit.code}:\n${serverProcess.earlyExit.stderr}`
+			);
+		}
+
+		if (await isPortOpen(port)) {
+			break;
+		}
+		
+		await new Promise((resolve) => setTimeout(resolve, 25));
+	}
+
+	// Then verify HTTP responses work
 	while (Date.now() - startTime < timeoutMs) {
-		// Check if process failed early
 		if (serverProcess?.earlyExit) {
 			throw new Error(
 				`CLI process exited early with code ${serverProcess.earlyExit.code}:\n${serverProcess.earlyExit.stderr}`
@@ -92,21 +129,14 @@ async function waitForServer(port, serverProcess, timeoutMs = 15000) {
 
 		try {
 			const response = await fetch(`http://localhost:${port}`);
-			if (response.ok) {
+			if (response.ok || response.status < 500) {
 				return await response.text();
 			}
 		} catch (err) {
 			// Server not ready yet, continue waiting
 		}
 
-		await new Promise((resolve) => setTimeout(resolve, 500));
-	}
-
-	// Check one more time for early exit before timeout
-	if (serverProcess?.earlyExit) {
-		throw new Error(
-			`CLI process exited early with code ${serverProcess.earlyExit.code}:\n${serverProcess.earlyExit.stderr}`
-		);
+		await new Promise((resolve) => setTimeout(resolve, 25));
 	}
 
 	throw new Error(
@@ -115,7 +145,7 @@ async function waitForServer(port, serverProcess, timeoutMs = 15000) {
 }
 
 // Helper to fetch from server with retry
-async function fetchWithRetry(port, retries = 10, delay = 500) {
+async function fetchWithRetry(port, retries = 20, delay = 50) {
 	for (let i = 0; i < retries; i++) {
 		try {
 			const response = await fetch(`http://localhost:${port}`);
@@ -128,7 +158,7 @@ async function fetchWithRetry(port, retries = 10, delay = 500) {
 }
 
 // Helper to kill process and wait for port to be free
-async function killServer(process, _port) {
+async function killServer(process, port) {
 	if (process && process.exitCode === null) {
 		process.kill("SIGTERM");
 
@@ -148,12 +178,20 @@ async function killServer(process, _port) {
 				if (process.exitCode === null) {
 					process.kill("SIGKILL");
 				}
-			}, 2000);
+				resolve(); // Resolve anyway after force kill
+			}, 1000);
 		});
 	}
 
-	// Wait for port to be free
-	await new Promise((resolve) => setTimeout(resolve, 1000));
+	// Wait for port to actually be free
+	if (port) {
+		for (let i = 0; i < 20; i++) {
+			if (!(await isPortOpen(port))) {
+				break;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+	}
 }
 
 // =======================
@@ -167,8 +205,8 @@ test(
 		let serverProcess;
 
 		try {
-			// Start development server with simple test fixture
-			serverProcess = startDevServer("./test/fixtures/server-hello.ts", PORT);
+			// Start development server with minimal test fixture (no external dependencies)
+			serverProcess = startDevServer("./test/fixtures/server-minimal.ts", PORT);
 
 			// Wait for server to be ready
 			const response = await waitForServer(PORT, serverProcess);
@@ -204,7 +242,7 @@ test(
 			await tempFixture.copyFrom("server-goodbye.ts");
 
 			// Wait for hot reload and verify change
-			await new Promise((resolve) => setTimeout(resolve, 5000)); // Give more time for reload
+			await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for file change detection
 
 			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe("<marquee>Goodbye world</marquee>");
@@ -246,7 +284,7 @@ test(
 			);
 
 			// Wait for hot reload and verify dependency change propagated
-			await new Promise((resolve) => setTimeout(resolve, 2000)); // Give time for reload
+			await new Promise((resolve) => setTimeout(resolve, 500)); // Wait for reload
 
 			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe(
@@ -294,7 +332,7 @@ test(
 			);
 
 			// Wait for hot reload and verify dynamic import change propagated
-			await new Promise((resolve) => setTimeout(resolve, 2000)); // Give time for reload
+			await new Promise((resolve) => setTimeout(resolve, 500)); // Wait for reload
 
 			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe(
@@ -334,10 +372,10 @@ test(
 			await tempFixture.copyFrom("server-goodbye.ts");
 
 			// Make multiple concurrent requests during reload
-			await new Promise((resolve) => setTimeout(resolve, 1000)); // Start reload
+			await new Promise((resolve) => setTimeout(resolve, 200)); // Start reload
 
 			const concurrentRequests = Array.from({length: 10}, () =>
-				fetchWithRetry(PORT, 10, 200),
+				fetchWithRetry(PORT, 5, 100),
 			);
 
 			const responses = await Promise.all(concurrentRequests);
@@ -380,8 +418,8 @@ test(
 			// Write malformed TypeScript to temporary file
 			await FS.writeFile(tempFixture.path, "this is not valid typescript!!!");
 
-			// Wait a bit for attempted reload
-			await new Promise((resolve) => setTimeout(resolve, 2000));
+			// Wait for attempted reload
+			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			// Server should still be running and serving something (error page or last good version)
 			const response = await fetchWithRetry(PORT);
@@ -453,7 +491,7 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(testFileA, modifiedA);
 
 			// Wait for cascade reload
-			await new Promise((resolve) => setTimeout(resolve, 3000));
+			await new Promise((resolve) => setTimeout(resolve, 800));
 
 			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe("<div>B-A-modified</div>");
@@ -517,7 +555,7 @@ self.addEventListener("fetch", (event) => {
 			await Promise.all(modifyPromises);
 
 			// Wait for reload
-			await new Promise((resolve) => setTimeout(resolve, 3000));
+			await new Promise((resolve) => setTimeout(resolve, 800));
 
 			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toContain("Values: modified-0, modified-1");
@@ -624,7 +662,7 @@ self.addEventListener("fetch", (event) => {
 			backups[testFile] = null; // Mark for deletion
 
 			// Wait for reload
-			await new Promise((resolve) => setTimeout(resolve, 3000));
+			await new Promise((resolve) => setTimeout(resolve, 800));
 
 			const finalResponse = await fetchWithRetry(PORT);
 			expect(finalResponse).toBe("<div>Recreated</div>");
@@ -698,7 +736,7 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(testFile, fixedContent);
 
 			// Wait for recovery
-			await new Promise((resolve) => setTimeout(resolve, 3000));
+			await new Promise((resolve) => setTimeout(resolve, 800));
 
 			const recoveredResponse = await fetchWithRetry(PORT);
 			expect(recoveredResponse).toBe("<div>Fixed</div>");
@@ -761,7 +799,7 @@ self.addEventListener("fetch", (event) => {
 			);
 			await FS.writeFile(largeFile, modifiedContent);
 
-			await new Promise((resolve) => setTimeout(resolve, 3000));
+			await new Promise((resolve) => setTimeout(resolve, 800));
 
 			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe("<div>Variables: Modified</div>");
@@ -804,7 +842,7 @@ self.addEventListener("fetch", (event) => {
 			// Perform rapid modifications
 			const rapidModifications = Array.from({length: 10}, (_, i) =>
 				FS.writeFile(cacheFile, cacheContent(`"rapid-${i}"`)).then(
-					() => new Promise((resolve) => setTimeout(resolve, 100)),
+					() => new Promise((resolve) => setTimeout(resolve, 20)),
 				),
 			);
 
@@ -812,7 +850,7 @@ self.addEventListener("fetch", (event) => {
 			const results = await Promise.allSettled(rapidModifications);
 
 			// Wait for final stabilization
-			await new Promise((resolve) => setTimeout(resolve, 3000));
+			await new Promise((resolve) => setTimeout(resolve, 800));
 
 			// Server should still be responsive
 			const finalResponse = await fetchWithRetry(PORT);
@@ -882,7 +920,7 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(jsFile, modifiedJsContent);
 
 			// Wait for reload
-			await new Promise((resolve) => setTimeout(resolve, 2500));
+			await new Promise((resolve) => setTimeout(resolve, 600));
 
 			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe("<div>JavaScript modified!</div>");

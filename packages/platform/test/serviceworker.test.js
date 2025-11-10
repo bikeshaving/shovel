@@ -5,7 +5,7 @@ import { test, expect } from "bun:test";
  * Tests the ServiceWorker implementation, globals setup, and lifecycle events
  */
 
-const TIMEOUT = 15000;
+const TIMEOUT = 1000;
 
 // Helper to create a mock platform for testing
 function createMockPlatform() {
@@ -390,22 +390,47 @@ test(
 		
 		const runtime = new ServiceWorkerRuntime();
 		
-		// Add fetch listener that throws
-		runtime.addEventListener("fetch", (event) => {
-			throw new Error("Test error");
-		});
+		// Temporarily capture uncaught exceptions to prevent test failure
+		const originalHandler = process.listeners('uncaughtException');
+		let caughtError = null;
 		
-		// Install and activate before handling requests
-		await runtime.install();
-		await runtime.activate();
+		const testHandler = (error) => {
+			if (error.message === "Test error") {
+				caughtError = error;
+			} else {
+				throw error; // Re-throw if it's not our expected error
+			}
+		};
 		
-		const request = new Request("http://localhost/error");
+		process.removeAllListeners('uncaughtException');
+		process.on('uncaughtException', testHandler);
 		
-		// Should reject with timeout error (no response provided) due to throwing listener
-		await expect(runtime.handleRequest(request)).rejects.toThrow("No response provided for fetch event");
-		
-		// Note: The thrown error becomes an uncaught exception per EventTarget spec
-		// We can't easily test this without potentially crashing the test runner
+		try {
+			// Add fetch listener that throws
+			runtime.addEventListener("fetch", (event) => {
+				throw new Error("Test error");
+			});
+			
+			// Install and activate before handling requests
+			await runtime.install();
+			await runtime.activate();
+			
+			const request = new Request("http://localhost/error");
+			
+			// Should reject with timeout error (no response provided) due to throwing listener
+			await expect(runtime.handleRequest(request)).rejects.toThrow("No response provided for fetch event");
+			
+			// Give some time for the uncaught exception to be handled
+			await new Promise(resolve => setTimeout(resolve, 50));
+			
+			// Verify the uncaught exception was thrown as expected
+			expect(caughtError).toBeTruthy();
+			expect(caughtError.message).toBe("Test error");
+		} finally {
+			// Restore original uncaught exception handlers
+			process.removeAllListeners('uncaughtException');
+			originalHandler.forEach(handler => process.on('uncaughtException', handler));
+		}
 	},
 	TIMEOUT
 );

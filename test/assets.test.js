@@ -8,7 +8,7 @@ import { join } from "path";
  * Tests the new assetBase import system that replaced the url attribute
  */
 
-const TIMEOUT = 15000;
+const TIMEOUT = 3000;
 
 // Helper functions
 async function createTempDir(prefix = "assets-test-") {
@@ -608,8 +608,8 @@ self.addEventListener("fetch", (event) => {
 			expect(buildTime).toBeLessThan(10000); // 10 seconds max
 
 			// All assets should be processed
-			const assetsDir = join(outDir, "assets");
-			const manifest = JSON.parse(await FS.readFile(join(assetsDir, "manifest.json"), "utf8"));
+			const manifestPath = join(outDir, "server", "asset-manifest.json");
+			const manifest = JSON.parse(await FS.readFile(manifestPath, "utf8"));
 			
 			// Should have asset entries (exact structure depends on implementation)
 			expect(typeof manifest).toBe("object");
