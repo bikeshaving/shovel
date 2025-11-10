@@ -3,8 +3,8 @@
  * Manages registration and retrieval of filesystem adapters
  */
 
-import type {Bucket} from "./types.js";
-import {createMemoryFileSystemRoot} from "./memory.js";
+import type {Bucket} from "./index.js";
+import {MemoryBucket} from "./memory.js";
 
 /**
  * Global registry of filesystem adapters
@@ -15,7 +15,7 @@ class Registry {
 
   constructor() {
     // Set memory adapter as default
-    this.defaultAdapter = createMemoryFileSystemRoot();
+    this.defaultAdapter = new MemoryBucket();
   }
 
   /**

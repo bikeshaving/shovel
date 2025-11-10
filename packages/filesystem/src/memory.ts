@@ -1,11 +1,11 @@
 /**
- * In-memory implementation of File System Access API
+ * In-memory filesystem implementation
  * 
- * Provides a complete filesystem interface using in-memory data structures.
- * Useful for testing, development, and temporary storage scenarios.
+ * Provides MemoryBucket (root) and MemoryFileSystemBackend for storage operations
+ * using in-memory data structures.
  */
 
-import type {Bucket, FileSystemConfig} from "./types.js";
+import { FileSystemBackend, ShovelDirectoryHandle, ShovelFileHandle } from "./index.js";
 
 /**
  * In-memory file data
@@ -27,235 +27,285 @@ interface MemoryDirectory {
 }
 
 /**
- * In-memory implementation of FileSystemWritableFileStream
+ * In-memory storage backend that implements FileSystemBackend
  */
-class MemoryFileSystemWritableFileStream extends WritableStream<Uint8Array> {
-	private chunks: Uint8Array[] = [];
+export class MemoryFileSystemBackend implements FileSystemBackend {
+	constructor(private root: MemoryDirectory) {}
 
-	constructor(private onClose: (content: Uint8Array) => void) {
-		super({
-			write: (chunk: Uint8Array) => {
-				this.chunks.push(chunk);
-				return Promise.resolve();
-			},
-			close: () => {
-				// Concatenate all chunks
-				const totalLength = this.chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-				const content = new Uint8Array(totalLength);
-				let offset = 0;
-				for (const chunk of this.chunks) {
-					content.set(chunk, offset);
-					offset += chunk.length;
-				}
-				this.onClose(content);
-				return Promise.resolve();
-			},
-			abort: () => {
-				this.chunks = [];
-				return Promise.resolve();
-			},
-		});
-	}
-}
-
-/**
- * In-memory implementation of FileSystemFileHandle
- */
-export class MemoryFileSystemFileHandle implements FileSystemFileHandle {
-	readonly kind = "file" as const;
-	readonly name: string;
-
-	constructor(
-		private file: MemoryFile,
-		private updateFile: (content: Uint8Array, type?: string) => void,
-	) {
-		this.name = file.name;
+	async stat(path: string): Promise<{kind: 'file' | 'directory'} | null> {
+		const entry = this.resolvePath(path);
+		if (!entry) return null;
+		
+		if ('content' in entry) {
+			return { kind: 'file' };
+		} else {
+			return { kind: 'directory' };
+		}
 	}
 
-	async getFile(): Promise<File> {
-		return new File([this.file.content], this.file.name, {
-			lastModified: this.file.lastModified,
-			type: this.file.type,
-		});
-	}
-
-	async createWritable(): Promise<FileSystemWritableFileStream> {
-		return new MemoryFileSystemWritableFileStream((content) => {
-			this.updateFile(content);
-		}) as any;
-	}
-
-	async createSyncAccessHandle(): Promise<FileSystemSyncAccessHandle> {
-		throw new DOMException(
-			"Synchronous access handles are not supported in memory filesystem",
-			"InvalidStateError",
-		);
-	}
-
-	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
-		if (other.kind !== "file") return false;
-		if (!(other instanceof MemoryFileSystemFileHandle)) return false;
-		return this.file === other.file;
-	}
-
-	async queryPermission(): Promise<PermissionState> {
-		return "granted";
-	}
-
-	async requestPermission(): Promise<PermissionState> {
-		return "granted";
-	}
-
-}
-
-/**
- * In-memory implementation of FileSystemDirectoryHandle
- */
-export class MemoryFileSystemDirectoryHandle implements FileSystemDirectoryHandle {
-	readonly kind = "directory" as const;
-	readonly name: string;
-
-	constructor(private directory: MemoryDirectory) {
-		this.name = directory.name;
-	}
-
-	async getFileHandle(
-		name: string,
-		options?: {create?: boolean},
-	): Promise<FileSystemFileHandle> {
-		const file = this.directory.files.get(name);
-
-		if (!file && options?.create) {
-			// Create new file
-			const newFile: MemoryFile = {
-				name,
-				content: new Uint8Array(0),
-				lastModified: Date.now(),
-				type: "application/octet-stream",
-			};
-			this.directory.files.set(name, newFile);
-
-			return new MemoryFileSystemFileHandle(newFile, (content, type) => {
-				newFile.content = content;
-				newFile.lastModified = Date.now();
-				if (type) newFile.type = type;
-			});
-		} else if (!file) {
+	async readFile(path: string): Promise<Uint8Array> {
+		const entry = this.resolvePath(path);
+		if (!entry || !('content' in entry)) {
 			throw new DOMException("File not found", "NotFoundError");
 		}
-
-		return new MemoryFileSystemFileHandle(file, (content, type) => {
-			file.content = content;
-			file.lastModified = Date.now();
-			if (type) file.type = type;
-		});
+		return entry.content;
 	}
 
-	async getDirectoryHandle(
-		name: string,
-		options?: {create?: boolean},
-	): Promise<FileSystemDirectoryHandle> {
-		const dir = this.directory.directories.get(name);
+	async writeFile(path: string, data: Uint8Array): Promise<void> {
+		const { parentDir, name } = this.resolveParent(path);
+		if (!parentDir) {
+			throw new DOMException("Parent directory not found", "NotFoundError");
+		}
 
-		if (!dir && options?.create) {
-			// Create new directory
-			const newDir: MemoryDirectory = {
+		const existingFile = parentDir.files.get(name);
+		if (existingFile) {
+			// Update existing file
+			existingFile.content = data;
+			existingFile.lastModified = Date.now();
+		} else {
+			// Create new file
+			parentDir.files.set(name, {
 				name,
-				files: new Map(),
-				directories: new Map(),
-			};
-			this.directory.directories.set(name, newDir);
-			return new MemoryFileSystemDirectoryHandle(newDir);
-		} else if (!dir) {
+				content: data,
+				lastModified: Date.now(),
+				type: "application/octet-stream",
+			});
+		}
+	}
+
+	async listDir(path: string): Promise<Array<{name: string, kind: 'file' | 'directory'}>> {
+		const entry = this.resolvePath(path);
+		if (!entry || 'content' in entry) {
 			throw new DOMException("Directory not found", "NotFoundError");
 		}
 
-		return new MemoryFileSystemDirectoryHandle(dir);
+		const results: Array<{name: string, kind: 'file' | 'directory'}> = [];
+		
+		// Add files
+		for (const fileName of entry.files.keys()) {
+			results.push({ name: fileName, kind: 'file' });
+		}
+		
+		// Add directories
+		for (const dirName of entry.directories.keys()) {
+			results.push({ name: dirName, kind: 'directory' });
+		}
+		
+		return results;
 	}
 
-	async removeEntry(
-		name: string,
-		options?: {recursive?: boolean},
-	): Promise<void> {
-		// Try to remove as file first
-		if (this.directory.files.has(name)) {
-			this.directory.files.delete(name);
+	async createDir(path: string): Promise<void> {
+		const { parentDir, name } = this.resolveParent(path);
+		if (!parentDir) {
+			throw new DOMException("Parent directory not found", "NotFoundError");
+		}
+
+		if (!parentDir.directories.has(name)) {
+			parentDir.directories.set(name, {
+				name,
+				files: new Map(),
+				directories: new Map(),
+			});
+		}
+	}
+
+	async remove(path: string, recursive?: boolean): Promise<void> {
+		const { parentDir, name } = this.resolveParent(path);
+		if (!parentDir) {
+			throw new DOMException("Entry not found", "NotFoundError");
+		}
+
+		// Try to remove as file
+		if (parentDir.files.has(name)) {
+			parentDir.files.delete(name);
 			return;
 		}
 
 		// Try to remove as directory
-		const dir = this.directory.directories.get(name);
+		const dir = parentDir.directories.get(name);
 		if (dir) {
-			if (dir.files.size > 0 || dir.directories.size > 0) {
-				if (!options?.recursive) {
-					throw new DOMException(
-						"Directory is not empty",
-						"InvalidModificationError",
-					);
-				}
+			if ((dir.files.size > 0 || dir.directories.size > 0) && !recursive) {
+				throw new DOMException(
+					"Directory is not empty",
+					"InvalidModificationError",
+				);
 			}
-			this.directory.directories.delete(name);
+			parentDir.directories.delete(name);
 			return;
 		}
 
 		throw new DOMException("Entry not found", "NotFoundError");
 	}
 
+	private resolvePath(path: string): MemoryFile | MemoryDirectory | null {
+		// Normalize path
+		const parts = path.split('/').filter(Boolean);
+		
+		if (parts.length === 0) {
+			return this.root;
+		}
+
+		let current: MemoryDirectory = this.root;
+		
+		// Navigate through directories
+		for (let i = 0; i < parts.length - 1; i++) {
+			const nextDir = current.directories.get(parts[i]);
+			if (!nextDir) return null;
+			current = nextDir;
+		}
+
+		// Check final part
+		const finalName = parts[parts.length - 1];
+		
+		// Try as file first
+		const file = current.files.get(finalName);
+		if (file) return file;
+		
+		// Try as directory
+		const dir = current.directories.get(finalName);
+		if (dir) return dir;
+		
+		return null;
+	}
+
+	private resolveParent(path: string): { parentDir: MemoryDirectory | null, name: string } {
+		const parts = path.split('/').filter(Boolean);
+		const name = parts.pop() || '';
+		
+		if (parts.length === 0) {
+			return { parentDir: this.root, name };
+		}
+
+		let current: MemoryDirectory = this.root;
+		
+		for (const part of parts) {
+			const nextDir = current.directories.get(part);
+			if (!nextDir) {
+				return { parentDir: null, name };
+			}
+			current = nextDir;
+		}
+
+		return { parentDir: current, name };
+	}
+}
+
+/**
+ * Memory bucket - root entry point for in-memory filesystem
+ * Implements FileSystemDirectoryHandle and owns the root data structure
+ */
+export class MemoryBucket implements FileSystemDirectoryHandle {
+	readonly kind = "directory" as const;
+	readonly name: string;
+	private backend: MemoryFileSystemBackend;
+
+	constructor(name = "root") {
+		this.name = name;
+		
+		// Create root directory structure
+		const root: MemoryDirectory = {
+			name,
+			files: new Map(),
+			directories: new Map(),
+		};
+		
+		this.backend = new MemoryFileSystemBackend(root);
+	}
+
+	async getFileHandle(
+		name: string,
+		options?: {create?: boolean},
+	): Promise<FileSystemFileHandle> {
+		const filePath = `/${name}`;
+		const stat = await this.backend.stat(filePath);
+
+		if (!stat && options?.create) {
+			await this.backend.writeFile(filePath, new Uint8Array(0));
+		} else if (!stat) {
+			throw new DOMException("File not found", "NotFoundError");
+		} else if (stat.kind !== 'file') {
+			throw new DOMException(
+				"Path exists but is not a file",
+				"TypeMismatchError",
+			);
+		}
+
+		return new ShovelFileHandle(this.backend, filePath);
+	}
+
+	async getDirectoryHandle(
+		name: string,
+		options?: {create?: boolean},
+	): Promise<FileSystemDirectoryHandle> {
+		const dirPath = `/${name}`;
+		const stat = await this.backend.stat(dirPath);
+
+		if (!stat && options?.create) {
+			await this.backend.createDir(dirPath);
+		} else if (!stat) {
+			throw new DOMException("Directory not found", "NotFoundError");
+		} else if (stat.kind !== 'directory') {
+			throw new DOMException(
+				"Path exists but is not a directory",
+				"TypeMismatchError",
+			);
+		}
+
+		return new ShovelDirectoryHandle(this.backend, dirPath);
+	}
+
+	async removeEntry(
+		name: string,
+		options?: {recursive?: boolean},
+	): Promise<void> {
+		const entryPath = `/${name}`;
+		await this.backend.remove(entryPath, options?.recursive);
+	}
+
 	async resolve(
 		possibleDescendant: FileSystemHandle,
 	): Promise<string[] | null> {
-		// Simple implementation - could be enhanced
-		if (possibleDescendant instanceof MemoryFileSystemFileHandle) {
-			if (this.directory.files.has(possibleDescendant.name)) {
-				return [possibleDescendant.name];
-			}
+		if (!(possibleDescendant instanceof ShovelDirectoryHandle || possibleDescendant instanceof ShovelFileHandle)) {
+			return null;
 		}
-		if (possibleDescendant instanceof MemoryFileSystemDirectoryHandle) {
-			if (this.directory.directories.has(possibleDescendant.name)) {
-				return [possibleDescendant.name];
-			}
+
+		// For memory bucket, check if the handle uses our backend
+		const descendantPath = (possibleDescendant as any).path;
+		if (typeof descendantPath === 'string' && descendantPath.startsWith('/')) {
+			return descendantPath.split('/').filter(Boolean);
 		}
+
 		return null;
 	}
 
 	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
-		// Yield files
-		for (const [name, file] of this.directory.files) {
-			yield [
-				name,
-				new MemoryFileSystemFileHandle(file, (content, type) => {
-					file.content = content;
-					file.lastModified = Date.now();
-					if (type) file.type = type;
-				}),
-			];
-		}
-
-		// Yield directories
-		for (const [name, dir] of this.directory.directories) {
-			yield [name, new MemoryFileSystemDirectoryHandle(dir)];
+		const entries = await this.backend.listDir('/');
+		
+		for (const entry of entries) {
+			const entryPath = `/${entry.name}`;
+			if (entry.kind === 'file') {
+				yield [entry.name, new ShovelFileHandle(this.backend, entryPath)];
+			} else {
+				yield [entry.name, new ShovelDirectoryHandle(this.backend, entryPath)];
+			}
 		}
 	}
 
 	async *keys(): AsyncIterableIterator<string> {
-		for (const name of this.directory.files.keys()) {
-			yield name;
-		}
-		for (const name of this.directory.directories.keys()) {
+		for await (const [name] of this.entries()) {
 			yield name;
 		}
 	}
 
 	async *values(): AsyncIterableIterator<FileSystemHandle> {
-		for (const [, handle] of this.entries()) {
+		for await (const [, handle] of this.entries()) {
 			yield handle;
 		}
 	}
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "directory") return false;
-		if (!(other instanceof MemoryFileSystemDirectoryHandle)) return false;
-		return this.directory === other.directory;
+		return other instanceof MemoryBucket && other.name === this.name;
 	}
 
 	async queryPermission(): Promise<PermissionState> {
@@ -265,20 +315,5 @@ export class MemoryFileSystemDirectoryHandle implements FileSystemDirectoryHandl
 	async requestPermission(): Promise<PermissionState> {
 		return "granted";
 	}
-
 }
 
-
-
-
-/**
- * Create a new in-memory filesystem root directory
- */
-export function createMemoryFileSystemRoot(name = "root"): MemoryFileSystemDirectoryHandle {
-	const root: MemoryDirectory = {
-		name,
-		files: new Map(),
-		directories: new Map(),
-	};
-	return new MemoryFileSystemDirectoryHandle(root);
-}

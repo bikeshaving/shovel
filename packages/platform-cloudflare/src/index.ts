@@ -14,7 +14,7 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 } from "@b9g/platform";
-import {FileSystemRegistry, getDirectoryHandle, createMemoryFileSystemRoot} from "@b9g/filesystem";
+import {FileSystemRegistry, getDirectoryHandle, MemoryBucket} from "@b9g/filesystem";
 
 // Re-export common platform types
 export type {
@@ -69,7 +69,7 @@ export class CloudflarePlatform extends BasePlatform {
 
 		// Register bundled filesystem adapters for Cloudflare Workers
 		// We can't use dynamic imports in Workers, so we bundle what we need
-		FileSystemRegistry.register("memory", createMemoryFileSystemRoot());
+		FileSystemRegistry.register("memory", new MemoryBucket());
 		
 		// R2 adapter registration is deferred to async initialization
 		// since Cloudflare Workers don't support dynamic imports in constructors
@@ -81,7 +81,7 @@ export class CloudflarePlatform extends BasePlatform {
 	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
 		// In Cloudflare Workers, only memory filesystem is available at runtime
 		// Static assets are served by Cloudflare CDN
-		return createMemoryFileSystemRoot(name || "root");
+		return new MemoryBucket(name || "root");
 	}
 
 	/**

@@ -1,282 +1,295 @@
 /**
- * Bun S3 implementation of File System Access API using built-in S3 support
- *
- * Leverages Bun's native S3Client and S3File for high-performance
- * cloud storage operations with File System Access API compatibility.
+ * Bun S3 filesystem implementation
+ * 
+ * Provides S3Bucket (root) and S3FileSystemBackend for storage operations
+ * using Bun's native S3 client.
  */
 
-import type {Bucket, FileSystemConfig} from "./types.js";
+import { FileSystemBackend, ShovelDirectoryHandle, ShovelFileHandle } from "./index.js";
 
 /**
- * Bun S3 implementation of FileSystemWritableFileStream
+ * S3 storage backend that implements FileSystemBackend using Bun's S3 client
  */
-export class BunS3FileSystemWritableFileStream extends WritableStream<Uint8Array> {
-	private writer: any;
-
-	constructor(private s3file: any) {
-		super({
-			start: async () => {
-				this.writer = this.s3file.writer();
-			},
-			write: async (chunk: Uint8Array) => {
-				await this.writer.write(chunk);
-			},
-			close: async () => {
-				await this.writer.end();
-			},
-			abort: async () => {
-				// S3 multipart uploads can be aborted
-				await this.writer.abort?.();
-			},
-		});
-	}
-}
-
-/**
- * Bun S3 implementation of FileSystemFileHandle
- */
-export class BunS3FileSystemFileHandle implements FileSystemFileHandle {
-	readonly kind = "file" as const;
-	readonly name: string;
-
+export class S3FileSystemBackend implements FileSystemBackend {
 	constructor(
-		private s3Client: any, // Bun S3Client
-		private key: string,
-	) {
-		this.name = key.split("/").pop() || key;
-	}
+		private s3Client: any,
+		private bucketName: string,
+		private prefix: string = ""
+	) {}
 
-	async getFile(): Promise<File> {
-		const s3file = this.s3Client.file(this.key);
-
+	async stat(path: string): Promise<{kind: 'file' | 'directory'} | null> {
 		try {
-			// Check if file exists
-			const exists = await s3file.exists();
-			if (!exists) {
-				throw new DOMException("File not found", "NotFoundError");
+			const key = this.getS3Key(path);
+			
+			// Try as file first
+			try {
+				await this.s3Client.head({ key });
+				return { kind: 'file' };
+			} catch (error) {
+				// If head fails, try as directory (check for objects with this prefix)
+				const dirPrefix = key.endsWith('/') ? key : `${key}/`;
+				const result = await this.s3Client.list({
+					prefix: dirPrefix,
+					maxKeys: 1
+				});
+				
+				if (result.Contents && result.Contents.length > 0) {
+					return { kind: 'directory' };
+				}
+				
+				return null;
 			}
-
-			// Get file stats for metadata
-			const stats = await s3file.stat();
-
-			// S3File extends Blob, so we can convert it to File
-			const blob = s3file as Blob;
-			return new File([blob], this.name, {
-				lastModified: stats?.lastModified
-					? new Date(stats.lastModified).getTime()
-					: Date.now(),
-				type: stats?.contentType || this.getMimeType(this.key),
-			});
 		} catch (error) {
-			if (
-				(error as any).message?.includes("NoSuchKey") ||
-				(error as any).message?.includes("Not Found")
-			) {
-				throw new DOMException("File not found", "NotFoundError");
-			}
-			throw error;
+			return null;
 		}
 	}
 
-	async createWritable(): Promise<FileSystemWritableFileStream> {
-		const s3file = this.s3Client.file(this.key);
-		return new BunS3FileSystemWritableFileStream(s3file) as any;
+	async readFile(path: string): Promise<Uint8Array> {
+		try {
+			const key = this.getS3Key(path);
+			const result = await this.s3Client.get({ key });
+			
+			if (result.Body) {
+				if (result.Body instanceof Uint8Array) {
+					return result.Body;
+				} else if (typeof result.Body === 'string') {
+					return new TextEncoder().encode(result.Body);
+				} else {
+					// Handle other body types (stream, etc.)
+					const arrayBuffer = await result.Body.arrayBuffer();
+					return new Uint8Array(arrayBuffer);
+				}
+			}
+			
+			throw new DOMException("File not found", "NotFoundError");
+		} catch (error) {
+			throw new DOMException("File not found", "NotFoundError");
+		}
 	}
 
-	async createSyncAccessHandle(): Promise<FileSystemSyncAccessHandle> {
-		throw new DOMException(
-			"Synchronous access handles are not supported for S3 storage",
-			"InvalidStateError",
-		);
+	async writeFile(path: string, data: Uint8Array): Promise<void> {
+		try {
+			const key = this.getS3Key(path);
+			await this.s3Client.put({
+				key,
+				body: data
+			});
+		} catch (error) {
+			throw new DOMException(`Failed to write file: ${error}`, "InvalidModificationError");
+		}
 	}
 
-	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
-		if (other.kind !== "file") return false;
-		if (!(other instanceof BunS3FileSystemFileHandle)) return false;
-		return this.key === other.key;
+	async listDir(path: string): Promise<Array<{name: string, kind: 'file' | 'directory'}>> {
+		try {
+			const dirPrefix = this.getS3Key(path);
+			const listPrefix = dirPrefix ? `${dirPrefix}/` : "";
+			
+			const result = await this.s3Client.list({
+				prefix: listPrefix,
+				delimiter: "/",
+			});
+
+			const results: Array<{name: string, kind: 'file' | 'directory'}> = [];
+
+			// Handle files (Contents)
+			if (result.Contents) {
+				for (const object of result.Contents) {
+					if (object.Key && object.Key !== listPrefix) {
+						const name = object.Key.replace(listPrefix, "");
+						if (name && !name.includes("/")) {
+							results.push({ name, kind: 'file' });
+						}
+					}
+				}
+			}
+
+			// Handle directories (CommonPrefixes)
+			if (result.CommonPrefixes) {
+				for (const prefix of result.CommonPrefixes) {
+					if (prefix.Prefix) {
+						const name = prefix.Prefix.replace(listPrefix, "").replace("/", "");
+						if (name) {
+							results.push({ name, kind: 'directory' });
+						}
+					}
+				}
+			}
+
+			return results;
+		} catch (error) {
+			throw new DOMException("Directory not found", "NotFoundError");
+		}
 	}
 
-	async queryPermission(): Promise<PermissionState> {
-		// S3 access is controlled by credentials, assume granted if we have access
-		return "granted";
+	async createDir(path: string): Promise<void> {
+		try {
+			// In S3, directories are created by putting an empty object with trailing slash
+			const key = this.getS3Key(path);
+			const dirKey = key.endsWith('/') ? key : `${key}/`;
+			
+			await this.s3Client.put({
+				key: dirKey,
+				body: new Uint8Array(0)
+			});
+		} catch (error) {
+			throw new DOMException(`Failed to create directory: ${error}`, "InvalidModificationError");
+		}
 	}
 
-	async requestPermission(): Promise<PermissionState> {
-		// S3 access is controlled by credentials, assume granted if we have access
-		return "granted";
+	async remove(path: string, recursive?: boolean): Promise<void> {
+		try {
+			const key = this.getS3Key(path);
+			
+			// Check if it's a file first
+			try {
+				await this.s3Client.head({ key });
+				// It's a file, delete it
+				await this.s3Client.delete({ key });
+				return;
+			} catch (error) {
+				// Not a file, try as directory
+			}
+
+			// Handle as directory
+			const dirPrefix = key.endsWith('/') ? key : `${key}/`;
+			
+			if (recursive) {
+				// List all objects with this prefix and delete them
+				const result = await this.s3Client.list({ prefix: dirPrefix });
+				
+				if (result.Contents && result.Contents.length > 0) {
+					const deleteKeys = result.Contents.map((obj: any) => ({ key: obj.Key }));
+					await this.s3Client.deleteObjects({ delete: { objects: deleteKeys } });
+				}
+			} else {
+				// Check if directory is empty
+				const result = await this.s3Client.list({
+					prefix: dirPrefix,
+					maxKeys: 1
+				});
+				
+				if (result.Contents && result.Contents.length > 0) {
+					throw new DOMException(
+						"Directory is not empty",
+						"InvalidModificationError",
+					);
+				}
+				
+				// Delete the directory marker if it exists
+				try {
+					await this.s3Client.delete({ key: dirPrefix });
+				} catch (error) {
+					// Directory marker might not exist, that's fine
+				}
+			}
+		} catch (error) {
+			if (error instanceof DOMException) throw error;
+			throw new DOMException("Entry not found", "NotFoundError");
+		}
 	}
 
-
-	private getMimeType(key: string): string {
-		const ext = key.split(".").pop()?.toLowerCase();
-		const mimeTypes: Record<string, string> = {
-			txt: "text/plain",
-			html: "text/html",
-			css: "text/css",
-			js: "text/javascript",
-			json: "application/json",
-			png: "image/png",
-			jpg: "image/jpeg",
-			jpeg: "image/jpeg",
-			gif: "image/gif",
-			svg: "image/svg+xml",
-			pdf: "application/pdf",
-			zip: "application/zip",
-		};
-		return mimeTypes[ext || ""] || "application/octet-stream";
+	private getS3Key(path: string): string {
+		// Remove leading slash and combine with prefix
+		const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+		
+		if (!cleanPath) {
+			return this.prefix;
+		}
+		
+		return this.prefix ? `${this.prefix}/${cleanPath}` : cleanPath;
 	}
 }
 
 /**
- * Bun S3 implementation of FileSystemDirectoryHandle
+ * S3 bucket - root entry point for S3 filesystem using Bun's S3 client
+ * Implements FileSystemDirectoryHandle for S3 object storage
  */
-export class BunS3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
+export class S3Bucket implements FileSystemDirectoryHandle {
 	readonly kind = "directory" as const;
 	readonly name: string;
+	private backend: S3FileSystemBackend;
 
-	constructor(
-		private s3Client: any, // Bun S3Client
-		private prefix: string,
-	) {
-		// Remove trailing slash for consistent handling
-		this.prefix = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
-		this.name = this.prefix.split("/").pop() || "root";
+	constructor(s3Client: any, bucketName: string, prefix: string = "filesystems/root") {
+		this.name = prefix.split('/').pop() || 'root';
+		this.backend = new S3FileSystemBackend(s3Client, bucketName, prefix);
 	}
 
 	async getFileHandle(
 		name: string,
 		options?: {create?: boolean},
 	): Promise<FileSystemFileHandle> {
-		const key = this.prefix ? `${this.prefix}/${name}` : name;
-		const s3file = this.s3Client.file(key);
+		const filePath = `/${name}`;
+		const stat = await this.backend.stat(filePath);
 
-		const exists = await s3file.exists();
-
-		if (!exists && options?.create) {
-			// Create empty file
-			await s3file.write("");
-		} else if (!exists) {
+		if (!stat && options?.create) {
+			await this.backend.writeFile(filePath, new Uint8Array(0));
+		} else if (!stat) {
 			throw new DOMException("File not found", "NotFoundError");
+		} else if (stat.kind !== 'file') {
+			throw new DOMException(
+				"Path exists but is not a file",
+				"TypeMismatchError",
+			);
 		}
 
-		return new BunS3FileSystemFileHandle(this.s3Client, key);
+		return new ShovelFileHandle(this.backend, filePath);
 	}
 
 	async getDirectoryHandle(
 		name: string,
 		options?: {create?: boolean},
 	): Promise<FileSystemDirectoryHandle> {
-		const newPrefix = this.prefix ? `${this.prefix}/${name}` : name;
+		const dirPath = `/${name}`;
+		const stat = await this.backend.stat(dirPath);
 
-		if (options?.create) {
-			// S3 doesn't have directories, but we can create a marker object
-			const markerKey = `${newPrefix}/.shovel_directory_marker`;
-			const markerFile = this.s3Client.file(markerKey);
-			const exists = await markerFile.exists();
-			if (!exists) {
-				await markerFile.write("");
-			}
+		if (!stat && options?.create) {
+			await this.backend.createDir(dirPath);
+		} else if (!stat) {
+			throw new DOMException("Directory not found", "NotFoundError");
+		} else if (stat.kind !== 'directory') {
+			throw new DOMException(
+				"Path exists but is not a directory",
+				"TypeMismatchError",
+			);
 		}
 
-		return new BunS3FileSystemDirectoryHandle(this.s3Client, newPrefix);
+		return new ShovelDirectoryHandle(this.backend, dirPath);
 	}
 
 	async removeEntry(
 		name: string,
 		options?: {recursive?: boolean},
 	): Promise<void> {
-		const key = this.prefix ? `${this.prefix}/${name}` : name;
-
-		// First try to delete as a file
-		const s3file = this.s3Client.file(key);
-		const fileExists = await s3file.exists();
-
-		if (fileExists) {
-			await s3file.delete();
-			return;
-		}
-
-		// If not a file, try to delete as directory (with recursive option)
-		if (options?.recursive) {
-			const dirPrefix = `${key}/`;
-			const files = await this.s3Client.list({prefix: dirPrefix});
-
-			// Delete all files in the directory
-			const deletePromises = files.map((file: any) =>
-				this.s3Client.file(file.Key || file.key).delete(),
-			);
-			await Promise.all(deletePromises);
-
-			// Delete directory marker if it exists
-			const markerFile = this.s3Client.file(`${key}/.shovel_directory_marker`);
-			const markerExists = await markerFile.exists();
-			if (markerExists) {
-				await markerFile.delete();
-			}
-		} else {
-			throw new DOMException(
-				"Directory is not empty",
-				"InvalidModificationError",
-			);
-		}
+		const entryPath = `/${name}`;
+		await this.backend.remove(entryPath, options?.recursive);
 	}
 
 	async resolve(
-		_possibleDescendant: FileSystemHandle,
+		possibleDescendant: FileSystemHandle,
 	): Promise<string[] | null> {
-		// Complex to implement for S3 - return null for now
+		if (!(possibleDescendant instanceof ShovelDirectoryHandle || possibleDescendant instanceof ShovelFileHandle)) {
+			return null;
+		}
+
+		// For S3 bucket, check if the handle uses our backend
+		const descendantPath = (possibleDescendant as any).path;
+		if (typeof descendantPath === 'string' && descendantPath.startsWith('/')) {
+			return descendantPath.split('/').filter(Boolean);
+		}
+
 		return null;
 	}
 
 	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
-		const listPrefix = this.prefix ? `${this.prefix}/` : "";
-
-		try {
-			const result = await this.s3Client.list({
-				prefix: listPrefix,
-				delimiter: "/", // Only get immediate children
-			});
-
-			// Handle files
-			if (result.Contents) {
-				for (const item of result.Contents) {
-					const key = item.Key || item.key;
-					if (key && key !== listPrefix) {
-						const name = key.substring(listPrefix.length);
-						// Skip directory markers and items with slashes (subdirectories)
-						if (
-							!name.includes("/") &&
-							!name.endsWith(".shovel_directory_marker")
-						) {
-							yield [name, new BunS3FileSystemFileHandle(this.s3Client, key)];
-						}
-					}
-				}
+		const entries = await this.backend.listDir('/');
+		
+		for (const entry of entries) {
+			const entryPath = `/${entry.name}`;
+			if (entry.kind === 'file') {
+				yield [entry.name, new ShovelFileHandle(this.backend, entryPath)];
+			} else {
+				yield [entry.name, new ShovelDirectoryHandle(this.backend, entryPath)];
 			}
-
-			// Handle subdirectories
-			if (result.CommonPrefixes) {
-				for (const prefix of result.CommonPrefixes) {
-					const prefixKey = prefix.Prefix || prefix.prefix;
-					if (prefixKey) {
-						const name = prefixKey
-							.substring(listPrefix.length)
-							.replace(/\/$/, "");
-						if (name) {
-							yield [
-								name,
-								new BunS3FileSystemDirectoryHandle(
-									this.s3Client,
-									prefixKey.replace(/\/$/, ""),
-								),
-							];
-						}
-					}
-				}
-			}
-		} catch (error) {
-			// If listing fails, assume directory doesn't exist
-			throw new DOMException("Directory not found", "NotFoundError");
 		}
 	}
 
@@ -294,19 +307,14 @@ export class BunS3FileSystemDirectoryHandle implements FileSystemDirectoryHandle
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "directory") return false;
-		if (!(other instanceof BunS3FileSystemDirectoryHandle)) return false;
-		return this.prefix === other.prefix;
+		return other instanceof S3Bucket && other.name === this.name;
 	}
 
 	async queryPermission(): Promise<PermissionState> {
-		// S3 access is controlled by credentials, assume granted if we have access
 		return "granted";
 	}
 
 	async requestPermission(): Promise<PermissionState> {
-		// S3 access is controlled by credentials, assume granted if we have access
 		return "granted";
 	}
-
 }
-

@@ -19,7 +19,7 @@ import {
 } from "@b9g/platform";
 import { WorkerPool, WorkerPoolOptions } from "@b9g/platform/worker-pool";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
-import {FileSystemRegistry, MemoryFileSystemDirectoryHandle, NodeFileSystemDirectoryHandle, createMemoryFileSystemRoot} from "@b9g/filesystem";
+import {FileSystemRegistry, MemoryBucket, NodeBucket} from "@b9g/filesystem";
 import * as Path from "path";
 
 // Re-export common platform types
@@ -74,8 +74,8 @@ export class BunPlatform extends BasePlatform {
 		};
 
 		// Register filesystem adapters for Bun
-		FileSystemRegistry.register("memory", createMemoryFileSystemRoot());
-		FileSystemRegistry.register("node", new NodeFileSystemDirectoryHandle(Path.join(this.options.cwd, "dist")));
+		FileSystemRegistry.register("memory", new MemoryBucket());
+		FileSystemRegistry.register("node", new NodeBucket(Path.join(this.options.cwd, "dist")));
 		
 		// Register Bun's native S3 adapter if available
 		try {
@@ -94,7 +94,7 @@ export class BunPlatform extends BasePlatform {
 		// Create dist filesystem pointing to ./dist directory
 		const distPath = Path.resolve(this.options.cwd, "dist");
 		const targetPath = name ? Path.join(distPath, name) : distPath;
-		return new NodeFileSystemDirectoryHandle(targetPath);
+		return new NodeBucket(targetPath);
 	}
 
 	/**

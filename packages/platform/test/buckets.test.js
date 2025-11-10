@@ -409,12 +409,12 @@ test(
 test(
 	"local bucket adapter with real filesystem",
 	async () => {
-			const { LocalBucket } = await import("@b9g/filesystem");
+			const { NodeBucket } = await import("@b9g/filesystem");
 		
 		const tempDir = await createTempDir();
 		
 		try {
-			const bucket = new LocalBucket(tempDir);
+			const bucket = new NodeBucket(tempDir);
 			
 			// Test directory creation
 			const dirHandle = await bucket.getDirectoryHandle("local-test", { create: true });

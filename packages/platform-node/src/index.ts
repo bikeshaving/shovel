@@ -17,7 +17,7 @@ import {
 } from "@b9g/platform";
 import { WorkerPool, WorkerPoolOptions } from "@b9g/platform/worker-pool";
 import {CustomCacheStorage, MemoryCache, MemoryCacheManager, PostMessageCache} from "@b9g/cache";
-import {FileSystemRegistry, getDirectoryHandle, NodeFileSystemDirectoryHandle} from "@b9g/filesystem";
+import {FileSystemRegistry, getDirectoryHandle, NodeBucket} from "@b9g/filesystem";
 import * as Http from "http";
 import * as Path from "path";
 
@@ -119,7 +119,7 @@ export class NodePlatform extends BasePlatform {
 		};
 
 		// Register Node.js filesystem adapter as default  
-		FileSystemRegistry.register("node", new NodeFileSystemDirectoryHandle(this.options.cwd));
+		FileSystemRegistry.register("node", new NodeBucket(this.options.cwd));
 	}
 
 	/**
@@ -129,7 +129,7 @@ export class NodePlatform extends BasePlatform {
 		// Create dist filesystem pointing to ./dist directory
 		const distPath = Path.resolve(this.options.cwd, "dist");
 		const targetPath = name ? Path.join(distPath, name) : distPath;
-		return new NodeFileSystemDirectoryHandle(targetPath);
+		return new NodeBucket(targetPath);
 	}
 
 	/**

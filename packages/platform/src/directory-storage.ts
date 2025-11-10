@@ -6,7 +6,8 @@
  */
 
 import type {BucketStorage as BucketStorageInterface} from "./service-worker.js";
-import {LocalBucket} from "@b9g/filesystem";
+import {NodeBucket} from "@b9g/filesystem";
+import * as fs from "fs/promises";
 
 /**
  * Platform-agnostic bucket storage implementation
@@ -37,7 +38,10 @@ export class PlatformBucketStorage implements BucketStorageInterface {
 			? this.rootPath 
 			: `${this.rootPath}/${name}`;
 		
-		const bucket = new LocalBucket(targetPath);
+		// Ensure the directory exists on disk
+		await fs.mkdir(targetPath, { recursive: true });
+		
+		const bucket = new NodeBucket(targetPath);
 		this.instances.set(name, bucket);
 		return bucket;
 	}
