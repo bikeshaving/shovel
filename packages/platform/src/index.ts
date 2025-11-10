@@ -33,8 +33,8 @@ export {
 	type BucketStorage as BucketStorageInterface,
 } from "./service-worker.js";
 
-// ServiceWorkerRuntime is now ServiceWorkerRegistration (with backward compatibility alias)
-export { ServiceWorkerRuntime } from "./service-worker-api.js";
+// ServiceWorkerRuntime is now ServiceWorkerRegistration 
+export { ServiceWorkerRegistration as ServiceWorkerRuntime } from "./service-worker-api.js";
 
 // Bucket storage implementation
 export {

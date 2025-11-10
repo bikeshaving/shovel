@@ -187,7 +187,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 	readonly navigationPreload: NavigationPreloadManager;
 	
 	// ServiceWorker instances representing different lifecycle states
-	private _serviceWorker: ServiceWorker;
+	public _serviceWorker: ServiceWorker;
 	
 	// Shovel runtime state
 	private pendingPromises = new Set<Promise<any>>();
@@ -400,50 +400,158 @@ export class ServiceWorkerRegistration extends EventTarget {
 }
 
 /**
- * Backward compatibility alias for ServiceWorkerRegistration
- * @deprecated Use ServiceWorkerRegistration instead
- */
-export const ServiceWorkerRuntime = ServiceWorkerRegistration;
-
-/**
  * ServiceWorkerContainer provides access to service worker registration and messaging
+ * This is the registry that manages multiple ServiceWorkerRegistrations by scope
  */
 export class ServiceWorkerContainer extends EventTarget {
+	private registrations = new Map<string, ServiceWorkerRegistration>();
 	readonly controller: ServiceWorker | null = null;
 	readonly ready: Promise<ServiceWorkerRegistration>;
 
 	constructor() {
 		super();
-		// Provide a default registration for compatibility
-		this.ready = Promise.resolve(
-			new ServiceWorkerRegistration('/', new ServiceWorker('/', 'activated'))
-		);
+		// Create default registration for root scope
+		const defaultRegistration = new ServiceWorkerRegistration('/', '/');
+		this.registrations.set('/', defaultRegistration);
+		this.ready = Promise.resolve(defaultRegistration);
 	}
 
-	async getRegistration(scope?: string): Promise<ServiceWorkerRegistration | undefined> {
-		return undefined;
+	/**
+	 * Get registration for a specific scope
+	 */
+	async getRegistration(scope: string = '/'): Promise<ServiceWorkerRegistration | undefined> {
+		return this.registrations.get(scope);
 	}
 
+	/**
+	 * Get all registrations
+	 */
 	async getRegistrations(): Promise<ServiceWorkerRegistration[]> {
-		return [];
+		return Array.from(this.registrations.values());
 	}
 
+	/**
+	 * Register a new ServiceWorker for a specific scope
+	 */
 	async register(scriptURL: string | URL, options?: {
 		scope?: string;
 		type?: 'classic' | 'module';
 		updateViaCache?: 'imports' | 'all' | 'none';
 	}): Promise<ServiceWorkerRegistration> {
 		const url = typeof scriptURL === 'string' ? scriptURL : scriptURL.toString();
-		const scope = options?.scope || '/';
-		const serviceWorker = new ServiceWorker(url, 'activated');
-		return new ServiceWorkerRegistration(scope, serviceWorker);
+		const scope = this.normalizeScope(options?.scope || '/');
+		
+		// Check if registration already exists for this scope
+		let registration = this.registrations.get(scope);
+		
+		if (registration) {
+			// Update existing registration with new script
+			registration._serviceWorker.scriptURL = url;
+			registration._serviceWorker._setState('parsed');
+		} else {
+			// Create new registration
+			registration = new ServiceWorkerRegistration(scope, url);
+			this.registrations.set(scope, registration);
+			
+			// Dispatch updatefound event
+			this.dispatchEvent(new Event('updatefound'));
+		}
+		
+		return registration;
+	}
+
+	/**
+	 * Unregister a ServiceWorker registration
+	 */
+	async unregister(scope: string): Promise<boolean> {
+		const registration = this.registrations.get(scope);
+		if (registration) {
+			await registration.unregister();
+			this.registrations.delete(scope);
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Route a request to the appropriate registration based on scope matching
+	 */
+	async handleRequest(request: Request): Promise<Response | null> {
+		const url = new URL(request.url);
+		const pathname = url.pathname;
+		
+		// Find the most specific scope that matches this request
+		const matchingScope = this.findMatchingScope(pathname);
+		
+		if (matchingScope) {
+			const registration = this.registrations.get(matchingScope);
+			if (registration && registration.ready) {
+				return await registration.handleRequest(request);
+			}
+		}
+		
+		return null;
+	}
+
+	/**
+	 * Install and activate all registrations
+	 */
+	async installAll(): Promise<void> {
+		const installations = Array.from(this.registrations.values()).map(async (registration) => {
+			await registration.install();
+			await registration.activate();
+		});
+		
+		await Promise.all(installations);
+	}
+
+	/**
+	 * Get list of all scopes
+	 */
+	getScopes(): string[] {
+		return Array.from(this.registrations.keys());
 	}
 
 	startMessages(): void {
 		// No-op in server context
 	}
 
-	// Events: controllerchange, message, messageerror
+	/**
+	 * Normalize scope to ensure it starts and ends correctly
+	 */
+	private normalizeScope(scope: string): string {
+		// Ensure scope starts with /
+		if (!scope.startsWith('/')) {
+			scope = '/' + scope;
+		}
+		
+		// Ensure scope ends with / unless it's the root
+		if (scope !== '/' && !scope.endsWith('/')) {
+			scope = scope + '/';
+		}
+		
+		return scope;
+	}
+
+	/**
+	 * Find the most specific scope that matches a pathname
+	 */
+	private findMatchingScope(pathname: string): string | null {
+		const scopes = Array.from(this.registrations.keys());
+		
+		// Sort by length descending to find most specific match first
+		scopes.sort((a, b) => b.length - a.length);
+		
+		for (const scope of scopes) {
+			if (pathname.startsWith(scope === '/' ? '/' : scope)) {
+				return scope;
+			}
+		}
+		
+		return null;
+	}
+
+	// Events: controllerchange, message, messageerror, updatefound
 }
 
 /**

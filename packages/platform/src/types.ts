@@ -227,9 +227,16 @@ export interface Platform {
 	 */
 	readonly name: string;
 
+	/**
+	 * THE MAIN JOB - Create a ServiceWorkerContainer for managing multiple registrations
+	 * This is the new registry-based approach aligned with ServiceWorker spec
+	 */
+	createServiceWorkerContainer(
+		options?: ServiceWorkerOptions,
+	): Promise<any>; // ServiceWorkerContainer from service-worker-api.ts
 
 	/**
-	 * THE MAIN JOB - Load and run a ServiceWorker-style entrypoint
+	 * Load and run a ServiceWorker-style entrypoint (legacy method)
 	 * This is where all the platform-specific complexity lives
 	 */
 	loadServiceWorker(
