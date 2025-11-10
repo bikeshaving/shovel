@@ -1,14 +1,14 @@
 # @b9g/platform
 
-Universal platform abstraction for ServiceWorker-style applications with automatic platform detection and worker thread architecture.
+**ServiceWorker-first universal deployment platform. Write ServiceWorker apps once, deploy anywhere (Node/Bun/Cloudflare). Registry-based multi-app orchestration.**
 
 ## Features
 
-- **ServiceWorker Pattern**: Load applications as ServiceWorker entrypoints
-- **Multi-Platform**: Node.js, Bun, Cloudflare Workers support
-- **Auto-Detection**: Automatic runtime detection with explicit override
-- **Worker Architecture**: Multi-worker concurrency with coordinated caching
-- **Hot Reloading**: VM module isolation for clean development reloads
+- **ServiceWorkerContainer Registry**: Manage multiple ServiceWorker apps by scope
+- **Complete ServiceWorker API**: Full MDN spec implementation for any JavaScript runtime
+- **Multi-App Orchestration**: Deploy multiple ServiceWorkers with scope-based routing
+- **Universal Platform Support**: Node.js, Bun, Cloudflare Workers with identical APIs
+- **Standards Compliance**: Full ServiceWorker specification compliance
 
 ## Installation
 
@@ -39,14 +39,19 @@ import { createPlatform } from '@b9g/platform';
 // Auto-detect platform
 const platform = await createPlatform('auto');
 
-// Load ServiceWorker app
-const serviceWorker = await platform.loadServiceWorker('./app.js', {
-  workerCount: 2,
-  hotReload: true
-});
+// Create ServiceWorker registry
+const container = await platform.createServiceWorkerContainer();
 
-// Create server
-const server = platform.createServer(serviceWorker.handleRequest, {
+// Register multiple ServiceWorker apps by scope
+await container.register('/api-worker.js', { scope: '/api/' });
+await container.register('/admin-worker.js', { scope: '/admin/' });
+await container.register('/app-worker.js', { scope: '/' });
+
+// Install and activate all ServiceWorkers
+await container.installAll();
+
+// Create server that routes to appropriate ServiceWorker
+const server = platform.createServer(container.handleRequest.bind(container), {
   port: 3000,
   host: 'localhost'
 });
@@ -54,18 +59,39 @@ const server = platform.createServer(serviceWorker.handleRequest, {
 await server.listen();
 ```
 
-## ServiceWorker Pattern
+## ServiceWorker Registry Pattern
 
-Write your app as a ServiceWorker entrypoint:
+Deploy multiple ServiceWorker applications with scope-based routing:
 
 ```javascript
-// app.js - ServiceWorker-style entrypoint
+// api-worker.js - API ServiceWorker
+import { Router } from '@b9g/router';
+
+const router = new Router();
+router.get('/users', () => Response.json({ users: [] }));
+router.get('/posts', () => Response.json({ posts: [] }));
+
+addEventListener('install', event => {
+  console.log('API service installing...');
+});
+
+addEventListener('activate', event => {
+  console.log('API service activated!');
+});
+
+addEventListener('fetch', event => {
+  event.respondWith(router.handler(event.request));
+});
+```
+
+```javascript
+// app-worker.js - Main app ServiceWorker
 import { Router } from '@b9g/router';
 
 const router = new Router();
 router.get('/', () => new Response('Hello World!'));
+router.get('/about', () => new Response('About page'));
 
-// ServiceWorker lifecycle events
 addEventListener('install', event => {
   console.log('App installing...');
 });
@@ -74,11 +100,16 @@ addEventListener('activate', event => {
   console.log('App activated!');
 });
 
-// Handle fetch events
 addEventListener('fetch', event => {
   event.respondWith(router.handler(event.request));
 });
 ```
+
+**Registry automatically routes requests:**
+- `/api/users` → `api-worker.js` 
+- `/api/posts` → `api-worker.js`
+- `/` → `app-worker.js`
+- `/about` → `app-worker.js`
 
 ## Platform Detection
 

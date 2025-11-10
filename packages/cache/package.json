@@ -1,7 +1,7 @@
 {
   "name": "@b9g/cache",
   "version": "0.1.3",
-  "description": "Universal Cache API implementation",
+  "description": "Universal Cache API for ServiceWorker applications. Provides standard CacheStorage and Cache interfaces across all JavaScript runtimes.",
   "type": "module",
   "scripts": {
     "build": "libuild build",
@@ -12,8 +12,13 @@
   "keywords": [
     "cache",
     "storage",
+    "serviceworker",
+    "cachestorage",
     "web-standards",
-    "universal"
+    "universal",
+    "memory",
+    "filesystem",
+    "shovel"
   ],
   "dependencies": {},
   "devDependencies": {

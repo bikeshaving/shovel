@@ -1,7 +1,7 @@
 {
   "name": "@b9g/shovel",
   "version": "0.1.10",
-  "description": "The obsessively web platform-based web framework",
+  "description": "ServiceWorker-first universal deployment platform. Write ServiceWorker apps once, deploy anywhere (Node/Bun/Cloudflare). Registry-based multi-app orchestration.",
   "license": "MIT",
   "type": "module",
   "bin": {

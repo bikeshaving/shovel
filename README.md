@@ -1,34 +1,40 @@
-# Shovel.js: The web framework built on the web platform
-**The obsessively web platform-based web framework**
+# Shovel: ServiceWorker-first universal deployment platform
+**Write ServiceWorker apps once, deploy anywhere (Node/Bun/Cloudflare). Registry-based multi-app orchestration.**
 
-Shovel is a web (meta-)framework built entirely on web platform APIs. It runs
-universally across browsers, Node, Bun, Deno, and edge platforms using the same
-code.
+Shovel is a ServiceWorker-first deployment platform that enables true universal applications. Write your app as a ServiceWorker and deploy it to any JavaScript runtime using the same code.
 
 > server - noun. a thing which populates caches with responses based on requests
 
 ## Philosophy
 
-### Web Platform Implementations
+### ServiceWorker-First Development
 
-All Shovel APIs are based on specifications and implementations in browsers.
+Shovel treats ServiceWorkers as the universal application model. Your app is a ServiceWorker that handles `install`, `activate`, and `fetch` events - whether running in a browser or on a server.
 
-A list of standards Shovel uses:
-- `fetch()` (https://fetch.spec.whatwg.org)
-  - handlers take `Request` and return `Response`
-- Service Workers (https://www.w3.org/TR/service-workers/)
-  - entrypoints are ServiceWorker files
-  - `install`/`activate`/`fetch` events
-  - `Cache`/`CacheStorage` implementation
-- `URLPattern` (https://urlpattern.spec.whatwg.org)
-  - `MatchPattern` subclass which provides convenient URL syntax
-  - `Router` with handler/middleware definitions
-- File System Access API (https://fs.spec.whatwg.org)
-  - access local or cloud file systems with `FileSystemDirectoryHandle` and `FileSystemFileHandle`
-  - supports Node.js fs, memory, S3/R2 backends
-- Import Attributes (https://github.com/tc39/proposal-import-attributes)
-  - Reference asset URLs with `import("yourasset.svg", {with: {assetBase: "/static/"}})`
-  - Content hashing and manifest generation for cache busting
+### Registry-Based Multi-App Architecture
+
+Using the ServiceWorker specification's registry pattern, Shovel manages multiple applications by scope:
+
+```javascript
+// Multiple apps in one deployment
+const container = new ServiceWorkerContainer();
+
+await container.register('/api-worker.js', { scope: '/api/' });
+await container.register('/admin-worker.js', { scope: '/admin/' });
+await container.register('/app-worker.js', { scope: '/' });
+
+// Automatic routing to correct app based on request path
+const response = await container.handleRequest(request);
+```
+
+### Web Platform Standards
+
+All Shovel APIs are based on browser specifications:
+- **Service Workers** (https://www.w3.org/TR/service-workers/) - Application lifecycle and registry
+- **Fetch API** (https://fetch.spec.whatwg.org) - Request/Response handling  
+- **Cache API** (https://w3c.github.io/ServiceWorker/#cache-interface) - Response caching
+- **File System Access API** (https://fs.spec.whatwg.org) - Cloud/local storage
+- **URLPattern** (https://urlpattern.spec.whatwg.org) - Enhanced routing
 
 ## Package Structure
 ### 1. `@b9g/match-pattern` [![npm](https://img.shields.io/npm/v/@b9g/match-pattern)](https://www.npmjs.com/package/@b9g/match-pattern)
@@ -102,40 +108,57 @@ ESBuild/Bun plugin for asset pipeline:
 
 ### 4. `@b9g/platform`
 
-Universal platform abstraction for ServiceWorker-style applications:
-- Platform-agnostic ServiceWorker entrypoint loading
-- Worker thread architecture with configurable concurrency
-- Multiple platform targets: Node.js, Bun, Cloudflare Workers
-- Automatic platform detection for development
-- ESBuild integration with static file handling
-- Cache coordination across worker threads
+**THE CORE** - ServiceWorker-first universal deployment platform:
+- **ServiceWorkerContainer**: Registry for managing multiple apps by scope
+- **ServiceWorkerRegistration**: Unified runtime with standard lifecycle (install/activate/fetch)
+- **Complete ServiceWorker API**: Full MDN spec implementation for any JavaScript runtime
+- **Platform abstraction**: Node.js, Bun, Cloudflare Workers with identical APIs
+- **Multi-app orchestration**: Deploy multiple ServiceWorkers with scope-based routing
 
-**Platform Implementations:**
-- `@b9g/platform-node` - Node.js with Worker threads and coordinated caching
-- `@b9g/platform-bun` - Bun runtime with native ESBuild integration
-- `@b9g/platform-cloudflare` - Cloudflare Workers with Wrangler
-
-**ServiceWorker Pattern:**
+**ServiceWorker Registry Pattern:**
 ```javascript
-// Your app as a ServiceWorker-style entrypoint
+import { createPlatform } from '@b9g/platform';
+
+const platform = await createPlatform();
+const container = await platform.createServiceWorkerContainer();
+
+// Register multiple ServiceWorker apps
+await container.register('/api-worker.js', { scope: '/api/' });
+await container.register('/admin-worker.js', { scope: '/admin/' });
+await container.register('/app-worker.js', { scope: '/' });
+
+// Install and activate all apps
+await container.installAll();
+
+// Route requests to appropriate ServiceWorker
+const response = await container.handleRequest(request);
+```
+
+**Your ServiceWorker App:**
+```javascript
+// api-worker.js - Standard ServiceWorker
 import { Router } from '@b9g/router';
 
 const router = new Router();
-router.get('/', () => new Response('Hello World'));
+router.get('/users', () => Response.json({ users: [] }));
 
-// Platform loads this as a ServiceWorker
 addEventListener('install', event => {
-  console.log('App installing...');
+  console.log('API service installing...');
 });
 
 addEventListener('activate', event => {
-  console.log('App activated!');
+  console.log('API service activated!');
 });
 
 addEventListener('fetch', event => {
   event.respondWith(router.handler(event.request));
 });
 ```
+
+**Platform Implementations:**
+- `@b9g/platform-node` - Node.js with Worker threads and coordinated caching
+- `@b9g/platform-bun` - Bun runtime with native ESBuild integration
+- `@b9g/platform-cloudflare` - Cloudflare Workers with Wrangler
 
 **Status:** ✅ Published at v0.1.0
 

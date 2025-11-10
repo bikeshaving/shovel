@@ -28,7 +28,7 @@ function getWorkerCount(options) {
 	program
 		.name("shovel")
 		.version(pkg.version)
-		.description("The obsessively web platform-based web framework");
+		.description("Universal ServiceWorker deployment platform");
 
 	/**
 	 * Development command - auto-detects platform

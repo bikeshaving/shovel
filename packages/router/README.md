@@ -1,13 +1,13 @@
 # @b9g/router
 
-Universal request router built on web standards with cache-aware routing and middleware support.
+**Universal request router for ServiceWorker applications. Built on web standards with cache-aware routing and generator-based middleware.**
 
 ## Features
 
-- **Web Standards Based**: Built on URLPattern, Request, Response, and Cache APIs
-- **Cache-Aware Routing**: First-class cache integration with automatic population
-- **Middleware Support**: Global and route-specific middleware with generator `yield` pattern
-- **Method Routing**: HTTP method shortcuts (get, post, put, delete, etc.)
+- **ServiceWorker Compatible**: Designed for ServiceWorker `fetch` event handling
+- **Generator Middleware**: Uses `yield` for flow control (no Express-style `next()`)
+- **Cache-Aware Routing**: First-class Cache API integration with automatic population  
+- **Web Standards**: Built on URLPattern, Request, Response, and Cache APIs
 - **Universal**: Same code runs in browsers, Node.js, Bun, and edge platforms
 
 ## Installation

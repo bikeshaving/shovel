@@ -1,14 +1,14 @@
 # @b9g/http-errors
 
-Standard HTTP error responses with proper status codes and web platform Response objects.
+**Standard HTTP error responses for ServiceWorker applications. Returns proper Response objects with status codes, not thrown exceptions.**
 
 ## Features
 
-- **Standard HTTP Errors**: Pre-defined error classes for common HTTP status codes
-- **Web Platform Response**: Returns proper Response objects, not thrown exceptions
-- **Consistent API**: Uniform interface across all error types
+- **ServiceWorker Compatible**: Returns Response objects perfect for `event.respondWith()`
+- **Standard HTTP Status Codes**: Pre-defined functions for all common HTTP errors
+- **No Exceptions**: Functional approach - return errors, don't throw them
 - **TypeScript Support**: Full type definitions for all error classes
-- **Lightweight**: Minimal dependencies, works everywhere
+- **Universal**: Works in browsers, Node.js, Bun, and edge platforms
 
 ## Installation
 

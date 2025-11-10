@@ -1,13 +1,13 @@
 # @b9g/cache
 
-Universal Cache API implementation providing CacheStorage and Cache interfaces across all JavaScript runtimes.
+**Universal Cache API for ServiceWorker applications. Provides standard CacheStorage and Cache interfaces across all JavaScript runtimes.**
 
 ## Features
 
-- **Standard APIs**: Implements the Cache and CacheStorage APIs from service workers
-- **Multiple Backends**: Memory, filesystem, Redis, KV store implementations
+- **ServiceWorker Cache API**: Standard `caches` global and Cache interface from ServiceWorker spec
+- **Multiple Backends**: Memory, filesystem, Redis, KV store implementations  
 - **Universal**: Same API works in browsers, Node.js, Bun, and edge platforms
-- **Request/Response**: HTTP-semantic caching with full Request/Response support
+- **Request/Response Caching**: Full HTTP semantics with Request/Response objects
 - **Registry Pattern**: Named cache management with factory registration
 
 ## Installation

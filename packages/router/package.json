@@ -1,7 +1,18 @@
 {
   "name": "@b9g/router",
   "version": "0.1.5",
+  "description": "Universal request router for ServiceWorker applications. Built on web standards with cache-aware routing and generator-based middleware.",
   "type": "module",
+  "keywords": [
+    "router",
+    "serviceworker",
+    "middleware",
+    "cache",
+    "universal",
+    "web-standards",
+    "urlpattern",
+    "shovel"
+  ],
   "scripts": {
     "build": "libuild build"
   },

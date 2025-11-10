@@ -1,7 +1,7 @@
 {
   "name": "@b9g/platform",
   "version": "0.1.4",
-  "description": "Base Platform interface and types for Shovel deployment adapters",
+  "description": "ServiceWorker-first universal deployment platform. Write ServiceWorker apps once, deploy anywhere (Node/Bun/Cloudflare). Registry-based multi-app orchestration.",
   "type": "module",
   "scripts": {
     "build": "libuild build",
@@ -10,11 +10,16 @@
     "test": "bun test"
   },
   "keywords": [
-    "shovel",
-    "platform",
+    "serviceworker",
+    "universal",
     "deployment",
-    "adapter",
-    "interface"
+    "platform",
+    "registry",
+    "node",
+    "bun",
+    "cloudflare",
+    "workers",
+    "shovel"
   ],
   "dependencies": {
     "@types/wicg-file-system-access": "^2023.10.7"

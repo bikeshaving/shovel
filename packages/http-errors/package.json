@@ -2,12 +2,16 @@
   "name": "@b9g/http-errors",
   "version": "0.1.3",
   "type": "module",
-  "description": "HTTP error classes for web applications",
+  "description": "Standard HTTP error responses for ServiceWorker applications. Returns proper Response objects with status codes, not thrown exceptions.",
   "keywords": [
     "http",
     "errors",
-    "web",
-    "status-codes"
+    "response",
+    "serviceworker",
+    "status-codes",
+    "web-standards",
+    "functional",
+    "shovel"
   ],
   "scripts": {
     "build": "libuild build",
