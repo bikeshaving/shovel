@@ -56,11 +56,17 @@ async function waitForServer(port, host = "localhost", timeoutMs = 2000) {
 
 // Helper to run executable and get process
 function runExecutable(executablePath, env = {}) {
-	return spawn("node", [executablePath], {
+	const proc = spawn("node", [executablePath], {
 		stdio: ["ignore", "pipe", "pipe"],
 		env: { ...process.env, ...env },
 		cwd: process.cwd()
 	});
+	
+	proc.on('exit', (code) => {
+		proc.earlyExit = code !== 0;
+	});
+	
+	return proc;
 }
 
 // Helper to kill process and wait
@@ -150,7 +156,7 @@ self.addEventListener("fetch", (event) => {
 			// Skip npm install in test environment - dependencies should be bundled
 
 			// Validate the built executable contains expected code
-			expect(appContent).toContain("ServiceWorkerRuntime");
+			expect(appContent).toContain("ServiceWorkerRegistration");
 			expect(appContent).toContain("Hello from executable build!");
 			expect(appContent).toContain("health");
 			
@@ -318,25 +324,27 @@ self.addEventListener("fetch", async (event) => {
 		const requestedAsset = url.pathname.slice("/assets/".length);
 		const actualAsset = getAssetUrl(requestedAsset);
 		
-		try {
-			const assetsBucket = await self.buckets.getDirectoryHandle("assets");
-			const fileHandle = await assetsBucket.getFileHandle(actualAsset);
-			const file = await fileHandle.getFile();
-			const content = await file.text();
-			
-			let contentType = "text/plain";
-			if (requestedAsset.endsWith(".css")) {
-				contentType = "text/css";
-			} else if (requestedAsset.endsWith(".js")) {
-				contentType = "application/javascript";
+		event.respondWith((async () => {
+			try {
+				const assetsBucket = await self.buckets.getDirectoryHandle("assets");
+				const fileHandle = await assetsBucket.getFileHandle(actualAsset);
+				const file = await fileHandle.getFile();
+				const content = await file.text();
+				
+				let contentType = "text/plain";
+				if (requestedAsset.endsWith(".css")) {
+					contentType = "text/css";
+				} else if (requestedAsset.endsWith(".js")) {
+					contentType = "application/javascript";
+				}
+				
+				return new Response(content, {
+					headers: { "content-type": contentType }
+				});
+			} catch {
+				return new Response("Asset not found", { status: 404 });
 			}
-			
-			event.respondWith(new Response(content, {
-				headers: { "content-type": contentType }
-			}));
-		} catch {
-			event.respondWith(new Response("Asset not found", { status: 404 }));
-		}
+		})());
 	} else {
 		event.respondWith(new Response("Not found", { status: 404 }));
 	}

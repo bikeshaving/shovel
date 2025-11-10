@@ -277,7 +277,14 @@ export class ServiceWorkerRegistration extends EventTarget {
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
-				this.dispatchEvent(event);
+				try {
+					this.dispatchEvent(event);
+				} catch (error) {
+					// Allow errors in event listeners to propagate as uncaught exceptions
+					process.nextTick(() => {
+						throw error;
+					});
+				}
 				
 				const promises = event.getPromises();
 				if (promises.length === 0) {
@@ -311,7 +318,14 @@ export class ServiceWorkerRegistration extends EventTarget {
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
-				this.dispatchEvent(event);
+				try {
+					this.dispatchEvent(event);
+				} catch (error) {
+					// Allow errors in event listeners to propagate as uncaught exceptions
+					process.nextTick(() => {
+						throw error;
+					});
+				}
 				
 				const promises = event.getPromises();
 				if (promises.length === 0) {
@@ -343,7 +357,16 @@ export class ServiceWorkerRegistration extends EventTarget {
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
-				this.dispatchEvent(event);
+				try {
+					this.dispatchEvent(event);
+				} catch (error) {
+					// Allow errors in event listeners to propagate as uncaught exceptions
+					// but don't let them interfere with the response mechanism
+					process.nextTick(() => {
+						throw error;
+					});
+					// Continue processing even if listener threw
+				}
 				
 				// Wait for all waitUntil promises (background tasks, don't block response)
 				const promises = event.getPromises();

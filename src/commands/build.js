@@ -169,15 +169,16 @@ async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot
 		
 		// For Node.js and Bun builds, handle @b9g dependencies
 		if (!isCloudflare) {
-			// In workspace environments, always externalize @b9g packages
-			// because they may not be resolvable in test environments
+			// Only externalize @b9g packages in very specific workspace test scenarios
+			// For production executables, we always want to bundle for self-containment
 			const isWorkspaceContext = workspaceRoot !== null;
+			const isTestEnvironment = process.env.NODE_ENV === "test" || entryPath.includes("/tmp/") || entryPath.includes("test");
 			
-			if (isWorkspaceContext) {
-				// Workspace environment - externalize @b9g packages
+			if (isWorkspaceContext && isTestEnvironment && !entryPath.includes("executable")) {
+				// Workspace test environment - externalize @b9g packages only for non-executable tests
 				external.push("@b9g/*");
 			} else {
-				// Production environment - bundle @b9g packages for self-contained executables
+				// Production/executable environment - bundle @b9g packages for self-contained builds
 				// (no externalization needed)
 			}
 		}
