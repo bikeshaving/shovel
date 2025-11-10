@@ -82,3 +82,21 @@ export {getDirectoryHandle, getBucket, getFileSystemRoot} from "./filesystem.js"
 
 // Worker management
 export { WorkerPool, type PlatformWorker, type WorkerPoolOptions } from "./worker-pool.js";
+
+// Complete ServiceWorker API type shims
+export {
+	Client,
+	Clients,
+	WindowClient,
+	ExtendableMessageEvent,
+	ServiceWorker,
+	ServiceWorkerContainer,
+	ServiceWorkerRegistration,
+	NavigationPreloadManager,
+	Notification,
+	NotificationEvent,
+	PushEvent,
+	PushMessageData,
+	SyncEvent,
+	ServiceWorkerAPI,
+} from "./service-worker-api.js";
