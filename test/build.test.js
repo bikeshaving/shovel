@@ -98,7 +98,7 @@ self.addEventListener("fetch", (event) => {
 				"utf8",
 			);
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
-			expect(appContent).toContain("ServiceWorkerRuntime");
+			expect(appContent).toContain("ServiceWorkerRegistration");
 			expect(appContent).toContain("Hello from test ServiceWorker!");
 		} finally {
 			await cleanup(cleanup_paths);
@@ -142,7 +142,7 @@ self.addEventListener("fetch", (event) => {
 					join(outDir, "server", "app.js"),
 					"utf8",
 				);
-				expect(appContent).toContain("ServiceWorkerRuntime");
+				expect(appContent).toContain("ServiceWorkerRegistration");
 				expect(appContent).toContain(`Platform: ${platform}`);
 
 				// New virtual entry approach should bundle platform dependencies
@@ -318,7 +318,7 @@ self.addEventListener("fetch", (event) => {
 			);
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
 			// With bundling, comments may be removed, so check for bundled code instead
-			expect(appContent).toContain("ServiceWorkerRuntime");
+			expect(appContent).toContain("ServiceWorkerRegistration");
 			expect(appContent).toContain("createServiceWorkerGlobals");
 			expect(appContent).toContain("createBucketStorage");
 
@@ -433,7 +433,7 @@ self.addEventListener("fetch", (event) => {
 			expect(appContent).toMatch(/from ['"]@b9g\/platform['"]/);
 
 			// Verify the template code structure is present
-			expect(appContent).toContain("ServiceWorkerRuntime");
+			expect(appContent).toContain("ServiceWorkerRegistration");
 			expect(appContent).toContain("createServiceWorkerGlobals");
 		} finally {
 			await cleanup(cleanup_paths);
