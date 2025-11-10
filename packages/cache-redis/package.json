@@ -55,16 +55,6 @@
       "import": "./dist/src/index.js",
       "require": "./dist/src/index.cjs"
     },
-    "./redis-cache": {
-      "types": "./dist/src/redis-cache.d.ts",
-      "import": "./dist/src/redis-cache.js",
-      "require": "./dist/src/redis-cache.cjs"
-    },
-    "./redis-cache.js": {
-      "types": "./dist/src/redis-cache.d.ts",
-      "import": "./dist/src/redis-cache.js",
-      "require": "./dist/src/redis-cache.cjs"
-    },
     "./package.json": "./dist/package.json"
   }
 }
