@@ -151,13 +151,13 @@ class ShovelWritableFileStream
 	}
 
 	// File System Access API seek method
-	async seek(position: number): Promise<void> {
+	async seek(_position: number): Promise<void> {
 		// Seeking not implemented in this simple version
 		throw new DOMException("Seek operation not supported", "NotSupportedError");
 	}
 
 	// File System Access API truncate method
-	async truncate(size: number): Promise<void> {
+	async truncate(_size: number): Promise<void> {
 		// Truncating not implemented in this simple version
 		throw new DOMException(
 			"Truncate operation not supported",
@@ -195,7 +195,7 @@ export abstract class ShovelHandle implements FileSystemHandle {
 		// In a browser environment, this would check actual permissions
 		// In future, this could delegate to backend for access control based on mode
 
-		const mode = descriptor?.mode || "read";
+		const _mode = descriptor?.mode || "read";
 
 		// Server-side backends typically have full access
 		// In future: could check backend capabilities (e.g., read-only storage)
@@ -209,7 +209,7 @@ export abstract class ShovelHandle implements FileSystemHandle {
 		// In a browser environment, this would prompt the user if needed
 		// In future, this could delegate to backend for access control
 
-		const mode = descriptor?.mode || "read";
+		const _mode = descriptor?.mode || "read";
 
 		// Server-side backends don't need user prompts
 		// In future: could implement access control logic

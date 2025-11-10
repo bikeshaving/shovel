@@ -116,7 +116,7 @@ export function assets(config: AssetsConfig = {}) {
 		}
 	}
 
-	return async function* assetsMiddleware(request: Request, context: any) {
+	return async function* assetsMiddleware(request: Request, _context: any) {
 		try {
 			const url = new URL(request.url);
 			const requestedPath = url.pathname;

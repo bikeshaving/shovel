@@ -67,14 +67,14 @@ describe("BunPlatform", () => {
 		// Override the worker detection to force MemoryCache usage
 		const originalSelf = (globalThis as any).self;
 		delete (globalThis as any).self;
-		
+
 		const cacheStorage = await platform.createCaches();
 		expect(cacheStorage).toBeDefined();
-		
+
 		// Test cache creation (should use MemoryCache)
 		const cache = await cacheStorage.open("test");
 		expect(cache).toBeDefined();
-		
+
 		// Restore original
 		if (originalSelf) {
 			(globalThis as any).self = originalSelf;
@@ -125,7 +125,7 @@ describe("BunPlatform", () => {
 			reloadWorkers: mock(() => Promise.resolve()),
 			terminate: mock(() => Promise.resolve()),
 		};
-		
+
 		// Set the internal worker pool
 		(platform as any).workerPool = mockWorkerPool;
 
@@ -138,7 +138,7 @@ describe("BunPlatform", () => {
 		const mockWorkerPool = {
 			terminate: mock(() => Promise.resolve()),
 		};
-		
+
 		// Set the internal worker pool
 		(platform as any).workerPool = mockWorkerPool;
 
@@ -151,15 +151,15 @@ describe("BunPlatform", () => {
 		// Override the worker detection to force MemoryCache usage
 		const originalSelf = (globalThis as any).self;
 		delete (globalThis as any).self;
-		
+
 		// Test that the platform correctly detects Bun environment
 		const cacheStorage = await platform.createCaches();
 		expect(cacheStorage).toBeDefined();
-		
+
 		// The cache factory should handle worker thread detection
 		const cache = await cacheStorage.open("env-test");
 		expect(cache).toBeDefined();
-		
+
 		// Restore original
 		if (originalSelf) {
 			(globalThis as any).self = originalSelf;
@@ -176,6 +176,8 @@ describe("BunPlatform", () => {
 		new BunPlatform();
 
 		console.warn = originalWarn;
-		expect(warnings.some(w => w.includes("S3 adapter not implemented"))).toBe(true);
+		expect(warnings.some((w) => w.includes("S3 adapter not implemented"))).toBe(
+			true,
+		);
 	});
 });

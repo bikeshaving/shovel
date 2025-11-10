@@ -6,18 +6,6 @@ import {
 } from "./cache.js";
 
 /**
- * Convert Headers to plain object - works across all TypeScript lib definitions
- */
-function headersToObject(headers: Headers): Record<string, string> {
-	const obj: Record<string, string> = {};
-	// Use forEach which is universally supported
-	headers.forEach((value, key) => {
-		obj[key] = value;
-	});
-	return obj;
-}
-
-/**
  * Configuration options for MemoryCache
  */
 export interface MemoryCacheOptions {

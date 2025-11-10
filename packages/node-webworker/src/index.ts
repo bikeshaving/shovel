@@ -7,7 +7,7 @@
  * @see https://github.com/nodejs/node/issues/43583
  */
 
-import {Worker as NodeWorker, MessagePort} from "worker_threads";
+import {Worker as NodeWorker} from "worker_threads";
 import {fileURLToPath} from "url";
 import {dirname, join} from "path";
 
@@ -38,7 +38,7 @@ export class Worker {
 	private messageListeners = new Set<(event: MessageEvent) => void>();
 	private errorListeners = new Set<(event: ErrorEvent) => void>();
 
-	constructor(scriptURL: string, options?: {type?: "classic" | "module"}) {
+	constructor(scriptURL: string, _options?: {type?: "classic" | "module"}) {
 		// Get the path to our wrapper script
 		const __filename = fileURLToPath(import.meta.url);
 		const __dirname = dirname(__filename);

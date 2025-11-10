@@ -9,21 +9,20 @@ import {
 describe("R2 Filesystem", () => {
 	// Mock R2Bucket interface for testing
 	const mockR2Bucket = {
-		get: () => Promise.resolve({
-			arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-			uploaded: new Date(),
-			httpMetadata: {contentType: "application/json"},
-		}),
+		get: () =>
+			Promise.resolve({
+				arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+				uploaded: new Date(),
+				httpMetadata: {contentType: "application/json"},
+			}),
 		put: () => Promise.resolve(),
 		head: () => Promise.resolve({}),
 		delete: () => Promise.resolve(),
-		list: () => Promise.resolve({
-			objects: [
-				{key: "test/file1.txt"},
-				{key: "test/file2.js"},
-			],
-			delimitedPrefixes: ["test/subdir/"],
-		}),
+		list: () =>
+			Promise.resolve({
+				objects: [{key: "test/file1.txt"}, {key: "test/file2.js"}],
+				delimitedPrefixes: ["test/subdir/"],
+			}),
 	};
 
 	describe("R2FileSystemWritableFileStream", () => {
@@ -32,7 +31,7 @@ describe("R2 Filesystem", () => {
 				mockR2Bucket,
 				"test/file.txt",
 			);
-			
+
 			expect(stream).toBeInstanceOf(WritableStream);
 		});
 	});
@@ -49,10 +48,7 @@ describe("R2 Filesystem", () => {
 		});
 
 		test("should extract filename from path", () => {
-			const handle1 = new R2FileSystemFileHandle(
-				mockR2Bucket,
-				"simple.txt",
-			);
+			const handle1 = new R2FileSystemFileHandle(mockR2Bucket, "simple.txt");
 			expect(handle1.name).toBe("simple.txt");
 
 			const handle2 = new R2FileSystemFileHandle(
@@ -63,17 +59,11 @@ describe("R2 Filesystem", () => {
 		});
 
 		test("should detect same entry correctly", async () => {
-			const handle1 = new R2FileSystemFileHandle(
-				mockR2Bucket,
-				"test/file.txt",
-			);
-			const handle2 = new R2FileSystemFileHandle(
-				mockR2Bucket,
-				"test/file.txt",
-			);
+			const handle1 = new R2FileSystemFileHandle(mockR2Bucket, "test/file.txt");
+			const handle2 = new R2FileSystemFileHandle(mockR2Bucket, "test/file.txt");
 			const handle3 = new R2FileSystemFileHandle(
 				mockR2Bucket,
-				"test/other.txt",  // Different key
+				"test/other.txt", // Different key
 			);
 
 			expect(await handle1.isSameEntry(handle2)).toBe(true);
@@ -81,30 +71,21 @@ describe("R2 Filesystem", () => {
 		});
 
 		test("should always grant permissions", async () => {
-			const handle = new R2FileSystemFileHandle(
-				mockR2Bucket,
-				"test/file.txt",
-			);
+			const handle = new R2FileSystemFileHandle(mockR2Bucket, "test/file.txt");
 
 			expect(await handle.queryPermission()).toBe("granted");
 			expect(await handle.requestPermission()).toBe("granted");
 		});
 
 		test("should create writable stream", async () => {
-			const handle = new R2FileSystemFileHandle(
-				mockR2Bucket,
-				"test/file.txt",
-			);
+			const handle = new R2FileSystemFileHandle(mockR2Bucket, "test/file.txt");
 
 			const writable = await handle.createWritable();
 			expect(writable).toBeInstanceOf(WritableStream);
 		});
 
 		test("should reject sync access handle", async () => {
-			const handle = new R2FileSystemFileHandle(
-				mockR2Bucket,
-				"test/file.txt",
-			);
+			const handle = new R2FileSystemFileHandle(mockR2Bucket, "test/file.txt");
 
 			try {
 				await handle.createSyncAccessHandle();
@@ -116,11 +97,8 @@ describe("R2 Filesystem", () => {
 		});
 
 		test("should get mime type correctly", () => {
-			const handle = new R2FileSystemFileHandle(
-				mockR2Bucket,
-				"test.json",
-			);
-			
+			const handle = new R2FileSystemFileHandle(mockR2Bucket, "test.json");
+
 			// Access private method through casting
 			const mimeType = (handle as any).getMimeType("test.json");
 			expect(mimeType).toBe("application/json");
@@ -139,10 +117,7 @@ describe("R2 Filesystem", () => {
 		});
 
 		test("should handle root directory name", () => {
-			const handle = new R2FileSystemDirectoryHandle(
-				mockR2Bucket,
-				"",
-			);
+			const handle = new R2FileSystemDirectoryHandle(mockR2Bucket, "");
 			expect(handle.name).toBe("root");
 		});
 
@@ -151,10 +126,7 @@ describe("R2 Filesystem", () => {
 				mockR2Bucket,
 				"test/dir/",
 			);
-			const handle2 = new R2FileSystemDirectoryHandle(
-				mockR2Bucket,
-				"test/dir",
-			);
+			const handle2 = new R2FileSystemDirectoryHandle(mockR2Bucket, "test/dir");
 
 			// Both should be treated the same
 			expect(handle1.name).toBe("dir");
@@ -162,17 +134,11 @@ describe("R2 Filesystem", () => {
 		});
 
 		test("should detect same entry correctly", async () => {
-			const handle1 = new R2FileSystemDirectoryHandle(
-				mockR2Bucket,
-				"test/dir",
-			);
-			const handle2 = new R2FileSystemDirectoryHandle(
-				mockR2Bucket,
-				"test/dir",
-			);
+			const handle1 = new R2FileSystemDirectoryHandle(mockR2Bucket, "test/dir");
+			const handle2 = new R2FileSystemDirectoryHandle(mockR2Bucket, "test/dir");
 			const handle3 = new R2FileSystemDirectoryHandle(
 				mockR2Bucket,
-				"test/otherdir",  // Different prefix
+				"test/otherdir", // Different prefix
 			);
 
 			expect(await handle1.isSameEntry(handle2)).toBe(true);
@@ -180,20 +146,14 @@ describe("R2 Filesystem", () => {
 		});
 
 		test("should always grant permissions", async () => {
-			const handle = new R2FileSystemDirectoryHandle(
-				mockR2Bucket,
-				"test/dir",
-			);
+			const handle = new R2FileSystemDirectoryHandle(mockR2Bucket, "test/dir");
 
 			expect(await handle.queryPermission()).toBe("granted");
 			expect(await handle.requestPermission()).toBe("granted");
 		});
 
 		test("should return null for resolve (not implemented)", async () => {
-			const handle = new R2FileSystemDirectoryHandle(
-				mockR2Bucket,
-				"test/dir",
-			);
+			const handle = new R2FileSystemDirectoryHandle(mockR2Bucket, "test/dir");
 			const fileHandle = new R2FileSystemFileHandle(
 				mockR2Bucket,
 				"test/dir/file.txt",

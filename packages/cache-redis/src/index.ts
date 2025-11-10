@@ -4,12 +4,7 @@
  * Provides Redis-backed caching with HTTP-aware storage and retrieval
  */
 
-import {
-	Cache,
-	type CacheQueryOptions,
-	generateCacheKey,
-	type CacheFactory,
-} from "@b9g/cache";
+import {Cache, type CacheQueryOptions, generateCacheKey} from "@b9g/cache";
 import {
 	createClient,
 	type RedisClientType,

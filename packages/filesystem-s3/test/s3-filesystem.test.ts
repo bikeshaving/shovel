@@ -19,7 +19,7 @@ describe("S3 Filesystem", () => {
 				testBucket,
 				"test/file.txt",
 			);
-			
+
 			expect(stream).toBeInstanceOf(WritableStream);
 		});
 	});

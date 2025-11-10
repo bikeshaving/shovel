@@ -6,20 +6,22 @@ import {
 	extractR2Buckets,
 	extractD1Databases,
 	extractDurableObjects,
-	generateWranglerConfig
+	generateWranglerConfig,
 } from "../src/index.js";
 
 // Mock Cloudflare Workers globals
 const mockCloudflareGlobals = {
 	addEventListener: mock(() => {}),
 	caches: {
-		open: mock(() => Promise.resolve({
-			match: mock(() => Promise.resolve()),
-			put: mock(() => Promise.resolve()),
-			delete: mock(() => Promise.resolve()),
-		})),
+		open: mock(() =>
+			Promise.resolve({
+				match: mock(() => Promise.resolve()),
+				put: mock(() => Promise.resolve()),
+				delete: mock(() => Promise.resolve()),
+			}),
+		),
 	},
-	FetchEvent: mock(function(type: string, init: any) {
+	FetchEvent: mock(function (type: string, init: any) {
 		this.type = type;
 		this.request = init.request;
 		this.respondWith = mock(() => {});
@@ -100,11 +102,13 @@ describe("CloudflarePlatform", () => {
 
 		// Test listen
 		await server.listen();
-		expect(logs.some(log => log.includes("Worker handler ready"))).toBe(true);
+		expect(logs.some((log) => log.includes("Worker handler ready"))).toBe(true);
 
-		// Test close  
+		// Test close
 		await server.close();
-		expect(logs.some(log => log.includes("Worker handler stopped"))).toBe(true);
+		expect(logs.some((log) => log.includes("Worker handler stopped"))).toBe(
+			true,
+		);
 
 		console.info = originalInfo;
 	});
@@ -149,7 +153,7 @@ describe("Environment utilities", () => {
 		};
 
 		const options = createOptionsFromEnv(env);
-		
+
 		expect(options.environment).toBe("production");
 		expect(options.kvNamespaces?.CACHE_KV).toBe("cache-namespace");
 		expect(options.r2Buckets?.STORAGE_R2).toBe("storage-bucket");
@@ -165,7 +169,8 @@ describe("Environment utilities", () => {
 			MY_KV_NAMESPACE: "another-kv",
 		};
 
-		const kvNamespaces = (global as any).extractKVNamespaces || 
+		const kvNamespaces =
+			(global as any).extractKVNamespaces ||
 			((env: any) => {
 				const kvNamespaces: Record<string, any> = {};
 				for (const [key, value] of Object.entries(env)) {
@@ -177,7 +182,7 @@ describe("Environment utilities", () => {
 			});
 
 		const result = kvNamespaces(env);
-		
+
 		expect(result.CACHE_KV).toBe("cache");
 		expect(result.DATA_KV).toBe("data");
 		expect(result.MY_KV_NAMESPACE).toBe("another-kv");
@@ -203,7 +208,7 @@ describe("Environment utilities", () => {
 		};
 
 		const result = extractR2(env);
-		
+
 		expect(result.STORAGE_R2).toBe("storage");
 		expect(result.BACKUP_R2).toBe("backup");
 		expect(result.MY_R2_BUCKET).toBe("another-r2");
@@ -229,7 +234,7 @@ describe("Environment utilities", () => {
 		};
 
 		const result = extractD1(env);
-		
+
 		expect(result.MAIN_D1).toBe("main-db");
 		expect(result.CACHE_DB).toBe("cache-db");
 		expect(result.ANALYTICS_D1).toBe("analytics-db");
@@ -255,7 +260,7 @@ describe("Environment utilities", () => {
 		};
 
 		const result = extractDO(env);
-		
+
 		expect(result.COUNTER_DO).toBe("counter");
 		expect(result.SESSION_DO).toBe("session");
 		expect(result.MY_DURABLE_OBJECT).toBe("durable");
@@ -319,11 +324,15 @@ describe("Wrangler config generation", () => {
 
 describe("Cloudflare Worker banner and footer", () => {
 	test("should import banner and footer constants", async () => {
-		const {cloudflareWorkerBanner, cloudflareWorkerFooter} = await import("../src/index.js");
-		
+		const {cloudflareWorkerBanner, cloudflareWorkerFooter} = await import(
+			"../src/index.js"
+		);
+
 		expect(typeof cloudflareWorkerBanner).toBe("string");
 		expect(typeof cloudflareWorkerFooter).toBe("string");
-		expect(cloudflareWorkerBanner).toContain("Cloudflare Worker ES Module wrapper");
+		expect(cloudflareWorkerBanner).toContain(
+			"Cloudflare Worker ES Module wrapper",
+		);
 		expect(cloudflareWorkerFooter).toContain("export default");
 	});
 });

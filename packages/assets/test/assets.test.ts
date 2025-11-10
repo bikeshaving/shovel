@@ -90,11 +90,11 @@ describe("Assets Middleware", () => {
 
 		const generator = middleware(request, {});
 		const result = await generator.next();
-		
+
 		// Should yield the request for next middleware
 		expect(result.value).toBe(request);
 		expect(result.done).toBe(false);
-		
+
 		// Simulate next middleware returning 404
 		const notFoundResponse = new Response("Not Found", {status: 404});
 		const finalResult = await generator.next(notFoundResponse);
