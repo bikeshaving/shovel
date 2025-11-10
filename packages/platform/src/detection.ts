@@ -149,22 +149,22 @@ export async function createPlatform(platformName: string, options: any = {}): P
 	switch (platformName) {
 		case "node": {
 			const modulePath = import.meta.resolve("@b9g/platform-node");
-			const {createNodePlatform} = await import(modulePath);
-			return createNodePlatform(options);
+			const NodePlatform = await import(modulePath).then(m => m.default);
+			return new NodePlatform(options);
 		}
 
 		case "bun": {
 			const modulePath = import.meta.resolve("@b9g/platform-bun");
-			const {createBunPlatform} = await import(modulePath);
-			return createBunPlatform(options);
+			const BunPlatform = await import(modulePath).then(m => m.default);
+			return new BunPlatform(options);
 		}
 
 		case "cloudflare":
 		case "cloudflare-workers":
 		case "cf": {
 			const modulePath = import.meta.resolve("@b9g/platform-cloudflare");
-			const {createCloudflarePlatform} = await import(modulePath);
-			return createCloudflarePlatform(options);
+			const CloudflarePlatform = await import(modulePath).then(m => m.default);
+			return new CloudflarePlatform(options);
 		}
 
 		default:

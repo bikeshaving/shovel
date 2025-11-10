@@ -310,31 +310,3 @@ export class BunS3FileSystemDirectoryHandle implements FileSystemDirectoryHandle
 
 }
 
-/**
- * S3 bucket using Bun's native S3Client
- */
-export class S3Bucket implements Bucket {
-	private config: FileSystemConfig;
-	private s3Client: any;
-
-	constructor(s3Client: any, config: FileSystemConfig = {}) {
-		this.config = {
-			name: "bun-s3",
-			...config,
-		};
-		this.s3Client = s3Client;
-	}
-
-	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
-		const prefix = name ? `filesystems/${name}` : "filesystems/root";
-		return new BunS3FileSystemDirectoryHandle(this.s3Client, prefix);
-	}
-
-	getConfig(): FileSystemConfig {
-		return {...this.config};
-	}
-
-	async dispose(): Promise<void> {
-		// Nothing to dispose for Bun S3
-	}
-}

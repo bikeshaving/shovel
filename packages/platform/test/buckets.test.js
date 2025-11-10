@@ -32,14 +32,14 @@ async function cleanup(paths) {
 // ======================
 
 test(
-	"createBucketStorage factory function",
+	"PlatformBucketStorage class instantiation",
 	async () => {
-		const { createBucketStorage } = await import("../src/index.js");
+		const { PlatformBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
 		try {
-			const buckets = createBucketStorage(tempDir);
+			const buckets = new PlatformBucketStorage(tempDir);
 			
 			// Should return an object with getDirectoryHandle method
 			expect(typeof buckets).toBe("object");
@@ -54,7 +54,7 @@ test(
 test(
 	"bucket storage getDirectoryHandle basic functionality",
 	async () => {
-		const { createBucketStorage } = await import("../src/index.js");
+		const { PlatformBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -63,7 +63,7 @@ test(
 			await FS.mkdir(join(tempDir, "dist"), { recursive: true });
 			await FS.mkdir(join(tempDir, "assets"), { recursive: true });
 			
-			const buckets = createBucketStorage(tempDir);
+			const buckets = new PlatformBucketStorage(tempDir);
 			
 			// Test getting directory handles
 			const distHandle = await buckets.getDirectoryHandle("dist");
@@ -85,12 +85,12 @@ test(
 test(
 	"bucket storage with non-existent directory",
 	async () => {
-		const { createBucketStorage } = await import("../src/index.js");
+		const { PlatformBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
 		try {
-			const buckets = createBucketStorage(tempDir);
+			const buckets = new PlatformBucketStorage(tempDir);
 			
 			// Should create directory if it doesn't exist
 			const newHandle = await buckets.getDirectoryHandle("new-bucket");
@@ -117,12 +117,12 @@ test(
 test(
 	"directory handle file operations",
 	async () => {
-		const { createBucketStorage } = await import("../src/index.js");
+		const { PlatformBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
 		try {
-			const buckets = createBucketStorage(tempDir);
+			const buckets = new PlatformBucketStorage(tempDir);
 			const distHandle = await buckets.getDirectoryHandle("dist");
 			
 			// Test getting file handle
@@ -155,12 +155,12 @@ test(
 test(
 	"directory handle subdirectory operations",
 	async () => {
-		const { createBucketStorage } = await import("../src/index.js");
+		const { PlatformBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
 		try {
-			const buckets = createBucketStorage(tempDir);
+			const buckets = new PlatformBucketStorage(tempDir);
 			const distHandle = await buckets.getDirectoryHandle("dist");
 			
 			// Create subdirectory
@@ -194,7 +194,7 @@ test(
 test(
 	"directory handle entries iteration",
 	async () => {
-		const { createBucketStorage } = await import("../src/index.js");
+		const { PlatformBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -207,7 +207,7 @@ test(
 			await FS.mkdir(join(distPath, "assets"), { recursive: true });
 			await FS.writeFile(join(distPath, "assets", "style.css"), "body {}");
 			
-			const buckets = createBucketStorage(tempDir);
+			const buckets = new PlatformBucketStorage(tempDir);
 			const distHandle = await buckets.getDirectoryHandle("dist");
 			
 			// Test entries iteration
@@ -237,7 +237,7 @@ test(
 test(
 	"self.buckets in ServiceWorker context",
 	async () => {
-		const { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } = await import("../src/index.js");
+		const { ServiceWorkerRuntime, createServiceWorkerGlobals, PlatformBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -254,7 +254,7 @@ test(
 			`);
 			
 			const runtime = new ServiceWorkerRuntime();
-			const buckets = createBucketStorage(tempDir);
+			const buckets = new PlatformBucketStorage(tempDir);
 			
 			// Set up ServiceWorker globals with buckets
 			createServiceWorkerGlobals(runtime, { buckets });
@@ -295,7 +295,7 @@ test(
 test(
 	"self.buckets file serving with different content types",
 	async () => {
-		const { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } = await import("../src/index.js");
+		const { ServiceWorkerRuntime, createServiceWorkerGlobals, PlatformBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
@@ -308,7 +308,7 @@ test(
 			await FS.writeFile(join(distPath, "data.json"), '{"message": "test"}');
 			
 			const runtime = new ServiceWorkerRuntime();
-			const buckets = createBucketStorage(tempDir);
+			const buckets = new PlatformBucketStorage(tempDir);
 			
 			createServiceWorkerGlobals(runtime, { buckets });
 			globalThis.self = runtime;
@@ -379,7 +379,7 @@ test(
 test(
 	"memory bucket adapter",
 	async () => {
-		const { MemoryBucket } = await import("@b9g/filesystem");
+			const { MemoryBucket } = await import("@b9g/filesystem");
 		
 		const bucket = new MemoryBucket();
 		
@@ -409,12 +409,12 @@ test(
 test(
 	"local bucket adapter with real filesystem",
 	async () => {
-		const { LocalBucket } = await import("@b9g/filesystem");
+			const { LocalBucket } = await import("@b9g/filesystem");
 		
 		const tempDir = await createTempDir();
 		
 		try {
-			const bucket = new LocalBucket({ rootPath: tempDir });
+			const bucket = new LocalBucket(tempDir);
 			
 			// Test directory creation
 			const dirHandle = await bucket.getDirectoryHandle("local-test", { create: true });
@@ -449,12 +449,12 @@ test(
 test(
 	"bucket error handling - file not found",
 	async () => {
-		const { createBucketStorage } = await import("../src/index.js");
+		const { PlatformBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
 		try {
-			const buckets = createBucketStorage(tempDir);
+			const buckets = new PlatformBucketStorage(tempDir);
 			const distHandle = await buckets.getDirectoryHandle("dist");
 			
 			// Should throw when trying to get non-existent file without create flag
@@ -470,12 +470,12 @@ test(
 test(
 	"bucket error handling - invalid directory name",
 	async () => {
-		const { createBucketStorage } = await import("../src/index.js");
+		const { PlatformBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
 		try {
-			const buckets = createBucketStorage(tempDir);
+			const buckets = new PlatformBucketStorage(tempDir);
 			
 			// Test with invalid characters (this depends on the implementation)
 			// Some implementations might sanitize, others might throw
@@ -500,13 +500,13 @@ test(
 test(
 	"buckets API replaces old dirs API",
 	async () => {
-		const { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } = await import("../src/index.js");
+		const { ServiceWorkerRuntime, createServiceWorkerGlobals, PlatformBucketStorage } = await import("../src/index.js");
 		
 		const tempDir = await createTempDir();
 		
 		try {
 			const runtime = new ServiceWorkerRuntime();
-			const buckets = createBucketStorage(tempDir);
+			const buckets = new PlatformBucketStorage(tempDir);
 			
 			createServiceWorkerGlobals(runtime, { buckets });
 			

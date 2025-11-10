@@ -126,9 +126,9 @@ const serviceWorker = await platform.loadServiceWorker('./app.js', {
 ### Node.js Platform
 
 ```javascript
-import { createNodePlatform } from '@b9g/platform-node';
+import NodePlatform from '@b9g/platform-node';
 
-const platform = await createNodePlatform({
+const platform = new NodePlatform({
   // Node.js specific options
 });
 ```
@@ -136,9 +136,9 @@ const platform = await createNodePlatform({
 ### Bun Platform
 
 ```javascript
-import { createBunPlatform } from '@b9g/platform-bun';
+import BunPlatform from '@b9g/platform-bun';
 
-const platform = await createBunPlatform({
+const platform = new BunPlatform({
   // Bun specific options  
 });
 ```
@@ -146,9 +146,9 @@ const platform = await createBunPlatform({
 ### Cloudflare Workers Platform
 
 ```javascript
-import { createCloudflarePlatform } from '@b9g/platform-cloudflare';
+import CloudflarePlatform from '@b9g/platform-cloudflare';
 
-const platform = await createCloudflarePlatform({
+const platform = new CloudflarePlatform({
   // Cloudflare specific options
 });
 ```

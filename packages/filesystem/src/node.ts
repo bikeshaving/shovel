@@ -299,35 +299,4 @@ export class NodeFileSystemDirectoryHandle
 
 }
 
-/**
- * Local filesystem bucket using Node.js fs
- */
-export class LocalBucket implements Bucket {
-	private config: FileSystemConfig;
-	private rootPath: string;
 
-	constructor(config: FileSystemConfig = {}) {
-		this.config = {
-			name: "node",
-			...config
-		};
-		this.rootPath = config.rootPath || path.join(process.cwd(), "dist");
-	}
-
-	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
-		const dirPath = name ? path.join(this.rootPath, name) : this.rootPath;
-		
-		// Ensure the directory exists
-		try {
-			await fs.mkdir(dirPath, { recursive: true });
-		} catch (error) {
-			// Directory might already exist, ignore error
-		}
-
-		return new NodeFileSystemDirectoryHandle(dirPath);
-	}
-
-	getConfig(): FileSystemConfig {
-		return {...this.config};
-	}
-}

@@ -18,7 +18,7 @@ async function initializeWorker() {
 }
 
 // Import platform modules
-const { createServiceWorkerGlobals, ServiceWorkerRuntime, createBucketStorage } = await import('./index.js');
+const { createServiceWorkerGlobals, ServiceWorkerRuntime, PlatformBucketStorage } = await import('./index.js');
 const { CustomCacheStorage, PostMessageCache } = await import('@b9g/cache');
 
 // Create worker-aware cache storage using PostMessage coordination
@@ -30,7 +30,7 @@ const caches = new CustomCacheStorage((name) => {
 });
 
 // Create bucket storage for dist/ folder
-const buckets = createBucketStorage(process.cwd() + '/dist');
+const buckets = new PlatformBucketStorage(process.cwd() + '/dist');
 
 // Create ServiceWorker runtime
 let runtime = new ServiceWorkerRuntime();

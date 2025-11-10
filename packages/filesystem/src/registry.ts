@@ -3,25 +3,25 @@
  * Manages registration and retrieval of filesystem adapters
  */
 
-import type {FileSystemAdapter} from "./types.js";
-import {MemoryBucket} from "./memory.js";
+import type {Bucket} from "./types.js";
+import {createMemoryFileSystemRoot} from "./memory.js";
 
 /**
  * Global registry of filesystem adapters
  */
 class Registry {
-  private adapters = new Map<string, FileSystemAdapter>();
-  private defaultAdapter: FileSystemAdapter;
+  private adapters = new Map<string, Bucket>();
+  private defaultAdapter: Bucket;
 
   constructor() {
     // Set memory adapter as default
-    this.defaultAdapter = new MemoryBucket();
+    this.defaultAdapter = createMemoryFileSystemRoot();
   }
 
   /**
    * Register a filesystem adapter with a name
    */
-  register(name: string, adapter: FileSystemAdapter): void {
+  register(name: string, adapter: Bucket): void {
     this.adapters.set(name, adapter);
     
     // Set as default if it's the first one registered
@@ -33,7 +33,7 @@ class Registry {
   /**
    * Get a filesystem adapter by name
    */
-  get(name?: string): FileSystemAdapter | null {
+  get(name?: string): Bucket | null {
     if (!name) {
       return this.defaultAdapter;
     }
@@ -43,7 +43,7 @@ class Registry {
   /**
    * Set the default filesystem adapter
    */
-  setDefault(adapter: FileSystemAdapter): void {
+  setDefault(adapter: Bucket): void {
     this.defaultAdapter = adapter;
   }
 
@@ -87,7 +87,12 @@ export async function getDirectoryHandle(
     }
   }
 
-  return await adapter.getDirectoryHandle(name);
+  // Since adapter is now a FileSystemDirectoryHandle (Bucket),
+  // we can get subdirectories directly
+  if (name) {
+    return await adapter.getDirectoryHandle(name, { create: true });
+  }
+  return adapter;
 }
 
 /**
@@ -103,7 +108,11 @@ export async function getBucket(
     throw new Error("No default filesystem adapter registered");
   }
 
-  return await adapter.getDirectoryHandle(name || "");
+  // Since adapter is now a FileSystemDirectoryHandle (Bucket)
+  if (name) {
+    return await adapter.getDirectoryHandle(name, { create: true });
+  }
+  return adapter;
 }
 
 /**
@@ -118,5 +127,8 @@ export async function getFileSystemRoot(
     throw new Error("No default filesystem adapter registered");
   }
 
-  return await adapter.getDirectoryHandle(name || "");
+  if (name) {
+    return await adapter.getDirectoryHandle(name, { create: true });
+  }
+  return adapter;
 }

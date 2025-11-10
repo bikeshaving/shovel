@@ -1,6 +1,6 @@
 /**
  * @b9g/cache-redis - Redis cache adapter for Shovel
- * 
+ *
  * Provides Redis-backed caching with HTTP-aware storage and retrieval
  */
 
@@ -54,22 +54,22 @@ export class RedisCache extends Cache {
 
 	constructor(name: string, options: RedisCacheOptions = {}) {
 		super();
-		
+
 		this.client = createClient(options.redis || {});
 		this.prefix = options.prefix ? `${options.prefix}:${name}` : `cache:${name}`;
 		this.defaultTTL = options.defaultTTL || 0; // 0 = no expiration
 		this.maxEntrySize = options.maxEntrySize || 10 * 1024 * 1024; // 10MB default
-		
+
 		// Set up error handling
 		this.client.on("error", (err) => {
 			console.error("[RedisCache] Redis error:", err);
 		});
-		
+
 		this.client.on("connect", () => {
 			console.info(`[RedisCache] Connected to Redis for cache: ${name}`);
 			this.connected = true;
 		});
-		
+
 		this.client.on("disconnect", () => {
 			console.warn(`[RedisCache] Disconnected from Redis for cache: ${name}`);
 			this.connected = false;
@@ -100,7 +100,7 @@ export class RedisCache extends Cache {
 		// Check response size before serialization
 		const cloned = response.clone();
 		const body = await cloned.arrayBuffer();
-		
+
 		if (body.byteLength > this.maxEntrySize) {
 			throw new Error(`Response body too large: ${body.byteLength} bytes (max: ${this.maxEntrySize})`);
 		}
@@ -126,7 +126,7 @@ export class RedisCache extends Cache {
 	 */
 	private deserializeResponse(entry: CacheEntry): Response {
 		const body = Uint8Array.from(atob(entry.body), c => c.charCodeAt(0));
-		
+
 		return new Response(body, {
 			status: entry.status,
 			statusText: entry.statusText,
@@ -140,16 +140,16 @@ export class RedisCache extends Cache {
 	async match(request: Request, options?: CacheQueryOptions): Promise<Response | undefined> {
 		try {
 			await this.ensureConnected();
-			
+
 			const key = this.getRedisKey(request, options);
 			const cached = await this.client.get(key);
-			
+
 			if (!cached) {
 				return undefined;
 			}
 
 			const entry: CacheEntry = JSON.parse(cached);
-			
+
 			// Check if entry has expired (TTL > 0 means it expires)
 			if (entry.ttl > 0) {
 				const ageInSeconds = (Date.now() - entry.cachedAt) / 1000;
@@ -196,7 +196,7 @@ export class RedisCache extends Cache {
 	async delete(request: Request, options?: CacheQueryOptions): Promise<boolean> {
 		try {
 			await this.ensureConnected();
-			
+
 			const key = this.getRedisKey(request, options);
 			const result = await this.client.del(key);
 			return result > 0;
@@ -212,7 +212,7 @@ export class RedisCache extends Cache {
 	async keys(request?: Request, options?: CacheQueryOptions): Promise<Request[]> {
 		try {
 			await this.ensureConnected();
-			
+
 			// If specific request provided, check if it exists
 			if (request) {
 				const key = this.getRedisKey(request, options);
@@ -223,7 +223,7 @@ export class RedisCache extends Cache {
 			// Otherwise, scan for all keys with our prefix
 			const pattern = `${this.prefix}:*`;
 			const keys: string[] = [];
-			
+
 			for await (const key of this.client.scanIterator({
 				MATCH: pattern,
 				COUNT: 100,
@@ -239,7 +239,7 @@ export class RedisCache extends Cache {
 					// Extract the cache key part and parse it
 					const cacheKey = key.replace(`${this.prefix}:`, "");
 					const [method, url] = cacheKey.split(":", 2);
-					
+
 					if (method && url) {
 						requests.push(new Request(url, {method}));
 					}
@@ -261,7 +261,7 @@ export class RedisCache extends Cache {
 	async getStats() {
 		try {
 			await this.ensureConnected();
-			
+
 			const pattern = `${this.prefix}:*`;
 			let keyCount = 0;
 			let totalSize = 0;
@@ -302,13 +302,4 @@ export class RedisCache extends Cache {
 			};
 		}
 	}
-
-}
-
-/**
- * Creates a RedisCache instance with the given configuration
- */
-export function createCache(config: RedisCacheOptions & { name?: string } = {}): RedisCache {
-	const name = config.name || "default";
-	return new RedisCache(name, config);
 }

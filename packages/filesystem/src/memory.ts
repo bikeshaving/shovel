@@ -61,7 +61,7 @@ class MemoryFileSystemWritableFileStream extends WritableStream<Uint8Array> {
 /**
  * In-memory implementation of FileSystemFileHandle
  */
-class MemoryFileSystemFileHandle implements FileSystemFileHandle {
+export class MemoryFileSystemFileHandle implements FileSystemFileHandle {
 	readonly kind = "file" as const;
 	readonly name: string;
 
@@ -111,7 +111,7 @@ class MemoryFileSystemFileHandle implements FileSystemFileHandle {
 /**
  * In-memory implementation of FileSystemDirectoryHandle
  */
-class MemoryFileSystemDirectoryHandle implements FileSystemDirectoryHandle {
+export class MemoryFileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 	readonly kind = "directory" as const;
 	readonly name: string;
 
@@ -268,41 +268,17 @@ class MemoryFileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 
 }
 
+
+
+
 /**
- * Memory bucket
+ * Create a new in-memory filesystem root directory
  */
-export class MemoryBucket implements Bucket {
-	private config: FileSystemConfig;
-	private filesystems = new Map<string, MemoryDirectory>();
-
-	constructor(config: FileSystemConfig = {}) {
-		this.config = {
-			name: "memory",
-			...config,
-		};
-	}
-
-	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
-		const dirName = name || "root";
-		if (!this.filesystems.has(dirName)) {
-			// Create new in-memory filesystem
-			const root: MemoryDirectory = {
-				name: "root",
-				files: new Map(),
-				directories: new Map(),
-			};
-			this.filesystems.set(dirName, root);
-		}
-
-		const root = this.filesystems.get(dirName)!;
-		return new MemoryFileSystemDirectoryHandle(root);
-	}
-
-	getConfig(): FileSystemConfig {
-		return {...this.config};
-	}
-
-	async dispose(): Promise<void> {
-		this.filesystems.clear();
-	}
+export function createMemoryFileSystemRoot(name = "root"): MemoryFileSystemDirectoryHandle {
+	const root: MemoryDirectory = {
+		name,
+		files: new Map(),
+		directories: new Map(),
+	};
+	return new MemoryFileSystemDirectoryHandle(root);
 }

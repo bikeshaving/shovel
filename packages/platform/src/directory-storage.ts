@@ -6,26 +6,18 @@
  */
 
 import type {BucketStorage as BucketStorageInterface} from "./service-worker.js";
-import {BucketStorage, LocalBucket} from "@b9g/filesystem";
+import {LocalBucket} from "@b9g/filesystem";
 
 /**
  * Platform-agnostic bucket storage implementation
  * Uses bucket pattern where each bucket name maps to a separate filesystem root
  */
 export class PlatformBucketStorage implements BucketStorageInterface {
-	private buckets: BucketStorage;
+	private instances = new Map<string, FileSystemDirectoryHandle>();
+	private rootPath: string;
 
 	constructor(rootPath: string = "./dist") {
-		// Create bucket storage with namespace-specific paths
-		this.buckets = new BucketStorage(async (name: string) => {
-			const targetPath = (name === '' || name === '/' || name === '.') 
-				? rootPath 
-				: `${rootPath}/${name}`;
-			
-			// Create a LocalBucket and return its root directory handle
-			const bucket = new LocalBucket({ rootPath: targetPath });
-			return await bucket.getDirectoryHandle("");
-		});
+		this.rootPath = rootPath;
 	}
 
 	/**
@@ -34,29 +26,46 @@ export class PlatformBucketStorage implements BucketStorageInterface {
 	 * Special values: '', '/', '.' return the root bucket
 	 */
 	async open(name: string): Promise<FileSystemDirectoryHandle> {
-		// Delegate to bucket storage - each name gets its own bucket root
-		return await this.buckets.open(name);
+		// Return existing instance if already opened
+		const existingInstance = this.instances.get(name);
+		if (existingInstance) {
+			return existingInstance;
+		}
+
+		// Create new instance
+		const targetPath = (name === '' || name === '/' || name === '.') 
+			? this.rootPath 
+			: `${this.rootPath}/${name}`;
+		
+		const bucket = new LocalBucket(targetPath);
+		this.instances.set(name, bucket);
+		return bucket;
 	}
 
 	/**
 	 * Check if a named bucket exists
 	 */
 	async has(name: string): Promise<boolean> {
-		return await this.buckets.has(name);
+		return this.instances.has(name);
 	}
 
 	/**
 	 * Delete a named bucket and all its contents
 	 */
 	async delete(name: string): Promise<boolean> {
-		return await this.buckets.delete(name);
+		const instance = this.instances.get(name);
+		if (instance) {
+			this.instances.delete(name);
+			return true;
+		}
+		return false;
 	}
 
 	/**
 	 * List all available bucket names
 	 */
 	async keys(): Promise<string[]> {
-		return await this.buckets.keys();
+		return Array.from(this.instances.keys());
 	}
 
 	/**
@@ -67,10 +76,4 @@ export class PlatformBucketStorage implements BucketStorageInterface {
 	}
 }
 
-/**
- * Create a BucketStorage instance from a root path
- */
-export function createBucketStorage(rootPath: string = "./dist"): BucketStorageInterface {
-	return new PlatformBucketStorage(rootPath);
-}
 

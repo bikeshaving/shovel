@@ -37,7 +37,6 @@ export {
 // Bucket storage implementation
 export {
 	PlatformBucketStorage,
-	createBucketStorage,
 } from "./directory-storage.js";
 
 // Platform registry and detection

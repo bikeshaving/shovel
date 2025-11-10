@@ -17,7 +17,7 @@ import {
 } from "@b9g/platform";
 import { WorkerPool, WorkerPoolOptions } from "@b9g/platform/worker-pool";
 import {CustomCacheStorage, MemoryCache, MemoryCacheManager, PostMessageCache} from "@b9g/cache";
-import {FileSystemRegistry, getDirectoryHandle, LocalBucket, NodeFileSystemDirectoryHandle} from "@b9g/filesystem";
+import {FileSystemRegistry, getDirectoryHandle, NodeFileSystemDirectoryHandle} from "@b9g/filesystem";
 import * as Http from "http";
 import * as Path from "path";
 
@@ -118,10 +118,8 @@ export class NodePlatform extends BasePlatform {
 			...options,
 		};
 
-		// Register Node.js filesystem adapter as default
-		FileSystemRegistry.register("node", new LocalBucket({
-			rootPath: this.options.cwd
-		}));
+		// Register Node.js filesystem adapter as default  
+		FileSystemRegistry.register("node", new NodeFileSystemDirectoryHandle(this.options.cwd));
 	}
 
 	/**
@@ -130,8 +128,8 @@ export class NodePlatform extends BasePlatform {
 	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
 		// Create dist filesystem pointing to ./dist directory
 		const distPath = Path.resolve(this.options.cwd, "dist");
-		const adapter = new LocalBucket({ rootPath: distPath });
-		return await adapter.getDirectoryHandle(name);
+		const targetPath = name ? Path.join(distPath, name) : distPath;
+		return new NodeFileSystemDirectoryHandle(targetPath);
 	}
 
 	/**
@@ -368,20 +366,7 @@ export class NodePlatform extends BasePlatform {
 	}
 }
 
-// ============================================================================
-// FACTORY FUNCTIONS
-// ============================================================================
-
-/**
- * Create a Node.js platform instance
- */
-export function createNodePlatform(
-	options?: NodePlatformOptions,
-): NodePlatform {
-	return new NodePlatform(options);
-}
-
 /**
  * Default export for easy importing
  */
-export default createNodePlatform;
+export default NodePlatform;
