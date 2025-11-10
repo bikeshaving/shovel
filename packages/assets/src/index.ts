@@ -1,14 +1,7 @@
 /**
- * @b9g/assets - Universal assets middleware using Web APIs only
- *
- * Runtime middleware for serving assets using the self.dirs ServiceWorker API.
- * Works on all platforms: Node.js, Bun, Cloudflare Workers.
+ * @b9g/assets - Universal assets processing and serving
  */
 
-// Runtime middleware (Web APIs only)
 export {
-	createAssetsMiddleware,
-	createRootAssetsMiddleware,
-	type AssetsConfig,
-	default as assets,
+	assets,
 } from "./middleware.js";

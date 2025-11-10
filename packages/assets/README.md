@@ -34,13 +34,13 @@ img.src = logoUrl; // '/static/logo-a1b2c3d4.svg'
 
 ```javascript
 import { Router } from '@b9g/router';
-import { createAssetMiddleware } from '@b9g/assets';
+import { assets } from '@b9g/assets/middleware';
 
 const router = new Router();
 
-// Add asset middleware
-router.use('/static/*', createAssetMiddleware({
-  root: './public',
+// Add asset middleware with 1-to-1 path mapping
+router.use(assets({
+  dev: false,
   maxAge: 31536000 // 1 year cache for hashed files
 }));
 
@@ -76,21 +76,18 @@ const logoUrl = getAssetUrl('logo.svg'); // '/static/logo-a1b2c3d4.svg'
 ## Middleware Options
 
 ```javascript
-import { createAssetMiddleware } from '@b9g/assets';
+import { assets } from '@b9g/assets/middleware';
 
-const middleware = createAssetMiddleware({
-  root: './public',              // Asset root directory
-  prefix: '/static',             // URL prefix
-  maxAge: 31536000,             // Cache-Control max-age
-  immutable: true,              // Add immutable directive
-  etag: true,                   // Generate ETags
-  lastModified: true,           // Set Last-Modified headers
-  index: ['index.html'],        // Directory index files
-  extensions: ['.html', '.htm'], // Try extensions
-  fallback: '/index.html'       // SPA fallback
+const middleware = assets({
+  manifestPath: 'manifest.json',    // Path to asset manifest
+  cacheControl: 'public, max-age=31536000', // Cache-Control header
+  dev: false,                       // Development mode
+  mimeTypes: {                      // Custom MIME types
+    '.webp': 'image/webp'
+  }
 });
 
-router.use('/static/*', middleware);
+router.use(middleware);
 ```
 
 ## Content Hashing
@@ -131,41 +128,32 @@ export default defineConfig({
 
 ```javascript
 import { Router } from '@b9g/router';
-import { createAssetMiddleware } from '@b9g/assets';
+import { assets } from '@b9g/assets/middleware';
 
 const router = new Router();
 
-// Serve static assets
-router.use('/static/*', createAssetMiddleware({
-  root: './dist/static',
-  maxAge: 31536000
-}));
-
-// SPA fallback for client-side routing
-router.use(createAssetMiddleware({
-  root: './dist',
-  fallback: '/index.html',
-  maxAge: 0 // Don't cache HTML
+// Single middleware serves all assets with 1-to-1 path mapping
+// /static/app.js -> assets/static/app.js in bucket
+// /index.html -> assets/index.html in bucket  
+// /favicon.ico -> assets/favicon.ico in bucket
+router.use(assets({
+  dev: process.env.NODE_ENV === 'development'
 }));
 ```
 
 ### CDN Integration
 
 ```javascript
-const assetMiddleware = createAssetMiddleware({
-  root: './dist/static',
-  headers: {
-    'Cache-Control': 'public, max-age=31536000, immutable',
-    'X-Content-Type-Options': 'nosniff'
-  }
-});
-
-// Serve from CDN in production
+// In production, assets can be served by CDN
+// In development, serve from assets bucket
 if (process.env.NODE_ENV === 'production') {
-  // Assets served by CDN
-  router.get('/static/*', () => new Response(null, { status: 404 }));
+  // Configure CDN URLs in build process
+  // Assets middleware can be disabled or serve as fallback
 } else {
-  router.use('/static/*', assetMiddleware);
+  router.use(assets({
+    dev: true,
+    cacheControl: 'no-cache'
+  }));
 }
 ```
 
@@ -188,18 +176,16 @@ Automatic MIME type detection for common file types:
 }
 ```
 
-## Security Headers
+## Security Features
 
-Built-in security headers for static assets:
+Built-in security features:
 
 ```javascript
-const middleware = createAssetMiddleware({
-  root: './public',
-  security: {
-    contentTypeOptions: 'nosniff',
-    frameOptions: 'deny',
-    xssProtection: '1; mode=block'
-  }
+const middleware = assets({
+  // Automatic MIME type detection prevents content-type confusion
+  // Directory traversal protection (prevents .. in paths)
+  // Manifest validation (only serves files listed in build manifest)
+  dev: false // In production, only built assets are served
 });
 ```
 
@@ -215,7 +201,7 @@ const middleware = createAssetMiddleware({
 ### Compression
 
 ```javascript
-const middleware = createAssetMiddleware({
+const middleware = assets({
   root: './public',
   compression: {
     gzip: true,
@@ -238,7 +224,7 @@ const response = await middleware(request);
 
 ## API Reference
 
-### createAssetMiddleware(options)
+### assets(options)
 
 Creates middleware function for serving static assets.
 
