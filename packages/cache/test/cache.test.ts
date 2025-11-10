@@ -7,7 +7,9 @@ describe("CustomCacheStorage", () => {
 
 	beforeEach(() => {
 		// Create CustomCacheStorage with MemoryCache instances
-		cacheStorage = new CustomCacheStorage((name: string) => new MemoryCache(name));
+		cacheStorage = new CustomCacheStorage(
+			(name: string) => new MemoryCache(name),
+		);
 	});
 
 	test("can open caches", async () => {

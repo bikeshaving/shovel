@@ -126,7 +126,10 @@ export function getBestPlatformDetection(): PlatformDetection {
 /**
  * Resolve platform name from options or auto-detect
  */
-export function resolvePlatform(options: { platform?: string; target?: string }): string {
+export function resolvePlatform(options: {
+	platform?: string;
+	target?: string;
+}): string {
 	// Explicit platform takes precedence
 	if (options.platform) {
 		return options.platform;
@@ -141,21 +144,23 @@ export function resolvePlatform(options: { platform?: string; target?: string })
 	return detectDevelopmentPlatform();
 }
 
-
 /**
  * Create platform instance based on name
  */
-export async function createPlatform(platformName: string, options: any = {}): Promise<any> {
+export async function createPlatform(
+	platformName: string,
+	options: any = {},
+): Promise<any> {
 	switch (platformName) {
 		case "node": {
 			const modulePath = import.meta.resolve("@b9g/platform-node");
-			const NodePlatform = await import(modulePath).then(m => m.default);
+			const NodePlatform = await import(modulePath).then((m) => m.default);
 			return new NodePlatform(options);
 		}
 
 		case "bun": {
 			const modulePath = import.meta.resolve("@b9g/platform-bun");
-			const BunPlatform = await import(modulePath).then(m => m.default);
+			const BunPlatform = await import(modulePath).then((m) => m.default);
 			return new BunPlatform(options);
 		}
 
@@ -163,13 +168,15 @@ export async function createPlatform(platformName: string, options: any = {}): P
 		case "cloudflare-workers":
 		case "cf": {
 			const modulePath = import.meta.resolve("@b9g/platform-cloudflare");
-			const CloudflarePlatform = await import(modulePath).then(m => m.default);
+			const CloudflarePlatform = await import(modulePath).then(
+				(m) => m.default,
+			);
 			return new CloudflarePlatform(options);
 		}
 
 		default:
 			throw new Error(
-				`Unknown platform: ${platformName}. Available platforms: node, bun, cloudflare`
+				`Unknown platform: ${platformName}. Available platforms: node, bun, cloudflare`,
 			);
 	}
 }
@@ -180,9 +187,11 @@ export async function createPlatform(platformName: string, options: any = {}): P
 export function displayPlatformInfo(platformName: string): void {
 	const runtime = detectRuntime();
 	const detection = getBestPlatformDetection();
-	
+
 	console.info(`🚀 Platform: ${platformName}`);
 	console.info(`⚙️  Runtime: ${runtime}`);
-	console.info(`🔍 Auto-detected: ${detection.platform} (confidence: ${detection.confidence})`);
+	console.info(
+		`🔍 Auto-detected: ${detection.platform} (confidence: ${detection.confidence})`,
+	);
 	console.info(`💡 Reasons: ${detection.reasons.join(", ")}`);
 }

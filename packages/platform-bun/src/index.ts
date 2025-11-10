@@ -17,7 +17,7 @@ import {
 	createServiceWorkerGlobals,
 	PlatformBucketStorage,
 } from "@b9g/platform";
-import { WorkerPool, WorkerPoolOptions } from "@b9g/platform/worker-pool";
+import {WorkerPool, WorkerPoolOptions} from "@b9g/platform/worker-pool";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
 import {FileSystemRegistry, MemoryBucket, NodeBucket} from "@b9g/filesystem";
 import * as Path from "path";
@@ -75,13 +75,18 @@ export class BunPlatform extends BasePlatform {
 
 		// Register filesystem adapters for Bun
 		FileSystemRegistry.register("memory", new MemoryBucket());
-		FileSystemRegistry.register("node", new NodeBucket(Path.join(this.options.cwd, "dist")));
-		
+		FileSystemRegistry.register(
+			"node",
+			new NodeBucket(Path.join(this.options.cwd, "dist")),
+		);
+
 		// Register Bun's native S3 adapter if available
 		try {
 			// Note: This is a placeholder for Bun's S3 adapter
 			// The actual implementation would need to be imported from a Bun-specific package
-			console.warn("[Bun] S3 adapter not implemented yet, using memory filesystem");
+			console.warn(
+				"[Bun] S3 adapter not implemented yet, using memory filesystem",
+			);
 		} catch {
 			console.warn("[Bun] S3Client not available, using memory filesystem");
 		}
@@ -102,9 +107,9 @@ export class BunPlatform extends BasePlatform {
 	 */
 	protected getDefaultCacheConfig(): CacheConfig {
 		return {
-			pages: { type: "memory" }, // PostMessage cache for coordination
-			api: { type: "memory" },
-			static: { type: "memory" },
+			pages: {type: "memory"}, // PostMessage cache for coordination
+			api: {type: "memory"},
+			static: {type: "memory"},
 		};
 	}
 
@@ -113,12 +118,13 @@ export class BunPlatform extends BasePlatform {
 	 */
 	async createCaches(config?: CacheConfig): Promise<CustomCacheStorage> {
 		// Import MemoryCache for fallback
-		const { MemoryCache } = await import("@b9g/cache");
-		
+		const {MemoryCache} = await import("@b9g/cache");
+
 		// Use platform-agnostic worker detection
 		// In Bun, workers use self global while main thread doesn't
-		const isWorkerThread = typeof self !== 'undefined' && typeof window === 'undefined';
-		
+		const isWorkerThread =
+			typeof self !== "undefined" && typeof window === "undefined";
+
 		return new CustomCacheStorage((name: string) => {
 			if (!isWorkerThread) {
 				// Use MemoryCache in main thread
@@ -190,7 +196,7 @@ export class BunPlatform extends BasePlatform {
 		if (this.workerPool) {
 			await this.workerPool.terminate();
 		}
-		
+
 		const workerCount = options.workerCount || 1;
 		const poolOptions: WorkerPoolOptions = {
 			workerCount,
@@ -199,13 +205,8 @@ export class BunPlatform extends BasePlatform {
 			cwd: this.options.cwd,
 		};
 
-		
 		// Bun has native Worker support - WorkerPool will use new Worker() directly
-		this.workerPool = new WorkerPool(
-			this.cacheStorage,
-			poolOptions,
-			entryPath,
-		);
+		this.workerPool = new WorkerPool(this.cacheStorage, poolOptions, entryPath);
 
 		// Initialize workers (Bun has native Web Workers)
 		await this.workerPool.init();
@@ -246,7 +247,6 @@ export class BunPlatform extends BasePlatform {
 
 		return instance;
 	}
-
 
 	/**
 	 * Reload workers for hot reloading (called by CLI)

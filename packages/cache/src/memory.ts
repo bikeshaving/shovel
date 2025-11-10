@@ -117,11 +117,11 @@ export class MemoryCache extends Cache {
 	): Promise<boolean> {
 		const key = generateCacheKey(request, options);
 		const deleted = this.storage.delete(key);
-		
+
 		if (deleted) {
 			this.accessOrder.delete(key);
 		}
-		
+
 		return deleted;
 	}
 
@@ -180,7 +180,6 @@ export class MemoryCache extends Cache {
 		};
 	}
 
-
 	/**
 	 * Check if a cache entry has expired
 	 */
@@ -204,7 +203,10 @@ export class MemoryCache extends Cache {
 		// Check Cache-Control header
 		const cacheControl = response.headers.get("cache-control");
 		if (cacheControl) {
-			if (cacheControl.includes("no-cache") || cacheControl.includes("no-store")) {
+			if (
+				cacheControl.includes("no-cache") ||
+				cacheControl.includes("no-store")
+			) {
 				return false;
 			}
 		}
@@ -216,13 +218,17 @@ export class MemoryCache extends Cache {
 	 * Enforce maximum entry limits using LRU eviction
 	 */
 	private enforceMaxEntries(): void {
-		if (!this.options.maxEntries || this.storage.size <= this.options.maxEntries) {
+		if (
+			!this.options.maxEntries ||
+			this.storage.size <= this.options.maxEntries
+		) {
 			return;
 		}
 
 		// Sort by access order and remove oldest entries
-		const entries = Array.from(this.accessOrder.entries())
-			.sort((a, b) => a[1] - b[1]);
+		const entries = Array.from(this.accessOrder.entries()).sort(
+			(a, b) => a[1] - b[1],
+		);
 
 		const toRemove = this.storage.size - this.options.maxEntries;
 		for (let i = 0; i < toRemove; i++) {
@@ -278,7 +284,10 @@ export class MemoryCacheManager {
 	/**
 	 * Handle memory cache-related message from a Worker
 	 */
-	async handleMessage(worker: WorkerLike, message: CacheMessage): Promise<void> {
+	async handleMessage(
+		worker: WorkerLike,
+		message: CacheMessage,
+	): Promise<void> {
 		const {type, requestId} = message;
 
 		try {
@@ -321,7 +330,10 @@ export class MemoryCacheManager {
 	/**
 	 * Get or create a MemoryCache instance
 	 */
-	private getMemoryCache(name: string, options?: MemoryCacheOptions): MemoryCache {
+	private getMemoryCache(
+		name: string,
+		options?: MemoryCacheOptions,
+	): MemoryCache {
 		if (!this.memoryCaches.has(name)) {
 			this.memoryCaches.set(name, new MemoryCache(name, options));
 		}
@@ -430,5 +442,4 @@ export class MemoryCacheManager {
 		await cache.clear();
 		return true;
 	}
-
 }

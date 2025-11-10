@@ -14,7 +14,11 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 } from "@b9g/platform";
-import {FileSystemRegistry, getDirectoryHandle, MemoryBucket} from "@b9g/filesystem";
+import {
+	FileSystemRegistry,
+	getDirectoryHandle,
+	MemoryBucket,
+} from "@b9g/filesystem";
 
 // Re-export common platform types
 export type {
@@ -70,7 +74,7 @@ export class CloudflarePlatform extends BasePlatform {
 		// Register bundled filesystem adapters for Cloudflare Workers
 		// We can't use dynamic imports in Workers, so we bundle what we need
 		FileSystemRegistry.register("memory", new MemoryBucket());
-		
+
 		// R2 adapter registration is deferred to async initialization
 		// since Cloudflare Workers don't support dynamic imports in constructors
 	}
@@ -89,9 +93,9 @@ export class CloudflarePlatform extends BasePlatform {
 	 */
 	protected getDefaultCacheConfig(): CacheConfig {
 		return {
-			pages: { type: "cloudflare" }, // Use Cloudflare's native Cache API
-			api: { type: "cloudflare" }, // Use Cloudflare's native Cache API
-			static: { type: "cloudflare" }, // Static files handled by CDN
+			pages: {type: "cloudflare"}, // Use Cloudflare's native Cache API
+			api: {type: "cloudflare"}, // Use Cloudflare's native Cache API
+			static: {type: "cloudflare"}, // Static files handled by CDN
 		};
 	}
 
@@ -101,12 +105,11 @@ export class CloudflarePlatform extends BasePlatform {
 	async createCaches(config?: CacheConfig): Promise<CacheStorage> {
 		// For Cloudflare Workers, we need to use bundled adapters
 		// In production, we'd bundle the KV cache adapter
-		
+
 		// For now, return the native Cloudflare cache API
 		// TODO: Implement bundled KV cache adapter
 		return globalThis.caches;
 	}
-
 
 	/**
 	 * Create "server" for Cloudflare Workers (which is really just the handler)
@@ -134,7 +137,7 @@ export class CloudflarePlatform extends BasePlatform {
 
 	/**
 	 * Load ServiceWorker-style entrypoint in Cloudflare Workers
-	 * 
+	 *
 	 * Cloudflare Workers are already ServiceWorker-based, so we can use
 	 * the global environment directly in production
 	 */
@@ -158,13 +161,15 @@ export class CloudflarePlatform extends BasePlatform {
 					// Dispatch fetch event to the global handler
 					const event = new FetchEvent("fetch", {request});
 					globalThis.dispatchEvent(event);
-					// TODO: Get response from event.respondWith() 
+					// TODO: Get response from event.respondWith()
 					return new Response("Worker handler", {status: 200});
 				},
 				install: () => Promise.resolve(),
 				activate: () => Promise.resolve(),
 				collectStaticRoutes: async () => [], // Not supported in Workers
-				get ready() { return true; },
+				get ready() {
+					return true;
+				},
 				dispose: async () => {},
 			};
 
@@ -174,7 +179,9 @@ export class CloudflarePlatform extends BasePlatform {
 		} else {
 			// Development environment - use the base platform implementation
 			// This would use our ServiceWorker runtime simulation
-			throw new Error("Cloudflare platform development mode not yet implemented. Use Node platform for development.");
+			throw new Error(
+				"Cloudflare platform development mode not yet implemented. Use Node platform for development.",
+			);
 		}
 	}
 
@@ -300,7 +307,7 @@ export function generateWranglerConfig(options: {
 	// Cache should use Cloudflare's native Cache API, not KV
 	const autoKVNamespaces: string[] = []; // No KV needed for caching
 	const autoR2Buckets = filesystemAdapter === "r2" ? ["STORAGE_R2"] : [];
-	
+
 	const allKVNamespaces = [...new Set([...kvNamespaces, ...autoKVNamespaces])];
 	const allR2Buckets = [...new Set([...r2Buckets, ...autoR2Buckets])];
 
@@ -312,22 +319,32 @@ compatibility_date = "2024-01-01"
 # ServiceWorker format (since Shovel apps are ServiceWorker-style)
 usage_model = "bundled"
 
-# KV bindings${allKVNamespaces.length > 0 ? '\n' + allKVNamespaces
-	.map(
-		(kv) => `[[kv_namespaces]]
+# KV bindings${
+		allKVNamespaces.length > 0
+			? "\n" +
+				allKVNamespaces
+					.map(
+						(kv) => `[[kv_namespaces]]
 binding = "${kv}"
 id = "your-kv-namespace-id"
 preview_id = "your-preview-kv-namespace-id"`,
-	)
-	.join("\n\n") : ''}
+					)
+					.join("\n\n")
+			: ""
+	}
 
-# R2 bindings${allR2Buckets.length > 0 ? '\n' + allR2Buckets
-	.map(
-		(bucket) => `[[r2_buckets]]
+# R2 bindings${
+		allR2Buckets.length > 0
+			? "\n" +
+				allR2Buckets
+					.map(
+						(bucket) => `[[r2_buckets]]
 binding = "${bucket}"
 bucket_name = "your-bucket-name"`,
-	)
-	.join("\n\n") : ''}
+					)
+					.join("\n\n")
+			: ""
+	}
 
 # D1 bindings
 ${d1Databases

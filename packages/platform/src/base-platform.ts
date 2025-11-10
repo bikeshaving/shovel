@@ -25,10 +25,7 @@ export abstract class BasePlatform implements Platform {
 	}
 
 	abstract readonly name: string;
-	abstract loadServiceWorker(
-		entrypoint: string,
-		options?: any,
-	): Promise<any>;
+	abstract loadServiceWorker(entrypoint: string, options?: any): Promise<any>;
 	abstract createServer(handler: any, options?: any): any;
 	abstract getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
 
@@ -71,12 +68,18 @@ export abstract class BasePlatform implements Platform {
 	/**
 	 * Build CacheStorage instance with dynamic adapter loading
 	 */
-	protected async buildCacheStorage(config: CacheConfig): Promise<CacheStorage> {
+	protected async buildCacheStorage(
+		config: CacheConfig,
+	): Promise<CacheStorage> {
 		const caches = new Map();
 
 		// Load each configured cache type
 		for (const [name, cacheConfig] of Object.entries(config)) {
-			if (cacheConfig && typeof cacheConfig === "object" && "type" in cacheConfig) {
+			if (
+				cacheConfig &&
+				typeof cacheConfig === "object" &&
+				"type" in cacheConfig
+			) {
 				const cache = await this.loadCacheInstance(cacheConfig);
 				caches.set(name, cache);
 			}
@@ -127,7 +130,8 @@ export abstract class BasePlatform implements Platform {
 	 * Load filesystem adapter using dynamic import
 	 */
 	protected async loadFilesystemAdapter(config?: FilesystemConfig) {
-		const fsConfig = config || this.config.filesystem || this.getDefaultFilesystemConfig();
+		const fsConfig =
+			config || this.config.filesystem || this.getDefaultFilesystemConfig();
 
 		if (!fsConfig.type) {
 			throw new Error("Filesystem configuration must specify a type");

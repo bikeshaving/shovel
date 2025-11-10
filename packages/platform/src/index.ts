@@ -33,16 +33,14 @@ export {
 	type BucketStorage as BucketStorageInterface,
 } from "./service-worker.js";
 
-// ServiceWorkerRuntime is now ServiceWorkerRegistration 
-export { ServiceWorkerRegistration as ServiceWorkerRuntime } from "./service-worker-api.js";
+// ServiceWorkerRuntime is now ServiceWorkerRegistration
+export {ServiceWorkerRegistration as ServiceWorkerRuntime} from "./service-worker-api.js";
 
 // Bucket storage implementation
-export {
-	PlatformBucketStorage,
-} from "./directory-storage.js";
+export {PlatformBucketStorage} from "./directory-storage.js";
 
 // Import for local use
-import { PlatformBucketStorage } from "./directory-storage.js";
+import {PlatformBucketStorage} from "./directory-storage.js";
 
 // Bucket storage factory function for backwards compatibility
 export function createBucketStorage(rootPath: string = "./dist") {
@@ -80,10 +78,18 @@ export {
 } from "./utils.js";
 
 // File System Access API
-export {getDirectoryHandle, getBucket, getFileSystemRoot} from "./filesystem.js";
+export {
+	getDirectoryHandle,
+	getBucket,
+	getFileSystemRoot,
+} from "./filesystem.js";
 
 // Worker management
-export { WorkerPool, type PlatformWorker, type WorkerPoolOptions } from "./worker-pool.js";
+export {
+	WorkerPool,
+	type PlatformWorker,
+	type WorkerPoolOptions,
+} from "./worker-pool.js";
 
 // Complete ServiceWorker API type shims
 export {

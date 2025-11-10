@@ -34,19 +34,25 @@ const router = new Router();
 // Platform provides self.caches and self.buckets directly - no event needed
 
 // Root assets middleware for serving root-level assets like /logo.svg
-router.use(createRootAssetsMiddleware({
-	dev: true,
-	directory: "assets",
-	manifestPath: "server/asset-manifest.json"
-}));
+router.use(
+	createRootAssetsMiddleware({
+		dev: true,
+		directory: "assets",
+		manifestPath: "server/asset-manifest.json",
+	}),
+);
 
 // Global page cache middleware
 router.use(pageCache);
 
-
 // Cache middleware for pages using new generator API
 async function* pageCache(request, context) {
-	console.log("[pageCache] Processing:", request.url, "Method:", request.method);
+	console.log(
+		"[pageCache] Processing:",
+		request.url,
+		"Method:",
+		request.method,
+	);
 
 	if (request.method !== "GET" || !self.caches) {
 		// No caching - just passthrough
@@ -289,7 +295,6 @@ router
 		);
 	});
 
-
 /**
  * ServiceWorker install event - setup and initialization
  */
@@ -321,7 +326,7 @@ async function generateStaticSite() {
 			"/",
 			"/about",
 			"/api/posts",
-			...posts.map((post) => `/posts/${post.id}`)
+			...posts.map((post) => `/posts/${post.id}`),
 		];
 
 		console.info(`[Blog App] Pre-rendering ${staticRoutes.length} routes...`);
@@ -348,7 +353,9 @@ async function generateStaticSite() {
 					}
 
 					// Write to static directory
-					const fileHandle = await staticBucket.getFileHandle(fileName, {create: true});
+					const fileHandle = await staticBucket.getFileHandle(fileName, {
+						create: true,
+					});
 					const writable = await fileHandle.createWritable();
 					await writable.write(content);
 					await writable.close();
@@ -358,13 +365,19 @@ async function generateStaticSite() {
 					console.warn(`[Blog App] ⚠️  ${route} returned ${response.status}`);
 				}
 			} catch (error) {
-				console.error(`[Blog App] ❌ Failed to generate ${route}:`, error.message);
+				console.error(
+					`[Blog App] ❌ Failed to generate ${route}:`,
+					error.message,
+				);
 			}
 		}
 
 		console.info("[Blog App] ✅ Static site generation complete!");
 	} catch (error) {
-		console.error("[Blog App] ❌ Static site generation failed:", error.message);
+		console.error(
+			"[Blog App] ❌ Static site generation failed:",
+			error.message,
+		);
 	}
 }
 
@@ -374,7 +387,9 @@ async function generateStaticSite() {
 async function copyAssetsToStatic(assetsBucket, staticBucket) {
 	try {
 		// Create assets subdirectory in static
-		const staticAssetsDir = await staticBucket.getDirectoryHandle("assets", {create: true});
+		const staticAssetsDir = await staticBucket.getDirectoryHandle("assets", {
+			create: true,
+		});
 
 		// Copy all files from assets to static/assets
 		for await (const [name, handle] of assetsBucket.entries()) {
@@ -384,7 +399,9 @@ async function copyAssetsToStatic(assetsBucket, staticBucket) {
 				const content = await file.arrayBuffer();
 
 				// Write to static/assets
-				const targetHandle = await staticAssetsDir.getFileHandle(name, {create: true});
+				const targetHandle = await staticAssetsDir.getFileHandle(name, {
+					create: true,
+				});
 				const writable = await targetHandle.createWritable();
 				await writable.write(new Uint8Array(content));
 				await writable.close();
@@ -408,7 +425,10 @@ self.addEventListener("fetch", (event) => {
 
 		// Add timeout to detect hanging promises
 		const timeoutPromise = new Promise((_, reject) => {
-			setTimeout(() => reject(new Error("Router response timeout")), TIMEOUTS.ROUTER_RESPONSE);
+			setTimeout(
+				() => reject(new Error("Router response timeout")),
+				TIMEOUTS.ROUTER_RESPONSE,
+			);
 		});
 
 		event.respondWith(
@@ -422,7 +442,7 @@ self.addEventListener("fetch", (event) => {
 				console.error("Router error:", error);
 				return new Response(errorDetails, {
 					status: 500,
-					headers: { "Content-Type": "text/plain" }
+					headers: {"Content-Type": "text/plain"},
 				});
 			}),
 		);
@@ -437,7 +457,7 @@ self.addEventListener("fetch", (event) => {
 		event.respondWith(
 			new Response(errorDetails, {
 				status: 500,
-				headers: { "Content-Type": "text/plain" }
+				headers: {"Content-Type": "text/plain"},
 			}),
 		);
 	}

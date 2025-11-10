@@ -1,6 +1,6 @@
 /**
  * Bucket Storage implementation for ServiceWorker self.buckets API
- * 
+ *
  * This implements the proposed web standard interface that parallels CacheStorage
  * for structured filesystem access in ServiceWorkers.
  */
@@ -34,13 +34,14 @@ export class PlatformBucketStorage implements BucketStorageInterface {
 		}
 
 		// Create new instance
-		const targetPath = (name === '' || name === '/' || name === '.') 
-			? this.rootPath 
-			: `${this.rootPath}/${name}`;
-		
+		const targetPath =
+			name === "" || name === "/" || name === "."
+				? this.rootPath
+				: `${this.rootPath}/${name}`;
+
 		// Ensure the directory exists on disk
-		await fs.mkdir(targetPath, { recursive: true });
-		
+		await fs.mkdir(targetPath, {recursive: true});
+
 		const bucket = new NodeBucket(targetPath);
 		this.instances.set(name, bucket);
 		return bucket;
@@ -79,5 +80,3 @@ export class PlatformBucketStorage implements BucketStorageInterface {
 		return await this.open(name);
 	}
 }
-
-

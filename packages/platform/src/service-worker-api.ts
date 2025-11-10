@@ -1,49 +1,51 @@
 /**
  * Complete Service Worker API Type Shims
- * 
+ *
  * This file implements all Service Worker API interfaces as defined in:
  * https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API#interfaces
- * 
+ *
  * Provides compatibility shims for running ServiceWorker code in any JavaScript runtime.
  */
 
 // Import and re-export base event classes from service-worker.ts
-export { 
-	ExtendableEvent, 
-	FetchEvent, 
-	InstallEvent, 
-	ActivateEvent 
-} from './service-worker.js';
+export {
+	ExtendableEvent,
+	FetchEvent,
+	InstallEvent,
+	ActivateEvent,
+} from "./service-worker.js";
 
-import { 
-	ExtendableEvent as BaseExtendableEvent, 
-	FetchEvent as BaseFetchEvent, 
-	InstallEvent as BaseInstallEvent, 
-	ActivateEvent as BaseActivateEvent 
-} from './service-worker.js';
+import {
+	ExtendableEvent as BaseExtendableEvent,
+	FetchEvent as BaseFetchEvent,
+	InstallEvent as BaseInstallEvent,
+	ActivateEvent as BaseActivateEvent,
+} from "./service-worker.js";
 
 /**
  * Client represents the scope of a service worker client
  * Either a document in a browser context or a SharedWorker
  */
 export class Client {
-	readonly frameType: 'auxiliary' | 'top-level' | 'nested' | 'none' = 'none';
+	readonly frameType: "auxiliary" | "top-level" | "nested" | "none" = "none";
 	readonly id: string;
-	readonly type: 'window' | 'worker' | 'sharedworker' = 'worker';
+	readonly type: "window" | "worker" | "sharedworker" = "worker";
 	readonly url: string;
 
-	constructor(options: { 
-		id: string; 
-		url: string; 
-		type?: 'window' | 'worker' | 'sharedworker' 
+	constructor(options: {
+		id: string;
+		url: string;
+		type?: "window" | "worker" | "sharedworker";
 	}) {
 		this.id = options.id;
 		this.url = options.url;
-		this.type = options.type || 'worker';
+		this.type = options.type || "worker";
 	}
 
 	postMessage(message: any, transfer?: Transferable[]): void {
-		console.warn('[ServiceWorker] Client.postMessage() not supported in server context');
+		console.warn(
+			"[ServiceWorker] Client.postMessage() not supported in server context",
+		);
 	}
 }
 
@@ -52,26 +54,30 @@ export class Client {
  */
 export class WindowClient extends Client {
 	readonly focused: boolean = false;
-	readonly visibilityState: 'visible' | 'hidden' | 'prerender' = 'hidden';
+	readonly visibilityState: "visible" | "hidden" | "prerender" = "hidden";
 
 	constructor(options: {
 		id: string;
 		url: string;
 		focused?: boolean;
-		visibilityState?: 'visible' | 'hidden' | 'prerender';
+		visibilityState?: "visible" | "hidden" | "prerender";
 	}) {
-		super({ ...options, type: 'window' });
+		super({...options, type: "window"});
 		this.focused = options.focused || false;
-		this.visibilityState = options.visibilityState || 'hidden';
+		this.visibilityState = options.visibilityState || "hidden";
 	}
 
 	async focus(): Promise<WindowClient> {
-		console.warn('[ServiceWorker] WindowClient.focus() not supported in server context');
+		console.warn(
+			"[ServiceWorker] WindowClient.focus() not supported in server context",
+		);
 		return this;
 	}
 
 	async navigate(url: string): Promise<WindowClient | null> {
-		console.warn('[ServiceWorker] WindowClient.navigate() not supported in server context');
+		console.warn(
+			"[ServiceWorker] WindowClient.navigate() not supported in server context",
+		);
 		return null;
 	}
 }
@@ -90,13 +96,15 @@ export class Clients {
 
 	async matchAll(options?: {
 		includeUncontrolled?: boolean;
-		type?: 'window' | 'worker' | 'sharedworker' | 'all';
+		type?: "window" | "worker" | "sharedworker" | "all";
 	}): Promise<Client[]> {
 		return [];
 	}
 
 	async openWindow(url: string): Promise<WindowClient | null> {
-		console.warn('[ServiceWorker] Clients.openWindow() not supported in server context');
+		console.warn(
+			"[ServiceWorker] Clients.openWindow() not supported in server context",
+		);
 		return null;
 	}
 }
@@ -111,18 +119,21 @@ export class ExtendableMessageEvent extends BaseExtendableEvent {
 	readonly source: Client | ServiceWorker | MessagePort | null;
 	readonly ports: readonly MessagePort[];
 
-	constructor(type: string, options: {
-		pendingPromises: Set<Promise<any>>;
-		data?: any;
-		origin?: string;
-		lastEventId?: string;
-		source?: Client | ServiceWorker | MessagePort | null;
-		ports?: MessagePort[];
-	}) {
+	constructor(
+		type: string,
+		options: {
+			pendingPromises: Set<Promise<any>>;
+			data?: any;
+			origin?: string;
+			lastEventId?: string;
+			source?: Client | ServiceWorker | MessagePort | null;
+			ports?: MessagePort[];
+		},
+	) {
 		super(type, options.pendingPromises);
 		this.data = options.data;
-		this.origin = options.origin || '';
-		this.lastEventId = options.lastEventId || '';
+		this.origin = options.origin || "";
+		this.lastEventId = options.lastEventId || "";
 		this.source = options.source || null;
 		this.ports = Object.freeze([...(options.ports || [])]);
 	}
@@ -133,23 +144,40 @@ export class ExtendableMessageEvent extends BaseExtendableEvent {
  */
 export class ServiceWorker extends EventTarget {
 	scriptURL: string;
-	state: 'parsed' | 'installing' | 'installed' | 'activating' | 'activated' | 'redundant';
+	state:
+		| "parsed"
+		| "installing"
+		| "installed"
+		| "activating"
+		| "activated"
+		| "redundant";
 
-	constructor(scriptURL: string, state: 'parsed' | 'installing' | 'installed' | 'activating' | 'activated' | 'redundant' = 'parsed') {
+	constructor(
+		scriptURL: string,
+		state:
+			| "parsed"
+			| "installing"
+			| "installed"
+			| "activating"
+			| "activated"
+			| "redundant" = "parsed",
+	) {
 		super();
 		this.scriptURL = scriptURL;
 		this.state = state;
 	}
 
 	postMessage(message: any, transfer?: Transferable[]): void {
-		console.warn('[ServiceWorker] ServiceWorker.postMessage() not implemented in server context');
+		console.warn(
+			"[ServiceWorker] ServiceWorker.postMessage() not implemented in server context",
+		);
 	}
 
 	// Internal method to update state and dispatch statechange event
 	_setState(newState: typeof this.state): void {
 		if (this.state !== newState) {
 			this.state = newState;
-			this.dispatchEvent(new Event('statechange'));
+			this.dispatchEvent(new Event("statechange"));
 		}
 	}
 
@@ -168,8 +196,8 @@ export class NavigationPreloadManager {
 		// No-op in server context
 	}
 
-	async getState(): Promise<{ enabled: boolean; headerValue: string }> {
-		return { enabled: false, headerValue: '' };
+	async getState(): Promise<{enabled: boolean; headerValue: string}> {
+		return {enabled: false, headerValue: ""};
 	}
 
 	async setHeaderValue(value: string): Promise<void> {
@@ -183,43 +211,56 @@ export class NavigationPreloadManager {
  */
 export class ServiceWorkerRegistration extends EventTarget {
 	readonly scope: string;
-	readonly updateViaCache: 'imports' | 'all' | 'none' = 'imports';
+	readonly updateViaCache: "imports" | "all" | "none" = "imports";
 	readonly navigationPreload: NavigationPreloadManager;
-	
+
 	// ServiceWorker instances representing different lifecycle states
 	public _serviceWorker: ServiceWorker;
-	
+
 	// Shovel runtime state
 	private pendingPromises = new Set<Promise<any>>();
 	private eventListeners = new Map<string, Function[]>();
 
-	constructor(scope: string = '/', scriptURL: string = '/') {
+	constructor(scope: string = "/", scriptURL: string = "/") {
 		super();
 		this.scope = scope;
 		this.navigationPreload = new NavigationPreloadManager();
-		this._serviceWorker = new ServiceWorker(scriptURL, 'parsed');
+		this._serviceWorker = new ServiceWorker(scriptURL, "parsed");
 	}
 
 	// Standard ServiceWorkerRegistration properties
 	get active(): ServiceWorker | null {
-		return this._serviceWorker.state === 'activated' ? this._serviceWorker : null;
+		return this._serviceWorker.state === "activated"
+			? this._serviceWorker
+			: null;
 	}
 
 	get installing(): ServiceWorker | null {
-		return this._serviceWorker.state === 'installing' ? this._serviceWorker : null;
+		return this._serviceWorker.state === "installing"
+			? this._serviceWorker
+			: null;
 	}
 
 	get waiting(): ServiceWorker | null {
-		return this._serviceWorker.state === 'installed' ? this._serviceWorker : null;
+		return this._serviceWorker.state === "installed"
+			? this._serviceWorker
+			: null;
 	}
 
 	// Standard ServiceWorkerRegistration methods
-	async getNotifications(options?: NotificationOptions): Promise<Notification[]> {
+	async getNotifications(
+		options?: NotificationOptions,
+	): Promise<Notification[]> {
 		return [];
 	}
 
-	async showNotification(title: string, options?: NotificationOptions): Promise<void> {
-		console.warn('[ServiceWorker] Notifications not supported in server context');
+	async showNotification(
+		title: string,
+		options?: NotificationOptions,
+	): Promise<void> {
+		console.warn(
+			"[ServiceWorker] Notifications not supported in server context",
+		);
 	}
 
 	async sync(): Promise<void> {
@@ -235,7 +276,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 	}
 
 	// Shovel runtime extensions (non-standard but needed for platforms)
-	
+
 	/**
 	 * Enhanced addEventListener that tracks listeners for proper cleanup
 	 */
@@ -246,7 +287,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 		}
 		this.eventListeners.get(type)!.push(listener);
 	}
-	
+
 	/**
 	 * Enhanced removeEventListener that tracks listeners
 	 */
@@ -268,9 +309,9 @@ export class ServiceWorkerRegistration extends EventTarget {
 	 * Install the ServiceWorker (Shovel extension)
 	 */
 	async install(): Promise<void> {
-		if (this._serviceWorker.state !== 'parsed') return;
+		if (this._serviceWorker.state !== "parsed") return;
 
-		this._serviceWorker._setState('installing');
+		this._serviceWorker._setState("installing");
 
 		return new Promise<void>((resolve, reject) => {
 			const event = new BaseInstallEvent(this.pendingPromises);
@@ -285,16 +326,16 @@ export class ServiceWorkerRegistration extends EventTarget {
 						throw error;
 					});
 				}
-				
+
 				const promises = event.getPromises();
 				if (promises.length === 0) {
-					this._serviceWorker._setState('installed');
+					this._serviceWorker._setState("installed");
 					resolve();
 				} else {
 					// Use Promise.all() so waitUntil rejections fail the install
 					Promise.all(promises)
 						.then(() => {
-							this._serviceWorker._setState('installed');
+							this._serviceWorker._setState("installed");
 							resolve();
 						})
 						.catch(reject);
@@ -307,11 +348,11 @@ export class ServiceWorkerRegistration extends EventTarget {
 	 * Activate the ServiceWorker (Shovel extension)
 	 */
 	async activate(): Promise<void> {
-		if (this._serviceWorker.state !== 'installed') {
+		if (this._serviceWorker.state !== "installed") {
 			throw new Error("ServiceWorker must be installed before activation");
 		}
 
-		this._serviceWorker._setState('activating');
+		this._serviceWorker._setState("activating");
 
 		return new Promise<void>((resolve, reject) => {
 			const event = new BaseActivateEvent(this.pendingPromises);
@@ -326,16 +367,16 @@ export class ServiceWorkerRegistration extends EventTarget {
 						throw error;
 					});
 				}
-				
+
 				const promises = event.getPromises();
 				if (promises.length === 0) {
-					this._serviceWorker._setState('activated');
+					this._serviceWorker._setState("activated");
 					resolve();
 				} else {
 					// Use Promise.all() so waitUntil rejections fail the activation
 					Promise.all(promises)
 						.then(() => {
-							this._serviceWorker._setState('activated');
+							this._serviceWorker._setState("activated");
 							resolve();
 						})
 						.catch(reject);
@@ -348,7 +389,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 	 * Handle a fetch request (Shovel extension)
 	 */
 	async handleRequest(request: Request): Promise<Response> {
-		if (this._serviceWorker.state !== 'activated') {
+		if (this._serviceWorker.state !== "activated") {
 			throw new Error("ServiceWorker not activated");
 		}
 
@@ -367,7 +408,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 					});
 					// Continue processing even if listener threw
 				}
-				
+
 				// Wait for all waitUntil promises (background tasks, don't block response)
 				const promises = event.getPromises();
 				if (promises.length > 0) {
@@ -391,7 +432,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 	 * Check if ready to handle requests (Shovel extension)
 	 */
 	get ready(): boolean {
-		return this._serviceWorker.state === 'activated';
+		return this._serviceWorker.state === "activated";
 	}
 
 	/**
@@ -407,9 +448,9 @@ export class ServiceWorkerRegistration extends EventTarget {
 	 * Reset the ServiceWorker state for hot reloading (Shovel extension)
 	 */
 	reset(): void {
-		this._serviceWorker._setState('parsed');
+		this._serviceWorker._setState("parsed");
 		this.pendingPromises.clear();
-		
+
 		// Remove all tracked event listeners
 		for (const [type, listeners] of this.eventListeners) {
 			for (const listener of listeners) {
@@ -434,15 +475,17 @@ export class ServiceWorkerContainer extends EventTarget {
 	constructor() {
 		super();
 		// Create default registration for root scope
-		const defaultRegistration = new ServiceWorkerRegistration('/', '/');
-		this.registrations.set('/', defaultRegistration);
+		const defaultRegistration = new ServiceWorkerRegistration("/", "/");
+		this.registrations.set("/", defaultRegistration);
 		this.ready = Promise.resolve(defaultRegistration);
 	}
 
 	/**
 	 * Get registration for a specific scope
 	 */
-	async getRegistration(scope: string = '/'): Promise<ServiceWorkerRegistration | undefined> {
+	async getRegistration(
+		scope: string = "/",
+	): Promise<ServiceWorkerRegistration | undefined> {
 		return this.registrations.get(scope);
 	}
 
@@ -456,30 +499,34 @@ export class ServiceWorkerContainer extends EventTarget {
 	/**
 	 * Register a new ServiceWorker for a specific scope
 	 */
-	async register(scriptURL: string | URL, options?: {
-		scope?: string;
-		type?: 'classic' | 'module';
-		updateViaCache?: 'imports' | 'all' | 'none';
-	}): Promise<ServiceWorkerRegistration> {
-		const url = typeof scriptURL === 'string' ? scriptURL : scriptURL.toString();
-		const scope = this.normalizeScope(options?.scope || '/');
-		
+	async register(
+		scriptURL: string | URL,
+		options?: {
+			scope?: string;
+			type?: "classic" | "module";
+			updateViaCache?: "imports" | "all" | "none";
+		},
+	): Promise<ServiceWorkerRegistration> {
+		const url =
+			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
+		const scope = this.normalizeScope(options?.scope || "/");
+
 		// Check if registration already exists for this scope
 		let registration = this.registrations.get(scope);
-		
+
 		if (registration) {
 			// Update existing registration with new script
 			registration._serviceWorker.scriptURL = url;
-			registration._serviceWorker._setState('parsed');
+			registration._serviceWorker._setState("parsed");
 		} else {
 			// Create new registration
 			registration = new ServiceWorkerRegistration(scope, url);
 			this.registrations.set(scope, registration);
-			
+
 			// Dispatch updatefound event
-			this.dispatchEvent(new Event('updatefound'));
+			this.dispatchEvent(new Event("updatefound"));
 		}
-		
+
 		return registration;
 	}
 
@@ -502,17 +549,17 @@ export class ServiceWorkerContainer extends EventTarget {
 	async handleRequest(request: Request): Promise<Response | null> {
 		const url = new URL(request.url);
 		const pathname = url.pathname;
-		
+
 		// Find the most specific scope that matches this request
 		const matchingScope = this.findMatchingScope(pathname);
-		
+
 		if (matchingScope) {
 			const registration = this.registrations.get(matchingScope);
 			if (registration && registration.ready) {
 				return await registration.handleRequest(request);
 			}
 		}
-		
+
 		return null;
 	}
 
@@ -520,11 +567,13 @@ export class ServiceWorkerContainer extends EventTarget {
 	 * Install and activate all registrations
 	 */
 	async installAll(): Promise<void> {
-		const installations = Array.from(this.registrations.values()).map(async (registration) => {
-			await registration.install();
-			await registration.activate();
-		});
-		
+		const installations = Array.from(this.registrations.values()).map(
+			async (registration) => {
+				await registration.install();
+				await registration.activate();
+			},
+		);
+
 		await Promise.all(installations);
 	}
 
@@ -544,15 +593,15 @@ export class ServiceWorkerContainer extends EventTarget {
 	 */
 	private normalizeScope(scope: string): string {
 		// Ensure scope starts with /
-		if (!scope.startsWith('/')) {
-			scope = '/' + scope;
+		if (!scope.startsWith("/")) {
+			scope = "/" + scope;
 		}
-		
+
 		// Ensure scope ends with / unless it's the root
-		if (scope !== '/' && !scope.endsWith('/')) {
-			scope = scope + '/';
+		if (scope !== "/" && !scope.endsWith("/")) {
+			scope = scope + "/";
 		}
-		
+
 		return scope;
 	}
 
@@ -561,16 +610,16 @@ export class ServiceWorkerContainer extends EventTarget {
 	 */
 	private findMatchingScope(pathname: string): string | null {
 		const scopes = Array.from(this.registrations.keys());
-		
+
 		// Sort by length descending to find most specific match first
 		scopes.sort((a, b) => b.length - a.length);
-		
+
 		for (const scope of scopes) {
-			if (pathname.startsWith(scope === '/' ? '/' : scope)) {
+			if (pathname.startsWith(scope === "/" ? "/" : scope)) {
 				return scope;
 			}
 		}
-		
+
 		return null;
 	}
 
@@ -585,7 +634,7 @@ export class Notification extends EventTarget {
 	readonly badge: string;
 	readonly body: string;
 	readonly data: any;
-	readonly dir: 'auto' | 'ltr' | 'rtl';
+	readonly dir: "auto" | "ltr" | "rtl";
 	readonly icon: string;
 	readonly image: string;
 	readonly lang: string;
@@ -601,29 +650,31 @@ export class Notification extends EventTarget {
 		super();
 		this.title = title;
 		this.actions = Object.freeze([...(options.actions || [])]);
-		this.badge = options.badge || '';
-		this.body = options.body || '';
+		this.badge = options.badge || "";
+		this.body = options.body || "";
 		this.data = options.data;
-		this.dir = options.dir || 'auto';
-		this.icon = options.icon || '';
-		this.image = options.image || '';
-		this.lang = options.lang || '';
+		this.dir = options.dir || "auto";
+		this.icon = options.icon || "";
+		this.image = options.image || "";
+		this.lang = options.lang || "";
 		this.renotify = options.renotify || false;
 		this.requireInteraction = options.requireInteraction || false;
 		this.silent = options.silent || false;
-		this.tag = options.tag || '';
+		this.tag = options.tag || "";
 		this.timestamp = options.timestamp || Date.now();
 		this.vibrate = Object.freeze([...(options.vibrate || [])]);
 	}
 
 	close(): void {
-		console.warn('[ServiceWorker] Notification.close() not supported in server context');
+		console.warn(
+			"[ServiceWorker] Notification.close() not supported in server context",
+		);
 	}
 
-	static permission: 'default' | 'denied' | 'granted' = 'denied';
+	static permission: "default" | "denied" | "granted" = "denied";
 
-	static async requestPermission(): Promise<'default' | 'denied' | 'granted'> {
-		return 'denied';
+	static async requestPermission(): Promise<"default" | "denied" | "granted"> {
+		return "denied";
 	}
 
 	// Events: click, close, error, show
@@ -637,14 +688,17 @@ export class NotificationEvent extends BaseExtendableEvent {
 	readonly notification: Notification;
 	readonly reply: string | null = null;
 
-	constructor(type: string, options: {
-		pendingPromises: Set<Promise<any>>;
-		action?: string;
-		notification: Notification;
-		reply?: string | null;
-	}) {
+	constructor(
+		type: string,
+		options: {
+			pendingPromises: Set<Promise<any>>;
+			action?: string;
+			notification: Notification;
+			reply?: string | null;
+		},
+	) {
 		super(type, options.pendingPromises);
-		this.action = options.action || '';
+		this.action = options.action || "";
 		this.notification = options.notification;
 		this.reply = options.reply || null;
 	}
@@ -656,10 +710,13 @@ export class NotificationEvent extends BaseExtendableEvent {
 export class PushEvent extends BaseExtendableEvent {
 	readonly data: PushMessageData | null;
 
-	constructor(type: string, options: {
-		pendingPromises: Set<Promise<any>>;
-		data?: PushMessageData | null;
-	}) {
+	constructor(
+		type: string,
+		options: {
+			pendingPromises: Set<Promise<any>>;
+			data?: PushMessageData | null;
+		},
+	) {
 		super(type, options.pendingPromises);
 		this.data = options.data || null;
 	}
@@ -687,7 +744,7 @@ export class PushMessageData {
 	}
 
 	text(): string {
-		if (typeof this._data === 'string') {
+		if (typeof this._data === "string") {
 			return this._data;
 		}
 		return new TextDecoder().decode(this._data);
@@ -701,11 +758,14 @@ export class SyncEvent extends BaseExtendableEvent {
 	readonly tag: string;
 	readonly lastChance: boolean;
 
-	constructor(type: string, options: {
-		pendingPromises: Set<Promise<any>>;
-		tag: string;
-		lastChance?: boolean;
-	}) {
+	constructor(
+		type: string,
+		options: {
+			pendingPromises: Set<Promise<any>>;
+			tag: string;
+			lastChance?: boolean;
+		},
+	) {
 		super(type, options.pendingPromises);
 		this.tag = options.tag;
 		this.lastChance = options.lastChance || false;
@@ -724,7 +784,7 @@ interface NotificationOptions {
 	badge?: string;
 	body?: string;
 	data?: any;
-	dir?: 'auto' | 'ltr' | 'rtl';
+	dir?: "auto" | "ltr" | "rtl";
 	icon?: string;
 	image?: string;
 	lang?: string;

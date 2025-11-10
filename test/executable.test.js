@@ -1,8 +1,8 @@
-import { test, expect } from "bun:test";
+import {test, expect} from "bun:test";
 import * as FS from "fs/promises";
-import { spawn } from "child_process";
-import { tmpdir } from "os";
-import { join } from "path";
+import {spawn} from "child_process";
+import {tmpdir} from "os";
+import {join} from "path";
 
 /**
  * Directly executable builds integration tests
@@ -14,7 +14,7 @@ const TIMEOUT = 5000;
 // Helper functions
 async function createTempDir(prefix = "executable-test-") {
 	const tempPath = join(tmpdir(), `${prefix}${Date.now()}`);
-	await FS.mkdir(tempPath, { recursive: true });
+	await FS.mkdir(tempPath, {recursive: true});
 	return tempPath;
 }
 
@@ -27,7 +27,7 @@ async function createTempFile(dir, filename, content) {
 async function cleanup(paths) {
 	for (const path of paths) {
 		try {
-			await FS.rm(path, { recursive: true, force: true });
+			await FS.rm(path, {recursive: true, force: true});
 		} catch {
 			// Already removed
 		}
@@ -51,21 +51,23 @@ async function waitForServer(port, host = "localhost", timeoutMs = 2000) {
 		await new Promise((resolve) => setTimeout(resolve, 50));
 	}
 
-	throw new Error(`Server at port ${port} never became ready within ${timeoutMs}ms`);
+	throw new Error(
+		`Server at port ${port} never became ready within ${timeoutMs}ms`,
+	);
 }
 
 // Helper to run executable and get process
 function runExecutable(executablePath, env = {}) {
 	const proc = spawn("node", [executablePath], {
 		stdio: ["ignore", "pipe", "pipe"],
-		env: { ...process.env, ...env },
-		cwd: process.cwd()
+		env: {...process.env, ...env},
+		cwd: process.cwd(),
 	});
-	
-	proc.on('exit', (code) => {
+
+	proc.on("exit", (code) => {
 		proc.earlyExit = code !== 0;
 	});
-	
+
 	return proc;
 }
 
@@ -126,25 +128,37 @@ self.addEventListener("fetch", (event) => {
 });
 			`;
 
-			const entryPath = await createTempFile(testDir, "app.js", serviceWorkerContent);
+			const entryPath = await createTempFile(
+				testDir,
+				"app.js",
+				serviceWorkerContent,
+			);
 			const outDir = join(testDir, "dist");
 
 			// Build executable
-			const { buildForProduction } = await import("../src/commands/build.js");
-			
+			const {buildForProduction} = await import("../src/commands/build.js");
+
 			await buildForProduction({
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			// Verify build output
 			const appPath = join(outDir, "server", "app.js");
 			const packagePath = join(outDir, "server", "package.json");
 
-			expect(await FS.access(appPath).then(() => true).catch(() => false)).toBe(true);
-			expect(await FS.access(packagePath).then(() => true).catch(() => false)).toBe(true);
+			expect(
+				await FS.access(appPath)
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
+			expect(
+				await FS.access(packagePath)
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
 
 			// Check executable has shebang
 			const appContent = await FS.readFile(appPath, "utf8");
@@ -159,19 +173,18 @@ self.addEventListener("fetch", (event) => {
 			expect(appContent).toContain("ServiceWorkerRegistration");
 			expect(appContent).toContain("Hello from executable build!");
 			expect(appContent).toContain("health");
-			
+
 			// Verify package.json structure
 			const packageContent = await FS.readFile(packagePath, "utf8");
 			const packageData = JSON.parse(packageContent);
 			expect(packageData.type).toBe("module");
 			expect(packageData.name).toBe("shovel-executable");
-
 		} finally {
 			console.log(`Debug: Built executable in cleanup_paths:`, cleanup_paths);
 			// await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
@@ -200,16 +213,20 @@ self.addEventListener("fetch", (event) => {
 });
 			`;
 
-			const entryPath = await createTempFile(testDir, "app.js", serviceWorkerContent);
+			const entryPath = await createTempFile(
+				testDir,
+				"app.js",
+				serviceWorkerContent,
+			);
 			const outDir = join(testDir, "dist");
 
-			const { buildForProduction } = await import("../src/commands/build.js");
-			
+			const {buildForProduction} = await import("../src/commands/build.js");
+
 			await buildForProduction({
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			const appPath = join(outDir, "server", "app.js");
@@ -220,10 +237,10 @@ self.addEventListener("fetch", (event) => {
 			// Run with custom environment
 			const PORT = 18002;
 			const HOST = "127.0.0.1";
-			serverProcess = runExecutable(appPath, { 
-				PORT: PORT.toString(), 
+			serverProcess = runExecutable(appPath, {
+				PORT: PORT.toString(),
 				HOST,
-				NODE_ENV: "test"
+				NODE_ENV: "test",
 			});
 
 			await waitForServer(PORT, HOST);
@@ -231,12 +248,11 @@ self.addEventListener("fetch", (event) => {
 			// Test environment variables are accessible
 			const envResponse = await fetch(`http://${HOST}:${PORT}/env`);
 			const envData = await envResponse.json();
-			
+
 			expect(envData.port).toBe(PORT.toString());
 			expect(envData.host).toBe(HOST);
 			// NODE_ENV is hardcoded to "production" in build-time configuration
 			expect(envData.nodeEnv).toBe("production");
-
 		} finally {
 			if (serverProcess) {
 				await killProcess(serverProcess);
@@ -244,7 +260,7 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -351,16 +367,20 @@ self.addEventListener("fetch", async (event) => {
 });
 			`;
 
-			const entryPath = await createTempFile(testDir, "app.js", serviceWorkerContent);
+			const entryPath = await createTempFile(
+				testDir,
+				"app.js",
+				serviceWorkerContent,
+			);
 			const outDir = join(testDir, "dist");
 
-			const { buildForProduction } = await import("../src/commands/build.js");
-			
+			const {buildForProduction} = await import("../src/commands/build.js");
+
 			await buildForProduction({
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			const appPath = join(outDir, "server", "app.js");
@@ -369,7 +389,7 @@ self.addEventListener("fetch", async (event) => {
 			// Dependencies are bundled, no npm install needed
 
 			const PORT = 18003;
-			serverProcess = runExecutable(appPath, { PORT: PORT.toString() });
+			serverProcess = runExecutable(appPath, {PORT: PORT.toString()});
 
 			await waitForServer(PORT);
 
@@ -379,19 +399,24 @@ self.addEventListener("fetch", async (event) => {
 			expect(mainContent).toContain("Executable with Assets");
 
 			// Test CSS asset
-			const cssResponse = await fetch(`http://localhost:${PORT}/assets/style.css`);
+			const cssResponse = await fetch(
+				`http://localhost:${PORT}/assets/style.css`,
+			);
 			expect(cssResponse.status).toBe(200);
 			expect(cssResponse.headers.get("content-type")).toBe("text/css");
 			const cssResponseContent = await cssResponse.text();
 			expect(cssResponseContent).toContain("background: #f0f0f0");
 
 			// Test JS asset
-			const jsResponse = await fetch(`http://localhost:${PORT}/assets/client.js`);
+			const jsResponse = await fetch(
+				`http://localhost:${PORT}/assets/client.js`,
+			);
 			expect(jsResponse.status).toBe(200);
-			expect(jsResponse.headers.get("content-type")).toBe("application/javascript");
+			expect(jsResponse.headers.get("content-type")).toBe(
+				"application/javascript",
+			);
 			const jsResponseContent = await jsResponse.text();
 			expect(jsResponseContent).toContain("Asset loaded");
-
 		} finally {
 			if (serverProcess) {
 				await killProcess(serverProcess);
@@ -399,7 +424,7 @@ self.addEventListener("fetch", async (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -431,16 +456,20 @@ self.addEventListener("fetch", (event) => {
 });
 			`;
 
-			const entryPath = await createTempFile(testDir, "app.js", serviceWorkerContent);
+			const entryPath = await createTempFile(
+				testDir,
+				"app.js",
+				serviceWorkerContent,
+			);
 			const outDir = join(testDir, "dist");
 
-			const { buildForProduction } = await import("../src/commands/build.js");
-			
+			const {buildForProduction} = await import("../src/commands/build.js");
+
 			await buildForProduction({
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			const appPath = join(outDir, "server", "app.js");
@@ -449,7 +478,7 @@ self.addEventListener("fetch", (event) => {
 			// Dependencies are bundled, no npm install needed
 
 			const PORT = 18004;
-			serverProcess = runExecutable(appPath, { PORT: PORT.toString() });
+			serverProcess = runExecutable(appPath, {PORT: PORT.toString()});
 
 			await waitForServer(PORT);
 
@@ -475,14 +504,13 @@ self.addEventListener("fetch", (event) => {
 
 			const exitCode = await Promise.race([
 				exitPromise,
-				new Promise((_, reject) => 
-					setTimeout(() => reject(new Error("Process didn't exit")), 5000)
-				)
+				new Promise((_, reject) =>
+					setTimeout(() => reject(new Error("Process didn't exit")), 5000),
+				),
 			]);
 
 			expect(exitCode).toBe(0);
 			serverProcess = null; // Mark as cleaned up
-
 		} finally {
 			if (serverProcess) {
 				await killProcess(serverProcess);
@@ -490,7 +518,7 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -519,17 +547,21 @@ self.addEventListener("fetch", (event) => {
 });
 			`;
 
-			const entryPath = await createTempFile(testDir, "app.js", serviceWorkerContent);
+			const entryPath = await createTempFile(
+				testDir,
+				"app.js",
+				serviceWorkerContent,
+			);
 			const outDir = join(testDir, "dist");
 
 			// Build for production
-			const { buildForProduction } = await import("../src/commands/build.js");
-			
+			const {buildForProduction} = await import("../src/commands/build.js");
+
 			await buildForProduction({
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			// Verify deployment artifacts
@@ -538,9 +570,21 @@ self.addEventListener("fetch", (event) => {
 			const assetsPath = join(outDir, "assets");
 
 			// Check all required files exist
-			expect(await FS.access(appPath).then(() => true).catch(() => false)).toBe(true);
-			expect(await FS.access(packagePath).then(() => true).catch(() => false)).toBe(true);
-			expect(await FS.access(assetsPath).then(() => true).catch(() => false)).toBe(true);
+			expect(
+				await FS.access(appPath)
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
+			expect(
+				await FS.access(packagePath)
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
+			expect(
+				await FS.access(assetsPath)
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
 
 			// Check package.json is valid
 			const packageContent = await FS.readFile(packagePath, "utf8");
@@ -554,7 +598,11 @@ self.addEventListener("fetch", (event) => {
 
 			// Check assets manifest exists
 			const manifestPath = join(outDir, "server", "asset-manifest.json");
-			expect(await FS.access(manifestPath).then(() => true).catch(() => false)).toBe(true);
+			expect(
+				await FS.access(manifestPath)
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
 
 			const manifestContent = await FS.readFile(manifestPath, "utf8");
 			const manifest = JSON.parse(manifestContent);
@@ -563,17 +611,24 @@ self.addEventListener("fetch", (event) => {
 
 			// Simulate deployment: copy dist to "production" directory
 			const prodDir = join(testDir, "production");
-			await FS.cp(outDir, prodDir, { recursive: true });
+			await FS.cp(outDir, prodDir, {recursive: true});
 
 			// Verify production directory has same structure
-			expect(await FS.access(join(prodDir, "server", "app.js")).then(() => true).catch(() => false)).toBe(true);
-			expect(await FS.access(join(prodDir, "server", "package.json")).then(() => true).catch(() => false)).toBe(true);
-
+			expect(
+				await FS.access(join(prodDir, "server", "app.js"))
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
+			expect(
+				await FS.access(join(prodDir, "server", "package.json"))
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
 		} finally {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -596,16 +651,20 @@ self.addEventListener("fetch", (event) => {
 });
 			`;
 
-			const entryPath = await createTempFile(testDir, "app.js", serviceWorkerContent);
+			const entryPath = await createTempFile(
+				testDir,
+				"app.js",
+				serviceWorkerContent,
+			);
 			const outDir = join(testDir, "dist");
 
-			const { buildForProduction } = await import("../src/commands/build.js");
-			
+			const {buildForProduction} = await import("../src/commands/build.js");
+
 			await buildForProduction({
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			const appPath = join(outDir, "server", "app.js");
@@ -616,11 +675,11 @@ self.addEventListener("fetch", (event) => {
 			// Measure startup time
 			const PORT = 18005;
 			const startTime = Date.now();
-			
-			serverProcess = runExecutable(appPath, { PORT: PORT.toString() });
+
+			serverProcess = runExecutable(appPath, {PORT: PORT.toString()});
 
 			await waitForServer(PORT);
-			
+
 			const startupTime = Date.now() - startTime;
 
 			// Startup should be reasonably fast (less than 5 seconds)
@@ -629,7 +688,6 @@ self.addEventListener("fetch", (event) => {
 			// Test that server is actually working
 			const response = await fetch(`http://localhost:${PORT}/test`);
 			expect(await response.text()).toBe("Performance test");
-
 		} finally {
 			if (serverProcess) {
 				await killProcess(serverProcess);
@@ -637,7 +695,7 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
@@ -669,16 +727,20 @@ self.addEventListener("fetch", (event) => {
 });
 			`;
 
-			const entryPath = await createTempFile(testDir, "app.js", serviceWorkerContent);
+			const entryPath = await createTempFile(
+				testDir,
+				"app.js",
+				serviceWorkerContent,
+			);
 			const outDir = join(testDir, "dist");
 
-			const { buildForProduction } = await import("../src/commands/build.js");
-			
+			const {buildForProduction} = await import("../src/commands/build.js");
+
 			await buildForProduction({
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			const appPath = join(outDir, "server", "app.js");
@@ -687,7 +749,7 @@ self.addEventListener("fetch", (event) => {
 			// Dependencies are bundled, no npm install needed
 
 			const PORT = 18006;
-			serverProcess = runExecutable(appPath, { PORT: PORT.toString() });
+			serverProcess = runExecutable(appPath, {PORT: PORT.toString()});
 
 			await waitForServer(PORT);
 
@@ -705,7 +767,6 @@ self.addEventListener("fetch", (event) => {
 
 			// This test mainly ensures the server doesn't crash under load
 			// More sophisticated memory testing would require additional tooling
-
 		} finally {
 			if (serverProcess) {
 				await killProcess(serverProcess);
@@ -713,5 +774,5 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );

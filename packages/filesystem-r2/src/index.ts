@@ -76,10 +76,7 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 	}
 
 	async createWritable(): Promise<FileSystemWritableFileStream> {
-		return new R2FileSystemWritableFileStream(
-			this.r2Bucket,
-			this.key,
-		) as any;
+		return new R2FileSystemWritableFileStream(this.r2Bucket, this.key) as any;
 	}
 
 	async createSyncAccessHandle(): Promise<FileSystemSyncAccessHandle> {
@@ -105,7 +102,6 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 		return "granted";
 	}
 
-
 	private getMimeType(key: string): string {
 		const ext = key.split(".").pop()?.toLowerCase();
 		const mimeTypes: Record<string, string> = {
@@ -129,9 +125,7 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 /**
  * Cloudflare R2 implementation of FileSystemDirectoryHandle
  */
-export class R2FileSystemDirectoryHandle
-	implements FileSystemDirectoryHandle
-{
+export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 	readonly kind = "directory" as const;
 	readonly name: string;
 
@@ -245,10 +239,7 @@ export class R2FileSystemDirectoryHandle
 						!name.includes("/") &&
 						!name.endsWith(".shovel_directory_marker")
 					) {
-						yield [
-							name,
-							new R2FileSystemFileHandle(this.r2Bucket, object.key),
-						];
+						yield [name, new R2FileSystemFileHandle(this.r2Bucket, object.key)];
 					}
 				}
 			}
@@ -299,7 +290,6 @@ export class R2FileSystemDirectoryHandle
 		// R2 access is controlled by bindings, assume granted if we have access
 		return "granted";
 	}
-
 }
 
 /**
@@ -317,7 +307,9 @@ export class R2FileSystemAdapter implements FileSystemAdapter {
 		this.r2Bucket = r2Bucket;
 	}
 
-	async getFileSystemRoot(name = "default"): Promise<FileSystemDirectoryHandle> {
+	async getFileSystemRoot(
+		name = "default",
+	): Promise<FileSystemDirectoryHandle> {
 		const prefix = `filesystems/${name}`;
 		return new R2FileSystemDirectoryHandle(this.r2Bucket, prefix);
 	}

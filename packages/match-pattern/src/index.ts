@@ -74,7 +74,6 @@ export class MatchPattern extends URLPattern {
 		this._originalInput = processedInput;
 	}
 
-
 	/**
 	 * Enhanced exec that returns unified params object
 	 */
@@ -227,7 +226,6 @@ function extractUnifiedParams(
 	return params;
 }
 
-
 /**
  * Build custom result when URLPattern fails but MatchPattern succeeds
  * This handles cases like order-independent search parameters
@@ -342,4 +340,3 @@ function parseSearchPattern(pattern: string): Map<string, ParamDefinition> {
 
 	return params;
 }
-

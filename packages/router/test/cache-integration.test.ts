@@ -98,10 +98,7 @@ describe("Router Cache Integration", () => {
 		let middlewareContext: any = null;
 		let handlerContext: any = null;
 
-		const middleware = async function* (
-			request: Request,
-			context: any,
-		) {
+		const middleware = async function* (request: Request, context: any) {
 			middlewareContext = context;
 			executionOrder.push("middleware");
 			const response = yield request;

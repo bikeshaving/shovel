@@ -302,7 +302,6 @@ describe("Function Middleware Execution", () => {
 
 		expect(await response?.text()).toBe("Context: true, Header: true");
 	});
-
 });
 
 describe("Middleware Short-Circuiting", () => {
@@ -355,7 +354,10 @@ describe("Middleware Short-Circuiting", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function authMiddleware(request: Request, context: any): Promise<Response | null> {
+		async function authMiddleware(
+			request: Request,
+			context: any,
+		): Promise<Response | null> {
 			executionOrder.push("auth");
 			return new Response("Unauthorized", {status: 401}); // Early return should short-circuit
 		}
@@ -386,7 +388,10 @@ describe("Middleware Short-Circuiting", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function passthroughMiddleware(request: Request, context: any): Promise<null> {
+		async function passthroughMiddleware(
+			request: Request,
+			context: any,
+		): Promise<null> {
 			executionOrder.push("passthrough");
 			return null; // Should continue to next middleware
 		}
@@ -426,7 +431,10 @@ describe("Middleware Short-Circuiting", () => {
 			// Implicit undefined return
 		}
 
-		async function explicitUndefinedMiddleware(request: Request, context: any): Promise<undefined> {
+		async function explicitUndefinedMiddleware(
+			request: Request,
+			context: any,
+		): Promise<undefined> {
 			executionOrder.push("explicit");
 			return undefined; // Explicit undefined return
 		}
@@ -448,7 +456,6 @@ describe("Middleware Short-Circuiting", () => {
 		expect(response?.status).toBe(200);
 		expect(await response?.text()).toBe("Hello");
 	});
-
 
 	test("execution order is preserved", async () => {
 		const router = new Router();
@@ -512,13 +519,15 @@ describe("Middleware Short-Circuiting", () => {
 				// Try to access request.url - should work
 				firstMiddlewareUrl = request.url;
 				new URL(request.url); // Should not throw
-				
+
 				// Pass through
 				const response = yield request;
 				return response;
 			} catch (error) {
 				firstUrlError = error as Error;
-				return new Response("First middleware URL error: " + error.message, { status: 500 });
+				return new Response("First middleware URL error: " + error.message, {
+					status: 500,
+				});
 			}
 		}
 
@@ -528,17 +537,19 @@ describe("Middleware Short-Circuiting", () => {
 				// Try to access request.url - this is where the bug manifests
 				secondMiddlewareUrl = request.url;
 				const url = new URL(request.url); // This should not throw "Invalid URL: [object Object]"
-				
+
 				// Only handle specific paths
 				if (!url.pathname.startsWith("/assets")) {
 					const response = yield request;
 					return response;
 				}
-				
-				return new Response("Asset handled", { status: 200 });
+
+				return new Response("Asset handled", {status: 200});
 			} catch (error) {
 				secondUrlError = error as Error;
-				return new Response("Second middleware URL error: " + error.message, { status: 500 });
+				return new Response("Second middleware URL error: " + error.message, {
+					status: 500,
+				});
 			}
 		}
 
@@ -550,8 +561,16 @@ describe("Middleware Short-Circuiting", () => {
 		const response = await router.handler(request);
 
 		// Debug what we captured
-		console.log("First middleware URL:", firstMiddlewareUrl, typeof firstMiddlewareUrl);
-		console.log("Second middleware URL:", secondMiddlewareUrl, typeof secondMiddlewareUrl);
+		console.log(
+			"First middleware URL:",
+			firstMiddlewareUrl,
+			typeof firstMiddlewareUrl,
+		);
+		console.log(
+			"Second middleware URL:",
+			secondMiddlewareUrl,
+			typeof secondMiddlewareUrl,
+		);
 		console.log("First URL error:", firstUrlError?.message);
 		console.log("Second URL error:", secondUrlError?.message);
 

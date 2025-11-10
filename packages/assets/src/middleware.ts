@@ -195,9 +195,9 @@ export function assets(config: AssetsConfig = {}) {
 			}
 		} catch (error) {
 			console.error("[assetsMiddleware] Outer error:", error);
-			return new Response("Assets middleware error: " + error.message, {status: 500});
+			return new Response("Assets middleware error: " + error.message, {
+				status: 500,
+			});
 		}
 	};
 }
-
-

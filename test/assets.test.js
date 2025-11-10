@@ -1,7 +1,7 @@
-import { test, expect } from "bun:test";
+import {test, expect} from "bun:test";
 import * as FS from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
+import {tmpdir} from "os";
+import {join} from "path";
 
 /**
  * AssetBase import attribute system tests
@@ -13,7 +13,7 @@ const TIMEOUT = 3000;
 // Helper functions
 async function createTempDir(prefix = "assets-test-") {
 	const tempPath = join(tmpdir(), `${prefix}${Date.now()}`);
-	await FS.mkdir(tempPath, { recursive: true });
+	await FS.mkdir(tempPath, {recursive: true});
 	return tempPath;
 }
 
@@ -26,7 +26,7 @@ async function createTempFile(dir, filename, content) {
 async function cleanup(paths) {
 	for (const path of paths) {
 		try {
-			await FS.rm(path, { recursive: true, force: true });
+			await FS.rm(path, {recursive: true, force: true});
 		} catch {
 			// Already removed
 		}
@@ -88,15 +88,15 @@ self.addEventListener("fetch", (event) => {
 			await createTempFile(testDir, "app.js", jsContent);
 
 			// Import and test the assets plugin
-			const { assetsPlugin } = await import("../src/assets.ts");
-			
+			const {assetsPlugin} = await import("../src/assets.ts");
+
 			const assetsDir = join(testDir, "assets");
 			const manifestPath = join(assetsDir, "manifest.json");
-			
+
 			const plugin = assetsPlugin({
 				outputDir: assetsDir,
 				manifest: manifestPath,
-				dev: false
+				dev: false,
 			});
 
 			// Test plugin structure
@@ -106,7 +106,7 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
@@ -125,10 +125,13 @@ test(
 			await createTempFile(testDir, "app.css", ".app { margin: 10px; }");
 
 			// Ensure assets directory exists
-			await FS.mkdir(assetsDir, { recursive: true });
+			await FS.mkdir(assetsDir, {recursive: true});
 
 			// Simulate asset processing by copying files
-			await FS.copyFile(join(testDir, "style.css"), join(assetsDir, "style.css"));
+			await FS.copyFile(
+				join(testDir, "style.css"),
+				join(assetsDir, "style.css"),
+			);
 			await FS.copyFile(join(testDir, "app.css"), join(assetsDir, "app.css"));
 
 			// Create a basic manifest
@@ -136,24 +139,28 @@ test(
 				assets: {
 					"style.css": {
 						path: "/assets/style.css",
-						size: (await FS.stat(join(assetsDir, "style.css"))).size
+						size: (await FS.stat(join(assetsDir, "style.css"))).size,
 					},
 					"app.css": {
-						path: "/assets/app.css", 
-						size: (await FS.stat(join(assetsDir, "app.css"))).size
-					}
+						path: "/assets/app.css",
+						size: (await FS.stat(join(assetsDir, "app.css"))).size,
+					},
 				},
 				generated: new Date().toISOString(),
 				config: {
 					publicPath: "/assets/",
-					outputDir: assetsDir
-				}
+					outputDir: assetsDir,
+				},
 			};
 
 			await FS.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 
 			// Test manifest exists and is valid
-			expect(await FS.access(manifestPath).then(() => true).catch(() => false)).toBe(true);
+			expect(
+				await FS.access(manifestPath)
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
 
 			const manifestContent = await FS.readFile(manifestPath, "utf8");
 			const parsedManifest = JSON.parse(manifestContent);
@@ -166,7 +173,7 @@ test(
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -201,36 +208,48 @@ self.addEventListener("fetch", (event) => {
 			`;
 
 			// Create directory structure
-			await FS.mkdir(join(testDir, "images"), { recursive: true });
-			
+			await FS.mkdir(join(testDir, "images"), {recursive: true});
+
 			await createTempFile(testDir, "app.js", jsContent);
 			await createTempFile(testDir, "style.css", cssContent);
-			
+
 			// Create a dummy image file
 			await createTempFile(testDir, "images/logo.png", "fake-png-data");
 
-			const { buildForProduction } = await import("../src/commands/build.js");
-			
+			const {buildForProduction} = await import("../src/commands/build.js");
+
 			const outDir = join(testDir, "dist");
-			
+
 			// Build with assets
 			await buildForProduction({
 				entrypoint: join(testDir, "app.js"),
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			// Check that assets directory and manifest were created
 			const assetsDir = join(outDir, "assets");
 			const manifestPath = join(outDir, "server", "asset-manifest.json");
-			
-			expect(await FS.access(assetsDir).then(() => true).catch(() => false)).toBe(true);
-			expect(await FS.access(manifestPath).then(() => true).catch(() => false)).toBe(true);
+
+			expect(
+				await FS.access(assetsDir)
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
+			expect(
+				await FS.access(manifestPath)
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
 
 			// Check app.js was built
 			const appPath = join(outDir, "server", "app.js");
-			expect(await FS.access(appPath).then(() => true).catch(() => false)).toBe(true);
+			expect(
+				await FS.access(appPath)
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
 
 			const appContent = await FS.readFile(appPath, "utf8");
 			expect(appContent).toContain("App with assets loaded!");
@@ -238,7 +257,7 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
@@ -252,8 +271,8 @@ test(
 
 			// Set up asset files
 			const assetsDir = join(testDir, "assets");
-			await FS.mkdir(assetsDir, { recursive: true });
-			
+			await FS.mkdir(assetsDir, {recursive: true});
+
 			const cssContent = `.test { color: blue; }`;
 			await createTempFile(assetsDir, "test.css", cssContent);
 
@@ -262,58 +281,68 @@ test(
 				assets: {
 					"test.css": {
 						path: "/assets/test.css",
-						size: cssContent.length
-					}
+						size: cssContent.length,
+					},
 				},
 				generated: new Date().toISOString(),
 				config: {
 					publicPath: "/assets/",
-					outputDir: assetsDir
-				}
+					outputDir: assetsDir,
+				},
 			};
 
-			await FS.writeFile(join(assetsDir, "manifest.json"), JSON.stringify(manifest, null, 2));
+			await FS.writeFile(
+				join(assetsDir, "manifest.json"),
+				JSON.stringify(manifest, null, 2),
+			);
 
 			// Test ServiceWorker that serves assets
-			const { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } = await import("@b9g/platform");
-			
+			const {
+				ServiceWorkerRuntime,
+				createServiceWorkerGlobals,
+				createBucketStorage,
+			} = await import("@b9g/platform");
+
 			const runtime = new ServiceWorkerRuntime();
 			const buckets = createBucketStorage(testDir);
-			
-			createServiceWorkerGlobals(runtime, { buckets });
+
+			createServiceWorkerGlobals(runtime, {buckets});
 			globalThis.self = runtime;
 			globalThis.addEventListener = runtime.addEventListener.bind(runtime);
 
 			// ServiceWorker that serves assets from the assets directory
 			globalThis.addEventListener("fetch", (event) => {
 				const url = new URL(event.request.url);
-				
+
 				if (url.pathname.startsWith("/assets/")) {
 					const assetPath = url.pathname.slice("/assets/".length);
-					
+
 					// Respond with a promise
-					event.respondWith((async () => {
-						try {
-							const assetsBucket = await globalThis.buckets.getDirectoryHandle("assets");
-							const fileHandle = await assetsBucket.getFileHandle(assetPath);
-							const file = await fileHandle.getFile();
-							const content = await file.text();
-							
-							let contentType = "text/plain";
-							if (assetPath.endsWith(".css")) {
-								contentType = "text/css";
+					event.respondWith(
+						(async () => {
+							try {
+								const assetsBucket =
+									await globalThis.buckets.getDirectoryHandle("assets");
+								const fileHandle = await assetsBucket.getFileHandle(assetPath);
+								const file = await fileHandle.getFile();
+								const content = await file.text();
+
+								let contentType = "text/plain";
+								if (assetPath.endsWith(".css")) {
+									contentType = "text/css";
+								}
+
+								return new Response(content, {
+									headers: {"content-type": contentType},
+								});
+							} catch {
+								return new Response("Asset not found", {status: 404});
 							}
-							
-							return new Response(content, {
-								headers: { "content-type": contentType }
-							});
-						} catch {
-							return new Response("Asset not found", { status: 404 });
-						}
-					})());
+						})(),
+					);
 				} else {
 					// Provide default response for non-asset requests
-					event.respondWith(new Response("Default response", { status: 200 }));
+					event.respondWith(new Response("Default response", {status: 200}));
 				}
 			});
 
@@ -324,7 +353,7 @@ test(
 			// Test asset serving
 			const cssRequest = new Request("http://localhost/assets/test.css");
 			const cssResponse = await runtime.handleRequest(cssRequest);
-			
+
 			expect(cssResponse.status).toBe(200);
 			expect(await cssResponse.text()).toBe(".test { color: blue; }");
 			expect(cssResponse.headers.get("content-type")).toBe("text/css");
@@ -332,7 +361,7 @@ test(
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -348,8 +377,8 @@ test(
 			const testDir = await createTempDir();
 			cleanup_paths.push(testDir);
 
-			const { assetsPlugin } = await import("../src/assets.ts");
-			
+			const {assetsPlugin} = await import("../src/assets.ts");
+
 			const assetsDir = join(testDir, "assets");
 			const manifestPath = join(assetsDir, "manifest.json");
 
@@ -357,18 +386,18 @@ test(
 			const devPlugin = assetsPlugin({
 				outputDir: assetsDir,
 				manifest: manifestPath,
-				dev: true
+				dev: true,
 			});
 
 			expect(devPlugin.name).toBe("shovel-assets");
-			
+
 			// In development mode, the plugin should handle hot reloading differently
 			// This is mainly tested through integration with the development server
 		} finally {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
@@ -380,8 +409,8 @@ test(
 			const testDir = await createTempDir();
 			cleanup_paths.push(testDir);
 
-			const { assetsPlugin } = await import("../src/assets.ts");
-			
+			const {assetsPlugin} = await import("../src/assets.ts");
+
 			const assetsDir = join(testDir, "assets");
 			const manifestPath = join(assetsDir, "manifest.json");
 
@@ -389,18 +418,18 @@ test(
 			const prodPlugin = assetsPlugin({
 				outputDir: assetsDir,
 				manifest: manifestPath,
-				dev: false
+				dev: false,
 			});
 
 			expect(prodPlugin.name).toBe("shovel-assets");
-			
+
 			// In production mode, assets should be processed and optimized
 			// This is tested through the build process integration
 		} finally {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -418,12 +447,12 @@ test(
 
 			// Test various path formats that should all be normalized
 			const testCases = [
-				{ input: "/assets/", expected: "/assets/" },
-				{ input: "/assets", expected: "/assets/" },
-				{ input: "assets/", expected: "/assets/" },
-				{ input: "assets", expected: "/assets/" },
-				{ input: "/static/img", expected: "/static/img/" },
-				{ input: "dist/public", expected: "/dist/public/" },
+				{input: "/assets/", expected: "/assets/"},
+				{input: "/assets", expected: "/assets/"},
+				{input: "assets/", expected: "/assets/"},
+				{input: "assets", expected: "/assets/"},
+				{input: "/static/img", expected: "/static/img/"},
+				{input: "dist/public", expected: "/dist/public/"},
 			];
 
 			for (const testCase of testCases) {
@@ -437,27 +466,30 @@ self.addEventListener("fetch", (event) => {
 
 				await createTempFile(testDir, "test.css", "body { color: red; }");
 				const entryPath = await createTempFile(testDir, "app.js", jsContent);
-				const outDir = join(testDir, `dist-${testCase.input.replace(/[/]/g, '-')}`);
+				const outDir = join(
+					testDir,
+					`dist-${testCase.input.replace(/[/]/g, "-")}`,
+				);
 
-				const { buildForProduction } = await import("../src/commands/build.js");
-				
+				const {buildForProduction} = await import("../src/commands/build.js");
+
 				await buildForProduction({
 					entrypoint: entryPath,
 					outDir,
 					verbose: false,
-					platform: "node"
+					platform: "node",
 				});
 
 				// Read the manifest to verify the normalized URL
 				const manifestPath = join(outDir, "server", "asset-manifest.json");
 				const manifestContent = await FS.readFile(manifestPath, "utf8");
 				const manifest = JSON.parse(manifestContent);
-				
+
 				// Find the CSS asset
-				const cssAsset = Object.values(manifest.assets).find(asset => 
-					asset.source.endsWith("test.css")
+				const cssAsset = Object.values(manifest.assets).find((asset) =>
+					asset.source.endsWith("test.css"),
 				);
-				
+
 				expect(cssAsset).toBeDefined();
 				expect(cssAsset.url).toStartWith(testCase.expected);
 			}
@@ -465,7 +497,7 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -492,8 +524,8 @@ self.addEventListener("fetch", (event) => {
 
 			await createTempFile(testDir, "app.js", jsContent);
 
-			const { buildForProduction } = await import("../src/commands/build.js");
-			
+			const {buildForProduction} = await import("../src/commands/build.js");
+
 			const outDir = join(testDir, "dist");
 
 			// Build should handle missing assets gracefully
@@ -503,11 +535,14 @@ self.addEventListener("fetch", (event) => {
 					entrypoint: join(testDir, "app.js"),
 					outDir,
 					verbose: false,
-					platform: "node"
+					platform: "node",
 				});
-				
+
 				// If build succeeds, check that it handled the missing file appropriately
-				const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
+				const appContent = await FS.readFile(
+					join(outDir, "server", "app.js"),
+					"utf8",
+				);
 				expect(typeof appContent).toBe("string");
 			} catch (error) {
 				// If build fails, it should provide a clear error message
@@ -517,7 +552,7 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
@@ -530,18 +565,21 @@ test(
 			cleanup_paths.push(testDir);
 
 			const assetsDir = join(testDir, "assets");
-			await FS.mkdir(assetsDir, { recursive: true });
+			await FS.mkdir(assetsDir, {recursive: true});
 
 			// Create invalid manifest
-			await FS.writeFile(join(assetsDir, "manifest.json"), "invalid json content");
+			await FS.writeFile(
+				join(assetsDir, "manifest.json"),
+				"invalid json content",
+			);
 
 			// Asset system should handle invalid manifest gracefully
-			const { assetsPlugin } = await import("../src/assets.ts");
-			
+			const {assetsPlugin} = await import("../src/assets.ts");
+
 			const plugin = assetsPlugin({
 				outputDir: assetsDir,
 				manifest: join(assetsDir, "manifest.json"),
-				dev: false
+				dev: false,
 			});
 
 			// Plugin should still be created even with invalid manifest
@@ -550,7 +588,7 @@ test(
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -576,9 +614,9 @@ test(
 			}
 
 			// Create JS file that imports all assets
-			const imports = assetFiles.map(file => 
-				`import "./${file}" with { assetBase: "/assets/" };`
-			).join('\n');
+			const imports = assetFiles
+				.map((file) => `import "./${file}" with { assetBase: "/assets/" };`)
+				.join("\n");
 
 			const jsContent = `
 ${imports}
@@ -590,8 +628,8 @@ self.addEventListener("fetch", (event) => {
 
 			await createTempFile(testDir, "app.js", jsContent);
 
-			const { buildForProduction } = await import("../src/commands/build.js");
-			
+			const {buildForProduction} = await import("../src/commands/build.js");
+
 			const outDir = join(testDir, "dist");
 			const startTime = Date.now();
 
@@ -599,7 +637,7 @@ self.addEventListener("fetch", (event) => {
 				entrypoint: join(testDir, "app.js"),
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			const buildTime = Date.now() - startTime;
@@ -610,12 +648,12 @@ self.addEventListener("fetch", (event) => {
 			// All assets should be processed
 			const manifestPath = join(outDir, "server", "asset-manifest.json");
 			const manifest = JSON.parse(await FS.readFile(manifestPath, "utf8"));
-			
+
 			// Should have asset entries (exact structure depends on implementation)
 			expect(typeof manifest).toBe("object");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );

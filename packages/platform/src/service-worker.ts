@@ -95,8 +95,6 @@ export interface ShovelActivateEvent extends Event {
 	waitUntil(promise: Promise<any>): void;
 }
 
-
-
 /**
  * Bucket storage interface - parallels CacheStorage for filesystem access
  * This could become a future web standard
@@ -107,29 +105,27 @@ export interface BucketStorage {
 	 * Well-known names: 'assets', 'static', 'uploads', 'temp'
 	 */
 	open(name: string): Promise<FileSystemDirectoryHandle>;
-	
+
 	/**
 	 * Alias for open() - for compatibility with File System Access API naming
 	 */
 	getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
-	
+
 	/**
 	 * Check if a named bucket exists
 	 */
 	has(name: string): Promise<boolean>;
-	
+
 	/**
 	 * Delete a named bucket and all its contents
 	 */
 	delete(name: string): Promise<boolean>;
-	
+
 	/**
 	 * List all available bucket names
 	 */
 	keys(): Promise<string[]>;
 }
-
-
 
 // Note: ServiceWorkerRegistration import is handled dynamically to avoid circular imports
 
@@ -144,7 +140,7 @@ export function createServiceWorkerGlobals(
 		// Environment-specific options
 		isDevelopment?: boolean;
 		hotReload?: () => Promise<void>;
-	} = {}
+	} = {},
 ) {
 	// Attach platform resources directly to runtime
 	if (options.caches) {
@@ -158,11 +154,13 @@ export function createServiceWorkerGlobals(
 	const skipWaiting = async (): Promise<void> => {
 		if (options.isDevelopment && options.hotReload) {
 			// Development: trigger hot reload
-			console.info('[ServiceWorker] skipWaiting() - triggering hot reload');
+			console.info("[ServiceWorker] skipWaiting() - triggering hot reload");
 			await options.hotReload();
 		} else if (!options.isDevelopment) {
 			// Production: could trigger graceful restart or worker replacement
-			console.info('[ServiceWorker] skipWaiting() - production graceful restart not implemented');
+			console.info(
+				"[ServiceWorker] skipWaiting() - production graceful restart not implemented",
+			);
 			// TODO: Implement production restart logic
 		}
 		// Always resolve - skipWaiting never fails in real ServiceWorkers
@@ -187,12 +185,12 @@ export function createServiceWorkerGlobals(
 		async openWindow(url: string | URL): Promise<any> {
 			// Not supported in server context
 			return null;
-		}
+		},
 	};
 
 	const globals = {
 		self: runtime,
-		registration: runtime,  // Expose the registration properly
+		registration: runtime, // Expose the registration properly
 		addEventListener: runtime.addEventListener.bind(runtime),
 		removeEventListener: runtime.removeEventListener.bind(runtime),
 		dispatchEvent: runtime.dispatchEvent.bind(runtime),
@@ -202,8 +200,8 @@ export function createServiceWorkerGlobals(
 		clients,
 
 		// Platform resources
-		...(options.buckets && { buckets: options.buckets }),
-		...(options.caches && { caches: options.caches }),
+		...(options.buckets && {buckets: options.buckets}),
+		...(options.caches && {caches: options.caches}),
 
 		// Standard globals
 		console,

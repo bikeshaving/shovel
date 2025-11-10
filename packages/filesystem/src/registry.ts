@@ -10,57 +10,57 @@ import {MemoryBucket} from "./memory.js";
  * Global registry of filesystem adapters
  */
 class Registry {
-  private adapters = new Map<string, Bucket>();
-  private defaultAdapter: Bucket;
+	private adapters = new Map<string, Bucket>();
+	private defaultAdapter: Bucket;
 
-  constructor() {
-    // Set memory adapter as default
-    this.defaultAdapter = new MemoryBucket();
-  }
+	constructor() {
+		// Set memory adapter as default
+		this.defaultAdapter = new MemoryBucket();
+	}
 
-  /**
-   * Register a filesystem adapter with a name
-   */
-  register(name: string, adapter: Bucket): void {
-    this.adapters.set(name, adapter);
-    
-    // Set as default if it's the first one registered
-    if (!this.defaultAdapter) {
-      this.defaultAdapter = adapter;
-    }
-  }
+	/**
+	 * Register a filesystem adapter with a name
+	 */
+	register(name: string, adapter: Bucket): void {
+		this.adapters.set(name, adapter);
 
-  /**
-   * Get a filesystem adapter by name
-   */
-  get(name?: string): Bucket | null {
-    if (!name) {
-      return this.defaultAdapter;
-    }
-    return this.adapters.get(name) || this.defaultAdapter;
-  }
+		// Set as default if it's the first one registered
+		if (!this.defaultAdapter) {
+			this.defaultAdapter = adapter;
+		}
+	}
 
-  /**
-   * Set the default filesystem adapter
-   */
-  setDefault(adapter: Bucket): void {
-    this.defaultAdapter = adapter;
-  }
+	/**
+	 * Get a filesystem adapter by name
+	 */
+	get(name?: string): Bucket | null {
+		if (!name) {
+			return this.defaultAdapter;
+		}
+		return this.adapters.get(name) || this.defaultAdapter;
+	}
 
-  /**
-   * Get all registered adapter names
-   */
-  getAdapterNames(): string[] {
-    return Array.from(this.adapters.keys());
-  }
+	/**
+	 * Set the default filesystem adapter
+	 */
+	setDefault(adapter: Bucket): void {
+		this.defaultAdapter = adapter;
+	}
 
-  /**
-   * Clear all registered adapters
-   */
-  clear(): void {
-    this.adapters.clear();
-    this.defaultAdapter = null;
-  }
+	/**
+	 * Get all registered adapter names
+	 */
+	getAdapterNames(): string[] {
+		return Array.from(this.adapters.keys());
+	}
+
+	/**
+	 * Clear all registered adapters
+	 */
+	clear(): void {
+		this.adapters.clear();
+		this.defaultAdapter = null;
+	}
 }
 
 /**
@@ -74,61 +74,63 @@ export const FileSystemRegistry = new Registry();
  * @param adapterName Optional adapter name (uses default if not specified)
  */
 export async function getDirectoryHandle(
-  name: string,
-  adapterName?: string,
+	name: string,
+	adapterName?: string,
 ): Promise<FileSystemDirectoryHandle> {
-  const adapter = FileSystemRegistry.get(adapterName);
-  
-  if (!adapter) {
-    if (adapterName) {
-      throw new Error(`No filesystem adapter registered with name: ${adapterName}`);
-    } else {
-      throw new Error("No default filesystem adapter registered");
-    }
-  }
+	const adapter = FileSystemRegistry.get(adapterName);
 
-  // Since adapter is now a FileSystemDirectoryHandle (Bucket),
-  // we can get subdirectories directly
-  if (name) {
-    return await adapter.getDirectoryHandle(name, { create: true });
-  }
-  return adapter;
+	if (!adapter) {
+		if (adapterName) {
+			throw new Error(
+				`No filesystem adapter registered with name: ${adapterName}`,
+			);
+		} else {
+			throw new Error("No default filesystem adapter registered");
+		}
+	}
+
+	// Since adapter is now a FileSystemDirectoryHandle (Bucket),
+	// we can get subdirectories directly
+	if (name) {
+		return await adapter.getDirectoryHandle(name, {create: true});
+	}
+	return adapter;
 }
 
 /**
  * @deprecated Use getDirectoryHandle() instead
  */
 export async function getBucket(
-  name?: string,
-  adapterName?: string,
+	name?: string,
+	adapterName?: string,
 ): Promise<FileSystemDirectoryHandle> {
-  const adapter = FileSystemRegistry.get(adapterName);
-  
-  if (!adapter) {
-    throw new Error("No default filesystem adapter registered");
-  }
+	const adapter = FileSystemRegistry.get(adapterName);
 
-  // Since adapter is now a FileSystemDirectoryHandle (Bucket)
-  if (name) {
-    return await adapter.getDirectoryHandle(name, { create: true });
-  }
-  return adapter;
+	if (!adapter) {
+		throw new Error("No default filesystem adapter registered");
+	}
+
+	// Since adapter is now a FileSystemDirectoryHandle (Bucket)
+	if (name) {
+		return await adapter.getDirectoryHandle(name, {create: true});
+	}
+	return adapter;
 }
 
 /**
  * @deprecated Use getDirectoryHandle() instead
  */
 export async function getFileSystemRoot(
-  name?: string,
+	name?: string,
 ): Promise<FileSystemDirectoryHandle> {
-  const adapter = FileSystemRegistry.get();
-  
-  if (!adapter) {
-    throw new Error("No default filesystem adapter registered");
-  }
+	const adapter = FileSystemRegistry.get();
 
-  if (name) {
-    return await adapter.getDirectoryHandle(name, { create: true });
-  }
-  return adapter;
+	if (!adapter) {
+		throw new Error("No default filesystem adapter registered");
+	}
+
+	if (name) {
+		return await adapter.getDirectoryHandle(name, {create: true});
+	}
+	return adapter;
 }

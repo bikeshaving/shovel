@@ -6,10 +6,10 @@
  * Configuration for filesystem adapters
  */
 export interface FileSystemConfig {
-  /** Human readable name for this filesystem */
-  name?: string;
-  /** Platform-specific configuration */
-  [key: string]: any;
+	/** Human readable name for this filesystem */
+	name?: string;
+	/** Platform-specific configuration */
+	[key: string]: any;
 }
 
 /**
@@ -39,7 +39,7 @@ export interface FileSystemBackend {
 	 * @param path Path to the entry
 	 * @returns Entry info if exists, null if not found
 	 */
-	stat(path: string): Promise<{kind: 'file' | 'directory'} | null>;
+	stat(path: string): Promise<{kind: "file" | "directory"} | null>;
 
 	/**
 	 * Read file content as bytes
@@ -63,7 +63,9 @@ export interface FileSystemBackend {
 	 * @returns Array of entry info (name + type)
 	 * @throws NotFoundError if directory doesn't exist
 	 */
-	listDir(path: string): Promise<Array<{name: string, kind: 'file' | 'directory'}>>;
+	listDir(
+		path: string,
+	): Promise<Array<{name: string; kind: "file" | "directory"}>>;
 
 	/**
 	 * Create directory (optional - some backends may not support this)
@@ -89,9 +91,12 @@ export interface FileSystemBackend {
  * Custom FileSystemWritableFileStream implementation
  * Provides the File System Access API write interface
  */
-class ShovelWritableFileStream extends WritableStream implements FileSystemWritableFileStream {
+class ShovelWritableFileStream
+	extends WritableStream
+	implements FileSystemWritableFileStream
+{
 	private chunks: Uint8Array[] = [];
-	
+
 	constructor(
 		private backend: FileSystemBackend,
 		private path: string,
@@ -99,22 +104,24 @@ class ShovelWritableFileStream extends WritableStream implements FileSystemWrita
 		super({
 			write: (chunk: Uint8Array | string) => {
 				// Convert string to Uint8Array if needed
-				const bytes = typeof chunk === 'string' 
-					? new TextEncoder().encode(chunk)
-					: chunk;
+				const bytes =
+					typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk;
 				this.chunks.push(bytes);
 				return Promise.resolve();
 			},
 			close: async () => {
 				// Concatenate all chunks
-				const totalLength = this.chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+				const totalLength = this.chunks.reduce(
+					(sum, chunk) => sum + chunk.length,
+					0,
+				);
 				const content = new Uint8Array(totalLength);
 				let offset = 0;
 				for (const chunk of this.chunks) {
 					content.set(chunk, offset);
 					offset += chunk.length;
 				}
-				
+
 				// Write to backend
 				await this.backend.writeFile(this.path, content);
 			},
@@ -129,7 +136,7 @@ class ShovelWritableFileStream extends WritableStream implements FileSystemWrita
 	async write(data: FileSystemWriteChunkType): Promise<void> {
 		const writer = this.getWriter();
 		try {
-			if (typeof data === 'string') {
+			if (typeof data === "string") {
 				await writer.write(new TextEncoder().encode(data));
 			} else if (data instanceof Uint8Array || data instanceof ArrayBuffer) {
 				const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
@@ -152,7 +159,10 @@ class ShovelWritableFileStream extends WritableStream implements FileSystemWrita
 	// File System Access API truncate method
 	async truncate(size: number): Promise<void> {
 		// Truncating not implemented in this simple version
-		throw new DOMException("Truncate operation not supported", "NotSupportedError");
+		throw new DOMException(
+			"Truncate operation not supported",
+			"NotSupportedError",
+		);
 	}
 }
 
@@ -169,7 +179,7 @@ export abstract class ShovelHandle implements FileSystemHandle {
 		protected path: string,
 	) {
 		// Extract name from path
-		this.name = path.split('/').filter(Boolean).pop() || 'root';
+		this.name = path.split("/").filter(Boolean).pop() || "root";
 	}
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
@@ -178,25 +188,29 @@ export abstract class ShovelHandle implements FileSystemHandle {
 		return this.path === other.path;
 	}
 
-	async queryPermission(descriptor?: FileSystemPermissionDescriptor): Promise<PermissionState> {
+	async queryPermission(
+		descriptor?: FileSystemPermissionDescriptor,
+	): Promise<PermissionState> {
 		// For our server-side implementations, permissions are always granted
 		// In a browser environment, this would check actual permissions
 		// In future, this could delegate to backend for access control based on mode
-		
+
 		const mode = descriptor?.mode || "read";
-		
+
 		// Server-side backends typically have full access
 		// In future: could check backend capabilities (e.g., read-only storage)
 		return "granted";
 	}
 
-	async requestPermission(descriptor?: FileSystemPermissionDescriptor): Promise<PermissionState> {
+	async requestPermission(
+		descriptor?: FileSystemPermissionDescriptor,
+	): Promise<PermissionState> {
 		// For our server-side implementations, permissions are always granted
 		// In a browser environment, this would prompt the user if needed
 		// In future, this could delegate to backend for access control
-		
+
 		const mode = descriptor?.mode || "read";
-		
+
 		// Server-side backends don't need user prompts
 		// In future: could implement access control logic
 		return "granted";
@@ -207,18 +221,21 @@ export abstract class ShovelHandle implements FileSystemHandle {
 	 * The File System Access API only accepts names, not paths
 	 */
 	protected validateName(name: string): void {
-		if (!name || name.trim() === '') {
+		if (!name || name.trim() === "") {
 			throw new DOMException("Name cannot be empty", "NotAllowedError");
 		}
-		
-		if (name.includes('/') || name.includes('\\')) {
-			throw new DOMException("Name cannot contain path separators", "NotAllowedError");
+
+		if (name.includes("/") || name.includes("\\")) {
+			throw new DOMException(
+				"Name cannot contain path separators",
+				"NotAllowedError",
+			);
 		}
-		
-		if (name === '.' || name === '..') {
+
+		if (name === "." || name === "..") {
 			throw new DOMException("Name cannot be '.' or '..'", "NotAllowedError");
 		}
-		
+
 		// Additional platform-specific invalid characters could be checked here
 		// Windows: < > : " | ? * and control characters
 		// But for simplicity, we'll focus on path traversal prevention
@@ -229,13 +246,13 @@ export abstract class ShovelHandle implements FileSystemHandle {
  * Shared FileSystemFileHandle implementation that works with any backend
  * Uses non-standard constructor that takes backend + path
  */
-export class ShovelFileHandle extends ShovelHandle implements FileSystemFileHandle {
+export class ShovelFileHandle
+	extends ShovelHandle
+	implements FileSystemFileHandle
+{
 	readonly kind = "file" as const;
 
-	constructor(
-		backend: FileSystemBackend,
-		path: string,
-	) {
+	constructor(backend: FileSystemBackend, path: string) {
 		super(backend, path);
 	}
 
@@ -245,7 +262,7 @@ export class ShovelFileHandle extends ShovelHandle implements FileSystemFileHand
 			// Extract filename and infer MIME type
 			const filename = this.name;
 			const mimeType = this.getMimeType(filename);
-			
+
 			return new File([content], filename, {
 				type: mimeType,
 				lastModified: Date.now(), // TODO: Could be stored in backend if needed
@@ -266,12 +283,11 @@ export class ShovelFileHandle extends ShovelHandle implements FileSystemFileHand
 		);
 	}
 
-
 	private getMimeType(filename: string): string {
-		const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
+		const ext = filename.toLowerCase().substring(filename.lastIndexOf("."));
 		const mimeTypes: Record<string, string> = {
 			".html": "text/html",
-			".css": "text/css", 
+			".css": "text/css",
 			".js": "application/javascript",
 			".json": "application/json",
 			".png": "image/png",
@@ -290,13 +306,13 @@ export class ShovelFileHandle extends ShovelHandle implements FileSystemFileHand
  * Shared FileSystemDirectoryHandle implementation that works with any backend
  * Uses non-standard constructor that takes backend + path
  */
-export class ShovelDirectoryHandle extends ShovelHandle implements FileSystemDirectoryHandle {
+export class ShovelDirectoryHandle
+	extends ShovelHandle
+	implements FileSystemDirectoryHandle
+{
 	readonly kind = "directory" as const;
 
-	constructor(
-		backend: FileSystemBackend,
-		path: string,
-	) {
+	constructor(backend: FileSystemBackend, path: string) {
 		super(backend, path);
 	}
 
@@ -313,7 +329,7 @@ export class ShovelDirectoryHandle extends ShovelHandle implements FileSystemDir
 			await this.backend.writeFile(filePath, new Uint8Array(0));
 		} else if (!stat) {
 			throw new DOMException("File not found", "NotFoundError");
-		} else if (stat.kind !== 'file') {
+		} else if (stat.kind !== "file") {
 			throw new DOMException(
 				"Path exists but is not a file",
 				"TypeMismatchError",
@@ -338,7 +354,7 @@ export class ShovelDirectoryHandle extends ShovelHandle implements FileSystemDir
 			}
 		} else if (!stat) {
 			throw new DOMException("Directory not found", "NotFoundError");
-		} else if (stat.kind !== 'directory') {
+		} else if (stat.kind !== "directory") {
 			throw new DOMException(
 				"Path exists but is not a directory",
 				"TypeMismatchError",
@@ -353,7 +369,7 @@ export class ShovelDirectoryHandle extends ShovelHandle implements FileSystemDir
 		options?: {recursive?: boolean},
 	): Promise<void> {
 		this.validateName(name);
-		
+
 		if (!this.backend.remove) {
 			throw new DOMException(
 				"Remove operation not supported by this backend",
@@ -374,7 +390,12 @@ export class ShovelDirectoryHandle extends ShovelHandle implements FileSystemDir
 	async resolve(
 		possibleDescendant: FileSystemHandle,
 	): Promise<string[] | null> {
-		if (!(possibleDescendant instanceof ShovelDirectoryHandle || possibleDescendant instanceof ShovelFileHandle)) {
+		if (
+			!(
+				possibleDescendant instanceof ShovelDirectoryHandle ||
+				possibleDescendant instanceof ShovelFileHandle
+			)
+		) {
 			return null;
 		}
 
@@ -385,19 +406,22 @@ export class ShovelDirectoryHandle extends ShovelHandle implements FileSystemDir
 
 		// Return path components relative to this directory
 		const relativePath = descendantPath.slice(this.path.length);
-		return relativePath.split('/').filter(Boolean);
+		return relativePath.split("/").filter(Boolean);
 	}
 
 	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
 		try {
 			const entries = await this.backend.listDir(this.path);
-			
+
 			for (const entry of entries) {
 				const entryPath = this.joinPath(this.path, entry.name);
-				if (entry.kind === 'file') {
+				if (entry.kind === "file") {
 					yield [entry.name, new ShovelFileHandle(this.backend, entryPath)];
 				} else {
-					yield [entry.name, new ShovelDirectoryHandle(this.backend, entryPath)];
+					yield [
+						entry.name,
+						new ShovelDirectoryHandle(this.backend, entryPath),
+					];
 				}
 			}
 		} catch (error) {
@@ -418,10 +442,9 @@ export class ShovelDirectoryHandle extends ShovelHandle implements FileSystemDir
 		}
 	}
 
-
 	private joinPath(base: string, name: string): string {
 		// Simple path joining - could be enhanced based on backend needs
-		if (base === '/' || base === '') {
+		if (base === "/" || base === "") {
 			return `/${name}`;
 		}
 		return `${base}/${name}`;
@@ -429,7 +452,7 @@ export class ShovelDirectoryHandle extends ShovelHandle implements FileSystemDir
 }
 
 // ============================================================================
-// ADAPTER EXPORTS  
+// ADAPTER EXPORTS
 // ============================================================================
 
 // Bucket + backend exports
@@ -438,4 +461,9 @@ export {NodeBucket, NodeFileSystemBackend} from "./node.js";
 export {S3Bucket, S3FileSystemBackend} from "./bun-s3.js";
 
 // Registry and utilities
-export {FileSystemRegistry, getDirectoryHandle, getBucket, getFileSystemRoot} from "./registry.js";
+export {
+	FileSystemRegistry,
+	getDirectoryHandle,
+	getBucket,
+	getFileSystemRoot,
+} from "./registry.js";

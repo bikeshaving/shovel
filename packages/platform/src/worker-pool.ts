@@ -3,7 +3,7 @@
  * Provides platform-agnostic worker management for ServiceWorker execution
  */
 
-import { CustomCacheStorage } from "@b9g/cache";
+import {CustomCacheStorage} from "@b9g/cache";
 import * as Path from "path";
 
 export interface WorkerPoolOptions {
@@ -70,20 +70,20 @@ function resolveWorkerScript(entrypoint?: string): string {
 	if (entrypoint) {
 		const entryDir = Path.dirname(entrypoint);
 		const bundledWorker = Path.join(entryDir, "worker.js");
-		
+
 		// Check if bundled worker exists (production)
 		try {
 			// Use platform-specific file existence check
-			if (typeof Bun !== 'undefined') {
+			if (typeof Bun !== "undefined") {
 				// Bun has synchronous file operations
 				const file = Bun.file(bundledWorker);
 				if (file.size > 0) {
 					console.debug(`[WorkerPool] Using bundled worker: ${bundledWorker}`);
 					return bundledWorker;
 				}
-			} else if (typeof require !== 'undefined') {
+			} else if (typeof require !== "undefined") {
 				// Node.js - use fs.existsSync
-				const fs = require('fs');
+				const fs = require("fs");
 				if (fs.existsSync(bundledWorker)) {
 					console.debug(`[WorkerPool] Using bundled worker: ${bundledWorker}`);
 					return bundledWorker;
@@ -99,18 +99,20 @@ function resolveWorkerScript(entrypoint?: string): string {
 		// Use import.meta.resolve for web-worker compatible script
 		const workerUrl = import.meta.resolve("@b9g/platform/worker-web.js");
 		let workerScript: string;
-		
-		if (workerUrl.startsWith('file://')) {
+
+		if (workerUrl.startsWith("file://")) {
 			// Convert file:// URL to path for Worker constructor
 			workerScript = workerUrl.slice(7); // Remove 'file://' prefix
 		} else {
 			workerScript = workerUrl;
 		}
-		
-		console.debug(`[WorkerPool] Using Web Worker-compatible script: ${workerScript}`);
+
+		console.debug(
+			`[WorkerPool] Using Web Worker-compatible script: ${workerScript}`,
+		);
 		return workerScript;
 	} catch (error) {
-		const bundledPath = entrypoint 
+		const bundledPath = entrypoint
 			? Path.join(Path.dirname(entrypoint), "worker-web.js")
 			: "worker-web.js";
 		throw new Error(
@@ -124,25 +126,33 @@ function resolveWorkerScript(entrypoint?: string): string {
  */
 async function createWebWorker(workerScript: string): Promise<Worker> {
 	// Try native Web Worker API first (works in Bun, Deno, browsers)
-	if (typeof Worker !== 'undefined') {
-		return new Worker(workerScript, { type: 'module' });
+	if (typeof Worker !== "undefined") {
+		return new Worker(workerScript, {type: "module"});
 	}
 
 	// Only try shim for Node.js (which lacks native Worker support)
-	const isNodeJs = typeof process !== 'undefined' && process.versions?.node;
-	
+	const isNodeJs = typeof process !== "undefined" && process.versions?.node;
+
 	if (isNodeJs) {
 		// Try to dynamically import our own Node.js shim
 		try {
-			const { Worker: NodeWebWorker } = await import('@b9g/node-webworker');
-			console.debug('[WorkerPool] Using @b9g/node-webworker shim for Node.js');
-			return new NodeWebWorker(workerScript, { type: 'module' });
+			const {Worker: NodeWebWorker} = await import("@b9g/node-webworker");
+			console.debug("[WorkerPool] Using @b9g/node-webworker shim for Node.js");
+			return new NodeWebWorker(workerScript, {type: "module"});
 		} catch (shimError) {
-			console.error("\n❌ MISSING WEB STANDARD: Node.js lacks native Web Worker support");
-			console.error("🔗 CANONICAL ISSUE: https://github.com/nodejs/node/issues/43583");
-			console.error("💬 This is a basic web standard from 2009 - help push for implementation!");
-			console.error("🗳️  Please 👍 react and comment on the issue to show demand\n");
-			
+			console.error(
+				"\n❌ MISSING WEB STANDARD: Node.js lacks native Web Worker support",
+			);
+			console.error(
+				"🔗 CANONICAL ISSUE: https://github.com/nodejs/node/issues/43583",
+			);
+			console.error(
+				"💬 This is a basic web standard from 2009 - help push for implementation!",
+			);
+			console.error(
+				"🗳️  Please 👍 react and comment on the issue to show demand\n",
+			);
+
 			throw new Error(`❌ Web Worker not available on Node.js
 
 🔗 Node.js doesn't implement the Web Worker standard yet.
@@ -160,8 +170,12 @@ async function createWebWorker(workerScript: string): Promise<Worker> {
 	}
 
 	// For other runtimes, fail with generic message
-	const runtime = typeof Bun !== 'undefined' ? 'Bun' : 
-	              typeof Deno !== 'undefined' ? 'Deno' : 'Unknown';
+	const runtime =
+		typeof Bun !== "undefined"
+			? "Bun"
+			: typeof Deno !== "undefined"
+				? "Deno"
+				: "Unknown";
 
 	throw new Error(`❌ Web Worker not available on ${runtime}
 
@@ -181,7 +195,7 @@ export class WorkerPool {
 	private requestId = 0;
 	private pendingRequests = new Map<
 		number,
-		{ resolve: (response: Response) => void; reject: (error: Error) => void }
+		{resolve: (response: Response) => void; reject: (error: Error) => void}
 	>();
 	private options: Required<WorkerPoolOptions>;
 	private cacheStorage: CustomCacheStorage;
@@ -319,7 +333,7 @@ export class WorkerPool {
 
 		return new Promise((resolve, reject) => {
 			// Track pending request
-			this.pendingRequests.set(requestId, { resolve, reject });
+			this.pendingRequests.set(requestId, {resolve, reject});
 
 			// Serialize request for worker (can't clone Request objects across threads)
 			const workerRequest: WorkerRequest = {
@@ -367,7 +381,7 @@ export class WorkerPool {
 				});
 
 				worker.addEventListener("message", handleReady);
-				
+
 				const loadMessage: WorkerLoadMessage = {
 					type: "load",
 					version,

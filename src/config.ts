@@ -44,5 +44,7 @@ export const DEFAULTS = {
  */
 export function getDefaultWorkerCount(): number {
 	const isProduction = process.env.NODE_ENV === "production";
-	return isProduction ? DEFAULTS.WORKERS.PRODUCTION : DEFAULTS.WORKERS.DEVELOPMENT;
+	return isProduction
+		? DEFAULTS.WORKERS.PRODUCTION
+		: DEFAULTS.WORKERS.DEVELOPMENT;
 }

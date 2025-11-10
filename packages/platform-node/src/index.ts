@@ -15,9 +15,18 @@ import {
 	ServiceWorkerInstance,
 	createDirectoryStorage,
 } from "@b9g/platform";
-import { WorkerPool, WorkerPoolOptions } from "@b9g/platform/worker-pool";
-import {CustomCacheStorage, MemoryCache, MemoryCacheManager, PostMessageCache} from "@b9g/cache";
-import {FileSystemRegistry, getDirectoryHandle, NodeBucket} from "@b9g/filesystem";
+import {WorkerPool, WorkerPoolOptions} from "@b9g/platform/worker-pool";
+import {
+	CustomCacheStorage,
+	MemoryCache,
+	MemoryCacheManager,
+	PostMessageCache,
+} from "@b9g/cache";
+import {
+	FileSystemRegistry,
+	getDirectoryHandle,
+	NodeBucket,
+} from "@b9g/filesystem";
 import * as Http from "http";
 import * as Path from "path";
 
@@ -63,7 +72,7 @@ class NodeWorkerPool extends WorkerPool {
 		appEntrypoint?: string,
 	) {
 		super(cacheStorage, poolOptions, appEntrypoint);
-		
+
 		// Initialize Node.js-specific memory cache manager
 		this.memoryCacheManager = new MemoryCacheManager();
 		console.info(
@@ -80,7 +89,9 @@ class NodeWorkerPool extends WorkerPool {
 		if (message.type?.startsWith("cache:")) {
 			// Note: We need access to the raw Node.js Worker for cache coordination
 			// This is a limitation of the current abstraction that we'll need to address
-			console.warn("[NodeWorkerPool] Cache coordination not fully implemented in abstraction");
+			console.warn(
+				"[NodeWorkerPool] Cache coordination not fully implemented in abstraction",
+			);
 		}
 	}
 
@@ -118,7 +129,7 @@ export class NodePlatform extends BasePlatform {
 			...options,
 		};
 
-		// Register Node.js filesystem adapter as default  
+		// Register Node.js filesystem adapter as default
 		FileSystemRegistry.register("node", new NodeBucket(this.options.cwd));
 	}
 
@@ -220,9 +231,9 @@ export class NodePlatform extends BasePlatform {
 	 */
 	protected getDefaultCacheConfig(): CacheConfig {
 		return {
-			pages: { type: "memory" }, // PostMessage cache for worker coordination
-			api: { type: "memory" },
-			static: { type: "memory" },
+			pages: {type: "memory"}, // PostMessage cache for worker coordination
+			api: {type: "memory"},
+			static: {type: "memory"},
 		};
 	}
 
@@ -232,8 +243,8 @@ export class NodePlatform extends BasePlatform {
 	 */
 	async createCaches(config?: CacheConfig): Promise<CustomCacheStorage> {
 		// Import Node.js worker_threads to detect thread type
-		const { isMainThread } = await import("worker_threads");
-		
+		const {isMainThread} = await import("worker_threads");
+
 		// Return CustomCacheStorage with thread-appropriate cache
 		return new CustomCacheStorage((name: string) => {
 			if (isMainThread) {

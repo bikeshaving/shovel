@@ -94,7 +94,9 @@ export async function getPlatformAsync(name?: string): Promise<Platform> {
 	const detected = detectPlatform();
 	if (!detected) {
 		// Create default Node.js platform if no platforms are registered
-		const NodePlatform = await import("@b9g/platform-node").then(m => m.default);
+		const NodePlatform = await import("@b9g/platform-node").then(
+			(m) => m.default,
+		);
 		const nodePlatform = new NodePlatform();
 		platformRegistry.register("node", nodePlatform);
 		return nodePlatform;

@@ -18,9 +18,9 @@ async function createTempFixture(fixtureName) {
 	const tempDir = await mkdtemp(join(tmpdir(), "shovel-test-"));
 	const tempFile = join(tempDir, fixtureName);
 	const sourceFile = join("./test/fixtures", fixtureName);
-	
+
 	await FS.copyFile(sourceFile, tempFile);
-	
+
 	return {
 		path: tempFile,
 		dir: tempDir,
@@ -40,8 +40,8 @@ async function createTempFixture(fixtureName) {
 			await FS.copyFile(sourceFile, depFile);
 		},
 		async cleanup() {
-			await FS.rm(tempDir, { recursive: true, force: true });
-		}
+			await FS.rm(tempDir, {recursive: true, force: true});
+		},
 	};
 }
 
@@ -71,7 +71,7 @@ function startDevServer(fixture, port, extraArgs = []) {
 	// If process exits early, it's likely an error
 	serverProcess.on("exit", (code) => {
 		if (code !== 0 && code !== null) {
-			serverProcess.earlyExit = { code, stderr: stderrOutput };
+			serverProcess.earlyExit = {code, stderr: stderrOutput};
 		}
 	});
 
@@ -81,19 +81,19 @@ function startDevServer(fixture, port, extraArgs = []) {
 // Helper to check if TCP port is accepting connections (faster than HTTP)
 async function isPortOpen(port) {
 	return new Promise((resolve) => {
-		const { createConnection } = require('net');
-		const socket = createConnection({ port, host: 'localhost', timeout: 50 });
-		
-		socket.on('connect', () => {
+		const {createConnection} = require("net");
+		const socket = createConnection({port, host: "localhost", timeout: 50});
+
+		socket.on("connect", () => {
 			socket.destroy();
 			resolve(true);
 		});
-		
-		socket.on('error', () => {
+
+		socket.on("error", () => {
 			resolve(false);
 		});
-		
-		socket.on('timeout', () => {
+
+		socket.on("timeout", () => {
 			socket.destroy();
 			resolve(false);
 		});
@@ -108,14 +108,14 @@ async function waitForServer(port, serverProcess, timeoutMs = 2000) {
 	while (Date.now() - startTime < timeoutMs / 2) {
 		if (serverProcess?.earlyExit) {
 			throw new Error(
-				`CLI process exited early with code ${serverProcess.earlyExit.code}:\n${serverProcess.earlyExit.stderr}`
+				`CLI process exited early with code ${serverProcess.earlyExit.code}:\n${serverProcess.earlyExit.stderr}`,
 			);
 		}
 
 		if (await isPortOpen(port)) {
 			break;
 		}
-		
+
 		await new Promise((resolve) => setTimeout(resolve, 25));
 	}
 
@@ -123,7 +123,7 @@ async function waitForServer(port, serverProcess, timeoutMs = 2000) {
 	while (Date.now() - startTime < timeoutMs) {
 		if (serverProcess?.earlyExit) {
 			throw new Error(
-				`CLI process exited early with code ${serverProcess.earlyExit.code}:\n${serverProcess.earlyExit.stderr}`
+				`CLI process exited early with code ${serverProcess.earlyExit.code}:\n${serverProcess.earlyExit.stderr}`,
 			);
 		}
 
@@ -169,10 +169,10 @@ async function killServer(process, port) {
 				process.removeListener("close", cleanup);
 				resolve();
 			};
-			
+
 			process.on("exit", cleanup);
 			process.on("close", cleanup);
-			
+
 			// Force kill if it doesn't exit gracefully
 			setTimeout(() => {
 				if (process.exitCode === null) {
@@ -280,7 +280,7 @@ test(
 			// Modify the dependency file (simulate dependency change)
 			await tempFixture.copyDependencyFrom(
 				"server-dependency-hello.ts",
-				"server-dependency-goodbye.ts"
+				"server-dependency-goodbye.ts",
 			);
 
 			// Wait for hot reload and verify dependency change propagated

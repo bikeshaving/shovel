@@ -1,6 +1,6 @@
 /**
  * ESBuild/Bun plugin for importing assets as URLs with manifest generation
- * 
+ *
  * Updated to work with the new dist/assets organization and self.buckets API
  */
 
@@ -106,12 +106,12 @@ export function mergeConfig(
  */
 function normalizePath(basePath: string): string {
 	// Ensure leading slash for absolute paths
-	if (!basePath.startsWith('/')) {
-		basePath = '/' + basePath;
+	if (!basePath.startsWith("/")) {
+		basePath = "/" + basePath;
 	}
 	// Ensure trailing slash for clean concatenation
-	if (!basePath.endsWith('/')) {
-		basePath = basePath + '/';
+	if (!basePath.endsWith("/")) {
+		basePath = basePath + "/";
 	}
 	return basePath;
 }
@@ -244,7 +244,6 @@ export function assetsPlugin(options: AssetsConfig = {}) {
 		},
 	};
 }
-
 
 // Default export
 export default assetsPlugin;

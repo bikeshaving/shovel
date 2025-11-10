@@ -8,12 +8,12 @@ import {Router} from "@b9g/router";
 // Import helper functions from original reqback logic
 import {
 	getRequestInfo,
-	parseBody, 
+	parseBody,
 	parseCorsHeader,
 	handleAuthSimulation,
 	handleRedirectSimulation,
 	handleCacheSimulation,
-	HOMEPAGE_HTML
+	HOMEPAGE_HTML,
 } from "./index.ts";
 
 // Create router for Shovel platform
@@ -22,22 +22,22 @@ const router = new Router();
 // Homepage route
 router.route("/").get(async (request, context) => {
 	return new Response(HOMEPAGE_HTML, {
-		headers: { "Content-Type": "text/html" },
+		headers: {"Content-Type": "text/html"},
 	});
 });
 
 // Echo API route - all HTTP methods
 router.route("/echo").all(async (request, context) => {
 	const corsHeader = request.headers.get("x-reqback-cors");
-	
+
 	// Handle preflight
 	if (request.method === "OPTIONS") {
 		const corsHeadersToUse = parseCorsHeader(corsHeader);
-		
+
 		if (!corsHeadersToUse) {
-			return new Response(null, { status: 204 });
+			return new Response(null, {status: 204});
 		}
-		
+
 		return new Response(null, {
 			status: 204,
 			headers: corsHeadersToUse,
@@ -69,7 +69,7 @@ router.route("/echo").all(async (request, context) => {
 			return new Response(null, {
 				status: redirectResponse.status,
 				headers: {
-					"Location": redirectResponse.location,
+					Location: redirectResponse.location,
 					...(corsHeadersToUse || {}),
 				},
 			});
@@ -92,8 +92,8 @@ router.route("/echo").all(async (request, context) => {
 		const parsedDelay = parseInt(delayHeader);
 		if (isNaN(parsedDelay) || parsedDelay < 1 || parsedDelay > 10) {
 			return Response.json(
-				{ error: "X-Reqback-Delay must be between 1 and 10" },
-				{ status: 400, headers: parseCorsHeader(null) }
+				{error: "X-Reqback-Delay must be between 1 and 10"},
+				{status: 400, headers: parseCorsHeader(null)},
 			);
 		}
 		delay = parsedDelay;
@@ -104,8 +104,8 @@ router.route("/echo").all(async (request, context) => {
 		const parsedStatus = parseInt(statusHeader);
 		if (isNaN(parsedStatus) || parsedStatus < 100 || parsedStatus > 599) {
 			return Response.json(
-				{ error: "X-Reqback-Status must be between 100 and 599" },
-				{ status: 400, headers: parseCorsHeader(null) }
+				{error: "X-Reqback-Status must be between 100 and 599"},
+				{status: 400, headers: parseCorsHeader(null)},
 			);
 		}
 		statusCode = parsedStatus;
@@ -113,7 +113,7 @@ router.route("/echo").all(async (request, context) => {
 
 	// Apply delay if requested
 	if (delay > 0) {
-		await new Promise(resolve => setTimeout(resolve, delay * 1000));
+		await new Promise((resolve) => setTimeout(resolve, delay * 1000));
 	}
 
 	// Build response
@@ -135,12 +135,12 @@ router.route("/echo").all(async (request, context) => {
 	const cacheHeader = request.headers.get("x-reqback-cache");
 	const cacheHeaders = handleCacheSimulation(cacheHeader);
 	const contentTypeHeader = request.headers.get("x-reqback-content-type");
-	
+
 	const responseHeaders = {
 		...(corsHeadersToUse || {}),
 		...cacheHeaders,
 	};
-	
+
 	// Override content type if specified
 	if (contentTypeHeader) {
 		responseHeaders["Content-Type"] = contentTypeHeader;
@@ -158,7 +158,7 @@ router.route("/echo").all(async (request, context) => {
 router.use(async function* notFoundHandler(request, context) {
 	const url = new URL(request.url);
 	const response = yield request;
-	
+
 	// If no previous handler matched, return 404
 	if (!response) {
 		return Response.json(
@@ -167,13 +167,13 @@ router.use(async function* notFoundHandler(request, context) {
 				path: url.pathname,
 				suggestion: "Try /echo or see / for documentation",
 			},
-			{ 
+			{
 				status: 404,
 				headers: parseCorsHeader(null),
-			}
+			},
 		);
 	}
-	
+
 	return response;
 });
 
@@ -182,7 +182,7 @@ self.addEventListener("install", (event) => {
 	console.info("[Reqback] ServiceWorker installed");
 });
 
-// ServiceWorker activate event 
+// ServiceWorker activate event
 self.addEventListener("activate", (event) => {
 	console.info("[Reqback] ServiceWorker activated");
 });
@@ -197,14 +197,14 @@ self.addEventListener("fetch", (event) => {
 		event.respondWith(
 			new Response(
 				JSON.stringify({
-					error: "Internal server error", 
-					message: error.message
-				}), 
+					error: "Internal server error",
+					message: error.message,
+				}),
 				{
 					status: 500,
-					headers: {"Content-Type": "application/json"}
-				}
-			)
+					headers: {"Content-Type": "application/json"},
+				},
+			),
 		);
 	}
 });

@@ -91,7 +91,6 @@ export abstract class Cache {
 
 		return responses;
 	}
-
 }
 
 /**

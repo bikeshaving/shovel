@@ -3,14 +3,14 @@
  * Populates the database with sample data for development
  */
 
-import { PostsDB, DocsDB, UsersDB } from './database.js';
+import {PostsDB, DocsDB, UsersDB} from "./database.js";
 
 // Sample blog posts
 const samplePosts = [
-    {
-        title: "Welcome to Shovel Admin",
-        slug: "welcome-to-shovel-admin",
-        content: `# Welcome to Shovel Admin Dashboard
+	{
+		title: "Welcome to Shovel Admin",
+		slug: "welcome-to-shovel-admin",
+		content: `# Welcome to Shovel Admin Dashboard
 
 This is a demonstration of Shovel's cache-first architecture with persistent SQLite storage. 
 
@@ -24,13 +24,14 @@ This is a demonstration of Shovel's cache-first architecture with persistent SQL
 ## Cache Strategy
 
 When you edit posts, Shovel automatically invalidates relevant cache entries while keeping performance optimal.`,
-        excerpt: "Introduction to the Shovel Admin Dashboard with cache-first architecture and SQLite storage.",
-        status: "published"
-    },
-    {
-        title: "Cache-First Architecture Benefits",
-        slug: "cache-first-benefits", 
-        content: `# Why Cache-First?
+		excerpt:
+			"Introduction to the Shovel Admin Dashboard with cache-first architecture and SQLite storage.",
+		status: "published",
+	},
+	{
+		title: "Cache-First Architecture Benefits",
+		slug: "cache-first-benefits",
+		content: `# Why Cache-First?
 
 Traditional web frameworks cache as an afterthought. Shovel puts caching at the center:
 
@@ -46,13 +47,14 @@ Traditional web frameworks cache as an afterthought. Shovel puts caching at the 
 - **No cache configuration** - it just works
 - **Predictable performance** - cache hits are guaranteed fast
 - **Easy debugging** with cache status headers`,
-        excerpt: "Deep dive into the performance and DX benefits of cache-first architecture.",
-        status: "published"
-    },
-    {
-        title: "SQLite + Bun Performance",
-        slug: "sqlite-bun-performance",
-        content: `# SQLite + Bun: A Perfect Match
+		excerpt:
+			"Deep dive into the performance and DX benefits of cache-first architecture.",
+		status: "published",
+	},
+	{
+		title: "SQLite + Bun Performance",
+		slug: "sqlite-bun-performance",
+		content: `# SQLite + Bun: A Perfect Match
 
 This admin dashboard showcases the power of combining SQLite with Bun runtime:
 
@@ -69,17 +71,18 @@ This admin dashboard showcases the power of combining SQLite with Bun runtime:
 - **Built-in SQLite** support with \`bun:sqlite\`
 - **TypeScript native** with excellent developer experience
 - **Drop-in replacement** for Node.js applications`,
-        excerpt: "Exploring the performance benefits of SQLite and Bun for web applications.",
-        status: "draft"
-    }
+		excerpt:
+			"Exploring the performance benefits of SQLite and Bun for web applications.",
+		status: "draft",
+	},
 ];
 
 // Sample documentation pages
 const sampleDocs = [
-    {
-        title: "Getting Started",
-        slug: "getting-started",
-        content: `# Getting Started with Shovel
+	{
+		title: "Getting Started",
+		slug: "getting-started",
+		content: `# Getting Started with Shovel
 
 Shovel is a cache-first metaframework for building fast web applications.
 
@@ -106,14 +109,14 @@ router.route('/').get(async (request) => {
 - **ServiceWorker-native**: Universal runtime across all platforms
 - **Cache-first**: Every request hits cache first for performance
 - **Platform-agnostic**: Deploy anywhere with platform adapters`,
-        category: "guide",
-        version: "1.0",
-        status: "published"
-    },
-    {
-        title: "Cache Management",
-        slug: "cache-management",
-        content: `# Cache Management
+		category: "guide",
+		version: "1.0",
+		status: "published",
+	},
+	{
+		title: "Cache Management",
+		slug: "cache-management",
+		content: `# Cache Management
 
 Shovel provides automatic cache management with manual override capabilities.
 
@@ -136,14 +139,14 @@ return new Response(content, {
   }
 });
 \`\`\``,
-        category: "guide", 
-        version: "1.0",
-        status: "published"
-    },
-    {
-        title: "API Reference",
-        slug: "api-reference",
-        content: `# API Reference
+		category: "guide",
+		version: "1.0",
+		status: "published",
+	},
+	{
+		title: "API Reference",
+		slug: "api-reference",
+		content: `# API Reference
 
 Complete reference for Shovel's core APIs.
 
@@ -166,82 +169,81 @@ Adds global middleware to the router.
 ### \`self.caches.open(name)\`
 
 Opens a named cache for storing responses.`,
-        category: "reference",
-        version: "1.0", 
-        status: "draft"
-    }
+		category: "reference",
+		version: "1.0",
+		status: "draft",
+	},
 ];
 
 // Sample admin user
 const sampleUsers = [
-    {
-        username: "admin",
-        email: "admin@shovel.dev",
-        password_hash: "$2b$10$dummy.hash.for.demo.purposes.only", // In real app, use bcrypt
-        role: "admin"
-    }
+	{
+		username: "admin",
+		email: "admin@shovel.dev",
+		password_hash: "$2b$10$dummy.hash.for.demo.purposes.only", // In real app, use bcrypt
+		role: "admin",
+	},
 ];
 
 async function seed() {
-    console.log("🌱 Seeding database...");
-    
-    try {
-        // Seed posts
-        console.log("📝 Creating sample posts...");
-        for (const post of samplePosts) {
-            try {
-                PostsDB.create(post);
-                console.log(`  ✅ Created post: ${post.title}`);
-            } catch (error) {
-                if (error.message.includes('UNIQUE constraint failed')) {
-                    console.log(`  ⚠️  Post already exists: ${post.title}`);
-                } else {
-                    throw error;
-                }
-            }
-        }
-        
-        // Seed docs
-        console.log("📚 Creating sample documentation...");
-        for (const doc of sampleDocs) {
-            try {
-                DocsDB.create(doc);
-                console.log(`  ✅ Created doc: ${doc.title}`);
-            } catch (error) {
-                if (error.message.includes('UNIQUE constraint failed')) {
-                    console.log(`  ⚠️  Doc already exists: ${doc.title}`);
-                } else {
-                    throw error;
-                }
-            }
-        }
-        
-        // Seed users
-        console.log("👤 Creating sample users...");
-        for (const user of sampleUsers) {
-            try {
-                UsersDB.create(user);
-                console.log(`  ✅ Created user: ${user.username}`);
-            } catch (error) {
-                if (error.message.includes('UNIQUE constraint failed')) {
-                    console.log(`  ⚠️  User already exists: ${user.username}`);
-                } else {
-                    throw error;
-                }
-            }
-        }
-        
-        console.log("🎉 Database seeding complete!");
-        
-    } catch (error) {
-        console.error("❌ Seeding failed:", error);
-        process.exit(1);
-    }
+	console.log("🌱 Seeding database...");
+
+	try {
+		// Seed posts
+		console.log("📝 Creating sample posts...");
+		for (const post of samplePosts) {
+			try {
+				PostsDB.create(post);
+				console.log(`  ✅ Created post: ${post.title}`);
+			} catch (error) {
+				if (error.message.includes("UNIQUE constraint failed")) {
+					console.log(`  ⚠️  Post already exists: ${post.title}`);
+				} else {
+					throw error;
+				}
+			}
+		}
+
+		// Seed docs
+		console.log("📚 Creating sample documentation...");
+		for (const doc of sampleDocs) {
+			try {
+				DocsDB.create(doc);
+				console.log(`  ✅ Created doc: ${doc.title}`);
+			} catch (error) {
+				if (error.message.includes("UNIQUE constraint failed")) {
+					console.log(`  ⚠️  Doc already exists: ${doc.title}`);
+				} else {
+					throw error;
+				}
+			}
+		}
+
+		// Seed users
+		console.log("👤 Creating sample users...");
+		for (const user of sampleUsers) {
+			try {
+				UsersDB.create(user);
+				console.log(`  ✅ Created user: ${user.username}`);
+			} catch (error) {
+				if (error.message.includes("UNIQUE constraint failed")) {
+					console.log(`  ⚠️  User already exists: ${user.username}`);
+				} else {
+					throw error;
+				}
+			}
+		}
+
+		console.log("🎉 Database seeding complete!");
+	} catch (error) {
+		console.error("❌ Seeding failed:", error);
+		process.exit(1);
+	}
 }
 
 // Run seeding if called directly
 if (import.meta.main) {
-    seed();
+	seed();
 }
 
-export { seed };
+export {seed};

@@ -4,8 +4,17 @@
  * Provides Redis-backed caching with HTTP-aware storage and retrieval
  */
 
-import {Cache, type CacheQueryOptions, generateCacheKey, type CacheFactory} from "@b9g/cache";
-import {createClient, type RedisClientType, type RedisClientOptions} from "redis";
+import {
+	Cache,
+	type CacheQueryOptions,
+	generateCacheKey,
+	type CacheFactory,
+} from "@b9g/cache";
+import {
+	createClient,
+	type RedisClientType,
+	type RedisClientOptions,
+} from "redis";
 
 // ============================================================================
 // TYPES
@@ -56,7 +65,9 @@ export class RedisCache extends Cache {
 		super();
 
 		this.client = createClient(options.redis || {});
-		this.prefix = options.prefix ? `${options.prefix}:${name}` : `cache:${name}`;
+		this.prefix = options.prefix
+			? `${options.prefix}:${name}`
+			: `cache:${name}`;
 		this.defaultTTL = options.defaultTTL || 0; // 0 = no expiration
 		this.maxEntrySize = options.maxEntrySize || 10 * 1024 * 1024; // 10MB default
 
@@ -102,7 +113,9 @@ export class RedisCache extends Cache {
 		const body = await cloned.arrayBuffer();
 
 		if (body.byteLength > this.maxEntrySize) {
-			throw new Error(`Response body too large: ${body.byteLength} bytes (max: ${this.maxEntrySize})`);
+			throw new Error(
+				`Response body too large: ${body.byteLength} bytes (max: ${this.maxEntrySize})`,
+			);
 		}
 
 		// Convert headers to plain object
@@ -125,7 +138,7 @@ export class RedisCache extends Cache {
 	 * Deserialize cache entry to Response
 	 */
 	private deserializeResponse(entry: CacheEntry): Response {
-		const body = Uint8Array.from(atob(entry.body), c => c.charCodeAt(0));
+		const body = Uint8Array.from(atob(entry.body), (c) => c.charCodeAt(0));
 
 		return new Response(body, {
 			status: entry.status,
@@ -137,7 +150,10 @@ export class RedisCache extends Cache {
 	/**
 	 * Returns a Promise that resolves to the response associated with the first matching request
 	 */
-	async match(request: Request, options?: CacheQueryOptions): Promise<Response | undefined> {
+	async match(
+		request: Request,
+		options?: CacheQueryOptions,
+	): Promise<Response | undefined> {
 		try {
 			await this.ensureConnected();
 
@@ -193,7 +209,10 @@ export class RedisCache extends Cache {
 	/**
 	 * Finds the cache entry whose key is the request, and if found, deletes it and returns true
 	 */
-	async delete(request: Request, options?: CacheQueryOptions): Promise<boolean> {
+	async delete(
+		request: Request,
+		options?: CacheQueryOptions,
+	): Promise<boolean> {
 		try {
 			await this.ensureConnected();
 
@@ -209,7 +228,10 @@ export class RedisCache extends Cache {
 	/**
 	 * Returns a Promise that resolves to an array of cache keys (Request objects)
 	 */
-	async keys(request?: Request, options?: CacheQueryOptions): Promise<Request[]> {
+	async keys(
+		request?: Request,
+		options?: CacheQueryOptions,
+	): Promise<Request[]> {
 		try {
 			await this.ensureConnected();
 

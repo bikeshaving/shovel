@@ -1,6 +1,6 @@
 /**
  * Shovel Admin Dashboard
- * 
+ *
  * Demonstrates cache-first architecture with SQLite backend:
  * - Blog post management (CRUD)
  * - Documentation management
@@ -8,15 +8,15 @@
  * - Bun runtime with better-sqlite3
  */
 
-import { Router } from "@b9g/router";
-import { createAssetsMiddleware } from "@b9g/assets";
-import { PostsDB, DocsDB } from "./db/database.js";
+import {Router} from "@b9g/router";
+import {createAssetsMiddleware} from "@b9g/assets";
+import {PostsDB, DocsDB} from "./db/database.js";
 
 // Cache control constants
 const CACHE_HEADERS = {
-    ASSETS: "public, max-age=31536000, immutable", // 1 year for assets
-    PAGES: "public, max-age=300", // 5 minutes for admin pages
-    API: "public, max-age=60", // 1 minute for API responses
+	ASSETS: "public, max-age=31536000, immutable", // 1 year for assets
+	PAGES: "public, max-age=300", // 5 minutes for admin pages
+	API: "public, max-age=60", // 1 minute for API responses
 };
 
 // Create router with caching
@@ -24,15 +24,14 @@ const router = new Router();
 
 // Assets middleware
 router.use(
-    createAssetsMiddleware({
-        directory: "assets",
-        basePath: "/assets",
-        manifestPath: "manifest.json",
-        dev: process.env.NODE_ENV !== "production",
-        cacheControl: process.env.NODE_ENV === "production" 
-            ? CACHE_HEADERS.ASSETS 
-            : "no-cache",
-    }),
+	createAssetsMiddleware({
+		directory: "assets",
+		basePath: "/assets",
+		manifestPath: "manifest.json",
+		dev: process.env.NODE_ENV !== "production",
+		cacheControl:
+			process.env.NODE_ENV === "production" ? CACHE_HEADERS.ASSETS : "no-cache",
+	}),
 );
 
 // Cache middleware with versioning for cache-busting
@@ -40,64 +39,67 @@ const cacheVersion = "v1"; // Increment when data schema changes
 router.use(cacheMiddleware);
 
 async function* cacheMiddleware(request, context) {
-    console.log("[cache] Processing:", request.url, "Method:", request.method);
-    
-    // Only cache GET requests
-    if (request.method !== "GET" || !self.caches) {
-        const response = yield request;
-        return response;
-    }
-    
-    // Get versioned cache
-    const cache = await self.caches.open(`admin-${cacheVersion}`);
-    
-    // Try cache first
-    let cached;
-    try {
-        cached = await cache.match(request.clone());
-    } catch (error) {
-        console.warn("[cache] Cache lookup failed:", error);
-        cached = null;
-    }
-    
-    if (cached) {
-        console.log("[cache] HIT:", request.url);
-        // Add cache hit header
-        const response = cached.clone();
-        response.headers.set("X-Cache", "HIT");
-        return response;
-    }
-    
-    console.log("[cache] MISS:", request.url);
-    
-    // Get fresh response
-    const response = yield request;
-    
-    // Cache successful responses
-    if (response.ok && response.status < 400) {
-        try {
-            await cache.put(request.clone(), response.clone());
-            console.log("[cache] Stored:", request.url);
-        } catch (error) {
-            console.warn("[cache] Storage failed:", error);
-        }
-    }
-    
-    // Add cache miss header
-    const clonedResponse = response.clone();
-    clonedResponse.headers.set("X-Cache", "MISS");
-    return clonedResponse;
+	console.log("[cache] Processing:", request.url, "Method:", request.method);
+
+	// Only cache GET requests
+	if (request.method !== "GET" || !self.caches) {
+		const response = yield request;
+		return response;
+	}
+
+	// Get versioned cache
+	const cache = await self.caches.open(`admin-${cacheVersion}`);
+
+	// Try cache first
+	let cached;
+	try {
+		cached = await cache.match(request.clone());
+	} catch (error) {
+		console.warn("[cache] Cache lookup failed:", error);
+		cached = null;
+	}
+
+	if (cached) {
+		console.log("[cache] HIT:", request.url);
+		// Add cache hit header
+		const response = cached.clone();
+		response.headers.set("X-Cache", "HIT");
+		return response;
+	}
+
+	console.log("[cache] MISS:", request.url);
+
+	// Get fresh response
+	const response = yield request;
+
+	// Cache successful responses
+	if (response.ok && response.status < 400) {
+		try {
+			await cache.put(request.clone(), response.clone());
+			console.log("[cache] Stored:", request.url);
+		} catch (error) {
+			console.warn("[cache] Storage failed:", error);
+		}
+	}
+
+	// Add cache miss header
+	const clonedResponse = response.clone();
+	clonedResponse.headers.set("X-Cache", "MISS");
+	return clonedResponse;
 }
 
 // ===== ADMIN UI ROUTES =====
 
 // Dashboard home
 router.route("/").get(async (request, context) => {
-    const publishedPosts = await PostsDB.findByStatus('published');
-    const draftPosts = await PostsDB.findByStatus('draft');
-    const allDocs = await DocsDB.findAll();
-    
-    return new Response(renderPage("Dashboard", `
+	const publishedPosts = await PostsDB.findByStatus("published");
+	const draftPosts = await PostsDB.findByStatus("draft");
+	const allDocs = await DocsDB.findAll();
+
+	return new Response(
+		renderPage(
+			"Dashboard",
+			`
         <div class="dashboard">
             <div class="stats-grid">
                 <div class="stat-card">
@@ -122,12 +124,17 @@ router.route("/").get(async (request, context) => {
                 <div class="content-section">
                     <h2>Recent Posts</h2>
                     <div class="content-list">
-                        ${publishedPosts.slice(0, 5).map(post => `
+                        ${publishedPosts
+													.slice(0, 5)
+													.map(
+														(post) => `
                             <div class="content-item">
                                 <a href="/posts/${post.slug}">${post.title}</a>
                                 <span class="content-meta">${new Date(post.created_at).toLocaleDateString()}</span>
                             </div>
-                        `).join('')}
+                        `,
+													)
+													.join("")}
                         <a href="/posts" class="view-all">View All Posts →</a>
                     </div>
                 </div>
@@ -135,30 +142,41 @@ router.route("/").get(async (request, context) => {
                 <div class="content-section">
                     <h2>Documentation</h2>
                     <div class="content-list">
-                        ${allDocs.slice(0, 5).map(doc => `
+                        ${allDocs
+													.slice(0, 5)
+													.map(
+														(doc) => `
                             <div class="content-item">
                                 <a href="/docs/${doc.slug}">${doc.title}</a>
                                 <span class="content-meta">${doc.category}</span>
                             </div>
-                        `).join('')}
+                        `,
+													)
+													.join("")}
                         <a href="/docs" class="view-all">View All Docs →</a>
                     </div>
                 </div>
             </div>
         </div>
-    `), {
-        headers: {
-            "Content-Type": "text/html",
-            "Cache-Control": CACHE_HEADERS.PAGES,
-        },
-    });
+    `,
+		),
+		{
+			headers: {
+				"Content-Type": "text/html",
+				"Cache-Control": CACHE_HEADERS.PAGES,
+			},
+		},
+	);
 });
 
 // Posts list
 router.route("/posts").get(async (request, context) => {
-    const allPosts = await PostsDB.findAll();
-    
-    return new Response(renderPage("Blog Posts", `
+	const allPosts = await PostsDB.findAll();
+
+	return new Response(
+		renderPage(
+			"Blog Posts",
+			`
         <div class="content-header">
             <h1>Blog Posts</h1>
             <a href="/posts/new" class="btn btn-primary">New Post</a>
@@ -175,7 +193,9 @@ router.route("/posts").get(async (request, context) => {
                     </tr>
                 </thead>
                 <tbody>
-                    ${allPosts.map(post => `
+                    ${allPosts
+											.map(
+												(post) => `
                         <tr>
                             <td><a href="/posts/${post.slug}">${post.title}</a></td>
                             <td><span class="status status-${post.status}">${post.status}</span></td>
@@ -185,7 +205,9 @@ router.route("/posts").get(async (request, context) => {
                                 <button onclick="deletePost('${post.slug}')" class="btn btn-sm btn-danger">Delete</button>
                             </td>
                         </tr>
-                    `).join('')}
+                    `,
+											)
+											.join("")}
                 </tbody>
             </table>
         </div>
@@ -202,31 +224,42 @@ router.route("/posts").get(async (request, context) => {
             }
         }
         </script>
-    `), {
-        headers: {
-            "Content-Type": "text/html",
-            "Cache-Control": CACHE_HEADERS.PAGES,
-        },
-    });
+    `,
+		),
+		{
+			headers: {
+				"Content-Type": "text/html",
+				"Cache-Control": CACHE_HEADERS.PAGES,
+			},
+		},
+	);
 });
 
-// Docs list  
+// Docs list
 router.route("/docs").get(async (request, context) => {
-    const allDocs = await DocsDB.findAll();
-    const categories = [...new Set(allDocs.map(doc => doc.category))];
-    
-    return new Response(renderPage("Documentation", `
+	const allDocs = await DocsDB.findAll();
+	const categories = [...new Set(allDocs.map((doc) => doc.category))];
+
+	return new Response(
+		renderPage(
+			"Documentation",
+			`
         <div class="content-header">
             <h1>Documentation</h1>
             <a href="/docs/new" class="btn btn-primary">New Doc</a>
         </div>
         
         <div class="docs-by-category">
-            ${categories.map(category => `
+            ${categories
+							.map(
+								(category) => `
                 <div class="category-section">
                     <h2>${category}</h2>
                     <div class="docs-grid">
-                        ${allDocs.filter(doc => doc.category === category).map(doc => `
+                        ${allDocs
+													.filter((doc) => doc.category === category)
+													.map(
+														(doc) => `
                             <div class="doc-card">
                                 <h3><a href="/docs/${doc.slug}">${doc.title}</a></h3>
                                 <div class="doc-meta">
@@ -238,10 +271,14 @@ router.route("/docs").get(async (request, context) => {
                                     <button onclick="deleteDoc('${doc.slug}')" class="btn btn-sm btn-danger">Delete</button>
                                 </div>
                             </div>
-                        `).join('')}
+                        `,
+													)
+													.join("")}
                     </div>
                 </div>
-            `).join('')}
+            `,
+							)
+							.join("")}
         </div>
         
         <script>
@@ -256,142 +293,155 @@ router.route("/docs").get(async (request, context) => {
             }
         }
         </script>
-    `), {
-        headers: {
-            "Content-Type": "text/html",
-            "Cache-Control": CACHE_HEADERS.PAGES,
-        },
-    });
+    `,
+		),
+		{
+			headers: {
+				"Content-Type": "text/html",
+				"Cache-Control": CACHE_HEADERS.PAGES,
+			},
+		},
+	);
 });
 
 // ===== API ROUTES =====
 
 // Posts API
 router.route("/api/posts").get(async (request, context) => {
-    const posts = await PostsDB.findAll();
-    return Response.json({ posts }, {
-        headers: { "Cache-Control": CACHE_HEADERS.API }
-    });
+	const posts = await PostsDB.findAll();
+	return Response.json(
+		{posts},
+		{
+			headers: {"Cache-Control": CACHE_HEADERS.API},
+		},
+	);
 });
 
 router.route("/api/posts/:slug").delete(async (request, context) => {
-    const { slug } = context.params;
-    await PostsDB.delete(slug);
-    
-    // Invalidate cache by incrementing version (in real app, you'd update cacheVersion)
-    await invalidateCache();
-    
-    return Response.json({ success: true, deleted: slug });
+	const {slug} = context.params;
+	await PostsDB.delete(slug);
+
+	// Invalidate cache by incrementing version (in real app, you'd update cacheVersion)
+	await invalidateCache();
+
+	return Response.json({success: true, deleted: slug});
 });
 
 // Docs API
 router.route("/api/docs").get(async (request, context) => {
-    const docs = await DocsDB.findAll();
-    return Response.json({ docs }, {
-        headers: { "Cache-Control": CACHE_HEADERS.API }
-    });
+	const docs = await DocsDB.findAll();
+	return Response.json(
+		{docs},
+		{
+			headers: {"Cache-Control": CACHE_HEADERS.API},
+		},
+	);
 });
 
 router.route("/api/docs/:slug").delete(async (request, context) => {
-    const { slug } = context.params;
-    await DocsDB.delete(slug);
-    
-    // Invalidate cache
-    await invalidateCache();
-    
-    return Response.json({ success: true, deleted: slug });
+	const {slug} = context.params;
+	await DocsDB.delete(slug);
+
+	// Invalidate cache
+	await invalidateCache();
+
+	return Response.json({success: true, deleted: slug});
 });
 
 // Cache invalidation helper
 async function invalidateCache() {
-    // In a real app, you'd increment cacheVersion and redeploy
-    // For now, we'll just clear specific cache entries
-    if (self.caches) {
-        const cache = await self.caches.open(`admin-${cacheVersion}`);
-        // Clear main pages that show post/doc lists
-        await cache.delete(new Request(new URL('/', 'http://localhost').href));
-        await cache.delete(new Request(new URL('/posts', 'http://localhost').href));
-        await cache.delete(new Request(new URL('/docs', 'http://localhost').href));
-        console.log("[cache] Invalidated list pages");
-    }
+	// In a real app, you'd increment cacheVersion and redeploy
+	// For now, we'll just clear specific cache entries
+	if (self.caches) {
+		const cache = await self.caches.open(`admin-${cacheVersion}`);
+		// Clear main pages that show post/doc lists
+		await cache.delete(new Request(new URL("/", "http://localhost").href));
+		await cache.delete(new Request(new URL("/posts", "http://localhost").href));
+		await cache.delete(new Request(new URL("/docs", "http://localhost").href));
+		console.log("[cache] Invalidated list pages");
+	}
 }
 
 // ===== ServiceWorker Event Handlers =====
 
 self.addEventListener("install", (event) => {
-    event.waitUntil((async () => {
-        console.log("[SW] Admin dashboard installed");
-    })());
+	event.waitUntil(
+		(async () => {
+			console.log("[SW] Admin dashboard installed");
+		})(),
+	);
 });
 
 self.addEventListener("activate", (event) => {
-    event.waitUntil((async () => {
-        console.log("[SW] Admin dashboard activated");
-    })());
+	event.waitUntil(
+		(async () => {
+			console.log("[SW] Admin dashboard activated");
+		})(),
+	);
 });
 
 // For Bun deployment, we need to start an HTTP server
-if (typeof Bun !== 'undefined') {
-    // Running in Bun - start HTTP server
-    const port = process.env.PORT || 3000;
-    
-    Bun.serve({
-        port: port,
-        async fetch(request) {
-            try {
-                return await router.handler(request);
-            } catch (error) {
-                const isDev = process.env?.NODE_ENV !== "production";
-                const errorDetails = isDev 
-                    ? `Admin error: ${error.message}\n\nStack: ${error.stack}`
-                    : `Admin error: ${error.message}`;
-                
-                console.error("Admin router error:", error);
-                return new Response(errorDetails, {
-                    status: 500,
-                    headers: { "Content-Type": "text/plain" }
-                });
-            }
-        }
-    });
-    
-    console.log(`🚀 Shovel Admin running on http://localhost:${port}`);
+if (typeof Bun !== "undefined") {
+	// Running in Bun - start HTTP server
+	const port = process.env.PORT || 3000;
+
+	Bun.serve({
+		port: port,
+		async fetch(request) {
+			try {
+				return await router.handler(request);
+			} catch (error) {
+				const isDev = process.env?.NODE_ENV !== "production";
+				const errorDetails = isDev
+					? `Admin error: ${error.message}\n\nStack: ${error.stack}`
+					: `Admin error: ${error.message}`;
+
+				console.error("Admin router error:", error);
+				return new Response(errorDetails, {
+					status: 500,
+					headers: {"Content-Type": "text/plain"},
+				});
+			}
+		},
+	});
+
+	console.log(`🚀 Shovel Admin running on http://localhost:${port}`);
 } else {
-    // Running as ServiceWorker - use event handlers
-    self.addEventListener("fetch", (event) => {
-        try {
-            const responsePromise = router.handler(event.request);
-            
-            event.respondWith(
-                responsePromise.catch((error) => {
-                    const isDev = process.env?.NODE_ENV !== "production";
-                    const errorDetails = isDev 
-                        ? `Admin error: ${error.message}\\n\\nStack: ${error.stack}`
-                        : `Admin error: ${error.message}`;
-                    
-                    console.error("Admin router error:", error);
-                    return new Response(errorDetails, {
-                        status: 500,
-                        headers: { "Content-Type": "text/plain" }
-                    });
-                })
-            );
-        } catch (error) {
-            console.error("Admin sync error:", error);
-            event.respondWith(
-                new Response(`Admin sync error: ${error.message}`, {
-                    status: 500,
-                    headers: { "Content-Type": "text/plain" }
-                })
-            );
-        }
-    });
+	// Running as ServiceWorker - use event handlers
+	self.addEventListener("fetch", (event) => {
+		try {
+			const responsePromise = router.handler(event.request);
+
+			event.respondWith(
+				responsePromise.catch((error) => {
+					const isDev = process.env?.NODE_ENV !== "production";
+					const errorDetails = isDev
+						? `Admin error: ${error.message}\\n\\nStack: ${error.stack}`
+						: `Admin error: ${error.message}`;
+
+					console.error("Admin router error:", error);
+					return new Response(errorDetails, {
+						status: 500,
+						headers: {"Content-Type": "text/plain"},
+					});
+				}),
+			);
+		} catch (error) {
+			console.error("Admin sync error:", error);
+			event.respondWith(
+				new Response(`Admin sync error: ${error.message}`, {
+					status: 500,
+					headers: {"Content-Type": "text/plain"},
+				}),
+			);
+		}
+	});
 }
 
 // ===== HTML Template Helper =====
 
 function renderPage(title, content) {
-    return `<!DOCTYPE html>
+	return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">

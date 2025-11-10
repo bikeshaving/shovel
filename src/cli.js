@@ -36,7 +36,11 @@ function getWorkerCount(options) {
 	program
 		.command("develop <entrypoint>")
 		.description("Start development server with hot reloading")
-		.option("-p, --port <port>", "Port to listen on", DEFAULTS.SERVER.PORT.toString())
+		.option(
+			"-p, --port <port>",
+			"Port to listen on",
+			DEFAULTS.SERVER.PORT.toString(),
+		)
 		.option(
 			"--platform <platform>",
 			"Explicit platform (node, bun, cloudflare)",
@@ -47,7 +51,10 @@ function getWorkerCount(options) {
 			"Number of worker threads (default: 2 in dev, CPU count in prod)",
 		)
 		.option("--cache <adapter>", "Cache adapter (memory, redis, kv)")
-		.option("--filesystem <adapter>", "Filesystem adapter (memory, fs, s3, r2, bun-s3)")
+		.option(
+			"--filesystem <adapter>",
+			"Filesystem adapter (memory, fs, s3, r2, bun-s3)",
+		)
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
@@ -70,17 +77,20 @@ function getWorkerCount(options) {
 				// Convert CLI flags to platform config format
 				if (options.cache) {
 					platformConfig.caches = {
-						pages: { type: options.cache },
-						api: { type: options.cache },
-						static: { type: options.cache },
+						pages: {type: options.cache},
+						api: {type: options.cache},
+						static: {type: options.cache},
 					};
 				}
 
 				if (options.filesystem) {
-					platformConfig.filesystem = { type: options.filesystem };
+					platformConfig.filesystem = {type: options.filesystem};
 				}
 
-				const platformInstance = await platform.createPlatform(platformName, platformConfig);
+				const platformInstance = await platform.createPlatform(
+					platformName,
+					platformConfig,
+				);
 
 				console.info(`[CLI] ▶️  Starting development server...`);
 				console.info(`[CLI] ✅ Workers: ${workerCount}`);
@@ -97,7 +107,10 @@ function getWorkerCount(options) {
 						if (success && serviceWorker) {
 							console.info(`[CLI] 🔄 Reloading Workers (v${version})...`);
 							// The reloadWorkers method is on the platform instance, not the ServiceWorker runtime
-							if (platformInstance && typeof platformInstance.reloadWorkers === 'function') {
+							if (
+								platformInstance &&
+								typeof platformInstance.reloadWorkers === "function"
+							) {
 								await platformInstance.reloadWorkers(version);
 							}
 							console.info(`[CLI] ✅ Workers reloaded`);
@@ -112,21 +125,27 @@ function getWorkerCount(options) {
 
 				// Load ServiceWorker app from built output
 				const builtEntrypoint = `${outDir}/server/app.js`;
-				serviceWorker = await platformInstance.loadServiceWorker(builtEntrypoint, {
-					hotReload: true,
-					workerCount,
-					caches: {
-						pages: {type: "memory", maxEntries: DEFAULTS.CACHE.MAX_ENTRIES},
-						api: {type: "memory", ttl: DEFAULTS.CACHE.TTL},
-						static: {type: "memory"},
+				serviceWorker = await platformInstance.loadServiceWorker(
+					builtEntrypoint,
+					{
+						hotReload: true,
+						workerCount,
+						caches: {
+							pages: {type: "memory", maxEntries: DEFAULTS.CACHE.MAX_ENTRIES},
+							api: {type: "memory", ttl: DEFAULTS.CACHE.TTL},
+							static: {type: "memory"},
+						},
 					},
-				});
+				);
 
 				// Create development server
-				const server = platformInstance.createServer(serviceWorker.handleRequest, {
-					port: parseInt(options.port) || DEFAULTS.SERVER.PORT,
-					host: options.host || DEFAULTS.SERVER.HOST,
-				});
+				const server = platformInstance.createServer(
+					serviceWorker.handleRequest,
+					{
+						port: parseInt(options.port) || DEFAULTS.SERVER.PORT,
+						host: options.host || DEFAULTS.SERVER.HOST,
+					},
+				);
 
 				await server.listen();
 				console.info(
@@ -144,8 +163,11 @@ function getWorkerCount(options) {
 					process.exit(0);
 				});
 			} catch (error) {
-				console.error(`[CLI] ❌ Failed to start development server:`, error.message);
-				console.error('Stack trace:', error.stack);
+				console.error(
+					`[CLI] ❌ Failed to start development server:`,
+					error.message,
+				);
+				console.error("Stack trace:", error.stack);
 				process.exit(1);
 			}
 		});
@@ -166,7 +188,10 @@ function getWorkerCount(options) {
 			"Number of worker threads (default: CPU count in prod)",
 		)
 		.option("--cache <adapter>", "Cache adapter (memory, redis, kv)")
-		.option("--filesystem <adapter>", "Filesystem adapter (memory, fs, s3, r2, bun-s3)")
+		.option(
+			"--filesystem <adapter>",
+			"Filesystem adapter (memory, fs, s3, r2, bun-s3)",
+		)
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
@@ -208,7 +233,9 @@ function getWorkerCount(options) {
 	 */
 	program
 		.command("activate <entrypoint>")
-		.description("Run ServiceWorker install/activate lifecycle with self-generation")
+		.description(
+			"Run ServiceWorker install/activate lifecycle with self-generation",
+		)
 		.option(
 			"--platform <platform>",
 			"Target platform for hosting (node, bun, cloudflare)",
@@ -218,7 +245,10 @@ function getWorkerCount(options) {
 			"Number of worker threads (default: CPU count)",
 		)
 		.option("--cache <adapter>", "Cache adapter (memory, redis, kv)")
-		.option("--filesystem <adapter>", "Filesystem adapter (memory, fs, s3, r2, bun-s3)")
+		.option(
+			"--filesystem <adapter>",
+			"Filesystem adapter (memory, fs, s3, r2, bun-s3)",
+		)
 		.option("--verbose", "Verbose logging")
 		.action(async (entrypoint, options) => {
 			try {
@@ -238,34 +268,45 @@ function getWorkerCount(options) {
 				// Convert CLI flags to platform config format
 				if (options.cache) {
 					platformConfig.caches = {
-						pages: { type: options.cache },
-						api: { type: options.cache },
-						static: { type: options.cache },
+						pages: {type: options.cache},
+						api: {type: options.cache},
+						static: {type: options.cache},
 					};
 				}
 
 				if (options.filesystem) {
-					platformConfig.filesystem = { type: options.filesystem };
+					platformConfig.filesystem = {type: options.filesystem};
 				}
 
-				const platformInstance = await platform.createPlatform(platformName, platformConfig);
+				const platformInstance = await platform.createPlatform(
+					platformName,
+					platformConfig,
+				);
 
 				console.info(`[CLI] ▶️  Activating ServiceWorker...`);
 
 				// Load ServiceWorker app
-				const serviceWorker = await platformInstance.loadServiceWorker(entrypoint, {
-					hotReload: false,
-					workerCount,
-				});
+				const serviceWorker = await platformInstance.loadServiceWorker(
+					entrypoint,
+					{
+						hotReload: false,
+						workerCount,
+					},
+				);
 
 				// The ServiceWorker install/activate lifecycle will handle any self-generation
 				// Apps can use self.dirs.open("static") in their activate event to pre-render
-				console.info(`[CLI] ✅ ServiceWorker activated - check dist/ for generated content`);
+				console.info(
+					`[CLI] ✅ ServiceWorker activated - check dist/ for generated content`,
+				);
 
 				await serviceWorker.dispose();
 				await platformInstance.dispose();
 			} catch (error) {
-				console.error(`[CLI] ❌ ServiceWorker activation failed:`, error.message);
+				console.error(
+					`[CLI] ❌ ServiceWorker activation failed:`,
+					error.message,
+				);
 				if (options.verbose) {
 					console.error(error.stack);
 				}

@@ -14,7 +14,6 @@ export class CustomCacheStorage {
 
 	constructor(private factory: CacheFactory) {}
 
-
 	/**
 	 * Opens a cache with the given name
 	 * Returns existing instance if already opened, otherwise creates a new one
@@ -67,5 +66,4 @@ export class CustomCacheStorage {
 			cacheNames: Array.from(this.instances.keys()),
 		};
 	}
-
 }

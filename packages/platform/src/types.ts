@@ -209,7 +209,7 @@ export interface Server {
 	/** Stop the server */
 	close(): Promise<void>;
 	/** Get server address information */
-	address(): { port: number; host: string };
+	address(): {port: number; host: string};
 	/** Get server URL */
 	readonly url: string;
 	/** Whether server is ready to accept requests */
@@ -231,9 +231,7 @@ export interface Platform {
 	 * THE MAIN JOB - Create a ServiceWorkerContainer for managing multiple registrations
 	 * This is the new registry-based approach aligned with ServiceWorker spec
 	 */
-	createServiceWorkerContainer(
-		options?: ServiceWorkerOptions,
-	): Promise<any>; // ServiceWorkerContainer from service-worker-api.ts
+	createServiceWorkerContainer(options?: ServiceWorkerOptions): Promise<any>; // ServiceWorkerContainer from service-worker-api.ts
 
 	/**
 	 * Load and run a ServiceWorker-style entrypoint (legacy method)

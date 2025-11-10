@@ -204,443 +204,461 @@ Access-Control-Allow-Headers: *</code></pre>
 </html>`;
 
 function getRequestInfo(req: Request): any {
-  const url = new URL(req.url);
-  const headers: Record<string, string> = {};
+	const url = new URL(req.url);
+	const headers: Record<string, string> = {};
 
-  req.headers.forEach((value, key) => {
-    headers[key] = value;
-  });
+	req.headers.forEach((value, key) => {
+		headers[key] = value;
+	});
 
-  // Extract IP from various proxy headers
-  const ip =
-    req.headers.get("cf-connecting-ip") ||
-    req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
-    req.headers.get("x-real-ip") ||
-    "unknown";
+	// Extract IP from various proxy headers
+	const ip =
+		req.headers.get("cf-connecting-ip") ||
+		req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+		req.headers.get("x-real-ip") ||
+		"unknown";
 
-  return {
-    method: req.method,
-    path: url.pathname,
-    query: Object.fromEntries(url.searchParams),
-    headers,
-    ip,
-    userAgent: req.headers.get("user-agent") || "unknown",
-    timestamp: new Date().toISOString(),
-    protocol: url.protocol.replace(":", ""),
-    host: req.headers.get("host") || "unknown",
-  };
+	return {
+		method: req.method,
+		path: url.pathname,
+		query: Object.fromEntries(url.searchParams),
+		headers,
+		ip,
+		userAgent: req.headers.get("user-agent") || "unknown",
+		timestamp: new Date().toISOString(),
+		protocol: url.protocol.replace(":", ""),
+		host: req.headers.get("host") || "unknown",
+	};
 }
 
 async function parseBody(req: Request): Promise<any> {
-  if (req.method === "GET" || req.method === "HEAD") {
-    return null;
-  }
+	if (req.method === "GET" || req.method === "HEAD") {
+		return null;
+	}
 
-  const contentType = req.headers.get("content-type");
+	const contentType = req.headers.get("content-type");
 
-  try {
-    if (contentType?.includes("application/json")) {
-      return await req.json();
-    } else if (contentType?.includes("application/x-www-form-urlencoded")) {
-      const formData = await req.formData();
-      return Object.fromEntries(formData);
-    } else if (contentType?.includes("multipart/form-data")) {
-      const formData = await req.formData();
-      return Object.fromEntries(formData);
-    } else {
-      return await req.text();
-    }
-  } catch (e) {
-    return null;
-  }
+	try {
+		if (contentType?.includes("application/json")) {
+			return await req.json();
+		} else if (contentType?.includes("application/x-www-form-urlencoded")) {
+			const formData = await req.formData();
+			return Object.fromEntries(formData);
+		} else if (contentType?.includes("multipart/form-data")) {
+			const formData = await req.formData();
+			return Object.fromEntries(formData);
+		} else {
+			return await req.text();
+		}
+	} catch (e) {
+		return null;
+	}
 }
 
-function parseCorsHeader(corsHeader: string | null): Record<string, string> | null {
-  if (!corsHeader) {
-    return {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD",
-      "Access-Control-Allow-Headers": "*",
-    };
-  }
+function parseCorsHeader(
+	corsHeader: string | null,
+): Record<string, string> | null {
+	if (!corsHeader) {
+		return {
+			"Access-Control-Allow-Origin": "*",
+			"Access-Control-Allow-Methods":
+				"GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD",
+			"Access-Control-Allow-Headers": "*",
+		};
+	}
 
-  // Check for block first
-  if (corsHeader === "block") {
-    return null; // No CORS headers
-  }
+	// Check for block first
+	if (corsHeader === "block") {
+		return null; // No CORS headers
+	}
 
-  let headers: Record<string, string> = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD",
-    "Access-Control-Allow-Headers": "*",
-  };
+	let headers: Record<string, string> = {
+		"Access-Control-Allow-Origin": "*",
+		"Access-Control-Allow-Methods":
+			"GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD",
+		"Access-Control-Allow-Headers": "*",
+	};
 
-  // Handle each parameter type separately to avoid comma conflicts
-  if (corsHeader.includes("origin:")) {
-    const match = corsHeader.match(/origin:([^,]+)/);
-    if (match) {
-      headers["Access-Control-Allow-Origin"] = match[1].trim();
-    }
-  }
+	// Handle each parameter type separately to avoid comma conflicts
+	if (corsHeader.includes("origin:")) {
+		const match = corsHeader.match(/origin:([^,]+)/);
+		if (match) {
+			headers["Access-Control-Allow-Origin"] = match[1].trim();
+		}
+	}
 
-  if (corsHeader.includes("methods:")) {
-    const match = corsHeader.match(/methods:([^,]+(?:,[^:]+)*)/);
-    if (match) {
-      headers["Access-Control-Allow-Methods"] = match[1].trim();
-    }
-  }
+	if (corsHeader.includes("methods:")) {
+		const match = corsHeader.match(/methods:([^,]+(?:,[^:]+)*)/);
+		if (match) {
+			headers["Access-Control-Allow-Methods"] = match[1].trim();
+		}
+	}
 
-  if (corsHeader.includes("headers:")) {
-    const match = corsHeader.match(/headers:([^,]+(?:,[^:]+)*)/);
-    if (match) {
-      headers["Access-Control-Allow-Headers"] = match[1].trim();
-    }
-  }
+	if (corsHeader.includes("headers:")) {
+		const match = corsHeader.match(/headers:([^,]+(?:,[^:]+)*)/);
+		if (match) {
+			headers["Access-Control-Allow-Headers"] = match[1].trim();
+		}
+	}
 
-  if (corsHeader.includes("credentials:")) {
-    const match = corsHeader.match(/credentials:([^,]+)/);
-    if (match) {
-      headers["Access-Control-Allow-Credentials"] = match[1].trim();
-    }
-  }
+	if (corsHeader.includes("credentials:")) {
+		const match = corsHeader.match(/credentials:([^,]+)/);
+		if (match) {
+			headers["Access-Control-Allow-Credentials"] = match[1].trim();
+		}
+	}
 
-  return headers;
+	return headers;
 }
 
 function corsHeaders(): Record<string, string> {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD",
-    "Access-Control-Allow-Headers": "*",
-  };
+	return {
+		"Access-Control-Allow-Origin": "*",
+		"Access-Control-Allow-Methods":
+			"GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD",
+		"Access-Control-Allow-Headers": "*",
+	};
 }
 
-function handleAuthSimulation(req: Request, authHeader: string): { status: number; body: string } | null {
-  const authParams = authHeader.split(",").map(p => p.trim());
+function handleAuthSimulation(
+	req: Request,
+	authHeader: string,
+): {status: number; body: string} | null {
+	const authParams = authHeader.split(",").map((p) => p.trim());
 
-  for (const param of authParams) {
-    if (param === "unauthorized" || param === "401") {
-      return {
-        status: 401,
-        body: JSON.stringify({
-          error: "Unauthorized",
-          message: "Authentication required",
-          authType: "simulation"
-        }),
-      };
-    }
+	for (const param of authParams) {
+		if (param === "unauthorized" || param === "401") {
+			return {
+				status: 401,
+				body: JSON.stringify({
+					error: "Unauthorized",
+					message: "Authentication required",
+					authType: "simulation",
+				}),
+			};
+		}
 
-    if (param === "forbidden" || param === "403") {
-      return {
-        status: 403,
-        body: JSON.stringify({
-          error: "Forbidden",
-          message: "Access denied",
-          authType: "simulation"
-        }),
-      };
-    }
+		if (param === "forbidden" || param === "403") {
+			return {
+				status: 403,
+				body: JSON.stringify({
+					error: "Forbidden",
+					message: "Access denied",
+					authType: "simulation",
+				}),
+			};
+		}
 
-    if (param === "expired") {
-      return {
-        status: 401,
-        body: JSON.stringify({
-          error: "Token Expired",
-          message: "Your authentication token has expired",
-          authType: "simulation"
-        }),
-      };
-    }
+		if (param === "expired") {
+			return {
+				status: 401,
+				body: JSON.stringify({
+					error: "Token Expired",
+					message: "Your authentication token has expired",
+					authType: "simulation",
+				}),
+			};
+		}
 
-    if (param.startsWith("bearer:")) {
-      const expectedToken = param.split(":")[1];
-      const authHeader = req.headers.get("authorization");
-      const providedToken = authHeader?.replace("Bearer ", "");
+		if (param.startsWith("bearer:")) {
+			const expectedToken = param.split(":")[1];
+			const authHeader = req.headers.get("authorization");
+			const providedToken = authHeader?.replace("Bearer ", "");
 
-      if (providedToken !== expectedToken) {
-        return {
-          status: 401,
-          body: JSON.stringify({
-            error: "Invalid Bearer Token",
-            message: `Expected token: ${expectedToken}`,
-            provided: providedToken || "none",
-            authType: "bearer"
-          }),
-        };
-      }
-    }
+			if (providedToken !== expectedToken) {
+				return {
+					status: 401,
+					body: JSON.stringify({
+						error: "Invalid Bearer Token",
+						message: `Expected token: ${expectedToken}`,
+						provided: providedToken || "none",
+						authType: "bearer",
+					}),
+				};
+			}
+		}
 
-    if (param.startsWith("basic:")) {
-      const [, expectedUser, expectedPass] = param.split(":");
-      const authHeader = req.headers.get("authorization");
+		if (param.startsWith("basic:")) {
+			const [, expectedUser, expectedPass] = param.split(":");
+			const authHeader = req.headers.get("authorization");
 
-      if (!authHeader?.startsWith("Basic ")) {
-        return {
-          status: 401,
-          body: JSON.stringify({
-            error: "Basic Authentication Required",
-            message: `Expected user:${expectedUser} pass:${expectedPass}`,
-            authType: "basic"
-          }),
-        };
-      }
+			if (!authHeader?.startsWith("Basic ")) {
+				return {
+					status: 401,
+					body: JSON.stringify({
+						error: "Basic Authentication Required",
+						message: `Expected user:${expectedUser} pass:${expectedPass}`,
+						authType: "basic",
+					}),
+				};
+			}
 
-      const base64Creds = authHeader.replace("Basic ", "");
-      const [providedUser, providedPass] = atob(base64Creds).split(":");
+			const base64Creds = authHeader.replace("Basic ", "");
+			const [providedUser, providedPass] = atob(base64Creds).split(":");
 
-      if (providedUser !== expectedUser || providedPass !== expectedPass) {
-        return {
-          status: 401,
-          body: JSON.stringify({
-            error: "Invalid Credentials",
-            message: `Expected user:${expectedUser} pass:${expectedPass}`,
-            provided: `user:${providedUser} pass:${providedPass}`,
-            authType: "basic"
-          }),
-        };
-      }
-    }
+			if (providedUser !== expectedUser || providedPass !== expectedPass) {
+				return {
+					status: 401,
+					body: JSON.stringify({
+						error: "Invalid Credentials",
+						message: `Expected user:${expectedUser} pass:${expectedPass}`,
+						provided: `user:${providedUser} pass:${providedPass}`,
+						authType: "basic",
+					}),
+				};
+			}
+		}
 
-    if (param.startsWith("cookie:")) {
-      const expectedValue = param.split(":")[1];
-      const cookieHeader = req.headers.get("cookie");
+		if (param.startsWith("cookie:")) {
+			const expectedValue = param.split(":")[1];
+			const cookieHeader = req.headers.get("cookie");
 
-      if (!cookieHeader?.includes(`session=${expectedValue}`)) {
-        return {
-          status: 401,
-          body: JSON.stringify({
-            error: "Invalid Session Cookie",
-            message: `Expected session=${expectedValue}`,
-            provided: cookieHeader || "none",
-            authType: "cookie"
-          }),
-        };
-      }
-    }
+			if (!cookieHeader?.includes(`session=${expectedValue}`)) {
+				return {
+					status: 401,
+					body: JSON.stringify({
+						error: "Invalid Session Cookie",
+						message: `Expected session=${expectedValue}`,
+						provided: cookieHeader || "none",
+						authType: "cookie",
+					}),
+				};
+			}
+		}
 
-    if (param === "csrf") {
-      const csrfToken = req.headers.get("x-csrf-token");
+		if (param === "csrf") {
+			const csrfToken = req.headers.get("x-csrf-token");
 
-      if (!csrfToken) {
-        return {
-          status: 403,
-          body: JSON.stringify({
-            error: "CSRF Token Required",
-            message: "Missing X-CSRF-Token header",
-            authType: "csrf"
-          }),
-        };
-      }
-    }
-  }
+			if (!csrfToken) {
+				return {
+					status: 403,
+					body: JSON.stringify({
+						error: "CSRF Token Required",
+						message: "Missing X-CSRF-Token header",
+						authType: "csrf",
+					}),
+				};
+			}
+		}
+	}
 
-  return null; // Authentication passed
+	return null; // Authentication passed
 }
 
-function handleRedirectSimulation(redirectHeader: string): { status: number; location: string } | null {
-  if (redirectHeader === "loop") {
-    return {
-      status: 302,
-      location: "/echo", // Redirect to itself to create a loop
-    };
-  }
+function handleRedirectSimulation(
+	redirectHeader: string,
+): {status: number; location: string} | null {
+	if (redirectHeader === "loop") {
+		return {
+			status: 302,
+			location: "/echo", // Redirect to itself to create a loop
+		};
+	}
 
-  if (redirectHeader.includes(":")) {
-    const colonIndex = redirectHeader.indexOf(":");
-    const statusStr = redirectHeader.substring(0, colonIndex);
-    const location = redirectHeader.substring(colonIndex + 1);
-    const status = parseInt(statusStr);
+	if (redirectHeader.includes(":")) {
+		const colonIndex = redirectHeader.indexOf(":");
+		const statusStr = redirectHeader.substring(0, colonIndex);
+		const location = redirectHeader.substring(colonIndex + 1);
+		const status = parseInt(statusStr);
 
-    if ((status === 301 || status === 302 || status === 303 || status === 307 || status === 308) && location) {
-      return {
-        status,
-        location: location.trim(),
-      };
-    }
-  }
+		if (
+			(status === 301 ||
+				status === 302 ||
+				status === 303 ||
+				status === 307 ||
+				status === 308) &&
+			location
+		) {
+			return {
+				status,
+				location: location.trim(),
+			};
+		}
+	}
 
-  return null;
+	return null;
 }
 
-function handleCacheSimulation(cacheHeader: string | null): Record<string, string> {
-  if (!cacheHeader) return {};
+function handleCacheSimulation(
+	cacheHeader: string | null,
+): Record<string, string> {
+	if (!cacheHeader) return {};
 
-  const cacheParams = cacheHeader.split(",").map(p => p.trim());
-  const headers: Record<string, string> = {};
+	const cacheParams = cacheHeader.split(",").map((p) => p.trim());
+	const headers: Record<string, string> = {};
 
-  for (const param of cacheParams) {
-    if (param === "no-cache") {
-      headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
-      headers["Pragma"] = "no-cache";
-      headers["Expires"] = "0";
-    } else if (param.startsWith("max-age:")) {
-      const maxAge = param.split(":")[1];
-      headers["Cache-Control"] = `max-age=${maxAge}`;
-    } else if (param.startsWith("etag:")) {
-      const etag = param.split(":")[1];
-      headers["ETag"] = `"${etag}"`;
-    }
-  }
+	for (const param of cacheParams) {
+		if (param === "no-cache") {
+			headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+			headers["Pragma"] = "no-cache";
+			headers["Expires"] = "0";
+		} else if (param.startsWith("max-age:")) {
+			const maxAge = param.split(":")[1];
+			headers["Cache-Control"] = `max-age=${maxAge}`;
+		} else if (param.startsWith("etag:")) {
+			const etag = param.split(":")[1];
+			headers["ETag"] = `"${etag}"`;
+		}
+	}
 
-  return headers;
+	return headers;
 }
-
 
 async function handleApiRequest(req: Request): Promise<Response> {
-  const corsHeader = req.headers.get("x-reqback-cors");
+	const corsHeader = req.headers.get("x-reqback-cors");
 
-  // Handle preflight
-  if (req.method === "OPTIONS") {
-    const corsHeadersToUse = parseCorsHeader(corsHeader);
+	// Handle preflight
+	if (req.method === "OPTIONS") {
+		const corsHeadersToUse = parseCorsHeader(corsHeader);
 
-    if (!corsHeadersToUse) {
-      // CORS blocked - no headers
-      return new Response(null, { status: 204 });
-    }
+		if (!corsHeadersToUse) {
+			// CORS blocked - no headers
+			return new Response(null, {status: 204});
+		}
 
-    return new Response(null, {
-      status: 204,
-      headers: corsHeadersToUse,
-    });
-  }
+		return new Response(null, {
+			status: 204,
+			headers: corsHeadersToUse,
+		});
+	}
 
-  // Check for auth simulation first
-  const authHeader = req.headers.get("x-reqback-auth");
-  if (authHeader) {
-    const authResponse = handleAuthSimulation(req, authHeader);
-    if (authResponse) {
-      const corsHeadersToUse = parseCorsHeader(corsHeader);
-      return new Response(authResponse.body, {
-        status: authResponse.status,
-        headers: {
-          "Content-Type": "application/json",
-          ...(corsHeadersToUse || {}),
-        },
-      });
-    }
-  }
+	// Check for auth simulation first
+	const authHeader = req.headers.get("x-reqback-auth");
+	if (authHeader) {
+		const authResponse = handleAuthSimulation(req, authHeader);
+		if (authResponse) {
+			const corsHeadersToUse = parseCorsHeader(corsHeader);
+			return new Response(authResponse.body, {
+				status: authResponse.status,
+				headers: {
+					"Content-Type": "application/json",
+					...(corsHeadersToUse || {}),
+				},
+			});
+		}
+	}
 
-  // Check for redirect simulation
-  const redirectHeader = req.headers.get("x-reqback-redirect");
-  if (redirectHeader) {
-    const redirectResponse = handleRedirectSimulation(redirectHeader);
-    if (redirectResponse) {
-      const corsHeadersToUse = parseCorsHeader(corsHeader);
-      return new Response(null, {
-        status: redirectResponse.status,
-        headers: {
-          "Location": redirectResponse.location,
-          ...(corsHeadersToUse || {}),
-        },
-      });
-    }
-  }
+	// Check for redirect simulation
+	const redirectHeader = req.headers.get("x-reqback-redirect");
+	if (redirectHeader) {
+		const redirectResponse = handleRedirectSimulation(redirectHeader);
+		if (redirectResponse) {
+			const corsHeadersToUse = parseCorsHeader(corsHeader);
+			return new Response(null, {
+				status: redirectResponse.status,
+				headers: {
+					Location: redirectResponse.location,
+					...(corsHeadersToUse || {}),
+				},
+			});
+		}
+	}
 
-  // Get request info
-  const info = getRequestInfo(req);
-  const body = await parseBody(req);
+	// Get request info
+	const info = getRequestInfo(req);
+	const body = await parseBody(req);
 
-  // Check for control headers
-  const delayHeader = req.headers.get("x-reqback-delay");
-  const statusHeader = req.headers.get("x-reqback-status");
+	// Check for control headers
+	const delayHeader = req.headers.get("x-reqback-delay");
+	const statusHeader = req.headers.get("x-reqback-status");
 
-  let delay = 0;
-  let statusCode = 200;
+	let delay = 0;
+	let statusCode = 200;
 
-  // Parse delay
-  if (delayHeader) {
-    const parsedDelay = parseInt(delayHeader);
-    if (isNaN(parsedDelay) || parsedDelay < 1 || parsedDelay > 10) {
-      return Response.json(
-        { error: "X-Reqback-Delay must be between 1 and 10" },
-        { status: 400, headers: corsHeaders() }
-      );
-    }
-    delay = parsedDelay;
-  }
+	// Parse delay
+	if (delayHeader) {
+		const parsedDelay = parseInt(delayHeader);
+		if (isNaN(parsedDelay) || parsedDelay < 1 || parsedDelay > 10) {
+			return Response.json(
+				{error: "X-Reqback-Delay must be between 1 and 10"},
+				{status: 400, headers: corsHeaders()},
+			);
+		}
+		delay = parsedDelay;
+	}
 
-  // Parse status code
-  if (statusHeader) {
-    const parsedStatus = parseInt(statusHeader);
-    if (isNaN(parsedStatus) || parsedStatus < 100 || parsedStatus > 599) {
-      return Response.json(
-        { error: "X-Reqback-Status must be between 100 and 599" },
-        { status: 400, headers: corsHeaders() }
-      );
-    }
-    statusCode = parsedStatus;
-  }
+	// Parse status code
+	if (statusHeader) {
+		const parsedStatus = parseInt(statusHeader);
+		if (isNaN(parsedStatus) || parsedStatus < 100 || parsedStatus > 599) {
+			return Response.json(
+				{error: "X-Reqback-Status must be between 100 and 599"},
+				{status: 400, headers: corsHeaders()},
+			);
+		}
+		statusCode = parsedStatus;
+	}
 
-  // Apply delay if requested
-  if (delay > 0) {
-    await new Promise(resolve => setTimeout(resolve, delay * 1000));
-  }
+	// Apply delay if requested
+	if (delay > 0) {
+		await new Promise((resolve) => setTimeout(resolve, delay * 1000));
+	}
 
-  // Build response
-  const response: any = {
-    ...info,
-    body,
-    contentType: req.headers.get("content-type") || null,
-  };
+	// Build response
+	const response: any = {
+		...info,
+		body,
+		contentType: req.headers.get("content-type") || null,
+	};
 
-  // Add metadata about control headers if used
-  if (delay > 0) {
-    response.delayed = `${delay} seconds`;
-  }
-  if (statusCode !== 200) {
-    response.requestedStatus = statusCode;
-  }
+	// Add metadata about control headers if used
+	if (delay > 0) {
+		response.delayed = `${delay} seconds`;
+	}
+	if (statusCode !== 200) {
+		response.requestedStatus = statusCode;
+	}
 
-  const corsHeadersToUse = parseCorsHeader(corsHeader);
-  const cacheHeader = req.headers.get("x-reqback-cache");
-  const cacheHeaders = handleCacheSimulation(cacheHeader);
-  const contentTypeHeader = req.headers.get("x-reqback-content-type");
+	const corsHeadersToUse = parseCorsHeader(corsHeader);
+	const cacheHeader = req.headers.get("x-reqback-cache");
+	const cacheHeaders = handleCacheSimulation(cacheHeader);
+	const contentTypeHeader = req.headers.get("x-reqback-content-type");
 
-  const responseHeaders = {
-    ...(corsHeadersToUse || {}),
-    ...cacheHeaders,
-  };
+	const responseHeaders = {
+		...(corsHeadersToUse || {}),
+		...cacheHeaders,
+	};
 
-  // Override content type if specified
-  if (contentTypeHeader) {
-    responseHeaders["Content-Type"] = contentTypeHeader;
-  } else {
-    responseHeaders["Content-Type"] = "application/json";
-  }
+	// Override content type if specified
+	if (contentTypeHeader) {
+		responseHeaders["Content-Type"] = contentTypeHeader;
+	} else {
+		responseHeaders["Content-Type"] = "application/json";
+	}
 
-  return Response.json(response, {
-    status: statusCode,
-    headers: responseHeaders,
-  });
+	return Response.json(response, {
+		status: statusCode,
+		headers: responseHeaders,
+	});
 }
 
 async function handleRequest(req: Request): Promise<Response> {
-  const url = new URL(req.url);
+	const url = new URL(req.url);
 
-  // Homepage
-  if (url.pathname === "/" || url.pathname === "") {
-    return new Response(HOMEPAGE_HTML, {
-      headers: { "Content-Type": "text/html" },
-    });
-  }
+	// Homepage
+	if (url.pathname === "/" || url.pathname === "") {
+		return new Response(HOMEPAGE_HTML, {
+			headers: {"Content-Type": "text/html"},
+		});
+	}
 
-  // API endpoint
-  if (url.pathname === "/echo" || url.pathname === "/echo/") {
-    return handleApiRequest(req);
-  }
+	// API endpoint
+	if (url.pathname === "/echo" || url.pathname === "/echo/") {
+		return handleApiRequest(req);
+	}
 
-  // 404
-  return Response.json(
-    {
-      error: "Not found",
-      path: url.pathname,
-      suggestion: "Try /echo or see / for documentation",
-    },
-    {
-      status: 404,
-      headers: corsHeaders(),
-    }
-  );
+	// 404
+	return Response.json(
+		{
+			error: "Not found",
+			path: url.pathname,
+			suggestion: "Try /echo or see / for documentation",
+		},
+		{
+			status: 404,
+			headers: corsHeaders(),
+		},
+	);
 }
 
 // Export handler and helper functions for Shovel integration
@@ -652,5 +670,5 @@ export {
 	handleAuthSimulation,
 	handleRedirectSimulation,
 	handleCacheSimulation,
-	HOMEPAGE_HTML
+	HOMEPAGE_HTML,
 };

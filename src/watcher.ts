@@ -44,16 +44,20 @@ export class Watcher {
 		const watchDir = dirname(entryPath);
 		console.info(`[Watcher] Watching ${watchDir} for changes...`);
 
-		this.watcher = watch(watchDir, {recursive: true}, (_eventType, filename) => {
-			if (
-				filename &&
-				(filename.endsWith(".js") ||
-					filename.endsWith(".ts") ||
-					filename.endsWith(".tsx"))
-			) {
-				this.debouncedBuild();
-			}
-		});
+		this.watcher = watch(
+			watchDir,
+			{recursive: true},
+			(_eventType, filename) => {
+				if (
+					filename &&
+					(filename.endsWith(".js") ||
+						filename.endsWith(".ts") ||
+						filename.endsWith(".tsx"))
+				) {
+					this.debouncedBuild();
+				}
+			},
+		);
 	}
 
 	/**

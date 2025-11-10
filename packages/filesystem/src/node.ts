@@ -1,11 +1,15 @@
 /**
  * Node.js filesystem implementation
- * 
+ *
  * Provides NodeBucket (root) and NodeFileSystemBackend for storage operations
  * using Node.js fs module.
  */
 
-import { FileSystemBackend, ShovelDirectoryHandle, ShovelFileHandle } from "./index.js";
+import {
+	FileSystemBackend,
+	ShovelDirectoryHandle,
+	ShovelFileHandle,
+} from "./index.js";
 import * as fs from "fs/promises";
 import * as path from "path";
 
@@ -15,15 +19,15 @@ import * as path from "path";
 export class NodeFileSystemBackend implements FileSystemBackend {
 	constructor(private rootPath: string) {}
 
-	async stat(filePath: string): Promise<{kind: 'file' | 'directory'} | null> {
+	async stat(filePath: string): Promise<{kind: "file" | "directory"} | null> {
 		try {
 			const fullPath = this.resolvePath(filePath);
 			const stats = await fs.stat(fullPath);
-			
+
 			if (stats.isFile()) {
-				return { kind: 'file' };
+				return {kind: "file"};
 			} else if (stats.isDirectory()) {
-				return { kind: 'directory' };
+				return {kind: "directory"};
 			} else {
 				return null;
 			}
@@ -52,28 +56,33 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 		try {
 			const fullPath = this.resolvePath(filePath);
 			// Ensure parent directory exists
-			await fs.mkdir(path.dirname(fullPath), { recursive: true });
+			await fs.mkdir(path.dirname(fullPath), {recursive: true});
 			await fs.writeFile(fullPath, data);
 		} catch (error) {
-			throw new DOMException(`Failed to write file: ${error}`, "InvalidModificationError");
+			throw new DOMException(
+				`Failed to write file: ${error}`,
+				"InvalidModificationError",
+			);
 		}
 	}
 
-	async listDir(dirPath: string): Promise<Array<{name: string, kind: 'file' | 'directory'}>> {
+	async listDir(
+		dirPath: string,
+	): Promise<Array<{name: string; kind: "file" | "directory"}>> {
 		try {
 			const fullPath = this.resolvePath(dirPath);
-			const entries = await fs.readdir(fullPath, { withFileTypes: true });
-			
-			const results: Array<{name: string, kind: 'file' | 'directory'}> = [];
-			
+			const entries = await fs.readdir(fullPath, {withFileTypes: true});
+
+			const results: Array<{name: string; kind: "file" | "directory"}> = [];
+
 			for (const entry of entries) {
 				if (entry.isFile()) {
-					results.push({ name: entry.name, kind: 'file' });
+					results.push({name: entry.name, kind: "file"});
 				} else if (entry.isDirectory()) {
-					results.push({ name: entry.name, kind: 'directory' });
+					results.push({name: entry.name, kind: "directory"});
 				}
 			}
-			
+
 			return results;
 		} catch (error) {
 			if ((error as any).code === "ENOENT") {
@@ -86,9 +95,12 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 	async createDir(dirPath: string): Promise<void> {
 		try {
 			const fullPath = this.resolvePath(dirPath);
-			await fs.mkdir(fullPath, { recursive: true });
+			await fs.mkdir(fullPath, {recursive: true});
 		} catch (error) {
-			throw new DOMException(`Failed to create directory: ${error}`, "InvalidModificationError");
+			throw new DOMException(
+				`Failed to create directory: ${error}`,
+				"InvalidModificationError",
+			);
 		}
 	}
 
@@ -96,12 +108,12 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 		try {
 			const fullPath = this.resolvePath(entryPath);
 			const stats = await fs.stat(fullPath);
-			
+
 			if (stats.isFile()) {
 				await fs.unlink(fullPath);
 			} else if (stats.isDirectory()) {
 				if (recursive) {
-					await fs.rm(fullPath, { recursive: true, force: true });
+					await fs.rm(fullPath, {recursive: true, force: true});
 				} else {
 					// Check if directory is empty
 					const entries = await fs.readdir(fullPath);
@@ -124,24 +136,32 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 
 	private resolvePath(relativePath: string): string {
 		// Remove leading slash for path.join
-		const cleanPath = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
-		
+		const cleanPath = relativePath.startsWith("/")
+			? relativePath.slice(1)
+			: relativePath;
+
 		if (!cleanPath) {
 			return this.rootPath;
 		}
-		
+
 		// Defense in depth: validate path components
-		if (cleanPath.includes('..') || cleanPath.includes('\0')) {
-			throw new DOMException("Invalid path: contains path traversal or null bytes", "NotAllowedError");
+		if (cleanPath.includes("..") || cleanPath.includes("\0")) {
+			throw new DOMException(
+				"Invalid path: contains path traversal or null bytes",
+				"NotAllowedError",
+			);
 		}
-		
+
 		const resolvedPath = path.resolve(this.rootPath, cleanPath);
-		
+
 		// Ensure the resolved path is still within our root directory
 		if (!resolvedPath.startsWith(path.resolve(this.rootPath))) {
-			throw new DOMException("Invalid path: outside of root directory", "NotAllowedError");
+			throw new DOMException(
+				"Invalid path: outside of root directory",
+				"NotAllowedError",
+			);
 		}
-		
+
 		return resolvedPath;
 	}
 }
@@ -156,7 +176,7 @@ export class NodeBucket implements FileSystemDirectoryHandle {
 	private backend: NodeFileSystemBackend;
 
 	constructor(rootPath: string) {
-		this.name = path.basename(rootPath) || 'root';
+		this.name = path.basename(rootPath) || "root";
 		this.backend = new NodeFileSystemBackend(rootPath);
 	}
 
@@ -171,7 +191,7 @@ export class NodeBucket implements FileSystemDirectoryHandle {
 			await this.backend.writeFile(filePath, new Uint8Array(0));
 		} else if (!stat) {
 			throw new DOMException("File not found", "NotFoundError");
-		} else if (stat.kind !== 'file') {
+		} else if (stat.kind !== "file") {
 			throw new DOMException(
 				"Path exists but is not a file",
 				"TypeMismatchError",
@@ -192,7 +212,7 @@ export class NodeBucket implements FileSystemDirectoryHandle {
 			await this.backend.createDir(dirPath);
 		} else if (!stat) {
 			throw new DOMException("Directory not found", "NotFoundError");
-		} else if (stat.kind !== 'directory') {
+		} else if (stat.kind !== "directory") {
 			throw new DOMException(
 				"Path exists but is not a directory",
 				"TypeMismatchError",
@@ -213,25 +233,30 @@ export class NodeBucket implements FileSystemDirectoryHandle {
 	async resolve(
 		possibleDescendant: FileSystemHandle,
 	): Promise<string[] | null> {
-		if (!(possibleDescendant instanceof ShovelDirectoryHandle || possibleDescendant instanceof ShovelFileHandle)) {
+		if (
+			!(
+				possibleDescendant instanceof ShovelDirectoryHandle ||
+				possibleDescendant instanceof ShovelFileHandle
+			)
+		) {
 			return null;
 		}
 
 		// For node bucket, check if the handle uses our backend
 		const descendantPath = (possibleDescendant as any).path;
-		if (typeof descendantPath === 'string' && descendantPath.startsWith('/')) {
-			return descendantPath.split('/').filter(Boolean);
+		if (typeof descendantPath === "string" && descendantPath.startsWith("/")) {
+			return descendantPath.split("/").filter(Boolean);
 		}
 
 		return null;
 	}
 
 	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
-		const entries = await this.backend.listDir('/');
-		
+		const entries = await this.backend.listDir("/");
+
 		for (const entry of entries) {
 			const entryPath = `/${entry.name}`;
-			if (entry.kind === 'file') {
+			if (entry.kind === "file") {
 				yield [entry.name, new ShovelFileHandle(this.backend, entryPath)];
 			} else {
 				yield [entry.name, new ShovelDirectoryHandle(this.backend, entryPath)];

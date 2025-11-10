@@ -1,8 +1,8 @@
 import * as FS from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
-import { test, expect } from "bun:test";
-import { buildForProduction } from "../src/commands/build.js";
+import {tmpdir} from "os";
+import {join} from "path";
+import {test, expect} from "bun:test";
+import {buildForProduction} from "../src/commands/build.js";
 
 /**
  * Build system tests - comprehensive validation of production builds
@@ -21,7 +21,7 @@ async function createTempFile(filename, content) {
 // Helper to create temporary directory
 async function createTempDir(prefix = "shovel-test-") {
 	const tempPath = join(tmpdir(), `${prefix}${Date.now()}`);
-	await FS.mkdir(tempPath, { recursive: true });
+	await FS.mkdir(tempPath, {recursive: true});
 	return tempPath;
 }
 
@@ -31,7 +31,7 @@ async function cleanup(paths) {
 		try {
 			const stat = await FS.stat(path);
 			if (stat.isDirectory()) {
-				await FS.rm(path, { recursive: true, force: true });
+				await FS.rm(path, {recursive: true, force: true});
 			} else {
 				await FS.unlink(path);
 			}
@@ -79,17 +79,24 @@ self.addEventListener("fetch", (event) => {
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			// Check output files exist in new structure
 			expect(await fileExists(join(outDir, "server", "app.js"))).toBe(true);
-			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(true);
-			expect(await fileExists(join(outDir, "server", "asset-manifest.json"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
+				true,
+			);
+			expect(
+				await fileExists(join(outDir, "server", "asset-manifest.json")),
+			).toBe(true);
 			expect(await fileExists(join(outDir, "assets"))).toBe(true);
 
 			// Check app.js has shebang and bootstrap
-			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
+			const appContent = await FS.readFile(
+				join(outDir, "server", "app.js"),
+				"utf8",
+			);
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
 			expect(appContent).toContain("ServiceWorkerRuntime");
 			expect(appContent).toContain("Hello from test ServiceWorker!");
@@ -97,7 +104,7 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
@@ -116,7 +123,10 @@ self.addEventListener("fetch", (event) => {
 });
 				`;
 
-				const entryPath = await createTempFile(`test-${platform}.js`, entryContent);
+				const entryPath = await createTempFile(
+					`test-${platform}.js`,
+					entryContent,
+				);
 				const outDir = await createTempDir(`build-${platform}-`);
 				cleanup_paths.push(entryPath, outDir);
 
@@ -124,11 +134,14 @@ self.addEventListener("fetch", (event) => {
 					entrypoint: entryPath,
 					outDir,
 					verbose: false,
-					platform
+					platform,
 				});
 
 				// Verify platform-specific output
-				const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
+				const appContent = await FS.readFile(
+					join(outDir, "server", "app.js"),
+					"utf8",
+				);
 				expect(appContent).toContain("ServiceWorkerRuntime");
 				expect(appContent).toContain(`Platform: ${platform}`);
 
@@ -144,7 +157,7 @@ self.addEventListener("fetch", (event) => {
 
 		await cleanup(cleanup_paths);
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -157,17 +170,19 @@ test(
 		const outDir = await createTempDir("error-test-");
 
 		try {
-			await expect(buildForProduction({
-				entrypoint: "/nonexistent/file.js",
-				outDir,
-				verbose: false,
-				platform: "node"
-			})).rejects.toThrow(/Entry point not found/);
+			await expect(
+				buildForProduction({
+					entrypoint: "/nonexistent/file.js",
+					outDir,
+					verbose: false,
+					platform: "node",
+				}),
+			).rejects.toThrow(/Entry point not found/);
 		} finally {
 			await cleanup([outDir]);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
@@ -176,41 +191,50 @@ test(
 		const cleanup_paths = [];
 
 		try {
-			const entryPath = await createTempFile("test-invalid.js", "console.log('test');");
+			const entryPath = await createTempFile(
+				"test-invalid.js",
+				"console.log('test');",
+			);
 			const outDir = await createTempDir("invalid-platform-");
 			cleanup_paths.push(entryPath, outDir);
 
-			await expect(buildForProduction({
-				entrypoint: entryPath,
-				outDir,
-				verbose: false,
-				platform: "invalidplatform"
-			})).rejects.toThrow(/Invalid platform/);
+			await expect(
+				buildForProduction({
+					entrypoint: entryPath,
+					outDir,
+					verbose: false,
+					platform: "invalidplatform",
+				}),
+			).rejects.toThrow(/Invalid platform/);
 		} finally {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
 	"build error - missing required parameters",
 	async () => {
 		// Test missing entrypoint
-		await expect(buildForProduction({
-			outDir: "/tmp",
-			verbose: false,
-			platform: "node"
-		})).rejects.toThrow(/Entry point is required/);
+		await expect(
+			buildForProduction({
+				outDir: "/tmp",
+				verbose: false,
+				platform: "node",
+			}),
+		).rejects.toThrow(/Entry point is required/);
 
 		// Test missing outDir
-		await expect(buildForProduction({
-			entrypoint: "/tmp/test.js",
-			verbose: false,
-			platform: "node"
-		})).rejects.toThrow(/Output directory is required/);
+		await expect(
+			buildForProduction({
+				entrypoint: "/tmp/test.js",
+				verbose: false,
+				platform: "node",
+			}),
+		).rejects.toThrow(/Output directory is required/);
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
@@ -229,7 +253,7 @@ test(
 				entrypoint: entryPath,
 				outDir,
 				verbose: true, // Enable verbose to see warning
-				platform: "node"
+				platform: "node",
 			});
 
 			// Build should complete but app.js should have bootstrap + empty content
@@ -238,7 +262,7 @@ test(
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -274,17 +298,24 @@ self.addEventListener("fetch", (event) => {
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			// Check required output structure
 			expect(await fileExists(join(outDir, "server", "app.js"))).toBe(true);
-			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(true);
-			expect(await fileExists(join(outDir, "server", "asset-manifest.json"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
+				true,
+			);
+			expect(
+				await fileExists(join(outDir, "server", "asset-manifest.json")),
+			).toBe(true);
 			expect(await fileExists(join(outDir, "assets"))).toBe(true);
 
 			// Validate app.js content
-			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
+			const appContent = await FS.readFile(
+				join(outDir, "server", "app.js"),
+				"utf8",
+			);
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
 			// With bundling, comments may be removed, so check for bundled code instead
 			expect(appContent).toContain("ServiceWorkerRuntime");
@@ -292,12 +323,18 @@ self.addEventListener("fetch", (event) => {
 			expect(appContent).toContain("createBucketStorage");
 
 			// Validate package.json is valid JSON
-			const packageContent = await FS.readFile(join(outDir, "server", "package.json"), "utf8");
+			const packageContent = await FS.readFile(
+				join(outDir, "server", "package.json"),
+				"utf8",
+			);
 			const packageJson = JSON.parse(packageContent);
 			expect(typeof packageJson).toBe("object");
 
 			// Validate assets manifest
-			const manifestContent = await FS.readFile(join(outDir, "server", "asset-manifest.json"), "utf8");
+			const manifestContent = await FS.readFile(
+				join(outDir, "server", "asset-manifest.json"),
+				"utf8",
+			);
 			const manifest = JSON.parse(manifestContent);
 			expect(typeof manifest).toBe("object");
 			expect(manifest).toHaveProperty("generated");
@@ -305,7 +342,7 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
@@ -314,11 +351,14 @@ test(
 		const cleanup_paths = [];
 
 		try {
-			const entryPath = await createTempFile("verbose-test.js", `
+			const entryPath = await createTempFile(
+				"verbose-test.js",
+				`
 self.addEventListener("fetch", (event) => {
 	event.respondWith(new Response("Verbose test"));
 });
-			`);
+			`,
+			);
 			const outDir = await createTempDir("verbose-test-");
 			cleanup_paths.push(entryPath, outDir);
 
@@ -332,7 +372,7 @@ self.addEventListener("fetch", (event) => {
 					entrypoint: entryPath,
 					outDir,
 					verbose: true,
-					platform: "node"
+					platform: "node",
 				});
 
 				// Check that verbose output includes expected information
@@ -351,7 +391,7 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -380,15 +420,18 @@ self.addEventListener("fetch", (event) => {
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
-			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
+			const appContent = await FS.readFile(
+				join(outDir, "server", "app.js"),
+				"utf8",
+			);
 
 			// In workspace context, @b9g/* imports in the generated template should be external
 			// Check that the template's platform imports are preserved (not bundled)
 			expect(appContent).toMatch(/from ['"]@b9g\/platform['"]/);
-			
+
 			// Verify the template code structure is present
 			expect(appContent).toContain("ServiceWorkerRuntime");
 			expect(appContent).toContain("createServiceWorkerGlobals");
@@ -396,7 +439,7 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -457,15 +500,18 @@ self.skipWaiting();
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
-			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
+			const appContent = await FS.readFile(
+				join(outDir, "server", "app.js"),
+				"utf8",
+			);
 
 			// Check that all ServiceWorker features are preserved
-			expect(appContent).toContain("addEventListener(\"install\"");
-			expect(appContent).toContain("addEventListener(\"activate\"");
-			expect(appContent).toContain("addEventListener(\"fetch\"");
+			expect(appContent).toContain('addEventListener("install"');
+			expect(appContent).toContain('addEventListener("activate"');
+			expect(appContent).toContain('addEventListener("fetch"');
 			expect(appContent).toContain("skipWaiting()");
 			expect(appContent).toContain("Response.json");
 
@@ -478,7 +524,7 @@ self.skipWaiting();
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 test(
@@ -488,12 +534,15 @@ test(
 
 		try {
 			// Generate a large ServiceWorker file
-			const routes = Array.from({ length: 100 }, (_, i) => `
+			const routes = Array.from(
+				{length: 100},
+				(_, i) => `
 	if (url.pathname === "/route${i}") {
 		event.respondWith(new Response("Route ${i} response"));
 		return;
 	}
-			`).join("");
+			`,
+			).join("");
 
 			const entryContent = `
 self.addEventListener("fetch", (event) => {
@@ -514,7 +563,7 @@ self.addEventListener("fetch", (event) => {
 				entrypoint: entryPath,
 				outDir,
 				verbose: false,
-				platform: "node"
+				platform: "node",
 			});
 
 			const buildTime = Date.now() - startTime;
@@ -523,14 +572,17 @@ self.addEventListener("fetch", (event) => {
 			expect(buildTime).toBeLessThan(10000);
 
 			// Output should exist and be reasonable size
-			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
+			const appContent = await FS.readFile(
+				join(outDir, "server", "app.js"),
+				"utf8",
+			);
 			expect(appContent.length).toBeGreaterThan(1000);
 			expect(appContent).toContain("Route 50 response"); // Spot check
 		} finally {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );
 
 // ======================
@@ -548,19 +600,22 @@ test(
 			const packageJsonPath = join(workspaceRoot, "package.json");
 			const packageJson = {
 				name: "test-workspace",
-				workspaces: ["packages/*"]
+				workspaces: ["packages/*"],
 			};
 			await FS.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
 
 			const packagesDir = join(workspaceRoot, "packages", "test-app");
-			await FS.mkdir(packagesDir, { recursive: true });
+			await FS.mkdir(packagesDir, {recursive: true});
 
 			const entryPath = join(packagesDir, "app.js");
-			await FS.writeFile(entryPath, `
+			await FS.writeFile(
+				entryPath,
+				`
 self.addEventListener("fetch", (event) => {
 	event.respondWith(new Response("Workspace test"));
 });
-			`);
+			`,
+			);
 
 			const outDir = join(workspaceRoot, "dist");
 			cleanup_paths.push(workspaceRoot);
@@ -574,7 +629,7 @@ self.addEventListener("fetch", (event) => {
 					entrypoint: entryPath,
 					outDir,
 					verbose: true,
-					platform: "node"
+					platform: "node",
 				});
 
 				// Should have found the workspace root and built successfully
@@ -586,5 +641,5 @@ self.addEventListener("fetch", (event) => {
 			await cleanup(cleanup_paths);
 		}
 	},
-	TIMEOUT
+	TIMEOUT,
 );

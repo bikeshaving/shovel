@@ -7,8 +7,9 @@ interface MessagePortLike {
 }
 
 // Use globalThis for platform detection instead of Node.js-specific imports
-const isMainThread = typeof self === 'undefined';
-const parentPort: MessagePortLike | null = typeof self !== 'undefined' ? self as any : null;
+const isMainThread = typeof self === "undefined";
+const parentPort: MessagePortLike | null =
+	typeof self !== "undefined" ? (self as any) : null;
 
 /**
  * Configuration options for PostMessageCache
@@ -38,9 +39,7 @@ export class PostMessageCache extends Cache {
 		super();
 
 		if (isMainThread) {
-			throw new Error(
-				"PostMessageCache should only be used in worker threads",
-			);
+			throw new Error("PostMessageCache should only be used in worker threads");
 		}
 
 		// Listen for responses from main thread
@@ -71,9 +70,7 @@ export class PostMessageCache extends Cache {
 
 	private async sendRequest(type: string, data: any): Promise<any> {
 		if (!parentPort) {
-			throw new Error(
-				"PostMessageCache can only be used in worker threads",
-			);
+			throw new Error("PostMessageCache can only be used in worker threads");
 		}
 
 		const requestId = ++this.requestId;
@@ -211,5 +208,4 @@ export class PostMessageCache extends Cache {
 	async clear(): Promise<void> {
 		await this.sendRequest("cache:clear", {});
 	}
-
 }

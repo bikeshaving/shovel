@@ -646,7 +646,10 @@ export class Router {
 				}
 			} else {
 				// Function middleware - execute and check for short-circuit
-				const result = await (middleware as FunctionMiddleware)(request, context);
+				const result = await (middleware as FunctionMiddleware)(
+					request,
+					context,
+				);
 				if (result) {
 					// Function middleware returned a Response - short-circuit
 					currentResponse = result;

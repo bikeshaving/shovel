@@ -77,7 +77,7 @@ export class S3FileSystemFileHandle implements FileSystemFileHandle {
 			});
 
 			const response = await this.s3Client.send(command);
-			
+
 			if (!response.Body) {
 				throw new DOMException("File not found", "NotFoundError");
 			}
@@ -85,9 +85,9 @@ export class S3FileSystemFileHandle implements FileSystemFileHandle {
 			// Convert stream to array buffer
 			const chunks: Uint8Array[] = [];
 			const reader = response.Body.getReader();
-			
+
 			while (true) {
-				const { done, value } = await reader.read();
+				const {done, value} = await reader.read();
 				if (done) break;
 				chunks.push(value);
 			}
@@ -105,7 +105,10 @@ export class S3FileSystemFileHandle implements FileSystemFileHandle {
 				type: response.ContentType || this.getMimeType(this.key),
 			});
 		} catch (error: any) {
-			if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
+			if (
+				error.name === "NoSuchKey" ||
+				error.$metadata?.httpStatusCode === 404
+			) {
 				throw new DOMException("File not found", "NotFoundError");
 			}
 			throw error;
@@ -142,7 +145,6 @@ export class S3FileSystemFileHandle implements FileSystemFileHandle {
 		// S3 access is controlled by credentials, assume granted if we have access
 		return "granted";
 	}
-
 
 	private getMimeType(key: string): string {
 		const ext = key.split(".").pop()?.toLowerCase();
@@ -206,7 +208,10 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 				});
 				await this.s3Client.send(command);
 			} catch (error: any) {
-				if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
+				if (
+					error.name === "NoSuchKey" ||
+					error.$metadata?.httpStatusCode === 404
+				) {
 					throw new DOMException("File not found", "NotFoundError");
 				}
 				throw error;
@@ -234,7 +239,11 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 			await this.s3Client.send(command);
 		}
 
-		return new S3FileSystemDirectoryHandle(this.s3Client, this.bucket, newPrefix);
+		return new S3FileSystemDirectoryHandle(
+			this.s3Client,
+			this.bucket,
+			newPrefix,
+		);
 	}
 
 	async removeEntry(
@@ -246,15 +255,17 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		if (options?.recursive) {
 			// Delete all objects with this prefix
 			const dirPrefix = `${key}/`;
-			const {ListObjectsV2Command, DeleteObjectCommand} = await import("@aws-sdk/client-s3");
-			
+			const {ListObjectsV2Command, DeleteObjectCommand} = await import(
+				"@aws-sdk/client-s3"
+			);
+
 			const listCommand = new ListObjectsV2Command({
 				Bucket: this.bucket,
 				Prefix: dirPrefix,
 			});
-			
+
 			const response = await this.s3Client.send(listCommand);
-			
+
 			if (response.Contents && response.Contents.length > 0) {
 				const deletePromises = response.Contents.map((object) => {
 					if (object.Key) {
@@ -265,7 +276,7 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 						return this.s3Client.send(deleteCommand);
 					}
 				}).filter(Boolean);
-				
+
 				await Promise.all(deletePromises);
 			}
 		}
@@ -279,7 +290,10 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 			});
 			await this.s3Client.send(command);
 		} catch (error: any) {
-			if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
+			if (
+				error.name === "NoSuchKey" ||
+				error.$metadata?.httpStatusCode === 404
+			) {
 				throw new DOMException("Entry not found", "NotFoundError");
 			}
 			throw error;
@@ -318,7 +332,11 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 						) {
 							yield [
 								name,
-								new S3FileSystemFileHandle(this.s3Client, this.bucket, object.Key),
+								new S3FileSystemFileHandle(
+									this.s3Client,
+									this.bucket,
+									object.Key,
+								),
 							];
 						}
 					}
@@ -329,9 +347,10 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 			if (response.CommonPrefixes) {
 				for (const prefix of response.CommonPrefixes) {
 					if (prefix.Prefix) {
-						const name = prefix.Prefix
-							.substring(listPrefix.length)
-							.replace(/\/$/, "");
+						const name = prefix.Prefix.substring(listPrefix.length).replace(
+							/\/$/,
+							"",
+						);
 						if (name) {
 							yield [
 								name,
@@ -378,7 +397,6 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		// S3 access is controlled by credentials, assume granted if we have access
 		return "granted";
 	}
-
 }
 
 /**
@@ -398,7 +416,9 @@ export class S3FileSystemAdapter implements FileSystemAdapter {
 		this.bucket = bucket;
 	}
 
-	async getFileSystemRoot(name = "default"): Promise<FileSystemDirectoryHandle> {
+	async getFileSystemRoot(
+		name = "default",
+	): Promise<FileSystemDirectoryHandle> {
 		const prefix = `filesystems/${name}`;
 		return new S3FileSystemDirectoryHandle(this.s3Client, this.bucket, prefix);
 	}

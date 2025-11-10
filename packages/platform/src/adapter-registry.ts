@@ -39,13 +39,15 @@ export function resolveCacheAdapter(name: string): string {
 	if (name.startsWith("@")) {
 		return name;
 	}
-	
+
 	// Check blessed aliases
 	if (name in CACHE_ALIASES) {
 		return CACHE_ALIASES[name as keyof typeof CACHE_ALIASES];
 	}
-	
-	throw new Error(`Unknown cache adapter: ${name}. Available aliases: ${Object.keys(CACHE_ALIASES).join(", ")} or use full package name like @custom/cache`);
+
+	throw new Error(
+		`Unknown cache adapter: ${name}. Available aliases: ${Object.keys(CACHE_ALIASES).join(", ")} or use full package name like @custom/cache`,
+	);
 }
 
 /**
@@ -58,13 +60,15 @@ export function resolveFilesystemAdapter(name: string): string {
 	if (name.startsWith("@")) {
 		return name;
 	}
-	
+
 	// Check blessed aliases
 	if (name in FILESYSTEM_ALIASES) {
 		return FILESYSTEM_ALIASES[name as keyof typeof FILESYSTEM_ALIASES];
 	}
-	
-	throw new Error(`Unknown filesystem adapter: ${name}. Available aliases: ${Object.keys(FILESYSTEM_ALIASES).join(", ")} or use full package name like @custom/filesystem`);
+
+	throw new Error(
+		`Unknown filesystem adapter: ${name}. Available aliases: ${Object.keys(FILESYSTEM_ALIASES).join(", ")} or use full package name like @custom/filesystem`,
+	);
 }
 
 /**
@@ -75,18 +79,25 @@ export function resolveFilesystemAdapter(name: string): string {
  */
 export async function loadCacheAdapter(name: string, config: any = {}) {
 	const packageName = resolveCacheAdapter(name);
-	
+
 	try {
 		const module: AdapterModule = await import(packageName);
-		
+
 		if (!module.createCache) {
-			throw new Error(`Package ${packageName} does not export a createCache function`);
+			throw new Error(
+				`Package ${packageName} does not export a createCache function`,
+			);
 		}
-		
+
 		return module.createCache(config);
 	} catch (error) {
-		if (error instanceof Error && error.message.includes("Cannot resolve module")) {
-			throw new Error(`Cache adapter '${name}' requires: npm install ${packageName}`);
+		if (
+			error instanceof Error &&
+			error.message.includes("Cannot resolve module")
+		) {
+			throw new Error(
+				`Cache adapter '${name}' requires: npm install ${packageName}`,
+			);
 		}
 		throw error;
 	}
@@ -100,18 +111,25 @@ export async function loadCacheAdapter(name: string, config: any = {}) {
  */
 export async function loadFilesystemAdapter(name: string, config: any = {}) {
 	const packageName = resolveFilesystemAdapter(name);
-	
+
 	try {
 		const module: AdapterModule = await import(packageName);
-		
+
 		if (!module.createFileSystem) {
-			throw new Error(`Package ${packageName} does not export a createFileSystem function`);
+			throw new Error(
+				`Package ${packageName} does not export a createFileSystem function`,
+			);
 		}
-		
+
 		return module.createFileSystem(config);
 	} catch (error) {
-		if (error instanceof Error && error.message.includes("Cannot resolve module")) {
-			throw new Error(`Filesystem adapter '${name}' requires: npm install ${packageName}`);
+		if (
+			error instanceof Error &&
+			error.message.includes("Cannot resolve module")
+		) {
+			throw new Error(
+				`Filesystem adapter '${name}' requires: npm install ${packageName}`,
+			);
 		}
 		throw error;
 	}
