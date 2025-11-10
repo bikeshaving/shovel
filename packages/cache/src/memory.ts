@@ -180,12 +180,6 @@ export class MemoryCache extends Cache {
 		};
 	}
 
-	/**
-	 * Dispose of the cache and clean up resources
-	 */
-	async dispose(): Promise<void> {
-		await this.clear();
-	}
 
 	/**
 	 * Check if a cache entry has expired
@@ -437,14 +431,4 @@ export class MemoryCacheManager {
 		return true;
 	}
 
-	/**
-	 * Dispose of all memory caches
-	 */
-	async dispose(): Promise<void> {
-		const disposePromises = Array.from(this.memoryCaches.values()).map((cache) =>
-			cache.dispose(),
-		);
-		await Promise.all(disposePromises);
-		this.memoryCaches.clear();
-	}
 }

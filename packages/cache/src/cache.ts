@@ -92,10 +92,6 @@ export abstract class Cache {
 		return responses;
 	}
 
-	/**
-	 * Optional cleanup method for implementations that need resource disposal
-	 */
-	async dispose?(): Promise<void>;
 }
 
 /**

@@ -22,16 +22,18 @@ bun install @b9g/cache-redis
 
 ```typescript
 import {CustomCacheStorage} from "@b9g/cache";
-import {createRedisFactory} from "@b9g/cache-redis";
+import {RedisCache} from "@b9g/cache-redis";
 
 // Create cache storage with Redis backend
-const cacheStorage = new CustomCacheStorage(createRedisFactory({
-  redis: {
-    url: "redis://localhost:6379"
-  },
-  defaultTTL: 3600, // 1 hour
-  prefix: "myapp"
-}));
+const cacheStorage = new CustomCacheStorage((name: string) => 
+  new RedisCache(name, {
+    redis: {
+      url: "redis://localhost:6379"
+    },
+    defaultTTL: 3600, // 1 hour
+    prefix: "myapp"
+  })
+);
 
 // Use the cache
 const cache = await cacheStorage.open("pages");
@@ -39,25 +41,24 @@ await cache.put(request, response);
 const cached = await cache.match(request);
 ```
 
-### With Platform Integration
+### Direct Cache Usage
 
 ```typescript
-import {CustomCacheStorage} from "@b9g/cache";
-import {createRedisFactory} from "@b9g/cache-redis";
+import {createCache} from "@b9g/cache-redis";
 
-// In your platform configuration
-const platform = createBunPlatform({
-  cache: {
-    factory: createRedisFactory({
-      redis: {
-        url: process.env.REDIS_URL || "redis://localhost:6379",
-        password: process.env.REDIS_PASSWORD
-      },
-      defaultTTL: 3600,
-      maxEntrySize: 5 * 1024 * 1024 // 5MB max per entry
-    })
-  }
+// Create a single Redis cache instance
+const cache = createCache({
+  name: "my-cache",
+  redis: {
+    url: process.env.REDIS_URL || "redis://localhost:6379",
+    password: process.env.REDIS_PASSWORD
+  },
+  defaultTTL: 3600,
+  maxEntrySize: 5 * 1024 * 1024 // 5MB max per entry
 });
+
+await cache.put(request, response);
+const cached = await cache.match(request);
 ```
 
 ## Configuration Options
@@ -172,17 +173,6 @@ console.log({
 });
 ```
 
-## Cleanup
-
-Properly dispose of cache instances:
-
-```typescript
-// Dispose single cache
-await cache.dispose();
-
-// Dispose entire cache storage
-await cacheStorage.dispose();
-```
 
 ## Shovel Integration
 

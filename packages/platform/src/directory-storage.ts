@@ -17,12 +17,14 @@ export class PlatformBucketStorage implements BucketStorageInterface {
 
 	constructor(rootPath: string = "./dist") {
 		// Create bucket storage with namespace-specific paths
-		this.buckets = new BucketStorage((name: string) => {
-			if (name === '' || name === '/' || name === '.') {
-				return new LocalBucket(rootPath);
-			}
-			// Each named directory gets its own bucket under the root
-			return new LocalBucket(`${rootPath}/${name}`);
+		this.buckets = new BucketStorage(async (name: string) => {
+			const targetPath = (name === '' || name === '/' || name === '.') 
+				? rootPath 
+				: `${rootPath}/${name}`;
+			
+			// Create a LocalBucket and return its root directory handle
+			const bucket = new LocalBucket({ rootPath: targetPath });
+			return await bucket.getDirectoryHandle("");
 		});
 	}
 

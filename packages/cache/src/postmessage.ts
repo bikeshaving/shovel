@@ -212,8 +212,4 @@ export class PostMessageCache extends Cache {
 		await this.sendRequest("cache:clear", {});
 	}
 
-	async dispose(): Promise<void> {
-		await this.clear();
-		this.pendingRequests.clear();
-	}
 }

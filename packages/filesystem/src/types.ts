@@ -13,24 +13,8 @@ export interface FileSystemConfig {
 }
 
 /**
- * Core interface that all buckets must implement
- * Provides File System Access API compatibility across all platforms
+ * Bucket is a semantic alias for FileSystemDirectoryHandle
+ * Represents a named storage bucket that provides direct filesystem access
  */
-export interface Bucket {
-  /**
-   * Get a directory handle for the bucket
-   * @param name Directory name. Use "" for root directory
-   */
-  getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
-
-  /**
-   * Get configuration for this bucket
-   */
-  getConfig(): FileSystemConfig;
-
-  /**
-   * Cleanup resources when bucket is no longer needed
-   */
-  dispose?(): Promise<void>;
-}
+export type Bucket = FileSystemDirectoryHandle;
 

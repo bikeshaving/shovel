@@ -303,48 +303,9 @@ export class RedisCache extends Cache {
 		}
 	}
 
-	/**
-	 * Cleanup method for implementations that need resource disposal
-	 */
-	async dispose(): Promise<void> {
-		try {
-			if (this.client.isReady) {
-				await this.client.disconnect();
-			}
-		} catch (error) {
-			console.error("[RedisCache] Failed to dispose:", error);
-		}
-	}
-}
-
-// ============================================================================
-// FACTORY FUNCTIONS
-// ============================================================================
-
-/**
- * Create a Redis cache factory for use with CustomCacheStorage
- * 
- * Example usage:
- * ```typescript
- * import {CustomCacheStorage} from "@b9g/cache";
- * import {createRedisFactory} from "@b9g/cache-redis";
- * 
- * const cacheStorage = new CustomCacheStorage(createRedisFactory({
- *   redis: { url: "redis://localhost:6379" },
- *   defaultTTL: 3600 // 1 hour
- * }));
- * 
- * const cache = await cacheStorage.open("my-cache");
- * ```
- */
-export function createRedisFactory(options: RedisCacheOptions = {}): CacheFactory {
-	return (name: string) => {
-		return new RedisCache(name, options);
-	};
 }
 
 /**
- * Platform adapter factory function
  * Creates a RedisCache instance with the given configuration
  */
 export function createCache(config: RedisCacheOptions & { name?: string } = {}): RedisCache {

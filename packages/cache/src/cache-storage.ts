@@ -41,14 +41,10 @@ export class CustomCacheStorage {
 
 	/**
 	 * Deletes a cache with the given name
-	 * Disposes of the instance if it exists
 	 */
 	async delete(name: string): Promise<boolean> {
 		const instance = this.instances.get(name);
 		if (instance) {
-			if (instance.dispose) {
-				await instance.dispose();
-			}
 			this.instances.delete(name);
 			return true;
 		}
@@ -72,20 +68,4 @@ export class CustomCacheStorage {
 		};
 	}
 
-	/**
-	 * Dispose of all open cache instances
-	 * Useful for cleanup during shutdown
-	 */
-	async dispose(): Promise<void> {
-		const disposePromises: Promise<void>[] = [];
-
-		for (const [_name, instance] of this.instances) {
-			if (instance.dispose) {
-				disposePromises.push(instance.dispose());
-			}
-		}
-
-		await Promise.all(disposePromises);
-		this.instances.clear();
-	}
 }

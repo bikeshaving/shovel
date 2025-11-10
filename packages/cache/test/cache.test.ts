@@ -6,9 +6,8 @@ describe("CustomCacheStorage", () => {
 	let cacheStorage: CustomCacheStorage;
 
 	beforeEach(() => {
-		// Create factory that handles different cache types
-		const factory = (name: string) => new MemoryCache(name);
-		cacheStorage = new CustomCacheStorage(factory);
+		// Create CustomCacheStorage with MemoryCache instances
+		cacheStorage = new CustomCacheStorage((name: string) => new MemoryCache(name));
 	});
 
 	test("can open caches", async () => {

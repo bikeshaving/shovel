@@ -45,16 +45,6 @@
       "import": "./dist/src/index.js",
       "require": "./dist/src/index.cjs"
     },
-    "./factory": {
-      "types": "./dist/src/factory.d.ts",
-      "import": "./dist/src/factory.js",
-      "require": "./dist/src/factory.cjs"
-    },
-    "./factory.js": {
-      "types": "./dist/src/factory.d.ts",
-      "import": "./dist/src/factory.js",
-      "require": "./dist/src/factory.cjs"
-    },
     "./index": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",

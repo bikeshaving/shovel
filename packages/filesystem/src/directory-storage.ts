@@ -23,17 +23,17 @@ export class BucketStorage {
 	 * Opens a bucket with the given name
 	 * Returns existing instance if already opened, otherwise creates a new one
 	 */
-	async open(name: string): Promise<FileSystemDirectoryHandle> {
+	async open(name: string): Promise<Bucket> {
 		// Return existing instance if already opened
 		const existingInstance = this.instances.get(name);
 		if (existingInstance) {
-			return await existingInstance.getDirectoryHandle("");
+			return existingInstance;
 		}
 
 		// Create new instance using factory function
-		const adapter = await this.factory(name);
-		this.instances.set(name, adapter);
-		return await adapter.getDirectoryHandle("");
+		const bucket = await this.factory(name);
+		this.instances.set(name, bucket);
+		return bucket;
 	}
 
 	/**
@@ -45,14 +45,10 @@ export class BucketStorage {
 
 	/**
 	 * Deletes a bucket with the given name
-	 * Disposes of the instance if it exists
 	 */
 	async delete(name: string): Promise<boolean> {
 		const instance = this.instances.get(name);
 		if (instance) {
-			if (instance.dispose) {
-				await instance.dispose();
-			}
 			this.instances.delete(name);
 			return true;
 		}
@@ -76,20 +72,4 @@ export class BucketStorage {
 		};
 	}
 
-	/**
-	 * Dispose of all open adapter instances
-	 * Useful for cleanup during shutdown
-	 */
-	async dispose(): Promise<void> {
-		const disposePromises: Promise<void>[] = [];
-
-		for (const [_name, instance] of this.instances) {
-			if (instance.dispose) {
-				disposePromises.push(instance.dispose());
-			}
-		}
-
-		await Promise.all(disposePromises);
-		this.instances.clear();
-	}
 }

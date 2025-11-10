@@ -8,9 +8,8 @@ describe("Router Cache Integration", () => {
 	let caches: CustomCacheStorage;
 
 	beforeEach(() => {
-		// Create a factory that creates MemoryCache instances
-		const factory = (name: string) => new MemoryCache(name);
-		caches = new CustomCacheStorage(factory);
+		// Create CustomCacheStorage with MemoryCache instances
+		caches = new CustomCacheStorage((name: string) => new MemoryCache(name));
 
 		router = new Router({caches});
 	});
@@ -141,14 +140,13 @@ describe("Router Cache Integration", () => {
 	});
 
 	test("handles cache opening errors gracefully", async () => {
-		// Create a factory that fails for specific cache names
-		const failingFactory = (name: string) => {
+		// Create CustomCacheStorage that fails for specific cache names
+		const failingCaches = new CustomCacheStorage((name: string) => {
 			if (name === "failing-cache") {
 				throw new Error("Cache creation failed");
 			}
 			return new MemoryCache(name);
-		};
-		const failingCaches = new CustomCacheStorage(failingFactory);
+		});
 		const failingRouter = new Router({caches: failingCaches});
 
 		let capturedContext: any = null;
