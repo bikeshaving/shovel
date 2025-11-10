@@ -166,13 +166,19 @@ async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot
 		// Determine external dependencies based on environment
 		const external = ["node:*"];
 		
-		// Add @b9g packages as external only for specific test scenarios
-		// Check if this is a test that explicitly wants external dependency behavior
-		const entryContent = await readFile(entryPath, 'utf8').catch(() => '');
-		const wantsExternalDependencies = entryContent.includes('import { ServiceWorkerRuntime } from "@b9g/platform"');
-		
-		if (!isCloudflare && wantsExternalDependencies) {
-			external.push("@b9g/*");
+		// For Node.js and Bun builds, handle @b9g dependencies
+		if (!isCloudflare) {
+			// In workspace environments, always externalize @b9g packages
+			// because they may not be resolvable in test environments
+			const isWorkspaceContext = workspaceRoot && workspaceRoot !== process.cwd();
+			
+			if (isWorkspaceContext) {
+				// Workspace environment - externalize @b9g packages
+				external.push("@b9g/*");
+			} else {
+				// Production environment - bundle @b9g packages for self-contained executables
+				// (no externalization needed)
+			}
 		}
 		
 		const buildConfig = {
@@ -266,10 +272,20 @@ async function createSingleWorkerEntry(userEntryPath) {
  */
 
 import { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } from '@b9g/platform';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { realpath } from 'fs';
+import { promisify } from 'util';
+
+const realpathAsync = promisify(realpath);
 
 // Production server setup
 const runtime = new ServiceWorkerRuntime();
-const buckets = createBucketStorage(process.cwd());
+// For executables, bucket storage root should be the dist directory
+// This allows buckets.getDirectoryHandle("assets") to find dist/assets
+const executableDir = dirname(fileURLToPath(import.meta.url));
+const distDir = dirname(executableDir);
+const buckets = createBucketStorage(distDir);
 
 // Set up ServiceWorker globals
 createServiceWorkerGlobals(runtime, { buckets });
@@ -282,7 +298,11 @@ globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
 await import("${userEntryPath}");
 
 // Check if this is being run as the main executable
-if (import.meta.url === \`file://\${process.argv[1]}\`) {
+try {
+  const currentFile = await realpathAsync(fileURLToPath(import.meta.url));
+  const mainFile = await realpathAsync(process.argv[1]);
+  
+  if (currentFile === mainFile) {
   // Wait for ServiceWorker to be defined, then start server
   setTimeout(async () => {
     console.info('🔧 Starting single-worker server...');
@@ -348,6 +368,9 @@ if (import.meta.url === \`file://\${process.argv[1]}\`) {
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
   }, 0);
+  }
+} catch (error) {
+  console.error('🚨 Error in main executable check:', error);
 }
 `;
 }
@@ -535,7 +558,10 @@ if (workerData?.isWorker && parentPort) {
     
     // Set up ServiceWorker environment in worker thread
     const runtime = new ServiceWorkerRuntime();
-    const buckets = createBucketStorage(process.cwd());
+    // For executables, bucket storage root should be the dist directory
+    const executableDir = dirname(fileURLToPath(import.meta.url));
+    const distDir = dirname(executableDir);
+    const buckets = createBucketStorage(distDir);
     
     createServiceWorkerGlobals(runtime, { buckets });
     globalThis.self = runtime;

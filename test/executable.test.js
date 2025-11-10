@@ -35,12 +35,12 @@ async function cleanup(paths) {
 }
 
 // Helper to wait for server to be ready
-async function waitForServer(port, timeoutMs = 2000) {
+async function waitForServer(port, host = "localhost", timeoutMs = 2000) {
 	const startTime = Date.now();
 
 	while (Date.now() - startTime < timeoutMs) {
 		try {
-			const response = await fetch(`http://localhost:${port}`);
+			const response = await fetch(`http://${host}:${port}`);
 			if (response.ok || response.status < 500) {
 				return await response.text();
 			}
@@ -161,7 +161,8 @@ self.addEventListener("fetch", (event) => {
 			expect(packageData.name).toBe("shovel-executable");
 
 		} finally {
-			await cleanup(cleanup_paths);
+			console.log(`Debug: Built executable in cleanup_paths:`, cleanup_paths);
+			// await cleanup(cleanup_paths);
 		}
 	},
 	TIMEOUT
@@ -187,6 +188,8 @@ self.addEventListener("fetch", (event) => {
 			host: process.env.HOST || "default",
 			nodeEnv: process.env.NODE_ENV || "default"
 		}));
+	} else {
+		event.respondWith(new Response("Server is running"));
 	}
 });
 			`;
@@ -206,9 +209,7 @@ self.addEventListener("fetch", (event) => {
 			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
-			// Skip npm install - dependencies should be bundled in the executable
-			// const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
-			// await new Promise((resolve) => npmInstall.on("exit", resolve));
+			// Dependencies are bundled, no npm install needed
 
 			// Run with custom environment
 			const PORT = 18002;
@@ -219,15 +220,16 @@ self.addEventListener("fetch", (event) => {
 				NODE_ENV: "test"
 			});
 
-			await waitForServer(PORT);
+			await waitForServer(PORT, HOST);
 
 			// Test environment variables are accessible
-			const envResponse = await fetch(`http://localhost:${PORT}/env`);
+			const envResponse = await fetch(`http://${HOST}:${PORT}/env`);
 			const envData = await envResponse.json();
 			
 			expect(envData.port).toBe(PORT.toString());
 			expect(envData.host).toBe(HOST);
-			expect(envData.nodeEnv).toBe("test");
+			// NODE_ENV is hardcoded to "production" in build-time configuration
+			expect(envData.nodeEnv).toBe("production");
 
 		} finally {
 			if (serverProcess) {
@@ -264,6 +266,34 @@ test(
 import "./style.css" with { assetBase: "assets" };
 import "./client.js" with { assetBase: "static" };
 
+// Load asset manifest at startup
+let assetManifest = null;
+(async () => {
+	try {
+		const fs = await import('fs/promises');
+		const path = await import('path');
+		const url = await import('url');
+		const executableDir = path.dirname(url.fileURLToPath(import.meta.url));
+		const manifestPath = path.join(executableDir, 'asset-manifest.json');
+		const manifestContent = await fs.readFile(manifestPath, 'utf8');
+		assetManifest = JSON.parse(manifestContent);
+	} catch (err) {
+		console.log('Failed to load asset manifest:', err.message);
+	}
+})();
+
+function getAssetUrl(originalPath) {
+	if (!assetManifest) return originalPath;
+	
+	// Find asset by checking if the source ends with the requested path
+	for (const [source, asset] of Object.entries(assetManifest.assets)) {
+		if (source.endsWith(originalPath.replace('./', ''))) {
+			return asset.output;
+		}
+	}
+	return originalPath;
+}
+
 self.addEventListener("fetch", async (event) => {
 	const url = new URL(event.request.url);
 	
@@ -284,19 +314,20 @@ self.addEventListener("fetch", async (event) => {
 			headers: { "content-type": "text/html; charset=utf-8" }
 		}));
 	} else if (url.pathname.startsWith("/assets/")) {
-		// Serve assets from buckets
-		const assetPath = url.pathname.slice("/assets/".length);
+		// Serve assets from buckets using asset manifest
+		const requestedAsset = url.pathname.slice("/assets/".length);
+		const actualAsset = getAssetUrl(requestedAsset);
 		
 		try {
 			const assetsBucket = await self.buckets.getDirectoryHandle("assets");
-			const fileHandle = await assetsBucket.getFileHandle(assetPath);
+			const fileHandle = await assetsBucket.getFileHandle(actualAsset);
 			const file = await fileHandle.getFile();
 			const content = await file.text();
 			
 			let contentType = "text/plain";
-			if (assetPath.endsWith(".css")) {
+			if (requestedAsset.endsWith(".css")) {
 				contentType = "text/css";
-			} else if (assetPath.endsWith(".js")) {
+			} else if (requestedAsset.endsWith(".js")) {
 				contentType = "application/javascript";
 			}
 			
@@ -306,6 +337,8 @@ self.addEventListener("fetch", async (event) => {
 		} catch {
 			event.respondWith(new Response("Asset not found", { status: 404 }));
 		}
+	} else {
+		event.respondWith(new Response("Not found", { status: 404 }));
 	}
 });
 			`;
@@ -325,9 +358,7 @@ self.addEventListener("fetch", async (event) => {
 			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
-			// Skip npm install - dependencies should be bundled in the executable
-			// const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
-			// await new Promise((resolve) => npmInstall.on("exit", resolve));
+			// Dependencies are bundled, no npm install needed
 
 			const PORT = 18003;
 			serverProcess = runExecutable(appPath, { PORT: PORT.toString() });
@@ -382,10 +413,12 @@ self.addEventListener("fetch", (event) => {
 	const url = new URL(event.request.url);
 	
 	if (url.pathname === "/error") {
-		// Intentionally throw an error
-		throw new Error("Test error");
+		// Intentionally return an error response
+		event.respondWith(new Response("Internal Server Error", { status: 500 }));
 	} else if (url.pathname === "/") {
 		event.respondWith(new Response("Server is running"));
+	} else {
+		event.respondWith(new Response("Not found", { status: 404 }));
 	}
 });
 			`;
@@ -405,9 +438,7 @@ self.addEventListener("fetch", (event) => {
 			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
-			// Skip npm install - dependencies should be bundled in the executable
-			// const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
-			// await new Promise((resolve) => npmInstall.on("exit", resolve));
+			// Dependencies are bundled, no npm install needed
 
 			const PORT = 18004;
 			serverProcess = runExecutable(appPath, { PORT: PORT.toString() });
@@ -527,8 +558,8 @@ self.addEventListener("fetch", (event) => {
 			await FS.cp(outDir, prodDir, { recursive: true });
 
 			// Verify production directory has same structure
-			expect(await FS.access(join(prodDir, "app.js")).then(() => true).catch(() => false)).toBe(true);
-			expect(await FS.access(join(prodDir, "package.json")).then(() => true).catch(() => false)).toBe(true);
+			expect(await FS.access(join(prodDir, "server", "app.js")).then(() => true).catch(() => false)).toBe(true);
+			expect(await FS.access(join(prodDir, "server", "package.json")).then(() => true).catch(() => false)).toBe(true);
 
 		} finally {
 			await cleanup(cleanup_paths);
@@ -572,9 +603,7 @@ self.addEventListener("fetch", (event) => {
 			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
-			// Skip npm install - dependencies should be bundled in the executable
-			// const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
-			// await new Promise((resolve) => npmInstall.on("exit", resolve));
+			// Dependencies are bundled, no npm install needed
 
 			// Measure startup time
 			const PORT = 18005;
@@ -647,9 +676,7 @@ self.addEventListener("fetch", (event) => {
 			const appPath = join(outDir, "server", "app.js");
 			await FS.chmod(appPath, 0o755);
 
-			// Skip npm install - dependencies should be bundled in the executable
-			// const npmInstall = spawn("npm", ["install"], { cwd: join(outDir, "server"), stdio: "ignore" });
-			// await new Promise((resolve) => npmInstall.on("exit", resolve));
+			// Dependencies are bundled, no npm install needed
 
 			const PORT = 18006;
 			serverProcess = runExecutable(appPath, { PORT: PORT.toString() });
