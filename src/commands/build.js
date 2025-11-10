@@ -171,7 +171,7 @@ async function createBuildConfig({entryPath, serverDir, assetsDir, workspaceRoot
 		if (!isCloudflare) {
 			// In workspace environments, always externalize @b9g packages
 			// because they may not be resolvable in test environments
-			const isWorkspaceContext = workspaceRoot && workspaceRoot !== process.cwd();
+			const isWorkspaceContext = workspaceRoot !== null;
 			
 			if (isWorkspaceContext) {
 				// Workspace environment - externalize @b9g packages

@@ -364,11 +364,11 @@ test(
 		const cleanup_paths = [];
 
 		try {
+			// Test that @b9g packages are properly externalized in the generated templates
+			// This tests the virtual entry template, not user code imports
 			const entryContent = `
-import { ServiceWorkerRuntime } from "@b9g/platform";
-
 self.addEventListener("fetch", (event) => {
-	event.respondWith(new Response("Using platform import"));
+	event.respondWith(new Response("Simple ServiceWorker"));
 });
 			`;
 
@@ -385,9 +385,13 @@ self.addEventListener("fetch", (event) => {
 
 			const appContent = await FS.readFile(join(outDir, "server", "app.js"), "utf8");
 
-			// For Node/Bun builds, @b9g/* should be external (not bundled)
-			// Check that the import is preserved (either single or double quotes)
+			// In workspace context, @b9g/* imports in the generated template should be external
+			// Check that the template's platform imports are preserved (not bundled)
 			expect(appContent).toMatch(/from ['"]@b9g\/platform['"]/);
+			
+			// Verify the template code structure is present
+			expect(appContent).toContain("ServiceWorkerRuntime");
+			expect(appContent).toContain("createServiceWorkerGlobals");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
