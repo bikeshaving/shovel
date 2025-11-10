@@ -4,7 +4,7 @@
  * Self-contained build with bundled dependencies
  */
 
-import { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } from '@b9g/platform';
+import { ServiceWorkerRegistration, createServiceWorkerGlobals, createBucketStorage } from '@b9g/platform';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { realpath } from 'fs';
@@ -13,7 +13,7 @@ import { promisify } from 'util';
 const realpathAsync = promisify(realpath);
 
 // Production server setup
-const runtime = new ServiceWorkerRuntime();
+const registration = new ServiceWorkerRegistration();
 // For executables, bucket storage root should be the dist directory
 // This allows buckets.getDirectoryHandle("assets") to find dist/assets
 const executableDir = dirname(fileURLToPath(import.meta.url));
@@ -21,11 +21,11 @@ const distDir = dirname(executableDir);
 const buckets = createBucketStorage(distDir);
 
 // Set up ServiceWorker globals
-createServiceWorkerGlobals(runtime, { buckets });
-globalThis.self = runtime;
-globalThis.addEventListener = runtime.addEventListener.bind(runtime);
-globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
-globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
+createServiceWorkerGlobals(registration, { buckets });
+globalThis.self = registration;
+globalThis.addEventListener = registration.addEventListener.bind(registration);
+globalThis.removeEventListener = registration.removeEventListener.bind(registration);
+globalThis.dispatchEvent = registration.dispatchEvent.bind(registration);
 
 // Dynamically import user's ServiceWorker code after globals are set up
 await import(USER_ENTRYPOINT);
@@ -39,8 +39,8 @@ try {
     // Wait for ServiceWorker to be defined, then start server
     setTimeout(async () => {
       console.info('🔧 Starting single-worker server...');
-      await runtime.install();
-      await runtime.activate();
+      await registration.install();
+      await registration.activate();
       
       // Create HTTP server
       const { createServer } = await import('http');
@@ -56,7 +56,7 @@ try {
             body: req.method !== 'GET' && req.method !== 'HEAD' ? req : undefined,
           });
 
-          const response = await runtime.handleRequest(request);
+          const response = await registration.handleRequest(request);
 
           res.statusCode = response.status;
           res.statusMessage = response.statusText;

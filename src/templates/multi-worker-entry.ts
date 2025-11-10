@@ -167,31 +167,31 @@ if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
 }
 
 // WORKER THREAD CODE - this needs to be at top level for imports
-import { ServiceWorkerRuntime, createServiceWorkerGlobals, createBucketStorage } from '@b9g/platform';
+import { ServiceWorkerRegistration, createServiceWorkerGlobals, createBucketStorage } from '@b9g/platform';
 import { parentPort } from 'worker_threads';
 
 if (workerData?.isWorker && parentPort) {
   console.info(`[Worker ${workerData.workerId}] Starting ServiceWorker...`);
   
   // Set up ServiceWorker environment in worker thread
-  const runtime = new ServiceWorkerRuntime();
+  const registration = new ServiceWorkerRegistration();
   // For executables, bucket storage root should be the dist directory
   const executableDir = dirname(fileURLToPath(import.meta.url));
   const distDir = dirname(executableDir);
   const buckets = createBucketStorage(distDir);
   
-  createServiceWorkerGlobals(runtime, { buckets });
-  globalThis.self = runtime;
-  globalThis.addEventListener = runtime.addEventListener.bind(runtime);
-  globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
-  globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
+  createServiceWorkerGlobals(registration, { buckets });
+  globalThis.self = registration;
+  globalThis.addEventListener = registration.addEventListener.bind(registration);
+  globalThis.removeEventListener = registration.removeEventListener.bind(registration);
+  globalThis.dispatchEvent = registration.dispatchEvent.bind(registration);
   
   // Import user's ServiceWorker code
   await import(workerData.userEntryPath);
   
   // Initialize ServiceWorker
-  await runtime.install();
-  await runtime.activate();
+  await registration.install();
+  await registration.activate();
   
   // Handle messages from main thread
   parentPort.on('message', async (message: any) => {
@@ -204,7 +204,7 @@ if (workerData?.isWorker && parentPort) {
           body: message.body
         });
         
-        const response = await runtime.handleRequest(request);
+        const response = await registration.handleRequest(request);
         
         // Serialize response for main thread
         const responseBody = response.body ? await response.text() : null;
