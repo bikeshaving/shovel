@@ -7,20 +7,19 @@
  * Provides compatibility shims for running ServiceWorker code in any JavaScript runtime.
  */
 
-// Import base event classes from service-worker.ts
-import { 
-	ExtendableEvent as BaseExtendableEvent, 
-	FetchEvent as BaseFetchEvent, 
-	InstallEvent as BaseInstallEvent, 
-	ActivateEvent as BaseActivateEvent 
-} from './service-worker.js';
-
-// Re-export with original names
+// Import and re-export base event classes from service-worker.ts
 export { 
 	ExtendableEvent, 
 	FetchEvent, 
 	InstallEvent, 
 	ActivateEvent 
+} from './service-worker.js';
+
+import { 
+	ExtendableEvent as BaseExtendableEvent, 
+	FetchEvent as BaseFetchEvent, 
+	InstallEvent as BaseInstallEvent, 
+	ActivateEvent as BaseActivateEvent 
 } from './service-worker.js';
 
 /**
@@ -133,10 +132,10 @@ export class ExtendableMessageEvent extends BaseExtendableEvent {
  * ServiceWorker interface represents a service worker
  */
 export class ServiceWorker extends EventTarget {
-	readonly scriptURL: string;
-	readonly state: 'parsed' | 'installing' | 'installed' | 'activating' | 'activated' | 'redundant';
+	scriptURL: string;
+	state: 'parsed' | 'installing' | 'installed' | 'activating' | 'activated' | 'redundant';
 
-	constructor(scriptURL: string, state: 'parsed' | 'installing' | 'installed' | 'activating' | 'activated' | 'redundant' = 'activated') {
+	constructor(scriptURL: string, state: 'parsed' | 'installing' | 'installed' | 'activating' | 'activated' | 'redundant' = 'parsed') {
 		super();
 		this.scriptURL = scriptURL;
 		this.state = state;
@@ -144,6 +143,14 @@ export class ServiceWorker extends EventTarget {
 
 	postMessage(message: any, transfer?: Transferable[]): void {
 		console.warn('[ServiceWorker] ServiceWorker.postMessage() not implemented in server context');
+	}
+
+	// Internal method to update state and dispatch statechange event
+	_setState(newState: typeof this.state): void {
+		if (this.state !== newState) {
+			this.state = newState;
+			this.dispatchEvent(new Event('statechange'));
+		}
 	}
 
 	// Events: statechange, error
@@ -172,24 +179,41 @@ export class NavigationPreloadManager {
 
 /**
  * ServiceWorkerRegistration represents a service worker registration
+ * This is also the Shovel ServiceWorker runtime - they are unified into one class
  */
 export class ServiceWorkerRegistration extends EventTarget {
 	readonly scope: string;
 	readonly updateViaCache: 'imports' | 'all' | 'none' = 'imports';
-	readonly active: ServiceWorker | null;
-	readonly installing: ServiceWorker | null;
-	readonly waiting: ServiceWorker | null;
 	readonly navigationPreload: NavigationPreloadManager;
+	
+	// ServiceWorker instances representing different lifecycle states
+	private _serviceWorker: ServiceWorker;
+	
+	// Shovel runtime state
+	private pendingPromises = new Set<Promise<any>>();
+	private eventListeners = new Map<string, Function[]>();
 
-	constructor(scope: string, serviceWorker?: ServiceWorker) {
+	constructor(scope: string = '/', scriptURL: string = '/') {
 		super();
 		this.scope = scope;
-		this.active = serviceWorker || null;
-		this.installing = null;
-		this.waiting = null;
 		this.navigationPreload = new NavigationPreloadManager();
+		this._serviceWorker = new ServiceWorker(scriptURL, 'parsed');
 	}
 
+	// Standard ServiceWorkerRegistration properties
+	get active(): ServiceWorker | null {
+		return this._serviceWorker.state === 'activated' ? this._serviceWorker : null;
+	}
+
+	get installing(): ServiceWorker | null {
+		return this._serviceWorker.state === 'installing' ? this._serviceWorker : null;
+	}
+
+	get waiting(): ServiceWorker | null {
+		return this._serviceWorker.state === 'installed' ? this._serviceWorker : null;
+	}
+
+	// Standard ServiceWorkerRegistration methods
 	async getNotifications(options?: NotificationOptions): Promise<Notification[]> {
 		return [];
 	}
@@ -210,8 +234,176 @@ export class ServiceWorkerRegistration extends EventTarget {
 		// No-op in server context
 	}
 
-	// Events: updatefound
+	// Shovel runtime extensions (non-standard but needed for platforms)
+	
+	/**
+	 * Enhanced addEventListener that tracks listeners for proper cleanup
+	 */
+	addEventListener(type: string, listener: Function): void {
+		super.addEventListener(type as any, listener as any);
+		if (!this.eventListeners.has(type)) {
+			this.eventListeners.set(type, []);
+		}
+		this.eventListeners.get(type)!.push(listener);
+	}
+	
+	/**
+	 * Enhanced removeEventListener that tracks listeners
+	 */
+	removeEventListener(type: string, listener: Function): void {
+		super.removeEventListener(type as any, listener as any);
+		if (this.eventListeners.has(type)) {
+			const listeners = this.eventListeners.get(type)!;
+			const index = listeners.indexOf(listener);
+			if (index > -1) {
+				listeners.splice(index, 1);
+				if (listeners.length === 0) {
+					this.eventListeners.delete(type);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Install the ServiceWorker (Shovel extension)
+	 */
+	async install(): Promise<void> {
+		if (this._serviceWorker.state !== 'parsed') return;
+
+		this._serviceWorker._setState('installing');
+
+		return new Promise<void>((resolve, reject) => {
+			const event = new BaseInstallEvent(this.pendingPromises);
+
+			// Dispatch event asynchronously to allow listener errors to be deferred
+			process.nextTick(() => {
+				this.dispatchEvent(event);
+				
+				const promises = event.getPromises();
+				if (promises.length === 0) {
+					this._serviceWorker._setState('installed');
+					resolve();
+				} else {
+					// Use Promise.all() so waitUntil rejections fail the install
+					Promise.all(promises)
+						.then(() => {
+							this._serviceWorker._setState('installed');
+							resolve();
+						})
+						.catch(reject);
+				}
+			});
+		});
+	}
+
+	/**
+	 * Activate the ServiceWorker (Shovel extension)
+	 */
+	async activate(): Promise<void> {
+		if (this._serviceWorker.state !== 'installed') {
+			throw new Error("ServiceWorker must be installed before activation");
+		}
+
+		this._serviceWorker._setState('activating');
+
+		return new Promise<void>((resolve, reject) => {
+			const event = new BaseActivateEvent(this.pendingPromises);
+
+			// Dispatch event asynchronously to allow listener errors to be deferred
+			process.nextTick(() => {
+				this.dispatchEvent(event);
+				
+				const promises = event.getPromises();
+				if (promises.length === 0) {
+					this._serviceWorker._setState('activated');
+					resolve();
+				} else {
+					// Use Promise.all() so waitUntil rejections fail the activation
+					Promise.all(promises)
+						.then(() => {
+							this._serviceWorker._setState('activated');
+							resolve();
+						})
+						.catch(reject);
+				}
+			});
+		});
+	}
+
+	/**
+	 * Handle a fetch request (Shovel extension)
+	 */
+	async handleRequest(request: Request): Promise<Response> {
+		if (this._serviceWorker.state !== 'activated') {
+			throw new Error("ServiceWorker not activated");
+		}
+
+		return new Promise<Response>((resolve, reject) => {
+			const event = new BaseFetchEvent(request, this.pendingPromises);
+
+			// Dispatch event asynchronously to allow listener errors to be deferred
+			process.nextTick(() => {
+				this.dispatchEvent(event);
+				
+				// Wait for all waitUntil promises (background tasks, don't block response)
+				const promises = event.getPromises();
+				if (promises.length > 0) {
+					Promise.allSettled(promises).catch(console.error);
+				}
+			});
+
+			// Allow async event handlers to execute before checking response
+			setTimeout(() => {
+				if (event.hasResponded()) {
+					const responsePromise = event.getResponse()!;
+					responsePromise.then(resolve).catch(reject);
+				} else {
+					reject(new Error("No response provided for fetch event"));
+				}
+			}, 0);
+		});
+	}
+
+	/**
+	 * Check if ready to handle requests (Shovel extension)
+	 */
+	get ready(): boolean {
+		return this._serviceWorker.state === 'activated';
+	}
+
+	/**
+	 * Wait for all pending promises to resolve (Shovel extension)
+	 */
+	async waitForPending(): Promise<void> {
+		if (this.pendingPromises.size > 0) {
+			await Promise.allSettled([...this.pendingPromises]);
+		}
+	}
+
+	/**
+	 * Reset the ServiceWorker state for hot reloading (Shovel extension)
+	 */
+	reset(): void {
+		this._serviceWorker._setState('parsed');
+		this.pendingPromises.clear();
+		
+		// Remove all tracked event listeners
+		for (const [type, listeners] of this.eventListeners) {
+			for (const listener of listeners) {
+				super.removeEventListener(type as any, listener as any);
+			}
+		}
+		this.eventListeners.clear();
+	}
+
+	// Events: updatefound (standard), plus Shovel lifecycle events
 }
+
+/**
+ * Backward compatibility alias for ServiceWorkerRegistration
+ * @deprecated Use ServiceWorkerRegistration instead
+ */
+export const ServiceWorkerRuntime = ServiceWorkerRegistration;
 
 /**
  * ServiceWorkerContainer provides access to service worker registration and messaging

@@ -96,174 +96,6 @@ export interface ShovelActivateEvent extends Event {
 }
 
 
-/**
- * ServiceWorker runtime that can be embedded in any platform
- */
-export class ServiceWorkerRuntime extends EventTarget {
-	private pendingPromises = new Set<Promise<any>>();
-	private isInstalled = false;
-	private isActivated = false;
-	private eventListeners = new Map<string, Function[]>();
-
-	constructor() {
-		super();
-	}
-	
-	addEventListener(type: string, listener: Function): void {
-		super.addEventListener(type as any, listener as any);
-		if (!this.eventListeners.has(type)) {
-			this.eventListeners.set(type, []);
-		}
-		this.eventListeners.get(type)!.push(listener);
-	}
-	
-	removeEventListener(type: string, listener: Function): void {
-		super.removeEventListener(type as any, listener as any);
-		if (this.eventListeners.has(type)) {
-			const listeners = this.eventListeners.get(type)!;
-			const index = listeners.indexOf(listener);
-			if (index > -1) {
-				listeners.splice(index, 1);
-				if (listeners.length === 0) {
-					this.eventListeners.delete(type);
-				}
-			}
-		}
-	}
-
-	/**
-	 * Create a fetch event and dispatch it
-	 */
-	async handleRequest(request: Request): Promise<Response> {
-		if (!this.isActivated) {
-			throw new Error("ServiceWorker not activated");
-		}
-
-		return new Promise<Response>((resolve, reject) => {
-			const event = new FetchEvent(request, this.pendingPromises);
-
-			// Dispatch event asynchronously to allow listener errors to be deferred
-			process.nextTick(() => {
-				this.dispatchEvent(event);
-				
-				// Wait for all waitUntil promises (background tasks, don't block response)
-				const promises = event.getPromises();
-				if (promises.length > 0) {
-					Promise.allSettled(promises).catch(console.error);
-				}
-			});
-
-			// Allow async event handlers to execute before checking response
-			setTimeout(() => {
-				if (event.hasResponded()) {
-					const responsePromise = event.getResponse()!;
-					responsePromise.then(resolve).catch(reject);
-				} else {
-					reject(new Error("No response provided for fetch event"));
-				}
-			}, 0);
-		});
-	}
-
-	/**
-	 * Install the ServiceWorker
-	 */
-	async install(): Promise<void> {
-		if (this.isInstalled) return;
-
-		return new Promise<void>((resolve, reject) => {
-			const event = new InstallEvent(this.pendingPromises);
-
-			// Dispatch event asynchronously to allow listener errors to be deferred
-			process.nextTick(() => {
-				this.dispatchEvent(event);
-				
-				const promises = event.getPromises();
-				if (promises.length === 0) {
-					this.isInstalled = true;
-					resolve();
-				} else {
-					// Use Promise.all() so waitUntil rejections fail the install
-					Promise.all(promises)
-						.then(() => {
-							this.isInstalled = true;
-							resolve();
-						})
-						.catch(reject);
-				}
-			});
-		});
-	}
-
-	/**
-	 * Activate the ServiceWorker
-	 */
-	async activate(): Promise<void> {
-		if (!this.isInstalled) {
-			throw new Error("ServiceWorker must be installed before activation");
-		}
-		if (this.isActivated) return;
-
-		return new Promise<void>((resolve, reject) => {
-			const event = new ActivateEvent(this.pendingPromises);
-
-			// Dispatch event asynchronously to allow listener errors to be deferred
-			process.nextTick(() => {
-				this.dispatchEvent(event);
-				
-				const promises = event.getPromises();
-				if (promises.length === 0) {
-					this.isActivated = true;
-					resolve();
-				} else {
-					// Use Promise.all() so waitUntil rejections fail the activation
-					Promise.all(promises)
-						.then(() => {
-							this.isActivated = true;
-							resolve();
-						})
-						.catch(reject);
-				}
-			});
-		});
-	}
-
-
-	/**
-	 * Check if ready to handle requests
-	 */
-	get ready(): boolean {
-		return this.isInstalled && this.isActivated;
-	}
-
-	/**
-	 * Wait for all pending promises to resolve
-	 */
-	async waitForPending(): Promise<void> {
-		if (this.pendingPromises.size > 0) {
-			await Promise.allSettled([...this.pendingPromises]);
-		}
-	}
-
-
-	/**
-	 * Reset the ServiceWorker state (for hot reloading)
-	 */
-	reset(): void {
-		this.isInstalled = false;
-		this.isActivated = false;
-		this.pendingPromises.clear();
-		
-		// Remove all tracked event listeners
-		for (const [type, listeners] of this.eventListeners) {
-			for (const listener of listeners) {
-				super.removeEventListener(type as any, listener as any);
-			}
-		}
-		this.eventListeners.clear();
-	}
-}
-
 
 /**
  * Bucket storage interface - parallels CacheStorage for filesystem access
@@ -299,11 +131,13 @@ export interface BucketStorage {
 
 
 
+// Note: ServiceWorkerRegistration import is handled dynamically to avoid circular imports
+
 /**
  * Create ServiceWorker globals for a module context
  */
 export function createServiceWorkerGlobals(
-	runtime: ServiceWorkerRuntime,
+	runtime: any, // ServiceWorkerRegistration (avoiding circular import)
 	options: {
 		caches?: any;
 		buckets?: BucketStorage;
@@ -334,8 +168,7 @@ export function createServiceWorkerGlobals(
 		// Always resolve - skipWaiting never fails in real ServiceWorkers
 	};
 
-	// ServiceWorker clients API - spec-compliant with standard webworker types
-	// No-ops for HTTP servers, future-ready for WebSocket/SSE connections
+	// ServiceWorker clients API - use simple implementation to avoid circular imports
 	const clients = {
 		async claim(): Promise<void> {
 			// No-op: HTTP requests are stateless, no persistent clients to claim
@@ -359,6 +192,7 @@ export function createServiceWorkerGlobals(
 
 	const globals = {
 		self: runtime,
+		registration: runtime,  // Expose the registration properly
 		addEventListener: runtime.addEventListener.bind(runtime),
 		removeEventListener: runtime.removeEventListener.bind(runtime),
 		dispatchEvent: runtime.dispatchEvent.bind(runtime),

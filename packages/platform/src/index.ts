@@ -25,7 +25,6 @@ export {BasePlatform} from "./types.js";
 
 // ServiceWorker runtime
 export {
-	ServiceWorkerRuntime,
 	createServiceWorkerGlobals,
 	type ShovelFetchEvent,
 	type ShovelInstallEvent,
@@ -33,6 +32,9 @@ export {
 	type ShovelStaticEvent,
 	type BucketStorage as BucketStorageInterface,
 } from "./service-worker.js";
+
+// ServiceWorkerRuntime is now ServiceWorkerRegistration (with backward compatibility alias)
+export { ServiceWorkerRuntime } from "./service-worker-api.js";
 
 // Bucket storage implementation
 export {
