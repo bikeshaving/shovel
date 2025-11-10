@@ -130,9 +130,9 @@ router.get('/users/:id', async (request, context) => {
 ### Middleware Error Handling
 
 ```javascript
-router.use(async (request, context, next) => {
+router.use(async function* (request, context) {
   try {
-    return await next();
+    return yield request;
   } catch (error) {
     console.error('Request failed:', error);
     return InternalServerError('Something went wrong');
@@ -259,7 +259,7 @@ router.post('/api/users', async (request) => {
 ```javascript
 import { Unauthorized, Forbidden } from '@b9g/http-errors';
 
-const authMiddleware = async (request, context, next) => {
+const authMiddleware = async function* (request, context) {
   const token = request.headers.get('authorization');
   
   if (!token) {
@@ -269,7 +269,7 @@ const authMiddleware = async (request, context, next) => {
   try {
     const user = await verifyToken(token);
     context.user = user;
-    return await next();
+    return yield request;
   } catch (error) {
     return Forbidden('Invalid or expired token');
   }

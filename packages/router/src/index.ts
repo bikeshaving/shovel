@@ -3,7 +3,7 @@
  *
  * Features:
  * - Pure Request/Response routing (works anywhere)
- * - Middleware chain with next() continuation
+ * - Generator-based middleware with yield continuation
  * - Chainable route builder API
  * - Integration with @b9g/match-pattern for enhanced URL matching
  * - Prepared for future cache-first architecture
@@ -35,7 +35,7 @@ export interface RouteContext {
 
 /**
  * Handler function signature - terminal response producer
- * No next() function - handlers must return a Response
+ * Handlers are terminal - must return a Response
  */
 export type Handler = (
 	request: Request,

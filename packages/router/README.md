@@ -6,7 +6,7 @@ Universal request router built on web standards with cache-aware routing and mid
 
 - **Web Standards Based**: Built on URLPattern, Request, Response, and Cache APIs
 - **Cache-Aware Routing**: First-class cache integration with automatic population
-- **Middleware Support**: Global and route-specific middleware with `next()` pattern
+- **Middleware Support**: Global and route-specific middleware with generator `yield` pattern
 - **Method Routing**: HTTP method shortcuts (get, post, put, delete, etc.)
 - **Universal**: Same code runs in browsers, Node.js, Bun, and edge platforms
 
@@ -62,10 +62,10 @@ router.route({
 ## Middleware
 
 ```javascript
-// Global middleware
-router.use(async (request, context, next) => {
+// Global middleware using generator pattern
+router.use(async function* (request, context) {
   console.log(`${request.method} ${request.url}`);
-  const response = await next();
+  const response = yield request;
   return response;
 });
 
@@ -172,13 +172,13 @@ caches.register('api', () => new MemoryCache('api'));
 const router = new Router({ caches });
 
 // Cache-aware middleware
-router.use(async (request, context, next) => {
+router.use(async function* (request, context) {
   if (request.method === 'GET' && context.cache) {
     const cached = await context.cache.match(request);
     if (cached) return cached;
   }
   
-  const response = await next();
+  const response = yield request;
   
   if (request.method === 'GET' && context.cache && response.ok) {
     await context.cache.put(request, response.clone());

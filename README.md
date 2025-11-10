@@ -56,12 +56,12 @@ Universal request router built on web standards:
 const router = new Router({ caches });
 
 // Global middleware
-router.use(async (request, context, next) => {
+router.use(async function* (request, context) {
   // context.caches  - CacheStorage API
   // context.cache   - Opened Cache instance for this route
   // context.params  - URL parameters
-  // next()          - Next middleware/handler in chain
-  const response = await next();
+  // yield request   - Generator-based middleware with yield continuation
+  const response = yield request;
   return response;
 });
 
@@ -73,7 +73,7 @@ router.route({
 .use(authMiddleware)
 .use(rateLimitMiddleware)
 .get(async (request, context) => {
-  // Terminal handler - no next() function
+  // Terminal handler - generator-based middleware pattern
   const post = await db.posts.get(context.params.id);
   return new Response(JSON.stringify(post));
 });
@@ -279,7 +279,7 @@ router.route({
 2. Router matches pattern, and opens named cache (context.cache)
 3. Middleware checks context.cache.match(request, context.cacheOptions)
 4. Cache hit? Return cached response (fast path)
-5. Cache miss? Call context.next() â†’ Handler runs
+5. Cache miss? Use yield to continue â†' Handler runs
 6. Handler returns response (may invalidate related caches for mutations)
 7. Middleware stores in context.cache.put(request, response)
 8. Return response
@@ -290,7 +290,7 @@ router.route({
 - Read handlers produce responses with cache metadata (Cache-Control, ETag)
 - Write handlers invalidate caches after mutations
 - Both middleware and handlers can access `context.cache` and `context.caches`
-- The distinction: middleware has `context.next()`, handlers are terminal
+- The distinction: middleware uses generator `yield`, handlers are terminal
 
 ### Deployment Modes
 
@@ -321,10 +321,10 @@ import {Router} from '@b9g/router';
 const router = new Router();
 
 // Cache-aware middleware (cross-cutting concern)
-router.use({}, async (request, context) => {
+router.use(async function* (request, context) {
   // Only cache GET requests
   if (request.method !== 'GET') {
-    return context.next();
+    return yield request;
   }
 
   // Check cache first
@@ -336,7 +336,7 @@ router.use({}, async (request, context) => {
   }
 
   // Cache miss - resolve it
-  const response = await context.next();
+  const response = yield request;
 
   // Populate cache for successful responses
   if (context.cache && response.ok && shouldCache(response)) {
@@ -388,7 +388,7 @@ This same code works:
 
 ## Design Constraints
 
-1. **Middleware chains, handlers terminate** - Middleware has `context.next()` for flow control, handlers are terminal response producers
+1. **Middleware chains, handlers terminate** - Middleware uses generator `yield` for flow control, handlers are terminal response producers
 2. **Both can access caches** - Middleware for cross-cutting cache logic, handlers for route-specific invalidation
 3. **Web standards only** - URLPattern, Request, Response, Fetch, Cache API
 4. **Universal by default** - Same code runs everywhere, with runtime/platform specific fallbacks for maximum compatibility.

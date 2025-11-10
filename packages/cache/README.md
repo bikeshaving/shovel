@@ -186,13 +186,13 @@ caches.register('api', () => new MemoryCache('api'));
 const router = new Router({ caches });
 
 // Cache-aware middleware
-router.use(async (request, context, next) => {
+router.use(async function* (request, context) {
   if (request.method === 'GET' && context.cache) {
     const cached = await context.cache.match(request);
     if (cached) return cached;
   }
   
-  const response = await next();
+  const response = yield request;
   
   if (request.method === 'GET' && context.cache && response.ok) {
     await context.cache.put(request, response.clone());
