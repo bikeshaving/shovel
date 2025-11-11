@@ -246,7 +246,7 @@ test(
 	"self.buckets in ServiceWorker context",
 	async () => {
 		const {
-			ServiceWorkerRuntime,
+			ServiceWorkerRegistration,
 			createServiceWorkerGlobals,
 			PlatformBucketStorage,
 		} = await import("../src/index.js");
@@ -268,7 +268,7 @@ test(
 			`,
 			);
 
-			const runtime = new ServiceWorkerRuntime();
+			const runtime = new ServiceWorkerRegistration();
 			const buckets = new PlatformBucketStorage(tempDir);
 
 			// Set up ServiceWorker globals with buckets
@@ -324,7 +324,7 @@ test(
 	"self.buckets file serving with different content types",
 	async () => {
 		const {
-			ServiceWorkerRuntime,
+			ServiceWorkerRegistration,
 			createServiceWorkerGlobals,
 			PlatformBucketStorage,
 		} = await import("../src/index.js");
@@ -342,7 +342,7 @@ test(
 			await FS.writeFile(join(distPath, "script.js"), "console.log('loaded');");
 			await FS.writeFile(join(distPath, "data.json"), '{"message": "test"}');
 
-			const runtime = new ServiceWorkerRuntime();
+			const runtime = new ServiceWorkerRegistration();
 			const buckets = new PlatformBucketStorage(tempDir);
 
 			createServiceWorkerGlobals(runtime, {buckets});
@@ -556,7 +556,7 @@ test(
 	"buckets API replaces old dirs API",
 	async () => {
 		const {
-			ServiceWorkerRuntime,
+			ServiceWorkerRegistration,
 			createServiceWorkerGlobals,
 			PlatformBucketStorage,
 		} = await import("../src/index.js");
@@ -564,7 +564,7 @@ test(
 		const tempDir = await createTempDir();
 
 		try {
-			const runtime = new ServiceWorkerRuntime();
+			const runtime = new ServiceWorkerRegistration();
 			const buckets = new PlatformBucketStorage(tempDir);
 
 			createServiceWorkerGlobals(runtime, {buckets});

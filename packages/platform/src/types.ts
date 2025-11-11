@@ -185,7 +185,7 @@ export interface ServiceWorkerOptions {
  */
 export interface ServiceWorkerInstance {
 	/** The ServiceWorker runtime */
-	runtime: any; // ServiceWorkerRuntime from service-worker.ts
+	runtime: any; // WorkerPool or ServiceWorkerRegistration
 	/** Handle HTTP request */
 	handleRequest(request: Request): Promise<Response>;
 	/** Install the ServiceWorker */

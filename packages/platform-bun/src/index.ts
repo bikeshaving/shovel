@@ -13,7 +13,7 @@ import {
 	ServerOptions,
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
-	ServiceWorkerRuntime,
+	ServiceWorkerRegistration,
 	createServiceWorkerGlobals,
 	PlatformBucketStorage,
 } from "@b9g/platform";

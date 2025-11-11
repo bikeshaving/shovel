@@ -20,7 +20,7 @@ async function initializeWorker() {
 // Import platform modules
 const {
 	createServiceWorkerGlobals,
-	ServiceWorkerRuntime,
+	ServiceWorkerRegistration,
 	PlatformBucketStorage,
 } = await import("./index.js");
 const {CustomCacheStorage, PostMessageCache} = await import("@b9g/cache");
@@ -37,7 +37,7 @@ const caches = new CustomCacheStorage((name) => {
 const buckets = new PlatformBucketStorage(process.cwd() + "/dist");
 
 // Create ServiceWorker runtime
-let runtime = new ServiceWorkerRuntime();
+let runtime = new ServiceWorkerRegistration();
 createServiceWorkerGlobals(runtime, {caches, buckets});
 
 let workerSelf = runtime;
@@ -82,7 +82,7 @@ async function loadServiceWorker(version, entrypoint) {
 			console.info("[Worker] Creating completely fresh ServiceWorker context");
 
 			// Create a completely new runtime instance instead of trying to reset
-			runtime = new ServiceWorkerRuntime();
+			runtime = new ServiceWorkerRegistration();
 			createServiceWorkerGlobals(runtime, {caches, buckets});
 			workerSelf = runtime;
 			currentApp = null;

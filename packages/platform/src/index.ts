@@ -33,8 +33,8 @@ export {
 	type BucketStorage as BucketStorageInterface,
 } from "./service-worker.js";
 
-// ServiceWorkerRuntime is now ServiceWorkerRegistration
-export {ServiceWorkerRegistration as ServiceWorkerRuntime} from "./service-worker-api.js";
+// ServiceWorker API components
+export {ServiceWorkerRegistration} from "./service-worker-api.js";
 
 // Bucket storage implementation
 export {PlatformBucketStorage} from "./directory-storage.js";

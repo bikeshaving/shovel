@@ -298,12 +298,12 @@ test(
 
 			// Test ServiceWorker that serves assets
 			const {
-				ServiceWorkerRuntime,
+				ServiceWorkerRegistration,
 				createServiceWorkerGlobals,
 				createBucketStorage,
 			} = await import("@b9g/platform");
 
-			const runtime = new ServiceWorkerRuntime();
+			const runtime = new ServiceWorkerRegistration();
 			const buckets = createBucketStorage(testDir);
 
 			createServiceWorkerGlobals(runtime, {buckets});

@@ -255,9 +255,9 @@ test(
 test(
 	"ServiceWorker lifecycle - install and activate",
 	async () => {
-		const {ServiceWorkerRuntime} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/index.js");
 
-		const runtime = new ServiceWorkerRuntime();
+		const runtime = new ServiceWorkerRegistration();
 		let installEventFired = false;
 		let activateEventFired = false;
 
@@ -284,9 +284,9 @@ test(
 test(
 	"ServiceWorker fetch event handling",
 	async () => {
-		const {ServiceWorkerRuntime} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/index.js");
 
-		const runtime = new ServiceWorkerRuntime();
+		const runtime = new ServiceWorkerRegistration();
 		let fetchEventReceived = null;
 
 		runtime.addEventListener("fetch", (event) => {
@@ -321,9 +321,9 @@ test(
 test(
 	"ServiceWorker event listener removal",
 	async () => {
-		const {ServiceWorkerRuntime} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/index.js");
 
-		const runtime = new ServiceWorkerRuntime();
+		const runtime = new ServiceWorkerRegistration();
 		let callCount = 0;
 
 		const listener = () => {
@@ -350,9 +350,9 @@ test(
 test(
 	"ServiceWorker multiple listeners for same event",
 	async () => {
-		const {ServiceWorkerRuntime} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/index.js");
 
-		const runtime = new ServiceWorkerRuntime();
+		const runtime = new ServiceWorkerRegistration();
 		const calls = [];
 
 		runtime.addEventListener("fetch", (event) => {
@@ -388,9 +388,9 @@ test(
 test(
 	"ServiceWorker error handling in event listeners",
 	async () => {
-		const {ServiceWorkerRuntime} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/index.js");
 
-		const runtime = new ServiceWorkerRuntime();
+		const runtime = new ServiceWorkerRegistration();
 
 		// Temporarily capture uncaught exceptions to prevent test failure
 		const originalHandler = process.listeners("uncaughtException");
@@ -444,9 +444,9 @@ test(
 test(
 	"ServiceWorker runtime reset functionality",
 	async () => {
-		const {ServiceWorkerRuntime} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/index.js");
 
-		const runtime = new ServiceWorkerRuntime();
+		const runtime = new ServiceWorkerRegistration();
 		let listenerCalled = false;
 
 		// Add listener
@@ -472,9 +472,9 @@ test(
 test(
 	"ServiceWorker install waitUntil rejection handling",
 	async () => {
-		const {ServiceWorkerRuntime} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/index.js");
 
-		const runtime = new ServiceWorkerRuntime();
+		const runtime = new ServiceWorkerRegistration();
 
 		runtime.addEventListener("install", (event) => {
 			// Add a promise that will reject asynchronously
@@ -497,9 +497,9 @@ test(
 test(
 	"ServiceWorker activate waitUntil rejection handling",
 	async () => {
-		const {ServiceWorkerRuntime} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/index.js");
 
-		const runtime = new ServiceWorkerRuntime();
+		const runtime = new ServiceWorkerRegistration();
 
 		// Install first without errors
 		await runtime.install();
@@ -525,9 +525,9 @@ test(
 test(
 	"ServiceWorker fetch waitUntil rejection does not block response",
 	async () => {
-		const {ServiceWorkerRuntime} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/index.js");
 
-		const runtime = new ServiceWorkerRuntime();
+		const runtime = new ServiceWorkerRegistration();
 
 		runtime.addEventListener("fetch", (event) => {
 			event.respondWith(new Response("Hello World"));
@@ -557,11 +557,11 @@ test(
 test(
 	"ServiceWorker complete workflow",
 	async () => {
-		const {ServiceWorkerRuntime, createServiceWorkerGlobals} = await import(
+		const {ServiceWorkerRegistration, createServiceWorkerGlobals} = await import(
 			"../src/index.js"
 		);
 
-		const runtime = new ServiceWorkerRuntime();
+		const runtime = new ServiceWorkerRegistration();
 
 		// Set up globals like production does
 		createServiceWorkerGlobals(runtime, {});
