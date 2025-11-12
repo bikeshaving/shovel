@@ -467,3 +467,6 @@ export {
 	getBucket,
 	getFileSystemRoot,
 } from "./registry.js";
+
+// Bucket Storage (mirrors CacheStorage pattern)
+export {CustomBucketStorage, type BucketFactory} from "./bucket-storage.js";

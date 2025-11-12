@@ -26,9 +26,11 @@ import {
 	FileSystemRegistry,
 	getDirectoryHandle,
 	NodeBucket,
+	MemoryBucket,
 } from "@b9g/filesystem";
 import * as Http from "http";
 import * as Path from "path";
+import * as Os from "os";
 
 // Re-export common platform types
 export type {
@@ -129,8 +131,9 @@ export class NodePlatform extends BasePlatform {
 			...options,
 		};
 
-		// Register Node.js filesystem adapter as default
-		FileSystemRegistry.register("node", new NodeBucket(this.options.cwd));
+		// Register standard well-known buckets
+		FileSystemRegistry.register("tmp", new NodeBucket(Os.tmpdir()));
+		FileSystemRegistry.register("dist", new NodeBucket(Path.join(this.options.cwd, "dist")));
 	}
 
 	/**

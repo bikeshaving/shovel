@@ -38,6 +38,7 @@ export {ServiceWorkerRegistration} from "./service-worker-api.js";
 
 // Bucket storage implementation
 export {PlatformBucketStorage} from "./directory-storage.js";
+export {CustomBucketStorage, type BucketFactory} from "@b9g/filesystem";
 
 // Import for local use
 import {PlatformBucketStorage} from "./directory-storage.js";

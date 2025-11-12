@@ -75,6 +75,10 @@ export class CloudflarePlatform extends BasePlatform {
 		// We can't use dynamic imports in Workers, so we bundle what we need
 		FileSystemRegistry.register("memory", new MemoryBucket());
 
+		// Register standard tmp bucket (memory-backed fallback for Cloudflare)
+		// Cloudflare Workers don't have filesystem access, so we use memory
+		FileSystemRegistry.register("tmp", new MemoryBucket());
+
 		// R2 adapter registration is deferred to async initialization
 		// since Cloudflare Workers don't support dynamic imports in constructors
 	}

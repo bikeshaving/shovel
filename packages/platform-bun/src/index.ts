@@ -21,6 +21,7 @@ import {WorkerPool, WorkerPoolOptions} from "@b9g/platform/worker-pool";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
 import {FileSystemRegistry, MemoryBucket, NodeBucket} from "@b9g/filesystem";
 import * as Path from "path";
+import * as Os from "os";
 
 // Re-export common platform types
 export type {
@@ -79,6 +80,9 @@ export class BunPlatform extends BasePlatform {
 			"node",
 			new NodeBucket(Path.join(this.options.cwd, "dist")),
 		);
+
+		// Register standard tmp bucket using OS temp directory
+		FileSystemRegistry.register("tmp", new NodeBucket(Os.tmpdir()));
 
 		// Register Bun's native S3 adapter if available
 		try {
