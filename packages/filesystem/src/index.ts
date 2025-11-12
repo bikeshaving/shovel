@@ -461,12 +461,7 @@ export {NodeBucket, NodeFileSystemBackend} from "./node.js";
 export {S3Bucket, S3FileSystemBackend} from "./bun-s3.js";
 
 // Registry and utilities
-export {
-	FileSystemRegistry,
-	getDirectoryHandle,
-	getBucket,
-	getFileSystemRoot,
-} from "./registry.js";
+export {FileSystemRegistry, getDirectoryHandle} from "./registry.js";
 
 // Bucket Storage (mirrors CacheStorage pattern)
 export {CustomBucketStorage, type BucketFactory} from "./bucket-storage.js";

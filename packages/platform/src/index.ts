@@ -40,14 +40,6 @@ export {ServiceWorkerRegistration} from "./service-worker-api.js";
 export {PlatformBucketStorage} from "./directory-storage.js";
 export {CustomBucketStorage, type BucketFactory} from "@b9g/filesystem";
 
-// Import for local use
-import {PlatformBucketStorage} from "./directory-storage.js";
-
-// Bucket storage factory function for backwards compatibility
-export function createBucketStorage(rootPath: string = "./dist") {
-	return new PlatformBucketStorage(rootPath);
-}
-
 // Platform registry and detection
 export {
 	platformRegistry,

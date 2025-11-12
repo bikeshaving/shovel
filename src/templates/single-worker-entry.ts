@@ -7,7 +7,7 @@
 import {
 	ServiceWorkerRegistration,
 	createServiceWorkerGlobals,
-	createBucketStorage,
+	PlatformBucketStorage,
 } from "@b9g/platform";
 import {fileURLToPath} from "url";
 import {dirname} from "path";
@@ -22,7 +22,7 @@ const registration = new ServiceWorkerRegistration();
 // This allows buckets.getDirectoryHandle("assets") to find dist/assets
 const executableDir = dirname(fileURLToPath(import.meta.url));
 const distDir = dirname(executableDir);
-const buckets = createBucketStorage(distDir);
+const buckets = new PlatformBucketStorage(distDir);
 
 // Set up ServiceWorker globals
 createServiceWorkerGlobals(registration, {buckets});

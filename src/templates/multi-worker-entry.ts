@@ -178,7 +178,7 @@ if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
 import {
 	ServiceWorkerRegistration,
 	createServiceWorkerGlobals,
-	createBucketStorage,
+	PlatformBucketStorage,
 } from "@b9g/platform";
 import {parentPort} from "worker_threads";
 
@@ -190,7 +190,7 @@ if (workerData?.isWorker && parentPort) {
 	// For executables, bucket storage root should be the dist directory
 	const executableDir = dirname(fileURLToPath(import.meta.url));
 	const distDir = dirname(executableDir);
-	const buckets = createBucketStorage(distDir);
+	const buckets = new PlatformBucketStorage(distDir);
 
 	createServiceWorkerGlobals(registration, {buckets});
 	globalThis.self = registration;
