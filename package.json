@@ -5,7 +5,8 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "shovel": "./dist/src/cli.js"
+    "shovel": "./dist/src/cli.js",
+    "create-shovel": "./dist/src/create.js"
   },
   "workspaces": [
     "packages/*",
@@ -18,10 +19,12 @@
     "lint:fix": "eslint --ext .js,.jsx,.ts,.tsx . --fix"
   },
   "dependencies": {
+    "@clack/prompts": "^0.7.0",
     "commander": "^13.1.0",
     "esbuild": "^0.19.12",
     "magic-string": "^0.30.5",
     "mime-types": "^2.1.35",
+    "picocolors": "^1.0.0",
     "source-map": "^0.7.4"
   },
   "peerDependencies": {

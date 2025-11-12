@@ -1,4 +1,5 @@
-#!/usr/bin/env node
+#!/usr/bin/env sh
+//bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
 import {Command} from "commander";
 import pkg from "../package.json" with {type: "json"};
 import {DEFAULTS, getDefaultWorkerCount} from "./config.js";
