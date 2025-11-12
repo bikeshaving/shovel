@@ -6,7 +6,7 @@
 
 import {
 	ServiceWorkerRegistration,
-	createServiceWorkerGlobals,
+	ShovelGlobalScope,
 	PlatformBucketStorage,
 } from "@b9g/platform";
 import {fileURLToPath} from "url";
@@ -24,13 +24,12 @@ const executableDir = dirname(fileURLToPath(import.meta.url));
 const distDir = dirname(executableDir);
 const buckets = new PlatformBucketStorage(distDir);
 
-// Set up ServiceWorker globals
-createServiceWorkerGlobals(registration, {buckets});
-globalThis.self = registration;
-globalThis.addEventListener = registration.addEventListener.bind(registration);
-globalThis.removeEventListener =
-	registration.removeEventListener.bind(registration);
-globalThis.dispatchEvent = registration.dispatchEvent.bind(registration);
+// Create and install ServiceWorker global scope
+const scope = new ShovelGlobalScope({
+	registration,
+	buckets,
+});
+scope.install();
 
 // Dynamically import user's ServiceWorker code after globals are set up
 await import(USER_ENTRYPOINT);

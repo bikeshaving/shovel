@@ -177,7 +177,7 @@ if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
 // WORKER THREAD CODE - this needs to be at top level for imports
 import {
 	ServiceWorkerRegistration,
-	createServiceWorkerGlobals,
+	ShovelGlobalScope,
 	PlatformBucketStorage,
 } from "@b9g/platform";
 import {parentPort} from "worker_threads";
@@ -192,13 +192,12 @@ if (workerData?.isWorker && parentPort) {
 	const distDir = dirname(executableDir);
 	const buckets = new PlatformBucketStorage(distDir);
 
-	createServiceWorkerGlobals(registration, {buckets});
-	globalThis.self = registration;
-	globalThis.addEventListener =
-		registration.addEventListener.bind(registration);
-	globalThis.removeEventListener =
-		registration.removeEventListener.bind(registration);
-	globalThis.dispatchEvent = registration.dispatchEvent.bind(registration);
+	// Create and install ServiceWorker global scope
+	const scope = new ShovelGlobalScope({
+		registration,
+		buckets,
+	});
+	scope.install();
 
 	// Import user's ServiceWorker code
 	await import(workerData.userEntryPath);

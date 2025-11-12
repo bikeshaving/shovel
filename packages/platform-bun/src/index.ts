@@ -14,7 +14,7 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 	ServiceWorkerRegistration,
-	createServiceWorkerGlobals,
+	ShovelGlobalScope,
 	PlatformBucketStorage,
 } from "@b9g/platform";
 import {WorkerPool, WorkerPoolOptions} from "@b9g/platform/worker-pool";

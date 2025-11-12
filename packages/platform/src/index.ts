@@ -25,13 +25,18 @@ export {BasePlatform} from "./types.js";
 
 // ServiceWorker runtime
 export {
-	createServiceWorkerGlobals,
 	type ShovelFetchEvent,
 	type ShovelInstallEvent,
 	type ShovelActivateEvent,
 	type ShovelStaticEvent,
 	type BucketStorage as BucketStorageInterface,
 } from "./service-worker.js";
+
+// ServiceWorker global scope
+export {
+	ShovelGlobalScope,
+	type ShovelGlobalScopeOptions,
+} from "./shovel-global-scope.js";
 
 // ServiceWorker API components
 export {ServiceWorkerRegistration} from "./service-worker-api.js";

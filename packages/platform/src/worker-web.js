@@ -19,7 +19,7 @@ async function initializeWorker() {
 
 // Import platform modules
 const {
-	createServiceWorkerGlobals,
+	ShovelGlobalScope,
 	ServiceWorkerRegistration,
 	PlatformBucketStorage,
 } = await import("./index.js");
@@ -37,10 +37,11 @@ const caches = new CustomCacheStorage((name) => {
 const buckets = new PlatformBucketStorage(process.cwd() + "/dist");
 
 // Create ServiceWorker runtime
-let runtime = new ServiceWorkerRegistration();
-createServiceWorkerGlobals(runtime, {caches, buckets});
+let registration = new ServiceWorkerRegistration();
+let scope = new ShovelGlobalScope({registration, caches, buckets});
+scope.install();
 
-let workerSelf = runtime;
+let workerSelf = scope;
 let currentApp = null;
 let serviceWorkerReady = false;
 let loadedVersion = null;
@@ -51,7 +52,7 @@ async function handleFetchEvent(request) {
 	}
 
 	try {
-		const response = await runtime.handleRequest(request);
+		const response = await registration.handleRequest(request);
 		return response;
 	} catch (error) {
 		console.error("[Worker] ServiceWorker request failed:", error);
@@ -82,9 +83,10 @@ async function loadServiceWorker(version, entrypoint) {
 			console.info("[Worker] Creating completely fresh ServiceWorker context");
 
 			// Create a completely new runtime instance instead of trying to reset
-			runtime = new ServiceWorkerRegistration();
-			createServiceWorkerGlobals(runtime, {caches, buckets});
-			workerSelf = runtime;
+			registration = new ServiceWorkerRegistration();
+			scope = new ShovelGlobalScope({registration, caches, buckets});
+			scope.install();
+			workerSelf = scope;
 			currentApp = null;
 			serviceWorkerReady = false;
 		}
@@ -97,12 +99,6 @@ async function loadServiceWorker(version, entrypoint) {
 			return;
 		}
 
-		// Set up ServiceWorker globals
-		globalThis.self = runtime;
-		globalThis.addEventListener = runtime.addEventListener.bind(runtime);
-		globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
-		globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
-
 		// Import the application
 		const appModule = await import(`${entrypointPath}?v=${version}`);
 
@@ -110,8 +106,8 @@ async function loadServiceWorker(version, entrypoint) {
 		currentApp = appModule;
 
 		// Run ServiceWorker lifecycle
-		await runtime.install();
-		await runtime.activate();
+		await registration.install();
+		await registration.activate();
 		serviceWorkerReady = true;
 
 		console.info(
