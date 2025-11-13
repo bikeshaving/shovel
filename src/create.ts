@@ -1,243 +1,248 @@
 #!/usr/bin/env sh
 //bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
 
-import { intro, outro, text, select, confirm, spinner } from '@clack/prompts';
-import picocolors from 'picocolors';
-const { cyan, green, yellow, red, dim, bold } = picocolors;
-import { mkdir, writeFile } from 'fs/promises';
-import { join, resolve } from 'path';
-import { existsSync } from 'fs';
+import {intro, outro, text, select, confirm, spinner} from "@clack/prompts";
+import picocolors from "picocolors";
+const {cyan, green, yellow, red, dim, bold} = picocolors;
+import {mkdir, writeFile} from "fs/promises";
+import {join, resolve} from "path";
+import {existsSync} from "fs";
 
 // Runtime detection
-const isBun = typeof Bun !== 'undefined';
-const currentRuntime = isBun ? 'bun' : 'node';
+const isBun = typeof Bun !== "undefined";
+const currentRuntime = isBun ? "bun" : "node";
 
 interface ProjectConfig {
-  name: string;
-  platform: 'node' | 'bun' | 'cloudflare';
-  template: 'basic' | 'api' | 'echo';
-  typescript: boolean;
+	name: string;
+	platform: "node" | "bun" | "cloudflare";
+	template: "basic" | "api" | "echo";
+	typescript: boolean;
 }
 
 async function main() {
-  console.log();
-  
-  intro(cyan('🚀 Create Shovel App'));
-  
-  console.log(dim('The ServiceWorker framework that runs everywhere\n'));
+	console.log();
 
-  // Get project name from args or prompt
-  let projectName = process.argv[2];
-  
-  if (!projectName) {
-    const nameResult = await text({
-      message: 'What is your project name?',
-      placeholder: 'my-shovel-app',
-      validate: (value) => {
-        if (!value) return 'Project name is required';
-        if (!/^[a-z0-9-]+$/.test(value)) return 'Use lowercase letters, numbers, and hyphens only';
-        return undefined;
-      }
-    });
-    
-    if (typeof nameResult === 'symbol') {
-      outro(red('❌ Project creation cancelled'));
-      process.exit(0);
-    }
-    
-    projectName = nameResult;
-  }
+	intro(cyan("🚀 Create Shovel App"));
 
-  const projectPath = resolve(process.cwd(), projectName);
-  
-  // Check if directory exists
-  if (existsSync(projectPath)) {
-    const overwrite = await confirm({
-      message: `Directory "${projectName}" already exists. Overwrite?`,
-    });
-    
-    if (typeof overwrite === 'symbol' || !overwrite) {
-      outro(red('❌ Project creation cancelled'));
-      process.exit(0);
-    }
-  }
+	console.log(dim("The ServiceWorker framework that runs everywhere\n"));
 
-  // Platform selection
-  const platform = await select({
-    message: 'Which platform are you targeting?',
-    options: [
-      { 
-        value: 'node' as const, 
-        label: `${bold('Node.js')} - Traditional server with worker threads`,
-        hint: 'Most common choice'
-      },
-      { 
-        value: 'bun' as const, 
-        label: `${bold('Bun')} - Native performance with Web Workers`
-      },
-      { 
-        value: 'cloudflare' as const, 
-        label: `${bold('Cloudflare')} - Edge runtime with KV/R2/D1`
-      }
-    ]
-  });
+	// Get project name from args or prompt
+	let projectName = process.argv[2];
 
-  if (typeof platform === 'symbol') {
-    outro(red('❌ Project creation cancelled'));
-    process.exit(0);
-  }
+	if (!projectName) {
+		const nameResult = await text({
+			message: "What is your project name?",
+			placeholder: "my-shovel-app",
+			validate: (value) => {
+				if (!value) return "Project name is required";
+				if (!/^[a-z0-9-]+$/.test(value))
+					return "Use lowercase letters, numbers, and hyphens only";
+				return undefined;
+			},
+		});
 
-  // Template selection  
-  const template = await select({
-    message: 'Choose a starter template:',
-    options: [
-      { 
-        value: 'basic' as const, 
-        label: `${bold('Basic')} - Simple hello world with routing`
-      },
-      { 
-        value: 'api' as const, 
-        label: `${bold('API')} - REST endpoints with JSON responses`
-      },
-      { 
-        value: 'echo' as const, 
-        label: `${bold('Echo')} - HTTP request echo service (like httpbin)`
-      }
-    ]
-  });
+		if (typeof nameResult === "symbol") {
+			outro(red("❌ Project creation cancelled"));
+			process.exit(0);
+		}
 
-  if (typeof template === 'symbol') {
-    outro(red('❌ Project creation cancelled'));
-    process.exit(0);
-  }
+		projectName = nameResult;
+	}
 
-  // TypeScript option
-  const typescript = await confirm({
-    message: 'Use TypeScript?',
-    initialValue: false
-  });
+	const projectPath = resolve(process.cwd(), projectName);
 
-  if (typeof typescript === 'symbol') {
-    outro(red('❌ Project creation cancelled'));
-    process.exit(0);
-  }
+	// Check if directory exists
+	if (existsSync(projectPath)) {
+		const overwrite = await confirm({
+			message: `Directory "${projectName}" already exists. Overwrite?`,
+		});
 
-  const config: ProjectConfig = {
-    name: projectName,
-    platform,
-    template,
-    typescript
-  };
+		if (typeof overwrite === "symbol" || !overwrite) {
+			outro(red("❌ Project creation cancelled"));
+			process.exit(0);
+		}
+	}
 
-  // Create project
-  const s = spinner();
-  s.start('Creating your Shovel project...');
+	// Platform selection
+	const platform = await select({
+		message: "Which platform are you targeting?",
+		options: [
+			{
+				value: "node" as const,
+				label: `${bold("Node.js")} - Traditional server with worker threads`,
+				hint: "Most common choice",
+			},
+			{
+				value: "bun" as const,
+				label: `${bold("Bun")} - Native performance with Web Workers`,
+			},
+			{
+				value: "cloudflare" as const,
+				label: `${bold("Cloudflare")} - Edge runtime with KV/R2/D1`,
+			},
+		],
+	});
 
-  try {
-    await createProject(config, projectPath);
-    s.stop('✅ Project created successfully!');
-    
-    console.log();
-    outro(green('🎉 Your Shovel project is ready!'));
-    
-    console.log();
-    console.log(cyan('Next steps:'));
-    console.log(`  ${dim('$')} cd ${projectName}`);
-    console.log(`  ${dim('$')} npm install`);
-    console.log(`  ${dim('$')} npm run develop`);
-    console.log();
-    console.log(`🌐 Your app will be available at: ${bold('http://localhost:8000')}`);
-    console.log();
-    console.log(dim('Happy coding with Shovel! 🚀'));
-    
-  } catch (error) {
-    s.stop('❌ Failed to create project');
-    console.error(red('Error:'), error);
-    process.exit(1);
-  }
+	if (typeof platform === "symbol") {
+		outro(red("❌ Project creation cancelled"));
+		process.exit(0);
+	}
+
+	// Template selection
+	const template = await select({
+		message: "Choose a starter template:",
+		options: [
+			{
+				value: "basic" as const,
+				label: `${bold("Basic")} - Simple hello world with routing`,
+			},
+			{
+				value: "api" as const,
+				label: `${bold("API")} - REST endpoints with JSON responses`,
+			},
+			{
+				value: "echo" as const,
+				label: `${bold("Echo")} - HTTP request echo service (like httpbin)`,
+			},
+		],
+	});
+
+	if (typeof template === "symbol") {
+		outro(red("❌ Project creation cancelled"));
+		process.exit(0);
+	}
+
+	// TypeScript option
+	const typescript = await confirm({
+		message: "Use TypeScript?",
+		initialValue: false,
+	});
+
+	if (typeof typescript === "symbol") {
+		outro(red("❌ Project creation cancelled"));
+		process.exit(0);
+	}
+
+	const config: ProjectConfig = {
+		name: projectName,
+		platform,
+		template,
+		typescript,
+	};
+
+	// Create project
+	const s = spinner();
+	s.start("Creating your Shovel project...");
+
+	try {
+		await createProject(config, projectPath);
+		s.stop("✅ Project created successfully!");
+
+		console.log();
+		outro(green("🎉 Your Shovel project is ready!"));
+
+		console.log();
+		console.log(cyan("Next steps:"));
+		console.log(`  ${dim("$")} cd ${projectName}`);
+		console.log(`  ${dim("$")} npm install`);
+		console.log(`  ${dim("$")} npm run develop`);
+		console.log();
+		console.log(
+			`🌐 Your app will be available at: ${bold("http://localhost:8000")}`,
+		);
+		console.log();
+		console.log(dim("Happy coding with Shovel! 🚀"));
+	} catch (error) {
+		s.stop("❌ Failed to create project");
+		console.error(red("Error:"), error);
+		process.exit(1);
+	}
 }
 
 async function createProject(config: ProjectConfig, projectPath: string) {
-  // Create project directory
-  await mkdir(projectPath, { recursive: true });
-  await mkdir(join(projectPath, 'src'), { recursive: true });
-  
-  // Create package.json
-  const packageJson = {
-    name: config.name,
-    private: true,
-    version: "1.0.0",
-    description: `Shovel ${config.template} app for ${config.platform}`,
-    type: "module",
-    scripts: {
-      develop: `shovel develop src/app.${config.typescript ? 'ts' : 'js'} --platform ${config.platform}`,
-      build: `shovel build src/app.${config.typescript ? 'ts' : 'js'} --platform ${config.platform}`,
-      start: `shovel serve dist/app.js --platform ${config.platform}`
-    },
-    dependencies: {
-      "@b9g/router": "^0.1.0",
-      "@b9g/platform": "^0.1.0",
-      [`@b9g/platform-${config.platform}`]: "^0.1.0",
-      "@b9g/shovel": "^0.1.0"
-    },
-    devDependencies: config.typescript ? {
-      "@types/node": "^20.0.0",
-      "typescript": "^5.0.0"
-    } : {}
-  };
-  
-  await writeFile(
-    join(projectPath, 'package.json'), 
-    JSON.stringify(packageJson, null, 2)
-  );
+	// Create project directory
+	await mkdir(projectPath, {recursive: true});
+	await mkdir(join(projectPath, "src"), {recursive: true});
 
-  // Create app file
-  const appFile = generateAppFile(config);
-  const appExt = config.typescript ? 'ts' : 'js';
-  await writeFile(join(projectPath, `src/app.${appExt}`), appFile);
+	// Create package.json
+	const packageJson = {
+		name: config.name,
+		private: true,
+		version: "1.0.0",
+		description: `Shovel ${config.template} app for ${config.platform}`,
+		type: "module",
+		scripts: {
+			develop: `shovel develop src/app.${config.typescript ? "ts" : "js"} --platform ${config.platform}`,
+			build: `shovel build src/app.${config.typescript ? "ts" : "js"} --platform ${config.platform}`,
+			start: `shovel serve dist/app.js --platform ${config.platform}`,
+		},
+		dependencies: {
+			"@b9g/router": "^0.1.0",
+			"@b9g/platform": "^0.1.0",
+			[`@b9g/platform-${config.platform}`]: "^0.1.0",
+			"@b9g/shovel": "^0.1.0",
+		},
+		devDependencies: config.typescript
+			? {
+					"@types/node": "^20.0.0",
+					typescript: "^5.0.0",
+				}
+			: {},
+	};
 
-  // Create TypeScript config if needed
-  if (config.typescript) {
-    const tsConfig = {
-      compilerOptions: {
-        target: 'ES2022',
-        module: 'ESNext', 
-        moduleResolution: 'bundler',
-        allowSyntheticDefaultImports: true,
-        esModuleInterop: true,
-        strict: true,
-        skipLibCheck: true,
-        forceConsistentCasingInFileNames: true,
-        lib: ['ES2022', 'WebWorker']
-      },
-      include: ['src/**/*'],
-      exclude: ['node_modules', 'dist']
-    };
-    
-    await writeFile(
-      join(projectPath, 'tsconfig.json'),
-      JSON.stringify(tsConfig, null, 2)
-    );
-  }
+	await writeFile(
+		join(projectPath, "package.json"),
+		JSON.stringify(packageJson, null, 2),
+	);
 
-  // Create README
-  const readme = generateReadme(config);
-  await writeFile(join(projectPath, 'README.md'), readme);
-  
-  // Create .gitignore
-  const gitignore = `node_modules/
+	// Create app file
+	const appFile = generateAppFile(config);
+	const appExt = config.typescript ? "ts" : "js";
+	await writeFile(join(projectPath, `src/app.${appExt}`), appFile);
+
+	// Create TypeScript config if needed
+	if (config.typescript) {
+		const tsConfig = {
+			compilerOptions: {
+				target: "ES2022",
+				module: "ESNext",
+				moduleResolution: "bundler",
+				allowSyntheticDefaultImports: true,
+				esModuleInterop: true,
+				strict: true,
+				skipLibCheck: true,
+				forceConsistentCasingInFileNames: true,
+				lib: ["ES2022", "WebWorker"],
+			},
+			include: ["src/**/*"],
+			exclude: ["node_modules", "dist"],
+		};
+
+		await writeFile(
+			join(projectPath, "tsconfig.json"),
+			JSON.stringify(tsConfig, null, 2),
+		);
+	}
+
+	// Create README
+	const readme = generateReadme(config);
+	await writeFile(join(projectPath, "README.md"), readme);
+
+	// Create .gitignore
+	const gitignore = `node_modules/
 dist/
 .env
 .env.local
 *.log
 .DS_Store
 `;
-  await writeFile(join(projectPath, '.gitignore'), gitignore);
+	await writeFile(join(projectPath, ".gitignore"), gitignore);
 }
 
 function generateAppFile(config: ProjectConfig): string {
-  const helperImports = config.template === 'echo' && config.typescript 
-    ? `
+	const helperImports =
+		config.template === "echo" && config.typescript
+			? `
 // Helper functions for echo service
 function getRequestInfo(request: Request) {
   return {
@@ -274,9 +279,9 @@ async function parseBody(request: Request) {
     return null;
   }
 }
-` 
-    : config.template === 'echo' 
-    ? `
+`
+			: config.template === "echo"
+				? `
 // Helper functions for echo service
 function getRequestInfo(request) {
   return {
@@ -313,10 +318,10 @@ async function parseBody(request) {
     return null;
   }
 }
-` 
-    : '';
+`
+				: "";
 
-  return `${helperImports}import { Router } from "@b9g/router";
+	return `${helperImports}import { Router } from "@b9g/router";
 
 const router = new Router();
 
@@ -356,9 +361,9 @@ self.addEventListener("fetch", (event) => {
 }
 
 function generateRoutes(config: ProjectConfig): string {
-  switch (config.template) {
-    case 'basic':
-      return `// Basic routes
+	switch (config.template) {
+		case "basic":
+			return `// Basic routes
 router.route("/").get(async (request, context) => {
   const html = \`
     <!DOCTYPE html>
@@ -386,7 +391,7 @@ router.route("/").get(async (request, context) => {
           </ul>
         </div>
         
-        <p>Edit <code>src/app.${config.typescript ? 'ts' : 'js'}</code> to customize your app!</p>
+        <p>Edit <code>src/app.${config.typescript ? "ts" : "js"}</code> to customize your app!</p>
       </body>
     </html>
   \`;
@@ -416,8 +421,8 @@ router.route("/api/time").get(async (request, context) => {
   });
 });`;
 
-    case 'api':
-      return `// API routes
+		case "api":
+			return `// API routes
 router.route("/").get(async (request, context) => {
   return new Response(JSON.stringify({
     name: "${config.name}",
@@ -506,8 +511,8 @@ router.route("/health").get(async (request, context) => {
   });
 });`;
 
-    case 'echo':
-      return `// Echo service routes (like httpbin)
+		case "echo":
+			return `// Echo service routes (like httpbin)
 router.route("/").get(async (request, context) => {
   const html = \`
     <!DOCTYPE html>
@@ -599,13 +604,13 @@ router.route("/user-agent").get(async (request, context) => {
   });
 });`;
 
-    default:
-      return '// Routes will be added here';
-  }
+		default:
+			return "// Routes will be added here";
+	}
 }
 
 function generateReadme(config: ProjectConfig): string {
-  return `# ${config.name}
+	return `# ${config.name}
 
 A Shovel ${config.template} application for the ${config.platform} platform.
 
@@ -620,8 +625,8 @@ Your app will be available at: **http://localhost:8000**
 
 ## 📁 Project Structure
 
-- \`src/app.${config.typescript ? 'ts' : 'js'}\` - Main ServiceWorker application
-- \`package.json\` - Dependencies and scripts${config.typescript ? '\n- \`tsconfig.json\` - TypeScript configuration' : ''}
+- \`src/app.${config.typescript ? "ts" : "js"}\` - Main ServiceWorker application
+- \`package.json\` - Dependencies and scripts${config.typescript ? "\n- \`tsconfig.json\` - TypeScript configuration" : ""}
 
 ## 🛠️ Available Scripts
 
@@ -633,7 +638,7 @@ Your app will be available at: **http://localhost:8000**
 
 - ✅ **ServiceWorker APIs** - Standard web APIs (\`self.addEventListener\`, etc.)
 - ✅ **${config.platform} Runtime** - Optimized for ${config.platform}
-- ✅ **${config.typescript ? 'TypeScript' : 'JavaScript'}** - ${config.typescript ? 'Full type safety' : 'Modern JavaScript'} with ESM modules
+- ✅ **${config.typescript ? "TypeScript" : "JavaScript"}** - ${config.typescript ? "Full type safety" : "Modern JavaScript"} with ESM modules
 - ✅ **${config.template} Template** - Ready-to-use starter with routing
 
 ## 📚 Learn More
@@ -648,12 +653,12 @@ Built with 🚀 [Shovel](https://github.com/b9g/shovel) - The ServiceWorker fram
 }
 
 // Handle Ctrl+C gracefully
-process.on('SIGINT', () => {
-  outro(red('❌ Project creation cancelled'));
-  process.exit(0);
+process.on("SIGINT", () => {
+	outro(red("❌ Project creation cancelled"));
+	process.exit(0);
 });
 
 main().catch((error) => {
-  console.error(red('Fatal error:'), error);
-  process.exit(1);
+	console.error(red("Fatal error:"), error);
+	process.exit(1);
 });

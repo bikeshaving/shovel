@@ -133,7 +133,10 @@ export class NodePlatform extends BasePlatform {
 
 		// Register standard well-known buckets
 		FileSystemRegistry.register("tmp", new NodeBucket(Os.tmpdir()));
-		FileSystemRegistry.register("dist", new NodeBucket(Path.join(this.options.cwd, "dist")));
+		FileSystemRegistry.register(
+			"dist",
+			new NodeBucket(Path.join(this.options.cwd, "dist")),
+		);
 	}
 
 	/**

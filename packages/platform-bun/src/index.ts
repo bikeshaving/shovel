@@ -15,7 +15,8 @@ import {
 	ServiceWorkerInstance,
 	ServiceWorkerRegistration,
 	ShovelGlobalScope,
-	PlatformBucketStorage,
+	CustomBucketStorage,
+	type BucketFactory,
 } from "@b9g/platform";
 import {WorkerPool, WorkerPoolOptions} from "@b9g/platform/worker-pool";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";

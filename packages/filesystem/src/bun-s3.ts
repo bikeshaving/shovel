@@ -233,6 +233,24 @@ export class S3FileSystemBackend implements FileSystemBackend {
 /**
  * S3 bucket - root entry point for S3 filesystem using Bun's S3 client
  * Implements FileSystemDirectoryHandle for S3 object storage
+ *
+ * Example usage with namespacing:
+ * ```typescript
+ * const s3 = new S3Client({ ... });
+ *
+ * // Register namespaced buckets for multi-tenancy
+ * FileSystemRegistry.register("dist", new S3Bucket(
+ *   s3,
+ *   "my-company-bucket",
+ *   "my-app/production/dist"  // Prefix for isolation
+ * ));
+ *
+ * FileSystemRegistry.register("tmp", new S3Bucket(
+ *   s3,
+ *   "my-company-bucket",
+ *   "my-app/production/tmp"
+ * ));
+ * ```
  */
 export class S3Bucket implements FileSystemDirectoryHandle {
 	readonly kind = "directory" as const;
@@ -242,9 +260,9 @@ export class S3Bucket implements FileSystemDirectoryHandle {
 	constructor(
 		s3Client: any,
 		bucketName: string,
-		prefix: string = "filesystems/root",
+		prefix: string = "",  // No default prefix - let users explicitly namespace
 	) {
-		this.name = prefix.split("/").pop() || "root";
+		this.name = prefix.split("/").filter(Boolean).pop() || bucketName;
 		this.backend = new S3FileSystemBackend(s3Client, bucketName, prefix);
 	}
 

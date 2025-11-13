@@ -96,4 +96,3 @@ export async function getDirectoryHandle(
 	}
 	return adapter;
 }
-

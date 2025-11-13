@@ -7,8 +7,9 @@
 import {
 	ServiceWorkerRegistration,
 	ShovelGlobalScope,
-	PlatformBucketStorage,
+	CustomBucketStorage,
 } from "@b9g/platform";
+import {FileSystemRegistry, NodeBucket} from "@b9g/filesystem";
 import {fileURLToPath} from "url";
 import {dirname} from "path";
 import {realpath} from "fs";
@@ -18,11 +19,20 @@ const realpathAsync = promisify(realpath);
 
 // Production server setup
 const registration = new ServiceWorkerRegistration();
-// For executables, bucket storage root should be the dist directory
-// This allows buckets.getDirectoryHandle("assets") to find dist/assets
+
+// Set up bucket storage - registry-only, no on-demand creation
 const executableDir = dirname(fileURLToPath(import.meta.url));
 const distDir = dirname(executableDir);
-const buckets = new PlatformBucketStorage(distDir);
+
+// Register well-known buckets
+FileSystemRegistry.register("dist", new NodeBucket(distDir));
+
+// Create bucket storage using registry
+const buckets = new CustomBucketStorage(async (name) => {
+	const registered = FileSystemRegistry.get(name);
+	if (registered) return registered;
+	throw new Error(`Bucket '${name}' not registered. Available buckets: ${FileSystemRegistry.getAdapterNames().join(", ")}`);
+});
 
 // Create and install ServiceWorker global scope
 const scope = new ShovelGlobalScope({

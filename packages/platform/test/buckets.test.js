@@ -2,6 +2,7 @@ import {test, expect} from "bun:test";
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
+import {NodeBucket} from "@b9g/filesystem";
 
 /**
  * Bucket architecture and self.buckets API tests
@@ -27,23 +28,37 @@ async function cleanup(paths) {
 	}
 }
 
+// Helper to create CustomBucketStorage for tests
+async function createBucketStorage(tempDir) {
+	const {CustomBucketStorage} = await import("../src/index.js");
+	return new CustomBucketStorage(async (name) => {
+		const targetPath = join(tempDir, name);
+		await FS.mkdir(targetPath, {recursive: true});
+		return new NodeBucket(targetPath);
+	});
+}
+
 // ======================
 // BUCKET FACTORY TESTS
 // ======================
 
 test(
-	"PlatformBucketStorage class instantiation",
+	"CustomBucketStorage class instantiation",
 	async () => {
-		const {PlatformBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
 		try {
-			const buckets = new PlatformBucketStorage(tempDir);
+			const buckets = new CustomBucketStorage(async (name) => {
+				const targetPath = join(tempDir, name);
+				await FS.mkdir(targetPath, {recursive: true});
+				return new NodeBucket(targetPath);
+			});
 
-			// Should return an object with getDirectoryHandle method
+			// Should return an object with open method
 			expect(typeof buckets).toBe("object");
-			expect(typeof buckets.getDirectoryHandle).toBe("function");
+			expect(typeof buckets.open).toBe("function");
 		} finally {
 			await cleanup([tempDir]);
 		}
@@ -54,7 +69,7 @@ test(
 test(
 	"bucket storage getDirectoryHandle basic functionality",
 	async () => {
-		const {PlatformBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
@@ -63,15 +78,15 @@ test(
 			await FS.mkdir(join(tempDir, "dist"), {recursive: true});
 			await FS.mkdir(join(tempDir, "assets"), {recursive: true});
 
-			const buckets = new PlatformBucketStorage(tempDir);
+			const buckets = await createBucketStorage(tempDir);
 
-			// Test getting directory handles
-			const distHandle = await buckets.getDirectoryHandle("dist");
+			// Test getting directory handles using open() method
+			const distHandle = await buckets.open("dist");
 			expect(distHandle).toBeDefined();
 			expect(distHandle.kind).toBe("directory");
 			expect(distHandle.name).toBe("dist");
 
-			const assetsHandle = await buckets.getDirectoryHandle("assets");
+			const assetsHandle = await buckets.open("assets");
 			expect(assetsHandle).toBeDefined();
 			expect(assetsHandle.kind).toBe("directory");
 			expect(assetsHandle.name).toBe("assets");
@@ -85,15 +100,15 @@ test(
 test(
 	"bucket storage with non-existent directory",
 	async () => {
-		const {PlatformBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
 		try {
-			const buckets = new PlatformBucketStorage(tempDir);
+			const buckets = await createBucketStorage(tempDir);
 
 			// Should create directory if it doesn't exist
-			const newHandle = await buckets.getDirectoryHandle("new-bucket");
+			const newHandle = await buckets.open("new-bucket");
 			expect(newHandle).toBeDefined();
 			expect(newHandle.kind).toBe("directory");
 			expect(newHandle.name).toBe("new-bucket");
@@ -117,13 +132,13 @@ test(
 test(
 	"directory handle file operations",
 	async () => {
-		const {PlatformBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
 		try {
-			const buckets = new PlatformBucketStorage(tempDir);
-			const distHandle = await buckets.getDirectoryHandle("dist");
+			const buckets = await createBucketStorage(tempDir);
+			const distHandle = await buckets.open("dist");
 
 			// Test getting file handle
 			const fileHandle = await distHandle.getFileHandle("test.txt", {
@@ -157,13 +172,13 @@ test(
 test(
 	"directory handle subdirectory operations",
 	async () => {
-		const {PlatformBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
 		try {
-			const buckets = new PlatformBucketStorage(tempDir);
-			const distHandle = await buckets.getDirectoryHandle("dist");
+			const buckets = await createBucketStorage(tempDir);
+			const distHandle = await buckets.open("dist");
 
 			// Create subdirectory
 			const subHandle = await distHandle.getDirectoryHandle("assets", {
@@ -202,7 +217,7 @@ test(
 test(
 	"directory handle entries iteration",
 	async () => {
-		const {PlatformBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
@@ -215,8 +230,8 @@ test(
 			await FS.mkdir(join(distPath, "assets"), {recursive: true});
 			await FS.writeFile(join(distPath, "assets", "style.css"), "body {}");
 
-			const buckets = new PlatformBucketStorage(tempDir);
-			const distHandle = await buckets.getDirectoryHandle("dist");
+			const buckets = await createBucketStorage(tempDir);
+			const distHandle = await buckets.open("dist");
 
 			// Test entries iteration
 			const entries = [];
@@ -247,8 +262,8 @@ test(
 	async () => {
 		const {
 			ServiceWorkerRegistration,
-			createServiceWorkerGlobals,
-			PlatformBucketStorage,
+			ShovelGlobalScope,
+			CustomBucketStorage,
 		} = await import("../src/index.js");
 
 		const tempDir = await createTempDir();
@@ -268,13 +283,12 @@ test(
 			`,
 			);
 
-			const runtime = new ServiceWorkerRegistration();
-			const buckets = new PlatformBucketStorage(tempDir);
+			const registration = new ServiceWorkerRegistration();
+			const buckets = await createBucketStorage(tempDir);
 
 			// Set up ServiceWorker globals with buckets
-			createServiceWorkerGlobals(runtime, {buckets});
-			globalThis.self = runtime;
-			globalThis.addEventListener = runtime.addEventListener.bind(runtime);
+			const scope = new ShovelGlobalScope({registration, buckets});
+			scope.install();
 
 			// Simulate user ServiceWorker code using self.buckets
 			globalThis.addEventListener("fetch", (event) => {
@@ -285,7 +299,7 @@ test(
 					event.respondWith(
 						(async () => {
 							const distBucket =
-								await globalThis.buckets.getDirectoryHandle("dist");
+								await globalThis.buckets.open("dist");
 							const fileHandle = await distBucket.getFileHandle("index.html");
 							const file = await fileHandle.getFile();
 							const content = await file.text();
@@ -301,12 +315,12 @@ test(
 			});
 
 			// Activate ServiceWorker
-			await runtime.install();
-			await runtime.activate();
+			await registration.install();
+			await registration.activate();
 
 			// Test request
 			const request = new Request("http://localhost/");
-			const response = await runtime.handleRequest(request);
+			const response = await registration.handleRequest(request);
 			const content = await response.text();
 
 			expect(content).toContain("Hello from static file!");
@@ -325,8 +339,8 @@ test(
 	async () => {
 		const {
 			ServiceWorkerRegistration,
-			createServiceWorkerGlobals,
-			PlatformBucketStorage,
+			ShovelGlobalScope,
+			CustomBucketStorage,
 		} = await import("../src/index.js");
 
 		const tempDir = await createTempDir();
@@ -342,12 +356,11 @@ test(
 			await FS.writeFile(join(distPath, "script.js"), "console.log('loaded');");
 			await FS.writeFile(join(distPath, "data.json"), '{"message": "test"}');
 
-			const runtime = new ServiceWorkerRegistration();
-			const buckets = new PlatformBucketStorage(tempDir);
+			const registration = new ServiceWorkerRegistration();
+			const buckets = await createBucketStorage(tempDir);
 
-			createServiceWorkerGlobals(runtime, {buckets});
-			globalThis.self = runtime;
-			globalThis.addEventListener = runtime.addEventListener.bind(runtime);
+			const scope = new ShovelGlobalScope({registration, buckets});
+			scope.install();
 
 			// ServiceWorker that serves different file types
 			globalThis.addEventListener("fetch", (event) => {
@@ -359,7 +372,7 @@ test(
 						(async () => {
 							try {
 								const distBucket =
-									await globalThis.buckets.getDirectoryHandle("dist");
+									await globalThis.buckets.open("dist");
 								const fileHandle = await distBucket.getFileHandle(pathname);
 								const file = await fileHandle.getFile();
 								const content = await file.text();
@@ -388,30 +401,30 @@ test(
 			});
 
 			// Activate ServiceWorker
-			await runtime.install();
-			await runtime.activate();
+			await registration.install();
+			await registration.activate();
 
 			// Test different file types
 			const cssRequest = new Request("http://localhost/style.css");
-			const cssResponse = await runtime.handleRequest(cssRequest);
+			const cssResponse = await registration.handleRequest(cssRequest);
 			expect(await cssResponse.text()).toBe("body { background: blue; }");
 			expect(cssResponse.headers.get("content-type")).toBe("text/css");
 
 			const jsRequest = new Request("http://localhost/script.js");
-			const jsResponse = await runtime.handleRequest(jsRequest);
+			const jsResponse = await registration.handleRequest(jsRequest);
 			expect(await jsResponse.text()).toBe("console.log('loaded');");
 			expect(jsResponse.headers.get("content-type")).toBe(
 				"application/javascript",
 			);
 
 			const jsonRequest = new Request("http://localhost/data.json");
-			const jsonResponse = await runtime.handleRequest(jsonRequest);
+			const jsonResponse = await registration.handleRequest(jsonRequest);
 			expect(await jsonResponse.text()).toBe('{"message": "test"}');
 			expect(jsonResponse.headers.get("content-type")).toBe("application/json");
 
 			// Test 404
 			const notFoundRequest = new Request("http://localhost/nonexistent.txt");
-			const notFoundResponse = await runtime.handleRequest(notFoundRequest);
+			const notFoundResponse = await registration.handleRequest(notFoundRequest);
 			expect(notFoundResponse.status).toBe(404);
 		} finally {
 			await cleanup([tempDir]);
@@ -503,13 +516,13 @@ test(
 test(
 	"bucket error handling - file not found",
 	async () => {
-		const {PlatformBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
 		try {
-			const buckets = new PlatformBucketStorage(tempDir);
-			const distHandle = await buckets.getDirectoryHandle("dist");
+			const buckets = await createBucketStorage(tempDir);
+			const distHandle = await buckets.open("dist");
 
 			// Should throw when trying to get non-existent file without create flag
 			await expect(
@@ -525,17 +538,17 @@ test(
 test(
 	"bucket error handling - invalid directory name",
 	async () => {
-		const {PlatformBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
 		try {
-			const buckets = new PlatformBucketStorage(tempDir);
+			const buckets = await createBucketStorage(tempDir);
 
 			// Test with invalid characters (this depends on the implementation)
 			// Some implementations might sanitize, others might throw
 			try {
-				await buckets.getDirectoryHandle("../invalid");
+				await buckets.open("../invalid");
 				// If it doesn't throw, that's also valid behavior
 			} catch (error) {
 				// If it throws, the error should be meaningful
@@ -557,21 +570,22 @@ test(
 	async () => {
 		const {
 			ServiceWorkerRegistration,
-			createServiceWorkerGlobals,
-			PlatformBucketStorage,
+			ShovelGlobalScope,
+			CustomBucketStorage,
 		} = await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
 		try {
-			const runtime = new ServiceWorkerRegistration();
-			const buckets = new PlatformBucketStorage(tempDir);
+			const registration = new ServiceWorkerRegistration();
+			const buckets = await createBucketStorage(tempDir);
 
-			createServiceWorkerGlobals(runtime, {buckets});
+			const scope = new ShovelGlobalScope({registration, buckets});
+			scope.install();
 
 			// New API should be available
 			expect(typeof globalThis.buckets).toBe("object");
-			expect(typeof globalThis.buckets.getDirectoryHandle).toBe("function");
+			expect(typeof globalThis.buckets.open).toBe("function");
 
 			// Old dirs API should not be available (or should be deprecated)
 			expect(globalThis.dirs).toBeUndefined();

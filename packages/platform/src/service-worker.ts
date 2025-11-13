@@ -126,4 +126,3 @@ export interface BucketStorage {
 	 */
 	keys(): Promise<string[]>;
 }
-

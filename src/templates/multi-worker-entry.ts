@@ -178,8 +178,9 @@ if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
 import {
 	ServiceWorkerRegistration,
 	ShovelGlobalScope,
-	PlatformBucketStorage,
+	CustomBucketStorage,
 } from "@b9g/platform";
+import {FileSystemRegistry, NodeBucket} from "@b9g/filesystem";
 import {parentPort} from "worker_threads";
 
 if (workerData?.isWorker && parentPort) {
@@ -187,10 +188,20 @@ if (workerData?.isWorker && parentPort) {
 
 	// Set up ServiceWorker environment in worker thread
 	const registration = new ServiceWorkerRegistration();
-	// For executables, bucket storage root should be the dist directory
+
+	// Set up bucket storage - registry-only
 	const executableDir = dirname(fileURLToPath(import.meta.url));
 	const distDir = dirname(executableDir);
-	const buckets = new PlatformBucketStorage(distDir);
+
+	// Register well-known buckets
+	FileSystemRegistry.register("dist", new NodeBucket(distDir));
+
+	// Create bucket storage using registry
+	const buckets = new CustomBucketStorage(async (name) => {
+		const registered = FileSystemRegistry.get(name);
+		if (registered) return registered;
+		throw new Error(`Bucket '${name}' not registered. Available buckets: ${FileSystemRegistry.getAdapterNames().join(", ")}`);
+	});
 
 	// Create and install ServiceWorker global scope
 	const scope = new ShovelGlobalScope({

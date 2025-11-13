@@ -41,8 +41,7 @@ export {
 // ServiceWorker API components
 export {ServiceWorkerRegistration} from "./service-worker-api.js";
 
-// Bucket storage implementation
-export {PlatformBucketStorage} from "./directory-storage.js";
+// Bucket storage
 export {CustomBucketStorage, type BucketFactory} from "@b9g/filesystem";
 
 // Platform registry and detection
@@ -97,7 +96,6 @@ export {
 	ExtendableMessageEvent,
 	ServiceWorker,
 	ServiceWorkerContainer,
-	ServiceWorkerRegistration,
 	NavigationPreloadManager,
 	Notification,
 	NotificationEvent,

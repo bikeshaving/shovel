@@ -25,62 +25,6 @@ function createMockPlatform() {
 	};
 }
 
-// Helper to create a mock ServiceWorker runtime
-function createMockRuntime() {
-	const events = new Map();
-	const listeners = new Map();
-
-	const mockRuntime = {
-		addEventListener(type, listener) {
-			if (!listeners.has(type)) {
-				listeners.set(type, []);
-			}
-			listeners.get(type).push(listener);
-		},
-		removeEventListener(type, listener) {
-			if (listeners.has(type)) {
-				const list = listeners.get(type);
-				const index = list.indexOf(listener);
-				if (index > -1) {
-					list.splice(index, 1);
-				}
-			}
-		},
-		dispatchEvent(event) {
-			const type = event.type || event;
-			if (listeners.has(type)) {
-				listeners.get(type).forEach((listener) => {
-					listener(event);
-				});
-			}
-		},
-		async handleRequest(request) {
-			const fetchEvent = {
-				type: "fetch",
-				request,
-				respondWith: (response) => {
-					fetchEvent.response = response;
-				},
-			};
-
-			this.dispatchEvent(fetchEvent);
-			return fetchEvent.response || new Response("Not found", {status: 404});
-		},
-		async install() {
-			this.dispatchEvent({type: "install"});
-		},
-		async activate() {
-			this.dispatchEvent({type: "activate"});
-		},
-		reset() {
-			listeners.clear();
-		},
-		ready: true,
-	};
-
-	return mockRuntime;
-}
-
 // ======================
 // SERVICEWORKER GLOBALS TESTS
 // ======================
@@ -88,19 +32,25 @@ function createMockRuntime() {
 test(
 	"ServiceWorker globals setup",
 	async () => {
-		// Import ServiceWorker globals function
-		const {createServiceWorkerGlobals} = await import("../src/index.js");
+		// Import ServiceWorker classes
+		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+			"../src/index.js"
+		);
 
-		const runtime = createMockRuntime();
+		const registration = new ServiceWorkerRegistration();
 		const mockBuckets = {
-			getDirectoryHandle: async (name) => ({
+			open: async (name) => ({
 				name,
 				kind: "directory",
 			}),
 		};
 
-		// Create ServiceWorker globals
-		createServiceWorkerGlobals(runtime, {buckets: mockBuckets});
+		// Create ServiceWorker global scope
+		const scope = new ShovelGlobalScope({
+			registration,
+			buckets: mockBuckets,
+		});
+		scope.install();
 
 		// Test that globals are properly set
 		expect(typeof globalThis.self).toBe("object");
@@ -111,8 +61,8 @@ test(
 		expect(typeof globalThis.clients).toBe("object");
 		expect(typeof globalThis.buckets).toBe("object");
 
-		// Test that self refers to the runtime
-		expect(globalThis.self).toBe(runtime);
+		// Test that self refers to the scope
+		expect(globalThis.self).toBe(scope);
 	},
 	TIMEOUT,
 );
@@ -120,10 +70,13 @@ test(
 test(
 	"ServiceWorker event listener functionality",
 	async () => {
-		const {createServiceWorkerGlobals} = await import("../src/index.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+			"../src/index.js"
+		);
 
-		const runtime = createMockRuntime();
-		createServiceWorkerGlobals(runtime, {});
+		const registration = new ServiceWorkerRegistration();
+		const scope = new ShovelGlobalScope({registration});
+		scope.install();
 
 		let installCalled = false;
 		let activateCalled = false;
@@ -144,16 +97,16 @@ test(
 		});
 
 		// Test install event
-		await runtime.install();
+		await registration.install();
 		expect(installCalled).toBe(true);
 
 		// Test activate event
-		await runtime.activate();
+		await registration.activate();
 		expect(activateCalled).toBe(true);
 
 		// Test fetch event
 		const request = new Request("http://localhost/test");
-		const response = await runtime.handleRequest(request);
+		const response = await registration.handleRequest(request);
 		expect(fetchCalled).toBe(true);
 		expect(await response.text()).toBe("Hello from ServiceWorker!");
 	},
@@ -163,23 +116,26 @@ test(
 test(
 	"ServiceWorker skipWaiting functionality",
 	async () => {
-		const {createServiceWorkerGlobals} = await import("../src/index.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+			"../src/index.js"
+		);
 
-		const runtime = createMockRuntime();
-		const mockOptions = {
+		const registration = new ServiceWorkerRegistration();
+		let hotReloadCalled = false;
+
+		const scope = new ShovelGlobalScope({
+			registration,
 			isDevelopment: true,
 			hotReload: async () => {
-				// Mock hot reload function
-				return true;
+				hotReloadCalled = true;
 			},
-		};
-
-		createServiceWorkerGlobals(runtime, {options: mockOptions});
+		});
+		scope.install();
 
 		// Test skipWaiting in development mode
 		expect(typeof globalThis.skipWaiting).toBe("function");
-		const result = await globalThis.skipWaiting();
-		expect(result).toBeUndefined(); // skipWaiting returns void
+		await globalThis.skipWaiting();
+		expect(hotReloadCalled).toBe(true);
 	},
 	TIMEOUT,
 );
@@ -187,10 +143,13 @@ test(
 test(
 	"ServiceWorker clients API",
 	async () => {
-		const {createServiceWorkerGlobals} = await import("../src/index.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+			"../src/index.js"
+		);
 
-		const runtime = createMockRuntime();
-		createServiceWorkerGlobals(runtime, {});
+		const registration = new ServiceWorkerRegistration();
+		const scope = new ShovelGlobalScope({registration});
+		scope.install();
 
 		// Test clients global
 		expect(typeof globalThis.clients).toBe("object");
@@ -213,11 +172,13 @@ test(
 test(
 	"ServiceWorker buckets API",
 	async () => {
-		const {createServiceWorkerGlobals} = await import("../src/index.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+			"../src/index.js"
+		);
 
-		const runtime = createMockRuntime();
+		const registration = new ServiceWorkerRegistration();
 		const mockBuckets = {
-			getDirectoryHandle: async (name) => ({
+			open: async (name) => ({
 				name,
 				kind: "directory",
 				entries: async function* () {
@@ -226,14 +187,18 @@ test(
 			}),
 		};
 
-		createServiceWorkerGlobals(runtime, {buckets: mockBuckets});
+		const scope = new ShovelGlobalScope({
+			registration,
+			buckets: mockBuckets,
+		});
+		scope.install();
 
 		// Test buckets global
 		expect(typeof globalThis.buckets).toBe("object");
-		expect(typeof globalThis.buckets.getDirectoryHandle).toBe("function");
+		expect(typeof globalThis.buckets.open).toBe("function");
 
 		// Test bucket functionality
-		const distBucket = await globalThis.buckets.getDirectoryHandle("dist");
+		const distBucket = await globalThis.buckets.open("dist");
 		expect(distBucket.name).toBe("dist");
 		expect(distBucket.kind).toBe("directory");
 
@@ -557,18 +522,15 @@ test(
 test(
 	"ServiceWorker complete workflow",
 	async () => {
-		const {ServiceWorkerRegistration, createServiceWorkerGlobals} = await import(
+		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/index.js"
 		);
 
-		const runtime = new ServiceWorkerRegistration();
+		const registration = new ServiceWorkerRegistration();
 
 		// Set up globals like production does
-		createServiceWorkerGlobals(runtime, {});
-		globalThis.self = runtime;
-		globalThis.addEventListener = runtime.addEventListener.bind(runtime);
-		globalThis.removeEventListener = runtime.removeEventListener.bind(runtime);
-		globalThis.dispatchEvent = runtime.dispatchEvent.bind(runtime);
+		const scope = new ShovelGlobalScope({registration});
+		scope.install();
 
 		// Simulate user ServiceWorker code
 		let installed = false;
@@ -613,15 +575,15 @@ test(
 		});
 
 		// Run complete lifecycle
-		await runtime.install();
+		await registration.install();
 		expect(installed).toBe(true);
 
-		await runtime.activate();
+		await registration.activate();
 		expect(activated).toBe(true);
 
 		// Test requests
 		const homeRequest = new Request("http://localhost/");
-		const homeResponse = await runtime.handleRequest(homeRequest);
+		const homeResponse = await registration.handleRequest(homeRequest);
 		const homeText = await homeResponse.text();
 		expect(homeText).toContain("Hello from ServiceWorker!");
 		expect(homeResponse.headers.get("content-type")).toBe(
@@ -629,7 +591,7 @@ test(
 		);
 
 		const healthRequest = new Request("http://localhost/api/health");
-		const healthResponse = await runtime.handleRequest(healthRequest);
+		const healthResponse = await registration.handleRequest(healthRequest);
 		const healthData = await healthResponse.json();
 		expect(healthData.status).toBe("ok");
 		expect(healthData.installed).toBe(true);

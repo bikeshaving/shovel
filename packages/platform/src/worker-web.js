@@ -18,12 +18,10 @@ async function initializeWorker() {
 }
 
 // Import platform modules
-const {
-	ShovelGlobalScope,
-	ServiceWorkerRegistration,
-	PlatformBucketStorage,
-} = await import("./index.js");
+const {ShovelGlobalScope, ServiceWorkerRegistration, CustomBucketStorage} =
+	await import("./index.js");
 const {CustomCacheStorage, PostMessageCache} = await import("@b9g/cache");
+const {FileSystemRegistry} = await import("@b9g/filesystem");
 
 // Create worker-aware cache storage using PostMessage coordination
 const caches = new CustomCacheStorage((name) => {
@@ -33,8 +31,12 @@ const caches = new CustomCacheStorage((name) => {
 	});
 });
 
-// Create bucket storage for dist/ folder
-const buckets = new PlatformBucketStorage(process.cwd() + "/dist");
+// Create bucket storage using FileSystemRegistry
+const buckets = new CustomBucketStorage(async (name) => {
+	const registered = FileSystemRegistry.get(name);
+	if (registered) return registered;
+	throw new Error(`Bucket '${name}' not registered`);
+});
 
 // Create ServiceWorker runtime
 let registration = new ServiceWorkerRegistration();
