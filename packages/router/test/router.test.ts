@@ -1214,7 +1214,7 @@ describe("Advanced Generator Middleware", () => {
 			context.asyncFunc = true;
 		}
 
-		async function* generatorMiddleware(request: Request, _context: any) {
+		async function* generatorMiddleware(request: Request, context: any) {
 			executionOrder.push("generator-start");
 			const response = yield request;
 			executionOrder.push("generator-end");
