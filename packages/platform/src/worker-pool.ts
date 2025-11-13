@@ -313,7 +313,7 @@ export class WorkerPool {
 	 * Platform-specific cache message handling
 	 * Override this method in platform implementations for custom cache coordination
 	 */
-	protected handleCacheMessage(message: WorkerMessage): void {
+	protected handleCacheMessage(_message: WorkerMessage): void {
 		// Default implementation - no-op
 		// Platform implementations can override this for cache coordination
 	}

@@ -35,21 +35,21 @@ const hardcoded = [
 	"ne_NP",
 ];
 
-console.log("❌ Invalid locales in your hardcoded list:");
+console.info("[CheckLocales] Invalid locales in your hardcoded list:");
 const invalid = hardcoded.filter((loc) => !available.includes(loc));
-invalid.forEach((loc) => console.log("  " + loc));
+invalid.forEach((loc) => console.info("  " + loc));
 
-console.log("\n✅ Valid locales in your hardcoded list:");
+console.info("\n[CheckLocales] Valid locales in your hardcoded list:");
 const valid = hardcoded.filter((loc) => available.includes(loc));
-valid.forEach((loc) => console.log("  " + loc));
+valid.forEach((loc) => console.info("  " + loc));
 
-console.log("\n📊 Summary:");
-console.log(`  Total hardcoded: ${hardcoded.length}`);
-console.log(`  Valid: ${valid.length}`);
-console.log(`  Invalid: ${invalid.length}`);
-console.log(`  Available in Faker.js: ${available.length}`);
+console.info("\n[CheckLocales] Summary:");
+console.info(`  Total hardcoded: ${hardcoded.length}`);
+console.info(`  Valid: ${valid.length}`);
+console.info(`  Invalid: ${invalid.length}`);
+console.info(`  Available in Faker.js: ${available.length}`);
 
-console.log("\n🔍 Suggested corrections:");
+console.info("\n[CheckLocales] Suggested corrections:");
 const corrections = {
 	fr_FR: "fr",
 	de_DE: "de",
@@ -75,6 +75,6 @@ const corrections = {
 
 Object.entries(corrections).forEach(([wrong, correct]) => {
 	if (invalid.includes(wrong)) {
-		console.log(`  ${wrong} → ${correct}`);
+		console.info(`  ${wrong} → ${correct}`);
 	}
 });

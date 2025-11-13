@@ -43,7 +43,7 @@ let registration = new ServiceWorkerRegistration();
 let scope = new ShovelGlobalScope({registration, caches, buckets});
 scope.install();
 
-let workerSelf = scope;
+let _workerSelf = scope;
 let currentApp = null;
 let serviceWorkerReady = false;
 let loadedVersion = null;
@@ -131,7 +131,7 @@ async function handleMessage(message) {
 			await loadServiceWorker(message.version, message.entrypoint);
 			sendMessage({type: "ready", version: message.version});
 		} else if (message.type === "request") {
-			console.log(
+			console.info(
 				`[Worker-${workerId}] Handling request:`,
 				message.request.url,
 			);
@@ -174,7 +174,7 @@ async function handleMessage(message) {
 
 // Initialize the worker environment and send ready signal
 initializeWorker()
-	.then(({messagePort, sendMessage: send}) => {
+	.then(({messagePort: _messagePort, sendMessage: send}) => {
 		sendMessage = send;
 		sendMessage({type: "worker-ready"});
 	})

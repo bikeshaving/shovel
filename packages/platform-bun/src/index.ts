@@ -13,10 +13,10 @@ import {
 	ServerOptions,
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
-	ServiceWorkerRegistration,
-	ShovelGlobalScope,
-	CustomBucketStorage,
-	type BucketFactory,
+	ServiceWorkerRegistration as _ServiceWorkerRegistration,
+	ShovelGlobalScope as _ShovelGlobalScope,
+	CustomBucketStorage as _CustomBucketStorage,
+	type BucketFactory as _BucketFactory,
 } from "@b9g/platform";
 import {WorkerPool, WorkerPoolOptions} from "@b9g/platform/worker-pool";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
@@ -121,7 +121,7 @@ export class BunPlatform extends BasePlatform {
 	/**
 	 * Override cache creation to use appropriate cache type for Bun
 	 */
-	async createCaches(config?: CacheConfig): Promise<CustomCacheStorage> {
+	async createCaches(_config?: CacheConfig): Promise<CustomCacheStorage> {
 		// Import MemoryCache for fallback
 		const {MemoryCache} = await import("@b9g/cache");
 

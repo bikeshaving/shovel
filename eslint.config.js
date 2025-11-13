@@ -64,6 +64,7 @@ export default [
 			"**/*.min.js",
 			"examples/**/dist/**",
 			"packages/**/dist/**",
+			"examples/tfb/**", // Third-party framework benchmarks - not our code
 		],
 	},
 ];

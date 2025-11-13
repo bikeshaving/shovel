@@ -186,18 +186,18 @@ const sampleUsers = [
 ];
 
 async function seed() {
-	console.log("🌱 Seeding database...");
+	console.info("[Seed] Seeding database...");
 
 	try {
 		// Seed posts
-		console.log("📝 Creating sample posts...");
+		console.info("[Seed] Creating sample posts...");
 		for (const post of samplePosts) {
 			try {
 				PostsDB.create(post);
-				console.log(`  ✅ Created post: ${post.title}`);
+				console.info(`[Seed]   Created post: ${post.title}`);
 			} catch (error) {
 				if (error.message.includes("UNIQUE constraint failed")) {
-					console.log(`  ⚠️  Post already exists: ${post.title}`);
+					console.info(`[Seed]   Post already exists: ${post.title}`);
 				} else {
 					throw error;
 				}
@@ -205,14 +205,14 @@ async function seed() {
 		}
 
 		// Seed docs
-		console.log("📚 Creating sample documentation...");
+		console.info("[Seed] Creating sample documentation...");
 		for (const doc of sampleDocs) {
 			try {
 				DocsDB.create(doc);
-				console.log(`  ✅ Created doc: ${doc.title}`);
+				console.info(`[Seed]   Created doc: ${doc.title}`);
 			} catch (error) {
 				if (error.message.includes("UNIQUE constraint failed")) {
-					console.log(`  ⚠️  Doc already exists: ${doc.title}`);
+					console.info(`[Seed]   Doc already exists: ${doc.title}`);
 				} else {
 					throw error;
 				}
@@ -220,21 +220,21 @@ async function seed() {
 		}
 
 		// Seed users
-		console.log("👤 Creating sample users...");
+		console.info("[Seed] Creating sample users...");
 		for (const user of sampleUsers) {
 			try {
 				UsersDB.create(user);
-				console.log(`  ✅ Created user: ${user.username}`);
+				console.info(`[Seed]   Created user: ${user.username}`);
 			} catch (error) {
 				if (error.message.includes("UNIQUE constraint failed")) {
-					console.log(`  ⚠️  User already exists: ${user.username}`);
+					console.info(`[Seed]   User already exists: ${user.username}`);
 				} else {
 					throw error;
 				}
 			}
 		}
 
-		console.log("🎉 Database seeding complete!");
+		console.info("[Seed] Database seeding complete!");
 	} catch (error) {
 		console.error("❌ Seeding failed:", error);
 		process.exit(1);

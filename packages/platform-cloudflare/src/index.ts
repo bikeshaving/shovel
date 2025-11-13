@@ -106,7 +106,7 @@ export class CloudflarePlatform extends BasePlatform {
 	/**
 	 * Override cache creation to use bundled KV adapter
 	 */
-	async createCaches(config?: CacheConfig): Promise<CacheStorage> {
+	async createCaches(_config?: CacheConfig): Promise<CacheStorage> {
 		// For Cloudflare Workers, we need to use bundled adapters
 		// In production, we'd bundle the KV cache adapter
 
@@ -147,7 +147,7 @@ export class CloudflarePlatform extends BasePlatform {
 	 */
 	async loadServiceWorker(
 		entrypoint: string,
-		options: ServiceWorkerOptions = {},
+		_options: ServiceWorkerOptions = {},
 	): Promise<ServiceWorkerInstance> {
 		// Check if we're in a real Cloudflare Worker environment
 		const isCloudflareWorker =
@@ -300,7 +300,7 @@ export function generateWranglerConfig(options: {
 	const {
 		name,
 		entrypoint,
-		cacheAdapter,
+		cacheAdapter: _cacheAdapter,
 		filesystemAdapter,
 		kvNamespaces = [],
 		r2Buckets = [],

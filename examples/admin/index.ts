@@ -1,1 +1,1 @@
-console.log("Hello via Bun!");
+console.info("[Admin] Hello via Bun!");

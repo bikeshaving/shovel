@@ -25,7 +25,7 @@ export async function getDatabase() {
 		const schema = await schemaFile.text();
 		db.exec(schema);
 
-		console.log(`📁 Database connected: ${dbPath}`);
+		console.info(`[Database] Database connected: ${dbPath}`);
 	}
 
 	return db;
@@ -57,7 +57,7 @@ export const PostsDB = {
             VALUES (?, ?, ?, ?, ?)
         `);
 
-		const result = stmt.run(
+		const _result = stmt.run(
 			post.title,
 			post.slug,
 			post.content,
@@ -119,7 +119,7 @@ export const DocsDB = {
             VALUES (?, ?, ?, ?, ?, ?)
         `);
 
-		const result = stmt.run(
+		const _result = stmt.run(
 			doc.title,
 			doc.slug,
 			doc.content,

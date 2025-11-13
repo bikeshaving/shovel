@@ -20,14 +20,14 @@ import {
 const router = new Router();
 
 // Homepage route
-router.route("/").get(async (request, context) => {
+router.route("/").get(async (_request, _context) => {
 	return new Response(HOMEPAGE_HTML, {
 		headers: {"Content-Type": "text/html"},
 	});
 });
 
 // Echo API route - all HTTP methods
-router.route("/echo").all(async (request, context) => {
+router.route("/echo").all(async (request, _context) => {
 	const corsHeader = request.headers.get("x-reqback-cors");
 
 	// Handle preflight
@@ -155,7 +155,7 @@ router.route("/echo").all(async (request, context) => {
 });
 
 // 404 handler for all other routes
-router.use(async function* notFoundHandler(request, context) {
+router.use(async function* notFoundHandler(request, _context) {
 	const url = new URL(request.url);
 	const response = yield request;
 
@@ -178,12 +178,12 @@ router.use(async function* notFoundHandler(request, context) {
 });
 
 // ServiceWorker install event
-self.addEventListener("install", (event) => {
+self.addEventListener("install", (_event) => {
 	console.info("[Reqback] ServiceWorker installed");
 });
 
 // ServiceWorker activate event
-self.addEventListener("activate", (event) => {
+self.addEventListener("activate", (_event) => {
 	console.info("[Reqback] ServiceWorker activated");
 });
 

@@ -3,14 +3,14 @@
 
 import {intro, outro, text, select, confirm, spinner} from "@clack/prompts";
 import picocolors from "picocolors";
-const {cyan, green, yellow, red, dim, bold} = picocolors;
+const {cyan, green, yellow: _yellow, red, dim, bold} = picocolors;
 import {mkdir, writeFile} from "fs/promises";
 import {join, resolve} from "path";
 import {existsSync} from "fs";
 
 // Runtime detection
 const isBun = typeof Bun !== "undefined";
-const currentRuntime = isBun ? "bun" : "node";
+const _currentRuntime = isBun ? "bun" : "node";
 
 interface ProjectConfig {
 	name: string;
@@ -20,11 +20,11 @@ interface ProjectConfig {
 }
 
 async function main() {
-	console.log();
+	console.info("");
 
 	intro(cyan("🚀 Create Shovel App"));
 
-	console.log(dim("The ServiceWorker framework that runs everywhere\n"));
+	console.info(dim("The ServiceWorker framework that runs everywhere\n"));
 
 	// Get project name from args or prompt
 	let projectName = process.argv[2];
@@ -138,20 +138,20 @@ async function main() {
 		await createProject(config, projectPath);
 		s.stop("✅ Project created successfully!");
 
-		console.log();
+		console.info("");
 		outro(green("🎉 Your Shovel project is ready!"));
 
-		console.log();
-		console.log(cyan("Next steps:"));
-		console.log(`  ${dim("$")} cd ${projectName}`);
-		console.log(`  ${dim("$")} npm install`);
-		console.log(`  ${dim("$")} npm run develop`);
-		console.log();
-		console.log(
+		console.info("");
+		console.info(cyan("Next steps:"));
+		console.info(`  ${dim("$")} cd ${projectName}`);
+		console.info(`  ${dim("$")} npm install`);
+		console.info(`  ${dim("$")} npm run develop`);
+		console.info("");
+		console.info(
 			`🌐 Your app will be available at: ${bold("http://localhost:8000")}`,
 		);
-		console.log();
-		console.log(dim("Happy coding with Shovel! 🚀"));
+		console.info("");
+		console.info(dim("Happy coding with Shovel! 🚀"));
 	} catch (error) {
 		s.stop("❌ Failed to create project");
 		console.error(red("Error:"), error);
@@ -626,7 +626,7 @@ Your app will be available at: **http://localhost:8000**
 ## 📁 Project Structure
 
 - \`src/app.${config.typescript ? "ts" : "js"}\` - Main ServiceWorker application
-- \`package.json\` - Dependencies and scripts${config.typescript ? "\n- \`tsconfig.json\` - TypeScript configuration" : ""}
+- \`package.json\` - Dependencies and scripts${config.typescript ? "\n- `tsconfig.json` - TypeScript configuration" : ""}
 
 ## 🛠️ Available Scripts
 

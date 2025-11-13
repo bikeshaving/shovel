@@ -267,7 +267,7 @@ const moduleGenerators: Record<
 	number: generateNumberData,
 };
 
-const server = Bun.serve({
+const _server = Bun.serve({
 	port: PORT,
 	async fetch(req) {
 		const url = new URL(req.url);
@@ -359,9 +359,9 @@ const server = Bun.serve({
 	},
 });
 
-console.log(`🚀 Faker.js API running on http://localhost:${PORT}`);
-console.log(`📋 Available modules:`);
+console.info(`[FakerJS] Faker.js API running on http://localhost:${PORT}`);
+console.info(`[FakerJS] Available modules:`);
 Object.keys(moduleGenerators).forEach((module) => {
-	console.log(`  /api/v1/${module}`);
+	console.info(`[FakerJS]   /api/v1/${module}`);
 });
-console.log(`💡 Add ?id=123&locale=de_DE for options`);
+console.info(`[FakerJS] Add ?id=123&locale=de_DE for options`);

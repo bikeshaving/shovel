@@ -99,7 +99,7 @@ async function copyFile(
 		await writable.close();
 
 		if (verbose) {
-			console.log(`✓ Copied: ${targetPath}`);
+			console.info(`[Populate] ✓ Copied: ${targetPath}`);
 		}
 	} catch (error) {
 		await writable.abort();
@@ -123,11 +123,11 @@ export async function populateStaticAssets(
 	} = options;
 
 	if (verbose) {
-		console.log(
-			`🗂️  Populating static assets from ${sourceDir} to filesystem:${filesystem}`,
+		console.info(
+			`[Populate] Populating static assets from ${sourceDir} to filesystem:${filesystem}`,
 		);
 		if (dryRun) {
-			console.log("📋 DRY RUN - no files will be copied");
+			console.info("[Populate] DRY RUN - no files will be copied");
 		}
 	}
 
@@ -152,8 +152,8 @@ export async function populateStaticAssets(
 	});
 
 	if (verbose) {
-		console.log(
-			`📁 Found ${allFiles.length} total files, ${filteredFiles.length} after filtering`,
+		console.info(
+			`[Populate] Found ${allFiles.length} total files, ${filteredFiles.length} after filtering`,
 		);
 	}
 
@@ -163,8 +163,8 @@ export async function populateStaticAssets(
 	}
 
 	if (dryRun) {
-		console.log("📋 Files that would be copied:");
-		filteredFiles.forEach((file) => console.log(`  - ${file}`));
+		console.info("[Populate] Files that would be copied:");
+		filteredFiles.forEach((file) => console.info(`[Populate]   - ${file}`));
 		return;
 	}
 
@@ -187,9 +187,9 @@ export async function populateStaticAssets(
 	}
 
 	if (verbose || errorCount > 0) {
-		console.log(`✅ Copied ${copiedCount} files successfully`);
+		console.info(`[Populate] Copied ${copiedCount} files successfully`);
 		if (errorCount > 0) {
-			console.log(`❌ Failed to copy ${errorCount} files`);
+			console.info(`[Populate] Failed to copy ${errorCount} files`);
 		}
 	}
 

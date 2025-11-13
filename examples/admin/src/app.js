@@ -38,8 +38,8 @@ router.use(
 const cacheVersion = "v1"; // Increment when data schema changes
 router.use(cacheMiddleware);
 
-async function* cacheMiddleware(request, context) {
-	console.log("[cache] Processing:", request.url, "Method:", request.method);
+async function* cacheMiddleware(request, _context) {
+	console.info("[Cache] Processing:", request.url, "Method:", request.method);
 
 	// Only cache GET requests
 	if (request.method !== "GET" || !self.caches) {
@@ -60,14 +60,14 @@ async function* cacheMiddleware(request, context) {
 	}
 
 	if (cached) {
-		console.log("[cache] HIT:", request.url);
+		console.info("[Cache] HIT:", request.url);
 		// Add cache hit header
 		const response = cached.clone();
 		response.headers.set("X-Cache", "HIT");
 		return response;
 	}
 
-	console.log("[cache] MISS:", request.url);
+	console.info("[Cache] MISS:", request.url);
 
 	// Get fresh response
 	const response = yield request;
@@ -76,7 +76,7 @@ async function* cacheMiddleware(request, context) {
 	if (response.ok && response.status < 400) {
 		try {
 			await cache.put(request.clone(), response.clone());
-			console.log("[cache] Stored:", request.url);
+			console.info("[Cache] Stored:", request.url);
 		} catch (error) {
 			console.warn("[cache] Storage failed:", error);
 		}
@@ -91,7 +91,7 @@ async function* cacheMiddleware(request, context) {
 // ===== ADMIN UI ROUTES =====
 
 // Dashboard home
-router.route("/").get(async (request, context) => {
+router.route("/").get(async (_request, _context) => {
 	const publishedPosts = await PostsDB.findByStatus("published");
 	const draftPosts = await PostsDB.findByStatus("draft");
 	const allDocs = await DocsDB.findAll();
@@ -170,7 +170,7 @@ router.route("/").get(async (request, context) => {
 });
 
 // Posts list
-router.route("/posts").get(async (request, context) => {
+router.route("/posts").get(async (_request, _context) => {
 	const allPosts = await PostsDB.findAll();
 
 	return new Response(
@@ -236,7 +236,7 @@ router.route("/posts").get(async (request, context) => {
 });
 
 // Docs list
-router.route("/docs").get(async (request, context) => {
+router.route("/docs").get(async (_request, _context) => {
 	const allDocs = await DocsDB.findAll();
 	const categories = [...new Set(allDocs.map((doc) => doc.category))];
 
@@ -307,7 +307,7 @@ router.route("/docs").get(async (request, context) => {
 // ===== API ROUTES =====
 
 // Posts API
-router.route("/api/posts").get(async (request, context) => {
+router.route("/api/posts").get(async (_request, _context) => {
 	const posts = await PostsDB.findAll();
 	return Response.json(
 		{posts},
@@ -328,7 +328,7 @@ router.route("/api/posts/:slug").delete(async (request, context) => {
 });
 
 // Docs API
-router.route("/api/docs").get(async (request, context) => {
+router.route("/api/docs").get(async (_request, _context) => {
 	const docs = await DocsDB.findAll();
 	return Response.json(
 		{docs},
@@ -358,7 +358,7 @@ async function invalidateCache() {
 		await cache.delete(new Request(new URL("/", "http://localhost").href));
 		await cache.delete(new Request(new URL("/posts", "http://localhost").href));
 		await cache.delete(new Request(new URL("/docs", "http://localhost").href));
-		console.log("[cache] Invalidated list pages");
+		console.info("[Cache] Invalidated list pages");
 	}
 }
 
@@ -367,7 +367,7 @@ async function invalidateCache() {
 self.addEventListener("install", (event) => {
 	event.waitUntil(
 		(async () => {
-			console.log("[SW] Admin dashboard installed");
+			console.info("[SW] Admin dashboard installed");
 		})(),
 	);
 });
@@ -375,7 +375,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
 	event.waitUntil(
 		(async () => {
-			console.log("[SW] Admin dashboard activated");
+			console.info("[SW] Admin dashboard activated");
 		})(),
 	);
 });
@@ -405,7 +405,7 @@ if (typeof Bun !== "undefined") {
 		},
 	});
 
-	console.log(`🚀 Shovel Admin running on http://localhost:${port}`);
+	console.info(`[Admin] Shovel Admin running on http://localhost:${port}`);
 } else {
 	// Running as ServiceWorker - use event handlers
 	self.addEventListener("fetch", (event) => {

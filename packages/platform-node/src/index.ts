@@ -13,7 +13,7 @@ import {
 	ServerOptions,
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
-	createDirectoryStorage,
+	createDirectoryStorage as _createDirectoryStorage,
 } from "@b9g/platform";
 import {WorkerPool, WorkerPoolOptions} from "@b9g/platform/worker-pool";
 import {
@@ -26,7 +26,7 @@ import {
 	FileSystemRegistry,
 	getDirectoryHandle,
 	NodeBucket,
-	MemoryBucket,
+	MemoryBucket as _MemoryBucket,
 } from "@b9g/filesystem";
 import * as Http from "http";
 import * as Path from "path";
@@ -247,7 +247,7 @@ export class NodePlatform extends BasePlatform {
 	 * SUPPORTING UTILITY - Create cache storage optimized for Node.js
 	 * Uses MemoryCache in main thread, PostMessageCache in workers
 	 */
-	async createCaches(config?: CacheConfig): Promise<CustomCacheStorage> {
+	async createCaches(_config?: CacheConfig): Promise<CustomCacheStorage> {
 		// Import Node.js worker_threads to detect thread type
 		const {isMainThread} = await import("worker_threads");
 

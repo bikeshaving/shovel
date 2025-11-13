@@ -16,7 +16,7 @@ const SUPPORTED_LOCALES = Object.keys(allFakers).filter(
 const router = new Router();
 
 // CORS middleware
-router.use(async function* corsMiddleware(request, context) {
+router.use(async function* corsMiddleware(request, _context) {
 	const response = yield request;
 
 	// Add CORS headers to all responses
@@ -389,10 +389,10 @@ self.addEventListener("fetch", (event) => {
 	event.respondWith(response);
 });
 
-self.addEventListener("install", (event) => {
-	console.log("Shovel FakerJS API worker installed");
+self.addEventListener("install", (_event) => {
+	console.info("[FakerJS] Shovel FakerJS API worker installed");
 });
 
-self.addEventListener("activate", (event) => {
-	console.log("Shovel FakerJS API worker activated");
+self.addEventListener("activate", (_event) => {
+	console.info("[FakerJS] Shovel FakerJS API worker activated");
 });

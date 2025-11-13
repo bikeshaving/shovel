@@ -46,9 +46,9 @@ router.use(
 router.use(pageCache);
 
 // Cache middleware for pages using new generator API
-async function* pageCache(request, context) {
-	console.log(
-		"[pageCache] Processing:",
+async function* pageCache(request, _context) {
+	console.info(
+		"[PageCache] Processing:",
 		request.url,
 		"Method:",
 		request.method,
@@ -56,7 +56,7 @@ async function* pageCache(request, context) {
 
 	if (request.method !== "GET" || !self.caches) {
 		// No caching - just passthrough
-		console.log("[pageCache] No caching, yielding");
+		console.info("[PageCache] No caching, yielding");
 		const response = yield request;
 		return response;
 	}
@@ -145,7 +145,7 @@ router
 	.route({
 		pattern: "/",
 	})
-	.get(async (request, context) => {
+	.get(async (_request, _context) => {
 		return new Response(
 			renderPage(
 				"Home",
@@ -233,7 +233,7 @@ router
 	.route({
 		pattern: "/api/posts",
 	})
-	.get(async (request, context) => {
+	.get(async (_request, _context) => {
 		// Simulate API delay
 		await new Promise((resolve) => setTimeout(resolve, 100));
 
@@ -261,7 +261,7 @@ router
 	.route({
 		pattern: "/about",
 	})
-	.get(async (request, context) => {
+	.get(async (_request, _context) => {
 		return new Response(
 			renderPage(
 				"About",
