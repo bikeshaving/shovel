@@ -69,7 +69,9 @@ test(
 test(
 	"bucket storage getDirectoryHandle basic functionality",
 	async () => {
-		const {CustomBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage: _CustomBucketStorage} = await import(
+			"../src/index.js"
+		);
 
 		const tempDir = await createTempDir();
 
@@ -100,7 +102,9 @@ test(
 test(
 	"bucket storage with non-existent directory",
 	async () => {
-		const {CustomBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage: _CustomBucketStorage} = await import(
+			"../src/index.js"
+		);
 
 		const tempDir = await createTempDir();
 
@@ -260,11 +264,8 @@ test(
 test(
 	"self.buckets in ServiceWorker context",
 	async () => {
-		const {
-			ServiceWorkerRegistration,
-			ShovelGlobalScope,
-			CustomBucketStorage,
-		} = await import("../src/index.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope, CustomBucketStorage} =
+			await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
@@ -298,8 +299,7 @@ test(
 					// Serve static file from bucket
 					event.respondWith(
 						(async () => {
-							const distBucket =
-								await globalThis.buckets.open("dist");
+							const distBucket = await globalThis.buckets.open("dist");
 							const fileHandle = await distBucket.getFileHandle("index.html");
 							const file = await fileHandle.getFile();
 							const content = await file.text();
@@ -337,11 +337,8 @@ test(
 test(
 	"self.buckets file serving with different content types",
 	async () => {
-		const {
-			ServiceWorkerRegistration,
-			ShovelGlobalScope,
-			CustomBucketStorage,
-		} = await import("../src/index.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope, CustomBucketStorage} =
+			await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
@@ -371,8 +368,7 @@ test(
 					event.respondWith(
 						(async () => {
 							try {
-								const distBucket =
-									await globalThis.buckets.open("dist");
+								const distBucket = await globalThis.buckets.open("dist");
 								const fileHandle = await distBucket.getFileHandle(pathname);
 								const file = await fileHandle.getFile();
 								const content = await file.text();
@@ -424,7 +420,8 @@ test(
 
 			// Test 404
 			const notFoundRequest = new Request("http://localhost/nonexistent.txt");
-			const notFoundResponse = await registration.handleRequest(notFoundRequest);
+			const notFoundResponse =
+				await registration.handleRequest(notFoundRequest);
 			expect(notFoundResponse.status).toBe(404);
 		} finally {
 			await cleanup([tempDir]);
@@ -568,11 +565,8 @@ test(
 test(
 	"buckets API replaces old dirs API",
 	async () => {
-		const {
-			ServiceWorkerRegistration,
-			ShovelGlobalScope,
-			CustomBucketStorage,
-		} = await import("../src/index.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope, CustomBucketStorage} =
+			await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 

@@ -200,7 +200,9 @@ if (workerData?.isWorker && parentPort) {
 	const buckets = new CustomBucketStorage(async (name) => {
 		const registered = FileSystemRegistry.get(name);
 		if (registered) return registered;
-		throw new Error(`Bucket '${name}' not registered. Available buckets: ${FileSystemRegistry.getAdapterNames().join(", ")}`);
+		throw new Error(
+			`Bucket '${name}' not registered. Available buckets: ${FileSystemRegistry.getAdapterNames().join(", ")}`,
+		);
 	});
 
 	// Create and install ServiceWorker global scope

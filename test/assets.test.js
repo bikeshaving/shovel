@@ -297,18 +297,22 @@ test(
 			);
 
 			// Test ServiceWorker that serves assets
-			const {
-				ServiceWorkerRegistration,
-				createServiceWorkerGlobals,
-				createBucketStorage,
-			} = await import("@b9g/platform");
+			const {ServiceWorkerRegistration, ShovelGlobalScope, CustomBucketStorage} =
+				await import("@b9g/platform");
+			const {NodeBucket} = await import("@b9g/filesystem");
 
 			const runtime = new ServiceWorkerRegistration();
-			const buckets = createBucketStorage(testDir);
 
-			createServiceWorkerGlobals(runtime, {buckets});
-			globalThis.self = runtime;
-			globalThis.addEventListener = runtime.addEventListener.bind(runtime);
+			// Create bucket storage with factory
+			const buckets = new CustomBucketStorage(async (name) => {
+				const targetPath = join(testDir, name);
+				await FS.mkdir(targetPath, {recursive: true});
+				return new NodeBucket(targetPath);
+			});
+
+			// Set up ServiceWorker globals using ShovelGlobalScope
+			const scope = new ShovelGlobalScope({registration: runtime, buckets});
+			scope.install();
 
 			// ServiceWorker that serves assets from the assets directory
 			globalThis.addEventListener("fetch", (event) => {
@@ -321,8 +325,7 @@ test(
 					event.respondWith(
 						(async () => {
 							try {
-								const assetsBucket =
-									await globalThis.buckets.getDirectoryHandle("assets");
+								const assetsBucket = await globalThis.buckets.open("assets");
 								const fileHandle = await assetsBucket.getFileHandle(assetPath);
 								const file = await fileHandle.getFile();
 								const content = await file.text();

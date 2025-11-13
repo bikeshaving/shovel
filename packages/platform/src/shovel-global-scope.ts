@@ -107,17 +107,17 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 				// No-op: HTTP requests are stateless, no persistent clients to claim
 			},
 
-			async get(id: string): Promise<Client | undefined> {
+			async get(_id: string): Promise<Client | undefined> {
 				// Return undefined - no persistent clients in HTTP-only server
 				return undefined;
 			},
 
-			async matchAll(options?: ClientQueryOptions): Promise<Client[]> {
+			async matchAll(_options?: ClientQueryOptions): Promise<Client[]> {
 				// Return empty array - no persistent clients in HTTP-only server
 				return [];
 			},
 
-			async openWindow(url: string | URL): Promise<WindowClient | null> {
+			async openWindow(_url: string | URL): Promise<WindowClient | null> {
 				// Not supported in server context
 				return null;
 			},

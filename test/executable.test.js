@@ -180,7 +180,10 @@ self.addEventListener("fetch", (event) => {
 			expect(packageData.type).toBe("module");
 			expect(packageData.name).toBe("shovel-executable");
 		} finally {
-			console.log(`Debug: Built executable in cleanup_paths:`, cleanup_paths);
+			console.info(
+				`[Test] Debug: Built executable in cleanup_paths:`,
+				cleanup_paths,
+			);
 			// await cleanup(cleanup_paths);
 		}
 	},

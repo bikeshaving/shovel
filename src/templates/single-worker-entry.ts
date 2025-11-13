@@ -11,7 +11,7 @@ import {
 } from "@b9g/platform";
 import {FileSystemRegistry, NodeBucket} from "@b9g/filesystem";
 import {fileURLToPath} from "url";
-import {dirname} from "path";
+import {dirname, join} from "path";
 import {realpath} from "fs";
 import {promisify} from "util";
 
@@ -26,12 +26,19 @@ const distDir = dirname(executableDir);
 
 // Register well-known buckets
 FileSystemRegistry.register("dist", new NodeBucket(distDir));
+// Also register assets bucket (points to dist/assets directory)
+FileSystemRegistry.register(
+	"assets",
+	new NodeBucket(join(distDir, "assets")),
+);
 
 // Create bucket storage using registry
 const buckets = new CustomBucketStorage(async (name) => {
 	const registered = FileSystemRegistry.get(name);
 	if (registered) return registered;
-	throw new Error(`Bucket '${name}' not registered. Available buckets: ${FileSystemRegistry.getAdapterNames().join(", ")}`);
+	throw new Error(
+		`Bucket '${name}' not registered. Available buckets: ${FileSystemRegistry.getAdapterNames().join(", ")}`,
+	);
 });
 
 // Create and install ServiceWorker global scope

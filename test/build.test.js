@@ -147,8 +147,8 @@ self.addEventListener("fetch", (event) => {
 
 				// New virtual entry approach should bundle platform dependencies
 				// Look for bundled platform code instead of external references
-				expect(appContent).toContain("createServiceWorkerGlobals");
-				expect(appContent).toContain("createBucketStorage");
+				expect(appContent).toContain("ShovelGlobalScope");
+				expect(appContent).toContain("CustomBucketStorage");
 			} catch (error) {
 				console.error(`Platform ${platform} failed:`, error);
 				throw error;
@@ -319,8 +319,8 @@ self.addEventListener("fetch", (event) => {
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
 			// With bundling, comments may be removed, so check for bundled code instead
 			expect(appContent).toContain("ServiceWorkerRegistration");
-			expect(appContent).toContain("createServiceWorkerGlobals");
-			expect(appContent).toContain("createBucketStorage");
+			expect(appContent).toContain("ShovelGlobalScope");
+			expect(appContent).toContain("CustomBucketStorage");
 
 			// Validate package.json is valid JSON
 			const packageContent = await FS.readFile(
@@ -434,7 +434,7 @@ self.addEventListener("fetch", (event) => {
 
 			// Verify the template code structure is present
 			expect(appContent).toContain("ServiceWorkerRegistration");
-			expect(appContent).toContain("createServiceWorkerGlobals");
+			expect(appContent).toContain("ShovelGlobalScope");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -515,11 +515,11 @@ self.skipWaiting();
 			expect(appContent).toContain("skipWaiting()");
 			expect(appContent).toContain("Response.json");
 
-			// Check bootstrap sets up globals
-			expect(appContent).toContain("globalThis.self = runtime");
-			expect(appContent).toContain("globalThis.addEventListener");
-			expect(appContent).toContain("runtime.install()");
-			expect(appContent).toContain("runtime.activate()");
+			// Check bootstrap sets up globals using ShovelGlobalScope
+			expect(appContent).toContain("ShovelGlobalScope");
+			expect(appContent).toContain("scope.install()");
+			expect(appContent).toContain("registration.install()");
+			expect(appContent).toContain("registration.activate()");
 		} finally {
 			await cleanup(cleanup_paths);
 		}

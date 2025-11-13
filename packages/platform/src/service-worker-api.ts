@@ -42,7 +42,7 @@ export class Client {
 		this.type = options.type || "worker";
 	}
 
-	postMessage(message: any, transfer?: Transferable[]): void {
+	postMessage(_message: any, _transfer?: Transferable[]): void {
 		console.warn(
 			"[ServiceWorker] Client.postMessage() not supported in server context",
 		);
@@ -74,7 +74,7 @@ export class WindowClient extends Client {
 		return this;
 	}
 
-	async navigate(url: string): Promise<WindowClient | null> {
+	async navigate(_url: string): Promise<WindowClient | null> {
 		console.warn(
 			"[ServiceWorker] WindowClient.navigate() not supported in server context",
 		);
@@ -90,18 +90,18 @@ export class Clients {
 		// No-op: HTTP servers don't have persistent clients to claim
 	}
 
-	async get(id: string): Promise<Client | undefined> {
+	async get(_id: string): Promise<Client | undefined> {
 		return undefined;
 	}
 
-	async matchAll(options?: {
+	async matchAll(_options?: {
 		includeUncontrolled?: boolean;
 		type?: "window" | "worker" | "sharedworker" | "all";
 	}): Promise<Client[]> {
 		return [];
 	}
 
-	async openWindow(url: string): Promise<WindowClient | null> {
+	async openWindow(_url: string): Promise<WindowClient | null> {
 		console.warn(
 			"[ServiceWorker] Clients.openWindow() not supported in server context",
 		);
@@ -167,7 +167,7 @@ export class ServiceWorker extends EventTarget {
 		this.state = state;
 	}
 
-	postMessage(message: any, transfer?: Transferable[]): void {
+	postMessage(_message: any, _transfer?: Transferable[]): void {
 		console.warn(
 			"[ServiceWorker] ServiceWorker.postMessage() not implemented in server context",
 		);
@@ -200,7 +200,7 @@ export class NavigationPreloadManager {
 		return {enabled: false, headerValue: ""};
 	}
 
-	async setHeaderValue(value: string): Promise<void> {
+	async setHeaderValue(_value: string): Promise<void> {
 		// No-op in server context
 	}
 }
@@ -249,14 +249,14 @@ export class ServiceWorkerRegistration extends EventTarget {
 
 	// Standard ServiceWorkerRegistration methods
 	async getNotifications(
-		options?: NotificationOptions,
+		_options?: NotificationOptions,
 	): Promise<Notification[]> {
 		return [];
 	}
 
 	async showNotification(
-		title: string,
-		options?: NotificationOptions,
+		_title: string,
+		_options?: NotificationOptions,
 	): Promise<void> {
 		console.warn(
 			"[ServiceWorker] Notifications not supported in server context",
@@ -398,15 +398,18 @@ export class ServiceWorkerRegistration extends EventTarget {
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
-				try {
-					this.dispatchEvent(event);
-				} catch (error) {
-					// Allow errors in event listeners to propagate as uncaught exceptions
-					// but don't let them interfere with the response mechanism
-					process.nextTick(() => {
-						throw error;
-					});
-					// Continue processing even if listener threw
+				// Manually call each listener with error handling to match browser behavior
+				const listeners = this.eventListeners.get("fetch") || [];
+				for (const listener of listeners) {
+					try {
+						listener(event);
+					} catch (error) {
+						// Log errors in event listeners but don't crash the process
+						// This matches browser behavior where fetch listener errors are logged
+						// but don't prevent other listeners from running
+						console.error("[ServiceWorker] Error in fetch event listener:", error);
+						// Continue with next listener
+					}
 				}
 
 				// Wait for all waitUntil promises (background tasks, don't block response)

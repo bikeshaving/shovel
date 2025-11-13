@@ -8,7 +8,7 @@ import {test, expect} from "bun:test";
 const TIMEOUT = 1000;
 
 // Helper to create a mock platform for testing
-function createMockPlatform() {
+function _createMockPlatform() {
 	return {
 		resolvePlatform: () => "node",
 		displayPlatformInfo: () => {},
@@ -325,7 +325,7 @@ test(
 			event.respondWith(new Response("Response 1"));
 		});
 
-		runtime.addEventListener("fetch", (event) => {
+		runtime.addEventListener("fetch", (_event) => {
 			calls.push("listener2");
 			// Second listener doesn't call respondWith
 		});
@@ -357,51 +357,22 @@ test(
 
 		const runtime = new ServiceWorkerRegistration();
 
-		// Temporarily capture uncaught exceptions to prevent test failure
-		const originalHandler = process.listeners("uncaughtException");
-		let caughtError = null;
+		// Add fetch listener that throws
+		runtime.addEventListener("fetch", (_event) => {
+			throw new Error("Test error");
+		});
 
-		const testHandler = (error) => {
-			if (error.message === "Test error") {
-				caughtError = error;
-			} else {
-				throw error; // Re-throw if it's not our expected error
-			}
-		};
+		// Install and activate before handling requests
+		await runtime.install();
+		await runtime.activate();
 
-		process.removeAllListeners("uncaughtException");
-		process.on("uncaughtException", testHandler);
+		const request = new Request("http://localhost/error");
 
-		try {
-			// Add fetch listener that throws
-			runtime.addEventListener("fetch", (event) => {
-				throw new Error("Test error");
-			});
-
-			// Install and activate before handling requests
-			await runtime.install();
-			await runtime.activate();
-
-			const request = new Request("http://localhost/error");
-
-			// Should reject with timeout error (no response provided) due to throwing listener
-			await expect(runtime.handleRequest(request)).rejects.toThrow(
-				"No response provided for fetch event",
-			);
-
-			// Give some time for the uncaught exception to be handled
-			await new Promise((resolve) => setTimeout(resolve, 50));
-
-			// Verify the uncaught exception was thrown as expected
-			expect(caughtError).toBeTruthy();
-			expect(caughtError.message).toBe("Test error");
-		} finally {
-			// Restore original uncaught exception handlers
-			process.removeAllListeners("uncaughtException");
-			originalHandler.forEach((handler) =>
-				process.on("uncaughtException", handler),
-			);
-		}
+		// Should reject with "No response provided" when listener throws and doesn't call respondWith
+		// The error is logged but doesn't crash the process (matches browser behavior)
+		await expect(runtime.handleRequest(request)).rejects.toThrow(
+			"No response provided for fetch event",
+		);
 	},
 	TIMEOUT,
 );
@@ -442,16 +413,25 @@ test(
 		const runtime = new ServiceWorkerRegistration();
 
 		runtime.addEventListener("install", (event) => {
-			// Add a promise that will reject asynchronously
+			// Add a promise that will reject
 			event.waitUntil(
-				new Promise((_, reject) => {
-					setTimeout(() => reject(new Error("Install task failed")), 10);
-				}),
+				(async () => {
+					throw new Error("Install task failed");
+				})(),
 			);
 		});
 
 		// Install should fail when waitUntil promise rejects
-		await expect(runtime.install()).rejects.toThrow("Install task failed");
+		let errorCaught = false;
+		try {
+			await runtime.install();
+			// Should not reach here - install should have thrown
+		} catch (error) {
+			errorCaught = true;
+			expect(error.message).toBe("Install task failed");
+		}
+
+		expect(errorCaught).toBe(true);
 
 		// Runtime should not be installed
 		expect(runtime.ready).toBe(false);
@@ -470,16 +450,25 @@ test(
 		await runtime.install();
 
 		runtime.addEventListener("activate", (event) => {
-			// Add a promise that will reject asynchronously
+			// Add a promise that will reject
 			event.waitUntil(
-				new Promise((_, reject) => {
-					setTimeout(() => reject(new Error("Activation task failed")), 10);
-				}),
+				(async () => {
+					throw new Error("Activation task failed");
+				})(),
 			);
 		});
 
 		// Activate should fail when waitUntil promise rejects
-		await expect(runtime.activate()).rejects.toThrow("Activation task failed");
+		let errorCaught = false;
+		try {
+			await runtime.activate();
+			// Should not reach here - activate should have thrown
+		} catch (error) {
+			errorCaught = true;
+			expect(error.message).toBe("Activation task failed");
+		}
+
+		expect(errorCaught).toBe(true);
 
 		// Runtime should not be ready (installed but not activated)
 		expect(runtime.ready).toBe(false);

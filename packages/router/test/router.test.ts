@@ -68,7 +68,7 @@ describe("Middleware Detection", () => {
 	test("detects async generator functions as generator middleware", () => {
 		const router = new Router();
 
-		async function* generatorMiddleware(request: Request, context: any) {
+		async function* generatorMiddleware(request: Request, _context: any) {
 			const response = yield request;
 			return response;
 		}
@@ -121,7 +121,7 @@ describe("Generator Middleware Execution", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* testMiddleware(request: Request, context: any) {
+		async function* testMiddleware(request: Request, _context: any) {
 			executionOrder.push("middleware-before");
 			const response = yield request;
 			executionOrder.push("middleware-after");
@@ -153,7 +153,7 @@ describe("Generator Middleware Execution", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* testMiddleware(request: Request, context: any) {
+		async function* testMiddleware(request: Request, _context: any) {
 			executionOrder.push("middleware-before");
 			const response = yield; // Implicit yield request
 			executionOrder.push("middleware-after");
@@ -593,7 +593,7 @@ describe("Middleware Short-Circuiting", () => {
 			context.func1 = true;
 		}
 
-		async function* generatorMiddleware(request: Request, context: any) {
+		async function* generatorMiddleware(request: Request, _context: any) {
 			executionOrder.push("generator-before");
 			const response = yield request;
 			executionOrder.push("generator-after");
@@ -1214,7 +1214,7 @@ describe("Advanced Generator Middleware", () => {
 			context.asyncFunc = true;
 		}
 
-		async function* generatorMiddleware(request: Request, context: any) {
+		async function* generatorMiddleware(request: Request, _context: any) {
 			executionOrder.push("generator-start");
 			const response = yield request;
 			executionOrder.push("generator-end");

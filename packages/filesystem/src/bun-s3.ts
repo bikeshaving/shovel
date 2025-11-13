@@ -260,7 +260,7 @@ export class S3Bucket implements FileSystemDirectoryHandle {
 	constructor(
 		s3Client: any,
 		bucketName: string,
-		prefix: string = "",  // No default prefix - let users explicitly namespace
+		prefix: string = "", // No default prefix - let users explicitly namespace
 	) {
 		this.name = prefix.split("/").filter(Boolean).pop() || bucketName;
 		this.backend = new S3FileSystemBackend(s3Client, bucketName, prefix);

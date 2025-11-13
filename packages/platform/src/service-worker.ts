@@ -19,6 +19,8 @@ export class ExtendableEvent extends Event {
 	waitUntil(promise: Promise<any>): void {
 		this.promises.push(promise);
 		this.pendingPromises.add(promise);
+		// Suppress unhandled rejection warnings - Promise.all() will handle it
+		promise.catch(() => {});
 		promise.finally(() => this.pendingPromises.delete(promise));
 	}
 

@@ -2,10 +2,10 @@ import {test, expect, describe, beforeEach, afterEach, mock} from "bun:test";
 import {
 	CloudflarePlatform,
 	createOptionsFromEnv,
-	extractKVNamespaces,
-	extractR2Buckets,
-	extractD1Databases,
-	extractDurableObjects,
+	extractKVNamespaces as _extractKVNamespaces,
+	extractR2Buckets as _extractR2Buckets,
+	extractD1Databases as _extractD1Databases,
+	extractDurableObjects as _extractDurableObjects,
 	generateWranglerConfig,
 } from "../src/index.js";
 

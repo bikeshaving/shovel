@@ -1,7 +1,7 @@
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
 import {test, expect} from "bun:test";
-import {join, dirname} from "path";
+import {join, dirname as _dirname} from "path";
 import {tmpdir} from "os";
 import {mkdtemp} from "fs/promises";
 

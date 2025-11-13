@@ -8,7 +8,7 @@ import {mkdtempSync, writeFileSync, rmSync} from "fs";
 if (typeof globalThis.Bun === "undefined") {
 	(globalThis as any).Bun = {
 		env: {NODE_ENV: "test"},
-		serve: mock((options: any) => ({
+		serve: mock((_options: any) => ({
 			stop: mock(() => {}),
 		})),
 	};
