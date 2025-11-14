@@ -1101,14 +1101,14 @@ export function createPreflightResponse(
 // Re-exports from other modules
 // ============================================================================
 
-// ServiceWorker runtime
+// ServiceWorker runtime types
 export {
 	type ShovelFetchEvent,
 	type ShovelInstallEvent,
 	type ShovelActivateEvent,
 	type ShovelStaticEvent,
 	type BucketStorage as BucketStorageInterface,
-} from "./service-worker.js";
+} from "./service-worker-api.js";
 
 // ServiceWorker global scope
 export {

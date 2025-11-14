@@ -7,20 +7,146 @@
  * Provides compatibility shims for running ServiceWorker code in any JavaScript runtime.
  */
 
-// Import and re-export base event classes from service-worker.ts
-export {
-	ExtendableEvent,
-	FetchEvent,
-	InstallEvent,
-	ActivateEvent,
-} from "./service-worker.js";
+// ============================================================================
+// Base Event Classes
+// ============================================================================
 
-import {
-	ExtendableEvent as BaseExtendableEvent,
-	FetchEvent as BaseFetchEvent,
-	InstallEvent as BaseInstallEvent,
-	ActivateEvent as BaseActivateEvent,
-} from "./service-worker.js";
+/**
+ * ExtendableEvent base class following ServiceWorker spec
+ */
+export class ExtendableEvent extends Event {
+	private promises: Promise<any>[] = [];
+	private pendingPromises: Set<Promise<any>>;
+
+	constructor(type: string, pendingPromises: Set<Promise<any>>) {
+		super(type);
+		this.pendingPromises = pendingPromises;
+	}
+
+	waitUntil(promise: Promise<any>): void {
+		this.promises.push(promise);
+		this.pendingPromises.add(promise);
+		// Suppress unhandled rejection warnings - Promise.all() will handle it
+		promise.catch(() => {});
+		promise.finally(() => this.pendingPromises.delete(promise));
+	}
+
+	getPromises(): Promise<any>[] {
+		return [...this.promises];
+	}
+}
+
+/**
+ * ServiceWorker-style fetch event
+ */
+export class FetchEvent extends ExtendableEvent {
+	readonly request: Request;
+	private responsePromise: Promise<Response> | null = null;
+	private responded = false;
+
+	constructor(request: Request, pendingPromises: Set<Promise<any>>) {
+		super("fetch", pendingPromises);
+		this.request = request;
+	}
+
+	respondWith(response: Response | Promise<Response>): void {
+		if (this.responded) {
+			throw new Error("respondWith() already called");
+		}
+		this.responded = true;
+		this.responsePromise = Promise.resolve(response);
+	}
+
+	getResponse(): Promise<Response> | null {
+		return this.responsePromise;
+	}
+
+	hasResponded(): boolean {
+		return this.responded;
+	}
+}
+
+/**
+ * ServiceWorker-style install event
+ */
+export class InstallEvent extends ExtendableEvent {
+	constructor(pendingPromises: Set<Promise<any>>) {
+		super("install", pendingPromises);
+	}
+}
+
+/**
+ * ServiceWorker-style activate event
+ */
+export class ActivateEvent extends ExtendableEvent {
+	constructor(pendingPromises: Set<Promise<any>>) {
+		super("activate", pendingPromises);
+	}
+}
+
+/**
+ * Legacy interfaces for backward compatibility
+ */
+export interface ShovelFetchEvent extends Event {
+	readonly type: "fetch";
+	readonly request: Request;
+	respondWith(response: Response | Promise<Response>): void;
+	waitUntil(promise: Promise<any>): void;
+}
+
+export interface ShovelInstallEvent extends Event {
+	readonly type: "install";
+	waitUntil(promise: Promise<any>): void;
+}
+
+export interface ShovelActivateEvent extends Event {
+	readonly type: "activate";
+	waitUntil(promise: Promise<any>): void;
+}
+
+/**
+ * @deprecated - This interface is not part of the ServiceWorker spec
+ */
+export interface ShovelStaticEvent extends Event {
+	readonly type: "static";
+	waitUntil(promise: Promise<any>): void;
+}
+
+/**
+ * Bucket storage interface - parallels CacheStorage for filesystem access
+ * This could become a future web standard
+ */
+export interface BucketStorage {
+	/**
+	 * Open a named bucket - returns FileSystemDirectoryHandle (root of that bucket)
+	 * Well-known names: 'assets', 'static', 'uploads', 'temp'
+	 */
+	open(name: string): Promise<FileSystemDirectoryHandle>;
+
+	/**
+	 * Alias for open() - for compatibility with File System Access API naming
+	 */
+	getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
+
+	/**
+	 * Check if a named bucket exists
+	 */
+	has(name: string): Promise<boolean>;
+
+	/**
+	 * Delete a named bucket and all its contents
+	 */
+	delete(name: string): Promise<boolean>;
+
+	/**
+	 * List all available bucket names
+	 */
+	keys(): Promise<string[]>;
+}
+
+// ============================================================================
+// ServiceWorker API Implementation
+// ============================================================================
 
 /**
  * Client represents the scope of a service worker client
@@ -112,7 +238,7 @@ export class Clients {
 /**
  * ExtendableMessageEvent represents message events with waitUntil support
  */
-export class ExtendableMessageEvent extends BaseExtendableEvent {
+export class ExtendableMessageEvent extends ExtendableEvent {
 	readonly data: any;
 	readonly origin: string;
 	readonly lastEventId: string;
@@ -314,7 +440,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 		this._serviceWorker._setState("installing");
 
 		return new Promise<void>((resolve, reject) => {
-			const event = new BaseInstallEvent(this.pendingPromises);
+			const event = new InstallEvent(this.pendingPromises);
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
@@ -355,7 +481,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 		this._serviceWorker._setState("activating");
 
 		return new Promise<void>((resolve, reject) => {
-			const event = new BaseActivateEvent(this.pendingPromises);
+			const event = new ActivateEvent(this.pendingPromises);
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
@@ -394,7 +520,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 		}
 
 		return new Promise<Response>((resolve, reject) => {
-			const event = new BaseFetchEvent(request, this.pendingPromises);
+			const event = new FetchEvent(request, this.pendingPromises);
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
@@ -686,7 +812,7 @@ export class Notification extends EventTarget {
 /**
  * NotificationEvent for notification interactions
  */
-export class NotificationEvent extends BaseExtendableEvent {
+export class NotificationEvent extends ExtendableEvent {
 	readonly action: string;
 	readonly notification: Notification;
 	readonly reply: string | null = null;
@@ -710,7 +836,7 @@ export class NotificationEvent extends BaseExtendableEvent {
 /**
  * PushEvent for push message handling
  */
-export class PushEvent extends BaseExtendableEvent {
+export class PushEvent extends ExtendableEvent {
 	readonly data: PushMessageData | null;
 
 	constructor(
@@ -757,7 +883,7 @@ export class PushMessageData {
 /**
  * SyncEvent for background sync
  */
-export class SyncEvent extends BaseExtendableEvent {
+export class SyncEvent extends ExtendableEvent {
 	readonly tag: string;
 	readonly lastChance: boolean;
 
@@ -807,11 +933,11 @@ export const ServiceWorkerAPI = {
 	// Core classes
 	Client,
 	Clients,
-	ExtendableEvent: BaseExtendableEvent,
+	ExtendableEvent: ExtendableEvent,
 	ExtendableMessageEvent,
-	FetchEvent: BaseFetchEvent,
-	InstallEvent: BaseInstallEvent,
-	ActivateEvent: BaseActivateEvent,
+	FetchEvent: FetchEvent,
+	InstallEvent: InstallEvent,
+	ActivateEvent: ActivateEvent,
 	NavigationPreloadManager,
 	Notification,
 	NotificationEvent,

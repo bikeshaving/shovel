@@ -6,8 +6,10 @@
  * In Shovel, applications get a ShovelGlobalScope as `self`.
  */
 
-import type {ServiceWorkerRegistration} from "./service-worker-api.js";
-import type {BucketStorage} from "./service-worker.js";
+import type {
+	ServiceWorkerRegistration,
+	BucketStorage,
+} from "./service-worker-api.js";
 
 export interface ShovelGlobalScopeOptions {
 	/** ServiceWorker registration instance */
