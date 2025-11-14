@@ -172,9 +172,9 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 		description: `Shovel ${config.template} app for ${config.platform}`,
 		type: "module",
 		scripts: {
-			develop: `shovel develop src/app.${config.typescript ? "ts" : "js"} --platform ${config.platform}`,
-			build: `shovel build src/app.${config.typescript ? "ts" : "js"} --platform ${config.platform}`,
-			start: `shovel serve dist/app.js --platform ${config.platform}`,
+			develop: `shovel develop src/server.${config.typescript ? "ts" : "js"} --platform ${config.platform}`,
+			build: `shovel build src/server.${config.typescript ? "ts" : "js"} --platform ${config.platform}`,
+			start: `shovel serve dist/server.js --platform ${config.platform}`,
 		},
 		dependencies: {
 			"@b9g/router": "^0.1.0",

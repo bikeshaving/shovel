@@ -11,7 +11,7 @@
 Write once. Deploy anywhere. Use web standards.
 
 ```javascript
-// Your app.js - runs identically on Node, Bun, or Cloudflare
+// Your server.js - runs identically on Node, Bun, or Cloudflare
 self.addEventListener('fetch', async (event) => {
   const cache = await self.caches.open('api');
   const bucket = await self.buckets.getDirectoryHandle('static');
@@ -134,7 +134,7 @@ npm install @b9g/platform-cloudflare # For Cloudflare
 import { NodePlatform } from '@b9g/platform-node';
 
 const platform = new NodePlatform();
-const serviceWorker = await platform.loadServiceWorker('./app.js');
+const serviceWorker = await platform.loadServiceWorker('./server.js');
 const server = platform.createServer(serviceWorker.handleRequest);
 ```
 

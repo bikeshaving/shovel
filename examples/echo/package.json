@@ -5,9 +5,9 @@
   "description": "HTTP request echo and debugging API - Shovel Node.js Example",
   "type": "module",
   "scripts": {
-    "develop": "shovel develop src/app.js --platform node",
-    "build": "shovel build src/app.js --platform node",
-    "start": "shovel serve dist/app.js --platform node"
+    "develop": "shovel develop src/server.js --platform node",
+    "build": "shovel build src/server.js --platform node",
+    "start": "shovel serve dist/server.js --platform node"
   },
   "dependencies": {
     "@b9g/router": "workspace:*",

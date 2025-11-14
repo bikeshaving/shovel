@@ -237,16 +237,16 @@ Universal command-line tool with platform auto-detection:
 **Development Server:**
 ```bash
 # Auto-detect platform
-shovel develop src/app.js
+shovel develop src/server.js
 
 # Explicit platform targeting
-shovel develop src/app.js --platform=bun --port=3000
+shovel develop src/server.js --platform=bun --port=3000
 
 # Custom worker count (default: 2 in dev, CPU count in prod)
-shovel develop src/app.js --workers=4
+shovel develop src/server.js --workers=4
 
 # Verbose output for debugging
-shovel develop src/app.js --verbose
+shovel develop src/server.js --verbose
 ```
 
 The CLI uses the platform abstraction to provide consistent development experience across all runtimes. Worker configuration encourages concurrency thinking from the start while maximizing production throughput.

@@ -4,10 +4,10 @@
   "description": "Example Shovel blog app using cache-first architecture",
   "type": "module",
   "scripts": {
-    "develop": "shovel develop src/app.js --port 3000",
-    "build": "shovel build src/app.js --out-dir dist",
-    "start": "node dist/app.js",
-    "static": "shovel static src/app.js --out-dir dist",
+    "develop": "shovel develop src/server.js --port 3000",
+    "build": "shovel build src/server.js --out-dir dist",
+    "start": "node dist/server.js",
+    "static": "shovel static src/server.js --out-dir dist",
     "preview": "cd dist && python3 -m http.server 3000"
   },
   "dependencies": {

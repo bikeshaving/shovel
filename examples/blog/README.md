@@ -12,8 +12,7 @@ A demo blog app showcasing Shovel's cache-first architecture and Django-inspired
 ## Architecture
 
 ```
-src/app.js          # Main application with router and caches
-server.js           # Shovel CLI entry point
+src/server.js       # Main application with router and caches
 build.js            # Build configuration with staticfiles plugin
 src/assets/         # Static assets (CSS, images, etc.)
 ```

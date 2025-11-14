@@ -3,17 +3,17 @@
   "version": "0.1.0",
   "description": "Admin dashboard example with SQLite backend for blog posts and documentation",
   "type": "module",
-  "main": "src/app.js",
+  "main": "src/server.js",
   "exports": {
     ".": {
-      "bun": "./dist/app.js",
-      "import": "./dist/app.js"
+      "bun": "./dist/server.js",
+      "import": "./dist/server.js"
     }
   },
   "scripts": {
-    "dev": "shovel develop src/app.js",
-    "build": "shovel build src/app.js",
-    "start": "bun src/app.js",
+    "dev": "shovel develop src/server.js",
+    "build": "shovel build src/server.js",
+    "start": "bun src/server.js",
     "db:seed": "bun src/db/seed.js",
     "deploy": "fly deploy"
   },

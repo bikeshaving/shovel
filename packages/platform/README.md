@@ -138,7 +138,7 @@ displayPlatformInfo(detected);
 ```javascript
 const platform = await createPlatform('node');
 
-const serviceWorker = await platform.loadServiceWorker('./app.js', {
+const serviceWorker = await platform.loadServiceWorker('./server.js', {
   workerCount: 4,           // Number of worker threads
   hotReload: true,          // Enable hot reloading
   caches: {
@@ -232,13 +232,13 @@ The platform abstraction powers the Shovel CLI:
 
 ```bash
 # Auto-detect and run
-shovel develop app.js
+shovel develop server.js
 
 # Explicit platform targeting
-shovel develop app.js --platform=bun --workers=4
+shovel develop server.js --platform=bun --workers=4
 
 # Platform-specific builds
-shovel build app.js --platform=cloudflare
+shovel build server.js --platform=cloudflare
 ```
 
 ## License

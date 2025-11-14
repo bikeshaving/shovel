@@ -11,9 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### 🚀 Directly Executable Production Builds
 - **Self-contained deployment**: `shovel build` now creates directly executable production builds that don't require `shovel serve`
-- **2-file output**: Production builds generate only `app.js` (executable) and `package.json` (dependencies)
+- **2-file output**: Production builds generate only `server.js` (executable) and `package.json` (dependencies)
 - **Platform bootstrapping**: Automatic platform detection and ServiceWorker environment setup
-- **Zero-config deployment**: Run `chmod +x app.js && ./app.js` after `npm install` in the dist directory
+- **Zero-config deployment**: Run `chmod +x server.js && ./server.js` after `npm install` in the dist directory
 
 #### 🌐 Complete ServiceWorker API Implementation
 - **Full ServiceWorker globals**: Implemented `self`, `addEventListener`, `removeEventListener`, `dispatchEvent`
@@ -161,7 +161,7 @@ shovel serve dist/
 # After
 shovel build
 cd dist && npm install
-chmod +x app.js && ./app.js
+chmod +x server.js && ./server.js
 ```
 
 ### Performance

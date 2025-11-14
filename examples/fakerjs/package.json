@@ -4,8 +4,8 @@
   "description": "FakerAPI.it clone using Shovel and Faker.js",
   "type": "module",
   "scripts": {
-    "develop": "shovel develop src/app.js",
-    "build": "shovel build src/app.js",
+    "develop": "shovel develop src/server.js",
+    "build": "shovel build src/server.js",
     "test": "bun test"
   },
   "dependencies": {

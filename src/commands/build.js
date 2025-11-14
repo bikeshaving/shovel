@@ -13,7 +13,7 @@ import {assetsPlugin} from "../assets.ts";
 const BUILD_DEFAULTS = {
 	format: "esm",
 	target: "es2022",
-	outputFile: "app.js",
+	outputFile: "server.js",
 	sourcemap: false,
 	minify: false,
 	treeShaking: true,
@@ -51,8 +51,8 @@ export async function buildForProduction({
 		const result = await esbuild.build(buildConfig);
 
 		// Make the output executable (for directly executable builds)
-		const appPath = join(buildContext.serverDir, "app.js");
-		await chmod(appPath, 0o755);
+		const serverPath = join(buildContext.serverDir, "server.js");
+		await chmod(serverPath, 0o755);
 
 		if (verbose && result.metafile) {
 			await logBundleAnalysis(result.metafile);
