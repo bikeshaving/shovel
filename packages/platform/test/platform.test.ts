@@ -4,9 +4,11 @@ import {
 	mergeCacheConfig,
 	validateCacheConfig,
 	createCorsHeaders,
-} from "../src/utils.js";
-import {platformRegistry, detectPlatform} from "../src/registry.js";
-import type {Platform, CacheBackendConfig} from "../src/types.js";
+	platformRegistry,
+	detectPlatform,
+	type Platform,
+	type CacheBackendConfig,
+} from "../src/index.js";
 
 describe("@b9g/platform", () => {
 	describe("TTL parsing", () => {
