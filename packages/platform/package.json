@@ -53,27 +53,21 @@
       "types": "./dist/src/worker-pool.d.ts",
       "import": "./dist/src/worker-pool.js"
     },
-    "./worker-web": {
-      "import": "./dist/src/worker-web.js"
+    "./bootstrap": {
+      "import": "./dist/src/bootstrap.js",
+      "types": "./dist/src/bootstrap.d.ts"
     },
-    "./worker-web.js": {
-      "import": "./dist/src/worker-web.js"
+    "./bootstrap.js": {
+      "import": "./dist/src/bootstrap.js",
+      "types": "./dist/src/bootstrap.d.ts"
     },
-    "./service-worker-api": {
-      "types": "./dist/src/service-worker-api.d.ts",
-      "import": "./dist/src/service-worker-api.js"
+    "./runtime": {
+      "import": "./dist/src/runtime.js",
+      "types": "./dist/src/runtime.d.ts"
     },
-    "./service-worker-api.js": {
-      "types": "./dist/src/service-worker-api.d.ts",
-      "import": "./dist/src/service-worker-api.js"
-    },
-    "./shovel-global-scope": {
-      "types": "./dist/src/shovel-global-scope.d.ts",
-      "import": "./dist/src/shovel-global-scope.js"
-    },
-    "./shovel-global-scope.js": {
-      "types": "./dist/src/shovel-global-scope.d.ts",
-      "import": "./dist/src/shovel-global-scope.js"
+    "./runtime.js": {
+      "import": "./dist/src/runtime.js",
+      "types": "./dist/src/runtime.d.ts"
     }
   }
 }

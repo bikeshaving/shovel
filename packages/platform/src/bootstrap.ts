@@ -1,17 +1,27 @@
 /**
- * Web Worker compatible template for ServiceWorker execution
- * Works with both native Web Workers and web-worker shim
+ * Worker Bootstrap - ServiceWorker execution environment
+ *
+ * This script runs inside each worker thread to set up the ServiceWorker runtime
+ * and handle requests from the main thread via postMessage protocol.
  */
+
+import type {
+	WorkerMessage,
+	WorkerRequest,
+	WorkerResponse,
+	WorkerLoadMessage,
+	WorkerErrorMessage,
+} from "./worker-pool.js";
 
 // Initialize worker environment - Web Worker API only (native or shimmed)
 async function initializeWorker() {
 	// Use Web Worker globals - works with native Web Workers or web-worker shim
-	let messagePort = self;
-	let sendMessage = (message) => postMessage(message);
+	const messagePort = self;
+	const sendMessage = (message: WorkerMessage) => postMessage(message);
 
 	// Handle incoming messages
-	onmessage = function (event) {
-		handleMessage(event.data);
+	onmessage = function (event: MessageEvent) {
+		void handleMessage(event.data);
 	};
 
 	return {messagePort, sendMessage};
@@ -24,7 +34,7 @@ const {CustomCacheStorage, PostMessageCache} = await import("@b9g/cache");
 const {FileSystemRegistry} = await import("@b9g/filesystem");
 
 // Create worker-aware cache storage using PostMessage coordination
-const caches = new CustomCacheStorage((name) => {
+const caches: CacheStorage = new CustomCacheStorage((name: string) => {
 	return new PostMessageCache(name, {
 		maxEntries: 1000,
 		maxAge: 60 * 60 * 1000, // 1 hour
@@ -32,7 +42,7 @@ const caches = new CustomCacheStorage((name) => {
 });
 
 // Create bucket storage using FileSystemRegistry
-const buckets = new CustomBucketStorage(async (name) => {
+const buckets = new CustomBucketStorage(async (name: string) => {
 	const registered = FileSystemRegistry.get(name);
 	if (registered) return registered;
 	throw new Error(`Bucket '${name}' not registered`);
@@ -43,12 +53,12 @@ let registration = new ServiceWorkerRegistration();
 let scope = new ShovelGlobalScope({registration, caches, buckets});
 scope.install();
 
-let _workerSelf = scope;
-let currentApp = null;
+let _workerSelf: typeof scope = scope;
+let currentApp: any = null;
 let serviceWorkerReady = false;
-let loadedVersion = null;
+let loadedVersion: number | string | null = null;
 
-async function handleFetchEvent(request) {
+async function handleFetchEvent(request: Request): Promise<Response> {
 	if (!currentApp || !serviceWorkerReady) {
 		throw new Error("ServiceWorker not ready");
 	}
@@ -65,7 +75,10 @@ async function handleFetchEvent(request) {
 	}
 }
 
-async function loadServiceWorker(version, entrypoint) {
+async function loadServiceWorker(
+	version: number | string,
+	entrypoint?: string,
+): Promise<void> {
 	try {
 		console.info("[Worker] loadServiceWorker called with:", {
 			version,
@@ -75,7 +88,7 @@ async function loadServiceWorker(version, entrypoint) {
 		const entrypointPath =
 			process.env.SERVICEWORKER_PATH ||
 			entrypoint ||
-			`${process.cwd()}/dist/server/app.js`;
+			`${process.cwd()}/dist/server/server.js`;
 		console.info("[Worker] Loading from:", entrypointPath);
 
 		if (loadedVersion !== null && loadedVersion !== version) {
@@ -88,7 +101,7 @@ async function loadServiceWorker(version, entrypoint) {
 			registration = new ServiceWorkerRegistration();
 			scope = new ShovelGlobalScope({registration, caches, buckets});
 			scope.install();
-			workerSelf = scope;
+			_workerSelf = scope;
 			currentApp = null;
 			serviceWorkerReady = false;
 		}
@@ -123,28 +136,30 @@ async function loadServiceWorker(version, entrypoint) {
 }
 
 const workerId = Math.random().toString(36).substring(2, 8);
-let sendMessage;
+let sendMessage: (message: WorkerMessage) => void;
 
-async function handleMessage(message) {
+async function handleMessage(message: WorkerMessage): Promise<void> {
 	try {
 		if (message.type === "load") {
-			await loadServiceWorker(message.version, message.entrypoint);
-			sendMessage({type: "ready", version: message.version});
+			const loadMsg = message as WorkerLoadMessage;
+			await loadServiceWorker(loadMsg.version, loadMsg.entrypoint);
+			sendMessage({type: "ready", version: loadMsg.version});
 		} else if (message.type === "request") {
+			const reqMsg = message as WorkerRequest;
 			console.info(
 				`[Worker-${workerId}] Handling request:`,
-				message.request.url,
+				reqMsg.request.url,
 			);
 
-			const request = new Request(message.request.url, {
-				method: message.request.method,
-				headers: message.request.headers,
-				body: message.request.body,
+			const request = new Request(reqMsg.request.url, {
+				method: reqMsg.request.method,
+				headers: reqMsg.request.headers,
+				body: reqMsg.request.body,
 			});
 
 			const response = await handleFetchEvent(request);
 
-			sendMessage({
+			const responseMsg: WorkerResponse = {
 				type: "response",
 				response: {
 					status: response.status,
@@ -152,17 +167,19 @@ async function handleMessage(message) {
 					headers: Object.fromEntries(response.headers.entries()),
 					body: await response.text(),
 				},
-				requestId: message.requestId,
-			});
-	}
-	// Ignore all other message types (cache: messages handled directly by MemoryCache)
+				requestId: reqMsg.requestId,
+			};
+			sendMessage(responseMsg);
+		}
+		// Ignore all other message types (cache: messages handled directly by MemoryCache)
 	} catch (error) {
-		sendMessage({
+		const errorMsg: WorkerErrorMessage = {
 			type: "error",
-			error: error.message,
-			stack: error.stack,
-			requestId: message.requestId,
-		});
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			requestId: (message as any).requestId,
+		};
+		sendMessage(errorMsg);
 	}
 }
 

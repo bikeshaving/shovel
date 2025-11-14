@@ -213,7 +213,7 @@ export interface Platform {
 	 * THE MAIN JOB - Create a ServiceWorkerContainer for managing multiple registrations
 	 * This is the new registry-based approach aligned with ServiceWorker spec
 	 */
-	createServiceWorkerContainer(options?: ServiceWorkerOptions): Promise<any>; // ServiceWorkerContainer from service-worker-api.ts
+	createServiceWorkerContainer(options?: ServiceWorkerOptions): Promise<any>; // ServiceWorkerContainer from runtime.ts
 
 	/**
 	 * Load and run a ServiceWorker-style entrypoint (legacy method)
@@ -1101,23 +1101,17 @@ export function createPreflightResponse(
 // Re-exports from other modules
 // ============================================================================
 
-// ServiceWorker runtime types
+// ServiceWorker runtime (events, API, global scope)
 export {
 	type ShovelFetchEvent,
 	type ShovelInstallEvent,
 	type ShovelActivateEvent,
 	type ShovelStaticEvent,
 	type BucketStorage as BucketStorageInterface,
-} from "./service-worker-api.js";
-
-// ServiceWorker global scope
-export {
 	ShovelGlobalScope,
 	type ShovelGlobalScopeOptions,
-} from "./shovel-global-scope.js";
-
-// ServiceWorker API components
-export {ServiceWorkerRegistration} from "./service-worker-api.js";
+	ServiceWorkerRegistration,
+} from "./runtime.js";
 
 // Bucket storage
 export {CustomBucketStorage, type BucketFactory} from "@b9g/filesystem";
@@ -1144,4 +1138,4 @@ export {
 	PushMessageData,
 	SyncEvent,
 	ServiceWorkerAPI,
-} from "./service-worker-api.js";
+} from "./runtime.js";

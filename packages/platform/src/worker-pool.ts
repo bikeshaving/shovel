@@ -95,8 +95,8 @@ function resolveWorkerScript(entrypoint?: string): string {
 
 	// Fallback to package resolution for development
 	try {
-		// Use import.meta.resolve for web-worker compatible script
-		const workerUrl = import.meta.resolve("@b9g/platform/worker-web.js");
+		// Use import.meta.resolve for bootstrap script
+		const workerUrl = import.meta.resolve("@b9g/platform/bootstrap.js");
 		let workerScript: string;
 
 		if (workerUrl.startsWith("file://")) {
@@ -107,15 +107,15 @@ function resolveWorkerScript(entrypoint?: string): string {
 		}
 
 		console.debug(
-			`[WorkerPool] Using Web Worker-compatible script: ${workerScript}`,
+			`[WorkerPool] Using worker bootstrap script: ${workerScript}`,
 		);
 		return workerScript;
 	} catch (error) {
 		const bundledPath = entrypoint
-			? Path.join(Path.dirname(entrypoint), "worker-web.js")
-			: "worker-web.js";
+			? Path.join(Path.dirname(entrypoint), "bootstrap.js")
+			: "bootstrap.js";
 		throw new Error(
-			`Could not resolve worker-web.js. Checked bundled path: ${bundledPath} and package: @b9g/platform/worker-web.js. Error: ${error instanceof Error ? error.message : String(error)}`,
+			`Could not resolve bootstrap.js. Checked bundled path: ${bundledPath} and package: @b9g/platform/bootstrap.js. Error: ${error instanceof Error ? error.message : String(error)}`,
 		);
 	}
 }

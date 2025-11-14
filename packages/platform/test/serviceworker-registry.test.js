@@ -11,7 +11,7 @@ test(
 	"ServiceWorkerContainer registry - basic functionality",
 	async () => {
 		const {ServiceWorkerContainer} = await import(
-			"../src/service-worker-api.js"
+			"../src/runtime.js"
 		);
 
 		const container = new ServiceWorkerContainer();
@@ -32,7 +32,7 @@ test(
 	"ServiceWorkerContainer registry - multiple registrations",
 	async () => {
 		const {ServiceWorkerContainer} = await import(
-			"../src/service-worker-api.js"
+			"../src/runtime.js"
 		);
 
 		const container = new ServiceWorkerContainer();
@@ -66,7 +66,7 @@ test(
 	"ServiceWorkerContainer registry - scope matching",
 	async () => {
 		const {ServiceWorkerContainer} = await import(
-			"../src/service-worker-api.js"
+			"../src/runtime.js"
 		);
 
 		const container = new ServiceWorkerContainer();
@@ -101,7 +101,7 @@ test(
 	"ServiceWorkerContainer registry - scope normalization",
 	async () => {
 		const {ServiceWorkerContainer} = await import(
-			"../src/service-worker-api.js"
+			"../src/runtime.js"
 		);
 
 		const container = new ServiceWorkerContainer();
@@ -127,7 +127,7 @@ test(
 	"ServiceWorkerContainer registry - unregister functionality",
 	async () => {
 		const {ServiceWorkerContainer} = await import(
-			"../src/service-worker-api.js"
+			"../src/runtime.js"
 		);
 
 		const container = new ServiceWorkerContainer();
@@ -158,7 +158,7 @@ test(
 	"ServiceWorkerContainer registry - get all registrations",
 	async () => {
 		const {ServiceWorkerContainer} = await import(
-			"../src/service-worker-api.js"
+			"../src/runtime.js"
 		);
 
 		const container = new ServiceWorkerContainer();
