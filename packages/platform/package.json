@@ -36,39 +36,7 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./types": {
-      "types": "./dist/src/types.d.ts",
-      "import": "./dist/src/types.js"
-    },
-    "./types.js": {
-      "types": "./dist/src/types.d.ts",
-      "import": "./dist/src/types.js"
-    },
     "./package.json": "./dist/package.json",
-    "./adapter-registry": {
-      "types": "./dist/src/adapter-registry.d.ts",
-      "import": "./dist/src/adapter-registry.js"
-    },
-    "./adapter-registry.js": {
-      "types": "./dist/src/adapter-registry.d.ts",
-      "import": "./dist/src/adapter-registry.js"
-    },
-    "./base-platform": {
-      "types": "./dist/src/base-platform.d.ts",
-      "import": "./dist/src/base-platform.js"
-    },
-    "./base-platform.js": {
-      "types": "./dist/src/base-platform.d.ts",
-      "import": "./dist/src/base-platform.js"
-    },
-    "./filesystem": {
-      "types": "./dist/src/filesystem.d.ts",
-      "import": "./dist/src/filesystem.js"
-    },
-    "./filesystem.js": {
-      "types": "./dist/src/filesystem.d.ts",
-      "import": "./dist/src/filesystem.js"
-    },
     "./index": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
@@ -77,14 +45,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./registry": {
-      "types": "./dist/src/registry.d.ts",
-      "import": "./dist/src/registry.js"
-    },
-    "./registry.js": {
-      "types": "./dist/src/registry.d.ts",
-      "import": "./dist/src/registry.js"
-    },
     "./service-worker": {
       "types": "./dist/src/service-worker.d.ts",
       "import": "./dist/src/service-worker.js"
@@ -92,30 +52,6 @@
     "./service-worker.js": {
       "types": "./dist/src/service-worker.d.ts",
       "import": "./dist/src/service-worker.js"
-    },
-    "./utils": {
-      "types": "./dist/src/utils.d.ts",
-      "import": "./dist/src/utils.js"
-    },
-    "./utils.js": {
-      "types": "./dist/src/utils.d.ts",
-      "import": "./dist/src/utils.js"
-    },
-    "./detection": {
-      "types": "./dist/src/detection.d.ts",
-      "import": "./dist/src/detection.js"
-    },
-    "./detection.js": {
-      "types": "./dist/src/detection.d.ts",
-      "import": "./dist/src/detection.js"
-    },
-    "./directory-storage": {
-      "types": "./dist/src/directory-storage.d.ts",
-      "import": "./dist/src/directory-storage.js"
-    },
-    "./directory-storage.js": {
-      "types": "./dist/src/directory-storage.d.ts",
-      "import": "./dist/src/directory-storage.js"
     },
     "./worker-pool": {
       "types": "./dist/src/worker-pool.d.ts",
@@ -130,6 +66,22 @@
     },
     "./worker-web.js": {
       "import": "./dist/src/worker-web.js"
+    },
+    "./service-worker-api": {
+      "import": "./dist/src/service-worker-api.js",
+      "types": "./dist/src/service-worker-api.d.ts"
+    },
+    "./service-worker-api.js": {
+      "import": "./dist/src/service-worker-api.js",
+      "types": "./dist/src/service-worker-api.d.ts"
+    },
+    "./shovel-global-scope": {
+      "import": "./dist/src/shovel-global-scope.js",
+      "types": "./dist/src/shovel-global-scope.d.ts"
+    },
+    "./shovel-global-scope.js": {
+      "import": "./dist/src/shovel-global-scope.js",
+      "types": "./dist/src/shovel-global-scope.d.ts"
     }
   }
 }
