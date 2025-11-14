@@ -3,7 +3,31 @@
  * Centralized logic for detecting JavaScript runtime and deployment platforms
  */
 
-import type {PlatformDetection} from "./types.js";
+/**
+ * Platform detection result
+ */
+export interface PlatformDetection {
+	/** Detected platform name */
+	platform: string;
+	/** Confidence level (0-1) */
+	confidence: number;
+	/** Detection reasons */
+	reasons: string[];
+}
+
+/**
+ * Platform registry for auto-detection
+ */
+export interface PlatformRegistry {
+	/** Register a platform implementation */
+	register(name: string, platform: any): void;
+	/** Get platform by name */
+	get(name: string): any | undefined;
+	/** Detect current platform */
+	detect(): PlatformDetection;
+	/** Get all registered platforms */
+	list(): string[];
+}
 
 /**
  * Detect the current JavaScript runtime

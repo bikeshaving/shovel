@@ -2,7 +2,8 @@
  * Platform registry for auto-detection and management
  */
 
-import type {Platform, PlatformDetection, PlatformRegistry} from "./types.js";
+import type {Platform} from "./base-platform.js";
+import type {PlatformDetection, PlatformRegistry} from "./detection.js";
 import {getBestPlatformDetection} from "./detection.js";
 
 /**

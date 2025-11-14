@@ -2,7 +2,7 @@
  * Utility functions for platform implementations
  */
 
-import type {CacheBackendConfig} from "./types.js";
+import type {CacheBackendConfig} from "./base-platform.js";
 
 /**
  * Parse TTL string to milliseconds

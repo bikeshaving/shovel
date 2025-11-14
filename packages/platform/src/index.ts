@@ -16,12 +16,31 @@ export type {
 	Server,
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
-	PlatformDetection,
-	PlatformRegistry,
-} from "./types.js";
+	FilesystemConfig,
+	StaticConfig,
+	PlatformConfig,
+} from "./base-platform.js";
 
 // Base platform class
-export {BasePlatform} from "./types.js";
+export {
+	BasePlatform,
+	CACHE_ALIASES,
+	FILESYSTEM_ALIASES,
+	resolveCacheAdapter,
+	resolveFilesystemAdapter,
+} from "./base-platform.js";
+
+// Platform detection types and utilities
+export type {PlatformDetection, PlatformRegistry} from "./detection.js";
+export {
+	detectRuntime,
+	detectDevelopmentPlatform,
+	detectPlatforms,
+	getBestPlatformDetection,
+	resolvePlatform,
+	createPlatform,
+	displayPlatformInfo,
+} from "./detection.js";
 
 // ServiceWorker runtime
 export {
@@ -51,17 +70,6 @@ export {
 	getPlatform,
 	getPlatformAsync,
 } from "./registry.js";
-
-// Platform detection utilities
-export {
-	detectRuntime,
-	detectDevelopmentPlatform,
-	detectPlatforms,
-	getBestPlatformDetection,
-	resolvePlatform,
-	createPlatform,
-	displayPlatformInfo,
-} from "./detection.js";
 
 // Utility functions
 export {
