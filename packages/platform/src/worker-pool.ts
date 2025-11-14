@@ -246,15 +246,6 @@ export class WorkerPool {
 	}
 
 	private handleWorkerMessage(message: WorkerMessage) {
-		// Handle cache operations (delegated to cache storage)
-		if (message.type?.startsWith("cache:")) {
-			// Cache operations are handled by platform-specific cache managers
-			// This provides a hook for platforms to handle cache coordination
-			this.handleCacheMessage(message);
-			return;
-		}
-
-		// Handle standard worker messages
 		switch (message.type) {
 			case "response":
 				this.handleResponse(message as WorkerResponse);
@@ -267,7 +258,8 @@ export class WorkerPool {
 				this.handleReady(message as WorkerReadyMessage);
 				break;
 			default:
-				console.warn("[WorkerPool] Unknown message type:", message.type);
+				// Unknown message type - ignore (could be cache: messages handled directly by MemoryCache)
+				break;
 		}
 	}
 
@@ -303,15 +295,6 @@ export class WorkerPool {
 		} else if (message.type === "worker-ready") {
 			console.info("[WorkerPool] Worker initialized");
 		}
-	}
-
-	/**
-	 * Platform-specific cache message handling
-	 * Override this method in platform implementations for custom cache coordination
-	 */
-	protected handleCacheMessage(_message: WorkerMessage): void {
-		// Default implementation - no-op
-		// Platform implementations can override this for cache coordination
 	}
 
 	/**

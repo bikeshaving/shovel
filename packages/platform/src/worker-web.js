@@ -154,14 +154,8 @@ async function handleMessage(message) {
 				},
 				requestId: message.requestId,
 			});
-		} else if (
-			message.type.startsWith("cache:") ||
-			message.type.startsWith("cachestorage:")
-		) {
-			// Handle cache coordination messages
-		} else {
-			console.warn("[Worker] Unknown message type:", message.type);
-		}
+	}
+	// Ignore all other message types (cache: messages handled directly by MemoryCache)
 	} catch (error) {
 		sendMessage({
 			type: "error",
