@@ -3,7 +3,6 @@
  * Provides platform-agnostic worker management for ServiceWorker execution
  */
 
-import {CustomCacheStorage} from "@b9g/cache";
 import * as Path from "path";
 
 export interface WorkerPoolOptions {
@@ -187,7 +186,7 @@ Please check your runtime version and configuration.
 
 /**
  * Common WorkerPool implementation based on web standards
- * Provides round-robin request handling, hot reloading, and cache coordination
+ * Provides round-robin request handling and hot reloading
  */
 export class WorkerPool {
 	private workers: Worker[] = [];
@@ -198,15 +197,12 @@ export class WorkerPool {
 		{resolve: (response: Response) => void; reject: (error: Error) => void}
 	>();
 	private options: Required<WorkerPoolOptions>;
-	private cacheStorage: CustomCacheStorage;
 	private appEntrypoint?: string;
 
 	constructor(
-		cacheStorage: CustomCacheStorage,
 		options: WorkerPoolOptions = {},
 		appEntrypoint?: string,
 	) {
-		this.cacheStorage = cacheStorage;
 		this.appEntrypoint = appEntrypoint;
 		this.options = {
 			workerCount: 1,

@@ -19,7 +19,6 @@ import {WorkerPool, WorkerPoolOptions} from "@b9g/platform/worker-pool";
 import {
 	CustomCacheStorage,
 	MemoryCache,
-	MemoryCacheManager,
 	PostMessageCache,
 } from "@b9g/cache";
 import {
@@ -62,47 +61,19 @@ export interface NodePlatformOptions extends PlatformConfig {
 // ============================================================================
 
 /**
- * Node.js-specific WorkerPool with MemoryCache coordination
- * Extends the common WorkerPool with Node.js-specific cache handling
+ * Node.js-specific WorkerPool
+ * Extends the common WorkerPool with Node.js-specific handling
  */
 class NodeWorkerPool extends WorkerPool {
-	private memoryCacheManager: MemoryCacheManager;
-
 	constructor(
-		cacheStorage: CustomCacheStorage,
 		poolOptions: WorkerPoolOptions,
 		appEntrypoint?: string,
 	) {
-		super(cacheStorage, poolOptions, appEntrypoint);
-
-		// Initialize Node.js-specific memory cache manager
-		this.memoryCacheManager = new MemoryCacheManager();
+		super(poolOptions, appEntrypoint);
 		console.info(
 			"[NodeWorkerPool] Initialized with entrypoint:",
 			appEntrypoint,
 		);
-	}
-
-	/**
-	 * Handle Node.js-specific cache coordination
-	 */
-	protected handleCacheMessage(message: any): void {
-		// Handle memory cache operations (only MemoryCache needs coordination)
-		if (message.type?.startsWith("cache:")) {
-			// Note: We need access to the raw Node.js Worker for cache coordination
-			// This is a limitation of the current abstraction that we'll need to address
-			console.warn(
-				"[NodeWorkerPool] Cache coordination not fully implemented in abstraction",
-			);
-		}
-	}
-
-	/**
-	 * Enhanced termination with memory cache cleanup
-	 */
-	async terminate(): Promise<void> {
-		await super.terminate();
-		await this.memoryCacheManager.dispose();
 	}
 }
 
@@ -175,7 +146,6 @@ export class NodePlatform extends BasePlatform {
 			entryPath,
 		);
 		this.workerPool = new NodeWorkerPool(
-			this.cacheStorage,
 			{
 				workerCount,
 				requestTimeout: 30000,
