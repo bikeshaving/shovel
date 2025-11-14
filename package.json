@@ -71,7 +71,7 @@
     "@b9g/platform-cloudflare": "workspace:*",
     "@b9g/router": "workspace:*",
     "@b9g/assets": "workspace:*",
-    "@b9g/libuild": "^0.1.11",
+    "@b9g/libuild": "^0.1.14",
     "@types/bun": "^1.2.2",
     "typescript": "^5.7.3"
   },
