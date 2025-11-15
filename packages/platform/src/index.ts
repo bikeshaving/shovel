@@ -990,8 +990,8 @@ function resolveWorkerScript(entrypoint?: string): string {
 
 	// Fallback to package resolution for development
 	try {
-		// Use import.meta.resolve for bootstrap script
-		const workerUrl = import.meta.resolve("@b9g/platform/bootstrap.js");
+		// Use import.meta.resolve for runtime script (contains bootstrap code)
+		const workerUrl = import.meta.resolve("@b9g/platform/runtime.js");
 		let workerScript: string;
 
 		if (workerUrl.startsWith("file://")) {
@@ -1002,15 +1002,15 @@ function resolveWorkerScript(entrypoint?: string): string {
 		}
 
 		console.debug(
-			`[WorkerPool] Using worker bootstrap script: ${workerScript}`,
+			`[WorkerPool] Using worker runtime script: ${workerScript}`,
 		);
 		return workerScript;
 	} catch (error) {
 		const bundledPath = entrypoint
-			? Path.join(Path.dirname(entrypoint), "bootstrap.js")
-			: "bootstrap.js";
+			? Path.join(Path.dirname(entrypoint), "runtime.js")
+			: "runtime.js";
 		throw new Error(
-			`Could not resolve bootstrap.js. Checked bundled path: ${bundledPath} and package: @b9g/platform/bootstrap.js. Error: ${error instanceof Error ? error.message : String(error)}`,
+			`Could not resolve runtime.js. Checked bundled path: ${bundledPath} and package: @b9g/platform/runtime.js. Error: ${error instanceof Error ? error.message : String(error)}`,
 		);
 	}
 }

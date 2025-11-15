@@ -45,14 +45,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./bootstrap": {
-      "types": "./dist/src/bootstrap.d.ts",
-      "import": "./dist/src/bootstrap.js"
-    },
-    "./bootstrap.js": {
-      "types": "./dist/src/bootstrap.d.ts",
-      "import": "./dist/src/bootstrap.js"
-    },
     "./runtime": {
       "types": "./dist/src/runtime.d.ts",
       "import": "./dist/src/runtime.js"
