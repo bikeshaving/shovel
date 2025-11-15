@@ -1047,10 +1047,85 @@ Please check your runtime version and configuration.
 }
 
 /**
- * Common WorkerPool implementation based on web standards
- * Provides round-robin request handling and hot reloading
+ * Generic WorkerPool - manages a pool of Web Workers
+ * Self-similar to Worker API: extends EventTarget, has postMessage(), terminate()
+ *
+ * Can be used standalone or extended for specific use cases (e.g., ServiceWorkerPool)
  */
-export class WorkerPool {
+export class WorkerPool extends EventTarget {
+	readonly workers: Worker[] = [];
+	private currentWorkerIndex = 0;
+
+	constructor(
+		private scriptURL: string,
+		private options: {count?: number} = {},
+	) {
+		super();
+	}
+
+	/**
+	 * Initialize workers (must be called after construction)
+	 */
+	async init(): Promise<void> {
+		const count = this.options.count ?? 1;
+		for (let i = 0; i < count; i++) {
+			await this.createWorker();
+		}
+	}
+
+	private async createWorker(): Promise<Worker> {
+		const worker = await createWebWorker(this.scriptURL);
+
+		// Forward worker events as pool events
+		worker.addEventListener("message", (event) => {
+			this.dispatchEvent(
+				new MessageEvent("message", {
+					data: {worker, data: event.data},
+				}),
+			);
+		});
+
+		worker.addEventListener("error", (error) => {
+			this.dispatchEvent(
+				new ErrorEvent("error", {
+					error,
+					message: `Worker error: ${error}`,
+				}),
+			);
+		});
+
+		this.workers.push(worker);
+		return worker;
+	}
+
+	/**
+	 * Send message to one worker (round-robin)
+	 */
+	postMessage(message: any, transfer?: Transferable[]): void {
+		const worker = this.workers[this.currentWorkerIndex];
+		this.currentWorkerIndex = (this.currentWorkerIndex + 1) % this.workers.length;
+		worker.postMessage(message, transfer);
+	}
+
+	/**
+	 * Terminate all workers
+	 */
+	async terminate(): Promise<void> {
+		const terminatePromises = this.workers.map((worker) => worker.terminate());
+		await Promise.allSettled(terminatePromises);
+		this.workers.length = 0;
+	}
+
+	get ready(): boolean {
+		return this.workers.length > 0;
+	}
+}
+
+/**
+ * ServiceWorkerPool - extends WorkerPool with ServiceWorker-specific features
+ * Handles HTTP request/response routing, cache coordination, and hot reloading
+ */
+export class ServiceWorkerPool {
 	private workers: Worker[] = [];
 	private currentWorker = 0;
 	private requestId = 0;

@@ -13,7 +13,7 @@ import {
 	ServerOptions,
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
-	WorkerPool,
+	ServiceWorkerPool,
 	WorkerPoolOptions,
 } from "@b9g/platform";
 import {
@@ -67,7 +67,7 @@ export interface BunPlatformOptions extends PlatformConfig {
 export class BunPlatform extends BasePlatform {
 	readonly name = "bun";
 	private options: Required<BunPlatformOptions>;
-	private workerPool?: WorkerPool;
+	private workerPool?: ServiceWorkerPool;
 	private cacheStorage?: CustomCacheStorage;
 
 	constructor(options: BunPlatformOptions = {}) {
@@ -215,8 +215,8 @@ export class BunPlatform extends BasePlatform {
 			cwd: this.options.cwd,
 		};
 
-		// Bun has native Worker support - WorkerPool will use new Worker() directly
-		this.workerPool = new WorkerPool(poolOptions, entryPath, this.cacheStorage);
+		// Bun has native Worker support - ServiceWorkerPool will use new Worker() directly
+		this.workerPool = new ServiceWorkerPool(poolOptions, entryPath, this.cacheStorage);
 
 		// Initialize workers (Bun has native Web Workers)
 		await this.workerPool.init();

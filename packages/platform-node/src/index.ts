@@ -14,7 +14,7 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 	createDirectoryStorage as _createDirectoryStorage,
-	WorkerPool,
+	ServiceWorkerPool,
 	WorkerPoolOptions,
 } from "@b9g/platform";
 import {
@@ -58,27 +58,6 @@ export interface NodePlatformOptions extends PlatformConfig {
 }
 
 // ============================================================================
-// NODE-SPECIFIC WORKER POOL
-// ============================================================================
-
-/**
- * Node.js-specific WorkerPool
- * Extends the common WorkerPool with Node.js-specific handling
- */
-class NodeWorkerPool extends WorkerPool {
-	constructor(
-		poolOptions: WorkerPoolOptions,
-		appEntrypoint?: string,
-	) {
-		super(poolOptions, appEntrypoint);
-		console.info(
-			"[NodeWorkerPool] Initialized with entrypoint:",
-			appEntrypoint,
-		);
-	}
-}
-
-// ============================================================================
 // PLATFORM IMPLEMENTATION
 // ============================================================================
 
@@ -90,7 +69,7 @@ export class NodePlatform extends BasePlatform {
 	readonly name = "node";
 
 	private options: Required<NodePlatformOptions>;
-	private workerPool?: NodeWorkerPool;
+	private workerPool?: ServiceWorkerPool;
 	private cacheStorage?: CustomCacheStorage;
 
 	constructor(options: NodePlatformOptions = {}) {
@@ -136,17 +115,17 @@ export class NodePlatform extends BasePlatform {
 			this.cacheStorage = await this.createCaches(options.caches);
 		}
 
-		// Create NodeWorkerPool with shared cache storage
+		// Create ServiceWorkerPool with shared cache storage
 		// Always create a new WorkerPool to ensure correct entrypoint
 		if (this.workerPool) {
 			await this.workerPool.terminate();
 		}
 		const workerCount = options.workerCount || 1;
 		console.info(
-			"[Platform-Node] Creating NodeWorkerPool with entryPath:",
+			"[Platform-Node] Creating ServiceWorkerPool with entryPath:",
 			entryPath,
 		);
-		this.workerPool = new NodeWorkerPool(
+		this.workerPool = new ServiceWorkerPool(
 			{
 				workerCount,
 				requestTimeout: 30000,
@@ -167,7 +146,7 @@ export class NodePlatform extends BasePlatform {
 			runtime: this.workerPool,
 			handleRequest: async (request: Request) => {
 				if (!this.workerPool) {
-					throw new Error("NodeWorkerPool not initialized");
+					throw new Error("ServiceWorkerPool not initialized");
 				}
 				return this.workerPool.handleRequest(request);
 			},
