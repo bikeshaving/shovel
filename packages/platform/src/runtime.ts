@@ -85,27 +85,6 @@ export class ActivateEvent extends ExtendableEvent {
 		super("activate", pendingPromises);
 	}
 }
-
-/**
- * Legacy interfaces for backward compatibility
- */
-export interface ShovelFetchEvent extends Event {
-	readonly type: "fetch";
-	readonly request: Request;
-	respondWith(response: Response | Promise<Response>): void;
-	waitUntil(promise: Promise<any>): void;
-}
-
-export interface ShovelInstallEvent extends Event {
-	readonly type: "install";
-	waitUntil(promise: Promise<any>): void;
-}
-
-export interface ShovelActivateEvent extends Event {
-	readonly type: "activate";
-	waitUntil(promise: Promise<any>): void;
-}
-
 /**
  * Bucket storage interface - parallels CacheStorage for filesystem access
  * This could become a future web standard
