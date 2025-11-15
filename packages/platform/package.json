@@ -45,14 +45,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./worker-pool": {
-      "types": "./dist/src/worker-pool.d.ts",
-      "import": "./dist/src/worker-pool.js"
-    },
-    "./worker-pool.js": {
-      "types": "./dist/src/worker-pool.d.ts",
-      "import": "./dist/src/worker-pool.js"
-    },
     "./bootstrap": {
       "types": "./dist/src/bootstrap.d.ts",
       "import": "./dist/src/bootstrap.js"

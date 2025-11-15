@@ -14,8 +14,9 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 	createDirectoryStorage as _createDirectoryStorage,
+	WorkerPool,
+	WorkerPoolOptions,
 } from "@b9g/platform";
-import {WorkerPool, WorkerPoolOptions} from "@b9g/platform/worker-pool";
 import {
 	CustomCacheStorage,
 	MemoryCache,
