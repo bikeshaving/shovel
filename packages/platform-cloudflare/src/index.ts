@@ -170,7 +170,6 @@ export class CloudflarePlatform extends BasePlatform {
 				},
 				install: () => Promise.resolve(),
 				activate: () => Promise.resolve(),
-				collectStaticRoutes: async () => [], // Not supported in Workers
 				get ready() {
 					return true;
 				},

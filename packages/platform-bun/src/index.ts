@@ -16,14 +16,6 @@ import {
 	ServiceWorkerPool,
 	WorkerPoolOptions,
 } from "@b9g/platform";
-import {
-	ServiceWorkerRegistration as _ServiceWorkerRegistration,
-	ShovelGlobalScope as _ShovelGlobalScope,
-} from "@b9g/platform/runtime";
-import {
-	CustomBucketStorage as _CustomBucketStorage,
-	type BucketFactory as _BucketFactory,
-} from "@b9g/filesystem";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
 import {FileSystemRegistry, MemoryBucket, NodeBucket} from "@b9g/filesystem";
 import * as Path from "path";
@@ -238,10 +230,6 @@ export class BunPlatform extends BasePlatform {
 			},
 			activate: async () => {
 				console.info("[Bun] ServiceWorker activated via native Web Workers");
-			},
-			collectStaticRoutes: async () => {
-				// TODO: Implement static route collection
-				return [];
 			},
 			get ready() {
 				return this.workerPool?.ready ?? false;

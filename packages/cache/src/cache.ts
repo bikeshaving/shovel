@@ -115,10 +115,3 @@ export function generateCacheKey(
 	return `${method}:${url.href}`;
 }
 
-/**
- * Clone a Response object for storage
- * Responses can only be consumed once, so we need to clone them for caching
- */
-export async function cloneResponse(response: Response): Promise<Response> {
-	return response.clone();
-}

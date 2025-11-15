@@ -190,8 +190,6 @@ export interface ServiceWorkerInstance {
 	install(): Promise<void>;
 	/** Activate the ServiceWorker */
 	activate(): Promise<void>;
-	/** Collect routes for static generation */
-	collectStaticRoutes(outDir: string, baseUrl?: string): Promise<string[]>;
 	/** Check if ready to handle requests */
 	readonly ready: boolean;
 	/** Dispose of resources */
@@ -210,13 +208,7 @@ export interface Platform {
 	readonly name: string;
 
 	/**
-	 * THE MAIN JOB - Create a ServiceWorkerContainer for managing multiple registrations
-	 * This is the new registry-based approach aligned with ServiceWorker spec
-	 */
-	createServiceWorkerContainer(options?: ServiceWorkerOptions): Promise<any>; // ServiceWorkerContainer from runtime.ts
-
-	/**
-	 * Load and run a ServiceWorker-style entrypoint (legacy method)
+	 * Load and run a ServiceWorker-style entrypoint
 	 * This is where all the platform-specific complexity lives
 	 */
 	loadServiceWorker(
@@ -232,12 +224,6 @@ export interface Platform {
 	 * - Bun: filesystem with optimized writes
 	 */
 	createCaches(config?: CacheConfig): Promise<CacheStorage>;
-
-	/**
-	 * SUPPORTING UTILITY - Create bucket storage with platform-optimized backends
-	 * Uses factory pattern to route bucket names to different filesystem adapters
-	 */
-	createBuckets(config?: FilesystemConfig): Promise<any>; // BucketStorage
 
 	/**
 	 * SUPPORTING UTILITY - Create server instance for this platform

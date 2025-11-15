@@ -107,14 +107,6 @@ export interface ShovelActivateEvent extends Event {
 }
 
 /**
- * @deprecated - This interface is not part of the ServiceWorker spec
- */
-export interface ShovelStaticEvent extends Event {
-	readonly type: "static";
-	waitUntil(promise: Promise<any>): void;
-}
-
-/**
  * Bucket storage interface - parallels CacheStorage for filesystem access
  * This could become a future web standard
  */
@@ -927,30 +919,6 @@ interface NotificationOptions {
 	vibrate?: number[];
 }
 
-/**
- * Complete ServiceWorker API export object
- * Contains all MDN-specified interfaces for easy access
- */
-export const ServiceWorkerAPI = {
-	// Core classes
-	Client,
-	Clients,
-	ExtendableEvent: ExtendableEvent,
-	ExtendableMessageEvent,
-	FetchEvent: FetchEvent,
-	InstallEvent: InstallEvent,
-	ActivateEvent: ActivateEvent,
-	NavigationPreloadManager,
-	Notification,
-	NotificationEvent,
-	PushEvent,
-	PushMessageData,
-	ServiceWorker,
-	ServiceWorkerContainer,
-	ServiceWorkerRegistration,
-	SyncEvent,
-	WindowClient,
-} as const;
 // ============================================================================
 // ShovelGlobalScope - ServiceWorker Global Scope Implementation
 // ============================================================================

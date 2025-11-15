@@ -1,7 +1,6 @@
 import {
 	Cache,
 	generateCacheKey,
-	cloneResponse,
 	type CacheQueryOptions,
 } from "./cache.js";
 
@@ -65,7 +64,7 @@ export class MemoryCache extends Cache {
 		this.accessOrder.set(key, ++this.accessCounter);
 
 		// Clone the response to avoid mutation
-		return cloneResponse(entry.response);
+		return entry.response.clone();
 	}
 
 	/**
@@ -81,7 +80,7 @@ export class MemoryCache extends Cache {
 
 		// Clone request and response to avoid external mutation
 		const clonedRequest = request.clone();
-		const clonedResponse = await cloneResponse(response);
+		const clonedResponse = response.clone();
 
 		const entry: CacheEntry = {
 			request: clonedRequest,

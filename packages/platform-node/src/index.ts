@@ -13,7 +13,6 @@ import {
 	ServerOptions,
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
-	createDirectoryStorage as _createDirectoryStorage,
 	ServiceWorkerPool,
 	WorkerPoolOptions,
 } from "@b9g/platform";
@@ -26,7 +25,6 @@ import {
 	FileSystemRegistry,
 	getDirectoryHandle,
 	NodeBucket,
-	MemoryBucket as _MemoryBucket,
 } from "@b9g/filesystem";
 import * as Http from "http";
 import * as Path from "path";
@@ -160,10 +158,6 @@ export class NodePlatform extends BasePlatform {
 				console.info(
 					"[Platform-Node] ServiceWorker activated via Worker threads",
 				);
-			},
-			collectStaticRoutes: async () => {
-				// TODO: Implement static route collection
-				return [];
 			},
 			get ready() {
 				return this.workerPool?.ready ?? false;
