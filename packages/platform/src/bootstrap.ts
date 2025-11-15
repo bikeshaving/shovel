@@ -27,11 +27,11 @@ async function initializeWorker() {
 	return {messagePort, sendMessage};
 }
 
-// Import platform modules
-const {ShovelGlobalScope, ServiceWorkerRegistration, CustomBucketStorage} =
-	await import("./index.js");
+// Import ServiceWorker runtime
+const {ShovelGlobalScope, ServiceWorkerRegistration} =
+	await import("./runtime.js");
 const {CustomCacheStorage, PostMessageCache} = await import("@b9g/cache");
-const {FileSystemRegistry} = await import("@b9g/filesystem");
+const {FileSystemRegistry, CustomBucketStorage} = await import("@b9g/filesystem");
 
 // Create worker-aware cache storage using PostMessage coordination
 const caches: CacheStorage = new CustomCacheStorage((name: string) => {
