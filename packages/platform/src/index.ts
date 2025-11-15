@@ -458,21 +458,6 @@ export async function createPlatform(
 	}
 }
 
-/**
- * Display platform information (for CLI info command)
- */
-export function displayPlatformInfo(platformName: string): void {
-	const runtime = detectRuntime();
-	const detection = getBestPlatformDetection();
-
-	console.info(`🚀 Platform: ${platformName}`);
-	console.info(`⚙️  Runtime: ${runtime}`);
-	console.info(
-		`🔍 Auto-detected: ${detection.platform} (confidence: ${detection.confidence})`,
-	);
-	console.info(`💡 Reasons: ${detection.reasons.join(", ")}`);
-}
-
 // ============================================================================
 // Adapter Registry
 // ============================================================================
@@ -870,26 +855,6 @@ export async function getDirectoryHandle(
 ): Promise<FileSystemDirectoryHandle> {
 	const platform = await getPlatformAsync();
 	return await platform.getDirectoryHandle(name);
-}
-
-/**
- * @deprecated Use getDirectoryHandle() instead
- */
-export async function getBucket(
-	name?: string,
-): Promise<FileSystemDirectoryHandle> {
-	const platform = await getPlatformAsync();
-	return await platform.getDirectoryHandle(name || "");
-}
-
-/**
- * @deprecated Use getDirectoryHandle() instead
- */
-export async function getFileSystemRoot(
-	name?: string,
-): Promise<FileSystemDirectoryHandle> {
-	const platform = await getPlatformAsync();
-	return await platform.getDirectoryHandle(name || "");
 }
 
 
