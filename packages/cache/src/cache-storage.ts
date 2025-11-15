@@ -85,7 +85,7 @@ export class CustomCacheStorage {
 						? {
 								status: response.status,
 								statusText: response.statusText,
-								headers: Object.fromEntries(response.headers),
+								headers: Object.fromEntries(response.headers.entries()),
 								body: await response.text(),
 							}
 						: undefined;
@@ -111,7 +111,7 @@ export class CustomCacheStorage {
 					result = keys.map((r) => ({
 						url: r.url,
 						method: r.method,
-						headers: Object.fromEntries(r.headers),
+						headers: Object.fromEntries(r.headers.entries()),
 					}));
 					break;
 				}
