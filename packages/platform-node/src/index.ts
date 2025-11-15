@@ -133,6 +133,7 @@ export class NodePlatform extends BasePlatform {
 				cwd: this.options.cwd,
 			},
 			entryPath,
+			this.cacheStorage,
 		);
 
 		// Initialize workers with dynamic import handling

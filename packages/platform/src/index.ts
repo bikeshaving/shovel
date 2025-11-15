@@ -1137,9 +1137,15 @@ export class ServiceWorkerPool {
 		onUnhandledMessage?: (worker: Worker, message: any) => void;
 	};
 	private appEntrypoint?: string;
+	private cacheStorage?: any; // CustomCacheStorage for cache coordination
 
-	constructor(options: WorkerPoolOptions = {}, appEntrypoint?: string) {
+	constructor(
+		options: WorkerPoolOptions = {},
+		appEntrypoint?: string,
+		cacheStorage?: any,
+	) {
 		this.appEntrypoint = appEntrypoint;
+		this.cacheStorage = cacheStorage;
 		this.options = {
 			workerCount: 1,
 			requestTimeout: 30000,
