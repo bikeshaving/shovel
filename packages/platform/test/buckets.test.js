@@ -30,7 +30,7 @@ async function cleanup(paths) {
 
 // Helper to create CustomBucketStorage for tests
 async function createBucketStorage(tempDir) {
-	const {CustomBucketStorage} = await import("../src/index.js");
+	const {CustomBucketStorage} = await import("@b9g/filesystem");
 	return new CustomBucketStorage(async (name) => {
 		const targetPath = join(tempDir, name);
 		await FS.mkdir(targetPath, {recursive: true});
@@ -45,7 +45,7 @@ async function createBucketStorage(tempDir) {
 test(
 	"CustomBucketStorage class instantiation",
 	async () => {
-		const {CustomBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 
@@ -136,7 +136,7 @@ test(
 test(
 	"directory handle file operations",
 	async () => {
-		const {CustomBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 
@@ -176,7 +176,7 @@ test(
 test(
 	"directory handle subdirectory operations",
 	async () => {
-		const {CustomBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 
@@ -221,7 +221,7 @@ test(
 test(
 	"directory handle entries iteration",
 	async () => {
-		const {CustomBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 
@@ -264,8 +264,9 @@ test(
 test(
 	"self.buckets in ServiceWorker context",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope, CustomBucketStorage} =
-			await import("../src/index.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope} =
+			await import("../src/runtime.js");
+		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 
@@ -337,8 +338,9 @@ test(
 test(
 	"self.buckets file serving with different content types",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope, CustomBucketStorage} =
-			await import("../src/index.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope} =
+			await import("../src/runtime.js");
+		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 
@@ -513,7 +515,7 @@ test(
 test(
 	"bucket error handling - file not found",
 	async () => {
-		const {CustomBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 
@@ -535,7 +537,7 @@ test(
 test(
 	"bucket error handling - invalid directory name",
 	async () => {
-		const {CustomBucketStorage} = await import("../src/index.js");
+		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 
@@ -565,8 +567,9 @@ test(
 test(
 	"buckets API replaces old dirs API",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope, CustomBucketStorage} =
-			await import("../src/index.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope} =
+			await import("../src/runtime.js");
+		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 

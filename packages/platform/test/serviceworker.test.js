@@ -34,7 +34,7 @@ test(
 	async () => {
 		// Import ServiceWorker classes
 		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/index.js"
+			"../src/runtime.js"
 		);
 
 		const registration = new ServiceWorkerRegistration();
@@ -71,7 +71,7 @@ test(
 	"ServiceWorker event listener functionality",
 	async () => {
 		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/index.js"
+			"../src/runtime.js"
 		);
 
 		const registration = new ServiceWorkerRegistration();
@@ -117,7 +117,7 @@ test(
 	"ServiceWorker skipWaiting functionality",
 	async () => {
 		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/index.js"
+			"../src/runtime.js"
 		);
 
 		const registration = new ServiceWorkerRegistration();
@@ -144,7 +144,7 @@ test(
 	"ServiceWorker clients API",
 	async () => {
 		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/index.js"
+			"../src/runtime.js"
 		);
 
 		const registration = new ServiceWorkerRegistration();
@@ -173,7 +173,7 @@ test(
 	"ServiceWorker buckets API",
 	async () => {
 		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/index.js"
+			"../src/runtime.js"
 		);
 
 		const registration = new ServiceWorkerRegistration();
@@ -220,7 +220,7 @@ test(
 test(
 	"ServiceWorker lifecycle - install and activate",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
 
 		const runtime = new ServiceWorkerRegistration();
 		let installEventFired = false;
@@ -249,7 +249,7 @@ test(
 test(
 	"ServiceWorker fetch event handling",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
 
 		const runtime = new ServiceWorkerRegistration();
 		let fetchEventReceived = null;
@@ -286,7 +286,7 @@ test(
 test(
 	"ServiceWorker event listener removal",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
 
 		const runtime = new ServiceWorkerRegistration();
 		let callCount = 0;
@@ -315,7 +315,7 @@ test(
 test(
 	"ServiceWorker multiple listeners for same event",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
 
 		const runtime = new ServiceWorkerRegistration();
 		const calls = [];
@@ -353,7 +353,7 @@ test(
 test(
 	"ServiceWorker error handling in event listeners",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
 
 		const runtime = new ServiceWorkerRegistration();
 
@@ -380,7 +380,7 @@ test(
 test(
 	"ServiceWorker runtime reset functionality",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
 
 		const runtime = new ServiceWorkerRegistration();
 		let listenerCalled = false;
@@ -408,7 +408,7 @@ test(
 test(
 	"ServiceWorker install waitUntil rejection handling",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
 
 		const runtime = new ServiceWorkerRegistration();
 
@@ -442,7 +442,7 @@ test(
 test(
 	"ServiceWorker activate waitUntil rejection handling",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
 
 		const runtime = new ServiceWorkerRegistration();
 
@@ -479,7 +479,7 @@ test(
 test(
 	"ServiceWorker fetch waitUntil rejection does not block response",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/index.js");
+		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
 
 		const runtime = new ServiceWorkerRegistration();
 
@@ -512,7 +512,7 @@ test(
 	"ServiceWorker complete workflow",
 	async () => {
 		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/index.js"
+			"../src/runtime.js"
 		);
 
 		const registration = new ServiceWorkerRegistration();

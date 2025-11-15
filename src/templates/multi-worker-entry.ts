@@ -178,9 +178,12 @@ if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
 import {
 	ServiceWorkerRegistration,
 	ShovelGlobalScope,
+} from "@b9g/platform/runtime";
+import {
+	FileSystemRegistry,
+	NodeBucket,
 	CustomBucketStorage,
-} from "@b9g/platform";
-import {FileSystemRegistry, NodeBucket} from "@b9g/filesystem";
+} from "@b9g/filesystem";
 import {parentPort} from "worker_threads";
 
 if (workerData?.isWorker && parentPort) {

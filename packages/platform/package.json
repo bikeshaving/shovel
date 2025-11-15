@@ -54,20 +54,20 @@
       "import": "./dist/src/worker-pool.js"
     },
     "./bootstrap": {
-      "import": "./dist/src/bootstrap.js",
-      "types": "./dist/src/bootstrap.d.ts"
+      "types": "./dist/src/bootstrap.d.ts",
+      "import": "./dist/src/bootstrap.js"
     },
     "./bootstrap.js": {
-      "import": "./dist/src/bootstrap.js",
-      "types": "./dist/src/bootstrap.d.ts"
+      "types": "./dist/src/bootstrap.d.ts",
+      "import": "./dist/src/bootstrap.js"
     },
     "./runtime": {
-      "import": "./dist/src/runtime.js",
-      "types": "./dist/src/runtime.d.ts"
+      "types": "./dist/src/runtime.d.ts",
+      "import": "./dist/src/runtime.js"
     },
     "./runtime.js": {
-      "import": "./dist/src/runtime.js",
-      "types": "./dist/src/runtime.d.ts"
+      "types": "./dist/src/runtime.d.ts",
+      "import": "./dist/src/runtime.js"
     }
   }
 }

@@ -13,11 +13,15 @@ import {
 	ServerOptions,
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
+} from "@b9g/platform";
+import {
 	ServiceWorkerRegistration as _ServiceWorkerRegistration,
 	ShovelGlobalScope as _ShovelGlobalScope,
+} from "@b9g/platform/runtime";
+import {
 	CustomBucketStorage as _CustomBucketStorage,
 	type BucketFactory as _BucketFactory,
-} from "@b9g/platform";
+} from "@b9g/filesystem";
 import {WorkerPool, WorkerPoolOptions} from "@b9g/platform/worker-pool";
 import {CustomCacheStorage, PostMessageCache} from "@b9g/cache";
 import {FileSystemRegistry, MemoryBucket, NodeBucket} from "@b9g/filesystem";

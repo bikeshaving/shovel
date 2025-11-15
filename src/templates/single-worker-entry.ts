@@ -7,9 +7,12 @@
 import {
 	ServiceWorkerRegistration,
 	ShovelGlobalScope,
+} from "@b9g/platform/runtime";
+import {
+	FileSystemRegistry,
+	NodeBucket,
 	CustomBucketStorage,
-} from "@b9g/platform";
-import {FileSystemRegistry, NodeBucket} from "@b9g/filesystem";
+} from "@b9g/filesystem";
 import {fileURLToPath} from "url";
 import {dirname, join} from "path";
 import {realpath} from "fs";

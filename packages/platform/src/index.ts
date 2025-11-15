@@ -483,9 +483,9 @@ interface AdapterModule {
 }
 
 /**
- * Official blessed aliases for cache adapters
+ * Internal blessed aliases for cache adapters
  */
-export const CACHE_ALIASES = {
+const CACHE_ALIASES = {
 	memory: "@b9g/cache",
 	redis: "@b9g/cache-redis",
 	kv: "@b9g/cache-kv",
@@ -493,9 +493,9 @@ export const CACHE_ALIASES = {
 } as const;
 
 /**
- * Official blessed aliases for filesystem adapters
+ * Internal blessed aliases for filesystem adapters
  */
-export const FILESYSTEM_ALIASES = {
+const FILESYSTEM_ALIASES = {
 	memory: "@b9g/filesystem",
 	fs: "@b9g/filesystem/node",
 	"bun-s3": "@b9g/filesystem/bun-s3",
@@ -504,11 +504,9 @@ export const FILESYSTEM_ALIASES = {
 } as const;
 
 /**
- * Resolve a cache adapter name to a package name
- * @param name - Blessed alias (memory, redis) or full package name (@custom/cache)
- * @returns Full package name
+ * Internal: Resolve a cache adapter name to a package name
  */
-export function resolveCacheAdapter(name: string): string {
+function resolveCacheAdapter(name: string): string {
 	// If it starts with @, assume it's a full package name
 	if (name.startsWith("@")) {
 		return name;
@@ -525,11 +523,9 @@ export function resolveCacheAdapter(name: string): string {
 }
 
 /**
- * Resolve a filesystem adapter name to a package name
- * @param name - Blessed alias (memory, s3) or full package name (@custom/filesystem)
- * @returns Full package name
+ * Internal: Resolve a filesystem adapter name to a package name
  */
-export function resolveFilesystemAdapter(name: string): string {
+function resolveFilesystemAdapter(name: string): string {
 	// If it starts with @, assume it's a full package name
 	if (name.startsWith("@")) {
 		return name;
@@ -896,246 +892,4 @@ export async function getFileSystemRoot(
 	return await platform.getDirectoryHandle(name || "");
 }
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
 
-/**
- * Parse TTL string to milliseconds
- */
-export function parseTTL(ttl: string | number | undefined): number | undefined {
-	if (typeof ttl === "number") {
-		return ttl;
-	}
-
-	if (typeof ttl !== "string") {
-		return undefined;
-	}
-
-	const match = ttl.match(/^(\d+)\s*(ms|s|m|h|d)?$/);
-	if (!match) {
-		throw new Error(
-			`Invalid TTL format: ${ttl}. Use format like '5m', '1h', '30s'`,
-		);
-	}
-
-	const value = parseInt(match[1], 10);
-	const unit = match[2] || "ms";
-
-	const multipliers = {
-		ms: 1,
-		s: 1000,
-		m: 60 * 1000,
-		h: 60 * 60 * 1000,
-		d: 24 * 60 * 60 * 1000,
-	};
-
-	return value * multipliers[unit as keyof typeof multipliers];
-}
-
-/**
- * Merge cache configurations with defaults
- */
-export function mergeCacheConfig(
-	userConfig: CacheBackendConfig | undefined,
-	defaults: Partial<CacheBackendConfig>,
-): CacheBackendConfig {
-	return {
-		type: "memory",
-		...defaults,
-		...userConfig,
-	};
-}
-
-/**
- * Validate cache backend configuration
- */
-export function validateCacheConfig(config: CacheBackendConfig): void {
-	const validTypes = ["memory", "filesystem", "redis", "kv", "custom"];
-
-	if (!validTypes.includes(config.type)) {
-		throw new Error(
-			`Invalid cache type '${config.type}'. Must be one of: ${validTypes.join(", ")}`,
-		);
-	}
-
-	if (config.type === "filesystem" && !config.dir) {
-		throw new Error("Filesystem cache requires a directory (dir) option");
-	}
-
-	if (config.type === "redis" && !config.url) {
-		throw new Error("Redis cache requires a connection URL (url) option");
-	}
-
-	if (config.type === "custom" && !config.factory) {
-		throw new Error("Custom cache requires a factory function");
-	}
-
-	if (config.maxEntries !== undefined && config.maxEntries <= 0) {
-		throw new Error("maxEntries must be a positive number");
-	}
-
-	if (config.ttl !== undefined) {
-		try {
-			parseTTL(config.ttl);
-		} catch (error) {
-			throw new Error(`Invalid TTL configuration: ${error.message}`);
-		}
-	}
-}
-
-/**
- * Create CORS headers from configuration
- */
-export function createCorsHeaders(
-	corsConfig: any, // CorsConfig but avoiding circular import
-	request: Request,
-): Headers {
-	const headers = new Headers();
-
-	if (!corsConfig) {
-		return headers;
-	}
-
-	const origin = request.headers.get("origin");
-
-	// Handle origin
-	if (corsConfig.origin === true) {
-		headers.set("Access-Control-Allow-Origin", "*");
-	} else if (typeof corsConfig.origin === "string") {
-		headers.set("Access-Control-Allow-Origin", corsConfig.origin);
-	} else if (Array.isArray(corsConfig.origin)) {
-		if (origin && corsConfig.origin.includes(origin)) {
-			headers.set("Access-Control-Allow-Origin", origin);
-		}
-	} else if (corsConfig.origin instanceof RegExp) {
-		if (origin && corsConfig.origin.test(origin)) {
-			headers.set("Access-Control-Allow-Origin", origin);
-		}
-	} else if (typeof corsConfig.origin === "function") {
-		if (origin && corsConfig.origin(origin)) {
-			headers.set("Access-Control-Allow-Origin", origin);
-		}
-	}
-
-	// Handle methods
-	if (corsConfig.methods) {
-		headers.set("Access-Control-Allow-Methods", corsConfig.methods.join(", "));
-	}
-
-	// Handle headers
-	if (corsConfig.allowedHeaders) {
-		headers.set(
-			"Access-Control-Allow-Headers",
-			corsConfig.allowedHeaders.join(", "),
-		);
-	}
-
-	if (corsConfig.exposedHeaders) {
-		headers.set(
-			"Access-Control-Expose-Headers",
-			corsConfig.exposedHeaders.join(", "),
-		);
-	}
-
-	// Handle credentials
-	if (corsConfig.credentials) {
-		headers.set("Access-Control-Allow-Credentials", "true");
-	}
-
-	// Handle max age
-	if (corsConfig.maxAge !== undefined) {
-		headers.set("Access-Control-Max-Age", corsConfig.maxAge.toString());
-	}
-
-	return headers;
-}
-
-/**
- * Merge headers from multiple sources
- */
-export function mergeHeaders(
-	...headerSources: (Headers | Record<string, string> | undefined)[]
-): Headers {
-	const result = new Headers();
-
-	for (const source of headerSources) {
-		if (!source) continue;
-
-		if (source instanceof Headers) {
-			for (const [key, value] of source.entries()) {
-				result.set(key, value);
-			}
-		} else {
-			for (const [key, value] of Object.entries(source)) {
-				result.set(key, value);
-			}
-		}
-	}
-
-	return result;
-}
-
-/**
- * Check if request is a preflight CORS request
- */
-export function isPreflightRequest(request: Request): boolean {
-	return (
-		request.method === "OPTIONS" &&
-		request.headers.has("access-control-request-method")
-	);
-}
-
-/**
- * Create a preflight response
- */
-export function createPreflightResponse(
-	corsConfig: any,
-	request: Request,
-): Response {
-	const headers = createCorsHeaders(corsConfig, request);
-	return new Response(null, {status: 204, headers});
-}
-
-// ============================================================================
-// Re-exports from other modules
-// ============================================================================
-
-// ServiceWorker runtime (events, API, global scope)
-export {
-	type ShovelFetchEvent,
-	type ShovelInstallEvent,
-	type ShovelActivateEvent,
-	type ShovelStaticEvent,
-	type BucketStorage as BucketStorageInterface,
-	ShovelGlobalScope,
-	type ShovelGlobalScopeOptions,
-	ServiceWorkerRegistration,
-} from "./runtime.js";
-
-// Bucket storage
-export {CustomBucketStorage, type BucketFactory} from "@b9g/filesystem";
-
-// Worker management
-export {
-	WorkerPool,
-	type PlatformWorker,
-	type WorkerPoolOptions,
-} from "./worker-pool.js";
-
-// Complete ServiceWorker API type shims
-export {
-	Client,
-	Clients,
-	WindowClient,
-	ExtendableMessageEvent,
-	ServiceWorker,
-	ServiceWorkerContainer,
-	NavigationPreloadManager,
-	Notification,
-	NotificationEvent,
-	PushEvent,
-	PushMessageData,
-	SyncEvent,
-	ServiceWorkerAPI,
-} from "./runtime.js";
