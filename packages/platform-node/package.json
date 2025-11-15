@@ -19,9 +19,7 @@
   ],
   "dependencies": {
     "@b9g/platform": "workspace:*",
-    "@b9g/cache": "workspace:*",
-    "@remix-run/node-fetch-server": "^0.11.0",
-    "@aws-sdk/client-s3": "^3.0.0"
+    "@b9g/cache": "workspace:*"
   },
   "devDependencies": {
     "@b9g/libuild": "^0.1.11",
@@ -36,22 +34,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./platform": {
-      "types": "./dist/src/platform.d.ts",
-      "import": "./dist/src/platform.js"
-    },
-    "./platform.js": {
-      "types": "./dist/src/platform.d.ts",
-      "import": "./dist/src/platform.js"
-    },
-    "./package.json": "./dist/package.json",
-    "./index": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
-    "./index.js": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    }
+    "./package.json": "./dist/package.json"
   }
 }
