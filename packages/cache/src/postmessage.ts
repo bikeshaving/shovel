@@ -1,15 +1,8 @@
 import {Cache, type CacheQueryOptions} from "./cache.js";
 
-// Platform-agnostic worker communication interface
-interface MessagePortLike {
-	postMessage(value: any): void;
-	on(event: string, listener: (data: any) => void): void;
-}
-
-// Use globalThis for platform detection instead of Node.js-specific imports
+// Use Web Workers API - self is available in worker context
 const isMainThread = typeof self === "undefined";
-const parentPort: MessagePortLike | null =
-	typeof self !== "undefined" ? (self as any) : null;
+const parentPort = typeof self !== "undefined" ? self : null;
 
 /**
  * Configuration options for PostMessageCache
@@ -42,9 +35,10 @@ export class PostMessageCache extends Cache {
 			throw new Error("PostMessageCache should only be used in worker threads");
 		}
 
-		// Listen for responses from main thread
+		// Listen for responses from main thread using Web Workers API
 		if (parentPort) {
-			parentPort.on("message", (message) => {
+			parentPort.addEventListener("message", (event: MessageEvent) => {
+				const message = event.data;
 				if (
 					message.type === "cache:response" ||
 					message.type === "cache:error"

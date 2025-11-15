@@ -219,8 +219,9 @@ export class NodePlatform extends BasePlatform {
 	 * Uses MemoryCache in main thread, PostMessageCache in workers
 	 */
 	async createCaches(_config?: CacheConfig): Promise<CustomCacheStorage> {
-		// Import Node.js worker_threads to detect thread type
-		const {isMainThread} = await import("worker_threads");
+		// Use Web Workers API for thread detection (platform-agnostic)
+		// In Web Workers, self is defined in worker context
+		const isMainThread = typeof self === "undefined";
 
 		// Return CustomCacheStorage with thread-appropriate cache
 		return new CustomCacheStorage((name: string) => {

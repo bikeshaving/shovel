@@ -11,11 +11,7 @@ export {Cache, type CacheQueryOptions, generateCacheKey} from "./cache.js";
 export {CustomCacheStorage, type CacheFactory} from "./cache-storage.js";
 
 // Memory cache implementation (main thread)
-export {
-	MemoryCache,
-	MemoryCacheManager,
-	type MemoryCacheOptions,
-} from "./memory.js";
+export {MemoryCache, type MemoryCacheOptions} from "./memory.js";
 
 // PostMessage cache (worker thread coordination)
 export {PostMessageCache, type PostMessageCacheOptions} from "./postmessage.js";

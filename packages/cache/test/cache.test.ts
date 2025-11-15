@@ -189,3 +189,247 @@ describe("MemoryCache", () => {
 		expect((await cache.keys()).length).toBe(0);
 	});
 });
+
+describe("CustomCacheStorage message handling (PostMessage coordination)", () => {
+	test("CustomCacheStorage handles cache:match messages", async () => {
+		const cacheStorage = new CustomCacheStorage(
+			(name: string) => new MemoryCache(name),
+		);
+		const messages: any[] = [];
+
+		// Mock worker that captures postMessage calls
+		const mockWorker = {
+			postMessage: (msg: any) => messages.push(msg),
+		};
+
+		// Simulate a cache:match message from worker
+		const matchMessage = {
+			type: "cache:match",
+			requestId: "1",
+			cacheName: "test-cache",
+			request: {
+				url: "http://example.com/test",
+				method: "GET",
+				headers: {},
+			},
+		};
+
+		await cacheStorage.handleMessage(mockWorker, matchMessage);
+
+		// Should respond with cache:response (no match)
+		expect(messages).toHaveLength(1);
+		expect(messages[0].type).toBe("cache:response");
+		expect(messages[0].requestId).toBe("1");
+		expect(messages[0].result).toBeUndefined();
+	});
+
+	test("CustomCacheStorage handles cache:put and cache:match", async () => {
+		const cacheStorage = new CustomCacheStorage(
+			(name: string) => new MemoryCache(name),
+		);
+		const messages: any[] = [];
+
+		const mockWorker = {
+			postMessage: (msg: any) => messages.push(msg),
+		};
+
+		// Put a response in the cache
+		const putMessage = {
+			type: "cache:put",
+			requestId: "1",
+			cacheName: "test-cache",
+			request: {
+				url: "http://example.com/test",
+				method: "GET",
+				headers: {},
+			},
+			response: {
+				status: 200,
+				statusText: "OK",
+				headers: {"content-type": "text/plain"},
+				body: "Hello World",
+			},
+		};
+
+		await cacheStorage.handleMessage(mockWorker, putMessage);
+
+		expect(messages).toHaveLength(1);
+		expect(messages[0].type).toBe("cache:response");
+
+		// Now match should find it
+		messages.length = 0; // Clear messages
+
+		const matchMessage = {
+			type: "cache:match",
+			requestId: "2",
+			cacheName: "test-cache",
+			request: {
+				url: "http://example.com/test",
+				method: "GET",
+				headers: {},
+			},
+		};
+
+		await cacheStorage.handleMessage(mockWorker, matchMessage);
+
+		expect(messages).toHaveLength(1);
+		expect(messages[0].type).toBe("cache:response");
+		expect(messages[0].requestId).toBe("2");
+		expect(messages[0].result).toBeDefined();
+		expect(messages[0].result.body).toBe("Hello World");
+	});
+
+	test("CustomCacheStorage handles cache:delete", async () => {
+		const cacheStorage = new CustomCacheStorage(
+			(name: string) => new MemoryCache(name),
+		);
+		const messages: any[] = [];
+
+		const mockWorker = {
+			postMessage: (msg: any) => messages.push(msg),
+		};
+
+		// Put then delete
+		await cacheStorage.handleMessage(mockWorker, {
+			type: "cache:put",
+			requestId: "1",
+			cacheName: "test-cache",
+			request: {
+				url: "http://example.com/test",
+				method: "GET",
+				headers: {},
+			},
+			response: {
+				status: 200,
+				statusText: "OK",
+				headers: {},
+				body: "Test",
+			},
+		});
+
+		messages.length = 0;
+
+		await cacheStorage.handleMessage(mockWorker, {
+			type: "cache:delete",
+			requestId: "2",
+			cacheName: "test-cache",
+			request: {
+				url: "http://example.com/test",
+				method: "GET",
+				headers: {},
+			},
+		});
+
+		expect(messages).toHaveLength(1);
+		expect(messages[0].type).toBe("cache:response");
+		expect(messages[0].result).toBe(true);
+	});
+
+	test("CustomCacheStorage handles cache:keys", async () => {
+		const cacheStorage = new CustomCacheStorage(
+			(name: string) => new MemoryCache(name),
+		);
+		const messages: any[] = [];
+
+		const mockWorker = {
+			postMessage: (msg: any) => messages.push(msg),
+		};
+
+		// Put two items
+		await cacheStorage.handleMessage(mockWorker, {
+			type: "cache:put",
+			requestId: "1",
+			cacheName: "test-cache",
+			request: {url: "http://example.com/1", method: "GET", headers: {}},
+			response: {status: 200, statusText: "OK", headers: {}, body: "1"},
+		});
+
+		await cacheStorage.handleMessage(mockWorker, {
+			type: "cache:put",
+			requestId: "2",
+			cacheName: "test-cache",
+			request: {url: "http://example.com/2", method: "GET", headers: {}},
+			response: {status: 200, statusText: "OK", headers: {}, body: "2"},
+		});
+
+		messages.length = 0;
+
+		await cacheStorage.handleMessage(mockWorker, {
+			type: "cache:keys",
+			requestId: "3",
+			cacheName: "test-cache",
+		});
+
+		expect(messages).toHaveLength(1);
+		expect(messages[0].type).toBe("cache:response");
+		expect(messages[0].result).toHaveLength(2);
+		expect(messages[0].result[0].url).toBe("http://example.com/1");
+		expect(messages[0].result[1].url).toBe("http://example.com/2");
+	});
+
+	test("CustomCacheStorage handles cache:clear", async () => {
+		const cacheStorage = new CustomCacheStorage(
+			(name: string) => new MemoryCache(name),
+		);
+		const messages: any[] = [];
+
+		const mockWorker = {
+			postMessage: (msg: any) => messages.push(msg),
+		};
+
+		// Put items then clear
+		await cacheStorage.handleMessage(mockWorker, {
+			type: "cache:put",
+			requestId: "1",
+			cacheName: "test-cache",
+			request: {url: "http://example.com/1", method: "GET", headers: {}},
+			response: {status: 200, statusText: "OK", headers: {}, body: "1"},
+		});
+
+		messages.length = 0;
+
+		await cacheStorage.handleMessage(mockWorker, {
+			type: "cache:clear",
+			requestId: "2",
+			cacheName: "test-cache",
+		});
+
+		expect(messages).toHaveLength(1);
+		expect(messages[0].type).toBe("cache:response");
+
+		// Verify cache is empty
+		messages.length = 0;
+
+		await cacheStorage.handleMessage(mockWorker, {
+			type: "cache:keys",
+			requestId: "3",
+			cacheName: "test-cache",
+		});
+
+		expect(messages[0].result).toHaveLength(0);
+	});
+
+	test("CustomCacheStorage handles errors gracefully", async () => {
+		const cacheStorage = new CustomCacheStorage(
+			(name: string) => new MemoryCache(name),
+		);
+		const messages: any[] = [];
+
+		const mockWorker = {
+			postMessage: (msg: any) => messages.push(msg),
+		};
+
+		// Send invalid message (missing required fields)
+		await cacheStorage.handleMessage(mockWorker, {
+			type: "cache:match",
+			requestId: "1",
+			cacheName: "test-cache",
+			// Missing request field
+		});
+
+		expect(messages).toHaveLength(1);
+		expect(messages[0].type).toBe("cache:error");
+		expect(messages[0].requestId).toBe("1");
+		expect(messages[0].error).toBeDefined();
+	});
+});

@@ -874,6 +874,8 @@ export interface WorkerPoolOptions {
 	hotReload?: boolean;
 	/** Working directory for file resolution */
 	cwd?: string;
+	/** Handler for unhandled messages (e.g., cache coordination) */
+	onUnhandledMessage?: (worker: Worker, message: any) => void;
 }
 
 export interface WorkerMessage {
@@ -1056,13 +1058,12 @@ export class WorkerPool {
 		number,
 		{resolve: (response: Response) => void; reject: (error: Error) => void}
 	>();
-	private options: Required<WorkerPoolOptions>;
+	private options: Required<Omit<WorkerPoolOptions, "onUnhandledMessage">> & {
+		onUnhandledMessage?: (worker: Worker, message: any) => void;
+	};
 	private appEntrypoint?: string;
 
-	constructor(
-		options: WorkerPoolOptions = {},
-		appEntrypoint?: string,
-	) {
+	constructor(options: WorkerPoolOptions = {}, appEntrypoint?: string) {
 		this.appEntrypoint = appEntrypoint;
 		this.options = {
 			workerCount: 1,
@@ -1094,7 +1095,7 @@ export class WorkerPool {
 
 		// Set up event listeners using web standards
 		worker.addEventListener("message", (event) => {
-			this.handleWorkerMessage(event.data || event);
+			this.handleWorkerMessage(worker, event.data || event);
 		});
 
 		worker.addEventListener("error", (error) => {
@@ -1105,7 +1106,7 @@ export class WorkerPool {
 		return worker;
 	}
 
-	private handleWorkerMessage(message: WorkerMessage) {
+	private handleWorkerMessage(worker: Worker, message: WorkerMessage) {
 		switch (message.type) {
 			case "response":
 				this.handleResponse(message as WorkerResponse);
@@ -1118,7 +1119,10 @@ export class WorkerPool {
 				this.handleReady(message as WorkerReadyMessage);
 				break;
 			default:
-				// Unknown message type - ignore (could be cache: messages handled directly by MemoryCache)
+				// Handle cache messages from PostMessageCache
+				if (message.type?.startsWith("cache:") && this.cacheStorage) {
+					void this.cacheStorage.handleMessage(worker, message);
+				}
 				break;
 		}
 	}
