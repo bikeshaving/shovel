@@ -1229,8 +1229,9 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
 }
 
 // Initialize the worker environment and send ready signal
-// Only run in worker context (not when imported as a module in main thread)
-if (typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope) {
+// Only run in worker context (when onmessage global exists)
+// In main thread, onmessage is undefined; in workers, it's null (settable)
+if (typeof onmessage !== "undefined") {
 	initializeWorker()
 		.then(({messagePort: _messagePort, sendMessage: send}) => {
 			sendMessage = send;
