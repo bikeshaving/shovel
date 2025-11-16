@@ -9,7 +9,7 @@
         "commander": "^13.1.0",
         "esbuild": "^0.19.12",
         "magic-string": "^0.30.5",
-        "mime-types": "^2.1.35",
+        "mime": "^4.0.4",
         "picocolors": "^1.0.0",
         "source-map": "^0.7.4",
       },
@@ -110,6 +110,9 @@
     "packages/assets": {
       "name": "@b9g/assets",
       "version": "0.1.4",
+      "dependencies": {
+        "mime": "^4.0.4",
+      },
       "devDependencies": {
         "@b9g/libuild": "^0.1.11",
       },
@@ -251,7 +254,6 @@
       "name": "@b9g/platform-node",
       "version": "0.1.6",
       "dependencies": {
-        "@aws-sdk/client-s3": "^3.0.0",
         "@b9g/cache": "workspace:*",
         "@b9g/platform": "workspace:*",
       },
@@ -755,6 +757,8 @@
     "merge2": ["merge2@1.4.1", "", {}, "sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg=="],
 
     "micromatch": ["micromatch@4.0.8", "", { "dependencies": { "braces": "^3.0.3", "picomatch": "^2.3.1" } }, "sha512-PXwfBhYu0hBCPw8Dn0E+WDYb7af3dSLVWKi3HGv84IdF4TyFoC0ysxFd0Goxw7nSv4T/PzEJQxsYsEiFCKo2BA=="],
+
+    "mime": ["mime@4.1.0", "", { "bin": { "mime": "bin/cli.js" } }, "sha512-X5ju04+cAzsojXKes0B/S4tcYtFAJ6tTMuSPBEn9CPGlrWr8Fiw7qYeLT0XyH80HSoAoqWCaz+MWKh22P7G1cw=="],
 
     "mime-db": ["mime-db@1.52.0", "", {}, "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg=="],
 

@@ -5,6 +5,9 @@
   "scripts": {
     "build": "libuild build"
   },
+  "dependencies": {
+    "mime": "^4.0.4"
+  },
   "devDependencies": {
     "@b9g/libuild": "^0.1.11"
   },

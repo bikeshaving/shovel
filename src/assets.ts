@@ -7,7 +7,7 @@
 import {readFileSync, writeFileSync, mkdirSync, existsSync} from "fs";
 import {createHash} from "crypto";
 import {join, basename, extname, relative, dirname} from "path";
-import {lookup} from "mime-types";
+import mime from "mime";
 
 /**
  * Configuration for assets plugin and runtime handler
@@ -200,7 +200,7 @@ export function assetsPlugin(options: AssetsConfig = {}) {
 						url: publicUrl,
 						hash,
 						size: content.length,
-						type: lookup(args.path) || undefined,
+						type: mime.getType(args.path) || undefined,
 					};
 
 					// Add to manifest

@@ -8,61 +8,8 @@
  * - /assets/index.html -> /index.html
  */
 
-export interface AssetsConfig {
-	/** Path to asset manifest file (default: 'manifest.json') */
-	manifestPath?: string;
-	/** Cache control header value (default: 'public, max-age=31536000') */
-	cacheControl?: string;
-	/** Enable development mode with different caching (default: false) */
-	dev?: boolean;
-	/** Custom MIME type mappings */
-	mimeTypes?: Record<string, string>;
-}
-
-/**
- * Default MIME type mappings for assets
- */
-const DEFAULT_MIME_TYPES: Record<string, string> = {
-	".html": "text/html; charset=utf-8",
-	".css": "text/css",
-	".js": "application/javascript",
-	".mjs": "application/javascript",
-	".json": "application/json",
-	".png": "image/png",
-	".jpg": "image/jpeg",
-	".jpeg": "image/jpeg",
-	".gif": "image/gif",
-	".svg": "image/svg+xml",
-	".ico": "image/x-icon",
-	".woff": "font/woff",
-	".woff2": "font/woff2",
-	".ttf": "font/ttf",
-	".eot": "application/vnd.ms-fontobject",
-	".pdf": "application/pdf",
-	".txt": "text/plain",
-	".xml": "application/xml",
-	".zip": "application/zip",
-	".webp": "image/webp",
-	".avif": "image/avif",
-	".mp4": "video/mp4",
-	".webm": "video/webm",
-	".mp3": "audio/mpeg",
-	".wav": "audio/wav",
-	".ogg": "audio/ogg",
-};
-
-/**
- * Get MIME type for a file path
- */
-function getMimeType(
-	filePath: string,
-	customTypes: Record<string, string> = {},
-): string {
-	const ext = "." + filePath.split(".").pop()?.toLowerCase();
-	return (
-		customTypes[ext] || DEFAULT_MIME_TYPES[ext] || "application/octet-stream"
-	);
-}
+import type {AssetsConfig} from "./index.js";
+import {getMimeType} from "./index.js";
 
 /**
  * Assets middleware with 1-to-1 path mapping
