@@ -271,6 +271,58 @@ export function detectRuntime(): "bun" | "deno" | "node" {
 }
 
 /**
+ * Detect platform from package.json dependencies
+ * Checks for installed @b9g/platform-* packages
+ */
+function detectPlatformFromPackageJson(): string | null {
+	try {
+		// Try to read package.json from current working directory
+		const pkgPath = Path.join(process.cwd(), "package.json");
+
+		// Synchronous read using require or fs
+		let pkgContent: string;
+
+		if (typeof require !== "undefined") {
+			// Node.js and Bun both support require for JSON
+			try {
+				// Try require first (works for both Node and Bun, with caching)
+				const pkg = require(pkgPath);
+				const deps = {...pkg.dependencies, ...pkg.devDependencies};
+
+				// Check for platform-specific packages in order of preference
+				if (deps["@b9g/platform-bun"]) return "bun";
+				if (deps["@b9g/platform-node"]) return "node";
+				if (deps["@b9g/platform-cloudflare"]) return "cloudflare";
+
+				return null;
+			} catch {
+				// Fall through to fs.readFileSync
+			}
+
+			// Fallback to fs.readFileSync
+			const fs = require("fs");
+			pkgContent = fs.readFileSync(pkgPath, "utf8");
+		} else {
+			// Deno or other runtime - not supported for now
+			return null;
+		}
+
+		const pkg = JSON.parse(pkgContent);
+		const deps = {...pkg.dependencies, ...pkg.devDependencies};
+
+		// Check for platform-specific packages in order of preference
+		if (deps["@b9g/platform-bun"]) return "bun";
+		if (deps["@b9g/platform-node"]) return "node";
+		if (deps["@b9g/platform-cloudflare"]) return "cloudflare";
+
+		return null;
+	} catch {
+		// Package.json doesn't exist or can't be read - fall through
+		return null;
+	}
+}
+
+/**
  * Detect deployment platform from environment
  *
  * Supports:
@@ -294,9 +346,20 @@ export function detectDeploymentPlatform(): string | null {
 }
 
 /**
- * Detect platform for development (uses current runtime)
+ * Detect platform for development
+ *
+ * Priority:
+ * 1. Check package.json for installed @b9g/platform-* package
+ * 2. Fallback to current runtime (bun/node/deno)
  */
 export function detectDevelopmentPlatform(): string {
+	// First, check if user has explicitly installed a platform package
+	const pkgPlatform = detectPlatformFromPackageJson();
+	if (pkgPlatform) {
+		return pkgPlatform;
+	}
+
+	// Fallback to runtime detection (for monorepos or when no platform installed)
 	const runtime = detectRuntime();
 
 	switch (runtime) {
