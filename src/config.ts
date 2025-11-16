@@ -31,20 +31,5 @@ export const DEFAULTS = {
 		ASSETS_DIR: "assets",
 		MANIFEST_FILE: "manifest.json",
 	},
-	// TODO: WHY THE FUCK DOES WORKERS HAVE DEV/PROD KEY SPLITS???
-	WORKERS: {
-		DEVELOPMENT: 2,
-		PRODUCTION: cpus().length,
-	},
+	WORKERS: cpus().length,
 } as const;
-
-// TODO: WTF?
-/**
- * Get default worker count based on environment
- */
-export function getDefaultWorkerCount(): number {
-	const isProduction = process.env.NODE_ENV === "production";
-	return isProduction
-		? DEFAULTS.WORKERS.PRODUCTION
-		: DEFAULTS.WORKERS.DEVELOPMENT;
-}

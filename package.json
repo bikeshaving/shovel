@@ -99,26 +99,7 @@
     "./serviceworker": {
       "import": "./dist/src/serviceworker.js"
     },
-    "./package.json": "./dist/package.json",
-    "./cli.js": {
-      "import": "./dist/src/cli.js"
-    },
-    "./global.js": {
-      "types": "./dist/src/global.d.ts",
-      "import": "./dist/src/global.js"
-    },
-    "./serviceworker.js": {
-      "import": "./dist/src/serviceworker.js"
-    },
-    "./shared.js": {
-      "types": "./dist/src/shared.d.ts",
-      "import": "./dist/src/shared.js"
-    },
     "./config": {
-      "types": "./dist/src/config.d.ts",
-      "import": "./dist/src/config.js"
-    },
-    "./config.js": {
       "types": "./dist/src/config.d.ts",
       "import": "./dist/src/config.js"
     },
@@ -126,17 +107,10 @@
       "types": "./dist/src/populate.d.ts",
       "import": "./dist/src/populate.js"
     },
-    "./populate.js": {
-      "types": "./dist/src/populate.d.ts",
-      "import": "./dist/src/populate.js"
-    },
     "./watcher": {
       "types": "./dist/src/watcher.d.ts",
       "import": "./dist/src/watcher.js"
     },
-    "./watcher.js": {
-      "types": "./dist/src/watcher.d.ts",
-      "import": "./dist/src/watcher.js"
-    }
+    "./package.json": "./dist/package.json"
   }
 }

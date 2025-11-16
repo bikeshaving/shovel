@@ -2,7 +2,7 @@
 //bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
 import {Command} from "commander";
 import pkg from "../package.json" with {type: "json"};
-import {DEFAULTS, getDefaultWorkerCount} from "./config.js";
+import {DEFAULTS} from "./config.js";
 
 function getWorkerCount(options) {
 	// Explicit CLI option takes precedence
@@ -16,8 +16,7 @@ function getWorkerCount(options) {
 		return count;
 	}
 
-	// TODO: wtf where does this go
-	return getDefaultWorkerCount();
+	return DEFAULTS.WORKERS;
 }
 
 // Main CLI execution starts here
