@@ -1,5 +1,5 @@
 import {test, expect, describe} from "bun:test";
-import {platformRegistry, detectPlatform, type Platform} from "../src/index.js";
+import {platformRegistry, detectDevelopmentPlatform, type Platform} from "../src/index.js";
 
 describe("@b9g/platform", () => {
 	describe("Platform registry", () => {
@@ -29,18 +29,11 @@ describe("@b9g/platform", () => {
 			expect(platformRegistry.list()).toContain("test");
 		});
 
-		test("detects platform", () => {
-			const detection = platformRegistry.detect();
-			expect(detection.platform).toMatch(/bun|node|unknown/);
-			expect(typeof detection.confidence).toBe("number");
-			expect(Array.isArray(detection.reasons)).toBe(true);
-		});
-
-		test("detectPlatform returns null for unknown platforms", () => {
-			// This test might pass or fail depending on the runtime
-			// but it shouldn't throw
-			const platform = detectPlatform();
-			expect(platform === null || typeof platform === "object").toBe(true);
+		test("detectDevelopmentPlatform detects current runtime", () => {
+			// Should detect the current development platform
+			const platform = detectDevelopmentPlatform();
+			expect(typeof platform).toBe("string");
+			expect(platform).toMatch(/bun|node|deno/);
 		});
 	});
 });
