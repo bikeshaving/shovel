@@ -272,29 +272,13 @@ export function detectRuntime(): "bun" | "deno" | "node" {
 
 /**
  * Detect deployment platform from environment
- * Uses deterministic checks for production environments
+ *
+ * Supports:
+ * - Cloudflare Workers
+ *
+ * Future platforms (Lambda, Vercel, Netlify, Deno) will be added post-launch
  */
 export function detectDeploymentPlatform(): string | null {
-	// AWS Lambda (check first - most specific)
-	if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
-		return "lambda";
-	}
-
-	// Deno Deploy (has deployment ID)
-	if (typeof Deno !== "undefined" && Deno.env?.get("DENO_DEPLOYMENT_ID")) {
-		return "deno-deploy";
-	}
-
-	// Netlify Edge (Deno-based with Netlify global)
-	if (typeof Netlify !== "undefined") {
-		return "netlify-edge";
-	}
-
-	// Vercel Edge Runtime
-	if (typeof EdgeRuntime !== "undefined") {
-		return "vercel-edge";
-	}
-
 	// Cloudflare Workers
 	if (
 		typeof caches !== "undefined" &&
