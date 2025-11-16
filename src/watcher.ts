@@ -7,7 +7,7 @@ import {watch} from "fs";
 import {resolve, dirname, join} from "path";
 import {readFileSync} from "fs";
 import {mkdir} from "fs/promises";
-import {assetsPlugin} from "./assets.ts";
+import {assetsPlugin} from "@b9g/assets/plugin";
 import {DEFAULTS} from "./config.js";
 
 export interface WatcherOptions {

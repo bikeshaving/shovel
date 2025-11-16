@@ -88,7 +88,7 @@ self.addEventListener("fetch", (event) => {
 			await createTempFile(testDir, "app.js", jsContent);
 
 			// Import and test the assets plugin
-			const {assetsPlugin} = await import("../src/assets.ts");
+			const {assetsPlugin} = await import("@b9g/assets/plugin");
 
 			const assetsDir = join(testDir, "assets");
 			const manifestPath = join(assetsDir, "manifest.json");
@@ -297,8 +297,11 @@ test(
 			);
 
 			// Test ServiceWorker that serves assets
-			const {ServiceWorkerRegistration, ShovelGlobalScope, CustomBucketStorage} =
-				await import("@b9g/platform");
+			const {
+				ServiceWorkerRegistration,
+				ShovelGlobalScope,
+				CustomBucketStorage,
+			} = await import("@b9g/platform");
 			const {NodeBucket} = await import("@b9g/filesystem");
 
 			const runtime = new ServiceWorkerRegistration();
@@ -380,7 +383,7 @@ test(
 			const testDir = await createTempDir();
 			cleanup_paths.push(testDir);
 
-			const {assetsPlugin} = await import("../src/assets.ts");
+			const {assetsPlugin} = await import("@b9g/assets/plugin");
 
 			const assetsDir = join(testDir, "assets");
 			const manifestPath = join(assetsDir, "manifest.json");
@@ -412,7 +415,7 @@ test(
 			const testDir = await createTempDir();
 			cleanup_paths.push(testDir);
 
-			const {assetsPlugin} = await import("../src/assets.ts");
+			const {assetsPlugin} = await import("@b9g/assets/plugin");
 
 			const assetsDir = join(testDir, "assets");
 			const manifestPath = join(assetsDir, "manifest.json");
@@ -577,7 +580,7 @@ test(
 			);
 
 			// Asset system should handle invalid manifest gracefully
-			const {assetsPlugin} = await import("../src/assets.ts");
+			const {assetsPlugin} = await import("@b9g/assets/plugin");
 
 			const plugin = assetsPlugin({
 				outputDir: assetsDir,
