@@ -272,7 +272,7 @@ export function detectRuntime(): "bun" | "deno" | "node" {
 
 /**
  * Detect platform from package.json dependencies
- * Checks for installed @b9g/platform-* packages
+ * When multiple platforms are installed, prioritize based on current runtime
  */
 function detectPlatformFromPackageJson(): string | null {
 	try {
@@ -289,12 +289,7 @@ function detectPlatformFromPackageJson(): string | null {
 				const pkg = require(pkgPath);
 				const deps = {...pkg.dependencies, ...pkg.devDependencies};
 
-				// Check for platform-specific packages in order of preference
-				if (deps["@b9g/platform-bun"]) return "bun";
-				if (deps["@b9g/platform-node"]) return "node";
-				if (deps["@b9g/platform-cloudflare"]) return "cloudflare";
-
-				return null;
+				return selectPlatformFromDeps(deps);
 			} catch {
 				// Fall through to fs.readFileSync
 			}
@@ -310,16 +305,44 @@ function detectPlatformFromPackageJson(): string | null {
 		const pkg = JSON.parse(pkgContent);
 		const deps = {...pkg.dependencies, ...pkg.devDependencies};
 
-		// Check for platform-specific packages in order of preference
-		if (deps["@b9g/platform-bun"]) return "bun";
-		if (deps["@b9g/platform-node"]) return "node";
-		if (deps["@b9g/platform-cloudflare"]) return "cloudflare";
-
-		return null;
+		return selectPlatformFromDeps(deps);
 	} catch {
 		// Package.json doesn't exist or can't be read - fall through
 		return null;
 	}
+}
+
+/**
+ * Select best platform from dependencies based on current runtime
+ * When multiple platforms are installed (e.g., monorepo), prefer the one matching current runtime
+ */
+function selectPlatformFromDeps(deps: Record<string, any>): string | null {
+	const hasBun = deps["@b9g/platform-bun"];
+	const hasNode = deps["@b9g/platform-node"];
+	const hasCloudflare = deps["@b9g/platform-cloudflare"];
+
+	// If only one platform installed, use it
+	const installedCount = [hasBun, hasNode, hasCloudflare].filter(Boolean).length;
+	if (installedCount === 0) return null;
+	if (installedCount === 1) {
+		if (hasBun) return "bun";
+		if (hasNode) return "node";
+		if (hasCloudflare) return "cloudflare";
+	}
+
+	// Multiple platforms installed - prioritize based on current runtime
+	const runtime = detectRuntime();
+
+	// Match runtime to platform (prefer exact match)
+	if (runtime === "bun" && hasBun) return "bun";
+	if (runtime === "node" && hasNode) return "node";
+
+	// Fallback order when no exact match (development-friendly first)
+	if (hasBun) return "bun";
+	if (hasNode) return "node";
+	if (hasCloudflare) return "cloudflare";
+
+	return null;
 }
 
 /**
@@ -331,7 +354,13 @@ function detectPlatformFromPackageJson(): string | null {
  * Future platforms (Lambda, Vercel, Netlify, Deno) will be added post-launch
  */
 export function detectDeploymentPlatform(): string | null {
-	// Cloudflare Workers
+	// Explicitly check we're NOT in Node.js/Bun first
+	// (Node now has fetch/caches globals, so can't rely on them alone)
+	if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
+		return null; // Running in Node.js or Bun, not a deployment platform
+	}
+
+	// Cloudflare Workers - has web APIs but no process global
 	if (
 		typeof caches !== "undefined" &&
 		typeof addEventListener !== "undefined" &&

@@ -53,8 +53,6 @@ function startDevServer(fixture, port, extraArgs = []) {
 		fixture,
 		"--port",
 		port.toString(),
-		"--platform",
-		"node",
 		...extraArgs,
 	];
 
