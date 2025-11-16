@@ -1,8 +1,4 @@
-import {
-	Cache,
-	generateCacheKey,
-	type CacheQueryOptions,
-} from "./cache.js";
+import {Cache, generateCacheKey, type CacheQueryOptions} from "./cache.js";
 
 /**
  * Configuration options for MemoryCache
@@ -225,4 +221,3 @@ export class MemoryCache extends Cache {
 		}
 	}
 }
-

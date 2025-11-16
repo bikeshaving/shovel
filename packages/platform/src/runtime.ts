@@ -506,7 +506,10 @@ export class ServiceWorkerRegistration extends EventTarget {
 						// Log errors in event listeners but don't crash the process
 						// This matches browser behavior where fetch listener errors are logged
 						// but don't prevent other listeners from running
-						console.error("[ServiceWorker] Error in fetch event listener:", error);
+						console.error(
+							"[ServiceWorker] Error in fetch event listener:",
+							error,
+						);
 						// Continue with next listener
 					}
 				}
@@ -1071,7 +1074,9 @@ async function initializeWorker() {
 
 // Import dependencies (ServiceWorker runtime classes are in this same file)
 const {CustomCacheStorage, PostMessageCache} = await import("@b9g/cache");
-const {FileSystemRegistry, CustomBucketStorage} = await import("@b9g/filesystem");
+const {FileSystemRegistry, CustomBucketStorage} = await import(
+	"@b9g/filesystem"
+);
 
 // Create worker-aware cache storage using PostMessage coordination
 const caches: CacheStorage = new CustomCacheStorage((name: string) => {

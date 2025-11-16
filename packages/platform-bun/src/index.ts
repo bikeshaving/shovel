@@ -208,7 +208,11 @@ export class BunPlatform extends BasePlatform {
 		};
 
 		// Bun has native Worker support - ServiceWorkerPool will use new Worker() directly
-		this.workerPool = new ServiceWorkerPool(poolOptions, entryPath, this.cacheStorage);
+		this.workerPool = new ServiceWorkerPool(
+			poolOptions,
+			entryPath,
+			this.cacheStorage,
+		);
 
 		// Initialize workers (Bun has native Web Workers)
 		await this.workerPool.init();

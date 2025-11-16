@@ -15,4 +15,3 @@ export {MemoryCache, type MemoryCacheOptions} from "./memory.js";
 
 // PostMessage cache (worker thread coordination)
 export {PostMessageCache, type PostMessageCacheOptions} from "./postmessage.js";
-

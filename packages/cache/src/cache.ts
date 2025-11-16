@@ -114,4 +114,3 @@ export function generateCacheKey(
 	// For now, create a simple key - can be enhanced with vary header handling
 	return `${method}:${url.href}`;
 }
-

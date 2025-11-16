@@ -1,9 +1,5 @@
 import {test, expect, describe} from "bun:test";
-import {
-	platformRegistry,
-	detectPlatform,
-	type Platform,
-} from "../src/index.js";
+import {platformRegistry, detectPlatform, type Platform} from "../src/index.js";
 
 describe("@b9g/platform", () => {
 	describe("Platform registry", () => {

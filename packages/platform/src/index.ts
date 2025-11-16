@@ -766,7 +766,8 @@ export function getPlatform(name?: string): Platform {
 	}
 
 	// Auto-detect platform from environment
-	const platformName = detectDeploymentPlatform() || detectDevelopmentPlatform();
+	const platformName =
+		detectDeploymentPlatform() || detectDevelopmentPlatform();
 	const platform = platformRegistry.get(platformName);
 
 	if (!platform) {
@@ -794,7 +795,8 @@ export async function getPlatformAsync(name?: string): Promise<Platform> {
 	}
 
 	// Auto-detect platform from environment
-	const platformName = detectDeploymentPlatform() || detectDevelopmentPlatform();
+	const platformName =
+		detectDeploymentPlatform() || detectDevelopmentPlatform();
 	let platform = platformRegistry.get(platformName);
 
 	if (!platform) {
@@ -824,7 +826,6 @@ export async function getDirectoryHandle(
 	const platform = await getPlatformAsync();
 	return await platform.getDirectoryHandle(name);
 }
-
 
 /**
  * Common WorkerPool abstraction based on web standards
@@ -936,9 +937,7 @@ function resolveWorkerScript(entrypoint?: string): string {
 			workerScript = workerUrl;
 		}
 
-		console.debug(
-			`[WorkerPool] Using worker runtime script: ${workerScript}`,
-		);
+		console.debug(`[WorkerPool] Using worker runtime script: ${workerScript}`);
 		return workerScript;
 	} catch (error) {
 		const bundledPath = entrypoint
@@ -1071,7 +1070,8 @@ export class WorkerPool extends EventTarget {
 	 */
 	postMessage(message: any, transfer?: Transferable[]): void {
 		const worker = this.workers[this.currentWorkerIndex];
-		this.currentWorkerIndex = (this.currentWorkerIndex + 1) % this.workers.length;
+		this.currentWorkerIndex =
+			(this.currentWorkerIndex + 1) % this.workers.length;
 		worker.postMessage(message, transfer);
 	}
 

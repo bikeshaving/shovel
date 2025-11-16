@@ -264,8 +264,9 @@ test(
 test(
 	"self.buckets in ServiceWorker context",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope} =
-			await import("../src/runtime.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+			"../src/runtime.js"
+		);
 		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
@@ -338,8 +339,9 @@ test(
 test(
 	"self.buckets file serving with different content types",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope} =
-			await import("../src/runtime.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+			"../src/runtime.js"
+		);
 		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
@@ -567,8 +569,9 @@ test(
 test(
 	"buckets API replaces old dirs API",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope} =
-			await import("../src/runtime.js");
+		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+			"../src/runtime.js"
+		);
 		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();

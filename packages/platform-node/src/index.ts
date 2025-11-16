@@ -16,11 +16,7 @@ import {
 	ServiceWorkerPool,
 	WorkerPoolOptions,
 } from "@b9g/platform";
-import {
-	CustomCacheStorage,
-	MemoryCache,
-	PostMessageCache,
-} from "@b9g/cache";
+import {CustomCacheStorage, MemoryCache, PostMessageCache} from "@b9g/cache";
 import {
 	FileSystemRegistry,
 	getDirectoryHandle,

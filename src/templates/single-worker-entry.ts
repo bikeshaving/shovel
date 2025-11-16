@@ -30,10 +30,7 @@ const distDir = dirname(executableDir);
 // Register well-known buckets
 FileSystemRegistry.register("dist", new NodeBucket(distDir));
 // Also register assets bucket (points to dist/assets directory)
-FileSystemRegistry.register(
-	"assets",
-	new NodeBucket(join(distDir, "assets")),
-);
+FileSystemRegistry.register("assets", new NodeBucket(join(distDir, "assets")));
 
 // Create bucket storage using registry
 const buckets = new CustomBucketStorage(async (name) => {
