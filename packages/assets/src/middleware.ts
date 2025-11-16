@@ -17,50 +17,38 @@ import {getMimeType} from "./index.js";
 export function assets(config: AssetsConfig = {}) {
 	const {
 		manifestPath = "manifest.json",
-		cacheControl = config.dev ? "no-cache" : "public, max-age=31536000",
-		dev = false,
+		cacheControl = "public, max-age=31536000, immutable",
 		mimeTypes = {},
 	} = config;
 
 	// Cache for the manifest
 	let manifestCache: Record<string, any> | null = null;
-	let manifestError: string | null = null;
 
 	// Load manifest from bucket
 	async function loadManifest(): Promise<Record<string, any>> {
 		if (manifestCache) return manifestCache;
-		if (manifestError && !dev) throw new Error(manifestError);
 
-		try {
-			const bucketDir = await (self as any).buckets.open("assets");
-			const manifestHandle = await bucketDir.getFileHandle(manifestPath);
-			const manifestFile = await manifestHandle.getFile();
-			const manifestText = await manifestFile.text();
-			const manifest = JSON.parse(manifestText);
+		const bucketDir = await (self as any).buckets.open("assets");
+		const manifestHandle = await bucketDir.getFileHandle(manifestPath);
+		const manifestFile = await manifestHandle.getFile();
+		const manifestText = await manifestFile.text();
+		const manifest = JSON.parse(manifestText);
 
-			// Convert manifest.assets to URL path lookup map
-			const urlMap: Record<string, any> = {};
+		// Convert manifest.assets to URL path lookup map
+		const urlMap: Record<string, any> = {};
 
-			if (manifest.assets) {
-				for (const [, entry] of Object.entries(manifest.assets)) {
-					if (entry && typeof entry === "object" && "url" in entry) {
-						const url = entry.url as string;
-						// Map public URL directly to manifest entry
-						urlMap[url] = entry;
-					}
+		if (manifest.assets) {
+			for (const [, entry] of Object.entries(manifest.assets)) {
+				if (entry && typeof entry === "object" && "url" in entry) {
+					const url = entry.url as string;
+					// Map public URL directly to manifest entry
+					urlMap[url] = entry;
 				}
 			}
-
-			manifestCache = urlMap;
-			manifestError = null;
-			return manifestCache!;
-		} catch (error) {
-			manifestError = `Failed to load manifest: ${error.message}`;
-			if (dev) {
-				return {}; // Empty manifest in dev mode
-			}
-			throw new Error(manifestError);
 		}
+
+		manifestCache = urlMap;
+		return manifestCache;
 	}
 
 	return async function* assetsMiddleware(request: Request, _context: any) {
@@ -79,8 +67,8 @@ export function assets(config: AssetsConfig = {}) {
 
 				// Check if file exists in manifest (security: only serve built assets)
 				const manifestEntry = manifest[requestedPath];
-				if (!manifestEntry && !dev) {
-					// In production, only serve files that went through build
+				if (!manifestEntry) {
+					// Only serve files that went through build
 					// Pass through to next middleware for 404 handling
 					const response = yield request;
 					return response;

@@ -8,9 +8,13 @@ import {readFileSync, writeFileSync, mkdirSync, existsSync} from "fs";
 import {createHash} from "crypto";
 import {join, basename, extname, relative, dirname} from "path";
 import mime from "mime";
+import {
+	type AssetManifest,
+	type AssetManifestEntry,
+} from "@b9g/assets";
 
 /**
- * Configuration for assets plugin and runtime handler
+ * Configuration for assets plugin (build-time)
  */
 export interface AssetsConfig {
 	/**
@@ -44,38 +48,8 @@ export interface AssetsConfig {
 	includeHash?: boolean;
 }
 
-/**
- * Asset manifest entry
- */
-export interface AssetManifestEntry {
-	/** Original file path relative to source */
-	source: string;
-	/** Output file path relative to outputDir */
-	output: string;
-	/** Public URL for the asset */
-	url: string;
-	/** Content hash */
-	hash: string;
-	/** File size in bytes */
-	size: number;
-	/** MIME type */
-	type?: string;
-}
-
-/**
- * Asset manifest structure
- */
-export interface AssetManifest {
-	/** Assets indexed by their source path */
-	assets: Record<string, AssetManifestEntry>;
-	/** Generation timestamp */
-	generated: string;
-	/** Configuration used */
-	config: {
-		publicPath: string;
-		outputDir: string;
-	};
-}
+// Re-export manifest types
+export type {AssetManifest, AssetManifestEntry};
 
 /**
  * Default configuration values
@@ -123,7 +97,7 @@ function normalizePath(basePath: string): string {
  * @returns ESBuild/Bun plugin
  *
  * @example
- * import { assetsPlugin } from '@b9g/assets/plugin';
+ * import { assetsPlugin } from '@b9g/shovel/assets';
  *
  * await build({
  *   plugins: [assetsPlugin()]
