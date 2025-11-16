@@ -244,7 +244,7 @@ self.addEventListener("fetch", (event) => {
 			).toBe(true);
 
 			// Check app.js was built
-			const appPath = join(outDir, "server", "app.js");
+			const appPath = join(outDir, "server", "server.js");
 			expect(
 				await FS.access(appPath)
 					.then(() => true)
@@ -546,7 +546,7 @@ self.addEventListener("fetch", (event) => {
 
 				// If build succeeds, check that it handled the missing file appropriately
 				const appContent = await FS.readFile(
-					join(outDir, "server", "app.js"),
+					join(outDir, "server", "server.js"),
 					"utf8",
 				);
 				expect(typeof appContent).toBe("string");

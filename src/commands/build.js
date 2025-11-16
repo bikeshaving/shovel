@@ -244,7 +244,6 @@ async function createBuildConfig({
 				assetsPlugin({
 					outputDir: assetsDir,
 					manifest: join(serverDir, "asset-manifest.json"),
-					dev: false,
 				}),
 			],
 			metafile: true,

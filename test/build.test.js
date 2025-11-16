@@ -83,7 +83,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Check output files exist in new structure
-			expect(await fileExists(join(outDir, "server", "app.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "server.js"))).toBe(true);
 			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
 				true,
 			);
@@ -94,7 +94,7 @@ self.addEventListener("fetch", (event) => {
 
 			// Check app.js has shebang and bootstrap
 			const appContent = await FS.readFile(
-				join(outDir, "server", "app.js"),
+				join(outDir, "server", "server.js"),
 				"utf8",
 			);
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
@@ -139,7 +139,7 @@ self.addEventListener("fetch", (event) => {
 
 				// Verify platform-specific output
 				const appContent = await FS.readFile(
-					join(outDir, "server", "app.js"),
+					join(outDir, "server", "server.js"),
 					"utf8",
 				);
 				expect(appContent).toContain("ServiceWorkerRegistration");
@@ -257,7 +257,7 @@ test(
 			});
 
 			// Build should complete but app.js should have bootstrap + empty content
-			expect(await fileExists(join(outDir, "server", "app.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "server.js"))).toBe(true);
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -302,7 +302,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Check required output structure
-			expect(await fileExists(join(outDir, "server", "app.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "server.js"))).toBe(true);
 			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
 				true,
 			);
@@ -313,7 +313,7 @@ self.addEventListener("fetch", (event) => {
 
 			// Validate app.js content
 			const appContent = await FS.readFile(
-				join(outDir, "server", "app.js"),
+				join(outDir, "server", "server.js"),
 				"utf8",
 			);
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
@@ -424,7 +424,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			const appContent = await FS.readFile(
-				join(outDir, "server", "app.js"),
+				join(outDir, "server", "server.js"),
 				"utf8",
 			);
 
@@ -504,7 +504,7 @@ self.skipWaiting();
 			});
 
 			const appContent = await FS.readFile(
-				join(outDir, "server", "app.js"),
+				join(outDir, "server", "server.js"),
 				"utf8",
 			);
 
@@ -573,7 +573,7 @@ self.addEventListener("fetch", (event) => {
 
 			// Output should exist and be reasonable size
 			const appContent = await FS.readFile(
-				join(outDir, "server", "app.js"),
+				join(outDir, "server", "server.js"),
 				"utf8",
 			);
 			expect(appContent.length).toBeGreaterThan(1000);
@@ -633,7 +633,7 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Should have found the workspace root and built successfully
-				expect(await fileExists(join(outDir, "server", "app.js"))).toBe(true);
+				expect(await fileExists(join(outDir, "server", "server.js"))).toBe(true);
 			} finally {
 				process.chdir(originalCwd);
 			}

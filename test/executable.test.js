@@ -146,7 +146,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Verify build output
-			const appPath = join(outDir, "server", "app.js");
+			const appPath = join(outDir, "server", "server.js");
 			const packagePath = join(outDir, "server", "package.json");
 
 			expect(
@@ -232,7 +232,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appPath = join(outDir, "server", "app.js");
+			const appPath = join(outDir, "server", "server.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Dependencies are bundled, no npm install needed
@@ -386,7 +386,7 @@ self.addEventListener("fetch", async (event) => {
 				platform: "node",
 			});
 
-			const appPath = join(outDir, "server", "app.js");
+			const appPath = join(outDir, "server", "server.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Dependencies are bundled, no npm install needed
@@ -475,7 +475,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appPath = join(outDir, "server", "app.js");
+			const appPath = join(outDir, "server", "server.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Dependencies are bundled, no npm install needed
@@ -568,7 +568,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Verify deployment artifacts
-			const appPath = join(outDir, "server", "app.js");
+			const appPath = join(outDir, "server", "server.js");
 			const packagePath = join(outDir, "server", "package.json");
 			const assetsPath = join(outDir, "assets");
 
@@ -670,7 +670,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appPath = join(outDir, "server", "app.js");
+			const appPath = join(outDir, "server", "server.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Dependencies are bundled, no npm install needed
@@ -746,7 +746,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appPath = join(outDir, "server", "app.js");
+			const appPath = join(outDir, "server", "server.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Dependencies are bundled, no npm install needed
