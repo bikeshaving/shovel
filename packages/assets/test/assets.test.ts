@@ -1,5 +1,6 @@
 import {test, expect, describe, beforeEach} from "bun:test";
 import {assets} from "../src/middleware.js";
+import {Router} from "@b9g/router";
 
 describe("Assets Middleware", () => {
 	// Mock self.buckets
@@ -15,13 +16,13 @@ describe("Assets Middleware", () => {
 										async text() {
 											return JSON.stringify({
 												assets: {
-													"app.js": {
+													"/app.js": {
 														url: "/app.js",
 														type: "application/javascript",
 														size: 1234,
 														hash: "abc123",
 													},
-													"styles.css": {
+													"/styles.css": {
 														url: "/styles.css",
 														type: "text/css",
 														size: 567,
@@ -71,12 +72,12 @@ describe("Assets Middleware", () => {
 	});
 
 	test("should serve asset from manifest", async () => {
-		const middleware = assets();
-		const request = new Request("http://example.com/app.js");
+		const router = new Router();
+		router.use(assets());
+		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
-		const generator = middleware(request, {});
-		const result = await generator.next();
-		const response = result.value as Response;
+		const request = new Request("http://example.com/app.js");
+		const response = await router.handler(request);
 
 		expect(response.status).toBe(200);
 		expect(response.headers.get("Content-Type")).toBe("application/javascript");
@@ -85,46 +86,39 @@ describe("Assets Middleware", () => {
 	});
 
 	test("should pass through to next middleware for non-existent asset", async () => {
-		const middleware = assets();
+		const router = new Router();
+		router.use(assets());
+		router.route("/*").get(() => new Response("Not Found", {status: 404}));
+
 		const request = new Request("http://example.com/nonexistent.js");
+		const response = await router.handler(request);
 
-		const generator = middleware(request, {});
-		const result = await generator.next();
-
-		// Should yield the request for next middleware
-		expect(result.value).toBe(request);
-		expect(result.done).toBe(false);
-
-		// Simulate next middleware returning 404
-		const notFoundResponse = new Response("Not Found", {status: 404});
-		const finalResult = await generator.next(notFoundResponse);
-		const response = finalResult.value as Response;
-
+		// Should pass through to 404 handler
 		expect(response.status).toBe(404);
 	});
 
 	test("should block directory traversal with double slash", async () => {
-		const middleware = assets();
-		const request = new Request("http://example.com//etc/passwd");
+		const router = new Router();
+		router.use(assets());
+		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
-		const generator = middleware(request, {});
-		const result = await generator.next();
-		const response = result.value as Response;
+		const request = new Request("http://example.com//etc/passwd");
+		const response = await router.handler(request);
 
 		expect(response.status).toBe(403);
 		expect(await response.text()).toBe("Forbidden");
 	});
 
 	test("should handle conditional requests with 304", async () => {
-		const middleware = assets();
+		const router = new Router();
+		router.use(assets());
+		router.route("/*").get(() => new Response("Not Found", {status: 404}));
+
 		const futureDate = new Date(Date.now() + 100000).toUTCString();
 		const request = new Request("http://example.com/app.js", {
 			headers: {"if-modified-since": futureDate},
 		});
-
-		const generator = middleware(request, {});
-		const result = await generator.next();
-		const response = result.value as Response;
+		const response = await router.handler(request);
 
 		expect(response.status).toBe(304);
 	});
@@ -144,7 +138,7 @@ describe("Assets Middleware", () => {
 												async text() {
 													return JSON.stringify({
 														assets: {
-															"app.js": {
+															"/app.js": {
 																url: "/app.js",
 																// No type specified - should use custom MIME type
 																size: 1234,
@@ -177,25 +171,31 @@ describe("Assets Middleware", () => {
 			},
 		};
 
-		const middleware = assets({
-			mimeTypes: {".js": "text/plain"},
-		});
-		const request = new Request("http://example.com/app.js");
+		const router = new Router();
+		router.use(
+			assets({
+				mimeTypes: {".js": "text/plain"},
+			}),
+		);
+		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
-		const generator = middleware(request, {});
-		const result = await generator.next();
-		const response = result.value as Response;
+		const request = new Request("http://example.com/app.js");
+		const response = await router.handler(request);
 
 		expect(response.headers.get("Content-Type")).toBe("text/plain");
 	});
 
-	test("should set dev cache headers", async () => {
-		const middleware = assets({dev: true});
-		const request = new Request("http://example.com/app.js");
+	test("should set custom cache headers", async () => {
+		const router = new Router();
+		router.use(
+			assets({
+				cacheControl: "no-cache",
+			}),
+		);
+		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
-		const generator = middleware(request, {});
-		const result = await generator.next();
-		const response = result.value as Response;
+		const request = new Request("http://example.com/app.js");
+		const response = await router.handler(request);
 
 		expect(response.headers.get("Cache-Control")).toBe("no-cache");
 	});
