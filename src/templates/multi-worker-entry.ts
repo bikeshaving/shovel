@@ -178,7 +178,7 @@ if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
 import {
 	ServiceWorkerRegistration,
 	ShovelGlobalScope,
-} from "@b9g/platform/runtime";
+} from "@b9g/platform";
 import {
 	FileSystemRegistry,
 	NodeBucket,

@@ -618,7 +618,7 @@ self.addEventListener("fetch", (event) => {
 
 			// Verify production directory has same structure
 			expect(
-				await FS.access(join(prodDir, "server", "app.js"))
+				await FS.access(join(prodDir, "server", "server.js"))
 					.then(() => true)
 					.catch(() => false),
 			).toBe(true);

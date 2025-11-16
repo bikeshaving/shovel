@@ -1312,3 +1312,20 @@ export class ServiceWorkerPool {
 		return this.workers.length > 0;
 	}
 }
+
+// ============================================================================
+// Re-export runtime classes for external use
+// ============================================================================
+
+export {
+	ServiceWorkerRegistration,
+	ShovelGlobalScope,
+	FetchEvent,
+	InstallEvent,
+	ActivateEvent,
+	ExtendableEvent,
+} from "./runtime.js";
+
+// Re-export filesystem utilities
+export {CustomBucketStorage} from "@b9g/filesystem";
+
