@@ -179,11 +179,8 @@ import {
 	ServiceWorkerRegistration,
 	ShovelGlobalScope,
 } from "@b9g/platform";
-import {
-	FileSystemRegistry,
-	NodeBucket,
-	CustomBucketStorage,
-} from "@b9g/filesystem";
+import {FileSystemRegistry, CustomBucketStorage} from "@b9g/filesystem";
+import {NodeBucket} from "@b9g/filesystem/node.js";
 import {parentPort} from "worker_threads";
 
 if (workerData?.isWorker && parentPort) {
