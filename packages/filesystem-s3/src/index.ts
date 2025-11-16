@@ -5,7 +5,7 @@
  * to provide S3 cloud storage with File System Access API compatibility.
  */
 
-import type {FileSystemAdapter, FileSystemConfig} from "@b9g/filesystem";
+import type {FileSystemBackend, FileSystemConfig} from "@b9g/filesystem";
 
 /**
  * AWS S3 implementation of FileSystemWritableFileStream
@@ -402,7 +402,7 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 /**
  * S3 filesystem adapter using AWS SDK
  */
-export class S3FileSystemAdapter implements FileSystemAdapter {
+export class S3FileSystemAdapter implements FileSystemBackend {
 	private config: FileSystemConfig;
 	private s3Client: any;
 	private bucket: string;

@@ -5,7 +5,9 @@
  * to provide R2 cloud storage with File System Access API compatibility.
  */
 
-import type {FileSystemAdapter, FileSystemConfig} from "@b9g/filesystem";
+/// <reference types="@cloudflare/workers-types" />
+
+import type {FileSystemBackend, FileSystemConfig} from "@b9g/filesystem";
 
 /**
  * Cloudflare R2 implementation of FileSystemWritableFileStream
@@ -295,7 +297,7 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 /**
  * R2 filesystem adapter
  */
-export class R2FileSystemAdapter implements FileSystemAdapter {
+export class R2FileSystemAdapter implements FileSystemBackend {
 	private config: FileSystemConfig;
 	private r2Bucket: R2Bucket;
 
