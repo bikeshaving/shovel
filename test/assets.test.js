@@ -302,7 +302,7 @@ test(
 				ShovelGlobalScope,
 				CustomBucketStorage,
 			} = await import("@b9g/platform");
-			const {NodeBucket} = await import("@b9g/filesystem");
+			const {NodeBucket} = await import("@b9g/filesystem/node.js");
 
 			const runtime = new ServiceWorkerRegistration();
 

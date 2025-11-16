@@ -1,6 +1,6 @@
 import {test, expect, describe, beforeEach} from "bun:test";
 import {Router} from "../src/index.js";
-import {CustomCacheStorage} from "@b9g/cache/cache-storage.js";
+import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
 
 describe("Router Cache Integration", () => {

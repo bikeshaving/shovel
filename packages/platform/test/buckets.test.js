@@ -2,7 +2,7 @@ import {test, expect} from "bun:test";
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
-import {NodeBucket} from "@b9g/filesystem";
+import {NodeBucket} from "@b9g/filesystem/node.js";
 
 /**
  * Bucket architecture and self.buckets API tests
@@ -441,7 +441,7 @@ test(
 test(
 	"memory bucket adapter",
 	async () => {
-		const {MemoryBucket} = await import("@b9g/filesystem");
+		const {MemoryBucket} = await import("@b9g/filesystem/memory.js");
 
 		const bucket = new MemoryBucket();
 
@@ -473,7 +473,7 @@ test(
 test(
 	"local bucket adapter with real filesystem",
 	async () => {
-		const {NodeBucket} = await import("@b9g/filesystem");
+		const {NodeBucket} = await import("@b9g/filesystem/node.js");
 
 		const tempDir = await createTempDir();
 
