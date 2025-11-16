@@ -452,16 +452,205 @@ export class ShovelDirectoryHandle
 }
 
 // ============================================================================
-// ADAPTER EXPORTS
+// BUCKET STORAGE
 // ============================================================================
 
-// Bucket + backend exports
-export {MemoryBucket, MemoryFileSystemBackend} from "./memory.js";
-export {NodeBucket, NodeFileSystemBackend} from "./node.js";
-export {S3Bucket, S3FileSystemBackend} from "./bun-s3.js";
+/**
+ * Factory function type for creating buckets
+ * @param name Bucket name to create
+ * @returns FileSystemDirectoryHandle (Bucket) instance
+ */
+export type BucketFactory = (
+	name: string,
+) => FileSystemDirectoryHandle | Promise<FileSystemDirectoryHandle>;
 
-// Registry and utilities
-export {FileSystemRegistry, getDirectoryHandle} from "./registry.js";
+/**
+ * Custom bucket storage with factory-based bucket creation
+ *
+ * Provides a registry of named buckets (FileSystemDirectoryHandle instances)
+ * with lazy instantiation and singleton behavior per bucket name.
+ *
+ * Mirrors the CustomCacheStorage pattern for consistency across the platform.
+ */
+export class CustomBucketStorage {
+	private instances = new Map<string, FileSystemDirectoryHandle>();
 
-// Bucket Storage (mirrors CacheStorage pattern)
-export {CustomBucketStorage, type BucketFactory} from "./bucket-storage.js";
+	/**
+	 * @param factory Function that creates bucket instances by name
+	 */
+	constructor(private factory: BucketFactory) {}
+
+	/**
+	 * Open a named bucket - creates if it doesn't exist
+	 *
+	 * @param name Bucket name (e.g., 'tmp', 'dist', 'uploads')
+	 * @returns FileSystemDirectoryHandle for the bucket
+	 */
+	async open(name: string): Promise<FileSystemDirectoryHandle> {
+		// Return existing instance if already opened
+		const existing = this.instances.get(name);
+		if (existing) {
+			return existing;
+		}
+
+		// Create new instance using factory
+		const bucket = await this.factory(name);
+		this.instances.set(name, bucket);
+		return bucket;
+	}
+
+	/**
+	 * Check if a named bucket exists
+	 *
+	 * @param name Bucket name to check
+	 * @returns true if bucket has been opened
+	 */
+	async has(name: string): Promise<boolean> {
+		return this.instances.has(name);
+	}
+
+	/**
+	 * Delete a named bucket
+	 *
+	 * @param name Bucket name to delete
+	 * @returns true if bucket was deleted, false if it didn't exist
+	 */
+	async delete(name: string): Promise<boolean> {
+		const instance = this.instances.get(name);
+		if (instance) {
+			this.instances.delete(name);
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * List all opened bucket names
+	 *
+	 * @returns Array of bucket names
+	 */
+	async keys(): Promise<string[]> {
+		return Array.from(this.instances.keys());
+	}
+
+	/**
+	 * Alias for open() - for compatibility with File System Access API naming
+	 *
+	 * @param name Bucket name
+	 * @returns FileSystemDirectoryHandle for the bucket
+	 */
+	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
+		return await this.open(name);
+	}
+
+	/**
+	 * Get statistics about opened buckets (non-standard utility method)
+	 *
+	 * @returns Object with bucket statistics
+	 */
+	getStats() {
+		return {
+			openInstances: this.instances.size,
+			bucketNames: Array.from(this.instances.keys()),
+		};
+	}
+}
+
+// ============================================================================
+// FILESYSTEM REGISTRY
+// ============================================================================
+
+// Import MemoryBucket for default registry initialization
+import {MemoryBucket} from "./memory.js";
+
+/**
+ * Global registry of filesystem adapters
+ * Manages registration and retrieval of filesystem adapters
+ */
+class Registry {
+	private adapters = new Map<string, Bucket>();
+	private defaultAdapter: Bucket;
+
+	constructor() {
+		// Set memory adapter as default
+		this.defaultAdapter = new MemoryBucket();
+	}
+
+	/**
+	 * Register a filesystem adapter with a name
+	 */
+	register(name: string, adapter: Bucket): void {
+		this.adapters.set(name, adapter);
+
+		// Set as default if it's the first one registered
+		if (!this.defaultAdapter) {
+			this.defaultAdapter = adapter;
+		}
+	}
+
+	/**
+	 * Get a filesystem adapter by name
+	 */
+	get(name?: string): Bucket | null {
+		if (!name) {
+			return this.defaultAdapter;
+		}
+		return this.adapters.get(name) || this.defaultAdapter;
+	}
+
+	/**
+	 * Set the default filesystem adapter
+	 */
+	setDefault(adapter: Bucket): void {
+		this.defaultAdapter = adapter;
+	}
+
+	/**
+	 * Get all registered adapter names
+	 */
+	getAdapterNames(): string[] {
+		return Array.from(this.adapters.keys());
+	}
+
+	/**
+	 * Clear all registered adapters
+	 */
+	clear(): void {
+		this.adapters.clear();
+		this.defaultAdapter = null as any;
+	}
+}
+
+/**
+ * Global filesystem registry instance
+ */
+export const FileSystemRegistry = new Registry();
+
+/**
+ * Get a file system directory handle using the registered adapters
+ * @param name Directory name. Use "" for root directory
+ * @param adapterName Optional adapter name (uses default if not specified)
+ */
+export async function getDirectoryHandle(
+	name: string,
+	adapterName?: string,
+): Promise<FileSystemDirectoryHandle> {
+	const adapter = FileSystemRegistry.get(adapterName);
+
+	if (!adapter) {
+		if (adapterName) {
+			throw new Error(
+				`No filesystem adapter registered with name: ${adapterName}`,
+			);
+		} else {
+			throw new Error("No default filesystem adapter registered");
+		}
+	}
+
+	// Since adapter is now a FileSystemDirectoryHandle (Bucket),
+	// we can get subdirectories directly
+	if (name) {
+		return await adapter.getDirectoryHandle(name, {create: true});
+	}
+	return adapter;
+}

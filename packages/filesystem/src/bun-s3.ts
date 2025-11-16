@@ -6,7 +6,7 @@
  */
 
 import {
-	FileSystemBackend,
+	type FileSystemBackend,
 	ShovelDirectoryHandle,
 	ShovelFileHandle,
 } from "./index.js";
