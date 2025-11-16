@@ -243,27 +243,13 @@ export interface Platform {
 // ============================================================================
 
 /**
- * Platform detection result
- */
-export interface PlatformDetection {
-	/** Detected platform name */
-	platform: string;
-	/** Confidence level (0-1) */
-	confidence: number;
-	/** Detection reasons */
-	reasons: string[];
-}
-
-/**
- * Platform registry for auto-detection
+ * Platform registry
  */
 export interface PlatformRegistry {
 	/** Register a platform implementation */
 	register(name: string, platform: any): void;
 	/** Get platform by name */
 	get(name: string): any | undefined;
-	/** Detect current platform */
-	detect(): PlatformDetection;
 	/** Get all registered platforms */
 	list(): string[];
 }
@@ -285,6 +271,45 @@ export function detectRuntime(): "bun" | "deno" | "node" {
 }
 
 /**
+ * Detect deployment platform from environment
+ * Uses deterministic checks for production environments
+ */
+export function detectDeploymentPlatform(): string | null {
+	// AWS Lambda (check first - most specific)
+	if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+		return "lambda";
+	}
+
+	// Deno Deploy (has deployment ID)
+	if (typeof Deno !== "undefined" && Deno.env?.get("DENO_DEPLOYMENT_ID")) {
+		return "deno-deploy";
+	}
+
+	// Netlify Edge (Deno-based with Netlify global)
+	if (typeof Netlify !== "undefined") {
+		return "netlify-edge";
+	}
+
+	// Vercel Edge Runtime
+	if (typeof EdgeRuntime !== "undefined") {
+		return "vercel-edge";
+	}
+
+	// Cloudflare Workers
+	if (
+		typeof caches !== "undefined" &&
+		typeof addEventListener !== "undefined" &&
+		typeof fetch !== "undefined" &&
+		// Ensure we're not in a browser
+		typeof window === "undefined"
+	) {
+		return "cloudflare";
+	}
+
+	return null;
+}
+
+/**
  * Detect platform for development (uses current runtime)
  */
 export function detectDevelopmentPlatform(): string {
@@ -294,7 +319,7 @@ export function detectDevelopmentPlatform(): string {
 		case "bun":
 			return "bun";
 		case "deno":
-			return "node"; // Use Node.js platform for Deno for now
+			return "deno";
 		case "node":
 		default:
 			return "node";
@@ -302,92 +327,12 @@ export function detectDevelopmentPlatform(): string {
 }
 
 /**
- * Comprehensive platform detection with confidence scoring
- */
-export function detectPlatforms(): PlatformDetection[] {
-	const detections: PlatformDetection[] = [];
-
-	// Check for Bun
-	if (typeof Bun !== "undefined") {
-		detections.push({
-			platform: "bun",
-			confidence: 0.9,
-			reasons: ["Bun global detected"],
-		});
-	}
-
-	// Check for Vercel Edge Runtime
-	if (typeof EdgeRuntime !== "undefined") {
-		detections.push({
-			platform: "vercel",
-			confidence: 0.9,
-			reasons: ["Vercel EdgeRuntime detected"],
-		});
-	}
-
-	// Check for Deno
-	if (typeof Deno !== "undefined") {
-		detections.push({
-			platform: "deno",
-			confidence: 0.9,
-			reasons: ["Deno global detected"],
-		});
-	}
-
-	// Check for Cloudflare Workers
-	if (
-		typeof caches !== "undefined" &&
-		typeof Response !== "undefined" &&
-		typeof crypto !== "undefined"
-	) {
-		// Additional check for Workers-specific globals
-		if (
-			typeof addEventListener !== "undefined" &&
-			typeof fetch !== "undefined"
-		) {
-			detections.push({
-				platform: "cloudflare-workers",
-				confidence: 0.8,
-				reasons: ["Worker-like environment detected", "Web APIs available"],
-			});
-		}
-	}
-
-	// Check for Node.js (fallback)
-	if (
-		typeof process !== "undefined" &&
-		process.versions &&
-		process.versions.node
-	) {
-		detections.push({
-			platform: "node",
-			confidence: 0.7,
-			reasons: ["Node.js process detected"],
-		});
-	}
-
-	// Fallback detection
-	if (detections.length === 0) {
-		detections.push({
-			platform: "unknown",
-			confidence: 0,
-			reasons: ["No platform detected"],
-		});
-	}
-
-	return detections.sort((a, b) => b.confidence - a.confidence);
-}
-
-/**
- * Get the best platform detection
- */
-export function getBestPlatformDetection(): PlatformDetection {
-	const detections = detectPlatforms();
-	return detections[0];
-}
-
-/**
  * Resolve platform name from options or auto-detect
+ *
+ * Priority:
+ * 1. Explicit --platform or --target flag
+ * 2. Deployment platform detection (production environments)
+ * 3. Development platform detection (local runtime)
  */
 export function resolvePlatform(options: {
 	platform?: string;
@@ -403,7 +348,13 @@ export function resolvePlatform(options: {
 		return options.target;
 	}
 
-	// Auto-detect for development
+	// Try to detect deployment platform (Lambda, Vercel, etc.)
+	const deploymentPlatform = detectDeploymentPlatform();
+	if (deploymentPlatform) {
+		return deploymentPlatform;
+	}
+
+	// Fallback to development platform (bun, node, deno)
 	return detectDevelopmentPlatform();
 }
 
@@ -742,10 +693,6 @@ class DefaultPlatformRegistry implements PlatformRegistry {
 		return this.platforms.get(name);
 	}
 
-	detect(): PlatformDetection {
-		return getBestPlatformDetection();
-	}
-
 	list(): string[] {
 		return Array.from(this.platforms.keys());
 	}
@@ -755,22 +702,6 @@ class DefaultPlatformRegistry implements PlatformRegistry {
  * Global platform registry instance
  */
 export const platformRegistry = new DefaultPlatformRegistry();
-
-/**
- * Auto-detect and return the appropriate platform
- */
-export function detectPlatform(): Platform | null {
-	const detection = platformRegistry.detect();
-
-	if (detection.confidence > 0.5) {
-		const platform = platformRegistry.get(detection.platform);
-		if (platform) {
-			return platform;
-		}
-	}
-
-	return null;
-}
 
 /**
  * Get platform by name with error handling
@@ -787,15 +718,17 @@ export function getPlatform(name?: string): Platform {
 		return platform;
 	}
 
-	// Auto-detect platform
-	const detected = detectPlatform();
-	if (!detected) {
+	// Auto-detect platform from environment
+	const platformName = detectDeploymentPlatform() || detectDevelopmentPlatform();
+	const platform = platformRegistry.get(platformName);
+
+	if (!platform) {
 		throw new Error(
-			"No platform could be auto-detected. Please register a platform manually or specify a platform name.",
+			`Detected platform '${platformName}' not registered. Please register it manually or specify a platform name.`,
 		);
 	}
 
-	return detected;
+	return platform;
 }
 
 /**
@@ -813,9 +746,11 @@ export async function getPlatformAsync(name?: string): Promise<Platform> {
 		return platform;
 	}
 
-	// Auto-detect platform
-	const detected = detectPlatform();
-	if (!detected) {
+	// Auto-detect platform from environment
+	const platformName = detectDeploymentPlatform() || detectDevelopmentPlatform();
+	let platform = platformRegistry.get(platformName);
+
+	if (!platform) {
 		// Create default Node.js platform if no platforms are registered
 		const NodePlatform = await import("@b9g/platform-node").then(
 			(m) => m.default,
@@ -825,7 +760,7 @@ export async function getPlatformAsync(name?: string): Promise<Platform> {
 		return nodePlatform;
 	}
 
-	return detected;
+	return platform;
 }
 
 // ============================================================================
