@@ -51,7 +51,7 @@ export function assets(config: AssetsConfig = {}) {
 		return manifestCache;
 	}
 
-	return async function* assetsMiddleware(request: Request, _context: any) {
+	return async function assetsMiddleware(request: Request) {
 		try {
 			const url = new URL(request.url);
 			const requestedPath = url.pathname;
@@ -70,8 +70,7 @@ export function assets(config: AssetsConfig = {}) {
 				if (!manifestEntry) {
 					// Only serve files that went through build
 					// Pass through to next middleware for 404 handling
-					const response = yield request;
-					return response;
+					return;
 				}
 
 				// Get file from assets bucket using direct path mapping
