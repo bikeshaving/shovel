@@ -1229,11 +1229,14 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
 }
 
 // Initialize the worker environment and send ready signal
-initializeWorker()
-	.then(({messagePort: _messagePort, sendMessage: send}) => {
-		sendMessage = send;
-		sendMessage({type: "worker-ready"});
-	})
-	.catch((error) => {
-		console.error("[Worker] Failed to initialize:", error);
-	});
+// Only run in worker context (not when imported as a module in main thread)
+if (typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope) {
+	initializeWorker()
+		.then(({messagePort: _messagePort, sendMessage: send}) => {
+			sendMessage = send;
+			sendMessage({type: "worker-ready"});
+		})
+		.catch((error) => {
+			console.error("[Worker] Failed to initialize:", error);
+		});
+}
