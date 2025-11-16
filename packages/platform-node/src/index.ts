@@ -16,12 +16,11 @@ import {
 	ServiceWorkerPool,
 	WorkerPoolOptions,
 } from "@b9g/platform";
-import {CustomCacheStorage, MemoryCache, PostMessageCache} from "@b9g/cache";
-import {
-	FileSystemRegistry,
-	getDirectoryHandle,
-	NodeBucket,
-} from "@b9g/filesystem";
+import {CustomCacheStorage} from "@b9g/cache";
+import {MemoryCache} from "@b9g/cache/memory.js";
+import {PostMessageCache} from "@b9g/cache/postmessage.js";
+import {FileSystemRegistry, getDirectoryHandle} from "@b9g/filesystem";
+import {NodeBucket} from "@b9g/filesystem/node.js";
 import * as Http from "http";
 import * as Path from "path";
 import * as Os from "os";

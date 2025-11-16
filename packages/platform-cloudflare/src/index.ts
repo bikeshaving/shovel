@@ -14,11 +14,8 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 } from "@b9g/platform";
-import {
-	FileSystemRegistry,
-	getDirectoryHandle,
-	MemoryBucket,
-} from "@b9g/filesystem";
+import {FileSystemRegistry, getDirectoryHandle} from "@b9g/filesystem";
+import {MemoryBucket} from "@b9g/filesystem/memory.js";
 
 // Re-export common platform types
 export type {
