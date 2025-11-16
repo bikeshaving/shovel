@@ -1,4 +1,4 @@
-import {Cache, type CacheQueryOptions} from "./cache.js";
+import {Cache, type CacheQueryOptions} from "./index.js";
 
 // Use Web Workers API - self is available in worker context
 const isMainThread = typeof self === "undefined";
