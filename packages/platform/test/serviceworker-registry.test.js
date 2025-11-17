@@ -1,18 +1,18 @@
 import {test, expect} from "bun:test";
 
 /**
- * ServiceWorkerContainer registry tests
+ * ShovelServiceWorkerContainer registry tests
  * Tests the new registry-based architecture for managing multiple ServiceWorkerRegistrations
  */
 
 const TIMEOUT = 1000;
 
 test(
-	"ServiceWorkerContainer registry - basic functionality",
+	"ShovelServiceWorkerContainer registry - basic functionality",
 	async () => {
-		const {ServiceWorkerContainer} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerContainer} = await import("../src/runtime.js");
 
-		const container = new ServiceWorkerContainer();
+		const container = new ShovelServiceWorkerContainer();
 
 		// Should have default root registration
 		const rootReg = await container.getRegistration("/");
@@ -27,11 +27,11 @@ test(
 );
 
 test(
-	"ServiceWorkerContainer registry - multiple registrations",
+	"ShovelServiceWorkerContainer registry - multiple registrations",
 	async () => {
-		const {ServiceWorkerContainer} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerContainer} = await import("../src/runtime.js");
 
-		const container = new ServiceWorkerContainer();
+		const container = new ShovelServiceWorkerContainer();
 
 		// Register multiple ServiceWorkers with different scopes
 		const apiReg = await container.register("/api-worker.js", {scope: "/api/"});
@@ -59,11 +59,11 @@ test(
 );
 
 test(
-	"ServiceWorkerContainer registry - scope matching",
+	"ShovelServiceWorkerContainer registry - scope matching",
 	async () => {
-		const {ServiceWorkerContainer} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerContainer} = await import("../src/runtime.js");
 
-		const container = new ServiceWorkerContainer();
+		const container = new ShovelServiceWorkerContainer();
 
 		// Register ServiceWorkers with different scopes
 		await container.register("/api-worker.js", {scope: "/api/"});
@@ -92,11 +92,11 @@ test(
 );
 
 test(
-	"ServiceWorkerContainer registry - scope normalization",
+	"ShovelServiceWorkerContainer registry - scope normalization",
 	async () => {
-		const {ServiceWorkerContainer} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerContainer} = await import("../src/runtime.js");
 
-		const container = new ServiceWorkerContainer();
+		const container = new ShovelServiceWorkerContainer();
 
 		// Register with various scope formats
 		const reg1 = await container.register("/worker.js", {scope: "api"}); // Should normalize to /api/
@@ -116,11 +116,11 @@ test(
 );
 
 test(
-	"ServiceWorkerContainer registry - unregister functionality",
+	"ShovelServiceWorkerContainer registry - unregister functionality",
 	async () => {
-		const {ServiceWorkerContainer} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerContainer} = await import("../src/runtime.js");
 
-		const container = new ServiceWorkerContainer();
+		const container = new ShovelServiceWorkerContainer();
 
 		// Register a ServiceWorker
 		await container.register("/worker.js", {scope: "/temp/"});
@@ -145,11 +145,11 @@ test(
 );
 
 test(
-	"ServiceWorkerContainer registry - get all registrations",
+	"ShovelServiceWorkerContainer registry - get all registrations",
 	async () => {
-		const {ServiceWorkerContainer} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerContainer} = await import("../src/runtime.js");
 
-		const container = new ServiceWorkerContainer();
+		const container = new ShovelServiceWorkerContainer();
 
 		// Initially should have just the root registration
 		let allRegs = await container.getRegistrations();

@@ -187,9 +187,10 @@ export class ShovelWindowClient extends ShovelClient implements WindowClient {
 }
 
 /**
- * Clients container provides access to active service worker clients
+ * ShovelClients - Internal implementation of Clients for Shovel runtime
+ * Note: Standard Clients has no constructor - instances are created internally
  */
-export class Clients {
+export class ShovelClients implements Clients {
 	async claim(): Promise<void> {
 		// No-op: HTTP servers don't have persistent clients to claim
 	}
@@ -239,9 +240,10 @@ export class ExtendableMessageEvent extends ExtendableEvent {
 }
 
 /**
- * ServiceWorker interface represents a service worker
+ * ShovelServiceWorker - Internal implementation of ServiceWorker for Shovel runtime
+ * Note: Standard ServiceWorker has no constructor - instances are created internally
  */
-export class ServiceWorker extends EventTarget {
+export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 	scriptURL: string;
 	state:
 		| "parsed"
@@ -293,9 +295,10 @@ export class ServiceWorker extends EventTarget {
 }
 
 /**
- * NavigationPreloadManager provides control over navigation preload
+ * ShovelNavigationPreloadManager - Internal implementation of NavigationPreloadManager
+ * Note: Standard NavigationPreloadManager has no constructor - instances are created internally
  */
-export class NavigationPreloadManager {
+export class ShovelNavigationPreloadManager implements NavigationPreloadManager {
 	async disable(): Promise<void> {
 		// No-op in server context
 	}
@@ -314,16 +317,17 @@ export class NavigationPreloadManager {
 }
 
 /**
- * ServiceWorkerRegistration represents a service worker registration
+ * ShovelServiceWorkerRegistration - Internal implementation of ServiceWorkerRegistration
  * This is also the Shovel ServiceWorker runtime - they are unified into one class
+ * Note: Standard ServiceWorkerRegistration has no constructor - instances are created internally
  */
-export class ServiceWorkerRegistration extends EventTarget {
+export class ShovelServiceWorkerRegistration extends EventTarget implements ServiceWorkerRegistration {
 	readonly scope: string;
 	readonly updateViaCache: "imports" | "all" | "none" = "imports";
 	readonly navigationPreload: NavigationPreloadManager;
 
 	// ServiceWorker instances representing different lifecycle states
-	public _serviceWorker: ServiceWorker;
+	public _serviceWorker: ShovelServiceWorker;
 
 	// Shovel runtime state
 	private eventListeners = new Map<string, Function[]>();
@@ -331,8 +335,8 @@ export class ServiceWorkerRegistration extends EventTarget {
 	constructor(scope: string = "/", scriptURL: string = "/") {
 		super();
 		this.scope = scope;
-		this.navigationPreload = new NavigationPreloadManager();
-		this._serviceWorker = new ServiceWorker(scriptURL, "parsed");
+		this.navigationPreload = new ShovelNavigationPreloadManager();
+		this._serviceWorker = new ShovelServiceWorker(scriptURL, "parsed");
 	}
 
 	// Web API properties (not supported in server context, but required by interface)
@@ -579,18 +583,24 @@ export class ServiceWorkerRegistration extends EventTarget {
 }
 
 /**
- * ServiceWorkerContainer provides access to service worker registration and messaging
+ * ShovelServiceWorkerContainer - Internal implementation of ServiceWorkerContainer
  * This is the registry that manages multiple ServiceWorkerRegistrations by scope
+ * Note: Standard ServiceWorkerContainer has no constructor - instances are created internally
  */
-export class ServiceWorkerContainer extends EventTarget {
-	private registrations = new Map<string, ServiceWorkerRegistration>();
+export class ShovelServiceWorkerContainer extends EventTarget implements ServiceWorkerContainer {
+	private registrations = new Map<string, ShovelServiceWorkerRegistration>();
 	readonly controller: ServiceWorker | null = null;
 	readonly ready: Promise<ServiceWorkerRegistration>;
+
+	// Event handlers required by Web API
+	oncontrollerchange: ((ev: Event) => any) | null = null;
+	onmessage: ((ev: MessageEvent) => any) | null = null;
+	onmessageerror: ((ev: MessageEvent) => any) | null = null;
 
 	constructor() {
 		super();
 		// Create default registration for root scope
-		const defaultRegistration = new ServiceWorkerRegistration("/", "/");
+		const defaultRegistration = new ShovelServiceWorkerRegistration("/", "/");
 		this.registrations.set("/", defaultRegistration);
 		this.ready = Promise.resolve(defaultRegistration);
 	}
@@ -635,7 +645,7 @@ export class ServiceWorkerContainer extends EventTarget {
 			registration._serviceWorker._setState("parsed");
 		} else {
 			// Create new registration
-			registration = new ServiceWorkerRegistration(scope, url);
+			registration = new ShovelServiceWorkerRegistration(scope, url);
 			this.registrations.set(scope, registration);
 
 			// Dispatch updatefound event
@@ -840,9 +850,10 @@ export class PushEvent extends ExtendableEvent {
 }
 
 /**
- * PushMessageData represents the data of a push message
+ * ShovelPushMessageData - Internal implementation of PushMessageData
+ * Note: Standard PushMessageData has no constructor - instances are created internally
  */
-export class PushMessageData {
+export class ShovelPushMessageData implements PushMessageData {
 	constructor(private _data: any) {}
 
 	arrayBuffer(): ArrayBuffer {
@@ -854,6 +865,10 @@ export class PushMessageData {
 
 	blob(): Blob {
 		return new Blob([this.arrayBuffer()]);
+	}
+
+	bytes(): Uint8Array<ArrayBuffer> {
+		return new Uint8Array(this.arrayBuffer()) as Uint8Array<ArrayBuffer>;
 	}
 
 	json(): any {
@@ -1079,7 +1094,9 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 		listener: EventListenerOrEventListenerObject | null,
 		options?: boolean | AddEventListenerOptions,
 	): void {
-		this.registration.addEventListener(type, listener, options);
+		if (listener) {
+			this.registration.addEventListener(type, listener, options);
+		}
 	}
 
 	removeEventListener(
@@ -1087,7 +1104,9 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 		listener: EventListenerOrEventListenerObject | null,
 		options?: boolean | EventListenerOptions,
 	): void {
-		this.registration.removeEventListener(type, listener, options);
+		if (listener) {
+			this.registration.removeEventListener(type, listener, options);
+		}
 	}
 
 	dispatchEvent(event: Event): boolean {
@@ -1099,26 +1118,7 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	 * Note: HTTP requests are stateless, so most client operations are no-ops
 	 */
 	private createClientsAPI(): Clients {
-		return {
-			async claim(): Promise<void> {
-				// No-op: HTTP requests are stateless, no persistent clients to claim
-			},
-
-			async get(_id: string): Promise<Client | undefined> {
-				// Return undefined - no persistent clients in HTTP-only server
-				return undefined;
-			},
-
-			async matchAll<T extends ClientQueryOptions>(_options?: T): Promise<readonly (T["type"] extends "window" ? WindowClient : Client)[]> {
-				// Return empty array - no persistent clients in HTTP-only server
-				return [] as readonly (T["type"] extends "window" ? WindowClient : Client)[];
-			},
-
-			async openWindow(_url: string | URL): Promise<WindowClient | null> {
-				// Not supported in server context
-				return null;
-			},
-		};
+		return new ShovelClients();
 	}
 
 	/**
@@ -1196,7 +1196,7 @@ const buckets = new CustomBucketStorage(async (name: string) => {
 });
 
 // Create ServiceWorker runtime
-let registration = new ServiceWorkerRegistration();
+let registration = new ShovelServiceWorkerRegistration();
 let scope = new ShovelGlobalScope({registration, caches, buckets});
 scope.install();
 
@@ -1245,7 +1245,7 @@ async function loadServiceWorker(
 			console.info("[Worker] Creating completely fresh ServiceWorker context");
 
 			// Create a completely new runtime instance instead of trying to reset
-			registration = new ServiceWorkerRegistration();
+			registration = new ShovelServiceWorkerRegistration();
 			scope = new ShovelGlobalScope({registration, caches, buckets});
 			scope.install();
 			_workerSelf = scope;

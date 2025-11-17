@@ -264,7 +264,7 @@ test(
 test(
 	"self.buckets in ServiceWorker context",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
 		const {CustomBucketStorage} = await import("@b9g/filesystem");
@@ -286,7 +286,7 @@ test(
 			`,
 			);
 
-			const registration = new ServiceWorkerRegistration();
+			const registration = new ShovelServiceWorkerRegistration();
 			const buckets = await createBucketStorage(tempDir);
 
 			// Set up ServiceWorker globals with buckets
@@ -339,7 +339,7 @@ test(
 test(
 	"self.buckets file serving with different content types",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
 		const {CustomBucketStorage} = await import("@b9g/filesystem");
@@ -357,7 +357,7 @@ test(
 			await FS.writeFile(join(distPath, "script.js"), "console.log('loaded');");
 			await FS.writeFile(join(distPath, "data.json"), '{"message": "test"}');
 
-			const registration = new ServiceWorkerRegistration();
+			const registration = new ShovelServiceWorkerRegistration();
 			const buckets = await createBucketStorage(tempDir);
 
 			const scope = new ShovelGlobalScope({registration, buckets});
@@ -569,7 +569,7 @@ test(
 test(
 	"buckets API replaces old dirs API",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
 		const {CustomBucketStorage} = await import("@b9g/filesystem");
@@ -577,7 +577,7 @@ test(
 		const tempDir = await createTempDir();
 
 		try {
-			const registration = new ServiceWorkerRegistration();
+			const registration = new ShovelServiceWorkerRegistration();
 			const buckets = await createBucketStorage(tempDir);
 
 			const scope = new ShovelGlobalScope({registration, buckets});

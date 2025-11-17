@@ -298,13 +298,13 @@ test(
 
 			// Test ServiceWorker that serves assets
 			const {
-				ServiceWorkerRegistration,
+				ShovelServiceWorkerRegistration,
 				ShovelGlobalScope,
 				CustomBucketStorage,
 			} = await import("@b9g/platform");
 			const {NodeBucket} = await import("@b9g/filesystem/node.js");
 
-			const runtime = new ServiceWorkerRegistration();
+			const runtime = new ShovelServiceWorkerRegistration();
 
 			// Create bucket storage with factory
 			const buckets = new CustomBucketStorage(async (name) => {

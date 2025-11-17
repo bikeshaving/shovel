@@ -176,7 +176,7 @@ if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
 
 // WORKER THREAD CODE - this needs to be at top level for imports
 import {
-	ServiceWorkerRegistration,
+	ShovelServiceWorkerRegistration,
 	ShovelGlobalScope,
 } from "@b9g/platform";
 import {FileSystemRegistry, CustomBucketStorage} from "@b9g/filesystem";
@@ -187,7 +187,7 @@ if (workerData?.isWorker && parentPort) {
 	console.info(`[Worker ${workerData.workerId}] Starting ServiceWorker...`);
 
 	// Set up ServiceWorker environment in worker thread
-	const registration = new ServiceWorkerRegistration();
+	const registration = new ShovelServiceWorkerRegistration();
 
 	// Set up bucket storage - registry-only
 	const executableDir = dirname(fileURLToPath(import.meta.url));

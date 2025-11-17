@@ -1344,7 +1344,7 @@ export class ServiceWorkerPool {
 // ============================================================================
 
 export {
-	ServiceWorkerRegistration,
+	ShovelServiceWorkerRegistration,
 	ShovelGlobalScope,
 	FetchEvent,
 	InstallEvent,

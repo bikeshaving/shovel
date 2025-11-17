@@ -33,11 +33,11 @@ test(
 	"ServiceWorker globals setup",
 	async () => {
 		// Import ServiceWorker classes
-		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
 
-		const registration = new ServiceWorkerRegistration();
+		const registration = new ShovelServiceWorkerRegistration();
 		const mockBuckets = {
 			open: async (name) => ({
 				name,
@@ -70,11 +70,11 @@ test(
 test(
 	"ServiceWorker event listener functionality",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
 
-		const registration = new ServiceWorkerRegistration();
+		const registration = new ShovelServiceWorkerRegistration();
 		const scope = new ShovelGlobalScope({registration});
 		scope.install();
 
@@ -116,11 +116,11 @@ test(
 test(
 	"ServiceWorker skipWaiting functionality",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
 
-		const registration = new ServiceWorkerRegistration();
+		const registration = new ShovelServiceWorkerRegistration();
 		let hotReloadCalled = false;
 
 		const scope = new ShovelGlobalScope({
@@ -143,11 +143,11 @@ test(
 test(
 	"ServiceWorker clients API",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
 
-		const registration = new ServiceWorkerRegistration();
+		const registration = new ShovelServiceWorkerRegistration();
 		const scope = new ShovelGlobalScope({registration});
 		scope.install();
 
@@ -172,11 +172,11 @@ test(
 test(
 	"ServiceWorker buckets API",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
 
-		const registration = new ServiceWorkerRegistration();
+		const registration = new ShovelServiceWorkerRegistration();
 		const mockBuckets = {
 			open: async (name) => ({
 				name,
@@ -220,9 +220,9 @@ test(
 test(
 	"ServiceWorker lifecycle - install and activate",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");
 
-		const runtime = new ServiceWorkerRegistration();
+		const runtime = new ShovelServiceWorkerRegistration();
 		let installEventFired = false;
 		let activateEventFired = false;
 
@@ -249,9 +249,9 @@ test(
 test(
 	"ServiceWorker fetch event handling",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");
 
-		const runtime = new ServiceWorkerRegistration();
+		const runtime = new ShovelServiceWorkerRegistration();
 		let fetchEventReceived = null;
 
 		runtime.addEventListener("fetch", (event) => {
@@ -286,9 +286,9 @@ test(
 test(
 	"ServiceWorker event listener removal",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");
 
-		const runtime = new ServiceWorkerRegistration();
+		const runtime = new ShovelServiceWorkerRegistration();
 		let callCount = 0;
 
 		const listener = () => {
@@ -315,9 +315,9 @@ test(
 test(
 	"ServiceWorker multiple listeners for same event",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");
 
-		const runtime = new ServiceWorkerRegistration();
+		const runtime = new ShovelServiceWorkerRegistration();
 		const calls = [];
 
 		runtime.addEventListener("fetch", (event) => {
@@ -353,9 +353,9 @@ test(
 test(
 	"ServiceWorker error handling in event listeners",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");
 
-		const runtime = new ServiceWorkerRegistration();
+		const runtime = new ShovelServiceWorkerRegistration();
 
 		// Add fetch listener that throws
 		runtime.addEventListener("fetch", (_event) => {
@@ -380,9 +380,9 @@ test(
 test(
 	"ServiceWorker runtime reset functionality",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");
 
-		const runtime = new ServiceWorkerRegistration();
+		const runtime = new ShovelServiceWorkerRegistration();
 		let listenerCalled = false;
 
 		// Add listener
@@ -408,9 +408,9 @@ test(
 test(
 	"ServiceWorker install waitUntil rejection handling",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");
 
-		const runtime = new ServiceWorkerRegistration();
+		const runtime = new ShovelServiceWorkerRegistration();
 
 		runtime.addEventListener("install", (event) => {
 			// Add a promise that will reject
@@ -442,9 +442,9 @@ test(
 test(
 	"ServiceWorker activate waitUntil rejection handling",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");
 
-		const runtime = new ServiceWorkerRegistration();
+		const runtime = new ShovelServiceWorkerRegistration();
 
 		// Install first without errors
 		await runtime.install();
@@ -479,9 +479,9 @@ test(
 test(
 	"ServiceWorker fetch waitUntil rejection does not block response",
 	async () => {
-		const {ServiceWorkerRegistration} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");
 
-		const runtime = new ServiceWorkerRegistration();
+		const runtime = new ShovelServiceWorkerRegistration();
 
 		runtime.addEventListener("fetch", (event) => {
 			event.respondWith(new Response("Hello World"));
@@ -511,11 +511,11 @@ test(
 test(
 	"ServiceWorker complete workflow",
 	async () => {
-		const {ServiceWorkerRegistration, ShovelGlobalScope} = await import(
+		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
 
-		const registration = new ServiceWorkerRegistration();
+		const registration = new ShovelServiceWorkerRegistration();
 
 		// Set up globals like production does
 		const scope = new ShovelGlobalScope({registration});

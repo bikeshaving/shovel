@@ -5,7 +5,7 @@
  */
 
 import {
-	ServiceWorkerRegistration,
+	ShovelServiceWorkerRegistration,
 	ShovelGlobalScope,
 } from "@b9g/platform";
 import {FileSystemRegistry, CustomBucketStorage} from "@b9g/filesystem";
@@ -18,7 +18,7 @@ import {promisify} from "util";
 const realpathAsync = promisify(realpath);
 
 // Production server setup
-const registration = new ServiceWorkerRegistration();
+const registration = new ShovelServiceWorkerRegistration();
 
 // Set up bucket storage - registry-only, no on-demand creation
 const executableDir = dirname(fileURLToPath(import.meta.url));
