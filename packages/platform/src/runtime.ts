@@ -15,14 +15,13 @@
 
 /**
  * ExtendableEvent base class following ServiceWorker spec
+ * Standard constructor: new ExtendableEvent(type) or new ExtendableEvent(type, options)
  */
 export class ExtendableEvent extends Event {
-	readonly promises: Promise<any>[] = [];
-	readonly pendingPromises: Set<Promise<any>>;
+	private readonly promises: Promise<any>[] = [];
 
-	constructor(type: string, pendingPromises: Set<Promise<any>>) {
-		super(type);
-		this.pendingPromises = pendingPromises;
+	constructor(type: string, eventInitDict?: EventInit) {
+		super(type, eventInitDict);
 	}
 
 	waitUntil(promise: Promise<any>): void {
@@ -31,10 +30,6 @@ export class ExtendableEvent extends Event {
 
 		// Store the promise for Promise.all() to consume (rejection still propagates)
 		this.promises.push(promise);
-		this.pendingPromises.add(promise);
-
-		// Clean up when done - finally() returns a promise, so we must catch it too
-		promise.finally(() => this.pendingPromises.delete(promise)).catch(() => {});
 	}
 
 	getPromises(): Promise<any>[] {
@@ -50,8 +45,8 @@ export class FetchEvent extends ExtendableEvent {
 	private responsePromise: Promise<Response> | null = null;
 	private responded = false;
 
-	constructor(request: Request, pendingPromises: Set<Promise<any>>) {
-		super("fetch", pendingPromises);
+	constructor(request: Request, eventInitDict?: EventInit) {
+		super("fetch", eventInitDict);
 		this.request = request;
 	}
 
@@ -76,8 +71,8 @@ export class FetchEvent extends ExtendableEvent {
  * ServiceWorker-style install event
  */
 export class InstallEvent extends ExtendableEvent {
-	constructor(pendingPromises: Set<Promise<any>>) {
-		super("install", pendingPromises);
+	constructor(eventInitDict?: EventInit) {
+		super("install", eventInitDict);
 	}
 }
 
@@ -85,8 +80,8 @@ export class InstallEvent extends ExtendableEvent {
  * ServiceWorker-style activate event
  */
 export class ActivateEvent extends ExtendableEvent {
-	constructor(pendingPromises: Set<Promise<any>>) {
-		super("activate", pendingPromises);
+	constructor(eventInitDict?: EventInit) {
+		super("activate", eventInitDict);
 	}
 }
 /**
@@ -217,6 +212,14 @@ export class Clients {
 /**
  * ExtendableMessageEvent represents message events with waitUntil support
  */
+export interface ExtendableMessageEventInit extends EventInit {
+	data?: any;
+	origin?: string;
+	lastEventId?: string;
+	source?: Client | ServiceWorker | MessagePort | null;
+	ports?: MessagePort[];
+}
+
 export class ExtendableMessageEvent extends ExtendableEvent {
 	readonly data: any;
 	readonly origin: string;
@@ -224,23 +227,13 @@ export class ExtendableMessageEvent extends ExtendableEvent {
 	readonly source: Client | ServiceWorker | MessagePort | null;
 	readonly ports: readonly MessagePort[];
 
-	constructor(
-		type: string,
-		options: {
-			pendingPromises: Set<Promise<any>>;
-			data?: any;
-			origin?: string;
-			lastEventId?: string;
-			source?: Client | ServiceWorker | MessagePort | null;
-			ports?: MessagePort[];
-		},
-	) {
-		super(type, options.pendingPromises);
-		this.data = options.data;
-		this.origin = options.origin || "";
-		this.lastEventId = options.lastEventId || "";
-		this.source = options.source || null;
-		this.ports = Object.freeze([...(options.ports || [])]);
+	constructor(type: string, eventInitDict?: ExtendableMessageEventInit) {
+		super(type, eventInitDict);
+		this.data = eventInitDict?.data ?? null;
+		this.origin = eventInitDict?.origin ?? "";
+		this.lastEventId = eventInitDict?.lastEventId ?? "";
+		this.source = eventInitDict?.source ?? null;
+		this.ports = Object.freeze([...(eventInitDict?.ports ?? [])]);
 	}
 }
 
@@ -332,7 +325,6 @@ export class ServiceWorkerRegistration extends EventTarget {
 	public _serviceWorker: ServiceWorker;
 
 	// Shovel runtime state
-	private pendingPromises = new Set<Promise<any>>();
 	private eventListeners = new Map<string, Function[]>();
 
 	constructor(scope: string = "/", scriptURL: string = "/") {
@@ -440,7 +432,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 		this._serviceWorker._setState("installing");
 
 		return new Promise<void>((resolve, reject) => {
-			const event = new InstallEvent(this.pendingPromises);
+			const event = new InstallEvent();
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
@@ -481,7 +473,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 		this._serviceWorker._setState("activating");
 
 		return new Promise<void>((resolve, reject) => {
-			const event = new ActivateEvent(this.pendingPromises);
+			const event = new ActivateEvent();
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
@@ -520,7 +512,7 @@ export class ServiceWorkerRegistration extends EventTarget {
 		}
 
 		return new Promise<Response>((resolve, reject) => {
-			const event = new FetchEvent(request, this.pendingPromises);
+			const event = new FetchEvent(request);
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
@@ -568,20 +560,10 @@ export class ServiceWorkerRegistration extends EventTarget {
 	}
 
 	/**
-	 * Wait for all pending promises to resolve (Shovel extension)
-	 */
-	async waitForPending(): Promise<void> {
-		if (this.pendingPromises.size > 0) {
-			await Promise.allSettled([...this.pendingPromises]);
-		}
-	}
-
-	/**
 	 * Reset the ServiceWorker state for hot reloading (Shovel extension)
 	 */
 	reset(): void {
 		this._serviceWorker._setState("parsed");
-		this.pendingPromises.clear();
 
 		// Remove all tracked event listeners
 		for (const [type, listeners] of this.eventListeners) {
@@ -821,42 +803,38 @@ export class Notification extends EventTarget {
 /**
  * NotificationEvent for notification interactions
  */
+export interface NotificationEventInit extends EventInit {
+	action?: string;
+	notification: Notification;
+	reply?: string | null;
+}
+
 export class NotificationEvent extends ExtendableEvent {
 	readonly action: string;
 	readonly notification: Notification;
 	readonly reply: string | null = null;
 
-	constructor(
-		type: string,
-		options: {
-			pendingPromises: Set<Promise<any>>;
-			action?: string;
-			notification: Notification;
-			reply?: string | null;
-		},
-	) {
-		super(type, options.pendingPromises);
-		this.action = options.action || "";
-		this.notification = options.notification;
-		this.reply = options.reply || null;
+	constructor(type: string, eventInitDict: NotificationEventInit) {
+		super(type, eventInitDict);
+		this.action = eventInitDict.action ?? "";
+		this.notification = eventInitDict.notification;
+		this.reply = eventInitDict.reply ?? null;
 	}
 }
 
 /**
  * PushEvent for push message handling
  */
+export interface PushEventInit extends EventInit {
+	data?: PushMessageData | null;
+}
+
 export class PushEvent extends ExtendableEvent {
 	readonly data: PushMessageData | null;
 
-	constructor(
-		type: string,
-		options: {
-			pendingPromises: Set<Promise<any>>;
-			data?: PushMessageData | null;
-		},
-	) {
-		super(type, options.pendingPromises);
-		this.data = options.data || null;
+	constructor(type: string, eventInitDict?: PushEventInit) {
+		super(type, eventInitDict);
+		this.data = eventInitDict?.data ?? null;
 	}
 }
 
@@ -892,21 +870,19 @@ export class PushMessageData {
 /**
  * SyncEvent for background sync
  */
+export interface SyncEventInit extends EventInit {
+	tag: string;
+	lastChance?: boolean;
+}
+
 export class SyncEvent extends ExtendableEvent {
 	readonly tag: string;
 	readonly lastChance: boolean;
 
-	constructor(
-		type: string,
-		options: {
-			pendingPromises: Set<Promise<any>>;
-			tag: string;
-			lastChance?: boolean;
-		},
-	) {
-		super(type, options.pendingPromises);
-		this.tag = options.tag;
-		this.lastChance = options.lastChance || false;
+	constructor(type: string, eventInitDict: SyncEventInit) {
+		super(type, eventInitDict);
+		this.tag = eventInitDict.tag;
+		this.lastChance = eventInitDict.lastChance ?? false;
 	}
 }
 
