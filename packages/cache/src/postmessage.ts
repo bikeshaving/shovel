@@ -169,7 +169,7 @@ export class PostMessageCache extends Cache {
 	async keys(
 		request?: Request,
 		options?: CacheQueryOptions,
-	): Promise<Request[]> {
+	): Promise<readonly Request[]> {
 		let serializedRequest;
 		if (request) {
 			serializedRequest = {

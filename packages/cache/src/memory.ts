@@ -114,7 +114,7 @@ export class MemoryCache extends Cache {
 	async keys(
 		request?: Request,
 		options?: CacheQueryOptions,
-	): Promise<Request[]> {
+	): Promise<readonly Request[]> {
 		const keys: Request[] = [];
 
 		for (const [_, entry] of this.storage) {

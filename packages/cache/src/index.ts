@@ -56,7 +56,7 @@ export abstract class Cache {
 	abstract keys(
 		request?: Request,
 		options?: CacheQueryOptions,
-	): Promise<Request[]>;
+	): Promise<readonly Request[]>;
 
 	/**
 	 * Takes a URL, retrieves it and adds the resulting response object to the cache
@@ -231,7 +231,7 @@ export class CustomCacheStorage {
 						? {
 								status: response.status,
 								statusText: response.statusText,
-								headers: Object.fromEntries(response.headers.entries()),
+								headers: Object.fromEntries(response.headers),
 								body: await response.text(),
 							}
 						: undefined;
