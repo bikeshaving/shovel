@@ -121,10 +121,10 @@ export interface BucketStorage {
 // ============================================================================
 
 /**
- * Client represents the scope of a service worker client
- * Either a document in a browser context or a SharedWorker
+ * ShovelClient - Internal implementation of Client for Shovel runtime
+ * Note: Standard Client has no constructor - instances are created internally
  */
-export class Client {
+export class ShovelClient implements Client {
 	readonly frameType: "auxiliary" | "top-level" | "nested" | "none" = "none";
 	readonly id: string;
 	readonly type: "window" | "worker" | "sharedworker" = "worker";
@@ -153,9 +153,10 @@ export class Client {
 }
 
 /**
- * WindowClient represents a service worker client that is a document in a browser context
+ * ShovelWindowClient - Internal implementation of WindowClient for Shovel runtime
+ * Note: Standard WindowClient has no constructor - instances are created internally
  */
-export class WindowClient extends Client {
+export class ShovelWindowClient extends ShovelClient implements WindowClient {
 	readonly focused: boolean = false;
 	readonly visibilityState: DocumentVisibilityState = "hidden";
 
