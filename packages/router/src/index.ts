@@ -3,10 +3,13 @@
  *
  * Features:
  * - Pure Request/Response routing (works anywhere)
- * - Generator-based middleware with yield continuation
  * - Chainable route builder API
- * - Integration with @b9g/match-pattern for enhanced URL matching
- * - Prepared for future cache-first architecture
+ * - Generator-based middleware with yield continuation
+ * - Integration with URLPattern and MatchPattern for enhanced URL matching
+ * - Cache-aware routing
+ * TODO:
+ * - Portable param matching
+ * - Typechecking
  */
 
 import {MatchPattern} from "@b9g/match-pattern";
