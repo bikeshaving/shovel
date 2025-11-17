@@ -270,12 +270,18 @@ export class NodePlatform extends BasePlatform {
 		});
 
 		let isListening = false;
+		let actualPort = port;
 
 		return {
 			async listen() {
 				return new Promise<void>((resolve) => {
 					httpServer.listen(port, host, () => {
-						console.info(`🚀 Server running at http://${host}:${port}`);
+						// Get actual assigned port (important when port is 0)
+						const addr = httpServer.address();
+						if (addr && typeof addr === 'object') {
+							actualPort = addr.port;
+						}
+						console.info(`🚀 Server running at http://${host}:${actualPort}`);
 						isListening = true;
 						resolve();
 					});
@@ -289,9 +295,9 @@ export class NodePlatform extends BasePlatform {
 					});
 				});
 			},
-			address: () => ({port, host}),
+			address: () => ({port: actualPort, host}),
 			get url() {
-				return `http://${host}:${port}`;
+				return `http://${host}:${actualPort}`;
 			},
 			get ready() {
 				return isListening;
