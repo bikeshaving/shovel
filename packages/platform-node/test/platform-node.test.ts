@@ -101,25 +101,17 @@ describe("NodePlatform", () => {
 		expect(config.static.type).toBe("memory");
 	});
 
-	test("should respect NODE_ENV for hot reload", () => {
-		const originalEnv = process.env.NODE_ENV;
+	test("should use compile-time import.meta.env.DEV for hot reload default", () => {
+		// Hot reload default comes from compile-time import.meta.env.DEV
+		// which is injected by esbuild at build time
+		const defaultPlatform = new NodePlatform();
 
-		// Test production mode (hot reload off)
-		process.env.NODE_ENV = "production";
-		const prodPlatform = new NodePlatform();
-		expect((prodPlatform as any).options.hotReload).toBe(false);
+		// The default should be a boolean (from import.meta.env.DEV)
+		expect(typeof (defaultPlatform as any).options.hotReload).toBe("boolean");
 
-		// Test development mode (hot reload on)
-		process.env.NODE_ENV = "development";
-		const devPlatform = new NodePlatform();
-		expect((devPlatform as any).options.hotReload).toBe(true);
-
-		// Restore original
-		if (originalEnv !== undefined) {
-			process.env.NODE_ENV = originalEnv;
-		} else {
-			delete process.env.NODE_ENV;
-		}
+		// Verify it matches the compile-time environment
+		const expectedDefault = import.meta.env?.DEV ?? false;
+		expect((defaultPlatform as any).options.hotReload).toBe(expectedDefault);
 	});
 
 	test("should allow explicit hot reload option", () => {

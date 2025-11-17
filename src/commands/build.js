@@ -8,6 +8,7 @@ import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile, chmod} from "fs/promises";
 import {fileURLToPath} from "url";
 import {assetsPlugin} from "@b9g/assets/plugin";
+import {createEnvDefines} from "../env-defines.js";
 
 // Build configuration constants
 const BUILD_DEFAULTS = {
@@ -17,9 +18,7 @@ const BUILD_DEFAULTS = {
 	sourcemap: false,
 	minify: false,
 	treeShaking: true,
-	environment: {
-		"process.env.NODE_ENV": '"production"',
-	},
+	environment: createEnvDefines("production"),
 };
 
 // Directory structure for separate buckets

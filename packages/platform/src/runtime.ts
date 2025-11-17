@@ -26,11 +26,15 @@ export class ExtendableEvent extends Event {
 	}
 
 	waitUntil(promise: Promise<any>): void {
+		// Attach catch handler to input promise to suppress unhandled rejection logging
+		promise.catch(() => {});
+
+		// Store the promise for Promise.all() to consume (rejection still propagates)
 		this.promises.push(promise);
 		this.pendingPromises.add(promise);
-		// Suppress unhandled rejection warnings - Promise.all() will handle it
-		promise.catch(() => {});
-		promise.finally(() => this.pendingPromises.delete(promise));
+
+		// Clean up when done - finally() returns a promise, so we must catch it too
+		promise.finally(() => this.pendingPromises.delete(promise)).catch(() => {});
 	}
 
 	getPromises(): Promise<any>[] {
@@ -938,9 +942,13 @@ export interface ShovelGlobalScopeOptions {
 	/** ServiceWorker registration instance */
 	registration: ServiceWorkerRegistration;
 	/** Bucket storage (file system access) */
-	buckets: BucketStorage;
+	buckets?: BucketStorage;
 	/** Cache storage (required by ServiceWorkerGlobalScope) */
-	caches: CacheStorage;
+	caches?: CacheStorage;
+	/** Development mode flag */
+	isDevelopment?: boolean;
+	/** Hot reload callback for development */
+	hotReload?: () => Promise<void>;
 }
 
 /**
@@ -965,6 +973,10 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	// Clients API
 	// Our custom Clients implementation provides core functionality compatible with the Web API
 	readonly clients: Clients;
+
+	// Shovel-specific development features
+	private readonly isDevelopment: boolean;
+	private readonly hotReload?: () => Promise<void>;
 
 	// Web API required properties (stubs for server context)
 	readonly cookieStore: any = null; // CookieStore not available in server context
@@ -1054,8 +1066,10 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 
 	constructor(options: ShovelGlobalScopeOptions) {
 		this.registration = options.registration;
-		this.caches = options.caches;
-		this.buckets = options.buckets;
+		this.caches = options.caches || ({} as CacheStorage);
+		this.buckets = options.buckets || ({} as BucketStorage);
+		this.isDevelopment = options.isDevelopment ?? false;
+		this.hotReload = options.hotReload;
 
 		// Create clients API implementation
 		this.clients = this.createClientsAPI();
@@ -1064,11 +1078,20 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	/**
 	 * Standard ServiceWorker skipWaiting() implementation
 	 * Allows the ServiceWorker to activate immediately
+	 * In development mode with hot reload, triggers a worker reload
 	 */
 	async skipWaiting(): Promise<void> {
 		console.info("[ServiceWorker] skipWaiting() called");
-		// In a real ServiceWorker, this would activate the waiting worker
-		// For Shovel, this is a no-op as we handle activation differently
+		if (this.isDevelopment && this.hotReload) {
+			console.info("[ServiceWorker] skipWaiting() - triggering hot reload");
+			await this.hotReload();
+		} else if (!this.isDevelopment) {
+			console.info(
+				"[ServiceWorker] skipWaiting() - production graceful restart not implemented",
+			);
+			// In production, this would normally activate the waiting worker
+			// For Shovel, production restart logic could be implemented here
+		}
 	}
 
 	/**

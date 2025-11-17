@@ -9,6 +9,7 @@ import {readFileSync} from "fs";
 import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {DEFAULTS} from "./config.js";
+import {createEnvDefines} from "./env-defines.js";
 
 export interface WatcherOptions {
 	/** Entry point to build */
@@ -131,9 +132,7 @@ export class Watcher {
 				sourcemap: "inline",
 				minify: false,
 				treeShaking: true,
-				define: {
-					"process.env.NODE_ENV": '"development"',
-				},
+				define: createEnvDefines("development"),
 			});
 
 			if (result.errors.length > 0) {

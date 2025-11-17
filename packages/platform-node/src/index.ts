@@ -68,7 +68,7 @@ export class NodePlatform extends BasePlatform {
 	constructor(options: NodePlatformOptions = {}) {
 		super(options);
 		this.options = {
-			hotReload: process.env.NODE_ENV !== "production",
+			hotReload: Boolean(import.meta.env?.DEV) ?? false,
 			port: 3000,
 			host: "localhost",
 			cwd: process.cwd(),
