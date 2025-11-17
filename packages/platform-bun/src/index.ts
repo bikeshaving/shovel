@@ -4,6 +4,9 @@
  * Provides built-in TypeScript/JSX support and simplified server setup for Bun environments.
  */
 
+// Runtime global declaration for platform detection
+declare const window: any;
+
 import {
 	BasePlatform,
 	PlatformConfig,

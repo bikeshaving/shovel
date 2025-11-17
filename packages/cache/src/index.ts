@@ -144,6 +144,23 @@ export class CustomCacheStorage {
 	constructor(private factory: CacheFactory) {}
 
 	/**
+	 * Matches a request across all caches
+	 */
+	async match(
+		request: Request,
+		options?: CacheQueryOptions,
+	): Promise<Response | undefined> {
+		// Try each cache in order until we find a match
+		for (const cache of this.instances.values()) {
+			const response = await cache.match(request, options);
+			if (response) {
+				return response;
+			}
+		}
+		return undefined;
+	}
+
+	/**
 	 * Opens a cache with the given name
 	 * Returns existing instance if already opened, otherwise creates a new one
 	 */
@@ -260,4 +277,13 @@ export class CustomCacheStorage {
 		}
 	}
 }
+
+// ============================================================================
+// CACHE IMPLEMENTATIONS
+// ============================================================================
+
+export {MemoryCache} from "./memory";
+export type {MemoryCacheOptions} from "./memory";
+export {PostMessageCache} from "./postmessage";
+export type {PostMessageCacheOptions} from "./postmessage";
 

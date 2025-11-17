@@ -27,7 +27,7 @@ export interface RouteContext {
 	cache?: import("@b9g/cache").Cache;
 
 	/** Access to all registered caches */
-	caches?: import("@b9g/cache").CacheStorage;
+	caches?: CacheStorage;
 
 	/** Middleware can add arbitrary properties for context sharing */
 	[key: string]: any;
@@ -105,7 +105,7 @@ export interface RouteConfig {
  */
 export interface RouterOptions {
 	/** CacheStorage instance for cache-first routing */
-	caches?: import("@b9g/cache").CacheStorage;
+	caches?: CacheStorage;
 }
 
 // Internal types (not exported from main package)
@@ -282,7 +282,7 @@ export class Router {
 	private middlewares: MiddlewareEntry[] = [];
 	private executor: LinearExecutor | null = null;
 	private dirty = false;
-	private caches?: import("@b9g/cache").CacheStorage;
+	private caches?: CacheStorage;
 
 	constructor(options?: RouterOptions) {
 		this.caches = options?.caches;
@@ -687,7 +687,7 @@ export class Router {
 			try {
 				currentResponse = await finalHandler(request, finalContext);
 			} catch (error) {
-				handlerError = error;
+				handlerError = error as Error;
 			}
 
 			// Handle errors through generator stack if needed

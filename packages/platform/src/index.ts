@@ -5,7 +5,9 @@
  * Core responsibility: Take a ServiceWorker-style app file and make it run in this environment.
  */
 
-import type {CacheStorage} from "@b9g/cache/cache-storage";
+// Runtime global declarations for platform detection
+declare const Deno: any;
+declare const window: any;
 
 // ============================================================================
 // Configuration Types
@@ -826,16 +828,12 @@ export async function getPlatformAsync(name?: string): Promise<Platform> {
 	// Auto-detect platform from environment
 	const platformName =
 		detectDeploymentPlatform() || detectDevelopmentPlatform();
-	let platform = platformRegistry.get(platformName);
+	const platform = platformRegistry.get(platformName);
 
 	if (!platform) {
-		// Create default Node.js platform if no platforms are registered
-		const NodePlatform = await import("@b9g/platform-node").then(
-			(m) => m.default,
+		throw new Error(
+			`Detected platform '${platformName}' not registered. Please register it manually using platformRegistry.register().`,
 		);
-		const nodePlatform = new NodePlatform();
-		platformRegistry.register("node", nodePlatform);
-		return nodePlatform;
 	}
 
 	return platform;

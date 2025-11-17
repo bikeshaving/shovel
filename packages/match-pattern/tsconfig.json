@@ -10,14 +10,14 @@
     "declaration": true,
     "declarationMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "allowImportingTsExtensions": false,
     "noEmit": false,
-    "lib": ["ES2022", "DOM"]
+    "lib": ["ES2022", "DOM", "WebWorker"],
+    "composite": true
   },
   "include": [
     "src/**/*"
