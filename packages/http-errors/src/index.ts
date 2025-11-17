@@ -133,13 +133,15 @@ export class NotHandled extends Error {
  * Check if a value is an HTTP error
  */
 export function isHTTPError(value: any): value is HTTPError {
-	return (
-		value instanceof HTTPError ||
-		(value instanceof Error &&
-			typeof value.status === "number" &&
-			typeof value.statusCode === "number" &&
-			value.status === value.statusCode)
-	);
+	if (value instanceof HTTPError) return true;
+
+	if (!(value instanceof Error)) return false;
+
+	// Check if error has HTTP error properties
+	const hasStatus = "status" in value && typeof value.status === "number";
+	const hasStatusCode = "statusCode" in value && typeof value.statusCode === "number";
+
+	return hasStatus && hasStatusCode && value.status === value.statusCode;
 }
 
 /**

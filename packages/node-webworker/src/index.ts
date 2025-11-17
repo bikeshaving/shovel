@@ -46,7 +46,7 @@ export class Worker {
 
 		// Create Node.js Worker with our wrapper that provides Web Worker globals
 		this.nodeWorker = new NodeWorker(wrapperScript, {
-			type: "module",
+			...({"type": "module"} as object),
 			env: {
 				...process.env,
 				WORKER_SCRIPT_URL: scriptURL,

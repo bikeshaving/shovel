@@ -77,7 +77,7 @@ export class MatchPattern extends URLPattern {
 	/**
 	 * Enhanced exec that returns unified params object
 	 */
-	override exec(input: string | URL): MatchPatternResult | null {
+	exec(input: string | URL): MatchPatternResult | null {
 		// First check if this would match with our enhanced test
 		if (!this.test(input)) {
 			return null;
@@ -102,7 +102,7 @@ export class MatchPattern extends URLPattern {
 	/**
 	 * Enhanced test with order-independent search parameter matching
 	 */
-	override test(input: string | URL): boolean {
+	test(input: string | URL): boolean {
 		const url = typeof input === "string" ? new URL(input) : input;
 
 		// If there's no search pattern, use standard URLPattern test
