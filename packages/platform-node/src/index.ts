@@ -61,7 +61,7 @@ export interface NodePlatformOptions extends PlatformConfig {
 export class NodePlatform extends BasePlatform {
 	readonly name = "node";
 
-	private options: Required<NodePlatformOptions>;
+	private options: Required<Omit<NodePlatformOptions, 'caches' | 'filesystem'>> & Pick<NodePlatformOptions, 'caches' | 'filesystem'>;
 	private workerPool?: ServiceWorkerPool;
 	private cacheStorage?: CustomCacheStorage;
 
@@ -136,13 +136,17 @@ export class NodePlatform extends BasePlatform {
 		const version = Date.now();
 		await this.workerPool.reloadWorkers(version);
 
+		// Capture references for closures
+		const workerPool = this.workerPool;
+		const platform = this;
+
 		const instance: ServiceWorkerInstance = {
-			runtime: this.workerPool,
+			runtime: workerPool,
 			handleRequest: async (request: Request) => {
-				if (!this.workerPool) {
+				if (!platform.workerPool) {
 					throw new Error("ServiceWorkerPool not initialized");
 				}
-				return this.workerPool.handleRequest(request);
+				return platform.workerPool.handleRequest(request);
 			},
 			install: async () => {
 				console.info(
@@ -155,12 +159,12 @@ export class NodePlatform extends BasePlatform {
 				);
 			},
 			get ready() {
-				return this.workerPool?.ready ?? false;
+				return workerPool?.ready ?? false;
 			},
 			dispose: async () => {
-				if (this.workerPool) {
-					await this.workerPool.terminate();
-					this.workerPool = undefined;
+				if (platform.workerPool) {
+					await platform.workerPool.terminate();
+					platform.workerPool = undefined;
 				}
 				console.info("[Platform-Node] ServiceWorker disposed");
 			},
@@ -225,7 +229,8 @@ export class NodePlatform extends BasePlatform {
 				const request = new Request(url, {
 					method: req.method,
 					headers: req.headers as HeadersInit,
-					body: req.method !== "GET" && req.method !== "HEAD" ? req : undefined,
+					// Node.js IncomingMessage can be used as body (it's a readable stream)
+					body: req.method !== "GET" && req.method !== "HEAD" ? (req as any) : undefined,
 				});
 
 				// Handle request via provided handler

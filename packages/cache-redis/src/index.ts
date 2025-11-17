@@ -50,7 +50,7 @@ interface CacheEntry {
  * Stores HTTP responses with proper serialization and TTL support
  */
 export class RedisCache extends Cache {
-	private client: RedisClientType;
+	private client: ReturnType<typeof createClient>;
 	private prefix: string;
 	private defaultTTL: number;
 	private maxEntrySize: number;

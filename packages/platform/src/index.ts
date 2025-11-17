@@ -178,6 +178,8 @@ export interface ServiceWorkerOptions {
 	caches?: CacheConfig;
 	/** Additional context to provide */
 	context?: any;
+	/** Number of worker threads (Node/Bun only) */
+	workerCount?: number;
 }
 
 /**
@@ -667,9 +669,11 @@ export abstract class BasePlatform implements Platform {
 	protected async buildCacheStorage(
 		config: CacheConfig,
 	): Promise<CacheStorage> {
-		const caches = new Map();
+		// Import CustomCacheStorage from @b9g/cache
+		const {CustomCacheStorage} = await import("@b9g/cache");
 
-		// Load each configured cache type
+		// Pre-load configured caches
+		const configuredCaches = new Map();
 		for (const [name, cacheConfig] of Object.entries(config)) {
 			if (
 				cacheConfig &&
@@ -677,30 +681,20 @@ export abstract class BasePlatform implements Platform {
 				"type" in cacheConfig
 			) {
 				const cache = await this.loadCacheInstance(cacheConfig);
-				caches.set(name, cache);
+				configuredCaches.set(name, cache);
 			}
 		}
 
-		// Return CacheStorage-compatible interface
-		return {
-			async open(name: string) {
-				const cache = caches.get(name);
-				if (!cache) {
-					throw new Error(`Cache '${name}' not configured`);
-				}
-				return cache;
-			},
-			async delete(name: string) {
-				const deleted = caches.delete(name);
-				return deleted;
-			},
-			async has(name: string) {
-				return caches.has(name);
-			},
-			async keys() {
-				return Array.from(caches.keys());
-			},
-		};
+		// Create CustomCacheStorage with factory that returns pre-configured caches
+		const cacheStorage = new CustomCacheStorage((name: string) => {
+			const cache = configuredCaches.get(name);
+			if (!cache) {
+				throw new Error(`Cache '${name}' not configured`);
+			}
+			return cache;
+		});
+
+		return cacheStorage as CacheStorage;
 	}
 
 	/**
@@ -982,7 +976,7 @@ function resolveWorkerScript(entrypoint?: string): string {
 async function createWebWorker(workerScript: string): Promise<Worker> {
 	// Try native Web Worker API first (works in Bun, Deno, browsers)
 	if (typeof Worker !== "undefined") {
-		return new Worker(workerScript, {type: "module"});
+		return new Worker(workerScript, {type: "module"} as WorkerOptions);
 	}
 
 	// Only try shim for Node.js (which lacks native Worker support)
@@ -993,7 +987,8 @@ async function createWebWorker(workerScript: string): Promise<Worker> {
 		try {
 			const {Worker: NodeWebWorker} = await import("@b9g/node-webworker");
 			console.debug("[WorkerPool] Using @b9g/node-webworker shim for Node.js");
-			return new NodeWebWorker(workerScript, {type: "module"});
+			// Our Node.js shim doesn't implement all Web Worker properties, but has the core functionality
+			return new NodeWebWorker(workerScript, {type: "module"}) as unknown as Worker;
 		} catch (shimError) {
 			console.error(
 				"\n❌ MISSING WEB STANDARD: Node.js lacks native Web Worker support",
@@ -1099,7 +1094,11 @@ export class WorkerPool extends EventTarget {
 		const worker = this.workers[this.currentWorkerIndex];
 		this.currentWorkerIndex =
 			(this.currentWorkerIndex + 1) % this.workers.length;
-		worker.postMessage(message, transfer);
+		if (transfer) {
+			worker.postMessage(message, transfer);
+		} else {
+			worker.postMessage(message);
+		}
 	}
 
 	/**

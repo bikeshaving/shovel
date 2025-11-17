@@ -278,12 +278,3 @@ export class CustomCacheStorage {
 	}
 }
 
-// ============================================================================
-// CACHE IMPLEMENTATIONS
-// ============================================================================
-
-export {MemoryCache} from "./memory";
-export type {MemoryCacheOptions} from "./memory";
-export {PostMessageCache} from "./postmessage";
-export type {PostMessageCacheOptions} from "./postmessage";
-

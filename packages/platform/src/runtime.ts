@@ -17,8 +17,8 @@
  * ExtendableEvent base class following ServiceWorker spec
  */
 export class ExtendableEvent extends Event {
-	private promises: Promise<any>[] = [];
-	private pendingPromises: Set<Promise<any>>;
+	readonly promises: Promise<any>[] = [];
+	readonly pendingPromises: Set<Promise<any>>;
 
 	constructor(type: string, pendingPromises: Set<Promise<any>>) {
 		super(type);
@@ -141,7 +141,12 @@ export class Client {
 		this.type = options.type || "worker";
 	}
 
-	postMessage(_message: any, _transfer?: Transferable[]): void {
+	// postMessage overload with Transferable array
+	postMessage(message: any, transfer: Transferable[]): void;
+	// postMessage overload with StructuredSerializeOptions
+	postMessage(message: any, options?: StructuredSerializeOptions): void;
+	// Implementation
+	postMessage(_message: any, _transferOrOptions?: Transferable[] | StructuredSerializeOptions): void {
 		console.warn(
 			"[ServiceWorker] Client.postMessage() not supported in server context",
 		);
@@ -153,13 +158,13 @@ export class Client {
  */
 export class WindowClient extends Client {
 	readonly focused: boolean = false;
-	readonly visibilityState: "visible" | "hidden" | "prerender" = "hidden";
+	readonly visibilityState: DocumentVisibilityState = "hidden";
 
 	constructor(options: {
 		id: string;
 		url: string;
 		focused?: boolean;
-		visibilityState?: "visible" | "hidden" | "prerender";
+		visibilityState?: DocumentVisibilityState;
 	}) {
 		super({...options, type: "window"});
 		this.focused = options.focused || false;
@@ -193,11 +198,8 @@ export class Clients {
 		return undefined;
 	}
 
-	async matchAll(_options?: {
-		includeUncontrolled?: boolean;
-		type?: "window" | "worker" | "sharedworker" | "all";
-	}): Promise<Client[]> {
-		return [];
+	async matchAll<T extends ClientQueryOptions>(_options?: T): Promise<readonly (T["type"] extends "window" ? WindowClient : Client)[]> {
+		return [] as readonly (T["type"] extends "window" ? WindowClient : Client)[];
 	}
 
 	async openWindow(_url: string): Promise<WindowClient | null> {
@@ -251,6 +253,10 @@ export class ServiceWorker extends EventTarget {
 		| "activated"
 		| "redundant";
 
+	// Event handlers required by Web API
+	onstatechange: ((ev: Event) => any) | null = null;
+	onerror: ((ev: Event) => any) | null = null;
+
 	constructor(
 		scriptURL: string,
 		state:
@@ -266,7 +272,12 @@ export class ServiceWorker extends EventTarget {
 		this.state = state;
 	}
 
-	postMessage(_message: any, _transfer?: Transferable[]): void {
+	// postMessage overload with Transferable array
+	postMessage(message: any, transfer: Transferable[]): void;
+	// postMessage overload with StructuredSerializeOptions
+	postMessage(message: any, options?: StructuredSerializeOptions): void;
+	// Implementation
+	postMessage(_message: any, _transferOrOptions?: Transferable[] | StructuredSerializeOptions): void {
 		console.warn(
 			"[ServiceWorker] ServiceWorker.postMessage() not implemented in server context",
 		);
@@ -327,6 +338,11 @@ export class ServiceWorkerRegistration extends EventTarget {
 		this._serviceWorker = new ServiceWorker(scriptURL, "parsed");
 	}
 
+	// Web API properties (not supported in server context, but required by interface)
+	readonly cookies: any = null; // CookieStoreManager not available in server context
+	readonly pushManager: any = null; // PushManager not available in server context
+	onupdatefound: ((ev: Event) => any) | null = null;
+
 	// Standard ServiceWorkerRegistration properties
 	get active(): ServiceWorker | null {
 		return this._serviceWorker.state === "activated"
@@ -370,8 +386,9 @@ export class ServiceWorkerRegistration extends EventTarget {
 		return false;
 	}
 
-	async update(): Promise<void> {
-		// No-op in server context
+	async update(): Promise<ServiceWorkerRegistration> {
+		// No-op in server context - just return this registration
+		return this;
 	}
 
 	// Shovel runtime extensions (non-standard but needed for platforms)
@@ -379,22 +396,28 @@ export class ServiceWorkerRegistration extends EventTarget {
 	/**
 	 * Enhanced addEventListener that tracks listeners for proper cleanup
 	 */
-	addEventListener(type: string, listener: Function): void {
-		super.addEventListener(type as any, listener as any);
+	addEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions): void {
+		const fn = typeof listener === 'function' ? listener : listener?.handleEvent;
+		if (!fn) return;
+
+		super.addEventListener(type, listener, options);
 		if (!this.eventListeners.has(type)) {
 			this.eventListeners.set(type, []);
 		}
-		this.eventListeners.get(type)!.push(listener);
+		this.eventListeners.get(type)!.push(fn);
 	}
 
 	/**
 	 * Enhanced removeEventListener that tracks listeners
 	 */
-	removeEventListener(type: string, listener: Function): void {
-		super.removeEventListener(type as any, listener as any);
+	removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions): void {
+		const fn = typeof listener === 'function' ? listener : listener?.handleEvent;
+		if (!fn) return;
+
+		super.removeEventListener(type, listener, options);
 		if (this.eventListeners.has(type)) {
 			const listeners = this.eventListeners.get(type)!;
-			const index = listeners.indexOf(listener);
+			const index = listeners.indexOf(fn);
 			if (index > -1) {
 				listeners.splice(index, 1);
 				if (listeners.length === 0) {
@@ -751,6 +774,12 @@ export class Notification extends EventTarget {
 	readonly title: string;
 	readonly vibrate: readonly number[];
 
+	// Event handlers required by Web API
+	onclick: ((ev: Event) => any) | null = null;
+	onclose: ((ev: Event) => any) | null = null;
+	onerror: ((ev: Event) => any) | null = null;
+	onshow: ((ev: Event) => any) | null = null;
+
 	constructor(title: string, options: NotificationOptions = {}) {
 		super();
 		this.title = title;
@@ -909,13 +938,9 @@ export interface ShovelGlobalScopeOptions {
 	/** ServiceWorker registration instance */
 	registration: ServiceWorkerRegistration;
 	/** Bucket storage (file system access) */
-	buckets?: BucketStorage;
-	/** Cache storage */
-	caches?: CacheStorage;
-	/** Development mode flag */
-	isDevelopment?: boolean;
-	/** Hot reload callback for development */
-	hotReload?: () => Promise<void>;
+	buckets: BucketStorage;
+	/** Cache storage (required by ServiceWorkerGlobalScope) */
+	caches: CacheStorage;
 }
 
 /**
@@ -926,28 +951,111 @@ export interface ShovelGlobalScopeOptions {
  */
 export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	// Self-reference (standard in ServiceWorkerGlobalScope)
-	readonly self: ShovelGlobalScope = this;
+	// Type assertion: we provide a compatible subset of WorkerGlobalScope
+	readonly self = this as unknown as WorkerGlobalScope & typeof globalThis;
 
 	// ServiceWorker standard properties
+	// Our custom ServiceWorkerRegistration provides core functionality compatible with the Web API
 	readonly registration: ServiceWorkerRegistration;
 
 	// Storage APIs
-	readonly caches?: CacheStorage;
-	readonly buckets?: BucketStorage;
+	readonly caches: CacheStorage;
+	readonly buckets: BucketStorage;
 
 	// Clients API
+	// Our custom Clients implementation provides core functionality compatible with the Web API
 	readonly clients: Clients;
 
-	// Internal state
-	private isDevelopment: boolean;
-	private hotReload?: () => Promise<void>;
+	// Web API required properties (stubs for server context)
+	readonly cookieStore: any = null; // CookieStore not available in server context
+	readonly serviceWorker: any = null; // ServiceWorkerContainer not available in global scope
+
+	// WorkerGlobalScope required properties (stubs for server context)
+	readonly location: WorkerLocation = {} as WorkerLocation;
+	readonly navigator: WorkerNavigator = {} as WorkerNavigator;
+	readonly fonts: FontFaceSet = {} as FontFaceSet;
+	readonly indexedDB: IDBFactory = {} as IDBFactory;
+	readonly isSecureContext: boolean = true;
+	readonly crossOriginIsolated: boolean = false;
+	readonly origin: string = "";
+	readonly performance: Performance = {} as Performance;
+	readonly crypto: Crypto = {} as Crypto;
+
+	// WorkerGlobalScope methods (stubs for server context)
+	importScripts(..._urls: (string | URL)[]): void {
+		console.warn("[ServiceWorker] importScripts() not supported in server context");
+	}
+
+	atob(data: string): string {
+		return globalThis.atob(data);
+	}
+
+	btoa(data: string): string {
+		return globalThis.btoa(data);
+	}
+
+	clearInterval(id: number): void {
+		globalThis.clearInterval(id);
+	}
+
+	clearTimeout(id: number): void {
+		globalThis.clearTimeout(id);
+	}
+
+	createImageBitmap(..._args: any[]): Promise<ImageBitmap> {
+		throw new Error("[ServiceWorker] createImageBitmap() not supported in server context");
+	}
+
+	fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+		return globalThis.fetch(input, init);
+	}
+
+	queueMicrotask(callback: VoidFunction): void {
+		globalThis.queueMicrotask(callback);
+	}
+
+	reportError(e: any): void {
+		console.error("[ServiceWorker] reportError:", e);
+	}
+
+	setInterval(handler: TimerHandler, timeout?: number, ...args: any[]): number {
+		return globalThis.setInterval(handler as any, timeout, ...args) as any;
+	}
+
+	setTimeout(handler: TimerHandler, timeout?: number, ...args: any[]): number {
+		return globalThis.setTimeout(handler as any, timeout, ...args) as any;
+	}
+
+	structuredClone<T>(value: T, options?: StructuredSerializeOptions): T {
+		return globalThis.structuredClone(value, options);
+	}
+
+	// Event handlers required by ServiceWorkerGlobalScope
+	// Use Web API types (not our custom implementations) for event handler signatures
+	onactivate: ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any) | null = null;
+	oncookiechange: ((this: ServiceWorkerGlobalScope, ev: Event) => any) | null = null;
+	onfetch: ((this: ServiceWorkerGlobalScope, ev: globalThis.FetchEvent) => any) | null = null;
+	oninstall: ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any) | null = null;
+	onmessage: ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableMessageEvent) => any) | null = null;
+	onmessageerror: ((this: ServiceWorkerGlobalScope, ev: MessageEvent) => any) | null = null;
+	onnotificationclick: ((this: ServiceWorkerGlobalScope, ev: globalThis.NotificationEvent) => any) | null = null;
+	onnotificationclose: ((this: ServiceWorkerGlobalScope, ev: globalThis.NotificationEvent) => any) | null = null;
+	onpush: ((this: ServiceWorkerGlobalScope, ev: globalThis.PushEvent) => any) | null = null;
+	onpushsubscriptionchange: ((this: ServiceWorkerGlobalScope, ev: Event) => any) | null = null;
+	onsync: ((this: ServiceWorkerGlobalScope, ev: SyncEvent) => any) | null = null;
+
+	// WorkerGlobalScope event handlers (inherited by ServiceWorkerGlobalScope)
+	onerror: OnErrorEventHandlerNonNull | null = null;
+	onlanguagechange: ((ev: Event) => any) | null = null;
+	onoffline: ((ev: Event) => any) | null = null;
+	ononline: ((ev: Event) => any) | null = null;
+	onrejectionhandled: ((ev: PromiseRejectionEvent) => any) | null = null;
+	onunhandledrejection: ((ev: PromiseRejectionEvent) => any) | null = null;
 
 	constructor(options: ShovelGlobalScopeOptions) {
 		this.registration = options.registration;
 		this.caches = options.caches;
 		this.buckets = options.buckets;
-		this.isDevelopment = options.isDevelopment ?? false;
-		this.hotReload = options.hotReload;
 
 		// Create clients API implementation
 		this.clients = this.createClientsAPI();
@@ -955,19 +1063,12 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 
 	/**
 	 * Standard ServiceWorker skipWaiting() implementation
-	 * In development: triggers hot reload
-	 * In production: graceful restart (not yet implemented)
+	 * Allows the ServiceWorker to activate immediately
 	 */
 	async skipWaiting(): Promise<void> {
-		if (this.isDevelopment && this.hotReload) {
-			console.info("[ServiceWorker] skipWaiting() - triggering hot reload");
-			await this.hotReload();
-		} else if (!this.isDevelopment) {
-			console.info(
-				"[ServiceWorker] skipWaiting() - production graceful restart not implemented",
-			);
-			// TODO: Implement production restart logic
-		}
+		console.info("[ServiceWorker] skipWaiting() called");
+		// In a real ServiceWorker, this would activate the waiting worker
+		// For Shovel, this is a no-op as we handle activation differently
 	}
 
 	/**
@@ -1008,9 +1109,9 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 				return undefined;
 			},
 
-			async matchAll(_options?: ClientQueryOptions): Promise<Client[]> {
+			async matchAll<T extends ClientQueryOptions>(_options?: T): Promise<readonly (T["type"] extends "window" ? WindowClient : Client)[]> {
 				// Return empty array - no persistent clients in HTTP-only server
-				return [];
+				return [] as readonly (T["type"] extends "window" ? WindowClient : Client)[];
 			},
 
 			async openWindow(_url: string | URL): Promise<WindowClient | null> {
@@ -1073,7 +1174,8 @@ async function initializeWorker() {
 }
 
 // Import dependencies (ServiceWorker runtime classes are in this same file)
-const {CustomCacheStorage, PostMessageCache} = await import("@b9g/cache");
+const {CustomCacheStorage} = await import("@b9g/cache");
+const {PostMessageCache} = await import("@b9g/cache/postmessage.js");
 const {FileSystemRegistry, CustomBucketStorage} = await import(
 	"@b9g/filesystem"
 );

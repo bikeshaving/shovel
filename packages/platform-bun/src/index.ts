@@ -64,7 +64,7 @@ export interface BunPlatformOptions extends PlatformConfig {
  */
 export class BunPlatform extends BasePlatform {
 	readonly name = "bun";
-	private options: Required<BunPlatformOptions>;
+	private options: Required<Omit<BunPlatformOptions, 'caches' | 'filesystem'>> & Pick<BunPlatformOptions, 'caches' | 'filesystem'>;
 	private workerPool?: ServiceWorkerPool;
 	private cacheStorage?: CustomCacheStorage;
 
@@ -126,7 +126,7 @@ export class BunPlatform extends BasePlatform {
 	 */
 	async createCaches(_config?: CacheConfig): Promise<CustomCacheStorage> {
 		// Import MemoryCache for fallback
-		const {MemoryCache} = await import("@b9g/cache");
+		const {MemoryCache} = await import("@b9g/cache/memory.js");
 
 		// Use platform-agnostic worker detection
 		// In Bun, workers use self global while main thread doesn't
@@ -227,13 +227,17 @@ export class BunPlatform extends BasePlatform {
 		const version = Date.now();
 		await this.workerPool.reloadWorkers(version);
 
+		// Capture references for closures
+		const workerPool = this.workerPool;
+		const platform = this;
+
 		const instance: ServiceWorkerInstance = {
-			runtime: this.workerPool,
+			runtime: workerPool,
 			handleRequest: async (request: Request) => {
-				if (!this.workerPool) {
+				if (!platform.workerPool) {
 					throw new Error("WorkerPool not initialized");
 				}
-				return this.workerPool.handleRequest(request);
+				return platform.workerPool.handleRequest(request);
 			},
 			install: async () => {
 				console.info("[Bun] ServiceWorker installed via native Web Workers");
@@ -242,12 +246,12 @@ export class BunPlatform extends BasePlatform {
 				console.info("[Bun] ServiceWorker activated via native Web Workers");
 			},
 			get ready() {
-				return this.workerPool?.ready ?? false;
+				return workerPool?.ready ?? false;
 			},
 			dispose: async () => {
-				if (this.workerPool) {
-					await this.workerPool.terminate();
-					this.workerPool = undefined;
+				if (platform.workerPool) {
+					await platform.workerPool.terminate();
+					platform.workerPool = undefined;
 				}
 				console.info("[Bun] ServiceWorker disposed");
 			},
