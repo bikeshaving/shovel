@@ -9,7 +9,6 @@
     "test": "bun test"
   },
   "peerDependencies": {
-    "@types/wicg-file-system-access": "^2023.10.7",
     "@types/node": "^18.0.0"
   },
   "peerDependenciesMeta": {

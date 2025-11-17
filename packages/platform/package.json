@@ -21,9 +21,7 @@
     "workers",
     "shovel"
   ],
-  "dependencies": {
-    "@types/wicg-file-system-access": "^2023.10.7"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@b9g/libuild": "^0.1.11",
     "bun-types": "latest"

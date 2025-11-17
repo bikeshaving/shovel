@@ -173,11 +173,13 @@ class ShovelWritableFileStream
 export abstract class ShovelHandle implements FileSystemHandle {
 	abstract readonly kind: "file" | "directory";
 	readonly name: string;
+	readonly path: string;
 
 	constructor(
 		protected backend: FileSystemBackend,
-		protected path: string,
+		path: string,
 	) {
+		this.path = path;
 		// Extract name from path
 		this.name = path.split("/").filter(Boolean).pop() || "root";
 	}
@@ -263,7 +265,11 @@ export class ShovelFileHandle
 			const filename = this.name;
 			const mimeType = this.getMimeType(filename);
 
-			return new File([content], filename, {
+			// Use slice() to ensure we have a copy with ArrayBuffer backing
+			// This resolves type conflicts between lib.dom and lib.webworker
+			const buffer = content.slice().buffer;
+
+			return new File([buffer], filename, {
 				type: mimeType,
 				lastModified: Date.now(), // TODO: Could be stored in backend if needed
 			});
@@ -399,7 +405,9 @@ export class ShovelDirectoryHandle
 			return null;
 		}
 
-		const descendantPath = possibleDescendant.path;
+		// Type narrowed to ShovelHandle after instanceof check
+		const shovelHandle = possibleDescendant as ShovelHandle;
+		const descendantPath = shovelHandle.path;
 		if (!descendantPath.startsWith(this.path)) {
 			return null;
 		}
@@ -409,7 +417,9 @@ export class ShovelDirectoryHandle
 		return relativePath.split("/").filter(Boolean);
 	}
 
-	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
+	async *entries(): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		try {
 			const entries = await this.backend.listDir(this.path);
 
@@ -436,10 +446,18 @@ export class ShovelDirectoryHandle
 		}
 	}
 
-	async *values(): AsyncIterableIterator<FileSystemHandle> {
+	async *values(): AsyncIterableIterator<
+		FileSystemFileHandle | FileSystemDirectoryHandle
+	> {
 		for await (const [, handle] of this.entries()) {
 			yield handle;
 		}
+	}
+
+	[Symbol.asyncIterator](): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
+		return this.entries();
 	}
 
 	private joinPath(base: string, name: string): string {

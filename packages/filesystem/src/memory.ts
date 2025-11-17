@@ -312,7 +312,9 @@ export class MemoryBucket implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
+	async *entries(): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		const entries = await this.backend.listDir("/");
 
 		for (const entry of entries) {
@@ -331,10 +333,18 @@ export class MemoryBucket implements FileSystemDirectoryHandle {
 		}
 	}
 
-	async *values(): AsyncIterableIterator<FileSystemHandle> {
+	async *values(): AsyncIterableIterator<
+		FileSystemFileHandle | FileSystemDirectoryHandle
+	> {
 		for await (const [, handle] of this.entries()) {
 			yield handle;
 		}
+	}
+
+	[Symbol.asyncIterator](): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
+		return this.entries();
 	}
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
