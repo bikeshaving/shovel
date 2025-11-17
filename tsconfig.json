@@ -1,0 +1,17 @@
+{
+	"files": [],
+	"references": [
+		{ "path": "./packages/assets" },
+		{ "path": "./packages/cache" },
+		{ "path": "./packages/cache-redis" },
+		{ "path": "./packages/filesystem" },
+		{ "path": "./packages/http-errors" },
+		{ "path": "./packages/match-pattern" },
+		{ "path": "./packages/node-webworker" },
+		{ "path": "./packages/platform" },
+		{ "path": "./packages/platform-node" },
+		{ "path": "./packages/platform-bun" },
+		{ "path": "./packages/platform-cloudflare" },
+		{ "path": "./packages/router" }
+	]
+}

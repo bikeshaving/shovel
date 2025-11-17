@@ -1,0 +1,38 @@
+{
+	"include": ["src"],
+	"exclude": ["node_modules", "dist", "test"],
+	"compilerOptions": {
+		/* Language and Environment */
+		"target": "es2022",
+		"lib": ["es2022"],
+
+		/* Modules */
+		"module": "es2022",
+		"moduleResolution": "bundler",
+		"types": ["@cloudflare/workers-types"],
+		"resolveJsonModule": true,
+
+		/* Emit */
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true,
+		"outDir": "./dist",
+		"noEmit": false,
+
+		/* Interop Constraints */
+		"isolatedModules": true,
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+
+		/* Type Checking */
+		"strict": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noImplicitReturns": true,
+		"noFallthroughCasesInSwitch": true,
+
+		/* Completeness */
+		"skipLibCheck": true
+	}
+}
