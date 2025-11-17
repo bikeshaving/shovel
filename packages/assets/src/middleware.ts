@@ -129,7 +129,8 @@ export function assets(config: AssetsConfig = {}) {
 			}
 		} catch (error) {
 			console.error("[assetsMiddleware] Outer error:", error);
-			return new Response("Assets middleware error: " + error.message, {
+			const message = error instanceof Error ? error.message : String(error);
+			return new Response("Assets middleware error: " + message, {
 				status: 500,
 			});
 		}
