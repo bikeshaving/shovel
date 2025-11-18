@@ -54,15 +54,14 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
  * Cloudflare Workers platform implementation
  */
 export class CloudflarePlatform extends BasePlatform {
-	readonly name = "cloudflare";
-	private options: Required<
-		Omit<CloudflarePlatformOptions, "caches" | "filesystem">
-	> &
+	readonly name: string;
+	#options: Required<Omit<CloudflarePlatformOptions, "caches" | "filesystem">> &
 		Pick<CloudflarePlatformOptions, "caches" | "filesystem">;
 
 	constructor(options: CloudflarePlatformOptions = {}) {
 		super(options);
-		this.options = {
+		this.name = "cloudflare";
+		this.#options = {
 			environment: "production",
 			kvNamespaces: {},
 			r2Buckets: {},
@@ -95,7 +94,7 @@ export class CloudflarePlatform extends BasePlatform {
 	/**
 	 * Get platform-specific default cache configuration for Cloudflare Workers
 	 */
-	protected getDefaultCacheConfig(): CacheConfig {
+	getDefaultCacheConfig(): CacheConfig {
 		return {
 			pages: {type: "cloudflare"}, // Use Cloudflare's native Cache API
 			api: {type: "cloudflare"}, // Use Cloudflare's native Cache API

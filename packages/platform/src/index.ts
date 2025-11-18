@@ -621,7 +621,7 @@ async function loadFilesystemAdapter(name: string, config: any = {}) {
  * Platform implementations extend this and provide platform-specific methods
  */
 export abstract class BasePlatform implements Platform {
-	protected config: PlatformConfig;
+	config: PlatformConfig;
 
 	constructor(config: PlatformConfig = {}) {
 		this.config = config;
@@ -645,7 +645,7 @@ export abstract class BasePlatform implements Platform {
 	 * Get platform-specific default cache configuration
 	 * Subclasses override this to provide optimal defaults for their runtime
 	 */
-	protected getDefaultCacheConfig(): CacheConfig {
+	getDefaultCacheConfig(): CacheConfig {
 		return {
 			pages: {type: "memory"},
 			api: {type: "memory"},
@@ -656,7 +656,7 @@ export abstract class BasePlatform implements Platform {
 	/**
 	 * Merge user config with platform defaults
 	 */
-	protected mergeCacheConfig(userConfig?: CacheConfig): CacheConfig {
+	mergeCacheConfig(userConfig?: CacheConfig): CacheConfig {
 		const defaults = this.getDefaultCacheConfig();
 		const platformConfig = this.config.caches || {};
 
@@ -671,9 +671,7 @@ export abstract class BasePlatform implements Platform {
 	/**
 	 * Build CacheStorage instance with dynamic adapter loading
 	 */
-	protected async buildCacheStorage(
-		config: CacheConfig,
-	): Promise<CacheStorage> {
+	async buildCacheStorage(config: CacheConfig): Promise<CacheStorage> {
 		// Import CustomCacheStorage from @b9g/cache
 		const {CustomCacheStorage} = await import("@b9g/cache");
 
@@ -705,7 +703,7 @@ export abstract class BasePlatform implements Platform {
 	/**
 	 * Load a single cache instance using dynamic import
 	 */
-	protected async loadCacheInstance(config: CacheBackendConfig) {
+	async loadCacheInstance(config: CacheBackendConfig) {
 		if (!config.type) {
 			throw new Error("Cache configuration must specify a type");
 		}
@@ -724,7 +722,7 @@ export abstract class BasePlatform implements Platform {
 	/**
 	 * Load filesystem adapter using dynamic import
 	 */
-	protected async loadFilesystemAdapter(config?: FilesystemConfig) {
+	async loadFilesystemAdapter(config?: FilesystemConfig) {
 		const fsConfig =
 			config || this.config.filesystem || this.getDefaultFilesystemConfig();
 
@@ -747,7 +745,7 @@ export abstract class BasePlatform implements Platform {
 	 * Get platform-specific default filesystem configuration
 	 * Subclasses override this to provide optimal defaults for their runtime
 	 */
-	protected getDefaultFilesystemConfig(): FilesystemConfig {
+	getDefaultFilesystemConfig(): FilesystemConfig {
 		return {type: "memory"};
 	}
 }
@@ -760,18 +758,22 @@ export abstract class BasePlatform implements Platform {
  * Global platform registry
  */
 class DefaultPlatformRegistry implements PlatformRegistry {
-	private platforms = new Map<string, Platform>();
+	#platforms: Map<string, Platform>;
+
+	constructor() {
+		this.#platforms = new Map<string, Platform>();
+	}
 
 	register(name: string, platform: Platform): void {
-		this.platforms.set(name, platform);
+		this.#platforms.set(name, platform);
 	}
 
 	get(name: string): Platform | undefined {
-		return this.platforms.get(name);
+		return this.#platforms.get(name);
 	}
 
 	list(): string[] {
-		return Array.from(this.platforms.keys());
+		return Array.from(this.#platforms.keys());
 	}
 }
 
@@ -1049,28 +1051,31 @@ Please check your runtime version and configuration.
  * Can be used standalone or extended for specific use cases (e.g., ServiceWorkerPool)
  */
 export class WorkerPool extends EventTarget {
-	readonly workers: Worker[] = [];
-	private currentWorkerIndex = 0;
+	readonly workers: Worker[];
+	#currentWorkerIndex: number;
+	#scriptURL: string;
+	#options: {count?: number};
 
-	constructor(
-		private scriptURL: string,
-		private options: {count?: number} = {},
-	) {
+	constructor(scriptURL: string, options: {count?: number} = {}) {
 		super();
+		this.workers = [];
+		this.#currentWorkerIndex = 0;
+		this.#scriptURL = scriptURL;
+		this.#options = options;
 	}
 
 	/**
 	 * Initialize workers (must be called after construction)
 	 */
 	async init(): Promise<void> {
-		const count = this.options.count ?? 1;
+		const count = this.#options.count ?? 1;
 		for (let i = 0; i < count; i++) {
-			await this.createWorker();
+			await this.#createWorker();
 		}
 	}
 
-	private async createWorker(): Promise<Worker> {
-		const worker = await createWebWorker(this.scriptURL);
+	async #createWorker(): Promise<Worker> {
+		const worker = await createWebWorker(this.#scriptURL);
 
 		// Forward worker events as pool events
 		worker.addEventListener("message", (event) => {
@@ -1098,9 +1103,9 @@ export class WorkerPool extends EventTarget {
 	 * Send message to one worker (round-robin)
 	 */
 	postMessage(message: any, transfer?: Transferable[]): void {
-		const worker = this.workers[this.currentWorkerIndex];
-		this.currentWorkerIndex =
-			(this.currentWorkerIndex + 1) % this.workers.length;
+		const worker = this.workers[this.#currentWorkerIndex];
+		this.#currentWorkerIndex =
+			(this.#currentWorkerIndex + 1) % this.workers.length;
 		if (transfer) {
 			worker.postMessage(message, transfer);
 		} else {
@@ -1127,27 +1132,31 @@ export class WorkerPool extends EventTarget {
  * Handles HTTP request/response routing, cache coordination, and hot reloading
  */
 export class ServiceWorkerPool {
-	private workers: Worker[] = [];
-	private currentWorker = 0;
-	private requestId = 0;
-	private pendingRequests = new Map<
+	#workers: Worker[];
+	#currentWorker: number;
+	#requestId: number;
+	#pendingRequests: Map<
 		number,
 		{resolve: (response: Response) => void; reject: (error: Error) => void}
-	>();
-	private options: Required<Omit<WorkerPoolOptions, "onUnhandledMessage">> & {
+	>;
+	#options: Required<Omit<WorkerPoolOptions, "onUnhandledMessage">> & {
 		onUnhandledMessage?: (worker: Worker, message: any) => void;
 	};
-	private appEntrypoint?: string;
-	private cacheStorage?: any; // CustomCacheStorage for cache coordination
+	#appEntrypoint?: string;
+	#cacheStorage?: any; // CustomCacheStorage for cache coordination
 
 	constructor(
 		options: WorkerPoolOptions = {},
 		appEntrypoint?: string,
 		cacheStorage?: any,
 	) {
-		this.appEntrypoint = appEntrypoint;
-		this.cacheStorage = cacheStorage;
-		this.options = {
+		this.#workers = [];
+		this.#currentWorker = 0;
+		this.#requestId = 0;
+		this.#pendingRequests = new Map();
+		this.#appEntrypoint = appEntrypoint;
+		this.#cacheStorage = cacheStorage;
+		this.#options = {
 			workerCount: 1,
 			requestTimeout: 30000,
 			hotReload: process.env.NODE_ENV !== "production",
@@ -1162,55 +1171,55 @@ export class ServiceWorkerPool {
 	 * Initialize workers (must be called after construction)
 	 */
 	async init(): Promise<void> {
-		await this.initWorkers();
+		await this.#initWorkers();
 	}
 
-	private async initWorkers() {
-		for (let i = 0; i < this.options.workerCount; i++) {
-			await this.createWorker();
+	async #initWorkers() {
+		for (let i = 0; i < this.#options.workerCount; i++) {
+			await this.#createWorker();
 		}
 	}
 
-	private async createWorker(): Promise<Worker> {
-		const workerScript = resolveWorkerScript(this.appEntrypoint);
+	async #createWorker(): Promise<Worker> {
+		const workerScript = resolveWorkerScript(this.#appEntrypoint);
 		const worker = await createWebWorker(workerScript);
 
 		// Set up event listeners using web standards
 		worker.addEventListener("message", (event) => {
-			this.handleWorkerMessage(worker, event.data || event);
+			this.#handleWorkerMessage(worker, event.data || event);
 		});
 
 		worker.addEventListener("error", (error) => {
 			console.error("[WorkerPool] Worker error:", error);
 		});
 
-		this.workers.push(worker);
+		this.#workers.push(worker);
 		return worker;
 	}
 
-	private handleWorkerMessage(worker: Worker, message: WorkerMessage) {
+	#handleWorkerMessage(worker: Worker, message: WorkerMessage) {
 		switch (message.type) {
 			case "response":
-				this.handleResponse(message as WorkerResponse);
+				this.#handleResponse(message as WorkerResponse);
 				break;
 			case "error":
-				this.handleError(message as WorkerErrorMessage);
+				this.#handleError(message as WorkerErrorMessage);
 				break;
 			case "ready":
 			case "worker-ready":
-				this.handleReady(message as WorkerReadyMessage);
+				this.#handleReady(message as WorkerReadyMessage);
 				break;
 			default:
 				// Handle cache messages from PostMessageCache
-				if (message.type?.startsWith("cache:") && this.cacheStorage) {
-					void this.cacheStorage.handleMessage(worker, message);
+				if (message.type?.startsWith("cache:") && this.#cacheStorage) {
+					void this.#cacheStorage.handleMessage(worker, message);
 				}
 				break;
 		}
 	}
 
-	private handleResponse(message: WorkerResponse) {
-		const pending = this.pendingRequests.get(message.requestId);
+	#handleResponse(message: WorkerResponse) {
+		const pending = this.#pendingRequests.get(message.requestId);
 		if (pending) {
 			// Reconstruct Response object from serialized data
 			const response = new Response(message.response.body, {
@@ -1219,23 +1228,23 @@ export class ServiceWorkerPool {
 				headers: message.response.headers,
 			});
 			pending.resolve(response);
-			this.pendingRequests.delete(message.requestId);
+			this.#pendingRequests.delete(message.requestId);
 		}
 	}
 
-	private handleError(message: WorkerErrorMessage) {
+	#handleError(message: WorkerErrorMessage) {
 		if (message.requestId) {
-			const pending = this.pendingRequests.get(message.requestId);
+			const pending = this.#pendingRequests.get(message.requestId);
 			if (pending) {
 				pending.reject(new Error(message.error));
-				this.pendingRequests.delete(message.requestId);
+				this.#pendingRequests.delete(message.requestId);
 			}
 		} else {
 			console.error("[WorkerPool] Worker error:", message.error);
 		}
 	}
 
-	private handleReady(message: WorkerReadyMessage) {
+	#handleReady(message: WorkerReadyMessage) {
 		if (message.type === "ready") {
 			console.info(`[WorkerPool] ServiceWorker ready (v${message.version})`);
 		} else if (message.type === "worker-ready") {
@@ -1248,17 +1257,17 @@ export class ServiceWorkerPool {
 	 */
 	async handleRequest(request: Request): Promise<Response> {
 		// Round-robin worker selection
-		const worker = this.workers[this.currentWorker];
+		const worker = this.#workers[this.#currentWorker];
 		console.info(
-			`[WorkerPool] Dispatching to worker ${this.currentWorker + 1} of ${this.workers.length}`,
+			`[WorkerPool] Dispatching to worker ${this.#currentWorker + 1} of ${this.#workers.length}`,
 		);
-		this.currentWorker = (this.currentWorker + 1) % this.workers.length;
+		this.#currentWorker = (this.#currentWorker + 1) % this.#workers.length;
 
-		const requestId = ++this.requestId;
+		const requestId = ++this.#requestId;
 
 		return new Promise((resolve, reject) => {
 			// Track pending request
-			this.pendingRequests.set(requestId, {resolve, reject});
+			this.#pendingRequests.set(requestId, {resolve, reject});
 
 			// Serialize request for worker (can't clone Request objects across threads)
 			const workerRequest: WorkerRequest = {
@@ -1276,11 +1285,11 @@ export class ServiceWorkerPool {
 
 			// Timeout handling
 			setTimeout(() => {
-				if (this.pendingRequests.has(requestId)) {
-					this.pendingRequests.delete(requestId);
+				if (this.#pendingRequests.has(requestId)) {
+					this.#pendingRequests.delete(requestId);
 					reject(new Error("Request timeout"));
 				}
-			}, this.options.requestTimeout);
+			}, this.#options.requestTimeout);
 		});
 	}
 
@@ -1290,7 +1299,7 @@ export class ServiceWorkerPool {
 	async reloadWorkers(version: number | string = Date.now()): Promise<void> {
 		console.info(`[WorkerPool] Reloading ServiceWorker (v${version})`);
 
-		const loadPromises = this.workers.map((worker) => {
+		const loadPromises = this.#workers.map((worker) => {
 			return new Promise<void>((resolve) => {
 				const handleReady = (event: any) => {
 					const message = event.data || event;
@@ -1302,7 +1311,7 @@ export class ServiceWorkerPool {
 
 				console.info("[WorkerPool] Sending load message:", {
 					version,
-					entrypoint: this.appEntrypoint,
+					entrypoint: this.#appEntrypoint,
 				});
 
 				worker.addEventListener("message", handleReady);
@@ -1310,7 +1319,7 @@ export class ServiceWorkerPool {
 				const loadMessage: WorkerLoadMessage = {
 					type: "load",
 					version,
-					entrypoint: this.appEntrypoint,
+					entrypoint: this.#appEntrypoint,
 				};
 
 				worker.postMessage(loadMessage);
@@ -1325,24 +1334,24 @@ export class ServiceWorkerPool {
 	 * Graceful shutdown of all workers
 	 */
 	async terminate(): Promise<void> {
-		const terminatePromises = this.workers.map((worker) => worker.terminate());
+		const terminatePromises = this.#workers.map((worker) => worker.terminate());
 		await Promise.allSettled(terminatePromises);
-		this.workers = [];
-		this.pendingRequests.clear();
+		this.#workers = [];
+		this.#pendingRequests.clear();
 	}
 
 	/**
 	 * Get the number of active workers
 	 */
 	get workerCount(): number {
-		return this.workers.length;
+		return this.#workers.length;
 	}
 
 	/**
 	 * Check if the pool is ready to handle requests
 	 */
 	get ready(): boolean {
-		return this.workers.length > 0;
+		return this.#workers.length > 0;
 	}
 }
 

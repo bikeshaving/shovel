@@ -63,15 +63,16 @@ export interface BunPlatformOptions extends PlatformConfig {
  * ServiceWorker entrypoint loader for Bun with native TypeScript/JSX support
  */
 export class BunPlatform extends BasePlatform {
-	readonly name = "bun";
-	private options: Required<Omit<BunPlatformOptions, "caches" | "filesystem">> &
+	readonly name: string;
+	#options: Required<Omit<BunPlatformOptions, "caches" | "filesystem">> &
 		Pick<BunPlatformOptions, "caches" | "filesystem">;
-	private workerPool?: ServiceWorkerPool;
-	private cacheStorage?: CustomCacheStorage;
+	#workerPool?: ServiceWorkerPool;
+	#cacheStorage?: CustomCacheStorage;
 
 	constructor(options: BunPlatformOptions = {}) {
 		super(options);
-		this.options = {
+		this.name = "bun";
+		this.#options = {
 			hotReload: Boolean(import.meta.env?.DEV),
 			port: 3000,
 			host: "localhost",
@@ -83,7 +84,7 @@ export class BunPlatform extends BasePlatform {
 		FileSystemRegistry.register("memory", new MemoryBucket());
 		FileSystemRegistry.register(
 			"node",
-			new NodeBucket(Path.join(this.options.cwd, "dist")),
+			new NodeBucket(Path.join(this.#options.cwd, "dist")),
 		);
 
 		// Register standard tmp bucket using OS temp directory
@@ -102,11 +103,29 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
+	 * Get options for testing
+	 */
+	get options() {
+		return this.#options;
+	}
+
+	/**
+	 * Get/set worker pool for testing
+	 */
+	get workerPool() {
+		return this.#workerPool;
+	}
+
+	set workerPool(pool: ServiceWorkerPool | undefined) {
+		this.#workerPool = pool;
+	}
+
+	/**
 	 * Build artifacts filesystem (install-time only)
 	 */
 	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
 		// Create dist filesystem pointing to ./dist directory
-		const distPath = Path.resolve(this.options.cwd, "dist");
+		const distPath = Path.resolve(this.#options.cwd, "dist");
 		const targetPath = name ? Path.join(distPath, name) : distPath;
 		return new NodeBucket(targetPath);
 	}
@@ -114,7 +133,7 @@ export class BunPlatform extends BasePlatform {
 	/**
 	 * Get platform-specific default cache configuration for Bun
 	 */
-	protected getDefaultCacheConfig(): CacheConfig {
+	getDefaultCacheConfig(): CacheConfig {
 		return {
 			pages: {type: "memory"}, // PostMessage cache for coordination
 			api: {type: "memory"},
@@ -155,8 +174,8 @@ export class BunPlatform extends BasePlatform {
 	 * Create HTTP server using Bun.serve
 	 */
 	createServer(handler: Handler, options: ServerOptions = {}): Server {
-		const port = options.port ?? this.options.port;
-		const hostname = options.host ?? this.options.host;
+		const port = options.port ?? this.#options.port;
+		const hostname = options.host ?? this.#options.host;
 
 		// Bun.serve is much simpler than Node.js
 		const server = Bun.serve({
@@ -165,7 +184,7 @@ export class BunPlatform extends BasePlatform {
 			async fetch(request) {
 				return handler(request);
 			},
-			development: this.options.hotReload,
+			development: this.#options.hotReload,
 		});
 
 		return {
@@ -193,52 +212,52 @@ export class BunPlatform extends BasePlatform {
 		entrypoint: string,
 		options: ServiceWorkerOptions = {},
 	): Promise<ServiceWorkerInstance> {
-		const entryPath = Path.resolve(this.options.cwd, entrypoint);
+		const entryPath = Path.resolve(this.#options.cwd, entrypoint);
 
 		// Create shared cache storage if not already created
-		if (!this.cacheStorage) {
-			this.cacheStorage = await this.createCaches(options.caches);
+		if (!this.#cacheStorage) {
+			this.#cacheStorage = await this.createCaches(options.caches);
 		}
 
 		// Create WorkerPool using Bun's native Web Workers
 		// Bun supports Web Workers natively - no shims needed!
-		if (this.workerPool) {
-			await this.workerPool.terminate();
+		if (this.#workerPool) {
+			await this.#workerPool.terminate();
 		}
 
 		const workerCount = options.workerCount || 1;
 		const poolOptions: WorkerPoolOptions = {
 			workerCount,
 			requestTimeout: 30000,
-			hotReload: this.options.hotReload,
-			cwd: this.options.cwd,
+			hotReload: this.#options.hotReload,
+			cwd: this.#options.cwd,
 		};
 
 		// Bun has native Worker support - ServiceWorkerPool will use new Worker() directly
-		this.workerPool = new ServiceWorkerPool(
+		this.#workerPool = new ServiceWorkerPool(
 			poolOptions,
 			entryPath,
-			this.cacheStorage,
+			this.#cacheStorage,
 		);
 
 		// Initialize workers (Bun has native Web Workers)
-		await this.workerPool.init();
+		await this.#workerPool.init();
 
 		// Load ServiceWorker in all workers
 		const version = Date.now();
-		await this.workerPool.reloadWorkers(version);
+		await this.#workerPool.reloadWorkers(version);
 
 		// Capture references for closures
-		const workerPool = this.workerPool;
+		const workerPool = this.#workerPool;
 		const platform = this;
 
 		const instance: ServiceWorkerInstance = {
 			runtime: workerPool,
 			handleRequest: async (request: Request) => {
-				if (!platform.workerPool) {
+				if (!platform.#workerPool) {
 					throw new Error("WorkerPool not initialized");
 				}
-				return platform.workerPool.handleRequest(request);
+				return platform.#workerPool.handleRequest(request);
 			},
 			install: async () => {
 				console.info("[Bun] ServiceWorker installed via native Web Workers");
@@ -250,9 +269,9 @@ export class BunPlatform extends BasePlatform {
 				return workerPool?.ready ?? false;
 			},
 			dispose: async () => {
-				if (platform.workerPool) {
-					await platform.workerPool.terminate();
-					platform.workerPool = undefined;
+				if (platform.#workerPool) {
+					await platform.#workerPool.terminate();
+					platform.#workerPool = undefined;
 				}
 				console.info("[Bun] ServiceWorker disposed");
 			},
@@ -265,8 +284,8 @@ export class BunPlatform extends BasePlatform {
 	 * Reload workers for hot reloading (called by CLI)
 	 */
 	async reloadWorkers(version?: number | string): Promise<void> {
-		if (this.workerPool) {
-			await this.workerPool.reloadWorkers(version);
+		if (this.#workerPool) {
+			await this.#workerPool.reloadWorkers(version);
 		}
 	}
 
@@ -274,9 +293,9 @@ export class BunPlatform extends BasePlatform {
 	 * Dispose of platform resources
 	 */
 	async dispose(): Promise<void> {
-		if (this.workerPool) {
-			await this.workerPool.terminate();
-			this.workerPool = undefined;
+		if (this.#workerPool) {
+			await this.#workerPool.terminate();
+			this.#workerPool = undefined;
 		}
 	}
 }

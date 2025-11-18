@@ -52,7 +52,7 @@ interface ParamDefinition {
  * - Enhanced string pattern parsing with & syntax
  */
 export class MatchPattern extends URLPattern {
-	private _originalInput: string | URLPatternInit;
+	#_originalInput: string | URLPatternInit;
 
 	constructor(input: string | URLPatternInit, baseURL?: string) {
 		// Handle string patterns with & syntax
@@ -71,7 +71,7 @@ export class MatchPattern extends URLPattern {
 		}
 
 		// Store original pattern for enhanced matching
-		this._originalInput = processedInput;
+		this.#_originalInput = processedInput;
 	}
 
 	/**

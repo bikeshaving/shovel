@@ -21,12 +21,13 @@ export interface WatcherOptions {
 }
 
 export class Watcher {
-	private watcher?: ReturnType<typeof watch>;
-	private building = false;
-	private options: WatcherOptions;
+	#watcher?: ReturnType<typeof watch>;
+	#building: boolean;
+	#options: WatcherOptions;
 
 	constructor(options: WatcherOptions) {
-		this.options = {
+		this.#building = false;
+		this.#options = {
 			outDir: DEFAULTS.PATHS.OUTPUT_DIR,
 			...options,
 		};
@@ -36,16 +37,16 @@ export class Watcher {
 	 * Start watching and building
 	 */
 	async start() {
-		const entryPath = resolve(this.options.entrypoint);
+		const entryPath = resolve(this.#options.entrypoint);
 
 		// Initial build
-		await this.build();
+		await this.#build();
 
 		// Watch for changes
 		const watchDir = dirname(entryPath);
 		console.info(`[Watcher] Watching ${watchDir} for changes...`);
 
-		this.watcher = watch(
+		this.#watcher = watch(
 			watchDir,
 			{recursive: true},
 			(_eventType, filename) => {
@@ -55,7 +56,7 @@ export class Watcher {
 						filename.endsWith(".ts") ||
 						filename.endsWith(".tsx"))
 				) {
-					this.debouncedBuild();
+					this.#debouncedBuild();
 				}
 			},
 		);
@@ -65,30 +66,30 @@ export class Watcher {
 	 * Stop watching
 	 */
 	async stop() {
-		if (this.watcher) {
-			this.watcher.close();
-			this.watcher = undefined;
+		if (this.#watcher) {
+			this.#watcher.close();
+			this.#watcher = undefined;
 		}
 	}
 
-	private timeout?: NodeJS.Timeout;
+	#timeout?: NodeJS.Timeout;
 
-	private debouncedBuild() {
-		if (this.timeout) {
-			clearTimeout(this.timeout);
+	#debouncedBuild() {
+		if (this.#timeout) {
+			clearTimeout(this.#timeout);
 		}
-		this.timeout = setTimeout(() => {
-			this.build();
+		this.#timeout = setTimeout(() => {
+			this.#build();
 		}, 100);
 	}
 
-	private async build() {
-		if (this.building) return;
-		this.building = true;
+	async #build() {
+		if (this.#building) return;
+		this.#building = true;
 
 		try {
-			const entryPath = resolve(this.options.entrypoint);
-			const outputDir = resolve(this.options.outDir);
+			const entryPath = resolve(this.#options.entrypoint);
+			const outputDir = resolve(this.#options.outDir);
 			const version = Date.now();
 
 			// Find workspace root by looking for package.json with workspaces
@@ -137,16 +138,16 @@ export class Watcher {
 
 			if (result.errors.length > 0) {
 				console.error("[Watcher] Build errors:", result.errors);
-				this.options.onBuild?.(false, version);
+				this.#options.onBuild?.(false, version);
 			} else {
 				console.info(`[Watcher] Build complete (v${version})`);
-				this.options.onBuild?.(true, version);
+				this.#options.onBuild?.(true, version);
 			}
 		} catch (error) {
 			console.error("[Watcher] Build failed:", error);
-			this.options.onBuild?.(false, Date.now());
+			this.#options.onBuild?.(false, Date.now());
 		} finally {
-			this.building = false;
+			this.#building = false;
 		}
 	}
 }

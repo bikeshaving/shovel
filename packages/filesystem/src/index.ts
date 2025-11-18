@@ -95,41 +95,44 @@ class ShovelWritableFileStream
 	extends WritableStream
 	implements FileSystemWritableFileStream
 {
-	private chunks: Uint8Array[] = [];
+	#chunks: Uint8Array[];
+	#backend: FileSystemBackend;
+	#path: string;
 
-	constructor(
-		private backend: FileSystemBackend,
-		private path: string,
-	) {
+	constructor(backend: FileSystemBackend, path: string) {
+		const chunks: Uint8Array[] = [];
 		super({
 			write: (chunk: Uint8Array | string) => {
 				// Convert string to Uint8Array if needed
 				const bytes =
 					typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk;
-				this.chunks.push(bytes);
+				chunks.push(bytes);
 				return Promise.resolve();
 			},
 			close: async () => {
 				// Concatenate all chunks
-				const totalLength = this.chunks.reduce(
+				const totalLength = chunks.reduce(
 					(sum, chunk) => sum + chunk.length,
 					0,
 				);
 				const content = new Uint8Array(totalLength);
 				let offset = 0;
-				for (const chunk of this.chunks) {
+				for (const chunk of chunks) {
 					content.set(chunk, offset);
 					offset += chunk.length;
 				}
 
 				// Write to backend
-				await this.backend.writeFile(this.path, content);
+				await backend.writeFile(path, content);
 			},
 			abort: () => {
-				this.chunks.length = 0;
+				chunks.length = 0;
 				return Promise.resolve();
 			},
 		});
+		this.#chunks = chunks;
+		this.#backend = backend;
+		this.#path = path;
 	}
 
 	// File System Access API write method
@@ -174,14 +177,17 @@ export abstract class ShovelHandle implements FileSystemHandle {
 	abstract readonly kind: "file" | "directory";
 	readonly name: string;
 	readonly path: string;
+	#backend: FileSystemBackend;
 
-	constructor(
-		protected backend: FileSystemBackend,
-		path: string,
-	) {
+	constructor(backend: FileSystemBackend, path: string) {
+		this.#backend = backend;
 		this.path = path;
 		// Extract name from path
 		this.name = path.split("/").filter(Boolean).pop() || "root";
+	}
+
+	get backend(): FileSystemBackend {
+		return this.#backend;
 	}
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
@@ -222,7 +228,7 @@ export abstract class ShovelHandle implements FileSystemHandle {
 	 * Validates that a name is actually a name and not a path
 	 * The File System Access API only accepts names, not paths
 	 */
-	protected validateName(name: string): void {
+	validateName(name: string): void {
 		if (!name || name.trim() === "") {
 			throw new DOMException("Name cannot be empty", "NotAllowedError");
 		}
@@ -252,10 +258,11 @@ export class ShovelFileHandle
 	extends ShovelHandle
 	implements FileSystemFileHandle
 {
-	readonly kind = "file" as const;
+	readonly kind: "file";
 
 	constructor(backend: FileSystemBackend, path: string) {
 		super(backend, path);
+		this.kind = "file";
 	}
 
 	async getFile(): Promise<File> {
@@ -263,7 +270,7 @@ export class ShovelFileHandle
 			const content = await this.backend.readFile(this.path);
 			// Extract filename and infer MIME type
 			const filename = this.name;
-			const mimeType = this.getMimeType(filename);
+			const mimeType = this.#getMimeType(filename);
 
 			// Use slice() to ensure we have a copy with ArrayBuffer backing
 			// This resolves type conflicts between lib.dom and lib.webworker
@@ -289,7 +296,7 @@ export class ShovelFileHandle
 		);
 	}
 
-	private getMimeType(filename: string): string {
+	#getMimeType(filename: string): string {
 		const ext = filename.toLowerCase().substring(filename.lastIndexOf("."));
 		const mimeTypes: Record<string, string> = {
 			".html": "text/html",
@@ -316,10 +323,11 @@ export class ShovelDirectoryHandle
 	extends ShovelHandle
 	implements FileSystemDirectoryHandle
 {
-	readonly kind = "directory" as const;
+	readonly kind: "directory";
 
 	constructor(backend: FileSystemBackend, path: string) {
 		super(backend, path);
+		this.kind = "directory";
 	}
 
 	async getFileHandle(
@@ -327,7 +335,7 @@ export class ShovelDirectoryHandle
 		options?: {create?: boolean},
 	): Promise<FileSystemFileHandle> {
 		this.validateName(name);
-		const filePath = this.joinPath(this.path, name);
+		const filePath = this.#joinPath(this.path, name);
 		const stat = await this.backend.stat(filePath);
 
 		if (!stat && options?.create) {
@@ -350,7 +358,7 @@ export class ShovelDirectoryHandle
 		options?: {create?: boolean},
 	): Promise<FileSystemDirectoryHandle> {
 		this.validateName(name);
-		const dirPath = this.joinPath(this.path, name);
+		const dirPath = this.#joinPath(this.path, name);
 		const stat = await this.backend.stat(dirPath);
 
 		if (!stat && options?.create) {
@@ -383,7 +391,7 @@ export class ShovelDirectoryHandle
 			);
 		}
 
-		const entryPath = this.joinPath(this.path, name);
+		const entryPath = this.#joinPath(this.path, name);
 		const stat = await this.backend.stat(entryPath);
 
 		if (!stat) {
@@ -424,7 +432,7 @@ export class ShovelDirectoryHandle
 			const entries = await this.backend.listDir(this.path);
 
 			for (const entry of entries) {
-				const entryPath = this.joinPath(this.path, entry.name);
+				const entryPath = this.#joinPath(this.path, entry.name);
 				if (entry.kind === "file") {
 					yield [entry.name, new ShovelFileHandle(this.backend, entryPath)];
 				} else {
@@ -460,7 +468,7 @@ export class ShovelDirectoryHandle
 		return this.entries();
 	}
 
-	private joinPath(base: string, name: string): string {
+	#joinPath(base: string, name: string): string {
 		// Simple path joining - could be enhanced based on backend needs
 		if (base === "/" || base === "") {
 			return `/${name}`;
@@ -491,12 +499,16 @@ export type BucketFactory = (
  * Mirrors the CustomCacheStorage pattern for consistency across the platform.
  */
 export class CustomBucketStorage {
-	private instances = new Map<string, FileSystemDirectoryHandle>();
+	#instances: Map<string, FileSystemDirectoryHandle>;
+	#factory: BucketFactory;
 
 	/**
 	 * @param factory Function that creates bucket instances by name
 	 */
-	constructor(private factory: BucketFactory) {}
+	constructor(factory: BucketFactory) {
+		this.#instances = new Map<string, FileSystemDirectoryHandle>();
+		this.#factory = factory;
+	}
 
 	/**
 	 * Open a named bucket - creates if it doesn't exist
@@ -506,14 +518,14 @@ export class CustomBucketStorage {
 	 */
 	async open(name: string): Promise<FileSystemDirectoryHandle> {
 		// Return existing instance if already opened
-		const existing = this.instances.get(name);
+		const existing = this.#instances.get(name);
 		if (existing) {
 			return existing;
 		}
 
 		// Create new instance using factory
-		const bucket = await this.factory(name);
-		this.instances.set(name, bucket);
+		const bucket = await this.#factory(name);
+		this.#instances.set(name, bucket);
 		return bucket;
 	}
 
@@ -524,7 +536,7 @@ export class CustomBucketStorage {
 	 * @returns true if bucket has been opened
 	 */
 	async has(name: string): Promise<boolean> {
-		return this.instances.has(name);
+		return this.#instances.has(name);
 	}
 
 	/**
@@ -534,9 +546,9 @@ export class CustomBucketStorage {
 	 * @returns true if bucket was deleted, false if it didn't exist
 	 */
 	async delete(name: string): Promise<boolean> {
-		const instance = this.instances.get(name);
+		const instance = this.#instances.get(name);
 		if (instance) {
-			this.instances.delete(name);
+			this.#instances.delete(name);
 			return true;
 		}
 		return false;
@@ -548,7 +560,7 @@ export class CustomBucketStorage {
 	 * @returns Array of bucket names
 	 */
 	async keys(): Promise<string[]> {
-		return Array.from(this.instances.keys());
+		return Array.from(this.#instances.keys());
 	}
 
 	/**
@@ -568,8 +580,8 @@ export class CustomBucketStorage {
 	 */
 	getStats() {
 		return {
-			openInstances: this.instances.size,
-			bucketNames: Array.from(this.instances.keys()),
+			openInstances: this.#instances.size,
+			bucketNames: Array.from(this.#instances.keys()),
 		};
 	}
 }
@@ -586,23 +598,24 @@ import {MemoryBucket} from "./memory.js";
  * Manages registration and retrieval of filesystem adapters
  */
 class Registry {
-	private adapters = new Map<string, Bucket>();
-	private defaultAdapter: Bucket;
+	#adapters: Map<string, Bucket>;
+	#defaultAdapter: Bucket;
 
 	constructor() {
+		this.#adapters = new Map<string, Bucket>();
 		// Set memory adapter as default
-		this.defaultAdapter = new MemoryBucket();
+		this.#defaultAdapter = new MemoryBucket();
 	}
 
 	/**
 	 * Register a filesystem adapter with a name
 	 */
 	register(name: string, adapter: Bucket): void {
-		this.adapters.set(name, adapter);
+		this.#adapters.set(name, adapter);
 
 		// Set as default if it's the first one registered
-		if (!this.defaultAdapter) {
-			this.defaultAdapter = adapter;
+		if (!this.#defaultAdapter) {
+			this.#defaultAdapter = adapter;
 		}
 	}
 
@@ -611,31 +624,31 @@ class Registry {
 	 */
 	get(name?: string): Bucket | null {
 		if (!name) {
-			return this.defaultAdapter;
+			return this.#defaultAdapter;
 		}
-		return this.adapters.get(name) || this.defaultAdapter;
+		return this.#adapters.get(name) || this.#defaultAdapter;
 	}
 
 	/**
 	 * Set the default filesystem adapter
 	 */
 	setDefault(adapter: Bucket): void {
-		this.defaultAdapter = adapter;
+		this.#defaultAdapter = adapter;
 	}
 
 	/**
 	 * Get all registered adapter names
 	 */
 	getAdapterNames(): string[] {
-		return Array.from(this.adapters.keys());
+		return Array.from(this.#adapters.keys());
 	}
 
 	/**
 	 * Clear all registered adapters
 	 */
 	clear(): void {
-		this.adapters.clear();
-		this.defaultAdapter = null as any;
+		this.#adapters.clear();
+		this.#defaultAdapter = null as any;
 	}
 }
 

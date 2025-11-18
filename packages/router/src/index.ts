@@ -194,17 +194,21 @@ class LinearExecutor {
  *     .delete(deleteUserHandler);
  */
 class RouteBuilder {
-	constructor(
-		private router: Router,
-		private pattern: string,
-		private cacheConfig?: RouteCacheConfig,
-	) {}
+	#router: Router;
+	#pattern: string;
+	#cacheConfig?: RouteCacheConfig;
+
+	constructor(router: Router, pattern: string, cacheConfig?: RouteCacheConfig) {
+		this.#router = router;
+		this.#pattern = pattern;
+		this.#cacheConfig = cacheConfig;
+	}
 
 	/**
 	 * Register a GET handler for this route pattern
 	 */
 	get(handler: Handler): RouteBuilder {
-		this.router.addRoute("GET", this.pattern, handler, this.cacheConfig);
+		this.#router.addRoute("GET", this.#pattern, handler, this.#cacheConfig);
 		return this;
 	}
 
@@ -212,7 +216,7 @@ class RouteBuilder {
 	 * Register a POST handler for this route pattern
 	 */
 	post(handler: Handler): RouteBuilder {
-		this.router.addRoute("POST", this.pattern, handler, this.cacheConfig);
+		this.#router.addRoute("POST", this.#pattern, handler, this.#cacheConfig);
 		return this;
 	}
 
@@ -220,7 +224,7 @@ class RouteBuilder {
 	 * Register a PUT handler for this route pattern
 	 */
 	put(handler: Handler): RouteBuilder {
-		this.router.addRoute("PUT", this.pattern, handler, this.cacheConfig);
+		this.#router.addRoute("PUT", this.#pattern, handler, this.#cacheConfig);
 		return this;
 	}
 
@@ -228,7 +232,7 @@ class RouteBuilder {
 	 * Register a DELETE handler for this route pattern
 	 */
 	delete(handler: Handler): RouteBuilder {
-		this.router.addRoute("DELETE", this.pattern, handler, this.cacheConfig);
+		this.#router.addRoute("DELETE", this.#pattern, handler, this.#cacheConfig);
 		return this;
 	}
 
@@ -236,7 +240,7 @@ class RouteBuilder {
 	 * Register a PATCH handler for this route pattern
 	 */
 	patch(handler: Handler): RouteBuilder {
-		this.router.addRoute("PATCH", this.pattern, handler, this.cacheConfig);
+		this.#router.addRoute("PATCH", this.#pattern, handler, this.#cacheConfig);
 		return this;
 	}
 
@@ -244,7 +248,7 @@ class RouteBuilder {
 	 * Register a HEAD handler for this route pattern
 	 */
 	head(handler: Handler): RouteBuilder {
-		this.router.addRoute("HEAD", this.pattern, handler, this.cacheConfig);
+		this.#router.addRoute("HEAD", this.#pattern, handler, this.#cacheConfig);
 		return this;
 	}
 
@@ -252,7 +256,7 @@ class RouteBuilder {
 	 * Register an OPTIONS handler for this route pattern
 	 */
 	options(handler: Handler): RouteBuilder {
-		this.router.addRoute("OPTIONS", this.pattern, handler, this.cacheConfig);
+		this.#router.addRoute("OPTIONS", this.#pattern, handler, this.#cacheConfig);
 		return this;
 	}
 
@@ -270,7 +274,7 @@ class RouteBuilder {
 			"OPTIONS",
 		];
 		methods.forEach((method) => {
-			this.router.addRoute(method, this.pattern, handler, this.cacheConfig);
+			this.#router.addRoute(method, this.#pattern, handler, this.#cacheConfig);
 		});
 		return this;
 	}
@@ -281,14 +285,63 @@ class RouteBuilder {
  * Designed to work universally across all JavaScript runtimes
  */
 export class Router {
-	private routes: RouteEntry[] = [];
-	private middlewares: MiddlewareEntry[] = [];
-	private executor: LinearExecutor | null = null;
-	private dirty = false;
-	private caches?: CacheStorage;
+	#routes: RouteEntry[];
+	#middlewares: MiddlewareEntry[];
+	#executor: LinearExecutor | null;
+	#dirty: boolean;
+	#caches?: CacheStorage;
 
 	constructor(options?: RouterOptions) {
-		this.caches = options?.caches;
+		this.#routes = [];
+		this.#middlewares = [];
+		this.#executor = null;
+		this.#dirty = false;
+		this.#caches = options?.caches;
+
+		// Initialize handler implementation
+		this.#handlerImpl = async (request: Request): Promise<Response> => {
+			// Lazy compilation - build executor on first match
+			if (this.#dirty || !this.#executor) {
+				this.#executor = new LinearExecutor(this.#routes);
+				this.#dirty = false;
+			}
+
+			// Find matching route
+			const matchResult = this.#executor.match(request);
+
+			if (matchResult) {
+				// Route found - build context and execute middleware chain + handler
+				const context = await this.#buildContext(
+					matchResult.context,
+					matchResult.cacheConfig,
+				);
+				const mutableRequest = this.#createMutableRequest(request);
+				return this.#executeMiddlewareStack(
+					this.#middlewares,
+					mutableRequest,
+					context,
+					matchResult.handler,
+					request.url,
+					this.#executor,
+				);
+			} else {
+				// No route found - execute global middleware with 404 fallback
+				const notFoundHandler = async (): Promise<Response> => {
+					return new Response("Not Found", {status: 404});
+				};
+				const mutableRequest = this.#createMutableRequest(request);
+				return this.#executeMiddlewareStack(
+					this.#middlewares,
+					mutableRequest,
+					{params: {}},
+					notFoundHandler,
+					request.url,
+					this.#executor,
+				);
+			}
+		};
+
+		this.handler = this.#handlerImpl;
 	}
 
 	/**
@@ -314,15 +367,15 @@ export class Router {
 			this.addRoute("OPTIONS", patternOrMiddleware, handler);
 		} else if (typeof patternOrMiddleware === "function") {
 			// Validate middleware type
-			if (!this.isValidMiddleware(patternOrMiddleware)) {
+			if (!this.#isValidMiddleware(patternOrMiddleware)) {
 				throw new Error(
 					"Invalid middleware type. Must be function or async generator function.",
 				);
 			}
 
 			// Global middleware registration with automatic type detection
-			this.middlewares.push({middleware: patternOrMiddleware});
-			this.dirty = true;
+			this.#middlewares.push({middleware: patternOrMiddleware});
+			this.#dirty = true;
 		} else {
 			throw new Error(
 				"Invalid middleware type. Must be function or async generator function.",
@@ -369,60 +422,21 @@ export class Router {
 	): void {
 		const matchPattern = new MatchPattern(pattern);
 
-		this.routes.push({
+		this.#routes.push({
 			pattern: matchPattern,
 			method: method.toUpperCase(),
 			handler: handler,
 			cache,
 		});
-		this.dirty = true;
+		this.#dirty = true;
 	}
 
 	/**
 	 * Handle a request - main entrypoint for ServiceWorker usage
 	 * Returns a response or throws if no route matches
 	 */
-	handler = async (request: Request): Promise<Response> => {
-		// Lazy compilation - build executor on first match
-		if (this.dirty || !this.executor) {
-			this.executor = new LinearExecutor(this.routes);
-			this.dirty = false;
-		}
-
-		// Find matching route
-		const matchResult = this.executor.match(request);
-
-		if (matchResult) {
-			// Route found - build context and execute middleware chain + handler
-			const context = await this.buildContext(
-				matchResult.context,
-				matchResult.cacheConfig,
-			);
-			const mutableRequest = this.createMutableRequest(request);
-			return this.executeMiddlewareStack(
-				this.middlewares,
-				mutableRequest,
-				context,
-				matchResult.handler,
-				request.url,
-				this.executor,
-			);
-		} else {
-			// No route found - execute global middleware with 404 fallback
-			const notFoundHandler = async (): Promise<Response> => {
-				return new Response("Not Found", {status: 404});
-			};
-			const mutableRequest = this.createMutableRequest(request);
-			return this.executeMiddlewareStack(
-				this.middlewares,
-				mutableRequest,
-				{params: {}},
-				notFoundHandler,
-				request.url,
-				this.executor,
-			);
-		}
-	};
+	handler: (request: Request) => Promise<Response>;
+	#handlerImpl: (request: Request) => Promise<Response>;
 
 	/**
 	 * Match a request against registered routes and execute the handler chain
@@ -431,24 +445,24 @@ export class Router {
 	 */
 	async match(request: Request): Promise<Response | null> {
 		// Lazy compilation - build executor on first match
-		if (this.dirty || !this.executor) {
-			this.executor = new LinearExecutor(this.routes);
-			this.dirty = false;
+		if (this.#dirty || !this.#executor) {
+			this.#executor = new LinearExecutor(this.#routes);
+			this.#dirty = false;
 		}
 
 		// Create mutable request wrapper for URL modifications
-		const mutableRequest = this.createMutableRequest(request);
+		const mutableRequest = this.#createMutableRequest(request);
 		const originalUrl = mutableRequest.url;
 
 		// Try to find a route match first
-		let matchResult = this.executor.match(request);
+		let matchResult = this.#executor.match(request);
 		let handler: Handler;
 		let context: RouteContext;
 
 		if (matchResult) {
 			// Route found - use its handler and context
 			handler = matchResult.handler;
-			context = await this.buildContext(
+			context = await this.#buildContext(
 				matchResult.context,
 				matchResult.cacheConfig,
 			);
@@ -459,13 +473,13 @@ export class Router {
 		}
 
 		// Execute middleware chain with the handler
-		const response = await this.executeMiddlewareStack(
-			this.middlewares,
+		const response = await this.#executeMiddlewareStack(
+			this.#middlewares,
 			mutableRequest,
 			context,
 			handler,
 			originalUrl,
-			this.executor, // Pass executor for re-routing
+			this.#executor, // Pass executor for re-routing
 		);
 
 		// If no route was found originally, return null unless middleware handled it
@@ -479,20 +493,20 @@ export class Router {
 	/**
 	 * Build the complete route context including cache access
 	 */
-	private async buildContext(
+	async #buildContext(
 		baseContext: RouteContext,
 		cacheConfig?: RouteCacheConfig,
 	): Promise<RouteContext> {
 		const context: RouteContext = {...baseContext};
 
-		if (this.caches) {
-			context.caches = this.caches;
+		if (this.#caches) {
+			context.caches = this.#caches;
 
 			// Open the named cache if configured for this route
 			if (cacheConfig?.name) {
 				try {
 					// CacheStorage.open() returns Web API Cache which is compatible with our Cache interface
-					context.cache = (await this.caches.open(
+					context.cache = (await this.#caches.open(
 						cacheConfig.name,
 					)) as import("@b9g/cache").Cache;
 				} catch (error) {
@@ -509,14 +523,14 @@ export class Router {
 	 * Get registered routes for debugging/introspection
 	 */
 	getRoutes(): RouteEntry[] {
-		return [...this.routes];
+		return [...this.#routes];
 	}
 
 	/**
 	 * Get registered middleware for debugging/introspection
 	 */
 	getMiddlewares(): MiddlewareEntry[] {
-		return [...this.middlewares];
+		return [...this.#middlewares];
 	}
 
 	/**
@@ -534,7 +548,7 @@ export class Router {
 	 */
 	mount(mountPath: string, subrouter: Router): void {
 		// Normalize mount path - ensure it starts with / and doesn't end with /
-		const normalizedMountPath = this.normalizeMountPath(mountPath);
+		const normalizedMountPath = this.#normalizeMountPath(mountPath);
 
 		// Get all routes from the subrouter
 		const subroutes = subrouter.getRoutes();
@@ -542,13 +556,13 @@ export class Router {
 		// Add each subroute with the mount path prefix
 		for (const subroute of subroutes) {
 			// Combine mount path with subroute pattern
-			const mountedPattern = this.combinePaths(
+			const mountedPattern = this.#combinePaths(
 				normalizedMountPath,
 				subroute.pattern.pathname,
 			);
 
 			// Add the route to this router
-			this.routes.push({
+			this.#routes.push({
 				pattern: new MatchPattern(mountedPattern),
 				method: subroute.method,
 				handler: subroute.handler,
@@ -561,16 +575,16 @@ export class Router {
 		for (const submiddleware of submiddlewares) {
 			// For now, add subrouter middleware globally
 			// TODO: Could add path-specific middleware in the future
-			this.middlewares.push(submiddleware);
+			this.#middlewares.push(submiddleware);
 		}
 
-		this.dirty = true;
+		this.#dirty = true;
 	}
 
 	/**
 	 * Normalize mount path: ensure it starts with / and doesn't end with /
 	 */
-	private normalizeMountPath(mountPath: string): string {
+	#normalizeMountPath(mountPath: string): string {
 		if (!mountPath.startsWith("/")) {
 			mountPath = "/" + mountPath;
 		}
@@ -583,7 +597,7 @@ export class Router {
 	/**
 	 * Combine mount path with route pattern
 	 */
-	private combinePaths(mountPath: string, routePattern: string): string {
+	#combinePaths(mountPath: string, routePattern: string): string {
 		// Handle root path specially
 		if (routePattern === "/") {
 			return mountPath;
@@ -600,7 +614,7 @@ export class Router {
 	/**
 	 * Validate that a function is valid middleware
 	 */
-	private isValidMiddleware(middleware: Middleware): boolean {
+	#isValidMiddleware(middleware: Middleware): boolean {
 		const constructorName = middleware.constructor.name;
 		return (
 			constructorName === "AsyncGeneratorFunction" ||
@@ -612,14 +626,14 @@ export class Router {
 	/**
 	 * Detect if a function is a generator middleware
 	 */
-	private isGeneratorMiddleware(middleware: Middleware): boolean {
+	#isGeneratorMiddleware(middleware: Middleware): boolean {
 		return middleware.constructor.name === "AsyncGeneratorFunction";
 	}
 
 	/**
 	 * Execute middleware stack with guaranteed execution using Rack-style LIFO order
 	 */
-	private async executeMiddlewareStack(
+	async #executeMiddlewareStack(
 		middlewares: MiddlewareEntry[],
 		request: any,
 		context: RouteContext,
@@ -635,7 +649,7 @@ export class Router {
 		for (let i = 0; i < middlewares.length; i++) {
 			const middleware = middlewares[i].middleware;
 
-			if (this.isGeneratorMiddleware(middleware)) {
+			if (this.#isGeneratorMiddleware(middleware)) {
 				const generator = (middleware as GeneratorMiddleware)(request, context);
 				const result = await generator.next();
 
@@ -681,7 +695,7 @@ export class Router {
 
 				if (newMatchResult) {
 					finalHandler = newMatchResult.handler;
-					finalContext = await this.buildContext(
+					finalContext = await this.#buildContext(
 						newMatchResult.context,
 						newMatchResult.cacheConfig || undefined,
 					);
@@ -698,7 +712,7 @@ export class Router {
 
 			// Handle errors through generator stack if needed
 			if (handlerError) {
-				currentResponse = await this.handleErrorThroughGenerators(
+				currentResponse = await this.#handleErrorThroughGenerators(
 					handlerError,
 					runningGenerators,
 				);
@@ -708,7 +722,7 @@ export class Router {
 		// Handle automatic redirects if URL was modified - do this before resuming generators
 		// so that generators can process the redirect response
 		if (request.url !== originalUrl && currentResponse) {
-			currentResponse = this.handleAutomaticRedirect(
+			currentResponse = this.#handleAutomaticRedirect(
 				originalUrl,
 				request.url,
 				request.method,
@@ -731,7 +745,7 @@ export class Router {
 	/**
 	 * Handle errors by trying generators in reverse order
 	 */
-	private async handleErrorThroughGenerators(
+	async #handleErrorThroughGenerators(
 		error: Error,
 		runningGenerators: Array<{generator: AsyncGenerator; index: number}>,
 	): Promise<Response> {
@@ -762,7 +776,7 @@ export class Router {
 	/**
 	 * Create a mutable request wrapper that allows URL modification
 	 */
-	private createMutableRequest(request: Request): any {
+	#createMutableRequest(request: Request): any {
 		return {
 			url: request.url,
 			method: request.method,
@@ -792,7 +806,7 @@ export class Router {
 	/**
 	 * Handle automatic redirects when URL is modified
 	 */
-	private handleAutomaticRedirect(
+	#handleAutomaticRedirect(
 		originalUrl: string,
 		newUrl: string,
 		method: string,
@@ -837,9 +851,9 @@ export class Router {
 	 */
 	getStats() {
 		return {
-			routeCount: this.routes.length,
-			middlewareCount: this.middlewares.length,
-			compiled: !this.dirty && this.executor !== null,
+			routeCount: this.#routes.length,
+			middlewareCount: this.#middlewares.length,
+			compiled: !this.#dirty && this.#executor !== null,
 		};
 	}
 }

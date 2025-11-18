@@ -18,10 +18,11 @@
  * Standard constructor: new ExtendableEvent(type) or new ExtendableEvent(type, options)
  */
 export class ExtendableEvent extends Event {
-	private readonly promises: Promise<any>[] = [];
+	#promises: Promise<any>[];
 
 	constructor(type: string, eventInitDict?: EventInit) {
 		super(type, eventInitDict);
+		this.#promises = [];
 	}
 
 	waitUntil(promise: Promise<any>): void {
@@ -29,11 +30,11 @@ export class ExtendableEvent extends Event {
 		promise.catch(() => {});
 
 		// Store the promise for Promise.all() to consume (rejection still propagates)
-		this.promises.push(promise);
+		this.#promises.push(promise);
 	}
 
 	getPromises(): Promise<any>[] {
-		return [...this.promises];
+		return [...this.#promises];
 	}
 }
 
@@ -42,28 +43,30 @@ export class ExtendableEvent extends Event {
  */
 export class FetchEvent extends ExtendableEvent {
 	readonly request: Request;
-	private responsePromise: Promise<Response> | null = null;
-	private responded = false;
+	#responsePromise: Promise<Response> | null;
+	#responded: boolean;
 
 	constructor(request: Request, eventInitDict?: EventInit) {
 		super("fetch", eventInitDict);
 		this.request = request;
+		this.#responsePromise = null;
+		this.#responded = false;
 	}
 
 	respondWith(response: Response | Promise<Response>): void {
-		if (this.responded) {
+		if (this.#responded) {
 			throw new Error("respondWith() already called");
 		}
-		this.responded = true;
-		this.responsePromise = Promise.resolve(response);
+		this.#responded = true;
+		this.#responsePromise = Promise.resolve(response);
 	}
 
 	getResponse(): Promise<Response> | null {
-		return this.responsePromise;
+		return this.#responsePromise;
 	}
 
 	hasResponded(): boolean {
-		return this.responded;
+		return this.#responded;
 	}
 }
 
@@ -125,9 +128,9 @@ export interface BucketStorage {
  * Note: Standard Client has no constructor - instances are created internally
  */
 export class ShovelClient implements Client {
-	readonly frameType: "auxiliary" | "top-level" | "nested" | "none" = "none";
+	readonly frameType: "auxiliary" | "top-level" | "nested" | "none";
 	readonly id: string;
-	readonly type: "window" | "worker" | "sharedworker" = "worker";
+	readonly type: "window" | "worker" | "sharedworker";
 	readonly url: string;
 
 	constructor(options: {
@@ -135,6 +138,7 @@ export class ShovelClient implements Client {
 		url: string;
 		type?: "window" | "worker" | "sharedworker";
 	}) {
+		this.frameType = "none";
 		this.id = options.id;
 		this.url = options.url;
 		this.type = options.type || "worker";
@@ -160,8 +164,8 @@ export class ShovelClient implements Client {
  * Note: Standard WindowClient has no constructor - instances are created internally
  */
 export class ShovelWindowClient extends ShovelClient implements WindowClient {
-	readonly focused: boolean = false;
-	readonly visibilityState: DocumentVisibilityState = "hidden";
+	readonly focused: boolean;
+	readonly visibilityState: DocumentVisibilityState;
 
 	constructor(options: {
 		id: string;
@@ -261,11 +265,12 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 		| "redundant";
 
 	// Event handlers required by Web API
-	onstatechange: ((ev: Event) => any) | null = null;
-	onerror: ((ev: Event) => any) | null = null;
+	onstatechange: ((ev: Event) => any) | null;
+	onerror: ((ev: Event) => any) | null;
 
 	constructor(
 		scriptURL: string,
+
 		state:
 			| "parsed"
 			| "installing"
@@ -277,6 +282,8 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 		super();
 		this.scriptURL = scriptURL;
 		this.state = state;
+		this.onstatechange = null;
+		this.onerror = null;
 	}
 
 	// postMessage overload with Transferable array
@@ -338,26 +345,31 @@ export class ShovelServiceWorkerRegistration
 	implements ServiceWorkerRegistration
 {
 	readonly scope: string;
-	readonly updateViaCache: "imports" | "all" | "none" = "imports";
+	readonly updateViaCache: "imports" | "all" | "none";
 	readonly navigationPreload: NavigationPreloadManager;
 
 	// ServiceWorker instances representing different lifecycle states
-	public _serviceWorker: ShovelServiceWorker;
+	_serviceWorker: ShovelServiceWorker;
 
 	// Shovel runtime state
-	private eventListeners = new Map<string, Function[]>();
+	#eventListeners: Map<string, Function[]>;
+
+	// Web API properties (not supported in server context, but required by interface)
+	readonly cookies: any;
+	readonly pushManager: any;
+	onupdatefound: ((ev: Event) => any) | null;
 
 	constructor(scope: string = "/", scriptURL: string = "/") {
 		super();
 		this.scope = scope;
+		this.updateViaCache = "imports";
 		this.navigationPreload = new ShovelNavigationPreloadManager();
 		this._serviceWorker = new ShovelServiceWorker(scriptURL, "parsed");
+		this.#eventListeners = new Map<string, Function[]>();
+		this.cookies = null;
+		this.pushManager = null;
+		this.onupdatefound = null;
 	}
-
-	// Web API properties (not supported in server context, but required by interface)
-	readonly cookies: any = null; // CookieStoreManager not available in server context
-	readonly pushManager: any = null; // PushManager not available in server context
-	onupdatefound: ((ev: Event) => any) | null = null;
 
 	// Standard ServiceWorkerRegistration properties
 	get active(): ServiceWorker | null {
@@ -422,10 +434,10 @@ export class ShovelServiceWorkerRegistration
 		if (!fn) return;
 
 		super.addEventListener(type, listener, options);
-		if (!this.eventListeners.has(type)) {
-			this.eventListeners.set(type, []);
+		if (!this.#eventListeners.has(type)) {
+			this.#eventListeners.set(type, []);
 		}
-		this.eventListeners.get(type)!.push(fn);
+		this.#eventListeners.get(type)!.push(fn);
 	}
 
 	/**
@@ -441,13 +453,13 @@ export class ShovelServiceWorkerRegistration
 		if (!fn) return;
 
 		super.removeEventListener(type, listener, options);
-		if (this.eventListeners.has(type)) {
-			const listeners = this.eventListeners.get(type)!;
+		if (this.#eventListeners.has(type)) {
+			const listeners = this.#eventListeners.get(type)!;
 			const index = listeners.indexOf(fn);
 			if (index > -1) {
 				listeners.splice(index, 1);
 				if (listeners.length === 0) {
-					this.eventListeners.delete(type);
+					this.#eventListeners.delete(type);
 				}
 			}
 		}
@@ -547,7 +559,7 @@ export class ShovelServiceWorkerRegistration
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
 				// Manually call each listener with error handling to match browser behavior
-				const listeners = this.eventListeners.get("fetch") || [];
+				const listeners = this.#eventListeners.get("fetch") || [];
 				for (const listener of listeners) {
 					try {
 						listener(event);
@@ -596,12 +608,12 @@ export class ShovelServiceWorkerRegistration
 		this._serviceWorker._setState("parsed");
 
 		// Remove all tracked event listeners
-		for (const [type, listeners] of this.eventListeners) {
+		for (const [type, listeners] of this.#eventListeners) {
 			for (const listener of listeners) {
 				super.removeEventListener(type as any, listener as any);
 			}
 		}
-		this.eventListeners.clear();
+		this.#eventListeners.clear();
 	}
 
 	// Events: updatefound (standard), plus Shovel lifecycle events
@@ -616,20 +628,25 @@ export class ShovelServiceWorkerContainer
 	extends EventTarget
 	implements ServiceWorkerContainer
 {
-	private registrations = new Map<string, ShovelServiceWorkerRegistration>();
-	readonly controller: ServiceWorker | null = null;
+	#registrations: Map<string, ShovelServiceWorkerRegistration>;
+	readonly controller: ServiceWorker | null;
 	readonly ready: Promise<ServiceWorkerRegistration>;
 
 	// Event handlers required by Web API
-	oncontrollerchange: ((ev: Event) => any) | null = null;
-	onmessage: ((ev: MessageEvent) => any) | null = null;
-	onmessageerror: ((ev: MessageEvent) => any) | null = null;
+	oncontrollerchange: ((ev: Event) => any) | null;
+	onmessage: ((ev: MessageEvent) => any) | null;
+	onmessageerror: ((ev: MessageEvent) => any) | null;
 
 	constructor() {
 		super();
+		this.#registrations = new Map<string, ShovelServiceWorkerRegistration>();
+		this.controller = null;
+		this.oncontrollerchange = null;
+		this.onmessage = null;
+		this.onmessageerror = null;
 		// Create default registration for root scope
 		const defaultRegistration = new ShovelServiceWorkerRegistration("/", "/");
-		this.registrations.set("/", defaultRegistration);
+		this.#registrations.set("/", defaultRegistration);
 		this.ready = Promise.resolve(defaultRegistration);
 	}
 
@@ -639,14 +656,14 @@ export class ShovelServiceWorkerContainer
 	async getRegistration(
 		scope: string = "/",
 	): Promise<ServiceWorkerRegistration | undefined> {
-		return this.registrations.get(scope);
+		return this.#registrations.get(scope);
 	}
 
 	/**
 	 * Get all registrations
 	 */
 	async getRegistrations(): Promise<ServiceWorkerRegistration[]> {
-		return Array.from(this.registrations.values());
+		return Array.from(this.#registrations.values());
 	}
 
 	/**
@@ -662,10 +679,10 @@ export class ShovelServiceWorkerContainer
 	): Promise<ServiceWorkerRegistration> {
 		const url =
 			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
-		const scope = this.normalizeScope(options?.scope || "/");
+		const scope = this.#normalizeScope(options?.scope || "/");
 
 		// Check if registration already exists for this scope
-		let registration = this.registrations.get(scope);
+		let registration = this.#registrations.get(scope);
 
 		if (registration) {
 			// Update existing registration with new script
@@ -674,7 +691,7 @@ export class ShovelServiceWorkerContainer
 		} else {
 			// Create new registration
 			registration = new ShovelServiceWorkerRegistration(scope, url);
-			this.registrations.set(scope, registration);
+			this.#registrations.set(scope, registration);
 
 			// Dispatch updatefound event
 			this.dispatchEvent(new Event("updatefound"));
@@ -687,10 +704,10 @@ export class ShovelServiceWorkerContainer
 	 * Unregister a ServiceWorker registration
 	 */
 	async unregister(scope: string): Promise<boolean> {
-		const registration = this.registrations.get(scope);
+		const registration = this.#registrations.get(scope);
 		if (registration) {
 			await registration.unregister();
-			this.registrations.delete(scope);
+			this.#registrations.delete(scope);
 			return true;
 		}
 		return false;
@@ -704,10 +721,10 @@ export class ShovelServiceWorkerContainer
 		const pathname = url.pathname;
 
 		// Find the most specific scope that matches this request
-		const matchingScope = this.findMatchingScope(pathname);
+		const matchingScope = this.#findMatchingScope(pathname);
 
 		if (matchingScope) {
-			const registration = this.registrations.get(matchingScope);
+			const registration = this.#registrations.get(matchingScope);
 			if (registration && registration.ready) {
 				return await registration.handleRequest(request);
 			}
@@ -720,7 +737,7 @@ export class ShovelServiceWorkerContainer
 	 * Install and activate all registrations
 	 */
 	async installAll(): Promise<void> {
-		const installations = Array.from(this.registrations.values()).map(
+		const installations = Array.from(this.#registrations.values()).map(
 			async (registration) => {
 				await registration.install();
 				await registration.activate();
@@ -734,7 +751,7 @@ export class ShovelServiceWorkerContainer
 	 * Get list of all scopes
 	 */
 	getScopes(): string[] {
-		return Array.from(this.registrations.keys());
+		return Array.from(this.#registrations.keys());
 	}
 
 	startMessages(): void {
@@ -744,7 +761,7 @@ export class ShovelServiceWorkerContainer
 	/**
 	 * Normalize scope to ensure it starts and ends correctly
 	 */
-	private normalizeScope(scope: string): string {
+	#normalizeScope(scope: string): string {
 		// Ensure scope starts with /
 		if (!scope.startsWith("/")) {
 			scope = "/" + scope;
@@ -761,8 +778,8 @@ export class ShovelServiceWorkerContainer
 	/**
 	 * Find the most specific scope that matches a pathname
 	 */
-	private findMatchingScope(pathname: string): string | null {
-		const scopes = Array.from(this.registrations.keys());
+	#findMatchingScope(pathname: string): string | null {
+		const scopes = Array.from(this.#registrations.keys());
 
 		// Sort by length descending to find most specific match first
 		scopes.sort((a, b) => b.length - a.length);
@@ -800,10 +817,12 @@ export class Notification extends EventTarget {
 	readonly vibrate: readonly number[];
 
 	// Event handlers required by Web API
-	onclick: ((ev: Event) => any) | null = null;
-	onclose: ((ev: Event) => any) | null = null;
-	onerror: ((ev: Event) => any) | null = null;
-	onshow: ((ev: Event) => any) | null = null;
+	onclick: ((ev: Event) => any) | null;
+	onclose: ((ev: Event) => any) | null;
+	onerror: ((ev: Event) => any) | null;
+	onshow: ((ev: Event) => any) | null;
+
+	static permission: "default" | "denied" | "granted";
 
 	constructor(title: string, options: NotificationOptions = {}) {
 		super();
@@ -822,6 +841,10 @@ export class Notification extends EventTarget {
 		this.tag = options.tag || "";
 		this.timestamp = options.timestamp || Date.now();
 		this.vibrate = Object.freeze([...(options.vibrate || [])]);
+		this.onclick = null;
+		this.onclose = null;
+		this.onerror = null;
+		this.onshow = null;
 	}
 
 	close(): void {
@@ -830,14 +853,15 @@ export class Notification extends EventTarget {
 		);
 	}
 
-	static permission: "default" | "denied" | "granted" = "denied";
-
 	static async requestPermission(): Promise<"default" | "denied" | "granted"> {
 		return "denied";
 	}
 
 	// Events: click, close, error, show
 }
+
+// Initialize static property
+Notification.permission = "denied";
 
 /**
  * NotificationEvent for notification interactions
@@ -851,7 +875,7 @@ export interface NotificationEventInit extends EventInit {
 export class NotificationEvent extends ExtendableEvent {
 	readonly action: string;
 	readonly notification: Notification;
-	readonly reply: string | null = null;
+	readonly reply: string | null;
 
 	constructor(type: string, eventInitDict: NotificationEventInit) {
 		super(type, eventInitDict);
@@ -980,7 +1004,7 @@ export interface ShovelGlobalScopeOptions {
 export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	// Self-reference (standard in ServiceWorkerGlobalScope)
 	// Type assertion: we provide a compatible subset of WorkerGlobalScope
-	readonly self = this as unknown as WorkerGlobalScope & typeof globalThis;
+	readonly self: WorkerGlobalScope & typeof globalThis;
 
 	// ServiceWorker standard properties
 	// Our custom ServiceWorkerRegistration provides core functionality compatible with the Web API
@@ -995,23 +1019,23 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	readonly clients: Clients;
 
 	// Shovel-specific development features
-	private readonly isDevelopment: boolean;
-	private readonly hotReload?: () => Promise<void>;
+	#isDevelopment: boolean;
+	#hotReload?: () => Promise<void>;
 
 	// Web API required properties (stubs for server context)
-	readonly cookieStore: any = null; // CookieStore not available in server context
-	readonly serviceWorker: any = null; // ServiceWorkerContainer not available in global scope
+	readonly cookieStore: any;
+	readonly serviceWorker: any;
 
 	// WorkerGlobalScope required properties (stubs for server context)
-	readonly location: WorkerLocation = {} as WorkerLocation;
-	readonly navigator: WorkerNavigator = {} as WorkerNavigator;
-	readonly fonts: FontFaceSet = {} as FontFaceSet;
-	readonly indexedDB: IDBFactory = {} as IDBFactory;
-	readonly isSecureContext: boolean = true;
-	readonly crossOriginIsolated: boolean = false;
-	readonly origin: string = "";
-	readonly performance: Performance = {} as Performance;
-	readonly crypto: Crypto = {} as Crypto;
+	readonly location: WorkerLocation;
+	readonly navigator: WorkerNavigator;
+	readonly fonts: FontFaceSet;
+	readonly indexedDB: IDBFactory;
+	readonly isSecureContext: boolean;
+	readonly crossOriginIsolated: boolean;
+	readonly origin: string;
+	readonly performance: Performance;
+	readonly crypto: Crypto;
 
 	// WorkerGlobalScope methods (stubs for server context)
 	importScripts(..._urls: (string | URL)[]): void {
@@ -1070,62 +1094,93 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	// Use Web API types (not our custom implementations) for event handler signatures
 	onactivate:
 		| ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any)
-		| null = null;
-	oncookiechange: ((this: ServiceWorkerGlobalScope, ev: Event) => any) | null =
-		null;
+		| null;
+	oncookiechange: ((this: ServiceWorkerGlobalScope, ev: Event) => any) | null;
 	onfetch:
 		| ((this: ServiceWorkerGlobalScope, ev: globalThis.FetchEvent) => any)
-		| null = null;
+		| null;
 	oninstall:
 		| ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any)
-		| null = null;
+		| null;
 	onmessage:
 		| ((
 				this: ServiceWorkerGlobalScope,
 				ev: globalThis.ExtendableMessageEvent,
 		  ) => any)
-		| null = null;
+		| null;
 	onmessageerror:
 		| ((this: ServiceWorkerGlobalScope, ev: MessageEvent) => any)
-		| null = null;
+		| null;
 	onnotificationclick:
 		| ((
 				this: ServiceWorkerGlobalScope,
 				ev: globalThis.NotificationEvent,
 		  ) => any)
-		| null = null;
+		| null;
 	onnotificationclose:
 		| ((
 				this: ServiceWorkerGlobalScope,
 				ev: globalThis.NotificationEvent,
 		  ) => any)
-		| null = null;
+		| null;
 	onpush:
 		| ((this: ServiceWorkerGlobalScope, ev: globalThis.PushEvent) => any)
-		| null = null;
+		| null;
 	onpushsubscriptionchange:
 		| ((this: ServiceWorkerGlobalScope, ev: Event) => any)
-		| null = null;
-	onsync: ((this: ServiceWorkerGlobalScope, ev: SyncEvent) => any) | null =
-		null;
+		| null;
+	onsync: ((this: ServiceWorkerGlobalScope, ev: SyncEvent) => any) | null;
 
 	// WorkerGlobalScope event handlers (inherited by ServiceWorkerGlobalScope)
-	onerror: OnErrorEventHandlerNonNull | null = null;
-	onlanguagechange: ((ev: Event) => any) | null = null;
-	onoffline: ((ev: Event) => any) | null = null;
-	ononline: ((ev: Event) => any) | null = null;
-	onrejectionhandled: ((ev: PromiseRejectionEvent) => any) | null = null;
-	onunhandledrejection: ((ev: PromiseRejectionEvent) => any) | null = null;
+	onerror: OnErrorEventHandlerNonNull | null;
+	onlanguagechange: ((ev: Event) => any) | null;
+	onoffline: ((ev: Event) => any) | null;
+	ononline: ((ev: Event) => any) | null;
+	onrejectionhandled: ((ev: PromiseRejectionEvent) => any) | null;
+	onunhandledrejection: ((ev: PromiseRejectionEvent) => any) | null;
 
 	constructor(options: ShovelGlobalScopeOptions) {
+		this.self = this as unknown as WorkerGlobalScope & typeof globalThis;
 		this.registration = options.registration;
 		this.caches = options.caches || ({} as CacheStorage);
 		this.buckets = options.buckets || ({} as BucketStorage);
-		this.isDevelopment = options.isDevelopment ?? false;
-		this.hotReload = options.hotReload;
+		this.#isDevelopment = options.isDevelopment ?? false;
+		this.#hotReload = options.hotReload;
 
 		// Create clients API implementation
-		this.clients = this.createClientsAPI();
+		this.clients = this.#createClientsAPI();
+
+		// Initialize Web API stubs
+		this.cookieStore = null;
+		this.serviceWorker = null;
+		this.location = {} as WorkerLocation;
+		this.navigator = {} as WorkerNavigator;
+		this.fonts = {} as FontFaceSet;
+		this.indexedDB = {} as IDBFactory;
+		this.isSecureContext = true;
+		this.crossOriginIsolated = false;
+		this.origin = "";
+		this.performance = {} as Performance;
+		this.crypto = {} as Crypto;
+
+		// Initialize event handlers
+		this.onactivate = null;
+		this.oncookiechange = null;
+		this.onfetch = null;
+		this.oninstall = null;
+		this.onmessage = null;
+		this.onmessageerror = null;
+		this.onnotificationclick = null;
+		this.onnotificationclose = null;
+		this.onpush = null;
+		this.onpushsubscriptionchange = null;
+		this.onsync = null;
+		this.onerror = null;
+		this.onlanguagechange = null;
+		this.onoffline = null;
+		this.ononline = null;
+		this.onrejectionhandled = null;
+		this.onunhandledrejection = null;
 	}
 
 	/**
@@ -1135,10 +1190,10 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	 */
 	async skipWaiting(): Promise<void> {
 		console.info("[ServiceWorker] skipWaiting() called");
-		if (this.isDevelopment && this.hotReload) {
+		if (this.#isDevelopment && this.#hotReload) {
 			console.info("[ServiceWorker] skipWaiting() - triggering hot reload");
-			await this.hotReload();
-		} else if (!this.isDevelopment) {
+			await this.#hotReload();
+		} else if (!this.#isDevelopment) {
 			console.info(
 				"[ServiceWorker] skipWaiting() - production graceful restart not implemented",
 			);
@@ -1178,7 +1233,7 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	 * Create Clients API implementation
 	 * Note: HTTP requests are stateless, so most client operations are no-ops
 	 */
-	private createClientsAPI(): Clients {
+	#createClientsAPI(): Clients {
 		return new ShovelClients();
 	}
 

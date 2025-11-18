@@ -58,18 +58,17 @@ export interface NodePlatformOptions extends PlatformConfig {
  * ServiceWorker entrypoint loader for Node.js with ESBuild VM system
  */
 export class NodePlatform extends BasePlatform {
-	readonly name = "node";
+	readonly name: string;
 
-	private options: Required<
-		Omit<NodePlatformOptions, "caches" | "filesystem">
-	> &
+	#options: Required<Omit<NodePlatformOptions, "caches" | "filesystem">> &
 		Pick<NodePlatformOptions, "caches" | "filesystem">;
-	private workerPool?: ServiceWorkerPool;
-	private cacheStorage?: CustomCacheStorage;
+	#workerPool?: ServiceWorkerPool;
+	#cacheStorage?: CustomCacheStorage;
 
 	constructor(options: NodePlatformOptions = {}) {
 		super(options);
-		this.options = {
+		this.name = "node";
+		this.#options = {
 			hotReload: Boolean(import.meta.env?.DEV),
 			port: 3000,
 			host: "localhost",
@@ -81,8 +80,26 @@ export class NodePlatform extends BasePlatform {
 		FileSystemRegistry.register("tmp", new NodeBucket(Os.tmpdir()));
 		FileSystemRegistry.register(
 			"dist",
-			new NodeBucket(Path.join(this.options.cwd, "dist")),
+			new NodeBucket(Path.join(this.#options.cwd, "dist")),
 		);
+	}
+
+	/**
+	 * Get options for testing
+	 */
+	get options() {
+		return this.#options;
+	}
+
+	/**
+	 * Get/set worker pool for testing
+	 */
+	get workerPool() {
+		return this.#workerPool;
+	}
+
+	set workerPool(pool: ServiceWorkerPool | undefined) {
+		this.#workerPool = pool;
 	}
 
 	/**
@@ -90,7 +107,7 @@ export class NodePlatform extends BasePlatform {
 	 */
 	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
 		// Create dist filesystem pointing to ./dist directory
-		const distPath = Path.resolve(this.options.cwd, "dist");
+		const distPath = Path.resolve(this.#options.cwd, "dist");
 		const targetPath = name ? Path.join(distPath, name) : distPath;
 		return new NodeBucket(targetPath);
 	}
@@ -103,52 +120,52 @@ export class NodePlatform extends BasePlatform {
 		entrypoint: string,
 		options: ServiceWorkerOptions = {},
 	): Promise<ServiceWorkerInstance> {
-		const entryPath = Path.resolve(this.options.cwd, entrypoint);
+		const entryPath = Path.resolve(this.#options.cwd, entrypoint);
 
 		// Create shared cache storage if not already created
-		if (!this.cacheStorage) {
-			this.cacheStorage = await this.createCaches(options.caches);
+		if (!this.#cacheStorage) {
+			this.#cacheStorage = await this.createCaches(options.caches);
 		}
 
 		// Create ServiceWorkerPool with shared cache storage
 		// Always create a new WorkerPool to ensure correct entrypoint
-		if (this.workerPool) {
-			await this.workerPool.terminate();
+		if (this.#workerPool) {
+			await this.#workerPool.terminate();
 		}
 		const workerCount = options.workerCount || 1;
 		console.info(
 			"[Platform-Node] Creating ServiceWorkerPool with entryPath:",
 			entryPath,
 		);
-		this.workerPool = new ServiceWorkerPool(
+		this.#workerPool = new ServiceWorkerPool(
 			{
 				workerCount,
 				requestTimeout: 30000,
-				hotReload: this.options.hotReload,
-				cwd: this.options.cwd,
+				hotReload: this.#options.hotReload,
+				cwd: this.#options.cwd,
 			},
 			entryPath,
-			this.cacheStorage,
+			this.#cacheStorage,
 		);
 
 		// Initialize workers with dynamic import handling
-		await this.workerPool.init();
+		await this.#workerPool.init();
 
 		// Load ServiceWorker in all workers
 		const version = Date.now();
-		await this.workerPool.reloadWorkers(version);
+		await this.#workerPool.reloadWorkers(version);
 
 		// Capture references for closures
-		const workerPool = this.workerPool;
+		const workerPool = this.#workerPool;
 		const platform = this;
 
 		const instance: ServiceWorkerInstance = {
 			runtime: workerPool,
 			handleRequest: async (request: Request) => {
-				if (!platform.workerPool) {
+				if (!platform.#workerPool) {
 					throw new Error("ServiceWorkerPool not initialized");
 				}
-				return platform.workerPool.handleRequest(request);
+				return platform.#workerPool.handleRequest(request);
 			},
 			install: async () => {
 				console.info(
@@ -164,9 +181,9 @@ export class NodePlatform extends BasePlatform {
 				return workerPool?.ready ?? false;
 			},
 			dispose: async () => {
-				if (platform.workerPool) {
-					await platform.workerPool.terminate();
-					platform.workerPool = undefined;
+				if (platform.#workerPool) {
+					await platform.#workerPool.terminate();
+					platform.#workerPool = undefined;
 				}
 				console.info("[Platform-Node] ServiceWorker disposed");
 			},
@@ -181,7 +198,7 @@ export class NodePlatform extends BasePlatform {
 	/**
 	 * Get platform-specific default cache configuration for Node.js
 	 */
-	protected getDefaultCacheConfig(): CacheConfig {
+	getDefaultCacheConfig(): CacheConfig {
 		return {
 			pages: {type: "memory"}, // PostMessage cache for worker coordination
 			api: {type: "memory"},
@@ -220,8 +237,8 @@ export class NodePlatform extends BasePlatform {
 	 * SUPPORTING UTILITY - Create HTTP server for Node.js
 	 */
 	createServer(handler: Handler, options: ServerOptions = {}): Server {
-		const port = options.port ?? this.options.port;
-		const host = options.host ?? this.options.host;
+		const port = options.port ?? this.#options.port;
+		const host = options.host ?? this.#options.host;
 
 		// Create HTTP server with Web API Request/Response conversion
 		const httpServer = Http.createServer(async (req, res) => {
@@ -324,8 +341,8 @@ export class NodePlatform extends BasePlatform {
 	 * Reload workers for hot reloading (called by CLI)
 	 */
 	async reloadWorkers(version?: number | string): Promise<void> {
-		if (this.workerPool) {
-			await this.workerPool.reloadWorkers(version);
+		if (this.#workerPool) {
+			await this.#workerPool.reloadWorkers(version);
 		}
 	}
 
@@ -333,9 +350,9 @@ export class NodePlatform extends BasePlatform {
 	 * Dispose of platform resources
 	 */
 	async dispose(): Promise<void> {
-		if (this.workerPool) {
-			await this.workerPool.terminate();
-			this.workerPool = undefined;
+		if (this.#workerPool) {
+			await this.#workerPool.terminate();
+			this.#workerPool = undefined;
 		}
 	}
 }

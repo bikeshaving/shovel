@@ -70,14 +70,16 @@ export interface HTTPErrorOptions {
  * Base HTTP error class
  */
 export class HTTPError extends Error {
-	public readonly status: number;
-	public readonly statusCode: number;
-	public readonly expose: boolean;
-	public readonly headers?: Record<string, string>;
+	readonly status: number;
+	readonly statusCode: number;
+	readonly expose: boolean;
+	readonly headers?: Record<string, string>;
 
 	constructor(
 		status: number,
+
 		message?: string,
+
 		options: HTTPErrorOptions = {},
 	) {
 		const defaultMessage = STATUS_CODES[status] || "Unknown Error";

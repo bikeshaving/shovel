@@ -46,66 +46,67 @@ interface CacheEntry {
  * Stores HTTP responses with proper serialization and TTL support
  */
 export class RedisCache extends Cache {
-	private client: ReturnType<typeof createClient>;
-	private prefix: string;
-	private defaultTTL: number;
-	private maxEntrySize: number;
-	private connected = false;
+	#client: ReturnType<typeof createClient>;
+	#prefix: string;
+	#defaultTTL: number;
+	#maxEntrySize: number;
+	#connected: boolean;
 
 	constructor(name: string, options: RedisCacheOptions = {}) {
 		super();
 
-		this.client = createClient(options.redis || {});
-		this.prefix = options.prefix
+		this.#client = createClient(options.redis || {});
+		this.#prefix = options.prefix
 			? `${options.prefix}:${name}`
 			: `cache:${name}`;
-		this.defaultTTL = options.defaultTTL || 0; // 0 = no expiration
-		this.maxEntrySize = options.maxEntrySize || 10 * 1024 * 1024; // 10MB default
+		this.#defaultTTL = options.defaultTTL || 0; // 0 = no expiration
+		this.#maxEntrySize = options.maxEntrySize || 10 * 1024 * 1024; // 10MB default
+		this.#connected = false;
 
 		// Set up error handling
-		this.client.on("error", (err) => {
+		this.#client.on("error", (err) => {
 			console.error("[RedisCache] Redis error:", err);
 		});
 
-		this.client.on("connect", () => {
+		this.#client.on("connect", () => {
 			console.info(`[RedisCache] Connected to Redis for cache: ${name}`);
-			this.connected = true;
+			this.#connected = true;
 		});
 
-		this.client.on("disconnect", () => {
+		this.#client.on("disconnect", () => {
 			console.warn(`[RedisCache] Disconnected from Redis for cache: ${name}`);
-			this.connected = false;
+			this.#connected = false;
 		});
 	}
 
 	/**
 	 * Ensure Redis client is connected
 	 */
-	private async ensureConnected(): Promise<void> {
-		if (!this.connected && !this.client.isReady) {
-			await this.client.connect();
+	async #ensureConnected(): Promise<void> {
+		if (!this.#connected && !this.#client.isReady) {
+			await this.#client.connect();
 		}
 	}
 
 	/**
 	 * Generate Redis key for cache entry
 	 */
-	private getRedisKey(request: Request, options?: CacheQueryOptions): string {
+	#getRedisKey(request: Request, options?: CacheQueryOptions): string {
 		const cacheKey = generateCacheKey(request, options);
-		return `${this.prefix}:${cacheKey}`;
+		return `${this.#prefix}:${cacheKey}`;
 	}
 
 	/**
 	 * Serialize Response to cache entry
 	 */
-	private async serializeResponse(response: Response): Promise<CacheEntry> {
+	async #serializeResponse(response: Response): Promise<CacheEntry> {
 		// Check response size before serialization
 		const cloned = response.clone();
 		const body = await cloned.arrayBuffer();
 
-		if (body.byteLength > this.maxEntrySize) {
+		if (body.byteLength > this.#maxEntrySize) {
 			throw new Error(
-				`Response body too large: ${body.byteLength} bytes (max: ${this.maxEntrySize})`,
+				`Response body too large: ${body.byteLength} bytes (max: ${this.#maxEntrySize})`,
 			);
 		}
 
@@ -121,14 +122,14 @@ export class RedisCache extends Cache {
 			headers,
 			body: btoa(String.fromCharCode(...new Uint8Array(body))),
 			cachedAt: Date.now(),
-			ttl: this.defaultTTL,
+			ttl: this.#defaultTTL,
 		};
 	}
 
 	/**
 	 * Deserialize cache entry to Response
 	 */
-	private deserializeResponse(entry: CacheEntry): Response {
+	#deserializeResponse(entry: CacheEntry): Response {
 		const body = Uint8Array.from(atob(entry.body), (c) => c.charCodeAt(0));
 
 		return new Response(body, {
@@ -146,10 +147,10 @@ export class RedisCache extends Cache {
 		options?: CacheQueryOptions,
 	): Promise<Response | undefined> {
 		try {
-			await this.ensureConnected();
+			await this.#ensureConnected();
 
-			const key = this.getRedisKey(request, options);
-			const cached = await this.client.get(key);
+			const key = this.#getRedisKey(request, options);
+			const cached = await this.#client.get(key);
 
 			if (!cached) {
 				return undefined;
@@ -162,12 +163,12 @@ export class RedisCache extends Cache {
 				const ageInSeconds = (Date.now() - entry.cachedAt) / 1000;
 				if (ageInSeconds > entry.ttl) {
 					// Entry expired, delete it
-					await this.client.del(key);
+					await this.#client.del(key);
 					return undefined;
 				}
 			}
 
-			return this.deserializeResponse(entry);
+			return this.#deserializeResponse(entry);
 		} catch (error) {
 			console.error("[RedisCache] Failed to match:", error);
 			return undefined;
@@ -179,17 +180,17 @@ export class RedisCache extends Cache {
 	 */
 	async put(request: Request, response: Response): Promise<void> {
 		try {
-			await this.ensureConnected();
+			await this.#ensureConnected();
 
-			const key = this.getRedisKey(request);
-			const entry = await this.serializeResponse(response);
+			const key = this.#getRedisKey(request);
+			const entry = await this.#serializeResponse(response);
 			const serialized = JSON.stringify(entry);
 
 			// Set with TTL if specified
 			if (entry.ttl > 0) {
-				await this.client.setEx(key, entry.ttl, serialized);
+				await this.#client.setEx(key, entry.ttl, serialized);
 			} else {
-				await this.client.set(key, serialized);
+				await this.#client.set(key, serialized);
 			}
 		} catch (error) {
 			console.error("[RedisCache] Failed to put:", error);
@@ -205,10 +206,10 @@ export class RedisCache extends Cache {
 		options?: CacheQueryOptions,
 	): Promise<boolean> {
 		try {
-			await this.ensureConnected();
+			await this.#ensureConnected();
 
-			const key = this.getRedisKey(request, options);
-			const result = await this.client.del(key);
+			const key = this.#getRedisKey(request, options);
+			const result = await this.#client.del(key);
 			return result > 0;
 		} catch (error) {
 			console.error("[RedisCache] Failed to delete:", error);
@@ -224,20 +225,20 @@ export class RedisCache extends Cache {
 		options?: CacheQueryOptions,
 	): Promise<Request[]> {
 		try {
-			await this.ensureConnected();
+			await this.#ensureConnected();
 
 			// If specific request provided, check if it exists
 			if (request) {
-				const key = this.getRedisKey(request, options);
-				const exists = await this.client.exists(key);
+				const key = this.#getRedisKey(request, options);
+				const exists = await this.#client.exists(key);
 				return exists ? [request] : [];
 			}
 
 			// Otherwise, scan for all keys with our prefix
-			const pattern = `${this.prefix}:*`;
+			const pattern = `${this.#prefix}:*`;
 			const keys: string[] = [];
 
-			for await (const key of this.client.scanIterator({
+			for await (const key of this.#client.scanIterator({
 				MATCH: pattern,
 				COUNT: 100,
 			})) {
@@ -250,7 +251,7 @@ export class RedisCache extends Cache {
 			for (const key of keys) {
 				try {
 					// Extract the cache key part and parse it
-					const cacheKey = key.replace(`${this.prefix}:`, "");
+					const cacheKey = key.replace(`${this.#prefix}:`, "");
 					const [method, url] = cacheKey.split(":", 2);
 
 					if (method && url) {
@@ -273,19 +274,19 @@ export class RedisCache extends Cache {
 	 */
 	async getStats() {
 		try {
-			await this.ensureConnected();
+			await this.#ensureConnected();
 
-			const pattern = `${this.prefix}:*`;
+			const pattern = `${this.#prefix}:*`;
 			let keyCount = 0;
 			let totalSize = 0;
 
-			for await (const key of this.client.scanIterator({
+			for await (const key of this.#client.scanIterator({
 				MATCH: pattern,
 				COUNT: 100,
 			})) {
 				keyCount++;
 				try {
-					const value = await this.client.get(key);
+					const value = await this.#client.get(key);
 					if (value) {
 						// Use web-standard text encoding instead of Node.js Buffer
 						totalSize += new TextEncoder().encode(value).length;
@@ -296,12 +297,12 @@ export class RedisCache extends Cache {
 			}
 
 			return {
-				connected: this.connected,
+				connected: this.#connected,
 				keyCount,
 				totalSize,
-				prefix: this.prefix,
-				defaultTTL: this.defaultTTL,
-				maxEntrySize: this.maxEntrySize,
+				prefix: this.#prefix,
+				defaultTTL: this.#defaultTTL,
+				maxEntrySize: this.#maxEntrySize,
 			};
 		} catch (error) {
 			console.error("[RedisCache] Failed to get stats:", error);
@@ -309,9 +310,9 @@ export class RedisCache extends Cache {
 				connected: false,
 				keyCount: 0,
 				totalSize: 0,
-				prefix: this.prefix,
-				defaultTTL: this.defaultTTL,
-				maxEntrySize: this.maxEntrySize,
+				prefix: this.#prefix,
+				defaultTTL: this.#defaultTTL,
+				maxEntrySize: this.#maxEntrySize,
 			};
 		}
 	}

@@ -91,12 +91,12 @@
       "import": "./dist/bin/cli.js"
     },
     "./bin/create": {
-      "import": "./dist/bin/create.js",
-      "types": "./dist/bin/create.d.ts"
+      "types": "./dist/bin/create.d.ts",
+      "import": "./dist/bin/create.js"
     },
     "./bin/create.js": {
-      "import": "./dist/bin/create.js",
-      "types": "./dist/bin/create.d.ts"
+      "types": "./dist/bin/create.d.ts",
+      "import": "./dist/bin/create.js"
     }
   },
   "module": "./dist/src/undefined.js"

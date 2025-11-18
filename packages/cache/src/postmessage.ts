@@ -19,17 +19,22 @@ export interface PostMessageCacheOptions {
  * Only used for MemoryCache in multi-worker environments
  */
 export class PostMessageCache extends Cache {
-	private requestId = 0;
-	private pendingRequests = new Map<
+	#requestId: number;
+	#pendingRequests: Map<
 		number,
 		{resolve: (value: any) => void; reject: (error: Error) => void}
-	>();
+	>;
+	#name: string;
 
-	constructor(
-		private name: string,
-		private options: PostMessageCacheOptions = {},
-	) {
+	constructor(name: string, _options: PostMessageCacheOptions = {}) {
 		super();
+
+		this.#requestId = 0;
+		this.#pendingRequests = new Map<
+			number,
+			{resolve: (value: any) => void; reject: (error: Error) => void}
+		>();
+		this.#name = name;
 
 		if (isMainThread) {
 			throw new Error("PostMessageCache should only be used in worker threads");
@@ -43,16 +48,16 @@ export class PostMessageCache extends Cache {
 					message.type === "cache:response" ||
 					message.type === "cache:error"
 				) {
-					this.handleResponse(message);
+					this.#handleResponse(message);
 				}
 			});
 		}
 	}
 
-	private handleResponse(message: any) {
-		const pending = this.pendingRequests.get(message.requestId);
+	#handleResponse(message: any) {
+		const pending = this.#pendingRequests.get(message.requestId);
 		if (pending) {
-			this.pendingRequests.delete(message.requestId);
+			this.#pendingRequests.delete(message.requestId);
 
 			if (message.type === "cache:error") {
 				pending.reject(new Error(message.error));
@@ -62,27 +67,27 @@ export class PostMessageCache extends Cache {
 		}
 	}
 
-	private async sendRequest(type: string, data: any): Promise<any> {
+	async #sendRequest(type: string, data: any): Promise<any> {
 		if (!parentPort) {
 			throw new Error("PostMessageCache can only be used in worker threads");
 		}
 
-		const requestId = ++this.requestId;
+		const requestId = ++this.#requestId;
 
 		return new Promise((resolve, reject) => {
-			this.pendingRequests.set(requestId, {resolve, reject});
+			this.#pendingRequests.set(requestId, {resolve, reject});
 
 			parentPort!.postMessage({
 				type,
 				requestId,
-				cacheName: this.name,
+				cacheName: this.#name,
 				...data,
 			});
 
 			// Timeout after 30 seconds
 			setTimeout(() => {
-				if (this.pendingRequests.has(requestId)) {
-					this.pendingRequests.delete(requestId);
+				if (this.#pendingRequests.has(requestId)) {
+					this.#pendingRequests.delete(requestId);
 					reject(new Error("Cache operation timeout"));
 				}
 			}, 30000);
@@ -104,7 +109,7 @@ export class PostMessageCache extends Cache {
 					: undefined,
 		};
 
-		const response = await this.sendRequest("cache:match", {
+		const response = await this.#sendRequest("cache:match", {
 			request: serializedRequest,
 			options,
 		});
@@ -140,7 +145,7 @@ export class PostMessageCache extends Cache {
 			body: await response.clone().text(),
 		};
 
-		await this.sendRequest("cache:put", {
+		await this.#sendRequest("cache:put", {
 			request: serializedRequest,
 			response: serializedResponse,
 		});
@@ -160,7 +165,7 @@ export class PostMessageCache extends Cache {
 					: undefined,
 		};
 
-		return await this.sendRequest("cache:delete", {
+		return await this.#sendRequest("cache:delete", {
 			request: serializedRequest,
 			options,
 		});
@@ -183,7 +188,7 @@ export class PostMessageCache extends Cache {
 			};
 		}
 
-		const keys = await this.sendRequest("cache:keys", {
+		const keys = await this.#sendRequest("cache:keys", {
 			request: serializedRequest,
 			options,
 		});
@@ -200,6 +205,6 @@ export class PostMessageCache extends Cache {
 	}
 
 	async clear(): Promise<void> {
-		await this.sendRequest("cache:clear", {});
+		await this.#sendRequest("cache:clear", {});
 	}
 }

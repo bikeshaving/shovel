@@ -13,37 +13,40 @@ import type {FileSystemBackend, FileSystemConfig} from "@b9g/filesystem";
  * Cloudflare R2 implementation of FileSystemWritableFileStream
  */
 export class R2FileSystemWritableFileStream extends WritableStream<Uint8Array> {
-	private chunks: Uint8Array[] = [];
+	#chunks: Uint8Array[];
+	#r2Bucket: R2Bucket;
+	#key: string;
 
-	constructor(
-		private r2Bucket: R2Bucket,
-		private key: string,
-	) {
+	constructor(r2Bucket: R2Bucket, key: string) {
+		const chunks: Uint8Array[] = [];
 		super({
 			write: (chunk: Uint8Array) => {
-				this.chunks.push(chunk);
+				chunks.push(chunk);
 				return Promise.resolve();
 			},
 			close: async () => {
 				// Concatenate all chunks and upload to R2
-				const totalLength = this.chunks.reduce(
+				const totalLength = chunks.reduce(
 					(sum, chunk) => sum + chunk.length,
 					0,
 				);
 				const buffer = new Uint8Array(totalLength);
 				let offset = 0;
-				for (const chunk of this.chunks) {
+				for (const chunk of chunks) {
 					buffer.set(chunk, offset);
 					offset += chunk.length;
 				}
 
-				await this.r2Bucket.put(this.key, buffer);
+				await r2Bucket.put(key, buffer);
 			},
 			abort: async () => {
 				// Clear chunks on abort
-				this.chunks = [];
+				chunks.length = 0;
 			},
 		});
+		this.#chunks = chunks;
+		this.#r2Bucket = r2Bucket;
+		this.#key = key;
 	}
 }
 
@@ -51,18 +54,20 @@ export class R2FileSystemWritableFileStream extends WritableStream<Uint8Array> {
  * Cloudflare R2 implementation of FileSystemFileHandle
  */
 export class R2FileSystemFileHandle implements FileSystemFileHandle {
-	readonly kind = "file" as const;
+	readonly kind: "file";
 	readonly name: string;
+	#r2Bucket: R2Bucket;
+	#key: string;
 
-	constructor(
-		private r2Bucket: R2Bucket,
-		private key: string,
-	) {
+	constructor(r2Bucket: R2Bucket, key: string) {
+		this.kind = "file";
+		this.#r2Bucket = r2Bucket;
+		this.#key = key;
 		this.name = key.split("/").pop() || key;
 	}
 
 	async getFile(): Promise<File> {
-		const r2Object = await this.r2Bucket.get(this.key);
+		const r2Object = await this.#r2Bucket.get(this.#key);
 
 		if (!r2Object) {
 			throw new DOMException("File not found", "NotFoundError");
@@ -73,12 +78,12 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 
 		return new File([arrayBuffer], this.name, {
 			lastModified: r2Object.uploaded.getTime(),
-			type: r2Object.httpMetadata?.contentType || this.getMimeType(this.key),
+			type: r2Object.httpMetadata?.contentType || this.getMimeType(this.#key),
 		});
 	}
 
 	async createWritable(): Promise<FileSystemWritableFileStream> {
-		return new R2FileSystemWritableFileStream(this.r2Bucket, this.key) as any;
+		return new R2FileSystemWritableFileStream(this.#r2Bucket, this.#key) as any;
 	}
 
 	async createSyncAccessHandle(): Promise<FileSystemSyncAccessHandle> {
@@ -91,7 +96,7 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "file") return false;
 		if (!(other instanceof R2FileSystemFileHandle)) return false;
-		return this.key === other.key;
+		return this.#key === other.#key;
 	}
 
 	async queryPermission(): Promise<PermissionState> {
@@ -104,7 +109,7 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 		return "granted";
 	}
 
-	private getMimeType(key: string): string {
+	getMimeType(key: string): string {
 		const ext = key.split(".").pop()?.toLowerCase();
 		const mimeTypes: Record<string, string> = {
 			txt: "text/plain",
@@ -128,85 +133,86 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
  * Cloudflare R2 implementation of FileSystemDirectoryHandle
  */
 export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
-	readonly kind = "directory" as const;
+	readonly kind: "directory";
 	readonly name: string;
+	#r2Bucket: R2Bucket;
+	#prefix: string;
 
-	constructor(
-		private r2Bucket: R2Bucket,
-		private prefix: string,
-	) {
+	constructor(r2Bucket: R2Bucket, prefix: string) {
+		this.kind = "directory";
+		this.#r2Bucket = r2Bucket;
 		// Remove trailing slash for consistent handling
-		this.prefix = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
-		this.name = this.prefix.split("/").pop() || "root";
+		this.#prefix = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+		this.name = this.#prefix.split("/").pop() || "root";
 	}
 
 	async getFileHandle(
 		name: string,
 		options?: {create?: boolean},
 	): Promise<FileSystemFileHandle> {
-		const key = this.prefix ? `${this.prefix}/${name}` : name;
+		const key = this.#prefix ? `${this.#prefix}/${name}` : name;
 
 		// Check if file exists
-		const exists = await this.r2Bucket.head(key);
+		const exists = await this.#r2Bucket.head(key);
 
 		if (!exists && options?.create) {
 			// Create empty file
-			await this.r2Bucket.put(key, new Uint8Array(0));
+			await this.#r2Bucket.put(key, new Uint8Array(0));
 		} else if (!exists) {
 			throw new DOMException("File not found", "NotFoundError");
 		}
 
-		return new R2FileSystemFileHandle(this.r2Bucket, key);
+		return new R2FileSystemFileHandle(this.#r2Bucket, key);
 	}
 
 	async getDirectoryHandle(
 		name: string,
 		options?: {create?: boolean},
 	): Promise<FileSystemDirectoryHandle> {
-		const newPrefix = this.prefix ? `${this.prefix}/${name}` : name;
+		const newPrefix = this.#prefix ? `${this.#prefix}/${name}` : name;
 
 		if (options?.create) {
 			// R2 doesn't have directories, but we can create a marker object
 			const markerKey = `${newPrefix}/.shovel_directory_marker`;
-			const exists = await this.r2Bucket.head(markerKey);
+			const exists = await this.#r2Bucket.head(markerKey);
 			if (!exists) {
-				await this.r2Bucket.put(markerKey, new Uint8Array(0));
+				await this.#r2Bucket.put(markerKey, new Uint8Array(0));
 			}
 		}
 
-		return new R2FileSystemDirectoryHandle(this.r2Bucket, newPrefix);
+		return new R2FileSystemDirectoryHandle(this.#r2Bucket, newPrefix);
 	}
 
 	async removeEntry(
 		name: string,
 		options?: {recursive?: boolean},
 	): Promise<void> {
-		const key = this.prefix ? `${this.prefix}/${name}` : name;
+		const key = this.#prefix ? `${this.#prefix}/${name}` : name;
 
 		// First try to delete as a file
-		const fileExists = await this.r2Bucket.head(key);
+		const fileExists = await this.#r2Bucket.head(key);
 
 		if (fileExists) {
-			await this.r2Bucket.delete(key);
+			await this.#r2Bucket.delete(key);
 			return;
 		}
 
 		// If not a file, try to delete as directory (with recursive option)
 		if (options?.recursive) {
 			const dirPrefix = `${key}/`;
-			const listed = await this.r2Bucket.list({prefix: dirPrefix});
+			const listed = await this.#r2Bucket.list({prefix: dirPrefix});
 
 			// Delete all files in the directory
 			const deletePromises = listed.objects.map((object) =>
-				this.r2Bucket.delete(object.key),
+				this.#r2Bucket.delete(object.key),
 			);
 			await Promise.all(deletePromises);
 
 			// Delete directory marker if it exists
 			const markerKey = `${key}/.shovel_directory_marker`;
-			const markerExists = await this.r2Bucket.head(markerKey);
+			const markerExists = await this.#r2Bucket.head(markerKey);
 			if (markerExists) {
-				await this.r2Bucket.delete(markerKey);
+				await this.#r2Bucket.delete(markerKey);
 			}
 		} else {
 			throw new DOMException(
@@ -224,10 +230,10 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 	}
 
 	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
-		const listPrefix = this.prefix ? `${this.prefix}/` : "";
+		const listPrefix = this.#prefix ? `${this.#prefix}/` : "";
 
 		try {
-			const result = await this.r2Bucket.list({
+			const result = await this.#r2Bucket.list({
 				prefix: listPrefix,
 				delimiter: "/", // Only get immediate children
 			});
@@ -241,7 +247,10 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 						!name.includes("/") &&
 						!name.endsWith(".shovel_directory_marker")
 					) {
-						yield [name, new R2FileSystemFileHandle(this.r2Bucket, object.key)];
+						yield [
+							name,
+							new R2FileSystemFileHandle(this.#r2Bucket, object.key),
+						];
 					}
 				}
 			}
@@ -253,7 +262,7 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 					yield [
 						name,
 						new R2FileSystemDirectoryHandle(
-							this.r2Bucket,
+							this.#r2Bucket,
 							prefix.replace(/\/$/, ""),
 						),
 					];
@@ -280,7 +289,7 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "directory") return false;
 		if (!(other instanceof R2FileSystemDirectoryHandle)) return false;
-		return this.prefix === other.prefix;
+		return this.#prefix === other.#prefix;
 	}
 
 	async queryPermission(): Promise<PermissionState> {
@@ -298,26 +307,26 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
  * R2 filesystem adapter
  */
 export class R2FileSystemAdapter implements FileSystemBackend {
-	private config: FileSystemConfig;
-	private r2Bucket: R2Bucket;
+	#config: FileSystemConfig;
+	#r2Bucket: R2Bucket;
 
 	constructor(r2Bucket: R2Bucket, config: FileSystemConfig = {}) {
-		this.config = {
+		this.#config = {
 			name: "r2",
 			...config,
 		};
-		this.r2Bucket = r2Bucket;
+		this.#r2Bucket = r2Bucket;
 	}
 
 	async getFileSystemRoot(
 		name = "default",
 	): Promise<FileSystemDirectoryHandle> {
 		const prefix = `filesystems/${name}`;
-		return new R2FileSystemDirectoryHandle(this.r2Bucket, prefix);
+		return new R2FileSystemDirectoryHandle(this.#r2Bucket, prefix);
 	}
 
 	getConfig(): FileSystemConfig {
-		return {...this.config};
+		return {...this.#config};
 	}
 
 	async dispose(): Promise<void> {

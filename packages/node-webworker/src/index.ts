@@ -34,18 +34,21 @@ export interface ErrorEvent {
  * to Node.js worker_threads underneath.
  */
 export class Worker {
-	private nodeWorker: NodeWorker;
-	private messageListeners = new Set<(event: MessageEvent) => void>();
-	private errorListeners = new Set<(event: ErrorEvent) => void>();
+	#nodeWorker: NodeWorker;
+	#messageListeners: Set<(event: MessageEvent) => void>;
+	#errorListeners: Set<(event: ErrorEvent) => void>;
 
 	constructor(scriptURL: string, _options?: {type?: "classic" | "module"}) {
+		this.#messageListeners = new Set<(event: MessageEvent) => void>();
+		this.#errorListeners = new Set<(event: ErrorEvent) => void>();
+
 		// Get the path to our wrapper script
 		const __filename = fileURLToPath(import.meta.url);
 		const __dirname = dirname(__filename);
 		const wrapperScript = join(__dirname, "worker-wrapper.js");
 
 		// Create Node.js Worker with our wrapper that provides Web Worker globals
-		this.nodeWorker = new NodeWorker(wrapperScript, {
+		this.#nodeWorker = new NodeWorker(wrapperScript, {
 			...({type: "module"} as object),
 			env: {
 				...process.env,
@@ -54,9 +57,9 @@ export class Worker {
 		});
 
 		// Set up event forwarding from Node.js Worker to Web Worker API
-		this.nodeWorker.on("message", (data) => {
+		this.#nodeWorker.on("message", (data) => {
 			const event: MessageEvent = {data, type: "message"};
-			this.messageListeners.forEach((listener) => {
+			this.#messageListeners.forEach((listener) => {
 				try {
 					listener(event);
 				} catch (error) {
@@ -65,9 +68,9 @@ export class Worker {
 			});
 		});
 
-		this.nodeWorker.on("error", (error) => {
+		this.#nodeWorker.on("error", (error) => {
 			const event: ErrorEvent = {error, type: "error"};
-			this.errorListeners.forEach((listener) => {
+			this.#errorListeners.forEach((listener) => {
 				try {
 					listener(event);
 				} catch (listenerError) {
@@ -87,7 +90,7 @@ export class Worker {
 		if (transfer && transfer.length > 0) {
 			console.warn("[node-webworker] Transferable objects not fully supported");
 		}
-		this.nodeWorker.postMessage(message);
+		this.#nodeWorker.postMessage(message);
 	}
 
 	/**
@@ -100,9 +103,9 @@ export class Worker {
 	addEventListener(type: "error", listener: (event: ErrorEvent) => void): void;
 	addEventListener(type: string, listener: (event: any) => void): void {
 		if (type === "message") {
-			this.messageListeners.add(listener as (event: MessageEvent) => void);
+			this.#messageListeners.add(listener as (event: MessageEvent) => void);
 		} else if (type === "error") {
-			this.errorListeners.add(listener as (event: ErrorEvent) => void);
+			this.#errorListeners.add(listener as (event: ErrorEvent) => void);
 		} else {
 			console.warn(`[node-webworker] Unsupported event type: ${type}`);
 		}
@@ -121,9 +124,9 @@ export class Worker {
 	): void;
 	removeEventListener(type: string, listener: (event: any) => void): void {
 		if (type === "message") {
-			this.messageListeners.delete(listener as (event: MessageEvent) => void);
+			this.#messageListeners.delete(listener as (event: MessageEvent) => void);
 		} else if (type === "error") {
-			this.errorListeners.delete(listener as (event: ErrorEvent) => void);
+			this.#errorListeners.delete(listener as (event: ErrorEvent) => void);
 		}
 	}
 
@@ -131,10 +134,10 @@ export class Worker {
 	 * Terminate the worker
 	 */
 	async terminate(): Promise<number> {
-		const exitCode = await this.nodeWorker.terminate();
+		const exitCode = await this.#nodeWorker.terminate();
 		// Clean up listeners
-		this.messageListeners.clear();
-		this.errorListeners.clear();
+		this.#messageListeners.clear();
+		this.#errorListeners.clear();
 		return exitCode;
 	}
 
@@ -142,7 +145,7 @@ export class Worker {
 	 * Get the underlying Node.js Worker (for advanced usage)
 	 */
 	get nodeWorker_(): NodeWorker {
-		return this.nodeWorker;
+		return this.#nodeWorker;
 	}
 }
 

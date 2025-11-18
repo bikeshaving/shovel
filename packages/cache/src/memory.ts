@@ -24,15 +24,19 @@ interface CacheEntry {
  * Supports LRU eviction and TTL expiration
  */
 export class MemoryCache extends Cache {
-	private storage = new Map<string, CacheEntry>();
-	private accessOrder = new Map<string, number>(); // For LRU tracking
-	private accessCounter = 0;
+	#storage: Map<string, CacheEntry>;
+	#accessOrder: Map<string, number>;
+	#accessCounter: number;
+	#name: string;
+	#options: MemoryCacheOptions;
 
-	constructor(
-		private name: string,
-		private options: MemoryCacheOptions = {},
-	) {
+	constructor(name: string, options: MemoryCacheOptions = {}) {
 		super();
+		this.#storage = new Map<string, CacheEntry>();
+		this.#accessOrder = new Map<string, number>();
+		this.#accessCounter = 0;
+		this.#name = name;
+		this.#options = options;
 	}
 
 	/**
@@ -43,21 +47,21 @@ export class MemoryCache extends Cache {
 		options?: CacheQueryOptions,
 	): Promise<Response | undefined> {
 		const key = generateCacheKey(request, options);
-		const entry = this.storage.get(key);
+		const entry = this.#storage.get(key);
 
 		if (!entry) {
 			return undefined;
 		}
 
 		// Check if entry has expired
-		if (this.isExpired(entry)) {
-			this.storage.delete(key);
-			this.accessOrder.delete(key);
+		if (this.#isExpired(entry)) {
+			this.#storage.delete(key);
+			this.#accessOrder.delete(key);
 			return undefined;
 		}
 
 		// Update access order for LRU
-		this.accessOrder.set(key, ++this.accessCounter);
+		this.#accessOrder.set(key, ++this.#accessCounter);
 
 		// Clone the response to avoid mutation
 		return entry.response.clone();
@@ -70,7 +74,7 @@ export class MemoryCache extends Cache {
 		const key = generateCacheKey(request);
 
 		// Check if response is cacheable
-		if (!this.isCacheable(response)) {
+		if (!this.#isCacheable(response)) {
 			return;
 		}
 
@@ -84,11 +88,11 @@ export class MemoryCache extends Cache {
 			timestamp: Date.now(),
 		};
 
-		this.storage.set(key, entry);
-		this.accessOrder.set(key, ++this.accessCounter);
+		this.#storage.set(key, entry);
+		this.#accessOrder.set(key, ++this.#accessCounter);
 
 		// Enforce size limits
-		this.enforceMaxEntries();
+		this.#enforceMaxEntries();
 	}
 
 	/**
@@ -99,10 +103,10 @@ export class MemoryCache extends Cache {
 		options?: CacheQueryOptions,
 	): Promise<boolean> {
 		const key = generateCacheKey(request, options);
-		const deleted = this.storage.delete(key);
+		const deleted = this.#storage.delete(key);
 
 		if (deleted) {
-			this.accessOrder.delete(key);
+			this.#accessOrder.delete(key);
 		}
 
 		return deleted;
@@ -117,9 +121,9 @@ export class MemoryCache extends Cache {
 	): Promise<readonly Request[]> {
 		const keys: Request[] = [];
 
-		for (const [_, entry] of this.storage) {
+		for (const [_, entry] of this.#storage) {
 			// Skip expired entries
-			if (this.isExpired(entry)) {
+			if (this.#isExpired(entry)) {
 				continue;
 			}
 
@@ -145,9 +149,9 @@ export class MemoryCache extends Cache {
 	 * Clear all entries from the cache
 	 */
 	async clear(): Promise<void> {
-		this.storage.clear();
-		this.accessOrder.clear();
-		this.accessCounter = 0;
+		this.#storage.clear();
+		this.#accessOrder.clear();
+		this.#accessCounter = 0;
 	}
 
 	/**
@@ -155,10 +159,10 @@ export class MemoryCache extends Cache {
 	 */
 	getStats() {
 		return {
-			name: this.name,
-			size: this.storage.size,
-			maxEntries: this.options.maxEntries,
-			maxAge: this.options.maxAge,
+			name: this.#name,
+			size: this.#storage.size,
+			maxEntries: this.#options.maxEntries,
+			maxAge: this.#options.maxAge,
 			hitRate: 0, // Could be implemented with additional tracking
 		};
 	}
@@ -166,18 +170,18 @@ export class MemoryCache extends Cache {
 	/**
 	 * Check if a cache entry has expired
 	 */
-	private isExpired(entry: CacheEntry): boolean {
-		if (!this.options.maxAge) {
+	#isExpired(entry: CacheEntry): boolean {
+		if (!this.#options.maxAge) {
 			return false;
 		}
 
-		return Date.now() - entry.timestamp > this.options.maxAge;
+		return Date.now() - entry.timestamp > this.#options.maxAge;
 	}
 
 	/**
 	 * Check if a response should be cached
 	 */
-	private isCacheable(response: Response): boolean {
+	#isCacheable(response: Response): boolean {
 		// Don't cache error responses by default
 		if (!response.ok) {
 			return false;
@@ -200,24 +204,24 @@ export class MemoryCache extends Cache {
 	/**
 	 * Enforce maximum entry limits using LRU eviction
 	 */
-	private enforceMaxEntries(): void {
+	#enforceMaxEntries(): void {
 		if (
-			!this.options.maxEntries ||
-			this.storage.size <= this.options.maxEntries
+			!this.#options.maxEntries ||
+			this.#storage.size <= this.#options.maxEntries
 		) {
 			return;
 		}
 
 		// Sort by access order and remove oldest entries
-		const entries = Array.from(this.accessOrder.entries()).sort(
+		const entries = Array.from(this.#accessOrder.entries()).sort(
 			(a, b) => a[1] - b[1],
 		);
 
-		const toRemove = this.storage.size - this.options.maxEntries;
+		const toRemove = this.#storage.size - this.#options.maxEntries;
 		for (let i = 0; i < toRemove; i++) {
 			const [key] = entries[i];
-			this.storage.delete(key);
-			this.accessOrder.delete(key);
+			this.#storage.delete(key);
+			this.#accessOrder.delete(key);
 		}
 	}
 }
