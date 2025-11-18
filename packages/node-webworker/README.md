@@ -6,7 +6,7 @@ Minimal Web Worker shim for Node.js until native support arrives.
 
 Node.js lacks native Web Worker support, despite being a web standard since 2009. This package provides a minimal, reliable shim using Node.js `worker_threads` until native support is added.
 
-**🔗 Canonical Issue:** https://github.com/nodejs/node/issues/43583  
+**🔗 Canonical Issue:** https://github.com/nodejs/node/issues/43583
 **Please 👍 and comment** on the issue to show demand for native Web Worker support!
 
 ## Installation

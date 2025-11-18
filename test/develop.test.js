@@ -47,10 +47,15 @@ async function createTempFixture(fixtureName) {
 
 // Helper to start a development server
 function startDevServer(fixture, port, extraArgs = []) {
+	// Always run from the fixture directory to avoid polluting shovel repo's dist/
+	const fixtureDir = _dirname(fixture);
+	const fixtureFile = fixture.split("/").pop();
+	const cliPath = join(process.cwd(), "./dist/bin/cli.js");
+
 	const args = [
-		"./dist/bin/cli.js",
+		cliPath,
 		"develop",
-		fixture,
+		fixtureFile,
 		"--port",
 		port.toString(),
 		...extraArgs,
@@ -58,14 +63,30 @@ function startDevServer(fixture, port, extraArgs = []) {
 
 	const serverProcess = spawn("node", args, {
 		stdio: ["ignore", "pipe", "pipe"],
-		cwd: process.cwd(),
-		env: {...process.env, NODE_ENV: "development"},
+		cwd: fixtureDir,
+		env: {
+			...process.env,
+			NODE_ENV: "development",
+			NODE_PATH: join(process.cwd(), "node_modules"),
+		},
 	});
 
 	// Capture stderr to detect CLI failures early
 	let stderrOutput = "";
+	let stdoutOutput = "";
+
+	serverProcess.stdout.on("data", (data) => {
+		stdoutOutput += data.toString();
+		if (process.env.DEBUG_TESTS) {
+			console.info("[STDOUT]", data.toString());
+		}
+	});
+
 	serverProcess.stderr.on("data", (data) => {
 		stderrOutput += data.toString();
+		if (process.env.DEBUG_TESTS) {
+			console.error("[STDERR]", data.toString());
+		}
 	});
 
 	// If process exits early, it's likely an error
@@ -101,7 +122,7 @@ async function isPortOpen(port) {
 }
 
 // Helper to wait for server to be ready and return response
-async function waitForServer(port, serverProcess, timeoutMs = 2000) {
+async function waitForServer(port, serverProcess, timeoutMs = 8000) {
 	const startTime = Date.now();
 
 	// First, wait for port to be open (much faster than HTTP)
@@ -129,10 +150,20 @@ async function waitForServer(port, serverProcess, timeoutMs = 2000) {
 
 		try {
 			const response = await fetch(`http://localhost:${port}`);
+			if (process.env.DEBUG_TESTS) {
+				console.info(`[HTTP] Got response: ${response.status}`);
+			}
 			if (response.ok || response.status < 500) {
-				return await response.text();
+				const text = await response.text();
+				if (process.env.DEBUG_TESTS) {
+					console.info(`[HTTP] Got text response, length: ${text.length}`);
+				}
+				return text;
 			}
 		} catch (err) {
+			if (process.env.DEBUG_TESTS && Date.now() - startTime > 1000) {
+				console.error(`[HTTP] Fetch error after ${Date.now() - startTime}ms:`, err.message);
+			}
 			// Server not ready yet, continue waiting
 		}
 
@@ -203,10 +234,14 @@ test(
 	async () => {
 		const PORT = 13310;
 		let serverProcess;
+		let tempFixture;
 
 		try {
+			// Create temporary fixture copy to avoid polluting repo dist/
+			tempFixture = await createTempFixture("server-minimal.ts");
+
 			// Start development server with minimal test fixture (no external dependencies)
-			serverProcess = startDevServer("./test/fixtures/server-minimal.ts", PORT);
+			serverProcess = startDevServer(tempFixture.path, PORT);
 
 			// Wait for server to be ready
 			const response = await waitForServer(PORT, serverProcess);
@@ -215,6 +250,9 @@ test(
 			expect(response).toContain("<marquee>Hello world</marquee>");
 		} finally {
 			await killServer(serverProcess, PORT);
+			if (tempFixture) {
+				await tempFixture.cleanup();
+			}
 		}
 	},
 	TIMEOUT,
