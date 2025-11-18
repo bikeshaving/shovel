@@ -9,7 +9,7 @@ import {readFileSync} from "fs";
 import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {DEFAULTS} from "./config.js";
-import {createEnvDefines} from "./env-defines.js";
+import {createEnvDefines} from "../build/env-defines.js";
 
 export interface WatcherOptions {
 	/** Entry point to build */

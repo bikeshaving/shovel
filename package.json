@@ -5,8 +5,8 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "shovel": "./dist/src/cli.js",
-    "create-shovel": "./dist/src/create.js"
+    "shovel": "./dist/bin/cli.js",
+    "create-shovel": "./dist/bin/create.js"
   },
   "workspaces": [
     "packages/*",
@@ -72,7 +72,7 @@
     "@b9g/platform-cloudflare": "workspace:*",
     "@b9g/router": "workspace:*",
     "@b9g/assets": "workspace:*",
-    "@b9g/libuild": "^0.1.14",
+    "@b9g/libuild": "0.1.15",
     "@types/bun": "^1.2.2",
     "typescript": "^5.7.3"
   },
@@ -80,38 +80,7 @@
     "access": "public"
   },
   "private": true,
-  "module": "./dist/src/cli.js",
-  "types": "./dist/src/cli.d.ts",
   "exports": {
-    ".": {
-      "import": "./dist/src/cli.js"
-    },
-    "./cli": {
-      "import": "./dist/src/cli.js"
-    },
-    "./global": {
-      "types": "./dist/src/global.d.ts",
-      "import": "./dist/src/global.js"
-    },
-    "./shared": {
-      "types": "./dist/src/shared.d.ts",
-      "import": "./dist/src/shared.js"
-    },
-    "./serviceworker": {
-      "import": "./dist/src/serviceworker.js"
-    },
-    "./config": {
-      "types": "./dist/src/config.d.ts",
-      "import": "./dist/src/config.js"
-    },
-    "./populate": {
-      "types": "./dist/src/populate.d.ts",
-      "import": "./dist/src/populate.js"
-    },
-    "./watcher": {
-      "types": "./dist/src/watcher.d.ts",
-      "import": "./dist/src/watcher.js"
-    },
-    "./package.json": "./dist/package.json"
+    "./package.json": "./package.json"
   }
 }

@@ -48,7 +48,7 @@ async function createTempFixture(fixtureName) {
 // Helper to start a development server
 function startDevServer(fixture, port, extraArgs = []) {
 	const args = [
-		"./dist/src/cli.js",
+		"./dist/bin/cli.js",
 		"develop",
 		fixture,
 		"--port",

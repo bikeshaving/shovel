@@ -1,0 +1,99 @@
+#!/usr/bin/env sh
+//bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
+import {Command} from "commander";
+import pkg from "../package.json" with {type: "json"};
+import {DEFAULTS} from "../src/esbuild/config.js";
+
+import {developCommand} from "../src/commands/develop.js";
+import {activateCommand} from "../src/commands/activate.js";
+import {infoCommand} from "../src/commands/info.js";
+
+const program = new Command();
+
+function getWorkerCount(options) {
+	// Explicit CLI option takes precedence
+	if (options.workers) {
+		return parseInt(options.workers);
+	}
+	// Environment variable second
+	if (process.env.WORKER_COUNT) {
+		return parseInt(process.env.WORKER_COUNT);
+	}
+	// Default from config
+	return DEFAULTS.WORKERS;
+}
+
+program.name("shovel").description("Shovel CLI").version(pkg.version);
+
+/**
+ * Development server command
+ */
+program
+	.command("develop <entrypoint>")
+	.description("Start development server with hot reload")
+	.option("-p, --port <port>", "Port to listen on", DEFAULTS.SERVER.PORT)
+	.option("-h, --host <host>", "Host to bind to", DEFAULTS.SERVER.HOST)
+	.option(
+		"-w, --workers <count>",
+		"Number of workers (default: CPU cores)",
+		DEFAULTS.WORKERS,
+	)
+	.option("-v, --verbose", "Verbose logging", false)
+	.option("--platform <name>", "Target platform (node, cloudflare, bun)")
+	.option("--cache <type>", "Cache type (memory, redis)")
+	.option("--filesystem <type>", "Filesystem type (local, s3, r2)")
+	.action(developCommand);
+
+/**
+ * Build command - supports targeting different platforms
+ */
+program
+	.command("build <entrypoint>")
+	.description("Build app for production")
+	.option("-o, --out <dir>", "Output directory", "dist")
+	.option(
+		"-w, --workers <count>",
+		"Worker count for multi-worker build",
+		undefined,
+	)
+	.option("--platform <name>", "Target platform (node, cloudflare, bun)")
+	.option("--single-worker", "Build for single-worker mode", false)
+	.option(
+		"--runtime-config <json>",
+		"Runtime configuration JSON",
+		(value) => JSON.parse(value),
+		{},
+	)
+	.action(async (entrypoint, options) => {
+		const {buildCommand} = await import("../src/commands/build.js");
+		await buildCommand(entrypoint, options);
+	});
+
+/**
+ * Activate command - runs ServiceWorker lifecycle for static generation
+ */
+program
+	.command("activate <entrypoint>")
+	.description(
+		"Activate ServiceWorker (for static site generation in activate event)",
+	)
+	.option("-v, --verbose", "Verbose logging", false)
+	.option("--platform <name>", "Target platform (node, cloudflare, bun)")
+	.option("--cache <type>", "Cache type (memory, redis)")
+	.option("--filesystem <type>", "Filesystem type (local, s3, r2)")
+	.option(
+		"-w, --workers <count>",
+		"Number of workers",
+		DEFAULTS.WORKERS.toString(),
+	)
+	.action(activateCommand);
+
+/**
+ * Platform info command
+ */
+program
+	.command("info")
+	.description("Display platform and runtime information")
+	.action(infoCommand);
+
+program.parse();
