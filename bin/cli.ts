@@ -4,9 +4,9 @@ import {Command} from "commander";
 import pkg from "../package.json" with {type: "json"};
 import {DEFAULTS} from "../src/esbuild/config.js";
 
-import {developCommand} from "../src/commands/develop.js";
-import {activateCommand} from "../src/commands/activate.js";
-import {infoCommand} from "../src/commands/info.js";
+import {developCommand} from "../src/commands/develop.ts";
+import {activateCommand} from "../src/commands/activate.ts";
+import {infoCommand} from "../src/commands/info.ts";
 
 const program = new Command();
 
@@ -52,7 +52,7 @@ program
 		{},
 	)
 	.action(async (entrypoint, options) => {
-		const {buildCommand} = await import("../src/commands/build.js");
+		const {buildCommand} = await import("../src/commands/build.ts");
 		await buildCommand(entrypoint, options);
 	});
 
