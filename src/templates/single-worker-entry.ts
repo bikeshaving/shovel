@@ -16,12 +16,16 @@ import {promisify} from "util";
 
 const realpathAsync = promisify(realpath);
 
-// Platform-specific imports
+// Platform-specific imports (static imports for bundling)
 declare const PLATFORM: string;
-const platformPackage =
-	PLATFORM === "bun" ? "@b9g/platform-bun" : "@b9g/platform-node";
-const {default: Platform} = await import(platformPackage);
-const platform = new Platform();
+let platform: any;
+if (PLATFORM === "bun") {
+	const {default: BunPlatform} = await import("@b9g/platform-bun");
+	platform = new BunPlatform();
+} else {
+	const {default: NodePlatform} = await import("@b9g/platform-node");
+	platform = new NodePlatform();
+}
 
 // Production server setup
 const registration = new ShovelServiceWorkerRegistration();
@@ -30,11 +34,15 @@ const registration = new ShovelServiceWorkerRegistration();
 const executableDir = dirname(fileURLToPath(import.meta.url));
 const distDir = dirname(executableDir);
 
-// Register well-known buckets using platform-specific bucket implementation
-const BucketImpl =
-	PLATFORM === "bun"
-		? (await import("@b9g/filesystem/bun.js")).BunBucket
-		: (await import("@b9g/filesystem/node.js")).NodeBucket;
+// Register well-known buckets using platform-specific bucket implementation (static imports for bundling)
+let BucketImpl: any;
+if (PLATFORM === "bun") {
+	const {BunBucket} = await import("@b9g/filesystem/bun.js");
+	BucketImpl = BunBucket;
+} else {
+	const {NodeBucket} = await import("@b9g/filesystem/node.js");
+	BucketImpl = NodeBucket;
+}
 
 FileSystemRegistry.register("dist", new BucketImpl(distDir));
 // Also register assets bucket (points to dist/assets directory)

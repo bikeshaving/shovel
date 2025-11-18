@@ -200,30 +200,9 @@ async function createBuildConfig({
 		);
 
 		// Determine external dependencies based on environment
+		// Only externalize built-in Node.js modules (node:*)
+		// Everything else gets bundled for self-contained executables
 		const external = ["node:*"];
-
-		// For Node.js and Bun builds, handle @b9g dependencies
-		if (!isCloudflare) {
-			// Only externalize @b9g packages in very specific workspace test scenarios
-			// For production executables, we always want to bundle for self-containment
-			const isWorkspaceContext = workspaceRoot !== null;
-			const isTestEnvironment =
-				process.env.NODE_ENV === "test" ||
-				entryPath.includes("/tmp/") ||
-				entryPath.includes("test");
-
-			if (
-				isWorkspaceContext &&
-				isTestEnvironment &&
-				!entryPath.includes("executable")
-			) {
-				// Workspace test environment - externalize @b9g packages only for non-executable tests
-				external.push("@b9g/*");
-			} else {
-				// Production/executable environment - bundle @b9g packages for self-contained builds
-				// (no externalization needed)
-			}
-		}
 
 		const buildConfig = {
 			stdin: {
@@ -236,7 +215,9 @@ async function createBuildConfig({
 			target: BUILD_DEFAULTS.target,
 			platform: isCloudflare ? "browser" : "node",
 			outfile: join(serverDir, BUILD_DEFAULTS.outputFile),
-			absWorkingDir: workspaceRoot,
+			// Don't set absWorkingDir to workspace root - it makes esbuild treat @b9g/* as workspace packages
+			// and not bundle them. We want fully bundled executables.
+			absWorkingDir: undefined,
 			mainFields: ["module", "main"],
 			conditions: ["import", "module"],
 			plugins: [

@@ -64,8 +64,20 @@ function runExecutable(executablePath, env = {}) {
 		cwd: process.cwd(),
 	});
 
+	// Capture stderr for debugging
+	let stderrData = "";
+	proc.stderr?.on("data", (data) => {
+		stderrData += data.toString();
+	});
+
+	// Drain stdout to prevent pipe buffer from filling and blocking
+	proc.stdout?.on("data", () => {});
+
 	proc.on("exit", (code) => {
 		proc.earlyExit = code !== 0;
+		if (code !== 0 && stderrData) {
+			console.error("[Test] Process exited with code", code, "stderr:", stderrData);
+		}
 	});
 
 	return proc;
