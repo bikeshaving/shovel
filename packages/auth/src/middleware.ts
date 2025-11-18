@@ -7,20 +7,21 @@ import {OAuth2Client, OAuth2Tokens, OAuth2User} from "./oauth2.js";
 import type {FunctionMiddleware} from "@b9g/router";
 
 // ============================================================================
-// HELPER: Get cookieStore from event in context
+// HELPER: Get cookieStore from ServiceWorker global
 // ============================================================================
 
 /**
- * Get cookieStore from fetch event
- * The router context should include the event object
+ * Get cookieStore from ServiceWorker global scope
+ * Uses AsyncLocalStorage-backed self.cookieStore for per-request isolation
  */
-function getCookieStore(context: any) {
-	if (!context.event?.cookieStore) {
+function getCookieStore(_context: any) {
+	const cookieStore = (self as any).cookieStore;
+	if (!cookieStore) {
 		throw new Error(
-			"CookieStore not available - ensure FetchEvent is passed in context",
+			"CookieStore not available - ensure code runs within ServiceWorker fetch handler",
 		);
 	}
-	return context.event.cookieStore;
+	return cookieStore;
 }
 
 // ============================================================================

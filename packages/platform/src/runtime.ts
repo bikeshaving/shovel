@@ -10,6 +10,17 @@
  */
 
 import {RequestCookieStore} from "./cookie-store.js";
+import {AsyncLocalStorage} from "node:async_hooks";
+
+// ============================================================================
+// AsyncLocalStorage for per-request cookieStore
+// ============================================================================
+
+/**
+ * Storage for per-request cookieStore instances
+ * This enables self.cookieStore to work correctly with concurrent requests
+ */
+const cookieStoreStorage = new AsyncLocalStorage<RequestCookieStore>();
 
 // ============================================================================
 // Helper Functions
@@ -591,8 +602,13 @@ export class ShovelServiceWorkerRegistration
 			throw new Error("ServiceWorker not activated");
 		}
 
-		return new Promise<Response>((resolve, reject) => {
-			const event = new FetchEvent(request);
+		// Create the fetch event with its per-request cookieStore
+		const event = new FetchEvent(request);
+
+		// Run the request handling within the AsyncLocalStorage context
+		// This makes event.cookieStore available via self.cookieStore
+		return cookieStoreStorage.run(event.cookieStore, () => {
+			return new Promise<Response>((resolve, reject) => {
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
@@ -654,6 +670,7 @@ export class ShovelServiceWorkerRegistration
 					reject(new Error("No response provided for fetch event"));
 				}
 			}, 0);
+			});
 		});
 	}
 
@@ -1092,7 +1109,10 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 
 	// Web API required properties
 	// Note: Using RequestCookieStore but typing as any for flexibility with global CookieStore type
-	readonly cookieStore: any;
+	// cookieStore is retrieved from AsyncLocalStorage for per-request isolation
+	get cookieStore(): any {
+		return cookieStoreStorage.getStore();
+	}
 	readonly serviceWorker: any;
 
 	// WorkerGlobalScope required properties (stubs for server context)
@@ -1220,8 +1240,7 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 		this.clients = this.#createClientsAPI();
 
 		// Initialize Web API properties
-		// Note: cookieStore is per-request in fetch event handler, this is just a stub for global access
-		this.cookieStore = new RequestCookieStore();
+		// Note: cookieStore is per-request and retrieved via AsyncLocalStorage getter
 		this.serviceWorker = null;
 		this.location = {} as WorkerLocation;
 		this.navigator = {} as WorkerNavigator;

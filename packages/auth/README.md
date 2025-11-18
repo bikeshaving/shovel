@@ -6,7 +6,8 @@ Universal authentication for ServiceWorker applications with OAuth2/PKCE support
 
 - 🔐 OAuth2 with PKCE (Proof Key for Code Exchange)
 - 🌍 Works across all platforms (Node.js, Bun, Cloudflare)
-- 🍪 Cookie-based session management using Cookie Store API
+- 🍪 Cookie-based session management using standards-compliant Cookie Store API
+- 🌐 Access cookies via `self.cookieStore` (ServiceWorker global API)
 - 🔌 Built-in provider presets (GitHub, Google, Microsoft)
 - 🛣️ Router middleware integration
 - 🛡️ CSRF protection with state parameter
@@ -50,8 +51,8 @@ router.route("/auth/login").get(redirectToProvider(oauth));
 router.route("/auth/callback").get(
   handleCallback(oauth, {
     async onSuccess(tokens, request, context) {
-      // Create session cookie
-      await createSession(context.event.cookieStore, tokens);
+      // Create session cookie using self.cookieStore
+      await createSession(self.cookieStore, tokens);
 
       // Fetch user info
       const user = await fetchUserInfo("github", tokens.accessToken);
@@ -72,8 +73,6 @@ router.route("/api/user").get(
 
 // Attach router to ServiceWorker
 self.addEventListener("fetch", (event) => {
-  // Add event to context for cookie store access
-  const contextWithEvent = {event};
   event.respondWith(
     router.handler(event.request).then((response) => {
       if (response) return response;
