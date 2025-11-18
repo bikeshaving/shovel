@@ -55,7 +55,10 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
  */
 export class CloudflarePlatform extends BasePlatform {
 	readonly name = "cloudflare";
-	private options: Required<Omit<CloudflarePlatformOptions, 'caches' | 'filesystem'>> & Pick<CloudflarePlatformOptions, 'caches' | 'filesystem'>;
+	private options: Required<
+		Omit<CloudflarePlatformOptions, "caches" | "filesystem">
+	> &
+		Pick<CloudflarePlatformOptions, "caches" | "filesystem">;
 
 	constructor(options: CloudflarePlatformOptions = {}) {
 		super(options);

@@ -64,7 +64,8 @@ export interface BunPlatformOptions extends PlatformConfig {
  */
 export class BunPlatform extends BasePlatform {
 	readonly name = "bun";
-	private options: Required<Omit<BunPlatformOptions, 'caches' | 'filesystem'>> & Pick<BunPlatformOptions, 'caches' | 'filesystem'>;
+	private options: Required<Omit<BunPlatformOptions, "caches" | "filesystem">> &
+		Pick<BunPlatformOptions, "caches" | "filesystem">;
 	private workerPool?: ServiceWorkerPool;
 	private cacheStorage?: CustomCacheStorage;
 

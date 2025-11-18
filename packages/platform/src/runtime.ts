@@ -145,7 +145,10 @@ export class ShovelClient implements Client {
 	// postMessage overload with StructuredSerializeOptions
 	postMessage(message: any, options?: StructuredSerializeOptions): void;
 	// Implementation
-	postMessage(_message: any, _transferOrOptions?: Transferable[] | StructuredSerializeOptions): void {
+	postMessage(
+		_message: any,
+		_transferOrOptions?: Transferable[] | StructuredSerializeOptions,
+	): void {
 		console.warn(
 			"[ServiceWorker] Client.postMessage() not supported in server context",
 		);
@@ -199,8 +202,12 @@ export class ShovelClients implements Clients {
 		return undefined;
 	}
 
-	async matchAll<T extends ClientQueryOptions>(_options?: T): Promise<readonly (T["type"] extends "window" ? WindowClient : Client)[]> {
-		return [] as readonly (T["type"] extends "window" ? WindowClient : Client)[];
+	async matchAll<T extends ClientQueryOptions>(
+		_options?: T,
+	): Promise<readonly (T["type"] extends "window" ? WindowClient : Client)[]> {
+		return [] as readonly (T["type"] extends "window"
+			? WindowClient
+			: Client)[];
 	}
 
 	async openWindow(_url: string): Promise<WindowClient | null> {
@@ -277,7 +284,10 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 	// postMessage overload with StructuredSerializeOptions
 	postMessage(message: any, options?: StructuredSerializeOptions): void;
 	// Implementation
-	postMessage(_message: any, _transferOrOptions?: Transferable[] | StructuredSerializeOptions): void {
+	postMessage(
+		_message: any,
+		_transferOrOptions?: Transferable[] | StructuredSerializeOptions,
+	): void {
 		console.warn(
 			"[ServiceWorker] ServiceWorker.postMessage() not implemented in server context",
 		);
@@ -298,7 +308,9 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
  * ShovelNavigationPreloadManager - Internal implementation of NavigationPreloadManager
  * Note: Standard NavigationPreloadManager has no constructor - instances are created internally
  */
-export class ShovelNavigationPreloadManager implements NavigationPreloadManager {
+export class ShovelNavigationPreloadManager
+	implements NavigationPreloadManager
+{
 	async disable(): Promise<void> {
 		// No-op in server context
 	}
@@ -321,7 +333,10 @@ export class ShovelNavigationPreloadManager implements NavigationPreloadManager 
  * This is also the Shovel ServiceWorker runtime - they are unified into one class
  * Note: Standard ServiceWorkerRegistration has no constructor - instances are created internally
  */
-export class ShovelServiceWorkerRegistration extends EventTarget implements ServiceWorkerRegistration {
+export class ShovelServiceWorkerRegistration
+	extends EventTarget
+	implements ServiceWorkerRegistration
+{
 	readonly scope: string;
 	readonly updateViaCache: "imports" | "all" | "none" = "imports";
 	readonly navigationPreload: NavigationPreloadManager;
@@ -397,8 +412,13 @@ export class ShovelServiceWorkerRegistration extends EventTarget implements Serv
 	/**
 	 * Enhanced addEventListener that tracks listeners for proper cleanup
 	 */
-	addEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions): void {
-		const fn = typeof listener === 'function' ? listener : listener?.handleEvent;
+	addEventListener(
+		type: string,
+		listener: EventListenerOrEventListenerObject | null,
+		options?: boolean | AddEventListenerOptions,
+	): void {
+		const fn =
+			typeof listener === "function" ? listener : listener?.handleEvent;
 		if (!fn) return;
 
 		super.addEventListener(type, listener, options);
@@ -411,8 +431,13 @@ export class ShovelServiceWorkerRegistration extends EventTarget implements Serv
 	/**
 	 * Enhanced removeEventListener that tracks listeners
 	 */
-	removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions): void {
-		const fn = typeof listener === 'function' ? listener : listener?.handleEvent;
+	removeEventListener(
+		type: string,
+		listener: EventListenerOrEventListenerObject | null,
+		options?: boolean | EventListenerOptions,
+	): void {
+		const fn =
+			typeof listener === "function" ? listener : listener?.handleEvent;
 		if (!fn) return;
 
 		super.removeEventListener(type, listener, options);
@@ -587,7 +612,10 @@ export class ShovelServiceWorkerRegistration extends EventTarget implements Serv
  * This is the registry that manages multiple ServiceWorkerRegistrations by scope
  * Note: Standard ServiceWorkerContainer has no constructor - instances are created internally
  */
-export class ShovelServiceWorkerContainer extends EventTarget implements ServiceWorkerContainer {
+export class ShovelServiceWorkerContainer
+	extends EventTarget
+	implements ServiceWorkerContainer
+{
 	private registrations = new Map<string, ShovelServiceWorkerRegistration>();
 	readonly controller: ServiceWorker | null = null;
 	readonly ready: Promise<ServiceWorkerRegistration>;
@@ -987,7 +1015,9 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 
 	// WorkerGlobalScope methods (stubs for server context)
 	importScripts(..._urls: (string | URL)[]): void {
-		console.warn("[ServiceWorker] importScripts() not supported in server context");
+		console.warn(
+			"[ServiceWorker] importScripts() not supported in server context",
+		);
 	}
 
 	atob(data: string): string {
@@ -1007,7 +1037,9 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	}
 
 	createImageBitmap(..._args: any[]): Promise<ImageBitmap> {
-		throw new Error("[ServiceWorker] createImageBitmap() not supported in server context");
+		throw new Error(
+			"[ServiceWorker] createImageBitmap() not supported in server context",
+		);
 	}
 
 	fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -1036,17 +1068,46 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 
 	// Event handlers required by ServiceWorkerGlobalScope
 	// Use Web API types (not our custom implementations) for event handler signatures
-	onactivate: ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any) | null = null;
-	oncookiechange: ((this: ServiceWorkerGlobalScope, ev: Event) => any) | null = null;
-	onfetch: ((this: ServiceWorkerGlobalScope, ev: globalThis.FetchEvent) => any) | null = null;
-	oninstall: ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any) | null = null;
-	onmessage: ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableMessageEvent) => any) | null = null;
-	onmessageerror: ((this: ServiceWorkerGlobalScope, ev: MessageEvent) => any) | null = null;
-	onnotificationclick: ((this: ServiceWorkerGlobalScope, ev: globalThis.NotificationEvent) => any) | null = null;
-	onnotificationclose: ((this: ServiceWorkerGlobalScope, ev: globalThis.NotificationEvent) => any) | null = null;
-	onpush: ((this: ServiceWorkerGlobalScope, ev: globalThis.PushEvent) => any) | null = null;
-	onpushsubscriptionchange: ((this: ServiceWorkerGlobalScope, ev: Event) => any) | null = null;
-	onsync: ((this: ServiceWorkerGlobalScope, ev: SyncEvent) => any) | null = null;
+	onactivate:
+		| ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any)
+		| null = null;
+	oncookiechange: ((this: ServiceWorkerGlobalScope, ev: Event) => any) | null =
+		null;
+	onfetch:
+		| ((this: ServiceWorkerGlobalScope, ev: globalThis.FetchEvent) => any)
+		| null = null;
+	oninstall:
+		| ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any)
+		| null = null;
+	onmessage:
+		| ((
+				this: ServiceWorkerGlobalScope,
+				ev: globalThis.ExtendableMessageEvent,
+		  ) => any)
+		| null = null;
+	onmessageerror:
+		| ((this: ServiceWorkerGlobalScope, ev: MessageEvent) => any)
+		| null = null;
+	onnotificationclick:
+		| ((
+				this: ServiceWorkerGlobalScope,
+				ev: globalThis.NotificationEvent,
+		  ) => any)
+		| null = null;
+	onnotificationclose:
+		| ((
+				this: ServiceWorkerGlobalScope,
+				ev: globalThis.NotificationEvent,
+		  ) => any)
+		| null = null;
+	onpush:
+		| ((this: ServiceWorkerGlobalScope, ev: globalThis.PushEvent) => any)
+		| null = null;
+	onpushsubscriptionchange:
+		| ((this: ServiceWorkerGlobalScope, ev: Event) => any)
+		| null = null;
+	onsync: ((this: ServiceWorkerGlobalScope, ev: SyncEvent) => any) | null =
+		null;
 
 	// WorkerGlobalScope event handlers (inherited by ServiceWorkerGlobalScope)
 	onerror: OnErrorEventHandlerNonNull | null = null;

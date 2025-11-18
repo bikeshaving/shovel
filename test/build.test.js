@@ -633,7 +633,9 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Should have found the workspace root and built successfully
-				expect(await fileExists(join(outDir, "server", "server.js"))).toBe(true);
+				expect(await fileExists(join(outDir, "server", "server.js"))).toBe(
+					true,
+				);
 			} finally {
 				process.chdir(originalCwd);
 			}

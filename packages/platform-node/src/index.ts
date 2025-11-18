@@ -61,7 +61,10 @@ export interface NodePlatformOptions extends PlatformConfig {
 export class NodePlatform extends BasePlatform {
 	readonly name = "node";
 
-	private options: Required<Omit<NodePlatformOptions, 'caches' | 'filesystem'>> & Pick<NodePlatformOptions, 'caches' | 'filesystem'>;
+	private options: Required<
+		Omit<NodePlatformOptions, "caches" | "filesystem">
+	> &
+		Pick<NodePlatformOptions, "caches" | "filesystem">;
 	private workerPool?: ServiceWorkerPool;
 	private cacheStorage?: CustomCacheStorage;
 
@@ -230,7 +233,10 @@ export class NodePlatform extends BasePlatform {
 					method: req.method,
 					headers: req.headers as HeadersInit,
 					// Node.js IncomingMessage can be used as body (it's a readable stream)
-					body: req.method !== "GET" && req.method !== "HEAD" ? (req as any) : undefined,
+					body:
+						req.method !== "GET" && req.method !== "HEAD"
+							? (req as any)
+							: undefined,
 				});
 
 				// Handle request via provided handler
@@ -278,7 +284,7 @@ export class NodePlatform extends BasePlatform {
 					httpServer.listen(port, host, () => {
 						// Get actual assigned port (important when port is 0)
 						const addr = httpServer.address();
-						if (addr && typeof addr === 'object') {
+						if (addr && typeof addr === "object") {
 							actualPort = addr.port;
 						}
 						console.info(`🚀 Server running at http://${host}:${actualPort}`);

@@ -326,7 +326,9 @@ function selectPlatformFromDeps(deps: Record<string, any>): string | null {
 	const hasCloudflare = deps["@b9g/platform-cloudflare"];
 
 	// If only one platform installed, use it
-	const installedCount = [hasBun, hasNode, hasCloudflare].filter(Boolean).length;
+	const installedCount = [hasBun, hasNode, hasCloudflare].filter(
+		Boolean,
+	).length;
 	if (installedCount === 0) return null;
 	if (installedCount === 1) {
 		if (hasBun) return "bun";
@@ -360,7 +362,10 @@ function selectPlatformFromDeps(deps: Record<string, any>): string | null {
 export function detectDeploymentPlatform(): string | null {
 	// Explicitly check we're NOT in Node.js/Bun first
 	// (Node now has fetch/caches globals, so can't rely on them alone)
-	if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
+	if (
+		typeof process !== "undefined" &&
+		(process.versions?.node || process.versions?.bun)
+	) {
 		return null; // Running in Node.js or Bun, not a deployment platform
 	}
 
@@ -988,7 +993,9 @@ async function createWebWorker(workerScript: string): Promise<Worker> {
 			const {Worker: NodeWebWorker} = await import("@b9g/node-webworker");
 			console.debug("[WorkerPool] Using @b9g/node-webworker shim for Node.js");
 			// Our Node.js shim doesn't implement all Web Worker properties, but has the core functionality
-			return new NodeWebWorker(workerScript, {type: "module"}) as unknown as Worker;
+			return new NodeWebWorker(workerScript, {
+				type: "module",
+			}) as unknown as Worker;
 		} catch (shimError) {
 			console.error(
 				"\n❌ MISSING WEB STANDARD: Node.js lacks native Web Worker support",
@@ -1354,4 +1361,3 @@ export {
 
 // Re-export filesystem utilities
 export {CustomBucketStorage} from "@b9g/filesystem";
-

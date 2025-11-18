@@ -492,7 +492,9 @@ export class Router {
 			if (cacheConfig?.name) {
 				try {
 					// CacheStorage.open() returns Web API Cache which is compatible with our Cache interface
-					context.cache = await this.caches.open(cacheConfig.name) as import("@b9g/cache").Cache;
+					context.cache = (await this.caches.open(
+						cacheConfig.name,
+					)) as import("@b9g/cache").Cache;
 				} catch (error) {
 					console.warn(`Failed to open cache '${cacheConfig.name}':`, error);
 					// Continue without cache - don't fail the request

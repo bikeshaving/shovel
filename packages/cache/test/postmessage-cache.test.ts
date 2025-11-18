@@ -6,7 +6,10 @@ import {dirname, join} from "path";
 describe("PostMessageCache", () => {
 	let worker: Worker;
 	let requestCounter = 0;
-	const pendingRequests = new Map<number, {resolve: (value: any) => void; reject: (error: Error) => void}>();
+	const pendingRequests = new Map<
+		number,
+		{resolve: (value: any) => void; reject: (error: Error) => void}
+	>();
 
 	// Helper to send command to worker and wait for response
 	const sendCommand = (command: string, data: any = {}): Promise<any> => {
@@ -264,7 +267,7 @@ describe("PostMessageCache", () => {
 				method: "GET",
 				headers: {
 					"X-Custom-Header": "value",
-					"Authorization": "Bearer token123",
+					Authorization: "Bearer token123",
 				},
 			},
 			response: {
@@ -282,7 +285,7 @@ describe("PostMessageCache", () => {
 				method: "GET",
 				headers: {
 					"X-Custom-Header": "value",
-					"Authorization": "Bearer token123",
+					Authorization: "Bearer token123",
 				},
 			},
 		});

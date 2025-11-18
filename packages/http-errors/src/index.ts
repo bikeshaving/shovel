@@ -139,7 +139,8 @@ export function isHTTPError(value: any): value is HTTPError {
 
 	// Check if error has HTTP error properties
 	const hasStatus = "status" in value && typeof value.status === "number";
-	const hasStatusCode = "statusCode" in value && typeof value.statusCode === "number";
+	const hasStatusCode =
+		"statusCode" in value && typeof value.statusCode === "number";
 
 	return hasStatus && hasStatusCode && value.status === value.statusCode;
 }
