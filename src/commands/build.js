@@ -8,7 +8,7 @@ import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile, chmod} from "fs/promises";
 import {fileURLToPath} from "url";
 import {assetsPlugin} from "@b9g/assets/plugin";
-import {createEnvDefines} from "../build/env-defines.js";
+import {createEnvDefines} from "../esbuild/env-defines.js";
 
 // Build configuration constants
 const BUILD_DEFAULTS = {
