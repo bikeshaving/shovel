@@ -1,6 +1,6 @@
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
-import {test, expect} from "bun:test";
+import {test, expect, beforeAll, afterAll} from "bun:test";
 import {join, dirname as _dirname} from "path";
 import {tmpdir} from "os";
 import {mkdtemp} from "fs/promises";
@@ -13,6 +13,30 @@ import {mkdtemp} from "fs/promises";
 
 const TIMEOUT = 10000; // 10 second timeout for complex tests
 
+// Setup: Create node_modules symlink in /tmp for tests that write files directly to /tmp
+beforeAll(async () => {
+	const nodeModulesSource = join(process.cwd(), "node_modules");
+	const nodeModulesLink = "/tmp/node_modules";
+
+	try {
+		// Remove if already exists
+		await FS.unlink(nodeModulesLink);
+	} catch {
+		// Doesn't exist, that's fine
+	}
+
+	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
+});
+
+// Teardown: Remove node_modules symlink from /tmp
+afterAll(async () => {
+	try {
+		await FS.unlink("/tmp/node_modules");
+	} catch {
+		// Already removed, that's fine
+	}
+});
+
 // Helper to create temporary fixture copy
 async function createTempFixture(fixtureName) {
 	const tempDir = await mkdtemp(join(tmpdir(), "shovel-test-"));
@@ -20,6 +44,11 @@ async function createTempFixture(fixtureName) {
 	const sourceFile = join("./test/fixtures", fixtureName);
 
 	await FS.copyFile(sourceFile, tempFile);
+
+	// Symlink node_modules so fixtures can import dependencies
+	const nodeModulesSource = join(process.cwd(), "node_modules");
+	const nodeModulesLink = join(tempDir, "node_modules");
+	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
 
 	return {
 		path: tempFile,
@@ -343,19 +372,15 @@ test(
 	async () => {
 		const PORT = 13313;
 		let serverProcess;
-
-		// Backup original dependency file
-		const originalDependencyContents = await FS.readFile(
-			"./test/fixtures/server-dependency-hello.ts",
-			"utf8",
-		);
+		let tempFixture;
 
 		try {
+			// Create temporary fixture copies
+			tempFixture = await createTempFixture("server-dynamic-dependent.ts");
+			await tempFixture.addDependency("server-dependency-hello.ts");
+
 			// Start development server with file that uses dynamic imports
-			serverProcess = startDevServer(
-				"./test/fixtures/server-dynamic-dependent.ts",
-				PORT,
-			);
+			serverProcess = startDevServer(tempFixture.path, PORT);
 
 			// Wait for initial response
 			const initialResponse = await waitForServer(PORT, serverProcess);
@@ -364,9 +389,9 @@ test(
 			);
 
 			// Modify the dependency file
-			await FS.copyFile(
-				"./test/fixtures/server-dependency-goodbye.ts",
-				"./test/fixtures/server-dependency-hello.ts",
+			await tempFixture.copyDependencyFrom(
+				"server-dependency-hello.ts",
+				"server-dependency-goodbye.ts",
 			);
 
 			// Wait for hot reload and verify dynamic import change propagated
@@ -377,12 +402,10 @@ test(
 				'<marquee behavior="alternate">Goodbye from dependency-hello.ts</marquee>',
 			);
 		} finally {
-			// Restore original dependency file
-			await FS.writeFile(
-				"./test/fixtures/server-dependency-hello.ts",
-				originalDependencyContents,
-			);
 			await killServer(serverProcess, PORT);
+			if (tempFixture) {
+				await tempFixture.cleanup();
+			}
 		}
 	},
 	TIMEOUT,
@@ -614,10 +637,14 @@ test(
 	async () => {
 		const PORT = 13318;
 		let serverProcess;
+		let tempFixture;
 
 		try {
+			// Create temporary fixture copy to avoid polluting repo
+			tempFixture = await createTempFixture("server-hello.ts");
+
 			// Start development server with 8 workers
-			serverProcess = startDevServer("./test/fixtures/server-hello.ts", PORT, [
+			serverProcess = startDevServer(tempFixture.path, PORT, [
 				"--workers",
 				"8",
 			]);
@@ -639,6 +666,9 @@ test(
 			expect(uniqueResponses[0]).toBe("<marquee>Hello world</marquee>");
 		} finally {
 			await killServer(serverProcess, PORT);
+			if (tempFixture) {
+				await tempFixture.cleanup();
+			}
 		}
 	},
 	TIMEOUT,

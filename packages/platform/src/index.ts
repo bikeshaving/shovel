@@ -1300,14 +1300,43 @@ export class ServiceWorkerPool {
 		console.info(`[WorkerPool] Reloading ServiceWorker (v${version})`);
 
 		const loadPromises = this.#workers.map((worker) => {
-			return new Promise<void>((resolve) => {
+			return new Promise<void>((resolve, reject) => {
+				let timeoutId: NodeJS.Timeout | undefined;
+
+				const cleanup = () => {
+					worker.removeEventListener("message", handleReady);
+					worker.removeEventListener("error", handleError);
+					if (timeoutId) {
+						clearTimeout(timeoutId);
+					}
+				};
+
 				const handleReady = (event: any) => {
 					const message = event.data || event;
 					if (message.type === "ready" && message.version === version) {
-						worker.removeEventListener("message", handleReady);
+						cleanup();
 						resolve();
 					}
 				};
+
+				const handleError = (error: any) => {
+					cleanup();
+					reject(
+						new Error(
+							`Worker failed to load ServiceWorker: ${error.message || error}`,
+						),
+					);
+				};
+
+				// Timeout after 5 seconds if worker doesn't respond
+				timeoutId = setTimeout(() => {
+					cleanup();
+					reject(
+						new Error(
+							`Worker failed to load ServiceWorker within 5000ms (version ${version})`,
+						),
+					);
+				}, 5000);
 
 				console.info("[WorkerPool] Sending load message:", {
 					version,
@@ -1315,6 +1344,7 @@ export class ServiceWorkerPool {
 				});
 
 				worker.addEventListener("message", handleReady);
+				worker.addEventListener("error", handleError);
 
 				const loadMessage: WorkerLoadMessage = {
 					type: "load",

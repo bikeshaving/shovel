@@ -93,7 +93,10 @@ export class Watcher {
 			const version = Date.now();
 
 			// Find workspace root by looking for package.json with workspaces
-			let workspaceRoot = process.cwd();
+			// Search upward from cwd, but don't traverse past it
+			const initialCwd = process.cwd();
+			let workspaceRoot = initialCwd;
+
 			while (workspaceRoot !== dirname(workspaceRoot)) {
 				try {
 					const packageJson = JSON.parse(
@@ -106,6 +109,11 @@ export class Watcher {
 					// No package.json found, continue up the tree
 				}
 				workspaceRoot = dirname(workspaceRoot);
+			}
+
+			// If we reached filesystem root without finding workspace, use original cwd
+			if (workspaceRoot === dirname(workspaceRoot)) {
+				workspaceRoot = initialCwd;
 			}
 
 			console.info(`[Watcher] Building ${entryPath}...`);
