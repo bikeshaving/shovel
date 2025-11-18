@@ -26,7 +26,7 @@ program
 		DEFAULTS.WORKERS,
 	)
 	.option("-v, --verbose", "Verbose logging", false)
-	.option("--platform <name>", "Target platform (node, cloudflare, bun)")
+	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
 	.option("--cache <type>", "Cache type (memory, redis)")
 	.option("--filesystem <type>", "Filesystem type (local, s3, r2)")
 	.action(developCommand);
@@ -43,7 +43,7 @@ program
 		"Worker count for multi-worker build",
 		undefined,
 	)
-	.option("--platform <name>", "Target platform (node, cloudflare, bun)")
+	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
 	.option("--single-worker", "Build for single-worker mode", false)
 	.option(
 		"--runtime-config <json>",
@@ -65,7 +65,7 @@ program
 		"Activate ServiceWorker (for static site generation in activate event)",
 	)
 	.option("-v, --verbose", "Verbose logging", false)
-	.option("--platform <name>", "Target platform (node, cloudflare, bun)")
+	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
 	.option("--cache <type>", "Cache type (memory, redis)")
 	.option("--filesystem <type>", "Filesystem type (local, s3, r2)")
 	.option(
