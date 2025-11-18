@@ -9,6 +9,10 @@ import {mkdir, readFile, writeFile, chmod} from "fs/promises";
 import {fileURLToPath} from "url";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {createEnvDefines} from "../esbuild/env-defines.js";
+import {
+	cloudflareWorkerBanner,
+	cloudflareWorkerFooter,
+} from "@b9g/platform-cloudflare";
 
 // Build configuration constants
 const BUILD_DEFAULTS = {
@@ -38,50 +42,36 @@ export async function buildForProduction({
 	platform = "node",
 	workerCount = 1,
 }) {
-	try {
-		const buildContext = await initializeBuild({
-			entrypoint,
-			outDir,
-			verbose,
-			platform,
-			workerCount,
-		});
-		const buildConfig = await createBuildConfig(buildContext);
-		const result = await esbuild.build(buildConfig);
+	const buildContext = await initializeBuild({
+		entrypoint,
+		outDir,
+		verbose,
+		platform,
+		workerCount,
+	});
+	const buildConfig = await createBuildConfig(buildContext);
 
-		// Make the output executable (for directly executable builds)
-		const serverPath = join(buildContext.serverDir, "server.js");
-		await chmod(serverPath, 0o755);
+	// Use build() for one-time builds (not context API which is for watch/incremental)
+	// This automatically handles cleanup and prevents process hanging
+	const result = await esbuild.build(buildConfig);
 
-		if (verbose && result.metafile) {
-			await logBundleAnalysis(result.metafile);
-		}
+	// Make the output executable (for directly executable builds)
+	const serverPath = join(buildContext.serverDir, "server.js");
+	await chmod(serverPath, 0o755);
 
-		await generatePackageJson({
-			...buildContext,
-			entryPath: buildContext.entryPath,
-		});
+	if (verbose && result.metafile) {
+		await logBundleAnalysis(result.metafile);
+	}
 
-		if (verbose) {
-			console.info(`📦 Built app to ${buildContext.outputDir}`);
-			console.info(`📂 Server files: ${buildContext.serverDir}`);
-			console.info(`📂 Asset files: ${buildContext.assetsDir}`);
-		}
-	} catch (error) {
-		console.error(`❌ Build failed: ${error.message}`);
-		if (verbose) {
-			console.error(`📍 Error details:`, error);
-			console.error(`📍 Stack trace:`, error.stack);
-		}
-		throw error;
-	} finally {
-		// Ensure esbuild resources are cleaned up
-		// This helps prevent service corruption in test environments
-		try {
-			await esbuild.stop();
-		} catch (stopError) {
-			// Ignore errors during cleanup
-		}
+	await generatePackageJson({
+		...buildContext,
+		entryPath: buildContext.entryPath,
+	});
+
+	if (verbose) {
+		console.info(`📦 Built app to ${buildContext.outputDir}`);
+		console.info(`📂 Server files: ${buildContext.serverDir}`);
+		console.info(`📂 Asset files: ${buildContext.assetsDir}`);
 	}
 }
 
@@ -250,18 +240,8 @@ async function createBuildConfig({
 async function configureCloudflareTarget(buildConfig) {
 	buildConfig.platform = "browser";
 	buildConfig.conditions = ["worker", "browser"];
-
-	try {
-		const {cloudflareWorkerBanner, cloudflareWorkerFooter} = await import(
-			"@b9g/platform-cloudflare"
-		);
-		buildConfig.banner = {js: cloudflareWorkerBanner};
-		buildConfig.footer = {js: cloudflareWorkerFooter};
-	} catch (error) {
-		throw new Error(
-			"@b9g/platform-cloudflare is required for Cloudflare builds. Install it with: bun add @b9g/platform-cloudflare",
-		);
-	}
+	buildConfig.banner = {js: cloudflareWorkerBanner};
+	buildConfig.footer = {js: cloudflareWorkerFooter};
 }
 
 /**
@@ -292,11 +272,22 @@ import "${userEntryPath}";
  * Create single-worker entry point using TypeScript template
  */
 async function createSingleWorkerEntry(userEntryPath, platform) {
-	const templatePath = resolve(
-		dirname(fileURLToPath(import.meta.url)),
-		"../templates/single-worker-entry.ts",
-	);
+	// Find package root by looking for package.json
+	let currentDir = dirname(fileURLToPath(import.meta.url));
+	let packageRoot = currentDir;
+	while (packageRoot !== dirname(packageRoot)) {
+		try {
+			const packageJsonPath = join(packageRoot, "package.json");
+			await readFile(packageJsonPath, "utf8");
+			break;
+		} catch {
+			packageRoot = dirname(packageRoot);
+		}
+	}
 
+	const templatePath = join(packageRoot, "src/single-worker-entry.js");
+
+	// Use build() for one-time transpilation (not context API)
 	const result = await esbuild.build({
 		entryPoints: [templatePath],
 		bundle: false, // Just transpile, don't bundle
@@ -317,11 +308,22 @@ async function createSingleWorkerEntry(userEntryPath, platform) {
  * Create multi-worker entry point using TypeScript template
  */
 async function createMultiWorkerEntry(userEntryPath, workerCount, platform) {
-	const templatePath = resolve(
-		dirname(fileURLToPath(import.meta.url)),
-		"../templates/multi-worker-entry.ts",
-	);
+	// Find package root by looking for package.json
+	let currentDir = dirname(fileURLToPath(import.meta.url));
+	let packageRoot = currentDir;
+	while (packageRoot !== dirname(packageRoot)) {
+		try {
+			const packageJsonPath = join(packageRoot, "package.json");
+			await readFile(packageJsonPath, "utf8");
+			break;
+		} catch {
+			packageRoot = dirname(packageRoot);
+		}
+	}
 
+	const templatePath = join(packageRoot, "src/multi-worker-entry.js");
+
+	// Use build() for one-time transpilation (not context API)
 	const result = await esbuild.build({
 		entryPoints: [templatePath],
 		bundle: false, // Just transpile, don't bundle
@@ -457,4 +459,23 @@ async function generateExecutablePackageJson(platform) {
 	}
 
 	return packageJson;
+}
+
+/**
+ * CLI command wrapper for buildForProduction
+ */
+export async function buildCommand(entrypoint: string, options: any) {
+	await buildForProduction({
+		entrypoint,
+		outDir: options.out || "dist",
+		verbose: options.verbose || false,
+		platform: options.platform || "node",
+		workerCount: options.workers ? parseInt(options.workers, 10) : 1,
+	});
+
+	// Workaround for Bun-specific issue: esbuild keeps child processes alive
+	// even after build() completes, preventing the Node/Bun process from exiting.
+	// This is documented in https://github.com/evanw/esbuild/issues/3558
+	// Node.js exits naturally via reference counting, but Bun doesn't.
+	process.exit(0);
 }
