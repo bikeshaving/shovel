@@ -301,16 +301,16 @@ import "${userEntryPath}";
 
 	// For Node.js/Bun platforms, choose architecture based on worker count
 	if (workerCount === 1) {
-		return await createSingleWorkerEntry(userEntryPath);
+		return await createSingleWorkerEntry(userEntryPath, platform);
 	} else {
-		return await createMultiWorkerEntry(userEntryPath, workerCount);
+		return await createMultiWorkerEntry(userEntryPath, workerCount, platform);
 	}
 }
 
 /**
  * Create single-worker entry point using TypeScript template
  */
-async function createSingleWorkerEntry(userEntryPath) {
+async function createSingleWorkerEntry(userEntryPath, platform) {
 	const templatePath = resolve(
 		dirname(fileURLToPath(import.meta.url)),
 		"../templates/single-worker-entry.ts",
@@ -325,6 +325,7 @@ async function createSingleWorkerEntry(userEntryPath) {
 		write: false,
 		define: {
 			USER_ENTRYPOINT: JSON.stringify(userEntryPath),
+			PLATFORM: JSON.stringify(platform),
 		},
 	});
 
@@ -334,7 +335,7 @@ async function createSingleWorkerEntry(userEntryPath) {
 /**
  * Create multi-worker entry point using TypeScript template
  */
-async function createMultiWorkerEntry(userEntryPath, workerCount) {
+async function createMultiWorkerEntry(userEntryPath, workerCount, platform) {
 	const templatePath = resolve(
 		dirname(fileURLToPath(import.meta.url)),
 		"../templates/multi-worker-entry.ts",
@@ -350,6 +351,7 @@ async function createMultiWorkerEntry(userEntryPath, workerCount) {
 		define: {
 			USER_ENTRYPOINT: JSON.stringify(userEntryPath),
 			WORKER_COUNT: JSON.stringify(workerCount),
+			PLATFORM: JSON.stringify(platform),
 		},
 	});
 

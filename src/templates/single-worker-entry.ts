@@ -9,13 +9,19 @@ import {
 	ShovelGlobalScope,
 } from "@b9g/platform";
 import {FileSystemRegistry, CustomBucketStorage} from "@b9g/filesystem";
-import {NodeBucket} from "@b9g/filesystem/node.js";
 import {fileURLToPath} from "url";
 import {dirname, join} from "path";
 import {realpath} from "fs";
 import {promisify} from "util";
 
 const realpathAsync = promisify(realpath);
+
+// Platform-specific imports
+declare const PLATFORM: string;
+const platformPackage =
+	PLATFORM === "bun" ? "@b9g/platform-bun" : "@b9g/platform-node";
+const {default: Platform} = await import(platformPackage);
+const platform = new Platform();
 
 // Production server setup
 const registration = new ShovelServiceWorkerRegistration();
@@ -24,10 +30,15 @@ const registration = new ShovelServiceWorkerRegistration();
 const executableDir = dirname(fileURLToPath(import.meta.url));
 const distDir = dirname(executableDir);
 
-// Register well-known buckets
-FileSystemRegistry.register("dist", new NodeBucket(distDir));
+// Register well-known buckets using platform-specific bucket implementation
+const BucketImpl =
+	PLATFORM === "bun"
+		? (await import("@b9g/filesystem/bun.js")).BunBucket
+		: (await import("@b9g/filesystem/node.js")).NodeBucket;
+
+FileSystemRegistry.register("dist", new BucketImpl(distDir));
 // Also register assets bucket (points to dist/assets directory)
-FileSystemRegistry.register("assets", new NodeBucket(join(distDir, "assets")));
+FileSystemRegistry.register("assets", new BucketImpl(join(distDir, "assets")));
 
 // Create bucket storage using registry
 const buckets = new CustomBucketStorage(async (name) => {
@@ -60,62 +71,24 @@ try {
 			await registration.install();
 			await registration.activate();
 
-			// Create HTTP server
-			const {createServer} = await import("http");
-			const PORT = process.env.PORT || 8080;
+			// Create HTTP server using platform abstraction
+			const PORT = parseInt(process.env.PORT || "8080", 10);
 			const HOST = process.env.HOST || "0.0.0.0";
 
-			const httpServer = createServer(async (req, res) => {
-				try {
-					const url = `http://${req.headers.host}${req.url}`;
-					const request = new Request(url, {
-						method: req.method,
-						headers: req.headers,
-						body:
-							req.method !== "GET" && req.method !== "HEAD" ? req : undefined,
-					});
+			const server = platform.createServer(
+				async (request) => {
+					return await registration.handleRequest(request);
+				},
+				{port: PORT, host: HOST},
+			);
 
-					const response = await registration.handleRequest(request);
-
-					res.statusCode = response.status;
-					res.statusMessage = response.statusText;
-					response.headers.forEach((value, key) => {
-						res.setHeader(key, value);
-					});
-
-					if (response.body) {
-						const reader = response.body.getReader();
-						const pump = async () => {
-							const {done, value} = await reader.read();
-							if (done) {
-								res.end();
-							} else {
-								res.write(value);
-								await pump();
-							}
-						};
-						await pump();
-					} else {
-						res.end();
-					}
-				} catch (error) {
-					console.error("Request error:", error);
-					res.statusCode = 500;
-					res.setHeader("Content-Type", "text/plain");
-					res.end("Internal Server Error");
-				}
-			});
-
-			httpServer.listen(PORT, HOST, () => {
-				console.info(
-					`🚀 Single-worker server running at http://${HOST}:${PORT}`,
-				);
-			});
+			await server.listen();
+			console.info(`🚀 Single-worker server running at http://${HOST}:${PORT}`);
 
 			// Graceful shutdown
 			const shutdown = async () => {
 				console.info("\n🛑 Shutting down single-worker server...");
-				await new Promise((resolve) => httpServer.close(resolve));
+				await server.close();
 				process.exit(0);
 			};
 

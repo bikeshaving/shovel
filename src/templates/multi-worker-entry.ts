@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 /**
  * Shovel Production Server (Multi-Worker)
- * Spawns WORKER_COUNT real Node.js Worker threads for true concurrency
+ * Spawns WORKER_COUNT real Worker threads for true concurrency
  */
 
 import {Worker, workerData} from "worker_threads";
 import {fileURLToPath} from "url";
 import {dirname} from "path";
+
+// Platform-specific imports
+declare const PLATFORM: string;
+const platformPackage =
+	PLATFORM === "bun" ? "@b9g/platform-bun" : "@b9g/platform-node";
+const {default: Platform} = await import(platformPackage);
+const mainPlatform = new Platform();
 
 // Check if this is being run as the main executable (not a worker thread)
 if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
@@ -99,55 +106,20 @@ if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
 		});
 	}
 
-	// Create HTTP server that load balances across workers
-	const {createServer} = await import("http");
-	const PORT = process.env.PORT || 8080;
+	// Create HTTP server that load balances across workers using platform abstraction
+	const PORT = parseInt(process.env.PORT || "8080", 10);
 	const HOST = process.env.HOST || "0.0.0.0";
 
-	const httpServer = createServer(async (req, res) => {
-		try {
-			const url = `http://${req.headers.host}${req.url}`;
-			const request = new Request(url, {
-				method: req.method,
-				headers: req.headers,
-				body: req.method !== "GET" && req.method !== "HEAD" ? req : undefined,
-			});
+	const server = mainPlatform.createServer(
+		async (request) => {
+			return await handleRequest(request);
+		},
+		{port: PORT, host: HOST},
+	);
 
-			const response = await handleRequest(request);
-
-			res.statusCode = response.status;
-			res.statusMessage = response.statusText;
-			response.headers.forEach((value, key) => {
-				res.setHeader(key, value);
-			});
-
-			if (response.body) {
-				const reader = response.body.getReader();
-				const pump = async () => {
-					const {done, value} = await reader.read();
-					if (done) {
-						res.end();
-					} else {
-						res.write(value);
-						await pump();
-					}
-				};
-				await pump();
-			} else {
-				res.end();
-			}
-		} catch (error) {
-			console.error("Request error:", error);
-			res.statusCode = 500;
-			res.setHeader("Content-Type", "text/plain");
-			res.end("Internal Server Error");
-		}
-	});
-
-	httpServer.listen(PORT, HOST, () => {
-		console.info(`🚀 Multi-worker server running at http://${HOST}:${PORT}`);
-		console.info(`⚡ Load balancing across ${WORKER_COUNT} workers`);
-	});
+	await server.listen();
+	console.info(`🚀 Multi-worker server running at http://${HOST}:${PORT}`);
+	console.info(`⚡ Load balancing across ${WORKER_COUNT} workers`);
 
 	// Graceful shutdown
 	const shutdown = async () => {
@@ -165,7 +137,7 @@ if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
 			}),
 		);
 
-		await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+		await server.close();
 		console.info("✅ All workers terminated");
 		process.exit(0);
 	};
@@ -180,7 +152,6 @@ import {
 	ShovelGlobalScope,
 } from "@b9g/platform";
 import {FileSystemRegistry, CustomBucketStorage} from "@b9g/filesystem";
-import {NodeBucket} from "@b9g/filesystem/node.js";
 import {parentPort} from "worker_threads";
 
 if (workerData?.isWorker && parentPort) {
@@ -193,8 +164,13 @@ if (workerData?.isWorker && parentPort) {
 	const executableDir = dirname(fileURLToPath(import.meta.url));
 	const distDir = dirname(executableDir);
 
-	// Register well-known buckets
-	FileSystemRegistry.register("dist", new NodeBucket(distDir));
+	// Register well-known buckets using platform-specific bucket implementation
+	const BucketImpl =
+		PLATFORM === "bun"
+			? (await import("@b9g/filesystem/bun.js")).BunBucket
+			: (await import("@b9g/filesystem/node.js")).NodeBucket;
+
+	FileSystemRegistry.register("dist", new BucketImpl(distDir));
 
 	// Create bucket storage using registry
 	const buckets = new CustomBucketStorage(async (name) => {
