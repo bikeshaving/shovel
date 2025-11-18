@@ -5,11 +5,7 @@
  */
 
 import {Cache, type CacheQueryOptions, generateCacheKey} from "@b9g/cache";
-import {
-	createClient,
-	type RedisClientType,
-	type RedisClientOptions,
-} from "redis";
+import {createClient, type RedisClientOptions} from "redis";
 
 // ============================================================================
 // TYPES

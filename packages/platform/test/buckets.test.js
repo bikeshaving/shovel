@@ -45,16 +45,10 @@ async function createBucketStorage(tempDir) {
 test(
 	"CustomBucketStorage class instantiation",
 	async () => {
-		const {CustomBucketStorage} = await import("@b9g/filesystem");
-
 		const tempDir = await createTempDir();
 
 		try {
-			const buckets = new CustomBucketStorage(async (name) => {
-				const targetPath = join(tempDir, name);
-				await FS.mkdir(targetPath, {recursive: true});
-				return new NodeBucket(targetPath);
-			});
+			const buckets = await createBucketStorage(tempDir);
 
 			// Should return an object with open method
 			expect(typeof buckets).toBe("object");
@@ -136,8 +130,6 @@ test(
 test(
 	"directory handle file operations",
 	async () => {
-		const {CustomBucketStorage} = await import("@b9g/filesystem");
-
 		const tempDir = await createTempDir();
 
 		try {
@@ -176,8 +168,6 @@ test(
 test(
 	"directory handle subdirectory operations",
 	async () => {
-		const {CustomBucketStorage} = await import("@b9g/filesystem");
-
 		const tempDir = await createTempDir();
 
 		try {
@@ -221,8 +211,6 @@ test(
 test(
 	"directory handle entries iteration",
 	async () => {
-		const {CustomBucketStorage} = await import("@b9g/filesystem");
-
 		const tempDir = await createTempDir();
 
 		try {
@@ -267,7 +255,6 @@ test(
 		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
-		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 
@@ -342,7 +329,6 @@ test(
 		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
-		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 
@@ -517,8 +503,6 @@ test(
 test(
 	"bucket error handling - file not found",
 	async () => {
-		const {CustomBucketStorage} = await import("@b9g/filesystem");
-
 		const tempDir = await createTempDir();
 
 		try {
@@ -539,8 +523,6 @@ test(
 test(
 	"bucket error handling - invalid directory name",
 	async () => {
-		const {CustomBucketStorage} = await import("@b9g/filesystem");
-
 		const tempDir = await createTempDir();
 
 		try {
@@ -572,7 +554,6 @@ test(
 		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
 			"../src/runtime.js"
 		);
-		const {CustomBucketStorage} = await import("@b9g/filesystem");
 
 		const tempDir = await createTempDir();
 

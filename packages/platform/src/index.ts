@@ -934,14 +934,14 @@ function resolveWorkerScript(entrypoint?: string): string {
 				// Bun has synchronous file operations
 				const file = Bun.file(bundledWorker);
 				if (file.size > 0) {
-					console.debug(`[WorkerPool] Using bundled worker: ${bundledWorker}`);
+					console.info(`[WorkerPool] Using bundled worker: ${bundledWorker}`);
 					return bundledWorker;
 				}
 			} else if (typeof require !== "undefined") {
 				// Node.js - use fs.existsSync
 				const fs = require("fs");
 				if (fs.existsSync(bundledWorker)) {
-					console.debug(`[WorkerPool] Using bundled worker: ${bundledWorker}`);
+					console.info(`[WorkerPool] Using bundled worker: ${bundledWorker}`);
 					return bundledWorker;
 				}
 			}
@@ -963,7 +963,7 @@ function resolveWorkerScript(entrypoint?: string): string {
 			workerScript = workerUrl;
 		}
 
-		console.debug(`[WorkerPool] Using worker runtime script: ${workerScript}`);
+		console.info(`[WorkerPool] Using worker runtime script: ${workerScript}`);
 		return workerScript;
 	} catch (error) {
 		const bundledPath = entrypoint
@@ -991,7 +991,7 @@ async function createWebWorker(workerScript: string): Promise<Worker> {
 		// Try to dynamically import our own Node.js shim
 		try {
 			const {Worker: NodeWebWorker} = await import("@b9g/node-webworker");
-			console.debug("[WorkerPool] Using @b9g/node-webworker shim for Node.js");
+			console.info("[WorkerPool] Using @b9g/node-webworker shim for Node.js");
 			// Our Node.js shim doesn't implement all Web Worker properties, but has the core functionality
 			return new NodeWebWorker(workerScript, {
 				type: "module",

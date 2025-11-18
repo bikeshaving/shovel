@@ -153,7 +153,7 @@ describe("Generator Middleware Execution", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* testMiddleware(request: Request, _context: any) {
+		async function* testMiddleware(_request: Request, _context: any) {
 			executionOrder.push("middleware-before");
 			const response = yield; // Implicit yield request
 			executionOrder.push("middleware-after");
@@ -216,8 +216,9 @@ describe("Generator Middleware Execution", () => {
 	test("handles passthrough returns (null/undefined)", async () => {
 		const router = new Router();
 
-		async function* setupMiddleware(request: Request, context: any) {
+		async function* setupMiddleware(_request: Request, context: any) {
 			context.setupDone = true;
+			yield; // Generator must have yield
 			return; // null/undefined passthrough
 		}
 
@@ -237,7 +238,7 @@ describe("Generator Middleware Execution", () => {
 	test("modifies request before yield", async () => {
 		const router = new Router();
 
-		async function* headerMiddleware(request: Request, context: any) {
+		async function* headerMiddleware(request: Request, _context: any) {
 			request.headers.set("X-Added-Header", "test-value");
 			const response = yield request;
 			return response;
@@ -260,7 +261,7 @@ describe("Generator Middleware Execution", () => {
 	test("modifies response after yield", async () => {
 		const router = new Router();
 
-		async function* responseMiddleware(request: Request, context: any) {
+		async function* responseMiddleware(request: Request, _context: any) {
 			const response = yield request;
 			response.headers.set("X-Response-Modified", "true");
 			return response;
@@ -309,19 +310,20 @@ describe("Middleware Short-Circuiting", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* authMiddleware(request: Request, context: any) {
+		// eslint-disable-next-line require-yield
+		async function* authMiddleware(_request: Request, _context: any) {
 			executionOrder.push("auth");
 			return new Response("Unauthorized", {status: 401}); // Early return should short-circuit
 		}
 
-		async function* corsMiddleware(request: Request, context: any) {
+		async function* corsMiddleware(request: Request, _context: any) {
 			executionOrder.push("cors"); // Should NOT execute
 			const response = yield request;
 			response.headers.set("Access-Control-Allow-Origin", "*");
 			return response;
 		}
 
-		async function* loggingMiddleware(request: Request, context: any) {
+		async function* loggingMiddleware(request: Request, _context: any) {
 			executionOrder.push("logging"); // Should NOT execute
 			const response = yield request;
 			response.headers.set("X-Request-Logged", "true");
@@ -355,14 +357,14 @@ describe("Middleware Short-Circuiting", () => {
 		const executionOrder: string[] = [];
 
 		async function authMiddleware(
-			request: Request,
-			context: any,
+			_request: Request,
+			_context: any,
 		): Promise<Response | null> {
 			executionOrder.push("auth");
 			return new Response("Unauthorized", {status: 401}); // Early return should short-circuit
 		}
 
-		async function corsMiddleware(request: Request, context: any) {
+		async function corsMiddleware(_request: Request, _context: any) {
 			executionOrder.push("cors"); // Should NOT execute
 		}
 
@@ -389,14 +391,14 @@ describe("Middleware Short-Circuiting", () => {
 		const executionOrder: string[] = [];
 
 		async function passthroughMiddleware(
-			request: Request,
-			context: any,
+			_request: Request,
+			_context: any,
 		): Promise<null> {
 			executionOrder.push("passthrough");
 			return null; // Should continue to next middleware
 		}
 
-		async function* processingMiddleware(request: Request, context: any) {
+		async function* processingMiddleware(request: Request, _context: any) {
 			executionOrder.push("processing");
 			const response = yield request;
 			response.headers.set("X-Processed", "true");
@@ -426,14 +428,17 @@ describe("Middleware Short-Circuiting", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function implicitUndefinedMiddleware(request: Request, context: any) {
+		async function implicitUndefinedMiddleware(
+			_request: Request,
+			_context: any,
+		) {
 			executionOrder.push("implicit");
 			// Implicit undefined return
 		}
 
 		async function explicitUndefinedMiddleware(
-			request: Request,
-			context: any,
+			_request: Request,
+			_context: any,
 		): Promise<undefined> {
 			executionOrder.push("explicit");
 			return undefined; // Explicit undefined return
@@ -461,21 +466,21 @@ describe("Middleware Short-Circuiting", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* middleware1(request: Request, context: any) {
+		async function* middleware1(request: Request, _context: any) {
 			executionOrder.push("middleware1-before");
 			const response = yield request;
 			executionOrder.push("middleware1-after");
 			return response;
 		}
 
-		async function* middleware2(request: Request, context: any) {
+		async function* middleware2(request: Request, _context: any) {
 			executionOrder.push("middleware2-before");
 			const response = yield request;
 			executionOrder.push("middleware2-after");
 			return response;
 		}
 
-		async function* middleware3(request: Request, context: any) {
+		async function* middleware3(request: Request, _context: any) {
 			executionOrder.push("middleware3-before");
 			const response = yield request;
 			executionOrder.push("middleware3-after");
@@ -514,7 +519,7 @@ describe("Middleware Short-Circuiting", () => {
 		let secondUrlError: Error | null = null;
 
 		// First generator middleware (like pageCache)
-		async function* firstMiddleware(request: Request, context: any) {
+		async function* firstMiddleware(request: Request, _context: any) {
 			try {
 				// Try to access request.url - should work
 				firstMiddlewareUrl = request.url;
@@ -532,7 +537,7 @@ describe("Middleware Short-Circuiting", () => {
 		}
 
 		// Second generator middleware (like assets middleware)
-		async function* secondMiddleware(request: Request, context: any) {
+		async function* secondMiddleware(request: Request, _context: any) {
 			try {
 				// Try to access request.url - this is where the bug manifests
 				secondMiddlewareUrl = request.url;
@@ -559,20 +564,6 @@ describe("Middleware Short-Circuiting", () => {
 
 		const request = new Request("http://example.com/test");
 		const response = await router.handler(request);
-
-		// Debug what we captured
-		console.log(
-			"First middleware URL:",
-			firstMiddlewareUrl,
-			typeof firstMiddlewareUrl,
-		);
-		console.log(
-			"Second middleware URL:",
-			secondMiddlewareUrl,
-			typeof secondMiddlewareUrl,
-		);
-		console.log("First URL error:", firstUrlError?.message);
-		console.log("Second URL error:", secondUrlError?.message);
 
 		// Both middleware should see the same valid URL
 		expect(firstUrlError).toBeNull();
@@ -723,7 +714,7 @@ describe("Error Handling", () => {
 	test("middleware can handle errors with try/catch", async () => {
 		const router = new Router();
 
-		async function* errorHandlingMiddleware(request: Request, context: any) {
+		async function* errorHandlingMiddleware(request: Request, _context: any) {
 			try {
 				const response = yield request;
 				return response;
@@ -751,7 +742,7 @@ describe("Automatic Redirects", () => {
 	test("returns 302 for URL changes by default", async () => {
 		const router = new Router();
 
-		async function* redirectMiddleware(request: Request, context: any) {
+		async function* redirectMiddleware(request: Request, _context: any) {
 			if (request.url.endsWith("/old-path")) {
 				request.url = request.url.replace("/old-path", "/new-path");
 			}
@@ -774,7 +765,7 @@ describe("Automatic Redirects", () => {
 	test("returns 301 for protocol changes (http->https)", async () => {
 		const router = new Router();
 
-		async function* httpsRedirectMiddleware(request: Request, context: any) {
+		async function* httpsRedirectMiddleware(request: Request, _context: any) {
 			if (request.url.startsWith("http://")) {
 				request.url = request.url.replace("http://", "https://");
 			}
@@ -794,7 +785,7 @@ describe("Automatic Redirects", () => {
 	test("returns 307 for non-GET method changes", async () => {
 		const router = new Router();
 
-		async function* apiVersionMiddleware(request: Request, context: any) {
+		async function* apiVersionMiddleware(request: Request, _context: any) {
 			if (request.url.includes("/api/v1/")) {
 				request.url = request.url.replace("/api/v1/", "/api/v2/");
 			}
@@ -818,7 +809,7 @@ describe("Automatic Redirects", () => {
 	test("throws error for cross-origin URL changes", async () => {
 		const router = new Router();
 
-		async function* maliciousMiddleware(request: Request, context: any) {
+		async function* maliciousMiddleware(request: Request, _context: any) {
 			request.url = "https://evil.com/steal-data";
 			const response = yield request;
 			return response;
@@ -835,13 +826,13 @@ describe("Automatic Redirects", () => {
 	test("redirect responses flow through remaining middleware", async () => {
 		const router = new Router();
 
-		async function* redirectMiddleware(request: Request, context: any) {
+		async function* redirectMiddleware(request: Request, _context: any) {
 			request.url = request.url.replace("/old", "/new");
 			const response = yield request;
 			return response;
 		}
 
-		async function* headerMiddleware(request: Request, context: any) {
+		async function* headerMiddleware(request: Request, _context: any) {
 			const response = yield request;
 			response.headers.set("X-Processed", "true");
 			return response;
@@ -864,7 +855,7 @@ describe("Router Integration", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* middleware(request: Request, context: any) {
+		async function* middleware(request: Request, _context: any) {
 			executionOrder.push("middleware");
 			const response = yield request;
 			return response;
@@ -889,7 +880,7 @@ describe("Router Integration", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* middleware(request: Request, context: any) {
+		async function* middleware(request: Request, _context: any) {
 			executionOrder.push("middleware");
 			const response = yield request;
 			return response;
@@ -930,7 +921,7 @@ describe("Advanced Generator Middleware", () => {
 			return response;
 		}
 
-		async function* corsMiddleware(request: Request, context: any) {
+		async function* corsMiddleware(request: Request, _context: any) {
 			executionOrder.push("cors-start");
 			const response = yield request;
 			executionOrder.push("cors-end");
@@ -970,7 +961,7 @@ describe("Advanced Generator Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* rateLimitMiddleware(request: Request, context: any) {
+		async function* rateLimitMiddleware(request: Request, _context: any) {
 			executionOrder.push("rate-limit");
 			const rateLimited = request.headers.get("X-Rate-Limited");
 
@@ -983,7 +974,7 @@ describe("Advanced Generator Middleware", () => {
 			return response;
 		}
 
-		async function* analyticsMiddleware(request: Request, context: any) {
+		async function* analyticsMiddleware(request: Request, _context: any) {
 			executionOrder.push("analytics");
 			const response = yield request;
 			response.headers.set("X-Analytics", "tracked");
@@ -1025,7 +1016,7 @@ describe("Advanced Generator Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* errorHandlingMiddleware(request: Request, context: any) {
+		async function* errorHandlingMiddleware(request: Request, _context: any) {
 			executionOrder.push("error-handler-start");
 			try {
 				const response = yield request;
@@ -1037,7 +1028,7 @@ describe("Advanced Generator Middleware", () => {
 			}
 		}
 
-		async function* normalMiddleware(request: Request, context: any) {
+		async function* normalMiddleware(request: Request, _context: any) {
 			executionOrder.push("normal-middleware");
 			const response = yield request;
 			executionOrder.push("normal-middleware");
@@ -1136,6 +1127,7 @@ describe("Advanced Generator Middleware", () => {
 		async function* setupMiddleware(request: Request, context: any) {
 			executionOrder.push("setup");
 			context.setupComplete = true;
+			yield; // Generator must have yield
 			// No yield - passthrough
 		}
 
@@ -1147,7 +1139,7 @@ describe("Advanced Generator Middleware", () => {
 			return response;
 		}
 
-		const handler = async (request: Request, context: any) => {
+		const handler = async (_request: Request, _context: any) => {
 			executionOrder.push("handler");
 			return new Response("OK");
 		};
@@ -1171,7 +1163,7 @@ describe("Advanced Generator Middleware", () => {
 	test("complex URL routing with middleware modifications", async () => {
 		const router = new Router();
 
-		async function* routingMiddleware(request: Request, context: any) {
+		async function* routingMiddleware(request: Request, _context: any) {
 			// Rewrite legacy API paths
 			if (request.url.includes("/api/v1/")) {
 				request.url = request.url.replace("/api/v1/", "/api/v2/");
@@ -1225,7 +1217,7 @@ describe("Advanced Generator Middleware", () => {
 			return response;
 		}
 
-		const handler = async (request: Request, context: any) => {
+		const handler = async (_request: Request, _context: any) => {
 			executionOrder.push("handler");
 			return new Response("Mixed execution");
 		};
@@ -1266,7 +1258,8 @@ describe("Edge Cases and Error Scenarios", () => {
 	test("generator throws error in initial execution", async () => {
 		const router = new Router();
 
-		async function* faultyMiddleware(request: Request, context: any) {
+		async function* faultyMiddleware(_request: Request, _context: any) {
+			yield; // Generator must have yield
 			throw new Error("Middleware startup error");
 		}
 
@@ -1283,8 +1276,8 @@ describe("Edge Cases and Error Scenarios", () => {
 	test("generator throws error after yield", async () => {
 		const router = new Router();
 
-		async function* faultyMiddleware(request: Request, context: any) {
-			const response = yield request;
+		async function* faultyMiddleware(_request: Request, _context: any) {
+			yield; // Generator must have yield
 			throw new Error("Post-yield error");
 		}
 
@@ -1299,7 +1292,7 @@ describe("Edge Cases and Error Scenarios", () => {
 	test("function middleware throws error", async () => {
 		const router = new Router();
 
-		async function faultyMiddleware(request: Request, context: any) {
+		async function faultyMiddleware(_request: Request, _context: any) {
 			throw new Error("Function middleware error");
 		}
 
@@ -1326,7 +1319,7 @@ describe("Edge Cases and Error Scenarios", () => {
 			router.use(middleware);
 		}
 
-		const handler = async (request: Request, context: any) => {
+		const handler = async (_request: Request, _context: any) => {
 			executionOrder.push("handler");
 			return new Response("Large stack");
 		};
@@ -1345,7 +1338,7 @@ describe("Edge Cases and Error Scenarios", () => {
 		const router = new Router();
 		let modificationCount = 0;
 
-		async function* recursiveMiddleware(request: Request, context: any) {
+		async function* recursiveMiddleware(request: Request, _context: any) {
 			modificationCount++;
 			if (modificationCount > 5) {
 				// Prevent infinite recursion
@@ -1372,7 +1365,7 @@ describe("Edge Cases and Error Scenarios", () => {
 	test("malformed URLs in redirect handling", async () => {
 		const router = new Router();
 
-		async function* malformedUrlMiddleware(request: Request, context: any) {
+		async function* malformedUrlMiddleware(request: Request, _context: any) {
 			request.url = "not-a-valid-url";
 			const response = yield request;
 			return response;
@@ -1390,18 +1383,18 @@ describe("Edge Cases and Error Scenarios", () => {
 	test("null and undefined return values", async () => {
 		const router = new Router();
 
-		async function* nullMiddleware(request: Request, context: any) {
-			const response = yield request;
+		async function* nullMiddleware(_request: Request, _context: any) {
+			yield; // Generator must have yield
 			return null; // Explicit null
 		}
 
-		async function* undefinedMiddleware(request: Request, context: any) {
-			const response = yield request;
+		async function* undefinedMiddleware(_request: Request, _context: any) {
+			yield; // Generator must have yield
 			return undefined; // Explicit undefined
 		}
 
-		async function* implicitMiddleware(request: Request, context: any) {
-			const response = yield request;
+		async function* implicitMiddleware(_request: Request, _context: any) {
+			yield; // Generator must have yield
 			// Implicit undefined return
 		}
 

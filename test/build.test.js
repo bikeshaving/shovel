@@ -455,11 +455,9 @@ test(
 			const entryContent = `
 // Test various ServiceWorker APIs and features
 self.addEventListener("install", (event) => {
-	console.log("ServiceWorker installed");
 });
 
 self.addEventListener("activate", (event) => {
-	console.log("ServiceWorker activated");
 });
 
 self.addEventListener("fetch", (event) => {

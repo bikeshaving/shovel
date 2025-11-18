@@ -525,11 +525,11 @@ test(
 		let installed = false;
 		let activated = false;
 
-		globalThis.addEventListener("install", (event) => {
+		globalThis.addEventListener("install", (_event) => {
 			installed = true;
 		});
 
-		globalThis.addEventListener("activate", (event) => {
+		globalThis.addEventListener("activate", (_event) => {
 			activated = true;
 		});
 

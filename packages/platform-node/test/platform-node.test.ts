@@ -2,7 +2,7 @@ import {test, expect, describe, beforeEach, afterEach, mock} from "bun:test";
 import {NodePlatform} from "../src/index.js";
 import {tmpdir} from "os";
 import {join} from "path";
-import {mkdtempSync, writeFileSync, rmSync} from "fs";
+import {mkdtempSync, rmSync} from "fs";
 
 describe("NodePlatform", () => {
 	let platform: NodePlatform;

@@ -14,7 +14,6 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 	ServiceWorkerPool,
-	WorkerPoolOptions,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
@@ -71,7 +70,7 @@ export class NodePlatform extends BasePlatform {
 	constructor(options: NodePlatformOptions = {}) {
 		super(options);
 		this.options = {
-			hotReload: Boolean(import.meta.env?.DEV) ?? false,
+			hotReload: Boolean(import.meta.env?.DEV),
 			port: 3000,
 			host: "localhost",
 			cwd: process.cwd(),

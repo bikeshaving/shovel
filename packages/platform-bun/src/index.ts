@@ -72,7 +72,7 @@ export class BunPlatform extends BasePlatform {
 	constructor(options: BunPlatformOptions = {}) {
 		super(options);
 		this.options = {
-			hotReload: Boolean(import.meta.env?.DEV) ?? false,
+			hotReload: Boolean(import.meta.env?.DEV),
 			port: 3000,
 			host: "localhost",
 			cwd: process.cwd(),
