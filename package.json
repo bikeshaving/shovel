@@ -6,7 +6,9 @@
   "type": "module",
   "bin": {
     "shovel": "./dist/bin/cli.js",
-    "create-shovel": "./dist/bin/create.js"
+    "create-shovel": "./dist/bin/create.js",
+    "cli": "./dist/bin/cli.js",
+    "create": "./dist/bin/create.js"
   },
   "workspaces": [
     "packages/*",
@@ -81,6 +83,21 @@
   },
   "private": true,
   "exports": {
-    "./package.json": "./package.json"
-  }
+    "./package.json": "./dist/package.json",
+    "./bin/cli": {
+      "import": "./dist/bin/cli.js"
+    },
+    "./bin/cli.js": {
+      "import": "./dist/bin/cli.js"
+    },
+    "./bin/create": {
+      "import": "./dist/bin/create.js",
+      "types": "./dist/bin/create.d.ts"
+    },
+    "./bin/create.js": {
+      "import": "./dist/bin/create.js",
+      "types": "./dist/bin/create.d.ts"
+    }
+  },
+  "module": "./dist/src/undefined.js"
 }

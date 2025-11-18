@@ -10,19 +10,6 @@ import {infoCommand} from "../src/commands/info.js";
 
 const program = new Command();
 
-function getWorkerCount(options) {
-	// Explicit CLI option takes precedence
-	if (options.workers) {
-		return parseInt(options.workers);
-	}
-	// Environment variable second
-	if (process.env.WORKER_COUNT) {
-		return parseInt(process.env.WORKER_COUNT);
-	}
-	// Default from config
-	return DEFAULTS.WORKERS;
-}
-
 program.name("shovel").description("Shovel CLI").version(pkg.version);
 
 /**
