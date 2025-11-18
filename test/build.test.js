@@ -111,7 +111,7 @@ test(
 	"build with different platforms",
 	async () => {
 		const cleanup_paths = [];
-		const platforms = ["node", "bun"];
+		const platforms = ["node", "bun", "cloudflare"];
 
 		for (const platform of platforms) {
 			try {
@@ -142,13 +142,22 @@ self.addEventListener("fetch", (event) => {
 					join(outDir, "server", "server.js"),
 					"utf8",
 				);
-				expect(appContent).toContain("ServiceWorkerRegistration");
 				expect(appContent).toContain(`Platform: ${platform}`);
 
-				// New virtual entry approach should bundle platform dependencies
-				// Look for bundled platform code instead of external references
-				expect(appContent).toContain("ShovelGlobalScope");
-				expect(appContent).toContain("CustomBucketStorage");
+				// Cloudflare builds have different structure (browser-based)
+				if (platform === "cloudflare") {
+					// Cloudflare builds should not have shebang
+					expect(appContent.startsWith("#!/usr/bin/env")).toBe(false);
+					// Should have Cloudflare-specific wrapper
+					expect(appContent).toContain("addEventListener");
+				} else {
+					// Node/Bun builds should have shebang and registration
+					expect(appContent).toContain("ServiceWorkerRegistration");
+					// New virtual entry approach should bundle platform dependencies
+					// Look for bundled platform code instead of external references
+					expect(appContent).toContain("ShovelGlobalScope");
+					expect(appContent).toContain("CustomBucketStorage");
+				}
 			} catch (error) {
 				console.error(`Platform ${platform} failed:`, error);
 				throw error;

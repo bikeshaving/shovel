@@ -7,7 +7,6 @@
  */
 
 import {Router} from "@b9g/router";
-import {createRootAssetsMiddleware} from "@b9g/assets";
 
 // Cache control constants
 const CACHE_HEADERS = {
@@ -32,15 +31,6 @@ import favicon from "./assets/favicon.ico" with {assetBase: "/"};
 const router = new Router();
 
 // Platform provides self.caches and self.buckets directly - no event needed
-
-// Root assets middleware for serving root-level assets like /logo.svg
-router.use(
-	createRootAssetsMiddleware({
-		dev: true,
-		directory: "assets",
-		manifestPath: "server/asset-manifest.json",
-	}),
-);
 
 // Global page cache middleware
 router.use(pageCache);
