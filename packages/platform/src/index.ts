@@ -1365,6 +1365,7 @@ export class ServiceWorkerPool {
 	 */
 	async terminate(): Promise<void> {
 		const terminatePromises = this.#workers.map((worker) => worker.terminate());
+		// allSettled won't hang - it waits for all promises to settle (resolve or reject)
 		await Promise.allSettled(terminatePromises);
 		this.#workers = [];
 		this.#pendingRequests.clear();

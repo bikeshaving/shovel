@@ -10,6 +10,30 @@
  */
 
 // ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Wrap a promise with a timeout
+ * @param promise Promise to wrap
+ * @param timeoutMs Timeout in milliseconds
+ * @param errorMessage Error message if timeout occurs
+ * @returns Promise that rejects if timeout occurs
+ */
+function promiseWithTimeout<T>(
+	promise: Promise<T>,
+	timeoutMs: number,
+	errorMessage: string,
+): Promise<T> {
+	return Promise.race([
+		promise,
+		new Promise<T>((_, reject) =>
+			setTimeout(() => reject(new Error(errorMessage)), timeoutMs),
+		),
+	]);
+}
+
+// ============================================================================
 // Base Event Classes
 // ============================================================================
 
@@ -493,7 +517,12 @@ export class ShovelServiceWorkerRegistration
 					resolve();
 				} else {
 					// Use Promise.all() so waitUntil rejections fail the install
-					Promise.all(promises)
+					// Wrap with timeout to prevent indefinite hangs
+					promiseWithTimeout(
+						Promise.all(promises),
+						30000,
+						"ServiceWorker install event timed out after 30s - waitUntil promises did not resolve",
+					)
 						.then(() => {
 							this._serviceWorker._setState("installed");
 							resolve();
@@ -534,7 +563,12 @@ export class ShovelServiceWorkerRegistration
 					resolve();
 				} else {
 					// Use Promise.all() so waitUntil rejections fail the activation
-					Promise.all(promises)
+					// Wrap with timeout to prevent indefinite hangs
+					promiseWithTimeout(
+						Promise.all(promises),
+						30000,
+						"ServiceWorker activate event timed out after 30s - waitUntil promises did not resolve",
+					)
 						.then(() => {
 							this._serviceWorker._setState("activated");
 							resolve();
@@ -744,7 +778,12 @@ export class ShovelServiceWorkerContainer
 			},
 		);
 
-		await Promise.all(installations);
+		// Wrap with timeout to prevent hangs if any registration hangs
+		await promiseWithTimeout(
+			Promise.all(installations),
+			65000,
+			"ServiceWorker installAll timed out after 65s - some registrations failed to install/activate",
+		);
 	}
 
 	/**
