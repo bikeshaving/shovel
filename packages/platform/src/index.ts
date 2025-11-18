@@ -1399,5 +1399,19 @@ export {
 	ExtendableEvent,
 } from "./runtime.js";
 
+// Re-export Cookie Store API
+export {
+	RequestCookieStore,
+	type CookieListItem,
+	type CookieInit,
+	type CookieStoreGetOptions,
+	type CookieStoreDeleteOptions,
+	type CookieSameSite,
+	type CookieList,
+	parseCookieHeader,
+	serializeCookie,
+	parseSetCookieHeader,
+} from "./cookie-store.js";
+
 // Re-export filesystem utilities
 export {CustomBucketStorage} from "@b9g/filesystem";

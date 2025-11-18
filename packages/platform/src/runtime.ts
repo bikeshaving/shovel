@@ -9,6 +9,8 @@
  * Based on: https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API#interfaces
  */
 
+import {RequestCookieStore} from "./cookie-store.js";
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -67,12 +69,14 @@ export class ExtendableEvent extends Event {
  */
 export class FetchEvent extends ExtendableEvent {
 	readonly request: Request;
+	readonly cookieStore: RequestCookieStore;
 	#responsePromise: Promise<Response> | null;
 	#responded: boolean;
 
 	constructor(request: Request, eventInitDict?: EventInit) {
 		super("fetch", eventInitDict);
 		this.request = request;
+		this.cookieStore = new RequestCookieStore(request);
 		this.#responsePromise = null;
 		this.#responded = false;
 	}
@@ -617,10 +621,35 @@ export class ShovelServiceWorkerRegistration
 			});
 
 			// Allow async event handlers to execute before checking response
-			setTimeout(() => {
+			setTimeout(async () => {
 				if (event.hasResponded()) {
 					const responsePromise = event.getResponse()!;
-					responsePromise.then(resolve).catch(reject);
+					try {
+						const response = await responsePromise;
+
+						// Apply cookie changes from the cookieStore to the response
+						if (event.cookieStore.hasChanges()) {
+							const setCookieHeaders = event.cookieStore.getSetCookieHeaders();
+							const headers = new Headers(response.headers);
+
+							// Add all Set-Cookie headers
+							for (const setCookie of setCookieHeaders) {
+								headers.append("Set-Cookie", setCookie);
+							}
+
+							// Create new response with updated headers
+							const updatedResponse = new Response(response.body, {
+								status: response.status,
+								statusText: response.statusText,
+								headers,
+							});
+							resolve(updatedResponse);
+						} else {
+							resolve(response);
+						}
+					} catch (error) {
+						reject(error);
+					}
 				} else {
 					reject(new Error("No response provided for fetch event"));
 				}
@@ -1061,7 +1090,8 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	#isDevelopment: boolean;
 	#hotReload?: () => Promise<void>;
 
-	// Web API required properties (stubs for server context)
+	// Web API required properties
+	// Note: Using RequestCookieStore but typing as any for flexibility with global CookieStore type
 	readonly cookieStore: any;
 	readonly serviceWorker: any;
 
@@ -1189,8 +1219,9 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 		// Create clients API implementation
 		this.clients = this.#createClientsAPI();
 
-		// Initialize Web API stubs
-		this.cookieStore = null;
+		// Initialize Web API properties
+		// Note: cookieStore is per-request in fetch event handler, this is just a stub for global access
+		this.cookieStore = new RequestCookieStore();
 		this.serviceWorker = null;
 		this.location = {} as WorkerLocation;
 		this.navigator = {} as WorkerNavigator;
