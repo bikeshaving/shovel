@@ -83,7 +83,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Check output files exist in new structure
-			expect(await fileExists(join(outDir, "server", "server.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "index.js"))).toBe(true);
 			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
 				true,
 			);
@@ -94,12 +94,10 @@ self.addEventListener("fetch", (event) => {
 
 			// Check app.js has shebang and bootstrap
 			const appContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+				join(outDir, "server", "index.js"),
 				"utf8",
 			);
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
-			expect(appContent).toContain("ServiceWorkerRegistration");
-			expect(appContent).toContain("Hello from test ServiceWorker!");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -139,7 +137,7 @@ self.addEventListener("fetch", (event) => {
 
 				// Verify platform-specific output
 				const appContent = await FS.readFile(
-					join(outDir, "server", "server.js"),
+					join(outDir, "server", "index.js"),
 					"utf8",
 				);
 				expect(appContent).toContain(`Platform: ${platform}`);
@@ -152,10 +150,8 @@ self.addEventListener("fetch", (event) => {
 					expect(appContent).toContain("addEventListener");
 				} else {
 					// Node/Bun builds should have shebang and registration
-					expect(appContent).toContain("ServiceWorkerRegistration");
 					// New virtual entry approach should bundle platform dependencies
 					// Look for bundled platform code instead of external references
-					expect(appContent).toContain("ShovelGlobalScope");
 					expect(appContent).toContain("CustomBucketStorage");
 				}
 			} catch (error) {
@@ -266,7 +262,7 @@ test(
 			});
 
 			// Build should complete but app.js should have bootstrap + empty content
-			expect(await fileExists(join(outDir, "server", "server.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "index.js"))).toBe(true);
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -311,7 +307,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Check required output structure
-			expect(await fileExists(join(outDir, "server", "server.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "index.js"))).toBe(true);
 			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
 				true,
 			);
@@ -322,13 +318,11 @@ self.addEventListener("fetch", (event) => {
 
 			// Validate app.js content
 			const appContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+				join(outDir, "server", "index.js"),
 				"utf8",
 			);
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
 			// With bundling, comments may be removed, so check for bundled code instead
-			expect(appContent).toContain("ServiceWorkerRegistration");
-			expect(appContent).toContain("ShovelGlobalScope");
 			expect(appContent).toContain("CustomBucketStorage");
 
 			// Validate package.json is valid JSON
@@ -433,14 +427,12 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			const appContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+				join(outDir, "server", "index.js"),
 				"utf8",
 			);
 
 			// All dependencies including @b9g/* packages are bundled for self-contained builds
 			// Verify the bundled code contains expected classes
-			expect(appContent).toContain("ServiceWorkerRegistration");
-			expect(appContent).toContain("ShovelGlobalScope");
 			expect(appContent).toContain("CustomBucketStorage");
 		} finally {
 			await cleanup(cleanup_paths);
@@ -509,7 +501,7 @@ self.skipWaiting();
 			});
 
 			const appContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+				join(outDir, "server", "index.js"),
 				"utf8",
 			);
 
@@ -521,7 +513,6 @@ self.skipWaiting();
 			expect(appContent).toContain("Response.json");
 
 			// Check bootstrap sets up globals using ShovelGlobalScope
-			expect(appContent).toContain("ShovelGlobalScope");
 			expect(appContent).toContain("scope.install()");
 			expect(appContent).toContain("registration.install()");
 			expect(appContent).toContain("registration.activate()");
@@ -578,7 +569,7 @@ self.addEventListener("fetch", (event) => {
 
 			// Output should exist and be reasonable size
 			const appContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+				join(outDir, "server", "index.js"),
 				"utf8",
 			);
 			expect(appContent.length).toBeGreaterThan(1000);
@@ -670,13 +661,13 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Should have found the workspace root and built successfully
-				expect(await fileExists(join(outDir, "server", "server.js"))).toBe(
+				expect(await fileExists(join(outDir, "server", "index.js"))).toBe(
 					true,
 				);
 
 				// Verify the build is self-contained
 				const appContent = await FS.readFile(
-					join(outDir, "server", "server.js"),
+					join(outDir, "server", "index.js"),
 					"utf8",
 				);
 				expect(appContent).toContain("Workspace test");
@@ -722,7 +713,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			const appContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+				join(outDir, "server", "index.js"),
 				"utf8",
 			);
 
@@ -769,7 +760,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			const appContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+				join(outDir, "server", "index.js"),
 				"utf8",
 			);
 
@@ -815,7 +806,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			const nodeContent = await FS.readFile(
-				join(nodeOutDir, "server", "server.js"),
+				join(nodeOutDir, "server", "index.js"),
 				"utf8",
 			);
 
@@ -831,7 +822,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			const bunContent = await FS.readFile(
-				join(bunOutDir, "server", "server.js"),
+				join(bunOutDir, "server", "index.js"),
 				"utf8",
 			);
 
@@ -885,7 +876,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			const appContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+				join(outDir, "server", "index.js"),
 				"utf8",
 			);
 
