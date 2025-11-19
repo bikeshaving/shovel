@@ -8,8 +8,9 @@
  */
 
 import {Worker as NodeWorker} from "worker_threads";
-import {fileURLToPath} from "url";
-import {dirname, join} from "path";
+import {writeFileSync, mkdtempSync} from "fs";
+import {tmpdir} from "os";
+import {join} from "path";
 
 /**
  * Event-like object for message events
@@ -28,6 +29,48 @@ export interface ErrorEvent {
 }
 
 /**
+ * Embedded worker wrapper code
+ * This provides Web Worker globals in the Node.js worker_threads context
+ */
+const WORKER_WRAPPER_CODE = `
+import {parentPort} from "worker_threads";
+
+// Provide Web Worker globals
+globalThis.onmessage = null;
+globalThis.postMessage = (data) => parentPort.postMessage(data);
+
+// Set up message forwarding
+parentPort.on("message", (data) => {
+	if (globalThis.onmessage) {
+		globalThis.onmessage({data, type: "message"});
+	}
+});
+
+// Import the actual worker script URL from environment variable
+const WORKER_SCRIPT_URL = process.env.WORKER_SCRIPT_URL;
+if (WORKER_SCRIPT_URL) {
+	await import(WORKER_SCRIPT_URL);
+} else {
+	throw new Error("WORKER_SCRIPT_URL environment variable not set");
+}
+`;
+
+// Create a temp directory for the wrapper script on first use
+let wrapperScriptPath: string | null = null;
+
+function getWorkerWrapperPath(): string {
+	if (!wrapperScriptPath) {
+		// Create temp directory
+		const tempDir = mkdtempSync(join(tmpdir(), "node-webworker-"));
+		wrapperScriptPath = join(tempDir, "worker-wrapper.js");
+
+		// Write the wrapper code
+		writeFileSync(wrapperScriptPath, WORKER_WRAPPER_CODE, "utf8");
+	}
+	return wrapperScriptPath;
+}
+
+/**
  * Web Worker API implementation using Node.js worker_threads
  *
  * This provides a minimal, standards-compliant interface that maps
@@ -42,11 +85,8 @@ export class Worker {
 		this.#messageListeners = new Set<(event: MessageEvent) => void>();
 		this.#errorListeners = new Set<(event: ErrorEvent) => void>();
 
-		// Worker wrapper is always co-located with the bundled code
-		// The build process ensures worker-wrapper.js is copied to the same directory
-		const __filename = fileURLToPath(import.meta.url);
-		const __dirname = dirname(__filename);
-		const wrapperScript = join(__dirname, "worker-wrapper.js");
+		// Get the worker wrapper script (creates it in temp dir on first use)
+		const wrapperScript = getWorkerWrapperPath();
 
 		// Create Node.js Worker with our wrapper that provides Web Worker globals
 		this.#nodeWorker = new NodeWorker(wrapperScript, {

@@ -291,34 +291,9 @@ async function createBuildConfig({
 		}
 	}
 
-	// Copy worker-wrapper.js from @b9g/node-webworker package  
-	// This is a physical worker entry point that Node.js needs - can't be bundled
-	try {
-		const wrapperDestPath = join(serverDir, "worker-wrapper.js");
-		let wrapperContent: string;
-
-		// Try monorepo path first
-		try {
-			const monorepoPath = join(
-				shovelRoot,
-				"packages/node-webworker/dist/src/worker-wrapper.js",
-			);
-			wrapperContent = await readFile(monorepoPath, "utf8");
-		} catch {
-			// Fall back to node_modules
-			const modulePath = join(
-				shovelRoot,
-				"node_modules/@b9g/node-webworker/dist/src/worker-wrapper.js",
-			);
-			wrapperContent = await readFile(modulePath, "utf8");
-		}
-
-		await writeFile(wrapperDestPath, wrapperContent);
-	} catch (error) {
-		console.warn(
-			"Warning: Could not copy worker-wrapper.js. Worker functionality may not work.",
-		);
-	}
+	// Note: worker-wrapper.js is no longer copied to build output
+	// The @b9g/node-webworker package now embeds the wrapper code and creates it
+	// in a temp directory at runtime, hiding this implementation detail
 
 
 		const buildConfig = {
