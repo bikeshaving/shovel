@@ -136,8 +136,10 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Verify platform-specific output
+				// For Node/Bun: user code is in server.js, for Cloudflare: in index.js
+				const userCodeFile = platform === "cloudflare" ? "index.js" : "server.js";
 				const appContent = await FS.readFile(
-					join(outDir, "server", "index.js"),
+					join(outDir, "server", userCodeFile),
 					"utf8",
 				);
 				expect(appContent).toContain(`Platform: ${platform}`);
@@ -149,10 +151,14 @@ self.addEventListener("fetch", (event) => {
 					// Should have Cloudflare-specific wrapper
 					expect(appContent).toContain("addEventListener");
 				} else {
-					// Node/Bun builds should have shebang and registration
-					// New virtual entry approach should bundle platform dependencies
-					// Look for bundled platform code instead of external references
-					expect(appContent).toContain("CustomBucketStorage");
+					// Node/Bun builds: check index.js for platform bootstrap
+					const indexContent = await FS.readFile(
+						join(outDir, "server", "index.js"),
+						"utf8",
+					);
+					expect(indexContent.startsWith("#!/usr/bin/env node")).toBe(true);
+					// Look for bundled platform code
+					expect(indexContent).toContain("CustomBucketStorage");
 				}
 			} catch (error) {
 				console.error(`Platform ${platform} failed:`, error);

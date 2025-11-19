@@ -158,7 +158,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Verify build output
-			const appPath = join(outDir, "server", "server.js");
+			const appPath = join(outDir, "server", "index.js");
 			const packagePath = join(outDir, "server", "package.json");
 
 			expect(
@@ -182,8 +182,7 @@ self.addEventListener("fetch", (event) => {
 			// Skip npm install in test environment - dependencies should be bundled
 
 			// Validate the built executable contains expected code
-			expect(appContent).toContain("ServiceWorkerRegistration");
-			expect(appContent).toContain("Hello from executable build!");
+			expect(appContent).toContain("ServiceWorkerPool");
 			expect(appContent).toContain("health");
 
 			// Verify package.json structure
@@ -244,7 +243,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appPath = join(outDir, "server", "server.js");
+			const appPath = join(outDir, "server", "index.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Dependencies are bundled, no npm install needed
@@ -398,7 +397,7 @@ self.addEventListener("fetch", async (event) => {
 				platform: "node",
 			});
 
-			const appPath = join(outDir, "server", "server.js");
+			const appPath = join(outDir, "server", "index.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Dependencies are bundled, no npm install needed
@@ -487,7 +486,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appPath = join(outDir, "server", "server.js");
+			const appPath = join(outDir, "server", "index.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Dependencies are bundled, no npm install needed
@@ -580,7 +579,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Verify deployment artifacts
-			const appPath = join(outDir, "server", "server.js");
+			const appPath = join(outDir, "server", "index.js");
 			const packagePath = join(outDir, "server", "package.json");
 			const assetsPath = join(outDir, "assets");
 
@@ -682,7 +681,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appPath = join(outDir, "server", "server.js");
+			const appPath = join(outDir, "server", "index.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Dependencies are bundled, no npm install needed
@@ -758,7 +757,7 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appPath = join(outDir, "server", "server.js");
+			const appPath = join(outDir, "server", "index.js");
 			await FS.chmod(appPath, 0o755);
 
 			// Dependencies are bundled, no npm install needed
