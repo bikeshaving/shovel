@@ -292,10 +292,11 @@ async function createWorkerEntry(userEntryPath, workerCount, platform) {
 		templatePath = join(packageRoot, "src/worker-entry.js");
 	}
 
-	// First transpile the TypeScript template
+	// Transpile the TypeScript template without bundling
+	// The platform imports will be resolved when the final bundle happens
 	const transpileResult = await esbuild.build({
 		entryPoints: [templatePath],
-		bundle: false, // Just transpile, don't bundle
+		bundle: false, // Just transpile - bundling happens in final build
 		format: "esm",
 		target: "es2022",
 		platform: "node",

@@ -61,7 +61,7 @@ function runExecutable(executablePath, env = {}) {
 	const proc = spawn("node", [executablePath], {
 		stdio: ["ignore", "pipe", "pipe"],
 		env: {...process.env, ...env},
-		cwd: process.cwd(),
+		cwd: join(executablePath, ".."), // Run from executable's directory
 	});
 
 	// Capture stderr for debugging

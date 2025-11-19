@@ -6,17 +6,20 @@
 
 import {Worker, workerData} from "worker_threads";
 import {fileURLToPath} from "url";
-import {dirname} from "path";
+import {dirname, join} from "path";
 
-// Platform-specific imports
+// Platform-specific imports - use static imports so esbuild can bundle them
 declare const PLATFORM: string;
-const platformPackage =
-	PLATFORM === "bun" ? "@b9g/platform-bun" : "@b9g/platform-node";
-const {default: Platform} = await import(platformPackage);
+let Platform: any;
+if (PLATFORM === "bun") {
+	Platform = (await import("@b9g/platform-bun")).default;
+} else {
+	Platform = (await import("@b9g/platform-node")).default;
+}
 const mainPlatform = new Platform();
 
 // Check if this is being run as the main executable (not a worker thread)
-if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
+if (!workerData?.isWorker) {
 	console.info("🔧 Starting multi-worker server...");
 	console.info(`⚡ Spawning ${WORKER_COUNT} worker threads...`);
 
@@ -169,6 +172,7 @@ if (workerData?.isWorker && parentPort) {
 	const BucketImpl = NodeBucket;
 
 	FileSystemRegistry.register("dist", new BucketImpl(distDir));
+	FileSystemRegistry.register("assets", new BucketImpl(join(distDir, "assets")));
 
 	// Create bucket storage using registry
 	const buckets = new CustomBucketStorage(async (name) => {

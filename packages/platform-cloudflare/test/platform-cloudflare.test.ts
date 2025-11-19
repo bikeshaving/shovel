@@ -277,7 +277,8 @@ describe("Wrangler config generation", () => {
 
 		expect(config).toContain('name = "my-app"');
 		expect(config).toContain('main = "./dist/worker.js"');
-		expect(config).toContain('compatibility_date = "2024-01-01"');
+		expect(config).toContain('compatibility_date = "2024-09-23"');
+		expect(config).toContain('compatibility_flags = ["nodejs_compat"]');
 		expect(config).toContain('usage_model = "bundled"');
 	});
 
