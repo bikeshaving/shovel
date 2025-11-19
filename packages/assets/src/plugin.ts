@@ -1,5 +1,5 @@
 /**
- * ESBuild/Bun plugin for importing assets as URLs with manifest generation
+ * ESBuild plugin for importing assets as URLs with manifest generation
  *
  * This plugin handles build-time processing of assets with assetBase imports.
  * It generates content-hashed filenames and creates a manifest for runtime lookup.
