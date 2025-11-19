@@ -316,7 +316,8 @@ export function generateWranglerConfig(options: {
 	return `# Generated wrangler.toml for Shovel app
 name = "${name}"
 main = "${entrypoint}"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
 
 # ServiceWorker format (since Shovel apps are ServiceWorker-style)
 usage_model = "bundled"

@@ -33,6 +33,15 @@ export default {
 };
 ```
 
+## Requirements
+
+Shovel requires Node.js compatibility for AsyncLocalStorage (used by `self.cookieStore`). Add to your `wrangler.toml`:
+
+```toml
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+```
+
 ## API
 
 ### `new CloudflarePlatform(options?)`
@@ -49,6 +58,9 @@ Creates a new Cloudflare platform instance.
 Configure bindings in `wrangler.toml`:
 
 ```toml
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
 [[kv_namespaces]]
 binding = "CACHE_KV"
 id = "your-kv-namespace-id"
