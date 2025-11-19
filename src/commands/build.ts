@@ -55,11 +55,13 @@ export async function buildForProduction({
 	// This automatically handles cleanup and prevents process hanging
 	const result = await esbuild.build(buildConfig);
 
-	// Make the output executable (for directly executable builds)
-	// For Node/Bun: index.js is the entry point
-	// For Cloudflare: index.js is also the entry (but not directly executed)
-	const executablePath = join(buildContext.serverDir, "index.js");
-	await chmod(executablePath, 0o755);
+	// Make the output executable (only for Node/Bun builds)
+	// Cloudflare builds aren't directly executed, so no chmod needed
+	const isCloudflare = platform === "cloudflare" || platform === "cloudflare-workers";
+	if (!isCloudflare) {
+		const executablePath = join(buildContext.serverDir, "index.js");
+		await chmod(executablePath, 0o755);
+	}
 
 	if (verbose && result.metafile) {
 		await logBundleAnalysis(result.metafile);
@@ -308,7 +310,9 @@ async function createBuildConfig({
 			format: BUILD_DEFAULTS.format,
 			target: BUILD_DEFAULTS.target,
 			platform: isCloudflare ? "browser" : "node",
-			outfile: join(serverDir, BUILD_DEFAULTS.outputFile),
+			// Cloudflare: single-file architecture (server.js contains everything)
+		// Node/Bun: multi-file architecture (index.js is entry, server.js is user code)
+		outfile: join(serverDir, isCloudflare ? "server.js" : BUILD_DEFAULTS.outputFile),
 			absWorkingDir: workspaceRoot || dirname(entryPath),
 			mainFields: ["module", "main"],
 			conditions: ["import", "module"],

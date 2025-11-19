@@ -136,10 +136,9 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Verify platform-specific output
-				// For Node/Bun: user code is in server.js, for Cloudflare: in index.js
-				const userCodeFile = platform === "cloudflare" ? "index.js" : "server.js";
+				// All platforms now use server.js for user code (single-file for Cloudflare, user code for Node/Bun)
 				const appContent = await FS.readFile(
-					join(outDir, "server", userCodeFile),
+					join(outDir, "server", "server.js"),
 					"utf8",
 				);
 				expect(appContent).toContain(`Platform: ${platform}`);
