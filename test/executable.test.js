@@ -181,9 +181,13 @@ self.addEventListener("fetch", (event) => {
 
 			// Skip npm install in test environment - dependencies should be bundled
 
-			// Validate the built executable contains expected code
+			// Validate the built executable contains expected platform code
 			expect(appContent).toContain("ServiceWorkerPool");
-			expect(appContent).toContain("health");
+
+			// Validate user code is in server.js
+			const serverPath = join(outDir, "server", "server.js");
+			const serverContent = await FS.readFile(serverPath, "utf8");
+			expect(serverContent).toContain("health");
 
 			// Verify package.json structure
 			const packageContent = await FS.readFile(packagePath, "utf8");

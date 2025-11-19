@@ -56,8 +56,10 @@ export async function buildForProduction({
 	const result = await esbuild.build(buildConfig);
 
 	// Make the output executable (for directly executable builds)
-	const serverPath = join(buildContext.serverDir, "server.js");
-	await chmod(serverPath, 0o755);
+	// For Node/Bun: index.js is the entry point
+	// For Cloudflare: index.js is also the entry (but not directly executed)
+	const executablePath = join(buildContext.serverDir, "index.js");
+	await chmod(executablePath, 0o755);
 
 	if (verbose && result.metafile) {
 		await logBundleAnalysis(result.metafile);
