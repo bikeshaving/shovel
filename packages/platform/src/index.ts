@@ -861,6 +861,7 @@ export async function getDirectoryHandle(
  */
 
 import * as Path from "path";
+import {existsSync} from "fs";
 
 export interface WorkerPoolOptions {
 	/** Number of workers in the pool (default: 1) */
@@ -940,9 +941,8 @@ function resolveWorkerScript(entrypoint?: string): string {
 					return bundledWorker;
 				}
 			} else if (typeof require !== "undefined") {
-				// Node.js - use fs.existsSync
-				const fs = require("fs");
-				if (fs.existsSync(bundledWorker)) {
+				// Node.js - use existsSync
+							if (existsSync(bundledWorker)) {
 					console.info(`[WorkerPool] Using bundled worker: ${bundledWorker}`);
 					return bundledWorker;
 				}
