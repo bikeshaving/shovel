@@ -97,12 +97,12 @@ await router.handler(request); // Returns Response
 
 **Status:** ✅ Published at v0.1.0
 
-### 3. `@b9g/staticfiles`
+### 3. `@b9g/assets`
 
 ESBuild/Bun plugin for asset pipeline:
-- Import files with `with { url: "/static/" }` syntax
+- Import files with `with { assetBase: "/" }` syntax
 - Automatic content hashing and manifest generation
-- Works with the router for serving static assets
+- Works with filesystem buckets for serving static assets
 
 **Status:** ✅ Published at v0.1.0
 
@@ -228,7 +228,7 @@ const router = new Router({caches});
 Universal command-line tool with platform auto-detection:
 - `shovel develop` - Development server with hot reloading
 - `shovel build` - Production bundling and optimization
-- `shovel static` - Static site generation via cache population
+- `shovel activate` - Run ServiceWorker activate lifecycle for static generation
 - `shovel info` - Platform and runtime information
 - Platform targeting: `--platform=node|bun|cloudflare`
 - Worker count configuration: `--workers=N`
@@ -249,49 +249,41 @@ shovel develop src/server.js --workers=4
 shovel develop src/server.js --verbose
 ```
 
-The CLI uses the platform abstraction to provide consistent development experience across all runtimes. Worker configuration encourages concurrency thinking from the start while maximizing production throughput.
+The CLI uses the platform abstraction to provide consistent development experience across all runtimes. Worker configuration allows controlling concurrency for both development and production.
 
-**SSG Example:**
+**Static Site Generation:**
+
+Shovel uses the ServiceWorker `activate` event for static site generation. Your app handles static generation in the activate lifecycle:
+
 ```javascript
-// TODO: Determine what the ideal SSG script looks like
-```
-1. Loads your router
-2. Creates CacheStorage with FilesystemCache
-3. Calls cache.addAll(paths)
-4. cache.add() fetches through the router
-5. Router handlers run and produce responses
-6. cache.put() stores responses to filesystem
-Result: Filesystem cache pre-populated with rendered pages
+// server.js - Your ServiceWorker app
+self.addEventListener('activate', async (event) => {
+  event.waitUntil(async () => {
+    const staticBucket = await self.buckets.open('static');
 
-**How it works:**
-```javascript
-// FilesystemCache.add() makes real requests through your router
-class FilesystemCache {
-  async add(request) {
-    // Fetch through the router!
-    const response = await this.fetch(request);
-    // Store the response
-    await this.put(request, response);
-  }
-}
+    // Define routes to pre-render
+    const routes = ['/','  /about', '/posts/1', '/posts/2'];
 
-// Your router IS the SSG renderer
-router.route({
-  pattern: '/blog/:slug',
-  cache: { name: 'posts' }
-}, async (request, context) => {
-  const post = await db.posts.get(context.params.slug);
-  return new Response(renderHTML(post), {
-    headers: { 'Content-Type': 'text/html' }
+    for (const route of routes) {
+      const request = new Request(`http://localhost${route}`);
+      const response = await router.handler(request);
+
+      // Write to static bucket
+      const handle = await staticBucket.getFileHandle(`${route}/index.html`, { create: true });
+      const writable = await handle.createWritable();
+      await writable.write(await response.text());
+      await writable.close();
+    }
   });
 });
-
-// At build time: cache.add('/blog/hello-world')
-// → Fetches through router → Handler runs → Returns HTML → Stored to filesystem
-// At runtime: Request arrives → cache.match() → Returns pre-rendered HTML
 ```
 
-**Status:** ✅ Ready for v0.2.0 release
+Run static generation:
+```bash
+shovel activate src/server.js --filesystem=local
+```
+
+**Status:** ✅ Ready for production use
 
 ## Architecture
 
@@ -496,4 +488,4 @@ The cache isn't a side effect - it's the primary data flow. Read handlers produc
 
 ---
 
-**Status:** Design phase | **License:** TBD | **Author:** TBD
+**License:** MIT
