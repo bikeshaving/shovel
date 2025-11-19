@@ -36,7 +36,6 @@ if (import.meta.url === `file://${process.argv[1]}` && !workerData?.isWorker) {
 		const worker = new Worker(__filename, {
 			workerData: {
 				workerId: i,
-				userEntryPath: USER_ENTRYPOINT,
 				isWorker: true,
 			},
 		});
@@ -165,10 +164,9 @@ if (workerData?.isWorker && parentPort) {
 	const distDir = dirname(executableDir);
 
 	// Register well-known buckets using platform-specific bucket implementation
-	const BucketImpl =
-		PLATFORM === "bun"
-			? (await import("@b9g/filesystem/bun.js")).BunBucket
-			: (await import("@b9g/filesystem/node.js")).NodeBucket;
+	// Both Node and Bun use NodeBucket
+	const {NodeBucket} = await import("@b9g/filesystem/node.js");
+	const BucketImpl = NodeBucket;
 
 	FileSystemRegistry.register("dist", new BucketImpl(distDir));
 
@@ -189,7 +187,8 @@ if (workerData?.isWorker && parentPort) {
 	scope.install();
 
 	// Import user's ServiceWorker code
-	await import(workerData.userEntryPath);
+	// USER_CODE_IMPORT will be replaced during build with actual import statement
+	USER_CODE_IMPORT;
 
 	// Initialize ServiceWorker
 	await registration.install();

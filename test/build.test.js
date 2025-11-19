@@ -1,6 +1,6 @@
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
-import {join} from "path";
+import {join, resolve, dirname} from "path";
 import {test, expect} from "bun:test";
 import {buildForProduction} from "../src/commands/build.js";
 
@@ -437,13 +437,11 @@ self.addEventListener("fetch", (event) => {
 				"utf8",
 			);
 
-			// In workspace context, @b9g/* imports in the generated template should be external
-			// Check that the template's platform imports are preserved (not bundled)
-			expect(appContent).toMatch(/from ['"]@b9g\/platform['"]/);
-
-			// Verify the template code structure is present
+			// All dependencies including @b9g/* packages are bundled for self-contained builds
+			// Verify the bundled code contains expected classes
 			expect(appContent).toContain("ServiceWorkerRegistration");
 			expect(appContent).toContain("ShovelGlobalScope");
+			expect(appContent).toContain("CustomBucketStorage");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -605,9 +603,18 @@ test(
 			// Create a temporary workspace structure
 			const workspaceRoot = await createTempDir("workspace-");
 			const packageJsonPath = join(workspaceRoot, "package.json");
+
+			// Create workspace package.json with @b9g dependencies
 			const packageJson = {
 				name: "test-workspace",
 				workspaces: ["packages/*"],
+				private: true,
+				dependencies: {
+					"@b9g/platform": "*",
+					"@b9g/platform-node": "*",
+					"@b9g/cache": "*",
+					"@b9g/filesystem": "*",
+				},
 			};
 			await FS.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
 
@@ -627,15 +634,38 @@ self.addEventListener("fetch", (event) => {
 			const outDir = join(workspaceRoot, "dist");
 			cleanup_paths.push(workspaceRoot);
 
-			// Change working directory to the package directory
+			// Create node_modules and symlink to actual workspace packages
+			// instead of installing from npm (which may have outdated exports)
+			const nodeModulesDir = join(workspaceRoot, "node_modules");
+			const b9gDir = join(nodeModulesDir, "@b9g");
+			await FS.mkdir(b9gDir, {recursive: true});
+
+			// Find the real workspace root (where the packages are)
+			const realWorkspaceRoot = resolve(dirname(import.meta.url.slice(7)), "..");
+			const realPackagesDir = join(realWorkspaceRoot, "packages");
+
+			// Symlink @b9g packages from real workspace
+			const packagesToLink = [
+				"platform",
+				"platform-node",
+				"cache",
+				"filesystem",
+			];
+			for (const pkg of packagesToLink) {
+				const srcPath = join(realPackagesDir, pkg);
+				const destPath = join(b9gDir, pkg);
+				await FS.symlink(srcPath, destPath, "dir");
+			}
+
 			const originalCwd = process.cwd();
 			process.chdir(packagesDir);
 
 			try {
+
 				await buildForProduction({
 					entrypoint: entryPath,
 					outDir,
-					verbose: true,
+					verbose: false,
 					platform: "node",
 				});
 
@@ -643,9 +673,228 @@ self.addEventListener("fetch", (event) => {
 				expect(await fileExists(join(outDir, "server", "server.js"))).toBe(
 					true,
 				);
+
+				// Verify the build is self-contained
+				const appContent = await FS.readFile(
+					join(outDir, "server", "server.js"),
+					"utf8",
+				);
+				expect(appContent).toContain("Workspace test");
+				expect(appContent).not.toContain("userEntryPath");
 			} finally {
 				process.chdir(originalCwd);
 			}
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT * 2, // Longer timeout for symlink setup
+);
+
+// ======================
+// USER CODE BUNDLING TESTS
+// ======================
+
+test(
+	"user code is bundled (not dynamically imported)",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const entryContent = `
+// Unique marker that should be in bundled output
+const UNIQUE_MARKER = "BUNDLED_USER_CODE_12345";
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response(UNIQUE_MARKER));
+});
+			`;
+
+			const entryPath = await createTempFile("bundled-test.js", entryContent);
+			const outDir = await createTempDir("bundled-test-");
+			cleanup_paths.push(entryPath, outDir);
+
+			await buildForProduction({
+				entrypoint: entryPath,
+				outDir,
+				verbose: false,
+				platform: "node",
+			});
+
+			const appContent = await FS.readFile(
+				join(outDir, "server", "server.js"),
+				"utf8",
+			);
+
+			// User code should be bundled into output
+			expect(appContent).toContain("BUNDLED_USER_CODE_12345");
+
+			// Should NOT contain dynamic import of user entry path
+			expect(appContent).not.toContain("userEntryPath");
+
+			// Should NOT contain absolute paths to source files
+			expect(appContent).not.toMatch(/\/Users\/.*\/bundled-test\.js/);
+			expect(appContent).not.toMatch(/\/tmp\/.*\/bundled-test\.js/);
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"build does not use dynamic import with userEntryPath",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const entryContent = `
+self.addEventListener("fetch", (event) => {
+	const url = new URL(event.request.url);
+	if (url.pathname === "/test") {
+		event.respondWith(new Response("Test response"));
+	}
+});
+			`;
+
+			const entryPath = await createTempFile("no-dynamic-import.js", entryContent);
+			const outDir = await createTempDir("no-dynamic-import-");
+			cleanup_paths.push(entryPath, outDir);
+
+			await buildForProduction({
+				entrypoint: entryPath,
+				outDir,
+				verbose: false,
+				platform: "node",
+			});
+
+			const appContent = await FS.readFile(
+				join(outDir, "server", "server.js"),
+				"utf8",
+			);
+
+			// Should not contain workerData.userEntryPath pattern (the bug we fixed)
+			expect(appContent).not.toMatch(/workerData\.userEntryPath/);
+			expect(appContent).not.toMatch(/await import\(workerData/);
+
+			// Should not have userEntryPath in workerData
+			expect(appContent).not.toMatch(/userEntryPath:\s*["']/);
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"multiple platforms bundle user code consistently",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const entryContent = `
+const PLATFORM_TEST_MARKER = "MULTI_PLATFORM_TEST";
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response(PLATFORM_TEST_MARKER));
+});
+			`;
+
+			const entryPath = await createTempFile("multi-platform.js", entryContent);
+			cleanup_paths.push(entryPath);
+
+			// Test Node platform
+			const nodeOutDir = await createTempDir("node-platform-");
+			cleanup_paths.push(nodeOutDir);
+
+			await buildForProduction({
+				entrypoint: entryPath,
+				outDir: nodeOutDir,
+				verbose: false,
+				platform: "node",
+			});
+
+			const nodeContent = await FS.readFile(
+				join(nodeOutDir, "server", "server.js"),
+				"utf8",
+			);
+
+			// Test Bun platform
+			const bunOutDir = await createTempDir("bun-platform-");
+			cleanup_paths.push(bunOutDir);
+
+			await buildForProduction({
+				entrypoint: entryPath,
+				outDir: bunOutDir,
+				verbose: false,
+				platform: "bun",
+			});
+
+			const bunContent = await FS.readFile(
+				join(bunOutDir, "server", "server.js"),
+				"utf8",
+			);
+
+			// Both should bundle user code
+			expect(nodeContent).toContain("MULTI_PLATFORM_TEST");
+			expect(bunContent).toContain("MULTI_PLATFORM_TEST");
+
+			// Neither should have hardcoded paths
+			expect(nodeContent).not.toContain("userEntryPath");
+			expect(bunContent).not.toContain("userEntryPath");
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"user code with imports is fully bundled",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			// Create a module that the entry imports
+			const helperContent = `
+export function getResponse() {
+	return "HELPER_MODULE_RESPONSE";
+}
+			`;
+
+			const helperPath = await createTempFile("helper.js", helperContent);
+			cleanup_paths.push(helperPath);
+
+			const entryContent = `
+import { getResponse } from "${helperPath}";
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response(getResponse()));
+});
+			`;
+
+			const entryPath = await createTempFile("with-imports.js", entryContent);
+			const outDir = await createTempDir("imports-test-");
+			cleanup_paths.push(entryPath, outDir);
+
+			await buildForProduction({
+				entrypoint: entryPath,
+				outDir,
+				verbose: false,
+				platform: "node",
+			});
+
+			const appContent = await FS.readFile(
+				join(outDir, "server", "server.js"),
+				"utf8",
+			);
+
+			// Both entry and imported module should be bundled
+			expect(appContent).toContain("HELPER_MODULE_RESPONSE");
+			expect(appContent).toContain("getResponse");
+
+			// No dynamic imports via workerData.userEntryPath
+			expect(appContent).not.toContain("userEntryPath");
 		} finally {
 			await cleanup(cleanup_paths);
 		}

@@ -40,11 +40,10 @@ program
 	.option("-o, --out <dir>", "Output directory", "dist")
 	.option(
 		"-w, --workers <count>",
-		"Worker count for multi-worker build",
+		"Worker count (defaults to 1)",
 		undefined,
 	)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
-	.option("--single-worker", "Build for single-worker mode", false)
 	.option(
 		"--runtime-config <json>",
 		"Runtime configuration JSON",

@@ -260,18 +260,16 @@ import "${userEntryPath}";
 `;
 	}
 
-	// For Node.js/Bun platforms, choose architecture based on worker count
-	if (workerCount === 1) {
-		return await createSingleWorkerEntry(userEntryPath, platform);
-	} else {
-		return await createMultiWorkerEntry(userEntryPath, workerCount, platform);
-	}
+	// For Node.js/Bun platforms, use worker-based architecture
+	// Works with any worker count (including 1)
+	return await createWorkerEntry(userEntryPath, workerCount, platform);
 }
 
 /**
- * Create single-worker entry point using TypeScript template
+ * Create worker-based entry point using TypeScript template
+ * Works for any worker count (including 1)
  */
-async function createSingleWorkerEntry(userEntryPath, platform) {
+async function createWorkerEntry(userEntryPath, workerCount, platform) {
 	// Find package root by looking for package.json
 	let currentDir = dirname(fileURLToPath(import.meta.url));
 	let packageRoot = currentDir;
@@ -285,46 +283,17 @@ async function createSingleWorkerEntry(userEntryPath, platform) {
 		}
 	}
 
-	const templatePath = join(packageRoot, "src/single-worker-entry.js");
-
-	// Use build() for one-time transpilation (not context API)
-	const result = await esbuild.build({
-		entryPoints: [templatePath],
-		bundle: false, // Just transpile, don't bundle
-		format: "esm",
-		target: "es2022",
-		platform: "node",
-		write: false,
-		define: {
-			USER_ENTRYPOINT: JSON.stringify(userEntryPath),
-			PLATFORM: JSON.stringify(platform),
-		},
-	});
-
-	return result.outputFiles[0].text;
-}
-
-/**
- * Create multi-worker entry point using TypeScript template
- */
-async function createMultiWorkerEntry(userEntryPath, workerCount, platform) {
-	// Find package root by looking for package.json
-	let currentDir = dirname(fileURLToPath(import.meta.url));
-	let packageRoot = currentDir;
-	while (packageRoot !== dirname(packageRoot)) {
-		try {
-			const packageJsonPath = join(packageRoot, "package.json");
-			await readFile(packageJsonPath, "utf8");
-			break;
-		} catch {
-			packageRoot = dirname(packageRoot);
-		}
+	// Look for .ts in development, .js in production (dist)
+	let templatePath = join(packageRoot, "src/worker-entry.ts");
+	try {
+		await readFile(templatePath, "utf8");
+	} catch {
+		// If .ts doesn't exist, try .js (for built dist version)
+		templatePath = join(packageRoot, "src/worker-entry.js");
 	}
 
-	const templatePath = join(packageRoot, "src/multi-worker-entry.js");
-
-	// Use build() for one-time transpilation (not context API)
-	const result = await esbuild.build({
+	// First transpile the TypeScript template
+	const transpileResult = await esbuild.build({
 		entryPoints: [templatePath],
 		bundle: false, // Just transpile, don't bundle
 		format: "esm",
@@ -332,13 +301,20 @@ async function createMultiWorkerEntry(userEntryPath, workerCount, platform) {
 		platform: "node",
 		write: false,
 		define: {
-			USER_ENTRYPOINT: JSON.stringify(userEntryPath),
 			WORKER_COUNT: JSON.stringify(workerCount),
 			PLATFORM: JSON.stringify(platform),
 		},
 	});
 
-	return result.outputFiles[0].text;
+	// Then replace USER_CODE_IMPORT placeholder with actual import statement
+	// This allows the user code to be bundled instead of dynamically imported
+	let templateCode = transpileResult.outputFiles[0].text;
+	templateCode = templateCode.replace(
+		/USER_CODE_IMPORT;?/,
+		`await import("${userEntryPath}");`,
+	);
+
+	return templateCode;
 }
 
 /**
