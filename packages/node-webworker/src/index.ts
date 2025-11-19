@@ -8,9 +8,6 @@
  */
 
 import {Worker as NodeWorker} from "worker_threads";
-import {writeFileSync, mkdtempSync} from "fs";
-import {tmpdir} from "os";
-import {join} from "path";
 
 /**
  * Event-like object for message events
@@ -29,8 +26,9 @@ export interface ErrorEvent {
 }
 
 /**
- * Embedded worker wrapper code
+ * Worker wrapper code as a data URL
  * This provides Web Worker globals in the Node.js worker_threads context
+ * Using a data URL avoids needing to write any files to disk (temp or otherwise)
  */
 const WORKER_WRAPPER_CODE = `
 import {parentPort} from "worker_threads";
@@ -55,20 +53,10 @@ if (WORKER_SCRIPT_URL) {
 }
 `;
 
-// Create a temp directory for the wrapper script on first use
-let wrapperScriptPath: string | null = null;
-
-function getWorkerWrapperPath(): string {
-	if (!wrapperScriptPath) {
-		// Create temp directory
-		const tempDir = mkdtempSync(join(tmpdir(), "node-webworker-"));
-		wrapperScriptPath = join(tempDir, "worker-wrapper.js");
-
-		// Write the wrapper code
-		writeFileSync(wrapperScriptPath, WORKER_WRAPPER_CODE, "utf8");
-	}
-	return wrapperScriptPath;
-}
+// Create data URL from wrapper code (created once and reused)
+const WORKER_WRAPPER_DATA_URL = new URL(
+	`data:text/javascript,${encodeURIComponent(WORKER_WRAPPER_CODE)}`,
+);
 
 /**
  * Web Worker API implementation using Node.js worker_threads
@@ -85,15 +73,20 @@ export class Worker {
 		this.#messageListeners = new Set<(event: MessageEvent) => void>();
 		this.#errorListeners = new Set<(event: ErrorEvent) => void>();
 
-		// Get the worker wrapper script (creates it in temp dir on first use)
-		const wrapperScript = getWorkerWrapperPath();
+		// Convert scriptURL to file:// URL if it's a path
+		// Data URLs can't resolve relative paths, so we need absolute file:// URLs
+		let workerScriptURL = scriptURL;
+		if (!scriptURL.startsWith("file://") && !scriptURL.startsWith("data:")) {
+			// It's a file path - convert to file:// URL
+			workerScriptURL = `file://${scriptURL}`;
+		}
 
-		// Create Node.js Worker with our wrapper that provides Web Worker globals
-		this.#nodeWorker = new NodeWorker(wrapperScript, {
+		// Create Node.js Worker using data URL wrapper (no temp files needed!)
+		this.#nodeWorker = new NodeWorker(WORKER_WRAPPER_DATA_URL, {
 			...({type: "module"} as object),
 			env: {
 				...process.env,
-				WORKER_SCRIPT_URL: scriptURL,
+				WORKER_SCRIPT_URL: workerScriptURL,
 			},
 		});
 
