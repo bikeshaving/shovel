@@ -18,7 +18,7 @@ import {
 const BUILD_DEFAULTS = {
 	format: "esm",
 	target: "es2022",
-	outputFile: "server.js",
+	outputFile: "index.js",
 	sourcemap: false,
 	minify: false,
 	treeShaking: true,
@@ -233,7 +233,7 @@ async function createBuildConfig({
 				format: BUILD_DEFAULTS.format,
 				target: BUILD_DEFAULTS.target,
 				platform: "node",
-				outfile: join(serverDir, "user-app.js"),
+				outfile: join(serverDir, "server.js"),
 				absWorkingDir: workspaceRoot || dirname(entryPath),
 				mainFields: ["module", "main"],
 				conditions: ["import", "module"],
