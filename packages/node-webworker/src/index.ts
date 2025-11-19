@@ -42,7 +42,8 @@ export class Worker {
 		this.#messageListeners = new Set<(event: MessageEvent) => void>();
 		this.#errorListeners = new Set<(event: ErrorEvent) => void>();
 
-		// Get the path to our wrapper script
+		// Worker wrapper is always co-located with the bundled code
+		// The build process ensures worker-wrapper.js is copied to the same directory
 		const __filename = fileURLToPath(import.meta.url);
 		const __dirname = dirname(__filename);
 		const wrapperScript = join(__dirname, "worker-wrapper.js");
