@@ -506,22 +506,27 @@ self.skipWaiting();
 				platform: "node",
 			});
 
-			const appContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+			// Check user code in server.js
+			const serverContent = await FS.readFile(
+				join(outDir, "server", "server.js"),
 				"utf8",
 			);
 
 			// Check that all ServiceWorker features are preserved
-			expect(appContent).toContain('addEventListener("install"');
-			expect(appContent).toContain('addEventListener("activate"');
-			expect(appContent).toContain('addEventListener("fetch"');
-			expect(appContent).toContain("skipWaiting()");
-			expect(appContent).toContain("Response.json");
+			expect(serverContent).toContain('addEventListener("install"');
+			expect(serverContent).toContain('addEventListener("activate"');
+			expect(serverContent).toContain('addEventListener("fetch"');
+			expect(serverContent).toContain("skipWaiting()");
+			expect(serverContent).toContain("Response.json");
 
-			// Check bootstrap sets up globals using ShovelGlobalScope
-			expect(appContent).toContain("scope.install()");
-			expect(appContent).toContain("registration.install()");
-			expect(appContent).toContain("registration.activate()");
+			// Check bootstrap code in index.js sets up globals using ShovelGlobalScope
+			const indexContent = await FS.readFile(
+				join(outDir, "server", "index.js"),
+				"utf8",
+			);
+			expect(indexContent).toContain("scope.install()");
+			expect(indexContent).toContain("registration.install()");
+			expect(indexContent).toContain("registration.activate()");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -574,12 +579,12 @@ self.addEventListener("fetch", (event) => {
 			expect(buildTime).toBeLessThan(10000);
 
 			// Output should exist and be reasonable size
-			const appContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+			const serverContent = await FS.readFile(
+				join(outDir, "server", "server.js"),
 				"utf8",
 			);
-			expect(appContent.length).toBeGreaterThan(1000);
-			expect(appContent).toContain("Route 50 response"); // Spot check
+			expect(serverContent.length).toBeGreaterThan(1000);
+			expect(serverContent).toContain("Route 50 response"); // Spot check
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -672,12 +677,19 @@ self.addEventListener("fetch", (event) => {
 				);
 
 				// Verify the build is self-contained
-				const appContent = await FS.readFile(
+				// User code is in server.js
+				const serverContent = await FS.readFile(
+					join(outDir, "server", "server.js"),
+					"utf8",
+				);
+				expect(serverContent).toContain("Workspace test");
+
+				// Platform code should not contain userEntryPath
+				const indexContent = await FS.readFile(
 					join(outDir, "server", "index.js"),
 					"utf8",
 				);
-				expect(appContent).toContain("Workspace test");
-				expect(appContent).not.toContain("userEntryPath");
+				expect(indexContent).not.toContain("userEntryPath");
 			} finally {
 				process.chdir(originalCwd);
 			}
@@ -718,20 +730,23 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appContent = await FS.readFile(
+			// User code should be bundled into server.js
+			const serverContent = await FS.readFile(
+				join(outDir, "server", "server.js"),
+				"utf8",
+			);
+			expect(serverContent).toContain("BUNDLED_USER_CODE_12345");
+
+			// Should NOT contain absolute paths to source files in user code
+			expect(serverContent).not.toMatch(/\/Users\/.*\/bundled-test\.js/);
+			expect(serverContent).not.toMatch(/\/tmp\/.*\/bundled-test\.js/);
+
+			// Platform code (index.js) should NOT contain dynamic import of user entry path
+			const indexContent = await FS.readFile(
 				join(outDir, "server", "index.js"),
 				"utf8",
 			);
-
-			// User code should be bundled into output
-			expect(appContent).toContain("BUNDLED_USER_CODE_12345");
-
-			// Should NOT contain dynamic import of user entry path
-			expect(appContent).not.toContain("userEntryPath");
-
-			// Should NOT contain absolute paths to source files
-			expect(appContent).not.toMatch(/\/Users\/.*\/bundled-test\.js/);
-			expect(appContent).not.toMatch(/\/tmp\/.*\/bundled-test\.js/);
+			expect(indexContent).not.toContain("userEntryPath");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -811,8 +826,9 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const nodeContent = await FS.readFile(
-				join(nodeOutDir, "server", "index.js"),
+			// User code is in server.js for Node/Bun
+			const nodeServerContent = await FS.readFile(
+				join(nodeOutDir, "server", "server.js"),
 				"utf8",
 			);
 
@@ -827,18 +843,26 @@ self.addEventListener("fetch", (event) => {
 				platform: "bun",
 			});
 
-			const bunContent = await FS.readFile(
-				join(bunOutDir, "server", "index.js"),
+			const bunServerContent = await FS.readFile(
+				join(bunOutDir, "server", "server.js"),
 				"utf8",
 			);
 
 			// Both should bundle user code
-			expect(nodeContent).toContain("MULTI_PLATFORM_TEST");
-			expect(bunContent).toContain("MULTI_PLATFORM_TEST");
+			expect(nodeServerContent).toContain("MULTI_PLATFORM_TEST");
+			expect(bunServerContent).toContain("MULTI_PLATFORM_TEST");
 
-			// Neither should have hardcoded paths
-			expect(nodeContent).not.toContain("userEntryPath");
-			expect(bunContent).not.toContain("userEntryPath");
+			// Platform code (index.js) should not have hardcoded paths
+			const nodeIndexContent = await FS.readFile(
+				join(nodeOutDir, "server", "index.js"),
+				"utf8",
+			);
+			const bunIndexContent = await FS.readFile(
+				join(bunOutDir, "server", "index.js"),
+				"utf8",
+			);
+			expect(nodeIndexContent).not.toContain("userEntryPath");
+			expect(bunIndexContent).not.toContain("userEntryPath");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -881,17 +905,22 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+			// User code should be bundled into server.js
+			const serverContent = await FS.readFile(
+				join(outDir, "server", "server.js"),
 				"utf8",
 			);
 
 			// Both entry and imported module should be bundled
-			expect(appContent).toContain("HELPER_MODULE_RESPONSE");
-			expect(appContent).toContain("getResponse");
+			expect(serverContent).toContain("HELPER_MODULE_RESPONSE");
+			expect(serverContent).toContain("getResponse");
 
-			// No dynamic imports via workerData.userEntryPath
-			expect(appContent).not.toContain("userEntryPath");
+			// Platform code should not have dynamic imports via workerData.userEntryPath
+			const indexContent = await FS.readFile(
+				join(outDir, "server", "index.js"),
+				"utf8",
+			);
+			expect(indexContent).not.toContain("userEntryPath");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
