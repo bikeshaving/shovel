@@ -5,28 +5,34 @@ Cloudflare R2 implementation of the File System Access API. Provides standards-c
 ## Features
 
 - File System Access API implementation for R2
-- DirectoryHandle and FileHandle interfaces
-- Streaming read/write support
+- FileSystemDirectoryHandle and FileSystemFileHandle interfaces
+- Streaming read/write via WritableStream
 - Compatible with @b9g/filesystem abstractions
+- Works in Cloudflare Workers environment
 
 ## Installation
 
 ```bash
-npm install @b9g/filesystem-r2
+npm install @b9g/filesystem-r2 @b9g/filesystem
 ```
 
 ## Usage
 
 ```javascript
-import { R2Bucket } from '@b9g/filesystem-r2';
+import {
+  R2FileSystemDirectoryHandle,
+  R2FileSystemFileHandle,
+  R2FileSystemAdapter
+} from '@b9g/filesystem-r2';
 
 // In Cloudflare Workers
 export default {
   async fetch(request, env, ctx) {
-    const bucket = new R2Bucket(env.MY_BUCKET);
+    // Create directory handle from R2 binding
+    const rootDir = new R2FileSystemDirectoryHandle(env.MY_BUCKET, '');
 
     // Get file handle
-    const fileHandle = await bucket.getFileHandle('data/config.json');
+    const fileHandle = await rootDir.getFileHandle('data/config.json');
     const file = await fileHandle.getFile();
     const config = JSON.parse(await file.text());
 
@@ -42,18 +48,45 @@ export default {
 
 ## API
 
-### `new R2Bucket(binding)`
+### Module Exports
 
-Creates a new R2 bucket adapter from a Cloudflare R2 binding.
+```javascript
+// Named exports
+import {
+  R2FileSystemWritableFileStream,
+  R2FileSystemFileHandle,
+  R2FileSystemDirectoryHandle,
+  R2FileSystemAdapter
+} from '@b9g/filesystem-r2';
+```
 
-### Methods
+### `R2FileSystemDirectoryHandle`
 
-Implements the File System Access API:
+Implements `FileSystemDirectoryHandle` for R2.
 
-- `getFileHandle(path, options)`: Get a file handle
-- `getDirectoryHandle(path, options)`: Get a directory handle
+**Constructor:** `new R2FileSystemDirectoryHandle(r2Bucket: R2Bucket, prefix: string)`
+
+**Methods:**
+- `getFileHandle(name, options)`: Get a file handle
+- `getDirectoryHandle(name, options)`: Get a subdirectory handle
 - `removeEntry(name, options)`: Remove a file or directory
 - `entries()`: Async iterator over directory entries
+- `keys()`: Async iterator over entry names
+- `values()`: Async iterator over entry handles
+
+### `R2FileSystemFileHandle`
+
+Implements `FileSystemFileHandle` for R2.
+
+**Methods:**
+- `getFile()`: Get the file as a File object
+- `createWritable()`: Create a writable stream for the file
+
+### `R2FileSystemAdapter`
+
+Backend adapter for `@b9g/filesystem` registry.
+
+**Constructor:** `new R2FileSystemAdapter(r2Bucket: R2Bucket, config?: FileSystemConfig)`
 
 ### Wrangler Configuration
 
