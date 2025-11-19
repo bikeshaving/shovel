@@ -1385,6 +1385,18 @@ const {FileSystemRegistry, CustomBucketStorage} = await import(
 	"@b9g/filesystem"
 );
 
+// Register assets bucket for production executables
+// In production, assets are at ../assets relative to the worker script
+try {
+	const {NodeBucket} = await import("@b9g/filesystem/node.js");
+	const assetsPath = new URL("../assets", import.meta.url).pathname;
+	FileSystemRegistry.register("assets", new NodeBucket(assetsPath));
+} catch (err) {
+	// NodeBucket not available (maybe Cloudflare/Bun), use MemoryBucket
+	const {MemoryBucket} = await import("@b9g/filesystem");
+	FileSystemRegistry.register("assets", new MemoryBucket("assets"));
+}
+
 // Create worker-aware cache storage using PostMessage coordination
 const caches: CacheStorage = new CustomCacheStorage((name: string) => {
 	return new PostMessageCache(name, {
