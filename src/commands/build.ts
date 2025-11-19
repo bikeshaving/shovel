@@ -168,6 +168,32 @@ async function findWorkspaceRoot() {
 }
 
 /**
+ * Find the Shovel package root (where @b9g packages can be resolved from)
+ */
+async function findShovelPackageRoot() {
+	let currentDir = dirname(fileURLToPath(import.meta.url));
+	let packageRoot = currentDir;
+	while (packageRoot !== dirname(packageRoot)) {
+		try {
+			const packageJsonPath = join(packageRoot, "package.json");
+			const content = await readFile(packageJsonPath, "utf8");
+			const pkg = JSON.parse(content);
+			// Check if this is the shovel package
+			if (pkg.name === "@b9g/shovel" || pkg.name === "shovel") {
+				// If we found it in a /dist directory, go up one more level to get source root
+				if (packageRoot.endsWith("/dist") || packageRoot.endsWith("\\dist")) {
+					return dirname(packageRoot);
+				}
+				return packageRoot;
+			}
+		} catch {}
+		packageRoot = dirname(packageRoot);
+	}
+	// Fallback to current directory's node_modules parent
+	return currentDir;
+}
+
+/**
  * Create esbuild configuration for the target platform
  */
 async function createBuildConfig({
@@ -194,10 +220,111 @@ async function createBuildConfig({
 		// Everything else gets bundled for self-contained executables
 		const external = ["node:*"];
 
+		// Get Shovel package root for resolving @b9g packages
+		const shovelRoot = await findShovelPackageRoot();
+
+		// For Node/Bun, we need to build both the server entry and user code separately
+		// The user code will be loaded by the platform's loadServiceWorker method
+		if (!isCloudflare) {
+			// Build user code separately
+			const userBuildConfig = {
+				entryPoints: [entryPath],
+				bundle: true,
+				format: BUILD_DEFAULTS.format,
+				target: BUILD_DEFAULTS.target,
+				platform: "node",
+				outfile: join(serverDir, "user-app.js"),
+				absWorkingDir: workspaceRoot || dirname(entryPath),
+				mainFields: ["module", "main"],
+				conditions: ["import", "module"],
+				plugins: [
+					assetsPlugin({
+						outputDir: assetsDir,
+						manifest: join(serverDir, "asset-manifest.json"),
+					}),
+				],
+				metafile: true,
+				sourcemap: BUILD_DEFAULTS.sourcemap,
+				minify: BUILD_DEFAULTS.minify,
+				treeShaking: BUILD_DEFAULTS.treeShaking,
+				define: BUILD_DEFAULTS.environment,
+				external,
+			};
+
+			// Build user code first
+			await esbuild.build(userBuildConfig);
+
+		// Bundle runtime.js from @b9g/platform to server directory as worker.js
+		// The ServiceWorkerPool needs this to run workers
+		const runtimeSourcePath = join(
+			shovelRoot,
+			"packages/platform/dist/src/runtime.js",
+		);
+		const workerDestPath = join(serverDir, "worker.js");
+
+		// Bundle runtime.js with all its dependencies
+		try {
+			await esbuild.build({
+				entryPoints: [runtimeSourcePath],
+				bundle: true,
+				format: "esm",
+				target: "es2022",
+				platform: "node",
+				outfile: workerDestPath,
+				external: ["node:*"],
+			});
+		} catch (error) {
+			// Try from node_modules if development path fails
+			const installedRuntimePath = join(
+				shovelRoot,
+				"node_modules/@b9g/platform/dist/src/runtime.js",
+			);
+			await esbuild.build({
+				entryPoints: [installedRuntimePath],
+				bundle: true,
+				format: "esm",
+				target: "es2022",
+				platform: "node",
+				outfile: workerDestPath,
+				external: ["node:*"],
+			});
+		}
+	}
+
+	// Copy worker-wrapper.js from @b9g/node-webworker package  
+	// This is a physical worker entry point that Node.js needs - can't be bundled
+	try {
+		const wrapperDestPath = join(serverDir, "worker-wrapper.js");
+		let wrapperContent: string;
+
+		// Try monorepo path first
+		try {
+			const monorepoPath = join(
+				shovelRoot,
+				"packages/node-webworker/dist/src/worker-wrapper.js",
+			);
+			wrapperContent = await readFile(monorepoPath, "utf8");
+		} catch {
+			// Fall back to node_modules
+			const modulePath = join(
+				shovelRoot,
+				"node_modules/@b9g/node-webworker/dist/src/worker-wrapper.js",
+			);
+			wrapperContent = await readFile(modulePath, "utf8");
+		}
+
+		await writeFile(wrapperDestPath, wrapperContent);
+	} catch (error) {
+		console.warn(
+			"Warning: Could not copy worker-wrapper.js. Worker functionality may not work.",
+		);
+	}
+
+
 		const buildConfig = {
 			stdin: {
 				contents: virtualEntry,
-				resolveDir: workspaceRoot || dirname(entryPath),
+				resolveDir: shovelRoot, // Use Shovel root to resolve @b9g packages
 				sourcefile: "virtual-entry.js",
 			},
 			bundle: true,
@@ -205,17 +332,17 @@ async function createBuildConfig({
 			target: BUILD_DEFAULTS.target,
 			platform: isCloudflare ? "browser" : "node",
 			outfile: join(serverDir, BUILD_DEFAULTS.outputFile),
-			// Don't set absWorkingDir to workspace root - it makes esbuild treat @b9g/* as workspace packages
-			// and not bundle them. We want fully bundled executables.
-			absWorkingDir: undefined,
+			absWorkingDir: workspaceRoot || dirname(entryPath),
 			mainFields: ["module", "main"],
 			conditions: ["import", "module"],
-			plugins: [
-				assetsPlugin({
-					outputDir: assetsDir,
-					manifest: join(serverDir, "asset-manifest.json"),
-				}),
-			],
+			plugins: isCloudflare
+				? [
+						assetsPlugin({
+							outputDir: assetsDir,
+							manifest: join(serverDir, "asset-manifest.json"),
+						}),
+					]
+				: [], // Assets already handled in user code build
 			metafile: true,
 			sourcemap: BUILD_DEFAULTS.sourcemap,
 			minify: BUILD_DEFAULTS.minify,
@@ -268,6 +395,7 @@ import "${userEntryPath}";
 /**
  * Create worker-based entry point using TypeScript template
  * Works for any worker count (including 1)
+ * Returns both main entry and worker thread code
  */
 async function createWorkerEntry(userEntryPath, workerCount, platform) {
 	// Find package root by looking for package.json
@@ -292,8 +420,7 @@ async function createWorkerEntry(userEntryPath, workerCount, platform) {
 		templatePath = join(packageRoot, "src/worker-entry.js");
 	}
 
-	// Transpile the TypeScript template without bundling
-	// The platform imports will be resolved when the final bundle happens
+	// Transpile the template
 	const transpileResult = await esbuild.build({
 		entryPoints: [templatePath],
 		bundle: false, // Just transpile - bundling happens in final build
@@ -307,15 +434,7 @@ async function createWorkerEntry(userEntryPath, workerCount, platform) {
 		},
 	});
 
-	// Then replace USER_CODE_IMPORT placeholder with actual import statement
-	// This allows the user code to be bundled instead of dynamically imported
-	let templateCode = transpileResult.outputFiles[0].text;
-	templateCode = templateCode.replace(
-		/USER_CODE_IMPORT;?/,
-		`await import("${userEntryPath}");`,
-	);
-
-	return templateCode;
+	return transpileResult.outputFiles[0].text;
 }
 
 /**
