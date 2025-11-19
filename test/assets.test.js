@@ -244,7 +244,7 @@ self.addEventListener("fetch", (event) => {
 			).toBe(true);
 
 			// Check app.js was built
-			const appPath = join(outDir, "server", "server.js");
+			const appPath = join(outDir, "server", "user-app.js");
 			expect(
 				await FS.access(appPath)
 					.then(() => true)
