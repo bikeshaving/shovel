@@ -1138,7 +1138,7 @@ export class ServiceWorkerPool {
 		onUnhandledMessage?: (worker: Worker, message: any) => void;
 	};
 	#appEntrypoint?: string;
-	#cacheStorage?: CacheStorage; // CustomCacheStorage for cache coordination
+	#cacheStorage?: CacheStorage & {handleMessage?: (worker: Worker, message: any) => Promise<void>}; // CustomCacheStorage for cache coordination
 	#bucketStorage?: BucketStorage; // CustomBucketStorage for bucket access
 
 	constructor(
@@ -1196,6 +1196,8 @@ export class ServiceWorkerPool {
 	}
 
 	#handleWorkerMessage(worker: Worker, message: WorkerMessage) {
+		logger.debug("Worker message received", {type: message.type});
+
 		switch (message.type) {
 			case "response":
 				this.#handleResponse(message as WorkerResponse);
@@ -1209,8 +1211,24 @@ export class ServiceWorkerPool {
 				break;
 			default:
 				// Handle cache messages from PostMessageCache
-				if (message.type?.startsWith("cache:") && this.#cacheStorage) {
-					void this.#cacheStorage.handleMessage(worker, message);
+				if (message.type?.startsWith("cache:")) {
+					logger.debug("Cache message detected", {
+						type: message.type,
+						hasStorage: !!this.#cacheStorage,
+					});
+
+					if (this.#cacheStorage) {
+						// CustomCacheStorage has handleMessage method for PostMessage coordination
+						const handleMessage = (this.#cacheStorage as any).handleMessage;
+						logger.debug("handleMessage check", {
+							hasMethod: typeof handleMessage === "function",
+						});
+
+						if (typeof handleMessage === "function") {
+							logger.debug("Calling handleMessage");
+							void handleMessage.call(this.#cacheStorage, worker, message);
+						}
+					}
 				}
 				break;
 		}

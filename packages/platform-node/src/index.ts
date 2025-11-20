@@ -222,21 +222,22 @@ export class NodePlatform extends BasePlatform {
 	 * Uses MemoryCache in main thread, PostMessageCache in workers
 	 */
 	async createCaches(_config?: CacheConfig): Promise<CustomCacheStorage> {
-		// Use Web Workers API for thread detection (platform-agnostic)
-		// In Web Workers, self is defined in worker context
-		const isMainThread = typeof self === "undefined";
-
 		// Return CustomCacheStorage with thread-appropriate cache
+		// Factory checks thread context dynamically on each call
 		return new CustomCacheStorage((name: string) => {
-			if (isMainThread) {
-				// Main thread: Use MemoryCache directly
-				return new MemoryCache(name, {
+			// Platform-agnostic worker detection using __SHOVEL_WORKER__ flag
+			// This flag is set in runtime.ts when running in actual worker thread context
+			const isWorkerThread = typeof (globalThis as any).__SHOVEL_WORKER__ !== "undefined";
+
+			if (isWorkerThread) {
+				// Worker thread: Use PostMessageCache that coordinates with main thread
+				return new PostMessageCache(name, {
 					maxEntries: 1000,
 					maxAge: 60 * 60 * 1000, // 1 hour
 				});
 			} else {
-				// Worker thread: Use PostMessageCache that coordinates with main thread
-				return new PostMessageCache(name, {
+				// Main thread: Use MemoryCache directly
+				return new MemoryCache(name, {
 					maxEntries: 1000,
 					maxAge: 60 * 60 * 1000, // 1 hour
 				});

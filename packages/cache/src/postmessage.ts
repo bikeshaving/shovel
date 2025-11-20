@@ -1,8 +1,9 @@
 import {Cache, type CacheQueryOptions} from "./index.js";
 
-// Use Web Workers API - self is available in worker context
-const isMainThread = typeof self === "undefined";
-const parentPort = typeof self !== "undefined" ? self : null;
+// Get parentPort dynamically to handle cases where self is set after module load
+function getParentPort(): typeof self | null {
+	return typeof self !== "undefined" ? self : null;
+}
 
 /**
  * Configuration options for PostMessageCache
@@ -36,13 +37,20 @@ export class PostMessageCache extends Cache {
 		>();
 		this.#name = name;
 
+		// Platform-agnostic worker thread detection
+		// __SHOVEL_WORKER__ is set by runtime.ts when running in actual worker threads
+		const isMainThread = typeof (globalThis as any).__SHOVEL_WORKER__ === "undefined";
+
 		if (isMainThread) {
 			throw new Error("PostMessageCache should only be used in worker threads");
 		}
 
+
 		// Listen for responses from main thread using Web Workers API
-		if (parentPort) {
-			parentPort.addEventListener("message", (event: MessageEvent) => {
+		// In worker contexts, wrap the existing onmessage handler to also handle cache messages
+		if (typeof (globalThis as any).__SHOVEL_WORKER__ !== "undefined") {
+			const existingHandler = (globalThis as any).onmessage;
+			(globalThis as any).onmessage = (event: MessageEvent) => {
 				const message = event.data;
 				if (
 					message.type === "cache:response" ||
@@ -50,7 +58,11 @@ export class PostMessageCache extends Cache {
 				) {
 					this.#handleResponse(message);
 				}
-			});
+				// Call the existing handler if it exists
+				if (existingHandler) {
+					existingHandler.call(globalThis, event);
+				}
+			};
 		}
 	}
 
@@ -68,6 +80,7 @@ export class PostMessageCache extends Cache {
 	}
 
 	async #sendRequest(type: string, data: any): Promise<any> {
+		const parentPort = getParentPort();
 		if (!parentPort) {
 			throw new Error("PostMessageCache can only be used in worker threads");
 		}
@@ -77,7 +90,7 @@ export class PostMessageCache extends Cache {
 		return new Promise((resolve, reject) => {
 			this.#pendingRequests.set(requestId, {resolve, reject});
 
-			parentPort!.postMessage({
+			parentPort.postMessage({
 				type,
 				requestId,
 				cacheName: this.#name,

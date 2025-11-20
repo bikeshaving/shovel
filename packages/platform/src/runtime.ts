@@ -1332,7 +1332,17 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	 */
 	install(): void {
 		// Set self and event listeners
+		// Note: In worker contexts, this will override the native WorkerGlobalScope
+		// We add postMessage delegation below to preserve worker communication
 		globalThis.self = this as any;
+
+		// In worker contexts, add postMessage delegation to the native worker global
+		const isWorker = 'onmessage' in globalThis;
+		if (isWorker && typeof postMessage === 'function') {
+			// Preserve the native postMessage by adding it to this instance
+			(this as any).postMessage = postMessage.bind(globalThis);
+		}
+
 		globalThis.addEventListener = this.addEventListener.bind(this);
 		globalThis.removeEventListener = this.removeEventListener.bind(this);
 		globalThis.dispatchEvent = this.dispatchEvent.bind(this);
@@ -1360,6 +1370,14 @@ import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["worker"]);
 
+// Detect if we're in a worker context by checking for Worker-specific globals
+// This must be done as early as possible, before any cache creation
+// We check for 'onmessage' in globalThis (which exists in workers but not main thread)
+// Note: We use 'in globalThis' instead of 'typeof' to avoid tree-shaking
+if ('onmessage' in globalThis) {
+	(globalThis as any).__SHOVEL_WORKER__ = true;
+}
+
 import type {
 	WorkerMessage,
 	WorkerRequest,
@@ -1385,6 +1403,7 @@ async function initializeWorker() {
 // Import dependencies (ServiceWorker runtime classes are in this same file)
 const {CustomCacheStorage} = await import("@b9g/cache");
 const {PostMessageCache} = await import("@b9g/cache/postmessage.js");
+const {MemoryCache} = await import("@b9g/cache/memory.js");
 const {FileSystemRegistry, CustomBucketStorage} = await import(
 	"@b9g/filesystem"
 );
@@ -1481,12 +1500,23 @@ async function registerStandardBuckets(): Promise<void> {
 	console.info("[Buckets] Standard bucket registration complete. Registered:", FileSystemRegistry.getAdapterNames());
 }
 
-// Create worker-aware cache storage using PostMessage coordination
+// Create context-aware cache storage
+// In worker threads: Use PostMessageCache for coordination with main thread
+// In main thread: Use MemoryCache directly
 const caches: CacheStorage = new CustomCacheStorage((name: string) => {
-	return new PostMessageCache(name, {
-		maxEntries: 1000,
-		maxAge: 60 * 60 * 1000, // 1 hour
-	});
+	const isWorkerThread = typeof (globalThis as any).__SHOVEL_WORKER__ !== "undefined";
+
+	if (isWorkerThread) {
+		return new PostMessageCache(name, {
+			maxEntries: 1000,
+			maxAge: 60 * 60 * 1000, // 1 hour
+		});
+	} else {
+		return new MemoryCache(name, {
+			maxEntries: 1000,
+			maxAge: 60 * 60 * 1000, // 1 hour
+		});
+	}
 });
 
 // Create bucket storage using FileSystemRegistry

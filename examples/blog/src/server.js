@@ -32,8 +32,8 @@ const router = new Router();
 
 // Platform provides self.caches and self.buckets directly - no event needed
 
-// Global page cache middleware - TODO: Fix cache.match() hanging issue
-// router.use(pageCache);
+// Global page cache middleware
+router.use(pageCache);
 
 // Cache middleware for pages using new generator API
 async function* pageCache(request, _context) {

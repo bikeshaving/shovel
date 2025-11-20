@@ -18,6 +18,7 @@ import {AsyncContext} from "@b9g/asynccontext-polyfill";
 
 // Configure LogTape for build command
 await configure({
+	reset: true, // Allow reconfiguration if already configured
 	contextLocalStorage: new AsyncContext.Variable(),
 	sinks: {
 		console: getConsoleSink(),
