@@ -1,13 +1,13 @@
 import {DEFAULTS} from "../esbuild/config.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
-import {AsyncLocalStorage} from "node:async_hooks";
+import {AsyncContext} from "@b9g/asynccontext-polyfill";
 
 // CLI logger
 const logger = getLogger(["cli"]);
 
 // Configure LogTape for structured logging
 await configure({
-	contextLocalStorage: new AsyncLocalStorage(),
+	contextLocalStorage: new AsyncContext.Variable(),
 	sinks: {
 		console: getConsoleSink(),
 	},

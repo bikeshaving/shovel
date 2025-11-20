@@ -10,17 +10,17 @@
  */
 
 import {RequestCookieStore} from "./cookie-store.js";
-import {AsyncLocalStorage} from "node:async_hooks";
+import {AsyncContext} from "@b9g/asynccontext-polyfill";
 
 // ============================================================================
-// AsyncLocalStorage for per-request cookieStore
+// AsyncContext for per-request cookieStore
 // ============================================================================
 
 /**
  * Storage for per-request cookieStore instances
  * This enables self.cookieStore to work correctly with concurrent requests
  */
-const cookieStoreStorage = new AsyncLocalStorage<RequestCookieStore>();
+const cookieStoreStorage = new AsyncContext.Variable<RequestCookieStore>();
 
 // ============================================================================
 // Helper Functions
@@ -1109,9 +1109,9 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 
 	// Web API required properties
 	// Note: Using RequestCookieStore but typing as any for flexibility with global CookieStore type
-	// cookieStore is retrieved from AsyncLocalStorage for per-request isolation
+	// cookieStore is retrieved from AsyncContext for per-request isolation
 	get cookieStore(): any {
-		return cookieStoreStorage.getStore();
+		return cookieStoreStorage.get();
 	}
 	readonly serviceWorker: any;
 

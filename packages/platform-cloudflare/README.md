@@ -35,7 +35,7 @@ export default {
 
 ## Requirements
 
-Shovel requires Node.js compatibility for AsyncLocalStorage (used by `self.cookieStore`). Add to your `wrangler.toml`:
+Shovel requires Node.js compatibility for AsyncLocalStorage (used by AsyncContext polyfill for `self.cookieStore`). Add to your `wrangler.toml`:
 
 ```toml
 compatibility_date = "2024-09-23"

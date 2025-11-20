@@ -12,7 +12,7 @@ import type {FunctionMiddleware} from "@b9g/router";
 
 /**
  * Get cookieStore from ServiceWorker global scope
- * Uses AsyncLocalStorage-backed self.cookieStore for per-request isolation
+ * Uses AsyncContext-backed self.cookieStore for per-request isolation
  */
 function getCookieStore(_context: any) {
 	const cookieStore = (self as any).cookieStore;
