@@ -130,7 +130,15 @@ export class NodePlatform extends BasePlatform {
 			this.#cacheStorage = await this.createCaches(options.caches);
 		}
 
-		// Create ServiceWorkerPool with shared cache storage
+		// Create bucket storage for dist/ directory access
+		const {CustomBucketStorage} = await import("@b9g/filesystem");
+		const distPath = Path.resolve(this.#options.cwd, "dist");
+		const bucketStorage = new CustomBucketStorage(async (name: string) => {
+			const bucketPath = Path.join(distPath, name);
+			return new NodeBucket(bucketPath);
+		});
+
+		// Create ServiceWorkerPool with shared cache and bucket storage
 		// Always create a new WorkerPool to ensure correct entrypoint
 		if (this.#workerPool) {
 			await this.#workerPool.terminate();
@@ -148,6 +156,7 @@ export class NodePlatform extends BasePlatform {
 			},
 			entryPath,
 			this.#cacheStorage,
+			bucketStorage,
 		);
 
 		// Initialize workers with dynamic import handling

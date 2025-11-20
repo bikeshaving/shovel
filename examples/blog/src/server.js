@@ -32,8 +32,8 @@ const router = new Router();
 
 // Platform provides self.caches and self.buckets directly - no event needed
 
-// Global page cache middleware
-router.use(pageCache);
+// Global page cache middleware - TODO: Fix cache.match() hanging issue
+// router.use(pageCache);
 
 // Cache middleware for pages using new generator API
 async function* pageCache(request, _context) {
@@ -48,24 +48,35 @@ async function* pageCache(request, _context) {
 		// No caching - just passthrough
 		console.info("[PageCache] No caching, yielding");
 		const response = yield request;
+		console.info("[PageCache] Got response from yield");
 		return response;
 	}
 
+	console.info("[PageCache] Opening cache...");
 	// Get the pages cache from platform with version for cache invalidation
 	const cacheVersion = "v2"; // Increment when asset paths change
 	const cache = await self.caches.open(`pages-${cacheVersion}`);
+	console.info("[PageCache] Cache opened");
 	let cached;
 	try {
-		// Clone the request for cache operations to avoid mutation
-		const requestClone = request.clone();
-		cached = await cache.match(requestClone);
+		// Create a proper Request object from the URL (router passes mutable wrapper)
+		console.info("[PageCache] Creating Request from URL:", request.url);
+		const cacheRequest = new Request(request.url, {
+			method: request.method,
+			headers: request.headers,
+		});
+		console.info("[PageCache] Checking cache.match...");
+		cached = await cache.match(cacheRequest);
+		console.info("[PageCache] cache.match completed, cached:", !!cached);
 	} catch (error) {
 		// Fall through to yield request if cache fails
+		console.info("[PageCache] cache.match error:", error.message);
 		cached = null;
 	}
 
 	if (cached) {
 		// Cache hit - return early with cached response (clone to modify headers)
+		console.info("[PageCache] Cache HIT");
 		const clonedResponse = cached.clone();
 		const newHeaders = new Headers(clonedResponse.headers);
 		newHeaders.set("X-Cache", "HIT");
@@ -78,7 +89,9 @@ async function* pageCache(request, _context) {
 	}
 
 	// Cache miss - continue to handler
+	console.info("[PageCache] Cache MISS, yielding to handler");
 	const response = yield request;
+	console.info("[PageCache] Got response from handler");
 
 	// Cache the response for next time
 	if (response.ok) {
@@ -301,15 +314,22 @@ self.addEventListener("activate", (event) => {
 
 async function generateStaticSite() {
 	console.info("[Blog App] Starting static site generation...");
+	console.info("[Blog App] process.cwd():", process.cwd());
+	console.info("[Blog App] import.meta.url:", import.meta.url);
 
 	try {
-		// Get buckets
-		const staticBucket = await self.buckets.open("static");
-		const assetsBucket = await self.buckets.open("assets");
+		// Check what buckets are registered
+		const {FileSystemRegistry} = await import("@b9g/filesystem");
+		console.info("[Blog App] Registered buckets:", FileSystemRegistry.getAdapterNames());
 
-		// First, copy assets to static/assets/ for self-contained deployment
+		// Get static bucket - the only public bucket (maps to web root)
+		console.info("[Blog App] Opening static bucket...");
+		const staticBucket = await self.buckets.open("static");
+		console.info("[Blog App] static bucket opened:", staticBucket.constructor.name);
+
+		// First, copy assets from build output (dist/assets/) to static/assets/
 		console.info("[Blog App] Copying assets...");
-		await copyAssetsToStatic(assetsBucket, staticBucket);
+		await copyAssetsToStatic(staticBucket);
 
 		// Define routes to pre-render
 		const staticRoutes = [
@@ -372,23 +392,32 @@ async function generateStaticSite() {
 }
 
 /**
- * Copy assets from dist/assets/ to dist/static/assets/ for self-contained deployment
+ * Copy assets from build output (dist/assets/) to static bucket (dist/static/assets/)
  */
-async function copyAssetsToStatic(assetsBucket, staticBucket) {
+async function copyAssetsToStatic(staticBucket) {
 	try {
-		// Create assets subdirectory in static
+		// Read assets from build output directory using Node.js fs
+		const fs = await import("node:fs/promises");
+		const path = await import("node:path");
+		const assetsDir = path.default.join(process.cwd(), "dist", "assets");
+
+		// Create assets subdirectory in static bucket
 		const staticAssetsDir = await staticBucket.getDirectoryHandle("assets", {
 			create: true,
 		});
 
-		// Copy all files from assets to static/assets
-		for await (const [name, handle] of assetsBucket.entries()) {
-			if (handle.kind === "file") {
-				// Read from assets
-				const file = await handle.getFile();
-				const content = await file.arrayBuffer();
+		// Read all files from dist/assets/
+		const files = await fs.readdir(assetsDir);
 
-				// Write to static/assets
+		for (const name of files) {
+			const filePath = path.default.join(assetsDir, name);
+			const stats = await fs.stat(filePath);
+
+			if (stats.isFile()) {
+				// Read from filesystem
+				const content = await fs.readFile(filePath);
+
+				// Write to static/assets in bucket
 				const targetHandle = await staticAssetsDir.getFileHandle(name, {
 					create: true,
 				});

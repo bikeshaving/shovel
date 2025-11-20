@@ -1138,12 +1138,14 @@ export class ServiceWorkerPool {
 		onUnhandledMessage?: (worker: Worker, message: any) => void;
 	};
 	#appEntrypoint?: string;
-	#cacheStorage?: any; // CustomCacheStorage for cache coordination
+	#cacheStorage?: CacheStorage; // CustomCacheStorage for cache coordination
+	#bucketStorage?: BucketStorage; // CustomBucketStorage for bucket access
 
 	constructor(
 		options: WorkerPoolOptions = {},
 		appEntrypoint?: string,
-		cacheStorage?: any,
+		cacheStorage?: CacheStorage,
+		bucketStorage?: BucketStorage,
 	) {
 		this.#workers = [];
 		this.#currentWorker = 0;
@@ -1151,6 +1153,7 @@ export class ServiceWorkerPool {
 		this.#pendingRequests = new Map();
 		this.#appEntrypoint = appEntrypoint;
 		this.#cacheStorage = cacheStorage;
+		this.#bucketStorage = bucketStorage;
 		this.#options = {
 			workerCount: 1,
 			requestTimeout: 30000,
@@ -1324,15 +1327,15 @@ export class ServiceWorkerPool {
 					);
 				};
 
-				// Timeout after 5 seconds if worker doesn't respond
+				// Timeout after 30 seconds if worker doesn't respond (allows time for activate event processing)
 				timeoutId = setTimeout(() => {
 					cleanup();
 					reject(
 						new Error(
-							`Worker failed to load ServiceWorker within 5000ms (version ${version})`,
+							`Worker failed to load ServiceWorker within 30000ms (version ${version})`,
 						),
 					);
-				}, 5000);
+				}, 30000);
 
 				logger.info("Sending load message", {
 					version,
