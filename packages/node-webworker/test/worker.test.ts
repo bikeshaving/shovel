@@ -44,9 +44,8 @@ describe("Node Web Worker", () => {
 				expect(event.type).toBe("message");
 				expect(event.data.echo).toBe("Hello, Worker!");
 
-				worker.terminate().then(() => {
-					resolve(true);
-				});
+				worker.terminate();
+				resolve(true);
 			});
 
 			worker.postMessage("Hello, Worker!");
@@ -71,9 +70,8 @@ describe("Node Web Worker", () => {
 				expect(event.type).toBe("error");
 				expect(event.error).toBeInstanceOf(Error);
 
-				worker.terminate().then(() => {
-					resolve(true);
-				});
+				worker.terminate();
+				resolve(true);
 			});
 		});
 	});
@@ -106,9 +104,8 @@ describe("Node Web Worker", () => {
 
 			const checkCompletion = () => {
 				if (listener1Called && listener2Called) {
-					worker.terminate().then(() => {
-						resolve(true);
-					});
+					worker.terminate();
+					resolve(true);
 				}
 			};
 
@@ -147,9 +144,8 @@ describe("Node Web Worker", () => {
 					// Wait a bit and check that listener wasn't called again
 					setTimeout(() => {
 						expect(callCount).toBe(1);
-						worker.terminate().then(() => {
-							resolve(true);
-						});
+						worker.terminate();
+						resolve(true);
 					}, 100);
 				}
 			};
@@ -168,7 +164,7 @@ describe("Node Web Worker", () => {
 		expect(worker.nodeWorker_).toBeDefined();
 		expect(typeof worker.nodeWorker_.postMessage).toBe("function");
 
-		return worker.terminate();
+		worker.terminate();
 	});
 
 	test("should handle transferable objects warning", async () => {
@@ -198,9 +194,8 @@ describe("Node Web Worker", () => {
 				console.warn = originalWarn;
 				expect(warningCalled).toBe(true);
 
-				worker.terminate().then(() => {
-					resolve(true);
-				});
+				worker.terminate();
+				resolve(true);
 			});
 
 			// Create a mock transferable object
@@ -228,6 +223,6 @@ describe("Node Web Worker", () => {
 		console.warn = originalWarn;
 		expect(warningMessage).toContain("Unsupported event type: unsupported");
 
-		return worker.terminate();
+		worker.terminate();
 	});
 });

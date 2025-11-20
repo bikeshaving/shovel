@@ -72,16 +72,33 @@ export class Worker {
 	#messageListeners: Set<(event: MessageEvent) => void>;
 	#errorListeners: Set<(event: ErrorEvent) => void>;
 
-	constructor(scriptURL: string, _options?: {type?: "classic" | "module"}) {
+	// Web Worker standard properties
+	onmessage: ((event: MessageEvent) => void) | null = null;
+	onerror: ((event: ErrorEvent) => void) | null = null;
+
+	constructor(scriptURL: string | URL, _options?: {type?: "classic" | "module"}) {
 		this.#messageListeners = new Set<(event: MessageEvent) => void>();
 		this.#errorListeners = new Set<(event: ErrorEvent) => void>();
 
-		// Convert scriptURL to file:// URL if it's a path
-		// Data URLs can't resolve relative paths, so we need absolute file:// URLs
-		let workerScriptURL = scriptURL;
-		if (!scriptURL.startsWith("file://") && !scriptURL.startsWith("data:")) {
-			// It's a file path - convert to file:// URL
-			workerScriptURL = `file://${scriptURL}`;
+		// Convert scriptURL to string (handles URL objects via toString())
+		// Per Web Worker spec: accepts both strings and URL objects
+		const scriptURLString = scriptURL.toString();
+
+		// Resolve the worker script URL
+		// Standard usage: new Worker(new URL("./worker.js", import.meta.url))
+		// This gives us an absolute file:// URL which we can use directly
+		let workerScriptURL = scriptURLString;
+
+		// If it's not already a file:// or data: URL, and it's an absolute path, convert it
+		if (!scriptURLString.startsWith("file://") && !scriptURLString.startsWith("data:")) {
+			// Check if it's a relative path
+			if (scriptURLString.startsWith("./") || scriptURLString.startsWith("../")) {
+				throw new Error(
+					"Relative paths are not supported. Use new Worker(new URL('./worker.js', import.meta.url)) instead."
+				);
+			}
+			// It's an absolute file path - convert to file:// URL
+			workerScriptURL = `file://${scriptURLString}`;
 		}
 
 		// Create Node.js Worker using data URL wrapper (no temp files needed!)
@@ -96,25 +113,44 @@ export class Worker {
 		// Set up event forwarding from Node.js Worker to Web Worker API
 		this.#nodeWorker.on("message", (data) => {
 			const event: MessageEvent = {data, type: "message"};
+
+			// Call onmessage handler if set (Web Worker standard)
+			if (this.onmessage) {
+				try {
+					this.onmessage(event);
+				} catch (error) {
+					console.error("Error in onmessage handler:", error);
+				}
+			}
+
+			// Call addEventListener handlers
 			this.#messageListeners.forEach((listener) => {
 				try {
 					listener(event);
 				} catch (error) {
-					logger.error("Error in message listener", {error});
+					console.error("Error in message listener:", error);
 				}
 			});
 		});
 
 		this.#nodeWorker.on("error", (error) => {
 			const event: ErrorEvent = {error, type: "error"};
+
+			// Call onerror handler if set (Web Worker standard)
+			if (this.onerror) {
+				try {
+					this.onerror(event);
+				} catch (handlerError) {
+					console.error("Error in onerror handler:", handlerError);
+				}
+			}
+
+			// Call addEventListener handlers
 			this.#errorListeners.forEach((listener) => {
 				try {
 					listener(event);
 				} catch (listenerError) {
-					logger.error(
-						"[node-webworker] Error in error listener:",
-						listenerError,
-					);
+					console.error("Error in error listener:", listenerError);
 				}
 			});
 		});
@@ -168,14 +204,20 @@ export class Worker {
 	}
 
 	/**
-	 * Terminate the worker
+	 * Terminate the worker (Web Worker standard - returns void, not a promise)
 	 */
-	async terminate(): Promise<number> {
-		const exitCode = await this.#nodeWorker.terminate();
-		// Clean up listeners
+	terminate(): void {
+		// Node.js worker.terminate() returns a promise, but Web Worker standard is sync
+		// We fire-and-forget here to match the standard API
+		this.#nodeWorker.terminate().catch((error) => {
+			console.error("Error terminating worker:", error);
+		});
+
+		// Clean up listeners immediately
 		this.#messageListeners.clear();
 		this.#errorListeners.clear();
-		return exitCode;
+		this.onmessage = null;
+		this.onerror = null;
 	}
 
 	/**
