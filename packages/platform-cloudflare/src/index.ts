@@ -16,6 +16,9 @@ import {
 } from "@b9g/platform";
 import {FileSystemRegistry, getDirectoryHandle} from "@b9g/filesystem";
 import {MemoryBucket} from "@b9g/filesystem/memory.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["platform-cloudflare"]);
 
 // Re-export common platform types
 export type {
@@ -123,10 +126,10 @@ export class CloudflarePlatform extends BasePlatform {
 
 		return {
 			async listen() {
-				console.info("[Cloudflare] Worker handler ready");
+				logger.info("Worker handler ready", {});
 			},
 			async close() {
-				console.info("[Cloudflare] Worker handler stopped");
+				logger.info("Worker handler stopped", {});
 			},
 			address: () => ({port: 443, host: "cloudflare-workers"}),
 			get url() {
@@ -155,7 +158,7 @@ export class CloudflarePlatform extends BasePlatform {
 			typeof globalThis.FetchEvent !== "undefined";
 
 		if (isCloudflareWorker) {
-			console.info("[Cloudflare] Running in native ServiceWorker environment");
+			logger.info("Running in native ServiceWorker environment", {});
 
 			// In a real Cloudflare Worker, we use the global environment directly
 			const instance: ServiceWorkerInstance = {
@@ -463,8 +466,8 @@ export default {
 						return responseReceived;
 					}
 				} catch (error) {
-					console.error('[Wrapper] Handler error:', error);
-					console.error('[Wrapper] Error stack:', error.stack);
+					logger.error("Handler error", {error});
+					logger.error("Error stack", {stack: error.stack});
 					// Return detailed error in response body for debugging
 					return new Response(JSON.stringify({
 						error: error.message,
@@ -480,7 +483,7 @@ export default {
 			
 			return new Response('No ServiceWorker handler', { status: 404 });
 		} catch (topLevelError) {
-			console.error('[Wrapper] Top-level error:', topLevelError);
+			logger.error("Top-level error", {error: topLevelError});
 			return new Response(JSON.stringify({
 				error: 'Top-level wrapper error: ' + topLevelError.message,
 				stack: topLevelError.stack,

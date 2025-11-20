@@ -862,6 +862,9 @@ export async function getDirectoryHandle(
 
 import * as Path from "path";
 import {existsSync} from "fs";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["worker"]);
 
 export interface WorkerPoolOptions {
 	/** Number of workers in the pool (default: 1) */
@@ -937,13 +940,13 @@ function resolveWorkerScript(entrypoint?: string): string {
 				// Bun has synchronous file operations
 				const file = Bun.file(bundledWorker);
 				if (file.size > 0) {
-					console.info(`[WorkerPool] Using bundled worker: ${bundledWorker}`);
+					logger.info("Using bundled worker", {bundledWorker});
 					return bundledWorker;
 				}
 			} else if (typeof require !== "undefined") {
 				// Node.js - use existsSync
 							if (existsSync(bundledWorker)) {
-					console.info(`[WorkerPool] Using bundled worker: ${bundledWorker}`);
+					logger.info("Using bundled worker", {bundledWorker});
 					return bundledWorker;
 				}
 			}
@@ -965,7 +968,7 @@ function resolveWorkerScript(entrypoint?: string): string {
 			workerScript = workerUrl;
 		}
 
-		console.info(`[WorkerPool] Using worker runtime script: ${workerScript}`);
+		logger.info("Using worker runtime script", {workerScript});
 		return workerScript;
 	} catch (error) {
 		const bundledPath = entrypoint
@@ -993,24 +996,16 @@ async function createWebWorker(workerScript: string): Promise<Worker> {
 		// Try to dynamically import our own Node.js shim
 		try {
 			const {Worker: NodeWebWorker} = await import("@b9g/node-webworker");
-			console.info("[WorkerPool] Using @b9g/node-webworker shim for Node.js");
+			logger.info("Using @b9g/node-webworker shim for Node.js", {});
 			// Our Node.js shim doesn't implement all Web Worker properties, but has the core functionality
 			return new NodeWebWorker(workerScript, {
 				type: "module",
 			}) as unknown as Worker;
 		} catch (shimError) {
-			console.error(
-				"\n❌ MISSING WEB STANDARD: Node.js lacks native Web Worker support",
-			);
-			console.error(
-				"🔗 CANONICAL ISSUE: https://github.com/nodejs/node/issues/43583",
-			);
-			console.error(
-				"💬 This is a basic web standard from 2009 - help push for implementation!",
-			);
-			console.error(
-				"🗳️  Please 👍 react and comment on the issue to show demand\n",
-			);
+			logger.error("MISSING WEB STANDARD: Node.js lacks native Web Worker support", {
+				canonicalIssue: "https://github.com/nodejs/node/issues/43583",
+				message: "This is a basic web standard from 2009 - help push for implementation!",
+			});
 
 			throw new Error(`❌ Web Worker not available on Node.js
 
@@ -1190,7 +1185,7 @@ export class ServiceWorkerPool {
 		});
 
 		worker.addEventListener("error", (error) => {
-			console.error("[WorkerPool] Worker error:", error);
+			logger.error("Worker error", {error});
 		});
 
 		this.#workers.push(worker);
@@ -1240,15 +1235,15 @@ export class ServiceWorkerPool {
 				this.#pendingRequests.delete(message.requestId);
 			}
 		} else {
-			console.error("[WorkerPool] Worker error:", message.error);
+			logger.error("Worker error", {error: message.error});
 		}
 	}
 
 	#handleReady(message: WorkerReadyMessage) {
 		if (message.type === "ready") {
-			console.info(`[WorkerPool] ServiceWorker ready (v${message.version})`);
+			logger.info("ServiceWorker ready", {version: message.version});
 		} else if (message.type === "worker-ready") {
-			console.info("[WorkerPool] Worker initialized");
+			logger.info("Worker initialized", {});
 		}
 	}
 
@@ -1258,9 +1253,10 @@ export class ServiceWorkerPool {
 	async handleRequest(request: Request): Promise<Response> {
 		// Round-robin worker selection
 		const worker = this.#workers[this.#currentWorker];
-		console.info(
-			`[WorkerPool] Dispatching to worker ${this.#currentWorker + 1} of ${this.#workers.length}`,
-		);
+		logger.info("Dispatching to worker", {
+			workerIndex: this.#currentWorker + 1,
+			totalWorkers: this.#workers.length,
+		});
 		this.#currentWorker = (this.#currentWorker + 1) % this.#workers.length;
 
 		const requestId = ++this.#requestId;
@@ -1297,7 +1293,7 @@ export class ServiceWorkerPool {
 	 * Reload ServiceWorker with new version (hot reload simulation)
 	 */
 	async reloadWorkers(version: number | string = Date.now()): Promise<void> {
-		console.info(`[WorkerPool] Reloading ServiceWorker (v${version})`);
+		logger.info("Reloading ServiceWorker", {version});
 
 		const loadPromises = this.#workers.map((worker) => {
 			return new Promise<void>((resolve, reject) => {
@@ -1338,7 +1334,7 @@ export class ServiceWorkerPool {
 					);
 				}, 5000);
 
-				console.info("[WorkerPool] Sending load message:", {
+				logger.info("Sending load message", {
 					version,
 					entrypoint: this.#appEntrypoint,
 				});
@@ -1357,7 +1353,7 @@ export class ServiceWorkerPool {
 		});
 
 		await Promise.all(loadPromises);
-		console.info(`[WorkerPool] All workers reloaded (v${version})`);
+		logger.info("All workers reloaded", {version});
 	}
 
 	/**

@@ -4,6 +4,10 @@
  * Uses platform abstraction for multi-worker ServiceWorker runtime
  */
 
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["worker"]);
+
 // Platform-specific imports - use static imports so esbuild can bundle them
 declare const PLATFORM: string;
 let Platform: any;
@@ -17,8 +21,8 @@ if (PLATFORM === "bun") {
 const PORT = parseInt(process.env.PORT || "8080", 10);
 const HOST = process.env.HOST || "0.0.0.0";
 
-console.info("🔧 Starting production server...");
-console.info(`⚡ Workers: ${WORKER_COUNT}`);
+logger.info("Starting production server", {});
+logger.info("Workers", {count: WORKER_COUNT});
 
 // Create platform instance
 const platform = new Platform();
@@ -40,16 +44,16 @@ const server = platform.createServer(serviceWorker.handleRequest, {
 });
 
 await server.listen();
-console.info(`🚀 Server running at http://${HOST}:${PORT}`);
-console.info(`⚡ Load balancing across ${WORKER_COUNT} workers`);
+logger.info("Server running", {url: `http://${HOST}:${PORT}`});
+logger.info("Load balancing", {workers: WORKER_COUNT});
 
 // Graceful shutdown
 const shutdown = async () => {
-	console.info("\n🛑 Shutting down server...");
+	logger.info("Shutting down server", {});
 	await serviceWorker.dispose();
 	await platform.dispose();
 	await server.close();
-	console.info("✅ Server stopped");
+	logger.info("Server stopped", {});
 	process.exit(0);
 };
 

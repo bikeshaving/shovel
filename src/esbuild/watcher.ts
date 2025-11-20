@@ -10,6 +10,9 @@ import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {DEFAULTS} from "./config.js";
 import {createEnvDefines} from "./env-defines.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["watcher"]);
 
 export interface WatcherOptions {
 	/** Entry point to build */
@@ -44,7 +47,7 @@ export class Watcher {
 
 		// Watch for changes
 		const watchDir = dirname(entryPath);
-		console.info(`[Watcher] Watching ${watchDir} for changes...`);
+		logger.info("Watching for changes", {watchDir});
 
 		this.#watcher = watch(
 			watchDir,
@@ -116,8 +119,8 @@ export class Watcher {
 				workspaceRoot = initialCwd;
 			}
 
-			console.info(`[Watcher] Building ${entryPath}...`);
-			console.info(`[Watcher] Workspace root: ${workspaceRoot}`);
+			logger.info("Building", {entryPath});
+			logger.info("Workspace root", {workspaceRoot});
 
 			// Ensure output directory structure exists
 			await mkdir(join(outputDir, "server"), {recursive: true});
@@ -145,14 +148,14 @@ export class Watcher {
 			});
 
 			if (result.errors.length > 0) {
-				console.error("[Watcher] Build errors:", result.errors);
+				logger.error("Build errors", {errors: result.errors});
 				this.#options.onBuild?.(false, version);
 			} else {
-				console.info(`[Watcher] Build complete (v${version})`);
+				logger.info("Build complete", {version});
 				this.#options.onBuild?.(true, version);
 			}
 		} catch (error) {
-			console.error("[Watcher] Build failed:", error);
+			logger.error("Build failed", {error});
 			this.#options.onBuild?.(false, Date.now());
 		} finally {
 			this.#building = false;

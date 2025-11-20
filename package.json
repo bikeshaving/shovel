@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",
+    "@logtape/logtape": "^1.2.0",
     "commander": "^13.1.0",
     "esbuild": "^0.19.12",
     "magic-string": "^0.30.5",

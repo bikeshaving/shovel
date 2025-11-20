@@ -13,6 +13,9 @@ import {
 	cloudflareWorkerBanner,
 	cloudflareWorkerFooter,
 } from "@b9g/platform-cloudflare";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["cli"]);
 
 // Build configuration constants
 const BUILD_DEFAULTS = {
@@ -73,9 +76,9 @@ export async function buildForProduction({
 	});
 
 	if (verbose) {
-		console.info(`📦 Built app to ${buildContext.outputDir}`);
-		console.info(`📂 Server files: ${buildContext.serverDir}`);
-		console.info(`📂 Asset files: ${buildContext.assetsDir}`);
+		logger.info("Built app", {outputDir: buildContext.outputDir});
+		logger.info("Server files", {dir: buildContext.serverDir});
+		logger.info("Asset files", {dir: buildContext.assetsDir});
 	}
 }
 
@@ -104,7 +107,7 @@ async function initializeBuild({
 	try {
 		const stats = await readFile(entryPath, "utf8");
 		if (stats.length === 0) {
-			console.warn(`⚠️  Entry point is empty: ${entryPath}`);
+			logger.warn("Entry point is empty", {entryPath});
 		}
 	} catch (error) {
 		throw new Error(`Entry point not found or not accessible: ${entryPath}`);
@@ -121,10 +124,10 @@ async function initializeBuild({
 	const workspaceRoot = await findWorkspaceRoot();
 
 	if (verbose) {
-		console.info(`📂 Entry: ${entryPath}`);
-		console.info(`📂 Output: ${outputDir}`);
-		console.info(`🎯 Target platform: ${platform}`);
-		console.info(`🏠 Workspace root: ${workspaceRoot}`);
+		logger.info("Entry", {entryPath});
+		logger.info("Output", {outputDir});
+		logger.info("Target platform", {platform});
+		logger.info("Workspace root", {workspaceRoot});
 	}
 
 	// Ensure output directory structure exists
@@ -423,11 +426,11 @@ async function createWorkerEntry(userEntryPath, workerCount, platform) {
  */
 async function logBundleAnalysis(metafile) {
 	try {
-		console.info("📊 Bundle analysis:");
+		logger.info("Bundle analysis", {});
 		const analysis = await esbuild.analyzeMetafile(metafile);
-		console.info(analysis);
+		logger.info(analysis, {});
 	} catch (error) {
-		console.warn(`⚠️  Failed to analyze bundle: ${error.message}`);
+		logger.warn("Failed to analyze bundle", {error: error.message});
 	}
 }
 
@@ -456,12 +459,12 @@ async function generatePackageJson({serverDir, platform, verbose, entryPath}) {
 			"utf8",
 		);
 		if (verbose) {
-			console.info(`📄 Copied package.json to ${serverDir}`);
+			logger.info("Copied package.json", {serverDir});
 		}
 	} catch (error) {
 		// If no package.json exists in source, generate one for executable builds
 		if (verbose) {
-			console.warn(`⚠️  Could not copy package.json: ${error.message}`);
+			logger.warn("Could not copy package.json", {error: error.message});
 		}
 
 		try {
@@ -473,18 +476,17 @@ async function generatePackageJson({serverDir, platform, verbose, entryPath}) {
 				"utf8",
 			);
 			if (verbose) {
-				console.info(`📄 Generated package.json for ${platform} platform`);
-				console.info(
-					`📄 Package.json contents:`,
-					JSON.stringify(generatedPackageJson, null, 2),
-				);
+				logger.info("Generated package.json", {platform});
+				logger.info("Package.json contents", {
+					contents: JSON.stringify(generatedPackageJson, null, 2),
+				});
 			}
 		} catch (generateError) {
 			if (verbose) {
-				console.warn(
-					`⚠️  Could not generate package.json: ${generateError.message}`,
-				);
-				console.warn(`📍 Generation error details:`, generateError);
+				logger.warn("Could not generate package.json", {
+					error: generateError.message,
+				});
+				logger.warn("Generation error details", {error: generateError});
 			}
 			// Don't fail the build if package.json generation fails
 		}

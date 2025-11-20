@@ -23,6 +23,9 @@ import {createHash} from "crypto";
 import {join, basename, extname, relative, dirname} from "path";
 import mime from "mime";
 import {type AssetManifest, type AssetManifestEntry} from "./index.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["assets"]);
 
 /**
  * Configuration for assets plugin (build-time)
@@ -205,11 +208,12 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 
 					// Write manifest file
 					writeFileSync(config.manifest, JSON.stringify(manifest, null, 2));
-					console.info(
-						`📦 Generated asset manifest: ${config.manifest} (${Object.keys(manifest.assets).length} assets)`,
-					);
+					logger.info("Generated asset manifest", {
+						path: config.manifest,
+						assetCount: Object.keys(manifest.assets).length,
+					});
 				} catch (error: any) {
-					console.warn(`Failed to write asset manifest: ${error.message}`);
+					logger.warn("Failed to write asset manifest", {error: error.message});
 				}
 			});
 		},

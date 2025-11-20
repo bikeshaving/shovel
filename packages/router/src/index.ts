@@ -13,6 +13,9 @@
  */
 
 import {MatchPattern} from "@b9g/match-pattern";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["router"]);
 
 // ============================================================================
 // TYPES
@@ -510,7 +513,7 @@ export class Router {
 						cacheConfig.name,
 					)) as import("@b9g/cache").Cache;
 				} catch (error) {
-					console.warn(`Failed to open cache '${cacheConfig.name}':`, error);
+					logger.warn("Failed to open cache", {cacheName: cacheConfig.name, error});
 					// Continue without cache - don't fail the request
 				}
 			}

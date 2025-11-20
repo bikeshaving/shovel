@@ -10,6 +10,9 @@
 
 import type {AssetsConfig} from "./index.js";
 import {getMimeType} from "./index.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["assets"]);
 
 /**
  * Assets middleware with 1-to-1 path mapping
@@ -124,11 +127,11 @@ export function assets(config: AssetsConfig = {}) {
 					return new Response("Not Found", {status: 404});
 				}
 
-				console.error("[assetsMiddleware] Error:", error);
+				logger.error("Assets middleware error", {error});
 				return new Response("Internal Server Error", {status: 500});
 			}
 		} catch (error) {
-			console.error("[assetsMiddleware] Outer error:", error);
+			logger.error("Assets middleware outer error", {error});
 			const message = error instanceof Error ? error.message : String(error);
 			return new Response("Assets middleware error: " + message, {
 				status: 500,

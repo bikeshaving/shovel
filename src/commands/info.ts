@@ -1,10 +1,14 @@
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["cli"]);
+
 export async function infoCommand() {
 	const {detectRuntime, detectDevelopmentPlatform} = await import(
 		"@b9g/platform"
 	);
 
-	console.info("🔍 Shovel Platform Information");
-	console.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-	console.info(`Current Runtime: ${detectRuntime()}`);
-	console.info(`Default Platform: ${detectDevelopmentPlatform()}`);
+	logger.info("Shovel Platform Information", {});
+	logger.info("---", {});
+	logger.info("Current Runtime", {runtime: detectRuntime()});
+	logger.info("Default Platform", {platform: detectDevelopmentPlatform()});
 }

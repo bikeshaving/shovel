@@ -6,6 +6,9 @@
 
 import {Cache, type CacheQueryOptions, generateCacheKey} from "@b9g/cache";
 import {createClient, type RedisClientOptions} from "redis";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["cache-redis"]);
 
 // ============================================================================
 // TYPES
@@ -65,16 +68,16 @@ export class RedisCache extends Cache {
 
 		// Set up error handling
 		this.#client.on("error", (err) => {
-			console.error("[RedisCache] Redis error:", err);
+			logger.error("Redis error", {error: err});
 		});
 
 		this.#client.on("connect", () => {
-			console.info(`[RedisCache] Connected to Redis for cache: ${name}`);
+			logger.info("Connected to Redis", {cache: name});
 			this.#connected = true;
 		});
 
 		this.#client.on("disconnect", () => {
-			console.warn(`[RedisCache] Disconnected from Redis for cache: ${name}`);
+			logger.warn("Disconnected from Redis", {cache: name});
 			this.#connected = false;
 		});
 	}
@@ -170,7 +173,7 @@ export class RedisCache extends Cache {
 
 			return this.#deserializeResponse(entry);
 		} catch (error) {
-			console.error("[RedisCache] Failed to match:", error);
+			logger.error("Failed to match", {error});
 			return undefined;
 		}
 	}
@@ -193,7 +196,7 @@ export class RedisCache extends Cache {
 				await this.#client.set(key, serialized);
 			}
 		} catch (error) {
-			console.error("[RedisCache] Failed to put:", error);
+			logger.error("Failed to put", {error});
 			throw error;
 		}
 	}
@@ -212,7 +215,7 @@ export class RedisCache extends Cache {
 			const result = await this.#client.del(key);
 			return result > 0;
 		} catch (error) {
-			console.error("[RedisCache] Failed to delete:", error);
+			logger.error("Failed to delete", {error});
 			return false;
 		}
 	}
@@ -264,7 +267,7 @@ export class RedisCache extends Cache {
 
 			return requests;
 		} catch (error) {
-			console.error("[RedisCache] Failed to get keys:", error);
+			logger.error("Failed to get keys", {error});
 			return [];
 		}
 	}
@@ -305,7 +308,7 @@ export class RedisCache extends Cache {
 				maxEntrySize: this.#maxEntrySize,
 			};
 		} catch (error) {
-			console.error("[RedisCache] Failed to get stats:", error);
+			logger.error("Failed to get stats", {error});
 			return {
 				connected: false,
 				keyCount: 0,

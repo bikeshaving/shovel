@@ -26,6 +26,9 @@ import {MemoryBucket} from "@b9g/filesystem/memory.js";
 import {NodeBucket} from "@b9g/filesystem/node.js";
 import * as Path from "path";
 import * as Os from "os";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["platform-bun"]);
 
 // Re-export common platform types
 export type {
@@ -94,11 +97,9 @@ export class BunPlatform extends BasePlatform {
 		try {
 			// Note: This is a placeholder for Bun's S3 adapter
 			// The actual implementation would need to be imported from a Bun-specific package
-			console.warn(
-				"[Bun] S3 adapter not implemented yet, using memory filesystem",
-			);
+			logger.warn("S3 adapter not implemented yet, using memory filesystem", {});
 		} catch {
-			console.warn("[Bun] S3Client not available, using memory filesystem");
+			logger.warn("S3Client not available, using memory filesystem", {});
 		}
 	}
 
@@ -189,7 +190,7 @@ export class BunPlatform extends BasePlatform {
 
 		return {
 			async listen() {
-				console.info(`🥖 Bun server running at http://${hostname}:${port}`);
+				logger.info("Bun server running", {url: `http://${hostname}:${port}`});
 			},
 			async close() {
 				server.stop();
@@ -260,10 +261,10 @@ export class BunPlatform extends BasePlatform {
 				return platform.#workerPool.handleRequest(request);
 			},
 			install: async () => {
-				console.info("[Bun] ServiceWorker installed via native Web Workers");
+				logger.info("ServiceWorker installed", {method: "native_web_workers"});
 			},
 			activate: async () => {
-				console.info("[Bun] ServiceWorker activated via native Web Workers");
+				logger.info("ServiceWorker activated", {method: "native_web_workers"});
 			},
 			get ready() {
 				return workerPool?.ready ?? false;
@@ -273,7 +274,7 @@ export class BunPlatform extends BasePlatform {
 					await platform.#workerPool.terminate();
 					platform.#workerPool = undefined;
 				}
-				console.info("[Bun] ServiceWorker disposed");
+				logger.info("ServiceWorker disposed", {});
 			},
 		};
 

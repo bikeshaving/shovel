@@ -1,4 +1,7 @@
 import {DEFAULTS} from "../esbuild/config.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["cli"]);
 
 export async function activateCommand(entrypoint, options) {
 	try {
@@ -8,7 +11,7 @@ export async function activateCommand(entrypoint, options) {
 
 		if (options.verbose) {
 			platform.displayPlatformInfo(platformName);
-			console.info(`[CLI] ✅ Worker configuration: ${workerCount} workers`);
+			logger.info("Worker configuration", {workerCount});
 		}
 
 		const platformConfig = {
@@ -33,7 +36,7 @@ export async function activateCommand(entrypoint, options) {
 			platformConfig,
 		);
 
-		console.info(`[CLI] ▶️  Activating ServiceWorker...`);
+		logger.info("Activating ServiceWorker", {});
 
 		// Load ServiceWorker app
 		const serviceWorker = await platformInstance.loadServiceWorker(entrypoint, {
@@ -43,16 +46,14 @@ export async function activateCommand(entrypoint, options) {
 
 		// The ServiceWorker install/activate lifecycle will handle any self-generation
 		// Apps can use self.dirs.open("static") in their activate event to pre-render
-		console.info(
-			`[CLI] ✅ ServiceWorker activated - check dist/ for generated content`,
-		);
+		logger.info("ServiceWorker activated - check dist/ for generated content", {});
 
 		await serviceWorker.dispose();
 		await platformInstance.dispose();
 	} catch (error) {
-		console.error(`[CLI] ❌ ServiceWorker activation failed:`, error.message);
+		logger.error("ServiceWorker activation failed", {error: error.message});
 		if (options.verbose) {
-			console.error(error.stack);
+			logger.error("Stack trace", {stack: error.stack});
 		}
 		process.exit(1);
 	}

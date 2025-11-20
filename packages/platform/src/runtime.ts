@@ -192,7 +192,7 @@ export class ShovelClient implements Client {
 		_message: any,
 		_transferOrOptions?: Transferable[] | StructuredSerializeOptions,
 	): void {
-		console.warn(
+		logger.warn(
 			"[ServiceWorker] Client.postMessage() not supported in server context",
 		);
 	}
@@ -218,14 +218,14 @@ export class ShovelWindowClient extends ShovelClient implements WindowClient {
 	}
 
 	async focus(): Promise<WindowClient> {
-		console.warn(
+		logger.warn(
 			"[ServiceWorker] WindowClient.focus() not supported in server context",
 		);
 		return this;
 	}
 
 	async navigate(_url: string): Promise<WindowClient | null> {
-		console.warn(
+		logger.warn(
 			"[ServiceWorker] WindowClient.navigate() not supported in server context",
 		);
 		return null;
@@ -254,7 +254,7 @@ export class ShovelClients implements Clients {
 	}
 
 	async openWindow(_url: string): Promise<WindowClient | null> {
-		console.warn(
+		logger.warn(
 			"[ServiceWorker] Clients.openWindow() not supported in server context",
 		);
 		return null;
@@ -334,7 +334,7 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 		_message: any,
 		_transferOrOptions?: Transferable[] | StructuredSerializeOptions,
 	): void {
-		console.warn(
+		logger.warn(
 			"[ServiceWorker] ServiceWorker.postMessage() not implemented in server context",
 		);
 	}
@@ -440,7 +440,7 @@ export class ShovelServiceWorkerRegistration
 		_title: string,
 		_options?: NotificationOptions,
 	): Promise<void> {
-		console.warn(
+		logger.warn(
 			"[ServiceWorker] Notifications not supported in server context",
 		);
 	}
@@ -621,7 +621,7 @@ export class ShovelServiceWorkerRegistration
 						// Log errors in event listeners but don't crash the process
 						// This matches browser behavior where fetch listener errors are logged
 						// but don't prevent other listeners from running
-						console.error(
+						logger.error(
 							"[ServiceWorker] Error in fetch event listener:",
 							error,
 						);
@@ -632,7 +632,7 @@ export class ShovelServiceWorkerRegistration
 				// Wait for all waitUntil promises (background tasks, don't block response)
 				const promises = event.getPromises();
 				if (promises.length > 0) {
-					Promise.allSettled(promises).catch(console.error);
+					Promise.allSettled(promises).catch(logger.error);
 				}
 			});
 
@@ -933,7 +933,7 @@ export class Notification extends EventTarget {
 	}
 
 	close(): void {
-		console.warn(
+		logger.warn(
 			"[ServiceWorker] Notification.close() not supported in server context",
 		);
 	}
@@ -1128,7 +1128,7 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 
 	// WorkerGlobalScope methods (stubs for server context)
 	importScripts(..._urls: (string | URL)[]): void {
-		console.warn(
+		logger.warn(
 			"[ServiceWorker] importScripts() not supported in server context",
 		);
 	}
@@ -1164,7 +1164,7 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	}
 
 	reportError(e: any): void {
-		console.error("[ServiceWorker] reportError:", e);
+		logger.error("[ServiceWorker] reportError:", e);
 	}
 
 	setInterval(handler: TimerHandler, timeout?: number, ...args: any[]): number {
@@ -1278,12 +1278,12 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	 * In development mode with hot reload, triggers a worker reload
 	 */
 	async skipWaiting(): Promise<void> {
-		console.info("[ServiceWorker] skipWaiting() called");
+		logger.info("[ServiceWorker] skipWaiting() called");
 		if (this.#isDevelopment && this.#hotReload) {
-			console.info("[ServiceWorker] skipWaiting() - triggering hot reload");
+			logger.info("[ServiceWorker] skipWaiting() - triggering hot reload");
 			await this.#hotReload();
 		} else if (!this.#isDevelopment) {
-			console.info(
+			logger.info(
 				"[ServiceWorker] skipWaiting() - production graceful restart not implemented",
 			);
 			// In production, this would normally activate the waiting worker
@@ -1357,6 +1357,9 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 // ============================================================================
 
 import type {
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["worker"]);
 	WorkerMessage,
 	WorkerRequest,
 	WorkerResponse,
@@ -1431,7 +1434,7 @@ async function handleFetchEvent(request: Request): Promise<Response> {
 		const response = await registration.handleRequest(request);
 		return response;
 	} catch (error) {
-		console.error("[Worker] ServiceWorker request failed:", error);
+		logger.error("[Worker] ServiceWorker request failed:", error);
 		const response = new Response("ServiceWorker request failed", {
 			status: 500,
 		});
@@ -1444,7 +1447,7 @@ async function loadServiceWorker(
 	entrypoint?: string,
 ): Promise<void> {
 	try {
-		console.info("[Worker] loadServiceWorker called with:", {
+		logger.info("[Worker] loadServiceWorker called with:", {
 			version,
 			entrypoint,
 		});
@@ -1453,13 +1456,13 @@ async function loadServiceWorker(
 			process.env.SERVICEWORKER_PATH ||
 			entrypoint ||
 			`${process.cwd()}/dist/server/server.js`;
-		console.info("[Worker] Loading from:", entrypointPath);
+		logger.info("[Worker] Loading from:", entrypointPath);
 
 		if (loadedVersion !== null && loadedVersion !== version) {
-			console.info(
+			logger.info(
 				`[Worker] Hot reload detected: ${loadedVersion} -> ${version}`,
 			);
-			console.info("[Worker] Creating completely fresh ServiceWorker context");
+			logger.info("[Worker] Creating completely fresh ServiceWorker context");
 
 			// Create a completely new runtime instance instead of trying to reset
 			registration = new ShovelServiceWorkerRegistration();
@@ -1471,7 +1474,7 @@ async function loadServiceWorker(
 		}
 
 		if (loadedVersion === version) {
-			console.info(
+			logger.info(
 				"[Worker] ServiceWorker already loaded for version",
 				version,
 			);
@@ -1489,11 +1492,11 @@ async function loadServiceWorker(
 		await registration.activate();
 		serviceWorkerReady = true;
 
-		console.info(
+		logger.info(
 			`[Worker] ServiceWorker loaded and activated (v${version}) from ${entrypointPath}`,
 		);
 	} catch (error) {
-		console.error("[Worker] Failed to load ServiceWorker:", error);
+		logger.error("[Worker] Failed to load ServiceWorker:", error);
 		serviceWorkerReady = false;
 		throw error;
 	}
@@ -1510,7 +1513,7 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
 			sendMessage({type: "ready", version: loadMsg.version});
 		} else if (message.type === "request") {
 			const reqMsg = message as WorkerRequest;
-			console.info(
+			logger.info(
 				`[Worker-${workerId}] Handling request:`,
 				reqMsg.request.url,
 			);
@@ -1557,6 +1560,6 @@ if (typeof onmessage !== "undefined") {
 			sendMessage({type: "worker-ready"});
 		})
 		.catch((error) => {
-			console.error("[Worker] Failed to initialize:", error);
+			logger.error("[Worker] Failed to initialize:", error);
 		});
 }

@@ -32,6 +32,9 @@ export interface ErrorEvent {
  */
 const WORKER_WRAPPER_CODE = `
 import {parentPort} from "worker_threads";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["worker"]);
 
 // Provide Web Worker globals
 globalThis.onmessage = null;
@@ -97,7 +100,7 @@ export class Worker {
 				try {
 					listener(event);
 				} catch (error) {
-					console.error("[node-webworker] Error in message listener:", error);
+					logger.error("Error in message listener", {error});
 				}
 			});
 		});
@@ -108,7 +111,7 @@ export class Worker {
 				try {
 					listener(event);
 				} catch (listenerError) {
-					console.error(
+					logger.error(
 						"[node-webworker] Error in error listener:",
 						listenerError,
 					);
@@ -122,7 +125,7 @@ export class Worker {
 	 */
 	postMessage(message: any, transfer?: Transferable[]): void {
 		if (transfer && transfer.length > 0) {
-			console.warn("[node-webworker] Transferable objects not fully supported");
+			logger.warn("Transferable objects not fully supported", {});
 		}
 		this.#nodeWorker.postMessage(message);
 	}
@@ -141,7 +144,7 @@ export class Worker {
 		} else if (type === "error") {
 			this.#errorListeners.add(listener as (event: ErrorEvent) => void);
 		} else {
-			console.warn(`[node-webworker] Unsupported event type: ${type}`);
+			logger.warn("Unsupported event type", {type});
 		}
 	}
 

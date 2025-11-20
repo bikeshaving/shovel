@@ -1,4 +1,28 @@
 import {DEFAULTS} from "../esbuild/config.js";
+import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
+import {AsyncLocalStorage} from "node:async_hooks";
+
+// CLI logger
+const logger = getLogger(["cli"]);
+
+// Configure LogTape for structured logging
+await configure({
+	contextLocalStorage: new AsyncLocalStorage(),
+	sinks: {
+		console: getConsoleSink(),
+	},
+	loggers: [
+		{category: ["platform-node"], level: "debug", sinks: ["console"]},
+		{category: ["platform-bun"], level: "debug", sinks: ["console"]},
+		{category: ["platform-cloudflare"], level: "debug", sinks: ["console"]},
+		{category: ["cache"], level: "debug", sinks: ["console"]},
+		{category: ["router"], level: "debug", sinks: ["console"]},
+		{category: ["assets"], level: "debug", sinks: ["console"]},
+		{category: ["cli"], level: "debug", sinks: ["console"]},
+		{category: ["watcher"], level: "debug", sinks: ["console"]},
+		{category: ["worker"], level: "debug", sinks: ["console"]},
+	],
+});
 
 export async function developCommand(entrypoint, options) {
 	try {
@@ -8,7 +32,7 @@ export async function developCommand(entrypoint, options) {
 
 		if (options.verbose) {
 			platform.displayPlatformInfo(platformName);
-			console.info(`[CLI] ✅ Worker configuration: ${workerCount} workers`);
+			logger.info("Worker configuration", {workerCount});
 		}
 
 		// Create platform with smart defaults
@@ -36,8 +60,8 @@ export async function developCommand(entrypoint, options) {
 			platformConfig,
 		);
 
-		console.info(`[CLI] ▶️  Starting development server...`);
-		console.info(`[CLI] ✅ Workers: ${workerCount}`);
+		logger.info("Starting development server", {});
+		logger.info("Workers", {workerCount});
 
 		// Set up file watching and building for development
 		const {Watcher} = await import("../esbuild/watcher.js");
@@ -49,7 +73,7 @@ export async function developCommand(entrypoint, options) {
 			outDir,
 			onBuild: async (success, version) => {
 				if (success && serviceWorker) {
-					console.info(`[CLI] 🔄 Reloading Workers (v${version})...`);
+					logger.info("Reloading Workers", {version});
 					// The reloadWorkers method is on the platform instance, not the ServiceWorker runtime
 					if (
 						platformInstance &&
@@ -57,15 +81,15 @@ export async function developCommand(entrypoint, options) {
 					) {
 						await platformInstance.reloadWorkers(version);
 					}
-					console.info(`[CLI] ✅ Workers reloaded`);
+					logger.info("Workers reloaded", {});
 				}
 			},
 		});
 
 		// Initial build and start watching
-		console.info(`[CLI] 🔄 Building ${entrypoint}...`);
+		logger.info("Building", {entrypoint});
 		await watcher.start();
-		console.info(`[CLI] ✅ Build complete, watching for changes...`);
+		logger.info("Build complete, watching for changes", {});
 
 		// Load ServiceWorker app from built output
 		const builtEntrypoint = `${outDir}/server/app.js`;
@@ -86,14 +110,14 @@ export async function developCommand(entrypoint, options) {
 		});
 
 		await server.listen();
-		console.info(
-			`[CLI] ✅ Server running at http://${options.host}:${options.port}`,
-		);
-		console.info(`[CLI] ➡️  Serving: ${entrypoint}`);
+		logger.info("Server running", {
+			url: `http://${options.host}:${options.port}`,
+		});
+		logger.info("Serving", {entrypoint});
 
 		// Graceful shutdown
 		process.on("SIGINT", async () => {
-			console.info("\n[CLI] ⏹️  Shutting down...");
+			logger.info("Shutting down", {});
 			await watcher.stop();
 			await serviceWorker.dispose();
 			await platformInstance.dispose();
@@ -101,11 +125,10 @@ export async function developCommand(entrypoint, options) {
 			process.exit(0);
 		});
 	} catch (error) {
-		console.error(
-			`[CLI] ❌ Failed to start development server:`,
-			error.message,
-		);
-		console.error("Stack trace:", error.stack);
+		logger.error("Failed to start development server", {
+			error: error.message,
+			stack: error.stack,
+		});
 		process.exit(1);
 	}
 }

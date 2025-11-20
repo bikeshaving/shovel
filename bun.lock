@@ -6,6 +6,7 @@
       "name": "@b9g/shovel",
       "dependencies": {
         "@clack/prompts": "^0.7.0",
+        "@logtape/logtape": "^1.2.0",
         "commander": "^13.1.0",
         "esbuild": "^0.19.12",
         "magic-string": "^0.30.5",
@@ -20,6 +21,7 @@
         "@b9g/filesystem": "workspace:*",
         "@b9g/http-errors": "workspace:*",
         "@b9g/libuild": "0.1.15",
+        "@b9g/logging": "workspace:*",
         "@b9g/platform": "workspace:*",
         "@b9g/platform-bun": "workspace:*",
         "@b9g/platform-cloudflare": "workspace:*",
@@ -209,6 +211,10 @@
         "bun-types": "latest",
       },
     },
+    "packages/logging": {
+      "name": "@b9g/logging",
+      "version": "0.1.0",
+    },
     "packages/match-pattern": {
       "name": "@b9g/match-pattern",
       "version": "0.1.6",
@@ -391,6 +397,8 @@
 
     "@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
 
+    "@b9g/logging": ["@b9g/logging@workspace:packages/logging"],
+
     "@b9g/match-pattern": ["@b9g/match-pattern@workspace:packages/match-pattern"],
 
     "@b9g/node-webworker": ["@b9g/node-webworker@workspace:packages/node-webworker"],
@@ -486,6 +494,8 @@
     "@humanwhocodes/retry": ["@humanwhocodes/retry@0.4.3", "", {}, "sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ=="],
 
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
+
+    "@logtape/logtape": ["@logtape/logtape@1.2.0", "", {}, "sha512-L7aXBYrxpSUQcsZm/hCuh5REN+dckxmPmH7x7eCROiLAHUSPzc7AhbsxsZLDsXMM4ggtbmS3sUQVa+blfF4sZA=="],
 
     "@nodelib/fs.scandir": ["@nodelib/fs.scandir@2.1.5", "", { "dependencies": { "@nodelib/fs.stat": "2.0.5", "run-parallel": "^1.1.9" } }, "sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g=="],
 

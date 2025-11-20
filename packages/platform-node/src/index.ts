@@ -23,6 +23,9 @@ import {NodeBucket} from "@b9g/filesystem/node.js";
 import * as Http from "http";
 import * as Path from "path";
 import * as Os from "os";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["platform-node"]);
 
 // Re-export common platform types
 export type {
@@ -133,10 +136,9 @@ export class NodePlatform extends BasePlatform {
 			await this.#workerPool.terminate();
 		}
 		const workerCount = options.workerCount || 1;
-		console.info(
-			"[Platform-Node] Creating ServiceWorkerPool with entryPath:",
+		logger.info("Creating ServiceWorker pool", {
 			entryPath,
-		);
+		});
 		this.#workerPool = new ServiceWorkerPool(
 			{
 				workerCount,
@@ -168,14 +170,14 @@ export class NodePlatform extends BasePlatform {
 				return platform.#workerPool.handleRequest(request);
 			},
 			install: async () => {
-				console.info(
-					"[Platform-Node] ServiceWorker installed via Worker threads",
-				);
+				logger.info("ServiceWorker installed", {
+					method: "worker_threads",
+				});
 			},
 			activate: async () => {
-				console.info(
-					"[Platform-Node] ServiceWorker activated via Worker threads",
-				);
+				logger.info("ServiceWorker activated", {
+					method: "worker_threads",
+				});
 			},
 			get ready() {
 				return workerPool?.ready ?? false;
@@ -185,13 +187,13 @@ export class NodePlatform extends BasePlatform {
 					await platform.#workerPool.terminate();
 					platform.#workerPool = undefined;
 				}
-				console.info("[Platform-Node] ServiceWorker disposed");
+				logger.info("ServiceWorker disposed", {});
 			},
 		};
 
-		console.info(
-			"[Platform-Node] ServiceWorker loaded with Worker threads and coordinated caches",
-		);
+		logger.info("ServiceWorker loaded", {
+			features: ["worker_threads", "coordinated_caches"],
+		});
 		return instance;
 	}
 
@@ -284,7 +286,10 @@ export class NodePlatform extends BasePlatform {
 					res.end();
 				}
 			} catch (error) {
-				console.error("[Platform-Node] Request error:", error);
+				logger.error("Request error", {
+					error: error instanceof Error ? error.message : String(error),
+					stack: error instanceof Error ? error.stack : undefined,
+				});
 				res.statusCode = 500;
 				res.setHeader("Content-Type", "text/plain");
 				res.end("Internal Server Error");
@@ -303,7 +308,11 @@ export class NodePlatform extends BasePlatform {
 						if (addr && typeof addr === "object") {
 							actualPort = addr.port;
 						}
-						console.info(`🚀 Server running at http://${host}:${actualPort}`);
+						logger.info("Server started", {
+							host,
+							port: actualPort,
+							url: `http://${host}:${actualPort}`,
+						});
 						isListening = true;
 						resolve();
 					});
