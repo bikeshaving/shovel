@@ -37,33 +37,30 @@ export class PostMessageCache extends Cache {
 		>();
 		this.#name = name;
 
-		// Platform-agnostic worker thread detection
-		// __SHOVEL_WORKER__ is set by runtime.ts when running in actual worker threads
-		const isMainThread = typeof (globalThis as any).__SHOVEL_WORKER__ === "undefined";
+		// Standard Web Worker detection using WorkerGlobalScope
+		// WorkerGlobalScope is only defined in worker contexts (installed by ShovelGlobalScope.install())
+		const isMainThread = typeof (globalThis as any).WorkerGlobalScope === "undefined";
 
 		if (isMainThread) {
 			throw new Error("PostMessageCache should only be used in worker threads");
 		}
 
-
 		// Listen for responses from main thread using Web Workers API
 		// In worker contexts, wrap the existing onmessage handler to also handle cache messages
-		if (typeof (globalThis as any).__SHOVEL_WORKER__ !== "undefined") {
-			const existingHandler = (globalThis as any).onmessage;
-			(globalThis as any).onmessage = (event: MessageEvent) => {
-				const message = event.data;
-				if (
-					message.type === "cache:response" ||
-					message.type === "cache:error"
-				) {
-					this.#handleResponse(message);
-				}
-				// Call the existing handler if it exists
-				if (existingHandler) {
-					existingHandler.call(globalThis, event);
-				}
-			};
-		}
+		const existingHandler = (globalThis as any).onmessage;
+		(globalThis as any).onmessage = (event: MessageEvent) => {
+			const message = event.data;
+			if (
+				message.type === "cache:response" ||
+				message.type === "cache:error"
+			) {
+				this.#handleResponse(message);
+			}
+			// Call the existing handler if it exists
+			if (existingHandler) {
+				existingHandler.call(globalThis, event);
+			}
+		};
 	}
 
 	#handleResponse(message: any) {

@@ -1081,6 +1081,18 @@ export interface ShovelGlobalScopeOptions {
 }
 
 /**
+ * Base class for all worker global scopes
+ * Part of the Web Worker standard - used for worker context detection
+ */
+export class WorkerGlobalScope {}
+
+/**
+ * Global scope for dedicated workers
+ * Part of the Web Worker standard - extends WorkerGlobalScope
+ */
+export class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
+
+/**
  * ShovelGlobalScope implements ServiceWorkerGlobalScope
  *
  * This is the `self` object in Shovel ServiceWorker applications.
@@ -1331,6 +1343,11 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	 * Sets up globalThis with all ServiceWorker globals
 	 */
 	install(): void {
+		// Install standard Worker global scope constructors for detection
+		// This allows standard detection: typeof WorkerGlobalScope !== 'undefined'
+		(globalThis as any).WorkerGlobalScope = WorkerGlobalScope;
+		(globalThis as any).DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
+
 		// Set self and event listeners
 		// Note: In worker contexts, this will override the native WorkerGlobalScope
 		// We add postMessage delegation below to preserve worker communication
@@ -1369,14 +1386,6 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["worker"]);
-
-// Detect if we're in a worker context by checking for Worker-specific globals
-// This must be done as early as possible, before any cache creation
-// We check for 'onmessage' in globalThis (which exists in workers but not main thread)
-// Note: We use 'in globalThis' instead of 'typeof' to avoid tree-shaking
-if ('onmessage' in globalThis) {
-	(globalThis as any).__SHOVEL_WORKER__ = true;
-}
 
 import type {
 	WorkerMessage,
@@ -1503,8 +1512,10 @@ async function registerStandardBuckets(): Promise<void> {
 // Create context-aware cache storage
 // In worker threads: Use PostMessageCache for coordination with main thread
 // In main thread: Use MemoryCache directly
+// Detection uses standard Web Worker API: WorkerGlobalScope is only defined on globalThis in worker contexts
 const caches: CacheStorage = new CustomCacheStorage((name: string) => {
-	const isWorkerThread = typeof (globalThis as any).__SHOVEL_WORKER__ !== "undefined";
+	// Check globalThis.WorkerGlobalScope, not the local class definition
+	const isWorkerThread = typeof (globalThis as any).WorkerGlobalScope !== "undefined";
 
 	if (isWorkerThread) {
 		return new PostMessageCache(name, {
