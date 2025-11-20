@@ -13,7 +13,20 @@ import {
 	cloudflareWorkerBanner,
 	cloudflareWorkerFooter,
 } from "@b9g/platform-cloudflare";
-import {getLogger} from "@logtape/logtape";
+import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
+import {AsyncContext} from "@b9g/asynccontext-polyfill";
+
+// Configure LogTape for build command
+await configure({
+	contextLocalStorage: new AsyncContext.Variable(),
+	sinks: {
+		console: getConsoleSink(),
+	},
+	loggers: [
+		{category: ["cli"], level: "info", sinks: ["console"]},
+		{category: ["assets"], level: "info", sinks: ["console"]},
+	],
+});
 
 const logger = getLogger(["cli"]);
 
@@ -76,7 +89,7 @@ export async function buildForProduction({
 	});
 
 	if (verbose) {
-		logger.info("Built app", {outputDir: buildContext.outputDir});
+		logger.info("Built app to", {outputDir: buildContext.outputDir});
 		logger.info("Server files", {dir: buildContext.serverDir});
 		logger.info("Asset files", {dir: buildContext.assetsDir});
 	}
@@ -98,6 +111,12 @@ async function initializeBuild({
 	}
 	if (!outDir) {
 		throw new Error("Output directory is required");
+	}
+
+	if (verbose) {
+		logger.info("Entry:", {path: entrypoint});
+		logger.info("Output:", {dir: outDir});
+		logger.info("Target platform:", {platform});
 	}
 
 	const entryPath = resolve(entrypoint);
@@ -124,10 +143,10 @@ async function initializeBuild({
 	const workspaceRoot = await findWorkspaceRoot();
 
 	if (verbose) {
-		logger.info("Entry", {entryPath});
-		logger.info("Output", {outputDir});
-		logger.info("Target platform", {platform});
-		logger.info("Workspace root", {workspaceRoot});
+		logger.info("Entry:", {entryPath});
+		logger.info("Output:", {outputDir});
+		logger.info("Target platform:", {platform});
+		logger.info("Workspace root:", {workspaceRoot});
 	}
 
 	// Ensure output directory structure exists
@@ -426,7 +445,7 @@ async function createWorkerEntry(userEntryPath, workerCount, platform) {
  */
 async function logBundleAnalysis(metafile) {
 	try {
-		logger.info("Bundle analysis", {});
+		logger.info("Bundle analysis:", {});
 		const analysis = await esbuild.analyzeMetafile(metafile);
 		logger.info(analysis, {});
 	} catch (error) {

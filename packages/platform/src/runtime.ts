@@ -1356,10 +1356,11 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 // Worker Bootstrap - Runs when loaded as Worker entrypoint
 // ============================================================================
 
-import type {
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["worker"]);
+
+import type {
 	WorkerMessage,
 	WorkerRequest,
 	WorkerResponse,

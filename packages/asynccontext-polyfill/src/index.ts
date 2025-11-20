@@ -75,6 +75,16 @@ export class AsyncVariable<T> {
   }
 
   /**
+   * Get the current context value (AsyncLocalStorage-compatible)
+   * This method provides compatibility with libraries expecting AsyncLocalStorage
+   *
+   * @returns The current context value (without default value)
+   */
+  getStore(): T | undefined {
+    return this.#storage.getStore();
+  }
+
+  /**
    * Get the name of this variable (for debugging)
    */
   get name(): string | undefined {

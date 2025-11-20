@@ -125,7 +125,7 @@ export class Worker {
 	 */
 	postMessage(message: any, transfer?: Transferable[]): void {
 		if (transfer && transfer.length > 0) {
-			logger.warn("Transferable objects not fully supported", {});
+			console.warn("Transferable objects not fully supported");
 		}
 		this.#nodeWorker.postMessage(message);
 	}
@@ -144,7 +144,7 @@ export class Worker {
 		} else if (type === "error") {
 			this.#errorListeners.add(listener as (event: ErrorEvent) => void);
 		} else {
-			logger.warn("Unsupported event type", {type});
+			console.warn(`Unsupported event type: ${type}`);
 		}
 	}
 
