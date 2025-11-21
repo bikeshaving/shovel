@@ -19,12 +19,6 @@ export const DEFAULTS = {
 		MAX_ENTRIES: 1000,
 		MAX_SIZE: 50 * 1024 * 1024, // 50MB
 		TTL: 300000, // 5 minutes
-		HEADERS: {
-			ASSETS: "public, max-age=31536000", // 1 year
-			PAGES: "public, max-age=300", // 5 minutes
-			API: "public, max-age=180", // 3 minutes
-			ABOUT: "public, max-age=3600", // 1 hour
-		},
 	},
 	PATHS: {
 		OUTPUT_DIR: "dist",

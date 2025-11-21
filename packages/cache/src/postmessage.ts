@@ -47,6 +47,8 @@ export interface PostMessageCacheOptions {
 	maxEntries?: number;
 	/** Maximum age of entries in milliseconds */
 	maxAge?: number;
+	/** Timeout for cache operations in milliseconds (default: 30000) */
+	timeout?: number;
 }
 
 // Global request ID counter shared across all PostMessageCache instances
