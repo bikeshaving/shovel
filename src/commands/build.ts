@@ -24,6 +24,7 @@ await configure({
 		console: getConsoleSink(),
 	},
 	loggers: [
+		{category: ["logtape", "meta"], sinks: []},
 		{category: ["cli"], level: "info", sinks: ["console"]},
 		{category: ["assets"], level: "info", sinks: ["console"]},
 	],

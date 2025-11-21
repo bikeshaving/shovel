@@ -12,6 +12,7 @@ await configure({
 		console: getConsoleSink(),
 	},
 	loggers: [
+		{category: ["logtape", "meta"], sinks: []},
 		{category: ["platform-node"], level: "debug", sinks: ["console"]},
 		{category: ["platform-bun"], level: "debug", sinks: ["console"]},
 		{category: ["platform-cloudflare"], level: "debug", sinks: ["console"]},
