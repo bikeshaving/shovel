@@ -113,9 +113,8 @@ function startDevServer(fixture, port, extraArgs = []) {
 
 	serverProcess.stderr.on("data", (data) => {
 		stderrOutput += data.toString();
-		if (process.env.DEBUG_TESTS) {
-			console.error("[STDERR]", data.toString());
-		}
+		// Always log stderr to help debug issues
+		console.error("[STDERR]", data.toString());
 	});
 
 	// If process exits early, it's likely an error
@@ -188,6 +187,12 @@ async function waitForServer(port, serverProcess, timeoutMs = 8000) {
 					console.info(`[HTTP] Got text response, length: ${text.length}`);
 				}
 				return text;
+			} else {
+				// Log 500 errors to help debug
+				const errorBody = await response.text();
+				if (process.env.DEBUG_TESTS) {
+					console.error(`[HTTP] 500 error response: ${errorBody}`);
+				}
 			}
 		} catch (err) {
 			if (process.env.DEBUG_TESTS && Date.now() - startTime > 1000) {
