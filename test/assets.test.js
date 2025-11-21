@@ -229,7 +229,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Check that assets directory and manifest were created
-			const assetsDir = join(outDir, "assets");
+			const assetsDir = join(outDir, "static", "assets");
 			const manifestPath = join(outDir, "server", "asset-manifest.json");
 
 			expect(

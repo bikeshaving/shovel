@@ -90,7 +90,7 @@ self.addEventListener("fetch", (event) => {
 			expect(
 				await fileExists(join(outDir, "server", "asset-manifest.json")),
 			).toBe(true);
-			expect(await fileExists(join(outDir, "assets"))).toBe(true);
+			expect(await fileExists(join(outDir, "static", "assets"))).toBe(true);
 
 			// Check app.js has shebang and bootstrap
 			const appContent = await FS.readFile(
@@ -319,7 +319,7 @@ self.addEventListener("fetch", (event) => {
 			expect(
 				await fileExists(join(outDir, "server", "asset-manifest.json")),
 			).toBe(true);
-			expect(await fileExists(join(outDir, "assets"))).toBe(true);
+			expect(await fileExists(join(outDir, "static", "assets"))).toBe(true);
 
 			// Validate app.js content
 			const appContent = await FS.readFile(

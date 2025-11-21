@@ -45,7 +45,8 @@ const BUILD_DEFAULTS = {
 // Directory structure for separate buckets
 const BUILD_STRUCTURE = {
 	serverDir: "server",
-	assetsDir: "assets",
+	staticDir: "static",
+	assetsDir: "static/assets",
 };
 
 /**
@@ -154,6 +155,7 @@ async function initializeBuild({
 	try {
 		await mkdir(outputDir, {recursive: true});
 		await mkdir(join(outputDir, BUILD_STRUCTURE.serverDir), {recursive: true});
+		await mkdir(join(outputDir, BUILD_STRUCTURE.staticDir), {recursive: true});
 		await mkdir(join(outputDir, BUILD_STRUCTURE.assetsDir), {recursive: true});
 	} catch (error) {
 		throw new Error(

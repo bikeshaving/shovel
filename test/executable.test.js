@@ -303,8 +303,8 @@ test(
 			await createTempFile(testDir, "client.js", jsContent);
 
 			const serviceWorkerContent = `
-import "./style.css" with { assetBase: "assets" };
-import "./client.js" with { assetBase: "static" };
+import "./style.css" with { assetBase: "/assets" };
+import "./client.js" with { assetBase: "/assets" };
 
 // Load asset manifest at startup
 let assetManifest = null;
@@ -354,24 +354,25 @@ self.addEventListener("fetch", async (event) => {
 			headers: { "content-type": "text/html; charset=utf-8" }
 		}));
 	} else if (url.pathname.startsWith("/assets/")) {
-		// Serve assets from buckets using asset manifest
+		// Serve assets from static bucket using asset manifest
 		const requestedAsset = url.pathname.slice("/assets/".length);
 		const actualAsset = getAssetUrl(requestedAsset);
-		
+
 		event.respondWith((async () => {
 			try {
-				const assetsBucket = await self.buckets.getDirectoryHandle("assets");
-				const fileHandle = await assetsBucket.getFileHandle(actualAsset);
+				const staticBucket = await self.buckets.open("static");
+				const assetsDir = await staticBucket.getDirectoryHandle("assets");
+				const fileHandle = await assetsDir.getFileHandle(actualAsset);
 				const file = await fileHandle.getFile();
 				const content = await file.text();
-				
+
 				let contentType = "text/plain";
 				if (requestedAsset.endsWith(".css")) {
 					contentType = "text/css";
 				} else if (requestedAsset.endsWith(".js")) {
 					contentType = "application/javascript";
 				}
-				
+
 				return new Response(content, {
 					headers: { "content-type": contentType }
 				});
@@ -585,7 +586,8 @@ self.addEventListener("fetch", (event) => {
 			// Verify deployment artifacts
 			const appPath = join(outDir, "server", "index.js");
 			const packagePath = join(outDir, "server", "package.json");
-			const assetsPath = join(outDir, "assets");
+			const staticPath = join(outDir, "static");
+			const assetsPath = join(outDir, "static", "assets");
 
 			// Check all required files exist
 			expect(
@@ -595,6 +597,11 @@ self.addEventListener("fetch", (event) => {
 			).toBe(true);
 			expect(
 				await FS.access(packagePath)
+					.then(() => true)
+					.catch(() => false),
+			).toBe(true);
+			expect(
+				await FS.access(staticPath)
 					.then(() => true)
 					.catch(() => false),
 			).toBe(true);

@@ -185,7 +185,7 @@ self.addEventListener("fetch", (event) => {
 
 			// Verify output structure
 			expect(await fileExists(join(outDir, "server", "server.js"))).toBe(true);
-			expect(await fileExists(join(outDir, "assets"))).toBe(true);
+			expect(await fileExists(join(outDir, "static", "assets"))).toBe(true);
 			expect(
 				await fileExists(join(outDir, "server", "asset-manifest.json")),
 			).toBe(true);

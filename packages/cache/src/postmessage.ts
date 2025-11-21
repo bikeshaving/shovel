@@ -46,21 +46,19 @@ export class PostMessageCache extends Cache {
 		}
 
 		// Listen for responses from main thread using Web Workers API
-		// In worker contexts, wrap the existing onmessage handler to also handle cache messages
-		const existingHandler = (globalThis as any).onmessage;
-		(globalThis as any).onmessage = (event: MessageEvent) => {
-			const message = event.data;
-			if (
-				message.type === "cache:response" ||
-				message.type === "cache:error"
-			) {
-				this.#handleResponse(message);
-			}
-			// Call the existing handler if it exists
-			if (existingHandler) {
-				existingHandler.call(globalThis, event);
-			}
-		};
+		// Use addEventListener to be compatible with other message handlers
+		const parentPort = getParentPort();
+		if (parentPort && parentPort.addEventListener) {
+			parentPort.addEventListener("message", (event: MessageEvent) => {
+				const message = event.data;
+				if (
+					message.type === "cache:response" ||
+					message.type === "cache:error"
+				) {
+					this.#handleResponse(message);
+				}
+			});
+		}
 	}
 
 	#handleResponse(message: any) {

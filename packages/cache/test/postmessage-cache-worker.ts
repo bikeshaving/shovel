@@ -12,6 +12,13 @@ const caches = new Map<string, MemoryCache>();
 // Set up message handlers for self
 const messageHandlers: Array<(event: MessageEvent) => void> = [];
 
+// Set up WorkerGlobalScope for standard worker detection
+// This simulates what ShovelGlobalScope.install() does
+class WorkerGlobalScope {}
+class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
+(globalThis as any).WorkerGlobalScope = WorkerGlobalScope;
+(globalThis as any).DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
+
 // Set up Web Worker globals (must happen before PostMessageCache import is used)
 globalThis.self = {
 	...globalThis.self,
