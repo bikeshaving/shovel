@@ -85,13 +85,6 @@ export interface RouteConfig {
 	pattern: string;
 }
 
-/**
- * Router configuration options
- */
-export interface RouterOptions {
-	// No options currently needed - reserved for future use
-}
-
 // Internal types (not exported from main package)
 
 /**
@@ -266,7 +259,7 @@ export class Router {
 	#executor: LinearExecutor | null;
 	#dirty: boolean;
 
-	constructor(_options?: RouterOptions) {
+	constructor() {
 		this.#routes = [];
 		this.#middlewares = [];
 		this.#executor = null;

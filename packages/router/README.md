@@ -111,10 +111,8 @@ router.use(cacheMiddleware);
 #### Constructor
 
 ```javascript
-new Router(options?)
+new Router()
 ```
-
-Options: Currently no options needed (reserved for future use)
 
 #### Methods
 
