@@ -21,7 +21,6 @@ import {
 import {CustomCacheStorage} from "@b9g/cache";
 import {PostMessageCache} from "@b9g/cache/postmessage.js";
 import {FileSystemRegistry} from "@b9g/filesystem";
-import {MemoryBucket} from "@b9g/filesystem/memory.js";
 import {NodeBucket} from "@b9g/filesystem/node.js";
 import * as Path from "path";
 import * as Os from "os";
@@ -77,27 +76,12 @@ export class BunPlatform extends BasePlatform {
 			...options,
 		};
 
-		// Register filesystem adapters for Bun
-		FileSystemRegistry.register("memory", new MemoryBucket());
+		// Register well-known filesystem buckets
+		FileSystemRegistry.register("tmp", new NodeBucket(Os.tmpdir()));
 		FileSystemRegistry.register(
-			"node",
+			"dist",
 			new NodeBucket(Path.join(this.#options.cwd, "dist")),
 		);
-
-		// Register standard tmp bucket using OS temp directory
-		FileSystemRegistry.register("tmp", new NodeBucket(Os.tmpdir()));
-
-		// Register Bun's native S3 adapter if available
-		try {
-			// Note: This is a placeholder for Bun's S3 adapter
-			// The actual implementation would need to be imported from a Bun-specific package
-			logger.warn(
-				"S3 adapter not implemented yet, using memory filesystem",
-				{},
-			);
-		} catch {
-			logger.warn("S3Client not available, using memory filesystem", {});
-		}
 	}
 
 	/**
