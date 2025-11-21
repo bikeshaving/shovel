@@ -1,14 +1,14 @@
 # @b9g/router
 
-**Universal request router for ServiceWorker applications. Built on web standards with cache-aware routing and generator-based middleware.**
+**Universal request router for ServiceWorker applications. Built on web standards with generator-based middleware.**
 
 ## Features
 
 - **ServiceWorker Compatible**: Designed for ServiceWorker `fetch` event handling
 - **Generator Middleware**: Uses `yield` for flow control (no Express-style `next()`)
-- **Cache-Aware Routing**: First-class Cache API integration with automatic population  
-- **Web Standards**: Built on URLPattern, Request, Response, and Cache APIs
+- **Web Standards**: Built on URLPattern, Request, and Response APIs
 - **Universal**: Same code runs in browsers, Node.js, Bun, and edge platforms
+- **Simple Context**: Route parameters and middleware-extensible context
 
 ## Installation
 
@@ -36,47 +36,72 @@ router.get('/posts/:id', (request, context) => {
 const response = await router.handler(request);
 ```
 
-## Cache-Aware Routing
-
-```javascript
-import { Router } from '@b9g/router';
-import { CacheStorage, MemoryCache } from '@b9g/cache';
-
-// Setup cache storage
-const caches = new CacheStorage();
-caches.register('posts', () => new MemoryCache('posts'));
-
-const router = new Router({ caches });
-
-// Route with cache declaration
-router.route({
-  pattern: '/api/posts/:id',
-  cache: { name: 'posts' }
-}).get(async (request, context) => {
-  // context.cache is the opened 'posts' cache
-  const post = await db.posts.get(context.params.id);
-  return Response.json(post);
-});
-```
-
 ## Middleware
+
+The router supports generator-based middleware with `yield` for clean flow control:
 
 ```javascript
 // Global middleware using generator pattern
 router.use(async function* (request, context) {
   console.log(`${request.method} ${request.url}`);
   const response = yield request;
+  console.log(`${response.status}`);
   return response;
 });
 
-// Route-specific middleware
-router.route('/admin/*')
-  .use(authMiddleware)
-  .use(rateLimitMiddleware)
-  .get(adminHandler);
+// Function middleware (can short-circuit)
+router.use(async (request, context) => {
+  if (!request.headers.get('Authorization')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+  // Return null/undefined to continue to next middleware
+  return null;
+});
+```
 
-// Pattern-based middleware
-router.use('/api/*', corsMiddleware);
+## Caching
+
+The router doesn't provide built-in cache integration. For caching, use the global `caches` API directly in your handlers:
+
+```javascript
+router.get('/api/posts/:id', async (request, context) => {
+  // Use global caches API
+  const cache = await caches.open('api-v1');
+
+  const cached = await cache.match(request);
+  if (cached) return cached;
+
+  const post = await db.posts.get(context.params.id);
+  const response = Response.json(post);
+
+  await cache.put(request, response.clone());
+  return response;
+});
+```
+
+Or implement caching as middleware:
+
+```javascript
+// Cache middleware
+async function* cacheMiddleware(request, context) {
+  if (request.method !== 'GET') {
+    return yield request;
+  }
+
+  const cache = await caches.open('pages-v1');
+  const cached = await cache.match(request);
+  if (cached) return cached;
+
+  const response = yield request;
+
+  if (response.ok) {
+    await cache.put(request, response.clone());
+  }
+
+  return response;
+}
+
+router.use(cacheMiddleware);
 ```
 
 ## API Reference
@@ -89,19 +114,19 @@ router.use('/api/*', corsMiddleware);
 new Router(options?)
 ```
 
-Options:
-- `caches`: CacheStorage instance for cache-aware routing
+Options: Currently no options needed (reserved for future use)
 
 #### Methods
 
-##### `route(pattern, options?)`
+##### `route(pattern)`
 
 Create a route builder for the given pattern.
 
 ```javascript
-router.route('/api/posts/:id', { cache: { name: 'posts' } })
-  .use(middleware)
-  .get(handler);
+router.route('/api/posts/:id')
+  .get(handler)
+  .post(handler)
+  .delete(handler);
 ```
 
 ##### HTTP Method Shortcuts
@@ -116,13 +141,21 @@ router.head(pattern, handler)
 router.options(pattern, handler)
 ```
 
-##### `use(pattern?, middleware)`
+##### `use(middleware)`
 
-Add middleware globally or for specific patterns.
+Add global middleware.
+
+```javascript
+router.use(loggingMiddleware);
+```
 
 ##### `handler(request): Promise<Response>`
 
 Bound handler function for processing requests.
+
+```javascript
+const response = await router.handler(request);
+```
 
 ### Context Object
 
@@ -131,10 +164,17 @@ Handler and middleware functions receive a context object:
 ```javascript
 {
   params: Record<string, string>,    // URL parameters
-  cache?: Cache,                     // Opened cache for this route
-  caches?: CacheStorage,            // All available caches
-  // ... additional context
+  // Middleware can add arbitrary properties
 }
+```
+
+Middleware can extend context with custom properties:
+
+```javascript
+router.use(async function* (request, context) {
+  context.user = await authenticate(request);
+  return yield request;
+});
 ```
 
 ## Examples
@@ -144,7 +184,7 @@ Handler and middleware functions receive a context object:
 ```javascript
 const router = new Router();
 
-router.get('/api/health', () => 
+router.get('/api/health', () =>
   Response.json({ status: 'ok' })
 );
 
@@ -160,38 +200,41 @@ router.post('/api/posts', async (request) => {
 });
 ```
 
-### With Caching
+### Authentication Middleware
 
 ```javascript
-import { Router } from '@b9g/router';
-import { CacheStorage, MemoryCache } from '@b9g/cache';
+const router = new Router();
 
-const caches = new CacheStorage();
-caches.register('api', () => new MemoryCache('api'));
-
-const router = new Router({ caches });
-
-// Cache-aware middleware
+// Add user to context
 router.use(async function* (request, context) {
-  if (request.method === 'GET' && context.cache) {
-    const cached = await context.cache.match(request);
-    if (cached) return cached;
+  const token = request.headers.get('Authorization')?.replace('Bearer ', '');
+  if (token) {
+    context.user = await verifyToken(token);
   }
-  
-  const response = yield request;
-  
-  if (request.method === 'GET' && context.cache && response.ok) {
-    await context.cache.put(request, response.clone());
-  }
-  
-  return response;
+  return yield request;
 });
 
-router.route('/api/posts/:id', { cache: { name: 'api' } })
-  .get(async (request, context) => {
-    const post = await db.posts.get(context.params.id);
-    return Response.json(post);
-  });
+// Protected route
+router.get('/api/profile', async (request, context) => {
+  if (!context.user) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+  return Response.json(context.user);
+});
+```
+
+### Subrouter Mounting
+
+```javascript
+// API subrouter
+const apiRouter = new Router();
+apiRouter.get('/users', getUsersHandler);
+apiRouter.get('/posts', getPostsHandler);
+
+// Main router
+const mainRouter = new Router();
+mainRouter.mount('/api/v1', apiRouter);
+// Routes become: /api/v1/users, /api/v1/posts
 ```
 
 ## License

@@ -13,9 +13,6 @@
  */
 
 import {MatchPattern} from "@b9g/match-pattern";
-import {getLogger} from "@logtape/logtape";
-
-const logger = getLogger(["router"]);
 
 // ============================================================================
 // TYPES
@@ -23,17 +20,11 @@ const logger = getLogger(["router"]);
 
 /**
  * Context object passed to handlers and middleware
- * Contains route parameters and cache access
+ * Contains route parameters extracted from URL pattern matching
  */
 export interface RouteContext {
 	/** Route parameters extracted from URL pattern matching */
 	params: Record<string, string>;
-
-	/** Named cache for this route (if configured) */
-	cache?: import("@b9g/cache").Cache;
-
-	/** Access to all registered caches */
-	caches?: CacheStorage;
 
 	/** Middleware can add arbitrary properties for context sharing */
 	[key: string]: any;
@@ -87,31 +78,18 @@ export type HttpMethod =
 	| "OPTIONS";
 
 /**
- * Cache configuration for routes
- */
-export interface RouteCacheConfig {
-	/** Name of the cache to use for this route */
-	name: string;
-	/** Cache query options */
-	options?: import("@b9g/cache").CacheQueryOptions;
-}
-
-/**
  * Route configuration options
  */
 export interface RouteConfig {
 	/** URL pattern for the route */
 	pattern: string;
-	/** Cache configuration for this route */
-	cache?: RouteCacheConfig;
 }
 
 /**
  * Router configuration options
  */
 export interface RouterOptions {
-	/** CacheStorage instance for cache-first routing */
-	caches?: CacheStorage;
+	// No options currently needed - reserved for future use
 }
 
 // Internal types (not exported from main package)
@@ -123,7 +101,6 @@ interface RouteEntry {
 	pattern: import("@b9g/match-pattern").MatchPattern;
 	method: string;
 	handler: Handler;
-	cache?: RouteCacheConfig;
 }
 
 /**
@@ -139,7 +116,6 @@ interface MiddlewareEntry {
 interface MatchResult {
 	handler: Handler;
 	context: RouteContext;
-	cacheConfig?: RouteCacheConfig;
 }
 
 // ============================================================================
@@ -177,7 +153,6 @@ class LinearExecutor {
 						context: {
 							params: result.params,
 						},
-						cacheConfig: route.cache,
 					};
 				}
 			}
@@ -199,19 +174,17 @@ class LinearExecutor {
 class RouteBuilder {
 	#router: Router;
 	#pattern: string;
-	#cacheConfig?: RouteCacheConfig;
 
-	constructor(router: Router, pattern: string, cacheConfig?: RouteCacheConfig) {
+	constructor(router: Router, pattern: string) {
 		this.#router = router;
 		this.#pattern = pattern;
-		this.#cacheConfig = cacheConfig;
 	}
 
 	/**
 	 * Register a GET handler for this route pattern
 	 */
 	get(handler: Handler): RouteBuilder {
-		this.#router.addRoute("GET", this.#pattern, handler, this.#cacheConfig);
+		this.#router.addRoute("GET", this.#pattern, handler);
 		return this;
 	}
 
@@ -219,7 +192,7 @@ class RouteBuilder {
 	 * Register a POST handler for this route pattern
 	 */
 	post(handler: Handler): RouteBuilder {
-		this.#router.addRoute("POST", this.#pattern, handler, this.#cacheConfig);
+		this.#router.addRoute("POST", this.#pattern, handler);
 		return this;
 	}
 
@@ -227,7 +200,7 @@ class RouteBuilder {
 	 * Register a PUT handler for this route pattern
 	 */
 	put(handler: Handler): RouteBuilder {
-		this.#router.addRoute("PUT", this.#pattern, handler, this.#cacheConfig);
+		this.#router.addRoute("PUT", this.#pattern, handler);
 		return this;
 	}
 
@@ -235,7 +208,7 @@ class RouteBuilder {
 	 * Register a DELETE handler for this route pattern
 	 */
 	delete(handler: Handler): RouteBuilder {
-		this.#router.addRoute("DELETE", this.#pattern, handler, this.#cacheConfig);
+		this.#router.addRoute("DELETE", this.#pattern, handler);
 		return this;
 	}
 
@@ -243,7 +216,7 @@ class RouteBuilder {
 	 * Register a PATCH handler for this route pattern
 	 */
 	patch(handler: Handler): RouteBuilder {
-		this.#router.addRoute("PATCH", this.#pattern, handler, this.#cacheConfig);
+		this.#router.addRoute("PATCH", this.#pattern, handler);
 		return this;
 	}
 
@@ -251,7 +224,7 @@ class RouteBuilder {
 	 * Register a HEAD handler for this route pattern
 	 */
 	head(handler: Handler): RouteBuilder {
-		this.#router.addRoute("HEAD", this.#pattern, handler, this.#cacheConfig);
+		this.#router.addRoute("HEAD", this.#pattern, handler);
 		return this;
 	}
 
@@ -259,7 +232,7 @@ class RouteBuilder {
 	 * Register an OPTIONS handler for this route pattern
 	 */
 	options(handler: Handler): RouteBuilder {
-		this.#router.addRoute("OPTIONS", this.#pattern, handler, this.#cacheConfig);
+		this.#router.addRoute("OPTIONS", this.#pattern, handler);
 		return this;
 	}
 
@@ -277,7 +250,7 @@ class RouteBuilder {
 			"OPTIONS",
 		];
 		methods.forEach((method) => {
-			this.#router.addRoute(method, this.#pattern, handler, this.#cacheConfig);
+			this.#router.addRoute(method, this.#pattern, handler);
 		});
 		return this;
 	}
@@ -292,14 +265,12 @@ export class Router {
 	#middlewares: MiddlewareEntry[];
 	#executor: LinearExecutor | null;
 	#dirty: boolean;
-	#caches?: CacheStorage;
 
-	constructor(options?: RouterOptions) {
+	constructor(_options?: RouterOptions) {
 		this.#routes = [];
 		this.#middlewares = [];
 		this.#executor = null;
 		this.#dirty = false;
-		this.#caches = options?.caches;
 
 		// Initialize handler implementation
 		this.#handlerImpl = async (request: Request): Promise<Response> => {
@@ -313,16 +284,12 @@ export class Router {
 			const matchResult = this.#executor.match(request);
 
 			if (matchResult) {
-				// Route found - build context and execute middleware chain + handler
-				const context = await this.#buildContext(
-					matchResult.context,
-					matchResult.cacheConfig,
-				);
+				// Route found - execute middleware chain + handler
 				const mutableRequest = this.#createMutableRequest(request);
 				return this.#executeMiddlewareStack(
 					this.#middlewares,
 					mutableRequest,
-					context,
+					matchResult.context,
 					matchResult.handler,
 					request.url,
 					this.#executor,
@@ -394,10 +361,6 @@ export class Router {
 	 *   router.route('/api/users/:id')
 	 *     .get(getUserHandler)
 	 *     .put(updateUserHandler);
-	 *
-	 * With cache configuration:
-	 *   router.route({ pattern: '/api/users/:id', cache: { name: 'users' } })
-	 *     .get(getUserHandler);
 	 */
 	route(pattern: string): RouteBuilder;
 	route(config: RouteConfig): RouteBuilder;
@@ -405,11 +368,7 @@ export class Router {
 		if (typeof patternOrConfig === "string") {
 			return new RouteBuilder(this, patternOrConfig);
 		} else {
-			return new RouteBuilder(
-				this,
-				patternOrConfig.pattern,
-				patternOrConfig.cache,
-			);
+			return new RouteBuilder(this, patternOrConfig.pattern);
 		}
 	}
 
@@ -417,19 +376,13 @@ export class Router {
 	 * Internal method called by RouteBuilder to register routes
 	 * Public for RouteBuilder access, but not intended for direct use
 	 */
-	addRoute(
-		method: HttpMethod,
-		pattern: string,
-		handler: Handler,
-		cache?: RouteCacheConfig,
-	): void {
+	addRoute(method: HttpMethod, pattern: string, handler: Handler): void {
 		const matchPattern = new MatchPattern(pattern);
 
 		this.#routes.push({
 			pattern: matchPattern,
 			method: method.toUpperCase(),
 			handler: handler,
-			cache,
 		});
 		this.#dirty = true;
 	}
@@ -465,10 +418,7 @@ export class Router {
 		if (matchResult) {
 			// Route found - use its handler and context
 			handler = matchResult.handler;
-			context = await this.#buildContext(
-				matchResult.context,
-				matchResult.cacheConfig,
-			);
+			context = matchResult.context;
 		} else {
 			// No route found - use 404 handler and empty context
 			handler = async () => new Response("Not Found", {status: 404});
@@ -491,38 +441,6 @@ export class Router {
 		}
 
 		return response;
-	}
-
-	/**
-	 * Build the complete route context including cache access
-	 */
-	async #buildContext(
-		baseContext: RouteContext,
-		cacheConfig?: RouteCacheConfig,
-	): Promise<RouteContext> {
-		const context: RouteContext = {...baseContext};
-
-		if (this.#caches) {
-			context.caches = this.#caches;
-
-			// Open the named cache if configured for this route
-			if (cacheConfig?.name) {
-				try {
-					// CacheStorage.open() returns Web API Cache which is compatible with our Cache interface
-					context.cache = (await this.#caches.open(
-						cacheConfig.name,
-					)) as import("@b9g/cache").Cache;
-				} catch (error) {
-					logger.warn("Failed to open cache", {
-						cacheName: cacheConfig.name,
-						error,
-					});
-					// Continue without cache - don't fail the request
-				}
-			}
-		}
-
-		return context;
 	}
 
 	/**
@@ -572,7 +490,6 @@ export class Router {
 				pattern: new MatchPattern(mountedPattern),
 				method: subroute.method,
 				handler: subroute.handler,
-				cache: subroute.cache,
 			});
 		}
 
@@ -701,10 +618,7 @@ export class Router {
 
 				if (newMatchResult) {
 					finalHandler = newMatchResult.handler;
-					finalContext = await this.#buildContext(
-						newMatchResult.context,
-						newMatchResult.cacheConfig || undefined,
-					);
+					finalContext = newMatchResult.context;
 				}
 			}
 
