@@ -97,7 +97,10 @@ export class BunPlatform extends BasePlatform {
 		try {
 			// Note: This is a placeholder for Bun's S3 adapter
 			// The actual implementation would need to be imported from a Bun-specific package
-			logger.warn("S3 adapter not implemented yet, using memory filesystem", {});
+			logger.warn(
+				"S3 adapter not implemented yet, using memory filesystem",
+				{},
+			);
 		} catch {
 			logger.warn("S3Client not available, using memory filesystem", {});
 		}

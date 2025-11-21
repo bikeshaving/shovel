@@ -5,6 +5,40 @@ function getParentPort(): typeof self | null {
 	return typeof self !== "undefined" ? self : null;
 }
 
+// Global message handler setup - only set up once for all PostMessageCache instances
+let messageHandlerSetup = false;
+const pendingRequestsRegistry = new Map<
+	number,
+	{resolve: (value: any) => void; reject: (error: any) => void}
+>();
+
+function setupMessageHandler() {
+	if (messageHandlerSetup) return;
+	messageHandlerSetup = true;
+
+	const parentPort = getParentPort();
+	if (parentPort && parentPort.addEventListener) {
+		parentPort.addEventListener("message", (event: MessageEvent) => {
+			const message = event.data;
+			if (message.type === "cache:response" || message.type === "cache:error") {
+				handleCacheResponse(message);
+			}
+		});
+	}
+}
+
+function handleCacheResponse(message: any) {
+	const pending = pendingRequestsRegistry.get(message.requestId);
+	if (pending) {
+		pendingRequestsRegistry.delete(message.requestId);
+		if (message.type === "cache:error") {
+			pending.reject(new Error(message.error));
+		} else {
+			pending.resolve(message.result);
+		}
+	}
+}
+
 /**
  * Configuration options for PostMessageCache
  */
@@ -15,63 +49,32 @@ export interface PostMessageCacheOptions {
 	maxAge?: number;
 }
 
+// Global request ID counter shared across all PostMessageCache instances
+let globalRequestId = 0;
+
 /**
  * Worker-side cache that forwards operations to main thread via postMessage
  * Only used for MemoryCache in multi-worker environments
  */
 export class PostMessageCache extends Cache {
-	#requestId: number;
-	#pendingRequests: Map<
-		number,
-		{resolve: (value: any) => void; reject: (error: Error) => void}
-	>;
 	#name: string;
 
 	constructor(name: string, _options: PostMessageCacheOptions = {}) {
 		super();
 
-		this.#requestId = 0;
-		this.#pendingRequests = new Map<
-			number,
-			{resolve: (value: any) => void; reject: (error: Error) => void}
-		>();
 		this.#name = name;
 
 		// Standard Web Worker detection using WorkerGlobalScope
 		// WorkerGlobalScope is only defined in worker contexts (installed by ShovelGlobalScope.install())
-		const isMainThread = typeof (globalThis as any).WorkerGlobalScope === "undefined";
+		const isMainThread =
+			typeof (globalThis as any).WorkerGlobalScope === "undefined";
 
 		if (isMainThread) {
 			throw new Error("PostMessageCache should only be used in worker threads");
 		}
 
-		// Listen for responses from main thread using Web Workers API
-		// Use addEventListener to be compatible with other message handlers
-		const parentPort = getParentPort();
-		if (parentPort && parentPort.addEventListener) {
-			parentPort.addEventListener("message", (event: MessageEvent) => {
-				const message = event.data;
-				if (
-					message.type === "cache:response" ||
-					message.type === "cache:error"
-				) {
-					this.#handleResponse(message);
-				}
-			});
-		}
-	}
-
-	#handleResponse(message: any) {
-		const pending = this.#pendingRequests.get(message.requestId);
-		if (pending) {
-			this.#pendingRequests.delete(message.requestId);
-
-			if (message.type === "cache:error") {
-				pending.reject(new Error(message.error));
-			} else {
-				pending.resolve(message.result);
-			}
-		}
+		// Set up global message handler (only happens once for all instances)
+		setupMessageHandler();
 	}
 
 	async #sendRequest(type: string, data: any): Promise<any> {
@@ -80,10 +83,10 @@ export class PostMessageCache extends Cache {
 			throw new Error("PostMessageCache can only be used in worker threads");
 		}
 
-		const requestId = ++this.#requestId;
+		const requestId = ++globalRequestId;
 
 		return new Promise((resolve, reject) => {
-			this.#pendingRequests.set(requestId, {resolve, reject});
+			pendingRequestsRegistry.set(requestId, {resolve, reject});
 
 			parentPort.postMessage({
 				type,
@@ -94,8 +97,8 @@ export class PostMessageCache extends Cache {
 
 			// Timeout after 30 seconds
 			setTimeout(() => {
-				if (this.#pendingRequests.has(requestId)) {
-					this.#pendingRequests.delete(requestId);
+				if (pendingRequestsRegistry.has(requestId)) {
+					pendingRequestsRegistry.delete(requestId);
 					reject(new Error("Cache operation timeout"));
 				}
 			}, 30000);

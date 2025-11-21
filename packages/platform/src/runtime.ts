@@ -609,67 +609,66 @@ export class ShovelServiceWorkerRegistration
 		// This makes event.cookieStore available via self.cookieStore
 		return cookieStoreStorage.run(event.cookieStore, () => {
 			return new Promise<Response>((resolve, reject) => {
-
-			// Dispatch event asynchronously to allow listener errors to be deferred
-			process.nextTick(() => {
-				// Manually call each listener with error handling to match browser behavior
-				const listeners = this.#eventListeners.get("fetch") || [];
-				for (const listener of listeners) {
-					try {
-						listener(event);
-					} catch (error) {
-						// Log errors in event listeners but don't crash the process
-						// This matches browser behavior where fetch listener errors are logged
-						// but don't prevent other listeners from running
-						logger.error(
-							"[ServiceWorker] Error in fetch event listener:",
-							error,
-						);
-						// Continue with next listener
-					}
-				}
-
-				// Wait for all waitUntil promises (background tasks, don't block response)
-				const promises = event.getPromises();
-				if (promises.length > 0) {
-					Promise.allSettled(promises).catch(logger.error);
-				}
-			});
-
-			// Allow async event handlers to execute before checking response
-			setTimeout(async () => {
-				if (event.hasResponded()) {
-					const responsePromise = event.getResponse()!;
-					try {
-						const response = await responsePromise;
-
-						// Apply cookie changes from the cookieStore to the response
-						if (event.cookieStore.hasChanges()) {
-							const setCookieHeaders = event.cookieStore.getSetCookieHeaders();
-							const headers = new Headers(response.headers);
-
-							// Add all Set-Cookie headers
-							for (const setCookie of setCookieHeaders) {
-								headers.append("Set-Cookie", setCookie);
-							}
-
-							// Create new response with updated headers
-							const updatedResponse = new Response(response.body, {
-								status: response.status,
-								statusText: response.statusText,
-								headers,
+				// Dispatch event asynchronously to allow listener errors to be deferred
+				process.nextTick(() => {
+					// Manually call each listener with error handling to match browser behavior
+					const listeners = this.#eventListeners.get("fetch") || [];
+					for (const listener of listeners) {
+						try {
+							listener(event);
+						} catch (error) {
+							// Log errors in event listeners but don't crash the process
+							// This matches browser behavior where fetch listener errors are logged
+							// but don't prevent other listeners from running
+							logger.error("[ServiceWorker] Error in fetch event listener", {
+								error,
 							});
-							resolve(updatedResponse);
-						} else {
-							resolve(response);
+							// Continue with next listener
 						}
-					} catch (error) {
-						reject(error);
 					}
-				} else {
-					reject(new Error("No response provided for fetch event"));
-				}
-			}, 0);
+
+					// Wait for all waitUntil promises (background tasks, don't block response)
+					const promises = event.getPromises();
+					if (promises.length > 0) {
+						Promise.allSettled(promises).catch(logger.error);
+					}
+				});
+
+				// Allow async event handlers to execute before checking response
+				setTimeout(async () => {
+					if (event.hasResponded()) {
+						const responsePromise = event.getResponse()!;
+						try {
+							const response = await responsePromise;
+
+							// Apply cookie changes from the cookieStore to the response
+							if (event.cookieStore.hasChanges()) {
+								const setCookieHeaders =
+									event.cookieStore.getSetCookieHeaders();
+								const headers = new Headers(response.headers);
+
+								// Add all Set-Cookie headers
+								for (const setCookie of setCookieHeaders) {
+									headers.append("Set-Cookie", setCookie);
+								}
+
+								// Create new response with updated headers
+								const updatedResponse = new Response(response.body, {
+									status: response.status,
+									statusText: response.statusText,
+									headers,
+								});
+								resolve(updatedResponse);
+							} else {
+								resolve(response);
+							}
+						} catch (error) {
+							reject(error);
+						}
+					} else {
+						reject(new Error("No response provided for fetch event"));
+					}
+				}, 0);
 			});
 		});
 	}
@@ -1101,7 +1100,7 @@ export class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
 export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	// Self-reference (standard in ServiceWorkerGlobalScope)
 	// Type assertion: we provide a compatible subset of WorkerGlobalScope
-	readonly self: WorkerGlobalScope & typeof globalThis;
+	readonly self: any;
 
 	// ServiceWorker standard properties
 	// Our custom ServiceWorkerRegistration provides core functionality compatible with the Web API
@@ -1354,8 +1353,8 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 		globalThis.self = this as any;
 
 		// In worker contexts, add postMessage delegation to the native worker global
-		const isWorker = 'onmessage' in globalThis;
-		if (isWorker && typeof postMessage === 'function') {
+		const isWorker = "onmessage" in globalThis;
+		if (isWorker && typeof postMessage === "function") {
 			// Preserve the native postMessage by adding it to this instance
 			(this as any).postMessage = postMessage.bind(globalThis);
 		}
@@ -1440,7 +1439,10 @@ async function registerStandardBuckets(): Promise<void> {
 		console.info("[Buckets] NodeBucket available");
 	} catch (err) {
 		// NodeBucket not available (Cloudflare/browser), use MemoryBucket instead
-		console.warn("[Buckets] NodeBucket not available, using MemoryBucket:", err);
+		console.warn(
+			"[Buckets] NodeBucket not available, using MemoryBucket:",
+			err,
+		);
 		const {MemoryBucket} = await import("@b9g/filesystem");
 		FileSystemRegistry.register("static", new MemoryBucket("static"));
 		FileSystemRegistry.register("server", new MemoryBucket("server"));
@@ -1451,7 +1453,12 @@ async function registerStandardBuckets(): Promise<void> {
 	// Check if we're in a production build (app.js in dist/server/)
 	// or development (worker runtime loaded from packages/)
 	const isDevelopment = import.meta.url.includes("/packages/platform/");
-	console.info("[Buckets] Mode detected:", isDevelopment ? "development" : "production", "cwd:", process.cwd());
+	console.info(
+		"[Buckets] Mode detected:",
+		isDevelopment ? "development" : "production",
+		"cwd:",
+		process.cwd(),
+	);
 
 	if (isDevelopment) {
 		// Development: buckets are in cwd/dist/
@@ -1471,7 +1478,11 @@ async function registerStandardBuckets(): Promise<void> {
 		const serverPath = Path.default.join(distPath, "server");
 
 		console.info("[Buckets] Registering NodeBuckets for development:");
-		console.info("[Buckets]   static:", staticPath, "(web root - contains assets/ subdirectory)");
+		console.info(
+			"[Buckets]   static:",
+			staticPath,
+			"(web root - contains assets/ subdirectory)",
+		);
 		console.info("[Buckets]   server:", serverPath);
 
 		try {
@@ -1497,7 +1508,11 @@ async function registerStandardBuckets(): Promise<void> {
 		const serverPath = new URL(".", import.meta.url).pathname;
 
 		console.info("[Buckets] Registering NodeBuckets for production:");
-		console.info("[Buckets]   static:", staticPath, "(web root - contains assets/ subdirectory)");
+		console.info(
+			"[Buckets]   static:",
+			staticPath,
+			"(web root - contains assets/ subdirectory)",
+		);
 		console.info("[Buckets]   server:", serverPath);
 
 		FileSystemRegistry.register("static", new NodeBucket(staticPath));
@@ -1506,7 +1521,10 @@ async function registerStandardBuckets(): Promise<void> {
 		console.info("[Buckets] Production NodeBuckets registered");
 	}
 
-	console.info("[Buckets] Standard bucket registration complete. Registered:", FileSystemRegistry.getAdapterNames());
+	console.info(
+		"[Buckets] Standard bucket registration complete. Registered:",
+		FileSystemRegistry.getAdapterNames(),
+	);
 }
 
 // Create context-aware cache storage
@@ -1515,7 +1533,8 @@ async function registerStandardBuckets(): Promise<void> {
 // Detection uses standard Web Worker API: WorkerGlobalScope is only defined on globalThis in worker contexts
 const caches: CacheStorage = new CustomCacheStorage((name: string) => {
 	// Check globalThis.WorkerGlobalScope, not the local class definition
-	const isWorkerThread = typeof (globalThis as any).WorkerGlobalScope !== "undefined";
+	const isWorkerThread =
+		typeof (globalThis as any).WorkerGlobalScope !== "undefined";
 
 	if (isWorkerThread) {
 		return new PostMessageCache(name, {
@@ -1539,7 +1558,7 @@ const buckets = new CustomBucketStorage(async (name: string) => {
 	const available = FileSystemRegistry.getAdapterNames();
 	throw new Error(
 		`Bucket '${name}' not registered. Available buckets: ${available.join(", ") || "none"}. ` +
-		`Standard buckets (assets, static, server) are registered automatically on first ServiceWorker load.`
+			`Standard buckets (assets, static, server) are registered automatically on first ServiceWorker load.`,
 	);
 });
 
@@ -1562,7 +1581,7 @@ async function handleFetchEvent(request: Request): Promise<Response> {
 		const response = await registration.handleRequest(request);
 		return response;
 	} catch (error) {
-		logger.error("[Worker] ServiceWorker request failed:", error);
+		logger.error("[Worker] ServiceWorker request failed", {error});
 		const response = new Response("ServiceWorker request failed", {
 			status: 500,
 		});
@@ -1575,22 +1594,36 @@ async function loadServiceWorker(
 	entrypoint?: string,
 ): Promise<void> {
 	try {
-		console.info("[Worker Bootstrap] loadServiceWorker called - version:", version, "loadedVersion:", loadedVersion);
+		console.info(
+			"[Worker Bootstrap] loadServiceWorker called - version:",
+			version,
+			"loadedVersion:",
+			loadedVersion,
+		);
 
 		// Register standard buckets on first load
 		if (loadedVersion === null) {
-			console.info("[Worker Bootstrap] First load - registering standard buckets");
+			console.info(
+				"[Worker Bootstrap] First load - registering standard buckets",
+			);
 			await registerStandardBuckets();
-			console.info("[Worker Bootstrap] Standard buckets registered, names:", FileSystemRegistry.getAdapterNames());
+			console.info(
+				"[Worker Bootstrap] Standard buckets registered, names:",
+				FileSystemRegistry.getAdapterNames(),
+			);
 		} else {
-			console.info("[Worker Bootstrap] Not first load (loadedVersion=" + loadedVersion + "), skipping bucket registration");
+			console.info(
+				"[Worker Bootstrap] Not first load (loadedVersion=" +
+					loadedVersion +
+					"), skipping bucket registration",
+			);
 		}
 
 		const entrypointPath =
 			process.env.SERVICEWORKER_PATH ||
 			entrypoint ||
 			`${process.cwd()}/dist/server/server.js`;
-		logger.info("[Worker] Loading from:", entrypointPath);
+		logger.info("[Worker] Loading from", {entrypointPath});
 
 		if (loadedVersion !== null && loadedVersion !== version) {
 			logger.info(
@@ -1608,10 +1641,9 @@ async function loadServiceWorker(
 		}
 
 		if (loadedVersion === version) {
-			logger.info(
-				"[Worker] ServiceWorker already loaded for version",
+			logger.info("[Worker] ServiceWorker already loaded for version", {
 				version,
-			);
+			});
 			return;
 		}
 
@@ -1630,7 +1662,7 @@ async function loadServiceWorker(
 			`[Worker] ServiceWorker loaded and activated (v${version}) from ${entrypointPath}`,
 		);
 	} catch (error) {
-		logger.error("[Worker] Failed to load ServiceWorker:", error);
+		logger.error("[Worker] Failed to load ServiceWorker", {error});
 		serviceWorkerReady = false;
 		throw error;
 	}
@@ -1647,10 +1679,9 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
 			sendMessage({type: "ready", version: loadMsg.version});
 		} else if (message.type === "request") {
 			const reqMsg = message as WorkerRequest;
-			logger.info(
-				`[Worker-${workerId}] Handling request:`,
-				reqMsg.request.url,
-			);
+			logger.info(`[Worker-${workerId}] Handling request`, {
+				url: reqMsg.request.url,
+			});
 
 			const request = new Request(reqMsg.request.url, {
 				method: reqMsg.request.method,

@@ -10,7 +10,12 @@
  */
 
 // Core OAuth2/PKCE
-export {OAuth2Client, type OAuth2Config, type OAuth2Tokens, type OAuth2User} from "./oauth2.js";
+export {
+	OAuth2Client,
+	type OAuth2Config,
+	type OAuth2Tokens,
+	type OAuth2User,
+} from "./oauth2.js";
 export {
 	generateCodeVerifier,
 	generateCodeChallenge,

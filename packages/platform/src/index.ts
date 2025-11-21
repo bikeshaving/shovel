@@ -863,6 +863,7 @@ export async function getDirectoryHandle(
 import * as Path from "path";
 import {existsSync} from "fs";
 import {getLogger} from "@logtape/logtape";
+import type {BucketStorage} from "./runtime.js";
 
 const logger = getLogger(["worker"]);
 
@@ -945,7 +946,7 @@ function resolveWorkerScript(entrypoint?: string): string {
 				}
 			} else if (typeof require !== "undefined") {
 				// Node.js - use existsSync
-							if (existsSync(bundledWorker)) {
+				if (existsSync(bundledWorker)) {
 					logger.info("Using bundled worker", {bundledWorker});
 					return bundledWorker;
 				}
@@ -1002,10 +1003,14 @@ async function createWebWorker(workerScript: string): Promise<Worker> {
 				type: "module",
 			}) as unknown as Worker;
 		} catch (shimError) {
-			logger.error("MISSING WEB STANDARD: Node.js lacks native Web Worker support", {
-				canonicalIssue: "https://github.com/nodejs/node/issues/43583",
-				message: "This is a basic web standard from 2009 - help push for implementation!",
-			});
+			logger.error(
+				"MISSING WEB STANDARD: Node.js lacks native Web Worker support",
+				{
+					canonicalIssue: "https://github.com/nodejs/node/issues/43583",
+					message:
+						"This is a basic web standard from 2009 - help push for implementation!",
+				},
+			);
 
 			throw new Error(`❌ Web Worker not available on Node.js
 
@@ -1138,7 +1143,9 @@ export class ServiceWorkerPool {
 		onUnhandledMessage?: (worker: Worker, message: any) => void;
 	};
 	#appEntrypoint?: string;
-	#cacheStorage?: CacheStorage & {handleMessage?: (worker: Worker, message: any) => Promise<void>}; // CustomCacheStorage for cache coordination
+	#cacheStorage?: CacheStorage & {
+		handleMessage?: (worker: Worker, message: any) => Promise<void>;
+	}; // CustomCacheStorage for cache coordination
 	#bucketStorage?: BucketStorage; // CustomBucketStorage for bucket access
 
 	constructor(
@@ -1338,11 +1345,10 @@ export class ServiceWorkerPool {
 
 				const handleError = (error: any) => {
 					cleanup();
-					reject(
-						new Error(
-							`Worker failed to load ServiceWorker: ${error.message || error}`,
-						),
-					);
+					// Extract error message from ErrorEvent or Error object
+					const errorMsg =
+						error?.error?.message || error?.message || JSON.stringify(error);
+					reject(new Error(`Worker failed to load ServiceWorker: ${errorMsg}`));
 				};
 
 				// Timeout after 30 seconds if worker doesn't respond (allows time for activate event processing)
@@ -1414,6 +1420,7 @@ export {
 	InstallEvent,
 	ActivateEvent,
 	ExtendableEvent,
+	type BucketStorage,
 } from "./runtime.js";
 
 // Re-export Cookie Store API

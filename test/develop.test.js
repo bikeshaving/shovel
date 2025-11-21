@@ -102,10 +102,10 @@ function startDevServer(fixture, port, extraArgs = []) {
 
 	// Capture stderr to detect CLI failures early
 	let stderrOutput = "";
-	let stdoutOutput = "";
+	let _stdoutOutput = "";
 
 	serverProcess.stdout.on("data", (data) => {
-		stdoutOutput += data.toString();
+		_stdoutOutput += data.toString();
 		if (process.env.DEBUG_TESTS) {
 			console.info("[STDOUT]", data.toString());
 		}
@@ -191,7 +191,10 @@ async function waitForServer(port, serverProcess, timeoutMs = 8000) {
 			}
 		} catch (err) {
 			if (process.env.DEBUG_TESTS && Date.now() - startTime > 1000) {
-				console.error(`[HTTP] Fetch error after ${Date.now() - startTime}ms:`, err.message);
+				console.error(
+					`[HTTP] Fetch error after ${Date.now() - startTime}ms:`,
+					err.message,
+				);
 			}
 			// Server not ready yet, continue waiting
 		}

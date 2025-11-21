@@ -32,9 +32,6 @@ export interface ErrorEvent {
  */
 const WORKER_WRAPPER_CODE = `
 import {parentPort} from "worker_threads";
-import {getLogger} from "@logtape/logtape";
-
-const logger = getLogger(["worker"]);
 
 // Provide Web Worker globals
 globalThis.onmessage = null;
@@ -73,10 +70,15 @@ export class Worker {
 	#errorListeners: Set<(event: ErrorEvent) => void>;
 
 	// Web Worker standard properties
+	// eslint-disable-next-line no-restricted-syntax
 	onmessage: ((event: MessageEvent) => void) | null = null;
+	// eslint-disable-next-line no-restricted-syntax
 	onerror: ((event: ErrorEvent) => void) | null = null;
 
-	constructor(scriptURL: string | URL, _options?: {type?: "classic" | "module"}) {
+	constructor(
+		scriptURL: string | URL,
+		_options?: {type?: "classic" | "module"},
+	) {
 		this.#messageListeners = new Set<(event: MessageEvent) => void>();
 		this.#errorListeners = new Set<(event: ErrorEvent) => void>();
 
@@ -90,11 +92,17 @@ export class Worker {
 		let workerScriptURL = scriptURLString;
 
 		// If it's not already a file:// or data: URL, and it's an absolute path, convert it
-		if (!scriptURLString.startsWith("file://") && !scriptURLString.startsWith("data:")) {
+		if (
+			!scriptURLString.startsWith("file://") &&
+			!scriptURLString.startsWith("data:")
+		) {
 			// Check if it's a relative path
-			if (scriptURLString.startsWith("./") || scriptURLString.startsWith("../")) {
+			if (
+				scriptURLString.startsWith("./") ||
+				scriptURLString.startsWith("../")
+			) {
 				throw new Error(
-					"Relative paths are not supported. Use new Worker(new URL('./worker.js', import.meta.url)) instead."
+					"Relative paths are not supported. Use new Worker(new URL('./worker.js', import.meta.url)) instead.",
 				);
 			}
 			// It's an absolute file path - convert to file:// URL

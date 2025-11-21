@@ -176,6 +176,7 @@ export class RequestCookieStore extends EventTarget {
 	#request: Request | null;
 
 	// Event handler for cookie changes (spec compliance)
+	// eslint-disable-next-line no-restricted-syntax
 	onchange: ((this: RequestCookieStore, ev: Event) => any) | null = null;
 
 	constructor(request?: Request) {
@@ -235,9 +236,7 @@ export class RequestCookieStore extends EventTarget {
 		nameOrOptions?: string | CookieStoreGetOptions,
 	): Promise<CookieList> {
 		const name =
-			typeof nameOrOptions === "string"
-				? nameOrOptions
-				: nameOrOptions?.name;
+			typeof nameOrOptions === "string" ? nameOrOptions : nameOrOptions?.name;
 
 		const result: CookieList = [];
 
@@ -252,7 +251,10 @@ export class RequestCookieStore extends EventTarget {
 			if (name && cookieName !== name) continue;
 
 			// Check if deleted
-			if (this.#changes.has(cookieName) && this.#changes.get(cookieName) === null) {
+			if (
+				this.#changes.has(cookieName) &&
+				this.#changes.get(cookieName) === null
+			) {
 				continue;
 			}
 
@@ -269,10 +271,7 @@ export class RequestCookieStore extends EventTarget {
 	/**
 	 * Set a cookie
 	 */
-	async set(
-		nameOrOptions: string | CookieInit,
-		value?: string,
-	): Promise<void> {
+	async set(nameOrOptions: string | CookieInit, value?: string): Promise<void> {
 		let cookie: CookieInit;
 
 		if (typeof nameOrOptions === "string") {

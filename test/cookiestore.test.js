@@ -10,7 +10,10 @@ import {tmpdir} from "os";
 let testDir;
 
 beforeEach(async () => {
-	testDir = join(tmpdir(), `shovel-cookiestore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+	testDir = join(
+		tmpdir(),
+		`shovel-cookiestore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+	);
 	await mkdir(testDir, {recursive: true});
 });
 

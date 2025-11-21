@@ -11,7 +11,9 @@ export interface EnvDefines {
  * Create environment variable definitions for esbuild
  * Injects both Vite-style import.meta.env and legacy process.env.NODE_ENV
  */
-export function createEnvDefines(mode: "development" | "production"): EnvDefines {
+export function createEnvDefines(
+	mode: "development" | "production",
+): EnvDefines {
 	const isDev = mode === "development";
 	const isProd = mode === "production";
 

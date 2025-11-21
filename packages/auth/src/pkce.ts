@@ -29,9 +29,7 @@ export function generateCodeVerifier(length: number = 128): string {
  * Generate code challenge from code verifier using S256 method
  * @param verifier Code verifier string
  */
-export async function generateCodeChallenge(
-	verifier: string,
-): Promise<string> {
+export async function generateCodeChallenge(verifier: string): Promise<string> {
 	const encoder = new TextEncoder();
 	const data = encoder.encode(verifier);
 	const hash = await crypto.subtle.digest("SHA-256", data);
@@ -50,10 +48,7 @@ function base64UrlEncode(buffer: ArrayBuffer): string {
 		binary += String.fromCharCode(bytes[i]);
 	}
 
-	return btoa(binary)
-		.replace(/\+/g, "-")
-		.replace(/\//g, "_")
-		.replace(/=/g, "");
+	return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
 /**

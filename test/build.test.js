@@ -642,7 +642,10 @@ self.addEventListener("fetch", (event) => {
 			await FS.mkdir(b9gDir, {recursive: true});
 
 			// Find the real workspace root (where the packages are)
-			const realWorkspaceRoot = resolve(dirname(import.meta.url.slice(7)), "..");
+			const realWorkspaceRoot = resolve(
+				dirname(import.meta.url.slice(7)),
+				"..",
+			);
 			const realPackagesDir = join(realWorkspaceRoot, "packages");
 
 			// Symlink @b9g packages from real workspace
@@ -662,7 +665,6 @@ self.addEventListener("fetch", (event) => {
 			process.chdir(packagesDir);
 
 			try {
-
 				await buildForProduction({
 					entrypoint: entryPath,
 					outDir,
@@ -671,9 +673,7 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Should have found the workspace root and built successfully
-				expect(await fileExists(join(outDir, "server", "index.js"))).toBe(
-					true,
-				);
+				expect(await fileExists(join(outDir, "server", "index.js"))).toBe(true);
 
 				// Verify the build is self-contained
 				// User code is in server.js
@@ -768,7 +768,10 @@ self.addEventListener("fetch", (event) => {
 });
 			`;
 
-			const entryPath = await createTempFile("no-dynamic-import.js", entryContent);
+			const entryPath = await createTempFile(
+				"no-dynamic-import.js",
+				entryContent,
+			);
 			const outDir = await createTempDir("no-dynamic-import-");
 			cleanup_paths.push(entryPath, outDir);
 

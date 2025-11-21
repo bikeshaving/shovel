@@ -685,3 +685,6 @@ export async function getDirectoryHandle(
 	}
 	return adapter;
 }
+
+// Export MemoryBucket for fallback in non-filesystem environments
+export {MemoryBucket} from "./memory.js";

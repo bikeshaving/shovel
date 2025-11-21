@@ -75,7 +75,8 @@ export async function buildForProduction({
 
 	// Make the output executable (only for Node/Bun builds)
 	// Cloudflare builds aren't directly executed, so no chmod needed
-	const isCloudflare = platform === "cloudflare" || platform === "cloudflare-workers";
+	const isCloudflare =
+		platform === "cloudflare" || platform === "cloudflare-workers";
 	if (!isCloudflare) {
 		const executablePath = join(buildContext.serverDir, "index.js");
 		await chmod(executablePath, 0o755);
@@ -215,7 +216,9 @@ async function findShovelPackageRoot() {
 				}
 				return packageRoot;
 			}
-		} catch {}
+		} catch {
+			// Not found at this level, continue searching
+		}
 		packageRoot = dirname(packageRoot);
 	}
 	// Fallback to current directory's node_modules parent
@@ -283,47 +286,46 @@ async function createBuildConfig({
 			// Build user code first
 			await esbuild.build(userBuildConfig);
 
-		// Bundle runtime.js from @b9g/platform to server directory as worker.js
-		// The ServiceWorkerPool needs this to run workers
-		const runtimeSourcePath = join(
-			shovelRoot,
-			"packages/platform/dist/src/runtime.js",
-		);
-		const workerDestPath = join(serverDir, "worker.js");
-
-		// Bundle runtime.js with all its dependencies
-		try {
-			await esbuild.build({
-				entryPoints: [runtimeSourcePath],
-				bundle: true,
-				format: "esm",
-				target: "es2022",
-				platform: "node",
-				outfile: workerDestPath,
-				external: ["node:*"],
-			});
-		} catch (error) {
-			// Try from node_modules if development path fails
-			const installedRuntimePath = join(
+			// Bundle runtime.js from @b9g/platform to server directory as worker.js
+			// The ServiceWorkerPool needs this to run workers
+			const runtimeSourcePath = join(
 				shovelRoot,
-				"node_modules/@b9g/platform/dist/src/runtime.js",
+				"packages/platform/dist/src/runtime.js",
 			);
-			await esbuild.build({
-				entryPoints: [installedRuntimePath],
-				bundle: true,
-				format: "esm",
-				target: "es2022",
-				platform: "node",
-				outfile: workerDestPath,
-				external: ["node:*"],
-			});
+			const workerDestPath = join(serverDir, "worker.js");
+
+			// Bundle runtime.js with all its dependencies
+			try {
+				await esbuild.build({
+					entryPoints: [runtimeSourcePath],
+					bundle: true,
+					format: "esm",
+					target: "es2022",
+					platform: "node",
+					outfile: workerDestPath,
+					external: ["node:*"],
+				});
+			} catch (error) {
+				// Try from node_modules if development path fails
+				const installedRuntimePath = join(
+					shovelRoot,
+					"node_modules/@b9g/platform/dist/src/runtime.js",
+				);
+				await esbuild.build({
+					entryPoints: [installedRuntimePath],
+					bundle: true,
+					format: "esm",
+					target: "es2022",
+					platform: "node",
+					outfile: workerDestPath,
+					external: ["node:*"],
+				});
+			}
 		}
-	}
 
-	// Note: worker-wrapper.js is no longer copied to build output
-	// The @b9g/node-webworker package now embeds the wrapper code and creates it
-	// in a temp directory at runtime, hiding this implementation detail
-
+		// Note: worker-wrapper.js is no longer copied to build output
+		// The @b9g/node-webworker package now embeds the wrapper code and creates it
+		// in a temp directory at runtime, hiding this implementation detail
 
 		const buildConfig = {
 			stdin: {
@@ -336,8 +338,11 @@ async function createBuildConfig({
 			target: BUILD_DEFAULTS.target,
 			platform: isCloudflare ? "browser" : "node",
 			// Cloudflare: single-file architecture (server.js contains everything)
-		// Node/Bun: multi-file architecture (index.js is entry, server.js is user code)
-		outfile: join(serverDir, isCloudflare ? "server.js" : BUILD_DEFAULTS.outputFile),
+			// Node/Bun: multi-file architecture (index.js is entry, server.js is user code)
+			outfile: join(
+				serverDir,
+				isCloudflare ? "server.js" : BUILD_DEFAULTS.outputFile,
+			),
 			absWorkingDir: workspaceRoot || dirname(entryPath),
 			mainFields: ["module", "main"],
 			conditions: ["import", "module"],

@@ -513,7 +513,10 @@ export class Router {
 						cacheConfig.name,
 					)) as import("@b9g/cache").Cache;
 				} catch (error) {
-					logger.warn("Failed to open cache", {cacheName: cacheConfig.name, error});
+					logger.warn("Failed to open cache", {
+						cacheName: cacheConfig.name,
+						error,
+					});
 					// Continue without cache - don't fail the request
 				}
 			}

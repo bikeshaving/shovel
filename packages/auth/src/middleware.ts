@@ -3,7 +3,7 @@
  * Integrates OAuth2 with @b9g/router
  */
 
-import {OAuth2Client, OAuth2Tokens, OAuth2User} from "./oauth2.js";
+import {OAuth2Client, OAuth2Tokens} from "./oauth2.js";
 import type {FunctionMiddleware} from "@b9g/router";
 
 // ============================================================================
@@ -32,9 +32,7 @@ function getCookieStore(_context: any) {
  * Create middleware to start OAuth2 flow
  * Redirects to authorization endpoint
  */
-export function redirectToProvider(
-	client: OAuth2Client,
-): FunctionMiddleware {
+export function redirectToProvider(client: OAuth2Client): FunctionMiddleware {
 	return async (request, context) => {
 		const cookieStore = getCookieStore(context);
 		const authUrl = await client.startAuthorization(cookieStore);
@@ -103,13 +101,10 @@ export function requireAuth(options?: {
 				return await options.onUnauthorized();
 			}
 
-			return new Response(
-				JSON.stringify({error: "Unauthorized"}),
-				{
-					status: 401,
-					headers: {"Content-Type": "application/json"},
-				},
-			);
+			return new Response(JSON.stringify({error: "Unauthorized"}), {
+				status: 401,
+				headers: {"Content-Type": "application/json"},
+			});
 		}
 
 		// Add session to context for handlers

@@ -65,7 +65,10 @@ self.addEventListener("fetch", (event) => {
 });
 			`;
 
-			const entryPath = await createTempFile("test-cloudflare.js", entryContent);
+			const entryPath = await createTempFile(
+				"test-cloudflare.js",
+				entryContent,
+			);
 			const outDir = await createTempDir();
 			cleanup_paths.push(entryPath, outDir);
 

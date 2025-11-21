@@ -1,5 +1,9 @@
 import {test, expect, describe} from "bun:test";
-import {WorkerGlobalScope, DedicatedWorkerGlobalScope, ShovelGlobalScope} from "../src/runtime.js";
+import {
+	WorkerGlobalScope,
+	DedicatedWorkerGlobalScope,
+	ShovelGlobalScope,
+} from "../src/runtime.js";
 
 describe("Worker Detection", () => {
 	test("WorkerGlobalScope class is defined", () => {
@@ -9,7 +13,9 @@ describe("Worker Detection", () => {
 
 	test("DedicatedWorkerGlobalScope extends WorkerGlobalScope", () => {
 		expect(DedicatedWorkerGlobalScope).toBeDefined();
-		expect(DedicatedWorkerGlobalScope.prototype).toBeInstanceOf(WorkerGlobalScope);
+		expect(DedicatedWorkerGlobalScope.prototype).toBeInstanceOf(
+			WorkerGlobalScope,
+		);
 	});
 
 	test("ShovelGlobalScope extends DedicatedWorkerGlobalScope", () => {
@@ -56,7 +62,9 @@ describe("Worker Detection", () => {
 		expect((globalThis as any).WorkerGlobalScope).toBeDefined();
 		expect((globalThis as any).DedicatedWorkerGlobalScope).toBeDefined();
 		expect((globalThis as any).WorkerGlobalScope).toBe(WorkerGlobalScope);
-		expect((globalThis as any).DedicatedWorkerGlobalScope).toBe(DedicatedWorkerGlobalScope);
+		expect((globalThis as any).DedicatedWorkerGlobalScope).toBe(
+			DedicatedWorkerGlobalScope,
+		);
 
 		// Clean up
 		delete (globalThis as any).WorkerGlobalScope;

@@ -46,7 +46,10 @@ export async function activateCommand(entrypoint, options) {
 
 		// The ServiceWorker install/activate lifecycle will handle any self-generation
 		// Apps can use self.dirs.open("static") in their activate event to pre-render
-		logger.info("ServiceWorker activated - check dist/ for generated content", {});
+		logger.info(
+			"ServiceWorker activated - check dist/ for generated content",
+			{},
+		);
 
 		await serviceWorker.dispose();
 		await platformInstance.dispose();

@@ -76,7 +76,12 @@ function runExecutable(executablePath, env = {}) {
 	proc.on("exit", (code) => {
 		proc.earlyExit = code !== 0;
 		if (code !== 0 && stderrData) {
-			console.error("[Test] Process exited with code", code, "stderr:", stderrData);
+			console.error(
+				"[Test] Process exited with code",
+				code,
+				"stderr:",
+				stderrData,
+			);
 		}
 	});
 

@@ -320,12 +320,18 @@ async function generateStaticSite() {
 	try {
 		// Check what buckets are registered
 		const {FileSystemRegistry} = await import("@b9g/filesystem");
-		console.info("[Blog App] Registered buckets:", FileSystemRegistry.getAdapterNames());
+		console.info(
+			"[Blog App] Registered buckets:",
+			FileSystemRegistry.getAdapterNames(),
+		);
 
 		// Get static bucket - the only public bucket (maps to web root)
 		console.info("[Blog App] Opening static bucket...");
 		const staticBucket = await self.buckets.open("static");
-		console.info("[Blog App] static bucket opened:", staticBucket.constructor.name);
+		console.info(
+			"[Blog App] static bucket opened:",
+			staticBucket.constructor.name,
+		);
 
 		// First, copy assets from build output (dist/assets/) to static/assets/
 		console.info("[Blog App] Copying assets...");
