@@ -22,7 +22,6 @@ const logger = getLogger(["platform-cloudflare"]);
 // Re-export common platform types
 export type {
 	Platform,
-	StaticConfig,
 	Handler,
 	Server,
 	ServerOptions,

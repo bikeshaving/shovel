@@ -29,7 +29,6 @@ const logger = getLogger(["platform-node"]);
 // Re-export common platform types
 export type {
 	Platform,
-	StaticConfig,
 	Handler,
 	Server,
 	ServerOptions,

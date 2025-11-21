@@ -14,42 +14,8 @@ declare const window: any;
 // ============================================================================
 
 /**
- * Cache backend configuration
- * Type can be a blessed alias or full package name
- */
-export interface CacheBackendConfig {
-	/** Cache backend type - blessed alias (memory, redis, kv) or package name (@custom/cache) */
-	type?: string;
-	/** Custom cache factory function */
-	factory?: () => any;
-	/** Adapter-specific configuration options (e.g., maxEntries for memory, url for redis) */
-	[key: string]: any;
-}
-
-
-/**
- * Static file serving configuration
- */
-export interface StaticConfig {
-	/** Public URL path prefix */
-	publicPath?: string;
-	/** Output directory for built assets */
-	outputDir?: string;
-	/** Asset manifest file path */
-	manifest?: string;
-	/** Development mode (serve from source) */
-	dev?: boolean;
-	/** Source directory for development */
-	sourceDir?: string;
-	/** Cache configuration for static files */
-	cache?: {
-		name?: string;
-		ttl?: string | number;
-	};
-}
-
-/**
- * Platform configuration from CLI flags
+ * Platform configuration
+ * Extended by platform-specific implementations (NodePlatformOptions, etc.)
  */
 export interface PlatformConfig {
 	// Platform-specific configuration will be added here as needed
