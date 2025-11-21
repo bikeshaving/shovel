@@ -27,8 +27,6 @@ program
 	)
 	.option("-v, --verbose", "Verbose logging", false)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
-	.option("--cache <type>", "Cache type (memory, redis)")
-	.option("--filesystem <type>", "Filesystem type (local, s3, r2)")
 	.action(developCommand);
 
 /**
@@ -54,8 +52,6 @@ program
 	)
 	.option("-v, --verbose", "Verbose logging", false)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
-	.option("--cache <type>", "Cache type (memory, redis)")
-	.option("--filesystem <type>", "Filesystem type (local, s3, r2)")
 	.option(
 		"-w, --workers <count>",
 		"Number of workers",

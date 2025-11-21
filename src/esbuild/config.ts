@@ -14,9 +14,5 @@ export const DEFAULTS = {
 		PORT: 7777,
 		HOST: "localhost",
 	},
-	CACHE: {
-		MAX_ENTRIES: 1000,
-		TTL: 300000, // 5 minutes
-	},
 	WORKERS: cpus().length,
 } as const;
