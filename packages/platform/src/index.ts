@@ -134,9 +134,9 @@ export interface Platform {
 // ============================================================================
 
 /**
- * Platform registry
+ * Platform registry - internal implementation
  */
-export interface PlatformRegistry {
+interface PlatformRegistry {
 	/** Register a platform implementation */
 	register(name: string, platform: any): void;
 	/** Get platform by name */
@@ -519,6 +519,9 @@ import type {BucketStorage} from "./runtime.js";
 
 const logger = getLogger(["worker"]);
 
+// Worker pool implementation types
+// NOTE: WorkerPoolOptions is exported for platform implementations
+// Message types are exported for internal use only (runtime.ts)
 export interface WorkerPoolOptions {
 	/** Number of workers in the pool (default: 1) */
 	workerCount?: number;
@@ -694,11 +697,13 @@ Please check your runtime version and configuration.
 
 /**
  * Generic WorkerPool - manages a pool of Web Workers
+ * Internal implementation - not exported
+ *
  * Self-similar to Worker API: extends EventTarget, has postMessage(), terminate()
  *
  * Can be used standalone or extended for specific use cases (e.g., ServiceWorkerPool)
  */
-export class WorkerPool extends EventTarget {
+class WorkerPool extends EventTarget {
 	readonly workers: Worker[];
 	#currentWorkerIndex: number;
 	#scriptURL: string;
