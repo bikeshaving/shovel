@@ -13,16 +13,13 @@ export const DEFAULTS = {
 	SERVER: {
 		PORT: 7777,
 		HOST: "localhost",
-		TIMEOUT: 5000,
 	},
 	CACHE: {
 		MAX_ENTRIES: 1000,
-		MAX_SIZE: 50 * 1024 * 1024, // 50MB
 		TTL: 300000, // 5 minutes
 	},
 	PATHS: {
 		OUTPUT_DIR: "dist",
-		ASSETS_DIR: "assets",
 		MANIFEST_FILE: "manifest.json",
 	},
 	WORKERS: cpus().length,
