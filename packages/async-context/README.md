@@ -8,7 +8,6 @@ The TC39 AsyncContext proposal aims to standardize async context propagation in 
 
 - The proposal is still Stage 2 (not yet standardized)
 - No native browser/runtime support yet
-- Existing polyfills (`@webfill/async-context`) have vanished or are abandoned
 - Node.js already has `AsyncLocalStorage` which solves the same problem
 
 This package provides a **lightweight, maintainable polyfill** that:
@@ -206,18 +205,6 @@ Not yet implemented (future additions):
 These may be added in future versions as the proposal evolves.
 
 ## Migration Path
-
-### From `@webfill/async-context`
-
-```typescript
-// Before
-import { AsyncContext } from "@webfill/async-context";
-
-// After
-import { AsyncContext } from "@b9g/async-context";
-
-// API is identical ✅
-```
 
 ### From `AsyncLocalStorage`
 
