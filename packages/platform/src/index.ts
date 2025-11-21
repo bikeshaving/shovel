@@ -20,16 +20,10 @@ declare const window: any;
 export interface CacheBackendConfig {
 	/** Cache backend type - blessed alias (memory, redis, kv) or package name (@custom/cache) */
 	type?: string;
-	/** Maximum number of entries (for memory/LRU caches) */
-	maxEntries?: number;
-	/** Time-to-live in milliseconds or string format (e.g., '5m', '1h') */
-	ttl?: number | string;
-	/** Directory for filesystem cache */
-	dir?: string;
-	/** Redis connection string */
-	url?: string;
 	/** Custom cache factory function */
 	factory?: () => any;
+	/** Adapter-specific configuration options (e.g., maxEntries for memory, url for redis) */
+	[key: string]: any;
 }
 
 /**
@@ -89,19 +83,11 @@ export interface CorsConfig {
  * Filesystem adapter configuration
  */
 export interface FilesystemConfig {
-	/** Filesystem adapter type - blessed alias (memory, s3, r2) or package name (@custom/fs) */
+	/** Filesystem adapter type - blessed alias (memory, fs, s3, r2) or package name (@custom/fs) */
 	type?: string;
-	/** Region for cloud storage */
-	region?: string;
-	/** Access credentials */
-	credentials?: {
-		accessKeyId?: string;
-		secretAccessKey?: string;
-		token?: string;
-	};
 	/** Factory function for creating directory storage */
 	factory?: any; // DirectoryFactory from @b9g/filesystem
-	/** Additional adapter-specific options */
+	/** Adapter-specific configuration options (e.g., region/credentials for S3, dir for local fs) */
 	[key: string]: any;
 }
 
