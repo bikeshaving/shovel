@@ -215,13 +215,11 @@ export class NodePlatform extends BasePlatform {
 				// Worker thread: Use PostMessageCache that coordinates with main thread
 				return new PostMessageCache(name, {
 					maxEntries: 1000,
-					maxAge: 60 * 60 * 1000, // 1 hour
 				});
 			} else {
 				// Main thread: Use MemoryCache directly
 				return new MemoryCache(name, {
 					maxEntries: 1000,
-					maxAge: 60 * 60 * 1000, // 1 hour
 				});
 			}
 		});

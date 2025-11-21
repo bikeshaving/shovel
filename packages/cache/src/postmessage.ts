@@ -45,8 +45,6 @@ function handleCacheResponse(message: any) {
 export interface PostMessageCacheOptions {
 	/** Maximum number of entries to store */
 	maxEntries?: number;
-	/** Maximum age of entries in milliseconds */
-	maxAge?: number;
 	/** Timeout for cache operations in milliseconds (default: 30000) */
 	timeout?: number;
 }

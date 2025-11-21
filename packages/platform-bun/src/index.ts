@@ -128,13 +128,11 @@ export class BunPlatform extends BasePlatform {
 				// Use MemoryCache in main thread
 				return new MemoryCache(name, {
 					maxEntries: 1000,
-					maxAge: 60 * 60 * 1000, // 1 hour
 				});
 			} else {
 				// Use PostMessageCache in worker threads
 				return new PostMessageCache(name, {
 					maxEntries: 1000,
-					maxAge: 60 * 60 * 1000, // 1 hour
 				});
 			}
 		});

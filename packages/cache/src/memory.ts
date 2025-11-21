@@ -6,8 +6,6 @@ import {Cache, generateCacheKey, type CacheQueryOptions} from "./index.js";
 export interface MemoryCacheOptions {
 	/** Maximum number of entries to store */
 	maxEntries?: number;
-	/** Maximum age of entries in milliseconds */
-	maxAge?: number;
 }
 
 /**
@@ -162,20 +160,27 @@ export class MemoryCache extends Cache {
 			name: this.#name,
 			size: this.#storage.size,
 			maxEntries: this.#options.maxEntries,
-			maxAge: this.#options.maxAge,
 			hitRate: 0, // Could be implemented with additional tracking
 		};
 	}
 
 	/**
-	 * Check if a cache entry has expired
+	 * Check if a cache entry has expired based on Cache-Control header
 	 */
 	#isExpired(entry: CacheEntry): boolean {
-		if (!this.#options.maxAge) {
+		const cacheControl = entry.response.headers.get("cache-control");
+		if (!cacheControl) {
+			return false; // No expiration set
+		}
+
+		// Parse max-age from Cache-Control header
+		const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
+		if (!maxAgeMatch) {
 			return false;
 		}
 
-		return Date.now() - entry.timestamp > this.#options.maxAge;
+		const maxAge = parseInt(maxAgeMatch[1], 10) * 1000; // Convert to milliseconds
+		return Date.now() - entry.timestamp > maxAge;
 	}
 
 	/**

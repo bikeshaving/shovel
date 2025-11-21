@@ -1531,12 +1531,10 @@ const caches: CacheStorage = new CustomCacheStorage((name: string) => {
 	if (isWorkerThread) {
 		return new PostMessageCache(name, {
 			maxEntries: 1000,
-			maxAge: 60 * 60 * 1000, // 1 hour
 		});
 	} else {
 		return new MemoryCache(name, {
 			maxEntries: 1000,
-			maxAge: 60 * 60 * 1000, // 1 hour
 		});
 	}
 });
