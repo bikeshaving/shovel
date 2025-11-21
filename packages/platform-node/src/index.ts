@@ -291,7 +291,7 @@ export class NodePlatform extends BasePlatform {
 
 		return {
 			async listen() {
-				return new Promise<void>((resolve) => {
+				return new Promise<void>((resolve, reject) => {
 					httpServer.listen(port, host, () => {
 						// Get actual assigned port (important when port is 0)
 						const addr = httpServer.address();
@@ -305,6 +305,10 @@ export class NodePlatform extends BasePlatform {
 						});
 						isListening = true;
 						resolve();
+					});
+
+					httpServer.on("error", (error) => {
+						reject(error);
 					});
 				});
 			},
