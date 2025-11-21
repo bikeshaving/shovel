@@ -870,8 +870,6 @@ export interface WorkerPoolOptions {
 	requestTimeout?: number;
 	/** Working directory for file resolution */
 	cwd?: string;
-	/** Handler for unhandled messages (e.g., cache coordination) */
-	onUnhandledMessage?: (worker: Worker, message: any) => void;
 }
 
 export interface WorkerMessage {
@@ -1133,9 +1131,7 @@ export class ServiceWorkerPool {
 		number,
 		{resolve: (response: Response) => void; reject: (error: Error) => void}
 	>;
-	#options: Required<Omit<WorkerPoolOptions, "onUnhandledMessage">> & {
-		onUnhandledMessage?: (worker: Worker, message: any) => void;
-	};
+	#options: Required<WorkerPoolOptions>;
 	#appEntrypoint?: string;
 	#cacheStorage?: CacheStorage & {
 		handleMessage?: (worker: Worker, message: any) => Promise<void>;
