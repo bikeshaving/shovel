@@ -43,7 +43,6 @@ console.log('Server running at http://localhost:3000');
 import NodePlatform from '@b9g/platform-node';
 
 const platform = new NodePlatform({
-  hotReload: true,
   cwd: process.cwd()
 });
 
@@ -84,7 +83,6 @@ Creates a new Node.js platform instance.
 **Options:**
 - `caches`: Cache configuration object (see @b9g/platform)
 - `filesystem`: Filesystem configuration object
-- `hotReload`: Enable hot reloading (default: true in DEV mode)
 - `port`: Default port for servers (default: 3000)
 - `host`: Default host for servers (default: localhost)
 - `cwd`: Working directory for file resolution (default: process.cwd())

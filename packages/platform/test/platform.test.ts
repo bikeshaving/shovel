@@ -11,7 +11,6 @@ describe("@b9g/platform", () => {
 			const mockPlatform: Platform = {
 				name: "test",
 				capabilities: {
-					hotReload: false,
 					sourceMaps: false,
 					compression: false,
 					compilation: false,

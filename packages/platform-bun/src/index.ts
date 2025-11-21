@@ -47,8 +47,6 @@ export type {
 // ============================================================================
 
 export interface BunPlatformOptions extends PlatformConfig {
-	/** Enable hot reloading (default: true in development) */
-	hotReload?: boolean;
 	/** Port for development server (default: 3000) */
 	port?: number;
 	/** Host for development server (default: localhost) */
@@ -76,7 +74,6 @@ export class BunPlatform extends BasePlatform {
 		super(options);
 		this.name = "bun";
 		this.#options = {
-			hotReload: Boolean(import.meta.env?.DEV),
 			port: 3000,
 			host: "localhost",
 			cwd: process.cwd(),
@@ -188,7 +185,6 @@ export class BunPlatform extends BasePlatform {
 			async fetch(request) {
 				return handler(request);
 			},
-			development: this.#options.hotReload,
 		});
 
 		return {
@@ -233,7 +229,6 @@ export class BunPlatform extends BasePlatform {
 		const poolOptions: WorkerPoolOptions = {
 			workerCount,
 			requestTimeout: 30000,
-			hotReload: this.#options.hotReload,
 			cwd: this.#options.cwd,
 		};
 

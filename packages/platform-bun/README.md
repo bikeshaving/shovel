@@ -42,7 +42,6 @@ Creates a new Bun platform instance.
 **Options:**
 - `cache`: Cache configuration (memory, filesystem)
 - `filesystem`: Filesystem configuration (local directory)
-- `hotReload`: Enable hot reloading (default: true in development)
 - `port`: Default port (default: 3000)
 - `host`: Default host (default: localhost)
 - `cwd`: Working directory for file resolution

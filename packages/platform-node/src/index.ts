@@ -42,8 +42,6 @@ export type {
 // ============================================================================
 
 export interface NodePlatformOptions extends PlatformConfig {
-	/** Enable hot reloading (default: true in development) */
-	hotReload?: boolean;
 	/** Port for development server (default: 3000) */
 	port?: number;
 	/** Host for development server (default: localhost) */
@@ -72,7 +70,6 @@ export class NodePlatform extends BasePlatform {
 		super(options);
 		this.name = "node";
 		this.#options = {
-			hotReload: Boolean(import.meta.env?.DEV),
 			port: 3000,
 			host: "localhost",
 			cwd: process.cwd(),
@@ -151,7 +148,6 @@ export class NodePlatform extends BasePlatform {
 			{
 				workerCount,
 				requestTimeout: 30000,
-				hotReload: this.#options.hotReload,
 				cwd: this.#options.cwd,
 			},
 			entryPath,

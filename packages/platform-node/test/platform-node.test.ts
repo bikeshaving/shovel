@@ -101,27 +101,6 @@ describe("NodePlatform", () => {
 		expect(config.static.type).toBe("memory");
 	});
 
-	test("should use compile-time import.meta.env.DEV for hot reload default", () => {
-		// Hot reload default comes from compile-time import.meta.env.DEV
-		// which is injected by esbuild at build time
-		const defaultPlatform = new NodePlatform();
-
-		// The default should be a boolean (from import.meta.env.DEV)
-		expect(typeof (defaultPlatform as any).options.hotReload).toBe("boolean");
-
-		// Verify it matches the compile-time environment
-		const expectedDefault = import.meta.env?.DEV ?? false;
-		expect((defaultPlatform as any).options.hotReload).toBe(expectedDefault);
-	});
-
-	test("should allow explicit hot reload option", () => {
-		const platformWithHotReload = new NodePlatform({hotReload: true});
-		expect((platformWithHotReload as any).options.hotReload).toBe(true);
-
-		const platformWithoutHotReload = new NodePlatform({hotReload: false});
-		expect((platformWithoutHotReload as any).options.hotReload).toBe(false);
-	});
-
 	test("should reload workers", async () => {
 		// Create a mock worker pool
 		const mockWorkerPool = {

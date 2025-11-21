@@ -135,8 +135,6 @@ export interface ServerOptions {
 	timeout?: number;
 	/** Development mode settings */
 	development?: {
-		/** Enable hot reloading */
-		hotReload?: boolean;
 		/** Source maps support */
 		sourceMaps?: boolean;
 		/** Verbose logging */
@@ -172,8 +170,6 @@ export interface Server {
  * ServiceWorker entrypoint options
  */
 export interface ServiceWorkerOptions {
-	/** Enable hot reloading */
-	hotReload?: boolean;
 	/** Cache configuration to pass to platform event */
 	caches?: CacheConfig;
 	/** Additional context to provide */
@@ -872,8 +868,6 @@ export interface WorkerPoolOptions {
 	workerCount?: number;
 	/** Request timeout in milliseconds (default: 30000) */
 	requestTimeout?: number;
-	/** Enable hot reloading (default: true in development) */
-	hotReload?: boolean;
 	/** Working directory for file resolution */
 	cwd?: string;
 	/** Handler for unhandled messages (e.g., cache coordination) */
@@ -1164,7 +1158,6 @@ export class ServiceWorkerPool {
 		this.#options = {
 			workerCount: 1,
 			requestTimeout: 30000,
-			hotReload: process.env.NODE_ENV !== "production",
 			cwd: process.cwd(),
 			...options,
 		};

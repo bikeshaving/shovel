@@ -1075,8 +1075,6 @@ export interface ShovelGlobalScopeOptions {
 	caches?: CacheStorage;
 	/** Development mode flag */
 	isDevelopment?: boolean;
-	/** Hot reload callback for development */
-	hotReload?: () => Promise<void>;
 }
 
 /**
@@ -1116,7 +1114,6 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 
 	// Shovel-specific development features
 	#isDevelopment: boolean;
-	#hotReload?: () => Promise<void>;
 
 	// Web API required properties
 	// Note: Using RequestCookieStore but typing as any for flexibility with global CookieStore type
@@ -1245,7 +1242,6 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 		this.caches = options.caches || ({} as CacheStorage);
 		this.buckets = options.buckets || ({} as BucketStorage);
 		this.#isDevelopment = options.isDevelopment ?? false;
-		this.#hotReload = options.hotReload;
 
 		// Create clients API implementation
 		this.clients = this.#createClientsAPI();
@@ -1286,14 +1282,10 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	/**
 	 * Standard ServiceWorker skipWaiting() implementation
 	 * Allows the ServiceWorker to activate immediately
-	 * In development mode with hot reload, triggers a worker reload
 	 */
 	async skipWaiting(): Promise<void> {
 		logger.info("[ServiceWorker] skipWaiting() called");
-		if (this.#isDevelopment && this.#hotReload) {
-			logger.info("[ServiceWorker] skipWaiting() - triggering hot reload");
-			await this.#hotReload();
-		} else if (!this.#isDevelopment) {
+		if (!this.#isDevelopment) {
 			logger.info(
 				"[ServiceWorker] skipWaiting() - production graceful restart not implemented",
 			);

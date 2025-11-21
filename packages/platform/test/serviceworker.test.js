@@ -114,33 +114,6 @@ test(
 );
 
 test(
-	"ServiceWorker skipWaiting functionality",
-	async () => {
-		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/runtime.js"
-		);
-
-		const registration = new ShovelServiceWorkerRegistration();
-		let hotReloadCalled = false;
-
-		const scope = new ShovelGlobalScope({
-			registration,
-			isDevelopment: true,
-			hotReload: async () => {
-				hotReloadCalled = true;
-			},
-		});
-		scope.install();
-
-		// Test skipWaiting in development mode
-		expect(typeof globalThis.skipWaiting).toBe("function");
-		await globalThis.skipWaiting();
-		expect(hotReloadCalled).toBe(true);
-	},
-	TIMEOUT,
-);
-
-test(
 	"ServiceWorker clients API",
 	async () => {
 		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
