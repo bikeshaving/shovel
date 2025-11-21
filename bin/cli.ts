@@ -39,12 +39,6 @@ program
 	.description("Build app for production")
 	.option("-w, --workers <count>", "Worker count (defaults to 1)", undefined)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
-	.option(
-		"--runtime-config <json>",
-		"Runtime configuration JSON",
-		(value) => JSON.parse(value),
-		{},
-	)
 	.action(async (entrypoint, options) => {
 		const {buildCommand} = await import("../src/commands/build.ts");
 		await buildCommand(entrypoint, options);
