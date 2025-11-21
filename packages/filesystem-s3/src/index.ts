@@ -453,6 +453,9 @@ export class S3FileSystemAdapter implements FileSystemBackend {
 	}
 
 	async dispose(): Promise<void> {
-		// Nothing to dispose for S3
+		// AWS SDK v3 clients should be destroyed to clean up connection pools
+		if (this.#s3Client && typeof this.#s3Client.destroy === "function") {
+			this.#s3Client.destroy();
+		}
 	}
 }

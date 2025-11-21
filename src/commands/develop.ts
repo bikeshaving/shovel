@@ -99,15 +99,19 @@ export async function developCommand(entrypoint, options) {
 		});
 		logger.info("Serving", {entrypoint});
 
-		// Graceful shutdown
-		process.on("SIGINT", async () => {
-			logger.info("Shutting down", {});
+		// Graceful shutdown handler for both SIGINT (Ctrl+C) and SIGTERM (docker stop, systemd, k8s)
+		const shutdown = async (signal: string) => {
+			logger.info("Shutting down gracefully", {signal});
 			await watcher.stop();
 			await serviceWorker.dispose();
 			await platformInstance.dispose();
 			await server.close();
+			logger.info("Shutdown complete", {});
 			process.exit(0);
-		});
+		};
+
+		process.on("SIGINT", () => shutdown("SIGINT"));
+		process.on("SIGTERM", () => shutdown("SIGTERM"));
 	} catch (error) {
 		logger.error("Failed to start development server", {
 			error: error.message,

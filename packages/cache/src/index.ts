@@ -218,6 +218,27 @@ export class CustomCacheStorage {
 	}
 
 	/**
+	 * Dispose of all cache instances
+	 * Calls dispose() on each cache if it exists (e.g., RedisCache needs to close connections)
+	 */
+	async dispose(): Promise<void> {
+		const disposePromises: Promise<void>[] = [];
+
+		for (const [name, cache] of this.#instances) {
+			// Check if cache has a dispose method (RedisCache, etc.)
+			if (typeof (cache as any).dispose === "function") {
+				disposePromises.push((cache as any).dispose());
+			}
+		}
+
+		// Wait for all caches to dispose
+		await Promise.allSettled(disposePromises);
+
+		// Clear the instances map
+		this.#instances.clear();
+	}
+
+	/**
 	 * Handle cache messages from worker threads (PostMessageCache coordination)
 	 */
 	async handleMessage(worker: any, message: any): Promise<void> {

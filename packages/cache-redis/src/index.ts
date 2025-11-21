@@ -319,4 +319,27 @@ export class RedisCache extends Cache {
 			};
 		}
 	}
+
+	/**
+	 * Dispose of Redis client connection
+	 * Call this during graceful shutdown to properly close Redis connections
+	 */
+	async dispose(): Promise<void> {
+		if (this.#connected || this.#client.isReady) {
+			try {
+				await this.#client.quit(); // Graceful shutdown - waits for pending commands
+				logger.info("Redis connection closed", {prefix: this.#prefix});
+			} catch (error) {
+				logger.error("Error closing Redis connection", {error});
+				// Force disconnect if graceful quit fails
+				try {
+					await this.#client.disconnect();
+				} catch (disconnectError) {
+					logger.error("Error forcing Redis disconnect", {
+						error: disconnectError,
+					});
+				}
+			}
+		}
+	}
 }

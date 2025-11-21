@@ -353,9 +353,16 @@ export class NodePlatform extends BasePlatform {
 	 * Dispose of platform resources
 	 */
 	async dispose(): Promise<void> {
+		// Dispose worker pool first
 		if (this.#workerPool) {
 			await this.#workerPool.terminate();
 			this.#workerPool = undefined;
+		}
+
+		// Dispose cache storage (closes Redis connections, etc.)
+		if (this.#cacheStorage) {
+			await this.#cacheStorage.dispose();
+			this.#cacheStorage = undefined;
 		}
 	}
 }

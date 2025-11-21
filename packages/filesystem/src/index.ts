@@ -650,6 +650,36 @@ class Registry {
 		this.#adapters.clear();
 		this.#defaultAdapter = null as any;
 	}
+
+	/**
+	 * Dispose of all registered adapters
+	 * Calls dispose() on each adapter if it exists (e.g., S3FileSystemAdapter needs to close clients)
+	 */
+	async dispose(): Promise<void> {
+		const disposePromises: Promise<void>[] = [];
+
+		for (const [name, adapter] of this.#adapters) {
+			// Check if adapter has a dispose method (S3FileSystemAdapter, etc.)
+			if (typeof (adapter as any).dispose === "function") {
+				disposePromises.push((adapter as any).dispose());
+			}
+		}
+
+		// Also dispose default adapter if it's different
+		if (
+			this.#defaultAdapter &&
+			typeof (this.#defaultAdapter as any).dispose === "function"
+		) {
+			disposePromises.push((this.#defaultAdapter as any).dispose());
+		}
+
+		// Wait for all adapters to dispose
+		await Promise.allSettled(disposePromises);
+
+		// Clear the registry
+		this.#adapters.clear();
+		this.#defaultAdapter = null as any;
+	}
 }
 
 /**
