@@ -574,7 +574,7 @@ async function generateExecutablePackageJson(platform) {
 export async function buildCommand(entrypoint: string, options: any) {
 	await buildForProduction({
 		entrypoint,
-		outDir: options.out || "dist",
+		outDir: "dist",
 		verbose: options.verbose || false,
 		platform: options.platform || "node",
 		workerCount: options.workers ? parseInt(options.workers, 10) : 1,

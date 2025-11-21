@@ -8,7 +8,6 @@ import {resolve, dirname, join} from "path";
 import {readFileSync} from "fs";
 import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
-import {DEFAULTS} from "./config.js";
 import {createEnvDefines} from "./env-defines.js";
 import {getLogger} from "@logtape/logtape";
 
@@ -30,10 +29,7 @@ export class Watcher {
 
 	constructor(options: WatcherOptions) {
 		this.#building = false;
-		this.#options = {
-			outDir: DEFAULTS.PATHS.OUTPUT_DIR,
-			...options,
-		};
+		this.#options = options;
 	}
 
 	/**

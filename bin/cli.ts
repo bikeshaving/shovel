@@ -37,7 +37,6 @@ program
 program
 	.command("build <entrypoint>")
 	.description("Build app for production")
-	.option("-o, --out <dir>", "Output directory", "dist")
 	.option("-w, --workers <count>", "Worker count (defaults to 1)", undefined)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
 	.option(

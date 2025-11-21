@@ -18,9 +18,5 @@ export const DEFAULTS = {
 		MAX_ENTRIES: 1000,
 		TTL: 300000, // 5 minutes
 	},
-	PATHS: {
-		OUTPUT_DIR: "dist",
-		MANIFEST_FILE: "manifest.json",
-	},
 	WORKERS: cpus().length,
 } as const;
