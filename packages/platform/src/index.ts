@@ -26,19 +26,6 @@ export interface CacheBackendConfig {
 	[key: string]: any;
 }
 
-/**
- * Cache configuration for different cache types
- */
-export interface CacheConfig {
-	/** Page/HTML cache configuration */
-	pages?: CacheBackendConfig;
-	/** API response cache configuration */
-	api?: CacheBackendConfig;
-	/** Static file cache configuration */
-	static?: CacheBackendConfig;
-	/** Custom named caches */
-	[name: string]: CacheBackendConfig | undefined;
-}
 
 /**
  * Static file serving configuration
@@ -62,43 +49,10 @@ export interface StaticConfig {
 }
 
 /**
- * CORS configuration
- */
-export interface CorsConfig {
-	/** Allowed origins */
-	origin?: boolean | string | string[] | RegExp | ((origin: string) => boolean);
-	/** Allowed methods */
-	methods?: string[];
-	/** Allowed headers */
-	allowedHeaders?: string[];
-	/** Exposed headers */
-	exposedHeaders?: string[];
-	/** Allow credentials */
-	credentials?: boolean;
-	/** Preflight cache duration */
-	maxAge?: number;
-}
-
-/**
- * Filesystem adapter configuration
- */
-export interface FilesystemConfig {
-	/** Filesystem adapter type - blessed alias (memory, fs, s3, r2) or package name (@custom/fs) */
-	type?: string;
-	/** Factory function for creating directory storage */
-	factory?: any; // DirectoryFactory from @b9g/filesystem
-	/** Adapter-specific configuration options (e.g., region/credentials for S3, dir for local fs) */
-	[key: string]: any;
-}
-
-/**
  * Platform configuration from CLI flags
  */
 export interface PlatformConfig {
-	/** Cache configuration */
-	caches?: CacheConfig;
-	/** Filesystem adapter configuration */
-	filesystem?: FilesystemConfig;
+	// Platform-specific configuration will be added here as needed
 }
 
 /**
@@ -109,16 +63,6 @@ export interface ServerOptions {
 	port?: number;
 	/** Host to bind to */
 	host?: string;
-	/** Hostname for URL generation */
-	hostname?: string;
-	/** Enable compression */
-	compression?: boolean;
-	/** CORS configuration */
-	cors?: CorsConfig;
-	/** Custom headers to add to all responses */
-	headers?: Record<string, string>;
-	/** Request timeout in milliseconds */
-	timeout?: number;
 	/** Development mode settings */
 	development?: {
 		/** Source maps support */
@@ -156,8 +100,6 @@ export interface Server {
  * ServiceWorker entrypoint options
  */
 export interface ServiceWorkerOptions {
-	/** Cache configuration to pass to platform event */
-	caches?: CacheConfig;
 	/** Additional context to provide */
 	context?: any;
 	/** Number of worker threads (Node/Bun only) */
@@ -203,13 +145,10 @@ export interface Platform {
 	): Promise<ServiceWorkerInstance>;
 
 	/**
-	 * SUPPORTING UTILITY - Create cache storage with platform-optimized backends
-	 * Automatically selects optimal cache types when not specified:
-	 * - Node.js: filesystem for persistence, memory for API
-	 * - Cloudflare: KV for persistence, memory for fast access
-	 * - Bun: filesystem with optimized writes
+	 * SUPPORTING UTILITY - Create cache storage
+	 * Returns empty CacheStorage - applications create caches on-demand via caches.open()
 	 */
-	createCaches(config?: CacheConfig): Promise<CacheStorage>;
+	createCaches(): Promise<CacheStorage>;
 
 	/**
 	 * SUPPORTING UTILITY - Create server instance for this platform
@@ -462,137 +401,6 @@ export async function createPlatform(
 	}
 }
 
-// ============================================================================
-// Adapter Registry
-// ============================================================================
-
-interface AdapterModule {
-	createCache?: (config: any) => any;
-	createFileSystem?: (config: any) => any;
-}
-
-/**
- * Internal blessed aliases for cache adapters
- */
-const CACHE_ALIASES = {
-	memory: "@b9g/cache",
-	redis: "@b9g/cache-redis",
-	kv: "@b9g/cache-kv",
-	cloudflare: "@b9g/cache/cloudflare",
-} as const;
-
-/**
- * Internal blessed aliases for filesystem adapters
- */
-const FILESYSTEM_ALIASES = {
-	memory: "@b9g/filesystem",
-	fs: "@b9g/filesystem/node",
-	"bun-s3": "@b9g/filesystem/bun-s3",
-	s3: "@b9g/filesystem-s3",
-	r2: "@b9g/filesystem-r2",
-} as const;
-
-/**
- * Internal: Resolve a cache adapter name to a package name
- */
-function resolveCacheAdapter(name: string): string {
-	// If it starts with @, assume it's a full package name
-	if (name.startsWith("@")) {
-		return name;
-	}
-
-	// Check blessed aliases
-	if (name in CACHE_ALIASES) {
-		return CACHE_ALIASES[name as keyof typeof CACHE_ALIASES];
-	}
-
-	throw new Error(
-		`Unknown cache adapter: ${name}. Available aliases: ${Object.keys(CACHE_ALIASES).join(", ")} or use full package name like @custom/cache`,
-	);
-}
-
-/**
- * Internal: Resolve a filesystem adapter name to a package name
- */
-function resolveFilesystemAdapter(name: string): string {
-	// If it starts with @, assume it's a full package name
-	if (name.startsWith("@")) {
-		return name;
-	}
-
-	// Check blessed aliases
-	if (name in FILESYSTEM_ALIASES) {
-		return FILESYSTEM_ALIASES[name as keyof typeof FILESYSTEM_ALIASES];
-	}
-
-	throw new Error(
-		`Unknown filesystem adapter: ${name}. Available aliases: ${Object.keys(FILESYSTEM_ALIASES).join(", ")} or use full package name like @custom/filesystem`,
-	);
-}
-
-/**
- * Dynamically load a cache adapter
- * @param name - Adapter name (blessed alias or package name)
- * @param config - Adapter configuration
- * @returns Cache instance
- */
-async function loadCacheAdapter(name: string, config: any = {}) {
-	const packageName = resolveCacheAdapter(name);
-
-	try {
-		const module: AdapterModule = await import(packageName);
-
-		if (!module.createCache) {
-			throw new Error(
-				`Package ${packageName} does not export a createCache function`,
-			);
-		}
-
-		return module.createCache(config);
-	} catch (error) {
-		if (
-			error instanceof Error &&
-			error.message.includes("Cannot resolve module")
-		) {
-			throw new Error(
-				`Cache adapter '${name}' requires: npm install ${packageName}`,
-			);
-		}
-		throw error;
-	}
-}
-
-/**
- * Dynamically load a filesystem adapter
- * @param name - Adapter name (blessed alias or package name)
- * @param config - Adapter configuration
- * @returns Filesystem adapter instance
- */
-async function loadFilesystemAdapter(name: string, config: any = {}) {
-	const packageName = resolveFilesystemAdapter(name);
-
-	try {
-		const module: AdapterModule = await import(packageName);
-
-		if (!module.createFileSystem) {
-			throw new Error(
-				`Package ${packageName} does not export a createFileSystem function`,
-			);
-		}
-
-		return module.createFileSystem(config);
-	} catch (error) {
-		if (
-			error instanceof Error &&
-			error.message.includes("Cannot resolve module")
-		) {
-			throw new Error(
-				`Filesystem adapter '${name}' requires: npm install ${packageName}`,
-			);
-		}
-		throw error;
-	}
-}
 
 // ============================================================================
 // Base Platform Class
@@ -615,120 +423,16 @@ export abstract class BasePlatform implements Platform {
 	abstract getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
 
 	/**
-	 * Create cache storage with dynamic adapter loading
-	 * Uses platform defaults when specific cache types aren't configured
+	 * Create cache storage
+	 * Returns empty CacheStorage - applications create caches on-demand via caches.open()
 	 */
-	async createCaches(config?: CacheConfig): Promise<CacheStorage> {
-		const mergedConfig = this.mergeCacheConfig(config);
-		return this.buildCacheStorage(mergedConfig);
-	}
-
-	/**
-	 * Get platform-specific default cache configuration
-	 * Subclasses override this to provide optimal defaults for their runtime
-	 */
-	getDefaultCacheConfig(): CacheConfig {
-		return {
-			pages: {type: "memory"},
-			api: {type: "memory"},
-			static: {type: "memory"},
-		};
-	}
-
-	/**
-	 * Merge user config with platform defaults
-	 */
-	mergeCacheConfig(userConfig?: CacheConfig): CacheConfig {
-		const defaults = this.getDefaultCacheConfig();
-		const platformConfig = this.config.caches || {};
-
-		// Merge in order: defaults -> platform config -> user config
-		return {
-			...defaults,
-			...platformConfig,
-			...userConfig,
-		};
-	}
-
-	/**
-	 * Build CacheStorage instance with dynamic adapter loading
-	 */
-	async buildCacheStorage(config: CacheConfig): Promise<CacheStorage> {
-		// Import CustomCacheStorage from @b9g/cache
+	async createCaches(): Promise<CacheStorage> {
 		const {CustomCacheStorage} = await import("@b9g/cache");
+		const {MemoryCache} = await import("@b9g/cache/memory");
 
-		// Pre-load configured caches
-		const configuredCaches = new Map();
-		for (const [name, cacheConfig] of Object.entries(config)) {
-			if (
-				cacheConfig &&
-				typeof cacheConfig === "object" &&
-				"type" in cacheConfig
-			) {
-				const cache = await this.loadCacheInstance(cacheConfig);
-				configuredCaches.set(name, cache);
-			}
-		}
-
-		// Create CustomCacheStorage with factory that returns pre-configured caches
-		const cacheStorage = new CustomCacheStorage((name: string) => {
-			const cache = configuredCaches.get(name);
-			if (!cache) {
-				throw new Error(`Cache '${name}' not configured`);
-			}
-			return cache;
-		});
-
-		return cacheStorage as CacheStorage;
-	}
-
-	/**
-	 * Load a single cache instance using dynamic import
-	 */
-	async loadCacheInstance(config: CacheBackendConfig) {
-		if (!config.type) {
-			throw new Error("Cache configuration must specify a type");
-		}
-
-		try {
-			return await loadCacheAdapter(config.type, config);
-		} catch (error) {
-			// Add context about which cache failed to load
-			if (error instanceof Error) {
-				throw new Error(`Failed to load cache adapter: ${error.message}`);
-			}
-			throw error;
-		}
-	}
-
-	/**
-	 * Load filesystem adapter using dynamic import
-	 */
-	async loadFilesystemAdapter(config?: FilesystemConfig) {
-		const fsConfig =
-			config || this.config.filesystem || this.getDefaultFilesystemConfig();
-
-		if (!fsConfig.type) {
-			throw new Error("Filesystem configuration must specify a type");
-		}
-
-		try {
-			return await loadFilesystemAdapter(fsConfig.type, fsConfig);
-		} catch (error) {
-			// Add context about filesystem adapter failure
-			if (error instanceof Error) {
-				throw new Error(`Failed to load filesystem adapter: ${error.message}`);
-			}
-			throw error;
-		}
-	}
-
-	/**
-	 * Get platform-specific default filesystem configuration
-	 * Subclasses override this to provide optimal defaults for their runtime
-	 */
-	getDefaultFilesystemConfig(): FilesystemConfig {
-		return {type: "memory"};
+		// Return CacheStorage with memory cache factory
+		// Applications call caches.open("name") to create caches on-demand
+		return new CustomCacheStorage((name: string) => new MemoryCache(name)) as CacheStorage;
 	}
 }
 

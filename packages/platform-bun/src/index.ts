@@ -10,7 +10,6 @@ declare const window: any;
 import {
 	BasePlatform,
 	PlatformConfig,
-	CacheConfig,
 	Handler,
 	Server,
 	ServerOptions,
@@ -33,7 +32,6 @@ const logger = getLogger(["platform-bun"]);
 // Re-export common platform types
 export type {
 	Platform,
-	CacheConfig,
 	StaticConfig,
 	Handler,
 	Server,
@@ -65,8 +63,7 @@ export interface BunPlatformOptions extends PlatformConfig {
  */
 export class BunPlatform extends BasePlatform {
 	readonly name: string;
-	#options: Required<Omit<BunPlatformOptions, "caches" | "filesystem">> &
-		Pick<BunPlatformOptions, "caches" | "filesystem">;
+	#options: Required<BunPlatformOptions>;
 	#workerPool?: ServiceWorkerPool;
 	#cacheStorage?: CustomCacheStorage;
 
@@ -132,20 +129,9 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Get platform-specific default cache configuration for Bun
-	 */
-	getDefaultCacheConfig(): CacheConfig {
-		return {
-			pages: {type: "memory"}, // PostMessage cache for coordination
-			api: {type: "memory"},
-			static: {type: "memory"},
-		};
-	}
-
-	/**
 	 * Override cache creation to use appropriate cache type for Bun
 	 */
-	async createCaches(_config?: CacheConfig): Promise<CustomCacheStorage> {
+	async createCaches(): Promise<CustomCacheStorage> {
 		// Import MemoryCache for fallback
 		const {MemoryCache} = await import("@b9g/cache/memory.js");
 
@@ -216,7 +202,7 @@ export class BunPlatform extends BasePlatform {
 
 		// Create shared cache storage if not already created
 		if (!this.#cacheStorage) {
-			this.#cacheStorage = await this.createCaches(options.caches);
+			this.#cacheStorage = await this.createCaches();
 		}
 
 		// Create WorkerPool using Bun's native Web Workers

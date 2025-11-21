@@ -7,7 +7,6 @@
 import {
 	BasePlatform,
 	PlatformConfig,
-	CacheConfig,
 	Handler,
 	Server,
 	ServerOptions,
@@ -30,7 +29,6 @@ const logger = getLogger(["platform-node"]);
 // Re-export common platform types
 export type {
 	Platform,
-	CacheConfig,
 	StaticConfig,
 	Handler,
 	Server,
@@ -61,8 +59,7 @@ export interface NodePlatformOptions extends PlatformConfig {
 export class NodePlatform extends BasePlatform {
 	readonly name: string;
 
-	#options: Required<Omit<NodePlatformOptions, "caches" | "filesystem">> &
-		Pick<NodePlatformOptions, "caches" | "filesystem">;
+	#options: Required<NodePlatformOptions>;
 	#workerPool?: ServiceWorkerPool;
 	#cacheStorage?: CustomCacheStorage;
 
@@ -124,7 +121,7 @@ export class NodePlatform extends BasePlatform {
 
 		// Create shared cache storage if not already created
 		if (!this.#cacheStorage) {
-			this.#cacheStorage = await this.createCaches(options.caches);
+			this.#cacheStorage = await this.createCaches();
 		}
 
 		// Create bucket storage for dist/ directory access
@@ -203,21 +200,10 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Get platform-specific default cache configuration for Node.js
-	 */
-	getDefaultCacheConfig(): CacheConfig {
-		return {
-			pages: {type: "memory"}, // PostMessage cache for worker coordination
-			api: {type: "memory"},
-			static: {type: "memory"},
-		};
-	}
-
-	/**
 	 * SUPPORTING UTILITY - Create cache storage optimized for Node.js
 	 * Uses MemoryCache in main thread, PostMessageCache in workers
 	 */
-	async createCaches(_config?: CacheConfig): Promise<CustomCacheStorage> {
+	async createCaches(): Promise<CustomCacheStorage> {
 		// Return CustomCacheStorage with thread-appropriate cache
 		// Factory checks thread context dynamically on each call
 		return new CustomCacheStorage((name: string) => {

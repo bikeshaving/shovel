@@ -7,7 +7,6 @@
 import {
 	BasePlatform,
 	PlatformConfig,
-	CacheConfig,
 	Handler,
 	Server,
 	ServerOptions,
@@ -23,7 +22,6 @@ const logger = getLogger(["platform-cloudflare"]);
 // Re-export common platform types
 export type {
 	Platform,
-	CacheConfig,
 	StaticConfig,
 	Handler,
 	Server,
@@ -58,8 +56,7 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
  */
 export class CloudflarePlatform extends BasePlatform {
 	readonly name: string;
-	#options: Required<Omit<CloudflarePlatformOptions, "caches" | "filesystem">> &
-		Pick<CloudflarePlatformOptions, "caches" | "filesystem">;
+	#options: Required<CloudflarePlatformOptions>;
 
 	constructor(options: CloudflarePlatformOptions = {}) {
 		super(options);
@@ -94,21 +91,11 @@ export class CloudflarePlatform extends BasePlatform {
 		return new MemoryBucket(name || "root");
 	}
 
-	/**
-	 * Get platform-specific default cache configuration for Cloudflare Workers
-	 */
-	getDefaultCacheConfig(): CacheConfig {
-		return {
-			pages: {type: "cloudflare"}, // Use Cloudflare's native Cache API
-			api: {type: "cloudflare"}, // Use Cloudflare's native Cache API
-			static: {type: "cloudflare"}, // Static files handled by CDN
-		};
-	}
 
 	/**
 	 * Override cache creation to use bundled KV adapter
 	 */
-	async createCaches(_config?: CacheConfig): Promise<CacheStorage> {
+	async createCaches(): Promise<CacheStorage> {
 		// For Cloudflare Workers, we need to use bundled adapters
 		// In production, we'd bundle the KV cache adapter
 
