@@ -18,13 +18,18 @@ export async function activateCommand(entrypoint, options) {
 			hotReload: false,
 		};
 
+		// Build cache configuration from CLI flags if provided
+		const cacheConfig = options.cache
+			? {
+					pages: {type: options.cache},
+					api: {type: options.cache},
+					static: {type: options.cache},
+				}
+			: undefined;
+
 		// Convert CLI flags to platform config format
-		if (options.cache) {
-			platformConfig.caches = {
-				pages: {type: options.cache},
-				api: {type: options.cache},
-				static: {type: options.cache},
-			};
+		if (cacheConfig) {
+			platformConfig.caches = cacheConfig;
 		}
 
 		if (options.filesystem) {
@@ -42,6 +47,7 @@ export async function activateCommand(entrypoint, options) {
 		const serviceWorker = await platformInstance.loadServiceWorker(entrypoint, {
 			hotReload: false,
 			workerCount,
+			...(cacheConfig && {caches: cacheConfig}),
 		});
 
 		// The ServiceWorker install/activate lifecycle will handle any self-generation

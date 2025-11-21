@@ -43,14 +43,21 @@ export async function developCommand(entrypoint, options) {
 			host: options.host || DEFAULTS.SERVER.HOST,
 		};
 
+		// Build cache configuration - prefer CLI flags, fallback to defaults
+		const cacheConfig = options.cache
+			? {
+					pages: {type: options.cache},
+					api: {type: options.cache},
+					static: {type: options.cache},
+				}
+			: {
+					pages: {type: "memory", maxEntries: DEFAULTS.CACHE.MAX_ENTRIES},
+					api: {type: "memory", ttl: DEFAULTS.CACHE.TTL},
+					static: {type: "memory"},
+				};
+
 		// Convert CLI flags to platform config format
-		if (options.cache) {
-			platformConfig.caches = {
-				pages: {type: options.cache},
-				api: {type: options.cache},
-				static: {type: options.cache},
-			};
-		}
+		platformConfig.caches = cacheConfig;
 
 		if (options.filesystem) {
 			platformConfig.filesystem = {type: options.filesystem};
@@ -97,11 +104,7 @@ export async function developCommand(entrypoint, options) {
 		serviceWorker = await platformInstance.loadServiceWorker(builtEntrypoint, {
 			hotReload: true,
 			workerCount,
-			caches: {
-				pages: {type: "memory", maxEntries: DEFAULTS.CACHE.MAX_ENTRIES},
-				api: {type: "memory", ttl: DEFAULTS.CACHE.TTL},
-				static: {type: "memory"},
-			},
+			caches: cacheConfig,
 		});
 
 		// Create development server
