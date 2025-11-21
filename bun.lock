@@ -5,7 +5,7 @@
     "": {
       "name": "@b9g/shovel",
       "dependencies": {
-        "@b9g/asynccontext-polyfill": "workspace:*",
+        "@b9g/async-context": "workspace:*",
         "@clack/prompts": "^0.7.0",
         "@logtape/logtape": "^1.2.0",
         "commander": "^13.1.0",
@@ -125,8 +125,8 @@
         "esbuild",
       ],
     },
-    "packages/asynccontext-polyfill": {
-      "name": "@b9g/asynccontext-polyfill",
+    "packages/async-context": {
+      "name": "@b9g/async-context",
       "version": "0.1.0",
       "devDependencies": {
         "@b9g/libuild": "^0.1.11",
@@ -237,9 +237,6 @@
     "packages/node-webworker": {
       "name": "@b9g/node-webworker",
       "version": "0.1.2",
-      "dependencies": {
-        "@logtape/logtape": "^1.2.0",
-      },
       "devDependencies": {
         "@b9g/libuild": "^0.1.11",
         "@types/node": "^18.0.0",
@@ -250,7 +247,7 @@
       "name": "@b9g/platform",
       "version": "0.1.4",
       "dependencies": {
-        "@b9g/asynccontext-polyfill": "workspace:*",
+        "@b9g/async-context": "workspace:*",
         "@logtape/logtape": "^1.2.0",
       },
       "devDependencies": {
@@ -391,7 +388,7 @@
 
     "@b9g/assets": ["@b9g/assets@workspace:packages/assets"],
 
-    "@b9g/asynccontext-polyfill": ["@b9g/asynccontext-polyfill@workspace:packages/asynccontext-polyfill"],
+    "@b9g/async-context": ["@b9g/async-context@workspace:packages/async-context"],
 
     "@b9g/auth": ["@b9g/auth@workspace:packages/auth"],
 

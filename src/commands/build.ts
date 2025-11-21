@@ -14,7 +14,7 @@ import {
 	cloudflareWorkerFooter,
 } from "@b9g/platform-cloudflare";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
-import {AsyncContext} from "@b9g/asynccontext-polyfill";
+import {AsyncContext} from "@b9g/async-context";
 
 // Configure LogTape for build command
 await configure({

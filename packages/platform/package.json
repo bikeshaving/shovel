@@ -22,7 +22,7 @@
     "shovel"
   ],
   "dependencies": {
-    "@b9g/asynccontext-polyfill": "workspace:*",
+    "@b9g/async-context": "workspace:*",
     "@logtape/logtape": "^1.2.0"
   },
   "devDependencies": {

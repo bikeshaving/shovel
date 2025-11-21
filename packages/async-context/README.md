@@ -1,4 +1,4 @@
-# @b9g/asynccontext-polyfill
+# @b9g/async-context
 
 Lightweight polyfill for the [TC39 AsyncContext proposal](https://github.com/tc39/proposal-async-context) using Node.js `AsyncLocalStorage`.
 
@@ -22,9 +22,9 @@ This package provides a **lightweight, maintainable polyfill** that:
 ## Installation
 
 ```bash
-npm install @b9g/asynccontext-polyfill
+npm install @b9g/async-context
 # or
-bun add @b9g/asynccontext-polyfill
+bun add @b9g/async-context
 ```
 
 ## Usage
@@ -32,7 +32,7 @@ bun add @b9g/asynccontext-polyfill
 ### Basic Example
 
 ```typescript
-import { AsyncContext } from "@b9g/asynccontext-polyfill";
+import { AsyncContext } from "@b9g/async-context";
 
 // Create a context variable
 const userContext = new AsyncContext.Variable<User>();
@@ -49,7 +49,7 @@ userContext.run(currentUser, async () => {
 ### Request Context (Web Server)
 
 ```typescript
-import { AsyncVariable } from "@b9g/asynccontext-polyfill";
+import { AsyncVariable } from "@b9g/async-context";
 
 interface RequestContext {
   requestId: string;
@@ -152,7 +152,7 @@ Get the name of this variable (for debugging).
 Alias for `AsyncVariable<T>` that matches the TC39 proposal namespace.
 
 ```typescript
-import { AsyncContext } from "@b9g/asynccontext-polyfill";
+import { AsyncContext } from "@b9g/async-context";
 
 const ctx = new AsyncContext.Variable<string>();
 ```
@@ -214,7 +214,7 @@ These may be added in future versions as the proposal evolves.
 import { AsyncContext } from "@webfill/async-context";
 
 // After
-import { AsyncContext } from "@b9g/asynccontext-polyfill";
+import { AsyncContext } from "@b9g/async-context";
 
 // API is identical ✅
 ```
@@ -231,7 +231,7 @@ storage.run(user, () => {
 });
 
 // After
-import { AsyncVariable } from "@b9g/asynccontext-polyfill";
+import { AsyncVariable } from "@b9g/async-context";
 const userContext = new AsyncVariable<User>();
 
 userContext.run(user, () => {

@@ -10,7 +10,7 @@
  */
 
 import {RequestCookieStore} from "./cookie-store.js";
-import {AsyncContext} from "@b9g/asynccontext-polyfill";
+import {AsyncContext} from "@b9g/async-context";
 
 // ============================================================================
 // AsyncContext for per-request cookieStore

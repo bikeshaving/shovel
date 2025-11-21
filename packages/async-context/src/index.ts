@@ -1,5 +1,5 @@
 /**
- * @b9g/asynccontext-polyfill
+ * @b9g/async-context
  *
  * Lightweight polyfill for the TC39 AsyncContext proposal
  * https://github.com/tc39/proposal-async-context

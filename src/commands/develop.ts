@@ -1,6 +1,6 @@
 import {DEFAULTS} from "../esbuild/config.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
-import {AsyncContext} from "@b9g/asynccontext-polyfill";
+import {AsyncContext} from "@b9g/async-context";
 
 // CLI logger
 const logger = getLogger(["cli"]);
