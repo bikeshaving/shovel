@@ -57,12 +57,13 @@ describe("CloudflarePlatform", () => {
 		expect(handle.kind).toBe("directory");
 	});
 
-	test("should have cloudflare cache configuration", () => {
-		// Access protected method via casting
-		const config = (platform as any).getDefaultCacheConfig();
-		expect(config.pages.type).toBe("cloudflare");
-		expect(config.api.type).toBe("cloudflare");
-		expect(config.static.type).toBe("cloudflare");
+	test("should create cache storage", async () => {
+		// Platform should create cache storage
+		const caches = await platform.createCaches();
+		expect(caches).toBeDefined();
+
+		const cache = await caches.open("test");
+		expect(cache).toBeDefined();
 	});
 
 	test("should create cache storage using native Cloudflare caches", async () => {

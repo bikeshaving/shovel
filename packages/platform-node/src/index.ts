@@ -17,22 +17,15 @@ import {
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
 import {PostMessageCache} from "@b9g/cache/postmessage.js";
-import {FileSystemRegistry, getDirectoryHandle} from "@b9g/filesystem";
 import {NodeBucket} from "@b9g/filesystem/node.js";
 import * as Http from "http";
 import * as Path from "path";
-import * as Os from "os";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["platform-node"]);
 
 // Re-export common platform types
-export type {
-	Platform,
-	Handler,
-	Server,
-	ServerOptions,
-} from "@b9g/platform";
+export type {Platform, Handler, Server, ServerOptions} from "@b9g/platform";
 
 // ============================================================================
 // TYPES
@@ -71,13 +64,6 @@ export class NodePlatform extends BasePlatform {
 			cwd: process.cwd(),
 			...options,
 		};
-
-		// Register standard well-known buckets
-		FileSystemRegistry.register("tmp", new NodeBucket(Os.tmpdir()));
-		FileSystemRegistry.register(
-			"dist",
-			new NodeBucket(Path.join(this.#options.cwd, "dist")),
-		);
 	}
 
 	/**
@@ -123,15 +109,10 @@ export class NodePlatform extends BasePlatform {
 			this.#cacheStorage = await this.createCaches();
 		}
 
-		// Create bucket storage for dist/ directory access
-		const {CustomBucketStorage} = await import("@b9g/filesystem");
-		const distPath = Path.resolve(this.#options.cwd, "dist");
-		const bucketStorage = new CustomBucketStorage(async (name: string) => {
-			const bucketPath = Path.join(distPath, name);
-			return new NodeBucket(bucketPath);
-		});
+		// Note: Bucket storage is handled in runtime.ts using import.meta.url
+		// Workers calculate bucket paths relative to their script location
 
-		// Create ServiceWorkerPool with shared cache and bucket storage
+		// Create ServiceWorkerPool with shared cache
 		// Always create a new WorkerPool to ensure correct entrypoint
 		if (this.#workerPool) {
 			await this.#workerPool.terminate();
@@ -148,7 +129,6 @@ export class NodePlatform extends BasePlatform {
 			},
 			entryPath,
 			this.#cacheStorage,
-			bucketStorage,
 		);
 
 		// Initialize workers with dynamic import handling
@@ -336,8 +316,9 @@ export class NodePlatform extends BasePlatform {
 	async getFileSystemRoot(
 		name = "default",
 	): Promise<FileSystemDirectoryHandle> {
-		// Use centralized filesystem registry
-		return await getDirectoryHandle(name);
+		// Create bucket directly - no registry needed
+		const bucketPath = Path.resolve(this.#options.cwd, name);
+		return new NodeBucket(bucketPath);
 	}
 
 	/**

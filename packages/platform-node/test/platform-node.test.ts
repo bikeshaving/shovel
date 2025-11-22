@@ -70,9 +70,11 @@ describe("NodePlatform", () => {
 	});
 
 	test("should create directory handle using getFileSystemRoot", async () => {
-		const handle = await platform.getFileSystemRoot("tmp");
+		// getFileSystemRoot creates bucket at path relative to cwd
+		const handle = await platform.getFileSystemRoot("test-bucket");
 		expect(handle).toBeDefined();
 		expect(handle.kind).toBe("directory");
+		expect(handle.name).toBe("test-bucket");
 	});
 
 	test("should create custom cache storage", async () => {
@@ -93,12 +95,22 @@ describe("NodePlatform", () => {
 		}
 	});
 
-	test("should have default cache configuration", () => {
-		// Access protected method via casting
-		const config = (platform as any).getDefaultCacheConfig();
-		expect(config.pages.type).toBe("memory");
-		expect(config.api.type).toBe("memory");
-		expect(config.static.type).toBe("memory");
+	test("should create cache storage with MemoryCache", async () => {
+		// Platform should create cache storage that uses MemoryCache
+		const caches = await platform.createCaches();
+		expect(caches).toBeDefined();
+
+		const cache = await caches.open("test");
+		expect(cache).toBeDefined();
+
+		// Test basic cache operations
+		const req = new Request("http://example.com/test");
+		const res = new Response("test");
+		await cache.put(req, res);
+
+		const cached = await cache.match(req);
+		expect(cached).toBeDefined();
+		expect(await cached?.text()).toBe("test");
 	});
 
 	test("should reload workers", async () => {

@@ -516,7 +516,6 @@ export async function getDirectoryHandle(
 import * as Path from "path";
 import {existsSync} from "fs";
 import {getLogger} from "@logtape/logtape";
-import type {BucketStorage} from "./runtime.js";
 
 const logger = getLogger(["worker"]);
 
@@ -996,7 +995,6 @@ export {
 	InstallEvent,
 	ActivateEvent,
 	ExtendableEvent,
-	type BucketStorage,
 } from "./runtime.js";
 
 // Re-export Cookie Store API

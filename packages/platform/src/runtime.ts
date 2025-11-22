@@ -1404,120 +1404,8 @@ async function initializeWorker() {
 const {CustomCacheStorage} = await import("@b9g/cache");
 const {PostMessageCache} = await import("@b9g/cache/postmessage.js");
 const {MemoryCache} = await import("@b9g/cache/memory.js");
-const {FileSystemRegistry, CustomBucketStorage} = await import(
-	"@b9g/filesystem"
-);
-
-/**
- * Register well-known filesystem buckets
- * This function is called once on first ServiceWorker load to set up standard buckets
- * Supports both development (Node/Bun) and production (all platforms) modes
- */
-async function registerStandardBuckets(): Promise<void> {
-	// Skip if already registered
-	const registered = FileSystemRegistry.getAdapterNames();
-	console.info("[Buckets] Current registered:", registered);
-	if (registered.includes("static") && registered.includes("server")) {
-		console.info("[Buckets] Standard buckets already registered");
-		return;
-	}
-
-	console.info("[Buckets] Registering standard buckets...", import.meta.url);
-
-	let NodeBucket: any;
-	try {
-		const imported = await import("@b9g/filesystem/node.js");
-		NodeBucket = imported.NodeBucket;
-		console.info("[Buckets] NodeBucket available");
-	} catch (err) {
-		// NodeBucket not available (Cloudflare/browser), use MemoryBucket instead
-		console.warn(
-			"[Buckets] NodeBucket not available, using MemoryBucket:",
-			err,
-		);
-		const {MemoryBucket} = await import("@b9g/filesystem");
-		FileSystemRegistry.register("static", new MemoryBucket("static"));
-		FileSystemRegistry.register("server", new MemoryBucket("server"));
-		console.info("[Buckets] Registered MemoryBuckets");
-		return;
-	}
-
-	// Check if we're in a production build (app.js in dist/server/)
-	// or development (worker runtime loaded from packages/)
-	const isDevelopment = import.meta.url.includes("/packages/platform/");
-	console.info(
-		"[Buckets] Mode detected:",
-		isDevelopment ? "development" : "production",
-		"cwd:",
-		process.cwd(),
-	);
-
-	if (isDevelopment) {
-		// Development: buckets are in cwd/dist/
-		// Worker runs from packages/platform/dist/src/runtime.js
-		// So we need to go up to project root, then into dist/
-		const Path = await import("node:path");
-		const Fs = await import("node:fs/promises");
-		const cwd = process.cwd();
-		const distPath = Path.default.join(cwd, "dist");
-
-		// Ensure bucket directories exist
-		// static is the web root (contains assets/ subdirectory)
-		await Fs.mkdir(Path.default.join(distPath, "static"), {recursive: true});
-		await Fs.mkdir(Path.default.join(distPath, "server"), {recursive: true});
-
-		const staticPath = Path.default.join(distPath, "static");
-		const serverPath = Path.default.join(distPath, "server");
-
-		console.info("[Buckets] Registering NodeBuckets for development:");
-		console.info(
-			"[Buckets]   static:",
-			staticPath,
-			"(web root - contains assets/ subdirectory)",
-		);
-		console.info("[Buckets]   server:", serverPath);
-
-		try {
-			console.info("[Buckets] Registering static...");
-			FileSystemRegistry.register("static", new NodeBucket(staticPath));
-			console.info("[Buckets] static registered");
-		} catch (err) {
-			console.error("[Buckets] Failed to register static:", err);
-		}
-
-		try {
-			console.info("[Buckets] Registering server...");
-			FileSystemRegistry.register("server", new NodeBucket(serverPath));
-			console.info("[Buckets] server registered");
-		} catch (err) {
-			console.error("[Buckets] Failed to register server:", err);
-		}
-
-		console.info("[Buckets] Development NodeBuckets registration complete");
-	} else {
-		// Production: buckets are relative to worker script (in dist/server/)
-		const staticPath = new URL("../static", import.meta.url).pathname;
-		const serverPath = new URL(".", import.meta.url).pathname;
-
-		console.info("[Buckets] Registering NodeBuckets for production:");
-		console.info(
-			"[Buckets]   static:",
-			staticPath,
-			"(web root - contains assets/ subdirectory)",
-		);
-		console.info("[Buckets]   server:", serverPath);
-
-		FileSystemRegistry.register("static", new NodeBucket(staticPath));
-		FileSystemRegistry.register("server", new NodeBucket(serverPath));
-
-		console.info("[Buckets] Production NodeBuckets registered");
-	}
-
-	console.info(
-		"[Buckets] Standard bucket registration complete. Registered:",
-		FileSystemRegistry.getAdapterNames(),
-	);
-}
+const {CustomBucketStorage} = await import("@b9g/filesystem");
+const {MemoryBucket} = await import("@b9g/filesystem/memory.js");
 
 // Create context-aware cache storage
 // In worker threads: Use PostMessageCache for coordination with main thread
@@ -1539,17 +1427,29 @@ const caches: CacheStorage = new CustomCacheStorage((name: string) => {
 	}
 });
 
-// Create bucket storage using FileSystemRegistry
+// Create bucket storage - workers create buckets using paths relative to import.meta.url
 const buckets = new CustomBucketStorage(async (name: string) => {
-	const registered = FileSystemRegistry.get(name);
-	if (registered) {
-		return registered;
+	// Try NodeBucket first (Node.js/Bun environments)
+	let NodeBucket: any;
+	try {
+		const imported = await import("@b9g/filesystem/node.js");
+		NodeBucket = imported.NodeBucket;
+	} catch {
+		// NodeBucket not available (Cloudflare), fall back to MemoryBucket
+		return new MemoryBucket(name);
 	}
-	const available = FileSystemRegistry.getAdapterNames();
-	throw new Error(
-		`Bucket '${name}' not registered. Available buckets: ${available.join(", ") || "none"}. ` +
-			`Standard buckets (assets, static, server) are registered automatically on first ServiceWorker load.`,
-	);
+
+	// Production: buckets relative to worker script location (import.meta.url)
+	// Worker script is at dist/server/worker.js, buckets are at dist/{name}/
+	let bucketPath: string;
+	if (name === "static") {
+		bucketPath = new URL("../static", import.meta.url).pathname;
+	} else if (name === "server") {
+		bucketPath = new URL(".", import.meta.url).pathname;
+	} else {
+		bucketPath = new URL(`../${name}`, import.meta.url).pathname;
+	}
+	return new NodeBucket(bucketPath);
 });
 
 // Create ServiceWorker runtime
@@ -1592,22 +1492,8 @@ async function loadServiceWorker(
 		);
 
 		// Register standard buckets on first load
-		if (loadedVersion === null) {
-			console.info(
-				"[Worker Bootstrap] First load - registering standard buckets",
-			);
-			await registerStandardBuckets();
-			console.info(
-				"[Worker Bootstrap] Standard buckets registered, names:",
-				FileSystemRegistry.getAdapterNames(),
-			);
-		} else {
-			console.info(
-				"[Worker Bootstrap] Not first load (loadedVersion=" +
-					loadedVersion +
-					"), skipping bucket registration",
-			);
-		}
+		// Buckets are now created dynamically via CustomBucketStorage factory
+		// No need for global registration
 
 		const entrypointPath =
 			process.env.SERVICEWORKER_PATH ||

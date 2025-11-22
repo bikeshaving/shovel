@@ -20,10 +20,8 @@ import {
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
 import {PostMessageCache} from "@b9g/cache/postmessage.js";
-import {FileSystemRegistry} from "@b9g/filesystem";
 import {NodeBucket} from "@b9g/filesystem/node.js";
 import * as Path from "path";
-import * as Os from "os";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["platform-bun"]);
@@ -74,13 +72,6 @@ export class BunPlatform extends BasePlatform {
 			cwd: process.cwd(),
 			...options,
 		};
-
-		// Register well-known filesystem buckets
-		FileSystemRegistry.register("tmp", new NodeBucket(Os.tmpdir()));
-		FileSystemRegistry.register(
-			"dist",
-			new NodeBucket(Path.join(this.#options.cwd, "dist")),
-		);
 	}
 
 	/**

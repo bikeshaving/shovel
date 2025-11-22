@@ -13,7 +13,6 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 } from "@b9g/platform";
-import {FileSystemRegistry, getDirectoryHandle} from "@b9g/filesystem";
 import {MemoryBucket} from "@b9g/filesystem/memory.js";
 import {getLogger} from "@logtape/logtape";
 
@@ -68,11 +67,6 @@ export class CloudflarePlatform extends BasePlatform {
 			durableObjects: {},
 			...options,
 		};
-
-		// Register well-known filesystem buckets
-		// Cloudflare Workers use memory for tmp (no filesystem access)
-		FileSystemRegistry.register("tmp", new MemoryBucket());
-		// dist would typically map to R2 bucket in production
 	}
 
 	/**
@@ -83,7 +77,6 @@ export class CloudflarePlatform extends BasePlatform {
 		// Static assets are served by Cloudflare CDN
 		return new MemoryBucket(name || "root");
 	}
-
 
 	/**
 	 * Override cache creation to use bundled KV adapter
@@ -176,8 +169,8 @@ export class CloudflarePlatform extends BasePlatform {
 	async getFileSystemRoot(
 		name = "default",
 	): Promise<FileSystemDirectoryHandle> {
-		// Use centralized filesystem registry (defaults to memory for Cloudflare)
-		return await getDirectoryHandle(name);
+		// Cloudflare Workers use memory buckets only
+		return new MemoryBucket(name);
 	}
 
 	/**

@@ -70,11 +70,8 @@ function runExecutable(executablePath, env = {}) {
 		stderrData += data.toString();
 	});
 
-	// Capture stdout for debugging
-	let stdoutData = "";
-	proc.stdout?.on("data", (data) => {
-		stdoutData += data.toString();
-	});
+	// Drain stdout to prevent pipe buffer from filling
+	proc.stdout?.on("data", () => {});
 
 	proc.on("exit", (code) => {
 		proc.earlyExit = code !== 0;

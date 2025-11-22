@@ -81,12 +81,13 @@ describe("BunPlatform", () => {
 		}
 	});
 
-	test("should have default cache configuration", () => {
-		// Access protected method via casting
-		const config = (platform as any).getDefaultCacheConfig();
-		expect(config.pages.type).toBe("memory");
-		expect(config.api.type).toBe("memory");
-		expect(config.static.type).toBe("memory");
+	test("should create cache storage with MemoryCache", async () => {
+		// Platform should create cache storage
+		const caches = await platform.createCaches();
+		expect(caches).toBeDefined();
+
+		const cache = await caches.open("test");
+		expect(cache).toBeDefined();
 	});
 
 	test("should load service worker", async () => {
