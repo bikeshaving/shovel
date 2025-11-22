@@ -1,4 +1,4 @@
-import {test, expect, describe, beforeEach} from "bun:test";
+import {test, expect, describe, beforeEach, afterEach, spyOn} from "bun:test";
 import {CustomCacheStorage} from "../src/index.js";
 import {MemoryCache} from "../src/memory.js";
 
@@ -50,9 +50,18 @@ describe("CustomCacheStorage", () => {
 
 describe("MemoryCache", () => {
 	let cache: MemoryCache;
+	let fetchSpy: ReturnType<typeof spyOn> | null = null;
 
 	beforeEach(() => {
 		cache = new MemoryCache("test");
+	});
+
+	afterEach(() => {
+		// Restore fetch mock if it was set
+		if (fetchSpy) {
+			fetchSpy.mockRestore();
+			fetchSpy = null;
+		}
 	});
 
 	test("can store and retrieve responses", async () => {
@@ -105,51 +114,41 @@ describe("MemoryCache", () => {
 	});
 
 	test("add() fetches and stores response", async () => {
-		// Mock fetch for this test
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = async (request) => {
-			return new Response(`Fetched: ${request.url}`);
-		};
+		// Mock fetch using spyOn
+		fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+			async (request) => {
+				return new Response(`Fetched: ${(request as Request).url}`);
+			},
+		);
 
-		try {
-			const request = new Request("http://example.com/api/data");
-			await cache.add(request);
+		const request = new Request("http://example.com/api/data");
+		await cache.add(request);
 
-			const cached = await cache.match(request);
-			expect(cached).not.toBeUndefined();
-			expect(await cached.text()).toBe("Fetched: http://example.com/api/data");
-		} finally {
-			globalThis.fetch = originalFetch;
-		}
+		const cached = await cache.match(request);
+		expect(cached).not.toBeUndefined();
+		expect(await cached.text()).toBe("Fetched: http://example.com/api/data");
 	});
 
 	test("addAll() fetches and stores multiple responses", async () => {
-		// Mock fetch for this test
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = async (request) => {
-			return new Response(`Fetched: ${request.url}`);
-		};
+		// Mock fetch using spyOn
+		fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+			async (request) => {
+				return new Response(`Fetched: ${(request as Request).url}`);
+			},
+		);
 
-		try {
-			const requests = [
-				new Request("http://example.com/api/data1"),
-				new Request("http://example.com/api/data2"),
-			];
+		const requests = [
+			new Request("http://example.com/api/data1"),
+			new Request("http://example.com/api/data2"),
+		];
 
-			await cache.addAll(requests);
+		await cache.addAll(requests);
 
-			const cached1 = await cache.match(requests[0]);
-			const cached2 = await cache.match(requests[1]);
+		const cached1 = await cache.match(requests[0]);
+		const cached2 = await cache.match(requests[1]);
 
-			expect(await cached1.text()).toBe(
-				"Fetched: http://example.com/api/data1",
-			);
-			expect(await cached2.text()).toBe(
-				"Fetched: http://example.com/api/data2",
-			);
-		} finally {
-			globalThis.fetch = originalFetch;
-		}
+		expect(await cached1.text()).toBe("Fetched: http://example.com/api/data1");
+		expect(await cached2.text()).toBe("Fetched: http://example.com/api/data2");
 	});
 
 	test("respects maxEntries option", async () => {
