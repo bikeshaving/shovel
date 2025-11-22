@@ -79,18 +79,6 @@ export class CloudflarePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Override cache creation to use bundled KV adapter
-	 */
-	async createCaches(): Promise<CacheStorage> {
-		// For Cloudflare Workers, we need to use bundled adapters
-		// In production, we'd bundle the KV cache adapter
-
-		// For now, return the native Cloudflare cache API
-		// TODO: Implement bundled KV cache adapter
-		return globalThis.caches;
-	}
-
-	/**
 	 * Create "server" for Cloudflare Workers (which is really just the handler)
 	 */
 	createServer(handler: Handler, _options: ServerOptions = {}): Server {
