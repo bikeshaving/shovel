@@ -40,9 +40,11 @@ export class MemoryCache extends Cache {
 		this.#options = options;
 
 		// Standard Web Worker detection using WorkerGlobalScope
-		// WorkerGlobalScope is only defined in worker contexts (installed by ShovelGlobalScope.install())
+		// Check if globalThis is actually an instance of WorkerGlobalScope, not just if the class exists
+		const WorkerGlobalScope = (globalThis as any).WorkerGlobalScope;
 		const isWorkerThread =
-			typeof (globalThis as any).WorkerGlobalScope !== "undefined";
+			typeof WorkerGlobalScope !== "undefined" &&
+			globalThis instanceof WorkerGlobalScope;
 
 		if (isWorkerThread) {
 			// In worker thread: delegate to PostMessageCache for coordination with main thread

@@ -4,9 +4,6 @@
  * Provides built-in TypeScript/JSX support and simplified server setup for Bun environments.
  */
 
-// Runtime global declaration for platform detection
-declare const window: any;
-
 import {
 	BasePlatform,
 	PlatformConfig,
@@ -109,12 +106,13 @@ export class BunPlatform extends BasePlatform {
 		// Import MemoryCache for fallback
 		const {MemoryCache} = await import("@b9g/cache/memory.js");
 
-		// Use platform-agnostic worker detection
-		// In Bun, workers use self global while main thread doesn't
-		const isWorkerThread =
-			typeof self !== "undefined" && typeof window === "undefined";
-
 		return new CustomCacheStorage((name: string) => {
+			// Check if globalThis is actually an instance of WorkerGlobalScope, not just if the class exists
+			const WorkerGlobalScopeClass = (globalThis as any).WorkerGlobalScope;
+			const isWorkerThread =
+				typeof WorkerGlobalScopeClass !== "undefined" &&
+				globalThis instanceof WorkerGlobalScopeClass;
+
 			if (!isWorkerThread) {
 				// Use MemoryCache in main thread
 				return new MemoryCache(name, {

@@ -1418,9 +1418,11 @@ const {MemoryBucket} = await import("@b9g/filesystem/memory.js");
 // In main thread: Use MemoryCache directly
 // Detection uses standard Web Worker API: WorkerGlobalScope is only defined on globalThis in worker contexts
 const caches: CacheStorage = new CustomCacheStorage((name: string) => {
-	// Check globalThis.WorkerGlobalScope, not the local class definition
+	// Check if globalThis is actually an instance of WorkerGlobalScope, not just if the class exists
+	const WorkerGlobalScopeClass = (globalThis as any).WorkerGlobalScope;
 	const isWorkerThread =
-		typeof (globalThis as any).WorkerGlobalScope !== "undefined";
+		typeof WorkerGlobalScopeClass !== "undefined" &&
+		globalThis instanceof WorkerGlobalScopeClass;
 
 	if (isWorkerThread) {
 		return new PostMessageCache(name, {

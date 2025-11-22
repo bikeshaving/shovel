@@ -187,9 +187,11 @@ export class NodePlatform extends BasePlatform {
 		// Factory checks thread context dynamically on each call
 		return new CustomCacheStorage((name: string) => {
 			// Standard Web Worker detection using WorkerGlobalScope
-			// WorkerGlobalScope is only defined in worker contexts (installed by ShovelGlobalScope.install())
+			// Check if globalThis is actually an instance of WorkerGlobalScope, not just if the class exists
+			const WorkerGlobalScopeClass = (globalThis as any).WorkerGlobalScope;
 			const isWorkerThread =
-				typeof (globalThis as any).WorkerGlobalScope !== "undefined";
+				typeof WorkerGlobalScopeClass !== "undefined" &&
+				globalThis instanceof WorkerGlobalScopeClass;
 
 			if (isWorkerThread) {
 				// Worker thread: Use PostMessageCache that coordinates with main thread
