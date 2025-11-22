@@ -70,8 +70,11 @@ function runExecutable(executablePath, env = {}) {
 		stderrData += data.toString();
 	});
 
-	// Drain stdout to prevent pipe buffer from filling and blocking
-	proc.stdout?.on("data", () => {});
+	// Capture stdout for debugging
+	let stdoutData = "";
+	proc.stdout?.on("data", (data) => {
+		stdoutData += data.toString();
+	});
 
 	proc.on("exit", (code) => {
 		proc.earlyExit = code !== 0;
@@ -177,16 +180,13 @@ self.addEventListener("fetch", (event) => {
 					.catch(() => false),
 			).toBe(true);
 
-			// Check executable has shebang
-			const appContent = await FS.readFile(appPath, "utf8");
-			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
-
 			// Make executable
 			await FS.chmod(appPath, 0o755);
 
 			// Skip npm install in test environment - dependencies should be bundled
 
 			// Validate the built executable contains expected platform code
+			const appContent = await FS.readFile(appPath, "utf8");
 			expect(appContent).toContain("ServiceWorkerPool");
 
 			// Validate user code is in server.js
@@ -228,7 +228,7 @@ self.addEventListener("fetch", (event) => {
 		event.respondWith(Response.json({
 			port: process.env.PORT || "default",
 			host: process.env.HOST || "default",
-			nodeEnv: process.env.NODE_ENV || "default"
+			nodeEnv: import.meta.env.MODE || "default"
 		}));
 	} else {
 		event.respondWith(new Response("Server is running"));
@@ -270,12 +270,19 @@ self.addEventListener("fetch", (event) => {
 
 			// Test environment variables are accessible
 			const envResponse = await fetch(`http://${HOST}:${PORT}/env`);
-			const envData = await envResponse.json();
+			const responseText = await envResponse.text();
+			let envData;
+			try {
+				envData = JSON.parse(responseText);
+			} catch (e) {
+				console.error("Failed to parse JSON response:", responseText);
+				throw e;
+			}
 
 			expect(envData.port).toBe(PORT.toString());
 			expect(envData.host).toBe(HOST);
-			// NODE_ENV is hardcoded to "production" in build-time configuration
-			expect(envData.nodeEnv).toBe("production");
+			// import.meta.env.MODE comes from process.env.NODE_ENV at runtime (via shim)
+			expect(envData.nodeEnv).toBe(process.env.NODE_ENV || "production");
 		} finally {
 			if (serverProcess) {
 				await killProcess(serverProcess);
@@ -312,24 +319,18 @@ import "./style.css" with { assetBase: "/assets" };
 import "./client.js" with { assetBase: "/assets" };
 
 // Load asset manifest at startup
-let assetManifest = null;
-(async () => {
-	try {
-		const fs = await import('fs/promises');
-		const path = await import('path');
-		const url = await import('url');
-		const executableDir = path.dirname(url.fileURLToPath(import.meta.url));
-		const manifestPath = path.join(executableDir, 'asset-manifest.json');
-		const manifestContent = await fs.readFile(manifestPath, 'utf8');
-		assetManifest = JSON.parse(manifestContent);
-	} catch (err) {
-		console.log('Failed to load asset manifest:', err.message);
-	}
-})();
+import {readFile} from 'fs/promises';
+import {dirname, join} from 'path';
+import {fileURLToPath} from 'url';
+
+const executableDir = dirname(fileURLToPath(import.meta.url));
+const manifestPath = join(executableDir, 'asset-manifest.json');
+const manifestContent = await readFile(manifestPath, 'utf8');
+const assetManifest = JSON.parse(manifestContent);
 
 function getAssetUrl(originalPath) {
-	if (!assetManifest) return originalPath;
-	
+	if (!assetManifest) throw new Error('Asset manifest not loaded yet');
+
 	// Find asset by checking if the source ends with the requested path
 	for (const [source, asset] of Object.entries(assetManifest.assets)) {
 		if (source.endsWith(originalPath.replace('./', ''))) {

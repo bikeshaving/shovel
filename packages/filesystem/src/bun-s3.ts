@@ -242,18 +242,14 @@ export class S3FileSystemBackend implements FileSystemBackend {
  * ```typescript
  * const s3 = new S3Client({ ... });
  *
- * // Register namespaced buckets for multi-tenancy
- * FileSystemRegistry.register("dist", new S3Bucket(
- *   s3,
- *   "my-company-bucket",
- *   "my-app/production/dist"  // Prefix for isolation
- * ));
- *
- * FileSystemRegistry.register("tmp", new S3Bucket(
- *   s3,
- *   "my-company-bucket",
- *   "my-app/production/tmp"
- * ));
+ * // Use in CustomBucketStorage factory for multi-tenancy
+ * const buckets = new CustomBucketStorage(async (name) => {
+ *   return new S3Bucket(
+ *     s3,
+ *     "my-company-bucket",
+ *     `my-app/production/${name}`  // Prefix for isolation
+ *   );
+ * });
  * ```
  */
 export class S3Bucket implements FileSystemDirectoryHandle {

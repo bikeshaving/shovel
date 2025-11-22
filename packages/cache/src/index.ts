@@ -224,7 +224,7 @@ export class CustomCacheStorage {
 	async dispose(): Promise<void> {
 		const disposePromises: Promise<void>[] = [];
 
-		for (const [name, cache] of this.#instances) {
+		for (const cache of this.#instances.values()) {
 			// Check if cache has a dispose method (RedisCache, etc.)
 			if (typeof (cache as any).dispose === "function") {
 				disposePromises.push((cache as any).dispose());

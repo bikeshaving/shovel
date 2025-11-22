@@ -43,7 +43,6 @@ export async function developCommand(entrypoint, options) {
 			host: options.host || DEFAULTS.SERVER.HOST,
 		};
 
-
 		const platformInstance = await platform.createPlatform(
 			platformName,
 			platformConfig,

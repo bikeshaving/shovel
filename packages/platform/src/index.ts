@@ -367,7 +367,6 @@ export async function createPlatform(
 	}
 }
 
-
 // ============================================================================
 // Base Platform Class
 // ============================================================================
@@ -398,7 +397,9 @@ export abstract class BasePlatform implements Platform {
 
 		// Return CacheStorage with memory cache factory
 		// Applications call caches.open("name") to create caches on-demand
-		return new CustomCacheStorage((name: string) => new MemoryCache(name)) as CacheStorage;
+		return new CustomCacheStorage(
+			(name: string) => new MemoryCache(name),
+		) as CacheStorage;
 	}
 }
 
@@ -694,94 +695,8 @@ Please check your runtime version and configuration.
 
 📚 Web Worker standard: https://developer.mozilla.org/en-US/docs/Web/API/Worker`);
 }
-
 /**
- * Generic WorkerPool - manages a pool of Web Workers
- * Internal implementation - not exported
- *
- * Self-similar to Worker API: extends EventTarget, has postMessage(), terminate()
- *
- * Can be used standalone or extended for specific use cases (e.g., ServiceWorkerPool)
- */
-class WorkerPool extends EventTarget {
-	readonly workers: Worker[];
-	#currentWorkerIndex: number;
-	#scriptURL: string;
-	#options: {count?: number};
-
-	constructor(scriptURL: string, options: {count?: number} = {}) {
-		super();
-		this.workers = [];
-		this.#currentWorkerIndex = 0;
-		this.#scriptURL = scriptURL;
-		this.#options = options;
-	}
-
-	/**
-	 * Initialize workers (must be called after construction)
-	 */
-	async init(): Promise<void> {
-		const count = this.#options.count ?? 1;
-		for (let i = 0; i < count; i++) {
-			await this.#createWorker();
-		}
-	}
-
-	async #createWorker(): Promise<Worker> {
-		const worker = await createWebWorker(this.#scriptURL);
-
-		// Forward worker events as pool events
-		worker.addEventListener("message", (event) => {
-			this.dispatchEvent(
-				new MessageEvent("message", {
-					data: {worker, data: event.data},
-				}),
-			);
-		});
-
-		worker.addEventListener("error", (error) => {
-			this.dispatchEvent(
-				new ErrorEvent("error", {
-					error,
-					message: `Worker error: ${error}`,
-				}),
-			);
-		});
-
-		this.workers.push(worker);
-		return worker;
-	}
-
-	/**
-	 * Send message to one worker (round-robin)
-	 */
-	postMessage(message: any, transfer?: Transferable[]): void {
-		const worker = this.workers[this.#currentWorkerIndex];
-		this.#currentWorkerIndex =
-			(this.#currentWorkerIndex + 1) % this.workers.length;
-		if (transfer) {
-			worker.postMessage(message, transfer);
-		} else {
-			worker.postMessage(message);
-		}
-	}
-
-	/**
-	 * Terminate all workers
-	 */
-	async terminate(): Promise<void> {
-		const terminatePromises = this.workers.map((worker) => worker.terminate());
-		await Promise.allSettled(terminatePromises);
-		this.workers.length = 0;
-	}
-
-	get ready(): boolean {
-		return this.workers.length > 0;
-	}
-}
-
-/**
- * ServiceWorkerPool - extends WorkerPool with ServiceWorker-specific features
+ * ServiceWorkerPool - manages a pool of ServiceWorker instances
  * Handles HTTP request/response routing, cache coordination, and hot reloading
  */
 export class ServiceWorkerPool {
@@ -797,13 +712,11 @@ export class ServiceWorkerPool {
 	#cacheStorage?: CacheStorage & {
 		handleMessage?: (worker: Worker, message: any) => Promise<void>;
 	}; // CustomCacheStorage for cache coordination
-	#bucketStorage?: BucketStorage; // CustomBucketStorage for bucket access
 
 	constructor(
 		options: WorkerPoolOptions = {},
 		appEntrypoint?: string,
 		cacheStorage?: CacheStorage,
-		bucketStorage?: BucketStorage,
 	) {
 		this.#workers = [];
 		this.#currentWorker = 0;
@@ -811,7 +724,6 @@ export class ServiceWorkerPool {
 		this.#pendingRequests = new Map();
 		this.#appEntrypoint = appEntrypoint;
 		this.#cacheStorage = cacheStorage;
-		this.#bucketStorage = bucketStorage;
 		this.#options = {
 			workerCount: 1,
 			requestTimeout: 30000,
@@ -844,8 +756,15 @@ export class ServiceWorkerPool {
 			this.#handleWorkerMessage(worker, event.data || event);
 		});
 
-		worker.addEventListener("error", (error) => {
-			logger.error("Worker error", {error});
+		worker.addEventListener("error", (event: any) => {
+			logger.error("Worker error", {
+				message: event.message || event.error?.message,
+				filename: event.filename,
+				lineno: event.lineno,
+				colno: event.colno,
+				error: event.error,
+				stack: event.error?.stack,
+			});
 		});
 
 		this.#workers.push(worker);
@@ -906,6 +825,13 @@ export class ServiceWorkerPool {
 	}
 
 	#handleError(message: WorkerErrorMessage) {
+		// Always log error details for debugging
+		logger.error("Worker error message received", {
+			error: message.error,
+			stack: message.stack,
+			requestId: message.requestId,
+		});
+
 		if (message.requestId) {
 			const pending = this.#pendingRequests.get(message.requestId);
 			if (pending) {

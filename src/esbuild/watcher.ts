@@ -8,7 +8,6 @@ import {resolve, dirname, join} from "path";
 import {readFileSync} from "fs";
 import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
-import {createEnvDefines} from "./env-defines.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["watcher"]);
@@ -140,7 +139,6 @@ export class Watcher {
 				sourcemap: "inline",
 				minify: false,
 				treeShaking: true,
-				define: createEnvDefines("development"),
 			});
 
 			if (result.errors.length > 0) {

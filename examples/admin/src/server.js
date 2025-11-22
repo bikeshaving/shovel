@@ -28,9 +28,8 @@ router.use(
 		directory: "assets",
 		basePath: "/assets",
 		manifestPath: "manifest.json",
-		dev: process.env.NODE_ENV !== "production",
-		cacheControl:
-			process.env.NODE_ENV === "production" ? CACHE_HEADERS.ASSETS : "no-cache",
+		dev: import.meta.env.DEV,
+		cacheControl: import.meta.env.PROD ? CACHE_HEADERS.ASSETS : "no-cache",
 	}),
 );
 

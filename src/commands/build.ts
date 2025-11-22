@@ -8,7 +8,6 @@ import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile, chmod} from "fs/promises";
 import {fileURLToPath} from "url";
 import {assetsPlugin} from "@b9g/assets/plugin";
-import {createEnvDefines} from "../esbuild/env-defines.js";
 import {
 	cloudflareWorkerBanner,
 	cloudflareWorkerFooter,
@@ -40,7 +39,6 @@ const BUILD_DEFAULTS = {
 	sourcemap: false,
 	minify: false,
 	treeShaking: true,
-	environment: createEnvDefines("production"),
 };
 
 // Directory structure for separate buckets
@@ -280,7 +278,9 @@ async function createBuildConfig({
 				sourcemap: BUILD_DEFAULTS.sourcemap,
 				minify: BUILD_DEFAULTS.minify,
 				treeShaking: BUILD_DEFAULTS.treeShaking,
-				define: BUILD_DEFAULTS.environment,
+				// Node.js doesn't support import.meta.env, so alias it to process.env
+				// Bun supports it natively, so don't replace
+				define: platform === "node" ? {"import.meta.env": "process.env"} : {},
 				external,
 			};
 
@@ -296,6 +296,7 @@ async function createBuildConfig({
 			const workerDestPath = join(serverDir, "worker.js");
 
 			// Bundle runtime.js with all its dependencies
+			// Note: No define needed - runtime.ts polyfills import.meta.env from process.env
 			try {
 				await esbuild.build({
 					entryPoints: [runtimeSourcePath],
@@ -359,7 +360,9 @@ async function createBuildConfig({
 			sourcemap: BUILD_DEFAULTS.sourcemap,
 			minify: BUILD_DEFAULTS.minify,
 			treeShaking: BUILD_DEFAULTS.treeShaking,
-			define: BUILD_DEFAULTS.environment,
+			// Node.js doesn't support import.meta.env, so alias it to process.env
+			// Bun and Cloudflare support it natively, so don't replace
+			define: platform === "node" ? {"import.meta.env": "process.env"} : {},
 			external,
 		};
 
