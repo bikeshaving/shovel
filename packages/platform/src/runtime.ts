@@ -12,6 +12,12 @@
 import {RequestCookieStore} from "./cookie-store.js";
 import {AsyncContext} from "@b9g/async-context";
 
+// Set MODE from NODE_ENV for Vite compatibility
+// import.meta.env is shimmed to process.env via esbuild define on Node.js
+if (import.meta.env && !import.meta.env.MODE && import.meta.env.NODE_ENV) {
+	import.meta.env.MODE = import.meta.env.NODE_ENV;
+}
+
 // ============================================================================
 // AsyncContext for per-request cookieStore
 // ============================================================================

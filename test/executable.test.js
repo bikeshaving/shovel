@@ -278,8 +278,10 @@ self.addEventListener("fetch", (event) => {
 
 			expect(envData.port).toBe(PORT.toString());
 			expect(envData.host).toBe(HOST);
-			// import.meta.env.MODE comes from process.env.NODE_ENV at runtime (via shim)
-			expect(envData.nodeEnv).toBe(process.env.NODE_ENV || "production");
+			// import.meta.env.MODE comes from process.env.NODE_ENV at runtime (via polyfill in runtime.ts)
+			// If NODE_ENV is not set, handler returns "default"
+			const expectedMode = process.env.NODE_ENV || "default";
+			expect(envData.nodeEnv).toBe(expectedMode);
 		} finally {
 			if (serverProcess) {
 				await killProcess(serverProcess);
