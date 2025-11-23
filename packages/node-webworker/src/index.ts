@@ -118,7 +118,30 @@ export class Worker {
 			},
 		});
 
-		// Set up event forwarding from Node.js Worker to Web Worker API
+		this.#setupEventForwarding();
+	}
+
+	/**
+	 * Report an error through the error event mechanism
+	 */
+	#reportError(error: any): void {
+		const event: ErrorEvent = {error, type: "error"};
+
+		// Call onerror handler if set
+		if (this.onerror) {
+			this.onerror(event);
+		}
+
+		// Call error event listeners
+		this.#errorListeners.forEach((listener) => {
+			listener(event);
+		});
+	}
+
+	/**
+	 * Set up event forwarding from Node.js Worker to Web Worker API
+	 */
+	#setupEventForwarding(): void {
 		this.#nodeWorker.on("message", (data) => {
 			const event: MessageEvent = {data, type: "message"};
 
@@ -127,7 +150,8 @@ export class Worker {
 				try {
 					this.onmessage(event);
 				} catch (error) {
-					console.error("Error in onmessage handler:", error);
+					// Report error through error event mechanism per spec
+					this.#reportError(error);
 				}
 			}
 
@@ -136,31 +160,15 @@ export class Worker {
 				try {
 					listener(event);
 				} catch (error) {
-					console.error("Error in message listener:", error);
+					// Report error through error event mechanism per spec
+					this.#reportError(error);
 				}
 			});
 		});
 
 		this.#nodeWorker.on("error", (error) => {
-			const event: ErrorEvent = {error, type: "error"};
-
-			// Call onerror handler if set (Web Worker standard)
-			if (this.onerror) {
-				try {
-					this.onerror(event);
-				} catch (handlerError) {
-					console.error("Error in onerror handler:", handlerError);
-				}
-			}
-
-			// Call addEventListener handlers
-			this.#errorListeners.forEach((listener) => {
-				try {
-					listener(event);
-				} catch (listenerError) {
-					console.error("Error in error listener:", listenerError);
-				}
-			});
+			// Report error through error event mechanism
+			this.#reportError(error);
 		});
 	}
 
@@ -169,9 +177,11 @@ export class Worker {
 	 */
 	postMessage(message: any, transfer?: Transferable[]): void {
 		if (transfer && transfer.length > 0) {
-			console.warn("Transferable objects not fully supported");
+			// Node.js Worker supports transferList in options
+			this.#nodeWorker.postMessage(message, transfer as any);
+		} else {
+			this.#nodeWorker.postMessage(message);
 		}
-		this.#nodeWorker.postMessage(message);
 	}
 
 	/**
@@ -187,9 +197,8 @@ export class Worker {
 			this.#messageListeners.add(listener as (event: MessageEvent) => void);
 		} else if (type === "error") {
 			this.#errorListeners.add(listener as (event: ErrorEvent) => void);
-		} else {
-			console.warn(`Unsupported event type: ${type}`);
 		}
+		// Silently ignore unsupported event types for API compatibility
 	}
 
 	/**
@@ -217,8 +226,9 @@ export class Worker {
 	terminate(): void {
 		// Node.js worker.terminate() returns a promise, but Web Worker standard is sync
 		// We fire-and-forget here to match the standard API
-		this.#nodeWorker.terminate().catch((error) => {
-			console.error("Error terminating worker:", error);
+		// Errors during termination are silently ignored per Web Worker spec
+		this.#nodeWorker.terminate().catch(() => {
+			// Silently ignore termination errors
 		});
 
 		// Clean up listeners immediately

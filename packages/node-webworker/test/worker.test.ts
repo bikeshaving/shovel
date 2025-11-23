@@ -167,7 +167,7 @@ describe("Node Web Worker", () => {
 		worker.terminate();
 	});
 
-	test("should handle transferable objects warning", async () => {
+	test("should handle transferable objects", async () => {
 		workerScript = join(tempDir, "transfer-worker.js");
 		writeFileSync(
 			workerScript,
@@ -180,48 +180,31 @@ describe("Node Web Worker", () => {
 
 		const worker = new Worker(workerScript);
 
-		// Mock console.warn to capture the warning
-		const originalWarn = console.warn;
-		let warningCalled = false;
-		console.warn = (message: string) => {
-			if (message.includes("Transferable objects not fully supported")) {
-				warningCalled = true;
-			}
-		};
-
 		return new Promise((resolve) => {
 			worker.addEventListener("message", () => {
-				console.warn = originalWarn;
-				expect(warningCalled).toBe(true);
-
+				// Message was successfully sent with transferable
 				worker.terminate();
 				resolve(true);
 			});
 
-			// Create a mock transferable object
+			// Create a transferable object
 			const buffer = new ArrayBuffer(8);
+			// Transferables are now properly supported via Node.js Worker
 			worker.postMessage("test", [buffer as any]);
 		});
 	});
 
-	test("should warn about unsupported event types", () => {
+	test("should silently ignore unsupported event types", () => {
 		workerScript = join(tempDir, "unsupported-worker.js");
 		writeFileSync(workerScript, "// Worker for unsupported event test");
 
 		const worker = new Worker(workerScript);
 
-		// Mock console.warn
-		const originalWarn = console.warn;
-		let warningMessage = "";
-		console.warn = (message: string) => {
-			warningMessage = message;
-		};
-
-		// Try to add listener for unsupported event
-		worker.addEventListener("unsupported" as any, () => {});
-
-		console.warn = originalWarn;
-		expect(warningMessage).toContain("Unsupported event type: unsupported");
+		// Unsupported event types should be silently ignored per Web Worker spec
+		// (No error thrown, no warning logged)
+		expect(() => {
+			worker.addEventListener("unsupported" as any, () => {});
+		}).not.toThrow();
 
 		worker.terminate();
 	});
