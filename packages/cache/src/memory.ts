@@ -1,5 +1,4 @@
 import {Cache, generateCacheKey, type CacheQueryOptions} from "./index.js";
-import {PostMessageCache} from "./postmessage.js";
 
 /**
  * Configuration options for MemoryCache
@@ -21,10 +20,6 @@ interface CacheEntry {
 /**
  * In-memory cache implementation using Map for storage
  * Supports LRU eviction and TTL expiration
- *
- * When instantiated in a worker thread, automatically delegates to PostMessageCache
- * for coordination with the main thread. This prevents the footgun of creating
- * isolated per-worker caches that don't coordinate.
  */
 export class MemoryCache extends Cache {
 	#storage: Map<string, CacheEntry>;
@@ -32,34 +27,14 @@ export class MemoryCache extends Cache {
 	#accessCounter: number;
 	#name: string;
 	#options: MemoryCacheOptions;
-	#delegate?: PostMessageCache;
 
 	constructor(name: string, options: MemoryCacheOptions = {}) {
 		super();
+		this.#storage = new Map<string, CacheEntry>();
+		this.#accessOrder = new Map<string, number>();
+		this.#accessCounter = 0;
 		this.#name = name;
 		this.#options = options;
-
-		// Standard Web Worker detection using WorkerGlobalScope
-		// Check if globalThis is actually an instance of WorkerGlobalScope, not just if the class exists
-		const WorkerGlobalScope = (globalThis as any).WorkerGlobalScope;
-		const isWorkerThread =
-			typeof WorkerGlobalScope !== "undefined" &&
-			globalThis instanceof WorkerGlobalScope;
-
-		if (isWorkerThread) {
-			// In worker thread: delegate to PostMessageCache for coordination with main thread
-			// This prevents creating isolated per-worker caches that defeat the purpose of caching
-			this.#delegate = new PostMessageCache(name, options);
-			// Initialize storage as empty (unused in worker mode)
-			this.#storage = new Map();
-			this.#accessOrder = new Map();
-			this.#accessCounter = 0;
-		} else {
-			// In main thread: use local Map storage
-			this.#storage = new Map<string, CacheEntry>();
-			this.#accessOrder = new Map<string, number>();
-			this.#accessCounter = 0;
-		}
 	}
 
 	/**
@@ -69,11 +44,6 @@ export class MemoryCache extends Cache {
 		request: Request,
 		options?: CacheQueryOptions,
 	): Promise<Response | undefined> {
-		// Delegate to PostMessageCache if in worker thread
-		if (this.#delegate) {
-			return this.#delegate.match(request, options);
-		}
-
 		const key = generateCacheKey(request, options);
 		const entry = this.#storage.get(key);
 
@@ -99,11 +69,6 @@ export class MemoryCache extends Cache {
 	 * Store a request/response pair in the cache
 	 */
 	async put(request: Request, response: Response): Promise<void> {
-		// Delegate to PostMessageCache if in worker thread
-		if (this.#delegate) {
-			return this.#delegate.put(request, response);
-		}
-
 		const key = generateCacheKey(request);
 
 		// Check if response is cacheable
@@ -135,11 +100,6 @@ export class MemoryCache extends Cache {
 		request: Request,
 		options?: CacheQueryOptions,
 	): Promise<boolean> {
-		// Delegate to PostMessageCache if in worker thread
-		if (this.#delegate) {
-			return this.#delegate.delete(request, options);
-		}
-
 		const key = generateCacheKey(request, options);
 		const deleted = this.#storage.delete(key);
 
@@ -157,11 +117,6 @@ export class MemoryCache extends Cache {
 		request?: Request,
 		options?: CacheQueryOptions,
 	): Promise<readonly Request[]> {
-		// Delegate to PostMessageCache if in worker thread
-		if (this.#delegate) {
-			return this.#delegate.keys(request, options);
-		}
-
 		const keys: Request[] = [];
 
 		for (const [_, entry] of this.#storage) {
@@ -192,11 +147,6 @@ export class MemoryCache extends Cache {
 	 * Clear all entries from the cache
 	 */
 	async clear(): Promise<void> {
-		// Delegate to PostMessageCache if in worker thread
-		if (this.#delegate) {
-			return this.#delegate.clear();
-		}
-
 		this.#storage.clear();
 		this.#accessOrder.clear();
 		this.#accessCounter = 0;

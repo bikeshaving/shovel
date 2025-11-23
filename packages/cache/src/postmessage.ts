@@ -64,17 +64,6 @@ export class PostMessageCache extends Cache {
 
 		this.#name = name;
 
-		// Standard Web Worker detection using WorkerGlobalScope
-		// Check if globalThis is actually an instance of WorkerGlobalScope, not just if the class exists
-		const WorkerGlobalScope = (globalThis as any).WorkerGlobalScope;
-		const isMainThread =
-			typeof WorkerGlobalScope === "undefined" ||
-			!(globalThis instanceof WorkerGlobalScope);
-
-		if (isMainThread) {
-			throw new Error("PostMessageCache should only be used in worker threads");
-		}
-
 		// Set up global message handler (only happens once for all instances)
 		setupMessageHandler();
 	}

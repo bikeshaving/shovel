@@ -16,7 +16,6 @@ import {
 	WorkerPoolOptions,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
-import {PostMessageCache} from "@b9g/cache/postmessage.js";
 import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
 
@@ -89,30 +88,16 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Override cache creation to use appropriate cache type for Bun
+	 * Create cache storage
+	 * TODO: This will be configured via shovel.json
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
-		// Import MemoryCache for fallback
 		const {MemoryCache} = await import("@b9g/cache/memory.js");
 
 		return new CustomCacheStorage((name: string) => {
-			// Check if globalThis is actually an instance of WorkerGlobalScope, not just if the class exists
-			const WorkerGlobalScopeClass = (globalThis as any).WorkerGlobalScope;
-			const isWorkerThread =
-				typeof WorkerGlobalScopeClass !== "undefined" &&
-				globalThis instanceof WorkerGlobalScopeClass;
-
-			if (!isWorkerThread) {
-				// Use MemoryCache in main thread
-				return new MemoryCache(name, {
-					maxEntries: 1000,
-				});
-			} else {
-				// Use PostMessageCache in worker threads
-				return new PostMessageCache(name, {
-					maxEntries: 1000,
-				});
-			}
+			return new MemoryCache(name, {
+				maxEntries: 1000,
+			});
 		});
 	}
 

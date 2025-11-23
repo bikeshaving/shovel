@@ -1379,29 +1379,14 @@ async function initializeWorker() {
 
 // Import dependencies (ServiceWorker runtime classes are in this same file)
 const {CustomCacheStorage} = await import("@b9g/cache");
-const {PostMessageCache} = await import("@b9g/cache/postmessage.js");
 const {MemoryCache} = await import("@b9g/cache/memory.js");
 
-// Create context-aware cache storage
-// In worker threads: Use PostMessageCache for coordination with main thread
-// In main thread: Use MemoryCache directly
-// Detection uses standard Web Worker API: WorkerGlobalScope is only defined on globalThis in worker contexts
+// Create cache storage
+// TODO: This will be configured by platform and passed to workers via shovel.json
 const caches: CacheStorage = new CustomCacheStorage((name: string) => {
-	// Check if globalThis is actually an instance of WorkerGlobalScope, not just if the class exists
-	const WorkerGlobalScopeClass = (globalThis as any).WorkerGlobalScope;
-	const isWorkerThread =
-		typeof WorkerGlobalScopeClass !== "undefined" &&
-		globalThis instanceof WorkerGlobalScopeClass;
-
-	if (isWorkerThread) {
-		return new PostMessageCache(name, {
-			maxEntries: 1000,
-		});
-	} else {
-		return new MemoryCache(name, {
-			maxEntries: 1000,
-		});
-	}
+	return new MemoryCache(name, {
+		maxEntries: 1000,
+	});
 });
 
 // TODO: Bucket storage should be configured by platform and passed to workers

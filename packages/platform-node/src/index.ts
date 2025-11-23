@@ -16,7 +16,6 @@ import {
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
-import {PostMessageCache} from "@b9g/cache/postmessage.js";
 import {NodeBucket} from "@b9g/filesystem/node.js";
 import * as Http from "http";
 import * as Path from "path";
@@ -169,31 +168,14 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * SUPPORTING UTILITY - Create cache storage optimized for Node.js
-	 * Uses MemoryCache in main thread, PostMessageCache in workers
+	 * SUPPORTING UTILITY - Create cache storage
+	 * TODO: This will be configured via shovel.json
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
-		// Return CustomCacheStorage with thread-appropriate cache
-		// Factory checks thread context dynamically on each call
 		return new CustomCacheStorage((name: string) => {
-			// Standard Web Worker detection using WorkerGlobalScope
-			// Check if globalThis is actually an instance of WorkerGlobalScope, not just if the class exists
-			const WorkerGlobalScopeClass = (globalThis as any).WorkerGlobalScope;
-			const isWorkerThread =
-				typeof WorkerGlobalScopeClass !== "undefined" &&
-				globalThis instanceof WorkerGlobalScopeClass;
-
-			if (isWorkerThread) {
-				// Worker thread: Use PostMessageCache that coordinates with main thread
-				return new PostMessageCache(name, {
-					maxEntries: 1000,
-				});
-			} else {
-				// Main thread: Use MemoryCache directly
-				return new MemoryCache(name, {
-					maxEntries: 1000,
-				});
-			}
+			return new MemoryCache(name, {
+				maxEntries: 1000,
+			});
 		});
 	}
 
