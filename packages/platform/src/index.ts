@@ -120,13 +120,6 @@ export interface Platform {
 	 * SUPPORTING UTILITY - Create server instance for this platform
 	 */
 	createServer(handler: Handler, options?: ServerOptions): Server;
-
-	/**
-	 * SUPPORTING UTILITY - Get filesystem directory handle
-	 * Maps directly to cloud storage buckets (S3, R2) or local directories
-	 * @param name - Directory name. Use "" for root directory
-	 */
-	getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
 }
 
 // ============================================================================
@@ -385,7 +378,6 @@ export abstract class BasePlatform implements Platform {
 	abstract readonly name: string;
 	abstract loadServiceWorker(entrypoint: string, options?: any): Promise<any>;
 	abstract createServer(handler: any, options?: any): any;
-	abstract getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
 
 	/**
 	 * Create cache storage
@@ -491,21 +483,6 @@ export async function getPlatformAsync(name?: string): Promise<Platform> {
 	}
 
 	return platform;
-}
-
-// ============================================================================
-// File System Access API
-// ============================================================================
-
-/**
- * Get the file system directory handle for the specified name
- * Auto-registers Node.js platform if no platform is detected
- */
-export async function getDirectoryHandle(
-	name: string,
-): Promise<FileSystemDirectoryHandle> {
-	const platform = await getPlatformAsync();
-	return await platform.getDirectoryHandle(name);
 }
 
 /**

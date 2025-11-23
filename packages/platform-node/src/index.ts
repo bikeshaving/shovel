@@ -85,16 +85,6 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Get filesystem directory handle
-	 */
-	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
-		// Create dist filesystem pointing to ./dist directory
-		const distPath = Path.resolve(this.#options.cwd, "dist");
-		const targetPath = name ? Path.join(distPath, name) : distPath;
-		return new NodeBucket(targetPath);
-	}
-
-	/**
 	 * THE MAIN JOB - Load and run a ServiceWorker-style entrypoint in Node.js
 	 * Uses Worker threads with coordinated cache storage for isolation and standards compliance
 	 */

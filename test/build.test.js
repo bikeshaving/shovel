@@ -157,7 +157,7 @@ self.addEventListener("fetch", (event) => {
 					);
 					expect(indexContent.startsWith("#!/usr/bin/env node")).toBe(true);
 					// Look for bundled platform code
-					expect(indexContent).toContain("CustomBucketStorage");
+					expect(indexContent).toContain("CustomCacheStorage");
 				}
 			} catch (error) {
 				console.error(`Platform ${platform} failed:`, error);
@@ -328,7 +328,7 @@ self.addEventListener("fetch", (event) => {
 			);
 			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
 			// With bundling, comments may be removed, so check for bundled code instead
-			expect(appContent).toContain("CustomBucketStorage");
+			expect(appContent).toContain("CustomCacheStorage");
 
 			// Validate package.json is valid JSON
 			const packageContent = await FS.readFile(
@@ -438,7 +438,7 @@ self.addEventListener("fetch", (event) => {
 
 			// All dependencies including @b9g/* packages are bundled for self-contained builds
 			// Verify the bundled code contains expected classes
-			expect(appContent).toContain("CustomBucketStorage");
+			expect(appContent).toContain("CustomCacheStorage");
 		} finally {
 			await cleanup(cleanup_paths);
 		}

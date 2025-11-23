@@ -57,12 +57,6 @@ describe("BunPlatform", () => {
 		expect(server.ready).toBe(true);
 	});
 
-	test("should create directory handle for dist", async () => {
-		const handle = await platform.getDirectoryHandle("assets");
-		expect(handle).toBeDefined();
-		expect(handle.kind).toBe("directory");
-	});
-
 	test("should create custom cache storage", async () => {
 		// Override the worker detection to force MemoryCache usage
 		const originalSelf = (globalThis as any).self;

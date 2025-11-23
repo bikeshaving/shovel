@@ -70,15 +70,6 @@ export class CloudflarePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Get filesystem directory handle (memory-only in Workers runtime)
-	 */
-	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
-		// In Cloudflare Workers, only memory filesystem is available at runtime
-		// Static assets are served by Cloudflare CDN
-		return new MemoryBucket(name || "root");
-	}
-
-	/**
 	 * Create "server" for Cloudflare Workers (which is really just the handler)
 	 */
 	createServer(handler: Handler, _options: ServerOptions = {}): Server {

@@ -17,7 +17,6 @@ import {
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
 import {PostMessageCache} from "@b9g/cache/postmessage.js";
-import {NodeBucket} from "@b9g/filesystem/node.js";
 import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
 
@@ -87,16 +86,6 @@ export class BunPlatform extends BasePlatform {
 
 	set workerPool(pool: ServiceWorkerPool | undefined) {
 		this.#workerPool = pool;
-	}
-
-	/**
-	 * Build artifacts filesystem (install-time only)
-	 */
-	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
-		// Create dist filesystem pointing to ./dist directory
-		const distPath = Path.resolve(this.#options.cwd, "dist");
-		const targetPath = name ? Path.join(distPath, name) : distPath;
-		return new NodeBucket(targetPath);
 	}
 
 	/**

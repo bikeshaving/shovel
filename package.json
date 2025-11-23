@@ -15,7 +15,7 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "libuild build",
+    "build": "bun run --filter './packages/*' build && libuild build",
     "test": "bun test",
     "typecheck": "tsc --build",
     "lint": "eslint --ext .js,.jsx,.ts,.tsx .",

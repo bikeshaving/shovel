@@ -11,6 +11,9 @@
 
 import {RequestCookieStore} from "./cookie-store.js";
 import {AsyncContext} from "@b9g/async-context";
+import type {BucketStorage} from "@b9g/filesystem";
+import {CustomBucketStorage} from "@b9g/filesystem";
+import {MemoryBucket} from "@b9g/filesystem/memory.js";
 
 // Set MODE from NODE_ENV for Vite compatibility
 // import.meta.env is shimmed to process.env via esbuild define on Node.js
@@ -132,38 +135,6 @@ export class ActivateEvent extends ExtendableEvent {
 		super("activate", eventInitDict);
 	}
 }
-/**
- * Bucket storage interface - parallels CacheStorage for filesystem access
- * This could become a future web standard
- */
-export interface BucketStorage {
-	/**
-	 * Open a named bucket - returns FileSystemDirectoryHandle (root of that bucket)
-	 * Well-known names: 'assets', 'static', 'uploads', 'temp'
-	 */
-	open(name: string): Promise<FileSystemDirectoryHandle>;
-
-	/**
-	 * Alias for open() - for compatibility with File System Access API naming
-	 */
-	getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle>;
-
-	/**
-	 * Check if a named bucket exists
-	 */
-	has(name: string): Promise<boolean>;
-
-	/**
-	 * Delete a named bucket and all its contents
-	 */
-	delete(name: string): Promise<boolean>;
-
-	/**
-	 * List all available bucket names
-	 */
-	keys(): Promise<string[]>;
-}
-
 // ============================================================================
 // ServiceWorker API Implementation
 // ============================================================================
@@ -1410,8 +1381,6 @@ async function initializeWorker() {
 const {CustomCacheStorage} = await import("@b9g/cache");
 const {PostMessageCache} = await import("@b9g/cache/postmessage.js");
 const {MemoryCache} = await import("@b9g/cache/memory.js");
-const {CustomBucketStorage} = await import("@b9g/filesystem");
-const {MemoryBucket} = await import("@b9g/filesystem/memory.js");
 
 // Create context-aware cache storage
 // In worker threads: Use PostMessageCache for coordination with main thread
@@ -1435,7 +1404,8 @@ const caches: CacheStorage = new CustomCacheStorage((name: string) => {
 	}
 });
 
-// Create bucket storage - workers create buckets using paths relative to import.meta.url
+// TODO: Bucket storage should be configured by platform and passed to workers
+// For now, restore the working implementation temporarily
 const buckets = new CustomBucketStorage(async (name: string) => {
 	// Try NodeBucket first (Node.js/Bun environments)
 	let NodeBucket: any;

@@ -482,6 +482,33 @@ export class ShovelDirectoryHandle
 // ============================================================================
 
 /**
+ * Bucket storage interface - parallels CacheStorage for filesystem access
+ * This could become a future web standard
+ */
+export interface BucketStorage {
+	/**
+	 * Open a named bucket - returns FileSystemDirectoryHandle (root of that bucket)
+	 * Well-known names: 'assets', 'static', 'uploads', 'temp'
+	 */
+	open(name: string): Promise<FileSystemDirectoryHandle>;
+
+	/**
+	 * Check if a named bucket exists
+	 */
+	has(name: string): Promise<boolean>;
+
+	/**
+	 * Delete a named bucket and all its contents
+	 */
+	delete(name: string): Promise<boolean>;
+
+	/**
+	 * List all available bucket names
+	 */
+	keys(): Promise<string[]>;
+}
+
+/**
  * Factory function type for creating buckets
  * @param name Bucket name to create
  * @returns FileSystemDirectoryHandle (Bucket) instance
@@ -561,16 +588,6 @@ export class CustomBucketStorage {
 	 */
 	async keys(): Promise<string[]> {
 		return Array.from(this.#instances.keys());
-	}
-
-	/**
-	 * Alias for open() - for compatibility with File System Access API naming
-	 *
-	 * @param name Bucket name
-	 * @returns FileSystemDirectoryHandle for the bucket
-	 */
-	async getDirectoryHandle(name: string): Promise<FileSystemDirectoryHandle> {
-		return await this.open(name);
 	}
 
 	/**

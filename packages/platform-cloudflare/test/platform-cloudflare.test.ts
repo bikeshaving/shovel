@@ -51,12 +51,6 @@ describe("CloudflarePlatform", () => {
 		expect(defaultPlatform.name).toBe("cloudflare");
 	});
 
-	test("should create directory handle", async () => {
-		const handle = await platform.getDirectoryHandle("assets");
-		expect(handle).toBeDefined();
-		expect(handle.kind).toBe("directory");
-	});
-
 	test("should create cache storage", async () => {
 		// Platform should create cache storage
 		const caches = await platform.createCaches();
