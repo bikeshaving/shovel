@@ -420,9 +420,9 @@ export default {
 			// Dispatch to ServiceWorker fetch handlers
 			for (const handler of fetchHandlers) {
 				try {
-					console.log('[Wrapper] Calling handler for:', request.url);
+					logger.debug("Calling handler", {url: request.url});
 					await handler(event);
-					console.log('[Wrapper] Handler completed, response:', !!responseReceived);
+					logger.debug("Handler completed", {hasResponse: !!responseReceived});
 					if (responseReceived) {
 						return responseReceived;
 					}

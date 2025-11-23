@@ -1492,12 +1492,10 @@ async function loadServiceWorker(
 	entrypoint?: string,
 ): Promise<void> {
 	try {
-		console.info(
-			"[Worker Bootstrap] loadServiceWorker called - version:",
+		logger.debug("loadServiceWorker called", {
 			version,
-			"loadedVersion:",
 			loadedVersion,
-		);
+		});
 
 		// Register standard buckets on first load
 		// Buckets are now created dynamically via CustomBucketStorage factory
