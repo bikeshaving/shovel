@@ -17,7 +17,7 @@ import {
 	loadConfig,
 	getCacheConfig,
 	type ProcessedShovelConfig,
-	type CacheConfig,
+	type CacheConfig as _CacheConfig,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
 import * as Path from "path";

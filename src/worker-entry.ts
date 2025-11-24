@@ -19,8 +19,8 @@ if (PLATFORM === "bun") {
 }
 
 // Configuration from environment
-const PORT = parseInt(process.env.PORT || "8080", 10);
-const HOST = process.env.HOST || "0.0.0.0";
+const PORT = parseInt(import.meta.env.PORT || "8080", 10);
+const HOST = import.meta.env.HOST || "0.0.0.0";
 
 logger.info("Starting production server", {});
 logger.info("Workers", {count: WORKER_COUNT});
@@ -55,6 +55,7 @@ const shutdown = async () => {
 	await platform.dispose();
 	await server.close();
 	logger.info("Server stopped", {});
+	// eslint-disable-next-line no-restricted-properties
 	process.exit(0);
 };
 

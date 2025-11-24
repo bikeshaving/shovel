@@ -32,6 +32,34 @@ export default [
 			"no-console": ["error", {allow: ["info", "warn", "error"]}],
 			"no-unused-vars": "off",
 			"no-unused-private-class-members": "off",
+			// Ban Node-isms to keep code portable
+			"no-restricted-properties": [
+				"error",
+				{
+					object: "process",
+					property: "env",
+					message:
+						"Do not use process.env directly. Use import.meta.env or loadConfig() instead.",
+				},
+				{
+					object: "process",
+					property: "exit",
+					message:
+						"Do not use process.exit(). Throw an error or return instead.",
+				},
+			],
+			"no-restricted-globals": [
+				"error",
+				{
+					name: "__dirname",
+					message:
+						"Do not use __dirname. Use import.meta.url with URL/fileURLToPath instead.",
+				},
+				{
+					name: "__filename",
+					message: "Do not use __filename. Use import.meta.url instead.",
+				},
+			],
 			"@typescript-eslint/no-unused-vars": [
 				"error",
 				{
@@ -75,6 +103,21 @@ export default [
 					bracketSpacing: false,
 				},
 			],
+		},
+	},
+	// Allow Node-isms in specific files where they're necessary
+	{
+		files: [
+			"packages/platform/src/config.ts", // Config parser needs process.env
+			"packages/node-webworker/**/*.{js,ts}", // Node-specific Worker implementation
+			"src/commands/**/*.ts", // CLI commands are Node-specific
+			"bin/**/*.ts", // CLI tools are Node-specific
+			"test/**/*.{js,ts}", // Tests are Node-specific
+			"examples/**/*.{js,ts}", // Examples can use Node APIs
+		],
+		rules: {
+			"no-restricted-properties": "off",
+			"no-restricted-globals": "off",
 		},
 	},
 	{

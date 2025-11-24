@@ -75,33 +75,33 @@ interface Token {
 }
 
 class Tokenizer {
-	private input: string;
-	private pos: number;
+	#input: string;
+	#pos: number;
 
 	constructor(input: string) {
-		this.input = input;
-		this.pos = 0;
+		this.#input = input;
+		this.#pos = 0;
 	}
 
-	private peek(): string {
-		return this.input[this.pos] || "";
+	#peek(): string {
+		return this.#input[this.#pos] || "";
 	}
 
-	private advance(): string {
-		return this.input[this.pos++] || "";
+	#advance(): string {
+		return this.#input[this.#pos++] || "";
 	}
 
-	private skipWhitespace(): void {
-		while (/\s/.test(this.peek())) {
-			this.advance();
+	#skipWhitespace(): void {
+		while (/\s/.test(this.#peek())) {
+			this.#advance();
 		}
 	}
 
 	next(): Token {
-		this.skipWhitespace();
+		this.#skipWhitespace();
 
-		const start = this.pos;
-		const ch = this.peek();
+		const start = this.#pos;
+		const ch = this.#peek();
 
 		// EOF
 		if (!ch) {
@@ -110,100 +110,100 @@ class Tokenizer {
 
 		// Quoted strings
 		if (ch === '"') {
-			this.advance(); // consume "
+			this.#advance(); // consume "
 			let value = "";
-			while (this.peek() && this.peek() !== '"') {
-				if (this.peek() === "\\") {
-					this.advance();
-					const next = this.advance();
+			while (this.#peek() && this.#peek() !== '"') {
+				if (this.#peek() === "\\") {
+					this.#advance();
+					const next = this.#advance();
 					// Simple escape handling
 					if (next === "n") value += "\n";
 					else if (next === "t") value += "\t";
 					else value += next;
 				} else {
-					value += this.advance();
+					value += this.#advance();
 				}
 			}
-			if (this.peek() !== '"') {
+			if (this.#peek() !== '"') {
 				throw new Error(`Unterminated string at position ${start}`);
 			}
-			this.advance(); // consume closing "
-			return {type: TokenType.STRING, value, start, end: this.pos};
+			this.#advance(); // consume closing "
+			return {type: TokenType.STRING, value, start, end: this.#pos};
 		}
 
 		// Numbers
 		if (/\d/.test(ch)) {
 			let value = "";
-			while (/\d/.test(this.peek())) {
-				value += this.advance();
+			while (/\d/.test(this.#peek())) {
+				value += this.#advance();
 			}
 			return {
 				type: TokenType.NUMBER,
 				value: parseInt(value, 10),
 				start,
-				end: this.pos,
+				end: this.#pos,
 			};
 		}
 
 		// Operators (multi-char)
 		if (
 			ch === "=" &&
-			this.input[this.pos + 1] === "=" &&
-			this.input[this.pos + 2] === "="
+			this.#input[this.#pos + 1] === "=" &&
+			this.#input[this.#pos + 2] === "="
 		) {
-			this.pos += 3;
-			return {type: TokenType.EQ_STRICT, value: "===", start, end: this.pos};
+			this.#pos += 3;
+			return {type: TokenType.EQ_STRICT, value: "===", start, end: this.#pos};
 		}
 		if (
 			ch === "!" &&
-			this.input[this.pos + 1] === "=" &&
-			this.input[this.pos + 2] === "="
+			this.#input[this.#pos + 1] === "=" &&
+			this.#input[this.#pos + 2] === "="
 		) {
-			this.pos += 3;
-			return {type: TokenType.NE_STRICT, value: "!==", start, end: this.pos};
+			this.#pos += 3;
+			return {type: TokenType.NE_STRICT, value: "!==", start, end: this.#pos};
 		}
-		if (ch === "=" && this.input[this.pos + 1] === "=") {
-			this.pos += 2;
-			return {type: TokenType.EQ, value: "==", start, end: this.pos};
+		if (ch === "=" && this.#input[this.#pos + 1] === "=") {
+			this.#pos += 2;
+			return {type: TokenType.EQ, value: "==", start, end: this.#pos};
 		}
-		if (ch === "!" && this.input[this.pos + 1] === "=") {
-			this.pos += 2;
-			return {type: TokenType.NE, value: "!=", start, end: this.pos};
+		if (ch === "!" && this.#input[this.#pos + 1] === "=") {
+			this.#pos += 2;
+			return {type: TokenType.NE, value: "!=", start, end: this.#pos};
 		}
-		if (ch === "|" && this.input[this.pos + 1] === "|") {
-			this.pos += 2;
-			return {type: TokenType.OR, value: "||", start, end: this.pos};
+		if (ch === "|" && this.#input[this.#pos + 1] === "|") {
+			this.#pos += 2;
+			return {type: TokenType.OR, value: "||", start, end: this.#pos};
 		}
-		if (ch === "&" && this.input[this.pos + 1] === "&") {
-			this.pos += 2;
-			return {type: TokenType.AND, value: "&&", start, end: this.pos};
+		if (ch === "&" && this.#input[this.#pos + 1] === "&") {
+			this.#pos += 2;
+			return {type: TokenType.AND, value: "&&", start, end: this.#pos};
 		}
 
 		// Single-char operators
 		if (ch === "?") {
-			this.advance();
-			return {type: TokenType.QUESTION, value: "?", start, end: this.pos};
+			this.#advance();
+			return {type: TokenType.QUESTION, value: "?", start, end: this.#pos};
 		}
 		if (ch === "!") {
-			this.advance();
-			return {type: TokenType.NOT, value: "!", start, end: this.pos};
+			this.#advance();
+			return {type: TokenType.NOT, value: "!", start, end: this.#pos};
 		}
 		if (ch === "(") {
-			this.advance();
-			return {type: TokenType.LPAREN, value: "(", start, end: this.pos};
+			this.#advance();
+			return {type: TokenType.LPAREN, value: "(", start, end: this.#pos};
 		}
 		if (ch === ")") {
-			this.advance();
-			return {type: TokenType.RPAREN, value: ")", start, end: this.pos};
+			this.#advance();
+			return {type: TokenType.RPAREN, value: ")", start, end: this.#pos};
 		}
 
 		// Colon - only tokenize as operator when it's for ternary (not URLs/ports)
 		// Don't tokenize : if followed by / (://) or digit (:6379)
 		if (ch === ":") {
-			const next = this.input[this.pos + 1];
+			const next = this.#input[this.#pos + 1];
 			if (next !== "/" && !/\d/.test(next)) {
-				this.advance();
-				return {type: TokenType.COLON, value: ":", start, end: this.pos};
+				this.#advance();
+				return {type: TokenType.COLON, value: ":", start, end: this.#pos};
 			}
 		}
 
@@ -212,34 +212,34 @@ class Tokenizer {
 		// This naturally handles: kebab-case, URLs, paths, env vars, camelCase, etc.
 		if (/\S/.test(ch) && !/[?!()=|&]/.test(ch)) {
 			let value = "";
-			while (/\S/.test(this.peek()) && !/[?!()=|&]/.test(this.peek())) {
+			while (/\S/.test(this.#peek()) && !/[?!()=|&]/.test(this.#peek())) {
 				// Stop at : only if it's ternary context (not :// or :port)
-				if (this.peek() === ":") {
-					const next = this.input[this.pos + 1];
+				if (this.#peek() === ":") {
+					const next = this.#input[this.#pos + 1];
 					if (next !== "/" && !/\d/.test(next)) {
 						break; // Ternary colon
 					}
 				}
-				value += this.advance();
+				value += this.#advance();
 			}
 
 			// Keywords
 			if (value === "true")
-				return {type: TokenType.TRUE, value: true, start, end: this.pos};
+				return {type: TokenType.TRUE, value: true, start, end: this.#pos};
 			if (value === "false")
-				return {type: TokenType.FALSE, value: false, start, end: this.pos};
+				return {type: TokenType.FALSE, value: false, start, end: this.#pos};
 			if (value === "null")
-				return {type: TokenType.NULL, value: null, start, end: this.pos};
+				return {type: TokenType.NULL, value: null, start, end: this.#pos};
 			if (value === "undefined")
 				return {
 					type: TokenType.UNDEFINED,
 					value: undefined,
 					start,
-					end: this.pos,
+					end: this.#pos,
 				};
 
 			// Identifier (env var or string literal)
-			return {type: TokenType.IDENTIFIER, value, start, end: this.pos};
+			return {type: TokenType.IDENTIFIER, value, start, end: this.#pos};
 		}
 
 		throw new Error(`Unexpected character '${ch}' at position ${start}`);
@@ -251,10 +251,10 @@ class Tokenizer {
 // ============================================================================
 
 class Parser {
-	private tokens: Token[];
-	private pos: number;
-	private env: Record<string, string | undefined>;
-	private strict: boolean;
+	#tokens: Token[];
+	#pos: number;
+	#env: Record<string, string | undefined>;
+	#strict: boolean;
 
 	constructor(
 		input: string,
@@ -262,56 +262,56 @@ class Parser {
 		strict: boolean,
 	) {
 		const tokenizer = new Tokenizer(input);
-		this.tokens = [];
+		this.#tokens = [];
 		let token;
 		do {
 			token = tokenizer.next();
-			this.tokens.push(token);
+			this.#tokens.push(token);
 		} while (token.type !== TokenType.EOF);
 
-		this.pos = 0;
-		this.env = env;
-		this.strict = strict;
+		this.#pos = 0;
+		this.#env = env;
+		this.#strict = strict;
 	}
 
-	private peek(): Token {
-		return this.tokens[this.pos];
+	#peek(): Token {
+		return this.#tokens[this.#pos];
 	}
 
-	private advance(): Token {
-		return this.tokens[this.pos++];
+	#advance(): Token {
+		return this.#tokens[this.#pos++];
 	}
 
-	private expect(type: TokenType): Token {
-		const token = this.peek();
+	#expect(type: TokenType): Token {
+		const token = this.#peek();
 		if (token.type !== type) {
 			throw new Error(
 				`Expected ${type} but got ${token.type} at position ${token.start}`,
 			);
 		}
-		return this.advance();
+		return this.#advance();
 	}
 
 	parse(): any {
-		const result = this.parseExpr();
-		this.expect(TokenType.EOF);
+		const result = this.#parseExpr();
+		this.#expect(TokenType.EOF);
 		return result;
 	}
 
 	// Expr := Ternary
-	private parseExpr(): any {
-		return this.parseTernary();
+	#parseExpr(): any {
+		return this.#parseTernary();
 	}
 
 	// Ternary := LogicalOr ('?' Expr ':' Expr)?
-	private parseTernary(): any {
-		let left = this.parseLogicalOr();
+	#parseTernary(): any {
+		let left = this.#parseLogicalOr();
 
-		if (this.peek().type === TokenType.QUESTION) {
-			this.advance(); // consume ?
-			const trueBranch = this.parseExpr();
-			this.expect(TokenType.COLON);
-			const falseBranch = this.parseExpr();
+		if (this.#peek().type === TokenType.QUESTION) {
+			this.#advance(); // consume ?
+			const trueBranch = this.#parseExpr();
+			this.#expect(TokenType.COLON);
+			const falseBranch = this.#parseExpr();
 			return left ? trueBranch : falseBranch;
 		}
 
@@ -319,12 +319,12 @@ class Parser {
 	}
 
 	// LogicalOr := LogicalAnd ('||' LogicalAnd)*
-	private parseLogicalOr(): any {
-		let left = this.parseLogicalAnd();
+	#parseLogicalOr(): any {
+		let left = this.#parseLogicalAnd();
 
-		while (this.peek().type === TokenType.OR) {
-			this.advance(); // consume ||
-			const right = this.parseLogicalAnd();
+		while (this.#peek().type === TokenType.OR) {
+			this.#advance(); // consume ||
+			const right = this.#parseLogicalAnd();
 			left = left || right;
 		}
 
@@ -332,12 +332,12 @@ class Parser {
 	}
 
 	// LogicalAnd := Equality ('&&' Equality)*
-	private parseLogicalAnd(): any {
-		let left = this.parseEquality();
+	#parseLogicalAnd(): any {
+		let left = this.#parseEquality();
 
-		while (this.peek().type === TokenType.AND) {
-			this.advance(); // consume &&
-			const right = this.parseEquality();
+		while (this.#peek().type === TokenType.AND) {
+			this.#advance(); // consume &&
+			const right = this.#parseEquality();
 			left = left && right;
 		}
 
@@ -345,27 +345,27 @@ class Parser {
 	}
 
 	// Equality := Unary (('===' | '!==' | '==' | '!=') Unary)*
-	private parseEquality(): any {
-		let left = this.parseUnary();
+	#parseEquality(): any {
+		let left = this.#parseUnary();
 
 		while (true) {
-			const token = this.peek();
+			const token = this.#peek();
 
 			if (token.type === TokenType.EQ_STRICT) {
-				this.advance();
-				const right = this.parseUnary();
+				this.#advance();
+				const right = this.#parseUnary();
 				left = left === right;
 			} else if (token.type === TokenType.NE_STRICT) {
-				this.advance();
-				const right = this.parseUnary();
+				this.#advance();
+				const right = this.#parseUnary();
 				left = left !== right;
 			} else if (token.type === TokenType.EQ) {
-				this.advance();
-				const right = this.parseUnary();
+				this.#advance();
+				const right = this.#parseUnary();
 				left = left == right;
 			} else if (token.type === TokenType.NE) {
-				this.advance();
-				const right = this.parseUnary();
+				this.#advance();
+				const right = this.#parseUnary();
 				left = left != right;
 			} else {
 				break;
@@ -376,64 +376,64 @@ class Parser {
 	}
 
 	// Unary := '!' Unary | Primary
-	private parseUnary(): any {
-		if (this.peek().type === TokenType.NOT) {
-			this.advance(); // consume !
-			return !this.parseUnary();
+	#parseUnary(): any {
+		if (this.#peek().type === TokenType.NOT) {
+			this.#advance(); // consume !
+			return !this.#parseUnary();
 		}
 
-		return this.parsePrimary();
+		return this.#parsePrimary();
 	}
 
 	// Primary := EnvVar | Literal | '(' Expr ')'
-	private parsePrimary(): any {
-		const token = this.peek();
+	#parsePrimary(): any {
+		const token = this.#peek();
 
 		// Parenthesized expression
 		if (token.type === TokenType.LPAREN) {
-			this.advance(); // consume (
-			const value = this.parseExpr();
-			this.expect(TokenType.RPAREN);
+			this.#advance(); // consume (
+			const value = this.#parseExpr();
+			this.#expect(TokenType.RPAREN);
 			return value;
 		}
 
 		// Literals
 		if (token.type === TokenType.STRING) {
-			this.advance();
+			this.#advance();
 			return token.value;
 		}
 		if (token.type === TokenType.NUMBER) {
-			this.advance();
+			this.#advance();
 			return token.value;
 		}
 		if (token.type === TokenType.TRUE) {
-			this.advance();
+			this.#advance();
 			return true;
 		}
 		if (token.type === TokenType.FALSE) {
-			this.advance();
+			this.#advance();
 			return false;
 		}
 		if (token.type === TokenType.NULL) {
-			this.advance();
+			this.#advance();
 			return null;
 		}
 		if (token.type === TokenType.UNDEFINED) {
-			this.advance();
+			this.#advance();
 			return undefined;
 		}
 
 		// Identifier (env var or string literal)
 		if (token.type === TokenType.IDENTIFIER) {
-			this.advance();
+			this.#advance();
 			const name = token.value;
 
 			// Check if it's ALL_CAPS (env var)
 			if (/^[A-Z][A-Z0-9_]*$/.test(name)) {
-				const value = this.env[name];
+				const value = this.#env[name];
 
 				// Strict mode: error if undefined and not in safe context
-				if (this.strict && value === undefined) {
+				if (this.#strict && value === undefined) {
 					// We're in a safe context if we're being called from || or && or == null
 					// But we can't know that here without more context tracking
 					// For now, just error - the calling code can use {strict: false} if needed

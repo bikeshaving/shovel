@@ -1424,7 +1424,7 @@ async function loadServiceWorker(
 		// No need for global registration
 
 		const entrypointPath =
-			process.env.SERVICEWORKER_PATH ||
+			import.meta.env.SERVICEWORKER_PATH ||
 			entrypoint ||
 			`${process.cwd()}/dist/server/server.js`;
 		logger.info("[Worker] Loading from", {entrypointPath});
