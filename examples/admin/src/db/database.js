@@ -12,7 +12,7 @@ export async function getDatabase() {
 	if (!db) {
 		// Create database file in project root for development
 		// In production, this would be a persistent volume on Fly.io
-		const dbPath = process.env.DATABASE_PATH || "admin.db";
+		const dbPath = import.meta.env.DATABASE_PATH || "admin.db";
 
 		db = new Database(dbPath);
 

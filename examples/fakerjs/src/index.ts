@@ -1,6 +1,6 @@
 import {faker, allFakers} from "@faker-js/faker";
 
-const PORT = process.env.PORT || 3000;
+const PORT = import.meta.env.PORT || 3000;
 
 const SUPPORTED_LOCALES = Object.keys(allFakers).filter(
 	(locale) => locale !== "base",

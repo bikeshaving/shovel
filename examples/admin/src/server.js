@@ -382,7 +382,7 @@ self.addEventListener("activate", (event) => {
 // For Bun deployment, we need to start an HTTP server
 if (typeof Bun !== "undefined") {
 	// Running in Bun - start HTTP server
-	const port = process.env.PORT || 3000;
+	const port = import.meta.env.PORT || 3000;
 
 	Bun.serve({
 		port: port,
@@ -390,7 +390,7 @@ if (typeof Bun !== "undefined") {
 			try {
 				return await router.handler(request);
 			} catch (error) {
-				const isDev = process.env?.NODE_ENV !== "production";
+				const isDev = import.meta.env?.NODE_ENV !== "production";
 				const errorDetails = isDev
 					? `Admin error: ${error.message}\n\nStack: ${error.stack}`
 					: `Admin error: ${error.message}`;
@@ -413,7 +413,7 @@ if (typeof Bun !== "undefined") {
 
 			event.respondWith(
 				responsePromise.catch((error) => {
-					const isDev = process.env?.NODE_ENV !== "production";
+					const isDev = import.meta.env?.NODE_ENV !== "production";
 					const errorDetails = isDev
 						? `Admin error: ${error.message}\\n\\nStack: ${error.stack}`
 						: `Admin error: ${error.message}`;

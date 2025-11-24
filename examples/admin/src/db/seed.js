@@ -237,7 +237,7 @@ async function seed() {
 		console.info("[Seed] Database seeding complete!");
 	} catch (error) {
 		console.error("❌ Seeding failed:", error);
-		process.exit(1);
+		throw error;
 	}
 }
 

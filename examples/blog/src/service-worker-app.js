@@ -51,7 +51,7 @@ self.addEventListener("install", (event) => {
 				directory: "assets",
 				basePath: "/assets",
 				manifestPath: "manifest.json",
-				dev: process.env?.NODE_ENV !== "production",
+				dev: import.meta.env?.NODE_ENV !== "production",
 			}),
 		);
 

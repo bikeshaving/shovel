@@ -105,15 +105,13 @@ export default [
 			],
 		},
 	},
-	// Allow Node-isms in specific files where they're necessary
+	// Allow Node-isms in legitimately Node-specific code
 	{
 		files: [
-			"packages/platform/src/config.ts", // Config parser needs process.env
-			"packages/node-webworker/**/*.{js,ts}", // Node-specific Worker implementation
-			"src/commands/**/*.ts", // CLI commands are Node-specific
 			"bin/**/*.ts", // CLI tools are Node-specific
-			"test/**/*.{js,ts}", // Tests are Node-specific
-			"examples/**/*.{js,ts}", // Examples can use Node APIs
+			"src/commands/**/*.ts", // CLI commands are Node-specific
+			"test/**/*.{js,ts}", // Tests run in Node/Bun environment
+			"packages/node-webworker/**/*.{js,ts}", // Node-specific Worker implementation
 		],
 		rules: {
 			"no-restricted-properties": "off",

@@ -452,7 +452,7 @@ self.addEventListener("fetch", (event) => {
 		event.respondWith(
 			Promise.race([responsePromise, timeoutPromise]).catch((error) => {
 				// In development, show full error details
-				const isDev = process.env?.NODE_ENV !== "production";
+				const isDev = import.meta.env?.NODE_ENV !== "production";
 				const errorDetails = isDev
 					? `Router error: ${error.message}\n\nStack trace:\n${error.stack}`
 					: `Router error: ${error.message}`;
@@ -466,7 +466,7 @@ self.addEventListener("fetch", (event) => {
 		);
 	} catch (error) {
 		// In development, show full error details
-		const isDev = process.env?.NODE_ENV !== "production";
+		const isDev = import.meta.env?.NODE_ENV !== "production";
 		const errorDetails = isDev
 			? `Sync error: ${error.message}\n\nStack trace:\n${error.stack}`
 			: `Sync error: ${error.message}`;

@@ -28,7 +28,9 @@ function getEnv(): Record<string, string | undefined> {
 		return import.meta.env as Record<string, string | undefined>;
 	}
 	// Fallback to process.env (Node.js)
+	// eslint-disable-next-line no-restricted-properties
 	if (typeof process !== "undefined" && process.env) {
+		// eslint-disable-next-line no-restricted-properties
 		return process.env;
 	}
 	// No env available
