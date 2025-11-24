@@ -220,7 +220,7 @@ export class ServiceWorkerPool {
 			initialized?: () => void;
 		}
 	>;
-	#options: Required<WorkerPoolOptions>;
+	#options: Required<Omit<WorkerPoolOptions, "cwd">> & {cwd?: string};
 	#appEntrypoint?: string;
 	#cacheStorage?: CacheStorage & {
 		handleMessage?: (worker: Worker, message: any) => Promise<void>;

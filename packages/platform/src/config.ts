@@ -500,7 +500,7 @@ export function processConfigValue(
 		// Check if it looks like an expression (contains operators or env vars)
 		// Operators: ||, &&, ===, !==, ==, !=, ?, :, !
 		// Env vars: ALL_CAPS identifiers
-		if (/(\\|\\||&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/.test(value)) {
+		if (/(\|\||&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/.test(value)) {
 			return parseConfigExpr(value, env, options);
 		}
 		// Plain string
@@ -622,21 +622,31 @@ export interface ProcessedShovelConfig {
 // ============================================================================
 
 /**
- * Load Shovel configuration from package.json
+ * Load Shovel configuration from shovel.json or package.json
+ * Priority: shovel.json > package.json "shovel" field > defaults
  * @param cwd - Current working directory (must be provided by runtime adapter)
  */
 export function loadConfig(cwd: string): ProcessedShovelConfig {
 	const env = getEnv();
 
-	// Try to load package.json
+	// Try to load configuration from shovel.json first, then package.json
 	let rawConfig: ShovelConfig = {};
+
+	// 1. Try shovel.json (preferred standalone config)
 	try {
-		const pkgPath = `${cwd}/package.json`;
-		const content = readFileSync(pkgPath, "utf-8");
-		const pkgJson = JSON.parse(content);
-		rawConfig = pkgJson.shovel || {};
+		const shovelPath = `${cwd}/shovel.json`;
+		const content = readFileSync(shovelPath, "utf-8");
+		rawConfig = JSON.parse(content);
 	} catch (error) {
-		// No package.json or no shovel field - use defaults
+		// No shovel.json, try package.json
+		try {
+			const pkgPath = `${cwd}/package.json`;
+			const content = readFileSync(pkgPath, "utf-8");
+			const pkgJson = JSON.parse(content);
+			rawConfig = pkgJson.shovel || {};
+		} catch (error) {
+			// No package.json or no shovel field - use defaults
+		}
 	}
 
 	// Process config with expression parser (strict by default)
