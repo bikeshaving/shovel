@@ -1,6 +1,8 @@
 import {DEFAULTS} from "../esbuild/config.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
+import * as platform from "@b9g/platform";
+import {Watcher} from "../esbuild/watcher.js";
 
 // CLI logger
 const logger = getLogger(["cli"]);
@@ -27,7 +29,6 @@ await configure({
 
 export async function developCommand(entrypoint, options) {
 	try {
-		const platform = await import("@b9g/platform");
 		const platformName = platform.resolvePlatform(options);
 		const workerCount = getWorkerCount(options);
 
@@ -52,7 +53,6 @@ export async function developCommand(entrypoint, options) {
 		logger.info("Workers", {workerCount});
 
 		// Set up file watching and building for development
-		const {Watcher} = await import("../esbuild/watcher.js");
 		let serviceWorker;
 
 		const outDir = "dist";

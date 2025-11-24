@@ -7,6 +7,7 @@ import {DEFAULTS} from "../src/esbuild/config.js";
 import {developCommand} from "../src/commands/develop.ts";
 import {activateCommand} from "../src/commands/activate.ts";
 import {infoCommand} from "../src/commands/info.ts";
+import {buildCommand} from "../src/commands/build.ts";
 
 const program = new Command();
 
@@ -37,10 +38,7 @@ program
 	.description("Build app for production")
 	.option("-w, --workers <count>", "Worker count (defaults to 1)", undefined)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
-	.action(async (entrypoint, options) => {
-		const {buildCommand} = await import("../src/commands/build.ts");
-		await buildCommand(entrypoint, options);
-	});
+	.action(buildCommand);
 
 /**
  * Activate command - runs ServiceWorker lifecycle for static generation

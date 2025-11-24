@@ -1,11 +1,11 @@
 import {DEFAULTS} from "../esbuild/config.js";
 import {getLogger} from "@logtape/logtape";
+import * as platform from "@b9g/platform";
 
 const logger = getLogger(["cli"]);
 
 export async function activateCommand(entrypoint, options) {
 	try {
-		const platform = await import("@b9g/platform");
 		const platformName = platform.resolvePlatform(options);
 		const workerCount = getWorkerCount(options);
 

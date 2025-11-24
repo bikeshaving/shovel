@@ -19,6 +19,7 @@ import {
 	type ProcessedShovelConfig,
 	type CacheConfig as _CacheConfig,
 } from "@b9g/platform";
+import {MemoryCache} from "@b9g/cache/memory.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
@@ -104,7 +105,6 @@ export class BunPlatform extends BasePlatform {
 	 * Uses config from package.json shovel field
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
-		const {MemoryCache} = await import("@b9g/cache/memory.js");
 		const config = this.#config;
 
 		return new CustomCacheStorage((name: string) => {

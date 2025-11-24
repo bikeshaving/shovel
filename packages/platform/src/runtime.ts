@@ -14,6 +14,8 @@ import {AsyncContext} from "@b9g/async-context";
 import type {BucketStorage} from "@b9g/filesystem";
 import {CustomBucketStorage} from "@b9g/filesystem";
 import {MemoryBucket} from "@b9g/filesystem/memory.js";
+import {CustomCacheStorage} from "@b9g/cache";
+import {MemoryCache} from "@b9g/cache/memory.js";
 import type {
 	WorkerMessage,
 	WorkerInitMessage,
@@ -1495,10 +1497,6 @@ async function initializeRuntime(config: any): Promise<void> {
 		logger.info(`[Worker-${workerId}] Initializing runtime with config`, {
 			config,
 		});
-
-		// Import dependencies
-		const {CustomCacheStorage} = await import("@b9g/cache");
-		const {MemoryCache} = await import("@b9g/cache/memory.js");
 
 		// Helper to get cache config by name (with pattern matching)
 		const getCacheConfig = (name: string) => {

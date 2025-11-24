@@ -7,6 +7,8 @@
 
 import * as Path from "path";
 import {readFileSync} from "fs";
+import {CustomCacheStorage} from "@b9g/cache";
+import {MemoryCache} from "@b9g/cache/memory";
 
 // Runtime global declarations for platform detection
 declare const Deno: any;
@@ -370,9 +372,6 @@ export abstract class BasePlatform implements Platform {
 	 * Returns empty CacheStorage - applications create caches on-demand via caches.open()
 	 */
 	async createCaches(): Promise<CacheStorage> {
-		const {CustomCacheStorage} = await import("@b9g/cache");
-		const {MemoryCache} = await import("@b9g/cache/memory");
-
 		// Return CacheStorage with memory cache factory
 		// Applications call caches.open("name") to create caches on-demand
 		return new CustomCacheStorage(
