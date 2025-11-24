@@ -14,6 +14,14 @@ import {AsyncContext} from "@b9g/async-context";
 import type {BucketStorage} from "@b9g/filesystem";
 import {CustomBucketStorage} from "@b9g/filesystem";
 import {MemoryBucket} from "@b9g/filesystem/memory.js";
+import type {
+	WorkerMessage,
+	WorkerInitMessage,
+	WorkerLoadMessage,
+	WorkerRequest,
+	WorkerResponse,
+	WorkerErrorMessage,
+} from "./worker-pool.js";
 
 // Set MODE from NODE_ENV for Vite compatibility
 // import.meta.env is shimmed to process.env via esbuild define on Node.js
@@ -1355,18 +1363,11 @@ import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["worker"]);
 
-import type {
-	WorkerMessage,
-	WorkerRequest,
-	WorkerResponse,
-	WorkerLoadMessage,
-	WorkerErrorMessage,
-} from "./index.js";
-
 // Initialize worker environment - Web Worker API only (native or shimmed)
 async function initializeWorker() {
 	// Use Web Worker globals - works with native Web Workers or web-worker shim
-	const messagePort = self;
+	// Note: Use globalThis instead of self for compatibility with node-webworker shim
+	const messagePort = globalThis;
 	const sendMessage = (message: WorkerMessage) => postMessage(message);
 
 	// Handle incoming messages
@@ -1377,57 +1378,23 @@ async function initializeWorker() {
 	return {messagePort, sendMessage};
 }
 
-// Import dependencies (ServiceWorker runtime classes are in this same file)
-const {CustomCacheStorage} = await import("@b9g/cache");
-const {MemoryCache} = await import("@b9g/cache/memory.js");
-
-// Create cache storage
-// TODO: This will be configured by platform and passed to workers via shovel.json
-const caches: CacheStorage = new CustomCacheStorage((name: string) => {
-	return new MemoryCache(name, {
-		maxEntries: 1000,
-	});
-});
-
-// TODO: Bucket storage should be configured by platform and passed to workers
-// For now, restore the working implementation temporarily
-const buckets = new CustomBucketStorage(async (name: string) => {
-	// Try NodeBucket first (Node.js/Bun environments)
-	let NodeBucket: any;
-	try {
-		const imported = await import("@b9g/filesystem/node.js");
-		NodeBucket = imported.NodeBucket;
-	} catch {
-		// NodeBucket not available (Cloudflare), fall back to MemoryBucket
-		return new MemoryBucket(name);
-	}
-
-	// Production: buckets relative to worker script location (import.meta.url)
-	// Worker script is at dist/server/worker.js, buckets are at dist/{name}/
-	let bucketPath: string;
-	if (name === "static") {
-		bucketPath = new URL("../static", import.meta.url).pathname;
-	} else if (name === "server") {
-		bucketPath = new URL(".", import.meta.url).pathname;
-	} else {
-		bucketPath = new URL(`../${name}`, import.meta.url).pathname;
-	}
-	return new NodeBucket(bucketPath);
-});
-
-// Create ServiceWorker runtime
-let registration = new ShovelServiceWorkerRegistration();
-let scope = new ShovelGlobalScope({registration, caches, buckets});
-scope.install();
-
-let _workerSelf: typeof scope = scope;
+// ServiceWorker runtime variables - initialized via init message
+let registration: ShovelServiceWorkerRegistration | null = null;
+let scope: ShovelGlobalScope | null = null;
+let _workerSelf: ShovelGlobalScope | null = null;
 let currentApp: any = null;
 let serviceWorkerReady = false;
 let loadedVersion: number | string | null = null;
+let caches: CacheStorage | undefined;
+let buckets: BucketStorage | undefined;
 
 async function handleFetchEvent(request: Request): Promise<Response> {
 	if (!currentApp || !serviceWorkerReady) {
 		throw new Error("ServiceWorker not ready");
+	}
+
+	if (!registration) {
+		throw new Error("ServiceWorker runtime not initialized");
 	}
 
 	try {
@@ -1470,7 +1437,11 @@ async function loadServiceWorker(
 
 			// Create a completely new runtime instance instead of trying to reset
 			registration = new ShovelServiceWorkerRegistration();
-			scope = new ShovelGlobalScope({registration, caches, buckets});
+			scope = new ShovelGlobalScope({
+				registration,
+				caches,
+				buckets,
+			});
 			scope.install();
 			_workerSelf = scope;
 			currentApp = null;
@@ -1491,6 +1462,9 @@ async function loadServiceWorker(
 		currentApp = appModule;
 
 		// Run ServiceWorker lifecycle
+		if (!registration) {
+			throw new Error("ServiceWorker runtime not initialized");
+		}
 		await registration.install();
 		await registration.activate();
 		serviceWorkerReady = true;
@@ -1508,9 +1482,117 @@ async function loadServiceWorker(
 const workerId = Math.random().toString(36).substring(2, 8);
 let sendMessage: (message: WorkerMessage) => void;
 
+async function initializeRuntime(config: any): Promise<void> {
+	try {
+		logger.info(`[Worker-${workerId}] Initializing runtime with config`, {
+			config,
+		});
+
+		// Import dependencies
+		const {CustomCacheStorage} = await import("@b9g/cache");
+		const {MemoryCache} = await import("@b9g/cache/memory.js");
+
+		// Helper to get cache config by name (with pattern matching)
+		const getCacheConfig = (name: string) => {
+			const caches = config.caches || {};
+			// Exact match
+			if (caches[name]) return caches[name];
+			// Pattern match (e.g., "cache:*")
+			for (const [pattern, cfg] of Object.entries(caches)) {
+				if (pattern.endsWith("*") && name.startsWith(pattern.slice(0, -1))) {
+					return cfg;
+				}
+			}
+			// Catch-all "*"
+			return caches["*"] || {};
+		};
+
+		logger.info(`[Worker-${workerId}] Creating cache storage`);
+		// Create cache storage using configuration
+		caches = new CustomCacheStorage((name: string) => {
+			const cacheConfig = getCacheConfig(name);
+			return new MemoryCache(name, {
+				maxEntries:
+					typeof cacheConfig.maxEntries === "number"
+						? cacheConfig.maxEntries
+						: 1000,
+			});
+		});
+
+		// Helper to get bucket config by name (with pattern matching)
+		const getBucketConfig = (name: string) => {
+			const buckets = config.buckets || {};
+			// Exact match
+			if (buckets[name]) return buckets[name];
+			// Pattern match (e.g., "bucket:*")
+			for (const [pattern, cfg] of Object.entries(buckets)) {
+				if (pattern.endsWith("*") && name.startsWith(pattern.slice(0, -1))) {
+					return cfg;
+				}
+			}
+			// Catch-all "*"
+			return buckets["*"] || {};
+		};
+
+		logger.info(`[Worker-${workerId}] Creating bucket storage`);
+		// Create bucket storage using configuration
+		buckets = new CustomBucketStorage(async (name: string) => {
+			const bucketConfig = getBucketConfig(name);
+
+			// Determine bucket path: explicit config or infer from worker location
+			let bucketPath: string;
+			if (bucketConfig.path) {
+				bucketPath = String(bucketConfig.path);
+			} else {
+				// Infer path from worker script location
+				// static → ../static, server → ., other → ../{name}
+				if (name === "static") {
+					bucketPath = new URL("../static", import.meta.url).pathname;
+				} else if (name === "server") {
+					bucketPath = new URL(".", import.meta.url).pathname;
+				} else {
+					bucketPath = new URL(`../${name}`, import.meta.url).pathname;
+				}
+				logger.info(
+					`[Worker-${workerId}] Inferred bucket path for '${name}'`,
+					{bucketPath},
+				);
+			}
+
+			// Try NodeBucket (Node.js/Bun environments)
+			try {
+				const {NodeBucket} = await import("@b9g/filesystem/node.js");
+				return new NodeBucket(bucketPath);
+			} catch {
+				// NodeBucket not available (Cloudflare), fall back to MemoryBucket
+				return new MemoryBucket(name);
+			}
+		});
+
+		logger.info(`[Worker-${workerId}] Creating and installing scope`);
+		// Create and install ServiceWorker runtime
+		registration = new ShovelServiceWorkerRegistration();
+		scope = new ShovelGlobalScope({registration, caches, buckets});
+		scope.install();
+		_workerSelf = scope;
+
+		logger.info(`[Worker-${workerId}] Runtime initialized successfully`);
+	} catch (error) {
+		logger.error(`[Worker-${workerId}] Failed to initialize runtime`, {error});
+		throw error;
+	}
+}
+
 async function handleMessage(message: WorkerMessage): Promise<void> {
 	try {
-		if (message.type === "load") {
+		logger.info(`[Worker-${workerId}] Received message`, {type: message.type});
+
+		if (message.type === "init") {
+			const initMsg = message as WorkerInitMessage;
+			await initializeRuntime(initMsg.config);
+			logger.info(`[Worker-${workerId}] Sending initialized message`);
+			sendMessage({type: "initialized"});
+		} else if (message.type === "load") {
 			const loadMsg = message as WorkerLoadMessage;
 			await loadServiceWorker(loadMsg.version, loadMsg.entrypoint);
 			sendMessage({type: "ready", version: loadMsg.version});

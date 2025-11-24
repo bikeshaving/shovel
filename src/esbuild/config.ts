@@ -14,5 +14,5 @@ export const DEFAULTS = {
 		PORT: 7777,
 		HOST: "localhost",
 	},
-	WORKERS: cpus().length,
+	WORKERS: 1, // Single worker for development - user can override with --workers flag
 } as const;

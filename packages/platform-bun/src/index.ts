@@ -14,6 +14,10 @@ import {
 	ServiceWorkerInstance,
 	ServiceWorkerPool,
 	WorkerPoolOptions,
+	loadConfig,
+	getCacheConfig,
+	type ProcessedShovelConfig,
+	type CacheConfig,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
 import * as Path from "path";
@@ -57,14 +61,22 @@ export class BunPlatform extends BasePlatform {
 	#options: Required<BunPlatformOptions>;
 	#workerPool?: ServiceWorkerPool;
 	#cacheStorage?: CustomCacheStorage;
+	#config: ProcessedShovelConfig;
 
 	constructor(options: BunPlatformOptions = {}) {
 		super(options);
 		this.name = "bun";
+
+		const cwd = options.cwd || process.cwd();
+
+		// Load configuration from package.json
+		this.#config = loadConfig(cwd);
+
+		// Merge options with config (options take precedence)
 		this.#options = {
-			port: 3000,
-			host: "localhost",
-			cwd: process.cwd(),
+			port: options.port ?? this.#config.port,
+			host: options.host ?? this.#config.host,
+			cwd,
 			...options,
 		};
 	}
@@ -89,14 +101,23 @@ export class BunPlatform extends BasePlatform {
 
 	/**
 	 * Create cache storage
-	 * TODO: This will be configured via shovel.json
+	 * Uses config from package.json shovel field
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
 		const {MemoryCache} = await import("@b9g/cache/memory.js");
+		const config = this.#config;
 
 		return new CustomCacheStorage((name: string) => {
+			// Get cache config for this cache name (supports pattern matching)
+			const cacheConfig = getCacheConfig(config, name);
+
+			// For now, only support memory provider
+			// TODO: Add Redis, etc.
 			return new MemoryCache(name, {
-				maxEntries: 1000,
+				maxEntries:
+					typeof cacheConfig.maxEntries === "number"
+						? cacheConfig.maxEntries
+						: 1000,
 			});
 		});
 	}
@@ -155,7 +176,8 @@ export class BunPlatform extends BasePlatform {
 			await this.#workerPool.terminate();
 		}
 
-		const workerCount = options.workerCount || 1;
+		// Use worker count from: 1) options, 2) config, 3) default 1
+		const workerCount = options.workerCount ?? this.#config.workers ?? 1;
 		const poolOptions: WorkerPoolOptions = {
 			workerCount,
 			requestTimeout: 30000,
@@ -167,6 +189,7 @@ export class BunPlatform extends BasePlatform {
 			poolOptions,
 			entryPath,
 			this.#cacheStorage,
+			this.#config,
 		);
 
 		// Initialize workers (Bun has native Web Workers)

@@ -13,6 +13,10 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 	ServiceWorkerPool,
+	loadConfig,
+	getCacheConfig,
+	type ProcessedShovelConfig,
+	type CacheConfig,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
@@ -53,14 +57,23 @@ export class NodePlatform extends BasePlatform {
 	#options: Required<NodePlatformOptions>;
 	#workerPool?: ServiceWorkerPool;
 	#cacheStorage?: CustomCacheStorage;
+	#config: ProcessedShovelConfig;
 
 	constructor(options: NodePlatformOptions = {}) {
 		super(options);
 		this.name = "node";
+
+		const cwd = options.cwd || process.cwd();
+
+		// Load configuration from package.json
+		this.#config = loadConfig(cwd);
+		logger.info("Loaded configuration", {config: this.#config});
+
+		// Merge options with config (options take precedence)
 		this.#options = {
-			port: 3000,
-			host: "localhost",
-			cwd: process.cwd(),
+			port: options.port ?? this.#config.port,
+			host: options.host ?? this.#config.host,
+			cwd,
 			...options,
 		};
 	}
@@ -106,9 +119,11 @@ export class NodePlatform extends BasePlatform {
 		if (this.#workerPool) {
 			await this.#workerPool.terminate();
 		}
-		const workerCount = options.workerCount || 1;
+		// Use worker count from: 1) options, 2) config, 3) default 1
+		const workerCount = options.workerCount ?? this.#config.workers ?? 1;
 		logger.info("Creating ServiceWorker pool", {
 			entryPath,
+			workerCount,
 		});
 		this.#workerPool = new ServiceWorkerPool(
 			{
@@ -118,6 +133,7 @@ export class NodePlatform extends BasePlatform {
 			},
 			entryPath,
 			this.#cacheStorage,
+			this.#config,
 		);
 
 		// Initialize workers with dynamic import handling
@@ -169,12 +185,21 @@ export class NodePlatform extends BasePlatform {
 
 	/**
 	 * SUPPORTING UTILITY - Create cache storage
-	 * TODO: This will be configured via shovel.json
+	 * Uses config from package.json shovel field
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
+		const config = this.#config;
 		return new CustomCacheStorage((name: string) => {
+			// Get cache config for this cache name (supports pattern matching)
+			const cacheConfig = getCacheConfig(config, name);
+
+			// For now, only support memory provider
+			// TODO: Add Redis, etc.
 			return new MemoryCache(name, {
-				maxEntries: 1000,
+				maxEntries:
+					typeof cacheConfig.maxEntries === "number"
+						? cacheConfig.maxEntries
+						: 1000,
 			});
 		});
 	}

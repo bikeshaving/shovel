@@ -13,27 +13,35 @@ import {mkdtemp} from "fs/promises";
 
 const TIMEOUT = 10000; // 10 second timeout for complex tests
 
-// Setup: Create node_modules symlink in /tmp for tests that write files directly to /tmp
-beforeAll(async () => {
-	const nodeModulesSource = join(process.cwd(), "node_modules");
-	const nodeModulesLink = "/tmp/node_modules";
+// Namespaced temp directory for test isolation
+let TEST_TMP_DIR;
 
+// Setup: Create unique namespaced temp directory with node_modules
+beforeAll(async () => {
+	// Create unique test directory (e.g., /tmp/shovel-develop-abc123)
+	TEST_TMP_DIR = await mkdtemp(join(tmpdir(), "shovel-develop-"));
+
+	// Create node_modules symlink in test directory
+	const nodeModulesSource = join(process.cwd(), "node_modules");
+	const nodeModulesLink = join(TEST_TMP_DIR, "node_modules");
+	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
+
+	// Clean up any stale /tmp/dist from previous runs
 	try {
-		// Remove if already exists
-		await FS.unlink(nodeModulesLink);
+		await FS.rm("/tmp/dist", {recursive: true, force: true});
 	} catch {
 		// Doesn't exist, that's fine
 	}
-
-	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
 });
 
-// Teardown: Remove node_modules symlink from /tmp
+// Teardown: Remove test directory
 afterAll(async () => {
-	try {
-		await FS.unlink("/tmp/node_modules");
-	} catch {
-		// Already removed, that's fine
+	if (TEST_TMP_DIR) {
+		try {
+			await FS.rm(TEST_TMP_DIR, {recursive: true, force: true});
+		} catch {
+			// Already removed, that's fine
+		}
 	}
 });
 
@@ -515,9 +523,9 @@ test(
 		let serverProcess;
 
 		// Create temporary test files for deep chain
-		const testFileA = "/tmp/shovel-test-chain-a.ts";
-		const testFileB = "/tmp/shovel-test-chain-b.ts";
-		const testFileMain = "/tmp/shovel-test-chain-main.ts";
+		const testFileA = join(TEST_TMP_DIR, "shovel-test-chain-a.ts");
+		const testFileB = join(TEST_TMP_DIR, "shovel-test-chain-b.ts");
+		const testFileMain = join(TEST_TMP_DIR, "shovel-test-chain-main.ts");
 
 		// File A (deepest dependency)
 		const contentA = `export const value = "A-original";`;
@@ -583,12 +591,12 @@ test(
 
 		// Create multiple temporary test files
 		const testFiles = Array.from({length: 5}, (_, i) => ({
-			path: `/tmp/shovel-test-concurrent-${i}.ts`,
+			path: join(TEST_TMP_DIR, `shovel-test-concurrent-${i}.ts`),
 			content: `export const value${i} = "original-${i}";`,
 			modified: `export const value${i} = "modified-${i}";`,
 		}));
 
-		const mainFile = "/tmp/shovel-test-concurrent-main.ts";
+		const mainFile = join(TEST_TMP_DIR, "shovel-test-concurrent-main.ts");
 		const mainContent = `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
@@ -688,7 +696,7 @@ test(
 		const PORT = 13319;
 		let serverProcess;
 
-		const testFile = "/tmp/shovel-test-delete.ts";
+		const testFile = join(TEST_TMP_DIR, "shovel-test-delete.ts");
 		const originalContent = `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
@@ -763,7 +771,7 @@ test(
 		const PORT = 13320;
 		let serverProcess;
 
-		const testFile = "/tmp/shovel-test-syntax.ts";
+		const testFile = join(TEST_TMP_DIR, "shovel-test-syntax.ts");
 		const validContent = `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
@@ -830,7 +838,7 @@ test(
 		const PORT = 13321;
 		let serverProcess;
 
-		const largeFile = "/tmp/shovel-test-large.ts";
+		const largeFile = join(TEST_TMP_DIR, "shovel-test-large.ts");
 
 		// Generate a large file with many variables (but still valid TypeScript)
 		const generateLargeContent = (variableCount) => {
@@ -893,7 +901,7 @@ test(
 		const PORT = 13322;
 		let serverProcess;
 
-		const cacheFile = "/tmp/shovel-test-cache.ts";
+		const cacheFile = join(TEST_TMP_DIR, "shovel-test-cache.ts");
 		const cacheContent = (timestamp) => `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
@@ -957,7 +965,7 @@ test(
 		const PORT = 13323;
 		let serverProcess;
 
-		const jsFile = "/tmp/shovel-test-extension.js";
+		const jsFile = join(TEST_TMP_DIR, "shovel-test-extension.js");
 		const jsContent = `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";

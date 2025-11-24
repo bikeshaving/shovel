@@ -38,13 +38,13 @@
       "import": "./dist/src/index.js"
     },
     "./package.json": "./dist/package.json",
-    "./index": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
+    "./worker-pool": {
+      "types": "./dist/src/worker-pool.d.ts",
+      "import": "./dist/src/worker-pool.js"
     },
-    "./index.js": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
+    "./worker-pool.js": {
+      "types": "./dist/src/worker-pool.d.ts",
+      "import": "./dist/src/worker-pool.js"
     },
     "./runtime": {
       "types": "./dist/src/runtime.d.ts",
@@ -53,6 +53,22 @@
     "./runtime.js": {
       "types": "./dist/src/runtime.d.ts",
       "import": "./dist/src/runtime.js"
+    },
+    "./config": {
+      "types": "./dist/src/config.d.ts",
+      "import": "./dist/src/config.js"
+    },
+    "./config.js": {
+      "types": "./dist/src/config.d.ts",
+      "import": "./dist/src/config.js"
+    },
+    "./cookie-store": {
+      "types": "./dist/src/cookie-store.d.ts",
+      "import": "./dist/src/cookie-store.js"
+    },
+    "./cookie-store.js": {
+      "types": "./dist/src/cookie-store.d.ts",
+      "import": "./dist/src/cookie-store.js"
     }
   }
 }
