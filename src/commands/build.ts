@@ -5,7 +5,7 @@
 
 import * as esbuild from "esbuild";
 import {resolve, join, dirname} from "path";
-import {mkdir, readFile, writeFile, chmod} from "fs/promises";
+import {mkdir, readFile, writeFile} from "fs/promises";
 import {fileURLToPath} from "url";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {
@@ -71,15 +71,6 @@ export async function buildForProduction({
 	// Use build() for one-time builds (not context API which is for watch/incremental)
 	// This automatically handles cleanup and prevents process hanging
 	const result = await esbuild.build(buildConfig);
-
-	// Make the output executable (only for Node/Bun builds)
-	// Cloudflare builds aren't directly executed, so no chmod needed
-	const isCloudflare =
-		platform === "cloudflare" || platform === "cloudflare-workers";
-	if (!isCloudflare) {
-		const executablePath = join(buildContext.serverDir, "index.js");
-		await chmod(executablePath, 0o755);
-	}
 
 	if (verbose && result.metafile) {
 		await logBundleAnalysis(result.metafile);

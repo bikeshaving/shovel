@@ -92,12 +92,14 @@ self.addEventListener("fetch", (event) => {
 			).toBe(true);
 			expect(await fileExists(join(outDir, "static", "assets"))).toBe(true);
 
-			// Check app.js has shebang and bootstrap
+			// Check index.js exists and contains production server code
 			const appContent = await FS.readFile(
 				join(outDir, "server", "index.js"),
 				"utf8",
 			);
-			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
+			// Should contain platform imports and server setup
+			expect(appContent).toContain("platform");
+			expect(appContent).toContain("loadServiceWorker");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -155,8 +157,8 @@ self.addEventListener("fetch", (event) => {
 						join(outDir, "server", "index.js"),
 						"utf8",
 					);
-					expect(indexContent.startsWith("#!/usr/bin/env node")).toBe(true);
-					// Look for bundled platform code
+					// Should contain bundled platform code
+					expect(indexContent).toContain("loadServiceWorker");
 					expect(indexContent).toContain("CustomCacheStorage");
 				}
 			} catch (error) {
@@ -326,8 +328,8 @@ self.addEventListener("fetch", (event) => {
 				join(outDir, "server", "index.js"),
 				"utf8",
 			);
-			expect(appContent.startsWith("#!/usr/bin/env node")).toBe(true);
-			// With bundling, comments may be removed, so check for bundled code instead
+			// Should contain bundled platform code
+			expect(appContent).toContain("loadServiceWorker");
 			expect(appContent).toContain("CustomCacheStorage");
 
 			// Validate package.json is valid JSON

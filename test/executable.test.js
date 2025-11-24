@@ -621,10 +621,10 @@ self.addEventListener("fetch", (event) => {
 			const packageJson = JSON.parse(packageContent);
 			expect(typeof packageJson).toBe("object");
 
-			// Check app.js is executable
-			const appStat = await FS.stat(appPath);
-			const isExecutable = (appStat.mode & 0o111) !== 0; // Check execute bits
-			expect(isExecutable).toBe(true);
+			// Check index.js exists and contains production server code
+			const appContent = await FS.readFile(appPath, "utf8");
+			expect(appContent).toContain("loadServiceWorker");
+			expect(appContent).toContain("platform");
 
 			// Check assets manifest exists
 			const manifestPath = join(outDir, "server", "asset-manifest.json");

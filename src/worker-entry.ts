@@ -1,7 +1,8 @@
-#!/usr/bin/env node
 /**
  * Shovel Production Server
  * Uses platform abstraction for multi-worker ServiceWorker runtime
+ *
+ * Run with: node index.js (Node.js) or bun index.js (Bun)
  */
 
 import {getLogger} from "@logtape/logtape";
