@@ -35,8 +35,8 @@ function getCookieStore(_context: any) {
 export function redirectToProvider(client: OAuth2Client): FunctionMiddleware {
 	return async (request, context) => {
 		const cookieStore = getCookieStore(context);
-		const authUrl = await client.startAuthorization(cookieStore);
-		return Response.redirect(authUrl, 302);
+		const authURL = await client.startAuthorization(cookieStore);
+		return Response.redirect(authURL, 302);
 	};
 }
 

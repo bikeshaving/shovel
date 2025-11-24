@@ -208,8 +208,8 @@ function extractUnifiedParams(
 	if (result.search?.groups) {
 		// URLPattern captures everything after the first param as part of that param's value
 		// We need to parse the actual URL search params instead
-		const actualUrl = typeof url === "string" ? new URL(url) : url;
-		const searchParams = actualUrl.searchParams;
+		const actualURL = typeof url === "string" ? new URL(url) : url;
+		const searchParams = actualURL.searchParams;
 
 		// Get all actual search parameters
 		for (const [key, value] of searchParams) {
@@ -217,8 +217,8 @@ function extractUnifiedParams(
 		}
 	} else if (typeof url !== "string") {
 		// No search pattern, but URL might have search params - capture them all
-		const actualUrl = url instanceof URL ? url : new URL(url);
-		for (const [key, value] of actualUrl.searchParams) {
+		const actualURL = url instanceof URL ? url : new URL(url);
+		for (const [key, value] of actualURL.searchParams) {
 			params[key] = value;
 		}
 	}

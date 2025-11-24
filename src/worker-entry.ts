@@ -30,8 +30,8 @@ const platform = new Platform();
 
 // Get the path to the user's ServiceWorker code
 // Convert file:// URL to file path for loadServiceWorker
-const userCodeUrl = new URL("./server.js", import.meta.url);
-const userCodePath = userCodeUrl.pathname;
+const userCodeURL = new URL("./server.js", import.meta.url);
+const userCodePath = userCodeURL.pathname;
 
 // Load ServiceWorker with worker pool
 const serviceWorker = await platform.loadServiceWorker(userCodePath, {

@@ -585,7 +585,7 @@ export interface CacheConfig {
 	provider?: string | number;
 	url?: string | number;
 	maxEntries?: string | number;
-	ttl?: string | number;
+	TTL?: string | number;
 }
 
 export interface BucketConfig {
@@ -642,8 +642,8 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 		try {
 			const pkgPath = `${cwd}/package.json`;
 			const content = readFileSync(pkgPath, "utf-8");
-			const pkgJson = JSON.parse(content);
-			rawConfig = pkgJson.shovel || {};
+			const pkgJSON = JSON.parse(content);
+			rawConfig = pkgJSON.shovel || {};
 		} catch (error) {
 			// No package.json or no shovel field - use defaults
 		}

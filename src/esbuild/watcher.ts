@@ -2,7 +2,7 @@
  * Simple file watcher that runs ESBuild and triggers Worker reloads
  */
 
-import * as esbuild from "esbuild";
+import * as ESBuild from "esbuild";
 import {watch} from "fs";
 import {resolve, dirname, join} from "path";
 import {readFileSync} from "fs";
@@ -105,10 +105,10 @@ export class Watcher {
 
 			while (workspaceRoot !== dirname(workspaceRoot)) {
 				try {
-					const packageJson = JSON.parse(
+					const packageJSON = JSON.parse(
 						readFileSync(resolve(workspaceRoot, "package.json"), "utf8"),
 					);
-					if (packageJson.workspaces) {
+					if (packageJSON.workspaces) {
 						break;
 					}
 				} catch {
@@ -129,7 +129,7 @@ export class Watcher {
 			await mkdir(join(outputDir, "server"), {recursive: true});
 			await mkdir(join(outputDir, "assets"), {recursive: true});
 
-			const result = await esbuild.build({
+			const result = await ESBuild.build({
 				entryPoints: [entryPath],
 				bundle: true,
 				format: "esm",

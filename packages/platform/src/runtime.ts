@@ -1623,7 +1623,7 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
 					headers: Object.fromEntries(response.headers.entries()),
 					body: await response.text(),
 				},
-				requestId: reqMsg.requestId,
+				requestID: reqMsg.requestID,
 			};
 			sendMessage(responseMsg);
 		}
@@ -1633,7 +1633,7 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
 			type: "error",
 			error: error instanceof Error ? error.message : String(error),
 			stack: error instanceof Error ? error.stack : undefined,
-			requestId: (message as any).requestId,
+			requestID: (message as any).requestID,
 		};
 		sendMessage(errorMsg);
 	}

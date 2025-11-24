@@ -19,11 +19,11 @@ export interface OAuth2Config {
 	/** OAuth2 token endpoint */
 	tokenEndpoint: string;
 	/** Client ID */
-	clientId: string;
+	clientID: string;
 	/** Client secret (optional for PKCE) */
 	clientSecret?: string;
 	/** Redirect URI */
-	redirectUri: string;
+	redirectURI: string;
 	/** OAuth2 scopes */
 	scopes?: string[];
 	/** Additional authorization parameters */
@@ -85,16 +85,16 @@ export class OAuth2Client {
 		});
 
 		// Build authorization URL
-		const authUrl = new URL(this.#config.authorizationEndpoint);
-		authUrl.searchParams.set("client_id", this.#config.clientId);
-		authUrl.searchParams.set("redirect_uri", this.#config.redirectUri);
-		authUrl.searchParams.set("response_type", "code");
-		authUrl.searchParams.set("code_challenge", codeChallenge);
-		authUrl.searchParams.set("code_challenge_method", "S256");
-		authUrl.searchParams.set("state", state);
+		const authURL = new URL(this.#config.authorizationEndpoint);
+		authURL.searchParams.set("client_id", this.#config.clientID);
+		authURL.searchParams.set("redirect_uri", this.#config.redirectURI);
+		authURL.searchParams.set("response_type", "code");
+		authURL.searchParams.set("code_challenge", codeChallenge);
+		authURL.searchParams.set("code_challenge_method", "S256");
+		authURL.searchParams.set("state", state);
 
 		if (this.#config.scopes && this.#config.scopes.length > 0) {
-			authUrl.searchParams.set("scope", this.#config.scopes.join(" "));
+			authURL.searchParams.set("scope", this.#config.scopes.join(" "));
 		}
 
 		// Add additional authorization parameters
@@ -102,11 +102,11 @@ export class OAuth2Client {
 			for (const [key, value] of Object.entries(
 				this.#config.authorizationParams,
 			)) {
-				authUrl.searchParams.set(key, value);
+				authURL.searchParams.set(key, value);
 			}
 		}
 
-		return authUrl.toString();
+		return authURL.toString();
 	}
 
 	/**
@@ -173,8 +173,8 @@ export class OAuth2Client {
 		const tokenParams = new URLSearchParams({
 			grant_type: "authorization_code",
 			code,
-			redirect_uri: this.#config.redirectUri,
-			client_id: this.#config.clientId,
+			redirect_uri: this.#config.redirectURI,
+			client_id: this.#config.clientID,
 			code_verifier: codeVerifier,
 		});
 
@@ -217,7 +217,7 @@ export class OAuth2Client {
 		const tokenParams = new URLSearchParams({
 			grant_type: "refresh_token",
 			refresh_token: refreshToken,
-			client_id: this.#config.clientId,
+			client_id: this.#config.clientID,
 		});
 
 		if (this.#config.clientSecret) {

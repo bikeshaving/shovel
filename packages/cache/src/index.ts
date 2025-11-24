@@ -242,7 +242,7 @@ export class CustomCacheStorage {
 	 * Handle cache messages from worker threads (PostMessageCache coordination)
 	 */
 	async handleMessage(worker: any, message: any): Promise<void> {
-		const {type, requestId, cacheName} = message;
+		const {type, requestID, cacheName} = message;
 
 		try {
 			const cache = await this.open(cacheName);
@@ -292,11 +292,11 @@ export class CustomCacheStorage {
 					break;
 			}
 
-			worker.postMessage({type: "cache:response", requestId, result});
+			worker.postMessage({type: "cache:response", requestID, result});
 		} catch (error: any) {
 			worker.postMessage({
 				type: "cache:error",
-				requestId,
+				requestID,
 				error: error.message,
 			});
 		}

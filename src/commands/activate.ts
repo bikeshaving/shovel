@@ -1,16 +1,16 @@
 import {DEFAULTS} from "../esbuild/config.js";
 import {getLogger} from "@logtape/logtape";
-import * as platform from "@b9g/platform";
+import * as Platform from "@b9g/platform";
 
 const logger = getLogger(["cli"]);
 
 export async function activateCommand(entrypoint, options) {
 	try {
-		const platformName = platform.resolvePlatform(options);
+		const platformName = Platform.resolvePlatform(options);
 		const workerCount = getWorkerCount(options);
 
 		if (options.verbose) {
-			platform.displayPlatformInfo(platformName);
+			Platform.displayPlatformInfo(platformName);
 			logger.info("Worker configuration", {workerCount});
 		}
 
@@ -18,7 +18,7 @@ export async function activateCommand(entrypoint, options) {
 			hotReload: false,
 		};
 
-		const platformInstance = await platform.createPlatform(
+		const platformInstance = await Platform.createPlatform(
 			platformName,
 			platformConfig,
 		);

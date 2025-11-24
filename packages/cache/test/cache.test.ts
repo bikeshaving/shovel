@@ -204,7 +204,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 		// Simulate a cache:match message from worker
 		const matchMessage = {
 			type: "cache:match",
-			requestId: "1",
+			requestID: "1",
 			cacheName: "test-cache",
 			request: {
 				url: "http://example.com/test",
@@ -218,7 +218,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 		// Should respond with cache:response (no match)
 		expect(messages).toHaveLength(1);
 		expect(messages[0].type).toBe("cache:response");
-		expect(messages[0].requestId).toBe("1");
+		expect(messages[0].requestID).toBe("1");
 		expect(messages[0].result).toBeUndefined();
 	});
 
@@ -235,7 +235,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 		// Put a response in the cache
 		const putMessage = {
 			type: "cache:put",
-			requestId: "1",
+			requestID: "1",
 			cacheName: "test-cache",
 			request: {
 				url: "http://example.com/test",
@@ -260,7 +260,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 
 		const matchMessage = {
 			type: "cache:match",
-			requestId: "2",
+			requestID: "2",
 			cacheName: "test-cache",
 			request: {
 				url: "http://example.com/test",
@@ -273,7 +273,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 
 		expect(messages).toHaveLength(1);
 		expect(messages[0].type).toBe("cache:response");
-		expect(messages[0].requestId).toBe("2");
+		expect(messages[0].requestID).toBe("2");
 		expect(messages[0].result).toBeDefined();
 		expect(messages[0].result.body).toBe("Hello World");
 	});
@@ -291,7 +291,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 		// Put then delete
 		await cacheStorage.handleMessage(mockWorker, {
 			type: "cache:put",
-			requestId: "1",
+			requestID: "1",
 			cacheName: "test-cache",
 			request: {
 				url: "http://example.com/test",
@@ -310,7 +310,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 
 		await cacheStorage.handleMessage(mockWorker, {
 			type: "cache:delete",
-			requestId: "2",
+			requestID: "2",
 			cacheName: "test-cache",
 			request: {
 				url: "http://example.com/test",
@@ -337,7 +337,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 		// Put two items
 		await cacheStorage.handleMessage(mockWorker, {
 			type: "cache:put",
-			requestId: "1",
+			requestID: "1",
 			cacheName: "test-cache",
 			request: {url: "http://example.com/1", method: "GET", headers: {}},
 			response: {status: 200, statusText: "OK", headers: {}, body: "1"},
@@ -345,7 +345,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 
 		await cacheStorage.handleMessage(mockWorker, {
 			type: "cache:put",
-			requestId: "2",
+			requestID: "2",
 			cacheName: "test-cache",
 			request: {url: "http://example.com/2", method: "GET", headers: {}},
 			response: {status: 200, statusText: "OK", headers: {}, body: "2"},
@@ -355,7 +355,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 
 		await cacheStorage.handleMessage(mockWorker, {
 			type: "cache:keys",
-			requestId: "3",
+			requestID: "3",
 			cacheName: "test-cache",
 		});
 
@@ -379,7 +379,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 		// Put items then clear
 		await cacheStorage.handleMessage(mockWorker, {
 			type: "cache:put",
-			requestId: "1",
+			requestID: "1",
 			cacheName: "test-cache",
 			request: {url: "http://example.com/1", method: "GET", headers: {}},
 			response: {status: 200, statusText: "OK", headers: {}, body: "1"},
@@ -389,7 +389,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 
 		await cacheStorage.handleMessage(mockWorker, {
 			type: "cache:clear",
-			requestId: "2",
+			requestID: "2",
 			cacheName: "test-cache",
 		});
 
@@ -401,7 +401,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 
 		await cacheStorage.handleMessage(mockWorker, {
 			type: "cache:keys",
-			requestId: "3",
+			requestID: "3",
 			cacheName: "test-cache",
 		});
 
@@ -421,14 +421,14 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 		// Send invalid message (missing required fields)
 		await cacheStorage.handleMessage(mockWorker, {
 			type: "cache:match",
-			requestId: "1",
+			requestID: "1",
 			cacheName: "test-cache",
 			// Missing request field
 		});
 
 		expect(messages).toHaveLength(1);
 		expect(messages[0].type).toBe("cache:error");
-		expect(messages[0].requestId).toBe("1");
+		expect(messages[0].requestID).toBe("1");
 		expect(messages[0].error).toBeDefined();
 	});
 });

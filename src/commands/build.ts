@@ -3,7 +3,7 @@
  * Creates self-contained, directly executable production builds
  */
 
-import * as esbuild from "esbuild";
+import * as ESBuild from "esbuild";
 import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile} from "fs/promises";
 import {fileURLToPath} from "url";
@@ -70,13 +70,13 @@ export async function buildForProduction({
 
 	// Use build() for one-time builds (not context API which is for watch/incremental)
 	// This automatically handles cleanup and prevents process hanging
-	const result = await esbuild.build(buildConfig);
+	const result = await ESBuild.build(buildConfig);
 
 	if (verbose && result.metafile) {
 		await logBundleAnalysis(result.metafile);
 	}
 
-	await generatePackageJson({
+	await generatePackageJSON({
 		...buildContext,
 		entryPath: buildContext.entryPath,
 	});
@@ -173,10 +173,10 @@ async function findWorkspaceRoot() {
 	let workspaceRoot = process.cwd();
 	while (workspaceRoot !== dirname(workspaceRoot)) {
 		try {
-			const packageJson = JSON.parse(
+			const packageJSON = JSON.parse(
 				await readFile(resolve(workspaceRoot, "package.json"), "utf8"),
 			);
-			if (packageJson.workspaces) {
+			if (packageJSON.workspaces) {
 				return workspaceRoot;
 			}
 		} catch {
@@ -195,8 +195,8 @@ async function findShovelPackageRoot() {
 	let packageRoot = currentDir;
 	while (packageRoot !== dirname(packageRoot)) {
 		try {
-			const packageJsonPath = join(packageRoot, "package.json");
-			const content = await readFile(packageJsonPath, "utf8");
+			const packageJSONPath = join(packageRoot, "package.json");
+			const content = await readFile(packageJSONPath, "utf8");
 			const pkg = JSON.parse(content);
 			// Check if this is the shovel package
 			if (pkg.name === "@b9g/shovel" || pkg.name === "shovel") {
@@ -276,7 +276,7 @@ async function createBuildConfig({
 			};
 
 			// Build user code first
-			await esbuild.build(userBuildConfig);
+			await ESBuild.build(userBuildConfig);
 
 			// Bundle runtime.js from @b9g/platform to server directory as worker.js
 			// The ServiceWorkerPool needs this to run workers
@@ -289,7 +289,7 @@ async function createBuildConfig({
 			// Bundle runtime.js with all its dependencies
 			// Note: No define needed - runtime.ts polyfills import.meta.env from process.env
 			try {
-				await esbuild.build({
+				await ESBuild.build({
 					entryPoints: [runtimeSourcePath],
 					bundle: true,
 					format: "esm",
@@ -304,7 +304,7 @@ async function createBuildConfig({
 					shovelRoot,
 					"node_modules/@b9g/platform/dist/src/runtime.js",
 				);
-				await esbuild.build({
+				await ESBuild.build({
 					entryPoints: [installedRuntimePath],
 					bundle: true,
 					format: "esm",
@@ -409,8 +409,8 @@ async function createWorkerEntry(userEntryPath, workerCount, platform) {
 	let packageRoot = currentDir;
 	while (packageRoot !== dirname(packageRoot)) {
 		try {
-			const packageJsonPath = join(packageRoot, "package.json");
-			await readFile(packageJsonPath, "utf8");
+			const packageJSONPath = join(packageRoot, "package.json");
+			await readFile(packageJSONPath, "utf8");
 			break;
 		} catch {
 			packageRoot = dirname(packageRoot);
@@ -427,7 +427,7 @@ async function createWorkerEntry(userEntryPath, workerCount, platform) {
 	}
 
 	// Transpile the template
-	const transpileResult = await esbuild.build({
+	const transpileResult = await ESBuild.build({
 		entryPoints: [templatePath],
 		bundle: false, // Just transpile - bundling happens in final build
 		format: "esm",
@@ -449,7 +449,7 @@ async function createWorkerEntry(userEntryPath, workerCount, platform) {
 async function logBundleAnalysis(metafile) {
 	try {
 		logger.info("Bundle analysis:", {});
-		const analysis = await esbuild.analyzeMetafile(metafile);
+		const analysis = await ESBuild.analyzeMetafile(metafile);
 		logger.info(analysis, {});
 	} catch (error) {
 		logger.warn("Failed to analyze bundle", {error: error.message});
@@ -459,25 +459,25 @@ async function logBundleAnalysis(metafile) {
 /**
  * Generate or copy package.json to output directory for self-contained deployment
  */
-async function generatePackageJson({serverDir, platform, verbose, entryPath}) {
+async function generatePackageJSON({serverDir, platform, verbose, entryPath}) {
 	// Look for package.json in the same directory as the entrypoint, not cwd
 	const entryDir = dirname(entryPath);
 	const sourcePackageJsonPath = resolve(entryDir, "package.json");
 
 	try {
 		// First try to copy existing package.json from source directory
-		const packageJsonContent = await readFile(sourcePackageJsonPath, "utf8");
+		const packageJSONContent = await readFile(sourcePackageJsonPath, "utf8");
 
 		// Validate package.json is valid JSON
 		try {
-			JSON.parse(packageJsonContent);
+			JSON.parse(packageJSONContent);
 		} catch (parseError) {
 			throw new Error(`Invalid package.json format: ${parseError.message}`);
 		}
 
 		await writeFile(
 			join(serverDir, "package.json"),
-			packageJsonContent,
+			packageJSONContent,
 			"utf8",
 		);
 		if (verbose) {
@@ -491,7 +491,7 @@ async function generatePackageJson({serverDir, platform, verbose, entryPath}) {
 
 		try {
 			const generatedPackageJson =
-				await generateExecutablePackageJson(platform);
+				await generateExecutablePackageJSON(platform);
 			await writeFile(
 				join(serverDir, "package.json"),
 				JSON.stringify(generatedPackageJson, null, 2),
@@ -518,8 +518,8 @@ async function generatePackageJson({serverDir, platform, verbose, entryPath}) {
 /**
  * Generate a minimal package.json for executable builds
  */
-async function generateExecutablePackageJson(platform) {
-	const packageJson = {
+async function generateExecutablePackageJSON(platform) {
+	const packageJSON = {
 		name: "shovel-executable",
 		version: "1.0.0",
 		type: "module",
@@ -535,31 +535,31 @@ async function generateExecutablePackageJson(platform) {
 		// In workspace environment (like tests), create empty dependencies
 		// since workspace packages can't be installed via npm
 		// The bundler will handle all necessary dependencies
-		packageJson.dependencies = {};
+		packageJSON.dependencies = {};
 	} else {
 		// In production/published environment, add platform dependencies
 		// Add platform-specific dependencies
 		switch (platform) {
 			case "node":
-				packageJson.dependencies["@b9g/platform-node"] = "^0.1.0";
+				packageJSON.dependencies["@b9g/platform-node"] = "^0.1.0";
 				break;
 			case "bun":
-				packageJson.dependencies["@b9g/platform-bun"] = "^0.1.0";
+				packageJSON.dependencies["@b9g/platform-bun"] = "^0.1.0";
 				break;
 			case "cloudflare":
-				packageJson.dependencies["@b9g/platform-cloudflare"] = "^0.1.0";
+				packageJSON.dependencies["@b9g/platform-cloudflare"] = "^0.1.0";
 				break;
 			default:
 				// Generic platform dependencies
-				packageJson.dependencies["@b9g/platform"] = "^0.1.0";
+				packageJSON.dependencies["@b9g/platform"] = "^0.1.0";
 		}
 
 		// Add core dependencies needed for runtime
-		packageJson.dependencies["@b9g/cache"] = "^0.1.0";
-		packageJson.dependencies["@b9g/filesystem"] = "^0.1.0";
+		packageJSON.dependencies["@b9g/cache"] = "^0.1.0";
+		packageJSON.dependencies["@b9g/filesystem"] = "^0.1.0";
 	}
 
-	return packageJson;
+	return packageJSON;
 }
 
 /**

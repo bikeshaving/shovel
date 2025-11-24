@@ -401,7 +401,7 @@ export class Router {
 
 		// Create mutable request wrapper for URL modifications
 		const mutableRequest = this.#createMutableRequest(request);
-		const originalUrl = mutableRequest.url;
+		const originalURL = mutableRequest.url;
 
 		// Try to find a route match first
 		let matchResult = this.#executor.match(request);
@@ -424,7 +424,7 @@ export class Router {
 			mutableRequest,
 			context,
 			handler,
-			originalUrl,
+			originalURL,
 			this.#executor, // Pass executor for re-routing
 		);
 
@@ -554,7 +554,7 @@ export class Router {
 		request: any,
 		context: RouteContext,
 		handler: Handler,
-		originalUrl: string,
+		originalURL: string,
 		executor?: LinearExecutor | null,
 	): Promise<Response> {
 		const runningGenerators: Array<{generator: AsyncGenerator; index: number}> =
@@ -600,7 +600,7 @@ export class Router {
 			let finalHandler = handler;
 			let finalContext = context;
 
-			if (request.url !== originalUrl && executor) {
+			if (request.url !== originalURL && executor) {
 				const newMatchResult = executor.match(
 					new Request(request.url, {
 						method: request.method,
@@ -634,9 +634,9 @@ export class Router {
 
 		// Handle automatic redirects if URL was modified - do this before resuming generators
 		// so that generators can process the redirect response
-		if (request.url !== originalUrl && currentResponse) {
+		if (request.url !== originalURL && currentResponse) {
 			currentResponse = this.#handleAutomaticRedirect(
-				originalUrl,
+				originalURL,
 				request.url,
 				request.method,
 			);
@@ -720,22 +720,22 @@ export class Router {
 	 * Handle automatic redirects when URL is modified
 	 */
 	#handleAutomaticRedirect(
-		originalUrl: string,
-		newUrl: string,
+		originalURL: string,
+		newURL: string,
 		method: string,
 	): Response {
-		const originalURL = new URL(originalUrl);
-		const newURL = new URL(newUrl);
+		const originalURLObj = new URL(originalURL);
+		const newURLObj = new URL(newURL);
 
 		// Security: Only allow same-origin redirects (allow protocol upgrades)
 		if (
-			originalURL.hostname !== newURL.hostname ||
-			(originalURL.port !== newURL.port &&
-				originalURL.port !== "" &&
-				newURL.port !== "")
+			originalURLObj.hostname !== newURLObj.hostname ||
+			(originalURLObj.port !== newURLObj.port &&
+				originalURLObj.port !== "" &&
+				newURLObj.port !== "")
 		) {
 			throw new Error(
-				`Cross-origin redirect not allowed: ${originalUrl} -> ${newUrl}`,
+				`Cross-origin redirect not allowed: ${originalURL} -> ${newURL}`,
 			);
 		}
 
@@ -743,7 +743,7 @@ export class Router {
 		let status = 302; // Default temporary redirect
 
 		// Protocol changes (http -> https) get 301 permanent
-		if (originalURL.protocol !== newURL.protocol) {
+		if (originalURLObj.protocol !== newURLObj.protocol) {
 			status = 301;
 		}
 		// Non-GET methods get 307 to preserve method and body
@@ -754,7 +754,7 @@ export class Router {
 		return new Response(null, {
 			status,
 			headers: {
-				Location: newUrl,
+				Location: newURL,
 			},
 		});
 	}

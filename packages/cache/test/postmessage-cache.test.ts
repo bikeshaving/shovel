@@ -14,15 +14,15 @@ describe("PostMessageCache", () => {
 	// Helper to send command to worker and wait for response
 	const sendCommand = (command: string, data: any = {}): Promise<any> => {
 		return new Promise((resolve, reject) => {
-			const requestId = ++requestCounter;
-			pendingRequests.set(requestId, {resolve, reject});
-			worker.postMessage({command, requestId, ...data});
+			const requestID = ++requestCounter;
+			pendingRequests.set(requestID, {resolve, reject});
+			worker.postMessage({command, requestID, ...data});
 
 			// Timeout after 5 seconds
 			setTimeout(() => {
-				if (pendingRequests.has(requestId)) {
-					pendingRequests.delete(requestId);
-					reject(new Error(`Request ${requestId} (${command}) timed out`));
+				if (pendingRequests.has(requestID)) {
+					pendingRequests.delete(requestID);
+					reject(new Error(`Request ${requestID} (${command}) timed out`));
 				}
 			}, 5000);
 		});
@@ -39,10 +39,10 @@ describe("PostMessageCache", () => {
 
 		// Handle responses from worker
 		worker.on("message", (message: any) => {
-			const {requestId, result, error} = message;
-			const pending = pendingRequests.get(requestId);
+			const {requestID, result, error} = message;
+			const pending = pendingRequests.get(requestID);
 			if (pending) {
-				pendingRequests.delete(requestId);
+				pendingRequests.delete(requestID);
 				if (error) {
 					pending.reject(new Error(error));
 				} else {

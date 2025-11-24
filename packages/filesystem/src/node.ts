@@ -10,8 +10,8 @@ import {
 	ShovelDirectoryHandle,
 	ShovelFileHandle,
 } from "./index.js";
-import * as fs from "fs/promises";
-import * as path from "path";
+import * as FS from "fs/promises";
+import * as Path from "path";
 
 /**
  * Node.js storage backend that implements FileSystemBackend
@@ -26,7 +26,7 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 	async stat(filePath: string): Promise<{kind: "file" | "directory"} | null> {
 		try {
 			const fullPath = this.#resolvePath(filePath);
-			const stats = await fs.stat(fullPath);
+			const stats = await FS.stat(fullPath);
 
 			if (stats.isFile()) {
 				return {kind: "file"};
@@ -46,7 +46,7 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 	async readFile(filePath: string): Promise<Uint8Array> {
 		try {
 			const fullPath = this.#resolvePath(filePath);
-			const buffer = await fs.readFile(fullPath);
+			const buffer = await FS.readFile(fullPath);
 			return new Uint8Array(buffer);
 		} catch (error) {
 			if ((error as any).code === "ENOENT") {
@@ -60,8 +60,8 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 		try {
 			const fullPath = this.#resolvePath(filePath);
 			// Ensure parent directory exists
-			await fs.mkdir(path.dirname(fullPath), {recursive: true});
-			await fs.writeFile(fullPath, data);
+			await FS.mkdir(Path.dirname(fullPath), {recursive: true});
+			await FS.writeFile(fullPath, data);
 		} catch (error) {
 			throw new DOMException(
 				`Failed to write file: ${error}`,
@@ -75,7 +75,7 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 	): Promise<Array<{name: string; kind: "file" | "directory"}>> {
 		try {
 			const fullPath = this.#resolvePath(dirPath);
-			const entries = await fs.readdir(fullPath, {withFileTypes: true});
+			const entries = await FS.readdir(fullPath, {withFileTypes: true});
 
 			const results: Array<{name: string; kind: "file" | "directory"}> = [];
 
@@ -99,7 +99,7 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 	async createDir(dirPath: string): Promise<void> {
 		try {
 			const fullPath = this.#resolvePath(dirPath);
-			await fs.mkdir(fullPath, {recursive: true});
+			await FS.mkdir(fullPath, {recursive: true});
 		} catch (error) {
 			throw new DOMException(
 				`Failed to create directory: ${error}`,
@@ -111,23 +111,23 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 	async remove(entryPath: string, recursive?: boolean): Promise<void> {
 		try {
 			const fullPath = this.#resolvePath(entryPath);
-			const stats = await fs.stat(fullPath);
+			const stats = await FS.stat(fullPath);
 
 			if (stats.isFile()) {
-				await fs.unlink(fullPath);
+				await FS.unlink(fullPath);
 			} else if (stats.isDirectory()) {
 				if (recursive) {
-					await fs.rm(fullPath, {recursive: true, force: true});
+					await FS.rm(fullPath, {recursive: true, force: true});
 				} else {
 					// Check if directory is empty
-					const entries = await fs.readdir(fullPath);
+					const entries = await FS.readdir(fullPath);
 					if (entries.length > 0) {
 						throw new DOMException(
 							"Directory is not empty",
 							"InvalidModificationError",
 						);
 					}
-					await fs.rmdir(fullPath);
+					await FS.rmdir(fullPath);
 				}
 			}
 		} catch (error) {
@@ -139,7 +139,7 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 	}
 
 	#resolvePath(relativePath: string): string {
-		// Remove leading slash for path.join
+		// Remove leading slash for Path.join
 		const cleanPath = relativePath.startsWith("/")
 			? relativePath.slice(1)
 			: relativePath;
@@ -156,10 +156,10 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 			);
 		}
 
-		const resolvedPath = path.resolve(this.#rootPath, cleanPath);
+		const resolvedPath = Path.resolve(this.#rootPath, cleanPath);
 
 		// Ensure the resolved path is still within our root directory
-		if (!resolvedPath.startsWith(path.resolve(this.#rootPath))) {
+		if (!resolvedPath.startsWith(Path.resolve(this.#rootPath))) {
 			throw new DOMException(
 				"Invalid path: outside of root directory",
 				"NotAllowedError",
@@ -182,7 +182,7 @@ export class NodeBucket implements FileSystemDirectoryHandle {
 	constructor(rootPath: string) {
 		this.kind = "directory";
 		this.#backend = new NodeFileSystemBackend(rootPath);
-		this.name = path.basename(rootPath) || "root";
+		this.name = Path.basename(rootPath) || "root";
 	}
 
 	async getFileHandle(

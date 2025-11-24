@@ -42,7 +42,7 @@ export interface WorkerRequest extends WorkerMessage {
 		headers: Record<string, string>;
 		body?: any;
 	};
-	requestId: number;
+	requestID: number;
 }
 
 export interface WorkerResponse extends WorkerMessage {
@@ -53,7 +53,7 @@ export interface WorkerResponse extends WorkerMessage {
 		headers: Record<string, string>;
 		body: string;
 	};
-	requestId: number;
+	requestID: number;
 }
 
 export interface WorkerLoadMessage extends WorkerMessage {
@@ -71,7 +71,7 @@ export interface WorkerErrorMessage extends WorkerMessage {
 	type: "error";
 	error: string;
 	stack?: string;
-	requestId?: number;
+	requestID?: number;
 }
 
 export interface WorkerInitMessage extends WorkerMessage {
@@ -117,14 +117,14 @@ function resolveWorkerScript(entrypoint?: string): string {
 	// Fallback to package resolution for development
 	try {
 		// Use import.meta.resolve for runtime script (contains bootstrap code)
-		const workerUrl = import.meta.resolve("@b9g/platform/runtime.js");
+		const workerURL = import.meta.resolve("@b9g/platform/runtime.js");
 		let workerScript: string;
 
-		if (workerUrl.startsWith("file://")) {
+		if (workerURL.startsWith("file://")) {
 			// Convert file:// URL to path for Worker constructor
-			workerScript = workerUrl.slice(7); // Remove 'file://' prefix
+			workerScript = workerURL.slice(7); // Remove 'file://' prefix
 		} else {
-			workerScript = workerUrl;
+			workerScript = workerURL;
 		}
 
 		logger.info("Using worker runtime script", {workerScript});
@@ -208,7 +208,7 @@ Please check your runtime version and configuration.
 export class ServiceWorkerPool {
 	#workers: Worker[];
 	#currentWorker: number;
-	#requestId: number;
+	#requestID: number;
 	#pendingRequests: Map<
 		number,
 		{resolve: (response: Response) => void; reject: (error: Error) => void}
@@ -235,7 +235,7 @@ export class ServiceWorkerPool {
 	) {
 		this.#workers = [];
 		this.#currentWorker = 0;
-		this.#requestId = 0;
+		this.#requestID = 0;
 		this.#pendingRequests = new Map();
 		this.#pendingWorkerInit = new Map();
 		this.#appEntrypoint = appEntrypoint;
@@ -376,7 +376,7 @@ export class ServiceWorkerPool {
 	}
 
 	#handleResponse(message: WorkerResponse) {
-		const pending = this.#pendingRequests.get(message.requestId);
+		const pending = this.#pendingRequests.get(message.requestID);
 		if (pending) {
 			// Reconstruct Response object from serialized data
 			const response = new Response(message.response.body, {
@@ -385,7 +385,7 @@ export class ServiceWorkerPool {
 				headers: message.response.headers,
 			});
 			pending.resolve(response);
-			this.#pendingRequests.delete(message.requestId);
+			this.#pendingRequests.delete(message.requestID);
 		}
 	}
 
@@ -394,14 +394,14 @@ export class ServiceWorkerPool {
 		logger.error("Worker error message received", {
 			error: message.error,
 			stack: message.stack,
-			requestId: message.requestId,
+			requestID: message.requestID,
 		});
 
-		if (message.requestId) {
-			const pending = this.#pendingRequests.get(message.requestId);
+		if (message.requestID) {
+			const pending = this.#pendingRequests.get(message.requestID);
 			if (pending) {
 				pending.reject(new Error(message.error));
-				this.#pendingRequests.delete(message.requestId);
+				this.#pendingRequests.delete(message.requestID);
 			}
 		} else {
 			logger.error("Worker error", {error: message.error});
@@ -428,11 +428,11 @@ export class ServiceWorkerPool {
 		});
 		this.#currentWorker = (this.#currentWorker + 1) % this.#workers.length;
 
-		const requestId = ++this.#requestId;
+		const requestID = ++this.#requestID;
 
 		return new Promise((resolve, reject) => {
 			// Track pending request
-			this.#pendingRequests.set(requestId, {resolve, reject});
+			this.#pendingRequests.set(requestID, {resolve, reject});
 
 			// Serialize request for worker (can't clone Request objects across threads)
 			const workerRequest: WorkerRequest = {
@@ -443,15 +443,15 @@ export class ServiceWorkerPool {
 					headers: Object.fromEntries(request.headers.entries()),
 					body: request.body,
 				},
-				requestId,
+				requestID,
 			};
 
 			worker.postMessage(workerRequest);
 
 			// Timeout handling
 			setTimeout(() => {
-				if (this.#pendingRequests.has(requestId)) {
-					this.#pendingRequests.delete(requestId);
+				if (this.#pendingRequests.has(requestID)) {
+					this.#pendingRequests.delete(requestID);
 					reject(new Error("Request timeout"));
 				}
 			}, this.#options.requestTimeout);

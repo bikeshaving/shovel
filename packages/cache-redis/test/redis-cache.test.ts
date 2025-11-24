@@ -74,7 +74,7 @@ describe("RedisCache", () => {
 				headers: {"content-type": "application/json"},
 				body: btoa("{}"), // base64 encoded "{}"
 				cachedAt: Date.now() - 1000, // 1 second ago
-				ttl: 300,
+				TTL: 300,
 			};
 
 			mockRedisClient.get.mockResolvedValue(JSON.stringify(mockEntry));
@@ -95,7 +95,7 @@ describe("RedisCache", () => {
 				headers: {},
 				body: btoa("expired"),
 				cachedAt: Date.now() - 400 * 1000, // 400 seconds ago (expired)
-				ttl: 300, // 5 minutes TTL
+				TTL: 300, // 5 minutes TTL
 			};
 
 			mockRedisClient.get.mockResolvedValue(JSON.stringify(expiredEntry));
@@ -115,7 +115,7 @@ describe("RedisCache", () => {
 				headers: {},
 				body: btoa("permanent"),
 				cachedAt: Date.now() - 86400 * 1000, // 1 day ago
-				ttl: 0, // No expiration
+				TTL: 0, // No expiration
 			};
 
 			mockRedisClient.get.mockResolvedValue(JSON.stringify(permanentEntry));

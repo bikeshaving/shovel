@@ -10,7 +10,7 @@ export type ProviderName = "github" | "google" | "microsoft";
 export interface ProviderConfig
 	extends Omit<
 		OAuth2Config,
-		"clientId" | "clientSecret" | "redirectUri" | "scopes"
+		"clientID" | "clientSecret" | "redirectURI" | "scopes"
 	> {
 	/** User info endpoint */
 	userInfoEndpoint?: string;
@@ -64,9 +64,9 @@ export function getProvider(name: ProviderName): ProviderConfig {
 export function createProviderConfig(
 	provider: ProviderName,
 	options: {
-		clientId: string;
+		clientID: string;
 		clientSecret?: string;
-		redirectUri: string;
+		redirectURI: string;
 		scopes?: string[];
 	},
 ): OAuth2Config {
@@ -74,9 +74,9 @@ export function createProviderConfig(
 
 	return {
 		...preset,
-		clientId: options.clientId,
+		clientID: options.clientID,
 		clientSecret: options.clientSecret,
-		redirectUri: options.redirectUri,
+		redirectURI: options.redirectURI,
 		scopes: options.scopes || preset.defaultScopes,
 	};
 }

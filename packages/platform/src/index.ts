@@ -164,7 +164,7 @@ export function detectRuntime(): "bun" | "deno" | "node" {
  * When multiple platforms are installed, prioritize based on current runtime
  * @param cwd - Current working directory (optional, only available in Node/Bun)
  */
-function detectPlatformFromPackageJson(cwd?: string): string | null {
+function detectPlatformFromPackageJSON(cwd?: string): string | null {
 	// Skip if no cwd and process.cwd unavailable (e.g., edge runtimes)
 	if (!cwd && typeof process === "undefined") {
 		return null;
@@ -260,7 +260,7 @@ export function detectDeploymentPlatform(): string | null {
  */
 export function detectDevelopmentPlatform(): string {
 	// First, check if user has explicitly installed a platform package
-	const pkgPlatform = detectPlatformFromPackageJson();
+	const pkgPlatform = detectPlatformFromPackageJSON();
 	if (pkgPlatform) {
 		return pkgPlatform;
 	}

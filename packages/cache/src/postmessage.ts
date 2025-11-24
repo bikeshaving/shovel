@@ -28,9 +28,9 @@ function setupMessageHandler() {
 }
 
 function handleCacheResponse(message: any) {
-	const pending = pendingRequestsRegistry.get(message.requestId);
+	const pending = pendingRequestsRegistry.get(message.requestID);
 	if (pending) {
-		pendingRequestsRegistry.delete(message.requestId);
+		pendingRequestsRegistry.delete(message.requestID);
 		if (message.type === "cache:error") {
 			pending.reject(new Error(message.error));
 		} else {
@@ -50,7 +50,7 @@ export interface PostMessageCacheOptions {
 }
 
 // Global request ID counter shared across all PostMessageCache instances
-let globalRequestId = 0;
+let globalRequestID = 0;
 
 /**
  * Worker-side cache that forwards operations to main thread via postMessage
@@ -74,22 +74,22 @@ export class PostMessageCache extends Cache {
 			throw new Error("PostMessageCache can only be used in worker threads");
 		}
 
-		const requestId = ++globalRequestId;
+		const requestID = ++globalRequestID;
 
 		return new Promise((resolve, reject) => {
-			pendingRequestsRegistry.set(requestId, {resolve, reject});
+			pendingRequestsRegistry.set(requestID, {resolve, reject});
 
 			parentPort.postMessage({
 				type,
-				requestId,
+				requestID,
 				cacheName: this.#name,
 				...data,
 			});
 
 			// Timeout after 30 seconds
 			setTimeout(() => {
-				if (pendingRequestsRegistry.has(requestId)) {
-					pendingRequestsRegistry.delete(requestId);
+				if (pendingRequestsRegistry.has(requestID)) {
+					pendingRequestsRegistry.delete(requestID);
 					reject(new Error("Cache operation timeout"));
 				}
 			}, 30000);

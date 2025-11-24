@@ -164,14 +164,14 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 
 					// Generate public URL using the base path from import attribute
 					const basePath = normalizePath(args.with.assetBase);
-					const publicUrl = `${basePath}${filename}`;
+					const publicURL = `${basePath}${filename}`;
 
 					// Create manifest entry
 					const sourcePath = relative(process.cwd(), args.path);
 					const manifestEntry: AssetManifestEntry = {
 						source: sourcePath,
 						output: filename,
-						url: publicUrl,
+						url: publicURL,
 						hash,
 						size: content.length,
 						type: mime.getType(args.path) || undefined,
@@ -182,7 +182,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 
 					// Return as JavaScript module that exports the URL string
 					return {
-						contents: `export default ${JSON.stringify(publicUrl)};`,
+						contents: `export default ${JSON.stringify(publicURL)};`,
 						loader: "js",
 					};
 				} catch (error: any) {

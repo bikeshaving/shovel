@@ -37,7 +37,7 @@ interface CacheEntry {
 	/** Timestamp when cached */
 	cachedAt: number;
 	/** TTL in seconds (0 = no expiration) */
-	ttl: number;
+	TTL: number;
 }
 
 // ============================================================================
@@ -125,7 +125,7 @@ export class RedisCache extends Cache {
 			headers,
 			body: btoa(String.fromCharCode(...new Uint8Array(body))),
 			cachedAt: Date.now(),
-			ttl: this.#defaultTTL,
+			TTL: this.#defaultTTL,
 		};
 	}
 
@@ -162,9 +162,9 @@ export class RedisCache extends Cache {
 			const entry: CacheEntry = JSON.parse(cached);
 
 			// Check if entry has expired (TTL > 0 means it expires)
-			if (entry.ttl > 0) {
+			if (entry.TTL > 0) {
 				const ageInSeconds = (Date.now() - entry.cachedAt) / 1000;
-				if (ageInSeconds > entry.ttl) {
+				if (ageInSeconds > entry.TTL) {
 					// Entry expired, delete it
 					await this.#client.del(key);
 					return undefined;
@@ -190,8 +190,8 @@ export class RedisCache extends Cache {
 			const serialized = JSON.stringify(entry);
 
 			// Set with TTL if specified
-			if (entry.ttl > 0) {
-				await this.#client.setEx(key, entry.ttl, serialized);
+			if (entry.TTL > 0) {
+				await this.#client.setEx(key, entry.TTL, serialized);
 			} else {
 				await this.#client.set(key, serialized);
 			}

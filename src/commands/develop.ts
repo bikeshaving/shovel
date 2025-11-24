@@ -1,7 +1,7 @@
 import {DEFAULTS} from "../esbuild/config.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
-import * as platform from "@b9g/platform";
+import * as Platform from "@b9g/platform";
 import {Watcher} from "../esbuild/watcher.js";
 
 // CLI logger
@@ -29,11 +29,11 @@ await configure({
 
 export async function developCommand(entrypoint, options) {
 	try {
-		const platformName = platform.resolvePlatform(options);
+		const platformName = Platform.resolvePlatform(options);
 		const workerCount = getWorkerCount(options);
 
 		if (options.verbose) {
-			platform.displayPlatformInfo(platformName);
+			Platform.displayPlatformInfo(platformName);
 			logger.info("Worker configuration", {workerCount});
 		}
 
@@ -44,7 +44,7 @@ export async function developCommand(entrypoint, options) {
 			host: options.host || DEFAULTS.SERVER.HOST,
 		};
 
-		const platformInstance = await platform.createPlatform(
+		const platformInstance = await Platform.createPlatform(
 			platformName,
 			platformConfig,
 		);
