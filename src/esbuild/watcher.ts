@@ -56,7 +56,10 @@ export class Watcher {
 				) {
 					// Ignore files in the output directory to prevent infinite rebuild loops
 					const outDir = this.#options.outDir || "dist";
-					if (filename.startsWith(outDir + "/") || filename.startsWith(outDir + "\\")) {
+					if (
+						filename.startsWith(outDir + "/") ||
+						filename.startsWith(outDir + "\\")
+					) {
 						return;
 					}
 					this.#debouncedBuild();

@@ -1553,10 +1553,9 @@ async function initializeRuntime(config: any): Promise<void> {
 				} else {
 					bucketPath = new URL(`../${name}`, import.meta.url).pathname;
 				}
-				logger.info(
-					`[Worker-${workerId}] Inferred bucket path for '${name}'`,
-					{bucketPath},
-				);
+				logger.info(`[Worker-${workerId}] Inferred bucket path for '${name}'`, {
+					bucketPath,
+				});
 			}
 
 			// Try NodeBucket (Node.js/Bun environments)

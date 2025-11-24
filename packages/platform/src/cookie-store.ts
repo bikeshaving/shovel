@@ -6,44 +6,29 @@
  */
 
 // ============================================================================
-// TYPES (matching WHATWG spec)
+// TYPES (extending global DOM types to match WHATWG spec)
 // ============================================================================
 
-export type CookieSameSite = "strict" | "lax" | "none";
-
-export interface CookieListItem {
-	name: string;
-	value: string;
-	domain?: string;
-	path?: string;
-	expires?: number;
-	secure?: boolean;
-	sameSite?: CookieSameSite;
-	partitioned?: boolean;
+// Extend the incomplete global CookieListItem with missing properties
+// TypeScript's lib.dom.d.ts only has name? and value?, but the spec includes all cookie attributes
+declare global {
+	interface CookieListItem {
+		domain?: string;
+		path?: string;
+		expires?: number;
+		secure?: boolean;
+		sameSite?: CookieSameSite;
+		partitioned?: boolean;
+	}
 }
 
-export interface CookieInit {
-	name: string;
-	value: string;
-	expires?: number | null;
-	domain?: string | null;
-	path?: string;
-	sameSite?: CookieSameSite;
-	partitioned?: boolean;
-}
-
-export interface CookieStoreGetOptions {
-	name?: string;
-	url?: string;
-}
-
-export interface CookieStoreDeleteOptions {
-	name: string;
-	domain?: string | null;
-	path?: string;
-	partitioned?: boolean;
-}
-
+// Create and export local type aliases that reference the (now-complete) global types
+// This makes them importable from this module while using the standard lib.dom.d.ts definitions
+export type CookieSameSite = globalThis.CookieSameSite;
+export type CookieInit = globalThis.CookieInit;
+export type CookieStoreGetOptions = globalThis.CookieStoreGetOptions;
+export type CookieStoreDeleteOptions = globalThis.CookieStoreDeleteOptions;
+export type CookieListItem = globalThis.CookieListItem;
 export type CookieList = CookieListItem[];
 
 // ============================================================================

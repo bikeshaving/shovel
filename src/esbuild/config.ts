@@ -3,8 +3,6 @@
  * These are the defaults for CLI options - no environment variables
  */
 
-import {cpus} from "os";
-
 /**
  * Default configuration constants
  * Used as CLI option defaults and internal constants

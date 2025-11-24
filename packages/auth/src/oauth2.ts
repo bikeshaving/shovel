@@ -8,7 +8,6 @@ import {
 	generateCodeChallenge,
 	generateState,
 } from "./pkce.js";
-import type {RequestCookieStore} from "@b9g/platform";
 
 // ============================================================================
 // TYPES
@@ -62,7 +61,7 @@ export class OAuth2Client {
 	 * Start OAuth2 authorization flow with PKCE
 	 * Returns authorization URL to redirect user to
 	 */
-	async startAuthorization(cookieStore: RequestCookieStore): Promise<string> {
+	async startAuthorization(cookieStore: CookieStore): Promise<string> {
 		// Generate PKCE parameters
 		const codeVerifier = generateCodeVerifier();
 		const codeChallenge = await generateCodeChallenge(codeVerifier);
@@ -115,7 +114,7 @@ export class OAuth2Client {
 	 */
 	async handleCallback(
 		request: Request,
-		cookieStore: RequestCookieStore,
+		cookieStore: CookieStore,
 	): Promise<OAuth2Tokens> {
 		const url = new URL(request.url);
 		const code = url.searchParams.get("code");
