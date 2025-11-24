@@ -160,10 +160,17 @@ export function detectRuntime(): "bun" | "deno" | "node" {
 /**
  * Detect platform from package.json dependencies
  * When multiple platforms are installed, prioritize based on current runtime
+ * @param cwd - Current working directory (optional, only available in Node/Bun)
  */
-function detectPlatformFromPackageJson(): string | null {
+function detectPlatformFromPackageJson(cwd?: string): string | null {
+	// Skip if no cwd and process.cwd unavailable (e.g., edge runtimes)
+	if (!cwd && typeof process === "undefined") {
+		return null;
+	}
+
 	try {
-		const pkgPath = Path.join(process.cwd(), "package.json");
+		// eslint-disable-next-line no-restricted-properties
+		const pkgPath = Path.join(cwd || process.cwd(), "package.json");
 		const pkgContent = readFileSync(pkgPath, "utf8");
 		const pkg = JSON.parse(pkgContent);
 		const deps = {...pkg.dependencies, ...pkg.devDependencies};

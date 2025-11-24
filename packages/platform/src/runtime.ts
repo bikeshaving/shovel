@@ -1423,11 +1423,13 @@ async function loadServiceWorker(
 		// Buckets are now created dynamically via CustomBucketStorage factory
 		// No need for global registration
 
-		const entrypointPath =
-			import.meta.env.SERVICEWORKER_PATH ||
-			entrypoint ||
-			`${process.cwd()}/dist/server/server.js`;
-		logger.info("[Worker] Loading from", {entrypointPath});
+		if (!entrypoint) {
+			throw new Error(
+				"ServiceWorker entrypoint must be provided via loadServiceWorker() call",
+			);
+		}
+
+		logger.info("[Worker] Loading from", {entrypoint: entrypoint});
 
 		if (loadedVersion !== null && loadedVersion !== version) {
 			logger.info(
@@ -1456,7 +1458,7 @@ async function loadServiceWorker(
 		}
 
 		// Import the application
-		const appModule = await import(`${entrypointPath}?v=${version}`);
+		const appModule = await import(`${entrypoint}?v=${version}`);
 
 		loadedVersion = version;
 		currentApp = appModule;
@@ -1470,10 +1472,16 @@ async function loadServiceWorker(
 		serviceWorkerReady = true;
 
 		logger.info(
-			`[Worker] ServiceWorker loaded and activated (v${version}) from ${entrypointPath}`,
+			`[Worker] ServiceWorker loaded and activated (v${version}) from ${entrypoint}`,
 		);
 	} catch (error) {
-		logger.error("[Worker] Failed to load ServiceWorker", {error});
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		const errorStack = error instanceof Error ? error.stack : undefined;
+		logger.error("[Worker] Failed to load ServiceWorker", {
+			error: errorMessage,
+			stack: errorStack,
+			entrypoint,
+		});
 		serviceWorkerReady = false;
 		throw error;
 	}

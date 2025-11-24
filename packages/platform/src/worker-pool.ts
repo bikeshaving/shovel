@@ -244,7 +244,6 @@ export class ServiceWorkerPool {
 		this.#options = {
 			workerCount: 1,
 			requestTimeout: 30000,
-			cwd: process.cwd(),
 			...options,
 		};
 
@@ -517,6 +516,10 @@ export class ServiceWorkerPool {
 					entrypoint: this.#appEntrypoint,
 				};
 
+				logger.debug("[WorkerPool] Sending load message", {
+					entrypoint: this.#appEntrypoint,
+					version,
+				});
 				worker.postMessage(loadMessage);
 			});
 		});

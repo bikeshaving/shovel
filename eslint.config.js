@@ -47,6 +47,12 @@ export default [
 					message:
 						"Do not use process.exit(). Throw an error or return instead.",
 				},
+				{
+					object: "process",
+					property: "cwd",
+					message:
+						"Do not use process.cwd(). Pass cwd as a parameter from runtime adapter instead.",
+				},
 			],
 			"no-restricted-globals": [
 				"error",
@@ -110,8 +116,13 @@ export default [
 		files: [
 			"bin/**/*.ts", // CLI tools are Node-specific
 			"src/commands/**/*.ts", // CLI commands are Node-specific
+			"src/esbuild/**/*.ts", // Build-time code (esbuild config/watcher)
 			"test/**/*.{js,ts}", // Tests run in Node/Bun environment
 			"packages/node-webworker/**/*.{js,ts}", // Node-specific Worker implementation
+			"packages/platform-node/**/*.ts", // Node.js runtime adapter
+			"packages/platform-bun/**/*.ts", // Bun runtime adapter
+			"packages/assets/src/plugin.ts", // esbuild plugin (build-time)
+			"examples/**/*.{js,ts}", // Examples can use Node APIs for simplicity
 		],
 		rules: {
 			"no-restricted-properties": "off",

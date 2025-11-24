@@ -623,8 +623,9 @@ export interface ProcessedShovelConfig {
 
 /**
  * Load Shovel configuration from package.json
+ * @param cwd - Current working directory (must be provided by runtime adapter)
  */
-export function loadConfig(cwd: string = process.cwd()): ProcessedShovelConfig {
+export function loadConfig(cwd: string): ProcessedShovelConfig {
 	const env = getEnv();
 
 	// Try to load package.json
