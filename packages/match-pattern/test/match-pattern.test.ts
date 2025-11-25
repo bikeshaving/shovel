@@ -97,7 +97,9 @@ describe("URLPattern Spec Compliance", () => {
 
 		test("multiple named parameters", () => {
 			const pattern = new MatchPattern("/api/:version/posts/:id");
-			expect(pattern.test(new URL("http://localhost/api/v1/posts/123"))).toBe(true);
+			expect(pattern.test(new URL("http://localhost/api/v1/posts/123"))).toBe(
+				true,
+			);
 
 			const result = pattern.exec(new URL("http://localhost/api/v1/posts/123"));
 			expect(result?.params.version).toBe("v1");
@@ -141,7 +143,9 @@ describe("URLPattern Spec Compliance", () => {
 			const pattern = new MatchPattern("/files/:path+");
 			expect(pattern.test(new URL("http://localhost/files"))).toBe(false);
 			expect(pattern.test(new URL("http://localhost/files/doc"))).toBe(true);
-			expect(pattern.test(new URL("http://localhost/files/doc/file"))).toBe(true);
+			expect(pattern.test(new URL("http://localhost/files/doc/file"))).toBe(
+				true,
+			);
 		});
 
 		test("one or more captures value", () => {
@@ -156,7 +160,9 @@ describe("URLPattern Spec Compliance", () => {
 			const pattern = new MatchPattern("/files/:path*");
 			expect(pattern.test(new URL("http://localhost/files"))).toBe(true);
 			expect(pattern.test(new URL("http://localhost/files/doc"))).toBe(true);
-			expect(pattern.test(new URL("http://localhost/files/doc/file"))).toBe(true);
+			expect(pattern.test(new URL("http://localhost/files/doc/file"))).toBe(
+				true,
+			);
 			expect(pattern.test(new URL("http://localhost/files/"))).toBe(false);
 		});
 
@@ -177,7 +183,9 @@ describe("URLPattern Spec Compliance", () => {
 	describe("Wildcards", () => {
 		test("wildcard matches anything", () => {
 			const pattern = new MatchPattern("/files/*");
-			expect(pattern.test(new URL("http://localhost/files/doc.txt"))).toBe(true);
+			expect(pattern.test(new URL("http://localhost/files/doc.txt"))).toBe(
+				true,
+			);
 			expect(pattern.test(new URL("http://localhost/files/a/b/c"))).toBe(true);
 		});
 
@@ -204,8 +212,12 @@ describe("URLPattern Spec Compliance", () => {
 
 		test("multiple regex groups", () => {
 			const pattern = new MatchPattern("/api/(v\\d+)/posts/(\\d+)");
-			expect(pattern.test(new URL("http://localhost/api/v1/posts/123"))).toBe(true);
-			expect(pattern.test(new URL("http://localhost/api/v1/posts/abc"))).toBe(false);
+			expect(pattern.test(new URL("http://localhost/api/v1/posts/123"))).toBe(
+				true,
+			);
+			expect(pattern.test(new URL("http://localhost/api/v1/posts/abc"))).toBe(
+				false,
+			);
 
 			const result = pattern.exec(new URL("http://localhost/api/v1/posts/123"));
 			expect(result?.params.$0).toBe("v1");
@@ -237,17 +249,27 @@ describe("URLPattern Spec Compliance", () => {
 
 		test("escaped special characters", () => {
 			const pattern = new MatchPattern("/path\\+with\\+plus");
-			expect(pattern.test(new URL("http://localhost/path+with+plus"))).toBe(true);
-			expect(pattern.test(new URL("http://localhost/pathxwithxplus"))).toBe(false);
+			expect(pattern.test(new URL("http://localhost/path+with+plus"))).toBe(
+				true,
+			);
+			expect(pattern.test(new URL("http://localhost/pathxwithxplus"))).toBe(
+				false,
+			);
 		});
 	});
 
 	describe("Combined features", () => {
 		test("named params with regex and constraints", () => {
 			const pattern = new MatchPattern("/api/:version(v\\d+)/posts/:id(\\d+)");
-			expect(pattern.test(new URL("http://localhost/api/v1/posts/123"))).toBe(true);
-			expect(pattern.test(new URL("http://localhost/api/v1/posts/abc"))).toBe(false);
-			expect(pattern.test(new URL("http://localhost/api/x1/posts/123"))).toBe(false);
+			expect(pattern.test(new URL("http://localhost/api/v1/posts/123"))).toBe(
+				true,
+			);
+			expect(pattern.test(new URL("http://localhost/api/v1/posts/abc"))).toBe(
+				false,
+			);
+			expect(pattern.test(new URL("http://localhost/api/x1/posts/123"))).toBe(
+				false,
+			);
 
 			const result = pattern.exec(new URL("http://localhost/api/v2/posts/456"));
 			expect(result?.params.version).toBe("v2");
@@ -264,22 +286,34 @@ describe("URLPattern Spec Compliance", () => {
 
 	describe("Protocol and hostname matching", () => {
 		test("protocol matching", () => {
-			const pattern = new MatchPattern({protocol: "https", pathname: "/api/posts"});
+			const pattern = new MatchPattern({
+				protocol: "https",
+				pathname: "/api/posts",
+			});
 			expect(pattern.test(new URL("https://example.com/api/posts"))).toBe(true);
 			expect(pattern.test(new URL("http://example.com/api/posts"))).toBe(false);
 		});
 
 		test("hostname matching", () => {
-			const pattern = new MatchPattern({hostname: "api.example.com", pathname: "/posts"});
+			const pattern = new MatchPattern({
+				hostname: "api.example.com",
+				pathname: "/posts",
+			});
 			expect(pattern.test(new URL("http://api.example.com/posts"))).toBe(true);
 			expect(pattern.test(new URL("http://example.com/posts"))).toBe(false);
 		});
 
 		test("full URL pattern string", () => {
 			const pattern = new MatchPattern("https://api.example.com/posts/:id");
-			expect(pattern.test(new URL("https://api.example.com/posts/123"))).toBe(true);
-			expect(pattern.test(new URL("http://api.example.com/posts/123"))).toBe(false);
-			expect(pattern.test(new URL("https://example.com/posts/123"))).toBe(false);
+			expect(pattern.test(new URL("https://api.example.com/posts/123"))).toBe(
+				true,
+			);
+			expect(pattern.test(new URL("http://api.example.com/posts/123"))).toBe(
+				false,
+			);
+			expect(pattern.test(new URL("https://example.com/posts/123"))).toBe(
+				false,
+			);
 		});
 	});
 
@@ -288,7 +322,9 @@ describe("URLPattern Spec Compliance", () => {
 			const pattern = new MatchPattern("/api/posts");
 			expect(pattern.test(new URL("http://localhost/api/posts"))).toBe(true);
 			expect(pattern.test(new URL("http://localhost/api/post"))).toBe(false);
-			expect(pattern.test(new URL("http://localhost/api/posts/123"))).toBe(false);
+			expect(pattern.test(new URL("http://localhost/api/posts/123"))).toBe(
+				false,
+			);
 		});
 
 		test("root path", () => {

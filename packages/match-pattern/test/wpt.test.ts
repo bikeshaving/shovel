@@ -33,7 +33,9 @@ describe("WPT URLPattern (strict) compliance", () => {
 								third as {ignoreCase?: boolean},
 							);
 						} else {
-							throw new TypeError("Invalid arguments: expected (string, baseURL, options)");
+							throw new TypeError(
+								"Invalid arguments: expected (string, baseURL, options)",
+							);
 						}
 					} else if (testCase.pattern.length === 2) {
 						pattern = new URLPattern(
@@ -109,7 +111,9 @@ describe("WPT MatchPattern (conveniences) compliance", () => {
 							);
 						} else {
 							// Invalid: [input, options, ???] - third arg not expected
-							throw new TypeError("Invalid arguments: expected (string, baseURL, options)");
+							throw new TypeError(
+								"Invalid arguments: expected (string, baseURL, options)",
+							);
 						}
 					} else if (testCase.pattern.length === 2) {
 						// [input, baseURLOrOptions]
