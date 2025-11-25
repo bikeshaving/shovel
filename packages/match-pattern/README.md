@@ -4,7 +4,12 @@ High-performance URLPattern-compatible implementation for web routing with enhan
 
 ## Overview
 
-MatchPattern is a URLPattern-compatible implementation that compiles patterns directly to RegExp, delivering ~50x faster performance than the URLPattern polyfill while maintaining full spec compliance. It enhances URLPattern with order-independent search parameters, unified parameter extraction, and convenient string pattern syntax.
+This package provides two classes:
+
+- **URLPattern**: A 100% WPT-compliant implementation that's ~60x faster than the polyfill/native
+- **MatchPattern**: Same performance with routing enhancements (order-independent search params, unified `params` object)
+
+Both compile patterns directly to RegExp in a single pass, bypassing the multi-stage pipeline used by polyfill/native implementations.
 
 ## Installation
 
@@ -15,9 +20,12 @@ npm install @b9g/match-pattern
 ## Basic Usage
 
 ```javascript
-import { MatchPattern } from '@b9g/match-pattern';
+import { MatchPattern, URLPattern } from '@b9g/match-pattern';
 
-// Create patterns with enhanced string syntax
+// URLPattern: 100% WPT-compliant, ~60x faster than polyfill/native
+const strict = new URLPattern({ pathname: '/api/posts/:id' });
+
+// MatchPattern: Same performance + order-independent search params
 const pattern = new MatchPattern('/api/posts/:id&format=:format');
 const url = new URL('http://example.com/api/posts/123?format=json&page=1');
 
@@ -30,17 +38,17 @@ if (pattern.test(url)) {
 
 ## Performance
 
-MatchPattern compiles patterns directly to optimized RegExp in a single pass, while the URLPattern polyfill uses a multi-stage pipeline (lexer → parser → RegExp generator). This results in **~50x faster** pattern matching:
+MatchPattern compiles patterns directly to optimized RegExp in a single pass, while the URLPattern polyfill uses a multi-stage pipeline (lexer → parser → RegExp generator). This results in **~40-60x faster** pattern matching:
 
-```javascript
-// Benchmark: 1 million matches of /api/:version/posts/:id
-// URLPattern polyfill: ~2018ms
-// MatchPattern:        ~41ms   (49x faster)
+| Benchmark | URLPattern | MatchPattern | Polyfill | Native |
+|-----------|------------|--------------|----------|--------|
+| Static test() | 37ns | 72ns | 3.02µs | 2.32µs |
+| Dynamic exec() | 304ns | 483ns | 2.45µs | 2.42µs |
+| Construction | 760ns | 634ns | 16.58µs | 16.17µs |
 
-// Complex pattern: /api/:version(v\d+)/posts/:id(\d+)/:slug?
-// URLPattern polyfill: ~2230ms
-// MatchPattern:        ~47ms   (47x faster)
-```
+*Benchmarks run on Apple M1, Bun 1.3.3. See `bench/urlpattern.bench.js`.*
+
+MatchPattern adds ~35ns overhead for order-independent search parameter matching - a feature the [URLPattern spec explicitly doesn't support](https://github.com/whatwg/urlpattern/discussions/60).
 
 All URLPattern syntax is fully supported including:
 - Named parameters with regex constraints: `:id(\d+)`
@@ -68,15 +76,26 @@ pattern.test('/?sort=date&type=blog');  // ✅ MatchPattern: true, URLPattern: f
 
 ### 2. Non-Exhaustive Search Matching
 
-URLPattern rejects extra parameters. MatchPattern captures them:
+URLPattern uses greedy capture that lumps extra params into the last parameter value. MatchPattern properly parses them:
 
 ```javascript
 const pattern = new MatchPattern({ search: 'q=:query' });
-const result = pattern.exec('/?q=hello&page=1&limit=10');
 
-// URLPattern: Fails or captures 'hello&page=1&limit=10' as query value
-// MatchPattern: { q: 'hello', page: '1', limit: '10' }
-console.log(result.params);
+// URLPattern greedy capture issue
+const urlPattern = new URLPattern({ search: 'q=:query' });
+urlPattern.exec('?q=hello&page=1').search.groups;  // { query: "hello&page=1" } 😱
+
+// MatchPattern proper parsing
+const result = pattern.exec('/?q=hello&page=1&limit=10');
+console.log(result.params);  // { q: 'hello', page: '1', limit: '10' } ✅
+```
+
+Required parameters must be present, but extra parameters are allowed:
+
+```javascript
+pattern.test('/search');                         // ❌ false (q missing)
+pattern.test('/search?q=hello');                 // ✅ true
+pattern.test('/search?q=hello&page=1&limit=10'); // ✅ true (extras captured)
 ```
 
 ### 3. Unified Parameter Object
@@ -137,7 +156,7 @@ flexiblePattern.test('/api/posts/123/');  // ✅ true
 ### Direct RegExp Compilation
 
 MatchPattern compiles URLPattern syntax directly to RegExp in a single pass, while the URLPattern polyfill uses a multi-stage pipeline (lexer → parser → RegExp generator). This approach provides:
-- **Performance**: ~50x faster than the URLPattern polyfill
+- **Performance**: ~40-60x faster than the URLPattern polyfill and native implementations
 - **Consistency**: Same behavior across all JavaScript runtimes
 - **Zero dependencies**: No polyfill required
 - **Simplicity**: Direct pattern-to-RegExp compilation with minimal overhead
