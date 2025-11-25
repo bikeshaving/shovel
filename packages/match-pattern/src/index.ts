@@ -675,13 +675,16 @@ function findSearchDelimiter(pattern: string): { index: number; offset: number }
 }
 
 /**
- * Find the start of pathname in a URL pattern string
- * Skips / characters inside pattern groups like (), [], {}
+ * Find the start of pathname in a URL pattern string and handle special cases
+ * Returns { index, truncateHostname, useWildcardPathname }
+ * - Skips / characters inside pattern groups like (), []
+ * - / inside {} triggers special handling: truncate brace content at /, use wildcard pathname
  */
-function findPathnameStart(afterScheme: string): number {
+function findPathnameStart(afterScheme: string): { index: number; truncateHostname?: number; useWildcardPathname?: boolean } {
 	let parenDepth = 0;
 	let bracketDepth = 0;
 	let braceDepth = 0;
+	let braceStart = -1;
 	for (let i = 0; i < afterScheme.length; i++) {
 		const char = afterScheme[i];
 		if (char === "\\") {
@@ -692,13 +695,22 @@ function findPathnameStart(afterScheme: string): number {
 		else if (char === ")") parenDepth--;
 		else if (char === "[") bracketDepth++;
 		else if (char === "]") bracketDepth--;
-		else if (char === "{") braceDepth++;
-		else if (char === "}") braceDepth--;
-		else if (char === "/" && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
-			return i;
+		else if (char === "{") {
+			braceDepth++;
+			if (braceDepth === 1) braceStart = i;
+		} else if (char === "}") {
+			braceDepth--;
+			if (braceDepth === 0) braceStart = -1;
+		} else if (char === "/" && parenDepth === 0 && bracketDepth === 0) {
+			if (braceDepth > 0 && braceStart !== -1) {
+				// / inside a brace group - URLPattern keeps content before / in the brace
+				// and uses wildcard pathname. We return the position of / for truncation.
+				return { index: i, truncateHostname: i, useWildcardPathname: true };
+			}
+			return { index: i };
 		}
 	}
-	return -1;
+	return { index: -1 };
 }
 
 /**
@@ -1044,12 +1056,33 @@ function parseStringPattern(pattern: string): {
 		}
 
 		// Extract pathname (starts with first / after ://)
-		// Must skip / inside pattern groups like (), [], {}
-		const pathnameStart = findPathnameStart(afterScheme);
-		const pathname = pathnameStart === -1 ? "/" : afterScheme.slice(pathnameStart);
+		// Must skip / inside pattern groups like (), []
+		// / inside {} triggers special handling (truncate hostname, use wildcard pathname)
+		const pathnameResult = findPathnameStart(afterScheme);
+		let pathname: string;
+		let hostPart: string;
 
-		// Extract host part (hostname + optional port)
-		const hostPart = pathnameStart === -1 ? afterScheme : afterScheme.slice(0, pathnameStart);
+		if (pathnameResult.useWildcardPathname && pathnameResult.truncateHostname !== undefined) {
+			// Special case: / inside brace group
+			// Truncate hostname at the /, close the brace implicitly, use wildcard pathname
+			hostPart = afterScheme.slice(0, pathnameResult.truncateHostname);
+			// Find and close unclosed brace by removing content after the last {
+			const lastBrace = hostPart.lastIndexOf("{");
+			if (lastBrace !== -1) {
+				// Keep content inside brace up to truncation point, then close it
+				// e.g., "{.com/" -> ".com" (remove { and everything gets the content)
+				const beforeBrace = hostPart.slice(0, lastBrace);
+				const braceContent = hostPart.slice(lastBrace + 1);
+				hostPart = beforeBrace + braceContent;
+			}
+			pathname = "*";
+		} else if (pathnameResult.index === -1) {
+			pathname = "/";
+			hostPart = afterScheme;
+		} else {
+			pathname = afterScheme.slice(pathnameResult.index);
+			hostPart = afterScheme.slice(0, pathnameResult.index);
+		}
 
 		// Extract port - look for :digits at the end, but be careful with pattern syntax
 		// Port patterns can be :8080 or :(80|443) or :80{80}?
