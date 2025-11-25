@@ -90,38 +90,6 @@ function toASCII(hostname: string): string {
 }
 
 /**
- * Safely percent-encode a string, handling unpaired surrogates
- * Unpaired surrogates are encoded as the UTF-8 replacement character (U+FFFD -> %EF%BF%BD)
- */
-function safePercentEncode(str: string): string {
-	let result = "";
-	for (let i = 0; i < str.length; i++) {
-		const code = str.charCodeAt(i);
-
-		// Check for high surrogate
-		if (code >= 0xD800 && code <= 0xDBFF) {
-			const nextCode = i + 1 < str.length ? str.charCodeAt(i + 1) : 0;
-			// Check if paired with low surrogate
-			if (nextCode >= 0xDC00 && nextCode <= 0xDFFF) {
-				// Valid surrogate pair - encode together
-				result += encodeURIComponent(str[i] + str[i + 1]);
-				i++; // Skip the low surrogate
-			} else {
-				// Unpaired high surrogate - encode as replacement character
-				result += "%EF%BF%BD";
-			}
-		} else if (code >= 0xDC00 && code <= 0xDFFF) {
-			// Unpaired low surrogate - encode as replacement character
-			result += "%EF%BF%BD";
-		} else {
-			// Normal character
-			result += encodeURIComponent(str[i]);
-		}
-	}
-	return result;
-}
-
-/**
  * Check if a regex pattern requires the ES2024 v-flag
  * The v-flag is needed for character class set operations:
  * - Set subtraction: [a-z--[aeiou]] (a-z minus vowels)
@@ -460,19 +428,43 @@ function encodePathname(pathname: string): string {
  * Preserves = and & for query parameter parsing
  */
 function encodeSearch(search: string): string {
-	// Decode first if already encoded, then re-encode for canonical form
-	try {
-		const decoded = decodeURIComponent(search);
-		// Encode but preserve = and &
-		return encodeURIComponent(decoded)
-			.replace(/%3D/g, "=")
-			.replace(/%26/g, "&");
-	} catch {
-		// If decoding fails, just encode as-is
-		return encodeURIComponent(search)
-			.replace(/%3D/g, "=")
-			.replace(/%26/g, "&");
+	// Encode raw non-ASCII characters but preserve existing percent-encoding as-is
+	let result = "";
+	for (let i = 0; i < search.length; i++) {
+		const char = search[i];
+		const code = char.charCodeAt(0);
+
+		if (char === "%") {
+			// Check if this is valid percent-encoding
+			if (i + 2 < search.length) {
+				const hex = search.slice(i + 1, i + 3);
+				if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+					// Keep percent-encoding as-is (preserve case)
+					result += search.slice(i, i + 3);
+					i += 2;
+					continue;
+				}
+			}
+			// Invalid percent-encoding, encode the %
+			result += "%25";
+		} else if (code >= 0x80) {
+			// Non-ASCII - encode with uppercase hex
+			if (code >= 0xD800 && code <= 0xDBFF && i + 1 < search.length) {
+				// Surrogate pair
+				const nextCode = search.charCodeAt(i + 1);
+				if (nextCode >= 0xDC00 && nextCode <= 0xDFFF) {
+					result += encodeURIComponent(search.slice(i, i + 2));
+					i++;
+					continue;
+				}
+			}
+			result += encodeURIComponent(char);
+		} else {
+			// ASCII - keep as-is
+			result += char;
+		}
 	}
+	return result;
 }
 
 /**
@@ -1671,9 +1663,11 @@ function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCa
  */
 function testSearchParameters(
 	searchPattern: string,
-	actualParams: URLSearchParams,
+	actualSearch: string,
 ): boolean {
 	const patternParams = parseSearchPattern(searchPattern);
+	// Parse actual search without decoding to preserve percent-encoding
+	const actualParams = parseRawSearchParams(actualSearch);
 
 	for (const [key, paramDef] of patternParams) {
 		if (!actualParams.has(key)) {
@@ -1688,6 +1682,25 @@ function testSearchParameters(
 	}
 
 	return true;
+}
+
+/**
+ * Parse search params without URL decoding (preserves percent-encoding)
+ */
+function parseRawSearchParams(search: string): Map<string, string> {
+	const params = new Map<string, string>();
+	if (!search) return params;
+
+	const parts = search.split("&");
+	for (const part of parts) {
+		const eqIdx = part.indexOf("=");
+		if (eqIdx === -1) {
+			params.set(part, "");
+		} else {
+			params.set(part.slice(0, eqIdx), part.slice(eqIdx + 1));
+		}
+	}
+	return params;
 }
 
 /**
@@ -1751,10 +1764,11 @@ function parseSearchPattern(pattern: string): Map<string, ParamDefinition> {
 		} else if (value === "*") {
 			params.set(key, {type: "wildcard"});
 		} else {
-			// Decode the literal value for canonical comparison
-			// URLSearchParams decodes values, so we need to decode pattern values too
-			const decodedValue = decodeURIComponent(value);
-			params.set(key, {type: "literal", value: decodedValue});
+			// Normalize pattern value: encode raw non-ASCII, preserve existing percent-encoding
+			// - "café" → "caf%C3%A9" (raw Unicode gets encoded)
+			// - "caf%C3%A9" → "caf%C3%A9" (already encoded, keep as-is)
+			// - "caf%c3%a9" → "caf%c3%a9" (already encoded, keep as-is including case)
+			params.set(key, {type: "literal", value: encodeSearch(value)});
 		}
 	}
 
@@ -1769,376 +1783,325 @@ export interface URLPatternOptions {
 }
 
 /**
- * MatchPattern provides fast URL pattern matching using RegExp
+ * Input type for URLPattern/MatchPattern
+ */
+type URLPatternInit = {
+	protocol?: string;
+	hostname?: string;
+	port?: string;
+	pathname?: string;
+	search?: string;
+	hash?: string;
+	username?: string;
+	password?: string;
+	baseURL?: string;
+};
+
+/**
+ * All compiled patterns for a URLPattern
+ */
+interface CompiledPatterns {
+	protocol?: CompiledPattern;
+	hostname?: CompiledPattern;
+	port?: CompiledPattern;
+	pathname: CompiledPattern;
+	search?: CompiledPattern;
+	hash?: CompiledPattern;
+	username?: CompiledPattern;
+	password?: CompiledPattern;
+}
+
+/**
+ * Compile a URLPatternInit into regex patterns
+ */
+function compileURLPatternInit(
+	init: URLPatternInit,
+	baseURL: string | undefined,
+	options: { ignoreCase: boolean }
+): CompiledPatterns {
+	// Parse baseURL if provided
+	let baseUrlParsed: URL | undefined;
+	const base = init.baseURL || baseURL;
+	if (base) {
+		try {
+			baseUrlParsed = new URL(base);
+		} catch {
+			// Invalid baseURL
+		}
+	}
+
+	const result: CompiledPatterns = {} as CompiledPatterns;
+
+	// Compile protocol
+	let protocol = init.protocol || (baseUrlParsed ? baseUrlParsed.protocol.replace(":", "") : undefined);
+	if (protocol) {
+		if (protocol.endsWith(":")) {
+			protocol = protocol.slice(0, -1);
+		}
+		result.protocol = compileComponentPattern(protocol, options.ignoreCase);
+	}
+
+	// Compile hostname
+	let hostname = init.hostname || (baseUrlParsed ? baseUrlParsed.hostname : undefined);
+	if (hostname) {
+		validateHostnamePattern(hostname);
+		hostname = normalizeHostnamePattern(hostname);
+		if (hostname.startsWith("[")) {
+			hostname = hostname.replace(/[A-F]/g, c => c.toLowerCase());
+		} else {
+			const hasPatternSyntax = /[{}()*+?:|\\]/.test(hostname);
+			if (!hasPatternSyntax) {
+				hostname = toASCII(hostname);
+			}
+		}
+		result.hostname = compileComponentPattern(hostname, options.ignoreCase);
+	}
+
+	// Compile port
+	if (init.port !== undefined) {
+		let port = init.port;
+		const hasPatternSyntax = /[{}()*+?:|\\]/.test(port);
+		if (protocol && !hasPatternSyntax && isValidPatternPort(port)) {
+			const canonicalPort = canonicalizePort(port, true);
+			if (canonicalPort !== undefined) {
+				const defaultPort = getDefaultPort(protocol);
+				if (defaultPort && canonicalPort === defaultPort) {
+					port = "";
+				} else {
+					port = canonicalPort;
+				}
+			}
+		}
+		result.port = compileComponentPattern(port, options.ignoreCase);
+	}
+
+	// Compile username
+	if (init.username !== undefined) {
+		result.username = compileComponentPattern(init.username, options.ignoreCase);
+	}
+
+	// Compile password
+	if (init.password !== undefined) {
+		result.password = compileComponentPattern(init.password, options.ignoreCase);
+	}
+
+	// Compile search
+	if (init.search !== undefined) {
+		let search = init.search;
+		if (search.startsWith("?")) {
+			search = search.slice(1);
+		}
+		result.search = compileComponentPattern(search, options.ignoreCase);
+	}
+
+	// Compile hash
+	if (init.hash !== undefined) {
+		let hash = init.hash;
+		if (hash.startsWith("#")) {
+			hash = hash.slice(1);
+		}
+		result.hash = compileComponentPattern(hash, options.ignoreCase);
+	}
+
+	// Compile pathname
+	let pathname: string;
+	const isNonSpecialScheme = protocol && isDefinitelyNonSpecialScheme(protocol);
+
+	if (init.pathname !== undefined && init.pathname !== "") {
+		pathname = init.pathname;
+		if (baseUrlParsed && !pathname.startsWith("/")) {
+			// Manually resolve relative pattern against base path
+			// Don't use URL constructor as it mangles pattern syntax ({, }, \, etc.)
+			const basePath = baseUrlParsed.pathname;
+			if (basePath.endsWith("/")) {
+				pathname = basePath + pathname;
+			} else {
+				pathname = basePath.slice(0, basePath.lastIndexOf("/") + 1) + pathname;
+			}
+		}
+	} else if (baseUrlParsed) {
+		pathname = baseUrlParsed.pathname;
+	} else {
+		// No pathname specified - use wildcard for all schemes
+		pathname = "*";
+	}
+
+	if (pathname !== "" && pathname !== "*" && pathname.startsWith("/")) {
+		pathname = normalizePathname(pathname);
+	}
+
+	const shouldEncodePathname = !isNonSpecialScheme;
+	result.pathname = compilePathname(pathname, shouldEncodePathname, options.ignoreCase);
+
+	return result;
+}
+
+/**
+ * Test URL components against compiled patterns (except search)
+ */
+function testURLComponents(
+	compiled: CompiledPatterns,
+	url: URL
+): boolean {
+	// Test protocol
+	if (compiled.protocol) {
+		const protocol = url.protocol.replace(":", "");
+		if (!compiled.protocol.regex.test(protocol)) {
+			return false;
+		}
+	}
+
+	// Test hostname
+	if (compiled.hostname) {
+		if (!compiled.hostname.regex.test(url.hostname)) {
+			return false;
+		}
+	}
+
+	// Test port
+	if (compiled.port) {
+		if (!compiled.port.regex.test(url.port)) {
+			return false;
+		}
+	}
+
+	// Test username
+	if (compiled.username) {
+		const username = encodeURIComponent(url.username);
+		if (!compiled.username.regex.test(username)) {
+			return false;
+		}
+	}
+
+	// Test password
+	if (compiled.password) {
+		const password = encodeURIComponent(url.password);
+		if (!compiled.password.regex.test(password)) {
+			return false;
+		}
+	}
+
+	// Test hash
+	if (compiled.hash) {
+		const hash = url.hash.replace("#", "");
+		if (!compiled.hash.regex.test(hash)) {
+			return false;
+		}
+	}
+
+	// Test pathname
+	if (!compiled.pathname.regex.test(url.pathname)) {
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * Test search using regex (for URLPattern)
+ */
+function testSearchRegex(compiled: CompiledPatterns, url: URL): boolean {
+	if (compiled.search) {
+		const search = url.search.replace("?", "");
+		return compiled.search.regex.test(search);
+	}
+	return true;
+}
+
+/**
+ * Test search params with order-independent matching (for MatchPattern)
+ * Preserves percent-encoding for strict matching
+ */
+function testSearchParams(searchPattern: string | undefined, rawSearch: string): boolean {
+	if (!searchPattern) {
+		return true;
+	}
+	return testSearchParameters(searchPattern, rawSearch);
+}
+
+/**
+ * Parse constructor arguments into normalized form
+ */
+function parseConstructorArgs(
+	input: string | URLPatternInit | undefined,
+	baseURLOrOptions: string | URLPatternOptions | undefined,
+	options: URLPatternOptions | undefined
+): { init: URLPatternInit; baseURL: string | undefined; options: URLPatternOptions } {
+	let baseURL: string | undefined;
+	let opts: URLPatternOptions = {};
+
+	if (input === undefined) {
+		input = {};
+	}
+
+	if (typeof input === "object") {
+		if (typeof baseURLOrOptions === "string") {
+			throw new TypeError("Invalid arguments: baseURL must be inside the object, not as second argument");
+		}
+		opts = baseURLOrOptions || {};
+		if (input.baseURL === "") {
+			throw new TypeError("Invalid pattern: baseURL cannot be empty string");
+		}
+	} else {
+		if (typeof baseURLOrOptions === "string") {
+			if (baseURLOrOptions === "") {
+				throw new TypeError("Invalid pattern: baseURL cannot be empty string");
+			}
+			baseURL = baseURLOrOptions;
+			opts = options || {};
+		} else if (typeof baseURLOrOptions === "object") {
+			opts = baseURLOrOptions;
+		}
+	}
+
+	const init = typeof input === "string" ? parseStringPattern(input) : input;
+	return { init, baseURL, options: opts };
+}
+
+/**
+ * MatchPattern - URL pattern matching with conveniences for routing
+ *
+ * Features:
+ * - Relative paths without baseURL ("/users/:id" works)
+ * - & syntax for search params ("/api&format=json")
+ * - Order-independent search matching
  */
 export class MatchPattern {
-	#pathnameCompiled: CompiledPattern;
-	#protocolCompiled?: CompiledPattern;
-	#hostnameCompiled?: CompiledPattern;
-	#portCompiled?: CompiledPattern;
-	#hashCompiled?: CompiledPattern;
-	#searchCompiled?: CompiledPattern;
-	#usernameCompiled?: CompiledPattern;
-	#passwordCompiled?: CompiledPattern;
-	#searchPattern?: string; // Legacy: for & syntax search params
-	#originalInput: string | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; hash?: string; username?: string; password?: string};
-	#ignoreCase: boolean;
+	#compiled: CompiledPatterns;
+	#searchPattern?: string;
+	#init: URLPatternInit;
 
-	// Expose pathname for router introspection
-	get pathname(): string {
-		if (typeof this.#originalInput === "string") {
-			const parsed = parseStringPattern(this.#originalInput);
-			return parsed.pathname || "/";
-		}
-		return this.#originalInput.pathname || "/";
-	}
-
-	get search(): string | undefined {
-		return this.#searchPattern;
-	}
-
-	get protocol(): string | undefined {
-		if (typeof this.#originalInput === "string") {
-			const parsed = parseStringPattern(this.#originalInput);
-			return parsed.protocol;
-		}
-		return this.#originalInput.protocol;
-	}
-
-	get hostname(): string | undefined {
-		if (typeof this.#originalInput === "string") {
-			const parsed = parseStringPattern(this.#originalInput);
-			return parsed.hostname;
-		}
-		return this.#originalInput.hostname;
-	}
-
-	get port(): string | undefined {
-		return this.#originalInput && typeof this.#originalInput === "object" ? this.#originalInput.port : undefined;
-	}
-
-	get username(): string | undefined {
-		return this.#originalInput && typeof this.#originalInput === "object" ? this.#originalInput.username : undefined;
-	}
-
-	get password(): string | undefined {
-		return this.#originalInput && typeof this.#originalInput === "object" ? this.#originalInput.password : undefined;
-	}
-
-	get hash(): string | undefined {
-		return this.#originalInput && typeof this.#originalInput === "object" ? this.#originalInput.hash : undefined;
-	}
+	get pathname(): string { return this.#init.pathname || "*"; }
+	get search(): string | undefined { return this.#searchPattern; }
+	get protocol(): string | undefined { return this.#init.protocol; }
+	get hostname(): string | undefined { return this.#init.hostname; }
+	get port(): string | undefined { return this.#init.port; }
+	get username(): string | undefined { return this.#init.username; }
+	get password(): string | undefined { return this.#init.password; }
+	get hash(): string | undefined { return this.#init.hash; }
 
 	constructor(
-		input?: string | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string},
+		input?: string | URLPatternInit,
 		baseURLOrOptions?: string | URLPatternOptions,
 		options?: URLPatternOptions,
 	) {
-		// Parse arguments based on input type
-		// For object input: second arg is options (baseURL is inside the object)
-		// For string input: second arg can be baseURL (string) or options (object), third arg is options if second is baseURL
-		// For no input: create a wildcard pattern that matches anything (per URLPattern spec)
-		let baseURL: string | undefined;
-		let opts: URLPatternOptions | undefined;
+		const { init, baseURL, options: opts } = parseConstructorArgs(input, baseURLOrOptions, options);
+		this.#init = init;
+		this.#searchPattern = init.search;
+		this.#compiled = compileURLPatternInit(init, baseURL, { ignoreCase: opts.ignoreCase ?? false });
+	}
 
-		// Handle empty constructor - create wildcard pattern
+	test(input?: string | URL | URLPatternInit, baseURL?: string): boolean {
 		if (input === undefined) {
 			input = {};
 		}
 
-		if (typeof input === "object") {
-			// Object input: second arg must be options, not baseURL
-			// URLPattern spec: baseURL must be inside the object, not as second arg
-			if (typeof baseURLOrOptions === "string") {
-				throw new TypeError("Invalid arguments: baseURL must be inside the object, not as second argument");
-			}
-			opts = baseURLOrOptions as URLPatternOptions | undefined;
-
-			// Validate baseURL in object - empty string is not valid
-			if (input.baseURL === "") {
-				throw new TypeError("Invalid pattern: baseURL cannot be empty string");
-			}
-		} else {
-			// String input: check if second arg is baseURL (string) or options (object)
-			if (typeof baseURLOrOptions === "string") {
-				// Empty baseURL is not valid
-				if (baseURLOrOptions === "") {
-					throw new TypeError("Invalid pattern: baseURL cannot be empty string");
-				}
-				baseURL = baseURLOrOptions;
-				opts = options;
-			} else if (typeof baseURLOrOptions === "object") {
-				// Second arg is options, no baseURL
-				opts = baseURLOrOptions;
-			}
-		}
-
-		this.#ignoreCase = opts?.ignoreCase ?? false;
-
-		// Handle baseURL from object input or parameter
-		const base = typeof input === "object" ? input.baseURL : baseURL;
-		let baseUrlParsed: URL | undefined;
-		if (base) {
-			try {
-				baseUrlParsed = new URL(base);
-			} catch {
-				// Invalid baseURL
-			}
-		}
-
-		if (typeof input === "string") {
-			// Parse string pattern with & syntax
-			const parsed = parseStringPattern(input);
-			this.#originalInput = parsed;
-
-			// Note: Unlike strict URLPattern, we allow pathname-only patterns without baseURL
-			// for convenience in routing. e.g., "/users/:id" or "/api&format=:format"
-
-			// Compile protocol pattern
-			const protocol = parsed.protocol || (baseUrlParsed ? baseUrlParsed.protocol.replace(":", "") : undefined);
-			if (protocol) {
-				this.#protocolCompiled = compileComponentPattern(protocol, this.#ignoreCase);
-			}
-
-			// Compile hostname pattern
-			let hostname = parsed.hostname || (baseUrlParsed ? baseUrlParsed.hostname : undefined);
-			if (hostname) {
-				// Validate hostname pattern for forbidden characters
-				validateHostnamePattern(hostname);
-				// Normalize hostname (strip whitespace, truncate at # or /)
-				hostname = normalizeHostnamePattern(hostname);
-
-				// Normalize IPv6 hex digits to lowercase (case-insensitive)
-				// Only lowercase literal chars, preserve pattern syntax like :name
-				if (hostname.startsWith("[")) {
-					hostname = hostname.replace(/[A-F]/g, c => c.toLowerCase());
-				} else {
-					// Normalize IDN (emoji, unicode) to Punycode if no pattern syntax
-					const hasPatternSyntax = /[{}()*+?:|\\]/.test(hostname);
-					if (!hasPatternSyntax) {
-						hostname = toASCII(hostname);
-					}
-				}
-				this.#hostnameCompiled = compileComponentPattern(hostname, this.#ignoreCase);
-			}
-
-			// Compile port pattern if present (including empty string which means "must be empty")
-			if (parsed.port !== undefined) {
-				let port = parsed.port;
-				// Normalize default port if protocol is known
-				const hasPatternSyntax = /[{}()*+?:|\\]/.test(port);
-				if (protocol && !hasPatternSyntax) {
-					const canonicalPort = canonicalizePort(port, true); // throws if invalid
-					if (canonicalPort !== undefined) {
-						const defaultPort = getDefaultPort(protocol);
-						if (defaultPort && canonicalPort === defaultPort) {
-							port = "";
-						} else {
-							port = canonicalPort;
-						}
-					}
-				}
-				this.#portCompiled = compileComponentPattern(port, this.#ignoreCase);
-			}
-
-			// Compile username pattern if present
-			if (parsed.username !== undefined) {
-				this.#usernameCompiled = compileComponentPattern(parsed.username, this.#ignoreCase);
-			}
-
-			// Compile password pattern if present
-			if (parsed.password !== undefined) {
-				this.#passwordCompiled = compileComponentPattern(parsed.password, this.#ignoreCase);
-			}
-
-			this.#searchPattern = parsed.search;
-
-			// Also compile search as a component pattern for ignoreCase support
-			if (parsed.search) {
-				this.#searchCompiled = compileComponentPattern(parsed.search, this.#ignoreCase);
-			}
-
-			// Compile hash pattern if present
-			if (parsed.hash) {
-				this.#hashCompiled = compileComponentPattern(parsed.hash, this.#ignoreCase);
-			}
-
-			// Resolve pathname - inherit from baseURL if not specified in pattern
-			let pathname: string;
-			// Note: "protocol" was already defined above for compileProtocolPattern
-			const isNonSpecialScheme = protocol && isDefinitelyNonSpecialScheme(protocol);
-
-			if (parsed.pathname !== undefined) {
-				pathname = parsed.pathname;
-				if (!isNonSpecialScheme && baseUrlParsed && !pathname.startsWith("/")) {
-					// Relative path - resolve against base (only for special schemes)
-					pathname = "/" + pathname;
-				}
-			} else if (baseUrlParsed) {
-				// Inherit pathname from baseURL
-				pathname = baseUrlParsed.pathname;
-			} else if (isNonSpecialScheme) {
-				// Non-special schemes can have empty pathname
-				pathname = "";
-			} else {
-				// Default to / if no pathname and no baseURL
-				pathname = "/";
-			}
-			// Normalize pathname (resolve . and .. segments)
-			// Skip normalization for empty pathname on non-special schemes
-			if (pathname !== "") {
-				pathname = normalizePathname(pathname);
-			}
-			// Determine if pathname should be encoded based on protocol pattern
-			// If protocol is definitely non-special (e.g., "javascript", "data"), don't encode
-			// If protocol could be special or is not specified, encode
-			const shouldEncodePathname = !isNonSpecialScheme;
-			this.#pathnameCompiled = compilePathname(pathname, shouldEncodePathname, this.#ignoreCase);
-		} else {
-			this.#originalInput = input;
-
-			// Compile protocol pattern
-			let protocol = input.protocol || (baseUrlParsed ? baseUrlParsed.protocol.replace(":", "") : undefined);
-			if (protocol) {
-				// Strip trailing colon if present (e.g., "http:" -> "http")
-				if (protocol.endsWith(":")) {
-					protocol = protocol.slice(0, -1);
-				}
-				this.#protocolCompiled = compileComponentPattern(protocol, this.#ignoreCase);
-			}
-
-			// Compile hostname pattern
-			let hostname = input.hostname || (baseUrlParsed ? baseUrlParsed.hostname : undefined);
-			if (hostname) {
-				// Validate hostname pattern for forbidden characters
-				validateHostnamePattern(hostname);
-				// Normalize hostname (strip whitespace, truncate at # or /)
-				hostname = normalizeHostnamePattern(hostname);
-
-				// Normalize hostname to Punycode (IDN -> ASCII)
-				// Only normalize if it's a literal hostname (no pattern syntax)
-				const hasPatternSyntax = /[*+?{}():\[\]\\]/.test(hostname);
-				if (!hasPatternSyntax) {
-					hostname = toASCII(hostname);
-				}
-				// Normalize IPv6 hex digits to lowercase (case-insensitive)
-				if (hostname.startsWith("[")) {
-					hostname = hostname.replace(/[A-F]/g, c => c.toLowerCase());
-				}
-				this.#hostnameCompiled = compileComponentPattern(hostname, this.#ignoreCase);
-			}
-
-			// Compile port pattern
-			if (input.port) {
-				let port = input.port;
-				// Only normalize to default port if it's a literal port value (no pattern syntax)
-				// Check if port contains URLPattern special chars
-				const hasPatternSyntax = /[{}()*+?:|\\]/.test(port);
-				if (protocol && !hasPatternSyntax && isValidPatternPort(port)) {
-					// Only canonicalize if port is valid (all digits) - throws if out of range
-					const canonicalPort = canonicalizePort(port, true);
-					if (canonicalPort !== undefined) {
-						const defaultPort = getDefaultPort(protocol);
-						if (defaultPort && canonicalPort === defaultPort) {
-							port = "";
-						} else {
-							port = canonicalPort;
-						}
-					}
-				}
-				this.#portCompiled = compileComponentPattern(port, this.#ignoreCase);
-			}
-
-			// Compile hash pattern
-			if (input.hash) {
-				let hash = input.hash;
-				// Strip leading # if present (e.g., "#baz" -> "baz")
-				if (hash.startsWith("#")) {
-					hash = hash.slice(1);
-				}
-				this.#hashCompiled = compileComponentPattern(hash, this.#ignoreCase);
-			}
-
-			// Compile search pattern
-			// URLPattern treats search as a component pattern (like pathname), not as key=value pairs
-			if (input.search) {
-				let search = input.search;
-				// Strip leading ? if present (e.g., "?bar" -> "bar")
-				if (search.startsWith("?")) {
-					search = search.slice(1);
-				}
-				this.#searchCompiled = compileComponentPattern(search, this.#ignoreCase);
-			}
-
-			// Compile username pattern
-			if (input.username) {
-				this.#usernameCompiled = compileComponentPattern(input.username, this.#ignoreCase);
-			}
-
-			// Compile password pattern
-			if (input.password) {
-				this.#passwordCompiled = compileComponentPattern(input.password, this.#ignoreCase);
-			}
-
-			// Resolve relative pathname against baseURL and normalize
-			let pathname: string;
-			if (input.pathname !== undefined && input.pathname !== "") {
-				pathname = input.pathname;
-			} else if (baseUrlParsed) {
-				// Inherit pathname from baseURL (also when pathname is empty string)
-				pathname = baseUrlParsed.pathname;
-			} else {
-				// URLPattern spec: unspecified pathname defaults to wildcard
-				pathname = "*";
-			}
-
-			if (baseUrlParsed && pathname && !pathname.startsWith("/")) {
-				// Relative path - resolve against base using URL resolution
-				try {
-					const resolved = new URL(pathname, baseUrlParsed.href);
-					pathname = resolved.pathname;
-				} catch {
-					// If resolution fails, try simple concatenation
-					const basePath = baseUrlParsed.pathname;
-					// If base ends with /, append; otherwise replace last segment
-					if (basePath.endsWith("/")) {
-						pathname = basePath + pathname;
-					} else {
-						pathname = basePath.slice(0, basePath.lastIndexOf("/") + 1) + pathname;
-					}
-				}
-			}
-
-			// Only normalize pathnames that start with /
-			// Pathnames without leading / are stored as-is (for non-special schemes or will fail validation during testing)
-			if (pathname.startsWith("/")) {
-				// Normalize pathname (resolve . and .. segments)
-				pathname = normalizePathname(pathname);
-			}
-
-			// Determine if pathname should be encoded based on protocol pattern
-			// If protocol is definitely non-special (e.g., "javascript", "data"), don't encode
-			// If protocol could be special or is not specified, encode
-			const shouldEncodePathname = !isDefinitelyNonSpecialScheme(input.protocol);
-			this.#pathnameCompiled = compilePathname(pathname, shouldEncodePathname, this.#ignoreCase);
-		}
-	}
-
-	/**
-	 * Test if a URL matches this pattern
-	 */
-	test(input?: string | URL | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string}, baseURL?: string): boolean {
-		// Handle undefined input - per URLPattern spec, test() with no args matches empty object
-		if (input === undefined) {
-			return this.#testComponents({}, baseURL);
-		}
-
-		// Handle URLPatternInit object with component-level matching
+		// Handle URLPatternInit object
 		if (typeof input === "object" && !(input instanceof URL)) {
-			return this.#testComponents(input, baseURL);
+			return this.#testInit(input, baseURL);
 		}
 
-		// Handle string and URL inputs by constructing URL
+		// Handle string and URL inputs
 		let url: URL;
 		if (typeof input === "string") {
 			try {
@@ -2150,324 +2113,148 @@ export class MatchPattern {
 			url = input;
 		}
 
-		// Test protocol pattern if specified
-		if (this.#protocolCompiled) {
-			const protocol = url.protocol.replace(":", "");
-			if (!this.#protocolCompiled.regex.test(protocol)) {
-				return false;
-			}
+		// Test all components except search
+		if (!testURLComponents(this.#compiled, url)) {
+			return false;
 		}
 
-		// Test hostname pattern if specified
-		if (this.#hostnameCompiled) {
-			if (!this.#hostnameCompiled.regex.test(url.hostname)) {
-				return false;
-			}
+		// Test search - use regex if pattern contains URLPattern syntax (like :name)
+		// otherwise use order-independent key-value matching
+		if (this.#searchPattern && !this.#searchPattern.includes("=")) {
+			// Pattern-style search (like :café or *) - use regex matching
+			return testSearchRegex(this.#compiled, url);
+		}
+		// Key-value style search - use order-independent matching
+		// Use raw search string (without ?) to preserve percent-encoding
+		const rawSearch = url.search.startsWith("?") ? url.search.slice(1) : url.search;
+		return testSearchParams(this.#searchPattern, rawSearch);
+	}
+
+	#testInit(input: URLPatternInit, baseURL?: string): boolean {
+		const base = input.baseURL || baseURL;
+		let baseUrlObj: URL | undefined;
+		if (base) {
+			try { baseUrlObj = new URL(base); } catch {}
 		}
 
-		// Test port pattern if specified
-		if (this.#portCompiled) {
-			if (!this.#portCompiled.regex.test(url.port)) {
-				return false;
-			}
+		// Test protocol
+		const protocol = input.protocol ?? (baseUrlObj?.protocol.replace(":", "") ?? undefined);
+		if (protocol !== undefined && !isValidProtocol(protocol)) return false;
+		if (this.#compiled.protocol) {
+			if (protocol === undefined || !this.#compiled.protocol.regex.test(protocol)) return false;
 		}
 
-		// Test hash pattern if specified
-		if (this.#hashCompiled) {
-			const hash = url.hash.replace("#", "");
-			if (!this.#hashCompiled.regex.test(hash)) {
-				return false;
-			}
+		// Test hostname
+		if (this.#compiled.hostname) {
+			let hostname = input.hostname ?? baseUrlObj?.hostname;
+			if (hostname === undefined) return false;
+			hostname = toASCII(hostname);
+			if (!this.#compiled.hostname.regex.test(hostname)) return false;
 		}
 
-		// Test username pattern if specified
-		if (this.#usernameCompiled) {
-			const username = encodeURIComponent(url.username);
-			if (!this.#usernameCompiled.regex.test(username)) {
-				return false;
+		// Test port
+		let port = input.port ?? baseUrlObj?.port;
+		if (port !== undefined) {
+			const canonical = canonicalizePort(port);
+			if (canonical === undefined) return false;
+			port = canonical;
+			if (protocol) {
+				const defaultPort = getDefaultPort(protocol);
+				if (defaultPort && port === defaultPort) port = "";
 			}
 		}
+		if (this.#compiled.port) {
+			if (port === undefined || !this.#compiled.port.regex.test(port)) return false;
+		}
 
-		// Test password pattern if specified
-		if (this.#passwordCompiled) {
-			const password = encodeURIComponent(url.password);
-			if (!this.#passwordCompiled.regex.test(password)) {
-				return false;
-			}
+		// Test username/password
+		if (this.#compiled.username) {
+			const username = input.username ?? baseUrlObj?.username;
+			if (username === undefined || !this.#compiled.username.regex.test(encodeURIComponent(username))) return false;
+		}
+		if (this.#compiled.password) {
+			const password = input.password ?? baseUrlObj?.password;
+			if (password === undefined || !this.#compiled.password.regex.test(encodeURIComponent(password))) return false;
 		}
 
 		// Test pathname
-		if (!this.#pathnameCompiled.regex.test(url.pathname)) {
-			return false;
-		}
-
-		// Test search params if pattern has them
-		if (this.#searchPattern) {
-			return testSearchParameters(this.#searchPattern, url.searchParams);
-		}
-
-		return true;
-	}
-
-	/**
-	 * Test component-level matching for URLPatternInit objects
-	 */
-	#testComponents(input: {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string}, baseURL?: string): boolean {
-		// Get baseURL for component inheritance
-		const base = input.baseURL || baseURL;
-		let baseUrlObj: URL | undefined;
-		if (base) {
+		let pathname = input.pathname ?? baseUrlObj?.pathname ?? "/";
+		// Resolve relative pathname against baseURL
+		if (baseUrlObj && !pathname.startsWith("/")) {
 			try {
-				baseUrlObj = new URL(base);
+				const resolved = new URL(pathname, baseUrlObj.href);
+				pathname = resolved.pathname;
 			} catch {
-				// Invalid baseURL, but we can still try component matching
-			}
-		}
-
-		// Validate and test protocol
-		const protocol = input.protocol !== undefined
-			? input.protocol
-			: (baseUrlObj ? baseUrlObj.protocol.replace(":", "") : undefined);
-
-		// If protocol is provided, validate it's a valid URL scheme
-		if (protocol !== undefined && !isValidProtocol(protocol)) {
-			return false;
-		}
-
-		// Test protocol pattern if specified
-		if (this.#protocolCompiled) {
-			if (protocol === undefined) {
-				// Pattern has protocol constraint but input doesn't specify one
-				return false;
-			}
-
-			if (!this.#protocolCompiled.regex.test(protocol)) {
-				return false;
-			}
-		}
-
-		// Test hostname - inherit from baseURL if not specified
-		if (this.#hostnameCompiled) {
-			let hostname = input.hostname !== undefined
-				? input.hostname
-				: (baseUrlObj ? baseUrlObj.hostname : undefined);
-
-			if (hostname === undefined) {
-				return false;
-			}
-
-			// Normalize hostname (IDN -> Punycode)
-			hostname = toASCII(hostname);
-
-			if (!this.#hostnameCompiled.regex.test(hostname)) {
-				return false;
-			}
-		}
-
-		// Canonicalize and test port - inherit from baseURL if not specified
-		let port = input.port !== undefined
-			? input.port
-			: (baseUrlObj ? baseUrlObj.port : undefined);
-
-		// If port is provided, canonicalize it
-		if (port !== undefined) {
-			const canonicalPort = canonicalizePort(port);
-			if (canonicalPort === undefined) {
-				return false; // Invalid port
-			}
-			port = canonicalPort;
-
-			// If port matches the default for the protocol, treat it as empty
-			if (protocol) {
-				const defaultPort = getDefaultPort(protocol);
-				if (defaultPort && port === defaultPort) {
-					port = "";
+				const basePath = baseUrlObj.pathname;
+				if (basePath.endsWith("/")) {
+					pathname = basePath + pathname;
+				} else {
+					pathname = basePath.slice(0, basePath.lastIndexOf("/") + 1) + pathname;
 				}
 			}
 		}
-
-		// Test port pattern if specified
-		if (this.#portCompiled) {
-			if (port === undefined) {
-				return false;
-			}
-
-			if (!this.#portCompiled.regex.test(port)) {
-				return false;
-			}
-		}
-
-		// Test username pattern if specified
-		if (this.#usernameCompiled) {
-			let username = input.username !== undefined
-				? input.username
-				: (baseUrlObj ? baseUrlObj.username : undefined);
-
-			if (username === undefined) {
-				return false;
-			}
-
-			// Percent-encode username for canonical comparison
-			// Note: Encoding is case-sensitive - %c3 != %C3
-			username = encodeURIComponent(username);
-
-			if (!this.#usernameCompiled.regex.test(username)) {
-				return false;
-			}
-		}
-
-		// Test password pattern if specified
-		if (this.#passwordCompiled) {
-			let password = input.password !== undefined
-				? input.password
-				: (baseUrlObj ? baseUrlObj.password : undefined);
-
-			if (password === undefined) {
-				return false;
-			}
-
-			// Percent-encode password for canonical comparison
-			// Note: Encoding is case-sensitive - %c3 != %C3
-			password = encodeURIComponent(password);
-
-			if (!this.#passwordCompiled.regex.test(password)) {
-				return false;
-			}
-		}
-
-		// Test pathname - inherit from baseURL if not specified
-		let pathname = input.pathname !== undefined
-			? input.pathname
-			: (baseUrlObj ? baseUrlObj.pathname : undefined);
-
-		if (pathname === undefined) {
-			pathname = "/";
-		}
-
-		// Validate pathname must start with / for special schemes only
-		// Non-special schemes (data:, javascript:, mailto:, etc.) allow arbitrary pathnames
-		if (input.pathname !== undefined && !input.pathname.startsWith("/")) {
-			// If there's a baseURL, resolve relative pathname against it
-			if (baseUrlObj) {
-				// Resolve relative path against baseURL
-				try {
-					const resolved = new URL(input.pathname, baseUrlObj.href);
-					pathname = resolved.pathname;
-				} catch {
-					// If resolution fails, use as-is
-				}
-			} else if (protocol && isSpecialScheme(protocol)) {
-				// Special scheme without baseURL requires leading /
-				return false;
-			}
-		}
-
-		// Normalize pathname (resolve . and .. segments) for proper comparison
-		// Both pattern and input should be normalized
-		if (pathname.startsWith("/")) {
-			pathname = normalizePathname(pathname);
-		}
-
-		// Percent-encode pathname for canonical comparison
-		// If no protocol is specified, assume special scheme (default)
-		// If protocol is specified and non-special, don't encode
+		if (pathname.startsWith("/")) pathname = normalizePathname(pathname);
 		const shouldEncode = !protocol || isSpecialScheme(protocol);
-		if (shouldEncode) {
-			pathname = encodePathname(pathname);
-		}
+		if (shouldEncode) pathname = encodePathname(pathname);
+		if (!this.#compiled.pathname.regex.test(pathname)) return false;
 
-		if (!this.#pathnameCompiled.regex.test(pathname)) {
-			return false;
-		}
-
-		// Test hash - inherit from baseURL if not specified
-		if (this.#hashCompiled) {
-			let hash = input.hash !== undefined
-				? (input.hash.startsWith("#") ? input.hash.slice(1) : input.hash)
-				: (baseUrlObj && baseUrlObj.hash ? baseUrlObj.hash.replace("#", "") : undefined);
-
-			if (hash === undefined) {
-				return false;
-			}
-
-			// Percent-encode hash for canonical comparison
+		// Test hash
+		if (this.#compiled.hash) {
+			let hash = input.hash ?? (baseUrlObj?.hash.replace("#", "") ?? undefined);
+			if (hash === undefined) return false;
+			if (hash.startsWith("#")) hash = hash.slice(1);
 			hash = encodeHash(hash);
-
-			if (!this.#hashCompiled.regex.test(hash)) {
-				return false;
-			}
+			if (!this.#compiled.hash.regex.test(hash)) return false;
 		}
 
-		// Test search pattern if specified (URLPattern spec: search is a component pattern)
-		if (this.#searchCompiled) {
-			let search = input.search !== undefined
-				? input.search
-				: (baseUrlObj && baseUrlObj.search ? baseUrlObj.search.replace("?", "") : undefined);
-
-			if (search === undefined) {
-				// Default to empty string if no search specified
-				search = "";
-			}
-
-			// Percent-encode search for canonical comparison
+		// Test search - use regex if pattern contains URLPattern syntax (like :name)
+		// otherwise use order-independent key-value matching
+		if (this.#searchPattern) {
+			let search = input.search ?? baseUrlObj?.search?.replace("?", "") ?? "";
+			if (search.startsWith("?")) search = search.slice(1);
+			// Normalize search to canonical percent-encoding (uppercase hex)
 			search = encodeSearch(search);
 
-			if (!this.#searchCompiled.regex.test(search)) {
-				return false;
+			if (!this.#searchPattern.includes("=")) {
+				// Pattern-style search (like :café or *) - use regex matching
+				if (this.#compiled.search) {
+					return this.#compiled.search.regex.test(search);
+				}
+				return true;
 			}
-		} else if (this.#searchPattern) {
-			// Legacy: & syntax search params (only if #searchCompiled not set)
-			let search = input.search !== undefined
-				? input.search
-				: (baseUrlObj && baseUrlObj.search ? baseUrlObj.search.replace("?", "") : undefined);
-
-			if (search === undefined) {
-				return false;
-			}
-
-			// Don't encode search - URLSearchParams handles encoding/decoding internally
-			// Convert search string to URLSearchParams
-			const searchParams = new URLSearchParams(search);
-			return testSearchParameters(this.#searchPattern, searchParams);
+			// Key-value style search - use order-independent matching
+			return testSearchParams(this.#searchPattern, search);
 		}
 
 		return true;
 	}
 
-	/**
-	 * Execute pattern with component-level extraction for URLPatternInit objects
-	 */
-	#execComponents(input: {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string}, baseURL?: string): MatchPatternResult {
-		// Get baseURL for component inheritance
-		const base = input.baseURL || baseURL;
-		let baseUrlObj: URL | undefined;
-		if (base) {
-			try {
-				baseUrlObj = new URL(base);
-			} catch {
-				// Invalid baseURL
-			}
+	exec(input: string | URL | URLPatternInit, baseURL?: string): MatchPatternResult | null {
+		if (!this.test(input, baseURL)) return null;
+
+		// Handle URLPatternInit
+		if (typeof input === "object" && !(input instanceof URL)) {
+			return this.#execInit(input, baseURL);
 		}
 
-		// Extract pathname
-		let pathname = input.pathname !== undefined
-			? input.pathname
-			: (baseUrlObj ? baseUrlObj.pathname : "/");
+		// Handle URL
+		let url: URL;
+		if (typeof input === "string") {
+			url = baseURL ? new URL(input, baseURL) : new URL(input);
+		} else {
+			url = input;
+		}
 
-		// Normalize pathname (resolve . and .. segments)
-		pathname = normalizePathname(pathname);
-		// TODO: Add percent encoding for canonical comparison
-		// pathname = encodePathname(pathname);
-
-		const pathnameMatch = this.#pathnameCompiled.regex.exec(pathname);
 		const params: Record<string, string> = {};
 		const pathnameGroups: Record<string, string> = {};
+		const searchGroups: Record<string, string> = {};
 
-		if (pathnameMatch) {
-			for (let i = 0; i < this.#pathnameCompiled.paramNames.length; i++) {
-				const name = this.#pathnameCompiled.paramNames[i];
-				const value = pathnameMatch[i + 1];
-				// URLPattern spec: undefined for unmatched optional/zero-or-more groups
+		// Extract pathname params
+		const match = this.#compiled.pathname.regex.exec(url.pathname);
+		if (match) {
+			for (let i = 0; i < this.#compiled.pathname.paramNames.length; i++) {
+				const name = this.#compiled.pathname.paramNames[i];
+				const value = match[i + 1];
 				if (value !== undefined) {
 					params[name] = value;
 					pathnameGroups[name] = value;
@@ -2476,136 +2263,11 @@ export class MatchPattern {
 		}
 
 		// Extract search params
-		const searchGroups: Record<string, string> = {};
 		if (this.#searchPattern) {
-			const search = input.search !== undefined
-				? input.search
-				: (baseUrlObj && baseUrlObj.search ? baseUrlObj.search.replace("?", "") : "");
-
-			const searchParams = new URLSearchParams(search);
-			const extracted = extractSearchParams(this.#searchPattern, searchParams);
+			const extracted = extractSearchParams(this.#searchPattern, url.searchParams);
 			Object.assign(params, extracted);
 			Object.assign(searchGroups, extracted);
-		} else if (input.search || (baseUrlObj && baseUrlObj.search)) {
-			const search = input.search || (baseUrlObj?.search.replace("?", "") || "");
-			const searchParams = new URLSearchParams(search);
-			for (const [key, value] of searchParams) {
-				params[key] = value;
-				searchGroups[key] = value;
-			}
-		}
-
-		// Get final component values for result
-		const protocol = input.protocol !== undefined
-			? input.protocol
-			: (baseUrlObj ? baseUrlObj.protocol.replace(":", "") : "");
-		const hostname = input.hostname !== undefined
-			? input.hostname
-			: (baseUrlObj ? baseUrlObj.hostname : "");
-		let port = input.port !== undefined
-			? input.port
-			: (baseUrlObj ? baseUrlObj.port : "");
-		// Canonicalize port
-		if (port) {
-			port = canonicalizePort(port) || "";
-		}
-		const hash = input.hash !== undefined
-			? input.hash
-			: (baseUrlObj && baseUrlObj.hash ? baseUrlObj.hash.replace("#", "") : "");
-		const search = input.search !== undefined
-			? input.search
-			: (baseUrlObj && baseUrlObj.search ? baseUrlObj.search.replace("?", "") : "");
-
-		return {
-			params,
-			pathname: {
-				input: pathname,
-				groups: pathnameGroups,
-			},
-			search: {
-				input: search ? `?${search}` : "",
-				groups: searchGroups,
-			},
-			protocol: {
-				input: protocol ? `${protocol}:` : "",
-				groups: {},
-			},
-			hostname: {
-				input: hostname,
-				groups: {},
-			},
-			port: {
-				input: port,
-				groups: {},
-			},
-			username: {
-				input: "",
-				groups: {},
-			},
-			password: {
-				input: "",
-				groups: {},
-			},
-			hash: {
-				input: hash ? `#${hash}` : "",
-				groups: {},
-			},
-			inputs: [input],
-		};
-	}
-
-	/**
-	 * Execute pattern and extract parameters
-	 */
-	exec(input: string | URL | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string}, baseURL?: string): MatchPatternResult | null {
-		if (!this.test(input, baseURL)) {
-			return null;
-		}
-
-		// Handle URLPatternInit object with component-level extraction
-		if (typeof input === "object" && !(input instanceof URL)) {
-			return this.#execComponents(input, baseURL);
-		}
-
-		// Handle string and URL inputs by constructing URL
-		let url: URL;
-		if (typeof input === "string") {
-			url = baseURL ? new URL(input, baseURL) : new URL(input);
 		} else {
-			url = input;
-		}
-
-		// Match pathname
-		const match = this.#pathnameCompiled.regex.exec(url.pathname);
-		if (!match) {
-			return null;
-		}
-
-		// Extract pathname params
-		const params: Record<string, string> = {};
-		const pathnameGroups: Record<string, string> = {};
-
-		for (let i = 0; i < this.#pathnameCompiled.paramNames.length; i++) {
-			const name = this.#pathnameCompiled.paramNames[i];
-			const value = match[i + 1];
-			// URLPattern spec: undefined for unmatched optional/zero-or-more groups
-			if (value !== undefined) {
-				params[name] = value;
-				pathnameGroups[name] = value;
-			}
-		}
-
-		// Extract search params
-		const searchGroups: Record<string, string> = {};
-		if (this.#searchPattern) {
-			const searchParams = extractSearchParams(
-				this.#searchPattern,
-				url.searchParams,
-			);
-			Object.assign(params, searchParams);
-			Object.assign(searchGroups, searchParams);
-		} else {
-			// Capture all search params even without pattern
 			for (const [key, value] of url.searchParams) {
 				params[key] = value;
 				searchGroups[key] = value;
@@ -2614,626 +2276,122 @@ export class MatchPattern {
 
 		return {
 			params,
-			pathname: {
-				input: url.pathname,
-				groups: pathnameGroups,
-			},
-			search: {
-				input: url.search,
-				groups: searchGroups,
-			},
-			protocol: {
-				input: url.protocol,
-				groups: {},
-			},
-			hostname: {
-				input: url.hostname,
-				groups: {},
-			},
-			port: {
-				input: url.port,
-				groups: {},
-			},
-			username: {
-				input: url.username,
-				groups: {},
-			},
-			password: {
-				input: url.password,
-				groups: {},
-			},
-			hash: {
-				input: url.hash,
-				groups: {},
-			},
+			pathname: { input: url.pathname, groups: pathnameGroups },
+			search: { input: url.search, groups: searchGroups },
+			protocol: { input: url.protocol, groups: {} },
+			hostname: { input: url.hostname, groups: {} },
+			port: { input: url.port, groups: {} },
+			username: { input: url.username, groups: {} },
+			password: { input: url.password, groups: {} },
+			hash: { input: url.hash, groups: {} },
+			inputs: [input],
+		};
+	}
+
+	#execInit(input: URLPatternInit, baseURL?: string): MatchPatternResult {
+		const base = input.baseURL || baseURL;
+		let baseUrlObj: URL | undefined;
+		if (base) {
+			try { baseUrlObj = new URL(base); } catch {}
+		}
+
+		let pathname = input.pathname ?? baseUrlObj?.pathname ?? "/";
+		pathname = normalizePathname(pathname);
+
+		const params: Record<string, string> = {};
+		const pathnameGroups: Record<string, string> = {};
+		const searchGroups: Record<string, string> = {};
+
+		const match = this.#compiled.pathname.regex.exec(pathname);
+		if (match) {
+			for (let i = 0; i < this.#compiled.pathname.paramNames.length; i++) {
+				const name = this.#compiled.pathname.paramNames[i];
+				const value = match[i + 1];
+				if (value !== undefined) {
+					params[name] = value;
+					pathnameGroups[name] = value;
+				}
+			}
+		}
+
+		if (this.#searchPattern) {
+			const search = input.search ?? baseUrlObj?.search?.replace("?", "") ?? "";
+			const extracted = extractSearchParams(this.#searchPattern, new URLSearchParams(search));
+			Object.assign(params, extracted);
+			Object.assign(searchGroups, extracted);
+		}
+
+		const protocol = input.protocol ?? baseUrlObj?.protocol.replace(":", "") ?? "";
+		const hostname = input.hostname ?? baseUrlObj?.hostname ?? "";
+		let port = input.port ?? baseUrlObj?.port ?? "";
+		if (port) port = canonicalizePort(port) || "";
+		const hash = input.hash ?? baseUrlObj?.hash?.replace("#", "") ?? "";
+		const search = input.search ?? baseUrlObj?.search?.replace("?", "") ?? "";
+
+		return {
+			params,
+			pathname: { input: pathname, groups: pathnameGroups },
+			search: { input: search ? `?${search}` : "", groups: searchGroups },
+			protocol: { input: protocol ? `${protocol}:` : "", groups: {} },
+			hostname: { input: hostname, groups: {} },
+			port: { input: port, groups: {} },
+			username: { input: "", groups: {} },
+			password: { input: "", groups: {} },
+			hash: { input: hash ? `#${hash}` : "", groups: {} },
 			inputs: [input],
 		};
 	}
 }
 
 /**
- * Parse string pattern strictly per URLPattern spec (no & syntax)
- */
-function parseStringPatternStrict(pattern: string): {
-	protocol?: string;
-	username?: string;
-	password?: string;
-	hostname?: string;
-	port?: string;
-	pathname?: string;
-	search?: string;
-	hash?: string;
-} {
-	// Validate pattern structure
-	validatePatternStructure(pattern);
-
-	// Handle search-only patterns starting with ?
-	if (pattern.startsWith("?")) {
-		// Extract hash if present
-		const hashIndex = pattern.indexOf("#");
-		if (hashIndex !== -1) {
-			return {
-				search: pattern.slice(1, hashIndex),
-				hash: pattern.slice(hashIndex + 1),
-			};
-		}
-		return { search: pattern.slice(1) };
-	}
-
-	// Handle hash-only patterns starting with #
-	if (pattern.startsWith("#")) {
-		return { hash: pattern.slice(1) };
-	}
-
-	// Check for non-hierarchical scheme (e.g., "data:", "javascript:", "mailto:")
-	const nonHierarchicalMatch = pattern.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*):/);
-	if (nonHierarchicalMatch && !pattern.startsWith(nonHierarchicalMatch[0] + "/")) {
-		const protocol = nonHierarchicalMatch[1];
-		if (pattern.startsWith(protocol + "://")) {
-			// Fall through to hierarchical handling
-		} else {
-			const rest = pattern.slice(nonHierarchicalMatch[0].length);
-
-			// URLPattern validation: pathname after non-hierarchical scheme cannot start with
-			// an unescaped identifier (which would look like a named parameter :name)
-			if (rest.length > 0) {
-				const firstChar = rest[0];
-				if (/\p{ID_Start}/u.test(firstChar)) {
-					throw new TypeError("Invalid URL pattern: non-hierarchical URL pathname cannot start with an identifier");
-				}
-			}
-
-			// Extract hash first
-			const hashIndex = rest.indexOf("#");
-			const hash = hashIndex === -1 ? undefined : rest.slice(hashIndex + 1);
-			const beforeHash = hashIndex === -1 ? rest : rest.slice(0, hashIndex);
-
-			// Extract search
-			const searchDelim = findSearchDelimiter(beforeHash);
-			const search = searchDelim.index === -1 ? undefined : beforeHash.slice(searchDelim.index + searchDelim.offset);
-			const pathname = searchDelim.index === -1 ? beforeHash : beforeHash.slice(0, searchDelim.index);
-
-			return { protocol, pathname, search, hash };
-		}
-	}
-
-	// Check for escaped colon protocol separator
-	const escapedColonMatch = pattern.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*)\\:/);
-	if (escapedColonMatch) {
-		const protocol = escapedColonMatch[1];
-		const rest = pattern.slice(escapedColonMatch[0].length);
-		const isSpecial = isSpecialScheme(protocol);
-		const atIdx = findUnescapedAt(rest);
-
-		if (isSpecial && atIdx !== -1) {
-			const userinfoStr = rest.slice(0, atIdx);
-			const afterAt = rest.slice(atIdx + 1);
-
-			let username: string | undefined;
-			let password: string | undefined;
-			const colonIdx = findEscapedColon(userinfoStr);
-			if (colonIdx !== -1) {
-				username = userinfoStr.slice(0, colonIdx);
-				password = userinfoStr.slice(colonIdx + 2);
-			} else {
-				username = userinfoStr;
-			}
-
-			const slashIdx = afterAt.indexOf("/");
-			const hashIdx = afterAt.indexOf("#");
-			const searchDelim = findSearchDelimiter(afterAt);
-
-			let hostEnd = afterAt.length;
-			if (slashIdx !== -1 && slashIdx < hostEnd) hostEnd = slashIdx;
-			if (searchDelim.index !== -1 && searchDelim.index < hostEnd) hostEnd = searchDelim.index;
-			if (hashIdx !== -1 && hashIdx < hostEnd) hostEnd = hashIdx;
-
-			const hostPart = afterAt.slice(0, hostEnd);
-			let hostname: string;
-			let port: string | undefined;
-			const portColonIdx = hostPart.lastIndexOf(":");
-			if (portColonIdx !== -1 && !hostPart.startsWith("[")) {
-				hostname = hostPart.slice(0, portColonIdx);
-				port = hostPart.slice(portColonIdx + 1);
-			} else {
-				hostname = hostPart;
-			}
-
-			let pathname: string | undefined;
-			let search: string | undefined;
-			let hash: string | undefined;
-
-			if (slashIdx !== -1) {
-				const pathStart = slashIdx;
-				let pathEnd = afterAt.length;
-				if (searchDelim.index !== -1 && searchDelim.index > slashIdx) pathEnd = Math.min(pathEnd, searchDelim.index);
-				if (hashIdx !== -1) pathEnd = Math.min(pathEnd, hashIdx);
-				pathname = afterAt.slice(pathStart, pathEnd);
-			}
-
-			if (searchDelim.index !== -1) {
-				let searchEnd = afterAt.length;
-				if (hashIdx !== -1 && hashIdx > searchDelim.index) searchEnd = hashIdx;
-				search = afterAt.slice(searchDelim.index + searchDelim.offset, searchEnd);
-			}
-
-			if (hashIdx !== -1) {
-				hash = afterAt.slice(hashIdx + 1);
-			}
-
-			return { protocol, username, password, hostname, port, pathname, search, hash };
-		}
-
-		const hashIndex = rest.indexOf("#");
-		const hash = hashIndex === -1 ? undefined : rest.slice(hashIndex + 1);
-		const beforeHash = hashIndex === -1 ? rest : rest.slice(0, hashIndex);
-		const searchDelim = findSearchDelimiter(beforeHash);
-		const search = searchDelim.index === -1 ? undefined : beforeHash.slice(searchDelim.index + searchDelim.offset);
-		const pathname = searchDelim.index === -1 ? beforeHash : beforeHash.slice(0, searchDelim.index);
-
-		return { protocol, pathname, search, hash };
-	}
-
-	// Check if it's a full URL with ://
-	const protocolMatch = pattern.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*(?:\{[^}]*\}\??)?):/);
-	if (protocolMatch && pattern.includes("://")) {
-		const hashIndex = pattern.indexOf("#");
-		const hash = hashIndex === -1 ? undefined : pattern.slice(hashIndex + 1);
-		const beforeHash = hashIndex === -1 ? pattern : pattern.slice(0, hashIndex);
-
-		// NO & syntax - only use ? for search delimiter
-		const searchDelim = findSearchDelimiter(beforeHash);
-		const search = searchDelim.index === -1 ? undefined : beforeHash.slice(searchDelim.index + searchDelim.offset);
-		const urlPart = searchDelim.index === -1 ? beforeHash : beforeHash.slice(0, searchDelim.index);
-
-		const schemeEndIdx = urlPart.indexOf("://");
-		const protocol = urlPart.slice(0, schemeEndIdx);
-		let afterScheme = urlPart.slice(schemeEndIdx + 3);
-
-		let username: string | undefined;
-		let password: string | undefined;
-		let atIndex = -1;
-		let bracketDepth = 0;
-		let braceDepth = 0;
-		let parenDepth = 0;
-		for (let i = 0; i < afterScheme.length; i++) {
-			const char = afterScheme[i];
-			if (char === "\\") { i++; continue; }
-			if (char === "[") bracketDepth++;
-			else if (char === "]") bracketDepth--;
-			else if (char === "{") braceDepth++;
-			else if (char === "}") braceDepth--;
-			else if (char === "(") parenDepth++;
-			else if (char === ")") parenDepth--;
-			else if (char === "@" && bracketDepth === 0 && braceDepth === 0 && parenDepth === 0) {
-				atIndex = i;
-				break;
-			} else if (char === "/" && bracketDepth === 0 && braceDepth === 0 && parenDepth === 0) {
-				break;
-			}
-		}
-
-		if (atIndex !== -1) {
-			const userinfo = afterScheme.slice(0, atIndex);
-			afterScheme = afterScheme.slice(atIndex + 1);
-
-			let colonIndex = -1;
-			let braceDepth = 0;
-			for (let i = 0; i < userinfo.length; i++) {
-				const char = userinfo[i];
-				if (char === "\\") {
-					if (i + 1 < userinfo.length && userinfo[i + 1] === ":") {
-						colonIndex = i + 1;
-						break;
-					}
-					i++;
-					continue;
-				}
-				if (char === "{") braceDepth++;
-				else if (char === "}") braceDepth--;
-				else if (char === ":" && braceDepth === 0) {
-					const afterColon = userinfo.slice(i + 1);
-					const paramMatch = afterColon.match(/^(\p{ID_Start}\p{ID_Continue}*)/u);
-					if (paramMatch) {
-						i += 1 + paramMatch[1].length;
-						if (i < userinfo.length && "?+*".includes(userinfo[i])) i++;
-						i--;
-						continue;
-					}
-					colonIndex = i;
-					break;
-				}
-			}
-
-			if (colonIndex !== -1) {
-				username = userinfo.slice(0, colonIndex);
-				if (username.endsWith("\\")) username = username.slice(0, -1);
-				password = userinfo.slice(colonIndex + 1);
-			} else {
-				username = userinfo;
-			}
-		}
-
-		const pathnameResult = findPathnameStart(afterScheme);
-		let pathname: string;
-		let hostPart: string;
-
-		if (pathnameResult.useWildcardPathname && pathnameResult.truncateHostname !== undefined) {
-			hostPart = afterScheme.slice(0, pathnameResult.truncateHostname);
-			const lastBrace = hostPart.lastIndexOf("{");
-			if (lastBrace !== -1) {
-				const beforeBrace = hostPart.slice(0, lastBrace);
-				const braceContent = hostPart.slice(lastBrace + 1);
-				hostPart = beforeBrace + braceContent;
-			}
-			pathname = "*";
-		} else if (pathnameResult.index === -1) {
-			pathname = "/";
-			hostPart = afterScheme;
-		} else {
-			pathname = afterScheme.slice(pathnameResult.index);
-			hostPart = afterScheme.slice(0, pathnameResult.index);
-		}
-
-		const portMatch = hostPart.match(/:(\d+|\([^)]+\)|\d*\{[^}]+\}\??)$/);
-		const port = portMatch ? portMatch[1] : "";
-		const hostname = portMatch ? hostPart.slice(0, -portMatch[0].length) : hostPart;
-
-		return { protocol, username, password, hostname, port, pathname, search, hash };
-	}
-
-	// Handle pathname-only patterns (NO & syntax for strict URLPattern)
-	if (pattern.startsWith("/")) {
-		const hashIndex = pattern.indexOf("#");
-		const hash = hashIndex === -1 ? undefined : pattern.slice(hashIndex + 1);
-		const beforeHash = hashIndex === -1 ? pattern : pattern.slice(0, hashIndex);
-
-		const searchDelim = findSearchDelimiter(beforeHash);
-		const search = searchDelim.index === -1 ? undefined : beforeHash.slice(searchDelim.index + searchDelim.offset);
-		const pathname = searchDelim.index === -1 ? beforeHash : beforeHash.slice(0, searchDelim.index);
-
-		return { pathname, search, hash };
-	}
-
-	// Not a URL - just pathname (no & syntax)
-	return { pathname: pattern };
-}
-
-/**
- * URLPattern provides strict WPT-compliant URL pattern matching
+ * URLPattern - Strict WPT-compliant URL pattern matching
+ *
+ * Differences from MatchPattern:
+ * - Throws for relative patterns without baseURL
+ * - Uses regex for search matching (order-dependent)
+ * - No & syntax support
  */
 export class URLPattern {
-	#pathnameCompiled: CompiledPattern;
-	#protocolCompiled?: CompiledPattern;
-	#hostnameCompiled?: CompiledPattern;
-	#portCompiled?: CompiledPattern;
-	#hashCompiled?: CompiledPattern;
-	#searchCompiled?: CompiledPattern;
-	#usernameCompiled?: CompiledPattern;
-	#passwordCompiled?: CompiledPattern;
-	#originalInput: string | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; hash?: string; username?: string; password?: string};
-	#ignoreCase: boolean;
+	#compiled: CompiledPatterns;
+	#init: URLPatternInit;
 
-	get pathname(): string {
-		if (typeof this.#originalInput === "string") {
-			const parsed = parseStringPatternStrict(this.#originalInput);
-			return parsed.pathname || "*";
-		}
-		return this.#originalInput.pathname || "*";
-	}
-
-	get search(): string {
-		if (typeof this.#originalInput === "string") {
-			const parsed = parseStringPatternStrict(this.#originalInput);
-			return parsed.search || "*";
-		}
-		return this.#originalInput.search || "*";
-	}
-
-	get protocol(): string {
-		if (typeof this.#originalInput === "string") {
-			const parsed = parseStringPatternStrict(this.#originalInput);
-			return parsed.protocol || "*";
-		}
-		return this.#originalInput.protocol || "*";
-	}
-
-	get hostname(): string {
-		if (typeof this.#originalInput === "string") {
-			const parsed = parseStringPatternStrict(this.#originalInput);
-			return parsed.hostname || "*";
-		}
-		return this.#originalInput.hostname || "*";
-	}
-
-	get port(): string {
-		if (typeof this.#originalInput === "string") {
-			const parsed = parseStringPatternStrict(this.#originalInput);
-			return parsed.port || "*";
-		}
-		return this.#originalInput.port || "*";
-	}
-
-	get username(): string {
-		if (typeof this.#originalInput === "string") {
-			const parsed = parseStringPatternStrict(this.#originalInput);
-			return parsed.username || "*";
-		}
-		return this.#originalInput.username || "*";
-	}
-
-	get password(): string {
-		if (typeof this.#originalInput === "string") {
-			const parsed = parseStringPatternStrict(this.#originalInput);
-			return parsed.password || "*";
-		}
-		return this.#originalInput.password || "*";
-	}
-
-	get hash(): string {
-		if (typeof this.#originalInput === "string") {
-			const parsed = parseStringPatternStrict(this.#originalInput);
-			return parsed.hash || "*";
-		}
-		return this.#originalInput.hash || "*";
-	}
+	get pathname(): string { return this.#init.pathname || "*"; }
+	get search(): string { return this.#init.search || "*"; }
+	get protocol(): string { return this.#init.protocol || "*"; }
+	get hostname(): string { return this.#init.hostname || "*"; }
+	get port(): string { return this.#init.port || "*"; }
+	get username(): string { return this.#init.username || "*"; }
+	get password(): string { return this.#init.password || "*"; }
+	get hash(): string { return this.#init.hash || "*"; }
 
 	constructor(
-		input?: string | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string},
+		input?: string | URLPatternInit,
 		baseURLOrOptions?: string | URLPatternOptions,
 		options?: URLPatternOptions,
 	) {
-		let baseURL: string | undefined;
-		let opts: URLPatternOptions | undefined;
+		const { init, baseURL, options: opts } = parseConstructorArgs(input, baseURLOrOptions, options);
 
+		// Strict: require baseURL for relative string patterns (not object patterns)
+		// Only strings like "/foo" are relative - object patterns like {pathname: "/foo"} are partial and valid
+		if (typeof input === "string" && !init.protocol && !baseURL && !init.baseURL) {
+			throw new TypeError("Invalid pattern: relative URL pattern requires a baseURL");
+		}
+
+		this.#init = init;
+		this.#compiled = compileURLPatternInit(init, baseURL, { ignoreCase: opts.ignoreCase ?? false });
+	}
+
+	test(input?: string | URL | URLPatternInit, baseURL?: string): boolean {
 		if (input === undefined) {
 			input = {};
 		}
 
-		if (typeof input === "object") {
-			if (typeof baseURLOrOptions === "string") {
-				throw new TypeError("Invalid arguments: baseURL must be inside the object, not as second argument");
-			}
-			opts = baseURLOrOptions as URLPatternOptions | undefined;
-			if (input.baseURL === "") {
-				throw new TypeError("Invalid pattern: baseURL cannot be empty string");
-			}
-		} else {
-			if (typeof baseURLOrOptions === "string") {
-				if (baseURLOrOptions === "") {
-					throw new TypeError("Invalid pattern: baseURL cannot be empty string");
-				}
-				baseURL = baseURLOrOptions;
-				opts = options;
-			} else if (typeof baseURLOrOptions === "object") {
-				opts = baseURLOrOptions;
-			}
-		}
-
-		this.#ignoreCase = opts?.ignoreCase ?? false;
-
-		const base = typeof input === "object" ? input.baseURL : baseURL;
-		let baseUrlParsed: URL | undefined;
-		if (base) {
-			try {
-				baseUrlParsed = new URL(base);
-			} catch {
-				// Invalid baseURL
-			}
-		}
-
-		if (typeof input === "string") {
-			const parsed = parseStringPatternStrict(input);
-			this.#originalInput = parsed;
-
-			// Strict URLPattern: relative patterns require baseURL
-			if (!parsed.protocol && !baseUrlParsed) {
-				throw new TypeError("Invalid pattern: relative URL pattern requires a baseURL");
-			}
-
-			const protocol = parsed.protocol || (baseUrlParsed ? baseUrlParsed.protocol.replace(":", "") : undefined);
-			if (protocol) {
-				this.#protocolCompiled = compileComponentPattern(protocol, this.#ignoreCase);
-			}
-
-			let hostname = parsed.hostname || (baseUrlParsed ? baseUrlParsed.hostname : undefined);
-			if (hostname) {
-				validateHostnamePattern(hostname);
-				hostname = normalizeHostnamePattern(hostname);
-				if (hostname.startsWith("[")) {
-					hostname = hostname.replace(/[A-F]/g, c => c.toLowerCase());
-				} else {
-					const hasPatternSyntax = /[{}()*+?:|\\]/.test(hostname);
-					if (!hasPatternSyntax) {
-						hostname = toASCII(hostname);
-					}
-				}
-				this.#hostnameCompiled = compileComponentPattern(hostname, this.#ignoreCase);
-			}
-
-			if (parsed.port !== undefined) {
-				let port = parsed.port;
-				const hasPatternSyntax = /[{}()*+?:|\\]/.test(port);
-				if (protocol && !hasPatternSyntax) {
-					const canonicalPort = canonicalizePort(port, true);
-					if (canonicalPort !== undefined) {
-						const defaultPort = getDefaultPort(protocol);
-						if (defaultPort && canonicalPort === defaultPort) {
-							port = "";
-						} else {
-							port = canonicalPort;
-						}
-					}
-				}
-				this.#portCompiled = compileComponentPattern(port, this.#ignoreCase);
-			}
-
-			if (parsed.username !== undefined) {
-				this.#usernameCompiled = compileComponentPattern(parsed.username, this.#ignoreCase);
-			}
-
-			if (parsed.password !== undefined) {
-				this.#passwordCompiled = compileComponentPattern(parsed.password, this.#ignoreCase);
-			}
-
-			// Search is compiled as regex pattern (no order-independent matching)
-			if (parsed.search !== undefined) {
-				this.#searchCompiled = compileComponentPattern(parsed.search, this.#ignoreCase);
-			}
-
-			if (parsed.hash) {
-				this.#hashCompiled = compileComponentPattern(parsed.hash, this.#ignoreCase);
-			}
-
-			let pathname: string;
-			const isNonSpecialScheme = protocol && isDefinitelyNonSpecialScheme(protocol);
-
-			if (parsed.pathname !== undefined) {
-				pathname = parsed.pathname;
-				if (!isNonSpecialScheme && baseUrlParsed && !pathname.startsWith("/")) {
-					pathname = "/" + pathname;
-				}
-			} else if (baseUrlParsed) {
-				pathname = baseUrlParsed.pathname;
-			} else if (isNonSpecialScheme) {
-				pathname = "";
-			} else {
-				pathname = "*";
-			}
-
-			if (pathname !== "" && pathname !== "*") {
-				pathname = normalizePathname(pathname);
-			}
-
-			const shouldEncodePathname = !isNonSpecialScheme;
-			this.#pathnameCompiled = compilePathname(pathname, shouldEncodePathname, this.#ignoreCase);
-		} else {
-			this.#originalInput = input;
-
-			let protocol = input.protocol || (baseUrlParsed ? baseUrlParsed.protocol.replace(":", "") : undefined);
-			if (protocol) {
-				if (protocol.endsWith(":")) {
-					protocol = protocol.slice(0, -1);
-				}
-				this.#protocolCompiled = compileComponentPattern(protocol, this.#ignoreCase);
-			}
-
-			let hostname = input.hostname || (baseUrlParsed ? baseUrlParsed.hostname : undefined);
-			if (hostname) {
-				validateHostnamePattern(hostname);
-				hostname = normalizeHostnamePattern(hostname);
-				const hasPatternSyntax = /[*+?{}():\[\]\\]/.test(hostname);
-				if (!hasPatternSyntax) {
-					hostname = toASCII(hostname);
-				}
-				if (hostname.startsWith("[")) {
-					hostname = hostname.replace(/[A-F]/g, c => c.toLowerCase());
-				}
-				this.#hostnameCompiled = compileComponentPattern(hostname, this.#ignoreCase);
-			}
-
-			if (input.port) {
-				let port = input.port;
-				const hasPatternSyntax = /[{}()*+?:|\\]/.test(port);
-				if (protocol && !hasPatternSyntax && isValidPatternPort(port)) {
-					const canonicalPort = canonicalizePort(port, true);
-					if (canonicalPort !== undefined) {
-						const defaultPort = getDefaultPort(protocol);
-						if (defaultPort && canonicalPort === defaultPort) {
-							port = "";
-						} else {
-							port = canonicalPort;
-						}
-					}
-				}
-				this.#portCompiled = compileComponentPattern(port, this.#ignoreCase);
-			}
-
-			if (input.hash) {
-				let hash = input.hash;
-				if (hash.startsWith("#")) {
-					hash = hash.slice(1);
-				}
-				this.#hashCompiled = compileComponentPattern(hash, this.#ignoreCase);
-			}
-
-			if (input.search) {
-				let search = input.search;
-				if (search.startsWith("?")) {
-					search = search.slice(1);
-				}
-				this.#searchCompiled = compileComponentPattern(search, this.#ignoreCase);
-			}
-
-			if (input.username) {
-				this.#usernameCompiled = compileComponentPattern(input.username, this.#ignoreCase);
-			}
-
-			if (input.password) {
-				this.#passwordCompiled = compileComponentPattern(input.password, this.#ignoreCase);
-			}
-
-			let pathname: string;
-			if (input.pathname !== undefined && input.pathname !== "") {
-				pathname = input.pathname;
-			} else if (baseUrlParsed) {
-				pathname = baseUrlParsed.pathname;
-			} else {
-				pathname = "*";
-			}
-
-			if (baseUrlParsed && pathname && !pathname.startsWith("/")) {
-				try {
-					const resolved = new URL(pathname, baseUrlParsed.href);
-					pathname = resolved.pathname;
-				} catch {
-					const basePath = baseUrlParsed.pathname;
-					if (basePath.endsWith("/")) {
-						pathname = basePath + pathname;
-					} else {
-						pathname = basePath.slice(0, basePath.lastIndexOf("/") + 1) + pathname;
-					}
-				}
-			}
-
-			if (pathname.startsWith("/")) {
-				pathname = normalizePathname(pathname);
-			}
-
-			const shouldEncodePathname = !isDefinitelyNonSpecialScheme(input.protocol);
-			this.#pathnameCompiled = compilePathname(pathname, shouldEncodePathname, this.#ignoreCase);
-		}
-	}
-
-	test(input?: string | URL | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string}, baseURL?: string): boolean {
-		if (input === undefined) {
-			return this.#testComponents({}, baseURL);
-		}
-
+		// Handle URLPatternInit object
 		if (typeof input === "object" && !(input instanceof URL)) {
-			return this.#testComponents(input, baseURL);
+			return this.#testInit(input, baseURL);
 		}
 
+		// Handle string and URL inputs
 		let url: URL;
 		if (typeof input === "string") {
 			try {
@@ -3245,243 +2403,108 @@ export class URLPattern {
 			url = input;
 		}
 
-		if (this.#protocolCompiled) {
-			const protocol = url.protocol.replace(":", "");
-			if (!this.#protocolCompiled.regex.test(protocol)) {
-				return false;
-			}
-		}
-
-		if (this.#hostnameCompiled) {
-			if (!this.#hostnameCompiled.regex.test(url.hostname)) {
-				return false;
-			}
-		}
-
-		if (this.#portCompiled) {
-			if (!this.#portCompiled.regex.test(url.port)) {
-				return false;
-			}
-		}
-
-		if (this.#hashCompiled) {
-			const hash = url.hash.replace("#", "");
-			if (!this.#hashCompiled.regex.test(hash)) {
-				return false;
-			}
-		}
-
-		if (this.#usernameCompiled) {
-			const username = encodeURIComponent(url.username);
-			if (!this.#usernameCompiled.regex.test(username)) {
-				return false;
-			}
-		}
-
-		if (this.#passwordCompiled) {
-			const password = encodeURIComponent(url.password);
-			if (!this.#passwordCompiled.regex.test(password)) {
-				return false;
-			}
-		}
-
-		if (!this.#pathnameCompiled.regex.test(url.pathname)) {
+		// Test all components
+		if (!testURLComponents(this.#compiled, url)) {
 			return false;
 		}
 
-		// Search uses regex matching (not URLSearchParams)
-		if (this.#searchCompiled) {
-			const search = url.search.replace("?", "");
-			if (!this.#searchCompiled.regex.test(search)) {
-				return false;
-			}
-		}
-
-		return true;
+		// Test search with regex (order-dependent)
+		return testSearchRegex(this.#compiled, url);
 	}
 
-	#testComponents(input: {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string}, baseURL?: string): boolean {
+	#testInit(input: URLPatternInit, baseURL?: string): boolean {
 		const base = input.baseURL || baseURL;
 		let baseUrlObj: URL | undefined;
 		if (base) {
-			try {
-				baseUrlObj = new URL(base);
-			} catch {
-				// Invalid baseURL
-			}
+			try { baseUrlObj = new URL(base); } catch {}
 		}
 
-		const protocol = input.protocol !== undefined
-			? input.protocol
-			: (baseUrlObj ? baseUrlObj.protocol.replace(":", "") : undefined);
-
-		if (protocol !== undefined && !isValidProtocol(protocol)) {
-			return false;
+		// Test protocol
+		const protocol = input.protocol ?? (baseUrlObj?.protocol.replace(":", "") ?? undefined);
+		if (protocol !== undefined && !isValidProtocol(protocol)) return false;
+		if (this.#compiled.protocol) {
+			if (protocol === undefined || !this.#compiled.protocol.regex.test(protocol)) return false;
 		}
 
-		if (this.#protocolCompiled) {
-			if (protocol === undefined) {
-				return false;
-			}
-			if (!this.#protocolCompiled.regex.test(protocol)) {
-				return false;
-			}
-		}
-
-		if (this.#hostnameCompiled) {
-			let hostname = input.hostname !== undefined
-				? input.hostname
-				: (baseUrlObj ? baseUrlObj.hostname : undefined);
-
-			if (hostname === undefined) {
-				return false;
-			}
-
+		// Test hostname
+		if (this.#compiled.hostname) {
+			let hostname = input.hostname ?? baseUrlObj?.hostname;
+			if (hostname === undefined) return false;
 			hostname = toASCII(hostname);
-			if (!this.#hostnameCompiled.regex.test(hostname)) {
-				return false;
-			}
+			if (!this.#compiled.hostname.regex.test(hostname)) return false;
 		}
 
-		let port = input.port !== undefined
-			? input.port
-			: (baseUrlObj ? baseUrlObj.port : undefined);
-
+		// Test port
+		let port = input.port ?? baseUrlObj?.port;
 		if (port !== undefined) {
-			const canonicalPort = canonicalizePort(port);
-			if (canonicalPort === undefined) {
-				return false;
-			}
-			port = canonicalPort;
-
+			const canonical = canonicalizePort(port);
+			if (canonical === undefined) return false;
+			port = canonical;
 			if (protocol) {
 				const defaultPort = getDefaultPort(protocol);
-				if (defaultPort && port === defaultPort) {
-					port = "";
-				}
+				if (defaultPort && port === defaultPort) port = "";
 			}
 		}
-
-		if (this.#portCompiled) {
-			if (port === undefined) {
-				return false;
-			}
-			if (!this.#portCompiled.regex.test(port)) {
-				return false;
-			}
+		if (this.#compiled.port) {
+			if (port === undefined || !this.#compiled.port.regex.test(port)) return false;
 		}
 
-		if (this.#usernameCompiled) {
-			let username = input.username !== undefined
-				? input.username
-				: (baseUrlObj ? baseUrlObj.username : undefined);
-
-			if (username === undefined) {
-				return false;
-			}
-
-			username = encodeURIComponent(username);
-			if (!this.#usernameCompiled.regex.test(username)) {
-				return false;
-			}
+		// Test username/password
+		if (this.#compiled.username) {
+			const username = input.username ?? baseUrlObj?.username;
+			if (username === undefined || !this.#compiled.username.regex.test(encodeURIComponent(username))) return false;
+		}
+		if (this.#compiled.password) {
+			const password = input.password ?? baseUrlObj?.password;
+			if (password === undefined || !this.#compiled.password.regex.test(encodeURIComponent(password))) return false;
 		}
 
-		if (this.#passwordCompiled) {
-			let password = input.password !== undefined
-				? input.password
-				: (baseUrlObj ? baseUrlObj.password : undefined);
-
-			if (password === undefined) {
-				return false;
-			}
-
-			password = encodeURIComponent(password);
-			if (!this.#passwordCompiled.regex.test(password)) {
-				return false;
+		// Test pathname
+		let pathname = input.pathname ?? baseUrlObj?.pathname ?? "/";
+		// Resolve relative pathname against baseURL
+		if (baseUrlObj && !pathname.startsWith("/")) {
+			// Manually resolve to preserve pattern syntax
+			const basePath = baseUrlObj.pathname;
+			if (basePath.endsWith("/")) {
+				pathname = basePath + pathname;
+			} else {
+				pathname = basePath.slice(0, basePath.lastIndexOf("/") + 1) + pathname;
 			}
 		}
-
-		let pathname = input.pathname !== undefined
-			? input.pathname
-			: (baseUrlObj ? baseUrlObj.pathname : undefined);
-
-		if (pathname === undefined) {
-			pathname = "/";
-		}
-
-		if (input.pathname !== undefined && !input.pathname.startsWith("/")) {
-			if (baseUrlObj) {
-				try {
-					const resolved = new URL(input.pathname, baseUrlObj.href);
-					pathname = resolved.pathname;
-				} catch {
-					// Use as-is
-				}
-			} else if (protocol && isSpecialScheme(protocol)) {
-				return false;
-			}
-		}
-
-		if (pathname.startsWith("/")) {
-			pathname = normalizePathname(pathname);
-		}
-
+		if (pathname.startsWith("/")) pathname = normalizePathname(pathname);
 		const shouldEncode = !protocol || isSpecialScheme(protocol);
-		if (shouldEncode) {
-			pathname = encodePathname(pathname);
-		}
+		if (shouldEncode) pathname = encodePathname(pathname);
+		if (!this.#compiled.pathname.regex.test(pathname)) return false;
 
-		if (!this.#pathnameCompiled.regex.test(pathname)) {
-			return false;
-		}
-
-		if (this.#hashCompiled) {
-			let hash = input.hash !== undefined
-				? (input.hash.startsWith("#") ? input.hash.slice(1) : input.hash)
-				: (baseUrlObj && baseUrlObj.hash ? baseUrlObj.hash.replace("#", "") : undefined);
-
-			if (hash === undefined) {
-				return false;
-			}
-
+		// Test hash
+		if (this.#compiled.hash) {
+			let hash = input.hash ?? (baseUrlObj?.hash.replace("#", "") ?? undefined);
+			if (hash === undefined) return false;
+			if (hash.startsWith("#")) hash = hash.slice(1);
 			hash = encodeHash(hash);
-			if (!this.#hashCompiled.regex.test(hash)) {
-				return false;
-			}
+			if (!this.#compiled.hash.regex.test(hash)) return false;
 		}
 
-		// Search uses regex matching
-		if (this.#searchCompiled) {
-			let search = input.search !== undefined
-				? input.search
-				: (baseUrlObj && baseUrlObj.search ? baseUrlObj.search.replace("?", "") : undefined);
-
-			if (search === undefined) {
-				search = "";
-			}
-
-			if (search.startsWith("?")) {
-				search = search.slice(1);
-			}
-
+		// Test search with regex (order-dependent)
+		if (this.#compiled.search) {
+			let search = input.search ?? baseUrlObj?.search?.replace("?", "") ?? "";
+			if (search.startsWith("?")) search = search.slice(1);
 			search = encodeSearch(search);
-			if (!this.#searchCompiled.regex.test(search)) {
-				return false;
-			}
+			if (!this.#compiled.search.regex.test(search)) return false;
 		}
 
 		return true;
 	}
 
-	exec(input: string | URL | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string}, baseURL?: string): MatchPatternResult | null {
-		if (!this.test(input, baseURL)) {
-			return null;
-		}
+	exec(input: string | URL | URLPatternInit, baseURL?: string): MatchPatternResult | null {
+		if (!this.test(input, baseURL)) return null;
 
+		// Handle URLPatternInit
 		if (typeof input === "object" && !(input instanceof URL)) {
-			return this.#execComponents(input, baseURL);
+			return this.#execInit(input, baseURL);
 		}
 
+		// Handle URL
 		let url: URL;
 		if (typeof input === "string") {
 			url = baseURL ? new URL(input, baseURL) : new URL(input);
@@ -3489,31 +2512,30 @@ export class URLPattern {
 			url = input;
 		}
 
-		const match = this.#pathnameCompiled.regex.exec(url.pathname);
-		if (!match) {
-			return null;
-		}
-
 		const params: Record<string, string> = {};
 		const pathnameGroups: Record<string, string> = {};
+		const searchGroups: Record<string, string> = {};
 
-		for (let i = 0; i < this.#pathnameCompiled.paramNames.length; i++) {
-			const name = this.#pathnameCompiled.paramNames[i];
-			const value = match[i + 1];
-			if (value !== undefined) {
-				params[name] = value;
-				pathnameGroups[name] = value;
+		// Extract pathname params
+		const match = this.#compiled.pathname.regex.exec(url.pathname);
+		if (match) {
+			for (let i = 0; i < this.#compiled.pathname.paramNames.length; i++) {
+				const name = this.#compiled.pathname.paramNames[i];
+				const value = match[i + 1];
+				if (value !== undefined) {
+					params[name] = value;
+					pathnameGroups[name] = value;
+				}
 			}
 		}
 
-		// Extract search groups from regex
-		const searchGroups: Record<string, string> = {};
-		if (this.#searchCompiled) {
+		// Extract search params from regex
+		if (this.#compiled.search) {
 			const search = url.search.replace("?", "");
-			const searchMatch = this.#searchCompiled.regex.exec(search);
+			const searchMatch = this.#compiled.search.regex.exec(search);
 			if (searchMatch) {
-				for (let i = 0; i < this.#searchCompiled.paramNames.length; i++) {
-					const name = this.#searchCompiled.paramNames[i];
+				for (let i = 0; i < this.#compiled.search.paramNames.length; i++) {
+					const name = this.#compiled.search.paramNames[i];
 					const value = searchMatch[i + 1];
 					if (value !== undefined) {
 						params[name] = value;
@@ -3537,31 +2559,25 @@ export class URLPattern {
 		};
 	}
 
-	#execComponents(input: {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string}, baseURL?: string): MatchPatternResult {
+	#execInit(input: URLPatternInit, baseURL?: string): MatchPatternResult {
 		const base = input.baseURL || baseURL;
 		let baseUrlObj: URL | undefined;
 		if (base) {
-			try {
-				baseUrlObj = new URL(base);
-			} catch {
-				// Invalid baseURL
-			}
+			try { baseUrlObj = new URL(base); } catch {}
 		}
 
-		let pathname = input.pathname !== undefined
-			? input.pathname
-			: (baseUrlObj ? baseUrlObj.pathname : "/");
-
+		let pathname = input.pathname ?? baseUrlObj?.pathname ?? "/";
 		pathname = normalizePathname(pathname);
 
-		const pathnameMatch = this.#pathnameCompiled.regex.exec(pathname);
 		const params: Record<string, string> = {};
 		const pathnameGroups: Record<string, string> = {};
+		const searchGroups: Record<string, string> = {};
 
-		if (pathnameMatch) {
-			for (let i = 0; i < this.#pathnameCompiled.paramNames.length; i++) {
-				const name = this.#pathnameCompiled.paramNames[i];
-				const value = pathnameMatch[i + 1];
+		const match = this.#compiled.pathname.regex.exec(pathname);
+		if (match) {
+			for (let i = 0; i < this.#compiled.pathname.paramNames.length; i++) {
+				const name = this.#compiled.pathname.paramNames[i];
+				const value = match[i + 1];
 				if (value !== undefined) {
 					params[name] = value;
 					pathnameGroups[name] = value;
@@ -3569,18 +2585,13 @@ export class URLPattern {
 			}
 		}
 
-		// Extract search groups from regex
-		const searchGroups: Record<string, string> = {};
-		if (this.#searchCompiled) {
-			let search = input.search !== undefined
-				? input.search
-				: (baseUrlObj && baseUrlObj.search ? baseUrlObj.search.replace("?", "") : "");
+		if (this.#compiled.search) {
+			let search = input.search ?? baseUrlObj?.search?.replace("?", "") ?? "";
 			if (search.startsWith("?")) search = search.slice(1);
-
-			const searchMatch = this.#searchCompiled.regex.exec(search);
+			const searchMatch = this.#compiled.search.regex.exec(search);
 			if (searchMatch) {
-				for (let i = 0; i < this.#searchCompiled.paramNames.length; i++) {
-					const name = this.#searchCompiled.paramNames[i];
+				for (let i = 0; i < this.#compiled.search.paramNames.length; i++) {
+					const name = this.#compiled.search.paramNames[i];
 					const value = searchMatch[i + 1];
 					if (value !== undefined) {
 						params[name] = value;
@@ -3590,24 +2601,12 @@ export class URLPattern {
 			}
 		}
 
-		const protocol = input.protocol !== undefined
-			? input.protocol
-			: (baseUrlObj ? baseUrlObj.protocol.replace(":", "") : "");
-		const hostname = input.hostname !== undefined
-			? input.hostname
-			: (baseUrlObj ? baseUrlObj.hostname : "");
-		let port = input.port !== undefined
-			? input.port
-			: (baseUrlObj ? baseUrlObj.port : "");
-		if (port) {
-			port = canonicalizePort(port) || "";
-		}
-		const hash = input.hash !== undefined
-			? input.hash
-			: (baseUrlObj && baseUrlObj.hash ? baseUrlObj.hash.replace("#", "") : "");
-		const search = input.search !== undefined
-			? input.search
-			: (baseUrlObj && baseUrlObj.search ? baseUrlObj.search.replace("?", "") : "");
+		const protocol = input.protocol ?? baseUrlObj?.protocol.replace(":", "") ?? "";
+		const hostname = input.hostname ?? baseUrlObj?.hostname ?? "";
+		let port = input.port ?? baseUrlObj?.port ?? "";
+		if (port) port = canonicalizePort(port) || "";
+		const hash = input.hash ?? baseUrlObj?.hash?.replace("#", "") ?? "";
+		const search = input.search ?? baseUrlObj?.search?.replace("?", "") ?? "";
 
 		return {
 			params,

@@ -67,6 +67,10 @@ describe("WPT URLPattern (strict) compliance", () => {
 });
 
 describe("WPT MatchPattern (conveniences) compliance", () => {
+	// Tests that are intentionally skipped because MatchPattern allows relative patterns
+	// without baseURL (a convenience feature that differs from strict URLPattern spec)
+	const skippedTests = new Set([214, 215]);
+
 	for (let i = 0; i < testData.length; i++) {
 		const testCase = testData[i] as {
 			pattern?: unknown[];
@@ -77,6 +81,9 @@ describe("WPT MatchPattern (conveniences) compliance", () => {
 
 		// Skip tests with no pattern
 		if (!testCase.pattern) continue;
+
+		// Skip intentionally non-compliant tests
+		if (skippedTests.has(i)) continue;
 
 		const patternDesc = JSON.stringify(testCase.pattern);
 
