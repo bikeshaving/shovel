@@ -601,10 +601,12 @@ function compileComponentPattern(component: string, ignoreCase: boolean = false)
 					basePattern = constraint.slice(1, -1);
 				} else if (inIPv6Brackets) {
 					// Inside IPv6 brackets, allow colons (e.g., [:address] matching [::1])
-					basePattern = "[^\\[\\]/?#]+";
+					// Use non-greedy matching (+?) per URLPattern spec
+					basePattern = "[^\\[\\]/?#]+?";
 				} else {
 					// Default: match any character except delimiter (. for hostname, otherwise any)
-					basePattern = "[^./:?#]+";
+					// Use non-greedy matching (+?) per URLPattern spec for proper group disambiguation
+					basePattern = "[^./:?#]+?";
 				}
 
 				if (modifier === "?") {
@@ -658,22 +660,24 @@ function compileComponentPattern(component: string, ignoreCase: boolean = false)
 			const closeIndex = component.indexOf("}", i);
 			if (closeIndex !== -1) {
 				const content = component.slice(i + 1, closeIndex);
-				const modifier = component[closeIndex + 1] || "";
+				const nextChar = component[closeIndex + 1] || "";
+				const isModifier = nextChar === "?" || nextChar === "+" || nextChar === "*";
 
 				const compiled = compileComponentPattern(content, ignoreCase);
-				if (modifier === "?") {
-					pattern += `(${compiled.regex.source.slice(1, -1)})?`;
-				} else if (modifier === "+") {
-					pattern += `(${compiled.regex.source.slice(1, -1)})+`;
-				} else if (modifier === "*") {
-					pattern += `(${compiled.regex.source.slice(1, -1)})*`;
+				if (nextChar === "?") {
+					pattern += `(?:${compiled.regex.source.slice(1, -1)})?`;
+				} else if (nextChar === "+") {
+					pattern += `(?:${compiled.regex.source.slice(1, -1)})+`;
+				} else if (nextChar === "*") {
+					pattern += `(?:${compiled.regex.source.slice(1, -1)})*`;
 				} else {
-					pattern += `(${compiled.regex.source.slice(1, -1)})`;
+					// No modifier - just inline the content without extra grouping
+					pattern += compiled.regex.source.slice(1, -1);
 				}
 
 				paramNames.push(...compiled.paramNames);
 				i = closeIndex + 1;
-				if (modifier) i++;
+				if (isModifier) i++;
 				continue;
 			}
 		}
@@ -779,8 +783,8 @@ function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCa
 					// Use the regex constraint
 					basePattern = constraint.slice(1, -1); // Remove parens
 				} else {
-					// Default: match non-slash characters
-					basePattern = "[^/]+";
+					// Default: match non-slash characters (non-greedy per URLPattern spec)
+					basePattern = "[^/]+?";
 				}
 
 				// URLPattern behavior: In pathname component, there's an automatic
@@ -892,25 +896,27 @@ function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCa
 			const closeIndex = pathname.indexOf("}", i);
 			if (closeIndex !== -1) {
 				const content = pathname.slice(i + 1, closeIndex);
-				const modifier = pathname[closeIndex + 1] || "";
+				const nextChar = pathname[closeIndex + 1] || "";
+				const isModifier = nextChar === "?" || nextChar === "+" || nextChar === "*";
 
 				// Compile the content recursively
 				const compiled = compilePathname(content, encodeChars, ignoreCase);
-				if (modifier === "?") {
-					pattern += `(${compiled.regex.source.slice(1, -1)})?`;
-				} else if (modifier === "+") {
-					pattern += `(${compiled.regex.source.slice(1, -1)})+`;
-				} else if (modifier === "*") {
-					pattern += `(${compiled.regex.source.slice(1, -1)})*`;
+				if (nextChar === "?") {
+					pattern += `(?:${compiled.regex.source.slice(1, -1)})?`;
+				} else if (nextChar === "+") {
+					pattern += `(?:${compiled.regex.source.slice(1, -1)})+`;
+				} else if (nextChar === "*") {
+					pattern += `(?:${compiled.regex.source.slice(1, -1)})*`;
 				} else {
-					pattern += `(${compiled.regex.source.slice(1, -1)})`;
+					// No modifier - just inline the content without extra grouping
+					pattern += compiled.regex.source.slice(1, -1);
 				}
 
 				// Merge param names
 				paramNames.push(...compiled.paramNames);
 
 				i = closeIndex + 1;
-				if (modifier) i++;
+				if (isModifier) i++;
 				continue;
 			}
 		}
@@ -920,6 +926,8 @@ function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCa
 			hasWildcard = true;
 			const modifier = pathname[i + 1] || "";
 			const hasPrecedingSlash = pattern.endsWith("/");
+			// Use numbered names for wildcards per URLPattern spec
+			paramNames.push(String(paramNames.length));
 
 			if (modifier === "?") {
 				if (hasPrecedingSlash) {
@@ -1733,17 +1741,13 @@ export class MatchPattern {
 		const pathnameGroups: Record<string, string> = {};
 
 		if (pathnameMatch) {
-			if (this.#pathnameCompiled.hasWildcard) {
-				params["*"] = pathnameMatch[1] || "";
-				pathnameGroups["*"] = pathnameMatch[1] || "";
-			} else {
-				for (let i = 0; i < this.#pathnameCompiled.paramNames.length; i++) {
-					const name = this.#pathnameCompiled.paramNames[i];
-					const value = pathnameMatch[i + 1];
-					if (value !== undefined) {
-						params[name] = value;
-						pathnameGroups[name] = value;
-					}
+			for (let i = 0; i < this.#pathnameCompiled.paramNames.length; i++) {
+				const name = this.#pathnameCompiled.paramNames[i];
+				const value = pathnameMatch[i + 1];
+				// URLPattern spec: undefined for unmatched optional/zero-or-more groups
+				if (value !== undefined) {
+					params[name] = value;
+					pathnameGroups[name] = value;
 				}
 			}
 		}
@@ -1858,13 +1862,11 @@ export class MatchPattern {
 		const params: Record<string, string> = {};
 		const pathnameGroups: Record<string, string> = {};
 
-		if (this.#pathnameCompiled.hasWildcard) {
-			params["*"] = match[1] || "";
-			pathnameGroups["*"] = match[1] || "";
-		} else {
-			for (let i = 0; i < this.#pathnameCompiled.paramNames.length; i++) {
-				const name = this.#pathnameCompiled.paramNames[i];
-				const value = match[i + 1] || "";
+		for (let i = 0; i < this.#pathnameCompiled.paramNames.length; i++) {
+			const name = this.#pathnameCompiled.paramNames[i];
+			const value = match[i + 1];
+			// URLPattern spec: undefined for unmatched optional/zero-or-more groups
+			if (value !== undefined) {
 				params[name] = value;
 				pathnameGroups[name] = value;
 			}
