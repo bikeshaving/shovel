@@ -543,10 +543,134 @@ export interface MatchPatternResult {
 /**
  * Compiled pattern for fast matching
  */
-interface CompiledPattern {
+export interface CompiledPattern {
 	regex: RegExp;
 	paramNames: string[];
 	hasWildcard: boolean;
+}
+
+/**
+ * Segment types for parsed patterns
+ */
+export type PatternSegment =
+	| { type: "static"; value: string }
+	| { type: "param"; name: string }
+	| { type: "wildcard" };
+
+/**
+ * Result of parsing a simple pattern
+ */
+export interface ParsedPattern {
+	segments: PatternSegment[];
+	paramNames: string[];
+	hasWildcard: boolean;
+}
+
+/**
+ * Check if a pathname pattern is "simple" (can be handled by radix tree)
+ * Simple patterns only have:
+ * - Static segments: /api/users
+ * - Basic named params: :id, :slug
+ * - Trailing wildcard: /*
+ *
+ * Complex patterns (return false) have:
+ * - Param constraints: :id(\d+)
+ * - Param modifiers: :path+, :path*, :id?
+ * - Regex groups: (\d+)
+ * - Optional groups: {/prefix}?
+ * - Escaped characters: \.
+ */
+export function isSimplePattern(pathname: string): boolean {
+	// Quick check for complex pattern syntax
+	if (pathname.includes("\\")) return false; // Escaped chars
+	if (pathname.includes("{")) return false; // Optional groups
+	if (pathname.includes("(")) return false; // Regex groups or constraints
+	if (pathname.includes("+")) return false; // Repeat modifier
+	if (pathname.includes("?")) return false; // Optional modifier
+
+	// Check for wildcard - only allowed at end as /*
+	const wildcardIndex = pathname.indexOf("*");
+	if (wildcardIndex !== -1) {
+		// Wildcard must be at end, preceded by /
+		if (wildcardIndex !== pathname.length - 1) return false;
+		if (pathname[wildcardIndex - 1] !== "/") return false;
+	}
+
+	// Check params don't have modifiers or constraints
+	const paramMatches = pathname.matchAll(/:(\p{ID_Continue}+)/gu);
+	for (const match of paramMatches) {
+		const afterParam = pathname[match.index! + match[0].length];
+		// If followed by ( or modifier, it's complex
+		if (afterParam === "(" || afterParam === "?" || afterParam === "+" || afterParam === "*") {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/**
+ * Parse a simple pathname pattern into segments for radix tree insertion
+ * Returns null if the pattern is complex (use regex instead)
+ *
+ * Examples:
+ * - "/api/users" -> [{ type: "static", value: "/api/users" }]
+ * - "/users/:id" -> [{ type: "static", value: "/users/" }, { type: "param", name: "id" }]
+ * - "/files/*" -> [{ type: "static", value: "/files/" }, { type: "wildcard" }]
+ */
+export function parseSimplePattern(pathname: string): ParsedPattern | null {
+	if (!isSimplePattern(pathname)) {
+		return null;
+	}
+
+	const segments: PatternSegment[] = [];
+	const paramNames: string[] = [];
+	let hasWildcard = false;
+	let currentStatic = "";
+	let i = 0;
+
+	while (i < pathname.length) {
+		const char = pathname[i];
+
+		if (char === ":") {
+			// Named parameter
+			const match = pathname.slice(i).match(/^:(\p{ID_Continue}+)/u);
+			if (match) {
+				// Flush current static segment
+				if (currentStatic) {
+					segments.push({ type: "static", value: currentStatic });
+					currentStatic = "";
+				}
+
+				const name = match[1];
+				paramNames.push(name);
+				segments.push({ type: "param", name });
+				i += match[0].length;
+				continue;
+			}
+		}
+
+		if (char === "*") {
+			// Wildcard (already validated to be at end)
+			if (currentStatic) {
+				segments.push({ type: "static", value: currentStatic });
+				currentStatic = "";
+			}
+			hasWildcard = true;
+			segments.push({ type: "wildcard" });
+			break;
+		}
+
+		currentStatic += char;
+		i++;
+	}
+
+	// Flush remaining static segment
+	if (currentStatic) {
+		segments.push({ type: "static", value: currentStatic });
+	}
+
+	return { segments, paramNames, hasWildcard };
 }
 
 /**
@@ -1323,7 +1447,7 @@ function compileComponentPattern(component: string, ignoreCase: boolean = false)
  * @param encodeChars Whether to percent-encode characters that aren't allowed in URL paths (default true)
  * @param ignoreCase Whether to make the regex case-insensitive
  */
-function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCase: boolean = false): CompiledPattern {
+export function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCase: boolean = false): CompiledPattern {
 	const paramNames: string[] = [];
 	let hasWildcard = false;
 	let pattern = "";

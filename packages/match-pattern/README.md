@@ -31,7 +31,7 @@ const url = new URL('http://example.com/api/posts/123?format=json&page=1');
 
 if (pattern.test(url)) {
   const result = pattern.exec(url);
-  console.log(result.params); 
+  console.log(result.params);
   // { id: '123', format: 'json', page: '1' }
 }
 ```
@@ -70,7 +70,7 @@ const pattern = new MatchPattern({ search: 'type=:type&sort=:sort' });
 
 // URLPattern: Only first URL matches
 // MatchPattern: Both URLs match
-pattern.test('/?type=blog&sort=date');  // ✅ Both: true  
+pattern.test('/?type=blog&sort=date');  // ✅ Both: true
 pattern.test('/?sort=date&type=blog');  // ✅ MatchPattern: true, URLPattern: false
 ```
 
@@ -119,7 +119,7 @@ MatchPattern supports convenient string patterns with `&` separator:
 // Pathname only
 new MatchPattern('/api/posts/:id')
 
-// Pathname with search parameters  
+// Pathname with search parameters
 new MatchPattern('/api/posts/:id&format=:format&page=:page')
 
 // Search parameters only
@@ -129,11 +129,13 @@ new MatchPattern('&q=:query&sort=:sort')
 new MatchPattern('https://api.example.com/v1/posts/:id&format=:format')
 
 // Object syntax (same as URLPattern, enhanced behavior)
-new MatchPattern({ 
+new MatchPattern({
   pathname: '/api/posts/:id',
-  search: 'format=:format' 
+  search: 'format=:format'
 })
 ```
+
+It's not possible to separate pathname from search with `?` because the syntax is used to indicate optionality.
 
 ## Trailing Slash Handling
 
@@ -164,15 +166,15 @@ MatchPattern compiles URLPattern syntax directly to RegExp in a single pass, whi
 ### URLPattern Spec Compliance
 
 MatchPattern implements the core URLPattern pathname syntax using pure RegExp:
-- ✅ Named parameters: `:id`, `:id(\d+)`
-- ✅ Optional parameters: `:id?`
-- ✅ Repeat modifiers: `:path+`, `:path*`
-- ✅ Wildcards: `*`
-- ✅ Regex groups: `(\d+)`
-- ✅ Explicit delimiters: `{/old}?`
-- ✅ Escaped characters: `\.`
-- ✅ Protocol and hostname matching
-- ✅ Search parameters (with routing enhancements)
+- Named parameters: `:id`, `:id(\d+)`
+- Optional parameters: `:id?`
+- Repeat modifiers: `:path+`, `:path*`
+- Wildcards: `*`
+- Regex groups: `(\d+)`
+- Explicit delimiters: `{/old}?`
+- Escaped characters: `\.`
+- Protocol and hostname matching
+- Search parameters (with routing enhancements)
 
 **Not implemented:**
 - `baseURL` parameter for relative pattern resolution
@@ -208,14 +210,13 @@ interface MatchPatternResult extends URLPatternResult {
 
 ## Compatibility
 
-- **Node.js**: All versions (uses standard RegExp)
+- **Runtimes**: Node,Deno, Bun, Cloudflare Workers, Edge Runtime, any JavaScript environment
 - **Browsers**: All browsers (no polyfill required)
-- **Runtimes**: Deno, Bun, Cloudflare Workers, Edge Runtime, any JavaScript environment
 - **TypeScript**: 5.0+ recommended
 
 ## Contributing
 
-MatchPattern follows the [WHATWG URLPattern specification](https://urlpattern.spec.whatwg.org/) while extending it for routing use cases. 
+MatchPattern follows the [WHATWG URLPattern specification](https://urlpattern.spec.whatwg.org/) while extending it for routing use cases.
 
 Report issues related to:
 - URLPattern compatibility problems

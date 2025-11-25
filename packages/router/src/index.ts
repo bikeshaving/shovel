@@ -12,7 +12,12 @@
  * - Typechecking
  */
 
-import {MatchPattern} from "@b9g/match-pattern";
+import {
+	MatchPattern,
+	isSimplePattern,
+	compilePathname,
+	type CompiledPattern,
+} from "@b9g/match-pattern";
 
 // ============================================================================
 // TYPES
@@ -116,148 +121,208 @@ interface MatchResult {
 // ============================================================================
 
 /**
- * LinearExecutor provides O(n) route matching by testing each route in order
- * This is the initial implementation - can be upgraded to trie-based matching later
+ * Radix tree node for fast route matching
+ * Supports static segments, named parameters, and wildcards
  */
-class LinearExecutor {
-	constructor(private routes: RouteEntry[]) {}
+class RadixNode {
+	children: Map<string, RadixNode> = new Map(); // char -> RadixNode
+	handlers: Map<string, Handler> = new Map(); // method -> handler
+	paramName: string | null = null; // param name if this is a :param segment
+	paramChild: RadixNode | null = null; // child node for :param
+	wildcardChild: RadixNode | null = null; // child node for * wildcard
+}
+
+/**
+ * Route entry for complex patterns that need regex matching
+ */
+interface ComplexRouteEntry {
+	compiled: CompiledPattern;
+	method: string;
+	handler: Handler;
+	pattern: MatchPattern; // Keep for search param matching
+}
+
+/**
+ * RadixTreeExecutor uses a radix tree for simple patterns and falls back
+ * to regex matching for complex patterns (constraints, modifiers, etc.)
+ *
+ * Simple patterns: /users/:id, /api/health, /files/*
+ * Complex patterns: /users/:id(\d+), /files/:path+, {/prefix}?/users
+ */
+class RadixTreeExecutor {
+	#root: RadixNode = new RadixNode();
+	#complexRoutes: ComplexRouteEntry[] = [];
+
+	constructor(routes: RouteEntry[]) {
+		for (const route of routes) {
+			const pathname = route.pattern.pathname;
+
+			if (isSimplePattern(pathname)) {
+				// Simple pattern - add to radix tree
+				this.#addToTree(pathname, route.method, route.handler);
+			} else {
+				// Complex pattern - compile to regex
+				const compiled = compilePathname(pathname);
+				this.#complexRoutes.push({
+					compiled,
+					method: route.method,
+					handler: route.handler,
+					pattern: route.pattern,
+				});
+			}
+		}
+	}
 
 	/**
-	 * Find the first route that matches the request
-	 * Returns null if no route matches
+	 * Add a simple pattern to the radix tree
 	 */
-	match(request: Request): MatchResult | null {
-		const url = new URL(request.url);
-		const method = request.method.toUpperCase();
+	#addToTree(pathname: string, method: string, handler: Handler): void {
+		let node = this.#root;
+		let i = 0;
 
-		for (const route of this.routes) {
-			// Skip routes that don't match the HTTP method
-			if (route.method !== method) {
+		while (i < pathname.length) {
+			const char = pathname[i];
+
+			if (char === ":") {
+				// Named parameter - find the param name
+				const match = pathname.slice(i).match(/^:(\w+)/);
+				if (match) {
+					const paramName = match[1];
+
+					if (!node.paramChild) {
+						node.paramChild = new RadixNode();
+						node.paramChild.paramName = paramName;
+					}
+					node = node.paramChild;
+					i += match[0].length;
+					continue;
+				}
+			}
+
+			if (char === "*") {
+				// Wildcard - matches rest of path
+				if (!node.wildcardChild) {
+					node.wildcardChild = new RadixNode();
+				}
+				node = node.wildcardChild;
+				break; // Wildcard consumes everything
+			}
+
+			// Static character
+			if (!node.children.has(char)) {
+				node.children.set(char, new RadixNode());
+			}
+			node = node.children.get(char)!;
+			i++;
+		}
+
+		node.handlers.set(method, handler);
+	}
+
+	/**
+	 * Match a pathname against the radix tree
+	 */
+	#matchTree(
+		pathname: string,
+		method: string,
+	): {handler: Handler; params: Record<string, string>} | null {
+		const params: Record<string, string> = {};
+		let node = this.#root;
+		let i = 0;
+
+		while (i < pathname.length) {
+			const char = pathname[i];
+
+			// Try static match first
+			if (node.children.has(char)) {
+				node = node.children.get(char)!;
+				i++;
 				continue;
 			}
 
-			// Test if the URL pattern matches
-			if (route.pattern.test(url)) {
-				// Extract parameters using MatchPattern's enhanced exec
-				const result = route.pattern.exec(url);
-				if (result) {
-					return {
-						handler: route.handler,
-						context: {
-							params: result.params,
-						},
-					};
+			// Try param match
+			if (node.paramChild) {
+				// Find end of segment (next / or end of string)
+				let j = i;
+				while (j < pathname.length && pathname[j] !== "/") {
+					j++;
 				}
+
+				const value = pathname.slice(i, j);
+				if (value) {
+					// Non-empty segment
+					params[node.paramChild.paramName!] = value;
+					node = node.paramChild;
+					i = j;
+					continue;
+				}
+			}
+
+			// Try wildcard match
+			if (node.wildcardChild) {
+				// Wildcard captures rest of path (without leading /)
+				const rest = pathname.slice(i);
+				params["0"] = rest; // Use "0" as wildcard param name
+				node = node.wildcardChild;
+				break;
+			}
+
+			// No match
+			return null;
+		}
+
+		const handler = node.handlers.get(method);
+		if (handler) {
+			return {handler, params};
+		}
+
+		// Check wildcard at terminal node (for patterns like /files/*)
+		if (node.wildcardChild) {
+			const wildcardHandler = node.wildcardChild.handlers.get(method);
+			if (wildcardHandler) {
+				params["0"] = ""; // Empty wildcard match
+				return {handler: wildcardHandler, params};
 			}
 		}
 
 		return null;
 	}
-}
-
-/**
- * Check if a pathname is static (no params or wildcards)
- */
-function isStaticPath(pathname: string): boolean {
-	// Static if it contains no :param, *, (, ), {, }, +, or ?
-	return !/[:*(){}+?]/.test(pathname);
-}
-
-/**
- * HybridExecutor uses Map for static routes, linear scan for dynamic routes
- * Preserves linear priority while optimizing common case (static routes)
- */
-class HybridExecutor {
-	#routes: RouteEntry[];
-	#staticRoutes: Map<string, Map<string, RouteEntry>>; // pathname -> method -> route
-	#dynamicRoutes: RouteEntry[];
-
-	constructor(routes: RouteEntry[]) {
-		this.#routes = routes;
-		this.#staticRoutes = new Map();
-		this.#dynamicRoutes = [];
-
-		// Partition routes into static and dynamic
-		for (const route of routes) {
-			const pathname = route.pattern.pathname;
-
-			if (isStaticPath(pathname)) {
-				// Static route - add to Map for O(1) lookup
-				if (!this.#staticRoutes.has(pathname)) {
-					this.#staticRoutes.set(pathname, new Map());
-				}
-				this.#staticRoutes.get(pathname)!.set(route.method, route);
-			} else {
-				// Dynamic route - keep in linear array
-				this.#dynamicRoutes.push(route);
-			}
-		}
-	}
 
 	/**
 	 * Find the first route that matches the request
-	 * Checks static routes first (O(1)), then dynamic routes (O(n))
-	 * Preserves priority by checking routes in registration order
 	 */
 	match(request: Request): MatchResult | null {
 		const url = new URL(request.url);
 		const method = request.method.toUpperCase();
 		const pathname = url.pathname;
 
-		// To preserve linear priority, we need to check static and dynamic
-		// routes in their original registration order
-		//
-		// Strategy: Check if the first matching route (by priority) is static or dynamic
-		// If we have no dynamic routes before the first static match, we can fast-path
-
-		// Fast path: Try static route lookup first
-		const staticMethodMap = this.#staticRoutes.get(pathname);
-		if (staticMethodMap) {
-			const staticRoute = staticMethodMap.get(method);
-			if (staticRoute) {
-				// Check if any dynamic route comes before this static route in priority
-				const staticIndex = this.#routes.indexOf(staticRoute);
-				let hasPriorityDynamic = false;
-
-				for (const dynamicRoute of this.#dynamicRoutes) {
-					const dynamicIndex = this.#routes.indexOf(dynamicRoute);
-					if (dynamicIndex < staticIndex && dynamicRoute.method === method) {
-						// A dynamic route with matching method comes before this static route
-						// We need to test if it matches
-						if (dynamicRoute.pattern.test(url)) {
-							const result = dynamicRoute.pattern.exec(url);
-							if (result) {
-								return {
-									handler: dynamicRoute.handler,
-									context: {params: result.params},
-								};
-							}
-						}
-					}
-				}
-
-				// No dynamic route matched with higher priority - use static route
-				return {
-					handler: staticRoute.handler,
-					context: {params: {}},
-				};
-			}
+		// Try radix tree first (fast path for simple routes)
+		const treeResult = this.#matchTree(pathname, method);
+		if (treeResult) {
+			return {
+				handler: treeResult.handler,
+				context: {params: treeResult.params},
+			};
 		}
 
-		// No static match - check dynamic routes
-		for (const route of this.#dynamicRoutes) {
+		// Fall back to regex for complex routes
+		for (const route of this.#complexRoutes) {
 			if (route.method !== method) {
 				continue;
 			}
 
-			if (route.pattern.test(url)) {
-				const result = route.pattern.exec(url);
-				if (result) {
-					return {
-						handler: route.handler,
-						context: {params: result.params},
-					};
+			const match = pathname.match(route.compiled.regex);
+			if (match) {
+				const params: Record<string, string> = {};
+				for (let i = 0; i < route.compiled.paramNames.length; i++) {
+					if (match[i + 1] !== undefined) {
+						params[route.compiled.paramNames[i]] = match[i + 1];
+					}
 				}
+				return {
+					handler: route.handler,
+					context: {params},
+				};
 			}
 		}
 
@@ -366,7 +431,7 @@ class RouteBuilder {
 export class Router {
 	#routes: RouteEntry[];
 	#middlewares: MiddlewareEntry[];
-	#executor: LinearExecutor | HybridExecutor | null;
+	#executor: RadixTreeExecutor | null;
 	#dirty: boolean;
 
 	constructor() {
@@ -379,7 +444,7 @@ export class Router {
 		this.#handlerImpl = async (request: Request): Promise<Response> => {
 			// Lazy compilation - build executor on first match
 			if (this.#dirty || !this.#executor) {
-				this.#executor = new HybridExecutor(this.#routes);
+				this.#executor = new RadixTreeExecutor(this.#routes);
 				this.#dirty = false;
 			}
 
@@ -505,7 +570,7 @@ export class Router {
 	async match(request: Request): Promise<Response | null> {
 		// Lazy compilation - build executor on first match
 		if (this.#dirty || !this.#executor) {
-			this.#executor = new HybridExecutor(this.#routes);
+			this.#executor = new RadixTreeExecutor(this.#routes);
 			this.#dirty = false;
 		}
 
@@ -665,7 +730,7 @@ export class Router {
 		context: RouteContext,
 		handler: Handler,
 		originalURL: string,
-		executor?: LinearExecutor | null,
+		executor?: RadixTreeExecutor | null,
 	): Promise<Response> {
 		const runningGenerators: Array<{generator: AsyncGenerator; index: number}> =
 			[];
