@@ -40,7 +40,7 @@ export interface WorkerRequest extends WorkerMessage {
 		url: string;
 		method: string;
 		headers: Record<string, string>;
-		body?: any;
+		body?: ArrayBuffer | null; // Zero-copy transfer to worker
 	};
 	requestID: number;
 }
@@ -51,7 +51,7 @@ export interface WorkerResponse extends WorkerMessage {
 		status: number;
 		statusText: string;
 		headers: Record<string, string>;
-		body: string;
+		body: ArrayBuffer; // Zero-copy transfer from worker
 	};
 	requestID: number;
 }
@@ -378,7 +378,7 @@ export class ServiceWorkerPool {
 	#handleResponse(message: WorkerResponse) {
 		const pending = this.#pendingRequests.get(message.requestID);
 		if (pending) {
-			// Reconstruct Response object from serialized data
+			// Reconstruct Response object from transferred ArrayBuffer (zero-copy)
 			const response = new Response(message.response.body, {
 				status: message.response.status,
 				statusText: message.response.statusText,
@@ -430,23 +430,33 @@ export class ServiceWorkerPool {
 
 		const requestID = ++this.#requestID;
 
-		return new Promise((resolve, reject) => {
+		return new Promise(async (resolve, reject) => {
 			// Track pending request
 			this.#pendingRequests.set(requestID, {resolve, reject});
 
-			// Serialize request for worker (can't clone Request objects across threads)
+			// Read request body as ArrayBuffer for zero-copy transfer
+			let body: ArrayBuffer | null = null;
+			if (request.body) {
+				body = await request.arrayBuffer();
+			}
+
 			const workerRequest: WorkerRequest = {
 				type: "request",
 				request: {
 					url: request.url,
 					method: request.method,
 					headers: Object.fromEntries(request.headers.entries()),
-					body: request.body,
+					body,
 				},
 				requestID,
 			};
 
-			worker.postMessage(workerRequest);
+			// Transfer the body ArrayBuffer if present (zero-copy)
+			if (body) {
+				worker.postMessage(workerRequest, [body]);
+			} else {
+				worker.postMessage(workerRequest);
+			}
 
 			// Timeout handling
 			setTimeout(() => {

@@ -1295,7 +1295,14 @@ async function initializeWorker() {
 	// Use Web Worker globals - works with native Web Workers or web-worker shim
 	// Note: Use globalThis instead of self for compatibility with node-webworker shim
 	const messagePort = globalThis;
-	const sendMessage = (message: WorkerMessage) => postMessage(message);
+	// Support zero-copy transfers via transferables
+	const sendMessage = (message: WorkerMessage, transfer?: Transferable[]) => {
+		if (transfer && transfer.length > 0) {
+			postMessage(message, transfer);
+		} else {
+			postMessage(message);
+		}
+	};
 
 	// Handle incoming messages
 	onmessage = function (event: MessageEvent) {
@@ -1415,7 +1422,7 @@ async function loadServiceWorker(
 }
 
 const workerId = Math.random().toString(36).substring(2, 8);
-let sendMessage: (message: WorkerMessage) => void;
+let sendMessage: (message: WorkerMessage, transfer?: Transferable[]) => void;
 
 async function initializeRuntime(config: any): Promise<void> {
 	try {
@@ -1537,17 +1544,20 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
 
 			const response = await handleFetchEvent(request);
 
+			// Use arrayBuffer for zero-copy transfer
+			const body = await response.arrayBuffer();
 			const responseMsg: WorkerResponse = {
 				type: "response",
 				response: {
 					status: response.status,
 					statusText: response.statusText,
 					headers: Object.fromEntries(response.headers.entries()),
-					body: await response.text(),
+					body,
 				},
 				requestID: reqMsg.requestID,
 			};
-			sendMessage(responseMsg);
+			// Transfer the ArrayBuffer (zero-copy)
+			sendMessage(responseMsg, [body]);
 		}
 		// Ignore all other message types (cache: messages handled directly by MemoryCache)
 	} catch (error) {

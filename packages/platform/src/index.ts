@@ -75,6 +75,8 @@ export interface ServiceWorkerOptions {
 	context?: any;
 	/** Number of worker threads (Node/Bun only) */
 	workerCount?: number;
+	/** Enable hot reload (dev mode) - forces worker mode for reliable reloading */
+	hotReload?: boolean;
 }
 
 /**
@@ -487,6 +489,12 @@ export {
 	type WorkerInitMessage,
 	type WorkerInitializedMessage,
 } from "./worker-pool.js";
+
+// Single-threaded runtime (for workerCount === 1)
+export {
+	SingleThreadedRuntime,
+	type SingleThreadedRuntimeOptions,
+} from "./single-threaded.js";
 
 // ServiceWorker runtime
 export {

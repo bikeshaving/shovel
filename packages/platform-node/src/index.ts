@@ -13,6 +13,7 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 	ServiceWorkerPool,
+	SingleThreadedRuntime,
 	loadConfig,
 	getCacheConfig,
 	type ProcessedShovelConfig,
@@ -56,6 +57,7 @@ export class NodePlatform extends BasePlatform {
 
 	#options: Required<NodePlatformOptions>;
 	#workerPool?: ServiceWorkerPool;
+	#singleThreadedRuntime?: SingleThreadedRuntime;
 	#cacheStorage?: CustomCacheStorage;
 	#config: ProcessedShovelConfig;
 
@@ -104,6 +106,100 @@ export class NodePlatform extends BasePlatform {
 		entrypoint: string,
 		options: ServiceWorkerOptions = {},
 	): Promise<ServiceWorkerInstance> {
+		// Use worker count from: 1) options, 2) config, 3) default 1
+		const workerCount = options.workerCount ?? this.#config.workers ?? 1;
+
+		// Single-threaded mode: skip workers entirely for maximum performance
+		// BUT: Use workers in dev mode (hotReload) for reliable hot reload
+		if (workerCount === 1 && !options.hotReload) {
+			return this.#loadServiceWorkerDirect(entrypoint, options);
+		}
+
+		// Multi-worker mode OR dev mode: use ServiceWorkerPool
+		return this.#loadServiceWorkerWithPool(entrypoint, options, workerCount);
+	}
+
+	/**
+	 * Load ServiceWorker directly in main thread (single-threaded mode)
+	 * No postMessage overhead - maximum performance for production
+	 */
+	async #loadServiceWorkerDirect(
+		entrypoint: string,
+		_options: ServiceWorkerOptions,
+	): Promise<ServiceWorkerInstance> {
+		const entryPath = Path.resolve(this.#options.cwd, entrypoint);
+
+		// Create shared cache storage if not already created
+		if (!this.#cacheStorage) {
+			this.#cacheStorage = await this.createCaches();
+		}
+
+		// Terminate any existing runtime
+		if (this.#singleThreadedRuntime) {
+			await this.#singleThreadedRuntime.terminate();
+		}
+		if (this.#workerPool) {
+			await this.#workerPool.terminate();
+			this.#workerPool = undefined;
+		}
+
+		logger.info("Creating single-threaded ServiceWorker runtime", {entryPath});
+
+		// Create single-threaded runtime
+		this.#singleThreadedRuntime = new SingleThreadedRuntime({
+			cacheStorage: this.#cacheStorage,
+			config: this.#config,
+		});
+
+		// Initialize and load entrypoint
+		await this.#singleThreadedRuntime.init();
+		const version = Date.now();
+		await this.#singleThreadedRuntime.loadEntrypoint(entryPath, version);
+
+		// Capture reference for closures
+		const runtime = this.#singleThreadedRuntime;
+		const platform = this;
+
+		const instance: ServiceWorkerInstance = {
+			runtime,
+			handleRequest: async (request: Request) => {
+				if (!platform.#singleThreadedRuntime) {
+					throw new Error("SingleThreadedRuntime not initialized");
+				}
+				return platform.#singleThreadedRuntime.handleRequest(request);
+			},
+			install: async () => {
+				logger.info("ServiceWorker installed", {method: "single_threaded"});
+			},
+			activate: async () => {
+				logger.info("ServiceWorker activated", {method: "single_threaded"});
+			},
+			get ready() {
+				return runtime?.ready ?? false;
+			},
+			dispose: async () => {
+				if (platform.#singleThreadedRuntime) {
+					await platform.#singleThreadedRuntime.terminate();
+					platform.#singleThreadedRuntime = undefined;
+				}
+				logger.info("ServiceWorker disposed", {});
+			},
+		};
+
+		logger.info("ServiceWorker loaded", {
+			features: ["single_threaded", "no_postmessage_overhead"],
+		});
+		return instance;
+	}
+
+	/**
+	 * Load ServiceWorker using worker pool (multi-threaded mode or dev mode)
+	 */
+	async #loadServiceWorkerWithPool(
+		entrypoint: string,
+		_options: ServiceWorkerOptions,
+		workerCount: number,
+	): Promise<ServiceWorkerInstance> {
 		const entryPath = Path.resolve(this.#options.cwd, entrypoint);
 
 		// Create shared cache storage if not already created
@@ -114,13 +210,15 @@ export class NodePlatform extends BasePlatform {
 		// Note: Bucket storage is handled in runtime.ts using import.meta.url
 		// Workers calculate bucket paths relative to their script location
 
-		// Create ServiceWorkerPool with shared cache
-		// Always create a new WorkerPool to ensure correct entrypoint
+		// Terminate any existing runtime
+		if (this.#singleThreadedRuntime) {
+			await this.#singleThreadedRuntime.terminate();
+			this.#singleThreadedRuntime = undefined;
+		}
 		if (this.#workerPool) {
 			await this.#workerPool.terminate();
 		}
-		// Use worker count from: 1) options, 2) config, 3) default 1
-		const workerCount = options.workerCount ?? this.#config.workers ?? 1;
+
 		logger.info("Creating ServiceWorker pool", {
 			entryPath,
 			workerCount,
@@ -326,6 +424,8 @@ export class NodePlatform extends BasePlatform {
 	async reloadWorkers(version?: number | string): Promise<void> {
 		if (this.#workerPool) {
 			await this.#workerPool.reloadWorkers(version);
+		} else if (this.#singleThreadedRuntime) {
+			await this.#singleThreadedRuntime.reloadWorkers(version);
 		}
 	}
 
@@ -333,7 +433,13 @@ export class NodePlatform extends BasePlatform {
 	 * Dispose of platform resources
 	 */
 	async dispose(): Promise<void> {
-		// Dispose worker pool first
+		// Dispose single-threaded runtime
+		if (this.#singleThreadedRuntime) {
+			await this.#singleThreadedRuntime.terminate();
+			this.#singleThreadedRuntime = undefined;
+		}
+
+		// Dispose worker pool
 		if (this.#workerPool) {
 			await this.#workerPool.terminate();
 			this.#workerPool = undefined;
