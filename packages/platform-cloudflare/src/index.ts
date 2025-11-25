@@ -15,6 +15,8 @@ import {
 } from "@b9g/platform";
 import {MemoryBucket} from "@b9g/filesystem/memory.js";
 import {getLogger} from "@logtape/logtape";
+import type {Miniflare} from "miniflare";
+import {CFAssetsDirectoryHandle, type CFAssetsBinding} from "./filesystem-assets.js";
 
 const logger = getLogger(["platform-cloudflare"]);
 
@@ -35,6 +37,8 @@ export type {
 export interface CloudflarePlatformOptions extends PlatformConfig {
 	/** Cloudflare Workers environment (production, preview, dev) */
 	environment?: "production" | "preview" | "dev";
+	/** Static assets directory for ASSETS binding (dev mode) */
+	assetsDirectory?: string;
 	/** KV namespace bindings */
 	kvNamespaces?: Record<string, any>;
 	/** R2 bucket bindings */
@@ -55,12 +59,16 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
 export class CloudflarePlatform extends BasePlatform {
 	readonly name: string;
 	#options: Required<CloudflarePlatformOptions>;
+	#miniflare: Miniflare | null = null;
+	#assetsMiniflare: Miniflare | null = null; // Separate instance for ASSETS binding
+	#assetsBinding: CFAssetsBinding | null = null;
 
 	constructor(options: CloudflarePlatformOptions = {}) {
 		super(options);
 		this.name = "cloudflare";
 		this.#options = {
 			environment: "production",
+			assetsDirectory: undefined as any,
 			kvNamespaces: {},
 			r2Buckets: {},
 			d1Databases: {},
@@ -96,8 +104,8 @@ export class CloudflarePlatform extends BasePlatform {
 	/**
 	 * Load ServiceWorker-style entrypoint in Cloudflare Workers
 	 *
-	 * Cloudflare Workers are already ServiceWorker-based, so we can use
-	 * the global environment directly in production
+	 * In production: Uses the native CF Worker environment
+	 * In dev mode: Uses miniflare (workerd) for true dev/prod parity
 	 */
 	async loadServiceWorker(
 		entrypoint: string,
@@ -134,29 +142,128 @@ export class CloudflarePlatform extends BasePlatform {
 			await import(entrypoint);
 			return instance;
 		} else {
-			// Development environment - use the base platform implementation
-			// This would use our ServiceWorker runtime simulation
-			throw new Error(
-				"Cloudflare platform development mode not yet implemented. Use Node platform for development.",
-			);
+			// Development mode - use miniflare
+			return this.#loadServiceWorkerWithMiniflare(entrypoint);
 		}
 	}
 
 	/**
+	 * Load ServiceWorker using miniflare (workerd) for dev mode
+	 */
+	async #loadServiceWorkerWithMiniflare(
+		entrypoint: string,
+	): Promise<ServiceWorkerInstance> {
+		logger.info("Starting miniflare dev server", {entrypoint});
+
+		// Dynamic import miniflare (dev dependency)
+		const {Miniflare} = await import("miniflare");
+
+		// Configure miniflare for the worker
+		const miniflareOptions: ConstructorParameters<typeof Miniflare>[0] = {
+			modules: false, // ServiceWorker format (not ES modules)
+			scriptPath: entrypoint,
+			// Enable CF-compatible APIs
+			compatibilityDate: "2024-09-23",
+			compatibilityFlags: ["nodejs_compat"],
+		};
+
+		// Create miniflare instance for the worker
+		this.#miniflare = new Miniflare(miniflareOptions);
+
+		// Trigger initialization to catch configuration errors early
+		await this.#miniflare.ready;
+
+		// If assets directory is configured, create a separate miniflare instance
+		// just for the ASSETS binding (to avoid routing conflicts)
+		if (this.#options.assetsDirectory) {
+			logger.info("Setting up separate ASSETS binding", {
+				directory: this.#options.assetsDirectory,
+			});
+
+			this.#assetsMiniflare = new Miniflare({
+				modules: true,
+				script: `export default { fetch() { return new Response("assets-only"); } }`,
+				assets: {
+					directory: this.#options.assetsDirectory,
+					binding: "ASSETS",
+				},
+				compatibilityDate: "2024-09-23",
+			});
+
+			const assetsEnv = await this.#assetsMiniflare.getBindings();
+			if (assetsEnv.ASSETS) {
+				this.#assetsBinding = assetsEnv.ASSETS as CFAssetsBinding;
+				logger.info("ASSETS binding available", {});
+			}
+		}
+
+		const mf = this.#miniflare;
+
+		const instance: ServiceWorkerInstance = {
+			runtime: mf,
+			handleRequest: async (request: Request) => {
+				return mf.dispatchFetch(request);
+			},
+			install: () => Promise.resolve(),
+			activate: () => Promise.resolve(),
+			get ready() {
+				return true;
+			},
+			dispose: async () => {
+				await mf.dispose();
+			},
+		};
+
+		logger.info("Miniflare dev server ready", {});
+		return instance;
+	}
+
+	/**
 	 * Get filesystem root for File System Access API
+	 *
+	 * Well-known buckets:
+	 * - "assets": Read-only bundled static files (uses ASSETS binding in prod)
+	 * - "tmp": Ephemeral writable storage (uses MemoryBucket)
+	 *
+	 * Unknown buckets throw an error - use platform config to add custom buckets.
 	 */
 	async getFileSystemRoot(
 		name = "default",
 	): Promise<FileSystemDirectoryHandle> {
-		// Cloudflare Workers use memory buckets only
-		return new MemoryBucket(name);
+		// "assets" bucket uses the ASSETS binding (bundled static files)
+		if (name === "assets") {
+			if (this.#assetsBinding) {
+				return new CFAssetsDirectoryHandle(this.#assetsBinding, "/");
+			}
+			// In dev mode without assets configured, return empty memory bucket
+			return new MemoryBucket(name);
+		}
+
+		// "tmp" bucket uses ephemeral memory storage
+		if (name === "tmp") {
+			return new MemoryBucket(name);
+		}
+
+		// Unknown buckets are not allowed - fail fast
+		throw new Error(
+			`Unknown bucket "${name}". Cloudflare platform only supports well-known buckets: "assets", "tmp". ` +
+				`Configure custom buckets via platform options or use R2/KV bindings.`,
+		);
 	}
 
 	/**
 	 * Dispose of platform resources
 	 */
 	async dispose(): Promise<void> {
-		// Nothing to dispose in Cloudflare Workers
+		if (this.#miniflare) {
+			await this.#miniflare.dispose();
+			this.#miniflare = null;
+		}
+		if (this.#assetsMiniflare) {
+			await this.#assetsMiniflare.dispose();
+			this.#assetsMiniflare = null;
+		}
+		this.#assetsBinding = null;
 	}
 }
 
