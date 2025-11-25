@@ -82,7 +82,7 @@ function getDefaultPort(protocol: string): string | undefined {
  * Returns canonicalized port or undefined if invalid
  * Note: Does not validate range for pattern matching purposes
  */
-function canonicalizePort(port: string): string | undefined {
+function canonicalizePort(port: string, throwOnInvalid: boolean = false): string | undefined {
 	if (port === "") return ""; // Empty port is valid (default)
 
 	// Strip ASCII tab, newline, and carriage return per URL spec
@@ -94,8 +94,14 @@ function canonicalizePort(port: string): string | undefined {
 
 	const numericPort = parseInt(match[1], 10);
 
-	// For pattern matching, allow any numeric port (even out of range)
-	// The URL spec validates range, but patterns can match invalid ports
+	// Port must be in valid range 0-65535
+	if (numericPort > 65535) {
+		if (throwOnInvalid) {
+			throw new TypeError(`Invalid port: ${port} (must be 0-65535)`);
+		}
+		return undefined;
+	}
+
 	return numericPort.toString();
 }
 
@@ -556,9 +562,17 @@ function compileComponentPattern(component: string, ignoreCase: boolean = false)
 	let hasWildcard = false;
 	let pattern = "";
 	let i = 0;
+	let inIPv6Brackets = false; // Track if we're inside [...] for IPv6
 
 	while (i < component.length) {
 		const char = component[i];
+
+		// Track IPv6 brackets
+		if (char === "[" && !inIPv6Brackets) {
+			inIPv6Brackets = true;
+		} else if (char === "]" && inIPv6Brackets) {
+			inIPv6Brackets = false;
+		}
 
 		// Handle escaped characters \<char>
 		if (char === "\\") {
@@ -585,6 +599,9 @@ function compileComponentPattern(component: string, ignoreCase: boolean = false)
 				let basePattern;
 				if (constraint) {
 					basePattern = constraint.slice(1, -1);
+				} else if (inIPv6Brackets) {
+					// Inside IPv6 brackets, allow colons (e.g., [:address] matching [::1])
+					basePattern = "[^\\[\\]/?#]+";
 				} else {
 					// Default: match any character except delimiter (. for hostname, otherwise any)
 					basePattern = "[^./:?#]+";
@@ -1170,6 +1187,9 @@ export class MatchPattern {
 			const parsed = parseStringPattern(input);
 			this.#originalInput = parsed;
 
+			// Note: Unlike strict URLPattern, we allow pathname-only patterns without baseURL
+			// for convenience in routing. e.g., "/users/:id" or "/api&format=:format"
+
 			// Compile protocol pattern
 			const protocol = parsed.protocol || (baseUrlParsed ? baseUrlParsed.protocol.replace(":", "") : undefined);
 			if (protocol) {
@@ -1177,8 +1197,13 @@ export class MatchPattern {
 			}
 
 			// Compile hostname pattern
-			const hostname = parsed.hostname || (baseUrlParsed ? baseUrlParsed.hostname : undefined);
+			let hostname = parsed.hostname || (baseUrlParsed ? baseUrlParsed.hostname : undefined);
 			if (hostname) {
+				// Normalize IPv6 hex digits to lowercase (case-insensitive)
+				// Only lowercase literal chars, preserve pattern syntax like :name
+				if (hostname.startsWith("[")) {
+					hostname = hostname.replace(/[A-F]/g, c => c.toLowerCase());
+				}
 				this.#hostnameCompiled = compileComponentPattern(hostname, this.#ignoreCase);
 			}
 
@@ -1188,7 +1213,7 @@ export class MatchPattern {
 				// Normalize default port if protocol is known
 				const hasPatternSyntax = /[{}()*+?:|\\]/.test(port);
 				if (protocol && !hasPatternSyntax) {
-					const canonicalPort = canonicalizePort(port);
+					const canonicalPort = canonicalizePort(port, true); // throws if invalid
 					if (canonicalPort !== undefined) {
 						const defaultPort = getDefaultPort(protocol);
 						if (defaultPort && canonicalPort === defaultPort) {
@@ -1277,6 +1302,10 @@ export class MatchPattern {
 						// If URL parsing fails, use as-is
 					}
 				}
+				// Normalize IPv6 hex digits to lowercase (case-insensitive)
+				if (hostname.startsWith("[")) {
+					hostname = hostname.replace(/[A-F]/g, c => c.toLowerCase());
+				}
 				this.#hostnameCompiled = compileComponentPattern(hostname, this.#ignoreCase);
 			}
 
@@ -1287,8 +1316,8 @@ export class MatchPattern {
 				// Check if port contains URLPattern special chars
 				const hasPatternSyntax = /[{}()*+?:|\\]/.test(port);
 				if (protocol && !hasPatternSyntax && isValidPatternPort(port)) {
-					// Only canonicalize if port is valid (all digits)
-					const canonicalPort = canonicalizePort(port);
+					// Only canonicalize if port is valid (all digits) - throws if out of range
+					const canonicalPort = canonicalizePort(port, true);
 					if (canonicalPort !== undefined) {
 						const defaultPort = getDefaultPort(protocol);
 						if (defaultPort && canonicalPort === defaultPort) {
