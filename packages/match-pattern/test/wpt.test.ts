@@ -25,12 +25,21 @@ describe("WPT URLPattern compliance", () => {
 			try {
 				if (Array.isArray(testCase.pattern)) {
 					if (testCase.pattern.length === 3) {
-						// [input, baseURL, options]
-						pattern = new MatchPattern(
-							testCase.pattern[0] as string,
-							testCase.pattern[1] as string,
-							testCase.pattern[2] as {ignoreCase?: boolean},
-						);
+						// Per URLPattern spec: new URLPattern(input, baseURL, options)
+						// input: string, baseURL: string, options: object
+						// If second arg is not a string, it's invalid
+						const [input, second, third] = testCase.pattern;
+						if (typeof second === "string") {
+							// [input, baseURL, options]
+							pattern = new MatchPattern(
+								input as string,
+								second,
+								third as {ignoreCase?: boolean},
+							);
+						} else {
+							// Invalid: [input, options, ???] - third arg not expected
+							throw new TypeError("Invalid arguments: expected (string, baseURL, options)");
+						}
 					} else if (testCase.pattern.length === 2) {
 						// [input, baseURLOrOptions]
 						pattern = new MatchPattern(

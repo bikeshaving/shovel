@@ -90,6 +90,190 @@ function toASCII(hostname: string): string {
 }
 
 /**
+ * Safely percent-encode a string, handling unpaired surrogates
+ * Unpaired surrogates are encoded as the UTF-8 replacement character (U+FFFD -> %EF%BF%BD)
+ */
+function safePercentEncode(str: string): string {
+	let result = "";
+	for (let i = 0; i < str.length; i++) {
+		const code = str.charCodeAt(i);
+
+		// Check for high surrogate
+		if (code >= 0xD800 && code <= 0xDBFF) {
+			const nextCode = i + 1 < str.length ? str.charCodeAt(i + 1) : 0;
+			// Check if paired with low surrogate
+			if (nextCode >= 0xDC00 && nextCode <= 0xDFFF) {
+				// Valid surrogate pair - encode together
+				result += encodeURIComponent(str[i] + str[i + 1]);
+				i++; // Skip the low surrogate
+			} else {
+				// Unpaired high surrogate - encode as replacement character
+				result += "%EF%BF%BD";
+			}
+		} else if (code >= 0xDC00 && code <= 0xDFFF) {
+			// Unpaired low surrogate - encode as replacement character
+			result += "%EF%BF%BD";
+		} else {
+			// Normal character
+			result += encodeURIComponent(str[i]);
+		}
+	}
+	return result;
+}
+
+/**
+ * Validate regex group content per URLPattern spec
+ * - Must contain only ASCII characters
+ * - Must use valid escape sequences
+ * Throws TypeError if invalid
+ */
+function validateRegexGroupContent(regexContent: string): void {
+	// Check for non-ASCII characters
+	for (const c of regexContent) {
+		if (c.charCodeAt(0) > 127) {
+			throw new TypeError(`Invalid pattern: regex groups cannot contain non-ASCII characters`);
+		}
+	}
+
+	// Valid escapes: \d, \D, \w, \W, \s, \S, \b, \B, \n, \r, \t, \f, \v, \0, \cX, \xHH, \uHHHH, \\, \/, \., etc.
+	// Invalid escapes: \m, \a (not a valid escape), etc.
+	const invalidEscape = regexContent.match(/\\([^dDwWsSnrtfv0cbBxu.\\\[\](){}|^$*+?\/=-])/);
+	if (invalidEscape) {
+		throw new TypeError(`Invalid pattern: invalid escape sequence '\\${invalidEscape[1]}' in regex group`);
+	}
+}
+
+/**
+ * Validate hostname pattern per URLPattern spec
+ * Throws if hostname contains forbidden characters that aren't part of pattern syntax
+ *
+ * Per URLPattern spec:
+ * - ERROR: space, %, \:, <, >, ?, @, [, ], ^, |
+ * - OK (triggers URL parsing/normalization): #, /, \\, \n, \r, \t
+ *
+ * Pattern syntax chars are allowed: *, :name, {...}, (...)
+ */
+function validateHostnamePattern(hostname: string): void {
+	// Characters that always cause an error (not URL component boundaries)
+	const alwaysForbidden = /[\x00 %<>?@\^|]/;
+
+	// Walk through the pattern, tracking pattern syntax context
+	let i = 0;
+	while (i < hostname.length) {
+		const char = hostname[i];
+
+		// Skip escaped characters - \x escapes the next char
+		if (char === "\\") {
+			// Check if the escaped char itself is forbidden
+			if (i + 1 < hostname.length) {
+				const escaped = hostname[i + 1];
+				// Escaped colon is forbidden in hostname (unlike pathname)
+				if (escaped === ":") {
+					throw new TypeError(`Invalid hostname pattern: escaped colon is not allowed`);
+				}
+				// Escaped backslash is OK (\\)
+			}
+			i += 2;
+			continue;
+		}
+
+		// Skip pattern syntax: {...}, (...), :name, *
+		if (char === "{") {
+			const closeIdx = hostname.indexOf("}", i);
+			if (closeIdx !== -1) {
+				i = closeIdx + 1;
+				// Skip modifier after }
+				if (hostname[i] === "?" || hostname[i] === "+" || hostname[i] === "*") i++;
+				continue;
+			}
+		}
+
+		if (char === "(") {
+			let depth = 1;
+			let j = i + 1;
+			while (j < hostname.length && depth > 0) {
+				if (hostname[j] === "\\") { j += 2; continue; }
+				if (hostname[j] === "(") depth++;
+				if (hostname[j] === ")") depth--;
+				j++;
+			}
+			i = j;
+			// Skip modifier after )
+			if (hostname[i] === "?" || hostname[i] === "+" || hostname[i] === "*") i++;
+			continue;
+		}
+
+		if (char === ":") {
+			// Check if this is a named parameter :name
+			// Unicode letters, numbers, underscore, and symbols (except +*?) are allowed per URLPattern spec
+			const paramMatch = hostname.slice(i).match(/^:(\p{ID_Continue}+)(\([^)]*\))?([?+*])?/u);
+			if (paramMatch) {
+				i += paramMatch[0].length;
+				continue;
+			}
+			// Otherwise it's a literal colon which is forbidden
+			throw new TypeError(`Invalid hostname pattern: unescaped colon outside of pattern syntax`);
+		}
+
+		if (char === "*") {
+			i++;
+			// Skip modifier after *
+			if (hostname[i] === "?" || hostname[i] === "+" || hostname[i] === "*") i++;
+			continue;
+		}
+
+		if (char === "[") {
+			// Could be IPv6 pattern [...]
+			const closeIdx = hostname.indexOf("]", i);
+			if (closeIdx !== -1) {
+				i = closeIdx + 1;
+				continue;
+			}
+			// Unmatched [ is forbidden
+			throw new TypeError(`Invalid hostname pattern: unmatched '[' character`);
+		}
+
+		// Unmatched ] is also forbidden
+		if (char === "]") {
+			throw new TypeError(`Invalid hostname pattern: unmatched ']' character`);
+		}
+
+		// Check for forbidden characters
+		if (alwaysForbidden.test(char)) {
+			throw new TypeError(`Invalid hostname pattern: forbidden character '${char}'`);
+		}
+
+		i++;
+	}
+}
+
+/**
+ * Normalize hostname pattern per URLPattern spec
+ * - Strip \t, \n, \r (ASCII tab/newline/CR)
+ * - Truncate at # or / (URL component boundaries)
+ */
+function normalizeHostnamePattern(hostname: string): string {
+	// Strip ASCII tab, newline, carriage return
+	hostname = hostname.replace(/[\t\n\r]/g, "");
+
+	// Truncate at # (hash boundary) - but not if it's inside pattern syntax
+	// For simplicity, if there's no pattern syntax, just truncate
+	const hasPatternSyntax = /[{}()*+?:\\]/.test(hostname);
+	if (!hasPatternSyntax) {
+		const hashIdx = hostname.indexOf("#");
+		if (hashIdx !== -1) {
+			hostname = hostname.slice(0, hashIdx);
+		}
+		const slashIdx = hostname.indexOf("/");
+		if (slashIdx !== -1) {
+			hostname = hostname.slice(0, slashIdx);
+		}
+	}
+
+	return hostname;
+}
+
+/**
  * Canonicalize port value per URL spec
  * Strips ASCII tab/newline/CR, extracts leading digits
  * Returns canonicalized port or undefined if invalid
@@ -602,11 +786,16 @@ function compileComponentPattern(component: string, ignoreCase: boolean = false)
 		// Handle named groups :name with optional regex constraint and modifiers
 		if (char === ":") {
 			// Match parameter name - allow Unicode letters, numbers, underscore, and symbols (except +*?)
-			const match = component.slice(i).match(/^:((?:[\p{L}\p{N}_]|(?![+*?])[\p{S}])+)(\([^)]*\))?(\?|\+|\*)?/u);
+			const match = component.slice(i).match(/^:(\p{ID_Continue}+)(\([^)]*\))?(\?|\+|\*)?/u);
 			if (match) {
 				const name = match[1];
 				const constraint = match[2];
 				const modifier = match[3] || "";
+
+				// URLPattern spec: duplicate parameter names are not allowed
+				if (paramNames.includes(name)) {
+					throw new TypeError(`Invalid pattern: duplicate parameter name '${name}'`);
+				}
 				paramNames.push(name);
 
 				let basePattern;
@@ -654,6 +843,8 @@ function compileComponentPattern(component: string, ignoreCase: boolean = false)
 				if (depth > 0) regexContent += component[j];
 				j++;
 			}
+
+			validateRegexGroupContent(regexContent);
 
 			const modifier = component[j] || "";
 			if (modifier === "?" || modifier === "+" || modifier === "*") {
@@ -795,12 +986,17 @@ function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCa
 		// Handle named groups :name with optional regex constraint and modifiers
 		if (char === ":") {
 			// Match :name, :name(...), :name?, :name+, :name*, :name(...)?, etc.
-			// Support Unicode identifiers per URLPattern spec (including symbols except +*?)
-			const match = pathname.slice(i).match(/^:((?:[\p{L}\p{N}_]|(?![+*?])[\p{S}])+)(\([^)]*\))?(\?|\+|\*)?/u);
+			// Support Unicode identifiers per URLPattern spec
+			const match = pathname.slice(i).match(/^:(\p{ID_Continue}+)(\([^)]*\))?(\?|\+|\*)?/u);
 			if (match) {
 				const name = match[1];
 				const constraint = match[2]; // Optional regex like (\\d+)
 				const modifier = match[3] || "";
+
+				// URLPattern spec: duplicate parameter names are not allowed
+				if (paramNames.includes(name)) {
+					throw new TypeError(`Invalid pattern: duplicate parameter name '${name}'`);
+				}
 				paramNames.push(name);
 
 				let basePattern;
@@ -854,6 +1050,13 @@ function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCa
 
 				i += match[0].length;
 				continue;
+			} else {
+				// `:` not followed by valid identifier - check if it looks like an invalid param name
+				// If next char is not a delimiter or pattern syntax, it's an invalid param name
+				const nextChar = pathname[i + 1];
+				if (nextChar && !/^[\s\/?#(){}*+]$/.test(nextChar)) {
+					throw new TypeError(`Invalid pattern: invalid parameter name character after ':'`);
+				}
 			}
 		}
 
@@ -875,6 +1078,8 @@ function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCa
 				if (depth > 0) regexContent += pathname[j];
 				j++;
 			}
+
+			validateRegexGroupContent(regexContent);
 
 			// Check for modifier after the group
 			const modifier = pathname[j] || "";
@@ -1005,8 +1210,26 @@ function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCa
 			if (isAllowedInPath) {
 				pattern += char;
 			} else {
-				// Percent-encode (handles spaces, non-ASCII, etc.)
-				pattern += encodeURIComponent(char);
+				// Percent-encode (handles spaces, non-ASCII, surrogates, etc.)
+				// Use safe encoding for potentially malformed UTF-16
+				const code2 = char.charCodeAt(0);
+				if (code2 >= 0xD800 && code2 <= 0xDBFF) {
+					// High surrogate - check for pair
+					const nextCode = i + 1 < pathname.length ? pathname.charCodeAt(i + 1) : 0;
+					if (nextCode >= 0xDC00 && nextCode <= 0xDFFF) {
+						// Valid pair - encode together
+						pattern += encodeURIComponent(char + pathname[i + 1]);
+						i++; // Skip the low surrogate
+					} else {
+						// Unpaired - use replacement character
+						pattern += "%EF%BF%BD";
+					}
+				} else if (code2 >= 0xDC00 && code2 <= 0xDFFF) {
+					// Unpaired low surrogate - use replacement character
+					pattern += "%EF%BF%BD";
+				} else {
+					pattern += encodeURIComponent(char);
+				}
 			}
 		} else {
 			// No encoding - just add the character
@@ -1196,11 +1419,24 @@ export class MatchPattern {
 		}
 
 		if (typeof input === "object") {
-			// Object input: second arg is options
+			// Object input: second arg must be options, not baseURL
+			// URLPattern spec: baseURL must be inside the object, not as second arg
+			if (typeof baseURLOrOptions === "string") {
+				throw new TypeError("Invalid arguments: baseURL must be inside the object, not as second argument");
+			}
 			opts = baseURLOrOptions as URLPatternOptions | undefined;
+
+			// Validate baseURL in object - empty string is not valid
+			if (input.baseURL === "") {
+				throw new TypeError("Invalid pattern: baseURL cannot be empty string");
+			}
 		} else {
 			// String input: check if second arg is baseURL (string) or options (object)
 			if (typeof baseURLOrOptions === "string") {
+				// Empty baseURL is not valid
+				if (baseURLOrOptions === "") {
+					throw new TypeError("Invalid pattern: baseURL cannot be empty string");
+				}
 				baseURL = baseURLOrOptions;
 				opts = options;
 			} else if (typeof baseURLOrOptions === "object") {
@@ -1239,6 +1475,11 @@ export class MatchPattern {
 			// Compile hostname pattern
 			let hostname = parsed.hostname || (baseUrlParsed ? baseUrlParsed.hostname : undefined);
 			if (hostname) {
+				// Validate hostname pattern for forbidden characters
+				validateHostnamePattern(hostname);
+				// Normalize hostname (strip whitespace, truncate at # or /)
+				hostname = normalizeHostnamePattern(hostname);
+
 				// Normalize IPv6 hex digits to lowercase (case-insensitive)
 				// Only lowercase literal chars, preserve pattern syntax like :name
 				if (hostname.startsWith("[")) {
@@ -1338,6 +1579,11 @@ export class MatchPattern {
 			// Compile hostname pattern
 			let hostname = input.hostname || (baseUrlParsed ? baseUrlParsed.hostname : undefined);
 			if (hostname) {
+				// Validate hostname pattern for forbidden characters
+				validateHostnamePattern(hostname);
+				// Normalize hostname (strip whitespace, truncate at # or /)
+				hostname = normalizeHostnamePattern(hostname);
+
 				// Normalize hostname to Punycode (IDN -> ASCII)
 				// Only normalize if it's a literal hostname (no pattern syntax)
 				const hasPatternSyntax = /[*+?{}():\[\]\\]/.test(hostname);
