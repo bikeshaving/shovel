@@ -122,6 +122,40 @@ function safePercentEncode(str: string): string {
 }
 
 /**
+ * Check if a regex pattern requires the ES2024 v-flag
+ * The v-flag is needed for character class set operations:
+ * - Set subtraction: [a-z--[aeiou]] (a-z minus vowels)
+ * - Set intersection: [\d&&[0-4]] (digits AND 0-4)
+ * - Nested character classes: [[a-z][A-Z]]
+ */
+function requiresVFlag(pattern: string): boolean {
+	// Look for -- or && inside character classes
+	// These are the v-flag set operations
+	let inCharClass = 0;
+	for (let i = 0; i < pattern.length; i++) {
+		const char = pattern[i];
+		if (char === "\\") {
+			i++; // Skip escaped char
+			continue;
+		}
+		if (char === "[") {
+			inCharClass++;
+		} else if (char === "]") {
+			inCharClass = Math.max(0, inCharClass - 1);
+		} else if (inCharClass > 0) {
+			// Check for set operations
+			if (char === "-" && pattern[i + 1] === "-") {
+				return true; // Set subtraction --
+			}
+			if (char === "&" && pattern[i + 1] === "&") {
+				return true; // Set intersection &&
+			}
+		}
+	}
+	return false;
+}
+
+/**
  * Validate regex group content per URLPattern spec
  * - Must contain only ASCII characters
  * - Must use valid escape sequences
@@ -1262,8 +1296,12 @@ function compileComponentPattern(component: string, ignoreCase: boolean = false)
 		}
 	}
 
-	const flags = ignoreCase ? "i" : undefined;
-	const regex = new RegExp(`^${pattern}$`, flags);
+	// Determine flags - use v-flag for ES2024 set operations if needed
+	const needsVFlag = requiresVFlag(pattern);
+	let flags = "";
+	if (ignoreCase) flags += "i";
+	if (needsVFlag) flags += "v";
+	const regex = new RegExp(`^${pattern}$`, flags || undefined);
 	return {regex, paramNames, hasWildcard};
 }
 
@@ -1585,9 +1623,12 @@ function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCa
 		i++;
 	}
 
-	// Anchor pattern
-	const flags = ignoreCase ? "i" : undefined;
-	const regex = new RegExp(`^${pattern}$`, flags);
+	// Anchor pattern - use v-flag for ES2024 set operations if needed
+	const needsVFlag = requiresVFlag(pattern);
+	let flags = "";
+	if (ignoreCase) flags += "i";
+	if (needsVFlag) flags += "v";
+	const regex = new RegExp(`^${pattern}$`, flags || undefined);
 
 	return {regex, paramNames, hasWildcard};
 }
