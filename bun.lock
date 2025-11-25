@@ -114,10 +114,13 @@
       "name": "shovel-tfb",
       "version": "0.1.10",
       "dependencies": {
-        "@b9g/platform": "workspace:*",
-        "@b9g/platform-node": "workspace:*",
-        "@b9g/router": "workspace:*",
+        "@b9g/platform": "link:@b9g/platform",
+        "@b9g/platform-node": "link:@b9g/platform-node",
+        "@b9g/router": "link:@b9g/router",
         "postgres": "^3.4.5",
+      },
+      "devDependencies": {
+        "mitata": "^1.0.34",
       },
     },
     "packages/assets": {
@@ -970,6 +973,12 @@
     "shovel-reqback-node/@b9g/shovel": ["@b9g/shovel@file:dist", { "dependencies": { "@b9g/node-webworker": "workspace:*", "commander": "^13.1.0", "esbuild": "^0.19.12", "magic-string": "^0.30.5", "mime-types": "^2.1.35", "source-map": "^0.7.4" }, "devDependencies": { "@b9g/assets": "workspace:*", "@b9g/cache": "workspace:*", "@b9g/crank": "^0.7.2", "@b9g/filesystem": "workspace:*", "@b9g/http-errors": "workspace:*", "@b9g/libuild": "^0.1.10", "@b9g/platform": "workspace:*", "@b9g/platform-bun": "workspace:*", "@b9g/platform-cloudflare": "workspace:*", "@b9g/platform-node": "workspace:*", "@b9g/router": "workspace:*", "@types/bun": "^1.2.2", "typescript": "^5.7.3" }, "peerDependencies": { "@b9g/cache": "^0.1.0", "@b9g/filesystem": "^0.1.0", "@b9g/http-errors": "^0.1.0", "@b9g/platform": "^0.1.0", "@b9g/platform-bun": "^0.1.0", "@b9g/platform-cloudflare": "^0.1.0", "@b9g/platform-node": "^0.1.0" }, "optionalPeers": ["@b9g/cache", "@b9g/filesystem", "@b9g/http-errors", "@b9g/platform", "@b9g/platform-bun", "@b9g/platform-cloudflare", "@b9g/platform-node"], "bin": { "shovel": "src/cli.js" } }],
 
     "shovel-reqback-node/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
+
+    "shovel-tfb/@b9g/platform": ["@b9g/platform@link:@b9g/platform", {}],
+
+    "shovel-tfb/@b9g/platform-node": ["@b9g/platform-node@link:@b9g/platform-node", {}],
+
+    "shovel-tfb/@b9g/router": ["@b9g/router@link:@b9g/router", {}],
 
     "@aws-crypto/sha1-browser/@smithy/util-utf8/@smithy/util-buffer-from": ["@smithy/util-buffer-from@2.2.0", "", { "dependencies": { "@smithy/is-array-buffer": "^2.2.0", "tslib": "^2.6.2" } }, "sha512-IJdWBbTcMQ6DA0gdNhh/BwrLkDR+ADW5Kr1aZmd4k3DIF6ezMV4R2NIAmT08wQJ3yUK82thHWmC/TnK/wpMMIA=="],
 
