@@ -572,27 +572,46 @@ function findEscapedColon(pattern: string): number {
  *
  * In URLPattern syntax:
  * - `?` after pattern modifiers (*, +, ), :name) is a modifier meaning "optional"
+ * - `?` inside groups (...), [...], {...} is part of the pattern, not a delimiter
  * - `?` in other positions (after hostname, after a complete path) is the search delimiter
- * - `\?` is always the search delimiter (escaped)
+ * - `\?` outside groups is always the search delimiter (escaped)
  *
  * Returns -1 if no search delimiter is found
  */
 function findSearchDelimiter(pattern: string): { index: number; offset: number } {
-	// First, look for escaped ? which is always a delimiter
-	for (let i = 0; i < pattern.length - 1; i++) {
-		if (pattern[i] === "\\" && pattern[i + 1] === "?") {
-			return { index: i, offset: 2 }; // Skip both \ and ?
-		}
-	}
+	let parenDepth = 0;
+	let bracketDepth = 0;
+	let braceDepth = 0;
 
-	// Look for unescaped ? that is a search delimiter (not a modifier)
-	// It's a modifier if it follows: * + ) } or a named param like :name
 	for (let i = 0; i < pattern.length; i++) {
-		if (pattern[i] === "?") {
+		const char = pattern[i];
+
+		// Handle escapes
+		if (char === "\\") {
+			if (i + 1 < pattern.length && pattern[i + 1] === "?") {
+				// Escaped ? - only a delimiter if outside all groups
+				if (parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
+					return { index: i, offset: 2 }; // Skip both \ and ?
+				}
+			}
+			i++; // Skip escaped char
+			continue;
+		}
+
+		// Track group depth
+		if (char === "(") parenDepth++;
+		else if (char === ")") parenDepth--;
+		else if (char === "[") bracketDepth++;
+		else if (char === "]") bracketDepth--;
+		else if (char === "{") braceDepth++;
+		else if (char === "}") braceDepth--;
+
+		// Look for ? only if outside all groups
+		if (char === "?" && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
 			// Check what precedes the ?
 			const prev = i > 0 ? pattern[i - 1] : "";
 
-			// If preceded by modifier chars (* + ) }) or right after a named param, it's a modifier
+			// If preceded by modifier chars (* + ) }) it's a modifier
 			if ("*+)}".includes(prev)) {
 				continue; // This is a modifier, not a delimiter
 			}
@@ -622,6 +641,88 @@ function findSearchDelimiter(pattern: string): { index: number; offset: number }
 }
 
 /**
+ * Find the start of pathname in a URL pattern string
+ * Skips / characters inside pattern groups like (), [], {}
+ */
+function findPathnameStart(afterScheme: string): number {
+	let parenDepth = 0;
+	let bracketDepth = 0;
+	let braceDepth = 0;
+	for (let i = 0; i < afterScheme.length; i++) {
+		const char = afterScheme[i];
+		if (char === "\\") {
+			i++; // Skip escaped char
+			continue;
+		}
+		if (char === "(") parenDepth++;
+		else if (char === ")") parenDepth--;
+		else if (char === "[") bracketDepth++;
+		else if (char === "]") bracketDepth--;
+		else if (char === "{") braceDepth++;
+		else if (char === "}") braceDepth--;
+		else if (char === "/" && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+/**
+ * Validate URL pattern structure for common errors
+ */
+function validatePatternStructure(pattern: string): void {
+	// Check for double braces {{ or }}
+	if (pattern.includes("{{") || pattern.includes("}}")) {
+		throw new TypeError("Invalid pattern: consecutive braces are not allowed");
+	}
+
+	// Check for nested braces {x{y}}
+	let braceDepth = 0;
+	for (let i = 0; i < pattern.length; i++) {
+		const char = pattern[i];
+		if (char === "\\") {
+			i++; // Skip escaped char
+			continue;
+		}
+		if (char === "{") {
+			braceDepth++;
+			if (braceDepth > 1) {
+				throw new TypeError("Invalid pattern: nested braces are not allowed");
+			}
+		} else if (char === "}") {
+			braceDepth--;
+		}
+	}
+
+	// Check for groups spanning :// (scheme separator)
+	// e.g., "{https://}" or "(https://)" are invalid
+	const schemeIdx = pattern.indexOf("://");
+	if (schemeIdx !== -1) {
+		// Check if :// is inside any group
+		let parenDepth = 0;
+		let bracketDepth = 0;
+		braceDepth = 0;
+		for (let i = 0; i < schemeIdx; i++) {
+			const char = pattern[i];
+			if (char === "\\") {
+				i++; // Skip escaped char
+				continue;
+			}
+			if (char === "(") parenDepth++;
+			else if (char === ")") parenDepth--;
+			else if (char === "[") bracketDepth++;
+			else if (char === "]") bracketDepth--;
+			else if (char === "{") braceDepth++;
+			else if (char === "}") braceDepth--;
+		}
+		// If we're inside any group when we hit ://, that's invalid
+		if (parenDepth > 0 || bracketDepth > 0 || braceDepth > 0) {
+			throw new TypeError("Invalid pattern: groups cannot span the scheme separator");
+		}
+	}
+}
+
+/**
  * Parse string pattern with & syntax
  */
 function parseStringPattern(pattern: string): {
@@ -634,6 +735,9 @@ function parseStringPattern(pattern: string): {
 	search?: string;
 	hash?: string;
 } {
+	// Validate pattern structure
+	validatePatternStructure(pattern);
+
 	// Handle search-only patterns starting with ?
 	if (pattern.startsWith("?")) {
 		// Extract hash if present
@@ -663,6 +767,18 @@ function parseStringPattern(pattern: string): {
 			// Fall through to hierarchical handling
 		} else {
 			const rest = pattern.slice(nonHierarchicalMatch[0].length);
+
+			// URLPattern validation: pathname after non-hierarchical scheme cannot start with
+			// an unescaped identifier (which would look like a named parameter :name)
+			// e.g., "data:foobar" is invalid because "foobar" looks like it could be a param
+			// but "data:*", "data:,foobar", "data:\foobar", "data:{foobar}" are valid
+			if (rest.length > 0) {
+				const firstChar = rest[0];
+				// Check if it starts with an identifier (which would be ambiguous with param syntax)
+				if (/\p{ID_Start}/u.test(firstChar)) {
+					throw new TypeError("Invalid URL pattern: non-hierarchical URL pathname cannot start with an identifier");
+				}
+			}
 
 			// Extract hash first
 			const hashIndex = rest.indexOf("#");
@@ -808,12 +924,13 @@ function parseStringPattern(pattern: string): {
 		let afterScheme = urlPart.slice(schemeEndIdx + 3);
 
 		// Extract username and password (userinfo before @)
-		// Look for @ but not inside [...] (IPv6) or {...} (brace groups)
+		// Look for @ but not inside [...] (IPv6), {...} (brace groups), or (...) (regex groups)
 		let username: string | undefined;
 		let password: string | undefined;
 		let atIndex = -1;
 		let bracketDepth = 0;
 		let braceDepth = 0;
+		let parenDepth = 0;
 		for (let i = 0; i < afterScheme.length; i++) {
 			const char = afterScheme[i];
 			if (char === "\\") {
@@ -824,10 +941,12 @@ function parseStringPattern(pattern: string): {
 			else if (char === "]") bracketDepth--;
 			else if (char === "{") braceDepth++;
 			else if (char === "}") braceDepth--;
-			else if (char === "@" && bracketDepth === 0 && braceDepth === 0) {
+			else if (char === "(") parenDepth++;
+			else if (char === ")") parenDepth--;
+			else if (char === "@" && bracketDepth === 0 && braceDepth === 0 && parenDepth === 0) {
 				atIndex = i;
 				break;
-			} else if (char === "/" && bracketDepth === 0 && braceDepth === 0) {
+			} else if (char === "/" && bracketDepth === 0 && braceDepth === 0 && parenDepth === 0) {
 				// Reached pathname without finding @
 				break;
 			}
@@ -891,7 +1010,8 @@ function parseStringPattern(pattern: string): {
 		}
 
 		// Extract pathname (starts with first / after ://)
-		const pathnameStart = afterScheme.indexOf("/");
+		// Must skip / inside pattern groups like (), [], {}
+		const pathnameStart = findPathnameStart(afterScheme);
 		const pathname = pathnameStart === -1 ? "/" : afterScheme.slice(pathnameStart);
 
 		// Extract host part (hostname + optional port)
