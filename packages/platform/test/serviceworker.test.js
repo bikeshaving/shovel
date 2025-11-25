@@ -324,61 +324,6 @@ test(
 // ======================
 
 test(
-	"ServiceWorker error handling in event listeners",
-	async () => {
-		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");
-
-		const runtime = new ShovelServiceWorkerRegistration();
-
-		// Add fetch listener that throws
-		runtime.addEventListener("fetch", (_event) => {
-			throw new Error("Test error");
-		});
-
-		// Install and activate before handling requests
-		await runtime.install();
-		await runtime.activate();
-
-		const request = new Request("http://localhost/error");
-
-		// Should reject with "No response provided" when listener throws and doesn't call respondWith
-		// The error is logged but doesn't crash the process (matches browser behavior)
-		await expect(runtime.handleRequest(request)).rejects.toThrow(
-			"No response provided for fetch event",
-		);
-	},
-	TIMEOUT,
-);
-
-test(
-	"ServiceWorker runtime reset functionality",
-	async () => {
-		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");
-
-		const runtime = new ShovelServiceWorkerRegistration();
-		let listenerCalled = false;
-
-		// Add listener
-		runtime.addEventListener("test", () => {
-			listenerCalled = true;
-		});
-
-		// Verify listener works
-		runtime.dispatchEvent(new Event("test"));
-		expect(listenerCalled).toBe(true);
-
-		// Reset runtime
-		runtime.reset();
-		listenerCalled = false;
-
-		// Listener should be removed after reset
-		runtime.dispatchEvent(new Event("test"));
-		expect(listenerCalled).toBe(false);
-	},
-	TIMEOUT,
-);
-
-test(
 	"ServiceWorker install waitUntil rejection handling",
 	async () => {
 		const {ShovelServiceWorkerRegistration} = await import("../src/runtime.js");

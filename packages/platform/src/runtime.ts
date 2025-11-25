@@ -377,9 +377,6 @@ export class ShovelServiceWorkerRegistration
 	// ServiceWorker instances representing different lifecycle states
 	_serviceWorker: ShovelServiceWorker;
 
-	// Shovel runtime state
-	#eventListeners: Map<string, Function[]>;
-
 	// Web API properties (not supported in server context, but required by interface)
 	readonly cookies: any;
 	readonly pushManager: any;
@@ -391,7 +388,6 @@ export class ShovelServiceWorkerRegistration
 		this.updateViaCache = "imports";
 		this.navigationPreload = new ShovelNavigationPreloadManager();
 		this._serviceWorker = new ShovelServiceWorker(scriptURL, "parsed");
-		this.#eventListeners = new Map<string, Function[]>();
 		this.cookies = null;
 		this.pushManager = null;
 		this.onupdatefound = null;
@@ -446,50 +442,6 @@ export class ShovelServiceWorkerRegistration
 	}
 
 	// Shovel runtime extensions (non-standard but needed for platforms)
-
-	/**
-	 * Enhanced addEventListener that tracks listeners for proper cleanup
-	 */
-	addEventListener(
-		type: string,
-		listener: EventListenerOrEventListenerObject | null,
-		options?: boolean | AddEventListenerOptions,
-	): void {
-		const fn =
-			typeof listener === "function" ? listener : listener?.handleEvent;
-		if (!fn) return;
-
-		super.addEventListener(type, listener, options);
-		if (!this.#eventListeners.has(type)) {
-			this.#eventListeners.set(type, []);
-		}
-		this.#eventListeners.get(type)!.push(fn);
-	}
-
-	/**
-	 * Enhanced removeEventListener that tracks listeners
-	 */
-	removeEventListener(
-		type: string,
-		listener: EventListenerOrEventListenerObject | null,
-		options?: boolean | EventListenerOptions,
-	): void {
-		const fn =
-			typeof listener === "function" ? listener : listener?.handleEvent;
-		if (!fn) return;
-
-		super.removeEventListener(type, listener, options);
-		if (this.#eventListeners.has(type)) {
-			const listeners = this.#eventListeners.get(type)!;
-			const index = listeners.indexOf(fn);
-			if (index > -1) {
-				listeners.splice(index, 1);
-				if (listeners.length === 0) {
-					this.#eventListeners.delete(type);
-				}
-			}
-		}
-	}
 
 	/**
 	 * Install the ServiceWorker (Shovel extension)
@@ -596,64 +548,52 @@ export class ShovelServiceWorkerRegistration
 		// This makes event.cookieStore available via self.cookieStore
 		return cookieStoreStorage.run(event.cookieStore, () => {
 			return new Promise<Response>((resolve, reject) => {
-				// Dispatch event asynchronously to allow listener errors to be deferred
-				process.nextTick(() => {
-					// Manually call each listener with error handling to match browser behavior
-					const listeners = this.#eventListeners.get("fetch") || [];
-					for (const listener of listeners) {
-						try {
-							listener(event);
-						} catch (error) {
-							// Log errors in event listeners but don't crash the process
-							// This matches browser behavior where fetch listener errors are logged
-							// but don't prevent other listeners from running
-							logger.error("[ServiceWorker] Error in fetch event listener", {
-								error,
-							});
-							// Continue with next listener
-						}
-					}
+				// Dispatch event using native EventTarget
+				this.dispatchEvent(event);
 
-					// Wait for all waitUntil promises (background tasks, don't block response)
-					const promises = event.getPromises();
-					if (promises.length > 0) {
-						Promise.allSettled(promises).catch(logger.error);
-					}
-				});
-
-				// Allow async event handlers to execute before checking response
+				// Defer response check to allow async event handlers to call respondWith()
+				// Even though async handlers may await immediately, the microtask queue runs
+				// before this setTimeout callback, giving them a chance to call respondWith()
 				setTimeout(async () => {
-					if (event.hasResponded()) {
-						const responsePromise = event.getResponse()!;
-						try {
-							const response = await responsePromise;
+					// Check if respondWith was called
+					if (!event.hasResponded()) {
+						reject(new Error("No response provided for fetch event"));
+						return;
+					}
 
-							// Apply cookie changes from the cookieStore to the response
-							if (event.cookieStore.hasChanges()) {
-								const setCookieHeaders =
-									event.cookieStore.getSetCookieHeaders();
-								const headers = new Headers(response.headers);
+					try {
+						// Get the response (may be a Promise)
+						const response = await event.getResponse()!;
 
-								// Add all Set-Cookie headers
-								for (const setCookie of setCookieHeaders) {
-									headers.append("Set-Cookie", setCookie);
-								}
+						// Wait for all waitUntil promises (background tasks, don't block response)
+						const promises = event.getPromises();
+						if (promises.length > 0) {
+							Promise.allSettled(promises).catch(logger.error);
+						}
 
-								// Create new response with updated headers
-								const updatedResponse = new Response(response.body, {
+						// Apply cookie changes from the cookieStore to the response
+						if (event.cookieStore.hasChanges()) {
+							const setCookieHeaders = event.cookieStore.getSetCookieHeaders();
+							const headers = new Headers(response.headers);
+
+							// Add all Set-Cookie headers
+							for (const setCookie of setCookieHeaders) {
+								headers.append("Set-Cookie", setCookie);
+							}
+
+							// Create new response with updated headers
+							resolve(
+								new Response(response.body, {
 									status: response.status,
 									statusText: response.statusText,
 									headers,
-								});
-								resolve(updatedResponse);
-							} else {
-								resolve(response);
-							}
-						} catch (error) {
-							reject(error);
+								}),
+							);
+						} else {
+							resolve(response);
 						}
-					} else {
-						reject(new Error("No response provided for fetch event"));
+					} catch (error) {
+						reject(error);
 					}
 				}, 0);
 			});
@@ -665,21 +605,6 @@ export class ShovelServiceWorkerRegistration
 	 */
 	get ready(): boolean {
 		return this._serviceWorker.state === "activated";
-	}
-
-	/**
-	 * Reset the ServiceWorker state for hot reloading (Shovel extension)
-	 */
-	reset(): void {
-		this._serviceWorker._setState("parsed");
-
-		// Remove all tracked event listeners
-		for (const [type, listeners] of this.#eventListeners) {
-			for (const listener of listeners) {
-				super.removeEventListener(type as any, listener as any);
-			}
-		}
-		this.#eventListeners.clear();
 	}
 
 	// Events: updatefound (standard), plus Shovel lifecycle events
@@ -1603,9 +1528,6 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
 			sendMessage({type: "ready", version: loadMsg.version});
 		} else if (message.type === "request") {
 			const reqMsg = message as WorkerRequest;
-			logger.info(`[Worker-${workerId}] Handling request`, {
-				url: reqMsg.request.url,
-			});
 
 			const request = new Request(reqMsg.request.url, {
 				method: reqMsg.request.method,
