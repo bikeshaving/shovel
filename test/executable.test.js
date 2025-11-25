@@ -365,9 +365,13 @@ self.addEventListener("fetch", async (event) => {
 
 		event.respondWith((async () => {
 			try {
+				console.error("[DEBUG] Looking for asset:", requestedAsset, "->", actualAsset);
 				const staticBucket = await self.buckets.open("static");
+				console.error("[DEBUG] Got static bucket");
 				const assetsDir = await staticBucket.getDirectoryHandle("assets");
+				console.error("[DEBUG] Got assets dir");
 				const fileHandle = await assetsDir.getFileHandle(actualAsset);
+				console.error("[DEBUG] Got file handle for", actualAsset);
 				const file = await fileHandle.getFile();
 				const content = await file.text();
 
@@ -381,8 +385,9 @@ self.addEventListener("fetch", async (event) => {
 				return new Response(content, {
 					headers: { "content-type": contentType }
 				});
-			} catch {
-				return new Response("Asset not found", { status: 404 });
+			} catch (err) {
+				console.error("[DEBUG] Asset error:", err.message, err.stack);
+				return new Response("Asset not found: " + err.message, { status: 404 });
 			}
 		})());
 	} else {
@@ -426,9 +431,14 @@ self.addEventListener("fetch", async (event) => {
 			const cssResponse = await fetch(
 				`http://localhost:${PORT}/assets/style.css`,
 			);
+			const cssResponseContent = await cssResponse.text();
+			console.info(
+				"[TEST] CSS response:",
+				cssResponse.status,
+				cssResponseContent,
+			);
 			expect(cssResponse.status).toBe(200);
 			expect(cssResponse.headers.get("content-type")).toBe("text/css");
-			const cssResponseContent = await cssResponse.text();
 			expect(cssResponseContent).toContain("background: #f0f0f0");
 
 			// Test JS asset
