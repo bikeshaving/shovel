@@ -13,9 +13,8 @@ import {RequestCookieStore} from "./cookie-store.js";
 import {AsyncContext} from "@b9g/async-context";
 import type {BucketStorage} from "@b9g/filesystem";
 import {CustomBucketStorage} from "@b9g/filesystem";
-import {MemoryBucket} from "@b9g/filesystem/memory.js";
 import {CustomCacheStorage} from "@b9g/cache";
-import {MemoryCache} from "@b9g/cache/memory.js";
+import {createBucketFactory, createCacheFactory} from "./config.js";
 import type {
 	WorkerMessage,
 	WorkerInitMessage,
@@ -1033,10 +1032,10 @@ interface NotificationOptions {
 export interface ShovelGlobalScopeOptions {
 	/** ServiceWorker registration instance */
 	registration: ServiceWorkerRegistration;
-	/** Bucket storage (file system access) */
-	buckets?: BucketStorage;
-	/** Cache storage (required by ServiceWorkerGlobalScope) */
-	caches?: CacheStorage;
+	/** Bucket storage (file system access) - REQUIRED */
+	buckets: BucketStorage;
+	/** Cache storage (required by ServiceWorkerGlobalScope) - REQUIRED */
+	caches: CacheStorage;
 	/** Development mode flag */
 	isDevelopment?: boolean;
 }
@@ -1203,8 +1202,8 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	constructor(options: ShovelGlobalScopeOptions) {
 		this.self = this as unknown as WorkerGlobalScope & typeof globalThis;
 		this.registration = options.registration;
-		this.caches = options.caches || ({} as CacheStorage);
-		this.buckets = options.buckets || ({} as BucketStorage);
+		this.caches = options.caches;
+		this.buckets = options.buckets;
 		this.#isDevelopment = options.isDevelopment ?? false;
 
 		// Create clients API implementation
@@ -1425,6 +1424,9 @@ async function loadServiceWorker(
 
 			// Create a completely new runtime instance instead of trying to reset
 			registration = new ShovelServiceWorkerRegistration();
+			if (!caches || !buckets) {
+				throw new Error("Runtime not initialized - missing caches or buckets");
+			}
 			scope = new ShovelGlobalScope({
 				registration,
 				caches,
@@ -1476,87 +1478,20 @@ async function loadServiceWorker(
 const workerId = Math.random().toString(36).substring(2, 8);
 let sendMessage: (message: WorkerMessage, transfer?: Transferable[]) => void;
 
-async function initializeRuntime(config: any): Promise<void> {
+async function initializeRuntime(config: any, baseDir: string): Promise<void> {
 	try {
 		logger.info(`[Worker-${workerId}] Initializing runtime with config`, {
 			config,
+			baseDir,
 		});
-
-		// Helper to get cache config by name (with pattern matching)
-		const getCacheConfig = (name: string) => {
-			const caches = config.caches || {};
-			// Exact match
-			if (caches[name]) return caches[name];
-			// Pattern match (e.g., "cache:*")
-			for (const [pattern, cfg] of Object.entries(caches)) {
-				if (pattern.endsWith("*") && name.startsWith(pattern.slice(0, -1))) {
-					return cfg;
-				}
-			}
-			// Catch-all "*"
-			return caches["*"] || {};
-		};
 
 		logger.info(`[Worker-${workerId}] Creating cache storage`);
-		// Create cache storage using configuration
-		caches = new CustomCacheStorage((name: string) => {
-			const cacheConfig = getCacheConfig(name);
-			return new MemoryCache(name, {
-				maxEntries:
-					typeof cacheConfig.maxEntries === "number"
-						? cacheConfig.maxEntries
-						: 1000,
-			});
-		});
-
-		// Helper to get bucket config by name (with pattern matching)
-		const getBucketConfig = (name: string) => {
-			const buckets = config.buckets || {};
-			// Exact match
-			if (buckets[name]) return buckets[name];
-			// Pattern match (e.g., "bucket:*")
-			for (const [pattern, cfg] of Object.entries(buckets)) {
-				if (pattern.endsWith("*") && name.startsWith(pattern.slice(0, -1))) {
-					return cfg;
-				}
-			}
-			// Catch-all "*"
-			return buckets["*"] || {};
-		};
+		// Create cache storage using unified factory
+		caches = new CustomCacheStorage(createCacheFactory({config}));
 
 		logger.info(`[Worker-${workerId}] Creating bucket storage`);
-		// Create bucket storage using configuration
-		buckets = new CustomBucketStorage(async (name: string) => {
-			const bucketConfig = getBucketConfig(name);
-
-			// Determine bucket path: explicit config or infer from worker location
-			let bucketPath: string;
-			if (bucketConfig.path) {
-				bucketPath = String(bucketConfig.path);
-			} else {
-				// Infer path from worker script location
-				// static → ../static, server → ., other → ../{name}
-				if (name === "static") {
-					bucketPath = new URL("../static", import.meta.url).pathname;
-				} else if (name === "server") {
-					bucketPath = new URL(".", import.meta.url).pathname;
-				} else {
-					bucketPath = new URL(`../${name}`, import.meta.url).pathname;
-				}
-				logger.info(`[Worker-${workerId}] Inferred bucket path for '${name}'`, {
-					bucketPath,
-				});
-			}
-
-			// Try NodeBucket (Node.js/Bun environments)
-			try {
-				const {NodeBucket} = await import("@b9g/filesystem/node.js");
-				return new NodeBucket(bucketPath);
-			} catch {
-				// NodeBucket not available (Cloudflare), fall back to MemoryBucket
-				return new MemoryBucket(name);
-			}
-		});
+		// Create bucket storage using unified factory
+		buckets = new CustomBucketStorage(createBucketFactory({baseDir, config}));
 
 		logger.info(`[Worker-${workerId}] Creating and installing scope`);
 		// Create and install ServiceWorker runtime
@@ -1578,7 +1513,7 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
 
 		if (message.type === "init") {
 			const initMsg = message as WorkerInitMessage;
-			await initializeRuntime(initMsg.config);
+			await initializeRuntime(initMsg.config, initMsg.baseDir);
 			logger.info(`[Worker-${workerId}] Sending initialized message`);
 			sendMessage({type: "initialized"});
 		} else if (message.type === "load") {

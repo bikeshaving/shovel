@@ -15,13 +15,10 @@ import {
 	ServiceWorkerPool,
 	SingleThreadedRuntime,
 	loadConfig,
-	getCacheConfig,
+	createCacheFactory,
 	type ProcessedShovelConfig,
-	type CacheConfig as _CacheConfig,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
-import {MemoryCache} from "@b9g/cache/memory.js";
-import {CustomBucketStorage} from "@b9g/filesystem";
 import {NodeBucket} from "@b9g/filesystem/node.js";
 import * as Http from "http";
 import * as Path from "path";
@@ -147,35 +144,11 @@ export class NodePlatform extends BasePlatform {
 
 		logger.info("Creating single-threaded ServiceWorker runtime", {entryPath});
 
-		// Create bucket storage with factory that resolves paths relative to entrypoint
-		// This mirrors the logic in runtime.ts initializeRuntime()
-		const bucketStorage = new CustomBucketStorage(async (name: string) => {
-			// Determine bucket path: explicit config or infer from entrypoint location
-			const bucketConfig = this.#config.buckets?.[name] || {};
-
-			let bucketPath: string;
-			if (bucketConfig.path) {
-				bucketPath = String(bucketConfig.path);
-			} else {
-				// Infer path from entrypoint script location
-				// static → ../static, server → ., other → ../{name}
-				if (name === "static") {
-					bucketPath = Path.resolve(entryDir, "../static");
-				} else if (name === "server") {
-					bucketPath = entryDir;
-				} else {
-					bucketPath = Path.resolve(entryDir, `../${name}`);
-				}
-				logger.info(`Inferred bucket path for '${name}'`, {bucketPath});
-			}
-
-			return new NodeBucket(bucketPath);
-		});
-
-		// Create single-threaded runtime
+		// Create single-threaded runtime with baseDir
+		// Bucket/cache storage created internally using factories from config.ts
 		this.#singleThreadedRuntime = new SingleThreadedRuntime({
+			baseDir: entryDir,
 			cacheStorage: this.#cacheStorage,
-			bucketStorage,
 			config: this.#config,
 		});
 
@@ -314,20 +287,7 @@ export class NodePlatform extends BasePlatform {
 	 * Uses config from package.json shovel field
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
-		const config = this.#config;
-		return new CustomCacheStorage((name: string) => {
-			// Get cache config for this cache name (supports pattern matching)
-			const cacheConfig = getCacheConfig(config, name);
-
-			// For now, only support memory provider
-			// TODO: Add Redis, etc.
-			return new MemoryCache(name, {
-				maxEntries:
-					typeof cacheConfig.maxEntries === "number"
-						? cacheConfig.maxEntries
-						: 1000,
-			});
-		});
+		return new CustomCacheStorage(createCacheFactory({config: this.#config}));
 	}
 
 	/**

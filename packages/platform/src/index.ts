@@ -531,8 +531,12 @@ export {
 	parseConfigExpr,
 	processConfigValue,
 	matchPattern,
+	createBucketFactory,
+	createCacheFactory,
 	type ShovelConfig,
 	type CacheConfig,
 	type BucketConfig,
+	type BucketFactoryOptions,
+	type CacheFactoryOptions,
 	type ProcessedShovelConfig,
 } from "./config.js";

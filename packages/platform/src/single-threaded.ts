@@ -8,16 +8,23 @@
 import {getLogger} from "@logtape/logtape";
 import {ShovelGlobalScope, ShovelServiceWorkerRegistration} from "./runtime.js";
 import {CustomBucketStorage} from "@b9g/filesystem";
-import type {ProcessedShovelConfig} from "./config.js";
+import {CustomCacheStorage} from "@b9g/cache";
+import {
+	createBucketFactory,
+	createCacheFactory,
+	type ProcessedShovelConfig,
+} from "./config.js";
 
 const logger = getLogger(["single-threaded"]);
 
 export interface SingleThreadedRuntimeOptions {
-	/** Cache storage instance */
-	cacheStorage: CacheStorage;
-	/** Bucket storage instance (optional) */
+	/** Base directory for bucket path resolution (entrypoint directory) - REQUIRED */
+	baseDir: string;
+	/** Optional pre-created cache storage (for sharing across reloads) */
+	cacheStorage?: CacheStorage;
+	/** Optional pre-created bucket storage */
 	bucketStorage?: CustomBucketStorage;
-	/** Shovel configuration (optional) */
+	/** Shovel configuration for bucket/cache settings */
 	config?: ProcessedShovelConfig;
 }
 
@@ -38,15 +45,27 @@ export class SingleThreadedRuntime {
 		this.#ready = false;
 		this.#config = options.config;
 
+		// Create cache storage using factory if not provided
+		const cacheStorage =
+			options.cacheStorage ||
+			new CustomCacheStorage(createCacheFactory({config: options.config}));
+
+		// Create bucket storage using factory if not provided
+		const bucketStorage =
+			options.bucketStorage ||
+			new CustomBucketStorage(
+				createBucketFactory({baseDir: options.baseDir, config: options.config}),
+			);
+
 		// Create registration and scope
 		this.#registration = new ShovelServiceWorkerRegistration();
 		this.#scope = new ShovelGlobalScope({
 			registration: this.#registration,
-			caches: options.cacheStorage,
-			buckets: options.bucketStorage,
+			caches: cacheStorage,
+			buckets: bucketStorage,
 		});
 
-		logger.info("SingleThreadedRuntime created");
+		logger.info("SingleThreadedRuntime created", {baseDir: options.baseDir});
 	}
 
 	/**

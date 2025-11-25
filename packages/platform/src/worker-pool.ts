@@ -77,6 +77,7 @@ export interface WorkerErrorMessage extends WorkerMessage {
 export interface WorkerInitMessage extends WorkerMessage {
 	type: "init";
 	config: any; // ShovelConfig from config.ts
+	baseDir: string; // Base directory for bucket path resolution
 }
 
 export interface WorkerInitializedMessage extends WorkerMessage {
@@ -304,12 +305,21 @@ export class ServiceWorkerPool {
 			this.#pendingWorkerInit.set(worker, pending);
 		});
 
-		// Send init message with config
+		// Derive baseDir from entrypoint
+		if (!this.#appEntrypoint) {
+			throw new Error(
+				"ServiceWorkerPool requires an entrypoint to derive baseDir",
+			);
+		}
+		const baseDir = Path.dirname(this.#appEntrypoint);
+
+		// Send init message with config and baseDir
 		const initMessage: WorkerInitMessage = {
 			type: "init",
 			config: this.#config,
+			baseDir,
 		};
-		logger.info("Sending init message", {config: this.#config});
+		logger.info("Sending init message", {config: this.#config, baseDir});
 		worker.postMessage(initMessage);
 		logger.info("Sent init message, waiting for initialized response");
 

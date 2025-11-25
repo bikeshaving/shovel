@@ -187,6 +187,7 @@ export class BunPlatform extends BasePlatform {
 		_options: ServiceWorkerOptions,
 	): Promise<ServiceWorkerInstance> {
 		const entryPath = Path.resolve(this.#options.cwd, entrypoint);
+		const entryDir = Path.dirname(entryPath);
 
 		// Create shared cache storage if not already created
 		if (!this.#cacheStorage) {
@@ -204,8 +205,10 @@ export class BunPlatform extends BasePlatform {
 
 		logger.info("Creating single-threaded ServiceWorker runtime", {entryPath});
 
-		// Create single-threaded runtime
+		// Create single-threaded runtime with baseDir
+		// Bucket/cache storage created internally using factories from config.ts
 		this.#singleThreadedRuntime = new SingleThreadedRuntime({
+			baseDir: entryDir,
 			cacheStorage: this.#cacheStorage,
 			config: this.#config,
 		});

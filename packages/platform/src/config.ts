@@ -18,6 +18,7 @@
  */
 
 import {readFileSync} from "fs";
+import {resolve} from "path";
 
 /**
  * Get environment variables from import.meta.env or process.env
@@ -684,4 +685,90 @@ export function getBucketConfig(
 	name: string,
 ): BucketConfig {
 	return matchPattern(name, config.buckets) || {};
+}
+
+// ============================================================================
+// FACTORY HELPERS
+// ============================================================================
+
+// Well-known bucket path conventions
+const WELL_KNOWN_BUCKET_PATHS: Record<string, (baseDir: string) => string> = {
+	static: (baseDir) => resolve(baseDir, "../static"),
+	server: (baseDir) => baseDir,
+};
+
+export interface BucketFactoryOptions {
+	/** Base directory for path resolution (entrypoint directory) - REQUIRED */
+	baseDir: string;
+	/** Shovel configuration for overrides */
+	config?: ProcessedShovelConfig;
+}
+
+/**
+ * Creates a bucket factory function for CustomBucketStorage.
+ * Lazily imports bucket implementations.
+ */
+export function createBucketFactory(options: BucketFactoryOptions) {
+	const {baseDir, config} = options;
+
+	return async (name: string): Promise<FileSystemDirectoryHandle> => {
+		const bucketConfig = config ? getBucketConfig(config, name) : {};
+
+		// Determine bucket path: config override > well-known > default convention
+		let bucketPath: string;
+		if (bucketConfig.path) {
+			bucketPath = String(bucketConfig.path);
+		} else if (WELL_KNOWN_BUCKET_PATHS[name]) {
+			bucketPath = WELL_KNOWN_BUCKET_PATHS[name](baseDir);
+		} else {
+			bucketPath = resolve(baseDir, `../${name}`);
+		}
+
+		// Lazy import bucket implementation based on provider
+		const provider = String(bucketConfig.provider || "node");
+		switch (provider) {
+			case "memory": {
+				const {MemoryBucket} = await import("@b9g/filesystem/memory.js");
+				return new MemoryBucket(name);
+			}
+			case "node":
+			default: {
+				const {NodeBucket} = await import("@b9g/filesystem/node.js");
+				// NodeBucket throws if path doesn't exist (desired behavior)
+				return new NodeBucket(bucketPath);
+			}
+		}
+	};
+}
+
+export interface CacheFactoryOptions {
+	/** Shovel configuration for cache settings */
+	config?: ProcessedShovelConfig;
+}
+
+/**
+ * Creates a cache factory function for CustomCacheStorage.
+ * Lazily imports cache implementations.
+ */
+export function createCacheFactory(options: CacheFactoryOptions = {}) {
+	const {config} = options;
+
+	return async (name: string): Promise<Cache> => {
+		const cacheConfig = config ? getCacheConfig(config, name) : {};
+
+		const provider = String(cacheConfig.provider || "memory");
+		switch (provider) {
+			case "memory":
+			default: {
+				const {MemoryCache} = await import("@b9g/cache/memory.js");
+				return new MemoryCache(name, {
+					maxEntries:
+						typeof cacheConfig.maxEntries === "number"
+							? cacheConfig.maxEntries
+							: 1000,
+				});
+			}
+			// Future: case "redis": ...
+		}
+	};
 }

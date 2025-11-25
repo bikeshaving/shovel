@@ -88,7 +88,7 @@ export abstract class Cache {
 	async matchAll(
 		request?: Request,
 		options?: CacheQueryOptions,
-	): Promise<Response[]> {
+	): Promise<readonly Response[]> {
 		const keys = await this.keys(request, options);
 		const responses: Response[] = [];
 
