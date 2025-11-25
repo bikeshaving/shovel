@@ -314,18 +314,32 @@ function normalizeHostnamePattern(hostname: string): string {
 	// Strip ASCII tab, newline, carriage return
 	hostname = hostname.replace(/[\t\n\r]/g, "");
 
-	// Truncate at # (hash boundary) - but not if it's inside pattern syntax
-	// For simplicity, if there's no pattern syntax, just truncate
-	const hasPatternSyntax = /[{}()*+?:\\]/.test(hostname);
-	if (!hasPatternSyntax) {
-		const hashIdx = hostname.indexOf("#");
-		if (hashIdx !== -1) {
-			hostname = hostname.slice(0, hashIdx);
+	// Truncate at component delimiters (?, #, /)
+	// These act as delimiters even when escaped (escape just prevents ? from being an error)
+	// Need to find the first unescaped delimiter OR escaped ? (which still acts as delimiter)
+	let truncateIdx = -1;
+	for (let i = 0; i < hostname.length; i++) {
+		const char = hostname[i];
+		if (char === "\\") {
+			// Check if escaping a ? - this still acts as delimiter
+			if (i + 1 < hostname.length && hostname[i + 1] === "?") {
+				truncateIdx = i;
+				break;
+			}
+			// Skip the escaped character
+			i++;
+			continue;
 		}
-		const slashIdx = hostname.indexOf("/");
-		if (slashIdx !== -1) {
-			hostname = hostname.slice(0, slashIdx);
+		// Unescaped # or / are delimiters
+		if (char === "#" || char === "/") {
+			truncateIdx = i;
+			break;
 		}
+		// Unescaped ? would already be caught by validateHostnamePattern as an error
+	}
+
+	if (truncateIdx !== -1) {
+		hostname = hostname.slice(0, truncateIdx);
 	}
 
 	return hostname;
@@ -794,19 +808,26 @@ function parseStringPattern(pattern: string): {
 		let afterScheme = urlPart.slice(schemeEndIdx + 3);
 
 		// Extract username and password (userinfo before @)
-		// Look for @ but not inside [...] (IPv6)
+		// Look for @ but not inside [...] (IPv6) or {...} (brace groups)
 		let username: string | undefined;
 		let password: string | undefined;
 		let atIndex = -1;
 		let bracketDepth = 0;
+		let braceDepth = 0;
 		for (let i = 0; i < afterScheme.length; i++) {
 			const char = afterScheme[i];
+			if (char === "\\") {
+				i++; // Skip escaped char
+				continue;
+			}
 			if (char === "[") bracketDepth++;
 			else if (char === "]") bracketDepth--;
-			else if (char === "@" && bracketDepth === 0) {
+			else if (char === "{") braceDepth++;
+			else if (char === "}") braceDepth--;
+			else if (char === "@" && bracketDepth === 0 && braceDepth === 0) {
 				atIndex = i;
 				break;
-			} else if (char === "/" && bracketDepth === 0) {
+			} else if (char === "/" && bracketDepth === 0 && braceDepth === 0) {
 				// Reached pathname without finding @
 				break;
 			}
@@ -817,14 +838,41 @@ function parseStringPattern(pattern: string): {
 			afterScheme = afterScheme.slice(atIndex + 1);
 
 			// Split userinfo into username:password
-			// Look for unescaped : to split
+			// In URLPattern, a colon is the separator UNLESS it starts a named parameter
+			// An escaped colon (\:) is always a separator (escaping prevents param interpretation)
+			// An unescaped colon followed by a valid identifier is a parameter, not separator
 			let colonIndex = -1;
+			let braceDepth = 0;
 			for (let i = 0; i < userinfo.length; i++) {
-				if (userinfo[i] === "\\" && i + 1 < userinfo.length) {
-					i++; // Skip escaped char
+				const char = userinfo[i];
+				if (char === "\\") {
+					// Check if this is an escaped colon
+					if (i + 1 < userinfo.length && userinfo[i + 1] === ":") {
+						// Escaped colon is a separator (the escape prevents parameter interpretation)
+						colonIndex = i + 1;
+						break;
+					}
+					// Skip the escaped character
+					i++;
 					continue;
 				}
-				if (userinfo[i] === ":") {
+				if (char === "{") braceDepth++;
+				else if (char === "}") braceDepth--;
+				else if (char === ":" && braceDepth === 0) {
+					// Check if this colon starts a named parameter
+					const afterColon = userinfo.slice(i + 1);
+					const paramMatch = afterColon.match(/^(\p{ID_Start}\p{ID_Continue}*)/u);
+					if (paramMatch) {
+						// This is a named parameter, not a separator - skip it
+						i += 1 + paramMatch[1].length;
+						// Check for modifier after the parameter name
+						if (i < userinfo.length && "?+*".includes(userinfo[i])) {
+							i++;
+						}
+						i--; // Will be incremented by the loop
+						continue;
+					}
+					// Not a parameter, this is the separator
 					colonIndex = i;
 					break;
 				}
@@ -832,6 +880,10 @@ function parseStringPattern(pattern: string): {
 
 			if (colonIndex !== -1) {
 				username = userinfo.slice(0, colonIndex);
+				// If the username ends with a backslash (from \: separator), remove it
+				if (username.endsWith("\\")) {
+					username = username.slice(0, -1);
+				}
 				password = userinfo.slice(colonIndex + 1);
 			} else {
 				username = userinfo;
@@ -1571,6 +1623,14 @@ export class MatchPattern {
 		return this.#originalInput && typeof this.#originalInput === "object" ? this.#originalInput.port : undefined;
 	}
 
+	get username(): string | undefined {
+		return this.#originalInput && typeof this.#originalInput === "object" ? this.#originalInput.username : undefined;
+	}
+
+	get password(): string | undefined {
+		return this.#originalInput && typeof this.#originalInput === "object" ? this.#originalInput.password : undefined;
+	}
+
 	get hash(): string | undefined {
 		return this.#originalInput && typeof this.#originalInput === "object" ? this.#originalInput.hash : undefined;
 	}
@@ -1922,6 +1982,22 @@ export class MatchPattern {
 		if (this.#hashCompiled) {
 			const hash = url.hash.replace("#", "");
 			if (!this.#hashCompiled.regex.test(hash)) {
+				return false;
+			}
+		}
+
+		// Test username pattern if specified
+		if (this.#usernameCompiled) {
+			const username = encodeURIComponent(url.username);
+			if (!this.#usernameCompiled.regex.test(username)) {
+				return false;
+			}
+		}
+
+		// Test password pattern if specified
+		if (this.#passwordCompiled) {
+			const password = encodeURIComponent(url.password);
+			if (!this.#passwordCompiled.regex.test(password)) {
 				return false;
 			}
 		}

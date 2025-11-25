@@ -12,7 +12,8 @@
   },
   "workspaces": [
     "packages/*",
-    "examples/*"
+    "examples/*",
+    "examples/tfb/frameworks/JavaScript/shovel"
   ],
   "scripts": {
     "build": "bun run --filter './packages/*' build && libuild build",
@@ -66,18 +67,19 @@
     }
   },
   "devDependencies": {
+    "@b9g/assets": "workspace:*",
     "@b9g/cache": "workspace:*",
     "@b9g/crank": "^0.7.2",
     "@b9g/filesystem": "workspace:*",
     "@b9g/http-errors": "workspace:*",
+    "@b9g/libuild": "0.1.15",
     "@b9g/platform": "workspace:*",
-    "@b9g/platform-node": "workspace:*",
     "@b9g/platform-bun": "workspace:*",
     "@b9g/platform-cloudflare": "workspace:*",
+    "@b9g/platform-node": "workspace:*",
     "@b9g/router": "workspace:*",
-    "@b9g/assets": "workspace:*",
-    "@b9g/libuild": "0.1.15",
     "@types/bun": "^1.2.2",
+    "mitata": "^1.0.34",
     "typescript": "^5.7.3"
   },
   "publishConfig": {

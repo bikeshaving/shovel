@@ -156,6 +156,116 @@ class LinearExecutor {
 }
 
 /**
+ * Check if a pathname is static (no params or wildcards)
+ */
+function isStaticPath(pathname: string): boolean {
+	// Static if it contains no :param, *, (, ), {, }, +, or ?
+	return !/[:*(){}+?]/.test(pathname);
+}
+
+/**
+ * HybridExecutor uses Map for static routes, linear scan for dynamic routes
+ * Preserves linear priority while optimizing common case (static routes)
+ */
+class HybridExecutor {
+	#routes: RouteEntry[];
+	#staticRoutes: Map<string, Map<string, RouteEntry>>; // pathname -> method -> route
+	#dynamicRoutes: RouteEntry[];
+
+	constructor(routes: RouteEntry[]) {
+		this.#routes = routes;
+		this.#staticRoutes = new Map();
+		this.#dynamicRoutes = [];
+
+		// Partition routes into static and dynamic
+		for (const route of routes) {
+			const pathname = route.pattern.pathname;
+
+			if (isStaticPath(pathname)) {
+				// Static route - add to Map for O(1) lookup
+				if (!this.#staticRoutes.has(pathname)) {
+					this.#staticRoutes.set(pathname, new Map());
+				}
+				this.#staticRoutes.get(pathname)!.set(route.method, route);
+			} else {
+				// Dynamic route - keep in linear array
+				this.#dynamicRoutes.push(route);
+			}
+		}
+	}
+
+	/**
+	 * Find the first route that matches the request
+	 * Checks static routes first (O(1)), then dynamic routes (O(n))
+	 * Preserves priority by checking routes in registration order
+	 */
+	match(request: Request): MatchResult | null {
+		const url = new URL(request.url);
+		const method = request.method.toUpperCase();
+		const pathname = url.pathname;
+
+		// To preserve linear priority, we need to check static and dynamic
+		// routes in their original registration order
+		//
+		// Strategy: Check if the first matching route (by priority) is static or dynamic
+		// If we have no dynamic routes before the first static match, we can fast-path
+
+		// Fast path: Try static route lookup first
+		const staticMethodMap = this.#staticRoutes.get(pathname);
+		if (staticMethodMap) {
+			const staticRoute = staticMethodMap.get(method);
+			if (staticRoute) {
+				// Check if any dynamic route comes before this static route in priority
+				const staticIndex = this.#routes.indexOf(staticRoute);
+				let hasPriorityDynamic = false;
+
+				for (const dynamicRoute of this.#dynamicRoutes) {
+					const dynamicIndex = this.#routes.indexOf(dynamicRoute);
+					if (dynamicIndex < staticIndex && dynamicRoute.method === method) {
+						// A dynamic route with matching method comes before this static route
+						// We need to test if it matches
+						if (dynamicRoute.pattern.test(url)) {
+							const result = dynamicRoute.pattern.exec(url);
+							if (result) {
+								return {
+									handler: dynamicRoute.handler,
+									context: {params: result.params},
+								};
+							}
+						}
+					}
+				}
+
+				// No dynamic route matched with higher priority - use static route
+				return {
+					handler: staticRoute.handler,
+					context: {params: {}},
+				};
+			}
+		}
+
+		// No static match - check dynamic routes
+		for (const route of this.#dynamicRoutes) {
+			if (route.method !== method) {
+				continue;
+			}
+
+			if (route.pattern.test(url)) {
+				const result = route.pattern.exec(url);
+				if (result) {
+					return {
+						handler: route.handler,
+						context: {params: result.params},
+					};
+				}
+			}
+		}
+
+		return null;
+	}
+}
+
+/**
  * RouteBuilder provides a chainable API for defining routes with multiple HTTP methods
  *
  * Example:
@@ -256,7 +366,7 @@ class RouteBuilder {
 export class Router {
 	#routes: RouteEntry[];
 	#middlewares: MiddlewareEntry[];
-	#executor: LinearExecutor | null;
+	#executor: LinearExecutor | HybridExecutor | null;
 	#dirty: boolean;
 
 	constructor() {
@@ -269,7 +379,7 @@ export class Router {
 		this.#handlerImpl = async (request: Request): Promise<Response> => {
 			// Lazy compilation - build executor on first match
 			if (this.#dirty || !this.#executor) {
-				this.#executor = new LinearExecutor(this.#routes);
+				this.#executor = new HybridExecutor(this.#routes);
 				this.#dirty = false;
 			}
 
@@ -395,7 +505,7 @@ export class Router {
 	async match(request: Request): Promise<Response | null> {
 		// Lazy compilation - build executor on first match
 		if (this.#dirty || !this.#executor) {
-			this.#executor = new LinearExecutor(this.#routes);
+			this.#executor = new HybridExecutor(this.#routes);
 			this.#dirty = false;
 		}
 
