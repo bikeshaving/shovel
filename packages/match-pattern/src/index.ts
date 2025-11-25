@@ -77,6 +77,19 @@ function getDefaultPort(protocol: string): string | undefined {
 }
 
 /**
+ * Convert IDN (Internationalized Domain Name) to ASCII/Punycode form
+ * e.g., "🚲.com" -> "xn--h78h.com", "münchen.de" -> "xn--mnchen-3ya.de"
+ * Returns original hostname if conversion fails
+ */
+function toASCII(hostname: string): string {
+	try {
+		return new URL("http://" + hostname).hostname;
+	} catch {
+		return hostname;
+	}
+}
+
+/**
  * Canonicalize port value per URL spec
  * Strips ASCII tab/newline/CR, extracts leading digits
  * Returns canonicalized port or undefined if invalid
@@ -699,19 +712,31 @@ function compileComponentPattern(component: string, ignoreCase: boolean = false)
 		// Escape special regex characters and encode non-ASCII
 		if (".+?^${}()|[]\\".includes(char)) {
 			pattern += "\\" + char;
+			i++;
 		} else {
 			// Percent-encode non-ASCII characters for canonical form
-			if (char.charCodeAt(0) > 127) {
-				pattern += encodeURIComponent(char);
+			const code = char.charCodeAt(0);
+			if (code > 127) {
+				// Handle surrogate pairs (emojis, etc.) - take both code units together
+				let toEncode = char;
+				if (code >= 0xD800 && code <= 0xDBFF && i + 1 < component.length) {
+					const nextCode = component.charCodeAt(i + 1);
+					if (nextCode >= 0xDC00 && nextCode <= 0xDFFF) {
+						toEncode = char + component[i + 1];
+						i++; // Skip the low surrogate
+					}
+				}
+				pattern += encodeURIComponent(toEncode);
+				i++;
 			} else {
 				pattern += char;
+				i++;
 			}
 		}
-
-		i++;
 	}
 
-	const regex = new RegExp(`^${pattern}$`, ignoreCase ? "i" : undefined);
+	const flags = ignoreCase ? "i" : undefined;
+	const regex = new RegExp(`^${pattern}$`, flags);
 	return {regex, paramNames, hasWildcard};
 }
 
@@ -992,7 +1017,8 @@ function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCa
 	}
 
 	// Anchor pattern
-	const regex = new RegExp(`^${pattern}$`, ignoreCase ? "i" : undefined);
+	const flags = ignoreCase ? "i" : undefined;
+	const regex = new RegExp(`^${pattern}$`, flags);
 
 	return {regex, paramNames, hasWildcard};
 }
@@ -1217,6 +1243,12 @@ export class MatchPattern {
 				// Only lowercase literal chars, preserve pattern syntax like :name
 				if (hostname.startsWith("[")) {
 					hostname = hostname.replace(/[A-F]/g, c => c.toLowerCase());
+				} else {
+					// Normalize IDN (emoji, unicode) to Punycode if no pattern syntax
+					const hasPatternSyntax = /[{}()*+?:|\\]/.test(hostname);
+					if (!hasPatternSyntax) {
+						hostname = toASCII(hostname);
+					}
 				}
 				this.#hostnameCompiled = compileComponentPattern(hostname, this.#ignoreCase);
 			}
@@ -1310,11 +1342,7 @@ export class MatchPattern {
 				// Only normalize if it's a literal hostname (no pattern syntax)
 				const hasPatternSyntax = /[*+?{}():\[\]\\]/.test(hostname);
 				if (!hasPatternSyntax) {
-					try {
-						hostname = new URL("http://" + hostname).hostname;
-					} catch {
-						// If URL parsing fails, use as-is
-					}
+					hostname = toASCII(hostname);
 				}
 				// Normalize IPv6 hex digits to lowercase (case-insensitive)
 				if (hostname.startsWith("[")) {
@@ -1535,12 +1563,8 @@ export class MatchPattern {
 				return false;
 			}
 
-			// Normalize hostname using URL API (handles IDN -> Punycode conversion)
-			try {
-				hostname = new URL("http://" + hostname).hostname;
-			} catch {
-				// If URL parsing fails, use as-is
-			}
+			// Normalize hostname (IDN -> Punycode)
+			hostname = toASCII(hostname);
 
 			if (!this.#hostnameCompiled.regex.test(hostname)) {
 				return false;
