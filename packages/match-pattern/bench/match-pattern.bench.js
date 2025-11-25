@@ -25,7 +25,7 @@ const upFull = new URLPatternPolyfill("https://api.example.com/v1/posts/:id");
 
 // Pure RegExp for baseline
 const reStatic = /^\/api\/users$/;
-const reDynamic = /^\/users\/([^\/]+)$/;
+const reDynamic = /^\/users\/([^/]+)$/;
 
 group("Construction", () => {
 	bench("MatchPattern (simple)", () => {

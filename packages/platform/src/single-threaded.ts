@@ -30,11 +30,12 @@ export interface SingleThreadedRuntimeOptions {
 export class SingleThreadedRuntime {
 	#registration: ShovelServiceWorkerRegistration;
 	#scope: ShovelGlobalScope;
-	#ready = false;
+	#ready: boolean;
 	#entrypoint?: string;
 	#config?: ProcessedShovelConfig;
 
 	constructor(options: SingleThreadedRuntimeOptions) {
+		this.#ready = false;
 		this.#config = options.config;
 
 		// Create registration and scope
@@ -65,7 +66,10 @@ export class SingleThreadedRuntime {
 			throw new Error("No entrypoint set - call loadEntrypoint first");
 		}
 
-		logger.info("Reloading ServiceWorker", {version, entrypoint: this.#entrypoint});
+		logger.info("Reloading ServiceWorker", {
+			version,
+			entrypoint: this.#entrypoint,
+		});
 
 		// For single-threaded mode, we need to re-import the module
 		// ESM doesn't support cache invalidation, so use query string
@@ -91,16 +95,17 @@ export class SingleThreadedRuntime {
 	/**
 	 * Load a ServiceWorker entrypoint for the first time
 	 */
-	async loadEntrypoint(entrypoint: string, version?: number | string): Promise<void> {
+	async loadEntrypoint(
+		entrypoint: string,
+		version?: number | string,
+	): Promise<void> {
 		this.#entrypoint = entrypoint;
 
 		logger.info("Loading ServiceWorker entrypoint", {entrypoint, version});
 
 		// Import the user's ServiceWorker code
 		// The import will call self.addEventListener("fetch", ...) which registers on our scope
-		const importPath = version
-			? `${entrypoint}?v=${version}`
-			: entrypoint;
+		const importPath = version ? `${entrypoint}?v=${version}` : entrypoint;
 		await import(importPath);
 
 		// Run lifecycle events
@@ -117,7 +122,9 @@ export class SingleThreadedRuntime {
 	 */
 	async handleRequest(request: Request): Promise<Response> {
 		if (!this.#ready) {
-			throw new Error("SingleThreadedRuntime not ready - ServiceWorker not loaded");
+			throw new Error(
+				"SingleThreadedRuntime not ready - ServiceWorker not loaded",
+			);
 		}
 
 		// Direct call to registration.handleRequest - no serialization, no postMessage

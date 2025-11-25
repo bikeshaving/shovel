@@ -430,33 +430,12 @@ export class ServiceWorkerPool {
 
 		const requestID = ++this.#requestID;
 
-		return new Promise(async (resolve, reject) => {
+		return new Promise((resolve, reject) => {
 			// Track pending request
 			this.#pendingRequests.set(requestID, {resolve, reject});
 
-			// Read request body as ArrayBuffer for zero-copy transfer
-			let body: ArrayBuffer | null = null;
-			if (request.body) {
-				body = await request.arrayBuffer();
-			}
-
-			const workerRequest: WorkerRequest = {
-				type: "request",
-				request: {
-					url: request.url,
-					method: request.method,
-					headers: Object.fromEntries(request.headers.entries()),
-					body,
-				},
-				requestID,
-			};
-
-			// Transfer the body ArrayBuffer if present (zero-copy)
-			if (body) {
-				worker.postMessage(workerRequest, [body]);
-			} else {
-				worker.postMessage(workerRequest);
-			}
+			// Start async work without blocking promise executor
+			this.#sendRequest(worker, request, requestID).catch(reject);
 
 			// Timeout handling
 			setTimeout(() => {
@@ -466,6 +445,39 @@ export class ServiceWorkerPool {
 				}
 			}, this.#options.requestTimeout);
 		});
+	}
+
+	/**
+	 * Send request to worker (async helper to avoid async promise executor)
+	 */
+	async #sendRequest(
+		worker: Worker,
+		request: Request,
+		requestID: number,
+	): Promise<void> {
+		// Read request body as ArrayBuffer for zero-copy transfer
+		let body: ArrayBuffer | null = null;
+		if (request.body) {
+			body = await request.arrayBuffer();
+		}
+
+		const workerRequest: WorkerRequest = {
+			type: "request",
+			request: {
+				url: request.url,
+				method: request.method,
+				headers: Object.fromEntries(request.headers.entries()),
+				body,
+			},
+			requestID,
+		};
+
+		// Transfer the body ArrayBuffer if present (zero-copy)
+		if (body) {
+			worker.postMessage(workerRequest, [body]);
+		} else {
+			worker.postMessage(workerRequest);
+		}
 	}
 
 	/**

@@ -29,11 +29,15 @@ router.route("/api/metrics").get(() => new Response("metrics"));
 // Dynamic routes (need parameter extraction)
 router.route("/users/:id").get(() => new Response("user"));
 router.route("/posts/:slug").get(() => new Response("post"));
-router.route("/categories/:category/posts").get(() => new Response("category posts"));
+router
+	.route("/categories/:category/posts")
+	.get(() => new Response("category posts"));
 router.route("/api/users/:id").get(() => new Response("api user"));
 router.route("/api/users/:id/posts").get(() => new Response("user posts"));
 router.route("/api/users/:id/profile").get(() => new Response("user profile"));
-router.route("/api/posts/:id/comments/:commentId").get(() => new Response("comment"));
+router
+	.route("/api/posts/:id/comments/:commentId")
+	.get(() => new Response("comment"));
 
 // Wildcard routes (pattern matching)
 router.route("/files/*").get(() => new Response("file"));
@@ -45,7 +49,9 @@ const middleStaticReq = new Request("http://localhost/blog");
 const lastStaticReq = new Request("http://localhost/api/metrics");
 
 const simpleDynamicReq = new Request("http://localhost/users/123");
-const nestedDynamicReq = new Request("http://localhost/api/posts/789/comments/42");
+const nestedDynamicReq = new Request(
+	"http://localhost/api/posts/789/comments/42",
+);
 
 const wildcardReq = new Request("http://localhost/files/document.pdf");
 

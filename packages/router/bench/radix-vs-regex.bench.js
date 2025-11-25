@@ -6,36 +6,44 @@
  */
 
 import {bench, group, run} from "mitata";
-import {MatchPattern, isSimplePattern, parseSimplePattern, compilePathname} from "@b9g/match-pattern";
+import {
+	MatchPattern,
+	isSimplePattern,
+	compilePathname,
+} from "@b9g/match-pattern";
 
 // ============================================================================
 // RADIX TREE IMPLEMENTATION (simplified)
 // ============================================================================
 
 class RadixNode {
-	children = new Map();  // char -> RadixNode
-	param = null;          // param name if this is a :param segment
-	wildcard = false;      // true if this is a * wildcard
-	handler = null;        // handler if this is a terminal node
-	paramChildren = null;  // RadixNode for :param children
+	constructor() {
+		this.children = new Map(); // char -> RadixNode
+		this.param = null; // param name if this is a :param segment
+		this.wildcard = false; // true if this is a * wildcard
+		this.handler = null; // handler if this is a terminal node
+		this.paramChildren = null; // RadixNode for :param children
+	}
 }
 
 class RadixTree {
-	root = new RadixNode();
+	constructor() {
+		this.root = new RadixNode();
+	}
 
 	add(pattern, handler) {
-		const segments = pattern.split('/').filter(Boolean);
+		const segments = pattern.split("/").filter(Boolean);
 		let node = this.root;
 
 		for (const segment of segments) {
-			if (segment.startsWith(':')) {
+			if (segment.startsWith(":")) {
 				// Parameter segment
 				if (!node.paramChildren) {
 					node.paramChildren = new RadixNode();
 					node.paramChildren.param = segment.slice(1);
 				}
 				node = node.paramChildren;
-			} else if (segment === '*') {
+			} else if (segment === "*") {
 				// Wildcard
 				if (!node.paramChildren) {
 					node.paramChildren = new RadixNode();
@@ -45,7 +53,7 @@ class RadixTree {
 				break; // Wildcard consumes rest
 			} else {
 				// Static segment - character by character
-				for (const char of '/' + segment) {
+				for (const char of "/" + segment) {
 					if (!node.children.has(char)) {
 						node.children.set(char, new RadixNode());
 					}
@@ -56,10 +64,10 @@ class RadixTree {
 
 		// Handle root path
 		if (segments.length === 0) {
-			if (!this.root.children.has('/')) {
-				this.root.children.set('/', new RadixNode());
+			if (!this.root.children.has("/")) {
+				this.root.children.set("/", new RadixNode());
 			}
-			this.root.children.get('/').handler = handler;
+			this.root.children.get("/").handler = handler;
 		} else {
 			node.handler = handler;
 		}
@@ -67,21 +75,21 @@ class RadixTree {
 
 	match(pathname) {
 		const params = {};
-		const segments = pathname.split('/').filter(Boolean);
+		const segments = pathname.split("/").filter(Boolean);
 		let node = this.root;
 
 		// Handle root path
 		if (segments.length === 0) {
-			const rootNode = node.children.get('/');
+			const rootNode = node.children.get("/");
 			if (rootNode?.handler) {
-				return { handler: rootNode.handler, params: {} };
+				return {handler: rootNode.handler, params: {}};
 			}
 			return null;
 		}
 
 		for (let i = 0; i < segments.length; i++) {
 			const segment = segments[i];
-			const segmentWithSlash = '/' + segment;
+			const segmentWithSlash = "/" + segment;
 
 			// Try static match first (character by character)
 			let staticNode = node;
@@ -104,8 +112,8 @@ class RadixTree {
 			if (node.paramChildren) {
 				if (node.paramChildren.wildcard) {
 					// Wildcard - capture rest
-					params['*'] = segments.slice(i).join('/');
-					return { handler: node.paramChildren.handler, params };
+					params["*"] = segments.slice(i).join("/");
+					return {handler: node.paramChildren.handler, params};
 				}
 				// Regular param
 				params[node.paramChildren.param] = segment;
@@ -118,7 +126,7 @@ class RadixTree {
 		}
 
 		if (node.handler) {
-			return { handler: node.handler, params };
+			return {handler: node.handler, params};
 		}
 
 		return null;
@@ -130,20 +138,22 @@ class RadixTree {
 // ============================================================================
 
 class RegexMatcher {
-	routes = [];
+	constructor() {
+		this.routes = [];
+	}
 
 	add(pattern, handler) {
 		this.routes.push({
 			pattern: new MatchPattern(pattern),
-			handler
+			handler,
 		});
 	}
 
 	match(pathname) {
 		for (const route of this.routes) {
-			const result = route.pattern.exec({ pathname });
+			const result = route.pattern.exec({pathname});
 			if (result) {
-				return { handler: route.handler, params: result.params };
+				return {handler: route.handler, params: result.params};
 			}
 		}
 		return null;
@@ -155,8 +165,10 @@ class RegexMatcher {
 // ============================================================================
 
 class HybridMatcher {
-	radixTree = new RadixTree();
-	complexRoutes = [];
+	constructor() {
+		this.radixTree = new RadixTree();
+		this.complexRoutes = [];
+	}
 
 	add(pattern, handler) {
 		if (isSimplePattern(pattern)) {
@@ -168,7 +180,7 @@ class HybridMatcher {
 			this.complexRoutes.push({
 				regex: compiled.regex,
 				paramNames: compiled.paramNames,
-				handler
+				handler,
 			});
 		}
 	}
@@ -190,7 +202,7 @@ class HybridMatcher {
 						params[route.paramNames[i]] = match[i + 1];
 					}
 				}
-				return { handler: route.handler, params };
+				return {handler: route.handler, params};
 			}
 		}
 
@@ -204,27 +216,27 @@ class HybridMatcher {
 
 const routes = [
 	// Static routes
-	'/',
-	'/about',
-	'/contact',
-	'/pricing',
-	'/blog',
-	'/docs',
-	'/api/health',
-	'/api/status',
-	'/api/version',
-	'/api/metrics',
+	"/",
+	"/about",
+	"/contact",
+	"/pricing",
+	"/blog",
+	"/docs",
+	"/api/health",
+	"/api/status",
+	"/api/version",
+	"/api/metrics",
 	// Dynamic routes
-	'/users/:id',
-	'/posts/:slug',
-	'/categories/:category/posts',
-	'/api/users/:id',
-	'/api/users/:id/posts',
-	'/api/users/:id/profile',
-	'/api/posts/:id/comments/:commentId',
+	"/users/:id",
+	"/posts/:slug",
+	"/categories/:category/posts",
+	"/api/users/:id",
+	"/api/users/:id/posts",
+	"/api/users/:id/profile",
+	"/api/posts/:id/comments/:commentId",
 	// Wildcards
-	'/files/*',
-	'/static/*',
+	"/files/*",
+	"/static/*",
 ];
 
 const radixTree = new RadixTree();
@@ -240,17 +252,17 @@ for (const route of routes) {
 
 // Test paths
 const testPaths = {
-	staticFirst: '/',
-	staticMiddle: '/blog',
-	staticLast: '/api/metrics',
-	dynamicSimple: '/users/123',
-	dynamicNested: '/api/posts/789/comments/42',
-	wildcard: '/files/documents/report.pdf',
-	notFound: '/nonexistent/path/here',
+	staticFirst: "/",
+	staticMiddle: "/blog",
+	staticLast: "/api/metrics",
+	dynamicSimple: "/users/123",
+	dynamicNested: "/api/posts/789/comments/42",
+	wildcard: "/files/documents/report.pdf",
+	notFound: "/nonexistent/path/here",
 };
 
 // Verify all implementations match
-console.log('Verifying implementations match...');
+console.info("Verifying implementations match...");
 for (const [name, path] of Object.entries(testPaths)) {
 	const radixResult = radixTree.match(path);
 	const regexResult = regexMatcher.match(path);
@@ -258,98 +270,100 @@ for (const [name, path] of Object.entries(testPaths)) {
 	const radixMatched = radixResult !== null;
 	const regexMatched = regexResult !== null;
 	const hybridMatched = hybridResult !== null;
-	console.log(`  ${name}: radix=${radixMatched}, regex=${regexMatched}, hybrid=${hybridMatched}`);
+	console.info(
+		`  ${name}: radix=${radixMatched}, regex=${regexMatched}, hybrid=${hybridMatched}`,
+	);
 	if (radixMatched !== regexMatched || radixMatched !== hybridMatched) {
-		console.log(`    MISMATCH!`);
+		console.info(`    MISMATCH!`);
 	}
 }
-console.log('');
+console.info("");
 
 // ============================================================================
 // BENCHMARKS
 // ============================================================================
 
-group('Static route: first (/)', () => {
-	bench('Radix Tree', () => {
-		radixTree.match('/');
+group("Static route: first (/)", () => {
+	bench("Radix Tree", () => {
+		radixTree.match("/");
 	});
-	bench('MatchPattern', () => {
-		regexMatcher.match('/');
+	bench("MatchPattern", () => {
+		regexMatcher.match("/");
 	});
-	bench('Hybrid', () => {
-		hybridMatcher.match('/');
-	});
-});
-
-group('Static route: middle (/blog)', () => {
-	bench('Radix Tree', () => {
-		radixTree.match('/blog');
-	});
-	bench('MatchPattern', () => {
-		regexMatcher.match('/blog');
-	});
-	bench('Hybrid', () => {
-		hybridMatcher.match('/blog');
+	bench("Hybrid", () => {
+		hybridMatcher.match("/");
 	});
 });
 
-group('Static route: last (/api/metrics)', () => {
-	bench('Radix Tree', () => {
-		radixTree.match('/api/metrics');
+group("Static route: middle (/blog)", () => {
+	bench("Radix Tree", () => {
+		radixTree.match("/blog");
 	});
-	bench('MatchPattern', () => {
-		regexMatcher.match('/api/metrics');
+	bench("MatchPattern", () => {
+		regexMatcher.match("/blog");
 	});
-	bench('Hybrid', () => {
-		hybridMatcher.match('/api/metrics');
-	});
-});
-
-group('Dynamic route: simple (/users/:id)', () => {
-	bench('Radix Tree', () => {
-		radixTree.match('/users/123');
-	});
-	bench('MatchPattern', () => {
-		regexMatcher.match('/users/123');
-	});
-	bench('Hybrid', () => {
-		hybridMatcher.match('/users/123');
+	bench("Hybrid", () => {
+		hybridMatcher.match("/blog");
 	});
 });
 
-group('Dynamic route: nested params', () => {
-	bench('Radix Tree', () => {
-		radixTree.match('/api/posts/789/comments/42');
+group("Static route: last (/api/metrics)", () => {
+	bench("Radix Tree", () => {
+		radixTree.match("/api/metrics");
 	});
-	bench('MatchPattern', () => {
-		regexMatcher.match('/api/posts/789/comments/42');
+	bench("MatchPattern", () => {
+		regexMatcher.match("/api/metrics");
 	});
-	bench('Hybrid', () => {
-		hybridMatcher.match('/api/posts/789/comments/42');
-	});
-});
-
-group('Wildcard route', () => {
-	bench('Radix Tree', () => {
-		radixTree.match('/files/documents/report.pdf');
-	});
-	bench('MatchPattern', () => {
-		regexMatcher.match('/files/documents/report.pdf');
-	});
-	bench('Hybrid', () => {
-		hybridMatcher.match('/files/documents/report.pdf');
+	bench("Hybrid", () => {
+		hybridMatcher.match("/api/metrics");
 	});
 });
 
-group('Not found (worst case)', () => {
-	bench('Radix Tree', () => {
-		radixTree.match('/nonexistent/path/here');
+group("Dynamic route: simple (/users/:id)", () => {
+	bench("Radix Tree", () => {
+		radixTree.match("/users/123");
 	});
-	bench('MatchPattern', () => {
-		regexMatcher.match('/nonexistent/path/here');
+	bench("MatchPattern", () => {
+		regexMatcher.match("/users/123");
 	});
-	bench('Hybrid', () => {
-		hybridMatcher.match('/nonexistent/path/here');
+	bench("Hybrid", () => {
+		hybridMatcher.match("/users/123");
+	});
+});
+
+group("Dynamic route: nested params", () => {
+	bench("Radix Tree", () => {
+		radixTree.match("/api/posts/789/comments/42");
+	});
+	bench("MatchPattern", () => {
+		regexMatcher.match("/api/posts/789/comments/42");
+	});
+	bench("Hybrid", () => {
+		hybridMatcher.match("/api/posts/789/comments/42");
+	});
+});
+
+group("Wildcard route", () => {
+	bench("Radix Tree", () => {
+		radixTree.match("/files/documents/report.pdf");
+	});
+	bench("MatchPattern", () => {
+		regexMatcher.match("/files/documents/report.pdf");
+	});
+	bench("Hybrid", () => {
+		hybridMatcher.match("/files/documents/report.pdf");
+	});
+});
+
+group("Not found (worst case)", () => {
+	bench("Radix Tree", () => {
+		radixTree.match("/nonexistent/path/here");
+	});
+	bench("MatchPattern", () => {
+		regexMatcher.match("/nonexistent/path/here");
+	});
+	bench("Hybrid", () => {
+		hybridMatcher.match("/nonexistent/path/here");
 	});
 });
 
@@ -366,36 +380,36 @@ for (let i = 0; i < 100; i++) {
 	manyRoutesHybrid.add(route, handler);
 }
 
-group('Many routes (100): match last route', () => {
-	bench('Radix Tree', () => {
-		manyRoutesRadix.match('/api/v9/resource9/abc123');
+group("Many routes (100): match last route", () => {
+	bench("Radix Tree", () => {
+		manyRoutesRadix.match("/api/v9/resource9/abc123");
 	});
-	bench('MatchPattern (linear)', () => {
-		manyRoutesRegex.match('/api/v9/resource9/abc123');
+	bench("MatchPattern (linear)", () => {
+		manyRoutesRegex.match("/api/v9/resource9/abc123");
 	});
-	bench('Hybrid', () => {
-		manyRoutesHybrid.match('/api/v9/resource9/abc123');
+	bench("Hybrid", () => {
+		manyRoutesHybrid.match("/api/v9/resource9/abc123");
 	});
 });
 
-group('Many routes (100): match first route', () => {
-	bench('Radix Tree', () => {
-		manyRoutesRadix.match('/api/v0/resource0/abc123');
+group("Many routes (100): match first route", () => {
+	bench("Radix Tree", () => {
+		manyRoutesRadix.match("/api/v0/resource0/abc123");
 	});
-	bench('MatchPattern (linear)', () => {
-		manyRoutesRegex.match('/api/v0/resource0/abc123');
+	bench("MatchPattern (linear)", () => {
+		manyRoutesRegex.match("/api/v0/resource0/abc123");
 	});
-	bench('Hybrid', () => {
-		manyRoutesHybrid.match('/api/v0/resource0/abc123');
+	bench("Hybrid", () => {
+		manyRoutesHybrid.match("/api/v0/resource0/abc123");
 	});
 });
 
 // Test with complex patterns (where hybrid should fall back to regex)
 const complexRoutes = [
-	'/api/v1/users/:id(\\d+)',           // param with constraint
-	'/api/v1/posts/:id(\\d+)/comments',
-	'/api/v1/files/:path+',              // repeat modifier
-	'/api/v1/search{/category}?',        // optional group
+	"/api/v1/users/:id(\\d+)", // param with constraint
+	"/api/v1/posts/:id(\\d+)/comments",
+	"/api/v1/files/:path+", // repeat modifier
+	"/api/v1/search{/category}?", // optional group
 ];
 
 const complexRegex = new RegexMatcher();
@@ -406,12 +420,12 @@ for (const route of complexRoutes) {
 	complexHybrid.add(route, handler);
 }
 
-group('Complex patterns (regex fallback)', () => {
-	bench('MatchPattern', () => {
-		complexRegex.match('/api/v1/users/123');
+group("Complex patterns (regex fallback)", () => {
+	bench("MatchPattern", () => {
+		complexRegex.match("/api/v1/users/123");
 	});
-	bench('Hybrid (falls back to regex)', () => {
-		complexHybrid.match('/api/v1/users/123');
+	bench("Hybrid (falls back to regex)", () => {
+		complexHybrid.match("/api/v1/users/123");
 	});
 });
 

@@ -125,11 +125,19 @@ interface MatchResult {
  * Supports static segments, named parameters, and wildcards
  */
 class RadixNode {
-	children: Map<string, RadixNode> = new Map(); // char -> RadixNode
-	handlers: Map<string, Handler> = new Map(); // method -> handler
-	paramName: string | null = null; // param name if this is a :param segment
-	paramChild: RadixNode | null = null; // child node for :param
-	wildcardChild: RadixNode | null = null; // child node for * wildcard
+	children: Map<string, RadixNode>; // char -> RadixNode
+	handlers: Map<string, Handler>; // method -> handler
+	paramName: string | null; // param name if this is a :param segment
+	paramChild: RadixNode | null; // child node for :param
+	wildcardChild: RadixNode | null; // child node for * wildcard
+
+	constructor() {
+		this.children = new Map();
+		this.handlers = new Map();
+		this.paramName = null;
+		this.paramChild = null;
+		this.wildcardChild = null;
+	}
 }
 
 /**
@@ -150,10 +158,12 @@ interface ComplexRouteEntry {
  * Complex patterns: /users/:id(\d+), /files/:path+, {/prefix}?/users
  */
 class RadixTreeExecutor {
-	#root: RadixNode = new RadixNode();
-	#complexRoutes: ComplexRouteEntry[] = [];
+	#root: RadixNode;
+	#complexRoutes: ComplexRouteEntry[];
 
 	constructor(routes: RouteEntry[]) {
+		this.#root = new RadixNode();
+		this.#complexRoutes = [];
 		for (const route of routes) {
 			const pathname = route.pattern.pathname;
 

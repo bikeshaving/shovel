@@ -26,12 +26,16 @@ const polyfillStaticPattern = new PolyfillURLPattern({pathname: "/api/users"});
 const polyfillDynamicPattern = new PolyfillURLPattern({pathname: "/users/:id"});
 
 // Native patterns (if available)
-const nativeStaticPattern = NativeURLPattern ? new NativeURLPattern({pathname: "/api/users"}) : null;
-const nativeDynamicPattern = NativeURLPattern ? new NativeURLPattern({pathname: "/users/:id"}) : null;
+const nativeStaticPattern = NativeURLPattern
+	? new NativeURLPattern({pathname: "/api/users"})
+	: null;
+const nativeDynamicPattern = NativeURLPattern
+	? new NativeURLPattern({pathname: "/users/:id"})
+	: null;
 
 // Manual regex patterns (baseline)
 const staticRegex = /^\/api\/users$/;
-const dynamicRegex = /^\/users\/([^\/]+)$/;
+const dynamicRegex = /^\/users\/([^/]+)$/;
 
 function extractParams(pathname, regex, paramNames) {
 	const match = pathname.match(regex);
@@ -115,7 +119,7 @@ group("Construction cost", () => {
 	});
 });
 
-console.log("Native URLPattern available:", !!NativeURLPattern);
-console.log("");
+console.info("Native URLPattern available:", !!NativeURLPattern);
+console.info("");
 
 run();

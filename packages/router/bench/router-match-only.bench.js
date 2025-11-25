@@ -24,11 +24,15 @@ router.route("/api/metrics").get(() => new Response("metrics"));
 // Dynamic routes
 router.route("/users/:id").get(() => new Response("user"));
 router.route("/posts/:slug").get(() => new Response("post"));
-router.route("/categories/:category/posts").get(() => new Response("category posts"));
+router
+	.route("/categories/:category/posts")
+	.get(() => new Response("category posts"));
 router.route("/api/users/:id").get(() => new Response("api user"));
 router.route("/api/users/:id/posts").get(() => new Response("user posts"));
 router.route("/api/users/:id/profile").get(() => new Response("user profile"));
-router.route("/api/posts/:id/comments/:commentId").get(() => new Response("comment"));
+router
+	.route("/api/posts/:id/comments/:commentId")
+	.get(() => new Response("comment"));
 
 // Wildcard routes
 router.route("/files/*").get(() => new Response("file"));
@@ -50,7 +54,7 @@ for (let i = 0; i < 1000; i++) {
 	await router.handler(requests.staticFirst);
 }
 
-console.log("Router benchmark (full handler including middleware):\n");
+console.info("Router benchmark (full handler including middleware):\n");
 
 group("Static routes", () => {
 	bench("first (/)", async () => {
