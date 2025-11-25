@@ -66,31 +66,77 @@ function promiseWithTimeout<T>(
 }
 
 // ============================================================================
+// Internal Symbols for ExtendableEvent
+// ============================================================================
+
+/** Symbol for ending dispatch phase (internal use only) */
+const kEndDispatchPhase = Symbol.for("shovel.endDispatchPhase");
+
+/** Symbol for checking if extensions are allowed (internal use only) */
+const kCanExtend = Symbol.for("shovel.canExtend");
+
+// ============================================================================
 // Base Event Classes
 // ============================================================================
 
 /**
  * ExtendableEvent base class following ServiceWorker spec
  * Standard constructor: new ExtendableEvent(type) or new ExtendableEvent(type, options)
+ *
+ * Per spec, waitUntil() can be called:
+ * 1. Synchronously during event dispatch, OR
+ * 2. Asynchronously if there are pending promises from prior waitUntil/respondWith calls
+ *
+ * See: https://github.com/w3c/ServiceWorker/issues/771
  */
 export class ExtendableEvent extends Event {
 	#promises: Promise<any>[];
+	#dispatchPhase: boolean;
+	#pendingCount: number;
 
 	constructor(type: string, eventInitDict?: EventInit) {
 		super(type, eventInitDict);
 		this.#promises = [];
+		this.#dispatchPhase = true; // Starts true, set to false after dispatch
+		this.#pendingCount = 0;
 	}
 
 	waitUntil(promise: Promise<any>): void {
+		// Per spec: waitUntil can be called during dispatch phase OR if there are pending promises
+		// See: https://w3c.github.io/ServiceWorker/#dom-extendableevent-waituntil
+		if (!this.#dispatchPhase && this.#pendingCount === 0) {
+			throw new DOMException(
+				"waitUntil() must be called synchronously during event dispatch, " +
+					"or while there are pending promises from respondWith()/waitUntil()",
+				"InvalidStateError",
+			);
+		}
+
+		// Track pending count
+		this.#pendingCount++;
+		const trackedPromise = promise.finally(() => {
+			this.#pendingCount--;
+		});
+
 		// Attach catch handler to input promise to suppress unhandled rejection logging
-		promise.catch(() => {});
+		trackedPromise.catch(() => {});
 
 		// Store the promise for Promise.all() to consume (rejection still propagates)
-		this.#promises.push(promise);
+		this.#promises.push(trackedPromise);
 	}
 
 	getPromises(): Promise<any>[] {
 		return [...this.#promises];
+	}
+
+	/** @internal Called after synchronous dispatch completes */
+	[kEndDispatchPhase](): void {
+		this.#dispatchPhase = false;
+	}
+
+	/** @internal Check if extensions are still allowed */
+	[kCanExtend](): boolean {
+		return this.#dispatchPhase || this.#pendingCount > 0;
 	}
 }
 
@@ -115,8 +161,21 @@ export class FetchEvent extends ExtendableEvent {
 		if (this.#responded) {
 			throw new Error("respondWith() already called");
 		}
+
+		// Per spec, respondWith must be called during dispatch phase
+		if (!this[kCanExtend]()) {
+			throw new DOMException(
+				"respondWith() must be called synchronously during event dispatch",
+				"InvalidStateError",
+			);
+		}
+
 		this.#responded = true;
 		this.#responsePromise = Promise.resolve(response);
+
+		// Per spec, respondWith() extends the event lifetime (allows async waitUntil)
+		// We use waitUntil internally to track pending promise count
+		this.waitUntil(this.#responsePromise);
 	}
 
 	getResponse(): Promise<Response> | null {
@@ -546,57 +605,50 @@ export class ShovelServiceWorkerRegistration
 
 		// Run the request handling within the AsyncLocalStorage context
 		// This makes event.cookieStore available via self.cookieStore
-		return cookieStoreStorage.run(event.cookieStore, () => {
-			return new Promise<Response>((resolve, reject) => {
-				// Dispatch event using native EventTarget
-				this.dispatchEvent(event);
+		return cookieStoreStorage.run(event.cookieStore, async () => {
+			// Dispatch event using native EventTarget
+			this.dispatchEvent(event);
 
-				// Defer response check to allow async event handlers to call respondWith()
-				// Even though async handlers may await immediately, the microtask queue runs
-				// before this setTimeout callback, giving them a chance to call respondWith()
-				setTimeout(async () => {
-					// Check if respondWith was called
-					if (!event.hasResponded()) {
-						reject(new Error("No response provided for fetch event"));
-						return;
-					}
+			// End the dispatch phase - after this, waitUntil/respondWith require pending promises
+			event[kEndDispatchPhase]();
 
-					try {
-						// Get the response (may be a Promise)
-						const response = await event.getResponse()!;
+			// Per ServiceWorker spec, respondWith() must be called synchronously
+			// during event dispatch. No need to defer - check immediately.
+			if (!event.hasResponded()) {
+				throw new Error(
+					"No response provided for fetch event. " +
+						"respondWith() must be called synchronously during event dispatch.",
+				);
+			}
 
-						// Wait for all waitUntil promises (background tasks, don't block response)
-						const promises = event.getPromises();
-						if (promises.length > 0) {
-							Promise.allSettled(promises).catch(logger.error);
-						}
+			// Get the response (may be a Promise)
+			const response = await event.getResponse()!;
 
-						// Apply cookie changes from the cookieStore to the response
-						if (event.cookieStore.hasChanges()) {
-							const setCookieHeaders = event.cookieStore.getSetCookieHeaders();
-							const headers = new Headers(response.headers);
+			// Fire off waitUntil promises (background tasks, don't block response)
+			const promises = event.getPromises();
+			if (promises.length > 0) {
+				Promise.allSettled(promises).catch(logger.error);
+			}
 
-							// Add all Set-Cookie headers
-							for (const setCookie of setCookieHeaders) {
-								headers.append("Set-Cookie", setCookie);
-							}
+			// Apply cookie changes from the cookieStore to the response
+			if (event.cookieStore.hasChanges()) {
+				const setCookieHeaders = event.cookieStore.getSetCookieHeaders();
+				const headers = new Headers(response.headers);
 
-							// Create new response with updated headers
-							resolve(
-								new Response(response.body, {
-									status: response.status,
-									statusText: response.statusText,
-									headers,
-								}),
-							);
-						} else {
-							resolve(response);
-						}
-					} catch (error) {
-						reject(error);
-					}
-				}, 0);
-			});
+				// Add all Set-Cookie headers
+				for (const setCookie of setCookieHeaders) {
+					headers.append("Set-Cookie", setCookie);
+				}
+
+				// Create new response with updated headers
+				return new Response(response.body, {
+					status: response.status,
+					statusText: response.statusText,
+					headers,
+				});
+			}
+
+			return response;
 		});
 	}
 

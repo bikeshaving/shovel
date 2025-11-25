@@ -64,22 +64,22 @@ test("self.cookieStore is isolated per-request (Node)", async () => {
 	await writeFile(
 		entryPath,
 		`
-self.addEventListener("fetch", async (event) => {
-  const cookieStore = self.cookieStore;
-  const url = new URL(event.request.url);
-  const requestId = url.searchParams.get("id");
+self.addEventListener("fetch", (event) => {
+  event.respondWith((async () => {
+    const cookieStore = self.cookieStore;
+    const url = new URL(event.request.url);
+    const requestId = url.searchParams.get("id");
 
-  // Get the cookie from the request
-  const cookie = await cookieStore.get("test");
+    // Get the cookie from the request
+    const cookie = await cookieStore.get("test");
 
-  event.respondWith(
-    new Response(JSON.stringify({
+    return new Response(JSON.stringify({
       requestId: requestId,
       cookieValue: cookie?.value || null
     }), {
       headers: { "Content-Type": "application/json" }
-    })
-  );
+    });
+  })());
 });
 `,
 	);
@@ -122,17 +122,17 @@ test("self.cookieStore reads cookies from request (Node)", async () => {
 	await writeFile(
 		entryPath,
 		`
-self.addEventListener("fetch", async (event) => {
-  const cookieStore = self.cookieStore;
-  const testCookie = await cookieStore.get("test");
+self.addEventListener("fetch", (event) => {
+  event.respondWith((async () => {
+    const cookieStore = self.cookieStore;
+    const testCookie = await cookieStore.get("test");
 
-  event.respondWith(
-    new Response(JSON.stringify({
+    return new Response(JSON.stringify({
       cookieValue: testCookie?.value || null
     }), {
       headers: { "Content-Type": "application/json" }
-    })
-  );
+    });
+  })());
 });
 `,
 	);
@@ -198,17 +198,17 @@ test("self.cookieStore reads cookies from request (Bun)", async () => {
 	await writeFile(
 		entryPath,
 		`
-self.addEventListener("fetch", async (event) => {
-  const cookieStore = self.cookieStore;
-  const testCookie = await cookieStore.get("test");
+self.addEventListener("fetch", (event) => {
+  event.respondWith((async () => {
+    const cookieStore = self.cookieStore;
+    const testCookie = await cookieStore.get("test");
 
-  event.respondWith(
-    new Response(JSON.stringify({
+    return new Response(JSON.stringify({
       cookieValue: testCookie?.value || null
     }), {
       headers: { "Content-Type": "application/json" }
-    })
-  );
+    });
+  })());
 });
 `,
 	);
