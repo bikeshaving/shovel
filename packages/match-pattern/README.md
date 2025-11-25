@@ -70,8 +70,8 @@ const pattern = new MatchPattern({ search: 'type=:type&sort=:sort' });
 
 // URLPattern: Only first URL matches
 // MatchPattern: Both URLs match
-pattern.test('/?type=blog&sort=date');  // ✅ Both: true
-pattern.test('/?sort=date&type=blog');  // ✅ MatchPattern: true, URLPattern: false
+pattern.test('/?type=blog&sort=date');  // Both: true
+pattern.test('/?sort=date&type=blog');  // MatchPattern: true, URLPattern: false
 ```
 
 ### 2. Non-Exhaustive Search Matching
@@ -83,19 +83,19 @@ const pattern = new MatchPattern({ search: 'q=:query' });
 
 // URLPattern greedy capture issue
 const urlPattern = new URLPattern({ search: 'q=:query' });
-urlPattern.exec('?q=hello&page=1').search.groups;  // { query: "hello&page=1" } 😱
+urlPattern.exec('?q=hello&page=1').search.groups;  // { query: "hello&page=1" }
 
 // MatchPattern proper parsing
 const result = pattern.exec('/?q=hello&page=1&limit=10');
-console.log(result.params);  // { q: 'hello', page: '1', limit: '10' } ✅
+console.log(result.params);  // { q: 'hello', page: '1', limit: '10' }
 ```
 
 Required parameters must be present, but extra parameters are allowed:
 
 ```javascript
-pattern.test('/search');                         // ❌ false (q missing)
-pattern.test('/search?q=hello');                 // ✅ true
-pattern.test('/search?q=hello&page=1&limit=10'); // ✅ true (extras captured)
+pattern.test('/search');                         // false (q missing)
+pattern.test('/search?q=hello');                 // true
+pattern.test('/search?q=hello&page=1&limit=10'); // true (extras captured)
 ```
 
 ### 3. Unified Parameter Object
@@ -144,13 +144,13 @@ MatchPattern does not automatically normalize trailing slashes. Use explicit pat
 ```javascript
 // Exact matching
 const exactPattern = new MatchPattern('/api/posts/:id');
-exactPattern.test('/api/posts/123');   // ✅ true
-exactPattern.test('/api/posts/123/');  // ❌ false
+exactPattern.test('/api/posts/123');   // true
+exactPattern.test('/api/posts/123/');  // false
 
 // Optional trailing slash
 const flexiblePattern = new MatchPattern('/api/posts/:id{/}?');
-flexiblePattern.test('/api/posts/123');   // ✅ true
-flexiblePattern.test('/api/posts/123/');  // ✅ true
+flexiblePattern.test('/api/posts/123');   // true
+flexiblePattern.test('/api/posts/123/');  // true
 ```
 
 ## Implementation Notes
@@ -165,7 +165,8 @@ MatchPattern compiles URLPattern syntax directly to RegExp in a single pass, whi
 
 ### URLPattern Spec Compliance
 
-MatchPattern implements the core URLPattern pathname syntax using pure RegExp:
+The `URLPattern` class passes 100% of the Web Platform Tests (755 tests). It implements the full URLPattern specification:
+
 - Named parameters: `:id`, `:id(\d+)`
 - Optional parameters: `:id?`
 - Repeat modifiers: `:path+`, `:path*`
@@ -173,16 +174,13 @@ MatchPattern implements the core URLPattern pathname syntax using pure RegExp:
 - Regex groups: `(\d+)`
 - Explicit delimiters: `{/old}?`
 - Escaped characters: `\.`
-- Protocol and hostname matching
-- Search parameters (with routing enhancements)
+- Protocol, hostname, port, pathname, search, and hash matching
+- baseURL parameter for relative pattern resolution
+- ignoreCase option
 
-**Not implemented:**
-- `baseURL` parameter for relative pattern resolution
-- Complex hostname wildcards: `{*.}?example.com`
-- Port patterns
-- Hash patterns
-
-The implementation is validated against comprehensive tests covering the supported pathname and search parameter features.
+`MatchPattern` intentionally deviates from strict spec compliance in two areas to provide better routing ergonomics:
+- Allows relative patterns without baseURL (convenience for routing)
+- Order-independent search parameter matching
 
 ## API Reference
 
@@ -210,7 +208,7 @@ interface MatchPatternResult extends URLPatternResult {
 
 ## Compatibility
 
-- **Runtimes**: Node,Deno, Bun, Cloudflare Workers, Edge Runtime, any JavaScript environment
+- **Runtimes**: Node, Deno, Bun, Cloudflare Workers, Edge Runtime, any JavaScript environment
 - **Browsers**: All browsers (no polyfill required)
 - **TypeScript**: 5.0+ recommended
 
