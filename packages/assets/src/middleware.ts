@@ -1,11 +1,11 @@
 /**
  * Assets middleware using self.buckets ServiceWorker API
  *
- * Serves assets with 1-to-1 path mapping from assets bucket to public URLs.
- * Assets bucket structure mirrors the public URL structure:
- * - /assets/favicon.ico -> /favicon.ico
- * - /assets/static/app.[hash].js -> /static/app.[hash].js
- * - /assets/index.html -> /index.html
+ * Serves assets with 1-to-1 path mapping from static bucket to public URLs.
+ * Static bucket structure mirrors the public URL structure:
+ * - static/favicon.ico -> /favicon.ico
+ * - static/assets/app.[hash].js -> /assets/app.[hash].js
+ * - static/index.html -> /index.html
  */
 
 import type {AssetsConfig} from "./index.js";
@@ -31,7 +31,7 @@ export function assets(config: AssetsConfig = {}) {
 	async function loadManifest(): Promise<Record<string, any>> {
 		if (manifestCache) return manifestCache;
 
-		const bucketDir = await (self as any).buckets.open("assets");
+		const bucketDir = await (self as any).buckets.open("static");
 		const manifestHandle = await bucketDir.getFileHandle(manifestPath);
 		const manifestFile = await manifestHandle.getFile();
 		const manifestText = await manifestFile.text();
@@ -79,7 +79,7 @@ export function assets(config: AssetsConfig = {}) {
 				// Get file from assets bucket using direct path mapping
 				// Public path /static/app.js maps to assets/static/app.js in bucket
 				const bucketPath = `assets${requestedPath}`;
-				const bucketDir = await (self as any).buckets.open("assets");
+				const bucketDir = await (self as any).buckets.open("static");
 				const fileHandle = await bucketDir.getFileHandle(bucketPath);
 				const file = await fileHandle.getFile();
 

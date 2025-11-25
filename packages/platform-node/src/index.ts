@@ -19,7 +19,6 @@ import {
 	type ProcessedShovelConfig,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
-import {NodeBucket} from "@b9g/filesystem/node.js";
 import * as Http from "http";
 import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
@@ -393,17 +392,6 @@ export class NodePlatform extends BasePlatform {
 				return isListening;
 			},
 		};
-	}
-
-	/**
-	 * Get filesystem root for File System Access API
-	 */
-	async getFileSystemRoot(
-		name = "default",
-	): Promise<FileSystemDirectoryHandle> {
-		// Create bucket directly - no registry needed
-		const bucketPath = Path.resolve(this.#options.cwd, name);
-		return new NodeBucket(bucketPath);
 	}
 
 	/**

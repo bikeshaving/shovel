@@ -72,7 +72,7 @@ test(
 		try {
 			// Create some test directories
 			await FS.mkdir(join(tempDir, "dist"), {recursive: true});
-			await FS.mkdir(join(tempDir, "assets"), {recursive: true});
+			await FS.mkdir(join(tempDir, "static"), {recursive: true});
 
 			const buckets = await createBucketStorage(tempDir);
 
@@ -82,10 +82,10 @@ test(
 			expect(distHandle.kind).toBe("directory");
 			expect(distHandle.name).toBe("dist");
 
-			const assetsHandle = await buckets.open("assets");
-			expect(assetsHandle).toBeDefined();
-			expect(assetsHandle.kind).toBe("directory");
-			expect(assetsHandle.name).toBe("assets");
+			const staticHandle = await buckets.open("static");
+			expect(staticHandle).toBeDefined();
+			expect(staticHandle.kind).toBe("directory");
+			expect(staticHandle.name).toBe("static");
 		} finally {
 			await cleanup([tempDir]);
 		}

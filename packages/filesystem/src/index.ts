@@ -488,7 +488,7 @@ export class ShovelDirectoryHandle
 export interface BucketStorage {
 	/**
 	 * Open a named bucket - returns FileSystemDirectoryHandle (root of that bucket)
-	 * Well-known names: 'assets', 'static', 'uploads', 'temp'
+	 * Well-known names: 'static', 'tmp'
 	 */
 	open(name: string): Promise<FileSystemDirectoryHandle>;
 

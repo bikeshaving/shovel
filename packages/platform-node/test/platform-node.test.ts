@@ -63,14 +63,6 @@ describe("NodePlatform", () => {
 		expect(server.ready).toBe(false);
 	});
 
-	test("should create directory handle using getFileSystemRoot", async () => {
-		// getFileSystemRoot creates bucket at path relative to cwd
-		const handle = await platform.getFileSystemRoot("test-bucket");
-		expect(handle).toBeDefined();
-		expect(handle.kind).toBe("directory");
-		expect(handle.name).toBe("test-bucket");
-	});
-
 	test("should create custom cache storage", async () => {
 		// Force main thread detection by ensuring self is undefined
 		const originalSelf = (globalThis as any).self;

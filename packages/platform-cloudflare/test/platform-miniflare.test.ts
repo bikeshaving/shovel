@@ -79,42 +79,4 @@ self.addEventListener("fetch", (event) => {
 		await instance.dispose();
 	});
 
-	test("getFileSystemRoot returns CFAssetsDirectoryHandle for 'assets'", async () => {
-		// First load a worker to initialize miniflare and ASSETS binding
-		const instance = await platform.loadServiceWorker(
-			path.join(testDir, "worker.js"),
-		);
-
-		const assetsHandle = await platform.getFileSystemRoot("assets");
-		expect(assetsHandle.kind).toBe("directory");
-
-		// Navigate to assets subdirectory (static/assets in our fixture)
-		const assetsDir = await assetsHandle.getDirectoryHandle("assets");
-		expect(assetsDir.name).toBe("assets");
-
-		// Get a file
-		const cssHandle = await assetsDir.getFileHandle("style.css");
-		const cssFile = await cssHandle.getFile();
-		const content = await cssFile.text();
-
-		expect(content).toBe("body { color: blue; }");
-
-		await instance.dispose();
-	});
-
-	test("getFileSystemRoot returns MemoryBucket for 'tmp'", async () => {
-		const bucket = await platform.getFileSystemRoot("tmp");
-		expect(bucket.kind).toBe("directory");
-		expect(bucket.name).toBe("tmp");
-
-		// MemoryBucket is writable
-		const fileHandle = await bucket.getFileHandle("test.txt", {create: true});
-		expect(fileHandle.kind).toBe("file");
-	});
-
-	test("getFileSystemRoot throws for unknown buckets", async () => {
-		await expect(platform.getFileSystemRoot("my-bucket")).rejects.toThrow(
-			/Unknown bucket.*my-bucket/,
-		);
-	});
 });

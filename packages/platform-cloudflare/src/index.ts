@@ -13,10 +13,9 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 } from "@b9g/platform";
-import {MemoryBucket} from "@b9g/filesystem/memory.js";
 import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
-import {CFAssetsDirectoryHandle, type CFAssetsBinding} from "./filesystem-assets.js";
+import type {CFAssetsBinding} from "./filesystem-assets.js";
 
 const logger = getLogger(["platform-cloudflare"]);
 
@@ -216,39 +215,6 @@ export class CloudflarePlatform extends BasePlatform {
 
 		logger.info("Miniflare dev server ready", {});
 		return instance;
-	}
-
-	/**
-	 * Get filesystem root for File System Access API
-	 *
-	 * Well-known buckets:
-	 * - "assets": Read-only bundled static files (uses ASSETS binding in prod)
-	 * - "tmp": Ephemeral writable storage (uses MemoryBucket)
-	 *
-	 * Unknown buckets throw an error - use platform config to add custom buckets.
-	 */
-	async getFileSystemRoot(
-		name = "default",
-	): Promise<FileSystemDirectoryHandle> {
-		// "assets" bucket uses the ASSETS binding (bundled static files)
-		if (name === "assets") {
-			if (this.#assetsBinding) {
-				return new CFAssetsDirectoryHandle(this.#assetsBinding, "/");
-			}
-			// In dev mode without assets configured, return empty memory bucket
-			return new MemoryBucket(name);
-		}
-
-		// "tmp" bucket uses ephemeral memory storage
-		if (name === "tmp") {
-			return new MemoryBucket(name);
-		}
-
-		// Unknown buckets are not allowed - fail fast
-		throw new Error(
-			`Unknown bucket "${name}". Cloudflare platform only supports well-known buckets: "assets", "tmp". ` +
-				`Configure custom buckets via platform options or use R2/KV bindings.`,
-		);
 	}
 
 	/**
