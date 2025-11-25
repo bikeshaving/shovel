@@ -144,6 +144,54 @@ function validateRegexGroupContent(regexContent: string): void {
 }
 
 /**
+ * Validate content inside IPv6 brackets [...]
+ * Throws if content contains invalid characters for IPv6 addresses
+ *
+ * Rules:
+ * - Named parameters (:name) ARE allowed
+ * - Non-hex literal characters (like 'x', 'y' except a-f) are NOT allowed
+ * - Non-ASCII characters are NOT allowed
+ * - Escaped colons (\:) are allowed
+ */
+function validateIPv6BracketContent(content: string): void {
+	let i = 0;
+	while (i < content.length) {
+		const char = content[i];
+
+		// Handle escaped characters
+		if (char === "\\") {
+			i += 2;
+			continue;
+		}
+
+		// Named parameters (:name) are allowed in IPv6 patterns
+		if (char === ":") {
+			const paramMatch = content.slice(i).match(/^:(\p{ID_Start}\p{ID_Continue}*)([?+*])?/u);
+			if (paramMatch) {
+				i += paramMatch[0].length;
+				continue;
+			}
+			// Plain colon (IPv6 separator) - allowed
+			i++;
+			continue;
+		}
+
+		// Check for non-ASCII
+		if (char.charCodeAt(0) > 127) {
+			throw new TypeError(`Invalid hostname pattern: non-ASCII character '${char}' in IPv6 brackets`);
+		}
+
+		// Check for invalid hex characters
+		// Valid: 0-9, a-f, A-F
+		if (/[a-zA-Z]/.test(char) && !/[a-fA-F]/.test(char)) {
+			throw new TypeError(`Invalid hostname pattern: invalid IPv6 character '${char}'`);
+		}
+
+		i++;
+	}
+}
+
+/**
  * Validate hostname pattern per URLPattern spec
  * Throws if hostname contains forbidden characters that aren't part of pattern syntax
  *
@@ -177,10 +225,17 @@ function validateHostnamePattern(hostname: string): void {
 			continue;
 		}
 
-		// Skip pattern syntax: {...}, (...), :name, *
+		// Handle brace groups: {...}
+		// Need to validate IPv6 content inside braces
 		if (char === "{") {
 			const closeIdx = hostname.indexOf("}", i);
 			if (closeIdx !== -1) {
+				const braceContent = hostname.slice(i + 1, closeIdx);
+				// Check for IPv6 brackets inside the brace group
+				const bracketMatch = braceContent.match(/\[([^\]]*)\]/);
+				if (bracketMatch) {
+					validateIPv6BracketContent(bracketMatch[1]);
+				}
 				i = closeIdx + 1;
 				// Skip modifier after }
 				if (hostname[i] === "?" || hostname[i] === "+" || hostname[i] === "*") i++;
@@ -226,6 +281,9 @@ function validateHostnamePattern(hostname: string): void {
 			// Could be IPv6 pattern [...]
 			const closeIdx = hostname.indexOf("]", i);
 			if (closeIdx !== -1) {
+				// Validate IPv6 bracket content
+				const ipv6Content = hostname.slice(i + 1, closeIdx);
+				validateIPv6BracketContent(ipv6Content);
 				i = closeIdx + 1;
 				continue;
 			}
@@ -465,6 +523,37 @@ interface CompiledPattern {
 }
 
 /**
+ * Find an unescaped @ character in a pattern
+ * Skips escaped \@ sequences
+ * Returns index or -1 if not found
+ */
+function findUnescapedAt(pattern: string): number {
+	for (let i = 0; i < pattern.length; i++) {
+		if (pattern[i] === "\\" && i + 1 < pattern.length) {
+			i++; // Skip escaped character
+			continue;
+		}
+		if (pattern[i] === "@") {
+			return i;
+		}
+	}
+	return -1;
+}
+
+/**
+ * Find an escaped colon (\:) in a pattern
+ * Returns index of the backslash or -1 if not found
+ */
+function findEscapedColon(pattern: string): number {
+	for (let i = 0; i < pattern.length - 1; i++) {
+		if (pattern[i] === "\\" && pattern[i + 1] === ":") {
+			return i;
+		}
+	}
+	return -1;
+}
+
+/**
  * Find the index of a question mark that acts as search delimiter in a URL pattern
  *
  * In URLPattern syntax:
@@ -575,14 +664,89 @@ function parseStringPattern(pattern: string): {
 		}
 	}
 
-	// Check for non-hierarchical scheme with escaped colon (e.g., "data\:foobar")
-	// The \: indicates this is a protocol separator for non-special schemes
+	// Check for escaped colon protocol separator (e.g., "https\:foo@example.com" or "data\:foobar")
+	// The \: indicates this is a protocol separator
 	const escapedColonMatch = pattern.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*)\\:/);
 	if (escapedColonMatch) {
 		const protocol = escapedColonMatch[1];
 		const rest = pattern.slice(escapedColonMatch[0].length);
 
-		// Extract hash first
+		// Only special schemes (http, https, ws, wss, ftp, file) have userinfo@hostname structure
+		// Non-special schemes (data, javascript, etc.) treat everything after : as pathname
+		const isSpecial = isSpecialScheme(protocol);
+
+		// Check if this looks like a hierarchical URL (has @ for userinfo or hostname structure)
+		// Pattern: userinfo@hostname/path or just hostname/path
+		const atIdx = findUnescapedAt(rest);
+		if (isSpecial && atIdx !== -1) {
+			// Has userinfo - parse as full URL
+			const userinfoStr = rest.slice(0, atIdx);
+			const afterAt = rest.slice(atIdx + 1);
+
+			// Parse userinfo (username\:password or just username)
+			let username: string | undefined;
+			let password: string | undefined;
+			const colonIdx = findEscapedColon(userinfoStr);
+			if (colonIdx !== -1) {
+				username = userinfoStr.slice(0, colonIdx);
+				password = userinfoStr.slice(colonIdx + 2); // Skip \:
+			} else {
+				username = userinfoStr;
+			}
+
+			// Parse hostname/port/pathname/search/hash from afterAt
+			// Find first / which starts pathname
+			const slashIdx = afterAt.indexOf("/");
+			const hashIdx = afterAt.indexOf("#");
+			const searchDelim = findSearchDelimiter(afterAt);
+
+			// Find the end of hostname (first of /, ?, #)
+			let hostEnd = afterAt.length;
+			if (slashIdx !== -1 && slashIdx < hostEnd) hostEnd = slashIdx;
+			if (searchDelim.index !== -1 && searchDelim.index < hostEnd) hostEnd = searchDelim.index;
+			if (hashIdx !== -1 && hashIdx < hostEnd) hostEnd = hashIdx;
+
+			const hostPart = afterAt.slice(0, hostEnd);
+
+			// Parse hostname and port from hostPart
+			let hostname: string;
+			let port: string | undefined;
+			const portColonIdx = hostPart.lastIndexOf(":");
+			if (portColonIdx !== -1 && !hostPart.startsWith("[")) {
+				// Has port (but not if it's IPv6 [::1])
+				hostname = hostPart.slice(0, portColonIdx);
+				port = hostPart.slice(portColonIdx + 1);
+			} else {
+				hostname = hostPart;
+			}
+
+			// Extract pathname, search, hash
+			let pathname: string | undefined;
+			let search: string | undefined;
+			let hash: string | undefined;
+
+			if (slashIdx !== -1) {
+				const pathStart = slashIdx;
+				let pathEnd = afterAt.length;
+				if (searchDelim.index !== -1 && searchDelim.index > slashIdx) pathEnd = Math.min(pathEnd, searchDelim.index);
+				if (hashIdx !== -1) pathEnd = Math.min(pathEnd, hashIdx);
+				pathname = afterAt.slice(pathStart, pathEnd);
+			}
+
+			if (searchDelim.index !== -1) {
+				let searchEnd = afterAt.length;
+				if (hashIdx !== -1 && hashIdx > searchDelim.index) searchEnd = hashIdx;
+				search = afterAt.slice(searchDelim.index + searchDelim.offset, searchEnd);
+			}
+
+			if (hashIdx !== -1) {
+				hash = afterAt.slice(hashIdx + 1);
+			}
+
+			return { protocol, username, password, hostname, port, pathname, search, hash };
+		}
+
+		// No @, treat as non-hierarchical (like data:foobar)
 		const hashIndex = rest.indexOf("#");
 		const hash = hashIndex === -1 ? undefined : rest.slice(hashIndex + 1);
 		const beforeHash = hashIndex === -1 ? rest : rest.slice(0, hashIndex);
@@ -1016,11 +1180,21 @@ function compilePathname(pathname: string, encodeChars: boolean = true, ignoreCa
 				const hasPrecedingSlash = pattern.endsWith("/");
 
 				if (modifier === "?") {
-					// Optional: Both / and param are optional
-					if (hasPrecedingSlash) {
-						// Remove the trailing / we just added
+					// Optional param handling depends on what follows
+					const nextChar = pathname[i + match[0].length];
+					const isAtEnd = nextChar === undefined;
+					const isFollowedBySlash = nextChar === "/";
+
+					if (hasPrecedingSlash && (isAtEnd || isFollowedBySlash)) {
+						// At end or followed by slash: both / and param are optional together
+						// e.g., /foo/:bar? or /foo/:bar?/baz
 						pattern = pattern.slice(0, -1);
 						pattern += `(?:/(${basePattern}))?`;
+					} else if (hasPrecedingSlash) {
+						// Followed by literal: / is required, only param is optional
+						// e.g., /foo/:bar?baz - the / before bar is required
+						// Use * instead of + to allow empty match
+						pattern += `([^/]*?)`;
 					} else {
 						pattern += `(${basePattern})?`;
 					}
@@ -1561,8 +1735,11 @@ export class MatchPattern {
 			if (pathname !== "") {
 				pathname = normalizePathname(pathname);
 			}
-			// Don't encode the pattern - it contains special syntax like :id
-			this.#pathnameCompiled = compilePathname(pathname, true, this.#ignoreCase);
+			// Determine if pathname should be encoded based on protocol pattern
+			// If protocol is definitely non-special (e.g., "javascript", "data"), don't encode
+			// If protocol could be special or is not specified, encode
+			const shouldEncodePathname = !isNonSpecialScheme;
+			this.#pathnameCompiled = compilePathname(pathname, shouldEncodePathname, this.#ignoreCase);
 		} else {
 			this.#originalInput = input;
 
