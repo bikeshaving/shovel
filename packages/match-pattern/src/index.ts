@@ -1153,15 +1153,21 @@ export class MatchPattern {
 	}
 
 	constructor(
-		input: string | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string},
+		input?: string | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string},
 		baseURLOrOptions?: string | URLPatternOptions,
 		options?: URLPatternOptions,
 	) {
 		// Parse arguments based on input type
 		// For object input: second arg is options (baseURL is inside the object)
 		// For string input: second arg can be baseURL (string) or options (object), third arg is options if second is baseURL
+		// For no input: create a wildcard pattern that matches anything (per URLPattern spec)
 		let baseURL: string | undefined;
 		let opts: URLPatternOptions | undefined;
+
+		// Handle empty constructor - create wildcard pattern
+		if (input === undefined) {
+			input = {};
+		}
 
 		if (typeof input === "object") {
 			// Object input: second arg is options
@@ -1416,10 +1422,10 @@ export class MatchPattern {
 	/**
 	 * Test if a URL matches this pattern
 	 */
-	test(input: string | URL | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string}, baseURL?: string): boolean {
-		// Handle undefined input
+	test(input?: string | URL | {pathname?: string; search?: string; protocol?: string; hostname?: string; port?: string; username?: string; password?: string; hash?: string; baseURL?: string}, baseURL?: string): boolean {
+		// Handle undefined input - per URLPattern spec, test() with no args matches empty object
 		if (input === undefined) {
-			return false;
+			return this.#testComponents({}, baseURL);
 		}
 
 		// Handle URLPatternInit object with component-level matching
