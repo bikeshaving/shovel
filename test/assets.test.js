@@ -328,7 +328,7 @@ test(
 					event.respondWith(
 						(async () => {
 							try {
-								const assetsBucket = await globalThis.buckets.open("static");
+								const assetsBucket = await globalThis.buckets.open("assets");
 								const fileHandle = await assetsBucket.getFileHandle(assetPath);
 								const file = await fileHandle.getFile();
 								const content = await file.text();
