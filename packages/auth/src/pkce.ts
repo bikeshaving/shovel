@@ -35,13 +35,13 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
 	const hash = await crypto.subtle.digest("SHA-256", data);
 
 	// Base64URL encode the hash
-	return base64UrlEncode(hash);
+	return base64URLEncode(hash);
 }
 
 /**
  * Base64URL encode a buffer (without padding)
  */
-function base64UrlEncode(buffer: ArrayBuffer): string {
+function base64URLEncode(buffer: ArrayBuffer): string {
 	const bytes = new Uint8Array(buffer);
 	let binary = "";
 	for (let i = 0; i < bytes.length; i++) {

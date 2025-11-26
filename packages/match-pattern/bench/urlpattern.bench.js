@@ -10,8 +10,8 @@ import {URLPattern as PolyfillURLPattern} from "urlpattern-polyfill";
 const NativeURLPattern = globalThis.URLPattern;
 
 // Test URLs
-const staticUrl = new URL("http://localhost/api/users");
-const dynamicUrl = new URL("http://localhost/users/123");
+const staticURL = new URL("http://localhost/api/users");
+const dynamicURL = new URL("http://localhost/users/123");
 
 // Shovel patterns
 const shovelStaticPattern = new ShovelURLPattern({pathname: "/api/users"});
@@ -49,49 +49,49 @@ function extractParams(pathname, regex, paramNames) {
 
 group("Static route: test()", () => {
 	bench("Shovel URLPattern", () => {
-		shovelStaticPattern.test(staticUrl);
+		shovelStaticPattern.test(staticURL);
 	});
 
 	bench("Shovel MatchPattern", () => {
-		matchStaticPattern.test(staticUrl);
+		matchStaticPattern.test(staticURL);
 	});
 
 	bench("urlpattern-polyfill", () => {
-		polyfillStaticPattern.test(staticUrl);
+		polyfillStaticPattern.test(staticURL);
 	});
 
 	if (nativeStaticPattern) {
 		bench("Native URLPattern", () => {
-			nativeStaticPattern.test(staticUrl);
+			nativeStaticPattern.test(staticURL);
 		});
 	}
 
 	bench("RegExp.test()", () => {
-		staticRegex.test(staticUrl.pathname);
+		staticRegex.test(staticURL.pathname);
 	});
 });
 
 group("Dynamic route: exec()", () => {
 	bench("Shovel URLPattern", () => {
-		shovelDynamicPattern.exec(dynamicUrl);
+		shovelDynamicPattern.exec(dynamicURL);
 	});
 
 	bench("Shovel MatchPattern", () => {
-		matchDynamicPattern.exec(dynamicUrl);
+		matchDynamicPattern.exec(dynamicURL);
 	});
 
 	bench("urlpattern-polyfill", () => {
-		polyfillDynamicPattern.exec(dynamicUrl);
+		polyfillDynamicPattern.exec(dynamicURL);
 	});
 
 	if (nativeDynamicPattern) {
 		bench("Native URLPattern", () => {
-			nativeDynamicPattern.exec(dynamicUrl);
+			nativeDynamicPattern.exec(dynamicURL);
 		});
 	}
 
 	bench("RegExp + extractParams", () => {
-		extractParams(dynamicUrl.pathname, dynamicRegex, ["id"]);
+		extractParams(dynamicURL.pathname, dynamicRegex, ["id"]);
 	});
 });
 

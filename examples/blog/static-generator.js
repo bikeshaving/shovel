@@ -20,7 +20,7 @@ async function generateStaticSite() {
 	console.info("[Static] Generating static site from ServiceWorker app...");
 
 	const outDir = "dist";
-	const baseUrl = "https://example.com";
+	const baseURL = "https://example.com";
 
 	// Create platform
 	const platform = createNodePlatform({
@@ -60,7 +60,7 @@ async function generateStaticSite() {
 
 		// Collect routes for static generation
 		console.info("[Static] Collecting routes...");
-		const routes = await serviceWorker.collectStaticRoutes(outDir, baseUrl);
+		const routes = await serviceWorker.collectStaticRoutes(outDir, baseURL);
 		console.info(`[Static] Found ${routes.length} routes:`, routes);
 
 		// Ensure output directory exists
@@ -70,7 +70,7 @@ async function generateStaticSite() {
 		console.info("[Static] Pre-rendering routes...");
 		for (const route of routes) {
 			try {
-				const url = new URL(route, baseUrl);
+				const url = new URL(route, baseURL);
 				const request = new Request(url.href);
 
 				console.info(`[Static] Rendering ${route}...`);

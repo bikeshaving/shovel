@@ -513,23 +513,23 @@ describe("Middleware Short-Circuiting", () => {
 
 	test("chained generator middleware with yield request should preserve request object", async () => {
 		const router = new Router();
-		let firstMiddlewareUrl: string | undefined;
-		let secondMiddlewareUrl: string | undefined;
-		let firstUrlError: Error | null = null;
-		let secondUrlError: Error | null = null;
+		let firstMiddlewareURL: string | undefined;
+		let secondMiddlewareURL: string | undefined;
+		let firstURLError: Error | null = null;
+		let secondURLError: Error | null = null;
 
 		// First generator middleware (like pageCache)
 		async function* firstMiddleware(request: Request, _context: any) {
 			try {
 				// Try to access request.url - should work
-				firstMiddlewareUrl = request.url;
+				firstMiddlewareURL = request.url;
 				new URL(request.url); // Should not throw
 
 				// Pass through
 				const response = yield request;
 				return response;
 			} catch (error) {
-				firstUrlError = error as Error;
+				firstURLError = error as Error;
 				return new Response("First middleware URL error: " + error.message, {
 					status: 500,
 				});
@@ -540,7 +540,7 @@ describe("Middleware Short-Circuiting", () => {
 		async function* secondMiddleware(request: Request, _context: any) {
 			try {
 				// Try to access request.url - this is where the bug manifests
-				secondMiddlewareUrl = request.url;
+				secondMiddlewareURL = request.url;
 				const url = new URL(request.url); // This should not throw "Invalid URL: [object Object]"
 
 				// Only handle specific paths
@@ -551,7 +551,7 @@ describe("Middleware Short-Circuiting", () => {
 
 				return new Response("Asset handled", {status: 200});
 			} catch (error) {
-				secondUrlError = error as Error;
+				secondURLError = error as Error;
 				return new Response("Second middleware URL error: " + error.message, {
 					status: 500,
 				});
@@ -566,12 +566,12 @@ describe("Middleware Short-Circuiting", () => {
 		const response = await router.handler(request);
 
 		// Both middleware should see the same valid URL
-		expect(firstUrlError).toBeNull();
-		expect(secondUrlError).toBeNull();
-		expect(firstMiddlewareUrl).toBe("http://example.com/test");
-		expect(secondMiddlewareUrl).toBe("http://example.com/test");
-		expect(typeof firstMiddlewareUrl).toBe("string");
-		expect(typeof secondMiddlewareUrl).toBe("string");
+		expect(firstURLError).toBeNull();
+		expect(secondURLError).toBeNull();
+		expect(firstMiddlewareURL).toBe("http://example.com/test");
+		expect(secondMiddlewareURL).toBe("http://example.com/test");
+		expect(typeof firstMiddlewareURL).toBe("string");
+		expect(typeof secondMiddlewareURL).toBe("string");
 		expect(response?.status).toBe(200);
 	});
 
@@ -1365,13 +1365,13 @@ describe("Edge Cases and Error Scenarios", () => {
 	test("malformed URLs in redirect handling", async () => {
 		const router = new Router();
 
-		async function* malformedUrlMiddleware(request: Request, _context: any) {
+		async function* malformedURLMiddleware(request: Request, _context: any) {
 			request.url = "not-a-valid-url";
 			const response = yield request;
 			return response;
 		}
 
-		router.use(malformedUrlMiddleware);
+		router.use(malformedURLMiddleware);
 		router.route("/test").get(async () => new Response("Success"));
 
 		const request = new Request("http://example.com/test");

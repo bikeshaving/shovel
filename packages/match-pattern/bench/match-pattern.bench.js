@@ -9,9 +9,9 @@ import {MatchPattern} from "../src/index.ts";
 import {URLPattern as URLPatternPolyfill} from "urlpattern-polyfill/urlpattern";
 
 // Test URLs
-const staticUrl = new URL("http://localhost/api/users");
-const dynamicUrl = new URL("http://localhost/users/123");
-const fullUrl = new URL("https://api.example.com/v1/posts/456");
+const staticURL = new URL("http://localhost/api/users");
+const dynamicURL = new URL("http://localhost/users/123");
+const fullURL = new URL("https://api.example.com/v1/posts/456");
 
 // MatchPattern instances
 const mpStatic = new MatchPattern({pathname: "/api/users"});
@@ -51,49 +51,49 @@ group("Construction", () => {
 
 group("Static route test()", () => {
 	bench("MatchPattern", () => {
-		mpStatic.test(staticUrl);
+		mpStatic.test(staticURL);
 	});
 
 	bench("URLPattern polyfill", () => {
-		upStatic.test(staticUrl);
+		upStatic.test(staticURL);
 	});
 
 	bench("RegExp.test()", () => {
-		reStatic.test(staticUrl.pathname);
+		reStatic.test(staticURL.pathname);
 	});
 });
 
 group("Dynamic route test()", () => {
 	bench("MatchPattern", () => {
-		mpDynamic.test(dynamicUrl);
+		mpDynamic.test(dynamicURL);
 	});
 
 	bench("URLPattern polyfill", () => {
-		upDynamic.test(dynamicUrl);
+		upDynamic.test(dynamicURL);
 	});
 
 	bench("RegExp.test()", () => {
-		reDynamic.test(dynamicUrl.pathname);
+		reDynamic.test(dynamicURL.pathname);
 	});
 });
 
 group("Full URL test()", () => {
 	bench("MatchPattern", () => {
-		mpFull.test(fullUrl);
+		mpFull.test(fullURL);
 	});
 
 	bench("URLPattern polyfill", () => {
-		upFull.test(fullUrl);
+		upFull.test(fullURL);
 	});
 });
 
 group("Dynamic route exec()", () => {
 	bench("MatchPattern", () => {
-		mpDynamic.exec(dynamicUrl);
+		mpDynamic.exec(dynamicURL);
 	});
 
 	bench("URLPattern polyfill", () => {
-		upDynamic.exec(dynamicUrl);
+		upDynamic.exec(dynamicURL);
 	});
 });
 

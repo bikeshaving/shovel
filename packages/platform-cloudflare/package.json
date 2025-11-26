@@ -18,10 +18,11 @@
     "serviceworker"
   ],
   "dependencies": {
-    "@b9g/platform": "workspace:*",
-    "@b9g/cache": "workspace:*",
     "@b9g/assets": "workspace:*",
-    "@cloudflare/workers-types": "^4.20241218.0"
+    "@b9g/cache": "workspace:*",
+    "@b9g/platform": "workspace:*",
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "miniflare": "^4.20251118.1"
   },
   "devDependencies": {
     "@b9g/libuild": "^0.1.11",
@@ -35,18 +36,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./platform": {
-      "types": "./dist/src/platform.d.ts",
-      "import": "./dist/src/platform.js"
-    },
-    "./platform.js": {
-      "types": "./dist/src/platform.d.ts",
-      "import": "./dist/src/platform.js"
-    },
-    "./wrangler": {
-      "types": "./dist/src/wrangler.d.ts",
-      "import": "./dist/src/wrangler.js"
-    },
     "./package.json": "./dist/package.json",
     "./index": {
       "types": "./dist/src/index.d.ts",
@@ -56,17 +45,13 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./wrangler.js": {
-      "types": "./dist/src/wrangler.d.ts",
-      "import": "./dist/src/wrangler.js"
+    "./filesystem-assets": {
+      "import": "./dist/src/filesystem-assets.js",
+      "types": "./dist/src/filesystem-assets.d.ts"
     },
-    "./wrapper": {
-      "types": "./dist/src/wrapper.d.ts",
-      "import": "./dist/src/wrapper.js"
-    },
-    "./wrapper.js": {
-      "types": "./dist/src/wrapper.d.ts",
-      "import": "./dist/src/wrapper.js"
+    "./filesystem-assets.js": {
+      "import": "./dist/src/filesystem-assets.js",
+      "types": "./dist/src/filesystem-assets.d.ts"
     }
   }
 }

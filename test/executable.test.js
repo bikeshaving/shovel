@@ -327,7 +327,7 @@ const manifestPath = join(executableDir, 'asset-manifest.json');
 const manifestContent = await readFile(manifestPath, 'utf8');
 const assetManifest = JSON.parse(manifestContent);
 
-function getAssetUrl(originalPath) {
+function getAssetURL(originalPath) {
 	if (!assetManifest) throw new Error('Asset manifest not loaded yet');
 
 	// Find asset by checking if the source ends with the requested path
@@ -361,7 +361,7 @@ self.addEventListener("fetch", async (event) => {
 	} else if (url.pathname.startsWith("/assets/")) {
 		// Serve assets from static bucket using asset manifest
 		const requestedAsset = url.pathname.slice("/assets/".length);
-		const actualAsset = getAssetUrl(requestedAsset);
+		const actualAsset = getAssetURL(requestedAsset);
 
 		event.respondWith((async () => {
 			try {
