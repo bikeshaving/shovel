@@ -1442,3 +1442,245 @@ describe("Edge Cases and Error Scenarios", () => {
 		expect(await response?.text()).toBe("Body: test body content");
 	});
 });
+
+describe("Path-Scoped Middleware", () => {
+	test("middleware with pathPrefix only runs for matching paths", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		function adminMiddleware(_request: Request, context: any) {
+			executionOrder.push("admin-middleware");
+			context.isAdmin = true;
+		}
+
+		router.use("/admin", adminMiddleware);
+		router.route("/admin/users").get(async (_req, ctx) => {
+			return new Response(`isAdmin: ${ctx.isAdmin}`);
+		});
+		router.route("/public/page").get(async (_req, ctx) => {
+			return new Response(`isAdmin: ${ctx.isAdmin}`);
+		});
+
+		// Request to /admin/users should trigger admin middleware
+		const adminRequest = new Request("http://example.com/admin/users");
+		const adminResponse = await router.handler(adminRequest);
+		expect(executionOrder).toEqual(["admin-middleware"]);
+		expect(await adminResponse.text()).toBe("isAdmin: true");
+
+		// Request to /public/page should NOT trigger admin middleware
+		executionOrder.length = 0;
+		const publicRequest = new Request("http://example.com/public/page");
+		const publicResponse = await router.handler(publicRequest);
+		expect(executionOrder).toEqual([]);
+		expect(await publicResponse.text()).toBe("isAdmin: undefined");
+	});
+
+	test("pathPrefix matches on segment boundaries", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		function adminMiddleware(_request: Request, _context: any) {
+			executionOrder.push("admin");
+		}
+
+		router.use("/admin", adminMiddleware);
+		router.route("/admin").get(async () => new Response("admin root"));
+		router.route("/admin/users").get(async () => new Response("admin users"));
+		router.route("/administrator").get(async () => new Response("administrator"));
+
+		// /admin should match
+		let request = new Request("http://example.com/admin");
+		await router.handler(request);
+		expect(executionOrder).toEqual(["admin"]);
+
+		// /admin/users should match
+		executionOrder.length = 0;
+		request = new Request("http://example.com/admin/users");
+		await router.handler(request);
+		expect(executionOrder).toEqual(["admin"]);
+
+		// /administrator should NOT match (not a segment boundary)
+		executionOrder.length = 0;
+		request = new Request("http://example.com/administrator");
+		await router.handler(request);
+		expect(executionOrder).toEqual([]);
+	});
+
+	test("global middleware runs alongside path-scoped middleware", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		function globalMiddleware(_request: Request, _context: any) {
+			executionOrder.push("global");
+		}
+
+		function adminMiddleware(_request: Request, _context: any) {
+			executionOrder.push("admin");
+		}
+
+		router.use(globalMiddleware);
+		router.use("/admin", adminMiddleware);
+		router.route("/admin/users").get(async () => new Response("OK"));
+
+		const request = new Request("http://example.com/admin/users");
+		await router.handler(request);
+
+		expect(executionOrder).toEqual(["global", "admin"]);
+	});
+
+	test("generator middleware with pathPrefix works correctly", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		async function* apiMiddleware(request: Request, _context: any) {
+			executionOrder.push("api-before");
+			const response = yield request;
+			executionOrder.push("api-after");
+			response.headers.set("X-API", "true");
+			return response;
+		}
+
+		router.use("/api", apiMiddleware);
+		router.route("/api/users").get(async () => new Response("Users"));
+		router.route("/home").get(async () => new Response("Home"));
+
+		// API route should trigger middleware
+		let request = new Request("http://example.com/api/users");
+		let response = await router.handler(request);
+		expect(executionOrder).toEqual(["api-before", "api-after"]);
+		expect(response.headers.get("X-API")).toBe("true");
+
+		// Non-API route should not trigger middleware
+		executionOrder.length = 0;
+		request = new Request("http://example.com/home");
+		response = await router.handler(request);
+		expect(executionOrder).toEqual([]);
+		expect(response.headers.get("X-API")).toBeNull();
+	});
+});
+
+describe("Subrouter Mount Middleware Scoping", () => {
+	test("mounted subrouter middleware is scoped to mount path", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		// Create subrouter with middleware
+		const apiRouter = new Router();
+		apiRouter.use(function apiMiddleware(_request: Request, _context: any) {
+			executionOrder.push("api-middleware");
+		});
+		apiRouter.route("/users").get(async () => new Response("Users"));
+
+		// Mount at /api
+		router.mount("/api", apiRouter);
+
+		// Add a non-api route to main router
+		router.route("/home").get(async () => new Response("Home"));
+
+		// Request to /api/users should trigger subrouter middleware
+		let request = new Request("http://example.com/api/users");
+		await router.handler(request);
+		expect(executionOrder).toEqual(["api-middleware"]);
+
+		// Request to /home should NOT trigger subrouter middleware
+		executionOrder.length = 0;
+		request = new Request("http://example.com/home");
+		await router.handler(request);
+		expect(executionOrder).toEqual([]);
+	});
+
+	test("nested mount composes path prefixes correctly", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		// Inner subrouter
+		const innerRouter = new Router();
+		innerRouter.use(function innerMiddleware(_request: Request, _context: any) {
+			executionOrder.push("inner");
+		});
+		innerRouter.route("/endpoint").get(async () => new Response("OK"));
+
+		// Outer subrouter
+		const outerRouter = new Router();
+		outerRouter.use(function outerMiddleware(_request: Request, _context: any) {
+			executionOrder.push("outer");
+		});
+		outerRouter.mount("/inner", innerRouter);
+
+		// Main router
+		router.mount("/outer", outerRouter);
+		router.route("/other").get(async () => new Response("Other"));
+
+		// Request to /outer/inner/endpoint should trigger both middlewares
+		let request = new Request("http://example.com/outer/inner/endpoint");
+		await router.handler(request);
+		expect(executionOrder).toEqual(["outer", "inner"]);
+
+		// Request to /other should trigger neither
+		executionOrder.length = 0;
+		request = new Request("http://example.com/other");
+		await router.handler(request);
+		expect(executionOrder).toEqual([]);
+	});
+
+	test("subrouter with path-scoped middleware composes prefixes", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		// Subrouter with path-scoped middleware
+		const apiRouter = new Router();
+		apiRouter.use("/admin", function adminMiddleware(_request: Request, _context: any) {
+			executionOrder.push("admin");
+		});
+		apiRouter.route("/admin/users").get(async () => new Response("Admin users"));
+		apiRouter.route("/public/page").get(async () => new Response("Public page"));
+
+		// Mount at /api
+		router.mount("/api", apiRouter);
+
+		// Request to /api/admin/users should trigger admin middleware
+		let request = new Request("http://example.com/api/admin/users");
+		await router.handler(request);
+		expect(executionOrder).toEqual(["admin"]);
+
+		// Request to /api/public/page should NOT trigger admin middleware
+		executionOrder.length = 0;
+		request = new Request("http://example.com/api/public/page");
+		await router.handler(request);
+		expect(executionOrder).toEqual([]);
+	});
+
+	test("same subrouter can be mounted at multiple paths", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		// Shared subrouter
+		const sharedRouter = new Router();
+		sharedRouter.use(function sharedMiddleware(_request: Request, context: any) {
+			executionOrder.push(`shared-${context.params.version || "no-version"}`);
+		});
+		sharedRouter.route("/users").get(async () => new Response("Users"));
+
+		// Mount at multiple paths
+		router.mount("/api/v1", sharedRouter);
+		router.mount("/api/v2", sharedRouter);
+		router.route("/other").get(async () => new Response("Other"));
+
+		// Request to /api/v1/users
+		let request = new Request("http://example.com/api/v1/users");
+		await router.handler(request);
+		expect(executionOrder).toContain("shared-no-version");
+
+		// Request to /api/v2/users
+		executionOrder.length = 0;
+		request = new Request("http://example.com/api/v2/users");
+		await router.handler(request);
+		expect(executionOrder).toContain("shared-no-version");
+
+		// Request to /other should NOT trigger shared middleware
+		executionOrder.length = 0;
+		request = new Request("http://example.com/other");
+		await router.handler(request);
+		expect(executionOrder).toEqual([]);
+	});
+});

@@ -51,7 +51,9 @@ export type Handler = (
 export type GeneratorMiddleware = (
 	request: Request,
 	context: RouteContext,
-) => AsyncGenerator<Request, Response | null | undefined, Response>;
+) =>
+	| Generator<Request, Response | null | undefined, Response>
+	| AsyncGenerator<Request, Response | null | undefined, Response>;
 
 /**
  * Function middleware signature - supports short-circuiting
@@ -62,7 +64,7 @@ export type GeneratorMiddleware = (
 export type FunctionMiddleware = (
 	request: Request,
 	context: RouteContext,
-) => null | undefined | Response | Promise<null | undefined | Response>;
+) => Response | null | undefined | Promise<Response | null | undefined>;
 
 /**
  * Union type for all supported middleware types
@@ -73,7 +75,7 @@ export type Middleware = GeneratorMiddleware | FunctionMiddleware;
 /**
  * HTTP methods supported by the router
  */
-export type HttpMethod =
+export type HTTPMethod =
 	| "GET"
 	| "POST"
 	| "PUT"
@@ -106,6 +108,8 @@ interface RouteEntry {
  */
 interface MiddlewareEntry {
 	middleware: Middleware;
+	/** If set, middleware only runs for paths matching this prefix */
+	pathPrefix?: string;
 }
 
 /**
@@ -418,7 +422,7 @@ class RouteBuilder {
 	 * Register a handler for all HTTP methods on this route pattern
 	 */
 	all(handler: Handler): RouteBuilder {
-		const methods: HttpMethod[] = [
+		const methods: HTTPMethod[] = [
 			"GET",
 			"POST",
 			"PUT",
@@ -504,36 +508,36 @@ export class Router {
 	use(middleware: Middleware): void;
 
 	/**
-	 * Register a handler for a specific pattern
+	 * Register middleware that only applies to routes matching the path prefix
 	 */
-	use(pattern: string, handler: Handler): void;
+	use(pathPrefix: string, middleware: Middleware): void;
 
-	use(patternOrMiddleware: string | Middleware, handler?: Handler): void {
-		if (typeof patternOrMiddleware === "string" && handler) {
-			// Pattern-based handler registration
-			this.addRoute("GET", patternOrMiddleware, handler);
-			this.addRoute("POST", patternOrMiddleware, handler);
-			this.addRoute("PUT", patternOrMiddleware, handler);
-			this.addRoute("DELETE", patternOrMiddleware, handler);
-			this.addRoute("PATCH", patternOrMiddleware, handler);
-			this.addRoute("HEAD", patternOrMiddleware, handler);
-			this.addRoute("OPTIONS", patternOrMiddleware, handler);
-		} else if (typeof patternOrMiddleware === "function") {
-			// Validate middleware type
-			if (!this.#isValidMiddleware(patternOrMiddleware)) {
+	use(
+		pathPrefixOrMiddleware: string | Middleware,
+		maybeMiddleware?: Middleware,
+	): void {
+		if (typeof pathPrefixOrMiddleware === "string") {
+			// Path-scoped middleware
+			const middleware = maybeMiddleware!;
+			if (!this.#isValidMiddleware(middleware)) {
 				throw new Error(
 					"Invalid middleware type. Must be function or async generator function.",
 				);
 			}
-
-			// Global middleware registration with automatic type detection
-			this.#middlewares.push({middleware: patternOrMiddleware});
-			this.#dirty = true;
+			this.#middlewares.push({
+				middleware,
+				pathPrefix: pathPrefixOrMiddleware,
+			});
 		} else {
-			throw new Error(
-				"Invalid middleware type. Must be function or async generator function.",
-			);
+			// Global middleware
+			if (!this.#isValidMiddleware(pathPrefixOrMiddleware)) {
+				throw new Error(
+					"Invalid middleware type. Must be function or async generator function.",
+				);
+			}
+			this.#middlewares.push({middleware: pathPrefixOrMiddleware});
 		}
+		this.#dirty = true;
 	}
 
 	/**
@@ -559,7 +563,7 @@ export class Router {
 	 * Internal method called by RouteBuilder to register routes
 	 * Public for RouteBuilder access, but not intended for direct use
 	 */
-	addRoute(method: HttpMethod, pattern: string, handler: Handler): void {
+	addRoute(method: HTTPMethod, pattern: string, handler: Handler): void {
 		const matchPattern = new MatchPattern(pattern);
 
 		this.#routes.push({
@@ -679,9 +683,23 @@ export class Router {
 		// Get all middleware from the subrouter and add with mount path prefix
 		const submiddlewares = subrouter.getMiddlewares();
 		for (const submiddleware of submiddlewares) {
-			// For now, add subrouter middleware globally
-			// TODO: Could add path-specific middleware in the future
-			this.#middlewares.push(submiddleware);
+			// Compose the mount path with any existing pathPrefix
+			// If subrouter middleware has pathPrefix "/inner", and we mount at "/outer",
+			// the composed prefix becomes "/outer/inner"
+			let composedPrefix: string;
+			if (submiddleware.pathPrefix) {
+				composedPrefix = this.#combinePaths(
+					normalizedMountPath,
+					submiddleware.pathPrefix,
+				);
+			} else {
+				// Subrouter global middleware becomes scoped to mount path
+				composedPrefix = normalizedMountPath;
+			}
+			this.#middlewares.push({
+				middleware: submiddleware.middleware,
+				pathPrefix: composedPrefix,
+			});
 		}
 
 		this.#dirty = true;
@@ -724,6 +742,7 @@ export class Router {
 		const constructorName = middleware.constructor.name;
 		return (
 			constructorName === "AsyncGeneratorFunction" ||
+			constructorName === "GeneratorFunction" ||
 			constructorName === "AsyncFunction" ||
 			constructorName === "Function"
 		);
@@ -733,7 +752,29 @@ export class Router {
 	 * Detect if a function is a generator middleware
 	 */
 	#isGeneratorMiddleware(middleware: Middleware): boolean {
-		return middleware.constructor.name === "AsyncGeneratorFunction";
+		const name = middleware.constructor.name;
+		return name === "GeneratorFunction" || name === "AsyncGeneratorFunction";
+	}
+
+	/**
+	 * Check if a request pathname matches a middleware's path prefix
+	 * Matches on segment boundaries: /admin matches /admin, /admin/, /admin/users
+	 * but NOT /administrator
+	 */
+	#matchesPathPrefix(pathname: string, pathPrefix: string): boolean {
+		// Exact match
+		if (pathname === pathPrefix) {
+			return true;
+		}
+
+		// Check if pathname starts with prefix followed by / or end of string
+		if (pathname.startsWith(pathPrefix)) {
+			const nextChar = pathname[pathPrefix.length];
+			// Must be followed by / or be at end (for trailing slash case)
+			return nextChar === "/" || nextChar === undefined;
+		}
+
+		return false;
 	}
 
 	/**
@@ -751,9 +792,21 @@ export class Router {
 			[];
 		let currentResponse: Response | null = null;
 
+		// Extract pathname from request URL for prefix matching
+		const requestPathname = new URL(request.url).pathname;
+
 		// Phase 1: Execute all middleware "before" phases (request processing)
 		for (let i = 0; i < middlewares.length; i++) {
-			const middleware = middlewares[i].middleware;
+			const entry = middlewares[i];
+			const middleware = entry.middleware;
+
+			// Skip middleware if it has a pathPrefix that doesn't match
+			if (
+				entry.pathPrefix &&
+				!this.#matchesPathPrefix(requestPathname, entry.pathPrefix)
+			) {
+				continue;
+			}
 
 			if (this.#isGeneratorMiddleware(middleware)) {
 				const generator = (middleware as GeneratorMiddleware)(request, context);
