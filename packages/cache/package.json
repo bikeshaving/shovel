@@ -33,10 +33,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./cache": {
-      "types": "./dist/src/cache.d.ts",
-      "import": "./dist/src/cache.js"
-    },
     "./memory": {
       "types": "./dist/src/memory.d.ts",
       "import": "./dist/src/memory.js"
@@ -46,18 +42,6 @@
       "import": "./dist/src/postmessage.js"
     },
     "./package.json": "./dist/package.json",
-    "./cache.js": {
-      "types": "./dist/src/cache.d.ts",
-      "import": "./dist/src/cache.js"
-    },
-    "./cache-storage": {
-      "types": "./dist/src/cache-storage.d.ts",
-      "import": "./dist/src/cache-storage.js"
-    },
-    "./cache-storage.js": {
-      "types": "./dist/src/cache-storage.d.ts",
-      "import": "./dist/src/cache-storage.js"
-    },
     "./index": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"

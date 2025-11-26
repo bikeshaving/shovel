@@ -39,14 +39,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./router": {
-      "types": "./dist/src/router.d.ts",
-      "import": "./dist/src/router.js"
-    },
-    "./router.js": {
-      "types": "./dist/src/router.d.ts",
-      "import": "./dist/src/router.js"
-    },
     "./package.json": "./dist/package.json"
   }
 }

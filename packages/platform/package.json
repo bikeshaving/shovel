@@ -69,6 +69,22 @@
     "./cookie-store.js": {
       "types": "./dist/src/cookie-store.d.ts",
       "import": "./dist/src/cookie-store.js"
+    },
+    "./index": {
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts"
+    },
+    "./index.js": {
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts"
+    },
+    "./single-threaded": {
+      "import": "./dist/src/single-threaded.js",
+      "types": "./dist/src/single-threaded.d.ts"
+    },
+    "./single-threaded.js": {
+      "import": "./dist/src/single-threaded.js",
+      "types": "./dist/src/single-threaded.d.ts"
     }
   }
 }

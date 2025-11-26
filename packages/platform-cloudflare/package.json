@@ -46,12 +46,12 @@
       "import": "./dist/src/index.js"
     },
     "./filesystem-assets": {
-      "import": "./dist/src/filesystem-assets.js",
-      "types": "./dist/src/filesystem-assets.d.ts"
+      "types": "./dist/src/filesystem-assets.d.ts",
+      "import": "./dist/src/filesystem-assets.js"
     },
     "./filesystem-assets.js": {
-      "import": "./dist/src/filesystem-assets.js",
-      "types": "./dist/src/filesystem-assets.d.ts"
+      "types": "./dist/src/filesystem-assets.d.ts",
+      "import": "./dist/src/filesystem-assets.js"
     }
   }
 }
