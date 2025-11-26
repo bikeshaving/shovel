@@ -78,5 +78,4 @@ self.addEventListener("fetch", (event) => {
 
 		await instance.dispose();
 	});
-
 });

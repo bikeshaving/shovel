@@ -92,34 +92,6 @@ describe("HTTPError", () => {
 			headers: {"Cache-Control": "no-cache"},
 		});
 	});
-
-	test("toResponse should create correct Response for exposed error", () => {
-		const error = new HTTPError(404, "Page not found", {
-			headers: {"X-Error-Code": "NOT_FOUND"},
-		});
-
-		const response = error.toResponse();
-		expect(response.status).toBe(404);
-		expect(response.statusText).toBe("Not Found");
-		expect(response.headers.get("X-Error-Code")).toBe("NOT_FOUND");
-
-		// Should expose custom message for 4xx
-		return response.text().then((text) => {
-			expect(text).toBe("Page not found");
-		});
-	});
-
-	test("toResponse should hide message for unexposed server error", () => {
-		const error = new HTTPError(500, "Database connection failed");
-
-		const response = error.toResponse();
-		expect(response.status).toBe(500);
-
-		// Should use default message for 5xx
-		return response.text().then((text) => {
-			expect(text).toBe("Internal Server Error");
-		});
-	});
 });
 
 describe("NotHandled", () => {

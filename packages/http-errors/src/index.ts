@@ -107,18 +107,6 @@ export class HTTPError extends Error {
 			headers: this.headers,
 		};
 	}
-
-	/**
-	 * Create a Response object from this error
-	 */
-	toResponse(): Response {
-		const body = this.expose ? this.message : STATUS_CODES[this.status];
-		return new Response(body, {
-			status: this.status,
-			statusText: STATUS_CODES[this.status],
-			headers: this.headers,
-		});
-	}
 }
 
 /**

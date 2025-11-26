@@ -58,9 +58,7 @@ describe("cors middleware", () => {
 
 	test("allows multiple origins", async () => {
 		const router = new Router();
-		router.use(
-			cors({origin: ["https://app1.com", "https://app2.com"]}),
-		);
+		router.use(cors({origin: ["https://app1.com", "https://app2.com"]}));
 		router.route("/api").get(() => new Response("ok"));
 
 		const req1 = new Request("http://localhost/api", {
@@ -82,9 +80,7 @@ describe("cors middleware", () => {
 
 	test("supports dynamic origin function", async () => {
 		const router = new Router();
-		router.use(
-			cors({origin: (origin) => origin.endsWith(".example.com")}),
-		);
+		router.use(cors({origin: (origin) => origin.endsWith(".example.com")}));
 		router.route("/api").get(() => new Response("ok"));
 
 		const allowed = new Request("http://localhost/api", {
@@ -149,9 +145,7 @@ describe("cors middleware", () => {
 
 	test("sets exposed headers", async () => {
 		const router = new Router();
-		router.use(
-			cors({exposedHeaders: ["X-Custom-Header", "X-Request-Id"]}),
-		);
+		router.use(cors({exposedHeaders: ["X-Custom-Header", "X-Request-Id"]}));
 		router.route("/api").get(() => new Response("ok"));
 
 		const request = new Request("http://localhost/api", {

@@ -186,7 +186,10 @@ export function cors(options: CORSOptions = {}) {
 		}
 
 		if (exposedHeaders?.length) {
-			newHeaders.set("Access-Control-Expose-Headers", exposedHeaders.join(", "));
+			newHeaders.set(
+				"Access-Control-Expose-Headers",
+				exposedHeaders.join(", "),
+			);
 		}
 
 		newHeaders.set("Vary", "Origin");

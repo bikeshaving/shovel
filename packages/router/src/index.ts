@@ -452,40 +452,45 @@ export class Router {
 
 		// Initialize handler implementation
 		this.#handlerImpl = async (request: Request): Promise<Response> => {
-			// Lazy compilation - build executor on first match
-			if (this.#dirty || !this.#executor) {
-				this.#executor = new RadixTreeExecutor(this.#routes);
-				this.#dirty = false;
-			}
+			try {
+				// Lazy compilation - build executor on first match
+				if (this.#dirty || !this.#executor) {
+					this.#executor = new RadixTreeExecutor(this.#routes);
+					this.#dirty = false;
+				}
 
-			// Find matching route
-			const matchResult = this.#executor.match(request);
+				// Find matching route
+				const matchResult = this.#executor.match(request);
 
-			if (matchResult) {
-				// Route found - execute middleware chain + handler
-				const mutableRequest = this.#createMutableRequest(request);
-				return this.#executeMiddlewareStack(
-					this.#middlewares,
-					mutableRequest,
-					matchResult.context,
-					matchResult.handler,
-					request.url,
-					this.#executor,
-				);
-			} else {
-				// No route found - execute global middleware with 404 fallback
-				const notFoundHandler = async (): Promise<Response> => {
-					return new Response("Not Found", {status: 404});
-				};
-				const mutableRequest = this.#createMutableRequest(request);
-				return this.#executeMiddlewareStack(
-					this.#middlewares,
-					mutableRequest,
-					{params: {}},
-					notFoundHandler,
-					request.url,
-					this.#executor,
-				);
+				if (matchResult) {
+					// Route found - execute middleware chain + handler
+					const mutableRequest = this.#createMutableRequest(request);
+					return await this.#executeMiddlewareStack(
+						this.#middlewares,
+						mutableRequest,
+						matchResult.context,
+						matchResult.handler,
+						request.url,
+						this.#executor,
+					);
+				} else {
+					// No route found - execute global middleware with 404 fallback
+					const notFoundHandler = async (): Promise<Response> => {
+						return new Response("Not Found", {status: 404});
+					};
+					const mutableRequest = this.#createMutableRequest(request);
+					return await this.#executeMiddlewareStack(
+						this.#middlewares,
+						mutableRequest,
+						{params: {}},
+						notFoundHandler,
+						request.url,
+						this.#executor,
+					);
+				}
+			} catch (error) {
+				// Final catch-all for unhandled errors
+				return this.#createErrorResponse(error as Error);
 			}
 		};
 
@@ -954,4 +959,56 @@ export class Router {
 			compiled: !this.#dirty && this.#executor !== null,
 		};
 	}
+
+	/**
+	 * Create an error response for unhandled errors
+	 * In development mode, includes error details; in production, returns generic message
+	 */
+	#createErrorResponse(error: Error): Response {
+		// Check for development mode using import.meta.env.MODE
+		// Falls back to checking if MODE is not "production"
+		const isDev =
+			typeof import.meta !== "undefined" &&
+			(import.meta as any).env?.MODE !== "production";
+
+		if (isDev) {
+			// Development: show error details
+			const html = `<!DOCTYPE html>
+<html>
+<head>
+  <title>500 Internal Server Error</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
+    h1 { color: #dc2626; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; overflow-x: auto; border-radius: 4px; }
+    .message { font-size: 1.25rem; color: #374151; }
+  </style>
+</head>
+<body>
+  <h1>500 Internal Server Error</h1>
+  <p class="message">${escapeHtml(error.message)}</p>
+  <pre>${escapeHtml(error.stack || "No stack trace available")}</pre>
+</body>
+</html>`;
+			return new Response(html, {
+				status: 500,
+				headers: {"Content-Type": "text/html; charset=utf-8"},
+			});
+		} else {
+			// Production: generic error message
+			return new Response("Internal Server Error", {status: 500});
+		}
+	}
+}
+
+/**
+ * Escape HTML special characters to prevent XSS
+ */
+function escapeHtml(str: string): string {
+	return str
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#039;");
 }
