@@ -1,6 +1,6 @@
 {
   "name": "@b9g/auth",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Universal authentication for ServiceWorker applications with OAuth2/PKCE support",
   "type": "module",
   "module": "./dist/src/index.js",

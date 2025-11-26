@@ -1,6 +1,6 @@
 {
   "name": "@b9g/filesystem-s3",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "AWS S3 implementation of File System Access API",
   "type": "module",
   "scripts": {

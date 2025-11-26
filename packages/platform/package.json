@@ -1,6 +1,6 @@
 {
   "name": "@b9g/platform",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "ServiceWorker-first universal deployment platform. Write ServiceWorker apps once, deploy anywhere (Node/Bun/Cloudflare). Registry-based multi-app orchestration.",
   "type": "module",
   "scripts": {
