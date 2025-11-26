@@ -1,491 +1,144 @@
-# Shovel: ServiceWorker-first universal deployment platform
-**Write ServiceWorker apps once, deploy anywhere (Node/Bun/Cloudflare). Registry-based multi-app orchestration.**
+# Shovel
 
-Shovel is a ServiceWorker-first deployment platform that enables true universal applications. Write your app as a ServiceWorker and deploy it to any JavaScript runtime using the same code.
+**The ServiceWorker platform for server-side JavaScript.**
 
-> server - noun. a thing which populates caches with responses based on requests
-
-## Philosophy
-
-### ServiceWorker-First Development
-
-Shovel treats ServiceWorkers as the universal application model. Your app is a ServiceWorker that handles `install`, `activate`, and `fetch` events - whether running in a browser or on a server.
-
-### Registry-Based Multi-App Architecture
-
-Using the ServiceWorker specification's registry pattern, Shovel manages multiple applications by scope:
+Same code. Any runtime. Node.js, Bun, Cloudflare Workers.
 
 ```javascript
-// Multiple apps in one deployment
-const container = new ServiceWorkerContainer();
-
-await container.register('/api-worker.js', { scope: '/api/' });
-await container.register('/admin-worker.js', { scope: '/admin/' });
-await container.register('/app-worker.js', { scope: '/' });
-
-// Automatic routing to correct app based on request path
-const response = await container.handleRequest(request);
-```
-
-### Web Platform Standards
-
-All Shovel APIs are based on browser specifications:
-- **Service Workers** (https://www.w3.org/TR/service-workers/) - Application lifecycle and registry
-- **Fetch API** (https://fetch.spec.whatwg.org) - Request/Response handling  
-- **Cache API** (https://w3c.github.io/ServiceWorker/#cache-interface) - Response caching
-- **File System Access API** (https://fs.spec.whatwg.org) - Cloud/local storage
-- **URLPattern** (https://urlpattern.spec.whatwg.org) - Enhanced routing
-
-## Package Structure
-### 1. `@b9g/match-pattern` [![npm](https://img.shields.io/npm/v/@b9g/match-pattern)](https://www.npmjs.com/package/@b9g/match-pattern)
-
-Enhanced URLPattern for better routing:
-- Subclass of `URLPattern` with unified parameter extraction
-- Order-independent search parameter matching
-- Non-exhaustive search matching (extra params allowed)
-- Convenient `&` syntax for mixed patterns: `/api/posts/:id&format=:format`
-
-**Status:** ✅ Published at v0.1.4
-
-### 2. `@b9g/router`
-
-Universal request router built on web standards:
-- Bound handler function API: `router.handler(request)`
-- RouteBuilder pattern: `router.route(pattern).use(middleware).get(handler)`
-- Global and route-specific middleware support
-- Cache-aware routing with automatic cache population
-- HTTP method conveniences (get, post, put, delete, etc.)
-
-**API:**
-
-```javascript
-const router = new Router({ caches });
-
-// Global middleware
-router.use(async function* (request, context) {
-  // context.caches  - CacheStorage API
-  // context.cache   - Opened Cache instance for this route
-  // context.params  - URL parameters
-  // yield request   - Generator-based middleware with yield continuation
-  const response = yield request;
-  return response;
+// app.js
+self.addEventListener("fetch", (event) => {
+  event.respondWith(new Response("Hello World"));
 });
-
-// Route-specific middleware and handlers
-router.route({
-  pattern: '/api/posts/:id',
-  cache: { name: 'posts' }
-})
-.use(authMiddleware)
-.use(rateLimitMiddleware)
-.get(async (request, context) => {
-  // Terminal handler - generator-based middleware pattern
-  const post = await db.posts.get(context.params.id);
-  return new Response(JSON.stringify(post));
-});
-
-// Pattern-based middleware (applies to all methods on pattern)
-router.use('/admin/*', adminAuthMiddleware);
-
-// HTTP method shortcuts
-router.get('/posts', listPostsHandler);
-router.post('/posts', createPostHandler);
-
-// Bound handler for integration
-await router.handler(request); // Returns Response
 ```
 
-**Status:** ✅ Published at v0.1.0
-
-### 3. `@b9g/assets`
-
-ESBuild/Bun plugin for asset pipeline:
-- Import files with `with { assetBase: "/" }` syntax
-- Automatic content hashing and manifest generation
-- Works with filesystem buckets for serving static assets
-
-**Status:** ✅ Published at v0.1.0
-
-### 4. `@b9g/platform`
-
-**THE CORE** - ServiceWorker-first universal deployment platform:
-- **ServiceWorkerContainer**: Registry for managing multiple apps by scope
-- **ServiceWorkerRegistration**: Unified runtime with standard lifecycle (install/activate/fetch)
-- **Complete ServiceWorker API**: Full MDN spec implementation for any JavaScript runtime
-- **Platform abstraction**: Node.js, Bun, Cloudflare Workers with identical APIs
-- **Multi-app orchestration**: Deploy multiple ServiceWorkers with scope-based routing
-
-**ServiceWorker Registry Pattern:**
-```javascript
-import { createPlatform } from '@b9g/platform';
-
-const platform = await createPlatform();
-const container = await platform.createServiceWorkerContainer();
-
-// Register multiple ServiceWorker apps
-await container.register('/api-worker.js', { scope: '/api/' });
-await container.register('/admin-worker.js', { scope: '/admin/' });
-await container.register('/app-worker.js', { scope: '/' });
-
-// Install and activate all apps
-await container.installAll();
-
-// Route requests to appropriate ServiceWorker
-const response = await container.handleRequest(request);
+```bash
+npx @b9g/shovel develop app.js
 ```
 
-**Your ServiceWorker App:**
+## Why Shovel?
+
+Browsers have ServiceWorker. Cloudflare has Workers. Node.js and Bun have... Express?
+
+Shovel brings the ServiceWorker programming model to server-side JavaScript. Write your app once using web standards, deploy it anywhere.
+
+## Web Standards
+
+Shovel implements web platform APIs that server-side JavaScript is missing:
+
+| API | Standard | What it does |
+|-----|----------|--------------|
+| `fetch` event | [Service Workers](https://w3c.github.io/ServiceWorker/) | Request handling |
+| `self.caches` | [Cache API](https://w3c.github.io/ServiceWorker/#cache-interface) | Response caching |
+| `self.buckets` | [FileSystemDirectoryHandle](https://fs.spec.whatwg.org/#api-filesystemdirectoryhandle) | Storage (local, S3, R2) |
+| `self.cookieStore` | [Cookie Store API](https://wicg.github.io/cookie-store/) | Cookie management |
+| `URLPattern` | [URLPattern](https://urlpattern.spec.whatwg.org/) | Route matching (100% WPT) |
+| `AsyncContext.Variable` | [TC39 Stage 2](https://github.com/tc39/proposal-async-context) | Request-scoped state |
+
+Your code uses standards. Shovel makes them work everywhere.
+
+## True Portability
+
+Shovel is a complete meta-framework. Same code, any runtime, any rendering strategy:
+
+- **Server runtimes**: Node.js, Bun, Cloudflare Workers for development and production
+- **Browser ServiceWorkers**: The same app can run as a PWA service worker
+- **Universal rendering**: Dynamic, static, or client-side - link and deploy assets automatically
+
+## Quick Start
+
 ```javascript
-// api-worker.js - Standard ServiceWorker
-import { Router } from '@b9g/router';
+// app.js
+import {Router} from "@b9g/router";
 
 const router = new Router();
-router.get('/users', () => Response.json({ users: [] }));
 
-addEventListener('install', event => {
-  console.log('API service installing...');
+router.route("/").get(() => new Response("Hello World"));
+
+router.route("/users/:id").get((request, {params}) => {
+  return Response.json({id: params.id});
 });
 
-addEventListener('activate', event => {
-  console.log('API service activated!');
-});
-
-addEventListener('fetch', event => {
+self.addEventListener("fetch", (event) => {
   event.respondWith(router.handler(event.request));
 });
 ```
 
-**Platform Implementations:**
-- `@b9g/platform-node` - Node.js with Worker threads and coordinated caching
-- `@b9g/platform-bun` - Bun runtime with native ESBuild integration
-- `@b9g/platform-cloudflare` - Cloudflare Workers with Wrangler
-
-**Status:** ✅ Published at v0.1.0
-
-### 5. `@b9g/cache`
-
-Universal Cache API implementation:
-- Provides CacheStorage/Cache APIs everywhere
-- Cache is an abstract interface with multiple implementations for different backends
-- CacheStorage is a registry for named caches
-- Request/Response-oriented caching with HTTP semantics
-- Same API works in browser, service worker, and server
-
-**Architecture:**
-```javascript
-// Cache - abstract interface
-interface Cache {
-  match(request: Request, options?: CacheQueryOptions): Promise<Response | undefined>;
-  matchAll(request?: Request, options?: CacheQueryOptions): Promise<Response[]>;
-  put(request: Request, response: Response): Promise<void>;
-  add(request: Request): Promise<void>;
-  addAll(requests: Request[]): Promise<void>;
-  delete(request: Request, options?: CacheQueryOptions): Promise<boolean>;
-  keys(request?: Request, options?: CacheQueryOptions): Promise<Request[]>;
-}
-
-// CacheStorage - registry of named caches
-class CacheStorage {
-  register(name: string, factory: () => Cache): void;
-  open(name: string): Promise<Cache>;
-  has(name: string): Promise<boolean>;
-  delete(name: string): Promise<boolean>;
-  keys(): Promise<string[]>;
-}
-```
-
-**Cache Implementations:**
-- `FileSystemCache` - FileSystem-backed (for SSG, Node servers)
-- `InMemoryCache` - In-memory (for dev, testing)
-- `CloudflareKVCache` - Cloudflare KV storage
-- Native browser CacheStorage (when available)
-
-**Usage:**
-```javascript
-import { CacheStorage, FilesystemCache, MemoryCache } from '@b9g/cache';
-
-const caches = new CacheStorage();
-
-// Register different implementations for different cache names
-caches.register('posts', () =>
-  new FilesystemCache('posts', { directory: './dist/posts' })
-);
-
-caches.register('api', () => new MemoryCache('api'));
-
-// Router uses the cache storage
-const router = new Router({caches});
-
-// When handler declares a cache name:
-// Router opens the specified cache and places it under `context.cache`.
-// Other caches are accessible under `context.caches`
-```
-
-**Status:** ✅ Published at v0.1.0
-
-### 6. `shovel` CLI
-
-Universal command-line tool with platform auto-detection:
-- `shovel develop` - Development server with hot reloading
-- `shovel build` - Production bundling and optimization
-- `shovel activate` - Run ServiceWorker activate lifecycle for static generation
-- `shovel info` - Platform and runtime information
-- Platform targeting: `--platform=node|bun|cloudflare`
-- Worker count configuration: `--workers=N`
-- Auto-detects runtime (Node.js, Bun) for optimal defaults
-
-**Development Server:**
 ```bash
-# Auto-detect platform
-shovel develop src/server.js
+# Create a new project
+npm create @b9g/shovel my-app
 
-# Explicit platform targeting
-shovel develop src/server.js --platform=bun --port=3000
+# Development with hot reload
+npx @b9g/shovel develop app.js
 
-# Custom worker count (default: 2 in dev, CPU count in prod)
-shovel develop src/server.js --workers=4
-
-# Verbose output for debugging
-shovel develop src/server.js --verbose
+# Build for production
+npx @b9g/shovel build app.js --platform=node
+npx @b9g/shovel build app.js --platform=bun
+npx @b9g/shovel build app.js --platform=cloudflare
 ```
 
-The CLI uses the platform abstraction to provide consistent development experience across all runtimes. Worker configuration allows controlling concurrency for both development and production.
-
-**Static Site Generation:**
-
-Shovel uses the ServiceWorker `activate` event for static site generation. Your app handles static generation in the activate lifecycle:
+## Platform APIs
 
 ```javascript
-// server.js - Your ServiceWorker app
-self.addEventListener('activate', async (event) => {
-  event.waitUntil(async () => {
-    const staticBucket = await self.buckets.open('static');
+// Cache API - response caching
+const cache = await self.caches.open("my-cache");
+await cache.put(request, response.clone());
+const cached = await cache.match(request);
 
-    // Define routes to pre-render
-    const routes = ['/','  /about', '/posts/1', '/posts/2'];
+// File System Access - storage buckets (local, S3, R2)
+const bucket = await self.buckets.open("uploads");
+const file = await bucket.getFileHandle("image.png");
+const contents = await (await file.getFile()).arrayBuffer();
 
-    for (const route of routes) {
-      const request = new Request(`http://localhost${route}`);
-      const response = await router.handler(request);
+// Cookie Store - cookie management
+const session = await self.cookieStore.get("session");
+await self.cookieStore.set("theme", "dark");
 
-      // Write to static bucket
-      const handle = await staticBucket.getFileHandle(`${route}/index.html`, { create: true });
-      const writable = await handle.createWritable();
-      await writable.write(await response.text());
-      await writable.close();
-    }
-  });
+// AsyncContext - request-scoped state without prop drilling
+const requestId = new AsyncContext.Variable();
+requestId.run(crypto.randomUUID(), async () => {
+  console.log(requestId.get()); // Works anywhere in the call stack
 });
 ```
 
-Run static generation:
-```bash
-shovel activate src/server.js --filesystem=local
-```
+## Asset Pipeline
 
-**Status:** ✅ Ready for production use
-
-## Architecture
-
-### The Cache-First Request Flow
-
-```
-1. Request arrives
-2. Router matches pattern, and opens named cache (context.cache)
-3. Middleware checks context.cache.match(request, context.cacheOptions)
-4. Cache hit? Return cached response (fast path)
-5. Cache miss? Use yield to continue â†' Handler runs
-6. Handler returns response (may invalidate related caches for mutations)
-7. Middleware stores in context.cache.put(request, response)
-8. Return response
-```
-
-**Key points:**
-- Middleware orchestrates caching (check, populate, respect cache headers)
-- Read handlers produce responses with cache metadata (Cache-Control, ETag)
-- Write handlers invalidate caches after mutations
-- Both middleware and handlers can access `context.cache` and `context.caches`
-- The distinction: middleware uses generator `yield`, handlers are terminal
-
-### Deployment Modes
-
-All modes use the same code - only the cache backend changes:
-
-**SSG (Static Site Generation):**
-- Cache backend: Filesystem
-- Build time: Populate all caches from static paths
-- Runtime: Serve from filesystem cache (or service worker)
-
-**SSR (Server-Side Rendering):**
-- Cache backend: Memory or KV store
-- Runtime: Populate cache on first request
-
-**ISR (Incremental Static Regeneration):**
-- Cache backend: Memory or KV store
-- Runtime: Populate cache, respect TTL, repopulate on expiry
-
-**CSR (Client-Side Rendering):**
-- Cache backend: Browser CacheStorage
-- Runtime: Service worker, serve from cache, populate on miss
-
-### Universal Example
+Import any file and get its production URL with content hashing:
 
 ```javascript
-import {Router} from '@b9g/router';
+import styles from "./styles.css" with { assetBase: "/assets" };
+import logo from "./logo.png" with { assetBase: "/assets" };
 
-const router = new Router();
-
-// Cache-aware middleware (cross-cutting concern)
-router.use(async function* (request, context) {
-  // Only cache GET requests
-  if (request.method !== 'GET') {
-    return yield request;
-  }
-
-  // Check cache first
-  if (context.cache) {
-    const cached = await context.cache.match(request, context.cacheOptions);
-    if (cached && isFresh(cached)) {
-      return cached;
-    }
-  }
-
-  // Cache miss - resolve it
-  const response = yield request;
-
-  // Populate cache for successful responses
-  if (context.cache && response.ok && shouldCache(response)) {
-    await context.cache.put(request, response.clone());
-  }
-
-  return response;
-});
-
-// Read handler - produces response, middleware handles caching
-router.route({
-  pattern: '/api/posts/:id',
-  methods: 'GET',
-  cache: { name: 'posts' }
-}, async (request, context) => {
-  const post = await db.posts.get(context.params.id);
-  return new Response(JSON.stringify(post), {
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'max-age=3600'
-    }
-  });
-});
-
-// Write handler - invalidates cache after mutation
-router.route({
-  pattern: '/api/posts/:id',
-  methods: 'PUT',
-  cache: { name: 'posts' }
-}, async (request, context) => {
-  const data = await request.json();
-  const post = await db.posts.update(context.params.id, data);
-
-  // Invalidate this post and list view
-  await context.cache.delete(new Request(`/api/posts/${context.params.id}`));
-  await context.cache.delete(new Request('/api/posts'));
-
-  return Response.json(post);
-});
-
-export default router;
+// styles = "/assets/styles-a1b2c3d4.css"
+// logo = "/assets/logo-e5f6g7h8.png"
 ```
 
-This same code works:
-- In Node with filesystem cache (SSG)
-- In browser with CacheStorage (SPA)
-- In Cloudflare Workers with KV cache (Edge)
-- In service workers (Offline-first PWA)
+At build time, Shovel:
+- Copies assets to the output directory with content hashes
+- Generates a manifest mapping original paths to hashed URLs
+- Transforms imports to return the final URLs
 
-## Design Constraints
+Assets are served via the platform's best option:
+- **Cloudflare**: Workers Assets (edge-cached, zero config)
+- **Node/Bun**: Static file middleware or bucket storage
 
-1. **Middleware chains, handlers terminate** - Middleware uses generator `yield` for flow control, handlers are terminal response producers
-2. **Both can access caches** - Middleware for cross-cutting cache logic, handlers for route-specific invalidation
-3. **Web standards only** - URLPattern, Request, Response, Fetch, Cache API
-4. **Universal by default** - Same code runs everywhere, with runtime/platform specific fallbacks for maximum compatibility.
+## Packages
 
-## Recent Developments
+| Package | Description |
+|---------|-------------|
+| `@b9g/shovel` | CLI for development and deployment |
+| `@b9g/platform` | Core runtime and platform APIs |
+| `@b9g/platform-node` | Node.js adapter |
+| `@b9g/platform-bun` | Bun adapter |
+| `@b9g/platform-cloudflare` | Cloudflare Workers adapter |
+| `@b9g/router` | URLPattern-based routing with middleware |
+| `@b9g/cache` | Cache API implementation |
+| `@b9g/filesystem` | File System Access implementation |
+| `@b9g/match-pattern` | URLPattern with extensions (100% WPT) |
+| `@b9g/async-context` | AsyncContext.Variable implementation |
+| `@b9g/http-errors` | Standard HTTP error classes |
+| `@b9g/auth` | OAuth2/PKCE and CORS middleware |
+| `@b9g/assets` | Static asset handling |
 
-### Implemented Features
-- **Router API**: Complete rewrite with bound handler functions and fluent RouteBuilder pattern
-- **Platform Abstraction**: Universal ServiceWorker-style application loading across Node.js, Bun, and Cloudflare
-- **Hot Reloading**: VM module isolation for clean reloads in Node.js platform
-- **CLI Tool**: Auto-detecting development server with platform targeting
-- **Cache Integration**: Full Cache/CacheStorage API implementation with multiple backends
-- **Static Files**: ESBuild plugin for asset handling with URL imports
+## License
 
-### Architecture Decisions
-- **ServiceWorker Pattern**: Applications written as ServiceWorker entrypoints work universally
-- **Bound Handler API**: `router.handler(request)` replaces factory pattern for cleaner integration
-- **Route-Specific Middleware**: `router.route().use().get()` for composable request handling
-- **Worker Thread Architecture**: Multi-worker concurrency with coordinated cache storage
-- **Platform Detection**: Automatic runtime detection with explicit override capabilities
-
-### Worker Architecture
-- **Development**: 2 workers by default to encourage concurrency thinking
-- **Production**: CPU count workers for maximum throughput
-- **Configurable**: `--workers` CLI flag for custom worker counts
-- **Coordinated Caching**: PostMessage-based cache coordination across workers
-- **Standard APIs**: Uses Web Worker APIs for cross-platform compatibility
-
-## Project Status
-
-Core components are **implemented and functional**. The framework successfully runs universal applications across multiple platforms with a consistent API.
-
-## Philosophy in Practice
-
-Traditional framework:
-```javascript
-// Handler does everything
-app.get('/post/:id', async (req, res) => {
-  const cached = await redis.get(req.params.id);
-  if (cached) return res.json(cached);
-
-  const post = await db.get(req.params.id);
-  await redis.set(req.params.id, post);
-  res.json(post);
-});
-```
-
-Shovel (cache-first):
-```javascript
-// Read handler focuses on business logic
-router.route({
-  pattern: '/post/:id',
-  methods: 'GET',
-  cache: { name: 'posts' }
-}, async (req, ctx) => {
-  // Just produce the response with cache headers
-  const post = await db.get(ctx.params.id);
-  return new Response(JSON.stringify(post), {
-    headers: { 'Cache-Control': 'max-age=300' }
-  });
-});
-
-// Write handler invalidates related caches
-router.route({
-  pattern: '/post/:id',
-  methods: 'PUT',
-  cache: { name: 'posts' }
-}, async (req, ctx) => {
-  const post = await db.update(ctx.params.id, await req.json());
-
-  // Invalidate this post
-  await ctx.cache.delete(new Request(`/post/${ctx.params.id}`));
-
-  return Response.json(post);
-});
-
-// Middleware handles caching (once, for all routes)
-router.use({}, cacheMiddleware);
-```
-
-The cache isn't a side effect - it's the primary data flow. Read handlers produce responses with cache metadata. Write handlers invalidate when data changes. Middleware orchestrates the caching strategy.
-
----
-
-**License:** MIT
+MIT
