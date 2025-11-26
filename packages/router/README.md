@@ -117,7 +117,7 @@ router.use(cacheMiddleware);
 - `GeneratorMiddleware` - Generator-based middleware type using `yield`
 - `FunctionMiddleware` - Simple function middleware type
 - `Middleware` - Union of GeneratorMiddleware | FunctionMiddleware
-- `HttpMethod` - HTTP method string literal type
+- `HTTPMethod` - HTTP method string literal type
 - `RouteConfig` - Route configuration object
 
 ## API Reference
