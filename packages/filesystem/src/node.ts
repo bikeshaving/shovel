@@ -175,12 +175,15 @@ export class NodeFileSystemBackend implements FileSystemBackend {
  * Extends ShovelDirectoryHandle with "/" as root path
  */
 export class NodeBucket extends ShovelDirectoryHandle {
+	#rootPath: string;
+
 	constructor(rootPath: string) {
 		super(new NodeFileSystemBackend(rootPath), "/");
+		this.#rootPath = rootPath;
 	}
 
 	// Override name to use the directory basename instead of "/"
 	override get name(): string {
-		return Path.basename(this.path) || "root";
+		return Path.basename(this.#rootPath) || "root";
 	}
 }

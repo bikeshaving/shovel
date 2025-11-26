@@ -6,7 +6,7 @@ describe("Assets Middleware", () => {
 	// Mock self.buckets
 	const mockBuckets = {
 		async open(name: string) {
-			if (name === "assets") {
+			if (name === "static") {
 				return {
 					async getFileHandle(path: string) {
 						if (path === "manifest.json") {
@@ -128,7 +128,7 @@ describe("Assets Middleware", () => {
 		(globalThis as any).self = {
 			buckets: {
 				async open(name: string) {
-					if (name === "assets") {
+					if (name === "static") {
 						return {
 							async getFileHandle(path: string) {
 								if (path === "manifest.json") {

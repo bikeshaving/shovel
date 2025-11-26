@@ -175,15 +175,17 @@ class ShovelWritableFileStream
  */
 export abstract class ShovelHandle implements FileSystemHandle {
 	abstract readonly kind: "file" | "directory";
-	readonly name: string;
 	readonly path: string;
 	#backend: FileSystemBackend;
 
 	constructor(backend: FileSystemBackend, path: string) {
 		this.#backend = backend;
 		this.path = path;
-		// Extract name from path
-		this.name = path.split("/").filter(Boolean).pop() || "root";
+	}
+
+	// Use getter so subclasses can override
+	get name(): string {
+		return this.path.split("/").filter(Boolean).pop() || "root";
 	}
 
 	get backend(): FileSystemBackend {
