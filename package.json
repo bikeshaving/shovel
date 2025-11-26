@@ -72,7 +72,7 @@
     "@b9g/crank": "^0.7.2",
     "@b9g/filesystem": "workspace:*",
     "@b9g/http-errors": "workspace:*",
-    "@b9g/libuild": "0.1.15",
+    "@b9g/libuild": "^0.1.17",
     "@b9g/platform": "workspace:*",
     "@b9g/platform-bun": "workspace:*",
     "@b9g/platform-cloudflare": "workspace:*",

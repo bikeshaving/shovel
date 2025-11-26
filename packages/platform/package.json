@@ -71,20 +71,20 @@
       "import": "./dist/src/cookie-store.js"
     },
     "./index": {
-      "import": "./dist/src/index.js",
-      "types": "./dist/src/index.d.ts"
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
     },
     "./index.js": {
-      "import": "./dist/src/index.js",
-      "types": "./dist/src/index.d.ts"
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
     },
     "./single-threaded": {
-      "import": "./dist/src/single-threaded.js",
-      "types": "./dist/src/single-threaded.d.ts"
+      "types": "./dist/src/single-threaded.d.ts",
+      "import": "./dist/src/single-threaded.js"
     },
     "./single-threaded.js": {
-      "import": "./dist/src/single-threaded.js",
-      "types": "./dist/src/single-threaded.d.ts"
+      "types": "./dist/src/single-threaded.d.ts",
+      "import": "./dist/src/single-threaded.js"
     }
   }
 }
