@@ -269,12 +269,12 @@ test(
 			const testDir = await createTempDir();
 			cleanup_paths.push(testDir);
 
-			// Set up asset files
-			const assetsDir = join(testDir, "assets");
-			await FS.mkdir(assetsDir, {recursive: true});
+			// Set up asset files in the static bucket directory
+			const staticDir = join(testDir, "static");
+			await FS.mkdir(staticDir, {recursive: true});
 
 			const cssContent = `.test { color: blue; }`;
-			await createTempFile(assetsDir, "test.css", cssContent);
+			await createTempFile(staticDir, "test.css", cssContent);
 
 			// Create manifest
 			const manifest = {
@@ -287,12 +287,12 @@ test(
 				generated: new Date().toISOString(),
 				config: {
 					publicPath: "/assets/",
-					outputDir: assetsDir,
+					outputDir: staticDir,
 				},
 			};
 
 			await FS.writeFile(
-				join(assetsDir, "manifest.json"),
+				join(staticDir, "manifest.json"),
 				JSON.stringify(manifest, null, 2),
 			);
 
@@ -328,7 +328,7 @@ test(
 					event.respondWith(
 						(async () => {
 							try {
-								const assetsBucket = await globalThis.buckets.open("assets");
+								const assetsBucket = await globalThis.buckets.open("static");
 								const fileHandle = await assetsBucket.getFileHandle(assetPath);
 								const file = await fileHandle.getFile();
 								const content = await file.text();
