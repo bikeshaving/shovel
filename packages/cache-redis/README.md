@@ -174,6 +174,16 @@ console.log({
 ```
 
 
+## Exports
+
+### Classes
+
+- `RedisCache` - Redis-backed cache implementation (extends Cache from @b9g/cache)
+
+### Types
+
+- `RedisCacheOptions` - Configuration options for RedisCache
+
 ## Shovel Integration
 
 This cache adapter is designed to work seamlessly with Shovel's cache-first architecture:

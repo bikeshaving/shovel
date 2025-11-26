@@ -182,27 +182,58 @@ The `URLPattern` class passes 100% of the Web Platform Tests (755 tests). It imp
 - Allows relative patterns without baseURL (convenience for routing)
 - Order-independent search parameter matching
 
+## Exports
+
+### Classes
+
+- `URLPattern` - 100% WPT-compliant URLPattern implementation
+- `MatchPattern` - URLPattern with routing enhancements (order-independent search params, unified params)
+
+### Types
+
+- `MatchPatternResult` - Result type for MatchPattern.exec()
+- `URLPatternOptions` - Options for URLPattern constructor (ignoreCase, etc.)
+- `CompiledPattern` - Internal compiled pattern representation
+- `ParsedPattern` - Parsed pattern structure
+- `PatternSegment` - Individual segment of a parsed pattern
+
+### Utility Functions
+
+- `isSimplePattern(pathname: string): boolean` - Check if pathname is a simple pattern (no regex features)
+- `parseSimplePattern(pathname: string): ParsedPattern | null` - Parse a simple pattern into segments
+- `compilePathname(pathname: string, options?: object): CompiledPattern` - Compile a pathname pattern to RegExp
+
 ## API Reference
 
-### Constructor
+### URLPattern
+
+```typescript
+new URLPattern(input?: string | URLPatternInit, baseURL?: string, options?: URLPatternOptions)
+```
+
+Methods:
+- `test(input: string | URL | URLPatternInit, baseURL?: string): boolean`
+- `exec(input: string | URL | URLPatternInit, baseURL?: string): URLPatternResult | null`
+
+### MatchPattern
 
 ```typescript
 new MatchPattern(input: string | URLPatternInit, baseURL?: string)
 ```
 
-### Methods
-
-```typescript
-// Enhanced methods with unified params
-test(input: string | URL): boolean
-exec(input: string | URL): MatchPatternResult | null
-```
+Methods:
+- `test(input: string | URL): boolean`
+- `exec(input: string | URL): MatchPatternResult | null`
 
 ### Types
 
 ```typescript
 interface MatchPatternResult extends URLPatternResult {
   params: Record<string, string>;  // Unified parameters from all sources
+}
+
+interface URLPatternOptions {
+  ignoreCase?: boolean;  // Case-insensitive matching
 }
 ```
 

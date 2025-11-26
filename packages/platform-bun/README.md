@@ -33,6 +33,24 @@ const server = platform.createServer(async (request) => {
 await server.listen();
 ```
 
+## Exports
+
+### Classes
+
+- `BunPlatform` - Bun platform implementation (extends BasePlatform)
+
+### Types
+
+- `BunPlatformOptions` - Configuration options for BunPlatform
+
+### Re-exports from @b9g/platform
+
+- `Platform`, `CacheConfig`, `StaticConfig`, `Handler`, `Server`, `ServerOptions`
+
+### Default Export
+
+- `BunPlatform` - The platform class
+
 ## API
 
 ### `new BunPlatform(options?)`

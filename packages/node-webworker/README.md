@@ -35,13 +35,28 @@ worker.postMessage({ hello: 'world' });
 await worker.terminate();
 ```
 
+## Exports
+
+### Classes
+
+- `Worker` - Web Worker implementation using Node.js worker_threads
+
+### Types
+
+- `MessageEvent` - Event type for worker messages
+- `ErrorEvent` - Event type for worker errors
+
+### Default Export
+
+- `Worker` - The Worker class
+
 ## Features
 
-- ✅ **Standards-compliant API** - Drop-in replacement for Web Workers
-- ✅ **ES Module support** - Works with modern JavaScript
-- ✅ **Minimal overhead** - Thin wrapper around `worker_threads`
-- ✅ **Error handling** - Proper event forwarding
-- ✅ **Clean termination** - Resource cleanup
+- **Standards-compliant API** - Drop-in replacement for Web Workers
+- **ES Module support** - Works with modern JavaScript
+- **Minimal overhead** - Thin wrapper around `worker_threads`
+- **Error handling** - Proper event forwarding
+- **Clean termination** - Resource cleanup
 
 ## Limitations
 

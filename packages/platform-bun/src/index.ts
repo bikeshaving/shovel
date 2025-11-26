@@ -16,11 +16,9 @@ import {
 	SingleThreadedRuntime,
 	WorkerPoolOptions,
 	loadConfig,
-	getCacheConfig,
+	createCacheFactory,
 	type ProcessedShovelConfig,
-	type CacheConfig as _CacheConfig,
 } from "@b9g/platform";
-import {MemoryCache} from "@b9g/cache/memory.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
@@ -107,21 +105,7 @@ export class BunPlatform extends BasePlatform {
 	 * Uses config from package.json shovel field
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
-		const config = this.#config;
-
-		return new CustomCacheStorage((name: string) => {
-			// Get cache config for this cache name (supports pattern matching)
-			const cacheConfig = getCacheConfig(config, name);
-
-			// For now, only support memory provider
-			// TODO: Add Redis, etc.
-			return new MemoryCache(name, {
-				maxEntries:
-					typeof cacheConfig.maxEntries === "number"
-						? cacheConfig.maxEntries
-						: 1000,
-			});
-		});
+		return new CustomCacheStorage(createCacheFactory({config: this.#config}));
 	}
 
 	/**

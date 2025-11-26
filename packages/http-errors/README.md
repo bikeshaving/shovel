@@ -165,9 +165,48 @@ const duplicateError = Conflict('Email already exists', {
 });
 ```
 
+## Exports
+
+### Classes
+
+- `HTTPError` - Base HTTP error class (extends Error)
+- `NotHandled` - Special error for unhandled requests
+
+### Client Error Classes (4xx)
+
+- `BadRequest` (400)
+- `Unauthorized` (401)
+- `Forbidden` (403)
+- `NotFound` (404)
+- `MethodNotAllowed` (405)
+- `Conflict` (409)
+- `UnprocessableEntity` (422)
+- `TooManyRequests` (429)
+
+### Server Error Classes (5xx)
+
+- `InternalServerError` (500)
+- `NotImplemented` (501)
+- `BadGateway` (502)
+- `ServiceUnavailable` (503)
+- `GatewayTimeout` (504)
+
+### Functions
+
+- `createHTTPError(status, message?, options?)` - Create an HTTPError with a specific status code
+- `isHTTPError(value)` - Type guard to check if a value is an HTTPError
+
+### Types
+
+- `HTTPErrorOptions` - Options for HTTPError constructor
+
+### Default Export
+
+- `createHTTPError` - Factory function for creating HTTP errors
+
 ## API Reference
 
-### Error Functions
+### Error Classes
 
 All error functions follow the same signature:
 

@@ -54,27 +54,21 @@ const instance = await platform.loadServiceWorker('./src/server.js', {
 // ServiceWorker is now handling requests
 ```
 
+## Exports
+
+### Classes
+
+- `NodePlatform` - Node.js platform implementation (extends BasePlatform)
+
+### Re-exports from @b9g/platform
+
+- `Platform`, `CacheConfig`, `StaticConfig`, `Handler`, `Server`, `ServerOptions`
+
+### Default Export
+
+- `NodePlatform` - The platform class
+
 ## API
-
-### Module Exports
-
-```javascript
-// Default export
-import NodePlatform from '@b9g/platform-node';
-
-// Named exports
-import { NodePlatform } from '@b9g/platform-node';
-
-// Re-exported types from @b9g/platform
-import type {
-  Platform,
-  CacheConfig,
-  StaticConfig,
-  Handler,
-  Server,
-  ServerOptions
-} from '@b9g/platform-node';
-```
 
 ### `new NodePlatform(options?)`
 

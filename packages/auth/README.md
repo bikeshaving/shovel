@@ -82,6 +82,41 @@ self.addEventListener("fetch", (event) => {
 });
 ```
 
+## Exports
+
+### Classes
+
+- `OAuth2Client` - OAuth2 client for authorization flows
+
+### Functions
+
+#### OAuth2 Flow
+- `redirectToProvider(client)` - Middleware to start OAuth2 flow
+- `handleCallback(client, options)` - Middleware to handle OAuth2 callback
+- `requireAuth(options?)` - Middleware to protect routes
+
+#### Provider Helpers
+- `createProviderConfig(name, options)` - Create OAuth2 config from provider preset
+- `getProvider(name)` - Get provider configuration
+- `fetchUserInfo(provider, accessToken)` - Fetch user info from provider
+
+#### PKCE Utilities
+- `generateCodeVerifier(length?)` - Generate PKCE code verifier
+- `generateCodeChallenge(verifier)` - Generate PKCE code challenge from verifier
+- `generateState(length?)` - Generate random state parameter
+
+### Types
+
+- `OAuth2Config` - OAuth2 client configuration
+- `OAuth2Tokens` - OAuth2 token response
+- `OAuth2User` - User info from OAuth2 provider
+- `ProviderName` - Supported provider names ('github' | 'google' | 'microsoft')
+- `ProviderConfig` - Provider configuration preset
+
+### Constants
+
+- `providers` - Built-in provider configurations
+
 ## API Reference
 
 ### OAuth2Client

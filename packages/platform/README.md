@@ -184,6 +184,41 @@ const platform = new CloudflarePlatform({
 });
 ```
 
+## Exports
+
+### Classes
+
+- `BasePlatform` - Abstract base class for platform implementations
+- `platformRegistry` - Default platform registry singleton
+
+### Functions
+
+- `createPlatform(name, options?)` - Create a platform instance by name
+- `getPlatform(name?)` - Get a registered platform synchronously
+- `getPlatformAsync(name?)` - Get a registered platform asynchronously
+- `detectRuntime()` - Detect current JavaScript runtime ('bun' | 'deno' | 'node')
+- `detectDeploymentPlatform()` - Detect deployment platform (Cloudflare, Vercel, etc.)
+- `detectDevelopmentPlatform()` - Detect development platform
+- `resolvePlatform(options)` - Resolve platform from options
+
+### Types
+
+- `Platform` - Platform interface
+- `PlatformConfig` - Platform configuration options
+- `ServerOptions` - Server configuration options
+- `Handler` - Request handler function type
+- `Server` - Server interface
+- `ServiceWorkerOptions` - ServiceWorker loading options
+- `ServiceWorkerInstance` - Loaded ServiceWorker instance
+
+### Re-exports from @b9g/filesystem
+
+- `BucketStorage`, `Bucket`, `BucketFactory`, `CustomBucketStorage`
+
+### Re-exports from @b9g/cache
+
+- `Cache`, `CacheFactory`, `CacheQueryOptions`, `CustomCacheStorage`
+
 ## API Reference
 
 ### Platform Interface

@@ -42,6 +42,33 @@ compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 ```
 
+## Exports
+
+### Classes
+
+- `CloudflarePlatform` - Cloudflare Workers platform implementation (extends BasePlatform)
+- `CFAssetsDirectoryHandle` - FileSystemDirectoryHandle for Cloudflare Workers Static Assets
+- `CFAssetsFileHandle` - FileSystemFileHandle for Cloudflare Workers Static Assets
+
+### Functions
+
+- `createOptionsFromEnv(env)` - Create platform options from Cloudflare env bindings
+- `generateWranglerConfig(options)` - Generate wrangler.toml configuration
+
+### Types
+
+- `CloudflarePlatformOptions` - Configuration options for CloudflarePlatform
+- `CFAssetsBinding` - Type for Cloudflare Workers Static Assets binding
+
+### Constants
+
+- `cloudflareWorkerBanner` - ES Module wrapper banner for Cloudflare Workers
+- `cloudflareWorkerFooter` - ES Module wrapper footer
+
+### Default Export
+
+- `CloudflarePlatform` - The platform class
+
 ## API
 
 ### `new CloudflarePlatform(options?)`

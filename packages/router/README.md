@@ -104,6 +104,22 @@ async function* cacheMiddleware(request, context) {
 router.use(cacheMiddleware);
 ```
 
+## Exports
+
+### Classes
+
+- `Router` - Request router with pattern matching and middleware support
+
+### Types
+
+- `RouteContext` - Context object passed to handlers with params and middleware-added properties
+- `Handler` - Route handler function type `(request, context) => Response | Promise<Response>`
+- `GeneratorMiddleware` - Generator-based middleware type using `yield`
+- `FunctionMiddleware` - Simple function middleware type
+- `Middleware` - Union of GeneratorMiddleware | FunctionMiddleware
+- `HttpMethod` - HTTP method string literal type
+- `RouteConfig` - Route configuration object
+
 ## API Reference
 
 ### Router

@@ -116,6 +116,25 @@ themeContext.run("dark", () => {
 console.log(themeContext.get()); // "light"
 ```
 
+## Exports
+
+### Classes
+
+- `AsyncVariable<T>` - Main class for creating async context variables
+- `AsyncContext.Variable<T>` - Alias matching TC39 proposal namespace
+
+### Types
+
+- `AsyncVariableOptions<T>` - Options for AsyncVariable constructor (defaultValue, name)
+
+### Namespaces
+
+- `AsyncContext` - Namespace containing Variable class (TC39 API)
+
+### Default Export
+
+- `AsyncContext` - The AsyncContext namespace
+
 ## API
 
 ### `AsyncVariable<T>`

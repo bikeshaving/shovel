@@ -244,45 +244,58 @@ router.post('/upload', async (request) => {
 });
 ```
 
+## Exports
+
+### Classes
+
+- `ShovelFileHandle` - FileSystemFileHandle implementation
+- `ShovelDirectoryHandle` - FileSystemDirectoryHandle implementation
+- `ShovelHandle` - Base handle class
+- `CustomBucketStorage` - Bucket storage with custom backend factories
+
+### Types
+
+- `Bucket` - Alias for FileSystemDirectoryHandle
+- `BucketStorage` - Interface for bucket storage (`open(name): Promise<FileSystemDirectoryHandle>`)
+- `BucketFactory` - Factory function type for creating bucket backends
+- `FileSystemConfig` - Configuration for filesystem backends
+- `FileSystemPermissionDescriptor` - Permission descriptor type
+- `FileSystemBackend` - Backend interface for filesystem implementations
+
 ## API Reference
 
-### FilesystemRegistry
+### BucketStorage
 
 ```typescript
-class FilesystemRegistry {
-  register(name: string, factory: () => Filesystem): void;
-  get(name: string): Promise<Filesystem>;
-  has(name: string): boolean;
-  delete(name: string): boolean;
-  keys(): string[];
+interface BucketStorage {
+  open(name: string): Promise<FileSystemDirectoryHandle>;
+}
+
+class CustomBucketStorage implements BucketStorage {
+  register(name: string, factory: BucketFactory): void;
+  open(name: string): Promise<FileSystemDirectoryHandle>;
 }
 ```
 
-### Filesystem Interface
+### FileSystemHandle Interface
 
 ```typescript
-interface Filesystem {
-  getDirectoryHandle(name: string, options?: GetDirectoryOptions): Promise<DirectoryHandle>;
-}
-
-interface DirectoryHandle {
+interface FileSystemDirectoryHandle {
   kind: 'directory';
   name: string;
-  
-  getDirectoryHandle(name: string, options?: GetDirectoryOptions): Promise<DirectoryHandle>;
-  getFileHandle(name: string, options?: GetFileOptions): Promise<FileHandle>;
-  removeEntry(name: string, options?: RemoveOptions): Promise<void>;
-  entries(): AsyncIterableIterator<[string, DirectoryHandle | FileHandle]>;
+  getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FileSystemDirectoryHandle>;
+  getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle>;
+  removeEntry(name: string, options?: { recursive?: boolean }): Promise<void>;
+  entries(): AsyncIterableIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]>;
   keys(): AsyncIterableIterator<string>;
-  values(): AsyncIterableIterator<DirectoryHandle | FileHandle>;
+  values(): AsyncIterableIterator<FileSystemDirectoryHandle | FileSystemFileHandle>;
 }
 
-interface FileHandle {
+interface FileSystemFileHandle {
   kind: 'file';
   name: string;
-  
   getFile(): Promise<File>;
-  createWritable(options?: CreateWritableOptions): Promise<WritableStream>;
+  createWritable(): Promise<FileSystemWritableFileStream>;
 }
 ```
 

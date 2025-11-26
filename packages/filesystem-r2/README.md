@@ -46,19 +46,16 @@ export default {
 };
 ```
 
+## Exports
+
+### Classes
+
+- `R2FileSystemDirectoryHandle` - FileSystemDirectoryHandle for R2
+- `R2FileSystemFileHandle` - FileSystemFileHandle for R2
+- `R2FileSystemWritableFileStream` - WritableStream for R2
+- `R2FileSystemAdapter` - Backend adapter for @b9g/filesystem
+
 ## API
-
-### Module Exports
-
-```javascript
-// Named exports
-import {
-  R2FileSystemWritableFileStream,
-  R2FileSystemFileHandle,
-  R2FileSystemDirectoryHandle,
-  R2FileSystemAdapter
-} from '@b9g/filesystem-r2';
-```
 
 ### `R2FileSystemDirectoryHandle`
 

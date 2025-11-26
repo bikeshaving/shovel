@@ -22,12 +22,12 @@ npm install @b9g/assets
 
 ```javascript
 // Import with assetBase directive
-import logoUrl from './logo.svg' with { assetBase: '/static/' };
-import stylesUrl from './styles.css' with { assetBase: '/static/' };
+import logoURL from './logo.svg' with { assetBase: '/static/' };
+import stylesURL from './styles.css' with { assetBase: '/static/' };
 
 // Use in your application
 const img = document.createElement('img');
-img.src = logoUrl; // '/static/logo-a1b2c3d4.svg'
+img.src = logoURL; // '/static/logo-a1b2c3d4.svg'
 ```
 
 ### Asset Middleware
@@ -65,12 +65,12 @@ The build process generates an asset manifest:
 ```javascript
 import manifest from './dist/assets/manifest.json' with { type: 'json' };
 
-function getAssetUrl(filename) {
+function getAssetURL(filename) {
   return manifest[filename] || filename;
 }
 
 // Get hashed URL
-const logoUrl = getAssetUrl('logo.svg'); // '/static/logo-a1b2c3d4.svg'
+const logoURL = getAssetURL('logo.svg'); // '/static/logo-a1b2c3d4.svg'
 ```
 
 ## Middleware Options
@@ -134,7 +134,7 @@ const router = new Router();
 
 // Single middleware serves all assets with 1-to-1 path mapping
 // /static/app.js -> assets/static/app.js in bucket
-// /index.html -> assets/index.html in bucket  
+// /index.html -> assets/index.html in bucket
 // /favicon.ico -> assets/favicon.ico in bucket
 router.use(assets({
   dev: process.env.NODE_ENV === 'development'
@@ -221,6 +221,21 @@ Support for HTTP range requests (partial content):
 const response = await middleware(request);
 // Returns 206 Partial Content when appropriate
 ```
+
+## Exports
+
+### Functions
+
+- `assets(config?)` - Create middleware for serving static assets (from `@b9g/assets/middleware`)
+- `getMimeType(path)` - Get MIME type for file extension
+- `assetsPlugin(options?)` - Esbuild plugin for asset handling
+
+### Types
+
+- `AssetsConfig` - Configuration for assets middleware
+- `AssetManifestEntry` - Single entry in asset manifest
+- `AssetManifest` - Complete asset manifest
+- `AssetsPluginConfig` - Configuration for esbuild plugin
 
 ## API Reference
 

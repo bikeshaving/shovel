@@ -96,7 +96,23 @@ import { Router } from '@b9g/router';
 const router = new Router({ caches });
 ```
 
-## Cache API Reference
+## Exports
+
+### Classes
+
+- `Cache` - Abstract base class for cache implementations
+- `CustomCacheStorage` - CacheStorage implementation with factory registration
+
+### Functions
+
+- `generateCacheKey(request, options?)` - Generate a cache key from a Request
+
+### Types
+
+- `CacheQueryOptions` - Options for cache query operations (ignoreSearch, ignoreMethod, ignoreVary)
+- `CacheFactory` - Factory function type `(name: string) => Cache | Promise<Cache>`
+
+## API Reference
 
 ### Standard Cache Methods
 

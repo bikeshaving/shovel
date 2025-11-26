@@ -172,135 +172,15 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 
 /**
  * Node bucket - root entry point for Node.js filesystem
- * Implements FileSystemDirectoryHandle for local filesystem access
+ * Extends ShovelDirectoryHandle with "/" as root path
  */
-export class NodeBucket implements FileSystemDirectoryHandle {
-	readonly kind: "directory";
-	readonly name: string;
-	#backend: NodeFileSystemBackend;
-
+export class NodeBucket extends ShovelDirectoryHandle {
 	constructor(rootPath: string) {
-		this.kind = "directory";
-		this.#backend = new NodeFileSystemBackend(rootPath);
-		this.name = Path.basename(rootPath) || "root";
+		super(new NodeFileSystemBackend(rootPath), "/");
 	}
 
-	async getFileHandle(
-		name: string,
-		options?: {create?: boolean},
-	): Promise<FileSystemFileHandle> {
-		const filePath = `/${name}`;
-		const stat = await this.#backend.stat(filePath);
-
-		if (!stat && options?.create) {
-			await this.#backend.writeFile(filePath, new Uint8Array(0));
-		} else if (!stat) {
-			throw new DOMException("File not found", "NotFoundError");
-		} else if (stat.kind !== "file") {
-			throw new DOMException(
-				"Path exists but is not a file",
-				"TypeMismatchError",
-			);
-		}
-
-		return new ShovelFileHandle(this.#backend, filePath);
-	}
-
-	async getDirectoryHandle(
-		name: string,
-		options?: {create?: boolean},
-	): Promise<FileSystemDirectoryHandle> {
-		const dirPath = `/${name}`;
-		const stat = await this.#backend.stat(dirPath);
-
-		if (!stat && options?.create) {
-			await this.#backend.createDir(dirPath);
-		} else if (!stat) {
-			throw new DOMException("Directory not found", "NotFoundError");
-		} else if (stat.kind !== "directory") {
-			throw new DOMException(
-				"Path exists but is not a directory",
-				"TypeMismatchError",
-			);
-		}
-
-		return new ShovelDirectoryHandle(this.#backend, dirPath);
-	}
-
-	async removeEntry(
-		name: string,
-		options?: {recursive?: boolean},
-	): Promise<void> {
-		const entryPath = `/${name}`;
-		await this.#backend.remove(entryPath, options?.recursive);
-	}
-
-	async resolve(
-		possibleDescendant: FileSystemHandle,
-	): Promise<string[] | null> {
-		if (
-			!(
-				possibleDescendant instanceof ShovelDirectoryHandle ||
-				possibleDescendant instanceof ShovelFileHandle
-			)
-		) {
-			return null;
-		}
-
-		// For node bucket, check if the handle uses our backend
-		const descendantPath = (possibleDescendant as any).path;
-		if (typeof descendantPath === "string" && descendantPath.startsWith("/")) {
-			return descendantPath.split("/").filter(Boolean);
-		}
-
-		return null;
-	}
-
-	async *entries(): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
-		const entries = await this.#backend.listDir("/");
-
-		for (const entry of entries) {
-			const entryPath = `/${entry.name}`;
-			if (entry.kind === "file") {
-				yield [entry.name, new ShovelFileHandle(this.#backend, entryPath)];
-			} else {
-				yield [entry.name, new ShovelDirectoryHandle(this.#backend, entryPath)];
-			}
-		}
-	}
-
-	async *keys(): AsyncIterableIterator<string> {
-		for await (const [name] of this.entries()) {
-			yield name;
-		}
-	}
-
-	async *values(): AsyncIterableIterator<
-		FileSystemFileHandle | FileSystemDirectoryHandle
-	> {
-		for await (const [, handle] of this.entries()) {
-			yield handle;
-		}
-	}
-
-	[Symbol.asyncIterator](): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
-		return this.entries();
-	}
-
-	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
-		if (other.kind !== "directory") return false;
-		return other instanceof NodeBucket && other.name === this.name;
-	}
-
-	async queryPermission(): Promise<PermissionState> {
-		return "granted";
-	}
-
-	async requestPermission(): Promise<PermissionState> {
-		return "granted";
+	// Override name to use the directory basename instead of "/"
+	override get name(): string {
+		return Path.basename(this.path) || "root";
 	}
 }

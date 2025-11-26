@@ -48,19 +48,16 @@ await writable.write(JSON.stringify({ updated: true }));
 await writable.close();
 ```
 
+## Exports
+
+### Classes
+
+- `S3FileSystemDirectoryHandle` - FileSystemDirectoryHandle for S3
+- `S3FileSystemFileHandle` - FileSystemFileHandle for S3
+- `S3FileSystemWritableFileStream` - WritableStream for S3
+- `S3FileSystemAdapter` - Backend adapter for @b9g/filesystem
+
 ## API
-
-### Module Exports
-
-```javascript
-// Named exports
-import {
-  S3FileSystemWritableFileStream,
-  S3FileSystemFileHandle,
-  S3FileSystemDirectoryHandle,
-  S3FileSystemAdapter
-} from '@b9g/filesystem-s3';
-```
 
 ### `S3FileSystemDirectoryHandle`
 
