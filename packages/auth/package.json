@@ -1,41 +1,85 @@
 {
-	"name": "@b9g/auth",
-	"version": "0.1.0",
-	"description": "Universal authentication for ServiceWorker applications with OAuth2/PKCE support",
-	"type": "module",
-	"module": "./dist/src/index.js",
-	"types": "./dist/src/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/src/index.d.ts",
-			"import": "./dist/src/index.js"
-		},
-		"./package.json": "./dist/package.json"
-	},
-	"files": ["dist", "README.md"],
-	"scripts": {
-		"build": "libuild build",
-		"test": "bun test"
-	},
-	"keywords": [
-		"auth",
-		"oauth2",
-		"pkce",
-		"authentication",
-		"serviceworker",
-		"universal"
-	],
-	"author": "b9g",
-	"license": "MIT",
-	"dependencies": {
-		"@b9g/platform": "workspace:*"
-	},
-	"peerDependencies": {
-		"@b9g/router": "workspace:*"
-	},
-	"devDependencies": {
-		"@b9g/libuild": "^0.1.15",
-		"@types/bun": "^1.2.2",
-		"typescript": "^5.7.3"
-	}
+  "name": "@b9g/auth",
+  "version": "0.1.0",
+  "description": "Universal authentication for ServiceWorker applications with OAuth2/PKCE support",
+  "type": "module",
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./package.json": "./dist/package.json",
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./middleware": {
+      "types": "./dist/src/middleware.d.ts",
+      "import": "./dist/src/middleware.js"
+    },
+    "./middleware.js": {
+      "types": "./dist/src/middleware.d.ts",
+      "import": "./dist/src/middleware.js"
+    },
+    "./oauth2": {
+      "types": "./dist/src/oauth2.d.ts",
+      "import": "./dist/src/oauth2.js"
+    },
+    "./oauth2.js": {
+      "types": "./dist/src/oauth2.d.ts",
+      "import": "./dist/src/oauth2.js"
+    },
+    "./pkce": {
+      "types": "./dist/src/pkce.d.ts",
+      "import": "./dist/src/pkce.js"
+    },
+    "./pkce.js": {
+      "types": "./dist/src/pkce.d.ts",
+      "import": "./dist/src/pkce.js"
+    },
+    "./providers": {
+      "types": "./dist/src/providers.d.ts",
+      "import": "./dist/src/providers.js"
+    },
+    "./providers.js": {
+      "types": "./dist/src/providers.d.ts",
+      "import": "./dist/src/providers.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "libuild build",
+    "test": "bun test"
+  },
+  "keywords": [
+    "auth",
+    "oauth2",
+    "pkce",
+    "authentication",
+    "serviceworker",
+    "universal"
+  ],
+  "author": "b9g",
+  "license": "MIT",
+  "dependencies": {
+    "@b9g/platform": "workspace:*"
+  },
+  "peerDependencies": {
+    "@b9g/router": "workspace:*"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.15",
+    "@types/bun": "^1.2.2",
+    "typescript": "^5.7.3"
+  },
+  "private": true
 }

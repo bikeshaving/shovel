@@ -101,7 +101,20 @@
     "./bin/create.js": {
       "types": "./dist/bin/create.d.ts",
       "import": "./dist/bin/create.js"
+    },
+    ".": {
+      "import": "./dist/src/worker-entry.js",
+      "types": "./dist/src/worker-entry.d.ts"
+    },
+    "./worker-entry": {
+      "import": "./dist/src/worker-entry.js",
+      "types": "./dist/src/worker-entry.d.ts"
+    },
+    "./worker-entry.js": {
+      "import": "./dist/src/worker-entry.js",
+      "types": "./dist/src/worker-entry.d.ts"
     }
   },
-  "module": "./dist/src/undefined.js"
+  "module": "./dist/src/worker-entry.js",
+  "types": "./dist/src/worker-entry.d.ts"
 }
