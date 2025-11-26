@@ -3,7 +3,7 @@
   "version": "0.1.6",
   "type": "module",
   "scripts": {
-    "build": "libuild build"
+    "build": "libuild build --save"
   },
   "peerDependencies": {
     "urlpattern-polyfill": "^10.0.0"

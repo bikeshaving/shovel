@@ -14,7 +14,7 @@
     "shovel"
   ],
   "scripts": {
-    "build": "libuild build",
+    "build": "libuild build --save",
     "dev": "libuild build --watch",
     "test": "bun test"
   },

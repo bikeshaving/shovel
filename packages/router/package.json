@@ -14,7 +14,7 @@
     "shovel"
   ],
   "scripts": {
-    "build": "libuild build"
+    "build": "libuild build --save"
   },
   "dependencies": {
     "@b9g/match-pattern": "workspace:*"

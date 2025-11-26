@@ -3,7 +3,7 @@
   "version": "0.1.4",
   "type": "module",
   "scripts": {
-    "build": "libuild build"
+    "build": "libuild build --save"
   },
   "dependencies": {
     "mime": "^4.0.4"

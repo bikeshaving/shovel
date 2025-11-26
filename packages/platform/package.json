@@ -4,7 +4,7 @@
   "description": "ServiceWorker-first universal deployment platform. Write ServiceWorker apps once, deploy anywhere (Node/Bun/Cloudflare). Registry-based multi-app orchestration.",
   "type": "module",
   "scripts": {
-    "build": "libuild build",
+    "build": "libuild build --save",
     "build:save": "libuild build --save",
     "publish": "libuild publish",
     "test": "bun test"

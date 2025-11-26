@@ -4,7 +4,7 @@
   "description": "Bun platform adapter for Shovel with hot reloading and built-in TypeScript/JSX support",
   "type": "module",
   "scripts": {
-    "build": "libuild build",
+    "build": "libuild build --save",
     "build:save": "libuild build --save",
     "publish": "libuild publish",
     "test": "bun test"

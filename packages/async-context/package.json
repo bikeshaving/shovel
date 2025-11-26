@@ -4,7 +4,7 @@
   "description": "Lightweight AsyncContext polyfill for JavaScript runtimes. Implements TC39 AsyncContext proposal using AsyncLocalStorage.",
   "type": "module",
   "scripts": {
-    "build": "libuild build",
+    "build": "libuild build --save",
     "build:save": "libuild build --save",
     "publish": "libuild publish",
     "test": "bun test"

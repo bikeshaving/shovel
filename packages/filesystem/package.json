@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "libuild build",
+    "build": "libuild build --save",
     "test": "bun test"
   },
   "peerDependencies": {

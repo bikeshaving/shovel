@@ -16,7 +16,7 @@
     "examples/tfb/frameworks/JavaScript/shovel"
   ],
   "scripts": {
-    "build": "bun run --filter './packages/*' build && libuild build",
+    "build": "bun run --filter './packages/*' build && libuild build --save",
     "test": "bun test",
     "typecheck": "tsc --build",
     "lint": "eslint --ext .js,.jsx,.ts,.tsx .",

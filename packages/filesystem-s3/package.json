@@ -4,7 +4,7 @@
   "description": "AWS S3 implementation of File System Access API",
   "type": "module",
   "scripts": {
-    "build": "libuild build",
+    "build": "libuild build --save",
     "build:save": "libuild build --save",
     "publish": "libuild publish",
     "test": "bun test"
