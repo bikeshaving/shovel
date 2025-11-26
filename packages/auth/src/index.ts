@@ -34,6 +34,8 @@ export {
 
 // Router middleware
 export {
+	cors,
+	type CORSOptions,
 	redirectToProvider,
 	handleCallback,
 	requireAuth,

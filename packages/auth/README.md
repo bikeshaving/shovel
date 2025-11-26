@@ -1,17 +1,18 @@
 # @b9g/auth
 
-Universal authentication for ServiceWorker applications with OAuth2/PKCE support.
+Authentication and access control middleware for ServiceWorker applications.
 
 ## Features
 
-- 🔐 OAuth2 with PKCE (Proof Key for Code Exchange)
-- 🌍 Works across all platforms (Node.js, Bun, Cloudflare)
-- 🍪 Cookie-based session management using standards-compliant Cookie Store API
-- 🌐 Access cookies via `self.cookieStore` (ServiceWorker global API)
-- 🔌 Built-in provider presets (GitHub, Google, Microsoft)
-- 🛣️ Router middleware integration
-- 🛡️ CSRF protection with state parameter
-- ⚡ Zero dependencies (uses Web standards)
+- OAuth2 with PKCE (Proof Key for Code Exchange)
+- CORS middleware for cross-origin requests
+- Works across all platforms (Node.js, Bun, Cloudflare)
+- Cookie-based session management using standards-compliant Cookie Store API
+- Access cookies via `self.cookieStore` (ServiceWorker global API)
+- Built-in provider presets (GitHub, Google, Microsoft)
+- Router middleware integration
+- CSRF protection with state parameter
+- Zero dependencies (uses Web standards)
 
 ## Installation
 
@@ -90,6 +91,9 @@ self.addEventListener("fetch", (event) => {
 
 ### Functions
 
+#### CORS
+- `cors(options?)` - CORS middleware for cross-origin requests
+
 #### OAuth2 Flow
 - `redirectToProvider(client)` - Middleware to start OAuth2 flow
 - `handleCallback(client, options)` - Middleware to handle OAuth2 callback
@@ -107,6 +111,7 @@ self.addEventListener("fetch", (event) => {
 
 ### Types
 
+- `CORSOptions` - CORS middleware configuration
 - `OAuth2Config` - OAuth2 client configuration
 - `OAuth2Tokens` - OAuth2 token response
 - `OAuth2User` - User info from OAuth2 provider
@@ -118,6 +123,40 @@ self.addEventListener("fetch", (event) => {
 - `providers` - Built-in provider configurations
 
 ## API Reference
+
+### CORS
+
+```typescript
+import {cors} from "@b9g/auth";
+
+// Allow all origins
+router.use(cors());
+
+// Allow specific origin with credentials
+router.use(cors({
+  origin: "https://myapp.com",
+  credentials: true
+}));
+
+// Allow multiple origins
+router.use(cors({
+  origin: ["https://app.example.com", "https://admin.example.com"]
+}));
+
+// Dynamic origin validation
+router.use(cors({
+  origin: (origin) => origin.endsWith(".example.com")
+}));
+```
+
+**Options:**
+
+- `origin` - Allowed origins: `"*"`, string, array, or function (default: `"*"`)
+- `methods` - Allowed methods (default: `["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"]`)
+- `allowedHeaders` - Allowed headers (default: `["Content-Type", "Authorization"]`)
+- `exposedHeaders` - Headers exposed to browser
+- `credentials` - Allow credentials (default: `false`)
+- `maxAge` - Preflight cache max age in seconds (default: `86400`)
 
 ### OAuth2Client
 
