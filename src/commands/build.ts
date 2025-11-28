@@ -8,10 +8,6 @@ import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile} from "fs/promises";
 import {fileURLToPath} from "url";
 import {assetsPlugin} from "@b9g/assets/plugin";
-import {
-	cloudflareWorkerBanner,
-	cloudflareWorkerFooter,
-} from "@b9g/platform-cloudflare";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 
@@ -371,6 +367,11 @@ async function createBuildConfig({
  * Configure build for Cloudflare Workers target
  */
 async function configureCloudflareTarget(buildConfig) {
+	// Dynamically import platform-cloudflare only when targeting Cloudflare
+	// This avoids requiring the package for node/bun builds
+	const {cloudflareWorkerBanner, cloudflareWorkerFooter} = await import(
+		"@b9g/platform-cloudflare"
+	);
 	buildConfig.platform = "browser";
 	buildConfig.conditions = ["worker", "browser"];
 	buildConfig.banner = {js: cloudflareWorkerBanner};
