@@ -19,6 +19,7 @@
 
 import {readFileSync} from "fs";
 import {resolve} from "path";
+import {Cache} from "@b9g/cache";
 
 /**
  * Get environment variables from import.meta.env or process.env
@@ -697,6 +698,16 @@ const WELL_KNOWN_BUCKET_PATHS: Record<string, (baseDir: string) => string> = {
 	server: (baseDir) => baseDir,
 };
 
+/**
+ * Built-in bucket provider aliases
+ * Maps short names to their module paths
+ */
+const BUILTIN_BUCKET_PROVIDERS: Record<string, string> = {
+	node: "@b9g/filesystem/node.js",
+	memory: "@b9g/filesystem/memory.js",
+	s3: "@b9g/filesystem-s3",
+};
+
 export interface BucketFactoryOptions {
 	/** Base directory for path resolution (entrypoint directory) - REQUIRED */
 	baseDir: string;
@@ -707,6 +718,16 @@ export interface BucketFactoryOptions {
 /**
  * Creates a bucket factory function for CustomBucketStorage.
  * Lazily imports bucket implementations.
+ *
+ * Provider resolution:
+ * 1. "node" -> built-in NodeBucket (default)
+ * 2. "memory" -> built-in MemoryBucket
+ * 3. "s3" -> @b9g/filesystem-s3 (blessed module)
+ * 4. Any other string -> treated as a module name (e.g., "my-custom-bucket")
+ *
+ * Custom bucket modules must export a class that:
+ * - Implements FileSystemDirectoryHandle
+ * - Has constructor(name: string, options?: object)
  */
 export function createBucketFactory(options: BucketFactoryOptions) {
 	const {baseDir, config} = options;
@@ -724,19 +745,58 @@ export function createBucketFactory(options: BucketFactoryOptions) {
 			bucketPath = resolve(baseDir, `../${name}`);
 		}
 
-		// Lazy import bucket implementation based on provider
 		const provider = String(bucketConfig.provider || "node");
-		switch (provider) {
-			case "memory": {
-				const {MemoryBucket} = await import("@b9g/filesystem/memory.js");
-				return new MemoryBucket(name);
+
+		// Resolve provider to module path
+		const modulePath = BUILTIN_BUCKET_PROVIDERS[provider] || provider;
+
+		// Special handling for built-in node bucket (most common case)
+		if (modulePath === "@b9g/filesystem/node.js") {
+			const {NodeBucket} = await import("@b9g/filesystem/node.js");
+			return new NodeBucket(bucketPath);
+		}
+
+		// Special handling for built-in memory bucket
+		if (modulePath === "@b9g/filesystem/memory.js") {
+			const {MemoryBucket} = await import("@b9g/filesystem/memory.js");
+			return new MemoryBucket(name);
+		}
+
+		// Dynamic import for all other providers (s3, custom modules)
+		try {
+			const module = await import(modulePath);
+
+			// Find the bucket class - check common export patterns
+			const BucketClass =
+				module.default || // Default export
+				module.S3Bucket || // Named export for s3
+				module.Bucket || // Generic Bucket export
+				Object.values(module).find(
+					(v: any) => typeof v === "function" && v.name?.includes("Bucket"),
+				);
+
+			if (!BucketClass) {
+				throw new Error(
+					`Bucket module "${modulePath}" does not export a valid bucket class. ` +
+						`Expected a default export or named export (S3Bucket, Bucket).`,
+				);
 			}
-			case "node":
-			default: {
-				const {NodeBucket} = await import("@b9g/filesystem/node.js");
-				// NodeBucket throws if path doesn't exist (desired behavior)
-				return new NodeBucket(bucketPath);
+
+			// Extract options to pass to the bucket constructor
+			// Remove 'provider' and 'path' as they're not bucket options
+			const {provider: _, path: __, ...bucketOptions} = bucketConfig;
+
+			// Pass name and path along with other options
+			return new BucketClass(name, {path: bucketPath, ...bucketOptions});
+		} catch (error: any) {
+			if (error.code === "ERR_MODULE_NOT_FOUND" || error.code === "MODULE_NOT_FOUND") {
+				throw new Error(
+					`Bucket provider "${provider}" not found. ` +
+						`Make sure the module "${modulePath}" is installed.\n` +
+						`For S3: npm install @b9g/filesystem-s3`,
+				);
 			}
+			throw error;
 		}
 	};
 }
@@ -747,8 +807,26 @@ export interface CacheFactoryOptions {
 }
 
 /**
+ * Built-in cache provider aliases
+ * Maps short names to their module paths
+ */
+const BUILTIN_CACHE_PROVIDERS: Record<string, string> = {
+	memory: "@b9g/cache/memory.js",
+	redis: "@b9g/cache-redis",
+};
+
+/**
  * Creates a cache factory function for CustomCacheStorage.
  * Lazily imports cache implementations.
+ *
+ * Provider resolution:
+ * 1. "memory" -> built-in MemoryCache
+ * 2. "redis" -> @b9g/cache-redis (blessed module)
+ * 3. Any other string -> treated as a module name (e.g., "my-custom-cache")
+ *
+ * Custom cache modules must export a class that:
+ * - Extends Cache (from @b9g/cache)
+ * - Has constructor(name: string, options?: object)
  */
 export function createCacheFactory(options: CacheFactoryOptions = {}) {
 	const {config} = options;
@@ -757,18 +835,55 @@ export function createCacheFactory(options: CacheFactoryOptions = {}) {
 		const cacheConfig = config ? getCacheConfig(config, name) : {};
 
 		const provider = String(cacheConfig.provider || "memory");
-		switch (provider) {
-			case "memory":
-			default: {
-				const {MemoryCache} = await import("@b9g/cache/memory.js");
-				return new MemoryCache(name, {
-					maxEntries:
-						typeof cacheConfig.maxEntries === "number"
-							? cacheConfig.maxEntries
-							: 1000,
-				});
+
+		// Resolve provider to module path
+		const modulePath = BUILTIN_CACHE_PROVIDERS[provider] || provider;
+
+		// Special handling for built-in memory cache (most common case)
+		if (modulePath === "@b9g/cache/memory.js") {
+			const {MemoryCache} = await import("@b9g/cache/memory.js");
+			return new MemoryCache(name, {
+				maxEntries:
+					typeof cacheConfig.maxEntries === "number"
+						? cacheConfig.maxEntries
+						: 1000,
+			});
+		}
+
+		// Dynamic import for all other providers (redis, custom modules)
+		try {
+			const module = await import(modulePath);
+
+			// Find the cache class - check common export patterns
+			const CacheClass =
+				module.default || // Default export
+				module.RedisCache || // Named export for redis
+				module.Cache || // Generic Cache export
+				Object.values(module).find(
+					(v: any) => typeof v === "function" && v.prototype instanceof Cache,
+				);
+
+			if (!CacheClass) {
+				throw new Error(
+					`Cache module "${modulePath}" does not export a valid cache class. ` +
+						`Expected a default export or named export (RedisCache, Cache) that extends Cache.`,
+				);
 			}
-			// Future: case "redis": ...
+
+			// Extract options to pass to the cache constructor
+			// Remove 'provider' as it's not a cache option
+			const {provider: _, ...cacheOptions} = cacheConfig;
+
+			return new CacheClass(name, cacheOptions);
+		} catch (error: any) {
+			if (error.code === "ERR_MODULE_NOT_FOUND" || error.code === "MODULE_NOT_FOUND") {
+				throw new Error(
+					`Cache provider "${provider}" not found. ` +
+						`Make sure the module "${modulePath}" is installed.\n` +
+						`For redis: npm install @b9g/cache-redis`,
+				);
+			}
+			throw error;
 		}
 	};
 }

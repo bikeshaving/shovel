@@ -19,7 +19,7 @@ import {
 	type ProcessedShovelConfig,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
-import * as Http from "http";
+import * as HTTP from "http";
 import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
 
@@ -297,7 +297,7 @@ export class NodePlatform extends BasePlatform {
 		const host = options.host ?? this.#options.host;
 
 		// Create HTTP server with Web API Request/Response conversion
-		const httpServer = Http.createServer(async (req, res) => {
+		const httpServer = HTTP.createServer(async (req, res) => {
 			try {
 				// Convert Node.js request to Web API Request
 				const url = `http://${req.headers.host}${req.url}`;
