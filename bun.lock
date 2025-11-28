@@ -125,7 +125,7 @@
     },
     "packages/assets": {
       "name": "@b9g/assets",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "dependencies": {
         "mime": "^4.0.4",
       },
@@ -141,7 +141,7 @@
     },
     "packages/async-context": {
       "name": "@b9g/async-context",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "devDependencies": {
         "@b9g/libuild": "^0.1.11",
         "@types/node": "^20.0.0",
@@ -150,7 +150,7 @@
     },
     "packages/auth": {
       "name": "@b9g/auth",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@b9g/platform": "workspace:*",
       },
@@ -165,7 +165,7 @@
     },
     "packages/cache": {
       "name": "@b9g/cache",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "devDependencies": {
         "@b9g/libuild": "^0.1.11",
         "bun-types": "latest",
@@ -173,7 +173,7 @@
     },
     "packages/cache-redis": {
       "name": "@b9g/cache-redis",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "redis": "^4.6.10",
       },
@@ -186,7 +186,7 @@
     },
     "packages/filesystem": {
       "name": "@b9g/filesystem",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "devDependencies": {
         "@b9g/libuild": "^0.1.11",
         "@types/bun": "^1.2.2",
@@ -200,7 +200,7 @@
     },
     "packages/filesystem-r2": {
       "name": "@b9g/filesystem-r2",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "dependencies": {
         "@b9g/filesystem": "workspace:*",
       },
@@ -214,7 +214,7 @@
     },
     "packages/filesystem-s3": {
       "name": "@b9g/filesystem-s3",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "dependencies": {
         "@b9g/filesystem": "workspace:*",
       },
@@ -228,7 +228,7 @@
     },
     "packages/http-errors": {
       "name": "@b9g/http-errors",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "devDependencies": {
         "@b9g/libuild": "^0.1.11",
         "bun-types": "latest",
@@ -236,7 +236,7 @@
     },
     "packages/match-pattern": {
       "name": "@b9g/match-pattern",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "devDependencies": {
         "@b9g/libuild": "^0.1.11",
         "bun-types": "latest",
@@ -250,7 +250,7 @@
     },
     "packages/node-webworker": {
       "name": "@b9g/node-webworker",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "devDependencies": {
         "@b9g/libuild": "^0.1.11",
         "@types/node": "^18.0.0",
@@ -259,9 +259,11 @@
     },
     "packages/platform": {
       "name": "@b9g/platform",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "dependencies": {
         "@b9g/async-context": "workspace:*",
+        "@b9g/cache": "workspace:*",
+        "@b9g/filesystem": "workspace:*",
         "@logtape/logtape": "^1.2.0",
       },
       "devDependencies": {
@@ -271,10 +273,9 @@
     },
     "packages/platform-bun": {
       "name": "@b9g/platform-bun",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "dependencies": {
         "@b9g/assets": "workspace:*",
-        "@b9g/cache": "workspace:*",
         "@b9g/platform": "workspace:*",
       },
       "devDependencies": {
@@ -284,7 +285,7 @@
     },
     "packages/platform-cloudflare": {
       "name": "@b9g/platform-cloudflare",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/cache": "workspace:*",
@@ -299,9 +300,8 @@
     },
     "packages/platform-node": {
       "name": "@b9g/platform-node",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "dependencies": {
-        "@b9g/cache": "workspace:*",
         "@b9g/platform": "workspace:*",
       },
       "devDependencies": {
@@ -312,7 +312,7 @@
     },
     "packages/router": {
       "name": "@b9g/router",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "dependencies": {
         "@b9g/match-pattern": "workspace:*",
       },
@@ -1023,17 +1023,9 @@
 
     "@aws-crypto/util/@smithy/util-utf8": ["@smithy/util-utf8@2.3.0", "", { "dependencies": { "@smithy/util-buffer-from": "^2.2.0", "tslib": "^2.6.2" } }, "sha512-R8Rdn8Hy72KKcebgLiv8jQcQkXoLMOGGv5uI1/k0l+snqkOzQ1R0ChUBCxWMlBsFMekWjq0wRudIweFs7sKT5A=="],
 
-    "@b9g/assets/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
-
-    "@b9g/async-context/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
-
     "@b9g/auth/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
 
-    "@b9g/cache/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
-
     "@b9g/cache-redis/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
-
-    "@b9g/filesystem/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
 
     "@b9g/filesystem-r2/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
 
@@ -1047,13 +1039,7 @@
 
     "@b9g/node-webworker/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
 
-    "@b9g/platform/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
-
-    "@b9g/platform-bun/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
-
     "@b9g/platform-cloudflare/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
-
-    "@b9g/platform-node/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
 
     "@b9g/platform-node/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
 

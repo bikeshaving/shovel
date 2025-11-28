@@ -23,6 +23,8 @@
   ],
   "dependencies": {
     "@b9g/async-context": "workspace:*",
+    "@b9g/cache": "workspace:*",
+    "@b9g/filesystem": "workspace:*",
     "@logtape/logtape": "^1.2.0"
   },
   "devDependencies": {

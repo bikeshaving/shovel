@@ -18,8 +18,7 @@
     "esbuild"
   ],
   "dependencies": {
-    "@b9g/platform": "workspace:*",
-    "@b9g/cache": "workspace:*"
+    "@b9g/platform": "workspace:*"
   },
   "devDependencies": {
     "@b9g/libuild": "^0.1.11",
