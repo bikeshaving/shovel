@@ -75,11 +75,8 @@ export async function developCommand(entrypoint, options) {
 		});
 
 		// Initial build and start watching
-		logger.info("Building", {entrypoint});
 		const buildSuccess = await watcher.start();
-		if (buildSuccess) {
-			logger.info("Build complete, watching for changes", {});
-		} else {
+		if (!buildSuccess) {
 			logger.error("Initial build failed, watching for changes to retry", {});
 		}
 

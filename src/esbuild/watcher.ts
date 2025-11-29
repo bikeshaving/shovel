@@ -1,9 +1,9 @@
 /**
- * Simple file watcher that runs ESBuild and triggers Worker reloads
+ * File watcher that uses ESBuild's native watch mode for accurate dependency tracking.
+ * Watches all imported files including node_modules and linked packages.
  */
 
 import * as ESBuild from "esbuild";
-import {watch} from "fs";
 import {resolve, dirname, join} from "path";
 import {readFileSync} from "fs";
 import {mkdir} from "fs/promises";
@@ -23,12 +23,13 @@ export interface WatcherOptions {
 }
 
 export class Watcher {
-	#watcher?: ReturnType<typeof watch>;
-	#building: boolean;
 	#options: WatcherOptions;
+	#ctx?: ESBuild.BuildContext;
+	#initialBuildComplete: boolean = false;
+	#initialBuildSuccess: boolean = false;
+	#initialBuildResolve?: (success: boolean) => void;
 
 	constructor(options: WatcherOptions) {
-		this.#building = false;
 		this.#options = options;
 	}
 
@@ -38,137 +39,110 @@ export class Watcher {
 	 */
 	async start(): Promise<boolean> {
 		const entryPath = resolve(this.#options.entrypoint);
+		const outputDir = resolve(this.#options.outDir);
 
-		// Initial build - propagate errors so caller knows if build failed
-		const success = await this.#build();
+		// Find workspace root by looking for package.json with workspaces
+		const workspaceRoot = this.#findWorkspaceRoot();
 
-		// Watch for changes (even if initial build failed, so rebuilds can fix errors)
-		const watchDir = dirname(entryPath);
-		logger.info("Watching for changes", {watchDir});
+		// Ensure output directory structure exists
+		await mkdir(join(outputDir, "server"), {recursive: true});
+		await mkdir(join(outputDir, "static"), {recursive: true});
 
-		this.#watcher = watch(
-			watchDir,
-			{recursive: true},
-			(_eventType, filename) => {
-				if (
-					filename &&
-					(filename.endsWith(".js") ||
-						filename.endsWith(".ts") ||
-						filename.endsWith(".tsx"))
-				) {
-					// Ignore files in the output directory to prevent infinite rebuild loops
-					const outDir = this.#options.outDir || "dist";
-					if (
-						filename.startsWith(outDir + "/") ||
-						filename.startsWith(outDir + "\\")
-					) {
-						return;
-					}
-					this.#debouncedBuild();
-				}
-			},
-		);
+		// Create a promise that resolves when the initial build completes
+		const initialBuildPromise = new Promise<boolean>((resolve) => {
+			this.#initialBuildResolve = resolve;
+		});
 
-		return success;
+		// Create esbuild context with onEnd plugin to detect builds
+		this.#ctx = await ESBuild.context({
+			entryPoints: [entryPath],
+			bundle: true,
+			format: "esm",
+			target: "es2022",
+			platform: "node",
+			outfile: `${outputDir}/server/app.js`,
+			// No packages: "external" - bundle everything for dev/prod parity
+			absWorkingDir: workspaceRoot,
+			plugins: [
+				importMetaPlugin(),
+				assetsPlugin({
+					outDir: outputDir,
+				}),
+				// Plugin to detect build completion (works with watch mode)
+				{
+					name: "build-notify",
+					setup: (build) => {
+						build.onStart(() => {
+							logger.info("Building", {
+								entrypoint: this.#options.entrypoint,
+							});
+						});
+						build.onEnd((result) => {
+							const version = Date.now();
+							const success = result.errors.length === 0;
+
+							if (success) {
+								logger.info("Build complete", {version});
+							} else {
+								logger.error("Build errors", {errors: result.errors});
+							}
+
+							// Handle initial build
+							if (!this.#initialBuildComplete) {
+								this.#initialBuildComplete = true;
+								this.#initialBuildSuccess = success;
+								this.#initialBuildResolve?.(success);
+							} else {
+								// Subsequent rebuilds triggered by watch
+								this.#options.onBuild?.(success, version);
+							}
+						});
+					},
+				},
+			],
+			sourcemap: "inline",
+			minify: false,
+			treeShaking: true,
+		});
+
+		// Start watching - this does the initial build and watches all dependencies
+		logger.info("Starting esbuild watch mode");
+		await this.#ctx.watch();
+
+		// Wait for initial build to complete
+		return initialBuildPromise;
 	}
 
 	/**
-	 * Stop watching
+	 * Stop watching and dispose of esbuild context
 	 */
 	async stop() {
-		if (this.#watcher) {
-			this.#watcher.close();
-			this.#watcher = undefined;
+		if (this.#ctx) {
+			await this.#ctx.dispose();
+			this.#ctx = undefined;
 		}
 	}
 
-	#timeout?: NodeJS.Timeout;
+	#findWorkspaceRoot(): string {
+		// Search upward from cwd for package.json with workspaces
+		const initialCwd = process.cwd();
+		let workspaceRoot = initialCwd;
 
-	#debouncedBuild() {
-		if (this.#timeout) {
-			clearTimeout(this.#timeout);
-		}
-		this.#timeout = setTimeout(() => {
-			this.#build();
-		}, 100);
-	}
-
-	async #build(): Promise<boolean> {
-		if (this.#building) return false;
-		this.#building = true;
-
-		try {
-			const entryPath = resolve(this.#options.entrypoint);
-			const outputDir = resolve(this.#options.outDir);
-			const version = Date.now();
-
-			// Find workspace root by looking for package.json with workspaces
-			// Search upward from cwd, but don't traverse past it
-			const initialCwd = process.cwd();
-			let workspaceRoot = initialCwd;
-
-			while (workspaceRoot !== dirname(workspaceRoot)) {
-				try {
-					const packageJSON = JSON.parse(
-						readFileSync(resolve(workspaceRoot, "package.json"), "utf8"),
-					);
-					if (packageJSON.workspaces) {
-						break;
-					}
-				} catch {
-					// No package.json found, continue up the tree
+		while (workspaceRoot !== dirname(workspaceRoot)) {
+			try {
+				const packageJSON = JSON.parse(
+					readFileSync(resolve(workspaceRoot, "package.json"), "utf8"),
+				);
+				if (packageJSON.workspaces) {
+					return workspaceRoot;
 				}
-				workspaceRoot = dirname(workspaceRoot);
+			} catch {
+				// No package.json found, continue up the tree
 			}
-
-			// If we reached filesystem root without finding workspace, use original cwd
-			if (workspaceRoot === dirname(workspaceRoot)) {
-				workspaceRoot = initialCwd;
-			}
-
-			logger.info("Building", {entryPath});
-			logger.info("Workspace root", {workspaceRoot});
-
-			// Ensure output directory structure exists
-			await mkdir(join(outputDir, "server"), {recursive: true});
-			await mkdir(join(outputDir, "static"), {recursive: true});
-
-			const result = await ESBuild.build({
-				entryPoints: [entryPath],
-				bundle: true,
-				format: "esm",
-				target: "es2022",
-				platform: "node",
-				outfile: `${outputDir}/server/app.js`,
-				packages: "external",
-				absWorkingDir: workspaceRoot,
-				plugins: [
-					importMetaPlugin(),
-					assetsPlugin({
-						outDir: outputDir,
-					}),
-				],
-				sourcemap: "inline",
-				minify: false,
-				treeShaking: true,
-			});
-
-			if (result.errors.length > 0) {
-				logger.error("Build errors", {errors: result.errors});
-				this.#options.onBuild?.(false, version);
-				return false;
-			} else {
-				logger.info("Build complete", {version});
-				this.#options.onBuild?.(true, version);
-				return true;
-			}
-		} catch (error) {
-			// ESBuild throws on fatal errors like missing exports
-			logger.error("Build failed", {error});
-			this.#options.onBuild?.(false, Date.now());
-			return false;
-		} finally {
-			this.#building = false;
+			workspaceRoot = dirname(workspaceRoot);
 		}
+
+		// If we reached filesystem root without finding workspace, use original cwd
+		return initialCwd;
 	}
 }
