@@ -76,8 +76,12 @@ export async function developCommand(entrypoint, options) {
 
 		// Initial build and start watching
 		logger.info("Building", {entrypoint});
-		await watcher.start();
-		logger.info("Build complete, watching for changes", {});
+		const buildSuccess = await watcher.start();
+		if (buildSuccess) {
+			logger.info("Build complete, watching for changes", {});
+		} else {
+			logger.error("Initial build failed, watching for changes to retry", {});
+		}
 
 		// Load ServiceWorker app from built output
 		const builtEntrypoint = `${outDir}/server/app.js`;
@@ -112,8 +116,7 @@ export async function developCommand(entrypoint, options) {
 		process.on("SIGINT", () => shutdown("SIGINT"));
 		process.on("SIGTERM", () => shutdown("SIGTERM"));
 	} catch (error) {
-		logger.error("Failed to start development server", {
-			error: error.message,
+		logger.error("Failed to start development server:\n{stack}", {
 			stack: error.stack,
 		});
 		process.exit(1);

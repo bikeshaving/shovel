@@ -513,6 +513,14 @@ export class ServiceWorkerPool {
 					if (message.type === "ready" && message.version === version) {
 						cleanup();
 						resolve();
+					} else if (message.type === "error") {
+						// Handle error messages sent from worker when load fails
+						cleanup();
+						reject(
+							new Error(
+								`Worker failed to load ServiceWorker: ${message.error}`,
+							),
+						);
 					}
 				};
 

@@ -34,14 +34,15 @@ export class Watcher {
 
 	/**
 	 * Start watching and building
+	 * @returns true if initial build succeeded, false if it failed
 	 */
-	async start() {
+	async start(): Promise<boolean> {
 		const entryPath = resolve(this.#options.entrypoint);
 
-		// Initial build
-		await this.#build();
+		// Initial build - propagate errors so caller knows if build failed
+		const success = await this.#build();
 
-		// Watch for changes
+		// Watch for changes (even if initial build failed, so rebuilds can fix errors)
 		const watchDir = dirname(entryPath);
 		logger.info("Watching for changes", {watchDir});
 
@@ -67,6 +68,8 @@ export class Watcher {
 				}
 			},
 		);
+
+		return success;
 	}
 
 	/**
@@ -90,8 +93,8 @@ export class Watcher {
 		}, 100);
 	}
 
-	async #build() {
-		if (this.#building) return;
+	async #build(): Promise<boolean> {
+		if (this.#building) return false;
 		this.#building = true;
 
 		try {
@@ -153,13 +156,17 @@ export class Watcher {
 			if (result.errors.length > 0) {
 				logger.error("Build errors", {errors: result.errors});
 				this.#options.onBuild?.(false, version);
+				return false;
 			} else {
 				logger.info("Build complete", {version});
 				this.#options.onBuild?.(true, version);
+				return true;
 			}
 		} catch (error) {
+			// ESBuild throws on fatal errors like missing exports
 			logger.error("Build failed", {error});
 			this.#options.onBuild?.(false, Date.now());
+			return false;
 		} finally {
 			this.#building = false;
 		}
