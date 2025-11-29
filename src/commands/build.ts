@@ -42,7 +42,6 @@ const BUILD_DEFAULTS = {
 const BUILD_STRUCTURE = {
 	serverDir: "server",
 	staticDir: "static",
-	assetsDir: "static/assets",
 };
 
 /**
@@ -81,7 +80,7 @@ export async function buildForProduction({
 	if (verbose) {
 		logger.info("Built app to", {outputDir: buildContext.outputDir});
 		logger.info("Server files", {dir: buildContext.serverDir});
-		logger.info("Asset files", {dir: buildContext.assetsDir});
+		logger.info("Static files", {dir: join(buildContext.outputDir, "static")});
 	}
 }
 
@@ -144,7 +143,6 @@ async function initializeBuild({
 		await mkdir(outputDir, {recursive: true});
 		await mkdir(join(outputDir, BUILD_STRUCTURE.serverDir), {recursive: true});
 		await mkdir(join(outputDir, BUILD_STRUCTURE.staticDir), {recursive: true});
-		await mkdir(join(outputDir, BUILD_STRUCTURE.assetsDir), {recursive: true});
 	} catch (error) {
 		throw new Error(
 			`Failed to create output directory structure: ${error.message}`,
@@ -155,7 +153,6 @@ async function initializeBuild({
 		entryPath,
 		outputDir,
 		serverDir: join(outputDir, BUILD_STRUCTURE.serverDir),
-		assetsDir: join(outputDir, BUILD_STRUCTURE.assetsDir),
 		workspaceRoot,
 		platform,
 		verbose,
@@ -217,8 +214,8 @@ async function findShovelPackageRoot() {
  */
 async function createBuildConfig({
 	entryPath,
+	outputDir,
 	serverDir,
-	assetsDir,
 	workspaceRoot,
 	platform,
 	workerCount,
@@ -259,8 +256,7 @@ async function createBuildConfig({
 				plugins: [
 					importMetaPlugin(),
 					assetsPlugin({
-						outputDir: assetsDir,
-						manifest: join(serverDir, "asset-manifest.json"),
+						outDir: outputDir,
 					}),
 				],
 				metafile: true,
@@ -341,8 +337,7 @@ async function createBuildConfig({
 				? [
 						importMetaPlugin(),
 						assetsPlugin({
-							outputDir: assetsDir,
-							manifest: join(serverDir, "asset-manifest.json"),
+							outDir: outputDir,
 						}),
 					]
 				: [], // Assets already handled in user code build

@@ -128,7 +128,7 @@ export class Watcher {
 
 			// Ensure output directory structure exists
 			await mkdir(join(outputDir, "server"), {recursive: true});
-			await mkdir(join(outputDir, "assets"), {recursive: true});
+			await mkdir(join(outputDir, "static"), {recursive: true});
 
 			const result = await ESBuild.build({
 				entryPoints: [entryPath],
@@ -142,8 +142,7 @@ export class Watcher {
 				plugins: [
 					importMetaPlugin(),
 					assetsPlugin({
-						outputDir: `${outputDir}/assets`,
-						manifest: `${outputDir}/server/asset-manifest.json`,
+						outDir: outputDir,
 					}),
 				],
 				sourcemap: "inline",

@@ -70,22 +70,12 @@ export interface ClientBuildOptions {
  */
 export interface AssetsPluginConfig {
 	/**
-	 * Directory to output assets
-	 * @default 'dist/assets'
+	 * Root output directory.
+	 * Assets go to {outDir}/static/{assetBase}/
+	 * Manifest goes to {outDir}/server/asset-manifest.json
+	 * @default 'dist'
 	 */
-	outputDir?: string;
-
-	/**
-	 * Public URL path prefix
-	 * @default '/assets/'
-	 */
-	publicPath?: string;
-
-	/**
-	 * Path to asset manifest file
-	 * @default 'dist/server/asset-manifest.json'
-	 */
-	manifest?: string;
+	outDir?: string;
 
 	/**
 	 * Length of content hash for cache busting
@@ -112,9 +102,7 @@ export interface AssetsPluginConfig {
 const DEFAULT_CONFIG: Required<Omit<AssetsPluginConfig, "clientBuild">> & {
 	clientBuild: ClientBuildOptions;
 } = {
-	outputDir: "dist/assets",
-	publicPath: "/assets/",
-	manifest: "dist/server/asset-manifest.json",
+	outDir: "dist",
 	hashLength: 8,
 	includeHash: true,
 	clientBuild: {},
@@ -159,10 +147,6 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 	const manifest: AssetManifest = {
 		assets: {},
 		generated: new Date().toISOString(),
-		config: {
-			publicPath: config.publicPath,
-			outputDir: config.outputDir,
-		},
 	};
 
 	return {
@@ -247,18 +231,20 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 						filename = `${name}${outputExt}`;
 					}
 
-					// Ensure output directory exists
-					if (!existsSync(config.outputDir)) {
-						mkdirSync(config.outputDir, {recursive: true});
-					}
-
-					// Write file to output directory
-					const outputPath = join(config.outputDir, filename);
-					writeFileSync(outputPath, content);
-
 					// Generate public URL using the base path from import attribute
 					const basePath = normalizePath(args.with.assetBase);
 					const publicURL = `${basePath}${filename}`;
+
+					// Output directory: {outDir}/static/{assetBase}/
+					// e.g., outDir="dist", assetBase="/assets" → dist/static/assets/
+					const outputDir = join(config.outDir, "static", basePath);
+					if (!existsSync(outputDir)) {
+						mkdirSync(outputDir, {recursive: true});
+					}
+
+					// Write file to output directory
+					const outputPath = join(outputDir, filename);
+					writeFileSync(outputPath, content);
 
 					// Create manifest entry
 					const sourcePath = relative(process.cwd(), args.path);
@@ -294,16 +280,17 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 			// Write manifest file when build finishes
 			build.onEnd(() => {
 				try {
-					// Ensure manifest directory exists
-					const manifestDir = dirname(config.manifest);
+					// Manifest goes to {outDir}/server/asset-manifest.json
+					const manifestPath = join(config.outDir, "server", "asset-manifest.json");
+					const manifestDir = dirname(manifestPath);
 					if (!existsSync(manifestDir)) {
 						mkdirSync(manifestDir, {recursive: true});
 					}
 
 					// Write manifest file
-					writeFileSync(config.manifest, JSON.stringify(manifest, null, 2));
+					writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 					logger.info("Generated asset manifest", {
-						path: config.manifest,
+						path: manifestPath,
 						assetCount: Object.keys(manifest.assets).length,
 					});
 				} catch (error: any) {

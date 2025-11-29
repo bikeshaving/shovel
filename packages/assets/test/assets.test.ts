@@ -3,9 +3,97 @@ import {assets} from "../src/middleware.js";
 import {assetsPlugin} from "../src/plugin.js";
 import {Router} from "@b9g/router";
 import * as ESBuild from "esbuild";
-import {mkdtemp, writeFile, readdir, readFile} from "fs/promises";
+import {mkdtemp, writeFile, readdir, readFile, access} from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
+
+describe("Assets Plugin - output path structure", () => {
+	test("should output assets to {outDir}/static/{assetBase}/", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "asset-path-test-"));
+
+		// Create CSS and JS files
+		await writeFile(join(testDir, "style.css"), `body { color: red; }`);
+		await writeFile(join(testDir, "client.js"), `console.log("hi");`);
+
+		// Create entry that imports with different assetBase paths
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import cssUrl from "./style.css" with { assetBase: "/assets" };
+import jsUrl from "./client.js" with { assetBase: "/scripts" };
+export { cssUrl, jsUrl };`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// Assets should be in {outDir}/static/{assetBase}/
+		const assetsFiles = await readdir(join(outDir, "static", "assets"));
+		expect(assetsFiles.some((f) => f.endsWith(".css"))).toBe(true);
+
+		const scriptsFiles = await readdir(join(outDir, "static", "scripts"));
+		expect(scriptsFiles.some((f) => f.endsWith(".js"))).toBe(true);
+
+		// Manifest should be in {outDir}/server/
+		const manifest = JSON.parse(
+			await readFile(join(outDir, "server", "asset-manifest.json"), "utf8"),
+		);
+		expect(Object.keys(manifest.assets).length).toBe(2);
+
+		// Check URLs in manifest match the assetBase
+		const urls = Object.values(manifest.assets).map((a: any) => a.url);
+		expect(urls.some((url: string) => url.startsWith("/assets/"))).toBe(true);
+		expect(urls.some((url: string) => url.startsWith("/scripts/"))).toBe(true);
+	});
+
+	test("should NOT create assets directly under outDir", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "asset-nodir-test-"));
+
+		await writeFile(join(testDir, "style.css"), `body { color: red; }`);
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import cssUrl from "./style.css" with { assetBase: "/assets" };
+export { cssUrl };`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// dist/assets should NOT exist (it should be dist/static/assets)
+		let assetsExistDirectly = true;
+		try {
+			await access(join(outDir, "assets"));
+		} catch {
+			assetsExistDirectly = false;
+		}
+		expect(assetsExistDirectly).toBe(false);
+
+		// dist/static/assets SHOULD exist
+		const staticAssetsFiles = await readdir(join(outDir, "static", "assets"));
+		expect(staticAssetsFiles.length).toBeGreaterThan(0);
+	});
+});
 
 describe("Assets Plugin - TypeScript transpilation", () => {
 	test("should transpile TypeScript files to JavaScript", async () => {
@@ -20,7 +108,7 @@ describe("Assets Plugin - TypeScript transpilation", () => {
 		// Create entry that imports TS as asset
 		await writeFile(
 			join(testDir, "entry.js"),
-			`import clientUrl from "./client.ts" with { assetBase: "/static/" };
+			`import clientUrl from "./client.ts" with { assetBase: "/static" };
 export default clientUrl;`,
 		);
 
@@ -29,18 +117,17 @@ export default clientUrl;`,
 			entryPoints: [join(testDir, "entry.js")],
 			bundle: true,
 			format: "esm",
-			outdir: outDir,
+			outdir: join(outDir, "server"),
 			write: true,
 			plugins: [
 				assetsPlugin({
-					outputDir: join(outDir, "static"),
-					manifest: join(outDir, "manifest.json"),
+					outDir: outDir,
 				}),
 			],
 		});
 
-		// Check output files
-		const files = await readdir(join(outDir, "static"));
+		// Check output files - assets go to {outDir}/static/{assetBase}/
+		const files = await readdir(join(outDir, "static", "static"));
 		const jsFiles = files.filter((f) => f.endsWith(".js"));
 
 		expect(jsFiles.length).toBe(1);
@@ -48,7 +135,7 @@ export default clientUrl;`,
 
 		// Check manifest has correct MIME type
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "asset-manifest.json"), "utf8"),
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].type).toBe("application/javascript");
@@ -64,7 +151,7 @@ export default clientUrl;`,
 		// Create entry that imports CSS as asset
 		await writeFile(
 			join(testDir, "entry.js"),
-			`import styleUrl from "./style.css" with { assetBase: "/static/" };
+			`import styleUrl from "./style.css" with { assetBase: "/static" };
 export default styleUrl;`,
 		);
 
@@ -73,18 +160,17 @@ export default styleUrl;`,
 			entryPoints: [join(testDir, "entry.js")],
 			bundle: true,
 			format: "esm",
-			outdir: outDir,
+			outdir: join(outDir, "server"),
 			write: true,
 			plugins: [
 				assetsPlugin({
-					outputDir: join(outDir, "static"),
-					manifest: join(outDir, "manifest.json"),
+					outDir: outDir,
 				}),
 			],
 		});
 
-		// Check output files
-		const files = await readdir(join(outDir, "static"));
+		// Check output files - assets go to {outDir}/static/{assetBase}/
+		const files = await readdir(join(outDir, "static", "static"));
 		const cssFiles = files.filter((f) => f.endsWith(".css"));
 
 		expect(cssFiles.length).toBe(1);
@@ -92,7 +178,7 @@ export default styleUrl;`,
 
 		// Check manifest has correct MIME type
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "asset-manifest.json"), "utf8"),
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].type).toBe("text/css");
