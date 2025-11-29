@@ -8,6 +8,7 @@ import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile} from "fs/promises";
 import {fileURLToPath} from "url";
 import {assetsPlugin} from "@b9g/assets/plugin";
+import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 
@@ -256,6 +257,7 @@ async function createBuildConfig({
 				mainFields: ["module", "main"],
 				conditions: ["import", "module"],
 				plugins: [
+					importMetaPlugin(),
 					assetsPlugin({
 						outputDir: assetsDir,
 						manifest: join(serverDir, "asset-manifest.json"),
@@ -337,6 +339,7 @@ async function createBuildConfig({
 			conditions: ["import", "module"],
 			plugins: isCloudflare
 				? [
+						importMetaPlugin(),
 						assetsPlugin({
 							outputDir: assetsDir,
 							manifest: join(serverDir, "asset-manifest.json"),

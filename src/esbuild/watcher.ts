@@ -8,6 +8,7 @@ import {resolve, dirname, join} from "path";
 import {readFileSync} from "fs";
 import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
+import {importMetaPlugin} from "./import-meta-plugin.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["watcher"]);
@@ -139,6 +140,7 @@ export class Watcher {
 				packages: "external",
 				absWorkingDir: workspaceRoot,
 				plugins: [
+					importMetaPlugin(),
 					assetsPlugin({
 						outputDir: `${outputDir}/assets`,
 						manifest: `${outputDir}/server/asset-manifest.json`,
