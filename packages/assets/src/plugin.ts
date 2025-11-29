@@ -25,6 +25,8 @@ import mime from "mime";
 import * as ESBuild from "esbuild";
 import {type AssetManifest, type AssetManifestEntry} from "./index.js";
 import {getLogger} from "@logtape/logtape";
+import {NodeModulesPolyfillPlugin} from "@esbuild-plugins/node-modules-polyfill";
+import {NodeGlobalsPolyfillPlugin} from "@esbuild-plugins/node-globals-polyfill";
 
 /**
  * File extensions that need transpilation
@@ -32,6 +34,36 @@ import {getLogger} from "@logtape/logtape";
 const TRANSPILABLE_EXTENSIONS = new Set([".ts", ".tsx", ".jsx", ".mts", ".cts"]);
 
 const logger = getLogger(["assets"]);
+
+/**
+ * ESBuild options that can be passed for client bundle transpilation
+ */
+export interface ClientBuildOptions {
+	/**
+	 * ESBuild plugins for client bundles (e.g., node polyfills)
+	 */
+	plugins?: ESBuild.Plugin[];
+
+	/**
+	 * ESBuild define for client bundles
+	 */
+	define?: Record<string, string>;
+
+	/**
+	 * ESBuild inject for client bundles
+	 */
+	inject?: string[];
+
+	/**
+	 * External packages for client bundles
+	 */
+	external?: string[];
+
+	/**
+	 * Alias for client bundles
+	 */
+	alias?: Record<string, string>;
+}
 
 /**
  * Configuration for assets plugin (build-time)
@@ -66,17 +98,26 @@ export interface AssetsPluginConfig {
 	 * @default true
 	 */
 	includeHash?: boolean;
+
+	/**
+	 * Custom ESBuild options for client bundle transpilation
+	 * Use this to add Node.js polyfills or other browser-specific configurations
+	 */
+	clientBuild?: ClientBuildOptions;
 }
 
 /**
  * Default configuration values
  */
-const DEFAULT_CONFIG: Required<AssetsPluginConfig> = {
+const DEFAULT_CONFIG: Required<Omit<AssetsPluginConfig, "clientBuild">> & {
+	clientBuild: ClientBuildOptions;
+} = {
 	outputDir: "dist/assets",
 	publicPath: "/assets/",
 	manifest: "dist/server/asset-manifest.json",
 	hashLength: 8,
 	includeHash: true,
+	clientBuild: {},
 };
 
 /**
@@ -152,7 +193,23 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 					let mimeType: string | undefined;
 
 					if (needsTranspilation) {
-						// Transpile TypeScript/JSX to JavaScript
+						// Transpile TypeScript/JSX to JavaScript with Node.js polyfills for browser
+						const clientOpts = config.clientBuild;
+
+						// Default polyfill plugins for browser compatibility
+						const defaultPlugins: ESBuild.Plugin[] = [
+							NodeModulesPolyfillPlugin(),
+							NodeGlobalsPolyfillPlugin({
+								process: true,
+								buffer: true,
+							}),
+						];
+
+						// Merge user plugins with defaults (user plugins run first)
+						const plugins = clientOpts.plugins
+							? [...clientOpts.plugins, ...defaultPlugins]
+							: defaultPlugins;
+
 						const result = await ESBuild.build({
 							entryPoints: [args.path],
 							bundle: true,
@@ -161,6 +218,12 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							platform: "browser",
 							write: false,
 							minify: true,
+							// Apply polyfills and user-provided client build options
+							plugins,
+							define: clientOpts.define,
+							inject: clientOpts.inject,
+							external: clientOpts.external,
+							alias: clientOpts.alias,
 						});
 						content = Buffer.from(result.outputFiles[0].text);
 						outputExt = ".js";
