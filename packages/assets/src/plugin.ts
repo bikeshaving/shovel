@@ -13,9 +13,17 @@
  *   // ... other options
  * });
  *
- * // In your app code:
- * import logo from './logo.svg' with { assetBase: '/static/' };
- * // Returns: "/static/logo-abc12345.svg"
+ * // In your app code - default hashed filename:
+ * import logo from './logo.svg' with { assetBase: '/assets/' };
+ * // Returns: "/assets/logo-abc123def456.svg"
+ *
+ * // For well-known files, use assetName to control the output filename:
+ * import favicon from './favicon.ico' with { assetBase: '/', assetName: 'favicon.ico' };
+ * // Returns: "/favicon.ico"
+ *
+ * // assetName supports [name] and [ext] placeholders:
+ * import img from './photo.png' with { assetBase: '/images/', assetName: '[name].[ext]' };
+ * // Returns: "/images/photo.png"
  */
 
 import {readFileSync, writeFileSync, mkdirSync, existsSync} from "fs";
@@ -78,18 +86,6 @@ export interface AssetsPluginConfig {
 	outDir?: string;
 
 	/**
-	 * Length of content hash for cache busting
-	 * @default 8
-	 */
-	hashLength?: number;
-
-	/**
-	 * Whether to include content hash in filename
-	 * @default true
-	 */
-	includeHash?: boolean;
-
-	/**
 	 * Custom ESBuild options for client bundle transpilation
 	 * Use this to add Node.js polyfills or other browser-specific configurations
 	 */
@@ -103,10 +99,11 @@ const DEFAULT_CONFIG: Required<Omit<AssetsPluginConfig, "clientBuild">> & {
 	clientBuild: ClientBuildOptions;
 } = {
 	outDir: "dist",
-	hashLength: 8,
-	includeHash: true,
 	clientBuild: {},
 };
+
+/** Hash length for content-based cache busting */
+const HASH_LENGTH = 16;
 
 /**
  * Merge user config with defaults
@@ -221,14 +218,18 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 					const hash = createHash("sha256")
 						.update(content)
 						.digest("hex")
-						.slice(0, config.hashLength);
+						.slice(0, HASH_LENGTH);
 
-					// Generate filename with correct extension
+					// Generate filename - use assetName if provided, otherwise generate with hash
+					// assetName supports [name] and [ext] placeholders
 					let filename: string;
-					if (config.includeHash) {
-						filename = `${name}-${hash}${outputExt}`;
+					if (args.with.assetName && typeof args.with.assetName === "string") {
+						// Use explicit filename (e.g., "favicon.ico" or "[name].[ext]")
+						filename = args.with.assetName
+							.replace(/\[name\]/g, name)
+							.replace(/\[ext\]/g, outputExt.slice(1)); // remove leading dot
 					} else {
-						filename = `${name}${outputExt}`;
+						filename = `${name}-${hash}${outputExt}`;
 					}
 
 					// Generate public URL using the base path from import attribute

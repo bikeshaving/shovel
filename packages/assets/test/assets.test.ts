@@ -95,6 +95,114 @@ export { cssUrl };`,
 	});
 });
 
+describe("Assets Plugin - assetName attribute", () => {
+	test("should use exact assetName when provided", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "asset-name-test-"));
+
+		// Create a favicon
+		await writeFile(join(testDir, "my-favicon.ico"), "fake ico content");
+
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import faviconUrl from "./my-favicon.ico" with { assetBase: "/", assetName: "favicon.ico" };
+export { faviconUrl };`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// File should be exactly "favicon.ico" at root of static
+		const rootFiles = await readdir(join(outDir, "static"));
+		expect(rootFiles).toContain("favicon.ico");
+
+		// Check manifest URL
+		const manifest = JSON.parse(
+			await readFile(join(outDir, "server", "asset-manifest.json"), "utf8"),
+		);
+		const assetKey = Object.keys(manifest.assets)[0];
+		expect(manifest.assets[assetKey].url).toBe("/favicon.ico");
+	});
+
+	test("should work with side-effect only imports (no URL reference)", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "asset-sideeffect-test-"));
+
+		await writeFile(join(testDir, "favicon.ico"), "fake ico content");
+
+		// Import without using the URL - just for side effect of copying the file
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import "./favicon.ico" with { assetBase: "/", assetName: "favicon.ico" };
+console.log("app loaded");`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// File should still be copied even without URL reference
+		const rootFiles = await readdir(join(outDir, "static"));
+		expect(rootFiles).toContain("favicon.ico");
+	});
+
+	test("should support [name] and [ext] placeholders in assetName", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "asset-placeholder-test-"));
+
+		await writeFile(join(testDir, "photo.png"), "fake png content");
+
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import imgUrl from "./photo.png" with { assetBase: "/images/", assetName: "[name].[ext]" };
+export { imgUrl };`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// File should be "photo.png" in static/images/
+		const imageFiles = await readdir(join(outDir, "static", "images"));
+		expect(imageFiles).toContain("photo.png");
+
+		// Check manifest URL
+		const manifest = JSON.parse(
+			await readFile(join(outDir, "server", "asset-manifest.json"), "utf8"),
+		);
+		const assetKey = Object.keys(manifest.assets)[0];
+		expect(manifest.assets[assetKey].url).toBe("/images/photo.png");
+	});
+});
+
 describe("Assets Plugin - TypeScript transpilation", () => {
 	test("should transpile TypeScript files to JavaScript", async () => {
 		const testDir = await mkdtemp(join(tmpdir(), "ts-asset-test-"));
