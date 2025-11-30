@@ -80,7 +80,7 @@ export interface AssetsPluginConfig {
 	/**
 	 * Root output directory.
 	 * Assets go to {outDir}/static/{assetBase}/
-	 * Manifest goes to {outDir}/server/asset-manifest.json
+	 * Manifest goes to {outDir}/server/manifest.json
 	 * @default 'dist'
 	 */
 	outDir?: string;
@@ -281,8 +281,9 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 			// Write manifest file when build finishes
 			build.onEnd(() => {
 				try {
-					// Manifest goes to {outDir}/server/asset-manifest.json
-					const manifestPath = join(config.outDir, "server", "asset-manifest.json");
+					// Manifest goes to {outDir}/server/manifest.json
+					// Server bucket keeps it non-public (contains internal build metadata)
+					const manifestPath = join(config.outDir, "server", "manifest.json");
 					const manifestDir = dirname(manifestPath);
 					if (!existsSync(manifestDir)) {
 						mkdirSync(manifestDir, {recursive: true});

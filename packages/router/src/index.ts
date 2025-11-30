@@ -285,14 +285,22 @@ class RadixTreeExecutor {
 			return null;
 		}
 
-		const handler = node.handlers.get(method);
+		let handler = node.handlers.get(method);
+		// HEAD requests should fall back to GET handler (RFC 7231)
+		if (!handler && method === "HEAD") {
+			handler = node.handlers.get("GET");
+		}
 		if (handler) {
 			return {handler, params};
 		}
 
 		// Check wildcard at terminal node (for patterns like /files/*)
 		if (node.wildcardChild) {
-			const wildcardHandler = node.wildcardChild.handlers.get(method);
+			let wildcardHandler = node.wildcardChild.handlers.get(method);
+			// HEAD requests should fall back to GET handler (RFC 7231)
+			if (!wildcardHandler && method === "HEAD") {
+				wildcardHandler = node.wildcardChild.handlers.get("GET");
+			}
 			if (wildcardHandler) {
 				params["0"] = ""; // Empty wildcard match
 				return {handler: wildcardHandler, params};
@@ -321,7 +329,11 @@ class RadixTreeExecutor {
 
 		// Fall back to regex for complex routes
 		for (const route of this.#complexRoutes) {
-			if (route.method !== method) {
+			// HEAD requests should fall back to GET handler (RFC 7231)
+			const methodMatches =
+				route.method === method ||
+				(method === "HEAD" && route.method === "GET");
+			if (!methodMatches) {
 				continue;
 			}
 
@@ -613,7 +625,7 @@ export class Router {
 		}
 
 		// Execute middleware chain with the handler
-		const response = await this.#executeMiddlewareStack(
+		let response = await this.#executeMiddlewareStack(
 			this.#middlewares,
 			mutableRequest,
 			context,
@@ -625,6 +637,15 @@ export class Router {
 		// If no route was found originally, return null unless middleware handled it
 		if (!matchResult && response?.status === 404) {
 			return null;
+		}
+
+		// HEAD requests should return headers only, no body (RFC 7231)
+		if (response && request.method.toUpperCase() === "HEAD") {
+			response = new Response(null, {
+				status: response.status,
+				statusText: response.statusText,
+				headers: response.headers,
+			});
 		}
 
 		return response;

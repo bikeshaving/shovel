@@ -340,13 +340,48 @@ export class NodePlatform extends BasePlatform {
 					res.end();
 				}
 			} catch (error) {
+				const err = error instanceof Error ? error : new Error(String(error));
 				logger.error("Request error", {
-					error: error instanceof Error ? error.message : String(error),
-					stack: error instanceof Error ? error.stack : undefined,
+					error: err.message,
+					stack: err.stack,
 				});
+
+				// Show detailed errors in development mode
+				// import.meta.env is aliased to process.env for Node.js builds
+				const isDev =
+					typeof import.meta !== "undefined" &&
+					(import.meta as any).env?.MODE !== "production";
+
 				res.statusCode = 500;
-				res.setHeader("Content-Type", "text/plain");
-				res.end("Internal Server Error");
+				if (isDev) {
+					res.setHeader("Content-Type", "text/html; charset=utf-8");
+					const escapeHtml = (str: string) =>
+						str
+							.replace(/&/g, "&amp;")
+							.replace(/</g, "&lt;")
+							.replace(/>/g, "&gt;")
+							.replace(/"/g, "&quot;");
+					res.end(`<!DOCTYPE html>
+<html>
+<head>
+  <title>500 Internal Server Error</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
+    h1 { color: #c00; }
+    .message { font-size: 1.2em; color: #333; }
+    pre { background: #f5f5f5; padding: 1rem; overflow-x: auto; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>500 Internal Server Error</h1>
+  <p class="message">${escapeHtml(err.message)}</p>
+  <pre>${escapeHtml(err.stack || "No stack trace available")}</pre>
+</body>
+</html>`);
+				} else {
+					res.setHeader("Content-Type", "text/plain");
+					res.end("Internal Server Error");
+				}
 			}
 		});
 

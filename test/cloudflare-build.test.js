@@ -85,7 +85,7 @@ self.addEventListener("fetch", (event) => {
 				true,
 			);
 			expect(
-				await fileExists(join(outDir, "server", "asset-manifest.json")),
+				await fileExists(join(outDir, "server", "manifest.json")),
 			).toBe(true);
 
 			// Verify Cloudflare-specific output
@@ -190,12 +190,12 @@ self.addEventListener("fetch", (event) => {
 			expect(await fileExists(join(outDir, "server", "server.js"))).toBe(true);
 			expect(await fileExists(join(outDir, "static", "assets"))).toBe(true);
 			expect(
-				await fileExists(join(outDir, "server", "asset-manifest.json")),
+				await fileExists(join(outDir, "server", "manifest.json")),
 			).toBe(true);
 
 			// Verify manifest contains the asset
 			const manifestContent = await FS.readFile(
-				join(outDir, "server", "asset-manifest.json"),
+				join(outDir, "server", "manifest.json"),
 				"utf8",
 			);
 			const manifest = JSON.parse(manifestContent);

@@ -481,6 +481,33 @@ export default {
 				respondWith: (response) => { responseReceived = response; }
 			};
 			
+			// Helper for error responses
+			const createErrorResponse = (err) => {
+				const isDev = typeof import.meta !== "undefined" && import.meta.env?.MODE !== "production";
+				if (isDev) {
+					const escapeHtml = (str) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+					return new Response(\`<!DOCTYPE html>
+<html>
+<head>
+  <title>500 Internal Server Error</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
+    h1 { color: #c00; }
+    .message { font-size: 1.2em; color: #333; }
+    pre { background: #f5f5f5; padding: 1rem; overflow-x: auto; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>500 Internal Server Error</h1>
+  <p class="message">\${escapeHtml(err.message)}</p>
+  <pre>\${escapeHtml(err.stack || "No stack trace available")}</pre>
+</body>
+</html>\`, { status: 500, headers: { "Content-Type": "text/html; charset=utf-8" } });
+				} else {
+					return new Response("Internal Server Error", { status: 500, headers: { "Content-Type": "text/plain" } });
+				}
+			};
+
 			// Dispatch to ServiceWorker fetch handlers
 			for (const handler of fetchHandlers) {
 				try {
@@ -493,31 +520,36 @@ export default {
 				} catch (error) {
 					logger.error("Handler error", {error});
 					logger.error("Error stack", {stack: error.stack});
-					// Return detailed error in response body for debugging
-					return new Response(JSON.stringify({
-						error: error.message,
-						stack: error.stack,
-						name: error.name,
-						url: request.url
-					}, null, 2), { 
-						status: 500,
-						headers: { 'Content-Type': 'application/json' }
-					});
+					return createErrorResponse(error);
 				}
 			}
-			
+
 			return new Response('No ServiceWorker handler', { status: 404 });
 		} catch (topLevelError) {
 			logger.error("Top-level error", {error: topLevelError});
-			return new Response(JSON.stringify({
-				error: 'Top-level wrapper error: ' + topLevelError.message,
-				stack: topLevelError.stack,
-				name: topLevelError.name,
-				url: request?.url || 'unknown'
-			}, null, 2), { 
-				status: 500,
-				headers: { 'Content-Type': 'application/json' }
-			});
+			const isDev = typeof import.meta !== "undefined" && import.meta.env?.MODE !== "production";
+			if (isDev) {
+				const escapeHtml = (str) => String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+				return new Response(\`<!DOCTYPE html>
+<html>
+<head>
+  <title>500 Internal Server Error</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
+    h1 { color: #c00; }
+    .message { font-size: 1.2em; color: #333; }
+    pre { background: #f5f5f5; padding: 1rem; overflow-x: auto; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>500 Internal Server Error</h1>
+  <p class="message">\${escapeHtml(topLevelError.message)}</p>
+  <pre>\${escapeHtml(topLevelError.stack || "No stack trace available")}</pre>
+</body>
+</html>\`, { status: 500, headers: { "Content-Type": "text/html; charset=utf-8" } });
+			} else {
+				return new Response("Internal Server Error", { status: 500, headers: { "Content-Type": "text/plain" } });
+			}
 		}
 	}
 };`;

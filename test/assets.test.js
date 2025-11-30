@@ -230,7 +230,7 @@ self.addEventListener("fetch", (event) => {
 
 			// Check that assets directory and manifest were created
 			const assetsDir = join(outDir, "static", "assets");
-			const manifestPath = join(outDir, "server", "asset-manifest.json");
+			const manifestPath = join(outDir, "server", "manifest.json");
 
 			expect(
 				await FS.access(assetsDir)
@@ -487,7 +487,7 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Read the manifest to verify the normalized URL
-				const manifestPath = join(outDir, "server", "asset-manifest.json");
+				const manifestPath = join(outDir, "server", "manifest.json");
 				const manifestContent = await FS.readFile(manifestPath, "utf8");
 				const manifest = JSON.parse(manifestContent);
 
@@ -652,7 +652,7 @@ self.addEventListener("fetch", (event) => {
 			expect(buildTime).toBeLessThan(10000); // 10 seconds max
 
 			// All assets should be processed
-			const manifestPath = join(outDir, "server", "asset-manifest.json");
+			const manifestPath = join(outDir, "server", "manifest.json");
 			const manifest = JSON.parse(await FS.readFile(manifestPath, "utf8"));
 
 			// Should have asset entries (exact structure depends on implementation)

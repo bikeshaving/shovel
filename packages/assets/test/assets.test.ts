@@ -2,6 +2,7 @@ import {test, expect, describe, beforeEach} from "bun:test";
 import {assets} from "../src/middleware.js";
 import {assetsPlugin} from "../src/plugin.js";
 import {Router} from "@b9g/router";
+import {MemoryBucket} from "@b9g/filesystem/memory";
 import * as ESBuild from "esbuild";
 import {mkdtemp, writeFile, readdir, readFile, access} from "fs/promises";
 import {tmpdir} from "os";
@@ -46,7 +47,7 @@ export { cssUrl, jsUrl };`,
 
 		// Manifest should be in {outDir}/server/
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "server", "asset-manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
 		);
 		expect(Object.keys(manifest.assets).length).toBe(2);
 
@@ -128,7 +129,7 @@ export { faviconUrl };`,
 
 		// Check manifest URL
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "server", "asset-manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].url).toBe("/favicon.ico");
@@ -196,7 +197,7 @@ export { imgUrl };`,
 
 		// Check manifest URL
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "server", "asset-manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].url).toBe("/images/photo.png");
@@ -243,7 +244,7 @@ export default clientUrl;`,
 
 		// Check manifest has correct MIME type
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "server", "asset-manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].type).toBe("application/javascript");
@@ -286,79 +287,45 @@ export default styleUrl;`,
 
 		// Check manifest has correct MIME type
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "server", "asset-manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].type).toBe("text/css");
 	});
 });
 
+// Helper to write content to a MemoryBucket
+async function writeToMemoryBucket(bucket: MemoryBucket, path: string, content: string) {
+	const handle = await bucket.getFileHandle(path, {create: true});
+	const writable = await handle.createWritable();
+	await writable.write(new TextEncoder().encode(content));
+	await writable.close();
+}
+
 describe("Assets Middleware", () => {
-	// Mock self.buckets
-	const mockBuckets = {
-		async open(name: string) {
-			if (name === "static") {
-				return {
-					async getFileHandle(path: string) {
-						if (path === "manifest.json") {
-							return {
-								async getFile() {
-									return {
-										async text() {
-											return JSON.stringify({
-												assets: {
-													"/app.js": {
-														url: "/app.js",
-														type: "application/javascript",
-														size: 1234,
-														hash: "abc123",
-													},
-													"/styles.css": {
-														url: "/styles.css",
-														type: "text/css",
-														size: 567,
-														hash: "def456",
-													},
-												},
-											});
-										},
-									};
-								},
-							};
-						}
-						if (path === "app.js") {
-							return {
-								async getFile() {
-									return {
-										stream: () => new ReadableStream(),
-										size: 1234,
-										lastModified: Date.now(),
-									};
-								},
-							};
-						}
-						if (path === "styles.css") {
-							return {
-								async getFile() {
-									return {
-										stream: () => new ReadableStream(),
-										size: 567,
-										lastModified: Date.now(),
-									};
-								},
-							};
-						}
-						throw new Error("NotFoundError");
-					},
-				};
-			}
-			throw new Error("Bucket not found");
+	const manifest = {
+		assets: {
+			"/app.js": {url: "/app.js", type: "application/javascript", size: 1234, hash: "abc123"},
+			"/styles.css": {url: "/styles.css", type: "text/css", size: 567, hash: "def456"},
 		},
 	};
 
-	beforeEach(() => {
+	beforeEach(async () => {
+		const serverBucket = new MemoryBucket("server");
+		const staticBucket = new MemoryBucket("static");
+
+		await writeToMemoryBucket(serverBucket, "manifest.json", JSON.stringify(manifest));
+		await writeToMemoryBucket(staticBucket, "app.js", "console.log('app')");
+		await writeToMemoryBucket(staticBucket, "styles.css", "body{}");
+
 		(globalThis as any).self = {
-			buckets: mockBuckets,
+			buckets: {
+				async open(name: string) {
+					if (name === "server") return serverBucket;
+					if (name === "static") return staticBucket;
+					throw new Error(`Bucket not found: ${name}`);
+				},
+			},
 		};
 	});
 
@@ -415,49 +382,24 @@ describe("Assets Middleware", () => {
 	});
 
 	test("should use custom MIME types when manifest type not present", async () => {
-		// Override the manifest to not include type for testing custom MIME types
+		// Override with manifest that has no type field
+		const serverBucket = new MemoryBucket("server");
+		const staticBucket = new MemoryBucket("static");
+
+		const noTypeManifest = {
+			assets: {
+				"/app.js": {url: "/app.js", size: 1234, hash: "abc123"}, // No type
+			},
+		};
+		await writeToMemoryBucket(serverBucket, "manifest.json", JSON.stringify(noTypeManifest));
+		await writeToMemoryBucket(staticBucket, "app.js", "console.log('app')");
+
 		(globalThis as any).self = {
 			buckets: {
 				async open(name: string) {
-					if (name === "static") {
-						return {
-							async getFileHandle(path: string) {
-								if (path === "manifest.json") {
-									return {
-										async getFile() {
-											return {
-												async text() {
-													return JSON.stringify({
-														assets: {
-															"/app.js": {
-																url: "/app.js",
-																// No type specified - should use custom MIME type
-																size: 1234,
-																hash: "abc123",
-															},
-														},
-													});
-												},
-											};
-										},
-									};
-								}
-								if (path === "app.js") {
-									return {
-										async getFile() {
-											return {
-												stream: () => new ReadableStream(),
-												size: 1234,
-												lastModified: Date.now(),
-											};
-										},
-									};
-								}
-								throw new Error("NotFoundError");
-							},
-						};
-					}
-					throw new Error("Bucket not found");
+					if (name === "server") return serverBucket;
+					if (name === "static") return staticBucket;
+					throw new Error(`Bucket not found: ${name}`);
 				},
 			},
 		};

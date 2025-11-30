@@ -1684,3 +1684,138 @@ describe("Subrouter Mount Middleware Scoping", () => {
 		expect(executionOrder).toEqual([]);
 	});
 });
+
+describe("HEAD Request Handling (RFC 7231)", () => {
+	test("HEAD requests fall back to GET handler", async () => {
+		const router = new Router();
+		router.route("/api/users").get(async () => new Response("Users list"));
+
+		const request = new Request("http://example.com/api/users", {
+			method: "HEAD",
+		});
+		const response = await router.match(request);
+
+		expect(response).not.toBeNull();
+		expect(response?.status).toBe(200);
+	});
+
+	test("HEAD response has no body", async () => {
+		const router = new Router();
+		router
+			.route("/api/users")
+			.get(async () => new Response("This is the body content"));
+
+		const request = new Request("http://example.com/api/users", {
+			method: "HEAD",
+		});
+		const response = await router.match(request);
+
+		expect(response).not.toBeNull();
+		const body = await response?.text();
+		expect(body).toBe("");
+	});
+
+	test("HEAD preserves response headers from GET handler", async () => {
+		const router = new Router();
+		router.route("/api/users").get(async () => {
+			return new Response("Users list", {
+				headers: {
+					"Content-Type": "application/json",
+					"X-Custom-Header": "custom-value",
+				},
+			});
+		});
+
+		const request = new Request("http://example.com/api/users", {
+			method: "HEAD",
+		});
+		const response = await router.match(request);
+
+		expect(response).not.toBeNull();
+		expect(response?.headers.get("Content-Type")).toBe("application/json");
+		expect(response?.headers.get("X-Custom-Header")).toBe("custom-value");
+	});
+
+	test("HEAD works with route parameters", async () => {
+		const router = new Router();
+		let capturedParams: Record<string, string> | null = null;
+
+		router.route("/api/users/:id").get(async (_request, context) => {
+			capturedParams = context.params;
+			return new Response(`User ${context.params.id}`);
+		});
+
+		const request = new Request("http://example.com/api/users/123", {
+			method: "HEAD",
+		});
+		const response = await router.match(request);
+
+		expect(response).not.toBeNull();
+		expect(response?.status).toBe(200);
+		expect(capturedParams).toEqual({id: "123"});
+	});
+
+	test("HEAD falls through when no GET handler exists", async () => {
+		const router = new Router();
+		router.route("/api/users").post(async () => new Response("Created"));
+
+		const request = new Request("http://example.com/api/users", {
+			method: "HEAD",
+		});
+		const response = await router.match(request);
+
+		// No GET handler, so HEAD should also not match
+		expect(response).toBeNull();
+	});
+
+	test("explicit HEAD handler takes precedence over GET fallback", async () => {
+		const router = new Router();
+		router.route("/api/users").get(async () => new Response("GET response"));
+		router.route("/api/users").head(async () => {
+			return new Response(null, {
+				headers: {"X-Method": "HEAD"},
+			});
+		});
+
+		const request = new Request("http://example.com/api/users", {
+			method: "HEAD",
+		});
+		const response = await router.match(request);
+
+		expect(response).not.toBeNull();
+		expect(response?.headers.get("X-Method")).toBe("HEAD");
+	});
+
+	test("HEAD works with middleware", async () => {
+		const router = new Router();
+		const executionOrder: string[] = [];
+
+		async function* loggingMiddleware(request: Request, _context: any) {
+			executionOrder.push("middleware-start");
+			const response = yield request;
+			executionOrder.push("middleware-end");
+			response.headers.set("X-Logged", "true");
+			return response;
+		}
+
+		router.use(loggingMiddleware);
+		router.route("/api/users").get(async () => {
+			executionOrder.push("handler");
+			return new Response("Users");
+		});
+
+		const request = new Request("http://example.com/api/users", {
+			method: "HEAD",
+		});
+		const response = await router.match(request);
+
+		expect(response).not.toBeNull();
+		expect(executionOrder).toEqual([
+			"middleware-start",
+			"handler",
+			"middleware-end",
+		]);
+		expect(response?.headers.get("X-Logged")).toBe("true");
+		expect(await response?.text()).toBe("");
+	});
+});

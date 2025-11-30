@@ -314,85 +314,40 @@ test(
 			await createTempFile(testDir, "client.js", jsContent);
 
 			const serviceWorkerContent = `
-import "./style.css" with { assetBase: "/assets" };
-import "./client.js" with { assetBase: "/assets" };
+import cssUrl from "./style.css" with { assetBase: "/assets/" };
+import jsUrl from "./client.js" with { assetBase: "/assets/" };
+import {assets} from "@b9g/assets/middleware";
 
-// Load asset manifest at startup
-import {readFile} from 'fs/promises';
-import {dirname, join} from 'path';
-import {fileURLToPath} from 'url';
+const serveAssets = assets();
 
-const executableDir = dirname(fileURLToPath(import.meta.url));
-const manifestPath = join(executableDir, 'asset-manifest.json');
-const manifestContent = await readFile(manifestPath, 'utf8');
-const assetManifest = JSON.parse(manifestContent);
+self.addEventListener("fetch", (event) => {
+	event.respondWith((async () => {
+		// Try assets middleware first
+		const assetResponse = await serveAssets(event.request);
+		if (assetResponse) return assetResponse;
 
-function getAssetURL(originalPath) {
-	if (!assetManifest) throw new Error('Asset manifest not loaded yet');
-
-	// Find asset by checking if the source ends with the requested path
-	for (const [source, asset] of Object.entries(assetManifest.assets)) {
-		if (source.endsWith(originalPath.replace('./', ''))) {
-			return asset.output;
+		// App routes
+		const url = new URL(event.request.url);
+		if (url.pathname === "/") {
+			return new Response(\`
+				<!DOCTYPE html>
+				<html>
+					<head>
+						<title>Assets Test</title>
+						<link rel="stylesheet" href="\${cssUrl}">
+					</head>
+					<body>
+						<h1>Executable with Assets</h1>
+						<script src="\${jsUrl}"></script>
+					</body>
+				</html>
+			\`, {
+				headers: { "content-type": "text/html; charset=utf-8" }
+			});
 		}
-	}
-	return originalPath;
-}
 
-self.addEventListener("fetch", async (event) => {
-	const url = new URL(event.request.url);
-	
-	if (url.pathname === "/") {
-		event.respondWith(new Response(\`
-			<!DOCTYPE html>
-			<html>
-				<head>
-					<title>Assets Test</title>
-					<link rel="stylesheet" href="/assets/style.css">
-				</head>
-				<body>
-					<h1>Executable with Assets</h1>
-					<script src="/assets/client.js"></script>
-				</body>
-			</html>
-		\`, {
-			headers: { "content-type": "text/html; charset=utf-8" }
-		}));
-	} else if (url.pathname.startsWith("/assets/")) {
-		// Serve assets from static bucket using asset manifest
-		const requestedAsset = url.pathname.slice("/assets/".length);
-		const actualAsset = getAssetURL(requestedAsset);
-
-		event.respondWith((async () => {
-			try {
-				console.error("[DEBUG] Looking for asset:", requestedAsset, "->", actualAsset);
-				const staticBucket = await self.buckets.open("static");
-				console.error("[DEBUG] Got static bucket");
-				const assetsDir = await staticBucket.getDirectoryHandle("assets");
-				console.error("[DEBUG] Got assets dir");
-				const fileHandle = await assetsDir.getFileHandle(actualAsset);
-				console.error("[DEBUG] Got file handle for", actualAsset);
-				const file = await fileHandle.getFile();
-				const content = await file.text();
-
-				let contentType = "text/plain";
-				if (requestedAsset.endsWith(".css")) {
-					contentType = "text/css";
-				} else if (requestedAsset.endsWith(".js")) {
-					contentType = "application/javascript";
-				}
-
-				return new Response(content, {
-					headers: { "content-type": contentType }
-				});
-			} catch (err) {
-				console.error("[DEBUG] Asset error:", err.message, err.stack);
-				return new Response("Asset not found: " + err.message, { status: 404 });
-			}
-		})());
-	} else {
-		event.respondWith(new Response("Not found", { status: 404 }));
-	}
+		return new Response("Not found", { status: 404 });
+	})());
 });
 			`;
 
@@ -422,15 +377,22 @@ self.addEventListener("fetch", async (event) => {
 
 			await waitForServer(PORT);
 
-			// Test main page
+			// Test main page and extract hashed asset URLs
 			const mainResponse = await fetch(`http://localhost:${PORT}/`);
 			const mainContent = await mainResponse.text();
 			expect(mainContent).toContain("Executable with Assets");
 
-			// Test CSS asset
-			const cssResponse = await fetch(
-				`http://localhost:${PORT}/assets/style.css`,
-			);
+			// Extract hashed URLs from HTML
+			const cssMatch = mainContent.match(/href="(\/assets\/style-[^"]+\.css)"/);
+			const jsMatch = mainContent.match(/src="(\/assets\/client-[^"]+\.js)"/);
+			expect(cssMatch).not.toBeNull();
+			expect(jsMatch).not.toBeNull();
+
+			const cssUrl = cssMatch[1];
+			const jsUrl = jsMatch[1];
+
+			// Test CSS asset using hashed URL
+			const cssResponse = await fetch(`http://localhost:${PORT}${cssUrl}`);
 			const cssResponseContent = await cssResponse.text();
 			console.info(
 				"[TEST] CSS response:",
@@ -441,13 +403,12 @@ self.addEventListener("fetch", async (event) => {
 			expect(cssResponse.headers.get("content-type")).toBe("text/css");
 			expect(cssResponseContent).toContain("background: #f0f0f0");
 
-			// Test JS asset
-			const jsResponse = await fetch(
-				`http://localhost:${PORT}/assets/client.js`,
-			);
+			// Test JS asset using hashed URL
+			const jsResponse = await fetch(`http://localhost:${PORT}${jsUrl}`);
 			expect(jsResponse.status).toBe(200);
-			expect(jsResponse.headers.get("content-type")).toBe(
-				"application/javascript",
+			// Both text/javascript and application/javascript are valid MIME types
+			expect(["text/javascript", "application/javascript"]).toContain(
+				jsResponse.headers.get("content-type"),
 			);
 			const jsResponseContent = await jsResponse.text();
 			expect(jsResponseContent).toContain("Asset loaded");
@@ -602,7 +563,6 @@ self.addEventListener("fetch", (event) => {
 			const appPath = join(outDir, "server", "index.js");
 			const packagePath = join(outDir, "server", "package.json");
 			const staticPath = join(outDir, "static");
-			const assetsPath = join(outDir, "static", "assets");
 
 			// Check all required files exist
 			expect(
@@ -620,11 +580,7 @@ self.addEventListener("fetch", (event) => {
 					.then(() => true)
 					.catch(() => false),
 			).toBe(true);
-			expect(
-				await FS.access(assetsPath)
-					.then(() => true)
-					.catch(() => false),
-			).toBe(true);
+			// Note: static/assets is only created when entry point has asset imports
 
 			// Check package.json is valid
 			const packageContent = await FS.readFile(packagePath, "utf8");
@@ -637,7 +593,7 @@ self.addEventListener("fetch", (event) => {
 			expect(appContent).toContain("platform");
 
 			// Check assets manifest exists
-			const manifestPath = join(outDir, "server", "asset-manifest.json");
+			const manifestPath = join(outDir, "server", "manifest.json");
 			expect(
 				await FS.access(manifestPath)
 					.then(() => true)
