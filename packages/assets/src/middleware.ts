@@ -64,21 +64,32 @@ export function assets(config: AssetsConfig = {}) {
 				return new Response("Forbidden", {status: 403});
 			}
 
+			// Load manifest to validate file exists in build
+			let manifest: Record<string, any>;
 			try {
-				// Load manifest to validate file exists in build
-				const manifest = await loadManifest();
+				manifest = await loadManifest();
+			} catch (error) {
+				// Manifest not available - pass through to routes
+				// This happens when assets aren't configured or bucket doesn't exist
+				logger.warn("Assets manifest not available, passing through: {error}", {
+					error: error instanceof Error ? error.message : String(error),
+				});
+				return;
+			}
 
-				// Check if file exists in manifest (security: only serve built assets)
-				const manifestEntry = manifest[requestedPath];
-				if (!manifestEntry) {
-					// Only serve files that went through build
-					// Pass through to next middleware for 404 handling
-					return;
-				}
+			// Check if file exists in manifest (security: only serve built assets)
+			const manifestEntry = manifest[requestedPath];
+			if (!manifestEntry) {
+				// Only serve files that went through build
+				// Pass through to next middleware for 404 handling
+				return;
+			}
 
-				// Get file from assets bucket using direct path mapping
-				// Public path /static/app.js maps to assets/static/app.js in bucket
-				const bucketPath = `assets${requestedPath}`;
+			try {
+				// Get file from static bucket using direct path mapping
+				// Public URL /assets/app.js → bucket path assets/app.js
+				// (bucket root is dist/static/, just strip leading slash from URL)
+				const bucketPath = requestedPath.slice(1);
 				const bucketDir = await (self as any).buckets.open("static");
 				const fileHandle = await bucketDir.getFileHandle(bucketPath);
 				const file = await fileHandle.getFile();

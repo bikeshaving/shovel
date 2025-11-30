@@ -133,9 +133,9 @@ import { assets } from '@b9g/assets/middleware';
 const router = new Router();
 
 // Single middleware serves all assets with 1-to-1 path mapping
-// /static/app.js -> assets/static/app.js in bucket
-// /index.html -> assets/index.html in bucket
-// /favicon.ico -> assets/favicon.ico in bucket
+// Public URL → bucket path (just strip leading slash)
+// /assets/app.js → assets/app.js in bucket
+// /favicon.ico → favicon.ico in bucket
 router.use(assets({
   dev: process.env.NODE_ENV === 'development'
 }));

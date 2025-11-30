@@ -326,7 +326,7 @@ describe("Assets Middleware", () => {
 								},
 							};
 						}
-						if (path === "assets/app.js") {
+						if (path === "app.js") {
 							return {
 								async getFile() {
 									return {
@@ -337,7 +337,7 @@ describe("Assets Middleware", () => {
 								},
 							};
 						}
-						if (path === "assets/styles.css") {
+						if (path === "styles.css") {
 							return {
 								async getFile() {
 									return {
@@ -442,7 +442,7 @@ describe("Assets Middleware", () => {
 										},
 									};
 								}
-								if (path === "assets/app.js") {
+								if (path === "app.js") {
 									return {
 										async getFile() {
 											return {
