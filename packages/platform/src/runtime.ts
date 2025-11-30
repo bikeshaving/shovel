@@ -1533,12 +1533,21 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
 
 			// Use arrayBuffer for zero-copy transfer
 			const body = await response.arrayBuffer();
+
+			// Capture headers, ensuring Content-Type is preserved before ArrayBuffer conversion
+			// Per Fetch spec, string bodies default to text/plain;charset=UTF-8, but some runtimes
+			// may not include this in headers.entries(). Ensure it's set to avoid application/octet-stream.
+			const headers = Object.fromEntries(response.headers.entries());
+			if (!headers["Content-Type"] && !headers["content-type"]) {
+				headers["Content-Type"] = "text/plain; charset=utf-8";
+			}
+
 			const responseMsg: WorkerResponse = {
 				type: "response",
 				response: {
 					status: response.status,
 					statusText: response.statusText,
-					headers: Object.fromEntries(response.headers.entries()),
+					headers,
 					body,
 				},
 				requestID: reqMsg.requestID,
