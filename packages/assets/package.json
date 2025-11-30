@@ -1,6 +1,6 @@
 {
   "name": "@b9g/assets",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "type": "module",
   "scripts": {
     "build": "libuild build --save"
