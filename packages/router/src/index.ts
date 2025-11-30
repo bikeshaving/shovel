@@ -1089,3 +1089,56 @@ export class Router {
 		return httpError.toResponse(isDev);
 	}
 }
+
+// ============================================================================
+// MIDDLEWARE
+// ============================================================================
+
+/**
+ * Mode for trailing slash normalization
+ * - "strip": Redirect /path/ → /path (removes trailing slash)
+ * - "add": Redirect /path → /path/ (adds trailing slash)
+ */
+export type TrailingSlashMode = "strip" | "add";
+
+/**
+ * Middleware that normalizes trailing slashes via 301 redirect
+ *
+ * @param mode - "strip" removes trailing slash, "add" adds trailing slash
+ * @returns Function middleware that redirects non-canonical URLs
+ *
+ * @example
+ * ```typescript
+ * import { Router, trailingSlash } from "@b9g/router";
+ *
+ * const router = new Router();
+ * router.use(trailingSlash("strip")); // Redirect /path/ → /path
+ *
+ * // Can also be scoped to specific paths
+ * router.use("/api", trailingSlash("strip"));
+ * ```
+ */
+export function trailingSlash(mode: TrailingSlashMode): FunctionMiddleware {
+	return (request: Request, _context: RouteContext) => {
+		const url = new URL(request.url);
+		const pathname = url.pathname;
+
+		// Skip root path - "/" is valid either way
+		if (pathname === "/") return;
+
+		let newPathname: string | null = null;
+		if (mode === "strip" && pathname.endsWith("/")) {
+			newPathname = pathname.slice(0, -1);
+		} else if (mode === "add" && !pathname.endsWith("/")) {
+			newPathname = pathname + "/";
+		}
+
+		if (newPathname) {
+			url.pathname = newPathname;
+			return new Response(null, {
+				status: 301,
+				headers: {Location: url.toString()},
+			});
+		}
+	};
+}
