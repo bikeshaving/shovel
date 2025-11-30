@@ -401,7 +401,11 @@ self.addEventListener("fetch", (event) => {
 			);
 			expect(cssResponse.status).toBe(200);
 			expect(cssResponse.headers.get("content-type")).toBe("text/css");
-			expect(cssResponseContent).toContain("background: #f0f0f0");
+			// CSS may be minified (no space after colon), so check for both formats
+			expect(
+				cssResponseContent.includes("background:#f0f0f0") ||
+					cssResponseContent.includes("background: #f0f0f0"),
+			).toBe(true);
 
 			// Test JS asset using hashed URL
 			const jsResponse = await fetch(`http://localhost:${PORT}${jsUrl}`);
