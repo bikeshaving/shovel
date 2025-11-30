@@ -52,21 +52,30 @@ export class S3FileSystemBackend implements FileSystemBackend {
 		}
 	}
 
-	async readFile(path: string): Promise<Uint8Array> {
+	async readFile(
+		path: string,
+	): Promise<{content: Uint8Array; lastModified?: number}> {
 		try {
 			const key = this.#getS3Key(path);
 			const result = await this.#s3Client.get({key});
 
 			if (result.Body) {
+				let content: Uint8Array;
 				if (result.Body instanceof Uint8Array) {
-					return result.Body;
+					content = result.Body;
 				} else if (typeof result.Body === "string") {
-					return new TextEncoder().encode(result.Body);
+					content = new TextEncoder().encode(result.Body);
 				} else {
 					// Handle other body types (stream, etc.)
 					const arrayBuffer = await result.Body.arrayBuffer();
-					return new Uint8Array(arrayBuffer);
+					content = new Uint8Array(arrayBuffer);
 				}
+
+				const lastModified = result.LastModified
+					? new Date(result.LastModified).getTime()
+					: undefined;
+
+				return {content, lastModified};
 			}
 
 			throw new DOMException("File not found", "NotFoundError");

@@ -51,12 +51,17 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 		}
 	}
 
-	async readFile(path: string): Promise<Uint8Array> {
+	async readFile(
+		path: string,
+	): Promise<{content: Uint8Array; lastModified?: number}> {
 		const entry = this.#resolvePath(path);
 		if (!entry || !("content" in entry)) {
 			throw new DOMException("File not found", "NotFoundError");
 		}
-		return entry.content;
+		return {
+			content: entry.content,
+			lastModified: entry.lastModified,
+		};
 	}
 
 	async writeFile(path: string, data: Uint8Array): Promise<void> {

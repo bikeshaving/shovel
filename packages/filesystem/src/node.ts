@@ -43,11 +43,20 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 		}
 	}
 
-	async readFile(filePath: string): Promise<Uint8Array> {
+	async readFile(
+		filePath: string,
+	): Promise<{content: Uint8Array; lastModified?: number}> {
 		try {
 			const fullPath = this.#resolvePath(filePath);
-			const buffer = await FS.readFile(fullPath);
-			return new Uint8Array(buffer);
+			// Read file content and stats together
+			const [buffer, stats] = await Promise.all([
+				FS.readFile(fullPath),
+				FS.stat(fullPath),
+			]);
+			return {
+				content: new Uint8Array(buffer),
+				lastModified: stats.mtimeMs,
+			};
 		} catch (error) {
 			if ((error as any).code === "ENOENT") {
 				throw new DOMException("File not found", "NotFoundError");

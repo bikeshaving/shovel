@@ -22,13 +22,25 @@ describe("Filesystem Handles", () => {
 			},
 
 			async readFile(path: string) {
-				const files: Record<string, string> = {
-					"/app.js": "console.log('Hello');",
-					"/assets/style.css": "body { margin: 0; }",
+				const files: Record<
+					string,
+					{content: string; lastModified: number}
+				> = {
+					"/app.js": {
+						content: "console.log('Hello');",
+						lastModified: 1700000000000,
+					},
+					"/assets/style.css": {
+						content: "body { margin: 0; }",
+						lastModified: 1700000001000,
+					},
 				};
-				const content = files[path];
-				if (!content) throw new Error("NotFoundError");
-				return new TextEncoder().encode(content);
+				const file = files[path];
+				if (!file) throw new Error("NotFoundError");
+				return {
+					content: new TextEncoder().encode(file.content),
+					lastModified: file.lastModified,
+				};
 			},
 
 			async writeFile(_path: string, _data: Uint8Array) {
@@ -73,6 +85,13 @@ describe("Filesystem Handles", () => {
 			expect(file.name).toBe("app.js");
 			expect(file.type).toMatch(/javascript/);
 			expect(await file.text()).toBe("console.log('Hello');");
+		});
+
+		test("should get file with correct lastModified from backend", async () => {
+			const handle = new ShovelFileHandle(mockBackend, "/app.js");
+			const file = await handle.getFile();
+
+			expect(file.lastModified).toBe(1700000000000);
 		});
 
 		test("should create writable stream", async () => {

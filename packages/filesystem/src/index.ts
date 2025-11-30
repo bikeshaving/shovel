@@ -42,12 +42,14 @@ export interface FileSystemBackend {
 	stat(path: string): Promise<{kind: "file" | "directory"} | null>;
 
 	/**
-	 * Read file content as bytes
+	 * Read file content and metadata
 	 * @param path Path to the file
-	 * @returns File content as Uint8Array
+	 * @returns File content and metadata
 	 * @throws NotFoundError if file doesn't exist
 	 */
-	readFile(path: string): Promise<Uint8Array>;
+	readFile(
+		path: string,
+	): Promise<{content: Uint8Array; lastModified?: number}>;
 
 	/**
 	 * Write file content
@@ -269,7 +271,8 @@ export class ShovelFileHandle
 
 	async getFile(): Promise<File> {
 		try {
-			const content = await this.backend.readFile(this.path);
+			const {content, lastModified} = await this.backend.readFile(this.path);
+
 			// Extract filename and infer MIME type
 			const filename = this.name;
 			const mimeType = this.#getMimeType(filename);
@@ -280,7 +283,7 @@ export class ShovelFileHandle
 
 			return new File([buffer], filename, {
 				type: mimeType,
-				lastModified: Date.now(), // TODO: Could be stored in backend if needed
+				lastModified: lastModified ?? Date.now(),
 			});
 		} catch (error) {
 			throw new DOMException(`File not found: ${this.path}`, "NotFoundError");
