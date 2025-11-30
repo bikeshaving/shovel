@@ -61,7 +61,10 @@ export function assets(config: AssetsConfig = {}) {
 
 			// Security: prevent directory traversal
 			if (requestedPath.includes("..") || requestedPath.includes("//")) {
-				return new Response("Forbidden", {status: 403});
+				return new Response("Forbidden", {
+					status: 403,
+					headers: {"Content-Type": "text/plain"},
+				});
 			}
 
 			// Load manifest to validate file exists in build
@@ -135,17 +138,24 @@ export function assets(config: AssetsConfig = {}) {
 				});
 			} catch (error) {
 				if ((error as any).name === "NotFoundError") {
-					return new Response("Not Found", {status: 404});
+					return new Response("Not Found", {
+						status: 404,
+						headers: {"Content-Type": "text/plain"},
+					});
 				}
 
 				logger.error("Assets middleware error", {error});
-				return new Response("Internal Server Error", {status: 500});
+				return new Response("Internal Server Error", {
+					status: 500,
+					headers: {"Content-Type": "text/plain"},
+				});
 			}
 		} catch (error) {
 			logger.error("Assets middleware outer error", {error});
 			const message = error instanceof Error ? error.message : String(error);
 			return new Response("Assets middleware error: " + message, {
 				status: 500,
+				headers: {"Content-Type": "text/plain"},
 			});
 		}
 	};
