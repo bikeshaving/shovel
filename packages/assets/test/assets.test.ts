@@ -4,7 +4,7 @@ import {assetsPlugin} from "../src/plugin.js";
 import {Router} from "@b9g/router";
 import {MemoryBucket} from "@b9g/filesystem/memory";
 import * as ESBuild from "esbuild";
-import {mkdtemp, writeFile, readdir, readFile, access} from "fs/promises";
+import {mkdtemp, writeFile, readdir, readFile, access, mkdir} from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
 
@@ -291,6 +291,244 @@ export default styleUrl;`,
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].type).toBe("text/css");
+	});
+});
+
+describe("Assets Plugin - CSS bundling", () => {
+	test("should bundle CSS @import statements", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "css-import-test-"));
+
+		// Create a CSS file that imports another
+		await writeFile(
+			join(testDir, "base.css"),
+			`:root { --color: blue; }`,
+		);
+		await writeFile(
+			join(testDir, "style.css"),
+			`@import "./base.css";
+body { color: var(--color); }`,
+		);
+
+		// Create entry that imports CSS as asset
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import styleUrl from "./style.css" with { assetBase: "/static" };
+export default styleUrl;`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// Check output files
+		const files = await readdir(join(outDir, "static", "static"));
+		const cssFiles = files.filter((f) => f.endsWith(".css"));
+		expect(cssFiles.length).toBe(1);
+
+		// Read the output CSS - it should contain both the base and style content
+		const outputCSS = await readFile(
+			join(outDir, "static", "static", cssFiles[0]),
+			"utf8",
+		);
+		// The @import should be resolved, so the output should contain :root
+		expect(outputCSS).toContain("--color");
+		// The output should NOT contain @import
+		expect(outputCSS).not.toContain("@import");
+	});
+
+	test("should bundle CSS from node_modules", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "css-nodemod-test-"));
+
+		// Create a mock node_modules structure
+		const nodeModulesDir = join(testDir, "node_modules", "fake-lib");
+		await mkdir(nodeModulesDir, {recursive: true});
+		await writeFile(
+			join(nodeModulesDir, "style.css"),
+			`.fake-lib { display: block; }`,
+		);
+
+		// Create CSS that imports from node_modules
+		await writeFile(
+			join(testDir, "style.css"),
+			`@import "fake-lib/style.css";
+.app { color: red; }`,
+		);
+
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import styleUrl from "./style.css" with { assetBase: "/static" };
+export default styleUrl;`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// Check the bundled CSS contains both
+		const files = await readdir(join(outDir, "static", "static"));
+		const cssFiles = files.filter((f) => f.endsWith(".css"));
+		const outputCSS = await readFile(
+			join(outDir, "static", "static", cssFiles[0]),
+			"utf8",
+		);
+
+		expect(outputCSS).toContain(".fake-lib");
+		expect(outputCSS).toContain(".app");
+	});
+});
+
+describe("Assets Plugin - type: css attribute", () => {
+	test("should extract CSS from JS bundle with type: css", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "type-css-test-"));
+
+		// Create a CSS file
+		await writeFile(join(testDir, "styles.css"), `.app { color: red; }`);
+
+		// Create a TS client that imports CSS
+		await writeFile(
+			join(testDir, "client.ts"),
+			`import "./styles.css";
+console.log("client loaded");`,
+		);
+
+		// Create entry that imports client with type: css
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import clientCss from "./client.ts" with { assetBase: "/static", type: "css" };
+export default clientCss;`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// Check that a CSS file was output
+		const files = await readdir(join(outDir, "static", "static"));
+		const cssFiles = files.filter((f) => f.endsWith(".css"));
+		expect(cssFiles.length).toBe(1);
+		expect(cssFiles[0]).toMatch(/^client-[a-f0-9]+\.css$/);
+
+		// Check manifest has CSS MIME type
+		const manifest = JSON.parse(
+			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
+		);
+		const assetKey = Object.keys(manifest.assets)[0];
+		expect(manifest.assets[assetKey].type).toBe("text/css");
+		expect(manifest.assets[assetKey].url).toMatch(/\.css$/);
+
+		// Read the output CSS - should contain the styles
+		const outputCSS = await readFile(
+			join(outDir, "static", "static", cssFiles[0]),
+			"utf8",
+		);
+		expect(outputCSS).toContain(".app");
+	});
+
+	test("should error when using type: css on file with no CSS imports", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "type-css-error-test-"));
+
+		// Create a TS client that does NOT import CSS
+		await writeFile(
+			join(testDir, "client.ts"),
+			`console.log("no css here");`,
+		);
+
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import clientCss from "./client.ts" with { assetBase: "/static", type: "css" };
+export default clientCss;`,
+		);
+
+		const outDir = join(testDir, "dist");
+
+		// Build should fail
+		let error: Error | null = null;
+		try {
+			await ESBuild.build({
+				entryPoints: [join(testDir, "entry.js")],
+				bundle: true,
+				format: "esm",
+				outdir: join(outDir, "server"),
+				write: true,
+				plugins: [
+					assetsPlugin({
+						outDir: outDir,
+					}),
+				],
+			});
+		} catch (e) {
+			error = e as Error;
+		}
+
+		expect(error).not.toBeNull();
+		expect(error!.message).toContain("Build failed");
+	});
+
+	test("should error when using type: css on non-transpilable file", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "type-css-png-test-"));
+
+		// Create a PNG file
+		await writeFile(join(testDir, "image.png"), "fake png content");
+
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import imageCss from "./image.png" with { assetBase: "/static", type: "css" };
+export default imageCss;`,
+		);
+
+		const outDir = join(testDir, "dist");
+
+		// Build should fail
+		let error: Error | null = null;
+		try {
+			await ESBuild.build({
+				entryPoints: [join(testDir, "entry.js")],
+				bundle: true,
+				format: "esm",
+				outdir: join(outDir, "server"),
+				write: true,
+				plugins: [
+					assetsPlugin({
+						outDir: outDir,
+					}),
+				],
+			});
+		} catch (e) {
+			error = e as Error;
+		}
+
+		expect(error).not.toBeNull();
+		expect(error!.message).toContain("Build failed");
 	});
 });
 

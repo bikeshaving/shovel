@@ -2,6 +2,19 @@
  * TypeScript declarations for asset imports with { assetBase: '/assets/' }
  *
  * Add this to your project's global types or import it in your app
+ *
+ * @example
+ * // Import CSS file (bundles @import statements)
+ * import styles from "./style.css" with { assetBase: "/static/" };
+ * // styles = "/static/style-abc123.css"
+ *
+ * // Import JS/TS entrypoint
+ * import clientJs from "./client.ts" with { assetBase: "/static/" };
+ * // clientJs = "/static/client-abc123.js"
+ *
+ * // Get extracted CSS from JS bundle using type: "css"
+ * import clientCss from "./client.ts" with { assetBase: "/static/", type: "css" };
+ * // clientCss = "/static/client-abc123.css"
  */
 
 // Export a dummy type to make this a module

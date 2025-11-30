@@ -37,7 +37,7 @@ import {NodeModulesPolyfillPlugin} from "@esbuild-plugins/node-modules-polyfill"
 import {NodeGlobalsPolyfillPlugin} from "@esbuild-plugins/node-globals-polyfill";
 
 /**
- * File extensions that need transpilation
+ * File extensions that need transpilation (JS/TS files)
  */
 const TRANSPILABLE_EXTENSIONS = new Set([
 	".ts",
@@ -46,6 +46,11 @@ const TRANSPILABLE_EXTENSIONS = new Set([
 	".mts",
 	".cts",
 ]);
+
+/**
+ * File extensions that need CSS bundling
+ */
+const CSS_EXTENSIONS = new Set([".css"]);
 
 const logger = getLogger(["assets"]);
 
@@ -155,6 +160,9 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 		},
 	};
 
+	// Cache esbuild contexts for incremental rebuilds (keyed by absolute path)
+	const contexts = new Map<string, ESBuild.BuildContext>();
+
 	return {
 		name: "shovel-assets",
 		setup(build: any) {
@@ -162,6 +170,19 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 			build.onResolve({filter: /.*/}, (_args: any) => {
 				return null; // Let default resolution handle all imports
 			});
+
+			// Helper to get or create an esbuild context for incremental builds
+			async function getContext(
+				absPath: string,
+				buildOptions: ESBuild.BuildOptions,
+			): Promise<ESBuild.BuildContext> {
+				let ctx = contexts.get(absPath);
+				if (!ctx) {
+					ctx = await ESBuild.context(buildOptions);
+					contexts.set(absPath, ctx);
+				}
+				return ctx;
+			}
 
 			// Intercept all imports
 			build.onLoad({filter: /.*/}, async (args: any) => {
@@ -171,13 +192,25 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 				}
 
 				try {
-					// Read the file content
-					const rawContent = readFileSync(args.path);
 					const ext = extname(args.path);
 					const name = basename(args.path, ext);
+					const wantsCSS = args.with.type === "css";
 
-					// Check if this file needs transpilation
+					// Check what type of file this is
 					const needsTranspilation = TRANSPILABLE_EXTENSIONS.has(ext);
+					const needsCSSBundling = CSS_EXTENSIONS.has(ext);
+
+					// Validate type: "css" usage
+					if (wantsCSS && !needsTranspilation) {
+						return {
+							errors: [
+								{
+									text: `type: "css" can only be used with transpilable files (.ts, .tsx, .jsx, etc.), not ${ext}`,
+								},
+							],
+						};
+					}
+
 					let content: Buffer;
 					let outputExt = ext;
 					let mimeType: string | undefined;
@@ -200,7 +233,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							? [...clientOpts.plugins, ...defaultPlugins]
 							: defaultPlugins;
 
-						const result = await ESBuild.build({
+						const ctx = await getContext(args.path, {
 							entryPoints: [args.path],
 							bundle: true,
 							format: "esm",
@@ -208,6 +241,8 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							platform: "browser",
 							write: false,
 							minify: true,
+							// outdir is required for esbuild to know where to put extracted CSS
+							outdir: config.outDir,
 							// Apply polyfills and user-provided client build options
 							plugins,
 							define: clientOpts.define,
@@ -215,11 +250,83 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							external: clientOpts.external,
 							alias: clientOpts.alias,
 						});
+						const result = await ctx.rebuild();
+
+						if (wantsCSS) {
+							// Find the CSS output file
+							const cssOutput = result.outputFiles.find((f) =>
+								f.path.endsWith(".css"),
+							);
+							if (!cssOutput) {
+								return {
+									errors: [
+										{
+											text: `No CSS was extracted from ${args.path}. The file must import CSS for type: "css" to work.`,
+										},
+									],
+								};
+							}
+							content = Buffer.from(cssOutput.text);
+							outputExt = ".css";
+							mimeType = "text/css";
+						} else {
+							// Find the JS output file
+							const jsOutput = result.outputFiles.find((f) =>
+								f.path.endsWith(".js"),
+							);
+							if (!jsOutput) {
+								return {
+									errors: [
+										{
+											text: `No JavaScript output was generated for ${args.path}`,
+										},
+									],
+								};
+							}
+							content = Buffer.from(jsOutput.text);
+							outputExt = ".js";
+							mimeType = "application/javascript";
+						}
+					} else if (needsCSSBundling) {
+						// Bundle CSS files through esbuild to resolve @import statements
+						// Use a plugin to mark absolute URL paths as external (e.g., /assets/...)
+						// but not filesystem absolute paths (e.g., /private/var/...)
+						const entryPath = args.path;
+						const externalAbsolutePathsPlugin: ESBuild.Plugin = {
+							name: "external-absolute-paths",
+							setup(build) {
+								// Mark web-root absolute paths (starting with /) as external
+								// but only if they're NOT the entry point and NOT filesystem paths
+								build.onResolve({filter: /^\//}, (resolveArgs) => {
+									// Skip entry points (they have kind: "entry-point")
+									if (resolveArgs.kind === "entry-point") {
+										return null;
+									}
+									// Mark as external (for CSS url() references like /assets/...)
+									return {
+										path: resolveArgs.path,
+										external: true,
+									};
+								});
+							},
+						};
+
+						const ctx = await getContext(entryPath, {
+							entryPoints: [entryPath],
+							bundle: true,
+							write: false,
+							minify: true,
+							// outdir required for esbuild to generate output paths
+							outdir: config.outDir,
+							plugins: [externalAbsolutePathsPlugin],
+						});
+						const result = await ctx.rebuild();
 						content = Buffer.from(result.outputFiles[0].text);
-						outputExt = ".js";
-						mimeType = "application/javascript";
+						outputExt = ".css";
+						mimeType = "text/css";
 					} else {
-						content = rawContent;
+						// Static assets - copy as-is
+						content = readFileSync(args.path);
 						mimeType = mime.getType(args.path) || undefined;
 					}
 
@@ -287,8 +394,14 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 				}
 			});
 
-			// Write manifest file when build finishes
-			build.onEnd(() => {
+			// Write manifest file and clean up contexts when build finishes
+			build.onEnd(async () => {
+				// Dispose all esbuild contexts
+				for (const ctx of contexts.values()) {
+					await ctx.dispose();
+				}
+				contexts.clear();
+
 				try {
 					// Manifest goes to {outDir}/server/manifest.json
 					// Server bucket keeps it non-public (contains internal build metadata)
