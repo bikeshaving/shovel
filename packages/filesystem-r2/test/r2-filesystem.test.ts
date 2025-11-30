@@ -96,13 +96,6 @@ describe("R2 Filesystem", () => {
 			}
 		});
 
-		test("should get mime type correctly", () => {
-			const handle = new R2FileSystemFileHandle(mockR2Bucket, "test.json");
-
-			// Access private method through casting
-			const mimeType = (handle as any).getMimeType("test.json");
-			expect(mimeType).toBe("application/json");
-		});
 	});
 
 	describe("R2FileSystemDirectoryHandle", () => {

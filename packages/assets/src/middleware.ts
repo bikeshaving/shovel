@@ -10,19 +10,25 @@
  * Manifest is read from the server bucket (not publicly servable).
  */
 
-import type {AssetsConfig, AssetManifestEntry} from "./index.js";
-import {getMimeType} from "./index.js";
+import type {AssetManifestEntry} from "./index.js";
+import mime from "mime";
 
 /**
  * Assets middleware with 1-to-1 path mapping
  *
  * No try/catch - errors propagate up. If manifest doesn't exist, fail loudly.
  */
-export function assets(config: AssetsConfig = {}) {
+export interface AssetsMiddlewareConfig {
+	/** Path to asset manifest file (default: 'manifest.json') */
+	manifestPath?: string;
+	/** Cache control header value (default: 'public, max-age=31536000, immutable') */
+	cacheControl?: string;
+}
+
+export function assets(config: AssetsMiddlewareConfig = {}) {
 	const {
 		manifestPath = "manifest.json",
 		cacheControl = "public, max-age=31536000, immutable",
-		mimeTypes = {},
 	} = config;
 
 	// Cache for manifest data
@@ -94,7 +100,8 @@ export function assets(config: AssetsConfig = {}) {
 		const file = await fileHandle.getFile();
 
 		// Use content type from manifest if available, otherwise detect
-		const contentType = manifestEntry.type || getMimeType(requestedPath, mimeTypes);
+		const contentType =
+			manifestEntry.type || mime.getType(requestedPath) || "application/octet-stream";
 
 		// Create response headers
 		const headers = new Headers({

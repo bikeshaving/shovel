@@ -6,6 +6,7 @@
  */
 
 import type {FileSystemBackend, FileSystemConfig} from "@b9g/filesystem";
+import mime from "mime";
 
 /**
  * AWS S3 implementation of FileSystemWritableFileStream
@@ -162,22 +163,7 @@ export class S3FileSystemFileHandle implements FileSystemFileHandle {
 	}
 
 	#getMimeType(key: string): string {
-		const ext = key.split(".").pop()?.toLowerCase();
-		const mimeTypes: Record<string, string> = {
-			txt: "text/plain",
-			html: "text/html",
-			css: "text/css",
-			js: "text/javascript",
-			json: "application/json",
-			png: "image/png",
-			jpg: "image/jpeg",
-			jpeg: "image/jpeg",
-			gif: "image/gif",
-			svg: "image/svg+xml",
-			pdf: "application/pdf",
-			zip: "application/zip",
-		};
-		return mimeTypes[ext || ""] || "application/octet-stream";
+		return mime.getType(key) || "application/octet-stream";
 	}
 }
 

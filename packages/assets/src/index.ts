@@ -2,8 +2,6 @@
  * @b9g/assets - Universal assets processing and serving
  */
 
-import mime from "mime";
-
 // ============================================================================
 // Runtime Types (for middleware)
 // ============================================================================
@@ -16,8 +14,6 @@ export interface AssetsConfig {
 	manifestPath?: string;
 	/** Cache control header value (default: 'public, max-age=31536000, immutable') */
 	cacheControl?: string;
-	/** Custom MIME type mappings */
-	mimeTypes?: Record<string, string>;
 }
 
 // ============================================================================
@@ -57,24 +53,3 @@ export interface AssetManifest {
 	};
 }
 
-// ============================================================================
-// Utilities
-// ============================================================================
-
-/**
- * Get MIME type for a file path
- * Uses mime package for comprehensive type detection with custom overrides
- */
-export function getMimeType(
-	filePath: string,
-	customTypes: Record<string, string> = {},
-): string {
-	// Check custom types first
-	const ext = "." + filePath.split(".").pop()?.toLowerCase();
-	if (customTypes[ext]) {
-		return customTypes[ext];
-	}
-
-	// Use mime package for comprehensive detection
-	return mime.getType(filePath) || "application/octet-stream";
-}

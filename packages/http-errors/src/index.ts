@@ -107,6 +107,63 @@ export class HTTPError extends Error {
 			headers: this.headers,
 		};
 	}
+
+	/**
+	 * Convert error to an HTTP Response
+	 * In development mode, shows detailed error page with stack trace
+	 * In production mode, shows minimal error message
+	 */
+	toResponse(isDev?: boolean): Response {
+		const headers = new Headers(this.headers);
+
+		if (isDev && this.expose) {
+			headers.set("Content-Type", "text/html; charset=utf-8");
+			const statusText = STATUS_CODES[this.status] || "Error";
+			const html = `<!DOCTYPE html>
+<html>
+<head>
+  <title>${this.status} ${escapeHTML(statusText)}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
+    h1 { color: ${this.status >= 500 ? "#c00" : "#e67700"}; }
+    .message { font-size: 1.2em; color: #333; }
+    pre { background: #f5f5f5; padding: 1rem; overflow-x: auto; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>${this.status} ${escapeHTML(statusText)}</h1>
+  <p class="message">${escapeHTML(this.message)}</p>
+  <pre>${escapeHTML(this.stack || "No stack trace available")}</pre>
+</body>
+</html>`;
+			return new Response(html, {
+				status: this.status,
+				statusText,
+				headers,
+			});
+		}
+
+		// Production mode: plain text, minimal info
+		headers.set("Content-Type", "text/plain; charset=utf-8");
+		const body = this.expose ? this.message : STATUS_CODES[this.status] || "Error";
+		return new Response(body, {
+			status: this.status,
+			statusText: STATUS_CODES[this.status],
+			headers,
+		});
+	}
+}
+
+/**
+ * Escape HTML special characters to prevent XSS
+ */
+function escapeHTML(str: string): string {
+	return str
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
 }
 
 /**

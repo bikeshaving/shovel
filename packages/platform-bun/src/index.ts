@@ -20,6 +20,7 @@ import {
 	type ProcessedShovelConfig,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
+import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
 
@@ -129,47 +130,13 @@ export class BunPlatform extends BasePlatform {
 						stack: err.stack,
 					});
 
-					// Show detailed errors in development mode
-					const isDev =
-						typeof import.meta !== "undefined" &&
-						(import.meta as any).env?.MODE !== "production";
+					// Convert to HTTPError for consistent response format
+					const httpError = isHTTPError(error)
+						? (error as HTTPError)
+						: new InternalServerError(err.message, {cause: err});
 
-					if (isDev) {
-						const escapeHtml = (str: string) =>
-							str
-								.replace(/&/g, "&amp;")
-								.replace(/</g, "&lt;")
-								.replace(/>/g, "&gt;")
-								.replace(/"/g, "&quot;");
-						return new Response(
-							`<!DOCTYPE html>
-<html>
-<head>
-  <title>500 Internal Server Error</title>
-  <style>
-    body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
-    h1 { color: #c00; }
-    .message { font-size: 1.2em; color: #333; }
-    pre { background: #f5f5f5; padding: 1rem; overflow-x: auto; border-radius: 4px; }
-  </style>
-</head>
-<body>
-  <h1>500 Internal Server Error</h1>
-  <p class="message">${escapeHtml(err.message)}</p>
-  <pre>${escapeHtml(err.stack || "No stack trace available")}</pre>
-</body>
-</html>`,
-							{
-								status: 500,
-								headers: {"Content-Type": "text/html; charset=utf-8"},
-							},
-						);
-					} else {
-						return new Response("Internal Server Error", {
-							status: 500,
-							headers: {"Content-Type": "text/plain"},
-						});
-					}
+					const isDev = import.meta.env?.MODE !== "production";
+					return httpError.toResponse(isDev);
 				}
 			},
 		});

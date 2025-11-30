@@ -18,6 +18,7 @@ import {
 	compilePathname,
 	type CompiledPattern,
 } from "@b9g/match-pattern";
+import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 
 // ============================================================================
 // TYPES
@@ -1036,53 +1037,15 @@ export class Router {
 
 	/**
 	 * Create an error response for unhandled errors
-	 * In development mode, includes error details; in production, returns generic message
+	 * Uses HTTPError.toResponse() for consistent error formatting
 	 */
 	#createErrorResponse(error: Error): Response {
-		// Check for development mode using import.meta.env.MODE
-		// Falls back to checking if MODE is not "production"
-		const isDev =
-			typeof import.meta !== "undefined" &&
-			(import.meta as any).env?.MODE !== "production";
+		// Convert to HTTPError for consistent response format
+		const httpError = isHTTPError(error)
+			? (error as HTTPError)
+			: new InternalServerError(error.message, {cause: error});
 
-		if (isDev) {
-			// Development: show error details
-			const html = `<!DOCTYPE html>
-<html>
-<head>
-  <title>500 Internal Server Error</title>
-  <style>
-    body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
-    h1 { color: #dc2626; }
-    pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; overflow-x: auto; border-radius: 4px; }
-    .message { font-size: 1.25rem; color: #374151; }
-  </style>
-</head>
-<body>
-  <h1>500 Internal Server Error</h1>
-  <p class="message">${escapeHtml(error.message)}</p>
-  <pre>${escapeHtml(error.stack || "No stack trace available")}</pre>
-</body>
-</html>`;
-			return new Response(html, {
-				status: 500,
-				headers: {"Content-Type": "text/html; charset=utf-8"},
-			});
-		} else {
-			// Production: generic error message
-			return new Response("Internal Server Error", {status: 500});
-		}
+		const isDev = import.meta.env?.MODE !== "production";
+		return httpError.toResponse(isDev);
 	}
-}
-
-/**
- * Escape HTML special characters to prevent XSS
- */
-function escapeHtml(str: string): string {
-	return str
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&#039;");
 }

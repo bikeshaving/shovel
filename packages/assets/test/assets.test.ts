@@ -381,7 +381,7 @@ describe("Assets Middleware", () => {
 		expect(response.status).toBe(304);
 	});
 
-	test("should use custom MIME types when manifest type not present", async () => {
+	test("should detect MIME type from extension when manifest type not present", async () => {
 		// Override with manifest that has no type field
 		const serverBucket = new MemoryBucket("server");
 		const staticBucket = new MemoryBucket("static");
@@ -405,17 +405,14 @@ describe("Assets Middleware", () => {
 		};
 
 		const router = new Router();
-		router.use(
-			assets({
-				mimeTypes: {".js": "text/plain"},
-			}),
-		);
+		router.use(assets());
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const request = new Request("http://example.com/app.js");
 		const response = await router.handler(request);
 
-		expect(response.headers.get("Content-Type")).toBe("text/plain");
+		// Should detect text/javascript from .js extension
+		expect(response.headers.get("Content-Type")).toBe("text/javascript");
 	});
 
 	test("should set custom cache headers", async () => {

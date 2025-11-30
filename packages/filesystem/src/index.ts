@@ -1,3 +1,5 @@
+import mime from "mime";
+
 // ============================================================================
 // CORE TYPES
 // ============================================================================
@@ -302,21 +304,7 @@ export class ShovelFileHandle
 	}
 
 	#getMimeType(filename: string): string {
-		const ext = filename.toLowerCase().substring(filename.lastIndexOf("."));
-		const mimeTypes: Record<string, string> = {
-			".html": "text/html",
-			".css": "text/css",
-			".js": "application/javascript",
-			".json": "application/json",
-			".png": "image/png",
-			".jpg": "image/jpeg",
-			".jpeg": "image/jpeg",
-			".gif": "image/gif",
-			".svg": "image/svg+xml",
-			".pdf": "application/pdf",
-			".zip": "application/zip",
-		};
-		return mimeTypes[ext] || "application/octet-stream";
+		return mime.getType(filename) || "application/octet-stream";
 	}
 }
 

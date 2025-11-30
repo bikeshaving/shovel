@@ -19,6 +19,7 @@ import {
 	type ProcessedShovelConfig,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
+import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import * as HTTP from "http";
 import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
@@ -346,42 +347,21 @@ export class NodePlatform extends BasePlatform {
 					stack: err.stack,
 				});
 
-				// Show detailed errors in development mode
-				// import.meta.env is aliased to process.env for Node.js builds
-				const isDev =
-					typeof import.meta !== "undefined" &&
-					(import.meta as any).env?.MODE !== "production";
+				// Convert to HTTPError for consistent response format
+				const httpError = isHTTPError(error)
+					? (error as HTTPError)
+					: new InternalServerError(err.message, {cause: err});
 
-				res.statusCode = 500;
-				if (isDev) {
-					res.setHeader("Content-Type", "text/html; charset=utf-8");
-					const escapeHtml = (str: string) =>
-						str
-							.replace(/&/g, "&amp;")
-							.replace(/</g, "&lt;")
-							.replace(/>/g, "&gt;")
-							.replace(/"/g, "&quot;");
-					res.end(`<!DOCTYPE html>
-<html>
-<head>
-  <title>500 Internal Server Error</title>
-  <style>
-    body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
-    h1 { color: #c00; }
-    .message { font-size: 1.2em; color: #333; }
-    pre { background: #f5f5f5; padding: 1rem; overflow-x: auto; border-radius: 4px; }
-  </style>
-</head>
-<body>
-  <h1>500 Internal Server Error</h1>
-  <p class="message">${escapeHtml(err.message)}</p>
-  <pre>${escapeHtml(err.stack || "No stack trace available")}</pre>
-</body>
-</html>`);
-				} else {
-					res.setHeader("Content-Type", "text/plain");
-					res.end("Internal Server Error");
-				}
+				// import.meta.env is aliased to process.env for Node.js builds
+				const isDev = import.meta.env?.MODE !== "production";
+				const response = httpError.toResponse(isDev);
+
+				// Write response to Node.js res
+				res.statusCode = response.status;
+				response.headers.forEach((value, key) => {
+					res.setHeader(key, value);
+				});
+				res.end(await response.text());
 			}
 		});
 
