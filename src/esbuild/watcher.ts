@@ -6,7 +6,7 @@
 import * as ESBuild from "esbuild";
 import {resolve, dirname, join} from "path";
 import {readFileSync} from "fs";
-import {mkdir} from "fs/promises";
+import {mkdir, unlink} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "./import-meta-plugin.js";
 import {getLogger} from "@logtape/logtape";
@@ -18,26 +18,33 @@ export interface WatcherOptions {
 	entrypoint: string;
 	/** Output directory */
 	outDir: string;
-	/** Callback when build completes */
-	onBuild?: (success: boolean, version: number) => void;
+	/** Callback when build completes - entrypoint is the hashed output path */
+	onBuild?: (success: boolean, entrypoint: string) => void;
 }
 
 export class Watcher {
 	#options: WatcherOptions;
 	#ctx?: ESBuild.BuildContext;
-	#initialBuildComplete: boolean = false;
-	#initialBuildSuccess: boolean = false;
-	#initialBuildResolve?: (success: boolean) => void;
+	#initialBuildComplete: boolean;
+	#initialBuildResolve?: (result: {
+		success: boolean;
+		entrypoint: string;
+	}) => void;
+	#currentEntrypoint: string;
+	#previousEntrypoint: string;
 
 	constructor(options: WatcherOptions) {
 		this.#options = options;
+		this.#initialBuildComplete = false;
+		this.#currentEntrypoint = "";
+		this.#previousEntrypoint = "";
 	}
 
 	/**
 	 * Start watching and building
-	 * @returns true if initial build succeeded, false if it failed
+	 * @returns Result with success status and the hashed entrypoint path
 	 */
-	async start(): Promise<boolean> {
+	async start(): Promise<{success: boolean; entrypoint: string}> {
 		const entryPath = resolve(this.#options.entrypoint);
 		const outputDir = resolve(this.#options.outDir);
 
@@ -49,7 +56,10 @@ export class Watcher {
 		await mkdir(join(outputDir, "static"), {recursive: true});
 
 		// Create a promise that resolves when the initial build completes
-		const initialBuildPromise = new Promise<boolean>((resolve) => {
+		const initialBuildPromise = new Promise<{
+			success: boolean;
+			entrypoint: string;
+		}>((resolve) => {
 			this.#initialBuildResolve = resolve;
 		});
 
@@ -60,8 +70,9 @@ export class Watcher {
 			format: "esm",
 			target: "es2022",
 			platform: "node",
-			outfile: `${outputDir}/server/app.js`,
-			// No packages: "external" - bundle everything for dev/prod parity
+			outdir: `${outputDir}/server`,
+			entryNames: "[name]-[hash]",
+			metafile: true,
 			absWorkingDir: workspaceRoot,
 			plugins: [
 				importMetaPlugin(),
@@ -77,24 +88,56 @@ export class Watcher {
 								entrypoint: this.#options.entrypoint,
 							});
 						});
-						build.onEnd((result) => {
-							const version = Date.now();
+						build.onEnd(async (result) => {
 							const success = result.errors.length === 0;
 
+							// Extract output path from metafile
+							let outputPath = "";
+							if (result.metafile) {
+								const outputs = Object.keys(result.metafile.outputs);
+								const jsOutput = outputs.find((p) => p.endsWith(".js"));
+								if (jsOutput) {
+									// Convert relative path to absolute
+									outputPath = resolve(jsOutput);
+								}
+							}
+
 							if (success) {
-								logger.info("Build complete", {version});
+								logger.info("Build complete", {entrypoint: outputPath});
+
+								// Clean up old entrypoint file to prevent disk space leak
+								// Only delete if it's different from the new one
+								if (
+									this.#currentEntrypoint &&
+									this.#currentEntrypoint !== outputPath
+								) {
+									try {
+										await unlink(this.#currentEntrypoint);
+										// Also try to delete the source map if it exists
+										await unlink(this.#currentEntrypoint + ".map").catch(
+											() => {},
+										);
+										logger.debug("Cleaned up old build", {
+											oldEntrypoint: this.#currentEntrypoint,
+										});
+									} catch {
+										// File may already be deleted or not exist
+									}
+								}
 							} else {
 								logger.error("Build errors", {errors: result.errors});
 							}
 
+							this.#previousEntrypoint = this.#currentEntrypoint;
+							this.#currentEntrypoint = outputPath;
+
 							// Handle initial build
 							if (!this.#initialBuildComplete) {
 								this.#initialBuildComplete = true;
-								this.#initialBuildSuccess = success;
-								this.#initialBuildResolve?.(success);
+								this.#initialBuildResolve?.({success, entrypoint: outputPath});
 							} else {
 								// Subsequent rebuilds triggered by watch
-								this.#options.onBuild?.(success, version);
+								this.#options.onBuild?.(success, outputPath);
 							}
 						});
 					},

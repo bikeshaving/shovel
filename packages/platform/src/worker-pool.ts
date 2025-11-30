@@ -58,13 +58,12 @@ export interface WorkerResponse extends WorkerMessage {
 
 export interface WorkerLoadMessage extends WorkerMessage {
 	type: "load";
-	version: number | string;
-	entrypoint?: string;
+	entrypoint: string;
 }
 
 export interface WorkerReadyMessage extends WorkerMessage {
 	type: "ready" | "worker-ready";
-	version?: number | string;
+	entrypoint?: string;
 }
 
 export interface WorkerErrorMessage extends WorkerMessage {
@@ -420,7 +419,7 @@ export class ServiceWorkerPool {
 
 	#handleReady(message: WorkerReadyMessage) {
 		if (message.type === "ready") {
-			logger.info("ServiceWorker ready", {version: message.version});
+			logger.info("ServiceWorker ready", {entrypoint: message.entrypoint});
 		} else if (message.type === "worker-ready") {
 			logger.info("Worker initialized", {});
 		}
@@ -491,10 +490,14 @@ export class ServiceWorkerPool {
 	}
 
 	/**
-	 * Reload ServiceWorker with new version (hot reload simulation)
+	 * Reload ServiceWorker with new entrypoint (hot reload)
+	 * The entrypoint path contains a content hash for cache busting
 	 */
-	async reloadWorkers(version: number | string = Date.now()): Promise<void> {
-		logger.info("Reloading ServiceWorker", {version});
+	async reloadWorkers(entrypoint: string): Promise<void> {
+		logger.info("Reloading ServiceWorker", {entrypoint});
+
+		// Update the stored entrypoint
+		this.#appEntrypoint = entrypoint;
 
 		const loadPromises = this.#workers.map((worker) => {
 			return new Promise<void>((resolve, reject) => {
@@ -510,7 +513,7 @@ export class ServiceWorkerPool {
 
 				const handleReady = (event: any) => {
 					const message = event.data || event;
-					if (message.type === "ready" && message.version === version) {
+					if (message.type === "ready" && message.entrypoint === entrypoint) {
 						cleanup();
 						resolve();
 					} else if (message.type === "error") {
@@ -537,14 +540,13 @@ export class ServiceWorkerPool {
 					cleanup();
 					reject(
 						new Error(
-							`Worker failed to load ServiceWorker within 30000ms (version ${version})`,
+							`Worker failed to load ServiceWorker within 30000ms (entrypoint ${entrypoint})`,
 						),
 					);
 				}, 30000);
 
 				logger.info("Sending load message", {
-					version,
-					entrypoint: this.#appEntrypoint,
+					entrypoint,
 				});
 
 				worker.addEventListener("message", handleReady);
@@ -552,20 +554,18 @@ export class ServiceWorkerPool {
 
 				const loadMessage: WorkerLoadMessage = {
 					type: "load",
-					version,
-					entrypoint: this.#appEntrypoint,
+					entrypoint,
 				};
 
 				logger.debug("[WorkerPool] Sending load message", {
-					entrypoint: this.#appEntrypoint,
-					version,
+					entrypoint,
 				});
 				worker.postMessage(loadMessage);
 			});
 		});
 
 		await Promise.all(loadPromises);
-		logger.info("All workers reloaded", {version});
+		logger.info("All workers reloaded", {entrypoint});
 	}
 
 	/**

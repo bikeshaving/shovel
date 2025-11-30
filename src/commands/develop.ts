@@ -59,15 +59,15 @@ export async function developCommand(entrypoint, options) {
 		const watcher = new Watcher({
 			entrypoint,
 			outDir,
-			onBuild: async (success, version) => {
+			onBuild: async (success, builtEntrypoint) => {
 				if (success && serviceWorker) {
-					logger.info("Reloading Workers", {version});
+					logger.info("Reloading Workers", {entrypoint: builtEntrypoint});
 					// The reloadWorkers method is on the platform instance, not the ServiceWorker runtime
 					if (
 						platformInstance &&
 						typeof platformInstance.reloadWorkers === "function"
 					) {
-						await platformInstance.reloadWorkers(version);
+						await platformInstance.reloadWorkers(builtEntrypoint);
 					}
 					logger.info("Workers reloaded", {});
 				}
@@ -75,13 +75,11 @@ export async function developCommand(entrypoint, options) {
 		});
 
 		// Initial build and start watching
-		const buildSuccess = await watcher.start();
+		const {success: buildSuccess, entrypoint: builtEntrypoint} =
+			await watcher.start();
 		if (!buildSuccess) {
 			logger.error("Initial build failed, watching for changes to retry", {});
 		}
-
-		// Load ServiceWorker app from built output
-		const builtEntrypoint = `${outDir}/server/app.js`;
 		serviceWorker = await platformInstance.loadServiceWorker(builtEntrypoint, {
 			hotReload: true,
 			workerCount,

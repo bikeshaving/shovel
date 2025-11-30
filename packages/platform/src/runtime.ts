@@ -1369,7 +1369,7 @@ let scope: ShovelGlobalScope | null = null;
 let _workerSelf: ShovelGlobalScope | null = null;
 let currentApp: any = null;
 let serviceWorkerReady = false;
-let loadedVersion: number | string | null = null;
+let loadedEntrypoint: string | null = null;
 let caches: CacheStorage | undefined;
 let buckets: BucketStorage | undefined;
 
@@ -1386,7 +1386,9 @@ async function handleFetchEvent(request: Request): Promise<Response> {
 		const response = await registration.handleRequest(request);
 		return response;
 	} catch (error) {
+		// Log to both logtape and console.error - logtape may not be configured in workers
 		logger.error("[Worker] ServiceWorker request failed", {error});
+		console.error("[Worker] ServiceWorker request failed:", error);
 		const response = new Response("ServiceWorker request failed", {
 			status: 500,
 		});
@@ -1394,31 +1396,22 @@ async function handleFetchEvent(request: Request): Promise<Response> {
 	}
 }
 
-async function loadServiceWorker(
-	version: number | string,
-	entrypoint?: string,
-): Promise<void> {
+async function loadServiceWorker(entrypoint: string): Promise<void> {
 	try {
 		logger.debug("loadServiceWorker called", {
-			version,
-			loadedVersion,
+			entrypoint,
+			loadedEntrypoint,
 		});
 
 		// Register standard buckets on first load
 		// Buckets are now created dynamically via CustomBucketStorage factory
 		// No need for global registration
 
-		if (!entrypoint) {
-			throw new Error(
-				"ServiceWorker entrypoint must be provided via loadServiceWorker() call",
-			);
-		}
-
 		logger.info("[Worker] Loading from", {entrypoint: entrypoint});
 
-		if (loadedVersion !== null && loadedVersion !== version) {
+		if (loadedEntrypoint !== null && loadedEntrypoint !== entrypoint) {
 			logger.info(
-				`[Worker] Hot reload detected: ${loadedVersion} -> ${version}`,
+				`[Worker] Hot reload detected: ${loadedEntrypoint} -> ${entrypoint}`,
 			);
 			logger.info("[Worker] Creating completely fresh ServiceWorker context");
 
@@ -1438,17 +1431,17 @@ async function loadServiceWorker(
 			serviceWorkerReady = false;
 		}
 
-		if (loadedVersion === version) {
-			logger.info("[Worker] ServiceWorker already loaded for version", {
-				version,
+		if (loadedEntrypoint === entrypoint) {
+			logger.info("[Worker] ServiceWorker already loaded for entrypoint", {
+				entrypoint,
 			});
 			return;
 		}
 
-		// Import the application
-		const appModule = await import(`${entrypoint}?v=${version}`);
+		// Import the application - use entrypoint directly since filename is content-hashed
+		const appModule = await import(entrypoint);
 
-		loadedVersion = version;
+		loadedEntrypoint = entrypoint;
 		currentApp = appModule;
 
 		// Run ServiceWorker lifecycle
@@ -1460,7 +1453,7 @@ async function loadServiceWorker(
 		serviceWorkerReady = true;
 
 		logger.info(
-			`[Worker] ServiceWorker loaded and activated (v${version}) from ${entrypoint}`,
+			`[Worker] ServiceWorker loaded and activated from ${entrypoint}`,
 		);
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1518,8 +1511,8 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
 			sendMessage({type: "initialized"});
 		} else if (message.type === "load") {
 			const loadMsg = message as WorkerLoadMessage;
-			await loadServiceWorker(loadMsg.version, loadMsg.entrypoint);
-			sendMessage({type: "ready", version: loadMsg.version});
+			await loadServiceWorker(loadMsg.entrypoint);
+			sendMessage({type: "ready", entrypoint: loadMsg.entrypoint});
 		} else if (message.type === "request") {
 			const reqMsg = message as WorkerRequest;
 

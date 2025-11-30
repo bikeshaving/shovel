@@ -89,7 +89,9 @@ self.addEventListener("fetch", (event) => {
 			await pool.init();
 
 			// reloadWorkers should throw with the ReferenceError
-			await expect(pool.reloadWorkers()).rejects.toThrow(/ReferenceError|undefinedVariable|not defined/);
+			await expect(pool.reloadWorkers(entrypoint)).rejects.toThrow(
+				/ReferenceError|undefinedVariable|not defined/,
+			);
 		},
 		TIMEOUT,
 	);
@@ -123,7 +125,9 @@ self.addEventListener("fetch", (event) => {
 			await pool.init();
 
 			// reloadWorkers should throw with the TypeError
-			await expect(pool.reloadWorkers()).rejects.toThrow(/TypeError|not a function|null/);
+			await expect(pool.reloadWorkers(entrypoint)).rejects.toThrow(
+				/TypeError|not a function|null/,
+			);
 		},
 		TIMEOUT,
 	);
@@ -155,7 +159,9 @@ self.addEventListener("fetch", (event) => {
 			await pool.init();
 
 			// reloadWorkers should throw with module not found error
-			await expect(pool.reloadWorkers()).rejects.toThrow(/does-not-exist|Cannot find|not found|resolve/i);
+			await expect(pool.reloadWorkers(entrypoint)).rejects.toThrow(
+				/does-not-exist|Cannot find|not found|resolve/i,
+			);
 		},
 		TIMEOUT,
 	);
@@ -197,7 +203,9 @@ self.addEventListener("fetch", (event) => {
 			await pool.init();
 
 			// reloadWorkers should throw with export not found error
-			await expect(pool.reloadWorkers()).rejects.toThrow(/thisExportDoesNotExist|not found|does not provide|export/i);
+			await expect(pool.reloadWorkers(entrypoint)).rejects.toThrow(
+				/thisExportDoesNotExist|not found|does not provide|export/i,
+			);
 		},
 		TIMEOUT,
 	);
@@ -229,7 +237,9 @@ self.addEventListener("fetch", (event) => {
 			await pool.init();
 
 			// reloadWorkers should throw with the intentional error
-			await expect(pool.reloadWorkers()).rejects.toThrow(/Intentional error at module level/);
+			await expect(pool.reloadWorkers(entrypoint)).rejects.toThrow(
+				/Intentional error at module level/,
+			);
 		},
 		TIMEOUT,
 	);
@@ -262,7 +272,9 @@ self.addEventListener("fetch", (event) => {
 			await pool.init();
 
 			// reloadWorkers should throw with the async error
-			await expect(pool.reloadWorkers()).rejects.toThrow(/Async initialization failed/);
+			await expect(pool.reloadWorkers(entrypoint)).rejects.toThrow(
+				/Async initialization failed/,
+			);
 		},
 		TIMEOUT,
 	);
@@ -295,7 +307,9 @@ self.addEventListener("fetch", (event) => {
 			await pool.init();
 
 			// reloadWorkers should throw with the TypeError
-			await expect(pool.reloadWorkers()).rejects.toThrow(/TypeError|Cannot read|undefined/);
+			await expect(pool.reloadWorkers(entrypoint)).rejects.toThrow(
+				/TypeError|Cannot read|undefined/,
+			);
 		},
 		TIMEOUT,
 	);
@@ -324,11 +338,14 @@ throw new Error("Initial error");
 			await pool.init();
 
 			// First load should fail
-			await expect(pool.reloadWorkers(1)).rejects.toThrow(/Initial error/);
+			await expect(pool.reloadWorkers(entrypoint)).rejects.toThrow(
+				/Initial error/,
+			);
 
-			// Now fix the ServiceWorker
+			// Now fix the ServiceWorker - use a different filename for the fix
+			const fixedEntrypoint = join(tempDir, "app-fixed.js");
 			await FS.writeFile(
-				entrypoint,
+				fixedEntrypoint,
 				`
 self.addEventListener("fetch", (event) => {
 	event.respondWith(new Response("Fixed!"));
@@ -336,8 +353,10 @@ self.addEventListener("fetch", (event) => {
 `,
 			);
 
-			// Second load should succeed
-			await expect(pool.reloadWorkers(2)).resolves.toBeUndefined();
+			// Second load should succeed with new entrypoint
+			await expect(
+				pool.reloadWorkers(fixedEntrypoint),
+			).resolves.toBeUndefined();
 
 			// Pool should be ready
 			expect(pool.ready).toBe(true);

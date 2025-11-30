@@ -79,53 +79,46 @@ export class SingleThreadedRuntime {
 
 	/**
 	 * Load and run a ServiceWorker entrypoint
+	 * @param entrypoint - Path to the new entrypoint (hashed filename for cache busting)
 	 */
-	async reloadWorkers(version?: number | string): Promise<void> {
-		if (!this.#entrypoint) {
-			throw new Error("No entrypoint set - call loadEntrypoint first");
-		}
-
+	async reloadWorkers(entrypoint: string): Promise<void> {
 		logger.info("Reloading ServiceWorker", {
-			version,
-			entrypoint: this.#entrypoint,
+			oldEntrypoint: this.#entrypoint,
+			newEntrypoint: entrypoint,
 		});
 
-		// For single-threaded mode, we need to re-import the module
-		// ESM doesn't support cache invalidation, so use query string
-		const importPath = version
-			? `${this.#entrypoint}?v=${version}`
-			: this.#entrypoint;
+		// Update the entrypoint to the new hashed filename
+		this.#entrypoint = entrypoint;
 
 		// Reset registration state for reload
 		this.#registration._serviceWorker._setState("parsed");
 		this.#ready = false;
 
-		// Import the user's ServiceWorker code
-		await import(importPath);
+		// Import the user's ServiceWorker code - filename is content-hashed
+		// so the new file is guaranteed to be a fresh import (no cache issues)
+		await import(entrypoint);
 
 		// Run lifecycle events
 		await this.#registration.install();
 		await this.#registration.activate();
 
 		this.#ready = true;
-		logger.info("ServiceWorker loaded and activated", {version});
+		logger.info("ServiceWorker loaded and activated", {entrypoint});
 	}
 
 	/**
 	 * Load a ServiceWorker entrypoint for the first time
+	 * @param entrypoint - Path to the entrypoint file (content-hashed filename)
 	 */
-	async loadEntrypoint(
-		entrypoint: string,
-		version?: number | string,
-	): Promise<void> {
+	async loadEntrypoint(entrypoint: string): Promise<void> {
 		this.#entrypoint = entrypoint;
 
-		logger.info("Loading ServiceWorker entrypoint", {entrypoint, version});
+		logger.info("Loading ServiceWorker entrypoint", {entrypoint});
 
 		// Import the user's ServiceWorker code
 		// The import will call self.addEventListener("fetch", ...) which registers on our scope
-		const importPath = version ? `${entrypoint}?v=${version}` : entrypoint;
-		await import(importPath);
+		// Filename is content-hashed, so no query string needed for cache busting
+		await import(entrypoint);
 
 		// Run lifecycle events
 		await this.#registration.install();

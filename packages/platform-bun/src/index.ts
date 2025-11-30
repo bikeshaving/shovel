@@ -216,8 +216,7 @@ export class BunPlatform extends BasePlatform {
 
 		// Initialize and load entrypoint
 		await this.#singleThreadedRuntime.init();
-		const version = Date.now();
-		await this.#singleThreadedRuntime.loadEntrypoint(entryPath, version);
+		await this.#singleThreadedRuntime.loadEntrypoint(entryPath);
 
 		// Capture reference for closures
 		const runtime = this.#singleThreadedRuntime;
@@ -299,8 +298,7 @@ export class BunPlatform extends BasePlatform {
 		await this.#workerPool.init();
 
 		// Load ServiceWorker in all workers
-		const version = Date.now();
-		await this.#workerPool.reloadWorkers(version);
+		await this.#workerPool.reloadWorkers(entryPath);
 
 		// Capture references for closures
 		const workerPool = this.#workerPool;
@@ -340,12 +338,13 @@ export class BunPlatform extends BasePlatform {
 
 	/**
 	 * Reload workers for hot reloading (called by CLI)
+	 * @param entrypoint - Path to the new entrypoint (hashed filename)
 	 */
-	async reloadWorkers(version?: number | string): Promise<void> {
+	async reloadWorkers(entrypoint: string): Promise<void> {
 		if (this.#workerPool) {
-			await this.#workerPool.reloadWorkers(version);
+			await this.#workerPool.reloadWorkers(entrypoint);
 		} else if (this.#singleThreadedRuntime) {
-			await this.#singleThreadedRuntime.reloadWorkers(version);
+			await this.#singleThreadedRuntime.reloadWorkers(entrypoint);
 		}
 	}
 
