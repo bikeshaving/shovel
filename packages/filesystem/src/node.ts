@@ -5,11 +5,7 @@
  * using Node.js fs module.
  */
 
-import {
-	type FileSystemBackend,
-	ShovelDirectoryHandle,
-	ShovelFileHandle,
-} from "./index.js";
+import {type FileSystemBackend, ShovelDirectoryHandle} from "./index.js";
 import * as FS from "fs/promises";
 import * as Path from "path";
 

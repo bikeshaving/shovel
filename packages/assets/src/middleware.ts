@@ -101,7 +101,9 @@ export function assets(config: AssetsMiddlewareConfig = {}) {
 
 		// Use content type from manifest if available, otherwise detect
 		const contentType =
-			manifestEntry.type || mime.getType(requestedPath) || "application/octet-stream";
+			manifestEntry.type ||
+			mime.getType(requestedPath) ||
+			"application/octet-stream";
 
 		// Create response headers
 		const headers = new Headers({

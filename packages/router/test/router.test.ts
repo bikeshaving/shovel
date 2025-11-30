@@ -1486,7 +1486,9 @@ describe("Path-Scoped Middleware", () => {
 		router.use("/admin", adminMiddleware);
 		router.route("/admin").get(async () => new Response("admin root"));
 		router.route("/admin/users").get(async () => new Response("admin users"));
-		router.route("/administrator").get(async () => new Response("administrator"));
+		router
+			.route("/administrator")
+			.get(async () => new Response("administrator"));
 
 		// /admin should match
 		let request = new Request("http://example.com/admin");
@@ -1629,11 +1631,18 @@ describe("Subrouter Mount Middleware Scoping", () => {
 
 		// Subrouter with path-scoped middleware
 		const apiRouter = new Router();
-		apiRouter.use("/admin", function adminMiddleware(_request: Request, _context: any) {
-			executionOrder.push("admin");
-		});
-		apiRouter.route("/admin/users").get(async () => new Response("Admin users"));
-		apiRouter.route("/public/page").get(async () => new Response("Public page"));
+		apiRouter.use(
+			"/admin",
+			function adminMiddleware(_request: Request, _context: any) {
+				executionOrder.push("admin");
+			},
+		);
+		apiRouter
+			.route("/admin/users")
+			.get(async () => new Response("Admin users"));
+		apiRouter
+			.route("/public/page")
+			.get(async () => new Response("Public page"));
 
 		// Mount at /api
 		router.mount("/api", apiRouter);
@@ -1656,7 +1665,10 @@ describe("Subrouter Mount Middleware Scoping", () => {
 
 		// Shared subrouter
 		const sharedRouter = new Router();
-		sharedRouter.use(function sharedMiddleware(_request: Request, context: any) {
+		sharedRouter.use(function sharedMiddleware(
+			_request: Request,
+			context: any,
+		) {
 			executionOrder.push(`shared-${context.params.version || "no-version"}`);
 		});
 		sharedRouter.route("/users").get(async () => new Response("Users"));

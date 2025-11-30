@@ -28,12 +28,13 @@ export interface CFAssetsBinding {
  * Directory listing is not supported (ASSETS binding limitation).
  */
 export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
-	readonly kind = "directory" as const;
+	readonly kind: "directory";
 	readonly name: string;
 	#assets: CFAssetsBinding;
 	#basePath: string;
 
 	constructor(assets: CFAssetsBinding, basePath = "/") {
+		this.kind = "directory";
 		this.#assets = assets;
 		this.#basePath = basePath.endsWith("/") ? basePath : basePath + "/";
 		this.name = basePath.split("/").filter(Boolean).pop() || "assets";
@@ -80,6 +81,7 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		return null;
 	}
 
+	// eslint-disable-next-line require-yield
 	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
 		// ASSETS binding doesn't support directory listing
 		throw new DOMException(
@@ -88,6 +90,7 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		);
 	}
 
+	// eslint-disable-next-line require-yield
 	async *keys(): AsyncIterableIterator<string> {
 		throw new DOMException(
 			"Directory listing not supported for ASSETS binding",
@@ -95,6 +98,7 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		);
 	}
 
+	// eslint-disable-next-line require-yield
 	async *values(): AsyncIterableIterator<FileSystemHandle> {
 		throw new DOMException(
 			"Directory listing not supported for ASSETS binding",
@@ -118,12 +122,13 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
  * FileSystemFileHandle implementation for CF ASSETS binding files.
  */
 export class CFAssetsFileHandle implements FileSystemFileHandle {
-	readonly kind = "file" as const;
+	readonly kind: "file";
 	readonly name: string;
 	#assets: CFAssetsBinding;
 	#path: string;
 
 	constructor(assets: CFAssetsBinding, path: string, name: string) {
+		this.kind = "file";
 		this.#assets = assets;
 		this.#path = path;
 		this.name = name;

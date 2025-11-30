@@ -39,7 +39,13 @@ import {NodeGlobalsPolyfillPlugin} from "@esbuild-plugins/node-globals-polyfill"
 /**
  * File extensions that need transpilation
  */
-const TRANSPILABLE_EXTENSIONS = new Set([".ts", ".tsx", ".jsx", ".mts", ".cts"]);
+const TRANSPILABLE_EXTENSIONS = new Set([
+	".ts",
+	".tsx",
+	".jsx",
+	".mts",
+	".cts",
+]);
 
 const logger = getLogger(["assets"]);
 
@@ -144,6 +150,9 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 	const manifest: AssetManifest = {
 		assets: {},
 		generated: new Date().toISOString(),
+		config: {
+			outDir: config.outDir,
+		},
 	};
 
 	return {

@@ -48,8 +48,6 @@ export interface AssetManifest {
 	generated: string;
 	/** Configuration used */
 	config: {
-		publicPath: string;
-		outputDir: string;
+		outDir: string;
 	};
 }
-

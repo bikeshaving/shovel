@@ -145,7 +145,9 @@ export class HTTPError extends Error {
 
 		// Production mode: plain text, minimal info
 		headers.set("Content-Type", "text/plain; charset=utf-8");
-		const body = this.expose ? this.message : STATUS_CODES[this.status] || "Error";
+		const body = this.expose
+			? this.message
+			: STATUS_CODES[this.status] || "Error";
 		return new Response(body, {
 			status: this.status,
 			statusText: STATUS_CODES[this.status],

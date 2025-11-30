@@ -789,7 +789,10 @@ export function createBucketFactory(options: BucketFactoryOptions) {
 			// Pass name and path along with other options
 			return new BucketClass(name, {path: bucketPath, ...bucketOptions});
 		} catch (error: any) {
-			if (error.code === "ERR_MODULE_NOT_FOUND" || error.code === "MODULE_NOT_FOUND") {
+			if (
+				error.code === "ERR_MODULE_NOT_FOUND" ||
+				error.code === "MODULE_NOT_FOUND"
+			) {
 				throw new Error(
 					`Bucket provider "${provider}" not found. ` +
 						`Make sure the module "${modulePath}" is installed.\n` +
@@ -876,7 +879,10 @@ export function createCacheFactory(options: CacheFactoryOptions = {}) {
 
 			return new CacheClass(name, cacheOptions);
 		} catch (error: any) {
-			if (error.code === "ERR_MODULE_NOT_FOUND" || error.code === "MODULE_NOT_FOUND") {
+			if (
+				error.code === "ERR_MODULE_NOT_FOUND" ||
+				error.code === "MODULE_NOT_FOUND"
+			) {
 				throw new Error(
 					`Cache provider "${provider}" not found. ` +
 						`Make sure the module "${modulePath}" is installed.\n` +

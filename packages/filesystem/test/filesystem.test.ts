@@ -22,10 +22,7 @@ describe("Filesystem Handles", () => {
 			},
 
 			async readFile(path: string) {
-				const files: Record<
-					string,
-					{content: string; lastModified: number}
-				> = {
+				const files: Record<string, {content: string; lastModified: number}> = {
 					"/app.js": {
 						content: "console.log('Hello');",
 						lastModified: 1700000000000,

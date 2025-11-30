@@ -58,12 +58,15 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
 export class CloudflarePlatform extends BasePlatform {
 	readonly name: string;
 	#options: Required<CloudflarePlatformOptions>;
-	#miniflare: Miniflare | null = null;
-	#assetsMiniflare: Miniflare | null = null; // Separate instance for ASSETS binding
-	#assetsBinding: CFAssetsBinding | null = null;
+	#miniflare: Miniflare | null;
+	#assetsMiniflare: Miniflare | null; // Separate instance for ASSETS binding
+	#assetsBinding: CFAssetsBinding | null;
 
 	constructor(options: CloudflarePlatformOptions = {}) {
 		super(options);
+		this.#miniflare = null;
+		this.#assetsMiniflare = null;
+		this.#assetsBinding = null;
 		this.name = "cloudflare";
 		this.#options = {
 			environment: "production",
@@ -201,7 +204,20 @@ export class CloudflarePlatform extends BasePlatform {
 		const instance: ServiceWorkerInstance = {
 			runtime: mf,
 			handleRequest: async (request: Request) => {
-				return mf.dispatchFetch(request);
+				// Miniflare's dispatchFetch has Cloudflare-specific types that differ from
+				// standard web types. Use explicit any cast to bridge the type systems.
+				const cfResponse = await (mf.dispatchFetch as Function)(request.url, {
+					method: request.method,
+					headers: request.headers,
+					body: request.body,
+					duplex: request.body ? "half" : undefined,
+				});
+				// Convert Cloudflare-specific Response to standard Response
+				return new Response(cfResponse.body as BodyInit | null, {
+					status: cfResponse.status,
+					statusText: cfResponse.statusText,
+					headers: cfResponse.headers as HeadersInit,
+				});
 			},
 			install: () => Promise.resolve(),
 			activate: () => Promise.resolve(),

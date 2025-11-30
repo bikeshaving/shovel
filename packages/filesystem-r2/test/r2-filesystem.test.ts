@@ -95,7 +95,6 @@ describe("R2 Filesystem", () => {
 				expect((error as DOMException).name).toBe("InvalidStateError");
 			}
 		});
-
 	});
 
 	describe("R2FileSystemDirectoryHandle", () => {

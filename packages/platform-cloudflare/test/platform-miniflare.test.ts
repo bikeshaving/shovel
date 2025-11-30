@@ -68,8 +68,8 @@ self.addEventListener("fetch", (event) => {
 
 		// Debug: log what we got
 		const text = await response.clone().text();
-		console.log("Response status:", response.status);
-		console.log("Response body:", text);
+		console.info("Response status:", response.status);
+		console.info("Response body:", text);
 
 		expect(response.status).toBe(200);
 

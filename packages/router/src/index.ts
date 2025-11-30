@@ -74,6 +74,13 @@ export type FunctionMiddleware = (
 export type Middleware = GeneratorMiddleware | FunctionMiddleware;
 
 /**
+ * Internal type for running generator instances
+ */
+type MiddlewareGenerator =
+	| Generator<Request, Response | null | undefined, Response>
+	| AsyncGenerator<Request, Response | null | undefined, Response>;
+
+/**
  * HTTP methods supported by the router
  */
 export type HTTPMethod =
@@ -810,8 +817,10 @@ export class Router {
 		originalURL: string,
 		executor?: RadixTreeExecutor | null,
 	): Promise<Response> {
-		const runningGenerators: Array<{generator: AsyncGenerator; index: number}> =
-			[];
+		const runningGenerators: Array<{
+			generator: MiddlewareGenerator;
+			index: number;
+		}> = [];
 		let currentResponse: Response | null = null;
 
 		// Extract pathname from request URL for prefix matching
@@ -911,8 +920,11 @@ export class Router {
 		// This implements the Rack-style guaranteed execution
 		for (let i = runningGenerators.length - 1; i >= 0; i--) {
 			const {generator} = runningGenerators[i];
-			const result = await generator.next(currentResponse);
-			if (result.value) {
+			// currentResponse should always be set by this point (from handler or short-circuit)
+			// Use non-null assertion since generators expect a Response
+			const result = await generator.next(currentResponse!);
+			// result.value is the return value (Response | null | undefined), not the yield (Request)
+			if (result.value && result.done) {
 				currentResponse = result.value;
 			}
 		}
@@ -925,7 +937,7 @@ export class Router {
 	 */
 	async #handleErrorThroughGenerators(
 		error: Error,
-		runningGenerators: Array<{generator: AsyncGenerator; index: number}>,
+		runningGenerators: Array<{generator: MiddlewareGenerator; index: number}>,
 	): Promise<Response> {
 		// Try error handling starting from the innermost middleware (reverse order)
 		for (let i = runningGenerators.length - 1; i >= 0; i--) {
@@ -933,7 +945,9 @@ export class Router {
 
 			try {
 				const result = await generator.throw(error);
-				if (result.value) {
+				// When done=true, value is the return type (Response | null | undefined)
+				// When done=false, value is the yield type (Request) - generator caught and re-yielded
+				if (result.done && result.value) {
 					// This generator handled the error - remove it from the stack
 					// so it doesn't get resumed again in phase 3
 					runningGenerators.splice(i, 1);

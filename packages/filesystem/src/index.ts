@@ -49,9 +49,7 @@ export interface FileSystemBackend {
 	 * @returns File content and metadata
 	 * @throws NotFoundError if file doesn't exist
 	 */
-	readFile(
-		path: string,
-	): Promise<{content: Uint8Array; lastModified?: number}>;
+	readFile(path: string): Promise<{content: Uint8Array; lastModified?: number}>;
 
 	/**
 	 * Write file content

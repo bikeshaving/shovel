@@ -295,7 +295,11 @@ export default styleUrl;`,
 });
 
 // Helper to write content to a MemoryBucket
-async function writeToMemoryBucket(bucket: MemoryBucket, path: string, content: string) {
+async function writeToMemoryBucket(
+	bucket: MemoryBucket,
+	path: string,
+	content: string,
+) {
 	const handle = await bucket.getFileHandle(path, {create: true});
 	const writable = await handle.createWritable();
 	await writable.write(new TextEncoder().encode(content));
@@ -305,8 +309,18 @@ async function writeToMemoryBucket(bucket: MemoryBucket, path: string, content: 
 describe("Assets Middleware", () => {
 	const manifest = {
 		assets: {
-			"/app.js": {url: "/app.js", type: "application/javascript", size: 1234, hash: "abc123"},
-			"/styles.css": {url: "/styles.css", type: "text/css", size: 567, hash: "def456"},
+			"/app.js": {
+				url: "/app.js",
+				type: "application/javascript",
+				size: 1234,
+				hash: "abc123",
+			},
+			"/styles.css": {
+				url: "/styles.css",
+				type: "text/css",
+				size: 567,
+				hash: "def456",
+			},
 		},
 	};
 
@@ -314,7 +328,11 @@ describe("Assets Middleware", () => {
 		const serverBucket = new MemoryBucket("server");
 		const staticBucket = new MemoryBucket("static");
 
-		await writeToMemoryBucket(serverBucket, "manifest.json", JSON.stringify(manifest));
+		await writeToMemoryBucket(
+			serverBucket,
+			"manifest.json",
+			JSON.stringify(manifest),
+		);
 		await writeToMemoryBucket(staticBucket, "app.js", "console.log('app')");
 		await writeToMemoryBucket(staticBucket, "styles.css", "body{}");
 
@@ -391,7 +409,11 @@ describe("Assets Middleware", () => {
 				"/app.js": {url: "/app.js", size: 1234, hash: "abc123"}, // No type
 			},
 		};
-		await writeToMemoryBucket(serverBucket, "manifest.json", JSON.stringify(noTypeManifest));
+		await writeToMemoryBucket(
+			serverBucket,
+			"manifest.json",
+			JSON.stringify(noTypeManifest),
+		);
 		await writeToMemoryBucket(staticBucket, "app.js", "console.log('app')");
 
 		(globalThis as any).self = {

@@ -254,7 +254,10 @@ async function createBuildConfig({
 				mainFields: ["module", "main"],
 				conditions: ["import", "module"],
 				// Allow user code to import @b9g packages from shovel's packages directory
-				nodePaths: [join(shovelRoot, "packages"), join(shovelRoot, "node_modules")],
+				nodePaths: [
+					join(shovelRoot, "packages"),
+					join(shovelRoot, "node_modules"),
+				],
 				plugins: [
 					importMetaPlugin(),
 					assetsPlugin({
