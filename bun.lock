@@ -125,7 +125,7 @@
     },
     "packages/assets": {
       "name": "@b9g/assets",
-      "version": "0.1.6",
+      "version": "0.1.12",
       "dependencies": {
         "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
         "@esbuild-plugins/node-modules-polyfill": "^0.2.2",
@@ -188,7 +188,7 @@
     },
     "packages/filesystem": {
       "name": "@b9g/filesystem",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "devDependencies": {
         "@b9g/libuild": "^0.1.11",
         "@types/bun": "^1.2.2",
@@ -202,7 +202,7 @@
     },
     "packages/filesystem-r2": {
       "name": "@b9g/filesystem-r2",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "dependencies": {
         "@b9g/filesystem": "workspace:*",
       },
@@ -216,7 +216,7 @@
     },
     "packages/filesystem-s3": {
       "name": "@b9g/filesystem-s3",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "dependencies": {
         "@b9g/filesystem": "workspace:*",
       },
@@ -230,7 +230,7 @@
     },
     "packages/http-errors": {
       "name": "@b9g/http-errors",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "devDependencies": {
         "@b9g/libuild": "^0.1.11",
         "bun-types": "latest",
@@ -261,7 +261,7 @@
     },
     "packages/platform": {
       "name": "@b9g/platform",
-      "version": "0.1.6",
+      "version": "0.1.9",
       "dependencies": {
         "@b9g/async-context": "workspace:*",
         "@b9g/cache": "workspace:*",
@@ -275,7 +275,7 @@
     },
     "packages/platform-bun": {
       "name": "@b9g/platform-bun",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/platform": "workspace:*",
@@ -287,7 +287,7 @@
     },
     "packages/platform-cloudflare": {
       "name": "@b9g/platform-cloudflare",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/cache": "workspace:*",
@@ -302,7 +302,7 @@
     },
     "packages/platform-node": {
       "name": "@b9g/platform-node",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "dependencies": {
         "@b9g/platform": "workspace:*",
       },
@@ -314,8 +314,9 @@
     },
     "packages/router": {
       "name": "@b9g/router",
-      "version": "0.1.6",
+      "version": "0.1.8",
       "dependencies": {
+        "@b9g/http-errors": "workspace:*",
         "@b9g/match-pattern": "workspace:*",
       },
       "devDependencies": {
@@ -1047,10 +1048,6 @@
 
     "@b9g/filesystem-s3/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
 
-    "@b9g/http-errors/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
-
-    "@b9g/match-pattern/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
-
     "@b9g/node-webworker/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
 
     "@b9g/node-webworker/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
@@ -1058,8 +1055,6 @@
     "@b9g/platform-cloudflare/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
 
     "@b9g/platform-node/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
-
-    "@b9g/router/@b9g/libuild": ["@b9g/libuild@0.1.15", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-zdOa366pk5c4YDfuJ4Z2wRI3agtkBY1z7jHdrJrUIvKUn+YtUxo+4ijc6AUuxKHKkZsB0eXOnHpQaCiBsQY0SA=="],
 
     "@clack/prompts/is-unicode-supported": ["is-unicode-supported@2.1.0", "", { "bundled": true }, "sha512-mE00Gnza5EEB3Ds0HfMyllZzbBrmLOX3vfWoj9A9PEnTfratQ/BcaJOuMhnkhjXvb2+FkY3VuHqtAGpTPmglFQ=="],
 

@@ -18,7 +18,12 @@ import {
 	compilePathname,
 	type CompiledPattern,
 } from "@b9g/match-pattern";
-import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
+import {
+	InternalServerError,
+	NotFound,
+	isHTTPError,
+	HTTPError,
+} from "@b9g/http-errors";
 
 // ============================================================================
 // TYPES
@@ -500,7 +505,7 @@ export class Router {
 				} else {
 					// No route found - execute global middleware with 404 fallback
 					const notFoundHandler = async (): Promise<Response> => {
-						return new Response("Not Found", {status: 404});
+						throw new NotFound();
 					};
 					const mutableRequest = this.#createMutableRequest(request);
 					return await this.#executeMiddlewareStack(
@@ -628,19 +633,30 @@ export class Router {
 			context = matchResult.context;
 		} else {
 			// No route found - use 404 handler and empty context
-			handler = async () => new Response("Not Found", {status: 404});
+			handler = async () => {
+				throw new NotFound();
+			};
 			context = {params: {}};
 		}
 
 		// Execute middleware chain with the handler
-		let response = await this.#executeMiddlewareStack(
-			this.#middlewares,
-			mutableRequest,
-			context,
-			handler,
-			originalURL,
-			this.#executor, // Pass executor for re-routing
-		);
+		let response: Response;
+		try {
+			response = await this.#executeMiddlewareStack(
+				this.#middlewares,
+				mutableRequest,
+				context,
+				handler,
+				originalURL,
+				this.#executor, // Pass executor for re-routing
+			);
+		} catch (error) {
+			// If no route was found and NotFound was thrown, return null
+			if (!matchResult && isHTTPError(error) && error.status === 404) {
+				return null;
+			}
+			throw error;
+		}
 
 		// If no route was found originally, return null unless middleware handled it
 		if (!matchResult && response?.status === 404) {
@@ -899,10 +915,20 @@ export class Router {
 
 			// Handle errors through generator stack if needed
 			if (handlerError) {
-				currentResponse = await this.#handleErrorThroughGenerators(
-					handlerError,
-					runningGenerators,
-				);
+				// If URL was modified, generate redirect instead of propagating the error
+				// This handles the case where middleware modifies URL but no route matches
+				if (request.url !== originalURL) {
+					currentResponse = this.#handleAutomaticRedirect(
+						originalURL,
+						request.url,
+						request.method,
+					);
+				} else {
+					currentResponse = await this.#handleErrorThroughGenerators(
+						handlerError,
+						runningGenerators,
+					);
+				}
 			}
 		}
 

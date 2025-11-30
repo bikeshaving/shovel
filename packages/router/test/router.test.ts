@@ -894,7 +894,9 @@ describe("Router Integration", () => {
 
 		expect(executionOrder).toEqual(["middleware"]);
 		expect(response.status).toBe(404);
-		expect(await response.text()).toBe("Not Found");
+		// Router uses HTTPError.toResponse() which generates HTML in dev mode
+		expect(response.headers.get("Content-Type")).toContain("text/html");
+		expect(await response.text()).toContain("404 Not Found");
 	});
 });
 
