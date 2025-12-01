@@ -1338,6 +1338,7 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 // ============================================================================
 
 import {getLogger} from "@logtape/logtape";
+import {configureLogging} from "./config.js";
 
 const logger = getLogger(["worker"]);
 
@@ -1473,6 +1474,11 @@ let sendMessage: (message: WorkerMessage, transfer?: Transferable[]) => void;
 
 async function initializeRuntime(config: any, baseDir: string): Promise<void> {
 	try {
+		// Configure LogTape for this worker using the shared config
+		if (config?.logging) {
+			await configureLogging(config.logging);
+		}
+
 		logger.info(`[Worker-${workerId}] Initializing runtime with config`, {
 			config,
 			baseDir,

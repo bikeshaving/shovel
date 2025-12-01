@@ -10,6 +10,7 @@ import {ShovelGlobalScope, ShovelServiceWorkerRegistration} from "./runtime.js";
 import {CustomBucketStorage} from "@b9g/filesystem";
 import {CustomCacheStorage} from "@b9g/cache";
 import {
+	configureLogging,
 	createBucketFactory,
 	createCacheFactory,
 	type ProcessedShovelConfig,
@@ -72,6 +73,11 @@ export class SingleThreadedRuntime {
 	 * Initialize the runtime (install scope as globalThis.self)
 	 */
 	async init(): Promise<void> {
+		// Configure LogTape for this runtime using the shared config
+		if (this.#config?.logging) {
+			await configureLogging(this.#config.logging);
+		}
+
 		// Install scope as globalThis.self, addEventListener, etc.
 		this.#scope.install();
 		logger.info("SingleThreadedRuntime initialized - scope installed");

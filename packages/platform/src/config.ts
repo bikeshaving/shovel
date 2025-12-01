@@ -20,6 +20,7 @@
 import {readFileSync} from "fs";
 import {resolve} from "path";
 import {Cache} from "@b9g/cache";
+import {configure, getConsoleSink, type LogLevel as LogTapeLevel} from "@logtape/logtape";
 
 /**
  * Get environment variables from import.meta.env or process.env
@@ -598,11 +599,24 @@ export interface BucketConfig {
 	endpoint?: string | number;
 }
 
+/** Log level for filtering */
+export type LogLevel = "debug" | "info" | "warning" | "error";
+
+export interface LoggingConfig {
+	/** Default log level. Defaults to "error" */
+	level?: LogLevel;
+	/** Per-category log levels (overrides default) */
+	categories?: Record<string, LogLevel>;
+}
+
 export interface ShovelConfig {
 	// Server
 	port?: number | string;
 	host?: string;
 	workers?: number | string;
+
+	// Logging
+	logging?: LoggingConfig;
 
 	// Caches (per-name with patterns)
 	caches?: Record<string, CacheConfig>;
@@ -615,6 +629,7 @@ export interface ProcessedShovelConfig {
 	port: number;
 	host: string;
 	workers: number;
+	logging: Required<LoggingConfig>;
 	caches: Record<string, CacheConfig>;
 	buckets: Record<string, BucketConfig>;
 }
@@ -661,11 +676,76 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 		port: typeof processed.port === "number" ? processed.port : 3000,
 		host: processed.host || "localhost",
 		workers: typeof processed.workers === "number" ? processed.workers : 1,
+		logging: {
+			level: processed.logging?.level || "error",
+			categories: processed.logging?.categories || {},
+		},
 		caches: processed.caches || {},
 		buckets: processed.buckets || {},
 	};
 
 	return config;
+}
+
+// ============================================================================
+// LOGGING CONFIGURATION
+// ============================================================================
+
+/** All Shovel package categories for logging */
+const SHOVEL_CATEGORIES = [
+	"cli",
+	"watcher",
+	"worker",
+	"single-threaded",
+	"assets",
+	"platform-node",
+	"platform-bun",
+	"platform-cloudflare",
+	"cache",
+	"cache-redis",
+	"router",
+] as const;
+
+/**
+ * Configure LogTape logging based on Shovel config.
+ * Call this in both main thread and workers.
+ *
+ * @param loggingConfig - The logging configuration from ProcessedShovelConfig.logging
+ * @param options - Additional options
+ * @param options.reset - Whether to reset existing LogTape config (default: true)
+ */
+export async function configureLogging(
+	loggingConfig: Required<LoggingConfig>,
+	options: {reset?: boolean} = {},
+): Promise<void> {
+	const {level, categories} = loggingConfig;
+	const reset = options.reset !== false;
+
+	// Build logger configs for each Shovel category
+	const loggers = SHOVEL_CATEGORIES.map((category) => {
+		// Use category-specific level if configured, otherwise use default
+		const categoryLevel = categories[category] || level;
+		return {
+			category: [category],
+			level: categoryLevel as LogTapeLevel,
+			sinks: ["console"] as const,
+		};
+	});
+
+	// Add meta logger config (suppress info messages about LogTape itself)
+	loggers.push({
+		category: ["logtape", "meta"],
+		level: "warning" as LogTapeLevel,
+		sinks: [] as unknown as readonly ["console"],
+	});
+
+	await configure({
+		reset,
+		sinks: {
+			console: getConsoleSink(),
+		},
+		loggers,
+	});
 }
 
 /**

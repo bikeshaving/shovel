@@ -526,6 +526,7 @@ export {CustomBucketStorage} from "@b9g/filesystem";
 // Config utilities
 export {
 	loadConfig,
+	configureLogging,
 	getCacheConfig,
 	getBucketConfig,
 	parseConfigExpr,
@@ -536,6 +537,8 @@ export {
 	type ShovelConfig,
 	type CacheConfig,
 	type BucketConfig,
+	type LoggingConfig,
+	type LogLevel,
 	type BucketFactoryOptions,
 	type CacheFactoryOptions,
 	type ProcessedShovelConfig,
