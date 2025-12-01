@@ -1,0 +1,55 @@
+{
+  "name": "@b9g/shovel-wpt",
+  "version": "0.1.0",
+  "description": "Web Platform Tests runner for Shovel packages. Runs vendored WPT tests against Cache and FileSystem implementations.",
+  "type": "module",
+  "scripts": {
+    "build": "libuild build --save",
+    "build:save": "libuild build --save",
+    "publish": "libuild publish",
+    "test": "bun test"
+  },
+  "keywords": [
+    "wpt",
+    "web-platform-tests",
+    "testing",
+    "cache",
+    "filesystem",
+    "contract-tests",
+    "shovel"
+  ],
+  "dependencies": {},
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.11",
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "bun:test": "*"
+  },
+  "private": true,
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./harness": {
+      "types": "./dist/src/harness/index.d.ts",
+      "import": "./dist/src/harness/index.js"
+    },
+    "./runners/cache": {
+      "types": "./dist/src/runners/cache.d.ts",
+      "import": "./dist/src/runners/cache.js"
+    },
+    "./runners/filesystem": {
+      "types": "./dist/src/runners/filesystem.d.ts",
+      "import": "./dist/src/runners/filesystem.js"
+    },
+    "./wpt": {
+      "types": "./dist/src/wpt/index.d.ts",
+      "import": "./dist/src/wpt/index.js"
+    },
+    "./package.json": "./dist/package.json"
+  }
+}
