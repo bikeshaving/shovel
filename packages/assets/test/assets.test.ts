@@ -4,7 +4,14 @@ import {assetsPlugin} from "../src/plugin.js";
 import {Router} from "@b9g/router";
 import {MemoryBucket} from "@b9g/filesystem/memory";
 import * as ESBuild from "esbuild";
-import {mkdtemp, writeFile, readdir, readFile, access, mkdir} from "fs/promises";
+import {
+	mkdtemp,
+	writeFile,
+	readdir,
+	readFile,
+	access,
+	mkdir,
+} from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
 
@@ -299,10 +306,7 @@ describe("Assets Plugin - CSS bundling", () => {
 		const testDir = await mkdtemp(join(tmpdir(), "css-import-test-"));
 
 		// Create a CSS file that imports another
-		await writeFile(
-			join(testDir, "base.css"),
-			`:root { --color: blue; }`,
-		);
+		await writeFile(join(testDir, "base.css"), `:root { --color: blue; }`);
 		await writeFile(
 			join(testDir, "style.css"),
 			`@import "./base.css";
@@ -458,10 +462,7 @@ export default clientCss;`,
 		const testDir = await mkdtemp(join(tmpdir(), "type-css-error-test-"));
 
 		// Create a TS client that does NOT import CSS
-		await writeFile(
-			join(testDir, "client.ts"),
-			`console.log("no css here");`,
-		);
+		await writeFile(join(testDir, "client.ts"), `console.log("no css here");`);
 
 		await writeFile(
 			join(testDir, "entry.js"),

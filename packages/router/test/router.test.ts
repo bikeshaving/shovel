@@ -1835,7 +1835,7 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 });
 
 describe("trailingSlash middleware", () => {
-	test('strip mode redirects /path/ to /path', async () => {
+	test("strip mode redirects /path/ to /path", async () => {
 		const router = new Router();
 		router.use(trailingSlash("strip"));
 		router.route("/users").get(async () => new Response("Users"));
@@ -1848,7 +1848,7 @@ describe("trailingSlash middleware", () => {
 		expect(response?.headers.get("Location")).toBe("http://example.com/users");
 	});
 
-	test('add mode redirects /path to /path/', async () => {
+	test("add mode redirects /path to /path/", async () => {
 		const router = new Router();
 		router.use(trailingSlash("add"));
 		router.route("/users/").get(async () => new Response("Users"));
@@ -1861,7 +1861,7 @@ describe("trailingSlash middleware", () => {
 		expect(response?.headers.get("Location")).toBe("http://example.com/users/");
 	});
 
-	test('strip mode does not redirect paths without trailing slash', async () => {
+	test("strip mode does not redirect paths without trailing slash", async () => {
 		const router = new Router();
 		router.use(trailingSlash("strip"));
 		router.route("/users").get(async () => new Response("Users"));
@@ -1874,7 +1874,7 @@ describe("trailingSlash middleware", () => {
 		expect(await response?.text()).toBe("Users");
 	});
 
-	test('add mode does not redirect paths with trailing slash', async () => {
+	test("add mode does not redirect paths with trailing slash", async () => {
 		const router = new Router();
 		router.use(trailingSlash("add"));
 		router.route("/users/").get(async () => new Response("Users"));
@@ -1887,7 +1887,7 @@ describe("trailingSlash middleware", () => {
 		expect(await response?.text()).toBe("Users");
 	});
 
-	test('does not modify root path', async () => {
+	test("does not modify root path", async () => {
 		const router = new Router();
 		router.use(trailingSlash("strip"));
 		router.route("/").get(async () => new Response("Home"));
@@ -1900,7 +1900,7 @@ describe("trailingSlash middleware", () => {
 		expect(await response?.text()).toBe("Home");
 	});
 
-	test('preserves query strings', async () => {
+	test("preserves query strings", async () => {
 		const router = new Router();
 		router.use(trailingSlash("strip"));
 		router.route("/search").get(async () => new Response("Search"));
@@ -1910,10 +1910,12 @@ describe("trailingSlash middleware", () => {
 
 		expect(response).not.toBeNull();
 		expect(response?.status).toBe(301);
-		expect(response?.headers.get("Location")).toBe("http://example.com/search?q=test&page=1");
+		expect(response?.headers.get("Location")).toBe(
+			"http://example.com/search?q=test&page=1",
+		);
 	});
 
-	test('works with path-scoped middleware', async () => {
+	test("works with path-scoped middleware", async () => {
 		const router = new Router();
 		router.use("/api", trailingSlash("strip"));
 		router.route("/api/users").get(async () => new Response("API Users"));
@@ -1923,7 +1925,9 @@ describe("trailingSlash middleware", () => {
 		const apiRequest = new Request("http://example.com/api/users/");
 		const apiResponse = await router.match(apiRequest);
 		expect(apiResponse?.status).toBe(301);
-		expect(apiResponse?.headers.get("Location")).toBe("http://example.com/api/users");
+		expect(apiResponse?.headers.get("Location")).toBe(
+			"http://example.com/api/users",
+		);
 
 		// Web path should not be affected by the middleware
 		const webRequest = new Request("http://example.com/web/users/");

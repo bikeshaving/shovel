@@ -1015,3 +1015,125 @@ self.addEventListener("fetch", (event) => {
 	},
 	TIMEOUT,
 );
+
+// =======================
+// MONOREPO PATH RESOLUTION TESTS
+// =======================
+
+test(
+	"monorepo path resolution - cwd differs from workspace root",
+	async () => {
+		const PORT = 13324;
+		let serverProcess;
+
+		// Create a monorepo structure:
+		// /tmp/monorepo-test-xxx/
+		//   package.json (with workspaces: ["packages/*"])
+		//   node_modules/ -> symlink to real node_modules
+		//   packages/
+		//     my-app/
+		//       app.ts (entry point)
+		//       dist/ (output will go here)
+		const monorepoRoot = await mkdtemp(join(tmpdir(), "monorepo-test-"));
+		const packagesDir = join(monorepoRoot, "packages");
+		const appDir = join(packagesDir, "my-app");
+
+		try {
+			// Create directory structure
+			await FS.mkdir(appDir, {recursive: true});
+
+			// Create workspace package.json at monorepo root
+			await FS.writeFile(
+				join(monorepoRoot, "package.json"),
+				JSON.stringify(
+					{
+						name: "test-monorepo",
+						private: true,
+						workspaces: ["packages/*"],
+					},
+					null,
+					2,
+				),
+			);
+
+			// Create package.json for the app (each package in a monorepo has its own)
+			await FS.writeFile(
+				join(appDir, "package.json"),
+				JSON.stringify(
+					{
+						name: "my-app",
+						private: true,
+					},
+					null,
+					2,
+				),
+			);
+
+			// Create node_modules symlink at monorepo root
+			const nodeModulesSource = join(process.cwd(), "node_modules");
+			await FS.symlink(
+				nodeModulesSource,
+				join(monorepoRoot, "node_modules"),
+				"dir",
+			);
+
+			// Create the app entry point
+			const entryContent = `
+import {jsx} from "@b9g/crank/standalone";
+import {renderer} from "@b9g/crank/html";
+
+self.addEventListener("fetch", (event) => {
+	const html = renderer.render(jsx\`<div>Monorepo app works!</div>\`);
+	event.respondWith(new Response(html, {
+		headers: {"content-type": "text/html; charset=UTF-8"},
+	}));
+});
+			`;
+			const entryPath = join(appDir, "app.ts");
+			await FS.writeFile(entryPath, entryContent);
+
+			// Start dev server with cwd set to nested app directory (not monorepo root)
+			// This is the key scenario that triggers the path duplication bug
+			const cliPath = join(process.cwd(), "./dist/bin/cli.js");
+			serverProcess = spawn(
+				"node",
+				[cliPath, "develop", "app.ts", "--port", PORT.toString()],
+				{
+					stdio: ["ignore", "pipe", "pipe"],
+					cwd: appDir, // Running from packages/my-app, not monorepo root
+					env: {
+						...process.env,
+						NODE_ENV: "development",
+					},
+				},
+			);
+
+			let stderrOutput = "";
+			serverProcess.stderr.on("data", (data) => {
+				stderrOutput += data.toString();
+				if (process.env.DEBUG_TESTS) {
+					console.error("[STDERR]", data.toString());
+				}
+			});
+
+			serverProcess.on("exit", (code) => {
+				if (code !== 0 && code !== null) {
+					serverProcess.earlyExit = {code, stderr: stderrOutput};
+				}
+			});
+
+			// Wait for server to be ready
+			const response = await waitForServer(PORT, serverProcess);
+			expect(response).toBe("<div>Monorepo app works!</div>");
+
+			// Verify no path duplication error occurred
+			expect(stderrOutput).not.toContain("Cannot find module");
+			expect(stderrOutput).not.toContain("my-app/my-app"); // The doubled path bug
+		} finally {
+			await killServer(serverProcess, PORT);
+			// Clean up monorepo directory
+			await FS.rm(monorepoRoot, {recursive: true, force: true});
+		}
+	},
+	TIMEOUT,
+);

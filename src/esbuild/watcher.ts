@@ -4,14 +4,26 @@
  */
 
 import * as ESBuild from "esbuild";
-import {resolve, dirname, join} from "path";
-import {readFileSync} from "fs";
+import {existsSync} from "fs";
+import {resolve, join, dirname} from "path";
 import {mkdir, unlink} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "./import-meta-plugin.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["watcher"]);
+
+/** Find the nearest directory containing package.json, walking up from cwd */
+function findProjectRoot(): string {
+	let dir = process.cwd();
+	while (dir !== dirname(dir)) {
+		if (existsSync(join(dir, "package.json"))) {
+			return dir;
+		}
+		dir = dirname(dir);
+	}
+	return process.cwd();
+}
 
 export interface WatcherOptions {
 	/** Entry point to build */
@@ -25,6 +37,7 @@ export interface WatcherOptions {
 export class Watcher {
 	#options: WatcherOptions;
 	#ctx?: ESBuild.BuildContext;
+	#projectRoot: string;
 	#initialBuildComplete: boolean;
 	#initialBuildResolve?: (result: {
 		success: boolean;
@@ -35,6 +48,7 @@ export class Watcher {
 
 	constructor(options: WatcherOptions) {
 		this.#options = options;
+		this.#projectRoot = findProjectRoot();
 		this.#initialBuildComplete = false;
 		this.#currentEntrypoint = "";
 		this.#previousEntrypoint = "";
@@ -45,11 +59,8 @@ export class Watcher {
 	 * @returns Result with success status and the hashed entrypoint path
 	 */
 	async start(): Promise<{success: boolean; entrypoint: string}> {
-		const entryPath = resolve(this.#options.entrypoint);
-		const outputDir = resolve(this.#options.outDir);
-
-		// Find workspace root by looking for package.json with workspaces
-		const workspaceRoot = this.#findWorkspaceRoot();
+		const entryPath = resolve(this.#projectRoot, this.#options.entrypoint);
+		const outputDir = resolve(this.#projectRoot, this.#options.outDir);
 
 		// Ensure output directory structure exists
 		await mkdir(join(outputDir, "server"), {recursive: true});
@@ -73,7 +84,7 @@ export class Watcher {
 			outdir: `${outputDir}/server`,
 			entryNames: "[name]-[hash]",
 			metafile: true,
-			absWorkingDir: workspaceRoot,
+			absWorkingDir: this.#projectRoot,
 			plugins: [
 				importMetaPlugin(),
 				assetsPlugin({
@@ -97,8 +108,8 @@ export class Watcher {
 								const outputs = Object.keys(result.metafile.outputs);
 								const jsOutput = outputs.find((p) => p.endsWith(".js"));
 								if (jsOutput) {
-									// Convert relative path to absolute
-									outputPath = resolve(jsOutput);
+									// Convert relative path to absolute (relative to project root)
+									outputPath = resolve(this.#projectRoot, jsOutput);
 								}
 							}
 
@@ -164,28 +175,5 @@ export class Watcher {
 			await this.#ctx.dispose();
 			this.#ctx = undefined;
 		}
-	}
-
-	#findWorkspaceRoot(): string {
-		// Search upward from cwd for package.json with workspaces
-		const initialCwd = process.cwd();
-		let workspaceRoot = initialCwd;
-
-		while (workspaceRoot !== dirname(workspaceRoot)) {
-			try {
-				const packageJSON = JSON.parse(
-					readFileSync(resolve(workspaceRoot, "package.json"), "utf8"),
-				);
-				if (packageJSON.workspaces) {
-					return workspaceRoot;
-				}
-			} catch {
-				// No package.json found, continue up the tree
-			}
-			workspaceRoot = dirname(workspaceRoot);
-		}
-
-		// If we reached filesystem root without finding workspace, use original cwd
-		return initialCwd;
 	}
 }

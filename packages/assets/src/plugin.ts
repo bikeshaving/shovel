@@ -251,6 +251,11 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							alias: clientOpts.alias,
 						});
 						const result = await ctx.rebuild();
+						if (!result.outputFiles) {
+							return {
+								errors: [{text: `No output files generated for ${args.path}`}],
+							};
+						}
 
 						if (wantsCSS) {
 							// Find the CSS output file
@@ -321,6 +326,11 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							plugins: [externalAbsolutePathsPlugin],
 						});
 						const result = await ctx.rebuild();
+						if (!result.outputFiles?.[0]) {
+							return {
+								errors: [{text: `No CSS output generated for ${args.path}`}],
+							};
+						}
 						content = Buffer.from(result.outputFiles[0].text);
 						outputExt = ".css";
 						mimeType = "text/css";
