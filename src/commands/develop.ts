@@ -4,10 +4,7 @@ import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
 import {Watcher} from "../esbuild/watcher.js";
 
-// CLI logger
-const logger = getLogger(["cli"]);
-
-// Configure LogTape for structured logging
+// Configure LogTape for CLI logging (users can reconfigure with reset: true)
 await configure({
 	contextLocalStorage: new AsyncContext.Variable(),
 	sinks: {
@@ -26,6 +23,8 @@ await configure({
 		{category: ["worker"], level: "debug", sinks: ["console"]},
 	],
 });
+
+const logger = getLogger(["cli"]);
 
 export async function developCommand(entrypoint, options) {
 	try {

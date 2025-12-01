@@ -4,6 +4,20 @@ import {test, expect, beforeAll, afterAll} from "bun:test";
 import {join, dirname as _dirname} from "path";
 import {tmpdir} from "os";
 import {mkdtemp} from "fs/promises";
+import {configure, getConsoleSink} from "@logtape/logtape";
+import {AsyncContext} from "@b9g/async-context";
+
+// Configure LogTape for tests so watcher debug logs appear
+await configure({
+	reset: true,
+	contextLocalStorage: new AsyncContext.Variable(),
+	sinks: {console: getConsoleSink()},
+	loggers: [
+		{category: ["logtape", "meta"], sinks: []},
+		{category: ["watcher"], level: "debug", sinks: ["console"]},
+		{category: ["assets"], level: "debug", sinks: ["console"]},
+	],
+});
 
 /**
  * Development server hot reload tests
@@ -1133,6 +1147,96 @@ self.addEventListener("fetch", (event) => {
 			await killServer(serverProcess, PORT);
 			// Clean up monorepo directory
 			await FS.rm(monorepoRoot, {recursive: true, force: true});
+		}
+	},
+	TIMEOUT,
+);
+
+// =======================
+// HOT RELOAD TESTS
+// =======================
+
+import {Watcher} from "../src/esbuild/watcher.ts";
+import {existsSync} from "fs";
+
+test(
+	"watcher onBuild receives valid new bundle path on rebuild",
+	async () => {
+		const fixtureDir = await mkdtemp(join(tmpdir(), "watcher-rebuild-test-"));
+
+		try {
+			// Create package.json
+			await FS.writeFile(
+				join(fixtureDir, "package.json"),
+				JSON.stringify({name: "test-app", private: true}),
+			);
+
+			// Symlink node_modules
+			await FS.symlink(
+				join(process.cwd(), "node_modules"),
+				join(fixtureDir, "node_modules"),
+				"dir",
+			);
+
+			// Create initial app
+			const appFile = join(fixtureDir, "app.ts");
+			await FS.writeFile(
+				appFile,
+				`self.addEventListener("fetch", () => new Response("v1"));`,
+			);
+
+			let onBuildCalled = false;
+			let receivedEntrypoint = null;
+			let initialEntrypoint = null;
+
+			// Change to test directory
+			const originalCwd = process.cwd();
+			process.chdir(fixtureDir);
+
+			const watcher = new Watcher({
+				entrypoint: "app.ts",
+				outDir: "dist",
+				onBuild: async (success, newEntrypoint) => {
+					onBuildCalled = true;
+					receivedEntrypoint = newEntrypoint;
+					// KEY ASSERTIONS:
+					// 1. Build should succeed
+					expect(success).toBe(true);
+					// 2. New entrypoint should be a valid, existing file
+					expect(existsSync(newEntrypoint)).toBe(true);
+					// 3. New entrypoint should be different from initial (new hash)
+					expect(newEntrypoint).not.toBe(initialEntrypoint);
+					// 4. New entrypoint should end with .js
+					expect(newEntrypoint).toMatch(/\.js$/);
+				},
+			});
+
+			try {
+				// Initial build
+				const {success, entrypoint} = await watcher.start();
+				expect(success).toBe(true);
+				initialEntrypoint = entrypoint;
+				expect(existsSync(initialEntrypoint)).toBe(true);
+
+				// Trigger rebuild by modifying source
+				await FS.writeFile(
+					appFile,
+					`self.addEventListener("fetch", () => new Response("v2"));`,
+				);
+
+				// Wait for rebuild
+				await new Promise((r) => setTimeout(r, 500));
+
+				// Verify onBuild was called with valid new path
+				expect(onBuildCalled).toBe(true);
+				expect(receivedEntrypoint).not.toBeNull();
+				expect(existsSync(receivedEntrypoint)).toBe(true);
+			} finally {
+				process.chdir(originalCwd);
+				await watcher.stop();
+			}
+		} finally {
+			await FS.rm(fixtureDir, {recursive: true, force: true});
 		}
 	},
 	TIMEOUT,

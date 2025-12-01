@@ -6,7 +6,7 @@
 import * as ESBuild from "esbuild";
 import {existsSync} from "fs";
 import {resolve, join, dirname} from "path";
-import {mkdir, unlink} from "fs/promises";
+import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "./import-meta-plugin.js";
 import {getLogger} from "@logtape/logtape";
@@ -44,14 +44,12 @@ export class Watcher {
 		entrypoint: string;
 	}) => void;
 	#currentEntrypoint: string;
-	#previousEntrypoint: string;
 
 	constructor(options: WatcherOptions) {
 		this.#options = options;
 		this.#projectRoot = findProjectRoot();
 		this.#initialBuildComplete = false;
 		this.#currentEntrypoint = "";
-		this.#previousEntrypoint = "";
 	}
 
 	/**
@@ -115,31 +113,10 @@ export class Watcher {
 
 							if (success) {
 								logger.info("Build complete", {entrypoint: outputPath});
-
-								// Clean up old entrypoint file to prevent disk space leak
-								// Only delete if it's different from the new one
-								if (
-									this.#currentEntrypoint &&
-									this.#currentEntrypoint !== outputPath
-								) {
-									try {
-										await unlink(this.#currentEntrypoint);
-										// Also try to delete the source map if it exists
-										await unlink(this.#currentEntrypoint + ".map").catch(
-											() => {},
-										);
-										logger.debug("Cleaned up old build", {
-											oldEntrypoint: this.#currentEntrypoint,
-										});
-									} catch {
-										// File may already be deleted or not exist
-									}
-								}
 							} else {
 								logger.error("Build errors", {errors: result.errors});
 							}
 
-							this.#previousEntrypoint = this.#currentEntrypoint;
 							this.#currentEntrypoint = outputPath;
 
 							// Handle initial build
@@ -148,7 +125,8 @@ export class Watcher {
 								this.#initialBuildResolve?.({success, entrypoint: outputPath});
 							} else {
 								// Subsequent rebuilds triggered by watch
-								this.#options.onBuild?.(success, outputPath);
+								// Note: esbuild automatically cleans up old hashed files during rebuild
+								await this.#options.onBuild?.(success, outputPath);
 							}
 						});
 					},
