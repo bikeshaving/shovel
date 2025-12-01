@@ -1,5 +1,6 @@
 {
   "name": "shovel-faker-api",
+  "private": true,
   "version": "1.0.0",
   "description": "FakerAPI.it clone using Shovel and Faker.js",
   "type": "module",

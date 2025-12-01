@@ -1,5 +1,6 @@
 {
   "name": "shovel-blog-app",
+  "private": true,
   "version": "0.1.0",
   "description": "Example Shovel blog app using cache-first architecture",
   "type": "module",

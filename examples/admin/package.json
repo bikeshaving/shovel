@@ -1,5 +1,6 @@
 {
   "name": "shovel-admin-dashboard",
+  "private": true,
   "version": "0.1.0",
   "description": "Admin dashboard example with SQLite backend for blog posts and documentation",
   "type": "module",
