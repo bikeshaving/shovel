@@ -11,6 +11,7 @@ import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
+import * as Platform from "@b9g/platform";
 
 // Configure LogTape for build command
 await configure({
@@ -570,11 +571,14 @@ async function generateExecutablePackageJSON(platform) {
  * CLI command wrapper for buildForProduction
  */
 export async function buildCommand(entrypoint: string, options: any) {
+	// Use same platform resolution as develop command
+	const platform = Platform.resolvePlatform(options);
+
 	await buildForProduction({
 		entrypoint,
 		outDir: "dist",
 		verbose: options.verbose || false,
-		platform: options.platform || "node",
+		platform,
 		workerCount: options.workers ? parseInt(options.workers, 10) : 1,
 	});
 
