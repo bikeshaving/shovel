@@ -12,7 +12,7 @@ The TC39 AsyncContext proposal aims to standardize async context propagation in 
 
 This package provides a **lightweight, maintainable polyfill** that:
 
-✅ Implements the TC39 `AsyncContext.Variable` API
+✅ Implements the TC39 `AsyncContext.Variable` and `AsyncContext.Snapshot` APIs
 ✅ Uses battle-tested `AsyncLocalStorage` under the hood
 ✅ Zero dependencies (beyond Node.js built-ins)
 ✅ Full TypeScript support
@@ -121,19 +121,17 @@ console.log(themeContext.get()); // "light"
 ### Classes
 
 - `AsyncVariable<T>` - Main class for creating async context variables
-- `AsyncContext.Variable<T>` - Alias matching TC39 proposal namespace
+- `AsyncSnapshot` - Captures and restores context state
+- `AsyncContext.Variable<T>` - Alias for AsyncVariable (TC39 API)
+- `AsyncContext.Snapshot` - Alias for AsyncSnapshot (TC39 API)
 
 ### Types
 
 - `AsyncVariableOptions<T>` - Options for AsyncVariable constructor (defaultValue, name)
 
-### Namespaces
-
-- `AsyncContext` - Namespace containing Variable class (TC39 API)
-
 ### Default Export
 
-- `AsyncContext` - The AsyncContext namespace
+- `AsyncContext` - Object containing Variable and Snapshot classes
 
 ## API
 
@@ -147,13 +145,14 @@ Options:
 - `defaultValue?: T` - Default value when no context is set
 - `name?: string` - Optional name for debugging
 
-#### `run<R>(value: T, fn: () => R): R`
+#### `run<R>(value: T, fn: (...args) => R, ...args): R`
 
 Execute a function with a context value. The value is available via `get()` throughout the entire async execution of `fn`.
 
 **Parameters:**
 - `value: T` - The context value to set
-- `fn: () => R` - Function to execute (can be sync or async)
+- `fn: (...args) => R` - Function to execute (can be sync or async)
+- `...args` - Additional arguments to pass to fn
 
 **Returns:** The return value of `fn`
 
@@ -165,14 +164,39 @@ Get the current context value. Returns `defaultValue` if no context is set.
 
 Get the name of this variable (for debugging).
 
-### `AsyncContext.Variable<T>`
+### `AsyncSnapshot`
 
-Alias for `AsyncVariable<T>` that matches the TC39 proposal namespace.
+Captures the current values of all Variables at construction time. Use `run()` to restore that state later.
+
+#### `constructor()`
+
+Creates a snapshot of all current Variable values.
+
+#### `run<R>(fn: (...args) => R, ...args): R`
+
+Execute a function with the captured context values restored.
+
+**Parameters:**
+- `fn: (...args) => R` - Function to execute
+- `...args` - Additional arguments to pass to fn
+
+**Returns:** The return value of `fn`
+
+#### `static wrap<F>(fn: F): F`
+
+Wrap a function to preserve the current context. When the wrapped function is called later, it will execute with the context values that were active when `wrap()` was called.
 
 ```typescript
-import { AsyncContext } from "@b9g/async-context";
+const userVar = new AsyncContext.Variable<string>();
 
-const ctx = new AsyncContext.Variable<string>();
+const wrappedFn = userVar.run("alice", () => {
+  return AsyncContext.Snapshot.wrap(() => {
+    return userVar.get();
+  });
+});
+
+// Later, even outside the run() context:
+wrappedFn(); // returns "alice"
 ```
 
 ## How It Works
@@ -210,18 +234,14 @@ This package works in any JavaScript runtime that supports `AsyncLocalStorage`:
 
 ## Differences from TC39 Proposal
 
-This polyfill currently implements:
+This polyfill implements the core TC39 AsyncContext API:
 
-- ✅ `AsyncContext.Variable`
-- ✅ `.run(value, fn)` method
-- ✅ `.get()` method
+- ✅ `AsyncContext.Variable` - context variables with `run()` and `get()`
+- ✅ `AsyncContext.Snapshot` - context capture with `run()` and `wrap()`
 
-Not yet implemented (future additions):
+The implementation uses Node.js `AsyncLocalStorage` rather than the pure-JS reference implementation, which means async context propagation works natively without monkey-patching `Promise.prototype.then`.
 
-- ⏳ `AsyncContext.Snapshot`
-- ⏳ `AsyncContext.Mapping`
-
-These may be added in future versions as the proposal evolves.
+Test suite adapted from the [TC39 proposal repository](https://github.com/tc39/proposal-async-context).
 
 ## Migration Path
 
