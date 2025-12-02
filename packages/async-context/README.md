@@ -227,10 +227,10 @@ The polyfill provides:
 
 This package works in any JavaScript runtime that supports `AsyncLocalStorage`:
 
-- ✅ Node.js 12.17+ (native support)
-- ✅ Bun (native support)
-- ✅ Cloudflare Workers (via Node.js compatibility)
-- ⚠️ Deno (via Node.js compatibility layer: `import { AsyncLocalStorage } from "node:async_hooks"`)
+- ✅ Node.js 12.17+
+- ✅ Bun
+- ✅ Deno
+- ✅ Cloudflare Workers
 
 ## Differences from TC39 Proposal
 
