@@ -1,6 +1,6 @@
 {
   "name": "@b9g/filesystem-r2",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Cloudflare R2 implementation of File System Access API",
   "type": "module",
   "scripts": {

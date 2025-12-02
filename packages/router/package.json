@@ -1,6 +1,6 @@
 {
   "name": "@b9g/router",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Universal request router for ServiceWorker applications. Built on web standards with cache-aware routing and generator-based middleware.",
   "type": "module",
   "keywords": [
