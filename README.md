@@ -29,7 +29,7 @@ Shovel implements web platform APIs that server-side JavaScript is missing:
 |-----|----------|--------------|
 | `fetch` event | [Service Workers](https://w3c.github.io/ServiceWorker/) | Request handling |
 | `self.caches` | [Cache API](https://w3c.github.io/ServiceWorker/#cache-interface) | Response caching |
-| `self.buckets` | [FileSystemDirectoryHandle](https://fs.spec.whatwg.org/#api-filesystemdirectoryhandle) | Storage (local, S3, R2) |
+| `self.buckets` | [FileSystem API](https://fs.spec.whatwg.org/) | Storage (local, S3, R2) |
 | `self.cookieStore` | [Cookie Store API](https://wicg.github.io/cookie-store/) | Cookie management |
 | `URLPattern` | [URLPattern](https://urlpattern.spec.whatwg.org/) | Route matching (100% WPT) |
 | `AsyncContext.Variable` | [TC39 Stage 2](https://github.com/tc39/proposal-async-context) | Request-scoped state |
