@@ -9,6 +9,7 @@ import {resolve, join, dirname} from "path";
 import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "./import-meta-plugin.js";
+import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["watcher"]);
@@ -64,6 +65,9 @@ export class Watcher {
 		await mkdir(join(outputDir, "server"), {recursive: true});
 		await mkdir(join(outputDir, "static"), {recursive: true});
 
+		// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
+		const jsxOptions = await loadJSXConfig(this.#projectRoot);
+
 		// Create a promise that resolves when the initial build completes
 		const initialBuildPromise = new Promise<{
 			success: boolean;
@@ -72,8 +76,8 @@ export class Watcher {
 			this.#initialBuildResolve = resolve;
 		});
 
-		// Create esbuild context with onEnd plugin to detect builds
-		this.#ctx = await ESBuild.context({
+		// Build options for esbuild context
+		const buildOptions: ESBuild.BuildOptions = {
 			entryPoints: [entryPath],
 			bundle: true,
 			format: "esm",
@@ -87,6 +91,12 @@ export class Watcher {
 				importMetaPlugin(),
 				assetsPlugin({
 					outDir: outputDir,
+					clientBuild: {
+						jsx: jsxOptions.jsx,
+						jsxFactory: jsxOptions.jsxFactory,
+						jsxFragment: jsxOptions.jsxFragment,
+						jsxImportSource: jsxOptions.jsxImportSource,
+					},
 				}),
 				// Plugin to detect build completion (works with watch mode)
 				{
@@ -135,7 +145,13 @@ export class Watcher {
 			sourcemap: "inline",
 			minify: false,
 			treeShaking: true,
-		});
+		};
+
+		// Apply JSX configuration (from tsconfig.json or @b9g/crank defaults)
+		applyJSXOptions(buildOptions, jsxOptions);
+
+		// Create esbuild context with onEnd plugin to detect builds
+		this.#ctx = await ESBuild.context(buildOptions);
 
 		// Start watching - this does the initial build and watches all dependencies
 		logger.info("Starting esbuild watch mode");

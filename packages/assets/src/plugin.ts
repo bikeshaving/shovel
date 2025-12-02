@@ -82,6 +82,31 @@ export interface ClientBuildOptions {
 	 * Alias for client bundles
 	 */
 	alias?: Record<string, string>;
+
+	/**
+	 * JSX transform mode: "transform" (classic), "automatic" (React 17+), or "preserve"
+	 * @default "automatic"
+	 */
+	jsx?: "transform" | "preserve" | "automatic";
+
+	/**
+	 * JSX factory function (e.g., "createElement", "h", "React.createElement")
+	 * Used when jsx is "transform"
+	 */
+	jsxFactory?: string;
+
+	/**
+	 * JSX fragment (e.g., "Fragment", "React.Fragment")
+	 * Used when jsx is "transform"
+	 */
+	jsxFragment?: string;
+
+	/**
+	 * JSX import source for automatic runtime (e.g., "react", "preact", "@b9g/crank")
+	 * Used when jsx is "automatic"
+	 * @default "@b9g/crank"
+	 */
+	jsxImportSource?: string;
 }
 
 /**
@@ -249,6 +274,11 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							inject: clientOpts.inject,
 							external: clientOpts.external,
 							alias: clientOpts.alias,
+							// Apply JSX configuration (defaults to @b9g/crank automatic runtime)
+							jsx: clientOpts.jsx ?? "automatic",
+							jsxFactory: clientOpts.jsxFactory,
+							jsxFragment: clientOpts.jsxFragment,
+							jsxImportSource: clientOpts.jsxImportSource ?? "@b9g/crank",
 						});
 						const result = await ctx.rebuild();
 						if (!result.outputFiles) {

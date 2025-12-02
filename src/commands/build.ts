@@ -9,6 +9,7 @@ import {mkdir, readFile, writeFile} from "fs/promises";
 import {fileURLToPath} from "url";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
+import {loadJSXConfig, applyJSXOptions} from "../esbuild/jsx-config.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
@@ -225,6 +226,9 @@ async function createBuildConfig({
 	const isCloudflare =
 		platform === "cloudflare" || platform === "cloudflare-workers";
 
+	// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
+	const jsxOptions = await loadJSXConfig(workspaceRoot || dirname(entryPath));
+
 	try {
 		// Create virtual entry point that properly imports platform dependencies
 		const virtualEntry = await createVirtualEntry(
@@ -245,10 +249,10 @@ async function createBuildConfig({
 		// The user code will be loaded by the platform's loadServiceWorker method
 		if (!isCloudflare) {
 			// Build user code separately
-			const userBuildConfig = {
+			const userBuildConfig: ESBuild.BuildOptions = {
 				entryPoints: [entryPath],
 				bundle: true,
-				format: BUILD_DEFAULTS.format,
+				format: BUILD_DEFAULTS.format as ESBuild.Format,
 				target: BUILD_DEFAULTS.target,
 				platform: "node",
 				outfile: join(serverDir, "server.js"),
@@ -264,6 +268,12 @@ async function createBuildConfig({
 					importMetaPlugin(),
 					assetsPlugin({
 						outDir: outputDir,
+						clientBuild: {
+							jsx: jsxOptions.jsx,
+							jsxFactory: jsxOptions.jsxFactory,
+							jsxFragment: jsxOptions.jsxFragment,
+							jsxImportSource: jsxOptions.jsxImportSource,
+						},
 					}),
 				],
 				metafile: true,
@@ -275,6 +285,9 @@ async function createBuildConfig({
 				define: platform === "node" ? {"import.meta.env": "process.env"} : {},
 				external,
 			};
+
+			// Apply JSX configuration (from tsconfig.json or @b9g/crank defaults)
+			applyJSXOptions(userBuildConfig, jsxOptions);
 
 			// Build user code first
 			await ESBuild.build(userBuildConfig);
@@ -321,14 +334,14 @@ async function createBuildConfig({
 		// The @b9g/node-webworker package now embeds the wrapper code and creates it
 		// in a temp directory at runtime, hiding this implementation detail
 
-		const buildConfig = {
+		const buildConfig: ESBuild.BuildOptions = {
 			stdin: {
 				contents: virtualEntry,
 				resolveDir: shovelRoot, // Use Shovel root to resolve @b9g packages
 				sourcefile: "virtual-entry.js",
 			},
 			bundle: true,
-			format: BUILD_DEFAULTS.format,
+			format: BUILD_DEFAULTS.format as ESBuild.Format,
 			target: BUILD_DEFAULTS.target,
 			platform: isCloudflare ? "browser" : "node",
 			// Cloudflare: single-file architecture (server.js contains everything)
@@ -345,6 +358,12 @@ async function createBuildConfig({
 						importMetaPlugin(),
 						assetsPlugin({
 							outDir: outputDir,
+							clientBuild: {
+								jsx: jsxOptions.jsx,
+								jsxFactory: jsxOptions.jsxFactory,
+								jsxFragment: jsxOptions.jsxFragment,
+								jsxImportSource: jsxOptions.jsxImportSource,
+							},
 						}),
 					]
 				: [], // Assets already handled in user code build
@@ -358,7 +377,9 @@ async function createBuildConfig({
 			external,
 		};
 
+		// Apply JSX configuration for Cloudflare builds (user code is bundled inline)
 		if (isCloudflare) {
+			applyJSXOptions(buildConfig, jsxOptions);
 			await configureCloudflareTarget(buildConfig);
 		}
 
