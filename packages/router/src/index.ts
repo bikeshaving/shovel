@@ -493,28 +493,22 @@ export class Router {
 
 				if (matchResult) {
 					// Route found - execute middleware chain + handler
-					const mutableRequest = this.#createMutableRequest(request);
 					return await this.#executeMiddlewareStack(
 						this.#middlewares,
-						mutableRequest,
+						request,
 						matchResult.context,
 						matchResult.handler,
-						request.url,
-						this.#executor,
 					);
 				} else {
 					// No route found - execute global middleware with 404 fallback
 					const notFoundHandler = async (): Promise<Response> => {
 						throw new NotFound();
 					};
-					const mutableRequest = this.#createMutableRequest(request);
 					return await this.#executeMiddlewareStack(
 						this.#middlewares,
-						mutableRequest,
+						request,
 						{params: {}},
 						notFoundHandler,
-						request.url,
-						this.#executor,
 					);
 				}
 			} catch (error) {
@@ -618,10 +612,6 @@ export class Router {
 			this.#dirty = false;
 		}
 
-		// Create mutable request wrapper for URL modifications
-		const mutableRequest = this.#createMutableRequest(request);
-		const originalURL = mutableRequest.url;
-
 		// Try to find a route match first
 		let matchResult = this.#executor.match(request);
 		let handler: Handler;
@@ -644,11 +634,9 @@ export class Router {
 		try {
 			response = await this.#executeMiddlewareStack(
 				this.#middlewares,
-				mutableRequest,
+				request,
 				context,
 				handler,
-				originalURL,
-				this.#executor, // Pass executor for re-routing
 			);
 		} catch (error) {
 			// If no route was found and NotFound was thrown, return null
@@ -827,11 +815,9 @@ export class Router {
 	 */
 	async #executeMiddlewareStack(
 		middlewares: MiddlewareEntry[],
-		request: any,
+		request: Request,
 		context: RouteContext,
 		handler: Handler,
-		originalURL: string,
-		executor?: RadixTreeExecutor | null,
 	): Promise<Response> {
 		const runningGenerators: Array<{
 			generator: MiddlewareGenerator;
@@ -886,60 +872,21 @@ export class Router {
 
 		// Phase 2: Get handler response if no middleware returned early
 		if (!currentResponse) {
-			// Check if URL was modified and re-route if needed
-			let finalHandler = handler;
-			let finalContext = context;
-
-			if (request.url !== originalURL && executor) {
-				const newMatchResult = executor.match(
-					new Request(request.url, {
-						method: request.method,
-						headers: request.headers,
-						body: request.body,
-					}),
-				);
-
-				if (newMatchResult) {
-					finalHandler = newMatchResult.handler;
-					finalContext = newMatchResult.context;
-				}
-			}
-
 			// Execute handler
 			let handlerError: Error | null = null;
 			try {
-				currentResponse = await finalHandler(request, finalContext);
+				currentResponse = await handler(request, context);
 			} catch (error) {
 				handlerError = error as Error;
 			}
 
 			// Handle errors through generator stack if needed
 			if (handlerError) {
-				// If URL was modified, generate redirect instead of propagating the error
-				// This handles the case where middleware modifies URL but no route matches
-				if (request.url !== originalURL) {
-					currentResponse = this.#handleAutomaticRedirect(
-						originalURL,
-						request.url,
-						request.method,
-					);
-				} else {
-					currentResponse = await this.#handleErrorThroughGenerators(
-						handlerError,
-						runningGenerators,
-					);
-				}
+				currentResponse = await this.#handleErrorThroughGenerators(
+					handlerError,
+					runningGenerators,
+				);
 			}
-		}
-
-		// Handle automatic redirects if URL was modified - do this before resuming generators
-		// so that generators can process the redirect response
-		if (request.url !== originalURL && currentResponse) {
-			currentResponse = this.#handleAutomaticRedirect(
-				originalURL,
-				request.url,
-				request.method,
-			);
 		}
 
 		// Phase 3: Resume all generators in reverse order (LIFO - Last In First Out)
@@ -989,79 +936,6 @@ export class Router {
 
 		// No generator handled the error
 		throw error;
-	}
-
-	/**
-	 * Create a mutable request wrapper that allows URL modification
-	 */
-	#createMutableRequest(request: Request): any {
-		return {
-			url: request.url,
-			method: request.method,
-			headers: new Headers(request.headers),
-			body: request.body,
-			bodyUsed: request.bodyUsed,
-			cache: request.cache,
-			credentials: request.credentials,
-			destination: request.destination,
-			integrity: request.integrity,
-			keepalive: request.keepalive,
-			mode: request.mode,
-			redirect: request.redirect,
-			referrer: request.referrer,
-			referrerPolicy: request.referrerPolicy,
-			signal: request.signal,
-			// Add all other Request methods
-			arrayBuffer: () => request.arrayBuffer(),
-			blob: () => request.blob(),
-			clone: () => request.clone(),
-			formData: () => request.formData(),
-			json: () => request.json(),
-			text: () => request.text(),
-		};
-	}
-
-	/**
-	 * Handle automatic redirects when URL is modified
-	 */
-	#handleAutomaticRedirect(
-		originalURL: string,
-		newURL: string,
-		method: string,
-	): Response {
-		const originalURLObj = new URL(originalURL);
-		const newURLObj = new URL(newURL);
-
-		// Security: Only allow same-origin redirects (allow protocol upgrades)
-		if (
-			originalURLObj.hostname !== newURLObj.hostname ||
-			(originalURLObj.port !== newURLObj.port &&
-				originalURLObj.port !== "" &&
-				newURLObj.port !== "")
-		) {
-			throw new Error(
-				`Cross-origin redirect not allowed: ${originalURL} -> ${newURL}`,
-			);
-		}
-
-		// Choose appropriate redirect status code
-		let status = 302; // Default temporary redirect
-
-		// Protocol changes (http -> https) get 301 permanent
-		if (originalURLObj.protocol !== newURLObj.protocol) {
-			status = 301;
-		}
-		// Non-GET methods get 307 to preserve method and body
-		else if (method.toUpperCase() !== "GET") {
-			status = 307;
-		}
-
-		return new Response(null, {
-			status,
-			headers: {
-				Location: newURL,
-			},
-		});
 	}
 
 	/**

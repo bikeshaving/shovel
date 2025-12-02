@@ -738,118 +738,6 @@ describe("Error Handling", () => {
 	});
 });
 
-describe("Automatic Redirects", () => {
-	test("returns 302 for URL changes by default", async () => {
-		const router = new Router();
-
-		async function* redirectMiddleware(request: Request, _context: any) {
-			if (request.url.endsWith("/old-path")) {
-				request.url = request.url.replace("/old-path", "/new-path");
-			}
-			const response = yield request;
-			return response;
-		}
-
-		router.use(redirectMiddleware);
-		router.route("/new-path").get(async () => new Response("New path"));
-
-		const request = new Request("http://example.com/old-path");
-		const response = await router.match(request);
-
-		expect(response?.status).toBe(302);
-		expect(response?.headers.get("Location")).toBe(
-			"http://example.com/new-path",
-		);
-	});
-
-	test("returns 301 for protocol changes (http->https)", async () => {
-		const router = new Router();
-
-		async function* httpsRedirectMiddleware(request: Request, _context: any) {
-			if (request.url.startsWith("http://")) {
-				request.url = request.url.replace("http://", "https://");
-			}
-			const response = yield request;
-			return response;
-		}
-
-		router.use(httpsRedirectMiddleware);
-
-		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
-
-		expect(response?.status).toBe(301);
-		expect(response?.headers.get("Location")).toBe("https://example.com/test");
-	});
-
-	test("returns 307 for non-GET method changes", async () => {
-		const router = new Router();
-
-		async function* apiVersionMiddleware(request: Request, _context: any) {
-			if (request.url.includes("/api/v1/")) {
-				request.url = request.url.replace("/api/v1/", "/api/v2/");
-			}
-			const response = yield request;
-			return response;
-		}
-
-		router.use(apiVersionMiddleware);
-
-		const request = new Request("http://example.com/api/v1/users", {
-			method: "POST",
-		});
-		const response = await router.match(request);
-
-		expect(response?.status).toBe(307);
-		expect(response?.headers.get("Location")).toBe(
-			"http://example.com/api/v2/users",
-		);
-	});
-
-	test("throws error for cross-origin URL changes", async () => {
-		const router = new Router();
-
-		async function* maliciousMiddleware(request: Request, _context: any) {
-			request.url = "https://evil.com/steal-data";
-			const response = yield request;
-			return response;
-		}
-
-		router.use(maliciousMiddleware);
-		router.route("/test").get(async () => new Response("Test"));
-
-		const request = new Request("http://example.com/test");
-
-		await expect(router.match(request)).rejects.toThrow(/origin/);
-	});
-
-	test("redirect responses flow through remaining middleware", async () => {
-		const router = new Router();
-
-		async function* redirectMiddleware(request: Request, _context: any) {
-			request.url = request.url.replace("/old", "/new");
-			const response = yield request;
-			return response;
-		}
-
-		async function* headerMiddleware(request: Request, _context: any) {
-			const response = yield request;
-			response.headers.set("X-Processed", "true");
-			return response;
-		}
-
-		router.use(redirectMiddleware);
-		router.use(headerMiddleware);
-
-		const request = new Request("http://example.com/old");
-		const response = await router.match(request);
-
-		expect(response?.status).toBe(302);
-		expect(response?.headers.get("Location")).toBe("http://example.com/new");
-		expect(response?.headers.get("X-Processed")).toBe("true");
-	});
-});
-
 describe("Router Integration", () => {
 	test("handler method executes middleware for matching routes", async () => {
 		const router = new Router();
@@ -1162,37 +1050,6 @@ describe("Advanced Generator Middleware", () => {
 		expect(response?.headers.get("X-Setup")).toBe("true");
 	});
 
-	test("complex URL routing with middleware modifications", async () => {
-		const router = new Router();
-
-		async function* routingMiddleware(request: Request, _context: any) {
-			// Rewrite legacy API paths
-			if (request.url.includes("/api/v1/")) {
-				request.url = request.url.replace("/api/v1/", "/api/v2/");
-			}
-
-			// Add trailing slash normalization
-			if (!request.url.endsWith("/") && !request.url.includes("?")) {
-				request.url = request.url + "/";
-			}
-
-			const response = yield request;
-			response.headers.set("X-Rewritten", "true");
-			return response;
-		}
-
-		router.use(routingMiddleware);
-		router.route("/api/v2/users/").get(async () => new Response("V2 Users"));
-
-		const request = new Request("http://example.com/api/v1/users");
-		const response = await router.match(request);
-
-		expect(response?.status).toBe(302); // Redirect due to URL change
-		expect(response?.headers.get("Location")).toBe(
-			"http://example.com/api/v2/users/",
-		);
-	});
-
 	test("middleware execution with mixed async/sync functions", async () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
@@ -1334,52 +1191,6 @@ describe("Edge Cases and Error Scenarios", () => {
 		expect(executionOrder.length).toBe(51); // 50 middleware + 1 handler
 		expect(executionOrder[50]).toBe("handler");
 		expect(response?.status).toBe(200);
-	});
-
-	test("recursive URL modification prevention", async () => {
-		const router = new Router();
-		let modificationCount = 0;
-
-		async function* recursiveMiddleware(request: Request, _context: any) {
-			modificationCount++;
-			if (modificationCount > 5) {
-				// Prevent infinite recursion
-				const response = yield request;
-				return response;
-			}
-
-			request.url = request.url + "?modified=" + modificationCount;
-			const response = yield request;
-			return response;
-		}
-
-		router.use(recursiveMiddleware);
-		router.route("/test").get(async () => new Response("Success"));
-
-		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
-
-		// Should generate redirect due to URL modification
-		expect(response?.status).toBe(302);
-		expect(modificationCount).toBe(1); // Only modified once
-	});
-
-	test("malformed URLs in redirect handling", async () => {
-		const router = new Router();
-
-		async function* malformedURLMiddleware(request: Request, _context: any) {
-			request.url = "not-a-valid-url";
-			const response = yield request;
-			return response;
-		}
-
-		router.use(malformedURLMiddleware);
-		router.route("/test").get(async () => new Response("Success"));
-
-		const request = new Request("http://example.com/test");
-
-		// Should throw due to malformed URL
-		await expect(router.match(request)).rejects.toThrow();
 	});
 
 	test("null and undefined return values", async () => {
