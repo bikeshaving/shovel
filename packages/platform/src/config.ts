@@ -610,6 +610,9 @@ export interface LoggingConfig {
 }
 
 export interface ShovelConfig {
+	// Platform
+	platform?: string;
+
 	// Server
 	port?: number | string;
 	host?: string;
@@ -626,6 +629,7 @@ export interface ShovelConfig {
 }
 
 export interface ProcessedShovelConfig {
+	platform?: string;
 	port: number;
 	host: string;
 	workers: number;
@@ -673,6 +677,7 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 
 	// Apply smart defaults
 	const config: ProcessedShovelConfig = {
+		platform: processed.platform,
 		port: typeof processed.port === "number" ? processed.port : 3000,
 		host: processed.host || "localhost",
 		workers: typeof processed.workers === "number" ? processed.workers : 1,

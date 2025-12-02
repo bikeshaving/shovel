@@ -282,18 +282,20 @@ export function detectDevelopmentPlatform(): string {
 }
 
 /**
- * Resolve platform name from options or auto-detect
+ * Resolve platform name from options, config, or auto-detect
  *
  * Priority:
- * 1. Explicit --platform or --target flag
- * 2. Deployment platform detection (production environments)
- * 3. Development platform detection (local runtime)
+ * 1. Explicit --platform or --target CLI flag
+ * 2. shovel.json or package.json "shovel.platform" field
+ * 3. Deployment platform detection (production environments)
+ * 4. Development platform detection (local runtime)
  */
 export function resolvePlatform(options: {
 	platform?: string;
 	target?: string;
+	config?: {platform?: string};
 }): string {
-	// Explicit platform takes precedence
+	// Explicit CLI platform takes precedence
 	if (options.platform) {
 		return options.platform;
 	}
@@ -301,6 +303,11 @@ export function resolvePlatform(options: {
 	// Target for build/deploy scenarios
 	if (options.target) {
 		return options.target;
+	}
+
+	// Config file platform (shovel.json or package.json)
+	if (options.config?.platform) {
+		return options.config.platform;
 	}
 
 	// Try to detect deployment platform (Lambda, Vercel, etc.)

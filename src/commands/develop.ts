@@ -2,6 +2,7 @@ import {DEFAULTS} from "../esbuild/config.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
+import {loadConfig} from "@b9g/platform/config";
 import {Watcher} from "../esbuild/watcher.js";
 
 // Configure LogTape for CLI logging (users can reconfigure with reset: true)
@@ -28,8 +29,10 @@ const logger = getLogger(["cli"]);
 
 export async function developCommand(entrypoint, options) {
 	try {
-		const platformName = Platform.resolvePlatform(options);
-		const workerCount = getWorkerCount(options);
+		// Load config from shovel.json or package.json
+		const config = loadConfig(process.cwd());
+		const platformName = Platform.resolvePlatform({...options, config});
+		const workerCount = getWorkerCount(options, config);
 
 		if (options.verbose) {
 			Platform.displayPlatformInfo(platformName);
@@ -117,7 +120,7 @@ export async function developCommand(entrypoint, options) {
 	}
 }
 
-function getWorkerCount(options) {
+function getWorkerCount(options, config) {
 	// Explicit CLI option takes precedence
 	if (options.workers) {
 		return parseInt(options.workers);
@@ -126,6 +129,10 @@ function getWorkerCount(options) {
 	if (process.env.WORKER_COUNT) {
 		return parseInt(process.env.WORKER_COUNT);
 	}
-	// Default from config
+	// Config file third
+	if (config?.workers) {
+		return config.workers;
+	}
+	// Default from constants
 	return DEFAULTS.WORKERS;
 }

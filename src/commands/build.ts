@@ -12,6 +12,7 @@ import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
+import {loadConfig} from "@b9g/platform/config";
 
 // Configure LogTape for build command
 await configure({
@@ -571,15 +572,18 @@ async function generateExecutablePackageJSON(platform) {
  * CLI command wrapper for buildForProduction
  */
 export async function buildCommand(entrypoint: string, options: any) {
+	// Load config from shovel.json or package.json
+	const config = loadConfig(process.cwd());
+
 	// Use same platform resolution as develop command
-	const platform = Platform.resolvePlatform(options);
+	const platform = Platform.resolvePlatform({...options, config});
 
 	await buildForProduction({
 		entrypoint,
 		outDir: "dist",
 		verbose: options.verbose || false,
 		platform,
-		workerCount: options.workers ? parseInt(options.workers, 10) : 1,
+		workerCount: options.workers ? parseInt(options.workers, 10) : config.workers,
 	});
 
 	// Workaround for Bun-specific issue: esbuild keeps child processes alive
