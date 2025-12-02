@@ -534,15 +534,14 @@ export default {
 						return responseReceived;
 					}
 				} catch (error) {
-					logger.error("Handler error", {error});
-					logger.error("Error stack", {stack: error.stack});
+					logger.error("Handler error: {error}", {error});
 					return createErrorResponse(error);
 				}
 			}
 
 			return new Response('No ServiceWorker handler', { status: 404 });
 		} catch (topLevelError) {
-			logger.error("Top-level error", {error: topLevelError});
+			logger.error("Top-level error: {error}", {error: topLevelError});
 			const isDev = typeof import.meta !== "undefined" && import.meta.env?.MODE !== "production";
 			if (isDev) {
 				const escapeHtml = (str) => String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

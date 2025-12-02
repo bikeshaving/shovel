@@ -68,7 +68,7 @@ export class RedisCache extends Cache {
 
 		// Set up error handling
 		this.#client.on("error", (err) => {
-			logger.error("Redis error", {error: err});
+			logger.error("Redis error: {error}", {error: err});
 		});
 
 		this.#client.on("connect", () => {
@@ -173,7 +173,7 @@ export class RedisCache extends Cache {
 
 			return this.#deserializeResponse(entry);
 		} catch (error) {
-			logger.error("Failed to match", {error});
+			logger.error("Failed to match: {error}", {error});
 			return undefined;
 		}
 	}
@@ -196,7 +196,7 @@ export class RedisCache extends Cache {
 				await this.#client.set(key, serialized);
 			}
 		} catch (error) {
-			logger.error("Failed to put", {error});
+			logger.error("Failed to put: {error}", {error});
 			throw error;
 		}
 	}
@@ -215,7 +215,7 @@ export class RedisCache extends Cache {
 			const result = await this.#client.del(key);
 			return result > 0;
 		} catch (error) {
-			logger.error("Failed to delete", {error});
+			logger.error("Failed to delete: {error}", {error});
 			return false;
 		}
 	}
@@ -267,7 +267,7 @@ export class RedisCache extends Cache {
 
 			return requests;
 		} catch (error) {
-			logger.error("Failed to get keys", {error});
+			logger.error("Failed to get keys: {error}", {error});
 			return [];
 		}
 	}
@@ -308,7 +308,7 @@ export class RedisCache extends Cache {
 				maxEntrySize: this.#maxEntrySize,
 			};
 		} catch (error) {
-			logger.error("Failed to get stats", {error});
+			logger.error("Failed to get stats: {error}", {error});
 			return {
 				connected: false,
 				keyCount: 0,
@@ -330,14 +330,12 @@ export class RedisCache extends Cache {
 				await this.#client.quit(); // Graceful shutdown - waits for pending commands
 				logger.info("Redis connection closed", {prefix: this.#prefix});
 			} catch (error) {
-				logger.error("Error closing Redis connection", {error});
+				logger.error("Error closing Redis connection: {error}", {error});
 				// Force disconnect if graceful quit fails
 				try {
 					await this.#client.disconnect();
 				} catch (disconnectError) {
-					logger.error("Error forcing Redis disconnect", {
-						error: disconnectError,
-					});
+					logger.error("Error forcing Redis disconnect: {error}", {error: disconnectError});
 				}
 			}
 		}

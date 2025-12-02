@@ -114,7 +114,7 @@ export class Watcher {
 							if (success) {
 								logger.info("Build complete", {entrypoint: outputPath});
 							} else {
-								logger.error("Build errors", {errors: result.errors});
+								logger.error("Build errors: {errors}", {errors: result.errors});
 							}
 
 							this.#currentEntrypoint = outputPath;

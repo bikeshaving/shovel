@@ -41,10 +41,7 @@ export async function activateCommand(entrypoint, options) {
 		await serviceWorker.dispose();
 		await platformInstance.dispose();
 	} catch (error) {
-		logger.error("ServiceWorker activation failed", {error: error.message});
-		if (options.verbose) {
-			logger.error("Stack trace", {stack: error.stack});
-		}
+		logger.error("ServiceWorker activation failed: {error}", {error});
 		process.exit(1);
 	}
 }

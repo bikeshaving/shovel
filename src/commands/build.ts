@@ -458,7 +458,7 @@ async function logBundleAnalysis(metafile) {
 		const analysis = await ESBuild.analyzeMetafile(metafile);
 		logger.info(analysis, {});
 	} catch (error) {
-		logger.warn("Failed to analyze bundle", {error: error.message});
+		logger.warn("Failed to analyze bundle: {error}", {error});
 	}
 }
 
@@ -492,7 +492,7 @@ async function generatePackageJSON({serverDir, platform, verbose, entryPath}) {
 	} catch (error) {
 		// If no package.json exists in source, generate one for executable builds
 		if (verbose) {
-			logger.warn("Could not copy package.json", {error: error.message});
+			logger.warn("Could not copy package.json: {error}", {error});
 		}
 
 		try {
@@ -511,10 +511,7 @@ async function generatePackageJSON({serverDir, platform, verbose, entryPath}) {
 			}
 		} catch (generateError) {
 			if (verbose) {
-				logger.warn("Could not generate package.json", {
-					error: generateError.message,
-				});
-				logger.warn("Generation error details", {error: generateError});
+				logger.warn("Could not generate package.json: {error}", {error: generateError});
 			}
 			// Don't fail the build if package.json generation fails
 		}

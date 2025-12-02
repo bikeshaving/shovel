@@ -428,7 +428,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 						assetCount: Object.keys(manifest.assets).length,
 					});
 				} catch (error: any) {
-					logger.warn("Failed to write asset manifest", {error: error.message});
+					logger.warn("Failed to write asset manifest: {error}", {error});
 				}
 			});
 		},

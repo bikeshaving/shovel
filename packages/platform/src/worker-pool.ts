@@ -413,7 +413,7 @@ export class ServiceWorkerPool {
 				this.#pendingRequests.delete(message.requestID);
 			}
 		} else {
-			logger.error("Worker error", {error: message.error});
+			logger.error("Worker error: {error}", {error: message.error});
 		}
 	}
 

@@ -1388,7 +1388,7 @@ async function handleFetchEvent(request: Request): Promise<Response> {
 		return response;
 	} catch (error) {
 		// Log to both logtape and console.error - logtape may not be configured in workers
-		logger.error("[Worker] ServiceWorker request failed", {error});
+		logger.error("[Worker] ServiceWorker request failed: {error}", {error});
 		console.error("[Worker] ServiceWorker request failed:", error);
 		const response = new Response("ServiceWorker request failed", {
 			status: 500,
