@@ -16,11 +16,12 @@
   "scripts": {
     "build": "libuild build --save",
     "dev": "libuild build --watch",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "dependencies": {},
   "devDependencies": {
-    "@b9g/libuild": "^0.1.11",
+    "@b9g/libuild": "^0.1.18",
     "bun-types": "latest"
   },
   "module": "./dist/src/index.js",
@@ -39,6 +40,5 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     }
-  },
-  "private": true
+  }
 }

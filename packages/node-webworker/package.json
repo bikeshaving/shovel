@@ -7,7 +7,8 @@
     "build": "libuild build --save",
     "build:save": "libuild build --save",
     "publish": "libuild publish",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "keywords": [
     "worker",
@@ -22,11 +23,10 @@
   "deprecation": "This package will be deprecated when Node.js implements native Web Workers. See: https://github.com/nodejs/node/issues/43583",
   "dependencies": {},
   "devDependencies": {
-    "@b9g/libuild": "^0.1.11",
+    "@b9g/libuild": "^0.1.18",
     "bun-types": "latest",
     "@types/node": "^18.0.0"
   },
-  "private": true,
   "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "exports": {

@@ -14,17 +14,17 @@
     "shovel"
   ],
   "scripts": {
-    "build": "libuild build --save"
+    "build": "libuild build --save",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "dependencies": {
     "@b9g/http-errors": "workspace:*",
     "@b9g/match-pattern": "workspace:*"
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.11",
+    "@b9g/libuild": "^0.1.18",
     "bun-types": "latest"
   },
-  "private": true,
   "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "exports": {

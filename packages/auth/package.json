@@ -58,7 +58,8 @@
   ],
   "scripts": {
     "build": "libuild build --save",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "keywords": [
     "auth",
@@ -77,9 +78,8 @@
     "@b9g/router": "workspace:*"
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.15",
+    "@b9g/libuild": "^0.1.18",
     "@types/bun": "^1.2.2",
     "typescript": "^5.7.3"
-  },
-  "private": true
+  }
 }

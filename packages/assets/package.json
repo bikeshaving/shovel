@@ -3,7 +3,8 @@
   "version": "0.1.13",
   "type": "module",
   "scripts": {
-    "build": "libuild build --save"
+    "build": "libuild build --save",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "dependencies": {
     "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
@@ -19,9 +20,8 @@
     }
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.11"
+    "@b9g/libuild": "^0.1.18"
   },
-  "private": true,
   "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "exports": {

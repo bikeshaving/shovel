@@ -7,7 +7,8 @@
     "build": "libuild build --save",
     "build:save": "libuild build --save",
     "publish": "libuild publish",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "keywords": [
     "wpt",
@@ -20,11 +21,8 @@
   ],
   "dependencies": {},
   "devDependencies": {
-    "@b9g/libuild": "^0.1.11",
+    "@b9g/libuild": "^0.1.18",
     "bun-types": "latest"
-  },
-  "peerDependencies": {
-    "bun:test": "*"
   },
   "private": true,
   "module": "./dist/src/index.js",
@@ -34,22 +32,14 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./harness": {
-      "types": "./dist/src/harness/index.d.ts",
-      "import": "./dist/src/harness/index.js"
+    "./package.json": "./dist/package.json",
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
     },
-    "./runners/cache": {
-      "types": "./dist/src/runners/cache.d.ts",
-      "import": "./dist/src/runners/cache.js"
-    },
-    "./runners/filesystem": {
-      "types": "./dist/src/runners/filesystem.d.ts",
-      "import": "./dist/src/runners/filesystem.js"
-    },
-    "./wpt": {
-      "types": "./dist/src/wpt/index.d.ts",
-      "import": "./dist/src/wpt/index.js"
-    },
-    "./package.json": "./dist/package.json"
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
   }
 }

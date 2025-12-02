@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "libuild build --save",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "peerDependencies": {
     "@types/node": "^18.0.0"
@@ -17,10 +18,9 @@
     }
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.11",
+    "@b9g/libuild": "^0.1.18",
     "@types/bun": "^1.2.2"
   },
-  "private": true,
   "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "exports": {
