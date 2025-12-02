@@ -20,8 +20,11 @@
     "jsx"
   ],
   "dependencies": {
+    "@b9g/assets": "workspace:*",
+    "@b9g/cache": "workspace:*",
+    "@b9g/http-errors": "workspace:*",
     "@b9g/platform": "workspace:*",
-    "@b9g/assets": "workspace:*"
+    "@logtape/logtape": "^1.2.0"
   },
   "devDependencies": {
     "@b9g/libuild": "^0.1.18",

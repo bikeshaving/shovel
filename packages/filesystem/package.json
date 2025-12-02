@@ -9,6 +9,9 @@
     "test": "bun test",
     "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
+  "dependencies": {
+    "mime": "^4.0.4"
+  },
   "peerDependencies": {
     "@types/node": "^18.0.0"
   },

@@ -27,6 +27,7 @@
     "@b9g/cache": "workspace:*"
   },
   "dependencies": {
+    "@logtape/logtape": "^1.2.0",
     "redis": "^4.6.10"
   },
   "devDependencies": {

@@ -18,7 +18,8 @@
     "web-standards"
   ],
   "dependencies": {
-    "@b9g/filesystem": "workspace:*"
+    "@b9g/filesystem": "workspace:*",
+    "mime": "^4.0.4"
   },
   "peerDependencies": {
     "@cloudflare/workers-types": "^4.0.0"

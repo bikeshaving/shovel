@@ -9,6 +9,7 @@
   "dependencies": {
     "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
     "@esbuild-plugins/node-modules-polyfill": "^0.2.2",
+    "@logtape/logtape": "^1.2.0",
     "mime": "^4.0.4"
   },
   "peerDependencies": {

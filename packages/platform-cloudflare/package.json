@@ -23,6 +23,7 @@
     "@b9g/cache": "workspace:*",
     "@b9g/platform": "workspace:*",
     "@cloudflare/workers-types": "^4.20241218.0",
+    "@logtape/logtape": "^1.2.0",
     "miniflare": "^4.20251118.1"
   },
   "devDependencies": {
