@@ -1,5 +1,5 @@
 import {describe, test, expect} from "bun:test";
-import {AsyncVariable, AsyncContext} from "../src/index.js";
+import {AsyncVariable, AsyncSnapshot, AsyncContext} from "../src/index.js";
 
 describe("AsyncVariable", () => {
 	test("should store and retrieve values", () => {
@@ -115,7 +115,7 @@ describe("AsyncVariable", () => {
 	});
 });
 
-describe("AsyncContext namespace", () => {
+describe("AsyncContext object", () => {
 	test("should export Variable class", () => {
 		const variable = new AsyncContext.Variable<string>();
 
@@ -124,11 +124,141 @@ describe("AsyncContext namespace", () => {
 		});
 	});
 
-	test("AsyncContext.Variable should be compatible with AsyncVariable", () => {
-		const variable: AsyncContext.Variable<number> = new AsyncVariable<number>();
+	test("AsyncContext.Variable should be the same as AsyncVariable", () => {
+		expect(AsyncContext.Variable).toBe(AsyncVariable);
+		expect(AsyncContext.Snapshot).toBe(AsyncSnapshot);
+	});
+});
 
-		variable.run(123, () => {
-			expect(variable.get()).toBe(123);
+describe("AsyncSnapshot", () => {
+	test("should capture current context values", () => {
+		const variable = new AsyncVariable<string>();
+
+		variable.run("captured-value", () => {
+			const snapshot = new AsyncSnapshot();
+
+			// Later, in a different context
+			variable.run("different-value", () => {
+				expect(variable.get()).toBe("different-value");
+
+				// Restore captured context
+				snapshot.run(() => {
+					expect(variable.get()).toBe("captured-value");
+				});
+
+				// Back to different context
+				expect(variable.get()).toBe("different-value");
+			});
+		});
+	});
+
+	test("should capture multiple variables", () => {
+		const var1 = new AsyncVariable<string>();
+		const var2 = new AsyncVariable<number>();
+
+		var1.run("value1", () => {
+			var2.run(42, () => {
+				const snapshot = new AsyncSnapshot();
+
+				// Change both contexts
+				var1.run("changed1", () => {
+					var2.run(100, () => {
+						expect(var1.get()).toBe("changed1");
+						expect(var2.get()).toBe(100);
+
+						// Restore both
+						snapshot.run(() => {
+							expect(var1.get()).toBe("value1");
+							expect(var2.get()).toBe(42);
+						});
+					});
+				});
+			});
+		});
+	});
+
+	test("should pass arguments to run callback", () => {
+		const variable = new AsyncVariable<string>();
+
+		variable.run("test", () => {
+			const snapshot = new AsyncSnapshot();
+
+			const result = snapshot.run(
+				(a: number, b: string) => {
+					expect(variable.get()).toBe("test");
+					return `${a}-${b}`;
+				},
+				123,
+				"hello",
+			);
+
+			expect(result).toBe("123-hello");
+		});
+	});
+
+	test("static wrap should preserve context", () => {
+		const variable = new AsyncVariable<string>();
+
+		const wrappedFn = variable.run("alice", () => {
+			return AsyncSnapshot.wrap(() => {
+				return variable.get();
+			});
+		});
+
+		// Outside of any context
+		expect(variable.get()).toBeUndefined();
+
+		// Wrapped function preserves original context
+		expect(wrappedFn()).toBe("alice");
+	});
+
+	test("static wrap should preserve this binding", () => {
+		const variable = new AsyncVariable<string>();
+
+		const obj = {
+			name: "test-object",
+			getInfo: function () {
+				return `${this.name}: ${variable.get()}`;
+			},
+		};
+
+		const wrappedMethod = variable.run("context-value", () => {
+			return AsyncSnapshot.wrap(obj.getInfo);
+		});
+
+		// Call with proper this binding
+		expect(wrappedMethod.call(obj)).toBe("test-object: context-value");
+	});
+
+	test("static wrap should work with async functions", async () => {
+		const variable = new AsyncVariable<string>();
+
+		const wrappedAsync = variable.run("async-context", () => {
+			return AsyncSnapshot.wrap(async () => {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				return variable.get();
+			});
+		});
+
+		// Outside context
+		expect(variable.get()).toBeUndefined();
+
+		// Wrapped async function preserves context
+		const result = await wrappedAsync();
+		expect(result).toBe("async-context");
+	});
+
+	test("should work with AsyncContext.Snapshot", () => {
+		const variable = new AsyncContext.Variable<string>();
+
+		variable.run("snapshot-test", () => {
+			const snapshot = new AsyncContext.Snapshot();
+
+			variable.run("changed", () => {
+				snapshot.run(() => {
+					expect(variable.get()).toBe("snapshot-test");
+				});
+			});
 		});
 	});
 });
