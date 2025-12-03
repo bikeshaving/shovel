@@ -155,7 +155,7 @@ export class NodePlatform extends BasePlatform {
 
 		// Initialize and load entrypoint
 		await this.#singleThreadedRuntime.init();
-		await this.#singleThreadedRuntime.loadEntrypoint(entryPath);
+		await this.#singleThreadedRuntime.load(entryPath);
 
 		// Capture reference for closures
 		const runtime = this.#singleThreadedRuntime;
@@ -416,7 +416,7 @@ export class NodePlatform extends BasePlatform {
 		if (this.#workerPool) {
 			await this.#workerPool.reloadWorkers(entrypoint);
 		} else if (this.#singleThreadedRuntime) {
-			await this.#singleThreadedRuntime.reloadWorkers(entrypoint);
+			await this.#singleThreadedRuntime.load(entrypoint);
 		}
 	}
 

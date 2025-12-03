@@ -18,6 +18,7 @@ import {
 	createCacheFactory,
 	type ProcessedShovelConfig,
 } from "./config.js";
+import type {ServiceWorkerRuntime} from "./multi-threaded.js";
 
 const logger = getLogger(["single-threaded"]);
 
@@ -35,10 +36,10 @@ export interface SingleThreadedRuntimeOptions {
 /**
  * Single-threaded ServiceWorker runtime
  *
- * Provides the same interface as ServiceWorkerPool but runs everything
- * in the main thread for zero postMessage overhead.
+ * Runs ServiceWorker code directly in the main thread.
+ * Implements ServiceWorkerRuntime interface for interchangeability with MultiThreadedRuntime.
  */
-export class SingleThreadedRuntime {
+export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 	#registration: ShovelServiceWorkerRegistration;
 	#scope: ServiceWorkerGlobals;
 	#ready: boolean;
@@ -87,46 +88,28 @@ export class SingleThreadedRuntime {
 	}
 
 	/**
-	 * Load and run a ServiceWorker entrypoint
-	 * @param entrypoint - Path to the new entrypoint (hashed filename for cache busting)
-	 */
-	async reloadWorkers(entrypoint: string): Promise<void> {
-		logger.info("Reloading ServiceWorker", {
-			oldEntrypoint: this.#entrypoint,
-			newEntrypoint: entrypoint,
-		});
-
-		// Update the entrypoint to the new hashed filename
-		this.#entrypoint = entrypoint;
-
-		// Reset registration state for reload
-		this.#registration._serviceWorker._setState("parsed");
-		this.#ready = false;
-
-		// Import the user's ServiceWorker code - filename is content-hashed
-		// so the new file is guaranteed to be a fresh import (no cache issues)
-		await import(entrypoint);
-
-		// Run lifecycle events
-		await this.#registration.install();
-		await this.#registration.activate();
-
-		this.#ready = true;
-		logger.info("ServiceWorker loaded and activated", {entrypoint});
-	}
-
-	/**
-	 * Load a ServiceWorker entrypoint for the first time
+	 * Load (or reload) a ServiceWorker entrypoint
 	 * @param entrypoint - Path to the entrypoint file (content-hashed filename)
 	 */
-	async loadEntrypoint(entrypoint: string): Promise<void> {
-		this.#entrypoint = entrypoint;
+	async load(entrypoint: string): Promise<void> {
+		const isReload = this.#entrypoint !== undefined;
 
-		logger.info("Loading ServiceWorker entrypoint", {entrypoint});
+		if (isReload) {
+			logger.info("Reloading ServiceWorker", {
+				oldEntrypoint: this.#entrypoint,
+				newEntrypoint: entrypoint,
+			});
+			// Reset registration state for reload
+			this.#registration._serviceWorker._setState("parsed");
+		} else {
+			logger.info("Loading ServiceWorker entrypoint", {entrypoint});
+		}
+
+		this.#entrypoint = entrypoint;
+		this.#ready = false;
 
 		// Import the user's ServiceWorker code
-		// The import will call self.addEventListener("fetch", ...) which registers on our scope
-		// Filename is content-hashed, so no query string needed for cache busting
+		// Filename is content-hashed, so fresh import is guaranteed on reload
 		await import(entrypoint);
 
 		// Run lifecycle events

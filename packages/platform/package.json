@@ -111,6 +111,22 @@
     "./single-threaded.js": {
       "types": "./dist/src/single-threaded.d.ts",
       "import": "./dist/src/single-threaded.js"
+    },
+    "./multi-threaded": {
+      "types": "./dist/src/multi-threaded.d.ts",
+      "import": "./dist/src/multi-threaded.js"
+    },
+    "./multi-threaded.js": {
+      "types": "./dist/src/multi-threaded.d.ts",
+      "import": "./dist/src/multi-threaded.js"
+    },
+    "./worker": {
+      "types": "./dist/src/worker.d.ts",
+      "import": "./dist/src/worker.js"
+    },
+    "./worker.js": {
+      "types": "./dist/src/worker.d.ts",
+      "import": "./dist/src/worker.js"
     }
   }
 }

@@ -486,10 +486,11 @@ export async function getPlatformAsync(name?: string): Promise<Platform> {
 // Re-exports from other modules
 // ============================================================================
 
-// Worker pool
+// Multi-threaded runtime (for workerCount > 1)
 export {
-	ServiceWorkerPool,
-	type WorkerPoolOptions,
+	MultiThreadedRuntime,
+	type MultiThreadedRuntimeOptions,
+	type ServiceWorkerRuntime,
 	type WorkerMessage,
 	type WorkerRequest,
 	type WorkerResponse,
@@ -498,13 +499,16 @@ export {
 	type WorkerErrorMessage,
 	type WorkerInitMessage,
 	type WorkerInitializedMessage,
-} from "./worker-pool.js";
+} from "./multi-threaded.js";
 
 // Single-threaded runtime (for workerCount === 1)
 export {
 	SingleThreadedRuntime,
 	type SingleThreadedRuntimeOptions,
 } from "./single-threaded.js";
+
+// Legacy export - ServiceWorkerPool is now MultiThreadedRuntime
+export {ServiceWorkerPool, type WorkerPoolOptions} from "./worker-pool.js";
 
 // ServiceWorker runtime
 export {

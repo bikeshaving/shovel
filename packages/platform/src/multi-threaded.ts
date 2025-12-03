@@ -1,33 +1,46 @@
 /**
- * @b9g/platform/worker-pool - ServiceWorker pool implementation
+ * @b9g/platform/multi-threaded - Multi-threaded ServiceWorker runtime
  *
- * Manages a pool of workers that run the ServiceWorker runtime.
- * Handles worker lifecycle, message passing, and request routing.
+ * Spawns worker threads to run ServiceWorker code in parallel.
+ * Used when workerCount > 1 for CPU parallelism.
  */
 
 import * as Path from "path";
 import {existsSync} from "fs";
 import {getLogger} from "@logtape/logtape";
+import type {ProcessedShovelConfig} from "./config.js";
 
 // Runtime global declarations
 declare const Deno: any;
 
-const logger = getLogger(["worker"]);
+const logger = getLogger(["multi-threaded"]);
+
+// ============================================================================
+// Common Interface
+// ============================================================================
+
+/**
+ * Common interface for ServiceWorker runtimes
+ * Both SingleThreadedRuntime and MultiThreadedRuntime implement this
+ */
+export interface ServiceWorkerRuntime {
+	/** Initialize the runtime */
+	init(): Promise<void>;
+	/** Load (or reload) a ServiceWorker entrypoint */
+	load(entrypoint: string): Promise<void>;
+	/** Handle an HTTP request */
+	handleRequest(request: Request): Promise<Response>;
+	/** Graceful shutdown */
+	terminate(): Promise<void>;
+	/** Number of workers (1 for single-threaded) */
+	readonly workerCount: number;
+	/** Whether the runtime is ready to handle requests */
+	readonly ready: boolean;
+}
 
 // ============================================================================
 // Worker Message Types
 // ============================================================================
-
-// NOTE: WorkerPoolOptions is exported for platform implementations
-// Message types are exported for use by runtime.ts
-export interface WorkerPoolOptions {
-	/** Number of workers in the pool (default: 1) */
-	workerCount?: number;
-	/** Request timeout in milliseconds (default: 30000) */
-	requestTimeout?: number;
-	/** Working directory for file resolution */
-	cwd?: string;
-}
 
 export interface WorkerMessage {
 	type: string;
@@ -40,7 +53,7 @@ export interface WorkerRequest extends WorkerMessage {
 		url: string;
 		method: string;
 		headers: Record<string, string>;
-		body?: ArrayBuffer | null; // Zero-copy transfer to worker
+		body?: ArrayBuffer | null;
 	};
 	requestID: number;
 }
@@ -51,7 +64,7 @@ export interface WorkerResponse extends WorkerMessage {
 		status: number;
 		statusText: string;
 		headers: Record<string, string>;
-		body: ArrayBuffer; // Zero-copy transfer from worker
+		body: ArrayBuffer;
 	};
 	requestID: number;
 }
@@ -75,13 +88,34 @@ export interface WorkerErrorMessage extends WorkerMessage {
 
 export interface WorkerInitMessage extends WorkerMessage {
 	type: "init";
-	config: any; // ShovelConfig from config.ts
-	baseDir: string; // Base directory for bucket path resolution
+	config: any;
+	baseDir: string;
 }
 
 export interface WorkerInitializedMessage extends WorkerMessage {
 	type: "initialized";
 }
+
+// ============================================================================
+// Runtime Options
+// ============================================================================
+
+export interface MultiThreadedRuntimeOptions {
+	/** Number of workers in the pool (default: 1) */
+	workerCount?: number;
+	/** Request timeout in milliseconds (default: 30000) */
+	requestTimeout?: number;
+	/** Base directory for bucket path resolution (entrypoint directory) - REQUIRED */
+	baseDir: string;
+	/** Optional pre-created cache storage (for sharing across workers) */
+	cacheStorage?: CacheStorage;
+	/** Shovel configuration for bucket/cache settings */
+	config?: ProcessedShovelConfig;
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 /**
  * Resolve the worker script path for the current platform
@@ -94,23 +128,19 @@ function resolveWorkerScript(entrypoint?: string): string {
 
 		// Check if bundled worker exists (production)
 		try {
-			// Use platform-specific file existence check
 			if (typeof Bun !== "undefined") {
-				// Bun has synchronous file operations
 				const file = Bun.file(bundledWorker);
 				if (file.size > 0) {
 					logger.info("Using bundled worker", {bundledWorker});
 					return bundledWorker;
 				}
 			} else if (typeof require !== "undefined") {
-				// Node.js - use existsSync
 				if (existsSync(bundledWorker)) {
 					logger.info("Using bundled worker", {bundledWorker});
 					return bundledWorker;
 				}
 			}
 		} catch (err) {
-			// Only ignore file-not-found errors, rethrow others
 			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
 				throw err;
 			}
@@ -119,13 +149,11 @@ function resolveWorkerScript(entrypoint?: string): string {
 
 	// Fallback to package resolution for development
 	try {
-		// Use import.meta.resolve for worker entry point
 		const workerURL = import.meta.resolve("@b9g/platform/worker.js");
 		let workerScript: string;
 
 		if (workerURL.startsWith("file://")) {
-			// Convert file:// URL to path for Worker constructor
-			workerScript = workerURL.slice(7); // Remove 'file://' prefix
+			workerScript = workerURL.slice(7);
 		} else {
 			workerScript = workerURL;
 		}
@@ -146,20 +174,16 @@ function resolveWorkerScript(entrypoint?: string): string {
  * Create a web-standard Worker with targeted Node.js fallback
  */
 async function createWebWorker(workerScript: string): Promise<Worker> {
-	// Try native Web Worker API first (works in Bun, Deno, browsers)
 	if (typeof Worker !== "undefined") {
 		return new Worker(workerScript, {type: "module"} as WorkerOptions);
 	}
 
-	// Only try shim for Node.js (which lacks native Worker support)
 	const isNodeJs = typeof process !== "undefined" && process.versions?.node;
 
 	if (isNodeJs) {
-		// Try to dynamically import our own Node.js shim
 		try {
 			const {Worker: NodeWebWorker} = await import("@b9g/node-webworker");
 			logger.info("Using @b9g/node-webworker shim for Node.js", {});
-			// Our Node.js shim doesn't implement all Web Worker properties, but has the core functionality
 			return new NodeWebWorker(workerScript, {
 				type: "module",
 			}) as unknown as Worker;
@@ -177,19 +201,18 @@ async function createWebWorker(workerScript: string): Promise<Worker> {
 
 🔗 Node.js doesn't implement the Web Worker standard yet.
    CANONICAL ISSUE: https://github.com/nodejs/node/issues/43583
-   
+
 🗳️  Please 👍 react and comment to show demand for this basic web standard!
 
 💡 Immediate workaround:
    npm install @b9g/node-webworker
-   
+
    This installs our minimal, reliable Web Worker shim for Node.js.
 
 📚 Learn more: https://developer.mozilla.org/en-US/docs/Web/API/Worker`);
 		}
 	}
 
-	// For other runtimes, fail with generic message
 	const runtime =
 		typeof Bun !== "undefined"
 			? "Bun"
@@ -204,11 +227,18 @@ Please check your runtime version and configuration.
 
 📚 Web Worker standard: https://developer.mozilla.org/en-US/docs/Web/API/Worker`);
 }
+
+// ============================================================================
+// MultiThreadedRuntime
+// ============================================================================
+
 /**
- * ServiceWorkerPool - manages a pool of ServiceWorker instances
- * Handles HTTP request/response routing, cache coordination, and hot reloading
+ * Multi-threaded ServiceWorker runtime
+ *
+ * Spawns worker threads and routes requests using round-robin selection.
+ * Implements the same interface as SingleThreadedRuntime.
  */
-export class ServiceWorkerPool {
+export class MultiThreadedRuntime implements ServiceWorkerRuntime {
 	#workers: Worker[];
 	#currentWorker: number;
 	#requestID: number;
@@ -223,61 +253,59 @@ export class ServiceWorkerPool {
 			initialized?: () => void;
 		}
 	>;
-	#options: Required<Omit<WorkerPoolOptions, "cwd">> & {cwd?: string};
-	#appEntrypoint?: string;
+	#options: {
+		workerCount: number;
+		requestTimeout: number;
+		baseDir: string;
+	};
+	#entrypoint?: string;
 	#cacheStorage?: CacheStorage & {
 		handleMessage?: (worker: Worker, message: any) => Promise<void>;
-	}; // CustomCacheStorage for cache coordination
-	#config: any; // ShovelConfig from config.ts
+	};
+	#config?: ProcessedShovelConfig;
+	#ready: boolean;
 
-	constructor(
-		options: WorkerPoolOptions = {},
-		appEntrypoint?: string,
-		cacheStorage?: CacheStorage,
-		config?: any,
-	) {
+	constructor(options: MultiThreadedRuntimeOptions) {
 		this.#workers = [];
 		this.#currentWorker = 0;
 		this.#requestID = 0;
 		this.#pendingRequests = new Map();
 		this.#pendingWorkerInit = new Map();
-		this.#appEntrypoint = appEntrypoint;
-		this.#cacheStorage = cacheStorage;
-		this.#config = config || {};
+		this.#cacheStorage = options.cacheStorage;
+		this.#config = options.config;
+		this.#ready = false;
 		this.#options = {
-			workerCount: 1,
-			requestTimeout: 30000,
-			...options,
+			workerCount: options.workerCount ?? 2,
+			requestTimeout: options.requestTimeout ?? 30000,
+			baseDir: options.baseDir,
 		};
 
-		// Workers will be initialized by calling init() after construction
+		logger.info("MultiThreadedRuntime created", {
+			workerCount: this.#options.workerCount,
+			baseDir: options.baseDir,
+		});
 	}
 
 	/**
 	 * Initialize workers (must be called after construction)
 	 */
 	async init(): Promise<void> {
-		await this.#initWorkers();
-	}
-
-	async #initWorkers() {
 		for (let i = 0; i < this.#options.workerCount; i++) {
 			await this.#createWorker();
 		}
+		logger.info("MultiThreadedRuntime initialized", {
+			workerCount: this.#workers.length,
+		});
 	}
 
 	async #createWorker(): Promise<Worker> {
-		const workerScript = resolveWorkerScript(this.#appEntrypoint);
+		const workerScript = resolveWorkerScript(this.#entrypoint);
 		const worker = await createWebWorker(workerScript);
 
-		// Create promises for worker initialization steps
 		const workerReadyPromise = new Promise<void>((resolve) => {
-			this.#pendingWorkerInit.set(worker, {
-				workerReady: resolve,
-			});
+			this.#pendingWorkerInit.set(worker, {workerReady: resolve});
 		});
 
-		// Set up event listeners using web standards
 		worker.addEventListener("message", (event) => {
 			this.#handleWorkerMessage(worker, event.data || event);
 		});
@@ -295,57 +323,43 @@ export class ServiceWorkerPool {
 
 		this.#workers.push(worker);
 
-		// Wait for worker-ready signal
 		logger.info("Waiting for worker-ready signal");
 		await workerReadyPromise;
 		logger.info("Received worker-ready signal");
 
-		// Create promise for initialized response
 		const initializedPromise = new Promise<void>((resolve) => {
 			const pending = this.#pendingWorkerInit.get(worker) || {};
 			pending.initialized = resolve;
 			this.#pendingWorkerInit.set(worker, pending);
 		});
 
-		// Derive baseDir from entrypoint
-		if (!this.#appEntrypoint) {
-			throw new Error(
-				"ServiceWorkerPool requires an entrypoint to derive baseDir",
-			);
-		}
-		const baseDir = Path.dirname(this.#appEntrypoint);
-
-		// Send init message with config and baseDir
 		const initMessage: WorkerInitMessage = {
 			type: "init",
 			config: this.#config,
-			baseDir,
+			baseDir: this.#options.baseDir,
 		};
-		logger.info("Sending init message", {config: this.#config, baseDir});
+		logger.info("Sending init message", {
+			config: this.#config,
+			baseDir: this.#options.baseDir,
+		});
 		worker.postMessage(initMessage);
-		logger.info("Sent init message, waiting for initialized response");
 
-		// Wait for initialized response
 		await initializedPromise;
 		logger.info("Received initialized response");
 
-		// Clean up pending init promises
 		this.#pendingWorkerInit.delete(worker);
-
 		return worker;
 	}
 
 	#handleWorkerMessage(worker: Worker, message: WorkerMessage) {
 		logger.debug("Worker message received", {type: message.type});
 
-		// Handle worker initialization messages
 		const pending = this.#pendingWorkerInit.get(worker);
 		if (message.type === "worker-ready" && pending?.workerReady) {
 			pending.workerReady();
-			// Don't return - also pass to #handleReady
 		} else if (message.type === "initialized" && pending?.initialized) {
 			pending.initialized();
-			return; // Early return for initialized
+			return;
 		}
 
 		switch (message.type) {
@@ -360,10 +374,8 @@ export class ServiceWorkerPool {
 				this.#handleReady(message as WorkerReadyMessage);
 				break;
 			case "initialized":
-				// Already handled above
 				break;
 			default:
-				// Handle cache messages from PostMessageCache
 				if (message.type?.startsWith("cache:")) {
 					logger.debug("Cache message detected", {
 						type: message.type,
@@ -371,14 +383,8 @@ export class ServiceWorkerPool {
 					});
 
 					if (this.#cacheStorage) {
-						// CustomCacheStorage has handleMessage method for PostMessage coordination
 						const handleMessage = (this.#cacheStorage as any).handleMessage;
-						logger.debug("handleMessage check", {
-							hasMethod: typeof handleMessage === "function",
-						});
-
 						if (typeof handleMessage === "function") {
-							logger.debug("Calling handleMessage");
 							void handleMessage.call(this.#cacheStorage, worker, message);
 						}
 					}
@@ -390,7 +396,6 @@ export class ServiceWorkerPool {
 	#handleResponse(message: WorkerResponse) {
 		const pending = this.#pendingRequests.get(message.requestID);
 		if (pending) {
-			// Reconstruct Response object from transferred ArrayBuffer (zero-copy)
 			const response = new Response(message.response.body, {
 				status: message.response.status,
 				statusText: message.response.statusText,
@@ -402,7 +407,6 @@ export class ServiceWorkerPool {
 	}
 
 	#handleError(message: WorkerErrorMessage) {
-		// Always log error details for debugging
 		logger.error("Worker error message received", {
 			error: message.error,
 			stack: message.stack,
@@ -423,84 +427,20 @@ export class ServiceWorkerPool {
 	#handleReady(message: WorkerReadyMessage) {
 		if (message.type === "ready") {
 			logger.info("ServiceWorker ready", {entrypoint: message.entrypoint});
+			this.#ready = true;
 		} else if (message.type === "worker-ready") {
 			logger.info("Worker initialized", {});
 		}
 	}
 
 	/**
-	 * Handle HTTP request using round-robin worker selection
+	 * Load (or reload) a ServiceWorker entrypoint
 	 */
-	async handleRequest(request: Request): Promise<Response> {
-		// Round-robin worker selection
-		const worker = this.#workers[this.#currentWorker];
-		logger.info("Dispatching to worker", {
-			workerIndex: this.#currentWorker + 1,
-			totalWorkers: this.#workers.length,
-		});
-		this.#currentWorker = (this.#currentWorker + 1) % this.#workers.length;
+	async load(entrypoint: string): Promise<void> {
+		logger.info("Loading ServiceWorker", {entrypoint});
 
-		const requestID = ++this.#requestID;
-
-		return new Promise((resolve, reject) => {
-			// Track pending request
-			this.#pendingRequests.set(requestID, {resolve, reject});
-
-			// Start async work without blocking promise executor
-			this.#sendRequest(worker, request, requestID).catch(reject);
-
-			// Timeout handling
-			setTimeout(() => {
-				if (this.#pendingRequests.has(requestID)) {
-					this.#pendingRequests.delete(requestID);
-					reject(new Error("Request timeout"));
-				}
-			}, this.#options.requestTimeout);
-		});
-	}
-
-	/**
-	 * Send request to worker (async helper to avoid async promise executor)
-	 */
-	async #sendRequest(
-		worker: Worker,
-		request: Request,
-		requestID: number,
-	): Promise<void> {
-		// Read request body as ArrayBuffer for zero-copy transfer
-		let body: ArrayBuffer | null = null;
-		if (request.body) {
-			body = await request.arrayBuffer();
-		}
-
-		const workerRequest: WorkerRequest = {
-			type: "request",
-			request: {
-				url: request.url,
-				method: request.method,
-				headers: Object.fromEntries(request.headers.entries()),
-				body,
-			},
-			requestID,
-		};
-
-		// Transfer the body ArrayBuffer if present (zero-copy)
-		if (body) {
-			worker.postMessage(workerRequest, [body]);
-		} else {
-			worker.postMessage(workerRequest);
-		}
-	}
-
-	/**
-	 * Reload ServiceWorker with new entrypoint (hot reload)
-	 * The entrypoint path contains a content hash for cache busting
-	 */
-	async reloadWorkers(entrypoint: string): Promise<void> {
-		logger.info("Reloading ServiceWorker", {entrypoint});
-
-		// Update the stored entrypoint
-		this.#appEntrypoint = entrypoint;
+		this.#entrypoint = entrypoint;
+		this.#ready = false;
 
 		const loadPromises = this.#workers.map((worker) => {
 			return new Promise<void>((resolve, reject) => {
@@ -520,7 +460,6 @@ export class ServiceWorkerPool {
 						cleanup();
 						resolve();
 					} else if (message.type === "error") {
-						// Handle error messages sent from worker when load fails
 						cleanup();
 						reject(
 							new Error(
@@ -532,13 +471,11 @@ export class ServiceWorkerPool {
 
 				const handleError = (error: any) => {
 					cleanup();
-					// Extract error message from ErrorEvent or Error object
 					const errorMsg =
 						error?.error?.message || error?.message || JSON.stringify(error);
 					reject(new Error(`Worker failed to load ServiceWorker: ${errorMsg}`));
 				};
 
-				// Timeout after 30 seconds if worker doesn't respond (allows time for activate event processing)
 				timeoutId = setTimeout(() => {
 					cleanup();
 					reject(
@@ -548,10 +485,6 @@ export class ServiceWorkerPool {
 					);
 				}, 30000);
 
-				logger.info("Sending load message", {
-					entrypoint,
-				});
-
 				worker.addEventListener("message", handleReady);
 				worker.addEventListener("error", handleError);
 
@@ -559,16 +492,74 @@ export class ServiceWorkerPool {
 					type: "load",
 					entrypoint,
 				};
-
-				logger.debug("[WorkerPool] Sending load message", {
-					entrypoint,
-				});
 				worker.postMessage(loadMessage);
 			});
 		});
 
 		await Promise.all(loadPromises);
-		logger.info("All workers reloaded", {entrypoint});
+		this.#ready = true;
+		logger.info("All workers loaded", {entrypoint});
+	}
+
+	/**
+	 * Handle HTTP request using round-robin worker selection
+	 */
+	async handleRequest(request: Request): Promise<Response> {
+		if (!this.#ready) {
+			throw new Error(
+				"MultiThreadedRuntime not ready - ServiceWorker not loaded",
+			);
+		}
+
+		const worker = this.#workers[this.#currentWorker];
+		logger.debug("Dispatching to worker", {
+			workerIndex: this.#currentWorker + 1,
+			totalWorkers: this.#workers.length,
+		});
+		this.#currentWorker = (this.#currentWorker + 1) % this.#workers.length;
+
+		const requestID = ++this.#requestID;
+
+		return new Promise((resolve, reject) => {
+			this.#pendingRequests.set(requestID, {resolve, reject});
+
+			this.#sendRequest(worker, request, requestID).catch(reject);
+
+			setTimeout(() => {
+				if (this.#pendingRequests.has(requestID)) {
+					this.#pendingRequests.delete(requestID);
+					reject(new Error("Request timeout"));
+				}
+			}, this.#options.requestTimeout);
+		});
+	}
+
+	async #sendRequest(
+		worker: Worker,
+		request: Request,
+		requestID: number,
+	): Promise<void> {
+		let body: ArrayBuffer | null = null;
+		if (request.body) {
+			body = await request.arrayBuffer();
+		}
+
+		const workerRequest: WorkerRequest = {
+			type: "request",
+			request: {
+				url: request.url,
+				method: request.method,
+				headers: Object.fromEntries(request.headers.entries()),
+				body,
+			},
+			requestID,
+		};
+
+		if (body) {
+			worker.postMessage(workerRequest, [body]);
+		} else {
+			worker.postMessage(workerRequest);
+		}
 	}
 
 	/**
@@ -576,10 +567,11 @@ export class ServiceWorkerPool {
 	 */
 	async terminate(): Promise<void> {
 		const terminatePromises = this.#workers.map((worker) => worker.terminate());
-		// allSettled won't hang - it waits for all promises to settle (resolve or reject)
 		await Promise.allSettled(terminatePromises);
 		this.#workers = [];
 		this.#pendingRequests.clear();
+		this.#ready = false;
+		logger.info("MultiThreadedRuntime terminated");
 	}
 
 	/**
@@ -593,6 +585,6 @@ export class ServiceWorkerPool {
 	 * Check if the pool is ready to handle requests
 	 */
 	get ready(): boolean {
-		return this.#workers.length > 0;
+		return this.#ready;
 	}
 }
