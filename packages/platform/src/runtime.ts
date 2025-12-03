@@ -40,6 +40,19 @@ if (import.meta.env && !import.meta.env.MODE && import.meta.env.NODE_ENV) {
  */
 const cookieStoreStorage = new AsyncContext.Variable<RequestCookieStore>();
 
+/**
+ * Storage for tracking fetch depth to prevent infinite self-fetch loops
+ * Incremented on each internal fetch, throws if limit exceeded
+ */
+const fetchDepthStorage = new AsyncContext.Variable<number>();
+const MAX_FETCH_DEPTH = 10;
+
+/**
+ * Original fetch function - saved before we override globalThis.fetch
+ * Used for absolute URLs that should go to network
+ */
+const originalFetch = globalThis.fetch;
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -1127,7 +1140,40 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	}
 
 	fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-		return globalThis.fetch(input, init);
+		// Determine URL string from input
+		const urlString =
+			typeof input === "string"
+				? input
+				: input instanceof URL
+					? input.href
+					: input.url;
+
+		// Check if relative URL (self-fetch)
+		const isRelative = urlString.startsWith("/") || urlString.startsWith("./");
+
+		if (!isRelative) {
+			// Absolute URL - use network (originalFetch to avoid recursion)
+			return originalFetch(input, init);
+		}
+
+		// Relative URL - route internally through our own fetch handler
+		const currentDepth = fetchDepthStorage.get() ?? 0;
+		if (currentDepth >= MAX_FETCH_DEPTH) {
+			return Promise.reject(
+				new Error(`Maximum self-fetch depth (${MAX_FETCH_DEPTH}) exceeded`),
+			);
+		}
+
+		// Create request with a base URL for the relative path
+		// The actual host doesn't matter since we're routing internally
+		const request = new Request(new URL(urlString, "http://localhost"), init);
+
+		// Route through our own handler with incremented depth
+		return fetchDepthStorage.run(currentDepth + 1, () => {
+			return (
+				this.registration as ShovelServiceWorkerRegistration
+			).handleRequest(request);
+		});
 	}
 
 	queueMicrotask(callback: VoidFunction): void {
@@ -1330,6 +1376,10 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 		(globalThis as any).registration = this.registration;
 		(globalThis as any).skipWaiting = this.skipWaiting.bind(this);
 		(globalThis as any).clients = this.clients;
+
+		// Override global fetch to use internal routing for relative URLs
+		// This ensures cache.add(), libraries, etc. all benefit from self-fetch
+		(globalThis as any).fetch = this.fetch.bind(this);
 	}
 }
 
