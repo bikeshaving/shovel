@@ -7,6 +7,7 @@
  */
 
 import {Router} from "@b9g/router";
+import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 
 // Cache control constants
 const CACHE_HEADERS = {
@@ -22,15 +23,16 @@ const TIMEOUTS = {
 	ROUTER_RESPONSE: 5000, // 5 seconds for router timeout
 };
 
-// Import static assets - served from root
-import styles from "./assets/styles.css" with {assetBase: "/"};
-import logo from "./assets/logo.svg" with {assetBase: "/"};
-import favicon from "./assets/favicon.ico" with {assetBase: "/"};
+// Import static assets with content-hashed URLs
+import styles from "./assets/styles.css" with {assetBase: "/static/"};
+import logo from "./assets/logo.svg" with {assetBase: "/static/"};
+import favicon from "./assets/favicon.ico" with {assetBase: "/static/"};
 
 // Create router - self.caches and self.buckets are provided directly by platform
 const router = new Router();
 
-// Platform provides self.caches and self.buckets directly - no event needed
+// Serve static assets from /static/ using the assets middleware
+router.use(assetsMiddleware());
 
 // Global page cache middleware
 router.use(pageCache);
@@ -324,10 +326,6 @@ async function generateStaticSite() {
 			staticBucket.constructor.name,
 		);
 
-		// First, copy assets from build output (dist/assets/) to static/assets/
-		console.info("[Blog App] Copying assets...");
-		await copyAssetsToStatic(staticBucket);
-
 		// Define routes to pre-render
 		const staticRoutes = [
 			"/",
@@ -385,52 +383,6 @@ async function generateStaticSite() {
 			"[Blog App] ❌ Static site generation failed:",
 			error.message,
 		);
-	}
-}
-
-/**
- * Copy assets from build output (dist/assets/) to static bucket (dist/static/assets/)
- */
-async function copyAssetsToStatic(staticBucket) {
-	try {
-		// Read assets from build output directory using Node.js fs
-		const fs = await import("node:fs/promises");
-		const path = await import("node:path");
-		// TODO: Find a portable way to locate dist directory across runtimes
-		// eslint-disable-next-line no-restricted-properties
-		const assetsDir = path.default.join(process.cwd(), "dist", "assets");
-
-		// Create assets subdirectory in static bucket
-		const staticAssetsDir = await staticBucket.getDirectoryHandle("assets", {
-			create: true,
-		});
-
-		// Read all files from dist/assets/
-		const files = await fs.readdir(assetsDir);
-
-		for (const name of files) {
-			const filePath = path.default.join(assetsDir, name);
-			const stats = await fs.stat(filePath);
-
-			if (stats.isFile()) {
-				// Read from filesystem
-				const content = await fs.readFile(filePath);
-
-				// Write to static/assets in bucket
-				const targetHandle = await staticAssetsDir.getFileHandle(name, {
-					create: true,
-				});
-				const writable = await targetHandle.createWritable();
-				await writable.write(new Uint8Array(content));
-				await writable.close();
-
-				console.info(`[Blog App] Copied asset: ${name}`);
-			}
-		}
-
-		console.info("[Blog App] ✅ Assets copied to static/assets/");
-	} catch (error) {
-		console.error("[Blog App] ❌ Failed to copy assets:", error.message);
 	}
 }
 
