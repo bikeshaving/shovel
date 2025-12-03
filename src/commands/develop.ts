@@ -39,17 +39,11 @@ export async function developCommand(entrypoint, options) {
 			logger.info("Worker configuration", {workerCount});
 		}
 
-		// Create platform with smart defaults
-		const platformConfig = {
-			hotReload: true,
+		// Create platform with server defaults
+		const platformInstance = await Platform.createPlatform(platformName, {
 			port: parseInt(options.port) || DEFAULTS.SERVER.PORT,
 			host: options.host || DEFAULTS.SERVER.HOST,
-		};
-
-		const platformInstance = await Platform.createPlatform(
-			platformName,
-			platformConfig,
-		);
+		});
 
 		logger.info("Starting development server", {});
 		logger.info("Workers", {workerCount});

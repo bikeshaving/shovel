@@ -24,14 +24,7 @@ export async function activateCommand(entrypoint, options) {
 		logger.info("Building ServiceWorker for activation");
 		const builtEntrypoint = await buildForActivate(entrypoint);
 
-		const platformConfig = {
-			hotReload: false,
-		};
-
-		const platformInstance = await Platform.createPlatform(
-			platformName,
-			platformConfig,
-		);
+		const platformInstance = await Platform.createPlatform(platformName);
 
 		logger.info("Activating ServiceWorker", {});
 
