@@ -700,12 +700,31 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 	// Default sink config
 	const defaultSinks: SinkConfig[] = [{provider: "console"}];
 
-	// Apply smart defaults
+	// Apply config precedence: json value > canonical env var > default
+	// If a key exists in json, use it (already processed with expressions)
+	// Otherwise, check canonical env var (uppercase key name)
+	// Finally, fall back to default
 	const config: ProcessedShovelConfig = {
-		platform: processed.platform,
-		port: typeof processed.port === "number" ? processed.port : 3000,
-		host: processed.host || "localhost",
-		workers: typeof processed.workers === "number" ? processed.workers : 1,
+		platform:
+			processed.platform ?? env.PLATFORM ?? undefined,
+		port:
+			processed.port !== undefined
+				? typeof processed.port === "number"
+					? processed.port
+					: parseInt(String(processed.port), 10)
+				: env.PORT
+					? parseInt(env.PORT, 10)
+					: 3000,
+		host:
+			processed.host ?? env.HOST ?? "localhost",
+		workers:
+			processed.workers !== undefined
+				? typeof processed.workers === "number"
+					? processed.workers
+					: parseInt(String(processed.workers), 10)
+				: env.WORKERS
+					? parseInt(env.WORKERS, 10)
+					: 1,
 		logging: {
 			level: processed.logging?.level || "info",
 			sinks: processed.logging?.sinks || defaultSinks,

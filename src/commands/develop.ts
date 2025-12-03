@@ -118,20 +118,10 @@ export async function developCommand(entrypoint, options) {
 }
 
 function getWorkerCount(options, config) {
-	// Explicit CLI option takes precedence
+	// CLI option overrides everything (explicit user intent)
 	if (options.workers) {
 		return parseInt(options.workers);
 	}
-	// Environment variable second
-	// eslint-disable-next-line no-restricted-properties -- CLI reads env for configuration
-	if (process.env.WORKER_COUNT) {
-		// eslint-disable-next-line no-restricted-properties
-		return parseInt(process.env.WORKER_COUNT);
-	}
-	// Config file third
-	if (config?.workers) {
-		return config.workers;
-	}
-	// Default from constants
-	return DEFAULTS.WORKERS;
+	// Config already handles: json value > WORKERS env > default
+	return config?.workers ?? DEFAULTS.WORKERS;
 }
