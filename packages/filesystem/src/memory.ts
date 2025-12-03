@@ -255,6 +255,17 @@ export class MemoryBucket implements FileSystemDirectoryHandle {
 		name: string,
 		options?: {create?: boolean},
 	): Promise<FileSystemFileHandle> {
+		// Validate name before proceeding (WPT expects TypeError for invalid names)
+		if (!name || name.trim() === "") {
+			throw new TypeError("Name cannot be empty");
+		}
+		if (name.includes("/") || name.includes("\\")) {
+			throw new TypeError("Name cannot contain path separators");
+		}
+		if (name === "." || name === "..") {
+			throw new TypeError("Name cannot be '.' or '..'");
+		}
+
 		const filePath = `/${name}`;
 		const stat = await this.#backend.stat(filePath);
 
@@ -276,6 +287,17 @@ export class MemoryBucket implements FileSystemDirectoryHandle {
 		name: string,
 		options?: {create?: boolean},
 	): Promise<FileSystemDirectoryHandle> {
+		// Validate name before proceeding (WPT expects TypeError for invalid names)
+		if (!name || name.trim() === "") {
+			throw new TypeError("Name cannot be empty");
+		}
+		if (name.includes("/") || name.includes("\\")) {
+			throw new TypeError("Name cannot contain path separators");
+		}
+		if (name === "." || name === "..") {
+			throw new TypeError("Name cannot be '.' or '..'");
+		}
+
 		const dirPath = `/${name}`;
 		const stat = await this.#backend.stat(dirPath);
 
@@ -304,6 +326,16 @@ export class MemoryBucket implements FileSystemDirectoryHandle {
 	async resolve(
 		possibleDescendant: FileSystemHandle,
 	): Promise<string[] | null> {
+		// Check if it's the same root (MemoryBucket)
+		if (possibleDescendant instanceof MemoryBucket) {
+			// Same bucket = same directory, return empty array
+			if (await this.isSameEntry(possibleDescendant)) {
+				return [];
+			}
+			// Different bucket = not a descendant
+			return null;
+		}
+
 		if (
 			!(
 				possibleDescendant instanceof ShovelDirectoryHandle ||

@@ -66,13 +66,9 @@ self.addEventListener("fetch", (event) => {
 			new Request("http://localhost/api/hello"),
 		);
 
-		// Debug: log what we got
-		const text = await response.clone().text();
-		console.info("Response status:", response.status);
-		console.info("Response body:", text);
-
 		expect(response.status).toBe(200);
 
+		const text = await response.text();
 		const json = JSON.parse(text);
 		expect(json.message).toBe("Hello from worker!");
 

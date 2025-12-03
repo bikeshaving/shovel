@@ -24,6 +24,19 @@ export interface CacheQueryOptions {
 }
 
 /**
+ * Convert RequestInfo or URL to Request
+ */
+export function toRequest(request: RequestInfo | URL): Request {
+	if (typeof request === "string") {
+		return new Request(request);
+	}
+	if (request instanceof URL) {
+		return new Request(request.href);
+	}
+	return request;
+}
+
+/**
  * Abstract Cache class implementing the Cache API interface
  * Provides shared implementations for add() and addAll() while requiring
  * concrete implementations to handle the core storage operations
@@ -33,20 +46,20 @@ export abstract class Cache {
 	 * Returns a Promise that resolves to the response associated with the first matching request
 	 */
 	abstract match(
-		request: Request,
+		request: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<Response | undefined>;
 
 	/**
 	 * Puts a request/response pair into the cache
 	 */
-	abstract put(request: Request, response: Response): Promise<void>;
+	abstract put(request: RequestInfo | URL, response: Response): Promise<void>;
 
 	/**
 	 * Finds the cache entry whose key is the request, and if found, deletes it and returns true
 	 */
 	abstract delete(
-		request: Request,
+		request: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<boolean>;
 
@@ -54,7 +67,7 @@ export abstract class Cache {
 	 * Returns a Promise that resolves to an array of cache keys (Request objects)
 	 */
 	abstract keys(
-		request?: Request,
+		request?: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<readonly Request[]>;
 
@@ -104,14 +117,15 @@ export abstract class Cache {
 }
 
 /**
- * Generate a cache key from a Request object
+ * Generate a cache key from a Request, string URL, or URL object
  * Normalizes the request for consistent cache key generation
  */
 export function generateCacheKey(
-	request: Request,
+	request: RequestInfo | URL,
 	options?: CacheQueryOptions,
 ): string {
-	const url = new URL(request.url);
+	const req = toRequest(request);
+	const url = new URL(req.url);
 
 	// Normalize search parameters if ignoreSearch is true
 	if (options?.ignoreSearch) {
@@ -119,7 +133,7 @@ export function generateCacheKey(
 	}
 
 	// Include method unless ignoreMethod is true
-	const method = options?.ignoreMethod ? "GET" : request.method;
+	const method = options?.ignoreMethod ? "GET" : req.method;
 
 	// For now, create a simple key - can be enhanced with vary header handling
 	return `${method}:${url.href}`;

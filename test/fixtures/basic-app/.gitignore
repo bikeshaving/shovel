@@ -1,0 +1,7 @@
+# Build output
+.temp/
+dist/
+
+# Dependencies installed by bun
+node_modules/
+bun.lockb

@@ -170,8 +170,8 @@ describe("Filesystem Handles", () => {
 				await dirHandle.getFileHandle("../etc/passwd");
 				expect.unreachable();
 			} catch (error) {
-				expect(error).toBeInstanceOf(DOMException);
-				expect((error as DOMException).name).toBe("NotAllowedError");
+				// WPT spec requires TypeError for invalid names
+				expect(error).toBeInstanceOf(TypeError);
 			}
 		});
 
@@ -226,8 +226,8 @@ describe("Filesystem Handles", () => {
 				await dirHandle.getFileHandle("");
 				expect.unreachable();
 			} catch (error) {
-				expect(error).toBeInstanceOf(DOMException);
-				expect((error as DOMException).name).toBe("NotAllowedError");
+				// WPT spec requires TypeError for invalid names
+				expect(error).toBeInstanceOf(TypeError);
 			}
 		});
 
@@ -238,14 +238,16 @@ describe("Filesystem Handles", () => {
 				await dirHandle.getFileHandle(".");
 				expect.unreachable();
 			} catch (error) {
-				expect(error).toBeInstanceOf(DOMException);
+				// WPT spec requires TypeError for invalid names
+				expect(error).toBeInstanceOf(TypeError);
 			}
 
 			try {
 				await dirHandle.getFileHandle("..");
 				expect.unreachable();
 			} catch (error) {
-				expect(error).toBeInstanceOf(DOMException);
+				// WPT spec requires TypeError for invalid names
+				expect(error).toBeInstanceOf(TypeError);
 			}
 		});
 	});

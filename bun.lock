@@ -125,10 +125,11 @@
     },
     "packages/assets": {
       "name": "@b9g/assets",
-      "version": "0.1.13",
+      "version": "0.1.14",
       "dependencies": {
         "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
         "@esbuild-plugins/node-modules-polyfill": "^0.2.2",
+        "@logtape/logtape": "^1.2.0",
         "mime": "^4.0.4",
       },
       "devDependencies": {
@@ -143,7 +144,7 @@
     },
     "packages/async-context": {
       "name": "@b9g/async-context",
-      "version": "0.1.1",
+      "version": "0.1.3",
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
         "@types/node": "^20.0.0",
@@ -175,8 +176,9 @@
     },
     "packages/cache-redis": {
       "name": "@b9g/cache-redis",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "dependencies": {
+        "@logtape/logtape": "^1.2.0",
         "redis": "^4.6.10",
       },
       "devDependencies": {
@@ -188,7 +190,10 @@
     },
     "packages/filesystem": {
       "name": "@b9g/filesystem",
-      "version": "0.1.6",
+      "version": "0.1.7",
+      "dependencies": {
+        "mime": "^4.0.4",
+      },
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
         "@types/bun": "^1.2.2",
@@ -202,9 +207,10 @@
     },
     "packages/filesystem-r2": {
       "name": "@b9g/filesystem-r2",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "dependencies": {
         "@b9g/filesystem": "workspace:*",
+        "mime": "^4.0.4",
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
@@ -216,9 +222,10 @@
     },
     "packages/filesystem-s3": {
       "name": "@b9g/filesystem-s3",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "dependencies": {
         "@b9g/filesystem": "workspace:*",
+        "mime": "^4.0.4",
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
@@ -272,13 +279,30 @@
         "@b9g/libuild": "^0.1.18",
         "bun-types": "latest",
       },
+      "peerDependencies": {
+        "@logtape/cloudwatch-logs": "^1.0.0",
+        "@logtape/file": "^1.0.0",
+        "@logtape/otel": "^1.0.0",
+        "@logtape/sentry": "^1.0.0",
+        "@logtape/syslog": "^1.0.0",
+      },
+      "optionalPeers": [
+        "@logtape/cloudwatch-logs",
+        "@logtape/file",
+        "@logtape/otel",
+        "@logtape/sentry",
+        "@logtape/syslog",
+      ],
     },
     "packages/platform-bun": {
       "name": "@b9g/platform-bun",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "dependencies": {
         "@b9g/assets": "workspace:*",
+        "@b9g/cache": "workspace:*",
+        "@b9g/http-errors": "workspace:*",
         "@b9g/platform": "workspace:*",
+        "@logtape/logtape": "^1.2.0",
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
@@ -287,12 +311,13 @@
     },
     "packages/platform-cloudflare": {
       "name": "@b9g/platform-cloudflare",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/cache": "workspace:*",
         "@b9g/platform": "workspace:*",
         "@cloudflare/workers-types": "^4.20241218.0",
+        "@logtape/logtape": "^1.2.0",
         "miniflare": "^4.20251118.1",
       },
       "devDependencies": {
@@ -302,9 +327,12 @@
     },
     "packages/platform-node": {
       "name": "@b9g/platform-node",
-      "version": "0.1.10",
+      "version": "0.1.11",
       "dependencies": {
+        "@b9g/cache": "workspace:*",
+        "@b9g/http-errors": "workspace:*",
         "@b9g/platform": "workspace:*",
+        "@logtape/logtape": "^1.2.0",
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
@@ -314,7 +342,7 @@
     },
     "packages/router": {
       "name": "@b9g/router",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "dependencies": {
         "@b9g/http-errors": "workspace:*",
         "@b9g/match-pattern": "workspace:*",

@@ -1,6 +1,6 @@
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
-import {join, resolve, dirname} from "path";
+import {join} from "path";
 import {test, expect} from "bun:test";
 import {buildForProduction} from "../src/commands/build.js";
 
@@ -390,7 +390,7 @@ self.addEventListener("fetch", (event) => {
 				expect(allLogs).toContain("Entry:");
 				expect(allLogs).toContain("Output:");
 				expect(allLogs).toContain("Target platform:");
-				expect(allLogs).toContain("Workspace root:");
+				expect(allLogs).toContain("Project root:");
 				expect(allLogs).toContain("Bundle analysis:");
 				expect(allLogs).toContain("Generated package.json");
 				expect(allLogs).toContain("Built app to");
@@ -637,31 +637,10 @@ self.addEventListener("fetch", (event) => {
 			const outDir = join(workspaceRoot, "dist");
 			cleanup_paths.push(workspaceRoot);
 
-			// Create node_modules and symlink to actual workspace packages
-			// instead of installing from npm (which may have outdated exports)
-			const nodeModulesDir = join(workspaceRoot, "node_modules");
-			const b9gDir = join(nodeModulesDir, "@b9g");
-			await FS.mkdir(b9gDir, {recursive: true});
-
-			// Find the real workspace root (where the packages are)
-			const realWorkspaceRoot = resolve(
-				dirname(import.meta.url.slice(7)),
-				"..",
-			);
-			const realPackagesDir = join(realWorkspaceRoot, "packages");
-
-			// Symlink @b9g packages from real workspace
-			const packagesToLink = [
-				"platform",
-				"platform-node",
-				"cache",
-				"filesystem",
-			];
-			for (const pkg of packagesToLink) {
-				const srcPath = join(realPackagesDir, pkg);
-				const destPath = join(b9gDir, pkg);
-				await FS.symlink(srcPath, destPath, "dir");
-			}
+			// Symlink node_modules from workspace root for all dependencies
+			const nodeModulesSource = join(process.cwd(), "node_modules");
+			const nodeModulesLink = join(workspaceRoot, "node_modules");
+			await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
 
 			const originalCwd = process.cwd();
 			process.chdir(packagesDir);

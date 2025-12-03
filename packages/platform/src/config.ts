@@ -756,7 +756,8 @@ const BUILTIN_SINK_PROVIDERS: Record<
 };
 
 /**
- * Create a sink from config using dynamic imports.
+ * Create a sink from config.
+ * Checks the build-time registry first, falls back to dynamic import.
  * Supports built-in providers (console, file, rotating, etc.) and custom modules.
  */
 async function createSink(
@@ -765,6 +766,18 @@ async function createSink(
 ): Promise<any> {
 	const {provider, ...sinkOptions} = config;
 
+	// Resolve relative paths for file-based sinks
+	if (sinkOptions.path && options.cwd) {
+		sinkOptions.path = resolve(options.cwd, sinkOptions.path);
+	}
+
+	// Check build-time registry first (populated by provider-registry.ts during bundling)
+	const registry = (globalThis as any).__SHOVEL_PROVIDERS__?.sinks;
+	if (registry?.[provider]) {
+		return registry[provider](sinkOptions);
+	}
+
+	// Fall back to dynamic import (works in dev mode with node_modules)
 	const builtin = BUILTIN_SINK_PROVIDERS[provider];
 	const modulePath = builtin?.module || provider;
 	const factoryName = builtin?.factory || "default";
@@ -776,11 +789,6 @@ async function createSink(
 		throw new Error(
 			`Sink module "${modulePath}" has no export "${factoryName}"`,
 		);
-	}
-
-	// Resolve relative paths for file-based sinks
-	if (sinkOptions.path && options.cwd) {
-		sinkOptions.path = resolve(options.cwd, sinkOptions.path);
 	}
 
 	// Pass options to factory (path, maxSize, etc.)
@@ -972,6 +980,16 @@ export function createBucketFactory(options: BucketFactoryOptions) {
 
 		const provider = String(bucketConfig.provider || "node");
 
+		// Check build-time registry first (populated by provider-registry.ts during bundling)
+		const registry = (globalThis as any).__SHOVEL_PROVIDERS__?.buckets;
+		if (registry?.[provider]) {
+			const BucketClass = registry[provider];
+			// Node bucket takes path, memory bucket takes name
+			return provider === "memory"
+				? new BucketClass(name)
+				: new BucketClass(bucketPath);
+		}
+
 		// Resolve provider to module path
 		const modulePath = BUILTIN_BUCKET_PROVIDERS[provider] || provider;
 
@@ -1080,21 +1098,21 @@ export function createCacheFactory(options: CacheFactoryOptions = {}) {
 			return nativeCaches.open(name);
 		}
 
+		// Extract options to pass to the cache constructor
+		// Remove 'provider' as it's not a cache option
+		const {provider: _, ...cacheOptions} = cacheConfig;
+
+		// Check build-time provider registry first (populated during bundling)
+		const registry = (globalThis as any).__SHOVEL_PROVIDERS__?.caches;
+		if (registry?.[provider]) {
+			const CacheClass = registry[provider];
+			return new CacheClass(name, cacheOptions);
+		}
+
 		// Resolve provider to module path
 		const modulePath = BUILTIN_CACHE_PROVIDERS[provider] || provider;
 
-		// Special handling for built-in memory cache (most common case)
-		if (modulePath === "@b9g/cache/memory.js") {
-			const {MemoryCache} = await import("@b9g/cache/memory.js");
-			return new MemoryCache(name, {
-				maxEntries:
-					typeof cacheConfig.maxEntries === "number"
-						? cacheConfig.maxEntries
-						: 1000,
-			});
-		}
-
-		// Dynamic import for all other providers (redis, custom modules)
+		// Dynamic import fallback for dev mode or custom providers
 		try {
 			const module = await import(modulePath);
 
@@ -1102,6 +1120,7 @@ export function createCacheFactory(options: CacheFactoryOptions = {}) {
 			const CacheClass =
 				module.default || // Default export
 				module.RedisCache || // Named export for redis
+				module.MemoryCache || // Named export for memory
 				module.Cache || // Generic Cache export
 				Object.values(module).find(
 					(v: any) => typeof v === "function" && v.prototype instanceof Cache,
@@ -1113,10 +1132,6 @@ export function createCacheFactory(options: CacheFactoryOptions = {}) {
 						`Expected a default export or named export (RedisCache, Cache) that extends Cache.`,
 				);
 			}
-
-			// Extract options to pass to the cache constructor
-			// Remove 'provider' as it's not a cache option
-			const {provider: _, ...cacheOptions} = cacheConfig;
 
 			return new CacheClass(name, cacheOptions);
 		} catch (error: any) {

@@ -4,27 +4,20 @@
  */
 
 import * as ESBuild from "esbuild";
-import {existsSync} from "fs";
-import {resolve, join, dirname} from "path";
+import {resolve, join} from "path";
 import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "./import-meta-plugin.js";
 import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
+import {
+	extractProviders,
+	generateProviderRegistry,
+} from "./provider-registry.js";
+import {findProjectRoot} from "../utils/project.js";
 import {getLogger} from "@logtape/logtape";
+import type {ProcessedShovelConfig} from "@b9g/platform/config";
 
 const logger = getLogger(["watcher"]);
-
-/** Find the nearest directory containing package.json, walking up from cwd */
-function findProjectRoot(): string {
-	let dir = process.cwd();
-	while (dir !== dirname(dir)) {
-		if (existsSync(join(dir, "package.json"))) {
-			return dir;
-		}
-		dir = dirname(dir);
-	}
-	return process.cwd();
-}
 
 export interface WatcherOptions {
 	/** Entry point to build */
@@ -33,6 +26,8 @@ export interface WatcherOptions {
 	outDir: string;
 	/** Callback when build completes - entrypoint is the hashed output path */
 	onBuild?: (success: boolean, entrypoint: string) => void;
+	/** Shovel config for provider registry generation */
+	config?: ProcessedShovelConfig;
 }
 
 export class Watcher {
@@ -67,6 +62,11 @@ export class Watcher {
 
 		// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
 		const jsxOptions = await loadJSXConfig(this.#projectRoot);
+
+		// Generate provider registry from config for bundling
+		const registryCode = this.#options.config
+			? generateProviderRegistry(extractProviders(this.#options.config))
+			: "";
 
 		// Create a promise that resolves when the initial build completes
 		const initialBuildPromise = new Promise<{
@@ -108,7 +108,32 @@ export class Watcher {
 							});
 						});
 						build.onEnd(async (result) => {
-							const success = result.errors.length === 0;
+							let success = result.errors.length === 0;
+
+							// Check for non-bundleable dynamic imports (would fail at runtime)
+							const dynamicImportWarnings = (result.warnings || []).filter(
+								(w) =>
+									w.text.includes("cannot be bundled") ||
+									w.text.includes("import() call") ||
+									w.text.includes("dynamic import"),
+							);
+
+							if (dynamicImportWarnings.length > 0) {
+								success = false;
+								for (const warning of dynamicImportWarnings) {
+									const loc = warning.location;
+									const file = loc?.file || "unknown";
+									const line = loc?.line || "?";
+									logger.error(
+										"Non-analyzable dynamic import at {file}:{line}: {text}",
+										{file, line, text: warning.text},
+									);
+								}
+								logger.error(
+									"Dynamic imports must use literal strings, not variables. " +
+										"For config-driven providers, ensure they are registered in shovel.json.",
+								);
+							}
 
 							// Extract output path from metafile
 							let outputPath = "";
@@ -145,6 +170,8 @@ export class Watcher {
 			sourcemap: "inline",
 			minify: false,
 			treeShaking: true,
+			// Inject provider registry at the start of the bundle
+			banner: registryCode ? {js: registryCode} : undefined,
 		};
 
 		// Apply JSX configuration (from tsconfig.json or @b9g/crank defaults)

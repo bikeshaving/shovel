@@ -10,10 +10,19 @@ import {fileURLToPath} from "url";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
 import {loadJSXConfig, applyJSXOptions} from "../esbuild/jsx-config.js";
+import {
+	extractProviders,
+	generateProviderRegistry,
+} from "../esbuild/provider-registry.js";
+import {
+	findProjectRoot,
+	findWorkspaceRoot,
+	getNodeModulesPath,
+} from "../utils/project.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
-import {loadConfig} from "@b9g/platform/config";
+import {loadConfig, type ProcessedShovelConfig} from "@b9g/platform/config";
 
 // Configure LogTape for build command
 await configure({
@@ -30,6 +39,40 @@ await configure({
 });
 
 const logger = getLogger(["cli"]);
+
+/**
+ * Check esbuild warnings for non-bundleable dynamic imports and convert to errors.
+ * Variable-based dynamic imports cannot be bundled and will fail at runtime
+ * when node_modules is not available.
+ */
+function validateDynamicImports(
+	result: ESBuild.BuildResult,
+	context: string,
+): void {
+	const dynamicImportWarnings = (result.warnings || []).filter(
+		(w) =>
+			w.text.includes("cannot be bundled") ||
+			w.text.includes("import() call") ||
+			w.text.includes("dynamic import"),
+	);
+
+	if (dynamicImportWarnings.length > 0) {
+		const locations = dynamicImportWarnings
+			.map((w) => {
+				const loc = w.location;
+				const file = loc?.file || "unknown";
+				const line = loc?.line || "?";
+				return `  ${file}:${line} - ${w.text}`;
+			})
+			.join("\n");
+
+		throw new Error(
+			`Build failed (${context}): Non-analyzable dynamic imports found:\n${locations}\n\n` +
+				`Dynamic imports must use literal strings, not variables.\n` +
+				`For config-driven providers, ensure they are registered in shovel.json.`,
+		);
+	}
+}
 
 // Build configuration constants
 const BUILD_DEFAULTS = {
@@ -57,6 +100,14 @@ export async function buildForProduction({
 	verbose,
 	platform = "node",
 	workerCount = 1,
+	config,
+}: {
+	entrypoint: string;
+	outDir: string;
+	verbose?: boolean;
+	platform?: string;
+	workerCount?: number;
+	config?: ProcessedShovelConfig;
 }) {
 	const buildContext = await initializeBuild({
 		entrypoint,
@@ -65,11 +116,14 @@ export async function buildForProduction({
 		platform,
 		workerCount,
 	});
-	const buildConfig = await createBuildConfig(buildContext);
+	const buildConfig = await createBuildConfig({...buildContext, config});
 
 	// Use build() for one-time builds (not context API which is for watch/incremental)
 	// This automatically handles cleanup and prevents process hanging
 	const result = await ESBuild.build(buildConfig);
+
+	// Validate no non-bundleable dynamic imports (would fail at runtime)
+	validateDynamicImports(result, "main bundle");
 
 	if (verbose && result.metafile) {
 		await logBundleAnalysis(result.metafile);
@@ -132,13 +186,13 @@ async function initializeBuild({
 		);
 	}
 
-	const workspaceRoot = await findWorkspaceRoot();
+	const projectRoot = findProjectRoot();
 
 	if (verbose) {
 		logger.info("Entry:", {entryPath});
 		logger.info("Output:", {outputDir});
 		logger.info("Target platform:", {platform});
-		logger.info("Workspace root:", {workspaceRoot});
+		logger.info("Project root:", {projectRoot});
 	}
 
 	// Ensure output directory structure exists
@@ -156,66 +210,11 @@ async function initializeBuild({
 		entryPath,
 		outputDir,
 		serverDir: join(outputDir, BUILD_STRUCTURE.serverDir),
-		workspaceRoot,
+		projectRoot,
 		platform,
 		verbose,
 		workerCount,
 	};
-}
-
-/**
- * Find workspace root by looking for package.json with workspaces field
- */
-async function findWorkspaceRoot() {
-	let workspaceRoot = process.cwd();
-	while (workspaceRoot !== dirname(workspaceRoot)) {
-		try {
-			const packageJSON = JSON.parse(
-				await readFile(resolve(workspaceRoot, "package.json"), "utf8"),
-			);
-			if (packageJSON.workspaces) {
-				return workspaceRoot;
-			}
-		} catch (err) {
-			// Only ignore file-not-found errors, rethrow others
-			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				throw err;
-			}
-		}
-		workspaceRoot = dirname(workspaceRoot);
-	}
-	return workspaceRoot;
-}
-
-/**
- * Find the Shovel package root (where @b9g packages can be resolved from)
- */
-async function findShovelPackageRoot() {
-	let currentDir = dirname(fileURLToPath(import.meta.url));
-	let packageRoot = currentDir;
-	while (packageRoot !== dirname(packageRoot)) {
-		try {
-			const packageJSONPath = join(packageRoot, "package.json");
-			const content = await readFile(packageJSONPath, "utf8");
-			const pkg = JSON.parse(content);
-			// Check if this is the shovel package
-			if (pkg.name === "@b9g/shovel" || pkg.name === "shovel") {
-				// If we found it in a /dist directory, go up one more level to get source root
-				if (packageRoot.endsWith("/dist") || packageRoot.endsWith("\\dist")) {
-					return dirname(packageRoot);
-				}
-				return packageRoot;
-			}
-		} catch (err) {
-			// Only ignore file-not-found errors, rethrow others
-			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				throw err;
-			}
-		}
-		packageRoot = dirname(packageRoot);
-	}
-	// Fallback to current directory's node_modules parent
-	return currentDir;
 }
 
 /**
@@ -225,15 +224,24 @@ async function createBuildConfig({
 	entryPath,
 	outputDir,
 	serverDir,
-	workspaceRoot,
+	projectRoot,
 	platform,
 	workerCount,
+	config,
+}: {
+	entryPath: string;
+	outputDir: string;
+	serverDir: string;
+	projectRoot: string;
+	platform: string;
+	workerCount: number;
+	config?: ProcessedShovelConfig;
 }) {
 	const isCloudflare =
 		platform === "cloudflare" || platform === "cloudflare-workers";
 
 	// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
-	const jsxOptions = await loadJSXConfig(workspaceRoot || dirname(entryPath));
+	const jsxOptions = await loadJSXConfig(projectRoot || dirname(entryPath));
 
 	try {
 		// Create virtual entry point that properly imports platform dependencies
@@ -241,15 +249,13 @@ async function createBuildConfig({
 			entryPath,
 			platform,
 			workerCount,
+			config,
 		);
 
 		// Determine external dependencies based on environment
 		// Only externalize built-in Node.js modules (node:*)
 		// Everything else gets bundled for self-contained executables
 		const external = ["node:*"];
-
-		// Get Shovel package root for resolving @b9g packages
-		const shovelRoot = await findShovelPackageRoot();
 
 		// For Node/Bun, we need to build both the server entry and user code separately
 		// The user code will be loaded by the platform's loadServiceWorker method
@@ -262,14 +268,11 @@ async function createBuildConfig({
 				target: BUILD_DEFAULTS.target,
 				platform: "node",
 				outfile: join(serverDir, "server.js"),
-				absWorkingDir: workspaceRoot || dirname(entryPath),
+				absWorkingDir: projectRoot,
 				mainFields: ["module", "main"],
 				conditions: ["import", "module"],
-				// Allow user code to import @b9g packages from shovel's packages directory
-				nodePaths: [
-					join(shovelRoot, "packages"),
-					join(shovelRoot, "node_modules"),
-				],
+				// Resolve packages from the user's project node_modules
+				nodePaths: [getNodeModulesPath()],
 				plugins: [
 					importMetaPlugin(),
 					assetsPlugin({
@@ -296,44 +299,30 @@ async function createBuildConfig({
 			applyJSXOptions(userBuildConfig, jsxOptions);
 
 			// Build user code first
-			await ESBuild.build(userBuildConfig);
+			const userBuildResult = await ESBuild.build(userBuildConfig);
+
+			// Validate no non-bundleable dynamic imports in user code
+			validateDynamicImports(userBuildResult, "user code");
 
 			// Bundle runtime.js from @b9g/platform to server directory as worker.js
 			// The ServiceWorkerPool needs this to run workers
 			const runtimeSourcePath = join(
-				shovelRoot,
-				"packages/platform/dist/src/runtime.js",
+				getNodeModulesPath(),
+				"@b9g/platform/dist/src/runtime.js",
 			);
 			const workerDestPath = join(serverDir, "worker.js");
 
 			// Bundle runtime.js with all its dependencies
 			// Note: No define needed - runtime.ts polyfills import.meta.env from process.env
-			try {
-				await ESBuild.build({
-					entryPoints: [runtimeSourcePath],
-					bundle: true,
-					format: "esm",
-					target: "es2022",
-					platform: "node",
-					outfile: workerDestPath,
-					external: ["node:*"],
-				});
-			} catch (error) {
-				// Try from node_modules if development path fails
-				const installedRuntimePath = join(
-					shovelRoot,
-					"node_modules/@b9g/platform/dist/src/runtime.js",
-				);
-				await ESBuild.build({
-					entryPoints: [installedRuntimePath],
-					bundle: true,
-					format: "esm",
-					target: "es2022",
-					platform: "node",
-					outfile: workerDestPath,
-					external: ["node:*"],
-				});
-			}
+			await ESBuild.build({
+				entryPoints: [runtimeSourcePath],
+				bundle: true,
+				format: "esm",
+				target: "es2022",
+				platform: "node",
+				outfile: workerDestPath,
+				external: ["node:*"],
+			});
 		}
 
 		// Note: worker-wrapper.js is no longer copied to build output
@@ -343,7 +332,7 @@ async function createBuildConfig({
 		const buildConfig: ESBuild.BuildOptions = {
 			stdin: {
 				contents: virtualEntry,
-				resolveDir: shovelRoot, // Use Shovel root to resolve @b9g packages
+				resolveDir: projectRoot, // Resolve packages from user's project
 				sourcefile: "virtual-entry.js",
 			},
 			bundle: true,
@@ -356,9 +345,11 @@ async function createBuildConfig({
 				serverDir,
 				isCloudflare ? "server.js" : BUILD_DEFAULTS.outputFile,
 			),
-			absWorkingDir: workspaceRoot || dirname(entryPath),
+			absWorkingDir: projectRoot,
 			mainFields: ["module", "main"],
 			conditions: ["import", "module"],
+			// Resolve packages from the user's project node_modules
+			nodePaths: [getNodeModulesPath()],
 			plugins: isCloudflare
 				? [
 						importMetaPlugin(),
@@ -413,14 +404,25 @@ async function configureCloudflareTarget(buildConfig) {
 /**
  * Create virtual entry point with proper imports and worker management
  */
-async function createVirtualEntry(userEntryPath, platform, workerCount = 1) {
+async function createVirtualEntry(
+	userEntryPath: string,
+	platform: string,
+	workerCount = 1,
+	config?: ProcessedShovelConfig,
+) {
 	const isCloudflare =
 		platform === "cloudflare" || platform === "cloudflare-workers";
+
+	// Generate provider registry from config
+	// This creates static imports for all configured providers so they can be bundled
+	const registryCode = config
+		? generateProviderRegistry(extractProviders(config))
+		: "";
 
 	if (isCloudflare) {
 		// For Cloudflare Workers, import the user code directly
 		// Cloudflare-specific runtime setup is handled by platform package
-		return `
+		return `${registryCode}
 // Import user's ServiceWorker code
 import "${userEntryPath}";
 `;
@@ -428,7 +430,12 @@ import "${userEntryPath}";
 
 	// For Node.js/Bun platforms, use worker-based architecture
 	// Works with any worker count (including 1)
-	return await createWorkerEntry(userEntryPath, workerCount, platform);
+	const workerEntry = await createWorkerEntry(
+		userEntryPath,
+		workerCount,
+		platform,
+	);
+	return registryCode + workerEntry;
 }
 
 /**
@@ -568,8 +575,7 @@ async function generateExecutablePackageJSON(platform) {
 	};
 
 	// Check if we're in a workspace environment
-	const workspaceRoot = await findWorkspaceRoot();
-	const isWorkspaceEnvironment = workspaceRoot !== null;
+	const isWorkspaceEnvironment = findWorkspaceRoot() !== null;
 
 	if (isWorkspaceEnvironment) {
 		// In workspace environment (like tests), create empty dependencies
@@ -620,6 +626,7 @@ export async function buildCommand(entrypoint: string, options: any) {
 		workerCount: options.workers
 			? parseInt(options.workers, 10)
 			: config.workers,
+		config,
 	});
 
 	// Workaround for Bun-specific issue: esbuild keeps child processes alive

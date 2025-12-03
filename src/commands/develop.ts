@@ -55,6 +55,7 @@ export async function developCommand(entrypoint, options) {
 		const watcher = new Watcher({
 			entrypoint,
 			outDir,
+			config,
 			onBuild: async (success, builtEntrypoint) => {
 				if (success && serviceWorker) {
 					logger.info("Reloading Workers", {entrypoint: builtEntrypoint});

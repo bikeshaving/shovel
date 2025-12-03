@@ -143,12 +143,33 @@ class ShovelWritableFileStream
 		try {
 			if (typeof data === "string") {
 				await writer.write(new TextEncoder().encode(data));
-			} else if (data instanceof Uint8Array || data instanceof ArrayBuffer) {
-				const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
-				await writer.write(bytes);
+			} else if (data instanceof Uint8Array) {
+				await writer.write(data);
+			} else if (data instanceof ArrayBuffer) {
+				await writer.write(new Uint8Array(data));
+			} else if (data instanceof Blob) {
+				// Handle Blob by reading its contents
+				const buffer = await data.arrayBuffer();
+				await writer.write(new Uint8Array(buffer));
+			} else if (ArrayBuffer.isView(data)) {
+				// Handle other TypedArray views (Int8Array, Float32Array, etc.)
+				await writer.write(
+					new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+				);
+			} else if (typeof data === "object" && data !== null && "type" in data) {
+				// Handle WriteParams object { type: 'write', data: ... }
+				const params = data as {type: string; data?: unknown};
+				if (params.type === "write" && params.data !== undefined) {
+					// Recursively handle the data
+					await this.write(params.data as FileSystemWriteChunkType);
+					return; // Skip releasing lock, already done in recursive call
+				}
+				throw new DOMException("Invalid write params", "NotSupportedError");
 			} else {
-				// Handle other data types as needed
-				await writer.write(new TextEncoder().encode(String(data)));
+				throw new DOMException(
+					"Invalid data type for write",
+					"NotSupportedError",
+				);
 			}
 		} finally {
 			writer.releaseLock();
@@ -231,21 +252,19 @@ export abstract class ShovelHandle implements FileSystemHandle {
 	/**
 	 * Validates that a name is actually a name and not a path
 	 * The File System Access API only accepts names, not paths
+	 * WPT expects TypeError for invalid names
 	 */
 	validateName(name: string): void {
 		if (!name || name.trim() === "") {
-			throw new DOMException("Name cannot be empty", "NotAllowedError");
+			throw new TypeError("Name cannot be empty");
 		}
 
 		if (name.includes("/") || name.includes("\\")) {
-			throw new DOMException(
-				"Name cannot contain path separators",
-				"NotAllowedError",
-			);
+			throw new TypeError("Name cannot contain path separators");
 		}
 
 		if (name === "." || name === "..") {
-			throw new DOMException("Name cannot be '.' or '..'", "NotAllowedError");
+			throw new TypeError("Name cannot be '.' or '..'");
 		}
 
 		// Additional platform-specific invalid characters could be checked here

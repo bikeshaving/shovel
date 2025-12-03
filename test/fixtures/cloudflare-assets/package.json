@@ -1,0 +1,11 @@
+{
+  "name": "cloudflare-assets",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@b9g/assets": "workspace:*",
+    "@b9g/platform": "workspace:*",
+    "@b9g/platform-cloudflare": "workspace:*"
+  }
+}

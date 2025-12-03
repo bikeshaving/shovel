@@ -1,0 +1,11 @@
+{
+  "name": "cookiestore-app",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@b9g/platform": "workspace:*",
+    "@b9g/platform-node": "workspace:*",
+    "@b9g/platform-bun": "workspace:*"
+  }
+}

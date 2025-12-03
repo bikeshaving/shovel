@@ -2,12 +2,12 @@ import {DEFAULTS} from "../esbuild/config.js";
 import {getLogger} from "@logtape/logtape";
 import * as Platform from "@b9g/platform";
 import * as ESBuild from "esbuild";
-import {resolve, join, dirname} from "path";
-import {mkdir, readFile} from "fs/promises";
-import {fileURLToPath} from "url";
+import {resolve, join} from "path";
+import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
 import {loadJSXConfig, applyJSXOptions} from "../esbuild/jsx-config.js";
+import {findProjectRoot, getNodeModulesPath} from "../utils/project.js";
 
 const logger = getLogger(["cli"]);
 
@@ -58,7 +58,6 @@ export async function activateCommand(entrypoint, options) {
  */
 async function buildForActivate(entrypoint) {
 	const entryPath = resolve(entrypoint);
-	const entryDir = dirname(entryPath);
 	const outputDir = resolve("dist");
 	const serverDir = join(outputDir, "server");
 
@@ -66,14 +65,11 @@ async function buildForActivate(entrypoint) {
 	await mkdir(serverDir, {recursive: true});
 	await mkdir(join(outputDir, "static"), {recursive: true});
 
-	// Find workspace root for node resolution
-	const workspaceRoot = await findWorkspaceRoot();
+	// Find project root for node resolution
+	const projectRoot = findProjectRoot();
 
 	// Load JSX configuration
-	const jsxOptions = await loadJSXConfig(workspaceRoot || entryDir);
-
-	// Get Shovel package root for resolving @b9g packages
-	const shovelRoot = await findShovelPackageRoot();
+	const jsxOptions = await loadJSXConfig(projectRoot);
 
 	const outfile = join(serverDir, "server.js");
 
@@ -84,10 +80,10 @@ async function buildForActivate(entrypoint) {
 		target: "es2022",
 		platform: "node",
 		outfile,
-		absWorkingDir: workspaceRoot || entryDir,
+		absWorkingDir: projectRoot,
 		mainFields: ["module", "main"],
 		conditions: ["import", "module"],
-		nodePaths: [join(shovelRoot, "packages"), join(shovelRoot, "node_modules")],
+		nodePaths: [getNodeModulesPath()],
 		plugins: [
 			importMetaPlugin(),
 			assetsPlugin({
@@ -113,58 +109,6 @@ async function buildForActivate(entrypoint) {
 	logger.debug("Build complete: {outfile}", {outfile});
 
 	return outfile;
-}
-
-/**
- * Find workspace root by looking for package.json with workspaces field
- */
-async function findWorkspaceRoot() {
-	let workspaceRoot = process.cwd();
-	while (workspaceRoot !== dirname(workspaceRoot)) {
-		try {
-			const packageJSON = JSON.parse(
-				await readFile(resolve(workspaceRoot, "package.json"), "utf8"),
-			);
-			if (packageJSON.workspaces) {
-				return workspaceRoot;
-			}
-		} catch (err) {
-			// Only ignore file-not-found errors, rethrow others
-			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				throw err;
-			}
-		}
-		workspaceRoot = dirname(workspaceRoot);
-	}
-	return process.cwd();
-}
-
-/**
- * Find the Shovel package root
- */
-async function findShovelPackageRoot() {
-	let currentDir = dirname(fileURLToPath(import.meta.url));
-	let packageRoot = currentDir;
-	while (packageRoot !== dirname(packageRoot)) {
-		try {
-			const packageJSONPath = join(packageRoot, "package.json");
-			const content = await readFile(packageJSONPath, "utf8");
-			const pkg = JSON.parse(content);
-			if (pkg.name === "@b9g/shovel" || pkg.name === "shovel") {
-				if (packageRoot.endsWith("/dist") || packageRoot.endsWith("\\dist")) {
-					return dirname(packageRoot);
-				}
-				return packageRoot;
-			}
-		} catch (err) {
-			// Only ignore file-not-found errors, rethrow others
-			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				throw err;
-			}
-		}
-		packageRoot = dirname(packageRoot);
-	}
-	return currentDir;
 }
 
 function getWorkerCount(options) {

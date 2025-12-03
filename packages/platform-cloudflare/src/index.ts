@@ -81,7 +81,11 @@ export class CloudflarePlatform extends BasePlatform {
 
 	/**
 	 * Create cache storage
-	 * Uses config from shovel.json. Defaults to native Cloudflare caches.
+	 * Uses config from shovel.json with memory cache default.
+	 *
+	 * Note: This is for the platform/test runner context. Inside actual
+	 * Cloudflare Workers, native caches are available via globalThis.caches
+	 * (captured by the banner as globalThis.__cloudflareCaches).
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
 		return new CustomCacheStorage(

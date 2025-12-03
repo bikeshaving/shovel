@@ -1,234 +1,160 @@
 /**
  * Tests for self.cookieStore across different platforms
+ * Copies fixtures to temp directories for test isolation.
  */
 
-import {test, expect, beforeEach, afterEach} from "bun:test";
-import {mkdir, writeFile, rm} from "fs/promises";
+import {test, expect} from "bun:test";
 import {join} from "path";
-import {tmpdir} from "os";
+import {copyFixtureToTemp} from "./utils.js";
 
-let testDir;
+test("self.cookieStore is available in ServiceWorker handler (Node)", async () => {
+	const fixture = await copyFixtureToTemp("cookiestore-app");
 
-beforeEach(async () => {
-	testDir = join(
-		tmpdir(),
-		`shovel-cookiestore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-	);
-	await mkdir(testDir, {recursive: true});
-});
+	try {
+		const entryPath = join(fixture.src, "cookiestore-basic.js");
 
-afterEach(async () => {
-	if (testDir) {
-		await rm(testDir, {recursive: true, force: true});
+		// Use platform-node to run the ServiceWorker
+		const {default: NodePlatform} = await import("@b9g/platform-node");
+
+		const platform = new NodePlatform();
+		const instance = await platform.loadServiceWorker(entryPath);
+
+		const request = new Request("http://localhost:3000/test");
+		const response = await instance.handleRequest(request);
+		const result = await response.json();
+
+		expect(result.hasCookieStore).toBe(true);
+		expect(result.cookieStoreType).toBe("object");
+
+		await instance.dispose();
+		await platform.dispose();
+	} finally {
+		await fixture.cleanup();
 	}
 });
 
-test("self.cookieStore is available in ServiceWorker handler (Node)", async () => {
-	const entryPath = join(testDir, "server.js");
-	await writeFile(
-		entryPath,
-		`
-self.addEventListener("fetch", (event) => {
-  const cookieStore = self.cookieStore;
-  event.respondWith(
-    new Response(JSON.stringify({
-      hasCookieStore: !!cookieStore,
-      cookieStoreType: typeof cookieStore
-    }), {
-      headers: { "Content-Type": "application/json" }
-    })
-  );
-});
-`,
-	);
-
-	// Use platform-node to run the ServiceWorker
-	const {default: NodePlatform} = await import("@b9g/platform-node");
-
-	const platform = new NodePlatform();
-	const instance = await platform.loadServiceWorker(entryPath);
-
-	const request = new Request("http://localhost:3000/test");
-	const response = await instance.handleRequest(request);
-	const result = await response.json();
-
-	expect(result.hasCookieStore).toBe(true);
-	expect(result.cookieStoreType).toBe("object");
-
-	await instance.dispose();
-	await platform.dispose();
-});
-
 test("self.cookieStore is isolated per-request (Node)", async () => {
-	const entryPath = join(testDir, "server.js");
-	await writeFile(
-		entryPath,
-		`
-self.addEventListener("fetch", (event) => {
-  event.respondWith((async () => {
-    const cookieStore = self.cookieStore;
-    const url = new URL(event.request.url);
-    const requestId = url.searchParams.get("id");
+	const fixture = await copyFixtureToTemp("cookiestore-app");
 
-    // Get the cookie from the request
-    const cookie = await cookieStore.get("test");
+	try {
+		const entryPath = join(fixture.src, "cookiestore-isolated.js");
 
-    return new Response(JSON.stringify({
-      requestId: requestId,
-      cookieValue: cookie?.value || null
-    }), {
-      headers: { "Content-Type": "application/json" }
-    });
-  })());
-});
-`,
-	);
+		const {default: NodePlatform} = await import("@b9g/platform-node");
 
-	const {default: NodePlatform} = await import("@b9g/platform-node");
+		const platform = new NodePlatform();
+		const instance = await platform.loadServiceWorker(entryPath);
 
-	const platform = new NodePlatform();
-	const instance = await platform.loadServiceWorker(entryPath);
+		// Make two concurrent requests with different cookie values in the request headers
+		const [response1, response2] = await Promise.all([
+			instance.handleRequest(
+				new Request("http://localhost:3000/test?id=1", {
+					headers: {Cookie: "test=value-1"},
+				}),
+			),
+			instance.handleRequest(
+				new Request("http://localhost:3000/test?id=2", {
+					headers: {Cookie: "test=value-2"},
+				}),
+			),
+		]);
 
-	// Make two concurrent requests with different cookie values in the request headers
-	const [response1, response2] = await Promise.all([
-		instance.handleRequest(
-			new Request("http://localhost:3000/test?id=1", {
-				headers: {Cookie: "test=value-1"},
-			}),
-		),
-		instance.handleRequest(
-			new Request("http://localhost:3000/test?id=2", {
-				headers: {Cookie: "test=value-2"},
-			}),
-		),
-	]);
+		const result1 = await response1.json();
+		const result2 = await response2.json();
 
-	const result1 = await response1.json();
-	const result2 = await response2.json();
+		// Verify each request gets its own cookie value
+		expect(result1.requestId).toBe("1");
+		expect(result1.cookieValue).toBe("value-1");
 
-	// Verify each request gets its own cookie value
-	expect(result1.requestId).toBe("1");
-	expect(result1.cookieValue).toBe("value-1");
+		expect(result2.requestId).toBe("2");
+		expect(result2.cookieValue).toBe("value-2");
 
-	expect(result2.requestId).toBe("2");
-	expect(result2.cookieValue).toBe("value-2");
-
-	await instance.dispose();
-	await platform.dispose();
+		await instance.dispose();
+		await platform.dispose();
+	} finally {
+		await fixture.cleanup();
+	}
 });
 
 test("self.cookieStore reads cookies from request (Node)", async () => {
-	const entryPath = join(testDir, "server.js");
-	await writeFile(
-		entryPath,
-		`
-self.addEventListener("fetch", (event) => {
-  event.respondWith((async () => {
-    const cookieStore = self.cookieStore;
-    const testCookie = await cookieStore.get("test");
+	const fixture = await copyFixtureToTemp("cookiestore-app");
 
-    return new Response(JSON.stringify({
-      cookieValue: testCookie?.value || null
-    }), {
-      headers: { "Content-Type": "application/json" }
-    });
-  })());
-});
-`,
-	);
+	try {
+		const entryPath = join(fixture.src, "cookiestore-read.js");
 
-	const {default: NodePlatform} = await import("@b9g/platform-node");
+		const {default: NodePlatform} = await import("@b9g/platform-node");
 
-	const platform = new NodePlatform();
-	const instance = await platform.loadServiceWorker(entryPath);
+		const platform = new NodePlatform();
+		const instance = await platform.loadServiceWorker(entryPath);
 
-	const request = new Request("http://localhost:3000/test", {
-		headers: {
-			Cookie: "test=request-cookie-value",
-		},
-	});
+		const request = new Request("http://localhost:3000/test", {
+			headers: {
+				Cookie: "test=request-cookie-value",
+			},
+		});
 
-	const response = await instance.handleRequest(request);
-	const result = await response.json();
+		const response = await instance.handleRequest(request);
+		const result = await response.json();
 
-	expect(result.cookieValue).toBe("request-cookie-value");
+		expect(result.cookieValue).toBe("request-cookie-value");
 
-	await instance.dispose();
-	await platform.dispose();
+		await instance.dispose();
+		await platform.dispose();
+	} finally {
+		await fixture.cleanup();
+	}
 });
 
 test("self.cookieStore is available in ServiceWorker handler (Bun)", async () => {
-	const entryPath = join(testDir, "server.js");
-	await writeFile(
-		entryPath,
-		`
-self.addEventListener("fetch", (event) => {
-  const cookieStore = self.cookieStore;
-  event.respondWith(
-    new Response(JSON.stringify({
-      hasCookieStore: !!cookieStore,
-      cookieStoreType: typeof cookieStore
-    }), {
-      headers: { "Content-Type": "application/json" }
-    })
-  );
-});
-`,
-	);
+	const fixture = await copyFixtureToTemp("cookiestore-app");
 
-	// Use platform-bun to run the ServiceWorker
-	const {default: BunPlatform} = await import("@b9g/platform-bun");
+	try {
+		const entryPath = join(fixture.src, "cookiestore-basic-bun.js");
 
-	const platform = new BunPlatform();
-	const instance = await platform.loadServiceWorker(entryPath);
+		// Use platform-bun to run the ServiceWorker
+		const {default: BunPlatform} = await import("@b9g/platform-bun");
 
-	const request = new Request("http://localhost:3000/test");
-	const response = await instance.handleRequest(request);
-	const result = await response.json();
+		const platform = new BunPlatform();
+		const instance = await platform.loadServiceWorker(entryPath);
 
-	expect(result.hasCookieStore).toBe(true);
-	expect(result.cookieStoreType).toBe("object");
+		const request = new Request("http://localhost:3000/test");
+		const response = await instance.handleRequest(request);
+		const result = await response.json();
 
-	await instance.dispose();
-	await platform.dispose();
+		expect(result.hasCookieStore).toBe(true);
+		expect(result.cookieStoreType).toBe("object");
+
+		await instance.dispose();
+		await platform.dispose();
+	} finally {
+		await fixture.cleanup();
+	}
 });
 
 test("self.cookieStore reads cookies from request (Bun)", async () => {
-	const entryPath = join(testDir, "server.js");
-	await writeFile(
-		entryPath,
-		`
-self.addEventListener("fetch", (event) => {
-  event.respondWith((async () => {
-    const cookieStore = self.cookieStore;
-    const testCookie = await cookieStore.get("test");
+	const fixture = await copyFixtureToTemp("cookiestore-app");
 
-    return new Response(JSON.stringify({
-      cookieValue: testCookie?.value || null
-    }), {
-      headers: { "Content-Type": "application/json" }
-    });
-  })());
-});
-`,
-	);
+	try {
+		const entryPath = join(fixture.src, "cookiestore-read-bun.js");
 
-	const {default: BunPlatform} = await import("@b9g/platform-bun");
+		const {default: BunPlatform} = await import("@b9g/platform-bun");
 
-	const platform = new BunPlatform();
-	const instance = await platform.loadServiceWorker(entryPath);
+		const platform = new BunPlatform();
+		const instance = await platform.loadServiceWorker(entryPath);
 
-	const request = new Request("http://localhost:3000/test", {
-		headers: {
-			Cookie: "test=bun-cookie-value",
-		},
-	});
+		const request = new Request("http://localhost:3000/test", {
+			headers: {
+				Cookie: "test=bun-cookie-value",
+			},
+		});
 
-	const response = await instance.handleRequest(request);
-	const result = await response.json();
+		const response = await instance.handleRequest(request);
+		const result = await response.json();
 
-	expect(result.cookieValue).toBe("bun-cookie-value");
+		expect(result.cookieValue).toBe("bun-cookie-value");
 
-	await instance.dispose();
-	await platform.dispose();
+		await instance.dispose();
+		await platform.dispose();
+	} finally {
+		await fixture.cleanup();
+	}
 });

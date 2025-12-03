@@ -1,4 +1,9 @@
-import {Cache, generateCacheKey, type CacheQueryOptions} from "./index.js";
+import {
+	Cache,
+	generateCacheKey,
+	toRequest,
+	type CacheQueryOptions,
+} from "./index.js";
 
 /**
  * Configuration options for MemoryCache
@@ -41,9 +46,27 @@ export class MemoryCache extends Cache {
 	 * Find a cached response for the given request
 	 */
 	async match(
-		request: Request,
+		request: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<Response | undefined> {
+		// When ignoreSearch is true, we need to iterate to find matches
+		if (options?.ignoreSearch) {
+			const filterKey = generateCacheKey(request, options);
+			for (const [key, entry] of this.#storage) {
+				if (this.#isExpired(entry)) {
+					this.#storage.delete(key);
+					this.#accessOrder.delete(key);
+					continue;
+				}
+				const entryKey = generateCacheKey(entry.request, options);
+				if (entryKey === filterKey) {
+					this.#accessOrder.set(key, ++this.#accessCounter);
+					return entry.response.clone();
+				}
+			}
+			return undefined;
+		}
+
 		const key = generateCacheKey(request, options);
 		const entry = this.#storage.get(key);
 
@@ -68,16 +91,17 @@ export class MemoryCache extends Cache {
 	/**
 	 * Store a request/response pair in the cache
 	 */
-	async put(request: Request, response: Response): Promise<void> {
-		const key = generateCacheKey(request);
+	async put(request: RequestInfo | URL, response: Response): Promise<void> {
+		const req = toRequest(request);
+		const key = generateCacheKey(req);
 
-		// Check if response is cacheable
-		if (!this.#isCacheable(response)) {
-			return;
+		// Check if response body has already been used
+		if (response.bodyUsed) {
+			throw new TypeError("Response body has already been used");
 		}
 
 		// Clone request and response to avoid external mutation
-		const clonedRequest = request.clone();
+		const clonedRequest = req.clone();
 		const clonedResponse = response.clone();
 
 		const entry: CacheEntry = {
@@ -97,9 +121,24 @@ export class MemoryCache extends Cache {
 	 * Delete matching entries from the cache
 	 */
 	async delete(
-		request: Request,
+		request: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<boolean> {
+		// When ignoreSearch is true, we need to iterate to find matches
+		if (options?.ignoreSearch) {
+			const filterKey = generateCacheKey(request, options);
+			let deleted = false;
+			for (const [key, entry] of this.#storage) {
+				const entryKey = generateCacheKey(entry.request, options);
+				if (entryKey === filterKey) {
+					this.#storage.delete(key);
+					this.#accessOrder.delete(key);
+					deleted = true;
+				}
+			}
+			return deleted;
+		}
+
 		const key = generateCacheKey(request, options);
 		const deleted = this.#storage.delete(key);
 
@@ -114,7 +153,7 @@ export class MemoryCache extends Cache {
 	 * Get all stored requests, optionally filtered by a request pattern
 	 */
 	async keys(
-		request?: Request,
+		request?: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<readonly Request[]> {
 		const keys: Request[] = [];
@@ -181,29 +220,6 @@ export class MemoryCache extends Cache {
 
 		const maxAge = parseInt(maxAgeMatch[1], 10) * 1000; // Convert to milliseconds
 		return Date.now() - entry.timestamp > maxAge;
-	}
-
-	/**
-	 * Check if a response should be cached
-	 */
-	#isCacheable(response: Response): boolean {
-		// Don't cache error responses by default
-		if (!response.ok) {
-			return false;
-		}
-
-		// Check Cache-Control header
-		const cacheControl = response.headers.get("cache-control");
-		if (cacheControl) {
-			if (
-				cacheControl.includes("no-cache") ||
-				cacheControl.includes("no-store")
-			) {
-				return false;
-			}
-		}
-
-		return true;
 	}
 
 	/**

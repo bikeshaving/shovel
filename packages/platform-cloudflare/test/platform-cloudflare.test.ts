@@ -1,32 +1,45 @@
-import {test, expect, describe, beforeEach, afterEach, mock} from "bun:test";
+import {
+	test,
+	expect,
+	describe,
+	beforeEach,
+	afterEach,
+	beforeAll,
+	afterAll,
+	mock,
+} from "bun:test";
 import {
 	CloudflarePlatform,
 	createOptionsFromEnv,
 	generateWranglerConfig,
 } from "../src/index.js";
-
-// Mock Cloudflare Workers globals
-const mockCloudflareGlobals = {
-	addEventListener: mock(() => {}),
-	caches: {
-		open: mock(() =>
-			Promise.resolve({
-				match: mock(() => Promise.resolve()),
-				put: mock(() => Promise.resolve()),
-				delete: mock(() => Promise.resolve()),
-			}),
-		),
-	},
-	FetchEvent: mock(function (type: string, init: any) {
-		this.type = type;
-		this.request = init.request;
-		this.respondWith = mock(() => {});
-		this.waitUntil = mock(() => Promise.resolve());
-	}),
-};
+import {Miniflare} from "miniflare";
 
 describe("CloudflarePlatform", () => {
 	let platform: CloudflarePlatform;
+	let miniflare: Miniflare;
+	let originalCaches: typeof globalThis.caches;
+
+	beforeAll(async () => {
+		// Save original caches
+		originalCaches = globalThis.caches;
+
+		// Create miniflare instance to provide Cloudflare environment
+		miniflare = new Miniflare({
+			modules: true,
+			script: `export default { fetch() { return new Response("ok"); } }`,
+			compatibilityDate: "2024-09-23",
+		});
+
+		// Set up globalThis.caches from miniflare
+		globalThis.caches = await miniflare.getCaches();
+	});
+
+	afterAll(async () => {
+		// Restore original caches
+		globalThis.caches = originalCaches;
+		await miniflare.dispose();
+	});
 
 	beforeEach(() => {
 		platform = new CloudflarePlatform({
@@ -47,25 +60,13 @@ describe("CloudflarePlatform", () => {
 		expect(defaultPlatform.name).toBe("cloudflare");
 	});
 
-	test("should create cache storage", async () => {
-		// Platform should create cache storage
+	test("should create cache storage using miniflare caches", async () => {
+		// Platform uses native Cloudflare caches (provided by miniflare in tests)
 		const caches = await platform.createCaches();
 		expect(caches).toBeDefined();
 
 		const cache = await caches.open("test");
 		expect(cache).toBeDefined();
-	});
-
-	test("should create cache storage using native Cloudflare caches", async () => {
-		// Mock globalThis.caches for the test
-		const originalCaches = globalThis.caches;
-		globalThis.caches = mockCloudflareGlobals.caches as any;
-
-		const cacheStorage = await platform.createCaches();
-		expect(cacheStorage).toBeDefined();
-
-		// Restore original
-		globalThis.caches = originalCaches;
 	});
 
 	test("should create server with Cloudflare Workers interface", () => {
