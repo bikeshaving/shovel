@@ -1,6 +1,6 @@
 import {bench, group, run} from "mitata";
 import {
-	ShovelGlobalScope,
+	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
 	FetchEvent,
 } from "../dist/src/runtime.js";
@@ -10,7 +10,7 @@ import {MemoryCache} from "@b9g/cache/memory.js";
 // Setup: Create a minimal ServiceWorker environment
 const registration = new ShovelServiceWorkerRegistration();
 const cacheStorage = new CustomCacheStorage((name) => new MemoryCache(name));
-const scope = new ShovelGlobalScope({
+const scope = new ServiceWorkerGlobals({
 	registration,
 	caches: cacheStorage,
 });

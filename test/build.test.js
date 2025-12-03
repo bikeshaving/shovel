@@ -521,7 +521,7 @@ self.skipWaiting();
 			expect(serverContent).toContain("skipWaiting()");
 			expect(serverContent).toContain("Response.json");
 
-			// Check bootstrap code in index.js sets up globals using ShovelGlobalScope
+			// Check bootstrap code in index.js sets up globals using ServiceWorkerGlobals
 			const indexContent = await FS.readFile(
 				join(outDir, "server", "index.js"),
 				"utf8",

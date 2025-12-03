@@ -2,7 +2,7 @@ import {test, expect, describe} from "bun:test";
 import {
 	WorkerGlobalScope,
 	DedicatedWorkerGlobalScope,
-	ShovelGlobalScope,
+	ServiceWorkerGlobals,
 } from "../src/runtime.js";
 
 describe("Worker Detection", () => {
@@ -18,10 +18,10 @@ describe("Worker Detection", () => {
 		);
 	});
 
-	test("ShovelGlobalScope extends DedicatedWorkerGlobalScope", () => {
-		expect(ShovelGlobalScope).toBeDefined();
-		// Note: We can't use instanceof here because ShovelGlobalScope doesn't extend DedicatedWorkerGlobalScope directly
-		// It implements ServiceWorkerGlobalScope interface instead
+	test("ServiceWorkerGlobals is defined", () => {
+		expect(ServiceWorkerGlobals).toBeDefined();
+		// Note: ServiceWorkerGlobals implements ServiceWorkerGlobalScope interface
+		// It doesn't extend DedicatedWorkerGlobalScope directly
 	});
 
 	test("WorkerGlobalScope not on globalThis in main thread", () => {
@@ -34,7 +34,7 @@ describe("Worker Detection", () => {
 		expect((globalThis as any).DedicatedWorkerGlobalScope).toBeUndefined();
 	});
 
-	test("ShovelGlobalScope.install() adds WorkerGlobalScope to globalThis", async () => {
+	test("ServiceWorkerGlobals.install() adds WorkerGlobalScope to globalThis", async () => {
 		// Create a mock caches object
 		const mockCaches = {
 			open: async () => ({
@@ -49,8 +49,8 @@ describe("Worker Detection", () => {
 			keys: async () => [],
 		};
 
-		// Create a minimal ShovelGlobalScope instance
-		const scope = new ShovelGlobalScope({
+		// Create a minimal ServiceWorkerGlobals instance
+		const scope = new ServiceWorkerGlobals({
 			caches: mockCaches as any,
 			isDevelopment: false,
 		});

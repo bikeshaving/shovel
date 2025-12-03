@@ -4,7 +4,7 @@
  * This module provides the complete ServiceWorker runtime environment for Shovel:
  * - Base Event Classes (ExtendableEvent, FetchEvent, InstallEvent, ActivateEvent)
  * - ServiceWorker API Type Shims (Client, Clients, ServiceWorkerRegistration, etc.)
- * - ShovelGlobalScope (implements ServiceWorkerGlobalScope for any JavaScript runtime)
+ * - ServiceWorkerGlobals (installs ServiceWorker globals onto any JavaScript runtime)
  *
  * Based on: https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API#interfaces
  */
@@ -48,10 +48,26 @@ const fetchDepthStorage = new AsyncContext.Variable<number>();
 const MAX_FETCH_DEPTH = 10;
 
 /**
- * Original fetch function - saved before we override globalThis.fetch
- * Used for absolute URLs that should go to network
+ * Keys we patch on globalThis in install()
+ * Used to save originals and restore them in restore()
  */
-const originalFetch = globalThis.fetch;
+const PATCHED_KEYS = [
+	"self",
+	"fetch",
+	"caches",
+	"buckets",
+	"registration",
+	"clients",
+	"skipWaiting",
+	"addEventListener",
+	"removeEventListener",
+	"dispatchEvent",
+	"WorkerGlobalScope",
+	"DedicatedWorkerGlobalScope",
+	"cookieStore",
+] as const;
+
+type PatchedKey = (typeof PATCHED_KEYS)[number];
 
 // ============================================================================
 // Helper Functions
@@ -1039,10 +1055,10 @@ interface NotificationOptions {
 }
 
 // ============================================================================
-// ShovelGlobalScope - ServiceWorker Global Scope Implementation
+// ServiceWorkerGlobals - ServiceWorker Global Scope Implementation
 // ============================================================================
 
-export interface ShovelGlobalScopeOptions {
+export interface ServiceWorkerGlobalsOptions {
 	/** ServiceWorker registration instance */
 	registration: ServiceWorkerRegistration;
 	/** Bucket storage (file system access) - REQUIRED */
@@ -1066,12 +1082,15 @@ export class WorkerGlobalScope {}
 export class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
 
 /**
- * ShovelGlobalScope implements ServiceWorkerGlobalScope
+ * ServiceWorkerGlobals - Installs ServiceWorker globals onto globalThis
  *
- * This is the `self` object in Shovel ServiceWorker applications.
- * It provides all standard ServiceWorker APIs plus Shovel-specific extensions.
+ * This class holds ServiceWorker API implementations (caches, buckets, clients, etc.)
+ * and patches them onto globalThis via install(). It maintains the browser invariant
+ * that self === globalThis while providing ServiceWorker APIs.
+ *
+ * Use restore() to revert all patches (useful for testing).
  */
-export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
+export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	// Self-reference (standard in ServiceWorkerGlobalScope)
 	// Type assertion: we provide a compatible subset of WorkerGlobalScope
 	readonly self: any;
@@ -1090,6 +1109,9 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 
 	// Shovel-specific development features
 	#isDevelopment: boolean;
+
+	// Snapshot of original globals before patching (for restore())
+	#originals: Record<PatchedKey, unknown>;
 
 	// Web API required properties
 	// Note: Using RequestCookieStore but typing as any for flexibility with global CookieStore type
@@ -1152,7 +1174,8 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 		const isRelative = urlString.startsWith("/") || urlString.startsWith("./");
 
 		if (!isRelative) {
-			// Absolute URL - use network (originalFetch to avoid recursion)
+			// Absolute URL - use network (original fetch to avoid recursion)
+			const originalFetch = this.#originals.fetch as typeof fetch;
 			return originalFetch(input, init);
 		}
 
@@ -1245,8 +1268,15 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 	onrejectionhandled: ((ev: PromiseRejectionEvent) => any) | null;
 	onunhandledrejection: ((ev: PromiseRejectionEvent) => any) | null;
 
-	constructor(options: ShovelGlobalScopeOptions) {
-		this.self = this as unknown as WorkerGlobalScope & typeof globalThis;
+	constructor(options: ServiceWorkerGlobalsOptions) {
+		// Save originals for all keys we'll patch (for restore())
+		const g = globalThis as Record<string, unknown>;
+		this.#originals = {} as Record<PatchedKey, unknown>;
+		for (const key of PATCHED_KEYS) {
+			this.#originals[key] = g[key];
+		}
+
+		this.self = globalThis;
 		this.registration = options.registration;
 		this.caches = options.caches;
 		this.buckets = options.buckets;
@@ -1340,46 +1370,61 @@ export class ShovelGlobalScope implements ServiceWorkerGlobalScope {
 
 	/**
 	 * Install this scope as the global scope
-	 * Sets up globalThis with all ServiceWorker globals
+	 * Patches globalThis with ServiceWorker globals while maintaining self === globalThis
 	 */
 	install(): void {
+		const g = globalThis as Record<string, unknown>;
+
 		// Install standard Worker global scope constructors for detection
 		// This allows standard detection: typeof WorkerGlobalScope !== 'undefined'
-		(globalThis as any).WorkerGlobalScope = WorkerGlobalScope;
-		(globalThis as any).DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
+		g.WorkerGlobalScope = WorkerGlobalScope;
+		g.DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
 
-		// Set self and event listeners
-		// Note: In worker contexts, this will override the native WorkerGlobalScope
-		// We add postMessage delegation below to preserve worker communication
-		globalThis.self = this as any;
-
-		// In worker contexts, add postMessage delegation to the native worker global
-		const isWorker = "onmessage" in globalThis;
-		if (isWorker && typeof postMessage === "function") {
-			// Preserve the native postMessage by adding it to this instance
-			(this as any).postMessage = postMessage.bind(globalThis);
+		// Ensure self === globalThis (Node.js workers don't have self by default)
+		// This maintains browser parity where self and globalThis are the same object
+		if (typeof g.self === "undefined") {
+			g.self = globalThis;
 		}
 
-		globalThis.addEventListener = this.addEventListener.bind(this);
-		globalThis.removeEventListener = this.removeEventListener.bind(this);
-		globalThis.dispatchEvent = this.dispatchEvent.bind(this);
+		// Event delegation to registration
+		g.addEventListener = this.addEventListener.bind(this);
+		g.removeEventListener = this.removeEventListener.bind(this);
+		g.dispatchEvent = this.dispatchEvent.bind(this);
 
-		// Expose storage APIs
-		if (this.caches) {
-			(globalThis as any).caches = this.caches;
-		}
-		if (this.buckets) {
-			(globalThis as any).buckets = this.buckets;
-		}
+		// Storage APIs
+		g.caches = this.caches;
+		g.buckets = this.buckets;
 
-		// Expose ServiceWorker APIs
-		(globalThis as any).registration = this.registration;
-		(globalThis as any).skipWaiting = this.skipWaiting.bind(this);
-		(globalThis as any).clients = this.clients;
+		// ServiceWorker APIs
+		g.registration = this.registration;
+		g.skipWaiting = this.skipWaiting.bind(this);
+		g.clients = this.clients;
 
 		// Override global fetch to use internal routing for relative URLs
 		// This ensures cache.add(), libraries, etc. all benefit from self-fetch
-		(globalThis as any).fetch = this.fetch.bind(this);
+		g.fetch = this.fetch.bind(this);
+
+		// Install cookieStore getter (per-request via AsyncContext)
+		Object.defineProperty(g, "cookieStore", {
+			get: () => cookieStoreStorage.get(),
+			configurable: true,
+		});
+	}
+
+	/**
+	 * Restore original globals (for testing)
+	 * Reverts all patched globals to their original values
+	 */
+	restore(): void {
+		const g = globalThis as Record<string, unknown>;
+		for (const key of PATCHED_KEYS) {
+			const original = this.#originals[key];
+			if (original === undefined) {
+				delete g[key];
+			} else {
+				g[key] = original;
+			}
+		}
 	}
 }
 
@@ -1416,8 +1461,8 @@ async function initializeWorker() {
 
 // ServiceWorker runtime variables - initialized via init message
 let registration: ShovelServiceWorkerRegistration | null = null;
-let scope: ShovelGlobalScope | null = null;
-let _workerSelf: ShovelGlobalScope | null = null;
+let scope: ServiceWorkerGlobals | null = null;
+let _workerSelf: ServiceWorkerGlobals | null = null;
 let currentApp: any = null;
 let serviceWorkerReady = false;
 let loadedEntrypoint: string | null = null;
@@ -1471,7 +1516,7 @@ async function loadServiceWorker(entrypoint: string): Promise<void> {
 			if (!caches || !buckets) {
 				throw new Error("Runtime not initialized - missing caches or buckets");
 			}
-			scope = new ShovelGlobalScope({
+			scope = new ServiceWorkerGlobals({
 				registration,
 				caches,
 				buckets,
@@ -1545,7 +1590,7 @@ async function initializeRuntime(config: any, baseDir: string): Promise<void> {
 		logger.info(`[Worker-${workerId}] Creating and installing scope`);
 		// Create and install ServiceWorker runtime
 		registration = new ShovelServiceWorkerRegistration();
-		scope = new ShovelGlobalScope({registration, caches, buckets});
+		scope = new ServiceWorkerGlobals({registration, caches, buckets});
 		scope.install();
 		_workerSelf = scope;
 

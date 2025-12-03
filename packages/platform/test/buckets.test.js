@@ -252,9 +252,8 @@ test(
 test(
 	"self.buckets in ServiceWorker context",
 	async () => {
-		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/runtime.js"
-		);
+		const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
+			await import("../src/runtime.js");
 
 		const tempDir = await createTempDir();
 
@@ -277,7 +276,7 @@ test(
 			const buckets = await createBucketStorage(tempDir);
 
 			// Set up ServiceWorker globals with buckets
-			const scope = new ShovelGlobalScope({registration, buckets});
+			const scope = new ServiceWorkerGlobals({registration, buckets});
 			scope.install();
 
 			// Simulate user ServiceWorker code using self.buckets
@@ -326,9 +325,8 @@ test(
 test(
 	"self.buckets file serving with different content types",
 	async () => {
-		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/runtime.js"
-		);
+		const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
+			await import("../src/runtime.js");
 
 		const tempDir = await createTempDir();
 
@@ -346,7 +344,7 @@ test(
 			const registration = new ShovelServiceWorkerRegistration();
 			const buckets = await createBucketStorage(tempDir);
 
-			const scope = new ShovelGlobalScope({registration, buckets});
+			const scope = new ServiceWorkerGlobals({registration, buckets});
 			scope.install();
 
 			// ServiceWorker that serves different file types
@@ -551,9 +549,8 @@ test(
 test(
 	"buckets API replaces old dirs API",
 	async () => {
-		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/runtime.js"
-		);
+		const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
+			await import("../src/runtime.js");
 
 		const tempDir = await createTempDir();
 
@@ -561,7 +558,7 @@ test(
 			const registration = new ShovelServiceWorkerRegistration();
 			const buckets = await createBucketStorage(tempDir);
 
-			const scope = new ShovelGlobalScope({registration, buckets});
+			const scope = new ServiceWorkerGlobals({registration, buckets});
 			scope.install();
 
 			// New API should be available

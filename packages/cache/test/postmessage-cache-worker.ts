@@ -13,7 +13,7 @@ const caches = new Map<string, MemoryCache>();
 const messageHandlers: Array<(event: MessageEvent) => void> = [];
 
 // Set up WorkerGlobalScope classes (for compatibility)
-// This simulates what ShovelGlobalScope.install() does
+// This simulates what ServiceWorkerGlobals.install() does
 class WorkerGlobalScope {}
 class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
 (globalThis as any).WorkerGlobalScope = WorkerGlobalScope;

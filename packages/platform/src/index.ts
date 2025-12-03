@@ -509,7 +509,7 @@ export {
 // ServiceWorker runtime
 export {
 	ShovelServiceWorkerRegistration,
-	ShovelGlobalScope,
+	ServiceWorkerGlobals,
 	FetchEvent,
 	InstallEvent,
 	ActivateEvent,

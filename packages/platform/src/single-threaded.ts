@@ -6,7 +6,10 @@
  */
 
 import {getLogger} from "@logtape/logtape";
-import {ShovelGlobalScope, ShovelServiceWorkerRegistration} from "./runtime.js";
+import {
+	ServiceWorkerGlobals,
+	ShovelServiceWorkerRegistration,
+} from "./runtime.js";
 import {CustomBucketStorage} from "@b9g/filesystem";
 import {CustomCacheStorage} from "@b9g/cache";
 import {
@@ -37,7 +40,7 @@ export interface SingleThreadedRuntimeOptions {
  */
 export class SingleThreadedRuntime {
 	#registration: ShovelServiceWorkerRegistration;
-	#scope: ShovelGlobalScope;
+	#scope: ServiceWorkerGlobals;
 	#ready: boolean;
 	#entrypoint?: string;
 	#config?: ProcessedShovelConfig;
@@ -60,7 +63,7 @@ export class SingleThreadedRuntime {
 
 		// Create registration and scope
 		this.#registration = new ShovelServiceWorkerRegistration();
-		this.#scope = new ShovelGlobalScope({
+		this.#scope = new ServiceWorkerGlobals({
 			registration: this.#registration,
 			caches: cacheStorage,
 			buckets: bucketStorage,
@@ -70,7 +73,7 @@ export class SingleThreadedRuntime {
 	}
 
 	/**
-	 * Initialize the runtime (install scope as globalThis.self)
+	 * Initialize the runtime (install ServiceWorker globals)
 	 */
 	async init(): Promise<void> {
 		// Configure LogTape for this runtime using the shared config
@@ -78,9 +81,9 @@ export class SingleThreadedRuntime {
 			await configureLogging(this.#config.logging);
 		}
 
-		// Install scope as globalThis.self, addEventListener, etc.
+		// Install ServiceWorker globals (caches, buckets, fetch, addEventListener, etc.)
 		this.#scope.install();
-		logger.info("SingleThreadedRuntime initialized - scope installed");
+		logger.info("SingleThreadedRuntime initialized - globals installed");
 	}
 
 	/**

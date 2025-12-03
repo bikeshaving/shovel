@@ -33,9 +33,8 @@ test(
 	"ServiceWorker globals setup",
 	async () => {
 		// Import ServiceWorker classes
-		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/runtime.js"
-		);
+		const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
+			await import("../src/runtime.js");
 
 		const registration = new ShovelServiceWorkerRegistration();
 		const mockBuckets = {
@@ -45,8 +44,8 @@ test(
 			}),
 		};
 
-		// Create ServiceWorker global scope
-		const scope = new ShovelGlobalScope({
+		// Create ServiceWorker globals installer
+		const scope = new ServiceWorkerGlobals({
 			registration,
 			buckets: mockBuckets,
 		});
@@ -61,8 +60,8 @@ test(
 		expect(typeof globalThis.clients).toBe("object");
 		expect(typeof globalThis.buckets).toBe("object");
 
-		// Test that self refers to the scope
-		expect(globalThis.self).toBe(scope);
+		// Test that self === globalThis (browser invariant)
+		expect(globalThis.self).toBe(globalThis);
 	},
 	TIMEOUT,
 );
@@ -70,12 +69,11 @@ test(
 test(
 	"ServiceWorker event listener functionality",
 	async () => {
-		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/runtime.js"
-		);
+		const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
+			await import("../src/runtime.js");
 
 		const registration = new ShovelServiceWorkerRegistration();
-		const scope = new ShovelGlobalScope({registration});
+		const scope = new ServiceWorkerGlobals({registration});
 		scope.install();
 
 		let installCalled = false;
@@ -116,12 +114,11 @@ test(
 test(
 	"ServiceWorker clients API",
 	async () => {
-		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/runtime.js"
-		);
+		const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
+			await import("../src/runtime.js");
 
 		const registration = new ShovelServiceWorkerRegistration();
-		const scope = new ShovelGlobalScope({registration});
+		const scope = new ServiceWorkerGlobals({registration});
 		scope.install();
 
 		// Test clients global
@@ -145,9 +142,8 @@ test(
 test(
 	"ServiceWorker buckets API",
 	async () => {
-		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/runtime.js"
-		);
+		const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
+			await import("../src/runtime.js");
 
 		const registration = new ShovelServiceWorkerRegistration();
 		const mockBuckets = {
@@ -160,7 +156,7 @@ test(
 			}),
 		};
 
-		const scope = new ShovelGlobalScope({
+		const scope = new ServiceWorkerGlobals({
 			registration,
 			buckets: mockBuckets,
 		});
@@ -429,14 +425,13 @@ test(
 test(
 	"ServiceWorker complete workflow",
 	async () => {
-		const {ShovelServiceWorkerRegistration, ShovelGlobalScope} = await import(
-			"../src/runtime.js"
-		);
+		const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
+			await import("../src/runtime.js");
 
 		const registration = new ShovelServiceWorkerRegistration();
 
 		// Set up globals like production does
-		const scope = new ShovelGlobalScope({registration});
+		const scope = new ServiceWorkerGlobals({registration});
 		scope.install();
 
 		// Simulate user ServiceWorker code

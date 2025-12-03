@@ -170,7 +170,7 @@ test(
 			// Test ServiceWorker that serves assets
 			const {
 				ShovelServiceWorkerRegistration,
-				ShovelGlobalScope,
+				ServiceWorkerGlobals,
 				CustomBucketStorage,
 			} = await import("@b9g/platform");
 			const {NodeBucket} = await import("@b9g/filesystem/node.js");
@@ -184,8 +184,8 @@ test(
 				return new NodeBucket(targetPath);
 			});
 
-			// Set up ServiceWorker globals using ShovelGlobalScope
-			const scope = new ShovelGlobalScope({registration: runtime, buckets});
+			// Set up ServiceWorker globals
+			const scope = new ServiceWorkerGlobals({registration: runtime, buckets});
 			scope.install();
 
 			// ServiceWorker that serves assets from the assets directory
