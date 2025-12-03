@@ -254,28 +254,49 @@ function getRequestInfo(request: Request) {
 
 async function parseBody(request: Request) {
   const contentType = request.headers.get('content-type') || '';
-  
+
   if (contentType.includes('application/json')) {
     try {
       return await request.json();
-    } catch {
+    } catch (err) {
+      // Only ignore JSON parse errors, rethrow others
+      if (
+        !(err instanceof SyntaxError) ||
+        !/^(Unexpected token|Expected|JSON)/i.test(String(err.message))
+      ) {
+        throw err;
+      }
       return null;
     }
   }
-  
+
   if (contentType.includes('application/x-www-form-urlencoded')) {
     try {
       const formData = await request.formData();
       return Object.fromEntries(formData.entries());
-    } catch {
+    } catch (err) {
+      // Only ignore form data parse errors, rethrow others
+      if (
+        !(err instanceof TypeError) ||
+        !String(err.message).includes('FormData')
+      ) {
+        throw err;
+      }
       return null;
     }
   }
-  
+
   try {
     const text = await request.text();
     return text || null;
-  } catch {
+  } catch (err) {
+    // Only ignore body already consumed errors, rethrow others
+    if (
+      !(err instanceof TypeError) ||
+      !String(err.message).includes('body')
+    ) {
+      throw err;
+    }
     return null;
   }
 }
@@ -293,28 +314,49 @@ function getRequestInfo(request) {
 
 async function parseBody(request) {
   const contentType = request.headers.get('content-type') || '';
-  
+
   if (contentType.includes('application/json')) {
     try {
       return await request.json();
-    } catch {
+    } catch (err) {
+      // Only ignore JSON parse errors, rethrow others
+      if (
+        !(err instanceof SyntaxError) ||
+        !/^(Unexpected token|Expected|JSON)/i.test(String(err.message))
+      ) {
+        throw err;
+      }
       return null;
     }
   }
-  
+
   if (contentType.includes('application/x-www-form-urlencoded')) {
     try {
       const formData = await request.formData();
       return Object.fromEntries(formData.entries());
-    } catch {
+    } catch (err) {
+      // Only ignore form data parse errors, rethrow others
+      if (
+        !(err instanceof TypeError) ||
+        !String(err.message).includes('FormData')
+      ) {
+        throw err;
+      }
       return null;
     }
   }
-  
+
   try {
     const text = await request.text();
     return text || null;
-  } catch {
+  } catch (err) {
+    // Only ignore body already consumed errors, rethrow others
+    if (
+      !(err instanceof TypeError) ||
+      !String(err.message).includes('body')
+    ) {
+      throw err;
+    }
     return null;
   }
 }

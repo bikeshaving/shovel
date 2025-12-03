@@ -260,8 +260,8 @@ export class RedisCache extends Cache {
 					if (method && url) {
 						requests.push(new Request(url, {method}));
 					}
-				} catch {
-					// Skip malformed keys
+				} catch (err) {
+					if (!(err instanceof TypeError)) throw err; // URL parse error
 				}
 			}
 
@@ -294,8 +294,9 @@ export class RedisCache extends Cache {
 						// Use web-standard text encoding instead of Node.js Buffer
 						totalSize += new TextEncoder().encode(value).length;
 					}
-				} catch {
-					// Skip errors for individual keys
+				} catch (err) {
+					// Skip individual key errors but log them for debugging
+					logger.debug("Error reading key {key}: {error}", {key, error: err});
 				}
 			}
 

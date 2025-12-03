@@ -174,8 +174,14 @@ export async function loadJSXConfig(projectRoot: string): Promise<JSXOptions> {
 					...tsOptions,
 				};
 			}
-		} catch {
-			// Ignore parse errors, fall through to defaults
+		} catch (err) {
+			// Only ignore JSON parse errors, rethrow others
+			if (
+				!(err instanceof SyntaxError) ||
+				!/^(Unexpected token|Expected|JSON)/i.test(String((err as Error).message))
+			) {
+				throw err;
+			}
 		}
 	}
 

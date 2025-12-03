@@ -176,8 +176,11 @@ async function findWorkspaceRoot() {
 			if (packageJSON.workspaces) {
 				return workspaceRoot;
 			}
-		} catch {
-			// No package.json found, continue up the tree
+		} catch (err) {
+			// Only ignore file-not-found errors, rethrow others
+			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+				throw err;
+			}
 		}
 		workspaceRoot = dirname(workspaceRoot);
 	}
@@ -203,8 +206,11 @@ async function findShovelPackageRoot() {
 				}
 				return packageRoot;
 			}
-		} catch {
-			// Not found at this level, continue searching
+		} catch (err) {
+			// Only ignore file-not-found errors, rethrow others
+			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+				throw err;
+			}
 		}
 		packageRoot = dirname(packageRoot);
 	}
@@ -439,7 +445,11 @@ async function createWorkerEntry(userEntryPath, workerCount, platform) {
 			const packageJSONPath = join(packageRoot, "package.json");
 			await readFile(packageJSONPath, "utf8");
 			break;
-		} catch {
+		} catch (err) {
+			// Only ignore file-not-found errors, rethrow others
+			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+				throw err;
+			}
 			packageRoot = dirname(packageRoot);
 		}
 	}
@@ -448,7 +458,11 @@ async function createWorkerEntry(userEntryPath, workerCount, platform) {
 	let templatePath = join(packageRoot, "src/worker-entry.ts");
 	try {
 		await readFile(templatePath, "utf8");
-	} catch {
+	} catch (err) {
+		// Only ignore file-not-found errors, rethrow others
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+			throw err;
+		}
 		// If .ts doesn't exist, try .js (for built dist version)
 		templatePath = join(packageRoot, "src/worker-entry.js");
 	}

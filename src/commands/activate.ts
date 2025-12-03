@@ -128,8 +128,11 @@ async function findWorkspaceRoot() {
 			if (packageJSON.workspaces) {
 				return workspaceRoot;
 			}
-		} catch {
-			// No package.json found, continue up the tree
+		} catch (err) {
+			// Only ignore file-not-found errors, rethrow others
+			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+				throw err;
+			}
 		}
 		workspaceRoot = dirname(workspaceRoot);
 	}
@@ -153,8 +156,11 @@ async function findShovelPackageRoot() {
 				}
 				return packageRoot;
 			}
-		} catch {
-			// Not found at this level, continue searching
+		} catch (err) {
+			// Only ignore file-not-found errors, rethrow others
+			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+				throw err;
+			}
 		}
 		packageRoot = dirname(packageRoot);
 	}

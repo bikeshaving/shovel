@@ -73,7 +73,8 @@ function getDefaultPort(protocol: string): string | undefined {
 function toASCII(hostname: string): string {
 	try {
 		return new URL("http://" + hostname).hostname;
-	} catch {
+	} catch (err) {
+		if (!(err instanceof TypeError)) throw err; // URL parse error
 		return hostname;
 	}
 }
@@ -493,7 +494,14 @@ function encodeHash(hash: string): string {
 	// Decode first if already encoded, then re-encode for canonical form
 	try {
 		return encodeURIComponent(decodeURIComponent(hash));
-	} catch {
+	} catch (err) {
+		// Only ignore "URI malformed" errors from invalid encoding, rethrow others
+		if (
+			!(err instanceof URIError) ||
+			!String(err.message).includes("URI malformed")
+		) {
+			throw err;
+		}
 		// If decoding fails, just encode as-is
 		return encodeURIComponent(hash);
 	}
@@ -2068,8 +2076,8 @@ function compileURLPatternInit(
 	if (base) {
 		try {
 			baseURLParsed = new URL(base);
-		} catch {
-			// Invalid baseURL
+		} catch (err) {
+			if (!(err instanceof TypeError)) throw err; // URL parse error
 		}
 	}
 
@@ -2402,7 +2410,8 @@ export class URLPattern {
 		if (typeof input === "string") {
 			try {
 				url = baseURL ? new URL(input, baseURL) : new URL(input);
-			} catch {
+			} catch (err) {
+				if (!(err instanceof TypeError)) throw err; // URL parse error
 				return false;
 			}
 		} else {
@@ -2424,8 +2433,8 @@ export class URLPattern {
 		if (base) {
 			try {
 				baseURLObj = new URL(base);
-			} catch {
-				// Invalid URL, continue without base
+			} catch (err) {
+				if (!(err instanceof TypeError)) throw err; // URL parse error
 			}
 		}
 
@@ -2592,8 +2601,8 @@ export class URLPattern {
 		if (base) {
 			try {
 				baseURLObj = new URL(base);
-			} catch {
-				// Invalid URL, continue without base
+			} catch (err) {
+				if (!(err instanceof TypeError)) throw err; // URL parse error
 			}
 		}
 
@@ -2725,7 +2734,8 @@ export class MatchPattern {
 		if (typeof input === "string") {
 			try {
 				url = baseURL ? new URL(input, baseURL) : new URL(input);
-			} catch {
+			} catch (err) {
+				if (!(err instanceof TypeError)) throw err; // URL parse error
 				return false;
 			}
 		} else {
@@ -2757,8 +2767,8 @@ export class MatchPattern {
 		if (base) {
 			try {
 				baseURLObj = new URL(base);
-			} catch {
-				// Invalid URL, continue without base
+			} catch (err) {
+				if (!(err instanceof TypeError)) throw err; // URL parse error
 			}
 		}
 
@@ -2823,7 +2833,8 @@ export class MatchPattern {
 			try {
 				const resolved = new URL(pathname, baseURLObj.href);
 				pathname = resolved.pathname;
-			} catch {
+			} catch (err) {
+				if (!(err instanceof TypeError)) throw err; // URL parse error
 				const basePath = baseURLObj.pathname;
 				if (basePath.endsWith("/")) {
 					pathname = basePath + pathname;
@@ -2940,8 +2951,8 @@ export class MatchPattern {
 		if (base) {
 			try {
 				baseURLObj = new URL(base);
-			} catch {
-				// Invalid URL, continue without base
+			} catch (err) {
+				if (!(err instanceof TypeError)) throw err; // URL parse error
 			}
 		}
 

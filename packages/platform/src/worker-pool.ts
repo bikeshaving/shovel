@@ -109,8 +109,11 @@ function resolveWorkerScript(entrypoint?: string): string {
 					return bundledWorker;
 				}
 			}
-		} catch {
-			// Fall through to package resolution
+		} catch (err) {
+			// Only ignore file-not-found errors, rethrow others
+			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+				throw err;
+			}
 		}
 	}
 

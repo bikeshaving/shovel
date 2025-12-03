@@ -180,8 +180,11 @@ function detectPlatformFromPackageJSON(cwd?: string): string | null {
 		const deps = {...pkg.dependencies, ...pkg.devDependencies};
 
 		return selectPlatformFromDeps(deps);
-	} catch {
-		// Package.json doesn't exist or can't be read - fall through
+	} catch (err) {
+		// Only ignore file-not-found errors, rethrow others
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+			throw err;
+		}
 		return null;
 	}
 }
