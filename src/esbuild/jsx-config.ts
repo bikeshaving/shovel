@@ -178,7 +178,9 @@ export async function loadJSXConfig(projectRoot: string): Promise<JSXOptions> {
 			// Only ignore JSON parse errors, rethrow others
 			if (
 				!(err instanceof SyntaxError) ||
-				!/^(Unexpected token|Expected|JSON)/i.test(String((err as Error).message))
+				!/^(Unexpected token|Expected|JSON)/i.test(
+					String((err as Error).message),
+				)
 			) {
 				throw err;
 			}

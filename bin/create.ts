@@ -3,14 +3,10 @@
 
 import {intro, outro, text, select, confirm, spinner} from "@clack/prompts";
 import picocolors from "picocolors";
-const {cyan, green, yellow: _yellow, red, dim, bold} = picocolors;
+const {cyan, green, red, dim, bold} = picocolors;
 import {mkdir, writeFile} from "fs/promises";
 import {join, resolve} from "path";
 import {existsSync} from "fs";
-
-// Runtime detection
-const isBun = typeof Bun !== "undefined";
-const _currentRuntime = isBun ? "bun" : "node";
 
 interface ProjectConfig {
 	name: string;

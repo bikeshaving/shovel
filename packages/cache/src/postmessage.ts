@@ -43,8 +43,6 @@ function handleCacheResponse(message: any) {
  * Configuration options for PostMessageCache
  */
 export interface PostMessageCacheOptions {
-	/** Maximum number of entries to store */
-	maxEntries?: number;
 	/** Timeout for cache operations in milliseconds (default: 30000) */
 	timeout?: number;
 }
@@ -58,11 +56,13 @@ let globalRequestID = 0;
  */
 export class PostMessageCache extends Cache {
 	#name: string;
+	#timeout: number;
 
-	constructor(name: string, _options: PostMessageCacheOptions = {}) {
+	constructor(name: string, options: PostMessageCacheOptions = {}) {
 		super();
 
 		this.#name = name;
+		this.#timeout = options.timeout ?? 30000;
 
 		// Set up global message handler (only happens once for all instances)
 		setupMessageHandler();
@@ -86,13 +86,12 @@ export class PostMessageCache extends Cache {
 				...data,
 			});
 
-			// Timeout after 30 seconds
 			setTimeout(() => {
 				if (pendingRequestsRegistry.has(requestID)) {
 					pendingRequestsRegistry.delete(requestID);
 					reject(new Error("Cache operation timeout"));
 				}
-			}, 30000);
+			}, this.#timeout);
 		});
 	}
 

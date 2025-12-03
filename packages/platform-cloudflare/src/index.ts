@@ -54,7 +54,11 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
  */
 export class CloudflarePlatform extends BasePlatform {
 	readonly name: string;
-	#options: Required<CloudflarePlatformOptions>;
+	#options: {
+		environment: "production" | "preview" | "dev";
+		assetsDirectory: string | undefined;
+		cwd: string;
+	};
 	#miniflare: Miniflare | null;
 	#assetsMiniflare: Miniflare | null; // Separate instance for ASSETS binding
 	#config: ProcessedShovelConfig;
@@ -65,14 +69,13 @@ export class CloudflarePlatform extends BasePlatform {
 		this.#assetsMiniflare = null;
 		this.name = "cloudflare";
 
-		const cwd = options.cwd || process.cwd();
+		const cwd = options.cwd ?? ".";
 		this.#config = loadConfig(cwd);
 
 		this.#options = {
-			environment: "production",
-			assetsDirectory: undefined as any,
+			environment: options.environment ?? "production",
+			assetsDirectory: options.assetsDirectory,
 			cwd,
-			...options,
 		};
 	}
 
