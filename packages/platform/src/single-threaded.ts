@@ -3,6 +3,8 @@
  *
  * Runs ServiceWorker code directly in the main thread without spawning workers.
  * Used when workerCount === 1 for maximum performance (no postMessage overhead).
+ *
+ * This module is BROWSER-SAFE - no fs/path/config imports.
  */
 
 import {getLogger} from "@logtape/logtape";
@@ -10,27 +12,27 @@ import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
 } from "./runtime.js";
-import {CustomBucketStorage} from "@b9g/filesystem";
-import {CustomCacheStorage} from "@b9g/cache";
-import {
-	configureLogging,
-	createBucketFactory,
-	createCacheFactory,
-	type ProcessedShovelConfig,
-} from "./config.js";
-import type {ServiceWorkerRuntime} from "./multi-threaded.js";
+import type {BucketStorage} from "@b9g/filesystem";
 
 const logger = getLogger(["single-threaded"]);
 
+/**
+ * Common interface for ServiceWorker runtimes
+ */
+export interface ServiceWorkerRuntime {
+	init(): Promise<void>;
+	load(entrypoint: string): Promise<void>;
+	handleRequest(request: Request): Promise<Response>;
+	terminate(): Promise<void>;
+	readonly workerCount: number;
+	readonly ready: boolean;
+}
+
 export interface SingleThreadedRuntimeOptions {
-	/** Base directory for bucket path resolution (entrypoint directory) - REQUIRED */
-	baseDir: string;
-	/** Optional pre-created cache storage (for sharing across reloads) */
-	cacheStorage?: CacheStorage;
-	/** Optional pre-created bucket storage */
-	bucketStorage?: CustomBucketStorage;
-	/** Shovel configuration for bucket/cache settings */
-	config?: ProcessedShovelConfig;
+	/** Cache storage for the runtime */
+	caches: CacheStorage;
+	/** Bucket storage for the runtime */
+	buckets: BucketStorage;
 }
 
 /**
@@ -44,44 +46,25 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 	#scope: ServiceWorkerGlobals;
 	#ready: boolean;
 	#entrypoint?: string;
-	#config?: ProcessedShovelConfig;
 
 	constructor(options: SingleThreadedRuntimeOptions) {
 		this.#ready = false;
-		this.#config = options.config;
-
-		// Create cache storage using factory if not provided
-		const cacheStorage =
-			options.cacheStorage ||
-			new CustomCacheStorage(createCacheFactory({config: options.config}));
-
-		// Create bucket storage using factory if not provided
-		const bucketStorage =
-			options.bucketStorage ||
-			new CustomBucketStorage(
-				createBucketFactory({baseDir: options.baseDir, config: options.config}),
-			);
 
 		// Create registration and scope
 		this.#registration = new ShovelServiceWorkerRegistration();
 		this.#scope = new ServiceWorkerGlobals({
 			registration: this.#registration,
-			caches: cacheStorage,
-			buckets: bucketStorage,
+			caches: options.caches,
+			buckets: options.buckets,
 		});
 
-		logger.info("SingleThreadedRuntime created", {baseDir: options.baseDir});
+		logger.info("SingleThreadedRuntime created");
 	}
 
 	/**
 	 * Initialize the runtime (install ServiceWorker globals)
 	 */
 	async init(): Promise<void> {
-		// Configure LogTape for this runtime using the shared config
-		if (this.#config?.logging) {
-			await configureLogging(this.#config.logging);
-		}
-
 		// Install ServiceWorker globals (caches, buckets, fetch, addEventListener, etc.)
 		this.#scope.install();
 		logger.info("SingleThreadedRuntime initialized - globals installed");

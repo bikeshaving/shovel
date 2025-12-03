@@ -80,14 +80,6 @@
       "types": "./dist/src/runtime.d.ts",
       "import": "./dist/src/runtime.js"
     },
-    "./config": {
-      "types": "./dist/src/config.d.ts",
-      "import": "./dist/src/config.js"
-    },
-    "./config.js": {
-      "types": "./dist/src/config.d.ts",
-      "import": "./dist/src/config.js"
-    },
     "./cookie-store": {
       "types": "./dist/src/cookie-store.d.ts",
       "import": "./dist/src/cookie-store.js"
@@ -127,6 +119,14 @@
     "./worker.js": {
       "types": "./dist/src/worker.d.ts",
       "import": "./dist/src/worker.js"
+    },
+    "./storage-factories": {
+      "types": "./dist/src/storage-factories.d.ts",
+      "import": "./dist/src/storage-factories.js"
+    },
+    "./storage-factories.js": {
+      "types": "./dist/src/storage-factories.d.ts",
+      "import": "./dist/src/storage-factories.js"
     }
   }
 }

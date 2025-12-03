@@ -168,11 +168,11 @@ test(
 			);
 
 			// Test ServiceWorker that serves assets
-			const {
-				ShovelServiceWorkerRegistration,
-				ServiceWorkerGlobals,
-				CustomBucketStorage,
-			} = await import("@b9g/platform");
+			const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
+				await import("@b9g/platform/runtime");
+			const {CustomBucketStorage} = await import("@b9g/filesystem");
+			const {CustomCacheStorage} = await import("@b9g/cache");
+			const {MemoryCache} = await import("@b9g/cache/memory");
 			const {NodeBucket} = await import("@b9g/filesystem/node.js");
 
 			const runtime = new ShovelServiceWorkerRegistration();
@@ -185,7 +185,12 @@ test(
 			});
 
 			// Set up ServiceWorker globals
-			const scope = new ServiceWorkerGlobals({registration: runtime, buckets});
+			const caches = new CustomCacheStorage((name) => new MemoryCache(name));
+			const scope = new ServiceWorkerGlobals({
+				registration: runtime,
+				buckets,
+				caches,
+			});
 			scope.install();
 
 			// ServiceWorker that serves assets from the assets directory

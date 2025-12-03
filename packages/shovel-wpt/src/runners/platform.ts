@@ -6,7 +6,7 @@
  * not a web standard, so these are contract tests rather than WPT tests.
  */
 
-import {describe, test, expect, beforeEach, afterEach} from "bun:test";
+import {describe, test, expect, beforeAll, afterAll, afterEach} from "bun:test";
 
 /**
  * Platform interface (mirrors @b9g/platform)
@@ -62,6 +62,14 @@ export interface PlatformTestConfig {
 	createPlatform: () => Platform | Promise<Platform>;
 	/** Path to a simple test ServiceWorker entrypoint (optional) */
 	testEntrypoint?: string;
+	/**
+	 * Path to a ServiceWorker entrypoint that tests ServiceWorkerGlobals features.
+	 * The worker should handle these routes:
+	 * - /test-caches: returns {cachesAvailable, cacheOpenWorks}
+	 * - /test-buckets: returns {bucketsAvailable}
+	 * - /test-cookiestore: returns {cookieStoreAvailable, canReadCookie}
+	 */
+	testGlobalsEntrypoint?: string;
 	/** Optional cleanup function */
 	cleanup?: () => void | Promise<void>;
 	/** Skip service worker tests (for platforms that don't support them) */
@@ -83,11 +91,13 @@ export function runPlatformTests(
 	describe(`Platform Contract Tests: ${name}`, () => {
 		let platform: Platform;
 
-		beforeEach(async () => {
+		// Create platform once for all tests in this suite (not per-test)
+		// This avoids module caching issues where ServiceWorker code only runs once
+		beforeAll(async () => {
 			platform = await config.createPlatform();
 		});
 
-		afterEach(async () => {
+		afterAll(async () => {
 			await config.cleanup?.();
 		});
 
@@ -296,9 +306,14 @@ export function runPlatformTests(
 		// =====================================================================
 		if (!config.skipServiceWorkerTests && config.testEntrypoint) {
 			describe("loadServiceWorker()", () => {
+				// Share one SW instance for all tests to avoid module caching issues
 				let sw: ServiceWorkerInstance | null = null;
 
-				afterEach(async () => {
+				beforeAll(async () => {
+					sw = await platform.loadServiceWorker(config.testEntrypoint!);
+				});
+
+				afterAll(async () => {
 					if (sw) {
 						try {
 							await sw.dispose();
@@ -310,29 +325,92 @@ export function runPlatformTests(
 				});
 
 				test("loads a service worker", async () => {
-					sw = await platform.loadServiceWorker(config.testEntrypoint!);
 					expect(sw).toBeDefined();
 				});
 
 				test("service worker has required interface", async () => {
-					sw = await platform.loadServiceWorker(config.testEntrypoint!);
-
-					expect(sw.handleRequest).toBeDefined();
-					expect(sw.install).toBeDefined();
-					expect(sw.activate).toBeDefined();
-					expect(sw.dispose).toBeDefined();
+					expect(sw!.handleRequest).toBeDefined();
+					expect(sw!.install).toBeDefined();
+					expect(sw!.activate).toBeDefined();
+					expect(sw!.dispose).toBeDefined();
 				});
 
 				test("service worker can handle requests", async () => {
-					sw = await platform.loadServiceWorker(config.testEntrypoint!);
-
-					await sw.install();
-					await sw.activate();
-
 					const request = new Request("https://example.com/test");
-					const response = await sw.handleRequest(request);
+					const response = await sw!.handleRequest(request);
 
 					expect(response).toBeInstanceOf(Response);
+				});
+			});
+		}
+
+		// =====================================================================
+		// ServiceWorkerGlobals Feature Tests
+		// These test that features work inside ServiceWorker handlers
+		// =====================================================================
+		if (!config.skipServiceWorkerTests && config.testGlobalsEntrypoint) {
+			describe("ServiceWorkerGlobals features", () => {
+				// Share one SW instance for all tests to avoid module caching issues
+				let sw: ServiceWorkerInstance | null = null;
+
+				beforeAll(async () => {
+					sw = await platform.loadServiceWorker(config.testGlobalsEntrypoint!);
+				});
+
+				afterAll(async () => {
+					if (sw) {
+						try {
+							await sw.dispose();
+						} catch {
+							// Ignore dispose errors
+						}
+						sw = null;
+					}
+				});
+
+				test("caches: can open, put, match, and delete", async () => {
+					const request = new Request("https://example.com/test-caches");
+					const response = await sw!.handleRequest(request);
+					const data = await response.json();
+
+					if (!data.success) {
+						console.error("Cache test failed:", data);
+					}
+					expect(data.canOpen).toBe(true);
+					expect(data.canPut).toBe(true);
+					expect(data.canMatch).toBe(true);
+					expect(data.canDelete).toBe(true);
+					expect(data.success).toBe(true);
+				});
+
+				test("buckets: can open, write, and read files", async () => {
+					const request = new Request("https://example.com/test-buckets");
+					const response = await sw!.handleRequest(request);
+					const data = await response.json();
+
+					if (!data.success) {
+						console.error("Buckets test failed:", data);
+					}
+					expect(data.canOpen).toBe(true);
+					expect(data.canWrite).toBe(true);
+					expect(data.canRead).toBe(true);
+					expect(data.success).toBe(true);
+				});
+
+				test("cookieStore: can read cookies from request", async () => {
+					const request = new Request("https://example.com/test-cookiestore", {
+						headers: {Cookie: "test=value"},
+					});
+					const response = await sw!.handleRequest(request);
+					const data = await response.json();
+
+					if (!data.success) {
+						console.error("CookieStore test failed:", data);
+					}
+					expect(data.canGet).toBe(true);
+					expect(data.canReadFromRequest).toBe(true);
+					expect(data.cookieValue).toBe("value");
+					expect(data.success).toBe(true);
 				});
 			});
 		}

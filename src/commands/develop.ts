@@ -2,7 +2,7 @@ import {DEFAULTS} from "../esbuild/config.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
-import {loadConfig} from "@b9g/platform/config";
+import {loadConfig} from "../config.js";
 import {Watcher} from "../esbuild/watcher.js";
 import {findProjectRoot} from "../utils/project.js";
 

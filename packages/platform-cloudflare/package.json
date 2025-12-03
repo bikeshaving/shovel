@@ -53,6 +53,14 @@
     "./filesystem-assets.js": {
       "types": "./dist/src/filesystem-assets.d.ts",
       "import": "./dist/src/filesystem-assets.js"
+    },
+    "./cloudflare-runtime": {
+      "types": "./dist/src/cloudflare-runtime.d.ts",
+      "import": "./dist/src/cloudflare-runtime.js"
+    },
+    "./cloudflare-runtime.js": {
+      "types": "./dist/src/cloudflare-runtime.d.ts",
+      "import": "./dist/src/cloudflare-runtime.js"
     }
   }
 }

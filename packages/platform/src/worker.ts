@@ -8,7 +8,7 @@
  */
 
 import {getLogger} from "@logtape/logtape";
-import {configureLogging, createBucketFactory, createCacheFactory} from "./config.js";
+import {createBucketFactory, createCacheFactory} from "./storage-factories.js";
 import {CustomBucketStorage} from "@b9g/filesystem";
 import {CustomCacheStorage} from "@b9g/cache";
 import type {BucketStorage} from "@b9g/filesystem";
@@ -119,11 +119,6 @@ async function loadServiceWorker(entrypoint: string): Promise<void> {
 
 async function initializeRuntime(config: any, baseDir: string): Promise<void> {
 	try {
-		// Configure LogTape for this worker
-		if (config?.logging) {
-			await configureLogging(config.logging);
-		}
-
 		logger.info(`[Worker-${workerId}] Initializing runtime`, {config, baseDir});
 
 		// Create cache storage

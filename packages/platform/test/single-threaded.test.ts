@@ -92,9 +92,8 @@ test(
 			const bucketStorage = await createBucketStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
-				baseDir: tempDir,
-				cacheStorage,
-				bucketStorage,
+				caches: cacheStorage,
+				buckets: bucketStorage,
 			});
 
 			await runtime.init();
@@ -119,9 +118,8 @@ test(
 			const bucketStorage = await createBucketStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
-				baseDir: tempDir,
-				cacheStorage,
-				bucketStorage,
+				caches: cacheStorage,
+				buckets: bucketStorage,
 			});
 
 			await runtime.init();
@@ -160,9 +158,8 @@ test(
 			const bucketStorage = await createBucketStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
-				baseDir: tempDir,
-				cacheStorage,
-				bucketStorage,
+				caches: cacheStorage,
+				buckets: bucketStorage,
 			});
 
 			await runtime.init();
@@ -195,9 +192,8 @@ test(
 			const bucketStorage = await createBucketStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
-				baseDir: tempDir,
-				cacheStorage,
-				bucketStorage,
+				caches: cacheStorage,
+				buckets: bucketStorage,
 			});
 
 			await runtime.init();
@@ -222,9 +218,8 @@ test(
 			const bucketStorage = await createBucketStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
-				baseDir: tempDir,
-				cacheStorage,
-				bucketStorage,
+				caches: cacheStorage,
+				buckets: bucketStorage,
 			});
 
 			await runtime.init();
@@ -252,9 +247,8 @@ test(
 			const bucketStorage = await createBucketStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
-				baseDir: tempDir,
-				cacheStorage,
-				bucketStorage,
+				caches: cacheStorage,
+				buckets: bucketStorage,
 			});
 
 			await runtime.init();
@@ -290,9 +284,8 @@ test(
 			const bucketStorage = await createBucketStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
-				baseDir: tempDir,
-				cacheStorage,
-				bucketStorage,
+				caches: cacheStorage,
+				buckets: bucketStorage,
 			});
 
 			await runtime.init();
@@ -313,21 +306,20 @@ test(
 // ======================
 
 test(
-	"SingleThreadedRuntime creates buckets from factory when not provided",
+	"SingleThreadedRuntime correctly installs buckets on globalThis",
 	async () => {
 		const tempDir = await createTempDir();
-		// Create the static directory for well-known bucket convention
-		const staticDir = join(tempDir, "../static");
+		// Create the static directory
+		const staticDir = join(tempDir, "static");
 		await FS.mkdir(staticDir, {recursive: true});
 
 		try {
 			const cacheStorage = createCacheStorage();
+			const bucketStorage = await createBucketStorage(tempDir);
 
-			// Create runtime WITHOUT bucketStorage - it will use factory
 			const runtime = new SingleThreadedRuntime({
-				baseDir: tempDir,
-				cacheStorage,
-				// bucketStorage intentionally omitted - factory will create it
+				caches: cacheStorage,
+				buckets: bucketStorage,
 			});
 
 			await runtime.init();
@@ -336,12 +328,12 @@ test(
 			expect(globalThis.buckets).toBeDefined();
 			expect(typeof globalThis.buckets.open).toBe("function");
 
-			// Opening the well-known "static" bucket should work
+			// Opening the "static" bucket should work
 			const bucket = await globalThis.buckets.open("static");
 			expect(bucket).toBeDefined();
 			expect(bucket.kind).toBe("directory");
 		} finally {
-			await cleanup([tempDir, staticDir]);
+			await cleanup([tempDir]);
 		}
 	},
 	TIMEOUT,
@@ -362,9 +354,8 @@ test(
 			const bucketStorage = await createBucketStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
-				baseDir: tempDir,
-				cacheStorage,
-				bucketStorage,
+				caches: cacheStorage,
+				buckets: bucketStorage,
 			});
 
 			await runtime.init();

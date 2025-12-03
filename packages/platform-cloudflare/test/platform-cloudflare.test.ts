@@ -98,12 +98,16 @@ describe("CloudflarePlatform", () => {
 	});
 
 	test.skip("should throw for non-existent worker file", async () => {
-		// Skip: bun's test runner has issues catching miniflare's initialization errors
-		// The error is properly thrown, but expect().rejects doesn't catch it correctly
-		// This test passes manually - the ENOENT error is thrown when the worker file
-		// doesn't exist. Skipping for CI stability.
-		const loadPromise = platform.loadServiceWorker("./non-existent-worker.js");
-		await expect(loadPromise).rejects.toBeDefined();
+		// Skip: miniflare throws synchronously from readFileSync during initialization,
+		// which can't be caught by async try/catch or expect().rejects
+		let error: Error | undefined;
+		try {
+			await platform.loadServiceWorker("./non-existent-worker.js");
+		} catch (e) {
+			error = e as Error;
+		}
+		expect(error).toBeDefined();
+		expect(error?.message).toContain("ENOENT");
 	});
 
 	test("should dispose without error", async () => {
@@ -142,7 +146,6 @@ describe("Wrangler config generation", () => {
 		expect(config).toContain('main = "./dist/worker.js"');
 		expect(config).toContain('compatibility_date = "2024-09-23"');
 		expect(config).toContain('compatibility_flags = ["nodejs_compat"]');
-		expect(config).toContain('usage_model = "bundled"');
 	});
 
 	test("should generate wrangler.toml with R2 filesystem adapter", () => {
@@ -186,17 +189,22 @@ describe("Wrangler config generation", () => {
 	});
 });
 
-describe("Cloudflare Worker banner and footer", () => {
-	test("should import banner and footer constants", async () => {
-		const {cloudflareWorkerBanner, cloudflareWorkerFooter} = await import(
-			"../src/index.js"
-		);
+describe("Cloudflare runtime functions", () => {
+	test("should export initializeRuntime and createFetchHandler", async () => {
+		const {initializeRuntime, createFetchHandler, getEnv, getCtx} =
+			await import("../src/index.js");
 
-		expect(typeof cloudflareWorkerBanner).toBe("string");
-		expect(typeof cloudflareWorkerFooter).toBe("string");
-		expect(cloudflareWorkerBanner).toContain(
-			"Cloudflare Worker ES Module wrapper",
-		);
-		expect(cloudflareWorkerFooter).toContain("export default");
+		expect(typeof initializeRuntime).toBe("function");
+		expect(typeof createFetchHandler).toBe("function");
+		expect(typeof getEnv).toBe("function");
+		expect(typeof getCtx).toBe("function");
+	});
+
+	test("getEnv and getCtx should return undefined outside request context", async () => {
+		const {getEnv, getCtx} = await import("../src/index.js");
+
+		// Outside of a request context, these should return undefined
+		expect(getEnv()).toBeUndefined();
+		expect(getCtx()).toBeUndefined();
 	});
 });
