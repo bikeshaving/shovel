@@ -113,6 +113,7 @@ export class Worker {
 		this.#nodeWorker = new NodeWorker(WORKER_WRAPPER_DATA_URL, {
 			...({type: "module"} as object),
 			env: {
+				// eslint-disable-next-line no-restricted-properties -- Workers inherit parent env
 				...process.env,
 				WORKER_SCRIPT_URL: workerScriptURL,
 			},

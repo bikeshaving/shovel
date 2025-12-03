@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties -- Tests need process.cwd/env */
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";

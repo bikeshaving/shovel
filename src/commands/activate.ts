@@ -117,7 +117,9 @@ function getWorkerCount(options) {
 		return parseInt(options.workers);
 	}
 	// Environment variable second
+	// eslint-disable-next-line no-restricted-properties -- CLI reads env for configuration
 	if (process.env.WORKER_COUNT) {
+		// eslint-disable-next-line no-restricted-properties
 		return parseInt(process.env.WORKER_COUNT);
 	}
 	// Default from config

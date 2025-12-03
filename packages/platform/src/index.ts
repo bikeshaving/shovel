@@ -173,7 +173,7 @@ function detectPlatformFromPackageJSON(cwd?: string): string | null {
 	}
 
 	try {
-		// eslint-disable-next-line no-restricted-properties
+		// eslint-disable-next-line no-restricted-properties -- Platform detection entry point
 		const pkgPath = Path.join(cwd || process.cwd(), "package.json");
 		const pkgContent = readFileSync(pkgPath, "utf8");
 		const pkg = JSON.parse(pkgContent);

@@ -404,6 +404,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 					writeFileSync(outputPath, content);
 
 					// Create manifest entry
+					// eslint-disable-next-line no-restricted-properties -- esbuild plugin runs in build context
 					const sourcePath = relative(process.cwd(), args.path);
 					const manifestEntry: AssetManifestEntry = {
 						source: sourcePath,

@@ -17,6 +17,7 @@ parentPort.on("message", (data) => {
 });
 
 // Import the actual worker script URL from environment variable
+// eslint-disable-next-line no-restricted-properties -- Worker receives script path via env
 const WORKER_SCRIPT_URL = process.env.WORKER_SCRIPT_URL;
 if (WORKER_SCRIPT_URL) {
 	await import(WORKER_SCRIPT_URL);

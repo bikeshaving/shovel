@@ -9,13 +9,8 @@ import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "./import-meta-plugin.js";
 import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
-import {
-	extractProviders,
-	generateProviderRegistry,
-} from "./provider-registry.js";
 import {findProjectRoot} from "../utils/project.js";
 import {getLogger} from "@logtape/logtape";
-import type {ProcessedShovelConfig} from "@b9g/platform/config";
 
 const logger = getLogger(["watcher"]);
 
@@ -26,8 +21,6 @@ export interface WatcherOptions {
 	outDir: string;
 	/** Callback when build completes - entrypoint is the hashed output path */
 	onBuild?: (success: boolean, entrypoint: string) => void;
-	/** Shovel config for provider registry generation */
-	config?: ProcessedShovelConfig;
 }
 
 export class Watcher {
@@ -62,11 +55,6 @@ export class Watcher {
 
 		// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
 		const jsxOptions = await loadJSXConfig(this.#projectRoot);
-
-		// Generate provider registry from config for bundling
-		const registryCode = this.#options.config
-			? generateProviderRegistry(extractProviders(this.#options.config))
-			: "";
 
 		// Create a promise that resolves when the initial build completes
 		const initialBuildPromise = new Promise<{
@@ -170,8 +158,6 @@ export class Watcher {
 			sourcemap: "inline",
 			minify: false,
 			treeShaking: true,
-			// Inject provider registry at the start of the bundle
-			banner: registryCode ? {js: registryCode} : undefined,
 		};
 
 		// Apply JSX configuration (from tsconfig.json or @b9g/crank defaults)

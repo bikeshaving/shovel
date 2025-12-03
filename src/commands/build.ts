@@ -11,10 +11,6 @@ import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
 import {loadJSXConfig, applyJSXOptions} from "../esbuild/jsx-config.js";
 import {
-	extractProviders,
-	generateProviderRegistry,
-} from "../esbuild/provider-registry.js";
-import {
 	findProjectRoot,
 	findWorkspaceRoot,
 	getNodeModulesPath,
@@ -22,7 +18,7 @@ import {
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
-import {loadConfig, type ProcessedShovelConfig} from "@b9g/platform/config";
+import {loadConfig} from "@b9g/platform/config";
 
 // Configure LogTape for build command
 await configure({
@@ -100,14 +96,12 @@ export async function buildForProduction({
 	verbose,
 	platform = "node",
 	workerCount = 1,
-	config,
 }: {
 	entrypoint: string;
 	outDir: string;
 	verbose?: boolean;
 	platform?: string;
 	workerCount?: number;
-	config?: ProcessedShovelConfig;
 }) {
 	const buildContext = await initializeBuild({
 		entrypoint,
@@ -116,7 +110,7 @@ export async function buildForProduction({
 		platform,
 		workerCount,
 	});
-	const buildConfig = await createBuildConfig({...buildContext, config});
+	const buildConfig = await createBuildConfig(buildContext);
 
 	// Use build() for one-time builds (not context API which is for watch/incremental)
 	// This automatically handles cleanup and prevents process hanging
@@ -227,7 +221,6 @@ async function createBuildConfig({
 	projectRoot,
 	platform,
 	workerCount,
-	config,
 }: {
 	entryPath: string;
 	outputDir: string;
@@ -235,7 +228,6 @@ async function createBuildConfig({
 	projectRoot: string;
 	platform: string;
 	workerCount: number;
-	config?: ProcessedShovelConfig;
 }) {
 	const isCloudflare =
 		platform === "cloudflare" || platform === "cloudflare-workers";
@@ -249,7 +241,6 @@ async function createBuildConfig({
 			entryPath,
 			platform,
 			workerCount,
-			config,
 		);
 
 		// Determine external dependencies based on environment
@@ -408,34 +399,21 @@ async function createVirtualEntry(
 	userEntryPath: string,
 	platform: string,
 	workerCount = 1,
-	config?: ProcessedShovelConfig,
 ) {
 	const isCloudflare =
 		platform === "cloudflare" || platform === "cloudflare-workers";
 
-	// Generate provider registry from config
-	// This creates static imports for all configured providers so they can be bundled
-	const registryCode = config
-		? generateProviderRegistry(extractProviders(config))
-		: "";
-
 	if (isCloudflare) {
 		// For Cloudflare Workers, import the user code directly
 		// Cloudflare-specific runtime setup is handled by platform package
-		return `${registryCode}
-// Import user's ServiceWorker code
+		return `// Import user's ServiceWorker code
 import "${userEntryPath}";
 `;
 	}
 
 	// For Node.js/Bun platforms, use worker-based architecture
 	// Works with any worker count (including 1)
-	const workerEntry = await createWorkerEntry(
-		userEntryPath,
-		workerCount,
-		platform,
-	);
-	return registryCode + workerEntry;
+	return createWorkerEntry(userEntryPath, workerCount, platform);
 }
 
 /**
@@ -612,8 +590,9 @@ async function generateExecutablePackageJSON(platform) {
  * CLI command wrapper for buildForProduction
  */
 export async function buildCommand(entrypoint: string, options: any) {
-	// Load config from shovel.json or package.json
-	const config = loadConfig(process.cwd());
+	// Load config from project root (where package.json lives)
+	const projectRoot = findProjectRoot();
+	const config = loadConfig(projectRoot);
 
 	// Use same platform resolution as develop command
 	const platform = Platform.resolvePlatform({...options, config});
@@ -626,7 +605,6 @@ export async function buildCommand(entrypoint: string, options: any) {
 		workerCount: options.workers
 			? parseInt(options.workers, 10)
 			: config.workers,
-		config,
 	});
 
 	// Workaround for Bun-specific issue: esbuild keeps child processes alive

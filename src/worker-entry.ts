@@ -55,7 +55,6 @@ const shutdown = async () => {
 	await platform.dispose();
 	await server.close();
 	logger.info("Server stopped", {});
-	// eslint-disable-next-line no-restricted-properties
 	process.exit(0);
 };
 

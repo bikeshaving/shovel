@@ -771,13 +771,7 @@ async function createSink(
 		sinkOptions.path = resolve(options.cwd, sinkOptions.path);
 	}
 
-	// Check build-time registry first (populated by provider-registry.ts during bundling)
-	const registry = (globalThis as any).__SHOVEL_PROVIDERS__?.sinks;
-	if (registry?.[provider]) {
-		return registry[provider](sinkOptions);
-	}
-
-	// Fall back to dynamic import (works in dev mode with node_modules)
+	// Dynamic import based on provider name
 	const builtin = BUILTIN_SINK_PROVIDERS[provider];
 	const modulePath = builtin?.module || provider;
 	const factoryName = builtin?.factory || "default";
@@ -980,16 +974,6 @@ export function createBucketFactory(options: BucketFactoryOptions) {
 
 		const provider = String(bucketConfig.provider || "node");
 
-		// Check build-time registry first (populated by provider-registry.ts during bundling)
-		const registry = (globalThis as any).__SHOVEL_PROVIDERS__?.buckets;
-		if (registry?.[provider]) {
-			const BucketClass = registry[provider];
-			// Node bucket takes path, memory bucket takes name
-			return provider === "memory"
-				? new BucketClass(name)
-				: new BucketClass(bucketPath);
-		}
-
 		// Resolve provider to module path
 		const modulePath = BUILTIN_BUCKET_PROVIDERS[provider] || provider;
 
@@ -1101,13 +1085,6 @@ export function createCacheFactory(options: CacheFactoryOptions = {}) {
 		// Extract options to pass to the cache constructor
 		// Remove 'provider' as it's not a cache option
 		const {provider: _, ...cacheOptions} = cacheConfig;
-
-		// Check build-time provider registry first (populated during bundling)
-		const registry = (globalThis as any).__SHOVEL_PROVIDERS__?.caches;
-		if (registry?.[provider]) {
-			const CacheClass = registry[provider];
-			return new CacheClass(name, cacheOptions);
-		}
 
 		// Resolve provider to module path
 		const modulePath = BUILTIN_CACHE_PROVIDERS[provider] || provider;

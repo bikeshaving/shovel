@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties -- Test utilities need process.cwd */
 /**
  * Shared test utilities
  *

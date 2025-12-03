@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties -- Tests need process.cwd/env */
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
 import {test, expect, beforeAll, afterAll} from "bun:test";

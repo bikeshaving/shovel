@@ -4,6 +4,7 @@ import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
 import {loadConfig} from "@b9g/platform/config";
 import {Watcher} from "../esbuild/watcher.js";
+import {findProjectRoot} from "../utils/project.js";
 
 // Configure LogTape for CLI logging (users can reconfigure with reset: true)
 await configure({
@@ -29,8 +30,9 @@ const logger = getLogger(["cli"]);
 
 export async function developCommand(entrypoint, options) {
 	try {
-		// Load config from shovel.json or package.json
-		const config = loadConfig(process.cwd());
+		// Load config from project root (where package.json lives)
+		const projectRoot = findProjectRoot();
+		const config = loadConfig(projectRoot);
 		const platformName = Platform.resolvePlatform({...options, config});
 		const workerCount = getWorkerCount(options, config);
 
@@ -121,7 +123,9 @@ function getWorkerCount(options, config) {
 		return parseInt(options.workers);
 	}
 	// Environment variable second
+	// eslint-disable-next-line no-restricted-properties -- CLI reads env for configuration
 	if (process.env.WORKER_COUNT) {
+		// eslint-disable-next-line no-restricted-properties
 		return parseInt(process.env.WORKER_COUNT);
 	}
 	// Config file third

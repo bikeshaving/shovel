@@ -314,8 +314,6 @@ self.addEventListener("activate", (event) => {
 
 async function generateStaticSite() {
 	console.info("[Blog App] Starting static site generation...");
-	console.info("[Blog App] process.cwd():", process.cwd());
-	console.info("[Blog App] import.meta.url:", import.meta.url);
 
 	try {
 		// Get static bucket - the only public bucket (maps to web root)
@@ -398,6 +396,8 @@ async function copyAssetsToStatic(staticBucket) {
 		// Read assets from build output directory using Node.js fs
 		const fs = await import("node:fs/promises");
 		const path = await import("node:path");
+		// TODO: Find a portable way to locate dist directory across runtimes
+		// eslint-disable-next-line no-restricted-properties
 		const assetsDir = path.default.join(process.cwd(), "dist", "assets");
 
 		// Create assets subdirectory in static bucket

@@ -69,6 +69,7 @@ export class BunPlatform extends BasePlatform {
 		super(options);
 		this.name = "bun";
 
+		// eslint-disable-next-line no-restricted-properties -- Platform adapter entry point
 		const cwd = options.cwd || process.cwd();
 
 		// Load configuration from package.json

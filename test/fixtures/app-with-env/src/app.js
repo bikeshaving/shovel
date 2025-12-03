@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties -- Test fixture for env var handling */
 self.addEventListener("fetch", (event) => {
 	const url = new URL(event.request.url);
 

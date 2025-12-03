@@ -45,6 +45,7 @@ async function main() {
 		projectName = nameResult;
 	}
 
+	// eslint-disable-next-line no-restricted-properties -- CLI needs cwd for project creation
 	const projectPath = resolve(process.cwd(), projectName);
 
 	// Check if directory exists

@@ -63,6 +63,7 @@ export class NodePlatform extends BasePlatform {
 		super(options);
 		this.name = "node";
 
+		// eslint-disable-next-line no-restricted-properties -- Platform adapter entry point
 		const cwd = options.cwd || process.cwd();
 
 		// Load configuration from package.json

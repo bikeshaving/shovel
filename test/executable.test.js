@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties -- Tests need process.env */
 import {test, expect} from "bun:test";
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
