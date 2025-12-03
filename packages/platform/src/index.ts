@@ -3,10 +3,10 @@
  *
  * Platform = "ServiceWorker entrypoint loader for JavaScript runtimes"
  * Core responsibility: Take a ServiceWorker-style app file and make it run in this environment.
+ *
+ * This module is BROWSER-SAFE - no fs/path imports.
  */
 
-import * as Path from "path";
-import {readFileSync} from "fs";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory";
 
@@ -98,6 +98,39 @@ export interface ServiceWorkerInstance {
 }
 
 /**
+ * Options for getEntryWrapper()
+ * Reserved for future platform-specific options.
+ */
+
+export interface EntryWrapperOptions {
+	// Currently empty - platforms may add options as needed
+}
+
+/**
+ * Esbuild configuration subset that platforms can customize
+ */
+export interface PlatformEsbuildConfig {
+	/** Target platform: "node" or "browser" */
+	platform?: "node" | "browser" | "neutral";
+	/** Export conditions for package.json resolution */
+	conditions?: string[];
+	/** External modules to exclude from bundle */
+	external?: string[];
+	/** Compile-time defines */
+	define?: Record<string, string>;
+	/**
+	 * Whether the entry wrapper imports user code inline (bundled together)
+	 * or references it as a separate file (loaded at runtime).
+	 *
+	 * - true: User code is imported inline (e.g., Cloudflare: `import "user-entry"`)
+	 * - false: User code is loaded separately (e.g., Node/Bun: `loadServiceWorker("./server.js")`)
+	 *
+	 * Default: false (separate build)
+	 */
+	bundlesUserCodeInline?: boolean;
+}
+
+/**
  * Platform interface - ServiceWorker entrypoint loader for JavaScript runtimes
  *
  * The core responsibility: "Take a ServiceWorker-style app file and make it run in this environment"
@@ -127,6 +160,30 @@ export interface Platform {
 	 * SUPPORTING UTILITY - Create server instance for this platform
 	 */
 	createServer(handler: Handler, options?: ServerOptions): Server;
+
+	/**
+	 * BUILD SUPPORT - Get virtual entry wrapper template for user code
+	 *
+	 * Returns a JavaScript/TypeScript string that:
+	 * 1. Initializes platform-specific runtime (polyfills, globals)
+	 * 2. Imports the user's entrypoint
+	 * 3. Exports any required handlers (e.g., ES module export for Cloudflare)
+	 *
+	 * The CLI uses this to create a virtual entry point for bundling.
+	 * Every platform must provide a wrapper - there is no "raw user code" mode.
+	 *
+	 * @param entryPath - Absolute path to user's entrypoint file
+	 * @param options - Additional options
+	 */
+	getEntryWrapper(entryPath: string, options?: EntryWrapperOptions): string;
+
+	/**
+	 * BUILD SUPPORT - Get platform-specific esbuild configuration
+	 *
+	 * Returns partial esbuild config that the CLI merges with common settings.
+	 * Includes platform target, conditions, externals, and defines.
+	 */
+	getEsbuildConfig(): PlatformEsbuildConfig;
 }
 
 // ============================================================================
@@ -162,69 +219,6 @@ export function detectRuntime(): "bun" | "deno" | "node" {
 }
 
 /**
- * Detect platform from package.json dependencies
- * When multiple platforms are installed, prioritize based on current runtime
- * @param cwd - Current working directory (optional, only available in Node/Bun)
- */
-function detectPlatformFromPackageJSON(cwd?: string): string | null {
-	// Skip if no cwd and process.cwd unavailable (e.g., edge runtimes)
-	if (!cwd && typeof process === "undefined") {
-		return null;
-	}
-
-	try {
-		// eslint-disable-next-line no-restricted-properties -- Platform detection entry point
-		const pkgPath = Path.join(cwd || process.cwd(), "package.json");
-		const pkgContent = readFileSync(pkgPath, "utf8");
-		const pkg = JSON.parse(pkgContent);
-		const deps = {...pkg.dependencies, ...pkg.devDependencies};
-
-		return selectPlatformFromDeps(deps);
-	} catch (err) {
-		// Only ignore file-not-found errors, rethrow others
-		if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-			throw err;
-		}
-		return null;
-	}
-}
-
-/**
- * Select best platform from dependencies based on current runtime
- * When multiple platforms are installed (e.g., monorepo), prefer the one matching current runtime
- */
-function selectPlatformFromDeps(deps: Record<string, any>): string | null {
-	const hasBun = deps["@b9g/platform-bun"];
-	const hasNode = deps["@b9g/platform-node"];
-	const hasCloudflare = deps["@b9g/platform-cloudflare"];
-
-	// If only one platform installed, use it
-	const installedCount = [hasBun, hasNode, hasCloudflare].filter(
-		Boolean,
-	).length;
-	if (installedCount === 0) return null;
-	if (installedCount === 1) {
-		if (hasBun) return "bun";
-		if (hasNode) return "node";
-		if (hasCloudflare) return "cloudflare";
-	}
-
-	// Multiple platforms installed - prioritize based on current runtime
-	const runtime = detectRuntime();
-
-	// Match runtime to platform (prefer exact match)
-	if (runtime === "bun" && hasBun) return "bun";
-	if (runtime === "node" && hasNode) return "node";
-
-	// Fallback order when no exact match (development-friendly first)
-	if (hasBun) return "bun";
-	if (hasNode) return "node";
-	if (hasCloudflare) return "cloudflare";
-
-	return null;
-}
-
-/**
  * Detect deployment platform from environment
  *
  * Supports:
@@ -257,20 +251,9 @@ export function detectDeploymentPlatform(): string | null {
 }
 
 /**
- * Detect platform for development
- *
- * Priority:
- * 1. Check package.json for installed @b9g/platform-* package
- * 2. Fallback to current runtime (bun/node/deno)
+ * Detect platform for development based on current runtime
  */
 export function detectDevelopmentPlatform(): string {
-	// First, check if user has explicitly installed a platform package
-	const pkgPlatform = detectPlatformFromPackageJSON();
-	if (pkgPlatform) {
-		return pkgPlatform;
-	}
-
-	// Fallback to runtime detection (for monorepos or when no platform installed)
 	const runtime = detectRuntime();
 
 	switch (runtime) {
@@ -390,6 +373,21 @@ export abstract class BasePlatform implements Platform {
 			(name: string) => new MemoryCache(name),
 		) as CacheStorage;
 	}
+
+	/**
+	 * Get virtual entry wrapper template for user code
+	 * Subclasses must override to provide platform-specific wrappers
+	 */
+	abstract getEntryWrapper(
+		entryPath: string,
+		options?: EntryWrapperOptions,
+	): string;
+
+	/**
+	 * Get platform-specific esbuild configuration
+	 * Subclasses should override to provide platform-specific config
+	 */
+	abstract getEsbuildConfig(): PlatformEsbuildConfig;
 }
 
 // ============================================================================
@@ -481,79 +479,3 @@ export async function getPlatformAsync(name?: string): Promise<Platform> {
 
 	return platform;
 }
-
-// ============================================================================
-// Re-exports from other modules
-// ============================================================================
-
-// Multi-threaded runtime (for workerCount > 1)
-export {
-	MultiThreadedRuntime,
-	type MultiThreadedRuntimeOptions,
-	type ServiceWorkerRuntime,
-	type WorkerMessage,
-	type WorkerRequest,
-	type WorkerResponse,
-	type WorkerLoadMessage,
-	type WorkerReadyMessage,
-	type WorkerErrorMessage,
-	type WorkerInitMessage,
-	type WorkerInitializedMessage,
-} from "./multi-threaded.js";
-
-// Single-threaded runtime (for workerCount === 1)
-export {
-	SingleThreadedRuntime,
-	type SingleThreadedRuntimeOptions,
-} from "./single-threaded.js";
-
-// Legacy export - ServiceWorkerPool is now MultiThreadedRuntime
-export {ServiceWorkerPool, type WorkerPoolOptions} from "./worker-pool.js";
-
-// ServiceWorker runtime
-export {
-	ShovelServiceWorkerRegistration,
-	ServiceWorkerGlobals,
-	FetchEvent,
-	InstallEvent,
-	ActivateEvent,
-	ExtendableEvent,
-} from "./runtime.js";
-
-// Cookie Store API
-export {
-	RequestCookieStore,
-	type CookieListItem,
-	type CookieInit,
-	type CookieStoreGetOptions,
-	type CookieStoreDeleteOptions,
-	type CookieSameSite,
-	type CookieList,
-	parseCookieHeader,
-	serializeCookie,
-	parseSetCookieHeader,
-} from "./cookie-store.js";
-
-// Filesystem utilities
-export {CustomBucketStorage} from "@b9g/filesystem";
-
-// Config utilities
-export {
-	loadConfig,
-	configureLogging,
-	getCacheConfig,
-	getBucketConfig,
-	parseConfigExpr,
-	processConfigValue,
-	matchPattern,
-	createBucketFactory,
-	createCacheFactory,
-	type ShovelConfig,
-	type CacheConfig,
-	type BucketConfig,
-	type LoggingConfig,
-	type LogLevel,
-	type BucketFactoryOptions,
-	type CacheFactoryOptions,
-	type ProcessedShovelConfig,
-} from "./config.js";

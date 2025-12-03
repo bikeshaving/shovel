@@ -6,7 +6,6 @@
 import * as ESBuild from "esbuild";
 import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile} from "fs/promises";
-import {fileURLToPath} from "url";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
 import {loadJSXConfig, applyJSXOptions} from "../esbuild/jsx-config.js";
@@ -18,7 +17,7 @@ import {
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
-import {loadConfig} from "@b9g/platform/config";
+import {loadConfig} from "../config.js";
 
 // Configure LogTape for build command
 await configure({
@@ -219,49 +218,46 @@ async function createBuildConfig({
 	outputDir,
 	serverDir,
 	projectRoot,
-	platform,
-	workerCount,
+	platform: platformName,
 }: {
 	entryPath: string;
 	outputDir: string;
 	serverDir: string;
 	projectRoot: string;
 	platform: string;
-	workerCount: number;
 }) {
-	const isCloudflare =
-		platform === "cloudflare" || platform === "cloudflare-workers";
+	// Create platform instance to get configuration
+	const platform = await Platform.createPlatform(platformName);
+	const platformEsbuildConfig = platform.getEsbuildConfig();
+	const entryWrapper = platform.getEntryWrapper(entryPath);
+
+	// Determine if platform bundles user code inline (like Cloudflare)
+	// vs builds it separately and loads at runtime (like Node/Bun)
+	const bundlesUserCodeInline =
+		platformEsbuildConfig.bundlesUserCodeInline ?? false;
 
 	// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
 	const jsxOptions = await loadJSXConfig(projectRoot || dirname(entryPath));
 
 	try {
-		// Create virtual entry point that properly imports platform dependencies
-		const virtualEntry = await createVirtualEntry(
-			entryPath,
-			platform,
-			workerCount,
-		);
+		// Determine external dependencies
+		// Use platform-specific externals if provided, otherwise default to node:*
+		const external = platformEsbuildConfig.external ?? ["node:*"];
 
-		// Determine external dependencies based on environment
-		// Only externalize built-in Node.js modules (node:*)
-		// Everything else gets bundled for self-contained executables
-		const external = ["node:*"];
-
-		// For Node/Bun, we need to build both the server entry and user code separately
-		// The user code will be loaded by the platform's loadServiceWorker method
-		if (!isCloudflare) {
+		// For platforms that load user code at runtime (Node/Bun), build it separately
+		// The wrapper's loadServiceWorker() will load ./server.js at runtime
+		if (!bundlesUserCodeInline) {
 			// Build user code separately
 			const userBuildConfig: ESBuild.BuildOptions = {
 				entryPoints: [entryPath],
 				bundle: true,
 				format: BUILD_DEFAULTS.format as ESBuild.Format,
 				target: BUILD_DEFAULTS.target,
-				platform: "node",
+				platform: platformEsbuildConfig.platform ?? "node",
 				outfile: join(serverDir, "server.js"),
 				absWorkingDir: projectRoot,
 				mainFields: ["module", "main"],
-				conditions: ["import", "module"],
+				conditions: platformEsbuildConfig.conditions ?? ["import", "module"],
 				// Resolve packages from the user's project node_modules
 				nodePaths: [getNodeModulesPath()],
 				plugins: [
@@ -280,9 +276,7 @@ async function createBuildConfig({
 				sourcemap: BUILD_DEFAULTS.sourcemap,
 				minify: BUILD_DEFAULTS.minify,
 				treeShaking: BUILD_DEFAULTS.treeShaking,
-				// Node.js doesn't support import.meta.env, so alias it to process.env
-				// Bun supports it natively, so don't replace
-				define: platform === "node" ? {"import.meta.env": "process.env"} : {},
+				define: platformEsbuildConfig.define ?? {},
 				external,
 			};
 
@@ -316,32 +310,29 @@ async function createBuildConfig({
 			});
 		}
 
-		// Note: worker-wrapper.js is no longer copied to build output
-		// The @b9g/node-webworker package now embeds the wrapper code and creates it
-		// in a temp directory at runtime, hiding this implementation detail
-
+		// All platforms now provide entry wrappers via getEntryWrapper()
 		const buildConfig: ESBuild.BuildOptions = {
 			stdin: {
-				contents: virtualEntry,
+				contents: entryWrapper,
 				resolveDir: projectRoot, // Resolve packages from user's project
 				sourcefile: "virtual-entry.js",
 			},
 			bundle: true,
 			format: BUILD_DEFAULTS.format as ESBuild.Format,
 			target: BUILD_DEFAULTS.target,
-			platform: isCloudflare ? "browser" : "node",
-			// Cloudflare: single-file architecture (server.js contains everything)
-			// Node/Bun: multi-file architecture (index.js is entry, server.js is user code)
+			platform: platformEsbuildConfig.platform ?? "node",
+			// Inline bundling (Cloudflare): single-file (server.js contains everything)
+			// Separate bundling (Node/Bun): multi-file (index.js is entry, server.js is user code)
 			outfile: join(
 				serverDir,
-				isCloudflare ? "server.js" : BUILD_DEFAULTS.outputFile,
+				bundlesUserCodeInline ? "server.js" : BUILD_DEFAULTS.outputFile,
 			),
 			absWorkingDir: projectRoot,
 			mainFields: ["module", "main"],
-			conditions: ["import", "module"],
+			conditions: platformEsbuildConfig.conditions ?? ["import", "module"],
 			// Resolve packages from the user's project node_modules
 			nodePaths: [getNodeModulesPath()],
-			plugins: isCloudflare
+			plugins: bundlesUserCodeInline
 				? [
 						importMetaPlugin(),
 						assetsPlugin({
@@ -359,114 +350,19 @@ async function createBuildConfig({
 			sourcemap: BUILD_DEFAULTS.sourcemap,
 			minify: BUILD_DEFAULTS.minify,
 			treeShaking: BUILD_DEFAULTS.treeShaking,
-			// Node.js doesn't support import.meta.env, so alias it to process.env
-			// Bun and Cloudflare support it natively, so don't replace
-			define: platform === "node" ? {"import.meta.env": "process.env"} : {},
+			define: platformEsbuildConfig.define ?? {},
 			external,
 		};
 
-		// Apply JSX configuration for Cloudflare builds (user code is bundled inline)
-		if (isCloudflare) {
+		// Apply JSX configuration for platforms that bundle user code inline
+		if (bundlesUserCodeInline) {
 			applyJSXOptions(buildConfig, jsxOptions);
-			await configureCloudflareTarget(buildConfig);
 		}
 
 		return buildConfig;
 	} catch (error) {
 		throw new Error(`Failed to create build configuration: ${error.message}`);
 	}
-}
-
-/**
- * Configure build for Cloudflare Workers target
- */
-async function configureCloudflareTarget(buildConfig) {
-	// Dynamically import platform-cloudflare only when targeting Cloudflare
-	// This avoids requiring the package for node/bun builds
-	const {cloudflareWorkerBanner, cloudflareWorkerFooter} = await import(
-		"@b9g/platform-cloudflare"
-	);
-	buildConfig.platform = "browser";
-	buildConfig.conditions = ["worker", "browser"];
-	buildConfig.banner = {js: cloudflareWorkerBanner};
-	buildConfig.footer = {js: cloudflareWorkerFooter};
-}
-
-/**
- * Create virtual entry point with proper imports and worker management
- */
-async function createVirtualEntry(
-	userEntryPath: string,
-	platform: string,
-	workerCount = 1,
-) {
-	const isCloudflare =
-		platform === "cloudflare" || platform === "cloudflare-workers";
-
-	if (isCloudflare) {
-		// For Cloudflare Workers, import the user code directly
-		// Cloudflare-specific runtime setup is handled by platform package
-		return `// Import user's ServiceWorker code
-import "${userEntryPath}";
-`;
-	}
-
-	// For Node.js/Bun platforms, use worker-based architecture
-	// Works with any worker count (including 1)
-	return createWorkerEntry(userEntryPath, workerCount, platform);
-}
-
-/**
- * Create worker-based entry point using TypeScript template
- * Works for any worker count (including 1)
- * Returns both main entry and worker thread code
- */
-async function createWorkerEntry(userEntryPath, workerCount, platform) {
-	// Find package root by looking for package.json
-	let currentDir = dirname(fileURLToPath(import.meta.url));
-	let packageRoot = currentDir;
-	while (packageRoot !== dirname(packageRoot)) {
-		try {
-			const packageJSONPath = join(packageRoot, "package.json");
-			await readFile(packageJSONPath, "utf8");
-			break;
-		} catch (err) {
-			// Only ignore file-not-found errors, rethrow others
-			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				throw err;
-			}
-			packageRoot = dirname(packageRoot);
-		}
-	}
-
-	// Look for .ts in development, .js in production (dist)
-	let templatePath = join(packageRoot, "src/worker-entry.ts");
-	try {
-		await readFile(templatePath, "utf8");
-	} catch (err) {
-		// Only ignore file-not-found errors, rethrow others
-		if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-			throw err;
-		}
-		// If .ts doesn't exist, try .js (for built dist version)
-		templatePath = join(packageRoot, "src/worker-entry.js");
-	}
-
-	// Transpile the template
-	const transpileResult = await ESBuild.build({
-		entryPoints: [templatePath],
-		bundle: false, // Just transpile - bundling happens in final build
-		format: "esm",
-		target: "es2022",
-		platform: "node",
-		write: false,
-		define: {
-			WORKER_COUNT: JSON.stringify(workerCount),
-			PLATFORM: JSON.stringify(platform),
-		},
-	});
-
-	return transpileResult.outputFiles[0].text;
 }
 
 /**

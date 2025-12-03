@@ -6,19 +6,21 @@
 
 import {
 	BasePlatform,
-	PlatformConfig,
-	Handler,
-	Server,
-	ServerOptions,
-	ServiceWorkerOptions,
-	ServiceWorkerInstance,
-	ServiceWorkerPool,
-	SingleThreadedRuntime,
-	loadConfig,
-	createCacheFactory,
-	type ProcessedShovelConfig,
+	type PlatformConfig,
+	type Handler,
+	type Server,
+	type ServerOptions,
+	type ServiceWorkerOptions,
+	type ServiceWorkerInstance,
+	type EntryWrapperOptions,
+	type PlatformEsbuildConfig,
 } from "@b9g/platform";
+import {ServiceWorkerPool} from "@b9g/platform/worker-pool";
+import {SingleThreadedRuntime} from "@b9g/platform/single-threaded";
 import {CustomCacheStorage} from "@b9g/cache";
+import {CustomBucketStorage} from "@b9g/filesystem";
+import {MemoryCache} from "@b9g/cache/memory";
+import {NodeBucket} from "@b9g/filesystem/node";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import * as HTTP from "http";
 import * as Path from "path";
@@ -40,6 +42,8 @@ export interface NodePlatformOptions extends PlatformConfig {
 	host?: string;
 	/** Working directory for file resolution */
 	cwd?: string;
+	/** Number of worker threads (default: 1) */
+	workers?: number;
 }
 
 // ============================================================================
@@ -57,7 +61,7 @@ export class NodePlatform extends BasePlatform {
 	#workerPool?: ServiceWorkerPool;
 	#singleThreadedRuntime?: SingleThreadedRuntime;
 	#cacheStorage?: CustomCacheStorage;
-	#config: ProcessedShovelConfig;
+	#bucketStorage?: CustomBucketStorage;
 
 	constructor(options: NodePlatformOptions = {}) {
 		super(options);
@@ -66,14 +70,10 @@ export class NodePlatform extends BasePlatform {
 		// eslint-disable-next-line no-restricted-properties -- Platform adapter entry point
 		const cwd = options.cwd || process.cwd();
 
-		// Load configuration from package.json
-		this.#config = loadConfig(cwd);
-		logger.info("Loaded configuration", {config: this.#config});
-
-		// Merge options with config (options take precedence)
 		this.#options = {
-			port: options.port ?? this.#config.port,
-			host: options.host ?? this.#config.host,
+			port: options.port ?? 3000,
+			host: options.host ?? "localhost",
+			workers: options.workers ?? 1,
 			cwd,
 			...options,
 		};
@@ -105,8 +105,8 @@ export class NodePlatform extends BasePlatform {
 		entrypoint: string,
 		options: ServiceWorkerOptions = {},
 	): Promise<ServiceWorkerInstance> {
-		// Use worker count from: 1) options, 2) config, 3) default 1
-		const workerCount = options.workerCount ?? this.#config.workers ?? 1;
+		// Use worker count from: 1) options, 2) platform options, 3) default 1
+		const workerCount = options.workerCount ?? this.#options.workers;
 
 		// Single-threaded mode: skip workers entirely for maximum performance
 		// BUT: Use workers in dev mode (hotReload) for reliable hot reload
@@ -134,6 +134,11 @@ export class NodePlatform extends BasePlatform {
 			this.#cacheStorage = await this.createCaches();
 		}
 
+		// Create shared bucket storage if not already created
+		if (!this.#bucketStorage) {
+			this.#bucketStorage = this.createBuckets(entryDir);
+		}
+
 		// Terminate any existing runtime
 		if (this.#singleThreadedRuntime) {
 			await this.#singleThreadedRuntime.terminate();
@@ -145,12 +150,10 @@ export class NodePlatform extends BasePlatform {
 
 		logger.info("Creating single-threaded ServiceWorker runtime", {entryPath});
 
-		// Create single-threaded runtime with baseDir
-		// Bucket/cache storage created internally using factories from config.ts
+		// Create single-threaded runtime with caches and buckets
 		this.#singleThreadedRuntime = new SingleThreadedRuntime({
-			baseDir: entryDir,
-			cacheStorage: this.#cacheStorage,
-			config: this.#config,
+			caches: this.#cacheStorage,
+			buckets: this.#bucketStorage,
 		});
 
 		// Initialize and load entrypoint
@@ -232,7 +235,7 @@ export class NodePlatform extends BasePlatform {
 			},
 			entryPath,
 			this.#cacheStorage,
-			this.#config,
+			{}, // Empty config - use defaults
 		);
 
 		// Initialize workers with dynamic import handling
@@ -282,11 +285,28 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * SUPPORTING UTILITY - Create cache storage
-	 * Uses config from package.json shovel field
+	 * Create cache storage (in-memory by default)
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
-		return new CustomCacheStorage(createCacheFactory({config: this.#config}));
+		return new CustomCacheStorage((name: string) => new MemoryCache(name));
+	}
+
+	/**
+	 * Create bucket storage for the given base directory
+	 */
+	createBuckets(baseDir: string): CustomBucketStorage {
+		return new CustomBucketStorage((name: string) => {
+			// Well-known bucket paths
+			let bucketPath: string;
+			if (name === "static") {
+				bucketPath = Path.resolve(baseDir, "../static");
+			} else if (name === "server") {
+				bucketPath = baseDir;
+			} else {
+				bucketPath = Path.resolve(baseDir, `../${name}`);
+			}
+			return Promise.resolve(new NodeBucket(bucketPath));
+		});
 	}
 
 	/**
@@ -418,6 +438,89 @@ export class NodePlatform extends BasePlatform {
 		} else if (this.#singleThreadedRuntime) {
 			await this.#singleThreadedRuntime.load(entrypoint);
 		}
+	}
+
+	/**
+	 * Get virtual entry wrapper for Node.js
+	 *
+	 * Returns production server entry template that:
+	 * 1. Imports @b9g/platform-node
+	 * 2. Loads the user's ServiceWorker code
+	 * 3. Creates HTTP server with platform.createServer()
+	 *
+	 * Note: Node.js doesn't support import.meta.env natively, so the CLI
+	 * adds `define: { "import.meta.env": "process.env" }` via getEsbuildConfig().
+	 */
+	getEntryWrapper(_entryPath: string, _options?: EntryWrapperOptions): string {
+		// Note: entryPath is not used in the wrapper because Node/Bun load
+		// user code at runtime via loadServiceWorker("./server.js")
+		// The CLI builds user code separately to dist/server/server.js
+		return `// Node.js Production Server Entry
+import {getLogger} from "@logtape/logtape";
+import Platform from "@b9g/platform-node";
+
+const logger = getLogger(["worker"]);
+
+// Configuration from environment
+const PORT = parseInt(import.meta.env.PORT || "8080", 10);
+const HOST = import.meta.env.HOST || "0.0.0.0";
+const WORKER_COUNT = parseInt(import.meta.env.WORKERS || "1", 10);
+
+logger.info("Starting production server", {});
+logger.info("Workers", {count: WORKER_COUNT});
+
+// Create platform instance
+const platform = new Platform();
+
+// Get the path to the user's ServiceWorker code
+const userCodeURL = new URL("./server.js", import.meta.url);
+const userCodePath = userCodeURL.pathname;
+
+// Load ServiceWorker with worker pool
+const serviceWorker = await platform.loadServiceWorker(userCodePath, {
+	workerCount: WORKER_COUNT,
+});
+
+// Create HTTP server
+const server = platform.createServer(serviceWorker.handleRequest, {
+	port: PORT,
+	host: HOST,
+});
+
+await server.listen();
+logger.info("Server running", {url: \`http://\${HOST}:\${PORT}\`});
+logger.info("Load balancing", {workers: WORKER_COUNT});
+
+// Graceful shutdown
+const shutdown = async () => {
+	logger.info("Shutting down server", {});
+	await serviceWorker.dispose();
+	await platform.dispose();
+	await server.close();
+	logger.info("Server stopped", {});
+	process.exit(0);
+};
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+`;
+	}
+
+	/**
+	 * Get Node.js-specific esbuild configuration
+	 *
+	 * Note: Node.js doesn't support import.meta.env natively, so we alias it
+	 * to process.env for compatibility with code that uses Vite-style env access.
+	 */
+	getEsbuildConfig(): PlatformEsbuildConfig {
+		return {
+			platform: "node",
+			external: ["node:*"],
+			define: {
+				// Node.js doesn't support import.meta.env, alias to process.env
+				"import.meta.env": "process.env",
+			},
+		};
 	}
 
 	/**
