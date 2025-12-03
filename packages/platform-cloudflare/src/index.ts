@@ -12,10 +12,13 @@ import {
 	ServerOptions,
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
+	loadConfig,
+	createCacheFactory,
+	type ProcessedShovelConfig,
 } from "@b9g/platform";
+import {CustomCacheStorage} from "@b9g/cache";
 import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
-import type {CFAssetsBinding} from "./filesystem-assets.js";
 
 const logger = getLogger(["platform-cloudflare"]);
 
@@ -38,14 +41,8 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
 	environment?: "production" | "preview" | "dev";
 	/** Static assets directory for ASSETS binding (dev mode) */
 	assetsDirectory?: string;
-	/** KV namespace bindings */
-	kvNamespaces?: Record<string, any>;
-	/** R2 bucket bindings */
-	r2Buckets?: Record<string, any>;
-	/** D1 database bindings */
-	d1Databases?: Record<string, any>;
-	/** Durable Object bindings */
-	durableObjects?: Record<string, any>;
+	/** Working directory for config file resolution */
+	cwd?: string;
 }
 
 // ============================================================================
@@ -60,23 +57,33 @@ export class CloudflarePlatform extends BasePlatform {
 	#options: Required<CloudflarePlatformOptions>;
 	#miniflare: Miniflare | null;
 	#assetsMiniflare: Miniflare | null; // Separate instance for ASSETS binding
-	#assetsBinding: CFAssetsBinding | null;
+	#config: ProcessedShovelConfig;
 
 	constructor(options: CloudflarePlatformOptions = {}) {
 		super(options);
 		this.#miniflare = null;
 		this.#assetsMiniflare = null;
-		this.#assetsBinding = null;
 		this.name = "cloudflare";
+
+		const cwd = options.cwd || process.cwd();
+		this.#config = loadConfig(cwd);
+
 		this.#options = {
 			environment: "production",
 			assetsDirectory: undefined as any,
-			kvNamespaces: {},
-			r2Buckets: {},
-			d1Databases: {},
-			durableObjects: {},
+			cwd,
 			...options,
 		};
+	}
+
+	/**
+	 * Create cache storage
+	 * Uses config from shovel.json. Defaults to native Cloudflare caches.
+	 */
+	async createCaches(): Promise<CustomCacheStorage> {
+		return new CustomCacheStorage(
+			createCacheFactory({config: this.#config, defaultProvider: "cloudflare"}),
+		);
 	}
 
 	/**
@@ -104,49 +111,17 @@ export class CloudflarePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Load ServiceWorker-style entrypoint in Cloudflare Workers
+	 * Load ServiceWorker-style entrypoint using miniflare (workerd)
 	 *
-	 * In production: Uses the native CF Worker environment
-	 * In dev mode: Uses miniflare (workerd) for true dev/prod parity
+	 * Note: In production Cloudflare Workers, the banner/footer wrapper code
+	 * handles request dispatch directly - loadServiceWorker is only used for
+	 * local development with miniflare.
 	 */
 	async loadServiceWorker(
 		entrypoint: string,
 		_options: ServiceWorkerOptions = {},
 	): Promise<ServiceWorkerInstance> {
-		// Check if we're in a real Cloudflare Worker environment
-		const isCloudflareWorker =
-			typeof globalThis.addEventListener === "function" &&
-			typeof globalThis.caches !== "undefined" &&
-			typeof globalThis.FetchEvent !== "undefined";
-
-		if (isCloudflareWorker) {
-			logger.info("Running in native ServiceWorker environment", {});
-
-			// In a real Cloudflare Worker, we use the global environment directly
-			const instance: ServiceWorkerInstance = {
-				runtime: globalThis as any,
-				handleRequest: async (request: Request) => {
-					// Dispatch fetch event to the global handler
-					const event = new FetchEvent("fetch", {request});
-					globalThis.dispatchEvent(event);
-					// TODO: Get response from event.respondWith()
-					return new Response("Worker handler", {status: 200});
-				},
-				install: () => Promise.resolve(),
-				activate: () => Promise.resolve(),
-				get ready() {
-					return true;
-				},
-				dispose: async () => {},
-			};
-
-			// Import the entrypoint module (bundled)
-			await import(entrypoint);
-			return instance;
-		} else {
-			// Development mode - use miniflare
-			return this.#loadServiceWorkerWithMiniflare(entrypoint);
-		}
+		return this.#loadServiceWorkerWithMiniflare(entrypoint);
 	}
 
 	/**
@@ -192,11 +167,8 @@ export class CloudflarePlatform extends BasePlatform {
 				compatibilityDate: "2024-09-23",
 			});
 
-			const assetsEnv = await this.#assetsMiniflare.getBindings();
-			if (assetsEnv.ASSETS) {
-				this.#assetsBinding = assetsEnv.ASSETS as CFAssetsBinding;
-				logger.info("ASSETS binding available", {});
-			}
+			await this.#assetsMiniflare.ready;
+			logger.info("ASSETS binding available", {});
 		}
 
 		const mf = this.#miniflare;
@@ -245,7 +217,6 @@ export class CloudflarePlatform extends BasePlatform {
 			await this.#assetsMiniflare.dispose();
 			this.#assetsMiniflare = null;
 		}
-		this.#assetsBinding = null;
 	}
 }
 
@@ -259,72 +230,7 @@ export class CloudflarePlatform extends BasePlatform {
 export function createOptionsFromEnv(env: any): CloudflarePlatformOptions {
 	return {
 		environment: env.ENVIRONMENT || "production",
-		kvNamespaces: extractKVNamespaces(env),
-		r2Buckets: extractR2Buckets(env),
-		d1Databases: extractD1Databases(env),
-		durableObjects: extractDurableObjects(env),
 	};
-}
-
-/**
- * Extract KV namespace bindings from environment
- */
-function extractKVNamespaces(env: any): Record<string, any> {
-	const kvNamespaces: Record<string, any> = {};
-
-	// Look for common KV binding patterns
-	for (const [key, value] of Object.entries(env)) {
-		if (key.endsWith("_KV") || key.includes("KV")) {
-			kvNamespaces[key] = value;
-		}
-	}
-
-	return kvNamespaces;
-}
-
-/**
- * Extract R2 bucket bindings from environment
- */
-function extractR2Buckets(env: any): Record<string, any> {
-	const r2Buckets: Record<string, any> = {};
-
-	for (const [key, value] of Object.entries(env)) {
-		if (key.endsWith("_R2") || key.includes("R2")) {
-			r2Buckets[key] = value;
-		}
-	}
-
-	return r2Buckets;
-}
-
-/**
- * Extract D1 database bindings from environment
- */
-function extractD1Databases(env: any): Record<string, any> {
-	const d1Databases: Record<string, any> = {};
-
-	for (const [key, value] of Object.entries(env)) {
-		if (key.endsWith("_D1") || key.includes("D1") || key.endsWith("_DB")) {
-			d1Databases[key] = value;
-		}
-	}
-
-	return d1Databases;
-}
-
-/**
- * Extract Durable Object bindings from environment
- */
-function extractDurableObjects(env: any): Record<string, any> {
-	const durableObjects: Record<string, any> = {};
-
-	for (const [key, value] of Object.entries(env)) {
-		if (key.endsWith("_DO") || key.includes("DURABLE")) {
-			durableObjects[key] = value;
-		}
-	}
-
-	return durableObjects;
 }
 
 /**
@@ -415,10 +321,16 @@ database_id = "your-database-id"`,
 export const cloudflareWorkerBanner = `// Cloudflare Worker ES Module wrapper
 let serviceWorkerGlobals = null;
 
+// Capture native Cloudflare caches before any framework code runs
+const nativeCaches = globalThis.caches;
+
 // Set up ServiceWorker environment
 if (typeof globalThis.self === 'undefined') {
 	globalThis.self = globalThis;
 }
+
+// Store native caches for access via globalThis.__cloudflareCaches
+globalThis.__cloudflareCaches = nativeCaches;
 
 // Capture fetch event handlers
 const fetchHandlers = [];
@@ -527,21 +439,19 @@ export default {
 			// Dispatch to ServiceWorker fetch handlers
 			for (const handler of fetchHandlers) {
 				try {
-					logger.debug("Calling handler", {url: request.url});
 					await handler(event);
-					logger.debug("Handler completed", {hasResponse: !!responseReceived});
 					if (responseReceived) {
 						return responseReceived;
 					}
 				} catch (error) {
-					logger.error("Handler error: {error}", {error});
+					console.error("Handler error:", error);
 					return createErrorResponse(error);
 				}
 			}
 
 			return new Response('No ServiceWorker handler', { status: 404 });
 		} catch (topLevelError) {
-			logger.error("Top-level error: {error}", {error: topLevelError});
+			console.error("Top-level error:", topLevelError);
 			const isDev = typeof import.meta !== "undefined" && import.meta.env?.MODE !== "production";
 			if (isDev) {
 				const escapeHtml = (str) => String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

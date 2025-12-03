@@ -2,10 +2,6 @@ import {test, expect, describe, beforeEach, afterEach, mock} from "bun:test";
 import {
 	CloudflarePlatform,
 	createOptionsFromEnv,
-	extractKVNamespaces as _extractKVNamespaces,
-	extractR2Buckets as _extractR2Buckets,
-	extractD1Databases as _extractD1Databases,
-	extractDurableObjects as _extractDurableObjects,
 	generateWranglerConfig,
 } from "../src/index.js";
 
@@ -120,125 +116,17 @@ describe("Environment utilities", () => {
 	test("should create options from environment", () => {
 		const env = {
 			ENVIRONMENT: "production",
-			CACHE_KV: "cache-namespace",
-			STORAGE_R2: "storage-bucket",
-			DB_D1: "database",
-			COUNTER_DO: "durable-object",
 		};
 
 		const options = createOptionsFromEnv(env);
 
 		expect(options.environment).toBe("production");
-		expect(options.kvNamespaces?.CACHE_KV).toBe("cache-namespace");
-		expect(options.r2Buckets?.STORAGE_R2).toBe("storage-bucket");
-		expect(options.d1Databases?.DB_D1).toBe("database");
-		expect(options.durableObjects?.COUNTER_DO).toBe("durable-object");
 	});
 
-	test("should extract KV namespaces", () => {
-		const env = {
-			CACHE_KV: "cache",
-			DATA_KV: "data",
-			OTHER_VAR: "not-kv",
-			MY_KV_NAMESPACE: "another-kv",
-		};
+	test("should default to production environment", () => {
+		const options = createOptionsFromEnv({});
 
-		const kvNamespaces =
-			(global as any).extractKVNamespaces ||
-			((env: any) => {
-				const kvNamespaces: Record<string, any> = {};
-				for (const [key, value] of Object.entries(env)) {
-					if (key.endsWith("_KV") || key.includes("KV")) {
-						kvNamespaces[key] = value;
-					}
-				}
-				return kvNamespaces;
-			});
-
-		const result = kvNamespaces(env);
-
-		expect(result.CACHE_KV).toBe("cache");
-		expect(result.DATA_KV).toBe("data");
-		expect(result.MY_KV_NAMESPACE).toBe("another-kv");
-		expect(result.OTHER_VAR).toBeUndefined();
-	});
-
-	test("should extract R2 buckets", () => {
-		const env = {
-			STORAGE_R2: "storage",
-			BACKUP_R2: "backup",
-			OTHER_VAR: "not-r2",
-			MY_R2_BUCKET: "another-r2",
-		};
-
-		const extractR2 = (env: any) => {
-			const r2Buckets: Record<string, any> = {};
-			for (const [key, value] of Object.entries(env)) {
-				if (key.endsWith("_R2") || key.includes("R2")) {
-					r2Buckets[key] = value;
-				}
-			}
-			return r2Buckets;
-		};
-
-		const result = extractR2(env);
-
-		expect(result.STORAGE_R2).toBe("storage");
-		expect(result.BACKUP_R2).toBe("backup");
-		expect(result.MY_R2_BUCKET).toBe("another-r2");
-		expect(result.OTHER_VAR).toBeUndefined();
-	});
-
-	test("should extract D1 databases", () => {
-		const env = {
-			MAIN_D1: "main-db",
-			CACHE_DB: "cache-db",
-			OTHER_VAR: "not-db",
-			ANALYTICS_D1: "analytics-db",
-		};
-
-		const extractD1 = (env: any) => {
-			const d1Databases: Record<string, any> = {};
-			for (const [key, value] of Object.entries(env)) {
-				if (key.endsWith("_D1") || key.includes("D1") || key.endsWith("_DB")) {
-					d1Databases[key] = value;
-				}
-			}
-			return d1Databases;
-		};
-
-		const result = extractD1(env);
-
-		expect(result.MAIN_D1).toBe("main-db");
-		expect(result.CACHE_DB).toBe("cache-db");
-		expect(result.ANALYTICS_D1).toBe("analytics-db");
-		expect(result.OTHER_VAR).toBeUndefined();
-	});
-
-	test("should extract Durable Objects", () => {
-		const env = {
-			COUNTER_DO: "counter",
-			SESSION_DO: "session",
-			OTHER_VAR: "not-do",
-			MY_DURABLE_OBJECT: "durable",
-		};
-
-		const extractDO = (env: any) => {
-			const durableObjects: Record<string, any> = {};
-			for (const [key, value] of Object.entries(env)) {
-				if (key.endsWith("_DO") || key.includes("DURABLE")) {
-					durableObjects[key] = value;
-				}
-			}
-			return durableObjects;
-		};
-
-		const result = extractDO(env);
-
-		expect(result.COUNTER_DO).toBe("counter");
-		expect(result.SESSION_DO).toBe("session");
-		expect(result.MY_DURABLE_OBJECT).toBe("durable");
-		expect(result.OTHER_VAR).toBeUndefined();
+		expect(options.environment).toBe("production");
 	});
 });
 
