@@ -532,7 +532,9 @@ async function generatePackageJSON({serverDir, platform, verbose, entryPath}) {
 			}
 		} catch (generateError) {
 			if (verbose) {
-				logger.warn("Could not generate package.json: {error}", {error: generateError});
+				logger.warn("Could not generate package.json: {error}", {
+					error: generateError,
+				});
 			}
 			// Don't fail the build if package.json generation fails
 		}
@@ -601,7 +603,9 @@ export async function buildCommand(entrypoint: string, options: any) {
 		outDir: "dist",
 		verbose: options.verbose || false,
 		platform,
-		workerCount: options.workers ? parseInt(options.workers, 10) : config.workers,
+		workerCount: options.workers
+			? parseInt(options.workers, 10)
+			: config.workers,
 	});
 
 	// Workaround for Bun-specific issue: esbuild keeps child processes alive

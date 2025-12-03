@@ -7,7 +7,6 @@
 import {describe, test, expect, beforeEach, afterEach} from "bun:test";
 import {
 	promise_test,
-	flushTests,
 	clearTestQueue,
 	type TestContext,
 } from "../harness/testharness.js";
@@ -76,7 +75,7 @@ interface CacheQueryOptions {
  * @param config Test configuration
  */
 export function runCacheTests(name: string, config: CacheTestConfig): void {
-	let currentCache: Cache | null = null;
+	let _currentCache: Cache | null = null;
 	let cacheCounter = 0;
 
 	// Helper to get a unique cache name for each test
@@ -183,10 +182,7 @@ export function runCacheTests(name: string, config: CacheTestConfig): void {
 
 			test("Cache.put with a string URL", async () => {
 				const cache = await config.createCache(getUniqueCacheName());
-				await cache.put(
-					"https://example.com/string-url",
-					new Response("body"),
-				);
+				await cache.put("https://example.com/string-url", new Response("body"));
 				const matched = await cache.match("https://example.com/string-url");
 				expect(matched).toBeDefined();
 			});
@@ -222,10 +218,7 @@ export function runCacheTests(name: string, config: CacheTestConfig): void {
 
 			test("Cache.match with matching entry", async () => {
 				const cache = await config.createCache(getUniqueCacheName());
-				await cache.put(
-					"https://example.com/exists",
-					new Response("found"),
-				);
+				await cache.put("https://example.com/exists", new Response("found"));
 				const matched = await cache.match("https://example.com/exists");
 				expect(matched).toBeDefined();
 				expect(await matched?.text()).toBe("found");
@@ -301,10 +294,7 @@ export function runCacheTests(name: string, config: CacheTestConfig): void {
 
 			test("Cache.delete with matching entry returns true", async () => {
 				const cache = await config.createCache(getUniqueCacheName());
-				await cache.put(
-					"https://example.com/to-delete",
-					new Response("body"),
-				);
+				await cache.put("https://example.com/to-delete", new Response("body"));
 				const result = await cache.delete("https://example.com/to-delete");
 				expect(result).toBe(true);
 			});
@@ -354,10 +344,7 @@ export function runCacheTests(name: string, config: CacheTestConfig): void {
 
 			test("Cache.keys returns Request objects", async () => {
 				const cache = await config.createCache(getUniqueCacheName());
-				await cache.put(
-					"https://example.com/key-test",
-					new Response("body"),
-				);
+				await cache.put("https://example.com/key-test", new Response("body"));
 				const keys = await cache.keys();
 				expect(keys.length).toBe(1);
 				expect(keys[0]).toBeInstanceOf(Request);
@@ -397,13 +384,8 @@ export function runCacheTests(name: string, config: CacheTestConfig): void {
 
 			test("Cache.matchAll with matching entry", async () => {
 				const cache = await config.createCache(getUniqueCacheName());
-				await cache.put(
-					"https://example.com/match-all",
-					new Response("body"),
-				);
-				const responses = await cache.matchAll(
-					"https://example.com/match-all",
-				);
+				await cache.put("https://example.com/match-all", new Response("body"));
+				const responses = await cache.matchAll("https://example.com/match-all");
 				expect(responses.length).toBe(1);
 			});
 
@@ -417,14 +399,8 @@ export function runCacheTests(name: string, config: CacheTestConfig): void {
 
 			test("Cache.matchAll with ignoreSearch option", async () => {
 				const cache = await config.createCache(getUniqueCacheName());
-				await cache.put(
-					"https://example.com/search?v=1",
-					new Response("v1"),
-				);
-				await cache.put(
-					"https://example.com/search?v=2",
-					new Response("v2"),
-				);
+				await cache.put("https://example.com/search?v=1", new Response("v1"));
+				await cache.put("https://example.com/search?v=2", new Response("v2"));
 				const responses = await cache.matchAll(
 					"https://example.com/search?v=3",
 					{ignoreSearch: true},

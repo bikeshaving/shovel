@@ -36,7 +36,10 @@ interface ServiceWorkerInstance {
 	dispose(): Promise<void>;
 }
 
-type Handler = (request: Request, context?: any) => Promise<Response> | Response;
+type Handler = (
+	request: Request,
+	context?: any,
+) => Promise<Response> | Response;
 
 interface ServerOptions {
 	port?: number;

@@ -9,7 +9,7 @@
  * These test the same spec behaviors but against our runtime implementation.
  */
 
-import {describe, test, expect, beforeEach} from "bun:test";
+import {describe, test, expect} from "bun:test";
 
 /**
  * Configuration for running runtime tests

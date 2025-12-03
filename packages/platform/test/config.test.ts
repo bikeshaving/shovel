@@ -1,5 +1,9 @@
 import {test, expect, describe} from "bun:test";
-import {loadConfig, configureLogging, type ProcessedLoggingConfig} from "../src/config.ts";
+import {
+	loadConfig,
+	configureLogging,
+	type ProcessedLoggingConfig,
+} from "../src/config.ts";
 import {mkdtempSync, writeFileSync, rmSync} from "fs";
 import {tmpdir} from "os";
 import {join} from "path";
@@ -219,10 +223,7 @@ test("loadConfig: handles custom sinks configuration", () => {
 			JSON.stringify({
 				logging: {
 					level: "info",
-					sinks: [
-						{provider: "console"},
-						{provider: "file", path: "app.log"},
-					],
+					sinks: [{provider: "console"}, {provider: "file", path: "app.log"}],
 				},
 			}),
 		);
@@ -268,7 +269,10 @@ test("loadConfig: handles category-specific logging config", () => {
 		expect(config.logging.sinks).toEqual([{provider: "console"}]);
 		expect(config.logging.categories).toEqual({
 			worker: {level: "debug"},
-			router: {level: "warning", sinks: [{provider: "file", path: "router.log"}]},
+			router: {
+				level: "warning",
+				sinks: [{provider: "file", path: "router.log"}],
+			},
 		});
 	} finally {
 		rmSync(tmpDir, {recursive: true});

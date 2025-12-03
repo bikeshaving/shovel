@@ -335,7 +335,9 @@ export class RedisCache extends Cache {
 				try {
 					await this.#client.disconnect();
 				} catch (disconnectError) {
-					logger.error("Error forcing Redis disconnect: {error}", {error: disconnectError});
+					logger.error("Error forcing Redis disconnect: {error}", {
+						error: disconnectError,
+					});
 				}
 			}
 		}

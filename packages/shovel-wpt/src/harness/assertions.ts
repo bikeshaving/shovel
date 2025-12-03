@@ -181,9 +181,7 @@ export function assert_class_string(
 	className: string,
 	description?: string,
 ): void {
-	const actualClassName = Object.prototype.toString
-		.call(object)
-		.slice(8, -1);
+	const actualClassName = Object.prototype.toString.call(object).slice(8, -1);
 	if (description) {
 		expect(actualClassName, description).toBe(className);
 	} else {
@@ -339,7 +337,10 @@ export async function promise_rejects_dom(
 	} catch (e) {
 		if (e instanceof DOMException) {
 			expect(e.name).toBe(name);
-		} else if (e instanceof Error && e.message.includes("Expected promise to reject")) {
+		} else if (
+			e instanceof Error &&
+			e.message.includes("Expected promise to reject")
+		) {
 			throw e; // Re-throw our assertion error
 		} else if (e instanceof Error && "name" in e) {
 			// Some implementations use Error subclasses with name property
@@ -371,7 +372,10 @@ export async function promise_rejects_js(
 				: `Expected promise to reject with ${errorType.name}`,
 		);
 	} catch (e) {
-		if (e instanceof Error && e.message.includes("Expected promise to reject")) {
+		if (
+			e instanceof Error &&
+			e.message.includes("Expected promise to reject")
+		) {
 			throw e; // Re-throw our assertion error
 		}
 		expect(e).toBeInstanceOf(errorType);
@@ -395,7 +399,10 @@ export async function promise_rejects_exactly(
 				: "Expected promise to reject",
 		);
 	} catch (e) {
-		if (e instanceof Error && e.message.includes("Expected promise to reject")) {
+		if (
+			e instanceof Error &&
+			e.message.includes("Expected promise to reject")
+		) {
 			throw e;
 		}
 		expect(e).toBe(expectedError);

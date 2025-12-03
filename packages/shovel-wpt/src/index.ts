@@ -11,20 +11,11 @@ export {
 	runFilesystemTests,
 	type FilesystemTestConfig,
 } from "./runners/filesystem.js";
-export {
-	runPlatformTests,
-	type PlatformTestConfig,
-} from "./runners/platform.js";
-export {
-	runRuntimeTests,
-	type RuntimeTestConfig,
-} from "./runners/runtime.js";
+export {runPlatformTests, type PlatformTestConfig} from "./runners/platform.js";
+export {runRuntimeTests, type RuntimeTestConfig} from "./runners/runtime.js";
 
 // WPT shims for running actual vendored WPT test files
-export {
-	setupCacheTestGlobals,
-	type CacheShimConfig,
-} from "./wpt/cache-shim.js";
+export {setupCacheTestGlobals, type CacheShimConfig} from "./wpt/cache-shim.js";
 export {
 	setupFilesystemTestGlobals,
 	type FilesystemShimConfig,

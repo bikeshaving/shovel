@@ -5,6 +5,19 @@ import prettier from "eslint-plugin-prettier";
 import prettierConfig from "eslint-config-prettier";
 
 export default [
+	// Global ignores must come first
+	{
+		ignores: [
+			"node_modules/**",
+			"**/node_modules/**",
+			"**/dist/**",
+			"**/build/**",
+			"**/coverage/**",
+			"**/*.min.js",
+			"examples/tfb/**", // Third-party framework benchmarks - not our code
+			"packages/shovel-wpt/wpt/**", // Web Platform Tests - third-party test suite
+		],
+	},
 	js.configs.recommended,
 	prettierConfig,
 	{
@@ -128,18 +141,5 @@ export default [
 			"no-restricted-properties": "off",
 			"no-restricted-globals": "off",
 		},
-	},
-	{
-		ignores: [
-			"node_modules/**",
-			"**/node_modules/**",
-			"**/dist/**",
-			"**/build/**",
-			"**/coverage/**",
-			"**/*.min.js",
-			"examples/**/dist/**",
-			"packages/**/dist/**",
-			"examples/tfb/**", // Third-party framework benchmarks - not our code
-		],
 	},
 ];

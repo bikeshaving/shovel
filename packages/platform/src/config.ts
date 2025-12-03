@@ -749,7 +749,10 @@ const BUILTIN_SINK_PROVIDERS: Record<
 	otel: {module: "@logtape/otel", factory: "getOpenTelemetrySink"},
 	sentry: {module: "@logtape/sentry", factory: "getSentrySink"},
 	syslog: {module: "@logtape/syslog", factory: "getSyslogSink"},
-	cloudwatch: {module: "@logtape/cloudwatch-logs", factory: "getCloudWatchLogsSink"},
+	cloudwatch: {
+		module: "@logtape/cloudwatch-logs",
+		factory: "getCloudWatchLogsSink",
+	},
 };
 
 /**
@@ -819,7 +822,7 @@ export async function configureLogging(
 			for (const config of categoryConfig.sinks) {
 				// Check if this sink config is already added
 				let found = false;
-				for (const [existingConfig, name] of sinkNameMap) {
+				for (const [existingConfig, _name] of sinkNameMap) {
 					if (JSON.stringify(existingConfig) === JSON.stringify(config)) {
 						found = true;
 						break;
@@ -842,21 +845,27 @@ export async function configureLogging(
 
 	// Get sink names for a given array of sink configs
 	const getSinkNames = (configs: SinkConfig[]): string[] => {
-		return configs.map((config) => {
-			for (const [existingConfig, name] of sinkNameMap) {
-				if (JSON.stringify(existingConfig) === JSON.stringify(config)) {
-					return name;
+		return configs
+			.map((config) => {
+				for (const [existingConfig, name] of sinkNameMap) {
+					if (JSON.stringify(existingConfig) === JSON.stringify(config)) {
+						return name;
+					}
 				}
-			}
-			return "";
-		}).filter(Boolean);
+				return "";
+			})
+			.filter(Boolean);
 	};
 
 	// Default sink names
 	const defaultSinkNames = getSinkNames(defaultSinkConfigs);
 
 	// Build logger configs for each Shovel category
-	const loggers = SHOVEL_CATEGORIES.map((category) => {
+	const loggers: Array<{
+		category: string[];
+		level: LogTapeLevel;
+		sinks: string[];
+	}> = SHOVEL_CATEGORIES.map((category) => {
 		const categoryConfig = categories[category];
 		const categoryLevel = categoryConfig?.level || level;
 		const categorySinks = categoryConfig?.sinks
@@ -873,7 +882,7 @@ export async function configureLogging(
 	// Add meta logger config (suppress info messages about LogTape itself)
 	loggers.push({
 		category: ["logtape", "meta"],
-		level: "warning" as LogTapeLevel,
+		level: "warning",
 		sinks: [],
 	});
 

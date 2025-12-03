@@ -6,11 +6,7 @@
 
 import {describe, test, expect} from "bun:test";
 import {setupFilesystemTestGlobals} from "../src/wpt/filesystem-shim.js";
-import {
-	clearTestQueue,
-	runQueuedTests,
-	type TestResult,
-} from "../src/harness/testharness.js";
+import {clearTestQueue, runQueuedTests} from "../src/harness/testharness.js";
 import {MemoryBucket} from "../../filesystem/src/memory.js";
 
 // Setup globals at module load time
@@ -37,13 +33,15 @@ describe("WPT: FileSystemDirectoryHandle.getFileHandle (MemoryBucket)", () => {
 		const passed = results.filter((r) => r.passed);
 		const failed = results.filter((r) => !r.passed);
 
-		console.log(`\n  WPT Results: ${passed.length} passed, ${failed.length} failed\n`);
+		console.info(
+			`\n  WPT Results: ${passed.length} passed, ${failed.length} failed\n`,
+		);
 
 		// Log failures with details
 		for (const result of failed) {
-			console.log(`  ✗ ${result.name}`);
+			console.info(`  ✗ ${result.name}`);
 			if (result.error) {
-				console.log(`    ${result.error.message}\n`);
+				console.info(`    ${result.error.message}\n`);
 			}
 		}
 

@@ -5,12 +5,7 @@
  */
 
 import {describe, test, expect, beforeEach, afterEach} from "bun:test";
-import {
-	promise_test,
-	flushTests,
-	clearTestQueue,
-	type TestContext,
-} from "../harness/testharness.js";
+import {promise_test} from "../harness/testharness.js";
 import * as assertions from "../harness/assertions.js";
 
 /**
