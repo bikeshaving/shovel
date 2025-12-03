@@ -1032,6 +1032,8 @@ export function createBucketFactory(options: BucketFactoryOptions) {
 export interface CacheFactoryOptions {
 	/** Shovel configuration for cache settings */
 	config?: ProcessedShovelConfig;
+	/** Default provider when not specified in config. Defaults to "memory". */
+	defaultProvider?: string;
 }
 
 /**
@@ -1050,19 +1052,33 @@ const BUILTIN_CACHE_PROVIDERS: Record<string, string> = {
  * Provider resolution:
  * 1. "memory" -> built-in MemoryCache
  * 2. "redis" -> @b9g/cache-redis (blessed module)
- * 3. Any other string -> treated as a module name (e.g., "my-custom-cache")
+ * 3. "cloudflare" -> native Cloudflare caches.open(name)
+ * 4. Any other string -> treated as a module name (e.g., "my-custom-cache")
  *
  * Custom cache modules must export a class that:
  * - Extends Cache (from @b9g/cache)
  * - Has constructor(name: string, options?: object)
  */
 export function createCacheFactory(options: CacheFactoryOptions = {}) {
-	const {config} = options;
+	const {config, defaultProvider = "memory"} = options;
 
 	return async (name: string): Promise<Cache> => {
 		const cacheConfig = config ? getCacheConfig(config, name) : {};
 
-		const provider = String(cacheConfig.provider || "memory");
+		const provider = String(cacheConfig.provider || defaultProvider);
+
+		// Native Cloudflare caches
+		if (provider === "cloudflare") {
+			const nativeCaches =
+				(globalThis as any).__cloudflareCaches ?? globalThis.caches;
+			if (!nativeCaches) {
+				throw new Error(
+					"Cloudflare cache provider requires native caches API. " +
+						"This provider only works in Cloudflare Workers environment.",
+				);
+			}
+			return nativeCaches.open(name);
+		}
 
 		// Resolve provider to module path
 		const modulePath = BUILTIN_CACHE_PROVIDERS[provider] || provider;
