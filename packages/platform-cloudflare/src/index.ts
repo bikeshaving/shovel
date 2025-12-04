@@ -34,6 +34,8 @@ import {CustomBucketStorage} from "@b9g/filesystem";
 import {AsyncContext} from "@b9g/async-context";
 import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
+import type {R2Bucket} from "./filesystem-r2.js";
+import {R2FileSystemDirectoryHandle} from "./filesystem-r2.js";
 
 const logger = getLogger(["server"]);
 
@@ -228,8 +230,6 @@ function createCloudflareR2BucketFactory() {
 			);
 		}
 
-		// Dynamically import R2 filesystem implementation
-		const {R2FileSystemDirectoryHandle} = await import("@b9g/filesystem-r2");
 		return new R2FileSystemDirectoryHandle(r2Bucket, "");
 	};
 }

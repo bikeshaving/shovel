@@ -22,8 +22,8 @@
     "@b9g/assets": "workspace:*",
     "@b9g/cache": "workspace:*",
     "@b9g/platform": "workspace:*",
-    "@cloudflare/workers-types": "^4.20241218.0",
     "@logtape/logtape": "^1.2.0",
+    "mime": "^4.0.4",
     "miniflare": "^4.20251118.1"
   },
   "devDependencies": {
@@ -61,6 +61,14 @@
     "./cloudflare-runtime.js": {
       "types": "./dist/src/cloudflare-runtime.d.ts",
       "import": "./dist/src/cloudflare-runtime.js"
+    },
+    "./filesystem-r2": {
+      "types": "./dist/src/filesystem-r2.d.ts",
+      "import": "./dist/src/filesystem-r2.js"
+    },
+    "./filesystem-r2.js": {
+      "types": "./dist/src/filesystem-r2.d.ts",
+      "import": "./dist/src/filesystem-r2.js"
     }
   }
 }

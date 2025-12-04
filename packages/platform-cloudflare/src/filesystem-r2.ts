@@ -5,10 +5,36 @@
  * to provide R2 cloud storage with File System Access API compatibility.
  */
 
-/// <reference types="@cloudflare/workers-types" />
-
-import type {FileSystemBackend, FileSystemConfig} from "@b9g/filesystem";
+import type {FileSystemConfig} from "@b9g/filesystem";
 import mime from "mime";
+
+// ============================================================================
+// Minimal R2 types - matches Cloudflare Workers R2 API
+// Defined locally to avoid polluting global Request type from @cloudflare/workers-types
+// ============================================================================
+
+/** R2 object metadata */
+export interface R2Object {
+	key: string;
+	uploaded: Date;
+	httpMetadata?: {contentType?: string};
+	arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+/** R2 list result */
+export interface R2Objects {
+	objects: Array<{key: string}>;
+	delimitedPrefixes: string[];
+}
+
+/** R2 bucket interface */
+export interface R2Bucket {
+	get(key: string): Promise<R2Object | null>;
+	head(key: string): Promise<R2Object | null>;
+	put(key: string, value: ArrayBuffer | Uint8Array): Promise<R2Object>;
+	delete(key: string): Promise<void>;
+	list(options?: {prefix?: string; delimiter?: string}): Promise<R2Objects>;
+}
 
 /**
  * Cloudflare R2 implementation of FileSystemWritableFileStream
@@ -292,7 +318,7 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 /**
  * R2 filesystem adapter
  */
-export class R2FileSystemAdapter implements FileSystemBackend {
+export class R2FileSystemAdapter {
 	#config: FileSystemConfig;
 	#r2Bucket: R2Bucket;
 

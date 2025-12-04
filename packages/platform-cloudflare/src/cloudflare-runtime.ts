@@ -16,6 +16,21 @@ import {
 } from "@b9g/platform/runtime";
 import {CustomBucketStorage} from "@b9g/filesystem";
 import {AsyncContext} from "@b9g/async-context";
+import type {R2Bucket} from "./filesystem-r2.js";
+import {R2FileSystemDirectoryHandle} from "./filesystem-r2.js";
+
+// ============================================================================
+// Minimal Cloudflare Types (to avoid @cloudflare/workers-types global pollution)
+// ============================================================================
+
+/**
+ * Cloudflare's ExecutionContext - passed to each request handler
+ * Used for ctx.waitUntil() to extend request lifetime
+ */
+export interface ExecutionContext {
+	waitUntil(promise: Promise<unknown>): void;
+	passThroughOnException(): void;
+}
 
 // ============================================================================
 // PER-REQUEST CONTEXT (AsyncContext)
@@ -161,7 +176,6 @@ function createCloudflareR2BucketFactory() {
 			);
 		}
 
-		const {R2FileSystemDirectoryHandle} = await import("@b9g/filesystem-r2");
 		return new R2FileSystemDirectoryHandle(r2Bucket, "");
 	};
 }
