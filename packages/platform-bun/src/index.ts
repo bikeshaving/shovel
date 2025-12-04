@@ -40,51 +40,56 @@ const logger = getLogger(["server"]);
 const PORT = config.port;
 const HOST = config.host;
 const WORKERS = config.workers;
-const isChild = !!process.env.WORKER_ID;
+const isWorker = !Bun.isMainThread;
 
-// Spawn sibling processes for multi-worker mode (reusePort)
-// Only the parent spawns children, and only on Linux where reusePort works
-if (!isChild && WORKERS > 1 && process.platform === "linux") {
-	for (let i = 1; i < WORKERS; i++) {
-		Bun.spawn({
-			cmd: ["bun", import.meta.path],
-			env: {...process.env, WORKER_ID: String(i)},
-			stdout: "inherit",
-			stderr: "inherit",
+// Worker thread entry - each worker runs its own Bun.serve with reusePort
+if (isWorker) {
+	const platform = new BunPlatform({port: PORT, host: HOST, workers: 1});
+	const userCodePath = new URL("./server.js", import.meta.url).pathname;
+	const serviceWorker = await platform.loadServiceWorker(userCodePath);
+
+	Bun.serve({
+		port: PORT,
+		hostname: HOST,
+		reusePort: true,
+		fetch: serviceWorker.handleRequest,
+	});
+
+	logger.info("Worker started", {port: PORT, thread: Bun.threadId});
+} else {
+	// Main thread - spawn worker threads, each binds to same port with reusePort
+	if (WORKERS > 1) {
+		for (let i = 0; i < WORKERS; i++) {
+			new Worker(import.meta.path);
+		}
+		logger.info("Spawned workers", {count: WORKERS, port: PORT});
+	} else {
+		// Single worker mode - run directly in main thread
+		const platform = new BunPlatform({port: PORT, host: HOST, workers: 1});
+		const userCodePath = new URL("./server.js", import.meta.url).pathname;
+		const serviceWorker = await platform.loadServiceWorker(userCodePath);
+
+		const server = platform.createServer(serviceWorker.handleRequest, {
+			port: PORT,
+			host: HOST,
 		});
+		await server.listen();
+
+		logger.info("Server started", {url: server.url});
+
+		// Graceful shutdown
+		const shutdown = async () => {
+			logger.info("Shutting down");
+			await serviceWorker.dispose();
+			await platform.dispose();
+			await server.close();
+			process.exit(0);
+		};
+
+		process.on("SIGINT", shutdown);
+		process.on("SIGTERM", shutdown);
 	}
 }
-
-// Create platform and load ServiceWorker
-const platform = new BunPlatform({port: PORT, host: HOST, workers: WORKERS});
-const userCodePath = new URL("./server.js", import.meta.url).pathname;
-const serviceWorker = await platform.loadServiceWorker(userCodePath);
-
-// Start server
-const server = platform.createServer(serviceWorker.handleRequest, {
-	port: PORT,
-	host: HOST,
-});
-await server.listen();
-
-const workerId = process.env.WORKER_ID ?? "0";
-logger.info("Server started", {
-	url: server.url,
-	worker: workerId,
-	reusePort: WORKERS > 1,
-});
-
-// Graceful shutdown
-const shutdown = async () => {
-	logger.info("Shutting down", {worker: workerId});
-	await serviceWorker.dispose();
-	await platform.dispose();
-	await server.close();
-	process.exit(0);
-};
-
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
 `;
 
 const logger = getLogger(["platform-bun"]);
