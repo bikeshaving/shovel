@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "develop": "shovel develop src/server.js --port 3000",
-    "build": "shovel build src/server.js --out dist",
+    "build": "shovel build src/server.js",
     "start": "node dist/server.js",
     "static": "shovel static src/server.js --out dist",
     "preview": "cd dist && python3 -m http.server 3000"
@@ -17,7 +17,7 @@
     "@b9g/match-pattern": "workspace:*",
     "@b9g/platform": "workspace:*",
     "@b9g/router": "workspace:*",
-    "@b9g/shovel": "../../dist"
+    "@b9g/shovel": "../.."
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.46.2",

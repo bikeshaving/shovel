@@ -1,4 +1,3 @@
-
 self.addEventListener("fetch", (event) => {
 	const url = new URL(event.request.url);
 
@@ -50,7 +49,8 @@ async function testCaches() {
 		// Cleanup
 		await self.caches.delete("contract-test-cache");
 
-		result.success = result.canOpen && result.canPut && result.canMatch && result.canDelete;
+		result.success =
+			result.canOpen && result.canPut && result.canMatch && result.canDelete;
 	} catch (error) {
 		result.error = error.message;
 	}
@@ -78,7 +78,9 @@ async function testBuckets() {
 
 		// Test 2: Can we write a file?
 		const testContent = "bucket-test-content-" + Date.now();
-		const writeHandle = await bucket.getFileHandle("contract-test.txt", {create: true});
+		const writeHandle = await bucket.getFileHandle("contract-test.txt", {
+			create: true,
+		});
 		const writable = await writeHandle.createWritable();
 		await writable.write(testContent);
 		await writable.close();
