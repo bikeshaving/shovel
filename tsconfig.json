@@ -5,34 +5,13 @@
 		"moduleResolution": "bundler",
 		"allowSyntheticDefaultImports": true,
 		"esModuleInterop": true,
-		"declaration": true,
-		"declarationMap": true,
-		"outDir": "./dist",
 		"strict": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
-		"noEmit": false,
-		"lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
-		"composite": true
+		"noEmit": true,
+		"lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"]
 	},
-	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist", "**/dist", "**/*.test.ts", "**/*.test.js", "examples"],
-	"references": [
-		{"path": "packages/async-context"},
-		{"path": "packages/assets"},
-		{"path": "packages/cache"},
-		{"path": "packages/cache-redis"},
-		{"path": "packages/filesystem"},
-		{"path": "packages/filesystem-s3"},
-		{"path": "packages/http-errors"},
-		{"path": "packages/match-pattern"},
-		{"path": "packages/node-webworker"},
-		{"path": "packages/platform"},
-		{"path": "packages/platform-bun"},
-		{"path": "packages/platform-cloudflare"},
-		{"path": "packages/platform-node"},
-		{"path": "packages/router"},
-		{"path": "packages/auth"}
-	]
+	"include": ["src/**/*", "packages/*/src/**/*"],
+	"exclude": ["node_modules", "dist", "**/dist", "**/*.test.ts", "**/*.test.js", "examples", "packages/shovel-wpt"]
 }

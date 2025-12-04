@@ -36,6 +36,7 @@ import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
 import type {R2Bucket} from "./filesystem-r2.js";
 import {R2FileSystemDirectoryHandle} from "./filesystem-r2.js";
+import type {ExecutionContext} from "./cloudflare-runtime.js";
 
 const logger = getLogger(["server"]);
 
