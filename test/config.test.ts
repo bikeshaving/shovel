@@ -2,6 +2,8 @@
  * Tests for config precedence: json value > canonical env var > default
  */
 
+/* eslint-disable no-restricted-properties -- Tests need direct process.env access */
+
 import {describe, it, expect, beforeAll, afterAll} from "bun:test";
 import {loadConfig} from "../src/config.js";
 import {mkdtempSync, writeFileSync, rmSync} from "fs";
@@ -99,7 +101,9 @@ describe("loadConfig precedence", () => {
 				);
 				// PORT env not set - should throw in strict mode
 
-				expect(() => loadConfig(testDir)).toThrow("Undefined environment variable: PORT");
+				expect(() => loadConfig(testDir)).toThrow(
+					"Undefined environment variable: PORT",
+				);
 			});
 		});
 

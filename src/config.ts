@@ -526,6 +526,469 @@ export function processConfigValue(
 }
 
 // ============================================================================
+// BUILTIN PROVIDER MAPPINGS
+// ============================================================================
+
+/**
+ * Built-in cache provider aliases
+ * Maps short names to their module paths
+ */
+export const BUILTIN_CACHE_PROVIDERS: Record<string, string> = {
+	memory: "@b9g/cache/memory.js",
+	redis: "@b9g/cache-redis",
+};
+
+/**
+ * Built-in bucket provider aliases
+ * Maps short names to their module paths
+ */
+export const BUILTIN_BUCKET_PROVIDERS: Record<string, string> = {
+	node: "@b9g/filesystem/node.js",
+	memory: "@b9g/filesystem/memory.js",
+	s3: "@b9g/filesystem-s3",
+};
+
+// ============================================================================
+// CODE GENERATION (for build-time config module)
+// ============================================================================
+
+/**
+ * Code generator that outputs JS code instead of evaluating expressions.
+ * Used for generating the shovel:config virtual module at build time.
+ *
+ * Instead of evaluating "PORT || 3000" to a value, it outputs:
+ *   process.env.PORT || 3000
+ *
+ * This keeps secrets as process.env references (evaluated at runtime).
+ */
+class CodeGenerator {
+	#tokens: Token[];
+	#pos: number;
+
+	constructor(input: string) {
+		const tokenizer = new Tokenizer(input);
+		this.#tokens = [];
+		let token;
+		do {
+			token = tokenizer.next();
+			this.#tokens.push(token);
+		} while (token.type !== TokenType.EOF);
+		this.#pos = 0;
+	}
+
+	#peek(): Token {
+		return this.#tokens[this.#pos];
+	}
+
+	#advance(): Token {
+		return this.#tokens[this.#pos++];
+	}
+
+	#expect(type: TokenType): Token {
+		const token = this.#peek();
+		if (token.type !== type) {
+			throw new Error(
+				`Expected ${type} but got ${token.type} at position ${token.start}`,
+			);
+		}
+		return this.#advance();
+	}
+
+	generate(): string {
+		const result = this.#generateExpr();
+		this.#expect(TokenType.EOF);
+		return result;
+	}
+
+	#generateExpr(): string {
+		return this.#generateTernary();
+	}
+
+	#generateTernary(): string {
+		let left = this.#generateLogicalOr();
+
+		if (this.#peek().type === TokenType.QUESTION) {
+			this.#advance();
+			const trueBranch = this.#generateExpr();
+			this.#expect(TokenType.COLON);
+			const falseBranch = this.#generateExpr();
+			return `(${left} ? ${trueBranch} : ${falseBranch})`;
+		}
+
+		return left;
+	}
+
+	#generateLogicalOr(): string {
+		let left = this.#generateLogicalAnd();
+
+		while (this.#peek().type === TokenType.OR) {
+			this.#advance();
+			const right = this.#generateLogicalAnd();
+			left = `(${left} || ${right})`;
+		}
+
+		return left;
+	}
+
+	#generateLogicalAnd(): string {
+		let left = this.#generateEquality();
+
+		while (this.#peek().type === TokenType.AND) {
+			this.#advance();
+			const right = this.#generateEquality();
+			left = `(${left} && ${right})`;
+		}
+
+		return left;
+	}
+
+	#generateEquality(): string {
+		let left = this.#generateUnary();
+
+		while (true) {
+			const token = this.#peek();
+
+			if (token.type === TokenType.EQ_STRICT) {
+				this.#advance();
+				const right = this.#generateUnary();
+				left = `(${left} === ${right})`;
+			} else if (token.type === TokenType.NE_STRICT) {
+				this.#advance();
+				const right = this.#generateUnary();
+				left = `(${left} !== ${right})`;
+			} else if (token.type === TokenType.EQ) {
+				this.#advance();
+				const right = this.#generateUnary();
+				left = `(${left} == ${right})`;
+			} else if (token.type === TokenType.NE) {
+				this.#advance();
+				const right = this.#generateUnary();
+				left = `(${left} != ${right})`;
+			} else {
+				break;
+			}
+		}
+
+		return left;
+	}
+
+	#generateUnary(): string {
+		if (this.#peek().type === TokenType.NOT) {
+			this.#advance();
+			return `!${this.#generateUnary()}`;
+		}
+
+		return this.#generatePrimary();
+	}
+
+	#generatePrimary(): string {
+		const token = this.#peek();
+
+		if (token.type === TokenType.LPAREN) {
+			this.#advance();
+			const value = this.#generateExpr();
+			this.#expect(TokenType.RPAREN);
+			return `(${value})`;
+		}
+
+		if (token.type === TokenType.STRING) {
+			this.#advance();
+			return JSON.stringify(token.value);
+		}
+		if (token.type === TokenType.NUMBER) {
+			this.#advance();
+			return String(token.value);
+		}
+		if (token.type === TokenType.TRUE) {
+			this.#advance();
+			return "true";
+		}
+		if (token.type === TokenType.FALSE) {
+			this.#advance();
+			return "false";
+		}
+		if (token.type === TokenType.NULL) {
+			this.#advance();
+			return "null";
+		}
+		if (token.type === TokenType.UNDEFINED) {
+			this.#advance();
+			return "undefined";
+		}
+
+		if (token.type === TokenType.IDENTIFIER) {
+			this.#advance();
+			const name = token.value;
+
+			// ALL_CAPS = env var reference → process.env.X
+			if (/^[A-Z][A-Z0-9_]*$/.test(name)) {
+				return `process.env.${name}`;
+			}
+
+			// Otherwise it's a string literal
+			return JSON.stringify(name);
+		}
+
+		throw new Error(
+			`Unexpected token ${token.type} at position ${token.start}`,
+		);
+	}
+}
+
+/**
+ * Convert a config expression to JS code.
+ * Env vars become process.env.X, literals become quoted strings.
+ *
+ * Examples:
+ *   "PORT || 3000" → 'process.env.PORT || 3000'
+ *   "REDIS_URL" → 'process.env.REDIS_URL'
+ *   "redis" → '"redis"'
+ *   "NODE_ENV === production ? redis : memory" → '(process.env.NODE_ENV === "production" ? "redis" : "memory")'
+ */
+export function exprToCode(expr: string): string {
+	// Check if it looks like an expression (contains operators or env vars)
+	if (/(\|\||&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/.test(expr)) {
+		try {
+			const generator = new CodeGenerator(expr);
+			return generator.generate();
+		} catch (error) {
+			throw new Error(
+				`Invalid config expression: ${expr}\n` +
+					`Error: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+	// Plain string literal
+	return JSON.stringify(expr);
+}
+
+/**
+ * Convert any config value to JS code representation.
+ * Recursively handles objects and arrays.
+ */
+export function valueToCode(value: unknown): string {
+	if (typeof value === "string") {
+		return exprToCode(value);
+	}
+
+	if (typeof value === "number" || typeof value === "boolean") {
+		return JSON.stringify(value);
+	}
+
+	if (value === null) {
+		return "null";
+	}
+
+	if (value === undefined) {
+		return "undefined";
+	}
+
+	if (Array.isArray(value)) {
+		const items = value.map((item) => valueToCode(item));
+		return `[${items.join(", ")}]`;
+	}
+
+	if (typeof value === "object") {
+		const entries = Object.entries(value).map(
+			([key, val]) => `${JSON.stringify(key)}: ${valueToCode(val)}`,
+		);
+		return `{${entries.join(", ")}}`;
+	}
+
+	return JSON.stringify(value);
+}
+
+/**
+ * Sanitize a pattern name for use as a JavaScript variable name.
+ */
+function sanitizeVarName(pattern: string): string {
+	return pattern
+		.replace(/\*/g, "default")
+		.replace(/[^a-zA-Z0-9_]/g, "_")
+		.replace(/^(\d)/, "_$1");
+}
+
+/**
+ * Generate the shovel:config virtual module content.
+ * This is called at build time to create the config module that gets
+ * bundled into the final output.
+ *
+ * @param rawConfig - Raw config from shovel.json (NOT processed)
+ * @param env - Environment variables for evaluating provider expressions
+ */
+export function generateConfigModule(
+	rawConfig: ShovelConfig,
+	env: Record<string, string | undefined> = getEnv(),
+): string {
+	const imports: string[] = [];
+	const providerRefs: Record<string, string> = {};
+
+	// Helper to evaluate provider expression and generate import
+	const processProvider = (
+		expr: string | undefined,
+		type: "cache" | "bucket",
+		pattern: string,
+	): string | null => {
+		if (!expr) return null;
+
+		// Evaluate provider expression at BUILD time
+		const provider = parseConfigExpr(expr, env, {strict: false});
+		if (!provider || provider === "memory") {
+			// memory is built-in, no import needed
+			return null;
+		}
+
+		// Map blessed names to module paths
+		const builtinMap =
+			type === "cache" ? BUILTIN_CACHE_PROVIDERS : BUILTIN_BUCKET_PROVIDERS;
+		const modulePath = builtinMap[provider] || provider;
+
+		// Generate unique variable name
+		const varName = `${type}_${sanitizeVarName(pattern)}`;
+		imports.push(`import * as ${varName} from ${JSON.stringify(modulePath)};`);
+		providerRefs[`${type}.${pattern}`] = varName;
+
+		return varName;
+	};
+
+	// Process cache providers
+	for (const [pattern, cfg] of Object.entries(rawConfig.caches || {})) {
+		if (cfg.provider) {
+			processProvider(String(cfg.provider), "cache", pattern);
+		}
+	}
+
+	// Process bucket providers
+	for (const [pattern, cfg] of Object.entries(rawConfig.buckets || {})) {
+		if (cfg.provider) {
+			processProvider(String(cfg.provider), "bucket", pattern);
+		}
+	}
+
+	// Generate config object code
+	const generateConfigCode = (): string => {
+		const lines: string[] = [];
+		lines.push("{");
+
+		// Platform (if specified)
+		if (rawConfig.platform !== undefined) {
+			lines.push(`  platform: ${valueToCode(rawConfig.platform)},`);
+		}
+
+		// Port
+		if (rawConfig.port !== undefined) {
+			lines.push(`  port: ${valueToCode(rawConfig.port)},`);
+		} else {
+			lines.push(
+				`  port: process.env.PORT ? parseInt(process.env.PORT, 10) : 3000,`,
+			);
+		}
+
+		// Host
+		if (rawConfig.host !== undefined) {
+			lines.push(`  host: ${valueToCode(rawConfig.host)},`);
+		} else {
+			lines.push(`  host: process.env.HOST || "localhost",`);
+		}
+
+		// Workers
+		if (rawConfig.workers !== undefined) {
+			lines.push(`  workers: ${valueToCode(rawConfig.workers)},`);
+		} else {
+			lines.push(
+				`  workers: process.env.WORKERS ? parseInt(process.env.WORKERS, 10) : 1,`,
+			);
+		}
+
+		// Logging
+		if (rawConfig.logging) {
+			lines.push(`  logging: ${valueToCode(rawConfig.logging)},`);
+		}
+
+		// Caches - with provider references
+		if (rawConfig.caches && Object.keys(rawConfig.caches).length > 0) {
+			lines.push("  caches: {");
+			for (const [pattern, cfg] of Object.entries(rawConfig.caches)) {
+				const providerVar = providerRefs[`cache.${pattern}`];
+				lines.push(`    ${JSON.stringify(pattern)}: {`);
+				for (const [key, val] of Object.entries(cfg)) {
+					if (key === "provider" && providerVar) {
+						// Use the imported provider module reference
+						lines.push(`      provider: ${providerVar},`);
+					} else {
+						lines.push(`      ${key}: ${valueToCode(val)},`);
+					}
+				}
+				lines.push("    },");
+			}
+			lines.push("  },");
+		}
+
+		// Buckets - with provider references
+		if (rawConfig.buckets && Object.keys(rawConfig.buckets).length > 0) {
+			lines.push("  buckets: {");
+			for (const [pattern, cfg] of Object.entries(rawConfig.buckets)) {
+				const providerVar = providerRefs[`bucket.${pattern}`];
+				lines.push(`    ${JSON.stringify(pattern)}: {`);
+				for (const [key, val] of Object.entries(cfg)) {
+					if (key === "provider" && providerVar) {
+						lines.push(`      provider: ${providerVar},`);
+					} else {
+						lines.push(`      ${key}: ${valueToCode(val)},`);
+					}
+				}
+				lines.push("    },");
+			}
+			lines.push("  },");
+		}
+
+		lines.push("}");
+		return lines.join("\n");
+	};
+
+	// Generate the module
+	const moduleLines: string[] = [];
+
+	// Add imports
+	if (imports.length > 0) {
+		moduleLines.push("// Provider imports (statically bundled)");
+		moduleLines.push(...imports);
+		moduleLines.push("");
+	}
+
+	// Add config export
+	moduleLines.push(
+		"// Generated config (secrets stay as process.env references)",
+	);
+	moduleLines.push(`export const config = ${generateConfigCode()};`);
+
+	return moduleLines.join("\n");
+}
+
+/**
+ * Load raw config from shovel.json without processing expressions.
+ * Used at build time to get the config before code generation.
+ */
+export function loadRawConfig(cwd: string): ShovelConfig {
+	// Try shovel.json first
+	try {
+		const shovelPath = `${cwd}/shovel.json`;
+		const content = readFileSync(shovelPath, "utf-8");
+		return JSON.parse(content);
+	} catch {
+		// Try package.json
+		try {
+			const pkgPath = `${cwd}/package.json`;
+			const content = readFileSync(pkgPath, "utf-8");
+			const pkgJSON = JSON.parse(content);
+			return pkgJSON.shovel || {};
+		} catch {
+			return {};
+		}
+	}
+}
+
+// ============================================================================
 // PATTERN MATCHING
 // ============================================================================
 
@@ -705,8 +1168,7 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 	// Otherwise, check canonical env var (uppercase key name)
 	// Finally, fall back to default
 	const config: ProcessedShovelConfig = {
-		platform:
-			processed.platform ?? env.PLATFORM ?? undefined,
+		platform: processed.platform ?? env.PLATFORM ?? undefined,
 		port:
 			processed.port !== undefined
 				? typeof processed.port === "number"
@@ -715,8 +1177,7 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 				: env.PORT
 					? parseInt(env.PORT, 10)
 					: 3000,
-		host:
-			processed.host ?? env.HOST ?? "localhost",
+		host: processed.host ?? env.HOST ?? "localhost",
 		workers:
 			processed.workers !== undefined
 				? typeof processed.workers === "number"
@@ -944,16 +1405,6 @@ const WELL_KNOWN_BUCKET_PATHS: Record<string, (baseDir: string) => string> = {
 	server: (baseDir) => baseDir,
 };
 
-/**
- * Built-in bucket provider aliases
- * Maps short names to their module paths
- */
-const BUILTIN_BUCKET_PROVIDERS: Record<string, string> = {
-	node: "@b9g/filesystem/node.js",
-	memory: "@b9g/filesystem/memory.js",
-	s3: "@b9g/filesystem-s3",
-};
-
 export interface BucketFactoryOptions {
 	/** Base directory for path resolution (entrypoint directory) - REQUIRED */
 	baseDir: string;
@@ -1056,15 +1507,6 @@ export interface CacheFactoryOptions {
 	/** Default provider when not specified in config. Defaults to "memory". */
 	defaultProvider?: string;
 }
-
-/**
- * Built-in cache provider aliases
- * Maps short names to their module paths
- */
-const BUILTIN_CACHE_PROVIDERS: Record<string, string> = {
-	memory: "@b9g/cache/memory.js",
-	redis: "@b9g/cache-redis",
-};
 
 /**
  * Creates a cache factory function for CustomCacheStorage.

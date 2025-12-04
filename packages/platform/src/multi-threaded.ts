@@ -8,7 +8,8 @@
 import * as Path from "path";
 import {existsSync} from "fs";
 import {getLogger} from "@logtape/logtape";
-import type {ProcessedShovelConfig} from "./config.js";
+// Config type - just needs to be passable to workers
+type ShovelConfig = Record<string, unknown>;
 
 // Runtime global declarations
 declare const Deno: any;
@@ -110,7 +111,7 @@ export interface MultiThreadedRuntimeOptions {
 	/** Optional pre-created cache storage (for sharing across workers) */
 	cacheStorage?: CacheStorage;
 	/** Shovel configuration for bucket/cache settings */
-	config?: ProcessedShovelConfig;
+	config?: ShovelConfig;
 }
 
 // ============================================================================
@@ -262,7 +263,7 @@ export class MultiThreadedRuntime implements ServiceWorkerRuntime {
 	#cacheStorage?: CacheStorage & {
 		handleMessage?: (worker: Worker, message: any) => Promise<void>;
 	};
-	#config?: ProcessedShovelConfig;
+	#config?: ShovelConfig;
 	#ready: boolean;
 
 	constructor(options: MultiThreadedRuntimeOptions) {

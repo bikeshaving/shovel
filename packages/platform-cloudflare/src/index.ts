@@ -387,15 +387,24 @@ export class CloudflarePlatform extends BasePlatform {
 	 * Get virtual entry wrapper for Cloudflare Workers
 	 *
 	 * Wraps user code with:
-	 * 1. Runtime initialization (ServiceWorkerGlobals)
-	 * 2. User code import (registers fetch handlers)
-	 * 3. ES module export for Cloudflare Workers format
+	 * 1. Config import (shovel:config virtual module)
+	 * 2. Runtime initialization (ServiceWorkerGlobals)
+	 * 3. User code import (registers fetch handlers)
+	 * 4. ES module export for Cloudflare Workers format
+	 *
+	 * Note: Unlike Node/Bun, Cloudflare bundles user code inline, so the
+	 * entryPath is embedded directly in the wrapper.
 	 */
 	getEntryWrapper(entryPath: string, _options?: EntryWrapperOptions): string {
 		// Use JSON.stringify to safely escape the path (prevents code injection)
 		const safePath = JSON.stringify(entryPath);
 		return `// Cloudflare Worker Entry - uses ServiceWorkerGlobals for feature parity with Node/Bun
 import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/cloudflare-runtime";
+import { config } from "shovel:config"; // Virtual module - resolved at build time
+
+// Config available for caches/buckets provider configuration
+// (Cloudflare doesn't use port/host/workers from config)
+void config;
 
 // Initialize runtime BEFORE user code (installs globals like addEventListener)
 const registration = initializeRuntime();

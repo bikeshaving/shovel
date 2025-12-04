@@ -25,8 +25,67 @@ import {CustomBucketStorage} from "@b9g/filesystem";
 import {MemoryCache} from "@b9g/cache/memory";
 import {NodeBucket} from "@b9g/filesystem/node";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
-import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
+import * as Path from "path";
+
+// Entry template embedded as string
+const entryTemplate = `// Bun Production Server Entry
+import {getLogger} from "@logtape/logtape";
+import {config} from "shovel:config"; // Virtual module - resolved at build time
+import BunPlatform from "@b9g/platform-bun";
+
+const logger = getLogger(["server"]);
+
+// Configuration from shovel:config
+const PORT = config.port;
+const HOST = config.host;
+const WORKERS = config.workers;
+const isChild = !!process.env.WORKER_ID;
+
+// Spawn sibling processes for multi-worker mode (reusePort)
+// Only the parent spawns children, and only on Linux where reusePort works
+if (!isChild && WORKERS > 1 && process.platform === "linux") {
+	for (let i = 1; i < WORKERS; i++) {
+		Bun.spawn({
+			cmd: ["bun", import.meta.path],
+			env: {...process.env, WORKER_ID: String(i)},
+			stdout: "inherit",
+			stderr: "inherit",
+		});
+	}
+}
+
+// Create platform and load ServiceWorker
+const platform = new BunPlatform({port: PORT, host: HOST, workers: WORKERS});
+const userCodePath = new URL("./server.js", import.meta.url).pathname;
+const serviceWorker = await platform.loadServiceWorker(userCodePath);
+
+// Start server
+const server = platform.createServer(serviceWorker.handleRequest, {
+	port: PORT,
+	host: HOST,
+});
+await server.listen();
+
+const workerId = process.env.WORKER_ID ?? "0";
+logger.info("Server started", {
+	url: server.url,
+	worker: workerId,
+	reusePort: WORKERS > 1,
+});
+
+// Graceful shutdown
+const shutdown = async () => {
+	logger.info("Shutting down", {worker: workerId});
+	await serviceWorker.dispose();
+	await platform.dispose();
+	await server.close();
+	process.exit(0);
+};
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+`;
 
 const logger = getLogger(["platform-bun"]);
 
@@ -163,7 +222,8 @@ export class BunPlatform extends BasePlatform {
 		});
 
 		// Get the actual port (important when port 0 was requested)
-		const actualPort = server.port;
+		// server.port is always defined after Bun.serve() returns
+		const actualPort = server.port as number;
 
 		return {
 			async listen() {
@@ -380,66 +440,16 @@ export class BunPlatform extends BasePlatform {
 	/**
 	 * Get virtual entry wrapper for Bun
 	 *
-	 * Returns production server entry template that:
-	 * 1. Imports @b9g/platform-bun
-	 * 2. Loads the user's ServiceWorker code
-	 * 3. Creates HTTP server with platform.createServer()
+	 * Returns production server entry template that uses:
+	 * - shovel:config virtual module for configuration
+	 * - Bun.serve with reusePort for multi-worker scaling
+	 * - Direct import of user's server code
 	 *
-	 * Note: Bun natively supports import.meta.env, so no define alias is needed.
+	 * The template is a real .ts file (entry-template.ts) for better
+	 * IDE support and linting. It's imported with {type: "text"}.
 	 */
 	getEntryWrapper(_entryPath: string, _options?: EntryWrapperOptions): string {
-		// Note: entryPath is not used in the wrapper because Node/Bun load
-		// user code at runtime via loadServiceWorker("./server.js")
-		// The CLI builds user code separately to dist/server/server.js
-		return `// Bun Production Server Entry
-import {getLogger} from "@logtape/logtape";
-import Platform from "@b9g/platform-bun";
-
-const logger = getLogger(["worker"]);
-
-// Configuration from environment
-const PORT = parseInt(import.meta.env.PORT || "8080", 10);
-const HOST = import.meta.env.HOST || "0.0.0.0";
-const WORKER_COUNT = parseInt(import.meta.env.WORKERS || "1", 10);
-
-logger.info("Starting production server", {});
-logger.info("Workers", {count: WORKER_COUNT});
-
-// Create platform instance
-const platform = new Platform();
-
-// Get the path to the user's ServiceWorker code
-const userCodeURL = new URL("./server.js", import.meta.url);
-const userCodePath = userCodeURL.pathname;
-
-// Load ServiceWorker with worker pool
-const serviceWorker = await platform.loadServiceWorker(userCodePath, {
-	workerCount: WORKER_COUNT,
-});
-
-// Create HTTP server
-const server = platform.createServer(serviceWorker.handleRequest, {
-	port: PORT,
-	host: HOST,
-});
-
-await server.listen();
-logger.info("Server running", {url: \`http://\${HOST}:\${PORT}\`});
-logger.info("Load balancing", {workers: WORKER_COUNT});
-
-// Graceful shutdown
-const shutdown = async () => {
-	logger.info("Shutting down server", {});
-	await serviceWorker.dispose();
-	await platform.dispose();
-	await server.close();
-	logger.info("Server stopped", {});
-	process.exit(0);
-};
-
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
-`;
+		return entryTemplate;
 	}
 
 	/**

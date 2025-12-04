@@ -17,7 +17,7 @@ import {
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
-import {loadConfig} from "../config.js";
+import {loadConfig, loadRawConfig, generateConfigModule} from "../config.js";
 
 // Configure LogTape for build command
 await configure({
@@ -84,6 +84,34 @@ const BUILD_STRUCTURE = {
 	serverDir: "server",
 	staticDir: "static",
 };
+
+/**
+ * Create the shovel:config virtual module plugin.
+ * This generates the config module at build time with:
+ * - Static imports for provider modules (bundled, tree-shaken)
+ * - process.env references for secrets (evaluated at runtime)
+ */
+function createConfigPlugin(projectRoot: string): ESBuild.Plugin {
+	const rawConfig = loadRawConfig(projectRoot);
+	const configModuleCode = generateConfigModule(rawConfig);
+
+	return {
+		name: "shovel-config",
+		setup(build) {
+			// Intercept imports of "shovel:config"
+			build.onResolve({filter: /^shovel:config$/}, (args) => ({
+				path: args.path,
+				namespace: "shovel-config",
+			}));
+
+			// Return generated config module code
+			build.onLoad({filter: /.*/, namespace: "shovel-config"}, () => ({
+				contents: configModuleCode,
+				loader: "js",
+			}));
+		},
+	};
+}
 
 /**
  * Build ServiceWorker app for production deployment
@@ -291,10 +319,11 @@ async function createBuildConfig({
 
 			// Bundle runtime.js from @b9g/platform to server directory as worker.js
 			// The ServiceWorkerPool needs this to run workers
-			const runtimeSourcePath = join(
-				getNodeModulesPath(),
-				"@b9g/platform/dist/src/runtime.js",
+			// Use import.meta.resolve to handle hoisted node_modules correctly
+			const platformPath = dirname(
+				new URL(import.meta.resolve("@b9g/platform")).pathname,
 			);
+			const runtimeSourcePath = join(platformPath, "runtime.js");
 			const workerDestPath = join(serverDir, "worker.js");
 
 			// Bundle runtime.js with all its dependencies
@@ -314,7 +343,8 @@ async function createBuildConfig({
 		const buildConfig: ESBuild.BuildOptions = {
 			stdin: {
 				contents: entryWrapper,
-				resolveDir: projectRoot, // Resolve packages from user's project
+				// Use serverDir so ./server.js resolves to the built user code
+				resolveDir: serverDir,
 				sourcefile: "virtual-entry.js",
 			},
 			bundle: true,
@@ -334,6 +364,7 @@ async function createBuildConfig({
 			nodePaths: [getNodeModulesPath()],
 			plugins: bundlesUserCodeInline
 				? [
+						createConfigPlugin(projectRoot),
 						importMetaPlugin(),
 						assetsPlugin({
 							outDir: outputDir,
@@ -345,7 +376,7 @@ async function createBuildConfig({
 							},
 						}),
 					]
-				: [], // Assets already handled in user code build
+				: [createConfigPlugin(projectRoot)], // Config plugin needed for entry wrapper
 			metafile: true,
 			sourcemap: BUILD_DEFAULTS.sourcemap,
 			minify: BUILD_DEFAULTS.minify,

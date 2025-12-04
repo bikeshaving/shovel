@@ -26,6 +26,59 @@ import * as HTTP from "http";
 import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
 
+// Entry template embedded as string
+const entryTemplate = `// Node.js Production Server Entry
+// This file is imported as text and used as the entry wrapper template
+import {getLogger} from "@logtape/logtape";
+import {config} from "shovel:config"; // Virtual module - resolved at build time
+import Platform from "@b9g/platform-node";
+
+const logger = getLogger(["server"]);
+
+// Configuration from shovel:config (with process.env fallbacks baked in)
+const PORT = config.port;
+const HOST = config.host;
+const WORKER_COUNT = config.workers;
+
+logger.info("Starting production server", {});
+logger.info("Workers", {count: WORKER_COUNT});
+
+// Create platform instance
+const platform = new Platform();
+
+// Get the path to the user's ServiceWorker code
+const userCodeURL = new URL("./server.js", import.meta.url);
+const userCodePath = userCodeURL.pathname;
+
+// Load ServiceWorker with worker pool
+const serviceWorker = await platform.loadServiceWorker(userCodePath, {
+	workerCount: WORKER_COUNT,
+});
+
+// Create HTTP server
+const server = platform.createServer(serviceWorker.handleRequest, {
+	port: PORT,
+	host: HOST,
+});
+
+await server.listen();
+logger.info("Server running", {url: \`http://\${HOST}:\${PORT}\`});
+logger.info("Load balancing", {workers: WORKER_COUNT});
+
+// Graceful shutdown
+const shutdown = async () => {
+	logger.info("Shutting down server", {});
+	await serviceWorker.dispose();
+	await platform.dispose();
+	await server.close();
+	logger.info("Server stopped", {});
+	process.exit(0);
+};
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+`;
+
 const logger = getLogger(["platform-node"]);
 
 // Re-export common platform types
@@ -443,67 +496,16 @@ export class NodePlatform extends BasePlatform {
 	/**
 	 * Get virtual entry wrapper for Node.js
 	 *
-	 * Returns production server entry template that:
-	 * 1. Imports @b9g/platform-node
-	 * 2. Loads the user's ServiceWorker code
-	 * 3. Creates HTTP server with platform.createServer()
+	 * Returns production server entry template that uses:
+	 * - shovel:config virtual module for configuration
+	 * - Worker threads via ServiceWorkerPool for multi-worker scaling
+	 * - Platform's loadServiceWorker and createServer methods
 	 *
-	 * Note: Node.js doesn't support import.meta.env natively, so the CLI
-	 * adds `define: { "import.meta.env": "process.env" }` via getEsbuildConfig().
+	 * The template is a real .ts file (entry-template.ts) for better
+	 * IDE support and linting. It's imported with {type: "text"}.
 	 */
 	getEntryWrapper(_entryPath: string, _options?: EntryWrapperOptions): string {
-		// Note: entryPath is not used in the wrapper because Node/Bun load
-		// user code at runtime via loadServiceWorker("./server.js")
-		// The CLI builds user code separately to dist/server/server.js
-		return `// Node.js Production Server Entry
-import {getLogger} from "@logtape/logtape";
-import Platform from "@b9g/platform-node";
-
-const logger = getLogger(["worker"]);
-
-// Configuration from environment
-const PORT = parseInt(import.meta.env.PORT || "8080", 10);
-const HOST = import.meta.env.HOST || "0.0.0.0";
-const WORKER_COUNT = parseInt(import.meta.env.WORKERS || "1", 10);
-
-logger.info("Starting production server", {});
-logger.info("Workers", {count: WORKER_COUNT});
-
-// Create platform instance
-const platform = new Platform();
-
-// Get the path to the user's ServiceWorker code
-const userCodeURL = new URL("./server.js", import.meta.url);
-const userCodePath = userCodeURL.pathname;
-
-// Load ServiceWorker with worker pool
-const serviceWorker = await platform.loadServiceWorker(userCodePath, {
-	workerCount: WORKER_COUNT,
-});
-
-// Create HTTP server
-const server = platform.createServer(serviceWorker.handleRequest, {
-	port: PORT,
-	host: HOST,
-});
-
-await server.listen();
-logger.info("Server running", {url: \`http://\${HOST}:\${PORT}\`});
-logger.info("Load balancing", {workers: WORKER_COUNT});
-
-// Graceful shutdown
-const shutdown = async () => {
-	logger.info("Shutting down server", {});
-	await serviceWorker.dispose();
-	await platform.dispose();
-	await server.close();
-	logger.info("Server stopped", {});
-	process.exit(0);
-};
-
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
-`;
+		return entryTemplate;
 	}
 
 	/**
