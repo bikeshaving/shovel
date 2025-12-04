@@ -29,8 +29,12 @@ import * as Path from "path";
 // Entry template embedded as string
 const entryTemplate = `// Bun Production Server Entry
 import {getLogger} from "@logtape/logtape";
+import {configureLogging} from "@b9g/platform/runtime";
 import {config} from "shovel:config"; // Virtual module - resolved at build time
 import BunPlatform from "@b9g/platform-bun";
+
+// Configure logging before anything else
+await configureLogging(config.logging);
 
 const logger = getLogger(["server"]);
 

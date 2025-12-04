@@ -322,7 +322,11 @@ export class RequestCookieStore extends EventTarget {
 }
 
 import type {BucketStorage} from "@b9g/filesystem";
-import {getLogger} from "@logtape/logtape";
+import {
+	getLogger,
+	configure,
+	type LogLevel as LogTapeLevel,
+} from "@logtape/logtape";
 
 const logger = getLogger(["server"]);
 
@@ -1765,4 +1769,210 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 			}
 		}
 	}
+}
+
+// ============================================================================
+// Logging Configuration
+// ============================================================================
+
+/** Log level for filtering */
+export type LogLevel = "debug" | "info" | "warning" | "error";
+
+/** Sink configuration */
+export interface SinkConfig {
+	provider: string;
+	/** Provider-specific options (path, maxSize, etc.) */
+	[key: string]: any;
+}
+
+/** Per-category logging configuration */
+export interface CategoryLoggingConfig {
+	level?: LogLevel;
+	sinks?: SinkConfig[];
+}
+
+export interface LoggingConfig {
+	/** Default log level. Defaults to "info" */
+	level?: LogLevel;
+	/** Default sinks. Defaults to console */
+	sinks?: SinkConfig[];
+	/** Per-category config (inherits from top-level, can override level and/or sinks) */
+	categories?: Record<string, CategoryLoggingConfig>;
+}
+
+/** Processed logging config with all defaults applied */
+export interface ProcessedLoggingConfig {
+	level: LogLevel;
+	sinks: SinkConfig[];
+	categories: Record<string, CategoryLoggingConfig>;
+}
+
+/** All Shovel package categories for logging */
+const SHOVEL_CATEGORIES = [
+	"cli",
+	"build",
+	"server",
+	"watcher",
+	"worker",
+	"single-threaded",
+	"assets",
+	"platform-node",
+	"platform-bun",
+	"platform-cloudflare",
+	"cache",
+	"cache-redis",
+	"router",
+] as const;
+
+/** Built-in sink provider aliases */
+const BUILTIN_SINK_PROVIDERS: Record<
+	string,
+	{module: string; factory: string}
+> = {
+	console: {module: "@logtape/logtape", factory: "getConsoleSink"},
+	file: {module: "@logtape/file", factory: "getFileSink"},
+	rotating: {module: "@logtape/file", factory: "getRotatingFileSink"},
+	"stream-file": {module: "@logtape/file", factory: "getStreamFileSink"},
+	otel: {module: "@logtape/otel", factory: "getOpenTelemetrySink"},
+	sentry: {module: "@logtape/sentry", factory: "getSentrySink"},
+	syslog: {module: "@logtape/syslog", factory: "getSyslogSink"},
+	cloudwatch: {
+		module: "@logtape/cloudwatch-logs",
+		factory: "getCloudWatchLogsSink",
+	},
+};
+
+/**
+ * Create a sink from config.
+ * Supports built-in providers (console, file, rotating, etc.) and custom modules.
+ *
+ * Note: File paths in sinkOptions should already be absolute.
+ * The CLI/build process is responsible for resolving relative paths.
+ */
+async function createSink(config: SinkConfig): Promise<any> {
+	const {provider, ...sinkOptions} = config;
+
+	// Dynamic import based on provider name
+	const builtin = BUILTIN_SINK_PROVIDERS[provider];
+	const modulePath = builtin?.module || provider;
+	const factoryName = builtin?.factory || "default";
+
+	const module = await import(modulePath);
+	const factory = module[factoryName] || module.default;
+
+	if (!factory) {
+		throw new Error(
+			`Sink module "${modulePath}" has no export "${factoryName}"`,
+		);
+	}
+
+	// Pass options to factory (path, maxSize, etc.)
+	return factory(sinkOptions);
+}
+
+/**
+ * Configure LogTape logging based on Shovel config.
+ * Call this in both main thread and workers.
+ *
+ * @param loggingConfig - The logging configuration (sinks defaults to console)
+ * @param options - Additional options
+ * @param options.reset - Whether to reset existing LogTape config (default: true)
+ */
+export async function configureLogging(
+	loggingConfig: LoggingConfig,
+	options: {reset?: boolean} = {},
+): Promise<void> {
+	const level = loggingConfig.level || "info";
+	const defaultSinkConfigs = loggingConfig.sinks || [{provider: "console"}];
+	const categories = loggingConfig.categories || {};
+	const reset = options.reset !== false;
+
+	// Create all unique sinks (default + category-specific)
+	const allSinkConfigs = new Map<string, SinkConfig>();
+	const sinkNameMap = new Map<SinkConfig, string>();
+
+	// Add default sinks
+	for (let i = 0; i < defaultSinkConfigs.length; i++) {
+		const config = defaultSinkConfigs[i];
+		const name = `sink_${i}`;
+		allSinkConfigs.set(name, config);
+		sinkNameMap.set(config, name);
+	}
+
+	// Add category-specific sinks
+	let sinkIndex = defaultSinkConfigs.length;
+	for (const [_, categoryConfig] of Object.entries(categories)) {
+		if (categoryConfig.sinks) {
+			for (const config of categoryConfig.sinks) {
+				// Check if this sink config is already added
+				let found = false;
+				for (const [existingConfig] of sinkNameMap) {
+					if (JSON.stringify(existingConfig) === JSON.stringify(config)) {
+						found = true;
+						break;
+					}
+				}
+				if (!found) {
+					const name = `sink_${sinkIndex++}`;
+					allSinkConfigs.set(name, config);
+					sinkNameMap.set(config, name);
+				}
+			}
+		}
+	}
+
+	// Create sink instances
+	const sinks: Record<string, any> = {};
+	for (const [name, config] of allSinkConfigs) {
+		sinks[name] = await createSink(config);
+	}
+
+	// Get sink names for a given array of sink configs
+	const getSinkNames = (configs: SinkConfig[]): string[] => {
+		return configs
+			.map((config) => {
+				for (const [existingConfig, name] of sinkNameMap) {
+					if (JSON.stringify(existingConfig) === JSON.stringify(config)) {
+						return name;
+					}
+				}
+				return "";
+			})
+			.filter(Boolean);
+	};
+
+	// Default sink names
+	const defaultSinkNames = getSinkNames(defaultSinkConfigs);
+
+	// Build logger configs for each Shovel category
+	const loggers: Array<{
+		category: string[];
+		level: LogTapeLevel;
+		sinks: string[];
+	}> = SHOVEL_CATEGORIES.map((category) => {
+		const categoryConfig = categories[category];
+		const categoryLevel = categoryConfig?.level || level;
+		const categorySinks = categoryConfig?.sinks
+			? getSinkNames(categoryConfig.sinks)
+			: defaultSinkNames;
+
+		return {
+			category: [category],
+			level: categoryLevel as LogTapeLevel,
+			sinks: categorySinks,
+		};
+	});
+
+	// Add meta logger config (suppress info messages about LogTape itself)
+	loggers.push({
+		category: ["logtape", "meta"],
+		level: "warning",
+		sinks: [],
+	});
+
+	await configure({
+		reset,
+		sinks,
+		loggers,
+	});
 }

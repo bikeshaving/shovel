@@ -1,6 +1,7 @@
 import {DEFAULTS} from "../esbuild/config.js";
 import {getLogger} from "@logtape/logtape";
 import * as Platform from "@b9g/platform";
+import {configureLogging} from "@b9g/platform/runtime";
 import * as ESBuild from "esbuild";
 import {resolve, join} from "path";
 import {mkdir} from "fs/promises";
@@ -8,6 +9,7 @@ import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
 import {loadJSXConfig, applyJSXOptions} from "../esbuild/jsx-config.js";
 import {findProjectRoot, getNodeModulesPath} from "../utils/project.js";
+import {loadConfig} from "../config.js";
 
 const logger = getLogger(["cli"]);
 
@@ -16,8 +18,14 @@ export async function activateCommand(
 	options: {workers?: string; verbose?: boolean; platform?: string},
 ) {
 	try {
-		const platformName = Platform.resolvePlatform(options);
-		const workerCount = getWorkerCount(options);
+		const projectRoot = findProjectRoot();
+		const config = loadConfig(projectRoot);
+
+		// Apply user's logging configuration
+		await configureLogging(config.logging, {reset: true});
+
+		const platformName = Platform.resolvePlatform({...options, config});
+		const workerCount = getWorkerCount(options, config);
 
 		logger.debug("Platform: {platform}", {platform: platformName});
 		logger.debug("Worker count: {workerCount}", {workerCount});
@@ -114,17 +122,14 @@ async function buildForActivate(entrypoint: string) {
 	return outfile;
 }
 
-function getWorkerCount(options: {workers?: string}) {
-	// Explicit CLI option takes precedence
+function getWorkerCount(
+	options: {workers?: string},
+	config: {workers?: number} | null,
+) {
+	// CLI option overrides everything (explicit user intent)
 	if (options.workers) {
-		return parseInt(options.workers);
+		return parseInt(options.workers, 10);
 	}
-	// Environment variable second
-	// eslint-disable-next-line no-restricted-properties -- CLI reads env for configuration
-	if (process.env.WORKER_COUNT) {
-		// eslint-disable-next-line no-restricted-properties
-		return parseInt(process.env.WORKER_COUNT);
-	}
-	// Default from config
-	return DEFAULTS.WORKERS;
+	// Config already handles: json value > WORKERS env > default
+	return config?.workers ?? DEFAULTS.WORKERS;
 }

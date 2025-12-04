@@ -18,8 +18,6 @@
  */
 
 import {readFileSync} from "fs";
-import {resolve} from "path";
-import {configure, type LogLevel as LogTapeLevel} from "@logtape/logtape";
 
 /**
  * Get environment variables from import.meta.env or process.env
@@ -899,9 +897,14 @@ export function generateConfigModule(
 			);
 		}
 
-		// Logging
+		// Logging (always include, defaults to console sink)
+		// LOG_LEVEL env var overrides the level if logging config is not specified
 		if (rawConfig.logging) {
 			lines.push(`  logging: ${valueToCode(rawConfig.logging)},`);
+		} else {
+			lines.push(
+				`  logging: {level: process.env.LOG_LEVEL || "info", sinks: [{provider: "console"}], categories: {}},`,
+			);
 		}
 
 		// Caches - with provider references
@@ -1140,181 +1143,4 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 	};
 
 	return config;
-}
-
-// ============================================================================
-// LOGGING CONFIGURATION
-// ============================================================================
-
-/** All Shovel package categories for logging */
-const SHOVEL_CATEGORIES = [
-	"cli",
-	"watcher",
-	"worker",
-	"single-threaded",
-	"assets",
-	"platform-node",
-	"platform-bun",
-	"platform-cloudflare",
-	"cache",
-	"cache-redis",
-	"router",
-] as const;
-
-/** Built-in sink provider aliases */
-const BUILTIN_SINK_PROVIDERS: Record<
-	string,
-	{module: string; factory: string}
-> = {
-	console: {module: "@logtape/logtape", factory: "getConsoleSink"},
-	file: {module: "@logtape/file", factory: "getFileSink"},
-	rotating: {module: "@logtape/file", factory: "getRotatingFileSink"},
-	"stream-file": {module: "@logtape/file", factory: "getStreamFileSink"},
-	otel: {module: "@logtape/otel", factory: "getOpenTelemetrySink"},
-	sentry: {module: "@logtape/sentry", factory: "getSentrySink"},
-	syslog: {module: "@logtape/syslog", factory: "getSyslogSink"},
-	cloudwatch: {
-		module: "@logtape/cloudwatch-logs",
-		factory: "getCloudWatchLogsSink",
-	},
-};
-
-/**
- * Create a sink from config.
- * Checks the build-time registry first, falls back to dynamic import.
- * Supports built-in providers (console, file, rotating, etc.) and custom modules.
- */
-async function createSink(
-	config: SinkConfig,
-	options: {cwd?: string} = {},
-): Promise<any> {
-	const {provider, ...sinkOptions} = config;
-
-	// Resolve relative paths for file-based sinks
-	if (sinkOptions.path && options.cwd) {
-		sinkOptions.path = resolve(options.cwd, sinkOptions.path);
-	}
-
-	// Dynamic import based on provider name
-	const builtin = BUILTIN_SINK_PROVIDERS[provider];
-	const modulePath = builtin?.module || provider;
-	const factoryName = builtin?.factory || "default";
-
-	const module = await import(modulePath);
-	const factory = module[factoryName] || module.default;
-
-	if (!factory) {
-		throw new Error(
-			`Sink module "${modulePath}" has no export "${factoryName}"`,
-		);
-	}
-
-	// Pass options to factory (path, maxSize, etc.)
-	return factory(sinkOptions);
-}
-
-/**
- * Configure LogTape logging based on Shovel config.
- * Call this in both main thread and workers.
- *
- * @param loggingConfig - The logging configuration from ProcessedShovelConfig.logging
- * @param options - Additional options
- * @param options.reset - Whether to reset existing LogTape config (default: true)
- * @param options.cwd - Working directory for resolving relative paths
- */
-export async function configureLogging(
-	loggingConfig: ProcessedLoggingConfig,
-	options: {reset?: boolean; cwd?: string} = {},
-): Promise<void> {
-	const {level, sinks: defaultSinkConfigs, categories} = loggingConfig;
-	const reset = options.reset !== false;
-
-	// Create all unique sinks (default + category-specific)
-	const allSinkConfigs = new Map<string, SinkConfig>();
-	const sinkNameMap = new Map<SinkConfig, string>();
-
-	// Add default sinks
-	for (let i = 0; i < defaultSinkConfigs.length; i++) {
-		const config = defaultSinkConfigs[i];
-		const name = `sink_${i}`;
-		allSinkConfigs.set(name, config);
-		sinkNameMap.set(config, name);
-	}
-
-	// Add category-specific sinks
-	let sinkIndex = defaultSinkConfigs.length;
-	for (const [_, categoryConfig] of Object.entries(categories)) {
-		if (categoryConfig.sinks) {
-			for (const config of categoryConfig.sinks) {
-				// Check if this sink config is already added
-				let found = false;
-				for (const [existingConfig, _name] of sinkNameMap) {
-					if (JSON.stringify(existingConfig) === JSON.stringify(config)) {
-						found = true;
-						break;
-					}
-				}
-				if (!found) {
-					const name = `sink_${sinkIndex++}`;
-					allSinkConfigs.set(name, config);
-					sinkNameMap.set(config, name);
-				}
-			}
-		}
-	}
-
-	// Create sink instances
-	const sinks: Record<string, any> = {};
-	for (const [name, config] of allSinkConfigs) {
-		sinks[name] = await createSink(config, {cwd: options.cwd});
-	}
-
-	// Get sink names for a given array of sink configs
-	const getSinkNames = (configs: SinkConfig[]): string[] => {
-		return configs
-			.map((config) => {
-				for (const [existingConfig, name] of sinkNameMap) {
-					if (JSON.stringify(existingConfig) === JSON.stringify(config)) {
-						return name;
-					}
-				}
-				return "";
-			})
-			.filter(Boolean);
-	};
-
-	// Default sink names
-	const defaultSinkNames = getSinkNames(defaultSinkConfigs);
-
-	// Build logger configs for each Shovel category
-	const loggers: Array<{
-		category: string[];
-		level: LogTapeLevel;
-		sinks: string[];
-	}> = SHOVEL_CATEGORIES.map((category) => {
-		const categoryConfig = categories[category];
-		const categoryLevel = categoryConfig?.level || level;
-		const categorySinks = categoryConfig?.sinks
-			? getSinkNames(categoryConfig.sinks)
-			: defaultSinkNames;
-
-		return {
-			category: [category],
-			level: categoryLevel as LogTapeLevel,
-			sinks: categorySinks,
-		};
-	});
-
-	// Add meta logger config (suppress info messages about LogTape itself)
-	loggers.push({
-		category: ["logtape", "meta"],
-		level: "warning",
-		sinks: [],
-	});
-
-	await configure({
-		reset,
-		sinks,
-		loggers,
-	});
 }

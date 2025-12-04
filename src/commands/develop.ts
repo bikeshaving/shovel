@@ -2,6 +2,7 @@ import {DEFAULTS} from "../esbuild/config.js";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
+import {configureLogging} from "@b9g/platform/runtime";
 import {loadConfig} from "../config.js";
 import {Watcher} from "../esbuild/watcher.js";
 import {findProjectRoot} from "../utils/project.js";
@@ -37,6 +38,10 @@ export async function developCommand(
 		// Load config from project root (where package.json lives)
 		const projectRoot = findProjectRoot();
 		const config = loadConfig(projectRoot);
+
+		// Apply user's logging configuration (replaces early console-only config)
+		await configureLogging(config.logging, {reset: true});
+
 		const platformName = Platform.resolvePlatform({...options, config});
 		const workerCount = getWorkerCount(options, config);
 

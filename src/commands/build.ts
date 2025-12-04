@@ -17,6 +17,7 @@ import {
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 import * as Platform from "@b9g/platform";
+import {configureLogging} from "@b9g/platform/runtime";
 import {loadConfig, loadRawConfig, generateConfigModule} from "../config.js";
 
 // Configure LogTape for build command
@@ -541,6 +542,9 @@ export async function buildCommand(entrypoint: string, options: any) {
 	// Load config from project root (where package.json lives)
 	const projectRoot = findProjectRoot();
 	const config = loadConfig(projectRoot);
+
+	// Apply user's logging configuration (replaces early console-only config)
+	await configureLogging(config.logging, {reset: true});
 
 	// Use same platform resolution as develop command
 	const platform = Platform.resolvePlatform({...options, config});

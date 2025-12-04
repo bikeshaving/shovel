@@ -30,8 +30,12 @@ import {getLogger} from "@logtape/logtape";
 const entryTemplate = `// Node.js Production Server Entry
 // This file is imported as text and used as the entry wrapper template
 import {getLogger} from "@logtape/logtape";
+import {configureLogging} from "@b9g/platform/runtime";
 import {config} from "shovel:config"; // Virtual module - resolved at build time
 import Platform from "@b9g/platform-node";
+
+// Configure logging before anything else
+await configureLogging(config.logging);
 
 const logger = getLogger(["server"]);
 

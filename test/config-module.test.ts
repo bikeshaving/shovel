@@ -417,6 +417,34 @@ describe("generateConfigModule", () => {
 			expect(module).toContain('"provider": "console"');
 		});
 
+		it("generates default logging config when not specified", () => {
+			const config = {
+				port: 3000,
+			};
+
+			const module = generateConfigModule(config);
+
+			// Should have logging with LOG_LEVEL env override
+			expect(module).toContain("logging:");
+			expect(module).toContain('process.env.LOG_LEVEL || "info"');
+			expect(module).toContain('provider: "console"');
+		});
+
+		it("uses explicit logging config over LOG_LEVEL env var", () => {
+			const config = {
+				logging: {
+					level: "debug",
+					sinks: [{provider: "console"}],
+				},
+			};
+
+			const module = generateConfigModule(config);
+
+			// Should use explicit config, not env var
+			expect(module).toContain('"level": "debug"');
+			expect(module).not.toContain("process.env.LOG_LEVEL");
+		});
+
 		it("keeps sink secrets as process.env references", () => {
 			const config = {
 				logging: {

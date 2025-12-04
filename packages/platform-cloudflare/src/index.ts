@@ -401,11 +401,11 @@ export class CloudflarePlatform extends BasePlatform {
 		const safePath = JSON.stringify(entryPath);
 		return `// Cloudflare Worker Entry - uses ServiceWorkerGlobals for feature parity with Node/Bun
 import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/cloudflare-runtime";
+import { configureLogging } from "@b9g/platform/runtime";
 import { config } from "shovel:config"; // Virtual module - resolved at build time
 
-// Config available for caches/buckets provider configuration
-// (Cloudflare doesn't use port/host/workers from config)
-void config;
+// Configure logging before anything else
+await configureLogging(config.logging);
 
 // Initialize runtime BEFORE user code (installs globals like addEventListener)
 const registration = initializeRuntime();

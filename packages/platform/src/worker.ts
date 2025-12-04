@@ -15,13 +15,14 @@
  */
 
 import {resolve} from "path";
-import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
+import {getLogger} from "@logtape/logtape";
 import {CustomBucketStorage, type BucketFactory} from "@b9g/filesystem";
 import {CustomCacheStorage, type CacheFactory, Cache} from "@b9g/cache";
 import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
 import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
+	configureLogging,
 } from "./runtime.js";
 import type {
 	WorkerMessage,
@@ -345,45 +346,8 @@ async function loadServiceWorker(entrypoint: string): Promise<void> {
 async function initializeRuntime(config: any, baseDir: string): Promise<void> {
 	try {
 		// Reconfigure logging if config specifies logging options
-		const loggingConfig = config?.logging;
-		if (loggingConfig) {
-			type LogLevel =
-				| "trace"
-				| "debug"
-				| "info"
-				| "warning"
-				| "error"
-				| "fatal";
-			const defaultLevel = (loggingConfig.level || "info") as LogLevel;
-			const categories = loggingConfig.categories || {};
-
-			// Build logger configs: start with catch-all, then add per-category overrides
-			const loggers: Array<{
-				category: string[];
-				lowestLevel: LogLevel;
-				sinks: string[];
-			}> = [
-				{category: [], lowestLevel: defaultLevel, sinks: ["console"]},
-				{category: ["logtape", "meta"], lowestLevel: "warning", sinks: []},
-			];
-
-			// Add per-category overrides
-			for (const [categoryName, categoryConfig] of Object.entries(categories)) {
-				if (categoryConfig && typeof categoryConfig === "object") {
-					const catConfig = categoryConfig as {level?: string};
-					loggers.push({
-						category: [categoryName],
-						lowestLevel: (catConfig.level || defaultLevel) as LogLevel,
-						sinks: ["console"],
-					});
-				}
-			}
-
-			await configure({
-				reset: true,
-				sinks: {console: getConsoleSink()},
-				loggers,
-			});
+		if (config?.logging) {
+			await configureLogging(config.logging, {reset: true});
 		}
 
 		logger.info(`[Worker-${workerId}] Initializing runtime`, {config, baseDir});
