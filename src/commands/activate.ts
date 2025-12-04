@@ -11,6 +11,11 @@ import {loadJSXConfig, applyJSXOptions} from "../esbuild/jsx-config.js";
 import {findProjectRoot, getNodeModulesPath} from "../utils/project.js";
 import {loadConfig} from "../config.js";
 
+// Load config and configure logging before anything else
+const projectRoot = findProjectRoot();
+const config = loadConfig(projectRoot);
+await configureLogging(config.logging);
+
 const logger = getLogger(["cli"]);
 
 export async function activateCommand(
@@ -18,12 +23,6 @@ export async function activateCommand(
 	options: {workers?: string; verbose?: boolean; platform?: string},
 ) {
 	try {
-		const projectRoot = findProjectRoot();
-		const config = loadConfig(projectRoot);
-
-		// Apply user's logging configuration
-		await configureLogging(config.logging, {reset: true});
-
 		const platformName = Platform.resolvePlatform({...options, config});
 		const workerCount = getWorkerCount(options, config);
 

@@ -1,26 +1,15 @@
 import {DEFAULTS} from "../esbuild/config.js";
-import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
-import {AsyncContext} from "@b9g/async-context";
+import {getLogger} from "@logtape/logtape";
 import * as Platform from "@b9g/platform";
 import {configureLogging} from "@b9g/platform/runtime";
 import {loadConfig} from "../config.js";
 import {Watcher} from "../esbuild/watcher.js";
 import {findProjectRoot} from "../utils/project.js";
 
-// Configure LogTape for CLI logging (users can reconfigure with reset: true)
-// Categories: cli (CLI commands), build (watcher/assets), server (runtime/workers)
-await configure({
-	contextLocalStorage: new AsyncContext.Variable(),
-	sinks: {
-		console: getConsoleSink(),
-	},
-	loggers: [
-		{category: ["logtape", "meta"], sinks: []},
-		{category: ["cli"], lowestLevel: "debug", sinks: ["console"]},
-		{category: ["build"], lowestLevel: "debug", sinks: ["console"]},
-		{category: ["server"], lowestLevel: "debug", sinks: ["console"]},
-	],
-});
+// Load config and configure logging before anything else
+const projectRoot = findProjectRoot();
+const config = loadConfig(projectRoot);
+await configureLogging(config.logging);
 
 const logger = getLogger(["cli"]);
 
@@ -35,13 +24,6 @@ export async function developCommand(
 	},
 ) {
 	try {
-		// Load config from project root (where package.json lives)
-		const projectRoot = findProjectRoot();
-		const config = loadConfig(projectRoot);
-
-		// Apply user's logging configuration (replaces early console-only config)
-		await configureLogging(config.logging, {reset: true});
-
 		const platformName = Platform.resolvePlatform({...options, config});
 		const workerCount = getWorkerCount(options, config);
 
