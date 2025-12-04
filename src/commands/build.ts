@@ -16,13 +16,8 @@ import {
 } from "../utils/project.js";
 import {getLogger} from "@logtape/logtape";
 import * as Platform from "@b9g/platform";
-import {configureLogging} from "@b9g/platform/runtime";
-import {loadConfig, loadRawConfig, generateConfigModule} from "../config.js";
-
-// Load config and configure logging before anything else
-const projectRoot = findProjectRoot();
-const config = loadConfig(projectRoot);
-await configureLogging(config.logging);
+import {loadRawConfig, generateConfigModule} from "../config.js";
+import type {ProcessedShovelConfig} from "../config.js";
 
 const logger = getLogger(["cli"]);
 
@@ -527,7 +522,11 @@ async function generateExecutablePackageJSON(platform: string) {
 /**
  * CLI command wrapper for buildForProduction
  */
-export async function buildCommand(entrypoint: string, options: any) {
+export async function buildCommand(
+	entrypoint: string,
+	options: {workers?: string; verbose?: boolean; platform?: string},
+	config: ProcessedShovelConfig,
+) {
 	// Use same platform resolution as develop command
 	const platform = Platform.resolvePlatform({...options, config});
 

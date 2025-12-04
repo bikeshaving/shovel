@@ -1,15 +1,8 @@
 import {DEFAULTS} from "../esbuild/config.js";
 import {getLogger} from "@logtape/logtape";
 import * as Platform from "@b9g/platform";
-import {configureLogging} from "@b9g/platform/runtime";
-import {loadConfig} from "../config.js";
+import type {ProcessedShovelConfig} from "../config.js";
 import {Watcher} from "../esbuild/watcher.js";
-import {findProjectRoot} from "../utils/project.js";
-
-// Load config and configure logging before anything else
-const projectRoot = findProjectRoot();
-const config = loadConfig(projectRoot);
-await configureLogging(config.logging);
 
 const logger = getLogger(["cli"]);
 
@@ -22,6 +15,7 @@ export async function developCommand(
 		verbose?: boolean;
 		platform?: string;
 	},
+	config: ProcessedShovelConfig,
 ) {
 	try {
 		const platformName = Platform.resolvePlatform({...options, config});

@@ -1,7 +1,7 @@
 import {DEFAULTS} from "../esbuild/config.js";
 import {getLogger} from "@logtape/logtape";
 import * as Platform from "@b9g/platform";
-import {configureLogging} from "@b9g/platform/runtime";
+import type {ProcessedShovelConfig} from "../config.js";
 import * as ESBuild from "esbuild";
 import {resolve, join} from "path";
 import {mkdir} from "fs/promises";
@@ -9,18 +9,13 @@ import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
 import {loadJSXConfig, applyJSXOptions} from "../esbuild/jsx-config.js";
 import {findProjectRoot, getNodeModulesPath} from "../utils/project.js";
-import {loadConfig} from "../config.js";
-
-// Load config and configure logging before anything else
-const projectRoot = findProjectRoot();
-const config = loadConfig(projectRoot);
-await configureLogging(config.logging);
 
 const logger = getLogger(["cli"]);
 
 export async function activateCommand(
 	entrypoint: string,
 	options: {workers?: string; verbose?: boolean; platform?: string},
+	config: ProcessedShovelConfig,
 ) {
 	try {
 		const platformName = Platform.resolvePlatform({...options, config});
