@@ -1807,6 +1807,38 @@ export interface ProcessedLoggingConfig {
 	categories: Record<string, CategoryLoggingConfig>;
 }
 
+// ============================================================================
+// Shovel Configuration Types
+// ============================================================================
+
+/** Cache provider configuration */
+export interface CacheConfig {
+	provider?: string;
+	[key: string]: unknown;
+}
+
+/** Bucket (filesystem) provider configuration */
+export interface BucketConfig {
+	provider?: string;
+	path?: string;
+	[key: string]: unknown;
+}
+
+/** Shovel application configuration (from shovel.json) */
+export interface ShovelConfig {
+	port?: number;
+	host?: string;
+	workers?: number;
+	platform?: string;
+	logging?: LoggingConfig;
+	caches?: Record<string, CacheConfig>;
+	buckets?: Record<string, BucketConfig>;
+}
+
+// ============================================================================
+// Logging Implementation
+// ============================================================================
+
 /** All Shovel package categories for logging */
 const SHOVEL_CATEGORIES = [
 	"cli",

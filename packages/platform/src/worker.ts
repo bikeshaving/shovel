@@ -23,6 +23,9 @@ import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
 	configureLogging,
+	type CacheConfig,
+	type BucketConfig,
+	type ShovelConfig,
 } from "./runtime.js";
 import type {
 	WorkerMessage,
@@ -32,27 +35,6 @@ import type {
 	WorkerResponse,
 	WorkerErrorMessage,
 } from "./index.js";
-
-// ============================================================================
-// Storage Factory Types
-// ============================================================================
-
-export interface CacheConfig {
-	provider?: string;
-	[key: string]: any;
-}
-
-export interface BucketConfig {
-	provider?: string;
-	path?: string;
-	[key: string]: any;
-}
-
-export interface ShovelConfig {
-	caches?: Record<string, CacheConfig>;
-	buckets?: Record<string, BucketConfig>;
-	[key: string]: any;
-}
 
 // ============================================================================
 // Pattern Matching
