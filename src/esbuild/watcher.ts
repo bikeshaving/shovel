@@ -10,9 +10,71 @@ import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "./import-meta-plugin.js";
 import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
 import {findProjectRoot} from "../utils/project.js";
+import {loadRawConfig, generateConfigModule} from "../config.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["build"]);
+
+/**
+ * Create the shovel:config virtual module plugin.
+ */
+function createConfigPlugin(projectRoot: string): ESBuild.Plugin {
+	const rawConfig = loadRawConfig(projectRoot);
+	const configModuleCode = generateConfigModule(rawConfig);
+
+	return {
+		name: "shovel-config",
+		setup(build) {
+			build.onResolve({filter: /^shovel:config$/}, (args) => ({
+				path: args.path,
+				namespace: "shovel-config",
+			}));
+
+			build.onLoad({filter: /.*/, namespace: "shovel-config"}, () => ({
+				contents: configModuleCode,
+				loader: "js",
+			}));
+		},
+	};
+}
+
+/**
+ * Build the worker with shovel:config resolved.
+ * Creates a virtual entry that configures logging before importing the actual worker.
+ */
+async function buildWorker(
+	projectRoot: string,
+	outputDir: string,
+): Promise<void> {
+	const workerDestPath = join(outputDir, "server", "worker.js");
+
+	// Virtual worker entry that configures logging before importing the actual worker
+	const virtualWorkerEntry = `
+import {configureLogging} from "@b9g/platform/runtime";
+import {config} from "shovel:config";
+await configureLogging(config.logging);
+
+// Import the actual worker (runs its initialization code)
+import "@b9g/platform/worker";
+`;
+
+	await ESBuild.build({
+		stdin: {
+			contents: virtualWorkerEntry,
+			resolveDir: projectRoot,
+			sourcefile: "virtual-worker-entry.js",
+		},
+		bundle: true,
+		format: "esm",
+		target: "es2022",
+		platform: "node",
+		outfile: workerDestPath,
+		external: ["node:*"],
+		plugins: [createConfigPlugin(projectRoot)],
+	});
+
+	logger.info("Built worker", {workerDestPath});
+}
 
 export interface WatcherOptions {
 	/** Entry point to build */
@@ -52,6 +114,9 @@ export class Watcher {
 		// Ensure output directory structure exists
 		await mkdir(join(outputDir, "server"), {recursive: true});
 		await mkdir(join(outputDir, "static"), {recursive: true});
+
+		// Build the worker with shovel:config resolved
+		await buildWorker(this.#projectRoot, outputDir);
 
 		// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
 		const jsxOptions = await loadJSXConfig(this.#projectRoot);

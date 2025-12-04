@@ -307,25 +307,33 @@ async function createBuildConfig({
 			// Validate no non-bundleable dynamic imports in user code
 			validateDynamicImports(userBuildResult, "user code");
 
-			// Bundle runtime.js from @b9g/platform to server directory as worker.js
+			// Build worker with virtual entry that configures logging via shovel:config
 			// The ServiceWorkerPool needs this to run workers
-			// Use import.meta.resolve to handle hoisted node_modules correctly
-			const platformPath = dirname(
-				new URL(import.meta.resolve("@b9g/platform")).pathname,
-			);
-			const runtimeSourcePath = join(platformPath, "runtime.js");
 			const workerDestPath = join(serverDir, "worker.js");
 
-			// Bundle runtime.js with all its dependencies
-			// Note: No define needed - runtime.ts polyfills import.meta.env from process.env
+			// Virtual worker entry that configures logging before importing the actual worker
+			const virtualWorkerEntry = `
+import {configureLogging} from "@b9g/platform/runtime";
+import {config} from "shovel:config";
+await configureLogging(config.logging);
+
+// Import the actual worker (runs its initialization code)
+import "@b9g/platform/worker";
+`;
+
 			await ESBuild.build({
-				entryPoints: [runtimeSourcePath],
+				stdin: {
+					contents: virtualWorkerEntry,
+					resolveDir: projectRoot,
+					sourcefile: "virtual-worker-entry.js",
+				},
 				bundle: true,
 				format: "esm",
 				target: "es2022",
 				platform: "node",
 				outfile: workerDestPath,
 				external: ["node:*"],
+				plugins: [createConfigPlugin(projectRoot)],
 			});
 		}
 
