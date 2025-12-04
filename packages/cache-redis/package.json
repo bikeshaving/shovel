@@ -3,7 +3,6 @@
   "version": "0.1.4",
   "description": "Redis cache adapter for Shovel cache system",
   "type": "module",
-  "main": "./dist/src/index.cjs",
   "types": "./dist/src/index.d.ts",
   "files": [
     "dist",
@@ -42,18 +41,15 @@
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "require": "./dist/src/index.cjs"
+      "import": "./dist/src/index.js"
     },
     "./index": {
       "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "require": "./dist/src/index.cjs"
+      "import": "./dist/src/index.js"
     },
     "./index.js": {
       "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "require": "./dist/src/index.cjs"
+      "import": "./dist/src/index.js"
     },
     "./package.json": "./dist/package.json"
   }
