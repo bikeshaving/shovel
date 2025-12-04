@@ -69,12 +69,12 @@ describe("cross-worker cache sharing", () => {
 		// Create shared cache storage on main thread
 		cacheStorage = new CustomCacheStorage((name) => new MemoryCache(name));
 
-		// Create pool with 2 workers
+		// Create pool with 2 workers (use debug logging to see cache messages)
 		pool = new ServiceWorkerPool(
 			{workerCount: 2, requestTimeout: 5000, cwd: tempDir},
 			workerPath,
 			cacheStorage,
-			{},
+			{logging: {level: "debug"}},
 		);
 
 		await pool.init();
@@ -96,7 +96,9 @@ describe("cross-worker cache sharing", () => {
 	it("cache write in one worker is visible to another worker", async () => {
 		// Put a value via one request (goes to worker 1)
 		const putResponse = await pool.handleRequest(
-			new Request("http://localhost/cache-put?key=shared-key&value=shared-value"),
+			new Request(
+				"http://localhost/cache-put?key=shared-key&value=shared-value",
+			),
 		);
 		expect(await putResponse.text()).toBe("cached: shared-key");
 

@@ -14,7 +14,7 @@ type ShovelConfig = Record<string, unknown>;
 // Runtime global declarations
 declare const Deno: any;
 
-const logger = getLogger(["multi-threaded"]);
+const logger = getLogger(["server"]);
 
 // ============================================================================
 // Common Interface

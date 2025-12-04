@@ -79,10 +79,7 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 `;
 
-const logger = getLogger(["platform-node"]);
-
-// Re-export common platform types
-export type {Platform, Handler, Server, ServerOptions} from "@b9g/platform";
+const logger = getLogger(["server"]);
 
 // ============================================================================
 // TYPES

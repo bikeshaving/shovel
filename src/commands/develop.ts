@@ -7,6 +7,7 @@ import {Watcher} from "../esbuild/watcher.js";
 import {findProjectRoot} from "../utils/project.js";
 
 // Configure LogTape for CLI logging (users can reconfigure with reset: true)
+// Categories: cli (CLI commands), build (watcher/assets), server (runtime/workers)
 await configure({
 	contextLocalStorage: new AsyncContext.Variable(),
 	sinks: {
@@ -14,15 +15,9 @@ await configure({
 	},
 	loggers: [
 		{category: ["logtape", "meta"], sinks: []},
-		{category: ["platform-node"], level: "debug", sinks: ["console"]},
-		{category: ["platform-bun"], level: "debug", sinks: ["console"]},
-		{category: ["platform-cloudflare"], level: "debug", sinks: ["console"]},
-		{category: ["cache"], level: "debug", sinks: ["console"]},
-		{category: ["router"], level: "debug", sinks: ["console"]},
-		{category: ["assets"], level: "debug", sinks: ["console"]},
 		{category: ["cli"], level: "debug", sinks: ["console"]},
-		{category: ["watcher"], level: "debug", sinks: ["console"]},
-		{category: ["worker"], level: "debug", sinks: ["console"]},
+		{category: ["build"], level: "debug", sinks: ["console"]},
+		{category: ["server"], level: "debug", sinks: ["console"]},
 	],
 });
 

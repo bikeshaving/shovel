@@ -30,28 +30,8 @@ export interface ErrorEvent {
  * This provides Web Worker globals in the Node.js worker_threads context
  * Using a data URL avoids needing to write any files to disk (temp or otherwise)
  */
-const WORKER_WRAPPER_CODE = `
-import {parentPort} from "worker_threads";
-
-// Provide Web Worker globals
-globalThis.onmessage = null;
-globalThis.postMessage = (data) => parentPort.postMessage(data);
-
-// Set up message forwarding
-parentPort.on("message", (data) => {
-	if (globalThis.onmessage) {
-		globalThis.onmessage({data, type: "message"});
-	}
-});
-
-// Import the actual worker script URL from environment variable
-const WORKER_SCRIPT_URL = process.env.WORKER_SCRIPT_URL;
-if (WORKER_SCRIPT_URL) {
-	await import(WORKER_SCRIPT_URL);
-} else {
-	throw new Error("WORKER_SCRIPT_URL environment variable not set");
-}
-`;
+// Compact wrapper code to keep data URL length under limits
+const WORKER_WRAPPER_CODE = `import{parentPort as p}from"worker_threads";const l=new Set();globalThis.onmessage=null;globalThis.postMessage=(d,t)=>t?.length?p.postMessage(d,t):p.postMessage(d);globalThis.self=globalThis;globalThis.addEventListener=(t,f)=>t==="message"&&l.add(f);globalThis.removeEventListener=(t,f)=>t==="message"&&l.delete(f);p.on("message",d=>{const e={data:d,type:"message"};globalThis.onmessage?.(e);l.forEach(f=>f(e))});const u=process.env.WORKER_SCRIPT_URL;if(u)await import(u);else throw Error("WORKER_SCRIPT_URL not set");`;
 
 // Create data URL from wrapper code (created once and reused)
 const WORKER_WRAPPER_DATA_URL = new URL(

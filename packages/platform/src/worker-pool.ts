@@ -12,7 +12,7 @@ import {getLogger} from "@logtape/logtape";
 // Runtime global declarations
 declare const Deno: any;
 
-const logger = getLogger(["worker"]);
+const logger = getLogger(["server"]);
 
 // ============================================================================
 // Worker Message Types
@@ -271,7 +271,9 @@ export class ServiceWorkerPool {
 		const worker = await createWebWorker(workerScript);
 
 		// Create promises for worker initialization steps
-		const workerReadyPromise = new Promise<void>((resolve) => {
+		let rejectWorkerReady: (error: Error) => void;
+		const workerReadyPromise = new Promise<void>((resolve, reject) => {
+			rejectWorkerReady = reject;
 			this.#pendingWorkerInit.set(worker, {
 				workerReady: resolve,
 			});
@@ -283,14 +285,19 @@ export class ServiceWorkerPool {
 		});
 
 		worker.addEventListener("error", (event: any) => {
+			const errorMessage =
+				event.message || event.error?.message || "Unknown worker error";
+			const error = new Error(`Worker failed to start: ${errorMessage}`);
 			logger.error("Worker error", {
-				message: event.message || event.error?.message,
+				message: errorMessage,
 				filename: event.filename,
 				lineno: event.lineno,
 				colno: event.colno,
 				error: event.error,
 				stack: event.error?.stack,
 			});
+			// Reject pending promises so we don't hang forever
+			rejectWorkerReady(error);
 		});
 
 		this.#workers.push(worker);
@@ -365,21 +372,11 @@ export class ServiceWorkerPool {
 			default:
 				// Handle cache messages from PostMessageCache
 				if (message.type?.startsWith("cache:")) {
-					logger.debug("Cache message detected", {
-						type: message.type,
-						hasStorage: !!this.#cacheStorage,
-					});
-
+					logger.debug("Cache message received", {type: message.type});
 					if (this.#cacheStorage) {
-						// CustomCacheStorage has handleMessage method for PostMessage coordination
-						const handleMessage = (this.#cacheStorage as any).handleMessage;
-						logger.debug("handleMessage check", {
-							hasMethod: typeof handleMessage === "function",
-						});
-
-						if (typeof handleMessage === "function") {
-							logger.debug("Calling handleMessage");
-							void handleMessage.call(this.#cacheStorage, worker, message);
+						const storage = this.#cacheStorage as any;
+						if (typeof storage.handleMessage === "function") {
+							void storage.handleMessage(worker, message);
 						}
 					}
 				}

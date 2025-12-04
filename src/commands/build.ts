@@ -20,6 +20,7 @@ import * as Platform from "@b9g/platform";
 import {loadConfig, loadRawConfig, generateConfigModule} from "../config.js";
 
 // Configure LogTape for build command
+// Categories: cli (CLI commands), build (watcher/assets)
 await configure({
 	reset: true,
 	contextLocalStorage: new AsyncContext.Variable(),
@@ -29,7 +30,7 @@ await configure({
 	loggers: [
 		{category: ["logtape", "meta"], sinks: []},
 		{category: ["cli"], level: "info", sinks: ["console"]},
-		{category: ["assets"], level: "info", sinks: ["console"]},
+		{category: ["build"], level: "info", sinks: ["console"]},
 	],
 });
 

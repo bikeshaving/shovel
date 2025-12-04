@@ -35,7 +35,7 @@ import {AsyncContext} from "@b9g/async-context";
 import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
 
-const logger = getLogger(["platform-cloudflare"]);
+const logger = getLogger(["server"]);
 
 // Re-export common platform types
 export type {

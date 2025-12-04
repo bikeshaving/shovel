@@ -52,7 +52,7 @@ const TRANSPILABLE_EXTENSIONS = new Set([
  */
 const CSS_EXTENSIONS = new Set([".css"]);
 
-const logger = getLogger(["assets"]);
+const logger = getLogger(["build"]);
 
 /**
  * ESBuild options that can be passed for client bundle transpilation

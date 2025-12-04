@@ -12,7 +12,7 @@ import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
 import {findProjectRoot} from "../utils/project.js";
 import {getLogger} from "@logtape/logtape";
 
-const logger = getLogger(["watcher"]);
+const logger = getLogger(["build"]);
 
 export interface WatcherOptions {
 	/** Entry point to build */

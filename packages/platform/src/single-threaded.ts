@@ -14,7 +14,7 @@ import {
 } from "./runtime.js";
 import type {BucketStorage} from "@b9g/filesystem";
 
-const logger = getLogger(["single-threaded"]);
+const logger = getLogger(["server"]);
 
 /**
  * Common interface for ServiceWorker runtimes

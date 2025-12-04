@@ -5,12 +5,10 @@
 
 import {parentPort} from "worker_threads";
 import {MemoryCache} from "../src/memory.js";
+import {handleCacheResponse, PostMessageCache} from "../src/postmessage.js";
 
 // Create main thread cache coordinator
 const caches = new Map<string, MemoryCache>();
-
-// Set up message handlers for self
-const messageHandlers: Array<(event: MessageEvent) => void> = [];
 
 // Set up WorkerGlobalScope classes (for compatibility)
 // This simulates what ServiceWorkerGlobals.install() does
@@ -26,20 +24,13 @@ globalThis.self = {
 		// Handle cache operations internally
 		handleCacheOperation(message).then((response) => {
 			if (response) {
-				// Dispatch to message handlers
-				messageHandlers.forEach((handler) => {
-					handler({data: response, type: "message"} as MessageEvent);
-				});
+				// Forward cache response to handleCacheResponse (like worker.ts does)
+				handleCacheResponse(response);
 			}
 		});
 		// Also send to parent for debugging
 		if (parentPort && message.command) {
 			parentPort.postMessage(message);
-		}
-	},
-	addEventListener: (type: string, handler: any) => {
-		if (type === "message") {
-			messageHandlers.push(handler);
 		}
 	},
 } as any;
@@ -140,9 +131,6 @@ if (parentPort) {
 		if (!command) return;
 
 		try {
-			// Import PostMessageCache dynamically after self globals are set up
-			const {PostMessageCache} = await import("../src/postmessage.js");
-
 			if (command === "init") {
 				const cache = new PostMessageCache("test-cache");
 				(globalThis as any).testCache = cache;

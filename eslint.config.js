@@ -16,6 +16,7 @@ export default [
 			"**/*.min.js",
 			"examples/tfb/**", // Third-party framework benchmarks - not our code
 			"packages/shovel-wpt/wpt/**", // Web Platform Tests - third-party test suite
+			"packages/shovel-wpt/test/fixtures/**", // Dynamically generated test fixtures
 		],
 	},
 	js.configs.recommended,

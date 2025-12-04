@@ -10,6 +10,7 @@
 
 import {resolve} from "path";
 import {Cache} from "@b9g/cache";
+import {PostMessageCache} from "@b9g/cache/postmessage";
 
 // ============================================================================
 // TYPES (subset of config types needed for factories)
@@ -160,13 +161,15 @@ export interface CacheFactoryOptions {
 	config?: ShovelConfig;
 	/** Default provider when not specified in config. Defaults to "memory". */
 	defaultProvider?: string;
+	/** If true, use PostMessageCache for memory caches (for workers) */
+	usePostMessage?: boolean;
 }
 
 /**
  * Creates a cache factory function for CustomCacheStorage.
  */
 export function createCacheFactory(options: CacheFactoryOptions = {}) {
-	const {config, defaultProvider = "memory"} = options;
+	const {config, defaultProvider = "memory", usePostMessage = false} = options;
 
 	return async (name: string): Promise<Cache> => {
 		const cacheConfig = config ? getCacheConfig(config, name) : {};
@@ -182,6 +185,11 @@ export function createCacheFactory(options: CacheFactoryOptions = {}) {
 				);
 			}
 			return nativeCaches.open(name);
+		}
+
+		// For memory caches in workers, use PostMessageCache to forward to main thread
+		if (provider === "memory" && usePostMessage) {
+			return new PostMessageCache(name);
 		}
 
 		const {provider: _, ...cacheOptions} = cacheConfig;

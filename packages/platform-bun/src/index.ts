@@ -92,17 +92,7 @@ if (isWorker) {
 }
 `;
 
-const logger = getLogger(["platform-bun"]);
-
-// Re-export common platform types
-export type {
-	Platform,
-	Handler,
-	Server,
-	ServerOptions,
-	ServiceWorkerOptions,
-	ServiceWorkerInstance,
-} from "@b9g/platform";
+const logger = getLogger(["server"]);
 
 // ============================================================================
 // TYPES

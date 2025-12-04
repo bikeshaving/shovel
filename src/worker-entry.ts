@@ -7,7 +7,7 @@
 
 import {getLogger} from "@logtape/logtape";
 
-const logger = getLogger(["worker"]);
+const logger = getLogger(["server"]);
 
 // Platform-specific imports - use static imports so esbuild can bundle them
 declare const PLATFORM: string;

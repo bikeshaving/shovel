@@ -24,15 +24,14 @@ bun add @b9g/auth @b9g/router @b9g/platform
 
 ```typescript
 import {Router} from "@b9g/router";
+import {OAuth2Client} from "@b9g/auth/oauth2";
+import {createProviderConfig, fetchUserInfo} from "@b9g/auth/providers";
 import {
-  OAuth2Client,
-  createProviderConfig,
   redirectToProvider,
   handleCallback,
   requireAuth,
   createSession,
-  fetchUserInfo,
-} from "@b9g/auth";
+} from "@b9g/auth/middleware";
 
 // Create OAuth2 client with GitHub preset
 const config = createProviderConfig("github", {
@@ -127,7 +126,7 @@ self.addEventListener("fetch", (event) => {
 ### CORS
 
 ```typescript
-import {cors} from "@b9g/auth";
+import {cors} from "@b9g/auth/middleware";
 
 // Allow all origins
 router.use(cors());
@@ -176,7 +175,7 @@ const client = new OAuth2Client({
 Built-in presets for popular providers:
 
 ```typescript
-import {createProviderConfig} from "@b9g/auth";
+import {createProviderConfig} from "@b9g/auth/providers";
 
 // GitHub
 const github = createProviderConfig("github", {

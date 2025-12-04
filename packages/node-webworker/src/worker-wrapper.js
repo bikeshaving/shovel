@@ -5,14 +5,46 @@
 
 import {parentPort} from "worker_threads";
 
+// Message event listeners (for addEventListener support)
+const messageListeners = new Set();
+
 // Provide Web Worker globals
 globalThis.onmessage = null;
-globalThis.postMessage = (data) => parentPort.postMessage(data);
+globalThis.postMessage = (data, transfer) => {
+	if (transfer && transfer.length > 0) {
+		parentPort.postMessage(data, transfer);
+	} else {
+		parentPort.postMessage(data);
+	}
+};
+
+// Provide self (same as globalThis in workers)
+globalThis.self = globalThis;
+
+// Provide addEventListener/removeEventListener for message events
+globalThis.addEventListener = (type, listener) => {
+	if (type === "message") {
+		messageListeners.add(listener);
+	}
+};
+globalThis.removeEventListener = (type, listener) => {
+	if (type === "message") {
+		messageListeners.delete(listener);
+	}
+};
 
 // Set up message forwarding
 parentPort.on("message", (data) => {
+	const event = {data, type: "message"};
+
+	// Call onmessage handler if set
 	if (globalThis.onmessage) {
-		globalThis.onmessage({data, type: "message"});
+		globalThis.onmessage(event);
+	}
+
+	// Call addEventListener handlers
+	for (const listener of messageListeners) {
+		listener(event);
 	}
 });
 

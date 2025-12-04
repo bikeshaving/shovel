@@ -14,7 +14,7 @@ import {AsyncContext} from "@b9g/async-context";
 import type {BucketStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
 
-const logger = getLogger(["serviceworker"]);
+const logger = getLogger(["server"]);
 
 // Set MODE from NODE_ENV for Vite compatibility
 // import.meta.env is shimmed to process.env via esbuild define on Node.js
@@ -1326,15 +1326,26 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	}
 
 	/**
-	 * Event target delegation to registration
+	 * Event target delegation - ServiceWorker events go to registration,
+	 * other events (like "message" for worker threads) go to native handler
 	 */
 	addEventListener(
 		type: string,
 		listener: EventListenerOrEventListenerObject | null,
 		options?: boolean | AddEventListenerOptions,
 	): void {
-		if (listener) {
+		if (!listener) return;
+
+		// ServiceWorker events go to registration
+		if (type === "fetch" || type === "install" || type === "activate") {
 			this.registration.addEventListener(type, listener, options);
+		} else {
+			// Other events (e.g., "message" for worker threads) go to native
+			const original = this.#originals
+				.addEventListener as typeof addEventListener;
+			if (original) {
+				original.call(globalThis, type, listener, options);
+			}
 		}
 	}
 
@@ -1343,13 +1354,34 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 		listener: EventListenerOrEventListenerObject | null,
 		options?: boolean | EventListenerOptions,
 	): void {
-		if (listener) {
+		if (!listener) return;
+
+		if (type === "fetch" || type === "install" || type === "activate") {
 			this.registration.removeEventListener(type, listener, options);
+		} else {
+			const original = this.#originals
+				.removeEventListener as typeof removeEventListener;
+			if (original) {
+				original.call(globalThis, type, listener, options);
+			}
 		}
 	}
 
 	dispatchEvent(event: Event): boolean {
-		return this.registration.dispatchEvent(event);
+		// ServiceWorker events go to registration
+		if (
+			event.type === "fetch" ||
+			event.type === "install" ||
+			event.type === "activate"
+		) {
+			return this.registration.dispatchEvent(event);
+		}
+		// Other events go to native
+		const original = this.#originals.dispatchEvent as typeof dispatchEvent;
+		if (original) {
+			return original.call(globalThis, event);
+		}
+		return false;
 	}
 
 	/**

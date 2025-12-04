@@ -1,33 +1,16 @@
 import {Cache, type CacheQueryOptions} from "./index.js";
 
-// Get parentPort dynamically to handle cases where self is set after module load
-function getParentPort(): typeof self | null {
-	return typeof self !== "undefined" ? self : null;
-}
-
-// Global message handler setup - only set up once for all PostMessageCache instances
-let messageHandlerSetup = false;
+// Shared registry for pending requests across all PostMessageCache instances
 const pendingRequestsRegistry = new Map<
 	number,
 	{resolve: (value: any) => void; reject: (error: any) => void}
 >();
 
-function setupMessageHandler() {
-	if (messageHandlerSetup) return;
-	messageHandlerSetup = true;
-
-	const parentPort = getParentPort();
-	if (parentPort && parentPort.addEventListener) {
-		parentPort.addEventListener("message", (event: MessageEvent) => {
-			const message = event.data;
-			if (message.type === "cache:response" || message.type === "cache:error") {
-				handleCacheResponse(message);
-			}
-		});
-	}
-}
-
-function handleCacheResponse(message: any) {
+/**
+ * Handle cache response/error messages from main thread.
+ * Called by worker.ts when receiving cache:response or cache:error messages.
+ */
+export function handleCacheResponse(message: any): void {
 	const pending = pendingRequestsRegistry.get(message.requestID);
 	if (pending) {
 		pendingRequestsRegistry.delete(message.requestID);
@@ -39,38 +22,25 @@ function handleCacheResponse(message: any) {
 	}
 }
 
-/**
- * Configuration options for PostMessageCache
- */
-export interface PostMessageCacheOptions {
-	/** Timeout for cache operations in milliseconds (default: 30000) */
-	timeout?: number;
-}
-
-// Global request ID counter shared across all PostMessageCache instances
+// Global request ID counter
 let globalRequestID = 0;
 
 /**
- * Worker-side cache that forwards operations to main thread via postMessage
- * Only used for MemoryCache in multi-worker environments
+ * Worker-side cache that forwards operations to main thread via postMessage.
+ * Used for MemoryCache in multi-worker environments so all workers share state.
  */
 export class PostMessageCache extends Cache {
 	#name: string;
 	#timeout: number;
 
-	constructor(name: string, options: PostMessageCacheOptions = {}) {
+	constructor(name: string, timeout = 30000) {
 		super();
-
 		this.#name = name;
-		this.#timeout = options.timeout ?? 30000;
-
-		// Set up global message handler (only happens once for all instances)
-		setupMessageHandler();
+		this.#timeout = timeout;
 	}
 
 	async #sendRequest(type: string, data: any): Promise<any> {
-		const parentPort = getParentPort();
-		if (!parentPort) {
+		if (typeof self === "undefined") {
 			throw new Error("PostMessageCache can only be used in worker threads");
 		}
 
@@ -79,7 +49,7 @@ export class PostMessageCache extends Cache {
 		return new Promise((resolve, reject) => {
 			pendingRequestsRegistry.set(requestID, {resolve, reject});
 
-			parentPort.postMessage({
+			self.postMessage({
 				type,
 				requestID,
 				cacheName: this.#name,
@@ -99,7 +69,6 @@ export class PostMessageCache extends Cache {
 		request: Request,
 		options?: CacheQueryOptions,
 	): Promise<Response | undefined> {
-		// Serialize request for transmission
 		const serializedRequest = {
 			url: request.url,
 			method: request.method,
@@ -119,7 +88,6 @@ export class PostMessageCache extends Cache {
 			return undefined;
 		}
 
-		// Reconstruct Response object
 		return new Response(response.body, {
 			status: response.status,
 			statusText: response.statusText,
@@ -128,7 +96,6 @@ export class PostMessageCache extends Cache {
 	}
 
 	async put(request: Request, response: Response): Promise<void> {
-		// Serialize request and response for transmission
 		const serializedRequest = {
 			url: request.url,
 			method: request.method,
@@ -194,7 +161,6 @@ export class PostMessageCache extends Cache {
 			options,
 		});
 
-		// Reconstruct Request objects
 		return keys.map(
 			(req: any) =>
 				new Request(req.url, {

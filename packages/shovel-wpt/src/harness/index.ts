@@ -1,9 +1,13 @@
 /**
  * WPT testharness.js compatibility layer for bun:test
  *
- * This module provides implementations of WPT's testharness.js functions
- * that map to bun:test equivalents.
+ * Import from subpaths:
+ * - Assertions: import from "@b9g/shovel-wpt/harness/assertions"
+ * - Test harness: import from "@b9g/shovel-wpt/harness/testharness"
  */
 
-export * from "./assertions.js";
-export * from "./testharness.js";
+throw new Error(
+	"@b9g/shovel-wpt/harness has no default export. Import from subpaths:\n" +
+		'  import {assert_equals, assert_true} from "@b9g/shovel-wpt/harness/assertions"\n' +
+		'  import {promise_test, test} from "@b9g/shovel-wpt/harness/testharness"',
+);
