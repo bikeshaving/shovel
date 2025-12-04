@@ -10,7 +10,7 @@
  */
 
 import {describe, test, expect, beforeEach} from "bun:test";
-import {RequestCookieStore} from "../../platform/src/cookie-store.js";
+import {RequestCookieStore} from "../../platform/src/runtime.js";
 
 describe("Cookie Store API", () => {
 	let cookieStore: RequestCookieStore;

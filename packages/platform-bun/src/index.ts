@@ -14,12 +14,10 @@ import {
 	type ServiceWorkerInstance,
 	type EntryWrapperOptions,
 	type PlatformEsbuildConfig,
-} from "@b9g/platform";
-import {
 	ServiceWorkerPool,
 	type WorkerPoolOptions,
-} from "@b9g/platform/worker-pool";
-import {SingleThreadedRuntime} from "@b9g/platform/single-threaded";
+	SingleThreadedRuntime,
+} from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomBucketStorage} from "@b9g/filesystem";
 import {MemoryCache} from "@b9g/cache/memory";

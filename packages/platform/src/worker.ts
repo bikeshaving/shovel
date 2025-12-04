@@ -14,11 +14,11 @@
  * 5. Wait for "load" message to load and activate ServiceWorker
  */
 
+import {resolve} from "path";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
-import {createBucketFactory, createCacheFactory} from "./storage-factories.js";
 import {CustomBucketStorage, type BucketFactory} from "@b9g/filesystem";
-import {CustomCacheStorage, type CacheFactory} from "@b9g/cache";
-import {handleCacheResponse} from "@b9g/cache/postmessage";
+import {CustomCacheStorage, type CacheFactory, Cache} from "@b9g/cache";
+import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
 import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
@@ -30,7 +30,210 @@ import type {
 	WorkerRequest,
 	WorkerResponse,
 	WorkerErrorMessage,
-} from "./worker-pool.js";
+} from "./index.js";
+
+// ============================================================================
+// Storage Factory Types
+// ============================================================================
+
+export interface CacheConfig {
+	provider?: string;
+	[key: string]: any;
+}
+
+export interface BucketConfig {
+	provider?: string;
+	path?: string;
+	[key: string]: any;
+}
+
+export interface ShovelConfig {
+	caches?: Record<string, CacheConfig>;
+	buckets?: Record<string, BucketConfig>;
+	[key: string]: any;
+}
+
+// ============================================================================
+// Pattern Matching
+// ============================================================================
+
+/**
+ * Match a name against pattern-keyed config
+ * Patterns use glob-like syntax (* for wildcards)
+ */
+function matchPattern<T>(
+	name: string,
+	patterns: Record<string, T> | undefined,
+): T | undefined {
+	if (!patterns) return undefined;
+
+	// Exact match first
+	if (patterns[name]) return patterns[name];
+
+	// Try pattern matching
+	for (const [pattern, value] of Object.entries(patterns)) {
+		if (pattern.includes("*")) {
+			const regex = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
+			if (regex.test(name)) return value;
+		}
+	}
+
+	return undefined;
+}
+
+function getCacheConfig(config: ShovelConfig, name: string): CacheConfig {
+	return matchPattern(name, config.caches) || {};
+}
+
+function getBucketConfig(config: ShovelConfig, name: string): BucketConfig {
+	return matchPattern(name, config.buckets) || {};
+}
+
+// ============================================================================
+// Bucket Factory
+// ============================================================================
+
+// Well-known bucket path conventions
+const WELL_KNOWN_BUCKET_PATHS: Record<string, (baseDir: string) => string> = {
+	static: (baseDir) => resolve(baseDir, "../static"),
+	server: (baseDir) => baseDir,
+};
+
+const BUILTIN_BUCKET_PROVIDERS: Record<string, string> = {
+	node: "@b9g/filesystem/node.js",
+	memory: "@b9g/filesystem/memory.js",
+	s3: "@b9g/filesystem-s3",
+};
+
+export interface BucketFactoryOptions {
+	/** Base directory for path resolution (entrypoint directory) - REQUIRED */
+	baseDir: string;
+	/** Shovel configuration for overrides */
+	config?: ShovelConfig;
+}
+
+/**
+ * Creates a bucket factory function for CustomBucketStorage.
+ */
+export function createBucketFactory(options: BucketFactoryOptions) {
+	const {baseDir, config} = options;
+
+	return async (name: string): Promise<FileSystemDirectoryHandle> => {
+		const bucketConfig = config ? getBucketConfig(config, name) : {};
+
+		// Determine bucket path: config override > well-known > default convention
+		let bucketPath: string;
+		if (bucketConfig.path) {
+			bucketPath = String(bucketConfig.path);
+		} else if (WELL_KNOWN_BUCKET_PATHS[name]) {
+			bucketPath = WELL_KNOWN_BUCKET_PATHS[name](baseDir);
+		} else {
+			bucketPath = resolve(baseDir, `../${name}`);
+		}
+
+		const provider = String(bucketConfig.provider || "node");
+		const modulePath = BUILTIN_BUCKET_PROVIDERS[provider] || provider;
+
+		// Special handling for built-in node bucket (most common case)
+		if (modulePath === "@b9g/filesystem/node.js") {
+			const {NodeBucket} = await import("@b9g/filesystem/node.js");
+			return new NodeBucket(bucketPath);
+		}
+
+		// Special handling for built-in memory bucket
+		if (modulePath === "@b9g/filesystem/memory.js") {
+			const {MemoryBucket} = await import("@b9g/filesystem/memory.js");
+			return new MemoryBucket(name);
+		}
+
+		// Dynamic import for all other providers
+		const module = await import(modulePath);
+		const BucketClass =
+			module.default ||
+			module.S3Bucket ||
+			module.Bucket ||
+			Object.values(module).find(
+				(v: any) => typeof v === "function" && v.name?.includes("Bucket"),
+			);
+
+		if (!BucketClass) {
+			throw new Error(
+				`Bucket module "${modulePath}" does not export a valid bucket class.`,
+			);
+		}
+
+		const {provider: _, path: __, ...bucketOptions} = bucketConfig;
+		return new BucketClass(name, {path: bucketPath, ...bucketOptions});
+	};
+}
+
+// ============================================================================
+// Cache Factory
+// ============================================================================
+
+const BUILTIN_CACHE_PROVIDERS: Record<string, string> = {
+	memory: "@b9g/cache/memory.js",
+	redis: "@b9g/cache-redis",
+};
+
+export interface CacheFactoryOptions {
+	/** Shovel configuration for cache settings */
+	config?: ShovelConfig;
+	/** Default provider when not specified in config. Defaults to "memory". */
+	defaultProvider?: string;
+	/** If true, use PostMessageCache for memory caches (for workers) */
+	usePostMessage?: boolean;
+}
+
+/**
+ * Creates a cache factory function for CustomCacheStorage.
+ */
+export function createCacheFactory(options: CacheFactoryOptions = {}) {
+	const {config, defaultProvider = "memory", usePostMessage = false} = options;
+
+	return async (name: string): Promise<Cache> => {
+		const cacheConfig = config ? getCacheConfig(config, name) : {};
+		const provider = String(cacheConfig.provider || defaultProvider);
+
+		// Native Cloudflare caches
+		if (provider === "cloudflare") {
+			const nativeCaches =
+				(globalThis as any).__cloudflareCaches ?? globalThis.caches;
+			if (!nativeCaches) {
+				throw new Error(
+					"Cloudflare cache provider requires native caches API.",
+				);
+			}
+			return nativeCaches.open(name);
+		}
+
+		// For memory caches in workers, use PostMessageCache to forward to main thread
+		if (provider === "memory" && usePostMessage) {
+			return new PostMessageCache(name);
+		}
+
+		const {provider: _, ...cacheOptions} = cacheConfig;
+		const modulePath = BUILTIN_CACHE_PROVIDERS[provider] || provider;
+
+		const module = await import(modulePath);
+		const CacheClass =
+			module.default ||
+			module.RedisCache ||
+			module.MemoryCache ||
+			module.Cache ||
+			Object.values(module).find(
+				(v: any) => typeof v === "function" && v.name?.includes("Cache"),
+			);
+
+		if (!CacheClass) {
+			throw new Error(
+				`Cache module "${modulePath}" does not export a valid cache class.`,
+			);
+		}
+
+		return new CacheClass(name, cacheOptions);
+	};
+}
 
 // ============================================================================
 // Worker State
@@ -85,13 +288,8 @@ async function handleFetchEvent(request: Request): Promise<Response> {
 		throw new Error("ServiceWorker not ready");
 	}
 
-	if (!registration) {
-		throw new Error("ServiceWorker runtime not initialized");
-	}
-
 	try {
-		const response = await registration.handleRequest(request);
-		return response;
+		return await registration.handleRequest(request);
 	} catch (error) {
 		logger.error("[Worker] ServiceWorker request failed: {error}", {error});
 		console.error("[Worker] ServiceWorker request failed:", error);
@@ -126,10 +324,6 @@ async function loadServiceWorker(entrypoint: string): Promise<void> {
 		});
 
 		// Run lifecycle events
-		if (!registration) {
-			throw new Error("Registration not initialized");
-		}
-
 		logger.info("[Worker] Running install event");
 		await registration.install();
 

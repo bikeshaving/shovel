@@ -2,6 +2,7 @@
  * ServiceWorker Runtime - Complete ServiceWorker API Implementation
  *
  * This module provides the complete ServiceWorker runtime environment for Shovel:
+ * - Cookie Store API (RequestCookieStore for per-request cookie management)
  * - Base Event Classes (ExtendableEvent, FetchEvent, InstallEvent, ActivateEvent)
  * - ServiceWorker API Type Shims (Client, Clients, ServiceWorkerRegistration, etc.)
  * - ServiceWorkerGlobals (installs ServiceWorker globals onto any JavaScript runtime)
@@ -9,12 +10,332 @@
  * Based on: https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API#interfaces
  */
 
-import {RequestCookieStore} from "./cookie-store.js";
 import {AsyncContext} from "@b9g/async-context";
+
+// ============================================================================
+// Cookie Store API Implementation
+// https://cookiestore.spec.whatwg.org/
+// ============================================================================
+
+// Extend the incomplete global CookieListItem with missing properties
+// TypeScript's lib.dom.d.ts only has name? and value?, but the spec includes all cookie attributes
+declare global {
+	interface CookieListItem {
+		domain?: string;
+		path?: string;
+		expires?: number;
+		secure?: boolean;
+		sameSite?: CookieSameSite;
+		partitioned?: boolean;
+	}
+}
+
+// Create and export local type aliases that reference the (now-complete) global types
+export type CookieSameSite = globalThis.CookieSameSite;
+export type CookieInit = globalThis.CookieInit;
+export type CookieStoreGetOptions = globalThis.CookieStoreGetOptions;
+export type CookieStoreDeleteOptions = globalThis.CookieStoreDeleteOptions;
+export type CookieListItem = globalThis.CookieListItem;
+export type CookieList = CookieListItem[];
+
+/**
+ * Parse Cookie header value into key-value pairs
+ * Cookie: name=value; name2=value2
+ */
+export function parseCookieHeader(cookieHeader: string): Map<string, string> {
+	const cookies = new Map<string, string>();
+	if (!cookieHeader) return cookies;
+
+	const pairs = cookieHeader.split(/;\s*/);
+	for (const pair of pairs) {
+		const [name, ...valueParts] = pair.split("=");
+		if (name) {
+			const value = valueParts.join("="); // Handle values with = in them
+			cookies.set(name.trim(), decodeURIComponent(value || ""));
+		}
+	}
+
+	return cookies;
+}
+
+/**
+ * Serialize cookie into Set-Cookie header value
+ */
+export function serializeCookie(cookie: CookieInit): string {
+	let header = `${encodeURIComponent(cookie.name)}=${encodeURIComponent(cookie.value)}`;
+
+	if (cookie.expires !== undefined && cookie.expires !== null) {
+		const date = new Date(cookie.expires);
+		header += `; Expires=${date.toUTCString()}`;
+	}
+
+	if (cookie.domain) {
+		header += `; Domain=${cookie.domain}`;
+	}
+
+	if (cookie.path) {
+		header += `; Path=${cookie.path}`;
+	} else {
+		header += `; Path=/`;
+	}
+
+	if (cookie.sameSite) {
+		header += `; SameSite=${cookie.sameSite.charAt(0).toUpperCase() + cookie.sameSite.slice(1)}`;
+	} else {
+		header += `; SameSite=Strict`;
+	}
+
+	if (cookie.partitioned) {
+		header += `; Partitioned`;
+	}
+
+	// Secure is implied for all cookies in this implementation
+	header += `; Secure`;
+
+	return header;
+}
+
+/**
+ * Parse Set-Cookie header into CookieListItem
+ */
+export function parseSetCookieHeader(setCookieHeader: string): CookieListItem {
+	const parts = setCookieHeader.split(/;\s*/);
+	const [nameValue, ...attributes] = parts;
+	const [name, ...valueParts] = nameValue.split("=");
+	const value = valueParts.join("=");
+
+	const cookie: CookieListItem = {
+		name: decodeURIComponent(name.trim()),
+		value: decodeURIComponent(value || ""),
+	};
+
+	for (const attr of attributes) {
+		const [key, ...attrValueParts] = attr.split("=");
+		const attrKey = key.trim().toLowerCase();
+		const attrValue = attrValueParts.join("=").trim();
+
+		switch (attrKey) {
+			case "expires":
+				cookie.expires = new Date(attrValue).getTime();
+				break;
+			case "max-age":
+				cookie.expires = Date.now() + parseInt(attrValue, 10) * 1000;
+				break;
+			case "domain":
+				cookie.domain = attrValue;
+				break;
+			case "path":
+				cookie.path = attrValue;
+				break;
+			case "secure":
+				cookie.secure = true;
+				break;
+			case "samesite":
+				cookie.sameSite = attrValue.toLowerCase() as CookieSameSite;
+				break;
+			case "partitioned":
+				cookie.partitioned = true;
+				break;
+		}
+	}
+
+	return cookie;
+}
+
+/**
+ * RequestCookieStore - Cookie Store implementation for ServiceWorker contexts
+ *
+ * This implementation:
+ * - Reads cookies from the incoming Request's Cookie header
+ * - Tracks changes (set/delete operations)
+ * - Exports changes as Set-Cookie headers for the Response
+ *
+ * It follows the Cookie Store API spec but is designed for server-side
+ * request handling rather than browser contexts.
+ */
+export class RequestCookieStore extends EventTarget {
+	#cookies: Map<string, CookieListItem>;
+	#changes: Map<string, CookieInit | null>; // null = deleted
+	#request: Request | null;
+
+	// Event handler for cookie changes (spec compliance)
+	// eslint-disable-next-line no-restricted-syntax
+	onchange: ((this: RequestCookieStore, ev: Event) => any) | null = null;
+
+	constructor(request?: Request) {
+		super();
+		this.#cookies = new Map();
+		this.#changes = new Map();
+		this.#request = request || null;
+
+		// Parse initial cookies from request
+		if (request) {
+			const cookieHeader = request.headers.get("cookie");
+			if (cookieHeader) {
+				const parsed = parseCookieHeader(cookieHeader);
+				for (const [name, value] of parsed) {
+					this.#cookies.set(name, {name, value});
+				}
+			}
+		}
+	}
+
+	async get(
+		nameOrOptions: string | CookieStoreGetOptions,
+	): Promise<CookieListItem | null> {
+		const name =
+			typeof nameOrOptions === "string" ? nameOrOptions : nameOrOptions.name;
+
+		if (!name) {
+			throw new TypeError("Cookie name is required");
+		}
+
+		// Check changes first (for set/delete operations)
+		if (this.#changes.has(name)) {
+			const change = this.#changes.get(name);
+			if (change === null || change === undefined) return null;
+			return {
+				name: change.name,
+				value: change.value,
+				domain: change.domain ?? undefined,
+				path: change.path,
+				expires: change.expires ?? undefined,
+				sameSite: change.sameSite,
+				partitioned: change.partitioned,
+			};
+		}
+
+		return this.#cookies.get(name) || null;
+	}
+
+	async getAll(
+		nameOrOptions?: string | CookieStoreGetOptions,
+	): Promise<CookieList> {
+		const name =
+			typeof nameOrOptions === "string" ? nameOrOptions : nameOrOptions?.name;
+
+		const result: CookieList = [];
+
+		// Collect all cookies (original + changes)
+		const allNames = new Set([
+			...this.#cookies.keys(),
+			...this.#changes.keys(),
+		]);
+
+		for (const cookieName of allNames) {
+			if (name && cookieName !== name) continue;
+
+			if (
+				this.#changes.has(cookieName) &&
+				this.#changes.get(cookieName) === null
+			) {
+				continue;
+			}
+
+			const cookie = await this.get(cookieName);
+			if (cookie) {
+				result.push(cookie);
+			}
+		}
+
+		return result;
+	}
+
+	async set(nameOrOptions: string | CookieInit, value?: string): Promise<void> {
+		let cookie: CookieInit;
+
+		if (typeof nameOrOptions === "string") {
+			if (value === undefined) {
+				throw new TypeError("Cookie value is required");
+			}
+			cookie = {
+				name: nameOrOptions,
+				value,
+				path: "/",
+				sameSite: "strict",
+			};
+		} else {
+			cookie = {
+				path: "/",
+				sameSite: "strict",
+				...nameOrOptions,
+			};
+		}
+
+		// Validate cookie size (spec: 4096 bytes combined)
+		const size = cookie.name.length + cookie.value.length;
+		if (size > 4096) {
+			throw new TypeError(
+				`Cookie name+value too large: ${size} bytes (max 4096)`,
+			);
+		}
+
+		this.#changes.set(cookie.name, cookie);
+	}
+
+	async delete(
+		nameOrOptions: string | CookieStoreDeleteOptions,
+	): Promise<void> {
+		const name =
+			typeof nameOrOptions === "string" ? nameOrOptions : nameOrOptions.name;
+
+		if (!name) {
+			throw new TypeError("Cookie name is required");
+		}
+
+		this.#changes.set(name, null);
+	}
+
+	/**
+	 * Get Set-Cookie headers for all changes
+	 * This should be called when constructing the Response
+	 */
+	getSetCookieHeaders(): string[] {
+		const headers: string[] = [];
+
+		for (const [name, change] of this.#changes) {
+			if (change === null) {
+				// Delete cookie by setting expires to past date
+				headers.push(
+					serializeCookie({
+						name,
+						value: "",
+						expires: 0,
+						path: "/",
+					}),
+				);
+			} else {
+				headers.push(serializeCookie(change));
+			}
+		}
+
+		return headers;
+	}
+
+	hasChanges(): boolean {
+		return this.#changes.size > 0;
+	}
+
+	clearChanges(): void {
+		this.#changes.clear();
+	}
+}
+
 import type {BucketStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["server"]);
+
+// ============================================================================
+// ServiceWorker Event Constants
+// ============================================================================
+
+/** ServiceWorker-specific event types that go to registration instead of native handler */
+const SERVICE_WORKER_EVENTS = ["fetch", "install", "activate"] as const;
+
+function isServiceWorkerEvent(type: string): boolean {
+	return (SERVICE_WORKER_EVENTS as readonly string[]).includes(type);
+}
 
 // Set MODE from NODE_ENV for Vite compatibility
 // import.meta.env is shimmed to process.env via esbuild define on Node.js
@@ -1336,8 +1657,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	): void {
 		if (!listener) return;
 
-		// ServiceWorker events go to registration
-		if (type === "fetch" || type === "install" || type === "activate") {
+		if (isServiceWorkerEvent(type)) {
 			this.registration.addEventListener(type, listener, options);
 		} else {
 			// Other events (e.g., "message" for worker threads) go to native
@@ -1356,7 +1676,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	): void {
 		if (!listener) return;
 
-		if (type === "fetch" || type === "install" || type === "activate") {
+		if (isServiceWorkerEvent(type)) {
 			this.registration.removeEventListener(type, listener, options);
 		} else {
 			const original = this.#originals
@@ -1368,12 +1688,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	}
 
 	dispatchEvent(event: Event): boolean {
-		// ServiceWorker events go to registration
-		if (
-			event.type === "fetch" ||
-			event.type === "install" ||
-			event.type === "activate"
-		) {
+		if (isServiceWorkerEvent(event.type)) {
 			return this.registration.dispatchEvent(event);
 		}
 		// Other events go to native

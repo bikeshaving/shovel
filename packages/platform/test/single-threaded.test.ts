@@ -2,7 +2,7 @@ import {test, expect, beforeEach, afterEach} from "bun:test";
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
-import {SingleThreadedRuntime} from "../src/single-threaded.js";
+import {SingleThreadedRuntime} from "../src/index.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
 import {CustomBucketStorage} from "@b9g/filesystem";

@@ -7,7 +7,7 @@
  */
 
 import {describe, it, expect, beforeAll, afterAll} from "bun:test";
-import {ServiceWorkerPool} from "../src/worker-pool.js";
+import {ServiceWorkerPool} from "../src/index.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory";
 import * as path from "path";

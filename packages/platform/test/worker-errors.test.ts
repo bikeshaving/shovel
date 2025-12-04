@@ -2,7 +2,7 @@ import {test, expect, describe, beforeEach, afterEach} from "bun:test";
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
-import {ServiceWorkerPool} from "../src/worker-pool.js";
+import {ServiceWorkerPool} from "../src/index.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
 

@@ -8,7 +8,7 @@ import {
 	parseCookieHeader,
 	serializeCookie,
 	parseSetCookieHeader,
-} from "../src/cookie-store";
+} from "../src/runtime.js";
 
 describe("Cookie Parsing", () => {
 	it("should parse Cookie header", () => {
