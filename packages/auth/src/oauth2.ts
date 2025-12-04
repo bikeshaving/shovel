@@ -146,7 +146,7 @@ export class OAuth2Client {
 
 		// Get code verifier
 		const storedVerifier = await cookieStore.get("oauth_verifier");
-		if (!storedVerifier) {
+		if (!storedVerifier || !storedVerifier.value) {
 			throw new Error("Missing code verifier - session expired");
 		}
 

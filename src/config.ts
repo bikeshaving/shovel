@@ -19,7 +19,6 @@
 
 import {readFileSync} from "fs";
 import {resolve} from "path";
-import {Cache} from "@b9g/cache";
 import {configure, type LogLevel as LogTapeLevel} from "@logtape/logtape";
 
 /**
@@ -1319,4 +1318,3 @@ export async function configureLogging(
 		loggers,
 	});
 }
-

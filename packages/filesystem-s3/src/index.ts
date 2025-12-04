@@ -5,7 +5,7 @@
  * to provide S3 cloud storage with File System Access API compatibility.
  */
 
-import type {FileSystemBackend, FileSystemConfig} from "@b9g/filesystem";
+import type {FileSystemConfig} from "@b9g/filesystem";
 import mime from "mime";
 
 /**
@@ -274,15 +274,17 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 			const response = await this.#s3Client.send(listCommand);
 
 			if (response.Contents && response.Contents.length > 0) {
-				const deletePromises = response.Contents.map((object) => {
-					if (object.Key) {
-						const deleteCommand = new DeleteObjectCommand({
-							Bucket: this.#bucket,
-							Key: object.Key,
-						});
-						return this.#s3Client.send(deleteCommand);
-					}
-				}).filter(Boolean);
+				const deletePromises = response.Contents.map(
+					(object: {Key?: string}) => {
+						if (object.Key) {
+							const deleteCommand = new DeleteObjectCommand({
+								Bucket: this.#bucket,
+								Key: object.Key,
+							});
+							return this.#s3Client.send(deleteCommand);
+						}
+					},
+				).filter(Boolean);
 
 				await Promise.all(deletePromises);
 			}
@@ -409,7 +411,7 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 /**
  * S3 filesystem adapter using AWS SDK
  */
-export class S3FileSystemAdapter implements FileSystemBackend {
+export class S3FileSystemAdapter {
 	#config: FileSystemConfig;
 	#s3Client: any;
 	#bucket: string;

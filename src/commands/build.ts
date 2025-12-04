@@ -29,8 +29,8 @@ await configure({
 	},
 	loggers: [
 		{category: ["logtape", "meta"], sinks: []},
-		{category: ["cli"], level: "info", sinks: ["console"]},
-		{category: ["build"], level: "info", sinks: ["console"]},
+		{category: ["cli"], lowestLevel: "info", sinks: ["console"]},
+		{category: ["build"], lowestLevel: "info", sinks: ["console"]},
 	],
 });
 
@@ -172,6 +172,12 @@ async function initializeBuild({
 	verbose,
 	platform,
 	workerCount = 1,
+}: {
+	entrypoint: string;
+	outDir: string;
+	verbose?: boolean;
+	platform: string;
+	workerCount?: number;
 }) {
 	// Validate inputs
 	if (!entrypoint) {
@@ -223,9 +229,7 @@ async function initializeBuild({
 		await mkdir(join(outputDir, BUILD_STRUCTURE.serverDir), {recursive: true});
 		await mkdir(join(outputDir, BUILD_STRUCTURE.staticDir), {recursive: true});
 	} catch (error) {
-		throw new Error(
-			`Failed to create output directory structure: ${error.message}`,
-		);
+		throw new Error(`Failed to create output directory structure: ${error}`);
 	}
 
 	return {
@@ -393,14 +397,14 @@ async function createBuildConfig({
 
 		return buildConfig;
 	} catch (error) {
-		throw new Error(`Failed to create build configuration: ${error.message}`);
+		throw new Error(`Failed to create build configuration: ${error}`);
 	}
 }
 
 /**
  * Log bundle analysis if metafile is available
  */
-async function logBundleAnalysis(metafile) {
+async function logBundleAnalysis(metafile: ESBuild.Metafile) {
 	try {
 		logger.info("Bundle analysis:", {});
 		const analysis = await ESBuild.analyzeMetafile(metafile);
@@ -413,7 +417,17 @@ async function logBundleAnalysis(metafile) {
 /**
  * Generate or copy package.json to output directory for self-contained deployment
  */
-async function generatePackageJSON({serverDir, platform, verbose, entryPath}) {
+async function generatePackageJSON({
+	serverDir,
+	platform,
+	verbose,
+	entryPath,
+}: {
+	serverDir: string;
+	platform: string;
+	verbose?: boolean;
+	entryPath: string;
+}) {
 	// Look for package.json in the same directory as the entrypoint, not cwd
 	const entryDir = dirname(entryPath);
 	const sourcePackageJsonPath = resolve(entryDir, "package.json");
@@ -426,7 +440,7 @@ async function generatePackageJSON({serverDir, platform, verbose, entryPath}) {
 		try {
 			JSON.parse(packageJSONContent);
 		} catch (parseError) {
-			throw new Error(`Invalid package.json format: ${parseError.message}`);
+			throw new Error(`Invalid package.json format: ${parseError}`);
 		}
 
 		await writeFile(
@@ -471,8 +485,14 @@ async function generatePackageJSON({serverDir, platform, verbose, entryPath}) {
 /**
  * Generate a minimal package.json for executable builds
  */
-async function generateExecutablePackageJSON(platform) {
-	const packageJSON = {
+async function generateExecutablePackageJSON(platform: string) {
+	const packageJSON: {
+		name: string;
+		version: string;
+		type: string;
+		private: boolean;
+		dependencies: Record<string, string>;
+	} = {
 		name: "shovel-executable",
 		version: "1.0.0",
 		type: "module",

@@ -15,15 +15,24 @@ await configure({
 	},
 	loggers: [
 		{category: ["logtape", "meta"], sinks: []},
-		{category: ["cli"], level: "debug", sinks: ["console"]},
-		{category: ["build"], level: "debug", sinks: ["console"]},
-		{category: ["server"], level: "debug", sinks: ["console"]},
+		{category: ["cli"], lowestLevel: "debug", sinks: ["console"]},
+		{category: ["build"], lowestLevel: "debug", sinks: ["console"]},
+		{category: ["server"], lowestLevel: "debug", sinks: ["console"]},
 	],
 });
 
 const logger = getLogger(["cli"]);
 
-export async function developCommand(entrypoint, options) {
+export async function developCommand(
+	entrypoint: string,
+	options: {
+		port?: string;
+		host?: string;
+		workers?: string;
+		verbose?: boolean;
+		platform?: string;
+	},
+) {
 	try {
 		// Load config from project root (where package.json lives)
 		const projectRoot = findProjectRoot();
@@ -32,13 +41,13 @@ export async function developCommand(entrypoint, options) {
 		const workerCount = getWorkerCount(options, config);
 
 		if (options.verbose) {
-			Platform.displayPlatformInfo(platformName);
+			logger.info("Platform: {platform}", {platform: platformName});
 			logger.info("Worker configuration", {workerCount});
 		}
 
 		// Create platform with server defaults
 		const platformInstance = await Platform.createPlatform(platformName, {
-			port: parseInt(options.port) || DEFAULTS.SERVER.PORT,
+			port: parseInt(options.port || String(DEFAULTS.SERVER.PORT)),
 			host: options.host || DEFAULTS.SERVER.HOST,
 		});
 
@@ -46,13 +55,14 @@ export async function developCommand(entrypoint, options) {
 		logger.info("Workers", {workerCount});
 
 		// Set up file watching and building for development
-		let serviceWorker;
+		let serviceWorker:
+			| Awaited<ReturnType<typeof platformInstance.loadServiceWorker>>
+			| undefined;
 
 		const outDir = "dist";
 		const watcher = new Watcher({
 			entrypoint,
 			outDir,
-			config,
 			onBuild: async (success, builtEntrypoint) => {
 				if (success && serviceWorker) {
 					logger.info("Reloading Workers", {entrypoint: builtEntrypoint});
@@ -81,7 +91,7 @@ export async function developCommand(entrypoint, options) {
 
 		// Create development server
 		const server = platformInstance.createServer(serviceWorker.handleRequest, {
-			port: parseInt(options.port) || DEFAULTS.SERVER.PORT,
+			port: parseInt(options.port || String(DEFAULTS.SERVER.PORT)),
 			host: options.host || DEFAULTS.SERVER.HOST,
 		});
 
@@ -106,13 +116,16 @@ export async function developCommand(entrypoint, options) {
 		process.on("SIGTERM", () => shutdown("SIGTERM"));
 	} catch (error) {
 		logger.error("Failed to start development server:\n{stack}", {
-			stack: error.stack,
+			stack: error instanceof Error ? error.stack : String(error),
 		});
 		process.exit(1);
 	}
 }
 
-function getWorkerCount(options, config) {
+function getWorkerCount(
+	options: {workers?: string},
+	config: {workers?: number} | null,
+) {
 	// CLI option overrides everything (explicit user intent)
 	if (options.workers) {
 		return parseInt(options.workers);

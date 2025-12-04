@@ -11,7 +11,10 @@ import {findProjectRoot, getNodeModulesPath} from "../utils/project.js";
 
 const logger = getLogger(["cli"]);
 
-export async function activateCommand(entrypoint, options) {
+export async function activateCommand(
+	entrypoint: string,
+	options: {workers?: string; verbose?: boolean; platform?: string},
+) {
 	try {
 		const platformName = Platform.resolvePlatform(options);
 		const workerCount = getWorkerCount(options);
@@ -56,7 +59,7 @@ export async function activateCommand(entrypoint, options) {
  * Build the entrypoint for activate command
  * Returns the path to the built file
  */
-async function buildForActivate(entrypoint) {
+async function buildForActivate(entrypoint: string) {
 	const entryPath = resolve(entrypoint);
 	const outputDir = resolve("dist");
 	const serverDir = join(outputDir, "server");
@@ -111,7 +114,7 @@ async function buildForActivate(entrypoint) {
 	return outfile;
 }
 
-function getWorkerCount(options) {
+function getWorkerCount(options: {workers?: string}) {
 	// Explicit CLI option takes precedence
 	if (options.workers) {
 		return parseInt(options.workers);
