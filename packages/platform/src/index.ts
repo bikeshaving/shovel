@@ -886,10 +886,17 @@ export class ServiceWorkerPool {
 
 		// Create promises for worker initialization steps
 		let rejectWorkerReady: (error: Error) => void;
+		let workerReadyTimeoutId: ReturnType<typeof setTimeout>;
 		const workerReadyPromise = new Promise<void>((resolve, reject) => {
 			rejectWorkerReady = reject;
+			workerReadyTimeoutId = setTimeout(() => {
+				reject(new Error("Worker failed to send ready signal within 30000ms"));
+			}, 30000);
 			this.#pendingWorkerInit.set(worker, {
-				workerReady: resolve,
+				workerReady: () => {
+					clearTimeout(workerReadyTimeoutId);
+					resolve();
+				},
 			});
 		});
 
@@ -911,6 +918,7 @@ export class ServiceWorkerPool {
 				stack: event.error?.stack,
 			});
 			// Reject pending promises so we don't hang forever
+			clearTimeout(workerReadyTimeoutId);
 			rejectWorkerReady(error);
 		});
 
@@ -922,9 +930,17 @@ export class ServiceWorkerPool {
 		logger.info("Received worker-ready signal");
 
 		// Create promise for initialized response
-		const initializedPromise = new Promise<void>((resolve) => {
+		const initializedPromise = new Promise<void>((resolve, reject) => {
+			const timeoutId = setTimeout(() => {
+				reject(
+					new Error("Worker failed to send initialized signal within 30000ms"),
+				);
+			}, 30000);
 			const pending = this.#pendingWorkerInit.get(worker) || {};
-			pending.initialized = resolve;
+			pending.initialized = () => {
+				clearTimeout(timeoutId);
+				resolve();
+			};
 			this.#pendingWorkerInit.set(worker, pending);
 		});
 
