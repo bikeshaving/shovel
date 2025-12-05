@@ -168,8 +168,11 @@ test(
 			);
 
 			// Test ServiceWorker that serves assets
-			const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
-				await import("@b9g/platform/runtime");
+			const {
+				ShovelServiceWorkerRegistration,
+				ServiceWorkerGlobals,
+				ShovelFetchEvent,
+			} = await import("@b9g/platform/runtime");
 			const {CustomDirectoryStorage} = await import("@b9g/filesystem");
 			const {CustomCacheStorage} = await import("@b9g/cache");
 			const {MemoryCache} = await import("@b9g/cache/memory");
@@ -236,7 +239,9 @@ test(
 
 			// Test asset serving
 			const cssRequest = new Request("http://localhost/assets/test.css");
-			const cssResponse = await runtime.handleRequest(cssRequest);
+			const cssResponse = await runtime.handleRequest(
+				new ShovelFetchEvent(cssRequest),
+			);
 
 			expect(cssResponse.status).toBe(200);
 			expect(await cssResponse.text()).toBe(".test { color: blue; }");

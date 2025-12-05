@@ -20,6 +20,7 @@ import type {DirectoryStorage} from "@b9g/filesystem";
 import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
+	ShovelFetchEvent,
 	CustomLoggerStorage,
 	type LoggerStorage,
 } from "./runtime.js";
@@ -601,8 +602,9 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 			);
 		}
 
-		// Direct call to registration.handleRequest - no serialization, no postMessage
-		return this.#registration.handleRequest(request);
+		// Create event and call handleRequest - no serialization, no postMessage
+		const event = new ShovelFetchEvent(request);
+		return this.#registration.handleRequest(event);
 	}
 
 	/**

@@ -470,8 +470,9 @@ const kCanExtend = Symbol.for("shovel.canExtend");
 // ============================================================================
 
 /**
- * ExtendableEvent base class following ServiceWorker spec
- * Standard constructor: new ExtendableEvent(type) or new ExtendableEvent(type, options)
+ * Shovel's ExtendableEvent implementation following ServiceWorker spec.
+ *
+ * Standard constructor: new ShovelExtendableEvent(type) or new ShovelExtendableEvent(type, options)
  *
  * Per spec, waitUntil() can be called:
  * 1. Synchronously during event dispatch, OR
@@ -479,7 +480,7 @@ const kCanExtend = Symbol.for("shovel.canExtend");
  *
  * See: https://github.com/w3c/ServiceWorker/issues/771
  */
-export class ExtendableEvent extends Event {
+export class ShovelExtendableEvent extends Event implements ExtendableEvent {
 	#promises: Promise<any>[];
 	#dispatchPhase: boolean;
 	#pendingCount: number;
@@ -531,20 +532,57 @@ export class ExtendableEvent extends Event {
 }
 
 /**
- * ServiceWorker-style fetch event
+ * Options for ShovelFetchEvent constructor (non-standard Shovel extension)
  */
-export class FetchEvent extends ExtendableEvent {
+export interface ShovelFetchEventInit extends EventInit {
+	/**
+	 * Platform-provided callback for extending request lifetime.
+	 * Called automatically when waitUntil() is invoked.
+	 * (e.g., Cloudflare's ctx.waitUntil)
+	 */
+	platformWaitUntil?: (promise: Promise<unknown>) => void;
+}
+
+/**
+ * Shovel's FetchEvent implementation.
+ *
+ * Platforms can subclass this to add platform-specific properties (e.g., env bindings).
+ * The platformWaitUntil hook allows platforms to extend request lifetime properly.
+ */
+export class ShovelFetchEvent
+	extends ShovelExtendableEvent
+	implements FetchEvent
+{
 	readonly request: Request;
 	readonly cookieStore: RequestCookieStore;
+	readonly clientId: string;
+	readonly handled: Promise<undefined>;
+	readonly preloadResponse: Promise<any>;
+	readonly resultingClientId: string;
 	#responsePromise: Promise<Response> | null;
 	#responded: boolean;
+	#platformWaitUntil?: (promise: Promise<unknown>) => void;
 
-	constructor(request: Request, eventInitDict?: EventInit) {
-		super("fetch", eventInitDict);
+	constructor(request: Request, options?: ShovelFetchEventInit) {
+		super("fetch", options);
 		this.request = request;
 		this.cookieStore = new RequestCookieStore(request);
+		this.clientId = "";
+		this.handled = Promise.resolve(undefined);
+		this.preloadResponse = Promise.resolve(undefined);
+		this.resultingClientId = "";
 		this.#responsePromise = null;
 		this.#responded = false;
+		this.#platformWaitUntil = options?.platformWaitUntil;
+	}
+
+	override waitUntil(promise: Promise<any>): void {
+		// Call platform hook first (e.g., Cloudflare ctx.waitUntil)
+		if (this.#platformWaitUntil) {
+			this.#platformWaitUntil(promise);
+		}
+		// Then call parent implementation for internal tracking
+		super.waitUntil(promise);
 	}
 
 	respondWith(response: Response | Promise<Response>): void {
@@ -575,21 +613,26 @@ export class FetchEvent extends ExtendableEvent {
 	hasResponded(): boolean {
 		return this.#responded;
 	}
+
+	/** The URL of the request (convenience property) */
+	get url(): string {
+		return this.request.url;
+	}
 }
 
 /**
- * ServiceWorker-style install event
+ * Shovel's InstallEvent implementation
  */
-export class InstallEvent extends ExtendableEvent {
+export class ShovelInstallEvent extends ShovelExtendableEvent {
 	constructor(eventInitDict?: EventInit) {
 		super("install", eventInitDict);
 	}
 }
 
 /**
- * ServiceWorker-style activate event
+ * Shovel's ActivateEvent implementation
  */
-export class ActivateEvent extends ExtendableEvent {
+export class ShovelActivateEvent extends ShovelExtendableEvent {
 	constructor(eventInitDict?: EventInit) {
 		super("activate", eventInitDict);
 	}
@@ -708,7 +751,7 @@ export interface ExtendableMessageEventInit extends EventInit {
 	ports?: MessagePort[];
 }
 
-export class ExtendableMessageEvent extends ExtendableEvent {
+export class ExtendableMessageEvent extends ShovelExtendableEvent {
 	readonly data: any;
 	readonly origin: string;
 	readonly lastEventId: string;
@@ -901,7 +944,7 @@ export class ShovelServiceWorkerRegistration
 		this._serviceWorker._setState("installing");
 
 		return new Promise<void>((resolve, reject) => {
-			const event = new InstallEvent();
+			const event = new ShovelInstallEvent();
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
@@ -947,7 +990,7 @@ export class ShovelServiceWorkerRegistration
 		this._serviceWorker._setState("activating");
 
 		return new Promise<void>((resolve, reject) => {
-			const event = new ActivateEvent();
+			const event = new ShovelActivateEvent();
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
 			process.nextTick(() => {
@@ -984,14 +1027,16 @@ export class ShovelServiceWorkerRegistration
 
 	/**
 	 * Handle a fetch request (Shovel extension)
+	 *
+	 * Platforms create a ShovelFetchEvent (or subclass) with platform-specific
+	 * properties and hooks, then pass it to this method for dispatching.
+	 *
+	 * @param event - The fetch event to handle (created by platform adapter)
 	 */
-	async handleRequest(request: Request): Promise<Response> {
+	async handleRequest(event: ShovelFetchEvent): Promise<Response> {
 		if (this._serviceWorker.state !== "activated") {
 			throw new Error("ServiceWorker not activated");
 		}
-
-		// Create the fetch event with its per-request cookieStore
-		const event = new FetchEvent(request);
 
 		// Run the request handling within the AsyncLocalStorage context
 		// This makes event.cookieStore available via self.cookieStore
@@ -1014,13 +1059,8 @@ export class ShovelServiceWorkerRegistration
 			// Get the response (may be a Promise)
 			const response = await event.getResponse()!;
 
-			// Fire off waitUntil promises (background tasks, don't block response)
-			const promises = event.getPromises();
-			if (promises.length > 0) {
-				Promise.allSettled(promises).catch((err) => {
-					getLogger(["platform"]).error`waitUntil error: ${err}`;
-				});
-			}
+			// Note: waitUntil promises are already handled via platformWaitUntil hook
+			// in the event constructor, so no additional handling needed here.
 
 			// Apply cookie changes from the cookieStore to the response
 			if (event.cookieStore.hasChanges()) {
@@ -1161,7 +1201,8 @@ export class ShovelServiceWorkerContainer
 		if (matchingScope) {
 			const registration = this.#registrations.get(matchingScope);
 			if (registration && registration.ready) {
-				return await registration.handleRequest(request);
+				const event = new ShovelFetchEvent(request);
+				return await registration.handleRequest(event);
 			}
 		}
 
@@ -1312,7 +1353,7 @@ export interface NotificationEventInit extends EventInit {
 	reply?: string | null;
 }
 
-export class NotificationEvent extends ExtendableEvent {
+export class NotificationEvent extends ShovelExtendableEvent {
 	readonly action: string;
 	readonly notification: Notification;
 	readonly reply: string | null;
@@ -1332,7 +1373,7 @@ export interface PushEventInit extends EventInit {
 	data?: PushMessageData | null;
 }
 
-export class PushEvent extends ExtendableEvent {
+export class PushEvent extends ShovelExtendableEvent {
 	readonly data: PushMessageData | null;
 
 	constructor(type: string, eventInitDict?: PushEventInit) {
@@ -1383,7 +1424,7 @@ export interface SyncEventInit extends EventInit {
 	lastChance?: boolean;
 }
 
-export class SyncEvent extends ExtendableEvent {
+export class SyncEvent extends ShovelExtendableEvent {
 	readonly tag: string;
 	readonly lastChance: boolean;
 
@@ -1560,9 +1601,10 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 
 		// Route through our own handler with incremented depth
 		return fetchDepthStorage.run(currentDepth + 1, () => {
+			const event = new ShovelFetchEvent(request);
 			return (
 				this.registration as ShovelServiceWorkerRegistration
-			).handleRequest(request);
+			).handleRequest(event);
 		});
 	}
 

@@ -55,14 +55,6 @@
     "./runtime.js": {
       "types": "./dist/src/runtime.d.ts",
       "import": "./dist/src/runtime.js"
-    },
-    "./cloudflare": {
-      "types": "./dist/src/cloudflare.d.ts",
-      "import": "./dist/src/cloudflare.js"
-    },
-    "./cloudflare.js": {
-      "types": "./dist/src/cloudflare.d.ts",
-      "import": "./dist/src/cloudflare.js"
     }
   }
 }

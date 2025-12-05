@@ -22,6 +22,7 @@ import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
 import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
+	ShovelFetchEvent,
 	CustomLoggerStorage,
 	configureLogging,
 	type CacheConfig,
@@ -281,7 +282,8 @@ async function handleFetchEvent(request: Request): Promise<Response> {
 	}
 
 	try {
-		return await registration.handleRequest(request);
+		const event = new ShovelFetchEvent(request);
+		return await registration.handleRequest(event);
 	} catch (error) {
 		logger.error("[Worker] ServiceWorker request failed: {error}", {error});
 		console.error("[Worker] ServiceWorker request failed:", error);

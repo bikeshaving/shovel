@@ -7,10 +7,10 @@
 
 import {runRuntimeTests} from "../src/runners/runtime.js";
 import {
-	ExtendableEvent,
-	FetchEvent,
-	InstallEvent,
-	ActivateEvent,
+	ShovelExtendableEvent,
+	ShovelFetchEvent,
+	ShovelInstallEvent,
+	ShovelActivateEvent,
 } from "../../platform/src/runtime.js";
 
 // Internal symbol for ending dispatch phase
@@ -18,13 +18,13 @@ const kEndDispatchPhase = Symbol.for("shovel.endDispatchPhase");
 
 // Run WPT-based runtime tests against Shovel's implementation
 runRuntimeTests("Shovel Runtime", {
-	createExtendableEvent: (type: string) => new ExtendableEvent(type),
+	createExtendableEvent: (type: string) => new ShovelExtendableEvent(type),
 
-	createFetchEvent: (request: Request) => new FetchEvent(request),
+	createFetchEvent: (request: Request) => new ShovelFetchEvent(request),
 
-	createInstallEvent: () => new InstallEvent(),
+	createInstallEvent: () => new ShovelInstallEvent(),
 
-	createActivateEvent: () => new ActivateEvent(),
+	createActivateEvent: () => new ShovelActivateEvent(),
 
 	endDispatchPhase: (event: any) => {
 		event[kEndDispatchPhase]();

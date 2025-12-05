@@ -3,13 +3,14 @@
  *
  * This module provides runtime initialization for Cloudflare Workers.
  * It is imported by the entry wrapper, not by user code.
- *
- * For user-facing Cloudflare APIs, see ./cloudflare.ts
  */
 
+import {AsyncContext} from "@b9g/async-context";
 import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
+	ShovelFetchEvent,
+	type ShovelFetchEventInit,
 	CustomLoggerStorage,
 	configureLogging,
 	type ShovelConfig,
@@ -18,17 +19,82 @@ import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
 import mime from "mime";
 
-// Import AsyncContext storage from cloudflare.ts (user-facing module)
-import {
-	envStorage,
-	ctxStorage,
-	type ExecutionContext,
-	type CFAssetsBinding,
-	type R2Bucket,
-} from "./cloudflare.js";
+// ============================================================================
+// CLOUDFLARE TYPES
+// ============================================================================
 
-// Re-export types for internal use
-export type {ExecutionContext, CFAssetsBinding, R2Bucket};
+/**
+ * Cloudflare's ExecutionContext - passed to each request handler
+ */
+export interface ExecutionContext {
+	waitUntil(promise: Promise<unknown>): void;
+	passThroughOnException(): void;
+}
+
+/**
+ * Cloudflare ASSETS binding interface
+ */
+export interface CFAssetsBinding {
+	fetch(request: Request | string): Promise<Response>;
+}
+
+/** R2 object metadata */
+export interface R2Object {
+	key: string;
+	uploaded: Date;
+	httpMetadata?: {contentType?: string};
+	arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+/** R2 list result */
+export interface R2Objects {
+	objects: Array<{key: string}>;
+	delimitedPrefixes: string[];
+}
+
+/** R2 bucket interface */
+export interface R2Bucket {
+	get(key: string): Promise<R2Object | null>;
+	head(key: string): Promise<R2Object | null>;
+	put(key: string, value: ArrayBuffer | Uint8Array): Promise<R2Object>;
+	delete(key: string): Promise<void>;
+	list(options?: {prefix?: string; delimiter?: string}): Promise<R2Objects>;
+}
+
+// ============================================================================
+// PER-REQUEST CONTEXT (Internal)
+// ============================================================================
+
+/** Per-request storage for Cloudflare's env object (for directory factory) */
+const envStorage = new AsyncContext.Variable<Record<string, unknown>>();
+
+// ============================================================================
+// CLOUDFLARE FETCH EVENT
+// ============================================================================
+
+/**
+ * Options for CloudflareFetchEvent constructor
+ */
+export interface CloudflareFetchEventInit extends ShovelFetchEventInit {
+	/** Cloudflare environment bindings (KV, R2, D1, etc.) */
+	env: Record<string, unknown>;
+}
+
+/**
+ * Cloudflare-specific FetchEvent with env bindings.
+ *
+ * Extends ShovelFetchEvent to add the `env` property for accessing
+ * Cloudflare bindings (KV namespaces, R2 buckets, D1 databases, etc.)
+ */
+export class CloudflareFetchEvent extends ShovelFetchEvent {
+	/** Cloudflare environment bindings (KV, R2, D1, Durable Objects, etc.) */
+	readonly env: Record<string, unknown>;
+
+	constructor(request: Request, options: CloudflareFetchEventInit) {
+		super(request, options);
+		this.env = options.env;
+	}
+}
 
 // ============================================================================
 // RUNTIME INITIALIZATION
@@ -80,7 +146,8 @@ export async function initializeRuntime(
 /**
  * Create the ES module fetch handler for Cloudflare Workers
  *
- * Wraps env/ctx in AsyncContext and delegates to registration.handleRequest()
+ * Creates a CloudflareFetchEvent with env bindings and waitUntil hook,
+ * then delegates to registration.handleEvent()
  */
 export function createFetchHandler(
 	registration: ShovelServiceWorkerRegistration,
@@ -94,8 +161,15 @@ export function createFetchHandler(
 		env: unknown,
 		ctx: ExecutionContext,
 	): Promise<Response> => {
+		// Create CloudflareFetchEvent with env and waitUntil hook
+		const event = new CloudflareFetchEvent(request, {
+			env: env as Record<string, unknown>,
+			platformWaitUntil: (promise) => ctx.waitUntil(promise),
+		});
+
+		// Run within envStorage for directory factory access
 		return envStorage.run(env as Record<string, unknown>, () =>
-			ctxStorage.run(ctx, () => registration.handleRequest(request)),
+			registration.handleRequest(event),
 		);
 	};
 }

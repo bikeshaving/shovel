@@ -1,4 +1,5 @@
 import {test, expect} from "bun:test";
+import {ShovelFetchEvent} from "../src/runtime.js";
 
 /**
  * ServiceWorker globals and lifecycle tests
@@ -104,7 +105,9 @@ test(
 
 		// Test fetch event
 		const request = new Request("http://localhost/test");
-		const response = await registration.handleRequest(request);
+		const response = await registration.handleRequest(
+			new ShovelFetchEvent(request),
+		);
 		expect(fetchCalled).toBe(true);
 		expect(await response.text()).toBe("Hello from ServiceWorker!");
 	},
@@ -282,7 +285,9 @@ test(
 		await registration.activate();
 
 		const request = new Request("http://localhost/test");
-		const response = await registration.handleRequest(request);
+		const response = await registration.handleRequest(
+			new ShovelFetchEvent(request),
+		);
 
 		expect(await response.text()).toBe("OK");
 		expect(logMessages.length).toBeGreaterThanOrEqual(1);
@@ -349,12 +354,16 @@ test(
 
 		// Test different request types
 		const helloRequest = new Request("http://localhost/hello");
-		const helloResponse = await runtime.handleRequest(helloRequest);
+		const helloResponse = await runtime.handleRequest(
+			new ShovelFetchEvent(helloRequest),
+		);
 		expect(await helloResponse.text()).toBe("Hello World!");
 		expect(fetchEventReceived.request.url).toBe("http://localhost/hello");
 
 		const jsonRequest = new Request("http://localhost/json");
-		const jsonResponse = await runtime.handleRequest(jsonRequest);
+		const jsonResponse = await runtime.handleRequest(
+			new ShovelFetchEvent(jsonRequest),
+		);
 		const jsonData = await jsonResponse.json();
 		expect(jsonData.message).toBe("JSON response");
 	},
@@ -413,7 +422,7 @@ test(
 		await runtime.activate();
 
 		const request = new Request("http://localhost/test");
-		const response = await runtime.handleRequest(request);
+		const response = await runtime.handleRequest(new ShovelFetchEvent(request));
 
 		// Both listeners should be called
 		expect(calls).toEqual(["listener1", "listener2"]);
@@ -521,7 +530,7 @@ test(
 
 		const request = new Request("http://localhost/test");
 		// Should successfully get response despite waitUntil rejection
-		const response = await runtime.handleRequest(request);
+		const response = await runtime.handleRequest(new ShovelFetchEvent(request));
 		expect(await response.text()).toBe("Hello World");
 	},
 	TIMEOUT,
@@ -594,7 +603,9 @@ test(
 
 		// Test requests
 		const homeRequest = new Request("http://localhost/");
-		const homeResponse = await registration.handleRequest(homeRequest);
+		const homeResponse = await registration.handleRequest(
+			new ShovelFetchEvent(homeRequest),
+		);
 		const homeText = await homeResponse.text();
 		expect(homeText).toContain("Hello from ServiceWorker!");
 		expect(homeResponse.headers.get("content-type")).toBe(
@@ -602,7 +613,9 @@ test(
 		);
 
 		const healthRequest = new Request("http://localhost/api/health");
-		const healthResponse = await registration.handleRequest(healthRequest);
+		const healthResponse = await registration.handleRequest(
+			new ShovelFetchEvent(healthRequest),
+		);
 		const healthData = await healthResponse.json();
 		expect(healthData.status).toBe("ok");
 		expect(healthData.installed).toBe(true);

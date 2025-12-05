@@ -3,6 +3,7 @@ import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
 import {NodeFSDirectory} from "@b9g/filesystem/node-fs.js";
+import {ShovelFetchEvent} from "../src/runtime.js";
 
 /**
  * Directory storage architecture and self.directories API tests
@@ -308,7 +309,9 @@ test(
 
 			// Test request
 			const request = new Request("http://localhost/");
-			const response = await registration.handleRequest(request);
+			const response = await registration.handleRequest(
+				new ShovelFetchEvent(request),
+			);
 			const content = await response.text();
 
 			expect(content).toContain("Hello from static file!");
@@ -390,26 +393,33 @@ test(
 
 			// Test different file types
 			const cssRequest = new Request("http://localhost/style.css");
-			const cssResponse = await registration.handleRequest(cssRequest);
+			const cssResponse = await registration.handleRequest(
+				new ShovelFetchEvent(cssRequest),
+			);
 			expect(await cssResponse.text()).toBe("body { background: blue; }");
 			expect(cssResponse.headers.get("content-type")).toBe("text/css");
 
 			const jsRequest = new Request("http://localhost/script.js");
-			const jsResponse = await registration.handleRequest(jsRequest);
+			const jsResponse = await registration.handleRequest(
+				new ShovelFetchEvent(jsRequest),
+			);
 			expect(await jsResponse.text()).toBe("console.log('loaded');");
 			expect(jsResponse.headers.get("content-type")).toBe(
 				"application/javascript",
 			);
 
 			const jsonRequest = new Request("http://localhost/data.json");
-			const jsonResponse = await registration.handleRequest(jsonRequest);
+			const jsonResponse = await registration.handleRequest(
+				new ShovelFetchEvent(jsonRequest),
+			);
 			expect(await jsonResponse.text()).toBe('{"message": "test"}');
 			expect(jsonResponse.headers.get("content-type")).toBe("application/json");
 
 			// Test 404
 			const notFoundRequest = new Request("http://localhost/nonexistent.txt");
-			const notFoundResponse =
-				await registration.handleRequest(notFoundRequest);
+			const notFoundResponse = await registration.handleRequest(
+				new ShovelFetchEvent(notFoundRequest),
+			);
 			expect(notFoundResponse.status).toBe(404);
 		} finally {
 			await cleanup([tempDir]);
