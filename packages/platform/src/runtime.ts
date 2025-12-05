@@ -1920,34 +1920,24 @@ export async function configureLogging(
 	const reset = options.reset !== false;
 
 	// Create all unique sinks (default + category-specific)
-	const allSinkConfigs = new Map<string, SinkConfig>();
-	const sinkNameMap = new Map<SinkConfig, string>();
+	// Use Map keyed by JSON string for O(1) deduplication instead of O(n) iteration
+	const sinkByKey = new Map<string, {config: SinkConfig; name: string}>();
 
 	// Add default sinks
-	for (let i = 0; i < defaultSinkConfigs.length; i++) {
-		const config = defaultSinkConfigs[i];
-		const name = `sink_${i}`;
-		allSinkConfigs.set(name, config);
-		sinkNameMap.set(config, name);
+	for (const config of defaultSinkConfigs) {
+		const key = JSON.stringify(config);
+		if (!sinkByKey.has(key)) {
+			sinkByKey.set(key, {config, name: `sink_${sinkByKey.size}`});
+		}
 	}
 
 	// Add category-specific sinks
-	let sinkIndex = defaultSinkConfigs.length;
 	for (const [_, categoryConfig] of Object.entries(categories)) {
 		if (categoryConfig.sinks) {
 			for (const config of categoryConfig.sinks) {
-				// Check if this sink config is already added
-				let found = false;
-				for (const [existingConfig] of sinkNameMap) {
-					if (JSON.stringify(existingConfig) === JSON.stringify(config)) {
-						found = true;
-						break;
-					}
-				}
-				if (!found) {
-					const name = `sink_${sinkIndex++}`;
-					allSinkConfigs.set(name, config);
-					sinkNameMap.set(config, name);
+				const key = JSON.stringify(config);
+				if (!sinkByKey.has(key)) {
+					sinkByKey.set(key, {config, name: `sink_${sinkByKey.size}`});
 				}
 			}
 		}
@@ -1955,21 +1945,14 @@ export async function configureLogging(
 
 	// Create sink instances
 	const sinks: Record<string, any> = {};
-	for (const [name, config] of allSinkConfigs) {
+	for (const {config, name} of sinkByKey.values()) {
 		sinks[name] = await createSink(config);
 	}
 
-	// Get sink names for a given array of sink configs
+	// Get sink names for a given array of sink configs (O(1) lookup per config)
 	const getSinkNames = (configs: SinkConfig[]): string[] => {
 		return configs
-			.map((config) => {
-				for (const [existingConfig, name] of sinkNameMap) {
-					if (JSON.stringify(existingConfig) === JSON.stringify(config)) {
-						return name;
-					}
-				}
-				return "";
-			})
+			.map((config) => sinkByKey.get(JSON.stringify(config))?.name ?? "")
 			.filter(Boolean);
 	};
 

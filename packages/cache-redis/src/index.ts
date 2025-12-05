@@ -10,6 +10,25 @@ import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["server"]);
 
+/** Encode Uint8Array to base64 string (no spread operator for efficiency) */
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+	let binary = "";
+	for (let i = 0; i < bytes.length; i++) {
+		binary += String.fromCharCode(bytes[i]);
+	}
+	return btoa(binary);
+}
+
+/** Decode base64 string to Uint8Array */
+function base64ToUint8Array(base64: string): Uint8Array {
+	const binary = atob(base64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+	return bytes;
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -123,7 +142,7 @@ export class RedisCache extends Cache {
 			status: response.status,
 			statusText: response.statusText,
 			headers,
-			body: btoa(String.fromCharCode(...new Uint8Array(body))),
+			body: uint8ArrayToBase64(new Uint8Array(body)),
 			cachedAt: Date.now(),
 			TTL: this.#defaultTTL,
 		};
@@ -133,7 +152,7 @@ export class RedisCache extends Cache {
 	 * Deserialize cache entry to Response
 	 */
 	#deserializeResponse(entry: CacheEntry): Response {
-		const body = Uint8Array.from(atob(entry.body), (c) => c.charCodeAt(0));
+		const body = base64ToUint8Array(entry.body);
 
 		return new Response(body, {
 			status: entry.status,

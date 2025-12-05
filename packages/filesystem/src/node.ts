@@ -9,6 +9,11 @@ import {type FileSystemBackend, ShovelDirectoryHandle} from "./index.js";
 import * as FS from "fs/promises";
 import * as Path from "path";
 
+/** Type guard for Node.js errors with error codes */
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+	return error instanceof Error && "code" in error;
+}
+
 /**
  * Node.js storage backend that implements FileSystemBackend
  */
@@ -32,7 +37,7 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 				return null;
 			}
 		} catch (error) {
-			if ((error as any).code === "ENOENT") {
+			if (isErrnoException(error) && error.code === "ENOENT") {
 				return null;
 			}
 			throw error;
@@ -54,7 +59,7 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 				lastModified: stats.mtimeMs,
 			};
 		} catch (error) {
-			if ((error as any).code === "ENOENT") {
+			if (isErrnoException(error) && error.code === "ENOENT") {
 				throw new DOMException("File not found", "NotFoundError");
 			}
 			throw error;
@@ -94,7 +99,7 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 
 			return results;
 		} catch (error) {
-			if ((error as any).code === "ENOENT") {
+			if (isErrnoException(error) && error.code === "ENOENT") {
 				throw new DOMException("Directory not found", "NotFoundError");
 			}
 			throw error;
@@ -136,7 +141,7 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 				}
 			}
 		} catch (error) {
-			if ((error as any).code === "ENOENT") {
+			if (isErrnoException(error) && error.code === "ENOENT") {
 				throw new DOMException("Entry not found", "NotFoundError");
 			}
 			throw error;

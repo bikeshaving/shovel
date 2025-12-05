@@ -9,6 +9,7 @@ import {
 	type FileSystemBackend,
 	ShovelDirectoryHandle,
 	ShovelFileHandle,
+	ShovelHandle,
 } from "./index.js";
 
 /**
@@ -339,7 +340,7 @@ export class S3Bucket implements FileSystemDirectoryHandle {
 		}
 
 		// For S3 bucket, check if the handle uses our backend
-		const descendantPath = (possibleDescendant as any).path;
+		const descendantPath = (possibleDescendant as ShovelHandle).path;
 		if (typeof descendantPath === "string" && descendantPath.startsWith("/")) {
 			return descendantPath.split("/").filter(Boolean);
 		}
