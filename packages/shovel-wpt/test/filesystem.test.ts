@@ -1,38 +1,38 @@
 /**
  * Tests for the filesystem WPT test runner
  *
- * This file runs the WPT-based filesystem tests against MemoryBucket and NodeBucket
+ * This file runs the WPT-based filesystem tests against MemoryDirectory and NodeDirectory
  * to verify the test runner works correctly.
  */
 
 import {runFilesystemTests} from "../src/runners/filesystem.js";
-import {MemoryBucket} from "../../filesystem/src/memory.js";
-import {NodeBucket} from "../../filesystem/src/node.js";
+import {MemoryDirectory} from "../../filesystem/src/memory.js";
+import {NodeDirectory} from "../../filesystem/src/node.js";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 
-// Run WPT filesystem tests against MemoryBucket
-runFilesystemTests("MemoryBucket", {
-	getDirectory: () => new MemoryBucket("test-root"),
+// Run WPT filesystem tests against MemoryDirectory
+runFilesystemTests("MemoryDirectory", {
+	getDirectory: () => new MemoryDirectory("test-root"),
 	cleanup: async () => {
-		// MemoryBucket doesn't need cleanup - each test gets fresh instance
+		// MemoryDirectory doesn't need cleanup - each test gets fresh instance
 	},
 });
 
-// Run WPT filesystem tests against NodeBucket
-let nodeBucketTestDir: string | null = null;
+// Run WPT filesystem tests against NodeDirectory
+let nodeDirectoryTestDir: string | null = null;
 
-runFilesystemTests("NodeBucket", {
+runFilesystemTests("NodeDirectory", {
 	getDirectory: async () => {
 		// Create a temp directory for each test
-		nodeBucketTestDir = await fs.mkdtemp(path.join(os.tmpdir(), "wpt-fs-"));
-		return new NodeBucket(nodeBucketTestDir);
+		nodeDirectoryTestDir = await fs.mkdtemp(path.join(os.tmpdir(), "wpt-fs-"));
+		return new NodeDirectory(nodeDirectoryTestDir);
 	},
 	cleanup: async () => {
-		if (nodeBucketTestDir) {
-			await fs.rm(nodeBucketTestDir, {recursive: true, force: true});
-			nodeBucketTestDir = null;
+		if (nodeDirectoryTestDir) {
+			await fs.rm(nodeDirectoryTestDir, {recursive: true, force: true});
+			nodeDirectoryTestDir = null;
 		}
 	},
 });

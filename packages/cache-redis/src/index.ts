@@ -154,7 +154,7 @@ export class RedisCache extends Cache {
 	#deserializeResponse(entry: CacheEntry): Response {
 		const body = base64ToUint8Array(entry.body);
 
-		return new Response(body, {
+		return new Response(body as unknown as BodyInit, {
 			status: entry.status,
 			statusText: entry.statusText,
 			headers: entry.headers,

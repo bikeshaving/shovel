@@ -19,9 +19,9 @@ import {
 	SingleThreadedRuntime,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
-import {CustomBucketStorage} from "@b9g/filesystem";
+import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {MemoryCache} from "@b9g/cache/memory";
-import {NodeBucket} from "@b9g/filesystem/node";
+import {NodeDirectory} from "@b9g/filesystem/node";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {getLogger} from "@logtape/logtape";
 import * as Path from "path";
@@ -125,7 +125,7 @@ export class BunPlatform extends BasePlatform {
 	#workerPool?: ServiceWorkerPool;
 	#singleThreadedRuntime?: SingleThreadedRuntime;
 	#cacheStorage?: CustomCacheStorage;
-	#bucketStorage?: CustomBucketStorage;
+	#directoryStorage?: CustomDirectoryStorage;
 
 	constructor(options: BunPlatformOptions = {}) {
 		super(options);
@@ -169,20 +169,20 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Create bucket storage for the given base directory
+	 * Create directory storage for the given base directory
 	 */
-	createBuckets(baseDir: string): CustomBucketStorage {
-		return new CustomBucketStorage((name: string) => {
-			// Well-known bucket paths
-			let bucketPath: string;
+	createDirectories(baseDir: string): CustomDirectoryStorage {
+		return new CustomDirectoryStorage((name: string) => {
+			// Well-known directory paths
+			let dirPath: string;
 			if (name === "static") {
-				bucketPath = Path.resolve(baseDir, "../static");
+				dirPath = Path.resolve(baseDir, "../static");
 			} else if (name === "server") {
-				bucketPath = baseDir;
+				dirPath = baseDir;
 			} else {
-				bucketPath = Path.resolve(baseDir, `../${name}`);
+				dirPath = Path.resolve(baseDir, `../${name}`);
 			}
-			return Promise.resolve(new NodeBucket(bucketPath));
+			return Promise.resolve(new NodeDirectory(dirPath));
 		});
 	}
 
@@ -275,9 +275,9 @@ export class BunPlatform extends BasePlatform {
 			this.#cacheStorage = await this.createCaches();
 		}
 
-		// Create shared bucket storage if not already created
-		if (!this.#bucketStorage) {
-			this.#bucketStorage = this.createBuckets(entryDir);
+		// Create shared directory storage if not already created
+		if (!this.#directoryStorage) {
+			this.#directoryStorage = this.createDirectories(entryDir);
 		}
 
 		// Terminate any existing runtime
@@ -291,10 +291,10 @@ export class BunPlatform extends BasePlatform {
 
 		logger.info("Creating single-threaded ServiceWorker runtime", {entryPath});
 
-		// Create single-threaded runtime with caches and buckets
+		// Create single-threaded runtime with caches and directories
 		this.#singleThreadedRuntime = new SingleThreadedRuntime({
 			caches: this.#cacheStorage,
-			buckets: this.#bucketStorage,
+			directories: this.#directoryStorage,
 		});
 
 		// Initialize and load entrypoint

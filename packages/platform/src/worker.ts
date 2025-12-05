@@ -7,7 +7,7 @@
  * This file is loaded directly as a Worker script - no detection needed.
  *
  * BOOTSTRAP ORDER:
- * 1. Create placeholder caches/buckets with deferred factories
+ * 1. Create placeholder caches/directories with deferred factories
  * 2. Create and install ServiceWorkerGlobals (provides `self`, `addEventListener`, etc.)
  * 3. Set up message handlers using `self.addEventListener`
  * 4. Wait for "init" message to configure factories with real config
@@ -16,7 +16,7 @@
 
 import {resolve} from "path";
 import {getLogger} from "@logtape/logtape";
-import {CustomBucketStorage, type BucketFactory} from "@b9g/filesystem";
+import {CustomDirectoryStorage, type DirectoryFactory} from "@b9g/filesystem";
 import {CustomCacheStorage, type CacheFactory, Cache} from "@b9g/cache";
 import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
 import {
@@ -24,7 +24,7 @@ import {
 	ShovelServiceWorkerRegistration,
 	configureLogging,
 	type CacheConfig,
-	type BucketConfig,
+	type DirectoryConfig,
 	type ShovelConfig,
 } from "./runtime.js";
 import type {
@@ -68,27 +68,31 @@ function getCacheConfig(config: ShovelConfig, name: string): CacheConfig {
 	return matchPattern(name, config.caches) || {};
 }
 
-function getBucketConfig(config: ShovelConfig, name: string): BucketConfig {
-	return matchPattern(name, config.buckets) || {};
+function getDirectoryConfig(
+	config: ShovelConfig,
+	name: string,
+): DirectoryConfig {
+	return matchPattern(name, config.directories) || {};
 }
 
 // ============================================================================
-// Bucket Factory
+// Directory Factory
 // ============================================================================
 
-// Well-known bucket path conventions
-const WELL_KNOWN_BUCKET_PATHS: Record<string, (baseDir: string) => string> = {
-	static: (baseDir) => resolve(baseDir, "../static"),
-	server: (baseDir) => baseDir,
-};
+// Well-known directory path conventions
+const WELL_KNOWN_DIRECTORY_PATHS: Record<string, (baseDir: string) => string> =
+	{
+		static: (baseDir) => resolve(baseDir, "../static"),
+		server: (baseDir) => baseDir,
+	};
 
-const BUILTIN_BUCKET_PROVIDERS: Record<string, string> = {
+const BUILTIN_DIRECTORY_PROVIDERS: Record<string, string> = {
 	node: "@b9g/filesystem/node.js",
 	memory: "@b9g/filesystem/memory.js",
 	s3: "@b9g/filesystem-s3",
 };
 
-export interface BucketFactoryOptions {
+export interface DirectoryFactoryOptions {
 	/** Base directory for path resolution (entrypoint directory) - REQUIRED */
 	baseDir: string;
 	/** Shovel configuration for overrides */
@@ -96,57 +100,57 @@ export interface BucketFactoryOptions {
 }
 
 /**
- * Creates a bucket factory function for CustomBucketStorage.
+ * Creates a directory factory function for CustomDirectoryStorage.
  */
-export function createBucketFactory(options: BucketFactoryOptions) {
+export function createDirectoryFactory(options: DirectoryFactoryOptions) {
 	const {baseDir, config} = options;
 
 	return async (name: string): Promise<FileSystemDirectoryHandle> => {
-		const bucketConfig = config ? getBucketConfig(config, name) : {};
+		const dirConfig = config ? getDirectoryConfig(config, name) : {};
 
-		// Determine bucket path: config override > well-known > default convention
-		let bucketPath: string;
-		if (bucketConfig.path) {
-			bucketPath = String(bucketConfig.path);
-		} else if (WELL_KNOWN_BUCKET_PATHS[name]) {
-			bucketPath = WELL_KNOWN_BUCKET_PATHS[name](baseDir);
+		// Determine directory path: config override > well-known > default convention
+		let dirPath: string;
+		if (dirConfig.path) {
+			dirPath = String(dirConfig.path);
+		} else if (WELL_KNOWN_DIRECTORY_PATHS[name]) {
+			dirPath = WELL_KNOWN_DIRECTORY_PATHS[name](baseDir);
 		} else {
-			bucketPath = resolve(baseDir, `../${name}`);
+			dirPath = resolve(baseDir, `../${name}`);
 		}
 
-		const provider = String(bucketConfig.provider || "node");
-		const modulePath = BUILTIN_BUCKET_PROVIDERS[provider] || provider;
+		const provider = String(dirConfig.provider || "node");
+		const modulePath = BUILTIN_DIRECTORY_PROVIDERS[provider] || provider;
 
-		// Special handling for built-in node bucket (most common case)
+		// Special handling for built-in node directory (most common case)
 		if (modulePath === "@b9g/filesystem/node.js") {
-			const {NodeBucket} = await import("@b9g/filesystem/node.js");
-			return new NodeBucket(bucketPath);
+			const {NodeDirectory} = await import("@b9g/filesystem/node.js");
+			return new NodeDirectory(dirPath);
 		}
 
-		// Special handling for built-in memory bucket
+		// Special handling for built-in memory directory
 		if (modulePath === "@b9g/filesystem/memory.js") {
-			const {MemoryBucket} = await import("@b9g/filesystem/memory.js");
-			return new MemoryBucket(name);
+			const {MemoryDirectory} = await import("@b9g/filesystem/memory.js");
+			return new MemoryDirectory(name);
 		}
 
 		// Dynamic import for all other providers
 		const module = await import(modulePath);
-		const BucketClass =
+		const DirectoryClass =
 			module.default ||
-			module.S3Bucket ||
-			module.Bucket ||
+			module.S3Directory ||
+			module.Directory ||
 			Object.values(module).find(
-				(v: any) => typeof v === "function" && v.name?.includes("Bucket"),
+				(v: any) => typeof v === "function" && v.name?.includes("Directory"),
 			);
 
-		if (!BucketClass) {
+		if (!DirectoryClass) {
 			throw new Error(
-				`Bucket module "${modulePath}" does not export a valid bucket class.`,
+				`Directory module "${modulePath}" does not export a valid directory class.`,
 			);
 		}
 
-		const {provider: _, path: __, ...bucketOptions} = bucketConfig;
-		return new BucketClass(name, {path: bucketPath, ...bucketOptions});
+		const {provider: _, path: __, ...dirOptions} = dirConfig;
+		return new DirectoryClass(name, {path: dirPath, ...dirOptions});
 	};
 }
 
@@ -226,12 +230,12 @@ const workerId = Math.random().toString(36).substring(2, 8);
 
 // Deferred factory initialization - resolved when initializeRuntime receives config
 let resolveCacheFactory: (factory: CacheFactory) => void;
-let resolveBucketFactory: (factory: BucketFactory) => void;
+let resolveDirectoryFactory: (factory: DirectoryFactory) => void;
 const cacheFactoryPromise = new Promise<CacheFactory>((resolve) => {
 	resolveCacheFactory = resolve;
 });
-const bucketFactoryPromise = new Promise<BucketFactory>((resolve) => {
-	resolveBucketFactory = resolve;
+const directoryFactoryPromise = new Promise<DirectoryFactory>((resolve) => {
+	resolveDirectoryFactory = resolve;
 });
 
 // Create storage with async deferred factories (open() waits for init)
@@ -239,8 +243,8 @@ const caches = new CustomCacheStorage(async (name) => {
 	const factory = await cacheFactoryPromise;
 	return factory(name);
 });
-const buckets = new CustomBucketStorage(async (name) => {
-	const factory = await bucketFactoryPromise;
+const directories = new CustomDirectoryStorage(async (name) => {
+	const factory = await directoryFactoryPromise;
 	return factory(name);
 });
 
@@ -250,7 +254,7 @@ let registration = new ShovelServiceWorkerRegistration();
 let scope: ServiceWorkerGlobals | null = new ServiceWorkerGlobals({
 	registration,
 	caches,
-	buckets,
+	directories,
 });
 scope.install();
 
@@ -294,7 +298,7 @@ async function loadServiceWorker(entrypoint: string): Promise<void> {
 
 			// Create a completely new runtime instance with fresh registration
 			registration = new ShovelServiceWorkerRegistration();
-			scope = new ServiceWorkerGlobals({registration, caches, buckets});
+			scope = new ServiceWorkerGlobals({registration, caches, directories});
 			scope.install();
 		}
 
@@ -334,16 +338,18 @@ async function initializeRuntime(config: any, baseDir: string): Promise<void> {
 
 		logger.info(`[Worker-${workerId}] Initializing runtime`, {config, baseDir});
 
-		// Resolve the deferred factories - this unblocks any pending caches.open() / buckets.open() calls
+		// Resolve the deferred factories - this unblocks any pending caches.open() / directories.open() calls
 		logger.info(`[Worker-${workerId}] Configuring cache factory`);
 		resolveCacheFactory(createCacheFactory({config, usePostMessage: true}));
 
-		logger.info(`[Worker-${workerId}] Configuring bucket factory`);
-		resolveBucketFactory(createBucketFactory({baseDir, config}));
+		logger.info(`[Worker-${workerId}] Configuring directory factory`);
+		resolveDirectoryFactory(createDirectoryFactory({baseDir, config}));
 
 		logger.info(`[Worker-${workerId}] Runtime initialized successfully`);
 	} catch (error) {
-		logger.error(`[Worker-${workerId}] Failed to initialize runtime: {error}`, {error});
+		logger.error(`[Worker-${workerId}] Failed to initialize runtime: {error}`, {
+			error,
+		});
 		throw error;
 	}
 }

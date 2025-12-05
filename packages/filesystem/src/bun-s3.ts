@@ -1,7 +1,7 @@
 /**
  * Bun S3 filesystem implementation
  *
- * Provides S3Bucket (root) and S3FileSystemBackend for storage operations
+ * Provides S3Directory (root) and S3FileSystemBackend for storage operations
  * using Bun's native S3 client.
  */
 
@@ -245,16 +245,16 @@ export class S3FileSystemBackend implements FileSystemBackend {
 }
 
 /**
- * S3 bucket - root entry point for S3 filesystem using Bun's S3 client
+ * S3 directory - root entry point for S3 filesystem using Bun's S3 client
  * Implements FileSystemDirectoryHandle for S3 object storage
  *
  * Example usage with namespacing:
  * ```typescript
  * const s3 = new S3Client({ ... });
  *
- * // Use in CustomBucketStorage factory for multi-tenancy
- * const buckets = new CustomBucketStorage(async (name) => {
- *   return new S3Bucket(
+ * // Use in CustomDirectoryStorage factory for multi-tenancy
+ * const directories = new CustomDirectoryStorage(async (name) => {
+ *   return new S3Directory(
  *     s3,
  *     "my-company-bucket",
  *     `my-app/production/${name}`  // Prefix for isolation
@@ -262,7 +262,7 @@ export class S3FileSystemBackend implements FileSystemBackend {
  * });
  * ```
  */
-export class S3Bucket implements FileSystemDirectoryHandle {
+export class S3Directory implements FileSystemDirectoryHandle {
 	readonly kind: "directory";
 	readonly name: string;
 	#backend: S3FileSystemBackend;
@@ -385,7 +385,7 @@ export class S3Bucket implements FileSystemDirectoryHandle {
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "directory") return false;
-		return other instanceof S3Bucket && other.name === this.name;
+		return other instanceof S3Directory && other.name === this.name;
 	}
 
 	async queryPermission(): Promise<PermissionState> {

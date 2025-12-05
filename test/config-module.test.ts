@@ -7,7 +7,7 @@ import {
 	exprToCode,
 	generateConfigModule,
 	BUILTIN_CACHE_PROVIDERS,
-	BUILTIN_BUCKET_PROVIDERS,
+	BUILTIN_DIRECTORY_PROVIDERS,
 } from "../src/utils/config.js";
 
 describe("exprToCode", () => {
@@ -252,10 +252,10 @@ describe("generateConfigModule", () => {
 		});
 	});
 
-	describe("bucket providers", () => {
+	describe("directory providers", () => {
 		it("generates static import for s3 provider", () => {
 			const config = {
-				buckets: {
+				directories: {
 					uploads: {
 						provider: "s3",
 						bucket: "S3_BUCKET",
@@ -270,13 +270,13 @@ describe("generateConfigModule", () => {
 			});
 
 			expect(module).toContain('from "@b9g/filesystem-s3"');
-			expect(module).toContain("provider: bucket_");
+			expect(module).toContain("provider: directory_");
 		});
 
 		it("generates static import for node provider", () => {
 			// Node is a blessed provider that gets imported
 			const config = {
-				buckets: {
+				directories: {
 					uploads: {
 						provider: "node",
 						path: "./uploads",
@@ -288,12 +288,12 @@ describe("generateConfigModule", () => {
 
 			// Node is a built-in provider, gets imported
 			expect(module).toContain('from "@b9g/filesystem/node.js"');
-			expect(module).toContain("provider: bucket_");
+			expect(module).toContain("provider: directory_");
 		});
 
-		it("handles conditional bucket provider at build time", () => {
+		it("handles conditional directory provider at build time", () => {
 			const config = {
-				buckets: {
+				directories: {
 					uploads: {
 						provider: "S3_ENABLED ? s3 : node",
 						bucket: "S3_BUCKET",
@@ -363,7 +363,7 @@ describe("generateConfigModule", () => {
 						url: "REDIS_URL",
 					},
 				},
-				buckets: {
+				directories: {
 					files: {
 						provider: "s3",
 						bucket: "S3_BUCKET",
@@ -543,16 +543,18 @@ describe("BUILTIN_CACHE_PROVIDERS", () => {
 	});
 });
 
-describe("BUILTIN_BUCKET_PROVIDERS", () => {
+describe("BUILTIN_DIRECTORY_PROVIDERS", () => {
 	it("has node provider", () => {
-		expect(BUILTIN_BUCKET_PROVIDERS.node).toBe("@b9g/filesystem/node.js");
+		expect(BUILTIN_DIRECTORY_PROVIDERS.node).toBe("@b9g/filesystem/node.js");
 	});
 
 	it("has memory provider", () => {
-		expect(BUILTIN_BUCKET_PROVIDERS.memory).toBe("@b9g/filesystem/memory.js");
+		expect(BUILTIN_DIRECTORY_PROVIDERS.memory).toBe(
+			"@b9g/filesystem/memory.js",
+		);
 	});
 
 	it("has s3 provider", () => {
-		expect(BUILTIN_BUCKET_PROVIDERS.s3).toBe("@b9g/filesystem-s3");
+		expect(BUILTIN_DIRECTORY_PROVIDERS.s3).toBe("@b9g/filesystem-s3");
 	});
 });

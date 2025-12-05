@@ -15,12 +15,6 @@ export interface FileSystemConfig {
 }
 
 /**
- * Bucket is a semantic alias for FileSystemDirectoryHandle
- * Represents a named storage bucket that provides direct filesystem access
- */
-export type Bucket = FileSystemDirectoryHandle;
-
-/**
  * Permission descriptor for File System Access API
  */
 export interface FileSystemPermissionDescriptor {
@@ -488,70 +482,69 @@ export class ShovelDirectoryHandle
 }
 
 // ============================================================================
-// BUCKET STORAGE
+// DIRECTORY STORAGE
 // ============================================================================
 
 /**
- * Bucket storage interface - parallels CacheStorage for filesystem access
- * This could become a future web standard
+ * Directory storage interface - parallels CacheStorage for filesystem access
  */
-export interface BucketStorage {
+export interface DirectoryStorage {
 	/**
-	 * Open a named bucket - returns FileSystemDirectoryHandle (root of that bucket)
+	 * Open a named directory - returns FileSystemDirectoryHandle (root)
 	 * Well-known names: 'static', 'tmp'
 	 */
 	open(name: string): Promise<FileSystemDirectoryHandle>;
 
 	/**
-	 * Check if a named bucket exists
+	 * Check if a named directory exists
 	 */
 	has(name: string): Promise<boolean>;
 
 	/**
-	 * Delete a named bucket and all its contents
+	 * Delete a named directory and all its contents
 	 */
 	delete(name: string): Promise<boolean>;
 
 	/**
-	 * List all available bucket names
+	 * List all available directory names
 	 */
 	keys(): Promise<string[]>;
 }
 
 /**
- * Factory function type for creating buckets
- * @param name Bucket name to create
- * @returns FileSystemDirectoryHandle (Bucket) instance
+ * Factory function type for creating directories
+ * @param name Directory name to create
+ * @returns FileSystemDirectoryHandle instance
  */
-export type BucketFactory = (
+export type DirectoryFactory = (
 	name: string,
 ) => FileSystemDirectoryHandle | Promise<FileSystemDirectoryHandle>;
 
 /**
- * Custom bucket storage with factory-based bucket creation
+ * Custom directory storage with factory-based directory creation
  *
- * Provides a registry of named buckets (FileSystemDirectoryHandle instances)
- * with lazy instantiation and singleton behavior per bucket name.
+ * Provides a registry of named directories (FileSystemDirectoryHandle instances)
+ * with lazy instantiation and singleton behavior per directory name.
  *
  * Mirrors the CustomCacheStorage pattern for consistency across the platform.
  */
-export class CustomBucketStorage {
+export class CustomDirectoryStorage {
 	#instances: Map<string, FileSystemDirectoryHandle>;
-	#factory: BucketFactory;
+	#factory: DirectoryFactory;
 
 	/**
-	 * @param factory Function that creates bucket instances by name
+	 * @param factory Function that creates directory instances by name
 	 */
-	constructor(factory: BucketFactory) {
+	constructor(factory: DirectoryFactory) {
 		this.#instances = new Map<string, FileSystemDirectoryHandle>();
 		this.#factory = factory;
 	}
 
 	/**
-	 * Open a named bucket - creates if it doesn't exist
+	 * Open a named directory - creates if it doesn't exist
 	 *
-	 * @param name Bucket name (e.g., 'tmp', 'dist', 'uploads')
-	 * @returns FileSystemDirectoryHandle for the bucket
+	 * @param name Directory name (e.g., 'tmp', 'dist', 'uploads')
+	 * @returns FileSystemDirectoryHandle for the directory
 	 */
 	async open(name: string): Promise<FileSystemDirectoryHandle> {
 		// Return existing instance if already opened
@@ -561,26 +554,26 @@ export class CustomBucketStorage {
 		}
 
 		// Create new instance using factory
-		const bucket = await this.#factory(name);
-		this.#instances.set(name, bucket);
-		return bucket;
+		const dir = await this.#factory(name);
+		this.#instances.set(name, dir);
+		return dir;
 	}
 
 	/**
-	 * Check if a named bucket exists
+	 * Check if a named directory exists
 	 *
-	 * @param name Bucket name to check
-	 * @returns true if bucket has been opened
+	 * @param name Directory name to check
+	 * @returns true if directory has been opened
 	 */
 	async has(name: string): Promise<boolean> {
 		return this.#instances.has(name);
 	}
 
 	/**
-	 * Delete a named bucket
+	 * Delete a named directory
 	 *
-	 * @param name Bucket name to delete
-	 * @returns true if bucket was deleted, false if it didn't exist
+	 * @param name Directory name to delete
+	 * @returns true if directory was deleted, false if it didn't exist
 	 */
 	async delete(name: string): Promise<boolean> {
 		const instance = this.#instances.get(name);
@@ -592,23 +585,23 @@ export class CustomBucketStorage {
 	}
 
 	/**
-	 * List all opened bucket names
+	 * List all opened directory names
 	 *
-	 * @returns Array of bucket names
+	 * @returns Array of directory names
 	 */
 	async keys(): Promise<string[]> {
 		return Array.from(this.#instances.keys());
 	}
 
 	/**
-	 * Get statistics about opened buckets (non-standard utility method)
+	 * Get statistics about opened directories (non-standard utility method)
 	 *
-	 * @returns Object with bucket statistics
+	 * @returns Object with directory statistics
 	 */
 	getStats() {
 		return {
 			openInstances: this.#instances.size,
-			bucketNames: Array.from(this.#instances.keys()),
+			directoryNames: Array.from(this.#instances.keys()),
 		};
 	}
 }

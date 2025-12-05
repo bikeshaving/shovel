@@ -66,7 +66,7 @@ export interface PlatformTestConfig {
 	 * Path to a ServiceWorker entrypoint that tests ServiceWorkerGlobals features.
 	 * The worker should handle these routes:
 	 * - /test-caches: returns {cachesAvailable, cacheOpenWorks}
-	 * - /test-buckets: returns {bucketsAvailable}
+	 * - /test-directories: returns {directoriesAvailable}
 	 * - /test-cookiestore: returns {cookieStoreAvailable, canReadCookie}
 	 */
 	testGlobalsEntrypoint?: string;
@@ -383,13 +383,13 @@ export function runPlatformTests(
 					expect(data.success).toBe(true);
 				});
 
-				test("buckets: can open, write, and read files", async () => {
-					const request = new Request("https://example.com/test-buckets");
+				test("directories: can open, write, and read files", async () => {
+					const request = new Request("https://example.com/test-directories");
 					const response = await sw!.handleRequest(request);
 					const data = await response.json();
 
 					if (!data.success) {
-						console.error("Buckets test failed:", data);
+						console.error("Directories test failed:", data);
 					}
 					expect(data.canOpen).toBe(true);
 					expect(data.canWrite).toBe(true);

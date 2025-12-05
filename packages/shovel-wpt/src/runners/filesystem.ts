@@ -23,7 +23,7 @@ export interface FilesystemTestConfig {
 /**
  * Run WPT fs tests against a FileSystemDirectoryHandle implementation
  *
- * @param name Name for the test suite (e.g., "MemoryBucket", "NodeBucket")
+ * @param name Name for the test suite (e.g., "MemoryDirectory", "NodeDirectory")
  * @param config Test configuration
  */
 export function runFilesystemTests(

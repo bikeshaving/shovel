@@ -1,13 +1,13 @@
 /**
- * Assets middleware using self.buckets ServiceWorker API
+ * Assets middleware using self.directories ServiceWorker API
  *
- * Serves assets with 1-to-1 path mapping from static bucket to public URLs.
- * Static bucket structure mirrors the public URL structure:
+ * Serves assets with 1-to-1 path mapping from static directory to public URLs.
+ * Static directory structure mirrors the public URL structure:
  * - static/favicon.ico -> /favicon.ico
  * - static/assets/app.[hash].js -> /assets/app.[hash].js
  * - static/index.html -> /index.html
  *
- * Manifest is read from the server bucket (not publicly servable).
+ * Manifest is read from the server directory (not publicly servable).
  */
 
 import type {AssetManifestEntry} from "./index.js";
@@ -34,13 +34,13 @@ export function assets(config: AssetsMiddlewareConfig = {}) {
 	// Cache for manifest data
 	let manifestEntries: Map<string, AssetManifestEntry> | null = null;
 
-	// Load manifest from server bucket (not static - keeps it non-public)
+	// Load manifest from server directory (not static - keeps it non-public)
 	async function loadManifest(): Promise<Map<string, AssetManifestEntry>> {
 		if (manifestEntries) return manifestEntries;
 
-		// Read manifest from server bucket
-		const serverBucket = await (self as any).buckets.open("server");
-		const manifestHandle = await serverBucket.getFileHandle(manifestPath);
+		// Read manifest from server directory
+		const serverDir = await (self as any).directories.open("server");
+		const manifestHandle = await serverDir.getFileHandle(manifestPath);
 		const manifestFile = await manifestHandle.getFile();
 		const manifest = JSON.parse(await manifestFile.text());
 
@@ -81,17 +81,17 @@ export function assets(config: AssetsMiddlewareConfig = {}) {
 			return;
 		}
 
-		// Get file from static bucket
-		// Public URL /assets/app.js → bucket path assets/app.js
+		// Get file from static directory
+		// Public URL /assets/app.js → directory path assets/app.js
 		// FileSystem API requires navigating directories, not path strings
-		const bucketPath = requestedPath.slice(1);
-		const pathParts = bucketPath.split("/");
+		const dirPath = requestedPath.slice(1);
+		const pathParts = dirPath.split("/");
 		const filename = pathParts.pop()!;
 
-		const staticBucket = await (self as any).buckets.open("static");
+		const staticDir = await (self as any).directories.open("static");
 
 		// Navigate through directories
-		let dirHandle = staticBucket;
+		let dirHandle = staticDir;
 		for (const dirName of pathParts) {
 			dirHandle = await dirHandle.getDirectoryHandle(dirName);
 		}

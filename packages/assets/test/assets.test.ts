@@ -2,7 +2,7 @@ import {test, expect, describe, beforeEach} from "bun:test";
 import {assets} from "../src/middleware.js";
 import {assetsPlugin} from "../src/plugin.js";
 import {Router} from "@b9g/router";
-import {MemoryBucket} from "@b9g/filesystem/memory";
+import {MemoryDirectory} from "@b9g/filesystem/memory";
 import * as ESBuild from "esbuild";
 import {
 	mkdtemp,
@@ -533,13 +533,13 @@ export default imageCss;`,
 	});
 });
 
-// Helper to write content to a MemoryBucket
-async function writeToMemoryBucket(
-	bucket: MemoryBucket,
+// Helper to write content to a MemoryDirectory
+async function writeToMemoryDirectory(
+	directory: MemoryDirectory,
 	path: string,
 	content: string,
 ) {
-	const handle = await bucket.getFileHandle(path, {create: true});
+	const handle = await directory.getFileHandle(path, {create: true});
 	const writable = await handle.createWritable();
 	await writable.write(new TextEncoder().encode(content));
 	await writable.close();
@@ -564,23 +564,27 @@ describe("Assets Middleware", () => {
 	};
 
 	beforeEach(async () => {
-		const serverBucket = new MemoryBucket("server");
-		const staticBucket = new MemoryBucket("static");
+		const serverDirectory = new MemoryDirectory("server");
+		const staticDirectory = new MemoryDirectory("static");
 
-		await writeToMemoryBucket(
-			serverBucket,
+		await writeToMemoryDirectory(
+			serverDirectory,
 			"manifest.json",
 			JSON.stringify(manifest),
 		);
-		await writeToMemoryBucket(staticBucket, "app.js", "console.log('app')");
-		await writeToMemoryBucket(staticBucket, "styles.css", "body{}");
+		await writeToMemoryDirectory(
+			staticDirectory,
+			"app.js",
+			"console.log('app')",
+		);
+		await writeToMemoryDirectory(staticDirectory, "styles.css", "body{}");
 
 		(globalThis as any).self = {
-			buckets: {
+			directories: {
 				async open(name: string) {
-					if (name === "server") return serverBucket;
-					if (name === "static") return staticBucket;
-					throw new Error(`Bucket not found: ${name}`);
+					if (name === "server") return serverDirectory;
+					if (name === "static") return staticDirectory;
+					throw new Error(`Directory not found: ${name}`);
 				},
 			},
 		};
@@ -640,27 +644,31 @@ describe("Assets Middleware", () => {
 
 	test("should detect MIME type from extension when manifest type not present", async () => {
 		// Override with manifest that has no type field
-		const serverBucket = new MemoryBucket("server");
-		const staticBucket = new MemoryBucket("static");
+		const serverDirectory = new MemoryDirectory("server");
+		const staticDirectory = new MemoryDirectory("static");
 
 		const noTypeManifest = {
 			assets: {
 				"/app.js": {url: "/app.js", size: 1234, hash: "abc123"}, // No type
 			},
 		};
-		await writeToMemoryBucket(
-			serverBucket,
+		await writeToMemoryDirectory(
+			serverDirectory,
 			"manifest.json",
 			JSON.stringify(noTypeManifest),
 		);
-		await writeToMemoryBucket(staticBucket, "app.js", "console.log('app')");
+		await writeToMemoryDirectory(
+			staticDirectory,
+			"app.js",
+			"console.log('app')",
+		);
 
 		(globalThis as any).self = {
-			buckets: {
+			directories: {
 				async open(name: string) {
-					if (name === "server") return serverBucket;
-					if (name === "static") return staticBucket;
-					throw new Error(`Bucket not found: ${name}`);
+					if (name === "server") return serverDirectory;
+					if (name === "static") return staticDirectory;
+					throw new Error(`Directory not found: ${name}`);
 				},
 			},
 		};

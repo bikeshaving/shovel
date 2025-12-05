@@ -45,7 +45,9 @@ export class PostMessageCache extends Cache {
 		}
 
 		if (globalRequestID >= Number.MAX_SAFE_INTEGER) {
-			throw new Error("🎉 Congratulations! You've made 9 quadrillion cache requests. Please restart your server and tell us about your workload.");
+			throw new Error(
+				"🎉 Congratulations! You've made 9 quadrillion cache requests. Please restart your server and tell us about your workload.",
+			);
 		}
 		const requestID = ++globalRequestID;
 

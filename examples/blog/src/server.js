@@ -28,7 +28,7 @@ import styles from "./assets/styles.css" with {assetBase: "/static/"};
 import logo from "./assets/logo.svg" with {assetBase: "/static/"};
 import favicon from "./assets/favicon.ico" with {assetBase: "/static/"};
 
-// Create router - self.caches and self.buckets are provided directly by platform
+// Create router - self.caches and self.directories are provided directly by platform
 const router = new Router();
 
 // Serve static assets from /static/ using the assets middleware
@@ -318,12 +318,12 @@ async function generateStaticSite() {
 	console.info("[Blog App] Starting static site generation...");
 
 	try {
-		// Get static bucket - the only public bucket (maps to web root)
-		console.info("[Blog App] Opening static bucket...");
-		const staticBucket = await self.buckets.open("static");
+		// Get static directory - the only public directory (maps to web root)
+		console.info("[Blog App] Opening static directory...");
+		const staticDirectory = await self.directories.open("static");
 		console.info(
-			"[Blog App] static bucket opened:",
-			staticBucket.constructor.name,
+			"[Blog App] static directory opened:",
+			staticDirectory.constructor.name,
 		);
 
 		// Define routes to pre-render
@@ -358,7 +358,7 @@ async function generateStaticSite() {
 					}
 
 					// Write to static directory
-					const fileHandle = await staticBucket.getFileHandle(fileName, {
+					const fileHandle = await staticDirectory.getFileHandle(fileName, {
 						create: true,
 					});
 					const writable = await fileHandle.createWritable();

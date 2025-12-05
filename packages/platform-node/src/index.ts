@@ -18,9 +18,9 @@ import {
 	SingleThreadedRuntime,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
-import {CustomBucketStorage} from "@b9g/filesystem";
+import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {MemoryCache} from "@b9g/cache/memory";
-import {NodeBucket} from "@b9g/filesystem/node";
+import {NodeDirectory} from "@b9g/filesystem/node";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import * as HTTP from "http";
 import * as Path from "path";
@@ -115,7 +115,7 @@ export class NodePlatform extends BasePlatform {
 	#workerPool?: ServiceWorkerPool;
 	#singleThreadedRuntime?: SingleThreadedRuntime;
 	#cacheStorage?: CustomCacheStorage;
-	#bucketStorage?: CustomBucketStorage;
+	#directoryStorage?: CustomDirectoryStorage;
 
 	constructor(options: NodePlatformOptions = {}) {
 		super(options);
@@ -188,9 +188,9 @@ export class NodePlatform extends BasePlatform {
 			this.#cacheStorage = await this.createCaches();
 		}
 
-		// Create shared bucket storage if not already created
-		if (!this.#bucketStorage) {
-			this.#bucketStorage = this.createBuckets(entryDir);
+		// Create shared directory storage if not already created
+		if (!this.#directoryStorage) {
+			this.#directoryStorage = this.createDirectories(entryDir);
 		}
 
 		// Terminate any existing runtime
@@ -204,10 +204,10 @@ export class NodePlatform extends BasePlatform {
 
 		logger.info("Creating single-threaded ServiceWorker runtime", {entryPath});
 
-		// Create single-threaded runtime with caches and buckets
+		// Create single-threaded runtime with caches and directories
 		this.#singleThreadedRuntime = new SingleThreadedRuntime({
 			caches: this.#cacheStorage,
-			buckets: this.#bucketStorage,
+			directories: this.#directoryStorage,
 		});
 
 		// Initialize and load entrypoint
@@ -265,8 +265,8 @@ export class NodePlatform extends BasePlatform {
 			this.#cacheStorage = await this.createCaches();
 		}
 
-		// Note: Bucket storage is handled in runtime.ts using import.meta.url
-		// Workers calculate bucket paths relative to their script location
+		// Note: Directory storage is handled in runtime.ts using import.meta.url
+		// Workers calculate directory paths relative to their script location
 
 		// Terminate any existing runtime
 		if (this.#singleThreadedRuntime) {
@@ -346,20 +346,20 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Create bucket storage for the given base directory
+	 * Create directory storage for the given base directory
 	 */
-	createBuckets(baseDir: string): CustomBucketStorage {
-		return new CustomBucketStorage((name: string) => {
-			// Well-known bucket paths
-			let bucketPath: string;
+	createDirectories(baseDir: string): CustomDirectoryStorage {
+		return new CustomDirectoryStorage((name: string) => {
+			// Well-known directory paths
+			let dirPath: string;
 			if (name === "static") {
-				bucketPath = Path.resolve(baseDir, "../static");
+				dirPath = Path.resolve(baseDir, "../static");
 			} else if (name === "server") {
-				bucketPath = baseDir;
+				dirPath = baseDir;
 			} else {
-				bucketPath = Path.resolve(baseDir, `../${name}`);
+				dirPath = Path.resolve(baseDir, `../${name}`);
 			}
-			return Promise.resolve(new NodeBucket(bucketPath));
+			return Promise.resolve(new NodeDirectory(dirPath));
 		});
 	}
 

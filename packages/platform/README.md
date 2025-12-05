@@ -213,7 +213,7 @@ const platform = new CloudflarePlatform({
 
 ### Re-exports from @b9g/filesystem
 
-- `BucketStorage`, `Bucket`, `BucketFactory`, `CustomBucketStorage`
+- `DirectoryStorage`, `Directory`, `DirectoryFactory`, `CustomDirectoryStorage`
 
 ### Re-exports from @b9g/cache
 

@@ -251,28 +251,28 @@ router.post('/upload', async (request) => {
 - `ShovelFileHandle` - FileSystemFileHandle implementation
 - `ShovelDirectoryHandle` - FileSystemDirectoryHandle implementation
 - `ShovelHandle` - Base handle class
-- `CustomBucketStorage` - Bucket storage with custom backend factories
+- `CustomDirectoryStorage` - Directory storage with custom backend factories
 
 ### Types
 
-- `Bucket` - Alias for FileSystemDirectoryHandle
-- `BucketStorage` - Interface for bucket storage (`open(name): Promise<FileSystemDirectoryHandle>`)
-- `BucketFactory` - Factory function type for creating bucket backends
+- `Directory` - Alias for FileSystemDirectoryHandle
+- `DirectoryStorage` - Interface for directory storage (`open(name): Promise<FileSystemDirectoryHandle>`)
+- `DirectoryFactory` - Factory function type for creating directory backends
 - `FileSystemConfig` - Configuration for filesystem backends
 - `FileSystemPermissionDescriptor` - Permission descriptor type
 - `FileSystemBackend` - Backend interface for filesystem implementations
 
 ## API Reference
 
-### BucketStorage
+### DirectoryStorage
 
 ```typescript
-interface BucketStorage {
+interface DirectoryStorage {
   open(name: string): Promise<FileSystemDirectoryHandle>;
 }
 
-class CustomBucketStorage implements BucketStorage {
-  register(name: string, factory: BucketFactory): void;
+class CustomDirectoryStorage implements DirectoryStorage {
+  register(name: string, factory: DirectoryFactory): void;
   open(name: string): Promise<FileSystemDirectoryHandle>;
 }
 ```

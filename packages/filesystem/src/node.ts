@@ -1,7 +1,7 @@
 /**
  * Node.js filesystem implementation
  *
- * Provides NodeBucket (root) and NodeFileSystemBackend for storage operations
+ * Provides NodeDirectory (root) and NodeFileSystemBackend for storage operations
  * using Node.js fs module.
  */
 
@@ -181,10 +181,10 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 }
 
 /**
- * Node bucket - root entry point for Node.js filesystem
+ * Node directory - root entry point for Node.js filesystem
  * Extends ShovelDirectoryHandle with "/" as root path
  */
-export class NodeBucket extends ShovelDirectoryHandle {
+export class NodeDirectory extends ShovelDirectoryHandle {
 	#rootPath: string;
 
 	constructor(rootPath: string) {

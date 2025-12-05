@@ -29,7 +29,7 @@ Shovel implements web platform APIs that server-side JavaScript is missing:
 |-----|----------|--------------|
 | `fetch` event | [Service Workers](https://w3c.github.io/ServiceWorker/) | Request handling |
 | `self.caches` | [Cache API](https://w3c.github.io/ServiceWorker/#cache-interface) | Response caching |
-| `self.buckets` | [FileSystem API](https://fs.spec.whatwg.org/) | Storage (local, S3, R2) |
+| `self.directories` | [FileSystem API](https://fs.spec.whatwg.org/) | Storage (local, S3, R2) |
 | `self.cookieStore` | [Cookie Store API](https://wicg.github.io/cookie-store/) | Cookie management |
 | `URLPattern` | [URLPattern](https://urlpattern.spec.whatwg.org/) | Route matching (100% WPT) |
 | `AsyncContext.Variable` | [TC39 Stage 2](https://github.com/tc39/proposal-async-context) | Request-scoped state |
@@ -84,9 +84,9 @@ const cache = await self.caches.open("my-cache");
 await cache.put(request, response.clone());
 const cached = await cache.match(request);
 
-// File System Access - storage buckets (local, S3, R2)
-const bucket = await self.buckets.open("uploads");
-const file = await bucket.getFileHandle("image.png");
+// File System Access - storage directories (local, S3, R2)
+const directory = await self.directories.open("uploads");
+const file = await directory.getFileHandle("image.png");
 const contents = await (await file.getFile()).arrayBuffer();
 
 // Cookie Store - cookie management
@@ -119,7 +119,7 @@ At build time, Shovel:
 
 Assets are served via the platform's best option:
 - **Cloudflare**: Workers Assets (edge-cached, zero config)
-- **Node/Bun**: Static file middleware or bucket storage
+- **Node/Bun**: Static file middleware or directory storage
 
 ## Packages
 

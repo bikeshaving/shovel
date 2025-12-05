@@ -4,8 +4,8 @@ self.addEventListener("fetch", (event) => {
 
 	if (url.pathname === "/test-caches") {
 		event.respondWith(testCaches());
-	} else if (url.pathname === "/test-buckets") {
-		event.respondWith(testBuckets());
+	} else if (url.pathname === "/test-directories") {
+		event.respondWith(testDirectories());
 	} else if (url.pathname === "/test-cookiestore") {
 		event.respondWith(testCookieStore(event.request));
 	} else {
@@ -60,7 +60,7 @@ async function testCaches() {
 	});
 }
 
-async function testBuckets() {
+async function testDirectories() {
 	const result = {
 		success: false,
 		error: null,
@@ -72,26 +72,26 @@ async function testBuckets() {
 	};
 
 	try {
-		// Test 1: Can we open a bucket?
-		const bucket = await self.buckets.open("test-bucket");
-		result.canOpen = bucket && bucket.kind === "directory";
+		// Test 1: Can we open a directory?
+		const directory = await self.directories.open("test-directory");
+		result.canOpen = directory && directory.kind === "directory";
 
 		// Test 2: Can we write a file?
-		const testContent = "bucket-test-content-" + Date.now();
-		const writeHandle = await bucket.getFileHandle("contract-test.txt", {create: true});
+		const testContent = "directory-test-content-" + Date.now();
+		const writeHandle = await directory.getFileHandle("contract-test.txt", {create: true});
 		const writable = await writeHandle.createWritable();
 		await writable.write(testContent);
 		await writable.close();
 		result.canWrite = true;
 
 		// Test 3: Can we read it back?
-		const readHandle = await bucket.getFileHandle("contract-test.txt");
+		const readHandle = await directory.getFileHandle("contract-test.txt");
 		const file = await readHandle.getFile();
 		result.readValue = await file.text();
 		result.canRead = result.readValue === testContent;
 
 		// Cleanup
-		await bucket.removeEntry("contract-test.txt");
+		await directory.removeEntry("contract-test.txt");
 
 		result.success = result.canOpen && result.canWrite && result.canRead;
 	} catch (error) {

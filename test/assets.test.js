@@ -140,7 +140,7 @@ test(
 		const fixture = await copyFixtureToTemp("assets-basic");
 
 		try {
-			// Set up asset files in the static bucket directory
+			// Set up asset files in the static directory
 			const staticDir = join(fixture.dir, "static-test");
 			await FS.mkdir(staticDir, {recursive: true});
 
@@ -170,25 +170,25 @@ test(
 			// Test ServiceWorker that serves assets
 			const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
 				await import("@b9g/platform/runtime");
-			const {CustomBucketStorage} = await import("@b9g/filesystem");
+			const {CustomDirectoryStorage} = await import("@b9g/filesystem");
 			const {CustomCacheStorage} = await import("@b9g/cache");
 			const {MemoryCache} = await import("@b9g/cache/memory");
-			const {NodeBucket} = await import("@b9g/filesystem/node.js");
+			const {NodeDirectory} = await import("@b9g/filesystem/node.js");
 
 			const runtime = new ShovelServiceWorkerRegistration();
 
-			// Create bucket storage with factory
-			const buckets = new CustomBucketStorage(async (name) => {
+			// Create directory storage with factory
+			const directories = new CustomDirectoryStorage(async (name) => {
 				const targetPath = join(fixture.dir, name);
 				await FS.mkdir(targetPath, {recursive: true});
-				return new NodeBucket(targetPath);
+				return new NodeDirectory(targetPath);
 			});
 
 			// Set up ServiceWorker globals
 			const caches = new CustomCacheStorage((name) => new MemoryCache(name));
 			const scope = new ServiceWorkerGlobals({
 				registration: runtime,
-				buckets,
+				directories,
 				caches,
 			});
 			scope.install();
@@ -204,9 +204,10 @@ test(
 					event.respondWith(
 						(async () => {
 							try {
-								const assetsBucket =
-									await globalThis.buckets.open("static-test");
-								const fileHandle = await assetsBucket.getFileHandle(assetPath);
+								const assetsDirectory =
+									await globalThis.directories.open("static-test");
+								const fileHandle =
+									await assetsDirectory.getFileHandle(assetPath);
 								const file = await fileHandle.getFile();
 								const content = await file.text();
 

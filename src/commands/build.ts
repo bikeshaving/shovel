@@ -65,7 +65,7 @@ const BUILD_DEFAULTS = {
 	treeShaking: true,
 };
 
-// Directory structure for separate buckets
+// Directory structure for build output
 const BUILD_STRUCTURE = {
 	serverDir: "server",
 	staticDir: "static",

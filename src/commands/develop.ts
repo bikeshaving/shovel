@@ -46,7 +46,9 @@ export async function developCommand(
 			outDir,
 			onBuild: async (success, builtEntrypoint) => {
 				if (success && serviceWorker) {
-					logger.info("Reloading Workers with {entrypoint}", {entrypoint: builtEntrypoint});
+					logger.info("Reloading Workers with {entrypoint}", {
+						entrypoint: builtEntrypoint,
+					});
 					// The reloadWorkers method is on the platform instance, not the ServiceWorker runtime
 					if (
 						platformInstance &&

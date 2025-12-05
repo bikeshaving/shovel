@@ -552,10 +552,10 @@ export const BUILTIN_CACHE_PROVIDERS: Record<string, string> = {
 };
 
 /**
- * Built-in bucket provider aliases
+ * Built-in directory provider aliases
  * Maps short names to their module paths
  */
-export const BUILTIN_BUCKET_PROVIDERS: Record<string, string> = {
+export const BUILTIN_DIRECTORY_PROVIDERS: Record<string, string> = {
 	node: "@b9g/filesystem/node.js",
 	memory: "@b9g/filesystem/memory.js",
 	s3: "@b9g/filesystem-s3",
@@ -839,7 +839,7 @@ export function generateConfigModule(
 	// Helper to evaluate provider expression and generate import
 	const processProvider = (
 		expr: string | undefined,
-		type: "cache" | "bucket",
+		type: "cache" | "directory",
 		pattern: string,
 	): string | null => {
 		if (!expr) return null;
@@ -853,7 +853,7 @@ export function generateConfigModule(
 
 		// Map blessed names to module paths
 		const builtinMap =
-			type === "cache" ? BUILTIN_CACHE_PROVIDERS : BUILTIN_BUCKET_PROVIDERS;
+			type === "cache" ? BUILTIN_CACHE_PROVIDERS : BUILTIN_DIRECTORY_PROVIDERS;
 		const modulePath = builtinMap[provider] || provider;
 
 		// Generate unique variable name
@@ -871,10 +871,10 @@ export function generateConfigModule(
 		}
 	}
 
-	// Process bucket providers
-	for (const [pattern, cfg] of Object.entries(rawConfig.buckets || {})) {
+	// Process directory providers
+	for (const [pattern, cfg] of Object.entries(rawConfig.directories || {})) {
 		if (cfg.provider) {
-			processProvider(String(cfg.provider), "bucket", pattern);
+			processProvider(String(cfg.provider), "directory", pattern);
 		}
 	}
 
@@ -942,11 +942,14 @@ export function generateConfigModule(
 			lines.push("  },");
 		}
 
-		// Buckets - with provider references
-		if (rawConfig.buckets && Object.keys(rawConfig.buckets).length > 0) {
-			lines.push("  buckets: {");
-			for (const [pattern, cfg] of Object.entries(rawConfig.buckets)) {
-				const providerVar = providerRefs[`bucket.${pattern}`];
+		// Directories - with provider references
+		if (
+			rawConfig.directories &&
+			Object.keys(rawConfig.directories).length > 0
+		) {
+			lines.push("  directories: {");
+			for (const [pattern, cfg] of Object.entries(rawConfig.directories)) {
+				const providerVar = providerRefs[`directory.${pattern}`];
 				lines.push(`    ${JSON.stringify(pattern)}: {`);
 				for (const [key, val] of Object.entries(cfg)) {
 					if (key === "provider" && providerVar) {
@@ -1025,10 +1028,10 @@ export interface CacheConfig {
 	TTL?: string | number;
 }
 
-export interface BucketConfig {
+export interface DirectoryConfig {
 	provider?: string | number;
 	path?: string | number;
-	bucket?: string | number;
+	bucket?: string | number; // For S3-backed directories
 	region?: string | number;
 	endpoint?: string | number;
 }
@@ -1073,8 +1076,8 @@ export interface ShovelConfig {
 	// Caches (per-name with patterns)
 	caches?: Record<string, CacheConfig>;
 
-	// Buckets (per-name with patterns)
-	buckets?: Record<string, BucketConfig>;
+	// Directories (per-name with patterns)
+	directories?: Record<string, DirectoryConfig>;
 }
 
 /** Processed logging config with all defaults applied */
@@ -1091,7 +1094,7 @@ export interface ProcessedShovelConfig {
 	workers: number;
 	logging: ProcessedLoggingConfig;
 	caches: Record<string, CacheConfig>;
-	buckets: Record<string, BucketConfig>;
+	directories: Record<string, DirectoryConfig>;
 }
 
 // ============================================================================
@@ -1170,7 +1173,7 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 			categories: processed.logging?.categories || {},
 		},
 		caches: processed.caches || {},
-		buckets: processed.buckets || {},
+		directories: processed.directories || {},
 	};
 
 	return config;

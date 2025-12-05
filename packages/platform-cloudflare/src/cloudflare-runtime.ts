@@ -14,7 +14,7 @@ import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
 } from "@b9g/platform/runtime";
-import {CustomBucketStorage} from "@b9g/filesystem";
+import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {AsyncContext} from "@b9g/async-context";
 import type {R2Bucket} from "./filesystem-r2.js";
 import {R2FileSystemDirectoryHandle} from "./filesystem-r2.js";
@@ -77,17 +77,19 @@ export function initializeRuntime(): ShovelServiceWorkerRegistration {
 
 	_registration = new ShovelServiceWorkerRegistration();
 
-	// Create bucket storage with lazy R2 factory
-	const buckets = new CustomBucketStorage(createCloudflareR2BucketFactory());
+	// Create directory storage with lazy R2 factory
+	const directories = new CustomDirectoryStorage(
+		createCloudflareR2DirectoryFactory(),
+	);
 
 	// Create ServiceWorkerGlobals
 	_globals = new ServiceWorkerGlobals({
 		registration: _registration,
 		caches: globalThis.caches, // Cloudflare's native Cache API
-		buckets,
+		directories,
 	});
 
-	// Install globals (caches, buckets, cookieStore, addEventListener, etc.)
+	// Install globals (caches, directories, cookieStore, addEventListener, etc.)
 	_globals.install();
 
 	return _registration;
@@ -151,15 +153,15 @@ function escapeHtml(str: string): string {
 }
 
 /**
- * Create a bucket factory for Cloudflare that uses R2 bindings
+ * Create a directory factory for Cloudflare that uses R2 bindings
  */
-function createCloudflareR2BucketFactory() {
+function createCloudflareR2DirectoryFactory() {
 	return async (name: string): Promise<FileSystemDirectoryHandle> => {
 		const env = getEnv();
 		if (!env) {
 			throw new Error(
-				`Cannot access bucket "${name}": Cloudflare env not available. ` +
-					`Are you accessing buckets outside of a request context?`,
+				`Cannot access directory "${name}": Cloudflare env not available. ` +
+					`Are you accessing directories outside of a request context?`,
 			);
 		}
 

@@ -5,17 +5,17 @@ import {join} from "path";
 import {SingleThreadedRuntime} from "../src/index.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
-import {CustomBucketStorage} from "@b9g/filesystem";
-import {NodeBucket} from "@b9g/filesystem/node.js";
+import {CustomDirectoryStorage} from "@b9g/filesystem";
+import {NodeDirectory} from "@b9g/filesystem/node.js";
 
 /**
  * SingleThreadedRuntime tests
  *
  * These tests verify that the SingleThreadedRuntime correctly sets up
- * buckets and caches for ServiceWorker code running in the main thread.
+ * directories and caches for ServiceWorker code running in the main thread.
  *
  * Key invariants:
- * 1. self.buckets.open() must work (this was previously broken!)
+ * 1. self.directories.open() must work (this was previously broken!)
  * 2. self.caches.open() must work with direct CacheStorage (no PostMessageCache)
  * 3. Both APIs must be available to fetch handlers
  */
@@ -46,27 +46,27 @@ function createCacheStorage(): CustomCacheStorage {
 	return new CustomCacheStorage((name) => new MemoryCache(name));
 }
 
-async function createBucketStorage(
+async function createDirectoryStorage(
 	tempDir: string,
-): Promise<CustomBucketStorage> {
-	return new CustomBucketStorage(async (name: string) => {
+): Promise<CustomDirectoryStorage> {
+	return new CustomDirectoryStorage(async (name: string) => {
 		const targetPath = join(tempDir, name);
 		await FS.mkdir(targetPath, {recursive: true});
-		return new NodeBucket(targetPath);
+		return new NodeDirectory(targetPath);
 	});
 }
 
 // Store original globalThis values to restore after tests
 let originalSelf: typeof globalThis.self;
 let originalCaches: typeof globalThis.caches;
-let originalBuckets: typeof globalThis.buckets;
+let originalDirectories: typeof globalThis.directories;
 let originalAddEventListener: typeof globalThis.addEventListener;
 
 beforeEach(() => {
 	// Save originals
 	originalSelf = globalThis.self;
 	originalCaches = globalThis.caches;
-	originalBuckets = globalThis.buckets;
+	originalDirectories = globalThis.directories;
 	originalAddEventListener = globalThis.addEventListener;
 });
 
@@ -74,33 +74,33 @@ afterEach(() => {
 	// Restore originals
 	(globalThis as any).self = originalSelf;
 	(globalThis as any).caches = originalCaches;
-	(globalThis as any).buckets = originalBuckets;
+	(globalThis as any).directories = originalDirectories;
 	(globalThis as any).addEventListener = originalAddEventListener;
 });
 
 // ======================
-// BUCKET TESTS
+// DIRECTORY TESTS
 // ======================
 
 test(
-	"SingleThreadedRuntime provides self.buckets",
+	"SingleThreadedRuntime provides self.directories",
 	async () => {
 		const tempDir = await createTempDir();
 
 		try {
 			const cacheStorage = createCacheStorage();
-			const bucketStorage = await createBucketStorage(tempDir);
+			const directoryStorage = await createDirectoryStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
-				buckets: bucketStorage,
+				directories: directoryStorage,
 			});
 
 			await runtime.init();
 
-			// After init, self.buckets should be available
-			expect(globalThis.buckets).toBeDefined();
-			expect(typeof globalThis.buckets.open).toBe("function");
+			// After init, self.directories should be available
+			expect(globalThis.directories).toBeDefined();
+			expect(typeof globalThis.directories.open).toBe("function");
 		} finally {
 			await cleanup([tempDir]);
 		}
@@ -109,27 +109,27 @@ test(
 );
 
 test(
-	"SingleThreadedRuntime self.buckets.open() works correctly",
+	"SingleThreadedRuntime self.directories.open() works correctly",
 	async () => {
 		const tempDir = await createTempDir();
 
 		try {
 			const cacheStorage = createCacheStorage();
-			const bucketStorage = await createBucketStorage(tempDir);
+			const directoryStorage = await createDirectoryStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
-				buckets: bucketStorage,
+				directories: directoryStorage,
 			});
 
 			await runtime.init();
 
 			// This is the exact call that was failing before the fix!
-			const staticBucket = await globalThis.buckets.open("static");
+			const staticDir = await globalThis.directories.open("static");
 
-			expect(staticBucket).toBeDefined();
-			expect(staticBucket.kind).toBe("directory");
-			expect(staticBucket.name).toBe("static");
+			expect(staticDir).toBeDefined();
+			expect(staticDir.kind).toBe("directory");
+			expect(staticDir.name).toBe("static");
 
 			// Verify directory was created
 			const dirExists = await FS.access(join(tempDir, "static"))
@@ -144,7 +144,7 @@ test(
 );
 
 test(
-	"SingleThreadedRuntime buckets can read/write files",
+	"SingleThreadedRuntime directories can read/write files",
 	async () => {
 		const tempDir = await createTempDir();
 
@@ -152,25 +152,25 @@ test(
 			// Pre-create a test file
 			const staticDir = join(tempDir, "static");
 			await FS.mkdir(staticDir, {recursive: true});
-			await FS.writeFile(join(staticDir, "test.txt"), "Hello from bucket!");
+			await FS.writeFile(join(staticDir, "test.txt"), "Hello from directory!");
 
 			const cacheStorage = createCacheStorage();
-			const bucketStorage = await createBucketStorage(tempDir);
+			const directoryStorage = await createDirectoryStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
-				buckets: bucketStorage,
+				directories: directoryStorage,
 			});
 
 			await runtime.init();
 
-			// Open bucket and read file
-			const staticBucket = await globalThis.buckets.open("static");
-			const fileHandle = await staticBucket.getFileHandle("test.txt");
+			// Open directory and read file
+			const staticDirectory = await globalThis.directories.open("static");
+			const fileHandle = await staticDirectory.getFileHandle("test.txt");
 			const file = await fileHandle.getFile();
 			const content = await file.text();
 
-			expect(content).toBe("Hello from bucket!");
+			expect(content).toBe("Hello from directory!");
 		} finally {
 			await cleanup([tempDir]);
 		}
@@ -189,11 +189,11 @@ test(
 
 		try {
 			const cacheStorage = createCacheStorage();
-			const bucketStorage = await createBucketStorage(tempDir);
+			const directoryStorage = await createDirectoryStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
-				buckets: bucketStorage,
+				directories: directoryStorage,
 			});
 
 			await runtime.init();
@@ -215,11 +215,11 @@ test(
 
 		try {
 			const cacheStorage = createCacheStorage();
-			const bucketStorage = await createBucketStorage(tempDir);
+			const directoryStorage = await createDirectoryStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
-				buckets: bucketStorage,
+				directories: directoryStorage,
 			});
 
 			await runtime.init();
@@ -244,11 +244,11 @@ test(
 
 		try {
 			const cacheStorage = createCacheStorage();
-			const bucketStorage = await createBucketStorage(tempDir);
+			const directoryStorage = await createDirectoryStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
-				buckets: bucketStorage,
+				directories: directoryStorage,
 			});
 
 			await runtime.init();
@@ -281,11 +281,11 @@ test(
 
 		try {
 			const cacheStorage = createCacheStorage();
-			const bucketStorage = await createBucketStorage(tempDir);
+			const directoryStorage = await createDirectoryStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
-				buckets: bucketStorage,
+				directories: directoryStorage,
 			});
 
 			await runtime.init();
@@ -306,7 +306,7 @@ test(
 // ======================
 
 test(
-	"SingleThreadedRuntime correctly installs buckets on globalThis",
+	"SingleThreadedRuntime correctly installs directories on globalThis",
 	async () => {
 		const tempDir = await createTempDir();
 		// Create the static directory
@@ -315,23 +315,23 @@ test(
 
 		try {
 			const cacheStorage = createCacheStorage();
-			const bucketStorage = await createBucketStorage(tempDir);
+			const directoryStorage = await createDirectoryStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
-				buckets: bucketStorage,
+				directories: directoryStorage,
 			});
 
 			await runtime.init();
 
-			// self.buckets should be defined with open() method
-			expect(globalThis.buckets).toBeDefined();
-			expect(typeof globalThis.buckets.open).toBe("function");
+			// self.directories should be defined with open() method
+			expect(globalThis.directories).toBeDefined();
+			expect(typeof globalThis.directories.open).toBe("function");
 
-			// Opening the "static" bucket should work
-			const bucket = await globalThis.buckets.open("static");
-			expect(bucket).toBeDefined();
-			expect(bucket.kind).toBe("directory");
+			// Opening the "static" directory should work
+			const directory = await globalThis.directories.open("static");
+			expect(directory).toBeDefined();
+			expect(directory.kind).toBe("directory");
 		} finally {
 			await cleanup([tempDir]);
 		}
@@ -340,7 +340,7 @@ test(
 );
 
 test(
-	"SingleThreadedRuntime allows ServiceWorker to use both buckets and caches",
+	"SingleThreadedRuntime allows ServiceWorker to use both directories and caches",
 	async () => {
 		const tempDir = await createTempDir();
 
@@ -351,30 +351,30 @@ test(
 			await FS.writeFile(join(staticDir, "asset.txt"), "Original asset");
 
 			const cacheStorage = createCacheStorage();
-			const bucketStorage = await createBucketStorage(tempDir);
+			const directoryStorage = await createDirectoryStorage(tempDir);
 
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
-				buckets: bucketStorage,
+				directories: directoryStorage,
 			});
 
 			await runtime.init();
 
 			// Simulate what ServiceWorker code would do:
 			// 1. Check cache first
-			// 2. If not in cache, read from bucket
+			// 2. If not in cache, read from directory
 			// 3. Store in cache for next time
 
 			const cache = await globalThis.caches.open("assets");
 			const request = new Request("http://localhost/asset.txt");
 
-			// First request - should miss cache, read from bucket
+			// First request - should miss cache, read from directory
 			let response = await cache.match(request);
 			expect(response).toBeUndefined();
 
-			// Read from bucket
-			const bucket = await globalThis.buckets.open("static");
-			const fileHandle = await bucket.getFileHandle("asset.txt");
+			// Read from directory
+			const directory = await globalThis.directories.open("static");
+			const fileHandle = await directory.getFileHandle("asset.txt");
 			const file = await fileHandle.getFile();
 			const content = await file.text();
 

@@ -16,7 +16,7 @@ import {fileURLToPath} from "url";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory";
 import {getLogger} from "@logtape/logtape";
-import type {BucketStorage} from "@b9g/filesystem";
+import type {DirectoryStorage} from "@b9g/filesystem";
 import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
@@ -513,8 +513,8 @@ export interface ServiceWorkerRuntime {
 export interface SingleThreadedRuntimeOptions {
 	/** Cache storage for the runtime */
 	caches: CacheStorage;
-	/** Bucket storage for the runtime */
-	buckets: BucketStorage;
+	/** Directory storage for the runtime */
+	directories: DirectoryStorage;
 }
 
 /**
@@ -537,7 +537,7 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 		this.#scope = new ServiceWorkerGlobals({
 			registration: this.#registration,
 			caches: options.caches,
-			buckets: options.buckets,
+			directories: options.directories,
 		});
 
 		logger.info("SingleThreadedRuntime created");
@@ -547,7 +547,7 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 	 * Initialize the runtime (install ServiceWorker globals)
 	 */
 	async init(): Promise<void> {
-		// Install ServiceWorker globals (caches, buckets, fetch, addEventListener, etc.)
+		// Install ServiceWorker globals (caches, directories, fetch, addEventListener, etc.)
 		this.#scope.install();
 		logger.info("SingleThreadedRuntime initialized - globals installed");
 	}
@@ -686,7 +686,7 @@ export interface WorkerErrorMessage extends WorkerMessage {
 export interface WorkerInitMessage extends WorkerMessage {
 	type: "init";
 	config: any; // ShovelConfig from config.ts
-	baseDir: string; // Base directory for bucket path resolution
+	baseDir: string; // Base directory for directory path resolution
 }
 
 export interface WorkerInitializedMessage extends WorkerMessage {
@@ -1007,7 +1007,9 @@ export class ServiceWorkerPool {
 						const storage = this.#cacheStorage as any;
 						if (typeof storage.handleMessage === "function") {
 							storage.handleMessage(worker, message).catch((err: Error) => {
-								logger.error("Cache message handling failed: {error}", {error: err});
+								logger.error("Cache message handling failed: {error}", {
+									error: err,
+								});
 							});
 						}
 					}

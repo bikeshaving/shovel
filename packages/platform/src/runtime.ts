@@ -321,7 +321,7 @@ export class RequestCookieStore extends EventTarget {
 	}
 }
 
-import type {BucketStorage} from "@b9g/filesystem";
+import type {DirectoryStorage} from "@b9g/filesystem";
 import {
 	getLogger,
 	configure,
@@ -372,7 +372,7 @@ const PATCHED_KEYS = [
 	"self",
 	"fetch",
 	"caches",
-	"buckets",
+	"directories",
 	"registration",
 	"clients",
 	"skipWaiting",
@@ -1378,8 +1378,8 @@ interface NotificationOptions {
 export interface ServiceWorkerGlobalsOptions {
 	/** ServiceWorker registration instance */
 	registration: ServiceWorkerRegistration;
-	/** Bucket storage (file system access) - REQUIRED */
-	buckets: BucketStorage;
+	/** Directory storage (file system access) - REQUIRED */
+	directories: DirectoryStorage;
 	/** Cache storage (required by ServiceWorkerGlobalScope) - REQUIRED */
 	caches: CacheStorage;
 	/** Development mode flag */
@@ -1401,7 +1401,7 @@ export class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
 /**
  * ServiceWorkerGlobals - Installs ServiceWorker globals onto globalThis
  *
- * This class holds ServiceWorker API implementations (caches, buckets, clients, etc.)
+ * This class holds ServiceWorker API implementations (caches, directories, clients, etc.)
  * and patches them onto globalThis via install(). It maintains the browser invariant
  * that self === globalThis while providing ServiceWorker APIs.
  *
@@ -1418,7 +1418,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 
 	// Storage APIs
 	readonly caches: CacheStorage;
-	readonly buckets: BucketStorage;
+	readonly directories: DirectoryStorage;
 
 	// Clients API
 	// Our custom Clients implementation provides core functionality compatible with the Web API
@@ -1596,7 +1596,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 		this.self = globalThis;
 		this.registration = options.registration;
 		this.caches = options.caches;
-		this.buckets = options.buckets;
+		this.directories = options.directories;
 		this.#isDevelopment = options.isDevelopment ?? false;
 
 		// Create clients API implementation
@@ -1736,7 +1736,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 
 		// Storage APIs
 		g.caches = this.caches;
-		g.buckets = this.buckets;
+		g.directories = this.directories;
 
 		// ServiceWorker APIs
 		g.registration = this.registration;
@@ -1817,8 +1817,8 @@ export interface CacheConfig {
 	[key: string]: unknown;
 }
 
-/** Bucket (filesystem) provider configuration */
-export interface BucketConfig {
+/** Directory (filesystem) provider configuration */
+export interface DirectoryConfig {
 	provider?: string;
 	path?: string;
 	[key: string]: unknown;
@@ -1832,7 +1832,7 @@ export interface ShovelConfig {
 	platform?: string;
 	logging?: LoggingConfig;
 	caches?: Record<string, CacheConfig>;
-	buckets?: Record<string, BucketConfig>;
+	directories?: Record<string, DirectoryConfig>;
 }
 
 // ============================================================================

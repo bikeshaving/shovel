@@ -37,7 +37,7 @@ test(
 			await import("../src/runtime.js");
 
 		const registration = new ShovelServiceWorkerRegistration();
-		const mockBuckets = {
+		const mockDirectories = {
 			open: async (name) => ({
 				name,
 				kind: "directory",
@@ -47,7 +47,7 @@ test(
 		// Create ServiceWorker globals installer
 		const scope = new ServiceWorkerGlobals({
 			registration,
-			buckets: mockBuckets,
+			directories: mockDirectories,
 		});
 		scope.install();
 
@@ -58,7 +58,7 @@ test(
 		expect(typeof globalThis.dispatchEvent).toBe("function");
 		expect(typeof globalThis.skipWaiting).toBe("function");
 		expect(typeof globalThis.clients).toBe("object");
-		expect(typeof globalThis.buckets).toBe("object");
+		expect(typeof globalThis.directories).toBe("object");
 
 		// Test that self === globalThis (browser invariant)
 		expect(globalThis.self).toBe(globalThis);
@@ -140,13 +140,13 @@ test(
 );
 
 test(
-	"ServiceWorker buckets API",
+	"ServiceWorker directories API",
 	async () => {
 		const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
 			await import("../src/runtime.js");
 
 		const registration = new ShovelServiceWorkerRegistration();
-		const mockBuckets = {
+		const mockDirectories = {
 			open: async (name) => ({
 				name,
 				kind: "directory",
@@ -158,22 +158,22 @@ test(
 
 		const scope = new ServiceWorkerGlobals({
 			registration,
-			buckets: mockBuckets,
+			directories: mockDirectories,
 		});
 		scope.install();
 
-		// Test buckets global
-		expect(typeof globalThis.buckets).toBe("object");
-		expect(typeof globalThis.buckets.open).toBe("function");
+		// Test directories global
+		expect(typeof globalThis.directories).toBe("object");
+		expect(typeof globalThis.directories.open).toBe("function");
 
-		// Test bucket functionality
-		const distBucket = await globalThis.buckets.open("dist");
-		expect(distBucket.name).toBe("dist");
-		expect(distBucket.kind).toBe("directory");
+		// Test directory functionality
+		const distDir = await globalThis.directories.open("dist");
+		expect(distDir.name).toBe("dist");
+		expect(distDir.kind).toBe("directory");
 
-		// Test bucket entries
+		// Test directory entries
 		const entries = [];
-		for await (const [name, handle] of distBucket.entries()) {
+		for await (const [name, handle] of distDir.entries()) {
 			entries.push([name, handle]);
 		}
 		expect(entries.length).toBe(1);

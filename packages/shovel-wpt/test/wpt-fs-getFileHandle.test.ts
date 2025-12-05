@@ -1,22 +1,22 @@
 /**
  * WPT FileSystemDirectoryHandle.getFileHandle tests
  *
- * Runs the actual WPT test script against MemoryBucket.
+ * Runs the actual WPT test script against MemoryDirectory.
  */
 
 import {describe, test, expect} from "bun:test";
 import {setupFilesystemTestGlobals} from "../src/wpt/filesystem-shim.js";
 import {clearTestQueue, runQueuedTests} from "../src/harness/testharness.js";
-import {MemoryBucket} from "../../filesystem/src/memory.js";
+import {MemoryDirectory} from "../../filesystem/src/memory.js";
 
 // Setup globals at module load time
 clearTestQueue();
 
 setupFilesystemTestGlobals({
-	getDirectory: () => new MemoryBucket("wpt-test"),
+	getDirectory: () => new MemoryDirectory("wpt-test"),
 });
 
-describe("WPT: FileSystemDirectoryHandle.getFileHandle (MemoryBucket)", () => {
+describe("WPT: FileSystemDirectoryHandle.getFileHandle (MemoryDirectory)", () => {
 	test("runs all WPT tests", async () => {
 		// Clear any stale tests
 		clearTestQueue();

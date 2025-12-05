@@ -6,7 +6,7 @@
  * Architecture:
  * - Uses ServiceWorkerGlobals from @b9g/platform for full feature parity with Node/Bun
  * - AsyncContext provides per-request access to Cloudflare's env/ctx
- * - Buckets use R2 via lazy factory (accessed when buckets.open() is called)
+ * - Directories use R2 via lazy factory (accessed when directories.open() is called)
  * - Caches use Cloudflare's native Cache API
  */
 
@@ -30,7 +30,7 @@ import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
 } from "@b9g/platform/runtime";
-import {CustomBucketStorage} from "@b9g/filesystem";
+import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {AsyncContext} from "@b9g/async-context";
 import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
@@ -107,7 +107,7 @@ let _globals: ServiceWorkerGlobals | null = null;
  * Called once when the worker module loads (before user code runs)
  *
  * This sets up:
- * - ServiceWorkerGlobals (caches, buckets, cookieStore, addEventListener, etc.)
+ * - ServiceWorkerGlobals (caches, directories, cookieStore, addEventListener, etc.)
  * - Per-request env/ctx via AsyncContext
  */
 export function initializeRuntime(): ShovelServiceWorkerRegistration {
@@ -118,21 +118,23 @@ export function initializeRuntime(): ShovelServiceWorkerRegistration {
 	// Create registration (captures addEventListener('fetch', ...))
 	_registration = new ShovelServiceWorkerRegistration();
 
-	// Create bucket storage with lazy R2 factory
-	// The factory accesses env via AsyncContext when buckets.open() is called
-	const buckets = new CustomBucketStorage(createCloudflareR2BucketFactory());
+	// Create directory storage with lazy R2 factory
+	// The factory accesses env via AsyncContext when directories.open() is called
+	const directories = new CustomDirectoryStorage(
+		createCloudflareR2DirectoryFactory(),
+	);
 
 	// Create ServiceWorkerGlobals with:
 	// - Our registration
 	// - Cloudflare's native caches (already available globally)
-	// - R2-backed bucket storage
+	// - R2-backed directory storage
 	_globals = new ServiceWorkerGlobals({
 		registration: _registration,
 		caches: globalThis.caches, // Use Cloudflare's native Cache API
-		buckets,
+		directories,
 	});
 
-	// Install globals (caches, buckets, cookieStore, addEventListener, etc.)
+	// Install globals (caches, directories, cookieStore, addEventListener, etc.)
 	_globals.install();
 
 	return _registration;
@@ -199,21 +201,21 @@ function escapeHtml(str: string): string {
 }
 
 /**
- * Create a bucket factory for Cloudflare that uses R2 bindings
+ * Create a directory factory for Cloudflare that uses R2 bindings
  *
- * The factory is called lazily when buckets.open(name) is called.
+ * The factory is called lazily when directories.open(name) is called.
  * At that point, `env` is available via AsyncContext.
  *
- * Bucket name -> R2 binding mapping:
- * - Default: bucket name uppercased with "_R2" suffix (e.g., "uploads" -> "UPLOADS_R2")
+ * Directory name -> R2 binding mapping:
+ * - Default: directory name uppercased with "_R2" suffix (e.g., "uploads" -> "UPLOADS_R2")
  */
-function createCloudflareR2BucketFactory() {
+function createCloudflareR2DirectoryFactory() {
 	return async (name: string): Promise<FileSystemDirectoryHandle> => {
 		const env = getEnv();
 		if (!env) {
 			throw new Error(
-				`Cannot access bucket "${name}": Cloudflare env not available. ` +
-					`This usually means you're trying to access buckets outside of a request context.`,
+				`Cannot access directory "${name}": Cloudflare env not available. ` +
+					`This usually means you're trying to access directories outside of a request context.`,
 			);
 		}
 

@@ -1,7 +1,7 @@
 /**
  * In-memory filesystem implementation
  *
- * Provides MemoryBucket (root) and MemoryFileSystemBackend for storage operations
+ * Provides MemoryDirectory (root) and MemoryFileSystemBackend for storage operations
  * using in-memory data structures.
  */
 
@@ -23,21 +23,21 @@ interface MemoryFile {
 }
 
 /**
- * In-memory directory data
+ * In-memory directory data (internal structure)
  */
-interface MemoryDirectory {
+interface MemoryDirectoryData {
 	name: string;
 	files: Map<string, MemoryFile>;
-	directories: Map<string, MemoryDirectory>;
+	directories: Map<string, MemoryDirectoryData>;
 }
 
 /**
  * In-memory storage backend that implements FileSystemBackend
  */
 export class MemoryFileSystemBackend implements FileSystemBackend {
-	#root: MemoryDirectory;
+	#root: MemoryDirectoryData;
 
-	constructor(root: MemoryDirectory) {
+	constructor(root: MemoryDirectoryData) {
 		this.#root = root;
 	}
 
@@ -153,7 +153,7 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 		throw new DOMException("Entry not found", "NotFoundError");
 	}
 
-	#resolvePath(path: string): MemoryFile | MemoryDirectory | null {
+	#resolvePath(path: string): MemoryFile | MemoryDirectoryData | null {
 		// Defense in depth: validate path components
 		if (path.includes("..") || path.includes("\0")) {
 			throw new DOMException(
@@ -181,7 +181,7 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 			}
 		}
 
-		let current: MemoryDirectory = this.#root;
+		let current: MemoryDirectoryData = this.#root;
 
 		// Navigate through directories
 		for (let i = 0; i < parts.length - 1; i++) {
@@ -205,7 +205,7 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 	}
 
 	#resolveParent(path: string): {
-		parentDir: MemoryDirectory | null;
+		parentDir: MemoryDirectoryData | null;
 		name: string;
 	} {
 		const parts = path.split("/").filter(Boolean);
@@ -215,7 +215,7 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 			return {parentDir: this.#root, name};
 		}
 
-		let current: MemoryDirectory = this.#root;
+		let current: MemoryDirectoryData = this.#root;
 
 		for (const part of parts) {
 			const nextDir = current.directories.get(part);
@@ -230,10 +230,10 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 }
 
 /**
- * Memory bucket - root entry point for in-memory filesystem
+ * Memory directory - root entry point for in-memory filesystem
  * Implements FileSystemDirectoryHandle and owns the root data structure
  */
-export class MemoryBucket implements FileSystemDirectoryHandle {
+export class MemoryDirectory implements FileSystemDirectoryHandle {
 	readonly kind: "directory";
 	readonly name: string;
 	#backend: MemoryFileSystemBackend;
@@ -243,7 +243,7 @@ export class MemoryBucket implements FileSystemDirectoryHandle {
 		this.name = name;
 
 		// Create root directory structure
-		const root: MemoryDirectory = {
+		const root: MemoryDirectoryData = {
 			name,
 			files: new Map(),
 			directories: new Map(),
@@ -327,13 +327,13 @@ export class MemoryBucket implements FileSystemDirectoryHandle {
 	async resolve(
 		possibleDescendant: FileSystemHandle,
 	): Promise<string[] | null> {
-		// Check if it's the same root (MemoryBucket)
-		if (possibleDescendant instanceof MemoryBucket) {
-			// Same bucket = same directory, return empty array
+		// Check if it's the same root (MemoryDirectory)
+		if (possibleDescendant instanceof MemoryDirectory) {
+			// Same directory = return empty array
 			if (await this.isSameEntry(possibleDescendant)) {
 				return [];
 			}
-			// Different bucket = not a descendant
+			// Different directory = not a descendant
 			return null;
 		}
 
@@ -392,7 +392,7 @@ export class MemoryBucket implements FileSystemDirectoryHandle {
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "directory") return false;
-		return other instanceof MemoryBucket && other.name === this.name;
+		return other instanceof MemoryDirectory && other.name === this.name;
 	}
 
 	async queryPermission(): Promise<PermissionState> {
