@@ -12,7 +12,7 @@ import {tmpdir} from "os";
 
 // Store original env values for the keys we'll modify
 const savedEnv: Record<string, string | undefined> = {};
-const envKeys = ["PORT", "HOST", "WORKERS", "PLATFORM"];
+const envKeys = ["PORT", "HOST", "WORKERS", "PLATFORM", "MY_HOST"];
 
 function saveEnv() {
 	for (const key of envKeys) {
@@ -86,24 +86,17 @@ describe("loadConfig precedence", () => {
 			});
 		});
 
-		// Note: In strict mode (default), the expression parser throws if env var
-		// is undefined, even with || fallback. This is a known limitation.
-		// Users should either:
-		// 1. Set the env var
-		// 2. Use non-expression form in json and rely on canonical env fallback
-		// 3. Skip the key entirely to use canonical env fallback
-		it("throws in strict mode when env var in expression is undefined", () => {
+		it("uses fallback when env var undefined with ||", () => {
 			withTempDir((testDir) => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "shovel.json"),
 					JSON.stringify({port: "PORT || 8080"}),
 				);
-				// PORT env not set - should throw in strict mode
+				// PORT env not set - should use fallback
 
-				expect(() => loadConfig(testDir)).toThrow(
-					"Undefined environment variable: PORT",
-				);
+				const config = loadConfig(testDir);
+				expect(config.port).toBe(8080);
 			});
 		});
 
@@ -252,6 +245,70 @@ describe("loadConfig precedence", () => {
 				const config = loadConfig(testDir);
 
 				expect(config.port).toBe(8000);
+			});
+		});
+	});
+
+	describe("nullish coalescing operator (??)", () => {
+		it("uses ?? to fallback only on null/undefined", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({host: "MY_HOST ?? default-host"}),
+				);
+				process.env.MY_HOST = "custom-host";
+
+				const config = loadConfig(testDir);
+
+				expect(config.host).toBe("custom-host");
+			});
+		});
+
+		it("?? keeps empty string (unlike ||)", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({host: 'MY_HOST ?? "default-host"'}),
+				);
+				// Empty string is NOT nullish, so ?? should keep it
+				process.env.MY_HOST = "";
+
+				const config = loadConfig(testDir);
+
+				expect(config.host).toBe("");
+			});
+		});
+
+		it("|| falls back on empty string", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({host: 'MY_HOST || "default-host"'}),
+				);
+				// Empty string is falsy, so || should use fallback
+				process.env.MY_HOST = "";
+
+				const config = loadConfig(testDir);
+
+				expect(config.host).toBe("default-host");
+			});
+		});
+
+		it("?? falls back when env var undefined", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({host: "MY_HOST ?? default-host"}),
+				);
+				// MY_HOST not set - should use fallback
+
+				const config = loadConfig(testDir);
+
+				expect(config.host).toBe("default-host");
 			});
 		});
 	});

@@ -525,8 +525,9 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(config);
 
 			expect(module).toContain("categories");
-			expect(module).toContain('"server"');
-			expect(module).toContain('"database"');
+			// Category names are valid JS identifiers, so they don't need quoting
+			expect(module).toContain("server:");
+			expect(module).toContain("database:");
 			expect(module).toContain('level: "debug"');
 			expect(module).toContain('level: "warning"');
 		});

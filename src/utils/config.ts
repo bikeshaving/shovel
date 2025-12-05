@@ -6,11 +6,12 @@
  * - Everything else = string literal (kebab-case, URLs, camelCase, PascalCase)
  * - Quoted strings = explicit strings (escape hatch)
  * - JavaScript keywords: true, false, null, undefined
- * - Operators: ||, &&, ===, !==, ==, !=, ? :, !
+ * - Operators: ||, ??, &&, ===, !==, ==, !=, ? :, !
  * - No eval - uses recursive descent parser
  *
  * Examples:
- *   "PORT || 3000"
+ *   "PORT || 3000"           - fallback if falsy
+ *   "PORT ?? 3000"           - fallback only if null/undefined (keeps empty string)
  *   "NODE_ENV === production ? redis : memory"
  *   "REDIS_URL || redis://localhost:6379"
  *   "S3_BUCKET || my-bucket-name"
@@ -33,9 +34,9 @@ export const DEFAULTS = {
 
 /**
  * Regex to detect if a string looks like a config expression
- * Matches: operators (||, &&, ===, !==, ==, !=, ?, :, !) or ALL_CAPS env vars
+ * Matches: operators (||, ??, &&, ===, !==, ==, !=, ?, :, !) or ALL_CAPS env vars
  */
-const EXPRESSION_PATTERN = /(\|\||&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/;
+const EXPRESSION_PATTERN = /(\|\||\?\?|&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/;
 
 /**
  * Get environment variables from import.meta.env or process.env
@@ -73,6 +74,7 @@ enum TokenType {
 	QUESTION = "?",
 	COLON = ":",
 	OR = "||",
+	NULLISH = "??",
 	AND = "&&",
 	EQ = "==",
 	NE = "!=",
@@ -199,8 +201,12 @@ class Tokenizer {
 			return {type: TokenType.AND, value: "&&", start, end: this.#pos};
 		}
 
-		// Single-char operators
+		// Question mark operators: ?? (nullish) or ? (ternary)
 		if (ch === "?") {
+			if (this.#input[this.#pos + 1] === "?") {
+				this.#pos += 2;
+				return {type: TokenType.NULLISH, value: "??", start, end: this.#pos};
+			}
 			this.#advance();
 			return {type: TokenType.QUESTION, value: "?", start, end: this.#pos};
 		}
@@ -338,14 +344,19 @@ class Parser {
 		return left;
 	}
 
-	// LogicalOr := LogicalAnd ('||' LogicalAnd)*
+	// LogicalOr := LogicalAnd (('||' | '??') LogicalAnd)*
+	// ?? and || have same precedence, evaluated left-to-right
 	#parseLogicalOr(): any {
 		let left = this.#parseLogicalAnd();
 
-		while (this.#peek().type === TokenType.OR) {
-			this.#advance(); // consume ||
+		while (
+			this.#peek().type === TokenType.OR ||
+			this.#peek().type === TokenType.NULLISH
+		) {
+			const isNullish = this.#peek().type === TokenType.NULLISH;
+			this.#advance(); // consume || or ??
 			const right = this.#parseLogicalAnd();
-			left = left || right;
+			left = isNullish ? (left ?? right) : left || right;
 		}
 
 		return left;
@@ -452,20 +463,8 @@ class Parser {
 			if (/^[A-Z][A-Z0-9_]*$/.test(name)) {
 				const value = this.#env[name];
 
-				// Strict mode: error if undefined and not in safe context
-				if (this.#strict && value === undefined) {
-					// We're in a safe context if we're being called from || or && or == null
-					// But we can't know that here without more context tracking
-					// For now, just error - the calling code can use {strict: false} if needed
-					throw new Error(
-						`Undefined environment variable: ${name}\n` +
-							`Fix:\n` +
-							`  1. Set the env var: export ${name}=value\n` +
-							`  2. Add a fallback: ${name} || defaultValue\n` +
-							`  3. Add null check: ${name} == null ? ... : ...\n` +
-							`  4. Use empty string for falsy: export ${name}=""`,
-					);
-				}
+				// Return undefined for missing env vars - strict check happens after
+				// full expression evaluation (so || and ?? can provide fallbacks)
 
 				// Auto-convert numeric strings to numbers
 				if (typeof value === "string" && /^\d+$/.test(value)) {
@@ -497,7 +496,22 @@ export function parseConfigExpr(
 
 	try {
 		const parser = new Parser(expr, env, strict);
-		return parser.parse();
+		const result = parser.parse();
+
+		// Strict mode: throw if final result is nullish (undefined or null)
+		// This allows || and ?? to provide fallbacks for undefined env vars
+		if (strict && (result === undefined || result === null)) {
+			throw new Error(
+				`Expression evaluated to ${result}\n` +
+					`The expression "${expr}" resulted in a nullish value.\n` +
+					`Fix:\n` +
+					`  1. Set the missing env var(s)\n` +
+					`  2. Add a fallback: VAR || defaultValue\n` +
+					`  3. Add a nullish fallback: VAR ?? defaultValue`,
+			);
+		}
+
+		return result;
 	} catch (error) {
 		throw new Error(
 			`Invalid config expression: ${expr}\n` +
@@ -655,10 +669,14 @@ class CodeGenerator {
 	#generateLogicalOr(): string {
 		let left = this.#generateLogicalAnd();
 
-		while (this.#peek().type === TokenType.OR) {
+		while (
+			this.#peek().type === TokenType.OR ||
+			this.#peek().type === TokenType.NULLISH
+		) {
+			const op = this.#peek().type === TokenType.NULLISH ? "??" : "||";
 			this.#advance();
 			const right = this.#generateLogicalAnd();
-			left = `(${left} || ${right})`;
+			left = `(${left} ${op} ${right})`;
 		}
 
 		return left;
@@ -843,9 +861,77 @@ function sanitizeVarName(pattern: string): string {
 }
 
 /**
+ * Placeholder prefix for generated code references.
+ * Using a unique prefix to avoid collisions with user data.
+ */
+const PLACEHOLDER_PREFIX = "__SHOVEL_";
+
+/**
+ * Check if a key needs quoting in a JavaScript object literal.
+ * Valid unquoted keys: identifiers (a-z, A-Z, 0-9, _, $) not starting with digit.
+ */
+function needsQuoting(key: string): boolean {
+	// Valid JS identifier: starts with letter/$/_, contains only letters/digits/$/_
+	return !/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key);
+}
+
+/**
+ * Convert a value to JavaScript object literal code.
+ * Uses placeholders map to substitute JS expressions.
+ * String config values are processed through exprToCode to handle env var expressions.
+ */
+function toJSLiteral(
+	value: unknown,
+	placeholders: Map<string, string>,
+	indent: string = "",
+): string {
+	if (value === null) return "null";
+	if (value === undefined) return "undefined";
+
+	if (typeof value === "string") {
+		// Check if it's a placeholder
+		if (value.startsWith(PLACEHOLDER_PREFIX) && placeholders.has(value)) {
+			return placeholders.get(value)!;
+		}
+		// Process as config expression (handles env vars like "PORT || 3000")
+		return exprToCode(value);
+	}
+
+	if (typeof value === "number" || typeof value === "boolean") {
+		return String(value);
+	}
+
+	if (Array.isArray(value)) {
+		if (value.length === 0) return "[]";
+		const items = value.map((v) => toJSLiteral(v, placeholders, indent + "  "));
+		return `[\n${indent}  ${items.join(`,\n${indent}  `)}\n${indent}]`;
+	}
+
+	if (typeof value === "object") {
+		const entries = Object.entries(value);
+		if (entries.length === 0) return "{}";
+
+		const props = entries.map(([k, v]) => {
+			const keyStr = needsQuoting(k) ? JSON.stringify(k) : k;
+			const valStr = toJSLiteral(v, placeholders, indent + "  ");
+			return `${keyStr}: ${valStr}`;
+		});
+
+		return `{\n${indent}  ${props.join(`,\n${indent}  `)}\n${indent}}`;
+	}
+
+	return JSON.stringify(value);
+}
+
+/**
  * Generate the shovel:config virtual module content.
  * This is called at build time to create the config module that gets
  * bundled into the final output.
+ *
+ * Uses a placeholder-based approach:
+ * 1. Build config object with placeholder strings for imports/env expressions
+ * 2. Convert to JavaScript object literal with proper formatting
+ * 3. Substitute placeholders with actual JS code
  *
  * @param rawConfig - Raw config from shovel.json (NOT processed)
  * @param env - Environment variables for evaluating provider expressions
@@ -854,12 +940,17 @@ export function generateConfigModule(
 	rawConfig: ShovelConfig,
 	env: Record<string, string | undefined> = getEnv(),
 ): string {
+	// Track imports and their placeholder mappings
 	const imports: string[] = [];
-	const providerRefs: Record<string, string> = {};
+	const placeholders: Map<string, string> = new Map(); // placeholder -> JS code
+	let placeholderCounter = 0;
 
-	// Track sink factory imports: key = "module:factory", value = varName
-	const sinkFactoryRefs: Map<string, string> = new Map();
-	let sinkCounter = 0;
+	// Create a placeholder and track the JS code it represents
+	const createPlaceholder = (jsCode: string): string => {
+		const placeholder = `${PLACEHOLDER_PREFIX}${placeholderCounter++}__`;
+		placeholders.set(placeholder, jsCode);
+		return placeholder;
+	};
 
 	// Helper to evaluate provider expression and generate import
 	const processProvider = (
@@ -872,8 +963,7 @@ export function generateConfigModule(
 		// Evaluate provider expression at BUILD time
 		const provider = parseConfigExpr(expr, env, {strict: false});
 		if (!provider || provider === "memory") {
-			// memory is built-in, no import needed
-			return null;
+			return null; // memory is built-in, no import needed
 		}
 
 		// Map blessed names to module paths
@@ -881,31 +971,32 @@ export function generateConfigModule(
 			type === "cache" ? BUILTIN_CACHE_PROVIDERS : BUILTIN_DIRECTORY_PROVIDERS;
 		const modulePath = builtinMap[provider] || provider;
 
-		// Generate unique variable name
+		// Generate unique variable name and import
 		const varName = `${type}_${sanitizeVarName(pattern)}`;
 		imports.push(`import * as ${varName} from ${JSON.stringify(modulePath)};`);
-		providerRefs[`${type}.${pattern}`] = varName;
 
-		return varName;
+		return createPlaceholder(varName);
 	};
 
 	// Helper to process a sink provider and generate import
+	// Track sink factory imports: key = "module:factory", value = placeholder
+	const sinkFactoryCache: Map<string, string> = new Map();
+
 	const processSinkProvider = (providerName: string): string => {
 		const builtin = BUILTIN_SINK_PROVIDERS[providerName];
 		const modulePath = builtin?.module || providerName;
 		const factoryName = builtin?.factory || "default";
+		const cacheKey = `${modulePath}:${factoryName}`;
 
-		// Check if we already have this import
-		const key = `${modulePath}:${factoryName}`;
-		if (sinkFactoryRefs.has(key)) {
-			return sinkFactoryRefs.get(key)!;
+		// Return existing placeholder if we already imported this
+		if (sinkFactoryCache.has(cacheKey)) {
+			return sinkFactoryCache.get(cacheKey)!;
 		}
 
-		// Generate unique variable name for the factory
-		const varName = `sink_${sinkCounter++}`;
-		sinkFactoryRefs.set(key, varName);
+		// Generate unique variable name
+		const varName = `sink_${sinkFactoryCache.size}`;
 
-		// Generate named import
+		// Generate import
 		if (factoryName === "default") {
 			imports.push(`import ${varName} from ${JSON.stringify(modulePath)};`);
 		} else {
@@ -914,212 +1005,167 @@ export function generateConfigModule(
 			);
 		}
 
-		return varName;
+		const placeholder = createPlaceholder(varName);
+		sinkFactoryCache.set(cacheKey, placeholder);
+		return placeholder;
 	};
 
-	// Collect all sinks from logging config
-	const collectSinks = (sinks: SinkConfig[] | undefined): void => {
-		if (!sinks) return;
-		for (const sink of sinks) {
-			if (sink.provider) {
-				processSinkProvider(String(sink.provider));
-			}
-		}
+	// Process a sink config, adding factory placeholder
+	const processSink = (sink: SinkConfig): SinkConfig & {factory?: string} => {
+		const factoryPlaceholder = processSinkProvider(String(sink.provider));
+		return {...sink, factory: factoryPlaceholder};
 	};
 
-	// Process cache providers
-	for (const [pattern, cfg] of Object.entries(rawConfig.caches || {})) {
-		if (cfg.provider) {
-			processProvider(String(cfg.provider), "cache", pattern);
-		}
-	}
+	// Process sinks array
+	const processSinks = (
+		sinks: SinkConfig[],
+	): Array<SinkConfig & {factory?: string}> => {
+		return sinks.map(processSink);
+	};
 
-	// Process directory providers
-	for (const [pattern, cfg] of Object.entries(rawConfig.directories || {})) {
-		if (cfg.provider) {
-			processProvider(String(cfg.provider), "directory", pattern);
-		}
-	}
-
-	// Process logging sink providers
-	if (rawConfig.logging) {
-		collectSinks(rawConfig.logging.sinks);
-		if (rawConfig.logging.categories) {
-			for (const categoryConfig of Object.values(
-				rawConfig.logging.categories,
-			)) {
-				collectSinks(categoryConfig.sinks);
-			}
-		}
-	} else {
-		// Default console sink
-		processSinkProvider("console");
-	}
-
-	// Generate config object code
-	const generateConfigCode = (): string => {
-		const lines: string[] = [];
-		lines.push("{");
+	// Build the config object with placeholders
+	const buildConfig = (): Record<string, unknown> => {
+		const config: Record<string, unknown> = {};
 
 		// Platform (if specified)
 		if (rawConfig.platform !== undefined) {
-			lines.push(`  platform: ${valueToCode(rawConfig.platform)},`);
+			config.platform = rawConfig.platform;
 		}
 
-		// Port
+		// Port - use process.env (shimmed from import.meta.env by esbuild define)
 		if (rawConfig.port !== undefined) {
-			lines.push(`  port: ${valueToCode(rawConfig.port)},`);
+			config.port = rawConfig.port;
 		} else {
-			lines.push(
-				`  port: process.env.PORT ? parseInt(process.env.PORT, 10) : 3000,`,
+			config.port = createPlaceholder(
+				"process.env.PORT ? parseInt(process.env.PORT, 10) : 3000",
 			);
 		}
 
 		// Host
 		if (rawConfig.host !== undefined) {
-			lines.push(`  host: ${valueToCode(rawConfig.host)},`);
+			config.host = rawConfig.host;
 		} else {
-			lines.push(`  host: process.env.HOST || "localhost",`);
+			config.host = createPlaceholder('process.env.HOST || "localhost"');
 		}
 
 		// Workers
 		if (rawConfig.workers !== undefined) {
-			lines.push(`  workers: ${valueToCode(rawConfig.workers)},`);
+			config.workers = rawConfig.workers;
 		} else {
-			lines.push(
-				`  workers: process.env.WORKERS ? parseInt(process.env.WORKERS, 10) : 1,`,
+			config.workers = createPlaceholder(
+				"process.env.WORKERS ? parseInt(process.env.WORKERS, 10) : 1",
 			);
 		}
 
-		// Logging (always include, defaults to console sink)
-		// LOG_LEVEL env var overrides the level if logging config is not specified
-		// Helper to generate sink array with factory references
-		const generateSinksCode = (sinks: SinkConfig[]): string => {
-			const sinkLines: string[] = [];
-			for (const sink of sinks) {
-				const providerName = String(sink.provider);
-				const builtin = BUILTIN_SINK_PROVIDERS[providerName];
-				const modulePath = builtin?.module || providerName;
-				const factoryName = builtin?.factory || "default";
-				const key = `${modulePath}:${factoryName}`;
-				const factoryVar = sinkFactoryRefs.get(key);
-
-				const sinkProps: string[] = [];
-				for (const [k, v] of Object.entries(sink)) {
-					sinkProps.push(`${k}: ${valueToCode(v)}`);
-				}
-				if (factoryVar) {
-					sinkProps.push(`factory: ${factoryVar}`);
-				}
-				sinkLines.push(`{${sinkProps.join(", ")}}`);
-			}
-			return `[${sinkLines.join(", ")}]`;
-		};
-
+		// Logging
 		if (rawConfig.logging) {
-			lines.push("  logging: {");
-			lines.push(
-				`    level: ${rawConfig.logging.level ? valueToCode(rawConfig.logging.level) : 'process.env.LOG_LEVEL || "info"'},`,
-			);
+			const logging: Record<string, unknown> = {};
 
-			// Default sinks
-			const defaultSinks = rawConfig.logging.sinks || [{provider: "console"}];
-			lines.push(`    sinks: ${generateSinksCode(defaultSinks)},`);
+			// Level
+			if (rawConfig.logging.level) {
+				logging.level = rawConfig.logging.level;
+			} else {
+				logging.level = createPlaceholder('process.env.LOG_LEVEL || "info"');
+			}
+
+			// Sinks
+			const sinks = rawConfig.logging.sinks || [{provider: "console"}];
+			logging.sinks = processSinks(sinks);
 
 			// Categories
 			if (
 				rawConfig.logging.categories &&
 				Object.keys(rawConfig.logging.categories).length > 0
 			) {
-				lines.push("    categories: {");
+				const categories: Record<string, unknown> = {};
 				for (const [cat, catConfig] of Object.entries(
 					rawConfig.logging.categories,
 				)) {
-					lines.push(`      ${JSON.stringify(cat)}: {`);
+					const catObj: Record<string, unknown> = {};
 					if (catConfig.level) {
-						lines.push(`        level: ${valueToCode(catConfig.level)},`);
+						catObj.level = catConfig.level;
 					}
 					if (catConfig.sinks) {
-						lines.push(`        sinks: ${generateSinksCode(catConfig.sinks)},`);
+						catObj.sinks = processSinks(catConfig.sinks);
 					}
-					lines.push("      },");
+					categories[cat] = catObj;
 				}
-				lines.push("    },");
+				logging.categories = categories;
 			} else {
-				lines.push("    categories: {},");
+				logging.categories = {};
 			}
-			lines.push("  },");
+
+			config.logging = logging;
 		} else {
-			// Default logging config with console sink
-			const consoleFactoryVar = sinkFactoryRefs.get(
-				"@logtape/logtape:getConsoleSink",
-			);
-			lines.push(
-				`  logging: {level: process.env.LOG_LEVEL || "info", sinks: [{provider: "console", factory: ${consoleFactoryVar}}], categories: {}},`,
-			);
+			// Default logging config
+			config.logging = {
+				level: createPlaceholder('process.env.LOG_LEVEL || "info"'),
+				sinks: processSinks([{provider: "console"}]),
+				categories: {},
+			};
 		}
 
-		// Caches - with provider references
+		// Caches
 		if (rawConfig.caches && Object.keys(rawConfig.caches).length > 0) {
-			lines.push("  caches: {");
+			const caches: Record<string, unknown> = {};
 			for (const [pattern, cfg] of Object.entries(rawConfig.caches)) {
-				const providerVar = providerRefs[`cache.${pattern}`];
-				lines.push(`    ${JSON.stringify(pattern)}: {`);
-				for (const [key, val] of Object.entries(cfg)) {
-					if (key === "provider" && providerVar) {
-						// Use the imported provider module reference
-						lines.push(`      provider: ${providerVar},`);
-					} else {
-						lines.push(`      ${key}: ${valueToCode(val)},`);
-					}
+				const cacheConfig: Record<string, unknown> = {...cfg};
+				const providerPlaceholder = processProvider(
+					String(cfg.provider),
+					"cache",
+					pattern,
+				);
+				if (providerPlaceholder) {
+					cacheConfig.provider = providerPlaceholder;
 				}
-				lines.push("    },");
+				caches[pattern] = cacheConfig;
 			}
-			lines.push("  },");
+			config.caches = caches;
 		}
 
-		// Directories - with provider references
+		// Directories
 		if (
 			rawConfig.directories &&
 			Object.keys(rawConfig.directories).length > 0
 		) {
-			lines.push("  directories: {");
+			const directories: Record<string, unknown> = {};
 			for (const [pattern, cfg] of Object.entries(rawConfig.directories)) {
-				const providerVar = providerRefs[`directory.${pattern}`];
-				lines.push(`    ${JSON.stringify(pattern)}: {`);
-				for (const [key, val] of Object.entries(cfg)) {
-					if (key === "provider" && providerVar) {
-						lines.push(`      provider: ${providerVar},`);
-					} else {
-						lines.push(`      ${key}: ${valueToCode(val)},`);
-					}
+				const dirConfig: Record<string, unknown> = {...cfg};
+				const providerPlaceholder = processProvider(
+					String(cfg.provider),
+					"directory",
+					pattern,
+				);
+				if (providerPlaceholder) {
+					dirConfig.provider = providerPlaceholder;
 				}
-				lines.push("    },");
+				directories[pattern] = dirConfig;
 			}
-			lines.push("  },");
+			config.directories = directories;
 		}
 
-		lines.push("}");
-		return lines.join("\n");
+		return config;
 	};
 
-	// Generate the module
-	const moduleLines: string[] = [];
+	// Build the config object
+	const config = buildConfig();
 
-	// Add imports
+	// Convert to JavaScript object literal (not JSON - unquoted keys where valid)
+	const configCode = toJSLiteral(config, placeholders, "");
+
+	// Generate the module
+	const lines: string[] = [];
+
 	if (imports.length > 0) {
-		moduleLines.push("// Provider imports (statically bundled)");
-		moduleLines.push(...imports);
-		moduleLines.push("");
+		lines.push("// Provider imports (statically bundled)");
+		lines.push(...imports);
+		lines.push("");
 	}
 
-	// Add config export
-	moduleLines.push(
-		"// Generated config (secrets stay as process.env references)",
-	);
-	moduleLines.push(`export const config = ${generateConfigCode()};`);
+	lines.push("// Generated config (env vars resolved at runtime)");
+	lines.push(`export const config = ${configCode};`);
 
-	return moduleLines.join("\n");
+	return lines.join("\n");
 }
 
 /**
