@@ -86,7 +86,7 @@ export async function developCommand(
 		const shutdown = async (signal: string) => {
 			logger.info("Shutting down gracefully", {signal});
 			await watcher.stop();
-			await serviceWorker.dispose();
+			await serviceWorker?.dispose();
 			await platformInstance.dispose();
 			await server.close();
 			logger.info("Shutdown complete", {});
