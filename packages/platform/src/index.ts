@@ -1008,7 +1008,9 @@ export class ServiceWorkerPool {
 					if (this.#cacheStorage) {
 						const storage = this.#cacheStorage as any;
 						if (typeof storage.handleMessage === "function") {
-							void storage.handleMessage(worker, message);
+							storage.handleMessage(worker, message).catch((err: Error) => {
+								logger.error("Cache message handling failed: {error}", {error: err});
+							});
 						}
 					}
 				}
