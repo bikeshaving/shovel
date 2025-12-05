@@ -12,6 +12,7 @@
 
 import * as Path from "path";
 import {existsSync} from "fs";
+import {fileURLToPath} from "url";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory";
 import {getLogger} from "@logtape/logtape";
@@ -734,7 +735,8 @@ function resolveWorkerScript(entrypoint?: string): string {
 
 		if (workerURL.startsWith("file://")) {
 			// Convert file:// URL to path for Worker constructor
-			workerScript = workerURL.slice(7); // Remove 'file://' prefix
+			// Use fileURLToPath for correct handling on all platforms (including Windows)
+			workerScript = fileURLToPath(workerURL);
 		} else {
 			workerScript = workerURL;
 		}
