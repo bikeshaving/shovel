@@ -145,7 +145,7 @@ async function main() {
 		console.info(`  ${dim("$")} npm run develop`);
 		console.info("");
 		console.info(
-			`🌐 Your app will be available at: ${bold("http://localhost:8000")}`,
+			`🌐 Your app will be available at: ${bold("http://localhost:3000")}`,
 		);
 		console.info("");
 		console.info(dim("Happy coding with Shovel! 🚀"));
@@ -660,7 +660,7 @@ npm install
 npm run develop
 \`\`\`
 
-Your app will be available at: **http://localhost:8000**
+Your app will be available at: **http://localhost:3000**
 
 ## 📁 Project Structure
 

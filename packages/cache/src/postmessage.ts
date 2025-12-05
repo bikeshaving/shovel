@@ -44,6 +44,9 @@ export class PostMessageCache extends Cache {
 			throw new Error("PostMessageCache can only be used in worker threads");
 		}
 
+		if (globalRequestID >= Number.MAX_SAFE_INTEGER) {
+			throw new Error("🎉 Congratulations! You've made 9 quadrillion cache requests. Please restart your server and tell us about your workload.");
+		}
 		const requestID = ++globalRequestID;
 
 		return new Promise((resolve, reject) => {

@@ -25,11 +25,17 @@ import {readFileSync} from "fs";
  */
 export const DEFAULTS = {
 	SERVER: {
-		PORT: 7777,
+		PORT: 3000,
 		HOST: "localhost",
 	},
 	WORKERS: 1, // Single worker for development - user can override with --workers flag
 } as const;
+
+/**
+ * Regex to detect if a string looks like a config expression
+ * Matches: operators (||, &&, ===, !==, ==, !=, ?, :, !) or ALL_CAPS env vars
+ */
+const EXPRESSION_PATTERN = /(\|\||&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/;
 
 /**
  * Get environment variables from import.meta.env or process.env
@@ -510,9 +516,7 @@ export function processConfigValue(
 ): any {
 	if (typeof value === "string") {
 		// Check if it looks like an expression (contains operators or env vars)
-		// Operators: ||, &&, ===, !==, ==, !=, ?, :, !
-		// Env vars: ALL_CAPS identifiers
-		if (/(\|\||&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/.test(value)) {
+		if (EXPRESSION_PATTERN.test(value)) {
 			return parseConfigExpr(value, env, options);
 		}
 		// Plain string
@@ -756,7 +760,7 @@ class CodeGenerator {
  */
 export function exprToCode(expr: string): string {
 	// Check if it looks like an expression (contains operators or env vars)
-	if (/(\|\||&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/.test(expr)) {
+	if (EXPRESSION_PATTERN.test(expr)) {
 		try {
 			const generator = new CodeGenerator(expr);
 			return generator.generate();
