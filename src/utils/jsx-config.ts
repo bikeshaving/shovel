@@ -9,9 +9,6 @@ import {readFile} from "fs/promises";
 import {join, dirname} from "path";
 import {existsSync} from "fs";
 import type {BuildOptions} from "esbuild";
-import {getLogger} from "@logtape/logtape";
-
-const logger = getLogger(["build"]);
 
 /**
  * JSX options for esbuild
@@ -158,35 +155,23 @@ export async function loadJSXConfig(projectRoot: string): Promise<JSXOptions> {
 	const tsconfigPath = await findTsConfig(projectRoot);
 
 	if (tsconfigPath) {
-		try {
-			const config = await parseTsConfig(tsconfigPath);
-			const compilerOptions = config.compilerOptions || {};
+		const config = await parseTsConfig(tsconfigPath);
+		const compilerOptions = config.compilerOptions || {};
 
-			// Check if any JSX options are specified
-			const hasJsxConfig =
-				compilerOptions.jsx ||
-				compilerOptions.jsxFactory ||
-				compilerOptions.jsxFragmentFactory ||
-				compilerOptions.jsxImportSource;
+		// Check if any JSX options are specified
+		const hasJsxConfig =
+			compilerOptions.jsx ||
+			compilerOptions.jsxFactory ||
+			compilerOptions.jsxFragmentFactory ||
+			compilerOptions.jsxImportSource;
 
-			if (hasJsxConfig) {
-				const tsOptions = mapTsConfigToEsbuild(compilerOptions);
-				// Merge with defaults (tsconfig takes precedence)
-				return {
-					...CRANK_JSX_DEFAULTS,
-					...tsOptions,
-				};
-			}
-		} catch (err) {
-			// Log warning for JSON parse errors, rethrow others
-			if (err instanceof SyntaxError) {
-				logger.warn(
-					"Failed to parse {tsconfigPath}, using default JSX config: {error}",
-					{tsconfigPath, error: err},
-				);
-			} else {
-				throw err;
-			}
+		if (hasJsxConfig) {
+			const tsOptions = mapTsConfigToEsbuild(compilerOptions);
+			// Merge with defaults (tsconfig takes precedence)
+			return {
+				...CRANK_JSX_DEFAULTS,
+				...tsOptions,
+			};
 		}
 	}
 

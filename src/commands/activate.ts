@@ -1,13 +1,13 @@
-import {DEFAULTS} from "../esbuild/config.js";
+import {DEFAULTS} from "../utils/config.js";
 import {getLogger} from "@logtape/logtape";
 import * as Platform from "@b9g/platform";
-import type {ProcessedShovelConfig} from "../config.js";
+import type {ProcessedShovelConfig} from "../utils/config.js";
 import * as ESBuild from "esbuild";
 import {resolve, join} from "path";
 import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
-import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
-import {loadJSXConfig, applyJSXOptions} from "../esbuild/jsx-config.js";
+import {importMetaPlugin} from "../utils/import-meta-plugin.js";
+import {loadJSXConfig, applyJSXOptions} from "../utils/jsx-config.js";
 import {findProjectRoot, getNodeModulesPath} from "../utils/project.js";
 
 const logger = getLogger(["cli"]);

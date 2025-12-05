@@ -5,7 +5,7 @@
 /* eslint-disable no-restricted-properties -- Tests need direct process.env access */
 
 import {describe, it, expect, beforeAll, afterAll} from "bun:test";
-import {loadConfig} from "../src/config.js";
+import {loadConfig} from "../src/utils/config.js";
 import {mkdtempSync, writeFileSync, rmSync} from "fs";
 import {join} from "path";
 import {tmpdir} from "os";

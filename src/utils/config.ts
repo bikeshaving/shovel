@@ -20,6 +20,18 @@
 import {readFileSync} from "fs";
 
 /**
+ * Default configuration constants
+ * Used as CLI option defaults and internal constants
+ */
+export const DEFAULTS = {
+	SERVER: {
+		PORT: 7777,
+		HOST: "localhost",
+	},
+	WORKERS: 1, // Single worker for development - user can override with --workers flag
+} as const;
+
+/**
  * Get environment variables from import.meta.env or process.env
  */
 function getEnv(): Record<string, string | undefined> {
@@ -977,14 +989,22 @@ export function loadRawConfig(cwd: string): ShovelConfig {
 		const shovelPath = `${cwd}/shovel.json`;
 		const content = readFileSync(shovelPath, "utf-8");
 		return JSON.parse(content);
-	} catch {
+	} catch (error: any) {
+		// Only fall back if file doesn't exist
+		if (error?.code !== "ENOENT") {
+			throw error;
+		}
 		// Try package.json
 		try {
 			const pkgPath = `${cwd}/package.json`;
 			const content = readFileSync(pkgPath, "utf-8");
 			const pkgJSON = JSON.parse(content);
 			return pkgJSON.shovel || {};
-		} catch {
+		} catch (error: any) {
+			// Only return empty config if file doesn't exist
+			if (error?.code !== "ENOENT") {
+				throw error;
+			}
 			return {};
 		}
 	}
@@ -1090,15 +1110,22 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 		const shovelPath = `${cwd}/shovel.json`;
 		const content = readFileSync(shovelPath, "utf-8");
 		rawConfig = JSON.parse(content);
-	} catch (error) {
+	} catch (error: any) {
+		// Only fall back if file doesn't exist
+		if (error?.code !== "ENOENT") {
+			throw error;
+		}
 		// No shovel.json, try package.json
 		try {
 			const pkgPath = `${cwd}/package.json`;
 			const content = readFileSync(pkgPath, "utf-8");
 			const pkgJSON = JSON.parse(content);
 			rawConfig = pkgJSON.shovel || {};
-		} catch (error) {
-			// No package.json or no shovel field - use defaults
+		} catch (error: any) {
+			// Only use defaults if file doesn't exist
+			if (error?.code !== "ENOENT") {
+				throw error;
+			}
 		}
 	}
 

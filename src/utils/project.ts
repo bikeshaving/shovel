@@ -42,13 +42,9 @@ export function findWorkspaceRoot(
 	while (dir !== dirname(dir)) {
 		const packageJsonPath = join(dir, "package.json");
 		if (existsSync(packageJsonPath)) {
-			try {
-				const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-				if (packageJson.workspaces) {
-					return dir;
-				}
-			} catch {
-				// Ignore parse errors, continue searching
+			const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+			if (packageJson.workspaces) {
+				return dir;
 			}
 		}
 		dir = dirname(dir);

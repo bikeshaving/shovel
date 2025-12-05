@@ -1157,7 +1157,7 @@ self.addEventListener("fetch", (event) => {
 // HOT RELOAD TESTS
 // =======================
 
-import {Watcher} from "../src/esbuild/watcher.ts";
+import {Watcher} from "../src/utils/watcher.ts";
 import {existsSync} from "fs";
 
 test(

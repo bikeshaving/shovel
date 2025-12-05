@@ -3,7 +3,7 @@
 
 // Load config and configure logging before anything else
 import {findProjectRoot} from "../src/utils/project.js";
-import {loadConfig} from "../src/config.js";
+import {loadConfig, DEFAULTS} from "../src/utils/config.js";
 import {configureLogging} from "@b9g/platform/runtime";
 
 const projectRoot = findProjectRoot();
@@ -12,7 +12,6 @@ await configureLogging(config.logging);
 
 import {Command} from "commander";
 import pkg from "../package.json" with {type: "json"};
-import {DEFAULTS} from "../src/esbuild/config.js";
 
 const program = new Command();
 

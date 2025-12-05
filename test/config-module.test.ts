@@ -8,7 +8,7 @@ import {
 	generateConfigModule,
 	BUILTIN_CACHE_PROVIDERS,
 	BUILTIN_BUCKET_PROVIDERS,
-} from "../src/config.js";
+} from "../src/utils/config.js";
 
 describe("exprToCode", () => {
 	describe("literals", () => {

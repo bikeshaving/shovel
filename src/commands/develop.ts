@@ -1,8 +1,8 @@
-import {DEFAULTS} from "../esbuild/config.js";
+import {DEFAULTS} from "../utils/config.js";
 import {getLogger} from "@logtape/logtape";
 import * as Platform from "@b9g/platform";
-import type {ProcessedShovelConfig} from "../config.js";
-import {Watcher} from "../esbuild/watcher.js";
+import type {ProcessedShovelConfig} from "../utils/config.js";
+import {Watcher} from "../utils/watcher.js";
 
 const logger = getLogger(["cli"]);
 

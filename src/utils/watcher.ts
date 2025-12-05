@@ -9,8 +9,8 @@ import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
 import {importMetaPlugin} from "./import-meta-plugin.js";
 import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
-import {findProjectRoot} from "../utils/project.js";
-import {loadRawConfig, generateConfigModule} from "../config.js";
+import {findProjectRoot} from "./project.js";
+import {loadRawConfig, generateConfigModule} from "./config.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["build"]);

@@ -7,8 +7,8 @@ import * as ESBuild from "esbuild";
 import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
-import {importMetaPlugin} from "../esbuild/import-meta-plugin.js";
-import {loadJSXConfig, applyJSXOptions} from "../esbuild/jsx-config.js";
+import {importMetaPlugin} from "../utils/import-meta-plugin.js";
+import {loadJSXConfig, applyJSXOptions} from "../utils/jsx-config.js";
 import {
 	findProjectRoot,
 	findWorkspaceRoot,
@@ -16,8 +16,8 @@ import {
 } from "../utils/project.js";
 import {getLogger} from "@logtape/logtape";
 import * as Platform from "@b9g/platform";
-import {loadRawConfig, generateConfigModule} from "../config.js";
-import type {ProcessedShovelConfig} from "../config.js";
+import {loadRawConfig, generateConfigModule} from "../utils/config.js";
+import type {ProcessedShovelConfig} from "../utils/config.js";
 
 const logger = getLogger(["cli"]);
 
