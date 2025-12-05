@@ -9,6 +9,9 @@ import {readFile} from "fs/promises";
 import {join, dirname} from "path";
 import {existsSync} from "fs";
 import type {BuildOptions} from "esbuild";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["build"]);
 
 /**
  * JSX options for esbuild
@@ -175,13 +178,13 @@ export async function loadJSXConfig(projectRoot: string): Promise<JSXOptions> {
 				};
 			}
 		} catch (err) {
-			// Only ignore JSON parse errors, rethrow others
-			if (
-				!(err instanceof SyntaxError) ||
-				!/^(Unexpected token|Expected|JSON)/i.test(
-					String((err as Error).message),
-				)
-			) {
+			// Log warning for JSON parse errors, rethrow others
+			if (err instanceof SyntaxError) {
+				logger.warn(
+					"Failed to parse {tsconfigPath}, using default JSX config: {error}",
+					{tsconfigPath, error: err},
+				);
+			} else {
 				throw err;
 			}
 		}
