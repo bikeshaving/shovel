@@ -28,7 +28,7 @@ export async function developCommand(
 
 		// Create platform with server defaults
 		const platformInstance = await Platform.createPlatform(platformName, {
-			port: parseInt(options.port || String(DEFAULTS.SERVER.PORT)),
+			port: parseInt(options.port || String(DEFAULTS.SERVER.PORT), 10),
 			host: options.host || DEFAULTS.SERVER.HOST,
 		});
 
@@ -72,7 +72,7 @@ export async function developCommand(
 
 		// Create development server
 		const server = platformInstance.createServer(serviceWorker.handleRequest, {
-			port: parseInt(options.port || String(DEFAULTS.SERVER.PORT)),
+			port: parseInt(options.port || String(DEFAULTS.SERVER.PORT), 10),
 			host: options.host || DEFAULTS.SERVER.HOST,
 		});
 
@@ -109,7 +109,7 @@ function getWorkerCount(
 ) {
 	// CLI option overrides everything (explicit user intent)
 	if (options.workers) {
-		return parseInt(options.workers);
+		return parseInt(options.workers, 10);
 	}
 	// Config already handles: json value > WORKERS env > default
 	return config?.workers ?? DEFAULTS.WORKERS;
