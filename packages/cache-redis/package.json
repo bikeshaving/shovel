@@ -1,6 +1,6 @@
 {
   "name": "@b9g/cache-redis",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Redis cache adapter for Shovel cache system",
   "type": "module",
   "types": "./dist/src/index.d.ts",
