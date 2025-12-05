@@ -23,21 +23,8 @@ import {
 	PlatformEsbuildConfig,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
-
-// Runtime imports (for bundled worker - browser-compatible)
-// These are imported separately to keep runtime code browser-safe
-import {
-	ServiceWorkerGlobals,
-	ShovelServiceWorkerRegistration,
-	CustomLoggerStorage,
-} from "@b9g/platform/runtime";
-import {CustomDirectoryStorage} from "@b9g/filesystem";
-import {AsyncContext} from "@b9g/async-context";
 import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
-import type {R2Bucket} from "./filesystem-r2.js";
-import {R2FileSystemDirectoryHandle} from "./filesystem-r2.js";
-import type {ExecutionContext} from "./cloudflare-runtime.js";
 
 const logger = getLogger(["platform"]);
 
@@ -52,37 +39,6 @@ export type {
 } from "@b9g/platform";
 
 // ============================================================================
-// PER-REQUEST CONTEXT (AsyncContext)
-// ============================================================================
-
-/**
- * Cloudflare Workers pass `env` and `ctx` to each request handler.
- * We store these in AsyncContext so they can be accessed anywhere in the request.
- */
-
-/** Per-request storage for Cloudflare's env object (KV, R2, D1 bindings) */
-const envStorage = new AsyncContext.Variable<Record<string, unknown>>();
-
-/** Per-request storage for Cloudflare's ExecutionContext */
-const ctxStorage = new AsyncContext.Variable<ExecutionContext>();
-
-/**
- * Get the current request's Cloudflare env object
- * Contains all bindings: KV namespaces, R2 buckets, D1 databases, etc.
- */
-export function getEnv<T = Record<string, unknown>>(): T | undefined {
-	return envStorage.get() as T | undefined;
-}
-
-/**
- * Get the current request's Cloudflare ExecutionContext
- * Used for ctx.waitUntil() and other lifecycle methods
- */
-export function getCtx(): ExecutionContext | undefined {
-	return ctxStorage.get();
-}
-
-// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -93,151 +49,6 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
 	assetsDirectory?: string;
 	/** Working directory for config file resolution */
 	cwd?: string;
-}
-
-// ============================================================================
-// CLOUDFLARE RUNTIME SETUP (for bundled workers)
-// ============================================================================
-
-// Module-level state for the runtime (initialized once when module loads)
-let _registration: ShovelServiceWorkerRegistration | null = null;
-let _globals: ServiceWorkerGlobals | null = null;
-
-/**
- * Initialize the Cloudflare runtime with ServiceWorkerGlobals
- * Called once when the worker module loads (before user code runs)
- *
- * This sets up:
- * - ServiceWorkerGlobals (caches, directories, cookieStore, addEventListener, etc.)
- * - Per-request env/ctx via AsyncContext
- */
-export function initializeRuntime(): ShovelServiceWorkerRegistration {
-	if (_registration) {
-		return _registration;
-	}
-
-	// Create registration (captures addEventListener('fetch', ...))
-	_registration = new ShovelServiceWorkerRegistration();
-
-	// Create directory storage with lazy R2 factory
-	// The factory accesses env via AsyncContext when directories.open() is called
-	const directories = new CustomDirectoryStorage(
-		createCloudflareR2DirectoryFactory(),
-	);
-
-	// Create ServiceWorkerGlobals with:
-	// - Our registration
-	// - Cloudflare's native caches (already available globally)
-	// - R2-backed directory storage
-	// - Logger storage
-	_globals = new ServiceWorkerGlobals({
-		registration: _registration,
-		caches: globalThis.caches, // Use Cloudflare's native Cache API
-		directories,
-		loggers: new CustomLoggerStorage((...cats) => getLogger(cats)),
-	});
-
-	// Install globals (caches, directories, cookieStore, addEventListener, etc.)
-	_globals.install();
-
-	return _registration;
-}
-
-/**
- * Create the ES module fetch handler for Cloudflare Workers
- * This wraps requests with AsyncContext so env/ctx are available everywhere
- */
-export function createFetchHandler(
-	registration: ShovelServiceWorkerRegistration,
-): (
-	request: Request,
-	env: unknown,
-	ctx: ExecutionContext,
-) => Promise<Response> {
-	return async (
-		request: Request,
-		env: unknown,
-		ctx: ExecutionContext,
-	): Promise<Response> => {
-		// Run request with env/ctx available via AsyncContext
-		return envStorage.run(env as Record<string, unknown>, () =>
-			ctxStorage.run(ctx, async () => {
-				try {
-					return await registration.handleRequest(request);
-				} catch (error) {
-					console.error("ServiceWorker error:", error);
-					const err = error instanceof Error ? error : new Error(String(error));
-
-					// Dev mode: show detailed error
-					const isDev =
-						typeof import.meta !== "undefined" &&
-						import.meta.env?.MODE !== "production";
-					if (isDev) {
-						return new Response(
-							`<!DOCTYPE html>
-<html>
-<head><title>500 Internal Server Error</title>
-<style>body{font-family:system-ui;padding:2rem;max-width:800px;margin:0 auto}h1{color:#c00}pre{background:#f5f5f5;padding:1rem;overflow-x:auto}</style>
-</head>
-<body>
-<h1>500 Internal Server Error</h1>
-<p>${escapeHtml(err.message)}</p>
-<pre>${escapeHtml(err.stack || "No stack trace")}</pre>
-</body></html>`,
-							{status: 500, headers: {"Content-Type": "text/html"}},
-						);
-					}
-
-					return new Response("Internal Server Error", {status: 500});
-				}
-			}),
-		);
-	};
-}
-
-function escapeHtml(str: string): string {
-	return str
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;");
-}
-
-/**
- * Create a directory factory for Cloudflare that uses R2 bindings
- *
- * The factory is called lazily when directories.open(name) is called.
- * At that point, `env` is available via AsyncContext.
- *
- * Directory name -> R2 binding mapping:
- * - Default: directory name uppercased with "_R2" suffix (e.g., "uploads" -> "UPLOADS_R2")
- */
-function createCloudflareR2DirectoryFactory() {
-	return async (name: string): Promise<FileSystemDirectoryHandle> => {
-		const env = getEnv();
-		if (!env) {
-			throw new Error(
-				`Cannot access directory "${name}": Cloudflare env not available. ` +
-					`This usually means you're trying to access directories outside of a request context.`,
-			);
-		}
-
-		// Default binding name convention: "uploads" -> "UPLOADS_R2"
-		const bindingName = `${name.toUpperCase()}_R2`;
-		const r2Bucket = env[bindingName] as R2Bucket | undefined;
-
-		if (!r2Bucket) {
-			throw new Error(
-				`R2 bucket binding "${bindingName}" not found in env. ` +
-					`Configure in wrangler.toml:\n\n` +
-					`[[r2_buckets]]\n` +
-					`binding = "${bindingName}"\n` +
-					`bucket_name = "your-bucket-name"`,
-			);
-		}
-
-		return new R2FileSystemDirectoryHandle(r2Bucket, "");
-	};
 }
 
 // ============================================================================
@@ -404,24 +215,15 @@ export class CloudflarePlatform extends BasePlatform {
 	getEntryWrapper(entryPath: string, _options?: EntryWrapperOptions): string {
 		// Use JSON.stringify to safely escape the path (prevents code injection)
 		const safePath = JSON.stringify(entryPath);
-		return `// Cloudflare Worker Entry - uses ServiceWorkerGlobals for feature parity with Node/Bun
-import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/cloudflare-runtime";
-import { configureLogging } from "@b9g/platform/runtime";
-import { config } from "shovel:config"; // Virtual module - resolved at build time
+		return `// Cloudflare Worker Entry
+import { config } from "shovel:config";
+import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
 
-// Configure logging before anything else
-await configureLogging(config.logging);
+const registration = await initializeRuntime(config);
 
-// Initialize runtime BEFORE user code (installs globals like addEventListener)
-const registration = initializeRuntime();
-
-// Import user's ServiceWorker code (calls addEventListener('fetch', ...))
 import ${safePath};
 
-// Export ES module handler for Cloudflare Workers
-export default {
-	fetch: createFetchHandler(registration)
-};
+export default { fetch: createFetchHandler(registration) };
 `;
 	}
 

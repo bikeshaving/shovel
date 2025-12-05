@@ -556,7 +556,7 @@ export const BUILTIN_CACHE_PROVIDERS: Record<string, string> = {
  * Maps short names to their module paths
  */
 export const BUILTIN_DIRECTORY_PROVIDERS: Record<string, string> = {
-	node: "@b9g/filesystem/node.js",
+	"node-fs": "@b9g/filesystem/node-fs.js",
 	memory: "@b9g/filesystem/memory.js",
 	s3: "@b9g/filesystem-s3",
 };

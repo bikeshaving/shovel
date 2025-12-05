@@ -2,7 +2,7 @@ import {test, expect} from "bun:test";
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
-import {NodeDirectory} from "@b9g/filesystem/node.js";
+import {NodeFSDirectory} from "@b9g/filesystem/node-fs.js";
 
 /**
  * Directory storage architecture and self.directories API tests
@@ -34,7 +34,7 @@ async function createDirectoryStorage(tempDir) {
 	return new CustomDirectoryStorage(async (name) => {
 		const targetPath = join(tempDir, name);
 		await FS.mkdir(targetPath, {recursive: true});
-		return new NodeDirectory(targetPath);
+		return new NodeFSDirectory(targetPath);
 	});
 }
 
@@ -459,12 +459,12 @@ test(
 test(
 	"local directory adapter with real filesystem",
 	async () => {
-		const {NodeDirectory} = await import("@b9g/filesystem/node.js");
+		const {NodeFSDirectory} = await import("@b9g/filesystem/node-fs.js");
 
 		const tempDir = await createTempDir();
 
 		try {
-			const directory = new NodeDirectory(tempDir);
+			const directory = new NodeFSDirectory(tempDir);
 
 			// Test directory creation
 			const dirHandle = await directory.getDirectoryHandle("local-test", {

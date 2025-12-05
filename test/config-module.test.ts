@@ -273,12 +273,12 @@ describe("generateConfigModule", () => {
 			expect(module).toContain("provider: directory_");
 		});
 
-		it("generates static import for node provider", () => {
-			// Node is a blessed provider that gets imported
+		it("generates static import for node-fs provider", () => {
+			// node-fs is a blessed provider that gets imported
 			const config = {
 				directories: {
 					uploads: {
-						provider: "node",
+						provider: "node-fs",
 						path: "./uploads",
 					},
 				},
@@ -286,8 +286,8 @@ describe("generateConfigModule", () => {
 
 			const module = generateConfigModule(config);
 
-			// Node is a built-in provider, gets imported
-			expect(module).toContain('from "@b9g/filesystem/node.js"');
+			// node-fs is a built-in provider, gets imported
+			expect(module).toContain('from "@b9g/filesystem/node-fs.js"');
 			expect(module).toContain("provider: directory_");
 		});
 
@@ -295,7 +295,7 @@ describe("generateConfigModule", () => {
 			const config = {
 				directories: {
 					uploads: {
-						provider: "S3_ENABLED ? s3 : node",
+						provider: "S3_ENABLED ? s3 : node-fs",
 						bucket: "S3_BUCKET",
 					},
 				},
@@ -305,9 +305,9 @@ describe("generateConfigModule", () => {
 			const s3Module = generateConfigModule(config, {S3_ENABLED: "true"});
 			expect(s3Module).toContain('from "@b9g/filesystem-s3"');
 
-			// Without S3 - evaluates to node
+			// Without S3 - evaluates to node-fs
 			const nodeModule = generateConfigModule(config, {S3_ENABLED: ""});
-			expect(nodeModule).toContain('from "@b9g/filesystem/node.js"');
+			expect(nodeModule).toContain('from "@b9g/filesystem/node-fs.js"');
 		});
 	});
 
@@ -567,8 +567,10 @@ describe("BUILTIN_CACHE_PROVIDERS", () => {
 });
 
 describe("BUILTIN_DIRECTORY_PROVIDERS", () => {
-	it("has node provider", () => {
-		expect(BUILTIN_DIRECTORY_PROVIDERS.node).toBe("@b9g/filesystem/node.js");
+	it("has node-fs provider", () => {
+		expect(BUILTIN_DIRECTORY_PROVIDERS["node-fs"]).toBe(
+			"@b9g/filesystem/node-fs.js",
+		);
 	});
 
 	it("has memory provider", () => {

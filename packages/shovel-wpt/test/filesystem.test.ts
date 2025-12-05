@@ -1,13 +1,13 @@
 /**
  * Tests for the filesystem WPT test runner
  *
- * This file runs the WPT-based filesystem tests against MemoryDirectory and NodeDirectory
+ * This file runs the WPT-based filesystem tests against MemoryDirectory and NodeFSDirectory
  * to verify the test runner works correctly.
  */
 
 import {runFilesystemTests} from "../src/runners/filesystem.js";
 import {MemoryDirectory} from "../../filesystem/src/memory.js";
-import {NodeDirectory} from "../../filesystem/src/node.js";
+import {NodeFSDirectory} from "../../filesystem/src/node-fs.js";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
@@ -20,14 +20,14 @@ runFilesystemTests("MemoryDirectory", {
 	},
 });
 
-// Run WPT filesystem tests against NodeDirectory
+// Run WPT filesystem tests against NodeFSDirectory
 let nodeDirectoryTestDir: string | null = null;
 
-runFilesystemTests("NodeDirectory", {
+runFilesystemTests("NodeFSDirectory", {
 	getDirectory: async () => {
 		// Create a temp directory for each test
 		nodeDirectoryTestDir = await fs.mkdtemp(path.join(os.tmpdir(), "wpt-fs-"));
-		return new NodeDirectory(nodeDirectoryTestDir);
+		return new NodeFSDirectory(nodeDirectoryTestDir);
 	},
 	cleanup: async () => {
 		if (nodeDirectoryTestDir) {

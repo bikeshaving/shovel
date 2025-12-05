@@ -1,8 +1,8 @@
 /**
- * Node.js filesystem implementation
+ * Node.js filesystem implementation using node:fs
  *
- * Provides NodeDirectory (root) and NodeFileSystemBackend for storage operations
- * using Node.js fs module.
+ * Provides NodeFSDirectory (root) and NodeFSBackend for storage operations
+ * using Node.js fs module. Works in both Node.js and Bun.
  */
 
 import {type FileSystemBackend, ShovelDirectoryHandle} from "./index.js";
@@ -15,9 +15,9 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
 }
 
 /**
- * Node.js storage backend that implements FileSystemBackend
+ * Node.js storage backend using node:fs
  */
-export class NodeFileSystemBackend implements FileSystemBackend {
+export class NodeFSBackend implements FileSystemBackend {
 	#rootPath: string;
 
 	constructor(rootPath: string) {
@@ -181,14 +181,14 @@ export class NodeFileSystemBackend implements FileSystemBackend {
 }
 
 /**
- * Node directory - root entry point for Node.js filesystem
+ * Node.js directory using node:fs - root entry point for local filesystem
  * Extends ShovelDirectoryHandle with "/" as root path
  */
-export class NodeDirectory extends ShovelDirectoryHandle {
+export class NodeFSDirectory extends ShovelDirectoryHandle {
 	#rootPath: string;
 
 	constructor(rootPath: string) {
-		super(new NodeFileSystemBackend(rootPath), "/");
+		super(new NodeFSBackend(rootPath), "/");
 		this.#rootPath = rootPath;
 	}
 
@@ -197,3 +197,9 @@ export class NodeDirectory extends ShovelDirectoryHandle {
 		return Path.basename(this.#rootPath) || "root";
 	}
 }
+
+// Backwards compatibility aliases
+/** @deprecated Use NodeFSDirectory instead */
+export const NodeDirectory = NodeFSDirectory;
+/** @deprecated Use NodeFSBackend instead */
+export const NodeFileSystemBackend = NodeFSBackend;

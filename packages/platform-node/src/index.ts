@@ -21,7 +21,7 @@ import {
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {MemoryCache} from "@b9g/cache/memory";
-import {NodeDirectory} from "@b9g/filesystem/node";
+import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import * as HTTP from "http";
 import * as Path from "path";
@@ -361,7 +361,7 @@ export class NodePlatform extends BasePlatform {
 			} else {
 				dirPath = Path.resolve(baseDir, `../${name}`);
 			}
-			return Promise.resolve(new NodeDirectory(dirPath));
+			return Promise.resolve(new NodeFSDirectory(dirPath));
 		});
 	}
 

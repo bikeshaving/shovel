@@ -6,7 +6,7 @@ import {SingleThreadedRuntime} from "../src/index.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
-import {NodeDirectory} from "@b9g/filesystem/node.js";
+import {NodeFSDirectory} from "@b9g/filesystem/node-fs.js";
 
 /**
  * SingleThreadedRuntime tests
@@ -52,7 +52,7 @@ async function createDirectoryStorage(
 	return new CustomDirectoryStorage(async (name: string) => {
 		const targetPath = join(tempDir, name);
 		await FS.mkdir(targetPath, {recursive: true});
-		return new NodeDirectory(targetPath);
+		return new NodeFSDirectory(targetPath);
 	});
 }
 

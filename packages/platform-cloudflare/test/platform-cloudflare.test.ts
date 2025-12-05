@@ -190,21 +190,28 @@ describe("Wrangler config generation", () => {
 });
 
 describe("Cloudflare runtime functions", () => {
-	test("should export initializeRuntime and createFetchHandler", async () => {
-		const {initializeRuntime, createFetchHandler, getEnv, getCtx} =
-			await import("../src/index.js");
+	test("should export initializeRuntime and createFetchHandler from runtime", async () => {
+		const {initializeRuntime, createFetchHandler} =
+			await import("../src/runtime.js");
 
 		expect(typeof initializeRuntime).toBe("function");
 		expect(typeof createFetchHandler).toBe("function");
-		expect(typeof getEnv).toBe("function");
-		expect(typeof getCtx).toBe("function");
 	});
 
-	test("getEnv and getCtx should return undefined outside request context", async () => {
-		const {getEnv, getCtx} = await import("../src/index.js");
+	test("should export getCloudflareEnv and getCloudflareCtx from cloudflare", async () => {
+		const {getCloudflareEnv, getCloudflareCtx} =
+			await import("../src/cloudflare.js");
+
+		expect(typeof getCloudflareEnv).toBe("function");
+		expect(typeof getCloudflareCtx).toBe("function");
+	});
+
+	test("getCloudflareEnv and getCloudflareCtx should return undefined outside request context", async () => {
+		const {getCloudflareEnv, getCloudflareCtx} =
+			await import("../src/cloudflare.js");
 
 		// Outside of a request context, these should return undefined
-		expect(getEnv()).toBeUndefined();
-		expect(getCtx()).toBeUndefined();
+		expect(getCloudflareEnv()).toBeUndefined();
+		expect(getCloudflareCtx()).toBeUndefined();
 	});
 });

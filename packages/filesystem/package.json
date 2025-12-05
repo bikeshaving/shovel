@@ -55,13 +55,13 @@
       "types": "./dist/src/memory.d.ts",
       "import": "./dist/src/memory.js"
     },
-    "./node": {
-      "types": "./dist/src/node.d.ts",
-      "import": "./dist/src/node.js"
+    "./node-fs": {
+      "types": "./dist/src/node-fs.d.ts",
+      "import": "./dist/src/node-fs.js"
     },
-    "./node.js": {
-      "types": "./dist/src/node.d.ts",
-      "import": "./dist/src/node.js"
+    "./node-fs.js": {
+      "types": "./dist/src/node-fs.d.ts",
+      "import": "./dist/src/node-fs.js"
     },
     "./package.json": "./dist/package.json"
   }

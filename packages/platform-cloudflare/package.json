@@ -20,7 +20,9 @@
   ],
   "dependencies": {
     "@b9g/assets": "workspace:*",
+    "@b9g/async-context": "workspace:*",
     "@b9g/cache": "workspace:*",
+    "@b9g/filesystem": "workspace:*",
     "@b9g/platform": "workspace:*",
     "@logtape/logtape": "^1.2.0",
     "mime": "^4.0.4",
@@ -46,29 +48,21 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
-    "./filesystem-assets": {
-      "types": "./dist/src/filesystem-assets.d.ts",
-      "import": "./dist/src/filesystem-assets.js"
+    "./runtime": {
+      "types": "./dist/src/runtime.d.ts",
+      "import": "./dist/src/runtime.js"
     },
-    "./filesystem-assets.js": {
-      "types": "./dist/src/filesystem-assets.d.ts",
-      "import": "./dist/src/filesystem-assets.js"
+    "./runtime.js": {
+      "types": "./dist/src/runtime.d.ts",
+      "import": "./dist/src/runtime.js"
     },
-    "./cloudflare-runtime": {
-      "types": "./dist/src/cloudflare-runtime.d.ts",
-      "import": "./dist/src/cloudflare-runtime.js"
+    "./cloudflare": {
+      "types": "./dist/src/cloudflare.d.ts",
+      "import": "./dist/src/cloudflare.js"
     },
-    "./cloudflare-runtime.js": {
-      "types": "./dist/src/cloudflare-runtime.d.ts",
-      "import": "./dist/src/cloudflare-runtime.js"
-    },
-    "./filesystem-r2": {
-      "types": "./dist/src/filesystem-r2.d.ts",
-      "import": "./dist/src/filesystem-r2.js"
-    },
-    "./filesystem-r2.js": {
-      "types": "./dist/src/filesystem-r2.d.ts",
-      "import": "./dist/src/filesystem-r2.js"
+    "./cloudflare.js": {
+      "types": "./dist/src/cloudflare.d.ts",
+      "import": "./dist/src/cloudflare.js"
     }
   }
 }

@@ -88,7 +88,7 @@ const WELL_KNOWN_DIRECTORY_PATHS: Record<string, (baseDir: string) => string> =
 	};
 
 const BUILTIN_DIRECTORY_PROVIDERS: Record<string, string> = {
-	node: "@b9g/filesystem/node.js",
+	"node-fs": "@b9g/filesystem/node-fs.js",
 	memory: "@b9g/filesystem/memory.js",
 	s3: "@b9g/filesystem-s3",
 };
@@ -119,13 +119,13 @@ export function createDirectoryFactory(options: DirectoryFactoryOptions) {
 			dirPath = resolve(baseDir, `../${name}`);
 		}
 
-		const provider = String(dirConfig.provider || "node");
+		const provider = String(dirConfig.provider || "node-fs");
 		const modulePath = BUILTIN_DIRECTORY_PROVIDERS[provider] || provider;
 
-		// Special handling for built-in node directory (most common case)
-		if (modulePath === "@b9g/filesystem/node.js") {
-			const {NodeDirectory} = await import("@b9g/filesystem/node.js");
-			return new NodeDirectory(dirPath);
+		// Special handling for built-in node-fs directory (most common case)
+		if (modulePath === "@b9g/filesystem/node-fs.js") {
+			const {NodeFSDirectory} = await import("@b9g/filesystem/node-fs.js");
+			return new NodeFSDirectory(dirPath);
 		}
 
 		// Special handling for built-in memory directory

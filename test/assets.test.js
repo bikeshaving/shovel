@@ -173,7 +173,7 @@ test(
 			const {CustomDirectoryStorage} = await import("@b9g/filesystem");
 			const {CustomCacheStorage} = await import("@b9g/cache");
 			const {MemoryCache} = await import("@b9g/cache/memory");
-			const {NodeDirectory} = await import("@b9g/filesystem/node.js");
+			const {NodeFSDirectory} = await import("@b9g/filesystem/node-fs.js");
 
 			const runtime = new ShovelServiceWorkerRegistration();
 
@@ -181,7 +181,7 @@ test(
 			const directories = new CustomDirectoryStorage(async (name) => {
 				const targetPath = join(fixture.dir, name);
 				await FS.mkdir(targetPath, {recursive: true});
-				return new NodeDirectory(targetPath);
+				return new NodeFSDirectory(targetPath);
 			});
 
 			// Set up ServiceWorker globals
