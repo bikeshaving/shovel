@@ -20,13 +20,15 @@ import type {DirectoryStorage} from "@b9g/filesystem";
 import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
+	CustomLoggerStorage,
+	type LoggerStorage,
 } from "./runtime.js";
 
 // Runtime global declarations for platform detection
 declare const Deno: any;
 declare const window: any;
 
-const logger = getLogger(["server"]);
+const logger = getLogger(["platform"]);
 
 // ============================================================================
 // Configuration Types
@@ -515,6 +517,8 @@ export interface SingleThreadedRuntimeOptions {
 	caches: CacheStorage;
 	/** Directory storage for the runtime */
 	directories: DirectoryStorage;
+	/** Logger storage for the runtime */
+	loggers: LoggerStorage;
 }
 
 /**
@@ -538,6 +542,7 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 			registration: this.#registration,
 			caches: options.caches,
 			directories: options.directories,
+			loggers: options.loggers,
 		});
 
 		logger.info("SingleThreadedRuntime created");
@@ -1235,3 +1240,10 @@ export class ServiceWorkerPool {
 		return this.#workers.length > 0;
 	}
 }
+
+// ============================================================================
+// Re-exports from runtime.ts
+// ============================================================================
+
+export {CustomLoggerStorage, type LoggerStorage};
+export type {LoggerFactory} from "./runtime.js";

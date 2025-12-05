@@ -29,6 +29,7 @@ import {CustomCacheStorage} from "@b9g/cache";
 import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
+	CustomLoggerStorage,
 } from "@b9g/platform/runtime";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {AsyncContext} from "@b9g/async-context";
@@ -38,7 +39,7 @@ import type {R2Bucket} from "./filesystem-r2.js";
 import {R2FileSystemDirectoryHandle} from "./filesystem-r2.js";
 import type {ExecutionContext} from "./cloudflare-runtime.js";
 
-const logger = getLogger(["server"]);
+const logger = getLogger(["platform"]);
 
 // Re-export common platform types
 export type {
@@ -128,10 +129,12 @@ export function initializeRuntime(): ShovelServiceWorkerRegistration {
 	// - Our registration
 	// - Cloudflare's native caches (already available globally)
 	// - R2-backed directory storage
+	// - Logger storage
 	_globals = new ServiceWorkerGlobals({
 		registration: _registration,
 		caches: globalThis.caches, // Use Cloudflare's native Cache API
 		directories,
+		loggers: new CustomLoggerStorage((...cats) => getLogger(cats)),
 	});
 
 	// Install globals (caches, directories, cookieStore, addEventListener, etc.)

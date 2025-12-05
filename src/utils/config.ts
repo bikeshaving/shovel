@@ -561,6 +561,27 @@ export const BUILTIN_DIRECTORY_PROVIDERS: Record<string, string> = {
 	s3: "@b9g/filesystem-s3",
 };
 
+/**
+ * Built-in logging sink provider aliases
+ * Maps short names to their module paths and factory function names
+ */
+export const BUILTIN_SINK_PROVIDERS: Record<
+	string,
+	{module: string; factory: string}
+> = {
+	console: {module: "@logtape/logtape", factory: "getConsoleSink"},
+	file: {module: "@logtape/file", factory: "getFileSink"},
+	rotating: {module: "@logtape/file", factory: "getRotatingFileSink"},
+	"stream-file": {module: "@logtape/file", factory: "getStreamFileSink"},
+	otel: {module: "@logtape/otel", factory: "getOpenTelemetrySink"},
+	sentry: {module: "@logtape/sentry", factory: "getSentrySink"},
+	syslog: {module: "@logtape/syslog", factory: "getSyslogSink"},
+	cloudwatch: {
+		module: "@logtape/cloudwatch-logs",
+		factory: "getCloudWatchLogsSink",
+	},
+};
+
 // ============================================================================
 // CODE GENERATION (for build-time config module)
 // ============================================================================
@@ -836,6 +857,10 @@ export function generateConfigModule(
 	const imports: string[] = [];
 	const providerRefs: Record<string, string> = {};
 
+	// Track sink factory imports: key = "module:factory", value = varName
+	const sinkFactoryRefs: Map<string, string> = new Map();
+	let sinkCounter = 0;
+
 	// Helper to evaluate provider expression and generate import
 	const processProvider = (
 		expr: string | undefined,
@@ -864,6 +889,44 @@ export function generateConfigModule(
 		return varName;
 	};
 
+	// Helper to process a sink provider and generate import
+	const processSinkProvider = (providerName: string): string => {
+		const builtin = BUILTIN_SINK_PROVIDERS[providerName];
+		const modulePath = builtin?.module || providerName;
+		const factoryName = builtin?.factory || "default";
+
+		// Check if we already have this import
+		const key = `${modulePath}:${factoryName}`;
+		if (sinkFactoryRefs.has(key)) {
+			return sinkFactoryRefs.get(key)!;
+		}
+
+		// Generate unique variable name for the factory
+		const varName = `sink_${sinkCounter++}`;
+		sinkFactoryRefs.set(key, varName);
+
+		// Generate named import
+		if (factoryName === "default") {
+			imports.push(`import ${varName} from ${JSON.stringify(modulePath)};`);
+		} else {
+			imports.push(
+				`import { ${factoryName} as ${varName} } from ${JSON.stringify(modulePath)};`,
+			);
+		}
+
+		return varName;
+	};
+
+	// Collect all sinks from logging config
+	const collectSinks = (sinks: SinkConfig[] | undefined): void => {
+		if (!sinks) return;
+		for (const sink of sinks) {
+			if (sink.provider) {
+				processSinkProvider(String(sink.provider));
+			}
+		}
+	};
+
 	// Process cache providers
 	for (const [pattern, cfg] of Object.entries(rawConfig.caches || {})) {
 		if (cfg.provider) {
@@ -876,6 +939,21 @@ export function generateConfigModule(
 		if (cfg.provider) {
 			processProvider(String(cfg.provider), "directory", pattern);
 		}
+	}
+
+	// Process logging sink providers
+	if (rawConfig.logging) {
+		collectSinks(rawConfig.logging.sinks);
+		if (rawConfig.logging.categories) {
+			for (const categoryConfig of Object.values(
+				rawConfig.logging.categories,
+			)) {
+				collectSinks(categoryConfig.sinks);
+			}
+		}
+	} else {
+		// Default console sink
+		processSinkProvider("console");
 	}
 
 	// Generate config object code
@@ -915,11 +993,69 @@ export function generateConfigModule(
 
 		// Logging (always include, defaults to console sink)
 		// LOG_LEVEL env var overrides the level if logging config is not specified
+		// Helper to generate sink array with factory references
+		const generateSinksCode = (sinks: SinkConfig[]): string => {
+			const sinkLines: string[] = [];
+			for (const sink of sinks) {
+				const providerName = String(sink.provider);
+				const builtin = BUILTIN_SINK_PROVIDERS[providerName];
+				const modulePath = builtin?.module || providerName;
+				const factoryName = builtin?.factory || "default";
+				const key = `${modulePath}:${factoryName}`;
+				const factoryVar = sinkFactoryRefs.get(key);
+
+				const sinkProps: string[] = [];
+				for (const [k, v] of Object.entries(sink)) {
+					sinkProps.push(`${k}: ${valueToCode(v)}`);
+				}
+				if (factoryVar) {
+					sinkProps.push(`factory: ${factoryVar}`);
+				}
+				sinkLines.push(`{${sinkProps.join(", ")}}`);
+			}
+			return `[${sinkLines.join(", ")}]`;
+		};
+
 		if (rawConfig.logging) {
-			lines.push(`  logging: ${valueToCode(rawConfig.logging)},`);
-		} else {
+			lines.push("  logging: {");
 			lines.push(
-				`  logging: {level: process.env.LOG_LEVEL || "info", sinks: [{provider: "console"}], categories: {}},`,
+				`    level: ${rawConfig.logging.level ? valueToCode(rawConfig.logging.level) : 'process.env.LOG_LEVEL || "info"'},`,
+			);
+
+			// Default sinks
+			const defaultSinks = rawConfig.logging.sinks || [{provider: "console"}];
+			lines.push(`    sinks: ${generateSinksCode(defaultSinks)},`);
+
+			// Categories
+			if (
+				rawConfig.logging.categories &&
+				Object.keys(rawConfig.logging.categories).length > 0
+			) {
+				lines.push("    categories: {");
+				for (const [cat, catConfig] of Object.entries(
+					rawConfig.logging.categories,
+				)) {
+					lines.push(`      ${JSON.stringify(cat)}: {`);
+					if (catConfig.level) {
+						lines.push(`        level: ${valueToCode(catConfig.level)},`);
+					}
+					if (catConfig.sinks) {
+						lines.push(`        sinks: ${generateSinksCode(catConfig.sinks)},`);
+					}
+					lines.push("      },");
+				}
+				lines.push("    },");
+			} else {
+				lines.push("    categories: {},");
+			}
+			lines.push("  },");
+		} else {
+			// Default logging config with console sink
+			const consoleFactoryVar = sinkFactoryRefs.get(
+				"@logtape/logtape:getConsoleSink",
+			);
+			lines.push(
+				`  logging: {level: process.env.LOG_LEVEL || "info", sinks: [{provider: "console", factory: ${consoleFactoryVar}}], categories: {}},`,
 			);
 		}
 
@@ -1042,6 +1178,8 @@ export type LogLevel = "debug" | "info" | "warning" | "error";
 /** Sink configuration */
 export interface SinkConfig {
 	provider: string;
+	/** Pre-imported factory function (from build-time code generation) */
+	factory?: (options: Record<string, unknown>) => unknown;
 	/** Provider-specific options (path, maxSize, etc.) */
 	[key: string]: any;
 }

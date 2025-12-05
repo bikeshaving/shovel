@@ -91,9 +91,11 @@ function createConfigPlugin(projectRoot: string): ESBuild.Plugin {
 			}));
 
 			// Return generated config module code
+			// resolveDir is required so esbuild can resolve imports in the virtual module
 			build.onLoad({filter: /.*/, namespace: "shovel-config"}, () => ({
 				contents: configModuleCode,
 				loader: "js",
+				resolveDir: projectRoot,
 			}));
 		},
 	};

@@ -413,8 +413,8 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(config);
 
 			expect(module).toContain("logging:");
-			expect(module).toContain('"level": "info"');
-			expect(module).toContain('"provider": "console"');
+			expect(module).toContain('level: "info"');
+			expect(module).toContain('provider: "console"');
 		});
 
 		it("generates default logging config when not specified", () => {
@@ -441,7 +441,7 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(config);
 
 			// Should use explicit config, not env var
-			expect(module).toContain('"level": "debug"');
+			expect(module).toContain('level: "debug"');
 			expect(module).not.toContain("process.env.LOG_LEVEL");
 		});
 
@@ -501,8 +501,8 @@ describe("generateConfigModule", () => {
 
 			const module = generateConfigModule(config);
 
-			expect(module).toContain('"provider": "file"');
-			expect(module).toContain('"provider": "rotating"');
+			expect(module).toContain('provider: "file"');
+			expect(module).toContain('provider: "rotating"');
 			expect(module).toContain('"./logs/app.log"');
 			expect(module).toContain("process.env.LOG_PATH");
 		});
@@ -527,8 +527,31 @@ describe("generateConfigModule", () => {
 			expect(module).toContain("categories");
 			expect(module).toContain('"server"');
 			expect(module).toContain('"database"');
-			expect(module).toContain('"level": "debug"');
-			expect(module).toContain('"level": "warning"');
+			expect(module).toContain('level: "debug"');
+			expect(module).toContain('level: "warning"');
+		});
+
+		it("generates static imports for sink factories", () => {
+			const config = {
+				logging: {
+					level: "info",
+					sinks: [{provider: "console"}, {provider: "file", path: "./app.log"}],
+				},
+			};
+
+			const module = generateConfigModule(config);
+
+			// Should have static imports for sink factories
+			expect(module).toContain(
+				'import { getConsoleSink as sink_0 } from "@logtape/logtape"',
+			);
+			expect(module).toContain(
+				'import { getFileSink as sink_1 } from "@logtape/file"',
+			);
+
+			// Sinks should have factory references
+			expect(module).toContain("factory: sink_0");
+			expect(module).toContain("factory: sink_1");
 		});
 	});
 });

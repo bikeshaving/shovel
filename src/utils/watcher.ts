@@ -33,6 +33,7 @@ function createConfigPlugin(projectRoot: string): ESBuild.Plugin {
 			build.onLoad({filter: /.*/, namespace: "shovel-config"}, () => ({
 				contents: configModuleCode,
 				loader: "js",
+				resolveDir: projectRoot,
 			}));
 		},
 	};

@@ -16,6 +16,7 @@ import {
 	type PlatformEsbuildConfig,
 	ServiceWorkerPool,
 	SingleThreadedRuntime,
+	CustomLoggerStorage,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
@@ -37,7 +38,7 @@ import Platform from "@b9g/platform-node";
 // Configure logging before anything else
 await configureLogging(config.logging);
 
-const logger = getLogger(["server"]);
+const logger = getLogger(["platform"]);
 
 // Configuration from shovel:config (with process.env fallbacks baked in)
 const PORT = config.port;
@@ -83,7 +84,7 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 `;
 
-const logger = getLogger(["server"]);
+const logger = getLogger(["platform"]);
 
 // ============================================================================
 // TYPES
@@ -204,10 +205,11 @@ export class NodePlatform extends BasePlatform {
 
 		logger.info("Creating single-threaded ServiceWorker runtime", {entryPath});
 
-		// Create single-threaded runtime with caches and directories
+		// Create single-threaded runtime with caches, directories, and loggers
 		this.#singleThreadedRuntime = new SingleThreadedRuntime({
 			caches: this.#cacheStorage,
 			directories: this.#directoryStorage,
+			loggers: new CustomLoggerStorage((...cats) => getLogger(cats)),
 		});
 
 		// Initialize and load entrypoint

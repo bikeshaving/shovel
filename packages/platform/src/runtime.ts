@@ -323,12 +323,49 @@ export class RequestCookieStore extends EventTarget {
 
 import type {DirectoryStorage} from "@b9g/filesystem";
 import {
-	getLogger,
 	configure,
 	type LogLevel as LogTapeLevel,
+	type Logger,
 } from "@logtape/logtape";
 
-const logger = getLogger(["server"]);
+// ============================================================================
+// Logger Storage API
+// ============================================================================
+
+/**
+ * Logger storage interface for accessing loggers by category path.
+ * Unlike CacheStorage/DirectoryStorage which use a registry pattern,
+ * LoggerStorage uses variadic categories since logging backends are
+ * always LogTape and per-category config is in shovel.config.json.
+ */
+export interface LoggerStorage {
+	/**
+	 * Open a logger by category path - returns LogTape's Logger directly
+	 * @example loggers.open("app") → getLogger(["app"])
+	 * @example loggers.open("app", "db") → getLogger(["app", "db"])
+	 */
+	open(...categories: string[]): Logger;
+}
+
+/**
+ * Factory function type for creating loggers
+ */
+export type LoggerFactory = (...categories: string[]) => Logger;
+
+/**
+ * Custom logger storage implementation that wraps a factory function
+ */
+export class CustomLoggerStorage implements LoggerStorage {
+	#factory: LoggerFactory;
+
+	constructor(factory: LoggerFactory) {
+		this.#factory = factory;
+	}
+
+	open(...categories: string[]): Logger {
+		return this.#factory(...categories);
+	}
+}
 
 // ============================================================================
 // ServiceWorker Event Constants
@@ -373,6 +410,7 @@ const PATCHED_KEYS = [
 	"fetch",
 	"caches",
 	"directories",
+	"loggers",
 	"registration",
 	"clients",
 	"skipWaiting",
@@ -583,9 +621,9 @@ export class ShovelClient implements Client {
 		_message: any,
 		_transferOrOptions?: Transferable[] | StructuredSerializeOptions,
 	): void {
-		logger.warn(
-			"[ServiceWorker] Client.postMessage() not supported in server context",
-		);
+		(self as any).loggers
+			.open("platform")
+			.warn("Client.postMessage() not supported in server context");
 	}
 }
 
@@ -609,16 +647,16 @@ export class ShovelWindowClient extends ShovelClient implements WindowClient {
 	}
 
 	async focus(): Promise<WindowClient> {
-		logger.warn(
-			"[ServiceWorker] WindowClient.focus() not supported in server context",
-		);
+		(self as any).loggers
+			.open("platform")
+			.warn("WindowClient.focus() not supported in server context");
 		return this;
 	}
 
 	async navigate(_url: string): Promise<WindowClient | null> {
-		logger.warn(
-			"[ServiceWorker] WindowClient.navigate() not supported in server context",
-		);
+		(self as any).loggers
+			.open("platform")
+			.warn("WindowClient.navigate() not supported in server context");
 		return null;
 	}
 }
@@ -645,9 +683,9 @@ export class ShovelClients implements Clients {
 	}
 
 	async openWindow(_url: string): Promise<WindowClient | null> {
-		logger.warn(
-			"[ServiceWorker] Clients.openWindow() not supported in server context",
-		);
+		(self as any).loggers
+			.open("platform")
+			.warn("Clients.openWindow() not supported in server context");
 		return null;
 	}
 }
@@ -725,9 +763,9 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 		_message: any,
 		_transferOrOptions?: Transferable[] | StructuredSerializeOptions,
 	): void {
-		logger.warn(
-			"[ServiceWorker] ServiceWorker.postMessage() not implemented in server context",
-		);
+		(self as any).loggers
+			.open("platform")
+			.warn("ServiceWorker.postMessage() not implemented in server context");
 	}
 
 	// Internal method to update state and dispatch statechange event
@@ -827,9 +865,9 @@ export class ShovelServiceWorkerRegistration
 		_title: string,
 		_options?: NotificationOptions,
 	): Promise<void> {
-		logger.warn(
-			"[ServiceWorker] Notifications not supported in server context",
-		);
+		(self as any).loggers
+			.open("platform")
+			.warn("Notifications not supported in server context");
 	}
 
 	async sync(): Promise<void> {
@@ -972,7 +1010,11 @@ export class ShovelServiceWorkerRegistration
 			// Fire off waitUntil promises (background tasks, don't block response)
 			const promises = event.getPromises();
 			if (promises.length > 0) {
-				Promise.allSettled(promises).catch(logger.error);
+				Promise.allSettled(promises).catch(
+					(err) =>
+						(self as any).loggers.open("platform")
+							.error`waitUntil error: ${err}`,
+				);
 			}
 
 			// Apply cookie changes from the cookieStore to the response
@@ -1241,9 +1283,9 @@ export class Notification extends EventTarget {
 	}
 
 	close(): void {
-		logger.warn(
-			"[ServiceWorker] Notification.close() not supported in server context",
-		);
+		(self as any).loggers
+			.open("platform")
+			.warn("Notification.close() not supported in server context");
 	}
 
 	static async requestPermission(): Promise<"default" | "denied" | "granted"> {
@@ -1380,6 +1422,8 @@ export interface ServiceWorkerGlobalsOptions {
 	registration: ServiceWorkerRegistration;
 	/** Directory storage (file system access) - REQUIRED */
 	directories: DirectoryStorage;
+	/** Logger storage (logging access) - REQUIRED */
+	loggers: LoggerStorage;
 	/** Cache storage (required by ServiceWorkerGlobalScope) - REQUIRED */
 	caches: CacheStorage;
 	/** Development mode flag */
@@ -1419,6 +1463,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	// Storage APIs
 	readonly caches: CacheStorage;
 	readonly directories: DirectoryStorage;
+	readonly loggers: LoggerStorage;
 
 	// Clients API
 	// Our custom Clients implementation provides core functionality compatible with the Web API
@@ -1451,9 +1496,9 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 
 	// WorkerGlobalScope methods (stubs for server context)
 	importScripts(..._urls: (string | URL)[]): void {
-		logger.warn(
-			"[ServiceWorker] importScripts() not supported in server context",
-		);
+		(self as any).loggers
+			.open("platform")
+			.warn("importScripts() not supported in server context");
 	}
 
 	atob(data: string): string {
@@ -1521,7 +1566,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	}
 
 	reportError(e: any): void {
-		logger.error("[ServiceWorker] reportError:", e);
+		(self as any).loggers.open("platform").error`reportError: ${e}`;
 	}
 
 	setInterval(handler: TimerHandler, timeout?: number, ...args: any[]): number {
@@ -1597,6 +1642,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 		this.registration = options.registration;
 		this.caches = options.caches;
 		this.directories = options.directories;
+		this.loggers = options.loggers;
 		this.#isDevelopment = options.isDevelopment ?? false;
 
 		// Create clients API implementation
@@ -1640,11 +1686,11 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	 * Allows the ServiceWorker to activate immediately
 	 */
 	async skipWaiting(): Promise<void> {
-		logger.info("[ServiceWorker] skipWaiting() called");
+		(self as any).loggers.open("platform").info("skipWaiting() called");
 		if (!this.#isDevelopment) {
-			logger.info(
-				"[ServiceWorker] skipWaiting() - production graceful restart not implemented",
-			);
+			(self as any).loggers
+				.open("platform")
+				.info("skipWaiting() - production graceful restart not implemented");
 			// In production, this would normally activate the waiting worker
 			// For Shovel, production restart logic could be implemented here
 		}
@@ -1737,6 +1783,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 		// Storage APIs
 		g.caches = this.caches;
 		g.directories = this.directories;
+		g.loggers = this.loggers;
 
 		// ServiceWorker APIs
 		g.registration = this.registration;
@@ -1781,6 +1828,8 @@ export type LogLevel = "debug" | "info" | "warning" | "error";
 /** Sink configuration */
 export interface SinkConfig {
 	provider: string;
+	/** Pre-imported factory function (from build-time code generation) */
+	factory?: (options: Record<string, unknown>) => unknown;
 	/** Provider-specific options (path, maxSize, etc.) */
 	[key: string]: any;
 }
@@ -1839,11 +1888,12 @@ export interface ShovelConfig {
 // Logging Implementation
 // ============================================================================
 
-/** All Shovel package categories for logging */
+/** All Shovel package categories for logging
+ * TODO: Clean up this list to match actual packages */
 const SHOVEL_CATEGORIES = [
 	"cli",
 	"build",
-	"server",
+	"platform",
 	"watcher",
 	"worker",
 	"single-threaded",
@@ -1878,13 +1928,22 @@ const BUILTIN_SINK_PROVIDERS: Record<
  * Create a sink from config.
  * Supports built-in providers (console, file, rotating, etc.) and custom modules.
  *
+ * If config.factory is provided (pre-imported at build time), uses that directly.
+ * Otherwise falls back to dynamic import (dev mode only - won't work in bundled builds).
+ *
  * Note: File paths in sinkOptions should already be absolute.
  * The CLI/build process is responsible for resolving relative paths.
  */
 async function createSink(config: SinkConfig): Promise<any> {
-	const {provider, ...sinkOptions} = config;
+	const {provider, factory: preImportedFactory, ...sinkOptions} = config;
 
-	// Dynamic import based on provider name
+	// Use pre-imported factory if available (from generateConfigModule)
+	if (preImportedFactory) {
+		return preImportedFactory(sinkOptions);
+	}
+
+	// Fallback to dynamic import (dev mode only)
+	// This won't work in bundled builds - esbuild can't resolve dynamic imports
 	const builtin = BUILTIN_SINK_PROVIDERS[provider];
 	const modulePath = builtin?.module || provider;
 	const factoryName = builtin?.factory || "default";

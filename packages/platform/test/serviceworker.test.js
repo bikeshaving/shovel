@@ -182,6 +182,111 @@ test(
 	TIMEOUT,
 );
 
+test(
+	"ServiceWorker loggers API",
+	async () => {
+		const {
+			ShovelServiceWorkerRegistration,
+			ServiceWorkerGlobals,
+			CustomLoggerStorage,
+		} = await import("../src/runtime.js");
+
+		const registration = new ShovelServiceWorkerRegistration();
+
+		// Create mock logger factory that tracks calls
+		const loggerCalls = [];
+		const mockLoggerFactory = (...categories) => {
+			loggerCalls.push(categories);
+			// Return a mock logger with standard methods
+			return {
+				debug: () => {},
+				info: () => {},
+				warn: () => {},
+				error: () => {},
+				fatal: () => {},
+			};
+		};
+
+		const loggers = new CustomLoggerStorage(mockLoggerFactory);
+
+		const scope = new ServiceWorkerGlobals({
+			registration,
+			loggers,
+		});
+		scope.install();
+
+		// Test loggers global
+		expect(typeof globalThis.loggers).toBe("object");
+		expect(typeof globalThis.loggers.open).toBe("function");
+
+		// Test opening logger with single category
+		const appLogger = globalThis.loggers.open("app");
+		expect(loggerCalls[0]).toEqual(["app"]);
+		expect(typeof appLogger.info).toBe("function");
+		expect(typeof appLogger.warn).toBe("function");
+		expect(typeof appLogger.error).toBe("function");
+
+		// Test opening logger with multiple categories
+		const _dbLogger = globalThis.loggers.open("app", "db");
+		expect(loggerCalls[1]).toEqual(["app", "db"]);
+
+		// Test opening logger with deeply nested categories
+		const _queryLogger = globalThis.loggers.open("app", "db", "queries");
+		expect(loggerCalls[2]).toEqual(["app", "db", "queries"]);
+	},
+	TIMEOUT,
+);
+
+test(
+	"ServiceWorker loggers in fetch handler",
+	async () => {
+		const {
+			ShovelServiceWorkerRegistration,
+			ServiceWorkerGlobals,
+			CustomLoggerStorage,
+		} = await import("../src/runtime.js");
+
+		const registration = new ShovelServiceWorkerRegistration();
+
+		// Track log messages
+		const logMessages = [];
+		const mockLoggerFactory = (...categories) => ({
+			debug: (msg) => logMessages.push({level: "debug", categories, msg}),
+			info: (msg) => logMessages.push({level: "info", categories, msg}),
+			warn: (msg) => logMessages.push({level: "warn", categories, msg}),
+			error: (msg) => logMessages.push({level: "error", categories, msg}),
+			fatal: (msg) => logMessages.push({level: "fatal", categories, msg}),
+		});
+
+		const loggers = new CustomLoggerStorage(mockLoggerFactory);
+
+		const scope = new ServiceWorkerGlobals({
+			registration,
+			loggers,
+		});
+		scope.install();
+
+		// ServiceWorker that uses logging
+		globalThis.addEventListener("fetch", (event) => {
+			const logger = globalThis.loggers.open("app");
+			logger.info("Handling request");
+
+			event.respondWith(new Response("OK"));
+		});
+
+		await registration.install();
+		await registration.activate();
+
+		const request = new Request("http://localhost/test");
+		const response = await registration.handleRequest(request);
+
+		expect(await response.text()).toBe("OK");
+		expect(logMessages.length).toBeGreaterThanOrEqual(1);
+		expect(logMessages.find((m) => m.categories[0] === "app")).toBeDefined();
+	},
+	TIMEOUT,
+);
+
 // ======================
 // SERVICEWORKER LIFECYCLE TESTS
 // ======================

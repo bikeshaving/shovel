@@ -22,6 +22,7 @@ import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
 import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
+	CustomLoggerStorage,
 	configureLogging,
 	type CacheConfig,
 	type DirectoryConfig,
@@ -247,6 +248,9 @@ const directories = new CustomDirectoryStorage(async (name) => {
 	const factory = await directoryFactoryPromise;
 	return factory(name);
 });
+const loggers = new CustomLoggerStorage((...categories) =>
+	getLogger(categories),
+);
 
 // Create and install ServiceWorkerGlobals immediately to provide `self`
 // Registration is mutable for hot reload support
@@ -255,11 +259,12 @@ let scope: ServiceWorkerGlobals | null = new ServiceWorkerGlobals({
 	registration,
 	caches,
 	directories,
+	loggers,
 });
 scope.install();
 
-// Logger is configured in initializeRuntime when we receive the config
-const logger = getLogger(["server"]);
+// Logger for worker infrastructure code (outside ServiceWorker context)
+const logger = getLogger(["platform"]);
 
 // Runtime state
 let sendMessage: (message: WorkerMessage, transfer?: Transferable[]) => void;
@@ -298,7 +303,12 @@ async function loadServiceWorker(entrypoint: string): Promise<void> {
 
 			// Create a completely new runtime instance with fresh registration
 			registration = new ShovelServiceWorkerRegistration();
-			scope = new ServiceWorkerGlobals({registration, caches, directories});
+			scope = new ServiceWorkerGlobals({
+				registration,
+				caches,
+				directories,
+				loggers,
+			});
 			scope.install();
 		}
 
