@@ -911,13 +911,11 @@ export class ServiceWorkerPool {
 			const errorMessage =
 				event.message || event.error?.message || "Unknown worker error";
 			const error = new Error(`Worker failed to start: ${errorMessage}`);
-			logger.error("Worker error", {
-				message: errorMessage,
+			logger.error("Worker error: {error}", {
+				error: event.error || errorMessage,
 				filename: event.filename,
 				lineno: event.lineno,
 				colno: event.colno,
-				error: event.error,
-				stack: event.error?.stack,
 			});
 			// Reject pending promises so we don't hang forever
 			clearTimeout(workerReadyTimeoutId);
@@ -1038,7 +1036,7 @@ export class ServiceWorkerPool {
 
 	#handleError(message: WorkerErrorMessage) {
 		// Always log error details for debugging
-		logger.error("Worker error message received", {
+		logger.error("Worker error message received: {error}", {
 			error: message.error,
 			stack: message.stack,
 			requestID: message.requestID,

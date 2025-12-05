@@ -316,7 +316,7 @@ async function loadServiceWorker(entrypoint: string): Promise<void> {
 		serviceWorkerReady = true;
 		logger.info("[Worker] ServiceWorker ready", {entrypoint});
 	} catch (error) {
-		logger.error("[Worker] Failed to load ServiceWorker", {
+		logger.error("[Worker] Failed to load ServiceWorker: {error}", {
 			error,
 			entrypoint,
 		});

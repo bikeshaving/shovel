@@ -415,10 +415,7 @@ export class NodePlatform extends BasePlatform {
 				}
 			} catch (error) {
 				const err = error instanceof Error ? error : new Error(String(error));
-				logger.error("Request error", {
-					error: err.message,
-					stack: err.stack,
-				});
+				logger.error("Request error: {error}", {error: err});
 
 				// Convert to HTTPError for consistent response format
 				const httpError = isHTTPError(error)
