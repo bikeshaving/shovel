@@ -343,7 +343,7 @@ async function initializeRuntime(config: any, baseDir: string): Promise<void> {
 
 		logger.info(`[Worker-${workerId}] Runtime initialized successfully`);
 	} catch (error) {
-		logger.error(`[Worker-${workerId}] Failed to initialize runtime`, {error});
+		logger.error(`[Worker-${workerId}] Failed to initialize runtime: {error}`, {error});
 		throw error;
 	}
 }

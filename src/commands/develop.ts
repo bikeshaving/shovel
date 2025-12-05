@@ -23,7 +23,7 @@ export async function developCommand(
 
 		if (options.verbose) {
 			logger.info("Platform: {platform}", {platform: platformName});
-			logger.info("Worker configuration", {workerCount});
+			logger.info("Worker count: {workerCount}", {workerCount});
 		}
 
 		// Create platform with server defaults
@@ -32,8 +32,8 @@ export async function developCommand(
 			host: options.host || DEFAULTS.SERVER.HOST,
 		});
 
-		logger.info("Starting development server", {});
-		logger.info("Workers", {workerCount});
+		logger.info("Starting development server");
+		logger.info("Workers: {workerCount}", {workerCount});
 
 		// Set up file watching and building for development
 		let serviceWorker:
@@ -46,7 +46,7 @@ export async function developCommand(
 			outDir,
 			onBuild: async (success, builtEntrypoint) => {
 				if (success && serviceWorker) {
-					logger.info("Reloading Workers", {entrypoint: builtEntrypoint});
+					logger.info("Reloading Workers with {entrypoint}", {entrypoint: builtEntrypoint});
 					// The reloadWorkers method is on the platform instance, not the ServiceWorker runtime
 					if (
 						platformInstance &&
@@ -54,7 +54,7 @@ export async function developCommand(
 					) {
 						await platformInstance.reloadWorkers(builtEntrypoint);
 					}
-					logger.info("Workers reloaded", {});
+					logger.info("Workers reloaded");
 				}
 			},
 		});
@@ -63,7 +63,7 @@ export async function developCommand(
 		const {success: buildSuccess, entrypoint: builtEntrypoint} =
 			await watcher.start();
 		if (!buildSuccess) {
-			logger.error("Initial build failed, watching for changes to retry", {});
+			logger.error("Initial build failed, watching for changes to retry");
 		}
 		serviceWorker = await platformInstance.loadServiceWorker(builtEntrypoint, {
 			hotReload: true,
@@ -77,28 +77,26 @@ export async function developCommand(
 		});
 
 		await server.listen();
-		logger.info("Server running", {
+		logger.info("Server running at {url}", {
 			url: `http://${options.host}:${options.port}`,
 		});
-		logger.info("Serving", {entrypoint});
+		logger.info("Serving {entrypoint}", {entrypoint});
 
 		// Graceful shutdown handler for both SIGINT (Ctrl+C) and SIGTERM (docker stop, systemd, k8s)
 		const shutdown = async (signal: string) => {
-			logger.info("Shutting down gracefully", {signal});
+			logger.info("Shutting down gracefully ({signal})", {signal});
 			await watcher.stop();
 			await serviceWorker?.dispose();
 			await platformInstance.dispose();
 			await server.close();
-			logger.info("Shutdown complete", {});
+			logger.info("Shutdown complete");
 			process.exit(0);
 		};
 
 		process.on("SIGINT", () => shutdown("SIGINT"));
 		process.on("SIGTERM", () => shutdown("SIGTERM"));
 	} catch (error) {
-		logger.error("Failed to start development server:\n{stack}", {
-			stack: error instanceof Error ? error.stack : String(error),
-		});
+		logger.error("Failed to start development server: {error}", {error});
 		process.exit(1);
 	}
 }
