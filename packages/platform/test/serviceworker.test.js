@@ -220,18 +220,18 @@ test(
 		expect(typeof globalThis.loggers.open).toBe("function");
 
 		// Test opening logger with single category
-		const appLogger = globalThis.loggers.open("app");
+		const appLogger = await globalThis.loggers.open("app");
 		expect(loggerCalls[0]).toEqual(["app"]);
 		expect(typeof appLogger.info).toBe("function");
 		expect(typeof appLogger.warn).toBe("function");
 		expect(typeof appLogger.error).toBe("function");
 
 		// Test opening logger with multiple categories
-		const _dbLogger = globalThis.loggers.open("app", "db");
+		const _dbLogger = await globalThis.loggers.open("app", "db");
 		expect(loggerCalls[1]).toEqual(["app", "db"]);
 
 		// Test opening logger with deeply nested categories
-		const _queryLogger = globalThis.loggers.open("app", "db", "queries");
+		const _queryLogger = await globalThis.loggers.open("app", "db", "queries");
 		expect(loggerCalls[2]).toEqual(["app", "db", "queries"]);
 	},
 	TIMEOUT,
@@ -268,10 +268,14 @@ test(
 
 		// ServiceWorker that uses logging
 		globalThis.addEventListener("fetch", (event) => {
-			const logger = globalThis.loggers.open("app");
-			logger.info("Handling request");
-
-			event.respondWith(new Response("OK"));
+			// respondWith must be called synchronously, so wrap async work in a promise
+			event.respondWith(
+				(async () => {
+					const logger = await globalThis.loggers.open("app");
+					logger.info("Handling request");
+					return new Response("OK");
+				})(),
+			);
 		});
 
 		await registration.install();

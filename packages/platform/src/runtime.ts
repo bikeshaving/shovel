@@ -11,6 +11,7 @@
  */
 
 import {AsyncContext} from "@b9g/async-context";
+import {getLogger} from "@logtape/logtape";
 
 // ============================================================================
 // Cookie Store API Implementation
@@ -337,20 +338,26 @@ import {
  * Unlike CacheStorage/DirectoryStorage which use a registry pattern,
  * LoggerStorage uses variadic categories since logging backends are
  * always LogTape and per-category config is in shovel.config.json.
+ *
+ * Returns a Promise for consistency with CacheStorage.open() and
+ * DirectoryStorage.open(), and to support future dynamic provider imports.
  */
 export interface LoggerStorage {
 	/**
-	 * Open a logger by category path - returns LogTape's Logger directly
-	 * @example loggers.open("app") → getLogger(["app"])
-	 * @example loggers.open("app", "db") → getLogger(["app", "db"])
+	 * Open a logger by category path
+	 * @example const logger = await loggers.open("app")
+	 * @example const logger = await loggers.open("app", "db")
 	 */
-	open(...categories: string[]): Logger;
+	open(...categories: string[]): Promise<Logger>;
 }
 
 /**
- * Factory function type for creating loggers
+ * Factory function type for creating loggers.
+ * Can be sync or async to support dynamic provider imports.
  */
-export type LoggerFactory = (...categories: string[]) => Logger;
+export type LoggerFactory = (
+	...categories: string[]
+) => Logger | Promise<Logger>;
 
 /**
  * Custom logger storage implementation that wraps a factory function
@@ -362,7 +369,7 @@ export class CustomLoggerStorage implements LoggerStorage {
 		this.#factory = factory;
 	}
 
-	open(...categories: string[]): Logger {
+	async open(...categories: string[]): Promise<Logger> {
 		return this.#factory(...categories);
 	}
 }
@@ -1010,11 +1017,9 @@ export class ShovelServiceWorkerRegistration
 			// Fire off waitUntil promises (background tasks, don't block response)
 			const promises = event.getPromises();
 			if (promises.length > 0) {
-				Promise.allSettled(promises).catch(
-					(err) =>
-						(self as any).loggers.open("platform")
-							.error`waitUntil error: ${err}`,
-				);
+				Promise.allSettled(promises).catch((err) => {
+					getLogger(["platform"]).error`waitUntil error: ${err}`;
+				});
 			}
 
 			// Apply cookie changes from the cookieStore to the response
@@ -1566,7 +1571,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	}
 
 	reportError(e: any): void {
-		(self as any).loggers.open("platform").error`reportError: ${e}`;
+		getLogger(["platform"]).error`reportError: ${e}`;
 	}
 
 	setInterval(handler: TimerHandler, timeout?: number, ...args: any[]): number {
@@ -1686,11 +1691,11 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	 * Allows the ServiceWorker to activate immediately
 	 */
 	async skipWaiting(): Promise<void> {
-		(self as any).loggers.open("platform").info("skipWaiting() called");
+		getLogger(["platform"]).info("skipWaiting() called");
 		if (!this.#isDevelopment) {
-			(self as any).loggers
-				.open("platform")
-				.info("skipWaiting() - production graceful restart not implemented");
+			getLogger(["platform"]).info(
+				"skipWaiting() - production graceful restart not implemented",
+			);
 			// In production, this would normally activate the waiting worker
 			// For Shovel, production restart logic could be implemented here
 		}

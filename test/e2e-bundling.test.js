@@ -454,7 +454,7 @@ self.addEventListener("fetch", async (event) => {
 		const dir = await directories.open("uploads");
 
 		// Test loggers access
-		const logger = loggers.open("app");
+		const logger = await loggers.open("app");
 		logger.info("Full E2E test running");
 
 		event.respondWith(new Response("All systems operational"));

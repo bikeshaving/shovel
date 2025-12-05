@@ -216,13 +216,11 @@ export abstract class ShovelHandle implements FileSystemHandle {
 	}
 
 	async queryPermission(
-		descriptor?: FileSystemPermissionDescriptor,
+		_descriptor?: FileSystemPermissionDescriptor,
 	): Promise<PermissionState> {
 		// For our server-side implementations, permissions are always granted
 		// In a browser environment, this would check actual permissions
 		// In future, this could delegate to backend for access control based on mode
-
-		const _mode = descriptor?.mode || "read";
 
 		// Server-side backends typically have full access
 		// In future: could check backend capabilities (e.g., read-only storage)
@@ -230,13 +228,11 @@ export abstract class ShovelHandle implements FileSystemHandle {
 	}
 
 	async requestPermission(
-		descriptor?: FileSystemPermissionDescriptor,
+		_descriptor?: FileSystemPermissionDescriptor,
 	): Promise<PermissionState> {
 		// For our server-side implementations, permissions are always granted
 		// In a browser environment, this would prompt the user if needed
 		// In future, this could delegate to backend for access control
-
-		const _mode = descriptor?.mode || "read";
 
 		// Server-side backends don't need user prompts
 		// In future: could implement access control logic
