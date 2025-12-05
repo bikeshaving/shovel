@@ -97,7 +97,7 @@ async function parseTsConfig(
 /**
  * Map TypeScript JSX settings to esbuild options
  */
-function mapTsConfigToEsbuild(
+function mapTSConfigToESBuild(
 	compilerOptions: Record<string, any>,
 ): JSXOptions {
 	const options: JSXOptions = {};
@@ -159,14 +159,14 @@ export async function loadJSXConfig(projectRoot: string): Promise<JSXOptions> {
 		const compilerOptions = config.compilerOptions || {};
 
 		// Check if any JSX options are specified
-		const hasJsxConfig =
+		const hasJSXConfig =
 			compilerOptions.jsx ||
 			compilerOptions.jsxFactory ||
 			compilerOptions.jsxFragmentFactory ||
 			compilerOptions.jsxImportSource;
 
-		if (hasJsxConfig) {
-			const tsOptions = mapTsConfigToEsbuild(compilerOptions);
+		if (hasJSXConfig) {
+			const tsOptions = mapTSConfigToESBuild(compilerOptions);
 			// Merge with defaults (tsconfig takes precedence)
 			return {
 				...CRANK_JSX_DEFAULTS,
