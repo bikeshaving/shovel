@@ -274,11 +274,46 @@ type HTTPMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTION
 type TrailingSlashMode = "strip" | "add"
 ```
 
-### Utilities
+## Middleware Utilities
+
+Standard middleware is available from `@b9g/router/middleware`:
 
 ```typescript
-// Trailing slash middleware
-function trailingSlash(mode: TrailingSlashMode): FunctionMiddleware
+import {cors, trailingSlash} from '@b9g/router/middleware';
+
+// CORS middleware
+router.use(cors({
+  origin: "https://example.com",
+  credentials: true
+}));
+
+// Trailing slash normalization
+router.use(trailingSlash("strip")); // /path/ → /path
+```
+
+### Available Middleware
+
+#### `cors(options?: CORSOptions)`
+
+Handles Cross-Origin Resource Sharing headers and preflight requests.
+
+```typescript
+interface CORSOptions {
+  origin?: string | string[] | ((origin: string) => boolean);  // Default: "*"
+  methods?: string[];  // Default: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"]
+  allowedHeaders?: string[];  // Default: ["Content-Type", "Authorization"]
+  exposedHeaders?: string[];
+  credentials?: boolean;  // Default: false
+  maxAge?: number;  // Default: 86400 (24 hours)
+}
+```
+
+#### `trailingSlash(mode: TrailingSlashMode)`
+
+Normalizes URL trailing slashes via 301 redirect.
+
+```typescript
+type TrailingSlashMode = "strip" | "add";
 ```
 
 ## License

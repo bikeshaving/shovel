@@ -12,5 +12,5 @@ throw new Error(
 		'  import {OAuth2Client} from "@b9g/auth/oauth2"\n' +
 		'  import {generateCodeVerifier} from "@b9g/auth/pkce"\n' +
 		'  import {providers} from "@b9g/auth/providers"\n' +
-		'  import {cors, requireAuth} from "@b9g/auth/middleware"',
+		'  import {requireAuth} from "@b9g/auth/middleware"',
 );

@@ -17,7 +17,7 @@ Authentication and access control middleware for ServiceWorker applications.
 ## Installation
 
 ```bash
-bun add @b9g/auth @b9g/router @b9g/platform
+npm i @b9g/auth @b9g/router
 ```
 
 ## Quick Start

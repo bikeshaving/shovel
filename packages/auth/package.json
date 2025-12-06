@@ -71,9 +71,7 @@
   ],
   "author": "b9g",
   "license": "MIT",
-  "dependencies": {
-    "@b9g/platform": "workspace:*"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "@b9g/router": "workspace:*"
   },
