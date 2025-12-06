@@ -6,7 +6,7 @@ High-performance URLPattern-compatible implementation for web routing with enhan
 
 This package provides two classes:
 
-- **URLPattern**: A 100% WPT-compliant implementation that's ~60x faster than the polyfill/native
+- **URLPattern**: A 100% WPT-compliant implementation that's ~40-60x faster than the polyfill/native
 - **MatchPattern**: Same performance with routing enhancements (order-independent search params, unified `params` object)
 
 Both compile patterns directly to RegExp in a single pass, bypassing the multi-stage pipeline used by polyfill/native implementations.
@@ -20,12 +20,12 @@ npm install @b9g/match-pattern
 ## Basic Usage
 
 ```javascript
-import { MatchPattern, URLPattern } from '@b9g/match-pattern';
+import {MatchPattern, URLPattern} from '@b9g/match-pattern';
 
 // URLPattern: 100% WPT-compliant, ~60x faster than polyfill/native
 const strict = new URLPattern({ pathname: '/api/posts/:id' });
 
-// MatchPattern: Same performance + order-independent search params
+// MatchPattern: Same performance + DX improvements
 const pattern = new MatchPattern('/api/posts/:id&format=:format');
 const url = new URL('http://example.com/api/posts/123?format=json&page=1');
 
@@ -66,7 +66,7 @@ All URLPattern syntax is fully supported including:
 URLPattern requires exact parameter order. MatchPattern allows any order:
 
 ```javascript
-const pattern = new MatchPattern({ search: 'type=:type&sort=:sort' });
+const pattern = new MatchPattern({search: 'type=:type&sort=:sort'});
 
 // URLPattern: Only first URL matches
 // MatchPattern: Both URLs match
@@ -79,15 +79,15 @@ pattern.test('/?sort=date&type=blog');  // MatchPattern: true, URLPattern: false
 URLPattern uses greedy capture that lumps extra params into the last parameter value. MatchPattern properly parses them:
 
 ```javascript
-const pattern = new MatchPattern({ search: 'q=:query' });
+const pattern = new MatchPattern({search: 'q=:query'});
 
 // URLPattern greedy capture issue
-const urlPattern = new URLPattern({ search: 'q=:query' });
+const urlPattern = new URLPattern({search: 'q=:query'});
 urlPattern.exec('?q=hello&page=1').search.groups;  // { query: "hello&page=1" }
 
 // MatchPattern proper parsing
 const result = pattern.exec('/?q=hello&page=1&limit=10');
-console.log(result.params);  // { q: 'hello', page: '1', limit: '10' }
+console.log(result.params);  // {q: 'hello', page: '1', limit: '10'}
 ```
 
 Required parameters must be present, but extra parameters are allowed:
@@ -108,15 +108,15 @@ const result = pattern.exec('/api/v1/posts/123?format=json&page=1');
 
 // URLPattern: result.pathname.groups + result.search.groups (separate)
 // MatchPattern: result.params (unified)
-console.log(result.params); // { version: 'v1', id: '123', format: 'json', page: '1' }
+console.log(result.params); // {version: 'v1', id: '123', format: 'json', page: '1'}
 ```
 
 ### 4. Enhanced String Pattern Syntax
 
-MatchPattern supports convenient string patterns with `&` separator:
+It's not possible to separate pathname from search with `?` because the syntax is used to indicate optionality, so MatchPattern supports convenient string patterns with `&` separator:
 
 ```javascript
-// Pathname only
+// Pathname only (URLPattern throws a TypeError when passing a relative path without a baseURL)
 new MatchPattern('/api/posts/:id')
 
 // Pathname with search parameters
@@ -134,8 +134,6 @@ new MatchPattern({
   search: 'format=:format'
 })
 ```
-
-It's not possible to separate pathname from search with `?` because the syntax is used to indicate optionality.
 
 ## Trailing Slash Handling
 
@@ -193,11 +191,13 @@ The `URLPattern` class passes 100% of the Web Platform Tests (755 tests). It imp
 
 - `MatchPatternResult` - Result type for MatchPattern.exec()
 - `URLPatternOptions` - Options for URLPattern constructor (ignoreCase, etc.)
-- `CompiledPattern` - Internal compiled pattern representation
 - `ParsedPattern` - Parsed pattern structure
 - `PatternSegment` - Individual segment of a parsed pattern
+- `CompiledPattern` - Internal compiled pattern representation
 
 ### Utility Functions
+
+Advanced functions for pattern inspection and compilation for optimized routers
 
 - `isSimplePattern(pathname: string): boolean` - Check if pathname is a simple pattern (no regex features)
 - `parseSimplePattern(pathname: string): ParsedPattern | null` - Parse a simple pattern into segments
@@ -208,32 +208,77 @@ The `URLPattern` class passes 100% of the Web Platform Tests (755 tests). It imp
 ### URLPattern
 
 ```typescript
-new URLPattern(input?: string | URLPatternInit, baseURL?: string, options?: URLPatternOptions)
-```
+class URLPattern {
+  constructor(input?: string | URLPatternInit, baseURL?: string, options?: URLPatternOptions)
 
-Methods:
-- `test(input: string | URL | URLPatternInit, baseURL?: string): boolean`
-- `exec(input: string | URL | URLPatternInit, baseURL?: string): URLPatternResult | null`
+  test(input: string | URL | URLPatternInit, baseURL?: string): boolean
+  exec(input: string | URL | URLPatternInit, baseURL?: string): URLPatternResult | null
+
+  readonly protocol: string
+  readonly username: string
+  readonly password: string
+  readonly hostname: string
+  readonly port: string
+  readonly pathname: string
+  readonly search: string
+  readonly hash: string
+}
+```
 
 ### MatchPattern
 
 ```typescript
-new MatchPattern(input: string | URLPatternInit, baseURL?: string)
+class MatchPattern {
+  constructor(input: string | URLPatternInit, baseURL?: string)
+
+  test(input: string | URL): boolean
+  exec(input: string | URL): MatchPatternResult | null
+}
 ```
 
-Methods:
-- `test(input: string | URL): boolean`
-- `exec(input: string | URL): MatchPatternResult | null`
+### Utility Functions
+
+Advanced functions for pattern inspection and compilation (used by router optimizations):
+
+```typescript
+// Check if a pathname pattern contains only literal segments and named parameters
+function isSimplePattern(pathname: string): boolean
+
+// Parse a simple pattern into its component segments
+function parseSimplePattern(pathname: string): ParsedPattern | null
+
+// Compile a pathname pattern to optimized RegExp
+function compilePathname(
+  pathname: string,
+  options?: { ignoreCase?: boolean }
+): CompiledPattern
+```
 
 ### Types
 
 ```typescript
 interface MatchPatternResult extends URLPatternResult {
-  params: Record<string, string>;  // Unified parameters from all sources
+  params: Record<string, string>;  // Unified parameters from pathname and search
 }
 
 interface URLPatternOptions {
   ignoreCase?: boolean;  // Case-insensitive matching
+}
+
+interface ParsedPattern {
+  segments: PatternSegment[];
+  paramNames: string[];
+}
+
+type PatternSegment =
+  | { type: 'literal'; value: string }
+  | { type: 'param'; name: string; pattern?: string }
+  | { type: 'wildcard' }
+  | { type: 'group'; segments: PatternSegment[] }
+
+interface CompiledPattern {
+  regexp: RegExp;
+  paramNames: string[];
 }
 ```
 
@@ -254,10 +299,4 @@ Report issues related to:
 
 ## License
 
-MIT - see LICENSE file for details.
-
-## Acknowledgments
-
-- [URLPattern specification](https://urlpattern.spec.whatwg.org/) by WHATWG
-- Inspired by [path-to-regexp](https://github.com/pillarjs/path-to-regexp) and the URLPattern spec
-- Web Platform community
+MIT

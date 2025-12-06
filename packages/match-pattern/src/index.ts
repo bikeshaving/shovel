@@ -1,4 +1,9 @@
 /**
+ * High-performance URLPattern-compatible implementation for web routing with
+ * enhanced search parameter handling.
+ */
+
+/**
  * Check if a protocol is valid per URL spec
  * Must start with ASCII letter, followed by ASCII letters, digits, +, -, or .
  */
@@ -51,18 +56,18 @@ function isDefinitelyNonSpecialScheme(
 	return !isSpecialScheme(protocolPattern);
 }
 
+const DEFAULT_PORTS: Record<string, string> = {
+	http: "80",
+	https: "443",
+	ws: "80",
+	wss: "443",
+	ftp: "21",
+};
 /**
  * Get the default port for a protocol, per URL spec
  */
 function getDefaultPort(protocol: string): string | undefined {
-	const defaults: Record<string, string> = {
-		http: "80",
-		https: "443",
-		ws: "80",
-		wss: "443",
-		ftp: "21",
-	};
-	return defaults[protocol.toLowerCase()];
+	return DEFAULT_PORTS[protocol.toLowerCase()];
 }
 
 /**
