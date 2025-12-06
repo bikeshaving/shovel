@@ -27,20 +27,20 @@ describe("Router", () => {
 		router.route("/api/users/:id").get(handler);
 
 		const request = new Request("http://example.com/api/users/123");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(await response.text()).toBe("Hello user 123");
 	});
 
-	test("returns null for non-matching routes", async () => {
+	test("returns 404 for non-matching routes", async () => {
 		const router = new Router();
 		router.route("/api/users/:id").get(async () => new Response("Hello"));
 
 		const request = new Request("http://example.com/api/posts/123");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
-		expect(response).toBeNull();
+		expect(response.status).toBe(404);
 	});
 
 	test("extracts route parameters correctly", async () => {
@@ -55,7 +55,7 @@ describe("Router", () => {
 		router.route("/api/users/:userId/posts/:postId").get(handler);
 
 		const request = new Request("http://example.com/api/users/123/posts/456");
-		await router.match(request);
+		await router.handle(request);
 
 		expect(capturedParams).toEqual({
 			userId: "123",
@@ -138,7 +138,7 @@ describe("Generator Middleware Execution", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder).toEqual([
 			"middleware-before",
@@ -169,7 +169,7 @@ describe("Generator Middleware Execution", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder).toEqual([
 			"middleware-before",
@@ -206,7 +206,7 @@ describe("Generator Middleware Execution", () => {
 
 		// Test without auth header
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder).toEqual(["auth-middleware"]);
 		expect(response?.status).toBe(401);
@@ -230,7 +230,7 @@ describe("Generator Middleware Execution", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(await response?.text()).toBe("Setup: true");
 	});
@@ -253,7 +253,7 @@ describe("Generator Middleware Execution", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(await response?.text()).toBe("Header: test-value");
 	});
@@ -273,7 +273,7 @@ describe("Generator Middleware Execution", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response?.headers.get("X-Response-Modified")).toBe("true");
 		expect(await response?.text()).toBe("Hello");
@@ -299,7 +299,7 @@ describe("Function Middleware Execution", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(await response?.text()).toBe("Context: true, Header: true");
 	});
@@ -341,7 +341,7 @@ describe("Middleware Short-Circuiting", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		// Only auth middleware should execute, everything else short-circuited
 		expect(executionOrder).toEqual(["auth"]);
@@ -378,7 +378,7 @@ describe("Middleware Short-Circuiting", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		// Only auth middleware should execute
 		expect(executionOrder).toEqual(["auth"]);
@@ -415,7 +415,7 @@ describe("Middleware Short-Circuiting", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		// All should execute because null means fallthrough
 		expect(executionOrder).toEqual(["passthrough", "processing", "handler"]);
@@ -454,7 +454,7 @@ describe("Middleware Short-Circuiting", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		// All should execute because undefined means fallthrough
 		expect(executionOrder).toEqual(["implicit", "explicit", "handler"]);
@@ -498,7 +498,7 @@ describe("Middleware Short-Circuiting", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		await router.match(request);
+		await router.handle(request);
 
 		expect(executionOrder).toEqual([
 			"middleware1-before",
@@ -563,7 +563,7 @@ describe("Middleware Short-Circuiting", () => {
 		router.route("/test").get(async () => new Response("Hello"));
 
 		const request = new Request("http://example.com/test");
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 
 		// Both middleware should see the same valid URL
 		expect(firstURLError).toBeNull();
@@ -608,7 +608,7 @@ describe("Middleware Short-Circuiting", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder).toEqual([
 			"function1",
@@ -660,7 +660,7 @@ describe("Context Sharing", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(await response?.text()).toBe(
 			"All steps: completed completed completed",
@@ -704,7 +704,7 @@ describe("Context Sharing", () => {
 		const request = new Request("http://example.com/test", {
 			headers: {Authorization: "valid-token"},
 		});
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(await response?.text()).toBe("User: John, Permissions: read,write");
 	});
@@ -731,7 +731,7 @@ describe("Error Handling", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response?.status).toBe(500);
 		expect(await response?.text()).toBe("Error caught: Handler error");
@@ -758,7 +758,7 @@ describe("Router Integration", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder).toEqual(["middleware", "handler"]);
 		expect(await response.text()).toBe("Hello");
@@ -778,7 +778,7 @@ describe("Router Integration", () => {
 		router.route("/test").get(async () => new Response("Hello"));
 
 		const request = new Request("http://example.com/nonexistent");
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder).toEqual(["middleware"]);
 		expect(response.status).toBe(404);
@@ -830,7 +830,7 @@ describe("Advanced Generator Middleware", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder).toEqual([
 			"auth-start",
@@ -884,7 +884,7 @@ describe("Advanced Generator Middleware", () => {
 		const rateLimitedRequest = new Request("http://example.com/test", {
 			headers: {"X-Rate-Limited": "true"},
 		});
-		const rateLimitedResponse = await router.match(rateLimitedRequest);
+		const rateLimitedResponse = await router.handle(rateLimitedRequest);
 
 		expect(executionOrder).toEqual(["rate-limit"]); // analytics should NOT run due to short-circuit
 		expect(rateLimitedResponse?.status).toBe(429);
@@ -894,7 +894,7 @@ describe("Advanced Generator Middleware", () => {
 		// Test normal request
 		executionOrder.length = 0;
 		const normalRequest = new Request("http://example.com/test");
-		const normalResponse = await router.match(normalRequest);
+		const normalResponse = await router.handle(normalRequest);
 
 		expect(executionOrder).toEqual(["rate-limit", "analytics", "handler"]);
 		expect(normalResponse?.status).toBe(200);
@@ -936,7 +936,7 @@ describe("Advanced Generator Middleware", () => {
 		router.route("/test").get(faultyHandler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder).toEqual([
 			"error-handler-start",
@@ -998,7 +998,7 @@ describe("Advanced Generator Middleware", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder).toEqual([
 			"db-start",
@@ -1039,7 +1039,7 @@ describe("Advanced Generator Middleware", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder).toEqual([
 			"setup",
@@ -1087,7 +1087,7 @@ describe("Advanced Generator Middleware", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder).toEqual([
 			"sync",
@@ -1108,7 +1108,7 @@ describe("Edge Cases and Error Scenarios", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response?.status).toBe(200);
 		expect(await response?.text()).toBe("No middleware");
@@ -1126,10 +1126,9 @@ describe("Edge Cases and Error Scenarios", () => {
 		router.route("/test").get(async () => new Response("Success"));
 
 		const request = new Request("http://example.com/test");
+		const response = await router.handle(request);
 
-		await expect(router.match(request)).rejects.toThrow(
-			"Middleware startup error",
-		);
+		expect(response.status).toBe(500);
 	});
 
 	test("generator throws error after yield", async () => {
@@ -1144,8 +1143,9 @@ describe("Edge Cases and Error Scenarios", () => {
 		router.route("/test").get(async () => new Response("Success"));
 
 		const request = new Request("http://example.com/test");
+		const response = await router.handle(request);
 
-		await expect(router.match(request)).rejects.toThrow("Post-yield error");
+		expect(response.status).toBe(500);
 	});
 
 	test("function middleware throws error", async () => {
@@ -1159,10 +1159,9 @@ describe("Edge Cases and Error Scenarios", () => {
 		router.route("/test").get(async () => new Response("Success"));
 
 		const request = new Request("http://example.com/test");
+		const response = await router.handle(request);
 
-		await expect(router.match(request)).rejects.toThrow(
-			"Function middleware error",
-		);
+		expect(response.status).toBe(500);
 	});
 
 	test("very large middleware stack", async () => {
@@ -1186,7 +1185,7 @@ describe("Edge Cases and Error Scenarios", () => {
 		router.route("/test").get(handler);
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(executionOrder.length).toBe(51); // 50 middleware + 1 handler
 		expect(executionOrder[50]).toBe("handler");
@@ -1217,7 +1216,7 @@ describe("Edge Cases and Error Scenarios", () => {
 		router.route("/test").get(async () => new Response("Final"));
 
 		const request = new Request("http://example.com/test");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response?.status).toBe(200);
 		expect(await response?.text()).toBe("Final");
@@ -1249,7 +1248,7 @@ describe("Edge Cases and Error Scenarios", () => {
 			method: "POST",
 			body: "test body content",
 		});
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response?.headers.get("X-Body-Length")).toBe("17");
 		expect(await response?.text()).toBe("Body: test body content");
@@ -1276,14 +1275,14 @@ describe("Path-Scoped Middleware", () => {
 
 		// Request to /admin/users should trigger admin middleware
 		const adminRequest = new Request("http://example.com/admin/users");
-		const adminResponse = await router.handler(adminRequest);
+		const adminResponse = await router.handle(adminRequest);
 		expect(executionOrder).toEqual(["admin-middleware"]);
 		expect(await adminResponse.text()).toBe("isAdmin: true");
 
 		// Request to /public/page should NOT trigger admin middleware
 		executionOrder.length = 0;
 		const publicRequest = new Request("http://example.com/public/page");
-		const publicResponse = await router.handler(publicRequest);
+		const publicResponse = await router.handle(publicRequest);
 		expect(executionOrder).toEqual([]);
 		expect(await publicResponse.text()).toBe("isAdmin: undefined");
 	});
@@ -1305,19 +1304,19 @@ describe("Path-Scoped Middleware", () => {
 
 		// /admin should match
 		let request = new Request("http://example.com/admin");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toEqual(["admin"]);
 
 		// /admin/users should match
 		executionOrder.length = 0;
 		request = new Request("http://example.com/admin/users");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toEqual(["admin"]);
 
 		// /administrator should NOT match (not a segment boundary)
 		executionOrder.length = 0;
 		request = new Request("http://example.com/administrator");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toEqual([]);
 	});
 
@@ -1338,7 +1337,7 @@ describe("Path-Scoped Middleware", () => {
 		router.route("/admin/users").get(async () => new Response("OK"));
 
 		const request = new Request("http://example.com/admin/users");
-		await router.handler(request);
+		await router.handle(request);
 
 		expect(executionOrder).toEqual(["global", "admin"]);
 	});
@@ -1361,14 +1360,14 @@ describe("Path-Scoped Middleware", () => {
 
 		// API route should trigger middleware
 		let request = new Request("http://example.com/api/users");
-		let response = await router.handler(request);
+		let response = await router.handle(request);
 		expect(executionOrder).toEqual(["api-before", "api-after"]);
 		expect(response.headers.get("X-API")).toBe("true");
 
 		// Non-API route should not trigger middleware
 		executionOrder.length = 0;
 		request = new Request("http://example.com/home");
-		response = await router.handler(request);
+		response = await router.handle(request);
 		expect(executionOrder).toEqual([]);
 		expect(response.headers.get("X-API")).toBeNull();
 	});
@@ -1394,13 +1393,13 @@ describe("Subrouter Mount Middleware Scoping", () => {
 
 		// Request to /api/users should trigger subrouter middleware
 		let request = new Request("http://example.com/api/users");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toEqual(["api-middleware"]);
 
 		// Request to /home should NOT trigger subrouter middleware
 		executionOrder.length = 0;
 		request = new Request("http://example.com/home");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toEqual([]);
 	});
 
@@ -1428,13 +1427,13 @@ describe("Subrouter Mount Middleware Scoping", () => {
 
 		// Request to /outer/inner/endpoint should trigger both middlewares
 		let request = new Request("http://example.com/outer/inner/endpoint");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toEqual(["outer", "inner"]);
 
 		// Request to /other should trigger neither
 		executionOrder.length = 0;
 		request = new Request("http://example.com/other");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toEqual([]);
 	});
 
@@ -1462,13 +1461,13 @@ describe("Subrouter Mount Middleware Scoping", () => {
 
 		// Request to /api/admin/users should trigger admin middleware
 		let request = new Request("http://example.com/api/admin/users");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toEqual(["admin"]);
 
 		// Request to /api/public/page should NOT trigger admin middleware
 		executionOrder.length = 0;
 		request = new Request("http://example.com/api/public/page");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toEqual([]);
 	});
 
@@ -1493,19 +1492,19 @@ describe("Subrouter Mount Middleware Scoping", () => {
 
 		// Request to /api/v1/users
 		let request = new Request("http://example.com/api/v1/users");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toContain("shared-no-version");
 
 		// Request to /api/v2/users
 		executionOrder.length = 0;
 		request = new Request("http://example.com/api/v2/users");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toContain("shared-no-version");
 
 		// Request to /other should NOT trigger shared middleware
 		executionOrder.length = 0;
 		request = new Request("http://example.com/other");
-		await router.handler(request);
+		await router.handle(request);
 		expect(executionOrder).toEqual([]);
 	});
 });
@@ -1518,7 +1517,7 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		const request = new Request("http://example.com/api/users", {
 			method: "HEAD",
 		});
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(response?.status).toBe(200);
@@ -1533,7 +1532,7 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		const request = new Request("http://example.com/api/users", {
 			method: "HEAD",
 		});
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		const body = await response?.text();
@@ -1554,7 +1553,7 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		const request = new Request("http://example.com/api/users", {
 			method: "HEAD",
 		});
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(response?.headers.get("Content-Type")).toBe("application/json");
@@ -1573,7 +1572,7 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		const request = new Request("http://example.com/api/users/123", {
 			method: "HEAD",
 		});
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(response?.status).toBe(200);
@@ -1587,10 +1586,10 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		const request = new Request("http://example.com/api/users", {
 			method: "HEAD",
 		});
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
-		// No GET handler, so HEAD should also not match
-		expect(response).toBeNull();
+		// No GET handler, so HEAD should return 404
+		expect(response.status).toBe(404);
 	});
 
 	test("explicit HEAD handler takes precedence over GET fallback", async () => {
@@ -1605,7 +1604,7 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		const request = new Request("http://example.com/api/users", {
 			method: "HEAD",
 		});
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(response?.headers.get("X-Method")).toBe("HEAD");
@@ -1632,7 +1631,7 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		const request = new Request("http://example.com/api/users", {
 			method: "HEAD",
 		});
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(executionOrder).toEqual([
@@ -1652,7 +1651,7 @@ describe("trailingSlash middleware", () => {
 		router.route("/users").get(async () => new Response("Users"));
 
 		const request = new Request("http://example.com/users/");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(response?.status).toBe(301);
@@ -1665,7 +1664,7 @@ describe("trailingSlash middleware", () => {
 		router.route("/users/").get(async () => new Response("Users"));
 
 		const request = new Request("http://example.com/users");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(response?.status).toBe(301);
@@ -1678,7 +1677,7 @@ describe("trailingSlash middleware", () => {
 		router.route("/users").get(async () => new Response("Users"));
 
 		const request = new Request("http://example.com/users");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(response?.status).toBe(200);
@@ -1691,7 +1690,7 @@ describe("trailingSlash middleware", () => {
 		router.route("/users/").get(async () => new Response("Users"));
 
 		const request = new Request("http://example.com/users/");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(response?.status).toBe(200);
@@ -1704,7 +1703,7 @@ describe("trailingSlash middleware", () => {
 		router.route("/").get(async () => new Response("Home"));
 
 		const request = new Request("http://example.com/");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(response?.status).toBe(200);
@@ -1717,7 +1716,7 @@ describe("trailingSlash middleware", () => {
 		router.route("/search").get(async () => new Response("Search"));
 
 		const request = new Request("http://example.com/search/?q=test&page=1");
-		const response = await router.match(request);
+		const response = await router.handle(request);
 
 		expect(response).not.toBeNull();
 		expect(response?.status).toBe(301);
@@ -1734,7 +1733,7 @@ describe("trailingSlash middleware", () => {
 
 		// API path should redirect
 		const apiRequest = new Request("http://example.com/api/users/");
-		const apiResponse = await router.match(apiRequest);
+		const apiResponse = await router.handle(apiRequest);
 		expect(apiResponse?.status).toBe(301);
 		expect(apiResponse?.headers.get("Location")).toBe(
 			"http://example.com/api/users",
@@ -1742,7 +1741,7 @@ describe("trailingSlash middleware", () => {
 
 		// Web path should not be affected by the middleware
 		const webRequest = new Request("http://example.com/web/users/");
-		const webResponse = await router.match(webRequest);
+		const webResponse = await router.handle(webRequest);
 		expect(webResponse?.status).toBe(200);
 		expect(await webResponse?.text()).toBe("Web Users");
 	});

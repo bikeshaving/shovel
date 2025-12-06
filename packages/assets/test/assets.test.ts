@@ -596,7 +596,7 @@ describe("Assets Middleware", () => {
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const request = new Request("http://example.com/app.js");
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 
 		expect(response.status).toBe(200);
 		expect(response.headers.get("Content-Type")).toBe("application/javascript");
@@ -610,7 +610,7 @@ describe("Assets Middleware", () => {
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const request = new Request("http://example.com/nonexistent.js");
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 
 		// Should pass through to 404 handler
 		expect(response.status).toBe(404);
@@ -622,7 +622,7 @@ describe("Assets Middleware", () => {
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const request = new Request("http://example.com//etc/passwd");
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 
 		expect(response.status).toBe(403);
 		expect(await response.text()).toBe("Forbidden");
@@ -637,7 +637,7 @@ describe("Assets Middleware", () => {
 		const request = new Request("http://example.com/app.js", {
 			headers: {"if-modified-since": futureDate},
 		});
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 
 		expect(response.status).toBe(304);
 	});
@@ -678,7 +678,7 @@ describe("Assets Middleware", () => {
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const request = new Request("http://example.com/app.js");
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 
 		// Should detect text/javascript from .js extension
 		expect(response.headers.get("Content-Type")).toBe("text/javascript");
@@ -694,7 +694,7 @@ describe("Assets Middleware", () => {
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const request = new Request("http://example.com/app.js");
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 
 		expect(response.headers.get("Cache-Control")).toBe("no-cache");
 	});

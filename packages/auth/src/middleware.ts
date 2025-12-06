@@ -6,6 +6,17 @@
 import {OAuth2Client, OAuth2Tokens} from "./oauth2.js";
 import type {FunctionMiddleware} from "@b9g/router";
 
+// Augment RouteContext to include session property
+// Importing this module implies you're using the auth middleware
+declare module "@b9g/router" {
+	interface RouteContext {
+		session: {
+			[key: string]: unknown;
+			oauth2?: OAuth2Tokens;
+		};
+	}
+}
+
 // ============================================================================
 // CORS MIDDLEWARE
 // ============================================================================
@@ -304,7 +315,7 @@ export function requireAuth(options?: {
 		}
 
 		// Add session to context for handlers
-		context.session = session.value;
+		context.session = {oauth2: session.value};
 
 		// Continue to next middleware/handler
 		return null;

@@ -51,38 +51,38 @@ const requests = {
 
 // Warm up
 for (let i = 0; i < 1000; i++) {
-	await router.handler(requests.staticFirst);
+	await router.handle(requests.staticFirst);
 }
 
 console.info("Router benchmark (full handler including middleware):\n");
 
 group("Static routes", () => {
 	bench("first (/)", async () => {
-		await router.handler(requests.staticFirst);
+		await router.handle(requests.staticFirst);
 	});
 	bench("middle (/blog)", async () => {
-		await router.handler(requests.staticMiddle);
+		await router.handle(requests.staticMiddle);
 	});
 	bench("last (/api/metrics)", async () => {
-		await router.handler(requests.staticLast);
+		await router.handle(requests.staticLast);
 	});
 });
 
 group("Dynamic routes", () => {
 	bench("simple (/users/:id)", async () => {
-		await router.handler(requests.dynamicSimple);
+		await router.handle(requests.dynamicSimple);
 	});
 	bench("nested (/api/posts/:id/comments/:commentId)", async () => {
-		await router.handler(requests.dynamicNested);
+		await router.handle(requests.dynamicNested);
 	});
 });
 
 group("Edge cases", () => {
 	bench("wildcard (/files/*)", async () => {
-		await router.handler(requests.wildcard);
+		await router.handle(requests.wildcard);
 	});
 	bench("not found", async () => {
-		await router.handler(requests.notFound);
+		await router.handle(requests.notFound);
 	});
 });
 

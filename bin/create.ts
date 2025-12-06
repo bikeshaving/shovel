@@ -378,7 +378,7 @@ self.addEventListener("activate", (event) => {
 // Handle HTTP requests
 self.addEventListener("fetch", (event) => {
   try {
-    const responsePromise = router.handler(event.request);
+    const responsePromise = router.handle(event.request);
     event.respondWith(responsePromise);
   } catch (error) {
     console.error("[${config.name}] Error handling request:", error);

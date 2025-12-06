@@ -32,13 +32,11 @@ import {
 /**
  * Context object passed to handlers and middleware
  * Contains route parameters extracted from URL pattern matching
+ * Augmentable via module declaration for middleware-specific properties
  */
 export interface RouteContext {
 	/** Route parameters extracted from URL pattern matching */
 	params: Record<string, string>;
-
-	/** Middleware can add arbitrary properties for context sharing */
-	[key: string]: any;
 }
 
 /**
@@ -98,10 +96,25 @@ export type HTTPMethod =
 	| "OPTIONS";
 
 /**
- * Route configuration options
+ * Route options for configuring route metadata
+ * Augmentable via module declaration for custom metadata
  */
-export interface RouteConfig {
-	/** URL pattern for the route */
+export interface RouteOptions {
+	/** Optional name for the route, useful for matching/identification */
+	name?: string;
+}
+
+/**
+ * Result of matching a URL against registered routes
+ */
+export interface RouteMatch {
+	/** Route parameters extracted from URL pattern matching */
+	params: Record<string, string>;
+	/** HTTP methods registered for this pattern */
+	methods: string[];
+	/** Route name if provided */
+	name?: string;
+	/** Original pattern string */
 	pattern: string;
 }
 
@@ -113,7 +126,9 @@ export interface RouteConfig {
 interface RouteEntry {
 	pattern: import("@b9g/match-pattern").MatchPattern;
 	method: string;
-	handler: Handler;
+	handler?: Handler;
+	name?: string;
+	middleware: Middleware[];
 }
 
 /**
@@ -126,11 +141,12 @@ interface MiddlewareEntry {
 }
 
 /**
- * Result of route matching
+ * Result of internal route matching (for handle)
  */
-interface MatchResult {
-	handler: Handler;
+interface InternalMatchResult {
+	handler?: Handler;
 	context: RouteContext;
+	entry: RouteEntry;
 }
 
 // ============================================================================
@@ -143,14 +159,14 @@ interface MatchResult {
  */
 class RadixNode {
 	children: Map<string, RadixNode>; // char -> RadixNode
-	handlers: Map<string, Handler>; // method -> handler
+	routes: Map<string, RouteEntry>; // method -> RouteEntry
 	paramName: string | null; // param name if this is a :param segment
 	paramChild: RadixNode | null; // child node for :param
 	wildcardChild: RadixNode | null; // child node for * wildcard
 
 	constructor() {
 		this.children = new Map();
-		this.handlers = new Map();
+		this.routes = new Map();
 		this.paramName = null;
 		this.paramChild = null;
 		this.wildcardChild = null;
@@ -162,9 +178,7 @@ class RadixNode {
  */
 interface ComplexRouteEntry {
 	compiled: CompiledPattern;
-	method: string;
-	handler: Handler;
-	pattern: MatchPattern; // Keep for search param matching
+	route: RouteEntry;
 }
 
 /**
@@ -186,16 +200,11 @@ class RadixTreeExecutor {
 
 			if (isSimplePattern(pathname)) {
 				// Simple pattern - add to radix tree
-				this.#addToTree(pathname, route.method, route.handler);
+				this.#addToTree(pathname, route);
 			} else {
 				// Complex pattern - compile to regex
 				const compiled = compilePathname(pathname);
-				this.#complexRoutes.push({
-					compiled,
-					method: route.method,
-					handler: route.handler,
-					pattern: route.pattern,
-				});
+				this.#complexRoutes.push({compiled, route});
 			}
 		}
 	}
@@ -203,7 +212,7 @@ class RadixTreeExecutor {
 	/**
 	 * Add a simple pattern to the radix tree
 	 */
-	#addToTree(pathname: string, method: string, handler: Handler): void {
+	#addToTree(pathname: string, route: RouteEntry): void {
 		let node = this.#root;
 		let i = 0;
 
@@ -243,19 +252,23 @@ class RadixTreeExecutor {
 			i++;
 		}
 
-		node.handlers.set(method, handler);
+		node.routes.set(route.method, route);
 	}
 
 	/**
-	 * Match a pathname against the radix tree
+	 * Match a pathname against the radix tree (for URL matching)
 	 */
-	#matchTree(
+	#matchTreeByPath(
 		pathname: string,
-		method: string,
-	): {handler: Handler; params: Record<string, string>} | null {
+	): {node: RadixNode; params: Record<string, string>} | null {
 		const params: Record<string, string> = {};
 		let node = this.#root;
 		let i = 0;
+
+		// Handle empty pathname
+		if (!pathname) {
+			return node.routes.size > 0 ? {node, params} : null;
+		}
 
 		while (i < pathname.length) {
 			const char = pathname[i];
@@ -298,25 +311,86 @@ class RadixTreeExecutor {
 			return null;
 		}
 
-		let handler = node.handlers.get(method);
-		// HEAD requests should fall back to GET handler (RFC 7231)
-		if (!handler && method === "HEAD") {
-			handler = node.handlers.get("GET");
-		}
-		if (handler) {
-			return {handler, params};
+		// Check if this node has any routes or a wildcard child with routes
+		if (node.routes.size > 0) {
+			return {node, params};
 		}
 
 		// Check wildcard at terminal node (for patterns like /files/*)
-		if (node.wildcardChild) {
-			let wildcardHandler = node.wildcardChild.handlers.get(method);
-			// HEAD requests should fall back to GET handler (RFC 7231)
-			if (!wildcardHandler && method === "HEAD") {
-				wildcardHandler = node.wildcardChild.handlers.get("GET");
-			}
-			if (wildcardHandler) {
-				params["0"] = ""; // Empty wildcard match
-				return {handler: wildcardHandler, params};
+		if (node.wildcardChild && node.wildcardChild.routes.size > 0) {
+			params["0"] = ""; // Empty wildcard match
+			return {node: node.wildcardChild, params};
+		}
+
+		return null;
+	}
+
+	/**
+	 * Match a pathname against the radix tree (for request handling with method)
+	 */
+	#matchTree(
+		pathname: string,
+		method: string,
+	): {entry: RouteEntry; params: Record<string, string>} | null {
+		const result = this.#matchTreeByPath(pathname);
+		if (!result) return null;
+
+		const {node, params} = result;
+		let entry = node.routes.get(method);
+		// HEAD requests should fall back to GET handler (RFC 7231)
+		if (!entry && method === "HEAD") {
+			entry = node.routes.get("GET");
+		}
+		if (entry) {
+			return {entry, params};
+		}
+
+		return null;
+	}
+
+	/**
+	 * Match a URL against registered routes (returns RouteMatch info)
+	 */
+	matchUrl(url: string | URL): RouteMatch | null {
+		const urlObj =
+			typeof url === "string" ? new URL(url, "http://localhost") : url;
+		const pathname = urlObj.pathname;
+
+		// Try radix tree first (fast path for simple routes)
+		const treeResult = this.#matchTreeByPath(pathname);
+		if (treeResult) {
+			const {node, params} = treeResult;
+			const methods = Array.from(node.routes.keys());
+			// Get name from first route entry (all entries for same pattern should have same name)
+			const firstEntry = node.routes.values().next().value;
+			return {
+				params,
+				methods,
+				name: firstEntry?.name,
+				pattern: firstEntry?.pattern.pathname ?? "",
+			};
+		}
+
+		// Fall back to regex for complex routes
+		for (const {compiled, route} of this.#complexRoutes) {
+			const match = pathname.match(compiled.regex);
+			if (match) {
+				const params: Record<string, string> = {};
+				for (let i = 0; i < compiled.paramNames.length; i++) {
+					if (match[i + 1] !== undefined) {
+						params[compiled.paramNames[i]] = match[i + 1];
+					}
+				}
+				// Collect all methods for this pattern
+				const methods = this.#complexRoutes
+					.filter((r) => r.route.pattern.pathname === route.pattern.pathname)
+					.map((r) => r.route.method);
+				return {
+					params,
+					methods,
+					name: route.name,
+					pattern: route.pattern.pathname,
+				};
 			}
 		}
 
@@ -324,9 +398,9 @@ class RadixTreeExecutor {
 	}
 
 	/**
-	 * Find the first route that matches the request
+	 * Find the first route that matches the request (for handling)
 	 */
-	match(request: Request): MatchResult | null {
+	matchRequest(request: Request): InternalMatchResult | null {
 		const url = new URL(request.url);
 		const method = request.method.toUpperCase();
 		const pathname = url.pathname;
@@ -335,13 +409,14 @@ class RadixTreeExecutor {
 		const treeResult = this.#matchTree(pathname, method);
 		if (treeResult) {
 			return {
-				handler: treeResult.handler,
+				handler: treeResult.entry.handler,
 				context: {params: treeResult.params},
+				entry: treeResult.entry,
 			};
 		}
 
 		// Fall back to regex for complex routes
-		for (const route of this.#complexRoutes) {
+		for (const {compiled, route} of this.#complexRoutes) {
 			// HEAD requests should fall back to GET handler (RFC 7231)
 			const methodMatches =
 				route.method === method ||
@@ -350,17 +425,18 @@ class RadixTreeExecutor {
 				continue;
 			}
 
-			const match = pathname.match(route.compiled.regex);
+			const match = pathname.match(compiled.regex);
 			if (match) {
 				const params: Record<string, string> = {};
-				for (let i = 0; i < route.compiled.paramNames.length; i++) {
+				for (let i = 0; i < compiled.paramNames.length; i++) {
 					if (match[i + 1] !== undefined) {
-						params[route.compiled.paramNames[i]] = match[i + 1];
+						params[compiled.paramNames[i]] = match[i + 1];
 					}
 				}
 				return {
 					handler: route.handler,
 					context: {params},
+					entry: route,
 				};
 			}
 		}
@@ -373,7 +449,8 @@ class RadixTreeExecutor {
  * RouteBuilder provides a chainable API for defining routes with multiple HTTP methods
  *
  * Example:
- *   router.route('/api/users/:id')
+ *   router.route('/api/users/:id', { name: 'user' })
+ *     .use(authMiddleware)
  *     .get(getUserHandler)
  *     .put(updateUserHandler)
  *     .delete(deleteUserHandler);
@@ -381,72 +458,126 @@ class RadixTreeExecutor {
 class RouteBuilder {
 	#router: Router;
 	#pattern: string;
+	#name?: string;
+	#middleware: Middleware[];
 
-	constructor(router: Router, pattern: string) {
+	constructor(router: Router, pattern: string, options?: RouteOptions) {
 		this.#router = router;
 		this.#pattern = pattern;
+		this.#name = options?.name;
+		this.#middleware = [];
+	}
+
+	/**
+	 * Add route-scoped middleware that only runs when this pattern matches
+	 */
+	use(middleware: Middleware): RouteBuilder {
+		this.#middleware.push(middleware);
+		return this;
 	}
 
 	/**
 	 * Register a GET handler for this route pattern
 	 */
-	get(handler: Handler): RouteBuilder {
-		this.#router.addRoute("GET", this.#pattern, handler);
+	get(handler?: Handler): RouteBuilder {
+		this.#router.addRoute(
+			"GET",
+			this.#pattern,
+			handler,
+			this.#name,
+			this.#middleware,
+		);
 		return this;
 	}
 
 	/**
 	 * Register a POST handler for this route pattern
 	 */
-	post(handler: Handler): RouteBuilder {
-		this.#router.addRoute("POST", this.#pattern, handler);
+	post(handler?: Handler): RouteBuilder {
+		this.#router.addRoute(
+			"POST",
+			this.#pattern,
+			handler,
+			this.#name,
+			this.#middleware,
+		);
 		return this;
 	}
 
 	/**
 	 * Register a PUT handler for this route pattern
 	 */
-	put(handler: Handler): RouteBuilder {
-		this.#router.addRoute("PUT", this.#pattern, handler);
+	put(handler?: Handler): RouteBuilder {
+		this.#router.addRoute(
+			"PUT",
+			this.#pattern,
+			handler,
+			this.#name,
+			this.#middleware,
+		);
 		return this;
 	}
 
 	/**
 	 * Register a DELETE handler for this route pattern
 	 */
-	delete(handler: Handler): RouteBuilder {
-		this.#router.addRoute("DELETE", this.#pattern, handler);
+	delete(handler?: Handler): RouteBuilder {
+		this.#router.addRoute(
+			"DELETE",
+			this.#pattern,
+			handler,
+			this.#name,
+			this.#middleware,
+		);
 		return this;
 	}
 
 	/**
 	 * Register a PATCH handler for this route pattern
 	 */
-	patch(handler: Handler): RouteBuilder {
-		this.#router.addRoute("PATCH", this.#pattern, handler);
+	patch(handler?: Handler): RouteBuilder {
+		this.#router.addRoute(
+			"PATCH",
+			this.#pattern,
+			handler,
+			this.#name,
+			this.#middleware,
+		);
 		return this;
 	}
 
 	/**
 	 * Register a HEAD handler for this route pattern
 	 */
-	head(handler: Handler): RouteBuilder {
-		this.#router.addRoute("HEAD", this.#pattern, handler);
+	head(handler?: Handler): RouteBuilder {
+		this.#router.addRoute(
+			"HEAD",
+			this.#pattern,
+			handler,
+			this.#name,
+			this.#middleware,
+		);
 		return this;
 	}
 
 	/**
 	 * Register an OPTIONS handler for this route pattern
 	 */
-	options(handler: Handler): RouteBuilder {
-		this.#router.addRoute("OPTIONS", this.#pattern, handler);
+	options(handler?: Handler): RouteBuilder {
+		this.#router.addRoute(
+			"OPTIONS",
+			this.#pattern,
+			handler,
+			this.#name,
+			this.#middleware,
+		);
 		return this;
 	}
 
 	/**
 	 * Register a handler for all HTTP methods on this route pattern
 	 */
-	all(handler: Handler): RouteBuilder {
+	all(handler?: Handler): RouteBuilder {
 		const methods: HTTPMethod[] = [
 			"GET",
 			"POST",
@@ -457,7 +588,13 @@ class RouteBuilder {
 			"OPTIONS",
 		];
 		methods.forEach((method) => {
-			this.#router.addRoute(method, this.#pattern, handler);
+			this.#router.addRoute(
+				method,
+				this.#pattern,
+				handler,
+				this.#name,
+				this.#middleware,
+			);
 		});
 		return this;
 	}
@@ -478,46 +615,17 @@ export class Router {
 		this.#middlewares = [];
 		this.#executor = null;
 		this.#dirty = false;
+	}
 
-		// Initialize handler implementation
-		this.#handlerImpl = async (request: Request): Promise<Response> => {
-			try {
-				// Lazy compilation - build executor on first match
-				if (this.#dirty || !this.#executor) {
-					this.#executor = new RadixTreeExecutor(this.#routes);
-					this.#dirty = false;
-				}
-
-				// Find matching route
-				const matchResult = this.#executor.match(request);
-
-				if (matchResult) {
-					// Route found - execute middleware chain + handler
-					return await this.#executeMiddlewareStack(
-						this.#middlewares,
-						request,
-						matchResult.context,
-						matchResult.handler,
-					);
-				} else {
-					// No route found - execute global middleware with 404 fallback
-					const notFoundHandler = async (): Promise<Response> => {
-						throw new NotFound();
-					};
-					return await this.#executeMiddlewareStack(
-						this.#middlewares,
-						request,
-						{params: {}},
-						notFoundHandler,
-					);
-				}
-			} catch (error) {
-				// Final catch-all for unhandled errors
-				return this.#createErrorResponse(error as Error);
-			}
-		};
-
-		this.handler = this.#handlerImpl;
+	/**
+	 * Ensure the executor is compiled and up to date
+	 */
+	#ensureCompiled(): RadixTreeExecutor {
+		if (this.#dirty || !this.#executor) {
+			this.#executor = new RadixTreeExecutor(this.#routes);
+			this.#dirty = false;
+		}
+		return this.#executor;
 	}
 
 	/**
@@ -564,103 +672,102 @@ export class Router {
 	 * Returns a chainable interface for registering HTTP method handlers
 	 *
 	 * Example:
-	 *   router.route('/api/users/:id')
+	 *   router.route('/api/users/:id', { name: 'user' })
+	 *     .use(authMiddleware)
 	 *     .get(getUserHandler)
 	 *     .put(updateUserHandler);
 	 */
-	route(pattern: string): RouteBuilder;
-	route(config: RouteConfig): RouteBuilder;
-	route(patternOrConfig: string | RouteConfig): RouteBuilder {
-		if (typeof patternOrConfig === "string") {
-			return new RouteBuilder(this, patternOrConfig);
-		} else {
-			return new RouteBuilder(this, patternOrConfig.pattern);
-		}
+	route(pattern: string, options?: RouteOptions): RouteBuilder {
+		return new RouteBuilder(this, pattern, options);
 	}
 
 	/**
 	 * Internal method called by RouteBuilder to register routes
 	 * Public for RouteBuilder access, but not intended for direct use
 	 */
-	addRoute(method: HTTPMethod, pattern: string, handler: Handler): void {
+	addRoute(
+		method: HTTPMethod,
+		pattern: string,
+		handler?: Handler,
+		name?: string,
+		middleware: Middleware[] = [],
+	): void {
 		const matchPattern = new MatchPattern(pattern);
 
 		this.#routes.push({
 			pattern: matchPattern,
 			method: method.toUpperCase(),
-			handler: handler,
+			handler,
+			name,
+			middleware,
 		});
 		this.#dirty = true;
 	}
 
 	/**
-	 * Handle a request - main entrypoint for ServiceWorker usage
-	 * Returns a response or throws if no route matches
+	 * Match a URL against registered routes
+	 * Returns route info (params, methods, name, pattern) or null if no match
+	 * Does not execute handlers - use handle() for that
 	 */
-	handler: (request: Request) => Promise<Response>;
-	#handlerImpl: (request: Request) => Promise<Response>;
+	match(url: string | URL): RouteMatch | null {
+		const executor = this.#ensureCompiled();
+		return executor.matchUrl(url);
+	}
 
 	/**
-	 * Match a request against registered routes and execute the handler chain
-	 * Returns the response from the matched handler, or null if no route matches
-	 * Note: Global middleware executes even if no route matches
+	 * Handle a request - main entrypoint for ServiceWorker usage
+	 * Executes the matched handler with middleware chain
 	 */
-	async match(request: Request): Promise<Response | null> {
-		// Lazy compilation - build executor on first match
-		if (this.#dirty || !this.#executor) {
-			this.#executor = new RadixTreeExecutor(this.#routes);
-			this.#dirty = false;
-		}
+	async handle(request: Request): Promise<Response> {
+		const executor = this.#ensureCompiled();
 
-		// Try to find a route match first
-		let matchResult = this.#executor.match(request);
-		let handler: Handler;
-		let context: RouteContext;
-
-		if (matchResult) {
-			// Route found - use its handler and context
-			handler = matchResult.handler;
-			context = matchResult.context;
-		} else {
-			// No route found - use 404 handler and empty context
-			handler = async () => {
-				throw new NotFound();
-			};
-			context = {params: {}};
-		}
-
-		// Execute middleware chain with the handler
-		let response: Response;
 		try {
-			response = await this.#executeMiddlewareStack(
+			// Find matching route
+			const matchResult = executor.matchRequest(request);
+
+			let handler: Handler;
+			let context: RouteContext;
+			let routeMiddleware: Middleware[] = [];
+
+			if (matchResult) {
+				// Route found - use its handler and context
+				if (!matchResult.handler) {
+					throw new NotFound("Route has no handler");
+				}
+				handler = matchResult.handler;
+				context = matchResult.context;
+				routeMiddleware = matchResult.entry.middleware;
+			} else {
+				// No route found - use 404 handler and empty context
+				handler = async () => {
+					throw new NotFound();
+				};
+				context = {params: {}};
+			}
+
+			// Execute middleware chain with the handler
+			let response = await this.#executeMiddlewareStack(
 				this.#middlewares,
+				routeMiddleware,
 				request,
 				context,
 				handler,
 			);
-		} catch (error) {
-			// If no route was found and NotFound was thrown, return null
-			if (!matchResult && isHTTPError(error) && error.status === 404) {
-				return null;
+
+			// HEAD requests should return headers only, no body (RFC 7231)
+			if (request.method.toUpperCase() === "HEAD") {
+				response = new Response(null, {
+					status: response.status,
+					statusText: response.statusText,
+					headers: response.headers,
+				});
 			}
-			throw error;
-		}
 
-		// If no route was found originally, return null unless middleware handled it
-		if (!matchResult && response?.status === 404) {
-			return null;
+			return response;
+		} catch (error) {
+			// Final catch-all for unhandled errors
+			return this.#createErrorResponse(error as Error);
 		}
-
-		// HEAD requests should return headers only, no body (RFC 7231)
-		if (response && request.method.toUpperCase() === "HEAD") {
-			response = new Response(null, {
-				status: response.status,
-				statusText: response.statusText,
-				headers: response.headers,
-			});
-		}
-
-		return response;
 	}
 
 	/**
@@ -710,6 +817,8 @@ export class Router {
 				pattern: new MatchPattern(mountedPattern),
 				method: subroute.method,
 				handler: subroute.handler,
+				name: subroute.name,
+				middleware: subroute.middleware,
 			});
 		}
 
@@ -811,28 +920,58 @@ export class Router {
 	}
 
 	/**
+	 * Execute a single middleware and track generator state
+	 * Returns true if middleware short-circuited (returned Response early)
+	 */
+	async #executeMiddleware(
+		middleware: Middleware,
+		request: Request,
+		context: RouteContext,
+		runningGenerators: Array<{generator: MiddlewareGenerator}>,
+	): Promise<Response | null> {
+		if (this.#isGeneratorMiddleware(middleware)) {
+			const generator = (middleware as GeneratorMiddleware)(request, context);
+			const result = await generator.next();
+
+			if (result.done) {
+				// Early return (0 yields) - check if Response returned for short-circuiting
+				if (result.value) {
+					return result.value;
+				}
+			} else {
+				// Generator yielded - save for later resumption
+				runningGenerators.push({generator});
+			}
+		} else {
+			// Function middleware - execute and check for short-circuit
+			const result = await (middleware as FunctionMiddleware)(request, context);
+			if (result) {
+				// Function middleware returned a Response - short-circuit
+				return result;
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * Execute middleware stack with guaranteed execution using Rack-style LIFO order
+	 * Global/path middleware runs first, then route-scoped middleware, then handler
 	 */
 	async #executeMiddlewareStack(
-		middlewares: MiddlewareEntry[],
+		globalMiddlewares: MiddlewareEntry[],
+		routeMiddlewares: Middleware[],
 		request: Request,
 		context: RouteContext,
 		handler: Handler,
 	): Promise<Response> {
-		const runningGenerators: Array<{
-			generator: MiddlewareGenerator;
-			index: number;
-		}> = [];
+		const runningGenerators: Array<{generator: MiddlewareGenerator}> = [];
 		let currentResponse: Response | null = null;
 
 		// Extract pathname from request URL for prefix matching
 		const requestPathname = new URL(request.url).pathname;
 
-		// Phase 1: Execute all middleware "before" phases (request processing)
-		for (let i = 0; i < middlewares.length; i++) {
-			const entry = middlewares[i];
-			const middleware = entry.middleware;
-
+		// Phase 1a: Execute global/path-scoped middleware "before" phases
+		for (const entry of globalMiddlewares) {
 			// Skip middleware if it has a pathPrefix that doesn't match
 			if (
 				entry.pathPrefix &&
@@ -841,32 +980,25 @@ export class Router {
 				continue;
 			}
 
-			if (this.#isGeneratorMiddleware(middleware)) {
-				const generator = (middleware as GeneratorMiddleware)(request, context);
-				const result = await generator.next();
+			currentResponse = await this.#executeMiddleware(
+				entry.middleware,
+				request,
+				context,
+				runningGenerators,
+			);
+			if (currentResponse) break; // Short-circuit
+		}
 
-				if (result.done) {
-					// Early return (0 yields) - check if Response returned for short-circuiting
-					if (result.value) {
-						currentResponse = result.value;
-						// Short-circuit: stop processing remaining middleware
-						break;
-					}
-				} else {
-					// Generator yielded - save for later resumption
-					runningGenerators.push({generator, index: i});
-				}
-			} else {
-				// Function middleware - execute and check for short-circuit
-				const result = await (middleware as FunctionMiddleware)(
+		// Phase 1b: Execute route-scoped middleware "before" phases
+		if (!currentResponse) {
+			for (const middleware of routeMiddlewares) {
+				currentResponse = await this.#executeMiddleware(
+					middleware,
 					request,
 					context,
+					runningGenerators,
 				);
-				if (result) {
-					// Function middleware returned a Response - short-circuit
-					currentResponse = result;
-					break;
-				}
+				if (currentResponse) break; // Short-circuit
 			}
 		}
 
@@ -910,7 +1042,7 @@ export class Router {
 	 */
 	async #handleErrorThroughGenerators(
 		error: Error,
-		runningGenerators: Array<{generator: MiddlewareGenerator; index: number}>,
+		runningGenerators: Array<{generator: MiddlewareGenerator}>,
 	): Promise<Response> {
 		// Try error handling starting from the innermost middleware (reverse order)
 		for (let i = runningGenerators.length - 1; i >= 0; i--) {

@@ -12,7 +12,7 @@ describe("cors middleware", () => {
 			headers: {Origin: "https://example.com"},
 		});
 
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
 	});
 
@@ -26,7 +26,7 @@ describe("cors middleware", () => {
 			headers: {Origin: "https://example.com"},
 		});
 
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 		expect(response.status).toBe(204);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
 		expect(response.headers.get("Access-Control-Allow-Methods")).toContain(
@@ -43,7 +43,7 @@ describe("cors middleware", () => {
 		const allowed = new Request("http://localhost/api", {
 			headers: {Origin: "https://myapp.com"},
 		});
-		const allowedRes = await router.handler(allowed);
+		const allowedRes = await router.handle(allowed);
 		expect(allowedRes.headers.get("Access-Control-Allow-Origin")).toBe(
 			"https://myapp.com",
 		);
@@ -52,7 +52,7 @@ describe("cors middleware", () => {
 		const disallowed = new Request("http://localhost/api", {
 			headers: {Origin: "https://other.com"},
 		});
-		const disallowedRes = await router.handler(disallowed);
+		const disallowedRes = await router.handle(disallowed);
 		expect(disallowedRes.headers.get("Access-Control-Allow-Origin")).toBeNull();
 	});
 
@@ -64,7 +64,7 @@ describe("cors middleware", () => {
 		const req1 = new Request("http://localhost/api", {
 			headers: {Origin: "https://app1.com"},
 		});
-		const res1 = await router.handler(req1);
+		const res1 = await router.handle(req1);
 		expect(res1.headers.get("Access-Control-Allow-Origin")).toBe(
 			"https://app1.com",
 		);
@@ -72,7 +72,7 @@ describe("cors middleware", () => {
 		const req2 = new Request("http://localhost/api", {
 			headers: {Origin: "https://app2.com"},
 		});
-		const res2 = await router.handler(req2);
+		const res2 = await router.handle(req2);
 		expect(res2.headers.get("Access-Control-Allow-Origin")).toBe(
 			"https://app2.com",
 		);
@@ -86,7 +86,7 @@ describe("cors middleware", () => {
 		const allowed = new Request("http://localhost/api", {
 			headers: {Origin: "https://app.example.com"},
 		});
-		const allowedRes = await router.handler(allowed);
+		const allowedRes = await router.handle(allowed);
 		expect(allowedRes.headers.get("Access-Control-Allow-Origin")).toBe(
 			"https://app.example.com",
 		);
@@ -94,7 +94,7 @@ describe("cors middleware", () => {
 		const disallowed = new Request("http://localhost/api", {
 			headers: {Origin: "https://other.com"},
 		});
-		const disallowedRes = await router.handler(disallowed);
+		const disallowedRes = await router.handle(disallowed);
 		expect(disallowedRes.headers.get("Access-Control-Allow-Origin")).toBeNull();
 	});
 
@@ -107,7 +107,7 @@ describe("cors middleware", () => {
 			headers: {Origin: "https://myapp.com"},
 		});
 
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 		expect(response.headers.get("Access-Control-Allow-Credentials")).toBe(
 			"true",
 		);
@@ -123,7 +123,7 @@ describe("cors middleware", () => {
 		router.route("/api").get(() => new Response("ok"));
 
 		const request = new Request("http://localhost/api");
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 
 		// No CORS headers for same-origin
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
@@ -139,7 +139,7 @@ describe("cors middleware", () => {
 			headers: {Origin: "https://disallowed.com"},
 		});
 
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 		expect(response.status).toBe(403);
 	});
 
@@ -152,7 +152,7 @@ describe("cors middleware", () => {
 			headers: {Origin: "https://example.com"},
 		});
 
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 		expect(response.headers.get("Access-Control-Expose-Headers")).toBe(
 			"X-Custom-Header, X-Request-Id",
 		);
@@ -167,7 +167,7 @@ describe("cors middleware", () => {
 			headers: {Origin: "https://example.com"},
 		});
 
-		const response = await router.handler(request);
+		const response = await router.handle(request);
 		expect(response.headers.get("Vary")).toBe("Origin");
 	});
 });
