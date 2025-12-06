@@ -126,11 +126,10 @@
     },
     "packages/async-context": {
       "name": "@b9g/async-context",
-      "version": "0.1.4",
+      "version": "0.2.0-beta.0",
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
         "@types/node": "^20.0.0",
-        "bun-types": "latest",
       },
     },
     "packages/auth": {
@@ -204,25 +203,17 @@
     },
     "packages/http-errors": {
       "name": "@b9g/http-errors",
-      "version": "0.1.5",
+      "version": "0.2.0-beta.0",
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
-        "bun-types": "latest",
       },
     },
     "packages/match-pattern": {
       "name": "@b9g/match-pattern",
-      "version": "0.1.7",
+      "version": "0.2.0-beta.0",
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
-        "bun-types": "latest",
       },
-      "peerDependencies": {
-        "urlpattern-polyfill": "^10.0.0",
-      },
-      "optionalPeers": [
-        "urlpattern-polyfill",
-      ],
     },
     "packages/node-webworker": {
       "name": "@b9g/node-webworker",
@@ -860,10 +851,6 @@
     "get-source/source-map": ["source-map@0.6.1", "", {}, "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g=="],
 
     "rollup-plugin-inject/magic-string": ["magic-string@0.25.9", "", { "dependencies": { "sourcemap-codec": "^1.4.8" } }, "sha512-RmF0AsMzgt25qzqqLc1+MbHmhdx0ojF2Fvs4XnOqz2ZOBXzzkEwc/dJQZCYHAn7v1jbVOjAZfK8msRn4BxO4VQ=="],
-
-    "shovel-blog/@b9g/shovel": ["@b9g/shovel@root:", {}],
-
-    "shovel-echo/@b9g/shovel": ["@b9g/shovel@root:", {}],
 
     "shovel-echo/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
 

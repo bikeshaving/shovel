@@ -155,18 +155,6 @@ describe("Node Web Worker", () => {
 		});
 	});
 
-	test("should expose underlying Node.js worker", () => {
-		workerScript = join(tempDir, "simple-worker.js");
-		writeFileSync(workerScript, "// Simple worker");
-
-		const worker = new Worker(workerScript);
-
-		expect(worker.nodeWorker_).toBeDefined();
-		expect(typeof worker.nodeWorker_.postMessage).toBe("function");
-
-		worker.terminate();
-	});
-
 	test("should handle transferable objects", async () => {
 		workerScript = join(tempDir, "transfer-worker.js");
 		writeFileSync(

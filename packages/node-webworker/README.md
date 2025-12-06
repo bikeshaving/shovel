@@ -6,7 +6,7 @@ Minimal Web Worker shim for Node.js until native support arrives.
 
 Node.js lacks native Web Worker support, despite being a web standard since 2009. This package provides a minimal, reliable shim using Node.js `worker_threads` until native support is added.
 
-**🔗 Canonical Issue:** https://github.com/nodejs/node/issues/43583
+**Canonical Issue:** https://github.com/nodejs/node/issues/43583
 **Please 👍 and comment** on the issue to show demand for native Web Worker support!
 
 ## Installation
@@ -18,7 +18,7 @@ npm install @b9g/node-webworker
 ## Usage
 
 ```typescript
-import { Worker } from '@b9g/node-webworker';
+import {Worker} from '@b9g/node-webworker';
 
 // Create a worker (same API as Web Workers)
 const worker = new Worker('./worker.js', { type: 'module' });
@@ -32,7 +32,7 @@ worker.addEventListener('message', (event) => {
 worker.postMessage({ hello: 'world' });
 
 // Terminate when done
-await worker.terminate();
+worker.terminate();
 ```
 
 ## Exports
@@ -40,11 +40,8 @@ await worker.terminate();
 ### Classes
 
 - `Worker` - Web Worker implementation using Node.js worker_threads
-
-### Types
-
-- `MessageEvent` - Event type for worker messages
-- `ErrorEvent` - Event type for worker errors
+- `MessageEvent` - Event class for worker messages
+- `ErrorEvent` - Event class for worker errors
 
 ### Default Export
 
@@ -60,9 +57,9 @@ await worker.terminate();
 
 ## Limitations
 
-- **Transferable objects** - Limited support (logs warning)
 - **Node.js only** - Don't use this in browsers (they have native Web Workers)
-- **Basic API** - Only core Worker features, not full spec
+- **Module workers only** - Classic workers with `importScripts()` not supported
+- **Serialization differences** - Uses Node.js structured clone, not web's algorithm
 
 ## Deprecation Notice
 

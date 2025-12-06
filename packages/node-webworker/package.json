@@ -1,13 +1,10 @@
 {
   "name": "@b9g/node-webworker",
-  "version": "0.1.3",
+  "version": "0.2.0-beta.0",
   "description": "Minimal Web Worker shim for Node.js until native support arrives",
   "type": "module",
   "scripts": {
     "build": "libuild build --save",
-    "build:save": "libuild build --save",
-    "publish": "libuild publish",
-    "test": "bun test",
     "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "keywords": [
@@ -20,11 +17,9 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "deprecation": "This package will be deprecated when Node.js implements native Web Workers. See: https://github.com/nodejs/node/issues/43583",
   "dependencies": {},
   "devDependencies": {
     "@b9g/libuild": "^0.1.18",
-    "bun-types": "latest",
     "@types/node": "^18.0.0"
   },
   "module": "./dist/src/index.js",
@@ -42,12 +37,6 @@
     "./index.js": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
-    },
-    "./worker-wrapper": {
-      "import": "./dist/src/worker-wrapper.js"
-    },
-    "./worker-wrapper.js": {
-      "import": "./dist/src/worker-wrapper.js"
     }
   }
 }
