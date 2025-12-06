@@ -4,14 +4,9 @@ compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 [build]
-command = "bun run ../../dist/bin/cli.js build src/server.js --out dist --platform cloudflare"
+command = "bun run build"
 
-# Static assets served directly by Cloudflare under /assets/ path
+# Static assets served directly by Cloudflare
 [assets]
 directory = "dist/assets/"
 binding = "ASSETS"
-
-# R2 for assets (if needed)
-# [[r2_buckets]]
-# binding = "ASSETS"
-# bucket_name = "shovel-blog-assets"

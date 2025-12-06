@@ -1,0 +1,8 @@
+{
+  "caches": {
+    "admin": {
+      "provider": "NODE_ENV === production ? redis : memory",
+      "url": "REDIS_URL || redis://localhost:6379"
+    }
+  }
+}

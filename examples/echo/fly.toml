@@ -1,4 +1,4 @@
-app = "reqback"
+app = "echo-shovel"
 primary_region = "iad"
 
 [build]

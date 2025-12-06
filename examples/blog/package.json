@@ -1,31 +1,24 @@
 {
-  "name": "shovel-blog-app",
+  "name": "shovel-blog",
   "private": true,
   "version": "0.1.0",
-  "description": "Example Shovel blog app using cache-first architecture",
+  "description": "Example Shovel blog app for Cloudflare Workers",
   "type": "module",
   "scripts": {
-    "develop": "shovel develop src/server.js --port 3000",
-    "build": "shovel build src/server.js",
-    "start": "node dist/server.js",
-    "static": "shovel static src/server.js --out dist",
-    "preview": "cd dist && python3 -m http.server 3000"
+    "develop": "shovel develop src/server.ts --platform cloudflare",
+    "build": "shovel build src/server.ts --platform cloudflare",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@b9g/assets": "workspace:*",
     "@b9g/cache": "workspace:*",
     "@b9g/match-pattern": "workspace:*",
     "@b9g/platform": "workspace:*",
+    "@b9g/platform-cloudflare": "workspace:*",
     "@b9g/router": "workspace:*",
     "@b9g/shovel": "../.."
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^8.46.2",
-    "@typescript-eslint/parser": "^8.46.2",
-    "bun-types": "latest",
-    "eslint": "^9.38.0",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.4",
-    "prettier": "^3.6.2"
+    "wrangler": "^3.0.0"
   }
 }

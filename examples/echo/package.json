@@ -1,12 +1,12 @@
 {
-  "name": "shovel-reqback-node",
+  "name": "shovel-echo",
 	"private": true,
   "version": "1.0.0",
   "description": "HTTP request echo and debugging API - Shovel Node.js Example",
   "type": "module",
   "scripts": {
-    "develop": "shovel develop src/server.js --platform node",
-    "build": "shovel build src/server.js --platform node",
+    "develop": "shovel develop src/server.ts --platform node",
+    "build": "shovel build src/server.ts --platform node",
     "start": "shovel serve dist/server.js --platform node"
   },
   "dependencies": {

@@ -342,7 +342,7 @@ async function generateStaticSite() {
 				const request = new Request(`http://localhost:3000${route}`);
 
 				// Use our own router to generate the response
-				const response = await router.handler(request);
+				const response = await router.handle(request);
 
 				if (response.ok) {
 					const content = await response.text();
@@ -391,7 +391,7 @@ async function generateStaticSite() {
  */
 self.addEventListener("fetch", (event) => {
 	try {
-		const responsePromise = router.handler(event.request);
+		const responsePromise = router.handle(event.request);
 
 		// Add timeout to detect hanging promises
 		const timeoutPromise = new Promise((_, reject) => {

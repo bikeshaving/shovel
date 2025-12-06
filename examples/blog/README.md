@@ -1,27 +1,23 @@
-# Shovel Blog App
+# Shovel Blog
 
-A demo blog app showcasing Shovel's cache-first architecture and Django-inspired app patterns.
+A sample blog application built with Shovel for Cloudflare Workers.
+
+**Live at:** https://blog.shovel.run
 
 ## Features
 
-- **Cache-First Routing**: Every request goes through cache first for optimal performance
-- **Multiple Cache Strategies**: Separate caches for pages, API responses, and static files
-- **Static File Handling**: Django-style staticfiles with automatic optimization
-- **Universal Deployment**: Same code works for SSG, SSR, and SPA
+- **Cloudflare Workers** - Deployed to the edge
+- **Cache-First Architecture** - Fast by default with `@b9g/cache`
+- **Static Assets** - Content-hashed assets with `@b9g/assets`
+- **Router** - Universal routing with `@b9g/router`
 
-## Architecture
+## Packages Used
 
-```
-src/server.js       # Main application with router and caches
-src/assets/         # Static assets (CSS, images, etc.)
-```
-
-## Shovel Apps Used
-
-- **@b9g/router** - Universal request routing with middleware support
-- **@b9g/cache** - Multiple cache backends with TTL and LRU eviction
-- **@b9g/staticfiles** - Static file handling with content hashing
-- **@b9g/match-pattern** - Enhanced URLPattern with trailing slash normalization
+- `@b9g/platform-cloudflare` - Cloudflare Workers platform
+- `@b9g/router` - Request routing
+- `@b9g/cache` - Cache API
+- `@b9g/assets` - Static asset handling
+- `@b9g/match-pattern` - URLPattern matching
 
 ## Development
 
@@ -29,35 +25,29 @@ src/assets/         # Static assets (CSS, images, etc.)
 # Install dependencies
 bun install
 
-# Start development server (serves from source files)
+# Run development server (uses miniflare)
 bun run develop
 
-# Build for production (optimizes and hashes assets)
+# Build for production
 bun run build
 
-# Preview built site
-bun run preview
+# Deploy to Cloudflare
+bun run deploy
 ```
-
-## Cache Strategy
-
-- **Pages Cache**: Long-lived HTML pages with 5-10 minute TTL
-- **API Cache**: Short-lived API responses with 3 minute TTL
-- **Static Cache**: Long-term cached assets with content hashing
 
 ## Routes
 
 - `/` - Home page with blog posts
 - `/posts/:id` - Individual blog post pages
-- `/about` - About page with architecture info
+- `/about` - About page
 - `/api/posts` - JSON API endpoint
-- `/static/*` - Static assets (CSS, images, etc.)
+- `/static/*` - Static assets
 
-## How It Works
+## Project Structure
 
-1. **Development Mode**: Assets served directly from `src/` directory
-2. **Build Process**: ESBuild + staticfiles plugin processes assets
-3. **Production Mode**: Assets served from manifest with content hashing
-4. **Cache Layer**: All requests flow through appropriate cache first
-
-This demonstrates Shovel's Django-like app architecture where each `@b9g/*` package provides focused functionality that composes together seamlessly.
+```
+src/
+  server.ts    # Main application
+  assets/      # Static assets (CSS, images)
+wrangler.toml  # Cloudflare configuration
+```

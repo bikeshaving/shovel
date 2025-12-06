@@ -1,23 +1,19 @@
 app = "shovel-admin"
-primary_region = "ord"
+primary_region = "iad"
 
 [build]
+  command = "bun run build"
 
 [env]
+  PORT = "3000"
   NODE_ENV = "production"
-  DATABASE_PATH = "/data/admin.db"
 
 [http_service]
   internal_port = 3000
   force_https = true
-  auto_stop_machines = true
+  auto_stop_machines = "off"
   auto_start_machines = true
-  min_machines_running = 0
-  processes = ["app"]
-
-[mounts]
-  source = "admin_data"
-  destination = "/data"
+  min_machines_running = 1
 
 [[vm]]
   memory = "256mb"
