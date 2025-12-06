@@ -1,16 +1,4 @@
-/**
- * @b9g/router - Universal request router built on web standards
- *
- * Features:
- * - Pure Request/Response routing (works anywhere)
- * - Chainable route builder API
- * - Generator-based middleware with yield continuation
- * - Integration with URLPattern and MatchPattern for enhanced URL matching
- * - Cache-aware routing
- * TODO:
- * - Portable param matching
- * - Typechecking
- */
+/** @b9g/router - Universal request router built on web standards */
 
 import {
 	MatchPattern,
@@ -19,10 +7,10 @@ import {
 	type CompiledPattern,
 } from "@b9g/match-pattern";
 import {
+	HTTPError,
+	isHTTPError,
 	InternalServerError,
 	NotFound,
-	isHTTPError,
-	HTTPError,
 } from "@b9g/http-errors";
 
 // ============================================================================
@@ -49,8 +37,17 @@ export type Handler = (
 ) => Response | Promise<Response>;
 
 /**
+ * Function middleware signature
+ * Can modify request and context, and can return a Response to short-circuit
+ */
+export type FunctionMiddleware = (
+	request: Request,
+	context: RouteContext,
+) => Response | null | undefined | Promise<Response | null | undefined>;
+
+/**
  * Generator middleware signature - uses yield for continuation
- * Provides clean syntax and eliminates control flow bugs
+ * Can modify request, context, pass request to
  */
 export type GeneratorMiddleware = (
 	request: Request,
@@ -60,28 +57,10 @@ export type GeneratorMiddleware = (
 	| AsyncGenerator<Request, Response | null | undefined, Response>;
 
 /**
- * Function middleware signature - supports short-circuiting
- * Can modify request and context, and can return a Response to short-circuit
- * - Return Response: short-circuits, skipping remaining middleware and handler
- * - Return null/undefined: continues to next middleware (fallthrough)
- */
-export type FunctionMiddleware = (
-	request: Request,
-	context: RouteContext,
-) => Response | null | undefined | Promise<Response | null | undefined>;
-
-/**
  * Union type for all supported middleware types
  * Framework automatically detects type and executes appropriately
  */
 export type Middleware = GeneratorMiddleware | FunctionMiddleware;
-
-/**
- * Internal type for running generator instances
- */
-type MiddlewareGenerator =
-	| Generator<Request, Response | null | undefined, Response>
-	| AsyncGenerator<Request, Response | null | undefined, Response>;
 
 /**
  * HTTP methods supported by the router
@@ -118,23 +97,21 @@ export interface RouteMatch {
 	pattern: string;
 }
 
-// Internal types (not exported from main package)
-
 /**
- * Internal route entry stored by the router
+ * Route entry stored by the router
  */
-interface RouteEntry {
+export interface RouteEntry {
 	pattern: import("@b9g/match-pattern").MatchPattern;
 	method: string;
 	handler?: Handler;
 	name?: string;
-	middleware: Middleware[];
+	middlewares: Middleware[];
 }
 
 /**
  * Internal middleware entry stored by the router
  */
-interface MiddlewareEntry {
+export interface MiddlewareEntry {
 	middleware: Middleware;
 	/** If set, middleware only runs for paths matching this prefix */
 	pathPrefix?: string;
@@ -351,7 +328,7 @@ class RadixTreeExecutor {
 	/**
 	 * Match a URL against registered routes (returns RouteMatch info)
 	 */
-	matchUrl(url: string | URL): RouteMatch | null {
+	matchURL(url: string | URL): RouteMatch | null {
 		const urlObj =
 			typeof url === "string" ? new URL(url, "http://localhost") : url;
 		const pathname = urlObj.pathname;
@@ -455,24 +432,24 @@ class RadixTreeExecutor {
  *     .put(updateUserHandler)
  *     .delete(deleteUserHandler);
  */
-class RouteBuilder {
+export class RouteBuilder {
 	#router: Router;
 	#pattern: string;
 	#name?: string;
-	#middleware: Middleware[];
+	#middlewares: Middleware[];
 
 	constructor(router: Router, pattern: string, options?: RouteOptions) {
 		this.#router = router;
 		this.#pattern = pattern;
 		this.#name = options?.name;
-		this.#middleware = [];
+		this.#middlewares = [];
 	}
 
 	/**
 	 * Add route-scoped middleware that only runs when this pattern matches
 	 */
 	use(middleware: Middleware): RouteBuilder {
-		this.#middleware.push(middleware);
+		this.#middlewares.push(middleware);
 		return this;
 	}
 
@@ -485,7 +462,7 @@ class RouteBuilder {
 			this.#pattern,
 			handler,
 			this.#name,
-			this.#middleware,
+			this.#middlewares,
 		);
 		return this;
 	}
@@ -499,7 +476,7 @@ class RouteBuilder {
 			this.#pattern,
 			handler,
 			this.#name,
-			this.#middleware,
+			this.#middlewares,
 		);
 		return this;
 	}
@@ -513,7 +490,7 @@ class RouteBuilder {
 			this.#pattern,
 			handler,
 			this.#name,
-			this.#middleware,
+			this.#middlewares,
 		);
 		return this;
 	}
@@ -527,7 +504,7 @@ class RouteBuilder {
 			this.#pattern,
 			handler,
 			this.#name,
-			this.#middleware,
+			this.#middlewares,
 		);
 		return this;
 	}
@@ -541,7 +518,7 @@ class RouteBuilder {
 			this.#pattern,
 			handler,
 			this.#name,
-			this.#middleware,
+			this.#middlewares,
 		);
 		return this;
 	}
@@ -555,7 +532,7 @@ class RouteBuilder {
 			this.#pattern,
 			handler,
 			this.#name,
-			this.#middleware,
+			this.#middlewares,
 		);
 		return this;
 	}
@@ -569,7 +546,7 @@ class RouteBuilder {
 			this.#pattern,
 			handler,
 			this.#name,
-			this.#middleware,
+			this.#middlewares,
 		);
 		return this;
 	}
@@ -593,7 +570,7 @@ class RouteBuilder {
 				this.#pattern,
 				handler,
 				this.#name,
-				this.#middleware,
+				this.#middlewares,
 			);
 		});
 		return this;
@@ -605,25 +582,22 @@ class RouteBuilder {
  * Designed to work universally across all JavaScript runtimes
  */
 export class Router {
-	#routes: RouteEntry[];
-	#middlewares: MiddlewareEntry[];
+	readonly routes: RouteEntry[];
+	readonly middlewares: MiddlewareEntry[];
 	#executor: RadixTreeExecutor | null;
-	#dirty: boolean;
 
 	constructor() {
-		this.#routes = [];
-		this.#middlewares = [];
+		this.routes = [];
+		this.middlewares = [];
 		this.#executor = null;
-		this.#dirty = false;
 	}
 
 	/**
 	 * Ensure the executor is compiled and up to date
 	 */
 	#ensureCompiled(): RadixTreeExecutor {
-		if (this.#dirty || !this.#executor) {
-			this.#executor = new RadixTreeExecutor(this.#routes);
-			this.#dirty = false;
+		if (!this.#executor) {
+			this.#executor = new RadixTreeExecutor(this.routes);
 		}
 		return this.#executor;
 	}
@@ -651,7 +625,7 @@ export class Router {
 					"Invalid middleware type. Must be function or async generator function.",
 				);
 			}
-			this.#middlewares.push({
+			this.middlewares.push({
 				middleware,
 				pathPrefix: pathPrefixOrMiddleware,
 			});
@@ -662,9 +636,9 @@ export class Router {
 					"Invalid middleware type. Must be function or async generator function.",
 				);
 			}
-			this.#middlewares.push({middleware: pathPrefixOrMiddleware});
+			this.middlewares.push({middleware: pathPrefixOrMiddleware});
 		}
-		this.#dirty = true;
+		this.#executor = null;
 	}
 
 	/**
@@ -690,18 +664,18 @@ export class Router {
 		pattern: string,
 		handler?: Handler,
 		name?: string,
-		middleware: Middleware[] = [],
+		middlewares: Middleware[] = [],
 	): void {
 		const matchPattern = new MatchPattern(pattern);
 
-		this.#routes.push({
+		this.routes.push({
 			pattern: matchPattern,
 			method: method.toUpperCase(),
 			handler,
 			name,
-			middleware,
+			middlewares: middlewares,
 		});
-		this.#dirty = true;
+		this.#executor = null;
 	}
 
 	/**
@@ -711,7 +685,7 @@ export class Router {
 	 */
 	match(url: string | URL): RouteMatch | null {
 		const executor = this.#ensureCompiled();
-		return executor.matchUrl(url);
+		return executor.matchURL(url);
 	}
 
 	/**
@@ -736,7 +710,7 @@ export class Router {
 				}
 				handler = matchResult.handler;
 				context = matchResult.context;
-				routeMiddleware = matchResult.entry.middleware;
+				routeMiddleware = matchResult.entry.middlewares;
 			} else {
 				// No route found - use 404 handler and empty context
 				handler = async () => {
@@ -747,7 +721,7 @@ export class Router {
 
 			// Execute middleware chain with the handler
 			let response = await this.#executeMiddlewareStack(
-				this.#middlewares,
+				this.middlewares,
 				routeMiddleware,
 				request,
 				context,
@@ -771,20 +745,6 @@ export class Router {
 	}
 
 	/**
-	 * Get registered routes for debugging/introspection
-	 */
-	getRoutes(): RouteEntry[] {
-		return [...this.#routes];
-	}
-
-	/**
-	 * Get registered middleware for debugging/introspection
-	 */
-	getMiddlewares(): MiddlewareEntry[] {
-		return [...this.#middlewares];
-	}
-
-	/**
 	 * Mount a subrouter at a specific path prefix
 	 * All routes from the subrouter will be prefixed with the mount path
 	 *
@@ -802,7 +762,7 @@ export class Router {
 		const normalizedMountPath = this.#normalizeMountPath(mountPath);
 
 		// Get all routes from the subrouter
-		const subroutes = subrouter.getRoutes();
+		const subroutes = subrouter.routes;
 
 		// Add each subroute with the mount path prefix
 		for (const subroute of subroutes) {
@@ -813,17 +773,17 @@ export class Router {
 			);
 
 			// Add the route to this router
-			this.#routes.push({
+			this.routes.push({
 				pattern: new MatchPattern(mountedPattern),
 				method: subroute.method,
 				handler: subroute.handler,
 				name: subroute.name,
-				middleware: subroute.middleware,
+				middlewares: subroute.middlewares,
 			});
 		}
 
 		// Get all middleware from the subrouter and add with mount path prefix
-		const submiddlewares = subrouter.getMiddlewares();
+		const submiddlewares = subrouter.middlewares;
 		for (const submiddleware of submiddlewares) {
 			// Compose the mount path with any existing pathPrefix
 			// If subrouter middleware has pathPrefix "/inner", and we mount at "/outer",
@@ -838,13 +798,13 @@ export class Router {
 				// Subrouter global middleware becomes scoped to mount path
 				composedPrefix = normalizedMountPath;
 			}
-			this.#middlewares.push({
+			this.middlewares.push({
 				middleware: submiddleware.middleware,
 				pathPrefix: composedPrefix,
 			});
 		}
 
-		this.#dirty = true;
+		this.#executor = null;
 	}
 
 	/**
@@ -927,7 +887,7 @@ export class Router {
 		middleware: Middleware,
 		request: Request,
 		context: RouteContext,
-		runningGenerators: Array<{generator: MiddlewareGenerator}>,
+		runningGenerators: Array<{generator: ReturnType<GeneratorMiddleware>}>,
 	): Promise<Response | null> {
 		if (this.#isGeneratorMiddleware(middleware)) {
 			const generator = (middleware as GeneratorMiddleware)(request, context);
@@ -964,7 +924,9 @@ export class Router {
 		context: RouteContext,
 		handler: Handler,
 	): Promise<Response> {
-		const runningGenerators: Array<{generator: MiddlewareGenerator}> = [];
+		const runningGenerators: Array<{
+			generator: ReturnType<GeneratorMiddleware>;
+		}> = [];
 		let currentResponse: Response | null = null;
 
 		// Extract pathname from request URL for prefix matching
@@ -1042,7 +1004,7 @@ export class Router {
 	 */
 	async #handleErrorThroughGenerators(
 		error: Error,
-		runningGenerators: Array<{generator: MiddlewareGenerator}>,
+		runningGenerators: Array<{generator: ReturnType<GeneratorMiddleware>}>,
 	): Promise<Response> {
 		// Try error handling starting from the innermost middleware (reverse order)
 		for (let i = runningGenerators.length - 1; i >= 0; i--) {
@@ -1068,17 +1030,6 @@ export class Router {
 
 		// No generator handled the error
 		throw error;
-	}
-
-	/**
-	 * Get route statistics
-	 */
-	getStats() {
-		return {
-			routeCount: this.#routes.length,
-			middlewareCount: this.#middlewares.length,
-			compiled: !this.#dirty && this.#executor !== null,
-		};
 	}
 
 	/**
@@ -1125,8 +1076,8 @@ export type TrailingSlashMode = "strip" | "add";
  * ```
  */
 export function trailingSlash(mode: TrailingSlashMode): FunctionMiddleware {
-	return (request: Request, _context: RouteContext) => {
-		const url = new URL(request.url);
+	return (req: Request) => {
+		const url = new URL(req.url);
 		const pathname = url.pathname;
 
 		// Skip root path - "/" is valid either way

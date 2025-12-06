@@ -5,8 +5,6 @@ describe("Router", () => {
 	test("can create a router instance", () => {
 		const router = new Router();
 		expect(router).toBeDefined();
-		expect(router.getStats().routeCount).toBe(0);
-		expect(router.getStats().middlewareCount).toBe(0);
 	});
 
 	test("can register routes with chaining API", () => {
@@ -14,8 +12,7 @@ describe("Router", () => {
 		const handler = async () => new Response("Hello");
 
 		router.route("/api/users/:id").get(handler).post(handler);
-
-		expect(router.getStats().routeCount).toBe(2);
+		expect(router.routes.length).toBe(2);
 	});
 
 	test("can match GET requests", async () => {
@@ -74,7 +71,7 @@ describe("Middleware Detection", () => {
 		}
 
 		router.use(generatorMiddleware);
-		expect(router.getStats().middlewareCount).toBe(1);
+		expect(router.middlewares.length).toBe(1);
 	});
 
 	test("detects regular async functions as function middleware", () => {
@@ -85,7 +82,7 @@ describe("Middleware Detection", () => {
 		}
 
 		router.use(functionMiddleware);
-		expect(router.getStats().middlewareCount).toBe(1);
+		expect(router.middlewares.length).toBe(1);
 	});
 
 	test("detects regular functions as function middleware", () => {
@@ -96,7 +93,7 @@ describe("Middleware Detection", () => {
 		}
 
 		router.use(syncMiddleware);
-		expect(router.getStats().middlewareCount).toBe(1);
+		expect(router.middlewares.length).toBe(1);
 	});
 
 	test("throws error for invalid middleware types", () => {

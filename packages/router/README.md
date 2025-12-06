@@ -1,55 +1,46 @@
 # @b9g/router
 
-**Universal request router for ServiceWorker applications. Built on web standards with generator-based middleware.**
+**Universal request router built on web standards with generator-based middleware.**
 
 ## Features
 
-- **ServiceWorker Compatible**: Designed for ServiceWorker `fetch` event handling
+- **Web Standards**: Built on URLPattern-like syntax, Request, and Response APIs
 - **Generator Middleware**: Uses `yield` for flow control (no Express-style `next()`)
-- **Web Standards**: Built on URLPattern, Request, and Response APIs
 - **Universal**: Same code runs in browsers, Node.js, Bun, and edge platforms
 - **Simple Context**: Route parameters and middleware-extensible context
+- **Router Composition**: Mount subrouters with path prefixes
 
 ## Installation
 
 ```bash
-npm install @b9g/router @b9g/match-pattern
+npm install @b9g/router
 ```
 
 ## Quick Start
 
 ```javascript
-import { Router } from '@b9g/router';
+import {Router} from '@b9g/router';
 
 const router = new Router();
 
 // Simple route
-router.get('/hello', () => new Response('Hello World!'));
+router.route('/hello').get(() => new Response('Hello World!'));
 
 // Route with parameters
-router.get('/posts/:id', (request, context) => {
-  const { id } = context.params;
-  return Response.json({ id, title: `Post ${id}` });
+router.route('/posts/:id').get((request, context) => {
+  const {id} = context.params;
+  return Response.json({id, title: `Post ${id}`});
 });
 
 // Handle request
-const response = await router.handler(request);
+const response = await router.handle(request);
 ```
 
 ## Middleware
 
-The router supports generator-based middleware with `yield` for clean flow control:
-
+The router supports function and generator-based middleware with `yield` for clean flow control:
 ```javascript
-// Global middleware using generator pattern
-router.use(async function* (request, context) {
-  console.log(`${request.method} ${request.url}`);
-  const response = yield request;
-  console.log(`${response.status}`);
-  return response;
-});
-
-// Function middleware (can short-circuit)
+// Function middleware
 router.use(async (request, context) => {
   if (!request.headers.get('Authorization')) {
     return new Response('Unauthorized', { status: 401 });
@@ -57,68 +48,15 @@ router.use(async (request, context) => {
   // Return null/undefined to continue to next middleware
   return null;
 });
-```
 
-## Caching
-
-The router doesn't provide built-in cache integration. For caching, use the global `caches` API directly in your handlers:
-
-```javascript
-router.get('/api/posts/:id', async (request, context) => {
-  // Use global caches API
-  const cache = await caches.open('api-v1');
-
-  const cached = await cache.match(request);
-  if (cached) return cached;
-
-  const post = await db.posts.get(context.params.id);
-  const response = Response.json(post);
-
-  await cache.put(request, response.clone());
+// Generator middleware
+router.use(async function* (request, context) {
+  console.log(`${request.method} ${request.url}`);
+  const response = yield request;
+  console.log(`${response.status}`);
   return response;
 });
 ```
-
-Or implement caching as middleware:
-
-```javascript
-// Cache middleware
-async function* cacheMiddleware(request, context) {
-  if (request.method !== 'GET') {
-    return yield request;
-  }
-
-  const cache = await caches.open('pages-v1');
-  const cached = await cache.match(request);
-  if (cached) return cached;
-
-  const response = yield request;
-
-  if (response.ok) {
-    await cache.put(request, response.clone());
-  }
-
-  return response;
-}
-
-router.use(cacheMiddleware);
-```
-
-## Exports
-
-### Classes
-
-- `Router` - Request router with pattern matching and middleware support
-
-### Types
-
-- `RouteContext` - Context object passed to handlers with params and middleware-added properties
-- `Handler` - Route handler function type `(request, context) => Response | Promise<Response>`
-- `GeneratorMiddleware` - Generator-based middleware type using `yield`
-- `FunctionMiddleware` - Simple function middleware type
-- `Middleware` - Union of GeneratorMiddleware | FunctionMiddleware
-- `HTTPMethod` - HTTP method string literal type
-- `RouteConfig` - Route configuration object
 
 ## API Reference
 
@@ -143,17 +81,6 @@ router.route('/api/posts/:id')
   .delete(handler);
 ```
 
-##### HTTP Method Shortcuts
-
-```javascript
-router.get(pattern, handler)
-router.post(pattern, handler)
-router.put(pattern, handler)
-router.delete(pattern, handler)
-router.patch(pattern, handler)
-router.head(pattern, handler)
-router.options(pattern, handler)
-```
 
 ##### `use(middleware)`
 
@@ -163,12 +90,58 @@ Add global middleware.
 router.use(loggingMiddleware);
 ```
 
-##### `handler(request): Promise<Response>`
+##### `handle(request): Promise<Response>`
 
-Bound handler function for processing requests.
+Handle an incoming request and return a response.
 
 ```javascript
-const response = await router.handler(request);
+const response = await router.handle(request);
+```
+
+##### `mount(path, subrouter)`
+
+Mount a subrouter at a specific path prefix.
+
+```javascript
+const apiRouter = new Router();
+apiRouter.route('/users').get(handler);
+
+const mainRouter = new Router();
+mainRouter.mount('/api/v1', apiRouter);
+// Routes become: /api/v1/users
+```
+
+##### `match(url): RouteMatch | null`
+
+Match a URL against registered routes without executing handlers.
+
+```javascript
+const match = router.match(new URL('https://example.com/api/users'));
+if (match) {
+  console.log(match.params, match.methods);
+}
+```
+
+#### Properties
+
+##### `routes: RouteEntry[]`
+
+Read-only array of registered routes for introspection.
+
+```javascript
+router.routes.forEach(route => {
+  console.log(route.pattern, route.method);
+});
+```
+
+##### `middlewares: MiddlewareEntry[]`
+
+Read-only array of registered middleware for introspection.
+
+```javascript
+router.middlewares.forEach(mw => {
+  console.log(mw.pathPrefix);
+});
 ```
 
 ### Context Object
@@ -198,20 +171,20 @@ router.use(async function* (request, context) {
 ```javascript
 const router = new Router();
 
-router.get('/api/health', () =>
-  Response.json({ status: 'ok' })
+router.route('/api/health').get(() =>
+  Response.json({status: 'ok'})
 );
 
-router.get('/api/posts', async () => {
-  const posts = await db.posts.findAll();
-  return Response.json(posts);
-});
-
-router.post('/api/posts', async (request) => {
-  const data = await request.json();
-  const post = await db.posts.create(data);
-  return Response.json(post, { status: 201 });
-});
+router.route('/api/posts')
+  .get(async () => {
+    const posts = await db.posts.findAll();
+    return Response.json(posts);
+  })
+  .post(async (request) => {
+    const data = await request.json();
+    const post = await db.posts.create(data);
+    return Response.json(post, {status: 201});
+  });
 ```
 
 ### Authentication Middleware
@@ -229,7 +202,7 @@ router.use(async function* (request, context) {
 });
 
 // Protected route
-router.get('/api/profile', async (request, context) => {
+router.route('/api/profile').get(async (request, context) => {
   if (!context.user) {
     return new Response('Unauthorized', { status: 401 });
   }
@@ -242,13 +215,70 @@ router.get('/api/profile', async (request, context) => {
 ```javascript
 // API subrouter
 const apiRouter = new Router();
-apiRouter.get('/users', getUsersHandler);
-apiRouter.get('/posts', getPostsHandler);
+apiRouter.route('/users').get(getUsersHandler);
+apiRouter.route('/posts').get(getPostsHandler);
 
 // Main router
 const mainRouter = new Router();
 mainRouter.mount('/api/v1', apiRouter);
 // Routes become: /api/v1/users, /api/v1/posts
+```
+
+## Exports
+
+### Classes
+
+- `Router` - Main router class
+- `RouteBuilder` - Fluent API for defining routes (returned by `router.route()`)
+
+### Types
+
+```typescript
+// Handler and middleware types
+type Handler = (request: Request, context: RouteContext) => Response | Promise<Response>
+type FunctionMiddleware = (request: Request, context: RouteContext) => Response | null | undefined | Promise<Response | null | undefined>
+type GeneratorMiddleware = (request: Request, context: RouteContext) => Generator<Request, Response | null | undefined, Response> | AsyncGenerator<Request, Response | null | undefined, Response>
+type Middleware = GeneratorMiddleware | FunctionMiddleware
+
+// Context and route types
+interface RouteContext {
+  params: Record<string, string>
+}
+
+interface RouteOptions {
+  name?: string
+}
+
+interface RouteMatch {
+  params: Record<string, string>
+  methods: string[]
+}
+
+interface RouteEntry {
+  pattern: MatchPattern
+  method: string
+  handler: Handler
+  name?: string
+  middleware: Middleware[]
+}
+
+interface MiddlewareEntry {
+  middleware: Middleware
+  pathPrefix?: string
+}
+
+// HTTP methods
+type HTTPMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS"
+
+// Utility types
+type TrailingSlashMode = "strip" | "add"
+```
+
+### Utilities
+
+```typescript
+// Trailing slash middleware
+function trailingSlash(mode: TrailingSlashMode): FunctionMiddleware
 ```
 
 ## License
