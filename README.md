@@ -136,7 +136,6 @@ Assets are served via the platform's best option:
 | `@b9g/match-pattern` | URLPattern with extensions (100% WPT) |
 | `@b9g/async-context` | AsyncContext.Variable implementation |
 | `@b9g/http-errors` | Standard HTTP error classes |
-| `@b9g/auth` | OAuth2/PKCE and CORS middleware |
 | `@b9g/assets` | Static asset handling |
 
 ## License

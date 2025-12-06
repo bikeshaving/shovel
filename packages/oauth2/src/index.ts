@@ -1,6 +1,11 @@
 /**
- * OAuth2 Client with PKCE support
- * Universal authentication for ServiceWorker applications
+ * @b9g/oauth2 - Universal OAuth2 client with PKCE support
+ *
+ * Main export: OAuth2Client
+ * Additional exports available from subpaths:
+ * - PKCE utilities: import from "@b9g/oauth2/pkce"
+ * - Provider presets: import from "@b9g/oauth2/providers"
+ * - Router middleware: import from "@b9g/oauth2/middleware"
  */
 
 import {
@@ -250,4 +255,44 @@ export class OAuth2Client {
 			scope: data.scope,
 		};
 	}
+}
+
+// ============================================================================
+// SESSION HELPERS
+// ============================================================================
+
+/**
+ * Helper to store session token in cookie
+ */
+export async function createSession(
+	cookieStore: any,
+	tokens: OAuth2Tokens,
+	options?: {
+		sessionCookieName?: string;
+		maxAge?: number;
+	},
+): Promise<void> {
+	const sessionCookieName = options?.sessionCookieName || "session";
+	const maxAge = options?.maxAge || tokens.expiresIn || 3600;
+
+	await cookieStore.set({
+		name: sessionCookieName,
+		value: tokens.accessToken,
+		path: "/",
+		sameSite: "lax",
+		expires: Date.now() + maxAge * 1000,
+	});
+}
+
+/**
+ * Helper to clear session cookie
+ */
+export async function clearSession(
+	cookieStore: any,
+	options?: {
+		sessionCookieName?: string;
+	},
+): Promise<void> {
+	const sessionCookieName = options?.sessionCookieName || "session";
+	await cookieStore.delete(sessionCookieName);
 }

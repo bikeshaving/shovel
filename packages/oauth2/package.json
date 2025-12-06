@@ -1,7 +1,8 @@
 {
-  "name": "@b9g/auth",
-  "version": "0.1.1",
-  "description": "Universal authentication for ServiceWorker applications with OAuth2/PKCE support",
+  "name": "@b9g/oauth2",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Universal OAuth2 client with PKCE support for web applications",
   "type": "module",
   "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -11,14 +12,6 @@
       "import": "./dist/src/index.js"
     },
     "./package.json": "./dist/package.json",
-    "./index": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
-    "./index.js": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
     "./middleware": {
       "types": "./dist/src/middleware.d.ts",
       "import": "./dist/src/middleware.js"
@@ -26,14 +19,6 @@
     "./middleware.js": {
       "types": "./dist/src/middleware.d.ts",
       "import": "./dist/src/middleware.js"
-    },
-    "./oauth2": {
-      "types": "./dist/src/oauth2.d.ts",
-      "import": "./dist/src/oauth2.js"
-    },
-    "./oauth2.js": {
-      "types": "./dist/src/oauth2.d.ts",
-      "import": "./dist/src/oauth2.js"
     },
     "./pkce": {
       "types": "./dist/src/pkce.d.ts",
@@ -50,6 +35,14 @@
     "./providers.js": {
       "types": "./dist/src/providers.d.ts",
       "import": "./dist/src/providers.js"
+    },
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
     }
   },
   "files": [
@@ -58,16 +51,14 @@
   ],
   "scripts": {
     "build": "libuild build --save",
-    "test": "bun test",
     "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "keywords": [
-    "auth",
     "oauth2",
     "pkce",
     "authentication",
-    "serviceworker",
-    "universal"
+    "openid",
+    "shovel"
   ],
   "author": "b9g",
   "license": "MIT",

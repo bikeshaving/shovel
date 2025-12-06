@@ -1,6 +1,8 @@
-# @b9g/auth
+# @b9g/oauth2
 
-Authentication and access control middleware for ServiceWorker applications.
+OAuth2 middleware for ServiceWorker applications.
+
+WORK IN PROGRESS (do not use)
 
 ## Features
 
