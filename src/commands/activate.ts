@@ -2,6 +2,7 @@ import {DEFAULTS} from "../utils/config.js";
 import {getLogger} from "@logtape/logtape";
 import * as Platform from "@b9g/platform";
 import type {ProcessedShovelConfig} from "../utils/config.js";
+import type {PlatformESBuildConfig} from "@b9g/platform";
 import * as ESBuild from "esbuild";
 import {resolve, join} from "path";
 import {mkdir} from "fs/promises";
@@ -24,12 +25,14 @@ export async function activateCommand(
 		logger.debug("Platform: {platform}", {platform: platformName});
 		logger.debug("Worker count: {workerCount}", {workerCount});
 
+		// Create platform first to get esbuild config
+		const platformInstance = await Platform.createPlatform(platformName);
+		const platformESBuild = platformInstance.getESBuildConfig();
+
 		// Build the entrypoint first (like develop/build commands do)
 		// This processes asset imports via the assetsPlugin
 		logger.info("Building ServiceWorker for activation");
-		const builtEntrypoint = await buildForActivate(entrypoint);
-
-		const platformInstance = await Platform.createPlatform(platformName);
+		const builtEntrypoint = await buildForActivate(entrypoint, platformESBuild);
 
 		logger.info("Activating ServiceWorker", {});
 
@@ -61,7 +64,10 @@ export async function activateCommand(
  * Build the entrypoint for activate command
  * Returns the path to the built file
  */
-async function buildForActivate(entrypoint: string) {
+async function buildForActivate(
+	entrypoint: string,
+	platformESBuildConfig: PlatformESBuildConfig,
+) {
 	const entryPath = resolve(entrypoint);
 	const outputDir = resolve("dist");
 	const serverDir = join(outputDir, "server");
@@ -78,16 +84,19 @@ async function buildForActivate(entrypoint: string) {
 
 	const outfile = join(serverDir, "server.js");
 
+	// Use platform-specific externals
+	const external = platformESBuildConfig.external ?? ["node:*"];
+
 	const buildConfig: ESBuild.BuildOptions = {
 		entryPoints: [entryPath],
 		bundle: true,
 		format: "esm",
 		target: "es2022",
-		platform: "node",
+		platform: platformESBuildConfig.platform ?? "node",
 		outfile,
 		absWorkingDir: projectRoot,
 		mainFields: ["module", "main"],
-		conditions: ["import", "module"],
+		conditions: platformESBuildConfig.conditions ?? ["import", "module"],
 		nodePaths: [getNodeModulesPath()],
 		plugins: [
 			importMetaPlugin(),
@@ -101,7 +110,8 @@ async function buildForActivate(entrypoint: string) {
 				},
 			}),
 		],
-		external: ["node:*"],
+		define: platformESBuildConfig.define ?? {},
+		external,
 	};
 
 	// Apply JSX configuration

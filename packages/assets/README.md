@@ -228,7 +228,7 @@ const response = await middleware(request);
 
 - `assets(config?)` - Create middleware for serving static assets (from `@b9g/assets/middleware`)
 - `getMimeType(path)` - Get MIME type for file extension
-- `assetsPlugin(options?)` - Esbuild plugin for asset handling
+- `assetsPlugin(options?)` - ESBuild plugin for asset handling
 
 ### Types
 

@@ -31,6 +31,7 @@ export async function developCommand(
 			port: parseInt(options.port || String(DEFAULTS.SERVER.PORT), 10),
 			host: options.host || DEFAULTS.SERVER.HOST,
 		});
+		const platformESBuildConfig = platformInstance.getESBuildConfig();
 
 		logger.info("Starting development server");
 		logger.info("Workers: {workerCount}", {workerCount});
@@ -44,6 +45,7 @@ export async function developCommand(
 		const watcher = new Watcher({
 			entrypoint,
 			outDir,
+			platformESBuildConfig: platformESBuildConfig,
 			onBuild: async (success, builtEntrypoint) => {
 				if (success && serviceWorker) {
 					logger.info("Reloading Workers with {entrypoint}", {

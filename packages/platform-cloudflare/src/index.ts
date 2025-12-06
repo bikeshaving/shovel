@@ -20,7 +20,7 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 	EntryWrapperOptions,
-	PlatformEsbuildConfig,
+	PlatformESBuildConfig,
 } from "@b9g/platform";
 import {CustomCacheStorage} from "@b9g/cache";
 import {getLogger} from "@logtape/logtape";
@@ -234,7 +234,7 @@ export default { fetch: createFetchHandler(registration) };
 	 * is needed. The nodejs_compat flag enables node:* built-in modules at runtime,
 	 * so we externalize them during bundling.
 	 */
-	getEsbuildConfig(): PlatformEsbuildConfig {
+	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "browser",
 			conditions: ["worker", "browser"],

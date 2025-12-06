@@ -36,7 +36,8 @@ export const DEFAULTS = {
  * Regex to detect if a string looks like a config expression
  * Matches: operators (||, ??, &&, ===, !==, ==, !=, ?, :, !) or ALL_CAPS env vars
  */
-const EXPRESSION_PATTERN = /(\|\||\?\?|&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/;
+const EXPRESSION_PATTERN =
+	/(\|\||\?\?|&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/;
 
 /**
  * Get environment variables from import.meta.env or process.env
@@ -1011,15 +1012,14 @@ export function generateConfigModule(
 	};
 
 	// Process a sink config, adding factory placeholder
-	const processSink = (sink: SinkConfig): SinkConfig & {factory?: string} => {
+	// Note: factory is a string placeholder during code generation, becomes a function at runtime
+	const processSink = (sink: SinkConfig): Record<string, unknown> => {
 		const factoryPlaceholder = processSinkProvider(String(sink.provider));
 		return {...sink, factory: factoryPlaceholder};
 	};
 
 	// Process sinks array
-	const processSinks = (
-		sinks: SinkConfig[],
-	): Array<SinkConfig & {factory?: string}> => {
+	const processSinks = (sinks: SinkConfig[]): Record<string, unknown>[] => {
 		return sinks.map(processSink);
 	};
 

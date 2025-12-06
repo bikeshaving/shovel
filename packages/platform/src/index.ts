@@ -124,9 +124,9 @@ export interface EntryWrapperOptions {
 }
 
 /**
- * Esbuild configuration subset that platforms can customize
+ * ESBuild configuration subset that platforms can customize
  */
-export interface PlatformEsbuildConfig {
+export interface PlatformESBuildConfig {
 	/** Target platform: "node" or "browser" */
 	platform?: "node" | "browser" | "neutral";
 	/** Export conditions for package.json resolution */
@@ -200,7 +200,7 @@ export interface Platform {
 	 * Returns partial esbuild config that the CLI merges with common settings.
 	 * Includes platform target, conditions, externals, and defines.
 	 */
-	getEsbuildConfig(): PlatformEsbuildConfig;
+	getESBuildConfig(): PlatformESBuildConfig;
 }
 
 // ============================================================================
@@ -404,7 +404,7 @@ export abstract class BasePlatform implements Platform {
 	 * Get platform-specific esbuild configuration
 	 * Subclasses should override to provide platform-specific config
 	 */
-	abstract getEsbuildConfig(): PlatformEsbuildConfig;
+	abstract getESBuildConfig(): PlatformESBuildConfig;
 }
 
 // ============================================================================

@@ -4,6 +4,7 @@
  */
 
 import * as ESBuild from "esbuild";
+import {builtinModules} from "node:module";
 import {resolve, join} from "path";
 import {mkdir} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
@@ -12,6 +13,7 @@ import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
 import {findProjectRoot} from "./project.js";
 import {loadRawConfig, generateConfigModule} from "./config.js";
 import {getLogger} from "@logtape/logtape";
+import type {PlatformESBuildConfig} from "@b9g/platform";
 
 const logger = getLogger(["build"]);
 
@@ -70,7 +72,7 @@ import "@b9g/platform/worker";
 		target: "es2022",
 		platform: "node",
 		outfile: workerDestPath,
-		external: ["node:*"],
+		external: ["node:*", ...builtinModules],
 		plugins: [createConfigPlugin(projectRoot)],
 	});
 
@@ -82,6 +84,8 @@ export interface WatcherOptions {
 	entrypoint: string;
 	/** Output directory */
 	outDir: string;
+	/** Platform-specific esbuild configuration */
+	platformESBuildConfig: PlatformESBuildConfig;
 	/** Callback when build completes - entrypoint is the hashed output path */
 	onBuild?: (success: boolean, entrypoint: string) => void;
 }
@@ -130,17 +134,22 @@ export class Watcher {
 			this.#initialBuildResolve = resolve;
 		});
 
+		// Use platform-specific esbuild configuration
+		const platformESBuildConfig = this.#options.platformESBuildConfig;
+		const external = platformESBuildConfig.external ?? ["node:*"];
+
 		// Build options for esbuild context
 		const buildOptions: ESBuild.BuildOptions = {
 			entryPoints: [entryPath],
 			bundle: true,
 			format: "esm",
 			target: "es2022",
-			platform: "node",
+			platform: platformESBuildConfig.platform ?? "node",
 			outdir: `${outputDir}/server`,
 			entryNames: "[name]-[hash]",
 			metafile: true,
 			absWorkingDir: this.#projectRoot,
+			conditions: platformESBuildConfig.conditions ?? ["import", "module"],
 			plugins: [
 				importMetaPlugin(),
 				assetsPlugin({
@@ -189,6 +198,37 @@ export class Watcher {
 								);
 							}
 
+							// Check for unexpected externals
+							if (result.metafile) {
+								const hasNodeWildcard = external.includes("node:*");
+								const allowedSet = new Set(external);
+								const unexpectedExternals: string[] = [];
+
+								for (const path of Object.keys(result.metafile.inputs)) {
+									if (!path.startsWith("<external>:")) continue;
+									const moduleName = path.slice("<external>:".length);
+									const isAllowed =
+										allowedSet.has(moduleName) ||
+										(hasNodeWildcard && moduleName.startsWith("node:")) ||
+										builtinModules.includes(moduleName);
+									if (!isAllowed && !unexpectedExternals.includes(moduleName)) {
+										unexpectedExternals.push(moduleName);
+									}
+								}
+
+								if (unexpectedExternals.length > 0) {
+									success = false;
+									for (const ext of unexpectedExternals) {
+										logger.error("Unexpected external import: {module}", {
+											module: ext,
+										});
+									}
+									logger.error(
+										"These modules are not bundled and won't be available at runtime.",
+									);
+								}
+							}
+
 							// Extract output path from metafile
 							let outputPath = "";
 							if (result.metafile) {
@@ -221,6 +261,8 @@ export class Watcher {
 					},
 				},
 			],
+			define: platformESBuildConfig.define ?? {},
+			external,
 			sourcemap: "inline",
 			minify: false,
 			treeShaking: true,

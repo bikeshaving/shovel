@@ -4,6 +4,7 @@
  * Provides hot reloading, ESBuild integration, and optimized caching for Node.js environments.
  */
 
+import {builtinModules} from "node:module";
 import {
 	BasePlatform,
 	type PlatformConfig,
@@ -13,7 +14,7 @@ import {
 	type ServiceWorkerOptions,
 	type ServiceWorkerInstance,
 	type EntryWrapperOptions,
-	type PlatformEsbuildConfig,
+	type PlatformESBuildConfig,
 	ServiceWorkerPool,
 	SingleThreadedRuntime,
 	CustomLoggerStorage,
@@ -514,10 +515,10 @@ export class NodePlatform extends BasePlatform {
 	 * Note: Node.js doesn't support import.meta.env natively, so we alias it
 	 * to process.env for compatibility with code that uses Vite-style env access.
 	 */
-	getEsbuildConfig(): PlatformEsbuildConfig {
+	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "node",
-			external: ["node:*"],
+			external: ["node:*", ...builtinModules],
 			define: {
 				// Node.js doesn't support import.meta.env, alias to process.env
 				"import.meta.env": "process.env",

@@ -1158,6 +1158,7 @@ self.addEventListener("fetch", (event) => {
 // =======================
 
 import {Watcher} from "../src/utils/watcher.ts";
+import * as Platform from "@b9g/platform";
 import {existsSync} from "fs";
 
 test(
@@ -1194,9 +1195,15 @@ test(
 			const originalCwd = process.cwd();
 			process.chdir(fixtureDir);
 
+			// Create platform for Watcher
+			const platform = await Platform.createPlatform("bun");
+			const platformESBuildConfig = platform.getESBuildConfig();
+
 			const watcher = new Watcher({
 				entrypoint: "app.ts",
 				outDir: "dist",
+				platform,
+				platformESBuildConfig,
 				onBuild: async (success, newEntrypoint) => {
 					onBuildCalled = true;
 					receivedEntrypoint = newEntrypoint;

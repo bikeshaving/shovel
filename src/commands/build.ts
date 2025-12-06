@@ -4,6 +4,7 @@
  */
 
 import * as ESBuild from "esbuild";
+import {builtinModules} from "node:module";
 import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile} from "fs/promises";
 import {assetsPlugin} from "@b9g/assets/plugin";
@@ -51,6 +52,52 @@ function validateDynamicImports(
 			`Build failed (${context}): Non-analyzable dynamic imports found:\n${locations}\n\n` +
 				`Dynamic imports must use literal strings, not variables.\n` +
 				`For config-driven providers, ensure they are registered in shovel.json.`,
+		);
+	}
+}
+
+/**
+ * Validate that all external imports are expected (node builtins).
+ * Unexpected externals indicate missing dependencies that will fail at runtime.
+ */
+function validateExternals(
+	result: ESBuild.BuildResult,
+	allowedExternals: string[],
+	context: string,
+): void {
+	if (!result.metafile) return;
+
+	// Build a set of allowed patterns
+	const allowedSet = new Set(allowedExternals);
+	const hasNodeWildcard = allowedExternals.includes("node:*");
+
+	// Check each input for external imports
+	const unexpectedExternals: string[] = [];
+
+	for (const path of Object.keys(result.metafile.inputs)) {
+		// Skip non-external inputs
+		if (!path.startsWith("<external>:")) continue;
+
+		// Extract the module name (remove "<external>:" prefix)
+		const moduleName = path.slice("<external>:".length);
+
+		// Check if it's allowed
+		const isAllowed =
+			allowedSet.has(moduleName) ||
+			(hasNodeWildcard && moduleName.startsWith("node:")) ||
+			builtinModules.includes(moduleName);
+
+		if (!isAllowed && !unexpectedExternals.includes(moduleName)) {
+			unexpectedExternals.push(moduleName);
+		}
+	}
+
+	if (unexpectedExternals.length > 0) {
+		const externals = unexpectedExternals.map((e) => `  - ${e}`).join("\n");
+		throw new Error(
+			`Build failed (${context}): Unexpected external imports found:\n${externals}\n\n` +
+				`These modules are not bundled and won't be available at runtime.\n` +
+				`Either bundle them or add them to the platform's external list.`,
 		);
 	}
 }
@@ -133,6 +180,10 @@ export async function buildForProduction({
 
 	// Validate no non-bundleable dynamic imports (would fail at runtime)
 	validateDynamicImports(result, "main bundle");
+
+	// Validate no unexpected externals that would fail at runtime
+	const external = (buildConfig.external as string[]) ?? ["node:*"];
+	validateExternals(result, external, "main bundle");
 
 	if (verbose && result.metafile) {
 		await logBundleAnalysis(result.metafile);
@@ -248,21 +299,20 @@ async function createBuildConfig({
 }) {
 	// Create platform instance to get configuration
 	const platform = await Platform.createPlatform(platformName);
-	const platformEsbuildConfig = platform.getEsbuildConfig();
+	const platformESBuildConfig = platform.getESBuildConfig();
 	const entryWrapper = platform.getEntryWrapper(entryPath);
 
 	// Determine if platform bundles user code inline (like Cloudflare)
 	// vs builds it separately and loads at runtime (like Node/Bun)
 	const bundlesUserCodeInline =
-		platformEsbuildConfig.bundlesUserCodeInline ?? false;
+		platformESBuildConfig.bundlesUserCodeInline ?? false;
 
 	// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
 	const jsxOptions = await loadJSXConfig(projectRoot || dirname(entryPath));
 
 	try {
-		// Determine external dependencies
-		// Use platform-specific externals if provided, otherwise default to node:*
-		const external = platformEsbuildConfig.external ?? ["node:*"];
+		// Use platform-specific externals
+		const external = platformESBuildConfig.external ?? ["node:*"];
 
 		// For platforms that load user code at runtime (Node/Bun), build it separately
 		// The wrapper's loadServiceWorker() will load ./server.js at runtime
@@ -273,11 +323,11 @@ async function createBuildConfig({
 				bundle: true,
 				format: BUILD_DEFAULTS.format as ESBuild.Format,
 				target: BUILD_DEFAULTS.target,
-				platform: platformEsbuildConfig.platform ?? "node",
+				platform: platformESBuildConfig.platform ?? "node",
 				outfile: join(serverDir, "server.js"),
 				absWorkingDir: projectRoot,
 				mainFields: ["module", "main"],
-				conditions: platformEsbuildConfig.conditions ?? ["import", "module"],
+				conditions: platformESBuildConfig.conditions ?? ["import", "module"],
 				// Resolve packages from the user's project node_modules
 				nodePaths: [getNodeModulesPath()],
 				plugins: [
@@ -296,7 +346,7 @@ async function createBuildConfig({
 				sourcemap: BUILD_DEFAULTS.sourcemap,
 				minify: BUILD_DEFAULTS.minify,
 				treeShaking: BUILD_DEFAULTS.treeShaking,
-				define: platformEsbuildConfig.define ?? {},
+				define: platformESBuildConfig.define ?? {},
 				external,
 			};
 
@@ -308,6 +358,9 @@ async function createBuildConfig({
 
 			// Validate no non-bundleable dynamic imports in user code
 			validateDynamicImports(userBuildResult, "user code");
+
+			// Validate no unexpected externals that would fail at runtime
+			validateExternals(userBuildResult, external, "user code");
 
 			// Build worker with virtual entry that configures logging via shovel:config
 			// The ServiceWorkerPool needs this to run workers
@@ -334,7 +387,7 @@ import "@b9g/platform/worker";
 				target: "es2022",
 				platform: "node",
 				outfile: workerDestPath,
-				external: ["node:*"],
+				external: ["node:*", ...builtinModules],
 				plugins: [createConfigPlugin(projectRoot)],
 			});
 		}
@@ -350,7 +403,7 @@ import "@b9g/platform/worker";
 			bundle: true,
 			format: BUILD_DEFAULTS.format as ESBuild.Format,
 			target: BUILD_DEFAULTS.target,
-			platform: platformEsbuildConfig.platform ?? "node",
+			platform: platformESBuildConfig.platform ?? "node",
 			// Inline bundling (Cloudflare): single-file (server.js contains everything)
 			// Separate bundling (Node/Bun): multi-file (index.js is entry, server.js is user code)
 			outfile: join(
@@ -359,7 +412,7 @@ import "@b9g/platform/worker";
 			),
 			absWorkingDir: projectRoot,
 			mainFields: ["module", "main"],
-			conditions: platformEsbuildConfig.conditions ?? ["import", "module"],
+			conditions: platformESBuildConfig.conditions ?? ["import", "module"],
 			// Resolve packages from the user's project node_modules
 			nodePaths: [getNodeModulesPath()],
 			plugins: bundlesUserCodeInline
@@ -381,7 +434,7 @@ import "@b9g/platform/worker";
 			sourcemap: BUILD_DEFAULTS.sourcemap,
 			minify: BUILD_DEFAULTS.minify,
 			treeShaking: BUILD_DEFAULTS.treeShaking,
-			define: platformEsbuildConfig.define ?? {},
+			define: platformESBuildConfig.define ?? {},
 			external,
 		};
 

@@ -4,6 +4,7 @@
  * Provides built-in TypeScript/JSX support and simplified server setup for Bun environments.
  */
 
+import {builtinModules} from "node:module";
 import {
 	BasePlatform,
 	type PlatformConfig,
@@ -13,7 +14,7 @@ import {
 	type ServiceWorkerOptions,
 	type ServiceWorkerInstance,
 	type EntryWrapperOptions,
-	type PlatformEsbuildConfig,
+	type PlatformESBuildConfig,
 	ServiceWorkerPool,
 	type WorkerPoolOptions,
 	SingleThreadedRuntime,
@@ -454,10 +455,10 @@ export class BunPlatform extends BasePlatform {
 	 * Note: Bun natively supports import.meta.env, so no define alias is needed.
 	 * We use platform: "node" since Bun is Node-compatible for module resolution.
 	 */
-	getEsbuildConfig(): PlatformEsbuildConfig {
+	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "node",
-			external: ["node:*"],
+			external: ["node:*", ...builtinModules],
 		};
 	}
 
