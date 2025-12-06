@@ -13,75 +13,105 @@ import {MemoryCache} from "@b9g/cache/memory";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
+import {fileURLToPath} from "url";
+import * as esbuild from "esbuild";
 
 describe("cross-worker cache sharing", () => {
 	let pool: ServiceWorkerPool;
 	let cacheStorage: CustomCacheStorage;
 	let tempDir: string;
-	let workerPath: string;
+	let bundledWorkerPath: string;
 
 	beforeAll(async () => {
 		// Create temp directory for test worker
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cache-test-"));
 
-		// Create a test worker that uses caches
-		workerPath = path.join(tempDir, "cache-worker.js");
+		// Symlink node_modules so esbuild can resolve packages
+		const currentDir = path.dirname(fileURLToPath(import.meta.url));
+		const nodeModulesSource = path.resolve(currentDir, "../../../node_modules");
+		const nodeModulesLink = path.join(tempDir, "node_modules");
+		fs.symlinkSync(nodeModulesSource, nodeModulesLink, "dir");
+
+		// Create a test worker source that uses the runtime
+		const workerSourcePath = path.join(tempDir, "cache-worker.ts");
 		fs.writeFileSync(
-			workerPath,
+			workerSourcePath,
 			`
-			self.addEventListener("fetch", (event) => {
-				const url = new URL(event.request.url);
+import {initWorkerRuntime, startWorkerMessageLoop} from "@b9g/platform/runtime";
 
-				if (url.pathname === "/cache-put") {
-					event.respondWith((async () => {
-						const cache = await self.caches.open("shared-cache");
-						const key = url.searchParams.get("key") || "default";
-						const value = url.searchParams.get("value") || "test-value";
-						await cache.put(
-							new Request("https://test/" + key),
-							new Response(value)
-						);
-						return new Response("cached: " + key);
-					})());
-					return;
-				}
+// Initialize the worker runtime with PostMessageCache support
+const {registration} = await initWorkerRuntime({
+	config: {},
+	baseDir: import.meta.dirname,
+});
 
-				if (url.pathname === "/cache-get") {
-					event.respondWith((async () => {
-						const cache = await self.caches.open("shared-cache");
-						const key = url.searchParams.get("key") || "default";
-						const match = await cache.match(new Request("https://test/" + key));
-						if (match) {
-							const text = await match.text();
-							return new Response("hit: " + text);
-						} else {
-							return new Response("miss");
-						}
-					})());
-					return;
-				}
+// Register the fetch handler
+self.addEventListener("fetch", (event: FetchEvent) => {
+	const url = new URL(event.request.url);
 
-				event.respondWith(new Response("unknown endpoint"));
-			});
-			`,
+	if (url.pathname === "/cache-put") {
+		event.respondWith((async () => {
+			const cache = await caches.open("shared-cache");
+			const key = url.searchParams.get("key") || "default";
+			const value = url.searchParams.get("value") || "test-value";
+			await cache.put(
+				new Request("https://test/" + key),
+				new Response(value)
+			);
+			return new Response("cached: " + key);
+		})());
+		return;
+	}
+
+	if (url.pathname === "/cache-get") {
+		event.respondWith((async () => {
+			const cache = await caches.open("shared-cache");
+			const key = url.searchParams.get("key") || "default";
+			const match = await cache.match(new Request("https://test/" + key));
+			if (match) {
+				const text = await match.text();
+				return new Response("hit: " + text);
+			} else {
+				return new Response("miss");
+			}
+		})());
+		return;
+	}
+
+	event.respondWith(new Response("unknown endpoint"));
+});
+
+// Activate and start message loop
+await registration.install();
+await registration.activate();
+startWorkerMessageLoop(registration);
+`,
 		);
+
+		// Bundle the worker with esbuild
+		bundledWorkerPath = path.join(tempDir, "cache-worker.js");
+		await esbuild.build({
+			entryPoints: [workerSourcePath],
+			bundle: true,
+			format: "esm",
+			platform: "node",
+			target: "es2022",
+			outfile: bundledWorkerPath,
+			external: ["node:*"],
+		});
 
 		// Create shared cache storage on main thread
 		cacheStorage = new CustomCacheStorage((name) => new MemoryCache(name));
 
-		// Create pool with 2 workers (use debug logging to see cache messages)
+		// Create pool with 2 workers
 		pool = new ServiceWorkerPool(
 			{workerCount: 2, requestTimeout: 5000, cwd: tempDir},
-			workerPath,
+			bundledWorkerPath,
 			cacheStorage,
-			{logging: {level: "debug"}},
+			{},
 		);
 
 		await pool.init();
-		await pool.reloadWorkers(workerPath);
-
-		// Wait for workers to be ready
-		await new Promise((resolve) => setTimeout(resolve, 100));
 	});
 
 	afterAll(async () => {

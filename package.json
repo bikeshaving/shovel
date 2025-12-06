@@ -20,7 +20,8 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --ext .js,.jsx,.ts,.tsx .",
-    "lint:fix": "eslint --ext .js,.jsx,.ts,.tsx . --fix"
+    "lint:fix": "eslint --ext .js,.jsx,.ts,.tsx . --fix",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "dependencies": {
     "@b9g/async-context": "workspace:*",
@@ -72,7 +73,7 @@
     "@b9g/crank": "^0.7.2",
     "@b9g/filesystem": "workspace:*",
     "@b9g/http-errors": "workspace:*",
-    "@b9g/libuild": "^0.1.17",
+    "@b9g/libuild": "^0.1.18",
     "@b9g/platform": "workspace:*",
     "@b9g/platform-bun": "workspace:*",
     "@b9g/platform-cloudflare": "workspace:*",

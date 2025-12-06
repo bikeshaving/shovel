@@ -238,8 +238,19 @@ export default { fetch: createFetchHandler(registration) };
 		return {
 			platform: "browser",
 			conditions: ["worker", "browser"],
-			// Externalize node:* builtins - available at runtime via nodejs_compat flag
-			external: ["node:*"],
+			// Externalize node builtins - available at runtime via nodejs_compat flag
+			// Include both node:* prefix and bare module names for compatibility
+			external: [
+				"node:*",
+				"path",
+				"fs",
+				"fs/promises",
+				"crypto",
+				"util",
+				"stream",
+				"buffer",
+				"events",
+			],
 			// Cloudflare bundles user code inline via `import "user-entry"`
 			bundlesUserCodeInline: true,
 		};

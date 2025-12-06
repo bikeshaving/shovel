@@ -1,6 +1,11 @@
 /**
  * File watcher that uses ESBuild's native watch mode for accurate dependency tracking.
  * Watches all imported files including node_modules and linked packages.
+ *
+ * Outputs a single unified bundle:
+ * - server-[hash].js: Worker runtime + user's ServiceWorker code bundled together
+ *
+ * Hot reload works by terminating workers and recreating them with the new bundle.
  */
 
 import * as ESBuild from "esbuild";
@@ -13,7 +18,7 @@ import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
 import {findProjectRoot} from "./project.js";
 import {loadRawConfig, generateConfigModule} from "./config.js";
 import {getLogger} from "@logtape/logtape";
-import type {PlatformESBuildConfig} from "@b9g/platform";
+import type {Platform, PlatformESBuildConfig} from "@b9g/platform";
 
 const logger = getLogger(["build"]);
 
@@ -42,41 +47,29 @@ function createConfigPlugin(projectRoot: string): ESBuild.Plugin {
 }
 
 /**
- * Build the worker with shovel:config resolved.
- * Creates a virtual entry that configures logging before importing the actual worker.
+ * Create the shovel:entry virtual module plugin.
+ * This provides a virtual entry point that wraps the user's ServiceWorker code
+ * with runtime initialization (initWorkerRuntime + startWorkerMessageLoop).
  */
-async function buildWorker(
+function createEntryPlugin(
 	projectRoot: string,
-	outputDir: string,
-): Promise<void> {
-	const workerDestPath = join(outputDir, "server", "worker.js");
+	workerEntryCode: string,
+): ESBuild.Plugin {
+	return {
+		name: "shovel-entry",
+		setup(build) {
+			build.onResolve({filter: /^shovel:entry$/}, (args) => ({
+				path: args.path,
+				namespace: "shovel-entry",
+			}));
 
-	// Virtual worker entry that configures logging before importing the actual worker
-	const virtualWorkerEntry = `
-import {configureLogging} from "@b9g/platform/runtime";
-import {config} from "shovel:config";
-await configureLogging(config.logging);
-
-// Import the actual worker (runs its initialization code)
-import "@b9g/platform/worker";
-`;
-
-	await ESBuild.build({
-		stdin: {
-			contents: virtualWorkerEntry,
-			resolveDir: projectRoot,
-			sourcefile: "virtual-worker-entry.js",
+			build.onLoad({filter: /.*/, namespace: "shovel-entry"}, () => ({
+				contents: workerEntryCode,
+				loader: "js",
+				resolveDir: projectRoot,
+			}));
 		},
-		bundle: true,
-		format: "esm",
-		target: "es2022",
-		platform: "node",
-		outfile: workerDestPath,
-		external: ["node:*", ...builtinModules],
-		plugins: [createConfigPlugin(projectRoot)],
-	});
-
-	logger.info("Built worker", {workerDestPath});
+	};
 }
 
 export interface WatcherOptions {
@@ -84,6 +77,8 @@ export interface WatcherOptions {
 	entrypoint: string;
 	/** Output directory */
 	outDir: string;
+	/** Platform instance for getting entry wrappers and config */
+	platform: Platform;
 	/** Platform-specific esbuild configuration */
 	platformESBuildConfig: PlatformESBuildConfig;
 	/** Callback when build completes - entrypoint is the hashed output path */
@@ -120,8 +115,11 @@ export class Watcher {
 		await mkdir(join(outputDir, "server"), {recursive: true});
 		await mkdir(join(outputDir, "static"), {recursive: true});
 
-		// Build the worker with shovel:config resolved
-		await buildWorker(this.#projectRoot, outputDir);
+		// Get worker entry wrapper - imports user code directly for unified bundle
+		const workerEntryWrapper = this.#options.platform.getEntryWrapper(
+			entryPath,
+			{type: "worker"},
+		);
 
 		// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
 		const jsxOptions = await loadJSXConfig(this.#projectRoot);
@@ -139,18 +137,24 @@ export class Watcher {
 		const external = platformESBuildConfig.external ?? ["node:*"];
 
 		// Build options for esbuild context
+		// Single entry point: unified bundle with worker runtime + user code
 		const buildOptions: ESBuild.BuildOptions = {
-			entryPoints: [entryPath],
+			entryPoints: {
+				server: "shovel:entry",
+			},
 			bundle: true,
 			format: "esm",
 			target: "es2022",
 			platform: platformESBuildConfig.platform ?? "node",
 			outdir: `${outputDir}/server`,
-			entryNames: "[name]-[hash]",
+			// Worker gets stable name, server gets hash for cache busting
+			entryNames: "[name]",
 			metafile: true,
 			absWorkingDir: this.#projectRoot,
 			conditions: platformESBuildConfig.conditions ?? ["import", "module"],
 			plugins: [
+				createConfigPlugin(this.#projectRoot),
+				createEntryPlugin(this.#projectRoot, workerEntryWrapper),
 				importMetaPlugin(),
 				assetsPlugin({
 					outDir: outputDir,
@@ -174,11 +178,13 @@ export class Watcher {
 							let success = result.errors.length === 0;
 
 							// Check for non-bundleable dynamic imports (would fail at runtime)
+							// Exclude our intentional ./server.js import from worker -> server
 							const dynamicImportWarnings = (result.warnings || []).filter(
 								(w) =>
-									w.text.includes("cannot be bundled") ||
-									w.text.includes("import() call") ||
-									w.text.includes("dynamic import"),
+									(w.text.includes("cannot be bundled") ||
+										w.text.includes("import() call") ||
+										w.text.includes("dynamic import")) &&
+									!w.text.includes("./server.js"),
 							);
 
 							if (dynamicImportWarnings.length > 0) {
@@ -229,14 +235,16 @@ export class Watcher {
 								}
 							}
 
-							// Extract output path from metafile
+							// Extract server.js output path from metafile
+							// This is the unified bundle loaded by ServiceWorkerPool
 							let outputPath = "";
 							if (result.metafile) {
 								const outputs = Object.keys(result.metafile.outputs);
-								const jsOutput = outputs.find((p) => p.endsWith(".js"));
-								if (jsOutput) {
-									// Convert relative path to absolute (relative to project root)
-									outputPath = resolve(this.#projectRoot, jsOutput);
+								const serverOutput = outputs.find((p) =>
+									p.endsWith("server.js"),
+								);
+								if (serverOutput) {
+									outputPath = resolve(this.#projectRoot, serverOutput);
 								}
 							}
 
@@ -262,7 +270,8 @@ export class Watcher {
 				},
 			],
 			define: platformESBuildConfig.define ?? {},
-			external,
+			// Mark ./server.js as external so it's imported at runtime (sibling output file)
+			external: [...external, "./server.js"],
 			sourcemap: "inline",
 			minify: false,
 			treeShaking: true,

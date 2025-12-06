@@ -12,6 +12,10 @@
 
 import {AsyncContext} from "@b9g/async-context";
 import {getLogger} from "@logtape/logtape";
+import {resolve} from "path";
+import {CustomDirectoryStorage} from "@b9g/filesystem";
+import {CustomCacheStorage, Cache} from "@b9g/cache";
+import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
 
 // ============================================================================
 // Cookie Store API Implementation
@@ -1866,6 +1870,468 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 }
 
 // ============================================================================
+// Worker Runtime Initialization
+// ============================================================================
+
+/** Cache provider configuration */
+export interface CacheConfig {
+	provider?: string;
+	[key: string]: unknown;
+}
+
+/** Directory (filesystem) provider configuration */
+export interface DirectoryConfig {
+	provider?: string;
+	path?: string;
+	[key: string]: unknown;
+}
+
+/** Shovel application configuration (from shovel.json) */
+export interface ShovelConfig {
+	port?: number;
+	host?: string;
+	workers?: number;
+	platform?: string;
+	logging?: LoggingConfig;
+	caches?: Record<string, CacheConfig>;
+	directories?: Record<string, DirectoryConfig>;
+}
+
+// ============================================================================
+// Pattern Matching for Config
+// ============================================================================
+
+/**
+ * Match a name against pattern-keyed config
+ * Patterns use glob-like syntax (* for wildcards)
+ */
+function matchPattern<T>(
+	name: string,
+	patterns: Record<string, T> | undefined,
+): T | undefined {
+	if (!patterns) return undefined;
+
+	// Exact match first
+	if (patterns[name]) return patterns[name];
+
+	// Try pattern matching
+	for (const [pattern, value] of Object.entries(patterns)) {
+		if (pattern.includes("*")) {
+			const regex = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
+			if (regex.test(name)) return value;
+		}
+	}
+
+	return undefined;
+}
+
+function getCacheConfig(config: ShovelConfig, name: string): CacheConfig {
+	return matchPattern(name, config.caches) || {};
+}
+
+function getDirectoryConfig(
+	config: ShovelConfig,
+	name: string,
+): DirectoryConfig {
+	return matchPattern(name, config.directories) || {};
+}
+
+// ============================================================================
+// Directory Factory
+// ============================================================================
+
+// Well-known directory path conventions
+const WELL_KNOWN_DIRECTORY_PATHS: Record<string, (baseDir: string) => string> =
+	{
+		static: (baseDir) => resolve(baseDir, "../static"),
+		server: (baseDir) => baseDir,
+	};
+
+const BUILTIN_DIRECTORY_PROVIDERS: Record<string, string> = {
+	"node-fs": "@b9g/filesystem/node-fs.js",
+	memory: "@b9g/filesystem/memory.js",
+	s3: "@b9g/filesystem-s3",
+};
+
+export interface DirectoryFactoryOptions {
+	/** Base directory for path resolution (entrypoint directory) - REQUIRED */
+	baseDir: string;
+	/** Shovel configuration for overrides */
+	config?: ShovelConfig;
+}
+
+/**
+ * Creates a directory factory function for CustomDirectoryStorage.
+ */
+export function createDirectoryFactory(options: DirectoryFactoryOptions) {
+	const {baseDir, config} = options;
+
+	return async (name: string): Promise<FileSystemDirectoryHandle> => {
+		const dirConfig = config ? getDirectoryConfig(config, name) : {};
+
+		// Determine directory path: config override > well-known > default convention
+		let dirPath: string;
+		if (dirConfig.path) {
+			dirPath = String(dirConfig.path);
+		} else if (WELL_KNOWN_DIRECTORY_PATHS[name]) {
+			dirPath = WELL_KNOWN_DIRECTORY_PATHS[name](baseDir);
+		} else {
+			dirPath = resolve(baseDir, `../${name}`);
+		}
+
+		const provider = String(dirConfig.provider || "node-fs");
+		const modulePath = BUILTIN_DIRECTORY_PROVIDERS[provider] || provider;
+
+		// Special handling for built-in node-fs directory (most common case)
+		if (modulePath === "@b9g/filesystem/node-fs.js") {
+			const {NodeFSDirectory} = await import("@b9g/filesystem/node-fs.js");
+			return new NodeFSDirectory(dirPath);
+		}
+
+		// Special handling for built-in memory directory
+		if (modulePath === "@b9g/filesystem/memory.js") {
+			const {MemoryDirectory} = await import("@b9g/filesystem/memory.js");
+			return new MemoryDirectory(name);
+		}
+
+		// Dynamic import for all other providers
+		const module = await import(modulePath);
+		const DirectoryClass =
+			module.default ||
+			module.S3Directory ||
+			module.Directory ||
+			Object.values(module).find(
+				(v: any) => typeof v === "function" && v.name?.includes("Directory"),
+			);
+
+		if (!DirectoryClass) {
+			throw new Error(
+				`Directory module "${modulePath}" does not export a valid directory class.`,
+			);
+		}
+
+		const {provider: _, path: __, ...dirOptions} = dirConfig;
+		return new DirectoryClass(name, {path: dirPath, ...dirOptions});
+	};
+}
+
+// ============================================================================
+// Cache Factory
+// ============================================================================
+
+const BUILTIN_CACHE_PROVIDERS: Record<string, string> = {
+	memory: "@b9g/cache/memory.js",
+	redis: "@b9g/cache-redis",
+};
+
+export interface CacheFactoryOptions {
+	/** Shovel configuration for cache settings */
+	config?: ShovelConfig;
+	/** Default provider when not specified in config. Defaults to "memory". */
+	defaultProvider?: string;
+	/** If true, use PostMessageCache for memory caches (for workers) */
+	usePostMessage?: boolean;
+}
+
+/**
+ * Creates a cache factory function for CustomCacheStorage.
+ */
+export function createCacheFactory(options: CacheFactoryOptions = {}) {
+	const {config, defaultProvider = "memory", usePostMessage = false} = options;
+
+	return async (name: string): Promise<Cache> => {
+		const cacheConfig = config ? getCacheConfig(config, name) : {};
+		const provider = String(cacheConfig.provider || defaultProvider);
+
+		// Native Cloudflare caches
+		if (provider === "cloudflare") {
+			const nativeCaches =
+				(globalThis as any).__cloudflareCaches ?? globalThis.caches;
+			if (!nativeCaches) {
+				throw new Error(
+					"Cloudflare cache provider requires native caches API.",
+				);
+			}
+			return nativeCaches.open(name);
+		}
+
+		// For memory caches in workers, use PostMessageCache to forward to main thread
+		if (provider === "memory" && usePostMessage) {
+			return new PostMessageCache(name);
+		}
+
+		const {provider: _, ...cacheOptions} = cacheConfig;
+		const modulePath = BUILTIN_CACHE_PROVIDERS[provider] || provider;
+
+		const module = await import(modulePath);
+		const CacheClass =
+			module.default ||
+			module.RedisCache ||
+			module.MemoryCache ||
+			module.Cache ||
+			Object.values(module).find(
+				(v: any) => typeof v === "function" && v.name?.includes("Cache"),
+			);
+
+		if (!CacheClass) {
+			throw new Error(
+				`Cache module "${modulePath}" does not export a valid cache class.`,
+			);
+		}
+
+		return new CacheClass(name, cacheOptions);
+	};
+}
+
+// ============================================================================
+// Worker Runtime API
+// ============================================================================
+
+/**
+ * Worker message types for the message loop
+ */
+export interface WorkerRequestMessage {
+	type: "request";
+	request: {
+		url: string;
+		method: string;
+		headers: Record<string, string>;
+		body?: ArrayBuffer | null;
+	};
+	requestID: number;
+}
+
+export interface WorkerResponseMessage {
+	type: "response";
+	response: {
+		status: number;
+		statusText: string;
+		headers: Record<string, string>;
+		body: ArrayBuffer;
+	};
+	requestID: number;
+}
+
+export interface WorkerErrorMessage {
+	type: "error";
+	error: string;
+	stack?: string;
+	requestID?: number;
+}
+
+/**
+ * Options for initializing the worker runtime
+ */
+export interface InitWorkerRuntimeOptions {
+	/** Shovel configuration (from shovel:config) */
+	config: ShovelConfig;
+	/** Base directory for path resolution (typically import.meta.dirname) */
+	baseDir: string;
+}
+
+/**
+ * Result from initializing the worker runtime
+ */
+export interface InitWorkerRuntimeResult {
+	/** The ServiceWorker registration instance */
+	registration: ShovelServiceWorkerRegistration;
+	/** The installed ServiceWorkerGlobals scope */
+	scope: ServiceWorkerGlobals;
+	/** Cache storage instance */
+	caches: CustomCacheStorage;
+	/** Directory storage instance */
+	directories: CustomDirectoryStorage;
+	/** Logger storage instance */
+	loggers: CustomLoggerStorage;
+}
+
+/**
+ * Initialize the worker runtime environment.
+ * Sets up ServiceWorkerGlobals, caches, directories, and logging.
+ *
+ * This should be called at the top of a worker entry point before importing user code.
+ *
+ * @example
+ * ```typescript
+ * import {config} from "shovel:config";
+ * import {initWorkerRuntime, startWorkerMessageLoop} from "@b9g/platform/runtime";
+ *
+ * const {registration} = await initWorkerRuntime({config, baseDir: import.meta.dirname});
+ *
+ * // Import user code (registers event handlers)
+ * import "./server.js";
+ *
+ * // Run lifecycle and start message loop
+ * await registration.install();
+ * await registration.activate();
+ * startWorkerMessageLoop(registration);
+ * ```
+ */
+export async function initWorkerRuntime(
+	options: InitWorkerRuntimeOptions,
+): Promise<InitWorkerRuntimeResult> {
+	const {config, baseDir} = options;
+	const runtimeLogger = getLogger(["platform"]);
+
+	// Configure logging if specified
+	if (config?.logging) {
+		await configureLogging(config.logging, {reset: true});
+	}
+
+	runtimeLogger.info("Initializing worker runtime", {baseDir});
+
+	// Create cache storage with PostMessage support for worker coordination
+	const caches = new CustomCacheStorage(
+		createCacheFactory({config, usePostMessage: true}),
+	);
+
+	// Create directory storage
+	const directories = new CustomDirectoryStorage(
+		createDirectoryFactory({baseDir, config}),
+	);
+
+	// Create logger storage
+	const loggers = new CustomLoggerStorage((...categories) =>
+		getLogger(categories),
+	);
+
+	// Create registration and scope
+	const registration = new ShovelServiceWorkerRegistration();
+	const scope = new ServiceWorkerGlobals({
+		registration,
+		caches,
+		directories,
+		loggers,
+	});
+
+	// Install ServiceWorker globals
+	scope.install();
+
+	runtimeLogger.info("Worker runtime initialized");
+
+	return {registration, scope, caches, directories, loggers};
+}
+
+/**
+ * Start the worker message loop for handling requests.
+ * This function sets up message handling for request/response communication
+ * with the main thread via postMessage.
+ *
+ * @param registration - The ServiceWorker registration to handle requests with
+ */
+export function startWorkerMessageLoop(
+	registration: ShovelServiceWorkerRegistration,
+): void {
+	const messageLogger = getLogger(["platform"]);
+	const workerId = Math.random().toString(36).substring(2, 8);
+
+	/**
+	 * Send a message to the main thread
+	 */
+	function sendMessage(message: any, transfer?: Transferable[]): void {
+		if (transfer && transfer.length > 0) {
+			postMessage(message, transfer);
+		} else {
+			postMessage(message);
+		}
+	}
+
+	/**
+	 * Handle a fetch request
+	 */
+	async function handleFetchRequest(
+		message: WorkerRequestMessage,
+	): Promise<void> {
+		try {
+			const request = new Request(message.request.url, {
+				method: message.request.method,
+				headers: message.request.headers,
+				body: message.request.body,
+			});
+
+			const event = new ShovelFetchEvent(request);
+			const response = await registration.handleRequest(event);
+
+			// Use arrayBuffer for zero-copy transfer
+			const body = await response.arrayBuffer();
+
+			// Ensure Content-Type is preserved
+			const headers = Object.fromEntries(response.headers.entries());
+			if (!headers["Content-Type"] && !headers["content-type"]) {
+				headers["Content-Type"] = "text/plain; charset=utf-8";
+			}
+
+			const responseMsg: WorkerResponseMessage = {
+				type: "response",
+				response: {
+					status: response.status,
+					statusText: response.statusText,
+					headers,
+					body,
+				},
+				requestID: message.requestID,
+			};
+
+			// Transfer the ArrayBuffer (zero-copy)
+			sendMessage(responseMsg, [body]);
+		} catch (error) {
+			messageLogger.error(`[Worker-${workerId}] Request failed: {error}`, {
+				error,
+			});
+			const errorMsg: WorkerErrorMessage = {
+				type: "error",
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				requestID: message.requestID,
+			};
+			sendMessage(errorMsg);
+		}
+	}
+
+	/**
+	 * Handle incoming messages from main thread
+	 */
+	function handleMessage(event: MessageEvent): void {
+		const message = event.data;
+
+		// Forward cache responses directly to PostMessageCache handler
+		if (message?.type === "cache:response" || message?.type === "cache:error") {
+			messageLogger.debug(`[Worker-${workerId}] Forwarding cache message`, {
+				type: message.type,
+				requestID: message.requestID,
+			});
+			handleCacheResponse(message);
+			return;
+		}
+
+		// Handle request messages
+		if (message?.type === "request") {
+			handleFetchRequest(message as WorkerRequestMessage).catch((error) => {
+				messageLogger.error(`[Worker-${workerId}] Unhandled error: {error}`, {
+					error,
+				});
+			});
+			return;
+		}
+
+		// Log unknown message types
+		if (message?.type) {
+			messageLogger.debug(`[Worker-${workerId}] Unknown message type`, {
+				type: message.type,
+			});
+		}
+	}
+
+	// Set up message handling via addEventListener
+	// ServiceWorkerGlobals delegates non-ServiceWorker events (like "message") to the native handler
+	self.addEventListener("message", handleMessage);
+
+	// Signal that the worker is ready
+	sendMessage({type: "ready"});
+	messageLogger.info(`[Worker-${workerId}] Message loop started`);
+}
+
+// ============================================================================
 // Logging Configuration
 // ============================================================================
 
@@ -1901,34 +2367,6 @@ export interface ProcessedLoggingConfig {
 	level: LogLevel;
 	sinks: SinkConfig[];
 	categories: Record<string, CategoryLoggingConfig>;
-}
-
-// ============================================================================
-// Shovel Configuration Types
-// ============================================================================
-
-/** Cache provider configuration */
-export interface CacheConfig {
-	provider?: string;
-	[key: string]: unknown;
-}
-
-/** Directory (filesystem) provider configuration */
-export interface DirectoryConfig {
-	provider?: string;
-	path?: string;
-	[key: string]: unknown;
-}
-
-/** Shovel application configuration (from shovel.json) */
-export interface ShovelConfig {
-	port?: number;
-	host?: string;
-	workers?: number;
-	platform?: string;
-	logging?: LoggingConfig;
-	caches?: Record<string, CacheConfig>;
-	directories?: Record<string, DirectoryConfig>;
 }
 
 // ============================================================================

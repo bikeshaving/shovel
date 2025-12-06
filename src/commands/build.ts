@@ -26,16 +26,20 @@ const logger = getLogger(["cli"]);
  * Check esbuild warnings for non-bundleable dynamic imports and convert to errors.
  * Variable-based dynamic imports cannot be bundled and will fail at runtime
  * when node_modules is not available.
+ * @param excludePatterns - Import paths to exclude from validation (e.g., "./server.js")
  */
 function validateDynamicImports(
 	result: ESBuild.BuildResult,
 	context: string,
+	excludePatterns: string[] = [],
 ): void {
 	const dynamicImportWarnings = (result.warnings || []).filter(
 		(w) =>
-			w.text.includes("cannot be bundled") ||
-			w.text.includes("import() call") ||
-			w.text.includes("dynamic import"),
+			(w.text.includes("cannot be bundled") ||
+				w.text.includes("import() call") ||
+				w.text.includes("dynamic import")) &&
+			// Exclude intentional dynamic imports
+			!excludePatterns.some((pattern) => w.text.includes(pattern)),
 	);
 
 	if (dynamicImportWarnings.length > 0) {
@@ -141,6 +145,32 @@ function createConfigPlugin(projectRoot: string): ESBuild.Plugin {
 			// resolveDir is required so esbuild can resolve imports in the virtual module
 			build.onLoad({filter: /.*/, namespace: "shovel-config"}, () => ({
 				contents: configModuleCode,
+				loader: "js",
+				resolveDir: projectRoot,
+			}));
+		},
+	};
+}
+
+/**
+ * Create the shovel:entry virtual module plugin.
+ * This provides a virtual entry point for the worker that imports the user's server code.
+ * The import is kept as a runtime dynamic import because it references a sibling output file.
+ */
+function createEntryPlugin(
+	projectRoot: string,
+	workerEntryCode: string,
+): ESBuild.Plugin {
+	return {
+		name: "shovel-entry",
+		setup(build) {
+			build.onResolve({filter: /^shovel:entry$/}, (args) => ({
+				path: args.path,
+				namespace: "shovel-entry",
+			}));
+
+			build.onLoad({filter: /.*/, namespace: "shovel-entry"}, () => ({
+				contents: workerEntryCode,
 				loader: "js",
 				resolveDir: projectRoot,
 			}));
@@ -314,23 +344,37 @@ async function createBuildConfig({
 		// Use platform-specific externals
 		const external = platformESBuildConfig.external ?? ["node:*"];
 
-		// For platforms that load user code at runtime (Node/Bun), build it separately
-		// The wrapper's loadServiceWorker() will load ./server.js at runtime
+		// For platforms that load user code at runtime (Node/Bun), build two files:
+		// - worker.js: Runtime shell that initializes ServiceWorker globals and message loop
+		// - server.js: User's ServiceWorker code (imported by worker.js at runtime)
+		// The worker.js imports ./server.js at runtime via dynamic import, enabling hot reload.
 		if (!bundlesUserCodeInline) {
-			// Build user code separately
+			// Get worker entry wrapper - uses ./server.js as a runtime import
+			const workerEntryWrapper = platform.getEntryWrapper(
+				"./server.js", // Relative import to sibling output file
+				{type: "worker"},
+			);
+
+			// Build both worker.js and server.js in a single build using two entry points
 			const userBuildConfig: ESBuild.BuildOptions = {
-				entryPoints: [entryPath],
+				entryPoints: {
+					worker: "shovel:entry",
+					server: entryPath,
+				},
 				bundle: true,
 				format: BUILD_DEFAULTS.format as ESBuild.Format,
 				target: BUILD_DEFAULTS.target,
 				platform: platformESBuildConfig.platform ?? "node",
-				outfile: join(serverDir, "server.js"),
+				outdir: serverDir,
+				entryNames: "[name]",
 				absWorkingDir: projectRoot,
 				mainFields: ["module", "main"],
 				conditions: platformESBuildConfig.conditions ?? ["import", "module"],
 				// Resolve packages from the user's project node_modules
 				nodePaths: [getNodeModulesPath()],
 				plugins: [
+					createConfigPlugin(projectRoot),
+					createEntryPlugin(projectRoot, workerEntryWrapper),
 					importMetaPlugin(),
 					assetsPlugin({
 						outDir: outputDir,
@@ -347,49 +391,22 @@ async function createBuildConfig({
 				minify: BUILD_DEFAULTS.minify,
 				treeShaking: BUILD_DEFAULTS.treeShaking,
 				define: platformESBuildConfig.define ?? {},
-				external,
+				// Mark ./server.js as external so it's imported at runtime (sibling output file)
+				external: [...external, "./server.js"],
 			};
 
 			// Apply JSX configuration (from tsconfig.json or @b9g/crank defaults)
 			applyJSXOptions(userBuildConfig, jsxOptions);
 
-			// Build user code first
+			// Build worker.js (runtime shell) + server.js (user code)
 			const userBuildResult = await ESBuild.build(userBuildConfig);
 
 			// Validate no non-bundleable dynamic imports in user code
-			validateDynamicImports(userBuildResult, "user code");
+			// Exclude our intentional ./server.js import from worker -> server
+			validateDynamicImports(userBuildResult, "worker bundle", ["./server.js"]);
 
 			// Validate no unexpected externals that would fail at runtime
-			validateExternals(userBuildResult, external, "user code");
-
-			// Build worker with virtual entry that configures logging via shovel:config
-			// The ServiceWorkerPool needs this to run workers
-			const workerDestPath = join(serverDir, "worker.js");
-
-			// Virtual worker entry that configures logging before importing the actual worker
-			const virtualWorkerEntry = `
-import {configureLogging} from "@b9g/platform/runtime";
-import {config} from "shovel:config";
-await configureLogging(config.logging);
-
-// Import the actual worker (runs its initialization code)
-import "@b9g/platform/worker";
-`;
-
-			await ESBuild.build({
-				stdin: {
-					contents: virtualWorkerEntry,
-					resolveDir: projectRoot,
-					sourcefile: "virtual-worker-entry.js",
-				},
-				bundle: true,
-				format: "esm",
-				target: "es2022",
-				platform: "node",
-				outfile: workerDestPath,
-				external: ["node:*", ...builtinModules],
-				plugins: [createConfigPlugin(projectRoot)],
-			});
+			validateExternals(userBuildResult, external, "worker bundle");
 		}
 
 		// All platforms now provide entry wrappers via getEntryWrapper()

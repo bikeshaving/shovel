@@ -248,6 +248,26 @@ async function fetchWithRetry(port, retries = 20, delay = 50) {
 	}
 }
 
+// Helper to wait for response content to change
+async function waitForContentChange(port, expectedContent, timeoutMs = 5000) {
+	const startTime = Date.now();
+	while (Date.now() - startTime < timeoutMs) {
+		try {
+			const response = await fetch(`http://localhost:${port}`);
+			const text = await response.text();
+			if (text === expectedContent) {
+				return text;
+			}
+		} catch {
+			// Server not ready, continue waiting
+		}
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+	throw new Error(
+		`Content did not change to expected value within ${timeoutMs}ms`,
+	);
+}
+
 // Helper to kill process and wait for port to be free
 async function killServer(process, port) {
 	if (process && process.exitCode === null) {
@@ -464,7 +484,8 @@ test(
 			await tempFixture.copyFrom("server-goodbye.ts");
 
 			// Make multiple concurrent requests during reload
-			await new Promise((resolve) => setTimeout(resolve, 200)); // Start reload
+			// Use a longer initial wait to ensure the file change is detected
+			await new Promise((resolve) => setTimeout(resolve, 500)); // Wait for file change detection
 
 			const concurrentRequests = Array.from({length: 10}, () =>
 				fetchWithRetry(PORT, 5, 100),
@@ -476,8 +497,12 @@ test(
 			const uniqueResponses = [...new Set(responses)];
 			expect(uniqueResponses.length).toBeLessThanOrEqual(2); // Should be either 1 or 2 unique responses
 
-			// Final response should be the updated version
-			const finalResponse = await fetchWithRetry(PORT);
+			// Wait for the reload to complete and verify the updated version
+			const finalResponse = await waitForContentChange(
+				PORT,
+				"<marquee>Goodbye world</marquee>",
+				3000,
+			);
 			expect(finalResponse).toBe("<marquee>Goodbye world</marquee>");
 		} finally {
 			await killServer(serverProcess, PORT);
@@ -1195,7 +1220,7 @@ test(
 			const originalCwd = process.cwd();
 			process.chdir(fixtureDir);
 
-			// Create platform for Watcher
+			// Create platform instance for watcher
 			const platform = await Platform.createPlatform("bun");
 			const platformESBuildConfig = platform.getESBuildConfig();
 
@@ -1212,8 +1237,8 @@ test(
 					expect(success).toBe(true);
 					// 2. New entrypoint should be a valid, existing file
 					expect(existsSync(newEntrypoint)).toBe(true);
-					// 3. New entrypoint should be different from initial (new hash)
-					expect(newEntrypoint).not.toBe(initialEntrypoint);
+					// 3. Unified build uses stable filename - hot reload terminates workers
+					expect(newEntrypoint).toBe(initialEntrypoint);
 					// 4. New entrypoint should end with .js
 					expect(newEntrypoint).toMatch(/\.js$/);
 				},

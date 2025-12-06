@@ -10,9 +10,6 @@
  * - ServiceWorkerPool for multi-worker execution
  */
 
-import * as Path from "path";
-import {existsSync} from "fs";
-import {fileURLToPath} from "url";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory";
 import {getLogger} from "@logtape/logtape";
@@ -116,11 +113,14 @@ export interface ServiceWorkerInstance {
 
 /**
  * Options for getEntryWrapper()
- * Reserved for future platform-specific options.
  */
-
 export interface EntryWrapperOptions {
-	// Currently empty - platforms may add options as needed
+	/**
+	 * Type of entry wrapper to generate:
+	 * - "production": Production server entry (default) - runs the server directly
+	 * - "worker": Worker entry for ServiceWorkerPool - sets up runtime and message loop
+	 */
+	type?: "production" | "worker";
 }
 
 /**
@@ -673,14 +673,8 @@ export interface WorkerResponse extends WorkerMessage {
 	requestID: number;
 }
 
-export interface WorkerLoadMessage extends WorkerMessage {
-	type: "load";
-	entrypoint: string;
-}
-
 export interface WorkerReadyMessage extends WorkerMessage {
-	type: "ready" | "worker-ready";
-	entrypoint?: string;
+	type: "ready";
 }
 
 export interface WorkerErrorMessage extends WorkerMessage {
@@ -688,76 +682,6 @@ export interface WorkerErrorMessage extends WorkerMessage {
 	error: string;
 	stack?: string;
 	requestID?: number;
-}
-
-export interface WorkerInitMessage extends WorkerMessage {
-	type: "init";
-	config: any; // ShovelConfig from config.ts
-	baseDir: string; // Base directory for directory path resolution
-}
-
-export interface WorkerInitializedMessage extends WorkerMessage {
-	type: "initialized";
-}
-
-/**
- * Resolve the worker script path for the current platform
- */
-function resolveWorkerScript(entrypoint?: string): string {
-	// Try to find bundled worker.js relative to app entrypoint first
-	if (entrypoint) {
-		const entryDir = Path.dirname(entrypoint);
-		const bundledWorker = Path.join(entryDir, "worker.js");
-
-		// Check if bundled worker exists (production)
-		try {
-			// Use platform-specific file existence check
-			if (typeof Bun !== "undefined") {
-				// Bun has synchronous file operations
-				const file = Bun.file(bundledWorker);
-				if (file.size > 0) {
-					logger.info("Using bundled worker", {bundledWorker});
-					return bundledWorker;
-				}
-			} else if (typeof require !== "undefined") {
-				// Node.js - use existsSync
-				if (existsSync(bundledWorker)) {
-					logger.info("Using bundled worker", {bundledWorker});
-					return bundledWorker;
-				}
-			}
-		} catch (err) {
-			// Only ignore file-not-found errors, rethrow others
-			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				throw err;
-			}
-		}
-	}
-
-	// Fallback to package resolution for development
-	try {
-		// Use import.meta.resolve for worker entry point
-		const workerURL = import.meta.resolve("@b9g/platform/worker.js");
-		let workerScript: string;
-
-		if (workerURL.startsWith("file://")) {
-			// Convert file:// URL to path for Worker constructor
-			// Use fileURLToPath for correct handling on all platforms (including Windows)
-			workerScript = fileURLToPath(workerURL);
-		} else {
-			workerScript = workerURL;
-		}
-
-		logger.info("Using worker entry script", {workerScript});
-		return workerScript;
-	} catch (error) {
-		const bundledPath = entrypoint
-			? Path.join(Path.dirname(entrypoint), "worker.js")
-			: "worker.js";
-		throw new Error(
-			`Could not resolve worker.js. Checked bundled path: ${bundledPath} and package: @b9g/platform/worker.js. Error: ${error instanceof Error ? error.message : String(error)}`,
-		);
-	}
 }
 
 /**
@@ -825,7 +749,15 @@ Please check your runtime version and configuration.
 
 /**
  * ServiceWorkerPool - manages a pool of ServiceWorker instances
- * Handles HTTP request/response routing, cache coordination, and hot reloading
+ *
+ * With the unified build model, workers are self-contained bundles that:
+ * 1. Initialize their own runtime (via initWorkerRuntime)
+ * 2. Import user code
+ * 3. Run lifecycle events
+ * 4. Start message loop (via startWorkerMessageLoop)
+ *
+ * Hot reload is achieved by terminating old workers and creating new ones
+ * with the new bundle path.
  */
 export class ServiceWorkerPool {
 	#workers: Worker[];
@@ -839,142 +771,107 @@ export class ServiceWorkerPool {
 			timeoutId?: ReturnType<typeof setTimeout>;
 		}
 	>;
-	#pendingWorkerInit: Map<
+	#pendingWorkerReady: Map<
 		Worker,
-		{
-			workerReady?: () => void;
-			initialized?: () => void;
-		}
+		{resolve: () => void; reject: (e: Error) => void}
 	>;
 	#options: Required<Omit<WorkerPoolOptions, "cwd">> & {cwd?: string};
-	#appEntrypoint?: string;
+	#appEntrypoint: string;
 	#cacheStorage?: CacheStorage & {
 		handleMessage?: (worker: Worker, message: any) => Promise<void>;
-	}; // CustomCacheStorage for cache coordination
-	#config: any; // ShovelConfig from config.ts
+	};
 
 	constructor(
 		options: WorkerPoolOptions = {},
-		appEntrypoint?: string,
+		appEntrypoint: string,
 		cacheStorage?: CacheStorage,
-		config?: any,
 	) {
 		this.#workers = [];
 		this.#currentWorker = 0;
 		this.#requestID = 0;
 		this.#pendingRequests = new Map();
-		this.#pendingWorkerInit = new Map();
+		this.#pendingWorkerReady = new Map();
 		this.#appEntrypoint = appEntrypoint;
 		this.#cacheStorage = cacheStorage;
-		this.#config = config || {};
 		this.#options = {
 			workerCount: 1,
 			requestTimeout: 30000,
 			...options,
 		};
-
-		// Workers will be initialized by calling init() after construction
 	}
 
 	/**
 	 * Initialize workers (must be called after construction)
 	 */
 	async init(): Promise<void> {
-		await this.#initWorkers();
-	}
-
-	async #initWorkers() {
+		const promises: Promise<Worker>[] = [];
 		for (let i = 0; i < this.#options.workerCount; i++) {
-			await this.#createWorker();
+			promises.push(this.#createWorker(this.#appEntrypoint));
 		}
+		await Promise.all(promises);
 	}
 
-	async #createWorker(): Promise<Worker> {
-		const workerScript = resolveWorkerScript(this.#appEntrypoint);
-		const worker = await createWebWorker(workerScript);
+	/**
+	 * Create a worker from the unified bundle
+	 * The bundle self-initializes and sends "ready" when done
+	 */
+	async #createWorker(entrypoint: string): Promise<Worker> {
+		const worker = await createWebWorker(entrypoint);
 
-		// Create promises for worker initialization steps
-		let rejectWorkerReady: (error: Error) => void;
-		let workerReadyTimeoutId: ReturnType<typeof setTimeout>;
-		const workerReadyPromise = new Promise<void>((resolve, reject) => {
-			rejectWorkerReady = reject;
-			workerReadyTimeoutId = setTimeout(() => {
-				reject(new Error("Worker failed to send ready signal within 30000ms"));
+		// Set up promise to wait for ready signal
+		const readyPromise = new Promise<void>((resolve, reject) => {
+			const timeoutId = setTimeout(() => {
+				this.#pendingWorkerReady.delete(worker);
+				reject(
+					new Error(
+						`Worker failed to become ready within 30000ms (${entrypoint})`,
+					),
+				);
 			}, 30000);
-			this.#pendingWorkerInit.set(worker, {
-				workerReady: () => {
-					clearTimeout(workerReadyTimeoutId);
+
+			this.#pendingWorkerReady.set(worker, {
+				resolve: () => {
+					clearTimeout(timeoutId);
 					resolve();
+				},
+				reject: (error: Error) => {
+					clearTimeout(timeoutId);
+					reject(error);
 				},
 			});
 		});
 
-		// Set up event listeners using web standards
+		// Set up message handler
 		worker.addEventListener("message", (event) => {
 			this.#handleWorkerMessage(worker, event.data || event);
 		});
 
+		// Set up error handler
 		worker.addEventListener("error", (event: any) => {
 			const errorMessage =
 				event.message || event.error?.message || "Unknown worker error";
-			const error = new Error(`Worker failed to start: ${errorMessage}`);
+			const error = new Error(`Worker error: ${errorMessage}`);
 			logger.error("Worker error: {error}", {
 				error: event.error || errorMessage,
 				filename: event.filename,
 				lineno: event.lineno,
 				colno: event.colno,
 			});
-			// Reject pending promises so we don't hang forever
-			clearTimeout(workerReadyTimeoutId);
-			rejectWorkerReady(error);
+
+			// Reject pending ready promise if exists
+			const pending = this.#pendingWorkerReady.get(worker);
+			if (pending) {
+				this.#pendingWorkerReady.delete(worker);
+				pending.reject(error);
+			}
 		});
 
 		this.#workers.push(worker);
+		logger.info("Waiting for worker ready signal", {entrypoint});
 
-		// Wait for worker-ready signal
-		logger.info("Waiting for worker-ready signal");
-		await workerReadyPromise;
-		logger.info("Received worker-ready signal");
-
-		// Create promise for initialized response
-		const initializedPromise = new Promise<void>((resolve, reject) => {
-			const timeoutId = setTimeout(() => {
-				reject(
-					new Error("Worker failed to send initialized signal within 30000ms"),
-				);
-			}, 30000);
-			const pending = this.#pendingWorkerInit.get(worker) || {};
-			pending.initialized = () => {
-				clearTimeout(timeoutId);
-				resolve();
-			};
-			this.#pendingWorkerInit.set(worker, pending);
-		});
-
-		// Derive baseDir from entrypoint
-		if (!this.#appEntrypoint) {
-			throw new Error(
-				"ServiceWorkerPool requires an entrypoint to derive baseDir",
-			);
-		}
-		const baseDir = Path.dirname(this.#appEntrypoint);
-
-		// Send init message with config and baseDir
-		const initMessage: WorkerInitMessage = {
-			type: "init",
-			config: this.#config,
-			baseDir,
-		};
-		logger.info("Sending init message", {config: this.#config, baseDir});
-		worker.postMessage(initMessage);
-		logger.info("Sent init message, waiting for initialized response");
-
-		// Wait for initialized response
-		await initializedPromise;
-		logger.info("Received initialized response");
-
-		// Clean up pending init promises
-		this.#pendingWorkerInit.delete(worker);
+		await readyPromise;
+		this.#pendingWorkerReady.delete(worker);
+		logger.info("Worker ready", {entrypoint});
 
 		return worker;
 	}
@@ -982,30 +879,25 @@ export class ServiceWorkerPool {
 	#handleWorkerMessage(worker: Worker, message: WorkerMessage) {
 		logger.debug("Worker message received", {type: message.type});
 
-		// Handle worker initialization messages
-		const pending = this.#pendingWorkerInit.get(worker);
-		if (message.type === "worker-ready" && pending?.workerReady) {
-			pending.workerReady();
-			// Don't return - also pass to #handleReady
-		} else if (message.type === "initialized" && pending?.initialized) {
-			pending.initialized();
-			return; // Early return for initialized
-		}
-
 		switch (message.type) {
+			case "ready": {
+				// Worker finished initialization, resolve the ready promise
+				const pending = this.#pendingWorkerReady.get(worker);
+				if (pending) {
+					pending.resolve();
+				}
+				logger.info("ServiceWorker ready");
+				break;
+			}
+
 			case "response":
 				this.#handleResponse(message as WorkerResponse);
 				break;
+
 			case "error":
 				this.#handleError(message as WorkerErrorMessage);
 				break;
-			case "ready":
-			case "worker-ready":
-				this.#handleReady(message as WorkerReadyMessage);
-				break;
-			case "initialized":
-				// Already handled above
-				break;
+
 			default:
 				// Handle cache messages from PostMessageCache
 				if (message.type?.startsWith("cache:")) {
@@ -1028,11 +920,9 @@ export class ServiceWorkerPool {
 	#handleResponse(message: WorkerResponse) {
 		const pending = this.#pendingRequests.get(message.requestID);
 		if (pending) {
-			// Clear the timeout
 			if (pending.timeoutId) {
 				clearTimeout(pending.timeoutId);
 			}
-			// Reconstruct Response object from transferred ArrayBuffer (zero-copy)
 			const response = new Response(message.response.body, {
 				status: message.response.status,
 				statusText: message.response.statusText,
@@ -1044,7 +934,6 @@ export class ServiceWorkerPool {
 	}
 
 	#handleError(message: WorkerErrorMessage) {
-		// Always log error details for debugging
 		logger.error("Worker error message received: {error}", {
 			error: message.error,
 			stack: message.stack,
@@ -1054,23 +943,12 @@ export class ServiceWorkerPool {
 		if (message.requestID) {
 			const pending = this.#pendingRequests.get(message.requestID);
 			if (pending) {
-				// Clear the timeout
 				if (pending.timeoutId) {
 					clearTimeout(pending.timeoutId);
 				}
 				pending.reject(new Error(message.error));
 				this.#pendingRequests.delete(message.requestID);
 			}
-		} else {
-			logger.error("Worker error: {error}", {error: message.error});
-		}
-	}
-
-	#handleReady(message: WorkerReadyMessage) {
-		if (message.type === "ready") {
-			logger.info("ServiceWorker ready", {entrypoint: message.entrypoint});
-		} else if (message.type === "worker-ready") {
-			logger.info("Worker initialized", {});
 		}
 	}
 
@@ -1078,9 +956,8 @@ export class ServiceWorkerPool {
 	 * Handle HTTP request using round-robin worker selection
 	 */
 	async handleRequest(request: Request): Promise<Response> {
-		// Round-robin worker selection
 		const worker = this.#workers[this.#currentWorker];
-		logger.info("Dispatching to worker", {
+		logger.debug("Dispatching to worker", {
 			workerIndex: this.#currentWorker + 1,
 			totalWorkers: this.#workers.length,
 		});
@@ -1089,7 +966,6 @@ export class ServiceWorkerPool {
 		const requestID = ++this.#requestID;
 
 		return new Promise((resolve, reject) => {
-			// Set up timeout handling with cleanup
 			const timeoutId = setTimeout(() => {
 				if (this.#pendingRequests.has(requestID)) {
 					this.#pendingRequests.delete(requestID);
@@ -1097,23 +973,16 @@ export class ServiceWorkerPool {
 				}
 			}, this.#options.requestTimeout);
 
-			// Track pending request with timeout ID for cleanup
 			this.#pendingRequests.set(requestID, {resolve, reject, timeoutId});
-
-			// Start async work without blocking promise executor
 			this.#sendRequest(worker, request, requestID).catch(reject);
 		});
 	}
 
-	/**
-	 * Send request to worker (async helper to avoid async promise executor)
-	 */
 	async #sendRequest(
 		worker: Worker,
 		request: Request,
 		requestID: number,
 	): Promise<void> {
-		// Read request body as ArrayBuffer for zero-copy transfer
 		let body: ArrayBuffer | null = null;
 		if (request.body) {
 			body = await request.arrayBuffer();
@@ -1130,7 +999,6 @@ export class ServiceWorkerPool {
 			requestID,
 		};
 
-		// Transfer the body ArrayBuffer if present (zero-copy)
 		if (body) {
 			worker.postMessage(workerRequest, [body]);
 		} else {
@@ -1139,81 +1007,30 @@ export class ServiceWorkerPool {
 	}
 
 	/**
-	 * Reload ServiceWorker with new entrypoint (hot reload)
-	 * The entrypoint path contains a content hash for cache busting
+	 * Reload workers with new entrypoint (hot reload)
+	 *
+	 * With unified builds, hot reload means:
+	 * 1. Terminate all existing workers
+	 * 2. Create new workers with the new bundle
 	 */
 	async reloadWorkers(entrypoint: string): Promise<void> {
-		logger.info("Reloading ServiceWorker", {entrypoint});
+		logger.info("Reloading workers", {entrypoint});
 
-		// Update the stored entrypoint
+		// Update stored entrypoint
 		this.#appEntrypoint = entrypoint;
 
-		const loadPromises = this.#workers.map((worker) => {
-			return new Promise<void>((resolve, reject) => {
-				let timeoutId: ReturnType<typeof setTimeout> | undefined;
+		// Terminate existing workers
+		const terminatePromises = this.#workers.map((worker) => worker.terminate());
+		await Promise.allSettled(terminatePromises);
+		this.#workers = [];
 
-				const cleanup = () => {
-					worker.removeEventListener("message", handleReady);
-					worker.removeEventListener("error", handleError);
-					if (timeoutId) {
-						clearTimeout(timeoutId);
-					}
-				};
+		// Create new workers with new bundle
+		const createPromises: Promise<Worker>[] = [];
+		for (let i = 0; i < this.#options.workerCount; i++) {
+			createPromises.push(this.#createWorker(entrypoint));
+		}
+		await Promise.all(createPromises);
 
-				const handleReady = (event: any) => {
-					const message = event.data || event;
-					if (message.type === "ready" && message.entrypoint === entrypoint) {
-						cleanup();
-						resolve();
-					} else if (message.type === "error") {
-						// Handle error messages sent from worker when load fails
-						cleanup();
-						reject(
-							new Error(
-								`Worker failed to load ServiceWorker: ${message.error}`,
-							),
-						);
-					}
-				};
-
-				const handleError = (error: any) => {
-					cleanup();
-					// Extract error message from ErrorEvent or Error object
-					const errorMsg =
-						error?.error?.message || error?.message || JSON.stringify(error);
-					reject(new Error(`Worker failed to load ServiceWorker: ${errorMsg}`));
-				};
-
-				// Timeout after 30 seconds if worker doesn't respond (allows time for activate event processing)
-				timeoutId = setTimeout(() => {
-					cleanup();
-					reject(
-						new Error(
-							`Worker failed to load ServiceWorker within 30000ms (entrypoint ${entrypoint})`,
-						),
-					);
-				}, 30000);
-
-				logger.info("Sending load message", {
-					entrypoint,
-				});
-
-				worker.addEventListener("message", handleReady);
-				worker.addEventListener("error", handleError);
-
-				const loadMessage: WorkerLoadMessage = {
-					type: "load",
-					entrypoint,
-				};
-
-				logger.debug("[WorkerPool] Sending load message", {
-					entrypoint,
-				});
-				worker.postMessage(loadMessage);
-			});
-		});
-
-		await Promise.all(loadPromises);
 		logger.info("All workers reloaded", {entrypoint});
 	}
 
@@ -1222,10 +1039,10 @@ export class ServiceWorkerPool {
 	 */
 	async terminate(): Promise<void> {
 		const terminatePromises = this.#workers.map((worker) => worker.terminate());
-		// allSettled won't hang - it waits for all promises to settle (resolve or reject)
 		await Promise.allSettled(terminatePromises);
 		this.#workers = [];
 		this.#pendingRequests.clear();
+		this.#pendingWorkerReady.clear();
 	}
 
 	/**

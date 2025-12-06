@@ -1,15 +1,9 @@
 /**
- * Tests for worker logging configuration
+ * Tests for worker initialization and request handling
  *
- * Ensures that:
- * 1. Workers have logging configured by default (not silent)
- * 2. Workers respect logging config from init message
- * 3. Log level can be changed via config
- * 4. Per-category log levels can be configured
- *
- * Note: These tests verify that the worker runtime configures logging
- * before loading user code. The user code doesn't need to import logtape
- * directly - it just needs to work without logging causing issues.
+ * Note: With the unified build model, logging configuration is embedded
+ * in the worker bundle at build time. These tests verify that workers
+ * can initialize and handle requests properly.
  */
 
 import {describe, it, expect, beforeAll, afterAll} from "bun:test";
@@ -19,6 +13,39 @@ import {MemoryCache} from "@b9g/cache/memory";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
+
+// Worker code that properly signals ready and handles request messages
+const WORKER_CODE = (responseText: string) => `
+// Handle incoming request messages from ServiceWorkerPool
+self.addEventListener("message", async (event) => {
+	const message = event.data;
+	if (message.type === "request") {
+		try {
+			const response = new Response("${responseText}");
+			const body = await response.arrayBuffer();
+			postMessage({
+				type: "response",
+				requestID: message.requestID,
+				response: {
+					status: response.status,
+					statusText: response.statusText,
+					headers: Object.fromEntries(response.headers.entries()),
+					body: body,
+				},
+			}, [body]);
+		} catch (err) {
+			postMessage({
+				type: "error",
+				requestID: message.requestID,
+				error: err.message,
+			});
+		}
+	}
+});
+
+// Signal ready
+postMessage({type: "ready"});
+`;
 
 describe("worker logging", () => {
 	let tempDir: string;
@@ -34,17 +61,8 @@ describe("worker logging", () => {
 	});
 
 	it("workers initialize without logging errors", async () => {
-		// Simple worker that doesn't use logtape directly
-		// The worker runtime should have logging configured
 		const workerPath = path.join(tempDir, "simple-worker.js");
-		fs.writeFileSync(
-			workerPath,
-			`
-			self.addEventListener("fetch", (event) => {
-				event.respondWith(new Response("ok"));
-			});
-			`,
-		);
+		fs.writeFileSync(workerPath, WORKER_CODE("ok"));
 
 		const cacheStorage = new CustomCacheStorage(
 			(name) => new MemoryCache(name),
@@ -53,12 +71,10 @@ describe("worker logging", () => {
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 			workerPath,
 			cacheStorage,
-			{}, // No logging config - should use defaults
+			{},
 		);
 
 		await pool.init();
-		await pool.reloadWorkers(workerPath);
-		await new Promise((r) => setTimeout(r, 200));
 
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),
@@ -70,20 +86,12 @@ describe("worker logging", () => {
 
 	it("workers accept debug log level config", async () => {
 		const workerPath = path.join(tempDir, "debug-worker.js");
-		fs.writeFileSync(
-			workerPath,
-			`
-			self.addEventListener("fetch", (event) => {
-				event.respondWith(new Response("debug-ok"));
-			});
-			`,
-		);
+		fs.writeFileSync(workerPath, WORKER_CODE("debug-ok"));
 
 		const cacheStorage = new CustomCacheStorage(
 			(name) => new MemoryCache(name),
 		);
 
-		// Test with debug level config
 		const pool = new ServiceWorkerPool(
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 			workerPath,
@@ -92,8 +100,6 @@ describe("worker logging", () => {
 		);
 
 		await pool.init();
-		await pool.reloadWorkers(workerPath);
-		await new Promise((r) => setTimeout(r, 200));
 
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),
@@ -105,20 +111,12 @@ describe("worker logging", () => {
 
 	it("workers accept warning log level config", async () => {
 		const workerPath = path.join(tempDir, "warning-worker.js");
-		fs.writeFileSync(
-			workerPath,
-			`
-			self.addEventListener("fetch", (event) => {
-				event.respondWith(new Response("warning-ok"));
-			});
-			`,
-		);
+		fs.writeFileSync(workerPath, WORKER_CODE("warning-ok"));
 
 		const cacheStorage = new CustomCacheStorage(
 			(name) => new MemoryCache(name),
 		);
 
-		// Test with warning level config (suppress info logs)
 		const pool = new ServiceWorkerPool(
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 			workerPath,
@@ -127,8 +125,6 @@ describe("worker logging", () => {
 		);
 
 		await pool.init();
-		await pool.reloadWorkers(workerPath);
-		await new Promise((r) => setTimeout(r, 200));
 
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),
@@ -140,38 +136,28 @@ describe("worker logging", () => {
 
 	it("workers accept per-category log level config", async () => {
 		const workerPath = path.join(tempDir, "category-worker.js");
-		fs.writeFileSync(
-			workerPath,
-			`
-			self.addEventListener("fetch", (event) => {
-				event.respondWith(new Response("category-ok"));
-			});
-			`,
-		);
+		fs.writeFileSync(workerPath, WORKER_CODE("category-ok"));
 
 		const cacheStorage = new CustomCacheStorage(
 			(name) => new MemoryCache(name),
 		);
 
-		// Test with per-category config
 		const pool = new ServiceWorkerPool(
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 			workerPath,
 			cacheStorage,
 			{
 				logging: {
-					level: "warning", // default level
+					level: "warning",
 					categories: {
-						server: {level: "debug"}, // server category gets debug
-						build: {level: "error"}, // build category gets error
+						server: {level: "debug"},
+						build: {level: "error"},
 					},
 				},
 			},
 		);
 
 		await pool.init();
-		await pool.reloadWorkers(workerPath);
-		await new Promise((r) => setTimeout(r, 200));
 
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),
@@ -183,20 +169,12 @@ describe("worker logging", () => {
 
 	it("workers handle empty categories config", async () => {
 		const workerPath = path.join(tempDir, "empty-categories-worker.js");
-		fs.writeFileSync(
-			workerPath,
-			`
-			self.addEventListener("fetch", (event) => {
-				event.respondWith(new Response("empty-categories-ok"));
-			});
-			`,
-		);
+		fs.writeFileSync(workerPath, WORKER_CODE("empty-categories-ok"));
 
 		const cacheStorage = new CustomCacheStorage(
 			(name) => new MemoryCache(name),
 		);
 
-		// Test with empty categories
 		const pool = new ServiceWorkerPool(
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 			workerPath,
@@ -210,8 +188,6 @@ describe("worker logging", () => {
 		);
 
 		await pool.init();
-		await pool.reloadWorkers(workerPath);
-		await new Promise((r) => setTimeout(r, 200));
 
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),
@@ -223,20 +199,12 @@ describe("worker logging", () => {
 
 	it("workers handle logging config with only categories (no default level)", async () => {
 		const workerPath = path.join(tempDir, "only-categories-worker.js");
-		fs.writeFileSync(
-			workerPath,
-			`
-			self.addEventListener("fetch", (event) => {
-				event.respondWith(new Response("only-categories-ok"));
-			});
-			`,
-		);
+		fs.writeFileSync(workerPath, WORKER_CODE("only-categories-ok"));
 
 		const cacheStorage = new CustomCacheStorage(
 			(name) => new MemoryCache(name),
 		);
 
-		// Test with categories but no default level (should default to "info")
 		const pool = new ServiceWorkerPool(
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 			workerPath,
@@ -251,8 +219,6 @@ describe("worker logging", () => {
 		);
 
 		await pool.init();
-		await pool.reloadWorkers(workerPath);
-		await new Promise((r) => setTimeout(r, 200));
 
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),

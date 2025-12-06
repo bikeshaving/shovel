@@ -96,6 +96,34 @@ if (isWorker) {
 }
 `;
 
+// Worker entry template for ServiceWorkerPool
+// Note: __USER_ENTRY__ is replaced with the actual user code path at generation time
+const workerEntryTemplate = `// Worker Entry for ServiceWorkerPool
+// This file sets up the ServiceWorker runtime and message loop
+import {config} from "shovel:config";
+import {initWorkerRuntime, startWorkerMessageLoop, configureLogging} from "@b9g/platform/runtime";
+
+// Configure logging before anything else
+await configureLogging(config.logging);
+
+// Initialize the worker runtime (installs ServiceWorker globals)
+const {registration} = await initWorkerRuntime({
+	config,
+	baseDir: import.meta.dirname,
+});
+
+// Import user code (registers event handlers via addEventListener)
+// Must use dynamic import to ensure globals are installed first
+await import("__USER_ENTRY__");
+
+// Run ServiceWorker lifecycle
+await registration.install();
+await registration.activate();
+
+// Start the message loop (handles request/response messages from main thread)
+startWorkerMessageLoop(registration);
+`;
+
 const logger = getLogger(["platform"]);
 
 // ============================================================================
@@ -377,7 +405,6 @@ export class BunPlatform extends BasePlatform {
 			poolOptions,
 			entryPath,
 			this.#cacheStorage,
-			{}, // Empty config - use defaults
 		);
 
 		// Initialize workers (Bun has native Web Workers)
@@ -437,15 +464,20 @@ export class BunPlatform extends BasePlatform {
 	/**
 	 * Get virtual entry wrapper for Bun
 	 *
-	 * Returns production server entry template that uses:
-	 * - shovel:config virtual module for configuration
-	 * - Bun.serve with reusePort for multi-worker scaling
-	 * - Direct import of user's server code
+	 * @param entryPath - Absolute path to user's entrypoint file
+	 * @param options - Entry wrapper options
+	 * @param options.type - "production" (default) or "worker"
 	 *
-	 * The template is a real .ts file (entry-template.ts) for better
-	 * IDE support and linting. It's imported with {type: "text"}.
+	 * Returns:
+	 * - "production": Server entry with Bun.serve and reusePort
+	 * - "worker": Worker entry that sets up runtime and message loop
 	 */
-	getEntryWrapper(_entryPath: string, _options?: EntryWrapperOptions): string {
+	getEntryWrapper(entryPath: string, options?: EntryWrapperOptions): string {
+		if (options?.type === "worker") {
+			// Return worker entry template with user code path substituted
+			return workerEntryTemplate.replace("__USER_ENTRY__", entryPath);
+		}
+		// Default to production entry template
 		return entryTemplate;
 	}
 

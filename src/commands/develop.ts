@@ -45,6 +45,7 @@ export async function developCommand(
 		const watcher = new Watcher({
 			entrypoint,
 			outDir,
+			platform: platformInstance,
 			platformESBuildConfig: platformESBuildConfig,
 			onBuild: async (success, builtEntrypoint) => {
 				if (success && serviceWorker) {
