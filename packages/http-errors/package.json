@@ -1,8 +1,8 @@
 {
   "name": "@b9g/http-errors",
-  "version": "0.1.5",
+  "version": "0.2.0-beta.0",
   "type": "module",
-  "description": "Standard HTTP error responses for ServiceWorker applications. Returns proper Response objects with status codes, not thrown exceptions.",
+  "description": "Standard HTTP error classes with native cause support and automatic serialization",
   "keywords": [
     "http",
     "errors",
@@ -15,14 +15,12 @@
   ],
   "scripts": {
     "build": "libuild build --save",
-    "dev": "libuild build --watch",
     "test": "bun test",
     "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "dependencies": {},
   "devDependencies": {
-    "@b9g/libuild": "^0.1.18",
-    "bun-types": "latest"
+    "@b9g/libuild": "^0.1.18"
   },
   "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",

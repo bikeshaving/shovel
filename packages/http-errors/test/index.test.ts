@@ -1,9 +1,7 @@
 import {test, expect, describe} from "bun:test";
 import {
 	HTTPError,
-	NotHandled,
 	isHTTPError,
-	createHTTPError,
 	BadRequest,
 	Unauthorized,
 	Forbidden,
@@ -67,16 +65,6 @@ describe("HTTPError", () => {
 		expect(serverError.expose).toBe(false); // 5xx should not expose
 	});
 
-	test("should handle additional properties", () => {
-		const error = new HTTPError(400, "Bad Request", {
-			code: "VALIDATION_FAILED",
-			details: {field: "email"},
-		});
-
-		expect(error.code).toBe("VALIDATION_FAILED");
-		expect(error.details).toEqual({field: "email"});
-	});
-
 	test("toJSON should serialize correctly", () => {
 		const error = new HTTPError(404, "Not Found", {
 			headers: {"Cache-Control": "no-cache"},
@@ -94,28 +82,13 @@ describe("HTTPError", () => {
 	});
 });
 
-describe("NotHandled", () => {
-	test("should create NotHandled error", () => {
-		const error = new NotHandled();
-
-		expect(error.name).toBe("NotHandled");
-		expect(error.message).toBe("Request not handled by middleware");
-	});
-
-	test("should create NotHandled with custom message", () => {
-		const error = new NotHandled("Custom message");
-
-		expect(error.message).toBe("Custom message");
-	});
-});
-
 describe("isHTTPError", () => {
 	test("should identify HTTPError instances", () => {
 		const error = new HTTPError(404);
 		expect(isHTTPError(error)).toBe(true);
 	});
 
-	test("should identify error-like objects with status properties", () => {
+	test("should not identify error-like objects with status properties", () => {
 		const errorLike = {
 			status: 404,
 			statusCode: 404,
@@ -123,7 +96,7 @@ describe("isHTTPError", () => {
 		};
 		Object.setPrototypeOf(errorLike, Error.prototype);
 
-		expect(isHTTPError(errorLike)).toBe(true);
+		expect(isHTTPError(errorLike)).toBe(false);
 	});
 
 	test("should reject regular errors", () => {
@@ -136,27 +109,6 @@ describe("isHTTPError", () => {
 		expect(isHTTPError(null)).toBe(false);
 		expect(isHTTPError(undefined)).toBe(false);
 		expect(isHTTPError({})).toBe(false);
-	});
-
-	test("should reject objects with mismatched status codes", () => {
-		const errorLike = {
-			status: 404,
-			statusCode: 500,
-			message: "Mismatch",
-		};
-		Object.setPrototypeOf(errorLike, Error.prototype);
-
-		expect(isHTTPError(errorLike)).toBe(false);
-	});
-});
-
-describe("createHTTPError", () => {
-	test("should create HTTPError with factory function", () => {
-		const error = createHTTPError(404, "Not Found");
-
-		expect(error).toBeInstanceOf(HTTPError);
-		expect(error.status).toBe(404);
-		expect(error.message).toBe("Not Found");
 	});
 });
 

@@ -1,12 +1,9 @@
 /**
- * Modern HTTP error classes for Shovel
- * Lightweight alternative to http-errors with native Error cause support
+ * Standard HTTP error classes with native cause support and automatic serialization
  */
 
-/**
- * HTTP status codes and their default messages
- */
-const STATUS_CODES: Record<number, string> = {
+/** HTTP status codes and their default messages */
+const STATUS_CODE_DEFAULTS: Record<number, string> = {
 	// 4xx Client Errors
 	400: "Bad Request",
 	401: "Unauthorized",
@@ -52,9 +49,9 @@ const STATUS_CODES: Record<number, string> = {
 	511: "Network Authentication Required",
 };
 
-/**
- * Options for creating HTTP errors
- */
+const HTTP_ERROR = Symbol.for("shovel.http-error");
+
+/** Options for creating HTTP errors */
 export interface HTTPErrorOptions {
 	/** Original error that caused this HTTP error */
 	cause?: Error;
@@ -62,36 +59,33 @@ export interface HTTPErrorOptions {
 	headers?: Record<string, string>;
 	/** Whether the error details should be exposed to clients (defaults based on status) */
 	expose?: boolean;
-	/** Additional properties to attach to the error */
-	[key: string]: any;
 }
 
-/**
- * Base HTTP error class
- */
+/** Base HTTP error class */
 export class HTTPError extends Error {
 	readonly status: number;
-	readonly statusCode: number;
 	readonly expose: boolean;
 	readonly headers?: Record<string, string>;
 
 	constructor(
 		status: number,
-
 		message?: string,
-
 		options: HTTPErrorOptions = {},
 	) {
-		const defaultMessage = STATUS_CODES[status] || "Unknown Error";
+		const defaultMessage = STATUS_CODE_DEFAULTS[status] || "Unknown Error";
 		super(message || defaultMessage, {cause: options.cause});
 
 		this.name = this.constructor.name;
-		this.status = this.statusCode = status;
+		this.status = status;
 		this.expose = options.expose ?? status < 500; // Expose client errors by default
 		this.headers = options.headers;
 
 		// Attach any additional properties
 		Object.assign(this, options);
+	}
+
+	get statusCode(): number {
+		return this.status;
 	}
 
 	/**
@@ -118,7 +112,7 @@ export class HTTPError extends Error {
 
 		if (isDev && this.expose) {
 			headers.set("Content-Type", "text/html; charset=utf-8");
-			const statusText = STATUS_CODES[this.status] || "Error";
+			const statusText = STATUS_CODE_DEFAULTS[this.status] || "Unknown Error";
 			const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -147,14 +141,16 @@ export class HTTPError extends Error {
 		headers.set("Content-Type", "text/plain; charset=utf-8");
 		const body = this.expose
 			? this.message
-			: STATUS_CODES[this.status] || "Error";
+			: STATUS_CODE_DEFAULTS[this.status] || "Unknown Error";
 		return new Response(body, {
 			status: this.status,
-			statusText: STATUS_CODES[this.status],
+			statusText: STATUS_CODE_DEFAULTS[this.status],
 			headers,
 		});
 	}
 }
+
+(HTTPError.prototype as any)[HTTP_ERROR] = true;
 
 /**
  * Escape HTML special characters to prevent XSS
@@ -169,40 +165,10 @@ function escapeHTML(str: string): string {
 }
 
 /**
- * Special error for middleware fallthrough (not an HTTP error)
- */
-export class NotHandled extends Error {
-	constructor(message = "Request not handled by middleware") {
-		super(message);
-		this.name = "NotHandled";
-	}
-}
-
-/**
  * Check if a value is an HTTP error
  */
 export function isHTTPError(value: any): value is HTTPError {
-	if (value instanceof HTTPError) return true;
-
-	if (!(value instanceof Error)) return false;
-
-	// Check if error has HTTP error properties
-	const hasStatus = "status" in value && typeof value.status === "number";
-	const hasStatusCode =
-		"statusCode" in value && typeof value.statusCode === "number";
-
-	return hasStatus && hasStatusCode && value.status === value.statusCode;
-}
-
-/**
- * Create an HTTP error with the given status code
- */
-export function createHTTPError(
-	status: number,
-	message?: string,
-	options?: HTTPErrorOptions,
-): HTTPError {
-	return new HTTPError(status, message, options);
+	return !!(value && value[HTTP_ERROR]);
 }
 
 // Common 4xx client error classes
@@ -284,6 +250,3 @@ export class GatewayTimeout extends HTTPError {
 		super(504, message, options);
 	}
 }
-
-// Default export for convenience
-export default createHTTPError;
