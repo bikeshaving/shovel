@@ -2,8 +2,6 @@
 
 Lightweight polyfill for the [TC39 AsyncContext proposal](https://github.com/tc39/proposal-async-context) using Node.js `AsyncLocalStorage`.
 
-## Why This Package?
-
 The TC39 AsyncContext proposal aims to standardize async context propagation in JavaScript. However:
 
 - The proposal is still Stage 2 (not yet standardized)
@@ -12,11 +10,11 @@ The TC39 AsyncContext proposal aims to standardize async context propagation in 
 
 This package provides a **lightweight, maintainable polyfill** that:
 
-✅ Implements the TC39 `AsyncContext.Variable` and `AsyncContext.Snapshot` APIs
-✅ Uses battle-tested `AsyncLocalStorage` under the hood
-✅ Zero dependencies (beyond Node.js built-ins)
-✅ Full TypeScript support
-✅ Production-ready and well-tested
+- Implements the TC39 `AsyncContext.Variable` and `AsyncContext.Snapshot` APIs
+- Uses battle-tested `AsyncLocalStorage` under the hood
+- Zero dependencies (beyond Node.js built-ins)
+- Full TypeScript support
+- Production-ready and well-tested
 
 ## Installation
 
@@ -31,7 +29,7 @@ bun add @b9g/async-context
 ### Basic Example
 
 ```typescript
-import { AsyncContext } from "@b9g/async-context";
+import {AsyncContext} from "@b9g/async-context";
 
 // Create a context variable
 const userContext = new AsyncContext.Variable<User>();
@@ -48,7 +46,7 @@ userContext.run(currentUser, async () => {
 ### Request Context (Web Server)
 
 ```typescript
-import { AsyncVariable } from "@b9g/async-context";
+import {AsyncVariable} from "@b9g/async-context";
 
 interface RequestContext {
   requestId: string;
@@ -227,17 +225,17 @@ The polyfill provides:
 
 This package works in any JavaScript runtime that supports `AsyncLocalStorage`:
 
-- ✅ Node.js 12.17+
-- ✅ Bun
-- ✅ Deno
-- ✅ Cloudflare Workers
+- Node.js 12.17+
+- Bun
+- Deno
+- Cloudflare Workers (with "nodejs_compat" flag)
 
 ## Differences from TC39 Proposal
 
 This polyfill implements the core TC39 AsyncContext API:
 
-- ✅ `AsyncContext.Variable` - context variables with `run()` and `get()`
-- ✅ `AsyncContext.Snapshot` - context capture with `run()` and `wrap()`
+- `AsyncContext.Variable` - context variables with `run()` and `get()`
+- `AsyncContext.Snapshot` - context capture with `run()` and `wrap()`
 
 The implementation uses Node.js `AsyncLocalStorage` rather than the pure-JS reference implementation, which means async context propagation works natively without monkey-patching `Promise.prototype.then`.
 
@@ -273,4 +271,4 @@ MIT
 
 - [TC39 AsyncContext Proposal](https://github.com/tc39/proposal-async-context)
 - [Node.js AsyncLocalStorage](https://nodejs.org/api/async_context.html#class-asynclocalstorage)
-- [Shovel Framework](https://github.com/b9g/shovel)
+- [Shovel Framework](https://github.com/bikeshaving/shovel)
