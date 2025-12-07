@@ -25,7 +25,7 @@ globalThis.self = {
 		handleCacheOperation(message).then((response) => {
 			if (response) {
 				// Forward cache response to handleCacheResponse (like worker.ts does)
-				handleCacheResponse(response);
+				handleCacheResponse(response.message || response);
 			}
 		});
 		// Also send to parent for debugging
@@ -45,11 +45,13 @@ async function handleCacheOperation(message: any) {
 	try {
 		// Get or create cache
 		if (!caches.has(cacheName)) {
-			caches.set(cacheName, new MemoryCache(cacheName));
+			caches.set(cacheName, new MemoryCache("test"));
 		}
 		const cache = caches.get(cacheName)!;
 
 		let result: any;
+
+		const transfer: ArrayBuffer[] = [];
 
 		switch (type) {
 			case "cache:match": {
@@ -61,11 +63,13 @@ async function handleCacheOperation(message: any) {
 				});
 				const response = await cache.match(req, options);
 				if (response) {
+					const body = await response.arrayBuffer();
+					transfer.push(body);
 					result = {
 						status: response.status,
 						statusText: response.statusText,
 						headers: Object.fromEntries(response.headers.entries()),
-						body: await response.text(),
+						body,
 					};
 				}
 				break;
@@ -109,16 +113,23 @@ async function handleCacheOperation(message: any) {
 			}
 		}
 
-		return {
+		const responseMessage = {
 			type: "cache:response",
 			requestID,
 			result,
 		};
+
+		if (transfer.length > 0) {
+			return {message: responseMessage, transfer};
+		}
+		return {message: responseMessage};
 	} catch (error) {
 		return {
-			type: "cache:error",
-			requestID,
-			error: error instanceof Error ? error.message : String(error),
+			message: {
+				type: "cache:error",
+				requestID,
+				error: error instanceof Error ? error.message : String(error),
+			},
 		};
 	}
 }

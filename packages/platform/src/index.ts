@@ -10,8 +10,6 @@
  * - ServiceWorkerPool for multi-worker execution
  */
 
-import {CustomCacheStorage} from "@b9g/cache";
-import {MemoryCache} from "@b9g/cache/memory";
 import {getLogger} from "@logtape/logtape";
 import type {DirectoryStorage} from "@b9g/filesystem";
 import {
@@ -380,18 +378,6 @@ export abstract class BasePlatform implements Platform {
 	abstract createServer(handler: any, options?: any): any;
 
 	/**
-	 * Create cache storage
-	 * Returns empty CacheStorage - applications create caches on-demand via caches.open()
-	 */
-	async createCaches(): Promise<CacheStorage> {
-		// Return CacheStorage with memory cache factory
-		// Applications call caches.open("name") to create caches on-demand
-		return new CustomCacheStorage(
-			(name: string) => new MemoryCache(name),
-		) as CacheStorage;
-	}
-
-	/**
 	 * Get virtual entry wrapper template for user code
 	 * Subclasses must override to provide platform-specific wrappers
 	 */
@@ -405,6 +391,12 @@ export abstract class BasePlatform implements Platform {
 	 * Subclasses should override to provide platform-specific config
 	 */
 	abstract getESBuildConfig(): PlatformESBuildConfig;
+
+	/**
+	 * Create cache storage
+	 * Subclasses must override to provide platform-specific config
+	 */
+	abstract createCaches(): Promise<CacheStorage>;
 }
 
 // ============================================================================

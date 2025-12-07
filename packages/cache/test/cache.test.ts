@@ -7,9 +7,7 @@ describe("CustomCacheStorage", () => {
 
 	beforeEach(() => {
 		// Create CustomCacheStorage with MemoryCache instances
-		cacheStorage = new CustomCacheStorage(
-			(name: string) => new MemoryCache(name),
-		);
+		cacheStorage = new CustomCacheStorage((name) => new MemoryCache(name));
 	});
 
 	test("can open caches", async () => {
@@ -187,12 +185,102 @@ describe("MemoryCache", () => {
 
 		expect((await cache.keys()).length).toBe(0);
 	});
+
+	test("respects Vary header", async () => {
+		const cache = new MemoryCache("test");
+
+		// Cache a response that varies on Accept-Encoding
+		const request1 = new Request("http://example.com/api", {
+			headers: {"Accept-Encoding": "gzip"},
+		});
+		const response1 = new Response("gzipped", {
+			headers: {Vary: "Accept-Encoding"},
+		});
+		await cache.put(request1, response1);
+
+		// Same URL with same Accept-Encoding should match
+		const matchingSameHeaders = new Request("http://example.com/api", {
+			headers: {"Accept-Encoding": "gzip"},
+		});
+		const matched1 = await cache.match(matchingSameHeaders);
+		expect(matched1).toBeDefined();
+		expect(await matched1!.text()).toBe("gzipped");
+
+		// Same URL with different Accept-Encoding should NOT match
+		const matchingDifferentHeaders = new Request("http://example.com/api", {
+			headers: {"Accept-Encoding": "br"},
+		});
+		const matched2 = await cache.match(matchingDifferentHeaders);
+		expect(matched2).toBeUndefined();
+
+		// With ignoreVary: true, should match regardless of headers
+		const matched3 = await cache.match(matchingDifferentHeaders, {
+			ignoreVary: true,
+		});
+		expect(matched3).toBeDefined();
+		expect(await matched3!.text()).toBe("gzipped");
+	});
+
+	test("handles Vary: * (never matches)", async () => {
+		const cache = new MemoryCache("test");
+
+		const request = new Request("http://example.com/api");
+		const response = new Response("data", {
+			headers: {Vary: "*"},
+		});
+		await cache.put(request, response);
+
+		// Vary: * means never match
+		const matched = await cache.match(request);
+		expect(matched).toBeUndefined();
+
+		// Even with ignoreVary: true, should match
+		const matchedIgnoreVary = await cache.match(request, {ignoreVary: true});
+		expect(matchedIgnoreVary).toBeDefined();
+	});
+
+	test("handles multiple Vary headers", async () => {
+		const cache = new MemoryCache("test");
+
+		const request = new Request("http://example.com/api", {
+			headers: {
+				"Accept-Encoding": "gzip",
+				"User-Agent": "Chrome",
+			},
+		});
+		const response = new Response("data", {
+			headers: {Vary: "Accept-Encoding, User-Agent"},
+		});
+		await cache.put(request, response);
+
+		// Both headers must match
+		const matched1 = await cache.match(
+			new Request("http://example.com/api", {
+				headers: {
+					"Accept-Encoding": "gzip",
+					"User-Agent": "Chrome",
+				},
+			}),
+		);
+		expect(matched1).toBeDefined();
+
+		// One header different = no match
+		const matched2 = await cache.match(
+			new Request("http://example.com/api", {
+				headers: {
+					"Accept-Encoding": "gzip",
+					"User-Agent": "Firefox",
+				},
+			}),
+		);
+		expect(matched2).toBeUndefined();
+	});
 });
 
 describe("CustomCacheStorage message handling (PostMessage coordination)", () => {
 	test("CustomCacheStorage handles cache:match messages", async () => {
 		const cacheStorage = new CustomCacheStorage(
-			(name: string) => new MemoryCache(name),
+			(name) => new MemoryCache(name),
 		);
 		const messages: any[] = [];
 
@@ -224,7 +312,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 
 	test("CustomCacheStorage handles cache:put and cache:match", async () => {
 		const cacheStorage = new CustomCacheStorage(
-			(name: string) => new MemoryCache(name),
+			(name) => new MemoryCache(name),
 		);
 		const messages: any[] = [];
 
@@ -275,12 +363,15 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 		expect(messages[0].type).toBe("cache:response");
 		expect(messages[0].requestID).toBe("2");
 		expect(messages[0].result).toBeDefined();
-		expect(messages[0].result.body).toBe("Hello World");
+		expect(messages[0].result.body).toBeInstanceOf(ArrayBuffer);
+		// Verify the ArrayBuffer content
+		const decoder = new TextDecoder();
+		expect(decoder.decode(messages[0].result.body)).toBe("Hello World");
 	});
 
 	test("CustomCacheStorage handles cache:delete", async () => {
 		const cacheStorage = new CustomCacheStorage(
-			(name: string) => new MemoryCache(name),
+			(name) => new MemoryCache(name),
 		);
 		const messages: any[] = [];
 
@@ -326,7 +417,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 
 	test("CustomCacheStorage handles cache:keys", async () => {
 		const cacheStorage = new CustomCacheStorage(
-			(name: string) => new MemoryCache(name),
+			(name) => new MemoryCache(name),
 		);
 		const messages: any[] = [];
 
@@ -368,7 +459,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 
 	test("CustomCacheStorage handles cache:clear", async () => {
 		const cacheStorage = new CustomCacheStorage(
-			(name: string) => new MemoryCache(name),
+			(name) => new MemoryCache(name),
 		);
 		const messages: any[] = [];
 
@@ -410,7 +501,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 
 	test("CustomCacheStorage handles errors gracefully", async () => {
 		const cacheStorage = new CustomCacheStorage(
-			(name: string) => new MemoryCache(name),
+			(name) => new MemoryCache(name),
 		);
 		const messages: any[] = [];
 

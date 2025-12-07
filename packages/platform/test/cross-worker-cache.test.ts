@@ -101,7 +101,7 @@ startWorkerMessageLoop(registration);
 		});
 
 		// Create shared cache storage on main thread
-		cacheStorage = new CustomCacheStorage((name) => new MemoryCache(name));
+		cacheStorage = new CustomCacheStorage(() => new MemoryCache());
 
 		// Create pool with 2 workers
 		pool = new ServiceWorkerPool(

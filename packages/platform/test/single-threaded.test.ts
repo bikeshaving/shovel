@@ -43,7 +43,7 @@ async function cleanup(paths: string[]) {
 }
 
 function createCacheStorage(): CustomCacheStorage {
-	return new CustomCacheStorage((name) => new MemoryCache(name));
+	return new CustomCacheStorage(() => new MemoryCache());
 }
 
 async function createDirectoryStorage(

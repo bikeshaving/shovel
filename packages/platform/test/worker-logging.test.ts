@@ -64,9 +64,7 @@ describe("worker logging", () => {
 		const workerPath = path.join(tempDir, "simple-worker.js");
 		fs.writeFileSync(workerPath, WORKER_CODE("ok"));
 
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage = new CustomCacheStorage(() => new MemoryCache());
 		const pool = new ServiceWorkerPool(
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 			workerPath,
@@ -88,9 +86,7 @@ describe("worker logging", () => {
 		const workerPath = path.join(tempDir, "debug-worker.js");
 		fs.writeFileSync(workerPath, WORKER_CODE("debug-ok"));
 
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage = new CustomCacheStorage(() => new MemoryCache());
 
 		const pool = new ServiceWorkerPool(
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
@@ -113,9 +109,7 @@ describe("worker logging", () => {
 		const workerPath = path.join(tempDir, "warning-worker.js");
 		fs.writeFileSync(workerPath, WORKER_CODE("warning-ok"));
 
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage = new CustomCacheStorage(() => new MemoryCache());
 
 		const pool = new ServiceWorkerPool(
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
@@ -138,9 +132,7 @@ describe("worker logging", () => {
 		const workerPath = path.join(tempDir, "category-worker.js");
 		fs.writeFileSync(workerPath, WORKER_CODE("category-ok"));
 
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage = new CustomCacheStorage(() => new MemoryCache());
 
 		const pool = new ServiceWorkerPool(
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
@@ -171,9 +163,7 @@ describe("worker logging", () => {
 		const workerPath = path.join(tempDir, "empty-categories-worker.js");
 		fs.writeFileSync(workerPath, WORKER_CODE("empty-categories-ok"));
 
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage = new CustomCacheStorage(() => new MemoryCache());
 
 		const pool = new ServiceWorkerPool(
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
@@ -201,9 +191,7 @@ describe("worker logging", () => {
 		const workerPath = path.join(tempDir, "only-categories-worker.js");
 		fs.writeFileSync(workerPath, WORKER_CODE("only-categories-ok"));
 
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage = new CustomCacheStorage(() => new MemoryCache());
 
 		const pool = new ServiceWorkerPool(
 			{workerCount: 1, requestTimeout: 5000, cwd: tempDir},

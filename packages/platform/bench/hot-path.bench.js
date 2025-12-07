@@ -9,7 +9,7 @@ import {MemoryCache} from "@b9g/cache/memory.js";
 
 // Setup: Create a minimal ServiceWorker environment
 const registration = new ShovelServiceWorkerRegistration();
-const cacheStorage = new CustomCacheStorage((name) => new MemoryCache(name));
+const cacheStorage = new CustomCacheStorage(() => new MemoryCache());
 const scope = new ServiceWorkerGlobals({
 	registration,
 	caches: cacheStorage,

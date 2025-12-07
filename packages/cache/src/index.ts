@@ -40,8 +40,11 @@ export function toRequest(request: RequestInfo | URL): Request {
  * Abstract Cache class implementing the Cache API interface
  * Provides shared implementations for add() and addAll() while requiring
  * concrete implementations to handle the core storage operations
+ *
+ * All cache implementations must follow the constructor signature:
+ * constructor(name: string, options?: CacheOptions)
  */
-export abstract class Cache {
+export abstract class Cache implements globalThis.Cache {
 	/**
 	 * Returns a Promise that resolves to the response associated with the first matching request
 	 */
@@ -144,6 +147,15 @@ export function generateCacheKey(
 // ============================================================================
 
 /**
+ * Constructor type for Cache implementations
+ * All cache classes must accept name as first parameter and optional options as second
+ */
+export type CacheConstructor<T extends Cache = Cache, O = any> = new (
+	name: string,
+	options?: O,
+) => T;
+
+/**
  * Factory function for creating Cache instances based on cache name
  */
 export type CacheFactory = (name: string) => Cache | Promise<Cache>;
@@ -152,7 +164,7 @@ export type CacheFactory = (name: string) => Cache | Promise<Cache>;
  * CustomCacheStorage implements CacheStorage interface with a configurable factory
  * The factory function receives the cache name and can return different cache types
  */
-export class CustomCacheStorage {
+export class CustomCacheStorage implements CacheStorage {
 	#instances: Map<string, Cache>;
 	#factory: CacheFactory;
 
@@ -222,16 +234,6 @@ export class CustomCacheStorage {
 	}
 
 	/**
-	 * Get statistics about the cache storage
-	 */
-	getStats() {
-		return {
-			openInstances: this.#instances.size,
-			cacheNames: Array.from(this.#instances.keys()),
-		};
-	}
-
-	/**
 	 * Dispose of all cache instances
 	 * Calls dispose() on each cache if it exists (e.g., RedisCache needs to close connections)
 	 */
@@ -261,19 +263,24 @@ export class CustomCacheStorage {
 		try {
 			const cache = await this.open(cacheName);
 			let result: any;
+			const transfer: ArrayBuffer[] = [];
 
 			switch (type) {
 				case "cache:match": {
 					const req = new Request(message.request.url, message.request);
 					const response = await cache.match(req, message.options);
-					result = response
-						? {
-								status: response.status,
-								statusText: response.statusText,
-								headers: Object.fromEntries(response.headers),
-								body: await response.text(),
-							}
-						: undefined;
+					if (response) {
+						const body = await response.arrayBuffer();
+						transfer.push(body);
+						result = {
+							status: response.status,
+							statusText: response.statusText,
+							headers: Object.fromEntries(response.headers),
+							body,
+						};
+					} else {
+						result = undefined;
+					}
 					break;
 				}
 				case "cache:put": {
@@ -306,7 +313,12 @@ export class CustomCacheStorage {
 					break;
 			}
 
-			worker.postMessage({type: "cache:response", requestID, result});
+			const responseMessage = {type: "cache:response", requestID, result};
+			if (transfer.length > 0) {
+				worker.postMessage(responseMessage, transfer);
+			} else {
+				worker.postMessage(responseMessage);
+			}
 		} catch (error: any) {
 			worker.postMessage({
 				type: "cache:error",

@@ -372,7 +372,7 @@ export class NodePlatform extends BasePlatform {
 	 * Create cache storage (in-memory by default)
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
-		return new CustomCacheStorage((name: string) => new MemoryCache(name));
+		return new CustomCacheStorage((name) => new MemoryCache(name));
 	}
 
 	/**
