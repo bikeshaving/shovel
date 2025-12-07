@@ -3,7 +3,7 @@
  * Pre-configured settings for popular OAuth2 providers
  */
 
-import {OAuth2Config} from "./oauth2.js";
+import {OAuth2Config} from "./index.js";
 
 export type ProviderName = "github" | "google" | "microsoft";
 

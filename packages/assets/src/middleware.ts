@@ -1,33 +1,69 @@
 /**
  * Assets middleware using self.directories ServiceWorker API
  *
- * Serves assets with 1-to-1 path mapping from static directory to public URLs.
- * Static directory structure mirrors the public URL structure:
- * - static/favicon.ico -> /favicon.ico
- * - static/assets/app.[hash].js -> /assets/app.[hash].js
- * - static/index.html -> /index.html
+ * Serves assets with 1-to-1 path mapping from public directory to public URLs.
+ * Public directory structure mirrors the public URL structure:
+ * - public/favicon.ico -> /favicon.ico
+ * - public/assets/app.[hash].js -> /assets/app.[hash].js
+ * - public/index.html -> /index.html
  *
  * Manifest is read from the server directory (not publicly servable).
  */
 
-import type {AssetManifestEntry} from "./index.js";
-import mime from "mime";
+import Mime from "mime";
+
+// ============================================================================
+// Types
+// ============================================================================
 
 /**
- * Assets middleware with 1-to-1 path mapping
- *
- * No try/catch - errors propagate up. If manifest doesn't exist, fail loudly.
+ * Asset manifest entry
  */
-export interface AssetsMiddlewareConfig {
-	/** Path to asset manifest file (default: 'manifest.json') */
+export interface AssetManifestEntry {
+	/** Original file path relative to source */
+	source: string;
+	/** Output file path relative to outputDir */
+	output: string;
+	/** Public URL for the asset */
+	url: string;
+	/** Content hash */
+	hash: string;
+	/** File size in bytes */
+	size: number;
+	/** MIME type */
+	type?: string;
+}
+
+/**
+ * Asset manifest structure
+ */
+export interface AssetManifest {
+	/** Assets indexed by their source path */
+	assets: Record<string, AssetManifestEntry>;
+	/** Generation timestamp */
+	generated: string;
+	/** Configuration used */
+	config: {
+		outDir: string;
+	};
+}
+
+/**
+ * Runtime configuration for assets middleware
+ */
+export interface AssetsConfig {
+	/** Path to asset manifest file (default: 'assets.json') */
 	manifestPath?: string;
 	/** Cache control header value (default: 'public, max-age=31536000, immutable') */
 	cacheControl?: string;
 }
 
-export function assets(config: AssetsMiddlewareConfig = {}) {
+/**
+ * Assets middleware
+ */
+export function assets(config: AssetsConfig = {}) {
 	const {
-		manifestPath = "manifest.json",
+		manifestPath = "assets.json",
 		cacheControl = "public, max-age=31536000, immutable",
 	} = config;
 
@@ -39,7 +75,7 @@ export function assets(config: AssetsMiddlewareConfig = {}) {
 		if (manifestEntries) return manifestEntries;
 
 		// Read manifest from server directory
-		const serverDir = await (self as any).directories.open("server");
+		const serverDir = await self.directories.open("server");
 		const manifestHandle = await serverDir.getFileHandle(manifestPath);
 		const manifestFile = await manifestHandle.getFile();
 		const manifest = JSON.parse(await manifestFile.text());
@@ -81,17 +117,17 @@ export function assets(config: AssetsMiddlewareConfig = {}) {
 			return;
 		}
 
-		// Get file from static directory
+		// Get file from public directory
 		// Public URL /assets/app.js → directory path assets/app.js
 		// FileSystem API requires navigating directories, not path strings
 		const dirPath = requestedPath.slice(1);
 		const pathParts = dirPath.split("/");
 		const filename = pathParts.pop()!;
 
-		const staticDir = await (self as any).directories.open("static");
+		const publicDir = await (self as any).directories.open("public");
 
 		// Navigate through directories
-		let dirHandle = staticDir;
+		let dirHandle = publicDir;
 		for (const dirName of pathParts) {
 			dirHandle = await dirHandle.getDirectoryHandle(dirName);
 		}
@@ -102,7 +138,7 @@ export function assets(config: AssetsMiddlewareConfig = {}) {
 		// Use content type from manifest if available, otherwise detect
 		const contentType =
 			manifestEntry.type ||
-			mime.getType(requestedPath) ||
+			Mime.getType(requestedPath) ||
 			"application/octet-stream";
 
 		// Create response headers

@@ -7,27 +7,27 @@ import {CFAssetsBinding, CFAssetsDirectoryHandle} from "../src/runtime.js";
 describe("CFAssetsDirectoryHandle", () => {
 	let mf: Miniflare;
 	let assets: CFAssetsBinding;
-	const staticDir = path.resolve(import.meta.dir, "static-fixtures");
+	const publicDir = path.resolve(import.meta.dir, "static-fixtures");
 
 	beforeAll(async () => {
 		// Create test static files
-		await fs.mkdir(staticDir, {recursive: true});
-		await fs.mkdir(path.join(staticDir, "assets"), {recursive: true});
+		await fs.mkdir(publicDir, {recursive: true});
+		await fs.mkdir(path.join(publicDir, "assets"), {recursive: true});
 		await fs.writeFile(
-			path.join(staticDir, "assets", "style.abc123.css"),
+			path.join(publicDir, "assets", "style.abc123.css"),
 			"body { color: blue; }",
 		);
 		await fs.writeFile(
-			path.join(staticDir, "assets", "app.def456.js"),
+			path.join(publicDir, "assets", "app.def456.js"),
 			'console.log("Hello");',
 		);
-		await fs.writeFile(path.join(staticDir, "index.html"), "<html></html>");
+		await fs.writeFile(path.join(publicDir, "index.html"), "<html></html>");
 
 		mf = new Miniflare({
 			modules: true,
 			script: `export default { fetch() { return new Response("ok"); } }`,
 			assets: {
-				directory: staticDir,
+				directory: publicDir,
 				binding: "ASSETS",
 				routingConfig: {invoke_user_worker_ahead_of_assets: true},
 			},
@@ -39,7 +39,7 @@ describe("CFAssetsDirectoryHandle", () => {
 
 	afterAll(async () => {
 		await mf.dispose();
-		await fs.rm(staticDir, {recursive: true});
+		await fs.rm(publicDir, {recursive: true});
 	});
 
 	test("creates handle with correct name and kind", () => {

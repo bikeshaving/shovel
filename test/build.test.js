@@ -88,10 +88,10 @@ self.addEventListener("fetch", (event) => {
 			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
 				true,
 			);
-			expect(await fileExists(join(outDir, "server", "manifest.json"))).toBe(
+			expect(await fileExists(join(outDir, "server", "assets.json"))).toBe(
 				true,
 			);
-			// Note: static/assets is only created when entry point has asset imports
+			// Note: public/assets is only created when entry point has asset imports
 
 			// Check index.js exists and contains production server code
 			const appContent = await FS.readFile(
@@ -319,10 +319,10 @@ self.addEventListener("fetch", (event) => {
 			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
 				true,
 			);
-			expect(await fileExists(join(outDir, "server", "manifest.json"))).toBe(
+			expect(await fileExists(join(outDir, "server", "assets.json"))).toBe(
 				true,
 			);
-			expect(await fileExists(join(outDir, "static", "assets"))).toBe(true);
+			expect(await fileExists(join(outDir, "public", "assets"))).toBe(true);
 
 			// Validate app.js content
 			const appContent = await FS.readFile(
@@ -343,7 +343,7 @@ self.addEventListener("fetch", (event) => {
 
 			// Validate assets manifest
 			const manifestContent = await FS.readFile(
-				join(outDir, "server", "manifest.json"),
+				join(outDir, "server", "assets.json"),
 				"utf8",
 			);
 			const manifest = JSON.parse(manifestContent);

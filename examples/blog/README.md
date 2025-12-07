@@ -41,7 +41,7 @@ bun run deploy
 - `/posts/:id` - Individual blog post pages
 - `/about` - About page
 - `/api/posts` - JSON API endpoint
-- `/static/*` - Static assets
+- `/public/*` - Static assets
 
 ## Project Structure
 

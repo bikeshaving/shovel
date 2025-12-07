@@ -205,8 +205,8 @@ export class BunPlatform extends BasePlatform {
 		return new CustomDirectoryStorage((name: string) => {
 			// Well-known directory paths
 			let dirPath: string;
-			if (name === "static") {
-				dirPath = Path.resolve(baseDir, "../static");
+			if (name === "public") {
+				dirPath = Path.resolve(baseDir, "../public");
 			} else if (name === "server") {
 				dirPath = baseDir;
 			} else {

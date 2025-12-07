@@ -16,12 +16,6 @@
  * import clientCss from "./client.ts" with { assetBase: "/static/", type: "css" };
  * // clientCss = "/static/client-abc123.css"
  */
-
-// Export a dummy type to make this a module
-export {};
-
-// Global declarations
-
 declare module "*.svg" {
 	const url: string;
 	export default url;
@@ -172,3 +166,6 @@ declare module "*" {
 	const url: string;
 	export default url;
 }
+
+// Export a dummy type to make this a module
+export {};

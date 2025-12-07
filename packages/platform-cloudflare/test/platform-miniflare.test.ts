@@ -10,7 +10,7 @@ describe("CloudflarePlatform with miniflare", () => {
 	beforeAll(async () => {
 		// Create test worker and assets
 		await fs.mkdir(testDir, {recursive: true});
-		await fs.mkdir(path.join(testDir, "static", "assets"), {recursive: true});
+		await fs.mkdir(path.join(testDir, "public", "assets"), {recursive: true});
 
 		// Write a simple ServiceWorker
 		await fs.writeFile(
@@ -32,17 +32,17 @@ self.addEventListener("fetch", (event) => {
 
 		// Write some static assets
 		await fs.writeFile(
-			path.join(testDir, "static", "assets", "style.css"),
+			path.join(testDir, "public", "assets", "style.css"),
 			"body { color: blue; }",
 		);
 		await fs.writeFile(
-			path.join(testDir, "static", "index.html"),
+			path.join(testDir, "public", "index.html"),
 			"<html><body>Hello</body></html>",
 		);
 
 		// Create platform with assets directory
 		platform = new CloudflarePlatform({
-			assetsDirectory: path.join(testDir, "static"),
+			assetsDirectory: path.join(testDir, "public"),
 		});
 	});
 

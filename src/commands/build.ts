@@ -7,8 +7,8 @@ import * as ESBuild from "esbuild";
 import {builtinModules} from "node:module";
 import {resolve, join, dirname} from "path";
 import {mkdir, readFile, writeFile} from "fs/promises";
-import {assetsPlugin} from "@b9g/assets/plugin";
-import {importMetaPlugin} from "../utils/import-meta-plugin.js";
+import {assetsPlugin} from "../plugins/assets.js";
+import {importMetaPlugin} from "../plugins/import-meta.js";
 import {loadJSXConfig, applyJSXOptions} from "../utils/jsx-config.js";
 import {
 	findProjectRoot,
@@ -119,7 +119,7 @@ const BUILD_DEFAULTS = {
 // Directory structure for build output
 const BUILD_STRUCTURE = {
 	serverDir: "server",
-	staticDir: "static",
+	publicDir: "public",
 };
 
 /**
@@ -227,7 +227,7 @@ export async function buildForProduction({
 	if (verbose) {
 		logger.info("Built app to", {outputDir: buildContext.outputDir});
 		logger.info("Server files", {dir: buildContext.serverDir});
-		logger.info("Static files", {dir: join(buildContext.outputDir, "static")});
+		logger.info("Public files", {dir: join(buildContext.outputDir, "public")});
 	}
 }
 
@@ -295,7 +295,7 @@ async function initializeBuild({
 	try {
 		await mkdir(outputDir, {recursive: true});
 		await mkdir(join(outputDir, BUILD_STRUCTURE.serverDir), {recursive: true});
-		await mkdir(join(outputDir, BUILD_STRUCTURE.staticDir), {recursive: true});
+		await mkdir(join(outputDir, BUILD_STRUCTURE.publicDir), {recursive: true});
 	} catch (error) {
 		throw new Error(`Failed to create output directory structure: ${error}`);
 	}

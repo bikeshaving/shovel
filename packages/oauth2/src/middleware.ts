@@ -19,7 +19,7 @@ declare module "@b9g/router" {
  * Redirects to authorization endpoint
  */
 export function redirectToProvider(client: OAuth2Client): FunctionMiddleware {
-	return async (request, context) => {
+	return async () => {
 		const authURL = await client.startAuthorization((self as any).cookieStore);
 		return Response.redirect(authURL, 302);
 	};
@@ -42,7 +42,10 @@ export function handleCallback(
 ): FunctionMiddleware {
 	return async (request, context) => {
 		try {
-			const tokens = await client.handleCallback(request, (self as any).cookieStore);
+			const tokens = await client.handleCallback(
+				request,
+				(self as any).cookieStore,
+			);
 
 			// Call success handler
 			return await options.onSuccess(tokens, request, context);

@@ -32,7 +32,7 @@ test(
 				await fileExists(join(fixture.dist, "server", "package.json")),
 			).toBe(true);
 			expect(
-				await fileExists(join(fixture.dist, "server", "manifest.json")),
+				await fileExists(join(fixture.dist, "server", "assets.json")),
 			).toBe(true);
 
 			// Verify Cloudflare-specific output
@@ -104,16 +104,16 @@ test(
 			expect(await fileExists(join(fixture.dist, "server", "server.js"))).toBe(
 				true,
 			);
-			expect(await fileExists(join(fixture.dist, "static", "assets"))).toBe(
+			expect(await fileExists(join(fixture.dist, "public", "assets"))).toBe(
 				true,
 			);
 			expect(
-				await fileExists(join(fixture.dist, "server", "manifest.json")),
+				await fileExists(join(fixture.dist, "server", "assets.json")),
 			).toBe(true);
 
 			// Verify manifest contains the asset
 			const manifestContent = await FS.readFile(
-				join(fixture.dist, "server", "manifest.json"),
+				join(fixture.dist, "server", "assets.json"),
 				"utf8",
 			);
 			const manifest = JSON.parse(manifestContent);

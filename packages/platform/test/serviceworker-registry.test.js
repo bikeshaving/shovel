@@ -101,16 +101,16 @@ test(
 		// Register with various scope formats
 		const reg1 = await container.register("/worker.js", {scope: "api"}); // Should normalize to /api/
 		const reg2 = await container.register("/worker.js", {scope: "/admin"}); // Should normalize to /admin/
-		const reg3 = await container.register("/worker.js", {scope: "/static/"}); // Should stay /static/
+		const reg3 = await container.register("/worker.js", {scope: "/public/"}); // Should stay /public/
 
 		expect(reg1.scope).toBe("/api/");
 		expect(reg2.scope).toBe("/admin/");
-		expect(reg3.scope).toBe("/static/");
+		expect(reg3.scope).toBe("/public/");
 
 		// Should be retrievable with normalized scopes
 		expect(await container.getRegistration("/api/")).toBe(reg1);
 		expect(await container.getRegistration("/admin/")).toBe(reg2);
-		expect(await container.getRegistration("/static/")).toBe(reg3);
+		expect(await container.getRegistration("/public/")).toBe(reg3);
 	},
 	TIMEOUT,
 );

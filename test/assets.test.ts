@@ -1,8 +1,9 @@
 import {test, expect, describe, beforeEach} from "bun:test";
-import {assets} from "../src/middleware.js";
-import {assetsPlugin} from "../src/plugin.js";
+import {assets} from "@b9g/assets/middleware";
+import {assetsPlugin} from "../src/plugins/assets.js";
 import {Router} from "@b9g/router";
 import {MemoryDirectory} from "@b9g/filesystem/memory";
+import {CustomDirectoryStorage} from "@b9g/filesystem";
 import * as ESBuild from "esbuild";
 import {
 	mkdtemp,
@@ -16,7 +17,7 @@ import {tmpdir} from "os";
 import {join} from "path";
 
 describe("Assets Plugin - output path structure", () => {
-	test("should output assets to {outDir}/static/{assetBase}/", async () => {
+	test("should output assets to {outDir}/public/{assetBase}/", async () => {
 		const testDir = await mkdtemp(join(tmpdir(), "asset-path-test-"));
 
 		// Create CSS and JS files
@@ -45,16 +46,16 @@ export { cssUrl, jsUrl };`,
 			],
 		});
 
-		// Assets should be in {outDir}/static/{assetBase}/
-		const assetsFiles = await readdir(join(outDir, "static", "assets"));
+		// Assets should be in {outDir}/public/{assetBase}/
+		const assetsFiles = await readdir(join(outDir, "public", "assets"));
 		expect(assetsFiles.some((f) => f.endsWith(".css"))).toBe(true);
 
-		const scriptsFiles = await readdir(join(outDir, "static", "scripts"));
+		const scriptsFiles = await readdir(join(outDir, "public", "scripts"));
 		expect(scriptsFiles.some((f) => f.endsWith(".js"))).toBe(true);
 
 		// Manifest should be in {outDir}/server/
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "assets.json"), "utf8"),
 		);
 		expect(Object.keys(manifest.assets).length).toBe(2);
 
@@ -88,7 +89,7 @@ export { cssUrl };`,
 			],
 		});
 
-		// dist/assets should NOT exist (it should be dist/static/assets)
+		// dist/assets should NOT exist (it should be dist/public/assets)
 		let assetsExistDirectly = true;
 		try {
 			await access(join(outDir, "assets"));
@@ -97,8 +98,8 @@ export { cssUrl };`,
 		}
 		expect(assetsExistDirectly).toBe(false);
 
-		// dist/static/assets SHOULD exist
-		const staticAssetsFiles = await readdir(join(outDir, "static", "assets"));
+		// dist/public/assets SHOULD exist
+		const staticAssetsFiles = await readdir(join(outDir, "public", "assets"));
 		expect(staticAssetsFiles.length).toBeGreaterThan(0);
 	});
 });
@@ -131,12 +132,12 @@ export { faviconUrl };`,
 		});
 
 		// File should be exactly "favicon.ico" at root of static
-		const rootFiles = await readdir(join(outDir, "static"));
+		const rootFiles = await readdir(join(outDir, "public"));
 		expect(rootFiles).toContain("favicon.ico");
 
 		// Check manifest URL
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "assets.json"), "utf8"),
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].url).toBe("/favicon.ico");
@@ -169,7 +170,7 @@ console.log("app loaded");`,
 		});
 
 		// File should still be copied even without URL reference
-		const rootFiles = await readdir(join(outDir, "static"));
+		const rootFiles = await readdir(join(outDir, "public"));
 		expect(rootFiles).toContain("favicon.ico");
 	});
 
@@ -198,13 +199,13 @@ export { imgUrl };`,
 			],
 		});
 
-		// File should be "photo.png" in static/images/
-		const imageFiles = await readdir(join(outDir, "static", "images"));
+		// File should be "photo.png" in public/images/
+		const imageFiles = await readdir(join(outDir, "public", "images"));
 		expect(imageFiles).toContain("photo.png");
 
 		// Check manifest URL
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "assets.json"), "utf8"),
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].url).toBe("/images/photo.png");
@@ -242,8 +243,8 @@ export default clientUrl;`,
 			],
 		});
 
-		// Check output files - assets go to {outDir}/static/{assetBase}/
-		const files = await readdir(join(outDir, "static", "static"));
+		// Check output files - assets go to {outDir}/public/{assetBase}/
+		const files = await readdir(join(outDir, "public", "static"));
 		const jsFiles = files.filter((f) => f.endsWith(".js"));
 
 		expect(jsFiles.length).toBe(1);
@@ -251,7 +252,7 @@ export default clientUrl;`,
 
 		// Check manifest has correct MIME type
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "assets.json"), "utf8"),
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].type).toBe("application/javascript");
@@ -285,8 +286,8 @@ export default styleUrl;`,
 			],
 		});
 
-		// Check output files - assets go to {outDir}/static/{assetBase}/
-		const files = await readdir(join(outDir, "static", "static"));
+		// Check output files - assets go to {outDir}/public/{assetBase}/
+		const files = await readdir(join(outDir, "public", "static"));
 		const cssFiles = files.filter((f) => f.endsWith(".css"));
 
 		expect(cssFiles.length).toBe(1);
@@ -294,7 +295,7 @@ export default styleUrl;`,
 
 		// Check manifest has correct MIME type
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "assets.json"), "utf8"),
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].type).toBe("text/css");
@@ -335,13 +336,13 @@ export default styleUrl;`,
 		});
 
 		// Check output files
-		const files = await readdir(join(outDir, "static", "static"));
+		const files = await readdir(join(outDir, "public", "static"));
 		const cssFiles = files.filter((f) => f.endsWith(".css"));
 		expect(cssFiles.length).toBe(1);
 
 		// Read the output CSS - it should contain both the base and style content
 		const outputCSS = await readFile(
-			join(outDir, "static", "static", cssFiles[0]),
+			join(outDir, "public", "static", cssFiles[0]),
 			"utf8",
 		);
 		// The @import should be resolved, so the output should contain :root
@@ -389,10 +390,10 @@ export default styleUrl;`,
 		});
 
 		// Check the bundled CSS contains both
-		const files = await readdir(join(outDir, "static", "static"));
+		const files = await readdir(join(outDir, "public", "static"));
 		const cssFiles = files.filter((f) => f.endsWith(".css"));
 		const outputCSS = await readFile(
-			join(outDir, "static", "static", cssFiles[0]),
+			join(outDir, "public", "static", cssFiles[0]),
 			"utf8",
 		);
 
@@ -437,14 +438,14 @@ export default clientCss;`,
 		});
 
 		// Check that a CSS file was output
-		const files = await readdir(join(outDir, "static", "static"));
+		const files = await readdir(join(outDir, "public", "static"));
 		const cssFiles = files.filter((f) => f.endsWith(".css"));
 		expect(cssFiles.length).toBe(1);
 		expect(cssFiles[0]).toMatch(/^client-[a-f0-9]+\.css$/);
 
 		// Check manifest has CSS MIME type
 		const manifest = JSON.parse(
-			await readFile(join(outDir, "server", "manifest.json"), "utf8"),
+			await readFile(join(outDir, "server", "assets.json"), "utf8"),
 		);
 		const assetKey = Object.keys(manifest.assets)[0];
 		expect(manifest.assets[assetKey].type).toBe("text/css");
@@ -452,7 +453,7 @@ export default clientCss;`,
 
 		// Read the output CSS - should contain the styles
 		const outputCSS = await readFile(
-			join(outDir, "static", "static", cssFiles[0]),
+			join(outDir, "public", "static", cssFiles[0]),
 			"utf8",
 		);
 		expect(outputCSS).toContain(".app");
@@ -565,29 +566,27 @@ describe("Assets Middleware", () => {
 
 	beforeEach(async () => {
 		const serverDirectory = new MemoryDirectory("server");
-		const staticDirectory = new MemoryDirectory("static");
+		const publicDirectory = new MemoryDirectory("public");
 
 		await writeToMemoryDirectory(
 			serverDirectory,
-			"manifest.json",
+			"assets.json",
 			JSON.stringify(manifest),
 		);
 		await writeToMemoryDirectory(
-			staticDirectory,
+			publicDirectory,
 			"app.js",
 			"console.log('app')",
 		);
-		await writeToMemoryDirectory(staticDirectory, "styles.css", "body{}");
+		await writeToMemoryDirectory(publicDirectory, "styles.css", "body{}");
 
-		(globalThis as any).self = {
-			directories: {
-				async open(name: string) {
-					if (name === "server") return serverDirectory;
-					if (name === "static") return staticDirectory;
-					throw new Error(`Directory not found: ${name}`);
-				},
-			},
-		};
+		const directoryStorage = new CustomDirectoryStorage((name: string) => {
+			if (name === "server") return Promise.resolve(serverDirectory);
+			if (name === "public") return Promise.resolve(publicDirectory);
+			throw new Error(`Directory not found: ${name}`);
+		});
+
+		(globalThis as any).directories = directoryStorage;
 	});
 
 	test("should serve asset from manifest", async () => {
@@ -645,7 +644,7 @@ describe("Assets Middleware", () => {
 	test("should detect MIME type from extension when manifest type not present", async () => {
 		// Override with manifest that has no type field
 		const serverDirectory = new MemoryDirectory("server");
-		const staticDirectory = new MemoryDirectory("static");
+		const publicDirectory = new MemoryDirectory("public");
 
 		const noTypeManifest = {
 			assets: {
@@ -654,24 +653,22 @@ describe("Assets Middleware", () => {
 		};
 		await writeToMemoryDirectory(
 			serverDirectory,
-			"manifest.json",
+			"assets.json",
 			JSON.stringify(noTypeManifest),
 		);
 		await writeToMemoryDirectory(
-			staticDirectory,
+			publicDirectory,
 			"app.js",
 			"console.log('app')",
 		);
 
-		(globalThis as any).self = {
-			directories: {
-				async open(name: string) {
-					if (name === "server") return serverDirectory;
-					if (name === "static") return staticDirectory;
-					throw new Error(`Directory not found: ${name}`);
-				},
-			},
-		};
+		const directoryStorage = new CustomDirectoryStorage((name: string) => {
+			if (name === "server") return Promise.resolve(serverDirectory);
+			if (name === "public") return Promise.resolve(publicDirectory);
+			throw new Error(`Directory not found: ${name}`);
+		});
+
+		(globalThis as any).directories = directoryStorage;
 
 		const router = new Router();
 		router.use(assets());

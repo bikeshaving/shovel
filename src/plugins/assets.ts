@@ -5,7 +5,7 @@
  * It generates content-hashed filenames and creates a manifest for runtime lookup.
  *
  * @example
- * import { assetsPlugin } from '@b9g/assets/plugin';
+ * import { assetsPlugin } from './plugins/assets.js';
  * import { build } from 'esbuild';
  *
  * await build({
@@ -31,7 +31,10 @@ import {createHash} from "crypto";
 import {join, basename, extname, relative, dirname} from "path";
 import mime from "mime";
 import * as ESBuild from "esbuild";
-import {type AssetManifest, type AssetManifestEntry} from "./index.js";
+import {
+	type AssetManifest,
+	type AssetManifestEntry,
+} from "@b9g/assets/middleware";
 import {getLogger} from "@logtape/logtape";
 import {NodeModulesPolyfillPlugin} from "@esbuild-plugins/node-modules-polyfill";
 import {NodeGlobalsPolyfillPlugin} from "@esbuild-plugins/node-globals-polyfill";
@@ -115,8 +118,8 @@ export interface ClientBuildOptions {
 export interface AssetsPluginConfig {
 	/**
 	 * Root output directory.
-	 * Assets go to {outDir}/static/{assetBase}/
-	 * Manifest goes to {outDir}/server/manifest.json
+	 * Assets go to {outDir}/public/{assetBase}/
+	 * Manifest goes to {outDir}/server/assets.json
 	 * @default 'dist'
 	 */
 	outDir?: string;
@@ -392,9 +395,9 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 					const basePath = normalizePath(args.with.assetBase);
 					const publicURL = `${basePath}${filename}`;
 
-					// Output directory: {outDir}/static/{assetBase}/
-					// e.g., outDir="dist", assetBase="/assets" → dist/static/assets/
-					const outputDir = join(config.outDir, "static", basePath);
+					// Output directory: {outDir}/public/{assetBase}/
+					// e.g., outDir="dist", assetBase="/assets" → dist/public/assets/
+					const outputDir = join(config.outDir, "public", basePath);
 					if (!existsSync(outputDir)) {
 						mkdirSync(outputDir, {recursive: true});
 					}
@@ -444,9 +447,9 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 				contexts.clear();
 
 				try {
-					// Manifest goes to {outDir}/server/manifest.json
+					// Manifest goes to {outDir}/server/assets.json
 					// Server bucket keeps it non-public (contains internal build metadata)
-					const manifestPath = join(config.outDir, "server", "manifest.json");
+					const manifestPath = join(config.outDir, "server", "assets.json");
 					const manifestDir = dirname(manifestPath);
 					if (!existsSync(manifestDir)) {
 						mkdirSync(manifestDir, {recursive: true});

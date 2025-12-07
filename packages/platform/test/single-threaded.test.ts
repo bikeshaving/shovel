@@ -125,14 +125,14 @@ test(
 			await runtime.init();
 
 			// This is the exact call that was failing before the fix!
-			const staticDir = await globalThis.directories.open("static");
+			const publicDir = await globalThis.directories.open("public");
 
-			expect(staticDir).toBeDefined();
-			expect(staticDir.kind).toBe("directory");
-			expect(staticDir.name).toBe("static");
+			expect(publicDir).toBeDefined();
+			expect(publicDir.kind).toBe("directory");
+			expect(publicDir.name).toBe("public");
 
 			// Verify directory was created
-			const dirExists = await FS.access(join(tempDir, "static"))
+			const dirExists = await FS.access(join(tempDir, "public"))
 				.then(() => true)
 				.catch(() => false);
 			expect(dirExists).toBe(true);
@@ -150,9 +150,9 @@ test(
 
 		try {
 			// Pre-create a test file
-			const staticDir = join(tempDir, "static");
-			await FS.mkdir(staticDir, {recursive: true});
-			await FS.writeFile(join(staticDir, "test.txt"), "Hello from directory!");
+			const publicDir = join(tempDir, "public");
+			await FS.mkdir(publicDir, {recursive: true});
+			await FS.writeFile(join(publicDir, "test.txt"), "Hello from directory!");
 
 			const cacheStorage = createCacheStorage();
 			const directoryStorage = await createDirectoryStorage(tempDir);
@@ -165,8 +165,8 @@ test(
 			await runtime.init();
 
 			// Open directory and read file
-			const staticDirectory = await globalThis.directories.open("static");
-			const fileHandle = await staticDirectory.getFileHandle("test.txt");
+			const publicDirectory = await globalThis.directories.open("public");
+			const fileHandle = await publicDirectory.getFileHandle("test.txt");
 			const file = await fileHandle.getFile();
 			const content = await file.text();
 
@@ -310,8 +310,8 @@ test(
 	async () => {
 		const tempDir = await createTempDir();
 		// Create the static directory
-		const staticDir = join(tempDir, "static");
-		await FS.mkdir(staticDir, {recursive: true});
+		const publicDir = join(tempDir, "public");
+		await FS.mkdir(publicDir, {recursive: true});
 
 		try {
 			const cacheStorage = createCacheStorage();
@@ -328,8 +328,8 @@ test(
 			expect(globalThis.directories).toBeDefined();
 			expect(typeof globalThis.directories.open).toBe("function");
 
-			// Opening the "static" directory should work
-			const directory = await globalThis.directories.open("static");
+			// Opening the "public" directory should work
+			const directory = await globalThis.directories.open("public");
 			expect(directory).toBeDefined();
 			expect(directory.kind).toBe("directory");
 		} finally {
@@ -346,9 +346,9 @@ test(
 
 		try {
 			// Set up test file
-			const staticDir = join(tempDir, "static");
-			await FS.mkdir(staticDir, {recursive: true});
-			await FS.writeFile(join(staticDir, "asset.txt"), "Original asset");
+			const publicDir = join(tempDir, "public");
+			await FS.mkdir(publicDir, {recursive: true});
+			await FS.writeFile(join(publicDir, "asset.txt"), "Original asset");
 
 			const cacheStorage = createCacheStorage();
 			const directoryStorage = await createDirectoryStorage(tempDir);
@@ -373,7 +373,7 @@ test(
 			expect(response).toBeUndefined();
 
 			// Read from directory
-			const directory = await globalThis.directories.open("static");
+			const directory = await globalThis.directories.open("public");
 			const fileHandle = await directory.getFileHandle("asset.txt");
 			const file = await fileHandle.getFile();
 			const content = await file.text();

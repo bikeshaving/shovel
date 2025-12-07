@@ -1,27 +1,17 @@
 {
   "name": "@b9g/assets",
-  "version": "0.1.15",
+  "version": "0.2.0-beta.0",
   "type": "module",
   "scripts": {
     "build": "libuild build --save",
     "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "dependencies": {
-    "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
-    "@esbuild-plugins/node-modules-polyfill": "^0.2.2",
-    "@logtape/logtape": "^1.2.0",
     "mime": "^4.0.4"
   },
-  "peerDependencies": {
-    "esbuild": ">=0.19.0"
-  },
-  "peerDependenciesMeta": {
-    "esbuild": {
-      "optional": true
-    }
-  },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.18"
+    "@b9g/libuild": "^0.1.18",
+    "@b9g/platform": "workspace:*"
   },
   "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -33,10 +23,6 @@
     "./middleware": {
       "types": "./dist/src/middleware.d.ts",
       "import": "./dist/src/middleware.js"
-    },
-    "./plugin": {
-      "types": "./dist/src/plugin.d.ts",
-      "import": "./dist/src/plugin.js"
     },
     "./package.json": "./dist/package.json",
     "./index": {
@@ -50,10 +36,6 @@
     "./middleware.js": {
       "types": "./dist/src/middleware.d.ts",
       "import": "./dist/src/middleware.js"
-    },
-    "./plugin.js": {
-      "types": "./dist/src/plugin.d.ts",
-      "import": "./dist/src/plugin.js"
     }
   }
 }

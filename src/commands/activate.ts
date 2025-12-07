@@ -6,8 +6,8 @@ import type {PlatformESBuildConfig} from "@b9g/platform";
 import * as ESBuild from "esbuild";
 import {resolve, join} from "path";
 import {mkdir} from "fs/promises";
-import {assetsPlugin} from "@b9g/assets/plugin";
-import {importMetaPlugin} from "../utils/import-meta-plugin.js";
+import {assetsPlugin} from "../plugins/assets.js";
+import {importMetaPlugin} from "../plugins/import-meta.js";
 import {loadJSXConfig, applyJSXOptions} from "../utils/jsx-config.js";
 import {findProjectRoot, getNodeModulesPath} from "../utils/project.js";
 
@@ -46,7 +46,7 @@ export async function activateCommand(
 		);
 
 		// The ServiceWorker install/activate lifecycle will handle any self-generation
-		// Apps can use self.dirs.open("static") in their activate event to pre-render
+		// Apps can use self.directories.open("public") in their activate event to pre-render
 		logger.info(
 			"ServiceWorker activated - check dist/ for generated content",
 			{},
@@ -74,7 +74,7 @@ async function buildForActivate(
 
 	// Ensure output directories exist
 	await mkdir(serverDir, {recursive: true});
-	await mkdir(join(outputDir, "static"), {recursive: true});
+	await mkdir(join(outputDir, "public"), {recursive: true});
 
 	// Find project root for node resolution
 	const projectRoot = findProjectRoot();

@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [build]
 command = "bun run build"
 
-# Static assets served directly by Cloudflare
+# Public assets served directly by Cloudflare
 [assets]
-directory = "dist/assets/"
+directory = "dist/public/"
 binding = "ASSETS"
