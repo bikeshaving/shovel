@@ -1,49 +1,23 @@
-# Shovel
+# Shovel.js 🪏
 
-**The ServiceWorker platform for server-side JavaScript.**
+**The portable meta-framework built on web standards.**
 
-Same code. Any runtime. Node.js, Bun, Cloudflare Workers.
+Shovel is a CLI platform for developing and deploying service workers as application servers.
 
 ```javascript
-// app.js
-self.addEventListener("fetch", (event) => {
-  event.respondWith(new Response("Hello World"));
+import {Router} from "@b9g/router";
+const router = new Router();
+
+router.route("/").get(() => new Response("Hello world"));
+
+self.addEventListener("fetch", (ev) => {
+  ev.respondWith(router.handle(ev.request));
 });
 ```
 
 ```bash
-npx @b9g/shovel develop app.js
+shovel develop app.js
 ```
-
-## Why Shovel?
-
-Browsers have ServiceWorker. Cloudflare has Workers. Node.js and Bun have... Express?
-
-Shovel brings the ServiceWorker programming model to server-side JavaScript. Write your app once using web standards, deploy it anywhere.
-
-## Web Standards
-
-Shovel implements web platform APIs that server-side JavaScript is missing:
-
-| API | Standard | What it does |
-|-----|----------|--------------|
-| `fetch` event | [Service Workers](https://w3c.github.io/ServiceWorker/) | Request handling |
-| `self.caches` | [Cache API](https://w3c.github.io/ServiceWorker/#cache-interface) | Response caching |
-| `self.directories` | [FileSystem API](https://fs.spec.whatwg.org/) | Storage (local, S3, R2) |
-| `self.cookieStore` | [Cookie Store API](https://wicg.github.io/cookie-store/) | Cookie management |
-| `URLPattern` | [URLPattern](https://urlpattern.spec.whatwg.org/) | Route matching (100% WPT) |
-| `AsyncContext.Variable` | [TC39 Stage 2](https://github.com/tc39/proposal-async-context) | Request-scoped state |
-
-Your code uses standards. Shovel makes them work everywhere.
-
-## True Portability
-
-Shovel is a complete meta-framework. Same code, any runtime, any rendering strategy:
-
-- **Server runtimes**: Node.js, Bun, Cloudflare Workers for development and production
-- **Browser ServiceWorkers**: The same app can run as a PWA service worker
-- **Universal rendering**: Dynamic, static, or client-side - link and deploy assets automatically
-
 ## Quick Start
 
 ```javascript
@@ -54,12 +28,12 @@ const router = new Router();
 
 router.route("/").get(() => new Response("Hello World"));
 
-router.route("/users/:id").get((request, {params}) => {
-  return Response.json({id: params.id});
+router.route("/greet/:name").get((request, {params}) => {
+  return new Response(`Hello ${params.name}`);
 });
 
 self.addEventListener("fetch", (event) => {
-  event.respondWith(router.handler(event.request));
+  event.respondWith(router.handle(event.request));
 });
 ```
 
@@ -75,6 +49,30 @@ npx @b9g/shovel build app.js --platform=node
 npx @b9g/shovel build app.js --platform=bun
 npx @b9g/shovel build app.js --platform=cloudflare
 ```
+
+
+## Web Standards
+Shovel is obsessively standards-first. All Shovel APIs use web standards , and implements/shims 
+
+  | API | Standard | Purpose |
+  |-----|----------|--------------|
+  | `fetch()` | [Fetch](https://fetch.spec.whatwg.org) | Networking |
+  | `addEventListener()` | [Service Workers](https://w3c.github.io/ServiceWorker/) | Server lifecycle |
+  | `caches` | [Cache API](https://w3c.github.io/ServiceWorker/#cache-interface) | Response caching |
+  | `directories` | [FileSystem API](https://fs.spec.whatwg.org/) | Storage (local, S3, R2) |
+  | `cookieStore` | [Cookie Store API](https://wicg.github.io/cookie-store/) | Cookie management |
+  | `URLPattern` | [URLPattern](https://urlpattern.spec.whatwg.org/) | Route matching |
+  | `AsyncContext.Variable` | [TC39 Stage 2](https://github.com/tc39/proposal-async-context) | Request-scoped state |
+
+Your code uses standards. Shovel makes them work everywhere.
+
+## True Portability
+
+Shovel is a complete meta-framework. Same code, any runtime, any rendering strategy:
+
+- **Server runtimes**: Node.js, Bun, Cloudflare Workers for development and production
+- **Browser ServiceWorkers**: The same app can run as a PWA service worker
+- **Universal rendering**: Dynamic, static, or client-side - link and deploy assets automatically
 
 ## Platform APIs
 
@@ -128,7 +126,7 @@ Assets are served via the platform's best option:
 | `@b9g/shovel` | CLI for development and deployment |
 | `@b9g/platform` | Core runtime and platform APIs |
 | `@b9g/platform-node` | Node.js adapter |
-| `@b9g/platform-bun` | Bun adapter |
+| `@b9g/platform-bun` | Bun.js adapter |
 | `@b9g/platform-cloudflare` | Cloudflare Workers adapter |
 | `@b9g/router` | URLPattern-based routing with middleware |
 | `@b9g/cache` | Cache API implementation |
