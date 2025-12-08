@@ -138,7 +138,6 @@ export function generateCacheKey(
 	// Include method unless ignoreMethod is true
 	const method = options?.ignoreMethod ? "GET" : req.method;
 
-	// For now, create a simple key - can be enhanced with vary header handling
 	return `${method}:${url.href}`;
 }
 

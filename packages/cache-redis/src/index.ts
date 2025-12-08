@@ -57,6 +57,8 @@ interface CacheEntry {
 	cachedAt: number;
 	/** TTL in seconds (0 = no expiration) */
 	TTL: number;
+	/** Request headers for Vary checking */
+	requestHeaders: Record<string, string>;
 }
 
 // ============================================================================
@@ -105,7 +107,7 @@ export class RedisCache extends Cache {
 	 * Ensure Redis client is connected
 	 */
 	async #ensureConnected(): Promise<void> {
-		if (!this.#connected && !this.#client.isReady) {
+		if (!this.#client.isOpen && !this.#client.isReady) {
 			await this.#client.connect();
 		}
 	}
@@ -121,7 +123,10 @@ export class RedisCache extends Cache {
 	/**
 	 * Serialize Response to cache entry
 	 */
-	async #serializeResponse(response: Response): Promise<CacheEntry> {
+	async #serializeResponse(
+		request: Request,
+		response: Response,
+	): Promise<CacheEntry> {
 		// Check response size before serialization
 		const cloned = response.clone();
 		const body = await cloned.arrayBuffer();
@@ -132,11 +137,27 @@ export class RedisCache extends Cache {
 			);
 		}
 
-		// Convert headers to plain object
+		// Convert response headers to plain object
 		const headers: Record<string, string> = {};
 		response.headers.forEach((value, key) => {
 			headers[key] = value;
 		});
+
+		// Convert request headers to plain object (for Vary checking)
+		const requestHeaders: Record<string, string> = {};
+		request.headers.forEach((value, key) => {
+			requestHeaders[key] = value;
+		});
+
+		// Determine TTL from Cache-Control header or use default
+		let ttl = this.#defaultTTL;
+		const cacheControl = response.headers.get("cache-control");
+		if (cacheControl) {
+			const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
+			if (maxAgeMatch) {
+				ttl = parseInt(maxAgeMatch[1], 10);
+			}
+		}
 
 		return {
 			status: response.status,
@@ -144,7 +165,8 @@ export class RedisCache extends Cache {
 			headers,
 			body: uint8ArrayToBase64(new Uint8Array(body)),
 			cachedAt: Date.now(),
-			TTL: this.#defaultTTL,
+			TTL: ttl,
+			requestHeaders,
 		};
 	}
 
@@ -159,6 +181,39 @@ export class RedisCache extends Cache {
 			statusText: entry.statusText,
 			headers: entry.headers,
 		});
+	}
+
+	/**
+	 * Check if a request matches the Vary header of a cached entry
+	 * Returns true if the request matches or if there's no Vary header
+	 */
+	#matchesVary(request: Request, entry: CacheEntry): boolean {
+		const varyHeader = entry.headers["vary"] || entry.headers["Vary"];
+		if (!varyHeader) {
+			return true; // No Vary header means always matches
+		}
+
+		// Vary: * means never matches
+		if (varyHeader === "*") {
+			return false;
+		}
+
+		// Parse comma-separated header names
+		const varyHeaders = varyHeader
+			.split(",")
+			.map((h) => h.trim().toLowerCase());
+
+		// Check if all vary headers match
+		for (const headerName of varyHeaders) {
+			const requestValue = request.headers.get(headerName);
+			const cachedValue = entry.requestHeaders[headerName] || null;
+
+			if (requestValue !== cachedValue) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**
@@ -190,6 +245,11 @@ export class RedisCache extends Cache {
 				}
 			}
 
+			// Check Vary header unless ignoreVary is true
+			if (!options?.ignoreVary && !this.#matchesVary(request, entry)) {
+				return undefined;
+			}
+
 			return this.#deserializeResponse(entry);
 		} catch (error) {
 			logger.error("Failed to match: {error}", {error});
@@ -205,7 +265,7 @@ export class RedisCache extends Cache {
 			await this.#ensureConnected();
 
 			const key = this.#getRedisKey(request);
-			const entry = await this.#serializeResponse(response);
+			const entry = await this.#serializeResponse(request, response);
 			const serialized = JSON.stringify(entry);
 
 			// Set with TTL if specified
@@ -274,7 +334,12 @@ export class RedisCache extends Cache {
 				try {
 					// Extract the cache key part and parse it
 					const cacheKey = key.replace(`${this.#prefix}:`, "");
-					const [method, url] = cacheKey.split(":", 2);
+					// Split on first colon only (URL may contain colons)
+					const colonIndex = cacheKey.indexOf(":");
+					if (colonIndex === -1) continue;
+
+					const method = cacheKey.substring(0, colonIndex);
+					const url = cacheKey.substring(colonIndex + 1);
 
 					if (method && url) {
 						requests.push(new Request(url, {method}));
@@ -288,55 +353,6 @@ export class RedisCache extends Cache {
 		} catch (error) {
 			logger.error("Failed to get keys: {error}", {error});
 			return [];
-		}
-	}
-
-	/**
-	 * Get cache statistics
-	 */
-	async getStats() {
-		try {
-			await this.#ensureConnected();
-
-			const pattern = `${this.#prefix}:*`;
-			let keyCount = 0;
-			let totalSize = 0;
-
-			for await (const key of this.#client.scanIterator({
-				MATCH: pattern,
-				COUNT: 100,
-			})) {
-				keyCount++;
-				try {
-					const value = await this.#client.get(key);
-					if (value) {
-						// Use web-standard text encoding instead of Node.js Buffer
-						totalSize += new TextEncoder().encode(value).length;
-					}
-				} catch (err) {
-					// Skip individual key errors but log them for debugging
-					logger.debug("Error reading key {key}: {error}", {key, error: err});
-				}
-			}
-
-			return {
-				connected: this.#connected,
-				keyCount,
-				totalSize,
-				prefix: this.#prefix,
-				defaultTTL: this.#defaultTTL,
-				maxEntrySize: this.#maxEntrySize,
-			};
-		} catch (error) {
-			logger.error("Failed to get stats: {error}", {error});
-			return {
-				connected: false,
-				keyCount: 0,
-				totalSize: 0,
-				prefix: this.#prefix,
-				defaultTTL: this.#defaultTTL,
-				maxEntrySize: this.#maxEntrySize,
-			};
 		}
 	}
 

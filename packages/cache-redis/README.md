@@ -5,7 +5,8 @@ Redis cache adapter for Shovel's universal cache system.
 ## Features
 
 - **HTTP-aware caching**: Stores complete HTTP responses with headers and status codes
-- **TTL support**: Configurable time-to-live for cache entries
+- **TTL support**: Respects `Cache-Control: max-age` headers, with configurable default TTL
+- **Vary header support**: Full HTTP content negotiation with Vary header checking
 - **Size limits**: Configurable maximum entry size to prevent memory issues
 - **Connection pooling**: Uses the official Redis client with connection management
 - **Error resilience**: Graceful handling of Redis connection issues
@@ -44,11 +45,10 @@ const cached = await cache.match(request);
 ### Direct Cache Usage
 
 ```typescript
-import {createCache} from "@b9g/cache-redis";
+import {RedisCache} from "@b9g/cache-redis";
 
 // Create a single Redis cache instance
-const cache = createCache({
-  name: "my-cache",
+const cache = new RedisCache("my-cache", {
   redis: {
     url: process.env.REDIS_URL || "redis://localhost:6379",
     password: process.env.REDIS_PASSWORD
@@ -156,23 +156,6 @@ The Redis cache gracefully handles connection issues:
 - Failed connections return `undefined` for cache misses
 - Connection errors are logged but don't crash the application
 - Automatic reconnection when Redis becomes available
-
-## Cache Statistics
-
-Get insights into cache performance:
-
-```typescript
-const cache = new RedisCache("my-cache");
-const stats = await cache.getStats();
-
-console.log({
-  connected: stats.connected,
-  keyCount: stats.keyCount,
-  totalSize: stats.totalSize,
-  prefix: stats.prefix
-});
-```
-
 
 ## Exports
 

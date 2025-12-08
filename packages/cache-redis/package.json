@@ -1,7 +1,7 @@
 {
   "name": "@b9g/cache-redis",
-  "version": "0.1.5",
-  "description": "Redis cache adapter for Shovel cache system",
+  "version": "0.2.0-beta.0",
+  "description": "Redis cache implementation for Shovel cache system",
   "type": "module",
   "types": "./dist/src/index.d.ts",
   "files": [
@@ -16,9 +16,8 @@
   "keywords": [
     "cache",
     "redis",
-    "shovel",
-    "metaframework",
-    "cache-adapter"
+    "service-workers",
+    "shovel"
   ],
   "author": "Shovel Team",
   "license": "MIT",

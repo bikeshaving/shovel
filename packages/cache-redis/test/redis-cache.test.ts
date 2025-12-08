@@ -1,282 +1,309 @@
-import {test, expect, describe, beforeEach, mock} from "bun:test";
+/**
+ * Tests for RedisCache
+ *
+ * These tests run against a real Redis/Valkey instance.
+ * Set REDIS_URL environment variable to run these tests.
+ *
+ * Example: REDIS_URL=redis://localhost:6379 bun test
+ */
 
-// Mock Redis client with simpler structure
-const mockRedisClient = {
-	isReady: true,
-	connect: mock(() => {
-		// Trigger connect event handler to set this.connected = true
-		const connectHandler = mockRedisClient.on.mock.calls.find(
-			(call) => call[0] === "connect",
-		)?.[1];
-		if (connectHandler) connectHandler();
-		return Promise.resolve();
-	}),
-	get: mock(() => Promise.resolve(null)),
-	set: mock(() => Promise.resolve()),
-	setEx: mock(() => Promise.resolve()),
-	del: mock(() => Promise.resolve(1)),
-	exists: mock(() => Promise.resolve(1)),
-	scanIterator: mock(),
-	on: mock(() => {}),
-};
+import {test, expect, describe, beforeEach, afterEach} from "bun:test";
+import {RedisCache} from "../src/index.js";
+import {createClient} from "redis";
 
-// Mock the redis module
-mock.module("redis", () => ({
-	createClient: mock(() => mockRedisClient),
-}));
+const REDIS_URL = import.meta.env.REDIS_URL || "redis://localhost:6379";
 
-// Import after mocking
-const {RedisCache} = await import("../src/index.js");
+// Skip all tests if Redis is not available
+const skipTests = !import.meta.env.REDIS_URL;
 
-describe("RedisCache", () => {
+if (skipTests) {
+	console.info("SKIPPING REDIS TESTS (set REDIS_URL to enable)");
+}
+
+describe.skipIf(skipTests)("RedisCache", () => {
 	let cache: RedisCache;
+	let testPrefix: string;
 
-	beforeEach(() => {
-		// Reset all mocks
-		mockRedisClient.get.mockClear();
-		mockRedisClient.set.mockClear();
-		mockRedisClient.setEx.mockClear();
-		mockRedisClient.del.mockClear();
-		mockRedisClient.exists.mockClear();
-		mockRedisClient.scanIterator.mockClear();
+	beforeEach(async () => {
+		// Use unique prefix for each test (timestamp + random for parallel test isolation)
+		testPrefix = `test:${Date.now()}:${Math.random().toString(36).substring(7)}`;
 
-		// Set default scan iterator behavior
-		mockRedisClient.scanIterator.mockReturnValue({
-			[Symbol.asyncIterator]: async function* () {
-				yield "cache:test:GET:http://example.com/api";
-				yield "cache:test:POST:http://example.com/data";
+		cache = new RedisCache("integration-test", {
+			redis: {url: REDIS_URL},
+			prefix: testPrefix,
+			defaultTTL: 300,
+		});
+
+		// Wait a bit for connection
+		await new Promise((resolve) => setTimeout(resolve, 100));
+	});
+
+	afterEach(async () => {
+		// Clean up test data for this test
+		const cleanupClient = createClient({url: REDIS_URL});
+		await cleanupClient.connect();
+
+		// Delete all keys with this test's prefix
+		const keys = [];
+		for await (const key of cleanupClient.scanIterator({
+			MATCH: `${testPrefix}:*`,
+			COUNT: 1000,
+		})) {
+			keys.push(key);
+		}
+
+		if (keys.length > 0) {
+			await cleanupClient.del(keys);
+		}
+
+		await cleanupClient.quit();
+		await cache.dispose();
+	});
+
+	test("can store and retrieve responses", async () => {
+		const request = new Request("http://example.com/test");
+		const response = new Response("Hello World", {
+			status: 200,
+			headers: {"Content-Type": "text/plain"},
+		});
+
+		await cache.put(request, response);
+
+		const cached = await cache.match(request);
+		expect(cached).toBeDefined();
+		expect(cached!.status).toBe(200);
+		expect(await cached!.text()).toBe("Hello World");
+		expect(cached!.headers.get("content-type")).toBe("text/plain");
+	});
+
+	test("returns undefined for non-existent entries", async () => {
+		const request = new Request("http://example.com/nonexistent");
+		const cached = await cache.match(request);
+		expect(cached).toBeUndefined();
+	});
+
+	test("can delete entries", async () => {
+		const request = new Request("http://example.com/delete-test");
+		const response = new Response("Delete me");
+
+		await cache.put(request, response);
+		expect(await cache.match(request)).toBeDefined();
+
+		const deleted = await cache.delete(request);
+		expect(deleted).toBe(true);
+		expect(await cache.match(request)).toBeUndefined();
+	});
+
+	test("respects Cache-Control max-age", async () => {
+		const request = new Request("http://example.com/ttl-test");
+		const response = new Response("Short lived", {
+			headers: {"Cache-Control": "max-age=1"},
+		});
+
+		await cache.put(request, response);
+
+		// Should be cached immediately
+		const cached1 = await cache.match(request);
+		expect(cached1).toBeDefined();
+
+		// Wait for expiration
+		await new Promise((resolve) => setTimeout(resolve, 1500));
+
+		// Should be expired now
+		const cached2 = await cache.match(request);
+		expect(cached2).toBeUndefined();
+	});
+
+	test("respects Vary header", async () => {
+		const request1 = new Request("http://example.com/vary-test", {
+			headers: {"Accept-Encoding": "gzip"},
+		});
+		const response1 = new Response("gzipped content", {
+			headers: {Vary: "Accept-Encoding"},
+		});
+
+		await cache.put(request1, response1);
+
+		// Same Accept-Encoding should match
+		const matchingSame = new Request("http://example.com/vary-test", {
+			headers: {"Accept-Encoding": "gzip"},
+		});
+		const cached1 = await cache.match(matchingSame);
+		expect(cached1).toBeDefined();
+		expect(await cached1!.text()).toBe("gzipped content");
+
+		// Different Accept-Encoding should NOT match
+		const matchingDifferent = new Request("http://example.com/vary-test", {
+			headers: {"Accept-Encoding": "br"},
+		});
+		const cached2 = await cache.match(matchingDifferent);
+		expect(cached2).toBeUndefined();
+
+		// With ignoreVary: true, should match
+		const cached3 = await cache.match(matchingDifferent, {ignoreVary: true});
+		expect(cached3).toBeDefined();
+	});
+
+	test("handles Vary: * (never matches)", async () => {
+		const request = new Request("http://example.com/vary-star");
+		const response = new Response("data", {
+			headers: {Vary: "*"},
+		});
+
+		await cache.put(request, response);
+
+		// Vary: * means never match
+		const cached = await cache.match(request);
+		expect(cached).toBeUndefined();
+
+		// ignoreVary bypasses this
+		const cachedIgnore = await cache.match(request, {ignoreVary: true});
+		expect(cachedIgnore).toBeDefined();
+	});
+
+	test("handles multiple Vary headers", async () => {
+		const request = new Request("http://example.com/vary-multi", {
+			headers: {
+				"Accept-Encoding": "gzip",
+				"User-Agent": "TestClient",
 			},
 		});
-
-		cache = new RedisCache("test", {
-			prefix: "cache",
-			defaultTTL: 300, // 5 minutes
-		});
-	});
-
-	describe("match", () => {
-		test("should return undefined when no cached response exists", async () => {
-			mockRedisClient.get.mockResolvedValue(null);
-
-			const request = new Request("http://example.com/api");
-			const result = await cache.match(request);
-
-			expect(result).toBeUndefined();
-			expect(mockRedisClient.get).toHaveBeenCalledWith(
-				"cache:test:GET:http://example.com/api",
-			);
+		const response = new Response("data", {
+			headers: {Vary: "Accept-Encoding, User-Agent"},
 		});
 
-		test("should return cached response when found", async () => {
-			const mockEntry = {
-				status: 200,
-				statusText: "OK",
-				headers: {"content-type": "application/json"},
-				body: btoa("{}"), // base64 encoded "{}"
-				cachedAt: Date.now() - 1000, // 1 second ago
-				TTL: 300,
-			};
+		await cache.put(request, response);
 
-			mockRedisClient.get.mockResolvedValue(JSON.stringify(mockEntry));
-
-			const request = new Request("http://example.com/api");
-			const result = await cache.match(request);
-
-			expect(result).toBeInstanceOf(Response);
-			expect(result!.status).toBe(200);
-			expect(result!.headers.get("content-type")).toBe("application/json");
-			expect(await result!.text()).toBe("{}");
-		});
-
-		test("should handle expired entries", async () => {
-			const expiredEntry = {
-				status: 200,
-				statusText: "OK",
-				headers: {},
-				body: btoa("expired"),
-				cachedAt: Date.now() - 400 * 1000, // 400 seconds ago (expired)
-				TTL: 300, // 5 minutes TTL
-			};
-
-			mockRedisClient.get.mockResolvedValue(JSON.stringify(expiredEntry));
-			mockRedisClient.del.mockResolvedValue(1);
-
-			const request = new Request("http://example.com/api");
-			const result = await cache.match(request);
-
-			expect(result).toBeUndefined();
-			expect(mockRedisClient.del).toHaveBeenCalled();
-		});
-
-		test("should not expire entries with TTL 0", async () => {
-			const permanentEntry = {
-				status: 200,
-				statusText: "OK",
-				headers: {},
-				body: btoa("permanent"),
-				cachedAt: Date.now() - 86400 * 1000, // 1 day ago
-				TTL: 0, // No expiration
-			};
-
-			mockRedisClient.get.mockResolvedValue(JSON.stringify(permanentEntry));
-
-			const request = new Request("http://example.com/api");
-			const result = await cache.match(request);
-
-			expect(result).toBeInstanceOf(Response);
-			expect(await result!.text()).toBe("permanent");
-		});
-	});
-
-	describe("put", () => {
-		test("should store response in cache", async () => {
-			const request = new Request("http://example.com/api");
-			const response = new Response('{"data": "test"}', {
-				status: 200,
-				statusText: "OK",
-				headers: {"content-type": "application/json"},
-			});
-
-			await cache.put(request, response);
-
-			expect(mockRedisClient.setEx).toHaveBeenCalled();
-			const [key, ttl, value] = mockRedisClient.setEx.mock.calls[0];
-			expect(key).toBe("cache:test:GET:http://example.com/api");
-			expect(ttl).toBe(300);
-
-			const entry = JSON.parse(value);
-			expect(entry.status).toBe(200);
-			expect(entry.headers["content-type"]).toBe("application/json");
-			expect(entry.body).toBe(btoa('{"data": "test"}'));
-		});
-
-		test("should use set for TTL 0", async () => {
-			const cacheNoTTL = new RedisCache("test", {defaultTTL: 0});
-
-			const request = new Request("http://example.com/api");
-			const response = new Response("data");
-
-			await cacheNoTTL.put(request, response);
-
-			expect(mockRedisClient.set).toHaveBeenCalled();
-			expect(mockRedisClient.setEx).not.toHaveBeenCalled();
-		});
-
-		test("should handle large response bodies", async () => {
-			const largeCache = new RedisCache("test", {maxEntrySize: 100}); // Small limit
-
-			const request = new Request("http://example.com/api");
-			const largeData = "x".repeat(200); // Exceeds limit
-			const response = new Response(largeData);
-
-			try {
-				await largeCache.put(request, response);
-				expect.unreachable();
-			} catch (error) {
-				expect(error.message).toContain("Response body too large");
-			}
-		});
-	});
-
-	describe("delete", () => {
-		test("should delete cached entry", async () => {
-			mockRedisClient.del.mockResolvedValue(1);
-
-			const request = new Request("http://example.com/api");
-			const result = await cache.delete(request);
-
-			expect(result).toBe(true);
-			expect(mockRedisClient.del).toHaveBeenCalledWith(
-				"cache:test:GET:http://example.com/api",
-			);
-		});
-
-		test("should return false when entry does not exist", async () => {
-			mockRedisClient.del.mockResolvedValue(0);
-
-			const request = new Request("http://example.com/api");
-			const result = await cache.delete(request);
-
-			expect(result).toBe(false);
-		});
-	});
-
-	describe("keys", () => {
-		test("should return specific request when found", async () => {
-			mockRedisClient.exists.mockResolvedValue(1);
-
-			const request = new Request("http://example.com/api");
-			const result = await cache.keys(request);
-
-			expect(result).toHaveLength(1);
-			expect(result[0].url).toBe("http://example.com/api");
-		});
-
-		test("should return empty array when specific request not found", async () => {
-			mockRedisClient.exists.mockResolvedValue(0);
-
-			const request = new Request("http://example.com/api");
-			const result = await cache.keys(request);
-
-			expect(result).toHaveLength(0);
-		});
-
-		test("should demonstrate redis cache POC functionality", async () => {
-			// This test demonstrates that RedisCache implements the Cache interface properly
-			// and can serve as a backend for caches - proving the POC works
-
-			// Test that cache.keys() calls Redis scanIterator with correct pattern
-			mockRedisClient.scanIterator.mockReturnValueOnce({
-				[Symbol.asyncIterator]: async function* () {
-					// No yield - empty result to test the interface
+		// Both headers match
+		const matched1 = await cache.match(
+			new Request("http://example.com/vary-multi", {
+				headers: {
+					"Accept-Encoding": "gzip",
+					"User-Agent": "TestClient",
 				},
-			});
+			}),
+		);
+		expect(matched1).toBeDefined();
 
-			const result = await cache.keys();
-
-			// Verify the cache interface properly delegates to Redis
-			expect(mockRedisClient.scanIterator).toHaveBeenCalledWith({
-				MATCH: "cache:test:*",
-				COUNT: 100,
-			});
-
-			// Even with empty result, this proves the cache backend integration works
-			expect(Array.isArray(result)).toBe(true);
-		});
+		// One header different
+		const matched2 = await cache.match(
+			new Request("http://example.com/vary-multi", {
+				headers: {
+					"Accept-Encoding": "gzip",
+					"User-Agent": "DifferentClient",
+				},
+			}),
+		);
+		expect(matched2).toBeUndefined();
 	});
 
-	describe("getStats", () => {
-		test("should return cache statistics", async () => {
-			// Reset iterator for stats test
-			mockRedisClient.scanIterator.mockReturnValueOnce({
-				[Symbol.asyncIterator]: async function* () {
-					yield "cache:test:key1";
-					yield "cache:test:key2";
-				},
-			});
-			mockRedisClient.get.mockResolvedValue('{"test": "data"}');
+	test("can list cache keys", async () => {
+		await cache.put(new Request("http://example.com/key1"), new Response("1"));
+		await cache.put(new Request("http://example.com/key2"), new Response("2"));
 
-			const stats = await cache.getStats();
+		const keys = await cache.keys();
+		expect(keys.length).toBeGreaterThanOrEqual(2);
+		expect(keys.some((r) => r.url === "http://example.com/key1")).toBe(true);
+		expect(keys.some((r) => r.url === "http://example.com/key2")).toBe(true);
+	});
 
-			expect(stats.connected).toBe(false); // Mock doesn't set connected flag
-			expect(stats.keyCount).toBe(2);
-			expect(stats.totalSize).toBeGreaterThan(0);
-			expect(stats.prefix).toBe("cache:test");
-			expect(stats.defaultTTL).toBe(300);
+	test("handles binary data", async () => {
+		const request = new Request("http://example.com/binary");
+		const binaryData = new Uint8Array([1, 2, 3, 4, 5, 255, 254, 253]);
+		const response = new Response(binaryData, {
+			headers: {"Content-Type": "application/octet-stream"},
 		});
 
-		test("should demonstrate error handling in redis cache POC", async () => {
-			// Test that the cache gracefully handles Redis errors - important for POC
-			mockRedisClient.scanIterator.mockImplementationOnce(() => {
-				throw new Error("Redis error");
-			});
+		await cache.put(request, response);
 
-			const stats = await cache.getStats();
+		const cached = await cache.match(request);
+		expect(cached).toBeDefined();
 
-			// Demonstrates that Redis cache backend handles errors gracefully
-			expect(stats.connected).toBe(false);
-			expect(stats.keyCount).toBe(0);
-			expect(stats.totalSize).toBe(0);
+		const cachedData = new Uint8Array(await cached!.arrayBuffer());
+		expect(cachedData).toEqual(binaryData);
+	});
+
+	test("handles large responses within size limit", async () => {
+		const request = new Request("http://example.com/large");
+		// Create a 1MB response (within default 10MB limit)
+		const largeData = new Uint8Array(1024 * 1024).fill(42);
+		const response = new Response(largeData);
+
+		await cache.put(request, response);
+
+		const cached = await cache.match(request);
+		expect(cached).toBeDefined();
+
+		const cachedData = new Uint8Array(await cached!.arrayBuffer());
+		expect(cachedData.length).toBe(1024 * 1024);
+	});
+
+	test("rejects responses exceeding size limit", async () => {
+		const smallCache = new RedisCache("small", {
+			redis: {url: REDIS_URL},
+			prefix: testPrefix,
+			maxEntrySize: 1024, // 1KB limit
 		});
+
+		const request = new Request("http://example.com/toolarge");
+		const largeData = new Uint8Array(2048).fill(42); // 2KB
+		const response = new Response(largeData);
+
+		await expect(smallCache.put(request, response)).rejects.toThrow(
+			/too large/,
+		);
+
+		await smallCache.dispose();
+	});
+
+	test("handles concurrent requests", async () => {
+		const requests = Array.from({length: 10}, (_, i) => ({
+			request: new Request(`http://example.com/concurrent/${i}`),
+			response: new Response(`Response ${i}`),
+		}));
+
+		// Put all concurrently
+		await Promise.all(
+			requests.map(({request, response}) => cache.put(request, response)),
+		);
+
+		// Get all concurrently
+		const results = await Promise.all(
+			requests.map(({request}) => cache.match(request)),
+		);
+
+		// All should be cached
+		expect(results.every((r) => r !== undefined)).toBe(true);
+
+		// Verify content
+		for (let i = 0; i < 10; i++) {
+			expect(await results[i]!.text()).toBe(`Response ${i}`);
+		}
+	});
+
+	test("uses default TTL when no Cache-Control header", async () => {
+		const shortTTLCache = new RedisCache("short-ttl", {
+			redis: {url: REDIS_URL},
+			prefix: testPrefix,
+			defaultTTL: 1, // 1 second
+		});
+
+		const request = new Request("http://example.com/default-ttl");
+		const response = new Response("Expires soon");
+
+		await shortTTLCache.put(request, response);
+
+		// Should be cached immediately
+		const cached1 = await shortTTLCache.match(request);
+		expect(cached1).toBeDefined();
+
+		// Wait for expiration
+		await new Promise((resolve) => setTimeout(resolve, 1500));
+
+		// Should be expired
+		const cached2 = await shortTTLCache.match(request);
+		expect(cached2).toBeUndefined();
+
+		await shortTTLCache.dispose();
 	});
 });
