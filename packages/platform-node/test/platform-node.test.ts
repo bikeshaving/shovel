@@ -227,4 +227,54 @@ describe("NodePlatform", () => {
 
 		expect((customPlatform as any).options.cwd).toBe(customCwd);
 	});
+
+	describe("config integration", () => {
+		test("createCaches should use config.caches settings", async () => {
+			// BUG: createCaches() currently ignores config and always uses MemoryCache
+			// It should respect shovel.json caches configuration
+
+			// This test fails because NodePlatformOptions doesn't accept config
+			// and createCaches() is hardcoded to always use MemoryCache
+			const platformWithConfig = new NodePlatform({
+				cwd: tempDir,
+				// @ts-expect-error - config option doesn't exist yet
+				config: {
+					caches: {
+						"test-cache": {provider: "memory", maxEntries: 100},
+					},
+				},
+			});
+
+			const caches = await platformWithConfig.createCaches();
+			const cache = await caches.open("test-cache");
+
+			// This will fail - config.caches settings are ignored
+			// The cache exists but maxEntries from config was not applied
+			expect((cache as any).maxEntries).toBe(100);
+		});
+
+		test("createDirectories should use config.directories settings", async () => {
+			// BUG: createDirectories() currently ignores config and always uses NodeFSDirectory
+			// It should respect shovel.json directories configuration
+
+			// This test fails because NodePlatformOptions doesn't accept config
+			// and createDirectories() is hardcoded to always use NodeFSDirectory
+			const platformWithConfig = new NodePlatform({
+				cwd: tempDir,
+				// @ts-expect-error - config option doesn't exist yet
+				config: {
+					directories: {
+						uploads: {provider: "memory"},
+					},
+				},
+			});
+
+			const directories = platformWithConfig.createDirectories(tempDir);
+			const uploadsDir = await directories.open("uploads");
+
+			// This will fail - config.directories settings are ignored
+			// It creates NodeFSDirectory instead of MemoryDirectory
+			expect(uploadsDir.constructor.name).toBe("MemoryDirectory");
+		});
+	});
 });

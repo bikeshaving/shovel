@@ -119,6 +119,59 @@ Assets are served via the platform's best option:
 - **Cloudflare**: Workers Assets (edge-cached, zero config)
 - **Node/Bun**: Static file middleware or directory storage
 
+## Configuration
+
+Configure Shovel using `shovel.json` in your project root:
+
+```json
+{
+  "port": "PORT || 3000",
+  "host": "HOST || localhost",
+  "workers": "WORKERS ?? 1",
+  "logging": {
+    "level": "LOG_LEVEL || info",
+    "sinks": [{"provider": "console"}]
+  },
+  "caches": {
+    "sessions": {
+      "provider": "MODE === production ? redis : memory",
+      "url": "REDIS_URL"
+    }
+  },
+  "directories": {
+    "uploads": {
+      "provider": "s3",
+      "bucket": "S3_BUCKET"
+    }
+  }
+}
+```
+
+### Expression Syntax
+
+Configuration values support environment variable expressions:
+
+| Expression | Meaning |
+|------------|---------|
+| `PORT \|\| 3000` | Use PORT env var, fallback to 3000 if falsy |
+| `PORT ?? 3000` | Use PORT, fallback only if null/undefined |
+| `MODE === production ? redis : memory` | Conditional based on environment |
+| `REDIS_URL` | Environment variable reference |
+| `localhost` | String literal (lowercase/kebab-case) |
+
+### Built-in Providers
+
+**Caches**: `memory`, `redis`
+**Directories**: `node-fs`, `memory`, `s3`
+**Logging sinks**: `console`, `file`, `rotating`, `otel`, `sentry`, `cloudwatch`
+
+### Access in Code
+
+```javascript
+import {config} from "shovel:config";
+console.log(config.port); // Resolved value
+```
+
 ## Packages
 
 | Package | Description |
