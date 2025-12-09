@@ -11,7 +11,7 @@
  */
 
 import {AsyncContext} from "@b9g/async-context";
-import {getLogger} from "@logtape/logtape";
+import {getLogger, getConsoleSink} from "@logtape/logtape";
 import {resolve} from "path";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {CustomCacheStorage, Cache} from "@b9g/cache";
@@ -1617,7 +1617,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	}
 
 	reportError(e: any): void {
-		getLogger(["platform"]).error`reportError: ${e}`;
+		getLogger(["shovel", "platform"]).error`reportError: ${e}`;
 	}
 
 	setInterval(handler: TimerHandler, timeout?: number, ...args: any[]): number {
@@ -1737,9 +1737,9 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	 * Allows the ServiceWorker to activate immediately
 	 */
 	async skipWaiting(): Promise<void> {
-		getLogger(["platform"]).info("skipWaiting() called");
+		getLogger(["shovel", "platform"]).info("skipWaiting() called");
 		if (!this.#isDevelopment) {
-			getLogger(["platform"]).info(
+			getLogger(["shovel", "platform"]).info(
 				"skipWaiting() - production graceful restart not implemented",
 			);
 			// In production, this would normally activate the waiting worker
@@ -2171,7 +2171,7 @@ export async function initWorkerRuntime(
 	options: InitWorkerRuntimeOptions,
 ): Promise<InitWorkerRuntimeResult> {
 	const {config, baseDir} = options;
-	const runtimeLogger = getLogger(["platform"]);
+	const runtimeLogger = getLogger(["shovel", "platform"]);
 
 	// Configure logging if specified
 	if (config?.logging) {
@@ -2222,7 +2222,7 @@ export async function initWorkerRuntime(
 export function startWorkerMessageLoop(
 	registration: ShovelServiceWorkerRegistration,
 ): void {
-	const messageLogger = getLogger(["platform"]);
+	const messageLogger = getLogger(["shovel", "platform"]);
 	const workerId = Math.random().toString(36).substring(2, 8);
 
 	/**
@@ -2338,58 +2338,43 @@ export function startWorkerMessageLoop(
 /** Log level for filtering */
 export type LogLevel = "debug" | "info" | "warning" | "error";
 
-/** Sink configuration */
+/** Sink configuration - provider maps to built-in or custom module */
 export interface SinkConfig {
 	provider: string;
 	/** Pre-imported factory function (from build-time code generation) */
 	factory?: (options: Record<string, unknown>) => unknown;
 	/** Provider-specific options (path, maxSize, etc.) */
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
-/** Per-category logging configuration */
-export interface CategoryLoggingConfig {
+/** Logger configuration - matches LogTape's logger config structure */
+export interface LoggerConfig {
+	/** Category as string or array for hierarchy. e.g. "myapp" or ["myapp", "db"] */
+	category: string | string[];
+	/** Log level for this category. Inherits from parent if not specified. */
 	level?: LogLevel;
-	sinks?: SinkConfig[];
+	/** Sink names to add. Inherits from parent by default. */
+	sinks?: string[];
+	/** Set to "override" to replace parent sinks instead of inherit */
+	parentSinks?: "override";
 }
 
 export interface LoggingConfig {
-	/** Default log level. Defaults to "info" */
-	level?: LogLevel;
-	/** Default sinks. Defaults to console */
-	sinks?: SinkConfig[];
-	/** Per-category config (inherits from top-level, can override level and/or sinks) */
-	categories?: Record<string, CategoryLoggingConfig>;
+	/** Named sinks. "console" is always available implicitly. */
+	sinks?: Record<string, SinkConfig>;
+	/** Logger configurations. Shovel provides defaults for ["shovel", ...] categories. */
+	loggers?: LoggerConfig[];
 }
 
 /** Processed logging config with all defaults applied */
 export interface ProcessedLoggingConfig {
-	level: LogLevel;
-	sinks: SinkConfig[];
-	categories: Record<string, CategoryLoggingConfig>;
+	sinks: Record<string, SinkConfig>;
+	loggers: LoggerConfig[];
 }
 
 // ============================================================================
 // Logging Implementation
 // ============================================================================
-
-/** All Shovel package categories for logging
- * TODO: Clean up this list to match actual packages */
-const SHOVEL_CATEGORIES = [
-	"cli",
-	"build",
-	"platform",
-	"watcher",
-	"worker",
-	"single-threaded",
-	"assets",
-	"platform-node",
-	"platform-bun",
-	"platform-cloudflare",
-	"cache",
-	"cache-redis",
-	"router",
-] as const;
 
 /** Built-in sink provider aliases */
 const BUILTIN_SINK_PROVIDERS: Record<
@@ -2408,6 +2393,12 @@ const BUILTIN_SINK_PROVIDERS: Record<
 		factory: "getCloudWatchLogsSink",
 	},
 };
+
+/** Default Shovel loggers - provides logging for internal categories */
+const SHOVEL_DEFAULT_LOGGERS: LoggerConfig[] = [
+	{category: ["shovel"], level: "info", sinks: ["console"]},
+	{category: ["logtape", "meta"], level: "warning", sinks: []},
+];
 
 /**
  * Create a sink from config.
@@ -2447,10 +2438,22 @@ async function createSink(config: SinkConfig): Promise<any> {
 }
 
 /**
+ * Normalize category to array format
+ */
+function normalizeCategory(category: string | string[]): string[] {
+	return typeof category === "string" ? [category] : category;
+}
+
+/**
  * Configure LogTape logging based on Shovel config.
  * Call this in both main thread and workers.
  *
- * @param loggingConfig - The logging configuration (sinks defaults to console)
+ * Uses LogTape-aligned config structure:
+ * - Named sinks (console is implicit)
+ * - Loggers array with category hierarchy support
+ * - Shovel provides default loggers for ["shovel", ...] categories
+ *
+ * @param loggingConfig - The logging configuration
  * @param options - Additional options
  * @param options.reset - Whether to reset existing LogTape config (default: true)
  */
@@ -2458,75 +2461,58 @@ export async function configureLogging(
 	loggingConfig: LoggingConfig,
 	options: {reset?: boolean} = {},
 ): Promise<void> {
-	const level = loggingConfig.level || "info";
-	const defaultSinkConfigs = loggingConfig.sinks || [{provider: "console"}];
-	const categories = loggingConfig.categories || {};
 	const reset = options.reset !== false;
-
-	// Create all unique sinks (default + category-specific)
-	// Use Map keyed by JSON string for O(1) deduplication instead of O(n) iteration
-	const sinkByKey = new Map<string, {config: SinkConfig; name: string}>();
-
-	// Add default sinks
-	for (const config of defaultSinkConfigs) {
-		const key = JSON.stringify(config);
-		if (!sinkByKey.has(key)) {
-			sinkByKey.set(key, {config, name: `sink_${sinkByKey.size}`});
-		}
-	}
-
-	// Add category-specific sinks
-	for (const [_, categoryConfig] of Object.entries(categories)) {
-		if (categoryConfig.sinks) {
-			for (const config of categoryConfig.sinks) {
-				const key = JSON.stringify(config);
-				if (!sinkByKey.has(key)) {
-					sinkByKey.set(key, {config, name: `sink_${sinkByKey.size}`});
-				}
-			}
-		}
-	}
+	const userSinks = loggingConfig.sinks || {};
+	const userLoggers = loggingConfig.loggers || [];
 
 	// Create sink instances
-	const sinks: Record<string, any> = {};
-	for (const {config, name} of sinkByKey.values()) {
+	// Console sink is always available implicitly - use statically imported factory
+	const sinks: Record<string, any> = {
+		console: getConsoleSink(),
+	};
+
+	// Add user-defined sinks
+	for (const [name, config] of Object.entries(userSinks)) {
 		sinks[name] = await createSink(config);
 	}
 
-	// Get sink names for a given array of sink configs (O(1) lookup per config)
-	const getSinkNames = (configs: SinkConfig[]): string[] => {
-		return configs
-			.map((config) => sinkByKey.get(JSON.stringify(config))?.name ?? "")
-			.filter(Boolean);
-	};
+	// Merge Shovel default loggers with user loggers
+	// User loggers can override Shovel defaults by specifying same category
+	const userCategoryKeys = new Set(
+		userLoggers.map((l) => JSON.stringify(normalizeCategory(l.category))),
+	);
 
-	// Default sink names
-	const defaultSinkNames = getSinkNames(defaultSinkConfigs);
+	const mergedLoggers: LoggerConfig[] = [
+		// Shovel defaults (unless overridden by user)
+		...SHOVEL_DEFAULT_LOGGERS.filter(
+			(l) => !userCategoryKeys.has(JSON.stringify(normalizeCategory(l.category))),
+		),
+		// User loggers
+		...userLoggers,
+	];
 
-	// Build logger configs for each Shovel category
-	const loggers: Array<{
-		category: string[];
-		level: LogTapeLevel;
-		sinks: string[];
-	}> = SHOVEL_CATEGORIES.map((category) => {
-		const categoryConfig = categories[category];
-		const categoryLevel = categoryConfig?.level || level;
-		const categorySinks = categoryConfig?.sinks
-			? getSinkNames(categoryConfig.sinks)
-			: defaultSinkNames;
-
-		return {
-			category: [category],
-			level: categoryLevel as LogTapeLevel,
-			sinks: categorySinks,
+	// Convert to LogTape format
+	const loggers = mergedLoggers.map((loggerConfig) => {
+		const result: {
+			category: string[];
+			lowestLevel?: LogTapeLevel;
+			sinks?: string[];
+			parentSinks?: "override";
+		} = {
+			category: normalizeCategory(loggerConfig.category),
 		};
-	});
 
-	// Add meta logger config (suppress info messages about LogTape itself)
-	loggers.push({
-		category: ["logtape", "meta"],
-		level: "warning",
-		sinks: [],
+		if (loggerConfig.level) {
+			result.lowestLevel = loggerConfig.level as LogTapeLevel;
+		}
+		if (loggerConfig.sinks) {
+			result.sinks = loggerConfig.sinks;
+		}
+		if (loggerConfig.parentSinks) {
+			result.parentSinks = loggerConfig.parentSinks;
+		}
+
+		return result;
 	});
 
 	await configure({

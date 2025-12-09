@@ -20,7 +20,7 @@ import {
 import {createConfigPlugin} from "../plugins/shovel-config.js";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 
-const logger = getLogger(["cli"]);
+const logger = getLogger(["shovel", "cli"]);
 
 /**
  * Check esbuild warnings for non-bundleable dynamic imports and convert to errors.

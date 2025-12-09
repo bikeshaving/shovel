@@ -11,7 +11,7 @@ import {importMetaPlugin} from "../plugins/import-meta.js";
 import {loadJSXConfig, applyJSXOptions} from "../utils/jsx-config.js";
 import {findProjectRoot, getNodeModulesPath} from "../utils/project.js";
 
-const logger = getLogger(["cli"]);
+const logger = getLogger(["shovel", "cli"]);
 
 export async function activateCommand(
 	entrypoint: string,

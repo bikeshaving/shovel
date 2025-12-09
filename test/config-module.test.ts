@@ -401,66 +401,52 @@ describe("generateConfigModule", () => {
 		});
 	});
 
-	describe("logging sinks", () => {
+	describe("logging config", () => {
 		it("includes logging config in output", () => {
 			const config = {
 				logging: {
-					level: "info" as const,
-					sinks: [{provider: "console"}],
+					sinks: {
+						console: {provider: "console"},
+					},
+					loggers: [{category: [], level: "info" as const, sinks: ["console"]}],
 				},
 			};
 
 			const module = generateConfigModule(config);
 
 			expect(module).toContain("logging:");
-			expect(module).toContain('level: "info"');
 			expect(module).toContain('provider: "console"');
 		});
 
-		it("generates default logging config when not specified", () => {
+		it("generates empty logging config when not specified", () => {
 			const config = {
 				port: 3000,
 			};
 
 			const module = generateConfigModule(config);
 
-			// Should have logging with LOG_LEVEL env override
+			// Should have logging section with empty sinks and loggers
+			// Console sink is implicit (always available at runtime)
 			expect(module).toContain("logging:");
-			expect(module).toContain('process.env.LOG_LEVEL || "info"');
-			expect(module).toContain('provider: "console"');
-		});
-
-		it("uses explicit logging config over LOG_LEVEL env var", () => {
-			const config = {
-				logging: {
-					level: "debug" as const,
-					sinks: [{provider: "console"}],
-				},
-			};
-
-			const module = generateConfigModule(config);
-
-			// Should use explicit config, not env var
-			expect(module).toContain('level: "debug"');
-			expect(module).not.toContain("process.env.LOG_LEVEL");
+			expect(module).toContain("sinks: {}");
+			expect(module).toContain("loggers: []");
 		});
 
 		it("keeps sink secrets as process.env references", () => {
 			const config = {
 				logging: {
-					level: "info" as const,
-					sinks: [
-						{provider: "console"},
-						{
+					sinks: {
+						console: {provider: "console"},
+						sentry: {
 							provider: "sentry",
 							dsn: "SENTRY_DSN",
 						},
-						{
+						otel: {
 							provider: "otel",
 							endpoint: "OTEL_ENDPOINT",
 							apiKey: "OTEL_API_KEY",
 						},
-					],
+					},
 				},
 			};
 
@@ -484,18 +470,17 @@ describe("generateConfigModule", () => {
 		it("handles file sink with path", () => {
 			const config = {
 				logging: {
-					level: "debug" as const,
-					sinks: [
-						{
+					sinks: {
+						appLog: {
 							provider: "file",
 							path: "./logs/app.log",
 						},
-						{
+						rotating: {
 							provider: "rotating",
 							path: "LOG_PATH || ./logs/rotating.log",
 							maxSize: 10485760,
 						},
-					],
+					},
 				},
 			};
 
@@ -507,27 +492,26 @@ describe("generateConfigModule", () => {
 			expect(module).toContain("process.env.LOG_PATH");
 		});
 
-		it("handles category-specific logging", () => {
+		it("handles loggers array with category hierarchy", () => {
 			const config = {
 				logging: {
-					level: "info" as const,
-					sinks: [{provider: "console"}],
-					categories: {
-						server: {level: "debug" as const},
-						database: {
-							level: "warning" as const,
-							sinks: [{provider: "file", path: "./logs/db.log"}],
-						},
+					sinks: {
+						dbFile: {provider: "file", path: "./logs/db.log"},
 					},
+					loggers: [
+						{category: ["server"], level: "debug" as const, sinks: ["console"]},
+						{
+							category: ["database"],
+							level: "warning" as const,
+							sinks: ["dbFile"],
+						},
+					],
 				},
 			};
 
 			const module = generateConfigModule(config);
 
-			expect(module).toContain("categories");
-			// Category names are valid JS identifiers, so they don't need quoting
-			expect(module).toContain("server:");
-			expect(module).toContain("database:");
+			expect(module).toContain("loggers:");
 			expect(module).toContain('level: "debug"');
 			expect(module).toContain('level: "warning"');
 		});
@@ -535,8 +519,10 @@ describe("generateConfigModule", () => {
 		it("generates static imports for sink factories", () => {
 			const config = {
 				logging: {
-					level: "info" as const,
-					sinks: [{provider: "console"}, {provider: "file", path: "./app.log"}],
+					sinks: {
+						console: {provider: "console"},
+						appLog: {provider: "file", path: "./app.log"},
+					},
 				},
 			};
 
@@ -544,15 +530,37 @@ describe("generateConfigModule", () => {
 
 			// Should have static imports for sink factories
 			expect(module).toContain(
-				'import { getConsoleSink as sink_0 } from "@logtape/logtape"',
+				'import { getConsoleSink as sink_console } from "@logtape/logtape"',
 			);
 			expect(module).toContain(
-				'import { getFileSink as sink_1 } from "@logtape/file"',
+				'import { getFileSink as sink_appLog } from "@logtape/file"',
 			);
 
 			// Sinks should have factory references
-			expect(module).toContain("factory: sink_0");
-			expect(module).toContain("factory: sink_1");
+			expect(module).toContain("factory: sink_console");
+			expect(module).toContain("factory: sink_appLog");
+		});
+
+		it("supports parentSinks override in loggers", () => {
+			const config = {
+				logging: {
+					sinks: {
+						customSink: {provider: "console"},
+					},
+					loggers: [
+						{category: ["app"], sinks: ["console"]},
+						{
+							category: ["app", "db"],
+							sinks: ["customSink"],
+							parentSinks: "override" as const,
+						},
+					],
+				},
+			};
+
+			const module = generateConfigModule(config);
+
+			expect(module).toContain('parentSinks: "override"');
 		});
 	});
 });

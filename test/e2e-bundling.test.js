@@ -189,8 +189,12 @@ console.log("LOGGING_TEST_READY");
 					port: 3000,
 					workers: 1,
 					logging: {
-						level: "debug",
-						sinks: [{provider: "console"}],
+						sinks: {
+							console: {provider: "console"},
+						},
+						loggers: [
+							{category: [], level: "debug", sinks: ["console"]},
+						],
 					},
 				}),
 			});
@@ -255,11 +259,13 @@ console.log("MULTI_SINK_READY");
 					port: 3000,
 					workers: 1,
 					logging: {
-						level: "info",
-						sinks: [
-							{provider: "console"},
+						sinks: {
+							console: {provider: "console"},
 							// File sink requires path - will be bundled even if not used
-							{provider: "file", path: "/tmp/shovel-e2e-test.log"},
+							appLog: {provider: "file", path: "/tmp/shovel-e2e-test.log"},
+						},
+						loggers: [
+							{category: [], level: "info", sinks: ["console", "appLog"]},
 						],
 					},
 				}),
@@ -470,8 +476,12 @@ console.log("FULL_E2E_READY");
 					port: 3000,
 					workers: 1,
 					logging: {
-						level: "debug",
-						sinks: [{provider: "console"}],
+						sinks: {
+							console: {provider: "console"},
+						},
+						loggers: [
+							{category: [], level: "debug", sinks: ["console"]},
+						],
 					},
 					caches: {
 						"*": {provider: "memory", maxEntries: 100},
@@ -626,10 +636,12 @@ console.log("SINK_BUNDLE_TEST_READY");
 					port: 3000,
 					workers: 1,
 					logging: {
-						level: "debug",
-						sinks: [
-							{provider: "console"},
-							{provider: "file", path: "/tmp/test.log"},
+						sinks: {
+							console: {provider: "console"},
+							appLog: {provider: "file", path: "/tmp/test.log"},
+						},
+						loggers: [
+							{category: [], level: "debug", sinks: ["console", "appLog"]},
 						],
 					},
 				}),
@@ -700,8 +712,12 @@ console.log("ISOLATION_TEST_READY");
 					port: 3000,
 					workers: 1,
 					logging: {
-						level: "info",
-						sinks: [{provider: "console"}],
+						sinks: {
+							console: {provider: "console"},
+						},
+						loggers: [
+							{category: [], level: "info", sinks: ["console"]},
+						],
 					},
 					caches: {
 						"*": {provider: "memory"},

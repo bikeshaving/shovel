@@ -26,7 +26,7 @@ import {
 declare const Deno: any;
 declare const window: any;
 
-const logger = getLogger(["platform"]);
+const logger = getLogger(["shovel", "platform"]);
 
 // ============================================================================
 // Configuration Types

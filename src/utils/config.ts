@@ -980,22 +980,25 @@ export function generateConfigModule(
 	};
 
 	// Helper to process a sink provider and generate import
-	// Track sink factory imports: key = "module:factory", value = placeholder
+	// Track sink factory imports: key = "sinkName:module:factory", value = placeholder
 	const sinkFactoryCache: Map<string, string> = new Map();
 
-	const processSinkProvider = (providerName: string): string => {
+	const processSinkProvider = (
+		providerName: string,
+		sinkName: string,
+	): string => {
 		const builtin = BUILTIN_SINK_PROVIDERS[providerName];
 		const modulePath = builtin?.module || providerName;
 		const factoryName = builtin?.factory || "default";
-		const cacheKey = `${modulePath}:${factoryName}`;
+		const cacheKey = `${sinkName}:${modulePath}:${factoryName}`;
 
 		// Return existing placeholder if we already imported this
 		if (sinkFactoryCache.has(cacheKey)) {
 			return sinkFactoryCache.get(cacheKey)!;
 		}
 
-		// Generate unique variable name
-		const varName = `sink_${sinkFactoryCache.size}`;
+		// Generate variable name from sink name
+		const varName = `sink_${sanitizeVarName(sinkName)}`;
 
 		// Generate import
 		if (factoryName === "default") {
@@ -1013,14 +1016,12 @@ export function generateConfigModule(
 
 	// Process a sink config, adding factory placeholder
 	// Note: factory is a string placeholder during code generation, becomes a function at runtime
-	const processSink = (sink: SinkConfig): Record<string, unknown> => {
-		const factoryPlaceholder = processSinkProvider(String(sink.provider));
+	const processSink = (
+		sink: SinkConfig,
+		sinkName: string,
+	): Record<string, unknown> => {
+		const factoryPlaceholder = processSinkProvider(String(sink.provider), sinkName);
 		return {...sink, factory: factoryPlaceholder};
-	};
-
-	// Process sinks array
-	const processSinks = (sinks: SinkConfig[]): Record<string, unknown>[] => {
-		return sinks.map(processSink);
 	};
 
 	// Build the config object with placeholders
@@ -1057,53 +1058,40 @@ export function generateConfigModule(
 			);
 		}
 
-		// Logging
-		if (rawConfig.logging) {
-			const logging: Record<string, unknown> = {};
+		// Logging - LogTape-aligned structure
+		const logging: Record<string, unknown> = {};
 
-			// Level
-			if (rawConfig.logging.level) {
-				logging.level = rawConfig.logging.level;
-			} else {
-				logging.level = createPlaceholder('process.env.LOG_LEVEL || "info"');
+		// Named sinks (console is implicit, always available)
+		const sinks: Record<string, unknown> = {};
+		if (rawConfig.logging?.sinks) {
+			for (const [name, sinkConfig] of Object.entries(rawConfig.logging.sinks)) {
+				sinks[name] = processSink(sinkConfig, name);
 			}
-
-			// Sinks
-			const sinks = rawConfig.logging.sinks || [{provider: "console"}];
-			logging.sinks = processSinks(sinks);
-
-			// Categories
-			if (
-				rawConfig.logging.categories &&
-				Object.keys(rawConfig.logging.categories).length > 0
-			) {
-				const categories: Record<string, unknown> = {};
-				for (const [cat, catConfig] of Object.entries(
-					rawConfig.logging.categories,
-				)) {
-					const catObj: Record<string, unknown> = {};
-					if (catConfig.level) {
-						catObj.level = catConfig.level;
-					}
-					if (catConfig.sinks) {
-						catObj.sinks = processSinks(catConfig.sinks);
-					}
-					categories[cat] = catObj;
-				}
-				logging.categories = categories;
-			} else {
-				logging.categories = {};
-			}
-
-			config.logging = logging;
-		} else {
-			// Default logging config
-			config.logging = {
-				level: createPlaceholder('process.env.LOG_LEVEL || "info"'),
-				sinks: processSinks([{provider: "console"}]),
-				categories: {},
-			};
 		}
+		logging.sinks = sinks;
+
+		// Loggers array
+		const loggers: unknown[] = [];
+		if (rawConfig.logging?.loggers) {
+			for (const loggerConfig of rawConfig.logging.loggers) {
+				const logger: Record<string, unknown> = {
+					category: loggerConfig.category,
+				};
+				if (loggerConfig.level) {
+					logger.level = loggerConfig.level;
+				}
+				if (loggerConfig.sinks) {
+					logger.sinks = loggerConfig.sinks;
+				}
+				if (loggerConfig.parentSinks) {
+					logger.parentSinks = loggerConfig.parentSinks;
+				}
+				loggers.push(logger);
+			}
+		}
+		logging.loggers = loggers;
+
+		config.logging = logging;
 
 		// Caches
 		if (rawConfig.caches && Object.keys(rawConfig.caches).length > 0) {
@@ -1221,28 +1209,32 @@ export interface DirectoryConfig {
 /** Log level for filtering */
 export type LogLevel = "debug" | "info" | "warning" | "error";
 
-/** Sink configuration */
+/** Sink configuration - provider maps to built-in or custom module */
 export interface SinkConfig {
 	provider: string;
 	/** Pre-imported factory function (from build-time code generation) */
 	factory?: (options: Record<string, unknown>) => unknown;
 	/** Provider-specific options (path, maxSize, etc.) */
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
-/** Per-category logging configuration */
-export interface CategoryLoggingConfig {
+/** Logger configuration - matches LogTape's logger config structure */
+export interface LoggerConfig {
+	/** Category as string or array for hierarchy. e.g. "myapp" or ["myapp", "db"] */
+	category: string | string[];
+	/** Log level for this category. Inherits from parent if not specified. */
 	level?: LogLevel;
-	sinks?: SinkConfig[];
+	/** Sink names to add. Inherits from parent by default. */
+	sinks?: string[];
+	/** Set to "override" to replace parent sinks instead of inheriting */
+	parentSinks?: "override";
 }
 
 export interface LoggingConfig {
-	/** Default log level. Defaults to "info" */
-	level?: LogLevel;
-	/** Default sinks. Defaults to console */
-	sinks?: SinkConfig[];
-	/** Per-category config (inherits from top-level, can override level and/or sinks) */
-	categories?: Record<string, CategoryLoggingConfig>;
+	/** Named sinks. "console" is always available implicitly. */
+	sinks?: Record<string, SinkConfig>;
+	/** Logger configurations. Shovel provides defaults for ["shovel", ...] categories. */
+	loggers?: LoggerConfig[];
 }
 
 export interface ShovelConfig {
@@ -1266,9 +1258,8 @@ export interface ShovelConfig {
 
 /** Processed logging config with all defaults applied */
 export interface ProcessedLoggingConfig {
-	level: LogLevel;
-	sinks: SinkConfig[];
-	categories: Record<string, CategoryLoggingConfig>;
+	sinks: Record<string, SinkConfig>;
+	loggers: LoggerConfig[];
 }
 
 export interface ProcessedShovelConfig {
@@ -1325,9 +1316,6 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 		strict: true,
 	}) as ShovelConfig;
 
-	// Default sink config
-	const defaultSinks: SinkConfig[] = [{provider: "console"}];
-
 	// Apply config precedence: json value > canonical env var > default
 	// If a key exists in json, use it (already processed with expressions)
 	// Otherwise, check canonical env var (uppercase key name)
@@ -1352,9 +1340,8 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 					? parseInt(env.WORKERS, 10)
 					: 1,
 		logging: {
-			level: processed.logging?.level || "info",
-			sinks: processed.logging?.sinks || defaultSinks,
-			categories: processed.logging?.categories || {},
+			sinks: processed.logging?.sinks || {},
+			loggers: processed.logging?.loggers || [],
 		},
 		caches: processed.caches || {},
 		directories: processed.directories || {},

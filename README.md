@@ -129,8 +129,12 @@ Configure Shovel using `shovel.json` in your project root:
   "host": "HOST || localhost",
   "workers": "WORKERS ?? 1",
   "logging": {
-    "level": "LOG_LEVEL || info",
-    "sinks": [{"provider": "console"}]
+    "sinks": {
+      "dbLog": {"provider": "file", "path": "./logs/db.log"}
+    },
+    "loggers": [
+      {"category": ["app", "db"], "level": "debug", "sinks": ["dbLog"]}
+    ]
   },
   "caches": {
     "sessions": {
@@ -143,6 +147,29 @@ Configure Shovel using `shovel.json` in your project root:
       "provider": "s3",
       "bucket": "S3_BUCKET"
     }
+  }
+}
+```
+
+### Logging
+
+Shovel uses [LogTape](https://logtape.org/) for logging with a compatible configuration format:
+
+- **Console sink is implicit** - always available without configuration
+- **Named sinks** - define custom sinks by name
+- **Category hierarchy** - `["app", "db"]` inherits from `["app"]`
+- **Shovel defaults** - `["shovel", ...]` categories are pre-configured
+
+```json
+{
+  "logging": {
+    "sinks": {
+      "errors": {"provider": "file", "path": "./logs/error.log"}
+    },
+    "loggers": [
+      {"category": ["app"], "level": "info", "sinks": ["console"]},
+      {"category": ["app", "db"], "level": "debug", "sinks": ["errors"], "parentSinks": "override"}
+    ]
   }
 }
 ```

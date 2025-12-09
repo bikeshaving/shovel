@@ -55,7 +55,7 @@ const TRANSPILABLE_EXTENSIONS = new Set([
  */
 const CSS_EXTENSIONS = new Set([".css"]);
 
-const logger = getLogger(["build"]);
+const logger = getLogger(["shovel", "build"]);
 
 /**
  * ESBuild options that can be passed for client bundle transpilation

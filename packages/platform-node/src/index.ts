@@ -113,7 +113,7 @@ await registration.activate();
 startWorkerMessageLoop(registration);
 `;
 
-const logger = getLogger(["platform"]);
+const logger = getLogger(["shovel", "platform"]);
 
 // ============================================================================
 // TYPES

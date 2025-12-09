@@ -1,7 +1,7 @@
 import {getLogger} from "@logtape/logtape";
 import {detectRuntime, detectDevelopmentPlatform} from "@b9g/platform";
 
-const logger = getLogger(["cli"]);
+const logger = getLogger(["shovel", "cli"]);
 
 export async function infoCommand() {
 	logger.info("Shovel Platform Information", {});

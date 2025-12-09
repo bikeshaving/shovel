@@ -21,7 +21,7 @@ import {createConfigPlugin} from "../plugins/shovel-config.js";
 import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
 import {findProjectRoot} from "./project.js";
 
-const logger = getLogger(["build"]);
+const logger = getLogger(["shovel", "build"]);
 
 /**
  * Create the shovel:entry virtual module plugin.
