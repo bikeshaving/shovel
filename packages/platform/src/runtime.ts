@@ -378,6 +378,193 @@ export class CustomLoggerStorage implements LoggerStorage {
 }
 
 // ============================================================================
+// Database Storage API
+// ============================================================================
+
+/**
+ * Drizzle ORM instance type (generic to support any dialect)
+ */
+export type DrizzleInstance = {
+	query: Record<string, unknown>;
+	select: (...args: unknown[]) => unknown;
+	insert: (...args: unknown[]) => unknown;
+	update: (...args: unknown[]) => unknown;
+	delete: (...args: unknown[]) => unknown;
+	transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>;
+	[key: string]: unknown;
+};
+
+/**
+ * Supported database dialects
+ */
+export type DatabaseDialect =
+	| "postgresql"
+	| "mysql"
+	| "sqlite"
+	| "bun-sqlite"
+	| "libsql"
+	| "d1";
+
+/**
+ * Database configuration for a named database
+ */
+export interface DatabaseConfig {
+	dialect: DatabaseDialect;
+	driver: {
+		module: string;
+		export?: string;
+		factory?: unknown; // Pre-imported driver class/factory
+	};
+	url: string;
+	schema?: string | Record<string, unknown>; // Path or pre-imported schema
+	migrations?: string;
+	[key: string]: unknown;
+}
+
+/**
+ * Result of creating a database instance
+ */
+export interface DatabaseInstance {
+	instance: DrizzleInstance;
+	close: () => Promise<void>;
+}
+
+/**
+ * Factory function for creating database instances
+ */
+export type DatabaseFactory = (
+	name: string,
+	config: DatabaseConfig,
+) => Promise<DatabaseInstance>;
+
+/**
+ * DatabaseStorage interface - provides access to named database instances
+ */
+export interface DatabaseStorage {
+	open(name: string): Promise<DrizzleInstance>;
+	has(name: string): boolean;
+	keys(): string[];
+	close(name: string): Promise<void>;
+	closeAll(): Promise<void>;
+}
+
+/**
+ * CustomDatabaseStorage implements DatabaseStorage with a configurable factory
+ */
+export class CustomDatabaseStorage implements DatabaseStorage {
+	#instances: Map<string, DatabaseInstance>;
+	#factory: DatabaseFactory;
+	#configs: Map<string, DatabaseConfig>;
+	#pending: Map<string, Promise<DatabaseInstance>>;
+
+	constructor(
+		factory: DatabaseFactory,
+		configs: Map<string, DatabaseConfig> | Record<string, DatabaseConfig>,
+	) {
+		this.#instances = new Map();
+		this.#factory = factory;
+		this.#configs =
+			configs instanceof Map ? configs : new Map(Object.entries(configs));
+		this.#pending = new Map();
+	}
+
+	async open(name: string): Promise<DrizzleInstance> {
+		const existing = this.#instances.get(name);
+		if (existing) {
+			return existing.instance;
+		}
+
+		const pending = this.#pending.get(name);
+		if (pending) {
+			const result = await pending;
+			return result.instance;
+		}
+
+		const config = this.#configs.get(name);
+		if (!config) {
+			const available = Array.from(this.#configs.keys());
+			throw new Error(
+				`Database "${name}" is not configured. ` +
+					(available.length > 0
+						? `Available databases: ${available.join(", ")}`
+						: "No databases are configured in shovel.json"),
+			);
+		}
+
+		const promise = this.#factory(name, config);
+		this.#pending.set(name, promise);
+
+		try {
+			const dbInstance = await promise;
+			this.#instances.set(name, dbInstance);
+			return dbInstance.instance;
+		} finally {
+			this.#pending.delete(name);
+		}
+	}
+
+	has(name: string): boolean {
+		return this.#instances.has(name);
+	}
+
+	keys(): string[] {
+		return Array.from(this.#instances.keys());
+	}
+
+	configuredKeys(): string[] {
+		return Array.from(this.#configs.keys());
+	}
+
+	async close(name: string): Promise<void> {
+		const instance = this.#instances.get(name);
+		if (instance) {
+			await instance.close();
+			this.#instances.delete(name);
+		}
+	}
+
+	async closeAll(): Promise<void> {
+		const closePromises: Promise<void>[] = [];
+		for (const [name, instance] of this.#instances) {
+			closePromises.push(
+				instance.close().then(() => {
+					this.#instances.delete(name);
+				}),
+			);
+		}
+		await Promise.allSettled(closePromises);
+		this.#instances.clear();
+	}
+}
+
+/**
+ * Maps database dialects to their Drizzle ORM adapter modules
+ */
+export const DIALECT_ADAPTERS: Record<
+	DatabaseDialect,
+	{module: string; export: string}
+> = {
+	postgresql: {module: "drizzle-orm/postgres-js", export: "drizzle"},
+	mysql: {module: "drizzle-orm/mysql2", export: "drizzle"},
+	sqlite: {module: "drizzle-orm/better-sqlite3", export: "drizzle"},
+	"bun-sqlite": {module: "drizzle-orm/bun-sqlite", export: "drizzle"},
+	libsql: {module: "drizzle-orm/libsql", export: "drizzle"},
+	d1: {module: "drizzle-orm/d1", export: "drizzle"},
+};
+
+/**
+ * Check if a value is a class (constructor function)
+ */
+function isDriverClass(value: unknown): value is new (...args: any[]) => any {
+	if (typeof value !== "function") return false;
+	const proto = value.prototype;
+	if (proto === undefined) return false;
+	if (proto.constructor !== value) return false;
+	const str = value.toString();
+	return str.startsWith("class ") || str.includes("[native code]");
+}
+
+// ============================================================================
 // ServiceWorker Event Constants
 // ============================================================================
 
@@ -420,6 +607,7 @@ const PATCHED_KEYS = [
 	"fetch",
 	"caches",
 	"directories",
+	"databases",
 	"loggers",
 	"registration",
 	"clients",
@@ -1471,6 +1659,8 @@ export interface ServiceWorkerGlobalsOptions {
 	registration: ServiceWorkerRegistration;
 	/** Directory storage (file system access) - REQUIRED */
 	directories: DirectoryStorage;
+	/** Database storage (Drizzle ORM access) - OPTIONAL */
+	databases?: DatabaseStorage;
 	/** Logger storage (logging access) - REQUIRED */
 	loggers: LoggerStorage;
 	/** Cache storage (required by ServiceWorkerGlobalScope) - REQUIRED */
@@ -1512,6 +1702,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	// Storage APIs
 	readonly caches: CacheStorage;
 	readonly directories: DirectoryStorage;
+	readonly databases?: DatabaseStorage;
 	readonly loggers: LoggerStorage;
 
 	// Clients API
@@ -1692,6 +1883,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 		this.registration = options.registration;
 		this.caches = options.caches;
 		this.directories = options.directories;
+		this.databases = options.databases;
 		this.loggers = options.loggers;
 		this.#isDevelopment = options.isDevelopment ?? false;
 
@@ -1833,6 +2025,9 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 		// Storage APIs
 		g.caches = this.caches;
 		g.directories = this.directories;
+		if (this.databases) {
+			g.databases = this.databases;
+		}
 		g.loggers = this.loggers;
 
 		// ServiceWorker APIs
@@ -1903,6 +2098,7 @@ export interface ShovelConfig {
 	logging?: LoggingConfig;
 	caches?: Record<string, CacheConfig>;
 	directories?: Record<string, DirectoryConfig>;
+	databases?: Record<string, DatabaseConfig>;
 }
 
 // ============================================================================
@@ -2089,6 +2285,84 @@ export function createCacheFactory(options: CacheFactoryOptions = {}) {
 }
 
 // ============================================================================
+// Database Factory
+// ============================================================================
+
+/**
+ * Creates a database factory function for CustomDatabaseStorage.
+ *
+ * Uses pre-imported driver and schema from build-time code generation.
+ * Dynamically imports Drizzle adapter based on dialect.
+ */
+export function createDatabaseFactory(): DatabaseFactory {
+	return async (
+		name: string,
+		config: DatabaseConfig,
+	): Promise<DatabaseInstance> => {
+		const {dialect, driver, url, schema} = config;
+
+		// Get the Drizzle adapter for this dialect
+		const adapter = DIALECT_ADAPTERS[dialect];
+		if (!adapter) {
+			throw new Error(
+				`Unknown database dialect: ${dialect}. ` +
+					`Supported: ${Object.keys(DIALECT_ADAPTERS).join(", ")}`,
+			);
+		}
+
+		// Get driver factory (pre-imported at build time)
+		const driverFactory = driver.factory;
+		if (!driverFactory) {
+			throw new Error(
+				`Database "${name}": driver.factory not provided. ` +
+					`Ensure the database is configured in shovel.json and the build includes the driver import.`,
+			);
+		}
+
+		// Create driver instance
+		let driverInstance: unknown;
+		if (isDriverClass(driverFactory)) {
+			driverInstance = new driverFactory(url);
+		} else if (typeof driverFactory === "function") {
+			driverInstance = (driverFactory as Function)(url);
+		} else {
+			throw new Error(
+				`Database "${name}": driver must be a class or factory function.`,
+			);
+		}
+
+		// Dynamic import of Drizzle adapter
+		const adapterModule = await import(adapter.module);
+		const drizzleFn = adapterModule[adapter.export];
+
+		if (typeof drizzleFn !== "function") {
+			throw new Error(
+				`Could not find "${adapter.export}" export in "${adapter.module}"`,
+			);
+		}
+
+		// Create Drizzle instance with schema if provided
+		const drizzleOptions = typeof schema === "object" ? {schema} : {};
+		const instance = drizzleFn(
+			driverInstance,
+			drizzleOptions,
+		) as DrizzleInstance;
+
+		// Create close function based on driver type
+		const close = async (): Promise<void> => {
+			// Most drivers have an end() or close() method
+			if (typeof (driverInstance as any).end === "function") {
+				await (driverInstance as any).end();
+			} else if (typeof (driverInstance as any).close === "function") {
+				await (driverInstance as any).close();
+			}
+		};
+
+		return {instance, close};
+	};
+}
+
+// ============================================================================
 // Worker Runtime API
 // ============================================================================
 
@@ -2148,6 +2422,8 @@ export interface InitWorkerRuntimeResult {
 	caches: CustomCacheStorage;
 	/** Directory storage instance */
 	directories: CustomDirectoryStorage;
+	/** Database storage instance (if configured) */
+	databases?: CustomDatabaseStorage;
 	/** Logger storage instance */
 	loggers: CustomLoggerStorage;
 }
@@ -2197,6 +2473,15 @@ export async function initWorkerRuntime(
 		createDirectoryFactory({config, defaults: directoryDefaults}),
 	);
 
+	// Create database storage if configured
+	let databases: CustomDatabaseStorage | undefined;
+	if (config?.databases && Object.keys(config.databases).length > 0) {
+		databases = new CustomDatabaseStorage(
+			createDatabaseFactory(),
+			config.databases,
+		);
+	}
+
 	// Create logger storage
 	const loggers = new CustomLoggerStorage((...categories) =>
 		getLogger(categories),
@@ -2208,6 +2493,7 @@ export async function initWorkerRuntime(
 		registration,
 		caches,
 		directories,
+		databases,
 		loggers,
 	});
 
@@ -2216,7 +2502,7 @@ export async function initWorkerRuntime(
 
 	runtimeLogger.info("Worker runtime initialized");
 
-	return {registration, scope, caches, directories, loggers};
+	return {registration, scope, caches, directories, databases, loggers};
 }
 
 /**

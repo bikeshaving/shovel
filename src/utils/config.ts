@@ -1137,6 +1137,48 @@ export function generateConfigModule(
 			config.directories = directories;
 		}
 
+		// Databases
+		if (rawConfig.databases && Object.keys(rawConfig.databases).length > 0) {
+			const databases: Record<string, unknown> = {};
+			for (const [name, cfg] of Object.entries(rawConfig.databases)) {
+				const dbConfig: Record<string, unknown> = {...cfg};
+
+				// Import driver module
+				if (cfg.driver?.module) {
+					const driverVarName = `db_driver_${sanitizeVarName(name)}`;
+					const exportName = cfg.driver.export || "default";
+
+					if (exportName === "default") {
+						imports.push(
+							`import ${driverVarName} from ${JSON.stringify(cfg.driver.module)};`,
+						);
+					} else {
+						imports.push(
+							`import { ${exportName} as ${driverVarName} } from ${JSON.stringify(cfg.driver.module)};`,
+						);
+					}
+
+					// Replace driver config with placeholder
+					dbConfig.driver = {
+						...cfg.driver,
+						factory: createPlaceholder(driverVarName),
+					};
+				}
+
+				// Import schema module
+				if (cfg.schema) {
+					const schemaVarName = `db_schema_${sanitizeVarName(name)}`;
+					imports.push(
+						`import * as ${schemaVarName} from ${JSON.stringify(cfg.schema)};`,
+					);
+					dbConfig.schema = createPlaceholder(schemaVarName);
+				}
+
+				databases[name] = dbConfig;
+			}
+			config.databases = databases;
+		}
+
 		return config;
 	};
 
@@ -1211,6 +1253,34 @@ export interface DirectoryConfig {
 	endpoint?: string | number;
 }
 
+/** Database dialect */
+export type DatabaseDialect =
+	| "postgresql"
+	| "mysql"
+	| "sqlite"
+	| "bun-sqlite"
+	| "libsql"
+	| "d1";
+
+/** Database configuration - Drizzle ORM based */
+export interface DatabaseConfig {
+	/** Database dialect (postgresql, mysql, sqlite, libsql, d1) */
+	dialect: DatabaseDialect;
+	/** Driver module configuration */
+	driver: {
+		module: string;
+		export?: string;
+	};
+	/** Connection URL or path (supports env var expressions) */
+	url: string;
+	/** Path to Drizzle schema file (relative to project root) */
+	schema: string;
+	/** Path to migrations directory (optional) */
+	migrations?: string;
+	/** Additional driver-specific options */
+	[key: string]: unknown;
+}
+
 /** Log level for filtering */
 export type LogLevel = "debug" | "info" | "warning" | "error";
 
@@ -1259,6 +1329,9 @@ export interface ShovelConfig {
 
 	// Directories (per-name with patterns)
 	directories?: Record<string, DirectoryConfig>;
+
+	// Databases (per-name, Drizzle ORM)
+	databases?: Record<string, DatabaseConfig>;
 }
 
 /** Processed logging config with all defaults applied */
@@ -1275,6 +1348,7 @@ export interface ProcessedShovelConfig {
 	logging: ProcessedLoggingConfig;
 	caches: Record<string, CacheConfig>;
 	directories: Record<string, DirectoryConfig>;
+	databases: Record<string, DatabaseConfig>;
 }
 
 // ============================================================================
@@ -1350,6 +1424,7 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 		},
 		caches: processed.caches || {},
 		directories: processed.directories || {},
+		databases: processed.databases || {},
 	};
 
 	return config;
