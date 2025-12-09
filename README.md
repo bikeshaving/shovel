@@ -121,58 +121,129 @@ Assets are served via the platform's best option:
 
 ## Configuration
 
-Configure Shovel using `shovel.json` in your project root:
+Configure Shovel using `shovel.json` in your project root.
+
+### Philosophy
+
+Shovel's configuration follows these principles:
+
+1. **Platform Defaults, User Overrides** - Each platform provides sensible defaults. You only configure what you want to change.
+
+2. **Uniform Interface** - Caches, directories, and loggers all use the same `{ module, export, ...options }` pattern. No magic strings or builtin aliases.
+
+3. **Layered Resolution** - For any cache or directory name:
+   - If config specifies `module`/`export` → use that
+   - Otherwise → use platform default
+
+4. **Platform Re-exports** - Each platform exports `DefaultCache` representing what makes sense for that environment:
+   - Cloudflare: Native Cache API
+   - Bun/Node: MemoryCache
+
+5. **Transparency** - Config is what you see. Every backend is an explicit module path, making it easy to debug and trace.
+
+### Basic Config
 
 ```json
 {
   "port": "PORT || 3000",
   "host": "HOST || localhost",
   "workers": "WORKERS ?? 1",
-  "logging": {
-    "sinks": {
-      "dbLog": {"provider": "file", "path": "./logs/db.log"}
-    },
-    "loggers": [
-      {"category": ["app", "db"], "level": "debug", "sinks": ["dbLog"]}
-    ]
-  },
   "caches": {
     "sessions": {
-      "provider": "MODE === production ? redis : memory",
+      "module": "@b9g/cache-redis",
+      "export": "RedisCache",
       "url": "REDIS_URL"
     }
   },
   "directories": {
     "uploads": {
-      "provider": "s3",
+      "module": "@b9g/filesystem-s3",
+      "export": "S3Directory",
       "bucket": "S3_BUCKET"
+    }
+  },
+  "logging": {
+    "loggers": [
+      {"category": ["app"], "level": "info", "sinks": ["console"]}
+    ]
+  }
+}
+```
+
+### Caches
+
+Configure cache backends using `module` and `export`:
+
+```json
+{
+  "caches": {
+    "api-responses": {
+      "module": "@b9g/cache/memory",
+      "export": "MemoryCache"
+    },
+    "sessions": {
+      "module": "@b9g/cache-redis",
+      "export": "RedisCache",
+      "url": "REDIS_URL"
     }
   }
 }
 ```
 
+- **Default**: Platform's `DefaultCache` when no config specified (MemoryCache on Bun/Node, native on Cloudflare)
+- **Pattern matching**: Use wildcards like `"api-*"` to match multiple cache names
+- **Empty config**: `"my-cache": {}` uses platform default explicitly
+
+### Directories
+
+Configure directory backends. Platforms provide defaults for well-known directories (`server`, `public`, `tmp`):
+
+```json
+{
+  "directories": {
+    "uploads": {
+      "module": "@b9g/filesystem-s3",
+      "export": "S3Directory",
+      "bucket": "MY_BUCKET",
+      "region": "us-east-1"
+    },
+    "data": {
+      "module": "@b9g/filesystem/node-fs",
+      "export": "NodeFSDirectory",
+      "path": "./data"
+    }
+  }
+}
+```
+
+- **Well-known defaults**: `server` (dist/server), `public` (dist/public), `tmp` (OS temp)
+- **Custom directories**: Must be explicitly configured
+
 ### Logging
 
-Shovel uses [LogTape](https://logtape.org/) for logging with a compatible configuration format:
-
-- **Console sink is implicit** - always available without configuration
-- **Named sinks** - define custom sinks by name
-- **Category hierarchy** - `["app", "db"]` inherits from `["app"]`
-- **Shovel defaults** - `["shovel", ...]` categories are pre-configured
+Shovel uses [LogTape](https://logtape.org/) for logging:
 
 ```json
 {
   "logging": {
     "sinks": {
-      "errors": {"provider": "file", "path": "./logs/error.log"}
+      "file": {
+        "module": "@logtape/logtape",
+        "export": "getFileSink",
+        "path": "./logs/app.log"
+      }
     },
     "loggers": [
       {"category": ["app"], "level": "info", "sinks": ["console"]},
-      {"category": ["app", "db"], "level": "debug", "sinks": ["errors"], "parentSinks": "override"}
+      {"category": ["app", "db"], "level": "debug", "sinks": ["file"]}
     ]
   }
 }
 ```
+
+- **Console sink is implicit** - always available as `"console"`
+- **Category hierarchy** - `["app", "db"]` inherits from `["app"]`
+- **parentSinks** - use `"override"` to replace parent sinks instead of inheriting
 
 ### Expression Syntax
 
@@ -182,15 +253,23 @@ Configuration values support environment variable expressions:
 |------------|---------|
 | `PORT \|\| 3000` | Use PORT env var, fallback to 3000 if falsy |
 | `PORT ?? 3000` | Use PORT, fallback only if null/undefined |
-| `MODE === production ? redis : memory` | Conditional based on environment |
+| `MODE === production ? x : y` | Conditional based on environment |
 | `REDIS_URL` | Environment variable reference |
-| `localhost` | String literal (lowercase/kebab-case) |
+| `@b9g/cache-redis` | String literal (supports @, /, -) |
 
-### Built-in Providers
+Example with environment-based module selection:
 
-**Caches**: `memory`, `redis`
-**Directories**: `node-fs`, `memory`, `s3`
-**Logging sinks**: `console`, `file`, `rotating`, `otel`, `sentry`, `cloudwatch`
+```json
+{
+  "caches": {
+    "sessions": {
+      "module": "NODE_ENV === production ? @b9g/cache-redis : @b9g/cache/memory",
+      "export": "NODE_ENV === production ? RedisCache : MemoryCache",
+      "url": "REDIS_URL"
+    }
+  }
+}
+```
 
 ### Access in Code
 

@@ -10,20 +10,36 @@ import {tmpdir} from "os";
 import {join} from "path";
 import {mkdtempSync, rmSync} from "fs";
 
+// Default cache for tests (same as platform-bun/platform-node)
+const TEST_CACHE_DEFAULT = {
+	module: "@b9g/cache/memory",
+	export: "MemoryCache",
+};
+
 describe("createCacheFactory", () => {
-	test("creates MemoryCache by default when no config", async () => {
-		const factory = createCacheFactory();
+	test("creates cache from default when no config", async () => {
+		const factory = createCacheFactory({default: TEST_CACHE_DEFAULT});
 		const cache = await factory("test-cache");
 
 		expect(cache).toBeDefined();
 		expect(cache.constructor.name).toBe("MemoryCache");
 	});
 
-	test("creates MemoryCache when config specifies memory provider", async () => {
+	test("throws error when no config and no default provided", async () => {
+		const factory = createCacheFactory();
+		await expect(factory("test-cache")).rejects.toThrow(
+			'No cache configured for "test-cache" and no platform default provided.',
+		);
+	});
+
+	test("creates MemoryCache when config specifies memory module", async () => {
 		const factory = createCacheFactory({
 			config: {
 				caches: {
-					"test-cache": {provider: "memory"},
+					"test-cache": {
+						module: "@b9g/cache/memory",
+						export: "MemoryCache",
+					},
 				},
 			},
 		});
@@ -37,7 +53,10 @@ describe("createCacheFactory", () => {
 		const factory = createCacheFactory({
 			config: {
 				caches: {
-					"api-*": {provider: "memory"},
+					"api-*": {
+						module: "@b9g/cache/memory",
+						export: "MemoryCache",
+					},
 				},
 			},
 		});
@@ -51,9 +70,18 @@ describe("createCacheFactory", () => {
 		const factory = createCacheFactory({
 			config: {
 				caches: {
-					"api-sessions": {provider: "memory"},
-					"api-*": {provider: "memory"},
-					"*": {provider: "memory"},
+					"api-sessions": {
+						module: "@b9g/cache/memory",
+						export: "MemoryCache",
+					},
+					"api-*": {
+						module: "@b9g/cache/memory",
+						export: "MemoryCache",
+					},
+					"*": {
+						module: "@b9g/cache/memory",
+						export: "MemoryCache",
+					},
 				},
 			},
 		});
@@ -63,17 +91,20 @@ describe("createCacheFactory", () => {
 		expect(cache).toBeDefined();
 	});
 
-	test("falls back to default provider when no match", async () => {
+	test("falls back to default when no match", async () => {
 		const factory = createCacheFactory({
+			default: TEST_CACHE_DEFAULT,
 			config: {
 				caches: {
-					"other-cache": {provider: "memory"},
+					"other-cache": {
+						module: "@b9g/cache/memory",
+						export: "MemoryCache",
+					},
 				},
 			},
-			defaultProvider: "memory",
 		});
 
-		// "test-cache" doesn't match any pattern, uses defaultProvider
+		// "test-cache" doesn't match any pattern, uses default
 		const cache = await factory("test-cache");
 		expect(cache).toBeDefined();
 		expect(cache.constructor.name).toBe("MemoryCache");
@@ -84,7 +115,8 @@ describe("createCacheFactory", () => {
 			config: {
 				caches: {
 					"test-cache": {
-						provider: "memory",
+						module: "@b9g/cache/memory",
+						export: "MemoryCache",
 						// MemoryCache doesn't use these, but they should be passed
 						maxEntries: 100,
 						TTL: 3600,
@@ -95,84 +127,147 @@ describe("createCacheFactory", () => {
 
 		const cache = await factory("test-cache");
 		expect(cache).toBeDefined();
-		// Note: MemoryCache may not expose these options, but they should be passed
+	});
+
+	test("uses named export when specified", async () => {
+		const factory = createCacheFactory({
+			config: {
+				caches: {
+					"test-cache": {
+						module: "@b9g/cache/memory",
+						export: "MemoryCache",
+					},
+				},
+			},
+		});
+
+		const cache = await factory("test-cache");
+		expect(cache).toBeDefined();
+		expect(cache.constructor.name).toBe("MemoryCache");
+	});
+
+	test("throws error for invalid module", async () => {
+		const factory = createCacheFactory({
+			config: {
+				caches: {
+					"bad-cache": {module: "./nonexistent-cache-module.js"},
+				},
+			},
+		});
+
+		await expect(factory("bad-cache")).rejects.toThrow();
+	});
+
+	test("throws error for invalid export", async () => {
+		const factory = createCacheFactory({
+			config: {
+				caches: {
+					"bad-cache": {
+						module: "@b9g/cache/memory",
+						export: "NonExistentExport",
+					},
+				},
+			},
+		});
+
+		await expect(factory("bad-cache")).rejects.toThrow();
 	});
 });
 
 describe("createDirectoryFactory", () => {
 	let tempDir: string;
 
-	test("creates NodeFSDirectory by default when no config", async () => {
-		tempDir = mkdtempSync(join(tmpdir(), "dir-factory-test-"));
-		try {
-			const factory = createDirectoryFactory({baseDir: tempDir});
-			const dir = await factory("test-dir");
+	const nodeDefaults = {
+		server: {
+			module: "@b9g/filesystem/node-fs",
+			export: "NodeFSDirectory",
+			path: "dist/server",
+		},
+		public: {
+			module: "@b9g/filesystem/node-fs",
+			export: "NodeFSDirectory",
+			path: "dist/public",
+		},
+		tmp: {
+			module: "@b9g/filesystem/node-fs",
+			export: "NodeFSDirectory",
+			path: tmpdir, // function reference, called lazily
+		},
+	};
 
-			expect(dir).toBeDefined();
-			expect(dir.constructor.name).toBe("NodeFSDirectory");
-		} finally {
-			rmSync(tempDir, {recursive: true, force: true});
-		}
+	test("creates NodeFSDirectory for directories in defaults", async () => {
+		const factory = createDirectoryFactory({defaults: nodeDefaults});
+		const dir = await factory("server");
+
+		expect(dir).toBeDefined();
+		expect(dir.constructor.name).toBe("NodeFSDirectory");
 	});
 
-	test("creates MemoryDirectory when config specifies memory provider", async () => {
-		tempDir = mkdtempSync(join(tmpdir(), "dir-factory-test-"));
-		try {
-			const factory = createDirectoryFactory({
-				baseDir: tempDir,
-				config: {
-					directories: {
-						uploads: {provider: "memory"},
-					},
-				},
-			});
+	test("throws error for unconfigured directories without defaults", async () => {
+		const factory = createDirectoryFactory();
 
-			const dir = await factory("uploads");
-			expect(dir).toBeDefined();
-			expect(dir.constructor.name).toContain("MemoryDirectory");
-		} finally {
-			rmSync(tempDir, {recursive: true, force: true});
-		}
+		await expect(factory("unknown-dir")).rejects.toThrow(
+			'No directory configured for "unknown-dir"',
+		);
 	});
 
-	test("creates NodeFSDirectory when config specifies node-fs provider", async () => {
-		tempDir = mkdtempSync(join(tmpdir(), "dir-factory-test-"));
-		try {
-			const factory = createDirectoryFactory({
-				baseDir: tempDir,
-				config: {
-					directories: {
-						data: {provider: "node-fs"},
+	test("throws error for directories not in defaults", async () => {
+		const factory = createDirectoryFactory({defaults: nodeDefaults});
+
+		await expect(factory("unknown-dir")).rejects.toThrow(
+			'No directory configured for "unknown-dir"',
+		);
+	});
+
+	test("creates MemoryDirectory when config specifies memory module", async () => {
+		const factory = createDirectoryFactory({
+			config: {
+				directories: {
+					uploads: {
+						module: "@b9g/filesystem/memory",
+						export: "MemoryDirectory",
 					},
 				},
-			});
+			},
+		});
 
-			const dir = await factory("data");
-			expect(dir).toBeDefined();
-			expect(dir.constructor.name).toBe("NodeFSDirectory");
-		} finally {
-			rmSync(tempDir, {recursive: true, force: true});
-		}
+		const dir = await factory("uploads");
+		expect(dir).toBeDefined();
+		expect(dir.constructor.name).toContain("MemoryDirectory");
+	});
+
+	test("creates NodeFSDirectory when config specifies node-fs module", async () => {
+		const factory = createDirectoryFactory({
+			config: {
+				directories: {
+					data: {
+						module: "@b9g/filesystem/node-fs",
+						export: "NodeFSDirectory",
+					},
+				},
+			},
+		});
+
+		const dir = await factory("data");
+		expect(dir).toBeDefined();
+		expect(dir.constructor.name).toBe("NodeFSDirectory");
 	});
 
 	test("uses wildcard pattern to match directory names", async () => {
-		tempDir = mkdtempSync(join(tmpdir(), "dir-factory-test-"));
-		try {
-			const factory = createDirectoryFactory({
-				baseDir: tempDir,
-				config: {
-					directories: {
-						"uploads-*": {provider: "memory"},
+		const factory = createDirectoryFactory({
+			config: {
+				directories: {
+					"uploads-*": {
+						module: "@b9g/filesystem/memory",
+						export: "MemoryDirectory",
 					},
 				},
-			});
+			},
+		});
 
-			const dir = await factory("uploads-images");
-			expect(dir).toBeDefined();
-			expect(dir.constructor.name).toContain("MemoryDirectory");
-		} finally {
-			rmSync(tempDir, {recursive: true, force: true});
-		}
+		const dir = await factory("uploads-images");
+		expect(dir).toBeDefined();
+		expect(dir.constructor.name).toContain("MemoryDirectory");
 	});
 
 	test("uses custom path from config", async () => {
@@ -180,11 +275,11 @@ describe("createDirectoryFactory", () => {
 		const customPath = join(tempDir, "custom-data");
 		try {
 			const factory = createDirectoryFactory({
-				baseDir: tempDir,
 				config: {
 					directories: {
 						data: {
-							provider: "node-fs",
+							module: "@b9g/filesystem/node-fs",
+							export: "NodeFSDirectory",
 							path: customPath,
 						},
 					},
@@ -193,30 +288,75 @@ describe("createDirectoryFactory", () => {
 
 			const dir = await factory("data");
 			expect(dir).toBeDefined();
-			// The directory should use the custom path
-			// NodeFSDirectory stores path internally
 		} finally {
 			rmSync(tempDir, {recursive: true, force: true});
 		}
 	});
 
-	test("well-known directories use conventional paths", async () => {
-		tempDir = mkdtempSync(join(tmpdir(), "dir-factory-test-"));
-		try {
-			const factory = createDirectoryFactory({baseDir: tempDir});
+	test("defaults support all configured directories including tmp", async () => {
+		const factory = createDirectoryFactory({defaults: nodeDefaults});
 
-			// "static" is a well-known directory
-			const staticDir = await factory("static");
-			expect(staticDir).toBeDefined();
-			expect(staticDir.constructor.name).toBe("NodeFSDirectory");
+		// server directory
+		const serverDir = await factory("server");
+		expect(serverDir).toBeDefined();
+		expect(serverDir.constructor.name).toBe("NodeFSDirectory");
 
-			// "server" is a well-known directory (maps to baseDir)
-			const serverDir = await factory("server");
-			expect(serverDir).toBeDefined();
-			expect(serverDir.constructor.name).toBe("NodeFSDirectory");
-		} finally {
-			rmSync(tempDir, {recursive: true, force: true});
-		}
+		// public directory
+		const publicDir = await factory("public");
+		expect(publicDir).toBeDefined();
+		expect(publicDir.constructor.name).toBe("NodeFSDirectory");
+
+		// tmp directory (path resolved from function)
+		const tmpDir = await factory("tmp");
+		expect(tmpDir).toBeDefined();
+		expect(tmpDir.constructor.name).toBe("NodeFSDirectory");
+	});
+
+	test("path function is called lazily for tmp directory", async () => {
+		let called = false;
+		const factory = createDirectoryFactory({
+			defaults: {
+				tmp: {
+					module: "@b9g/filesystem/node-fs",
+					export: "NodeFSDirectory",
+					path: () => {
+						called = true;
+						return tmpdir();
+					},
+				},
+			},
+		});
+
+		expect(called).toBe(false);
+		await factory("tmp");
+		expect(called).toBe(true);
+	});
+
+	test("throws error for invalid module", async () => {
+		const factory = createDirectoryFactory({
+			config: {
+				directories: {
+					"bad-dir": {module: "./nonexistent-directory-module.js"},
+				},
+			},
+		});
+
+		await expect(factory("bad-dir")).rejects.toThrow();
+	});
+
+	test("throws error for invalid export", async () => {
+		const factory = createDirectoryFactory({
+			config: {
+				directories: {
+					"bad-dir": {
+						module: "@b9g/filesystem/memory",
+						export: "NonExistentExport",
+					},
+				},
+			},
+		});
+
+		await expect(factory("bad-dir")).rejects.toThrow();
 	});
 });
 
@@ -269,7 +409,10 @@ describe("configureLogging", () => {
 	test("handles named custom sinks", async () => {
 		await configureLogging({
 			sinks: {
-				myConsole: {provider: "console"},
+				myConsole: {
+					module: "@logtape/logtape",
+					export: "getConsoleSink",
+				},
 			},
 			loggers: [{category: ["app"], sinks: ["myConsole"]}],
 		});
@@ -324,7 +467,10 @@ describe("configureLogging", () => {
 	test("supports parentSinks override", async () => {
 		await configureLogging({
 			sinks: {
-				customSink: {provider: "console"},
+				customSink: {
+					module: "@logtape/logtape",
+					export: "getConsoleSink",
+				},
 			},
 			loggers: [
 				{category: ["app"], sinks: ["console"]},
@@ -339,6 +485,66 @@ describe("configureLogging", () => {
 
 		const dbLogger = getLogger(["app", "db"]);
 		expect(dbLogger).toBeDefined();
+	});
+
+	test("supports sink via module and export", async () => {
+		await configureLogging({
+			sinks: {
+				customConsole: {
+					module: "@logtape/logtape",
+					export: "getConsoleSink",
+				},
+			},
+			loggers: [{category: ["custom"], sinks: ["customConsole"]}],
+		});
+
+		const logger = getLogger(["custom"]);
+		expect(logger).toBeDefined();
+	});
+
+	test("uses factory function when provided (build-time optimization)", async () => {
+		// The `factory` option is an internal mechanism for bundled builds.
+		// The CLI generates code that statically imports sink factories,
+		// since dynamic import() can't resolve arbitrary paths in bundles.
+		const {getConsoleSink} = await import("@logtape/logtape");
+
+		await configureLogging({
+			sinks: {
+				buildTimeSink: {
+					module: "ignored-when-factory-present",
+					factory: getConsoleSink,
+				},
+			},
+			loggers: [{category: ["build"], sinks: ["buildTimeSink"]}],
+		});
+
+		const logger = getLogger(["build"]);
+		expect(logger).toBeDefined();
+	});
+
+	test("throws error for invalid module", async () => {
+		await expect(
+			configureLogging({
+				sinks: {
+					badSink: {module: "./nonexistent-sink-module.js"},
+				},
+				loggers: [{category: ["test"], sinks: ["badSink"]}],
+			}),
+		).rejects.toThrow();
+	});
+
+	test("throws error for invalid export", async () => {
+		await expect(
+			configureLogging({
+				sinks: {
+					badSink: {
+						module: "@logtape/logtape",
+						export: "nonExistentExport",
+					},
+				},
+				loggers: [{category: ["test"], sinks: ["badSink"]}],
+			}),
+		).rejects.toThrow();
 	});
 });
 
@@ -376,9 +582,7 @@ describe("CustomLoggerStorage", () => {
 
 	test("self.loggers pattern works with configured logging", async () => {
 		await configureLogging({
-			loggers: [
-				{category: ["database"], level: "debug", sinks: ["console"]},
-			],
+			loggers: [{category: ["database"], level: "debug", sinks: ["console"]}],
 		});
 
 		// This is how self.loggers is typically set up

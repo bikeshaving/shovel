@@ -168,12 +168,6 @@ export interface Platform {
 	): Promise<ServiceWorkerInstance>;
 
 	/**
-	 * SUPPORTING UTILITY - Create cache storage
-	 * Returns empty CacheStorage - applications create caches on-demand via caches.open()
-	 */
-	createCaches(): Promise<CacheStorage>;
-
-	/**
 	 * SUPPORTING UTILITY - Create server instance for this platform
 	 */
 	createServer(handler: Handler, options?: ServerOptions): Server;
@@ -201,6 +195,24 @@ export interface Platform {
 	 * Includes platform target, conditions, externals, and defines.
 	 */
 	getESBuildConfig(): PlatformESBuildConfig;
+
+	/**
+	 * Create cache storage for this platform
+	 * Uses platform-specific defaults, overridable via shovel.json config
+	 */
+	createCaches(): Promise<CacheStorage>;
+
+	/**
+	 * Create directory storage for this platform
+	 * Uses platform-specific defaults, overridable via shovel.json config
+	 */
+	createDirectories(): Promise<DirectoryStorage>;
+
+	/**
+	 * Create logger storage for this platform
+	 * Uses platform-specific defaults, overridable via shovel.json config
+	 */
+	createLoggers(): Promise<LoggerStorage>;
 }
 
 // ============================================================================
@@ -395,10 +407,22 @@ export abstract class BasePlatform implements Platform {
 	abstract getESBuildConfig(): PlatformESBuildConfig;
 
 	/**
-	 * Create cache storage
-	 * Subclasses must override to provide platform-specific config
+	 * Create cache storage for this platform
+	 * Subclasses must override to provide platform-specific implementation
 	 */
 	abstract createCaches(): Promise<CacheStorage>;
+
+	/**
+	 * Create directory storage for this platform
+	 * Subclasses must override to provide platform-specific implementation
+	 */
+	abstract createDirectories(): Promise<DirectoryStorage>;
+
+	/**
+	 * Create logger storage for this platform
+	 * Subclasses must override to provide platform-specific implementation
+	 */
+	abstract createLoggers(): Promise<LoggerStorage>;
 }
 
 // ============================================================================

@@ -121,7 +121,7 @@ self.addEventListener("fetch", (event) => {
 
 console.log("E2E_READY_MARKER");
 				`,
-				"shovel.config.json": JSON.stringify({
+				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
 				}),
@@ -185,16 +185,14 @@ self.addEventListener("fetch", (event) => {
 
 console.log("LOGGING_TEST_READY");
 				`,
-				"shovel.config.json": JSON.stringify({
+				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
 					logging: {
 						sinks: {
 							console: {provider: "console"},
 						},
-						loggers: [
-							{category: [], level: "debug", sinks: ["console"]},
-						],
+						loggers: [{category: [], level: "debug", sinks: ["console"]}],
 					},
 				}),
 			});
@@ -255,7 +253,7 @@ self.addEventListener("fetch", (event) => {
 
 console.log("MULTI_SINK_READY");
 				`,
-				"shovel.config.json": JSON.stringify({
+				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
 					logging: {
@@ -332,7 +330,7 @@ self.addEventListener("fetch", async (event) => {
 
 console.log("CACHE_TEST_READY");
 				`,
-				"shovel.config.json": JSON.stringify({
+				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
 					caches: {
@@ -393,7 +391,7 @@ self.addEventListener("fetch", async (event) => {
 
 console.log("DIRECTORY_TEST_READY");
 				`,
-				"shovel.config.json": JSON.stringify({
+				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
 					directories: {
@@ -472,16 +470,14 @@ self.addEventListener("fetch", async (event) => {
 
 console.log("FULL_E2E_READY");
 				`,
-				"shovel.config.json": JSON.stringify({
+				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
 					logging: {
 						sinks: {
 							console: {provider: "console"},
 						},
-						loggers: [
-							{category: [], level: "debug", sinks: ["console"]},
-						],
+						loggers: [{category: [], level: "debug", sinks: ["console"]}],
 					},
 					caches: {
 						"*": {provider: "memory", maxEntries: 100},
@@ -558,7 +554,7 @@ self.addEventListener("fetch", (event) => {
 
 console.log("FULL_PROVIDER_TEST_READY");
 				`,
-				"shovel.config.json": JSON.stringify({
+				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
 					logging: {
@@ -632,7 +628,7 @@ self.addEventListener("fetch", (event) => {
 
 console.log("SINK_BUNDLE_TEST_READY");
 				`,
-				"shovel.config.json": JSON.stringify({
+				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
 					logging: {
@@ -708,16 +704,14 @@ self.addEventListener("fetch", (event) => {
 
 console.log("ISOLATION_TEST_READY");
 				`,
-				"shovel.config.json": JSON.stringify({
+				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
 					logging: {
 						sinks: {
 							console: {provider: "console"},
 						},
-						loggers: [
-							{category: [], level: "info", sinks: ["console"]},
-						],
+						loggers: [{category: [], level: "info", sinks: ["console"]}],
 					},
 					caches: {
 						"*": {provider: "memory"},
@@ -793,7 +787,7 @@ self.addEventListener("fetch", (event) => {
 	event.respondWith(new Response("OK"));
 });
 				`,
-				"shovel.config.json": JSON.stringify({
+				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
 					logging: {

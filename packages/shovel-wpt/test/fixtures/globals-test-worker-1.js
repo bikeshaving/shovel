@@ -73,7 +73,7 @@ async function testDirectories() {
 
 	try {
 		// Test 1: Can we open a directory?
-		const directory = await self.directories.open("test-directory");
+		const directory = await self.directories.open("tmp");
 		result.canOpen = directory && directory.kind === "directory";
 
 		// Test 2: Can we write a file?

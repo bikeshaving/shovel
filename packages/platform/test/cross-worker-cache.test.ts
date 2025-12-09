@@ -40,9 +40,13 @@ describe("cross-worker cache sharing", () => {
 import {initWorkerRuntime, startWorkerMessageLoop} from "@b9g/platform/runtime";
 
 // Initialize the worker runtime with PostMessageCache support
+// (no directoryDefaults needed for this cache-only test)
 const {registration} = await initWorkerRuntime({
 	config: {},
-	baseDir: import.meta.dirname,
+	cacheDefault: {
+		module: "@b9g/cache/memory",
+		export: "MemoryCache",
+	},
 });
 
 // Register the fetch handler

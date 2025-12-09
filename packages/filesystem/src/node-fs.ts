@@ -187,7 +187,15 @@ export class NodeFSBackend implements FileSystemBackend {
 export class NodeFSDirectory extends ShovelDirectoryHandle {
 	#rootPath: string;
 
-	constructor(rootPath: string) {
+	/**
+	 * Create a NodeFSDirectory
+	 * @param name - Directory name (used for display)
+	 * @param options - Options object containing the filesystem path
+	 * @param options.path - The actual filesystem path to use as root
+	 */
+	constructor(name: string, options?: {path?: string}) {
+		// Use options.path if provided, otherwise fall back to name as the path
+		const rootPath = options?.path ?? name;
 		super(new NodeFSBackend(rootPath), "/");
 		this.#rootPath = rootPath;
 	}

@@ -21,12 +21,100 @@ import {
 	ServiceWorkerInstance,
 	EntryWrapperOptions,
 	PlatformESBuildConfig,
+	CustomLoggerStorage,
+	type LoggerStorage,
 } from "@b9g/platform";
+import {createCacheFactory, type ShovelConfig} from "@b9g/platform/runtime";
 import {CustomCacheStorage} from "@b9g/cache";
+import type {DirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
 
 const logger = getLogger(["platform"]);
+
+// ============================================================================
+// CLOUDFLARE NATIVE CACHE
+// ============================================================================
+
+/**
+ * CloudflareNativeCache - Wrapper around Cloudflare's native Cache API.
+ * This allows the native cache to be used with the factory pattern.
+ *
+ * Note: This must only be used in a Cloudflare Worker context where
+ * globalThis.caches is available.
+ */
+export class CloudflareNativeCache implements Cache {
+	#name: string;
+	#cachePromise: Promise<Cache> | null;
+
+	constructor(name: string, _options?: Record<string, unknown>) {
+		this.#name = name;
+		this.#cachePromise = null;
+	}
+
+	#getCache(): Promise<Cache> {
+		if (!this.#cachePromise) {
+			if (!globalThis.caches) {
+				throw new Error("Cloudflare caches not available in this context");
+			}
+			this.#cachePromise = globalThis.caches.open(this.#name);
+		}
+		return this.#cachePromise;
+	}
+
+	async add(request: RequestInfo | URL): Promise<void> {
+		const cache = await this.#getCache();
+		return cache.add(request);
+	}
+
+	async addAll(requests: RequestInfo[]): Promise<void> {
+		const cache = await this.#getCache();
+		return cache.addAll(requests);
+	}
+
+	async delete(
+		request: RequestInfo | URL,
+		options?: CacheQueryOptions,
+	): Promise<boolean> {
+		const cache = await this.#getCache();
+		return cache.delete(request, options);
+	}
+
+	async keys(
+		request?: RequestInfo | URL,
+		options?: CacheQueryOptions,
+	): Promise<readonly Request[]> {
+		const cache = await this.#getCache();
+		return cache.keys(request, options);
+	}
+
+	async match(
+		request: RequestInfo | URL,
+		options?: CacheQueryOptions,
+	): Promise<Response | undefined> {
+		const cache = await this.#getCache();
+		return cache.match(request, options);
+	}
+
+	async matchAll(
+		request?: RequestInfo | URL,
+		options?: CacheQueryOptions,
+	): Promise<readonly Response[]> {
+		const cache = await this.#getCache();
+		return cache.matchAll(request, options);
+	}
+
+	async put(request: RequestInfo | URL, response: Response): Promise<void> {
+		const cache = await this.#getCache();
+		return cache.put(request, response);
+	}
+}
+
+// Platform-specific cache default
+const CACHE_DEFAULT = {
+	module: "@b9g/platform-cloudflare",
+	export: "DefaultCache",
+} as const;
 
 // Re-export common platform types
 export type {
@@ -49,6 +137,8 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
 	assetsDirectory?: string;
 	/** Working directory for config file resolution */
 	cwd?: string;
+	/** Shovel configuration (caches, directories, etc.) */
+	config?: ShovelConfig;
 }
 
 // ============================================================================
@@ -64,6 +154,7 @@ export class CloudflarePlatform extends BasePlatform {
 		environment: "production" | "preview" | "dev";
 		assetsDirectory: string | undefined;
 		cwd: string;
+		config?: ShovelConfig;
 	};
 	#miniflare: Miniflare | null;
 	#assetsMiniflare: Miniflare | null;
@@ -80,21 +171,39 @@ export class CloudflarePlatform extends BasePlatform {
 			environment: options.environment ?? "production",
 			assetsDirectory: options.assetsDirectory,
 			cwd,
+			config: options.config,
 		};
 	}
 
 	/**
-	 * Create cache storage
-	 * Uses Cloudflare's native Cache API
+	 * Create cache storage using config from shovel.json
+	 * Default: Cloudflare's native Cache API
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
-		// Use Cloudflare's native caches (only available in Worker context)
-		return new CustomCacheStorage(async (name: string) => {
-			if (globalThis.caches) {
-				return globalThis.caches.open(name);
-			}
-			throw new Error("Cloudflare caches not available in this context");
-		});
+		return new CustomCacheStorage(
+			createCacheFactory({
+				config: this.#options.config,
+				default: CACHE_DEFAULT,
+			}),
+		);
+	}
+
+	/**
+	 * Create directory storage for Cloudflare Workers
+	 * Directories must be configured via shovel.json (no platform defaults)
+	 */
+	async createDirectories(): Promise<DirectoryStorage> {
+		throw new Error(
+			"Cloudflare Workers do not have default directories. " +
+				"Configure directories in shovel.json using R2 or other storage bindings.",
+		);
+	}
+
+	/**
+	 * Create logger storage for Cloudflare Workers
+	 */
+	async createLoggers(): Promise<LoggerStorage> {
+		return new CustomLoggerStorage((...categories) => getLogger(categories));
 	}
 
 	/**
@@ -304,3 +413,9 @@ ${d1Databases.length > 0 ? d1Databases.map((db) => `[[d1_databases]]\nbinding = 
 }
 
 export default CloudflarePlatform;
+
+/**
+ * Platform's default cache implementation.
+ * Re-exported so config can reference: { module: "@b9g/platform-cloudflare", export: "DefaultCache" }
+ */
+export {CloudflareNativeCache as DefaultCache};

@@ -1020,7 +1020,10 @@ export function generateConfigModule(
 		sink: SinkConfig,
 		sinkName: string,
 	): Record<string, unknown> => {
-		const factoryPlaceholder = processSinkProvider(String(sink.provider), sinkName);
+		const factoryPlaceholder = processSinkProvider(
+			String(sink.provider),
+			sinkName,
+		);
 		return {...sink, factory: factoryPlaceholder};
 	};
 
@@ -1064,7 +1067,9 @@ export function generateConfigModule(
 		// Named sinks (console is implicit, always available)
 		const sinks: Record<string, unknown> = {};
 		if (rawConfig.logging?.sinks) {
-			for (const [name, sinkConfig] of Object.entries(rawConfig.logging.sinks)) {
+			for (const [name, sinkConfig] of Object.entries(
+				rawConfig.logging.sinks,
+			)) {
 				sinks[name] = processSink(sinkConfig, name);
 			}
 		}

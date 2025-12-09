@@ -5,6 +5,7 @@
  */
 
 import {builtinModules} from "node:module";
+import {tmpdir} from "node:os";
 import {
 	BasePlatform,
 	type PlatformConfig,
@@ -20,13 +21,43 @@ import {
 	SingleThreadedRuntime,
 	CustomLoggerStorage,
 } from "@b9g/platform";
+import {
+	createCacheFactory,
+	createDirectoryFactory,
+	type ShovelConfig,
+} from "@b9g/platform/runtime";
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
-import {MemoryCache} from "@b9g/cache/memory";
-import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {getLogger} from "@logtape/logtape";
 import * as Path from "path";
+
+// Platform-specific cache default
+const CACHE_DEFAULT = {
+	module: "@b9g/platform-bun",
+	export: "DefaultCache",
+} as const;
+
+// Platform-specific directory defaults (used by both createDirectories and worker template)
+// Note: These paths are relative and get resolved at runtime
+// The entry wrapper runs from dist/server, so paths are relative to that location
+const DIRECTORY_DEFAULTS = {
+	server: {
+		module: "@b9g/filesystem/node-fs",
+		export: "NodeFSDirectory",
+		path: ".", // Current directory (where server runs from)
+	},
+	public: {
+		module: "@b9g/filesystem/node-fs",
+		export: "NodeFSDirectory",
+		path: "../public", // Sibling directory relative to server
+	},
+	tmp: {
+		module: "@b9g/filesystem/node-fs",
+		export: "NodeFSDirectory",
+		path: "tmpdir",
+	},
+} as const;
 
 // Entry template embedded as string
 const entryTemplate = `// Bun Production Server Entry
@@ -96,12 +127,27 @@ if (isWorker) {
 }
 `;
 
-// Worker entry template for ServiceWorkerPool
-// Note: __USER_ENTRY__ is replaced with the actual user code path at generation time
-const workerEntryTemplate = `// Worker Entry for ServiceWorkerPool
+// Worker entry template generator for ServiceWorkerPool
+// Generates template with embedded directory defaults
+function generateWorkerEntryTemplate(): string {
+	// Generate directory defaults object literal, handling tmpdir specially
+	const defaultsEntries = Object.entries(DIRECTORY_DEFAULTS)
+		.map(([name, def]) => {
+			const pathValue = def.path === "tmpdir" ? "tmpdir" : `"${def.path}"`;
+			return `\t${name}: { module: "${def.module}", export: "${def.export}", path: ${pathValue} }`;
+		})
+		.join(",\n");
+
+	return `// Worker Entry for ServiceWorkerPool
 // This file sets up the ServiceWorker runtime and message loop
 import {config} from "shovel:config";
 import {initWorkerRuntime, startWorkerMessageLoop, configureLogging} from "@b9g/platform/runtime";
+import {tmpdir} from "node:os";
+
+// Platform-specific directory defaults for Bun
+const directoryDefaults = {
+${defaultsEntries}
+};
 
 // Configure logging before anything else
 await configureLogging(config.logging);
@@ -109,7 +155,7 @@ await configureLogging(config.logging);
 // Initialize the worker runtime (installs ServiceWorker globals)
 const {registration} = await initWorkerRuntime({
 	config,
-	baseDir: import.meta.dirname,
+	directoryDefaults,
 });
 
 // Import user code (registers event handlers via addEventListener)
@@ -123,6 +169,7 @@ await registration.activate();
 // Start the message loop (handles request/response messages from main thread)
 startWorkerMessageLoop(registration);
 `;
+}
 
 const logger = getLogger(["platform"]);
 
@@ -139,6 +186,8 @@ export interface BunPlatformOptions extends PlatformConfig {
 	cwd?: string;
 	/** Number of worker threads (default: 1) */
 	workers?: number;
+	/** Shovel configuration (caches, directories, etc.) */
+	config?: ShovelConfig;
 }
 
 // ============================================================================
@@ -151,7 +200,13 @@ export interface BunPlatformOptions extends PlatformConfig {
  */
 export class BunPlatform extends BasePlatform {
 	readonly name: string;
-	#options: Required<BunPlatformOptions>;
+	#options: {
+		port: number;
+		host: string;
+		cwd: string;
+		workers: number;
+		config?: ShovelConfig;
+	};
 	#workerPool?: ServiceWorkerPool;
 	#singleThreadedRuntime?: SingleThreadedRuntime;
 	#cacheStorage?: CustomCacheStorage;
@@ -169,7 +224,7 @@ export class BunPlatform extends BasePlatform {
 			host: options.host ?? "localhost",
 			workers: options.workers ?? 1,
 			cwd,
-			...options,
+			config: options.config,
 		};
 	}
 
@@ -192,30 +247,50 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Create cache storage (in-memory by default)
+	 * Create cache storage using config from shovel.json
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
-		// WTF
-		return new CustomCacheStorage((name) => new MemoryCache(name));
+		return new CustomCacheStorage(
+			createCacheFactory({
+				config: this.#options.config,
+				default: CACHE_DEFAULT,
+			}),
+		);
 	}
 
 	/**
-	 * Create directory storage for the given base directory
+	 * Create directory storage using config from shovel.json
 	 */
-	createDirectories(baseDir: string): CustomDirectoryStorage {
-		// WTF???
-		return new CustomDirectoryStorage((name: string) => {
-			// Well-known directory paths
-			let dirPath: string;
-			if (name === "public") {
-				dirPath = Path.resolve(baseDir, "../public");
-			} else if (name === "server") {
-				dirPath = baseDir;
-			} else {
-				dirPath = Path.resolve(baseDir, `../${name}`);
-			}
-			return Promise.resolve(new NodeFSDirectory(dirPath));
-		});
+	async createDirectories(): Promise<CustomDirectoryStorage> {
+		return new CustomDirectoryStorage(
+			createDirectoryFactory({
+				config: this.#options.config,
+				defaults: {
+					server: {
+						module: DIRECTORY_DEFAULTS.server.module,
+						export: DIRECTORY_DEFAULTS.server.export,
+						path: DIRECTORY_DEFAULTS.server.path,
+					},
+					public: {
+						module: DIRECTORY_DEFAULTS.public.module,
+						export: DIRECTORY_DEFAULTS.public.export,
+						path: DIRECTORY_DEFAULTS.public.path,
+					},
+					tmp: {
+						module: DIRECTORY_DEFAULTS.tmp.module,
+						export: DIRECTORY_DEFAULTS.tmp.export,
+						path: tmpdir, // Use actual function reference at runtime
+					},
+				},
+			}),
+		);
+	}
+
+	/**
+	 * Create logger storage using config from shovel.json
+	 */
+	async createLoggers(): Promise<CustomLoggerStorage> {
+		return new CustomLoggerStorage((...categories) => getLogger(categories));
 	}
 
 	/**
@@ -300,7 +375,6 @@ export class BunPlatform extends BasePlatform {
 		_options: ServiceWorkerOptions,
 	): Promise<ServiceWorkerInstance> {
 		const entryPath = Path.resolve(this.#options.cwd, entrypoint);
-		const entryDir = Path.dirname(entryPath);
 
 		// Create shared cache storage if not already created
 		if (!this.#cacheStorage) {
@@ -309,7 +383,7 @@ export class BunPlatform extends BasePlatform {
 
 		// Create shared directory storage if not already created
 		if (!this.#directoryStorage) {
-			this.#directoryStorage = this.createDirectories(entryDir);
+			this.#directoryStorage = await this.createDirectories();
 		}
 
 		// Terminate any existing runtime
@@ -477,7 +551,7 @@ export class BunPlatform extends BasePlatform {
 	getEntryWrapper(entryPath: string, options?: EntryWrapperOptions): string {
 		if (options?.type === "worker") {
 			// Return worker entry template with user code path substituted
-			return workerEntryTemplate.replace("__USER_ENTRY__", entryPath);
+			return generateWorkerEntryTemplate().replace("__USER_ENTRY__", entryPath);
 		}
 		// Default to production entry template
 		return entryTemplate;
@@ -524,3 +598,9 @@ export class BunPlatform extends BasePlatform {
  * Default export for easy importing
  */
 export default BunPlatform;
+
+/**
+ * Platform's default cache implementation.
+ * Re-exported so config can reference: { module: "@b9g/platform-bun", export: "DefaultCache" }
+ */
+export {MemoryCache as DefaultCache} from "@b9g/cache/memory";

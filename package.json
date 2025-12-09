@@ -71,6 +71,7 @@
     "@b9g/assets": "workspace:*",
     "@b9g/cache": "workspace:*",
     "@b9g/crank": "^0.7.2",
+    "@logtape/file": "^1.0.0",
     "@b9g/filesystem": "workspace:*",
     "@b9g/http-errors": "workspace:*",
     "@b9g/libuild": "^0.1.18",

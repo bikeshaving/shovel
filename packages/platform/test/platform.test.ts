@@ -16,6 +16,12 @@ describe("@b9g/platform", () => {
 				createCaches: async () => {
 					throw new Error("Not implemented");
 				},
+				createDirectories: async () => {
+					throw new Error("Not implemented");
+				},
+				createLoggers: async () => {
+					throw new Error("Not implemented");
+				},
 				createServer: () => {
 					throw new Error("Not implemented");
 				},
