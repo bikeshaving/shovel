@@ -10,21 +10,17 @@ describe("@b9g/platform", () => {
 		test("registers and retrieves platforms", () => {
 			const mockPlatform: Platform = {
 				name: "test",
-				capabilities: {
-					sourceMaps: false,
-					compression: false,
-					compilation: false,
-					cacheBackends: ["memory"],
-				},
-				createCaches: () => {
+				loadServiceWorker: async () => {
 					throw new Error("Not implemented");
 				},
-				createStaticHandler: () => {
+				createCaches: async () => {
 					throw new Error("Not implemented");
 				},
 				createServer: () => {
 					throw new Error("Not implemented");
 				},
+				getEntryWrapper: () => "// entry wrapper",
+				getESBuildConfig: () => ({}),
 			};
 
 			platformRegistry.register("test", mockPlatform);

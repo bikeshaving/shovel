@@ -1,3 +1,5 @@
+/// <reference path="./globals.d.ts" />
+/// <reference path="./shovel-config.d.ts" />
 /**
  * @b9g/platform - Platform interface for ServiceWorker entrypoint loading
  *

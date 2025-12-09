@@ -1179,24 +1179,24 @@ export function loadRawConfig(cwd: string): ShovelConfig {
 		const content = readFileSync(shovelPath, "utf-8");
 		return JSON.parse(content);
 	} catch (error: any) {
-		// Only fall back if file doesn't exist
 		if (error?.code !== "ENOENT") {
 			throw error;
 		}
-		// Try package.json
-		try {
-			const pkgPath = `${cwd}/package.json`;
-			const content = readFileSync(pkgPath, "utf-8");
-			const pkgJSON = JSON.parse(content);
-			return pkgJSON.shovel || {};
-		} catch (error: any) {
-			// Only return empty config if file doesn't exist
-			if (error?.code !== "ENOENT") {
-				throw error;
-			}
-			return {};
+	}
+
+	// Try package.json
+	try {
+		const pkgPath = `${cwd}/package.json`;
+		const content = readFileSync(pkgPath, "utf-8");
+		const pkgJSON = JSON.parse(content);
+		return pkgJSON.shovel || {};
+	} catch (error: any) {
+		if (error?.code !== "ENOENT") {
+			throw error;
 		}
 	}
+
+	return {};
 }
 
 // ============================================================================

@@ -68,9 +68,9 @@ describe("MemoryCache", () => {
 
 		await cache.put(request, response);
 
-		const cached = await cache.match(request);
-		expect(cached).not.toBeNull();
-		expect(await cached.text()).toBe("Hello World");
+		const cached = await cache.match(request)!;
+		expect(cached).not.toBeUndefined();
+		expect(await cached!.text()).toBe("Hello World");
 	});
 
 	test("returns undefined for non-existent entries", async () => {
@@ -113,27 +113,27 @@ describe("MemoryCache", () => {
 
 	test("add() fetches and stores response", async () => {
 		// Mock fetch using spyOn
-		fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
-			async (request) => {
-				return new Response(`Fetched: ${(request as Request).url}`);
-			},
-		);
+		fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (
+			request: Request,
+		) => {
+			return new Response(`Fetched: ${(request as Request).url}`);
+		}) as typeof fetch);
 
 		const request = new Request("http://example.com/api/data");
 		await cache.add(request);
 
 		const cached = await cache.match(request);
 		expect(cached).not.toBeUndefined();
-		expect(await cached.text()).toBe("Fetched: http://example.com/api/data");
+		expect(await cached!.text()).toBe("Fetched: http://example.com/api/data");
 	});
 
 	test("addAll() fetches and stores multiple responses", async () => {
 		// Mock fetch using spyOn
-		fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
-			async (request) => {
-				return new Response(`Fetched: ${(request as Request).url}`);
-			},
-		);
+		fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (
+			request: Request,
+		) => {
+			return new Response(`Fetched: ${(request as Request).url}`);
+		}) as typeof fetch);
 
 		const requests = [
 			new Request("http://example.com/api/data1"),
@@ -145,8 +145,8 @@ describe("MemoryCache", () => {
 		const cached1 = await cache.match(requests[0]);
 		const cached2 = await cache.match(requests[1]);
 
-		expect(await cached1.text()).toBe("Fetched: http://example.com/api/data1");
-		expect(await cached2.text()).toBe("Fetched: http://example.com/api/data2");
+		expect(await cached1!.text()).toBe("Fetched: http://example.com/api/data1");
+		expect(await cached2!.text()).toBe("Fetched: http://example.com/api/data2");
 	});
 
 	test("respects maxEntries option", async () => {

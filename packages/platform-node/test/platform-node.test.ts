@@ -109,8 +109,10 @@ describe("NodePlatform", () => {
 		// Set the internal worker pool
 		(platform as any).workerPool = mockWorkerPool;
 
-		await platform.reloadWorkers(123);
-		expect(mockWorkerPool.reloadWorkers).toHaveBeenCalledWith(123);
+		await platform.reloadWorkers("new-entrypoint.js");
+		expect(mockWorkerPool.reloadWorkers).toHaveBeenCalledWith(
+			"new-entrypoint.js",
+		);
 	});
 
 	test("should dispose resources", async () => {

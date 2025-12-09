@@ -2,7 +2,7 @@ import {test, expect, beforeEach, afterEach} from "bun:test";
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
-import {SingleThreadedRuntime} from "../src/index.js";
+import {SingleThreadedRuntime, CustomLoggerStorage} from "../src/index.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
@@ -43,7 +43,23 @@ async function cleanup(paths: string[]) {
 }
 
 function createCacheStorage(): CustomCacheStorage {
-	return new CustomCacheStorage(() => new MemoryCache());
+	return new CustomCacheStorage((name) => new MemoryCache(name));
+}
+
+function createLoggerStorage(): CustomLoggerStorage {
+	const mockLogger = {
+		category: [] as string[],
+		parent: null,
+		getChild: () => mockLogger,
+		with: () => mockLogger,
+		debug: () => {},
+		info: () => {},
+		warn: () => {},
+		error: () => {},
+		fatal: () => {},
+		trace: () => {},
+	};
+	return new CustomLoggerStorage(() => mockLogger as any);
 }
 
 async function createDirectoryStorage(
@@ -94,6 +110,7 @@ test(
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
 				directories: directoryStorage,
+				loggers: createLoggerStorage(),
 			});
 
 			await runtime.init();
@@ -120,6 +137,7 @@ test(
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
 				directories: directoryStorage,
+				loggers: createLoggerStorage(),
 			});
 
 			await runtime.init();
@@ -160,6 +178,7 @@ test(
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
 				directories: directoryStorage,
+				loggers: createLoggerStorage(),
 			});
 
 			await runtime.init();
@@ -194,6 +213,7 @@ test(
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
 				directories: directoryStorage,
+				loggers: createLoggerStorage(),
 			});
 
 			await runtime.init();
@@ -220,6 +240,7 @@ test(
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
 				directories: directoryStorage,
+				loggers: createLoggerStorage(),
 			});
 
 			await runtime.init();
@@ -249,6 +270,7 @@ test(
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
 				directories: directoryStorage,
+				loggers: createLoggerStorage(),
 			});
 
 			await runtime.init();
@@ -286,6 +308,7 @@ test(
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
 				directories: directoryStorage,
+				loggers: createLoggerStorage(),
 			});
 
 			await runtime.init();
@@ -320,6 +343,7 @@ test(
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
 				directories: directoryStorage,
+				loggers: createLoggerStorage(),
 			});
 
 			await runtime.init();
@@ -356,6 +380,7 @@ test(
 			const runtime = new SingleThreadedRuntime({
 				caches: cacheStorage,
 				directories: directoryStorage,
+				loggers: createLoggerStorage(),
 			});
 
 			await runtime.init();

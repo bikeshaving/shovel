@@ -21,8 +21,7 @@
   ],
   "dependencies": {},
   "devDependencies": {
-    "@b9g/libuild": "^0.1.18",
-    "bun-types": "latest"
+    "@b9g/libuild": "^0.1.18"
   },
   "private": true,
   "module": "./dist/src/index.js",

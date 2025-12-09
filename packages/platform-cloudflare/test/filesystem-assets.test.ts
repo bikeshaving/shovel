@@ -29,7 +29,7 @@ describe("CFAssetsDirectoryHandle", () => {
 			assets: {
 				directory: publicDir,
 				binding: "ASSETS",
-				routingConfig: {invoke_user_worker_ahead_of_assets: true},
+				routerConfig: {invoke_user_worker_ahead_of_assets: true},
 			},
 		});
 
@@ -64,7 +64,7 @@ describe("CFAssetsDirectoryHandle", () => {
 	test("getFileHandle throws NotFoundError for missing file", async () => {
 		const dir = new CFAssetsDirectoryHandle(assets, "/assets");
 
-		await expect(dir.getFileHandle("nonexistent.txt")).rejects.toThrow(
+		expect(dir.getFileHandle("nonexistent.txt")).rejects.toThrow(
 			"could not be found",
 		);
 	});
@@ -92,21 +92,20 @@ describe("CFAssetsDirectoryHandle", () => {
 
 	test("removeEntry throws NotAllowedError (read-only)", async () => {
 		const dir = new CFAssetsDirectoryHandle(assets, "/");
-
-		await expect(dir.removeEntry("index.html")).rejects.toThrow("read-only");
+		expect(dir.removeEntry("index.html")).rejects.toThrow("read-only");
 	});
 
 	test("createWritable throws NotAllowedError (read-only)", async () => {
 		const dir = new CFAssetsDirectoryHandle(assets, "/");
 		const fileHandle = await dir.getFileHandle("index.html");
 
-		await expect(fileHandle.createWritable()).rejects.toThrow("read-only");
+		expect(fileHandle.createWritable()).rejects.toThrow("read-only");
 	});
 
 	test("entries() throws NotSupportedError", async () => {
 		const dir = new CFAssetsDirectoryHandle(assets, "/");
 
-		await expect(async () => {
+		expect(async () => {
 			for await (const _ of dir.entries()) {
 				// Should not reach here
 			}

@@ -25,8 +25,7 @@
     "@aws-sdk/client-s3": "^3.0.0"
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.18",
-    "bun-types": "latest"
+    "@b9g/libuild": "^0.1.18"
   },
   "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",

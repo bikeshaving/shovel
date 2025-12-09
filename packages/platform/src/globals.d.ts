@@ -1,3 +1,5 @@
+/// <reference lib="webworker" />
+
 /**
  * Global type declarations for Shovel ServiceWorker environment.
  *
@@ -35,6 +37,26 @@ declare global {
 
 	interface ImportMeta {
 		readonly env: ImportMetaEnv;
+	}
+
+	/**
+	 * Augment WorkerGlobalScopeEventMap with ServiceWorker events.
+	 *
+	 * TypeScript's lib.webworker.d.ts declares `self` as `WorkerGlobalScope`, not
+	 * `ServiceWorkerGlobalScope`. This means `self.addEventListener("fetch", ...)`
+	 * doesn't know about FetchEvent. See: https://github.com/microsoft/TypeScript/issues/14877
+	 *
+	 * Rather than trying to redeclare `self` (which causes conflicts), we augment
+	 * the base WorkerGlobalScopeEventMap to include ServiceWorker-specific events.
+	 * This allows `self.addEventListener("fetch", (event) => ...)` to correctly
+	 * infer `event` as `FetchEvent`.
+	 */
+	interface WorkerGlobalScopeEventMap {
+		fetch: FetchEvent;
+		install: ExtendableEvent;
+		activate: ExtendableEvent;
+		message: ExtendableMessageEvent;
+		messageerror: MessageEvent;
 	}
 }
 

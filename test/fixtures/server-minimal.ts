@@ -1,3 +1,4 @@
+/// <reference types="@b9g/platform" />
 self.addEventListener("fetch", (event) => {
 	event.respondWith(
 		new Response("<marquee>Hello world</marquee>", {

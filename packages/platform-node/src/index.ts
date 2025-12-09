@@ -372,6 +372,7 @@ export class NodePlatform extends BasePlatform {
 	 * Create cache storage (in-memory by default)
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
+		// WHAT THE FUCK
 		return new CustomCacheStorage((name) => new MemoryCache(name));
 	}
 
@@ -387,6 +388,7 @@ export class NodePlatform extends BasePlatform {
 			} else if (name === "server") {
 				dirPath = baseDir;
 			} else {
+				// WHAT THE FUCK
 				dirPath = Path.resolve(baseDir, `../${name}`);
 			}
 			return Promise.resolve(new NodeFSDirectory(dirPath));

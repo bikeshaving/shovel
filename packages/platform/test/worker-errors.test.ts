@@ -55,7 +55,7 @@ async function cleanup(paths: string[]) {
 }
 
 function createCacheStorage(): CustomCacheStorage {
-	return new CustomCacheStorage(() => new MemoryCache());
+	return new CustomCacheStorage((name) => new MemoryCache(name));
 }
 
 describe("Worker Error Propagation", () => {
@@ -86,7 +86,6 @@ describe("Worker Error Propagation", () => {
 				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
-				{},
 			);
 			await pool.init();
 
@@ -124,7 +123,6 @@ self.addEventListener("fetch", (event) => {
 				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
-				{},
 			);
 			await pool.init();
 
@@ -163,7 +161,6 @@ self.addEventListener("fetch", (event) => {
 				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
-				{},
 			);
 			await pool.init();
 
@@ -200,7 +197,6 @@ self.addEventListener("fetch", (event) => {
 				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
-				{},
 			);
 			await pool.init();
 
@@ -247,7 +243,6 @@ self.addEventListener("fetch", (event) => {
 				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
-				{},
 			);
 			await pool.init();
 
@@ -284,7 +279,6 @@ self.addEventListener("fetch", (event) => {
 				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
-				{},
 			);
 			await pool.init();
 
@@ -322,7 +316,6 @@ self.addEventListener("fetch", (event) => {
 				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
-				{},
 			);
 			await pool.init();
 
@@ -360,7 +353,6 @@ self.addEventListener("fetch", (event) => {
 				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
-				{},
 			);
 			await pool.init();
 

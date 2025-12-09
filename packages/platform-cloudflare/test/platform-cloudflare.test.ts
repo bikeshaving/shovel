@@ -32,7 +32,9 @@ describe("CloudflarePlatform", () => {
 		});
 
 		// Set up globalThis.caches from miniflare
-		globalThis.caches = await miniflare.getCaches();
+
+		globalThis.caches =
+			(await miniflare.getCaches()) as unknown as CacheStorage;
 	});
 
 	afterAll(async () => {

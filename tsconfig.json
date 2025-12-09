@@ -10,8 +10,8 @@
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"noEmit": true,
-		"lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"]
+		"lib": ["ES2022", "WebWorker"]
 	},
-	"include": ["src/**/*", "packages/*/src/**/*"],
-	"exclude": ["node_modules", "dist", "**/dist", "**/*.test.ts", "**/*.test.js", "examples", "packages/shovel-wpt"]
+	"include": ["src/**/*", "packages/*/src/**/*", "test/**/*", "packages/*/test/**/*"],
+	"exclude": ["node_modules", "dist", "**/dist", "examples", "packages/shovel-wpt"]
 }

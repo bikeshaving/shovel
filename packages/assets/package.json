@@ -36,6 +36,7 @@
     "./middleware.js": {
       "types": "./dist/src/middleware.d.ts",
       "import": "./dist/src/middleware.js"
-    }
+    },
+    "./global.d.ts": "./dist/src/global.d.ts"
   }
 }

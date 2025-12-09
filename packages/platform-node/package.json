@@ -26,7 +26,6 @@
   },
   "devDependencies": {
     "@b9g/libuild": "^0.1.18",
-    "bun-types": "latest",
     "@types/node": "^18.0.0"
   },
   "module": "./dist/src/index.js",

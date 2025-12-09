@@ -1,7 +1,7 @@
 {
   "name": "@b9g/platform",
   "version": "0.1.12",
-  "description": "ServiceWorker-first universal deployment platform. Write ServiceWorker apps once, deploy anywhere (Node/Bun/Cloudflare). Registry-based multi-app orchestration.",
+  "description": "The portable meta-framework built on web standards.",
   "type": "module",
   "scripts": {
     "build": "libuild build --save",
@@ -11,15 +11,18 @@
     "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "keywords": [
-    "serviceworker",
+    "service-worker",
     "universal",
     "deployment",
     "platform",
-    "registry",
     "node",
     "bun",
     "cloudflare",
     "workers",
+    "cache",
+    "framework",
+    "meta-framework",
+    "esbuild",
     "shovel"
   ],
   "dependencies": {
@@ -53,8 +56,7 @@
     }
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.18",
-    "bun-types": "latest"
+    "@b9g/libuild": "^0.1.20"
   },
   "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -79,7 +81,9 @@
     "./index.js": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
-    }
+    },
+    "./globals.d.ts": "./dist/src/globals.d.ts",
+    "./shovel-config.d.ts": "./dist/src/shovel-config.d.ts"
   },
   "private": true
 }

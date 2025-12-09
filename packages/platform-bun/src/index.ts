@@ -195,6 +195,7 @@ export class BunPlatform extends BasePlatform {
 	 * Create cache storage (in-memory by default)
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
+		// WTF
 		return new CustomCacheStorage((name) => new MemoryCache(name));
 	}
 
@@ -202,6 +203,7 @@ export class BunPlatform extends BasePlatform {
 	 * Create directory storage for the given base directory
 	 */
 	createDirectories(baseDir: string): CustomDirectoryStorage {
+		// WTF???
 		return new CustomDirectoryStorage((name: string) => {
 			// Well-known directory paths
 			let dirPath: string;

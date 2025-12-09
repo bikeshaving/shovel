@@ -25,6 +25,8 @@ import {
 export interface RouteContext {
 	/** Route parameters extracted from URL pattern matching */
 	params: Record<string, string>;
+	/** Allow middleware to add arbitrary properties to context */
+	[key: string]: unknown;
 }
 
 /**
@@ -43,18 +45,28 @@ export type Handler = (
 export type FunctionMiddleware = (
 	request: Request,
 	context: RouteContext,
-) => Response | null | undefined | Promise<Response | null | undefined>;
+) =>
+	| Response
+	| null
+	| undefined
+	| void
+	| Promise<Response | null | undefined | void>;
 
 /**
- * Generator middleware signature - uses yield for continuation
- * Can modify request, context, pass request to
+ * Generator middleware signature - uses yield for continuation.
+ * Yield to pass control to the next middleware/handler, receive Response back.
+ * Optionally yield a modified Request (or yield without value to use original).
  */
 export type GeneratorMiddleware = (
 	request: Request,
 	context: RouteContext,
 ) =>
-	| Generator<Request, Response | null | undefined, Response>
-	| AsyncGenerator<Request, Response | null | undefined, Response>;
+	| Generator<Request | undefined, Response | null | undefined | void, Response>
+	| AsyncGenerator<
+			Request | undefined,
+			Response | null | undefined | void,
+			Response
+	  >;
 
 /**
  * Union type for all supported middleware types

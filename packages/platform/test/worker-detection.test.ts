@@ -3,7 +3,10 @@ import {
 	WorkerGlobalScope,
 	DedicatedWorkerGlobalScope,
 	ServiceWorkerGlobals,
+	ShovelServiceWorkerRegistration,
+	CustomLoggerStorage,
 } from "../src/runtime.js";
+import {CustomDirectoryStorage} from "@b9g/filesystem";
 
 describe("Worker Detection", () => {
 	test("WorkerGlobalScope class is defined", () => {
@@ -49,9 +52,36 @@ describe("Worker Detection", () => {
 			keys: async () => [],
 		};
 
+		// Create mock loggers
+		const mockLogger = {
+			category: [] as string[],
+			parent: null,
+			getChild: function () {
+				return this;
+			},
+			with: function () {
+				return this;
+			},
+			debug: () => {},
+			info: () => {},
+			warn: () => {},
+			error: () => {},
+			fatal: () => {},
+			trace: () => {},
+		};
+		const mockLoggers = new CustomLoggerStorage(() => mockLogger as any);
+
+		// Create mock directories
+		const mockDirectories = new CustomDirectoryStorage(async () => {
+			throw new Error("Not implemented");
+		});
+
 		// Create a minimal ServiceWorkerGlobals instance
 		const scope = new ServiceWorkerGlobals({
+			registration: new ShovelServiceWorkerRegistration(),
 			caches: mockCaches as any,
+			directories: mockDirectories,
+			loggers: mockLoggers,
 			isDevelopment: false,
 		});
 

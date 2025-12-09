@@ -405,7 +405,7 @@ describe("generateConfigModule", () => {
 		it("includes logging config in output", () => {
 			const config = {
 				logging: {
-					level: "info",
+					level: "info" as const,
 					sinks: [{provider: "console"}],
 				},
 			};
@@ -433,7 +433,7 @@ describe("generateConfigModule", () => {
 		it("uses explicit logging config over LOG_LEVEL env var", () => {
 			const config = {
 				logging: {
-					level: "debug",
+					level: "debug" as const,
 					sinks: [{provider: "console"}],
 				},
 			};
@@ -448,7 +448,7 @@ describe("generateConfigModule", () => {
 		it("keeps sink secrets as process.env references", () => {
 			const config = {
 				logging: {
-					level: "info",
+					level: "info" as const,
 					sinks: [
 						{provider: "console"},
 						{
@@ -484,7 +484,7 @@ describe("generateConfigModule", () => {
 		it("handles file sink with path", () => {
 			const config = {
 				logging: {
-					level: "debug",
+					level: "debug" as const,
 					sinks: [
 						{
 							provider: "file",
@@ -510,12 +510,12 @@ describe("generateConfigModule", () => {
 		it("handles category-specific logging", () => {
 			const config = {
 				logging: {
-					level: "info",
+					level: "info" as const,
 					sinks: [{provider: "console"}],
 					categories: {
-						server: {level: "debug"},
+						server: {level: "debug" as const},
 						database: {
-							level: "warning",
+							level: "warning" as const,
 							sinks: [{provider: "file", path: "./logs/db.log"}],
 						},
 					},
@@ -535,7 +535,7 @@ describe("generateConfigModule", () => {
 		it("generates static imports for sink factories", () => {
 			const config = {
 				logging: {
-					level: "info",
+					level: "info" as const,
 					sinks: [{provider: "console"}, {provider: "file", path: "./app.log"}],
 				},
 			};

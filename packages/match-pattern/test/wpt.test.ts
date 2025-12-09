@@ -59,10 +59,12 @@ describe("WPT URLPattern (strict) compliance", () => {
 			expect(pattern).toBeDefined();
 
 			// If no inputs, just testing construction
-			if (!testCase.inputs) return;
+			if (!testCase.inputs) {
+				throw new Error("Missing inputs");
+			}
 
 			const shouldMatch = testCase.expected_match !== null;
-			const result = pattern!.test(...(testCase.inputs as [unknown, unknown?]));
+			const result = pattern!.test(...(testCase.inputs as [string, string?]));
 			expect(result).toBe(shouldMatch);
 		});
 	}
@@ -137,11 +139,12 @@ describe("WPT MatchPattern (conveniences) compliance", () => {
 			expect(constructionError).toBeUndefined();
 			expect(pattern).toBeDefined();
 
-			// If no inputs, just testing construction
-			if (!testCase.inputs) return;
+			if (!testCase.inputs) {
+				throw new Error("Missing inputs");
+			}
 
 			const shouldMatch = testCase.expected_match !== null;
-			const result = pattern!.test(...(testCase.inputs as [unknown, unknown?]));
+			const result = pattern!.test(...(testCase.inputs as [string, string?]));
 			expect(result).toBe(shouldMatch);
 		});
 	}

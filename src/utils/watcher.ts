@@ -12,39 +12,16 @@ import * as ESBuild from "esbuild";
 import {builtinModules} from "node:module";
 import {resolve, join} from "path";
 import {mkdir} from "fs/promises";
-import {assetsPlugin} from "../plugins/assets.js";
-import {importMetaPlugin} from "../plugins/import-meta.js";
-import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
-import {findProjectRoot} from "./project.js";
-import {loadRawConfig, generateConfigModule} from "./config.js";
 import {getLogger} from "@logtape/logtape";
 import type {Platform, PlatformESBuildConfig} from "@b9g/platform";
 
+import {assetsPlugin} from "../plugins/assets.js";
+import {importMetaPlugin} from "../plugins/import-meta.js";
+import {createConfigPlugin} from "../plugins/shovel-config.js";
+import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
+import {findProjectRoot} from "./project.js";
+
 const logger = getLogger(["build"]);
-
-/**
- * Create the shovel:config virtual module plugin.
- */
-function createConfigPlugin(projectRoot: string): ESBuild.Plugin {
-	const rawConfig = loadRawConfig(projectRoot);
-	const configModuleCode = generateConfigModule(rawConfig);
-
-	return {
-		name: "shovel-config",
-		setup(build) {
-			build.onResolve({filter: /^shovel:config$/}, (args) => ({
-				path: args.path,
-				namespace: "shovel-config",
-			}));
-
-			build.onLoad({filter: /.*/, namespace: "shovel-config"}, () => ({
-				contents: configModuleCode,
-				loader: "js",
-				resolveDir: projectRoot,
-			}));
-		},
-	};
-}
 
 /**
  * Create the shovel:entry virtual module plugin.
