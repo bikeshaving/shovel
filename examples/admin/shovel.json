@@ -2,6 +2,10 @@
   "databases": {
     "main": {
       "dialect": "bun-sqlite",
+      "driver": {
+        "module": "bun:sqlite",
+        "export": "Database"
+      },
       "url": "./data/admin.db",
       "schema": "./src/schema.ts"
     }

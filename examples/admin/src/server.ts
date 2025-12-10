@@ -9,12 +9,16 @@
 
 import {Router} from "@b9g/router";
 import {createAdmin} from "@b9g/admin";
+import {getTableConfig} from "drizzle-orm/sqlite-core";
+import * as schema from "./schema.js";
 
 const router = new Router();
 
 // Mount admin at /admin
 const admin = createAdmin({
 	database: "main",
+	schema,
+	getTableConfig,
 	auth: {
 		providers: ["google"],
 	},

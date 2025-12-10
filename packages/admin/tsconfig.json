@@ -8,7 +8,9 @@
 		"target": "ES2022",
 		"lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
 		"module": "ESNext",
-		"moduleResolution": "bundler"
+		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
+		"jsxImportSource": "@b9g/crank"
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist", "test"]

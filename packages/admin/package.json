@@ -27,14 +27,6 @@
     "./types.js": {
       "types": "./dist/src/types.d.ts",
       "import": "./dist/src/types.js"
-    },
-    "./admin": {
-      "types": "./dist/src/admin.d.ts",
-      "import": "./dist/src/admin.js"
-    },
-    "./admin.js": {
-      "types": "./dist/src/admin.d.ts",
-      "import": "./dist/src/admin.js"
     }
   },
   "files": [
@@ -53,6 +45,7 @@
   "author": "b9g",
   "license": "MIT",
   "dependencies": {
+    "@b9g/crank": "^0.7.2",
     "@b9g/router": "workspace:*",
     "@b9g/oauth2": "workspace:*"
   },

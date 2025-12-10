@@ -59,6 +59,10 @@ export interface BrandingConfig {
 export interface AdminConfig {
 	/** Database name from shovel.json to use */
 	database: string;
+	/** Drizzle schema object containing table definitions */
+	schema: Record<string, unknown>;
+	/** Dialect-specific getTableConfig function */
+	getTableConfig: (table: unknown) => unknown;
 	/** Base path for admin routes (default: '/admin') */
 	basePath?: string;
 	/** Authentication configuration */

@@ -51,4 +51,4 @@ export {
 } from "./core/introspection.js";
 
 // Main factory
-export {createAdmin} from "./admin.js";
+export {createAdmin} from "./admin.jsx";
