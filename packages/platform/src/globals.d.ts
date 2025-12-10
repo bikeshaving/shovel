@@ -22,8 +22,8 @@ declare global {
 
 	/**
 	 * Logger storage API for accessing named loggers.
-	 * @example const logger = await loggers.open("app");
-	 * @example const dbLogger = await loggers.open("app", "db");
+	 * @example const logger = self.loggers.get("app");
+	 * @example const dbLogger = self.loggers.get("app", "db");
 	 */
 	var loggers: LoggerStorage;
 

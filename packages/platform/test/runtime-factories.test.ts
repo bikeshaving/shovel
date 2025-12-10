@@ -568,14 +568,14 @@ describe("CustomLoggerStorage", () => {
 		expect(loggerStorage).toBeDefined();
 	});
 
-	test("open returns logger for given categories", async () => {
+	test("get returns logger for given categories", async () => {
 		await configureLogging({});
 
 		const loggerStorage = new CustomLoggerStorage((...categories) =>
 			getLogger(categories),
 		);
 
-		const logger = await loggerStorage.open("app", "database");
+		const logger = loggerStorage.get("app", "database");
 		expect(logger).toBeDefined();
 		// Logger should have standard methods
 		expect(typeof logger.info).toBe("function");
@@ -592,11 +592,11 @@ describe("CustomLoggerStorage", () => {
 		// This is how self.loggers is typically set up
 		const loggers = new CustomLoggerStorage((...cats) => getLogger(cats));
 
-		// Simulate how user code would use self.loggers
-		const dbLogger = await loggers.open("database");
+		// Simulate how user code would use self.loggers (sync)
+		const dbLogger = loggers.get("database");
 		expect(dbLogger).toBeDefined();
 
-		const appLogger = await loggers.open("app", "http");
+		const appLogger = loggers.get("app", "http");
 		expect(appLogger).toBeDefined();
 	});
 });

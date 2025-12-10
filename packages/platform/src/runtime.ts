@@ -341,26 +341,20 @@ import {
  * Unlike CacheStorage/DirectoryStorage which use a registry pattern,
  * LoggerStorage uses variadic categories since logging backends are
  * always LogTape and per-category config is in shovel.config.json.
- *
- * Returns a Promise for consistency with CacheStorage.open() and
- * DirectoryStorage.open(), and to support future dynamic provider imports.
  */
 export interface LoggerStorage {
 	/**
-	 * Open a logger by category path
-	 * @example const logger = await loggers.open("app")
-	 * @example const logger = await loggers.open("app", "db")
+	 * Get a logger by category path (sync)
+	 * @example const logger = self.loggers.get("app")
+	 * @example const logger = self.loggers.get("app", "db")
 	 */
-	open(...categories: string[]): Promise<Logger>;
+	get(...categories: string[]): Logger;
 }
 
 /**
- * Factory function type for creating loggers.
- * Can be sync or async to support dynamic provider imports.
+ * Factory function type for creating loggers (sync).
  */
-export type LoggerFactory = (
-	...categories: string[]
-) => Logger | Promise<Logger>;
+export type LoggerFactory = (...categories: string[]) => Logger;
 
 /**
  * Custom logger storage implementation that wraps a factory function
@@ -372,7 +366,7 @@ export class CustomLoggerStorage implements LoggerStorage {
 		this.#factory = factory;
 	}
 
-	async open(...categories: string[]): Promise<Logger> {
+	get(...categories: string[]): Logger {
 		return this.#factory(...categories);
 	}
 }
