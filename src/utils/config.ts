@@ -1266,8 +1266,8 @@ export type DatabaseDialect =
 export interface DatabaseConfig {
 	/** Database dialect (postgresql, mysql, sqlite, libsql, d1) */
 	dialect: DatabaseDialect;
-	/** Driver module configuration */
-	driver: {
+	/** Driver module configuration (required for runtime, optional for CLI-only use) */
+	driver?: {
 		module: string;
 		export?: string;
 	};

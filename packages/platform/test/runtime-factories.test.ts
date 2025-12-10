@@ -642,7 +642,14 @@ describe("CustomDatabaseStorage", () => {
 
 		// Mock factory that returns a fake instance
 		const factory = async () => ({
-			instance: {query: {}, select: () => {}, insert: () => {}, update: () => {}, delete: () => {}, transaction: async () => {}} as any,
+			instance: {
+				query: {},
+				select: () => {},
+				insert: () => {},
+				update: () => {},
+				delete: () => {},
+				transaction: async () => {},
+			} as any,
 			close: async () => {},
 		});
 
@@ -664,7 +671,14 @@ describe("CustomDatabaseStorage", () => {
 		]);
 
 		const factory = async () => ({
-			instance: {query: {}, select: () => {}, insert: () => {}, update: () => {}, delete: () => {}, transaction: async () => {}} as any,
+			instance: {
+				query: {},
+				select: () => {},
+				insert: () => {},
+				update: () => {},
+				delete: () => {},
+				transaction: async () => {},
+			} as any,
 			close: async () => {},
 		});
 

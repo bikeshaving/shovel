@@ -79,14 +79,14 @@ describe("Database Integration (bun:sqlite)", () => {
 		`);
 
 		// Insert a user using Drizzle
-		await db.insert(users).values({
+		await (db.insert(users) as any).values({
 			id: 1,
 			name: "Alice",
 			email: "alice@example.com",
 		});
 
 		// Query users
-		const result = await db.select().from(users);
+		const result = await (db.select() as any).from(users);
 
 		expect(result).toHaveLength(1);
 		expect(result[0]).toEqual({
@@ -122,10 +122,14 @@ describe("Database Integration (bun:sqlite)", () => {
 			)
 		`);
 
-		await db.insert(users).values({id: 1, name: "Bob", email: "bob@test.com"});
+		await (db.insert(users) as any).values({
+			id: 1,
+			name: "Bob",
+			email: "bob@test.com",
+		});
 
 		// Query
-		const result = await db.select().from(users);
+		const result = await (db.select() as any).from(users);
 		expect(result[0].name).toBe("Bob");
 
 		// Verify caching - same instance returned
