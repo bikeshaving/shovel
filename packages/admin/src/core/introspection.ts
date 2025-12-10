@@ -99,9 +99,12 @@ function inferFromSqlType(sqlType: string): ColumnDataType {
 
 /**
  * Extract metadata from a Drizzle column
+ *
+ * @param key - The JavaScript property key on the table object
+ * @param column - The column object from getTableConfig
  */
 function introspectColumn(
-	name: string,
+	key: string,
 	column: {
 		name: string;
 		primary: boolean;
@@ -116,6 +119,7 @@ function introspectColumn(
 
 	return {
 		name: column.name,
+		key,
 		dataType: normalizeDataType(column.dataType, sqlType),
 		sqlType,
 		notNull: column.notNull,
@@ -167,10 +171,21 @@ export function introspectTable(
 ): TableMetadata {
 	const config = getTableConfig(table);
 
-	// Extract columns
-	const columns: ColumnMetadata[] = config.columns.map((col) =>
-		introspectColumn(col.name, col),
-	);
+	// Build a map from column object to JS property key
+	const columnToKey = new Map<unknown, string>();
+	for (const [key, value] of Object.entries(table)) {
+		// Check if this is a column (has name property matching a config column)
+		if (value && typeof value === "object" && "name" in value) {
+			columnToKey.set(value, key);
+		}
+	}
+
+	// Extract columns with their JS keys
+	const columns: ColumnMetadata[] = config.columns.map((col) => {
+		// Find the JS key by matching the column's name to table properties
+		const key = columnToKey.get(col) || col.name;
+		return introspectColumn(key, col);
+	});
 
 	// Determine primary key columns
 	// First check composite primary keys, then individual column `primary` flags

@@ -93,8 +93,10 @@ export type ColumnDataType =
  * Column metadata extracted from Drizzle schema
  */
 export interface ColumnMetadata {
-	/** Column name */
+	/** Column name in the database (snake_case) */
 	name: string;
+	/** JavaScript property key on the table object (camelCase) */
+	key: string;
 	/** Normalized data type for UI */
 	dataType: ColumnDataType;
 	/** Original SQL type (e.g., 'varchar', 'integer', 'timestamp') */

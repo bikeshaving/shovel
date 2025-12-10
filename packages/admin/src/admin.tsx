@@ -7,9 +7,12 @@
 import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
 import {renderer} from "@b9g/crank/html";
+import {getTableName, isTable, type Table} from "drizzle-orm";
 import type {AdminConfig, TableMetadata} from "./types.js";
 import {introspectSchema, getDisplayName} from "./core/introspection.js";
 import {PageLayout} from "./ui/Layout.js";
+
+const logger = self.loggers.get("shovel", "admin");
 
 type GetTableConfigFn = (table: unknown) => unknown;
 
@@ -230,11 +233,7 @@ export function createAdmin(config: AdminConfig): Router {
 			// Get database and query records
 			const db = await self.databases.open(config.database);
 			const table = Object.values(config.schema).find(
-				(t: unknown) =>
-					t &&
-					typeof t === "object" &&
-					"_" in t &&
-					(t as {_: {name: string}})._.name === modelName,
+				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			);
 
 			if (table) {
@@ -416,9 +415,10 @@ export function createAdmin(config: AdminConfig): Router {
 		const data: Record<string, unknown> = {};
 
 		for (const col of model.metadata.columns) {
+			// Form field uses DB column name, but Drizzle expects JS property key
 			const value = formData.get(col.name);
 			if (value !== null && value !== "") {
-				data[col.name] = parseFormValue(value as string, col);
+				data[col.key] = parseFormValue(value as string, col);
 			}
 		}
 
@@ -426,17 +426,19 @@ export function createAdmin(config: AdminConfig): Router {
 			// Insert into database
 			const db = await self.databases.open(config.database);
 			const table = Object.values(config.schema).find(
-				(t: unknown) =>
-					t &&
-					typeof t === "object" &&
-					"_" in t &&
-					(t as {_: {name: string}})._.name === modelName,
+				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			);
+
+			logger.debug("Insert attempt", {modelName, tableFound: !!table, data});
 
 			if (table) {
 				await db.insert(table as never).values(data);
+				logger.info("Insert successful", {modelName});
+			} else {
+				logger.warn("Table not found for model", {modelName});
 			}
 		} catch (err) {
+			logger.error("Insert error", {modelName, error: err});
 			return errorPage(title, basePath, models, err);
 		}
 
@@ -461,11 +463,7 @@ export function createAdmin(config: AdminConfig): Router {
 			// Get database and query record
 			const db = await self.databases.open(config.database);
 			const table = Object.values(config.schema).find(
-				(t: unknown) =>
-					t &&
-					typeof t === "object" &&
-					"_" in t &&
-					(t as {_: {name: string}})._.name === modelName,
+				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;
 
 			if (table) {
@@ -549,11 +547,7 @@ export function createAdmin(config: AdminConfig): Router {
 			// Get database and query record
 			const db = await self.databases.open(config.database);
 			const table = Object.values(config.schema).find(
-				(t: unknown) =>
-					t &&
-					typeof t === "object" &&
-					"_" in t &&
-					(t as {_: {name: string}})._.name === modelName,
+				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;
 
 			if (table) {
@@ -660,7 +654,8 @@ export function createAdmin(config: AdminConfig): Router {
 
 			const value = formData.get(col.name);
 			if (value !== null) {
-				data[col.name] = value === "" ? null : parseFormValue(value as string, col);
+				// Form field uses DB column name, but Drizzle expects JS property key
+				data[col.key] = value === "" ? null : parseFormValue(value as string, col);
 			}
 		}
 
@@ -668,11 +663,7 @@ export function createAdmin(config: AdminConfig): Router {
 			// Update in database
 			const db = await self.databases.open(config.database);
 			const table = Object.values(config.schema).find(
-				(t: unknown) =>
-					t &&
-					typeof t === "object" &&
-					"_" in t &&
-					(t as {_: {name: string}})._.name === modelName,
+				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;
 
 			if (table) {
@@ -759,11 +750,7 @@ export function createAdmin(config: AdminConfig): Router {
 			// Delete from database
 			const db = await self.databases.open(config.database);
 			const table = Object.values(config.schema).find(
-				(t: unknown) =>
-					t &&
-					typeof t === "object" &&
-					"_" in t &&
-					(t as {_: {name: string}})._.name === modelName,
+				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;
 
 			if (table) {
