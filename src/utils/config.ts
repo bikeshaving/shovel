@@ -131,11 +131,12 @@ class Tokenizer {
 			return {type: TokenType.EOF, value: null, start, end: start};
 		}
 
-		// Quoted strings
-		if (ch === '"') {
-			this.#advance(); // consume "
+		// Quoted strings (double or single quotes)
+		if (ch === '"' || ch === "'") {
+			const quote = ch;
+			this.#advance(); // consume opening quote
 			let value = "";
-			while (this.#peek() && this.#peek() !== '"') {
+			while (this.#peek() && this.#peek() !== quote) {
 				if (this.#peek() === "\\") {
 					this.#advance();
 					const next = this.#advance();
@@ -147,10 +148,10 @@ class Tokenizer {
 					value += this.#advance();
 				}
 			}
-			if (this.#peek() !== '"') {
+			if (this.#peek() !== quote) {
 				throw new Error(`Unterminated string at position ${start}`);
 			}
-			this.#advance(); // consume closing "
+			this.#advance(); // consume closing quote
 			return {type: TokenType.STRING, value, start, end: this.#pos};
 		}
 
@@ -224,28 +225,37 @@ class Tokenizer {
 			return {type: TokenType.RPAREN, value: ")", start, end: this.#pos};
 		}
 
-		// Colon - only tokenize as operator when it's for ternary (not URLs/ports)
-		// Don't tokenize : if followed by / (://) or digit (:6379)
+		// Colon - only tokenize as ternary operator when surrounded by whitespace
+		// This allows word:word patterns (like bun:sqlite, node:fs, custom:thing) to be single identifiers
+		// Ternary expressions use spaces: "cond ? a : b" not "cond?a:b"
 		if (ch === ":") {
-			const next = this.#input[this.#pos + 1];
-			if (next !== "/" && !/\d/.test(next)) {
+			// Check if there's whitespace before (we just skipped it, so check if start > 0 and char before start is whitespace)
+			const charBefore = start > 0 ? this.#input[start - 1] : "";
+			const charAfter = this.#input[this.#pos + 1] || "";
+			const hasSpaceBefore = start === 0 || /\s/.test(charBefore);
+			const hasSpaceAfter = !charAfter || /\s/.test(charAfter);
+
+			if (hasSpaceBefore && hasSpaceAfter) {
 				this.#advance();
 				return {type: TokenType.COLON, value: ":", start, end: this.#pos};
 			}
+			// Otherwise fall through to identifier parsing - colon is part of an identifier
 		}
 
 		// Identifiers and literals
 		// Catchall: consume everything that's not whitespace or an operator
-		// This naturally handles: kebab-case, URLs, paths, env vars, camelCase, etc.
+		// This naturally handles: kebab-case, URLs, paths, env vars, camelCase, module specifiers (bun:sqlite), etc.
 		if (/\S/.test(ch) && !/[?!()=|&]/.test(ch)) {
 			let value = "";
 			while (/\S/.test(this.#peek()) && !/[?!()=|&]/.test(this.#peek())) {
-				// Stop at : only if it's ternary context (not :// or :port)
+				// Colon: include it in identifier if followed by non-whitespace (word:word pattern)
+				// Stop only if colon is followed by whitespace (ternary context)
 				if (this.#peek() === ":") {
 					const next = this.#input[this.#pos + 1];
-					if (next !== "/" && !/\d/.test(next)) {
-						break; // Ternary colon
+					if (!next || /\s/.test(next)) {
+						break; // Ternary colon (followed by space or EOF)
 					}
+					// Otherwise include colon and continue (module specifier pattern)
 				}
 				value += this.#advance();
 			}

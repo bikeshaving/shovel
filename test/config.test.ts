@@ -472,6 +472,130 @@ describe("parseConfigExpr", () => {
 		});
 	});
 
+	describe("colon in identifiers (word:word patterns)", () => {
+		it("parses bun:sqlite as single identifier", () => {
+			const result = parseConfigExpr("bun:sqlite", {}, {strict: false});
+			expect(result).toBe("bun:sqlite");
+		});
+
+		it("parses node:fs as single identifier", () => {
+			const result = parseConfigExpr("node:fs", {}, {strict: false});
+			expect(result).toBe("node:fs");
+		});
+
+		it("parses node:path as single identifier", () => {
+			const result = parseConfigExpr("node:path", {}, {strict: false});
+			expect(result).toBe("node:path");
+		});
+
+		it("parses any word:word pattern as single identifier", () => {
+			const result = parseConfigExpr("custom:driver", {}, {strict: false});
+			expect(result).toBe("custom:driver");
+		});
+
+		it("parses multi-colon patterns", () => {
+			const result = parseConfigExpr("a:b:c", {}, {strict: false});
+			expect(result).toBe("a:b:c");
+		});
+
+		it("works in ternary expressions (spaces around :)", () => {
+			const result = parseConfigExpr(
+				"PLATFORM === bun ? bun:sqlite : better-sqlite3",
+				{PLATFORM: "bun"},
+				{strict: false},
+			);
+			expect(result).toBe("bun:sqlite");
+		});
+
+		it("ternary alternate branch with module specifier", () => {
+			const result = parseConfigExpr(
+				"PLATFORM === bun ? bun:sqlite : node:better-sqlite3",
+				{PLATFORM: "node"},
+				{strict: false},
+			);
+			expect(result).toBe("node:better-sqlite3");
+		});
+
+		it("works with fallback operators", () => {
+			const result = parseConfigExpr(
+				"DB_DRIVER || bun:sqlite",
+				{},
+				{strict: false},
+			);
+			expect(result).toBe("bun:sqlite");
+		});
+
+		it("distinguishes ternary colon (with spaces) from identifier colon (no spaces)", () => {
+			// "a ? b:c : d" - b:c is one identifier, outer : is ternary
+			const result = parseConfigExpr(
+				"USE_CUSTOM ? custom:driver : default:driver",
+				{USE_CUSTOM: "1"},
+				{strict: false},
+			);
+			expect(result).toBe("custom:driver");
+		});
+	});
+
+	describe("quoted strings", () => {
+		it("parses double-quoted strings", () => {
+			const result = parseConfigExpr('"hello world"', {}, {strict: false});
+			expect(result).toBe("hello world");
+		});
+
+		it("parses single-quoted strings", () => {
+			const result = parseConfigExpr("'hello world'", {}, {strict: false});
+			expect(result).toBe("hello world");
+		});
+
+		it("allows colons in quoted strings", () => {
+			const result = parseConfigExpr('"bun:sqlite"', {}, {strict: false});
+			expect(result).toBe("bun:sqlite");
+		});
+
+		it("allows special chars in single-quoted strings", () => {
+			const result = parseConfigExpr("'a ? b : c'", {}, {strict: false});
+			expect(result).toBe("a ? b : c");
+		});
+
+		it("handles escape sequences in double quotes", () => {
+			const result = parseConfigExpr('"line1\\nline2"', {}, {strict: false});
+			expect(result).toBe("line1\nline2");
+		});
+
+		it("handles escape sequences in single quotes", () => {
+			const result = parseConfigExpr("'tab\\there'", {}, {strict: false});
+			expect(result).toBe("tab\there");
+		});
+
+		it("allows double quotes inside single quotes", () => {
+			const result = parseConfigExpr("'say \"hello\"'", {}, {strict: false});
+			expect(result).toBe('say "hello"');
+		});
+
+		it("allows single quotes inside double quotes", () => {
+			const result = parseConfigExpr("\"it's fine\"", {}, {strict: false});
+			expect(result).toBe("it's fine");
+		});
+
+		it("works with fallback operators", () => {
+			const result = parseConfigExpr(
+				"MY_VAR || 'default value'",
+				{},
+				{strict: false},
+			);
+			expect(result).toBe("default value");
+		});
+
+		it("works in ternary expressions", () => {
+			const result = parseConfigExpr(
+				"MODE === prod ? 'production' : 'development'",
+				{MODE: "dev"},
+				{strict: false},
+			);
+			expect(result).toBe("development");
+		});
+	});
+
 	describe("edge cases", () => {
 		it("handles @ at start of identifier", () => {
 			const result = parseConfigExpr("@scope/pkg", {}, {strict: false});
