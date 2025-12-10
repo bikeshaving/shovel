@@ -1,0 +1,69 @@
+{
+  "name": "@b9g/admin",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Django-like admin interface for Shovel applications",
+  "type": "module",
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./package.json": "./dist/package.json",
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "import": "./dist/src/types.js"
+    },
+    "./types.js": {
+      "types": "./dist/src/types.d.ts",
+      "import": "./dist/src/types.js"
+    },
+    "./admin": {
+      "types": "./dist/src/admin.d.ts",
+      "import": "./dist/src/admin.js"
+    },
+    "./admin.js": {
+      "types": "./dist/src/admin.d.ts",
+      "import": "./dist/src/admin.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "libuild build --save",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
+  },
+  "keywords": [
+    "admin",
+    "crud",
+    "drizzle",
+    "shovel"
+  ],
+  "author": "b9g",
+  "license": "MIT",
+  "dependencies": {
+    "@b9g/router": "workspace:*",
+    "@b9g/oauth2": "workspace:*"
+  },
+  "peerDependencies": {
+    "@b9g/platform": "workspace:*",
+    "drizzle-orm": ">=0.30.0"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.18",
+    "@types/bun": "^1.2.2",
+    "drizzle-orm": "^0.41.0",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,7 +1,14 @@
 {
+  "databases": {
+    "main": {
+      "dialect": "bun-sqlite",
+      "url": "./data/admin.db",
+      "schema": "./src/schema.ts"
+    }
+  },
   "caches": {
-    "admin": {
-      "provider": "NODE_ENV === production ? redis : memory",
+    "sessions": {
+      "provider": "MODE === production ? redis : memory",
       "url": "REDIS_URL || redis://localhost:6379"
     }
   }

@@ -2,7 +2,7 @@
   "name": "shovel-admin",
   "private": true,
   "version": "0.1.0",
-  "description": "Admin dashboard with Google OAuth and Redis cache",
+  "description": "Admin dashboard example using @b9g/admin",
   "type": "module",
   "scripts": {
     "develop": "shovel develop src/server.ts --platform bun",
@@ -11,8 +11,7 @@
     "deploy": "fly deploy"
   },
   "dependencies": {
-    "@b9g/oauth2": "workspace:*",
-    "@b9g/cache": "workspace:*",
+    "@b9g/admin": "workspace:*",
     "@b9g/platform": "workspace:*",
     "@b9g/platform-bun": "workspace:*",
     "@b9g/router": "workspace:*",
