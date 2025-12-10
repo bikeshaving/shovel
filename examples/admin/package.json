@@ -16,5 +16,9 @@
     "@b9g/platform-bun": "workspace:*",
     "@b9g/router": "workspace:*",
     "@b9g/shovel": "../.."
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.8",
+    "drizzle-orm": "^0.45.0"
   }
 }
