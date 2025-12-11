@@ -380,12 +380,16 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							},
 						});
 						const result = await ctx.rebuild();
-						if (!result.outputFiles?.[0]) {
+						// Find the CSS output file (esbuild may also output font files)
+						const cssOutput = result.outputFiles?.find((f) =>
+							f.path.endsWith(".css"),
+						);
+						if (!cssOutput) {
 							return {
 								errors: [{text: `No CSS output generated for ${args.path}`}],
 							};
 						}
-						content = Buffer.from(result.outputFiles[0].text);
+						content = Buffer.from(cssOutput.text);
 						outputExt = ".css";
 						mimeType = "text/css";
 					} else {
