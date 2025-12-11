@@ -67,8 +67,11 @@ export async function developCommand(
 		// Initial build and start watching
 		const {success: buildSuccess, entrypoint: builtEntrypoint} =
 			await watcher.start();
-		if (!buildSuccess) {
+		if (!buildSuccess || !builtEntrypoint) {
 			logger.error("Initial build failed, watching for changes to retry");
+			// Keep watcher running but don't try to start server with invalid entrypoint
+			// User must fix the error and the watcher will rebuild
+			await new Promise(() => {}); // Block forever, watcher handles rebuilds
 		}
 		serviceWorker = await platformInstance.loadServiceWorker(builtEntrypoint, {
 			hotReload: true,

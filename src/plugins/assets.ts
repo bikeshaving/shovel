@@ -357,6 +357,27 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							// outdir required for esbuild to generate output paths
 							outdir: config.outDir,
 							plugins: [externalAbsolutePathsPlugin],
+							// Loaders for web assets referenced in CSS via url()
+							loader: {
+								// Fonts
+								".woff": "file",
+								".woff2": "file",
+								".ttf": "file",
+								".eot": "file",
+								// Images
+								".svg": "file",
+								".png": "file",
+								".jpg": "file",
+								".jpeg": "file",
+								".gif": "file",
+								".webp": "file",
+								".ico": "file",
+								// Media
+								".mp4": "file",
+								".webm": "file",
+								".mp3": "file",
+								".ogg": "file",
+							},
 						});
 						const result = await ctx.rebuild();
 						if (!result.outputFiles?.[0]) {

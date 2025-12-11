@@ -95,7 +95,7 @@ export class Watcher {
 		// Get worker entry wrapper - imports user code directly for unified bundle
 		const workerEntryWrapper = this.#options.platform.getEntryWrapper(
 			entryPath,
-			{type: "worker"},
+			{type: "worker", outDir: outputDir},
 		);
 
 		// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
@@ -130,7 +130,7 @@ export class Watcher {
 			absWorkingDir: this.#projectRoot,
 			conditions: platformESBuildConfig.conditions ?? ["import", "module"],
 			plugins: [
-				createConfigPlugin(this.#projectRoot),
+				createConfigPlugin(this.#projectRoot, this.#options.outDir),
 				createEntryPlugin(this.#projectRoot, workerEntryWrapper),
 				importMetaPlugin(),
 				assetsPlugin({

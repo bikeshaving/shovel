@@ -10,10 +10,24 @@
       "schema": "./src/schema.ts"
     }
   },
+  "directories": {
+    "uploads": {
+      "provider": "node-fs",
+      "path": "./data/uploads"
+    },
+    "tmp": {
+      "provider": "memory"
+    }
+  },
   "caches": {
     "sessions": {
       "provider": "MODE === production ? redis : memory",
       "url": "REDIS_URL || redis://localhost:6379"
     }
+  },
+  "logging": {
+    "loggers": [
+      {"category": "shovel", "level": "debug"}
+    ]
   }
 }

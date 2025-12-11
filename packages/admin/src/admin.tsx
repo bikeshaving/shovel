@@ -1,3 +1,4 @@
+/// <reference types="@b9g/platform/globals.d.ts" />
 /**
  * @b9g/admin - Main admin factory
  *
@@ -7,14 +8,14 @@
 import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
 import {renderer} from "@b9g/crank/html";
+import type {Children} from "@b9g/crank";
 import {getTableName, isTable, type Table} from "drizzle-orm";
-import type {AdminConfig, TableMetadata} from "./types.js";
-import {introspectSchema, getDisplayName} from "./core/introspection.js";
+import type {AdminConfig, TableMetadata, ColumnMetadata} from "./types.js";
+import {introspectSchema, getDisplayName, type GetTableConfigFn} from "./core/introspection.js";
 import {PageLayout} from "./ui/Layout.js";
 
-const logger = self.loggers.get("shovel", "admin");
 
-type GetTableConfigFn = (table: unknown) => unknown;
+const logger = self.loggers.get("shovel", "admin");
 
 interface ModelInfo {
 	name: string;
@@ -25,12 +26,14 @@ interface ModelInfo {
 /**
  * Render a JSX element to an HTML Response
  */
-function html(element: unknown): Response {
+function html(element: Children): Response {
 	const content = renderer.render(element);
 	return new Response("<!DOCTYPE html>" + content, {
 		headers: {"Content-Type": "text/html; charset=utf-8"},
 	});
 }
+
+import type {AssetsConfig} from "./types.js";
 
 /**
  * Render an error page with details for debugging
@@ -40,22 +43,26 @@ function errorPage(
 	basePath: string,
 	models: ModelInfo[],
 	error: unknown,
+	assets?: AssetsConfig,
 ): Response {
 	const message = error instanceof Error ? error.message : String(error);
 	const stack = error instanceof Error ? error.stack : undefined;
 
 	return html(
-		<PageLayout title={title} pageTitle="Error" basePath={basePath} models={models}>
-			<h1>Error</h1>
-			<div class="alert alert-error">
-				<strong>Something went wrong:</strong>
-				<pre style="margin-top: 0.5rem; white-space: pre-wrap;">{message}</pre>
+		<PageLayout title={title} pageTitle="Error" basePath={basePath} models={models} assets={assets}>
+			<h1 class="usa-heading">Error</h1>
+			<div class="usa-alert usa-alert--error" role="alert">
+				<div class="usa-alert__body">
+					<h4 class="usa-alert__heading">Something went wrong</h4>
+					<p class="usa-alert__text">{message}</p>
+				</div>
 			</div>
 			{stack && (
-				<details style="margin-top: 1rem;">
-					<summary style="cursor: pointer;">Stack trace</summary>
+				<details class="margin-top-2">
+					<summary class="usa-link" style="cursor: pointer;">Stack trace</summary>
 					<pre
-						style="margin-top: 0.5rem; padding: 1rem; background: #1b1b1b; color: #fff; overflow-x: auto; font-size: 0.875rem;"
+						class="margin-top-1 padding-2 bg-ink text-white font-mono-sm"
+						style="overflow-x: auto;"
 					>
 						{stack}
 					</pre>
@@ -78,6 +85,7 @@ function getBasePath(url: string, suffix: string): string {
  * Create an admin router that can be mounted on any path
  */
 export function createAdmin(config: AdminConfig): Router {
+	logger.debug("createAdmin called", {database: config.database});
 	const router = new Router();
 
 	// Normalize trailing slashes - strip them
@@ -85,8 +93,11 @@ export function createAdmin(config: AdminConfig): Router {
 
 	// Store config for use in routes
 	const title = config.branding?.title ?? "Admin";
+	const assets = config.assets;
+	logger.debug("Admin config", {title, hasAssets: !!assets});
 
 	// Introspect schema to get table metadata
+	logger.debug("Introspecting schema...");
 	const tables = introspectSchema(
 		config.schema,
 		config.getTableConfig as GetTableConfigFn,
@@ -107,18 +118,6 @@ export function createAdmin(config: AdminConfig): Router {
 	models.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
 	// ============================================================================
-	// Static Assets
-	// ============================================================================
-
-	router.route("/static/*path").get((_req, ctx) => {
-		const path = ctx.params.path;
-		return new Response(`Static file: ${path}`, {
-			status: 404,
-			headers: {"Content-Type": "text/plain"},
-		});
-	});
-
-	// ============================================================================
 	// Auth Routes
 	// ============================================================================
 
@@ -131,13 +130,14 @@ export function createAdmin(config: AdminConfig): Router {
 				pageTitle="Login"
 				basePath={basePath}
 				models={models}
+				assets={assets}
 			>
-				<h1>Login</h1>
-				<div class="card">
-					<p style="margin-bottom: 1rem;">Choose a provider to sign in:</p>
-					<div class="actions">
+				<h1 class="usa-heading">Login</h1>
+				<div class="admin-card">
+					<p class="usa-prose">Choose a provider to sign in:</p>
+					<div class="usa-button-group margin-top-2">
 						{config.auth.providers.map((p) => (
-							<a href={`${basePath}/auth/${p}`} class="btn">
+							<a href={`${basePath}/auth/${p}`} class="usa-button">
 								Sign in with {p.charAt(0).toUpperCase() + p.slice(1)}
 							</a>
 						))}
@@ -167,48 +167,67 @@ export function createAdmin(config: AdminConfig): Router {
 	// ============================================================================
 
 	router.route("/").get((req) => {
+		logger.debug("Dashboard route hit", {url: req.url});
 		const basePath = getBasePath(req.url, "/");
+		logger.debug("Computed basePath", {basePath});
 
-		return html(
+		try {
+			const result = html(
 			<PageLayout
 				title={title}
 				pageTitle="Dashboard"
 				basePath={basePath}
 				models={models}
+				assets={assets}
 			>
-				<h1>Dashboard</h1>
-				<p style="color: #71767a; margin-bottom: 1.5rem;">
+				<h1 class="usa-heading">Dashboard</h1>
+				<p class="usa-intro text-base-dark margin-bottom-3">
 					Database: {config.database}
 				</p>
 
-				<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
+				<ul class="usa-card-group">
 					{models.map((m) => (
-						<div class="card">
-							<h2 style="margin-bottom: 0.5rem;">
-								<a href={`${basePath}/${m.name}`}>{m.displayName}</a>
-							</h2>
-							<p style="color: #71767a; font-size: 0.875rem;">
-								{m.metadata.columns.length} columns
-							</p>
-							<div style="margin-top: 1rem;">
-								<a href={`${basePath}/${m.name}/new`} class="btn btn-sm">
-									Add
-								</a>
+						<li class="usa-card tablet:grid-col-4">
+							<div class="usa-card__container">
+								<div class="usa-card__header">
+									<h2 class="usa-card__heading">
+										<a href={`${basePath}/${m.name}`} class="usa-link">
+											{m.displayName}
+										</a>
+									</h2>
+								</div>
+								<div class="usa-card__body">
+									<p>{m.metadata.columns.length} columns</p>
+								</div>
+								<div class="usa-card__footer">
+									<a
+										href={`${basePath}/${m.name}/new`}
+										class="usa-button usa-button--outline"
+									>
+										Add New
+									</a>
+								</div>
 							</div>
-						</div>
+						</li>
 					))}
-				</div>
+				</ul>
 
 				{models.length === 0 && (
-					<div class="empty">
+					<div class="admin-empty">
 						<p>No models found in schema.</p>
-						<p style="margin-top: 0.5rem; font-size: 0.875rem;">
+						<p class="margin-top-1 text-base">
 							Make sure your schema exports Drizzle tables.
 						</p>
 					</div>
 				)}
 			</PageLayout>,
-		);
+			);
+			logger.debug("Dashboard render successful");
+			return result;
+		} catch (err) {
+			logger.error("Dashboard render error:", {error: err});
+			throw err;
+		}
 	});
 
 	// ============================================================================
@@ -237,10 +256,8 @@ export function createAdmin(config: AdminConfig): Router {
 			);
 
 			if (table) {
-				records = (await db.select().from(table as never)) as Record<
-					string,
-					unknown
-				>[];
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				records = await (db as any).select().from(table);
 			}
 		} catch (err) {
 			dbError = err;
@@ -261,35 +278,47 @@ export function createAdmin(config: AdminConfig): Router {
 				pageTitle={model.displayName}
 				basePath={basePath}
 				models={models}
+				assets={assets}
 			>
-				<div class="breadcrumb">
-					<a href={basePath}>Dashboard</a> / {model.displayName}
-				</div>
+				<nav class="usa-breadcrumb admin-breadcrumb" aria-label="Breadcrumbs">
+					<ol class="usa-breadcrumb__list">
+						<li class="usa-breadcrumb__list-item">
+							<a href={basePath} class="usa-breadcrumb__link">
+								Dashboard
+							</a>
+						</li>
+						<li class="usa-breadcrumb__list-item usa-current" aria-current="page">
+							<span>{model.displayName}</span>
+						</li>
+					</ol>
+				</nav>
 
-				<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-					<h1>{model.displayName}</h1>
-					<a href={`${basePath}/${modelName}/new`} class="btn">
+				<div class="admin-header">
+					<h1 class="usa-heading">{model.displayName}</h1>
+					<a href={`${basePath}/${modelName}/new`} class="usa-button">
 						Add {model.displayName}
 					</a>
 				</div>
 
 				{dbError && (
-					<div class="alert alert-error">
-						<strong>Database error:</strong>
-						<pre style="margin-top: 0.5rem; white-space: pre-wrap;">
-							{dbError instanceof Error ? dbError.message : String(dbError)}
-						</pre>
+					<div class="usa-alert usa-alert--error margin-bottom-2" role="alert">
+						<div class="usa-alert__body">
+							<h4 class="usa-alert__heading">Database error</h4>
+							<p class="usa-alert__text">
+								{dbError instanceof Error ? dbError.message : String(dbError)}
+							</p>
+						</div>
 					</div>
 				)}
 
 				{!dbError && records.length > 0 ? (
-					<table>
+					<table class="usa-table usa-table--striped">
 						<thead>
 							<tr>
 								{listFields.map((field) => (
-									<th>{field}</th>
+									<th scope="col">{field}</th>
 								))}
-								<th>Actions</th>
+								<th scope="col">Actions</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -301,16 +330,17 @@ export function createAdmin(config: AdminConfig): Router {
 										{listFields.map((field) => (
 											<td>{formatValue(record[field])}</td>
 										))}
-										<td class="actions">
+										<td>
 											<a
 												href={`${basePath}/${modelName}/${id}`}
-												class="btn btn-sm btn-secondary"
+												class="usa-button usa-button--outline usa-button--unstyled"
 											>
 												View
 											</a>
+											{" "}
 											<a
 												href={`${basePath}/${modelName}/${id}/edit`}
-												class="btn btn-sm"
+												class="usa-button usa-button--outline usa-button--unstyled"
 											>
 												Edit
 											</a>
@@ -322,10 +352,10 @@ export function createAdmin(config: AdminConfig): Router {
 					</table>
 				) : (
 					!dbError && (
-						<div class="empty">
+						<div class="admin-empty">
 							<p>No {model.displayName.toLowerCase()} found.</p>
-							<p style="margin-top: 0.5rem;">
-								<a href={`${basePath}/${modelName}/new`}>
+							<p class="margin-top-1">
+								<a href={`${basePath}/${modelName}/new`} class="usa-link">
 									Create your first {model.displayName.toLowerCase()}
 								</a>
 							</p>
@@ -363,33 +393,47 @@ export function createAdmin(config: AdminConfig): Router {
 				pageTitle={`New ${model.displayName}`}
 				basePath={basePath}
 				models={models}
+				assets={assets}
 			>
-				<div class="breadcrumb">
-					<a href={basePath}>Dashboard</a> /{" "}
-					<a href={`${basePath}/${modelName}`}>{model.displayName}</a> / New
-				</div>
+				<nav class="usa-breadcrumb admin-breadcrumb" aria-label="Breadcrumbs">
+					<ol class="usa-breadcrumb__list">
+						<li class="usa-breadcrumb__list-item">
+							<a href={basePath} class="usa-breadcrumb__link">
+								Dashboard
+							</a>
+						</li>
+						<li class="usa-breadcrumb__list-item">
+							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
+								{model.displayName}
+							</a>
+						</li>
+						<li class="usa-breadcrumb__list-item usa-current" aria-current="page">
+							<span>New</span>
+						</li>
+					</ol>
+				</nav>
 
-				<h1>New {model.displayName}</h1>
+				<h1 class="usa-heading">New {model.displayName}</h1>
 
-				<div class="card">
-					<form method="POST" action={`${basePath}/${modelName}/new`}>
+				<div class="admin-card">
+					<form class="usa-form admin-form" method="POST" action={`${basePath}/${modelName}/new`}>
 						{editableColumns.map((col) => (
-							<div class="form-group">
-								<label for={col.name}>
+							<div class="usa-form-group">
+								<label class="usa-label" for={col.name}>
 									{getDisplayName(col.name)}
 									{col.notNull && !col.hasDefault && (
-										<span style="color: #b50909;"> *</span>
+										<span class="text-secondary-dark"> *</span>
 									)}
 								</label>
 								{renderFormField(col)}
 							</div>
 						))}
 
-						<div class="form-actions">
-							<button type="submit" class="btn">
+						<div class="admin-form-actions">
+							<button type="submit" class="usa-button">
 								Create {model.displayName}
 							</button>
-							<a href={`${basePath}/${modelName}`} class="btn btn-secondary">
+							<a href={`${basePath}/${modelName}`} class="usa-button usa-button--outline">
 								Cancel
 							</a>
 						</div>
@@ -432,14 +476,15 @@ export function createAdmin(config: AdminConfig): Router {
 			logger.debug("Insert attempt", {modelName, tableFound: !!table, data});
 
 			if (table) {
-				await db.insert(table as never).values(data);
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				await (db as any).insert(table).values(data);
 				logger.info("Insert successful", {modelName});
 			} else {
 				logger.warn("Table not found for model", {modelName});
 			}
 		} catch (err) {
 			logger.error("Insert error", {modelName, error: err});
-			return errorPage(title, basePath, models, err);
+			return errorPage(title, basePath, models, err, assets);
 		}
 
 		// Redirect to list view
@@ -468,11 +513,13 @@ export function createAdmin(config: AdminConfig): Router {
 
 			if (table) {
 				const pk = model.metadata.primaryKey[0];
-				const pkColumn = table[pk] as unknown;
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const pkColumn = (table as any)[pk];
 				const {eq} = await import("drizzle-orm");
 				const results = (await db
 					.select()
-					.from(table as never)
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					.from(table as any)
 					.where(eq(pkColumn, coercePrimaryKey(id, model.metadata)))) as Record<
 					string,
 					unknown
@@ -480,7 +527,7 @@ export function createAdmin(config: AdminConfig): Router {
 				record = results[0];
 			}
 		} catch (err) {
-			return errorPage(title, basePath, models, err);
+			return errorPage(title, basePath, models, err, assets);
 		}
 
 		if (!record) {
@@ -493,27 +540,41 @@ export function createAdmin(config: AdminConfig): Router {
 				pageTitle={`${model.displayName} #${id}`}
 				basePath={basePath}
 				models={models}
+				assets={assets}
 			>
-				<div class="breadcrumb">
-					<a href={basePath}>Dashboard</a> /{" "}
-					<a href={`${basePath}/${modelName}`}>{model.displayName}</a> / #{id}
-				</div>
+				<nav class="usa-breadcrumb admin-breadcrumb" aria-label="Breadcrumbs">
+					<ol class="usa-breadcrumb__list">
+						<li class="usa-breadcrumb__list-item">
+							<a href={basePath} class="usa-breadcrumb__link">
+								Dashboard
+							</a>
+						</li>
+						<li class="usa-breadcrumb__list-item">
+							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
+								{model.displayName}
+							</a>
+						</li>
+						<li class="usa-breadcrumb__list-item usa-current" aria-current="page">
+							<span>#{id}</span>
+						</li>
+					</ol>
+				</nav>
 
-				<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-					<h1>
+				<div class="admin-header">
+					<h1 class="usa-heading">
 						{model.displayName} #{id}
 					</h1>
-					<div class="actions">
-						<a href={`${basePath}/${modelName}/${id}/edit`} class="btn">
+					<div class="usa-button-group">
+						<a href={`${basePath}/${modelName}/${id}/edit`} class="usa-button">
 							Edit
 						</a>
-						<a href={`${basePath}/${modelName}/${id}/delete`} class="btn btn-danger">
+						<a href={`${basePath}/${modelName}/${id}/delete`} class="usa-button usa-button--secondary">
 							Delete
 						</a>
 					</div>
 				</div>
 
-				<div class="card">
+				<div class="admin-card admin-detail">
 					<dl>
 						{model.metadata.columns.map((col) => (
 							<>
@@ -552,11 +613,13 @@ export function createAdmin(config: AdminConfig): Router {
 
 			if (table) {
 				const pk = model.metadata.primaryKey[0];
-				const pkColumn = table[pk] as unknown;
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const pkColumn = (table as any)[pk];
 				const {eq} = await import("drizzle-orm");
 				const results = (await db
 					.select()
-					.from(table as never)
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					.from(table as any)
 					.where(eq(pkColumn, coercePrimaryKey(id, model.metadata)))) as Record<
 					string,
 					unknown
@@ -564,7 +627,7 @@ export function createAdmin(config: AdminConfig): Router {
 				record = results[0];
 			}
 		} catch (err) {
-			return errorPage(title, basePath, models, err);
+			return errorPage(title, basePath, models, err, assets);
 		}
 
 		if (!record) {
@@ -585,22 +648,40 @@ export function createAdmin(config: AdminConfig): Router {
 				pageTitle={`Edit ${model.displayName} #${id}`}
 				basePath={basePath}
 				models={models}
+				assets={assets}
 			>
-				<div class="breadcrumb">
-					<a href={basePath}>Dashboard</a> /{" "}
-					<a href={`${basePath}/${modelName}`}>{model.displayName}</a> /{" "}
-					<a href={`${basePath}/${modelName}/${id}`}>#{id}</a> / Edit
-				</div>
+				<nav class="usa-breadcrumb admin-breadcrumb" aria-label="Breadcrumbs">
+					<ol class="usa-breadcrumb__list">
+						<li class="usa-breadcrumb__list-item">
+							<a href={basePath} class="usa-breadcrumb__link">
+								Dashboard
+							</a>
+						</li>
+						<li class="usa-breadcrumb__list-item">
+							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
+								{model.displayName}
+							</a>
+						</li>
+						<li class="usa-breadcrumb__list-item">
+							<a href={`${basePath}/${modelName}/${id}`} class="usa-breadcrumb__link">
+								#{id}
+							</a>
+						</li>
+						<li class="usa-breadcrumb__list-item usa-current" aria-current="page">
+							<span>Edit</span>
+						</li>
+					</ol>
+				</nav>
 
-				<h1>Edit {model.displayName}</h1>
+				<h1 class="usa-heading">Edit {model.displayName}</h1>
 
-				<div class="card">
-					<form method="POST" action={`${basePath}/${modelName}/${id}/edit`}>
+				<div class="admin-card">
+					<form class="usa-form admin-form" method="POST" action={`${basePath}/${modelName}/${id}/edit`}>
 						{editableColumns.map((col) => (
-							<div class="form-group">
-								<label for={col.name}>
+							<div class="usa-form-group">
+								<label class="usa-label" for={col.name}>
 									{getDisplayName(col.name)}
-									{col.notNull && <span style="color: #b50909;"> *</span>}
+									{col.notNull && <span class="text-secondary-dark"> *</span>}
 								</label>
 								{renderFormField(
 									col,
@@ -610,11 +691,11 @@ export function createAdmin(config: AdminConfig): Router {
 							</div>
 						))}
 
-						<div class="form-actions">
-							<button type="submit" class="btn">
+						<div class="admin-form-actions">
+							<button type="submit" class="usa-button">
 								Save Changes
 							</button>
-							<a href={`${basePath}/${modelName}/${id}`} class="btn btn-secondary">
+							<a href={`${basePath}/${modelName}/${id}`} class="usa-button usa-button--outline">
 								Cancel
 							</a>
 						</div>
@@ -668,7 +749,8 @@ export function createAdmin(config: AdminConfig): Router {
 
 			if (table) {
 				const pk = model.metadata.primaryKey[0];
-				const pkColumn = table[pk] as unknown;
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const pkColumn = (table as any)[pk];
 				const {eq} = await import("drizzle-orm");
 				await db
 					.update(table as never)
@@ -676,7 +758,7 @@ export function createAdmin(config: AdminConfig): Router {
 					.where(eq(pkColumn, coercePrimaryKey(id, model.metadata)));
 			}
 		} catch (err) {
-			return errorPage(title, basePath, models, err);
+			return errorPage(title, basePath, models, err, assets);
 		}
 
 		// Redirect to detail view
@@ -701,30 +783,53 @@ export function createAdmin(config: AdminConfig): Router {
 				pageTitle={`Delete ${model.displayName} #${id}`}
 				basePath={basePath}
 				models={models}
+				assets={assets}
 			>
-				<div class="breadcrumb">
-					<a href={basePath}>Dashboard</a> /{" "}
-					<a href={`${basePath}/${modelName}`}>{model.displayName}</a> /{" "}
-					<a href={`${basePath}/${modelName}/${id}`}>#{id}</a> / Delete
-				</div>
+				<nav class="usa-breadcrumb admin-breadcrumb" aria-label="Breadcrumbs">
+					<ol class="usa-breadcrumb__list">
+						<li class="usa-breadcrumb__list-item">
+							<a href={basePath} class="usa-breadcrumb__link">
+								Dashboard
+							</a>
+						</li>
+						<li class="usa-breadcrumb__list-item">
+							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
+								{model.displayName}
+							</a>
+						</li>
+						<li class="usa-breadcrumb__list-item">
+							<a href={`${basePath}/${modelName}/${id}`} class="usa-breadcrumb__link">
+								#{id}
+							</a>
+						</li>
+						<li class="usa-breadcrumb__list-item usa-current" aria-current="page">
+							<span>Delete</span>
+						</li>
+					</ol>
+				</nav>
 
-				<h1>Delete {model.displayName}</h1>
+				<h1 class="usa-heading">Delete {model.displayName}</h1>
 
-				<div class="card">
-					<div class="alert alert-error">
-						<strong>Warning:</strong> This action cannot be undone.
+				<div class="admin-card">
+					<div class="usa-alert usa-alert--warning margin-bottom-2" role="alert">
+						<div class="usa-alert__body">
+							<h4 class="usa-alert__heading">Warning</h4>
+							<p class="usa-alert__text">
+								This action cannot be undone.
+							</p>
+						</div>
 					</div>
 
-					<p style="margin-bottom: 1rem;">
+					<p class="usa-prose margin-bottom-2">
 						Are you sure you want to delete {model.displayName} #{id}?
 					</p>
 
 					<form method="POST" action={`${basePath}/${modelName}/${id}/delete`}>
-						<div class="form-actions">
-							<button type="submit" class="btn btn-danger">
+						<div class="admin-form-actions">
+							<button type="submit" class="usa-button usa-button--secondary">
 								Yes, Delete
 							</button>
-							<a href={`${basePath}/${modelName}/${id}`} class="btn btn-secondary">
+							<a href={`${basePath}/${modelName}/${id}`} class="usa-button usa-button--outline">
 								Cancel
 							</a>
 						</div>
@@ -755,14 +860,15 @@ export function createAdmin(config: AdminConfig): Router {
 
 			if (table) {
 				const pk = model.metadata.primaryKey[0];
-				const pkColumn = table[pk] as unknown;
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const pkColumn = (table as any)[pk];
 				const {eq} = await import("drizzle-orm");
 				await db
 					.delete(table as never)
 					.where(eq(pkColumn, coercePrimaryKey(id, model.metadata)));
 			}
 		} catch (err) {
-			return errorPage(title, basePath, models, err);
+			return errorPage(title, basePath, models, err, assets);
 		}
 
 		// Redirect to list view
@@ -775,8 +881,6 @@ export function createAdmin(config: AdminConfig): Router {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-import type {ColumnMetadata, TableMetadata} from "./types.js";
 
 /**
  * Format a value for display in tables/detail views
@@ -815,7 +919,7 @@ function renderFormField(
 	// Enum columns get a select
 	if (col.enumValues) {
 		return (
-			<select name={col.name} id={col.name} {...disabled}>
+			<select class="usa-select" name={col.name} id={col.name} {...disabled}>
 				{!col.notNull && <option value="">-- Select --</option>}
 				{col.enumValues.map((v) => (
 					<option value={v} selected={v === strValue}>
@@ -830,7 +934,7 @@ function renderFormField(
 	switch (col.dataType) {
 		case "boolean":
 			return (
-				<select name={col.name} id={col.name} {...disabled}>
+				<select class="usa-select" name={col.name} id={col.name} {...disabled}>
 					{!col.notNull && <option value="">-- Select --</option>}
 					<option value="true" selected={strValue === "true"}>
 						Yes
@@ -844,6 +948,7 @@ function renderFormField(
 		case "number":
 			return (
 				<input
+					class="usa-input"
 					type="number"
 					name={col.name}
 					id={col.name}
@@ -857,6 +962,7 @@ function renderFormField(
 		case "date":
 			return (
 				<input
+					class="usa-input"
 					type="date"
 					name={col.name}
 					id={col.name}
@@ -869,6 +975,7 @@ function renderFormField(
 		case "datetime":
 			return (
 				<input
+					class="usa-input"
 					type="datetime-local"
 					name={col.name}
 					id={col.name}
@@ -881,6 +988,7 @@ function renderFormField(
 		case "json":
 			return (
 				<textarea
+					class="usa-textarea"
 					name={col.name}
 					id={col.name}
 					required={col.notNull && !col.hasDefault}
@@ -898,6 +1006,7 @@ function renderFormField(
 			) {
 				return (
 					<textarea
+						class="usa-textarea"
 						name={col.name}
 						id={col.name}
 						required={col.notNull && !col.hasDefault}
@@ -910,6 +1019,7 @@ function renderFormField(
 
 			return (
 				<input
+					class="usa-input"
 					type="text"
 					name={col.name}
 					id={col.name}

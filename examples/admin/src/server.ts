@@ -8,13 +8,28 @@
  */
 
 import {Router} from "@b9g/router";
+import {assets} from "@b9g/assets/middleware";
 import {createAdmin} from "@b9g/admin";
 import {getTableConfig} from "drizzle-orm/sqlite-core";
 import * as schema from "./schema.js";
 
+const logger = self.loggers.get("shovel", "server");
+
+// Import USWDS assets - these will be processed at build time
+// The @uswds/uswds package exports:
+//   - CSS at "./css/*" -> "./dist/css/*"
+//   - Main JS at "." -> "./dist/js/uswds.min.js"
+// @ts-ignore - import attributes
+import uswdsCss from "@uswds/uswds/css/uswds.min.css" with { assetBase: "/uswds/css/", assetName: "uswds.min.css" };
+// @ts-ignore - import attributes
+import uswdsJs from "@uswds/uswds" with { assetBase: "/uswds/js/", assetName: "uswds.min.js" };
+
 const router = new Router();
 
-// Mount admin at /admin
+// Serve static assets (USWDS CSS, JS, fonts, images)
+router.use(assets());
+
+// Mount admin at /admin with USWDS asset URLs
 const admin = createAdmin({
 	database: "main",
 	schema,
@@ -24,6 +39,11 @@ const admin = createAdmin({
 	},
 	branding: {
 		title: "Shovel Admin",
+	},
+	// Pass the USWDS asset URLs to the admin
+	assets: {
+		css: uswdsCss,
+		js: uswdsJs,
 	},
 });
 
@@ -36,13 +56,30 @@ router.route("/").get(() => {
 
 // ServiceWorker event handlers
 self.addEventListener("install", () => {
-	console.info("[Admin] ServiceWorker installed");
+	logger.info("ServiceWorker installed");
 });
 
 self.addEventListener("activate", () => {
-	console.info("[Admin] ServiceWorker activated");
+	logger.info("ServiceWorker activated");
 });
 
 self.addEventListener("fetch", (event) => {
-	event.respondWith(router.handle(event.request));
+	logger.debug("Fetch event", {url: event.request.url});
+	try {
+		const responsePromise = router.handle(event.request);
+		event.respondWith(
+			responsePromise
+				.then((res) => {
+					logger.debug("Response", {status: res.status, url: event.request.url});
+					return res;
+				})
+				.catch((err) => {
+					logger.error("Router error", {error: err});
+					return new Response("Internal Server Error", {status: 500});
+				}),
+		);
+	} catch (err) {
+		logger.error("Sync error", {error: err});
+		event.respondWith(new Response("Internal Server Error (sync)", {status: 500}));
+	}
 });

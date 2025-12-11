@@ -220,21 +220,21 @@ test(
 
 		// Test loggers global
 		expect(typeof globalThis.loggers).toBe("object");
-		expect(typeof globalThis.loggers.open).toBe("function");
+		expect(typeof globalThis.loggers.get).toBe("function");
 
-		// Test opening logger with single category
-		const appLogger = await globalThis.loggers.open("app");
+		// Test getting logger with single category (sync API)
+		const appLogger = globalThis.loggers.get("app");
 		expect(loggerCalls[0]).toEqual(["app"]);
 		expect(typeof appLogger.info).toBe("function");
 		expect(typeof appLogger.warn).toBe("function");
 		expect(typeof appLogger.error).toBe("function");
 
-		// Test opening logger with multiple categories
-		const _dbLogger = await globalThis.loggers.open("app", "db");
+		// Test getting logger with multiple categories
+		const _dbLogger = globalThis.loggers.get("app", "db");
 		expect(loggerCalls[1]).toEqual(["app", "db"]);
 
-		// Test opening logger with deeply nested categories
-		const _queryLogger = await globalThis.loggers.open("app", "db", "queries");
+		// Test getting logger with deeply nested categories
+		const _queryLogger = globalThis.loggers.get("app", "db", "queries");
 		expect(loggerCalls[2]).toEqual(["app", "db", "queries"]);
 	},
 	TIMEOUT,
@@ -269,16 +269,11 @@ test(
 		});
 		scope.install();
 
-		// ServiceWorker that uses logging
+		// ServiceWorker that uses logging (sync API)
 		globalThis.addEventListener("fetch", (event) => {
-			// respondWith must be called synchronously, so wrap async work in a promise
-			event.respondWith(
-				(async () => {
-					const logger = await globalThis.loggers.open("app");
-					logger.info("Handling request");
-					return new Response("OK");
-				})(),
-			);
+			const logger = globalThis.loggers.get("app");
+			logger.info("Handling request");
+			event.respondWith(new Response("OK"));
 		});
 
 		await registration.install();

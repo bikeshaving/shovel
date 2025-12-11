@@ -39,8 +39,7 @@ const CACHE_DEFAULT = {
 } as const;
 
 // Platform-specific directory defaults (used by both createDirectories and worker template)
-// Note: These paths are relative and get resolved at runtime
-// The entry wrapper runs from dist/server, so paths are relative to that location
+// Note: Paths are relative and get resolved at runtime using import.meta.dirname
 const DIRECTORY_DEFAULTS = {
 	server: {
 		module: "@b9g/filesystem/node-fs",
@@ -55,9 +54,31 @@ const DIRECTORY_DEFAULTS = {
 	tmp: {
 		module: "@b9g/filesystem/node-fs",
 		export: "NodeFSDirectory",
-		path: "tmpdir",
+		path: "tmpdir", // Special marker - resolved at runtime via os.tmpdir()
 	},
 } as const;
+
+/**
+ * Get directory defaults with resolved absolute paths
+ * @param outDir - Absolute path to the output directory (e.g., /project/dist)
+ * @returns Directory defaults with absolute paths for server and public, tmpdir for tmp
+ */
+function getDirectoryDefaults(outDir: string) {
+	return {
+		server: {
+			...DIRECTORY_DEFAULTS.server,
+			path: Path.join(outDir, "server"),
+		},
+		public: {
+			...DIRECTORY_DEFAULTS.public,
+			path: Path.join(outDir, "public"),
+		},
+		tmp: {
+			...DIRECTORY_DEFAULTS.tmp,
+			path: "tmpdir", // Special marker - resolved at runtime via os.tmpdir()
+		},
+	};
+}
 
 // Entry template embedded as string
 const entryTemplate = `// Bun Production Server Entry
@@ -128,10 +149,13 @@ if (isWorker) {
 `;
 
 // Worker entry template generator for ServiceWorkerPool
-// Generates template with embedded directory defaults
-function generateWorkerEntryTemplate(): string {
+// Generates template with embedded directory defaults using absolute paths
+function generateWorkerEntryTemplate(outDir: string): string {
+	// Get directory defaults with absolute paths resolved from outDir
+	const defaults = getDirectoryDefaults(outDir);
+
 	// Generate directory defaults object literal, handling tmpdir specially
-	const defaultsEntries = Object.entries(DIRECTORY_DEFAULTS)
+	const defaultsEntries = Object.entries(defaults)
 		.map(([name, def]) => {
 			const pathValue = def.path === "tmpdir" ? "tmpdir" : `"${def.path}"`;
 			return `\t${name}: { module: "${def.module}", export: "${def.export}", path: ${pathValue} }`;
@@ -144,7 +168,7 @@ import {config} from "shovel:config";
 import {initWorkerRuntime, startWorkerMessageLoop, configureLogging} from "@b9g/platform/runtime";
 import {tmpdir} from "node:os";
 
-// Platform-specific directory defaults for Bun
+// Platform-specific directory defaults for Bun (absolute paths)
 const directoryDefaults = {
 ${defaultsEntries}
 };
@@ -543,6 +567,7 @@ export class BunPlatform extends BasePlatform {
 	 * @param entryPath - Absolute path to user's entrypoint file
 	 * @param options - Entry wrapper options
 	 * @param options.type - "production" (default) or "worker"
+	 * @param options.outDir - Output directory (required for "worker" type)
 	 *
 	 * Returns:
 	 * - "production": Server entry with Bun.serve and reusePort
@@ -550,8 +575,14 @@ export class BunPlatform extends BasePlatform {
 	 */
 	getEntryWrapper(entryPath: string, options?: EntryWrapperOptions): string {
 		if (options?.type === "worker") {
+			if (!options.outDir) {
+				throw new Error("outDir is required for worker entry wrapper");
+			}
 			// Return worker entry template with user code path substituted
-			return generateWorkerEntryTemplate().replace("__USER_ENTRY__", entryPath);
+			return generateWorkerEntryTemplate(options.outDir).replace(
+				"__USER_ENTRY__",
+				entryPath,
+			);
 		}
 		// Default to production entry template
 		return entryTemplate;

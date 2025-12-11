@@ -1049,12 +1049,17 @@ export class Router {
 	 * Uses HTTPError.toResponse() for consistent error formatting
 	 */
 	#createErrorResponse(error: Error): Response {
+		// Log the error in development for debugging
+		const isDev = import.meta.env?.MODE !== "production";
+		if (isDev && !isHTTPError(error)) {
+			console.error("[router] Unhandled error:", error);
+		}
+
 		// Convert to HTTPError for consistent response format
 		const httpError = isHTTPError(error)
 			? (error as HTTPError)
 			: new InternalServerError(error.message, {cause: error});
 
-		const isDev = import.meta.env?.MODE !== "production";
 		return httpError.toResponse(isDev);
 	}
 }

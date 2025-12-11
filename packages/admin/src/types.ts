@@ -54,6 +54,16 @@ export interface BrandingConfig {
 }
 
 /**
+ * USWDS asset URLs for the admin UI
+ */
+export interface AssetsConfig {
+	/** URL to USWDS CSS file */
+	css: string;
+	/** URL to USWDS main JS file */
+	js: string;
+}
+
+/**
  * Main admin configuration
  */
 export interface AdminConfig {
@@ -71,6 +81,8 @@ export interface AdminConfig {
 	models?: Record<string, ModelConfig>;
 	/** Branding customization */
 	branding?: BrandingConfig;
+	/** USWDS asset URLs - if not provided, will use default relative paths */
+	assets?: AssetsConfig;
 }
 
 // ============================================================================

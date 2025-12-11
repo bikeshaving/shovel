@@ -10,7 +10,9 @@
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"noEmit": true,
-		"lib": ["ES2022", "WebWorker"]
+		"lib": ["ES2022", "WebWorker"],
+		"jsx": "react-jsx",
+		"jsxImportSource": "@b9g/crank"
 	},
 	"include": ["src/**/*", "packages/*/src/**/*", "test/**/*", "packages/*/test/**/*"],
 	"exclude": ["node_modules", "dist", "**/dist", "examples", "packages/shovel-wpt"]

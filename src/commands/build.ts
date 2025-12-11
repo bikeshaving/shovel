@@ -322,7 +322,7 @@ async function createBuildConfig({
 			// Get worker entry wrapper - uses ./server.js as a runtime import
 			const workerEntryWrapper = platform.getEntryWrapper(
 				"./server.js", // Relative import to sibling output file
-				{type: "worker"},
+				{type: "worker", outDir: outputDir},
 			);
 
 			// Build both worker.js and server.js in a single build using two entry points
@@ -343,7 +343,7 @@ async function createBuildConfig({
 				// Resolve packages from the user's project node_modules
 				nodePaths: [getNodeModulesPath()],
 				plugins: [
-					createConfigPlugin(projectRoot),
+					createConfigPlugin(projectRoot, outputDir),
 					createEntryPlugin(projectRoot, workerEntryWrapper),
 					importMetaPlugin(),
 					assetsPlugin({
@@ -404,7 +404,7 @@ async function createBuildConfig({
 			nodePaths: [getNodeModulesPath()],
 			plugins: bundlesUserCodeInline
 				? [
-						createConfigPlugin(projectRoot),
+						createConfigPlugin(projectRoot, outputDir),
 						importMetaPlugin(),
 						assetsPlugin({
 							outDir: outputDir,
@@ -416,7 +416,7 @@ async function createBuildConfig({
 							},
 						}),
 					]
-				: [createConfigPlugin(projectRoot)], // Config plugin needed for entry wrapper
+				: [createConfigPlugin(projectRoot, outputDir)], // Config plugin needed for entry wrapper
 			metafile: true,
 			sourcemap: BUILD_DEFAULTS.sourcemap,
 			minify: BUILD_DEFAULTS.minify,

@@ -375,18 +375,8 @@ export class CustomLoggerStorage implements LoggerStorage {
 // Database Storage API
 // ============================================================================
 
-/**
- * Drizzle ORM instance type (generic to support any dialect)
- */
-export type DrizzleInstance = {
-	query: Record<string, unknown>;
-	select: (...args: unknown[]) => unknown;
-	insert: (...args: unknown[]) => unknown;
-	update: (...args: unknown[]) => unknown;
-	delete: (...args: unknown[]) => unknown;
-	transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>;
-	[key: string]: unknown;
-};
+// Re-export from globals.d.ts to preserve `any` types in declarations
+export type {DrizzleInstance} from "./globals.js";
 
 /**
  * Supported database dialects
@@ -2794,9 +2784,9 @@ export async function configureLogging(
 		if (loggerConfig.level) {
 			result.lowestLevel = loggerConfig.level as LogTapeLevel;
 		}
-		if (loggerConfig.sinks) {
-			result.sinks = loggerConfig.sinks;
-		}
+		// Default to console sink if no sinks specified
+		// This ensures user loggers that override defaults still output somewhere
+		result.sinks = loggerConfig.sinks ?? ["console"];
 		if (loggerConfig.parentSinks) {
 			result.parentSinks = loggerConfig.parentSinks;
 		}

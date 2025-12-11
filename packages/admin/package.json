@@ -46,8 +46,10 @@
   "license": "MIT",
   "dependencies": {
     "@b9g/crank": "^0.7.2",
+    "@b9g/oauth2": "workspace:*",
     "@b9g/router": "workspace:*",
-    "@b9g/oauth2": "workspace:*"
+    "@uswds/uswds": "^3.13.0",
+    "mime": "^4.1.0"
   },
   "peerDependencies": {
     "@b9g/platform": "workspace:*",

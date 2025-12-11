@@ -136,7 +136,7 @@ function introspectColumn(
 /**
  * Dialect-specific getTableConfig function type
  */
-type GetTableConfigFn = (table: Table) => {
+export type GetTableConfigFn = (table: Table) => {
 	columns: Array<{
 		name: string;
 		primary: boolean;

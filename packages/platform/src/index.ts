@@ -121,6 +121,11 @@ export interface EntryWrapperOptions {
 	 * - "worker": Worker entry for ServiceWorkerPool - sets up runtime and message loop
 	 */
 	type?: "production" | "worker";
+	/**
+	 * Output directory for the build. Used to generate absolute paths for
+	 * directory defaults (server, public). Required for "worker" type.
+	 */
+	outDir?: string;
 }
 
 /**
