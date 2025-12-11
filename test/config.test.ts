@@ -573,7 +573,7 @@ describe("parseConfigExpr", () => {
 		});
 
 		it("allows single quotes inside double quotes", () => {
-			const result = parseConfigExpr("\"it's fine\"", {}, {strict: false});
+			const result = parseConfigExpr('"it\'s fine"', {}, {strict: false});
 			expect(result).toBe("it's fine");
 		});
 

@@ -37,7 +37,11 @@ export function createConfigPlugin(
 		const outputDir = isAbsolute(outDir) ? outDir : join(projectRoot, outDir);
 		const serverOutDir = join(outputDir, "server");
 		mkdirSync(serverOutDir, {recursive: true});
-		const typesCode = generateStorageTypes(databases, directoryNames, serverOutDir);
+		const typesCode = generateStorageTypes(
+			databases,
+			directoryNames,
+			serverOutDir,
+		);
 		if (typesCode) {
 			const typesPath = join(serverOutDir, "shovel.d.ts");
 			writeFileSync(typesPath, typesCode);

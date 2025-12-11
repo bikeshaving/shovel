@@ -42,7 +42,10 @@ function normalizeDataType(dataType: string, sqlType: string): ColumnDataType {
 			return "number";
 		case "date":
 			// Check SQL type to distinguish date vs datetime
-			if (sqlType.toLowerCase().includes("timestamp") || sqlType.toLowerCase().includes("datetime")) {
+			if (
+				sqlType.toLowerCase().includes("timestamp") ||
+				sqlType.toLowerCase().includes("datetime")
+			) {
 				return "datetime";
 			}
 			return "date";
@@ -65,7 +68,15 @@ function normalizeDataType(dataType: string, sqlType: string): ColumnDataType {
 function inferFromSqlType(sqlType: string): ColumnDataType {
 	const lower = sqlType.toLowerCase();
 
-	if (lower.includes("int") || lower.includes("serial") || lower.includes("decimal") || lower.includes("numeric") || lower.includes("float") || lower.includes("double") || lower.includes("real")) {
+	if (
+		lower.includes("int") ||
+		lower.includes("serial") ||
+		lower.includes("decimal") ||
+		lower.includes("numeric") ||
+		lower.includes("float") ||
+		lower.includes("double") ||
+		lower.includes("real")
+	) {
 		return "number";
 	}
 
@@ -85,7 +96,11 @@ function inferFromSqlType(sqlType: string): ColumnDataType {
 		return "json";
 	}
 
-	if (lower.includes("blob") || lower.includes("bytea") || lower.includes("binary")) {
+	if (
+		lower.includes("blob") ||
+		lower.includes("bytea") ||
+		lower.includes("binary")
+	) {
 		return "blob";
 	}
 
@@ -253,7 +268,7 @@ export function introspectSchema(
 ): Map<string, TableMetadata> {
 	const tables = new Map<string, TableMetadata>();
 
-	for (const [key, value] of Object.entries(schema)) {
+	for (const value of Object.values(schema)) {
 		if (isTable(value)) {
 			const metadata = introspectTable(value, getTableConfig);
 			tables.set(metadata.name, metadata);
@@ -286,7 +301,12 @@ export function getPluralDisplayName(tableName: string): string {
 	if (singular.endsWith("y")) {
 		return singular.slice(0, -1) + "ies";
 	}
-	if (singular.endsWith("s") || singular.endsWith("x") || singular.endsWith("ch") || singular.endsWith("sh")) {
+	if (
+		singular.endsWith("s") ||
+		singular.endsWith("x") ||
+		singular.endsWith("ch") ||
+		singular.endsWith("sh")
+	) {
 		return singular + "es";
 	}
 	return singular + "s";
