@@ -564,50 +564,6 @@ export function processConfigValue(
 }
 
 // ============================================================================
-// BUILTIN PROVIDER MAPPINGS
-// ============================================================================
-
-/**
- * Built-in cache provider aliases
- * Maps short names to their module paths
- */
-export const BUILTIN_CACHE_PROVIDERS: Record<string, string> = {
-	memory: "@b9g/cache/memory.js",
-	redis: "@b9g/cache-redis",
-};
-
-/**
- * Built-in directory provider aliases
- * Maps short names to their module paths
- */
-export const BUILTIN_DIRECTORY_PROVIDERS: Record<string, string> = {
-	"node-fs": "@b9g/filesystem/node-fs.js",
-	memory: "@b9g/filesystem/memory.js",
-	s3: "@b9g/filesystem-s3",
-};
-
-/**
- * Built-in logging sink provider aliases
- * Maps short names to their module paths and factory function names
- */
-export const BUILTIN_SINK_PROVIDERS: Record<
-	string,
-	{module: string; factory: string}
-> = {
-	console: {module: "@logtape/logtape", factory: "getConsoleSink"},
-	file: {module: "@logtape/file", factory: "getFileSink"},
-	rotating: {module: "@logtape/file", factory: "getRotatingFileSink"},
-	"stream-file": {module: "@logtape/file", factory: "getStreamFileSink"},
-	otel: {module: "@logtape/otel", factory: "getOpenTelemetrySink"},
-	sentry: {module: "@logtape/sentry", factory: "getSentrySink"},
-	syslog: {module: "@logtape/syslog", factory: "getSyslogSink"},
-	cloudwatch: {
-		module: "@logtape/cloudwatch-logs",
-		factory: "getCloudWatchLogsSink",
-	},
-};
-
-// ============================================================================
 // CODE GENERATION (for build-time config module)
 // ============================================================================
 
@@ -963,78 +919,45 @@ export function generateConfigModule(
 		return placeholder;
 	};
 
-	// Helper to evaluate provider expression and generate import
-	const processProvider = (
-		expr: string | undefined,
-		type: "cache" | "directory",
-		pattern: string,
+	// Helper to generate import and placeholder for a module/export config
+	const processModule = (
+		modulePath: string | undefined,
+		exportName: string | undefined,
+		type: "cache" | "directory" | "sink",
+		name: string,
 	): string | null => {
-		if (!expr) return null;
+		if (!modulePath) return null;
 
-		// Evaluate provider expression at BUILD time
-		const provider = parseConfigExpr(expr, env, {strict: false});
-		if (!provider || provider === "memory") {
-			return null; // memory is built-in, no import needed
+		const varName = `${type}_${sanitizeVarName(name)}`;
+		const actualExport = exportName || "default";
+
+		if (actualExport === "default") {
+			imports.push(`import ${varName} from ${JSON.stringify(modulePath)};`);
+		} else {
+			imports.push(
+				`import { ${actualExport} as ${varName} } from ${JSON.stringify(modulePath)};`,
+			);
 		}
-
-		// Map blessed names to module paths
-		const builtinMap =
-			type === "cache" ? BUILTIN_CACHE_PROVIDERS : BUILTIN_DIRECTORY_PROVIDERS;
-		const modulePath = builtinMap[provider] || provider;
-
-		// Generate unique variable name and import
-		const varName = `${type}_${sanitizeVarName(pattern)}`;
-		imports.push(`import * as ${varName} from ${JSON.stringify(modulePath)};`);
 
 		return createPlaceholder(varName);
 	};
 
-	// Helper to process a sink provider and generate import
-	// Track sink factory imports: key = "sinkName:module:factory", value = placeholder
-	const sinkFactoryCache: Map<string, string> = new Map();
-
-	const processSinkProvider = (
-		providerName: string,
-		sinkName: string,
-	): string => {
-		const builtin = BUILTIN_SINK_PROVIDERS[providerName];
-		const modulePath = builtin?.module || providerName;
-		const factoryName = builtin?.factory || "default";
-		const cacheKey = `${sinkName}:${modulePath}:${factoryName}`;
-
-		// Return existing placeholder if we already imported this
-		if (sinkFactoryCache.has(cacheKey)) {
-			return sinkFactoryCache.get(cacheKey)!;
-		}
-
-		// Generate variable name from sink name
-		const varName = `sink_${sanitizeVarName(sinkName)}`;
-
-		// Generate import
-		if (factoryName === "default") {
-			imports.push(`import ${varName} from ${JSON.stringify(modulePath)};`);
-		} else {
-			imports.push(
-				`import { ${factoryName} as ${varName} } from ${JSON.stringify(modulePath)};`,
-			);
-		}
-
-		const placeholder = createPlaceholder(varName);
-		sinkFactoryCache.set(cacheKey, placeholder);
-		return placeholder;
-	};
-
 	// Process a sink config, adding factory placeholder
-	// Note: factory is a string placeholder during code generation, becomes a function at runtime
 	const processSink = (
 		sink: SinkConfig,
 		sinkName: string,
 	): Record<string, unknown> => {
-		const factoryPlaceholder = processSinkProvider(
-			String(sink.provider),
+		const factoryPlaceholder = processModule(
+			sink.module,
+			sink.export,
+			"sink",
 			sinkName,
 		);
-		return {...sink, factory: factoryPlaceholder};
+		const result: Record<string, unknown> = {...sink};
+		if (factoryPlaceholder) {
+			result.factory = factoryPlaceholder;
+		}
+		return result;
 	};
 
 	// Build the config object with placeholders
@@ -1108,43 +1031,17 @@ export function generateConfigModule(
 
 		config.logging = logging;
 
-		// Caches
+		// Caches - pass through as-is (runtime does dynamic imports)
 		if (rawConfig.caches && Object.keys(rawConfig.caches).length > 0) {
-			const caches: Record<string, unknown> = {};
-			for (const [pattern, cfg] of Object.entries(rawConfig.caches)) {
-				const cacheConfig: Record<string, unknown> = {...cfg};
-				const providerPlaceholder = processProvider(
-					String(cfg.provider),
-					"cache",
-					pattern,
-				);
-				if (providerPlaceholder) {
-					cacheConfig.provider = providerPlaceholder;
-				}
-				caches[pattern] = cacheConfig;
-			}
-			config.caches = caches;
+			config.caches = rawConfig.caches;
 		}
 
-		// Directories
+		// Directories - pass through as-is (runtime does dynamic imports)
 		if (
 			rawConfig.directories &&
 			Object.keys(rawConfig.directories).length > 0
 		) {
-			const directories: Record<string, unknown> = {};
-			for (const [pattern, cfg] of Object.entries(rawConfig.directories)) {
-				const dirConfig: Record<string, unknown> = {...cfg};
-				const providerPlaceholder = processProvider(
-					String(cfg.provider),
-					"directory",
-					pattern,
-				);
-				if (providerPlaceholder) {
-					dirConfig.provider = providerPlaceholder;
-				}
-				directories[pattern] = dirConfig;
-			}
-			config.directories = directories;
+			config.directories = rawConfig.directories;
 		}
 
 		// Databases
@@ -1249,14 +1146,20 @@ export function loadRawConfig(cwd: string): ShovelConfig {
 // ============================================================================
 
 export interface CacheConfig {
-	provider?: string | number;
+	/** Cache provider module path (e.g., "@b9g/cache-redis") */
+	module?: string;
+	/** Export name from module (default: "default") */
+	export?: string;
 	url?: string | number;
 	maxEntries?: string | number;
 	TTL?: string | number;
 }
 
 export interface DirectoryConfig {
-	provider?: string | number;
+	/** Directory provider module path (e.g., "@b9g/filesystem/node-fs.js") */
+	module?: string;
+	/** Export name from module (default: "default") */
+	export?: string;
 	path?: string | number;
 	bucket?: string | number; // For S3-backed directories
 	region?: string | number;
@@ -1294,9 +1197,12 @@ export interface DatabaseConfig {
 /** Log level for filtering */
 export type LogLevel = "debug" | "info" | "warning" | "error";
 
-/** Sink configuration - provider maps to built-in or custom module */
+/** Sink configuration */
 export interface SinkConfig {
-	provider: string;
+	/** Sink module path (e.g., "@logtape/file") */
+	module: string;
+	/** Export name from module (e.g., "getFileSink") */
+	export?: string;
 	/** Pre-imported factory function (from build-time code generation) */
 	factory?: (options: Record<string, unknown>) => unknown;
 	/** Provider-specific options (path, maxSize, etc.) */

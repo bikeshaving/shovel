@@ -12,18 +12,14 @@
   },
   "directories": {
     "uploads": {
-      "provider": "node-fs",
+      "module": "@b9g/filesystem/node-fs.js",
+      "export": "NodeFSDirectory",
       "path": "./data/uploads"
     },
-    "tmp": {
-      "provider": "memory"
-    }
+    "tmp": {}
   },
   "caches": {
-    "sessions": {
-      "provider": "MODE === production ? redis : memory",
-      "url": "REDIS_URL || redis://localhost:6379"
-    }
+    "sessions": {}
   },
   "logging": {
     "loggers": [
