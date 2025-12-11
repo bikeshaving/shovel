@@ -52,39 +52,23 @@ npx @b9g/shovel build app.js --platform=cloudflare
 
 
 ## Web Standards
-Shovel is obsessively standards-first. All Shovel APIs use web standards , and implements/shims 
+Shovel is obsessively standards-first. All Shovel APIs use web standards, and Shovel implements/shims useful standards when they're missing.
 
   | API | Standard | Purpose |
   |-----|----------|--------------|
   | `fetch()` | [Fetch](https://fetch.spec.whatwg.org) | Networking |
-  | `addEventListener()` | [Service Workers](https://w3c.github.io/ServiceWorker/) | Server lifecycle |
-  | `caches` | [Cache API](https://w3c.github.io/ServiceWorker/#cache-interface) | Response caching |
-  | `directories` | [FileSystem API](https://fs.spec.whatwg.org/) | Storage (local, S3, R2) |
-  | `cookieStore` | [Cookie Store API](https://wicg.github.io/cookie-store/) | Cookie management |
-  | `URLPattern` | [URLPattern](https://urlpattern.spec.whatwg.org/) | Route matching |
+  | `"install"`, `"activate"`, `"fetch"` events | [Service Workers](https://w3c.github.io/ServiceWorker/) | Server lifecycle |
   | `AsyncContext.Variable` | [TC39 Stage 2](https://github.com/tc39/proposal-async-context) | Request-scoped state |
+  | `self.caches` | [Cache API](https://w3c.github.io/ServiceWorker/#cache-interface) | Response caching |
+  | `self.directories` | [FileSystem API](https://fs.spec.whatwg.org/) | Storage (local, S3, R2) |
+  | `self.cookieStore` | [CookieStore API](https://cookiestore.spec.whatwg.org) | Cookie management |
+  | `URLPattern` | [URLPattern](https://urlpattern.spec.whatwg.org/) | Route matching |
 
 Your code uses standards. Shovel makes them work everywhere.
 
 ## Meta-Framework
 
-Shovel is a meta-framework: it provides the primitives, not the opinions. Instead of dictating how you build, it gives you portable building blocks that work everywhere.
-
-The core abstraction is the **ServiceWorker-style storage pattern**. Four globals, one consistent API:
-
-```javascript
-const cache = await self.caches.open("sessions");     // Cache API
-const dir   = await self.directories.open("uploads"); // FileSystem API
-const db    = await self.databases.open("main");      // Drizzle ORM
-const log   = self.loggers.get("app", "requests");    // LogTape
-```
-
-Each storage type:
-- **Lazy** - connections created on first `open()`, cached thereafter
-- **Configured uniformly** - all use `{ module, export, ...options }` in `shovel.json`
-- **Platform-aware** - sensible defaults per platform, override what you need
-
-This pattern means your app logic stays clean. Swap Redis for memory cache, S3 for local filesystem, Postgres for SQLite - change the config, not the code.
+Shovel is a meta-framework: it provides and implements primitives rather than opinions. Instead of dictating how you build, it gives you portable building blocks that work everywhere.
 
 ## True Portability
 
@@ -93,6 +77,23 @@ Same code, any runtime, any rendering strategy:
 - **Server runtimes**: Node.js, Bun, Cloudflare Workers
 - **Browser ServiceWorkers**: The same app can run as a PWA
 - **Universal rendering**: Dynamic, static, or client-side
+
+The core abstraction is the **ServiceWorker-style storage pattern**. Globals provide a consistent API for common web concerns:
+
+```javascript
+const cache = await self.caches.open("sessions");     // Cache API
+const dir   = await self.directories.open("uploads"); // FileSystem API
+const db    = await self.databases.open("main");      // ???
+const log   = self.loggers.get("app", "requests");    // LogTape
+```
+
+Each storage type is:
+- **Lazy** - connections created on first `open()`, cached thereafter
+- **Configured uniformly** - all are configured by `shovel.json`
+- **Platform-aware** - sensible defaults per platform, override what you need
+
+This pattern means your app logic stays clean. Swap Redis for memory cache, S3 for local filesystem, Postgres for SQLite - change the config, not the code.
+
 
 ## Platform APIs
 
