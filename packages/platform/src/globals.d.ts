@@ -13,29 +13,6 @@
 import type {Logger} from "@logtape/logtape";
 import type {DirectoryStorage} from "@b9g/filesystem";
 
-/**
- * Drizzle ORM instance type for dynamic database operations.
- *
- * This type uses `any` intentionally to support dynamic schema introspection
- * (e.g., admin panels) where the schema isn't known at compile time.
- *
- * For type-safe usage, cast to your specific Drizzle database type:
- * @example
- * ```typescript
- * import type {BunSQLiteDatabase} from "drizzle-orm/bun-sqlite";
- * const db = await self.databases.open("main") as BunSQLiteDatabase<typeof schema>;
- * ```
- */
-export type DrizzleInstance = {
-	query: Record<string, unknown>;
-	select: (...args: any[]) => any;
-	insert: (...args: any[]) => any;
-	update: (...args: any[]) => any;
-	delete: (...args: any[]) => any;
-	transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>;
-	[key: string]: unknown;
-};
-
 declare global {
 	/**
 	 * Logger storage API for accessing named loggers.

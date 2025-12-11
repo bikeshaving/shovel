@@ -10,10 +10,14 @@ import {trailingSlash} from "@b9g/router/middleware";
 import {renderer} from "@b9g/crank/html";
 import type {Children} from "@b9g/crank";
 import {getTableName, isTable, type Table} from "drizzle-orm";
+import type {DrizzleInstance} from "@b9g/platform/runtime";
 import type {AdminConfig, TableMetadata, ColumnMetadata} from "./types.js";
-import {introspectSchema, getDisplayName, type GetTableConfigFn} from "./core/introspection.js";
+import {
+	introspectSchema,
+	getDisplayName,
+	type GetTableConfigFn,
+} from "./core/introspection.js";
 import {PageLayout} from "./ui/Layout.js";
-
 
 const logger = self.loggers.get("shovel", "admin");
 
@@ -49,7 +53,13 @@ function errorPage(
 	const stack = error instanceof Error ? error.stack : undefined;
 
 	return html(
-		<PageLayout title={title} pageTitle="Error" basePath={basePath} models={models} assets={assets}>
+		<PageLayout
+			title={title}
+			pageTitle="Error"
+			basePath={basePath}
+			models={models}
+			assets={assets}
+		>
 			<h1 class="usa-heading">Error</h1>
 			<div class="usa-alert usa-alert--error" role="alert">
 				<div class="usa-alert__body">
@@ -59,7 +69,9 @@ function errorPage(
 			</div>
 			{stack && (
 				<details class="margin-top-2">
-					<summary class="usa-link" style="cursor: pointer;">Stack trace</summary>
+					<summary class="usa-link" style="cursor: pointer;">
+						Stack trace
+					</summary>
 					<pre
 						class="margin-top-1 padding-2 bg-ink text-white font-mono-sm"
 						style="overflow-x: auto;"
@@ -173,54 +185,54 @@ export function createAdmin(config: AdminConfig): Router {
 
 		try {
 			const result = html(
-			<PageLayout
-				title={title}
-				pageTitle="Dashboard"
-				basePath={basePath}
-				models={models}
-				assets={assets}
-			>
-				<h1 class="usa-heading">Dashboard</h1>
-				<p class="usa-intro text-base-dark margin-bottom-3">
-					Database: {config.database}
-				</p>
+				<PageLayout
+					title={title}
+					pageTitle="Dashboard"
+					basePath={basePath}
+					models={models}
+					assets={assets}
+				>
+					<h1 class="usa-heading">Dashboard</h1>
+					<p class="usa-intro text-base-dark margin-bottom-3">
+						Database: {config.database}
+					</p>
 
-				<ul class="usa-card-group">
-					{models.map((m) => (
-						<li class="usa-card tablet:grid-col-4">
-							<div class="usa-card__container">
-								<div class="usa-card__header">
-									<h2 class="usa-card__heading">
-										<a href={`${basePath}/${m.name}`} class="usa-link">
-											{m.displayName}
+					<ul class="usa-card-group">
+						{models.map((m) => (
+							<li class="usa-card tablet:grid-col-4">
+								<div class="usa-card__container">
+									<div class="usa-card__header">
+										<h2 class="usa-card__heading">
+											<a href={`${basePath}/${m.name}`} class="usa-link">
+												{m.displayName}
+											</a>
+										</h2>
+									</div>
+									<div class="usa-card__body">
+										<p>{m.metadata.columns.length} columns</p>
+									</div>
+									<div class="usa-card__footer">
+										<a
+											href={`${basePath}/${m.name}/new`}
+											class="usa-button usa-button--outline"
+										>
+											Add New
 										</a>
-									</h2>
+									</div>
 								</div>
-								<div class="usa-card__body">
-									<p>{m.metadata.columns.length} columns</p>
-								</div>
-								<div class="usa-card__footer">
-									<a
-										href={`${basePath}/${m.name}/new`}
-										class="usa-button usa-button--outline"
-									>
-										Add New
-									</a>
-								</div>
-							</div>
-						</li>
-					))}
-				</ul>
+							</li>
+						))}
+					</ul>
 
-				{models.length === 0 && (
-					<div class="admin-empty">
-						<p>No models found in schema.</p>
-						<p class="margin-top-1 text-base">
-							Make sure your schema exports Drizzle tables.
-						</p>
-					</div>
-				)}
-			</PageLayout>,
+					{models.length === 0 && (
+						<div class="admin-empty">
+							<p>No models found in schema.</p>
+							<p class="margin-top-1 text-base">
+								Make sure your schema exports Drizzle tables.
+							</p>
+						</div>
+					)}
+				</PageLayout>,
 			);
 			logger.debug("Dashboard render successful");
 			return result;
@@ -250,13 +262,14 @@ export function createAdmin(config: AdminConfig): Router {
 
 		try {
 			// Get database and query records
-			const db = await self.databases.open(config.database);
+			const db = (await self.databases.open(
+				config.database,
+			)) as DrizzleInstance;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			);
 
 			if (table) {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				records = await (db as any).select().from(table);
 			}
 		} catch (err) {
@@ -287,7 +300,10 @@ export function createAdmin(config: AdminConfig): Router {
 								Dashboard
 							</a>
 						</li>
-						<li class="usa-breadcrumb__list-item usa-current" aria-current="page">
+						<li
+							class="usa-breadcrumb__list-item usa-current"
+							aria-current="page"
+						>
 							<span>{model.displayName}</span>
 						</li>
 					</ol>
@@ -336,8 +352,7 @@ export function createAdmin(config: AdminConfig): Router {
 												class="usa-button usa-button--outline usa-button--unstyled"
 											>
 												View
-											</a>
-											{" "}
+											</a>{" "}
 											<a
 												href={`${basePath}/${modelName}/${id}/edit`}
 												class="usa-button usa-button--outline usa-button--unstyled"
@@ -407,7 +422,10 @@ export function createAdmin(config: AdminConfig): Router {
 								{model.displayName}
 							</a>
 						</li>
-						<li class="usa-breadcrumb__list-item usa-current" aria-current="page">
+						<li
+							class="usa-breadcrumb__list-item usa-current"
+							aria-current="page"
+						>
 							<span>New</span>
 						</li>
 					</ol>
@@ -416,7 +434,11 @@ export function createAdmin(config: AdminConfig): Router {
 				<h1 class="usa-heading">New {model.displayName}</h1>
 
 				<div class="admin-card">
-					<form class="usa-form admin-form" method="POST" action={`${basePath}/${modelName}/new`}>
+					<form
+						class="usa-form admin-form"
+						method="POST"
+						action={`${basePath}/${modelName}/new`}
+					>
 						{editableColumns.map((col) => (
 							<div class="usa-form-group">
 								<label class="usa-label" for={col.name}>
@@ -433,7 +455,10 @@ export function createAdmin(config: AdminConfig): Router {
 							<button type="submit" class="usa-button">
 								Create {model.displayName}
 							</button>
-							<a href={`${basePath}/${modelName}`} class="usa-button usa-button--outline">
+							<a
+								href={`${basePath}/${modelName}`}
+								class="usa-button usa-button--outline"
+							>
 								Cancel
 							</a>
 						</div>
@@ -468,7 +493,9 @@ export function createAdmin(config: AdminConfig): Router {
 
 		try {
 			// Insert into database
-			const db = await self.databases.open(config.database);
+			const db = (await self.databases.open(
+				config.database,
+			)) as DrizzleInstance;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			);
@@ -476,7 +503,6 @@ export function createAdmin(config: AdminConfig): Router {
 			logger.debug("Insert attempt", {modelName, tableFound: !!table, data});
 
 			if (table) {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				await (db as any).insert(table).values(data);
 				logger.info("Insert successful", {modelName});
 			} else {
@@ -506,19 +532,21 @@ export function createAdmin(config: AdminConfig): Router {
 		let record: Record<string, unknown> | undefined;
 		try {
 			// Get database and query record
-			const db = await self.databases.open(config.database);
+			const db = (await self.databases.open(
+				config.database,
+			)) as DrizzleInstance;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;
 
 			if (table) {
 				const pk = model.metadata.primaryKey[0];
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 				const pkColumn = (table as any)[pk];
 				const {eq} = await import("drizzle-orm");
 				const results = (await db
 					.select()
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 					.from(table as any)
 					.where(eq(pkColumn, coercePrimaryKey(id, model.metadata)))) as Record<
 					string,
@@ -554,7 +582,10 @@ export function createAdmin(config: AdminConfig): Router {
 								{model.displayName}
 							</a>
 						</li>
-						<li class="usa-breadcrumb__list-item usa-current" aria-current="page">
+						<li
+							class="usa-breadcrumb__list-item usa-current"
+							aria-current="page"
+						>
 							<span>#{id}</span>
 						</li>
 					</ol>
@@ -568,7 +599,10 @@ export function createAdmin(config: AdminConfig): Router {
 						<a href={`${basePath}/${modelName}/${id}/edit`} class="usa-button">
 							Edit
 						</a>
-						<a href={`${basePath}/${modelName}/${id}/delete`} class="usa-button usa-button--secondary">
+						<a
+							href={`${basePath}/${modelName}/${id}/delete`}
+							class="usa-button usa-button--secondary"
+						>
 							Delete
 						</a>
 					</div>
@@ -606,19 +640,21 @@ export function createAdmin(config: AdminConfig): Router {
 		let record: Record<string, unknown> | undefined;
 		try {
 			// Get database and query record
-			const db = await self.databases.open(config.database);
+			const db = (await self.databases.open(
+				config.database,
+			)) as DrizzleInstance;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;
 
 			if (table) {
 				const pk = model.metadata.primaryKey[0];
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 				const pkColumn = (table as any)[pk];
 				const {eq} = await import("drizzle-orm");
 				const results = (await db
 					.select()
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 					.from(table as any)
 					.where(eq(pkColumn, coercePrimaryKey(id, model.metadata)))) as Record<
 					string,
@@ -663,11 +699,17 @@ export function createAdmin(config: AdminConfig): Router {
 							</a>
 						</li>
 						<li class="usa-breadcrumb__list-item">
-							<a href={`${basePath}/${modelName}/${id}`} class="usa-breadcrumb__link">
+							<a
+								href={`${basePath}/${modelName}/${id}`}
+								class="usa-breadcrumb__link"
+							>
 								#{id}
 							</a>
 						</li>
-						<li class="usa-breadcrumb__list-item usa-current" aria-current="page">
+						<li
+							class="usa-breadcrumb__list-item usa-current"
+							aria-current="page"
+						>
 							<span>Edit</span>
 						</li>
 					</ol>
@@ -676,7 +718,11 @@ export function createAdmin(config: AdminConfig): Router {
 				<h1 class="usa-heading">Edit {model.displayName}</h1>
 
 				<div class="admin-card">
-					<form class="usa-form admin-form" method="POST" action={`${basePath}/${modelName}/${id}/edit`}>
+					<form
+						class="usa-form admin-form"
+						method="POST"
+						action={`${basePath}/${modelName}/${id}/edit`}
+					>
 						{editableColumns.map((col) => (
 							<div class="usa-form-group">
 								<label class="usa-label" for={col.name}>
@@ -695,7 +741,10 @@ export function createAdmin(config: AdminConfig): Router {
 							<button type="submit" class="usa-button">
 								Save Changes
 							</button>
-							<a href={`${basePath}/${modelName}/${id}`} class="usa-button usa-button--outline">
+							<a
+								href={`${basePath}/${modelName}/${id}`}
+								class="usa-button usa-button--outline"
+							>
 								Cancel
 							</a>
 						</div>
@@ -736,20 +785,23 @@ export function createAdmin(config: AdminConfig): Router {
 			const value = formData.get(col.name);
 			if (value !== null) {
 				// Form field uses DB column name, but Drizzle expects JS property key
-				data[col.key] = value === "" ? null : parseFormValue(value as string, col);
+				data[col.key] =
+					value === "" ? null : parseFormValue(value as string, col);
 			}
 		}
 
 		try {
 			// Update in database
-			const db = await self.databases.open(config.database);
+			const db = (await self.databases.open(
+				config.database,
+			)) as DrizzleInstance;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;
 
 			if (table) {
 				const pk = model.metadata.primaryKey[0];
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 				const pkColumn = (table as any)[pk];
 				const {eq} = await import("drizzle-orm");
 				await db
@@ -798,11 +850,17 @@ export function createAdmin(config: AdminConfig): Router {
 							</a>
 						</li>
 						<li class="usa-breadcrumb__list-item">
-							<a href={`${basePath}/${modelName}/${id}`} class="usa-breadcrumb__link">
+							<a
+								href={`${basePath}/${modelName}/${id}`}
+								class="usa-breadcrumb__link"
+							>
 								#{id}
 							</a>
 						</li>
-						<li class="usa-breadcrumb__list-item usa-current" aria-current="page">
+						<li
+							class="usa-breadcrumb__list-item usa-current"
+							aria-current="page"
+						>
 							<span>Delete</span>
 						</li>
 					</ol>
@@ -811,12 +869,13 @@ export function createAdmin(config: AdminConfig): Router {
 				<h1 class="usa-heading">Delete {model.displayName}</h1>
 
 				<div class="admin-card">
-					<div class="usa-alert usa-alert--warning margin-bottom-2" role="alert">
+					<div
+						class="usa-alert usa-alert--warning margin-bottom-2"
+						role="alert"
+					>
 						<div class="usa-alert__body">
 							<h4 class="usa-alert__heading">Warning</h4>
-							<p class="usa-alert__text">
-								This action cannot be undone.
-							</p>
+							<p class="usa-alert__text">This action cannot be undone.</p>
 						</div>
 					</div>
 
@@ -829,7 +888,10 @@ export function createAdmin(config: AdminConfig): Router {
 							<button type="submit" class="usa-button usa-button--secondary">
 								Yes, Delete
 							</button>
-							<a href={`${basePath}/${modelName}/${id}`} class="usa-button usa-button--outline">
+							<a
+								href={`${basePath}/${modelName}/${id}`}
+								class="usa-button usa-button--outline"
+							>
 								Cancel
 							</a>
 						</div>
@@ -853,14 +915,16 @@ export function createAdmin(config: AdminConfig): Router {
 
 		try {
 			// Delete from database
-			const db = await self.databases.open(config.database);
+			const db = (await self.databases.open(
+				config.database,
+			)) as DrizzleInstance;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;
 
 			if (table) {
 				const pk = model.metadata.primaryKey[0];
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 				const pkColumn = (table as any)[pk];
 				const {eq} = await import("drizzle-orm");
 				await db
@@ -994,7 +1058,9 @@ function renderFormField(
 					required={col.notNull && !col.hasDefault}
 					{...disabled}
 				>
-					{typeof value === "object" ? JSON.stringify(value, null, 2) : strValue}
+					{typeof value === "object"
+						? JSON.stringify(value, null, 2)
+						: strValue}
 				</textarea>
 			);
 

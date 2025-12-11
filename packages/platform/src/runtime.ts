@@ -375,8 +375,35 @@ export class CustomLoggerStorage implements LoggerStorage {
 // Database Storage API
 // ============================================================================
 
-// Re-export from globals.d.ts to preserve `any` types in declarations
-export type {DrizzleInstance} from "./globals.js";
+/**
+ * Drizzle ORM instance interface for database operations.
+ *
+ * @typeParam TSchema - The schema type for typed `query` access. Defaults to
+ * `Record<string, unknown>` for dynamic usage (e.g., admin panels).
+ *
+ * @example
+ * ```typescript
+ * // Dynamic (admin, libraries)
+ * const db: DrizzleInstance = await self.databases.open(config.database);
+ *
+ * // Typed (user code)
+ * const db: DrizzleInstance<typeof schema> = await self.databases.open("main");
+ * db.query.users  // typed!
+ * ```
+ */
+export interface DrizzleInstance<
+	TSchema extends Record<string, unknown> = Record<string, unknown>,
+> {
+	query: {[K in keyof TSchema]: unknown};
+	select: (...args: any[]) => any;
+	insert: (...args: any[]) => any;
+	update: (...args: any[]) => any;
+	delete: (...args: any[]) => any;
+	transaction: <T>(
+		fn: (tx: DrizzleInstance<TSchema>) => Promise<T>,
+	) => Promise<T>;
+	[key: string]: unknown;
+}
 
 /**
  * Supported database dialects
