@@ -12,6 +12,7 @@ import * as ESBuild from "esbuild";
 import {builtinModules} from "node:module";
 import {resolve, join} from "path";
 import {mkdir} from "fs/promises";
+import {watch, type FSWatcher, existsSync} from "fs";
 import {getLogger} from "@logtape/logtape";
 import type {Platform, PlatformESBuildConfig} from "@b9g/platform";
 
@@ -72,6 +73,7 @@ export class Watcher {
 		entrypoint: string;
 	}) => void;
 	#currentEntrypoint: string;
+	#configWatchers: FSWatcher[] = [];
 
 	constructor(options: WatcherOptions) {
 		this.#options = options;
@@ -263,14 +265,55 @@ export class Watcher {
 		logger.info("Starting esbuild watch mode");
 		await this.#ctx.watch();
 
+		// Watch config files (shovel.json, package.json) for changes
+		// ESBuild doesn't track these since they're not imported
+		this.#watchConfigFiles();
+
 		// Wait for initial build to complete
 		return initialBuildPromise;
+	}
+
+	/**
+	 * Watch shovel.json and package.json for changes
+	 * Triggers rebuild when config changes
+	 */
+	#watchConfigFiles() {
+		const configFiles = ["shovel.json", "package.json"];
+
+		for (const filename of configFiles) {
+			const filepath = join(this.#projectRoot, filename);
+			if (!existsSync(filepath)) continue;
+
+			try {
+				const watcher = watch(filepath, {persistent: false}, (event) => {
+					if (event === "change") {
+						logger.info(`Config changed: ${filename}, rebuilding...`);
+						this.#ctx?.rebuild().catch((err) => {
+							logger.error("Rebuild failed: {error}", {error: err});
+						});
+					}
+				});
+
+				this.#configWatchers.push(watcher);
+			} catch (err) {
+				logger.warn("Failed to watch {file}: {error}", {
+					file: filename,
+					error: err,
+				});
+			}
+		}
 	}
 
 	/**
 	 * Stop watching and dispose of esbuild context
 	 */
 	async stop() {
+		// Close config file watchers
+		for (const watcher of this.#configWatchers) {
+			watcher.close();
+		}
+		this.#configWatchers = [];
+
 		if (this.#ctx) {
 			await this.#ctx.dispose();
 			this.#ctx = undefined;

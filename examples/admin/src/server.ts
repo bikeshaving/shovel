@@ -19,10 +19,8 @@ const logger = self.loggers.get("shovel", "server");
 // The @uswds/uswds package exports:
 //   - CSS at "./css/*" -> "./dist/css/*"
 //   - Main JS at "." -> "./dist/js/uswds.min.js"
-// @ts-ignore - import attributes
-import uswdsCss from "@uswds/uswds/css/uswds.min.css" with { assetBase: "/uswds/css/", assetName: "uswds.min.css" };
-// @ts-ignore - import attributes
-import uswdsJs from "@uswds/uswds" with { assetBase: "/uswds/js/", assetName: "uswds.min.js" };
+import uswdsCSS from "@uswds/uswds/css/uswds.min.css" with {assetBase: "/static/"};
+import uswdsJS from "@uswds/uswds" with {assetBase: "/static/"};
 
 const router = new Router();
 
@@ -42,8 +40,8 @@ const admin = createAdmin({
 	},
 	// Pass the USWDS asset URLs to the admin
 	assets: {
-		css: uswdsCss,
-		js: uswdsJs,
+		css: uswdsCSS,
+		js: uswdsJS,
 	},
 });
 
@@ -63,23 +61,7 @@ self.addEventListener("activate", () => {
 	logger.info("ServiceWorker activated");
 });
 
-self.addEventListener("fetch", (event) => {
-	logger.debug("Fetch event", {url: event.request.url});
-	try {
-		const responsePromise = router.handle(event.request);
-		event.respondWith(
-			responsePromise
-				.then((res) => {
-					logger.debug("Response", {status: res.status, url: event.request.url});
-					return res;
-				})
-				.catch((err) => {
-					logger.error("Router error", {error: err});
-					return new Response("Internal Server Error", {status: 500});
-				}),
-		);
-	} catch (err) {
-		logger.error("Sync error", {error: err});
-		event.respondWith(new Response("Internal Server Error (sync)", {status: 500}));
-	}
+self.addEventListener("fetch", (ev) => {
+	logger.debug("Fetch event", {url: ev.request.url});
+	ev.respondWith(router.handle(ev.request));
 });

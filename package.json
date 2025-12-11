@@ -32,7 +32,8 @@
     "magic-string": "^0.30.5",
     "mime": "^4.0.4",
     "picocolors": "^1.0.0",
-    "source-map": "^0.7.4"
+    "source-map": "^0.7.4",
+    "zod": "^4.1.13"
   },
   "peerDependencies": {
     "@b9g/node-webworker": "workspace:*",

@@ -19,6 +19,7 @@
  */
 
 import {readFileSync} from "fs";
+import {z} from "zod";
 
 /**
  * Default configuration constants
@@ -1115,140 +1116,172 @@ export function generateConfigModule(
  * Used at build time to get the config before code generation.
  */
 export function loadRawConfig(cwd: string): ShovelConfig {
+	let rawConfig: unknown = {};
+	let configSource = "defaults";
+
 	// Try shovel.json first
 	try {
 		const shovelPath = `${cwd}/shovel.json`;
 		const content = readFileSync(shovelPath, "utf-8");
-		return JSON.parse(content);
+		rawConfig = JSON.parse(content);
+		configSource = "shovel.json";
 	} catch (error: any) {
 		if (error?.code !== "ENOENT") {
 			throw error;
 		}
+
+		// Try package.json
+		try {
+			const pkgPath = `${cwd}/package.json`;
+			const content = readFileSync(pkgPath, "utf-8");
+			const pkgJSON = JSON.parse(content);
+			if (pkgJSON.shovel) {
+				rawConfig = pkgJSON.shovel;
+				configSource = "package.json";
+			}
+		} catch (error: any) {
+			if (error?.code !== "ENOENT") {
+				throw error;
+			}
+		}
 	}
 
-	// Try package.json
+	// Validate config with Zod (throws on invalid config)
 	try {
-		const pkgPath = `${cwd}/package.json`;
-		const content = readFileSync(pkgPath, "utf-8");
-		const pkgJSON = JSON.parse(content);
-		return pkgJSON.shovel || {};
-	} catch (error: any) {
-		if (error?.code !== "ENOENT") {
-			throw error;
+		return ShovelConfigSchema.parse(rawConfig);
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			const issues = error.issues
+				.map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
+				.join("\n");
+			throw new Error(`Invalid config in ${configSource}:\n${issues}`);
 		}
+		throw error;
 	}
-
-	return {};
 }
 
 // ============================================================================
-// CONFIG SCHEMA
+// CONFIG SCHEMA (Zod-validated)
 // ============================================================================
 
-export interface CacheConfig {
-	/** Cache provider module path (e.g., "@b9g/cache-redis") */
-	module?: string;
-	/** Export name from module (default: "default") */
-	export?: string;
-	url?: string | number;
-	maxEntries?: string | number;
-	TTL?: string | number;
-}
+/** Config expression: string or number (evaluated at runtime) */
+const configExpr = z.union([z.string(), z.number()]);
 
-export interface DirectoryConfig {
-	/** Directory provider module path (e.g., "@b9g/filesystem/node-fs.js") */
-	module?: string;
-	/** Export name from module (default: "default") */
-	export?: string;
-	path?: string | number;
-	bucket?: string | number; // For S3-backed directories
-	region?: string | number;
-	endpoint?: string | number;
-}
+/** Cache configuration schema */
+export const CacheConfigSchema = z
+	.object({
+		module: z.string().optional(),
+		export: z.string().optional(),
+		url: configExpr.optional(),
+		maxEntries: configExpr.optional(),
+		TTL: configExpr.optional(),
+	})
+	.strict();
+
+export type CacheConfig = z.infer<typeof CacheConfigSchema>;
+
+/** Directory configuration schema */
+export const DirectoryConfigSchema = z
+	.object({
+		module: z.string().optional(),
+		export: z.string().optional(),
+		path: configExpr.optional(),
+		bucket: configExpr.optional(),
+		region: configExpr.optional(),
+		endpoint: configExpr.optional(),
+	})
+	.strict();
+
+export type DirectoryConfig = z.infer<typeof DirectoryConfigSchema>;
 
 /** Database dialect */
-export type DatabaseDialect =
-	| "postgresql"
-	| "mysql"
-	| "sqlite"
-	| "bun-sqlite"
-	| "libsql"
-	| "d1";
+export const DatabaseDialectSchema = z.enum([
+	"postgresql",
+	"mysql",
+	"sqlite",
+	"bun-sqlite",
+	"libsql",
+	"d1",
+]);
 
-/** Database configuration - Drizzle ORM based */
-export interface DatabaseConfig {
-	/** Database dialect (postgresql, mysql, sqlite, libsql, d1) */
-	dialect: DatabaseDialect;
-	/** Driver module configuration (required for runtime, optional for CLI-only use) */
-	driver?: {
-		module: string;
-		export?: string;
-	};
-	/** Connection URL or path (supports env var expressions) */
-	url: string;
-	/** Path to Drizzle schema file (relative to project root) */
-	schema: string;
-	/** Path to migrations directory (optional) */
-	migrations?: string;
-	/** Additional driver-specific options */
-	[key: string]: unknown;
-}
+export type DatabaseDialect = z.infer<typeof DatabaseDialectSchema>;
+
+/** Database driver configuration */
+const DatabaseDriverSchema = z
+	.object({
+		module: z.string(),
+		export: z.string().optional(),
+	})
+	.strict();
+
+/** Database configuration schema - allows extra driver-specific options */
+export const DatabaseConfigSchema = z
+	.object({
+		dialect: DatabaseDialectSchema,
+		driver: DatabaseDriverSchema.optional(),
+		url: z.string(),
+		schema: z.string(),
+		migrations: z.string().optional(),
+	})
+	.passthrough(); // Allow additional driver-specific options
+
+export type DatabaseConfig = z.infer<typeof DatabaseConfigSchema>;
 
 /** Log level for filtering */
-export type LogLevel = "debug" | "info" | "warning" | "error";
+export const LogLevelSchema = z.enum(["debug", "info", "warning", "error"]);
 
-/** Sink configuration */
-export interface SinkConfig {
-	/** Sink module path (e.g., "@logtape/file") */
-	module: string;
-	/** Export name from module (e.g., "getFileSink") */
-	export?: string;
+export type LogLevel = z.infer<typeof LogLevelSchema>;
+
+/** Sink configuration schema - allows extra provider-specific options */
+export const SinkConfigSchema = z
+	.object({
+		module: z.string(),
+		export: z.string().optional(),
+	})
+	.passthrough(); // Allow additional sink-specific options (path, maxSize, etc.)
+
+export type SinkConfig = z.infer<typeof SinkConfigSchema> & {
 	/** Pre-imported factory function (from build-time code generation) */
 	factory?: (options: Record<string, unknown>) => unknown;
-	/** Provider-specific options (path, maxSize, etc.) */
-	[key: string]: unknown;
-}
+};
 
-/** Logger configuration - matches LogTape's logger config structure */
-export interface LoggerConfig {
-	/** Category as string or array for hierarchy. e.g. "myapp" or ["myapp", "db"] */
-	category: string | string[];
-	/** Log level for this category. Inherits from parent if not specified. */
-	level?: LogLevel;
-	/** Sink names to add. Inherits from parent by default. */
-	sinks?: string[];
-	/** Set to "override" to replace parent sinks instead of inheriting */
-	parentSinks?: "override";
-}
+/** Logger configuration schema */
+export const LoggerConfigSchema = z
+	.object({
+		category: z.union([z.string(), z.array(z.string())]),
+		level: LogLevelSchema.optional(),
+		sinks: z.array(z.string()).optional(),
+		parentSinks: z.literal("override").optional(),
+	})
+	.strict();
 
-export interface LoggingConfig {
-	/** Named sinks. "console" is always available implicitly. */
-	sinks?: Record<string, SinkConfig>;
-	/** Logger configurations. Shovel provides defaults for ["shovel", ...] categories. */
-	loggers?: LoggerConfig[];
-}
+export type LoggerConfig = z.infer<typeof LoggerConfigSchema>;
 
-export interface ShovelConfig {
-	// Platform
-	platform?: string;
+/** Logging configuration schema */
+export const LoggingConfigSchema = z
+	.object({
+		sinks: z.record(z.string(), SinkConfigSchema).optional(),
+		loggers: z.array(LoggerConfigSchema).optional(),
+	})
+	.strict();
 
-	// Server
-	port?: number | string;
-	host?: string;
-	workers?: number | string;
+export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
 
-	// Logging
-	logging?: LoggingConfig;
+/** Main Shovel configuration schema */
+export const ShovelConfigSchema = z
+	.object({
+		platform: z.string().optional(),
+		port: z.union([z.number(), z.string()]).optional(),
+		host: z.string().optional(),
+		workers: z.union([z.number(), z.string()]).optional(),
+		logging: LoggingConfigSchema.optional(),
+		caches: z.record(z.string(), CacheConfigSchema).optional(),
+		directories: z.record(z.string(), DirectoryConfigSchema).optional(),
+		databases: z.record(z.string(), DatabaseConfigSchema).optional(),
+	})
+	.strict();
 
-	// Caches (per-name with patterns)
-	caches?: Record<string, CacheConfig>;
-
-	// Directories (per-name with patterns)
-	directories?: Record<string, DirectoryConfig>;
-
-	// Databases (per-name, Drizzle ORM)
-	databases?: Record<string, DatabaseConfig>;
-}
+export type ShovelConfig = z.infer<typeof ShovelConfigSchema>;
 
 /** Processed logging config with all defaults applied */
 export interface ProcessedLoggingConfig {
