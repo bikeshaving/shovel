@@ -380,7 +380,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							},
 						});
 						const result = await ctx.rebuild();
-						// Find the CSS output file (esbuild may also output font files)
+						// Find the CSS output file (esbuild may also output font/image files)
 						const cssOutput = result.outputFiles?.find((f) =>
 							f.path.endsWith(".css"),
 						);
@@ -389,6 +389,37 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 								errors: [{text: `No CSS output generated for ${args.path}`}],
 							};
 						}
+
+						// Write out any other output files (fonts, images referenced in CSS)
+						// These are placed relative to the CSS file location
+						const basePath = normalizePath(args.with.assetBase);
+						const cssOutputDir = join(config.outDir, "public", basePath);
+						if (!existsSync(cssOutputDir)) {
+							mkdirSync(cssOutputDir, {recursive: true});
+						}
+						for (const file of result.outputFiles || []) {
+							if (file === cssOutput) continue;
+							// Get just the filename from the output path
+							const assetFilename = file.path.split("/").pop()!;
+							const assetPath = join(cssOutputDir, assetFilename);
+							writeFileSync(assetPath, file.contents);
+
+							// Add to manifest so assets middleware can serve it
+							const assetUrl = `${basePath}${assetFilename}`;
+							const assetHash = createHash("sha256")
+								.update(file.contents)
+								.digest("hex")
+								.slice(0, HASH_LENGTH);
+							manifest.assets[assetFilename] = {
+								source: assetFilename,
+								output: assetFilename,
+								url: assetUrl,
+								hash: assetHash,
+								size: file.contents.length,
+								type: mime.getType(assetFilename) || undefined,
+							};
+						}
+
 						content = Buffer.from(cssOutput.text);
 						outputExt = ".css";
 						mimeType = "text/css";

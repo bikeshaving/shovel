@@ -90,7 +90,6 @@ export class Watcher {
 
 		// Ensure output directory structure exists
 		await mkdir(join(outputDir, "server"), {recursive: true});
-		await mkdir(join(outputDir, "static"), {recursive: true});
 
 		// Get worker entry wrapper - imports user code directly for unified bundle
 		const workerEntryWrapper = this.#options.platform.getEntryWrapper(
