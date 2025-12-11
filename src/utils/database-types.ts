@@ -5,14 +5,12 @@
  * - DatabaseStorage.open() - returns typed Drizzle instances
  * - DirectoryStorage.open() - validates directory names at compile time
  *
- * Based on configurations in shovel.json files across the workspace.
+ * Based on configurations in shovel.json.
  */
 
-import {readFileSync, readdirSync, existsSync} from "fs";
-import {join, resolve, relative} from "path";
-import type {DatabaseDialect, RawShovelConfig} from "./config.js";
+import {resolve, relative} from "path";
+import type {DatabaseDialect} from "./config.js";
 import {loadRawConfig} from "./config.js";
-import {findWorkspaceRoot} from "./project.js";
 
 /**
  * Mapping from shovel.json dialect to Drizzle ORM type information.
@@ -44,94 +42,24 @@ export interface DatabaseInfo {
 }
 
 /**
- * Simple glob-like pattern matcher for workspace patterns.
- * Supports patterns like "packages/*" or "examples/*"
- */
-function matchWorkspacePattern(
-	workspaceRoot: string,
-	pattern: string,
-): string[] {
-	// Handle simple wildcard patterns like "packages/*"
-	if (pattern.endsWith("/*")) {
-		const base = pattern.slice(0, -2);
-		const baseDir = join(workspaceRoot, base);
-		if (!existsSync(baseDir)) return [];
-
-		const entries = readdirSync(baseDir, {withFileTypes: true});
-		return entries
-			.filter((e) => e.isDirectory())
-			.map((e) => join(baseDir, e.name))
-			.filter((dir) => existsSync(join(dir, "package.json")));
-	}
-
-	// Handle literal paths
-	const fullPath = join(workspaceRoot, pattern);
-	if (existsSync(join(fullPath, "package.json"))) {
-		return [fullPath];
-	}
-	return [];
-}
-
-/**
- * Discover all databases across workspace packages.
- * Coalesces databases from all packages with shovel.json.
+ * Discover databases from the project's shovel.json.
  *
- * The current project's databases take precedence on name conflicts.
- *
- * @param projectRoot - Root directory of the current project
+ * @param projectRoot - Root directory of the project
  * @returns Array of discovered databases
  */
-export function discoverWorkspaceDatabases(projectRoot: string): DatabaseInfo[] {
+export function discoverDatabases(projectRoot: string): DatabaseInfo[] {
 	const databases: DatabaseInfo[] = [];
-	const seenNames = new Set<string>();
+	const config = loadRawConfig(projectRoot);
 
-	// First, add databases from the current project
-	const projectConfig = loadRawConfig(projectRoot);
-	if (projectConfig.databases) {
-		for (const [name, config] of Object.entries(projectConfig.databases)) {
-			if (config.schema) {
+	if (config.databases) {
+		for (const [name, dbConfig] of Object.entries(config.databases)) {
+			if (dbConfig.schema) {
 				databases.push({
 					name,
-					dialect: config.dialect,
-					schemaPath: resolve(projectRoot, config.schema),
+					dialect: dbConfig.dialect,
+					schemaPath: resolve(projectRoot, dbConfig.schema),
 					packageDir: projectRoot,
 				});
-				seenNames.add(name);
-			}
-		}
-	}
-
-	// Then, discover databases from workspace packages
-	const workspaceRoot = findWorkspaceRoot(projectRoot);
-	if (workspaceRoot && workspaceRoot !== projectRoot) {
-		const pkgJson = JSON.parse(
-			readFileSync(join(workspaceRoot, "package.json"), "utf-8"),
-		);
-		const patterns: string[] = pkgJson.workspaces || [];
-
-		for (const pattern of patterns) {
-			const pkgDirs = matchWorkspacePattern(workspaceRoot, pattern);
-			for (const pkgDir of pkgDirs) {
-				if (pkgDir === projectRoot) continue; // Already processed
-
-				const config = loadRawConfig(pkgDir);
-				if (config.databases) {
-					for (const [name, dbConfig] of Object.entries(config.databases)) {
-						if (seenNames.has(name)) {
-							// Skip duplicate names - current project takes precedence
-							continue;
-						}
-						if (dbConfig.schema) {
-							databases.push({
-								name,
-								dialect: dbConfig.dialect,
-								schemaPath: resolve(pkgDir, dbConfig.schema),
-								packageDir: pkgDir,
-							});
-							seenNames.add(name);
-						}
-					}
-				}
 			}
 		}
 	}
@@ -163,7 +91,7 @@ function sanitizeVarName(name: string): string {
 /**
  * Generate TypeScript declaration file with typed overloads for storage APIs.
  *
- * @param databases - Array of database info from discoverWorkspaceDatabases
+ * @param databases - Array of database info from discoverDatabases
  * @param directoryNames - Array of directory names from discoverDirectoryNames
  * @param outDir - Output directory where shovel.d.ts will be written
  * @returns Generated TypeScript declaration file content, or empty string if nothing to generate

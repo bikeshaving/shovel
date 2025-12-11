@@ -3,7 +3,7 @@ import {mkdirSync, writeFileSync} from "node:fs";
 import {join, isAbsolute} from "node:path";
 import {loadRawConfig, generateConfigModule} from "../utils/config.js";
 import {
-	discoverWorkspaceDatabases,
+	discoverDatabases,
 	discoverDirectoryNames,
 	generateStorageTypes,
 } from "../utils/database-types.js";
@@ -29,7 +29,7 @@ export function createConfigPlugin(
 	const configModuleCode = generateConfigModule(rawConfig);
 
 	// Generate storage types (for both develop and build)
-	const databases = discoverWorkspaceDatabases(projectRoot);
+	const databases = discoverDatabases(projectRoot);
 	const directoryNames = discoverDirectoryNames(projectRoot);
 
 	if (databases.length > 0 || directoryNames.length > 0) {
