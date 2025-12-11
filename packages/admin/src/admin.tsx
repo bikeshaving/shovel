@@ -297,7 +297,7 @@ export function createAdmin(config: AdminConfig): Router {
 					<ol class="usa-breadcrumb__list">
 						<li class="usa-breadcrumb__list-item">
 							<a href={basePath} class="usa-breadcrumb__link">
-								Dashboard
+								<span>Dashboard</span>
 							</a>
 						</li>
 						<li
@@ -414,12 +414,12 @@ export function createAdmin(config: AdminConfig): Router {
 					<ol class="usa-breadcrumb__list">
 						<li class="usa-breadcrumb__list-item">
 							<a href={basePath} class="usa-breadcrumb__link">
-								Dashboard
+								<span>Dashboard</span>
 							</a>
 						</li>
 						<li class="usa-breadcrumb__list-item">
 							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
-								{model.displayName}
+								<span>{model.displayName}</span>
 							</a>
 						</li>
 						<li
@@ -574,12 +574,12 @@ export function createAdmin(config: AdminConfig): Router {
 					<ol class="usa-breadcrumb__list">
 						<li class="usa-breadcrumb__list-item">
 							<a href={basePath} class="usa-breadcrumb__link">
-								Dashboard
+								<span>Dashboard</span>
 							</a>
 						</li>
 						<li class="usa-breadcrumb__list-item">
 							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
-								{model.displayName}
+								<span>{model.displayName}</span>
 							</a>
 						</li>
 						<li
@@ -690,12 +690,12 @@ export function createAdmin(config: AdminConfig): Router {
 					<ol class="usa-breadcrumb__list">
 						<li class="usa-breadcrumb__list-item">
 							<a href={basePath} class="usa-breadcrumb__link">
-								Dashboard
+								<span>Dashboard</span>
 							</a>
 						</li>
 						<li class="usa-breadcrumb__list-item">
 							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
-								{model.displayName}
+								<span>{model.displayName}</span>
 							</a>
 						</li>
 						<li class="usa-breadcrumb__list-item">
@@ -703,7 +703,7 @@ export function createAdmin(config: AdminConfig): Router {
 								href={`${basePath}/${modelName}/${id}`}
 								class="usa-breadcrumb__link"
 							>
-								#{id}
+								<span>#{id}</span>
 							</a>
 						</li>
 						<li
@@ -841,12 +841,12 @@ export function createAdmin(config: AdminConfig): Router {
 					<ol class="usa-breadcrumb__list">
 						<li class="usa-breadcrumb__list-item">
 							<a href={basePath} class="usa-breadcrumb__link">
-								Dashboard
+								<span>Dashboard</span>
 							</a>
 						</li>
 						<li class="usa-breadcrumb__list-item">
 							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
-								{model.displayName}
+								<span>{model.displayName}</span>
 							</a>
 						</li>
 						<li class="usa-breadcrumb__list-item">
@@ -854,7 +854,7 @@ export function createAdmin(config: AdminConfig): Router {
 								href={`${basePath}/${modelName}/${id}`}
 								class="usa-breadcrumb__link"
 							>
-								#{id}
+								<span>#{id}</span>
 							</a>
 						</li>
 						<li
