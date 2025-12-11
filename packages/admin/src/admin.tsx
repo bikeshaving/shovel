@@ -10,7 +10,7 @@ import {trailingSlash} from "@b9g/router/middleware";
 import {renderer} from "@b9g/crank/html";
 import type {Children} from "@b9g/crank";
 import {getTableName, isTable, type Table} from "drizzle-orm";
-import type {DrizzleInstance} from "@b9g/platform/runtime";
+import type {DrizzleDatabase} from "@b9g/platform/runtime";
 import type {AdminConfig, TableMetadata, ColumnMetadata} from "./types.js";
 import {
 	introspectSchema,
@@ -264,7 +264,7 @@ export function createAdmin(config: AdminConfig): Router {
 			// Get database and query records
 			const db = (await self.databases.open(
 				config.database,
-			)) as DrizzleInstance;
+			)) as DrizzleDatabase;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			);
@@ -495,7 +495,7 @@ export function createAdmin(config: AdminConfig): Router {
 			// Insert into database
 			const db = (await self.databases.open(
 				config.database,
-			)) as DrizzleInstance;
+			)) as DrizzleDatabase;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			);
@@ -534,7 +534,7 @@ export function createAdmin(config: AdminConfig): Router {
 			// Get database and query record
 			const db = (await self.databases.open(
 				config.database,
-			)) as DrizzleInstance;
+			)) as DrizzleDatabase;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;
@@ -642,7 +642,7 @@ export function createAdmin(config: AdminConfig): Router {
 			// Get database and query record
 			const db = (await self.databases.open(
 				config.database,
-			)) as DrizzleInstance;
+			)) as DrizzleDatabase;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;
@@ -794,7 +794,7 @@ export function createAdmin(config: AdminConfig): Router {
 			// Update in database
 			const db = (await self.databases.open(
 				config.database,
-			)) as DrizzleInstance;
+			)) as DrizzleDatabase;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;
@@ -917,7 +917,7 @@ export function createAdmin(config: AdminConfig): Router {
 			// Delete from database
 			const db = (await self.databases.open(
 				config.database,
-			)) as DrizzleInstance;
+			)) as DrizzleDatabase;
 			const table = Object.values(config.schema).find(
 				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
 			) as {[key: string]: unknown} | undefined;

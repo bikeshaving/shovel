@@ -384,14 +384,14 @@ export class CustomLoggerStorage implements LoggerStorage {
  * @example
  * ```typescript
  * // Dynamic (admin, libraries)
- * const db: DrizzleInstance = await self.databases.open(config.database);
+ * const db: DrizzleDatabase = await self.databases.open(config.database);
  *
  * // Typed (user code)
- * const db: DrizzleInstance<typeof schema> = await self.databases.open("main");
+ * const db: DrizzleDatabase<typeof schema> = await self.databases.open("main");
  * db.query.users  // typed!
  * ```
  */
-export interface DrizzleInstance<
+export interface DrizzleDatabase<
 	TSchema extends Record<string, unknown> = Record<string, unknown>,
 > {
 	query: {[K in keyof TSchema]: unknown};
@@ -400,7 +400,7 @@ export interface DrizzleInstance<
 	update: (...args: any[]) => any;
 	delete: (...args: any[]) => any;
 	transaction: <T>(
-		fn: (tx: DrizzleInstance<TSchema>) => Promise<T>,
+		fn: (tx: DrizzleDatabase<TSchema>) => Promise<T>,
 	) => Promise<T>;
 	[key: string]: unknown;
 }
@@ -436,7 +436,7 @@ export interface DatabaseConfig {
  * Result of creating a database instance
  */
 export interface DatabaseInstance {
-	instance: DrizzleInstance;
+	instance: DrizzleDatabase;
 	close: () => Promise<void>;
 }
 
@@ -452,7 +452,7 @@ export type DatabaseFactory = (
  * DatabaseStorage interface - provides access to named database instances
  */
 export interface DatabaseStorage {
-	open(name: string): Promise<DrizzleInstance>;
+	open(name: string): Promise<DrizzleDatabase>;
 	has(name: string): boolean;
 	keys(): string[];
 	close(name: string): Promise<void>;
@@ -479,7 +479,7 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 		this.#pending = new Map();
 	}
 
-	async open(name: string): Promise<DrizzleInstance> {
+	async open(name: string): Promise<DrizzleDatabase> {
 		const existing = this.#instances.get(name);
 		if (existing) {
 			return existing.instance;
@@ -2357,7 +2357,7 @@ export function createDatabaseFactory(): DatabaseFactory {
 		const instance = drizzleFn(
 			driverInstance,
 			drizzleOptions,
-		) as DrizzleInstance;
+		) as DrizzleDatabase;
 
 		// Create close function based on driver type
 		const close = async (): Promise<void> => {

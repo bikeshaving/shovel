@@ -6,7 +6,6 @@ import {
 	blob,
 	real,
 	primaryKey,
-	foreignKey,
 } from "drizzle-orm/sqlite-core";
 import {getTableConfig} from "drizzle-orm/sqlite-core";
 import {
