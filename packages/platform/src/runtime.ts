@@ -375,120 +375,95 @@ export class CustomLoggerStorage implements LoggerStorage {
 // Database Storage API
 // ============================================================================
 
-/**
- * Drizzle ORM instance interface for database operations.
- *
- * @typeParam TSchema - The schema type for typed `query` access. Defaults to
- * `Record<string, unknown>` for dynamic usage (e.g., admin panels).
- *
- * @example
- * ```typescript
- * // Dynamic (admin, libraries)
- * const db: DrizzleDatabase = await self.databases.open(config.database);
- *
- * // Typed (user code)
- * const db: DrizzleDatabase<typeof schema> = await self.databases.open("main");
- * db.query.users  // typed!
- * ```
- */
-export interface DrizzleDatabase<
-	TSchema extends Record<string, unknown> = Record<string, unknown>,
-> {
-	query: {[K in keyof TSchema]: unknown};
-	select: (...args: any[]) => any;
-	insert: (...args: any[]) => any;
-	update: (...args: any[]) => any;
-	delete: (...args: any[]) => any;
-	transaction: <T>(
-		fn: (tx: DrizzleDatabase<TSchema>) => Promise<T>,
-	) => Promise<T>;
-	[key: string]: unknown;
-}
+import {Database, type DatabaseAdapter, type SQLDialect} from "@b9g/database";
 
 /**
- * Supported database dialects
- */
-export type DatabaseDialect =
-	| "postgresql"
-	| "mysql"
-	| "sqlite"
-	| "bun-sqlite"
-	| "libsql"
-	| "d1";
-
-/**
- * Database configuration for a named database
+ * Database configuration for a named database.
+ * Uses @b9g/database adapters for driver creation.
  */
 export interface DatabaseConfig {
-	dialect: DatabaseDialect;
-	driver: {
+	/** Adapter configuration (from build-time import) */
+	adapter: {
 		module: string;
-		export?: string;
-		factory?: unknown; // Pre-imported driver class/factory
+		createDriver: (url: string, options?: Record<string, unknown>) => DatabaseAdapter;
+		dialect: SQLDialect;
 	};
+	/** Database connection URL */
 	url: string;
-	schema?: string | Record<string, unknown>; // Path or pre-imported schema
-	migrations?: string;
+	/** Additional adapter-specific options */
 	[key: string]: unknown;
 }
 
 /**
- * Result of creating a database instance
+ * Internal instance tracking for cleanup
  */
-export interface DatabaseInstance {
-	instance: DrizzleDatabase;
+interface DatabaseInstance {
+	database: Database;
 	close: () => Promise<void>;
 }
 
 /**
- * Factory function for creating database instances
- */
-export type DatabaseFactory = (
-	name: string,
-	config: DatabaseConfig,
-) => Promise<DatabaseInstance>;
-
-/**
- * DatabaseStorage interface - provides access to named database instances
+ * DatabaseStorage interface - provides access to named database instances.
+ *
+ * @example
+ * ```typescript
+ * // Get an unopened database
+ * const db = self.databases.get("main");
+ *
+ * // Register migration handler
+ * db.addEventListener("upgradeneeded", (e) => {
+ *   e.waitUntil(runMigrations(e));
+ * });
+ *
+ * // Open at specific version (fires upgradeneeded if needed)
+ * await db.open(2);
+ *
+ * // Now use the database
+ * const users = await db.all(User)`WHERE active = ${true}`;
+ * ```
  */
 export interface DatabaseStorage {
-	open(name: string): Promise<DrizzleDatabase>;
+	/** Get an unopened database instance by name */
+	get(name: string): Database;
+	/** Check if a database has been opened */
 	has(name: string): boolean;
+	/** List opened database names */
 	keys(): string[];
+	/** List configured database names */
+	configuredKeys(): string[];
+	/** Close a specific database */
 	close(name: string): Promise<void>;
+	/** Close all databases */
 	closeAll(): Promise<void>;
 }
 
 /**
- * CustomDatabaseStorage implements DatabaseStorage with a configurable factory
+ * CustomDatabaseStorage implements DatabaseStorage with @b9g/database adapters.
  */
 export class CustomDatabaseStorage implements DatabaseStorage {
 	#instances: Map<string, DatabaseInstance>;
-	#factory: DatabaseFactory;
+	#databases: Map<string, Database>;
 	#configs: Map<string, DatabaseConfig>;
-	#pending: Map<string, Promise<DatabaseInstance>>;
 
 	constructor(
-		factory: DatabaseFactory,
 		configs: Map<string, DatabaseConfig> | Record<string, DatabaseConfig>,
 	) {
 		this.#instances = new Map();
-		this.#factory = factory;
+		this.#databases = new Map();
 		this.#configs =
 			configs instanceof Map ? configs : new Map(Object.entries(configs));
-		this.#pending = new Map();
 	}
 
-	async open(name: string): Promise<DrizzleDatabase> {
-		const existing = this.#instances.get(name);
+	/**
+	 * Get an unopened database instance by name.
+	 * Creates the adapter but doesn't call open() - user must do that after
+	 * registering event listeners.
+	 */
+	get(name: string): Database {
+		// Return cached database if already created
+		const existing = this.#databases.get(name);
 		if (existing) {
-			return existing.instance;
-		}
-
-		const pending = this.#pending.get(name);
-		if (pending) {
-			const result = await pending;
-			return result.instance;
+			return existing;
 		}
 
 		const config = this.#configs.get(name);
@@ -502,16 +477,17 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 			);
 		}
 
-		const promise = this.#factory(name, config);
-		this.#pending.set(name, promise);
+		// Create the adapter
+		const {driver, close} = config.adapter.createDriver(config.url, config);
 
-		try {
-			const dbInstance = await promise;
-			this.#instances.set(name, dbInstance);
-			return dbInstance.instance;
-		} finally {
-			this.#pending.delete(name);
-		}
+		// Create the Database instance (unopened)
+		const database = new Database(driver, {dialect: config.adapter.dialect});
+
+		// Track for cleanup
+		this.#databases.set(name, database);
+		this.#instances.set(name, {database, close});
+
+		return database;
 	}
 
 	has(name: string): boolean {
@@ -531,6 +507,7 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 		if (instance) {
 			await instance.close();
 			this.#instances.delete(name);
+			this.#databases.delete(name);
 		}
 	}
 
@@ -540,39 +517,14 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 			closePromises.push(
 				instance.close().then(() => {
 					this.#instances.delete(name);
+					this.#databases.delete(name);
 				}),
 			);
 		}
 		await Promise.allSettled(closePromises);
 		this.#instances.clear();
+		this.#databases.clear();
 	}
-}
-
-/**
- * Maps database dialects to their Drizzle ORM adapter modules
- */
-export const DIALECT_ADAPTERS: Record<
-	DatabaseDialect,
-	{module: string; export: string}
-> = {
-	postgresql: {module: "drizzle-orm/postgres-js", export: "drizzle"},
-	mysql: {module: "drizzle-orm/mysql2", export: "drizzle"},
-	sqlite: {module: "drizzle-orm/better-sqlite3", export: "drizzle"},
-	"bun-sqlite": {module: "drizzle-orm/bun-sqlite", export: "drizzle"},
-	libsql: {module: "drizzle-orm/libsql", export: "drizzle"},
-	d1: {module: "drizzle-orm/d1", export: "drizzle"},
-};
-
-/**
- * Check if a value is a class (constructor function)
- */
-function isDriverClass(value: unknown): value is new (...args: any[]) => any {
-	if (typeof value !== "function") return false;
-	const proto = value.prototype;
-	if (proto === undefined) return false;
-	if (proto.constructor !== value) return false;
-	const str = value.toString();
-	return str.startsWith("class ") || str.includes("[native code]");
 }
 
 // ============================================================================
@@ -2296,84 +2248,6 @@ export function createCacheFactory(options: CacheFactoryOptions = {}) {
 }
 
 // ============================================================================
-// Database Factory
-// ============================================================================
-
-/**
- * Creates a database factory function for CustomDatabaseStorage.
- *
- * Uses pre-imported driver and schema from build-time code generation.
- * Dynamically imports Drizzle adapter based on dialect.
- */
-export function createDatabaseFactory(): DatabaseFactory {
-	return async (
-		name: string,
-		config: DatabaseConfig,
-	): Promise<DatabaseInstance> => {
-		const {dialect, driver, url, schema} = config;
-
-		// Get the Drizzle adapter for this dialect
-		const adapter = DIALECT_ADAPTERS[dialect];
-		if (!adapter) {
-			throw new Error(
-				`Unknown database dialect: ${dialect}. ` +
-					`Supported: ${Object.keys(DIALECT_ADAPTERS).join(", ")}`,
-			);
-		}
-
-		// Get driver factory (pre-imported at build time)
-		const driverFactory = driver.factory;
-		if (!driverFactory) {
-			throw new Error(
-				`Database "${name}": driver.factory not provided. ` +
-					`Ensure the database is configured in shovel.json and the build includes the driver import.`,
-			);
-		}
-
-		// Create driver instance
-		let driverInstance: unknown;
-		if (isDriverClass(driverFactory)) {
-			driverInstance = new driverFactory(url);
-		} else if (typeof driverFactory === "function") {
-			driverInstance = (driverFactory as Function)(url);
-		} else {
-			throw new Error(
-				`Database "${name}": driver must be a class or factory function.`,
-			);
-		}
-
-		// Dynamic import of Drizzle adapter
-		const adapterModule = await import(adapter.module);
-		const drizzleFn = adapterModule[adapter.export];
-
-		if (typeof drizzleFn !== "function") {
-			throw new Error(
-				`Could not find "${adapter.export}" export in "${adapter.module}"`,
-			);
-		}
-
-		// Create Drizzle instance with schema if provided
-		const drizzleOptions = typeof schema === "object" ? {schema} : {};
-		const instance = drizzleFn(
-			driverInstance,
-			drizzleOptions,
-		) as DrizzleDatabase;
-
-		// Create close function based on driver type
-		const close = async (): Promise<void> => {
-			// Most drivers have an end() or close() method
-			if (typeof (driverInstance as any).end === "function") {
-				await (driverInstance as any).end();
-			} else if (typeof (driverInstance as any).close === "function") {
-				await (driverInstance as any).close();
-			}
-		};
-
-		return {instance, close};
-	};
-}
-
-// ============================================================================
 // Worker Runtime API
 // ============================================================================
 
@@ -2487,10 +2361,7 @@ export async function initWorkerRuntime(
 	// Create database storage if configured
 	let databases: CustomDatabaseStorage | undefined;
 	if (config?.databases && Object.keys(config.databases).length > 0) {
-		databases = new CustomDatabaseStorage(
-			createDatabaseFactory(),
-			config.databases,
-		);
+		databases = new CustomDatabaseStorage(config.databases);
 	}
 
 	// Create logger storage

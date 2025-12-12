@@ -43,6 +43,15 @@ export interface DatabaseDriver {
 	val<T = unknown>(sql: string, params: unknown[]): Promise<T>;
 }
 
+/**
+ * Result of creating a database adapter.
+ * Includes the driver and a close function for cleanup.
+ */
+export interface DatabaseAdapter {
+	driver: DatabaseDriver;
+	close(): Promise<void>;
+}
+
 // ============================================================================
 // Database Upgrade Event
 // ============================================================================

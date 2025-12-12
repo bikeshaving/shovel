@@ -69,6 +69,7 @@ export {
 	Database,
 	DatabaseUpgradeEvent,
 	createDatabase,
+	type DatabaseAdapter,
 	type DatabaseDriver,
 	type DatabaseOptions,
 	type TaggedQuery,

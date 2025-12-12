@@ -2,11 +2,9 @@ import {test, expect, describe, afterEach} from "bun:test";
 import {
 	createCacheFactory,
 	createDirectoryFactory,
-	createDatabaseFactory,
 	configureLogging,
 	CustomLoggerStorage,
 	CustomDatabaseStorage,
-	DIALECT_ADAPTERS,
 	type DatabaseConfig,
 } from "../src/runtime.js";
 import {getLogger, reset as resetLogtape} from "@logtape/logtape";
@@ -601,59 +599,32 @@ describe("CustomLoggerStorage", () => {
 	});
 });
 
-describe("DIALECT_ADAPTERS", () => {
-	test("has adapters for all supported dialects", () => {
-		expect(DIALECT_ADAPTERS.postgresql).toEqual({
-			module: "drizzle-orm/postgres-js",
-			export: "drizzle",
-		});
-		expect(DIALECT_ADAPTERS.mysql).toEqual({
-			module: "drizzle-orm/mysql2",
-			export: "drizzle",
-		});
-		expect(DIALECT_ADAPTERS.sqlite).toEqual({
-			module: "drizzle-orm/better-sqlite3",
-			export: "drizzle",
-		});
-		expect(DIALECT_ADAPTERS["bun-sqlite"]).toEqual({
-			module: "drizzle-orm/bun-sqlite",
-			export: "drizzle",
-		});
-		expect(DIALECT_ADAPTERS.libsql).toEqual({
-			module: "drizzle-orm/libsql",
-			export: "drizzle",
-		});
-		expect(DIALECT_ADAPTERS.d1).toEqual({
-			module: "drizzle-orm/d1",
-			export: "drizzle",
-		});
-	});
-});
 
 describe("CustomDatabaseStorage", () => {
+	// Helper to create a mock adapter
+	const createMockAdapter = (closeFn?: () => void) => ({
+		module: "@b9g/database/bun-sqlite",
+		createDriver: () => ({
+			driver: {
+				all: async () => [],
+				get: async () => undefined,
+				run: async () => ({changes: 0, lastInsertRowid: 0}),
+				val: async () => undefined,
+			},
+			close: async () => closeFn?.(),
+		}),
+		dialect: "sqlite" as const,
+	});
+
 	test("constructor accepts configs as Record", () => {
 		const configs: Record<string, DatabaseConfig> = {
 			main: {
-				dialect: "sqlite",
-				driver: {module: "better-sqlite3", factory: () => ({})},
+				adapter: createMockAdapter(),
 				url: ":memory:",
 			},
 		};
 
-		// Mock factory that returns a fake instance
-		const factory = async () => ({
-			instance: {
-				query: {},
-				select: () => {},
-				insert: () => {},
-				update: () => {},
-				delete: () => {},
-				transaction: async () => {},
-			} as any,
-			close: async () => {},
-		});
-
-		const storage = new CustomDatabaseStorage(factory, configs);
+		const storage = new CustomDatabaseStorage(configs);
 		expect(storage).toBeDefined();
 		expect(storage.configuredKeys()).toEqual(["main"]);
 	});
@@ -663,147 +634,96 @@ describe("CustomDatabaseStorage", () => {
 			[
 				"main",
 				{
-					dialect: "sqlite",
-					driver: {module: "better-sqlite3", factory: () => ({})},
+					adapter: createMockAdapter(),
 					url: ":memory:",
 				},
 			],
 		]);
 
-		const factory = async () => ({
-			instance: {
-				query: {},
-				select: () => {},
-				insert: () => {},
-				update: () => {},
-				delete: () => {},
-				transaction: async () => {},
-			} as any,
-			close: async () => {},
-		});
-
-		const storage = new CustomDatabaseStorage(factory, configs);
+		const storage = new CustomDatabaseStorage(configs);
 		expect(storage.configuredKeys()).toEqual(["main"]);
 	});
 
-	test("open() calls factory and caches result", async () => {
-		let factoryCalls = 0;
-		const mockInstance = {
-			query: {},
-			select: () => {},
-			insert: () => {},
-			update: () => {},
-			delete: () => {},
-			transaction: async () => {},
-		} as any;
-
-		const factory = async () => {
-			factoryCalls++;
-			return {instance: mockInstance, close: async () => {}};
+	test("get() creates Database and caches it", () => {
+		let createCalls = 0;
+		const adapter = {
+			module: "@b9g/database/bun-sqlite",
+			createDriver: () => {
+				createCalls++;
+				return {
+					driver: {
+						all: async () => [],
+						get: async () => undefined,
+						run: async () => ({changes: 0, lastInsertRowid: 0}),
+						val: async () => undefined,
+					},
+					close: async () => {},
+				};
+			},
+			dialect: "sqlite" as const,
 		};
 
-		const storage = new CustomDatabaseStorage(factory, {
-			main: {
-				dialect: "sqlite",
-				driver: {module: "better-sqlite3", factory: () => ({})},
-				url: ":memory:",
-			},
+		const storage = new CustomDatabaseStorage({
+			main: {adapter, url: ":memory:"},
 		});
 
 		// First call creates instance
-		const db1 = await storage.open("main");
-		expect(db1).toBe(mockInstance);
-		expect(factoryCalls).toBe(1);
+		const db1 = storage.get("main");
+		expect(db1).toBeDefined();
+		expect(createCalls).toBe(1);
 
 		// Second call returns cached instance
-		const db2 = await storage.open("main");
-		expect(db2).toBe(mockInstance);
-		expect(factoryCalls).toBe(1); // Still 1 - no new factory call
+		const db2 = storage.get("main");
+		expect(db2).toBe(db1);
+		expect(createCalls).toBe(1); // Still 1 - no new createDriver call
 	});
 
-	test("open() throws for unconfigured database", async () => {
-		const factory = async () => ({
-			instance: {} as any,
-			close: async () => {},
+	test("get() throws for unconfigured database", () => {
+		const storage = new CustomDatabaseStorage({
+			main: {adapter: createMockAdapter(), url: ":memory:"},
 		});
 
-		const storage = new CustomDatabaseStorage(factory, {
-			main: {
-				dialect: "sqlite",
-				driver: {module: "better-sqlite3", factory: () => ({})},
-				url: ":memory:",
-			},
-		});
-
-		await expect(storage.open("unknown")).rejects.toThrow(
+		expect(() => storage.get("unknown")).toThrow(
 			'Database "unknown" is not configured',
 		);
 	});
 
-	test("has() returns true for opened databases", async () => {
-		const factory = async () => ({
-			instance: {query: {}} as any,
-			close: async () => {},
-		});
-
-		const storage = new CustomDatabaseStorage(factory, {
-			main: {
-				dialect: "sqlite",
-				driver: {module: "better-sqlite3", factory: () => ({})},
-				url: ":memory:",
-			},
+	test("has() returns true for gotten databases", () => {
+		const storage = new CustomDatabaseStorage({
+			main: {adapter: createMockAdapter(), url: ":memory:"},
 		});
 
 		expect(storage.has("main")).toBe(false);
-		await storage.open("main");
+		storage.get("main");
 		expect(storage.has("main")).toBe(true);
 	});
 
-	test("keys() returns opened database names", async () => {
-		const factory = async () => ({
-			instance: {query: {}} as any,
-			close: async () => {},
-		});
-
-		const storage = new CustomDatabaseStorage(factory, {
-			main: {
-				dialect: "sqlite",
-				driver: {module: "better-sqlite3", factory: () => ({})},
-				url: ":memory:",
-			},
-			secondary: {
-				dialect: "sqlite",
-				driver: {module: "better-sqlite3", factory: () => ({})},
-				url: ":memory:",
-			},
+	test("keys() returns gotten database names", () => {
+		const storage = new CustomDatabaseStorage({
+			main: {adapter: createMockAdapter(), url: ":memory:"},
+			secondary: {adapter: createMockAdapter(), url: ":memory:"},
 		});
 
 		expect(storage.keys()).toEqual([]);
-		await storage.open("main");
+		storage.get("main");
 		expect(storage.keys()).toEqual(["main"]);
-		await storage.open("secondary");
+		storage.get("secondary");
 		expect(storage.keys()).toContain("main");
 		expect(storage.keys()).toContain("secondary");
 	});
 
 	test("close() removes database from cache", async () => {
 		let closeCalled = false;
-		const factory = async () => ({
-			instance: {query: {}} as any,
-			close: async () => {
-				closeCalled = true;
-			},
-		});
-
-		const storage = new CustomDatabaseStorage(factory, {
+		const storage = new CustomDatabaseStorage({
 			main: {
-				dialect: "sqlite",
-				driver: {module: "better-sqlite3", factory: () => ({})},
+				adapter: createMockAdapter(() => {
+					closeCalled = true;
+				}),
 				url: ":memory:",
 			},
 		});
 
-		await storage.open("main");
+		storage.get("main");
 		expect(storage.has("main")).toBe(true);
 
 		await storage.close("main");
@@ -811,30 +731,31 @@ describe("CustomDatabaseStorage", () => {
 		expect(storage.has("main")).toBe(false);
 	});
 
-	test("closeAll() closes all opened databases", async () => {
+	test("closeAll() closes all gotten databases", async () => {
 		let closeCount = 0;
-		const factory = async () => ({
-			instance: {query: {}} as any,
-			close: async () => {
-				closeCount++;
-			},
+		const adapter = {
+			module: "@b9g/database/bun-sqlite",
+			createDriver: () => ({
+				driver: {
+					all: async () => [],
+					get: async () => undefined,
+					run: async () => ({changes: 0, lastInsertRowid: 0}),
+					val: async () => undefined,
+				},
+				close: async () => {
+					closeCount++;
+				},
+			}),
+			dialect: "sqlite" as const,
+		};
+
+		const storage = new CustomDatabaseStorage({
+			main: {adapter, url: ":memory:"},
+			secondary: {adapter, url: ":memory:"},
 		});
 
-		const storage = new CustomDatabaseStorage(factory, {
-			main: {
-				dialect: "sqlite",
-				driver: {module: "better-sqlite3", factory: () => ({})},
-				url: ":memory:",
-			},
-			secondary: {
-				dialect: "sqlite",
-				driver: {module: "better-sqlite3", factory: () => ({})},
-				url: ":memory:",
-			},
-		});
-
-		await storage.open("main");
-		await storage.open("secondary");
+		storage.get("main");
+		storage.get("secondary");
 		expect(storage.keys().length).toBe(2);
 
 		await storage.closeAll();
@@ -842,75 +763,39 @@ describe("CustomDatabaseStorage", () => {
 		expect(storage.keys().length).toBe(0);
 	});
 
-	test("concurrent open() calls deduplicate", async () => {
-		let factoryCalls = 0;
-		const factory = async () => {
-			factoryCalls++;
-			// Simulate async work
-			await new Promise((r) => setTimeout(r, 10));
-			return {
-				instance: {query: {}} as any,
-				close: async () => {},
-			};
+	test("get() returns same instance on concurrent calls", () => {
+		let createCalls = 0;
+		const adapter = {
+			module: "@b9g/database/bun-sqlite",
+			createDriver: () => {
+				createCalls++;
+				return {
+					driver: {
+						all: async () => [],
+						get: async () => undefined,
+						run: async () => ({changes: 0, lastInsertRowid: 0}),
+						val: async () => undefined,
+					},
+					close: async () => {},
+				};
+			},
+			dialect: "sqlite" as const,
 		};
 
-		const storage = new CustomDatabaseStorage(factory, {
-			main: {
-				dialect: "sqlite",
-				driver: {module: "better-sqlite3", factory: () => ({})},
-				url: ":memory:",
-			},
+		const storage = new CustomDatabaseStorage({
+			main: {adapter, url: ":memory:"},
 		});
 
-		// Start multiple concurrent opens
-		const [db1, db2, db3] = await Promise.all([
-			storage.open("main"),
-			storage.open("main"),
-			storage.open("main"),
-		]);
+		// Multiple get calls return the same instance
+		const db1 = storage.get("main");
+		const db2 = storage.get("main");
+		const db3 = storage.get("main");
 
 		// All should return the same instance
 		expect(db1).toBe(db2);
 		expect(db2).toBe(db3);
 		// Factory should only be called once
-		expect(factoryCalls).toBe(1);
+		expect(createCalls).toBe(1);
 	});
 });
 
-describe("createDatabaseFactory", () => {
-	test("throws error for unknown dialect", async () => {
-		const factory = createDatabaseFactory();
-
-		await expect(
-			factory("main", {
-				dialect: "unknown" as any,
-				driver: {module: "some-driver", factory: () => ({})},
-				url: "test://localhost",
-			}),
-		).rejects.toThrow("Unknown database dialect: unknown");
-	});
-
-	test("throws error when driver.factory is missing", async () => {
-		const factory = createDatabaseFactory();
-
-		await expect(
-			factory("main", {
-				dialect: "postgresql",
-				driver: {module: "postgres"}, // No factory
-				url: "postgres://localhost",
-			}),
-		).rejects.toThrow("driver.factory not provided");
-	});
-
-	test("throws error when driver is not a function", async () => {
-		const factory = createDatabaseFactory();
-
-		await expect(
-			factory("main", {
-				dialect: "postgresql",
-				driver: {module: "postgres", factory: "not-a-function"},
-				url: "postgres://localhost",
-			}),
-		).rejects.toThrow("driver must be a class or factory function");
-	});
-});

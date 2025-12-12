@@ -1,0 +1,51 @@
+{
+  "name": "@b9g/database-mysql",
+  "version": "0.1.0",
+  "description": "mysql2 adapter for @b9g/database",
+  "type": "module",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "libuild --save",
+    "test": "echo \"Test suite to be implemented\"",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
+  },
+  "keywords": [
+    "database",
+    "mysql",
+    "mysql2",
+    "shovel"
+  ],
+  "author": "Shovel Team",
+  "license": "MIT",
+  "peerDependencies": {
+    "@b9g/database": "workspace:*",
+    "mysql2": "^3.0.0"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/b9g/shovel.git",
+    "directory": "packages/database-mysql"
+  },
+  "module": "./dist/src/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./package.json": "./dist/package.json",
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  }
+}

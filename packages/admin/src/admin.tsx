@@ -257,7 +257,17 @@ export function createAdmin(config: AdminConfig): Router {
 
 		const basePath = getBasePath(req.url, `/${modelName}`);
 
+		// Parse pagination params
+		const url = new URL(req.url);
+		const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+		const limit = Math.min(
+			100,
+			Math.max(1, parseInt(url.searchParams.get("limit") || "25", 10)),
+		);
+		const offset = (page - 1) * limit;
+
 		let records: Record<string, unknown>[] = [];
+		let totalCount = 0;
 		let dbError: unknown = null;
 
 		try {
@@ -270,11 +280,25 @@ export function createAdmin(config: AdminConfig): Router {
 			);
 
 			if (table) {
-				records = await (db as any).select().from(table);
+				const {count} = await import("drizzle-orm");
+				// Get total count
+				const countResult = await (db as any)
+					.select({count: count()})
+					.from(table);
+				totalCount = Number(countResult[0]?.count ?? 0);
+
+				// Get paginated records
+				records = await (db as any)
+					.select()
+					.from(table)
+					.limit(limit)
+					.offset(offset);
 			}
 		} catch (err) {
 			dbError = err;
 		}
+
+		const totalPages = Math.ceil(totalCount / limit);
 
 		// Determine which columns to display
 		const modelConfig = config.models?.[modelName];
@@ -328,6 +352,7 @@ export function createAdmin(config: AdminConfig): Router {
 				)}
 
 				{!dbError && records.length > 0 ? (
+					<>
 					<table class="usa-table usa-table--striped">
 						<thead>
 							<tr>
@@ -365,6 +390,41 @@ export function createAdmin(config: AdminConfig): Router {
 							})}
 						</tbody>
 					</table>
+
+					{/* Pagination */}
+					<nav aria-label="Pagination" class="usa-pagination margin-top-2">
+						<span class="usa-pagination__text margin-right-2">
+							{totalCount} {totalCount === 1 ? "record" : "records"}
+							{totalPages > 1 && ` · Page ${page} of ${totalPages}`}
+						</span>
+						{totalPages > 1 && (
+							<ul class="usa-pagination__list">
+								{page > 1 && (
+									<li class="usa-pagination__item usa-pagination__arrow">
+										<a
+											href={`${basePath}/${modelName}?page=${page - 1}&limit=${limit}`}
+											class="usa-pagination__link usa-pagination__previous-page"
+											aria-label="Previous page"
+										>
+											<span class="usa-pagination__link-text">Previous</span>
+										</a>
+									</li>
+								)}
+								{page < totalPages && (
+									<li class="usa-pagination__item usa-pagination__arrow">
+										<a
+											href={`${basePath}/${modelName}?page=${page + 1}&limit=${limit}`}
+											class="usa-pagination__link usa-pagination__next-page"
+											aria-label="Next page"
+										>
+											<span class="usa-pagination__link-text">Next</span>
+										</a>
+									</li>
+								)}
+							</ul>
+						)}
+					</nav>
+					</>
 				) : (
 					!dbError && (
 						<div class="admin-empty">
@@ -1065,24 +1125,6 @@ function renderFormField(
 			);
 
 		default:
-			// Check if it's likely a long text field
-			if (
-				col.sqlType.toLowerCase().includes("text") &&
-				!col.sqlType.toLowerCase().includes("varchar")
-			) {
-				return (
-					<textarea
-						class="usa-textarea"
-						name={col.name}
-						id={col.name}
-						required={col.notNull && !col.hasDefault}
-						{...disabled}
-					>
-						{strValue}
-					</textarea>
-				);
-			}
-
 			return (
 				<input
 					class="usa-input"

@@ -1045,41 +1045,25 @@ export function generateConfigModule(
 			config.directories = rawConfig.directories;
 		}
 
-		// Databases
+		// Databases - using @b9g/database adapters
 		if (rawConfig.databases && Object.keys(rawConfig.databases).length > 0) {
 			const databases: Record<string, unknown> = {};
 			for (const [name, cfg] of Object.entries(rawConfig.databases)) {
 				const dbConfig: Record<string, unknown> = {...cfg};
 
-				// Import driver module
-				if (cfg.driver?.module) {
-					const driverVarName = `db_driver_${sanitizeVarName(name)}`;
-					const exportName = cfg.driver.export || "default";
-
-					if (exportName === "default") {
-						imports.push(
-							`import ${driverVarName} from ${JSON.stringify(cfg.driver.module)};`,
-						);
-					} else {
-						imports.push(
-							`import { ${exportName} as ${driverVarName} } from ${JSON.stringify(cfg.driver.module)};`,
-						);
-					}
-
-					// Replace driver config with placeholder
-					dbConfig.driver = {
-						...cfg.driver,
-						factory: createPlaceholder(driverVarName),
-					};
-				}
-
-				// Import schema module
-				if (cfg.schema) {
-					const schemaVarName = `db_schema_${sanitizeVarName(name)}`;
+				// Import adapter module (exports createDriver and dialect)
+				if (cfg.adapter) {
+					const adapterVarName = `db_adapter_${sanitizeVarName(name)}`;
 					imports.push(
-						`import * as ${schemaVarName} from ${JSON.stringify(cfg.schema)};`,
+						`import * as ${adapterVarName} from ${JSON.stringify(cfg.adapter)};`,
 					);
-					dbConfig.schema = createPlaceholder(schemaVarName);
+
+					// Replace adapter with object containing createDriver and dialect
+					dbConfig.adapter = {
+						module: cfg.adapter,
+						createDriver: createPlaceholder(`${adapterVarName}.createDriver`),
+						dialect: createPlaceholder(`${adapterVarName}.dialect`),
+					};
 				}
 
 				databases[name] = dbConfig;
@@ -1194,36 +1178,15 @@ export const DirectoryConfigSchema = z
 
 export type DirectoryConfig = z.infer<typeof DirectoryConfigSchema>;
 
-/** Database dialect */
-export const DatabaseDialectSchema = z.enum([
-	"postgresql",
-	"mysql",
-	"sqlite",
-	"bun-sqlite",
-	"libsql",
-	"d1",
-]);
-
-export type DatabaseDialect = z.infer<typeof DatabaseDialectSchema>;
-
-/** Database driver configuration */
-const DatabaseDriverSchema = z
-	.object({
-		module: z.string(),
-		export: z.string().optional(),
-	})
-	.strict();
-
-/** Database configuration schema - allows extra driver-specific options */
+/** Database configuration schema - uses @b9g/database adapters */
 export const DatabaseConfigSchema = z
 	.object({
-		dialect: DatabaseDialectSchema,
-		driver: DatabaseDriverSchema.optional(),
+		/** Adapter module (e.g., "@b9g/database/bun-sqlite", "@b9g/database-postgres") */
+		adapter: z.string(),
+		/** Database connection URL */
 		url: z.string(),
-		schema: z.string(),
-		migrations: z.string().optional(),
 	})
-	.passthrough(); // Allow additional driver-specific options
+	.passthrough(); // Allow additional adapter-specific options
 
 export type DatabaseConfig = z.infer<typeof DatabaseConfigSchema>;
 

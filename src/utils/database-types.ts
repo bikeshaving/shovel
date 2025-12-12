@@ -2,30 +2,13 @@
  * Storage type generation utilities.
  *
  * Generates TypeScript declaration files with typed overloads for:
- * - DatabaseStorage.open() - returns typed Drizzle instances
+ * - DatabaseStorage.get() - validates database names at compile time
  * - DirectoryStorage.open() - validates directory names at compile time
  *
  * Based on configurations in shovel.json.
  */
 
-import {resolve, relative} from "path";
-import type {DatabaseDialect} from "./config.js";
 import {loadRawConfig} from "./config.js";
-
-/**
- * Mapping from shovel.json dialect to Drizzle ORM type information.
- */
-const DIALECT_TYPE_MAP: Record<
-	DatabaseDialect,
-	{type: string; import: string}
-> = {
-	"bun-sqlite": {type: "BunSQLiteDatabase", import: "drizzle-orm/bun-sqlite"},
-	sqlite: {type: "BaseSQLiteDatabase", import: "drizzle-orm/sqlite-core"},
-	postgresql: {type: "PgDatabase", import: "drizzle-orm/pg-core"},
-	mysql: {type: "MySqlDatabase", import: "drizzle-orm/mysql-core"},
-	libsql: {type: "LibSQLDatabase", import: "drizzle-orm/libsql"},
-	d1: {type: "DrizzleD1Database", import: "drizzle-orm/d1"},
-};
 
 /**
  * Information about a database discovered from shovel.json.
@@ -33,12 +16,8 @@ const DIALECT_TYPE_MAP: Record<
 export interface DatabaseInfo {
 	/** Database name from shovel.json */
 	name: string;
-	/** Database dialect */
-	dialect: DatabaseDialect;
-	/** Absolute path to schema file */
-	schemaPath: string;
-	/** Package directory containing the shovel.json */
-	packageDir: string;
+	/** Adapter module path */
+	adapter: string;
 }
 
 /**
@@ -53,14 +32,10 @@ export function discoverDatabases(projectRoot: string): DatabaseInfo[] {
 
 	if (config.databases) {
 		for (const [name, dbConfig] of Object.entries(config.databases)) {
-			if (dbConfig.schema) {
-				databases.push({
-					name,
-					dialect: dbConfig.dialect,
-					schemaPath: resolve(projectRoot, dbConfig.schema),
-					packageDir: projectRoot,
-				});
-			}
+			databases.push({
+				name,
+				adapter: dbConfig.adapter,
+			});
 		}
 	}
 
@@ -82,13 +57,6 @@ export function discoverDirectoryNames(projectRoot: string): string[] {
 }
 
 /**
- * Sanitize a name to be a valid TypeScript variable name.
- */
-function sanitizeVarName(name: string): string {
-	return name.replace(/[^a-zA-Z0-9_]/g, "_");
-}
-
-/**
  * Generate TypeScript declaration file with typed overloads for storage APIs.
  *
  * @param databases - Array of database info from discoverDatabases
@@ -106,48 +74,31 @@ export function generateStorageTypes(
 	}
 
 	const imports: string[] = [];
-	const databaseOverloads: string[] = [];
-	const seenDialectImports = new Set<string>();
+	const sections: string[] = [];
 
-	// Generate database overloads
-	for (const db of databases) {
-		const dialectInfo = DIALECT_TYPE_MAP[db.dialect];
-		if (!dialectInfo) continue;
+	// Generate database type (union of valid names)
+	if (databases.length > 0) {
+		imports.push(`import type {Database} from "@b9g/database";`);
 
-		// Import Drizzle type (dedupe by import path)
-		if (!seenDialectImports.has(dialectInfo.import)) {
-			imports.push(
-				`import type {${dialectInfo.type}} from "${dialectInfo.import}";`,
-			);
-			seenDialectImports.add(dialectInfo.import);
-		}
+		const dbUnion = databases.map((db) => `"${db.name}"`).join(" | ");
+		sections.push(`  /**
+   * Valid database names from shovel.json.
+   * Using an invalid name will cause a TypeScript error.
+   */
+  type ValidDatabaseName = ${dbUnion};
 
-		// Import schema - use relative path from outDir
-		const schemaVarName = `schema_${sanitizeVarName(db.name)}`;
-		let relativeSchemaPath = relative(outDir, db.schemaPath).replace(
-			/\.ts$/,
-			"",
-		);
-		// Ensure relative path starts with ./ or ../
-		if (!relativeSchemaPath.startsWith(".")) {
-			relativeSchemaPath = "./" + relativeSchemaPath;
-		}
-		imports.push(
-			`import type * as ${schemaVarName} from "${relativeSchemaPath}";`,
-		);
-
-		// Generate overload
-		databaseOverloads.push(
-			`    open(name: "${db.name}"): Promise<${dialectInfo.type}<typeof ${schemaVarName}>>;`,
-		);
+  interface DatabaseStorage {
+    /** Get an unopened database instance by name */
+    get(name: ValidDatabaseName): Database;
+    /** Check if a database has been opened */
+    has(name: ValidDatabaseName): boolean;
+  }`);
 	}
 
 	// Generate directory type (union of valid names)
-	let directorySection = "";
 	if (directoryNames.length > 0) {
 		const dirUnion = directoryNames.map((n) => `"${n}"`).join(" | ");
-		directorySection = `
-  /**
+		sections.push(`  /**
    * Valid directory names from shovel.json.
    * Using an invalid name will cause a TypeScript error.
    */
@@ -156,29 +107,15 @@ export function generateStorageTypes(
   interface DirectoryStorage {
     open(name: ValidDirectoryName): Promise<FileSystemDirectoryHandle>;
     has(name: ValidDirectoryName): Promise<boolean>;
-  }
-`;
-	}
-
-	// Build the final declaration
-	const sections: string[] = [];
-
-	if (databaseOverloads.length > 0) {
-		sections.push(`  interface DatabaseStorage {
-${databaseOverloads.join("\n")}
   }`);
 	}
 
-	if (directorySection) {
-		sections.push(directorySection);
-	}
-
 	return `// Generated by Shovel - DO NOT EDIT
-// This file provides typed overloads for self.databases.open() and self.directories.open()
+// This file provides typed overloads for self.databases.get() and self.directories.open()
 ${imports.join("\n")}
 
 declare global {
-${sections.join("\n")}
+${sections.join("\n\n")}
 }
 
 export {};
