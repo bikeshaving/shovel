@@ -22,6 +22,49 @@ export interface ParsedQuery {
 }
 
 // ============================================================================
+// SQL Fragments
+// ============================================================================
+
+const SQL_FRAGMENT = Symbol.for("@b9g/database:fragment");
+
+/**
+ * A SQL fragment with embedded parameters.
+ *
+ * When interpolated in a tagged template, the SQL is injected directly
+ * and params are added to the parameter list.
+ */
+export interface SQLFragment {
+	readonly [SQL_FRAGMENT]: true;
+	readonly sql: string;
+	readonly params: readonly unknown[];
+}
+
+/**
+ * Check if a value is a SQL fragment.
+ */
+export function isSQLFragment(value: unknown): value is SQLFragment {
+	return (
+		value !== null &&
+		typeof value === "object" &&
+		SQL_FRAGMENT in value &&
+		(value as any)[SQL_FRAGMENT] === true
+	);
+}
+
+/**
+ * Create a SQL fragment from raw SQL and parameters.
+ *
+ * @internal Used by fragment helpers (where, set, on, etc.)
+ */
+export function createFragment(sql: string, params: unknown[] = []): SQLFragment {
+	return {
+		[SQL_FRAGMENT]: true,
+		sql,
+		params,
+	};
+}
+
+// ============================================================================
 // Query Building
 // ============================================================================
 
@@ -69,9 +112,16 @@ export function buildSelectColumns(
 /**
  * Parse a tagged template into SQL string and params array.
  *
+ * Supports SQL fragments - when a value is a SQLFragment, its SQL is
+ * injected directly and its params are added to the parameter list.
+ *
  * @example
  * parseTemplate`WHERE id = ${userId} AND active = ${true}`
  * // { sql: "WHERE id = ? AND active = ?", params: ["user-123", true] }
+ *
+ * @example
+ * parseTemplate`WHERE ${where(Users, { role: "admin" })}`
+ * // { sql: "WHERE role = ?", params: ["admin"] }
  */
 export function parseTemplate(
 	strings: TemplateStringsArray,
@@ -84,8 +134,20 @@ export function parseTemplate(
 	for (let i = 0; i < strings.length; i++) {
 		sql += strings[i];
 		if (i < values.length) {
-			params.push(values[i]);
-			sql += placeholder(params.length, dialect);
+			const value = values[i];
+			if (isSQLFragment(value)) {
+				// Inject fragment SQL, replacing ? placeholders with dialect-appropriate ones
+				let fragmentSQL = value.sql;
+				for (const param of value.params) {
+					params.push(param);
+					// Replace first ? with the correct placeholder for this dialect
+					fragmentSQL = fragmentSQL.replace("?", placeholder(params.length, dialect));
+				}
+				sql += fragmentSQL;
+			} else {
+				params.push(value);
+				sql += placeholder(params.length, dialect);
+			}
 		}
 	}
 

@@ -46,7 +46,22 @@ export {
 	type SQLDialect,
 	type QueryOptions,
 	type ParsedQuery,
+	// SQL fragments
+	isSQLFragment,
+	createFragment,
+	type SQLFragment,
 } from "./query.js";
+
+export {
+	// Fragment helpers
+	where,
+	set,
+	on,
+	type ConditionOperators,
+	type ConditionValue,
+	type WhereConditions,
+	type SetValues,
+} from "./fragments.js";
 
 export {
 	// Normalization
