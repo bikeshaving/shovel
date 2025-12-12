@@ -251,6 +251,23 @@ export function generateDDL<T extends Table<any>>(
 		columnDefs.push(`PRIMARY KEY (${quoteIdent(meta.primary, dialect)})`);
 	}
 
+	// FOREIGN KEY constraints
+	for (const ref of meta.references) {
+		const fkColumn = quoteIdent(ref.fieldName, dialect);
+		const refTable = quoteIdent(ref.table.name, dialect);
+		const refColumn = quoteIdent(ref.referencedField, dialect);
+
+		let fk = `FOREIGN KEY (${fkColumn}) REFERENCES ${refTable}(${refColumn})`;
+
+		// Add ON DELETE behavior
+		if (ref.onDelete) {
+			const onDeleteSQL = ref.onDelete === "set null" ? "SET NULL" : ref.onDelete.toUpperCase();
+			fk += ` ON DELETE ${onDeleteSQL}`;
+		}
+
+		columnDefs.push(fk);
+	}
+
 	// Build CREATE TABLE
 	const tableName = quoteIdent(table.name, dialect);
 	const exists = ifNotExists ? "IF NOT EXISTS " : "";

@@ -1,6 +1,6 @@
 import {test, expect, describe} from "bun:test";
 import {z} from "zod";
-import {table, primary, unique, index} from "./table.js";
+import {table, primary, unique, index, references} from "./table.js";
 import {generateDDL} from "./ddl.js";
 
 describe("DDL generation", () => {
@@ -174,5 +174,149 @@ describe("DDL generation", () => {
 		expect(ddl).toContain("CREATE TABLE IF NOT EXISTS `users`");
 		expect(ddl).toContain("`id` TEXT");
 		expect(ddl).toContain("`name` VARCHAR(100)");
+	});
+
+	test("foreign key constraint", () => {
+		const users = table("users", {
+			id: primary(z.string().uuid()),
+			name: z.string(),
+		});
+
+		const posts = table("posts", {
+			id: primary(z.string().uuid()),
+			authorId: references(z.string().uuid(), users, {as: "author"}),
+			title: z.string(),
+		});
+
+		const ddl = generateDDL(posts, {dialect: "sqlite"});
+
+		expect(ddl).toContain('FOREIGN KEY ("authorId") REFERENCES "users"("id")');
+	});
+
+	test("foreign key with onDelete cascade", () => {
+		const users = table("users", {
+			id: primary(z.string().uuid()),
+			name: z.string(),
+		});
+
+		const posts = table("posts", {
+			id: primary(z.string().uuid()),
+			authorId: references(z.string().uuid(), users, {as: "author", onDelete: "cascade"}),
+			title: z.string(),
+		});
+
+		const ddl = generateDDL(posts, {dialect: "sqlite"});
+
+		expect(ddl).toContain('FOREIGN KEY ("authorId") REFERENCES "users"("id") ON DELETE CASCADE');
+	});
+
+	test("foreign key with onDelete set null", () => {
+		const users = table("users", {
+			id: primary(z.string().uuid()),
+			name: z.string(),
+		});
+
+		const posts = table("posts", {
+			id: primary(z.string().uuid()),
+			authorId: references(z.string().uuid().nullable(), users, {as: "author", onDelete: "set null"}),
+			title: z.string(),
+		});
+
+		const ddl = generateDDL(posts, {dialect: "sqlite"});
+
+		expect(ddl).toContain('FOREIGN KEY ("authorId") REFERENCES "users"("id") ON DELETE SET NULL');
+	});
+
+	test("foreign key with onDelete restrict", () => {
+		const users = table("users", {
+			id: primary(z.string().uuid()),
+			name: z.string(),
+		});
+
+		const posts = table("posts", {
+			id: primary(z.string().uuid()),
+			authorId: references(z.string().uuid(), users, {as: "author", onDelete: "restrict"}),
+			title: z.string(),
+		});
+
+		const ddl = generateDDL(posts, {dialect: "sqlite"});
+
+		expect(ddl).toContain('FOREIGN KEY ("authorId") REFERENCES "users"("id") ON DELETE RESTRICT');
+	});
+
+	test("multiple foreign keys", () => {
+		const users = table("users", {
+			id: primary(z.string().uuid()),
+			name: z.string(),
+		});
+
+		const categories = table("categories", {
+			id: primary(z.string().uuid()),
+			name: z.string(),
+		});
+
+		const posts = table("posts", {
+			id: primary(z.string().uuid()),
+			authorId: references(z.string().uuid(), users, {as: "author", onDelete: "cascade"}),
+			categoryId: references(z.string().uuid().nullable(), categories, {as: "category", onDelete: "set null"}),
+			title: z.string(),
+		});
+
+		const ddl = generateDDL(posts, {dialect: "sqlite"});
+
+		expect(ddl).toContain('FOREIGN KEY ("authorId") REFERENCES "users"("id") ON DELETE CASCADE');
+		expect(ddl).toContain('FOREIGN KEY ("categoryId") REFERENCES "categories"("id") ON DELETE SET NULL');
+	});
+
+	test("foreign key with custom field reference", () => {
+		const users = table("users", {
+			id: primary(z.string().uuid()),
+			email: unique(z.string().email()),
+			name: z.string(),
+		});
+
+		const posts = table("posts", {
+			id: primary(z.string().uuid()),
+			authorEmail: references(z.string().email(), users, {field: "email", as: "author"}),
+			title: z.string(),
+		});
+
+		const ddl = generateDDL(posts, {dialect: "sqlite"});
+
+		expect(ddl).toContain('FOREIGN KEY ("authorEmail") REFERENCES "users"("email")');
+	});
+
+	test("foreign key in postgresql", () => {
+		const users = table("users", {
+			id: primary(z.string().uuid()),
+			name: z.string(),
+		});
+
+		const posts = table("posts", {
+			id: primary(z.string().uuid()),
+			authorId: references(z.string().uuid(), users, {as: "author", onDelete: "cascade"}),
+			title: z.string(),
+		});
+
+		const ddl = generateDDL(posts, {dialect: "postgresql"});
+
+		expect(ddl).toContain('FOREIGN KEY ("authorId") REFERENCES "users"("id") ON DELETE CASCADE');
+	});
+
+	test("foreign key in mysql", () => {
+		const users = table("users", {
+			id: primary(z.string().uuid()),
+			name: z.string(),
+		});
+
+		const posts = table("posts", {
+			id: primary(z.string().uuid()),
+			authorId: references(z.string().uuid(), users, {as: "author", onDelete: "cascade"}),
+			title: z.string(),
+		});
+
+		const ddl = generateDDL(posts, {dialect: "mysql"});
+
+		expect(ddl).toContain("FOREIGN KEY (`authorId`) REFERENCES `users`(`id`) ON DELETE CASCADE");
 	});
 });
