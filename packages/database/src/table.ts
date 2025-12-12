@@ -285,58 +285,78 @@ export function table<T extends Record<string, ZodTypeAny | FieldWrapper>>(
 }
 
 // ============================================================================
-// Field Metadata Extraction (from Zod types)
+// Field Metadata Extraction (using only public Zod APIs)
 // ============================================================================
 
-function unwrapType(zodType: ZodTypeAny): {
-	core: ZodTypeAny;
+interface UnwrapResult {
+	core: z.ZodType;
 	isOptional: boolean;
 	isNullable: boolean;
+	hasDefault: boolean;
 	defaultValue?: unknown;
-} {
-	let core = zodType;
-	let isOptional = false;
-	let isNullable = false;
-	let defaultValue: unknown = undefined;
-
-	while (true) {
-		const typeName = core._def.typeName;
-
-		if (typeName === "ZodOptional") {
-			isOptional = true;
-			core = core._def.innerType;
-		} else if (typeName === "ZodNullable") {
-			isNullable = true;
-			core = core._def.innerType;
-		} else if (typeName === "ZodDefault") {
-			defaultValue = core._def.defaultValue();
-			core = core._def.innerType;
-		} else if (typeName === "ZodEffects") {
-			core = core._def.schema;
-		} else if (typeName === "ZodPipeline") {
-			core = core._def.in;
-		} else if (typeName === "ZodBranded") {
-			core = core._def.type;
-		} else {
-			break;
-		}
-	}
-
-	return {core, isOptional, isNullable, defaultValue};
 }
 
+/**
+ * Unwrap wrapper types using public Zod APIs only.
+ * No _def access - uses removeDefault(), unwrap(), innerType(), etc.
+ */
+function unwrapType(schema: z.ZodType): UnwrapResult {
+	let core: z.ZodType = schema;
+	let hasDefault = false;
+	let defaultValue: unknown = undefined;
+
+	// Use public isOptional/isNullable
+	const isOptional = schema.isOptional();
+	const isNullable = schema.isNullable();
+
+	// Unwrap layers using public methods
+	while (true) {
+		// Check for ZodDefault (has removeDefault method)
+		if (typeof (core as any).removeDefault === "function") {
+			hasDefault = true;
+			try {
+				defaultValue = core.parse(undefined);
+			} catch {
+				// Default might be a function that throws
+			}
+			core = (core as any).removeDefault();
+			continue;
+		}
+
+		// Check for ZodOptional/ZodNullable (has unwrap method)
+		if (typeof (core as any).unwrap === "function") {
+			core = (core as any).unwrap();
+			continue;
+		}
+
+		// Check for ZodEffects (has innerType method)
+		if (typeof (core as any).innerType === "function") {
+			core = (core as any).innerType();
+			continue;
+		}
+
+		// No more wrappers
+		break;
+	}
+
+	return {core, isOptional, isNullable, hasDefault, defaultValue};
+}
+
+/**
+ * Extract field metadata using instanceof checks and public properties.
+ * No _def access.
+ */
 function extractFieldMeta(
 	name: string,
 	zodType: ZodTypeAny,
 	dbMeta: FieldDbMeta,
 ): FieldMeta {
-	const {core, isOptional, isNullable, defaultValue} = unwrapType(zodType);
-	const typeName = core._def.typeName;
+	const {core, isOptional, isNullable, hasDefault, defaultValue} = unwrapType(zodType);
 
 	const meta: FieldMeta = {
 		name,
 		type: "text",
-		required: !isOptional && !isNullable && defaultValue === undefined,
+		required: !isOptional && !isNullable && !hasDefault,
 	};
 
 	// Apply database metadata
@@ -355,65 +375,41 @@ function extractFieldMeta(
 		meta.default = defaultValue;
 	}
 
-	// Determine field type from Zod
-	switch (typeName) {
-		case "ZodString": {
-			const checks = core._def.checks || [];
-			meta.type = "text";
+	// Determine field type using instanceof and public properties
+	if (core instanceof z.ZodString) {
+		meta.type = "text";
 
-			for (const check of checks) {
-				if (check.kind === "email") {
-					meta.type = "email";
-				} else if (check.kind === "url") {
-					meta.type = "url";
-				} else if (check.kind === "max") {
-					meta.maxLength = check.value;
-					if (check.value > 500) {
-						meta.type = "textarea";
-					}
-				} else if (check.kind === "min") {
-					meta.minLength = check.value;
-				}
-			}
-			break;
+		// Use public properties for string checks
+		const str = core as any;
+		// Zod 4 uses .format, Zod 3 uses .isEmail/.isURL
+		if (str.format === "email" || str.isEmail) meta.type = "email";
+		if (str.format === "url" || str.isURL) meta.type = "url";
+		if (str.maxLength !== undefined) {
+			meta.maxLength = str.maxLength;
+			if (str.maxLength > 500) meta.type = "textarea";
 		}
-
-		case "ZodNumber": {
-			const checks = core._def.checks || [];
-			meta.type = "number";
-
-			for (const check of checks) {
-				if (check.kind === "int") {
-					meta.type = "integer";
-				} else if (check.kind === "min") {
-					meta.min = check.value;
-				} else if (check.kind === "max") {
-					meta.max = check.value;
-				}
-			}
-			break;
+		if (str.minLength !== undefined) {
+			meta.minLength = str.minLength;
 		}
+	} else if (core instanceof z.ZodNumber) {
+		meta.type = "number";
 
-		case "ZodBoolean":
-			meta.type = "checkbox";
-			break;
-
-		case "ZodDate":
-			meta.type = "datetime";
-			break;
-
-		case "ZodEnum":
-			meta.type = "select";
-			meta.options = core._def.values;
-			break;
-
-		case "ZodArray":
-		case "ZodObject":
-			meta.type = "json";
-			break;
-
-		default:
-			meta.type = "text";
+		// Use public properties for number checks
+		const num = core as any;
+		// Zod 4 uses .format for "int", Zod 3 uses .isInt
+		if (num.format === "int" || num.isInt) meta.type = "integer";
+		if (num.minValue !== undefined) meta.min = num.minValue;
+		if (num.maxValue !== undefined) meta.max = num.maxValue;
+	} else if (core instanceof z.ZodBoolean) {
+		meta.type = "checkbox";
+	} else if (core instanceof z.ZodDate) {
+		meta.type = "datetime";
+	} else if (core instanceof z.ZodEnum) {
+		meta.type = "select";
+		// Use public options property
+		meta.options = (core as any).options;
+	} else if (core instanceof z.ZodArray || core instanceof z.ZodObject) {
+		meta.type = "json";
 	}
 
 	return meta;

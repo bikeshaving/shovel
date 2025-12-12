@@ -3,11 +3,11 @@ import {z} from "zod";
 import {table, primary, unique, references} from "./table.js";
 import {Database, createDatabase, type DatabaseDriver} from "./database.js";
 
-// Test UUIDs
-const USER_ID = "11111111-1111-1111-1111-111111111111";
-const USER_ID_2 = "22222222-2222-2222-2222-222222222222";
-const POST_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
-const POST_ID_2 = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+// Test UUIDs (RFC 4122 compliant - version 4, variant 1)
+const USER_ID = "11111111-1111-4111-a111-111111111111";
+const USER_ID_2 = "22222222-2222-4222-a222-222222222222";
+const POST_ID = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+const POST_ID_2 = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb";
 
 // Test tables
 const users = table("users", {

@@ -2,9 +2,10 @@
  * DDL generation from table definitions.
  *
  * Generates CREATE TABLE statements for SQLite, PostgreSQL, and MySQL.
+ * Uses only Zod's public APIs - no _def access.
  */
 
-import {ZodTypeAny} from "zod";
+import {z} from "zod";
 import type {Table} from "./table.js";
 
 // ============================================================================
@@ -28,155 +29,155 @@ interface ColumnDef {
 }
 
 // ============================================================================
-// Type Mapping
+// Type Mapping (using only public Zod APIs)
 // ============================================================================
 
+interface UnwrapResult {
+	core: z.ZodType;
+	isOptional: boolean;
+	isNullable: boolean;
+	hasDefault: boolean;
+	defaultValue?: unknown;
+}
+
+/**
+ * Unwrap wrapper types (Optional, Nullable, Default, etc.) using public APIs.
+ */
+function unwrapType(schema: z.ZodType): UnwrapResult {
+	let core: z.ZodType = schema;
+	let isOptional = false;
+	let isNullable = false;
+	let hasDefault = false;
+	let defaultValue: unknown = undefined;
+
+	// Use public isOptional/isNullable first
+	isOptional = schema.isOptional();
+	isNullable = schema.isNullable();
+
+	// Unwrap layers using public methods
+	while (true) {
+		// Check for ZodDefault (has removeDefault method)
+		if (typeof (core as any).removeDefault === "function") {
+			hasDefault = true;
+			// Get default value by parsing undefined
+			try {
+				defaultValue = core.parse(undefined);
+			} catch {
+				// If parse fails, default might be a function that throws
+			}
+			core = (core as any).removeDefault();
+			continue;
+		}
+
+		// Check for ZodOptional/ZodNullable (has unwrap method)
+		if (typeof (core as any).unwrap === "function") {
+			core = (core as any).unwrap();
+			continue;
+		}
+
+		// Check for ZodEffects (has innerType method)
+		if (typeof (core as any).innerType === "function") {
+			core = (core as any).innerType();
+			continue;
+		}
+
+		// No more wrappers to unwrap
+		break;
+	}
+
+	return {core, isOptional, isNullable, hasDefault, defaultValue};
+}
+
+/**
+ * Map a Zod type to SQL type using instanceof checks and public properties.
+ */
 function mapZodToSQL(
-	zodType: ZodTypeAny,
+	schema: z.ZodType,
 	dialect: SQLDialect,
 ): {sqlType: string; defaultValue?: string} {
-	const {core, defaultValue} = unwrapType(zodType);
-	const typeName = core._def.typeName;
+	const {core, hasDefault, defaultValue} = unwrapType(schema);
 
 	let sqlType: string;
 	let sqlDefault: string | undefined;
 
-	switch (typeName) {
-		case "ZodString": {
-			const checks = core._def.checks || [];
-			let maxLength: number | undefined;
+	// Use instanceof checks instead of _def.typeName
+	if (core instanceof z.ZodString) {
+		// Use public maxLength property
+		const maxLength = (core as any).maxLength as number | undefined;
 
-			for (const check of checks) {
-				if (check.kind === "max") {
-					maxLength = check.value;
-				}
-			}
-
-			if (maxLength && maxLength <= 255 && dialect !== "sqlite") {
-				sqlType = `VARCHAR(${maxLength})`;
-			} else {
-				sqlType = "TEXT";
-			}
-
-			if (defaultValue !== undefined) {
-				sqlDefault = `'${String(defaultValue).replace(/'/g, "''")}'`;
-			}
-			break;
+		if (maxLength && maxLength <= 255 && dialect !== "sqlite") {
+			sqlType = `VARCHAR(${maxLength})`;
+		} else {
+			sqlType = "TEXT";
 		}
 
-		case "ZodNumber": {
-			const checks = core._def.checks || [];
-			const isInt = checks.some((c: any) => c.kind === "int");
+		if (hasDefault && defaultValue !== undefined) {
+			sqlDefault = `'${String(defaultValue).replace(/'/g, "''")}'`;
+		}
+	} else if (core instanceof z.ZodNumber) {
+		// Use public isInt property
+		const isInt = (core as any).isInt as boolean | undefined;
 
-			if (isInt) {
-				sqlType = "INTEGER";
-			} else {
-				sqlType = dialect === "postgresql" ? "DOUBLE PRECISION" : "REAL";
-			}
-
-			if (defaultValue !== undefined) {
-				sqlDefault = String(defaultValue);
-			}
-			break;
+		if (isInt) {
+			sqlType = "INTEGER";
+		} else {
+			sqlType = dialect === "postgresql" ? "DOUBLE PRECISION" : "REAL";
 		}
 
-		case "ZodBoolean":
-			sqlType = dialect === "sqlite" ? "INTEGER" : "BOOLEAN";
-			if (defaultValue !== undefined) {
-				if (dialect === "sqlite") {
-					sqlDefault = defaultValue ? "1" : "0";
-				} else {
-					sqlDefault = defaultValue ? "TRUE" : "FALSE";
-				}
-			}
-			break;
-
-		case "ZodDate":
-			if (dialect === "postgresql") {
-				sqlType = "TIMESTAMPTZ";
-			} else if (dialect === "mysql") {
-				sqlType = "DATETIME";
+		if (hasDefault && defaultValue !== undefined) {
+			sqlDefault = String(defaultValue);
+		}
+	} else if (core instanceof z.ZodBoolean) {
+		sqlType = dialect === "sqlite" ? "INTEGER" : "BOOLEAN";
+		if (hasDefault && defaultValue !== undefined) {
+			if (dialect === "sqlite") {
+				sqlDefault = defaultValue ? "1" : "0";
 			} else {
-				sqlType = "TEXT";
+				sqlDefault = defaultValue ? "TRUE" : "FALSE";
 			}
-
-			if (defaultValue !== undefined) {
-				if (defaultValue instanceof Date || typeof defaultValue === "function") {
-					if (dialect === "sqlite") {
-						sqlDefault = "CURRENT_TIMESTAMP";
-					} else if (dialect === "postgresql") {
-						sqlDefault = "NOW()";
-					} else {
-						sqlDefault = "CURRENT_TIMESTAMP";
-					}
-				}
-			}
-			break;
-
-		case "ZodEnum":
+		}
+	} else if (core instanceof z.ZodDate) {
+		if (dialect === "postgresql") {
+			sqlType = "TIMESTAMPTZ";
+		} else if (dialect === "mysql") {
+			sqlType = "DATETIME";
+		} else {
 			sqlType = "TEXT";
-			if (defaultValue !== undefined) {
-				sqlDefault = `'${String(defaultValue).replace(/'/g, "''")}'`;
-			}
-			break;
+		}
 
-		case "ZodArray":
-		case "ZodObject":
-			if (dialect === "postgresql") {
-				sqlType = "JSONB";
+		if (hasDefault) {
+			// Date defaults are usually functions (new Date()), use DB default
+			if (dialect === "sqlite") {
+				sqlDefault = "CURRENT_TIMESTAMP";
+			} else if (dialect === "postgresql") {
+				sqlDefault = "NOW()";
 			} else {
-				sqlType = "TEXT";
+				sqlDefault = "CURRENT_TIMESTAMP";
 			}
-			if (defaultValue !== undefined) {
-				sqlDefault = `'${JSON.stringify(defaultValue).replace(/'/g, "''")}'`;
-			}
-			break;
-
-		default:
+		}
+	} else if (core instanceof z.ZodEnum) {
+		sqlType = "TEXT";
+		if (hasDefault && defaultValue !== undefined) {
+			sqlDefault = `'${String(defaultValue).replace(/'/g, "''")}'`;
+		}
+	} else if (core instanceof z.ZodArray || core instanceof z.ZodObject) {
+		if (dialect === "postgresql") {
+			sqlType = "JSONB";
+		} else {
 			sqlType = "TEXT";
-			if (defaultValue !== undefined) {
-				sqlDefault = `'${String(defaultValue).replace(/'/g, "''")}'`;
-			}
+		}
+		if (hasDefault && defaultValue !== undefined) {
+			sqlDefault = `'${JSON.stringify(defaultValue).replace(/'/g, "''")}'`;
+		}
+	} else {
+		// Fallback for unknown types
+		sqlType = "TEXT";
+		if (hasDefault && defaultValue !== undefined) {
+			sqlDefault = `'${String(defaultValue).replace(/'/g, "''")}'`;
+		}
 	}
 
 	return {sqlType, defaultValue: sqlDefault};
-}
-
-function unwrapType(zodType: ZodTypeAny): {
-	core: ZodTypeAny;
-	isOptional: boolean;
-	isNullable: boolean;
-	defaultValue?: unknown;
-} {
-	let core = zodType;
-	let isOptional = false;
-	let isNullable = false;
-	let defaultValue: unknown = undefined;
-
-	while (true) {
-		const typeName = core._def.typeName;
-
-		if (typeName === "ZodOptional") {
-			isOptional = true;
-			core = core._def.innerType;
-		} else if (typeName === "ZodNullable") {
-			isNullable = true;
-			core = core._def.innerType;
-		} else if (typeName === "ZodDefault") {
-			defaultValue = core._def.defaultValue();
-			core = core._def.innerType;
-		} else if (typeName === "ZodEffects") {
-			core = core._def.schema;
-		} else if (typeName === "ZodPipeline") {
-			core = core._def.in;
-		} else if (typeName === "ZodBranded") {
-			core = core._def.type;
-		} else {
-			break;
-		}
-	}
-
-	return {core, isOptional, isNullable, defaultValue};
 }
 
 // ============================================================================
@@ -205,13 +206,13 @@ export function generateDDL<T extends Table<any>>(
 
 	for (const [name, zodType] of Object.entries(shape)) {
 		const fieldMeta = meta.fields[name] || {};
-		const {isOptional, isNullable, defaultValue} = unwrapType(zodType as ZodTypeAny);
-		const {sqlType, defaultValue: sqlDefault} = mapZodToSQL(zodType as ZodTypeAny, dialect);
+		const {isOptional, isNullable, hasDefault} = unwrapType(zodType as z.ZodType);
+		const {sqlType, defaultValue: sqlDefault} = mapZodToSQL(zodType as z.ZodType, dialect);
 
 		const column: ColumnDef = {
 			name,
 			sqlType,
-			nullable: isOptional || isNullable || defaultValue !== undefined,
+			nullable: isOptional || isNullable || hasDefault,
 			primaryKey: fieldMeta.primaryKey === true,
 			unique: fieldMeta.unique === true,
 			defaultValue: sqlDefault,

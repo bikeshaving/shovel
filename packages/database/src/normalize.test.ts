@@ -11,16 +11,16 @@ import {
 	normalizeOne,
 } from "./normalize.js";
 
-// Test tables
+// Test tables (using plain strings - normalization doesn't need UUID validation)
 const users = table("users", {
-	id: primary(z.string().uuid()),
+	id: primary(z.string()),
 	email: unique(z.string().email()),
 	name: z.string(),
 });
 
 const posts = table("posts", {
-	id: primary(z.string().uuid()),
-	authorId: references(z.string().uuid(), users, {as: "author"}),
+	id: primary(z.string()),
+	authorId: references(z.string(), users, {as: "author"}),
 	title: z.string(),
 	body: z.string(),
 });
