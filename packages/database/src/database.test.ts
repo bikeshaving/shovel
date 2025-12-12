@@ -294,3 +294,81 @@ describe("createDatabase()", () => {
 		expect(db).toBeInstanceOf(Database);
 	});
 });
+
+describe("transaction()", () => {
+	test("commits on success", async () => {
+		const driver = createMockDriver();
+		const db = new Database(driver);
+
+		const result = await db.transaction(async (tx) => {
+			await tx.insert(users, {
+				id: USER_ID,
+				email: "alice@example.com",
+				name: "Alice",
+			});
+			return "done";
+		});
+
+		expect(result).toBe("done");
+
+		// Check BEGIN was called
+		const calls = (driver.run as any).mock.calls;
+		expect(calls[0][0]).toBe("BEGIN");
+
+		// Check INSERT was called
+		expect(calls[1][0]).toContain("INSERT INTO");
+
+		// Check COMMIT was called
+		expect(calls[2][0]).toBe("COMMIT");
+	});
+
+	test("rollbacks on error", async () => {
+		const driver = createMockDriver();
+		const db = new Database(driver);
+
+		const error = new Error("Test error");
+		await expect(
+			db.transaction(async (tx) => {
+				await tx.insert(users, {
+					id: USER_ID,
+					email: "alice@example.com",
+					name: "Alice",
+				});
+				throw error;
+			}),
+		).rejects.toThrow("Test error");
+
+		// Check BEGIN was called
+		const calls = (driver.run as any).mock.calls;
+		expect(calls[0][0]).toBe("BEGIN");
+
+		// Check INSERT was called
+		expect(calls[1][0]).toContain("INSERT INTO");
+
+		// Check ROLLBACK was called (not COMMIT)
+		expect(calls[2][0]).toBe("ROLLBACK");
+	});
+
+	test("returns value from transaction function", async () => {
+		const driver = createMockDriver();
+		const db = new Database(driver);
+
+		const result = await db.transaction(async () => {
+			return {id: USER_ID, name: "Alice"};
+		});
+
+		expect(result).toEqual({id: USER_ID, name: "Alice"});
+	});
+
+	test("uses START TRANSACTION for MySQL", async () => {
+		const driver = createMockDriver();
+		const db = new Database(driver, {dialect: "mysql"});
+
+		await db.transaction(async () => {
+			return "done";
+		});
+
+		const calls = (driver.run as any).mock.calls;
+		expect(calls[0][0]).toBe("START TRANSACTION");
+	});
+});

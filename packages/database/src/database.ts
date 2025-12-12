@@ -411,6 +411,36 @@ export class Database extends EventTarget {
 	}
 
 	// ==========================================================================
+	// Transactions
+	// ==========================================================================
+
+	/**
+	 * Execute a function within a database transaction.
+	 *
+	 * If the function completes successfully, the transaction is committed.
+	 * If the function throws an error, the transaction is rolled back.
+	 *
+	 * @example
+	 * await db.transaction(async (tx) => {
+	 *   const user = await tx.insert(users, { id: "1", name: "Alice" });
+	 *   await tx.insert(posts, { id: "1", authorId: user.id, title: "Hello" });
+	 *   // If any insert fails, both are rolled back
+	 * });
+	 */
+	async transaction<T>(fn: (tx: Database) => Promise<T>): Promise<T> {
+		const begin = this.#dialect === "mysql" ? "START TRANSACTION" : "BEGIN";
+		await this.#driver.run(begin, []);
+		try {
+			const result = await fn(this);
+			await this.#driver.run("COMMIT", []);
+			return result;
+		} catch (error) {
+			await this.#driver.run("ROLLBACK", []);
+			throw error;
+		}
+	}
+
+	// ==========================================================================
 	// Helpers
 	// ==========================================================================
 
