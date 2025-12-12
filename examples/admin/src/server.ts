@@ -10,7 +10,6 @@
 import {Router} from "@b9g/router";
 import {assets} from "@b9g/assets/middleware";
 import {createAdmin} from "@b9g/admin";
-import {getTableConfig} from "drizzle-orm/sqlite-core";
 import * as schema from "./schema.js";
 
 const logger = self.loggers.get("shovel", "server");
@@ -31,7 +30,6 @@ router.use(assets());
 const admin = createAdmin({
 	database: "main",
 	schema,
-	getTableConfig,
 	auth: {
 		providers: ["google"],
 	},

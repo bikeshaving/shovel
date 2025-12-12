@@ -56,16 +56,15 @@ describe("config validation", () => {
 				},
 				databases: {
 					main: {
-						dialect: "postgresql",
+						adapter: "@b9g/database/bun-sql",
 						url: "postgres://localhost/db",
-						schema: "./schema.ts",
 					},
 				},
 			};
 
 			const result = ShovelConfigSchema.parse(config);
 			expect(result.platform).toBe("bun");
-			expect(result.databases?.main.dialect).toBe("postgresql");
+			expect(result.databases?.main.adapter).toBe("@b9g/database/bun-sql");
 		});
 	});
 
@@ -120,47 +119,33 @@ describe("config validation", () => {
 	});
 
 	describe("DatabaseConfigSchema", () => {
-		test("requires dialect, url, schema", () => {
+		test("requires adapter and url", () => {
 			expect(() => DatabaseConfigSchema.parse({})).toThrow();
 			expect(() =>
-				DatabaseConfigSchema.parse({dialect: "postgresql"}),
+				DatabaseConfigSchema.parse({adapter: "@b9g/database/bun-sql"}),
 			).toThrow();
 		});
 
 		test("accepts valid database config", () => {
 			const result = DatabaseConfigSchema.parse({
-				dialect: "postgresql",
+				adapter: "@b9g/database/bun-sql",
 				url: "postgres://localhost/db",
-				schema: "./schema.ts",
 			});
-			expect(result.dialect).toBe("postgresql");
+			expect(result.adapter).toBe("@b9g/database/bun-sql");
 		});
 
-		test("accepts driver with module/export", () => {
+		test("accepts sqlite url", () => {
 			const result = DatabaseConfigSchema.parse({
-				dialect: "bun-sqlite",
-				driver: {module: "bun:sqlite", export: "Database"},
-				url: "./data.db",
-				schema: "./schema.ts",
+				adapter: "@b9g/database/bun-sql",
+				url: "sqlite://./data.db",
 			});
-			expect(result.driver?.module).toBe("bun:sqlite");
-		});
-
-		test("rejects invalid dialect", () => {
-			expect(() =>
-				DatabaseConfigSchema.parse({
-					dialect: "invalid-db",
-					url: "...",
-					schema: "./schema.ts",
-				}),
-			).toThrow(/Invalid option/);
+			expect(result.url).toBe("sqlite://./data.db");
 		});
 
 		test("allows extra driver-specific options (passthrough)", () => {
 			const result = DatabaseConfigSchema.parse({
-				dialect: "postgresql",
+				adapter: "@b9g/database/bun-sql",
 				url: "postgres://localhost/db",
-				schema: "./schema.ts",
 				poolSize: 10,
 				ssl: true,
 			});

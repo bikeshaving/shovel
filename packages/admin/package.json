@@ -39,7 +39,6 @@
   "keywords": [
     "admin",
     "crud",
-    "drizzle",
     "shovel"
   ],
   "author": "b9g",
@@ -52,13 +51,13 @@
     "mime": "^4.1.0"
   },
   "peerDependencies": {
-    "@b9g/platform": "workspace:*",
-    "drizzle-orm": ">=0.30.0"
+    "@b9g/database": "workspace:*",
+    "@b9g/platform": "workspace:*"
   },
   "devDependencies": {
+    "@b9g/database": "workspace:*",
     "@b9g/libuild": "^0.1.18",
     "@types/bun": "^1.2.2",
-    "drizzle-orm": "^0.41.0",
     "typescript": "^5.7.3"
   }
 }

@@ -2,28 +2,27 @@
  * Example database schema for admin demo
  */
 
-import {sqliteTable, text, integer} from "drizzle-orm/sqlite-core";
+import {z} from "zod";
+import {collection, primary, unique, references} from "@b9g/database";
 
-export const users = sqliteTable("users", {
-	id: integer("id").primaryKey(),
-	email: text("email").notNull().unique(),
-	name: text("name").notNull(),
-	role: text("role", {enum: ["admin", "user"]}).default("user"),
-	createdAt: integer("created_at", {mode: "timestamp"}).notNull(),
+export const users = collection("users", {
+	id: z.number().pipe(primary()),
+	email: z.string().email().pipe(unique()),
+	name: z.string(),
+	role: z.enum(["admin", "user"]).default("user"),
+	createdAt: z.date().default(() => new Date()),
 });
 
-export const posts = sqliteTable("posts", {
-	id: integer("id").primaryKey(),
-	title: text("title").notNull(),
-	content: text("content"),
-	authorId: integer("author_id")
-		.notNull()
-		.references(() => users.id),
-	published: integer("published", {mode: "boolean"}).default(false),
-	createdAt: integer("created_at", {mode: "timestamp"}).notNull(),
+export const posts = collection("posts", {
+	id: z.number().pipe(primary()),
+	title: z.string(),
+	content: z.string().optional(),
+	authorId: z.number().pipe(references(users, "id", "author")),
+	published: z.boolean().default(false),
+	createdAt: z.date().default(() => new Date()),
 });
 
-export const tags = sqliteTable("tags", {
-	id: integer("id").primaryKey(),
-	name: text("name").notNull().unique(),
+export const tags = collection("tags", {
+	id: z.number().pipe(primary()),
+	name: z.string().pipe(unique()),
 });

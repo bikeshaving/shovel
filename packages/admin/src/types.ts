@@ -69,10 +69,8 @@ export interface AssetsConfig {
 export interface AdminConfig {
 	/** Database name from shovel.json to use */
 	database: string;
-	/** Drizzle schema object containing table definitions */
+	/** Schema object containing @b9g/database collection definitions */
 	schema: Record<string, unknown>;
-	/** Dialect-specific getTableConfig function */
-	getTableConfig: (table: unknown) => unknown;
 	/** Base path for admin routes (default: '/admin') */
 	basePath?: string;
 	/** Authentication configuration */
@@ -102,7 +100,7 @@ export type ColumnDataType =
 	| "blob";
 
 /**
- * Column metadata extracted from Drizzle schema
+ * Column metadata extracted from @b9g/database collection
  */
 export interface ColumnMetadata {
 	/** Column name in the database (snake_case) */
@@ -136,7 +134,7 @@ export interface ForeignKeyMetadata {
 }
 
 /**
- * Table metadata extracted from Drizzle schema
+ * Table metadata extracted from @b9g/database collection
  */
 export interface TableMetadata {
 	/** Table name */

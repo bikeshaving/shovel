@@ -1,11 +1,10 @@
 /**
  * @b9g/admin - Schema introspection utilities
  *
- * Extracts metadata from Drizzle ORM schemas for dynamic admin generation.
- * Supports SQLite, PostgreSQL, and MySQL dialects.
+ * Extracts metadata from @b9g/database collections for dynamic admin generation.
  */
 
-import {isTable, getTableName, type Table} from "drizzle-orm";
+import type {Collection, FieldMeta} from "@b9g/database";
 import type {
 	ColumnMetadata,
 	ColumnDataType,
@@ -18,222 +17,97 @@ import type {
 // ============================================================================
 
 /**
- * Check if an object is a Drizzle table
+ * Check if an object is a @b9g/database collection
  */
-export {isTable};
+export function isCollection(value: unknown): value is Collection<any> {
+	return (
+		value !== null &&
+		typeof value === "object" &&
+		"name" in value &&
+		"schema" in value &&
+		"fields" in value &&
+		typeof (value as any).fields === "function"
+	);
+}
 
 // ============================================================================
 // Data Type Mapping
 // ============================================================================
 
 /**
- * Map Drizzle's internal dataType to our normalized ColumnDataType
+ * Map @b9g/database field type to admin ColumnDataType
  */
-function normalizeDataType(dataType: string, sqlType: string): ColumnDataType {
-	// Drizzle uses these dataType values internally
-	switch (dataType) {
-		case "string":
+function mapFieldType(fieldType: FieldMeta["type"]): ColumnDataType {
+	switch (fieldType) {
+		case "text":
+		case "textarea":
+		case "email":
+		case "url":
+		case "tel":
+		case "password":
+		case "hidden":
 			return "string";
 		case "number":
+		case "integer":
 			return "number";
-		case "boolean":
+		case "checkbox":
 			return "boolean";
-		case "bigint":
-			return "number";
 		case "date":
-			// Check SQL type to distinguish date vs datetime
-			if (
-				sqlType.toLowerCase().includes("timestamp") ||
-				sqlType.toLowerCase().includes("datetime")
-			) {
-				return "datetime";
-			}
 			return "date";
+		case "datetime":
+		case "time":
+			return "datetime";
 		case "json":
 			return "json";
-		case "custom":
-			// Try to infer from SQL type
-			return inferFromSqlType(sqlType);
-		case "buffer":
-		case "array":
-			return "blob";
+		case "select":
+			return "string"; // enums are strings
 		default:
-			return inferFromSqlType(sqlType);
+			return "string";
 	}
 }
 
-/**
- * Infer data type from SQL type string when dataType is unknown
- */
-function inferFromSqlType(sqlType: string): ColumnDataType {
-	const lower = sqlType.toLowerCase();
-
-	if (
-		lower.includes("int") ||
-		lower.includes("serial") ||
-		lower.includes("decimal") ||
-		lower.includes("numeric") ||
-		lower.includes("float") ||
-		lower.includes("double") ||
-		lower.includes("real")
-	) {
-		return "number";
-	}
-
-	if (lower.includes("bool")) {
-		return "boolean";
-	}
-
-	if (lower.includes("timestamp") || lower.includes("datetime")) {
-		return "datetime";
-	}
-
-	if (lower.includes("date")) {
-		return "date";
-	}
-
-	if (lower.includes("json")) {
-		return "json";
-	}
-
-	if (
-		lower.includes("blob") ||
-		lower.includes("bytea") ||
-		lower.includes("binary")
-	) {
-		return "blob";
-	}
-
-	// Default to string for text, varchar, char, etc.
-	return "string";
-}
-
 // ============================================================================
-// Column Introspection
+// Collection Introspection
 // ============================================================================
 
 /**
- * Extract metadata from a Drizzle column
- *
- * @param key - The JavaScript property key on the table object
- * @param column - The column object from getTableConfig
+ * Extract metadata from a @b9g/database collection
  */
-function introspectColumn(
-	key: string,
-	column: {
-		name: string;
-		primary: boolean;
-		notNull: boolean;
-		hasDefault: boolean;
-		dataType: string;
-		enumValues?: readonly string[];
-		getSQLType(): string;
-	},
-): ColumnMetadata {
-	const sqlType = column.getSQLType();
+export function introspectCollection(collection: Collection<any>): TableMetadata {
+	const fieldsMeta = collection.fields();
+	const refs = collection.references();
+
+	// Convert fields to columns
+	const columns: ColumnMetadata[] = Object.entries(fieldsMeta).map(
+		([key, field]) => ({
+			name: key, // field name is the key
+			key,
+			dataType: mapFieldType(field.type),
+			sqlType: field.type, // Use field type as SQL type hint
+			notNull: field.required,
+			hasDefault: field.default !== undefined,
+			isPrimaryKey: field.primaryKey ?? false,
+			enumValues: field.options ? [...field.options] : undefined,
+		}),
+	);
+
+	// Get primary key
+	const pk = collection.primaryKey();
+	const primaryKey: string[] = pk
+		? Array.isArray(pk)
+			? pk
+			: [pk]
+		: [];
+
+	// Convert references to foreign keys
+	const foreignKeys: ForeignKeyMetadata[] = refs.map((ref) => ({
+		columns: [ref.fieldName],
+		foreignTable: ref.collection.name,
+		foreignColumns: [ref.referencedField],
+	}));
 
 	return {
-		name: column.name,
-		key,
-		dataType: normalizeDataType(column.dataType, sqlType),
-		sqlType,
-		notNull: column.notNull,
-		hasDefault: column.hasDefault,
-		isPrimaryKey: column.primary,
-		enumValues: column.enumValues ? [...column.enumValues] : undefined,
-	};
-}
-
-// ============================================================================
-// Table Introspection
-// ============================================================================
-
-/**
- * Dialect-specific getTableConfig function type
- */
-export type GetTableConfigFn = (table: Table) => {
-	columns: Array<{
-		name: string;
-		primary: boolean;
-		notNull: boolean;
-		hasDefault: boolean;
-		dataType: string;
-		enumValues?: readonly string[];
-		getSQLType(): string;
-	}>;
-	foreignKeys: Array<{
-		reference: () => {
-			columns: Array<{name: string}>;
-			foreignTable: Table;
-			foreignColumns: Array<{name: string}>;
-		};
-	}>;
-	primaryKeys: Array<{
-		columns: Array<{name: string}>;
-	}>;
-	name: string;
-};
-
-/**
- * Extract metadata from a Drizzle table
- *
- * @param table - A Drizzle table definition
- * @param getTableConfig - Dialect-specific getTableConfig function
- */
-export function introspectTable(
-	table: Table,
-	getTableConfig: GetTableConfigFn,
-): TableMetadata {
-	const config = getTableConfig(table);
-
-	// Build a map from column object to JS property key
-	const columnToKey = new Map<unknown, string>();
-	for (const [key, value] of Object.entries(table)) {
-		// Check if this is a column (has name property matching a config column)
-		if (value && typeof value === "object" && "name" in value) {
-			columnToKey.set(value, key);
-		}
-	}
-
-	// Extract columns with their JS keys
-	const columns: ColumnMetadata[] = config.columns.map((col) => {
-		// Find the JS key by matching the column's name to table properties
-		const key = columnToKey.get(col) || col.name;
-		return introspectColumn(key, col);
-	});
-
-	// Determine primary key columns
-	// First check composite primary keys, then individual column `primary` flags
-	const primaryKey: string[] = [];
-
-	// Composite primary keys from primaryKeys array
-	for (const pk of config.primaryKeys) {
-		for (const col of pk.columns) {
-			if (!primaryKey.includes(col.name)) {
-				primaryKey.push(col.name);
-			}
-		}
-	}
-
-	// Single-column primary keys from column.primary flag
-	for (const col of columns) {
-		if (col.isPrimaryKey && !primaryKey.includes(col.name)) {
-			primaryKey.push(col.name);
-		}
-	}
-
-	// Extract foreign keys
-	const foreignKeys: ForeignKeyMetadata[] = config.foreignKeys.map((fk) => {
-		const ref = fk.reference();
-		return {
-			columns: ref.columns.map((c) => c.name),
-			foreignTable: getTableName(ref.foreignTable),
-			foreignColumns: ref.foreignColumns.map((c) => c.name),
-		};
-	});
-
-	return {
-		name: config.name,
+		name: collection.name,
 		columns,
 		primaryKey,
 		foreignKeys,
@@ -245,18 +119,16 @@ export function introspectTable(
 // ============================================================================
 
 /**
- * Introspect an entire Drizzle schema object
+ * Introspect an entire schema object containing collections
  *
- * @param schema - An object containing Drizzle table definitions
- * @param getTableConfig - Dialect-specific getTableConfig function
+ * @param schema - An object containing @b9g/database collection definitions
  * @returns Map of table names to their metadata
  *
  * @example
  * ```typescript
  * import * as schema from './db/schema';
- * import { getTableConfig } from 'drizzle-orm/sqlite-core/utils';
  *
- * const metadata = introspectSchema(schema, getTableConfig);
+ * const metadata = introspectSchema(schema);
  * for (const [name, table] of metadata) {
  *   console.log(name, table.columns);
  * }
@@ -264,13 +136,12 @@ export function introspectTable(
  */
 export function introspectSchema(
 	schema: Record<string, unknown>,
-	getTableConfig: GetTableConfigFn,
 ): Map<string, TableMetadata> {
 	const tables = new Map<string, TableMetadata>();
 
 	for (const value of Object.values(schema)) {
-		if (isTable(value)) {
-			const metadata = introspectTable(value, getTableConfig);
+		if (isCollection(value)) {
+			const metadata = introspectCollection(value);
 			tables.set(metadata.name, metadata);
 		}
 	}

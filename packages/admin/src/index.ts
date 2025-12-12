@@ -1,7 +1,7 @@
 /**
  * @b9g/admin - Django-like admin interface for Shovel applications
  *
- * Provides automatic CRUD interfaces for Drizzle ORM schemas with:
+ * Provides automatic CRUD interfaces for @b9g/database collections with:
  * - OAuth2 authentication (Google, GitHub, Microsoft)
  * - Session management via Cache API
  * - Crank.js + USWDS for the UI
@@ -10,9 +10,11 @@
  * ```typescript
  * import { Router } from '@b9g/router';
  * import { createAdmin } from '@b9g/admin';
+ * import * as schema from './schema.js';
  *
  * const admin = createAdmin({
  *   database: 'main',
+ *   schema,
  *   auth: {
  *     providers: ['google', 'github'],
  *     allowedDomains: ['mycompany.com'],
@@ -43,8 +45,8 @@ export type {
 
 // Re-export introspection utilities
 export {
-	isTable,
-	introspectTable,
+	isCollection,
+	introspectCollection,
 	introspectSchema,
 	getDisplayName,
 	getPluralDisplayName,

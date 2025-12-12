@@ -9,13 +9,12 @@ import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
 import {renderer} from "@b9g/crank/html";
 import type {Children} from "@b9g/crank";
-import {getTableName, isTable, type Table} from "drizzle-orm";
-import type {DrizzleDatabase} from "@b9g/platform/runtime";
+import type {Collection} from "@b9g/database";
 import type {AdminConfig, TableMetadata, ColumnMetadata} from "./types.js";
 import {
 	introspectSchema,
+	isCollection,
 	getDisplayName,
-	type GetTableConfigFn,
 } from "./core/introspection.js";
 import {PageLayout} from "./ui/Layout.js";
 
@@ -25,6 +24,7 @@ interface ModelInfo {
 	name: string;
 	displayName: string;
 	metadata: TableMetadata;
+	collection: Collection<any>;
 }
 
 /**
@@ -110,20 +110,23 @@ export function createAdmin(config: AdminConfig): Router {
 
 	// Introspect schema to get table metadata
 	logger.debug("Introspecting schema...");
-	const tables = introspectSchema(
-		config.schema,
-		config.getTableConfig as GetTableConfigFn,
-	);
+	const tables = introspectSchema(config.schema);
 
 	// Build model info array for navigation
 	const models: ModelInfo[] = [];
 	for (const [name, metadata] of tables) {
-		const modelConfig = config.models?.[name];
-		models.push({
-			name,
-			displayName: modelConfig?.name ?? getDisplayName(name),
-			metadata,
-		});
+		const collection = Object.values(config.schema).find(
+			(c): c is Collection<any> => isCollection(c) && c.name === name,
+		);
+		if (collection) {
+			const modelConfig = config.models?.[name];
+			models.push({
+				name,
+				displayName: modelConfig?.name ?? getDisplayName(name),
+				metadata,
+				collection,
+			});
+		}
 	}
 
 	// Sort models alphabetically
@@ -228,7 +231,7 @@ export function createAdmin(config: AdminConfig): Router {
 						<div class="admin-empty">
 							<p>No models found in schema.</p>
 							<p class="margin-top-1 text-base">
-								Make sure your schema exports Drizzle tables.
+								Make sure your schema exports @b9g/database collections.
 							</p>
 						</div>
 					)}
@@ -243,7 +246,7 @@ export function createAdmin(config: AdminConfig): Router {
 	});
 
 	// ============================================================================
-	// CRUD Routes
+	// CRUD Routes - TODO: Implement with @b9g/database
 	// ============================================================================
 
 	// List view
@@ -257,57 +260,9 @@ export function createAdmin(config: AdminConfig): Router {
 
 		const basePath = getBasePath(req.url, `/${modelName}`);
 
-		// Parse pagination params
-		const url = new URL(req.url);
-		const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
-		const limit = Math.min(
-			100,
-			Math.max(1, parseInt(url.searchParams.get("limit") || "25", 10)),
-		);
-		const offset = (page - 1) * limit;
-
-		let records: Record<string, unknown>[] = [];
-		let totalCount = 0;
-		let dbError: unknown = null;
-
-		try {
-			// Get database and query records
-			const db = (await self.databases.open(
-				config.database,
-			)) as DrizzleDatabase;
-			const table = Object.values(config.schema).find(
-				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
-			);
-
-			if (table) {
-				const {count} = await import("drizzle-orm");
-				// Get total count
-				const countResult = await (db as any)
-					.select({count: count()})
-					.from(table);
-				totalCount = Number(countResult[0]?.count ?? 0);
-
-				// Get paginated records
-				records = await (db as any)
-					.select()
-					.from(table)
-					.limit(limit)
-					.offset(offset);
-			}
-		} catch (err) {
-			dbError = err;
-		}
-
-		const totalPages = Math.ceil(totalCount / limit);
-
-		// Determine which columns to display
-		const modelConfig = config.models?.[modelName];
-		const listFields =
-			modelConfig?.listFields ??
-			model.metadata.columns
-				.filter((c) => c.dataType !== "blob")
-				.slice(0, 6)
-				.map((c) => c.name);
+		// TODO: Implement with @b9g/database
+		// const db = self.databases.get(config.database);
+		// const records = await db.query`SELECT * FROM ${model.name} LIMIT 25`;
 
 		return html(
 			<PageLayout
@@ -317,22 +272,6 @@ export function createAdmin(config: AdminConfig): Router {
 				models={models}
 				assets={assets}
 			>
-				<nav class="usa-breadcrumb admin-breadcrumb" aria-label="Breadcrumbs">
-					<ol class="usa-breadcrumb__list">
-						<li class="usa-breadcrumb__list-item">
-							<a href={basePath} class="usa-breadcrumb__link">
-								<span>Dashboard</span>
-							</a>
-						</li>
-						<li
-							class="usa-breadcrumb__list-item usa-current"
-							aria-current="page"
-						>
-							<span>{model.displayName}</span>
-						</li>
-					</ol>
-				</nav>
-
 				<div class="admin-header">
 					<h1 class="usa-heading">{model.displayName}</h1>
 					<a href={`${basePath}/${modelName}/new`} class="usa-button">
@@ -340,103 +279,13 @@ export function createAdmin(config: AdminConfig): Router {
 					</a>
 				</div>
 
-				{dbError && (
-					<div class="usa-alert usa-alert--error margin-bottom-2" role="alert">
-						<div class="usa-alert__body">
-							<h4 class="usa-alert__heading">Database error</h4>
-							<p class="usa-alert__text">
-								{dbError instanceof Error ? dbError.message : String(dbError)}
-							</p>
-						</div>
+				<div class="usa-alert usa-alert--info" role="alert">
+					<div class="usa-alert__body">
+						<p class="usa-alert__text">
+							CRUD operations not yet implemented. Migrate to @b9g/database in progress.
+						</p>
 					</div>
-				)}
-
-				{!dbError && records.length > 0 ? (
-					<>
-					<table class="usa-table usa-table--striped">
-						<thead>
-							<tr>
-								{listFields.map((field) => (
-									<th scope="col">{field}</th>
-								))}
-								<th scope="col">Actions</th>
-							</tr>
-						</thead>
-						<tbody>
-							{records.map((record) => {
-								const pk = model.metadata.primaryKey[0];
-								const id = record[pk];
-								return (
-									<tr>
-										{listFields.map((field) => (
-											<td>{formatValue(record[field])}</td>
-										))}
-										<td>
-											<a
-												href={`${basePath}/${modelName}/${id}`}
-												class="usa-button usa-button--outline usa-button--unstyled"
-											>
-												View
-											</a>{" "}
-											<a
-												href={`${basePath}/${modelName}/${id}/edit`}
-												class="usa-button usa-button--outline usa-button--unstyled"
-											>
-												Edit
-											</a>
-										</td>
-									</tr>
-								);
-							})}
-						</tbody>
-					</table>
-
-					{/* Pagination */}
-					<nav aria-label="Pagination" class="usa-pagination margin-top-2">
-						<span class="usa-pagination__text margin-right-2">
-							{totalCount} {totalCount === 1 ? "record" : "records"}
-							{totalPages > 1 && ` · Page ${page} of ${totalPages}`}
-						</span>
-						{totalPages > 1 && (
-							<ul class="usa-pagination__list">
-								{page > 1 && (
-									<li class="usa-pagination__item usa-pagination__arrow">
-										<a
-											href={`${basePath}/${modelName}?page=${page - 1}&limit=${limit}`}
-											class="usa-pagination__link usa-pagination__previous-page"
-											aria-label="Previous page"
-										>
-											<span class="usa-pagination__link-text">Previous</span>
-										</a>
-									</li>
-								)}
-								{page < totalPages && (
-									<li class="usa-pagination__item usa-pagination__arrow">
-										<a
-											href={`${basePath}/${modelName}?page=${page + 1}&limit=${limit}`}
-											class="usa-pagination__link usa-pagination__next-page"
-											aria-label="Next page"
-										>
-											<span class="usa-pagination__link-text">Next</span>
-										</a>
-									</li>
-								)}
-							</ul>
-						)}
-					</nav>
-					</>
-				) : (
-					!dbError && (
-						<div class="admin-empty">
-							<p>No {model.displayName.toLowerCase()} found.</p>
-							<p class="margin-top-1">
-								<a href={`${basePath}/${modelName}/new`} class="usa-link">
-									Create your first {model.displayName.toLowerCase()}
-								</a>
-							</p>
-						</div>
-					)
-				)}
+				</div>
 			</PageLayout>,
 		);
 	});
@@ -451,16 +300,6 @@ export function createAdmin(config: AdminConfig): Router {
 		}
 
 		const basePath = getBasePath(req.url, `/${modelName}/new`);
-		const modelConfig = config.models?.[modelName];
-		const excludeFields = modelConfig?.excludeFields ?? [];
-
-		// Get editable columns (exclude primary keys with defaults, excluded fields)
-		const editableColumns = model.metadata.columns.filter(
-			(col) =>
-				!excludeFields.includes(col.name) &&
-				!(col.isPrimaryKey && col.hasDefault) &&
-				col.dataType !== "blob",
-		);
 
 		return html(
 			<PageLayout
@@ -470,59 +309,13 @@ export function createAdmin(config: AdminConfig): Router {
 				models={models}
 				assets={assets}
 			>
-				<nav class="usa-breadcrumb admin-breadcrumb" aria-label="Breadcrumbs">
-					<ol class="usa-breadcrumb__list">
-						<li class="usa-breadcrumb__list-item">
-							<a href={basePath} class="usa-breadcrumb__link">
-								<span>Dashboard</span>
-							</a>
-						</li>
-						<li class="usa-breadcrumb__list-item">
-							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
-								<span>{model.displayName}</span>
-							</a>
-						</li>
-						<li
-							class="usa-breadcrumb__list-item usa-current"
-							aria-current="page"
-						>
-							<span>New</span>
-						</li>
-					</ol>
-				</nav>
-
 				<h1 class="usa-heading">New {model.displayName}</h1>
-
-				<div class="admin-card">
-					<form
-						class="usa-form admin-form"
-						method="POST"
-						action={`${basePath}/${modelName}/new`}
-					>
-						{editableColumns.map((col) => (
-							<div class="usa-form-group">
-								<label class="usa-label" for={col.name}>
-									{getDisplayName(col.name)}
-									{col.notNull && !col.hasDefault && (
-										<span class="text-secondary-dark"> *</span>
-									)}
-								</label>
-								{renderFormField(col)}
-							</div>
-						))}
-
-						<div class="admin-form-actions">
-							<button type="submit" class="usa-button">
-								Create {model.displayName}
-							</button>
-							<a
-								href={`${basePath}/${modelName}`}
-								class="usa-button usa-button--outline"
-							>
-								Cancel
-							</a>
-						</div>
-					</form>
+				<div class="usa-alert usa-alert--info" role="alert">
+					<div class="usa-alert__body">
+						<p class="usa-alert__text">
+							Create form not yet implemented. Migrate to @b9g/database in progress.
+						</p>
+					</div>
 				</div>
 			</PageLayout>,
 		);
@@ -531,49 +324,7 @@ export function createAdmin(config: AdminConfig): Router {
 	// Handle create
 	router.route("/:model/new").post(async (req, ctx) => {
 		const modelName = ctx.params.model;
-		const model = models.find((m) => m.name === modelName);
-
-		if (!model) {
-			return new Response("Model not found", {status: 404});
-		}
-
 		const basePath = getBasePath(req.url, `/${modelName}/new`);
-
-		// Parse form data
-		const formData = await req.formData();
-		const data: Record<string, unknown> = {};
-
-		for (const col of model.metadata.columns) {
-			// Form field uses DB column name, but Drizzle expects JS property key
-			const value = formData.get(col.name);
-			if (value !== null && value !== "") {
-				data[col.key] = parseFormValue(value as string, col);
-			}
-		}
-
-		try {
-			// Insert into database
-			const db = (await self.databases.open(
-				config.database,
-			)) as DrizzleDatabase;
-			const table = Object.values(config.schema).find(
-				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
-			);
-
-			logger.debug("Insert attempt", {modelName, tableFound: !!table, data});
-
-			if (table) {
-				await (db as any).insert(table).values(data);
-				logger.info("Insert successful", {modelName});
-			} else {
-				logger.warn("Table not found for model", {modelName});
-			}
-		} catch (err) {
-			logger.error("Insert error", {modelName, error: err});
-			return errorPage(title, basePath, models, err, assets);
-		}
-
-		// Redirect to list view
 		return Response.redirect(`${basePath}/${modelName}`, 303);
 	});
 
@@ -589,39 +340,6 @@ export function createAdmin(config: AdminConfig): Router {
 
 		const basePath = getBasePath(req.url, `/${modelName}/${id}`);
 
-		let record: Record<string, unknown> | undefined;
-		try {
-			// Get database and query record
-			const db = (await self.databases.open(
-				config.database,
-			)) as DrizzleDatabase;
-			const table = Object.values(config.schema).find(
-				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
-			) as {[key: string]: unknown} | undefined;
-
-			if (table) {
-				const pk = model.metadata.primaryKey[0];
-
-				const pkColumn = (table as any)[pk];
-				const {eq} = await import("drizzle-orm");
-				const results = (await db
-					.select()
-
-					.from(table as any)
-					.where(eq(pkColumn, coercePrimaryKey(id, model.metadata)))) as Record<
-					string,
-					unknown
-				>[];
-				record = results[0];
-			}
-		} catch (err) {
-			return errorPage(title, basePath, models, err, assets);
-		}
-
-		if (!record) {
-			return new Response("Record not found", {status: 404});
-		}
-
 		return html(
 			<PageLayout
 				title={title}
@@ -630,53 +348,13 @@ export function createAdmin(config: AdminConfig): Router {
 				models={models}
 				assets={assets}
 			>
-				<nav class="usa-breadcrumb admin-breadcrumb" aria-label="Breadcrumbs">
-					<ol class="usa-breadcrumb__list">
-						<li class="usa-breadcrumb__list-item">
-							<a href={basePath} class="usa-breadcrumb__link">
-								<span>Dashboard</span>
-							</a>
-						</li>
-						<li class="usa-breadcrumb__list-item">
-							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
-								<span>{model.displayName}</span>
-							</a>
-						</li>
-						<li
-							class="usa-breadcrumb__list-item usa-current"
-							aria-current="page"
-						>
-							<span>#{id}</span>
-						</li>
-					</ol>
-				</nav>
-
-				<div class="admin-header">
-					<h1 class="usa-heading">
-						{model.displayName} #{id}
-					</h1>
-					<div class="usa-button-group">
-						<a href={`${basePath}/${modelName}/${id}/edit`} class="usa-button">
-							Edit
-						</a>
-						<a
-							href={`${basePath}/${modelName}/${id}/delete`}
-							class="usa-button usa-button--secondary"
-						>
-							Delete
-						</a>
+				<h1 class="usa-heading">{model.displayName} #{id}</h1>
+				<div class="usa-alert usa-alert--info" role="alert">
+					<div class="usa-alert__body">
+						<p class="usa-alert__text">
+							Detail view not yet implemented. Migrate to @b9g/database in progress.
+						</p>
 					</div>
-				</div>
-
-				<div class="admin-card admin-detail">
-					<dl>
-						{model.metadata.columns.map((col) => (
-							<>
-								<dt>{getDisplayName(col.name)}</dt>
-								<dd>{formatValue(record![col.name])}</dd>
-							</>
-						))}
-					</dl>
 				</div>
 			</PageLayout>,
 		);
@@ -693,50 +371,6 @@ export function createAdmin(config: AdminConfig): Router {
 		}
 
 		const basePath = getBasePath(req.url, `/${modelName}/${id}/edit`);
-		const modelConfig = config.models?.[modelName];
-		const excludeFields = modelConfig?.excludeFields ?? [];
-		const readOnlyFields = modelConfig?.readOnlyFields ?? [];
-
-		let record: Record<string, unknown> | undefined;
-		try {
-			// Get database and query record
-			const db = (await self.databases.open(
-				config.database,
-			)) as DrizzleDatabase;
-			const table = Object.values(config.schema).find(
-				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
-			) as {[key: string]: unknown} | undefined;
-
-			if (table) {
-				const pk = model.metadata.primaryKey[0];
-
-				const pkColumn = (table as any)[pk];
-				const {eq} = await import("drizzle-orm");
-				const results = (await db
-					.select()
-
-					.from(table as any)
-					.where(eq(pkColumn, coercePrimaryKey(id, model.metadata)))) as Record<
-					string,
-					unknown
-				>[];
-				record = results[0];
-			}
-		} catch (err) {
-			return errorPage(title, basePath, models, err, assets);
-		}
-
-		if (!record) {
-			return new Response("Record not found", {status: 404});
-		}
-
-		// Get editable columns
-		const editableColumns = model.metadata.columns.filter(
-			(col) =>
-				!excludeFields.includes(col.name) &&
-				!col.isPrimaryKey &&
-				col.dataType !== "blob",
-		);
 
 		return html(
 			<PageLayout
@@ -746,69 +380,13 @@ export function createAdmin(config: AdminConfig): Router {
 				models={models}
 				assets={assets}
 			>
-				<nav class="usa-breadcrumb admin-breadcrumb" aria-label="Breadcrumbs">
-					<ol class="usa-breadcrumb__list">
-						<li class="usa-breadcrumb__list-item">
-							<a href={basePath} class="usa-breadcrumb__link">
-								<span>Dashboard</span>
-							</a>
-						</li>
-						<li class="usa-breadcrumb__list-item">
-							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
-								<span>{model.displayName}</span>
-							</a>
-						</li>
-						<li class="usa-breadcrumb__list-item">
-							<a
-								href={`${basePath}/${modelName}/${id}`}
-								class="usa-breadcrumb__link"
-							>
-								<span>#{id}</span>
-							</a>
-						</li>
-						<li
-							class="usa-breadcrumb__list-item usa-current"
-							aria-current="page"
-						>
-							<span>Edit</span>
-						</li>
-					</ol>
-				</nav>
-
-				<h1 class="usa-heading">Edit {model.displayName}</h1>
-
-				<div class="admin-card">
-					<form
-						class="usa-form admin-form"
-						method="POST"
-						action={`${basePath}/${modelName}/${id}/edit`}
-					>
-						{editableColumns.map((col) => (
-							<div class="usa-form-group">
-								<label class="usa-label" for={col.name}>
-									{getDisplayName(col.name)}
-									{col.notNull && <span class="text-secondary-dark"> *</span>}
-								</label>
-								{renderFormField(
-									col,
-									record![col.name],
-									readOnlyFields.includes(col.name),
-								)}
-							</div>
-						))}
-
-						<div class="admin-form-actions">
-							<button type="submit" class="usa-button">
-								Save Changes
-							</button>
-							<a
-								href={`${basePath}/${modelName}/${id}`}
-								class="usa-button usa-button--outline"
-							>
-								Cancel
-							</a>
-						</div>
-					</form>
+				<h1 class="usa-heading">Edit {model.displayName} #{id}</h1>
+				<div class="usa-alert usa-alert--info" role="alert">
+					<div class="usa-alert__body">
+						<p class="usa-alert__text">
+							Edit form not yet implemented. Migrate to @b9g/database in progress.
+						</p>
+					</div>
 				</div>
 			</PageLayout>,
 		);
@@ -818,62 +396,7 @@ export function createAdmin(config: AdminConfig): Router {
 	router.route("/:model/:id/edit").post(async (req, ctx) => {
 		const modelName = ctx.params.model;
 		const id = ctx.params.id;
-		const model = models.find((m) => m.name === modelName);
-
-		if (!model) {
-			return new Response("Model not found", {status: 404});
-		}
-
 		const basePath = getBasePath(req.url, `/${modelName}/${id}/edit`);
-		const modelConfig = config.models?.[modelName];
-		const excludeFields = modelConfig?.excludeFields ?? [];
-		const readOnlyFields = modelConfig?.readOnlyFields ?? [];
-
-		// Parse form data
-		const formData = await req.formData();
-		const data: Record<string, unknown> = {};
-
-		for (const col of model.metadata.columns) {
-			if (
-				col.isPrimaryKey ||
-				excludeFields.includes(col.name) ||
-				readOnlyFields.includes(col.name)
-			) {
-				continue;
-			}
-
-			const value = formData.get(col.name);
-			if (value !== null) {
-				// Form field uses DB column name, but Drizzle expects JS property key
-				data[col.key] =
-					value === "" ? null : parseFormValue(value as string, col);
-			}
-		}
-
-		try {
-			// Update in database
-			const db = (await self.databases.open(
-				config.database,
-			)) as DrizzleDatabase;
-			const table = Object.values(config.schema).find(
-				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
-			) as {[key: string]: unknown} | undefined;
-
-			if (table) {
-				const pk = model.metadata.primaryKey[0];
-
-				const pkColumn = (table as any)[pk];
-				const {eq} = await import("drizzle-orm");
-				await db
-					.update(table as never)
-					.set(data)
-					.where(eq(pkColumn, coercePrimaryKey(id, model.metadata)));
-			}
-		} catch (err) {
-			return errorPage(title, basePath, models, err, assets);
-		}
-
-		// Redirect to detail view
 		return Response.redirect(`${basePath}/${modelName}/${id}`, 303);
 	});
 
@@ -897,65 +420,13 @@ export function createAdmin(config: AdminConfig): Router {
 				models={models}
 				assets={assets}
 			>
-				<nav class="usa-breadcrumb admin-breadcrumb" aria-label="Breadcrumbs">
-					<ol class="usa-breadcrumb__list">
-						<li class="usa-breadcrumb__list-item">
-							<a href={basePath} class="usa-breadcrumb__link">
-								<span>Dashboard</span>
-							</a>
-						</li>
-						<li class="usa-breadcrumb__list-item">
-							<a href={`${basePath}/${modelName}`} class="usa-breadcrumb__link">
-								<span>{model.displayName}</span>
-							</a>
-						</li>
-						<li class="usa-breadcrumb__list-item">
-							<a
-								href={`${basePath}/${modelName}/${id}`}
-								class="usa-breadcrumb__link"
-							>
-								<span>#{id}</span>
-							</a>
-						</li>
-						<li
-							class="usa-breadcrumb__list-item usa-current"
-							aria-current="page"
-						>
-							<span>Delete</span>
-						</li>
-					</ol>
-				</nav>
-
-				<h1 class="usa-heading">Delete {model.displayName}</h1>
-
-				<div class="admin-card">
-					<div
-						class="usa-alert usa-alert--warning margin-bottom-2"
-						role="alert"
-					>
-						<div class="usa-alert__body">
-							<h4 class="usa-alert__heading">Warning</h4>
-							<p class="usa-alert__text">This action cannot be undone.</p>
-						</div>
+				<h1 class="usa-heading">Delete {model.displayName} #{id}</h1>
+				<div class="usa-alert usa-alert--info" role="alert">
+					<div class="usa-alert__body">
+						<p class="usa-alert__text">
+							Delete not yet implemented. Migrate to @b9g/database in progress.
+						</p>
 					</div>
-
-					<p class="usa-prose margin-bottom-2">
-						Are you sure you want to delete {model.displayName} #{id}?
-					</p>
-
-					<form method="POST" action={`${basePath}/${modelName}/${id}/delete`}>
-						<div class="admin-form-actions">
-							<button type="submit" class="usa-button usa-button--secondary">
-								Yes, Delete
-							</button>
-							<a
-								href={`${basePath}/${modelName}/${id}`}
-								class="usa-button usa-button--outline"
-							>
-								Cancel
-							</a>
-						</div>
-					</form>
 				</div>
 			</PageLayout>,
 		);
@@ -964,217 +435,9 @@ export function createAdmin(config: AdminConfig): Router {
 	// Handle delete
 	router.route("/:model/:id/delete").post(async (req, ctx) => {
 		const modelName = ctx.params.model;
-		const id = ctx.params.id;
-		const model = models.find((m) => m.name === modelName);
-
-		if (!model) {
-			return new Response("Model not found", {status: 404});
-		}
-
-		const basePath = getBasePath(req.url, `/${modelName}/${id}/delete`);
-
-		try {
-			// Delete from database
-			const db = (await self.databases.open(
-				config.database,
-			)) as DrizzleDatabase;
-			const table = Object.values(config.schema).find(
-				(t: unknown) => isTable(t) && getTableName(t as Table) === modelName,
-			) as {[key: string]: unknown} | undefined;
-
-			if (table) {
-				const pk = model.metadata.primaryKey[0];
-
-				const pkColumn = (table as any)[pk];
-				const {eq} = await import("drizzle-orm");
-				await db
-					.delete(table as never)
-					.where(eq(pkColumn, coercePrimaryKey(id, model.metadata)));
-			}
-		} catch (err) {
-			return errorPage(title, basePath, models, err, assets);
-		}
-
-		// Redirect to list view
+		const basePath = getBasePath(req.url, `/${modelName}`);
 		return Response.redirect(`${basePath}/${modelName}`, 303);
 	});
 
 	return router;
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Format a value for display in tables/detail views
- */
-function formatValue(value: unknown): string {
-	if (value === null || value === undefined) {
-		return "-";
-	}
-
-	if (value instanceof Date) {
-		return value.toLocaleString();
-	}
-
-	if (typeof value === "boolean") {
-		return value ? "Yes" : "No";
-	}
-
-	if (typeof value === "object") {
-		return JSON.stringify(value);
-	}
-
-	return String(value);
-}
-
-/**
- * Render a form field based on column metadata
- */
-function renderFormField(
-	col: ColumnMetadata,
-	value?: unknown,
-	readOnly?: boolean,
-) {
-	const strValue = value !== null && value !== undefined ? String(value) : "";
-	const disabled = readOnly ? {disabled: true} : {};
-
-	// Enum columns get a select
-	if (col.enumValues) {
-		return (
-			<select class="usa-select" name={col.name} id={col.name} {...disabled}>
-				{!col.notNull && <option value="">-- Select --</option>}
-				{col.enumValues.map((v) => (
-					<option value={v} selected={v === strValue}>
-						{v}
-					</option>
-				))}
-			</select>
-		);
-	}
-
-	// Type-specific inputs
-	switch (col.dataType) {
-		case "boolean":
-			return (
-				<select class="usa-select" name={col.name} id={col.name} {...disabled}>
-					{!col.notNull && <option value="">-- Select --</option>}
-					<option value="true" selected={strValue === "true"}>
-						Yes
-					</option>
-					<option value="false" selected={strValue === "false"}>
-						No
-					</option>
-				</select>
-			);
-
-		case "number":
-			return (
-				<input
-					class="usa-input"
-					type="number"
-					name={col.name}
-					id={col.name}
-					value={strValue}
-					step="any"
-					required={col.notNull && !col.hasDefault}
-					{...disabled}
-				/>
-			);
-
-		case "date":
-			return (
-				<input
-					class="usa-input"
-					type="date"
-					name={col.name}
-					id={col.name}
-					value={strValue}
-					required={col.notNull && !col.hasDefault}
-					{...disabled}
-				/>
-			);
-
-		case "datetime":
-			return (
-				<input
-					class="usa-input"
-					type="datetime-local"
-					name={col.name}
-					id={col.name}
-					value={strValue}
-					required={col.notNull && !col.hasDefault}
-					{...disabled}
-				/>
-			);
-
-		case "json":
-			return (
-				<textarea
-					class="usa-textarea"
-					name={col.name}
-					id={col.name}
-					required={col.notNull && !col.hasDefault}
-					{...disabled}
-				>
-					{typeof value === "object"
-						? JSON.stringify(value, null, 2)
-						: strValue}
-				</textarea>
-			);
-
-		default:
-			return (
-				<input
-					class="usa-input"
-					type="text"
-					name={col.name}
-					id={col.name}
-					value={strValue}
-					required={col.notNull && !col.hasDefault}
-					{...disabled}
-				/>
-			);
-	}
-}
-
-/**
- * Parse a form value based on column metadata
- */
-function parseFormValue(value: string, col: ColumnMetadata): unknown {
-	switch (col.dataType) {
-		case "boolean":
-			return value === "true";
-
-		case "number":
-			return parseFloat(value);
-
-		case "date":
-		case "datetime":
-			return new Date(value);
-
-		case "json":
-			try {
-				return JSON.parse(value);
-			} catch {
-				return value;
-			}
-
-		default:
-			return value;
-	}
-}
-
-/**
- * Coerce a primary key value from URL to the correct type
- */
-function coercePrimaryKey(value: string, metadata: TableMetadata): unknown {
-	const pkCol = metadata.columns.find((c) =>
-		metadata.primaryKey.includes(c.name),
-	);
-	if (pkCol?.dataType === "number") {
-		return parseInt(value, 10);
-	}
-	return value;
 }

@@ -82,41 +82,4 @@ program
 		await infoCommand();
 	});
 
-/**
- * Database commands (drizzle-kit wrapper)
- */
-const db = program.command("db").description("Database commands (drizzle-kit)");
-
-db.command("generate [database]")
-	.description("Generate SQL migration files from schema changes")
-	.option("--name <name>", "Custom migration name")
-	.action(async (database, options) => {
-		const {dbGenerateCommand} = await import("../src/commands/db.ts");
-		await dbGenerateCommand(database, options, config);
-	});
-
-db.command("migrate [database]")
-	.description("Apply pending migrations to the database")
-	.action(async (database, options) => {
-		const {dbMigrateCommand} = await import("../src/commands/db.ts");
-		await dbMigrateCommand(database, options, config);
-	});
-
-db.command("push [database]")
-	.description("Push schema changes directly (no migration files)")
-	.option("--force", "Skip confirmation for destructive changes")
-	.action(async (database, options) => {
-		const {dbPushCommand} = await import("../src/commands/db.ts");
-		await dbPushCommand(database, options, config);
-	});
-
-db.command("studio [database]")
-	.description("Launch Drizzle Studio GUI")
-	.option("--port <port>", "Studio port", "4983")
-	.option("--host <host>", "Studio host", "127.0.0.1")
-	.action(async (database, options) => {
-		const {dbStudioCommand} = await import("../src/commands/db.ts");
-		await dbStudioCommand(database, options, config);
-	});
-
 program.parse();
