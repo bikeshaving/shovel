@@ -148,6 +148,9 @@ export class Database extends EventTarget {
 	 * fires an "upgradeneeded" event and waits for all waitUntil()
 	 * promises before completing.
 	 *
+	 * Migration safety: Uses exclusive locking to prevent race conditions
+	 * when multiple processes attempt migrations simultaneously.
+	 *
 	 * @example
 	 * db.addEventListener("upgradeneeded", (e) => {
 	 *   e.waitUntil(runMigrations(e));
@@ -159,19 +162,39 @@ export class Database extends EventTarget {
 			throw new Error("Database already opened");
 		}
 
+		// Create table outside transaction (idempotent)
 		await this.#ensureMigrationsTable();
 
-		const currentVersion = await this.#getCurrentVersion();
+		// Use exclusive transaction for migration safety
+		// SQLite: BEGIN IMMEDIATE acquires write lock upfront
+		// PostgreSQL/MySQL: SELECT FOR UPDATE locks the rows
+		const beginSQL = this.#dialect === "sqlite"
+			? "BEGIN IMMEDIATE"
+			: this.#dialect === "mysql"
+				? "START TRANSACTION"
+				: "BEGIN";
 
-		if (version > currentVersion) {
-			const event = new DatabaseUpgradeEvent("upgradeneeded", {
-				oldVersion: currentVersion,
-				newVersion: version,
-			});
-			this.dispatchEvent(event);
-			await event._settle();
+		await this.#driver.run(beginSQL, []);
 
-			await this.#setVersion(version);
+		try {
+			// Re-check version inside lock to prevent race conditions
+			const currentVersion = await this.#getCurrentVersionLocked();
+
+			if (version > currentVersion) {
+				const event = new DatabaseUpgradeEvent("upgradeneeded", {
+					oldVersion: currentVersion,
+					newVersion: version,
+				});
+				this.dispatchEvent(event);
+				await event._settle();
+
+				await this.#setVersion(version);
+			}
+
+			await this.#driver.run("COMMIT", []);
+		} catch (error) {
+			await this.#driver.run("ROLLBACK", []);
+			throw error;
 		}
 
 		this.#version = version;
@@ -200,6 +223,17 @@ export class Database extends EventTarget {
 	async #getCurrentVersion(): Promise<number> {
 		const row = await this.#driver.get<{version: number}>(
 			"SELECT MAX(version) as version FROM _migrations",
+			[],
+		);
+		return row?.version ?? 0;
+	}
+
+	async #getCurrentVersionLocked(): Promise<number> {
+		// SQLite: BEGIN IMMEDIATE already holds write lock
+		// PostgreSQL/MySQL: Use FOR UPDATE to lock rows
+		const forUpdate = this.#dialect === "sqlite" ? "" : " FOR UPDATE";
+		const row = await this.#driver.get<{version: number}>(
+			`SELECT MAX(version) as version FROM _migrations${forUpdate}`,
 			[],
 		);
 		return row?.version ?? 0;
