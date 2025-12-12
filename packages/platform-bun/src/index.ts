@@ -20,6 +20,7 @@ import {
 	type WorkerPoolOptions,
 	SingleThreadedRuntime,
 	CustomLoggerStorage,
+	CustomDatabaseStorage,
 } from "@b9g/platform";
 import {
 	createCacheFactory,
@@ -235,6 +236,7 @@ export class BunPlatform extends BasePlatform {
 	#singleThreadedRuntime?: SingleThreadedRuntime;
 	#cacheStorage?: CustomCacheStorage;
 	#directoryStorage?: CustomDirectoryStorage;
+	#databaseStorage?: CustomDatabaseStorage;
 
 	constructor(options: BunPlatformOptions = {}) {
 		super(options);
@@ -315,6 +317,17 @@ export class BunPlatform extends BasePlatform {
 	 */
 	async createLoggers(): Promise<CustomLoggerStorage> {
 		return new CustomLoggerStorage((...categories) => getLogger(categories));
+	}
+
+	/**
+	 * Create database storage using config from shovel.json
+	 */
+	createDatabases(): CustomDatabaseStorage | undefined {
+		const config = this.#options.config;
+		if (config?.databases && Object.keys(config.databases).length > 0) {
+			return new CustomDatabaseStorage(config.databases);
+		}
+		return undefined;
 	}
 
 	/**
@@ -410,6 +423,11 @@ export class BunPlatform extends BasePlatform {
 			this.#directoryStorage = await this.createDirectories();
 		}
 
+		// Create shared database storage if not already created
+		if (!this.#databaseStorage) {
+			this.#databaseStorage = this.createDatabases();
+		}
+
 		// Terminate any existing runtime
 		if (this.#singleThreadedRuntime) {
 			await this.#singleThreadedRuntime.terminate();
@@ -421,10 +439,11 @@ export class BunPlatform extends BasePlatform {
 
 		logger.info("Creating single-threaded ServiceWorker runtime", {entryPath});
 
-		// Create single-threaded runtime with caches, directories, and loggers
+		// Create single-threaded runtime with caches, directories, databases, and loggers
 		this.#singleThreadedRuntime = new SingleThreadedRuntime({
 			caches: this.#cacheStorage,
 			directories: this.#directoryStorage,
+			databases: this.#databaseStorage,
 			loggers: new CustomLoggerStorage((...cats) => getLogger(cats)),
 		});
 
@@ -621,6 +640,12 @@ export class BunPlatform extends BasePlatform {
 		if (this.#cacheStorage) {
 			await this.#cacheStorage.dispose();
 			this.#cacheStorage = undefined;
+		}
+
+		// Dispose database storage (closes database connections)
+		if (this.#databaseStorage) {
+			await this.#databaseStorage.closeAll();
+			this.#databaseStorage = undefined;
 		}
 	}
 }

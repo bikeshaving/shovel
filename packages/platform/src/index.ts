@@ -19,7 +19,9 @@ import {
 	ShovelServiceWorkerRegistration,
 	ShovelFetchEvent,
 	CustomLoggerStorage,
+	CustomDatabaseStorage,
 	type LoggerStorage,
+	type DatabaseStorage,
 } from "./runtime.js";
 
 // Runtime global declarations for platform detection
@@ -541,6 +543,8 @@ export interface SingleThreadedRuntimeOptions {
 	caches: CacheStorage;
 	/** Directory storage for the runtime */
 	directories: DirectoryStorage;
+	/** Database storage for the runtime */
+	databases?: DatabaseStorage;
 	/** Logger storage for the runtime */
 	loggers: LoggerStorage;
 }
@@ -566,6 +570,7 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 			registration: this.#registration,
 			caches: options.caches,
 			directories: options.directories,
+			databases: options.databases,
 			loggers: options.loggers,
 		});
 
@@ -1089,3 +1094,4 @@ export class ServiceWorkerPool {
 
 export {CustomLoggerStorage, type LoggerStorage};
 export type {LoggerFactory} from "./runtime.js";
+export {CustomDatabaseStorage, type DatabaseStorage} from "./runtime.js";
