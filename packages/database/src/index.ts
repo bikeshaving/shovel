@@ -67,6 +67,7 @@ export {
 export {
 	// Database wrapper
 	Database,
+	DatabaseUpgradeEvent,
 	createDatabase,
 	type DatabaseDriver,
 	type DatabaseOptions,
