@@ -179,6 +179,8 @@ const posts = await db.all(Posts, Users)`
 
 **Operators:** `$eq`, `$neq`, `$lt`, `$gt`, `$lte`, `$gte`, `$like`, `$in`, `$isNull`
 
+Operators are intentionally limited to simple, single-column predicates. `OR`, subqueries, and cross-table logic belong in raw SQL.
+
 ## CRUD Helpers
 
 ```typescript
