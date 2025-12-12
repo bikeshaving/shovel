@@ -187,10 +187,16 @@ export class Database extends EventTarget {
 	// ==========================================================================
 
 	async #ensureMigrationsTable(): Promise<void> {
+		// MySQL requires TIMESTAMP/DATETIME for DEFAULT CURRENT_TIMESTAMP
+		const timestampCol =
+			this.#dialect === "mysql"
+				? "applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+				: "applied_at TEXT DEFAULT CURRENT_TIMESTAMP";
+
 		await this.#driver.run(
 			`CREATE TABLE IF NOT EXISTS _migrations (
 				version INTEGER PRIMARY KEY,
-				applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+				${timestampCol}
 			)`,
 			[],
 		);
@@ -206,7 +212,7 @@ export class Database extends EventTarget {
 
 	async #setVersion(version: number): Promise<void> {
 		await this.#driver.run(
-			"INSERT INTO _migrations (version) VALUES (?)",
+			`INSERT INTO _migrations (version) VALUES (${this.#placeholder(1)})`,
 			[version],
 		);
 	}

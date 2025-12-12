@@ -1,11 +1,8 @@
 import {test, expect, describe, afterEach} from "bun:test";
 import {CustomDatabaseStorage, type DatabaseConfig} from "../src/runtime.js";
-import {
-	createDriver,
-	dialect,
-} from "@b9g/database/bun-sqlite";
+import {createDriver} from "@b9g/database/bun-sql";
 
-describe("Database Integration (bun:sqlite)", () => {
+describe("Database Integration (Bun.SQL)", () => {
 	let storage: CustomDatabaseStorage | null = null;
 
 	afterEach(async () => {
@@ -19,9 +16,9 @@ describe("Database Integration (bun:sqlite)", () => {
 		storage = new CustomDatabaseStorage({
 			main: {
 				adapter: {
-					module: "@b9g/database/bun-sqlite",
+					module: "@b9g/database/bun-sql",
 					createDriver,
-					dialect,
+					dialect: "sqlite",
 				},
 				url: ":memory:",
 			},
@@ -46,9 +43,9 @@ describe("Database Integration (bun:sqlite)", () => {
 		storage = new CustomDatabaseStorage({
 			main: {
 				adapter: {
-					module: "@b9g/database/bun-sqlite",
+					module: "@b9g/database/bun-sql",
 					createDriver,
-					dialect,
+					dialect: "sqlite",
 				},
 				url: ":memory:",
 			},
@@ -88,9 +85,9 @@ describe("Database Integration (bun:sqlite)", () => {
 		storage = new CustomDatabaseStorage({
 			main: {
 				adapter: {
-					module: "@b9g/database/bun-sqlite",
+					module: "@b9g/database/bun-sql",
 					createDriver,
-					dialect,
+					dialect: "sqlite",
 				},
 				url: ":memory:",
 			},
@@ -108,9 +105,9 @@ describe("Database Integration (bun:sqlite)", () => {
 		storage = new CustomDatabaseStorage({
 			main: {
 				adapter: {
-					module: "@b9g/database/bun-sqlite",
+					module: "@b9g/database/bun-sql",
 					createDriver,
-					dialect,
+					dialect: "sqlite",
 				},
 				url: ":memory:",
 			},
@@ -133,9 +130,9 @@ describe("Database Integration (bun:sqlite)", () => {
 		storage = new CustomDatabaseStorage({
 			main: {
 				adapter: {
-					module: "@b9g/database/bun-sqlite",
+					module: "@b9g/database/bun-sql",
 					createDriver,
-					dialect,
+					dialect: "sqlite",
 				},
 				url: ":memory:",
 			},
@@ -164,9 +161,9 @@ describe("Database Integration (bun:sqlite)", () => {
 		storage = new CustomDatabaseStorage({
 			main: {
 				adapter: {
-					module: "@b9g/database/bun-sqlite",
+					module: "@b9g/database/bun-sql",
 					createDriver,
-					dialect,
+					dialect: "sqlite",
 				},
 				url: ":memory:",
 			},
@@ -202,9 +199,9 @@ describe("Database Integration (bun:sqlite)", () => {
 		storage = new CustomDatabaseStorage({
 			main: {
 				adapter: {
-					module: "@b9g/database/bun-sqlite",
+					module: "@b9g/database/bun-sql",
 					createDriver,
-					dialect,
+					dialect: "sqlite",
 				},
 				url: ":memory:",
 			},
@@ -234,9 +231,9 @@ describe("Database Integration (bun:sqlite)", () => {
 		storage = new CustomDatabaseStorage({
 			main: {
 				adapter: {
-					module: "@b9g/database/bun-sqlite",
+					module: "@b9g/database/bun-sql",
 					createDriver,
-					dialect,
+					dialect: "sqlite",
 				},
 				url: ":memory:",
 			},

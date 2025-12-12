@@ -201,22 +201,26 @@
       "name": "@b9g/database-mysql",
       "version": "0.1.0",
       "devDependencies": {
+        "@b9g/database": "workspace:*",
         "@b9g/libuild": "^0.1.18",
+        "mysql2": "^3.15.3",
       },
       "peerDependencies": {
         "@b9g/database": "workspace:*",
-        "mysql2": "^3.0.0",
+        "mysql2": "^3.15.3",
       },
     },
     "packages/database-postgres": {
       "name": "@b9g/database-postgres",
       "version": "0.1.0",
       "devDependencies": {
+        "@b9g/database": "workspace:*",
         "@b9g/libuild": "^0.1.18",
+        "postgres": "^3.4.7",
       },
       "peerDependencies": {
         "@b9g/database": "workspace:*",
-        "postgres": "^3.4.0",
+        "postgres": "^3.4.7",
       },
     },
     "packages/filesystem": {

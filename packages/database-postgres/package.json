@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build": "libuild --save",
-    "test": "echo \"Test suite to be implemented\"",
+    "test": "bun test",
     "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "keywords": [
@@ -22,10 +22,12 @@
   "license": "MIT",
   "peerDependencies": {
     "@b9g/database": "workspace:*",
-    "postgres": "^3.4.0"
+    "postgres": "^3.4.7"
   },
   "devDependencies": {
-    "@b9g/libuild": "^0.1.18"
+    "@b9g/database": "workspace:*",
+    "@b9g/libuild": "^0.1.18",
+    "postgres": "^3.4.7"
   },
   "repository": {
     "type": "git",

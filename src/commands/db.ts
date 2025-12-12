@@ -44,6 +44,7 @@ function mapDialect(dialect: string): string {
 		mysql: "mysql",
 		sqlite: "sqlite",
 		"bun-sqlite": "sqlite",
+		"bun-sql": "sqlite", // Bun.SQL defaults to sqlite for local files
 		libsql: "turso",
 		d1: "sqlite",
 	};

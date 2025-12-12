@@ -1181,7 +1181,7 @@ export type DirectoryConfig = z.infer<typeof DirectoryConfigSchema>;
 /** Database configuration schema - uses @b9g/database adapters */
 export const DatabaseConfigSchema = z
 	.object({
-		/** Adapter module (e.g., "@b9g/database/bun-sqlite", "@b9g/database-postgres") */
+		/** Adapter module (e.g., "@b9g/database/bun-sql") */
 		adapter: z.string(),
 		/** Database connection URL */
 		url: z.string(),

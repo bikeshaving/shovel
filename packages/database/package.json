@@ -10,9 +10,9 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./bun-sqlite": {
-      "types": "./dist/bun-sqlite.d.ts",
-      "import": "./dist/bun-sqlite.js"
+    "./bun-sql": {
+      "types": "./dist/bun-sql.d.ts",
+      "import": "./dist/bun-sql.js"
     }
   },
   "scripts": {

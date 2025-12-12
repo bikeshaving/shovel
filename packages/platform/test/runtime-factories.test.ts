@@ -603,7 +603,7 @@ describe("CustomLoggerStorage", () => {
 describe("CustomDatabaseStorage", () => {
 	// Helper to create a mock adapter
 	const createMockAdapter = (closeFn?: () => void) => ({
-		module: "@b9g/database/bun-sqlite",
+		module: "@b9g/database/bun-sql",
 		createDriver: () => ({
 			driver: {
 				all: async () => [],
@@ -647,7 +647,7 @@ describe("CustomDatabaseStorage", () => {
 	test("get() creates Database and caches it", () => {
 		let createCalls = 0;
 		const adapter = {
-			module: "@b9g/database/bun-sqlite",
+			module: "@b9g/database/bun-sql",
 			createDriver: () => {
 				createCalls++;
 				return {
@@ -734,7 +734,7 @@ describe("CustomDatabaseStorage", () => {
 	test("closeAll() closes all gotten databases", async () => {
 		let closeCount = 0;
 		const adapter = {
-			module: "@b9g/database/bun-sqlite",
+			module: "@b9g/database/bun-sql",
 			createDriver: () => ({
 				driver: {
 					all: async () => [],
@@ -766,7 +766,7 @@ describe("CustomDatabaseStorage", () => {
 	test("get() returns same instance on concurrent calls", () => {
 		let createCalls = 0;
 		const adapter = {
-			module: "@b9g/database/bun-sqlite",
+			module: "@b9g/database/bun-sql",
 			createDriver: () => {
 				createCalls++;
 				return {
