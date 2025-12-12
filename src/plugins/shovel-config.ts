@@ -15,7 +15,7 @@ import {
  * - process.env references for secrets (evaluated at runtime)
  *
  * Also generates typed overloads for storage APIs in dist/server/shovel.d.ts:
- * - DatabaseStorage.open() - typed Drizzle instances
+ * - DatabaseStorage.open() - typed Database instances
  * - DirectoryStorage.open() - validated directory names
  *
  * @param projectRoot - Root directory of the project

@@ -1622,7 +1622,7 @@ export interface ServiceWorkerGlobalsOptions {
 	registration: ServiceWorkerRegistration;
 	/** Directory storage (file system access) - REQUIRED */
 	directories: DirectoryStorage;
-	/** Database storage (Drizzle ORM access) - OPTIONAL */
+	/** Database storage (@b9g/database access) - OPTIONAL */
 	databases?: DatabaseStorage;
 	/** Logger storage (logging access) - REQUIRED */
 	loggers: LoggerStorage;

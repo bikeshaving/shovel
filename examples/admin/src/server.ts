@@ -2,7 +2,7 @@
  * Shovel Admin Example
  *
  * Demonstrates @b9g/admin package with:
- * - Auto-generated CRUD for Drizzle schema
+ * - Auto-generated CRUD for @b9g/database schema
  * - Google OAuth authentication
  * - Session storage via self.caches
  */

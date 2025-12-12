@@ -28,7 +28,7 @@ declare global {
 	 *
 	 * The base interface returns `Promise<unknown>`. When using `shovel build` or
 	 * `shovel develop`, typed overloads are generated in `dist/server/shovel.d.ts`
-	 * that provide full Drizzle type inference based on your shovel.json config.
+	 * that provide full type inference based on your shovel.json config.
 	 *
 	 * @example const db = await self.databases.open("main");
 	 */
