@@ -5,7 +5,7 @@
  * with references resolved to actual object instances.
  */
 
-import type {Collection, ReferenceInfo} from "./collection.js";
+import type {Table, ReferenceInfo} from "./table.js";
 
 // ============================================================================
 // Types
@@ -18,21 +18,21 @@ import type {Collection, ReferenceInfo} from "./collection.js";
 export type RawRow = Record<string, unknown>;
 
 /**
- * Entity map keyed by "collection:primaryKey"
+ * Entity map keyed by "table:primaryKey"
  */
 export type EntityMap = Map<string, Record<string, unknown>>;
 
 /**
- * Collection map by table name for lookup
+ * Table map by table name for lookup
  */
-export type CollectionMap = Map<string, Collection<any>>;
+export type TableMap = Map<string, Table<any>>;
 
 // ============================================================================
 // Parsing
 // ============================================================================
 
 /**
- * Extract entity data from a raw row for a specific collection.
+ * Extract entity data from a raw row for a specific table.
  *
  * @example
  * extractEntityData({ "posts.id": "p1", "users.id": "u1" }, "posts")
@@ -40,9 +40,9 @@ export type CollectionMap = Map<string, Collection<any>>;
  */
 export function extractEntityData(
 	row: RawRow,
-	collectionName: string,
+	tableName: string,
 ): Record<string, unknown> | null {
-	const prefix = `${collectionName}.`;
+	const prefix = `${tableName}.`;
 	const entity: Record<string, unknown> = {};
 	let hasData = false;
 
@@ -56,7 +56,6 @@ export function extractEntityData(
 		}
 	}
 
-	// Return null if all values are null (LEFT JOIN with no match)
 	return hasData ? entity : null;
 }
 
@@ -65,18 +64,12 @@ export function extractEntityData(
  */
 export function getPrimaryKeyValue(
 	entity: Record<string, unknown>,
-	collection: Collection<any>,
+	table: Table<any>,
 ): string | null {
-	const pk = collection.primaryKey();
+	const pk = table.primaryKey();
 
 	if (pk === null) {
 		return null;
-	}
-
-	if (Array.isArray(pk)) {
-		// Composite key - join values
-		const values = pk.map((k) => String(entity[k] ?? ""));
-		return values.join(":");
 	}
 
 	const value = entity[pk];
@@ -86,8 +79,8 @@ export function getPrimaryKeyValue(
 /**
  * Create entity key for the entity map.
  */
-export function entityKey(collectionName: string, primaryKey: string): string {
-	return `${collectionName}:${primaryKey}`;
+export function entityKey(tableName: string, primaryKey: string): string {
+	return `${tableName}:${primaryKey}`;
 }
 
 // ============================================================================
@@ -101,22 +94,20 @@ export function entityKey(collectionName: string, primaryKey: string): string {
  */
 export function buildEntityMap(
 	rows: RawRow[],
-	collections: Collection<any>[],
+	tables: Table<any>[],
 ): EntityMap {
 	const entities: EntityMap = new Map();
-	const collectionMap = new Map(collections.map((c) => [c.name, c]));
 
 	for (const row of rows) {
-		for (const collection of collections) {
-			const data = extractEntityData(row, collection.name);
+		for (const table of tables) {
+			const data = extractEntityData(row, table.name);
 			if (!data) continue;
 
-			const pk = getPrimaryKeyValue(data, collection);
+			const pk = getPrimaryKeyValue(data, table);
 			if (!pk) continue;
 
-			const key = entityKey(collection.name, pk);
+			const key = entityKey(table.name, pk);
 
-			// Only add if not already present (deduplication)
 			if (!entities.has(key)) {
 				entities.set(key, data);
 			}
@@ -129,38 +120,31 @@ export function buildEntityMap(
 /**
  * Resolve references for all entities in the map.
  *
- * Walks each collection's references() and adds resolved entities as properties.
+ * Walks each table's references() and adds resolved entities as properties.
  */
 export function resolveReferences(
 	entities: EntityMap,
-	collections: Collection<any>[],
+	tables: Table<any>[],
 ): void {
-	const collectionMap = new Map(collections.map((c) => [c.name, c]));
-
-	for (const collection of collections) {
-		const refs = collection.references();
+	for (const table of tables) {
+		const refs = table.references();
 		if (refs.length === 0) continue;
 
-		// Find all entities of this collection
-		const prefix = `${collection.name}:`;
+		const prefix = `${table.name}:`;
 
 		for (const [key, entity] of entities) {
 			if (!key.startsWith(prefix)) continue;
 
-			// Resolve each reference
 			for (const ref of refs) {
 				const foreignKeyValue = entity[ref.fieldName];
 				if (foreignKeyValue === null || foreignKeyValue === undefined) {
-					// Null reference - set property to null
 					entity[ref.as] = null;
 					continue;
 				}
 
-				// Look up the referenced entity
-				const refKey = entityKey(ref.collection.name, String(foreignKeyValue));
+				const refKey = entityKey(ref.table.name, String(foreignKeyValue));
 				const refEntity = entities.get(refKey);
 
-				// Set the resolved entity (or null if not found)
 				entity[ref.as] = refEntity ?? null;
 			}
 		}
@@ -168,28 +152,27 @@ export function resolveReferences(
 }
 
 /**
- * Extract main collection entities from the entity map in row order.
+ * Extract main table entities from the entity map in row order.
  *
  * Maintains the order from the original query results.
  */
 export function extractMainEntities<T>(
 	rows: RawRow[],
-	mainCollection: Collection<any>,
+	mainTable: Table<any>,
 	entities: EntityMap,
 ): T[] {
 	const results: T[] = [];
 	const seen = new Set<string>();
 
 	for (const row of rows) {
-		const data = extractEntityData(row, mainCollection.name);
+		const data = extractEntityData(row, mainTable.name);
 		if (!data) continue;
 
-		const pk = getPrimaryKeyValue(data, mainCollection);
+		const pk = getPrimaryKeyValue(data, mainTable);
 		if (!pk) continue;
 
-		const key = entityKey(mainCollection.name, pk);
+		const key = entityKey(mainTable.name, pk);
 
-		// Skip duplicates but maintain order
 		if (seen.has(key)) continue;
 		seen.add(key);
 
@@ -215,43 +198,39 @@ export function extractMainEntities<T>(
  *   { "posts.id": "p2", "posts.authorId": "u1", "users.id": "u1", "users.name": "Alice" },
  * ];
  *
- * const posts = normalize(rows, [Post, User]);
+ * const posts = normalize(rows, [posts, users]);
  * // posts[0].author === posts[1].author  // Same instance!
  */
 export function normalize<T>(
 	rows: RawRow[],
-	collections: Collection<any>[],
+	tables: Table<any>[],
 ): T[] {
-	if (collections.length === 0) {
-		throw new Error("At least one collection is required");
+	if (tables.length === 0) {
+		throw new Error("At least one table is required");
 	}
 
 	if (rows.length === 0) {
 		return [];
 	}
 
-	// Build entity map (deduplicates entities)
-	const entities = buildEntityMap(rows, collections);
+	const entities = buildEntityMap(rows, tables);
+	resolveReferences(entities, tables);
 
-	// Resolve all references
-	resolveReferences(entities, collections);
-
-	// Extract main collection entities in original order
-	const mainCollection = collections[0];
-	return extractMainEntities<T>(rows, mainCollection, entities);
+	const mainTable = tables[0];
+	return extractMainEntities<T>(rows, mainTable, entities);
 }
 
 /**
  * Normalize a single row into an entity.
  *
- * Returns null if the main collection has no data (e.g., no match).
+ * Returns null if the main table has no data (e.g., no match).
  */
 export function normalizeOne<T>(
 	row: RawRow | null,
-	collections: Collection<any>[],
+	tables: Table<any>[],
 ): T | null {
 	if (!row) return null;
 
-	const results = normalize<T>([row], collections);
+	const results = normalize<T>([row], tables);
 	return results[0] ?? null;
 }

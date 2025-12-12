@@ -3,26 +3,26 @@
  */
 
 import {z} from "zod";
-import {collection, primary, unique, references} from "@b9g/database";
+import {table, primary, unique, references} from "@b9g/database";
 
-export const users = collection("users", {
-	id: z.number().pipe(primary()),
-	email: z.string().email().pipe(unique()),
+export const users = table("users", {
+	id: primary(z.number()),
+	email: unique(z.string().email()),
 	name: z.string(),
 	role: z.enum(["admin", "user"]).default("user"),
 	createdAt: z.date().default(() => new Date()),
 });
 
-export const posts = collection("posts", {
-	id: z.number().pipe(primary()),
+export const posts = table("posts", {
+	id: primary(z.number()),
 	title: z.string(),
 	content: z.string().optional(),
-	authorId: z.number().pipe(references(users, "id", "author")),
+	authorId: references(z.number(), users, {as: "author"}),
 	published: z.boolean().default(false),
 	createdAt: z.date().default(() => new Date()),
 });
 
-export const tags = collection("tags", {
-	id: z.number().pipe(primary()),
-	name: z.string().pipe(unique()),
+export const tags = table("tags", {
+	id: primary(z.number()),
+	name: unique(z.string()),
 });

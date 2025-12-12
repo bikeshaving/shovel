@@ -1,11 +1,11 @@
 /**
- * DDL generation from Zod schemas.
+ * DDL generation from table definitions.
  *
  * Generates CREATE TABLE statements for SQLite, PostgreSQL, and MySQL.
  */
 
-import {z, ZodTypeAny} from "zod";
-import type {Collection} from "./collection.js";
+import {ZodTypeAny} from "zod";
+import type {Table} from "./table.js";
 
 // ============================================================================
 // Types
@@ -31,9 +31,6 @@ interface ColumnDef {
 // Type Mapping
 // ============================================================================
 
-/**
- * Map Zod types to SQL types based on dialect.
- */
 function mapZodToSQL(
 	zodType: ZodTypeAny,
 	dialect: SQLDialect,
@@ -55,7 +52,6 @@ function mapZodToSQL(
 				}
 			}
 
-			// Use VARCHAR for constrained lengths in Postgres/MySQL
 			if (maxLength && maxLength <= 255 && dialect !== "sqlite") {
 				sqlType = `VARCHAR(${maxLength})`;
 			} else {
@@ -85,7 +81,6 @@ function mapZodToSQL(
 		}
 
 		case "ZodBoolean":
-			// SQLite uses INTEGER for booleans
 			sqlType = dialect === "sqlite" ? "INTEGER" : "BOOLEAN";
 			if (defaultValue !== undefined) {
 				if (dialect === "sqlite") {
@@ -102,11 +97,10 @@ function mapZodToSQL(
 			} else if (dialect === "mysql") {
 				sqlType = "DATETIME";
 			} else {
-				sqlType = "TEXT"; // SQLite stores as ISO string
+				sqlType = "TEXT";
 			}
 
 			if (defaultValue !== undefined) {
-				// Default to CURRENT_TIMESTAMP for "now" defaults
 				if (defaultValue instanceof Date || typeof defaultValue === "function") {
 					if (dialect === "sqlite") {
 						sqlDefault = "CURRENT_TIMESTAMP";
@@ -120,7 +114,6 @@ function mapZodToSQL(
 			break;
 
 		case "ZodEnum":
-			// Store enums as TEXT, could use native ENUM for MySQL/Postgres
 			sqlType = "TEXT";
 			if (defaultValue !== undefined) {
 				sqlDefault = `'${String(defaultValue).replace(/'/g, "''")}'`;
@@ -129,11 +122,10 @@ function mapZodToSQL(
 
 		case "ZodArray":
 		case "ZodObject":
-			// Store complex types as JSON
 			if (dialect === "postgresql") {
 				sqlType = "JSONB";
 			} else {
-				sqlType = "TEXT"; // JSON stored as text
+				sqlType = "TEXT";
 			}
 			if (defaultValue !== undefined) {
 				sqlDefault = `'${JSON.stringify(defaultValue).replace(/'/g, "''")}'`;
@@ -150,9 +142,6 @@ function mapZodToSQL(
 	return {sqlType, defaultValue: sqlDefault};
 }
 
-/**
- * Unwrap optional/nullable/default to get core type and metadata.
- */
 function unwrapType(zodType: ZodTypeAny): {
 	core: ZodTypeAny;
 	isOptional: boolean;
@@ -179,7 +168,6 @@ function unwrapType(zodType: ZodTypeAny): {
 		} else if (typeName === "ZodEffects") {
 			core = core._def.schema;
 		} else if (typeName === "ZodPipeline") {
-			// Use input type for SQL type detection
 			core = core._def.in;
 		} else if (typeName === "ZodBranded") {
 			core = core._def.type;
@@ -192,53 +180,9 @@ function unwrapType(zodType: ZodTypeAny): {
 }
 
 // ============================================================================
-// Metadata Extraction (duplicated from collection.ts for now)
-// ============================================================================
-
-const DB_META = Symbol.for("@b9g/database:meta");
-
-interface FieldDbMeta {
-	primaryKey?: boolean;
-	unique?: boolean;
-	indexed?: boolean;
-}
-
-function collectMeta(zodType: ZodTypeAny): FieldDbMeta {
-	const result: FieldDbMeta = {};
-
-	function walk(type: ZodTypeAny): void {
-		const meta = (type as any)[DB_META];
-		if (meta) {
-			Object.assign(result, meta);
-		}
-
-		const typeName = type._def.typeName;
-
-		if (typeName === "ZodPipeline") {
-			walk((type as any)._def.in);
-			walk((type as any)._def.out);
-		} else if (typeName === "ZodEffects") {
-			walk((type as any)._def.schema);
-		} else if (typeName === "ZodOptional" || typeName === "ZodNullable") {
-			walk((type as any)._def.innerType);
-		} else if (typeName === "ZodDefault") {
-			walk((type as any)._def.innerType);
-		} else if (typeName === "ZodBranded") {
-			walk((type as any)._def.type);
-		}
-	}
-
-	walk(zodType);
-	return result;
-}
-
-// ============================================================================
 // DDL Generation
 // ============================================================================
 
-/**
- * Quote an identifier for the given dialect.
- */
 function quoteIdent(name: string, dialect: SQLDialect): string {
 	if (dialect === "mysql") {
 		return `\`${name}\``;
@@ -247,44 +191,33 @@ function quoteIdent(name: string, dialect: SQLDialect): string {
 }
 
 /**
- * Generate CREATE TABLE DDL from a collection.
+ * Generate CREATE TABLE DDL from a table definition.
  */
-export function generateDDL<T extends Collection<any>>(
-	collection: T,
+export function generateDDL<T extends Table<any>>(
+	table: T,
 	options: DDLOptions = {},
 ): string {
 	const {dialect = "sqlite", ifNotExists = true} = options;
-	const shape = collection.schema.shape;
+	const shape = table.schema.shape;
+	const meta = table._meta;
 
 	const columns: ColumnDef[] = [];
-	const primaryKeys: string[] = [];
-	const uniqueConstraints: string[] = [];
 
-	// Process each field
 	for (const [name, zodType] of Object.entries(shape)) {
-		const meta = collectMeta(zodType as ZodTypeAny);
-		const {core, isOptional, isNullable, defaultValue} = unwrapType(zodType as ZodTypeAny);
+		const fieldMeta = meta.fields[name] || {};
+		const {isOptional, isNullable, defaultValue} = unwrapType(zodType as ZodTypeAny);
 		const {sqlType, defaultValue: sqlDefault} = mapZodToSQL(zodType as ZodTypeAny, dialect);
 
 		const column: ColumnDef = {
 			name,
 			sqlType,
 			nullable: isOptional || isNullable || defaultValue !== undefined,
-			primaryKey: meta.primaryKey === true,
-			unique: meta.unique === true,
+			primaryKey: fieldMeta.primaryKey === true,
+			unique: fieldMeta.unique === true,
 			defaultValue: sqlDefault,
 		};
 
 		columns.push(column);
-
-		if (column.primaryKey) {
-			primaryKeys.push(name);
-		}
-
-		// Standalone unique (not part of primary key)
-		if (column.unique && !column.primaryKey) {
-			uniqueConstraints.push(name);
-		}
 	}
 
 	// Build column definitions
@@ -293,22 +226,18 @@ export function generateDDL<T extends Collection<any>>(
 	for (const col of columns) {
 		let def = `${quoteIdent(col.name, dialect)} ${col.sqlType}`;
 
-		// NOT NULL (unless nullable or has default)
 		if (!col.nullable) {
 			def += " NOT NULL";
 		}
 
-		// DEFAULT
 		if (col.defaultValue !== undefined) {
 			def += ` DEFAULT ${col.defaultValue}`;
 		}
 
-		// Inline PRIMARY KEY for single-column PK in SQLite
-		if (col.primaryKey && primaryKeys.length === 1 && dialect === "sqlite") {
+		if (col.primaryKey && dialect === "sqlite") {
 			def += " PRIMARY KEY";
 		}
 
-		// Inline UNIQUE for single columns
 		if (col.unique && !col.primaryKey) {
 			def += " UNIQUE";
 		}
@@ -316,31 +245,25 @@ export function generateDDL<T extends Collection<any>>(
 		columnDefs.push(def);
 	}
 
-	// Composite PRIMARY KEY constraint
-	if (primaryKeys.length > 1 || (primaryKeys.length === 1 && dialect !== "sqlite")) {
-		const pkCols = primaryKeys.map((k) => quoteIdent(k, dialect)).join(", ");
-		columnDefs.push(`PRIMARY KEY (${pkCols})`);
+	// PRIMARY KEY constraint for non-SQLite or composite keys
+	if (meta.primary && dialect !== "sqlite") {
+		columnDefs.push(`PRIMARY KEY (${quoteIdent(meta.primary, dialect)})`);
 	}
 
 	// Build CREATE TABLE
-	const tableName = quoteIdent(collection.name, dialect);
+	const tableName = quoteIdent(table.name, dialect);
 	const exists = ifNotExists ? "IF NOT EXISTS " : "";
 	let sql = `CREATE TABLE ${exists}${tableName} (\n  ${columnDefs.join(",\n  ")}\n);`;
 
-	// Add indexes
-	const indexedFields = columns.filter((c) => {
-		const meta = collectMeta((shape as any)[c.name] as ZodTypeAny);
-		return meta.indexed === true;
-	});
-
-	for (const col of indexedFields) {
-		const indexName = `idx_${collection.name}_${col.name}`;
-		sql += `\n\nCREATE INDEX ${exists}${quoteIdent(indexName, dialect)} ON ${tableName} (${quoteIdent(col.name, dialect)});`;
+	// Add indexes for indexed fields
+	for (const indexedField of meta.indexed) {
+		const indexName = `idx_${table.name}_${indexedField}`;
+		sql += `\n\nCREATE INDEX ${exists}${quoteIdent(indexName, dialect)} ON ${tableName} (${quoteIdent(indexedField, dialect)});`;
 	}
 
-	// Add compound indexes from collection options
-	for (const indexCols of collection.indexes) {
-		const indexName = `idx_${collection.name}_${indexCols.join("_")}`;
+	// Add compound indexes from table options
+	for (const indexCols of table.indexes) {
+		const indexName = `idx_${table.name}_${indexCols.join("_")}`;
 		const cols = indexCols.map((c) => quoteIdent(c, dialect)).join(", ");
 		sql += `\n\nCREATE INDEX ${exists}${quoteIdent(indexName, dialect)} ON ${tableName} (${cols});`;
 	}
@@ -349,8 +272,8 @@ export function generateDDL<T extends Collection<any>>(
 }
 
 /**
- * Add ddl() method to collection.
+ * Convenience function for generating DDL.
  */
-export function ddl(collection: Collection<any>, dialect: SQLDialect = "sqlite"): string {
-	return generateDDL(collection, {dialect});
+export function ddl(table: Table<any>, dialect: SQLDialect = "sqlite"): string {
+	return generateDDL(table, {dialect});
 }

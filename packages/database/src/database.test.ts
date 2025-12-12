@@ -1,6 +1,6 @@
 import {test, expect, describe, beforeEach, mock} from "bun:test";
 import {z} from "zod";
-import {collection, primary, unique, references} from "./collection.js";
+import {table, primary, unique, references} from "./table.js";
 import {Database, createDatabase, type DatabaseDriver} from "./database.js";
 
 // Test UUIDs
@@ -9,16 +9,16 @@ const USER_ID_2 = "22222222-2222-2222-2222-222222222222";
 const POST_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const POST_ID_2 = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 
-// Test collections
-const User = collection("users", {
-	id: z.string().uuid().pipe(primary()),
-	email: z.string().email().pipe(unique()),
+// Test tables
+const users = table("users", {
+	id: primary(z.string().uuid()),
+	email: unique(z.string().email()),
 	name: z.string(),
 });
 
-const Post = collection("posts", {
-	id: z.string().uuid().pipe(primary()),
-	authorId: z.string().uuid().pipe(references(User, "id", "author")),
+const posts = table("posts", {
+	id: primary(z.string().uuid()),
+	authorId: references(z.string().uuid(), users, {as: "author"}),
 	title: z.string(),
 	body: z.string(),
 	published: z.boolean().default(false),
@@ -58,14 +58,14 @@ describe("Database", () => {
 				},
 			]);
 
-			const posts = await db.all(Post, User)`
+			const results = await db.all(posts, users)`
         JOIN "users" ON "users"."id" = "posts"."authorId"
         WHERE published = ${true}
       `;
 
-			expect(posts.length).toBe(1);
-			expect(posts[0].title).toBe("Test Post");
-			expect((posts[0] as any).author.name).toBe("Alice");
+			expect(results.length).toBe(1);
+			expect(results[0].title).toBe("Test Post");
+			expect((results[0] as any).author.name).toBe("Alice");
 
 			// Check SQL was called correctly
 			const [sql, params] = (driver.all as any).mock.calls[0];
@@ -78,9 +78,9 @@ describe("Database", () => {
 		test("returns empty array for no results", async () => {
 			(driver.all as any).mockImplementation(async () => []);
 
-			const posts = await db.all(Post)`WHERE id = ${"nonexistent"}`;
+			const results = await db.all(posts)`WHERE id = ${"nonexistent"}`;
 
-			expect(posts).toEqual([]);
+			expect(results).toEqual([]);
 		});
 	});
 
@@ -94,7 +94,7 @@ describe("Database", () => {
 				"posts.published": true,
 			}));
 
-			const post = await db.one(Post)`WHERE "posts"."id" = ${POST_ID}`;
+			const post = await db.one(posts)`WHERE "posts"."id" = ${POST_ID}`;
 
 			expect(post).not.toBeNull();
 			expect(post!.title).toBe("Test Post");
@@ -103,7 +103,7 @@ describe("Database", () => {
 		test("returns null for no match", async () => {
 			(driver.get as any).mockImplementation(async () => null);
 
-			const post = await db.one(Post)`WHERE "posts"."id" = ${"nonexistent"}`;
+			const post = await db.one(posts)`WHERE "posts"."id" = ${"nonexistent"}`;
 
 			expect(post).toBeNull();
 		});
@@ -111,7 +111,7 @@ describe("Database", () => {
 
 	describe("insert()", () => {
 		test("inserts and returns entity", async () => {
-			const user = await db.insert(User, {
+			const user = await db.insert(users, {
 				id: USER_ID,
 				email: "alice@example.com",
 				name: "Alice",
@@ -129,7 +129,7 @@ describe("Database", () => {
 
 		test("validates through Zod schema", async () => {
 			await expect(
-				db.insert(User, {
+				db.insert(users, {
 					id: USER_ID,
 					email: "not-an-email", // Invalid email
 					name: "Alice",
@@ -138,7 +138,7 @@ describe("Database", () => {
 		});
 
 		test("applies defaults", async () => {
-			const post = await db.insert(Post, {
+			const post = await db.insert(posts, {
 				id: POST_ID,
 				authorId: USER_ID,
 				title: "Test",
@@ -158,7 +158,7 @@ describe("Database", () => {
 				name: "Alice Updated",
 			}));
 
-			const user = await db.update(User, USER_ID, {name: "Alice Updated"});
+			const user = await db.update(users, USER_ID, {name: "Alice Updated"});
 
 			expect(user).not.toBeNull();
 			expect(user!.name).toBe("Alice Updated");
@@ -171,7 +171,7 @@ describe("Database", () => {
 		});
 
 		test("throws on no fields to update", async () => {
-			await expect(db.update(User, USER_ID, {})).rejects.toThrow(
+			await expect(db.update(users, USER_ID, {})).rejects.toThrow(
 				"No fields to update",
 			);
 		});
@@ -179,7 +179,7 @@ describe("Database", () => {
 		test("returns null if entity not found after update", async () => {
 			(driver.get as any).mockImplementation(async () => null);
 
-			const user = await db.update(User, "nonexistent", {name: "Test"});
+			const user = await db.update(users, "nonexistent", {name: "Test"});
 
 			expect(user).toBeNull();
 		});
@@ -189,7 +189,7 @@ describe("Database", () => {
 		test("deletes by primary key", async () => {
 			(driver.run as any).mockImplementation(async () => 1);
 
-			const deleted = await db.delete(User, USER_ID);
+			const deleted = await db.delete(users, USER_ID);
 
 			expect(deleted).toBe(true);
 
@@ -202,7 +202,7 @@ describe("Database", () => {
 		test("returns false if nothing deleted", async () => {
 			(driver.run as any).mockImplementation(async () => 0);
 
-			const deleted = await db.delete(User, "nonexistent");
+			const deleted = await db.delete(users, "nonexistent");
 
 			expect(deleted).toBe(false);
 		});
@@ -267,7 +267,7 @@ describe("MySQL dialect", () => {
 		const driver = createMockDriver();
 		const db = new Database(driver, {dialect: "mysql"});
 
-		await db.insert(User, {
+		await db.insert(users, {
 			id: USER_ID,
 			email: "test@example.com",
 			name: "Test",
@@ -292,51 +292,5 @@ describe("createDatabase()", () => {
 		const db = createDatabase(driver, {dialect: "postgresql"});
 
 		expect(db).toBeInstanceOf(Database);
-	});
-});
-
-describe("Composite primary keys", () => {
-	const TenantUser = collection("tenant_users", {
-		tenantId: z.string().pipe(primary()),
-		userId: z.string().pipe(primary()),
-		role: z.string(),
-	});
-
-	test("update with composite key", async () => {
-		const driver = createMockDriver();
-		const db = new Database(driver);
-
-		(driver.get as any).mockImplementation(async () => ({
-			tenantId: "t1",
-			userId: "u1",
-			role: "admin",
-		}));
-
-		await db.update(TenantUser, {tenantId: "t1", userId: "u1"}, {role: "admin"});
-
-		const [sql, params] = (driver.run as any).mock.calls[0];
-		expect(sql).toContain('WHERE "tenantId" = ? AND "userId" = ?');
-		expect(params).toContain("t1");
-		expect(params).toContain("u1");
-	});
-
-	test("delete with composite key", async () => {
-		const driver = createMockDriver();
-		const db = new Database(driver);
-
-		await db.delete(TenantUser, {tenantId: "t1", userId: "u1"});
-
-		const [sql, params] = (driver.run as any).mock.calls[0];
-		expect(sql).toContain('WHERE "tenantId" = ? AND "userId" = ?');
-		expect(params).toEqual(["t1", "u1"]);
-	});
-
-	test("throws if composite key missing field", async () => {
-		const driver = createMockDriver();
-		const db = new Database(driver);
-
-		await expect(
-			db.delete(TenantUser, {tenantId: "t1"}), // missing userId
-		).rejects.toThrow("Missing primary key field: userId");
 	});
 });

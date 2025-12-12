@@ -1,7 +1,7 @@
 /**
  * @b9g/admin - Django-like admin interface for Shovel applications
  *
- * Provides automatic CRUD interfaces for @b9g/database collections with:
+ * Provides automatic CRUD interfaces for @b9g/database tables with:
  * - OAuth2 authentication (Google, GitHub, Microsoft)
  * - Session management via Cache API
  * - Crank.js + USWDS for the UI
@@ -45,8 +45,8 @@ export type {
 
 // Re-export introspection utilities
 export {
-	isCollection,
-	introspectCollection,
+	isTable,
+	introspectTable,
 	introspectSchema,
 	getDisplayName,
 	getPluralDisplayName,

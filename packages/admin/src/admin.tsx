@@ -9,11 +9,11 @@ import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
 import {renderer} from "@b9g/crank/html";
 import type {Children} from "@b9g/crank";
-import type {Collection} from "@b9g/database";
+import type {Table} from "@b9g/database";
 import type {AdminConfig, TableMetadata, ColumnMetadata} from "./types.js";
 import {
 	introspectSchema,
-	isCollection,
+	isTable,
 	getDisplayName,
 } from "./core/introspection.js";
 import {PageLayout} from "./ui/Layout.js";
@@ -24,7 +24,7 @@ interface ModelInfo {
 	name: string;
 	displayName: string;
 	metadata: TableMetadata;
-	collection: Collection<any>;
+	table: Table<any>;
 }
 
 /**
@@ -115,16 +115,16 @@ export function createAdmin(config: AdminConfig): Router {
 	// Build model info array for navigation
 	const models: ModelInfo[] = [];
 	for (const [name, metadata] of tables) {
-		const collection = Object.values(config.schema).find(
-			(c): c is Collection<any> => isCollection(c) && c.name === name,
+		const table = Object.values(config.schema).find(
+			(c): c is Table<any> => isTable(c) && c.name === name,
 		);
-		if (collection) {
+		if (table) {
 			const modelConfig = config.models?.[name];
 			models.push({
 				name,
 				displayName: modelConfig?.name ?? getDisplayName(name),
 				metadata,
-				collection,
+				table,
 			});
 		}
 	}

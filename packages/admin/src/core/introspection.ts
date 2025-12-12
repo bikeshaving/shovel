@@ -1,10 +1,10 @@
 /**
  * @b9g/admin - Schema introspection utilities
  *
- * Extracts metadata from @b9g/database collections for dynamic admin generation.
+ * Extracts metadata from @b9g/database tables for dynamic admin generation.
  */
 
-import type {Collection, FieldMeta} from "@b9g/database";
+import type {Table, FieldMeta} from "@b9g/database";
 import type {
 	ColumnMetadata,
 	ColumnDataType,
@@ -17,9 +17,9 @@ import type {
 // ============================================================================
 
 /**
- * Check if an object is a @b9g/database collection
+ * Check if an object is a @b9g/database table
  */
-export function isCollection(value: unknown): value is Collection<any> {
+export function isTable(value: unknown): value is Table<any> {
 	return (
 		value !== null &&
 		typeof value === "object" &&
@@ -67,15 +67,15 @@ function mapFieldType(fieldType: FieldMeta["type"]): ColumnDataType {
 }
 
 // ============================================================================
-// Collection Introspection
+// Table Introspection
 // ============================================================================
 
 /**
- * Extract metadata from a @b9g/database collection
+ * Extract metadata from a @b9g/database table
  */
-export function introspectCollection(collection: Collection<any>): TableMetadata {
-	const fieldsMeta = collection.fields();
-	const refs = collection.references();
+export function introspectTable(table: Table<any>): TableMetadata {
+	const fieldsMeta = table.fields();
+	const refs = table.references();
 
 	// Convert fields to columns
 	const columns: ColumnMetadata[] = Object.entries(fieldsMeta).map(
@@ -92,22 +92,18 @@ export function introspectCollection(collection: Collection<any>): TableMetadata
 	);
 
 	// Get primary key
-	const pk = collection.primaryKey();
-	const primaryKey: string[] = pk
-		? Array.isArray(pk)
-			? pk
-			: [pk]
-		: [];
+	const pk = table.primaryKey();
+	const primaryKey: string[] = pk ? [pk] : [];
 
 	// Convert references to foreign keys
 	const foreignKeys: ForeignKeyMetadata[] = refs.map((ref) => ({
 		columns: [ref.fieldName],
-		foreignTable: ref.collection.name,
+		foreignTable: ref.table.name,
 		foreignColumns: [ref.referencedField],
 	}));
 
 	return {
-		name: collection.name,
+		name: table.name,
 		columns,
 		primaryKey,
 		foreignKeys,
@@ -119,9 +115,9 @@ export function introspectCollection(collection: Collection<any>): TableMetadata
 // ============================================================================
 
 /**
- * Introspect an entire schema object containing collections
+ * Introspect an entire schema object containing tables
  *
- * @param schema - An object containing @b9g/database collection definitions
+ * @param schema - An object containing @b9g/database table definitions
  * @returns Map of table names to their metadata
  *
  * @example
@@ -140,8 +136,8 @@ export function introspectSchema(
 	const tables = new Map<string, TableMetadata>();
 
 	for (const value of Object.values(schema)) {
-		if (isCollection(value)) {
-			const metadata = introspectCollection(value);
+		if (isTable(value)) {
+			const metadata = introspectTable(value);
 			tables.set(metadata.name, metadata);
 		}
 	}

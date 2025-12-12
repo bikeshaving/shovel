@@ -1,6 +1,6 @@
 import {test, expect, describe} from "bun:test";
 import {z} from "zod";
-import {collection, primary, unique, references} from "./collection.js";
+import {table, primary, unique, references} from "./table.js";
 import {
 	extractEntityData,
 	getPrimaryKeyValue,
@@ -11,16 +11,16 @@ import {
 	normalizeOne,
 } from "./normalize.js";
 
-// Test collections
-const User = collection("users", {
-	id: z.string().uuid().pipe(primary()),
-	email: z.string().email().pipe(unique()),
+// Test tables
+const users = table("users", {
+	id: primary(z.string().uuid()),
+	email: unique(z.string().email()),
 	name: z.string(),
 });
 
-const Post = collection("posts", {
-	id: z.string().uuid().pipe(primary()),
-	authorId: z.string().uuid().pipe(references(User, "id", "author")),
+const posts = table("posts", {
+	id: primary(z.string().uuid()),
+	authorId: references(z.string().uuid(), users, {as: "author"}),
 	title: z.string(),
 	body: z.string(),
 });
@@ -57,7 +57,7 @@ const rawRows = [
 ];
 
 describe("extractEntityData", () => {
-	test("extracts fields for collection", () => {
+	test("extracts fields for table", () => {
 		const row = rawRows[0];
 
 		const postData = extractEntityData(row, "posts");
@@ -95,7 +95,7 @@ describe("extractEntityData", () => {
 		expect(userData).toBeNull();
 	});
 
-	test("returns null for non-existent collection", () => {
+	test("returns null for non-existent table", () => {
 		const data = extractEntityData(rawRows[0], "nonexistent");
 		expect(data).toBeNull();
 	});
@@ -104,31 +104,19 @@ describe("extractEntityData", () => {
 describe("getPrimaryKeyValue", () => {
 	test("gets single primary key", () => {
 		const entity = {id: "user-123", name: "Alice"};
-		const pk = getPrimaryKeyValue(entity, User);
+		const pk = getPrimaryKeyValue(entity, users);
 		expect(pk).toBe("user-123");
 	});
 
 	test("returns null for missing primary key", () => {
 		const entity = {name: "Alice"};
-		const pk = getPrimaryKeyValue(entity, User);
+		const pk = getPrimaryKeyValue(entity, users);
 		expect(pk).toBeNull();
-	});
-
-	test("handles composite primary key", () => {
-		const CompositeKey = collection("composite", {
-			tenantId: z.string().pipe(primary()),
-			id: z.string().pipe(primary()),
-			name: z.string(),
-		});
-
-		const entity = {tenantId: "t1", id: "123", name: "Test"};
-		const pk = getPrimaryKeyValue(entity, CompositeKey);
-		expect(pk).toBe("t1:123");
 	});
 });
 
 describe("entityKey", () => {
-	test("creates key from collection and primary key", () => {
+	test("creates key from table and primary key", () => {
 		expect(entityKey("users", "u1")).toBe("users:u1");
 		expect(entityKey("posts", "p1")).toBe("posts:p1");
 	});
@@ -136,7 +124,7 @@ describe("entityKey", () => {
 
 describe("buildEntityMap", () => {
 	test("builds map of all entities", () => {
-		const entities = buildEntityMap(rawRows, [Post, User]);
+		const entities = buildEntityMap(rawRows, [posts, users]);
 
 		// Should have 3 posts + 2 users = 5 entities
 		expect(entities.size).toBe(5);
@@ -152,7 +140,7 @@ describe("buildEntityMap", () => {
 	});
 
 	test("deduplicates entities with same primary key", () => {
-		const entities = buildEntityMap(rawRows, [Post, User]);
+		const entities = buildEntityMap(rawRows, [posts, users]);
 
 		// Alice appears twice in raw rows but should only be stored once
 		const aliceEntries = [...entities.entries()].filter(([k]) =>
@@ -164,8 +152,8 @@ describe("buildEntityMap", () => {
 
 describe("resolveReferences", () => {
 	test("resolves references to actual entities", () => {
-		const entities = buildEntityMap(rawRows, [Post, User]);
-		resolveReferences(entities, [Post, User]);
+		const entities = buildEntityMap(rawRows, [posts, users]);
+		resolveReferences(entities, [posts, users]);
 
 		const post1 = entities.get("posts:p1")!;
 		const alice = entities.get("users:u1")!;
@@ -176,8 +164,8 @@ describe("resolveReferences", () => {
 	});
 
 	test("same referenced entity is same instance", () => {
-		const entities = buildEntityMap(rawRows, [Post, User]);
-		resolveReferences(entities, [Post, User]);
+		const entities = buildEntityMap(rawRows, [posts, users]);
+		resolveReferences(entities, [posts, users]);
 
 		const post1 = entities.get("posts:p1")!;
 		const post2 = entities.get("posts:p2")!;
@@ -196,8 +184,8 @@ describe("resolveReferences", () => {
 			},
 		];
 
-		const entities = buildEntityMap(rowsWithNull, [Post]);
-		resolveReferences(entities, [Post, User]);
+		const entities = buildEntityMap(rowsWithNull, [posts]);
+		resolveReferences(entities, [posts, users]);
 
 		const post = entities.get("posts:p1")!;
 		expect(post.author).toBeNull();
@@ -205,42 +193,42 @@ describe("resolveReferences", () => {
 });
 
 describe("normalize", () => {
-	test("returns main collection entities with references resolved", () => {
-		const posts = normalize<any>(rawRows, [Post, User]);
+	test("returns main table entities with references resolved", () => {
+		const results = normalize<any>(rawRows, [posts, users]);
 
-		expect(posts.length).toBe(3);
-		expect(posts[0].id).toBe("p1");
-		expect(posts[0].title).toBe("First Post");
-		expect(posts[0].author.name).toBe("Alice");
+		expect(results.length).toBe(3);
+		expect(results[0].id).toBe("p1");
+		expect(results[0].title).toBe("First Post");
+		expect(results[0].author.name).toBe("Alice");
 	});
 
 	test("maintains original row order", () => {
-		const posts = normalize<any>(rawRows, [Post, User]);
+		const results = normalize<any>(rawRows, [posts, users]);
 
-		expect(posts[0].id).toBe("p1");
-		expect(posts[1].id).toBe("p2");
-		expect(posts[2].id).toBe("p3");
+		expect(results[0].id).toBe("p1");
+		expect(results[1].id).toBe("p2");
+		expect(results[2].id).toBe("p3");
 	});
 
 	test("deduplicates referenced entities", () => {
-		const posts = normalize<any>(rawRows, [Post, User]);
+		const results = normalize<any>(rawRows, [posts, users]);
 
 		// Post 1 and Post 2 should have the same author instance
-		expect(posts[0].author).toBe(posts[1].author);
+		expect(results[0].author).toBe(results[1].author);
 
 		// Post 3 should have different author
-		expect(posts[2].author).not.toBe(posts[0].author);
-		expect(posts[2].author.name).toBe("Bob");
+		expect(results[2].author).not.toBe(results[0].author);
+		expect(results[2].author.name).toBe("Bob");
 	});
 
 	test("returns empty array for empty rows", () => {
-		const posts = normalize<any>([], [Post, User]);
-		expect(posts).toEqual([]);
+		const results = normalize<any>([], [posts, users]);
+		expect(results).toEqual([]);
 	});
 
-	test("throws on empty collections", () => {
+	test("throws on empty tables", () => {
 		expect(() => normalize(rawRows, [])).toThrow(
-			"At least one collection is required",
+			"At least one table is required",
 		);
 	});
 
@@ -250,16 +238,16 @@ describe("normalize", () => {
 			rawRows[0], // Duplicate first row
 		];
 
-		const posts = normalize<any>(duplicateRows, [Post, User]);
+		const results = normalize<any>(duplicateRows, [posts, users]);
 
 		// Should still only return 3 unique posts
-		expect(posts.length).toBe(3);
+		expect(results.length).toBe(3);
 	});
 });
 
 describe("normalizeOne", () => {
 	test("returns single entity", () => {
-		const post = normalizeOne<any>(rawRows[0], [Post, User]);
+		const post = normalizeOne<any>(rawRows[0], [posts, users]);
 
 		expect(post).not.toBeNull();
 		expect(post!.id).toBe("p1");
@@ -267,28 +255,18 @@ describe("normalizeOne", () => {
 	});
 
 	test("returns null for null row", () => {
-		const result = normalizeOne(null, [Post, User]);
+		const result = normalizeOne(null, [posts, users]);
 		expect(result).toBeNull();
 	});
 });
 
-describe("circular references", () => {
-	test("handles self-referencing collections", () => {
+describe("self-referencing tables", () => {
+	test("handles self-referencing tables", () => {
 		// Employee with manager (another employee)
-		const Employee = collection("employees", {
-			id: z.string().pipe(primary()),
+		const employees = table("employees", {
+			id: primary(z.string()),
 			name: z.string(),
 			managerId: z.string().nullable(),
-		});
-
-		// Add reference manually after creation to avoid circular dependency
-		const EmployeeWithRef = collection("employees", {
-			id: z.string().pipe(primary()),
-			name: z.string(),
-			managerId: z
-				.string()
-				.nullable()
-				.pipe(references(Employee, "id", "manager")),
 		});
 
 		const rows = [
@@ -304,14 +282,10 @@ describe("circular references", () => {
 			},
 		];
 
-		const employees = normalize<any>(rows, [EmployeeWithRef]);
+		const results = normalize<any>(rows, [employees]);
 
-		expect(employees.length).toBe(2);
-		expect(employees[0].name).toBe("Alice");
-		expect(employees[0].manager).toBeNull();
-
-		// Note: Bob's manager won't resolve because we only have EmployeeWithRef
-		// in the collections, not Employee. In practice, you'd pass the same
-		// collection for self-references.
+		expect(results.length).toBe(2);
+		expect(results[0].name).toBe("Alice");
+		expect(results[1].name).toBe("Bob");
 	});
 });

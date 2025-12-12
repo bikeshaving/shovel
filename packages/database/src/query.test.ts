@@ -1,6 +1,6 @@
 import {test, expect, describe} from "bun:test";
 import {z} from "zod";
-import {collection, primary, unique, index, references} from "./collection.js";
+import {table, primary, unique, references} from "./table.js";
 import {
 	buildSelectColumns,
 	parseTemplate,
@@ -9,32 +9,32 @@ import {
 	rawQuery,
 } from "./query.js";
 
-// Test collections
-const User = collection("users", {
-	id: z.string().uuid().pipe(primary()),
-	email: z.string().email().pipe(unique()),
+// Test tables
+const users = table("users", {
+	id: primary(z.string().uuid()),
+	email: unique(z.string().email()),
 	name: z.string(),
 });
 
-const Post = collection("posts", {
-	id: z.string().uuid().pipe(primary()),
-	authorId: z.string().uuid().pipe(references(User, "id", "author")),
+const posts = table("posts", {
+	id: primary(z.string().uuid()),
+	authorId: references(z.string().uuid(), users, {as: "author"}),
 	title: z.string(),
 	body: z.string(),
 	published: z.boolean().default(false),
 });
 
 describe("buildSelectColumns", () => {
-	test("single collection", () => {
-		const cols = buildSelectColumns([User], "sqlite");
+	test("single table", () => {
+		const cols = buildSelectColumns([users], "sqlite");
 
 		expect(cols).toContain('"users"."id" AS "users.id"');
 		expect(cols).toContain('"users"."email" AS "users.email"');
 		expect(cols).toContain('"users"."name" AS "users.name"');
 	});
 
-	test("multiple collections", () => {
-		const cols = buildSelectColumns([Post, User], "sqlite");
+	test("multiple tables", () => {
+		const cols = buildSelectColumns([posts, users], "sqlite");
 
 		// Post columns
 		expect(cols).toContain('"posts"."id" AS "posts.id"');
@@ -47,7 +47,7 @@ describe("buildSelectColumns", () => {
 	});
 
 	test("mysql dialect uses backticks", () => {
-		const cols = buildSelectColumns([User], "mysql");
+		const cols = buildSelectColumns([users], "mysql");
 
 		expect(cols).toContain("`users`.`id` AS `users.id`");
 		expect(cols).toContain("`users`.`email` AS `users.email`");
@@ -107,23 +107,23 @@ describe("parseTemplate", () => {
 });
 
 describe("buildQuery", () => {
-	test("single collection with no clauses", () => {
-		const sql = buildQuery([User], "", "sqlite");
+	test("single table with no clauses", () => {
+		const sql = buildQuery([users], "", "sqlite");
 
 		expect(sql).toContain("SELECT");
 		expect(sql).toContain('"users"."id" AS "users.id"');
 		expect(sql).toContain('FROM "users"');
 	});
 
-	test("single collection with WHERE", () => {
-		const sql = buildQuery([User], "WHERE active = ?", "sqlite");
+	test("single table with WHERE", () => {
+		const sql = buildQuery([users], "WHERE active = ?", "sqlite");
 
 		expect(sql).toContain('FROM "users" WHERE active = ?');
 	});
 
-	test("multiple collections with JOIN", () => {
+	test("multiple tables with JOIN", () => {
 		const sql = buildQuery(
-			[Post, User],
+			[posts, users],
 			'JOIN "users" ON "users"."id" = "posts"."authorId" WHERE published = ?',
 			"sqlite",
 		);
@@ -137,16 +137,16 @@ describe("buildQuery", () => {
 		expect(sql).toContain('"users"."id" AS "users.id"');
 	});
 
-	test("throws on empty collections", () => {
+	test("throws on empty tables", () => {
 		expect(() => buildQuery([], "", "sqlite")).toThrow(
-			"At least one collection is required",
+			"At least one table is required",
 		);
 	});
 });
 
 describe("createQuery", () => {
 	test("creates tagged template function", () => {
-		const query = createQuery([Post, User], "sqlite");
+		const query = createQuery([posts, users], "sqlite");
 		const {sql, params} = query`
       JOIN "users" ON "users"."id" = "posts"."authorId"
       WHERE published = ${true}
@@ -160,7 +160,7 @@ describe("createQuery", () => {
 	});
 
 	test("handles multiple parameters", () => {
-		const query = createQuery([Post], "sqlite");
+		const query = createQuery([posts], "sqlite");
 		const userId = "user-123";
 		const limit = 10;
 		const {sql, params} = query`

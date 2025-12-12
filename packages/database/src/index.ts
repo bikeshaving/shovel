@@ -6,29 +6,27 @@
  */
 
 export {
-	// Collection definition
-	collection,
-	type Collection,
-	type CollectionOptions,
+	// Table definition
+	table,
+	type Table,
+	type TableOptions,
 	type ReferenceInfo,
 
-	// Field extensions
+	// Field wrappers
 	primary,
 	unique,
 	index,
 	references,
-	stored,
 
 	// Field metadata
 	type FieldMeta,
 	type FieldType,
 	type FieldDbMeta,
-	collectMeta,
 
 	// Type inference
 	type Infer,
 	type Insert,
-} from "./collection.js";
+} from "./table.js";
 
 export {
 	// DDL generation
@@ -61,7 +59,7 @@ export {
 	entityKey,
 	type RawRow,
 	type EntityMap,
-	type CollectionMap,
+	type TableMap,
 } from "./normalize.js";
 
 export {

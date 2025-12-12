@@ -1,22 +1,21 @@
 import {test, expect, describe} from "bun:test";
 import {z} from "zod";
-import {collection, primary, unique, index} from "./collection.js";
+import {table, primary, unique, index} from "./table.js";
 
-describe("collection", () => {
-	test("basic collection definition", () => {
-		const User = collection("users", {
+describe("table", () => {
+	test("basic table definition", () => {
+		const users = table("users", {
 			id: z.string().uuid(),
 			name: z.string(),
 		});
 
-		expect(User.name).toBe("users");
-		expect(User.version).toBe(1);
+		expect(users.name).toBe("users");
 	});
 
 	test("extracts field metadata", () => {
-		const User = collection("users", {
-			id: z.string().uuid().pipe(primary()),
-			email: z.string().email().pipe(unique()),
+		const users = table("users", {
+			id: primary(z.string().uuid()),
+			email: unique(z.string().email()),
 			name: z.string().max(100),
 			bio: z.string().max(2000),
 			age: z.number().int().min(0).max(150),
@@ -25,7 +24,7 @@ describe("collection", () => {
 			createdAt: z.date().default(() => new Date()),
 		});
 
-		const fields = User.fields();
+		const fields = users.fields();
 
 		// Primary key
 		expect(fields.id.primaryKey).toBe(true);
@@ -65,23 +64,23 @@ describe("collection", () => {
 	});
 
 	test("detects primary key", () => {
-		const User = collection("users", {
-			id: z.string().uuid().pipe(primary()),
+		const users = table("users", {
+			id: primary(z.string().uuid()),
 			email: z.string().email(),
 		});
 
-		expect(User.primaryKey()).toBe("id");
+		expect(users.primaryKey()).toBe("id");
 	});
 
 	test("handles optional and nullable fields", () => {
-		const Profile = collection("profiles", {
-			id: z.string().uuid().pipe(primary()),
+		const profiles = table("profiles", {
+			id: primary(z.string().uuid()),
 			bio: z.string().optional(),
 			avatar: z.string().url().nullable(),
 			nickname: z.string().nullish(),
 		});
 
-		const fields = Profile.fields();
+		const fields = profiles.fields();
 
 		expect(fields.bio.required).toBe(false);
 		expect(fields.avatar.required).toBe(false);
@@ -90,31 +89,31 @@ describe("collection", () => {
 	});
 
 	test("url detection", () => {
-		const Link = collection("links", {
-			id: z.string().uuid().pipe(primary()),
+		const links = table("links", {
+			id: primary(z.string().uuid()),
 			url: z.string().url(),
 		});
 
-		const fields = Link.fields();
+		const fields = links.fields();
 		expect(fields.url.type).toBe("url");
 	});
 
 	test("indexed fields", () => {
-		const Post = collection("posts", {
-			id: z.string().uuid().pipe(primary()),
-			authorId: z.string().uuid().pipe(index()),
+		const posts = table("posts", {
+			id: primary(z.string().uuid()),
+			authorId: index(z.string().uuid()),
 			title: z.string(),
 		});
 
-		const fields = Post.fields();
+		const fields = posts.fields();
 		expect(fields.authorId.indexed).toBe(true);
 	});
 
 	test("compound indexes via options", () => {
-		const Post = collection(
+		const posts = table(
 			"posts",
 			{
-				id: z.string().uuid().pipe(primary()),
+				id: primary(z.string().uuid()),
 				authorId: z.string().uuid(),
 				createdAt: z.date(),
 			},
@@ -123,20 +122,20 @@ describe("collection", () => {
 			},
 		);
 
-		expect(Post.indexes).toEqual([["authorId", "createdAt"]]);
+		expect(posts.indexes).toEqual([["authorId", "createdAt"]]);
 	});
 });
 
 describe("type inference", () => {
 	test("Infer extracts document type", () => {
-		const User = collection("users", {
+		const users = table("users", {
 			id: z.string().uuid(),
 			name: z.string(),
 			age: z.number().optional(),
 		});
 
 		// Type check - this should compile
-		type UserDoc = z.infer<typeof User.schema>;
+		type UserDoc = z.infer<typeof users.schema>;
 		const user: UserDoc = {id: "123", name: "Alice"};
 		expect(user.name).toBe("Alice");
 	});

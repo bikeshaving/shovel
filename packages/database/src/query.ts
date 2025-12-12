@@ -4,7 +4,7 @@
  * Generates SELECT statements with prefixed column aliases for entity normalization.
  */
 
-import type {Collection} from "./collection.js";
+import type {Table} from "./table.js";
 
 // ============================================================================
 // Types
@@ -25,9 +25,6 @@ export interface ParsedQuery {
 // Query Building
 // ============================================================================
 
-/**
- * Quote an identifier for the given dialect.
- */
 function quoteIdent(name: string, dialect: SQLDialect): string {
 	if (dialect === "mysql") {
 		return `\`${name}\``;
@@ -35,14 +32,10 @@ function quoteIdent(name: string, dialect: SQLDialect): string {
 	return `"${name}"`;
 }
 
-/**
- * Get placeholder for parameterized query.
- */
 function placeholder(index: number, dialect: SQLDialect): string {
 	if (dialect === "postgresql") {
 		return `$${index}`;
 	}
-	// SQLite and MySQL use ?
 	return "?";
 }
 
@@ -50,18 +43,18 @@ function placeholder(index: number, dialect: SQLDialect): string {
  * Build SELECT clause with prefixed column aliases.
  *
  * @example
- * buildSelectColumns([Post, User], "sqlite")
+ * buildSelectColumns([posts, users], "sqlite")
  * // SELECT "posts"."id" AS "posts.id", "posts"."title" AS "posts.title", ...
  */
 export function buildSelectColumns(
-	collections: Collection<any>[],
+	tables: Table<any>[],
 	dialect: SQLDialect = "sqlite",
 ): string {
 	const columns: string[] = [];
 
-	for (const collection of collections) {
-		const tableName = collection.name;
-		const shape = collection.schema.shape;
+	for (const table of tables) {
+		const tableName = table.name;
+		const shape = table.schema.shape;
 
 		for (const fieldName of Object.keys(shape)) {
 			const qualifiedCol = `${quoteIdent(tableName, dialect)}.${quoteIdent(fieldName, dialect)}`;
@@ -100,25 +93,24 @@ export function parseTemplate(
 }
 
 /**
- * Build a full SELECT query for collections with user-provided clauses.
+ * Build a full SELECT query for tables with user-provided clauses.
  *
  * @example
- * buildQuery([Post, User], "JOIN users ON users.id = posts.author_id WHERE published = ?", ["sqlite"])
+ * buildQuery([posts, users], "JOIN users ON users.id = posts.author_id WHERE published = ?", "sqlite")
  */
 export function buildQuery(
-	collections: Collection<any>[],
+	tables: Table<any>[],
 	userClauses: string,
 	dialect: SQLDialect = "sqlite",
 ): string {
-	if (collections.length === 0) {
-		throw new Error("At least one collection is required");
+	if (tables.length === 0) {
+		throw new Error("At least one table is required");
 	}
 
-	const mainTable = collections[0].name;
-	const selectCols = buildSelectColumns(collections, dialect);
+	const mainTable = tables[0].name;
+	const selectCols = buildSelectColumns(tables, dialect);
 	const fromClause = quoteIdent(mainTable, dialect);
 
-	// Combine: SELECT ... FROM main_table [user clauses]
 	let sql = `SELECT ${selectCols} FROM ${fromClause}`;
 
 	if (userClauses.trim()) {
@@ -129,22 +121,22 @@ export function buildQuery(
 }
 
 /**
- * Create a tagged template function for querying collections.
+ * Create a tagged template function for querying tables.
  *
  * @example
- * const query = createQuery([Post, User], "sqlite");
+ * const query = createQuery([posts, users], "sqlite");
  * const { sql, params } = query`
  *   JOIN users ON users.id = posts.author_id
  *   WHERE published = ${true}
  * `;
  */
 export function createQuery(
-	collections: Collection<any>[],
+	tables: Table<any>[],
 	dialect: SQLDialect = "sqlite",
 ): (strings: TemplateStringsArray, ...values: unknown[]) => ParsedQuery {
 	return (strings: TemplateStringsArray, ...values: unknown[]) => {
 		const {sql: userClauses, params} = parseTemplate(strings, values, dialect);
-		const sql = buildQuery(collections, userClauses, dialect);
+		const sql = buildQuery(tables, userClauses, dialect);
 		return {sql, params};
 	};
 }
@@ -154,7 +146,7 @@ export function createQuery(
 // ============================================================================
 
 /**
- * Parse a raw SQL template (no collection-based SELECT generation).
+ * Parse a raw SQL template (no table-based SELECT generation).
  *
  * @example
  * const { sql, params } = rawQuery`SELECT COUNT(*) FROM posts WHERE author_id = ${userId}`;

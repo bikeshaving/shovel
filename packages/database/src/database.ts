@@ -5,7 +5,7 @@
  * Extends EventTarget for IndexedDB-style migration events.
  */
 
-import type {Collection, Infer, Insert} from "./collection.js";
+import type {Table, Infer, Insert} from "./table.js";
 import {createQuery, parseTemplate, type SQLDialect} from "./query.js";
 import {normalize, normalizeOne} from "./normalize.js";
 
@@ -159,13 +159,10 @@ export class Database extends EventTarget {
 			throw new Error("Database already opened");
 		}
 
-		// Ensure migrations table exists
 		await this.#ensureMigrationsTable();
 
-		// Get current version from DB
 		const currentVersion = await this.#getCurrentVersion();
 
-		// Fire upgradeneeded if version increased
 		if (version > currentVersion) {
 			const event = new DatabaseUpgradeEvent("upgradeneeded", {
 				oldVersion: currentVersion,
@@ -174,7 +171,6 @@ export class Database extends EventTarget {
 			this.dispatchEvent(event);
 			await event._settle();
 
-			// Update version in DB after successful migration
 			await this.#setVersion(version);
 		}
 
@@ -187,7 +183,6 @@ export class Database extends EventTarget {
 	// ==========================================================================
 
 	async #ensureMigrationsTable(): Promise<void> {
-		// MySQL requires TIMESTAMP/DATETIME for DEFAULT CURRENT_TIMESTAMP
 		const timestampCol =
 			this.#dialect === "mysql"
 				? "applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
@@ -225,20 +220,20 @@ export class Database extends EventTarget {
 	 * Query multiple entities with joins and reference resolution.
 	 *
 	 * @example
-	 * const posts = await db.all(Post, User)`
+	 * const posts = await db.all(posts, users)`
 	 *   JOIN users ON users.id = posts.author_id
 	 *   WHERE published = ${true}
 	 * `;
 	 * posts[0].author.name  // "Alice"
 	 */
-	all<T extends Collection<any>[]>(
-		...collections: T
+	all<T extends Table<any>[]>(
+		...tables: T
 	): TaggedQuery<Infer<T[0]>[]> {
 		return async (strings: TemplateStringsArray, ...values: unknown[]) => {
-			const query = createQuery(collections, this.#dialect);
+			const query = createQuery(tables, this.#dialect);
 			const {sql, params} = query(strings, ...values);
 			const rows = await this.#driver.all<Record<string, unknown>>(sql, params);
-			return normalize<Infer<T[0]>>(rows, collections);
+			return normalize<Infer<T[0]>>(rows, tables);
 		};
 	}
 
@@ -246,19 +241,19 @@ export class Database extends EventTarget {
 	 * Query a single entity.
 	 *
 	 * @example
-	 * const post = await db.one(Post, User)`
+	 * const post = await db.one(posts, users)`
 	 *   JOIN users ON users.id = posts.author_id
 	 *   WHERE posts.id = ${postId}
 	 * `;
 	 */
-	one<T extends Collection<any>[]>(
-		...collections: T
+	one<T extends Table<any>[]>(
+		...tables: T
 	): TaggedQuery<Infer<T[0]> | null> {
 		return async (strings: TemplateStringsArray, ...values: unknown[]) => {
-			const query = createQuery(collections, this.#dialect);
+			const query = createQuery(tables, this.#dialect);
 			const {sql, params} = query(strings, ...values);
 			const row = await this.#driver.get<Record<string, unknown>>(sql, params);
-			return normalizeOne<Infer<T[0]>>(row, collections);
+			return normalizeOne<Infer<T[0]>>(row, tables);
 		};
 	}
 
@@ -270,22 +265,21 @@ export class Database extends EventTarget {
 	 * Insert a new entity.
 	 *
 	 * @example
-	 * const user = await db.insert(User, {
+	 * const user = await db.insert(users, {
 	 *   id: crypto.randomUUID(),
 	 *   email: "alice@example.com",
 	 *   name: "Alice",
 	 * });
 	 */
-	async insert<T extends Collection<any>>(
-		collection: T,
+	async insert<T extends Table<any>>(
+		table: T,
 		data: Insert<T>,
 	): Promise<Infer<T>> {
-		// Validate through Zod schema
-		const validated = collection.schema.parse(data);
+		const validated = table.schema.parse(data);
 
 		const columns = Object.keys(validated);
 		const values = Object.values(validated);
-		const tableName = this.#quoteIdent(collection.name);
+		const tableName = this.#quoteIdent(table.name);
 		const columnList = columns.map((c) => this.#quoteIdent(c)).join(", ");
 		const placeholders = columns
 			.map((_, i) => this.#placeholder(i + 1))
@@ -301,22 +295,19 @@ export class Database extends EventTarget {
 	 * Update an entity by primary key.
 	 *
 	 * @example
-	 * const user = await db.update(User, userId, { name: "Bob" });
+	 * const user = await db.update(users, userId, { name: "Bob" });
 	 */
-	async update<T extends Collection<any>>(
-		collection: T,
+	async update<T extends Table<any>>(
+		table: T,
 		id: string | number | Record<string, unknown>,
 		data: Partial<Insert<T>>,
 	): Promise<Infer<T> | null> {
-		const pk = collection.primaryKey();
+		const pk = table.primaryKey();
 		if (!pk) {
-			throw new Error(
-				`Collection ${collection.name} has no primary key defined`,
-			);
+			throw new Error(`Table ${table.name} has no primary key defined`);
 		}
 
-		// Validate partial data through Zod schema partial
-		const partialSchema = collection.schema.partial();
+		const partialSchema = table.schema.partial();
 		const validated = partialSchema.parse(data);
 
 		const columns = Object.keys(validated);
@@ -325,18 +316,17 @@ export class Database extends EventTarget {
 		}
 
 		const values = Object.values(validated);
-		const tableName = this.#quoteIdent(collection.name);
+		const tableName = this.#quoteIdent(table.name);
 		const setClause = columns
 			.map((c, i) => `${this.#quoteIdent(c)} = ${this.#placeholder(i + 1)}`)
 			.join(", ");
 
-		// Build WHERE clause for primary key
-		const {whereClause, whereParams} = this.#buildPkWhere(pk, id, values.length);
+		const whereClause = `${this.#quoteIdent(pk)} = ${this.#placeholder(values.length + 1)}`;
+		const whereParams = [id];
 
 		const sql = `UPDATE ${tableName} SET ${setClause} WHERE ${whereClause}`;
 		await this.#driver.run(sql, [...values, ...whereParams]);
 
-		// Fetch and return updated entity
 		const selectSql = `SELECT * FROM ${tableName} WHERE ${whereClause}`;
 		const row = await this.#driver.get<Record<string, unknown>>(
 			selectSql,
@@ -345,32 +335,29 @@ export class Database extends EventTarget {
 
 		if (!row) return null;
 
-		// Validate through schema
-		return collection.schema.parse(row) as Infer<T>;
+		return table.schema.parse(row) as Infer<T>;
 	}
 
 	/**
 	 * Delete an entity by primary key.
 	 *
 	 * @example
-	 * const deleted = await db.delete(User, userId);
+	 * const deleted = await db.delete(users, userId);
 	 */
-	async delete<T extends Collection<any>>(
-		collection: T,
+	async delete<T extends Table<any>>(
+		table: T,
 		id: string | number | Record<string, unknown>,
 	): Promise<boolean> {
-		const pk = collection.primaryKey();
+		const pk = table.primaryKey();
 		if (!pk) {
-			throw new Error(
-				`Collection ${collection.name} has no primary key defined`,
-			);
+			throw new Error(`Table ${table.name} has no primary key defined`);
 		}
 
-		const tableName = this.#quoteIdent(collection.name);
-		const {whereClause, whereParams} = this.#buildPkWhere(pk, id, 0);
+		const tableName = this.#quoteIdent(table.name);
+		const whereClause = `${this.#quoteIdent(pk)} = ${this.#placeholder(1)}`;
 
 		const sql = `DELETE FROM ${tableName} WHERE ${whereClause}`;
-		const affected = await this.#driver.run(sql, whereParams);
+		const affected = await this.#driver.run(sql, [id]);
 
 		return affected > 0;
 	}
@@ -439,43 +426,6 @@ export class Database extends EventTarget {
 			return `$${index}`;
 		}
 		return "?";
-	}
-
-	#buildPkWhere(
-		pk: string | string[],
-		id: string | number | Record<string, unknown>,
-		paramOffset: number,
-	): {whereClause: string; whereParams: unknown[]} {
-		if (Array.isArray(pk)) {
-			// Composite primary key
-			if (typeof id !== "object" || id === null) {
-				throw new Error(
-					`Composite primary key requires object with keys: ${pk.join(", ")}`,
-				);
-			}
-
-			const conditions: string[] = [];
-			const params: unknown[] = [];
-
-			for (let i = 0; i < pk.length; i++) {
-				const key = pk[i];
-				if (!(key in id)) {
-					throw new Error(`Missing primary key field: ${key}`);
-				}
-				conditions.push(
-					`${this.#quoteIdent(key)} = ${this.#placeholder(paramOffset + i + 1)}`,
-				);
-				params.push((id as Record<string, unknown>)[key]);
-			}
-
-			return {whereClause: conditions.join(" AND "), whereParams: params};
-		} else {
-			// Simple primary key
-			return {
-				whereClause: `${this.#quoteIdent(pk)} = ${this.#placeholder(paramOffset + 1)}`,
-				whereParams: [id],
-			};
-		}
 	}
 }
 

@@ -1,42 +1,42 @@
 import {test, expect, describe} from "bun:test";
 import {z} from "zod";
-import {collection, primary, unique, references} from "@b9g/database";
+import {table, primary, unique, references} from "@b9g/database";
 import {
-	introspectCollection,
+	introspectTable,
 	introspectSchema,
 	getDisplayName,
 	getPluralDisplayName,
-	isCollection,
+	isTable,
 } from "../src/core/introspection.js";
 
 // ============================================================================
-// Test Schema Definitions using @b9g/database collections
+// Test Schema Definitions using @b9g/database tables
 // ============================================================================
 
-const users = collection("users", {
-	id: z.number().pipe(primary()),
-	email: z.string().email().pipe(unique()),
+const users = table("users", {
+	id: primary(z.number()),
+	email: unique(z.string().email()),
 	name: z.string().optional(),
 	role: z.enum(["admin", "user", "guest"]).default("user"),
 	createdAt: z.date(),
 });
 
-const posts = collection("posts", {
-	id: z.number().pipe(primary()),
+const posts = table("posts", {
+	id: primary(z.number()),
 	title: z.string(),
 	content: z.string().optional(),
-	authorId: z.number().pipe(references(users, "id", "author")),
+	authorId: references(z.number(), users, {as: "author"}),
 	published: z.boolean().default(false),
 	viewCount: z.number().default(0),
 });
 
-const tags = collection("tags", {
-	id: z.number().pipe(primary()),
+const tags = table("tags", {
+	id: primary(z.number()),
 	name: z.string(),
 });
 
-const files = collection("files", {
-	id: z.number().pipe(primary()),
+const files = table("files", {
+	id: primary(z.number()),
 	name: z.string(),
 	size: z.number().optional(),
 });
@@ -44,37 +44,36 @@ const files = collection("files", {
 const testSchema = {users, posts, tags, files};
 
 // ============================================================================
-// isCollection Tests
+// isTable Tests
 // ============================================================================
 
-describe("isCollection", () => {
-	test("returns true for @b9g/database collections", () => {
-		expect(isCollection(users)).toBe(true);
-		expect(isCollection(posts)).toBe(true);
+describe("isTable", () => {
+	test("returns true for @b9g/database tables", () => {
+		expect(isTable(users)).toBe(true);
+		expect(isTable(posts)).toBe(true);
 	});
 
-	test("returns false for non-collections", () => {
-		expect(isCollection({})).toBe(false);
-		expect(isCollection(null)).toBe(false);
-		expect(isCollection(undefined)).toBe(false);
-		expect(isCollection("users")).toBe(false);
-		expect(isCollection(123)).toBe(false);
+	test("returns false for non-tables", () => {
+		expect(isTable({})).toBe(false);
+		expect(isTable(null)).toBe(false);
+		expect(isTable(undefined)).toBe(false);
+		expect(isTable("users")).toBe(false);
+		expect(isTable(123)).toBe(false);
 	});
 });
 
 // ============================================================================
-// introspectCollection Tests
+// introspectTable Tests
 // ============================================================================
 
-describe("introspectCollection", () => {
-	test("extracts collection name", () => {
-		const metadata = introspectCollection(users);
+describe("introspectTable", () => {
+	test("extracts table name", () => {
+		const metadata = introspectTable(users);
 		expect(metadata.name).toBe("users");
 	});
 
-	// TODO: Fix collection.fields() to properly extract types from Zod schemas
-	test.skip("extracts columns with correct types", () => {
-		const metadata = introspectCollection(users);
+	test("extracts columns with correct types", () => {
+		const metadata = introspectTable(users);
 
 		const idCol = metadata.columns.find((c) => c.name === "id");
 		expect(idCol).toBeDefined();
@@ -92,18 +91,16 @@ describe("introspectCollection", () => {
 		expect(nameCol?.notNull).toBe(false);
 	});
 
-	// TODO: Fix collection.fields() to extract enum values
-	test.skip("extracts enum values", () => {
-		const metadata = introspectCollection(users);
+	test("extracts enum values", () => {
+		const metadata = introspectTable(users);
 
 		const roleCol = metadata.columns.find((c) => c.name === "role");
 		expect(roleCol).toBeDefined();
 		expect(roleCol?.enumValues).toEqual(["admin", "user", "guest"]);
 	});
 
-	// TODO: Fix collection.fields() to extract defaults
-	test.skip("extracts hasDefault correctly", () => {
-		const metadata = introspectCollection(users);
+	test("extracts hasDefault correctly", () => {
+		const metadata = introspectTable(users);
 
 		const roleCol = metadata.columns.find((c) => c.name === "role");
 		expect(roleCol?.hasDefault).toBe(true);
@@ -112,15 +109,13 @@ describe("introspectCollection", () => {
 		expect(emailCol?.hasDefault).toBe(false);
 	});
 
-	// TODO: Fix collection.primaryKey() to detect primary keys through .pipe()
-	test.skip("identifies primary key", () => {
-		const metadata = introspectCollection(users);
+	test("identifies primary key", () => {
+		const metadata = introspectTable(users);
 		expect(metadata.primaryKey).toEqual(["id"]);
 	});
 
-	// TODO: Fix collection.references() to detect references through .pipe()
-	test.skip("extracts foreign keys", () => {
-		const metadata = introspectCollection(posts);
+	test("extracts foreign keys", () => {
+		const metadata = introspectTable(posts);
 
 		expect(metadata.foreignKeys).toHaveLength(1);
 		expect(metadata.foreignKeys[0]).toEqual({
@@ -136,7 +131,7 @@ describe("introspectCollection", () => {
 // ============================================================================
 
 describe("introspectSchema", () => {
-	test("extracts all collections from schema", () => {
+	test("extracts all tables from schema", () => {
 		const tables = introspectSchema(testSchema);
 
 		expect(tables.size).toBe(4);
@@ -146,7 +141,7 @@ describe("introspectSchema", () => {
 		expect(tables.has("files")).toBe(true);
 	});
 
-	test("ignores non-collection exports", () => {
+	test("ignores non-table exports", () => {
 		const schemaWithExtras = {
 			...testSchema,
 			someHelper: () => {},
@@ -155,7 +150,7 @@ describe("introspectSchema", () => {
 		};
 
 		const tables = introspectSchema(schemaWithExtras);
-		expect(tables.size).toBe(4); // Only the 4 actual collections
+		expect(tables.size).toBe(4); // Only the 4 actual tables
 	});
 
 	test("returns metadata accessible by table name", () => {
