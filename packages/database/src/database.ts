@@ -41,6 +41,27 @@ export interface DatabaseDriver {
 	 * Execute a query and return a single value.
 	 */
 	val<T = unknown>(sql: string, params: unknown[]): Promise<T>;
+
+	/**
+	 * Begin a transaction and return a connection-bound driver.
+	 *
+	 * Optional — implement this for connection-pooled databases to ensure
+	 * all transaction operations use the same connection.
+	 *
+	 * If not implemented, Database.transaction() falls back to SQL-based
+	 * BEGIN/COMMIT/ROLLBACK which works for single-connection drivers.
+	 */
+	beginTransaction?(): Promise<TransactionDriver>;
+}
+
+/**
+ * A driver bound to a single connection within a transaction.
+ *
+ * All operations go through the same connection until commit/rollback.
+ */
+export interface TransactionDriver extends DatabaseDriver {
+	commit(): Promise<void>;
+	rollback(): Promise<void>;
 }
 
 /**
@@ -93,7 +114,7 @@ export class DatabaseUpgradeEvent extends Event {
 }
 
 // ============================================================================
-// Database
+// Transaction
 // ============================================================================
 
 export interface DatabaseOptions {
@@ -107,6 +128,163 @@ export type TaggedQuery<T> = (
 	strings: TemplateStringsArray,
 	...values: unknown[]
 ) => Promise<T>;
+
+/**
+ * Transaction context with query methods.
+ *
+ * Provides the same query interface as Database, but bound to a single
+ * connection for the duration of the transaction.
+ */
+export class Transaction {
+	#driver: DatabaseDriver;
+	#dialect: SQLDialect;
+
+	constructor(driver: DatabaseDriver, dialect: SQLDialect) {
+		this.#driver = driver;
+		this.#dialect = dialect;
+	}
+
+	// ==========================================================================
+	// Queries - Return Normalized Entities
+	// ==========================================================================
+
+	all<T extends Table<any>[]>(...tables: T): TaggedQuery<Infer<T[0]>[]> {
+		return async (strings: TemplateStringsArray, ...values: unknown[]) => {
+			const query = createQuery(tables, this.#dialect);
+			const {sql, params} = query(strings, ...values);
+			const rows = await this.#driver.all<Record<string, unknown>>(sql, params);
+			return normalize<Infer<T[0]>>(rows, tables);
+		};
+	}
+
+	one<T extends Table<any>[]>(...tables: T): TaggedQuery<Infer<T[0]> | null> {
+		return async (strings: TemplateStringsArray, ...values: unknown[]) => {
+			const query = createQuery(tables, this.#dialect);
+			const {sql, params} = query(strings, ...values);
+			const row = await this.#driver.get<Record<string, unknown>>(sql, params);
+			return normalizeOne<Infer<T[0]>>(row, tables);
+		};
+	}
+
+	// ==========================================================================
+	// Mutations - Validate Through Zod
+	// ==========================================================================
+
+	async insert<T extends Table<any>>(table: T, data: Insert<T>): Promise<Infer<T>> {
+		const validated = table.schema.parse(data);
+
+		const columns = Object.keys(validated);
+		const values = Object.values(validated);
+		const tableName = this.#quoteIdent(table.name);
+		const columnList = columns.map((c) => this.#quoteIdent(c)).join(", ");
+		const placeholders = columns.map((_, i) => this.#placeholder(i + 1)).join(", ");
+
+		const sql = `INSERT INTO ${tableName} (${columnList}) VALUES (${placeholders})`;
+		await this.#driver.run(sql, values);
+
+		return validated as Infer<T>;
+	}
+
+	async update<T extends Table<any>>(
+		table: T,
+		id: string | number | Record<string, unknown>,
+		data: Partial<Insert<T>>,
+	): Promise<Infer<T> | null> {
+		const pk = table.primaryKey();
+		if (!pk) {
+			throw new Error(`Table ${table.name} has no primary key defined`);
+		}
+
+		const partialSchema = table.schema.partial();
+		const validated = partialSchema.parse(data);
+
+		const columns = Object.keys(validated);
+		if (columns.length === 0) {
+			throw new Error("No fields to update");
+		}
+
+		const values = Object.values(validated);
+		const tableName = this.#quoteIdent(table.name);
+		const setClause = columns
+			.map((c, i) => `${this.#quoteIdent(c)} = ${this.#placeholder(i + 1)}`)
+			.join(", ");
+
+		const whereClause = `${this.#quoteIdent(pk)} = ${this.#placeholder(values.length + 1)}`;
+		const whereParams = [id];
+
+		const sql = `UPDATE ${tableName} SET ${setClause} WHERE ${whereClause}`;
+		await this.#driver.run(sql, [...values, ...whereParams]);
+
+		const selectSql = `SELECT * FROM ${tableName} WHERE ${whereClause}`;
+		const row = await this.#driver.get<Record<string, unknown>>(selectSql, whereParams);
+
+		if (!row) return null;
+
+		return table.schema.parse(row) as Infer<T>;
+	}
+
+	async delete<T extends Table<any>>(
+		table: T,
+		id: string | number | Record<string, unknown>,
+	): Promise<boolean> {
+		const pk = table.primaryKey();
+		if (!pk) {
+			throw new Error(`Table ${table.name} has no primary key defined`);
+		}
+
+		const tableName = this.#quoteIdent(table.name);
+		const whereClause = `${this.#quoteIdent(pk)} = ${this.#placeholder(1)}`;
+
+		const sql = `DELETE FROM ${tableName} WHERE ${whereClause}`;
+		const affected = await this.#driver.run(sql, [id]);
+
+		return affected > 0;
+	}
+
+	// ==========================================================================
+	// Raw - No Normalization
+	// ==========================================================================
+
+	async query<T = Record<string, unknown>>(
+		strings: TemplateStringsArray,
+		...values: unknown[]
+	): Promise<T[]> {
+		const {sql, params} = parseTemplate(strings, values, this.#dialect);
+		return this.#driver.all<T>(sql, params);
+	}
+
+	async exec(strings: TemplateStringsArray, ...values: unknown[]): Promise<number> {
+		const {sql, params} = parseTemplate(strings, values, this.#dialect);
+		return this.#driver.run(sql, params);
+	}
+
+	async val<T>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T> {
+		const {sql, params} = parseTemplate(strings, values, this.#dialect);
+		return this.#driver.val<T>(sql, params);
+	}
+
+	// ==========================================================================
+	// Helpers
+	// ==========================================================================
+
+	#quoteIdent(name: string): string {
+		if (this.#dialect === "mysql") {
+			return `\`${name}\``;
+		}
+		return `"${name}"`;
+	}
+
+	#placeholder(index: number): string {
+		if (this.#dialect === "postgresql") {
+			return `$${index}`;
+		}
+		return "?";
+	}
+}
+
+// ============================================================================
+// Database
+// ============================================================================
 
 /**
  * Database wrapper with typed queries and entity normalization.
@@ -454,6 +632,9 @@ export class Database extends EventTarget {
 	 * If the function completes successfully, the transaction is committed.
 	 * If the function throws an error, the transaction is rolled back.
 	 *
+	 * For connection-pooled drivers that implement `beginTransaction()`,
+	 * all operations are guaranteed to use the same connection.
+	 *
 	 * @example
 	 * await db.transaction(async (tx) => {
 	 *   const user = await tx.insert(users, { id: "1", name: "Alice" });
@@ -461,11 +642,27 @@ export class Database extends EventTarget {
 	 *   // If any insert fails, both are rolled back
 	 * });
 	 */
-	async transaction<T>(fn: (tx: Database) => Promise<T>): Promise<T> {
+	async transaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
+		// Use driver's transaction support if available (for connection pools)
+		if (this.#driver.beginTransaction) {
+			const txDriver = await this.#driver.beginTransaction();
+			const tx = new Transaction(txDriver, this.#dialect);
+			try {
+				const result = await fn(tx);
+				await txDriver.commit();
+				return result;
+			} catch (error) {
+				await txDriver.rollback();
+				throw error;
+			}
+		}
+
+		// Fallback: SQL-based transactions (for single-connection drivers)
 		const begin = this.#dialect === "mysql" ? "START TRANSACTION" : "BEGIN";
 		await this.#driver.run(begin, []);
+		const tx = new Transaction(this.#driver, this.#dialect);
 		try {
-			const result = await fn(this);
+			const result = await fn(tx);
 			await this.#driver.run("COMMIT", []);
 			return result;
 		} catch (error) {

@@ -65,10 +65,12 @@ export {
 export {
 	// Database wrapper
 	Database,
+	Transaction,
 	DatabaseUpgradeEvent,
 	createDatabase,
 	type DatabaseAdapter,
 	type DatabaseDriver,
+	type TransactionDriver,
 	type DatabaseOptions,
 	type TaggedQuery,
 } from "./database.js";

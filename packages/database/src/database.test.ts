@@ -371,4 +371,63 @@ describe("transaction()", () => {
 		const calls = (driver.run as any).mock.calls;
 		expect(calls[0][0]).toBe("START TRANSACTION");
 	});
+
+	test("uses driver.beginTransaction() when available", async () => {
+		const txDriver = {
+			...createMockDriver(),
+			commit: mock(async () => {}),
+			rollback: mock(async () => {}),
+		};
+		const driver = {
+			...createMockDriver(),
+			beginTransaction: mock(async () => txDriver),
+		};
+		const db = new Database(driver);
+
+		await db.transaction(async (tx) => {
+			await tx.insert(users, {
+				id: USER_ID,
+				email: "alice@example.com",
+				name: "Alice",
+			});
+			return "done";
+		});
+
+		// Should use driver's beginTransaction
+		expect(driver.beginTransaction).toHaveBeenCalled();
+
+		// INSERT should go through txDriver, not main driver
+		expect((txDriver.run as any).mock.calls.length).toBe(1);
+		expect((txDriver.run as any).mock.calls[0][0]).toContain("INSERT INTO");
+
+		// Should commit via txDriver
+		expect(txDriver.commit).toHaveBeenCalled();
+		expect(txDriver.rollback).not.toHaveBeenCalled();
+
+		// Main driver should NOT have BEGIN/COMMIT
+		const mainCalls = (driver.run as any).mock.calls;
+		expect(mainCalls.some((c: any) => c[0] === "BEGIN")).toBe(false);
+	});
+
+	test("uses driver.rollback() on error when beginTransaction available", async () => {
+		const txDriver = {
+			...createMockDriver(),
+			commit: mock(async () => {}),
+			rollback: mock(async () => {}),
+		};
+		const driver = {
+			...createMockDriver(),
+			beginTransaction: mock(async () => txDriver),
+		};
+		const db = new Database(driver);
+
+		await expect(
+			db.transaction(async () => {
+				throw new Error("Test error");
+			}),
+		).rejects.toThrow("Test error");
+
+		expect(txDriver.rollback).toHaveBeenCalled();
+		expect(txDriver.commit).not.toHaveBeenCalled();
+	});
 });
