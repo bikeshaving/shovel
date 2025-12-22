@@ -1100,4 +1100,5 @@ export {
 	type DatabaseStorage,
 	type DatabaseConfig,
 	type DatabaseFactory,
+	type DatabaseUpgradeEvent,
 } from "./runtime.js";

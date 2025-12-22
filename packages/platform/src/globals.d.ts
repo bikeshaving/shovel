@@ -24,17 +24,43 @@ declare global {
 	}
 
 	/**
+	 * Upgrade event passed to onUpgrade callback during database.open().
+	 */
+	interface DatabaseUpgradeEvent {
+		/** The database being upgraded */
+		db: unknown;
+		/** Previous database version (0 if new) */
+		oldVersion: number;
+		/** Target version being opened */
+		newVersion: number;
+		/** Register a promise that must complete before open() resolves */
+		waitUntil(promise: Promise<unknown>): void;
+	}
+
+	/**
 	 * Database storage API for accessing named database instances.
 	 *
-	 * The base interface returns `Promise<unknown>`. When using `shovel build` or
-	 * `shovel develop`, typed overloads are generated in `dist/server/shovel.d.ts`
-	 * that provide full type inference based on your shovel.json config.
+	 * @example
+	 * // In activate - open with migrations
+	 * await self.databases.open("main", 2, (e) => {
+	 *   e.waitUntil(runMigrations(e));
+	 * });
 	 *
-	 * @example const db = await self.databases.get("main");
+	 * // In fetch - get opened database (sync)
+	 * const db = self.databases.get("main");
 	 */
 	interface DatabaseStorage {
-		get(name: string): Promise<unknown>;
+		/** Open a database at a specific version, running migrations if needed */
+		open(
+			name: string,
+			version: number,
+			onUpgrade?: (event: DatabaseUpgradeEvent) => void,
+		): Promise<unknown>;
+		/** Get an already-opened database (throws if not opened) */
+		get(name: string): unknown;
+		/** Close a specific database */
 		close(name: string): Promise<void>;
+		/** Close all databases */
 		closeAll(): Promise<void>;
 	}
 
@@ -53,7 +79,7 @@ declare global {
 
 	/**
 	 * Database storage API for accessing named database instances.
-	 * @example const db = await self.databases.get("main");
+	 * @example const db = self.databases.get("main");
 	 */
 	var databases: DatabaseStorage;
 

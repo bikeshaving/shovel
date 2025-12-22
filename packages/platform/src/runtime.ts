@@ -394,42 +394,76 @@ export interface DatabaseConfig {
 }
 
 /**
+ * Upgrade event passed to onUpgrade callback during database.open().
+ */
+export interface DatabaseUpgradeEvent {
+	/** The database being upgraded */
+	db: Database;
+	/** Previous database version (0 if new) */
+	oldVersion: number;
+	/** Target version being opened */
+	newVersion: number;
+	/** Register a promise that must complete before open() resolves */
+	waitUntil(promise: Promise<unknown>): void;
+}
+
+/**
  * DatabaseStorage interface - provides access to named database instances.
  *
  * @example
  * ```typescript
- * // Get a database (created on first access)
- * const db = await self.databases.get("main");
- *
- * // Register migration handler
- * db.addEventListener("upgradeneeded", (e) => {
- *   e.waitUntil(runMigrations(e));
+ * // In activate handler - open database with migrations
+ * self.addEventListener("activate", (event) => {
+ *   event.waitUntil(
+ *     self.databases.open("main", 2, (e) => {
+ *       e.waitUntil(runMigrations(e));
+ *     })
+ *   );
  * });
  *
- * // Open at specific version (fires upgradeneeded if needed)
- * await db.open(2);
- *
- * // Now use the database
- * const users = await db.all(User)`WHERE active = ${true}`;
+ * // In fetch handler - get the opened database (sync)
+ * self.addEventListener("fetch", (event) => {
+ *   const db = self.databases.get("main");
+ *   const users = await db.all(User)`WHERE active = ${true}`;
+ * });
  * ```
  */
 export interface DatabaseStorage {
-	/** Get a database instance by name (async - may need to import driver) */
-	get(name: string): Promise<Database>;
+	/**
+	 * Open a database at a specific version.
+	 * Imports the driver, creates the Database, runs migrations if needed.
+	 * Caches the opened instance for later get() calls.
+	 */
+	open(
+		name: string,
+		version: number,
+		onUpgrade?: (event: DatabaseUpgradeEvent) => void,
+	): Promise<Database>;
+
+	/**
+	 * Get an already-opened database.
+	 * Throws if the database hasn't been opened yet.
+	 * This is synchronous for fast access in request handlers.
+	 */
+	get(name: string): Database;
+
 	/** Close a specific database */
 	close(name: string): Promise<void>;
+
 	/** Close all databases */
 	closeAll(): Promise<void>;
 }
 
 /**
- * Factory function type for creating databases.
+ * Factory function type for creating database drivers.
  * Returns the Database instance and a close function.
  */
-export type DatabaseFactory = (name: string) => Promise<{db: Database; close: () => Promise<void>}>;
+export type DatabaseFactory = (
+	name: string,
+) => Promise<{db: Database; close: () => Promise<void>}>;
 
 /**
- * CustomDatabaseStorage implements DatabaseStorage with an async factory function.
+ * CustomDatabaseStorage implements DatabaseStorage.
  */
 export class CustomDatabaseStorage implements DatabaseStorage {
 	#factory: DatabaseFactory;
@@ -441,43 +475,86 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 		this.#factory = factory;
 	}
 
-	async get(name: string): Promise<Database> {
-		// Return cached instance if available
+	async open(
+		name: string,
+		version: number,
+		onUpgrade?: (event: DatabaseUpgradeEvent) => void,
+	): Promise<Database> {
+		// Return cached instance if already opened
 		const existing = this.#databases.get(name);
 		if (existing) {
 			return existing;
 		}
 
-		// Return in-flight promise if another caller is already creating this database
+		// Return in-flight promise if another caller is already opening this database
 		const pending = this.#pending.get(name);
 		if (pending) {
 			return pending;
 		}
 
-		// Create the database and cache the promise to prevent concurrent creation
-		const promise = this.#factory(name)
-			.then(({db, close}) => {
-				this.#databases.set(name, db);
-				this.#closers.set(name, close);
-				return db;
-			})
-			.finally(() => {
-				// Always clear pending, whether success or failure
-				this.#pending.delete(name);
-			});
+		// Create and open the database
+		const promise = (async () => {
+			const {db, close} = await this.#factory(name);
+
+			// Register upgrade handler if provided
+			if (onUpgrade) {
+				db.addEventListener("upgradeneeded", (e: Event) => {
+					const event = e as Event & {
+						oldVersion: number;
+						newVersion: number;
+						waitUntil: (p: Promise<unknown>) => void;
+					};
+					onUpgrade({
+						db,
+						oldVersion: event.oldVersion,
+						newVersion: event.newVersion,
+						waitUntil: (p) => event.waitUntil(p),
+					});
+				});
+			}
+
+			// Open at the specified version (triggers migrations if needed)
+			// If open fails, close the driver to avoid leaking connections
+			try {
+				await db.open(version);
+			} catch (err) {
+				await close();
+				throw err;
+			}
+
+			// Cache the opened database
+			this.#databases.set(name, db);
+			this.#closers.set(name, close);
+
+			return db;
+		})().finally(() => {
+			// Always clear pending, whether success or failure
+			this.#pending.delete(name);
+		});
 
 		this.#pending.set(name, promise);
 		return promise;
 	}
 
+	get(name: string): Database {
+		const db = this.#databases.get(name);
+		if (!db) {
+			throw new Error(
+				`Database "${name}" has not been opened. ` +
+					`Call self.databases.open("${name}", version) in your activate handler first.`,
+			);
+		}
+		return db;
+	}
+
 	async close(name: string): Promise<void> {
-		// Wait for any pending creation to complete before closing
+		// Wait for any pending open to complete before closing
 		const pending = this.#pending.get(name);
 		if (pending) {
 			try {
 				await pending;
 			} catch {
-				// Creation failed, nothing to close
+				// Open failed, nothing to close
 				return;
 			}
 		}
@@ -491,7 +568,7 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 	}
 
 	async closeAll(): Promise<void> {
-		// Wait for any pending creations to complete first
+		// Wait for any pending opens to complete first
 		if (this.#pending.size > 0) {
 			await Promise.allSettled(this.#pending.values());
 		}

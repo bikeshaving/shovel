@@ -7,6 +7,7 @@ import {
 	CustomDatabaseStorage,
 } from "../src/runtime.js";
 import {Database} from "@b9g/zen";
+import BunDriver from "@b9g/zen/bun";
 import {getLogger, reset as resetLogtape} from "@logtape/logtape";
 import {tmpdir} from "os";
 import {join} from "path";
@@ -601,29 +602,20 @@ describe("CustomLoggerStorage", () => {
 
 
 describe("CustomDatabaseStorage", () => {
-	// Helper to create a mock driver
-	class MockDriver {
-		closed = false;
-		close() {
-			this.closed = true;
-			return Promise.resolve();
-		}
-	}
-
-	// Helper to create a mock async factory (matching the new interface)
-	const createMockFactory = (names: string[] = ["main"]) => {
+	// Helper to create a factory using real in-memory databases (BunDriver imported at top)
+	const createFactory = (names: string[] = ["main"]) => {
 		let factoryCalls = 0;
-		const drivers: MockDriver[] = [];
+		const drivers: any[] = [];
 
 		const factory = async (name: string) => {
 			if (!names.includes(name)) {
 				throw new Error(`Database "${name}" is not configured.`);
 			}
 			factoryCalls++;
-			const driver = new MockDriver();
+			const driver = new BunDriver(":memory:");
 			drivers.push(driver);
 			return {
-				db: new Database(driver as any),
+				db: new Database(driver),
 				close: () => driver.close(),
 			};
 		};
@@ -632,149 +624,169 @@ describe("CustomDatabaseStorage", () => {
 	};
 
 	test("constructor accepts factory function", () => {
-		const {factory} = createMockFactory();
+		const {factory} = createFactory();
 		const storage = new CustomDatabaseStorage(factory);
 		expect(storage).toBeDefined();
 	});
 
-	test("get() creates Database and caches it", async () => {
-		const {factory, getFactoryCalls} = createMockFactory();
+	test("open() creates and opens Database", async () => {
+		const {factory, getFactoryCalls} = createFactory();
 		const storage = new CustomDatabaseStorage(factory);
 
-		// First call creates instance
-		const db1 = await storage.get("main");
-		expect(db1).toBeDefined();
+		const db = await storage.open("main", 1);
+		expect(db).toBeDefined();
 		expect(getFactoryCalls()).toBe(1);
 
-		// Second call returns cached instance
-		const db2 = await storage.get("main");
-		expect(db2).toBe(db1);
-		expect(getFactoryCalls()).toBe(1); // Still 1 - no new factory call
+		await storage.closeAll();
 	});
 
-	test("get() throws for unconfigured database", async () => {
-		const {factory} = createMockFactory(["main"]);
+	test("get() returns opened database (sync)", async () => {
+		const {factory} = createFactory();
 		const storage = new CustomDatabaseStorage(factory);
 
-		await expect(storage.get("unknown")).rejects.toThrow(
+		const db1 = await storage.open("main", 1);
+		const db2 = storage.get("main"); // sync!
+		expect(db2).toBe(db1);
+
+		await storage.closeAll();
+	});
+
+	test("get() throws if database not opened", () => {
+		const {factory} = createFactory();
+		const storage = new CustomDatabaseStorage(factory);
+
+		expect(() => storage.get("main")).toThrow(
+			'Database "main" has not been opened',
+		);
+	});
+
+	test("open() throws for unconfigured database", async () => {
+		const {factory} = createFactory(["main"]);
+		const storage = new CustomDatabaseStorage(factory);
+
+		await expect(storage.open("unknown", 1)).rejects.toThrow(
 			'Database "unknown" is not configured',
 		);
 	});
 
 	test("close() removes database from cache", async () => {
-		const {factory, drivers} = createMockFactory();
+		const {factory} = createFactory();
 		const storage = new CustomDatabaseStorage(factory);
 
-		await storage.get("main");
+		await storage.open("main", 1);
 		await storage.close("main");
 
-		expect(drivers[0].closed).toBe(true);
+		// get() should throw after close
+		expect(() => storage.get("main")).toThrow();
 	});
 
-	test("closeAll() closes all gotten databases", async () => {
-		const {factory, drivers} = createMockFactory(["main", "secondary"]);
+	test("closeAll() closes all opened databases", async () => {
+		const {factory} = createFactory(["main", "secondary"]);
 		const storage = new CustomDatabaseStorage(factory);
 
-		await storage.get("main");
-		await storage.get("secondary");
+		await storage.open("main", 1);
+		await storage.open("secondary", 1);
 
 		await storage.closeAll();
 
-		expect(drivers[0].closed).toBe(true);
-		expect(drivers[1].closed).toBe(true);
+		// Both should be closed - get() should throw
+		expect(() => storage.get("main")).toThrow();
+		expect(() => storage.get("secondary")).toThrow();
 	});
 
-	test("get() returns same instance on sequential calls", async () => {
-		const {factory, getFactoryCalls} = createMockFactory();
+	test("open() returns cached instance on subsequent calls", async () => {
+		const {factory, getFactoryCalls} = createFactory();
 		const storage = new CustomDatabaseStorage(factory);
 
-		// Multiple get calls return the same instance
-		const db1 = await storage.get("main");
-		const db2 = await storage.get("main");
-		const db3 = await storage.get("main");
+		const db1 = await storage.open("main", 1);
+		const db2 = await storage.open("main", 1);
+		const db3 = await storage.open("main", 1);
 
-		// All should return the same instance
 		expect(db1).toBe(db2);
 		expect(db2).toBe(db3);
-		// Factory should only be called once
 		expect(getFactoryCalls()).toBe(1);
+
+		await storage.closeAll();
 	});
 
-	test("get() returns same instance on truly concurrent calls", async () => {
-		const {factory, getFactoryCalls} = createMockFactory();
+	test("open() returns same instance on concurrent calls", async () => {
+		const {factory, getFactoryCalls} = createFactory();
 		const storage = new CustomDatabaseStorage(factory);
 
-		// Fire off multiple get calls simultaneously (without awaiting)
-		const promise1 = storage.get("main");
-		const promise2 = storage.get("main");
-		const promise3 = storage.get("main");
+		// Fire off multiple open calls simultaneously
+		const promise1 = storage.open("main", 1);
+		const promise2 = storage.open("main", 1);
+		const promise3 = storage.open("main", 1);
 
-		// Wait for all to resolve
 		const [db1, db2, db3] = await Promise.all([promise1, promise2, promise3]);
 
-		// All should return the same instance
 		expect(db1).toBe(db2);
 		expect(db2).toBe(db3);
-		// Factory should only be called once (not 3 times!)
 		expect(getFactoryCalls()).toBe(1);
+
+		await storage.closeAll();
 	});
 
-	test("get() allows retry after factory failure", async () => {
+	test("open() allows retry after failure", async () => {
 		let callCount = 0;
 		const failingFactory = async (name: string) => {
 			callCount++;
 			if (callCount === 1) {
 				throw new Error("First call fails");
 			}
-			// Second call succeeds
+			const driver = new BunDriver(":memory:");
 			return {
-				db: new Database({} as any),
-				close: async () => {},
+				db: new Database(driver),
+				close: async () => driver.close(),
 			};
 		};
 
 		const storage = new CustomDatabaseStorage(failingFactory);
 
-		// First call should fail
-		await expect(storage.get("main")).rejects.toThrow("First call fails");
+		await expect(storage.open("main", 1)).rejects.toThrow("First call fails");
 
-		// Second call should succeed (pending was cleared)
-		const db = await storage.get("main");
+		// Retry should work
+		const db = await storage.open("main", 1);
 		expect(db).toBeDefined();
 		expect(callCount).toBe(2);
+
+		await storage.closeAll();
 	});
 
-	test("closeAll() waits for pending creations", async () => {
+	test("closeAll() waits for pending opens", async () => {
 		let resolveCreation: () => void;
 		const creationPromise = new Promise<void>((resolve) => {
 			resolveCreation = resolve;
 		});
 
-		const driver = {closed: false, close: async () => { driver.closed = true; }};
+		let closed = false;
 		const slowFactory = async (name: string) => {
 			await creationPromise;
+			const driver = new BunDriver(":memory:");
 			return {
-				db: new Database(driver as any),
-				close: () => driver.close(),
+				db: new Database(driver),
+				close: async () => {
+					driver.close();
+					closed = true;
+				},
 			};
 		};
 
 		const storage = new CustomDatabaseStorage(slowFactory);
 
-		// Start creation but don't await
-		const getPromise = storage.get("main");
+		// Start open but don't await
+		const openPromise = storage.open("main", 1);
 
-		// Call closeAll while creation is pending
+		// Call closeAll while open is pending
 		const closePromise = storage.closeAll();
 
 		// Resolve the creation
 		resolveCreation!();
 
 		// Wait for both
-		await getPromise;
+		await openPromise;
 		await closePromise;
 
-		// Driver should be closed
-		expect(driver.closed).toBe(true);
+		expect(closed).toBe(true);
 	});
 });

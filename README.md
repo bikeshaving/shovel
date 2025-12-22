@@ -83,7 +83,7 @@ The core abstraction is the **ServiceWorker-style storage pattern**. Globals pro
 ```javascript
 const cache = await self.caches.open("sessions");     // Cache API
 const dir   = await self.directories.open("uploads"); // FileSystem API
-const db    = await self.databases.open("main");      // ???
+const db    = self.databases.get("main");             // Zen ORM
 const log   = self.loggers.get("app", "requests");    // LogTape
 ```
 
