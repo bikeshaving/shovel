@@ -18,37 +18,11 @@ import type {Platform, PlatformESBuildConfig} from "@b9g/platform";
 
 import {assetsPlugin} from "../plugins/assets.js";
 import {importMetaPlugin} from "../plugins/import-meta.js";
-import {createConfigPlugin} from "../plugins/shovel-config.js";
+import {createConfigPlugin, createEntryPlugin} from "../plugins/shovel.js";
 import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
 import {findProjectRoot} from "./project.js";
 
 const logger = getLogger(["shovel", "build"]);
-
-/**
- * Create the shovel:entry virtual module plugin.
- * This provides a virtual entry point that wraps the user's ServiceWorker code
- * with runtime initialization (initWorkerRuntime + startWorkerMessageLoop).
- */
-function createEntryPlugin(
-	projectRoot: string,
-	workerEntryCode: string,
-): ESBuild.Plugin {
-	return {
-		name: "shovel-entry",
-		setup(build) {
-			build.onResolve({filter: /^shovel:entry$/}, (args) => ({
-				path: args.path,
-				namespace: "shovel-entry",
-			}));
-
-			build.onLoad({filter: /.*/, namespace: "shovel-entry"}, () => ({
-				contents: workerEntryCode,
-				loader: "js",
-				resolveDir: projectRoot,
-			}));
-		},
-	};
-}
 
 export interface WatcherOptions {
 	/** Entry point to build */

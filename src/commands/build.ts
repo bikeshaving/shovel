@@ -11,13 +11,13 @@ import * as Platform from "@b9g/platform";
 import {mkdir, readFile, writeFile} from "fs/promises";
 import {assetsPlugin} from "../plugins/assets.js";
 import {importMetaPlugin} from "../plugins/import-meta.js";
+import {createConfigPlugin, createEntryPlugin} from "../plugins/shovel.js";
 import {loadJSXConfig, applyJSXOptions} from "../utils/jsx-config.js";
 import {
 	findProjectRoot,
 	findWorkspaceRoot,
 	getNodeModulesPath,
 } from "../utils/project.js";
-import {createConfigPlugin} from "../plugins/shovel-config.js";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 
 const logger = getLogger(["shovel", "cli"]);
@@ -121,32 +121,6 @@ const BUILD_STRUCTURE = {
 	serverDir: "server",
 	publicDir: "public",
 };
-
-/**
- * Create the shovel:entry virtual module plugin.
- * This provides a virtual entry point for the worker that imports the user's server code.
- * The import is kept as a runtime dynamic import because it references a sibling output file.
- */
-function createEntryPlugin(
-	projectRoot: string,
-	workerEntryCode: string,
-): ESBuild.Plugin {
-	return {
-		name: "shovel-entry",
-		setup(build) {
-			build.onResolve({filter: /^shovel:entry$/}, (args) => ({
-				path: args.path,
-				namespace: "shovel-entry",
-			}));
-
-			build.onLoad({filter: /.*/, namespace: "shovel-entry"}, () => ({
-				contents: workerEntryCode,
-				loader: "js",
-				resolveDir: projectRoot,
-			}));
-		},
-	};
-}
 
 /**
  * Build ServiceWorker app for production deployment

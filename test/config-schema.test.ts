@@ -6,7 +6,7 @@ import {
 	DatabaseConfigSchema,
 	LoggerConfigSchema,
 	SinkConfigSchema,
-} from "./config.js";
+} from "../src/utils/config.js";
 
 describe("config validation", () => {
 	describe("ShovelConfigSchema", () => {

@@ -753,6 +753,45 @@ describe("CustomDatabaseStorage", () => {
 		await storage.closeAll();
 	});
 
+	test("open() closes driver when db.open fails", async () => {
+		let closeCalls = 0;
+		let callCount = 0;
+
+		const factory = async () => {
+			callCount++;
+			if (callCount === 1) {
+				return {
+					db: {
+						open: async () => {
+							throw new Error("open failed");
+						},
+					} as unknown as Database,
+					close: async () => {
+						closeCalls++;
+					},
+				};
+			}
+			const driver = new BunDriver(":memory:");
+			return {
+				db: new Database(driver),
+				close: async () => {
+					closeCalls++;
+					await driver.close();
+				},
+			};
+		};
+
+		const storage = new CustomDatabaseStorage(factory);
+
+		await expect(storage.open("main", 1)).rejects.toThrow("open failed");
+		expect(closeCalls).toBe(1);
+
+		const db = await storage.open("main", 1);
+		expect(db).toBeDefined();
+
+		await storage.closeAll();
+	});
+
 	test("closeAll() waits for pending opens", async () => {
 		let resolveCreation: () => void;
 		const creationPromise = new Promise<void>((resolve) => {
