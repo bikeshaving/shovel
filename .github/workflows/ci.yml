@@ -31,8 +31,8 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build packages
-        run: bun run --filter './packages/*' build
+      - name: Build
+        run: bun run build
 
       - name: Typecheck
         run: tsc --noEmit
