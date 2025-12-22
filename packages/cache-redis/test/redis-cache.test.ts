@@ -2,9 +2,7 @@
  * Tests for RedisCache
  *
  * These tests run against a real Redis/Valkey instance.
- * Set REDIS_URL environment variable to run these tests.
- *
- * Example: REDIS_URL=redis://localhost:6379 bun test
+ * Start Redis with: docker compose up -d
  */
 
 import {test, expect, describe, beforeEach, afterEach} from "bun:test";
@@ -13,14 +11,7 @@ import {createClient} from "redis";
 
 const REDIS_URL = import.meta.env.REDIS_URL || "redis://localhost:6379";
 
-// Skip all tests if Redis is not available
-const skipTests = !import.meta.env.REDIS_URL;
-
-if (skipTests) {
-	console.info("SKIPPING REDIS TESTS (set REDIS_URL to enable)");
-}
-
-describe.skipIf(skipTests)("RedisCache", () => {
+describe("RedisCache", () => {
 	let cache: RedisCache;
 	let testPrefix: string;
 

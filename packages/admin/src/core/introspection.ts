@@ -4,7 +4,7 @@
  * Extracts metadata from @b9g/zen tables for dynamic admin generation.
  */
 
-import type {Table, FieldMeta} from "@b9g/zen";
+import type {Table, FieldMeta, ReferenceInfo} from "@b9g/zen";
 import type {
 	ColumnMetadata,
 	ColumnDataType,
@@ -79,13 +79,13 @@ export function introspectTable(table: Table<any>): TableMetadata {
 
 	// Convert fields to columns
 	const columns: ColumnMetadata[] = Object.entries(fieldsMeta).map(
-		([key, field]) => ({
+		([key, field]: [string, FieldMeta]) => ({
 			name: key, // field name is the key
 			key,
 			dataType: mapFieldType(field.type),
 			sqlType: field.type, // Use field type as SQL type hint
 			notNull: field.required,
-			hasDefault: field.default !== undefined || (field as any).inserted !== undefined,
+			hasDefault: field.default !== undefined || field.inserted !== undefined,
 			isPrimaryKey: field.primaryKey ?? false,
 			enumValues: field.options ? [...field.options] : undefined,
 		}),
@@ -96,7 +96,7 @@ export function introspectTable(table: Table<any>): TableMetadata {
 	const primaryKey: string[] = pk ? [pk] : [];
 
 	// Convert references to foreign keys
-	const foreignKeys: ForeignKeyMetadata[] = refs.map((ref) => ({
+	const foreignKeys: ForeignKeyMetadata[] = refs.map((ref: ReferenceInfo) => ({
 		columns: [ref.fieldName],
 		foreignTable: ref.table.name,
 		foreignColumns: [ref.referencedField],

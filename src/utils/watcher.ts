@@ -47,13 +47,14 @@ export class Watcher {
 		entrypoint: string;
 	}) => void;
 	#currentEntrypoint: string;
-	#configWatchers: FSWatcher[] = [];
+	#configWatchers: FSWatcher[];
 
 	constructor(options: WatcherOptions) {
 		this.#options = options;
 		this.#projectRoot = findProjectRoot();
 		this.#initialBuildComplete = false;
 		this.#currentEntrypoint = "";
+		this.#configWatchers = [];
 	}
 
 	/**

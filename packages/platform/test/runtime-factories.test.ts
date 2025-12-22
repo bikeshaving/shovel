@@ -600,7 +600,6 @@ describe("CustomLoggerStorage", () => {
 	});
 });
 
-
 describe("CustomDatabaseStorage", () => {
 	// Helper to create a factory using real in-memory databases (BunDriver imported at top)
 	const createFactory = (names: string[] = ["main"]) => {
@@ -729,7 +728,7 @@ describe("CustomDatabaseStorage", () => {
 
 	test("open() allows retry after failure", async () => {
 		let callCount = 0;
-		const failingFactory = async (name: string) => {
+		const failingFactory = async (_name: string) => {
 			callCount++;
 			if (callCount === 1) {
 				throw new Error("First call fails");
@@ -799,7 +798,7 @@ describe("CustomDatabaseStorage", () => {
 		});
 
 		let closed = false;
-		const slowFactory = async (name: string) => {
+		const slowFactory = async (_name: string) => {
 			await creationPromise;
 			const driver = new BunDriver(":memory:");
 			return {

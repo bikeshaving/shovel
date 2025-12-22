@@ -10,7 +10,7 @@ import {trailingSlash} from "@b9g/router/middleware";
 import {renderer} from "@b9g/crank/html";
 import type {Children} from "@b9g/crank";
 import type {Table} from "@b9g/zen";
-import type {AdminConfig, TableMetadata, ColumnMetadata} from "./types.js";
+import type {AdminConfig, TableMetadata} from "./types.js";
 import {
 	introspectSchema,
 	isTable,
@@ -42,7 +42,7 @@ import type {AssetsConfig} from "./types.js";
 /**
  * Render an error page with details for debugging
  */
-function errorPage(
+function _errorPage(
 	title: string,
 	basePath: string,
 	models: ModelInfo[],
@@ -282,7 +282,8 @@ export function createAdmin(config: AdminConfig): Router {
 				<div class="usa-alert usa-alert--info" role="alert">
 					<div class="usa-alert__body">
 						<p class="usa-alert__text">
-							CRUD operations not yet implemented. Migrate to @b9g/zen in progress.
+							CRUD operations not yet implemented. Migrate to @b9g/zen in
+							progress.
 						</p>
 					</div>
 				</div>
@@ -348,7 +349,9 @@ export function createAdmin(config: AdminConfig): Router {
 				models={models}
 				assets={assets}
 			>
-				<h1 class="usa-heading">{model.displayName} #{id}</h1>
+				<h1 class="usa-heading">
+					{model.displayName} #{id}
+				</h1>
 				<div class="usa-alert usa-alert--info" role="alert">
 					<div class="usa-alert__body">
 						<p class="usa-alert__text">
@@ -380,7 +383,9 @@ export function createAdmin(config: AdminConfig): Router {
 				models={models}
 				assets={assets}
 			>
-				<h1 class="usa-heading">Edit {model.displayName} #{id}</h1>
+				<h1 class="usa-heading">
+					Edit {model.displayName} #{id}
+				</h1>
 				<div class="usa-alert usa-alert--info" role="alert">
 					<div class="usa-alert__body">
 						<p class="usa-alert__text">
@@ -420,7 +425,9 @@ export function createAdmin(config: AdminConfig): Router {
 				models={models}
 				assets={assets}
 			>
-				<h1 class="usa-heading">Delete {model.displayName} #{id}</h1>
+				<h1 class="usa-heading">
+					Delete {model.displayName} #{id}
+				</h1>
 				<div class="usa-alert usa-alert--info" role="alert">
 					<div class="usa-alert__body">
 						<p class="usa-alert__text">

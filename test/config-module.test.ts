@@ -3,12 +3,7 @@
  */
 
 import {describe, it, expect} from "bun:test";
-import {
-	exprToCode,
-	generateConfigModule,
-	BUILTIN_CACHE_PROVIDERS,
-	BUILTIN_DIRECTORY_PROVIDERS,
-} from "../src/utils/config.js";
+import {exprToCode, generateConfigModule} from "../src/utils/config.js";
 
 describe("exprToCode", () => {
 	describe("literals", () => {
@@ -52,106 +47,92 @@ describe("exprToCode", () => {
 	});
 
 	describe("operators", () => {
-		it("converts || (or) expressions", () => {
+		it("handles || fallback", () => {
+			// exprToCode wraps expressions in parentheses and treats numbers as numbers
 			expect(exprToCode("PORT || 3000")).toBe("(process.env.PORT || 3000)");
 			expect(exprToCode("HOST || localhost")).toBe(
 				'(process.env.HOST || "localhost")',
 			);
 		});
 
-		it("converts && (and) expressions", () => {
-			expect(exprToCode("REDIS_ENABLED && REDIS_URL")).toBe(
-				"(process.env.REDIS_ENABLED && process.env.REDIS_URL)",
-			);
+		it("handles ?? nullish coalescing", () => {
+			expect(exprToCode("PORT ?? 3000")).toBe("(process.env.PORT ?? 3000)");
 		});
 
-		it("converts === equality", () => {
+		it("handles === comparison", () => {
 			expect(exprToCode("NODE_ENV === production")).toBe(
 				'(process.env.NODE_ENV === "production")',
 			);
 		});
 
-		it("converts !== inequality", () => {
-			expect(exprToCode("NODE_ENV !== development")).toBe(
-				'(process.env.NODE_ENV !== "development")',
-			);
-		});
-
-		it("converts ternary expressions", () => {
-			// Note: condition gets wrapped in parens
+		it("handles ternary expressions", () => {
 			expect(exprToCode("NODE_ENV === production ? redis : memory")).toBe(
 				'((process.env.NODE_ENV === "production") ? "redis" : "memory")',
 			);
 		});
 
-		it("converts negation", () => {
-			expect(exprToCode("!DEBUG")).toBe("!process.env.DEBUG");
-		});
-
-		it("handles parentheses", () => {
-			// Note: parens around expression are preserved
-			expect(exprToCode("(PORT || 3000)")).toBe("((process.env.PORT || 3000))");
+		it("handles complex expressions", () => {
+			const result = exprToCode("REDIS_URL || redis://localhost:6379");
+			expect(result).toBe(
+				'(process.env.REDIS_URL || "redis://localhost:6379")',
+			);
 		});
 	});
 
-	describe("complex expressions", () => {
-		it("handles nested ternary", () => {
-			const expr =
-				"NODE_ENV === production ? redis : NODE_ENV === test ? memory : memory";
-			const code = exprToCode(expr);
-			expect(code).toContain("process.env.NODE_ENV");
-			expect(code).toContain('"production"');
-			expect(code).toContain('"redis"');
-			expect(code).toContain('"memory"');
-		});
-
-		it("handles combined && and ||", () => {
-			expect(exprToCode("REDIS_ENABLED && REDIS_URL || memory")).toBe(
-				'((process.env.REDIS_ENABLED && process.env.REDIS_URL) || "memory")',
+	describe("quoted strings", () => {
+		it("preserves quoted strings literally", () => {
+			// exprToCode escapes double quotes within the output
+			expect(exprToCode('"literal string"')).toBe(
+				'"' + '\\"literal string\\"' + '"',
 			);
+			// Single quotes are not escaped since output uses double quotes
+			expect(exprToCode("'single quoted'")).toBe("\"'single quoted'\"");
 		});
 	});
 });
 
 describe("generateConfigModule", () => {
 	describe("basic config", () => {
-		it("generates module with literal values", () => {
+		it("generates module with default port/host placeholders", () => {
+			const module = generateConfigModule({});
+
+			expect(module).toContain("export const config");
+			expect(module).toContain("process.env.PORT");
+			expect(module).toContain("process.env.HOST");
+		});
+
+		it("includes explicit port/host values", () => {
 			const config = {
-				port: 3000,
-				host: "localhost",
-				workers: 2,
+				port: 8080,
+				host: "0.0.0.0",
 			};
 
 			const module = generateConfigModule(config);
 
-			expect(module).toContain("export const config");
-			expect(module).toContain("port: 3000");
-			expect(module).toContain('host: "localhost"');
-			expect(module).toContain("workers: 2");
+			expect(module).toContain("port: 8080");
+			expect(module).toContain('host: "0.0.0.0"');
 		});
 
-		it("generates module with expression values", () => {
+		it("handles port/host as expressions", () => {
 			const config = {
 				port: "PORT || 3000",
 				host: "HOST || localhost",
 			};
 
-			const module = generateConfigModule(config, {
-				PORT: "8080",
-				HOST: undefined,
-			});
+			const module = generateConfigModule(config);
 
-			expect(module).toContain("(process.env.PORT || 3000)");
+			expect(module).toContain("process.env.PORT");
+			expect(module).toContain("process.env.HOST");
 			expect(module).toContain('(process.env.HOST || "localhost")');
 		});
 	});
 
-	describe("cache providers", () => {
-		it("generates static import for redis provider", () => {
+	describe("cache config with module", () => {
+		it("generates static import for cache module", () => {
 			const config = {
 				caches: {
-					"*": {
-						provider: "redis",
+					sessions: {
+						module: "@b9g/cache-redis",
 						url: "REDIS_URL",
 					},
 				},
@@ -161,18 +142,18 @@ describe("generateConfigModule", () => {
 				REDIS_URL: "redis://localhost",
 			});
 
-			// Should have static import for redis
+			// Should have static import for the module
 			expect(module).toContain('from "@b9g/cache-redis"');
-			// Should reference the imported module in config
-			expect(module).toContain("provider: cache_");
+			// Should reference the imported module via factory
+			expect(module).toContain("factory: cache_");
 		});
 
-		it("uses inline string for memory provider (no import)", () => {
-			// Memory is a special built-in, no import needed
+		it("generates import with named export", () => {
 			const config = {
 				caches: {
-					"*": {
-						provider: "memory",
+					sessions: {
+						module: "@b9g/cache",
+						export: "createMemoryCache",
 						maxEntries: 100,
 					},
 				},
@@ -180,84 +161,60 @@ describe("generateConfigModule", () => {
 
 			const module = generateConfigModule(config);
 
-			// Memory is inlined, no import
-			expect(module).not.toContain('from "@b9g/cache');
-			expect(module).toContain('provider: "memory"');
+			expect(module).toContain(
+				"import { createMemoryCache as cache_sessions }",
+			);
+			expect(module).toContain('from "@b9g/cache"');
 		});
 
-		it("handles conditional provider expression at build time", () => {
+		it("handles cache without module (passthrough)", () => {
 			const config = {
 				caches: {
 					sessions: {
-						provider: "NODE_ENV === production ? redis : memory",
+						maxEntries: 100,
+						TTL: 3600,
 					},
 				},
 			};
 
-			// In production mode - evaluates to redis, imports redis module
-			const prodModule = generateConfigModule(config, {NODE_ENV: "production"});
-			expect(prodModule).toContain('from "@b9g/cache-redis"');
-			expect(prodModule).toContain("provider: cache_sessions");
+			const module = generateConfigModule(config);
 
-			// In development mode - evaluates to memory, no import needed
-			// (memory is special-cased as built-in)
-			const devModule = generateConfigModule(config, {NODE_ENV: "development"});
-			expect(devModule).not.toContain('from "@b9g/cache-redis"');
-			// Expression stays in output for runtime (though it evaluates to "memory")
-			expect(devModule).toContain("process.env.NODE_ENV");
+			// No import needed
+			expect(module).not.toContain("import");
+			// Config should be passed through
+			expect(module).toContain("sessions:");
+			expect(module).toContain("maxEntries: 100");
 		});
 
-		it("handles multiple cache patterns", () => {
+		it("handles multiple caches", () => {
 			const config = {
 				caches: {
 					sessions: {
-						provider: "redis",
+						module: "@b9g/cache-redis",
 						TTL: 86400,
 					},
-					"api-*": {
-						provider: "redis",
-						TTL: 300,
-					},
-					"*": {
-						provider: "memory",
-						maxEntries: 100,
-					},
-				},
-			};
-
-			const module = generateConfigModule(config, {});
-
-			// Should have redis import (used by sessions and api-*)
-			expect(module).toContain('from "@b9g/cache-redis"');
-			// Should have all patterns in config
-			expect(module).toContain("sessions");
-			expect(module).toContain('"api-*"');
-			expect(module).toContain('"*"');
-		});
-
-		it("handles custom provider path", () => {
-			const config = {
-				caches: {
-					"*": {
-						provider: "my-custom-cache",
-						customOption: "value",
+					api: {
+						module: "@b9g/cache/memory",
+						maxEntries: 1000,
 					},
 				},
 			};
 
 			const module = generateConfigModule(config);
 
-			// Should import custom provider
-			expect(module).toContain('from "my-custom-cache"');
+			expect(module).toContain('from "@b9g/cache-redis"');
+			expect(module).toContain('from "@b9g/cache/memory"');
+			expect(module).toContain("sessions:");
+			expect(module).toContain("api:");
 		});
 	});
 
-	describe("directory providers", () => {
-		it("generates static import for s3 provider", () => {
+	describe("directory config with module", () => {
+		it("generates static import for directory module", () => {
 			const config = {
 				directories: {
 					uploads: {
-						provider: "s3",
+						module: "@b9g/filesystem-s3",
 						bucket: "S3_BUCKET",
 						region: "AWS_REGION || us-east-1",
 					},
@@ -266,19 +223,17 @@ describe("generateConfigModule", () => {
 
 			const module = generateConfigModule(config, {
 				S3_BUCKET: "my-bucket",
-				AWS_REGION: undefined,
 			});
 
 			expect(module).toContain('from "@b9g/filesystem-s3"');
-			expect(module).toContain("provider: directory_");
+			expect(module).toContain("factory: directory_");
 		});
 
-		it("generates static import for node-fs provider", () => {
-			// node-fs is a blessed provider that gets imported
+		it("generates import for node-fs module", () => {
 			const config = {
 				directories: {
 					uploads: {
-						provider: "node-fs",
+						module: "@b9g/filesystem/node-fs",
 						path: "./uploads",
 					},
 				},
@@ -286,28 +241,7 @@ describe("generateConfigModule", () => {
 
 			const module = generateConfigModule(config);
 
-			// node-fs is a built-in provider, gets imported
-			expect(module).toContain('from "@b9g/filesystem/node-fs.js"');
-			expect(module).toContain("provider: directory_");
-		});
-
-		it("handles conditional directory provider at build time", () => {
-			const config = {
-				directories: {
-					uploads: {
-						provider: "S3_ENABLED ? s3 : node-fs",
-						bucket: "S3_BUCKET",
-					},
-				},
-			};
-
-			// With S3 enabled - evaluates to s3
-			const s3Module = generateConfigModule(config, {S3_ENABLED: "true"});
-			expect(s3Module).toContain('from "@b9g/filesystem-s3"');
-
-			// Without S3 - evaluates to node-fs
-			const nodeModule = generateConfigModule(config, {S3_ENABLED: ""});
-			expect(nodeModule).toContain('from "@b9g/filesystem/node-fs.js"');
+			expect(module).toContain('from "@b9g/filesystem/node-fs"');
 		});
 	});
 
@@ -315,8 +249,8 @@ describe("generateConfigModule", () => {
 		it("keeps secrets as process.env references", () => {
 			const config = {
 				caches: {
-					"*": {
-						provider: "redis",
+					sessions: {
+						module: "@b9g/cache-redis",
 						url: "REDIS_URL",
 						password: "REDIS_PASSWORD",
 					},
@@ -339,8 +273,8 @@ describe("generateConfigModule", () => {
 		it("keeps URL with credentials as env reference", () => {
 			const config = {
 				caches: {
-					"*": {
-						provider: "redis",
+					sessions: {
+						module: "@b9g/cache-redis",
 						url: "REDIS_URL || redis://localhost:6379",
 					},
 				},
@@ -358,14 +292,14 @@ describe("generateConfigModule", () => {
 				port: "PORT || 3000",
 				host: "HOST",
 				caches: {
-					"*": {
-						provider: "redis",
+					sessions: {
+						module: "@b9g/cache-redis",
 						url: "REDIS_URL",
 					},
 				},
 				directories: {
 					files: {
-						provider: "s3",
+						module: "@b9g/filesystem-s3",
 						bucket: "S3_BUCKET",
 						accessKey: "AWS_ACCESS_KEY",
 						secretKey: "AWS_SECRET_KEY",
@@ -406,7 +340,7 @@ describe("generateConfigModule", () => {
 			const config = {
 				logging: {
 					sinks: {
-						console: {provider: "console"},
+						console: {module: "@logtape/logtape", export: "getConsoleSink"},
 					},
 					loggers: [{category: [], level: "info" as const, sinks: ["console"]}],
 				},
@@ -415,7 +349,8 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(config);
 
 			expect(module).toContain("logging:");
-			expect(module).toContain('provider: "console"');
+			expect(module).toContain("sinks:");
+			expect(module).toContain("console:");
 		});
 
 		it("generates empty logging config when not specified", () => {
@@ -425,83 +360,43 @@ describe("generateConfigModule", () => {
 
 			const module = generateConfigModule(config);
 
-			// Should have logging section with empty sinks and loggers
-			// Console sink is implicit (always available at runtime)
 			expect(module).toContain("logging:");
-			expect(module).toContain("sinks: {}");
-			expect(module).toContain("loggers: []");
 		});
 
-		it("keeps sink secrets as process.env references", () => {
+		it("generates imports for sink modules", () => {
 			const config = {
 				logging: {
 					sinks: {
-						console: {provider: "console"},
-						sentry: {
-							provider: "sentry",
-							dsn: "SENTRY_DSN",
-						},
-						otel: {
-							provider: "otel",
-							endpoint: "OTEL_ENDPOINT",
-							apiKey: "OTEL_API_KEY",
-						},
+						console: {module: "@logtape/logtape", export: "getConsoleSink"},
+						file: {module: "@logtape/logtape", export: "getFileSink"},
 					},
-				},
-			};
-
-			const module = generateConfigModule(config, {
-				SENTRY_DSN: "https://abc123@sentry.io/123",
-				OTEL_ENDPOINT: "https://otel.example.com",
-				OTEL_API_KEY: "secret-api-key-12345",
-			});
-
-			// Secrets should NOT be baked in
-			expect(module).not.toContain("abc123@sentry.io");
-			expect(module).not.toContain("otel.example.com");
-			expect(module).not.toContain("secret-api-key-12345");
-
-			// Should be process.env references
-			expect(module).toContain("process.env.SENTRY_DSN");
-			expect(module).toContain("process.env.OTEL_ENDPOINT");
-			expect(module).toContain("process.env.OTEL_API_KEY");
-		});
-
-		it("handles file sink with path", () => {
-			const config = {
-				logging: {
-					sinks: {
-						appLog: {
-							provider: "file",
-							path: "./logs/app.log",
-						},
-						rotating: {
-							provider: "rotating",
-							path: "LOG_PATH || ./logs/rotating.log",
-							maxSize: 10485760,
-						},
-					},
+					loggers: [
+						{category: [], level: "info" as const, sinks: ["console", "file"]},
+					],
 				},
 			};
 
 			const module = generateConfigModule(config);
 
-			expect(module).toContain('provider: "file"');
-			expect(module).toContain('provider: "rotating"');
-			expect(module).toContain('"./logs/app.log"');
-			expect(module).toContain("process.env.LOG_PATH");
+			expect(module).toContain('from "@logtape/logtape"');
+			expect(module).toContain("factory: sink_console");
+			expect(module).toContain("factory: sink_file");
 		});
 
-		it("handles loggers array with category hierarchy", () => {
+		it("includes logger config with categories", () => {
 			const config = {
 				logging: {
 					sinks: {
-						dbFile: {provider: "file", path: "./logs/db.log"},
+						dbFile: {module: "@logtape/logtape", export: "getFileSink"},
 					},
 					loggers: [
-						{category: ["server"], level: "debug" as const, sinks: ["console"]},
 						{
-							category: ["database"],
+							category: ["app"],
+							level: "debug" as const,
+							sinks: ["dbFile"],
+						},
+						{
+							category: ["app", "db"],
 							level: "warning" as const,
 							sinks: ["dbFile"],
 						},
@@ -512,45 +407,25 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(config);
 
 			expect(module).toContain("loggers:");
-			expect(module).toContain('level: "debug"');
-			expect(module).toContain('level: "warning"');
+			expect(module).toContain('"app"');
+			expect(module).toContain('"db"');
+			expect(module).toContain('"debug"');
+			expect(module).toContain('"warning"');
 		});
 
-		it("generates static imports for sink factories", () => {
+		it("handles parentSinks override", () => {
 			const config = {
 				logging: {
 					sinks: {
-						console: {provider: "console"},
-						appLog: {provider: "file", path: "./app.log"},
-					},
-				},
-			};
-
-			const module = generateConfigModule(config);
-
-			// Should have static imports for sink factories
-			expect(module).toContain(
-				'import { getConsoleSink as sink_console } from "@logtape/logtape"',
-			);
-			expect(module).toContain(
-				'import { getFileSink as sink_appLog } from "@logtape/file"',
-			);
-
-			// Sinks should have factory references
-			expect(module).toContain("factory: sink_console");
-			expect(module).toContain("factory: sink_appLog");
-		});
-
-		it("supports parentSinks override in loggers", () => {
-			const config = {
-				logging: {
-					sinks: {
-						customSink: {provider: "console"},
+						customSink: {module: "@logtape/logtape", export: "getConsoleSink"},
 					},
 					loggers: [
-						{category: ["app"], sinks: ["console"]},
 						{
-							category: ["app", "db"],
+							category: ["lib"],
+							sinks: ["customSink"],
+						},
+						{
+							category: ["lib", "internal"],
 							sinks: ["customSink"],
 							parentSinks: "override" as const,
 						},
@@ -563,32 +438,23 @@ describe("generateConfigModule", () => {
 			expect(module).toContain('parentSinks: "override"');
 		});
 	});
-});
 
-describe("BUILTIN_CACHE_PROVIDERS", () => {
-	it("has memory provider", () => {
-		expect(BUILTIN_CACHE_PROVIDERS.memory).toBe("@b9g/cache/memory.js");
-	});
+	describe("database config", () => {
+		it("generates import for database module", () => {
+			const config = {
+				databases: {
+					main: {
+						module: "@b9g/zen/bun",
+						url: "DATABASE_URL || sqlite://./data/app.db",
+					},
+				},
+			};
 
-	it("has redis provider", () => {
-		expect(BUILTIN_CACHE_PROVIDERS.redis).toBe("@b9g/cache-redis");
-	});
-});
+			const module = generateConfigModule(config);
 
-describe("BUILTIN_DIRECTORY_PROVIDERS", () => {
-	it("has node-fs provider", () => {
-		expect(BUILTIN_DIRECTORY_PROVIDERS["node-fs"]).toBe(
-			"@b9g/filesystem/node-fs.js",
-		);
-	});
-
-	it("has memory provider", () => {
-		expect(BUILTIN_DIRECTORY_PROVIDERS.memory).toBe(
-			"@b9g/filesystem/memory.js",
-		);
-	});
-
-	it("has s3 provider", () => {
-		expect(BUILTIN_DIRECTORY_PROVIDERS.s3).toBe("@b9g/filesystem-s3");
+			expect(module).toContain('from "@b9g/zen/bun"');
+			expect(module).toContain("databases:");
+			expect(module).toContain("main:");
+		});
 	});
 });

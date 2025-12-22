@@ -906,7 +906,7 @@ function toJSLiteral(
  */
 export function generateConfigModule(
 	rawConfig: ShovelConfig,
-	env: Record<string, string | undefined> = getEnv(),
+	_env: Record<string, string | undefined> = getEnv(),
 ): string {
 	// Track imports and their placeholder mappings
 	const imports: string[] = [];
@@ -924,7 +924,7 @@ export function generateConfigModule(
 	const processModule = (
 		modulePath: string | undefined,
 		exportName: string | undefined,
-		type: "cache" | "directory" | "sink",
+		type: "cache" | "directory" | "sink" | "database",
 		name: string,
 	): string | null => {
 		if (!modulePath) return null;
@@ -1032,22 +1032,64 @@ export function generateConfigModule(
 
 		config.logging = logging;
 
-		// Caches - pass through as-is (runtime does dynamic imports)
+		// Caches - generate imports for modules
 		if (rawConfig.caches && Object.keys(rawConfig.caches).length > 0) {
-			config.caches = rawConfig.caches;
+			const caches: Record<string, unknown> = {};
+			for (const [name, cacheConfig] of Object.entries(rawConfig.caches)) {
+				const factoryPlaceholder = processModule(
+					cacheConfig.module,
+					cacheConfig.export,
+					"cache",
+					name,
+				);
+				const result: Record<string, unknown> = {...cacheConfig};
+				if (factoryPlaceholder) {
+					result.factory = factoryPlaceholder;
+				}
+				caches[name] = result;
+			}
+			config.caches = caches;
 		}
 
-		// Directories - pass through as-is (runtime does dynamic imports)
+		// Directories - generate imports for modules
 		if (
 			rawConfig.directories &&
 			Object.keys(rawConfig.directories).length > 0
 		) {
-			config.directories = rawConfig.directories;
+			const directories: Record<string, unknown> = {};
+			for (const [name, dirConfig] of Object.entries(rawConfig.directories)) {
+				const factoryPlaceholder = processModule(
+					dirConfig.module,
+					dirConfig.export,
+					"directory",
+					name,
+				);
+				const result: Record<string, unknown> = {...dirConfig};
+				if (factoryPlaceholder) {
+					result.factory = factoryPlaceholder;
+				}
+				directories[name] = result;
+			}
+			config.directories = directories;
 		}
 
-		// Databases - pass through as-is (runtime does dynamic imports)
+		// Databases - generate imports for modules
 		if (rawConfig.databases && Object.keys(rawConfig.databases).length > 0) {
-			config.databases = rawConfig.databases;
+			const databases: Record<string, unknown> = {};
+			for (const [name, dbConfig] of Object.entries(rawConfig.databases)) {
+				const factoryPlaceholder = processModule(
+					dbConfig.module,
+					dbConfig.export,
+					"database",
+					name,
+				);
+				const result: Record<string, unknown> = {...dbConfig};
+				if (factoryPlaceholder) {
+					result.factory = factoryPlaceholder;
+				}
+				databases[name] = result;
+			}
+			config.databases = databases;
 		}
 
 		return config;

@@ -190,7 +190,7 @@ console.log("LOGGING_TEST_READY");
 					workers: 1,
 					logging: {
 						sinks: {
-							console: {provider: "console"},
+							console: {module: "@logtape/logtape", export: "getConsoleSink"},
 						},
 						loggers: [{category: [], level: "debug", sinks: ["console"]}],
 					},
@@ -258,9 +258,9 @@ console.log("MULTI_SINK_READY");
 					workers: 1,
 					logging: {
 						sinks: {
-							console: {provider: "console"},
+							console: {module: "@logtape/logtape", export: "getConsoleSink"},
 							// File sink requires path - will be bundled even if not used
-							appLog: {provider: "file", path: "/tmp/shovel-e2e-test.log"},
+							appLog: {module: "@logtape/file", export: "getFileSink", path: "/tmp/shovel-e2e-test.log"},
 						},
 						loggers: [
 							{category: [], level: "info", sinks: ["console", "appLog"]},
@@ -334,7 +334,7 @@ console.log("CACHE_TEST_READY");
 					port: 3000,
 					workers: 1,
 					caches: {
-						"*": {provider: "memory", maxEntries: 100},
+						"*": {module: "@b9g/cache/memory", export: "MemoryCache", maxEntries: 100},
 					},
 				}),
 			});
@@ -395,7 +395,7 @@ console.log("DIRECTORY_TEST_READY");
 					port: 3000,
 					workers: 1,
 					directories: {
-						uploads: {provider: "memory"},
+						uploads: {module: "@b9g/filesystem/memory", export: "MemoryDirectory"},
 					},
 				}),
 			});
@@ -475,15 +475,15 @@ console.log("FULL_E2E_READY");
 					workers: 1,
 					logging: {
 						sinks: {
-							console: {provider: "console"},
+							console: {module: "@logtape/logtape", export: "getConsoleSink"},
 						},
 						loggers: [{category: [], level: "debug", sinks: ["console"]}],
 					},
 					caches: {
-						"*": {provider: "memory", maxEntries: 100},
+						"*": {module: "@b9g/cache/memory", export: "MemoryCache", maxEntries: 100},
 					},
 					directories: {
-						uploads: {provider: "memory"},
+						uploads: {module: "@b9g/filesystem/memory", export: "MemoryDirectory"},
 					},
 				}),
 			});
@@ -558,17 +558,17 @@ console.log("FULL_PROVIDER_TEST_READY");
 					port: 3000,
 					workers: 1,
 					logging: {
-						level: "info",
-						sinks: [
-							{provider: "console"},
-							{provider: "file", path: "/tmp/test.log"},
-						],
+						sinks: {
+							console: {module: "@logtape/logtape", export: "getConsoleSink"},
+							file: {module: "@logtape/file", export: "getFileSink", path: "/tmp/test.log"},
+						},
+						loggers: [{category: [], level: "info", sinks: ["console", "file"]}],
 					},
 					caches: {
-						sessions: {provider: "memory"},
+						sessions: {module: "@b9g/cache/memory", export: "MemoryCache"},
 					},
 					directories: {
-						uploads: {provider: "memory"},
+						uploads: {module: "@b9g/filesystem/memory", export: "MemoryDirectory"},
 					},
 				}),
 			});
@@ -633,8 +633,8 @@ console.log("SINK_BUNDLE_TEST_READY");
 					workers: 1,
 					logging: {
 						sinks: {
-							console: {provider: "console"},
-							appLog: {provider: "file", path: "/tmp/test.log"},
+							console: {module: "@logtape/logtape", export: "getConsoleSink"},
+							appLog: {module: "@logtape/file", export: "getFileSink", path: "/tmp/test.log"},
 						},
 						loggers: [
 							{category: [], level: "debug", sinks: ["console", "appLog"]},
@@ -709,15 +709,15 @@ console.log("ISOLATION_TEST_READY");
 					workers: 1,
 					logging: {
 						sinks: {
-							console: {provider: "console"},
+							console: {module: "@logtape/logtape", export: "getConsoleSink"},
 						},
 						loggers: [{category: [], level: "info", sinks: ["console"]}],
 					},
 					caches: {
-						"*": {provider: "memory"},
+						"*": {module: "@b9g/cache/memory", export: "MemoryCache"},
 					},
 					directories: {
-						uploads: {provider: "memory"},
+						uploads: {module: "@b9g/filesystem/memory", export: "MemoryDirectory"},
 					},
 				}),
 			});
@@ -791,12 +791,12 @@ self.addEventListener("fetch", (event) => {
 					port: 3000,
 					workers: 1,
 					logging: {
-						level: "info",
 						// Console and file sinks should be statically imported
-						sinks: [
-							{provider: "console"},
-							{provider: "file", path: "/tmp/test.log"},
-						],
+						sinks: {
+							console: {module: "@logtape/logtape", export: "getConsoleSink"},
+							file: {module: "@logtape/file", export: "getFileSink", path: "/tmp/test.log"},
+						},
+						loggers: [{category: [], level: "info", sinks: ["console", "file"]}],
 					},
 				}),
 			});

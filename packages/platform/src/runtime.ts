@@ -467,12 +467,15 @@ export type DatabaseFactory = (
  */
 export class CustomDatabaseStorage implements DatabaseStorage {
 	#factory: DatabaseFactory;
-	#databases: Map<string, Database> = new Map();
-	#closers: Map<string, () => Promise<void>> = new Map();
-	#pending: Map<string, Promise<Database>> = new Map();
+	#databases: Map<string, Database>;
+	#closers: Map<string, () => Promise<void>>;
+	#pending: Map<string, Promise<Database>>;
 
 	constructor(factory: DatabaseFactory) {
 		this.#factory = factory;
+		this.#databases = new Map();
+		this.#closers = new Map();
+		this.#pending = new Map();
 	}
 
 	async open(
@@ -608,7 +611,12 @@ export function createDatabaseFactory(
 			);
 		}
 
-		const {module: modulePath, export: exportName, url, ...driverOptions} = config;
+		const {
+			module: modulePath,
+			export: exportName,
+			url,
+			...driverOptions
+		} = config;
 
 		// Dynamic import of driver module
 		const mod = await import(modulePath);

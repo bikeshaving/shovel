@@ -19,7 +19,6 @@ import {
 	ShovelServiceWorkerRegistration,
 	ShovelFetchEvent,
 	CustomLoggerStorage,
-	CustomDatabaseStorage,
 	type LoggerStorage,
 	type DatabaseStorage,
 } from "./runtime.js";

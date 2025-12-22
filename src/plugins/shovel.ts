@@ -15,7 +15,6 @@ import {
 	loadRawConfig,
 	generateConfigModule,
 	generateStorageTypes,
-	type ShovelConfig,
 } from "../utils/config.js";
 
 /**
