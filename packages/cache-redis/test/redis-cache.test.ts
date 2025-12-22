@@ -3,6 +3,7 @@
  *
  * These tests run against a real Redis/Valkey instance.
  * Start Redis with: docker compose up -d
+ * If Redis is not reachable, the suite is skipped.
  */
 
 import {test, expect, describe, beforeEach, afterEach} from "bun:test";
@@ -11,7 +12,25 @@ import {createClient} from "redis";
 
 const REDIS_URL = import.meta.env.REDIS_URL || "redis://localhost:6379";
 
-describe("RedisCache", () => {
+async function isRedisAvailable(url: string): Promise<boolean> {
+	const client = createClient({url});
+	try {
+		await client.connect();
+		await client.ping();
+		await client.quit();
+		return true;
+	} catch {
+		if (client.isOpen) {
+			await client.quit();
+		}
+		return false;
+	}
+}
+
+const redisAvailable = await isRedisAvailable(REDIS_URL);
+const describeRedis = redisAvailable ? describe : describe.skip;
+
+describeRedis("RedisCache", () => {
 	let cache: RedisCache;
 	let testPrefix: string;
 
