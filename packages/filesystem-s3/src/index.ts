@@ -262,9 +262,8 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		if (options?.recursive) {
 			// Delete all objects with this prefix
 			const dirPrefix = `${key}/`;
-			const {ListObjectsV2Command, DeleteObjectCommand} = await import(
-				"@aws-sdk/client-s3"
-			);
+			const {ListObjectsV2Command, DeleteObjectCommand} =
+				await import("@aws-sdk/client-s3");
 
 			const listCommand = new ListObjectsV2Command({
 				Bucket: this.#bucket,

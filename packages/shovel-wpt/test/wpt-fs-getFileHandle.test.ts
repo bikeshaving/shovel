@@ -22,9 +22,7 @@ describe("WPT: FileSystemDirectoryHandle.getFileHandle (MemoryDirectory)", () =>
 		clearTestQueue();
 
 		// Import the WPT test file - this registers tests via directory_test
-		await import(
-			"../wpt/fs/script-tests/FileSystemDirectoryHandle-getFileHandle.js"
-		);
+		await import("../wpt/fs/script-tests/FileSystemDirectoryHandle-getFileHandle.js");
 
 		// Run all queued tests
 		const results = await runQueuedTests();

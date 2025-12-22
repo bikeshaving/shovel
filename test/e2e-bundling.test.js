@@ -260,7 +260,11 @@ console.log("MULTI_SINK_READY");
 						sinks: {
 							console: {module: "@logtape/logtape", export: "getConsoleSink"},
 							// File sink requires path - will be bundled even if not used
-							appLog: {module: "@logtape/file", export: "getFileSink", path: "/tmp/shovel-e2e-test.log"},
+							appLog: {
+								module: "@logtape/file",
+								export: "getFileSink",
+								path: "/tmp/shovel-e2e-test.log",
+							},
 						},
 						loggers: [
 							{category: [], level: "info", sinks: ["console", "appLog"]},
@@ -334,7 +338,11 @@ console.log("CACHE_TEST_READY");
 					port: 3000,
 					workers: 1,
 					caches: {
-						"*": {module: "@b9g/cache/memory", export: "MemoryCache", maxEntries: 100},
+						"*": {
+							module: "@b9g/cache/memory",
+							export: "MemoryCache",
+							maxEntries: 100,
+						},
 					},
 				}),
 			});
@@ -395,7 +403,10 @@ console.log("DIRECTORY_TEST_READY");
 					port: 3000,
 					workers: 1,
 					directories: {
-						uploads: {module: "@b9g/filesystem/memory", export: "MemoryDirectory"},
+						uploads: {
+							module: "@b9g/filesystem/memory",
+							export: "MemoryDirectory",
+						},
 					},
 				}),
 			});
@@ -480,10 +491,17 @@ console.log("FULL_E2E_READY");
 						loggers: [{category: [], level: "debug", sinks: ["console"]}],
 					},
 					caches: {
-						"*": {module: "@b9g/cache/memory", export: "MemoryCache", maxEntries: 100},
+						"*": {
+							module: "@b9g/cache/memory",
+							export: "MemoryCache",
+							maxEntries: 100,
+						},
 					},
 					directories: {
-						uploads: {module: "@b9g/filesystem/memory", export: "MemoryDirectory"},
+						uploads: {
+							module: "@b9g/filesystem/memory",
+							export: "MemoryDirectory",
+						},
 					},
 				}),
 			});
@@ -560,15 +578,24 @@ console.log("FULL_PROVIDER_TEST_READY");
 					logging: {
 						sinks: {
 							console: {module: "@logtape/logtape", export: "getConsoleSink"},
-							file: {module: "@logtape/file", export: "getFileSink", path: "/tmp/test.log"},
+							file: {
+								module: "@logtape/file",
+								export: "getFileSink",
+								path: "/tmp/test.log",
+							},
 						},
-						loggers: [{category: [], level: "info", sinks: ["console", "file"]}],
+						loggers: [
+							{category: [], level: "info", sinks: ["console", "file"]},
+						],
 					},
 					caches: {
 						sessions: {module: "@b9g/cache/memory", export: "MemoryCache"},
 					},
 					directories: {
-						uploads: {module: "@b9g/filesystem/memory", export: "MemoryDirectory"},
+						uploads: {
+							module: "@b9g/filesystem/memory",
+							export: "MemoryDirectory",
+						},
 					},
 				}),
 			});
@@ -634,7 +661,11 @@ console.log("SINK_BUNDLE_TEST_READY");
 					logging: {
 						sinks: {
 							console: {module: "@logtape/logtape", export: "getConsoleSink"},
-							appLog: {module: "@logtape/file", export: "getFileSink", path: "/tmp/test.log"},
+							appLog: {
+								module: "@logtape/file",
+								export: "getFileSink",
+								path: "/tmp/test.log",
+							},
 						},
 						loggers: [
 							{category: [], level: "debug", sinks: ["console", "appLog"]},
@@ -717,7 +748,10 @@ console.log("ISOLATION_TEST_READY");
 						"*": {module: "@b9g/cache/memory", export: "MemoryCache"},
 					},
 					directories: {
-						uploads: {module: "@b9g/filesystem/memory", export: "MemoryDirectory"},
+						uploads: {
+							module: "@b9g/filesystem/memory",
+							export: "MemoryDirectory",
+						},
 					},
 				}),
 			});
@@ -794,9 +828,15 @@ self.addEventListener("fetch", (event) => {
 						// Console and file sinks should be statically imported
 						sinks: {
 							console: {module: "@logtape/logtape", export: "getConsoleSink"},
-							file: {module: "@logtape/file", export: "getFileSink", path: "/tmp/test.log"},
+							file: {
+								module: "@logtape/file",
+								export: "getFileSink",
+								path: "/tmp/test.log",
+							},
 						},
-						loggers: [{category: [], level: "info", sinks: ["console", "file"]}],
+						loggers: [
+							{category: [], level: "info", sinks: ["console", "file"]},
+						],
 					},
 				}),
 			});

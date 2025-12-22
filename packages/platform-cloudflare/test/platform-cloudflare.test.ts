@@ -193,9 +193,8 @@ describe("Wrangler config generation", () => {
 
 describe("Cloudflare runtime functions", () => {
 	test("should export initializeRuntime and createFetchHandler from runtime", async () => {
-		const {initializeRuntime, createFetchHandler} = await import(
-			"../src/runtime.js"
-		);
+		const {initializeRuntime, createFetchHandler} =
+			await import("../src/runtime.js");
 
 		expect(typeof initializeRuntime).toBe("function");
 		expect(typeof createFetchHandler).toBe("function");

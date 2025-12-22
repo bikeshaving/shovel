@@ -1100,9 +1100,7 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
  * ShovelNavigationPreloadManager - Internal implementation of NavigationPreloadManager
  * Note: Standard NavigationPreloadManager has no constructor - instances are created internally
  */
-export class ShovelNavigationPreloadManager
-	implements NavigationPreloadManager
-{
+export class ShovelNavigationPreloadManager implements NavigationPreloadManager {
 	async disable(): Promise<void> {
 		// No-op in server context
 	}

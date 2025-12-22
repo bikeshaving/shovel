@@ -18,7 +18,9 @@ const logger = self.loggers.get("shovel", "server");
 // The @uswds/uswds package exports:
 //   - CSS at "./css/*" -> "./dist/css/*"
 //   - Main JS at "." -> "./dist/js/uswds.min.js"
-import uswdsCSS from "@uswds/uswds/css/uswds.min.css" with {assetBase: "/static/"};
+import uswdsCSS from "@uswds/uswds/css/uswds.min.css" with {
+	assetBase: "/static/",
+};
 import uswdsJS from "@uswds/uswds" with {assetBase: "/static/"};
 
 const router = new Router();

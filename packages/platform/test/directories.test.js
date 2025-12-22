@@ -64,9 +64,8 @@ test(
 test(
 	"directory storage getDirectoryHandle basic functionality",
 	async () => {
-		const {CustomDirectoryStorage: _CustomDirectoryStorage} = await import(
-			"../src/index.js"
-		);
+		const {CustomDirectoryStorage: _CustomDirectoryStorage} =
+			await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 
@@ -97,9 +96,8 @@ test(
 test(
 	"directory storage with non-existent directory",
 	async () => {
-		const {CustomDirectoryStorage: _CustomDirectoryStorage} = await import(
-			"../src/index.js"
-		);
+		const {CustomDirectoryStorage: _CustomDirectoryStorage} =
+			await import("../src/index.js");
 
 		const tempDir = await createTempDir();
 

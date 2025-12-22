@@ -7,11 +7,10 @@ import {OAuth2Config} from "./index.js";
 
 export type ProviderName = "github" | "google" | "microsoft";
 
-export interface ProviderConfig
-	extends Omit<
-		OAuth2Config,
-		"clientID" | "clientSecret" | "redirectURI" | "scopes"
-	> {
+export interface ProviderConfig extends Omit<
+	OAuth2Config,
+	"clientID" | "clientSecret" | "redirectURI" | "scopes"
+> {
 	/** User info endpoint */
 	userInfoEndpoint?: string;
 	/** Default scopes */
