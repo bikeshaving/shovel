@@ -51,11 +51,11 @@
     "mime": "^4.1.0"
   },
   "peerDependencies": {
-    "@b9g/database": "workspace:*",
+    "@b9g/zen": "^0.1.2",
     "@b9g/platform": "workspace:*"
   },
   "devDependencies": {
-    "@b9g/database": "workspace:*",
+    "@b9g/zen": "^0.1.2",
     "@b9g/libuild": "^0.1.18",
     "@types/bun": "^1.2.2",
     "typescript": "^5.7.3"

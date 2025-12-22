@@ -69,7 +69,7 @@ export interface AssetsConfig {
 export interface AdminConfig {
 	/** Database name from shovel.json to use */
 	database: string;
-	/** Schema object containing @b9g/database collection definitions */
+	/** Schema object containing @b9g/zen collection definitions */
 	schema: Record<string, unknown>;
 	/** Base path for admin routes (default: '/admin') */
 	basePath?: string;
@@ -100,7 +100,7 @@ export type ColumnDataType =
 	| "blob";
 
 /**
- * Column metadata extracted from @b9g/database collection
+ * Column metadata extracted from @b9g/zen collection
  */
 export interface ColumnMetadata {
 	/** Column name in the database (snake_case) */
@@ -134,7 +134,7 @@ export interface ForeignKeyMetadata {
 }
 
 /**
- * Table metadata extracted from @b9g/database collection
+ * Table metadata extracted from @b9g/zen collection
  */
 export interface TableMetadata {
 	/** Table name */

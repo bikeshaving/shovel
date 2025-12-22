@@ -20,6 +20,7 @@ import {
 	SingleThreadedRuntime,
 	CustomLoggerStorage,
 	CustomDatabaseStorage,
+	createDatabaseFactory,
 } from "@b9g/platform";
 import {
 	createCacheFactory,
@@ -478,12 +479,13 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Create database storage using config from shovel.json
+	 * Create database storage from declarative config in shovel.json
 	 */
 	createDatabases(): CustomDatabaseStorage | undefined {
 		const config = this.#options.config;
 		if (config?.databases && Object.keys(config.databases).length > 0) {
-			return new CustomDatabaseStorage(config.databases);
+			const factory = createDatabaseFactory(config.databases);
+			return new CustomDatabaseStorage(factory);
 		}
 		return undefined;
 	}

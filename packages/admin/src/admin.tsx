@@ -9,7 +9,7 @@ import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
 import {renderer} from "@b9g/crank/html";
 import type {Children} from "@b9g/crank";
-import type {Table} from "@b9g/database";
+import type {Table} from "@b9g/zen";
 import type {AdminConfig, TableMetadata, ColumnMetadata} from "./types.js";
 import {
 	introspectSchema,
@@ -231,7 +231,7 @@ export function createAdmin(config: AdminConfig): Router {
 						<div class="admin-empty">
 							<p>No models found in schema.</p>
 							<p class="margin-top-1 text-base">
-								Make sure your schema exports @b9g/database collections.
+								Make sure your schema exports @b9g/zen collections.
 							</p>
 						</div>
 					)}
@@ -246,7 +246,7 @@ export function createAdmin(config: AdminConfig): Router {
 	});
 
 	// ============================================================================
-	// CRUD Routes - TODO: Implement with @b9g/database
+	// CRUD Routes - TODO: Implement with @b9g/zen
 	// ============================================================================
 
 	// List view
@@ -260,7 +260,7 @@ export function createAdmin(config: AdminConfig): Router {
 
 		const basePath = getBasePath(req.url, `/${modelName}`);
 
-		// TODO: Implement with @b9g/database
+		// TODO: Implement with @b9g/zen
 		// const db = self.databases.get(config.database);
 		// const records = await db.query`SELECT * FROM ${model.name} LIMIT 25`;
 
@@ -282,7 +282,7 @@ export function createAdmin(config: AdminConfig): Router {
 				<div class="usa-alert usa-alert--info" role="alert">
 					<div class="usa-alert__body">
 						<p class="usa-alert__text">
-							CRUD operations not yet implemented. Migrate to @b9g/database in progress.
+							CRUD operations not yet implemented. Migrate to @b9g/zen in progress.
 						</p>
 					</div>
 				</div>
@@ -313,7 +313,7 @@ export function createAdmin(config: AdminConfig): Router {
 				<div class="usa-alert usa-alert--info" role="alert">
 					<div class="usa-alert__body">
 						<p class="usa-alert__text">
-							Create form not yet implemented. Migrate to @b9g/database in progress.
+							Create form not yet implemented. Migrate to @b9g/zen in progress.
 						</p>
 					</div>
 				</div>
@@ -352,7 +352,7 @@ export function createAdmin(config: AdminConfig): Router {
 				<div class="usa-alert usa-alert--info" role="alert">
 					<div class="usa-alert__body">
 						<p class="usa-alert__text">
-							Detail view not yet implemented. Migrate to @b9g/database in progress.
+							Detail view not yet implemented. Migrate to @b9g/zen in progress.
 						</p>
 					</div>
 				</div>
@@ -384,7 +384,7 @@ export function createAdmin(config: AdminConfig): Router {
 				<div class="usa-alert usa-alert--info" role="alert">
 					<div class="usa-alert__body">
 						<p class="usa-alert__text">
-							Edit form not yet implemented. Migrate to @b9g/database in progress.
+							Edit form not yet implemented. Migrate to @b9g/zen in progress.
 						</p>
 					</div>
 				</div>
@@ -424,7 +424,7 @@ export function createAdmin(config: AdminConfig): Router {
 				<div class="usa-alert usa-alert--info" role="alert">
 					<div class="usa-alert__body">
 						<p class="usa-alert__text">
-							Delete not yet implemented. Migrate to @b9g/database in progress.
+							Delete not yet implemented. Migrate to @b9g/zen in progress.
 						</p>
 					</div>
 				</div>

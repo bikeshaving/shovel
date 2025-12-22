@@ -78,7 +78,7 @@ export function generateStorageTypes(
 
 	// Generate database type (union of valid names)
 	if (databases.length > 0) {
-		imports.push(`import type {Database} from "@b9g/database";`);
+		imports.push(`import type {Database} from "@b9g/zen";`);
 
 		const dbUnion = databases.map((db) => `"${db.name}"`).join(" | ");
 		sections.push(`  /**
@@ -88,10 +88,12 @@ export function generateStorageTypes(
   type ValidDatabaseName = ${dbUnion};
 
   interface DatabaseStorage {
-    /** Get an unopened database instance by name */
-    get(name: ValidDatabaseName): Database;
-    /** Check if a database has been opened */
-    has(name: ValidDatabaseName): boolean;
+    /** Get a database instance by name (async - driver is loaded on first access) */
+    get(name: ValidDatabaseName): Promise<Database>;
+    /** Close a specific database */
+    close(name: ValidDatabaseName): Promise<void>;
+    /** Close all databases */
+    closeAll(): Promise<void>;
   }`);
 	}
 

@@ -1,10 +1,10 @@
 /**
  * @b9g/admin - Schema introspection utilities
  *
- * Extracts metadata from @b9g/database tables for dynamic admin generation.
+ * Extracts metadata from @b9g/zen tables for dynamic admin generation.
  */
 
-import type {Table, FieldMeta} from "@b9g/database";
+import type {Table, FieldMeta} from "@b9g/zen";
 import type {
 	ColumnMetadata,
 	ColumnDataType,
@@ -17,7 +17,7 @@ import type {
 // ============================================================================
 
 /**
- * Check if an object is a @b9g/database table
+ * Check if an object is a @b9g/zen table
  */
 export function isTable(value: unknown): value is Table<any> {
 	return (
@@ -35,7 +35,7 @@ export function isTable(value: unknown): value is Table<any> {
 // ============================================================================
 
 /**
- * Map @b9g/database field type to admin ColumnDataType
+ * Map @b9g/zen field type to admin ColumnDataType
  */
 function mapFieldType(fieldType: FieldMeta["type"]): ColumnDataType {
 	switch (fieldType) {
@@ -71,7 +71,7 @@ function mapFieldType(fieldType: FieldMeta["type"]): ColumnDataType {
 // ============================================================================
 
 /**
- * Extract metadata from a @b9g/database table
+ * Extract metadata from a @b9g/zen table
  */
 export function introspectTable(table: Table<any>): TableMetadata {
 	const fieldsMeta = table.fields();
@@ -85,7 +85,7 @@ export function introspectTable(table: Table<any>): TableMetadata {
 			dataType: mapFieldType(field.type),
 			sqlType: field.type, // Use field type as SQL type hint
 			notNull: field.required,
-			hasDefault: field.default !== undefined,
+			hasDefault: field.default !== undefined || (field as any).inserted !== undefined,
 			isPrimaryKey: field.primaryKey ?? false,
 			enumValues: field.options ? [...field.options] : undefined,
 		}),
@@ -117,7 +117,7 @@ export function introspectTable(table: Table<any>): TableMetadata {
 /**
  * Introspect an entire schema object containing tables
  *
- * @param schema - An object containing @b9g/database table definitions
+ * @param schema - An object containing @b9g/zen table definitions
  * @returns Map of table names to their metadata
  *
  * @example

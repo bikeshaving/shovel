@@ -2,27 +2,26 @@
  * Example database schema for admin demo
  */
 
-import {z} from "zod";
-import {table, primary, unique, references} from "@b9g/database";
+import {z, table} from "@b9g/zen";
 
 export const users = table("users", {
-	id: primary(z.number()),
-	email: unique(z.string().email()),
+	id: z.number().db.primary(),
+	email: z.string().email().db.unique(),
 	name: z.string(),
-	role: z.enum(["admin", "user"]).default("user"),
-	createdAt: z.date().default(() => new Date()),
+	role: z.enum(["admin", "user"]).db.inserted(() => "user"),
+	createdAt: z.date().db.auto(),
 });
 
 export const posts = table("posts", {
-	id: primary(z.number()),
+	id: z.number().db.primary(),
 	title: z.string(),
 	content: z.string().optional(),
-	authorId: references(z.number(), users, {as: "author"}),
-	published: z.boolean().default(false),
-	createdAt: z.date().default(() => new Date()),
+	authorId: z.number().db.references(users, "author"),
+	published: z.boolean().db.inserted(() => false),
+	createdAt: z.date().db.auto(),
 });
 
 export const tags = table("tags", {
-	id: primary(z.number()),
-	name: unique(z.string()),
+	id: z.number().db.primary(),
+	name: z.string().db.unique(),
 });

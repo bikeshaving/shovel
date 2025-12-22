@@ -5,8 +5,8 @@ import {
 	configureLogging,
 	CustomLoggerStorage,
 	CustomDatabaseStorage,
-	type DatabaseConfig,
 } from "../src/runtime.js";
+import {Database} from "@b9g/zen";
 import {getLogger, reset as resetLogtape} from "@logtape/logtape";
 import {tmpdir} from "os";
 import {join} from "path";
@@ -601,201 +601,180 @@ describe("CustomLoggerStorage", () => {
 
 
 describe("CustomDatabaseStorage", () => {
-	// Helper to create a mock adapter
-	const createMockAdapter = (closeFn?: () => void) => ({
-		module: "@b9g/database/bun-sql",
-		createDriver: () => ({
-			driver: {
-				all: async () => [],
-				get: async () => undefined,
-				run: async () => ({changes: 0, lastInsertRowid: 0}),
-				val: async () => undefined,
-			},
-			close: async () => closeFn?.(),
-		}),
-		dialect: "sqlite" as const,
-	});
+	// Helper to create a mock driver
+	class MockDriver {
+		closed = false;
+		close() {
+			this.closed = true;
+			return Promise.resolve();
+		}
+	}
 
-	test("constructor accepts configs as Record", () => {
-		const configs: Record<string, DatabaseConfig> = {
-			main: {
-				adapter: createMockAdapter(),
-				url: ":memory:",
-			},
+	// Helper to create a mock async factory (matching the new interface)
+	const createMockFactory = (names: string[] = ["main"]) => {
+		let factoryCalls = 0;
+		const drivers: MockDriver[] = [];
+
+		const factory = async (name: string) => {
+			if (!names.includes(name)) {
+				throw new Error(`Database "${name}" is not configured.`);
+			}
+			factoryCalls++;
+			const driver = new MockDriver();
+			drivers.push(driver);
+			return {
+				db: new Database(driver as any),
+				close: () => driver.close(),
+			};
 		};
 
-		const storage = new CustomDatabaseStorage(configs);
+		return {factory, getFactoryCalls: () => factoryCalls, drivers};
+	};
+
+	test("constructor accepts factory function", () => {
+		const {factory} = createMockFactory();
+		const storage = new CustomDatabaseStorage(factory);
 		expect(storage).toBeDefined();
-		expect(storage.configuredKeys()).toEqual(["main"]);
 	});
 
-	test("constructor accepts configs as Map", () => {
-		const configs = new Map<string, DatabaseConfig>([
-			[
-				"main",
-				{
-					adapter: createMockAdapter(),
-					url: ":memory:",
-				},
-			],
-		]);
-
-		const storage = new CustomDatabaseStorage(configs);
-		expect(storage.configuredKeys()).toEqual(["main"]);
-	});
-
-	test("get() creates Database and caches it", () => {
-		let createCalls = 0;
-		const adapter = {
-			module: "@b9g/database/bun-sql",
-			createDriver: () => {
-				createCalls++;
-				return {
-					driver: {
-						all: async () => [],
-						get: async () => undefined,
-						run: async () => ({changes: 0, lastInsertRowid: 0}),
-						val: async () => undefined,
-					},
-					close: async () => {},
-				};
-			},
-			dialect: "sqlite" as const,
-		};
-
-		const storage = new CustomDatabaseStorage({
-			main: {adapter, url: ":memory:"},
-		});
+	test("get() creates Database and caches it", async () => {
+		const {factory, getFactoryCalls} = createMockFactory();
+		const storage = new CustomDatabaseStorage(factory);
 
 		// First call creates instance
-		const db1 = storage.get("main");
+		const db1 = await storage.get("main");
 		expect(db1).toBeDefined();
-		expect(createCalls).toBe(1);
+		expect(getFactoryCalls()).toBe(1);
 
 		// Second call returns cached instance
-		const db2 = storage.get("main");
+		const db2 = await storage.get("main");
 		expect(db2).toBe(db1);
-		expect(createCalls).toBe(1); // Still 1 - no new createDriver call
+		expect(getFactoryCalls()).toBe(1); // Still 1 - no new factory call
 	});
 
-	test("get() throws for unconfigured database", () => {
-		const storage = new CustomDatabaseStorage({
-			main: {adapter: createMockAdapter(), url: ":memory:"},
-		});
+	test("get() throws for unconfigured database", async () => {
+		const {factory} = createMockFactory(["main"]);
+		const storage = new CustomDatabaseStorage(factory);
 
-		expect(() => storage.get("unknown")).toThrow(
+		await expect(storage.get("unknown")).rejects.toThrow(
 			'Database "unknown" is not configured',
 		);
 	});
 
-	test("has() returns true for gotten databases", () => {
-		const storage = new CustomDatabaseStorage({
-			main: {adapter: createMockAdapter(), url: ":memory:"},
-		});
-
-		expect(storage.has("main")).toBe(false);
-		storage.get("main");
-		expect(storage.has("main")).toBe(true);
-	});
-
-	test("keys() returns gotten database names", () => {
-		const storage = new CustomDatabaseStorage({
-			main: {adapter: createMockAdapter(), url: ":memory:"},
-			secondary: {adapter: createMockAdapter(), url: ":memory:"},
-		});
-
-		expect(storage.keys()).toEqual([]);
-		storage.get("main");
-		expect(storage.keys()).toEqual(["main"]);
-		storage.get("secondary");
-		expect(storage.keys()).toContain("main");
-		expect(storage.keys()).toContain("secondary");
-	});
-
 	test("close() removes database from cache", async () => {
-		let closeCalled = false;
-		const storage = new CustomDatabaseStorage({
-			main: {
-				adapter: createMockAdapter(() => {
-					closeCalled = true;
-				}),
-				url: ":memory:",
-			},
-		});
+		const {factory, drivers} = createMockFactory();
+		const storage = new CustomDatabaseStorage(factory);
 
-		storage.get("main");
-		expect(storage.has("main")).toBe(true);
-
+		await storage.get("main");
 		await storage.close("main");
-		expect(closeCalled).toBe(true);
-		expect(storage.has("main")).toBe(false);
+
+		expect(drivers[0].closed).toBe(true);
 	});
 
 	test("closeAll() closes all gotten databases", async () => {
-		let closeCount = 0;
-		const adapter = {
-			module: "@b9g/database/bun-sql",
-			createDriver: () => ({
-				driver: {
-					all: async () => [],
-					get: async () => undefined,
-					run: async () => ({changes: 0, lastInsertRowid: 0}),
-					val: async () => undefined,
-				},
-				close: async () => {
-					closeCount++;
-				},
-			}),
-			dialect: "sqlite" as const,
-		};
+		const {factory, drivers} = createMockFactory(["main", "secondary"]);
+		const storage = new CustomDatabaseStorage(factory);
 
-		const storage = new CustomDatabaseStorage({
-			main: {adapter, url: ":memory:"},
-			secondary: {adapter, url: ":memory:"},
-		});
-
-		storage.get("main");
-		storage.get("secondary");
-		expect(storage.keys().length).toBe(2);
+		await storage.get("main");
+		await storage.get("secondary");
 
 		await storage.closeAll();
-		expect(closeCount).toBe(2);
-		expect(storage.keys().length).toBe(0);
+
+		expect(drivers[0].closed).toBe(true);
+		expect(drivers[1].closed).toBe(true);
 	});
 
-	test("get() returns same instance on concurrent calls", () => {
-		let createCalls = 0;
-		const adapter = {
-			module: "@b9g/database/bun-sql",
-			createDriver: () => {
-				createCalls++;
-				return {
-					driver: {
-						all: async () => [],
-						get: async () => undefined,
-						run: async () => ({changes: 0, lastInsertRowid: 0}),
-						val: async () => undefined,
-					},
-					close: async () => {},
-				};
-			},
-			dialect: "sqlite" as const,
-		};
-
-		const storage = new CustomDatabaseStorage({
-			main: {adapter, url: ":memory:"},
-		});
+	test("get() returns same instance on sequential calls", async () => {
+		const {factory, getFactoryCalls} = createMockFactory();
+		const storage = new CustomDatabaseStorage(factory);
 
 		// Multiple get calls return the same instance
-		const db1 = storage.get("main");
-		const db2 = storage.get("main");
-		const db3 = storage.get("main");
+		const db1 = await storage.get("main");
+		const db2 = await storage.get("main");
+		const db3 = await storage.get("main");
 
 		// All should return the same instance
 		expect(db1).toBe(db2);
 		expect(db2).toBe(db3);
 		// Factory should only be called once
-		expect(createCalls).toBe(1);
+		expect(getFactoryCalls()).toBe(1);
+	});
+
+	test("get() returns same instance on truly concurrent calls", async () => {
+		const {factory, getFactoryCalls} = createMockFactory();
+		const storage = new CustomDatabaseStorage(factory);
+
+		// Fire off multiple get calls simultaneously (without awaiting)
+		const promise1 = storage.get("main");
+		const promise2 = storage.get("main");
+		const promise3 = storage.get("main");
+
+		// Wait for all to resolve
+		const [db1, db2, db3] = await Promise.all([promise1, promise2, promise3]);
+
+		// All should return the same instance
+		expect(db1).toBe(db2);
+		expect(db2).toBe(db3);
+		// Factory should only be called once (not 3 times!)
+		expect(getFactoryCalls()).toBe(1);
+	});
+
+	test("get() allows retry after factory failure", async () => {
+		let callCount = 0;
+		const failingFactory = async (name: string) => {
+			callCount++;
+			if (callCount === 1) {
+				throw new Error("First call fails");
+			}
+			// Second call succeeds
+			return {
+				db: new Database({} as any),
+				close: async () => {},
+			};
+		};
+
+		const storage = new CustomDatabaseStorage(failingFactory);
+
+		// First call should fail
+		await expect(storage.get("main")).rejects.toThrow("First call fails");
+
+		// Second call should succeed (pending was cleared)
+		const db = await storage.get("main");
+		expect(db).toBeDefined();
+		expect(callCount).toBe(2);
+	});
+
+	test("closeAll() waits for pending creations", async () => {
+		let resolveCreation: () => void;
+		const creationPromise = new Promise<void>((resolve) => {
+			resolveCreation = resolve;
+		});
+
+		const driver = {closed: false, close: async () => { driver.closed = true; }};
+		const slowFactory = async (name: string) => {
+			await creationPromise;
+			return {
+				db: new Database(driver as any),
+				close: () => driver.close(),
+			};
+		};
+
+		const storage = new CustomDatabaseStorage(slowFactory);
+
+		// Start creation but don't await
+		const getPromise = storage.get("main");
+
+		// Call closeAll while creation is pending
+		const closePromise = storage.closeAll();
+
+		// Resolve the creation
+		resolveCreation!();
+
+		// Wait for both
+		await getPromise;
+		await closePromise;
+
+		// Driver should be closed
+		expect(driver.closed).toBe(true);
 	});
 });
-

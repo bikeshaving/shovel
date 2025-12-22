@@ -375,31 +375,22 @@ export class CustomLoggerStorage implements LoggerStorage {
 // Database Storage API
 // ============================================================================
 
-import {Database, type DatabaseAdapter, type SQLDialect} from "@b9g/database";
+// Import Database class from @b9g/zen
+import {Database} from "@b9g/zen";
 
 /**
- * Database configuration for a named database.
- * Uses @b9g/database adapters for driver creation.
+ * Database configuration from shovel.json.
+ * Follows the same module/export pattern as directories and caches.
  */
 export interface DatabaseConfig {
-	/** Adapter configuration (from build-time import) */
-	adapter: {
-		module: string;
-		createDriver: (url: string, options?: Record<string, unknown>) => DatabaseAdapter;
-		dialect: SQLDialect;
-	};
+	/** Module path to import (e.g., "@b9g/zen/bun") */
+	module: string;
+	/** Named export to use (defaults to "default") */
+	export?: string;
 	/** Database connection URL */
 	url: string;
-	/** Additional adapter-specific options */
+	/** Additional driver-specific options */
 	[key: string]: unknown;
-}
-
-/**
- * Internal instance tracking for cleanup
- */
-interface DatabaseInstance {
-	database: Database;
-	close: () => Promise<void>;
 }
 
 /**
@@ -407,8 +398,8 @@ interface DatabaseInstance {
  *
  * @example
  * ```typescript
- * // Get an unopened database
- * const db = self.databases.get("main");
+ * // Get a database (created on first access)
+ * const db = await self.databases.get("main");
  *
  * // Register migration handler
  * db.addEventListener("upgradeneeded", (e) => {
@@ -423,14 +414,8 @@ interface DatabaseInstance {
  * ```
  */
 export interface DatabaseStorage {
-	/** Get an unopened database instance by name */
-	get(name: string): Database;
-	/** Check if a database has been opened */
-	has(name: string): boolean;
-	/** List opened database names */
-	keys(): string[];
-	/** List configured database names */
-	configuredKeys(): string[];
+	/** Get a database instance by name (async - may need to import driver) */
+	get(name: string): Promise<Database>;
 	/** Close a specific database */
 	close(name: string): Promise<void>;
 	/** Close all databases */
@@ -438,93 +423,136 @@ export interface DatabaseStorage {
 }
 
 /**
- * CustomDatabaseStorage implements DatabaseStorage with @b9g/database adapters.
+ * Factory function type for creating databases.
+ * Returns the Database instance and a close function.
+ */
+export type DatabaseFactory = (name: string) => Promise<{db: Database; close: () => Promise<void>}>;
+
+/**
+ * CustomDatabaseStorage implements DatabaseStorage with an async factory function.
  */
 export class CustomDatabaseStorage implements DatabaseStorage {
-	#instances: Map<string, DatabaseInstance>;
-	#databases: Map<string, Database>;
-	#configs: Map<string, DatabaseConfig>;
+	#factory: DatabaseFactory;
+	#databases: Map<string, Database> = new Map();
+	#closers: Map<string, () => Promise<void>> = new Map();
+	#pending: Map<string, Promise<Database>> = new Map();
 
-	constructor(
-		configs: Map<string, DatabaseConfig> | Record<string, DatabaseConfig>,
-	) {
-		this.#instances = new Map();
-		this.#databases = new Map();
-		this.#configs =
-			configs instanceof Map ? configs : new Map(Object.entries(configs));
+	constructor(factory: DatabaseFactory) {
+		this.#factory = factory;
 	}
 
-	/**
-	 * Get an unopened database instance by name.
-	 * Creates the adapter but doesn't call open() - user must do that after
-	 * registering event listeners.
-	 */
-	get(name: string): Database {
-		// Return cached database if already created
+	async get(name: string): Promise<Database> {
+		// Return cached instance if available
 		const existing = this.#databases.get(name);
 		if (existing) {
 			return existing;
 		}
 
-		const config = this.#configs.get(name);
-		if (!config) {
-			const available = Array.from(this.#configs.keys());
-			throw new Error(
-				`Database "${name}" is not configured. ` +
-					(available.length > 0
-						? `Available databases: ${available.join(", ")}`
-						: "No databases are configured in shovel.json"),
-			);
+		// Return in-flight promise if another caller is already creating this database
+		const pending = this.#pending.get(name);
+		if (pending) {
+			return pending;
 		}
 
-		// Create the adapter
-		const {driver, close} = config.adapter.createDriver(config.url, config);
+		// Create the database and cache the promise to prevent concurrent creation
+		const promise = this.#factory(name)
+			.then(({db, close}) => {
+				this.#databases.set(name, db);
+				this.#closers.set(name, close);
+				return db;
+			})
+			.finally(() => {
+				// Always clear pending, whether success or failure
+				this.#pending.delete(name);
+			});
 
-		// Create the Database instance (unopened)
-		const database = new Database(driver, {dialect: config.adapter.dialect});
-
-		// Track for cleanup
-		this.#databases.set(name, database);
-		this.#instances.set(name, {database, close});
-
-		return database;
-	}
-
-	has(name: string): boolean {
-		return this.#instances.has(name);
-	}
-
-	keys(): string[] {
-		return Array.from(this.#instances.keys());
-	}
-
-	configuredKeys(): string[] {
-		return Array.from(this.#configs.keys());
+		this.#pending.set(name, promise);
+		return promise;
 	}
 
 	async close(name: string): Promise<void> {
-		const instance = this.#instances.get(name);
-		if (instance) {
-			await instance.close();
-			this.#instances.delete(name);
+		// Wait for any pending creation to complete before closing
+		const pending = this.#pending.get(name);
+		if (pending) {
+			try {
+				await pending;
+			} catch {
+				// Creation failed, nothing to close
+				return;
+			}
+		}
+
+		const closer = this.#closers.get(name);
+		if (closer) {
+			await closer();
 			this.#databases.delete(name);
+			this.#closers.delete(name);
 		}
 	}
 
 	async closeAll(): Promise<void> {
-		const closePromises: Promise<void>[] = [];
-		for (const [name, instance] of this.#instances) {
-			closePromises.push(
-				instance.close().then(() => {
-					this.#instances.delete(name);
-					this.#databases.delete(name);
-				}),
+		// Wait for any pending creations to complete first
+		if (this.#pending.size > 0) {
+			await Promise.allSettled(this.#pending.values());
+		}
+
+		// Now close all databases
+		const promises = Array.from(this.#databases.keys()).map((name) =>
+			this.close(name),
+		);
+		await Promise.allSettled(promises);
+	}
+}
+
+/**
+ * Create a DatabaseFactory from declarative config.
+ *
+ * This dynamically imports the driver module at runtime, following
+ * the same pattern as createDirectoryFactory and createCacheFactory.
+ *
+ * @param configs - The databases config from shovel.json
+ * @returns An async factory function that creates databases by name
+ *
+ * @example
+ * ```typescript
+ * // In platform adapter:
+ * const factory = createDatabaseFactory(config.databases);
+ * return new CustomDatabaseStorage(factory);
+ * ```
+ */
+export function createDatabaseFactory(
+	configs: Record<string, DatabaseConfig>,
+): DatabaseFactory {
+	return async (name: string) => {
+		const config = configs[name];
+		if (!config) {
+			throw new Error(
+				`Database "${name}" is not configured. Available databases: ${Object.keys(configs).join(", ") || "(none)"}`,
 			);
 		}
-		await Promise.allSettled(closePromises);
-		this.#instances.clear();
-		this.#databases.clear();
-	}
+
+		const {module: modulePath, export: exportName, url, ...driverOptions} = config;
+
+		// Dynamic import of driver module
+		const mod = await import(modulePath);
+		const DriverClass = exportName ? mod[exportName] : mod.default;
+
+		if (!DriverClass) {
+			throw new Error(
+				`Database module "${modulePath}" does not export "${exportName || "default"}".`,
+			);
+		}
+
+		const driver = new DriverClass(url, driverOptions);
+		const db = new Database(driver);
+
+		return {
+			db,
+			close: async () => {
+				await driver.close();
+			},
+		};
+	};
 }
 
 // ============================================================================
@@ -2361,7 +2389,8 @@ export async function initWorkerRuntime(
 	// Create database storage if configured
 	let databases: CustomDatabaseStorage | undefined;
 	if (config?.databases && Object.keys(config.databases).length > 0) {
-		databases = new CustomDatabaseStorage(config.databases);
+		const factory = createDatabaseFactory(config.databases);
+		databases = new CustomDatabaseStorage(factory);
 	}
 
 	// Create logger storage

@@ -1,7 +1,7 @@
 {
   "databases": {
     "main": {
-      "adapter": "@b9g/database/bun-sql",
+      "module": "@b9g/zen/bun",
       "url": "sqlite://./data/admin.db"
     }
   },

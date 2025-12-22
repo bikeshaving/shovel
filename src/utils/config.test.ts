@@ -56,7 +56,7 @@ describe("config validation", () => {
 				},
 				databases: {
 					main: {
-						adapter: "@b9g/database/bun-sql",
+						module: "@b9g/zen/bun",
 						url: "postgres://localhost/db",
 					},
 				},
@@ -64,7 +64,7 @@ describe("config validation", () => {
 
 			const result = ShovelConfigSchema.parse(config);
 			expect(result.platform).toBe("bun");
-			expect(result.databases?.main.adapter).toBe("@b9g/database/bun-sql");
+			expect(result.databases?.main.module).toBe("@b9g/zen/bun");
 		});
 	});
 
@@ -119,24 +119,24 @@ describe("config validation", () => {
 	});
 
 	describe("DatabaseConfigSchema", () => {
-		test("requires adapter and url", () => {
+		test("requires module and url", () => {
 			expect(() => DatabaseConfigSchema.parse({})).toThrow();
 			expect(() =>
-				DatabaseConfigSchema.parse({adapter: "@b9g/database/bun-sql"}),
+				DatabaseConfigSchema.parse({module: "@b9g/zen/bun"}),
 			).toThrow();
 		});
 
 		test("accepts valid database config", () => {
 			const result = DatabaseConfigSchema.parse({
-				adapter: "@b9g/database/bun-sql",
+				module: "@b9g/zen/bun",
 				url: "postgres://localhost/db",
 			});
-			expect(result.adapter).toBe("@b9g/database/bun-sql");
+			expect(result.module).toBe("@b9g/zen/bun");
 		});
 
 		test("accepts sqlite url", () => {
 			const result = DatabaseConfigSchema.parse({
-				adapter: "@b9g/database/bun-sql",
+				module: "@b9g/zen/bun",
 				url: "sqlite://./data.db",
 			});
 			expect(result.url).toBe("sqlite://./data.db");
@@ -144,13 +144,22 @@ describe("config validation", () => {
 
 		test("allows extra driver-specific options (passthrough)", () => {
 			const result = DatabaseConfigSchema.parse({
-				adapter: "@b9g/database/bun-sql",
+				module: "@b9g/zen/bun",
 				url: "postgres://localhost/db",
-				poolSize: 10,
-				ssl: true,
+				max: 10,
+				idleTimeout: 30,
 			});
-			expect((result as any).poolSize).toBe(10);
-			expect((result as any).ssl).toBe(true);
+			expect((result as any).max).toBe(10);
+			expect((result as any).idleTimeout).toBe(30);
+		});
+
+		test("accepts optional export field", () => {
+			const result = DatabaseConfigSchema.parse({
+				module: "@b9g/zen/postgres",
+				export: "PostgresDriver",
+				url: "postgres://localhost/db",
+			});
+			expect(result.export).toBe("PostgresDriver");
 		});
 	});
 

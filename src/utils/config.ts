@@ -1045,30 +1045,9 @@ export function generateConfigModule(
 			config.directories = rawConfig.directories;
 		}
 
-		// Databases - using @b9g/database adapters
+		// Databases - pass through as-is (runtime does dynamic imports)
 		if (rawConfig.databases && Object.keys(rawConfig.databases).length > 0) {
-			const databases: Record<string, unknown> = {};
-			for (const [name, cfg] of Object.entries(rawConfig.databases)) {
-				const dbConfig: Record<string, unknown> = {...cfg};
-
-				// Import adapter module (exports createDriver and dialect)
-				if (cfg.adapter) {
-					const adapterVarName = `db_adapter_${sanitizeVarName(name)}`;
-					imports.push(
-						`import * as ${adapterVarName} from ${JSON.stringify(cfg.adapter)};`,
-					);
-
-					// Replace adapter with object containing createDriver and dialect
-					dbConfig.adapter = {
-						module: cfg.adapter,
-						createDriver: createPlaceholder(`${adapterVarName}.createDriver`),
-						dialect: createPlaceholder(`${adapterVarName}.dialect`),
-					};
-				}
-
-				databases[name] = dbConfig;
-			}
-			config.databases = databases;
+			config.databases = rawConfig.databases;
 		}
 
 		return config;
@@ -1178,15 +1157,17 @@ export const DirectoryConfigSchema = z
 
 export type DirectoryConfig = z.infer<typeof DirectoryConfigSchema>;
 
-/** Database configuration schema - uses @b9g/database adapters */
+/** Database configuration schema - uses module/export pattern like directories/caches */
 export const DatabaseConfigSchema = z
 	.object({
-		/** Adapter module (e.g., "@b9g/database/bun-sql") */
-		adapter: z.string(),
+		/** Module path to import (e.g., "@b9g/zen/bun") */
+		module: z.string(),
+		/** Named export to use (defaults to "default") */
+		export: z.string().optional(),
 		/** Database connection URL */
 		url: z.string(),
 	})
-	.passthrough(); // Allow additional adapter-specific options
+	.passthrough(); // Allow additional driver-specific options (max, idleTimeout, etc.)
 
 export type DatabaseConfig = z.infer<typeof DatabaseConfigSchema>;
 

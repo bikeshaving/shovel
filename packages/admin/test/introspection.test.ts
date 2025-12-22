@@ -1,6 +1,5 @@
 import {test, expect, describe} from "bun:test";
-import {z} from "zod";
-import {table, primary, unique, references} from "@b9g/database";
+import {z, table} from "@b9g/zen";
 import {
 	introspectTable,
 	introspectSchema,
@@ -10,33 +9,33 @@ import {
 } from "../src/core/introspection.js";
 
 // ============================================================================
-// Test Schema Definitions using @b9g/database tables
+// Test Schema Definitions using @b9g/zen tables
 // ============================================================================
 
 const users = table("users", {
-	id: primary(z.number()),
-	email: unique(z.string().email()),
+	id: z.number().db.primary(),
+	email: z.string().email().db.unique(),
 	name: z.string().optional(),
-	role: z.enum(["admin", "user", "guest"]).default("user"),
+	role: z.enum(["admin", "user", "guest"]).db.inserted(() => "user"),
 	createdAt: z.date(),
 });
 
 const posts = table("posts", {
-	id: primary(z.number()),
+	id: z.number().db.primary(),
 	title: z.string(),
 	content: z.string().optional(),
-	authorId: references(z.number(), users, {as: "author"}),
-	published: z.boolean().default(false),
-	viewCount: z.number().default(0),
+	authorId: z.number().db.references(users, "author"),
+	published: z.boolean().db.inserted(() => false),
+	viewCount: z.number().db.inserted(() => 0),
 });
 
 const tags = table("tags", {
-	id: primary(z.number()),
+	id: z.number().db.primary(),
 	name: z.string(),
 });
 
 const files = table("files", {
-	id: primary(z.number()),
+	id: z.number().db.primary(),
 	name: z.string(),
 	size: z.number().optional(),
 });
@@ -48,7 +47,7 @@ const testSchema = {users, posts, tags, files};
 // ============================================================================
 
 describe("isTable", () => {
-	test("returns true for @b9g/database tables", () => {
+	test("returns true for @b9g/zen tables", () => {
 		expect(isTable(users)).toBe(true);
 		expect(isTable(posts)).toBe(true);
 	});

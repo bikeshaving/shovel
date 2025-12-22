@@ -1,6 +1,21 @@
 import {test, expect, describe, afterEach} from "bun:test";
-import {CustomDatabaseStorage, type DatabaseConfig} from "../src/runtime.js";
-import {createDriver} from "@b9g/database/bun-sql";
+import {CustomDatabaseStorage} from "../src/runtime.js";
+import {Database} from "@b9g/zen";
+import BunDriver from "@b9g/zen/bun";
+
+// Factory that creates in-memory SQLite databases (async to match interface)
+const createFactory = () => {
+	return async (name: string) => {
+		if (name === "main") {
+			const driver = new BunDriver(":memory:");
+			return {
+				db: new Database(driver),
+				close: () => driver.close(),
+			};
+		}
+		throw new Error(`Database "${name}" is not configured.`);
+	};
+};
 
 describe("Database Integration (Bun.SQL)", () => {
 	let storage: CustomDatabaseStorage | null = null;
@@ -13,18 +28,9 @@ describe("Database Integration (Bun.SQL)", () => {
 	});
 
 	test("CustomDatabaseStorage creates working SQLite database", async () => {
-		storage = new CustomDatabaseStorage({
-			main: {
-				adapter: {
-					module: "@b9g/database/bun-sql",
-					createDriver,
-					dialect: "sqlite",
-				},
-				url: ":memory:",
-			},
-		});
+		storage = new CustomDatabaseStorage(createFactory());
 
-		const db = storage.get("main");
+		const db = await storage.get("main");
 		expect(db).toBeDefined();
 
 		// Open the database with version 1
@@ -32,7 +38,7 @@ describe("Database Integration (Bun.SQL)", () => {
 
 		// Verify it has the expected Database methods
 		expect(db.all).toBeInstanceOf(Function);
-		expect(db.one).toBeInstanceOf(Function);
+		expect(db.get).toBeInstanceOf(Function);
 		expect(db.exec).toBeInstanceOf(Function);
 		expect(db.insert).toBeInstanceOf(Function);
 		expect(db.update).toBeInstanceOf(Function);
@@ -40,18 +46,9 @@ describe("Database Integration (Bun.SQL)", () => {
 	});
 
 	test("can execute real SQL operations", async () => {
-		storage = new CustomDatabaseStorage({
-			main: {
-				adapter: {
-					module: "@b9g/database/bun-sql",
-					createDriver,
-					dialect: "sqlite",
-				},
-				url: ":memory:",
-			},
-		});
+		storage = new CustomDatabaseStorage(createFactory());
 
-		const db = storage.get("main");
+		const db = await storage.get("main");
 		await db.open(1);
 
 		// Create the table
@@ -82,38 +79,20 @@ describe("Database Integration (Bun.SQL)", () => {
 	});
 
 	test("get() returns cached database instance", async () => {
-		storage = new CustomDatabaseStorage({
-			main: {
-				adapter: {
-					module: "@b9g/database/bun-sql",
-					createDriver,
-					dialect: "sqlite",
-				},
-				url: ":memory:",
-			},
-		});
+		storage = new CustomDatabaseStorage(createFactory());
 
-		const db1 = storage.get("main");
+		const db1 = await storage.get("main");
 		await db1.open(1);
 
 		// Second get returns same instance
-		const db2 = storage.get("main");
+		const db2 = await storage.get("main");
 		expect(db2).toBe(db1);
 	});
 
 	test("close() properly closes SQLite connection", async () => {
-		storage = new CustomDatabaseStorage({
-			main: {
-				adapter: {
-					module: "@b9g/database/bun-sql",
-					createDriver,
-					dialect: "sqlite",
-				},
-				url: ":memory:",
-			},
-		});
+		storage = new CustomDatabaseStorage(createFactory());
 
-		const db = storage.get("main");
+		const db = await storage.get("main");
 		await db.open(1);
 
 		// Create a table to verify db is working
@@ -121,24 +100,12 @@ describe("Database Integration (Bun.SQL)", () => {
 
 		// Close should not throw
 		await storage.close("main");
-
-		// After close, the database should no longer be tracked
-		expect(storage.has("main")).toBe(false);
 	});
 
 	test("upgradeneeded event fires on first open", async () => {
-		storage = new CustomDatabaseStorage({
-			main: {
-				adapter: {
-					module: "@b9g/database/bun-sql",
-					createDriver,
-					dialect: "sqlite",
-				},
-				url: ":memory:",
-			},
-		});
+		storage = new CustomDatabaseStorage(createFactory());
 
-		const db = storage.get("main");
+		const db = await storage.get("main");
 
 		let eventFired = false;
 		let oldVersion = -1;
@@ -158,18 +125,9 @@ describe("Database Integration (Bun.SQL)", () => {
 	});
 
 	test("migrations run via upgradeneeded event", async () => {
-		storage = new CustomDatabaseStorage({
-			main: {
-				adapter: {
-					module: "@b9g/database/bun-sql",
-					createDriver,
-					dialect: "sqlite",
-				},
-				url: ":memory:",
-			},
-		});
+		storage = new CustomDatabaseStorage(createFactory());
 
-		const db = storage.get("main");
+		const db = await storage.get("main");
 
 		db.addEventListener("upgradeneeded", (ev: any) => {
 			ev.waitUntil(
@@ -189,25 +147,16 @@ describe("Database Integration (Bun.SQL)", () => {
 		await db.open(1);
 
 		// Table should exist after migration
-		const result = await db.all<{name: string}>`
+		const result = await db.query<{name: string}>`
 			SELECT name FROM sqlite_master WHERE type='table' AND name='users'
 		`;
 		expect(result).toHaveLength(1);
 	});
 
 	test("insert with RETURNING clause", async () => {
-		storage = new CustomDatabaseStorage({
-			main: {
-				adapter: {
-					module: "@b9g/database/bun-sql",
-					createDriver,
-					dialect: "sqlite",
-				},
-				url: ":memory:",
-			},
-		});
+		storage = new CustomDatabaseStorage(createFactory());
 
-		const db = storage.get("main");
+		const db = await storage.get("main");
 		await db.open(1);
 
 		await db.exec`
@@ -228,18 +177,9 @@ describe("Database Integration (Bun.SQL)", () => {
 	});
 
 	test("val() returns single value", async () => {
-		storage = new CustomDatabaseStorage({
-			main: {
-				adapter: {
-					module: "@b9g/database/bun-sql",
-					createDriver,
-					dialect: "sqlite",
-				},
-				url: ":memory:",
-			},
-		});
+		storage = new CustomDatabaseStorage(createFactory());
 
-		const db = storage.get("main");
+		const db = await storage.get("main");
 		await db.open(1);
 
 		await db.exec`CREATE TABLE items (id INTEGER PRIMARY KEY)`;

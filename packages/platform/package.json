@@ -28,8 +28,8 @@
   "dependencies": {
     "@b9g/async-context": "workspace:*",
     "@b9g/cache": "workspace:*",
-    "@b9g/database": "workspace:*",
     "@b9g/filesystem": "workspace:*",
+    "@b9g/zen": "^0.1.2",
     "@logtape/logtape": "^1.2.0"
   },
   "peerDependencies": {

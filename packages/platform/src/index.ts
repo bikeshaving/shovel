@@ -1094,4 +1094,10 @@ export class ServiceWorkerPool {
 
 export {CustomLoggerStorage, type LoggerStorage};
 export type {LoggerFactory} from "./runtime.js";
-export {CustomDatabaseStorage, type DatabaseStorage} from "./runtime.js";
+export {
+	CustomDatabaseStorage,
+	createDatabaseFactory,
+	type DatabaseStorage,
+	type DatabaseConfig,
+	type DatabaseFactory,
+} from "./runtime.js";

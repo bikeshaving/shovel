@@ -30,12 +30,10 @@ declare global {
 	 * `shovel develop`, typed overloads are generated in `dist/server/shovel.d.ts`
 	 * that provide full type inference based on your shovel.json config.
 	 *
-	 * @example const db = await self.databases.open("main");
+	 * @example const db = await self.databases.get("main");
 	 */
 	interface DatabaseStorage {
-		open(name: string): Promise<unknown>;
-		has(name: string): boolean;
-		keys(): string[];
+		get(name: string): Promise<unknown>;
 		close(name: string): Promise<void>;
 		closeAll(): Promise<void>;
 	}
@@ -55,7 +53,7 @@ declare global {
 
 	/**
 	 * Database storage API for accessing named database instances.
-	 * @example const db = await self.databases.open("main");
+	 * @example const db = await self.databases.get("main");
 	 */
 	var databases: DatabaseStorage;
 
