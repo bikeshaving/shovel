@@ -12,8 +12,7 @@
   },
   "workspaces": [
     "packages/*",
-    "examples/*",
-    "examples/tfb/frameworks/JavaScript/shovel"
+    "examples/*"
   ],
   "scripts": {
     "build": "bun run --filter './packages/*' build && libuild build --save",
