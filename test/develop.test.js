@@ -26,7 +26,7 @@ await configure({
  * Includes both basic functionality and advanced stress testing
  */
 
-const TIMEOUT = 10000; // 10 second timeout for complex tests
+const TIMEOUT = 20000; // 20 second timeout for complex tests (Linux file watching can be slow)
 
 // Namespaced temp directory for test isolation
 let TEST_TMP_DIR;
@@ -252,7 +252,7 @@ async function fetchWithRetry(port, retries = 20, delay = 50) {
 async function waitForContentChange(
 	port,
 	expectedContent,
-	{timeoutMs = 5000, contains = false} = {},
+	{timeoutMs = 10000, contains = false} = {},
 ) {
 	const startTime = Date.now();
 	while (Date.now() - startTime < timeoutMs) {
