@@ -83,7 +83,7 @@ The core abstraction is the **ServiceWorker-style storage pattern**. Globals pro
 ```javascript
 const cache = await self.caches.open("sessions");     // Cache API
 const dir   = await self.directories.open("uploads"); // FileSystem API
-const db    = self.databases.get("main");             // Zen ORM
+const db    = self.databases.get("main");             // Zen DB (opened on activate)
 const log   = self.loggers.get("app", "requests");    // LogTape
 ```
 
@@ -150,7 +150,7 @@ Shovel's configuration follows these principles:
 
 1. **Platform Defaults, User Overrides** - Each platform provides sensible defaults. You only configure what you want to change.
 
-2. **Uniform Interface** - Caches, directories, and loggers all use the same `{ module, export, ...options }` pattern. No magic strings or builtin aliases.
+2. **Uniform Interface** - Caches, directories, databases, and loggers all use the same `{ module, export, ...options }` pattern. No magic strings or builtin aliases.
 
 3. **Layered Resolution** - For any cache or directory name:
    - If config specifies `module`/`export` → use that
@@ -181,6 +181,12 @@ Shovel's configuration follows these principles:
       "module": "@b9g/filesystem-s3",
       "export": "S3Directory",
       "bucket": "S3_BUCKET"
+    }
+  },
+  "databases": {
+    "main": {
+      "module": "@b9g/zen/bun",
+      "url": "DATABASE_URL"
     }
   },
   "logging": {
@@ -265,6 +271,35 @@ Shovel uses [LogTape](https://logtape.org/) for logging:
 - **Console sink is implicit** - always available as `"console"`
 - **Category hierarchy** - `["app", "db"]` inherits from `["app"]`
 - **parentSinks** - use `"override"` to replace parent sinks instead of inheriting
+
+### Databases
+
+Configure database drivers using the same `module`/`export` pattern:
+
+```json
+{
+  "databases": {
+    "main": {
+      "module": "@b9g/zen/bun",
+      "url": "DATABASE_URL"
+    }
+  }
+}
+```
+
+Open databases in `activate` (for migrations), then use `get()` in requests:
+
+```javascript
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.databases.open("main", 1, (e) => {
+    e.waitUntil(runMigrations(e));
+  }));
+});
+
+self.addEventListener("fetch", (event) => {
+  const db = self.databases.get("main");
+});
+```
 
 ### Expression Syntax
 

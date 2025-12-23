@@ -75,7 +75,7 @@
     "@logtape/file": "^1.0.0",
     "@b9g/filesystem": "workspace:*",
     "@b9g/http-errors": "workspace:*",
-    "@b9g/libuild": "^0.1.21",
+    "@b9g/libuild": "^0.1.22",
     "@b9g/platform": "workspace:*",
     "@b9g/platform-bun": "workspace:*",
     "@b9g/platform-cloudflare": "workspace:*",

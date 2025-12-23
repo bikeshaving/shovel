@@ -23,7 +23,7 @@
         "@b9g/crank": "^0.7.2",
         "@b9g/filesystem": "workspace:*",
         "@b9g/http-errors": "workspace:*",
-        "@b9g/libuild": "^0.1.21",
+        "@b9g/libuild": "^0.1.22",
         "@b9g/platform": "workspace:*",
         "@b9g/platform-bun": "workspace:*",
         "@b9g/platform-cloudflare": "workspace:*",
@@ -415,7 +415,7 @@
 
     "@b9g/http-errors": ["@b9g/http-errors@workspace:packages/http-errors"],
 
-    "@b9g/libuild": ["@b9g/libuild@0.1.21", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-bSZDxi74qvnB+RZVspq4B8zYDnasB3ngu8AZaWnpwls2kr/2nzOu8TW0xy4gOnKhTHz2xuu0CmKrKfWebaxHfw=="],
+    "@b9g/libuild": ["@b9g/libuild@0.1.22", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-OlaRCqg7QIrMC4S4fPHZ6JkAmCoAKF+spiMEDqtm6AgUHVoRJbAyhNORKkthfcHg3eNTKUmRrEToF/E5UjrHVQ=="],
 
     "@b9g/match-pattern": ["@b9g/match-pattern@workspace:packages/match-pattern"],
 

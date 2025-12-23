@@ -3,7 +3,11 @@
  */
 
 import {describe, it, expect} from "bun:test";
-import {exprToCode, generateConfigModule} from "../src/utils/config.js";
+import {
+	exprToCode,
+	generateConfigModule,
+	generateStorageTypes,
+} from "../src/utils/config.js";
 
 describe("exprToCode", () => {
 	describe("literals", () => {
@@ -456,5 +460,30 @@ describe("generateConfigModule", () => {
 			expect(module).toContain("databases:");
 			expect(module).toContain("main:");
 		});
+	});
+});
+
+describe("generateStorageTypes", () => {
+	it("returns empty string when no storage configured", () => {
+		const result = generateStorageTypes({});
+		expect(result).toBe("");
+	});
+
+	it("includes database and directory overloads when configured", () => {
+		const result = generateStorageTypes({
+			databases: {
+				main: {module: "@b9g/zen/bun", url: "sqlite://./db.sqlite"},
+			},
+			directories: {
+				uploads: {module: "@b9g/filesystem/node-fs", path: "./uploads"},
+			},
+		});
+
+		expect(result).toContain('import type {Database} from "@b9g/zen";');
+		expect(result).toContain(
+			'import type {DatabaseUpgradeEvent} from "@b9g/platform";',
+		);
+		expect(result).toContain('type ValidDatabaseName = "main";');
+		expect(result).toContain('type ValidDirectoryName = "uploads";');
 	});
 });
