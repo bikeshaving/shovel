@@ -402,9 +402,10 @@ test(
 			);
 
 			// Wait for hot reload and verify dependency change propagated
-			await new Promise((resolve) => setTimeout(resolve, 500)); // Wait for reload
-
-			const updatedResponse = await fetchWithRetry(PORT);
+			const updatedResponse = await waitForContentChange(
+				PORT,
+				"<marquee>Goodbye from dependency-hello.ts</marquee>",
+			);
 			expect(updatedResponse).toBe(
 				"<marquee>Goodbye from dependency-hello.ts</marquee>",
 			);
@@ -446,9 +447,10 @@ test(
 			);
 
 			// Wait for hot reload and verify dynamic import change propagated
-			await new Promise((resolve) => setTimeout(resolve, 500)); // Wait for reload
-
-			const updatedResponse = await fetchWithRetry(PORT);
+			const updatedResponse = await waitForContentChange(
+				PORT,
+				'<marquee behavior="alternate">Goodbye from dependency-hello.ts</marquee>',
+			);
 			expect(updatedResponse).toBe(
 				'<marquee behavior="alternate">Goodbye from dependency-hello.ts</marquee>',
 			);
