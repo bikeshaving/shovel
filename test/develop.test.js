@@ -249,13 +249,20 @@ async function fetchWithRetry(port, retries = 20, delay = 50) {
 }
 
 // Helper to wait for response content to change
-async function waitForContentChange(port, expectedContent, timeoutMs = 5000) {
+async function waitForContentChange(
+	port,
+	expectedContent,
+	{timeoutMs = 5000, contains = false} = {},
+) {
 	const startTime = Date.now();
 	while (Date.now() - startTime < timeoutMs) {
 		try {
 			const response = await fetch(`http://localhost:${port}`);
 			const text = await response.text();
-			if (text === expectedContent) {
+			const matches = contains
+				? text.includes(expectedContent)
+				: text === expectedContent;
+			if (matches) {
 				return text;
 			}
 		} catch {
@@ -610,9 +617,10 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(testFileA, modifiedA);
 
 			// Wait for cascade reload
-			await new Promise((resolve) => setTimeout(resolve, 800));
-
-			const updatedResponse = await fetchWithRetry(PORT);
+			const updatedResponse = await waitForContentChange(
+				PORT,
+				"<div>B-A-modified</div>",
+			);
 			expect(updatedResponse).toBe("<div>B-A-modified</div>");
 		} finally {
 			// Clean up test files
@@ -674,9 +682,11 @@ self.addEventListener("fetch", (event) => {
 			await Promise.all(modifyPromises);
 
 			// Wait for reload
-			await new Promise((resolve) => setTimeout(resolve, 800));
-
-			const updatedResponse = await fetchWithRetry(PORT);
+			const updatedResponse = await waitForContentChange(
+				PORT,
+				"Values: modified-0, modified-1",
+				{contains: true},
+			);
 			expect(updatedResponse).toContain("Values: modified-0, modified-1");
 		} finally {
 			// Clean up all test files
@@ -788,9 +798,10 @@ self.addEventListener("fetch", (event) => {
 			backups[testFile] = null; // Mark for deletion
 
 			// Wait for reload
-			await new Promise((resolve) => setTimeout(resolve, 800));
-
-			const finalResponse = await fetchWithRetry(PORT);
+			const finalResponse = await waitForContentChange(
+				PORT,
+				"<div>Recreated</div>",
+			);
 			expect(finalResponse).toBe("<div>Recreated</div>");
 		} finally {
 			// Restore original files
@@ -862,9 +873,10 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(testFile, fixedContent);
 
 			// Wait for recovery
-			await new Promise((resolve) => setTimeout(resolve, 800));
-
-			const recoveredResponse = await fetchWithRetry(PORT);
+			const recoveredResponse = await waitForContentChange(
+				PORT,
+				"<div>Fixed</div>",
+			);
 			expect(recoveredResponse).toBe("<div>Fixed</div>");
 		} finally {
 			await FS.unlink(testFile);
@@ -925,9 +937,10 @@ self.addEventListener("fetch", (event) => {
 			);
 			await FS.writeFile(largeFile, modifiedContent);
 
-			await new Promise((resolve) => setTimeout(resolve, 800));
-
-			const updatedResponse = await fetchWithRetry(PORT);
+			const updatedResponse = await waitForContentChange(
+				PORT,
+				"<div>Variables: Modified</div>",
+			);
 			expect(updatedResponse).toBe("<div>Variables: Modified</div>");
 		} finally {
 			await FS.unlink(largeFile);
@@ -1046,9 +1059,10 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(jsFile, modifiedJsContent);
 
 			// Wait for reload
-			await new Promise((resolve) => setTimeout(resolve, 600));
-
-			const updatedResponse = await fetchWithRetry(PORT);
+			const updatedResponse = await waitForContentChange(
+				PORT,
+				"<div>JavaScript modified!</div>",
+			);
 			expect(updatedResponse).toBe("<div>JavaScript modified!</div>");
 		} finally {
 			await FS.unlink(jsFile);
@@ -1259,8 +1273,11 @@ test(
 					`self.addEventListener("fetch", () => new Response("v2"));`,
 				);
 
-				// Wait for rebuild
-				await new Promise((r) => setTimeout(r, 500));
+				// Wait for rebuild callback
+				const startTime = Date.now();
+				while (!onBuildCalled && Date.now() - startTime < 5000) {
+					await new Promise((r) => setTimeout(r, 50));
+				}
 
 				// Verify onBuild was called with valid new path
 				expect(onBuildCalled).toBe(true);
