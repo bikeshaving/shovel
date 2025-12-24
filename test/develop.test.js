@@ -78,7 +78,10 @@ async function createTempFixture(fixtureName) {
 		dir: tempDir,
 		async copyFrom(sourceFixture) {
 			const sourcePath = join("./test/fixtures", sourceFixture);
-			await FS.copyFile(sourcePath, tempFile);
+			// Use readFile + writeFile instead of copyFile for more reliable
+			// inotify event generation on Linux
+			const content = await FS.readFile(sourcePath, "utf-8");
+			await FS.writeFile(tempFile, content);
 		},
 		async addDependency(dependencyFixture) {
 			const depFile = join(this.dir, dependencyFixture);
@@ -89,7 +92,10 @@ async function createTempFixture(fixtureName) {
 		async copyDependencyFrom(dependencyFixture, sourceFixture) {
 			const depFile = join(this.dir, dependencyFixture);
 			const sourceFile = join("./test/fixtures", sourceFixture);
-			await FS.copyFile(sourceFile, depFile);
+			// Use readFile + writeFile instead of copyFile for more reliable
+			// inotify event generation on Linux
+			const content = await FS.readFile(sourceFile, "utf-8");
+			await FS.writeFile(depFile, content);
 		},
 		async cleanup() {
 			await FS.rm(tempDir, {recursive: true, force: true});
