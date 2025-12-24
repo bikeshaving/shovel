@@ -48,6 +48,7 @@ export class Watcher {
 	}) => void;
 	#currentEntrypoint: string;
 	#configWatchers: FSWatcher[];
+	#sourceWatchers: Map<string, FSWatcher>;
 
 	constructor(options: WatcherOptions) {
 		this.#options = options;
@@ -55,6 +56,7 @@ export class Watcher {
 		this.#initialBuildComplete = false;
 		this.#currentEntrypoint = "";
 		this.#configWatchers = [];
+		this.#sourceWatchers = new Map();
 	}
 
 	/**
@@ -209,6 +211,13 @@ export class Watcher {
 
 							this.#currentEntrypoint = outputPath;
 
+							// Update native file watchers based on metafile inputs
+							// This provides instant file change detection via inotify/fsevents
+							// as a complement to esbuild's polling-based watch mode
+							if (result.metafile) {
+								this.#updateSourceWatchers(result.metafile);
+							}
+
 							// Handle initial build
 							if (!this.#initialBuildComplete) {
 								this.#initialBuildComplete = true;
@@ -280,6 +289,61 @@ export class Watcher {
 	}
 
 	/**
+	 * Update native file watchers for source files from metafile.
+	 * Uses fs.watch for instant inotify/fsevents detection as a complement
+	 * to esbuild's polling-based watch mode (belt and suspenders approach).
+	 */
+	#updateSourceWatchers(metafile: ESBuild.Metafile) {
+		// Get list of real source files from metafile inputs
+		// Skip virtual files (<stdin>, <external>:, shovel:, etc.)
+		const inputFiles = new Set(
+			Object.keys(metafile.inputs)
+				.filter((p) => !p.startsWith("<") && !p.startsWith("shovel"))
+				.map((p) => resolve(this.#projectRoot, p)),
+		);
+
+		// Remove watchers for files no longer in the build
+		for (const [filepath, watcher] of this.#sourceWatchers) {
+			if (!inputFiles.has(filepath)) {
+				watcher.close();
+				this.#sourceWatchers.delete(filepath);
+			}
+		}
+
+		// Add watchers for new files
+		for (const filepath of inputFiles) {
+			if (this.#sourceWatchers.has(filepath)) continue;
+			if (!existsSync(filepath)) continue;
+
+			try {
+				const watcher = watch(filepath, {persistent: false}, (event) => {
+					if (event === "change" || event === "rename") {
+						logger.debug("Native watcher detected change: {file}", {
+							file: filepath,
+						});
+						// Trigger rebuild - esbuild dedupes concurrent rebuilds
+						this.#ctx?.rebuild().catch((err) => {
+							logger.error("Rebuild failed: {error}", {error: err});
+						});
+					}
+				});
+
+				this.#sourceWatchers.set(filepath, watcher);
+			} catch (err) {
+				// Non-fatal: esbuild's polling will catch it
+				logger.debug("Failed to watch source file {file}: {error}", {
+					file: filepath,
+					error: err,
+				});
+			}
+		}
+
+		logger.debug("Watching {count} source files with native fs.watch", {
+			count: this.#sourceWatchers.size,
+		});
+	}
+
+	/**
 	 * Stop watching and dispose of esbuild context
 	 */
 	async stop() {
@@ -288,6 +352,12 @@ export class Watcher {
 			watcher.close();
 		}
 		this.#configWatchers = [];
+
+		// Close source file watchers
+		for (const watcher of this.#sourceWatchers.values()) {
+			watcher.close();
+		}
+		this.#sourceWatchers.clear();
 
 		if (this.#ctx) {
 			await this.#ctx.dispose();
