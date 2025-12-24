@@ -10,7 +10,7 @@
 
 import * as ESBuild from "esbuild";
 import {builtinModules} from "node:module";
-import {resolve, join} from "path";
+import {resolve, join, dirname, basename} from "path";
 import {mkdir} from "fs/promises";
 import {watch, type FSWatcher, existsSync} from "fs";
 import {getLogger} from "@logtape/logtape";
@@ -48,7 +48,7 @@ export class Watcher {
 	}) => void;
 	#currentEntrypoint: string;
 	#configWatchers: FSWatcher[];
-	#sourceWatchers: Map<string, FSWatcher>;
+	#dirWatchers: Map<string, {watcher: FSWatcher; files: Set<string>}>;
 
 	constructor(options: WatcherOptions) {
 		this.#options = options;
@@ -56,7 +56,7 @@ export class Watcher {
 		this.#initialBuildComplete = false;
 		this.#currentEntrypoint = "";
 		this.#configWatchers = [];
-		this.#sourceWatchers = new Map();
+		this.#dirWatchers = new Map();
 	}
 
 	/**
@@ -289,58 +289,90 @@ export class Watcher {
 	}
 
 	/**
-	 * Update native file watchers for source files from metafile.
-	 * Uses fs.watch for instant inotify/fsevents detection as a complement
-	 * to esbuild's polling-based watch mode (belt and suspenders approach).
+	 * Update native directory watchers for source files from metafile.
+	 * Uses fs.watch on directories for instant inotify/fsevents detection
+	 * as a complement to esbuild's polling-based watch mode.
+	 *
+	 * Watching directories instead of files handles:
+	 * - File deletion and recreation (directory watcher survives)
+	 * - Concurrent modifications (one watcher per directory)
+	 * - Fewer file descriptors (one per directory vs one per file)
 	 */
 	#updateSourceWatchers(metafile: ESBuild.Metafile) {
-		// Get list of real source files from metafile inputs
+		// Build map of directory -> set of filenames from metafile inputs
 		// Skip virtual files (<stdin>, <external>:, shovel:, etc.)
-		const inputFiles = new Set(
-			Object.keys(metafile.inputs)
-				.filter((p) => !p.startsWith("<") && !p.startsWith("shovel"))
-				.map((p) => resolve(this.#projectRoot, p)),
+		const newDirFiles = new Map<string, Set<string>>();
+
+		for (const inputPath of Object.keys(metafile.inputs)) {
+			if (inputPath.startsWith("<") || inputPath.startsWith("shovel")) {
+				continue;
+			}
+
+			const fullPath = resolve(this.#projectRoot, inputPath);
+			const dir = dirname(fullPath);
+			const file = basename(fullPath);
+
+			if (!newDirFiles.has(dir)) {
+				newDirFiles.set(dir, new Set());
+			}
+			newDirFiles.get(dir)!.add(file);
+		}
+
+		// Remove watchers for directories no longer needed
+		for (const [dir, entry] of this.#dirWatchers) {
+			if (!newDirFiles.has(dir)) {
+				entry.watcher.close();
+				this.#dirWatchers.delete(dir);
+			}
+		}
+
+		// Update or add watchers for each directory
+		for (const [dir, files] of newDirFiles) {
+			const existing = this.#dirWatchers.get(dir);
+
+			if (existing) {
+				// Update the file set for existing watcher
+				existing.files = files;
+			} else {
+				// Create new directory watcher
+				if (!existsSync(dir)) continue;
+
+				try {
+					const watcher = watch(dir, {persistent: false}, (event, filename) => {
+						// Check if the changed file is one we care about
+						const entry = this.#dirWatchers.get(dir);
+						if (!entry || !filename) return;
+
+						if (entry.files.has(filename)) {
+							logger.debug("Native watcher detected change: {file}", {
+								file: join(dir, filename),
+							});
+							// Trigger rebuild - esbuild dedupes concurrent rebuilds
+							this.#ctx?.rebuild().catch((err) => {
+								logger.error("Rebuild failed: {error}", {error: err});
+							});
+						}
+					});
+
+					this.#dirWatchers.set(dir, {watcher, files});
+				} catch (err) {
+					// Non-fatal: esbuild's polling will catch it
+					logger.debug("Failed to watch directory {dir}: {error}", {
+						dir,
+						error: err,
+					});
+				}
+			}
+		}
+
+		const totalFiles = Array.from(this.#dirWatchers.values()).reduce(
+			(sum, entry) => sum + entry.files.size,
+			0,
 		);
-
-		// Remove watchers for files no longer in the build
-		for (const [filepath, watcher] of this.#sourceWatchers) {
-			if (!inputFiles.has(filepath)) {
-				watcher.close();
-				this.#sourceWatchers.delete(filepath);
-			}
-		}
-
-		// Add watchers for new files
-		for (const filepath of inputFiles) {
-			if (this.#sourceWatchers.has(filepath)) continue;
-			if (!existsSync(filepath)) continue;
-
-			try {
-				const watcher = watch(filepath, {persistent: false}, (event) => {
-					if (event === "change" || event === "rename") {
-						logger.debug("Native watcher detected change: {file}", {
-							file: filepath,
-						});
-						// Trigger rebuild - esbuild dedupes concurrent rebuilds
-						this.#ctx?.rebuild().catch((err) => {
-							logger.error("Rebuild failed: {error}", {error: err});
-						});
-					}
-				});
-
-				this.#sourceWatchers.set(filepath, watcher);
-			} catch (err) {
-				// Non-fatal: esbuild's polling will catch it
-				logger.debug("Failed to watch source file {file}: {error}", {
-					file: filepath,
-					error: err,
-				});
-			}
-		}
-
-		logger.debug("Watching {count} source files with native fs.watch", {
-			count: this.#sourceWatchers.size,
-		});
+		logger.debug(
+			"Watching {fileCount} source files in {dirCount} directories with native fs.watch",
+			{fileCount: totalFiles, dirCount: this.#dirWatchers.size},
+		);
 	}
 
 	/**
@@ -353,11 +385,11 @@ export class Watcher {
 		}
 		this.#configWatchers = [];
 
-		// Close source file watchers
-		for (const watcher of this.#sourceWatchers.values()) {
-			watcher.close();
+		// Close directory watchers
+		for (const entry of this.#dirWatchers.values()) {
+			entry.watcher.close();
 		}
-		this.#sourceWatchers.clear();
+		this.#dirWatchers.clear();
 
 		if (this.#ctx) {
 			await this.#ctx.dispose();
