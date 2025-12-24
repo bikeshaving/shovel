@@ -27,42 +27,42 @@ await configure({
 
 const TIMEOUT = 20000; // 20 second timeout for complex tests (Linux file watching can be slow)
 
-// Namespaced temp directory for test isolation
-let TEST_TMP_DIR;
+// Helper to create a temporary directory with node_modules and shovel.json
+async function createTempDir() {
+	const tempDir = await mkdtemp(join(tmpdir(), "shovel-test-"));
 
-// Setup: Create unique namespaced temp directory with node_modules
-beforeAll(async () => {
-	// Create unique test directory (e.g., /tmp/shovel-develop-abc123)
-	TEST_TMP_DIR = await mkdtemp(join(tmpdir(), "shovel-develop-"));
-
-	// Create node_modules symlink in test directory
+	// Symlink node_modules so fixtures can import dependencies
 	const nodeModulesSource = join(process.cwd(), "node_modules");
-	const nodeModulesLink = join(TEST_TMP_DIR, "node_modules");
+	const nodeModulesLink = join(tempDir, "node_modules");
 	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
 
-	// Clean up any stale /tmp/dist from previous runs
-	try {
-		await FS.rm("/tmp/dist", {recursive: true, force: true});
-	} catch {
-		// Doesn't exist, that's fine
-	}
-});
+	// Create shovel.json with debug logging enabled
+	// Console sink is always available implicitly, just need to configure logger
+	await FS.writeFile(
+		join(tempDir, "shovel.json"),
+		JSON.stringify(
+			{
+				logging: {
+					loggers: [{category: "shovel", level: "debug", sinks: ["console"]}],
+				},
+			},
+			null,
+			2,
+		),
+	);
 
-// Teardown: Remove test directory
-afterAll(async () => {
-	if (TEST_TMP_DIR) {
-		try {
-			await FS.rm(TEST_TMP_DIR, {recursive: true, force: true});
-		} catch {
-			// Already removed, that's fine
-		}
-	}
-});
+	return {
+		dir: tempDir,
+		async cleanup() {
+			await FS.rm(tempDir, {recursive: true, force: true});
+		},
+	};
+}
 
 // Helper to create temporary fixture copy
 async function createTempFixture(fixtureName) {
-	const tempDir = await mkdtemp(join(tmpdir(), "shovel-test-"));
-	const tempFile = join(tempDir, fixtureName);
+	const temp = await createTempDir();
+	const tempFile = join(temp.dir, fixtureName);
 	const sourceFile = join("./test/fixtures", fixtureName);
 
 	// Use readFile + writeFile instead of copyFile for more reliable
@@ -70,14 +70,9 @@ async function createTempFixture(fixtureName) {
 	const content = await FS.readFile(sourceFile, "utf-8");
 	await FS.writeFile(tempFile, content);
 
-	// Symlink node_modules so fixtures can import dependencies
-	const nodeModulesSource = join(process.cwd(), "node_modules");
-	const nodeModulesLink = join(tempDir, "node_modules");
-	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
-
 	return {
 		path: tempFile,
-		dir: tempDir,
+		dir: temp.dir,
 		async copyFrom(sourceFixture) {
 			const sourcePath = join("./test/fixtures", sourceFixture);
 			// Use readFile + writeFile instead of copyFile for more reliable
@@ -102,9 +97,7 @@ async function createTempFixture(fixtureName) {
 			const content = await FS.readFile(sourceFile, "utf-8");
 			await FS.writeFile(depFile, content);
 		},
-		async cleanup() {
-			await FS.rm(tempDir, {recursive: true, force: true});
-		},
+		cleanup: temp.cleanup,
 	};
 }
 
@@ -581,27 +574,32 @@ test(
 	async () => {
 		const PORT = 13316;
 		let serverProcess;
+		let tempDir;
 
-		// Create temporary test files for deep chain
-		const testFileA = join(TEST_TMP_DIR, "shovel-test-chain-a.ts");
-		const testFileB = join(TEST_TMP_DIR, "shovel-test-chain-b.ts");
-		const testFileMain = join(TEST_TMP_DIR, "shovel-test-chain-main.ts");
+		try {
+			// Create isolated temp directory
+			tempDir = await createTempDir();
 
-		// File A (deepest dependency)
-		const contentA = `export const value = "A-original";`;
-		const modifiedA = `export const value = "A-modified";`;
+			// Create temporary test files for deep chain
+			const testFileA = join(tempDir.dir, "chain-a.ts");
+			const testFileB = join(tempDir.dir, "chain-b.ts");
+			const testFileMain = join(tempDir.dir, "chain-main.ts");
 
-		// File B (middle dependency, imports A)
-		const contentB = `
-import {value as aValue} from "${testFileA}";
+			// File A (deepest dependency)
+			const contentA = `export const value = "A-original";`;
+			const modifiedA = `export const value = "A-modified";`;
+
+			// File B (middle dependency, imports A)
+			const contentB = `
+import {value as aValue} from "./chain-a.js";
 export const value = \`B-\${aValue}\`;
-		`;
+			`;
 
-		// Main file (imports B, which imports A)
-		const contentMain = `
+			// Main file (imports B, which imports A)
+			const contentMain = `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
-import {value} from "${testFileB}";
+import {value} from "./chain-b.js";
 
 self.addEventListener("fetch", (event) => {
 	const html = renderer.render(jsx\`<div>\${value}</div>\`);
@@ -609,9 +607,8 @@ self.addEventListener("fetch", (event) => {
 		headers: {"content-type": "text/html; charset=UTF-8"},
 	}));
 });
-		`;
+			`;
 
-		try {
 			// Create test files
 			await FS.writeFile(testFileA, contentA);
 			await FS.writeFile(testFileB, contentB);
@@ -634,11 +631,8 @@ self.addEventListener("fetch", (event) => {
 			);
 			expect(updatedResponse).toBe("<div>B-A-modified</div>");
 		} finally {
-			// Clean up test files
-			await FS.unlink(testFileA);
-			await FS.unlink(testFileB);
-			await FS.unlink(testFileMain);
 			await killServer(serverProcess, PORT);
+			if (tempDir) await tempDir.cleanup();
 		}
 	},
 	TIMEOUT,
@@ -649,19 +643,24 @@ test(
 	async () => {
 		const PORT = 13317;
 		let serverProcess;
+		let tempDir;
 
-		// Create multiple temporary test files
-		const testFiles = Array.from({length: 5}, (_, i) => ({
-			path: join(TEST_TMP_DIR, `shovel-test-concurrent-${i}.ts`),
-			content: `export const value${i} = "original-${i}";`,
-			modified: `export const value${i} = "modified-${i}";`,
-		}));
+		try {
+			// Create isolated temp directory
+			tempDir = await createTempDir();
 
-		const mainFile = join(TEST_TMP_DIR, "shovel-test-concurrent-main.ts");
-		const mainContent = `
+			// Create multiple temporary test files
+			const testFiles = Array.from({length: 5}, (_, i) => ({
+				path: join(tempDir.dir, `dep-${i}.ts`),
+				content: `export const value${i} = "original-${i}";`,
+				modified: `export const value${i} = "modified-${i}";`,
+			}));
+
+			const mainFile = join(tempDir.dir, "main.ts");
+			const mainContent = `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
-${testFiles.map((f, i) => `import {value${i}} from "${f.path}";`).join("\n")}
+${testFiles.map((_, i) => `import {value${i}} from "./dep-${i}.js";`).join("\n")}
 
 self.addEventListener("fetch", (event) => {
 	const allValues = [${testFiles.map((_, i) => `value${i}`).join(", ")}];
@@ -670,9 +669,8 @@ self.addEventListener("fetch", (event) => {
 		headers: {"content-type": "text/html; charset=UTF-8"},
 	}));
 });
-		`;
+			`;
 
-		try {
 			// Create all test files
 			for (const file of testFiles) {
 				await FS.writeFile(file.path, file.content);
@@ -701,11 +699,7 @@ self.addEventListener("fetch", (event) => {
 			expect(updatedResponse).toContain("Values: modified-0, modified-1");
 		} finally {
 			await killServer(serverProcess, PORT);
-			// Clean up all test files
-			for (const file of testFiles) {
-				await FS.unlink(file.path);
-			}
-			await FS.unlink(mainFile);
+			if (tempDir) await tempDir.cleanup();
 		}
 	},
 	TIMEOUT,
@@ -758,8 +752,8 @@ test(
 	async () => {
 		const PORT = 13319;
 		let serverProcess;
+		let tempDir;
 
-		const testFile = join(TEST_TMP_DIR, "shovel-test-delete.ts");
 		const originalContent = `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
@@ -784,10 +778,11 @@ self.addEventListener("fetch", (event) => {
 });
 		`;
 
-		// Backup system to track what needs cleanup
-		const backups = {};
-
 		try {
+			// Create isolated temp directory
+			tempDir = await createTempDir();
+			const testFile = join(tempDir.dir, "app.ts");
+
 			await FS.writeFile(testFile, originalContent);
 
 			// Start development server
@@ -798,7 +793,6 @@ self.addEventListener("fetch", (event) => {
 			expect(initialResponse).toBe("<div>Original</div>");
 
 			// Delete the file
-			backups[testFile] = originalContent;
 			await FS.unlink(testFile);
 
 			// Wait a bit
@@ -806,7 +800,6 @@ self.addEventListener("fetch", (event) => {
 
 			// Recreate the file with different content
 			await FS.writeFile(testFile, recreatedContent);
-			backups[testFile] = null; // Mark for deletion
 
 			// Wait for reload
 			const finalResponse = await waitForContentChange(
@@ -815,15 +808,8 @@ self.addEventListener("fetch", (event) => {
 			);
 			expect(finalResponse).toBe("<div>Recreated</div>");
 		} finally {
-			// Restore original files
-			for (const [file, content] of Object.entries(backups)) {
-				if (content) {
-					await FS.writeFile(file, content);
-				} else {
-					await FS.unlink(file);
-				}
-			}
 			await killServer(serverProcess, PORT);
+			if (tempDir) await tempDir.cleanup();
 		}
 	},
 	TIMEOUT,
@@ -834,8 +820,8 @@ test(
 	async () => {
 		const PORT = 13320;
 		let serverProcess;
+		let tempDir;
 
-		const testFile = join(TEST_TMP_DIR, "shovel-test-syntax.ts");
 		const validContent = `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
@@ -861,6 +847,10 @@ self.addEventListener("fetch", (event) => {
 		`;
 
 		try {
+			// Create isolated temp directory
+			tempDir = await createTempDir();
+			const testFile = join(tempDir.dir, "app.ts");
+
 			await FS.writeFile(testFile, validContent);
 
 			// Start development server
@@ -891,7 +881,7 @@ self.addEventListener("fetch", (event) => {
 			expect(recoveredResponse).toBe("<div>Fixed</div>");
 		} finally {
 			await killServer(serverProcess, PORT);
-			await FS.unlink(testFile);
+			if (tempDir) await tempDir.cleanup();
 		}
 	},
 	TIMEOUT,
@@ -902,8 +892,7 @@ test(
 	async () => {
 		const PORT = 13321;
 		let serverProcess;
-
-		const largeFile = join(TEST_TMP_DIR, "shovel-test-large.ts");
+		let tempDir;
 
 		// Generate a large file with many variables (but still valid TypeScript)
 		const generateLargeContent = (variableCount) => {
@@ -932,6 +921,10 @@ self.addEventListener("fetch", (event) => {
 		const largeContent = generateLargeContent(50); // 50 variables
 
 		try {
+			// Create isolated temp directory
+			tempDir = await createTempDir();
+			const largeFile = join(tempDir.dir, "app.ts");
+
 			await FS.writeFile(largeFile, largeContent);
 
 			// Start development server
@@ -954,8 +947,8 @@ self.addEventListener("fetch", (event) => {
 			);
 			expect(updatedResponse).toBe("<div>Variables: Modified</div>");
 		} finally {
-			await FS.unlink(largeFile);
 			await killServer(serverProcess, PORT);
+			if (tempDir) await tempDir.cleanup();
 		}
 	},
 	TIMEOUT,
@@ -966,8 +959,8 @@ test(
 	async () => {
 		const PORT = 13322;
 		let serverProcess;
+		let tempDir;
 
-		const cacheFile = join(TEST_TMP_DIR, "shovel-test-cache.ts");
 		const cacheContent = (timestamp) => `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
@@ -981,6 +974,10 @@ self.addEventListener("fetch", (event) => {
 		`;
 
 		try {
+			// Create isolated temp directory
+			tempDir = await createTempDir();
+			const cacheFile = join(tempDir.dir, "app.ts");
+
 			await FS.writeFile(cacheFile, cacheContent("Date.now()"));
 
 			// Start development server
@@ -1018,8 +1015,8 @@ self.addEventListener("fetch", (event) => {
 				expect(result.value).toBe(undefined);
 			});
 		} finally {
-			await FS.unlink(cacheFile);
 			await killServer(serverProcess, PORT);
+			if (tempDir) await tempDir.cleanup();
 		}
 	},
 	TIMEOUT,
@@ -1030,8 +1027,8 @@ test(
 	async () => {
 		const PORT = 13323;
 		let serverProcess;
+		let tempDir;
 
-		const jsFile = join(TEST_TMP_DIR, "shovel-test-extension.js");
 		const jsContent = `
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
@@ -1057,6 +1054,10 @@ self.addEventListener("fetch", (event) => {
 		`;
 
 		try {
+			// Create isolated temp directory
+			tempDir = await createTempDir();
+			const jsFile = join(tempDir.dir, "app.js");
+
 			await FS.writeFile(jsFile, jsContent);
 
 			// Start development server with JS file
@@ -1077,7 +1078,7 @@ self.addEventListener("fetch", (event) => {
 			expect(updatedResponse).toBe("<div>JavaScript modified!</div>");
 		} finally {
 			await killServer(serverProcess, PORT);
-			await FS.unlink(jsFile);
+			if (tempDir) await tempDir.cleanup();
 		}
 	},
 	TIMEOUT,
