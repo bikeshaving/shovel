@@ -66,7 +66,10 @@ async function createTempFixture(fixtureName) {
 	const tempFile = join(tempDir, fixtureName);
 	const sourceFile = join("./test/fixtures", fixtureName);
 
-	await FS.copyFile(sourceFile, tempFile);
+	// Use readFile + writeFile instead of copyFile for more reliable
+	// inotify event generation on Linux
+	const content = await FS.readFile(sourceFile, "utf-8");
+	await FS.writeFile(tempFile, content);
 
 	// Symlink node_modules so fixtures can import dependencies
 	const nodeModulesSource = join(process.cwd(), "node_modules");
