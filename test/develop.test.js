@@ -86,7 +86,10 @@ async function createTempFixture(fixtureName) {
 		async addDependency(dependencyFixture) {
 			const depFile = join(this.dir, dependencyFixture);
 			const sourceFile = join("./test/fixtures", dependencyFixture);
-			await FS.copyFile(sourceFile, depFile);
+			// Use readFile + writeFile instead of copyFile for more reliable
+			// inotify event generation on Linux
+			const content = await FS.readFile(sourceFile, "utf-8");
+			await FS.writeFile(depFile, content);
 			return depFile;
 		},
 		async copyDependencyFrom(dependencyFixture, sourceFixture) {
