@@ -406,6 +406,9 @@ test(
 				"<marquee>Hello from dependency-hello.ts</marquee>",
 			);
 
+			// Give esbuild's watcher time to fully initialize after the first build
+			await new Promise((resolve) => setTimeout(resolve, 500));
+
 			// Modify the dependency file (simulate dependency change)
 			await tempFixture.copyDependencyFrom(
 				"server-dependency-hello.ts",
@@ -450,6 +453,9 @@ test(
 			expect(initialResponse).toBe(
 				'<marquee behavior="alternate">Hello from dependency-hello.ts</marquee>',
 			);
+
+			// Give esbuild's watcher time to fully initialize after the first build
+			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			// Modify the dependency file
 			await tempFixture.copyDependencyFrom(
@@ -684,6 +690,9 @@ self.addEventListener("fetch", (event) => {
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toContain("Values: original-0, original-1");
 
+			// Give esbuild's watcher time to fully initialize after the first build
+			await new Promise((resolve) => setTimeout(resolve, 500));
+
 			// Modify all files concurrently
 			const modifyPromises = testFiles.map((file) =>
 				FS.writeFile(file.path, file.modified),
@@ -792,6 +801,9 @@ self.addEventListener("fetch", (event) => {
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>Original</div>");
 
+			// Give esbuild's watcher time to fully initialize after the first build
+			await new Promise((resolve) => setTimeout(resolve, 500));
+
 			// Delete the file
 			await FS.unlink(testFile);
 
@@ -859,6 +871,9 @@ self.addEventListener("fetch", (event) => {
 			// Wait for initial response
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>Valid</div>");
+
+			// Give esbuild's watcher time to fully initialize after the first build
+			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			// Write syntax error
 			await FS.writeFile(testFile, invalidContent);
@@ -933,6 +948,9 @@ self.addEventListener("fetch", (event) => {
 			// Wait for initial response
 			const response = await waitForServer(PORT, serverProcess);
 			expect(response).toBe("<div>Variables: 50</div>");
+
+			// Give esbuild's watcher time to fully initialize after the first build
+			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			// Modify the large file
 			const modifiedContent = largeContent.replace(
@@ -1066,6 +1084,9 @@ self.addEventListener("fetch", (event) => {
 			// Wait for initial response
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>JavaScript file!</div>");
+
+			// Give esbuild's watcher time to fully initialize after the first build
+			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			// Modify the JS file
 			await FS.writeFile(jsFile, modifiedJsContent);
