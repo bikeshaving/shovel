@@ -339,13 +339,17 @@ export class Watcher {
 
 				try {
 					const watcher = watch(dir, {persistent: false}, (event, filename) => {
-						// Check if the changed file is one we care about
 						const entry = this.#dirWatchers.get(dir);
-						if (!entry || !filename) return;
+						if (!entry) return;
 
-						if (entry.files.has(filename)) {
+						// On Linux, filename can sometimes be null even for real changes.
+						// If we have a filename, check if it's one of our tracked files.
+						// If filename is null, trigger rebuild anyway (esbuild will dedupe).
+						const isTrackedFile = filename ? entry.files.has(filename) : true;
+
+						if (isTrackedFile) {
 							logger.debug("Native watcher detected change: {file}", {
-								file: join(dir, filename),
+								file: filename ? join(dir, filename) : dir,
 							});
 							// Trigger rebuild - esbuild dedupes concurrent rebuilds
 							this.#ctx?.rebuild().catch((err) => {
