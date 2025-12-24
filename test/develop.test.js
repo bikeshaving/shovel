@@ -8,15 +8,14 @@ import {mkdtemp} from "fs/promises";
 import {configure, getConsoleSink} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 
-// Configure LogTape for tests so watcher debug logs appear
+// Configure LogTape for tests so debug logs appear
 await configure({
 	reset: true,
 	contextLocalStorage: new AsyncContext.Variable(),
 	sinks: {console: getConsoleSink()},
 	loggers: [
 		{category: ["logtape", "meta"], sinks: []},
-		{category: ["watcher"], level: "debug", sinks: ["console"]},
-		{category: ["assets"], level: "debug", sinks: ["console"]},
+		{category: ["shovel"], level: "debug", sinks: ["console"]},
 	],
 });
 
