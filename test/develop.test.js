@@ -8,14 +8,15 @@ import {mkdtemp} from "fs/promises";
 import {configure, getConsoleSink} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 
-// Configure LogTape for tests so debug logs appear
+// Configure LogTape for tests (warnings only by default)
+// Debug logging is controlled per-test via shovel.json in temp directories
 await configure({
 	reset: true,
 	contextLocalStorage: new AsyncContext.Variable(),
 	sinks: {console: getConsoleSink()},
 	loggers: [
 		{category: ["logtape", "meta"], sinks: []},
-		{category: ["shovel"], level: "debug", sinks: ["console"]},
+		{category: ["shovel"], level: "warning", sinks: ["console"]},
 	],
 });
 
@@ -36,14 +37,15 @@ async function createTempDir() {
 	const nodeModulesLink = join(tempDir, "node_modules");
 	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
 
-	// Create shovel.json with debug logging enabled
-	// Console sink is always available implicitly, just need to configure logger
+	// Create shovel.json with logging config
+	// Use DEBUG_TESTS=debug to enable debug logs (useful for diagnosing CI failures)
+	const logLevel = process.env.DEBUG_TESTS || "warning";
 	await FS.writeFile(
 		join(tempDir, "shovel.json"),
 		JSON.stringify(
 			{
 				logging: {
-					loggers: [{category: "shovel", level: "debug", sinks: ["console"]}],
+					loggers: [{category: "shovel", level: logLevel, sinks: ["console"]}],
 				},
 			},
 			null,

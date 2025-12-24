@@ -13,7 +13,13 @@ import {createClient} from "redis";
 const REDIS_URL = import.meta.env.REDIS_URL || "redis://localhost:6379";
 
 async function isRedisAvailable(url: string): Promise<boolean> {
-	const client = createClient({url});
+	const client = createClient({
+		url,
+		socket: {
+			connectTimeout: 2000,
+			reconnectStrategy: false,
+		},
+	});
 	try {
 		await client.connect();
 		await client.ping();
