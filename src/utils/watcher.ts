@@ -49,6 +49,7 @@ export class Watcher {
 	#currentEntrypoint: string;
 	#configWatchers: FSWatcher[];
 	#dirWatchers: Map<string, {watcher: FSWatcher; files: Set<string>}>;
+	#userEntryPath: string;
 
 	constructor(options: WatcherOptions) {
 		this.#options = options;
@@ -57,6 +58,7 @@ export class Watcher {
 		this.#currentEntrypoint = "";
 		this.#configWatchers = [];
 		this.#dirWatchers = new Map();
+		this.#userEntryPath = "";
 	}
 
 	/**
@@ -65,6 +67,7 @@ export class Watcher {
 	 */
 	async start(): Promise<{success: boolean; entrypoint: string}> {
 		const entryPath = resolve(this.#projectRoot, this.#options.entrypoint);
+		this.#userEntryPath = entryPath; // Store for native file watching
 		const outputDir = resolve(this.#projectRoot, this.#options.outDir);
 
 		// Ensure output directory structure exists
@@ -303,11 +306,28 @@ export class Watcher {
 		// Skip virtual files (<stdin>, <external>:, shovel:, etc.)
 		const newDirFiles = new Map<string, Set<string>>();
 
+		// Always include the user entry file directory explicitly
+		// This handles cases where the entry file is outside the project root
+		// (e.g., in /tmp for tests) and metafile paths don't resolve correctly
+		if (this.#userEntryPath) {
+			const entryDir = dirname(this.#userEntryPath);
+			const entryFile = basename(this.#userEntryPath);
+			if (!newDirFiles.has(entryDir)) {
+				newDirFiles.set(entryDir, new Set());
+			}
+			newDirFiles.get(entryDir)!.add(entryFile);
+			logger.debug("Explicitly watching user entry file: {path}", {
+				path: this.#userEntryPath,
+			});
+		}
+
 		for (const inputPath of Object.keys(metafile.inputs)) {
 			if (inputPath.startsWith("<") || inputPath.startsWith("shovel")) {
 				continue;
 			}
 
+			// inputPath is relative to absWorkingDir (project root)
+			// For paths like "../../../tmp/foo.ts", resolve() handles them correctly
 			const fullPath = resolve(this.#projectRoot, inputPath);
 			const dir = dirname(fullPath);
 			const file = basename(fullPath);
@@ -373,10 +393,16 @@ export class Watcher {
 			(sum, entry) => sum + entry.files.size,
 			0,
 		);
+
+		// Log which directories we're watching (useful for debugging)
+		const watchedDirs = Array.from(this.#dirWatchers.keys());
 		logger.debug(
 			"Watching {fileCount} source files in {dirCount} directories with native fs.watch",
 			{fileCount: totalFiles, dirCount: this.#dirWatchers.size},
 		);
+		logger.debug("Watched directories: {dirs}", {
+			dirs: watchedDirs.slice(0, 5).join(", ") + (watchedDirs.length > 5 ? "..." : ""),
+		});
 	}
 
 	/**
