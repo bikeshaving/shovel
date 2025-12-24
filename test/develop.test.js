@@ -701,12 +701,12 @@ self.addEventListener("fetch", (event) => {
 			);
 			expect(updatedResponse).toContain("Values: modified-0, modified-1");
 		} finally {
+			await killServer(serverProcess, PORT);
 			// Clean up all test files
 			for (const file of testFiles) {
 				await FS.unlink(file.path);
 			}
 			await FS.unlink(mainFile);
-			await killServer(serverProcess, PORT);
 		}
 	},
 	TIMEOUT,
@@ -891,8 +891,8 @@ self.addEventListener("fetch", (event) => {
 			);
 			expect(recoveredResponse).toBe("<div>Fixed</div>");
 		} finally {
-			await FS.unlink(testFile);
 			await killServer(serverProcess, PORT);
+			await FS.unlink(testFile);
 		}
 	},
 	TIMEOUT,
@@ -1077,8 +1077,8 @@ self.addEventListener("fetch", (event) => {
 			);
 			expect(updatedResponse).toBe("<div>JavaScript modified!</div>");
 		} finally {
-			await FS.unlink(jsFile);
 			await killServer(serverProcess, PORT);
+			await FS.unlink(jsFile);
 		}
 	},
 	TIMEOUT,
