@@ -13,6 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Increase inotify watch limit for esbuild watch mode tests
+      # Default is 8192 which gets exhausted when running multiple file watcher tests
+      - name: Increase inotify watch limit
+        run: |
+          echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf
+          sudo sysctl -p
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
