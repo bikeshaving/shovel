@@ -2,9 +2,10 @@
  * Echo - HTTP Request Echo API
  * Built with Shovel using the Router
  */
-/* eslint-disable no-console -- Example code uses console for demonstration */
 
 import {Router} from "@b9g/router";
+
+const logger = self.loggers.get("echo");
 
 const HOMEPAGE_HTML = `
 <!DOCTYPE html>
@@ -377,11 +378,11 @@ router.use(async function* (request) {
 
 // ServiceWorker event handlers
 self.addEventListener("install", () => {
-	console.info("[Echo] ServiceWorker installed");
+	logger.info`ServiceWorker installed`;
 });
 
 self.addEventListener("activate", () => {
-	console.info("[Echo] ServiceWorker activated");
+	logger.info`ServiceWorker activated`;
 });
 
 self.addEventListener("fetch", (event) => {
