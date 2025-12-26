@@ -672,15 +672,16 @@ self.addEventListener("fetch", (event) => {
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toContain("Values: original-0, original-1");
 
-			// Give esbuild's watcher time to fully initialize after the first build
-			await new Promise((resolve) => setTimeout(resolve, 500));
+			// Verify watcher is working by modifying one file first
+			await FS.writeFile(testFiles[0].path, testFiles[0].modified);
+			await waitForContentChange(PORT, "modified-0", {contains: true});
 
-			// Modify all files in quick succession (not truly concurrent to avoid watcher thrashing)
-			for (const file of testFiles) {
-				await FS.writeFile(file.path, file.modified);
-			}
+			// Now modify remaining files concurrently
+			await Promise.all(
+				testFiles.slice(1).map((file) => FS.writeFile(file.path, file.modified)),
+			);
 
-			// Wait for reload
+			// Wait for all changes to be reflected
 			const updatedResponse = await waitForContentChange(
 				PORT,
 				"Values: modified-0, modified-1",
