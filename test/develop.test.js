@@ -40,13 +40,15 @@ async function createTempDir() {
 	const nodeModulesLink = join(tempDir, "node_modules");
 	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
 
-	// Create shovel.json with logging config (warnings only for tests)
+	// Create shovel.json with logging config
+	// Use DEBUG_TESTS env var to enable debug logging for troubleshooting
+	const logLevel = process.env.DEBUG_TESTS ? "debug" : "warning";
 	await FS.writeFile(
 		join(tempDir, "shovel.json"),
 		JSON.stringify(
 			{
 				logging: {
-					loggers: [{category: "shovel", level: "warning", sinks: ["console"]}],
+					loggers: [{category: "shovel", level: logLevel, sinks: ["console"]}],
 				},
 			},
 			null,
