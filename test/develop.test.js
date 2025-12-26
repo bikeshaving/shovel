@@ -678,7 +678,9 @@ self.addEventListener("fetch", (event) => {
 
 			// Now modify remaining files concurrently
 			await Promise.all(
-				testFiles.slice(1).map((file) => FS.writeFile(file.path, file.modified)),
+				testFiles
+					.slice(1)
+					.map((file) => FS.writeFile(file.path, file.modified)),
 			);
 
 			// Wait for all changes to be reflected
