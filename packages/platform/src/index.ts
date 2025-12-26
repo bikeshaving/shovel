@@ -807,6 +807,8 @@ export class ServiceWorkerPool {
 	#cacheStorage?: CacheStorage & {
 		handleMessage?: (worker: Worker, message: any) => Promise<void>;
 	};
+	// Waiters for when workers become available (used during reload)
+	#workerAvailableWaiters: Array<() => void>;
 
 	constructor(
 		options: WorkerPoolOptions = {},
@@ -818,6 +820,7 @@ export class ServiceWorkerPool {
 		this.#requestID = 0;
 		this.#pendingRequests = new Map();
 		this.#pendingWorkerReady = new Map();
+		this.#workerAvailableWaiters = [];
 		this.#appEntrypoint = appEntrypoint;
 		this.#cacheStorage = cacheStorage;
 		this.#options = {
@@ -893,12 +896,23 @@ export class ServiceWorkerPool {
 			}
 		});
 
-		this.#workers.push(worker);
 		logger.info("Waiting for worker ready signal", {entrypoint});
 
 		await readyPromise;
 		this.#pendingWorkerReady.delete(worker);
+
+		// Only add worker to the pool AFTER it's ready to handle requests
+		// This prevents requests being dispatched to workers that haven't
+		// finished initializing their ServiceWorker code
+		this.#workers.push(worker);
 		logger.info("Worker ready", {entrypoint});
+
+		// Notify any waiters that a worker is now available
+		const waiters = this.#workerAvailableWaiters;
+		this.#workerAvailableWaiters = [];
+		for (const resolve of waiters) {
+			resolve();
+		}
 
 		return worker;
 	}
@@ -983,6 +997,14 @@ export class ServiceWorkerPool {
 	 * Handle HTTP request using round-robin worker selection
 	 */
 	async handleRequest(request: Request): Promise<Response> {
+		// Wait for workers to be available (e.g., during reload)
+		if (this.#workers.length === 0) {
+			logger.debug("No workers available, waiting for worker to be ready");
+			await new Promise<void>((resolve) => {
+				this.#workerAvailableWaiters.push(resolve);
+			});
+		}
+
 		const worker = this.#workers[this.#currentWorker];
 		logger.debug("Dispatching to worker", {
 			workerIndex: this.#currentWorker + 1,
