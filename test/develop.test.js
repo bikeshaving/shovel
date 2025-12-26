@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-properties -- Tests need process.cwd/env */
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
-import {test, expect, beforeAll, afterAll} from "bun:test";
+import {test, expect} from "bun:test";
 import {join, dirname as _dirname} from "path";
 import {tmpdir} from "os";
 import {mkdtemp} from "fs/promises";
@@ -38,8 +38,8 @@ async function createTempDir() {
 	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
 
 	// Create shovel.json with logging config
-	// Use DEBUG_TESTS=debug to enable debug logs (useful for diagnosing CI failures)
-	const logLevel = process.env.DEBUG_TESTS || "warning";
+	// Use LOG_LEVEL=debug to enable debug logs (useful for diagnosing CI failures)
+	const logLevel = process.env.LOG_LEVEL || "warning";
 	await FS.writeFile(
 		join(tempDir, "shovel.json"),
 		JSON.stringify(
@@ -135,7 +135,7 @@ function startDevServer(fixture, port, extraArgs = []) {
 
 	serverProcess.stdout.on("data", (data) => {
 		_stdoutOutput += data.toString();
-		if (process.env.DEBUG_TESTS) {
+		if (process.env.LOG_LEVEL) {
 			console.info("[STDOUT]", data.toString());
 		}
 	});
@@ -207,24 +207,24 @@ async function waitForServer(port, serverProcess, timeoutMs = 8000) {
 
 		try {
 			const response = await fetch(`http://localhost:${port}`);
-			if (process.env.DEBUG_TESTS) {
+			if (process.env.LOG_LEVEL) {
 				console.info(`[HTTP] Got response: ${response.status}`);
 			}
 			if (response.ok || response.status < 500) {
 				const text = await response.text();
-				if (process.env.DEBUG_TESTS) {
+				if (process.env.LOG_LEVEL) {
 					console.info(`[HTTP] Got text response, length: ${text.length}`);
 				}
 				return text;
 			} else {
 				// Log 500 errors to help debug
 				const errorBody = await response.text();
-				if (process.env.DEBUG_TESTS) {
+				if (process.env.LOG_LEVEL) {
 					console.error(`[HTTP] 500 error response: ${errorBody}`);
 				}
 			}
 		} catch (err) {
-			if (process.env.DEBUG_TESTS && Date.now() - startTime > 1000) {
+			if (process.env.LOG_LEVEL && Date.now() - startTime > 1000) {
 				console.error(
 					`[HTTP] Fetch error after ${Date.now() - startTime}ms:`,
 					err.message,
@@ -1202,7 +1202,7 @@ self.addEventListener("fetch", (event) => {
 			let stderrOutput = "";
 			serverProcess.stderr.on("data", (data) => {
 				stderrOutput += data.toString();
-				if (process.env.DEBUG_TESTS) {
+				if (process.env.LOG_LEVEL) {
 					console.error("[STDERR]", data.toString());
 				}
 			});

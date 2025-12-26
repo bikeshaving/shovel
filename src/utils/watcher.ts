@@ -401,7 +401,9 @@ export class Watcher {
 			{fileCount: totalFiles, dirCount: this.#dirWatchers.size},
 		);
 		logger.debug("Watched directories: {dirs}", {
-			dirs: watchedDirs.slice(0, 5).join(", ") + (watchedDirs.length > 5 ? "..." : ""),
+			dirs:
+				watchedDirs.slice(0, 5).join(", ") +
+				(watchedDirs.length > 5 ? "..." : ""),
 		});
 	}
 

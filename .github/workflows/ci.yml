@@ -12,7 +12,7 @@ jobs:
 
     services:
       redis:
-        image: redis:7
+        image: redis:7-alpine
         ports:
           - 6379:6379
         options: >-
@@ -50,6 +50,12 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Typecheck
+        run: tsc --noEmit
+
+      - name: Lint
+        run: bun run lint
 
       - name: Test
         run: bun test
