@@ -42,4 +42,4 @@ jobs:
         run: bun run build
 
       - name: Test
-        run: bun test
+        run: DEBUG_TESTS=debug bun test
