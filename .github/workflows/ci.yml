@@ -24,8 +24,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout WPT submodule
-        run: git submodule update --init packages/shovel-wpt/wpt
+      - name: Checkout WPT submodule (sparse)
+        run: |
+          git submodule init packages/shovel-wpt/wpt
+          git clone --no-checkout --depth=1 $(git config submodule.packages/shovel-wpt/wpt.url) packages/shovel-wpt/wpt
+          cd packages/shovel-wpt/wpt
+          git sparse-checkout set --no-cone '/*' '!/*/' '/FileAPI/' '/cookiestore/' '/fs/' '/resources/'
+          cd -
+          git submodule absorbgitdirs packages/shovel-wpt/wpt
+          git submodule update --init --force packages/shovel-wpt/wpt
 
       # Increase inotify watch limit for esbuild watch mode tests
       # Default is 8192 which gets exhausted when running multiple file watcher tests
