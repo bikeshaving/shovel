@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Benchmark: Radix Tree vs MatchPattern regex for route matching
  *

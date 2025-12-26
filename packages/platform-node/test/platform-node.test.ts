@@ -4,6 +4,9 @@ import {MemoryDirectory} from "@b9g/filesystem/memory";
 import {tmpdir} from "os";
 import {join} from "path";
 import {mkdtempSync, rmSync} from "fs";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "platform-node"]);
 
 describe("NodePlatform", () => {
 	let platform: NodePlatform;
@@ -20,8 +23,8 @@ describe("NodePlatform", () => {
 		await platform.dispose();
 		try {
 			rmSync(tempDir, {recursive: true, force: true});
-		} catch {
-			// Cleanup may fail in some environments
+		} catch (err) {
+			logger.debug`Cleanup of ${tempDir} failed: ${err}`;
 		}
 	});
 

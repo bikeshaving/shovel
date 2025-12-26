@@ -5,7 +5,7 @@ import {test, expect} from "bun:test";
 import {join, dirname as _dirname} from "path";
 import {tmpdir} from "os";
 import {mkdtemp} from "fs/promises";
-import {configure, getConsoleSink} from "@logtape/logtape";
+import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
 
 // Configure LogTape for tests (warnings only by default)
@@ -17,8 +17,11 @@ await configure({
 	loggers: [
 		{category: ["logtape", "meta"], sinks: []},
 		{category: ["shovel"], level: "warning", sinks: ["console"]},
+		{category: ["test"], level: "debug", sinks: ["console"]},
 	],
 });
+
+const logger = getLogger(["test", "develop"]);
 
 /**
  * Development server hot reload tests
@@ -37,15 +40,13 @@ async function createTempDir() {
 	const nodeModulesLink = join(tempDir, "node_modules");
 	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
 
-	// Create shovel.json with logging config
-	// Use LOG_LEVEL=debug to enable debug logs (useful for diagnosing CI failures)
-	const logLevel = process.env.LOG_LEVEL || "warning";
+	// Create shovel.json with logging config (warnings only for tests)
 	await FS.writeFile(
 		join(tempDir, "shovel.json"),
 		JSON.stringify(
 			{
 				logging: {
-					loggers: [{category: "shovel", level: logLevel, sinks: ["console"]}],
+					loggers: [{category: "shovel", level: "warning", sinks: ["console"]}],
 				},
 			},
 			null,
@@ -135,15 +136,10 @@ function startDevServer(fixture, port, extraArgs = []) {
 
 	serverProcess.stdout.on("data", (data) => {
 		_stdoutOutput += data.toString();
-		if (process.env.LOG_LEVEL) {
-			console.info("[STDOUT]", data.toString());
-		}
 	});
 
 	serverProcess.stderr.on("data", (data) => {
 		stderrOutput += data.toString();
-		// Always log stderr to help debug issues
-		console.error("[STDERR]", data.toString());
 	});
 
 	// If process exits early, it's likely an error
@@ -207,30 +203,13 @@ async function waitForServer(port, serverProcess, timeoutMs = 8000) {
 
 		try {
 			const response = await fetch(`http://localhost:${port}`);
-			if (process.env.LOG_LEVEL) {
-				console.info(`[HTTP] Got response: ${response.status}`);
-			}
 			if (response.ok || response.status < 500) {
-				const text = await response.text();
-				if (process.env.LOG_LEVEL) {
-					console.info(`[HTTP] Got text response, length: ${text.length}`);
-				}
-				return text;
-			} else {
-				// Log 500 errors to help debug
-				const errorBody = await response.text();
-				if (process.env.LOG_LEVEL) {
-					console.error(`[HTTP] 500 error response: ${errorBody}`);
-				}
+				return await response.text();
 			}
+			// 500 errors - server not ready yet, continue waiting
 		} catch (err) {
-			if (process.env.LOG_LEVEL && Date.now() - startTime > 1000) {
-				console.error(
-					`[HTTP] Fetch error after ${Date.now() - startTime}ms:`,
-					err.message,
-				);
-			}
 			// Server not ready yet, continue waiting
+			logger.debug`Waiting for server: ${err.message}`;
 		}
 
 		await new Promise((resolve) => setTimeout(resolve, 25));
@@ -271,8 +250,9 @@ async function waitForContentChange(
 			if (matches) {
 				return text;
 			}
-		} catch {
+		} catch (err) {
 			// Server not ready, continue waiting
+			logger.debug`Waiting for content: ${err.message}`;
 		}
 		await new Promise((resolve) => setTimeout(resolve, 50));
 	}
@@ -1202,9 +1182,6 @@ self.addEventListener("fetch", (event) => {
 			let stderrOutput = "";
 			serverProcess.stderr.on("data", (data) => {
 				stderrOutput += data.toString();
-				if (process.env.LOG_LEVEL) {
-					console.error("[STDERR]", data.toString());
-				}
 			});
 
 			serverProcess.on("exit", (code) => {

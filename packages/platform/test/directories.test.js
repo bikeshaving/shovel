@@ -4,6 +4,9 @@ import {tmpdir} from "os";
 import {join} from "path";
 import {NodeFSDirectory} from "@b9g/filesystem/node-fs.js";
 import {ShovelFetchEvent} from "../src/runtime.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "directories"]);
 
 /**
  * Directory storage architecture and self.directories API tests
@@ -23,8 +26,8 @@ async function cleanup(paths) {
 	for (const path of paths) {
 		try {
 			await FS.rm(path, {recursive: true, force: true});
-		} catch {
-			// Already removed
+		} catch (err) {
+			logger.debug`Cleanup of ${path} failed: ${err}`;
 		}
 	}
 }

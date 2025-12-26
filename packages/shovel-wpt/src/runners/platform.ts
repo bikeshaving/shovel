@@ -7,6 +7,9 @@
  */
 
 import {describe, test, expect, beforeAll, afterAll, afterEach} from "bun:test";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "wpt", "platform"]);
 
 /**
  * Platform interface (mirrors @b9g/platform)
@@ -217,8 +220,8 @@ export function runPlatformTests(
 					if (server) {
 						try {
 							await server.close();
-						} catch {
-							// Ignore close errors
+						} catch (err) {
+							logger.debug`Server close error: ${err}`;
 						}
 						server = null;
 					}
@@ -317,8 +320,8 @@ export function runPlatformTests(
 					if (sw) {
 						try {
 							await sw.dispose();
-						} catch {
-							// Ignore dispose errors
+						} catch (err) {
+							logger.debug`ServiceWorker dispose error: ${err}`;
 						}
 						sw = null;
 					}
@@ -361,8 +364,8 @@ export function runPlatformTests(
 					if (sw) {
 						try {
 							await sw.dispose();
-						} catch {
-							// Ignore dispose errors
+						} catch (err) {
+							logger.debug`ServiceWorker globals dispose error: ${err}`;
 						}
 						sw = null;
 					}
@@ -374,7 +377,7 @@ export function runPlatformTests(
 					const data = await response.json();
 
 					if (!data.success) {
-						console.error("Cache test failed:", data);
+						logger.error`Cache test failed: ${data}`;
 					}
 					expect(data.canOpen).toBe(true);
 					expect(data.canPut).toBe(true);
@@ -389,7 +392,7 @@ export function runPlatformTests(
 					const data = await response.json();
 
 					if (!data.success) {
-						console.error("Directories test failed:", data);
+						logger.error`Directories test failed: ${data}`;
 					}
 					expect(data.canOpen).toBe(true);
 					expect(data.canWrite).toBe(true);
@@ -405,7 +408,7 @@ export function runPlatformTests(
 					const data = await response.json();
 
 					if (!data.success) {
-						console.error("CookieStore test failed:", data);
+						logger.error`CookieStore test failed: ${data}`;
 					}
 					expect(data.canGet).toBe(true);
 					expect(data.canReadFromRequest).toBe(true);

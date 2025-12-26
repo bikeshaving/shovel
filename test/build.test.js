@@ -4,6 +4,9 @@ import {tmpdir} from "os";
 import {join} from "path";
 import {test, expect} from "bun:test";
 import {buildForProduction} from "../src/commands/build.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "build"]);
 
 /**
  * Build system tests - comprehensive validation of production builds
@@ -36,8 +39,8 @@ async function cleanup(paths) {
 			} else {
 				await FS.unlink(path);
 			}
-		} catch {
-			// File/directory already removed
+		} catch (err) {
+			logger.debug`Cleanup of ${path} failed: ${err}`;
 		}
 	}
 }
@@ -47,7 +50,8 @@ async function fileExists(path) {
 	try {
 		await FS.access(path);
 		return true;
-	} catch {
+	} catch (_err) {
+		// ENOENT is expected when file doesn't exist
 		return false;
 	}
 }
@@ -163,7 +167,7 @@ self.addEventListener("fetch", (event) => {
 					expect(indexContent).toContain("CustomCacheStorage");
 				}
 			} catch (error) {
-				console.error(`Platform ${platform} failed:`, error);
+				logger.error`Platform ${platform} failed: ${error}`;
 				throw error;
 			}
 		}

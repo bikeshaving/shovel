@@ -5,6 +5,7 @@
  * entrypoint uses standard ServiceWorker APIs (install, activate, fetch)
  * but runs universally across all platforms.
  */
+/* eslint-disable no-console -- Example code uses console for demonstration */
 
 import {Router} from "@b9g/router";
 import {assets as assetsMiddleware} from "@b9g/assets/middleware";

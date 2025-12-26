@@ -2,7 +2,7 @@ import {test, expect, describe, beforeEach, afterEach} from "bun:test";
 import {Worker} from "../src/index.js";
 import {tmpdir} from "os";
 import {join} from "path";
-import {writeFileSync, unlinkSync, mkdtempSync} from "fs";
+import {writeFileSync, rmSync, mkdtempSync} from "fs";
 
 describe("Node Web Worker", () => {
 	let tempDir: string;
@@ -16,11 +16,7 @@ describe("Node Web Worker", () => {
 	afterEach(() => {
 		// Clean up any worker script
 		if (workerScript) {
-			try {
-				unlinkSync(workerScript);
-			} catch {
-				// File might not exist
-			}
+			rmSync(workerScript, {force: true});
 		}
 	});
 

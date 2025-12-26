@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Benchmark URLPattern implementations
  */

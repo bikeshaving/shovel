@@ -2,6 +2,7 @@
  * Echo - HTTP Request Echo API
  * Built with Shovel using the Router
  */
+/* eslint-disable no-console -- Example code uses console for demonstration */
 
 import {Router} from "@b9g/router";
 
@@ -190,7 +191,8 @@ async function parseBody(req: Request) {
 			const text = await req.text();
 			return text || null;
 		}
-	} catch {
+	} catch (_err) {
+		// Body parsing failed - return null to indicate no body
 		return null;
 	}
 }

@@ -556,8 +556,10 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 		if (pending) {
 			try {
 				await pending;
-			} catch {
-				// Open failed, nothing to close
+			} catch (err) {
+				// Open failed, nothing to close - error was already thrown to open() caller
+				getLogger(["shovel", "database"])
+					.debug`Skipping close for failed open of "${name}": ${err}`;
 				return;
 			}
 		}

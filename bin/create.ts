@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
 //bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
+/* eslint-disable no-console -- CLI app uses console for terminal output */
 
 import {intro, outro, text, select, confirm, spinner} from "@clack/prompts";
 import picocolors from "picocolors";

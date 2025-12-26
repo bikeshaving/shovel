@@ -12,6 +12,9 @@ import {
 	InternalServerError,
 	NotFound,
 } from "@b9g/http-errors";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["shovel", "router"]);
 
 // ============================================================================
 // TYPES
@@ -1052,7 +1055,7 @@ export class Router {
 		// Log the error in development for debugging
 		const isDev = import.meta.env?.MODE !== "production";
 		if (isDev && !isHTTPError(error)) {
-			console.error("[router] Unhandled error:", error);
+			logger.error`Unhandled error: ${error}`;
 		}
 
 		// Convert to HTTPError for consistent response format

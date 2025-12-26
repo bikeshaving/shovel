@@ -17,6 +17,9 @@ import {join} from "path";
 import {test, expect} from "bun:test";
 import {buildForProduction} from "../src/commands/build.js";
 import {spawn} from "child_process";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "e2e-bundling"]);
 
 const TIMEOUT = 15000; // 15 second timeout for build + run
 
@@ -47,8 +50,8 @@ async function cleanup(paths) {
 	for (const path of paths) {
 		try {
 			await FS.rm(path, {recursive: true, force: true});
-		} catch {
-			// Ignore cleanup errors
+		} catch (err) {
+			logger.debug`Cleanup of ${path} failed: ${err}`;
 		}
 	}
 }
@@ -781,8 +784,8 @@ console.log("ISOLATION_TEST_READY");
 			const serverNodeModules = join(outDir, "server", "node_modules");
 			try {
 				await FS.rm(serverNodeModules, {recursive: true, force: true});
-			} catch {
-				// May not exist
+			} catch (err) {
+				logger.debug`Removing server node_modules: ${err}`;
 			}
 
 			// Run the bundle in complete isolation
