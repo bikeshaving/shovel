@@ -24,6 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout WPT submodule
+        run: git submodule update --init packages/shovel-wpt/wpt
+
       # Increase inotify watch limit for esbuild watch mode tests
       # Default is 8192 which gets exhausted when running multiple file watcher tests
       - name: Increase inotify watch limit
@@ -42,4 +45,4 @@ jobs:
         run: bun run build
 
       - name: Test
-        run: DEBUG_TESTS=debug bun test
+        run: bun test
