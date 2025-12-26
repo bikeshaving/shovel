@@ -42,7 +42,7 @@ jobs:
         run: bun run build
 
       - name: Test develop.test.js only
-        run: DEBUG_TESTS=debug bun test test/develop.test.js --concurrency 1
+        run: bun test test/develop.test.js --concurrency 1
 
       - name: Test remaining tests
         run: bun test --ignore 'test/develop.test.js' --concurrency=1
