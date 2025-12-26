@@ -226,6 +226,10 @@ export class Watcher {
 							// Handle initial build
 							if (!this.#initialBuildComplete) {
 								this.#initialBuildComplete = true;
+								// Yield to the event loop to ensure inotify watches are
+								// fully registered before signaling readiness. Without this,
+								// file modifications immediately after start() may be missed.
+								await new Promise((resolve) => setTimeout(resolve, 0));
 								this.#initialBuildResolve?.({success, entrypoint: outputPath});
 							} else {
 								// Subsequent rebuilds triggered by watch
