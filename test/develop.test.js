@@ -675,11 +675,10 @@ self.addEventListener("fetch", (event) => {
 			// Give esbuild's watcher time to fully initialize after the first build
 			await new Promise((resolve) => setTimeout(resolve, 500));
 
-			// Modify all files concurrently
-			const modifyPromises = testFiles.map((file) =>
-				FS.writeFile(file.path, file.modified),
-			);
-			await Promise.all(modifyPromises);
+			// Modify all files in quick succession (not truly concurrent to avoid watcher thrashing)
+			for (const file of testFiles) {
+				await FS.writeFile(file.path, file.modified);
+			}
 
 			// Wait for reload
 			const updatedResponse = await waitForContentChange(
