@@ -901,6 +901,11 @@ export class ServiceWorkerPool {
 		await readyPromise;
 		this.#pendingWorkerReady.delete(worker);
 
+		// Yield to event loop to ensure worker's message handler is fully active.
+		// This works around a timing issue in Node.js worker_threads where the
+		// worker may post "ready" before its event loop is ready to receive messages.
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
 		// Only add worker to the pool AFTER it's ready to handle requests
 		// This prevents requests being dispatched to workers that haven't
 		// finished initializing their ServiceWorker code
