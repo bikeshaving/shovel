@@ -50,9 +50,11 @@ async function fileExists(path) {
 	try {
 		await FS.access(path);
 		return true;
-	} catch (_err) {
-		// ENOENT is expected when file doesn't exist
-		return false;
+	} catch (err) {
+		if (err.code === "ENOENT") {
+			return false;
+		}
+		throw err;
 	}
 }
 

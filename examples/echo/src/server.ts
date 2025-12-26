@@ -191,8 +191,8 @@ async function parseBody(req: Request) {
 			const text = await req.text();
 			return text || null;
 		}
-	} catch (_err) {
-		// Body parsing failed - return null to indicate no body
+	} catch (_err: unknown) {
+		// Body parsing failed (invalid JSON, wrong content-type, etc.)
 		return null;
 	}
 }

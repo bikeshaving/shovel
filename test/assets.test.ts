@@ -21,9 +21,11 @@ async function pathExists(path: string): Promise<boolean> {
 	try {
 		await access(path);
 		return true;
-	} catch (_err: unknown) {
-		// ENOENT is expected when path doesn't exist
-		return false;
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+			return false;
+		}
+		throw err;
 	}
 }
 
