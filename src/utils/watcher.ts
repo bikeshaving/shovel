@@ -217,6 +217,8 @@ export class Watcher {
 							// Update native file watchers based on metafile inputs
 							// This provides instant file change detection via inotify/fsevents
 							// as a complement to esbuild's polling-based watch mode
+							// IMPORTANT: Must complete before resolving initial build promise
+							// so that file watchers are ready when start() returns
 							if (result.metafile) {
 								this.#updateSourceWatchers(result.metafile);
 							}
@@ -224,6 +226,9 @@ export class Watcher {
 							// Handle initial build
 							if (!this.#initialBuildComplete) {
 								this.#initialBuildComplete = true;
+								// Small delay to ensure fs.watch callbacks are registered
+								// before we signal that watching is ready
+								await new Promise((resolve) => setTimeout(resolve, 50));
 								this.#initialBuildResolve?.({success, entrypoint: outputPath});
 							} else {
 								// Subsequent rebuilds triggered by watch

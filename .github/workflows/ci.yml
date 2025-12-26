@@ -59,5 +59,3 @@ jobs:
 
       - name: Test
         run: bun test
-        env:
-          DEBUG_TESTS: "1"
