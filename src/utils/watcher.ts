@@ -226,9 +226,6 @@ export class Watcher {
 							// Handle initial build
 							if (!this.#initialBuildComplete) {
 								this.#initialBuildComplete = true;
-								// Small delay to ensure fs.watch callbacks are registered
-								// before we signal that watching is ready
-								await new Promise((resolve) => setTimeout(resolve, 50));
 								this.#initialBuildResolve?.({success, entrypoint: outputPath});
 							} else {
 								// Subsequent rebuilds triggered by watch
