@@ -279,7 +279,7 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(
 				{
 					caches: {
-						sessions: {ttl: 3600}, // Only override ttl, not module
+						sessions: {TTL: 3600}, // Only override TTL, not module
 					},
 				},
 				{
@@ -343,10 +343,7 @@ describe("generateConfigModule", () => {
 				},
 			};
 
-			const module = generateConfigModule(config, {
-				REDIS_URL: "redis://localhost",
-				REDIS_PASSWORD: "secret123",
-			});
+			const module = generateConfigModule(config, {});
 
 			// Secrets should NOT be baked in
 			expect(module).not.toContain("secret123");
@@ -366,7 +363,7 @@ describe("generateConfigModule", () => {
 				},
 			};
 
-			const module = generateConfigModule(config, {REDIS_URL: undefined});
+			const module = generateConfigModule(config, {});
 
 			// Should have env reference with fallback
 			expect(module).toContain("process.env.REDIS_URL");
@@ -393,14 +390,7 @@ describe("generateConfigModule", () => {
 				},
 			};
 
-			const module = generateConfigModule(config, {
-				PORT: "8080",
-				HOST: "0.0.0.0",
-				REDIS_URL: "redis://:password@redis.example.com:6379",
-				S3_BUCKET: "production-bucket",
-				AWS_ACCESS_KEY: "AKIAIOSFODNN7EXAMPLE",
-				AWS_SECRET_KEY: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-			});
+			const module = generateConfigModule(config, {});
 
 			// None of the actual env values should appear
 			expect(module).not.toContain("8080");
@@ -583,7 +573,9 @@ describe("generateStorageTypes", () => {
 			},
 		);
 
-		expect(result).toContain('type ValidDirectoryName = "server" | "public" | "tmp";');
+		expect(result).toContain(
+			'type ValidDirectoryName = "server" | "public" | "tmp";',
+		);
 	});
 
 	it("includes platform defaults in cache types", () => {
@@ -626,6 +618,6 @@ describe("generateStorageTypes", () => {
 		expect(result).toContain('"uploads"');
 		expect(result).toContain('"tmp"');
 		// All should be in the union
-		expect(result).toContain('type ValidDirectoryName =');
+		expect(result).toContain("type ValidDirectoryName =");
 	});
 });

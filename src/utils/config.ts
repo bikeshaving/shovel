@@ -933,6 +933,10 @@ export function generateConfigModule(
 		return placeholder;
 	};
 
+	// Track which imports have been added to avoid duplicates
+	// Maps import key (module:export) to the variable name used
+	const addedImports = new Map<string, string>();
+
 	// Helper to generate import and placeholder for a module/export config
 	const processModule = (
 		modulePath: string | undefined,
@@ -944,7 +948,18 @@ export function generateConfigModule(
 
 		const varName = `${type}_${sanitizeVarName(name)}`;
 		const actualExport = exportName || "default";
+		// Key by module+export to share imports across different names using same class
+		const importKey = `${modulePath}:${actualExport}`;
 
+		// Check if we already have this import
+		const existingVarName = addedImports.get(importKey);
+		if (existingVarName) {
+			// Reuse the existing import's variable name
+			return createPlaceholder(existingVarName);
+		}
+
+		// First time seeing this import - add it
+		addedImports.set(importKey, varName);
 		if (actualExport === "default") {
 			imports.push(`import ${varName} from ${JSON.stringify(modulePath)};`);
 		} else {
@@ -1049,7 +1064,10 @@ export function generateConfigModule(
 		// User config properties override platform defaults, but missing properties are preserved
 		const platformCaches = platformDefaults.caches || {};
 		const userCaches = rawConfig.caches || {};
-		const allCacheNames = new Set([...Object.keys(platformCaches), ...Object.keys(userCaches)]);
+		const allCacheNames = new Set([
+			...Object.keys(platformCaches),
+			...Object.keys(userCaches),
+		]);
 		if (allCacheNames.size > 0) {
 			const caches: Record<string, unknown> = {};
 			for (const name of allCacheNames) {
@@ -1077,7 +1095,10 @@ export function generateConfigModule(
 		// User config properties override platform defaults, but missing properties are preserved
 		const platformDirectories = platformDefaults.directories || {};
 		const userDirectories = rawConfig.directories || {};
-		const allDirectoryNames = new Set([...Object.keys(platformDirectories), ...Object.keys(userDirectories)]);
+		const allDirectoryNames = new Set([
+			...Object.keys(platformDirectories),
+			...Object.keys(userDirectories),
+		]);
 		if (allDirectoryNames.size > 0) {
 			const directories: Record<string, unknown> = {};
 			for (const name of allDirectoryNames) {

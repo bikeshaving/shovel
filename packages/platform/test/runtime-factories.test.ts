@@ -11,7 +11,11 @@ import BunDriver from "@b9g/zen/bun";
 import {MemoryCache} from "@b9g/cache/memory";
 import {MemoryDirectory} from "@b9g/filesystem/memory";
 import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
-import {getLogger, getConsoleSink, reset as resetLogtape} from "@logtape/logtape";
+import {
+	getLogger,
+	getConsoleSink,
+	reset as resetLogtape,
+} from "@logtape/logtape";
 import {tmpdir} from "os";
 import {join} from "path";
 import {mkdtempSync, rmSync} from "fs";

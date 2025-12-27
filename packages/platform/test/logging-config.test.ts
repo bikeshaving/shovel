@@ -41,7 +41,9 @@ describe("configureLogging", () => {
 		await configure({
 			reset: true,
 			sinks: {},
-			loggers: [{category: ["logtape", "meta"], lowestLevel: "warning", sinks: []}],
+			loggers: [
+				{category: ["logtape", "meta"], lowestLevel: "warning", sinks: []},
+			],
 		});
 	});
 

@@ -27,6 +27,7 @@ describe("@b9g/platform", () => {
 				},
 				getEntryWrapper: () => "// entry wrapper",
 				getESBuildConfig: () => ({}),
+				getDefaults: () => ({}),
 			};
 
 			platformRegistry.register("test", mockPlatform);

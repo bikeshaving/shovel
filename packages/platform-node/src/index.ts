@@ -25,6 +25,7 @@ import {
 import {
 	createCacheFactory,
 	createDirectoryFactory,
+	type ShovelConfig,
 } from "@b9g/platform/runtime";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory";
@@ -34,7 +35,6 @@ import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import * as HTTP from "http";
 import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
-
 
 // Entry template embedded as string
 const entryTemplate = `// Node.js Production Server Entry
@@ -234,8 +234,9 @@ export class NodePlatform extends BasePlatform {
 			// eslint-disable-next-line no-restricted-syntax -- Import generated config at runtime
 			const configModule = await import(configPath);
 			config = configModule.config ?? config;
-		} catch {
+		} catch (err) {
 			// config.js doesn't exist - use platform config instead
+			logger.debug`Using platform config (no config.js): ${err}`;
 		}
 
 		// Create shared cache storage from config
@@ -336,8 +337,9 @@ export class NodePlatform extends BasePlatform {
 			// eslint-disable-next-line no-restricted-syntax -- Import generated config at runtime
 			const configModule = await import(configPath);
 			config = configModule.config ?? config;
-		} catch {
+		} catch (err) {
 			// config.js doesn't exist - use platform config instead
+			logger.debug`Using platform config (no config.js): ${err}`;
 		}
 
 		// Create shared cache storage from config
@@ -434,13 +436,14 @@ export class NodePlatform extends BasePlatform {
 		const userCaches = this.#options.config?.caches ?? {};
 		// Deep merge per entry so user can override options without losing CacheClass
 		const configs: Record<string, any> = {};
-		const allNames = new Set([...Object.keys(runtimeDefaults), ...Object.keys(userCaches)]);
+		const allNames = new Set([
+			...Object.keys(runtimeDefaults),
+			...Object.keys(userCaches),
+		]);
 		for (const name of allNames) {
 			configs[name] = {...runtimeDefaults[name], ...userCaches[name]};
 		}
-		return new CustomCacheStorage(
-			createCacheFactory({configs}),
-		);
+		return new CustomCacheStorage(createCacheFactory({configs}));
 	}
 
 	/**
@@ -450,21 +453,23 @@ export class NodePlatform extends BasePlatform {
 	 */
 	async createDirectories(): Promise<CustomDirectoryStorage> {
 		// Runtime defaults with actual class references (not module/export strings)
-		const runtimeDefaults: Record<string, {DirectoryClass: any; path: string}> = {
-			server: {DirectoryClass: NodeFSDirectory, path: "."},
-			public: {DirectoryClass: NodeFSDirectory, path: "../public"},
-			tmp: {DirectoryClass: NodeFSDirectory, path: "tmpdir"},
-		};
+		const runtimeDefaults: Record<string, {DirectoryClass: any; path: string}> =
+			{
+				server: {DirectoryClass: NodeFSDirectory, path: "."},
+				public: {DirectoryClass: NodeFSDirectory, path: "../public"},
+				tmp: {DirectoryClass: NodeFSDirectory, path: "tmpdir"},
+			};
 		const userDirs = this.#options.config?.directories ?? {};
 		// Deep merge per entry so user can override options without losing DirectoryClass
 		const configs: Record<string, any> = {};
-		const allNames = new Set([...Object.keys(runtimeDefaults), ...Object.keys(userDirs)]);
+		const allNames = new Set([
+			...Object.keys(runtimeDefaults),
+			...Object.keys(userDirs),
+		]);
 		for (const name of allNames) {
 			configs[name] = {...runtimeDefaults[name], ...userDirs[name]};
 		}
-		return new CustomDirectoryStorage(
-			createDirectoryFactory(configs),
-		);
+		return new CustomDirectoryStorage(createDirectoryFactory(configs));
 	}
 
 	/**

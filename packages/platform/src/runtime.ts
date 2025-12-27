@@ -383,12 +383,14 @@ import {Database} from "@b9g/zen";
  * Follows the same module/export pattern as directories and caches.
  */
 export interface DatabaseConfig {
-	/** Module path to import (e.g., "@b9g/zen/bun") */
-	module: string;
+	/** Module path to import (e.g., "@b9g/zen/bun") - optional if DriverClass provided */
+	module?: string;
 	/** Named export to use (defaults to "default") */
 	export?: string;
+	/** Pre-imported driver class (from generated config) - optional if module provided */
+	DriverClass?: new (url: string, options?: any) => any;
 	/** Database connection URL */
-	url: string;
+	url?: string;
 	/** Additional driver-specific options */
 	[key: string]: unknown;
 }
@@ -614,12 +616,24 @@ export function createDatabaseFactory(
 		}
 
 		// Strip metadata fields that shouldn't be passed to driver constructor
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		const {DriverClass, url, module: _module, export: _export, ...driverOptions} = config;
+
+		const {
+			DriverClass,
+			url,
+			module: _module,
+			export: _export,
+			...driverOptions
+		} = config;
 
 		if (!DriverClass) {
 			throw new Error(
 				`Database "${name}" has no DriverClass. Ensure the database module is configured in shovel.json.`,
+			);
+		}
+
+		if (!url) {
+			throw new Error(
+				`Database "${name}" has no url. Ensure the database URL is configured.`,
 			);
 		}
 
@@ -2138,20 +2152,27 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 
 /** Cache provider configuration */
 export interface CacheConfig {
-	/** Module path to import (e.g., "@b9g/cache/memory") */
-	module: string;
+	/** Module path to import (e.g., "@b9g/cache/memory") - optional if CacheClass provided */
+	module?: string;
 	/** Named export to use (defaults to "default") */
 	export?: string;
+	/** Pre-imported cache class (from generated config) - optional if module provided */
+	CacheClass?: new (name: string, options?: any) => Cache;
 	/** Additional options passed to the constructor */
 	[key: string]: unknown;
 }
 
 /** Directory (filesystem) provider configuration */
 export interface DirectoryConfig {
-	/** Module path to import (e.g., "@b9g/filesystem/memory") */
-	module: string;
+	/** Module path to import (e.g., "@b9g/filesystem/memory") - optional if DirectoryClass provided */
+	module?: string;
 	/** Named export to use (defaults to "default") */
 	export?: string;
+	/** Pre-imported directory class (from generated config) - optional if module provided */
+	DirectoryClass?: new (
+		name: string,
+		options?: any,
+	) => FileSystemDirectoryHandle;
 	/** Custom path for filesystem directories */
 	path?: string;
 	/** Additional options passed to the constructor */
@@ -2181,7 +2202,9 @@ export interface ShovelConfig {
  * Handles special path markers:
  * - "tmpdir" → resolved to os.tmpdir() at runtime
  */
-export function createDirectoryFactory(configs: Record<string, DirectoryConfig>) {
+export function createDirectoryFactory(
+	configs: Record<string, DirectoryConfig>,
+) {
 	return async (name: string): Promise<FileSystemDirectoryHandle> => {
 		const config = configs[name];
 		if (!config) {
@@ -2191,8 +2214,13 @@ export function createDirectoryFactory(configs: Record<string, DirectoryConfig>)
 		}
 
 		// Strip metadata fields that shouldn't be passed to directory constructor
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		const {DirectoryClass, module: _module, export: _export, ...dirOptions} = config;
+
+		const {
+			DirectoryClass,
+			module: _module,
+			export: _export,
+			...dirOptions
+		} = config;
 		if (!DirectoryClass) {
 			throw new Error(
 				`Directory "${name}" has no DirectoryClass. Ensure the directory module is configured.`,
@@ -2243,8 +2271,13 @@ export function createCacheFactory(options: CacheFactoryOptions) {
 		}
 
 		// Strip metadata fields that shouldn't be passed to cache constructor
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		const {CacheClass, module: _module, export: _export, ...cacheOptions} = config;
+
+		const {
+			CacheClass,
+			module: _module,
+			export: _export,
+			...cacheOptions
+		} = config;
 		if (!CacheClass) {
 			throw new Error(
 				`Cache "${name}" has no CacheClass. Ensure the cache module is configured.`,
@@ -2523,12 +2556,12 @@ export type LogLevel = "debug" | "info" | "warning" | "error";
 
 /** Sink configuration */
 export interface SinkConfig {
-	/** Module path to import (e.g., "@logtape/logtape") */
-	module: string;
+	/** Module path to import (e.g., "@logtape/logtape") - optional if factory provided */
+	module?: string;
 	/** Named export to use (defaults to "default") */
 	export?: string;
-	/** Pre-imported factory function (from build-time code generation) */
-	factory?: (options: Record<string, unknown>) => unknown;
+	/** Pre-imported factory function (from build-time code generation) - optional if module provided */
+	factory?: (...args: any[]) => unknown;
 	/** Additional options passed to the factory (path, maxSize, etc.) */
 	[key: string]: unknown;
 }
