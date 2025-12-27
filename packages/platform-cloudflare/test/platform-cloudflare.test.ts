@@ -10,6 +10,7 @@ import {
 } from "bun:test";
 import {
 	CloudflarePlatform,
+	CloudflareNativeCache,
 	createOptionsFromEnv,
 	generateWranglerConfig,
 } from "../src/index.js";
@@ -46,6 +47,11 @@ describe("CloudflarePlatform", () => {
 	beforeEach(() => {
 		platform = new CloudflarePlatform({
 			environment: "dev",
+			config: {
+				caches: {
+					test: {CacheClass: CloudflareNativeCache},
+				},
+			},
 		});
 	});
 

@@ -115,6 +115,11 @@ export default [
 					message:
 						"Do not use class property initializers. Initialize properties in the constructor.",
 				},
+				{
+					selector: "ImportExpression[source.type!='Literal']",
+					message:
+						"Dynamic import with variable is not allowed. esbuild cannot analyze variable imports.",
+				},
 			],
 			"prettier/prettier": [
 				"error",

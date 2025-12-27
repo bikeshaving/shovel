@@ -8,6 +8,8 @@
 import {join} from "path";
 import * as fs from "fs/promises";
 import {runPlatformTests} from "../src/runners/platform.js";
+import {MemoryCache} from "@b9g/cache/memory";
+import {MemoryDirectory} from "@b9g/filesystem/memory";
 
 // Get fixture paths
 const fixturesDir = join(import.meta.dir, "fixtures");
@@ -185,6 +187,20 @@ runPlatformTests("NodePlatform", {
 		const {default: NodePlatform} = await import("@b9g/platform-node");
 		return new NodePlatform({
 			cwd: fixturesDir,
+			config: {
+				caches: {
+					"test-cache": {CacheClass: MemoryCache},
+					"functional-test": {CacheClass: MemoryCache},
+					"cache-1": {CacheClass: MemoryCache},
+					"cache-2": {CacheClass: MemoryCache},
+					// For ServiceWorkerGlobals tests
+					"contract-test-cache": {CacheClass: MemoryCache},
+				},
+				directories: {
+					// For ServiceWorkerGlobals tests
+					tmp: {DirectoryClass: MemoryDirectory},
+				},
+			},
 		});
 	},
 	testEntrypoint: nodePaths.simple,
@@ -203,6 +219,20 @@ runPlatformTests("BunPlatform", {
 		const {default: BunPlatform} = await import("@b9g/platform-bun");
 		return new BunPlatform({
 			cwd: fixturesDir,
+			config: {
+				caches: {
+					"test-cache": {CacheClass: MemoryCache},
+					"functional-test": {CacheClass: MemoryCache},
+					"cache-1": {CacheClass: MemoryCache},
+					"cache-2": {CacheClass: MemoryCache},
+					// For ServiceWorkerGlobals tests
+					"contract-test-cache": {CacheClass: MemoryCache},
+				},
+				directories: {
+					// For ServiceWorkerGlobals tests
+					tmp: {DirectoryClass: MemoryDirectory},
+				},
+			},
 		});
 	},
 	testEntrypoint: bunPaths.simple,
@@ -219,10 +249,18 @@ runPlatformTests("BunPlatform", {
 // For now, skip the ServiceWorker tests for Cloudflare.
 runPlatformTests("CloudflarePlatform", {
 	async createPlatform() {
-		const {default: CloudflarePlatform} =
+		const {default: CloudflarePlatform, CloudflareNativeCache} =
 			await import("@b9g/platform-cloudflare");
 		return new CloudflarePlatform({
 			cwd: fixturesDir,
+			config: {
+				caches: {
+					"test-cache": {CacheClass: CloudflareNativeCache},
+					"functional-test": {CacheClass: CloudflareNativeCache},
+					"cache-1": {CacheClass: CloudflareNativeCache},
+					"cache-2": {CacheClass: CloudflareNativeCache},
+				},
+			},
 		});
 	},
 	// Skip SW tests until we have a build step for the fixtures

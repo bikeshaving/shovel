@@ -14,6 +14,7 @@
 import {
 	BasePlatform,
 	PlatformConfig,
+	type PlatformDefaults,
 	Handler,
 	Server,
 	ServerOptions,
@@ -110,11 +111,6 @@ export class CloudflareNativeCache implements Cache {
 	}
 }
 
-// Platform-specific cache default
-const CACHE_DEFAULT = {
-	module: "@b9g/platform-cloudflare",
-	export: "DefaultCache",
-} as const;
 
 // Re-export common platform types
 export type {
@@ -178,13 +174,17 @@ export class CloudflarePlatform extends BasePlatform {
 	/**
 	 * Create cache storage using config from shovel.json
 	 * Default: Cloudflare's native Cache API
+	 * Merges with runtime defaults (actual class references) for fallback behavior
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
+		// Runtime defaults with actual class references (not module/export strings)
+		const runtimeDefaults: Record<string, {CacheClass: any}> = {
+			default: {CacheClass: CloudflareNativeCache},
+		};
+		// Merge user config over defaults
+		const configs = {...runtimeDefaults, ...this.#options.config?.caches};
 		return new CustomCacheStorage(
-			createCacheFactory({
-				config: this.#options.config,
-				default: CACHE_DEFAULT,
-			}),
+			createCacheFactory({configs}),
 		);
 	}
 
@@ -362,6 +362,24 @@ export default { fetch: createFetchHandler(registration) };
 			],
 			// Cloudflare bundles user code inline via `import "user-entry"`
 			bundlesUserCodeInline: true,
+		};
+	}
+
+	/**
+	 * Get Cloudflare-specific defaults for config generation
+	 *
+	 * Cloudflare Workers don't have default directories like Node/Bun.
+	 * Directories must be explicitly configured with R2 or other bindings.
+	 */
+	getDefaults(): PlatformDefaults {
+		return {
+			caches: {
+				default: {
+					module: "@b9g/platform-cloudflare",
+					export: "CloudflareNativeCache",
+				},
+			},
+			// No default directories for Cloudflare - must be configured via shovel.json
 		};
 	}
 }

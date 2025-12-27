@@ -95,10 +95,13 @@ export class Watcher {
 		const external = platformESBuildConfig.external ?? ["node:*"];
 
 		// Build options for esbuild context
-		// Single entry point: unified bundle with worker runtime + user code
+		// Two entry points:
+		// - server: unified bundle with worker runtime + user code
+		// - config: standalone config module for main thread to import
 		const buildOptions: ESBuild.BuildOptions = {
 			entryPoints: {
 				server: "shovel:entry",
+				config: "shovel:config",
 			},
 			bundle: true,
 			format: "esm",
@@ -111,7 +114,9 @@ export class Watcher {
 			absWorkingDir: this.#projectRoot,
 			conditions: platformESBuildConfig.conditions ?? ["import", "module"],
 			plugins: [
-				createConfigPlugin(this.#projectRoot, this.#options.outDir),
+				createConfigPlugin(this.#projectRoot, this.#options.outDir, {
+					platformDefaults: this.#options.platform.getDefaults(),
+				}),
 				createEntryPlugin(this.#projectRoot, workerEntryWrapper),
 				importMetaPlugin(),
 				assetsPlugin({

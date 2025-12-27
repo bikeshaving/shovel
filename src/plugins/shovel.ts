@@ -18,6 +18,23 @@ import {
 } from "../utils/config.js";
 
 /**
+ * Options for the shovel:config plugin
+ */
+export interface ConfigPluginOptions {
+	/** Platform-specific defaults for directories, caches, etc. */
+	platformDefaults?: {
+		directories?: Record<
+			string,
+			{module: string; export?: string; [key: string]: unknown}
+		>;
+		caches?: Record<
+			string,
+			{module: string; export?: string; [key: string]: unknown}
+		>;
+	};
+}
+
+/**
  * Create the shovel:config virtual module plugin.
  *
  * This generates the config module at build time with:
@@ -30,16 +47,23 @@ import {
  *
  * @param projectRoot - Root directory of the project
  * @param outDir - Output directory (relative to projectRoot, or absolute path)
+ * @param options - Plugin options including platform defaults
  */
 export function createConfigPlugin(
 	projectRoot: string,
 	outDir: string = "dist",
+	options: ConfigPluginOptions = {},
 ): ESBuild.Plugin {
 	const rawConfig = loadRawConfig(projectRoot);
-	const configModuleCode = generateConfigModule(rawConfig);
+	const configModuleCode = generateConfigModule(rawConfig, {
+		platformDefaults: options.platformDefaults,
+	});
 
 	// Generate storage types (for both develop and build)
-	const typesCode = generateStorageTypes(rawConfig);
+	// Include platform defaults so types match the runtime config
+	const typesCode = generateStorageTypes(rawConfig, {
+		platformDefaults: options.platformDefaults,
+	});
 	if (typesCode) {
 		// Handle both relative and absolute outDir paths
 		const outputDir = isAbsolute(outDir) ? outDir : join(projectRoot, outDir);

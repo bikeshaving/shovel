@@ -1,6 +1,7 @@
 import {test, expect, describe, beforeEach, afterEach, mock} from "bun:test";
 import {NodePlatform} from "../src/index.js";
 import {MemoryDirectory} from "@b9g/filesystem/memory";
+import {MemoryCache} from "@b9g/cache/memory";
 import {tmpdir} from "os";
 import {join} from "path";
 import {mkdtempSync, rmSync} from "fs";
@@ -16,6 +17,12 @@ describe("NodePlatform", () => {
 		tempDir = mkdtempSync(join(tmpdir(), "node-platform-test-"));
 		platform = new NodePlatform({
 			cwd: tempDir,
+			config: {
+				// Provide default cache config with pre-imported class for tests
+				caches: {
+					test: {CacheClass: MemoryCache},
+				},
+			},
 		});
 	});
 
@@ -239,8 +246,7 @@ describe("NodePlatform", () => {
 				config: {
 					caches: {
 						"test-cache": {
-							module: "@b9g/cache/memory",
-							export: "MemoryCache",
+							CacheClass: MemoryCache,
 						},
 					},
 				},
@@ -265,8 +271,7 @@ describe("NodePlatform", () => {
 				config: {
 					directories: {
 						uploads: {
-							module: "@b9g/filesystem/memory",
-							export: "MemoryDirectory",
+							DirectoryClass: MemoryDirectory,
 						},
 					},
 				},

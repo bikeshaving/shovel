@@ -37,8 +37,12 @@ describe("configureLogging", () => {
 		console.debug = originalDebug;
 		console.info = originalInfo;
 		console.warn = originalWarn;
-		// Reset logtape
-		await configure({reset: true, sinks: {}, loggers: []});
+		// Reset logtape (suppress meta logger to avoid noise)
+		await configure({
+			reset: true,
+			sinks: {},
+			loggers: [{category: ["logtape", "meta"], lowestLevel: "warning", sinks: []}],
+		});
 	});
 
 	it("defaults to console sink when logger has no sinks specified", async () => {

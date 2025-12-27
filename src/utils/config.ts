@@ -902,12 +902,25 @@ function toJSLiteral(
  * 3. Substitute placeholders with actual JS code
  *
  * @param rawConfig - Raw config from shovel.json (NOT processed)
- * @param env - Environment variables for evaluating provider expressions
+ * @param options - Options including platform defaults
  */
 export function generateConfigModule(
 	rawConfig: ShovelConfig,
-	_env: Record<string, string | undefined> = getEnv(),
+	options: {
+		/** Platform-specific defaults for directories, caches, etc. */
+		platformDefaults?: {
+			directories?: Record<
+				string,
+				{module: string; export?: string; [key: string]: unknown}
+			>;
+			caches?: Record<
+				string,
+				{module: string; export?: string; [key: string]: unknown}
+			>;
+		};
+	} = {},
 ): string {
+	const {platformDefaults = {}} = options;
 	// Track imports and their placeholder mappings
 	const imports: string[] = [];
 	const placeholders: Map<string, string> = new Map(); // placeholder -> JS code
@@ -1032,41 +1045,56 @@ export function generateConfigModule(
 
 		config.logging = logging;
 
-		// Caches - generate imports for modules
-		if (rawConfig.caches && Object.keys(rawConfig.caches).length > 0) {
+		// Caches - deep merge platform defaults with user config
+		// User config properties override platform defaults, but missing properties are preserved
+		const platformCaches = platformDefaults.caches || {};
+		const userCaches = rawConfig.caches || {};
+		const allCacheNames = new Set([...Object.keys(platformCaches), ...Object.keys(userCaches)]);
+		if (allCacheNames.size > 0) {
 			const caches: Record<string, unknown> = {};
-			for (const [name, cacheConfig] of Object.entries(rawConfig.caches)) {
-				const factoryPlaceholder = processModule(
-					cacheConfig.module,
-					cacheConfig.export,
+			for (const name of allCacheNames) {
+				// Deep merge: platform defaults first, then user overrides
+				const platformConfig = platformCaches[name] || {};
+				const userConfig = userCaches[name] || {};
+				const mergedConfig = {...platformConfig, ...userConfig};
+
+				const cacheClassPlaceholder = processModule(
+					mergedConfig.module,
+					mergedConfig.export,
 					"cache",
 					name,
 				);
-				const result: Record<string, unknown> = {...cacheConfig};
-				if (factoryPlaceholder) {
-					result.factory = factoryPlaceholder;
+				const result: Record<string, unknown> = {...mergedConfig};
+				if (cacheClassPlaceholder) {
+					result.CacheClass = cacheClassPlaceholder;
 				}
 				caches[name] = result;
 			}
 			config.caches = caches;
 		}
 
-		// Directories - generate imports for modules
-		if (
-			rawConfig.directories &&
-			Object.keys(rawConfig.directories).length > 0
-		) {
+		// Directories - deep merge platform defaults with user config
+		// User config properties override platform defaults, but missing properties are preserved
+		const platformDirectories = platformDefaults.directories || {};
+		const userDirectories = rawConfig.directories || {};
+		const allDirectoryNames = new Set([...Object.keys(platformDirectories), ...Object.keys(userDirectories)]);
+		if (allDirectoryNames.size > 0) {
 			const directories: Record<string, unknown> = {};
-			for (const [name, dirConfig] of Object.entries(rawConfig.directories)) {
-				const factoryPlaceholder = processModule(
-					dirConfig.module,
-					dirConfig.export,
+			for (const name of allDirectoryNames) {
+				// Deep merge: platform defaults first, then user overrides
+				const platformConfig = platformDirectories[name] || {};
+				const userConfig = userDirectories[name] || {};
+				const mergedConfig = {...platformConfig, ...userConfig};
+
+				const directoryClassPlaceholder = processModule(
+					mergedConfig.module,
+					mergedConfig.export,
 					"directory",
 					name,
 				);
-				const result: Record<string, unknown> = {...dirConfig};
-				if (factoryPlaceholder) {
-					result.factory = factoryPlaceholder;
+				const result: Record<string, unknown> = {...mergedConfig};
+				if (directoryClassPlaceholder) {
+					result.DirectoryClass = directoryClassPlaceholder;
 				}
 				directories[name] = result;
 			}
@@ -1077,15 +1105,15 @@ export function generateConfigModule(
 		if (rawConfig.databases && Object.keys(rawConfig.databases).length > 0) {
 			const databases: Record<string, unknown> = {};
 			for (const [name, dbConfig] of Object.entries(rawConfig.databases)) {
-				const factoryPlaceholder = processModule(
+				const driverClassPlaceholder = processModule(
 					dbConfig.module,
 					dbConfig.export,
 					"database",
 					name,
 				);
 				const result: Record<string, unknown> = {...dbConfig};
-				if (factoryPlaceholder) {
-					result.factory = factoryPlaceholder;
+				if (driverClassPlaceholder) {
+					result.DriverClass = driverClassPlaceholder;
 				}
 				databases[name] = result;
 			}
@@ -1370,19 +1398,49 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 // ============================================================================
 
 /**
+ * Options for generating storage types
+ */
+export interface GenerateStorageTypesOptions {
+	/** Platform-specific defaults for directories, caches, etc. */
+	platformDefaults?: {
+		directories?: Record<string, unknown>;
+		caches?: Record<string, unknown>;
+	};
+}
+
+/**
  * Generate TypeScript declaration file with typed overloads for storage APIs.
  * Called at build time to create shovel.d.ts with compile-time validation.
  *
  * @param config - Raw shovel config (from loadRawConfig)
+ * @param options - Options including platform defaults to merge
  * @returns Generated TypeScript declaration file content, or empty string if nothing to generate
  */
-export function generateStorageTypes(config: ShovelConfig): string {
-	const databaseNames = config.databases ? Object.keys(config.databases) : [];
-	const directoryNames = config.directories
-		? Object.keys(config.directories)
-		: [];
+export function generateStorageTypes(
+	config: ShovelConfig,
+	options: GenerateStorageTypesOptions = {},
+): string {
+	const {platformDefaults = {}} = options;
 
-	if (databaseNames.length === 0 && directoryNames.length === 0) {
+	// Merge platform defaults with user config (user config takes precedence)
+	const mergedDirectories = {
+		...(platformDefaults.directories || {}),
+		...(config.directories || {}),
+	};
+	const mergedCaches = {
+		...(platformDefaults.caches || {}),
+		...(config.caches || {}),
+	};
+
+	const databaseNames = config.databases ? Object.keys(config.databases) : [];
+	const directoryNames = Object.keys(mergedDirectories);
+	const cacheNames = Object.keys(mergedCaches);
+
+	if (
+		databaseNames.length === 0 &&
+		directoryNames.length === 0 &&
+		cacheNames.length === 0
+	) {
 		return "";
 	}
 
@@ -1421,7 +1479,7 @@ export function generateStorageTypes(config: ShovelConfig): string {
 	if (directoryNames.length > 0) {
 		const dirUnion = directoryNames.map((n) => `"${n}"`).join(" | ");
 		sections.push(`  /**
-   * Valid directory names from shovel.json.
+   * Valid directory names from shovel.json and platform defaults.
    * Using an invalid name will cause a TypeScript error.
    */
   type ValidDirectoryName = ${dirUnion};
@@ -1432,8 +1490,25 @@ export function generateStorageTypes(config: ShovelConfig): string {
   }`);
 	}
 
+	// Generate cache type (union of valid names)
+	if (cacheNames.length > 0) {
+		const cacheUnion = cacheNames.map((n) => `"${n}"`).join(" | ");
+		sections.push(`  /**
+   * Valid cache names from shovel.json and platform defaults.
+   * Using an invalid name will cause a TypeScript error.
+   */
+  type ValidCacheName = ${cacheUnion};
+
+  interface CacheStorage {
+    open(name: ValidCacheName): Promise<Cache>;
+    has(name: ValidCacheName): Promise<boolean>;
+    delete(name: ValidCacheName): Promise<boolean>;
+    keys(): Promise<string[]>;
+  }`);
+	}
+
 	return `// Generated by Shovel - DO NOT EDIT
-// This file provides typed overloads for self.databases and self.directories
+// This file provides typed overloads for self.databases, self.directories, and self.caches
 ${imports.join("\n")}
 
 declare global {

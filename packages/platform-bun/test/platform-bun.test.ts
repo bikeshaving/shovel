@@ -1,6 +1,7 @@
 import {test, expect, describe, beforeEach, afterEach, mock} from "bun:test";
 import {BunPlatform} from "../src/index.js";
 import {MemoryDirectory} from "@b9g/filesystem/memory";
+import {MemoryCache} from "@b9g/cache/memory";
 import {tmpdir} from "os";
 import {join} from "path";
 import {mkdtempSync, writeFileSync, rmSync} from "fs";
@@ -26,6 +27,13 @@ describe("BunPlatform", () => {
 		tempDir = mkdtempSync(join(tmpdir(), "bun-platform-test-"));
 		platform = new BunPlatform({
 			cwd: tempDir,
+			config: {
+				// Provide default cache config with pre-imported class for tests
+				caches: {
+					test: {CacheClass: MemoryCache},
+					"env-test": {CacheClass: MemoryCache},
+				},
+			},
 		});
 	});
 
@@ -182,8 +190,7 @@ describe("BunPlatform", () => {
 				config: {
 					caches: {
 						"test-cache": {
-							module: "@b9g/cache/memory",
-							export: "MemoryCache",
+							CacheClass: MemoryCache,
 						},
 					},
 				},
@@ -208,8 +215,7 @@ describe("BunPlatform", () => {
 				config: {
 					directories: {
 						uploads: {
-							module: "@b9g/filesystem/memory",
-							export: "MemoryDirectory",
+							DirectoryClass: MemoryDirectory,
 						},
 					},
 				},

@@ -226,7 +226,7 @@ async function initializeBuild({
 		);
 	}
 
-	const projectRoot = findProjectRoot();
+	const projectRoot = findProjectRoot(dirname(entryPath));
 
 	if (verbose) {
 		logger.info("Entry:", {entryPath});
@@ -274,6 +274,7 @@ async function createBuildConfig({
 	// Create platform instance to get configuration
 	const platform = await Platform.createPlatform(platformName);
 	const platformESBuildConfig = platform.getESBuildConfig();
+	const platformDefaults = platform.getDefaults();
 	const entryWrapper = platform.getEntryWrapper(entryPath);
 
 	// Determine if platform bundles user code inline (like Cloudflare)
@@ -288,9 +289,10 @@ async function createBuildConfig({
 		// Use platform-specific externals
 		const external = platformESBuildConfig.external ?? ["node:*"];
 
-		// For platforms that load user code at runtime (Node/Bun), build two files:
+		// For platforms that load user code at runtime (Node/Bun), build three files:
 		// - worker.js: Runtime shell that initializes ServiceWorker globals and message loop
 		// - server.js: User's ServiceWorker code (imported by worker.js at runtime)
+		// - config.js: Generated config module (imported by main thread for cache/directory setup)
 		// The worker.js imports ./server.js at runtime via dynamic import, enabling hot reload.
 		if (!bundlesUserCodeInline) {
 			// Get worker entry wrapper - uses ./server.js as a runtime import
@@ -299,11 +301,12 @@ async function createBuildConfig({
 				{type: "worker", outDir: outputDir},
 			);
 
-			// Build both worker.js and server.js in a single build using two entry points
+			// Build worker.js, server.js, and config.js in a single build using three entry points
 			const userBuildConfig: ESBuild.BuildOptions = {
 				entryPoints: {
 					worker: "shovel:entry",
 					server: entryPath,
+					config: "shovel:config",
 				},
 				bundle: true,
 				format: BUILD_DEFAULTS.format as ESBuild.Format,
@@ -317,7 +320,7 @@ async function createBuildConfig({
 				// Resolve packages from the user's project node_modules
 				nodePaths: [getNodeModulesPath()],
 				plugins: [
-					createConfigPlugin(projectRoot, outputDir),
+					createConfigPlugin(projectRoot, outputDir, {platformDefaults}),
 					createEntryPlugin(projectRoot, workerEntryWrapper),
 					importMetaPlugin(),
 					assetsPlugin({
@@ -378,7 +381,7 @@ async function createBuildConfig({
 			nodePaths: [getNodeModulesPath()],
 			plugins: bundlesUserCodeInline
 				? [
-						createConfigPlugin(projectRoot, outputDir),
+						createConfigPlugin(projectRoot, outputDir, {platformDefaults}),
 						importMetaPlugin(),
 						assetsPlugin({
 							outDir: outputDir,
@@ -390,7 +393,7 @@ async function createBuildConfig({
 							},
 						}),
 					]
-				: [createConfigPlugin(projectRoot, outputDir)], // Config plugin needed for entry wrapper
+				: [createConfigPlugin(projectRoot, outputDir, {platformDefaults})], // Config plugin needed for entry wrapper
 			metafile: true,
 			sourcemap: BUILD_DEFAULTS.sourcemap,
 			minify: BUILD_DEFAULTS.minify,

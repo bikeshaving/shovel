@@ -613,20 +613,13 @@ export function createDatabaseFactory(
 			);
 		}
 
-		const {
-			module: modulePath,
-			export: exportName,
-			url,
-			...driverOptions
-		} = config;
-
-		// Dynamic import of driver module
-		const mod = await import(modulePath);
-		const DriverClass = exportName ? mod[exportName] : mod.default;
+		// Strip metadata fields that shouldn't be passed to driver constructor
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		const {DriverClass, url, module: _module, export: _export, ...driverOptions} = config;
 
 		if (!DriverClass) {
 			throw new Error(
-				`Database module "${modulePath}" does not export "${exportName || "default"}".`,
+				`Database "${name}" has no DriverClass. Ensure the database module is configured in shovel.json.`,
 			);
 		}
 
@@ -1735,7 +1728,7 @@ export interface ServiceWorkerGlobalsOptions {
 	registration: ServiceWorkerRegistration;
 	/** Directory storage (file system access) - REQUIRED */
 	directories: DirectoryStorage;
-	/** Database storage (@b9g/database access) - OPTIONAL */
+	/** Database storage - OPTIONAL */
 	databases?: DatabaseStorage;
 	/** Logger storage (logging access) - REQUIRED */
 	loggers: LoggerStorage;
@@ -2178,112 +2171,43 @@ export interface ShovelConfig {
 }
 
 // ============================================================================
-// Pattern Matching for Config
-// ============================================================================
-
-/**
- * Match a name against pattern-keyed config
- * Patterns use glob-like syntax (* for wildcards)
- */
-function matchPattern<T>(
-	name: string,
-	patterns: Record<string, T> | undefined,
-): T | undefined {
-	if (!patterns) return undefined;
-
-	// Exact match first
-	if (patterns[name]) return patterns[name];
-
-	// Try pattern matching
-	for (const [pattern, value] of Object.entries(patterns)) {
-		if (pattern.includes("*")) {
-			const regex = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
-			if (regex.test(name)) return value;
-		}
-	}
-
-	return undefined;
-}
-
-function getCacheConfig(
-	config: ShovelConfig,
-	name: string,
-): Partial<CacheConfig> {
-	return matchPattern(name, config.caches) || {};
-}
-
-function getDirectoryConfig(
-	config: ShovelConfig,
-	name: string,
-): Partial<DirectoryConfig> {
-	return matchPattern(name, config.directories) || {};
-}
-
-// ============================================================================
 // Directory Factory
 // ============================================================================
 
-/** Standard paths for common directories (convenience export for platforms) */
-export const STANDARD_DIRECTORY_PATHS = {
-	server: "dist/server",
-	public: "dist/public",
-} as const;
-
-/** Directory default with path that can be static or lazily evaluated */
-export interface DirectoryDefault {
-	module: string;
-	export?: string;
-	path: string | (() => string);
-}
-
-export interface DirectoryFactoryOptions {
-	/** Shovel configuration for directory settings */
-	config?: ShovelConfig;
-	/** Platform-provided defaults for well-known directories */
-	defaults?: Record<string, DirectoryDefault>;
-}
-
 /**
  * Creates a directory factory function for CustomDirectoryStorage.
+ * Configs must have DirectoryClass pre-imported (from generated config module).
+ *
+ * Handles special path markers:
+ * - "tmpdir" → resolved to os.tmpdir() at runtime
  */
-export function createDirectoryFactory(options: DirectoryFactoryOptions = {}) {
-	const {config, defaults} = options;
-
+export function createDirectoryFactory(configs: Record<string, DirectoryConfig>) {
 	return async (name: string): Promise<FileSystemDirectoryHandle> => {
-		const matchedConfig = config ? getDirectoryConfig(config, name) : undefined;
-
-		// Use user config if it specifies a module, otherwise fall back to platform defaults
-		let modulePath: string;
-		let exportName: string | undefined;
-		let dirOptions: Record<string, unknown>;
-
-		if (matchedConfig?.module) {
-			const {module, export: exp, ...rest} = matchedConfig;
-			modulePath = module;
-			exportName = exp;
-			dirOptions = rest;
-		} else if (defaults?.[name]) {
-			const {module, export: exp, path} = defaults[name];
-			modulePath = module;
-			exportName = exp;
-			// Resolve path if it's a function (e.g., tmpdir)
-			dirOptions = {path: typeof path === "function" ? path() : path};
-		} else {
+		const config = configs[name];
+		if (!config) {
 			throw new Error(
-				`No directory configured for "${name}". Add it to config.directories.`,
+				`Directory "${name}" is not configured. Available directories: ${Object.keys(configs).join(", ") || "(none)"}`,
 			);
 		}
 
-		const mod = await import(modulePath);
-		const DirectoryClass = exportName ? mod[exportName] : mod.default;
-
+		// Strip metadata fields that shouldn't be passed to directory constructor
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		const {DirectoryClass, module: _module, export: _export, ...dirOptions} = config;
 		if (!DirectoryClass) {
 			throw new Error(
-				`Directory module "${modulePath}" does not export "${exportName || "default"}".`,
+				`Directory "${name}" has no DirectoryClass. Ensure the directory module is configured.`,
 			);
 		}
 
-		return new DirectoryClass(name, dirOptions);
+		// Resolve special path markers
+		const resolvedOptions = {...dirOptions};
+		if (resolvedOptions.path === "tmpdir") {
+			// Dynamically import os to get tmpdir - works in Node.js and Bun
+			const {tmpdir} = await import("node:os");
+			resolvedOptions.path = tmpdir();
+		}
+
+		return new DirectoryClass(name, resolvedOptions);
 	};
 }
 
@@ -2291,68 +2215,39 @@ export function createDirectoryFactory(options: DirectoryFactoryOptions = {}) {
 // Cache Factory
 // ============================================================================
 
-/** Cache default configuration (module/export pair) */
-export interface CacheDefault {
-	module: string;
-	export?: string;
-}
-
 export interface CacheFactoryOptions {
-	/** Shovel configuration for cache settings */
-	config?: ShovelConfig;
-	/** Platform-provided default cache (used when no config matches) */
-	default?: CacheDefault;
-	/** If true, use PostMessageCache for memory caches (for workers) */
+	/** Cache configurations with pre-imported CacheClass (from generated config module) */
+	configs: Record<string, CacheConfig>;
+	/** If true, use PostMessageCache (for workers communicating with main thread) */
 	usePostMessage?: boolean;
 }
 
 /**
  * Creates a cache factory function for CustomCacheStorage.
- *
- * Resolution order:
- * 1. Config with module/export specified → use that
- * 2. No config or config without module → use platform default
- * 3. No default provided → error
+ * Configs must have CacheClass pre-imported (from generated config module).
  */
-export function createCacheFactory(options: CacheFactoryOptions = {}) {
-	const {config, default: defaultCache, usePostMessage = false} = options;
+export function createCacheFactory(options: CacheFactoryOptions) {
+	const {configs, usePostMessage = false} = options;
 
 	return async (name: string): Promise<Cache> => {
-		const matchedConfig = config ? getCacheConfig(config, name) : {};
-
-		// Determine which module/export to use
-		let modulePath: string;
-		let exportName: string | undefined;
-		let cacheOptions: Record<string, unknown>;
-
-		if (matchedConfig.module) {
-			// User config specifies module - use it
-			modulePath = matchedConfig.module;
-			exportName = matchedConfig.export;
-			const {module: _, export: __, ...rest} = matchedConfig;
-			cacheOptions = rest;
-		} else if (defaultCache) {
-			// Fall back to platform default
-			modulePath = defaultCache.module;
-			exportName = defaultCache.export;
-			cacheOptions = {};
-		} else {
-			throw new Error(
-				`No cache configured for "${name}" and no platform default provided.`,
-			);
-		}
-
 		// For PostMessageCache in workers (forwards to main thread)
 		if (usePostMessage) {
 			return new PostMessageCache(name);
 		}
 
-		const mod = await import(modulePath);
-		const CacheClass = exportName ? mod[exportName] : mod.default;
+		const config = configs[name];
+		if (!config) {
+			throw new Error(
+				`Cache "${name}" is not configured. Available caches: ${Object.keys(configs).join(", ") || "(none)"}`,
+			);
+		}
 
+		// Strip metadata fields that shouldn't be passed to cache constructor
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		const {CacheClass, module: _module, export: _export, ...cacheOptions} = config;
 		if (!CacheClass) {
 			throw new Error(
-				`Cache module "${modulePath}" does not export "${exportName || "default"}".`,
+				`Cache "${name}" has no CacheClass. Ensure the cache module is configured.`,
 			);
 		}
 
@@ -2402,10 +2297,6 @@ export interface WorkerErrorMessage {
 export interface InitWorkerRuntimeOptions {
 	/** Shovel configuration (from shovel:config) */
 	config: ShovelConfig;
-	/** Platform-provided defaults for well-known directories */
-	directoryDefaults?: Record<string, DirectoryDefault>;
-	/** Platform-provided default cache implementation */
-	cacheDefault?: CacheDefault;
 }
 
 /**
@@ -2434,10 +2325,10 @@ export interface InitWorkerRuntimeResult {
  *
  * @example
  * ```typescript
- * import {config, directoryDefaults} from "shovel:config";
+ * import {config} from "shovel:config";
  * import {initWorkerRuntime, startWorkerMessageLoop} from "@b9g/platform/runtime";
  *
- * const {registration} = await initWorkerRuntime({config, directoryDefaults});
+ * const {registration} = await initWorkerRuntime({config});
  *
  * // Import user code (registers event handlers)
  * import "./server.js";
@@ -2451,7 +2342,7 @@ export interface InitWorkerRuntimeResult {
 export async function initWorkerRuntime(
 	options: InitWorkerRuntimeOptions,
 ): Promise<InitWorkerRuntimeResult> {
-	const {config, directoryDefaults, cacheDefault} = options;
+	const {config} = options;
 	const runtimeLogger = getLogger(["shovel", "platform"]);
 
 	// Configure logging if specified
@@ -2463,12 +2354,15 @@ export async function initWorkerRuntime(
 
 	// Create cache storage with PostMessage support for worker coordination
 	const caches = new CustomCacheStorage(
-		createCacheFactory({config, default: cacheDefault, usePostMessage: true}),
+		createCacheFactory({
+			configs: config?.caches ?? {},
+			usePostMessage: true,
+		}),
 	);
 
-	// Create directory storage with platform defaults
+	// Create directory storage
 	const directories = new CustomDirectoryStorage(
-		createDirectoryFactory({config, defaults: directoryDefaults}),
+		createDirectoryFactory(config?.directories ?? {}),
 	);
 
 	// Create database storage if configured
@@ -2677,54 +2571,32 @@ const SHOVEL_DEFAULT_LOGGERS: LoggerConfig[] = [
 /**
  * Create a sink from config.
  *
- * If config.factory is provided (pre-imported at build time), uses that directly.
- * Otherwise falls back to dynamic import (dev mode only - won't work in bundled builds).
- *
  * Note: File paths in sinkOptions should already be absolute.
  * The CLI/build process is responsible for resolving relative paths.
  */
 async function createSink(config: SinkConfig): Promise<any> {
 	const {
-		module: modulePath,
-		export: exportName,
-		factory: preImportedFactory,
+		factory,
 		provider: _provider, // Exclude provider from options passed to factory
 		path, // Extract path for file-based sinks
 		...sinkOptions
 	} = config;
 
-	// Helper to call factory with correct signature
-	// File-based sinks (getFileSink, getRotatingFileSink) expect (path, options)
-	// Other sinks (getConsoleSink, getOpenTelemetrySink, etc.) expect (options) or no args
-	const callFactory = (factory: Function) => {
-		if (path !== undefined) {
-			// File-based sink: (path, options)
-			return factory(path, sinkOptions);
-		} else if (Object.keys(sinkOptions).length > 0) {
-			// Options-based sink: (options)
-			return factory(sinkOptions);
-		} else {
-			// No-args sink (e.g., getConsoleSink)
-			return factory();
-		}
-	};
-
-	// Use pre-imported factory if available (from generateConfigModule)
-	if (preImportedFactory) {
-		return callFactory(preImportedFactory);
-	}
-
-	// Dynamic import
-	const mod = await import(modulePath);
-	const factory = exportName ? mod[exportName] : mod.default;
-
 	if (!factory) {
 		throw new Error(
-			`Sink module "${modulePath}" does not export "${exportName || "default"}".`,
+			`Sink has no factory. Ensure the sink module is configured in shovel.json.`,
 		);
 	}
 
-	return callFactory(factory);
+	// File-based sinks (getFileSink, getRotatingFileSink) expect (path, options)
+	// Other sinks (getConsoleSink, getOpenTelemetrySink, etc.) expect (options) or no args
+	if (path !== undefined) {
+		return factory(path, sinkOptions);
+	} else if (Object.keys(sinkOptions).length > 0) {
+		return factory(sinkOptions);
+	} else {
+		return factory();
+	}
 }
 
 /**

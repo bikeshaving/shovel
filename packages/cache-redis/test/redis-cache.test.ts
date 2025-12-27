@@ -14,7 +14,10 @@ import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 await configure({
 	reset: true,
 	sinks: {console: getConsoleSink()},
-	loggers: [{category: ["test"], lowestLevel: "info", sinks: ["console"]}],
+	loggers: [
+		{category: ["logtape", "meta"], lowestLevel: "warning", sinks: []},
+		{category: ["test"], lowestLevel: "info", sinks: ["console"]},
+	],
 });
 
 const logger = getLogger(["test", "redis-cache"]);

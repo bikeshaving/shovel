@@ -142,14 +142,12 @@ describe("generateConfigModule", () => {
 				},
 			};
 
-			const module = generateConfigModule(config, {
-				REDIS_URL: "redis://localhost",
-			});
+			const module = generateConfigModule(config);
 
 			// Should have static import for the module
 			expect(module).toContain('from "@b9g/cache-redis"');
-			// Should reference the imported module via factory
-			expect(module).toContain("factory: cache_");
+			// Should reference the imported module via CacheClass
+			expect(module).toContain("CacheClass: cache_");
 		});
 
 		it("generates import with named export", () => {
@@ -225,12 +223,10 @@ describe("generateConfigModule", () => {
 				},
 			};
 
-			const module = generateConfigModule(config, {
-				S3_BUCKET: "my-bucket",
-			});
+			const module = generateConfigModule(config);
 
 			expect(module).toContain('from "@b9g/filesystem-s3"');
-			expect(module).toContain("factory: directory_");
+			expect(module).toContain("DirectoryClass: directory_");
 		});
 
 		it("generates import for node-fs module", () => {
@@ -246,6 +242,92 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(config);
 
 			expect(module).toContain('from "@b9g/filesystem/node-fs"');
+		});
+	});
+
+	describe("platform defaults deep merge", () => {
+		it("preserves module/export when user only overrides path", () => {
+			// User wants to change tmp path but keep the default NodeFSDirectory
+			const module = generateConfigModule(
+				{
+					directories: {
+						tmp: {path: "./my-tmp"}, // Only override path, not module
+					},
+				},
+				{
+					platformDefaults: {
+						directories: {
+							tmp: {
+								module: "@b9g/filesystem/node-fs",
+								export: "NodeFSDirectory",
+								path: "tmpdir",
+							},
+						},
+					},
+				},
+			);
+
+			// Should still have the import from platform defaults
+			expect(module).toContain('from "@b9g/filesystem/node-fs"');
+			expect(module).toContain("DirectoryClass: directory_");
+			// User's path override should be present
+			expect(module).toContain("./my-tmp");
+		});
+
+		it("preserves module/export when user only overrides cache options", () => {
+			// User wants to change cache options but keep the default cache class
+			const module = generateConfigModule(
+				{
+					caches: {
+						sessions: {ttl: 3600}, // Only override ttl, not module
+					},
+				},
+				{
+					platformDefaults: {
+						caches: {
+							sessions: {
+								module: "@b9g/cache/memory",
+								export: "MemoryCache",
+							},
+						},
+					},
+				},
+			);
+
+			// Should still have the import from platform defaults
+			expect(module).toContain('from "@b9g/cache/memory"');
+			expect(module).toContain("CacheClass: cache_");
+			// User's ttl override should be present
+			expect(module).toContain("3600");
+		});
+
+		it("allows user to fully override module if specified", () => {
+			// User provides their own module - should use user's module
+			const module = generateConfigModule(
+				{
+					directories: {
+						tmp: {
+							module: "@b9g/filesystem/memory",
+							export: "MemoryDirectory",
+						},
+					},
+				},
+				{
+					platformDefaults: {
+						directories: {
+							tmp: {
+								module: "@b9g/filesystem/node-fs",
+								export: "NodeFSDirectory",
+								path: "tmpdir",
+							},
+						},
+					},
+				},
+			);
+
+			// Should use user's module, not platform default
+			expect(module).toContain('from "@b9g/filesystem/memory"');
+			expect(module).not.toContain('from "@b9g/filesystem/node-fs"');
 		});
 	});
 
@@ -485,5 +567,65 @@ describe("generateStorageTypes", () => {
 		);
 		expect(result).toContain('type ValidDatabaseName = "main";');
 		expect(result).toContain('type ValidDirectoryName = "uploads";');
+	});
+
+	it("includes platform defaults in directory types", () => {
+		const result = generateStorageTypes(
+			{}, // No user config
+			{
+				platformDefaults: {
+					directories: {
+						server: {module: "@b9g/filesystem/node-fs", path: "."},
+						public: {module: "@b9g/filesystem/node-fs", path: "../public"},
+						tmp: {module: "@b9g/filesystem/node-fs", path: "tmpdir"},
+					},
+				},
+			},
+		);
+
+		expect(result).toContain('type ValidDirectoryName = "server" | "public" | "tmp";');
+	});
+
+	it("includes platform defaults in cache types", () => {
+		const result = generateStorageTypes(
+			{}, // No user config
+			{
+				platformDefaults: {
+					caches: {
+						default: {module: "@b9g/cache/memory"},
+					},
+				},
+			},
+		);
+
+		expect(result).toContain('type ValidCacheName = "default";');
+		expect(result).toContain("interface CacheStorage");
+	});
+
+	it("merges user config with platform defaults (user wins)", () => {
+		const result = generateStorageTypes(
+			{
+				directories: {
+					uploads: {module: "@b9g/filesystem/memory"},
+					// User overrides 'tmp' from platform defaults
+					tmp: {module: "@b9g/filesystem/memory"},
+				},
+			},
+			{
+				platformDefaults: {
+					directories: {
+						server: {module: "@b9g/filesystem/node-fs", path: "."},
+						tmp: {module: "@b9g/filesystem/node-fs", path: "tmpdir"},
+					},
+				},
+			},
+		);
+
+		// Should include both platform defaults and user config
+		expect(result).toContain('"server"');
+		expect(result).toContain('"uploads"');
+		expect(result).toContain('"tmp"');
+		// All should be in the union
+		expect(result).toContain('type ValidDirectoryName =');
 	});
 });

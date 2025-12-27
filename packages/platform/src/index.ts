@@ -154,6 +154,31 @@ export interface PlatformESBuildConfig {
 }
 
 /**
+ * Default resource configuration for a named resource (cache, directory, etc.)
+ * Used by platforms to define built-in defaults that get merged with user config.
+ */
+export interface ResourceDefault {
+	/** Module path to import (e.g., "@b9g/cache/memory") */
+	module: string;
+	/** Named export to use (defaults to "default") */
+	export?: string;
+	/** Additional options (e.g., path for directories) */
+	[key: string]: unknown;
+}
+
+/**
+ * Platform-specific defaults for config generation.
+ * These are merged with user config at build time to provide
+ * sensible defaults for each platform.
+ */
+export interface PlatformDefaults {
+	/** Default directory configurations (server, public, tmp, etc.) */
+	directories?: Record<string, ResourceDefault>;
+	/** Default cache configuration (e.g., memory cache) */
+	caches?: Record<string, ResourceDefault>;
+}
+
+/**
  * Platform interface - ServiceWorker entrypoint loader for JavaScript runtimes
  *
  * The core responsibility: "Take a ServiceWorker-style app file and make it run in this environment"
@@ -201,6 +226,15 @@ export interface Platform {
 	 * Includes platform target, conditions, externals, and defines.
 	 */
 	getESBuildConfig(): PlatformESBuildConfig;
+
+	/**
+	 * BUILD SUPPORT - Get platform-specific defaults for config generation
+	 *
+	 * Returns defaults for directories, caches, etc. that get merged with
+	 * user config at build time. These are used by generateConfigModule()
+	 * to create static imports for the default implementations.
+	 */
+	getDefaults(): PlatformDefaults;
 
 	/**
 	 * Create cache storage for this platform
@@ -350,24 +384,20 @@ export async function createPlatform(
 ): Promise<any> {
 	switch (platformName) {
 		case "node": {
-			const modulePath = import.meta.resolve("@b9g/platform-node");
-			const NodePlatform = await import(modulePath).then((m) => m.default);
+			const {default: NodePlatform} = await import("@b9g/platform-node");
 			return new NodePlatform(options);
 		}
 
 		case "bun": {
-			const modulePath = import.meta.resolve("@b9g/platform-bun");
-			const BunPlatform = await import(modulePath).then((m) => m.default);
+			const {default: BunPlatform} = await import("@b9g/platform-bun");
 			return new BunPlatform(options);
 		}
 
 		case "cloudflare":
 		case "cloudflare-workers":
 		case "cf": {
-			const modulePath = import.meta.resolve("@b9g/platform-cloudflare");
-			const CloudflarePlatform = await import(modulePath).then(
-				(m) => m.default,
-			);
+			const {default: CloudflarePlatform} =
+				await import("@b9g/platform-cloudflare");
 			return new CloudflarePlatform(options);
 		}
 
@@ -411,6 +441,12 @@ export abstract class BasePlatform implements Platform {
 	 * Subclasses should override to provide platform-specific config
 	 */
 	abstract getESBuildConfig(): PlatformESBuildConfig;
+
+	/**
+	 * Get platform-specific defaults for config generation
+	 * Subclasses should override to provide platform-specific defaults
+	 */
+	abstract getDefaults(): PlatformDefaults;
 
 	/**
 	 * Create cache storage for this platform
@@ -608,6 +644,7 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 
 		// Import the user's ServiceWorker code
 		// Filename is content-hashed, so fresh import is guaranteed on reload
+		// eslint-disable-next-line no-restricted-syntax -- Runtime dynamic import of user code
 		await import(entrypoint);
 
 		// Run lifecycle events
