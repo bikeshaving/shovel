@@ -388,9 +388,6 @@ test(
 				"<marquee>Hello from dependency-hello.ts</marquee>",
 			);
 
-			// Give esbuild's watcher time to fully initialize after the first build
-			await new Promise((resolve) => setTimeout(resolve, 500));
-
 			// Modify the dependency file (simulate dependency change)
 			await tempFixture.copyDependencyFrom(
 				"server-dependency-hello.ts",
@@ -435,9 +432,6 @@ test(
 			expect(initialResponse).toBe(
 				'<marquee behavior="alternate">Hello from dependency-hello.ts</marquee>',
 			);
-
-			// Give esbuild's watcher time to fully initialize after the first build
-			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			// Modify the dependency file
 			await tempFixture.copyDependencyFrom(
@@ -486,7 +480,6 @@ test(
 
 			// Make multiple concurrent requests during reload
 			// Use a longer initial wait to ensure the file change is detected
-			await new Promise((resolve) => setTimeout(resolve, 500)); // Wait for file change detection
 
 			const concurrentRequests = Array.from({length: 10}, () =>
 				fetchWithRetry(PORT, 5, 100),
@@ -537,7 +530,6 @@ test(
 			await FS.writeFile(tempFixture.path, "this is not valid typescript!!!");
 
 			// Wait for attempted reload
-			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			// Server should still be running and serving something (error page or last good version)
 			const response = await fetchWithRetry(PORT);
@@ -672,15 +664,9 @@ self.addEventListener("fetch", (event) => {
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toContain("Values: original-0, original-1");
 
-			// Verify watcher is working by modifying one file first
-			await FS.writeFile(testFiles[0].path, testFiles[0].modified);
-			await waitForContentChange(PORT, "modified-0", {contains: true});
-
-			// Now modify remaining files concurrently
+			// Modify all files concurrently
 			await Promise.all(
-				testFiles
-					.slice(1)
-					.map((file) => FS.writeFile(file.path, file.modified)),
+				testFiles.map((file) => FS.writeFile(file.path, file.modified)),
 			);
 
 			// Wait for all changes to be reflected
@@ -785,9 +771,6 @@ self.addEventListener("fetch", (event) => {
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>Original</div>");
 
-			// Give esbuild's watcher time to fully initialize after the first build
-			await new Promise((resolve) => setTimeout(resolve, 500));
-
 			// Delete the file
 			await FS.unlink(testFile);
 
@@ -855,9 +838,6 @@ self.addEventListener("fetch", (event) => {
 			// Wait for initial response
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>Valid</div>");
-
-			// Give esbuild's watcher time to fully initialize after the first build
-			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			// Write syntax error
 			await FS.writeFile(testFile, invalidContent);
@@ -932,9 +912,6 @@ self.addEventListener("fetch", (event) => {
 			// Wait for initial response
 			const response = await waitForServer(PORT, serverProcess);
 			expect(response).toBe("<div>Variables: 50</div>");
-
-			// Give esbuild's watcher time to fully initialize after the first build
-			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			// Modify the large file
 			const modifiedContent = largeContent.replace(
@@ -1068,9 +1045,6 @@ self.addEventListener("fetch", (event) => {
 			// Wait for initial response
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>JavaScript file!</div>");
-
-			// Give esbuild's watcher time to fully initialize after the first build
-			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			// Modify the JS file
 			await FS.writeFile(jsFile, modifiedJsContent);
