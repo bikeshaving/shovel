@@ -319,8 +319,8 @@ Example with environment-based module selection:
 {
   "caches": {
     "sessions": {
-      "module": "NODE_ENV === production ? @b9g/cache-redis : @b9g/cache/memory",
-      "export": "NODE_ENV === production ? RedisCache : MemoryCache",
+      "module": "MODE === production ? @b9g/cache-redis : @b9g/cache/memory",
+      "export": "MODE === production ? RedisCache : MemoryCache",
       "url": "REDIS_URL"
     }
   }
