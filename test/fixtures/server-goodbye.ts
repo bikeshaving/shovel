@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- Test fixture intentionally logs */
 /// <reference types="@b9g/platform" />
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";

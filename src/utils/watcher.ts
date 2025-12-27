@@ -10,7 +10,7 @@
 
 import * as ESBuild from "esbuild";
 import {builtinModules} from "node:module";
-import {resolve, join} from "path";
+import {resolve, join, dirname, basename} from "path";
 import {mkdir} from "fs/promises";
 import {watch, type FSWatcher, existsSync} from "fs";
 import {getLogger} from "@logtape/logtape";
@@ -48,6 +48,8 @@ export class Watcher {
 	}) => void;
 	#currentEntrypoint: string;
 	#configWatchers: FSWatcher[];
+	#dirWatchers: Map<string, {watcher: FSWatcher; files: Set<string>}>;
+	#userEntryPath: string;
 
 	constructor(options: WatcherOptions) {
 		this.#options = options;
@@ -55,6 +57,8 @@ export class Watcher {
 		this.#initialBuildComplete = false;
 		this.#currentEntrypoint = "";
 		this.#configWatchers = [];
+		this.#dirWatchers = new Map();
+		this.#userEntryPath = "";
 	}
 
 	/**
@@ -63,6 +67,7 @@ export class Watcher {
 	 */
 	async start(): Promise<{success: boolean; entrypoint: string}> {
 		const entryPath = resolve(this.#projectRoot, this.#options.entrypoint);
+		this.#userEntryPath = entryPath; // Store for native file watching
 		const outputDir = resolve(this.#projectRoot, this.#options.outDir);
 
 		// Ensure output directory structure exists
@@ -209,9 +214,22 @@ export class Watcher {
 
 							this.#currentEntrypoint = outputPath;
 
+							// Update native file watchers based on metafile inputs
+							// This provides instant file change detection via inotify/fsevents
+							// as a complement to esbuild's polling-based watch mode
+							// IMPORTANT: Must complete before resolving initial build promise
+							// so that file watchers are ready when start() returns
+							if (result.metafile) {
+								this.#updateSourceWatchers(result.metafile);
+							}
+
 							// Handle initial build
 							if (!this.#initialBuildComplete) {
 								this.#initialBuildComplete = true;
+								// Yield to the event loop to ensure inotify watches are
+								// fully registered before signaling readiness. Without this,
+								// file modifications immediately after start() may be missed.
+								await new Promise((resolve) => setTimeout(resolve, 0));
 								this.#initialBuildResolve?.({success, entrypoint: outputPath});
 							} else {
 								// Subsequent rebuilds triggered by watch
@@ -280,6 +298,122 @@ export class Watcher {
 	}
 
 	/**
+	 * Update native directory watchers for source files from metafile.
+	 * Uses fs.watch on directories for instant inotify/fsevents detection
+	 * as a complement to esbuild's polling-based watch mode.
+	 *
+	 * Watching directories instead of files handles:
+	 * - File deletion and recreation (directory watcher survives)
+	 * - Concurrent modifications (one watcher per directory)
+	 * - Fewer file descriptors (one per directory vs one per file)
+	 */
+	#updateSourceWatchers(metafile: ESBuild.Metafile) {
+		// Build map of directory -> set of filenames from metafile inputs
+		// Skip virtual files (<stdin>, <external>:, shovel:, etc.)
+		const newDirFiles = new Map<string, Set<string>>();
+
+		// Always include the user entry file directory explicitly
+		// This handles cases where the entry file is outside the project root
+		// (e.g., in /tmp for tests) and metafile paths don't resolve correctly
+		if (this.#userEntryPath) {
+			const entryDir = dirname(this.#userEntryPath);
+			const entryFile = basename(this.#userEntryPath);
+			if (!newDirFiles.has(entryDir)) {
+				newDirFiles.set(entryDir, new Set());
+			}
+			newDirFiles.get(entryDir)!.add(entryFile);
+			logger.debug("Explicitly watching user entry file: {path}", {
+				path: this.#userEntryPath,
+			});
+		}
+
+		for (const inputPath of Object.keys(metafile.inputs)) {
+			if (inputPath.startsWith("<") || inputPath.startsWith("shovel")) {
+				continue;
+			}
+
+			// inputPath is relative to absWorkingDir (project root)
+			// For paths like "../../../tmp/foo.ts", resolve() handles them correctly
+			const fullPath = resolve(this.#projectRoot, inputPath);
+			const dir = dirname(fullPath);
+			const file = basename(fullPath);
+
+			if (!newDirFiles.has(dir)) {
+				newDirFiles.set(dir, new Set());
+			}
+			newDirFiles.get(dir)!.add(file);
+		}
+
+		// Remove watchers for directories no longer needed
+		for (const [dir, entry] of this.#dirWatchers) {
+			if (!newDirFiles.has(dir)) {
+				entry.watcher.close();
+				this.#dirWatchers.delete(dir);
+			}
+		}
+
+		// Update or add watchers for each directory
+		for (const [dir, files] of newDirFiles) {
+			const existing = this.#dirWatchers.get(dir);
+
+			if (existing) {
+				// Update the file set for existing watcher
+				existing.files = files;
+			} else {
+				// Create new directory watcher
+				if (!existsSync(dir)) continue;
+
+				try {
+					const watcher = watch(dir, {persistent: false}, (event, filename) => {
+						const entry = this.#dirWatchers.get(dir);
+						if (!entry) return;
+
+						// On Linux, filename can sometimes be null even for real changes.
+						// If we have a filename, check if it's one of our tracked files.
+						// If filename is null, trigger rebuild anyway (esbuild will dedupe).
+						const isTrackedFile = filename ? entry.files.has(filename) : true;
+
+						if (isTrackedFile) {
+							logger.debug("Native watcher detected change: {file}", {
+								file: filename ? join(dir, filename) : dir,
+							});
+							// Trigger rebuild - esbuild dedupes concurrent rebuilds
+							this.#ctx?.rebuild().catch((err) => {
+								logger.error("Rebuild failed: {error}", {error: err});
+							});
+						}
+					});
+
+					this.#dirWatchers.set(dir, {watcher, files});
+				} catch (err) {
+					// Non-fatal: esbuild's polling will catch it
+					logger.debug("Failed to watch directory {dir}: {error}", {
+						dir,
+						error: err,
+					});
+				}
+			}
+		}
+
+		const totalFiles = Array.from(this.#dirWatchers.values()).reduce(
+			(sum, entry) => sum + entry.files.size,
+			0,
+		);
+
+		// Log which directories we're watching (useful for debugging)
+		const watchedDirs = Array.from(this.#dirWatchers.keys());
+		logger.debug(
+			"Watching {fileCount} source files in {dirCount} directories with native fs.watch",
+			{fileCount: totalFiles, dirCount: this.#dirWatchers.size},
+		);
+		logger.debug("Watched directories: {dirs}", {
+			dirs:
+				watchedDirs.slice(0, 5).join(", ") +
+				(watchedDirs.length > 5 ? "..." : ""),
+		});
+	}
+
+	/**
 	 * Stop watching and dispose of esbuild context
 	 */
 	async stop() {
@@ -288,6 +422,12 @@ export class Watcher {
 			watcher.close();
 		}
 		this.#configWatchers = [];
+
+		// Close directory watchers
+		for (const entry of this.#dirWatchers.values()) {
+			entry.watcher.close();
+		}
+		this.#dirWatchers.clear();
 
 		if (this.#ctx) {
 			await this.#ctx.dispose();

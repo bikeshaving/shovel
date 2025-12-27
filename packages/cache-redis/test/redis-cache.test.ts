@@ -9,17 +9,32 @@
 import {test, expect, describe, beforeEach, afterEach} from "bun:test";
 import {RedisCache} from "../src/index.js";
 import {createClient} from "redis";
+import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 
+await configure({
+	reset: true,
+	sinks: {console: getConsoleSink()},
+	loggers: [{category: ["test"], lowestLevel: "info", sinks: ["console"]}],
+});
+
+const logger = getLogger(["test", "redis-cache"]);
 const REDIS_URL = import.meta.env.REDIS_URL || "redis://localhost:6379";
 
 async function isRedisAvailable(url: string): Promise<boolean> {
-	const client = createClient({url});
+	const client = createClient({
+		url,
+		socket: {
+			connectTimeout: 2000,
+			reconnectStrategy: false,
+		},
+	});
 	try {
 		await client.connect();
 		await client.ping();
 		await client.quit();
 		return true;
-	} catch {
+	} catch (err) {
+		logger.info`Redis not available at ${url}: ${err instanceof Error ? err.message : err}`;
 		if (client.isOpen) {
 			await client.quit();
 		}

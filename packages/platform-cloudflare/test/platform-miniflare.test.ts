@@ -2,6 +2,9 @@ import {describe, test, expect, beforeAll, afterAll} from "bun:test";
 import * as path from "path";
 import * as fs from "fs/promises";
 import {CloudflarePlatform} from "../src/index.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "platform-cloudflare"]);
 
 describe("CloudflarePlatform with miniflare", () => {
 	const testDir = path.resolve(import.meta.dir, "miniflare-fixtures");
@@ -49,8 +52,8 @@ self.addEventListener("fetch", (event) => {
 	afterAll(async () => {
 		try {
 			await fs.rm(testDir, {recursive: true});
-		} catch {
-			// Ignore cleanup errors
+		} catch (err) {
+			logger.debug`Cleanup of ${testDir} failed: ${err}`;
 		}
 	});
 

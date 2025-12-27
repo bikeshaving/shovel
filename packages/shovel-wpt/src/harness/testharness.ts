@@ -9,6 +9,9 @@
  */
 
 import {test as bunTest, describe} from "bun:test";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "wpt", "harness"]);
 
 /**
  * Test context passed to WPT test functions
@@ -255,8 +258,8 @@ export async function runQueuedTests(): Promise<TestResult[]> {
 			for (const cleanup of currentCleanups.reverse()) {
 				try {
 					await cleanup();
-				} catch {
-					// Ignore cleanup errors
+				} catch (err) {
+					logger.debug`Cleanup error: ${err}`;
 				}
 			}
 		}

@@ -2,6 +2,9 @@ import {describe, test, expect, beforeAll, afterAll} from "bun:test";
 import * as path from "path";
 import * as fs from "fs/promises";
 import {CloudflarePlatform} from "../src/index.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "platform-cloudflare-simple"]);
 
 describe("CloudflarePlatform with miniflare (no assets)", () => {
 	const testDir = path.resolve(import.meta.dir, "miniflare-simple-fixtures");
@@ -36,8 +39,8 @@ self.addEventListener("fetch", (event) => {
 		// Platform is already disposed by individual tests, just cleanup files
 		try {
 			await fs.rm(testDir, {recursive: true});
-		} catch {
-			// Ignore cleanup errors
+		} catch (err) {
+			logger.debug`Cleanup of ${testDir} failed: ${err}`;
 		}
 	});
 
@@ -54,8 +57,7 @@ self.addEventListener("fetch", (event) => {
 		);
 
 		const text = await response.text();
-		console.info("Response status:", response.status);
-		console.info("Response body:", text);
+		logger.debug`Response status: ${response.status}, body: ${text}`;
 
 		expect(response.status).toBe(200);
 

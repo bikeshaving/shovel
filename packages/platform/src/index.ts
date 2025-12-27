@@ -807,6 +807,11 @@ export class ServiceWorkerPool {
 	#cacheStorage?: CacheStorage & {
 		handleMessage?: (worker: Worker, message: any) => Promise<void>;
 	};
+	// Waiters for when workers become available (used during reload)
+	#workerAvailableWaiters: Array<{
+		resolve: () => void;
+		reject: (error: Error) => void;
+	}>;
 
 	constructor(
 		options: WorkerPoolOptions = {},
@@ -818,6 +823,7 @@ export class ServiceWorkerPool {
 		this.#requestID = 0;
 		this.#pendingRequests = new Map();
 		this.#pendingWorkerReady = new Map();
+		this.#workerAvailableWaiters = [];
 		this.#appEntrypoint = appEntrypoint;
 		this.#cacheStorage = cacheStorage;
 		this.#options = {
@@ -893,12 +899,28 @@ export class ServiceWorkerPool {
 			}
 		});
 
-		this.#workers.push(worker);
 		logger.info("Waiting for worker ready signal", {entrypoint});
 
 		await readyPromise;
 		this.#pendingWorkerReady.delete(worker);
+
+		// Yield to event loop to ensure worker's message handler is fully active.
+		// This works around a timing issue in Node.js worker_threads where the
+		// worker may post "ready" before its event loop is ready to receive messages.
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		// Only add worker to the pool AFTER it's ready to handle requests
+		// This prevents requests being dispatched to workers that haven't
+		// finished initializing their ServiceWorker code
+		this.#workers.push(worker);
 		logger.info("Worker ready", {entrypoint});
+
+		// Notify any waiters that a worker is now available
+		const waiters = this.#workerAvailableWaiters;
+		this.#workerAvailableWaiters = [];
+		for (const waiter of waiters) {
+			waiter.resolve();
+		}
 
 		return worker;
 	}
@@ -983,6 +1005,36 @@ export class ServiceWorkerPool {
 	 * Handle HTTP request using round-robin worker selection
 	 */
 	async handleRequest(request: Request): Promise<Response> {
+		// Wait for workers to be available (e.g., during reload)
+		if (this.#workers.length === 0) {
+			logger.debug("No workers available, waiting for worker to be ready");
+			await new Promise<void>((resolve, reject) => {
+				const waiter = {resolve, reject};
+				this.#workerAvailableWaiters.push(waiter);
+
+				// Timeout if no worker becomes available
+				const timeoutId = setTimeout(() => {
+					const index = this.#workerAvailableWaiters.indexOf(waiter);
+					if (index !== -1) {
+						this.#workerAvailableWaiters.splice(index, 1);
+						reject(new Error("Timeout waiting for worker to become available"));
+					}
+				}, this.#options.requestTimeout);
+
+				// Clear timeout if resolved/rejected normally
+				const originalResolve = waiter.resolve;
+				const originalReject = waiter.reject;
+				waiter.resolve = () => {
+					clearTimeout(timeoutId);
+					originalResolve();
+				};
+				waiter.reject = (error: Error) => {
+					clearTimeout(timeoutId);
+					originalReject(error);
+				};
+			});
+		}
+
 		const worker = this.#workers[this.#currentWorker];
 		logger.debug("Dispatching to worker", {
 			workerIndex: this.#currentWorker + 1,
@@ -1050,15 +1102,29 @@ export class ServiceWorkerPool {
 		const terminatePromises = this.#workers.map((worker) => worker.terminate());
 		await Promise.allSettled(terminatePromises);
 		this.#workers = [];
+		this.#currentWorker = 0; // Reset round-robin index
 
 		// Create new workers with new bundle
-		const createPromises: Promise<Worker>[] = [];
-		for (let i = 0; i < this.#options.workerCount; i++) {
-			createPromises.push(this.#createWorker(entrypoint));
+		try {
+			const createPromises: Promise<Worker>[] = [];
+			for (let i = 0; i < this.#options.workerCount; i++) {
+				createPromises.push(this.#createWorker(entrypoint));
+			}
+			await Promise.all(createPromises);
+			logger.info("All workers reloaded", {entrypoint});
+		} catch (error) {
+			// If worker creation fails, reject any pending request waiters
+			const waiters = this.#workerAvailableWaiters;
+			this.#workerAvailableWaiters = [];
+			const reloadError =
+				error instanceof Error
+					? error
+					: new Error("Worker creation failed during reload");
+			for (const waiter of waiters) {
+				waiter.reject(reloadError);
+			}
+			throw error;
 		}
-		await Promise.all(createPromises);
-
-		logger.info("All workers reloaded", {entrypoint});
 	}
 
 	/**
@@ -1068,8 +1134,17 @@ export class ServiceWorkerPool {
 		const terminatePromises = this.#workers.map((worker) => worker.terminate());
 		await Promise.allSettled(terminatePromises);
 		this.#workers = [];
+		this.#currentWorker = 0; // Reset round-robin index
 		this.#pendingRequests.clear();
 		this.#pendingWorkerReady.clear();
+
+		// Reject any pending request waiters
+		const waiters = this.#workerAvailableWaiters;
+		this.#workerAvailableWaiters = [];
+		const terminateError = new Error("Worker pool terminated");
+		for (const waiter of waiters) {
+			waiter.reject(terminateError);
+		}
 	}
 
 	/**

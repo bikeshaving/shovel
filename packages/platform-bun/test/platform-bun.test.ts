@@ -4,6 +4,9 @@ import {MemoryDirectory} from "@b9g/filesystem/memory";
 import {tmpdir} from "os";
 import {join} from "path";
 import {mkdtempSync, writeFileSync, rmSync} from "fs";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "platform-bun"]);
 
 // Mock Bun global if not available (for testing in other environments)
 if (typeof globalThis.Bun === "undefined") {
@@ -30,8 +33,8 @@ describe("BunPlatform", () => {
 		await platform.dispose();
 		try {
 			rmSync(tempDir, {recursive: true, force: true});
-		} catch {
-			// Cleanup may fail in some environments
+		} catch (err) {
+			logger.debug`Cleanup of ${tempDir} failed: ${err}`;
 		}
 	});
 

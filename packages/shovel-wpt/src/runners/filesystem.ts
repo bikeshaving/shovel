@@ -7,6 +7,9 @@
 import {describe, test, expect, beforeEach, afterEach} from "bun:test";
 import {promise_test} from "../harness/testharness.js";
 import * as assertions from "../harness/assertions.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "wpt", "filesystem"]);
 
 /**
  * Configuration for running filesystem tests
@@ -499,8 +502,8 @@ export function runFilesystemTests(
 						// Same root - this is ok
 						expect(Array.isArray(path)).toBe(true);
 					}
-				} catch {
-					// Some implementations throw for unrelated handles
+				} catch (err) {
+					logger.debug`resolve() threw for unrelated handle: ${err}`;
 				}
 			});
 

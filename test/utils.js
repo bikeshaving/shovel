@@ -9,6 +9,9 @@
 import * as FS from "fs/promises";
 import {join, resolve} from "path";
 import {tmpdir} from "os";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "utils"]);
 
 export const FIXTURES_DIR = resolve(import.meta.dir, "fixtures");
 
@@ -38,8 +41,8 @@ export async function copyFixtureToTemp(fixtureName, prefix = "shovel-test-") {
 		async cleanup() {
 			try {
 				await FS.rm(tempDir, {recursive: true, force: true});
-			} catch {
-				// Already removed
+			} catch (err) {
+				logger.debug`Cleanup of ${tempDir} failed (may already be removed): ${err}`;
 			}
 		},
 	};
@@ -71,7 +74,11 @@ export async function fileExists(path) {
 	try {
 		await FS.access(path);
 		return true;
-	} catch {
+	} catch (err) {
+		// ENOENT means file doesn't exist, other errors are unexpected
+		if (err.code !== "ENOENT") {
+			logger.warn`Unexpected error checking file ${path}: ${err}`;
+		}
 		return false;
 	}
 }

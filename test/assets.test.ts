@@ -16,6 +16,19 @@ import {
 import {tmpdir} from "os";
 import {join} from "path";
 
+// Helper to check if path exists
+async function pathExists(path: string): Promise<boolean> {
+	try {
+		await access(path);
+		return true;
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+			return false;
+		}
+		throw err;
+	}
+}
+
 describe("Assets Plugin - output path structure", () => {
 	test("should output assets to {outDir}/public/{assetBase}/", async () => {
 		const testDir = await mkdtemp(join(tmpdir(), "asset-path-test-"));
@@ -90,12 +103,7 @@ export { cssUrl };`,
 		});
 
 		// dist/assets should NOT exist (it should be dist/public/assets)
-		let assetsExistDirectly = true;
-		try {
-			await access(join(outDir, "assets"));
-		} catch {
-			assetsExistDirectly = false;
-		}
+		const assetsExistDirectly = await pathExists(join(outDir, "assets"));
 		expect(assetsExistDirectly).toBe(false);
 
 		// dist/public/assets SHOULD exist

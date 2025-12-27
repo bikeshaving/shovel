@@ -7,6 +7,9 @@ import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {NodeFSDirectory} from "@b9g/filesystem/node-fs.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "single-threaded"]);
 
 /**
  * SingleThreadedRuntime tests
@@ -36,8 +39,8 @@ async function cleanup(paths: string[]) {
 	for (const path of paths) {
 		try {
 			await FS.rm(path, {recursive: true, force: true});
-		} catch {
-			// Already removed
+		} catch (err) {
+			logger.debug`Cleanup of ${path} failed: ${err}`;
 		}
 	}
 }

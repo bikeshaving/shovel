@@ -4,6 +4,9 @@ import * as FS from "fs/promises";
 import {spawn} from "child_process";
 import {join} from "path";
 import {copyFixtureToTemp, fileExists} from "./utils.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["test", "executable"]);
 
 /**
  * Executable builds integration tests
@@ -24,8 +27,8 @@ async function waitForServer(port, host = "localhost", timeoutMs = 3000) {
 			if (response.ok || response.status < 500) {
 				return await response.text();
 			}
-		} catch {
-			// Server not ready yet, continue waiting
+		} catch (err) {
+			logger.debug`Waiting for server: ${err}`;
 		}
 
 		await new Promise((resolve) => setTimeout(resolve, 50));
@@ -53,12 +56,7 @@ function runExecutable(executablePath, env = {}) {
 
 	proc.on("exit", (code) => {
 		if (code !== 0 && stderrData) {
-			console.error(
-				"[Test] Process exited with code",
-				code,
-				"stderr:",
-				stderrData,
-			);
+			logger.error`Process exited with code ${code}, stderr: ${stderrData}`;
 		}
 	});
 

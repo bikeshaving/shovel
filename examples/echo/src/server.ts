@@ -5,6 +5,8 @@
 
 import {Router} from "@b9g/router";
 
+const logger = self.loggers.get("echo");
+
 const HOMEPAGE_HTML = `
 <!DOCTYPE html>
 <html lang="en">
@@ -190,7 +192,8 @@ async function parseBody(req: Request) {
 			const text = await req.text();
 			return text || null;
 		}
-	} catch {
+	} catch (_err: unknown) {
+		// Body parsing failed (invalid JSON, wrong content-type, etc.)
 		return null;
 	}
 }
@@ -375,11 +378,11 @@ router.use(async function* (request) {
 
 // ServiceWorker event handlers
 self.addEventListener("install", () => {
-	console.info("[Echo] ServiceWorker installed");
+	logger.info`ServiceWorker installed`;
 });
 
 self.addEventListener("activate", () => {
-	console.info("[Echo] ServiceWorker activated");
+	logger.info`ServiceWorker activated`;
 });
 
 self.addEventListener("fetch", (event) => {

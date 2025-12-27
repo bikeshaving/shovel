@@ -24,6 +24,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout WPT submodule (sparse)
+        run: |
+          git submodule init packages/shovel-wpt/wpt
+          git clone --no-checkout --depth=1 $(git config submodule.packages/shovel-wpt/wpt.url) packages/shovel-wpt/wpt
+          cd packages/shovel-wpt/wpt
+          git sparse-checkout set --no-cone '/*' '!/*/' '/FileAPI/' '/cookiestore/' '/fs/' '/resources/'
+          cd -
+          git submodule absorbgitdirs packages/shovel-wpt/wpt
+          git submodule update --init --force packages/shovel-wpt/wpt
+
+      # Increase inotify watch limit for esbuild watch mode tests
+      # Default is 8192 which gets exhausted when running multiple file watcher tests
+      - name: Increase inotify watch limit
+        run: |
+          echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf
+          sudo sysctl -p
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest

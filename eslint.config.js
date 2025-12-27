@@ -43,7 +43,7 @@ export default [
 			prettier,
 		},
 		rules: {
-			"no-console": ["error", {allow: ["info", "warn", "error"]}],
+			"no-console": "error",
 			"no-unused-vars": "off",
 			"no-unused-private-class-members": "off",
 			// Ban Node-isms to keep code portable
@@ -86,10 +86,18 @@ export default [
 			"@typescript-eslint/no-dupe-class-members": "warn",
 			"no-undef": "off",
 			"no-redeclare": "off",
+			// Disallow empty catch blocks - errors should be logged or handled
+			"no-useless-catch": "error",
+			"no-empty": ["error", {allowEmptyCatch: false}],
 			// Code style: No explicit accessibility modifiers, use # for private
 			// Disallow ALL accessibility modifiers and property initializers
 			"no-restricted-syntax": [
 				"error",
+				{
+					selector: "CatchClause[param=null]",
+					message:
+						"Empty catch binding not allowed. Catch and log the error with LogTape.",
+				},
 				{
 					selector:
 						"PropertyDefinition[accessibility='private'], PropertyDefinition[accessibility='protected'], PropertyDefinition[accessibility='public']",

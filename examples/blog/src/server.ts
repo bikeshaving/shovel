@@ -9,6 +9,8 @@
 import {Router} from "@b9g/router";
 import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 
+const logger = self.loggers.get("blog");
+
 // Cache control constants
 const CACHE_HEADERS = {
 	ASSETS: "public, max-age=31536000, immutable", // 1 year for assets
@@ -39,46 +41,41 @@ router.use(pageCache);
 
 // Cache middleware for pages using new generator API
 async function* pageCache(request, _context) {
-	console.info(
-		"[PageCache] Processing:",
-		request.url,
-		"Method:",
-		request.method,
-	);
+	logger.debug`Processing: ${request.url} Method: ${request.method}`;
 
 	if (request.method !== "GET" || !self.caches) {
 		// No caching - just passthrough
-		console.info("[PageCache] No caching, yielding");
+		logger.debug`No caching, yielding`;
 		const response = yield request;
-		console.info("[PageCache] Got response from yield");
+		logger.debug`Got response from yield`;
 		return response;
 	}
 
-	console.info("[PageCache] Opening cache...");
+	logger.debug`Opening cache...`;
 	// Get the pages cache from platform with version for cache invalidation
 	const cacheVersion = "v2"; // Increment when asset paths change
 	const cache = await self.caches.open(`pages-${cacheVersion}`);
-	console.info("[PageCache] Cache opened");
+	logger.debug`Cache opened`;
 	let cached;
 	try {
 		// Create a proper Request object from the URL (router passes mutable wrapper)
-		console.info("[PageCache] Creating Request from URL:", request.url);
+		logger.debug`Creating Request from URL: ${request.url}`;
 		const cacheRequest = new Request(request.url, {
 			method: request.method,
 			headers: request.headers,
 		});
-		console.info("[PageCache] Checking cache.match...");
+		logger.debug`Checking cache.match...`;
 		cached = await cache.match(cacheRequest);
-		console.info("[PageCache] cache.match completed, cached:", !!cached);
+		logger.debug`cache.match completed, cached: ${!!cached}`;
 	} catch (error) {
 		// Fall through to yield request if cache fails
-		console.info("[PageCache] cache.match error:", error.message);
+		logger.debug`cache.match error: ${error}`;
 		cached = null;
 	}
 
 	if (cached) {
 		// Cache hit - return early with cached response (clone to modify headers)
-		console.info("[PageCache] Cache HIT");
+		logger.debug`Cache HIT`;
 		const clonedResponse = cached.clone();
 		const newHeaders = new Headers(clonedResponse.headers);
 		newHeaders.set("X-Cache", "HIT");
@@ -91,9 +88,9 @@ async function* pageCache(request, _context) {
 	}
 
 	// Cache miss - continue to handler
-	console.info("[PageCache] Cache MISS, yielding to handler");
+	logger.debug`Cache MISS, yielding to handler`;
 	const response = yield request;
-	console.info("[PageCache] Got response from handler");
+	logger.debug`Got response from handler`;
 
 	// Cache the response for next time
 	if (response.ok) {
@@ -315,16 +312,13 @@ self.addEventListener("activate", (event) => {
 });
 
 async function generateStaticSite() {
-	console.info("[Blog App] Starting static site generation...");
+	logger.info`Starting static site generation...`;
 
 	try {
 		// Get static directory - the only public directory (maps to web root)
-		console.info("[Blog App] Opening static directory...");
+		logger.debug`Opening static directory...`;
 		const staticDirectory = await self.directories.open("static");
-		console.info(
-			"[Blog App] static directory opened:",
-			staticDirectory.constructor.name,
-		);
+		logger.debug`static directory opened: ${staticDirectory.constructor.name}`;
 
 		// Define routes to pre-render
 		const staticRoutes = [
@@ -334,7 +328,7 @@ async function generateStaticSite() {
 			...posts.map((post) => `/posts/${post.id}`),
 		];
 
-		console.info(`[Blog App] Pre-rendering ${staticRoutes.length} routes...`);
+		logger.info`Pre-rendering ${staticRoutes.length} routes...`;
 
 		for (const route of staticRoutes) {
 			try {
@@ -365,24 +359,18 @@ async function generateStaticSite() {
 					await writable.write(content);
 					await writable.close();
 
-					console.info(`[Blog App] ✅ Generated ${route} -> ${fileName}`);
+					logger.info`Generated ${route} -> ${fileName}`;
 				} else {
-					console.warn(`[Blog App] ⚠️  ${route} returned ${response.status}`);
+					logger.warn`${route} returned ${response.status}`;
 				}
 			} catch (error) {
-				console.error(
-					`[Blog App] ❌ Failed to generate ${route}:`,
-					error.message,
-				);
+				logger.error`Failed to generate ${route}: ${error}`;
 			}
 		}
 
-		console.info("[Blog App] ✅ Static site generation complete!");
+		logger.info`Static site generation complete!`;
 	} catch (error) {
-		console.error(
-			"[Blog App] ❌ Static site generation failed:",
-			error.message,
-		);
+		logger.error`Static site generation failed: ${error}`;
 	}
 }
 
@@ -409,7 +397,7 @@ self.addEventListener("fetch", (event) => {
 					? `Router error: ${error.message}\n\nStack trace:\n${error.stack}`
 					: `Router error: ${error.message}`;
 
-				console.error("Router error:", error);
+				logger.error`Router error: ${error}`;
 				return new Response(errorDetails, {
 					status: 500,
 					headers: {"Content-Type": "text/plain"},
@@ -423,7 +411,7 @@ self.addEventListener("fetch", (event) => {
 			? `Sync error: ${error.message}\n\nStack trace:\n${error.stack}`
 			: `Sync error: ${error.message}`;
 
-		console.error("Sync error:", error);
+		logger.error`Sync error: ${error}`;
 		event.respondWith(
 			new Response(errorDetails, {
 				status: 500,

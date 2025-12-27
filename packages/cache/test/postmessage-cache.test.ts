@@ -52,7 +52,7 @@ describe("PostMessageCache", () => {
 		});
 
 		worker.on("error", (error) => {
-			console.error("[PostMessageCache test] Worker error:", error);
+			throw error;
 		});
 
 		// Initialize cache in worker
