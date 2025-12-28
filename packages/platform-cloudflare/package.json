@@ -55,37 +55,29 @@
       "types": "./dist/src/runtime.d.ts",
       "import": "./dist/src/runtime.js"
     },
-    "./env": {
-      "types": "./dist/src/env.d.ts",
-      "import": "./dist/src/env.js"
+    "./variables": {
+      "types": "./dist/src/variables.d.ts",
+      "import": "./dist/src/variables.js"
     },
-    "./env.js": {
-      "types": "./dist/src/env.d.ts",
-      "import": "./dist/src/env.js"
+    "./variables.js": {
+      "types": "./dist/src/variables.d.ts",
+      "import": "./dist/src/variables.js"
     },
-    "./cache": {
-      "types": "./dist/src/cache.d.ts",
-      "import": "./dist/src/cache.js"
+    "./caches": {
+      "types": "./dist/src/caches.d.ts",
+      "import": "./dist/src/caches.js"
     },
-    "./cache.js": {
-      "types": "./dist/src/cache.d.ts",
-      "import": "./dist/src/cache.js"
+    "./caches.js": {
+      "types": "./dist/src/caches.d.ts",
+      "import": "./dist/src/caches.js"
     },
-    "./r2": {
-      "types": "./dist/src/r2.d.ts",
-      "import": "./dist/src/r2.js"
+    "./directories": {
+      "types": "./dist/src/directories.d.ts",
+      "import": "./dist/src/directories.js"
     },
-    "./r2.js": {
-      "types": "./dist/src/r2.d.ts",
-      "import": "./dist/src/r2.js"
-    },
-    "./assets": {
-      "types": "./dist/src/assets.d.ts",
-      "import": "./dist/src/assets.js"
-    },
-    "./assets.js": {
-      "types": "./dist/src/assets.d.ts",
-      "import": "./dist/src/assets.js"
+    "./directories.js": {
+      "types": "./dist/src/directories.d.ts",
+      "import": "./dist/src/directories.js"
     }
   }
 }

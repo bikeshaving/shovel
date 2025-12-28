@@ -34,7 +34,7 @@ import type {Miniflare} from "miniflare";
 const logger = getLogger(["platform"]);
 
 // Import CloudflareNativeCache for local use (in createCaches)
-import {CloudflareNativeCache} from "./cache.js";
+import {CloudflareNativeCache} from "./caches.js";
 
 // Re-export common platform types
 export type {
@@ -302,62 +302,17 @@ export default { fetch: createFetchHandler(registration) };
 		return {
 			caches: {
 				default: {
-					module: "@b9g/platform-cloudflare/cache",
+					module: "@b9g/platform-cloudflare/caches",
 				},
 			},
 			directories: {
 				public: {
-					module: "@b9g/platform-cloudflare/assets",
+					module: "@b9g/platform-cloudflare/directories",
+					export: "CloudflareAssetsDirectory",
 				},
 			},
 		};
 	}
-}
-
-// ============================================================================
-// WRANGLER UTILITIES
-// ============================================================================
-
-export function createOptionsFromEnv(env: any): CloudflarePlatformOptions {
-	return {
-		environment: env.ENVIRONMENT || "production",
-	};
-}
-
-export function generateWranglerConfig(options: {
-	name: string;
-	entrypoint: string;
-	cacheAdapter?: string;
-	filesystemAdapter?: string;
-	kvNamespaces?: string[];
-	r2Buckets?: string[];
-	d1Databases?: string[];
-}): string {
-	const {
-		name,
-		entrypoint,
-		filesystemAdapter,
-		kvNamespaces = [],
-		r2Buckets = [],
-		d1Databases = [],
-	} = options;
-
-	const autoR2Buckets = filesystemAdapter === "r2" ? ["STORAGE_R2"] : [];
-	const allKVNamespaces = [...new Set(kvNamespaces)];
-	const allR2Buckets = [...new Set([...r2Buckets, ...autoR2Buckets])];
-
-	return `# Generated wrangler.toml for Shovel app
-name = "${name}"
-main = "${entrypoint}"
-compatibility_date = "2024-09-23"
-compatibility_flags = ["nodejs_compat"]
-
-${allKVNamespaces.length > 0 ? allKVNamespaces.map((kv) => `[[kv_namespaces]]\nbinding = "${kv}"\nid = "your-kv-id"`).join("\n\n") : "# No KV namespaces configured"}
-
-${allR2Buckets.length > 0 ? allR2Buckets.map((bucket) => `[[r2_buckets]]\nbinding = "${bucket}"\nbucket_name = "your-bucket-name"`).join("\n\n") : "# No R2 buckets configured"}
-
-${d1Databases.length > 0 ? d1Databases.map((db) => `[[d1_databases]]\nbinding = "${db}"\ndatabase_name = "your-db-name"\ndatabase_id = "your-db-id"`).join("\n\n") : "# No D1 databases configured"}
-`;
 }
 
 export default CloudflarePlatform;

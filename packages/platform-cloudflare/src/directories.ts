@@ -1,12 +1,18 @@
 /**
- * Cloudflare R2 Filesystem Implementation
+ * Cloudflare Directory Implementations
  *
  * Provides FileSystemDirectoryHandle/FileSystemFileHandle implementations
- * backed by Cloudflare R2 buckets.
+ * for Cloudflare Workers:
+ *
+ * - R2: Read-write storage backed by Cloudflare R2 buckets
+ * - Assets: Read-only access to static assets deployed with the Worker
+ *
+ * Default export: CloudflareR2Directory (general purpose, user-configurable)
+ * Named export: CloudflareAssetsDirectory (singleton for public assets)
  */
 
 import mime from "mime";
-import {getEnv} from "./env.js";
+import {getEnv} from "./variables.js";
 
 // ============================================================================
 // R2 TYPES
@@ -33,6 +39,17 @@ export interface R2Bucket {
 	put(key: string, value: ArrayBuffer | Uint8Array): Promise<R2Object>;
 	delete(key: string): Promise<void>;
 	list(options?: {prefix?: string; delimiter?: string}): Promise<R2Objects>;
+}
+
+// ============================================================================
+// ASSETS TYPES
+// ============================================================================
+
+/**
+ * Cloudflare ASSETS binding interface
+ */
+export interface CFAssetsBinding {
+	fetch(request: Request | string): Promise<Response>;
 }
 
 // ============================================================================
@@ -295,21 +312,175 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 }
 
 // ============================================================================
-// DIRECTORY CLASS (for factory pattern)
+// ASSETS FILESYSTEM IMPLEMENTATION
+// ============================================================================
+
+/**
+ * FileSystemFileHandle implementation for CF ASSETS binding files.
+ */
+export class CFAssetsFileHandle implements FileSystemFileHandle {
+	readonly kind: "file";
+	readonly name: string;
+	#assets: CFAssetsBinding;
+	#path: string;
+
+	constructor(assets: CFAssetsBinding, path: string, name: string) {
+		this.kind = "file";
+		this.#assets = assets;
+		this.#path = path;
+		this.name = name;
+	}
+
+	async getFile(): Promise<File> {
+		const response = await this.#assets.fetch(
+			new Request("https://assets" + this.#path),
+		);
+
+		if (!response.ok) {
+			throw new DOMException(
+				`A requested file or directory could not be found: ${this.name}`,
+				"NotFoundError",
+			);
+		}
+
+		const blob = await response.blob();
+		const contentType =
+			response.headers.get("content-type") || "application/octet-stream";
+
+		return new File([blob], this.name, {type: contentType});
+	}
+
+	async createWritable(
+		_options?: FileSystemCreateWritableOptions,
+	): Promise<FileSystemWritableFileStream> {
+		throw new DOMException("Assets are read-only", "NotAllowedError");
+	}
+
+	async createSyncAccessHandle(): Promise<FileSystemSyncAccessHandle> {
+		throw new DOMException("Sync access not supported", "NotSupportedError");
+	}
+
+	isSameEntry(other: FileSystemHandle): Promise<boolean> {
+		return Promise.resolve(
+			other instanceof CFAssetsFileHandle && other.#path === this.#path,
+		);
+	}
+}
+
+/**
+ * FileSystemDirectoryHandle implementation over Cloudflare ASSETS binding.
+ *
+ * Provides read-only access to static assets deployed with a CF Worker.
+ * Directory listing is not supported (ASSETS binding limitation).
+ */
+export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
+	readonly kind: "directory";
+	readonly name: string;
+	#assets: CFAssetsBinding;
+	#basePath: string;
+
+	constructor(assets: CFAssetsBinding, basePath = "/") {
+		this.kind = "directory";
+		this.#assets = assets;
+		this.#basePath = basePath.endsWith("/") ? basePath : basePath + "/";
+		this.name = basePath.split("/").filter(Boolean).pop() || "assets";
+	}
+
+	async getFileHandle(
+		name: string,
+		_options?: FileSystemGetFileOptions,
+	): Promise<FileSystemFileHandle> {
+		const path = this.#basePath + name;
+
+		const response = await this.#assets.fetch(
+			new Request("https://assets" + path),
+		);
+
+		if (!response.ok) {
+			throw new DOMException(
+				`A requested file or directory could not be found: ${name}`,
+				"NotFoundError",
+			);
+		}
+
+		return new CFAssetsFileHandle(this.#assets, path, name);
+	}
+
+	async getDirectoryHandle(
+		name: string,
+		_options?: FileSystemGetDirectoryOptions,
+	): Promise<FileSystemDirectoryHandle> {
+		return new CFAssetsDirectoryHandle(this.#assets, this.#basePath + name);
+	}
+
+	async removeEntry(
+		_name: string,
+		_options?: FileSystemRemoveOptions,
+	): Promise<void> {
+		throw new DOMException("Assets directory is read-only", "NotAllowedError");
+	}
+
+	async resolve(
+		_possibleDescendant: FileSystemHandle,
+	): Promise<string[] | null> {
+		return null;
+	}
+
+	// eslint-disable-next-line require-yield
+	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
+		throw new DOMException(
+			"Directory listing not supported for ASSETS binding. Use an asset manifest for enumeration.",
+			"NotSupportedError",
+		);
+	}
+
+	// eslint-disable-next-line require-yield
+	async *keys(): AsyncIterableIterator<string> {
+		throw new DOMException(
+			"Directory listing not supported for ASSETS binding",
+			"NotSupportedError",
+		);
+	}
+
+	// eslint-disable-next-line require-yield
+	async *values(): AsyncIterableIterator<FileSystemHandle> {
+		throw new DOMException(
+			"Directory listing not supported for ASSETS binding",
+			"NotSupportedError",
+		);
+	}
+
+	[Symbol.asyncIterator](): AsyncIterableIterator<[string, FileSystemHandle]> {
+		return this.entries();
+	}
+
+	isSameEntry(other: FileSystemHandle): Promise<boolean> {
+		return Promise.resolve(
+			other instanceof CFAssetsDirectoryHandle &&
+				other.#basePath === this.#basePath,
+		);
+	}
+}
+
+// ============================================================================
+// DIRECTORY CLASSES (for factory pattern)
 // ============================================================================
 
 export interface CloudflareR2DirectoryOptions {
-	/** R2 binding name (defaults to "${NAME}_R2") */
+	/** R2 binding name (must match wrangler.toml binding). Defaults to "${NAME}_R2" */
 	binding?: string;
-	/** Optional prefix within the bucket */
+	/** Optional prefix/path within the bucket */
 	path?: string;
-	/** Optional prefix within the bucket (alias for path) */
-	prefix?: string;
 }
 
 /**
  * DirectoryClass for Cloudflare R2 buckets.
  * Uses env bindings to resolve the bucket at runtime.
+ *
+ * Config example:
+ * ```json
+ * { "module": "@b9g/platform-cloudflare/directories", "binding": "uploads_r2" }
+ * ```
  */
 export class CloudflareR2Directory extends R2FileSystemDirectoryHandle {
 	constructor(name: string, options: CloudflareR2DirectoryOptions = {}) {
@@ -327,10 +498,50 @@ export class CloudflareR2Directory extends R2FileSystemDirectoryHandle {
 			);
 		}
 
-		const prefix = options.prefix ?? options.path ?? "";
+		const prefix = options.path ?? "";
 		const normalizedPrefix = prefix.startsWith("/") ? prefix.slice(1) : prefix;
 		super(r2Bucket, normalizedPrefix);
 	}
 }
 
+export interface CloudflareAssetsDirectoryOptions {
+	/** Base path within assets (defaults to "/") */
+	path?: string;
+}
+
+/**
+ * DirectoryClass for Cloudflare ASSETS binding (static assets).
+ * Always uses the "ASSETS" binding (Cloudflare convention).
+ *
+ * Config example:
+ * ```json
+ * { "module": "@b9g/platform-cloudflare/directories", "export": "CloudflareAssetsDirectory" }
+ * ```
+ */
+export class CloudflareAssetsDirectory extends CFAssetsDirectoryHandle {
+	constructor(_name: string, options: CloudflareAssetsDirectoryOptions = {}) {
+		const env = getEnv();
+
+		const assets = env.ASSETS as CFAssetsBinding | undefined;
+		if (!assets) {
+			throw new Error(
+				`ASSETS binding not found. ` +
+					`Configure in wrangler.toml:\n\n` +
+					`[assets]\n` +
+					`directory = "./public"`,
+			);
+		}
+
+		const basePath = options.path ?? "/";
+		const normalizedBase =
+			basePath === "/"
+				? "/"
+				: basePath.startsWith("/")
+					? basePath
+					: `/${basePath}`;
+		super(assets, normalizedBase);
+	}
+}
+
+// Default export is R2 (general purpose, user-configurable)
 export default CloudflareR2Directory;

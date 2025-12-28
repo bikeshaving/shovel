@@ -253,7 +253,7 @@ runPlatformTests("CloudflarePlatform", {
 			"@b9g/platform-cloudflare"
 		);
 		const {CloudflareNativeCache} = await import(
-			"@b9g/platform-cloudflare/cache"
+			"@b9g/platform-cloudflare/caches"
 		);
 		return new CloudflarePlatform({
 			cwd: fixturesDir,

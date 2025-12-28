@@ -19,7 +19,7 @@ import {
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
-import {envStorage} from "./env.js";
+import {envStorage} from "./variables.js";
 
 export type {ShovelConfig};
 

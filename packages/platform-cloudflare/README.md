@@ -12,10 +12,10 @@ npm install @b9g/platform-cloudflare
 
 ```
 @b9g/platform-cloudflare
-├── /cache    # CloudflareNativeCache (Cloudflare Cache API wrapper)
-├── /r2       # CloudflareR2Directory (R2 bucket filesystem)
-├── /assets   # CloudflareAssetsDirectory (static assets filesystem)
-└── /runtime  # Worker bootstrap (initializeRuntime, createFetchHandler)
+├── /caches      # CloudflareNativeCache (Cloudflare Cache API wrapper)
+├── /directories # CloudflareR2Directory, CloudflareAssetsDirectory
+├── /variables   # envStorage (per-request Cloudflare env access)
+└── /runtime     # Worker bootstrap (initializeRuntime, createFetchHandler)
 ```
 
 ## Configuration
@@ -27,16 +27,17 @@ Configure in `shovel.json`:
   "platform": "cloudflare",
   "caches": {
     "default": {
-      "module": "@b9g/platform-cloudflare/cache"
+      "module": "@b9g/platform-cloudflare/caches"
     }
   },
   "directories": {
     "public": {
-      "module": "@b9g/platform-cloudflare/assets"
+      "module": "@b9g/platform-cloudflare/directories",
+      "export": "CloudflareAssetsDirectory"
     },
     "uploads": {
-      "module": "@b9g/platform-cloudflare/r2",
-      "binding": "UPLOADS_R2"
+      "module": "@b9g/platform-cloudflare/directories",
+      "binding": "uploads_r2"
     }
   }
 }
@@ -56,22 +57,17 @@ compatibility_flags = ["nodejs_compat"]
 ### Main Package (`@b9g/platform-cloudflare`)
 
 - `CloudflarePlatform` - Platform adapter (default export)
-- `createOptionsFromEnv(env)` - Create options from Cloudflare env
-- `generateWranglerConfig(options)` - Generate wrangler.toml
 
-### Cache (`@b9g/platform-cloudflare/cache`)
+### Caches (`@b9g/platform-cloudflare/caches`)
 
-- `CloudflareNativeCache` - Wrapper around Cloudflare's Cache API
+- `CloudflareNativeCache` - Wrapper around Cloudflare's Cache API (default export)
 
-### R2 (`@b9g/platform-cloudflare/r2`)
+### Directories (`@b9g/platform-cloudflare/directories`)
 
-- `CloudflareR2Directory` - FileSystemDirectoryHandle for R2 buckets
+- `CloudflareR2Directory` - FileSystemDirectoryHandle for R2 buckets (default export)
+- `CloudflareAssetsDirectory` - FileSystemDirectoryHandle for static assets
 - `R2FileSystemDirectoryHandle` - Base R2 directory implementation
 - `R2FileSystemFileHandle` - Base R2 file implementation
-
-### Assets (`@b9g/platform-cloudflare/assets`)
-
-- `CloudflareAssetsDirectory` - FileSystemDirectoryHandle for static assets
 - `CFAssetsDirectoryHandle` - Base assets directory implementation
 - `CFAssetsFileHandle` - Base assets file implementation
 
@@ -81,18 +77,35 @@ compatibility_flags = ["nodejs_compat"]
 - `createFetchHandler(registration)` - Create ES module fetch handler
 - `CloudflareFetchEvent` - Extended FetchEvent with env bindings
 
+### Variables (`@b9g/platform-cloudflare/variables`)
+
+- `envStorage` - AsyncContext for per-request Cloudflare env access
+- `getEnv()` - Get current request's env bindings
+
 ## Bindings
 
-Configure bindings in `wrangler.toml`:
+Configure bindings in `wrangler.toml`. Use lowercase binding names to avoid env expression parsing issues:
 
 ```toml
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
+# R2 bucket for uploads directory
 [[r2_buckets]]
-binding = "UPLOADS_R2"
+binding = "uploads_r2"
 bucket_name = "my-uploads-bucket"
+
+# Static assets (always uses ASSETS binding)
+[assets]
+directory = "./public"
 ```
+
+## Directory Types
+
+| Type | Use Case | Read/Write | Binding |
+|------|----------|------------|---------|
+| R2 | User uploads, dynamic storage | Both | User-defined |
+| Assets | Static files deployed with worker | Read-only | Always `ASSETS` |
 
 ## License
 
