@@ -108,8 +108,16 @@ export class CloudflarePlatform extends BasePlatform {
 		const runtimeDefaults: Record<string, {CacheClass: any}> = {
 			default: {CacheClass: CloudflareNativeCache},
 		};
-		// Merge user config over defaults
-		const configs = {...runtimeDefaults, ...this.#options.config?.caches};
+		const userCaches = this.#options.config?.caches ?? {};
+		// Deep merge per entry so user can override options without losing CacheClass
+		const configs: Record<string, any> = {};
+		const allNames = new Set([
+			...Object.keys(runtimeDefaults),
+			...Object.keys(userCaches),
+		]);
+		for (const name of allNames) {
+			configs[name] = {...runtimeDefaults[name], ...userCaches[name]};
+		}
 		return new CustomCacheStorage(createCacheFactory({configs}));
 	}
 

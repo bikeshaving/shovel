@@ -369,19 +369,52 @@ export class BunPlatform extends BasePlatform {
 			logger.debug`Using platform config (no config.js): ${err}`;
 		}
 
-		// Create shared cache storage from config
+		// Create shared cache storage from config (with runtime defaults)
 		if (!this.#cacheStorage) {
+			// Runtime defaults with actual class references
+			const runtimeCacheDefaults: Record<string, {CacheClass: any}> = {
+				default: {CacheClass: MemoryCache},
+			};
+			const userCaches = config?.caches ?? {};
+			// Deep merge per entry so user can override options without losing CacheClass
+			const cacheConfigs: Record<string, any> = {};
+			const allCacheNames = new Set([
+				...Object.keys(runtimeCacheDefaults),
+				...Object.keys(userCaches),
+			]);
+			for (const name of allCacheNames) {
+				cacheConfigs[name] = {
+					...runtimeCacheDefaults[name],
+					...userCaches[name],
+				};
+			}
 			this.#cacheStorage = new CustomCacheStorage(
-				createCacheFactory({
-					configs: config?.caches ?? {},
-				}),
+				createCacheFactory({configs: cacheConfigs}),
 			);
 		}
 
-		// Create shared directory storage from config
+		// Create shared directory storage from config (with runtime defaults)
 		if (!this.#directoryStorage) {
+			// Runtime defaults with actual class references
+			const runtimeDirDefaults: Record<
+				string,
+				{DirectoryClass: any; path?: string}
+			> = {
+				server: {DirectoryClass: NodeFSDirectory, path: "."},
+				public: {DirectoryClass: NodeFSDirectory, path: "./public"},
+			};
+			const userDirs = config?.directories ?? {};
+			// Deep merge per entry
+			const dirConfigs: Record<string, any> = {};
+			const allDirNames = new Set([
+				...Object.keys(runtimeDirDefaults),
+				...Object.keys(userDirs),
+			]);
+			for (const name of allDirNames) {
+				dirConfigs[name] = {...runtimeDirDefaults[name], ...userDirs[name]};
+			}
 			this.#directoryStorage = new CustomDirectoryStorage(
-				createDirectoryFactory(config?.directories ?? {}),
+				createDirectoryFactory(dirConfigs),
 			);
 		}
 
