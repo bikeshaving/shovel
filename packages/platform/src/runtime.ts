@@ -2205,6 +2205,9 @@ export interface ShovelConfig {
 export function createDirectoryFactory(
 	configs: Record<string, DirectoryConfig>,
 ) {
+	let resolvedTmpDir: string | null = null;
+	let resolvingTmpDir: Promise<string> | null = null;
+
 	return async (name: string): Promise<FileSystemDirectoryHandle> => {
 		const config = configs[name];
 		if (!config) {
@@ -2230,9 +2233,14 @@ export function createDirectoryFactory(
 		// Resolve special path markers
 		const resolvedOptions = {...dirOptions};
 		if (resolvedOptions.path === "tmpdir") {
-			// Dynamically import os to get tmpdir - works in Node.js and Bun
-			const {tmpdir} = await import("node:os");
-			resolvedOptions.path = tmpdir();
+			if (!resolvedTmpDir) {
+				if (!resolvingTmpDir) {
+					// Dynamically import os to get tmpdir - works in Node.js and Bun
+					resolvingTmpDir = import("node:os").then(({tmpdir}) => tmpdir());
+				}
+				resolvedTmpDir = await resolvingTmpDir;
+			}
+			resolvedOptions.path = resolvedTmpDir;
 		}
 
 		return new DirectoryClass(name, resolvedOptions);

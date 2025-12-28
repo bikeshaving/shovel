@@ -249,8 +249,12 @@ runPlatformTests("BunPlatform", {
 // For now, skip the ServiceWorker tests for Cloudflare.
 runPlatformTests("CloudflarePlatform", {
 	async createPlatform() {
-		const {default: CloudflarePlatform, CloudflareNativeCache} =
-			await import("@b9g/platform-cloudflare");
+		const {default: CloudflarePlatform} = await import(
+			"@b9g/platform-cloudflare"
+		);
+		const {CloudflareNativeCache} = await import(
+			"@b9g/platform-cloudflare/cache"
+		);
 		return new CloudflarePlatform({
 			cwd: fixturesDir,
 			config: {

@@ -34,10 +34,7 @@ import type {Miniflare} from "miniflare";
 const logger = getLogger(["platform"]);
 
 // Import CloudflareNativeCache for local use (in createCaches)
-// Also re-export for backwards compatibility
-// NOTE: For bundled builds, import from @b9g/platform-cloudflare/runtime instead
-import {CloudflareNativeCache} from "./runtime.js";
-export {CloudflareNativeCache};
+import {CloudflareNativeCache} from "./cache.js";
 
 // Re-export common platform types
 export type {
@@ -300,20 +297,19 @@ export default { fetch: createFetchHandler(registration) };
 
 	/**
 	 * Get Cloudflare-specific defaults for config generation
-	 *
-	 * Cloudflare Workers don't have default directories like Node/Bun.
-	 * Directories must be explicitly configured with R2 or other bindings.
 	 */
 	getDefaults(): PlatformDefaults {
 		return {
 			caches: {
 				default: {
-					// Use runtime module to avoid pulling in Node.js dependencies from index.ts
-					module: "@b9g/platform-cloudflare/runtime",
-					export: "CloudflareNativeCache",
+					module: "@b9g/platform-cloudflare/cache",
 				},
 			},
-			// No default directories for Cloudflare - must be configured via shovel.json
+			directories: {
+				public: {
+					module: "@b9g/platform-cloudflare/assets",
+				},
+			},
 		};
 	}
 }
@@ -365,9 +361,3 @@ ${d1Databases.length > 0 ? d1Databases.map((db) => `[[d1_databases]]\nbinding = 
 }
 
 export default CloudflarePlatform;
-
-/**
- * Platform's default cache implementation.
- * Re-exported so config can reference: { module: "@b9g/platform-cloudflare", export: "DefaultCache" }
- */
-export {CloudflareNativeCache as DefaultCache};

@@ -10,10 +10,10 @@ import {
 } from "bun:test";
 import {
 	CloudflarePlatform,
-	CloudflareNativeCache,
 	createOptionsFromEnv,
 	generateWranglerConfig,
 } from "../src/index.js";
+import {CloudflareNativeCache} from "../src/cache.js";
 import {Miniflare} from "miniflare";
 
 describe("CloudflarePlatform", () => {
