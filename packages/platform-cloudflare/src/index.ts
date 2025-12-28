@@ -128,7 +128,7 @@ export class CloudflarePlatform extends BasePlatform {
 	async createDirectories(): Promise<DirectoryStorage> {
 		throw new Error(
 			"Cloudflare Workers do not have default directories. " +
-				"Configure directories in shovel.json using R2 or other storage bindings.",
+				"Configure directories in shovel.json using Cloudflare directory classes.",
 		);
 	}
 

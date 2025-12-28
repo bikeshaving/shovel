@@ -13,8 +13,11 @@ import {
 	type ShovelFetchEventInit,
 	CustomLoggerStorage,
 	configureLogging,
+	createCacheFactory,
+	createDirectoryFactory,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
+import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
 import mime from "mime";
@@ -202,15 +205,20 @@ export async function initializeRuntime(
 
 	_registration = new ShovelServiceWorkerRegistration();
 
+	// Create cache storage with config-driven factory
+	const caches = new CustomCacheStorage(
+		createCacheFactory({configs: config.caches ?? {}}),
+	);
+
 	// Create directory storage with config-driven factory
 	const directories = new CustomDirectoryStorage(
-		createDirectoryFactory(config),
+		createDirectoryFactory(config.directories ?? {}),
 	);
 
 	// Create ServiceWorkerGlobals
 	_globals = new ServiceWorkerGlobals({
 		registration: _registration,
-		caches: globalThis.caches, // Cloudflare's native Cache API
+		caches,
 		directories,
 		loggers: new CustomLoggerStorage((...cats) => getLogger(cats)),
 	});
@@ -249,76 +257,6 @@ export function createFetchHandler(
 		return envStorage.run(env as Record<string, unknown>, () =>
 			registration.handleRequest(event),
 		);
-	};
-}
-
-/**
- * Create a directory factory based on config
- *
- * Reads config.directories[name] to determine provider and binding
- */
-function createDirectoryFactory(config: ShovelConfig) {
-	return async (name: string): Promise<FileSystemDirectoryHandle> => {
-		const env = envStorage.get();
-		if (!env) {
-			throw new Error(
-				`Cannot access directory "${name}": Cloudflare env not available. ` +
-					`Are you accessing directories outside of a request context?`,
-			);
-		}
-
-		const dirConfig = config.directories?.[name];
-		if (!dirConfig) {
-			throw new Error(
-				`Directory "${name}" not configured in shovel.config.json. ` +
-					`Add to directories config:\n\n` +
-					`"directories": {\n` +
-					`  "${name}": { "provider": "r2", "binding": "${name.toUpperCase()}_R2" }\n` +
-					`}`,
-			);
-		}
-
-		const provider = dirConfig.provider || "r2";
-
-		switch (provider) {
-			case "r2": {
-				const bindingName =
-					(dirConfig.binding as string) || `${name.toUpperCase()}_R2`;
-				const r2Bucket = env[bindingName] as R2Bucket | undefined;
-
-				if (!r2Bucket) {
-					throw new Error(
-						`R2 bucket binding "${bindingName}" not found. ` +
-							`Configure in wrangler.toml:\n\n` +
-							`[[r2_buckets]]\n` +
-							`binding = "${bindingName}"\n` +
-							`bucket_name = "your-bucket-name"`,
-					);
-				}
-
-				return new R2FileSystemDirectoryHandle(r2Bucket, "");
-			}
-
-			case "assets": {
-				const bindingName = (dirConfig.binding as string) || "ASSETS";
-				const assets = env[bindingName] as CFAssetsBinding | undefined;
-
-				if (!assets) {
-					throw new Error(
-						`ASSETS binding "${bindingName}" not found. ` +
-							`This binding is automatically available when using Cloudflare Pages or Workers with assets.`,
-					);
-				}
-
-				return new CFAssetsDirectoryHandle(assets, "/");
-			}
-
-			default:
-				throw new Error(
-					`Unknown directory provider "${provider}" for "${name}". ` +
-						`Supported providers: r2, assets`,
-				);
-		}
 	};
 }
 
@@ -677,6 +615,92 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 			other instanceof CFAssetsDirectoryHandle &&
 				other.#basePath === this.#basePath,
 		);
+	}
+}
+
+// ============================================================================
+// CLOUDFLARE DIRECTORY CLASSES
+// ============================================================================
+
+export interface CloudflareR2DirectoryOptions {
+	/** R2 binding name (defaults to "${NAME}_R2") */
+	binding?: string;
+	/** Optional prefix within the bucket */
+	path?: string;
+	/** Optional prefix within the bucket (alias for path) */
+	prefix?: string;
+}
+
+export interface CloudflareAssetsDirectoryOptions {
+	/** ASSETS binding name (defaults to "ASSETS") */
+	binding?: string;
+	/** Base path within assets (defaults to "/") */
+	path?: string;
+	/** Base path within assets (alias for path) */
+	basePath?: string;
+}
+
+/**
+ * DirectoryClass for Cloudflare R2 buckets.
+ * Uses env bindings to resolve the bucket at runtime.
+ */
+export class CloudflareR2Directory extends R2FileSystemDirectoryHandle {
+	constructor(name: string, options: CloudflareR2DirectoryOptions = {}) {
+		const env = envStorage.get();
+		if (!env) {
+			throw new Error(
+				`Cannot access directory "${name}": Cloudflare env not available. ` +
+					`Are you accessing directories outside of a request context?`,
+			);
+		}
+
+		const bindingName = options.binding || `${name.toUpperCase()}_R2`;
+		const r2Bucket = env[bindingName] as R2Bucket | undefined;
+		if (!r2Bucket) {
+			throw new Error(
+				`R2 bucket binding "${bindingName}" not found. ` +
+					`Configure in wrangler.toml:\n\n` +
+					`[[r2_buckets]]\n` +
+					`binding = "${bindingName}"\n` +
+					`bucket_name = "your-bucket-name"`,
+			);
+		}
+
+		const prefix = options.prefix ?? options.path ?? "";
+		const normalizedPrefix = prefix.startsWith("/")
+			? prefix.slice(1)
+			: prefix;
+		super(r2Bucket, normalizedPrefix);
+	}
+}
+
+/**
+ * DirectoryClass for Cloudflare ASSETS bindings.
+ * Uses env bindings to resolve the assets handle at runtime.
+ */
+export class CloudflareAssetsDirectory extends CFAssetsDirectoryHandle {
+	constructor(name: string, options: CloudflareAssetsDirectoryOptions = {}) {
+		const env = envStorage.get();
+		if (!env) {
+			throw new Error(
+				`Cannot access directory "${name}": Cloudflare env not available. ` +
+					`Are you accessing directories outside of a request context?`,
+			);
+		}
+
+		const bindingName = options.binding || "ASSETS";
+		const assets = env[bindingName] as CFAssetsBinding | undefined;
+		if (!assets) {
+			throw new Error(
+				`ASSETS binding "${bindingName}" not found. ` +
+					`This binding is automatically available when using Cloudflare Pages or Workers with assets.`,
+			);
+		}
+
+		const basePath = options.basePath ?? options.path ?? "/";
+		const normalizedBase =
+			basePath === "/" ? "/" : basePath.startsWith("/") ? basePath : `/${basePath}`;
+		super(assets, normalizedBase);
 	}
 }
 

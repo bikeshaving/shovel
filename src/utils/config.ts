@@ -1240,6 +1240,7 @@ export const DirectoryConfigSchema = z
 		module: z.string().optional(),
 		export: z.string().optional(),
 		path: configExpr.optional(),
+		binding: configExpr.optional(),
 		bucket: configExpr.optional(),
 		region: configExpr.optional(),
 		endpoint: configExpr.optional(),

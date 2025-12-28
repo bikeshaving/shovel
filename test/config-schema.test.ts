@@ -102,6 +102,13 @@ describe("config validation", () => {
 			expect(result.path).toBe("./data/uploads");
 		});
 
+		test("accepts binding for platform-specific directories", () => {
+			const result = DirectoryConfigSchema.parse({
+				binding: "ASSETS",
+			});
+			expect(result.binding).toBe("ASSETS");
+		});
+
 		test("accepts path as number (config expression)", () => {
 			const result = DirectoryConfigSchema.parse({
 				path: "UPLOAD_PATH || ./uploads",
