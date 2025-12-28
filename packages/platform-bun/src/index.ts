@@ -395,13 +395,14 @@ export class BunPlatform extends BasePlatform {
 
 		// Create shared directory storage from config (with runtime defaults)
 		if (!this.#directoryStorage) {
-			// Runtime defaults with actual class references
+			// Runtime defaults with actual class references (must match getDefaults())
 			const runtimeDirDefaults: Record<
 				string,
 				{DirectoryClass: any; path?: string}
 			> = {
 				server: {DirectoryClass: NodeFSDirectory, path: "."},
-				public: {DirectoryClass: NodeFSDirectory, path: "./public"},
+				public: {DirectoryClass: NodeFSDirectory, path: "../public"},
+				tmp: {DirectoryClass: NodeFSDirectory, path: "tmpdir"},
 			};
 			const userDirs = config?.directories ?? {};
 			// Deep merge per entry
