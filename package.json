@@ -28,7 +28,7 @@
     "@clack/prompts": "^0.7.0",
     "@logtape/logtape": "^1.2.0",
     "commander": "^13.1.0",
-    "esbuild": "^0.19.12",
+    "esbuild": "^0.27.2",
     "magic-string": "^0.30.5",
     "mime": "^4.0.4",
     "picocolors": "^1.0.0",
