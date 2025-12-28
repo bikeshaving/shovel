@@ -1123,11 +1123,47 @@ export class ServiceWorkerPool {
 	}
 
 	/**
+	 * Gracefully shutdown a worker by closing all resources first
+	 */
+	async #gracefulShutdown(worker: Worker, timeout = 5000): Promise<void> {
+		return new Promise<void>((resolve) => {
+			let resolved = false;
+
+			// Set up listener for shutdown-complete
+			const onMessage = (event: MessageEvent) => {
+				const message = event.data || event;
+				if (message?.type === "shutdown-complete") {
+					if (!resolved) {
+						resolved = true;
+						worker.removeEventListener("message", onMessage);
+						resolve();
+					}
+				}
+			};
+			worker.addEventListener("message", onMessage);
+
+			// Send shutdown signal
+			worker.postMessage({type: "shutdown"});
+
+			// Timeout fallback - don't hang forever
+			setTimeout(() => {
+				if (!resolved) {
+					resolved = true;
+					worker.removeEventListener("message", onMessage);
+					logger.warn("Worker shutdown timed out, forcing termination");
+					resolve();
+				}
+			}, timeout);
+		});
+	}
+
+	/**
 	 * Reload workers with new entrypoint (hot reload)
 	 *
 	 * With unified builds, hot reload means:
-	 * 1. Terminate all existing workers
-	 * 2. Create new workers with the new bundle
+	 * 1. Gracefully shutdown existing workers (close databases, etc.)
+	 * 2. Terminate workers after resources are closed
+	 * 3. Create new workers with the new bundle
 	 */
 	async reloadWorkers(entrypoint: string): Promise<void> {
 		logger.info("Reloading workers", {entrypoint});
@@ -1135,7 +1171,13 @@ export class ServiceWorkerPool {
 		// Update stored entrypoint
 		this.#appEntrypoint = entrypoint;
 
-		// Terminate existing workers
+		// Gracefully shutdown existing workers - close resources before terminating
+		const shutdownPromises = this.#workers.map((worker) =>
+			this.#gracefulShutdown(worker),
+		);
+		await Promise.allSettled(shutdownPromises);
+
+		// Now terminate the workers
 		const terminatePromises = this.#workers.map((worker) => worker.terminate());
 		await Promise.allSettled(terminatePromises);
 		this.#workers = [];
@@ -1168,6 +1210,13 @@ export class ServiceWorkerPool {
 	 * Graceful shutdown of all workers
 	 */
 	async terminate(): Promise<void> {
+		// Gracefully shutdown workers first (close databases, etc.)
+		const shutdownPromises = this.#workers.map((worker) =>
+			this.#gracefulShutdown(worker),
+		);
+		await Promise.allSettled(shutdownPromises);
+
+		// Now terminate
 		const terminatePromises = this.#workers.map((worker) => worker.terminate());
 		await Promise.allSettled(terminatePromises);
 		this.#workers = [];

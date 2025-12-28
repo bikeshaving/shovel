@@ -115,7 +115,7 @@ await configureLogging(config.logging);
 
 // Initialize the worker runtime (installs ServiceWorker globals)
 // Platform defaults are already merged into config.directories at build time
-const {registration} = await initWorkerRuntime({config});
+const {registration, databases} = await initWorkerRuntime({config});
 
 // Import user code (registers event handlers via addEventListener)
 // Must use dynamic import to ensure globals are installed first
@@ -126,7 +126,8 @@ await registration.install();
 await registration.activate();
 
 // Start the message loop (handles request/response messages from main thread)
-startWorkerMessageLoop(registration);
+// Pass databases so they can be closed on graceful shutdown
+startWorkerMessageLoop({registration, databases});
 `;
 
 const logger = getLogger(["platform"]);

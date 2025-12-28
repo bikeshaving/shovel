@@ -2437,15 +2437,34 @@ export async function initWorkerRuntime(
 }
 
 /**
+ * Options for the worker message loop
+ */
+export interface WorkerMessageLoopOptions {
+	registration: ShovelServiceWorkerRegistration;
+	databases?: CustomDatabaseStorage;
+	caches?: CacheStorage;
+}
+
+/**
  * Start the worker message loop for handling requests.
  * This function sets up message handling for request/response communication
  * with the main thread via postMessage.
  *
- * @param registration - The ServiceWorker registration to handle requests with
+ * @param options - The registration and resources to manage
  */
 export function startWorkerMessageLoop(
-	registration: ShovelServiceWorkerRegistration,
+	options: ShovelServiceWorkerRegistration | WorkerMessageLoopOptions,
 ): void {
+	// Support both old signature (just registration) and new signature (options object)
+	const registration =
+		options instanceof ShovelServiceWorkerRegistration
+			? options
+			: options.registration;
+	const databases =
+		options instanceof ShovelServiceWorkerRegistration
+			? undefined
+			: options.databases;
+
 	const messageLogger = getLogger(["shovel", "platform"]);
 	const workerId = Math.random().toString(36).substring(2, 8);
 
@@ -2535,6 +2554,30 @@ export function startWorkerMessageLoop(
 					error,
 				});
 			});
+			return;
+		}
+
+		// Handle shutdown message - close all resources before termination
+		if (message?.type === "shutdown") {
+			messageLogger.info(`[Worker-${workerId}] Received shutdown signal`);
+			(async () => {
+				try {
+					// Close all databases
+					if (databases) {
+						await databases.closeAll();
+						messageLogger.debug(`[Worker-${workerId}] Databases closed`);
+					}
+					// Signal that shutdown is complete
+					sendMessage({type: "shutdown-complete"});
+					messageLogger.info(`[Worker-${workerId}] Shutdown complete`);
+				} catch (error) {
+					messageLogger.error(`[Worker-${workerId}] Shutdown error: {error}`, {
+						error,
+					});
+					// Still signal completion so main thread doesn't hang
+					sendMessage({type: "shutdown-complete"});
+				}
+			})();
 			return;
 		}
 
