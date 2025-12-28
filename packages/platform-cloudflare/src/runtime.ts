@@ -667,9 +667,7 @@ export class CloudflareR2Directory extends R2FileSystemDirectoryHandle {
 		}
 
 		const prefix = options.prefix ?? options.path ?? "";
-		const normalizedPrefix = prefix.startsWith("/")
-			? prefix.slice(1)
-			: prefix;
+		const normalizedPrefix = prefix.startsWith("/") ? prefix.slice(1) : prefix;
 		super(r2Bucket, normalizedPrefix);
 	}
 }
@@ -699,7 +697,11 @@ export class CloudflareAssetsDirectory extends CFAssetsDirectoryHandle {
 
 		const basePath = options.basePath ?? options.path ?? "/";
 		const normalizedBase =
-			basePath === "/" ? "/" : basePath.startsWith("/") ? basePath : `/${basePath}`;
+			basePath === "/"
+				? "/"
+				: basePath.startsWith("/")
+					? basePath
+					: `/${basePath}`;
 		super(assets, normalizedBase);
 	}
 }
