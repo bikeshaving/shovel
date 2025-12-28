@@ -20,6 +20,7 @@
 
 import {readFileSync} from "fs";
 import {z} from "zod";
+import {parsePath} from "./path-syntax.js";
 
 /**
  * Default configuration constants
@@ -907,6 +908,10 @@ function toJSLiteral(
 export function generateConfigModule(
 	rawConfig: ShovelConfig,
 	options: {
+		/** Absolute path to project directory (where shovel.json lives) */
+		projectDir: string;
+		/** Absolute path to output directory */
+		outDir: string;
 		/** Platform-specific defaults for directories, caches, etc. */
 		platformDefaults?: {
 			directories?: Record<
@@ -918,13 +923,15 @@ export function generateConfigModule(
 				{module: string; export?: string; [key: string]: unknown}
 			>;
 		};
-	} = {},
+	},
 ): string {
-	const {platformDefaults = {}} = options;
+	const {projectDir, outDir, platformDefaults = {}} = options;
 	// Track imports and their placeholder mappings
 	const imports: string[] = [];
 	const placeholders: Map<string, string> = new Map(); // placeholder -> JS code
 	let placeholderCounter = 0;
+	// Track special imports needed for runtime paths (e.g., __os__ for tmpdir)
+	const pathImports = new Set<string>();
 
 	// Create a placeholder and track the JS code it represents
 	const createPlaceholder = (jsCode: string): string => {
@@ -1093,6 +1100,7 @@ export function generateConfigModule(
 
 		// Directories - deep merge platform defaults with user config
 		// User config properties override platform defaults, but missing properties are preserved
+		// Path values are processed using the path syntax parser
 		const platformDirectories = platformDefaults.directories || {};
 		const userDirectories = rawConfig.directories || {};
 		const allDirectoryNames = new Set([
@@ -1117,6 +1125,25 @@ export function generateConfigModule(
 				if (directoryClassPlaceholder) {
 					result.DirectoryClass = directoryClassPlaceholder;
 				}
+
+				// Process path using path syntax parser
+				if (typeof mergedConfig.path === "string") {
+					const parsed = parsePath(mergedConfig.path, projectDir, outDir);
+					if (parsed.type === "literal") {
+						// Build-time resolved path - embed as string literal
+						result.path = parsed.value;
+					} else {
+						// Runtime path - create placeholder for JS expression
+						result.path = createPlaceholder(parsed.expression!);
+						// Track any imports needed for this path expression
+						if (parsed.imports) {
+							for (const imp of parsed.imports) {
+								pathImports.add(imp);
+							}
+						}
+					}
+				}
+
 				directories[name] = result;
 			}
 			config.directories = directories;
@@ -1156,6 +1183,17 @@ export function generateConfigModule(
 	if (imports.length > 0) {
 		lines.push("// Provider imports (statically bundled)");
 		lines.push(...imports);
+		lines.push("");
+	}
+
+	// Add imports needed for runtime path expressions (e.g., __tmpdir__)
+	if (pathImports.size > 0) {
+		lines.push("// Path runtime imports");
+		for (const imp of pathImports) {
+			// Map module to variable name: "node:os" -> "__os__"
+			const varName = `__${imp.replace("node:", "").replace(/[^a-zA-Z0-9]/g, "_")}__`;
+			lines.push(`import * as ${varName} from ${JSON.stringify(imp)};`);
+		}
 		lines.push("");
 	}
 

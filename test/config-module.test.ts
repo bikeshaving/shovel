@@ -5,9 +5,33 @@
 import {describe, it, expect} from "bun:test";
 import {
 	exprToCode,
-	generateConfigModule,
+	generateConfigModule as _generateConfigModule,
 	generateStorageTypes,
+	type ShovelConfig,
 } from "../src/utils/config.js";
+
+// Helper to provide default projectDir and outDir for tests
+function generateConfigModule(
+	config: ShovelConfig,
+	options?: {
+		platformDefaults?: {
+			directories?: Record<
+				string,
+				{module: string; export?: string; [key: string]: unknown}
+			>;
+			caches?: Record<
+				string,
+				{module: string; export?: string; [key: string]: unknown}
+			>;
+		};
+	},
+) {
+	return _generateConfigModule(config, {
+		projectDir: "/test/project",
+		outDir: "/test/project/dist",
+		...options,
+	});
+}
 
 describe("exprToCode", () => {
 	describe("literals", () => {
@@ -270,8 +294,8 @@ describe("generateConfigModule", () => {
 			// Should still have the import from platform defaults
 			expect(module).toContain('from "@b9g/filesystem/node-fs"');
 			expect(module).toContain("DirectoryClass: directory_");
-			// User's path override should be present
-			expect(module).toContain("./my-tmp");
+			// User's path override should be present (resolved to absolute path)
+			expect(module).toContain("/test/project/my-tmp");
 		});
 
 		it("preserves module/export when user only overrides cache options", () => {

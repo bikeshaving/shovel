@@ -2197,17 +2197,14 @@ export interface ShovelConfig {
 
 /**
  * Creates a directory factory function for CustomDirectoryStorage.
- * Configs must have DirectoryClass pre-imported (from generated config module).
  *
- * Handles special path markers:
- * - "tmpdir" → resolved to os.tmpdir() at runtime
+ * Configs must have DirectoryClass pre-imported (from generated config module).
+ * Paths are expected to be already resolved at build time by the path syntax parser.
+ * Runtime paths (like __tmpdir__) are evaluated as expressions in the generated config.
  */
 export function createDirectoryFactory(
 	configs: Record<string, DirectoryConfig>,
 ) {
-	let resolvedTmpDir: string | null = null;
-	let resolvingTmpDir: Promise<string> | null = null;
-
 	return async (name: string): Promise<FileSystemDirectoryHandle> => {
 		const config = configs[name];
 		if (!config) {
@@ -2217,7 +2214,6 @@ export function createDirectoryFactory(
 		}
 
 		// Strip metadata fields that shouldn't be passed to directory constructor
-
 		const {
 			DirectoryClass,
 			module: _module,
@@ -2230,20 +2226,7 @@ export function createDirectoryFactory(
 			);
 		}
 
-		// Resolve special path markers
-		const resolvedOptions = {...dirOptions};
-		if (resolvedOptions.path === "tmpdir") {
-			if (!resolvedTmpDir) {
-				if (!resolvingTmpDir) {
-					// Dynamically import os to get tmpdir - works in Node.js and Bun
-					resolvingTmpDir = import("node:os").then(({tmpdir}) => tmpdir());
-				}
-				resolvedTmpDir = await resolvingTmpDir;
-			}
-			resolvedOptions.path = resolvedTmpDir;
-		}
-
-		return new DirectoryClass(name, resolvedOptions);
+		return new DirectoryClass(name, dirOptions);
 	};
 }
 
@@ -2401,7 +2384,7 @@ export async function initWorkerRuntime(
 		}),
 	);
 
-	// Create directory storage
+	// Create directory storage - paths are already resolved at build time
 	const directories = new CustomDirectoryStorage(
 		createDirectoryFactory(config?.directories ?? {}),
 	);

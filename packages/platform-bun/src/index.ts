@@ -5,6 +5,7 @@
  */
 
 import {builtinModules} from "node:module";
+import {tmpdir} from "node:os";
 import {
 	BasePlatform,
 	type PlatformConfig,
@@ -105,6 +106,7 @@ if (isWorker) {
 `;
 
 // Worker entry template - platform defaults are merged at build time into config
+// Paths are resolved at build time by the path syntax parser
 const workerEntryTemplate = `// Worker Entry for ServiceWorkerPool
 // This file sets up the ServiceWorker runtime and message loop
 import {config} from "shovel:config";
@@ -114,7 +116,7 @@ import {initWorkerRuntime, startWorkerMessageLoop, configureLogging} from "@b9g/
 await configureLogging(config.logging);
 
 // Initialize the worker runtime (installs ServiceWorker globals)
-// Platform defaults are already merged into config.directories at build time
+// Platform defaults and paths are already resolved at build time
 const {registration, databases} = await initWorkerRuntime({config});
 
 // Import user code (registers event handlers via addEventListener)
@@ -234,11 +236,12 @@ export class BunPlatform extends BasePlatform {
 	 */
 	async createDirectories(): Promise<CustomDirectoryStorage> {
 		// Runtime defaults with actual class references (not module/export strings)
+		// Note: These are test-time defaults - production uses build-time resolved paths
 		const runtimeDefaults: Record<string, {DirectoryClass: any; path: string}> =
 			{
-				server: {DirectoryClass: NodeFSDirectory, path: "."},
-				public: {DirectoryClass: NodeFSDirectory, path: "../public"},
-				tmp: {DirectoryClass: NodeFSDirectory, path: "tmpdir"},
+				server: {DirectoryClass: NodeFSDirectory, path: process.cwd()},
+				public: {DirectoryClass: NodeFSDirectory, path: process.cwd()},
+				tmp: {DirectoryClass: NodeFSDirectory, path: tmpdir()},
 			};
 		const userDirs = this.#options.config?.directories ?? {};
 		// Deep merge per entry so user can override options without losing DirectoryClass
@@ -396,14 +399,12 @@ export class BunPlatform extends BasePlatform {
 
 		// Create shared directory storage from config (with runtime defaults)
 		if (!this.#directoryStorage) {
-			// Runtime defaults with actual class references (must match getDefaults())
-			const runtimeDirDefaults: Record<
-				string,
-				{DirectoryClass: any; path?: string}
-			> = {
-				server: {DirectoryClass: NodeFSDirectory, path: "."},
-				public: {DirectoryClass: NodeFSDirectory, path: "../public"},
-				tmp: {DirectoryClass: NodeFSDirectory, path: "tmpdir"},
+			// Runtime defaults provide DirectoryClass for platform-provided directories
+			// Paths come from the generated config (resolved at build time)
+			const runtimeDirDefaults: Record<string, {DirectoryClass: any}> = {
+				server: {DirectoryClass: NodeFSDirectory},
+				public: {DirectoryClass: NodeFSDirectory},
+				tmp: {DirectoryClass: NodeFSDirectory},
 			};
 			const userDirs = config?.directories ?? {};
 			// Deep merge per entry
@@ -629,18 +630,17 @@ export class BunPlatform extends BasePlatform {
 				server: {
 					module: "@b9g/filesystem/node-fs",
 					export: "NodeFSDirectory",
-					path: ".",
+					path: "__outdir__/server",
 				},
 				public: {
 					module: "@b9g/filesystem/node-fs",
 					export: "NodeFSDirectory",
-					path: "../public",
+					path: "__outdir__/public",
 				},
 				tmp: {
 					module: "@b9g/filesystem/node-fs",
 					export: "NodeFSDirectory",
-					// Note: "tmpdir" is a special marker - the runtime uses os.tmpdir()
-					path: "tmpdir",
+					path: "__tmpdir__",
 				},
 			},
 		};
