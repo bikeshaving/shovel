@@ -96,7 +96,10 @@ function getBasePath(url: string, suffix: string): string {
 /**
  * Get the primary key value from a record
  */
-function getPrimaryKeyValue(record: Record<string, unknown>, metadata: TableMetadata): string {
+function getPrimaryKeyValue(
+	record: Record<string, unknown>,
+	metadata: TableMetadata,
+): string {
 	if (metadata.primaryKey.length === 0) {
 		throw new Error("Table has no primary key");
 	}
@@ -465,7 +468,9 @@ export function createAdmin(config: AdminConfig): Router {
 			if (err instanceof ValidationError) {
 				const errors: Record<string, string> = {};
 				for (const [field, messages] of Object.entries(err.fieldErrors ?? {})) {
-					errors[field] = Array.isArray(messages) ? messages[0] : String(messages);
+					errors[field] = Array.isArray(messages)
+						? messages[0]
+						: String(messages);
 				}
 
 				return html(
@@ -477,11 +482,12 @@ export function createAdmin(config: AdminConfig): Router {
 						assets={assets}
 					>
 						<h1 class="usa-heading">New {model.displayName}</h1>
-						<div class="usa-alert usa-alert--error margin-bottom-2" role="alert">
+						<div
+							class="usa-alert usa-alert--error margin-bottom-2"
+							role="alert"
+						>
 							<div class="usa-alert__body">
-								<p class="usa-alert__text">
-									Please correct the errors below.
-								</p>
+								<p class="usa-alert__text">Please correct the errors below.</p>
 							</div>
 						</div>
 						<div class="admin-card">
@@ -539,7 +545,10 @@ export function createAdmin(config: AdminConfig): Router {
 								</p>
 							</div>
 						</div>
-						<a href={`${basePath}/${modelName}`} class="usa-button margin-top-2">
+						<a
+							href={`${basePath}/${modelName}`}
+							class="usa-button margin-top-2"
+						>
 							Back to {model.displayName}
 						</a>
 					</PageLayout>,
@@ -579,7 +588,9 @@ export function createAdmin(config: AdminConfig): Router {
 							{model.metadata.columns.map((col) => (
 								<>
 									<dt>{col.name}</dt>
-									<dd>{formatValue((record as Record<string, unknown>)[col.key])}</dd>
+									<dd>
+										{formatValue((record as Record<string, unknown>)[col.key])}
+									</dd>
 								</>
 							))}
 						</dl>
@@ -637,7 +648,10 @@ export function createAdmin(config: AdminConfig): Router {
 								</p>
 							</div>
 						</div>
-						<a href={`${basePath}/${modelName}`} class="usa-button margin-top-2">
+						<a
+							href={`${basePath}/${modelName}`}
+							class="usa-button margin-top-2"
+						>
 							Back to {model.displayName}
 						</a>
 					</PageLayout>,
@@ -706,7 +720,9 @@ export function createAdmin(config: AdminConfig): Router {
 			if (err instanceof ValidationError) {
 				const errors: Record<string, string> = {};
 				for (const [field, messages] of Object.entries(err.fieldErrors ?? {})) {
-					errors[field] = Array.isArray(messages) ? messages[0] : String(messages);
+					errors[field] = Array.isArray(messages)
+						? messages[0]
+						: String(messages);
 				}
 
 				return html(
@@ -720,11 +736,12 @@ export function createAdmin(config: AdminConfig): Router {
 						<h1 class="usa-heading">
 							Edit {model.displayName} #{id}
 						</h1>
-						<div class="usa-alert usa-alert--error margin-bottom-2" role="alert">
+						<div
+							class="usa-alert usa-alert--error margin-bottom-2"
+							role="alert"
+						>
 							<div class="usa-alert__body">
-								<p class="usa-alert__text">
-									Please correct the errors below.
-								</p>
+								<p class="usa-alert__text">Please correct the errors below.</p>
 							</div>
 						</div>
 						<div class="admin-card">
@@ -782,7 +799,10 @@ export function createAdmin(config: AdminConfig): Router {
 								</p>
 							</div>
 						</div>
-						<a href={`${basePath}/${modelName}`} class="usa-button margin-top-2">
+						<a
+							href={`${basePath}/${modelName}`}
+							class="usa-button margin-top-2"
+						>
 							Back to {model.displayName}
 						</a>
 					</PageLayout>,
@@ -804,8 +824,8 @@ export function createAdmin(config: AdminConfig): Router {
 						<div class="usa-alert__body">
 							<h4 class="usa-alert__heading">Confirm Deletion</h4>
 							<p class="usa-alert__text">
-								Are you sure you want to delete this {model.displayName.toLowerCase()}?
-								This action cannot be undone.
+								Are you sure you want to delete this{" "}
+								{model.displayName.toLowerCase()}? This action cannot be undone.
 							</p>
 						</div>
 					</div>
@@ -815,7 +835,9 @@ export function createAdmin(config: AdminConfig): Router {
 							{model.metadata.columns.slice(0, 5).map((col) => (
 								<>
 									<dt>{col.name}</dt>
-									<dd>{formatValue((record as Record<string, unknown>)[col.key])}</dd>
+									<dd>
+										{formatValue((record as Record<string, unknown>)[col.key])}
+									</dd>
 								</>
 							))}
 						</dl>
@@ -839,7 +861,11 @@ export function createAdmin(config: AdminConfig): Router {
 				</PageLayout>,
 			);
 		} catch (err) {
-			logger.error("Delete confirmation error:", {error: err, model: modelName, id});
+			logger.error("Delete confirmation error:", {
+				error: err,
+				model: modelName,
+				id,
+			});
 			return errorPage(title, basePath, models, err, assets);
 		}
 	});

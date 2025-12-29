@@ -239,8 +239,8 @@ export class BunPlatform extends BasePlatform {
 		// Note: These are test-time defaults - production uses build-time resolved paths
 		const runtimeDefaults: Record<string, {DirectoryClass: any; path: string}> =
 			{
-				server: {DirectoryClass: NodeFSDirectory, path: process.cwd()},
-				public: {DirectoryClass: NodeFSDirectory, path: process.cwd()},
+				server: {DirectoryClass: NodeFSDirectory, path: this.#options.cwd},
+				public: {DirectoryClass: NodeFSDirectory, path: this.#options.cwd},
 				tmp: {DirectoryClass: NodeFSDirectory, path: tmpdir()},
 			};
 		const userDirs = this.#options.config?.directories ?? {};

@@ -17,7 +17,8 @@ export interface FormFieldProps {
  */
 export function FormField({column, value, error}: FormFieldProps) {
 	const id = `field-${column.key}`;
-	const isRequired = column.notNull && !column.hasDefault && !column.isPrimaryKey;
+	const isRequired =
+		column.notNull && !column.hasDefault && !column.isPrimaryKey;
 
 	// Skip primary key fields (auto-generated)
 	if (column.isPrimaryKey && column.hasDefault) {
@@ -76,7 +77,10 @@ export function FormField({column, value, error}: FormFieldProps) {
 
 	// Date/datetime
 	if (column.dataType === "date") {
-		const dateValue = value instanceof Date ? value.toISOString().split("T")[0] : (value as string) || "";
+		const dateValue =
+			value instanceof Date
+				? value.toISOString().split("T")[0]
+				: (value as string) || "";
 		return (
 			<div class="usa-form-group">
 				<label class="usa-label" for={id}>
@@ -97,7 +101,10 @@ export function FormField({column, value, error}: FormFieldProps) {
 	}
 
 	if (column.dataType === "datetime") {
-		const dtValue = value instanceof Date ? value.toISOString().slice(0, 16) : (value as string) || "";
+		const dtValue =
+			value instanceof Date
+				? value.toISOString().slice(0, 16)
+				: (value as string) || "";
 		return (
 			<div class="usa-form-group">
 				<label class="usa-label" for={id}>
@@ -204,7 +211,11 @@ export function ModelForm({
 	return (
 		<form class="usa-form admin-form" method="POST" action={action}>
 			{metadata.columns.map((col) => (
-				<FormField column={col} value={values[col.key]} error={errors[col.key]} />
+				<FormField
+					column={col}
+					value={values[col.key]}
+					error={errors[col.key]}
+				/>
 			))}
 			<div class="admin-form-actions">
 				<button type="submit" class="usa-button">
@@ -292,7 +303,8 @@ export function parseFormData(
 			case "json":
 				try {
 					result[column.key] = JSON.parse(value);
-				} catch {
+				} catch (_err) {
+					// Invalid JSON - store as raw string
 					result[column.key] = value;
 				}
 				break;
