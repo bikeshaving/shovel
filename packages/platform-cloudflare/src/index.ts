@@ -198,6 +198,17 @@ export class CloudflarePlatform extends BasePlatform {
 		}
 
 		const mf = this.#miniflare;
+		const assetsMf = this.#assetsMiniflare;
+
+		// Create dispose function that also clears platform references
+		const disposeInstance = async () => {
+			await mf.dispose();
+			this.#miniflare = null;
+			if (assetsMf) {
+				await assetsMf.dispose();
+				this.#assetsMiniflare = null;
+			}
+		};
 
 		const instance: ServiceWorkerInstance = {
 			runtime: mf,
@@ -219,9 +230,7 @@ export class CloudflarePlatform extends BasePlatform {
 			get ready() {
 				return true;
 			},
-			dispose: async () => {
-				await mf.dispose();
-			},
+			dispose: disposeInstance,
 		};
 
 		logger.info("Miniflare dev server ready", {});

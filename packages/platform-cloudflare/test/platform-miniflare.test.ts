@@ -50,6 +50,8 @@ self.addEventListener("fetch", (event) => {
 	});
 
 	afterAll(async () => {
+		// Dispose platform to clean up any remaining miniflare instances
+		await platform.dispose();
 		try {
 			await fs.rm(testDir, {recursive: true});
 		} catch (err) {

@@ -36,7 +36,8 @@ self.addEventListener("fetch", (event) => {
 	});
 
 	afterAll(async () => {
-		// Platform is already disposed by individual tests, just cleanup files
+		// Dispose platform to clean up any remaining miniflare instances
+		await platform.dispose();
 		try {
 			await fs.rm(testDir, {recursive: true});
 		} catch (err) {
