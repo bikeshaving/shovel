@@ -6,6 +6,8 @@
     }
   },
   "directories": {
+    "server": {},
+    "public": {},
     "uploads": {
       "module": "@b9g/filesystem/node-fs.js",
       "export": "NodeFSDirectory",
