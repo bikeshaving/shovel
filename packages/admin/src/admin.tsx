@@ -116,8 +116,9 @@ function parseId(id: string, metadata: TableMetadata): string | number | null {
 	const pkField = metadata.primaryKey[0];
 	const pkColumn = metadata.columns.find((c) => c.key === pkField);
 	if (pkColumn?.dataType === "number") {
-		const parsed = parseInt(id, 10);
-		if (Number.isNaN(parsed)) {
+		// Use Number() instead of parseInt() to reject partial matches like "123abc"
+		const parsed = Number(id);
+		if (!Number.isInteger(parsed)) {
 			return null;
 		}
 		return parsed;
