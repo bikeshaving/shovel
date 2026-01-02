@@ -125,10 +125,11 @@ describe("exprToCode", () => {
 	});
 
 	describe("path joining", () => {
-		it("joins env var with path suffix", () => {
+		it("joins required env var with path suffix (throws if missing)", () => {
 			const result = exprToCode("$DATADIR/uploads");
+			// Required env vars generate code that throws if missing, not filter(Boolean)
 			expect(result.code).toBe(
-				'[process.env.DATADIR, "uploads"].filter(Boolean).join("/")',
+				'(() => { const v = process.env.DATADIR; if (v == null) throw new Error("Required env var DATADIR is not set"); return [v, "uploads"].join("/"); })()',
 			);
 		});
 
@@ -144,14 +145,15 @@ describe("exprToCode", () => {
 			);
 		});
 
-		it("joins multiple path segments", () => {
+		it("joins multiple path segments with required env var", () => {
 			expect(exprToCode("$DATADIR/uploads/images").code).toBe(
-				'[process.env.DATADIR, "uploads", "images"].filter(Boolean).join("/")',
+				'(() => { const v = process.env.DATADIR; if (v == null) throw new Error("Required env var DATADIR is not set"); return [v, "uploads", "images"].join("/"); })()',
 			);
 		});
 
-		it("joins fallback expression with suffix", () => {
+		it("joins fallback expression with suffix (uses filter since optional)", () => {
 			const result = exprToCode("($CACHE || [tmpdir])/myapp");
+			// Fallback expressions use filter(Boolean) since they have a default
 			expect(result.code).toBe(
 				'[((process.env.CACHE || tmpdir())), "myapp"].filter(Boolean).join("/")',
 			);

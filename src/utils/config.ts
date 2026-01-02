@@ -908,7 +908,8 @@ class CodeGenerator {
 			const code = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)
 				? `process.env.${name}`
 				: `process.env[${JSON.stringify(name)}]`;
-			return this.#generatePathSuffix(code);
+			// Mark as required env var - path suffix should not mask undefined
+			return this.#generatePathSuffix(code, {requiredEnvVar: name});
 		}
 
 		// Bracket placeholders (may have path suffix)
@@ -940,7 +941,11 @@ class CodeGenerator {
 	}
 
 	// Generate path suffix code: base/segment/... → [base, "segment", ...].join("/")
-	#generatePathSuffix(baseCode: string): string {
+	// If requiredEnvVar is set, generate code that throws if the env var is missing
+	#generatePathSuffix(
+		baseCode: string,
+		options: {requiredEnvVar?: string} = {},
+	): string {
 		const segments: string[] = [];
 
 		while (this.#peek().type === TokenType.SLASH) {
@@ -968,7 +973,15 @@ class CodeGenerator {
 			return baseCode;
 		}
 
-		// Generate inline path join: [base, segments...].filter(Boolean).join("/")
+		// For required env vars with path suffix, don't mask undefined with filter(Boolean)
+		// Instead, throw a clear error if the env var is missing
+		if (options.requiredEnvVar) {
+			const envName = options.requiredEnvVar;
+			// Generate: (() => { const v = process.env.VAR; if (v == null) throw new Error("..."); return [v, ...].join("/"); })()
+			return `(() => { const v = ${baseCode}; if (v == null) throw new Error("Required env var ${envName} is not set"); return [v, ${segments.join(", ")}].join("/"); })()`;
+		}
+
+		// For optional values (with fallback), filter(Boolean) is fine
 		return `[${baseCode}, ${segments.join(", ")}].filter(Boolean).join("/")`;
 	}
 }
