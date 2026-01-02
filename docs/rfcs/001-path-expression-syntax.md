@@ -21,10 +21,11 @@ Current problems:
 
 1. **Fail fast** - Required env vars throw immediately if unset
 2. **Explicit fallbacks** - No silent undefined, must specify default
-3. **Proper path joining** - Use platform `joinPath()`, not string concatenation
+3. **Proper path joining** - Use inline array joining, not string concatenation
 4. **Unambiguous parsing** - Parentheses for grouping, clear delimiters
 5. **Universal syntax** - Works in any config field, not just paths
-6. **Platform agnostic** - Generated code uses platform adapters, not Node.js APIs directly
+6. **Platform agnostic** - Generated code uses `process.env` (universal baseline)
+7. **Familiar syntax** - Uses `[bracket]` placeholders similar to esbuild/webpack output filename templating
 
 ---
 
@@ -37,8 +38,8 @@ For path fields:
 ./path              Relative to project directory
 ../path             Relative to parent directory
 /absolute/path      Absolute path (as-is)
-__outdir__          Build output directory
-__outdir__/sub      Build output + suffix
+[outdir]            Build output directory
+[outdir]/sub        Build output + suffix
 ```
 
 For other fields, literals are used as-is.
@@ -48,13 +49,14 @@ For other fields, literals are used as-is.
 ### Runtime Values
 
 ```
-__tmpdir__          OS temp directory
-__tmpdir__/sub      Temp directory + suffix
+[tmpdir]            OS temp directory
+[tmpdir]/sub        Temp directory + suffix
+[git]               Git commit SHA (deployment identifier)
 $ENVVAR             Required environment variable (throws if unset)
 $ENVVAR/sub         Required env var + suffix (for path fields)
 ```
 
-**Generated code:** Runtime expressions using platform adapters.
+**Generated code:** Runtime expressions.
 
 ### Fallback Expressions
 
@@ -63,11 +65,31 @@ $ENVVAR/sub         Required env var + suffix (for path fields)
 ($ENVVAR || fallback)/suffix  Optional env var + suffix (for path fields)
 ```
 
-**Fallback** can be any literal or `__tmpdir__`:
+**Fallback** can be any literal or `[tmpdir]`:
 - `($VAR || ./data)` - env var or relative path
 - `($VAR || /var/data)` - env var or absolute path
-- `($VAR || __outdir__/data)` - env var or build output
-- `($VAR || __tmpdir__)` - env var or temp directory
+- `($VAR || [outdir]/data)` - env var or build output
+- `($VAR || [tmpdir])` - env var or temp directory
+
+---
+
+## Bracket Placeholders
+
+The bracket placeholder syntax (`[outdir]`, `[tmpdir]`, `[git]`) is intentionally similar to esbuild and webpack's output filename templating syntax (e.g., `[name]`, `[hash]`, `[ext]`). This provides a familiar pattern for developers coming from those ecosystems.
+
+| Placeholder | Description | Resolution Time | Generated Code |
+|------------|-------------|-----------------|----------------|
+| `[outdir]` | Build output directory | Build time | `__SHOVEL_OUTDIR__` (esbuild define) |
+| `[tmpdir]` | OS temp directory | Runtime | `tmpdir()` (from platform entry wrapper) |
+| `[git]` | Git commit SHA | Build time | `__SHOVEL_GIT__` (esbuild define) |
+
+### Platform Support
+
+| Placeholder | Node.js/Bun | Cloudflare Workers |
+|------------|-------------|-------------------|
+| `[outdir]` | ✅ Supported | ❌ No filesystem |
+| `[tmpdir]` | ✅ Supported | ❌ No filesystem |
+| `[git]` | ✅ Supported | ✅ Supported |
 
 ---
 
@@ -78,10 +100,11 @@ expr          := grouped_expr | simple_expr
 grouped_expr  := "(" env_ref "||" fallback ")" suffix?
 simple_expr   := base suffix?
 
-base          := env_ref | tmpdir_ref | outdir_ref | literal
+base          := env_ref | tmpdir_ref | outdir_ref | git_ref | literal
 env_ref       := "$" ENV_NAME
-tmpdir_ref    := "__tmpdir__"
-outdir_ref    := "__outdir__"
+tmpdir_ref    := "[tmpdir]"
+outdir_ref    := "[outdir]"
+git_ref       := "[git]"
 literal       := relative | absolute | bare
 relative      := ("." | "..") "/" SEGMENT*
 absolute      := "/" SEGMENT*
@@ -98,79 +121,21 @@ SEGMENT       := [^/()| ]+
 
 ---
 
-## Platform Adapters
-
-Generated code uses platform-provided functions rather than Node.js APIs directly:
-
-```typescript
-// @b9g/platform/runtime exports
-export function env(name: string): string;           // throws if unset
-export function envOr(name: string, fallback: string): string;
-export function outdir(): string;                    // build output directory
-export function tmpdir(): Promise<string>;           // OS temp directory (async)
-export function joinPath(...segments: string[]): string;
-```
-
-### Platform Implementations
-
-**Node.js / Bun:**
-```typescript
-export const env = (name: string) => {
-  const value = import.meta.env[name];
-  if (value === undefined) {
-    throw new Error(`Required environment variable ${name} is not set`);
-  }
-  return value;
-};
-export const envOr = (name: string, fallback: string) =>
-  import.meta.env[name] ?? fallback;
-// outdir() uses build-time define injection (__SHOVEL_OUTDIR__)
-declare const __SHOVEL_OUTDIR__: string | undefined;
-export const outdir = () =>
-  envOr("SHOVEL_OUTDIR", "") || __SHOVEL_OUTDIR__ || ".";
-export const tmpdir = async () => (await import("node:os")).tmpdir();
-export const joinPath = (...segments: string[]) =>
-  segments.filter(Boolean).join("/").replace(/([^:])\/+/g, "$1/");
-```
-
-**Cloudflare Workers:**
-```typescript
-export const env = (name: string) => {
-  const value = import.meta.env[name];
-  if (value === undefined) {
-    throw new Error(`Required environment variable ${name} is not set`);
-  }
-  return value;
-};
-export const envOr = (name: string, fallback: string) =>
-  import.meta.env[name] ?? fallback;
-declare const __SHOVEL_OUTDIR__: string | undefined;
-export const outdir = () =>
-  envOr("SHOVEL_OUTDIR", "") || __SHOVEL_OUTDIR__ || ".";
-export const tmpdir = async () => {
-  throw new Error("__tmpdir__ is not available on Cloudflare Workers");
-};
-export const joinPath = (...segments: string[]) =>
-  segments.filter(Boolean).join("/").replace(/([^:])\/+/g, "$1/");
-```
-
----
-
 ## Examples
 
 ### Configuration
 
 ```json
 {
-  "port": "$PORT",
-  "host": "($HOST || 0.0.0.0)",
+  "port": "$PORT || 3000",
+  "host": "$HOST || 0.0.0.0",
   "directories": {
-    "server": { "path": "__outdir__/server" },
-    "public": { "path": "__outdir__/public" },
-    "tmp": { "path": "__tmpdir__" },
+    "server": { "path": "[outdir]/server" },
+    "public": { "path": "[outdir]/public" },
+    "tmp": { "path": "[tmpdir]" },
     "data": { "path": "./data" },
     "uploads": { "path": "($UPLOAD_DIR || ./data/uploads)" },
-    "cache": { "path": "($CACHE_DIR || __tmpdir__)/myapp" },
+    "cache": { "path": "($CACHE_DIR || [tmpdir])/myapp" },
     "db": { "path": "($DB_PATH || ./data)/shovel.db" },
     "logs": { "path": "$LOG_DIR/myapp" }
   },
@@ -178,62 +143,73 @@ export const joinPath = (...segments: string[]) =>
     "main": {
       "url": "$DATABASE_URL"
     }
-  }
+  },
+  "deploymentId": "[git]"
 }
 ```
 
 ### Generated Code
 
 ```javascript
-import { env, envOr, outdir, tmpdir, joinPath } from "@b9g/platform/runtime";
+// Platform entry wrappers provide: import {tmpdir} from "os";
 
-export default {
-  port: Number(env("PORT")),
-  host: envOr("HOST", "0.0.0.0"),
+export const config = {
+  get port() { return process.env.PORT || 3000; },
+  get host() { return process.env.HOST || "0.0.0.0"; },
   directories: {
-    server: { path: joinPath(outdir(), "server") },
-    public: { path: joinPath(outdir(), "public") },
-    tmp: { path: await tmpdir() },
+    server: { path: [__SHOVEL_OUTDIR__, "server"].filter(Boolean).join("/") },
+    public: { path: [__SHOVEL_OUTDIR__, "public"].filter(Boolean).join("/") },
+    tmp: { path: tmpdir() },
     data: { path: "/home/user/project/data" },
     uploads: {
-      path: envOr("UPLOAD_DIR", "/home/user/project/data/uploads")
+      path: process.env.UPLOAD_DIR || "/home/user/project/data/uploads"
     },
     cache: {
-      path: joinPath(envOr("CACHE_DIR", await tmpdir()), "myapp")
+      get path() { return [(process.env.CACHE_DIR || tmpdir()), "myapp"].filter(Boolean).join("/"); }
     },
     db: {
-      path: joinPath(envOr("DB_PATH", "/home/user/project/data"), "shovel.db")
+      path: [(process.env.DB_PATH || "/home/user/project/data"), "shovel.db"].filter(Boolean).join("/")
     },
     logs: {
-      path: joinPath(env("LOG_DIR"), "myapp")
+      get path() { return [process.env.LOG_DIR, "myapp"].filter(Boolean).join("/"); }
     },
   },
   databases: {
     main: {
-      url: env("DATABASE_URL"),
+      get url() { return process.env.DATABASE_URL; },
     }
-  }
-}
+  },
+  deploymentId: __SHOVEL_GIT__,
+};
 ```
 
 ---
 
-## Type Coercion
+## Code Generation
 
-The expression syntax is universal, but type coercion depends on the field's schema:
+The config expression system generates JavaScript code directly without runtime helper functions:
 
-| Field Type | Expression | Generated Code |
-|------------|------------|----------------|
-| `string` | `$VAR` | `env("VAR")` |
-| `number` | `$VAR` | `Number(env("VAR"))` |
-| `boolean` | `$VAR` | `env("VAR") === "true"` |
-| `string` | `($VAR \|\| default)` | `envOr("VAR", "default")` |
-| `number` | `($VAR \|\| 3000)` | `Number(envOr("VAR", "3000"))` |
+| Expression | Generated Code |
+|------------|----------------|
+| `$VAR` | `process.env.VAR` |
+| `$VAR \|\| fallback` | `process.env.VAR \|\| "fallback"` |
+| `[outdir]` | `__SHOVEL_OUTDIR__` |
+| `[tmpdir]` | `tmpdir()` |
+| `[git]` | `__SHOVEL_GIT__` |
+| `$VAR/sub` | `[process.env.VAR, "sub"].filter(Boolean).join("/")` |
+| `[outdir]/sub` | `[__SHOVEL_OUTDIR__, "sub"].filter(Boolean).join("/")` |
 
-Path fields additionally support:
-- Relative path resolution (`./`, `../`)
-- Special directories (`__outdir__`, `__tmpdir__`)
-- Path joining via suffix (`/sub/path`)
+### Dynamic vs Static Values
+
+Values containing runtime expressions (`process.env`, `tmpdir()`) are wrapped in getters to ensure they're evaluated at access time, not module load time:
+
+```javascript
+// Static value - evaluated once at build time
+data: { path: "/resolved/absolute/path" }
+
+// Dynamic value - getter ensures fresh evaluation
+logs: { get path() { return [process.env.LOG_DIR, "myapp"].filter(Boolean).join("/"); } }
+```
 
 ---
 
@@ -241,42 +217,54 @@ Path fields additionally support:
 
 ### Path Joining
 
-Suffixes use `joinPath()`:
+Suffixes use inline array joining:
 
 ```javascript
 // $DATADIR/uploads/images
-joinPath(env("DATADIR"), "uploads", "images")
+[process.env.DATADIR, "uploads", "images"].filter(Boolean).join("/")
 
-// __tmpdir__/myapp/cache
-joinPath(tmpdir(), "myapp", "cache")
+// [tmpdir]/myapp/cache
+[tmpdir(), "myapp", "cache"].filter(Boolean).join("/")
 
 // ($VAR || ./data)/sub/path
-joinPath(envOr("VAR", "/abs/data"), "sub", "path")
+[(process.env.VAR || "/abs/data"), "sub", "path"].filter(Boolean).join("/")
 ```
 
 Benefits:
-- Handles trailing slashes correctly
-- Normalizes paths
-- Platform-appropriate separators
+- Handles empty/undefined segments correctly via `filter(Boolean)`
+- No additional runtime dependencies
+- Works identically across all platforms
 
 ### Required vs Optional
 
 | Syntax | Behavior |
 |--------|----------|
-| `$VAR` | **Required** - throws `Error` if unset |
-| `($VAR \|\| default)` | **Optional** - uses fallback if unset |
-
-Empty string (`VAR=""`) is considered "set" - only `undefined` triggers fallback/error.
+| `$VAR` | Uses value if set, `undefined` if not |
+| `$VAR \|\| fallback` | Uses fallback if falsy (empty string, undefined, null) |
+| `$VAR ?? fallback` | Uses fallback only if null/undefined (keeps empty string) |
 
 ### Resolution Timing
 
 | Pattern | Resolved |
 |---------|----------|
-| `./path`, `../path`, `/path` | Build time |
-| `__outdir__`, `__outdir__/sub` | Runtime (via build-time define injection) |
-| `__tmpdir__`, `__tmpdir__/sub` | Runtime |
-| `$VAR`, `$VAR/sub` | Runtime |
-| `($VAR \|\| literal)` | Mixed: fallback at build, check at runtime |
+| `./path`, `../path`, `/path` | Build time (absolute path embedded) |
+| `[outdir]`, `[outdir]/sub` | Build time (via `__SHOVEL_OUTDIR__` define) |
+| `[git]` | Build time (via `__SHOVEL_GIT__` define) |
+| `[tmpdir]`, `[tmpdir]/sub` | Runtime (via `tmpdir()` call) |
+| `$VAR`, `$VAR/sub` | Runtime (via `process.env`) |
+
+---
+
+## Platform Entry Wrappers
+
+The `[tmpdir]` placeholder generates a `tmpdir()` call. This function is provided by platform entry wrappers via a static import:
+
+```javascript
+// Node.js / Bun entry wrapper
+import {tmpdir} from "os"; // For [tmpdir] config expressions
+```
+
+Cloudflare Workers do not support `[tmpdir]` or `[outdir]` since they have no filesystem access. The build will fail if these are used with the Cloudflare platform.
 
 ---
 
@@ -285,9 +273,9 @@ Empty string (`VAR=""`) is considered "set" - only `undefined` triggers fallback
 ### Empty Environment Variable
 ```javascript
 // DATADIR="" (set but empty)
-envOr("DATADIR", "/fallback")  // returns "" (empty string, not fallback)
+process.env.DATADIR || "/fallback"  // returns "/fallback" (empty string is falsy)
+process.env.DATADIR ?? "/fallback"  // returns "" (nullish coalescing keeps empty)
 ```
-Empty is valid. Use validation elsewhere if empty should be rejected.
 
 ### Whitespace in Expressions
 ```json
@@ -297,15 +285,11 @@ Empty is valid. Use validation elsewhere if empty should be rejected.
 
 ### Platform Compatibility
 
-Platform-specific syntax validation occurs during the **build phase** when generating the config module:
+Platform-specific syntax validation occurs during the **build phase**:
 
-1. **Parser phase** (`parsePath()`) - Parses expressions and identifies runtime dependencies (`__tmpdir__`, env vars)
-2. **Config generation phase** (`generateConfigModule()`) - Platform adapter checks for incompatible features
-3. **Build error** - If `__tmpdir__` is used with Cloudflare target, build fails with clear error message
-
-At **runtime**, the platform adapter functions handle any remaining platform differences:
-- `tmpdir()` throws `Error("__tmpdir__ is not available on Cloudflare Workers")` if somehow reached
-- `joinPath()` uses `/` separator on all platforms (Cloudflare has no `path` module)
+1. **Parser phase** - Parses expressions and identifies placeholders (`[tmpdir]`, `[outdir]`, `[git]`)
+2. **Platform check** - Platform adapter rejects incompatible placeholders
+3. **Build error** - If `[tmpdir]` is used with Cloudflare target, build fails with clear error message
 
 ---
 
@@ -322,42 +306,13 @@ At **runtime**, the platform adapter functions handle any remaining platform dif
 
 ---
 
-## Breaking Changes
-
-From current behavior:
-
-| Before | After |
-|--------|-------|
-| `$VAR` when unset produces `"undefined"` | Throws `Error` |
-| `$VAR/sub` uses string concatenation | Uses `joinPath()` |
-| Generated code uses `process.env` | Uses `import.meta.env` via platform adapter |
-
----
-
-## Future Extensions
-
-Possible additions for v2+:
-
-```javascript
-// More dunders
-__projectdir__      // Project root
-__homedir__         // User home directory
-
-// Chained fallbacks
-($PRIMARY || $SECONDARY || ./default)
-
-// Type-specific syntax
-$PORT:number        // Explicit type annotation
-```
-
----
-
 ## Summary
 
 | Pattern | Example | Generated Code |
 |---------|---------|----------------|
 | Literal | `./data` | `"/abs/project/data"` |
-| Output dir | `__outdir__/server` | `joinPath(outdir(), "server")` |
-| Temp dir | `__tmpdir__/cache` | `joinPath(await tmpdir(), "cache")` |
-| Required env | `$DATADIR/uploads` | `joinPath(env("DATADIR"), "uploads")` |
-| Optional env | `($DATADIR \|\| ./data)/uploads` | `joinPath(envOr("DATADIR", "/abs/data"), "uploads")` |
+| Output dir | `[outdir]/server` | `[__SHOVEL_OUTDIR__, "server"].filter(Boolean).join("/")` |
+| Temp dir | `[tmpdir]/cache` | `[tmpdir(), "cache"].filter(Boolean).join("/")` |
+| Git SHA | `[git]` | `__SHOVEL_GIT__` |
+| Required env | `$DATADIR/uploads` | `[process.env.DATADIR, "uploads"].filter(Boolean).join("/")` |
+| Optional env | `($DATADIR \|\| ./data)/uploads` | `[(process.env.DATADIR \|\| "/abs/data"), "uploads"].filter(Boolean).join("/")` |
