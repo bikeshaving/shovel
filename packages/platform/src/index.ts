@@ -36,6 +36,7 @@ export {
 	DefaultConfigProvider,
 	type ConfigExpressionProvider,
 } from "./config.js";
+import type {ConfigExpressionProvider} from "./config.js";
 
 // Declare __SHOVEL_OUTDIR__ for TypeScript (injected by esbuild at build time)
 declare const __SHOVEL_OUTDIR__: string | undefined;
@@ -200,7 +201,7 @@ export interface PlatformDefaults {
  *
  * The core responsibility: "Take a ServiceWorker-style app file and make it run in this environment"
  */
-export interface Platform {
+export interface Platform extends ConfigExpressionProvider {
 	/**
 	 * Platform name for identification
 	 */
@@ -270,38 +271,6 @@ export interface Platform {
 	 * Uses platform-specific defaults, overridable via shovel.json config
 	 */
 	createLoggers(): Promise<LoggerStorage>;
-
-	// =========================================================================
-	// Config Expression Methods
-	// These methods are called by generated config modules at runtime
-	// =========================================================================
-
-	/**
-	 * Get environment variable value
-	 * @param name - Environment variable name
-	 * @returns The value or undefined if not set
-	 */
-	env(name: string): string | undefined;
-
-	/**
-	 * Get the output directory path
-	 * @returns Absolute path to the build output directory
-	 */
-	outdir(): string;
-
-	/**
-	 * Get the temp directory path
-	 * @returns Absolute path to a temporary directory
-	 */
-	tmpdir(): string;
-
-	/**
-	 * Join path segments, validating that none are undefined
-	 * @param segments - Path segments to join
-	 * @returns Joined path
-	 * @throws Error if any segment is undefined (indicates missing env var)
-	 */
-	joinPath(...segments: (string | undefined)[]): string;
 }
 
 // ============================================================================
