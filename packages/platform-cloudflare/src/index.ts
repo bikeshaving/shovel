@@ -322,7 +322,6 @@ export default { fetch: createFetchHandler(registration) };
 			},
 		};
 	}
-
 }
 
 export default CloudflarePlatform;

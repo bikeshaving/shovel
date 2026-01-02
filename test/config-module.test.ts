@@ -76,14 +76,18 @@ describe("exprToCode", () => {
 
 	describe("operators", () => {
 		it("handles || fallback", () => {
-			expect(exprToCode("$PORT || 3000").code).toBe("(process.env.PORT || 3000)");
+			expect(exprToCode("$PORT || 3000").code).toBe(
+				"(process.env.PORT || 3000)",
+			);
 			expect(exprToCode("$HOST || localhost").code).toBe(
 				'(process.env.HOST || "localhost")',
 			);
 		});
 
 		it("handles ?? nullish coalescing", () => {
-			expect(exprToCode("$PORT ?? 3000").code).toBe("(process.env.PORT ?? 3000)");
+			expect(exprToCode("$PORT ?? 3000").code).toBe(
+				"(process.env.PORT ?? 3000)",
+			);
 		});
 
 		it("handles === comparison", () => {

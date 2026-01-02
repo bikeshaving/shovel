@@ -21,7 +21,6 @@
 import {readFileSync} from "fs";
 import {z} from "zod";
 
-
 /**
  * Default configuration constants
  * Used as CLI option defaults and internal constants
@@ -276,7 +275,7 @@ class Tokenizer {
 		// Catchall: consume everything that's not whitespace or an operator
 		// This naturally handles: kebab-case, camelCase, module specifiers (bun:sqlite), URLs, etc.
 		// Excludes: operators, $, single / (which have special meaning)
-		if (/\S/.test(ch) && !/[?!()=|&$\/]/.test(ch)) {
+		if (/\S/.test(ch) && !/[?!()=|&$/]/.test(ch)) {
 			let value = "";
 			while (/\S/.test(this.#peek()) && !/[?!()=|&$]/.test(this.#peek())) {
 				// Colon: include it in identifier if followed by non-whitespace (word:word pattern)
@@ -354,11 +353,9 @@ const defaultPlatformFunctions: PlatformFunctions = {
 		return process.cwd();
 	},
 	tmpdir: () => {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports
 		return require("os").tmpdir();
 	},
 	joinPath: (...segments: string[]) => {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports
 		return require("path").join(...segments);
 	},
 };
@@ -1154,7 +1151,7 @@ export function generateConfigModule(
 		};
 	},
 ): string {
-	const {projectDir, outDir, platformDefaults = {}} = options;
+	const {platformDefaults = {}} = options;
 	// Track imports and their placeholder mappings
 	const imports: string[] = [];
 	const placeholders: Map<string, string> = new Map(); // placeholder -> JS code
