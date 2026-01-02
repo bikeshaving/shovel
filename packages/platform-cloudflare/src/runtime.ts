@@ -16,10 +16,6 @@ import {
 	createDirectoryFactory,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
-import {
-	DefaultConfigProvider,
-	setCurrentPlatform,
-} from "@b9g/platform/config";
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
@@ -87,9 +83,6 @@ export async function initializeRuntime(
 	if (_registration) {
 		return _registration;
 	}
-
-	// Register platform for config expressions (env, tmpdir, etc.)
-	setCurrentPlatform(new DefaultConfigProvider());
 
 	// Configure logging first
 	if (config.logging) {

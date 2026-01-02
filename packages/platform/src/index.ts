@@ -23,23 +23,8 @@ import {
 	type DatabaseStorage,
 } from "./runtime.js";
 
-// Re-export config expression utilities
-export {
-	setCurrentPlatform,
-	getCurrentPlatform,
-	env,
-	outdir,
-	tmpdir,
-	joinPath,
-	validateConfig,
-	ConfigValidationError,
-	DefaultConfigProvider,
-	type ConfigExpressionProvider,
-} from "./config.js";
-import type {ConfigExpressionProvider} from "./config.js";
-
-// Declare __SHOVEL_OUTDIR__ for TypeScript (injected by esbuild at build time)
-declare const __SHOVEL_OUTDIR__: string | undefined;
+// Re-export config validation utilities
+export {validateConfig, ConfigValidationError} from "./config.js";
 
 // Runtime global declarations for platform detection
 declare const Deno: any;
@@ -201,7 +186,7 @@ export interface PlatformDefaults {
  *
  * The core responsibility: "Take a ServiceWorker-style app file and make it run in this environment"
  */
-export interface Platform extends ConfigExpressionProvider {
+export interface Platform {
 	/**
 	 * Platform name for identification
 	 */
@@ -483,56 +468,6 @@ export abstract class BasePlatform implements Platform {
 	 * Subclasses must override to provide platform-specific implementation
 	 */
 	abstract createLoggers(): Promise<LoggerStorage>;
-
-	// =========================================================================
-	// Config Expression Methods (default implementations)
-	// =========================================================================
-
-	/**
-	 * Get environment variable value
-	 * Default: uses process.env (works for Node.js and Bun)
-	 */
-	env(name: string): string | undefined {
-		return process.env[name];
-	}
-
-	/**
-	 * Get the output directory path
-	 * Default: checks SHOVEL_OUTDIR env var, then __SHOVEL_OUTDIR__ define, then "."
-	 */
-	outdir(): string {
-		const fromEnv = process.env.SHOVEL_OUTDIR;
-		if (fromEnv) return fromEnv;
-		if (typeof __SHOVEL_OUTDIR__ !== "undefined" && __SHOVEL_OUTDIR__) {
-			return __SHOVEL_OUTDIR__;
-		}
-		return ".";
-	}
-
-	/**
-	 * Get the temp directory path
-	 * Default: returns /tmp (subclasses should override for proper OS tmpdir)
-	 */
-	tmpdir(): string {
-		return "/tmp";
-	}
-
-	/**
-	 * Join path segments, validating that none are undefined
-	 * Throws if any segment is undefined (indicates missing env var)
-	 */
-	joinPath(...segments: (string | undefined)[]): string {
-		for (let i = 0; i < segments.length; i++) {
-			const seg = segments[i];
-			if (seg === undefined) {
-				throw new Error(
-					`joinPath: segment ${i} is undefined (missing env var?)`,
-				);
-			}
-		}
-		const joined = (segments as string[]).filter(Boolean).join("/");
-		return joined.replace(/([^:])\/+/g, "$1/");
-	}
 }
 
 // ============================================================================

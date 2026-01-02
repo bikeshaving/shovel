@@ -21,12 +21,6 @@
 import {readFileSync} from "fs";
 import {z} from "zod";
 
-/**
- * Platform package for config expression imports.
- * Uses the lightweight config module that has no heavy dependencies.
- * The functions delegate to the current platform instance at runtime.
- */
-const PLATFORM_IMPORT = "@b9g/platform/config";
 
 /**
  * Default configuration constants
@@ -714,8 +708,6 @@ export function processConfigValue(
 class CodeGenerator {
 	#tokens: Token[];
 	#pos: number;
-	/** Track which platform functions are used */
-	usedFunctions: Set<"env" | "outdir" | "tmpdir" | "joinPath">;
 
 	constructor(input: string) {
 		const tokenizer = new Tokenizer(input);
@@ -726,7 +718,6 @@ class CodeGenerator {
 			this.#tokens.push(token);
 		} while (token.type !== TokenType.EOF);
 		this.#pos = 0;
-		this.usedFunctions = new Set();
 	}
 
 	#peek(): Token {
@@ -875,24 +866,27 @@ class CodeGenerator {
 			return "undefined";
 		}
 
-		// Environment variable: $VAR → env("VAR") (may have path suffix)
+		// Environment variable: $VAR → process.env.VAR or process.env["VAR"]
 		if (token.type === TokenType.ENV_VAR) {
 			this.#advance();
-			this.usedFunctions.add("env");
-			const code = `env(${JSON.stringify(token.value)})`;
+			// Use bracket notation if name has special chars, dot notation otherwise
+			const name = token.value;
+			const code = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)
+				? `process.env.${name}`
+				: `process.env[${JSON.stringify(name)}]`;
 			return this.#generatePathSuffix(code);
 		}
 
 		// Dunders (may have path suffix)
+		// __outdir__ → __SHOVEL_OUTDIR__ (injected by esbuild)
 		if (token.type === TokenType.OUTDIR) {
 			this.#advance();
-			this.usedFunctions.add("outdir");
-			return this.#generatePathSuffix("outdir()");
+			return this.#generatePathSuffix("__SHOVEL_OUTDIR__");
 		}
+		// __tmpdir__ → "/tmp" (simple default, platforms can override via process.env.TMPDIR)
 		if (token.type === TokenType.TMPDIR) {
 			this.#advance();
-			this.usedFunctions.add("tmpdir");
-			return this.#generatePathSuffix("tmpdir()");
+			return this.#generatePathSuffix('(process.env.TMPDIR || "/tmp")');
 		}
 
 		// Identifier (string literal - may have path suffix for paths like ./data)
@@ -906,7 +900,7 @@ class CodeGenerator {
 		);
 	}
 
-	// Generate path suffix code: base/segment/... → joinPath(base, "segment", ...)
+	// Generate path suffix code: base/segment/... → [base, "segment", ...].join("/")
 	#generatePathSuffix(baseCode: string): string {
 		const segments: string[] = [];
 
@@ -935,9 +929,8 @@ class CodeGenerator {
 			return baseCode;
 		}
 
-		// Generate joinPath call
-		this.usedFunctions.add("joinPath");
-		return `joinPath(${baseCode}, ${segments.join(", ")})`;
+		// Generate inline path join: [base, segments...].filter(Boolean).join("/")
+		return `[${baseCode}, ${segments.join(", ")}].filter(Boolean).join("/")`;
 	}
 }
 
@@ -946,17 +939,16 @@ class CodeGenerator {
  */
 export interface ExprToCodeResult {
 	code: string;
-	usedFunctions: Set<"env" | "outdir" | "tmpdir" | "joinPath">;
 }
 
 /**
  * Convert a config expression to JS code.
- * Env vars become env("X") calls, literals become quoted strings.
+ * Env vars become process.env.VAR, dunders become inline code.
  *
  * Examples:
- *   "$PORT || 3000" → 'env("PORT") || 3000'
- *   "$DATADIR/uploads" → 'joinPath(env("DATADIR"), "uploads")'
- *   "__tmpdir__" → 'tmpdir()'
+ *   "$PORT || 3000" → 'process.env.PORT || 3000'
+ *   "$DATADIR/uploads" → '[process.env.DATADIR, "uploads"].filter(Boolean).join("/")'
+ *   "__tmpdir__" → '(process.env.TMPDIR || "/tmp")'
  *   "redis" → '"redis"'
  */
 export function exprToCode(expr: string): ExprToCodeResult {
@@ -965,7 +957,7 @@ export function exprToCode(expr: string): ExprToCodeResult {
 		try {
 			const generator = new CodeGenerator(expr);
 			const code = generator.generate();
-			return {code, usedFunctions: generator.usedFunctions};
+			return {code};
 		} catch (error) {
 			throw new Error(
 				`Invalid config expression: ${expr}\n` +
@@ -974,7 +966,7 @@ export function exprToCode(expr: string): ExprToCodeResult {
 		}
 	}
 	// Plain string literal
-	return {code: JSON.stringify(expr), usedFunctions: new Set()};
+	return {code: JSON.stringify(expr)};
 }
 
 /**
@@ -987,40 +979,30 @@ export function valueToCode(value: unknown): ExprToCodeResult {
 	}
 
 	if (typeof value === "number" || typeof value === "boolean") {
-		return {code: JSON.stringify(value), usedFunctions: new Set()};
+		return {code: JSON.stringify(value)};
 	}
 
 	if (value === null) {
-		return {code: "null", usedFunctions: new Set()};
+		return {code: "null"};
 	}
 
 	if (value === undefined) {
-		return {code: "undefined", usedFunctions: new Set()};
+		return {code: "undefined"};
 	}
 
-	const allUsed = new Set<
-		"env" | "outdir" | "tmpdir" | "joinPath"
-	>();
-
 	if (Array.isArray(value)) {
-		const items = value.map((item) => {
-			const result = valueToCode(item);
-			for (const fn of result.usedFunctions) allUsed.add(fn);
-			return result.code;
-		});
-		return {code: `[${items.join(", ")}]`, usedFunctions: allUsed};
+		const items = value.map((item) => valueToCode(item).code);
+		return {code: `[${items.join(", ")}]`};
 	}
 
 	if (typeof value === "object") {
 		const entries = Object.entries(value).map(([key, val]) => {
-			const result = valueToCode(val);
-			for (const fn of result.usedFunctions) allUsed.add(fn);
-			return `${JSON.stringify(key)}: ${result.code}`;
+			return `${JSON.stringify(key)}: ${valueToCode(val).code}`;
 		});
-		return {code: `{${entries.join(", ")}}`, usedFunctions: allUsed};
+		return {code: `{${entries.join(", ")}}`};
 	}
 
-	return {code: JSON.stringify(value), usedFunctions: new Set()};
+	return {code: JSON.stringify(value)};
 }
 
 /**
@@ -1051,7 +1033,19 @@ function needsQuoting(key: string): boolean {
 /** Result of toJSLiteral */
 interface JSLiteralResult {
 	code: string;
-	usedFunctions: Set<"env" | "outdir" | "tmpdir" | "joinPath">;
+	/** Whether this value contains dynamic expressions (process.env, etc) */
+	isDynamic: boolean;
+}
+
+/**
+ * Check if a code string contains dynamic expressions (process.env, __SHOVEL_OUTDIR__, etc)
+ */
+function isDynamicCode(code: string): boolean {
+	return (
+		code.includes("process.env") ||
+		code.includes("__SHOVEL_OUTDIR__") ||
+		code.includes(".filter(Boolean).join")
+	);
 }
 
 /**
@@ -1064,57 +1058,49 @@ function toJSLiteral(
 	placeholders: Map<string, string>,
 	indent: string = "",
 ): JSLiteralResult {
-	const emptyResult = (): JSLiteralResult => ({
-		code: "",
-		usedFunctions: new Set(),
-	});
-
-	if (value === null) return {code: "null", usedFunctions: new Set()};
-	if (value === undefined) return {code: "undefined", usedFunctions: new Set()};
+	if (value === null) return {code: "null", isDynamic: false};
+	if (value === undefined) return {code: "undefined", isDynamic: false};
 
 	if (typeof value === "string") {
 		// Check if it's a placeholder
 		if (value.startsWith(PLACEHOLDER_PREFIX) && placeholders.has(value)) {
-			return {code: placeholders.get(value)!, usedFunctions: new Set()};
+			return {code: placeholders.get(value)!, isDynamic: false};
 		}
 		// Process as config expression (handles env vars like "$PORT || 3000")
-		return exprToCode(value);
+		const result = exprToCode(value);
+		return {code: result.code, isDynamic: isDynamicCode(result.code)};
 	}
 
 	if (typeof value === "number" || typeof value === "boolean") {
-		return {code: String(value), usedFunctions: new Set()};
+		return {code: String(value), isDynamic: false};
 	}
 
-	const allUsed = new Set<
-		"env" | "outdir" | "tmpdir" | "joinPath"
-	>();
-
 	if (Array.isArray(value)) {
-		if (value.length === 0)
-			return {code: "[]", usedFunctions: new Set()};
+		if (value.length === 0) return {code: "[]", isDynamic: false};
+		let anyDynamic = false;
 		const items = value.map((v) => {
 			const result = toJSLiteral(v, placeholders, indent + "  ");
-			for (const fn of result.usedFunctions) allUsed.add(fn);
+			if (result.isDynamic) anyDynamic = true;
 			return result.code;
 		});
 		return {
 			code: `[\n${indent}  ${items.join(`,\n${indent}  `)}\n${indent}]`,
-			usedFunctions: allUsed,
+			isDynamic: anyDynamic,
 		};
 	}
 
 	if (typeof value === "object") {
 		const entries = Object.entries(value);
-		if (entries.length === 0)
-			return {code: "{}", usedFunctions: new Set()};
+		if (entries.length === 0) return {code: "{}", isDynamic: false};
 
+		let anyDynamic = false;
 		const props = entries.map(([k, v]) => {
 			const keyStr = needsQuoting(k) ? JSON.stringify(k) : k;
 			const result = toJSLiteral(v, placeholders, indent + "  ");
-			for (const fn of result.usedFunctions) allUsed.add(fn);
-			// If the value uses platform functions, make it a getter for lazy evaluation
-			// This ensures platform is registered before the value is accessed
-			if (result.usedFunctions.size > 0) {
+			if (result.isDynamic) anyDynamic = true;
+			// If the value is dynamic, make it a getter for lazy evaluation
+			// This ensures process.env is evaluated at access time, not module load time
+			if (result.isDynamic) {
 				return `get ${keyStr}() { return ${result.code}; }`;
 			}
 			return `${keyStr}: ${result.code}`;
@@ -1122,11 +1108,11 @@ function toJSLiteral(
 
 		return {
 			code: `{\n${indent}  ${props.join(`,\n${indent}  `)}\n${indent}}`,
-			usedFunctions: allUsed,
+			isDynamic: anyDynamic,
 		};
 	}
 
-	return {code: JSON.stringify(value), usedFunctions: new Set()};
+	return {code: JSON.stringify(value), isDynamic: false};
 }
 
 /**
@@ -1392,20 +1378,12 @@ export function generateConfigModule(
 	const config = buildConfig();
 
 	// Convert to JavaScript object literal (not JSON - unquoted keys where valid)
-	const {code: configCode, usedFunctions} = toJSLiteral(
-		config,
-		placeholders,
-		"",
-	);
+	const {code: configCode} = toJSLiteral(config, placeholders, "");
 
-	const platformImports = Array.from(usedFunctions).sort();
-	const providerImports = imports.length > 0 ? `\n${imports.join("\n")}\n` : "";
+	// Provider imports (cache modules, directory modules, etc.)
+	const providerImports = imports.length > 0 ? `${imports.join("\n")}\n` : "";
 
-	const platformImportLine = platformImports.length > 0
-		? `import { ${platformImports.join(", ")} } from "${PLATFORM_IMPORT}";\n`
-		: "";
-
-	return `${platformImportLine}${providerImports}
+	return `${providerImports}
 export const config = ${configCode};
 `;
 }

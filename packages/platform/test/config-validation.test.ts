@@ -2,15 +2,8 @@
  * Tests for config validation
  */
 
-import {describe, it, expect, beforeEach} from "bun:test";
-import {
-	validateConfig,
-	ConfigValidationError,
-	env,
-	setCurrentPlatform,
-	getCurrentPlatform,
-	type ConfigExpressionProvider,
-} from "../src/config.js";
+import {describe, it, expect} from "bun:test";
+import {validateConfig, ConfigValidationError} from "../src/config.js";
 
 describe("validateConfig", () => {
 	it("should pass for valid config with all values defined", () => {
@@ -128,100 +121,6 @@ describe("validateConfig", () => {
 		} catch (e) {
 			expect((e as ConfigValidationError).path).toBe("settings.timeout");
 			expect((e as ConfigValidationError).issue).toBe("NaN");
-		}
-	});
-});
-
-describe("Cloudflare initialization order", () => {
-	// Save original process.env to restore after tests
-	const originalProcessEnv = process.env;
-
-	beforeEach(() => {
-		// Reset platform before each test
-		setCurrentPlatform(null as unknown as ConfigExpressionProvider);
-	});
-
-	it("should fail validation when platform is not set and env var is missing", () => {
-		// This simulates the Cloudflare scenario:
-		// 1. Config module is imported
-		// 2. env("MY_VAR") is called but no platform is set
-		// 3. Falls back to process.env which doesn't have MY_VAR
-		// 4. validateConfig sees undefined and throws
-
-		// Simulate config that uses env() before platform is set
-		const config = {
-			// env() without platform falls back to process.env
-			apiKey: env("MY_SECRET_API_KEY"), // undefined - not in process.env
-		};
-
-		// This SHOULD fail because the env var is not set
-		expect(() => validateConfig(config)).toThrow(ConfigValidationError);
-	});
-
-	it("should pass validation when platform provides env vars", () => {
-		// This is the correct flow:
-		// 1. Platform is set first
-		// 2. Config module evaluates env() calls
-		// 3. Platform provides the env vars
-		// 4. validateConfig passes
-
-		const mockPlatform: ConfigExpressionProvider = {
-			env: (name: string) => {
-				if (name === "MY_SECRET_API_KEY") return "secret123";
-				return undefined;
-			},
-			outdir: () => ".",
-			tmpdir: () => "/tmp",
-			joinPath: (...segments) => segments.filter(Boolean).join("/"),
-		};
-
-		setCurrentPlatform(mockPlatform);
-
-		const config = {
-			apiKey: env("MY_SECRET_API_KEY"), // now returns "secret123"
-		};
-
-		expect(() => validateConfig(config)).not.toThrow();
-	});
-
-	it("FAILING: simulates Cloudflare import order issue", () => {
-		// This test demonstrates the bug:
-		// On Cloudflare, the config module is imported BEFORE initializeRuntime
-		// sets up the platform. So env() calls fall back to process.env (undefined
-		// on Workers), causing validateConfig to throw.
-		//
-		// The generated config module looks like:
-		//   import { env, validateConfig } from "@b9g/platform/config";
-		//   export const config = { apiKey: env("API_KEY") };
-		//   validateConfig(config);  // <-- runs immediately on import!
-		//
-		// But the entry wrapper imports config BEFORE calling initializeRuntime:
-		//   import { config } from "shovel:config";  // validateConfig runs here!
-		//   import { initializeRuntime } from "@b9g/platform-cloudflare/runtime";
-		//   initializeRuntime(config);  // platform is set here, too late!
-
-		// Simulate: no platform set, process.env doesn't have the var
-		const savedEnv = process.env.CLOUDFLARE_API_KEY;
-		delete process.env.CLOUDFLARE_API_KEY;
-
-		try {
-			// Config is evaluated before platform is set
-			const config = {
-				apiKey: env("CLOUDFLARE_API_KEY"),
-			};
-
-			// This throws because apiKey is undefined
-			// In a working system, this should NOT throw because
-			// Cloudflare will provide the env var at runtime
-			expect(() => validateConfig(config)).toThrow(ConfigValidationError);
-
-			// TODO: The fix should make this test pass by deferring validation
-			// until after the platform is set, or by having Cloudflare set
-			// the platform before the config module is imported.
-		} finally {
-			if (savedEnv !== undefined) {
-				process.env.CLOUDFLARE_API_KEY = savedEnv;
-			}
 		}
 	});
 });

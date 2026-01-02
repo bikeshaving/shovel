@@ -66,87 +66,85 @@ describe("exprToCode", () => {
 	});
 
 	describe("environment variables with $ prefix", () => {
-		it("converts $VAR to env() call", () => {
-			expect(exprToCode("$PORT").code).toBe('env("PORT")');
-			expect(exprToCode("$REDIS_URL").code).toBe('env("REDIS_URL")');
-			expect(exprToCode("$NODE_ENV").code).toBe('env("NODE_ENV")');
-		});
-
-		it("tracks used functions", () => {
-			expect(exprToCode("$PORT").usedFunctions).toContain("env");
+		it("converts $VAR to process.env.VAR", () => {
+			expect(exprToCode("$PORT").code).toBe("process.env.PORT");
+			expect(exprToCode("$REDIS_URL").code).toBe("process.env.REDIS_URL");
+			expect(exprToCode("$NODE_ENV").code).toBe("process.env.NODE_ENV");
+			expect(exprToCode("$MY_VAR").code).toBe("process.env.MY_VAR");
 		});
 	});
 
 	describe("operators", () => {
 		it("handles || fallback", () => {
-			// env() returns undefined if not set, so || works naturally
-			expect(exprToCode("$PORT || 3000").code).toBe('(env("PORT") || 3000)');
+			expect(exprToCode("$PORT || 3000").code).toBe("(process.env.PORT || 3000)");
 			expect(exprToCode("$HOST || localhost").code).toBe(
-				'(env("HOST") || "localhost")',
+				'(process.env.HOST || "localhost")',
 			);
 		});
 
 		it("handles ?? nullish coalescing", () => {
-			expect(exprToCode("$PORT ?? 3000").code).toBe('(env("PORT") ?? 3000)');
+			expect(exprToCode("$PORT ?? 3000").code).toBe("(process.env.PORT ?? 3000)");
 		});
 
 		it("handles === comparison", () => {
 			expect(exprToCode("$NODE_ENV === production").code).toBe(
-				'(env("NODE_ENV") === "production")',
+				'(process.env.NODE_ENV === "production")',
 			);
 		});
 
 		it("handles ternary expressions", () => {
 			expect(exprToCode("$NODE_ENV === production ? redis : memory").code).toBe(
-				'((env("NODE_ENV") === "production") ? "redis" : "memory")',
+				'((process.env.NODE_ENV === "production") ? "redis" : "memory")',
 			);
 		});
 
 		it("handles complex expressions", () => {
 			const result = exprToCode("$REDIS_URL || redis://localhost:6379");
-			expect(result.code).toBe('(env("REDIS_URL") || "redis://localhost:6379")');
+			expect(result.code).toBe(
+				'(process.env.REDIS_URL || "redis://localhost:6379")',
+			);
 		});
 	});
 
 	describe("dunders", () => {
-		it("converts __outdir__ to outdir() call", () => {
-			expect(exprToCode("__outdir__").code).toBe("outdir()");
-			expect(exprToCode("__outdir__").usedFunctions).toContain("outdir");
+		it("converts __outdir__ to __SHOVEL_OUTDIR__", () => {
+			expect(exprToCode("__outdir__").code).toBe("__SHOVEL_OUTDIR__");
 		});
 
-		it("converts __tmpdir__ to tmpdir() call", () => {
-			expect(exprToCode("__tmpdir__").code).toBe("tmpdir()");
-			expect(exprToCode("__tmpdir__").usedFunctions).toContain("tmpdir");
+		it("converts __tmpdir__ to process.env.TMPDIR fallback", () => {
+			expect(exprToCode("__tmpdir__").code).toBe(
+				'(process.env.TMPDIR || "/tmp")',
+			);
 		});
 	});
 
 	describe("path joining", () => {
 		it("joins env var with path suffix", () => {
 			const result = exprToCode("$DATADIR/uploads");
-			expect(result.code).toBe('joinPath(env("DATADIR"), "uploads")');
-			expect(result.usedFunctions).toContain("env");
-			expect(result.usedFunctions).toContain("joinPath");
+			expect(result.code).toBe(
+				'[process.env.DATADIR, "uploads"].filter(Boolean).join("/")',
+			);
 		});
 
 		it("joins dunder with path suffix", () => {
 			expect(exprToCode("__outdir__/server").code).toBe(
-				'joinPath(outdir(), "server")',
+				'[__SHOVEL_OUTDIR__, "server"].filter(Boolean).join("/")',
 			);
 			expect(exprToCode("__tmpdir__/cache").code).toBe(
-				'joinPath(tmpdir(), "cache")',
+				'[(process.env.TMPDIR || "/tmp"), "cache"].filter(Boolean).join("/")',
 			);
 		});
 
 		it("joins multiple path segments", () => {
 			expect(exprToCode("$DATADIR/uploads/images").code).toBe(
-				'joinPath(env("DATADIR"), "uploads", "images")',
+				'[process.env.DATADIR, "uploads", "images"].filter(Boolean).join("/")',
 			);
 		});
 
 		it("joins fallback expression with suffix", () => {
 			const result = exprToCode("($CACHE || __tmpdir__)/myapp");
 			expect(result.code).toBe(
-				'joinPath(((env("CACHE") || tmpdir())), "myapp")',
+				'[((process.env.CACHE || (process.env.TMPDIR || "/tmp"))), "myapp"].filter(Boolean).join("/")',
 			);
 		});
 	});
@@ -194,11 +192,10 @@ describe("generateConfigModule", () => {
 
 			const module = generateConfigModule(config);
 
-			// Should import env from platform/config
-			expect(module).toContain("env");
-			expect(module).toContain('@b9g/platform/config"');
-			expect(module).toContain('(env("PORT") || 3000)');
-			expect(module).toContain('(env("HOST") || "localhost")');
+			// Should use process.env directly, no platform imports
+			expect(module).not.toContain('@b9g/platform/config"');
+			expect(module).toContain("(process.env.PORT || 3000)");
+			expect(module).toContain('(process.env.HOST || "localhost")');
 		});
 	});
 
@@ -403,7 +400,7 @@ describe("generateConfigModule", () => {
 	});
 
 	describe("secrets handling", () => {
-		it("keeps secrets as env() references", () => {
+		it("keeps secrets as process.env references", () => {
 			const config = {
 				caches: {
 					sessions: {
@@ -419,12 +416,12 @@ describe("generateConfigModule", () => {
 			// Secrets should NOT be baked in
 			expect(module).not.toContain("secret123");
 			expect(module).not.toContain("redis://localhost");
-			// Should be env() references
-			expect(module).toContain('env("REDIS_URL")');
-			expect(module).toContain('env("REDIS_PASSWORD")');
+			// Should be process.env references
+			expect(module).toContain("process.env.REDIS_URL");
+			expect(module).toContain("process.env.REDIS_PASSWORD");
 		});
 
-		it("keeps URL with credentials as env reference", () => {
+		it("keeps URL with credentials as process.env reference", () => {
 			const config = {
 				caches: {
 					sessions: {
@@ -436,8 +433,10 @@ describe("generateConfigModule", () => {
 
 			const module = generateConfigModule(config, {});
 
-			// Should have env reference with fallback using || operator
-			expect(module).toContain('(env("REDIS_URL") || "redis://localhost:6379")');
+			// Should have process.env reference with fallback using || operator
+			expect(module).toContain(
+				'(process.env.REDIS_URL || "redis://localhost:6379")',
+			);
 		});
 
 		it("never exposes env var values in output", () => {
@@ -471,13 +470,13 @@ describe("generateConfigModule", () => {
 			expect(module).not.toContain("AKIAIOSFODNN7EXAMPLE");
 			expect(module).not.toContain("wJalrXUtnFEMI");
 
-			// Only env() references should appear
-			expect(module).toContain('env("PORT")'); // has fallback via ||
-			expect(module).toContain('env("HOST")'); // no fallback
-			expect(module).toContain('env("REDIS_URL")');
-			expect(module).toContain('env("S3_BUCKET")');
-			expect(module).toContain('env("AWS_ACCESS_KEY")');
-			expect(module).toContain('env("AWS_SECRET_KEY")');
+			// Only process.env references should appear
+			expect(module).toContain("process.env.PORT"); // has fallback via ||
+			expect(module).toContain("process.env.HOST"); // no fallback
+			expect(module).toContain("process.env.REDIS_URL");
+			expect(module).toContain("process.env.S3_BUCKET");
+			expect(module).toContain("process.env.AWS_ACCESS_KEY");
+			expect(module).toContain("process.env.AWS_SECRET_KEY");
 		});
 	});
 
