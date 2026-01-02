@@ -1426,6 +1426,12 @@ export function generateConfigModule(
 	// Convert to JavaScript object literal (not JSON - unquoted keys where valid)
 	const {code: configCode} = toJSLiteral(config, placeholders, "");
 
+	// Check if tmpdir() is used in the generated code - if so, add the import
+	const needsTmpdirImport = configCode.includes("tmpdir()");
+	if (needsTmpdirImport) {
+		imports.unshift('import {tmpdir} from "os";');
+	}
+
 	// Provider imports (cache modules, directory modules, etc.)
 	const providerImports = imports.length > 0 ? `${imports.join("\n")}\n` : "";
 
