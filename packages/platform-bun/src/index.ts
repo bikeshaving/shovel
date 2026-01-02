@@ -39,6 +39,7 @@ import * as Path from "path";
 
 // Entry template embedded as string
 const entryTemplate = `// Bun Production Server Entry
+import {tmpdir} from "os"; // For __tmpdir__ config expressions
 import {getLogger} from "@logtape/logtape";
 import {configureLogging} from "@b9g/platform/runtime";
 import {config} from "shovel:config"; // Virtual module - resolved at build time
@@ -109,6 +110,7 @@ if (isWorker) {
 // Paths are resolved at build time by the path syntax parser
 const workerEntryTemplate = `// Worker Entry for ServiceWorkerPool
 // This file sets up the ServiceWorker runtime and message loop
+import {tmpdir} from "os"; // For __tmpdir__ config expressions
 import {config} from "shovel:config";
 import {initWorkerRuntime, startWorkerMessageLoop, configureLogging} from "@b9g/platform/runtime";
 

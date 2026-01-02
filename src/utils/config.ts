@@ -883,10 +883,10 @@ class CodeGenerator {
 			this.#advance();
 			return this.#generatePathSuffix("__SHOVEL_OUTDIR__");
 		}
-		// __tmpdir__ → "/tmp" (simple default, platforms can override via process.env.TMPDIR)
+		// __tmpdir__ → tmpdir() (provided by platform entry wrapper via "os" import)
 		if (token.type === TokenType.TMPDIR) {
 			this.#advance();
-			return this.#generatePathSuffix('(process.env.TMPDIR || "/tmp")');
+			return this.#generatePathSuffix("tmpdir()");
 		}
 
 		// Identifier (string literal - may have path suffix for paths like ./data)
@@ -943,13 +943,18 @@ export interface ExprToCodeResult {
 
 /**
  * Convert a config expression to JS code.
- * Env vars become process.env.VAR, dunders become inline code.
+ * Env vars become process.env.VAR, dunders become platform-specific code.
  *
  * Examples:
  *   "$PORT || 3000" → 'process.env.PORT || 3000'
  *   "$DATADIR/uploads" → '[process.env.DATADIR, "uploads"].filter(Boolean).join("/")'
- *   "__tmpdir__" → '(process.env.TMPDIR || "/tmp")'
+ *   "__outdir__/data" → '[__SHOVEL_OUTDIR__, "data"].filter(Boolean).join("/")'
+ *   "__tmpdir__/cache" → '[tmpdir(), "cache"].filter(Boolean).join("/")'
  *   "redis" → '"redis"'
+ *
+ * Note: __tmpdir__ generates tmpdir() which must be provided by the platform
+ * entry wrapper (via `import {tmpdir} from "os"`). Cloudflare does not support
+ * __tmpdir__ since it has no filesystem.
  */
 export function exprToCode(expr: string): ExprToCodeResult {
 	// Check if it looks like an expression (contains operators, $VAR, or dunders)
@@ -1044,6 +1049,7 @@ function isDynamicCode(code: string): boolean {
 	return (
 		code.includes("process.env") ||
 		code.includes("__SHOVEL_OUTDIR__") ||
+		code.includes("tmpdir()") ||
 		code.includes(".filter(Boolean).join")
 	);
 }

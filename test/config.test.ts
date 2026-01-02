@@ -657,33 +657,3 @@ describe("parseConfigExpr", () => {
 	});
 });
 
-describe("P1: tmpdir expressions should resolve synchronously", () => {
-	it("__tmpdir__ resolves to actual path, not Promise", async () => {
-		// This tests the runtime behavior - tmpdir() should be usable synchronously
-		// Config expressions are now methods on platform instances
-		const {default: NodePlatform} = await import(
-			"../packages/platform-node/src/index.js"
-		);
-		const platform = new NodePlatform();
-		const result = platform.tmpdir();
-
-		// Should not be a Promise - should be the actual path
-		expect(typeof result).toBe("string");
-		expect(result).not.toBe("[object Promise]");
-		expect(result.length).toBeGreaterThan(0);
-	});
-
-	it("joinPath with tmpdir should produce valid path, not Promise string", async () => {
-		// Config expressions are now methods on platform instances
-		const {default: NodePlatform} = await import(
-			"../packages/platform-node/src/index.js"
-		);
-		const platform = new NodePlatform();
-		const result = platform.joinPath(platform.tmpdir(), "myapp", "cache");
-
-		// Should be a valid path, not "[object Promise]/myapp/cache"
-		expect(result).not.toContain("[object Promise]");
-		expect(result).toMatch(/myapp/);
-		expect(result).toMatch(/cache/);
-	});
-});

@@ -111,10 +111,8 @@ describe("exprToCode", () => {
 			expect(exprToCode("__outdir__").code).toBe("__SHOVEL_OUTDIR__");
 		});
 
-		it("converts __tmpdir__ to process.env.TMPDIR fallback", () => {
-			expect(exprToCode("__tmpdir__").code).toBe(
-				'(process.env.TMPDIR || "/tmp")',
-			);
+		it("converts __tmpdir__ to tmpdir() call", () => {
+			expect(exprToCode("__tmpdir__").code).toBe("tmpdir()");
 		});
 	});
 
@@ -131,7 +129,7 @@ describe("exprToCode", () => {
 				'[__SHOVEL_OUTDIR__, "server"].filter(Boolean).join("/")',
 			);
 			expect(exprToCode("__tmpdir__/cache").code).toBe(
-				'[(process.env.TMPDIR || "/tmp"), "cache"].filter(Boolean).join("/")',
+				'[tmpdir(), "cache"].filter(Boolean).join("/")',
 			);
 		});
 
@@ -144,7 +142,7 @@ describe("exprToCode", () => {
 		it("joins fallback expression with suffix", () => {
 			const result = exprToCode("($CACHE || __tmpdir__)/myapp");
 			expect(result.code).toBe(
-				'[((process.env.CACHE || (process.env.TMPDIR || "/tmp"))), "myapp"].filter(Boolean).join("/")',
+				'[((process.env.CACHE || tmpdir())), "myapp"].filter(Boolean).join("/")',
 			);
 		});
 	});
