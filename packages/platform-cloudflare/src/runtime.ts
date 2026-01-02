@@ -16,10 +16,74 @@ import {
 	createDirectoryFactory,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
+import {
+	type ConfigExpressionProvider,
+	setCurrentPlatform,
+} from "@b9g/platform/config";
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
 import {envStorage} from "./variables.js";
+
+// ============================================================================
+// CLOUDFLARE RUNTIME PLATFORM
+// Lightweight platform class for config expressions - no miniflare dependency
+// ============================================================================
+
+// Declare __SHOVEL_OUTDIR__ for TypeScript (injected by esbuild at build time)
+declare const __SHOVEL_OUTDIR__: string | undefined;
+
+/**
+ * Lightweight Cloudflare platform for runtime config expressions.
+ * Only implements config expression methods (env, tmpdir, etc.)
+ * The full CloudflarePlatform with miniflare is only used in dev/CLI.
+ */
+class CloudflareRuntimePlatform implements ConfigExpressionProvider {
+	/**
+	 * Get environment variable from Cloudflare's __CLOUDFLARE_ENV__
+	 * This is set per-request by the fetch handler
+	 */
+	env(name: string): string | undefined {
+		const globalEnv = (globalThis as any).__CLOUDFLARE_ENV__;
+		if (globalEnv && name in globalEnv) {
+			return String(globalEnv[name]);
+		}
+		return undefined;
+	}
+
+	/**
+	 * Get the output directory path
+	 */
+	outdir(): string {
+		if (typeof __SHOVEL_OUTDIR__ !== "undefined" && __SHOVEL_OUTDIR__) {
+			return __SHOVEL_OUTDIR__;
+		}
+		return ".";
+	}
+
+	/**
+	 * Get the temp directory path
+	 * Cloudflare Workers don't have a real tmpdir
+	 */
+	tmpdir(): string {
+		return "/tmp";
+	}
+
+	/**
+	 * Join path segments
+	 */
+	joinPath(...segments: (string | undefined)[]): string {
+		for (let i = 0; i < segments.length; i++) {
+			if (segments[i] === undefined) {
+				throw new Error(
+					`joinPath: segment ${i} is undefined (missing env var?)`,
+				);
+			}
+		}
+		const joined = (segments as string[]).filter(Boolean).join("/");
+		return joined.replace(/([^:])\/+/g, "$1/");
+	}
+}
 
 export type {ShovelConfig};
 
@@ -83,6 +147,9 @@ export async function initializeRuntime(
 	if (_registration) {
 		return _registration;
 	}
+
+	// Register platform for config expressions (env, tmpdir, etc.)
+	setCurrentPlatform(new CloudflareRuntimePlatform());
 
 	// Configure logging first
 	if (config.logging) {

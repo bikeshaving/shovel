@@ -20,7 +20,13 @@
 
 import {readFileSync} from "fs";
 import {z} from "zod";
-import {parsePath} from "./path-syntax.js";
+
+/**
+ * Platform package for config expression imports.
+ * Uses the lightweight config module that has no heavy dependencies.
+ * The functions delegate to the current platform instance at runtime.
+ */
+const PLATFORM_IMPORT = "@b9g/platform/config";
 
 /**
  * Default configuration constants
@@ -36,10 +42,12 @@ export const DEFAULTS = {
 
 /**
  * Regex to detect if a string looks like a config expression
- * Matches: operators (||, ??, &&, ===, !==, ==, !=, ?, :, !) or ALL_CAPS env vars
+ * Matches: operators (||, ??, &&, ===, !==, ==, !=), $VAR env refs, or dunders
+ * Note: ? and : are not included alone because they appear in URLs (http://...)
+ * Ternary expressions require at least one of the other operators
  */
 const EXPRESSION_PATTERN =
-	/(\|\||\?\?|&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/;
+	/(\|\||\?\?|&&|===|!==|==|!=|\$[A-Za-z]|__outdir__|__tmpdir__)/;
 
 /**
  * Get environment variables from import.meta.env or process.env
@@ -72,6 +80,12 @@ enum TokenType {
 	NULL = "NULL",
 	UNDEFINED = "UNDEFINED",
 	IDENTIFIER = "IDENTIFIER",
+
+	// Expression-specific
+	ENV_VAR = "ENV_VAR", // $IDENTIFIER
+	OUTDIR = "OUTDIR", // __outdir__
+	TMPDIR = "TMPDIR", // __tmpdir__
+	SLASH = "SLASH", // / (path join operator)
 
 	// Operators
 	QUESTION = "?",
@@ -227,6 +241,26 @@ class Tokenizer {
 			return {type: TokenType.RPAREN, value: ")", start, end: this.#pos};
 		}
 
+		// Environment variable: $IDENTIFIER
+		if (ch === "$") {
+			this.#advance(); // consume $
+			let name = "";
+			// Env var names: start with letter, then letters/digits/underscore
+			while (/[A-Za-z0-9_]/.test(this.#peek())) {
+				name += this.#advance();
+			}
+			if (!name) {
+				throw new Error(`Expected env var name after $ at position ${start}`);
+			}
+			return {type: TokenType.ENV_VAR, value: name, start, end: this.#pos};
+		}
+
+		// Slash for path joining
+		if (ch === "/") {
+			this.#advance();
+			return {type: TokenType.SLASH, value: "/", start, end: this.#pos};
+		}
+
 		// Colon - only tokenize as ternary operator when surrounded by whitespace
 		// This allows word:word patterns (like bun:sqlite, node:fs, custom:thing) to be single identifiers
 		// Ternary expressions use spaces: "cond ? a : b" not "cond?a:b"
@@ -246,10 +280,11 @@ class Tokenizer {
 
 		// Identifiers and literals
 		// Catchall: consume everything that's not whitespace or an operator
-		// This naturally handles: kebab-case, URLs, paths, env vars, camelCase, module specifiers (bun:sqlite), etc.
-		if (/\S/.test(ch) && !/[?!()=|&]/.test(ch)) {
+		// This naturally handles: kebab-case, camelCase, module specifiers (bun:sqlite), URLs, etc.
+		// Excludes: operators, $, single / (which have special meaning)
+		if (/\S/.test(ch) && !/[?!()=|&$\/]/.test(ch)) {
 			let value = "";
-			while (/\S/.test(this.#peek()) && !/[?!()=|&]/.test(this.#peek())) {
+			while (/\S/.test(this.#peek()) && !/[?!()=|&$]/.test(this.#peek())) {
 				// Colon: include it in identifier if followed by non-whitespace (word:word pattern)
 				// Stop only if colon is followed by whitespace (ternary context)
 				if (this.#peek() === ":") {
@@ -257,7 +292,17 @@ class Tokenizer {
 					if (!next || /\s/.test(next)) {
 						break; // Ternary colon (followed by space or EOF)
 					}
-					// Otherwise include colon and continue (module specifier pattern)
+					// Otherwise include colon and continue (module specifier, URL pattern)
+				}
+				// Slash: include // (URLs) but stop at single / (path join)
+				if (this.#peek() === "/") {
+					if (this.#input[this.#pos + 1] === "/") {
+						// Double slash - part of URL, include both
+						value += this.#advance(); // first /
+						value += this.#advance(); // second /
+						continue;
+					}
+					break; // Single slash - path join operator
 				}
 				value += this.#advance();
 			}
@@ -277,7 +322,13 @@ class Tokenizer {
 					end: this.#pos,
 				};
 
-			// Identifier (env var or string literal)
+			// Dunders (special directory references)
+			if (value === "__outdir__")
+				return {type: TokenType.OUTDIR, value, start, end: this.#pos};
+			if (value === "__tmpdir__")
+				return {type: TokenType.TMPDIR, value, start, end: this.#pos};
+
+			// Identifier (string literal - bare ALL_CAPS is now literal, not env var)
 			return {type: TokenType.IDENTIFIER, value, start, end: this.#pos};
 		}
 
@@ -289,16 +340,47 @@ class Tokenizer {
 // PARSER
 // ============================================================================
 
+/**
+ * Platform functions for runtime expression evaluation.
+ * These are injected to allow testing and platform-specific implementations.
+ */
+interface PlatformFunctions {
+	outdir: () => string;
+	tmpdir: () => string;
+	joinPath: (...segments: string[]) => string;
+}
+
+/**
+ * Default platform functions using Node.js APIs
+ */
+const defaultPlatformFunctions: PlatformFunctions = {
+	outdir: () => {
+		// Default to cwd - in real usage, this is set by the build system
+		// eslint-disable-next-line no-restricted-properties
+		return process.cwd();
+	},
+	tmpdir: () => {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		return require("os").tmpdir();
+	},
+	joinPath: (...segments: string[]) => {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		return require("path").join(...segments);
+	},
+};
+
 class Parser {
 	#tokens: Token[];
 	#pos: number;
 	#env: Record<string, string | undefined>;
 	#strict: boolean;
+	#platform: PlatformFunctions;
 
 	constructor(
 		input: string,
 		env: Record<string, string | undefined>,
 		strict: boolean,
+		platform: PlatformFunctions = defaultPlatformFunctions,
 	) {
 		const tokenizer = new Tokenizer(input);
 		this.#tokens = [];
@@ -311,6 +393,7 @@ class Parser {
 		this.#pos = 0;
 		this.#env = env;
 		this.#strict = strict;
+		this.#platform = platform;
 	}
 
 	#peek(): Token {
@@ -429,19 +512,21 @@ class Parser {
 		return this.#parsePrimary();
 	}
 
-	// Primary := EnvVar | Literal | '(' Expr ')'
+	// Primary := PathExpr | Literal | '(' Expr ')'
+	// PathExpr := (EnvVar | Dunder | Identifier) PathSuffix?
+	// PathSuffix := ('/' Segment)+
 	#parsePrimary(): any {
 		const token = this.#peek();
 
-		// Parenthesized expression
+		// Parenthesized expression (may have path suffix)
 		if (token.type === TokenType.LPAREN) {
 			this.#advance(); // consume (
 			const value = this.#parseExpr();
 			this.#expect(TokenType.RPAREN);
-			return value;
+			return this.#parsePathSuffix(value);
 		}
 
-		// Literals
+		// Literals (no path suffix for these)
 		if (token.type === TokenType.STRING) {
 			this.#advance();
 			return token.value;
@@ -467,33 +552,81 @@ class Parser {
 			return undefined;
 		}
 
-		// Identifier (env var or string literal)
-		if (token.type === TokenType.IDENTIFIER) {
+		// Environment variable: $VAR (may have path suffix)
+		if (token.type === TokenType.ENV_VAR) {
 			this.#advance();
 			const name = token.value;
+			const value = this.#env[name];
 
-			// Check if it's ALL_CAPS (env var)
-			if (/^[A-Z][A-Z0-9_]*$/.test(name)) {
-				const value = this.#env[name];
-
-				// Return undefined for missing env vars - strict check happens after
-				// full expression evaluation (so || and ?? can provide fallbacks)
-
-				// Auto-convert numeric strings to numbers
-				if (typeof value === "string" && /^\d+$/.test(value)) {
-					return parseInt(value, 10);
-				}
-
-				return value;
+			// Auto-convert numeric strings to numbers
+			let result: any = value;
+			if (typeof value === "string" && /^\d+$/.test(value)) {
+				result = parseInt(value, 10);
 			}
 
-			// Otherwise it's a string literal (kebab-case, URL, camelCase, etc.)
-			return name;
+			return this.#parsePathSuffix(result);
+		}
+
+		// Dunders (may have path suffix)
+		if (token.type === TokenType.OUTDIR) {
+			this.#advance();
+			return this.#parsePathSuffix(this.#platform.outdir());
+		}
+		if (token.type === TokenType.TMPDIR) {
+			this.#advance();
+			return this.#parsePathSuffix(this.#platform.tmpdir());
+		}
+
+		// Identifier (string literal - may have path suffix for paths like ./data)
+		if (token.type === TokenType.IDENTIFIER) {
+			this.#advance();
+			return this.#parsePathSuffix(token.value);
 		}
 
 		throw new Error(
 			`Unexpected token ${token.type} at position ${token.start}`,
 		);
+	}
+
+	// Parse optional path suffix: ('/' Segment)+
+	// Returns the value joined with any path segments
+	#parsePathSuffix(base: any): any {
+		const segments: string[] = [];
+
+		while (this.#peek().type === TokenType.SLASH) {
+			this.#advance(); // consume /
+
+			// Collect path segment (next identifier or string)
+			const segToken = this.#peek();
+			if (
+				segToken.type === TokenType.IDENTIFIER ||
+				segToken.type === TokenType.STRING
+			) {
+				this.#advance();
+				segments.push(segToken.value);
+			} else if (segToken.type === TokenType.NUMBER) {
+				this.#advance();
+				segments.push(String(segToken.value));
+			} else {
+				throw new Error(
+					`Expected path segment after / at position ${segToken.start}`,
+				);
+			}
+		}
+
+		// No suffix - return base as-is
+		if (segments.length === 0) {
+			return base;
+		}
+
+		// If base is undefined, propagate it - don't silently convert to empty string
+		// This ensures missing env vars with path suffixes are properly detected
+		if (base === undefined) {
+			return undefined;
+		}
+
+		// Join base with segments using platform joinPath
+		return this.#platform.joinPath(String(base), ...segments);
 	}
 }
 
@@ -503,12 +636,12 @@ class Parser {
 export function parseConfigExpr(
 	expr: string,
 	env: Record<string, string | undefined> = getEnv(),
-	options: {strict?: boolean} = {},
+	options: {strict?: boolean; platform?: PlatformFunctions} = {},
 ): any {
 	const strict = options.strict !== false; // default true
 
 	try {
-		const parser = new Parser(expr, env, strict);
+		const parser = new Parser(expr, env, strict, options.platform);
 		const result = parser.parse();
 
 		// Strict mode: throw if final result is nullish (undefined or null)
@@ -519,8 +652,8 @@ export function parseConfigExpr(
 					`The expression "${expr}" resulted in a nullish value.\n` +
 					`Fix:\n` +
 					`  1. Set the missing env var(s)\n` +
-					`  2. Add a fallback: VAR || defaultValue\n` +
-					`  3. Add a nullish fallback: VAR ?? defaultValue`,
+					`  2. Add a fallback: $VAR || defaultValue\n` +
+					`  3. Add a nullish fallback: $VAR ?? defaultValue`,
 			);
 		}
 
@@ -573,14 +706,16 @@ export function processConfigValue(
  * Code generator that outputs JS code instead of evaluating expressions.
  * Used for generating the shovel:config virtual module at build time.
  *
- * Instead of evaluating "PORT || 3000" to a value, it outputs:
- *   process.env.PORT || 3000
+ * Instead of evaluating "$PORT || 3000" to a value, it outputs:
+ *   env("PORT") || 3000
  *
- * This keeps secrets as process.env references (evaluated at runtime).
+ * This keeps secrets as runtime references (evaluated at runtime).
  */
 class CodeGenerator {
 	#tokens: Token[];
 	#pos: number;
+	/** Track which platform functions are used */
+	usedFunctions: Set<"env" | "outdir" | "tmpdir" | "joinPath">;
 
 	constructor(input: string) {
 		const tokenizer = new Tokenizer(input);
@@ -591,6 +726,7 @@ class CodeGenerator {
 			this.#tokens.push(token);
 		} while (token.type !== TokenType.EOF);
 		this.#pos = 0;
+		this.usedFunctions = new Set();
 	}
 
 	#peek(): Token {
@@ -705,13 +841,15 @@ class CodeGenerator {
 	#generatePrimary(): string {
 		const token = this.#peek();
 
+		// Parenthesized expression (may have path suffix)
 		if (token.type === TokenType.LPAREN) {
 			this.#advance();
 			const value = this.#generateExpr();
 			this.#expect(TokenType.RPAREN);
-			return `(${value})`;
+			return this.#generatePathSuffix(`(${value})`);
 		}
 
+		// Literals (no path suffix)
 		if (token.type === TokenType.STRING) {
 			this.#advance();
 			return JSON.stringify(token.value);
@@ -737,41 +875,97 @@ class CodeGenerator {
 			return "undefined";
 		}
 
+		// Environment variable: $VAR → env("VAR") (may have path suffix)
+		if (token.type === TokenType.ENV_VAR) {
+			this.#advance();
+			this.usedFunctions.add("env");
+			const code = `env(${JSON.stringify(token.value)})`;
+			return this.#generatePathSuffix(code);
+		}
+
+		// Dunders (may have path suffix)
+		if (token.type === TokenType.OUTDIR) {
+			this.#advance();
+			this.usedFunctions.add("outdir");
+			return this.#generatePathSuffix("outdir()");
+		}
+		if (token.type === TokenType.TMPDIR) {
+			this.#advance();
+			this.usedFunctions.add("tmpdir");
+			return this.#generatePathSuffix("tmpdir()");
+		}
+
+		// Identifier (string literal - may have path suffix for paths like ./data)
 		if (token.type === TokenType.IDENTIFIER) {
 			this.#advance();
-			const name = token.value;
-
-			// ALL_CAPS = env var reference → process.env.X
-			if (/^[A-Z][A-Z0-9_]*$/.test(name)) {
-				return `process.env.${name}`;
-			}
-
-			// Otherwise it's a string literal
-			return JSON.stringify(name);
+			return this.#generatePathSuffix(JSON.stringify(token.value));
 		}
 
 		throw new Error(
 			`Unexpected token ${token.type} at position ${token.start}`,
 		);
 	}
+
+	// Generate path suffix code: base/segment/... → joinPath(base, "segment", ...)
+	#generatePathSuffix(baseCode: string): string {
+		const segments: string[] = [];
+
+		while (this.#peek().type === TokenType.SLASH) {
+			this.#advance(); // consume /
+
+			const segToken = this.#peek();
+			if (
+				segToken.type === TokenType.IDENTIFIER ||
+				segToken.type === TokenType.STRING
+			) {
+				this.#advance();
+				segments.push(JSON.stringify(segToken.value));
+			} else if (segToken.type === TokenType.NUMBER) {
+				this.#advance();
+				segments.push(JSON.stringify(String(segToken.value)));
+			} else {
+				throw new Error(
+					`Expected path segment after / at position ${segToken.start}`,
+				);
+			}
+		}
+
+		// No suffix - return base code as-is
+		if (segments.length === 0) {
+			return baseCode;
+		}
+
+		// Generate joinPath call
+		this.usedFunctions.add("joinPath");
+		return `joinPath(${baseCode}, ${segments.join(", ")})`;
+	}
+}
+
+/**
+ * Result of converting an expression to code
+ */
+export interface ExprToCodeResult {
+	code: string;
+	usedFunctions: Set<"env" | "outdir" | "tmpdir" | "joinPath">;
 }
 
 /**
  * Convert a config expression to JS code.
- * Env vars become process.env.X, literals become quoted strings.
+ * Env vars become env("X") calls, literals become quoted strings.
  *
  * Examples:
- *   "PORT || 3000" → 'process.env.PORT || 3000'
- *   "REDIS_URL" → 'process.env.REDIS_URL'
+ *   "$PORT || 3000" → 'env("PORT") || 3000'
+ *   "$DATADIR/uploads" → 'joinPath(env("DATADIR"), "uploads")'
+ *   "__tmpdir__" → 'tmpdir()'
  *   "redis" → '"redis"'
- *   "NODE_ENV === production ? redis : memory" → '(process.env.NODE_ENV === "production" ? "redis" : "memory")'
  */
-export function exprToCode(expr: string): string {
-	// Check if it looks like an expression (contains operators or env vars)
+export function exprToCode(expr: string): ExprToCodeResult {
+	// Check if it looks like an expression (contains operators, $VAR, or dunders)
 	if (EXPRESSION_PATTERN.test(expr)) {
 		try {
 			const generator = new CodeGenerator(expr);
-			return generator.generate();
+			const code = generator.generate();
+			return {code, usedFunctions: generator.usedFunctions};
 		} catch (error) {
 			throw new Error(
 				`Invalid config expression: ${expr}\n` +
@@ -780,43 +974,53 @@ export function exprToCode(expr: string): string {
 		}
 	}
 	// Plain string literal
-	return JSON.stringify(expr);
+	return {code: JSON.stringify(expr), usedFunctions: new Set()};
 }
 
 /**
  * Convert any config value to JS code representation.
  * Recursively handles objects and arrays.
  */
-export function valueToCode(value: unknown): string {
+export function valueToCode(value: unknown): ExprToCodeResult {
 	if (typeof value === "string") {
 		return exprToCode(value);
 	}
 
 	if (typeof value === "number" || typeof value === "boolean") {
-		return JSON.stringify(value);
+		return {code: JSON.stringify(value), usedFunctions: new Set()};
 	}
 
 	if (value === null) {
-		return "null";
+		return {code: "null", usedFunctions: new Set()};
 	}
 
 	if (value === undefined) {
-		return "undefined";
+		return {code: "undefined", usedFunctions: new Set()};
 	}
 
+	const allUsed = new Set<
+		"env" | "outdir" | "tmpdir" | "joinPath"
+	>();
+
 	if (Array.isArray(value)) {
-		const items = value.map((item) => valueToCode(item));
-		return `[${items.join(", ")}]`;
+		const items = value.map((item) => {
+			const result = valueToCode(item);
+			for (const fn of result.usedFunctions) allUsed.add(fn);
+			return result.code;
+		});
+		return {code: `[${items.join(", ")}]`, usedFunctions: allUsed};
 	}
 
 	if (typeof value === "object") {
-		const entries = Object.entries(value).map(
-			([key, val]) => `${JSON.stringify(key)}: ${valueToCode(val)}`,
-		);
-		return `{${entries.join(", ")}}`;
+		const entries = Object.entries(value).map(([key, val]) => {
+			const result = valueToCode(val);
+			for (const fn of result.usedFunctions) allUsed.add(fn);
+			return `${JSON.stringify(key)}: ${result.code}`;
+		});
+		return {code: `{${entries.join(", ")}}`, usedFunctions: allUsed};
 	}
 
-	return JSON.stringify(value);
+	return {code: JSON.stringify(value), usedFunctions: new Set()};
 }
 
 /**
@@ -844,6 +1048,12 @@ function needsQuoting(key: string): boolean {
 	return !/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key);
 }
 
+/** Result of toJSLiteral */
+interface JSLiteralResult {
+	code: string;
+	usedFunctions: Set<"env" | "outdir" | "tmpdir" | "joinPath">;
+}
+
 /**
  * Convert a value to JavaScript object literal code.
  * Uses placeholders map to substitute JS expressions.
@@ -853,43 +1063,70 @@ function toJSLiteral(
 	value: unknown,
 	placeholders: Map<string, string>,
 	indent: string = "",
-): string {
-	if (value === null) return "null";
-	if (value === undefined) return "undefined";
+): JSLiteralResult {
+	const emptyResult = (): JSLiteralResult => ({
+		code: "",
+		usedFunctions: new Set(),
+	});
+
+	if (value === null) return {code: "null", usedFunctions: new Set()};
+	if (value === undefined) return {code: "undefined", usedFunctions: new Set()};
 
 	if (typeof value === "string") {
 		// Check if it's a placeholder
 		if (value.startsWith(PLACEHOLDER_PREFIX) && placeholders.has(value)) {
-			return placeholders.get(value)!;
+			return {code: placeholders.get(value)!, usedFunctions: new Set()};
 		}
-		// Process as config expression (handles env vars like "PORT || 3000")
+		// Process as config expression (handles env vars like "$PORT || 3000")
 		return exprToCode(value);
 	}
 
 	if (typeof value === "number" || typeof value === "boolean") {
-		return String(value);
+		return {code: String(value), usedFunctions: new Set()};
 	}
 
+	const allUsed = new Set<
+		"env" | "outdir" | "tmpdir" | "joinPath"
+	>();
+
 	if (Array.isArray(value)) {
-		if (value.length === 0) return "[]";
-		const items = value.map((v) => toJSLiteral(v, placeholders, indent + "  "));
-		return `[\n${indent}  ${items.join(`,\n${indent}  `)}\n${indent}]`;
+		if (value.length === 0)
+			return {code: "[]", usedFunctions: new Set()};
+		const items = value.map((v) => {
+			const result = toJSLiteral(v, placeholders, indent + "  ");
+			for (const fn of result.usedFunctions) allUsed.add(fn);
+			return result.code;
+		});
+		return {
+			code: `[\n${indent}  ${items.join(`,\n${indent}  `)}\n${indent}]`,
+			usedFunctions: allUsed,
+		};
 	}
 
 	if (typeof value === "object") {
 		const entries = Object.entries(value);
-		if (entries.length === 0) return "{}";
+		if (entries.length === 0)
+			return {code: "{}", usedFunctions: new Set()};
 
 		const props = entries.map(([k, v]) => {
 			const keyStr = needsQuoting(k) ? JSON.stringify(k) : k;
-			const valStr = toJSLiteral(v, placeholders, indent + "  ");
-			return `${keyStr}: ${valStr}`;
+			const result = toJSLiteral(v, placeholders, indent + "  ");
+			for (const fn of result.usedFunctions) allUsed.add(fn);
+			// If the value uses platform functions, make it a getter for lazy evaluation
+			// This ensures platform is registered before the value is accessed
+			if (result.usedFunctions.size > 0) {
+				return `get ${keyStr}() { return ${result.code}; }`;
+			}
+			return `${keyStr}: ${result.code}`;
 		});
 
-		return `{\n${indent}  ${props.join(`,\n${indent}  `)}\n${indent}}`;
+		return {
+			code: `{\n${indent}  ${props.join(`,\n${indent}  `)}\n${indent}}`,
+			usedFunctions: allUsed,
+		};
 	}
 
-	return JSON.stringify(value);
+	return {code: JSON.stringify(value), usedFunctions: new Set()};
 }
 
 /**
@@ -930,8 +1167,6 @@ export function generateConfigModule(
 	const imports: string[] = [];
 	const placeholders: Map<string, string> = new Map(); // placeholder -> JS code
 	let placeholderCounter = 0;
-	// Track special imports needed for runtime paths (e.g., __os__ for tmpdir)
-	const pathImports = new Set<string>();
 
 	// Create a placeholder and track the JS code it represents
 	const createPlaceholder = (jsCode: string): string => {
@@ -1126,24 +1361,6 @@ export function generateConfigModule(
 					result.DirectoryClass = directoryClassPlaceholder;
 				}
 
-				// Process path using path syntax parser
-				if (typeof mergedConfig.path === "string") {
-					const parsed = parsePath(mergedConfig.path, projectDir, outDir);
-					if (parsed.type === "literal") {
-						// Build-time resolved path - embed as string literal
-						result.path = parsed.value;
-					} else {
-						// Runtime path - create placeholder for JS expression
-						result.path = createPlaceholder(parsed.expression!);
-						// Track any imports needed for this path expression
-						if (parsed.imports) {
-							for (const imp of parsed.imports) {
-								pathImports.add(imp);
-							}
-						}
-					}
-				}
-
 				directories[name] = result;
 			}
 			config.directories = directories;
@@ -1175,25 +1392,27 @@ export function generateConfigModule(
 	const config = buildConfig();
 
 	// Convert to JavaScript object literal (not JSON - unquoted keys where valid)
-	const configCode = toJSLiteral(config, placeholders, "");
+	const {code: configCode, usedFunctions} = toJSLiteral(
+		config,
+		placeholders,
+		"",
+	);
 
 	// Generate the module
 	const lines: string[] = [];
 
-	if (imports.length > 0) {
-		lines.push("// Provider imports (statically bundled)");
-		lines.push(...imports);
+	// Platform imports (env, tmpdir, joinPath, etc.)
+	if (usedFunctions.size > 0) {
+		const funcs = Array.from(usedFunctions).sort();
+		// Import from @b9g/platform - functions delegate to current platform instance
+		lines.push("// Platform imports");
+		lines.push(`import { ${funcs.join(", ")} } from "${PLATFORM_IMPORT}";`);
 		lines.push("");
 	}
 
-	// Add imports needed for runtime path expressions (e.g., __tmpdir__)
-	if (pathImports.size > 0) {
-		lines.push("// Path runtime imports");
-		for (const imp of pathImports) {
-			// Map module to variable name: "node:os" -> "__os__"
-			const varName = `__${imp.replace("node:", "").replace(/[^a-zA-Z0-9]/g, "_")}__`;
-			lines.push(`import * as ${varName} from ${JSON.stringify(imp)};`);
-		}
+	if (imports.length > 0) {
+		lines.push("// Provider imports (statically bundled)");
+		lines.push(...imports);
 		lines.push("");
 	}
 

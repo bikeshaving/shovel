@@ -674,6 +674,17 @@ export class BunPlatform extends BasePlatform {
 			this.#databaseStorage = undefined;
 		}
 	}
+
+	// =========================================================================
+	// Config Expression Method Overrides
+	// =========================================================================
+
+	/**
+	 * Get the OS temp directory (Bun-specific implementation using node:os)
+	 */
+	override tmpdir(): string {
+		return tmpdir();
+	}
 }
 
 /**

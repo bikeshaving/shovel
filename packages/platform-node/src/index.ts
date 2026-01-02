@@ -50,6 +50,9 @@ await configureLogging(config.logging);
 
 const logger = getLogger(["platform"]);
 
+// Create platform instance
+const platform = new Platform();
+
 // Configuration from shovel:config (with process.env fallbacks baked in)
 const PORT = config.port;
 const HOST = config.host;
@@ -57,9 +60,6 @@ const WORKER_COUNT = config.workers;
 
 logger.info("Starting production server", {});
 logger.info("Workers", {count: WORKER_COUNT});
-
-// Create platform instance
-const platform = new Platform();
 
 // Get the path to the user's ServiceWorker code
 const userCodeURL = new URL("./server.js", import.meta.url);
@@ -755,6 +755,17 @@ export class NodePlatform extends BasePlatform {
 			await this.#databaseStorage.closeAll();
 			this.#databaseStorage = undefined;
 		}
+	}
+
+	// =========================================================================
+	// Config Expression Method Overrides
+	// =========================================================================
+
+	/**
+	 * Get the OS temp directory (Node.js-specific implementation)
+	 */
+	override tmpdir(): string {
+		return tmpdir();
 	}
 }
 

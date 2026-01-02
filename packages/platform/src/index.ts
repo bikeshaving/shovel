@@ -23,6 +23,20 @@ import {
 	type DatabaseStorage,
 } from "./runtime.js";
 
+// Re-export config expression utilities
+export {
+	setCurrentPlatform,
+	getCurrentPlatform,
+	env,
+	outdir,
+	tmpdir,
+	joinPath,
+	type ConfigExpressionProvider,
+} from "./config.js";
+
+// Declare __SHOVEL_OUTDIR__ for TypeScript (injected by esbuild at build time)
+declare const __SHOVEL_OUTDIR__: string | undefined;
+
 // Runtime global declarations for platform detection
 declare const Deno: any;
 declare const window: any;
@@ -253,6 +267,38 @@ export interface Platform {
 	 * Uses platform-specific defaults, overridable via shovel.json config
 	 */
 	createLoggers(): Promise<LoggerStorage>;
+
+	// =========================================================================
+	// Config Expression Methods
+	// These methods are called by generated config modules at runtime
+	// =========================================================================
+
+	/**
+	 * Get environment variable value
+	 * @param name - Environment variable name
+	 * @returns The value or undefined if not set
+	 */
+	env(name: string): string | undefined;
+
+	/**
+	 * Get the output directory path
+	 * @returns Absolute path to the build output directory
+	 */
+	outdir(): string;
+
+	/**
+	 * Get the temp directory path
+	 * @returns Absolute path to a temporary directory
+	 */
+	tmpdir(): string;
+
+	/**
+	 * Join path segments, validating that none are undefined
+	 * @param segments - Path segments to join
+	 * @returns Joined path
+	 * @throws Error if any segment is undefined (indicates missing env var)
+	 */
+	joinPath(...segments: (string | undefined)[]): string;
 }
 
 // ============================================================================
@@ -465,6 +511,56 @@ export abstract class BasePlatform implements Platform {
 	 * Subclasses must override to provide platform-specific implementation
 	 */
 	abstract createLoggers(): Promise<LoggerStorage>;
+
+	// =========================================================================
+	// Config Expression Methods (default implementations)
+	// =========================================================================
+
+	/**
+	 * Get environment variable value
+	 * Default: uses process.env (works for Node.js and Bun)
+	 */
+	env(name: string): string | undefined {
+		return process.env[name];
+	}
+
+	/**
+	 * Get the output directory path
+	 * Default: checks SHOVEL_OUTDIR env var, then __SHOVEL_OUTDIR__ define, then "."
+	 */
+	outdir(): string {
+		const fromEnv = process.env.SHOVEL_OUTDIR;
+		if (fromEnv) return fromEnv;
+		if (typeof __SHOVEL_OUTDIR__ !== "undefined" && __SHOVEL_OUTDIR__) {
+			return __SHOVEL_OUTDIR__;
+		}
+		return ".";
+	}
+
+	/**
+	 * Get the temp directory path
+	 * Default: returns /tmp (subclasses should override for proper OS tmpdir)
+	 */
+	tmpdir(): string {
+		return "/tmp";
+	}
+
+	/**
+	 * Join path segments, validating that none are undefined
+	 * Throws if any segment is undefined (indicates missing env var)
+	 */
+	joinPath(...segments: (string | undefined)[]): string {
+		for (let i = 0; i < segments.length; i++) {
+			const seg = segments[i];
+			if (seg === undefined) {
+				throw new Error(
+					`joinPath: segment ${i} is undefined (missing env var?)`,
+				);
+			}
+		}
+		const joined = (segments as string[]).filter(Boolean).join("/");
+		return joined.replace(/([^:])\/+/g, "$1/");
+	}
 }
 
 // ============================================================================

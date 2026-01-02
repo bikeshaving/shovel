@@ -322,6 +322,23 @@ export default { fetch: createFetchHandler(registration) };
 			},
 		};
 	}
+
+	// =========================================================================
+	// Config Expression Method Overrides
+	// =========================================================================
+
+	/**
+	 * Get environment variable from Cloudflare Workers env binding
+	 * In Cloudflare Workers, env vars are accessed via the env parameter in fetch()
+	 * The runtime sets __CLOUDFLARE_ENV__ on globalThis during request handling
+	 */
+	override env(name: string): string | undefined {
+		const globalEnv = (globalThis as any).__CLOUDFLARE_ENV__;
+		if (globalEnv && name in globalEnv) {
+			return String(globalEnv[name]);
+		}
+		return undefined;
+	}
 }
 
 export default CloudflarePlatform;

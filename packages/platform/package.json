@@ -84,7 +84,15 @@
       "import": "./dist/src/index.js"
     },
     "./globals.d.ts": "./dist/src/globals.d.ts",
-    "./shovel-config.d.ts": "./dist/src/shovel-config.d.ts"
+    "./shovel-config.d.ts": "./dist/src/shovel-config.d.ts",
+    "./config": {
+      "types": "./dist/src/config.d.ts",
+      "import": "./dist/src/config.js"
+    },
+    "./config.js": {
+      "types": "./dist/src/config.d.ts",
+      "import": "./dist/src/config.js"
+    }
   },
   "private": true
 }

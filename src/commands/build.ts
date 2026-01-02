@@ -337,7 +337,11 @@ async function createBuildConfig({
 				sourcemap: BUILD_DEFAULTS.sourcemap,
 				minify: BUILD_DEFAULTS.minify,
 				treeShaking: BUILD_DEFAULTS.treeShaking,
-				define: platformESBuildConfig.define ?? {},
+				define: {
+					...(platformESBuildConfig.define ?? {}),
+					// Inject output directory for runtime.outdir() resolution
+					__SHOVEL_OUTDIR__: JSON.stringify(outputDir),
+				},
 				// Mark ./server.js as external so it's imported at runtime (sibling output file)
 				external: [...external, "./server.js"],
 			};
@@ -398,7 +402,11 @@ async function createBuildConfig({
 			sourcemap: BUILD_DEFAULTS.sourcemap,
 			minify: BUILD_DEFAULTS.minify,
 			treeShaking: BUILD_DEFAULTS.treeShaking,
-			define: platformESBuildConfig.define ?? {},
+			define: {
+				...(platformESBuildConfig.define ?? {}),
+				// Inject output directory for runtime.outdir() resolution
+				__SHOVEL_OUTDIR__: JSON.stringify(outputDir),
+			},
 			external,
 		};
 
