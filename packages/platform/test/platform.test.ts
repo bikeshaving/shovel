@@ -28,6 +28,10 @@ describe("@b9g/platform", () => {
 				getEntryWrapper: () => "// entry wrapper",
 				getESBuildConfig: () => ({}),
 				getDefaults: () => ({}),
+				env: () => undefined,
+				outdir: () => ".",
+				tmpdir: () => "/tmp",
+				joinPath: (...segments) => segments.filter(Boolean).join("/"),
 			};
 
 			platformRegistry.register("test", mockPlatform);

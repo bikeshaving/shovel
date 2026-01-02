@@ -40,15 +40,13 @@ declare const __SHOVEL_OUTDIR__: string | undefined;
  */
 class CloudflareRuntimePlatform implements ConfigExpressionProvider {
 	/**
-	 * Get environment variable from Cloudflare's __CLOUDFLARE_ENV__
-	 * This is set per-request by the fetch handler
+	 * Get environment variable from process.env.
+	 * With nodejs_compat + nodejs_compat_populate_process_env (default after 2025-04-01),
+	 * Cloudflare Workers populate process.env with environment variables and secrets
+	 * at module load time, just like Node.js.
 	 */
 	env(name: string): string | undefined {
-		const globalEnv = (globalThis as any).__CLOUDFLARE_ENV__;
-		if (globalEnv && name in globalEnv) {
-			return String(globalEnv[name]);
-		}
-		return undefined;
+		return process.env[name];
 	}
 
 	/**

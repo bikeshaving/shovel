@@ -1398,15 +1398,15 @@ export function generateConfigModule(
 		"",
 	);
 
-	// Build platform imports (always include validateConfig)
-	const platformImports = [...Array.from(usedFunctions).sort(), "validateConfig"];
+	const platformImports = Array.from(usedFunctions).sort();
 	const providerImports = imports.length > 0 ? `\n${imports.join("\n")}\n` : "";
 
-	return `import { ${platformImports.join(", ")} } from "${PLATFORM_IMPORT}";
-${providerImports}
-export const config = ${configCode};
+	const platformImportLine = platformImports.length > 0
+		? `import { ${platformImports.join(", ")} } from "${PLATFORM_IMPORT}";\n`
+		: "";
 
-validateConfig(config);
+	return `${platformImportLine}${providerImports}
+export const config = ${configCode};
 `;
 }
 

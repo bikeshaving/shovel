@@ -45,12 +45,14 @@ Configure in `shovel.json`:
 
 ## Requirements
 
-Shovel requires Node.js compatibility for AsyncLocalStorage. Add to your `wrangler.toml`:
+Shovel requires Node.js compatibility for AsyncLocalStorage and process.env support. Add to your `wrangler.toml`:
 
 ```toml
-compatibility_date = "2024-09-23"
+compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
 ```
+
+With `compatibility_date` of 2025-04-01 or later, `process.env` is automatically populated with your environment variables and secrets at module load time. For earlier dates, add `nodejs_compat_populate_process_env` to compatibility_flags.
 
 ## Exports
 
