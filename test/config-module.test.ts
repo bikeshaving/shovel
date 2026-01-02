@@ -110,13 +110,17 @@ describe("exprToCode", () => {
 		});
 	});
 
-	describe("dunders", () => {
-		it("converts __outdir__ to __SHOVEL_OUTDIR__", () => {
-			expect(exprToCode("__outdir__").code).toBe("__SHOVEL_OUTDIR__");
+	describe("bracket placeholders", () => {
+		it("converts [outdir] to __SHOVEL_OUTDIR__", () => {
+			expect(exprToCode("[outdir]").code).toBe("__SHOVEL_OUTDIR__");
 		});
 
-		it("converts __tmpdir__ to tmpdir() call", () => {
-			expect(exprToCode("__tmpdir__").code).toBe("tmpdir()");
+		it("converts [tmpdir] to tmpdir() call", () => {
+			expect(exprToCode("[tmpdir]").code).toBe("tmpdir()");
+		});
+
+		it("converts [git] to __SHOVEL_GIT__", () => {
+			expect(exprToCode("[git]").code).toBe("__SHOVEL_GIT__");
 		});
 	});
 
@@ -128,12 +132,15 @@ describe("exprToCode", () => {
 			);
 		});
 
-		it("joins dunder with path suffix", () => {
-			expect(exprToCode("__outdir__/server").code).toBe(
+		it("joins bracket placeholder with path suffix", () => {
+			expect(exprToCode("[outdir]/server").code).toBe(
 				'[__SHOVEL_OUTDIR__, "server"].filter(Boolean).join("/")',
 			);
-			expect(exprToCode("__tmpdir__/cache").code).toBe(
+			expect(exprToCode("[tmpdir]/cache").code).toBe(
 				'[tmpdir(), "cache"].filter(Boolean).join("/")',
+			);
+			expect(exprToCode("[git]/deploy").code).toBe(
+				'[__SHOVEL_GIT__, "deploy"].filter(Boolean).join("/")',
 			);
 		});
 
@@ -144,7 +151,7 @@ describe("exprToCode", () => {
 		});
 
 		it("joins fallback expression with suffix", () => {
-			const result = exprToCode("($CACHE || __tmpdir__)/myapp");
+			const result = exprToCode("($CACHE || [tmpdir])/myapp");
 			expect(result.code).toBe(
 				'[((process.env.CACHE || tmpdir())), "myapp"].filter(Boolean).join("/")',
 			);

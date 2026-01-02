@@ -2200,7 +2200,7 @@ export interface ShovelConfig {
  *
  * Configs must have DirectoryClass pre-imported (from generated config module).
  * Paths are expected to be already resolved at build time by the path syntax parser.
- * Runtime paths (like __tmpdir__) are evaluated as expressions in the generated config.
+ * Runtime paths (like [tmpdir]) are evaluated as expressions in the generated config.
  */
 export function createDirectoryFactory(
 	configs: Record<string, DirectoryConfig>,

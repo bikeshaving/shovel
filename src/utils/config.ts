@@ -19,6 +19,8 @@
  */
 
 import {readFileSync} from "fs";
+import {tmpdir} from "os";
+import {join} from "path";
 import {z} from "zod";
 
 /**
@@ -40,7 +42,7 @@ export const DEFAULTS = {
  * Ternary expressions require at least one of the other operators
  */
 const EXPRESSION_PATTERN =
-	/(\|\||\?\?|&&|===|!==|==|!=|\$[A-Za-z]|__outdir__|__tmpdir__)/;
+	/(\|\||\?\?|&&|===|!==|==|!=|\$[A-Za-z]|\[outdir\]|\[tmpdir\]|\[git\])/;
 
 /**
  * Get environment variables from import.meta.env or process.env
@@ -76,8 +78,9 @@ enum TokenType {
 
 	// Expression-specific
 	ENV_VAR = "ENV_VAR", // $IDENTIFIER
-	OUTDIR = "OUTDIR", // __outdir__
-	TMPDIR = "TMPDIR", // __tmpdir__
+	OUTDIR = "OUTDIR", // [outdir]
+	TMPDIR = "TMPDIR", // [tmpdir]
+	GIT = "GIT", // [git]
 	SLASH = "SLASH", // / (path join operator)
 
 	// Operators
@@ -254,6 +257,41 @@ class Tokenizer {
 			return {type: TokenType.SLASH, value: "/", start, end: this.#pos};
 		}
 
+		// Bracket placeholders: [outdir], [tmpdir], [git]
+		if (ch === "[") {
+			const remaining = this.#input.slice(this.#pos);
+			if (remaining.startsWith("[outdir]")) {
+				this.#pos += 8;
+				return {
+					type: TokenType.OUTDIR,
+					value: "[outdir]",
+					start,
+					end: this.#pos,
+				};
+			}
+			if (remaining.startsWith("[tmpdir]")) {
+				this.#pos += 8;
+				return {
+					type: TokenType.TMPDIR,
+					value: "[tmpdir]",
+					start,
+					end: this.#pos,
+				};
+			}
+			if (remaining.startsWith("[git]")) {
+				this.#pos += 5;
+				return {
+					type: TokenType.GIT,
+					value: "[git]",
+					start,
+					end: this.#pos,
+				};
+			}
+			throw new Error(
+				`Unknown placeholder at position ${start}: ${remaining.slice(0, 10)}`,
+			);
+		}
+
 		// Colon - only tokenize as ternary operator when surrounded by whitespace
 		// This allows word:word patterns (like bun:sqlite, node:fs, custom:thing) to be single identifiers
 		// Ternary expressions use spaces: "cond ? a : b" not "cond?a:b"
@@ -315,12 +353,6 @@ class Tokenizer {
 					end: this.#pos,
 				};
 
-			// Dunders (special directory references)
-			if (value === "__outdir__")
-				return {type: TokenType.OUTDIR, value, start, end: this.#pos};
-			if (value === "__tmpdir__")
-				return {type: TokenType.TMPDIR, value, start, end: this.#pos};
-
 			// Identifier (string literal - bare ALL_CAPS is now literal, not env var)
 			return {type: TokenType.IDENTIFIER, value, start, end: this.#pos};
 		}
@@ -340,6 +372,7 @@ class Tokenizer {
 interface PlatformFunctions {
 	outdir: () => string;
 	tmpdir: () => string;
+	git: () => string;
 	joinPath: (...segments: string[]) => string;
 }
 
@@ -352,12 +385,12 @@ const defaultPlatformFunctions: PlatformFunctions = {
 		// eslint-disable-next-line no-restricted-properties
 		return process.cwd();
 	},
-	tmpdir: () => {
-		return require("os").tmpdir();
+	tmpdir: () => tmpdir(),
+	git: () => {
+		// Default to "unknown" - in real usage, this is set by the build system
+		return "unknown";
 	},
-	joinPath: (...segments: string[]) => {
-		return require("path").join(...segments);
-	},
+	joinPath: (...segments: string[]) => join(...segments),
 };
 
 class Parser {
@@ -558,7 +591,7 @@ class Parser {
 			return this.#parsePathSuffix(result);
 		}
 
-		// Dunders (may have path suffix)
+		// Bracket placeholders (may have path suffix)
 		if (token.type === TokenType.OUTDIR) {
 			this.#advance();
 			return this.#parsePathSuffix(this.#platform.outdir());
@@ -566,6 +599,10 @@ class Parser {
 		if (token.type === TokenType.TMPDIR) {
 			this.#advance();
 			return this.#parsePathSuffix(this.#platform.tmpdir());
+		}
+		if (token.type === TokenType.GIT) {
+			this.#advance();
+			return this.#parsePathSuffix(this.#platform.git());
 		}
 
 		// Identifier (string literal - may have path suffix for paths like ./data)
@@ -874,16 +911,21 @@ class CodeGenerator {
 			return this.#generatePathSuffix(code);
 		}
 
-		// Dunders (may have path suffix)
-		// __outdir__ → __SHOVEL_OUTDIR__ (injected by esbuild)
+		// Bracket placeholders (may have path suffix)
+		// [outdir] → __SHOVEL_OUTDIR__ (injected by esbuild)
 		if (token.type === TokenType.OUTDIR) {
 			this.#advance();
 			return this.#generatePathSuffix("__SHOVEL_OUTDIR__");
 		}
-		// __tmpdir__ → tmpdir() (provided by platform entry wrapper via "os" import)
+		// [tmpdir] → tmpdir() (provided by platform entry wrapper via "os" import)
 		if (token.type === TokenType.TMPDIR) {
 			this.#advance();
 			return this.#generatePathSuffix("tmpdir()");
+		}
+		// [git] → __SHOVEL_GIT__ (injected by esbuild)
+		if (token.type === TokenType.GIT) {
+			this.#advance();
+			return this.#generatePathSuffix("__SHOVEL_GIT__");
 		}
 
 		// Identifier (string literal - may have path suffix for paths like ./data)
@@ -940,18 +982,19 @@ export interface ExprToCodeResult {
 
 /**
  * Convert a config expression to JS code.
- * Env vars become process.env.VAR, dunders become platform-specific code.
+ * Env vars become process.env.VAR, bracket placeholders become platform-specific code.
  *
  * Examples:
  *   "$PORT || 3000" → 'process.env.PORT || 3000'
  *   "$DATADIR/uploads" → '[process.env.DATADIR, "uploads"].filter(Boolean).join("/")'
- *   "__outdir__/data" → '[__SHOVEL_OUTDIR__, "data"].filter(Boolean).join("/")'
- *   "__tmpdir__/cache" → '[tmpdir(), "cache"].filter(Boolean).join("/")'
+ *   "[outdir]/data" → '[__SHOVEL_OUTDIR__, "data"].filter(Boolean).join("/")'
+ *   "[tmpdir]/cache" → '[tmpdir(), "cache"].filter(Boolean).join("/")'
+ *   "[git]" → '__SHOVEL_GIT__'
  *   "redis" → '"redis"'
  *
- * Note: __tmpdir__ generates tmpdir() which must be provided by the platform
+ * Note: [tmpdir] generates tmpdir() which must be provided by the platform
  * entry wrapper (via `import {tmpdir} from "os"`). Cloudflare does not support
- * __tmpdir__ since it has no filesystem.
+ * [tmpdir] since it has no filesystem.
  */
 export function exprToCode(expr: string): ExprToCodeResult {
 	// Check if it looks like an expression (contains operators, $VAR, or dunders)
@@ -1040,12 +1083,12 @@ interface JSLiteralResult {
 }
 
 /**
- * Check if a code string contains dynamic expressions (process.env, __SHOVEL_OUTDIR__, etc)
+ * Check if a code string contains dynamic expressions (process.env, tmpdir(), etc)
+ * Note: __SHOVEL_OUTDIR__ and __SHOVEL_GIT__ are build-time constants, not dynamic
  */
 function isDynamicCode(code: string): boolean {
 	return (
 		code.includes("process.env") ||
-		code.includes("__SHOVEL_OUTDIR__") ||
 		code.includes("tmpdir()") ||
 		code.includes(".filter(Boolean).join")
 	);

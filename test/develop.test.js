@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-properties -- Tests need process.cwd/env */
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
+import {createConnection} from "net";
 import {test, expect} from "bun:test";
 import {join, dirname as _dirname} from "path";
 import {tmpdir} from "os";
@@ -155,7 +156,6 @@ function startDevServer(fixture, port, extraArgs = []) {
 // Helper to check if TCP port is accepting connections (faster than HTTP)
 async function isPortOpen(port) {
 	return new Promise((resolve) => {
-		const {createConnection} = require("net");
 		const socket = createConnection({port, host: "localhost", timeout: 50});
 
 		socket.on("connect", () => {

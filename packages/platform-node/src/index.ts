@@ -40,7 +40,7 @@ import {getLogger} from "@logtape/logtape";
 // Entry template embedded as string
 const entryTemplate = `// Node.js Production Server Entry
 // This file is imported as text and used as the entry wrapper template
-import {tmpdir} from "os"; // For __tmpdir__ config expressions
+import {tmpdir} from "os"; // For [tmpdir] config expressions
 import {getLogger} from "@logtape/logtape";
 import {configureLogging} from "@b9g/platform/runtime";
 import {config} from "shovel:config"; // Virtual module - resolved at build time
@@ -99,7 +99,7 @@ process.on("SIGTERM", shutdown);
 // Paths are resolved at build time by the path syntax parser
 const workerEntryTemplate = `// Worker Entry for ServiceWorkerPool
 // This file sets up the ServiceWorker runtime and message loop
-import {tmpdir} from "os"; // For __tmpdir__ config expressions
+import {tmpdir} from "os"; // For [tmpdir] config expressions
 import {config} from "shovel:config";
 import {initWorkerRuntime, startWorkerMessageLoop, configureLogging} from "@b9g/platform/runtime";
 
@@ -714,17 +714,17 @@ export class NodePlatform extends BasePlatform {
 				server: {
 					module: "@b9g/filesystem/node-fs",
 					export: "NodeFSDirectory",
-					path: "__outdir__/server",
+					path: "[outdir]/server",
 				},
 				public: {
 					module: "@b9g/filesystem/node-fs",
 					export: "NodeFSDirectory",
-					path: "__outdir__/public",
+					path: "[outdir]/public",
 				},
 				tmp: {
 					module: "@b9g/filesystem/node-fs",
 					export: "NodeFSDirectory",
-					path: "__tmpdir__",
+					path: "[tmpdir]",
 				},
 			},
 		};
