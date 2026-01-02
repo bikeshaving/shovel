@@ -1398,28 +1398,16 @@ export function generateConfigModule(
 		"",
 	);
 
-	// Generate the module
-	const lines: string[] = [];
+	// Build platform imports (always include validateConfig)
+	const platformImports = [...Array.from(usedFunctions).sort(), "validateConfig"];
+	const providerImports = imports.length > 0 ? `\n${imports.join("\n")}\n` : "";
 
-	// Platform imports (env, tmpdir, joinPath, etc.)
-	if (usedFunctions.size > 0) {
-		const funcs = Array.from(usedFunctions).sort();
-		// Import from @b9g/platform - functions delegate to current platform instance
-		lines.push("// Platform imports");
-		lines.push(`import { ${funcs.join(", ")} } from "${PLATFORM_IMPORT}";`);
-		lines.push("");
-	}
+	return `import { ${platformImports.join(", ")} } from "${PLATFORM_IMPORT}";
+${providerImports}
+export const config = ${configCode};
 
-	if (imports.length > 0) {
-		lines.push("// Provider imports (statically bundled)");
-		lines.push(...imports);
-		lines.push("");
-	}
-
-	lines.push("// Generated config (env vars resolved at runtime)");
-	lines.push(`export const config = ${configCode};`);
-
-	return lines.join("\n");
+validateConfig(config);
+`;
 }
 
 /**

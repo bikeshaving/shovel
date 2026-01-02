@@ -31,6 +31,8 @@ export {
 	outdir,
 	tmpdir,
 	joinPath,
+	validateConfig,
+	ConfigValidationError,
 	type ConfigExpressionProvider,
 } from "./config.js";
 

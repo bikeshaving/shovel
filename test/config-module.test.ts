@@ -194,8 +194,10 @@ describe("generateConfigModule", () => {
 
 			const module = generateConfigModule(config);
 
-			// Should import env from platform/config
-			expect(module).toContain('import { env } from "@b9g/platform/config"');
+			// Should import env and validateConfig from platform/config
+			expect(module).toContain("env");
+			expect(module).toContain("validateConfig");
+			expect(module).toContain('@b9g/platform/config"');
 			expect(module).toContain('(env("PORT") || 3000)');
 			expect(module).toContain('(env("HOST") || "localhost")');
 		});
@@ -251,8 +253,9 @@ describe("generateConfigModule", () => {
 
 			const module = generateConfigModule(config);
 
-			// No import needed
-			expect(module).not.toContain("import");
+			// Only validateConfig import needed (no provider imports)
+			expect(module).toContain("validateConfig");
+			expect(module).not.toContain("cache_");
 			// Config should be passed through
 			expect(module).toContain("sessions:");
 			expect(module).toContain("maxEntries: 100");
