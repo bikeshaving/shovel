@@ -33,6 +33,7 @@ export {
 	joinPath,
 	validateConfig,
 	ConfigValidationError,
+	DefaultConfigProvider,
 	type ConfigExpressionProvider,
 } from "./config.js";
 

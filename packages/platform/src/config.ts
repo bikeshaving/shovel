@@ -24,6 +24,41 @@ export interface ConfigExpressionProvider {
 	joinPath(...segments: (string | undefined)[]): string;
 }
 
+/**
+ * Default implementation of ConfigExpressionProvider using process.env.
+ * Works on Node.js, Bun, Deno, and Cloudflare Workers (with nodejs_compat).
+ */
+export class DefaultConfigProvider implements ConfigExpressionProvider {
+	env(name: string): string | undefined {
+		return process.env[name];
+	}
+
+	outdir(): string {
+		const fromEnv = process.env.SHOVEL_OUTDIR;
+		if (fromEnv) return fromEnv;
+		if (typeof __SHOVEL_OUTDIR__ !== "undefined" && __SHOVEL_OUTDIR__) {
+			return __SHOVEL_OUTDIR__;
+		}
+		return ".";
+	}
+
+	tmpdir(): string {
+		return "/tmp";
+	}
+
+	joinPath(...segments: (string | undefined)[]): string {
+		for (let i = 0; i < segments.length; i++) {
+			if (segments[i] === undefined) {
+				throw new Error(
+					`joinPath: segment ${i} is undefined (missing env var?)`,
+				);
+			}
+		}
+		const joined = (segments as string[]).filter(Boolean).join("/");
+		return joined.replace(/([^:])\/+/g, "$1/");
+	}
+}
+
 // ============================================================================
 // Global Platform Instance
 // ============================================================================
