@@ -684,7 +684,7 @@ export class BunPlatform extends BasePlatform {
 	/**
 	 * Get the OS temp directory (Bun-specific implementation using node:os)
 	 */
-	override tmpdir(): string {
+	tmpdir(): string {
 		return tmpdir();
 	}
 }

@@ -766,7 +766,7 @@ export class NodePlatform extends BasePlatform {
 	/**
 	 * Get the OS temp directory (Node.js-specific implementation)
 	 */
-	override tmpdir(): string {
+	tmpdir(): string {
 		return tmpdir();
 	}
 }
