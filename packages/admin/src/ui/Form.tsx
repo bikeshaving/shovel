@@ -75,12 +75,17 @@ export function FormField({column, value, error}: FormFieldProps) {
 		);
 	}
 
-	// Date/datetime
+	// Date/datetime - use local time to avoid UTC shift
 	if (column.dataType === "date") {
-		const dateValue =
-			value instanceof Date
-				? value.toISOString().split("T")[0]
-				: (value as string) || "";
+		let dateValue = "";
+		if (value instanceof Date) {
+			const y = value.getFullYear();
+			const m = String(value.getMonth() + 1).padStart(2, "0");
+			const d = String(value.getDate()).padStart(2, "0");
+			dateValue = `${y}-${m}-${d}`;
+		} else {
+			dateValue = (value as string) || "";
+		}
 		return (
 			<div class="usa-form-group">
 				<label class="usa-label" for={id}>
@@ -101,10 +106,17 @@ export function FormField({column, value, error}: FormFieldProps) {
 	}
 
 	if (column.dataType === "datetime") {
-		const dtValue =
-			value instanceof Date
-				? value.toISOString().slice(0, 16)
-				: (value as string) || "";
+		let dtValue = "";
+		if (value instanceof Date) {
+			const y = value.getFullYear();
+			const mo = String(value.getMonth() + 1).padStart(2, "0");
+			const d = String(value.getDate()).padStart(2, "0");
+			const h = String(value.getHours()).padStart(2, "0");
+			const mi = String(value.getMinutes()).padStart(2, "0");
+			dtValue = `${y}-${mo}-${d}T${h}:${mi}`;
+		} else {
+			dtValue = (value as string) || "";
+		}
 		return (
 			<div class="usa-form-group">
 				<label class="usa-label" for={id}>
