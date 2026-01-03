@@ -205,9 +205,3 @@ export class NodeFSDirectory extends ShovelDirectoryHandle {
 		return Path.basename(this.#rootPath) || "root";
 	}
 }
-
-// Backwards compatibility aliases
-/** @deprecated Use NodeFSDirectory instead */
-export const NodeDirectory = NodeFSDirectory;
-/** @deprecated Use NodeFSBackend instead */
-export const NodeFileSystemBackend = NodeFSBackend;
