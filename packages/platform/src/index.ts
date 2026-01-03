@@ -396,9 +396,7 @@ export async function createPlatform(
 			return new BunPlatform(options);
 		}
 
-		case "cloudflare":
-		case "cloudflare-workers":
-		case "cf": {
+		case "cloudflare": {
 			const {default: CloudflarePlatform} =
 				await import("@b9g/platform-cloudflare");
 			return new CloudflarePlatform(options);
@@ -406,7 +404,7 @@ export async function createPlatform(
 
 		default:
 			throw new Error(
-				`Unknown platform: ${platformName}. Available platforms: node, bun, cloudflare`,
+				`Unknown platform: ${platformName}. Valid platforms: node, bun, cloudflare`,
 			);
 	}
 }

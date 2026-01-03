@@ -219,7 +219,7 @@ async function initializeBuild({
 	}
 
 	// Validate platform
-	const validPlatforms = ["node", "bun", "cloudflare", "cloudflare-workers"];
+	const validPlatforms = ["node", "bun", "cloudflare"];
 	if (!validPlatforms.includes(platform)) {
 		throw new Error(
 			`Invalid platform: ${platform}. Valid platforms: ${validPlatforms.join(", ")}`,
