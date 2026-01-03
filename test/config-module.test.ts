@@ -72,6 +72,16 @@ describe("exprToCode", () => {
 			expect(exprToCode("$NODE_ENV").code).toBe("process.env.NODE_ENV");
 			expect(exprToCode("$MY_VAR").code).toBe("process.env.MY_VAR");
 		});
+
+		it("handles env vars starting with underscore", () => {
+			expect(exprToCode("$_FOO").code).toBe("process.env._FOO");
+			expect(exprToCode("$__STATIC_CONTENT").code).toBe(
+				"process.env.__STATIC_CONTENT",
+			);
+			expect(exprToCode("$_HANDLER || fallback").code).toBe(
+				'(process.env._HANDLER || "fallback")',
+			);
+		});
 	});
 
 	describe("operators", () => {

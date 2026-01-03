@@ -42,7 +42,7 @@ export const DEFAULTS = {
  * Ternary expressions require at least one of the other operators
  */
 const EXPRESSION_PATTERN =
-	/(\|\||\?\?|&&|===|!==|==|!=|\$[A-Za-z]|\[outdir\]|\[tmpdir\]|\[git\])/;
+	/(\|\||\?\?|&&|===|!==|==|!=|\$[A-Za-z_]|\[outdir\]|\[tmpdir\]|\[git\])/;
 
 /**
  * Get environment variables from import.meta.env or process.env
