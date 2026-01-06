@@ -303,29 +303,67 @@ self.addEventListener("fetch", (event) => {
 
 ### Expression Syntax
 
-Configuration values support environment variable expressions:
+Configuration values support a domain-specific expression language that generates JavaScript code evaluated at runtime.
 
-| Expression | Meaning |
-|------------|---------|
-| `PORT \|\| 3000` | Use PORT env var, fallback to 3000 if falsy |
-| `PORT ?? 3000` | Use PORT, fallback only if null/undefined |
-| `MODE === production ? x : y` | Conditional based on environment |
-| `REDIS_URL` | Environment variable reference |
-| `@b9g/cache-redis` | String literal (supports @, /, -) |
+#### Environment Variables
 
-Example with environment-based module selection:
+```
+$VAR                    → process.env.VAR
+$VAR || fallback        → process.env.VAR || "fallback"
+$VAR ?? fallback        → process.env.VAR ?? "fallback"
+```
+
+#### Bracket Placeholders
+
+| Placeholder | Description | Resolution |
+|-------------|-------------|------------|
+| `[outdir]` | Build output directory | Build time |
+| `[tmpdir]` | OS temp directory | Runtime |
+| `[git]` | Git commit SHA | Build time |
+
+The bracket syntax mirrors esbuild/webpack output filename templating (`[name]`, `[hash]`).
+
+#### Operators
+
+| Operator | Example | Description |
+|----------|---------|-------------|
+| `\|\|` | `$VAR \|\| default` | Logical OR (falsy fallback) |
+| `??` | `$VAR ?? default` | Nullish coalescing |
+| `&&` | `$A && $B` | Logical AND |
+| `? :` | `$ENV === prod ? a : b` | Ternary conditional |
+| `===`, `!==` | `$ENV === production` | Strict equality |
+| `!` | `!$DISABLED` | Logical NOT |
+
+#### Path Expressions
+
+Path expressions support path segments and relative resolution:
+
+```
+$DATADIR/uploads        → joins env var with path segment
+[outdir]/server         → joins build output with path segment
+./data                  → resolved to absolute path at build time
+```
+
+#### Example
 
 ```json
 {
-  "caches": {
-    "sessions": {
-      "module": "MODE === production ? @b9g/cache-redis : @b9g/cache/memory",
-      "export": "MODE === production ? RedisCache : MemoryCache",
-      "url": "REDIS_URL"
-    }
+  "port": "$PORT || 3000",
+  "host": "$HOST || 0.0.0.0",
+  "directories": {
+    "server": { "path": "[outdir]/server" },
+    "public": { "path": "[outdir]/public" },
+    "tmp": { "path": "[tmpdir]" },
+    "data": { "path": "./data" },
+    "cache": { "path": "($CACHE_DIR || [tmpdir])/myapp" }
+  },
+  "cache": {
+    "provider": "$NODE_ENV === production ? redis : memory"
   }
 }
 ```
+
+Dynamic values (containing `$VAR` or `[tmpdir]`) use getters to ensure evaluation at access time, not module load time.
 
 ### Access in Code
 

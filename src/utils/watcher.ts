@@ -21,6 +21,7 @@ import {importMetaPlugin} from "../plugins/import-meta.js";
 import {createConfigPlugin, createEntryPlugin} from "../plugins/shovel.js";
 import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
 import {findProjectRoot} from "./project.js";
+import {getGitSHA} from "./git-sha.js";
 
 const logger = getLogger(["shovel", "build"]);
 
@@ -245,7 +246,13 @@ export class Watcher {
 					},
 				},
 			],
-			define: platformESBuildConfig.define ?? {},
+			define: {
+				...(platformESBuildConfig.define ?? {}),
+				// Inject output directory for [outdir] placeholder resolution
+				__SHOVEL_OUTDIR__: JSON.stringify(outputDir),
+				// Inject git commit SHA for [git] placeholder
+				__SHOVEL_GIT__: JSON.stringify(getGitSHA(this.#projectRoot)),
+			},
 			// Mark ./server.js as external so it's imported at runtime (sibling output file)
 			external: [...external, "./server.js"],
 			sourcemap: "inline",

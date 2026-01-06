@@ -422,7 +422,7 @@ router.route("/").get(async (request, context) => {
       <body>
         <h1>🚀 Welcome to Shovel!</h1>
         <p>Your ${config.template} app is running on the <strong>${config.platform}</strong> platform.</p>
-        
+
         <div class="info">
           <strong>Try these endpoints:</strong>
           <ul>
@@ -430,12 +430,12 @@ router.route("/").get(async (request, context) => {
             <li><a href="/api/time">GET /api/time</a> - Current timestamp</li>
           </ul>
         </div>
-        
+
         <p>Edit <code>src/app.${config.typescript ? "ts" : "js"}</code> to customize your app!</p>
       </body>
     </html>
   \`;
-  
+
   return new Response(html, {
     headers: { "Content-Type": "text/html" }
   });
@@ -466,7 +466,7 @@ router.route("/api/time").get(async (request, context) => {
 router.route("/").get(async (request, context) => {
   return new Response(JSON.stringify({
     name: "${config.name}",
-    platform: "${config.platform}", 
+    platform: "${config.platform}",
     endpoints: [
       { method: "GET", path: "/api/users", description: "Get all users" },
       { method: "POST", path: "/api/users", description: "Create a user" },
@@ -488,12 +488,12 @@ const users = [
 router.route("/api/users").get(async (request, context) => {
   const url = new URL(request.url);
   const active = url.searchParams.get('active');
-  
+
   let filteredUsers = users;
   if (active !== null) {
     filteredUsers = users.filter(user => user.active === (active === 'true'));
   }
-  
+
   return new Response(JSON.stringify({
     users: filteredUsers,
     total: filteredUsers.length
@@ -510,9 +510,9 @@ router.route("/api/users").post(async (request, context) => {
     email: userData.email || \`user\${Date.now()}@example.com\`,
     active: userData.active !== false
   };
-  
+
   users.push(newUser);
-  
+
   return new Response(JSON.stringify({
     success: true,
     user: newUser
@@ -525,7 +525,7 @@ router.route("/api/users").post(async (request, context) => {
 router.route("/api/users/:id").get(async (request, context) => {
   const id = parseInt(context.params.id);
   const user = users.find(u => u.id === id);
-  
+
   if (!user) {
     return new Response(JSON.stringify({
       error: "User not found"
@@ -534,7 +534,7 @@ router.route("/api/users/:id").get(async (request, context) => {
       headers: { "Content-Type": "application/json" }
     });
   }
-  
+
   return new Response(JSON.stringify({ user }), {
     headers: { "Content-Type": "application/json" }
   });
@@ -571,32 +571,32 @@ router.route("/").get(async (request, context) => {
       <body>
         <h1>🔄 HTTP Echo Service</h1>
         <p>A simple HTTP request/response inspection service.</p>
-        
+
         <div class="endpoint">
           <strong>POST /echo</strong><br>
           Echo back request details including headers, body, and metadata.
         </div>
-        
+
         <div class="endpoint">
           <strong>GET /ip</strong><br>
           Get your IP address.
         </div>
-        
+
         <div class="endpoint">
           <strong>GET /headers</strong><br>
           Get your request headers.
         </div>
-        
+
         <div class="endpoint">
           <strong>GET /user-agent</strong><br>
           Get your user agent string.
         </div>
-        
+
         <p>Try: <code>curl -X POST https://your-app.com/echo -d '{"test": "data"}'</code></p>
       </body>
     </html>
   \`;
-  
+
   return new Response(html, {
     headers: { "Content-Type": "text/html" }
   });
@@ -605,24 +605,24 @@ router.route("/").get(async (request, context) => {
 router.route("/echo").all(async (request, context) => {
   const info = getRequestInfo(request);
   const body = await parseBody(request);
-  
+
   const response = {
     ...info,
     body,
     contentType: request.headers.get("content-type") || null,
     timestamp: new Date().toISOString()
   };
-  
+
   return new Response(JSON.stringify(response, null, 2), {
     headers: { "Content-Type": "application/json" }
   });
 });
 
 router.route("/ip").get(async (request, context) => {
-  const ip = request.headers.get("x-forwarded-for") || 
-            request.headers.get("x-real-ip") || 
+  const ip = request.headers.get("x-forwarded-for") ||
+            request.headers.get("x-real-ip") ||
             "127.0.0.1";
-            
+
   return new Response(JSON.stringify({ ip }), {
     headers: { "Content-Type": "application/json" }
   });
