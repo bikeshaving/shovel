@@ -23,7 +23,7 @@ import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
 import {findProjectRoot} from "./project.js";
 import {getGitSHA} from "./git-sha.js";
 
-const logger = getLogger(["shovel", "build"]);
+const logger = getLogger(["shovel"]);
 
 export interface WatcherOptions {
 	/** Entry point to build */

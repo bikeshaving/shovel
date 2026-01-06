@@ -48,7 +48,7 @@ import BunPlatform from "@b9g/platform-bun";
 // Configure logging before anything else
 await configureLogging(config.logging);
 
-const logger = getLogger(["platform"]);
+const logger = getLogger(["shovel", "platform"]);
 
 // Configuration from shovel:config
 const PORT = config.port;
@@ -134,7 +134,7 @@ await registration.activate();
 startWorkerMessageLoop({registration, databases});
 `;
 
-const logger = getLogger(["platform"]);
+const logger = getLogger(["shovel", "platform"]);
 
 // ============================================================================
 // TYPES

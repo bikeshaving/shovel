@@ -4,7 +4,7 @@ import * as Platform from "@b9g/platform";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 import {Watcher} from "../utils/watcher.js";
 
-const logger = getLogger(["shovel", "cli"]);
+const logger = getLogger(["shovel"]);
 
 export async function developCommand(
 	entrypoint: string,

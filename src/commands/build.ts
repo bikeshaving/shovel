@@ -21,7 +21,7 @@ import {
 } from "../utils/project.js";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 
-const logger = getLogger(["shovel", "cli"]);
+const logger = getLogger(["shovel"]);
 
 /**
  * Check esbuild warnings for non-bundleable dynamic imports and convert to errors.

@@ -31,7 +31,7 @@ import type {DirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
 
-const logger = getLogger(["platform"]);
+const logger = getLogger(["shovel", "platform"]);
 
 // Import CloudflareNativeCache for local use (in createCaches)
 import {CloudflareNativeCache} from "./caches.js";
