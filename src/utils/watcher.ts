@@ -134,9 +134,7 @@ export class Watcher {
 					name: "build-notify",
 					setup: (build) => {
 						build.onStart(() => {
-							logger.info("Building", {
-								entrypoint: this.#options.entrypoint,
-							});
+							logger.info("Building...");
 						});
 						build.onEnd(async (result) => {
 							let success = result.errors.length === 0;
@@ -213,7 +211,7 @@ export class Watcher {
 							}
 
 							if (success) {
-								logger.info("Build complete", {entrypoint: outputPath});
+								logger.debug("Build complete", {entrypoint: outputPath});
 							} else {
 								logger.error("Build errors: {errors}", {errors: result.errors});
 							}
@@ -267,7 +265,7 @@ export class Watcher {
 		this.#ctx = await ESBuild.context(buildOptions);
 
 		// Start watching - this does the initial build and watches all dependencies
-		logger.info("Starting esbuild watch mode");
+		logger.debug("Starting esbuild watch mode");
 		await this.#ctx.watch();
 
 		// Watch config files (shovel.json, package.json) for changes

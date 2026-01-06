@@ -558,10 +558,8 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 		if (pending) {
 			try {
 				await pending;
-			} catch (err) {
+			} catch (_err) {
 				// Open failed, nothing to close - error was already thrown to open() caller
-				getLogger(["shovel", "database"])
-					.debug`Skipping close for failed open of "${name}": ${err}`;
 				return;
 			}
 		}
@@ -2374,7 +2372,7 @@ export async function initWorkerRuntime(
 		await configureLogging(config.logging, {reset: true});
 	}
 
-	runtimeLogger.info("Initializing worker runtime");
+	runtimeLogger.debug("Initializing worker runtime");
 
 	// Create cache storage with PostMessage support for worker coordination
 	const caches = new CustomCacheStorage(
@@ -2414,7 +2412,7 @@ export async function initWorkerRuntime(
 	// Install ServiceWorker globals
 	scope.install();
 
-	runtimeLogger.info("Worker runtime initialized");
+	runtimeLogger.debug("Worker runtime initialized");
 
 	return {registration, scope, caches, directories, databases, loggers};
 }
@@ -2542,7 +2540,7 @@ export function startWorkerMessageLoop(
 
 		// Handle shutdown message - close all resources before termination
 		if (message?.type === "shutdown") {
-			messageLogger.info(`[Worker-${workerId}] Received shutdown signal`);
+			messageLogger.debug(`[Worker-${workerId}] Received shutdown signal`);
 			(async () => {
 				try {
 					// Close all databases
@@ -2552,7 +2550,7 @@ export function startWorkerMessageLoop(
 					}
 					// Signal that shutdown is complete
 					sendMessage({type: "shutdown-complete"});
-					messageLogger.info(`[Worker-${workerId}] Shutdown complete`);
+					messageLogger.debug(`[Worker-${workerId}] Shutdown complete`);
 				} catch (error) {
 					messageLogger.error(`[Worker-${workerId}] Shutdown error: {error}`, {
 						error,
@@ -2578,7 +2576,7 @@ export function startWorkerMessageLoop(
 
 	// Signal that the worker is ready
 	sendMessage({type: "ready"});
-	messageLogger.info(`[Worker-${workerId}] Message loop started`);
+	messageLogger.debug(`[Worker-${workerId}] Message loop started`);
 }
 
 // ============================================================================

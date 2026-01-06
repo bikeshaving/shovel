@@ -513,7 +513,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 
 					// Write manifest file
 					writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-					logger.info("Generated asset manifest", {
+					logger.debug("Generated asset manifest", {
 						path: manifestPath,
 						assetCount: Object.keys(manifest.assets).length,
 					});

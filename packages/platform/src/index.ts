@@ -610,7 +610,7 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 			loggers: options.loggers,
 		});
 
-		logger.info("SingleThreadedRuntime created");
+		logger.debug("SingleThreadedRuntime created");
 	}
 
 	/**
@@ -619,7 +619,7 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 	async init(): Promise<void> {
 		// Install ServiceWorker globals (caches, directories, fetch, addEventListener, etc.)
 		this.#scope.install();
-		logger.info("SingleThreadedRuntime initialized - globals installed");
+		logger.debug("SingleThreadedRuntime initialized - globals installed");
 	}
 
 	/**
@@ -630,14 +630,14 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 		const isReload = this.#entrypoint !== undefined;
 
 		if (isReload) {
-			logger.info("Reloading ServiceWorker", {
+			logger.debug("Reloading ServiceWorker", {
 				oldEntrypoint: this.#entrypoint,
 				newEntrypoint: entrypoint,
 			});
 			// Reset registration state for reload
 			this.#registration._serviceWorker._setState("parsed");
 		} else {
-			logger.info("Loading ServiceWorker entrypoint", {entrypoint});
+			logger.debug("Loading ServiceWorker entrypoint", {entrypoint});
 		}
 
 		this.#entrypoint = entrypoint;
@@ -653,7 +653,7 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 		await this.#registration.activate();
 
 		this.#ready = true;
-		logger.info("ServiceWorker loaded and activated", {entrypoint});
+		logger.debug("ServiceWorker loaded and activated", {entrypoint});
 	}
 
 	/**
@@ -677,7 +677,7 @@ export class SingleThreadedRuntime implements ServiceWorkerRuntime {
 	 */
 	async terminate(): Promise<void> {
 		this.#ready = false;
-		logger.info("SingleThreadedRuntime terminated");
+		logger.debug("SingleThreadedRuntime terminated");
 	}
 
 	/**
@@ -937,7 +937,7 @@ export class ServiceWorkerPool {
 			}
 		});
 
-		logger.info("Waiting for worker ready signal", {entrypoint});
+		logger.debug("Waiting for worker ready signal", {entrypoint});
 
 		await readyPromise;
 		this.#pendingWorkerReady.delete(worker);
@@ -951,7 +951,7 @@ export class ServiceWorkerPool {
 		// This prevents requests being dispatched to workers that haven't
 		// finished initializing their ServiceWorker code
 		this.#workers.push(worker);
-		logger.info("Worker ready", {entrypoint});
+		logger.debug("Worker ready", {entrypoint});
 
 		// Notify any waiters that a worker is now available
 		const waiters = this.#workerAvailableWaiters;
@@ -973,7 +973,7 @@ export class ServiceWorkerPool {
 				if (pending) {
 					pending.resolve();
 				}
-				logger.info("ServiceWorker ready");
+				logger.debug("ServiceWorker ready");
 				break;
 			}
 
@@ -1167,7 +1167,7 @@ export class ServiceWorkerPool {
 	 * 3. Create new workers with the new bundle
 	 */
 	async reloadWorkers(entrypoint: string): Promise<void> {
-		logger.info("Reloading workers", {entrypoint});
+		logger.debug("Reloading workers", {entrypoint});
 
 		// Update stored entrypoint
 		this.#appEntrypoint = entrypoint;
@@ -1191,7 +1191,7 @@ export class ServiceWorkerPool {
 				createPromises.push(this.#createWorker(entrypoint));
 			}
 			await Promise.all(createPromises);
-			logger.info("All workers reloaded", {entrypoint});
+			logger.debug("All workers reloaded", {entrypoint});
 		} catch (error) {
 			// If worker creation fails, reject any pending request waiters
 			const waiters = this.#workerAvailableWaiters;

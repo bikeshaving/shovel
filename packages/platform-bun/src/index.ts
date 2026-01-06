@@ -527,10 +527,8 @@ export class BunPlatform extends BasePlatform {
 		);
 
 		// Initialize workers (Bun has native Web Workers)
+		// init() creates workers and loads the ServiceWorker code
 		await this.#workerPool.init();
-
-		// Load ServiceWorker in all workers
-		await this.#workerPool.reloadWorkers(entryPath);
 
 		// Capture references for closures
 		const workerPool = this.#workerPool;
