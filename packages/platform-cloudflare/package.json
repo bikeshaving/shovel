@@ -54,6 +54,30 @@
     "./runtime.js": {
       "types": "./dist/src/runtime.d.ts",
       "import": "./dist/src/runtime.js"
+    },
+    "./variables": {
+      "types": "./dist/src/variables.d.ts",
+      "import": "./dist/src/variables.js"
+    },
+    "./variables.js": {
+      "types": "./dist/src/variables.d.ts",
+      "import": "./dist/src/variables.js"
+    },
+    "./caches": {
+      "types": "./dist/src/caches.d.ts",
+      "import": "./dist/src/caches.js"
+    },
+    "./caches.js": {
+      "types": "./dist/src/caches.d.ts",
+      "import": "./dist/src/caches.js"
+    },
+    "./directories": {
+      "types": "./dist/src/directories.d.ts",
+      "import": "./dist/src/directories.js"
+    },
+    "./directories.js": {
+      "types": "./dist/src/directories.d.ts",
+      "import": "./dist/src/directories.js"
     }
   }
 }

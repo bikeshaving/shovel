@@ -8,12 +8,8 @@ import {
 	afterAll,
 	mock,
 } from "bun:test";
-import {
-	CloudflarePlatform,
-	CloudflareNativeCache,
-	createOptionsFromEnv,
-	generateWranglerConfig,
-} from "../src/index.js";
+import {CloudflarePlatform} from "../src/index.js";
+import {CloudflareNativeCache} from "../src/caches.js";
 import {Miniflare} from "miniflare";
 
 describe("CloudflarePlatform", () => {
@@ -122,78 +118,6 @@ describe("CloudflarePlatform", () => {
 		// Should not throw
 		await platform.dispose();
 		expect(true).toBe(true);
-	});
-});
-
-describe("Environment utilities", () => {
-	test("should create options from environment", () => {
-		const env = {
-			ENVIRONMENT: "production",
-		};
-
-		const options = createOptionsFromEnv(env);
-
-		expect(options.environment).toBe("production");
-	});
-
-	test("should default to production environment", () => {
-		const options = createOptionsFromEnv({});
-
-		expect(options.environment).toBe("production");
-	});
-});
-
-describe("Wrangler config generation", () => {
-	test("should generate wrangler.toml with basic options", () => {
-		const config = generateWranglerConfig({
-			name: "my-app",
-			entrypoint: "./dist/worker.js",
-		});
-
-		expect(config).toContain('name = "my-app"');
-		expect(config).toContain('main = "./dist/worker.js"');
-		expect(config).toContain('compatibility_date = "2024-09-23"');
-		expect(config).toContain('compatibility_flags = ["nodejs_compat"]');
-	});
-
-	test("should generate wrangler.toml with R2 filesystem adapter", () => {
-		const config = generateWranglerConfig({
-			name: "my-app",
-			entrypoint: "./dist/worker.js",
-			filesystemAdapter: "r2",
-		});
-
-		expect(config).toContain("STORAGE_R2");
-		expect(config).toContain("bucket_name");
-	});
-
-	test("should generate wrangler.toml with custom KV and R2 bindings", () => {
-		const config = generateWranglerConfig({
-			name: "my-app",
-			entrypoint: "./dist/worker.js",
-			kvNamespaces: ["CACHE_KV", "DATA_KV"],
-			r2Buckets: ["STORAGE_R2", "BACKUP_R2"],
-			d1Databases: ["MAIN_DB"],
-		});
-
-		expect(config).toContain("CACHE_KV");
-		expect(config).toContain("DATA_KV");
-		expect(config).toContain("STORAGE_R2");
-		expect(config).toContain("BACKUP_R2");
-		expect(config).toContain("MAIN_DB");
-		expect(config).toContain("database_name");
-	});
-
-	test("should handle empty bindings gracefully", () => {
-		const config = generateWranglerConfig({
-			name: "simple-app",
-			entrypoint: "./worker.js",
-		});
-
-		// Should not contain binding sections when arrays are empty
-		expect(config).not.toContain("[[kv_namespaces]]");
-		expect(config).not.toContain("[[r2_buckets]]");
-		expect(config).not.toContain("[[d1_databases]]");
 	});
 });
 

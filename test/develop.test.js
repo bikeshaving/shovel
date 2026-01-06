@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-properties -- Tests need process.cwd/env */
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
+import {createConnection} from "net";
 import {test, expect} from "bun:test";
 import {join, dirname as _dirname} from "path";
 import {tmpdir} from "os";
@@ -40,13 +41,14 @@ async function createTempDir() {
 	const nodeModulesLink = join(tempDir, "node_modules");
 	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
 
-	// Create shovel.json with logging config (warnings only for tests)
+	// Create shovel.json with logging config
+	// Use "info" level so we can detect "Workers reloaded" messages for test synchronization
 	await FS.writeFile(
 		join(tempDir, "shovel.json"),
 		JSON.stringify(
 			{
 				logging: {
-					loggers: [{category: "shovel", level: "warning", sinks: ["console"]}],
+					loggers: [{category: "shovel", level: "info", sinks: ["console"]}],
 				},
 			},
 			null,
@@ -132,14 +134,65 @@ function startDevServer(fixture, port, extraArgs = []) {
 
 	// Capture stderr to detect CLI failures early
 	let stderrOutput = "";
-	let _stdoutOutput = "";
+	let stdoutOutput = "";
+
+	// Track reload promises - resolved when "Workers reloaded" is seen
+	let reloadResolvers = [];
+	// Track build promises - resolved when any build completes (success or failure)
+	let buildResolvers = [];
+
+	// Track positions from which we started waiting (handles chunk splitting)
+	let stdoutWaitPos = 0;
+	let stderrWaitPos = 0;
+
+	const checkStdout = () => {
+		// Check from wait position to handle messages split across chunks
+		const content = stdoutOutput.slice(stdoutWaitPos);
+
+		// "Build complete" appears on stdout
+		if (content.includes("Build complete") && buildResolvers.length > 0) {
+			const resolvers = buildResolvers;
+			buildResolvers = [];
+			stdoutWaitPos = stdoutOutput.length;
+			for (const resolve of resolvers) {
+				resolve();
+			}
+		}
+
+		// "Workers reloaded" appears on stdout
+		if (content.includes("Workers reloaded") && reloadResolvers.length > 0) {
+			const resolvers = reloadResolvers;
+			reloadResolvers = [];
+			stdoutWaitPos = stdoutOutput.length;
+			for (const resolve of resolvers) {
+				resolve();
+			}
+		}
+	};
+
+	const checkStderr = () => {
+		// Check from wait position to handle messages split across chunks
+		const content = stderrOutput.slice(stderrWaitPos);
+
+		// "Build errors" appears on stderr
+		if (content.includes("Build errors") && buildResolvers.length > 0) {
+			const resolvers = buildResolvers;
+			buildResolvers = [];
+			stderrWaitPos = stderrOutput.length;
+			for (const resolve of resolvers) {
+				resolve();
+			}
+		}
+	};
 
 	serverProcess.stdout.on("data", (data) => {
-		_stdoutOutput += data.toString();
+		stdoutOutput += data.toString();
+		checkStdout();
 	});
 
 	serverProcess.stderr.on("data", (data) => {
 		stderrOutput += data.toString();
+		checkStderr();
 	});
 
 	// If process exits early, it's likely an error
@@ -149,13 +202,53 @@ function startDevServer(fixture, port, extraArgs = []) {
 		}
 	});
 
+	// Method to wait for the next reload to complete
+	serverProcess.waitForReload = (timeoutMs = 10000) => {
+		// Set wait position so we only look for NEW "Workers reloaded" messages
+		stdoutWaitPos = stdoutOutput.length;
+
+		return new Promise((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				reject(new Error(`Reload not detected within ${timeoutMs}ms`));
+			}, timeoutMs);
+
+			reloadResolvers.push(() => {
+				clearTimeout(timeout);
+				resolve();
+			});
+		});
+	};
+
+	// Method to wait for any build to complete (success or failure)
+	serverProcess.waitForBuild = (timeoutMs = 10000) => {
+		// Set wait positions so we only look for NEW build messages
+		stdoutWaitPos = stdoutOutput.length;
+		stderrWaitPos = stderrOutput.length;
+
+		return new Promise((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				reject(new Error(`Build not detected within ${timeoutMs}ms`));
+			}, timeoutMs);
+
+			buildResolvers.push(() => {
+				clearTimeout(timeout);
+				resolve();
+			});
+		});
+	};
+
+	// Expose output for debugging
+	serverProcess.getOutput = () => ({
+		stdout: stdoutOutput,
+		stderr: stderrOutput,
+	});
+
 	return serverProcess;
 }
 
 // Helper to check if TCP port is accepting connections (faster than HTTP)
 async function isPortOpen(port) {
 	return new Promise((resolve) => {
-		const {createConnection} = require("net");
 		const socket = createConnection({port, host: "localhost", timeout: 50});
 
 		socket.on("connect", () => {
@@ -233,34 +326,6 @@ async function fetchWithRetry(port, retries = 20, delay = 50) {
 	}
 }
 
-// Helper to wait for response content to change
-async function waitForContentChange(
-	port,
-	expectedContent,
-	{timeoutMs = 10000, contains = false} = {},
-) {
-	const startTime = Date.now();
-	while (Date.now() - startTime < timeoutMs) {
-		try {
-			const response = await fetch(`http://localhost:${port}`);
-			const text = await response.text();
-			const matches = contains
-				? text.includes(expectedContent)
-				: text === expectedContent;
-			if (matches) {
-				return text;
-			}
-		} catch (err) {
-			// Server not ready, continue waiting
-			logger.debug`Waiting for content: ${err.message}`;
-		}
-		await new Promise((resolve) => setTimeout(resolve, 50));
-	}
-	throw new Error(
-		`Content did not change to expected value within ${timeoutMs}ms`,
-	);
-}
-
 // Helper to kill process and wait for port to be free
 async function killServer(process, port) {
 	if (process && process.exitCode === null) {
@@ -282,7 +347,9 @@ async function killServer(process, port) {
 				if (process.exitCode === null) {
 					process.kill("SIGKILL");
 				}
-				resolve(); // Resolve anyway after force kill
+				// Resolve after a short delay even if exit/close doesn't fire
+				// (handles edge cases where signal delivery fails)
+				setTimeout(resolve, 100);
 			}, 1000);
 		});
 	}
@@ -349,11 +416,14 @@ test(
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
 
+			// Set up reload listener BEFORE modifying file
+			const reloadPromise = serverProcess.waitForReload();
+
 			// Modify the temporary file (simulate file change)
 			await tempFixture.copyFrom("server-goodbye.ts");
 
-			// Wait for hot reload and verify change
-			await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for file change detection
+			// Wait for reload to complete
+			await reloadPromise;
 
 			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe("<marquee>Goodbye world</marquee>");
@@ -388,17 +458,20 @@ test(
 				"<marquee>Hello from dependency-hello.ts</marquee>",
 			);
 
+			// Set up reload listener BEFORE modifying file
+			const reloadPromise = serverProcess.waitForReload();
+
 			// Modify the dependency file (simulate dependency change)
 			await tempFixture.copyDependencyFrom(
 				"server-dependency-hello.ts",
 				"server-dependency-goodbye.ts",
 			);
 
-			// Wait for hot reload and verify dependency change propagated
-			const updatedResponse = await waitForContentChange(
-				PORT,
-				"<marquee>Goodbye from dependency-hello.ts</marquee>",
-			);
+			// Wait for reload to complete
+			await reloadPromise;
+
+			// Verify dependency change propagated
+			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe(
 				"<marquee>Goodbye from dependency-hello.ts</marquee>",
 			);
@@ -433,17 +506,20 @@ test(
 				'<marquee behavior="alternate">Hello from dependency-hello.ts</marquee>',
 			);
 
+			// Set up reload listener BEFORE modifying file
+			const reloadPromise = serverProcess.waitForReload();
+
 			// Modify the dependency file
 			await tempFixture.copyDependencyFrom(
 				"server-dependency-hello.ts",
 				"server-dependency-goodbye.ts",
 			);
 
-			// Wait for hot reload and verify dynamic import change propagated
-			const updatedResponse = await waitForContentChange(
-				PORT,
-				'<marquee behavior="alternate">Goodbye from dependency-hello.ts</marquee>',
-			);
+			// Wait for reload to complete
+			await reloadPromise;
+
+			// Verify dynamic import change propagated
+			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe(
 				'<marquee behavior="alternate">Goodbye from dependency-hello.ts</marquee>',
 			);
@@ -475,12 +551,13 @@ test(
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
 
+			// Set up reload listener BEFORE modifying file
+			const reloadPromise = serverProcess.waitForReload();
+
 			// Modify the temporary file
 			await tempFixture.copyFrom("server-goodbye.ts");
 
 			// Make multiple concurrent requests during reload
-			// Use a longer initial wait to ensure the file change is detected
-
 			const concurrentRequests = Array.from({length: 10}, () =>
 				fetchWithRetry(PORT, 5, 100),
 			);
@@ -491,12 +568,11 @@ test(
 			const uniqueResponses = [...new Set(responses)];
 			expect(uniqueResponses.length).toBeLessThanOrEqual(2); // Should be either 1 or 2 unique responses
 
-			// Wait for the reload to complete and verify the updated version
-			const finalResponse = await waitForContentChange(
-				PORT,
-				"<marquee>Goodbye world</marquee>",
-				3000,
-			);
+			// Wait for reload to complete
+			await reloadPromise;
+
+			// Verify the updated version
+			const finalResponse = await fetchWithRetry(PORT);
 			expect(finalResponse).toBe("<marquee>Goodbye world</marquee>");
 		} finally {
 			await killServer(serverProcess, PORT);
@@ -601,14 +677,17 @@ self.addEventListener("fetch", (event) => {
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>B-A-original</div>");
 
+			// Set up reload listener BEFORE modifying file
+			const reloadPromise = serverProcess.waitForReload();
+
 			// Modify the deepest dependency (A)
 			await FS.writeFile(testFileA, modifiedA);
 
 			// Wait for cascade reload
-			const updatedResponse = await waitForContentChange(
-				PORT,
-				"<div>B-A-modified</div>",
-			);
+			await reloadPromise;
+
+			// Verify change propagated through the chain
+			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe("<div>B-A-modified</div>");
 		} finally {
 			await killServer(serverProcess, PORT);
@@ -664,17 +743,19 @@ self.addEventListener("fetch", (event) => {
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toContain("Values: original-0, original-1");
 
+			// Set up reload listener BEFORE modifying files
+			const reloadPromise = serverProcess.waitForReload();
+
 			// Modify all files concurrently
 			await Promise.all(
 				testFiles.map((file) => FS.writeFile(file.path, file.modified)),
 			);
 
-			// Wait for all changes to be reflected
-			const updatedResponse = await waitForContentChange(
-				PORT,
-				"Values: modified-0, modified-1",
-				{contains: true},
-			);
+			// Wait for reload to complete
+			await reloadPromise;
+
+			// Verify all changes are reflected
+			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toContain("Values: modified-0, modified-1");
 		} finally {
 			await killServer(serverProcess, PORT);
@@ -774,17 +855,17 @@ self.addEventListener("fetch", (event) => {
 			// Delete the file
 			await FS.unlink(testFile);
 
-			// Wait a bit
-			await new Promise((resolve) => setTimeout(resolve, 2000));
+			// Set up reload listener BEFORE recreating file
+			const reloadPromise = serverProcess.waitForReload();
 
 			// Recreate the file with different content
 			await FS.writeFile(testFile, recreatedContent);
 
-			// Wait for reload
-			const finalResponse = await waitForContentChange(
-				PORT,
-				"<div>Recreated</div>",
-			);
+			// Wait for reload to complete
+			await reloadPromise;
+
+			// Verify the recreated content
+			const finalResponse = await fetchWithRetry(PORT);
 			expect(finalResponse).toBe("<div>Recreated</div>");
 		} finally {
 			await killServer(serverProcess, PORT);
@@ -839,24 +920,28 @@ self.addEventListener("fetch", (event) => {
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>Valid</div>");
 
-			// Write syntax error
+			// Write syntax error - the build will fail
 			await FS.writeFile(testFile, invalidContent);
 
-			// Wait for error processing
-			await new Promise((resolve) => setTimeout(resolve, 2000));
+			// Wait for the error build to complete - this ensures the watcher
+			// has processed the first file change before we write the second
+			await serverProcess.waitForBuild();
 
 			// Server should still respond (error page or last good version)
 			const errorResponse = await fetchWithRetry(PORT);
 			expect(typeof errorResponse).toBe("string");
 
+			// Set up reload listener BEFORE fixing the error
+			const reloadPromise = serverProcess.waitForReload();
+
 			// Fix the syntax error
 			await FS.writeFile(testFile, fixedContent);
 
 			// Wait for recovery
-			const recoveredResponse = await waitForContentChange(
-				PORT,
-				"<div>Fixed</div>",
-			);
+			await reloadPromise;
+
+			// Verify recovery
+			const recoveredResponse = await fetchWithRetry(PORT);
 			expect(recoveredResponse).toBe("<div>Fixed</div>");
 		} finally {
 			await killServer(serverProcess, PORT);
@@ -913,6 +998,9 @@ self.addEventListener("fetch", (event) => {
 			const response = await waitForServer(PORT, serverProcess);
 			expect(response).toBe("<div>Variables: 50</div>");
 
+			// Set up reload listener BEFORE modifying file
+			const reloadPromise = serverProcess.waitForReload();
+
 			// Modify the large file
 			const modifiedContent = largeContent.replace(
 				"Variables: ${allVars.length}",
@@ -920,10 +1008,11 @@ self.addEventListener("fetch", (event) => {
 			);
 			await FS.writeFile(largeFile, modifiedContent);
 
-			const updatedResponse = await waitForContentChange(
-				PORT,
-				"<div>Variables: Modified</div>",
-			);
+			// Wait for reload to complete
+			await reloadPromise;
+
+			// Verify the change
+			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe("<div>Variables: Modified</div>");
 		} finally {
 			await killServer(serverProcess, PORT);
@@ -1046,14 +1135,17 @@ self.addEventListener("fetch", (event) => {
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<div>JavaScript file!</div>");
 
+			// Set up reload listener BEFORE modifying file
+			const reloadPromise = serverProcess.waitForReload();
+
 			// Modify the JS file
 			await FS.writeFile(jsFile, modifiedJsContent);
 
-			// Wait for reload
-			const updatedResponse = await waitForContentChange(
-				PORT,
-				"<div>JavaScript modified!</div>",
-			);
+			// Wait for reload to complete
+			await reloadPromise;
+
+			// Verify the change
+			const updatedResponse = await fetchWithRetry(PORT);
 			expect(updatedResponse).toBe("<div>JavaScript modified!</div>");
 		} finally {
 			await killServer(serverProcess, PORT);
@@ -1277,6 +1369,78 @@ test(
 			}
 		} finally {
 			await FS.rm(fixtureDir, {recursive: true, force: true});
+		}
+	},
+	TIMEOUT,
+);
+
+// =======================
+// CONFIG PLACEHOLDER TESTS
+// =======================
+
+test(
+	"[outdir] placeholder works in dev mode",
+	async () => {
+		// This test verifies that __SHOVEL_OUTDIR__ is properly injected during
+		// development builds. Without this define, config using [outdir] would
+		// throw ReferenceError: __SHOVEL_OUTDIR__ is not defined
+		const PORT = 13325;
+		let serverProcess;
+		let tempFixture;
+
+		try {
+			tempFixture = await createTempFixture("server-outdir-placeholder.ts");
+
+			serverProcess = startDevServer(tempFixture.path, PORT);
+
+			// If __SHOVEL_OUTDIR__ is not defined, the server will 500
+			// with ReferenceError when trying to open the directory
+			const response = await waitForServer(PORT, serverProcess);
+
+			// Should succeed - means [outdir] placeholder was properly resolved
+			expect(response).toContain("[outdir] works");
+			expect(response).not.toContain("Error");
+			expect(response).not.toContain("ReferenceError");
+		} finally {
+			await killServer(serverProcess, PORT);
+			if (tempFixture) {
+				await tempFixture.cleanup();
+			}
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"[git] placeholder works in dev mode",
+	async () => {
+		// This test verifies that __SHOVEL_GIT__ is properly injected during
+		// development builds. Without this define, config using [git] would
+		// throw ReferenceError: __SHOVEL_GIT__ is not defined
+		const PORT = 13326;
+		let serverProcess;
+		let tempFixture;
+
+		try {
+			tempFixture = await createTempFixture("server-git-placeholder.ts");
+
+			serverProcess = startDevServer(tempFixture.path, PORT);
+
+			// If __SHOVEL_GIT__ is not defined, the server will 500
+			// with ReferenceError when accessing the constant
+			const response = await waitForServer(PORT, serverProcess);
+
+			// Should succeed - means [git] placeholder was properly resolved
+			expect(response).toContain("[git] works");
+			expect(response).not.toContain("Error");
+			expect(response).not.toContain("ReferenceError");
+			// The response should contain a git SHA (40 hex chars) or empty string if not in git repo
+			expect(response).toMatch(/\[git\] works: [a-f0-9]{0,40}/);
+		} finally {
+			await killServer(serverProcess, PORT);
+			if (tempFixture) {
+				await tempFixture.cleanup();
+			}
 		}
 	},
 	TIMEOUT,

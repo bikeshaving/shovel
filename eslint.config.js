@@ -73,6 +73,10 @@ export default [
 					name: "__filename",
 					message: "Do not use __filename. Use import.meta.url instead.",
 				},
+				{
+					name: "require",
+					message: "Do not use require(). Use ES module imports instead.",
+				},
 			],
 			"@typescript-eslint/no-unused-vars": [
 				"error",

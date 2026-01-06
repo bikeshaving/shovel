@@ -19,10 +19,13 @@ export function importMetaPlugin(): ESBuild.Plugin {
 	return {
 		name: "import-meta-transform",
 		setup(build) {
-			// Only process user code, skip node_modules for performance
+			// Only process user code, skip dependencies
 			build.onLoad({filter: /\.[jt]sx?$/, namespace: "file"}, async (args) => {
-				// Skip node_modules - dependencies handle their own import.meta
-				if (args.path.includes("node_modules")) {
+				// Skip node_modules and monorepo packages - dependencies handle their own import.meta
+				if (
+					args.path.includes("node_modules") ||
+					args.path.includes("/packages/")
+				) {
 					return null;
 				}
 

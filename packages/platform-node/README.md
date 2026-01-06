@@ -8,7 +8,7 @@ Node.js platform adapter for Shovel. Runs ServiceWorker applications on Node.js 
 - Hot module reloading for development via VM module system
 - Worker thread pool for concurrent request handling
 - Memory and filesystem cache backends
-- File System Access API implementation via NodeDirectory
+- File System Access API implementation via NodeFSDirectory
 - ServiceWorker lifecycle support (install, activate, fetch events)
 
 ## Installation
@@ -112,7 +112,7 @@ Loads and runs a ServiceWorker entrypoint.
 Configured via `caches` option:
 
 - `memory`: In-memory caching (MemoryCache)
-- `filesystem`: File-based caching (NodeDirectory)
+- `filesystem`: File-based caching (NodeFSDirectory)
 
 ## Worker Thread Architecture
 

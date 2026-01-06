@@ -75,13 +75,13 @@ describe("loadConfig precedence", () => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "shovel.json"),
-					JSON.stringify({port: "PORT || 8080"}),
+					JSON.stringify({port: "$PORT || 8080"}),
 				);
 				process.env.PORT = "9000";
 
 				const config = loadConfig(testDir);
 
-				// Expression evaluates PORT env to 9000
+				// Expression evaluates $PORT env to 9000
 				expect(config.port).toBe(9000);
 			});
 		});
@@ -91,7 +91,7 @@ describe("loadConfig precedence", () => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "shovel.json"),
-					JSON.stringify({port: "PORT || 8080"}),
+					JSON.stringify({port: "$PORT || 8080"}),
 				);
 				// PORT env not set - should use fallback
 
@@ -255,7 +255,7 @@ describe("loadConfig precedence", () => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "shovel.json"),
-					JSON.stringify({host: "MY_HOST ?? default-host"}),
+					JSON.stringify({host: "$MY_HOST ?? default-host"}),
 				);
 				process.env.MY_HOST = "custom-host";
 
@@ -270,7 +270,7 @@ describe("loadConfig precedence", () => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "shovel.json"),
-					JSON.stringify({host: 'MY_HOST ?? "default-host"'}),
+					JSON.stringify({host: '$MY_HOST ?? "default-host"'}),
 				);
 				// Empty string is NOT nullish, so ?? should keep it
 				process.env.MY_HOST = "";
@@ -286,7 +286,7 @@ describe("loadConfig precedence", () => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "shovel.json"),
-					JSON.stringify({host: 'MY_HOST || "default-host"'}),
+					JSON.stringify({host: '$MY_HOST || "default-host"'}),
 				);
 				// Empty string is falsy, so || should use fallback
 				process.env.MY_HOST = "";
@@ -302,7 +302,7 @@ describe("loadConfig precedence", () => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "shovel.json"),
-					JSON.stringify({host: "MY_HOST ?? default-host"}),
+					JSON.stringify({host: "$MY_HOST ?? default-host"}),
 				);
 				// MY_HOST not set - should use fallback
 
@@ -340,7 +340,7 @@ describe("parseConfigExpr", () => {
 	describe("ternary with module paths", () => {
 		it("selects first branch when condition is true", () => {
 			const result = parseConfigExpr(
-				"MODE === production ? @b9g/cache-redis : @b9g/cache/memory",
+				"$MODE === production ? @b9g/cache-redis : @b9g/cache/memory",
 				{MODE: "production"},
 				{strict: false},
 			);
@@ -349,7 +349,7 @@ describe("parseConfigExpr", () => {
 
 		it("selects second branch when condition is false", () => {
 			const result = parseConfigExpr(
-				"MODE === production ? @b9g/cache-redis : @b9g/cache/memory",
+				"$MODE === production ? @b9g/cache-redis : @b9g/cache/memory",
 				{MODE: "development"},
 				{strict: false},
 			);
@@ -358,7 +358,7 @@ describe("parseConfigExpr", () => {
 
 		it("works with NODE_ENV", () => {
 			const result = parseConfigExpr(
-				"NODE_ENV === production ? @b9g/filesystem-s3 : @b9g/filesystem/memory",
+				"$NODE_ENV === production ? @b9g/filesystem-s3 : @b9g/filesystem/memory",
 				{NODE_ENV: "production"},
 				{strict: false},
 			);
@@ -367,7 +367,7 @@ describe("parseConfigExpr", () => {
 
 		it("works with undefined env var (falsy condition)", () => {
 			const result = parseConfigExpr(
-				"USE_REDIS ? @b9g/cache-redis : @b9g/cache/memory",
+				"$USE_REDIS ? @b9g/cache-redis : @b9g/cache/memory",
 				{},
 				{strict: false},
 			);
@@ -376,7 +376,7 @@ describe("parseConfigExpr", () => {
 
 		it("works with truthy env var", () => {
 			const result = parseConfigExpr(
-				"USE_REDIS ? @b9g/cache-redis : @b9g/cache/memory",
+				"$USE_REDIS ? @b9g/cache-redis : @b9g/cache/memory",
 				{USE_REDIS: "1"},
 				{strict: false},
 			);
@@ -387,7 +387,7 @@ describe("parseConfigExpr", () => {
 	describe("logical operators with module paths", () => {
 		it("|| returns first truthy value", () => {
 			const result = parseConfigExpr(
-				"CACHE_MODULE || @b9g/cache/memory",
+				"$CACHE_MODULE || @b9g/cache/memory",
 				{},
 				{strict: false},
 			);
@@ -396,7 +396,7 @@ describe("parseConfigExpr", () => {
 
 		it("|| returns env var when set", () => {
 			const result = parseConfigExpr(
-				"CACHE_MODULE || @b9g/cache/memory",
+				"$CACHE_MODULE || @b9g/cache/memory",
 				{CACHE_MODULE: "@custom/cache"},
 				{strict: false},
 			);
@@ -405,7 +405,7 @@ describe("parseConfigExpr", () => {
 
 		it("?? returns first non-nullish value", () => {
 			const result = parseConfigExpr(
-				"CACHE_MODULE ?? @b9g/cache/memory",
+				"$CACHE_MODULE ?? @b9g/cache/memory",
 				{},
 				{strict: false},
 			);
@@ -416,7 +416,7 @@ describe("parseConfigExpr", () => {
 	describe("complex expressions", () => {
 		it("nested ternary", () => {
 			const result = parseConfigExpr(
-				"ENV === prod ? @b9g/cache-redis : ENV === staging ? @b9g/cache-redis : @b9g/cache/memory",
+				"$ENV === prod ? @b9g/cache-redis : $ENV === staging ? @b9g/cache-redis : @b9g/cache/memory",
 				{ENV: "staging"},
 				{strict: false},
 			);
@@ -425,7 +425,7 @@ describe("parseConfigExpr", () => {
 
 		it("ternary with fallback", () => {
 			const result = parseConfigExpr(
-				"(USE_REDIS ? @b9g/cache-redis : CACHE_MODULE) || @b9g/cache/memory",
+				"($USE_REDIS ? @b9g/cache-redis : $CACHE_MODULE) || @b9g/cache/memory",
 				{},
 				{strict: false},
 			);
@@ -434,7 +434,7 @@ describe("parseConfigExpr", () => {
 
 		it("equality with scoped package", () => {
 			const result = parseConfigExpr(
-				"PROVIDER === @b9g/cache-redis",
+				"$PROVIDER === @b9g/cache-redis",
 				{PROVIDER: "@b9g/cache-redis"},
 				{strict: false},
 			);
@@ -443,7 +443,7 @@ describe("parseConfigExpr", () => {
 
 		it("inequality with scoped package", () => {
 			const result = parseConfigExpr(
-				"PROVIDER !== @b9g/cache/memory",
+				"$PROVIDER !== @b9g/cache/memory",
 				{PROVIDER: "@b9g/cache-redis"},
 				{strict: false},
 			);
@@ -464,7 +464,7 @@ describe("parseConfigExpr", () => {
 
 		it("ternary with export names", () => {
 			const result = parseConfigExpr(
-				"NODE_ENV === production ? RedisCache : MemoryCache",
+				"$NODE_ENV === production ? RedisCache : MemoryCache",
 				{NODE_ENV: "development"},
 				{strict: false},
 			);
@@ -500,7 +500,7 @@ describe("parseConfigExpr", () => {
 
 		it("works in ternary expressions (spaces around :)", () => {
 			const result = parseConfigExpr(
-				"PLATFORM === bun ? bun:sqlite : better-sqlite3",
+				"$PLATFORM === bun ? bun:sqlite : better-sqlite3",
 				{PLATFORM: "bun"},
 				{strict: false},
 			);
@@ -509,7 +509,7 @@ describe("parseConfigExpr", () => {
 
 		it("ternary alternate branch with module specifier", () => {
 			const result = parseConfigExpr(
-				"PLATFORM === bun ? bun:sqlite : node:better-sqlite3",
+				"$PLATFORM === bun ? bun:sqlite : node:better-sqlite3",
 				{PLATFORM: "node"},
 				{strict: false},
 			);
@@ -518,7 +518,7 @@ describe("parseConfigExpr", () => {
 
 		it("works with fallback operators", () => {
 			const result = parseConfigExpr(
-				"DB_DRIVER || bun:sqlite",
+				"$DB_DRIVER || bun:sqlite",
 				{},
 				{strict: false},
 			);
@@ -528,7 +528,7 @@ describe("parseConfigExpr", () => {
 		it("distinguishes ternary colon (with spaces) from identifier colon (no spaces)", () => {
 			// "a ? b:c : d" - b:c is one identifier, outer : is ternary
 			const result = parseConfigExpr(
-				"USE_CUSTOM ? custom:driver : default:driver",
+				"$USE_CUSTOM ? custom:driver : default:driver",
 				{USE_CUSTOM: "1"},
 				{strict: false},
 			);
@@ -579,7 +579,7 @@ describe("parseConfigExpr", () => {
 
 		it("works with fallback operators", () => {
 			const result = parseConfigExpr(
-				"MY_VAR || 'default value'",
+				"$MY_VAR || 'default value'",
 				{},
 				{strict: false},
 			);
@@ -588,7 +588,7 @@ describe("parseConfigExpr", () => {
 
 		it("works in ternary expressions", () => {
 			const result = parseConfigExpr(
-				"MODE === prod ? 'production' : 'development'",
+				"$MODE === prod ? 'production' : 'development'",
 				{MODE: "dev"},
 				{strict: false},
 			);
@@ -621,13 +621,38 @@ describe("parseConfigExpr", () => {
 			expect(result).toBe("@my_org/my_pkg");
 		});
 
-		it("distinguishes env var from package (ALL_CAPS vs mixed)", () => {
+		it("distinguishes env var from package ($VAR vs mixed)", () => {
 			const result = parseConfigExpr(
-				"MY_VAR || @b9g/fallback",
+				"$MY_VAR || @b9g/fallback",
 				{MY_VAR: "@b9g/from-env"},
 				{strict: false},
 			);
 			expect(result).toBe("@b9g/from-env");
+		});
+	});
+
+	describe("P1: path suffix should not mask missing env vars", () => {
+		it("throws in strict mode when env var with path suffix is missing", () => {
+			// $DATADIR/uploads with DATADIR unset should throw, not resolve to "uploads"
+			expect(() => {
+				parseConfigExpr("$DATADIR/uploads", {}, {strict: true});
+			}).toThrow();
+		});
+
+		it("returns undefined (not partial path) in non-strict mode when env var missing", () => {
+			// In non-strict mode, missing env var should make the whole expression undefined
+			// not silently drop the variable and return just the suffix
+			const result = parseConfigExpr("$DATADIR/uploads", {}, {strict: false});
+			expect(result).toBeUndefined();
+		});
+
+		it("works correctly when env var with path suffix is set", () => {
+			const result = parseConfigExpr(
+				"$DATADIR/uploads",
+				{DATADIR: "/var/data"},
+				{strict: true},
+			);
+			expect(result).toBe("/var/data/uploads");
 		});
 	});
 });

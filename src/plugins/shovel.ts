@@ -55,7 +55,13 @@ export function createConfigPlugin(
 	options: ConfigPluginOptions = {},
 ): ESBuild.Plugin {
 	const rawConfig = loadRawConfig(projectRoot);
+	// Resolve outDir to absolute path
+	const absoluteOutDir = isAbsolute(outDir)
+		? outDir
+		: join(projectRoot, outDir);
 	const configModuleCode = generateConfigModule(rawConfig, {
+		projectDir: projectRoot,
+		outDir: absoluteOutDir,
 		platformDefaults: options.platformDefaults,
 	});
 
