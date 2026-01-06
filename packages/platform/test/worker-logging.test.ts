@@ -40,6 +40,9 @@ self.addEventListener("message", async (event) => {
 				error: err.message,
 			});
 		}
+	} else if (message.type === "shutdown") {
+		// Handle graceful shutdown
+		postMessage({type: "shutdown-complete"});
 	}
 });
 

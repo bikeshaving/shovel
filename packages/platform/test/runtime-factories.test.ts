@@ -165,7 +165,8 @@ describe("createDirectoryFactory", () => {
 		expect(capturedOptions.customOption).toBe("value");
 	});
 
-	test("resolves 'tmpdir' marker to os.tmpdir()", async () => {
+	test("passes pre-resolved path to DirectoryClass", async () => {
+		// Paths are now resolved at build time, so the factory just passes them through
 		let capturedOptions: any;
 
 		class TestDirectory {
@@ -174,17 +175,17 @@ describe("createDirectoryFactory", () => {
 			}
 		}
 
+		// Simulate pre-resolved tmpdir path (as would be generated at build time)
+		const resolvedTmpPath = tmpdir();
 		const factory = createDirectoryFactory({
 			tmp: {
 				DirectoryClass: TestDirectory as any,
-				path: "tmpdir", // Special marker
+				path: resolvedTmpPath,
 			},
 		});
 
 		await factory("tmp");
-		// Should resolve to actual system temp directory, not literal "tmpdir"
-		expect(capturedOptions.path).toBe(tmpdir());
-		expect(capturedOptions.path).not.toBe("tmpdir");
+		expect(capturedOptions.path).toBe(resolvedTmpPath);
 	});
 });
 

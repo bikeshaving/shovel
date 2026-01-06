@@ -26,7 +26,7 @@ export interface FilesystemTestConfig {
 /**
  * Run WPT fs tests against a FileSystemDirectoryHandle implementation
  *
- * @param name Name for the test suite (e.g., "MemoryDirectory", "NodeDirectory")
+ * @param name Name for the test suite (e.g., "MemoryDirectory", "NodeFSDirectory")
  * @param config Test configuration
  */
 export function runFilesystemTests(

@@ -5,80 +5,167 @@
 import {describe, it, expect} from "bun:test";
 import {
 	exprToCode,
-	generateConfigModule,
+	generateConfigModule as _generateConfigModule,
 	generateStorageTypes,
+	type ShovelConfig,
 } from "../src/utils/config.js";
+
+// Helper to provide default projectDir and outDir for tests
+function generateConfigModule(
+	config: ShovelConfig,
+	options?: {
+		platformDefaults?: {
+			directories?: Record<
+				string,
+				{module: string; export?: string; [key: string]: unknown}
+			>;
+			caches?: Record<
+				string,
+				{module: string; export?: string; [key: string]: unknown}
+			>;
+		};
+	},
+) {
+	return _generateConfigModule(config, {
+		projectDir: "/test/project",
+		outDir: "/test/project/dist",
+		...options,
+	});
+}
 
 describe("exprToCode", () => {
 	describe("literals", () => {
-		// Note: exprToCode treats plain strings as literals, not as numbers/booleans
-		// It only parses as expressions if they contain operators or are ALL_CAPS
+		// Note: exprToCode treats plain strings as literals (including ALL_CAPS)
+		// Env vars now require $ prefix
 		it("converts plain strings to string literals", () => {
-			expect(exprToCode("3000")).toBe('"3000"');
-			expect(exprToCode("redis")).toBe('"redis"');
-			expect(exprToCode("memory")).toBe('"memory"');
-			expect(exprToCode("localhost")).toBe('"localhost"');
+			expect(exprToCode("3000").code).toBe('"3000"');
+			expect(exprToCode("redis").code).toBe('"redis"');
+			expect(exprToCode("memory").code).toBe('"memory"');
+			expect(exprToCode("localhost").code).toBe('"localhost"');
+		});
+
+		it("treats ALL_CAPS without $ as string literals", () => {
+			// Breaking change: bare ALL_CAPS is now literal, not env var
+			expect(exprToCode("PORT").code).toBe('"PORT"');
+			expect(exprToCode("MY_KV_BINDING").code).toBe('"MY_KV_BINDING"');
 		});
 
 		it("converts kebab-case to string literals", () => {
-			expect(exprToCode("my-bucket")).toBe('"my-bucket"');
-			expect(exprToCode("api-v1")).toBe('"api-v1"');
+			expect(exprToCode("my-bucket").code).toBe('"my-bucket"');
+			expect(exprToCode("api-v1").code).toBe('"api-v1"');
 		});
 
 		it("converts URLs to string literals", () => {
-			expect(exprToCode("redis://localhost:6379")).toBe(
+			expect(exprToCode("redis://localhost:6379").code).toBe(
 				'"redis://localhost:6379"',
 			);
-			expect(exprToCode("https://example.com")).toBe('"https://example.com"');
-		});
-
-		it("converts paths to string literals", () => {
-			expect(exprToCode("./uploads")).toBe('"./uploads"');
-			expect(exprToCode("/var/data")).toBe('"/var/data"');
+			expect(exprToCode("https://example.com").code).toBe(
+				'"https://example.com"',
+			);
 		});
 	});
 
-	describe("environment variables", () => {
-		it("converts ALL_CAPS to process.env reference", () => {
-			expect(exprToCode("PORT")).toBe("process.env.PORT");
-			expect(exprToCode("REDIS_URL")).toBe("process.env.REDIS_URL");
-			expect(exprToCode("NODE_ENV")).toBe("process.env.NODE_ENV");
+	describe("environment variables with $ prefix", () => {
+		it("converts $VAR to process.env.VAR", () => {
+			expect(exprToCode("$PORT").code).toBe("process.env.PORT");
+			expect(exprToCode("$REDIS_URL").code).toBe("process.env.REDIS_URL");
+			expect(exprToCode("$NODE_ENV").code).toBe("process.env.NODE_ENV");
+			expect(exprToCode("$MY_VAR").code).toBe("process.env.MY_VAR");
 		});
 
-		it("handles env vars with numbers", () => {
-			expect(exprToCode("AWS_S3_BUCKET")).toBe("process.env.AWS_S3_BUCKET");
+		it("handles env vars starting with underscore", () => {
+			expect(exprToCode("$_FOO").code).toBe("process.env._FOO");
+			expect(exprToCode("$__STATIC_CONTENT").code).toBe(
+				"process.env.__STATIC_CONTENT",
+			);
+			expect(exprToCode("$_HANDLER || fallback").code).toBe(
+				'(process.env._HANDLER || "fallback")',
+			);
 		});
 	});
 
 	describe("operators", () => {
 		it("handles || fallback", () => {
-			// exprToCode wraps expressions in parentheses and treats numbers as numbers
-			expect(exprToCode("PORT || 3000")).toBe("(process.env.PORT || 3000)");
-			expect(exprToCode("HOST || localhost")).toBe(
+			expect(exprToCode("$PORT || 3000").code).toBe(
+				"(process.env.PORT || 3000)",
+			);
+			expect(exprToCode("$HOST || localhost").code).toBe(
 				'(process.env.HOST || "localhost")',
 			);
 		});
 
 		it("handles ?? nullish coalescing", () => {
-			expect(exprToCode("PORT ?? 3000")).toBe("(process.env.PORT ?? 3000)");
+			expect(exprToCode("$PORT ?? 3000").code).toBe(
+				"(process.env.PORT ?? 3000)",
+			);
 		});
 
 		it("handles === comparison", () => {
-			expect(exprToCode("NODE_ENV === production")).toBe(
+			expect(exprToCode("$NODE_ENV === production").code).toBe(
 				'(process.env.NODE_ENV === "production")',
 			);
 		});
 
 		it("handles ternary expressions", () => {
-			expect(exprToCode("NODE_ENV === production ? redis : memory")).toBe(
+			expect(exprToCode("$NODE_ENV === production ? redis : memory").code).toBe(
 				'((process.env.NODE_ENV === "production") ? "redis" : "memory")',
 			);
 		});
 
 		it("handles complex expressions", () => {
-			const result = exprToCode("REDIS_URL || redis://localhost:6379");
-			expect(result).toBe(
+			const result = exprToCode("$REDIS_URL || redis://localhost:6379");
+			expect(result.code).toBe(
 				'(process.env.REDIS_URL || "redis://localhost:6379")',
+			);
+		});
+	});
+
+	describe("bracket placeholders", () => {
+		it("converts [outdir] to __SHOVEL_OUTDIR__", () => {
+			expect(exprToCode("[outdir]").code).toBe("__SHOVEL_OUTDIR__");
+		});
+
+		it("converts [tmpdir] to tmpdir() call", () => {
+			expect(exprToCode("[tmpdir]").code).toBe("tmpdir()");
+		});
+
+		it("converts [git] to __SHOVEL_GIT__", () => {
+			expect(exprToCode("[git]").code).toBe("__SHOVEL_GIT__");
+		});
+	});
+
+	describe("path joining", () => {
+		it("joins required env var with path suffix (throws if missing)", () => {
+			const result = exprToCode("$DATADIR/uploads");
+			// Required env vars generate code that throws if missing, not filter(Boolean)
+			expect(result.code).toBe(
+				'(() => { const v = process.env.DATADIR; if (v == null) throw new Error("Required env var DATADIR is not set"); return [v, "uploads"].join("/"); })()',
+			);
+		});
+
+		it("joins bracket placeholder with path suffix", () => {
+			expect(exprToCode("[outdir]/server").code).toBe(
+				'[__SHOVEL_OUTDIR__, "server"].filter(Boolean).join("/")',
+			);
+			expect(exprToCode("[tmpdir]/cache").code).toBe(
+				'[tmpdir(), "cache"].filter(Boolean).join("/")',
+			);
+			expect(exprToCode("[git]/deploy").code).toBe(
+				'[__SHOVEL_GIT__, "deploy"].filter(Boolean).join("/")',
+			);
+		});
+
+		it("joins multiple path segments with required env var", () => {
+			expect(exprToCode("$DATADIR/uploads/images").code).toBe(
+				'(() => { const v = process.env.DATADIR; if (v == null) throw new Error("Required env var DATADIR is not set"); return [v, "uploads", "images"].join("/"); })()',
+			);
+		});
+
+		it("joins fallback expression with suffix (uses filter since optional)", () => {
+			const result = exprToCode("($CACHE || [tmpdir])/myapp");
+			// Fallback expressions use filter(Boolean) since they have a default
+			expect(result.code).toBe(
+				'[((process.env.CACHE || tmpdir())), "myapp"].filter(Boolean).join("/")',
 			);
 		});
 	});
@@ -86,11 +173,11 @@ describe("exprToCode", () => {
 	describe("quoted strings", () => {
 		it("preserves quoted strings literally", () => {
 			// exprToCode escapes double quotes within the output
-			expect(exprToCode('"literal string"')).toBe(
+			expect(exprToCode('"literal string"').code).toBe(
 				'"' + '\\"literal string\\"' + '"',
 			);
 			// Single quotes are not escaped since output uses double quotes
-			expect(exprToCode("'single quoted'")).toBe("\"'single quoted'\"");
+			expect(exprToCode("'single quoted'").code).toBe("\"'single quoted'\"");
 		});
 	});
 });
@@ -101,6 +188,7 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule({});
 
 			expect(module).toContain("export const config");
+			// Default port/host still use process.env for backwards compatibility
 			expect(module).toContain("process.env.PORT");
 			expect(module).toContain("process.env.HOST");
 		});
@@ -117,16 +205,17 @@ describe("generateConfigModule", () => {
 			expect(module).toContain('host: "0.0.0.0"');
 		});
 
-		it("handles port/host as expressions", () => {
+		it("handles port/host as expressions with $ prefix", () => {
 			const config = {
-				port: "PORT || 3000",
-				host: "HOST || localhost",
+				port: "$PORT || 3000",
+				host: "$HOST || localhost",
 			};
 
 			const module = generateConfigModule(config);
 
-			expect(module).toContain("process.env.PORT");
-			expect(module).toContain("process.env.HOST");
+			// Should use process.env directly, no platform imports
+			expect(module).not.toContain('@b9g/platform/config"');
+			expect(module).toContain("(process.env.PORT || 3000)");
 			expect(module).toContain('(process.env.HOST || "localhost")');
 		});
 	});
@@ -181,8 +270,8 @@ describe("generateConfigModule", () => {
 
 			const module = generateConfigModule(config);
 
-			// No import needed
-			expect(module).not.toContain("import");
+			// No provider imports needed (no module specified)
+			expect(module).not.toContain("cache_");
 			// Config should be passed through
 			expect(module).toContain("sessions:");
 			expect(module).toContain("maxEntries: 100");
@@ -270,8 +359,8 @@ describe("generateConfigModule", () => {
 			// Should still have the import from platform defaults
 			expect(module).toContain('from "@b9g/filesystem/node-fs"');
 			expect(module).toContain("DirectoryClass: directory_");
-			// User's path override should be present
-			expect(module).toContain("./my-tmp");
+			// User's path override should be present as literal
+			expect(module).toContain('path: "./my-tmp"');
 		});
 
 		it("preserves module/export when user only overrides cache options", () => {
@@ -337,8 +426,8 @@ describe("generateConfigModule", () => {
 				caches: {
 					sessions: {
 						module: "@b9g/cache-redis",
-						url: "REDIS_URL",
-						password: "REDIS_PASSWORD",
+						url: "$REDIS_URL",
+						password: "$REDIS_PASSWORD",
 					},
 				},
 			};
@@ -353,39 +442,40 @@ describe("generateConfigModule", () => {
 			expect(module).toContain("process.env.REDIS_PASSWORD");
 		});
 
-		it("keeps URL with credentials as env reference", () => {
+		it("keeps URL with credentials as process.env reference", () => {
 			const config = {
 				caches: {
 					sessions: {
 						module: "@b9g/cache-redis",
-						url: "REDIS_URL || redis://localhost:6379",
+						url: "$REDIS_URL || redis://localhost:6379",
 					},
 				},
 			};
 
 			const module = generateConfigModule(config, {});
 
-			// Should have env reference with fallback
-			expect(module).toContain("process.env.REDIS_URL");
-			expect(module).toContain('"redis://localhost:6379"');
+			// Should have process.env reference with fallback using || operator
+			expect(module).toContain(
+				'(process.env.REDIS_URL || "redis://localhost:6379")',
+			);
 		});
 
 		it("never exposes env var values in output", () => {
 			const config = {
-				port: "PORT || 3000",
-				host: "HOST",
+				port: "$PORT || 3000",
+				host: "$HOST",
 				caches: {
 					sessions: {
 						module: "@b9g/cache-redis",
-						url: "REDIS_URL",
+						url: "$REDIS_URL",
 					},
 				},
 				directories: {
 					files: {
 						module: "@b9g/filesystem-s3",
-						bucket: "S3_BUCKET",
-						accessKey: "AWS_ACCESS_KEY",
-						secretKey: "AWS_SECRET_KEY",
+						bucket: "$S3_BUCKET",
+						accessKey: "$AWS_ACCESS_KEY",
+						secretKey: "$AWS_SECRET_KEY",
 					},
 				},
 			};
@@ -402,8 +492,8 @@ describe("generateConfigModule", () => {
 			expect(module).not.toContain("wJalrXUtnFEMI");
 
 			// Only process.env references should appear
-			expect(module).toContain("process.env.PORT");
-			expect(module).toContain("process.env.HOST");
+			expect(module).toContain("process.env.PORT"); // has fallback via ||
+			expect(module).toContain("process.env.HOST"); // no fallback
 			expect(module).toContain("process.env.REDIS_URL");
 			expect(module).toContain("process.env.S3_BUCKET");
 			expect(module).toContain("process.env.AWS_ACCESS_KEY");
@@ -529,8 +619,9 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(config);
 
 			expect(module).toContain('from "@b9g/zen/bun"');
-			expect(module).toContain("databases:");
-			expect(module).toContain("main:");
+			// databases uses a getter because url contains joinPath (a platform function)
+			expect(module).toContain("get databases()");
+			expect(module).toContain("get main()");
 		});
 	});
 });

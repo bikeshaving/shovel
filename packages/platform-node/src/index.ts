@@ -5,6 +5,7 @@
  */
 
 import {builtinModules} from "node:module";
+import {tmpdir} from "node:os";
 import {
 	BasePlatform,
 	type PlatformConfig,
@@ -39,6 +40,7 @@ import {getLogger} from "@logtape/logtape";
 // Entry template embedded as string
 const entryTemplate = `// Node.js Production Server Entry
 // This file is imported as text and used as the entry wrapper template
+import {tmpdir} from "os"; // For [tmpdir] config expressions
 import {getLogger} from "@logtape/logtape";
 import {configureLogging} from "@b9g/platform/runtime";
 import {config} from "shovel:config"; // Virtual module - resolved at build time
@@ -49,6 +51,9 @@ await configureLogging(config.logging);
 
 const logger = getLogger(["platform"]);
 
+// Create platform instance
+const platform = new Platform();
+
 // Configuration from shovel:config (with process.env fallbacks baked in)
 const PORT = config.port;
 const HOST = config.host;
@@ -56,9 +61,6 @@ const WORKER_COUNT = config.workers;
 
 logger.info("Starting production server", {});
 logger.info("Workers", {count: WORKER_COUNT});
-
-// Create platform instance
-const platform = new Platform();
 
 // Get the path to the user's ServiceWorker code
 const userCodeURL = new URL("./server.js", import.meta.url);
@@ -94,8 +96,10 @@ process.on("SIGTERM", shutdown);
 `;
 
 // Worker entry template - platform defaults are merged at build time into config
+// Paths are resolved at build time by the path syntax parser
 const workerEntryTemplate = `// Worker Entry for ServiceWorkerPool
 // This file sets up the ServiceWorker runtime and message loop
+import {tmpdir} from "os"; // For [tmpdir] config expressions
 import {config} from "shovel:config";
 import {initWorkerRuntime, startWorkerMessageLoop, configureLogging} from "@b9g/platform/runtime";
 
@@ -103,8 +107,8 @@ import {initWorkerRuntime, startWorkerMessageLoop, configureLogging} from "@b9g/
 await configureLogging(config.logging);
 
 // Initialize the worker runtime (installs ServiceWorker globals)
-// Platform defaults are already merged into config.directories at build time
-const {registration} = await initWorkerRuntime({config});
+// Platform defaults and paths are already resolved at build time
+const {registration, databases} = await initWorkerRuntime({config});
 
 // Import user code (registers event handlers via addEventListener)
 // Must use dynamic import to ensure globals are installed first
@@ -115,7 +119,8 @@ await registration.install();
 await registration.activate();
 
 // Start the message loop (handles request/response messages from main thread)
-startWorkerMessageLoop(registration);
+// Pass databases for graceful shutdown (close connections before termination)
+startWorkerMessageLoop({registration, databases});
 `;
 
 const logger = getLogger(["shovel", "platform"]);
@@ -265,14 +270,12 @@ export class NodePlatform extends BasePlatform {
 
 		// Create shared directory storage from config (with runtime defaults)
 		if (!this.#directoryStorage) {
-			// Runtime defaults with actual class references (must match getDefaults())
-			const runtimeDirDefaults: Record<
-				string,
-				{DirectoryClass: any; path?: string}
-			> = {
-				server: {DirectoryClass: NodeFSDirectory, path: "."},
-				public: {DirectoryClass: NodeFSDirectory, path: "../public"},
-				tmp: {DirectoryClass: NodeFSDirectory, path: "tmpdir"},
+			// Runtime defaults provide DirectoryClass for platform-provided directories
+			// Paths come from the generated config (resolved at build time)
+			const runtimeDirDefaults: Record<string, {DirectoryClass: any}> = {
+				server: {DirectoryClass: NodeFSDirectory},
+				public: {DirectoryClass: NodeFSDirectory},
+				tmp: {DirectoryClass: NodeFSDirectory},
 			};
 			const userDirs = config?.directories ?? {};
 			// Deep merge per entry
@@ -487,11 +490,12 @@ export class NodePlatform extends BasePlatform {
 	 */
 	async createDirectories(): Promise<CustomDirectoryStorage> {
 		// Runtime defaults with actual class references (not module/export strings)
+		// Note: These are test-time defaults - production uses build-time resolved paths
 		const runtimeDefaults: Record<string, {DirectoryClass: any; path: string}> =
 			{
-				server: {DirectoryClass: NodeFSDirectory, path: "."},
-				public: {DirectoryClass: NodeFSDirectory, path: "../public"},
-				tmp: {DirectoryClass: NodeFSDirectory, path: "tmpdir"},
+				server: {DirectoryClass: NodeFSDirectory, path: this.#options.cwd},
+				public: {DirectoryClass: NodeFSDirectory, path: this.#options.cwd},
+				tmp: {DirectoryClass: NodeFSDirectory, path: tmpdir()},
 			};
 		const userDirs = this.#options.config?.directories ?? {};
 		// Deep merge per entry so user can override options without losing DirectoryClass
@@ -710,18 +714,17 @@ export class NodePlatform extends BasePlatform {
 				server: {
 					module: "@b9g/filesystem/node-fs",
 					export: "NodeFSDirectory",
-					path: ".",
+					path: "[outdir]/server",
 				},
 				public: {
 					module: "@b9g/filesystem/node-fs",
 					export: "NodeFSDirectory",
-					path: "../public",
+					path: "[outdir]/public",
 				},
 				tmp: {
 					module: "@b9g/filesystem/node-fs",
 					export: "NodeFSDirectory",
-					// Note: "tmpdir" is a special marker - the runtime uses os.tmpdir()
-					path: "tmpdir",
+					path: "[tmpdir]",
 				},
 			},
 		};
@@ -754,6 +757,17 @@ export class NodePlatform extends BasePlatform {
 			await this.#databaseStorage.closeAll();
 			this.#databaseStorage = undefined;
 		}
+	}
+
+	// =========================================================================
+	// Config Expression Method Overrides
+	// =========================================================================
+
+	/**
+	 * Get the OS temp directory (Node.js-specific implementation)
+	 */
+	tmpdir(): string {
+		return tmpdir();
 	}
 }
 

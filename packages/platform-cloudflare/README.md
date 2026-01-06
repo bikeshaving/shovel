@@ -1,14 +1,6 @@
 # @b9g/platform-cloudflare
 
-Cloudflare Workers platform adapter for Shovel. Runs ServiceWorker applications on Cloudflare's edge network with KV storage and Durable Objects support.
-
-## Features
-
-- Cloudflare Workers integration
-- KV storage for caching
-- R2 bucket support for assets
-- Durable Objects for stateful apps
-- Standards-compliant ServiceWorker API
+Cloudflare Workers platform adapter for Shovel. Runs ServiceWorker applications on Cloudflare's edge network with R2 storage and static assets support.
 
 ## Installation
 
@@ -16,95 +8,106 @@ Cloudflare Workers platform adapter for Shovel. Runs ServiceWorker applications 
 npm install @b9g/platform-cloudflare
 ```
 
-## Usage
+## Module Structure
 
-```javascript
-import CloudflarePlatform from '@b9g/platform-cloudflare';
+```
+@b9g/platform-cloudflare
+├── /caches      # CloudflareNativeCache (Cloudflare Cache API wrapper)
+├── /directories # CloudflareR2Directory, CloudflareAssetsDirectory
+├── /variables   # envStorage (per-request Cloudflare env access)
+└── /runtime     # Worker bootstrap (initializeRuntime, createFetchHandler)
+```
 
-const platform = new CloudflarePlatform({
-  cache: { type: 'kv', binding: 'CACHE_KV' },
-  filesystem: { type: 'r2', binding: 'ASSETS_R2' }
-});
+## Configuration
 
-export default {
-  async fetch(request, env, ctx) {
-    return await platform.handleRequest(request);
+Configure in `shovel.json`:
+
+```json
+{
+  "platform": "cloudflare",
+  "caches": {
+    "default": {
+      "module": "@b9g/platform-cloudflare/caches"
+    }
+  },
+  "directories": {
+    "public": {
+      "module": "@b9g/platform-cloudflare/directories",
+      "export": "CloudflareAssetsDirectory"
+    },
+    "uploads": {
+      "module": "@b9g/platform-cloudflare/directories",
+      "binding": "uploads_r2"
+    }
   }
-};
+}
 ```
 
 ## Requirements
 
-Shovel requires Node.js compatibility for AsyncLocalStorage (used by AsyncContext polyfill for `self.cookieStore`). Add to your `wrangler.toml`:
+Shovel requires Node.js compatibility for AsyncLocalStorage and process.env support. Add to your `wrangler.toml`:
 
 ```toml
-compatibility_date = "2024-09-23"
+compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
 ```
+
+With `compatibility_date` of 2025-04-01 or later, `process.env` is automatically populated with your environment variables and secrets at module load time. For earlier dates, add `nodejs_compat_populate_process_env` to compatibility_flags.
 
 ## Exports
 
-### Classes
+### Main Package (`@b9g/platform-cloudflare`)
 
-- `CloudflarePlatform` - Cloudflare Workers platform implementation (extends BasePlatform)
-- `CFAssetsDirectoryHandle` - FileSystemDirectoryHandle for Cloudflare Workers Static Assets
-- `CFAssetsFileHandle` - FileSystemFileHandle for Cloudflare Workers Static Assets
+- `CloudflarePlatform` - Platform adapter (default export)
 
-### Functions
+### Caches (`@b9g/platform-cloudflare/caches`)
 
-- `createOptionsFromEnv(env)` - Create platform options from Cloudflare env bindings
-- `generateWranglerConfig(options)` - Generate wrangler.toml configuration
+- `CloudflareNativeCache` - Wrapper around Cloudflare's Cache API (default export)
 
-### Types
+### Directories (`@b9g/platform-cloudflare/directories`)
 
-- `CloudflarePlatformOptions` - Configuration options for CloudflarePlatform
-- `CFAssetsBinding` - Type for Cloudflare Workers Static Assets binding
+- `CloudflareR2Directory` - FileSystemDirectoryHandle for R2 buckets (default export)
+- `CloudflareAssetsDirectory` - FileSystemDirectoryHandle for static assets
+- `R2FileSystemDirectoryHandle` - Base R2 directory implementation
+- `R2FileSystemFileHandle` - Base R2 file implementation
+- `CFAssetsDirectoryHandle` - Base assets directory implementation
+- `CFAssetsFileHandle` - Base assets file implementation
 
-### Constants
+### Runtime (`@b9g/platform-cloudflare/runtime`)
 
-- `cloudflareWorkerBanner` - ES Module wrapper banner for Cloudflare Workers
-- `cloudflareWorkerFooter` - ES Module wrapper footer
+- `initializeRuntime(config)` - Initialize worker runtime
+- `createFetchHandler(registration)` - Create ES module fetch handler
+- `CloudflareFetchEvent` - Extended FetchEvent with env bindings
 
-### Default Export
+### Variables (`@b9g/platform-cloudflare/variables`)
 
-- `CloudflarePlatform` - The platform class
+- `envStorage` - AsyncContext for per-request Cloudflare env access
+- `getEnv()` - Get current request's env bindings
 
-## API
+## Bindings
 
-### `new CloudflarePlatform(options?)`
-
-Creates a new Cloudflare platform instance.
-
-**Options:**
-- `cache`: Cache configuration (KV binding)
-- `filesystem`: Filesystem configuration (R2 binding)
-- `env`: Cloudflare environment bindings
-
-### Bindings
-
-Configure bindings in `wrangler.toml`:
+Configure bindings in `wrangler.toml`. Use lowercase binding names to avoid env expression parsing issues:
 
 ```toml
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
-[[kv_namespaces]]
-binding = "CACHE_KV"
-id = "your-kv-namespace-id"
-
+# R2 bucket for uploads directory
 [[r2_buckets]]
-binding = "ASSETS_R2"
-bucket_name = "your-bucket-name"
+binding = "uploads_r2"
+bucket_name = "my-uploads-bucket"
+
+# Static assets (always uses ASSETS binding)
+[assets]
+directory = "./public"
 ```
 
-## Cache Backends
+## Directory Types
 
-- `kv`: Cloudflare KV storage
-- `cache-api`: Cloudflare Cache API (default)
-
-## Filesystem Backends
-
-- `r2`: Cloudflare R2 bucket storage
+| Type | Use Case | Read/Write | Binding |
+|------|----------|------------|---------|
+| R2 | User uploads, dynamic storage | Both | User-defined |
+| Assets | Static files deployed with worker | Read-only | Always `ASSETS` |
 
 ## License
 

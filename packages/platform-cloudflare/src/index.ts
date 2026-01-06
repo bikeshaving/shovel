@@ -34,10 +34,7 @@ import type {Miniflare} from "miniflare";
 const logger = getLogger(["platform"]);
 
 // Import CloudflareNativeCache for local use (in createCaches)
-// Also re-export for backwards compatibility
-// NOTE: For bundled builds, import from @b9g/platform-cloudflare/runtime instead
-import {CloudflareNativeCache} from "./runtime.js";
-export {CloudflareNativeCache};
+import {CloudflareNativeCache} from "./caches.js";
 
 // Re-export common platform types
 export type {
@@ -128,7 +125,7 @@ export class CloudflarePlatform extends BasePlatform {
 	async createDirectories(): Promise<DirectoryStorage> {
 		throw new Error(
 			"Cloudflare Workers do not have default directories. " +
-				"Configure directories in shovel.json using R2 or other storage bindings.",
+				"Configure directories in shovel.json using Cloudflare directory classes.",
 		);
 	}
 
@@ -201,6 +198,17 @@ export class CloudflarePlatform extends BasePlatform {
 		}
 
 		const mf = this.#miniflare;
+		const assetsMf = this.#assetsMiniflare;
+
+		// Create dispose function that also clears platform references
+		const disposeInstance = async () => {
+			await mf.dispose();
+			this.#miniflare = null;
+			if (assetsMf) {
+				await assetsMf.dispose();
+				this.#assetsMiniflare = null;
+			}
+		};
 
 		const instance: ServiceWorkerInstance = {
 			runtime: mf,
@@ -222,9 +230,7 @@ export class CloudflarePlatform extends BasePlatform {
 			get ready() {
 				return true;
 			},
-			dispose: async () => {
-				await mf.dispose();
-			},
+			dispose: disposeInstance,
 		};
 
 		logger.info("Miniflare dev server ready", {});
@@ -265,6 +271,10 @@ const registration = await initializeRuntime(config);
 
 import ${safePath};
 
+// Run ServiceWorker lifecycle (install/activate events for migrations, cache warmup, etc.)
+await registration.install();
+await registration.activate();
+
 export default { fetch: createFetchHandler(registration) };
 `;
 	}
@@ -300,74 +310,22 @@ export default { fetch: createFetchHandler(registration) };
 
 	/**
 	 * Get Cloudflare-specific defaults for config generation
-	 *
-	 * Cloudflare Workers don't have default directories like Node/Bun.
-	 * Directories must be explicitly configured with R2 or other bindings.
 	 */
 	getDefaults(): PlatformDefaults {
 		return {
 			caches: {
 				default: {
-					// Use runtime module to avoid pulling in Node.js dependencies from index.ts
-					module: "@b9g/platform-cloudflare/runtime",
-					export: "CloudflareNativeCache",
+					module: "@b9g/platform-cloudflare/caches",
 				},
 			},
-			// No default directories for Cloudflare - must be configured via shovel.json
+			directories: {
+				public: {
+					module: "@b9g/platform-cloudflare/directories",
+					export: "CloudflareAssetsDirectory",
+				},
+			},
 		};
 	}
 }
 
-// ============================================================================
-// WRANGLER UTILITIES
-// ============================================================================
-
-export function createOptionsFromEnv(env: any): CloudflarePlatformOptions {
-	return {
-		environment: env.ENVIRONMENT || "production",
-	};
-}
-
-export function generateWranglerConfig(options: {
-	name: string;
-	entrypoint: string;
-	cacheAdapter?: string;
-	filesystemAdapter?: string;
-	kvNamespaces?: string[];
-	r2Buckets?: string[];
-	d1Databases?: string[];
-}): string {
-	const {
-		name,
-		entrypoint,
-		filesystemAdapter,
-		kvNamespaces = [],
-		r2Buckets = [],
-		d1Databases = [],
-	} = options;
-
-	const autoR2Buckets = filesystemAdapter === "r2" ? ["STORAGE_R2"] : [];
-	const allKVNamespaces = [...new Set(kvNamespaces)];
-	const allR2Buckets = [...new Set([...r2Buckets, ...autoR2Buckets])];
-
-	return `# Generated wrangler.toml for Shovel app
-name = "${name}"
-main = "${entrypoint}"
-compatibility_date = "2024-09-23"
-compatibility_flags = ["nodejs_compat"]
-
-${allKVNamespaces.length > 0 ? allKVNamespaces.map((kv) => `[[kv_namespaces]]\nbinding = "${kv}"\nid = "your-kv-id"`).join("\n\n") : "# No KV namespaces configured"}
-
-${allR2Buckets.length > 0 ? allR2Buckets.map((bucket) => `[[r2_buckets]]\nbinding = "${bucket}"\nbucket_name = "your-bucket-name"`).join("\n\n") : "# No R2 buckets configured"}
-
-${d1Databases.length > 0 ? d1Databases.map((db) => `[[d1_databases]]\nbinding = "${db}"\ndatabase_name = "your-db-name"\ndatabase_id = "your-db-id"`).join("\n\n") : "# No D1 databases configured"}
-`;
-}
-
 export default CloudflarePlatform;
-
-/**
- * Platform's default cache implementation.
- * Re-exported so config can reference: { module: "@b9g/platform-cloudflare", export: "DefaultCache" }
- */
-export {CloudflareNativeCache as DefaultCache};

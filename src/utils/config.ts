@@ -19,6 +19,8 @@
  */
 
 import {readFileSync} from "fs";
+import {tmpdir} from "os";
+import {join} from "path";
 import {z} from "zod";
 
 /**
@@ -35,10 +37,12 @@ export const DEFAULTS = {
 
 /**
  * Regex to detect if a string looks like a config expression
- * Matches: operators (||, ??, &&, ===, !==, ==, !=, ?, :, !) or ALL_CAPS env vars
+ * Matches: operators (||, ??, &&, ===, !==, ==, !=), $VAR env refs, or dunders
+ * Note: ? and : are not included alone because they appear in URLs (http://...)
+ * Ternary expressions require at least one of the other operators
  */
 const EXPRESSION_PATTERN =
-	/(\|\||\?\?|&&|===|!==|==|!=|[?:!]|^[A-Z][A-Z0-9_]*$)/;
+	/(\|\||\?\?|&&|===|!==|==|!=|\$[A-Za-z_]|\[outdir\]|\[tmpdir\]|\[git\])/;
 
 /**
  * Get environment variables from import.meta.env or process.env
@@ -71,6 +75,13 @@ enum TokenType {
 	NULL = "NULL",
 	UNDEFINED = "UNDEFINED",
 	IDENTIFIER = "IDENTIFIER",
+
+	// Expression-specific
+	ENV_VAR = "ENV_VAR", // $IDENTIFIER
+	OUTDIR = "OUTDIR", // [outdir]
+	TMPDIR = "TMPDIR", // [tmpdir]
+	GIT = "GIT", // [git]
+	SLASH = "SLASH", // / (path join operator)
 
 	// Operators
 	QUESTION = "?",
@@ -226,6 +237,61 @@ class Tokenizer {
 			return {type: TokenType.RPAREN, value: ")", start, end: this.#pos};
 		}
 
+		// Environment variable: $IDENTIFIER
+		if (ch === "$") {
+			this.#advance(); // consume $
+			let name = "";
+			// Env var names: start with letter, then letters/digits/underscore
+			while (/[A-Za-z0-9_]/.test(this.#peek())) {
+				name += this.#advance();
+			}
+			if (!name) {
+				throw new Error(`Expected env var name after $ at position ${start}`);
+			}
+			return {type: TokenType.ENV_VAR, value: name, start, end: this.#pos};
+		}
+
+		// Slash for path joining
+		if (ch === "/") {
+			this.#advance();
+			return {type: TokenType.SLASH, value: "/", start, end: this.#pos};
+		}
+
+		// Bracket placeholders: [outdir], [tmpdir], [git]
+		if (ch === "[") {
+			const remaining = this.#input.slice(this.#pos);
+			if (remaining.startsWith("[outdir]")) {
+				this.#pos += 8;
+				return {
+					type: TokenType.OUTDIR,
+					value: "[outdir]",
+					start,
+					end: this.#pos,
+				};
+			}
+			if (remaining.startsWith("[tmpdir]")) {
+				this.#pos += 8;
+				return {
+					type: TokenType.TMPDIR,
+					value: "[tmpdir]",
+					start,
+					end: this.#pos,
+				};
+			}
+			if (remaining.startsWith("[git]")) {
+				this.#pos += 5;
+				return {
+					type: TokenType.GIT,
+					value: "[git]",
+					start,
+					end: this.#pos,
+				};
+			}
+			throw new Error(
+				`Unknown placeholder at position ${start}: ${remaining.slice(0, 10)}`,
+			);
+		}
+
 		// Colon - only tokenize as ternary operator when surrounded by whitespace
 		// This allows word:word patterns (like bun:sqlite, node:fs, custom:thing) to be single identifiers
 		// Ternary expressions use spaces: "cond ? a : b" not "cond?a:b"
@@ -245,10 +311,11 @@ class Tokenizer {
 
 		// Identifiers and literals
 		// Catchall: consume everything that's not whitespace or an operator
-		// This naturally handles: kebab-case, URLs, paths, env vars, camelCase, module specifiers (bun:sqlite), etc.
-		if (/\S/.test(ch) && !/[?!()=|&]/.test(ch)) {
+		// This naturally handles: kebab-case, camelCase, module specifiers (bun:sqlite), URLs, etc.
+		// Excludes: operators, $, single / (which have special meaning)
+		if (/\S/.test(ch) && !/[?!()=|&$/]/.test(ch)) {
 			let value = "";
-			while (/\S/.test(this.#peek()) && !/[?!()=|&]/.test(this.#peek())) {
+			while (/\S/.test(this.#peek()) && !/[?!()=|&$]/.test(this.#peek())) {
 				// Colon: include it in identifier if followed by non-whitespace (word:word pattern)
 				// Stop only if colon is followed by whitespace (ternary context)
 				if (this.#peek() === ":") {
@@ -256,7 +323,17 @@ class Tokenizer {
 					if (!next || /\s/.test(next)) {
 						break; // Ternary colon (followed by space or EOF)
 					}
-					// Otherwise include colon and continue (module specifier pattern)
+					// Otherwise include colon and continue (module specifier, URL pattern)
+				}
+				// Slash: include // (URLs) but stop at single / (path join)
+				if (this.#peek() === "/") {
+					if (this.#input[this.#pos + 1] === "/") {
+						// Double slash - part of URL, include both
+						value += this.#advance(); // first /
+						value += this.#advance(); // second /
+						continue;
+					}
+					break; // Single slash - path join operator
 				}
 				value += this.#advance();
 			}
@@ -276,7 +353,7 @@ class Tokenizer {
 					end: this.#pos,
 				};
 
-			// Identifier (env var or string literal)
+			// Identifier (string literal - bare ALL_CAPS is now literal, not env var)
 			return {type: TokenType.IDENTIFIER, value, start, end: this.#pos};
 		}
 
@@ -288,16 +365,46 @@ class Tokenizer {
 // PARSER
 // ============================================================================
 
+/**
+ * Platform functions for runtime expression evaluation.
+ * These are injected to allow testing and platform-specific implementations.
+ */
+interface PlatformFunctions {
+	outdir: () => string;
+	tmpdir: () => string;
+	git: () => string;
+	joinPath: (...segments: string[]) => string;
+}
+
+/**
+ * Default platform functions using Node.js APIs
+ */
+const defaultPlatformFunctions: PlatformFunctions = {
+	outdir: () => {
+		// Default to cwd - in real usage, this is set by the build system
+		// eslint-disable-next-line no-restricted-properties
+		return process.cwd();
+	},
+	tmpdir: () => tmpdir(),
+	git: () => {
+		// Default to "unknown" - in real usage, this is set by the build system
+		return "unknown";
+	},
+	joinPath: (...segments: string[]) => join(...segments),
+};
+
 class Parser {
 	#tokens: Token[];
 	#pos: number;
 	#env: Record<string, string | undefined>;
 	#strict: boolean;
+	#platform: PlatformFunctions;
 
 	constructor(
 		input: string,
 		env: Record<string, string | undefined>,
 		strict: boolean,
+		platform: PlatformFunctions = defaultPlatformFunctions,
 	) {
 		const tokenizer = new Tokenizer(input);
 		this.#tokens = [];
@@ -310,6 +417,7 @@ class Parser {
 		this.#pos = 0;
 		this.#env = env;
 		this.#strict = strict;
+		this.#platform = platform;
 	}
 
 	#peek(): Token {
@@ -428,19 +536,21 @@ class Parser {
 		return this.#parsePrimary();
 	}
 
-	// Primary := EnvVar | Literal | '(' Expr ')'
+	// Primary := PathExpr | Literal | '(' Expr ')'
+	// PathExpr := (EnvVar | Dunder | Identifier) PathSuffix?
+	// PathSuffix := ('/' Segment)+
 	#parsePrimary(): any {
 		const token = this.#peek();
 
-		// Parenthesized expression
+		// Parenthesized expression (may have path suffix)
 		if (token.type === TokenType.LPAREN) {
 			this.#advance(); // consume (
 			const value = this.#parseExpr();
 			this.#expect(TokenType.RPAREN);
-			return value;
+			return this.#parsePathSuffix(value);
 		}
 
-		// Literals
+		// Literals (no path suffix for these)
 		if (token.type === TokenType.STRING) {
 			this.#advance();
 			return token.value;
@@ -466,33 +576,85 @@ class Parser {
 			return undefined;
 		}
 
-		// Identifier (env var or string literal)
-		if (token.type === TokenType.IDENTIFIER) {
+		// Environment variable: $VAR (may have path suffix)
+		if (token.type === TokenType.ENV_VAR) {
 			this.#advance();
 			const name = token.value;
+			const value = this.#env[name];
 
-			// Check if it's ALL_CAPS (env var)
-			if (/^[A-Z][A-Z0-9_]*$/.test(name)) {
-				const value = this.#env[name];
-
-				// Return undefined for missing env vars - strict check happens after
-				// full expression evaluation (so || and ?? can provide fallbacks)
-
-				// Auto-convert numeric strings to numbers
-				if (typeof value === "string" && /^\d+$/.test(value)) {
-					return parseInt(value, 10);
-				}
-
-				return value;
+			// Auto-convert numeric strings to numbers
+			let result: any = value;
+			if (typeof value === "string" && /^\d+$/.test(value)) {
+				result = parseInt(value, 10);
 			}
 
-			// Otherwise it's a string literal (kebab-case, URL, camelCase, etc.)
-			return name;
+			return this.#parsePathSuffix(result);
+		}
+
+		// Bracket placeholders (may have path suffix)
+		if (token.type === TokenType.OUTDIR) {
+			this.#advance();
+			return this.#parsePathSuffix(this.#platform.outdir());
+		}
+		if (token.type === TokenType.TMPDIR) {
+			this.#advance();
+			return this.#parsePathSuffix(this.#platform.tmpdir());
+		}
+		if (token.type === TokenType.GIT) {
+			this.#advance();
+			return this.#parsePathSuffix(this.#platform.git());
+		}
+
+		// Identifier (string literal - may have path suffix for paths like ./data)
+		if (token.type === TokenType.IDENTIFIER) {
+			this.#advance();
+			return this.#parsePathSuffix(token.value);
 		}
 
 		throw new Error(
 			`Unexpected token ${token.type} at position ${token.start}`,
 		);
+	}
+
+	// Parse optional path suffix: ('/' Segment)+
+	// Returns the value joined with any path segments
+	#parsePathSuffix(base: any): any {
+		const segments: string[] = [];
+
+		while (this.#peek().type === TokenType.SLASH) {
+			this.#advance(); // consume /
+
+			// Collect path segment (next identifier or string)
+			const segToken = this.#peek();
+			if (
+				segToken.type === TokenType.IDENTIFIER ||
+				segToken.type === TokenType.STRING
+			) {
+				this.#advance();
+				segments.push(segToken.value);
+			} else if (segToken.type === TokenType.NUMBER) {
+				this.#advance();
+				segments.push(String(segToken.value));
+			} else {
+				throw new Error(
+					`Expected path segment after / at position ${segToken.start}`,
+				);
+			}
+		}
+
+		// No suffix - return base as-is
+		if (segments.length === 0) {
+			return base;
+		}
+
+		// If base is undefined, propagate it - don't silently convert to empty string
+		// This ensures missing env vars with path suffixes are properly detected
+		if (base === undefined) {
+			return undefined;
+		}
+
+		// Join base with segments using platform joinPath
+		return this.#platform.joinPath(String(base), ...segments);
 	}
 }
 
@@ -502,12 +664,12 @@ class Parser {
 export function parseConfigExpr(
 	expr: string,
 	env: Record<string, string | undefined> = getEnv(),
-	options: {strict?: boolean} = {},
+	options: {strict?: boolean; platform?: PlatformFunctions} = {},
 ): any {
 	const strict = options.strict !== false; // default true
 
 	try {
-		const parser = new Parser(expr, env, strict);
+		const parser = new Parser(expr, env, strict, options.platform);
 		const result = parser.parse();
 
 		// Strict mode: throw if final result is nullish (undefined or null)
@@ -518,8 +680,8 @@ export function parseConfigExpr(
 					`The expression "${expr}" resulted in a nullish value.\n` +
 					`Fix:\n` +
 					`  1. Set the missing env var(s)\n` +
-					`  2. Add a fallback: VAR || defaultValue\n` +
-					`  3. Add a nullish fallback: VAR ?? defaultValue`,
+					`  2. Add a fallback: $VAR || defaultValue\n` +
+					`  3. Add a nullish fallback: $VAR ?? defaultValue`,
 			);
 		}
 
@@ -572,10 +734,10 @@ export function processConfigValue(
  * Code generator that outputs JS code instead of evaluating expressions.
  * Used for generating the shovel:config virtual module at build time.
  *
- * Instead of evaluating "PORT || 3000" to a value, it outputs:
- *   process.env.PORT || 3000
+ * Instead of evaluating "$PORT || 3000" to a value, it outputs:
+ *   env("PORT") || 3000
  *
- * This keeps secrets as process.env references (evaluated at runtime).
+ * This keeps secrets as runtime references (evaluated at runtime).
  */
 class CodeGenerator {
 	#tokens: Token[];
@@ -704,13 +866,15 @@ class CodeGenerator {
 	#generatePrimary(): string {
 		const token = this.#peek();
 
+		// Parenthesized expression (may have path suffix)
 		if (token.type === TokenType.LPAREN) {
 			this.#advance();
 			const value = this.#generateExpr();
 			this.#expect(TokenType.RPAREN);
-			return `(${value})`;
+			return this.#generatePathSuffix(`(${value})`);
 		}
 
+		// Literals (no path suffix)
 		if (token.type === TokenType.STRING) {
 			this.#advance();
 			return JSON.stringify(token.value);
@@ -736,41 +900,122 @@ class CodeGenerator {
 			return "undefined";
 		}
 
+		// Environment variable: $VAR → process.env.VAR or process.env["VAR"]
+		if (token.type === TokenType.ENV_VAR) {
+			this.#advance();
+			// Use bracket notation if name has special chars, dot notation otherwise
+			const name = token.value;
+			const code = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)
+				? `process.env.${name}`
+				: `process.env[${JSON.stringify(name)}]`;
+			// Mark as required env var - path suffix should not mask undefined
+			return this.#generatePathSuffix(code, {requiredEnvVar: name});
+		}
+
+		// Bracket placeholders (may have path suffix)
+		// [outdir] → __SHOVEL_OUTDIR__ (injected by esbuild)
+		if (token.type === TokenType.OUTDIR) {
+			this.#advance();
+			return this.#generatePathSuffix("__SHOVEL_OUTDIR__");
+		}
+		// [tmpdir] → tmpdir() (provided by platform entry wrapper via "os" import)
+		if (token.type === TokenType.TMPDIR) {
+			this.#advance();
+			return this.#generatePathSuffix("tmpdir()");
+		}
+		// [git] → __SHOVEL_GIT__ (injected by esbuild)
+		if (token.type === TokenType.GIT) {
+			this.#advance();
+			return this.#generatePathSuffix("__SHOVEL_GIT__");
+		}
+
+		// Identifier (string literal - may have path suffix for paths like ./data)
 		if (token.type === TokenType.IDENTIFIER) {
 			this.#advance();
-			const name = token.value;
-
-			// ALL_CAPS = env var reference → process.env.X
-			if (/^[A-Z][A-Z0-9_]*$/.test(name)) {
-				return `process.env.${name}`;
-			}
-
-			// Otherwise it's a string literal
-			return JSON.stringify(name);
+			return this.#generatePathSuffix(JSON.stringify(token.value));
 		}
 
 		throw new Error(
 			`Unexpected token ${token.type} at position ${token.start}`,
 		);
 	}
+
+	// Generate path suffix code: base/segment/... → [base, "segment", ...].join("/")
+	// If requiredEnvVar is set, generate code that throws if the env var is missing
+	#generatePathSuffix(
+		baseCode: string,
+		options: {requiredEnvVar?: string} = {},
+	): string {
+		const segments: string[] = [];
+
+		while (this.#peek().type === TokenType.SLASH) {
+			this.#advance(); // consume /
+
+			const segToken = this.#peek();
+			if (
+				segToken.type === TokenType.IDENTIFIER ||
+				segToken.type === TokenType.STRING
+			) {
+				this.#advance();
+				segments.push(JSON.stringify(segToken.value));
+			} else if (segToken.type === TokenType.NUMBER) {
+				this.#advance();
+				segments.push(JSON.stringify(String(segToken.value)));
+			} else {
+				throw new Error(
+					`Expected path segment after / at position ${segToken.start}`,
+				);
+			}
+		}
+
+		// No suffix - return base code as-is
+		if (segments.length === 0) {
+			return baseCode;
+		}
+
+		// For required env vars with path suffix, don't mask undefined with filter(Boolean)
+		// Instead, throw a clear error if the env var is missing
+		if (options.requiredEnvVar) {
+			const envName = options.requiredEnvVar;
+			// Generate: (() => { const v = process.env.VAR; if (v == null) throw new Error("..."); return [v, ...].join("/"); })()
+			return `(() => { const v = ${baseCode}; if (v == null) throw new Error("Required env var ${envName} is not set"); return [v, ${segments.join(", ")}].join("/"); })()`;
+		}
+
+		// For optional values (with fallback), filter(Boolean) is fine
+		return `[${baseCode}, ${segments.join(", ")}].filter(Boolean).join("/")`;
+	}
+}
+
+/**
+ * Result of converting an expression to code
+ */
+export interface ExprToCodeResult {
+	code: string;
 }
 
 /**
  * Convert a config expression to JS code.
- * Env vars become process.env.X, literals become quoted strings.
+ * Env vars become process.env.VAR, bracket placeholders become platform-specific code.
  *
  * Examples:
- *   "PORT || 3000" → 'process.env.PORT || 3000'
- *   "REDIS_URL" → 'process.env.REDIS_URL'
+ *   "$PORT || 3000" → 'process.env.PORT || 3000'
+ *   "$DATADIR/uploads" → '[process.env.DATADIR, "uploads"].filter(Boolean).join("/")'
+ *   "[outdir]/data" → '[__SHOVEL_OUTDIR__, "data"].filter(Boolean).join("/")'
+ *   "[tmpdir]/cache" → '[tmpdir(), "cache"].filter(Boolean).join("/")'
+ *   "[git]" → '__SHOVEL_GIT__'
  *   "redis" → '"redis"'
- *   "NODE_ENV === production ? redis : memory" → '(process.env.NODE_ENV === "production" ? "redis" : "memory")'
+ *
+ * Note: [tmpdir] generates tmpdir() which must be provided by the platform
+ * entry wrapper (via `import {tmpdir} from "os"`). Cloudflare does not support
+ * [tmpdir] since it has no filesystem.
  */
-export function exprToCode(expr: string): string {
-	// Check if it looks like an expression (contains operators or env vars)
+export function exprToCode(expr: string): ExprToCodeResult {
+	// Check if it looks like an expression (contains operators, $VAR, or dunders)
 	if (EXPRESSION_PATTERN.test(expr)) {
 		try {
 			const generator = new CodeGenerator(expr);
-			return generator.generate();
+			const code = generator.generate();
+			return {code};
 		} catch (error) {
 			throw new Error(
 				`Invalid config expression: ${expr}\n` +
@@ -779,43 +1024,43 @@ export function exprToCode(expr: string): string {
 		}
 	}
 	// Plain string literal
-	return JSON.stringify(expr);
+	return {code: JSON.stringify(expr)};
 }
 
 /**
  * Convert any config value to JS code representation.
  * Recursively handles objects and arrays.
  */
-export function valueToCode(value: unknown): string {
+export function valueToCode(value: unknown): ExprToCodeResult {
 	if (typeof value === "string") {
 		return exprToCode(value);
 	}
 
 	if (typeof value === "number" || typeof value === "boolean") {
-		return JSON.stringify(value);
+		return {code: JSON.stringify(value)};
 	}
 
 	if (value === null) {
-		return "null";
+		return {code: "null"};
 	}
 
 	if (value === undefined) {
-		return "undefined";
+		return {code: "undefined"};
 	}
 
 	if (Array.isArray(value)) {
-		const items = value.map((item) => valueToCode(item));
-		return `[${items.join(", ")}]`;
+		const items = value.map((item) => valueToCode(item).code);
+		return {code: `[${items.join(", ")}]`};
 	}
 
 	if (typeof value === "object") {
-		const entries = Object.entries(value).map(
-			([key, val]) => `${JSON.stringify(key)}: ${valueToCode(val)}`,
-		);
-		return `{${entries.join(", ")}}`;
+		const entries = Object.entries(value).map(([key, val]) => {
+			return `${JSON.stringify(key)}: ${valueToCode(val).code}`;
+		});
+		return {code: `{${entries.join(", ")}}`};
 	}
 
-	return JSON.stringify(value);
+	return {code: JSON.stringify(value)};
 }
 
 /**
@@ -843,6 +1088,25 @@ function needsQuoting(key: string): boolean {
 	return !/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key);
 }
 
+/** Result of toJSLiteral */
+interface JSLiteralResult {
+	code: string;
+	/** Whether this value contains dynamic expressions (process.env, etc) */
+	isDynamic: boolean;
+}
+
+/**
+ * Check if a code string contains dynamic expressions (process.env, tmpdir(), etc)
+ * Note: __SHOVEL_OUTDIR__ and __SHOVEL_GIT__ are build-time constants, not dynamic
+ */
+function isDynamicCode(code: string): boolean {
+	return (
+		code.includes("process.env") ||
+		code.includes("tmpdir()") ||
+		code.includes(".filter(Boolean).join")
+	);
+}
+
 /**
  * Convert a value to JavaScript object literal code.
  * Uses placeholders map to substitute JS expressions.
@@ -852,43 +1116,62 @@ function toJSLiteral(
 	value: unknown,
 	placeholders: Map<string, string>,
 	indent: string = "",
-): string {
-	if (value === null) return "null";
-	if (value === undefined) return "undefined";
+): JSLiteralResult {
+	if (value === null) return {code: "null", isDynamic: false};
+	if (value === undefined) return {code: "undefined", isDynamic: false};
 
 	if (typeof value === "string") {
 		// Check if it's a placeholder
 		if (value.startsWith(PLACEHOLDER_PREFIX) && placeholders.has(value)) {
-			return placeholders.get(value)!;
+			return {code: placeholders.get(value)!, isDynamic: false};
 		}
-		// Process as config expression (handles env vars like "PORT || 3000")
-		return exprToCode(value);
+		// Process as config expression (handles env vars like "$PORT || 3000")
+		const result = exprToCode(value);
+		return {code: result.code, isDynamic: isDynamicCode(result.code)};
 	}
 
 	if (typeof value === "number" || typeof value === "boolean") {
-		return String(value);
+		return {code: String(value), isDynamic: false};
 	}
 
 	if (Array.isArray(value)) {
-		if (value.length === 0) return "[]";
-		const items = value.map((v) => toJSLiteral(v, placeholders, indent + "  "));
-		return `[\n${indent}  ${items.join(`,\n${indent}  `)}\n${indent}]`;
+		if (value.length === 0) return {code: "[]", isDynamic: false};
+		let anyDynamic = false;
+		const items = value.map((v) => {
+			const result = toJSLiteral(v, placeholders, indent + "  ");
+			if (result.isDynamic) anyDynamic = true;
+			return result.code;
+		});
+		return {
+			code: `[\n${indent}  ${items.join(`,\n${indent}  `)}\n${indent}]`,
+			isDynamic: anyDynamic,
+		};
 	}
 
 	if (typeof value === "object") {
 		const entries = Object.entries(value);
-		if (entries.length === 0) return "{}";
+		if (entries.length === 0) return {code: "{}", isDynamic: false};
 
+		let anyDynamic = false;
 		const props = entries.map(([k, v]) => {
 			const keyStr = needsQuoting(k) ? JSON.stringify(k) : k;
-			const valStr = toJSLiteral(v, placeholders, indent + "  ");
-			return `${keyStr}: ${valStr}`;
+			const result = toJSLiteral(v, placeholders, indent + "  ");
+			if (result.isDynamic) anyDynamic = true;
+			// If the value is dynamic, make it a getter for lazy evaluation
+			// This ensures process.env is evaluated at access time, not module load time
+			if (result.isDynamic) {
+				return `get ${keyStr}() { return ${result.code}; }`;
+			}
+			return `${keyStr}: ${result.code}`;
 		});
 
-		return `{\n${indent}  ${props.join(`,\n${indent}  `)}\n${indent}}`;
+		return {
+			code: `{\n${indent}  ${props.join(`,\n${indent}  `)}\n${indent}}`,
+			isDynamic: anyDynamic,
+		};
 	}
 
-	return JSON.stringify(value);
+	return {code: JSON.stringify(value), isDynamic: false};
 }
 
 /**
@@ -907,6 +1190,10 @@ function toJSLiteral(
 export function generateConfigModule(
 	rawConfig: ShovelConfig,
 	options: {
+		/** Absolute path to project directory (where shovel.json lives) */
+		projectDir: string;
+		/** Absolute path to output directory */
+		outDir: string;
 		/** Platform-specific defaults for directories, caches, etc. */
 		platformDefaults?: {
 			directories?: Record<
@@ -918,7 +1205,7 @@ export function generateConfigModule(
 				{module: string; export?: string; [key: string]: unknown}
 			>;
 		};
-	} = {},
+	},
 ): string {
 	const {platformDefaults = {}} = options;
 	// Track imports and their placeholder mappings
@@ -1093,6 +1380,7 @@ export function generateConfigModule(
 
 		// Directories - deep merge platform defaults with user config
 		// User config properties override platform defaults, but missing properties are preserved
+		// Path values are processed using the path syntax parser
 		const platformDirectories = platformDefaults.directories || {};
 		const userDirectories = rawConfig.directories || {};
 		const allDirectoryNames = new Set([
@@ -1117,6 +1405,7 @@ export function generateConfigModule(
 				if (directoryClassPlaceholder) {
 					result.DirectoryClass = directoryClassPlaceholder;
 				}
+
 				directories[name] = result;
 			}
 			config.directories = directories;
@@ -1148,21 +1437,20 @@ export function generateConfigModule(
 	const config = buildConfig();
 
 	// Convert to JavaScript object literal (not JSON - unquoted keys where valid)
-	const configCode = toJSLiteral(config, placeholders, "");
+	const {code: configCode} = toJSLiteral(config, placeholders, "");
 
-	// Generate the module
-	const lines: string[] = [];
-
-	if (imports.length > 0) {
-		lines.push("// Provider imports (statically bundled)");
-		lines.push(...imports);
-		lines.push("");
+	// Check if tmpdir() is used in the generated code - if so, add the import
+	const needsTmpdirImport = configCode.includes("tmpdir()");
+	if (needsTmpdirImport) {
+		imports.unshift('import {tmpdir} from "os";');
 	}
 
-	lines.push("// Generated config (env vars resolved at runtime)");
-	lines.push(`export const config = ${configCode};`);
+	// Provider imports (cache modules, directory modules, etc.)
+	const providerImports = imports.length > 0 ? `${imports.join("\n")}\n` : "";
 
-	return lines.join("\n");
+	return `${providerImports}
+export const config = ${configCode};
+`;
 }
 
 /**
@@ -1240,6 +1528,7 @@ export const DirectoryConfigSchema = z
 		module: z.string().optional(),
 		export: z.string().optional(),
 		path: configExpr.optional(),
+		binding: configExpr.optional(),
 		bucket: configExpr.optional(),
 		region: configExpr.optional(),
 		endpoint: configExpr.optional(),
