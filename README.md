@@ -81,10 +81,10 @@ Same code, any runtime, any rendering strategy:
 The core abstraction is the **ServiceWorker-style storage pattern**. Globals provide a consistent API for common web concerns:
 
 ```javascript
-const cache = await self.caches.open("sessions");     // Cache API
-const dir   = await self.directories.open("uploads"); // FileSystem API
-const db    = self.databases.get("main");             // Zen DB (opened on activate)
-const log   = self.loggers.get("app", "requests");    // LogTape
+const cache  = await self.caches.open("sessions");     // Cache API
+const dir    = await self.directories.open("uploads"); // FileSystem API
+const db     = self.databases.get("main");             // Zen DB (opened on activate)
+const logger = self.loggers.get("app", "requests");    // LogTape
 ```
 
 Each storage type is:
