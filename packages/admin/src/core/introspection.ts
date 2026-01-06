@@ -1,69 +1,115 @@
 /**
  * @b9g/admin - Schema introspection utilities
  *
- * Extracts metadata from @b9g/zen tables for dynamic admin generation.
+ * Thin wrapper around zen's introspection APIs for admin-specific needs.
+ * Uses zen's raw schema/db APIs instead of deprecated cooked properties.
  */
 
+import {isTable, z} from "@b9g/zen";
 import type {Table, FieldMeta, ReferenceInfo} from "@b9g/zen";
-import type {
-	ColumnMetadata,
-	ColumnDataType,
-	TableMetadata,
-	ForeignKeyMetadata,
-} from "../types.js";
 
 // ============================================================================
-// Type Guards
+// Admin-specific types (simplified for UI rendering)
 // ============================================================================
 
 /**
- * Check if an object is a @b9g/zen table
+ * Simplified data type for admin UI rendering
  */
-export function isTable(value: unknown): value is Table<any> {
-	return (
-		value !== null &&
-		typeof value === "object" &&
-		"name" in value &&
-		"schema" in value &&
-		"fields" in value &&
-		typeof (value as any).fields === "function"
-	);
+export type AdminDataType =
+	| "string"
+	| "number"
+	| "boolean"
+	| "date"
+	| "datetime"
+	| "json";
+
+/**
+ * Admin-specific column info (derived from zen's FieldMeta)
+ */
+export interface AdminColumnInfo {
+	/** Field name */
+	name: string;
+	/** Simplified data type for UI */
+	dataType: AdminDataType;
+	/** Whether the field is required for insert */
+	required: boolean;
+	/** Whether the field has an auto-generated value */
+	hasAutoValue: boolean;
+	/** Whether this is the primary key */
+	isPrimaryKey: boolean;
+	/** Enum values if this is an enum field */
+	enumValues?: string[];
+	/** The raw zen FieldMeta for advanced use */
+	fieldMeta: FieldMeta;
+}
+
+/**
+ * Admin-specific table info
+ */
+export interface AdminTableInfo {
+	/** Table name */
+	name: string;
+	/** Column info for each field */
+	columns: AdminColumnInfo[];
+	/** Primary key field name */
+	primaryKey: string | null;
+	/** Foreign key relationships */
+	foreignKeys: {
+		column: string;
+		foreignTable: string;
+		foreignColumn: string;
+	}[];
+	/** The raw zen Table for advanced use */
+	table: Table<any>;
 }
 
 // ============================================================================
-// Data Type Mapping
+// Zod Schema Introspection
 // ============================================================================
 
+// Note: We use `unknown` for schema types to avoid Zod version compatibility issues.
+// The zen package may use a different Zod internals ($ZodType vs ZodType).
+
 /**
- * Map @b9g/zen field type to admin ColumnDataType
+ * Unwrap a Zod schema to get the innermost type (strips optional, nullable, default, etc.)
  */
-function mapFieldType(fieldType: FieldMeta["type"]): ColumnDataType {
-	switch (fieldType) {
-		case "text":
-		case "textarea":
-		case "email":
-		case "url":
-		case "tel":
-		case "password":
-		case "hidden":
-			return "string";
-		case "number":
-		case "integer":
-			return "number";
-		case "checkbox":
-			return "boolean";
-		case "date":
-			return "date";
-		case "datetime":
-		case "time":
-			return "datetime";
-		case "json":
-			return "json";
-		case "select":
-			return "string"; // enums are strings
-		default:
-			return "string";
+function unwrapZodSchema(schema: unknown): unknown {
+	const s = schema as any;
+	if (s instanceof z.ZodOptional || s instanceof z.ZodNullable) {
+		return unwrapZodSchema(s.unwrap());
 	}
+	if (s instanceof z.ZodDefault) {
+		return unwrapZodSchema(s._def.innerType);
+	}
+	return schema;
+}
+
+/**
+ * Infer AdminDataType from a Zod schema
+ */
+function inferDataType(schema: unknown): AdminDataType {
+	const inner = unwrapZodSchema(schema);
+
+	if (inner instanceof z.ZodString) return "string";
+	if (inner instanceof z.ZodNumber) return "number";
+	if (inner instanceof z.ZodBoolean) return "boolean";
+	if (inner instanceof z.ZodDate) return "date";
+	if (inner instanceof z.ZodEnum) return "string";
+	if (inner instanceof z.ZodObject || inner instanceof z.ZodArray)
+		return "json";
+
+	return "string"; // fallback
+}
+
+/**
+ * Extract enum values from a Zod schema if it's an enum
+ */
+function extractEnumValues(schema: unknown): string[] | undefined {
+	const inner = unwrapZodSchema(schema);
+	if (inner instanceof z.ZodEnum) {
+		return (inner as any).options as string[];
+	}
+	return undefined;
 }
 
 // ============================================================================
@@ -71,74 +117,63 @@ function mapFieldType(fieldType: FieldMeta["type"]): ColumnDataType {
 // ============================================================================
 
 /**
- * Extract metadata from a @b9g/zen table
+ * Get admin-specific info for a zen table
  */
-export function introspectTable(table: Table<any>): TableMetadata {
+export function getAdminTableInfo(table: Table<any>): AdminTableInfo {
 	const fieldsMeta = table.fields();
 	const refs = table.references();
-
-	// Convert fields to columns
-	const columns: ColumnMetadata[] = Object.entries(fieldsMeta).map(
-		([key, field]: [string, FieldMeta]) => ({
-			name: key, // field name is the key
-			key,
-			dataType: mapFieldType(field.type),
-			sqlType: field.type, // Use field type as SQL type hint
-			notNull: field.required,
-			hasDefault: field.default !== undefined || field.inserted !== undefined,
-			isPrimaryKey: field.primaryKey ?? false,
-			enumValues: field.options ? [...field.options] : undefined,
-		}),
-	);
-
-	// Get primary key
 	const pk = table.primaryKey();
-	const primaryKey: string[] = pk ? [pk] : [];
 
-	// Convert references to foreign keys
-	const foreignKeys: ForeignKeyMetadata[] = refs.map((ref: ReferenceInfo) => ({
-		columns: [ref.fieldName],
+	// Filter to only actual column fields (have schema property)
+	// table.fields() also returns relation accessors which don't have schema
+	const columnEntries = Object.entries(fieldsMeta).filter(
+		([, field]) => field && "schema" in field,
+	) as [string, FieldMeta][];
+
+	const columns: AdminColumnInfo[] = columnEntries.map(([name, field]) => {
+		const isOptional = field.schema.isOptional();
+		const hasAutoValue = !!(field.db.autoIncrement || field.db.inserted);
+
+		return {
+			name,
+			dataType: inferDataType(field.schema),
+			// Not required if optional or has auto value (db.inserted/db.autoIncrement)
+			// Note: zen 0.1.6+ throws on Zod .default() in tables, so we don't check for it
+			required: !isOptional && !hasAutoValue,
+			hasAutoValue,
+			isPrimaryKey: field.db.primaryKey ?? false,
+			enumValues: extractEnumValues(field.schema),
+			fieldMeta: field,
+		};
+	});
+
+	const foreignKeys = refs.map((ref: ReferenceInfo) => ({
+		column: ref.fieldName,
 		foreignTable: ref.table.name,
-		foreignColumns: [ref.referencedField],
+		foreignColumn: ref.referencedField,
 	}));
 
 	return {
 		name: table.name,
 		columns,
-		primaryKey,
+		primaryKey: pk,
 		foreignKeys,
+		table,
 	};
 }
 
-// ============================================================================
-// Schema Introspection
-// ============================================================================
-
 /**
- * Introspect an entire schema object containing tables
- *
- * @param schema - An object containing @b9g/zen table definitions
- * @returns Map of table names to their metadata
- *
- * @example
- * ```typescript
- * import * as schema from './db/schema';
- *
- * const metadata = introspectSchema(schema);
- * for (const [name, table] of metadata) {
- *   console.log(name, table.columns);
- * }
- * ```
+ * Get admin info for all tables in a schema object
  */
-export function introspectSchema(
+export function getAdminSchemaInfo(
 	schema: Record<string, unknown>,
-): Map<string, TableMetadata> {
-	const tables = new Map<string, TableMetadata>();
+): Map<string, AdminTableInfo> {
+	const tables = new Map<string, AdminTableInfo>();
 
 	for (const value of Object.values(schema)) {
 		if (isTable(value)) {
-			const metadata = introspectTable(value);
-			tables.set(metadata.name, metadata);
+			const info = getAdminTableInfo(value);
+			tables.set(info.name, info);
 		}
 	}
 
@@ -146,7 +181,7 @@ export function introspectSchema(
 }
 
 // ============================================================================
-// Utility Exports
+// Display Utilities
 // ============================================================================
 
 /**
@@ -157,24 +192,4 @@ export function getDisplayName(tableName: string): string {
 		.split("_")
 		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
 		.join(" ");
-}
-
-/**
- * Get the plural display name for a table
- */
-export function getPluralDisplayName(tableName: string): string {
-	const singular = getDisplayName(tableName);
-	// Simple pluralization - handles most cases
-	if (singular.endsWith("y")) {
-		return singular.slice(0, -1) + "ies";
-	}
-	if (
-		singular.endsWith("s") ||
-		singular.endsWith("x") ||
-		singular.endsWith("ch") ||
-		singular.endsWith("sh")
-	) {
-		return singular + "es";
-	}
-	return singular + "s";
 }

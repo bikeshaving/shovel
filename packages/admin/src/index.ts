@@ -9,10 +9,10 @@
  * @example
  * ```typescript
  * import { Router } from '@b9g/router';
- * import { createAdmin } from '@b9g/admin';
+ * import { AdminRouter } from '@b9g/admin';
  * import * as schema from './schema.js';
  *
- * const admin = createAdmin({
+ * const admin = new AdminRouter({
  *   database: 'main',
  *   schema,
  *   auth: {
@@ -21,36 +21,21 @@
  *   },
  * });
  *
+ * // Access introspected models
+ * console.log(admin.models);
+ *
+ * // Mount on a path
  * const router = new Router();
  * router.mount('/admin', admin);
  * ```
  */
 
-// Re-export types
-export type {
-	AdminConfig,
-	AuthConfig,
-	AuthProvider,
-	ModelConfig,
-	BrandingConfig,
-	AdminUser,
-	AdminSession,
-	AdminContext,
-	TableMetadata,
-	ColumnMetadata,
-	ColumnDataType,
-	ForeignKeyMetadata,
-	RegisteredModel,
-} from "./types.js";
-
-// Re-export introspection utilities
 export {
-	isTable,
-	introspectTable,
-	introspectSchema,
-	getDisplayName,
-	getPluralDisplayName,
-} from "./core/introspection.js";
-
-// Main factory
-export {createAdmin} from "./admin.jsx";
+	AdminRouter,
+	createAdmin,
+	type AdminConfig,
+	type AuthConfig,
+	type AuthProvider,
+	type ModelConfig,
+	type BrandingConfig,
+} from "./admin.jsx";

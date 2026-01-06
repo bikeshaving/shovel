@@ -1,35 +1,12 @@
 /**
  * @b9g/admin - Layout component
  *
- * Base layout for all admin pages using Crank.js and USWDS
+ * Page layout for admin using Crank.js and USWDS
  */
 
 import type {Children} from "@b9g/crank";
 
-export interface LayoutProps {
-	title: string;
-	basePath: string;
-	children: Children;
-}
-
-export function Layout({title, basePath, children}: LayoutProps) {
-	return (
-		<html lang="en">
-			<head>
-				<meta charset="UTF-8" />
-				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-				<title>{title}</title>
-				<link rel="stylesheet" href={`${basePath}/uswds/css/uswds.min.css`} />
-			</head>
-			<body>
-				{children}
-				<script src={`${basePath}/uswds/js/uswds.min.js`} />
-			</body>
-		</html>
-	);
-}
-
-export interface UswdsAssets {
+interface USWDSAssets {
 	css: string;
 	js: string;
 }
@@ -38,13 +15,13 @@ export interface PageLayoutProps {
 	title: string;
 	pageTitle: string;
 	basePath: string;
-	models: Array<{name: string; displayName: string}>;
-	assets?: UswdsAssets;
+	models: readonly {name: string; displayName: string}[];
+	assets?: USWDSAssets;
 	children: Children;
 }
 
 // Default USWDS asset paths (relative to basePath)
-const DEFAULT_ASSETS: UswdsAssets = {
+const DEFAULT_ASSETS: USWDSAssets = {
 	css: "/uswds/css/uswds.min.css",
 	js: "/uswds/js/uswds.min.js",
 };
