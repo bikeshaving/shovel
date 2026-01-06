@@ -3,8 +3,8 @@
  *
  * Demonstrates @b9g/admin package with:
  * - Auto-generated CRUD for @b9g/zen schema
- * - Google OAuth authentication
- * - Session storage via self.caches
+ * - Google OAuth authentication (TODO)
+ * - Session storage via self.caches (TODO)
  */
 
 import {Router} from "@b9g/router";
@@ -57,8 +57,31 @@ self.addEventListener("install", () => {
 	logger.info("ServiceWorker installed");
 });
 
-self.addEventListener("activate", () => {
+self.addEventListener("activate", (event) => {
 	logger.info("ServiceWorker activated");
+
+	// Open the database and run migrations
+	event.waitUntil(
+		self.databases.open("main", 1, (e) => {
+			e.waitUntil(
+				(async () => {
+					const db = e.db;
+					logger.info("Running migrations", {
+						oldVersion: e.oldVersion,
+						newVersion: e.newVersion,
+					});
+
+					if (e.oldVersion < 1) {
+						// Create tables
+						await db.ensureTable(schema.users);
+						await db.ensureTable(schema.posts);
+						await db.ensureTable(schema.tags);
+						logger.info("Created tables: users, posts, tags");
+					}
+				})(),
+			);
+		}),
+	);
 });
 
 self.addEventListener("fetch", (ev) => {

@@ -1,14 +1,10 @@
-// TODO: These tests are for a planned introspection feature that hasn't been implemented yet.
-// Skip all tests until the feature is implemented.
 import {test, expect, describe} from "bun:test";
-import {z, table} from "@b9g/zen";
-
-// Stub functions until the feature is implemented
-const introspectTable = (_table: unknown): any => ({});
-const introspectSchema = (_schema: unknown): Map<string, unknown> => new Map();
-const getDisplayName = (_name: string): string => "";
-const getPluralDisplayName = (_name: string): string => "";
-const isTable = (_value: unknown): boolean => false;
+import {z, table, isTable} from "@b9g/zen";
+import {
+	getAdminTableInfo,
+	getAdminSchemaInfo,
+	getDisplayName,
+} from "../src/core/introspection.js";
 
 // ============================================================================
 // Test Schema Definitions using @b9g/zen tables
@@ -42,13 +38,21 @@ const files = table("files", {
 	size: z.number().optional(),
 });
 
-const testSchema = {users, posts, tags, files};
+// Table with db.inserted() defaults (for testing required flag)
+const settings = table("settings", {
+	id: z.number().db.primary(),
+	key: z.string(),
+	value: z.string().db.inserted(() => ""),
+	enabled: z.boolean().db.inserted(() => true),
+});
+
+const testSchema = {users, posts, tags, files, settings};
 
 // ============================================================================
 // isTable Tests
 // ============================================================================
 
-describe.skip("isTable", () => {
+describe("isTable", () => {
 	test("returns true for @b9g/zen tables", () => {
 		expect(isTable(users)).toBe(true);
 		expect(isTable(posts)).toBe(true);
@@ -64,82 +68,116 @@ describe.skip("isTable", () => {
 });
 
 // ============================================================================
-// introspectTable Tests
+// getAdminTableInfo Tests
 // ============================================================================
 
-describe.skip("introspectTable", () => {
+describe("getAdminTableInfo", () => {
 	test("extracts table name", () => {
-		const metadata = introspectTable(users);
-		expect(metadata.name).toBe("users");
+		const info = getAdminTableInfo(users);
+		expect(info.name).toBe("users");
 	});
 
 	test("extracts columns with correct types", () => {
-		const metadata = introspectTable(users);
+		const info = getAdminTableInfo(users);
 
-		const idCol = metadata.columns.find((c: any) => c.name === "id");
+		const idCol = info.columns.find((c) => c.name === "id");
 		expect(idCol).toBeDefined();
 		expect(idCol?.dataType).toBe("number");
 		expect(idCol?.isPrimaryKey).toBe(true);
 
-		const emailCol = metadata.columns.find((c: any) => c.name === "email");
+		const emailCol = info.columns.find((c) => c.name === "email");
 		expect(emailCol).toBeDefined();
 		expect(emailCol?.dataType).toBe("string");
-		expect(emailCol?.notNull).toBe(true);
+		expect(emailCol?.required).toBe(true);
 
-		const nameCol = metadata.columns.find((c: any) => c.name === "name");
+		const nameCol = info.columns.find((c) => c.name === "name");
 		expect(nameCol).toBeDefined();
 		expect(nameCol?.dataType).toBe("string");
-		expect(nameCol?.notNull).toBe(false);
+		expect(nameCol?.required).toBe(false); // optional
 	});
 
 	test("extracts enum values", () => {
-		const metadata = introspectTable(users);
+		const info = getAdminTableInfo(users);
 
-		const roleCol = metadata.columns.find((c: any) => c.name === "role");
+		const roleCol = info.columns.find((c) => c.name === "role");
 		expect(roleCol).toBeDefined();
 		expect(roleCol?.enumValues).toEqual(["admin", "user", "guest"]);
 	});
 
-	test("extracts hasDefault correctly", () => {
-		const metadata = introspectTable(users);
+	test("extracts hasAutoValue correctly", () => {
+		const info = getAdminTableInfo(users);
 
-		const roleCol = metadata.columns.find((c: any) => c.name === "role");
-		expect(roleCol?.hasDefault).toBe(true);
+		const roleCol = info.columns.find((c) => c.name === "role");
+		expect(roleCol?.hasAutoValue).toBe(true); // has db.inserted()
 
-		const emailCol = metadata.columns.find((c: any) => c.name === "email");
-		expect(emailCol?.hasDefault).toBe(false);
+		const emailCol = info.columns.find((c) => c.name === "email");
+		expect(emailCol?.hasAutoValue).toBe(false);
+	});
+
+	test("fields with db.inserted() are not required", () => {
+		const info = getAdminTableInfo(users);
+
+		const roleCol = info.columns.find((c) => c.name === "role");
+		expect(roleCol?.required).toBe(false); // has db.inserted()
+	});
+
+	test("fields with db.inserted() defaults are not required", () => {
+		const info = getAdminTableInfo(settings);
+
+		const valueCol = info.columns.find((c) => c.name === "value");
+		expect(valueCol?.required).toBe(false); // has .db.inserted()
+
+		const enabledCol = info.columns.find((c) => c.name === "enabled");
+		expect(enabledCol?.required).toBe(false); // has .db.inserted()
+
+		const keyCol = info.columns.find((c) => c.name === "key");
+		expect(keyCol?.required).toBe(true); // no default
 	});
 
 	test("identifies primary key", () => {
-		const metadata = introspectTable(users);
-		expect(metadata.primaryKey).toEqual(["id"]);
+		const info = getAdminTableInfo(users);
+		expect(info.primaryKey).toBe("id");
 	});
 
 	test("extracts foreign keys", () => {
-		const metadata = introspectTable(posts);
+		const info = getAdminTableInfo(posts);
 
-		expect(metadata.foreignKeys).toHaveLength(1);
-		expect(metadata.foreignKeys[0]).toEqual({
-			columns: ["authorId"],
+		expect(info.foreignKeys).toHaveLength(1);
+		expect(info.foreignKeys[0]).toEqual({
+			column: "authorId",
 			foreignTable: "users",
-			foreignColumns: ["id"],
+			foreignColumn: "id",
 		});
+	});
+
+	test("filters out relation accessors", () => {
+		// posts has a reference to users with "author" accessor
+		// This should NOT appear in columns
+		const info = getAdminTableInfo(posts);
+
+		const authorCol = info.columns.find((c) => c.name === "author");
+		expect(authorCol).toBeUndefined();
+
+		// But authorId should exist
+		const authorIdCol = info.columns.find((c) => c.name === "authorId");
+		expect(authorIdCol).toBeDefined();
 	});
 });
 
 // ============================================================================
-// introspectSchema Tests
+// getAdminSchemaInfo Tests
 // ============================================================================
 
-describe.skip("introspectSchema", () => {
+describe("getAdminSchemaInfo", () => {
 	test("extracts all tables from schema", () => {
-		const tables = introspectSchema(testSchema);
+		const tables = getAdminSchemaInfo(testSchema);
 
-		expect(tables.size).toBe(4);
+		expect(tables.size).toBe(5);
 		expect(tables.has("users")).toBe(true);
 		expect(tables.has("posts")).toBe(true);
 		expect(tables.has("tags")).toBe(true);
 		expect(tables.has("files")).toBe(true);
+		expect(tables.has("settings")).toBe(true);
 	});
 
 	test("ignores non-table exports", () => {
@@ -150,16 +188,16 @@ describe.skip("introspectSchema", () => {
 			UsersType: {} as any,
 		};
 
-		const tables = introspectSchema(schemaWithExtras);
-		expect(tables.size).toBe(4); // Only the 4 actual tables
+		const tables = getAdminSchemaInfo(schemaWithExtras);
+		expect(tables.size).toBe(5); // Only the 5 actual tables
 	});
 
-	test("returns metadata accessible by table name", () => {
-		const tables = introspectSchema(testSchema);
+	test("returns info accessible by table name", () => {
+		const tables = getAdminSchemaInfo(testSchema);
 
-		const usersMetadata = tables.get("users");
-		expect(usersMetadata).toBeDefined();
-		expect((usersMetadata as any)?.columns.length).toBeGreaterThan(0);
+		const usersInfo = tables.get("users");
+		expect(usersInfo).toBeDefined();
+		expect(usersInfo?.columns.length).toBeGreaterThan(0);
 	});
 });
 
@@ -167,7 +205,7 @@ describe.skip("introspectSchema", () => {
 // Display Name Tests
 // ============================================================================
 
-describe.skip("getDisplayName", () => {
+describe("getDisplayName", () => {
 	test("converts snake_case to Title Case", () => {
 		expect(getDisplayName("users")).toBe("Users");
 		expect(getDisplayName("post_tags")).toBe("Post Tags");
@@ -178,28 +216,5 @@ describe.skip("getDisplayName", () => {
 
 	test("handles single word names", () => {
 		expect(getDisplayName("posts")).toBe("Posts");
-	});
-});
-
-describe.skip("getPluralDisplayName", () => {
-	test("pluralizes regular nouns", () => {
-		expect(getPluralDisplayName("user")).toBe("Users");
-		expect(getPluralDisplayName("post")).toBe("Posts");
-	});
-
-	test("handles words ending in y", () => {
-		expect(getPluralDisplayName("category")).toBe("Categories");
-		expect(getPluralDisplayName("entry")).toBe("Entries");
-	});
-
-	test("handles words ending in s, x, ch, sh", () => {
-		expect(getPluralDisplayName("status")).toBe("Statuses");
-		expect(getPluralDisplayName("box")).toBe("Boxes");
-		expect(getPluralDisplayName("match")).toBe("Matches");
-		expect(getPluralDisplayName("wish")).toBe("Wishes");
-	});
-
-	test("handles snake_case names", () => {
-		expect(getPluralDisplayName("post_tag")).toBe("Post Tags");
 	});
 });

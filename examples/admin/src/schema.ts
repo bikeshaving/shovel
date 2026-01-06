@@ -5,7 +5,7 @@
 import {z, table} from "@b9g/zen";
 
 export const users = table("users", {
-	id: z.number().db.primary(),
+	id: z.number().int().db.auto().db.primary(),
 	email: z.string().email().db.unique(),
 	name: z.string(),
 	role: z.enum(["admin", "user"]).db.inserted(() => "user"),
@@ -13,7 +13,7 @@ export const users = table("users", {
 });
 
 export const posts = table("posts", {
-	id: z.number().db.primary(),
+	id: z.number().int().db.auto().db.primary(),
 	title: z.string(),
 	content: z.string().optional(),
 	authorId: z.number().db.references(users, "author"),
@@ -22,6 +22,6 @@ export const posts = table("posts", {
 });
 
 export const tags = table("tags", {
-	id: z.number().db.primary(),
+	id: z.number().int().db.auto().db.primary(),
 	name: z.string().db.unique(),
 });

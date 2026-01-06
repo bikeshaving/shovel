@@ -12,10 +12,10 @@
   },
   "dependencies": {
     "@b9g/admin": "workspace:*",
-    "@b9g/zen": "^0.1.2",
     "@b9g/platform": "workspace:*",
     "@b9g/platform-bun": "workspace:*",
     "@b9g/router": "workspace:*",
-    "@b9g/shovel": "../.."
+    "@b9g/shovel": "../..",
+    "@b9g/zen": "0.1.6"
   }
 }

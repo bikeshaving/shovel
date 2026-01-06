@@ -19,18 +19,11 @@
     "./index.js": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
-    },
-    "./types": {
-      "types": "./dist/src/types.d.ts",
-      "import": "./dist/src/types.js"
-    },
-    "./types.js": {
-      "types": "./dist/src/types.d.ts",
-      "import": "./dist/src/types.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "build": "libuild build --save",
@@ -51,11 +44,11 @@
     "mime": "^4.1.0"
   },
   "peerDependencies": {
-    "@b9g/zen": "^0.1.2",
+    "@b9g/zen": "^0.1.6",
     "@b9g/platform": "workspace:*"
   },
   "devDependencies": {
-    "@b9g/zen": "^0.1.2",
+    "@b9g/zen": "^0.1.6",
     "@b9g/libuild": "^0.1.18",
     "@types/bun": "^1.2.2",
     "typescript": "^5.7.3"
