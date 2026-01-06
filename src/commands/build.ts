@@ -10,6 +10,7 @@ import * as Platform from "@b9g/platform";
 
 import {mkdir, readFile, writeFile} from "fs/promises";
 import {assetsPlugin} from "../plugins/assets.js";
+import {getGitSHA} from "../utils/git-sha.js";
 import {importMetaPlugin} from "../plugins/import-meta.js";
 import {createConfigPlugin, createEntryPlugin} from "../plugins/shovel.js";
 import {loadJSXConfig, applyJSXOptions} from "../utils/jsx-config.js";
@@ -219,7 +220,7 @@ async function initializeBuild({
 	}
 
 	// Validate platform
-	const validPlatforms = ["node", "bun", "cloudflare", "cloudflare-workers"];
+	const validPlatforms = ["node", "bun", "cloudflare"];
 	if (!validPlatforms.includes(platform)) {
 		throw new Error(
 			`Invalid platform: ${platform}. Valid platforms: ${validPlatforms.join(", ")}`,
@@ -337,7 +338,13 @@ async function createBuildConfig({
 				sourcemap: BUILD_DEFAULTS.sourcemap,
 				minify: BUILD_DEFAULTS.minify,
 				treeShaking: BUILD_DEFAULTS.treeShaking,
-				define: platformESBuildConfig.define ?? {},
+				define: {
+					...(platformESBuildConfig.define ?? {}),
+					// Inject output directory for runtime.outdir() resolution
+					__SHOVEL_OUTDIR__: JSON.stringify(outputDir),
+					// Inject git commit SHA for [git] placeholder
+					__SHOVEL_GIT__: JSON.stringify(getGitSHA(projectRoot)),
+				},
 				// Mark ./server.js as external so it's imported at runtime (sibling output file)
 				external: [...external, "./server.js"],
 			};
@@ -398,7 +405,13 @@ async function createBuildConfig({
 			sourcemap: BUILD_DEFAULTS.sourcemap,
 			minify: BUILD_DEFAULTS.minify,
 			treeShaking: BUILD_DEFAULTS.treeShaking,
-			define: platformESBuildConfig.define ?? {},
+			define: {
+				...(platformESBuildConfig.define ?? {}),
+				// Inject output directory for runtime.outdir() resolution
+				__SHOVEL_OUTDIR__: JSON.stringify(outputDir),
+				// Inject git commit SHA for [git] placeholder
+				__SHOVEL_GIT__: JSON.stringify(getGitSHA(projectRoot)),
+			},
 			external,
 		};
 

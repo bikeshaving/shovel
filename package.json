@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@b9g/async-context": "workspace:*",
-    "@b9g/zen": "^0.1.3",
+    "@b9g/zen": "^0.1.6",
     "@clack/prompts": "^0.7.0",
     "@logtape/logtape": "^1.2.0",
     "commander": "^13.1.0",

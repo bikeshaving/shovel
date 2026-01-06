@@ -6,7 +6,7 @@
       "name": "@b9g/shovel",
       "dependencies": {
         "@b9g/async-context": "workspace:*",
-        "@b9g/zen": "^0.1.3",
+        "@b9g/zen": "^0.1.6",
         "@clack/prompts": "^0.7.0",
         "@logtape/logtape": "^1.2.0",
         "commander": "^13.1.0",
@@ -68,7 +68,7 @@
         "@b9g/platform-bun": "workspace:*",
         "@b9g/router": "workspace:*",
         "@b9g/shovel": "../..",
-        "@b9g/zen": "^0.1.2",
+        "@b9g/zen": "0.1.6",
       },
     },
     "examples/blog": {
@@ -112,13 +112,13 @@
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
-        "@b9g/zen": "^0.1.2",
+        "@b9g/zen": "^0.1.6",
         "@types/bun": "^1.2.2",
         "typescript": "^5.7.3",
       },
       "peerDependencies": {
         "@b9g/platform": "workspace:*",
-        "@b9g/zen": "^0.1.2",
+        "@b9g/zen": "^0.1.6",
       },
     },
     "packages/assets": {
@@ -233,7 +233,7 @@
         "@b9g/async-context": "workspace:*",
         "@b9g/cache": "workspace:*",
         "@b9g/filesystem": "workspace:*",
-        "@b9g/zen": "^0.1.2",
+        "@b9g/zen": "^0.1.6",
         "@logtape/logtape": "^1.2.0",
       },
       "devDependencies": {
@@ -437,7 +437,7 @@
 
     "@b9g/shovel-wpt": ["@b9g/shovel-wpt@workspace:packages/shovel-wpt"],
 
-    "@b9g/zen": ["@b9g/zen@0.1.3", "", { "dependencies": { "zod": "^4.0.0" }, "peerDependencies": { "better-sqlite3": "^11.0.0", "mysql2": "^3.0.0", "postgres": "^3.0.0" }, "optionalPeers": ["better-sqlite3", "mysql2", "postgres"] }, "sha512-9vsbHzCeKrHjU+V4snyJb12vSilT8bFA2SopoESTLbrI+B1+amh/Kmu9spbpAQwjgbuKx0m1XihPtC4pREJB7w=="],
+    "@b9g/zen": ["@b9g/zen@0.1.6", "", { "dependencies": { "zod": "^4.0.0" }, "peerDependencies": { "better-sqlite3": "^11.0.0", "mysql2": "^3.0.0", "postgres": "^3.0.0" }, "optionalPeers": ["better-sqlite3", "mysql2", "postgres"] }, "sha512-vkw53wplqgjh33o3uFU3xRfpvk5GkQU0epmfurPOzK09LCS9hqXwF6CgpnhukTsy1uYPXxWMSVUCbEULzhnZVA=="],
 
     "@clack/core": ["@clack/core@0.3.5", "", { "dependencies": { "picocolors": "^1.0.0", "sisteransi": "^1.0.5" } }, "sha512-5cfhQNH+1VQ2xLQlmzXMqUoiaH0lRBq9/CLW9lTyMbuKLC3+xEK01tHVvyut++mLOn5urSHmkm6I0Lg9MaJSTQ=="],
 
