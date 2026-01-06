@@ -34,7 +34,6 @@ export async function developCommand(
 		const platformESBuildConfig = platformInstance.getESBuildConfig();
 
 		logger.info("Starting development server");
-		logger.info("Workers: {workerCount}", {workerCount});
 
 		// Set up file watching and building for development
 		let serviceWorker:
@@ -49,17 +48,14 @@ export async function developCommand(
 			platformESBuildConfig: platformESBuildConfig,
 			onBuild: async (success, builtEntrypoint) => {
 				if (success && serviceWorker) {
-					logger.info("Reloading Workers with {entrypoint}", {
-						entrypoint: builtEntrypoint,
-					});
 					// The reloadWorkers method is on the platform instance, not the ServiceWorker runtime
 					if (
 						platformInstance &&
 						typeof platformInstance.reloadWorkers === "function"
 					) {
 						await platformInstance.reloadWorkers(builtEntrypoint);
+						logger.info("Reloaded");
 					}
-					logger.info("Workers reloaded");
 				}
 			},
 		});
@@ -85,19 +81,19 @@ export async function developCommand(
 		});
 
 		await server.listen();
-		logger.info("Server running at {url}", {
-			url: `http://${options.host}:${options.port}`,
+		logger.info("Server running at http://{host}:{port}", {
+			host: options.host,
+			port: options.port,
 		});
-		logger.info("Serving {entrypoint}", {entrypoint});
 
 		// Graceful shutdown handler for both SIGINT (Ctrl+C) and SIGTERM (docker stop, systemd, k8s)
 		const shutdown = async (signal: string) => {
-			logger.info("Shutting down gracefully ({signal})", {signal});
+			logger.debug("Shutting down ({signal})", {signal});
 			await watcher.stop();
 			await serviceWorker?.dispose();
 			await platformInstance.dispose();
 			await server.close();
-			logger.info("Shutdown complete");
+			logger.debug("Shutdown complete");
 			process.exit(0);
 		};
 

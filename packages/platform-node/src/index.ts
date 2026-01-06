@@ -415,10 +415,8 @@ export class NodePlatform extends BasePlatform {
 		);
 
 		// Initialize workers with dynamic import handling
+		// init() creates workers and loads the ServiceWorker code
 		await this.#workerPool.init();
-
-		// Load ServiceWorker in all workers using entrypoint path
-		await this.#workerPool.reloadWorkers(entryPath);
 
 		// Capture references for closures
 		const workerPool = this.#workerPool;
