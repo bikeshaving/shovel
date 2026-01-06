@@ -49,7 +49,7 @@ import Platform from "@b9g/platform-node";
 // Configure logging before anything else
 await configureLogging(config.logging);
 
-const logger = getLogger(["platform"]);
+const logger = getLogger(["shovel", "platform"]);
 
 // Create platform instance
 const platform = new Platform();

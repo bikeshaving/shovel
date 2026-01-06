@@ -8,7 +8,7 @@ import {Cache, type CacheQueryOptions, generateCacheKey} from "@b9g/cache";
 import {createClient, type RedisClientOptions} from "redis";
 import {getLogger} from "@logtape/logtape";
 
-const logger = getLogger(["platform"]);
+const logger = getLogger(["shovel", "cache"]);
 
 /** Encode Uint8Array to base64 string (no spread operator for efficiency) */
 function uint8ArrayToBase64(bytes: Uint8Array): string {
