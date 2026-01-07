@@ -15,7 +15,7 @@ const logger = getLogger(["shovel"]);
 
 export async function activateCommand(
 	entrypoint: string,
-	options: {workers?: string; verbose?: boolean; platform?: string},
+	options: {workers?: string; platform?: string},
 	config: ProcessedShovelConfig,
 ) {
 	try {

@@ -130,20 +130,17 @@ const BUILD_STRUCTURE = {
 export async function buildForProduction({
 	entrypoint,
 	outDir,
-	verbose,
 	platform = "node",
 	workerCount = 1,
 }: {
 	entrypoint: string;
 	outDir: string;
-	verbose?: boolean;
 	platform?: string;
 	workerCount?: number;
 }) {
 	const buildContext = await initializeBuild({
 		entrypoint,
 		outDir,
-		verbose,
 		platform,
 		workerCount,
 	});
@@ -160,7 +157,7 @@ export async function buildForProduction({
 	const external = (buildConfig.external as string[]) ?? ["node:*"];
 	validateExternals(result, external, "main bundle");
 
-	if (verbose && result.metafile) {
+	if (result.metafile) {
 		await logBundleAnalysis(result.metafile);
 	}
 
@@ -169,11 +166,9 @@ export async function buildForProduction({
 		entryPath: buildContext.entryPath,
 	});
 
-	if (verbose) {
-		logger.info("Built app to", {outputDir: buildContext.outputDir});
-		logger.info("Server files", {dir: buildContext.serverDir});
-		logger.info("Public files", {dir: join(buildContext.outputDir, "public")});
-	}
+	logger.debug("Built app to", {outputDir: buildContext.outputDir});
+	logger.debug("Server files", {dir: buildContext.serverDir});
+	logger.debug("Public files", {dir: join(buildContext.outputDir, "public")});
 }
 
 /**
@@ -182,13 +177,11 @@ export async function buildForProduction({
 async function initializeBuild({
 	entrypoint,
 	outDir,
-	verbose,
 	platform,
 	workerCount = 1,
 }: {
 	entrypoint: string;
 	outDir: string;
-	verbose?: boolean;
 	platform: string;
 	workerCount?: number;
 }) {
@@ -200,11 +193,9 @@ async function initializeBuild({
 		throw new Error("Output directory is required");
 	}
 
-	if (verbose) {
-		logger.info("Entry:", {path: entrypoint});
-		logger.info("Output:", {dir: outDir});
-		logger.info("Target platform:", {platform});
-	}
+	logger.debug("Entry:", {path: entrypoint});
+	logger.debug("Output:", {dir: outDir});
+	logger.debug("Target platform:", {platform});
 
 	const entryPath = resolve(entrypoint);
 	const outputDir = resolve(outDir);
@@ -229,12 +220,10 @@ async function initializeBuild({
 
 	const projectRoot = findProjectRoot(dirname(entryPath));
 
-	if (verbose) {
-		logger.info("Entry:", {entryPath});
-		logger.info("Output:", {outputDir});
-		logger.info("Target platform:", {platform});
-		logger.info("Project root:", {projectRoot});
-	}
+	logger.debug("Entry:", {entryPath});
+	logger.debug("Output:", {outputDir});
+	logger.debug("Target platform:", {platform});
+	logger.debug("Project root:", {projectRoot});
 
 	// Ensure output directory structure exists
 	try {
@@ -251,7 +240,6 @@ async function initializeBuild({
 		serverDir: join(outputDir, BUILD_STRUCTURE.serverDir),
 		projectRoot,
 		platform,
-		verbose,
 		workerCount,
 	};
 }
@@ -430,10 +418,12 @@ async function createBuildConfig({
  * Log bundle analysis if metafile is available
  */
 async function logBundleAnalysis(metafile: ESBuild.Metafile) {
+	// analyzeMetafile is expensive - only run if explicitly requested
+	// Use SHOVEL_ANALYZE=1 to enable bundle analysis output
+	if (!process.env.SHOVEL_ANALYZE) return;
 	try {
-		logger.info("Bundle analysis:", {});
 		const analysis = await ESBuild.analyzeMetafile(metafile);
-		logger.info(analysis, {});
+		logger.info("Bundle analysis:\n{analysis}", {analysis});
 	} catch (error) {
 		logger.warn("Failed to analyze bundle: {error}", {error});
 	}
@@ -445,12 +435,10 @@ async function logBundleAnalysis(metafile: ESBuild.Metafile) {
 async function generatePackageJSON({
 	serverDir,
 	platform,
-	verbose,
 	entryPath,
 }: {
 	serverDir: string;
 	platform: string;
-	verbose?: boolean;
 	entryPath: string;
 }) {
 	// Look for package.json in the same directory as the entrypoint, not cwd
@@ -473,14 +461,10 @@ async function generatePackageJSON({
 			packageJSONContent,
 			"utf8",
 		);
-		if (verbose) {
-			logger.info("Copied package.json", {serverDir});
-		}
+		logger.debug("Copied package.json", {serverDir});
 	} catch (error) {
 		// If no package.json exists in source, generate one for executable builds
-		if (verbose) {
-			logger.warn("Could not copy package.json: {error}", {error});
-		}
+		logger.debug("Could not copy package.json: {error}", {error});
 
 		try {
 			const generatedPackageJson =
@@ -490,18 +474,11 @@ async function generatePackageJSON({
 				JSON.stringify(generatedPackageJson, null, 2),
 				"utf8",
 			);
-			if (verbose) {
-				logger.info("Generated package.json", {platform});
-				logger.info("Package.json contents", {
-					contents: JSON.stringify(generatedPackageJson, null, 2),
-				});
-			}
+			logger.debug("Generated package.json", {platform});
 		} catch (generateError) {
-			if (verbose) {
-				logger.warn("Could not generate package.json: {error}", {
-					error: generateError,
-				});
-			}
+			logger.debug("Could not generate package.json: {error}", {
+				error: generateError,
+			});
 			// Don't fail the build if package.json generation fails
 		}
 	}
@@ -564,7 +541,7 @@ async function generateExecutablePackageJSON(platform: string) {
  */
 export async function buildCommand(
 	entrypoint: string,
-	options: {workers?: string; verbose?: boolean; platform?: string},
+	options: {workers?: string; platform?: string},
 	config: ProcessedShovelConfig,
 ) {
 	// Use same platform resolution as develop command
@@ -573,7 +550,6 @@ export async function buildCommand(
 	await buildForProduction({
 		entrypoint,
 		outDir: "dist",
-		verbose: options.verbose || false,
 		platform,
 		workerCount: options.workers
 			? parseInt(options.workers, 10)

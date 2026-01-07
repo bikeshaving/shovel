@@ -56,8 +56,6 @@ export interface ServerOptions {
 	development?: {
 		/** Source maps support */
 		sourceMaps?: boolean;
-		/** Verbose logging */
-		verbose?: boolean;
 	};
 }
 
