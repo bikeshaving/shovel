@@ -157,10 +157,6 @@ export async function buildForProduction({
 	const external = (buildConfig.external as string[]) ?? ["node:*"];
 	validateExternals(result, external, "main bundle");
 
-	if (result.metafile) {
-		await logBundleAnalysis(result.metafile);
-	}
-
 	await generatePackageJSON({
 		...buildContext,
 		entryPath: buildContext.entryPath,
@@ -411,21 +407,6 @@ async function createBuildConfig({
 		return buildConfig;
 	} catch (error) {
 		throw new Error(`Failed to create build configuration: ${error}`);
-	}
-}
-
-/**
- * Log bundle analysis if metafile is available
- */
-async function logBundleAnalysis(metafile: ESBuild.Metafile) {
-	// analyzeMetafile is expensive - only run if explicitly requested
-	// Use SHOVEL_ANALYZE=1 to enable bundle analysis output
-	if (!process.env.SHOVEL_ANALYZE) return;
-	try {
-		const analysis = await ESBuild.analyzeMetafile(metafile);
-		logger.info("Bundle analysis:\n{analysis}", {analysis});
-	} catch (error) {
-		logger.warn("Failed to analyze bundle: {error}", {error});
 	}
 }
 
