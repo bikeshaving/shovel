@@ -2369,7 +2369,7 @@ export async function initWorkerRuntime(
 
 	// Configure logging if specified
 	if (config?.logging) {
-		await configureLogging(config.logging, {reset: true});
+		await configureLogging(config.logging);
 	}
 
 	runtimeLogger.debug("Initializing worker runtime");
@@ -2630,7 +2630,7 @@ export interface ProcessedLoggingConfig {
 /** Default Shovel loggers - provides logging for internal categories */
 const SHOVEL_DEFAULT_LOGGERS: LoggerConfig[] = [
 	{category: ["shovel"], level: "info", sinks: ["console"]},
-	{category: ["logtape", "meta"], level: "warning", sinks: []},
+	{category: ["logtape", "meta"], level: "warning", sinks: ["console"]},
 ];
 
 /**
@@ -2681,14 +2681,10 @@ function normalizeCategory(category: string | string[]): string[] {
  * - Shovel provides default loggers for ["shovel", ...] categories
  *
  * @param loggingConfig - The logging configuration
- * @param options - Additional options
- * @param options.reset - Whether to reset existing LogTape config (default: true)
  */
 export async function configureLogging(
 	loggingConfig: LoggingConfig,
-	options: {reset?: boolean} = {},
 ): Promise<void> {
-	const reset = options.reset !== false;
 	const userSinks = loggingConfig.sinks || {};
 	const userLoggers = loggingConfig.loggers || [];
 
@@ -2744,7 +2740,7 @@ export async function configureLogging(
 	});
 
 	await configure({
-		reset,
+		reset: true,
 		sinks,
 		loggers,
 	});

@@ -256,12 +256,9 @@ describe("configureLogging", () => {
 		});
 
 		// Second configuration should reset and reconfigure
-		await configureLogging(
-			{
-				loggers: [{category: [], level: "debug", sinks: ["console"]}],
-			},
-			{reset: true},
-		);
+		await configureLogging({
+			loggers: [{category: [], level: "debug", sinks: ["console"]}],
+		});
 
 		const logger = getLogger(["test"]);
 		expect(logger).toBeDefined();
