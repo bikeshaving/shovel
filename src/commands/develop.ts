@@ -12,7 +12,6 @@ export async function developCommand(
 		port?: string;
 		host?: string;
 		workers?: string;
-		verbose?: boolean;
 		platform?: string;
 	},
 	config: ProcessedShovelConfig,
@@ -21,10 +20,8 @@ export async function developCommand(
 		const platformName = Platform.resolvePlatform({...options, config});
 		const workerCount = getWorkerCount(options, config);
 
-		if (options.verbose) {
-			logger.info("Platform: {platform}", {platform: platformName});
-			logger.info("Worker count: {workerCount}", {workerCount});
-		}
+		logger.debug("Platform: {platform}", {platform: platformName});
+		logger.debug("Worker count: {workerCount}", {workerCount});
 
 		// Create platform with server defaults
 		const platformInstance = await Platform.createPlatform(platformName, {

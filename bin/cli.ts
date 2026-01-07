@@ -30,7 +30,6 @@ program
 		"Number of workers (default: CPU cores)",
 		DEFAULTS.WORKERS,
 	)
-	.option("-v, --verbose", "Verbose logging", false)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
 	.action(async (entrypoint, options) => {
 		const {developCommand} = await import("../src/commands/develop.ts");
@@ -44,7 +43,6 @@ program
 	.command("build <entrypoint>")
 	.description("Build app for production")
 	.option("-w, --workers <count>", "Worker count (defaults to 1)", undefined)
-	.option("-v, --verbose", "Verbose logging", false)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
 	.action(async (entrypoint, options) => {
 		const {buildCommand} = await import("../src/commands/build.ts");
@@ -59,7 +57,6 @@ program
 	.description(
 		"Activate ServiceWorker (for static site generation in activate event)",
 	)
-	.option("-v, --verbose", "Verbose logging", false)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
 	.option(
 		"-w, --workers <count>",
