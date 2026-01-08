@@ -14,10 +14,10 @@ describe("createDatabaseFactory", () => {
 		reset();
 	});
 
-	test("uses DriverClass and passes driver options", async () => {
+	test("uses impl and passes driver options", async () => {
 		const factory = createDatabaseFactory({
 			main: {
-				DriverClass: DefaultDriver,
+				impl: DefaultDriver,
 				url: "db://main",
 				poolSize: 5,
 			},
@@ -33,10 +33,10 @@ describe("createDatabaseFactory", () => {
 		expect(closeCalls).toBe(1);
 	});
 
-	test("uses named DriverClass when configured", async () => {
+	test("uses named impl when configured", async () => {
 		const factory = createDatabaseFactory({
 			main: {
-				DriverClass: NamedDriver,
+				impl: NamedDriver,
 				url: "db://named",
 				ssl: true,
 			},
@@ -52,14 +52,14 @@ describe("createDatabaseFactory", () => {
 		expect(closeCalls).toBe(1);
 	});
 
-	test("throws when DriverClass is missing", async () => {
+	test("throws when impl is missing", async () => {
 		const factory = createDatabaseFactory({
 			main: {
 				url: "db://missing",
 			},
 		});
 
-		await expect(factory("main")).rejects.toThrow("has no DriverClass");
+		await expect(factory("main")).rejects.toThrow("has no impl");
 	});
 
 	test("throws when database is not configured", async () => {

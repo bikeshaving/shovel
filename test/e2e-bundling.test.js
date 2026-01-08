@@ -703,9 +703,9 @@ console.log("SINK_BUNDLE_TEST_READY");
 			expect(indexContent).toContain("getConsoleSink");
 			expect(indexContent).toContain("getFileSink");
 
-			// Config should have factory references (not dynamic import paths)
-			// The pattern "factory:" indicates the factory was statically imported
-			expect(indexContent).toContain("factory:");
+			// Config should have impl references (not dynamic import paths)
+			// The pattern "impl:" indicates the implementation was statically imported
+			expect(indexContent).toContain("impl:");
 
 			// Run the bundle to verify sinks work
 			const result = await runBundle(join(outDir, "server"));
@@ -866,9 +866,9 @@ self.addEventListener("fetch", (event) => {
 				"utf8",
 			);
 
-			// The config should have factory: references (statically imported functions)
+			// The config should have impl: references (statically imported functions)
 			// NOT dynamic imports like: await import(providerPath)
-			expect(workerContent).toContain("factory:");
+			expect(workerContent).toContain("impl:");
 
 			// Sink factories should be bundled inline
 			expect(workerContent).toContain("getConsoleSink");

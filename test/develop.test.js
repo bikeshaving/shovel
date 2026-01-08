@@ -42,7 +42,7 @@ async function createTempDir() {
 	await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
 
 	// Create shovel.json with logging config
-	// Use "info" level so we can detect "Workers reloaded" messages for test synchronization
+	// Use "info" level so we can detect "Reloaded" messages for test synchronization
 	await FS.writeFile(
 		join(tempDir, "shovel.json"),
 		JSON.stringify(
@@ -136,7 +136,7 @@ function startDevServer(fixture, port, extraArgs = []) {
 	let stderrOutput = "";
 	let stdoutOutput = "";
 
-	// Track reload promises - resolved when "Workers reloaded" is seen
+	// Track reload promises - resolved when "Reloaded" is seen
 	let reloadResolvers = [];
 	// Track build promises - resolved when any build completes (success or failure)
 	let buildResolvers = [];
@@ -159,8 +159,8 @@ function startDevServer(fixture, port, extraArgs = []) {
 			}
 		}
 
-		// "Workers reloaded" appears on stdout
-		if (content.includes("Workers reloaded") && reloadResolvers.length > 0) {
+		// "Reloaded" appears on stdout
+		if (content.includes("Reloaded") && reloadResolvers.length > 0) {
 			const resolvers = reloadResolvers;
 			reloadResolvers = [];
 			stdoutWaitPos = stdoutOutput.length;
@@ -204,7 +204,7 @@ function startDevServer(fixture, port, extraArgs = []) {
 
 	// Method to wait for the next reload to complete
 	serverProcess.waitForReload = (timeoutMs = 10000) => {
-		// Set wait position so we only look for NEW "Workers reloaded" messages
+		// Set wait position so we only look for NEW "Reloaded" messages
 		stdoutWaitPos = stdoutOutput.length;
 
 		return new Promise((resolve, reject) => {

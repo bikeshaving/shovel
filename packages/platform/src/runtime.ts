@@ -380,15 +380,11 @@ import {Database} from "@b9g/zen";
 
 /**
  * Database configuration from shovel.json.
- * Follows the same module/export pattern as directories and caches.
+ * Uses the unified impl pattern like directories and caches.
  */
 export interface DatabaseConfig {
-	/** Module path to import (e.g., "@b9g/zen/bun") - optional if DriverClass provided */
-	module?: string;
-	/** Named export to use (defaults to "default") */
-	export?: string;
-	/** Pre-imported driver class (from generated config) - optional if module provided */
-	DriverClass?: new (url: string, options?: any) => any;
+	/** Reified implementation (driver class from build-time code generation) */
+	impl?: new (url: string, options?: any) => any;
 	/** Database connection URL */
 	url?: string;
 	/** Additional driver-specific options */
@@ -613,19 +609,11 @@ export function createDatabaseFactory(
 			);
 		}
 
-		// Strip metadata fields that shouldn't be passed to driver constructor
+		const {impl, url, ...driverOptions} = config;
 
-		const {
-			DriverClass,
-			url,
-			module: _module,
-			export: _export,
-			...driverOptions
-		} = config;
-
-		if (!DriverClass) {
+		if (!impl) {
 			throw new Error(
-				`Database "${name}" has no DriverClass. Ensure the database module is configured in shovel.json.`,
+				`Database "${name}" has no impl. Ensure the database module is configured in shovel.json.`,
 			);
 		}
 
@@ -635,7 +623,7 @@ export function createDatabaseFactory(
 			);
 		}
 
-		const driver = new DriverClass(url, driverOptions);
+		const driver = new impl(url, driverOptions);
 		const db = new Database(driver);
 
 		return {
@@ -2150,27 +2138,16 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 
 /** Cache provider configuration */
 export interface CacheConfig {
-	/** Module path to import (e.g., "@b9g/cache/memory") - optional if CacheClass provided */
-	module?: string;
-	/** Named export to use (defaults to "default") */
-	export?: string;
-	/** Pre-imported cache class (from generated config) - optional if module provided */
-	CacheClass?: new (name: string, options?: any) => Cache;
+	/** Reified implementation (class or factory from build-time code generation) */
+	impl?: (new (name: string, options?: any) => Cache) | ((name: string, options?: any) => Cache);
 	/** Additional options passed to the constructor */
 	[key: string]: unknown;
 }
 
 /** Directory (filesystem) provider configuration */
 export interface DirectoryConfig {
-	/** Module path to import (e.g., "@b9g/filesystem/memory") - optional if DirectoryClass provided */
-	module?: string;
-	/** Named export to use (defaults to "default") */
-	export?: string;
-	/** Pre-imported directory class (from generated config) - optional if module provided */
-	DirectoryClass?: new (
-		name: string,
-		options?: any,
-	) => FileSystemDirectoryHandle;
+	/** Reified implementation (class or factory from build-time code generation) */
+	impl?: (new (name: string, options?: any) => FileSystemDirectoryHandle) | ((name: string, options?: any) => FileSystemDirectoryHandle);
 	/** Custom path for filesystem directories */
 	path?: string;
 	/** Additional options passed to the constructor */
@@ -2194,9 +2171,17 @@ export interface ShovelConfig {
 // ============================================================================
 
 /**
+ * Check if a value is a class (has prototype) vs a plain function.
+ * Used to determine whether to use `new` or call directly.
+ */
+function isClass(fn: unknown): fn is new (...args: any[]) => any {
+	return typeof fn === "function" && fn.prototype !== undefined;
+}
+
+/**
  * Creates a directory factory function for CustomDirectoryStorage.
  *
- * Configs must have DirectoryClass pre-imported (from generated config module).
+ * Configs must have impl pre-imported (from generated config module).
  * Paths are expected to be already resolved at build time by the path syntax parser.
  * Runtime paths (like [tmpdir]) are evaluated as expressions in the generated config.
  */
@@ -2211,20 +2196,19 @@ export function createDirectoryFactory(
 			);
 		}
 
-		// Strip metadata fields that shouldn't be passed to directory constructor
-		const {
-			DirectoryClass,
-			module: _module,
-			export: _export,
-			...dirOptions
-		} = config;
-		if (!DirectoryClass) {
+		const {impl, ...dirOptions} = config;
+		if (!impl) {
 			throw new Error(
-				`Directory "${name}" has no DirectoryClass. Ensure the directory module is configured.`,
+				`Directory "${name}" has no impl. Ensure the directory module is configured.`,
 			);
 		}
 
-		return new DirectoryClass(name, dirOptions);
+		// Detect class vs factory function
+		if (isClass(impl)) {
+			return new impl(name, dirOptions);
+		} else {
+			return impl(name, dirOptions);
+		}
 	};
 }
 
@@ -2241,7 +2225,7 @@ export interface CacheFactoryOptions {
 
 /**
  * Creates a cache factory function for CustomCacheStorage.
- * Configs must have CacheClass pre-imported (from generated config module).
+ * Configs must have impl pre-imported (from generated config module).
  */
 export function createCacheFactory(options: CacheFactoryOptions) {
 	const {configs, usePostMessage = false} = options;
@@ -2259,21 +2243,19 @@ export function createCacheFactory(options: CacheFactoryOptions) {
 			);
 		}
 
-		// Strip metadata fields that shouldn't be passed to cache constructor
-
-		const {
-			CacheClass,
-			module: _module,
-			export: _export,
-			...cacheOptions
-		} = config;
-		if (!CacheClass) {
+		const {impl, ...cacheOptions} = config;
+		if (!impl) {
 			throw new Error(
-				`Cache "${name}" has no CacheClass. Ensure the cache module is configured.`,
+				`Cache "${name}" has no impl. Ensure the cache module is configured.`,
 			);
 		}
 
-		return new CacheClass(name, cacheOptions);
+		// Detect class vs factory function
+		if (isClass(impl)) {
+			return new impl(name, cacheOptions);
+		} else {
+			return impl(name, cacheOptions);
+		}
 	};
 }
 
@@ -2588,12 +2570,8 @@ export type LogLevel = "debug" | "info" | "warning" | "error";
 
 /** Sink configuration */
 export interface SinkConfig {
-	/** Module path to import (e.g., "@logtape/logtape") - optional if factory provided */
-	module?: string;
-	/** Named export to use (defaults to "default") */
-	export?: string;
-	/** Pre-imported factory function (from build-time code generation) - optional if module provided */
-	factory?: (...args: any[]) => unknown;
+	/** Reified implementation (factory function from build-time code generation) */
+	impl?: (...args: any[]) => unknown;
 	/** Additional options passed to the factory (path, maxSize, etc.) */
 	[key: string]: unknown;
 }
@@ -2633,6 +2611,7 @@ const SHOVEL_DEFAULT_LOGGERS: LoggerConfig[] = [
 	{category: ["logtape", "meta"], level: "warning", sinks: ["console"]},
 ];
 
+
 /**
  * Create a sink from config.
  *
@@ -2641,26 +2620,25 @@ const SHOVEL_DEFAULT_LOGGERS: LoggerConfig[] = [
  */
 async function createSink(config: SinkConfig): Promise<any> {
 	const {
-		factory,
-		provider: _provider, // Exclude provider from options passed to factory
+		impl,
 		path, // Extract path for file-based sinks
 		...sinkOptions
 	} = config;
 
-	if (!factory) {
+	if (!impl) {
 		throw new Error(
-			`Sink has no factory. Ensure the sink module is configured in shovel.json.`,
+			`Sink has no impl. Ensure the sink module is configured in shovel.json.`,
 		);
 	}
 
 	// File-based sinks (getFileSink, getRotatingFileSink) expect (path, options)
 	// Other sinks (getConsoleSink, getOpenTelemetrySink, etc.) expect (options) or no args
 	if (path !== undefined) {
-		return factory(path, sinkOptions);
+		return impl(path, sinkOptions);
 	} else if (Object.keys(sinkOptions).length > 0) {
-		return factory(sinkOptions);
+		return impl(sinkOptions);
 	} else {
-		return factory();
+		return impl();
 	}
 }
 

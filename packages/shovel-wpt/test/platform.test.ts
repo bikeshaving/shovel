@@ -189,16 +189,16 @@ runPlatformTests("NodePlatform", {
 			cwd: fixturesDir,
 			config: {
 				caches: {
-					"test-cache": {CacheClass: MemoryCache},
-					"functional-test": {CacheClass: MemoryCache},
-					"cache-1": {CacheClass: MemoryCache},
-					"cache-2": {CacheClass: MemoryCache},
+					"test-cache": {impl: MemoryCache},
+					"functional-test": {impl: MemoryCache},
+					"cache-1": {impl: MemoryCache},
+					"cache-2": {impl: MemoryCache},
 					// For ServiceWorkerGlobals tests
-					"contract-test-cache": {CacheClass: MemoryCache},
+					"contract-test-cache": {impl: MemoryCache},
 				},
 				directories: {
 					// For ServiceWorkerGlobals tests
-					tmp: {DirectoryClass: MemoryDirectory},
+					tmp: {impl: MemoryDirectory},
 				},
 			},
 		});
@@ -221,16 +221,16 @@ runPlatformTests("BunPlatform", {
 			cwd: fixturesDir,
 			config: {
 				caches: {
-					"test-cache": {CacheClass: MemoryCache},
-					"functional-test": {CacheClass: MemoryCache},
-					"cache-1": {CacheClass: MemoryCache},
-					"cache-2": {CacheClass: MemoryCache},
+					"test-cache": {impl: MemoryCache},
+					"functional-test": {impl: MemoryCache},
+					"cache-1": {impl: MemoryCache},
+					"cache-2": {impl: MemoryCache},
 					// For ServiceWorkerGlobals tests
-					"contract-test-cache": {CacheClass: MemoryCache},
+					"contract-test-cache": {impl: MemoryCache},
 				},
 				directories: {
 					// For ServiceWorkerGlobals tests
-					tmp: {DirectoryClass: MemoryDirectory},
+					tmp: {impl: MemoryDirectory},
 				},
 			},
 		});
@@ -257,10 +257,10 @@ runPlatformTests("CloudflarePlatform", {
 			cwd: fixturesDir,
 			config: {
 				caches: {
-					"test-cache": {CacheClass: CloudflareNativeCache},
-					"functional-test": {CacheClass: CloudflareNativeCache},
-					"cache-1": {CacheClass: CloudflareNativeCache},
-					"cache-2": {CacheClass: CloudflareNativeCache},
+					"test-cache": {impl: CloudflareNativeCache},
+					"functional-test": {impl: CloudflareNativeCache},
+					"cache-1": {impl: CloudflareNativeCache},
+					"cache-2": {impl: CloudflareNativeCache},
 				},
 			},
 		});

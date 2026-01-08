@@ -8,7 +8,9 @@ import {configureLogging} from "@b9g/platform/runtime";
 
 const projectRoot = findProjectRoot();
 const config = loadConfig(projectRoot);
-await configureLogging(config.logging);
+// Configure logging for CLI only with loggers (not user sinks - those require build-time reification)
+// User-defined sinks are handled in the generated worker config
+await configureLogging({loggers: config.logging?.loggers});
 
 import {Command} from "commander";
 import pkg from "../package.json" with {type: "json"};
