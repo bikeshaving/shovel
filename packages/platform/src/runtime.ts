@@ -2139,7 +2139,9 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 /** Cache provider configuration */
 export interface CacheConfig {
 	/** Reified implementation (class or factory from build-time code generation) */
-	impl?: (new (name: string, options?: any) => Cache) | ((name: string, options?: any) => Cache);
+	impl?:
+		| (new (name: string, options?: any) => Cache)
+		| ((name: string, options?: any) => Cache);
 	/** Additional options passed to the constructor */
 	[key: string]: unknown;
 }
@@ -2147,7 +2149,9 @@ export interface CacheConfig {
 /** Directory (filesystem) provider configuration */
 export interface DirectoryConfig {
 	/** Reified implementation (class or factory from build-time code generation) */
-	impl?: (new (name: string, options?: any) => FileSystemDirectoryHandle) | ((name: string, options?: any) => FileSystemDirectoryHandle);
+	impl?:
+		| (new (name: string, options?: any) => FileSystemDirectoryHandle)
+		| ((name: string, options?: any) => FileSystemDirectoryHandle);
 	/** Custom path for filesystem directories */
 	path?: string;
 	/** Additional options passed to the constructor */
@@ -2610,7 +2614,6 @@ const SHOVEL_DEFAULT_LOGGERS: LoggerConfig[] = [
 	{category: ["shovel"], level: "info", sinks: ["console"]},
 	{category: ["logtape", "meta"], level: "warning", sinks: ["console"]},
 ];
-
 
 /**
  * Create a sink from config.

@@ -3,14 +3,37 @@
 
 // Load config and configure logging before anything else
 import {findProjectRoot} from "../src/utils/project.js";
-import {loadConfig, DEFAULTS} from "../src/utils/config.js";
+import {loadConfig, DEFAULTS, type SinkConfig} from "../src/utils/config.js";
 import {configureLogging} from "@b9g/platform/runtime";
 
 const projectRoot = findProjectRoot();
 const config = loadConfig(projectRoot);
-// Configure logging for CLI only with loggers (not user sinks - those require build-time reification)
-// User-defined sinks are handled in the generated worker config
-await configureLogging({loggers: config.logging?.loggers});
+
+// Reify sink configs by dynamically importing their modules
+// This allows CLI to use user-configured sinks (same as build-time reification for workers)
+async function reifySinks(
+	sinks: Record<string, SinkConfig> | undefined,
+): Promise<Record<string, {impl: unknown; [key: string]: unknown}>> {
+	const reified: Record<string, {impl: unknown; [key: string]: unknown}> = {};
+	for (const [name, sinkConfig] of Object.entries(sinks ?? {})) {
+		const {module: modulePath, export: exportName, ...rest} = sinkConfig;
+		if (modulePath) {
+			const mod = await import(modulePath);
+			const impl = exportName ? mod[exportName] : mod.default;
+			reified[name] = {...rest, impl};
+		} else if (sinkConfig.impl) {
+			// Already reified (shouldn't happen in CLI, but handle it)
+			reified[name] = sinkConfig as {impl: unknown};
+		}
+	}
+	return reified;
+}
+
+const reifiedSinks = await reifySinks(config.logging?.sinks);
+await configureLogging({
+	sinks: reifiedSinks,
+	loggers: config.logging?.loggers,
+});
 
 import {Command} from "commander";
 import pkg from "../package.json" with {type: "json"};
