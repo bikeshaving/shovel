@@ -20,7 +20,7 @@ describe("NodePlatform", () => {
 			config: {
 				// Provide default cache config with pre-imported class for tests
 				caches: {
-					test: {CacheClass: MemoryCache},
+					test: {impl: MemoryCache},
 				},
 			},
 		});
@@ -246,7 +246,7 @@ describe("NodePlatform", () => {
 				config: {
 					caches: {
 						"test-cache": {
-							CacheClass: MemoryCache,
+							impl: MemoryCache,
 						},
 					},
 				},
@@ -271,7 +271,7 @@ describe("NodePlatform", () => {
 				config: {
 					directories: {
 						uploads: {
-							DirectoryClass: MemoryDirectory,
+							impl: MemoryDirectory,
 						},
 					},
 				},

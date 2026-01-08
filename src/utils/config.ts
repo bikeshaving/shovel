@@ -1225,6 +1225,7 @@ export function generateConfigModule(
 	const addedImports = new Map<string, string>();
 
 	// Helper to generate import and placeholder for a module/export config
+	// Returns placeholder that will be replaced with the imported function/class
 	const processModule = (
 		modulePath: string | undefined,
 		exportName: string | undefined,
@@ -1258,22 +1259,27 @@ export function generateConfigModule(
 		return createPlaceholder(varName);
 	};
 
-	// Process a sink config, adding factory placeholder
+	// Helper to process a config object with module/export pattern
+	// Replaces module/export with `impl` (the reified function/class)
+	const reifyModule = <T extends {module?: string; export?: string}>(
+		config: T,
+		type: "cache" | "directory" | "sink" | "database",
+		name: string,
+	): Omit<T, "module" | "export"> & {impl?: string} => {
+		const {module: modulePath, export: exportName, ...rest} = config;
+		const implPlaceholder = processModule(modulePath, exportName, type, name);
+		if (implPlaceholder) {
+			return {...rest, impl: implPlaceholder} as any;
+		}
+		return rest as any;
+	};
+
+	// Process a sink config, replacing module/export with impl
 	const processSink = (
 		sink: SinkConfig,
 		sinkName: string,
 	): Record<string, unknown> => {
-		const factoryPlaceholder = processModule(
-			sink.module,
-			sink.export,
-			"sink",
-			sinkName,
-		);
-		const result: Record<string, unknown> = {...sink};
-		if (factoryPlaceholder) {
-			result.factory = factoryPlaceholder;
-		}
-		return result;
+		return reifyModule(sink, "sink", sinkName);
 	};
 
 	// Build the config object with placeholders
@@ -1362,18 +1368,7 @@ export function generateConfigModule(
 				const platformConfig = platformCaches[name] || {};
 				const userConfig = userCaches[name] || {};
 				const mergedConfig = {...platformConfig, ...userConfig};
-
-				const cacheClassPlaceholder = processModule(
-					mergedConfig.module,
-					mergedConfig.export,
-					"cache",
-					name,
-				);
-				const result: Record<string, unknown> = {...mergedConfig};
-				if (cacheClassPlaceholder) {
-					result.CacheClass = cacheClassPlaceholder;
-				}
-				caches[name] = result;
+				caches[name] = reifyModule(mergedConfig, "cache", name);
 			}
 			config.caches = caches;
 		}
@@ -1394,19 +1389,7 @@ export function generateConfigModule(
 				const platformConfig = platformDirectories[name] || {};
 				const userConfig = userDirectories[name] || {};
 				const mergedConfig = {...platformConfig, ...userConfig};
-
-				const directoryClassPlaceholder = processModule(
-					mergedConfig.module,
-					mergedConfig.export,
-					"directory",
-					name,
-				);
-				const result: Record<string, unknown> = {...mergedConfig};
-				if (directoryClassPlaceholder) {
-					result.DirectoryClass = directoryClassPlaceholder;
-				}
-
-				directories[name] = result;
+				directories[name] = reifyModule(mergedConfig, "directory", name);
 			}
 			config.directories = directories;
 		}
@@ -1415,17 +1398,7 @@ export function generateConfigModule(
 		if (rawConfig.databases && Object.keys(rawConfig.databases).length > 0) {
 			const databases: Record<string, unknown> = {};
 			for (const [name, dbConfig] of Object.entries(rawConfig.databases)) {
-				const driverClassPlaceholder = processModule(
-					dbConfig.module,
-					dbConfig.export,
-					"database",
-					name,
-				);
-				const result: Record<string, unknown> = {...dbConfig};
-				if (driverClassPlaceholder) {
-					result.DriverClass = driverClassPlaceholder;
-				}
-				databases[name] = result;
+				databases[name] = reifyModule(dbConfig, "database", name);
 			}
 			config.databases = databases;
 		}
@@ -1565,8 +1538,8 @@ export const SinkConfigSchema = z
 	.passthrough(); // Allow additional sink-specific options (path, maxSize, etc.)
 
 export type SinkConfig = z.infer<typeof SinkConfigSchema> & {
-	/** Pre-imported factory function (from build-time code generation) */
-	factory?: (options: Record<string, unknown>) => unknown;
+	/** Reified implementation (factory function from build-time code generation) */
+	impl?: (options: Record<string, unknown>) => unknown;
 };
 
 /** Logger configuration schema */

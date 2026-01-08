@@ -45,7 +45,7 @@ describe("CloudflarePlatform", () => {
 			environment: "dev",
 			config: {
 				caches: {
-					test: {CacheClass: CloudflareNativeCache},
+					test: {impl: CloudflareNativeCache},
 				},
 			},
 		});

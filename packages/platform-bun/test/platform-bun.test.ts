@@ -30,8 +30,8 @@ describe("BunPlatform", () => {
 			config: {
 				// Provide default cache config with pre-imported class for tests
 				caches: {
-					test: {CacheClass: MemoryCache},
-					"env-test": {CacheClass: MemoryCache},
+					test: {impl: MemoryCache},
+					"env-test": {impl: MemoryCache},
 				},
 			},
 		});
@@ -190,7 +190,7 @@ describe("BunPlatform", () => {
 				config: {
 					caches: {
 						"test-cache": {
-							CacheClass: MemoryCache,
+							impl: MemoryCache,
 						},
 					},
 				},
@@ -215,7 +215,7 @@ describe("BunPlatform", () => {
 				config: {
 					directories: {
 						uploads: {
-							DirectoryClass: MemoryDirectory,
+							impl: MemoryDirectory,
 						},
 					},
 				},

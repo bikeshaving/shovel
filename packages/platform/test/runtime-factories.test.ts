@@ -21,10 +21,10 @@ import {join} from "path";
 import {mkdtempSync, rmSync} from "fs";
 
 describe("createCacheFactory", () => {
-	test("creates cache from config with CacheClass", async () => {
+	test("creates cache from config with impl", async () => {
 		const factory = createCacheFactory({
 			configs: {
-				"test-cache": {CacheClass: MemoryCache as any},
+				"test-cache": {impl: MemoryCache as any},
 			},
 		});
 		const cache = await factory("test-cache");
@@ -40,14 +40,14 @@ describe("createCacheFactory", () => {
 		);
 	});
 
-	test("throws error when CacheClass is missing", async () => {
+	test("throws error when impl is missing", async () => {
 		const factory = createCacheFactory({
 			configs: {
-				"test-cache": {} as any, // No CacheClass
+				"test-cache": {} as any, // No impl
 			},
 		});
 		await expect(factory("test-cache")).rejects.toThrow(
-			'Cache "test-cache" has no CacheClass',
+			'Cache "test-cache" has no impl',
 		);
 	});
 
@@ -55,7 +55,7 @@ describe("createCacheFactory", () => {
 		const factory = createCacheFactory({
 			configs: {
 				"test-cache": {
-					CacheClass: MemoryCache as any,
+					impl: MemoryCache as any,
 					maxEntries: 100,
 					TTL: 3600,
 				},
@@ -69,7 +69,7 @@ describe("createCacheFactory", () => {
 	test("returns PostMessageCache when usePostMessage is true", async () => {
 		const factory = createCacheFactory({
 			configs: {
-				"test-cache": {CacheClass: MemoryCache as any},
+				"test-cache": {impl: MemoryCache as any},
 			},
 			usePostMessage: true,
 		});
@@ -83,9 +83,9 @@ describe("createCacheFactory", () => {
 describe("createDirectoryFactory", () => {
 	let tempDir: string;
 
-	test("creates directory from config with DirectoryClass", async () => {
+	test("creates directory from config with impl", async () => {
 		const factory = createDirectoryFactory({
-			uploads: {DirectoryClass: MemoryDirectory as any},
+			uploads: {impl: MemoryDirectory as any},
 		});
 
 		const dir = await factory("uploads");
@@ -96,7 +96,7 @@ describe("createDirectoryFactory", () => {
 
 	test("creates NodeFSDirectory when specified", async () => {
 		const factory = createDirectoryFactory({
-			data: {DirectoryClass: NodeFSDirectory as any},
+			data: {impl: NodeFSDirectory as any},
 		});
 
 		const dir = await factory("data");
@@ -112,13 +112,13 @@ describe("createDirectoryFactory", () => {
 		);
 	});
 
-	test("throws error when DirectoryClass is missing", async () => {
+	test("throws error when impl is missing", async () => {
 		const factory = createDirectoryFactory({
-			data: {} as any, // No DirectoryClass
+			data: {} as any, // No impl
 		});
 
 		await expect(factory("data")).rejects.toThrow(
-			'Directory "data" has no DirectoryClass',
+			'Directory "data" has no impl',
 		);
 	});
 
@@ -128,7 +128,7 @@ describe("createDirectoryFactory", () => {
 		try {
 			const factory = createDirectoryFactory({
 				data: {
-					DirectoryClass: NodeFSDirectory as any,
+					impl: NodeFSDirectory as any,
 					path: customPath,
 				},
 			});
@@ -140,7 +140,7 @@ describe("createDirectoryFactory", () => {
 		}
 	});
 
-	test("passes name and options to DirectoryClass constructor", async () => {
+	test("passes name and options to impl constructor", async () => {
 		let capturedName: string | undefined;
 		let capturedOptions: any;
 
@@ -153,7 +153,7 @@ describe("createDirectoryFactory", () => {
 
 		const factory = createDirectoryFactory({
 			uploads: {
-				DirectoryClass: TestDirectory as any,
+				impl: TestDirectory as any,
 				path: "/tmp/test",
 				customOption: "value",
 			},
@@ -165,7 +165,7 @@ describe("createDirectoryFactory", () => {
 		expect(capturedOptions.customOption).toBe("value");
 	});
 
-	test("passes pre-resolved path to DirectoryClass", async () => {
+	test("passes pre-resolved path to impl", async () => {
 		// Paths are now resolved at build time, so the factory just passes them through
 		let capturedOptions: any;
 
@@ -179,7 +179,7 @@ describe("createDirectoryFactory", () => {
 		const resolvedTmpPath = tmpdir();
 		const factory = createDirectoryFactory({
 			tmp: {
-				DirectoryClass: TestDirectory as any,
+				impl: TestDirectory as any,
 				path: resolvedTmpPath,
 			},
 		});
@@ -235,11 +235,11 @@ describe("configureLogging", () => {
 		expect(logger).toBeDefined();
 	});
 
-	test("handles named custom sinks with factory", async () => {
+	test("handles named custom sinks with impl", async () => {
 		await configureLogging({
 			sinks: {
 				myConsole: {
-					factory: getConsoleSink,
+					impl: getConsoleSink,
 				},
 			},
 			loggers: [{category: ["app"], sinks: ["myConsole"]}],
@@ -289,11 +289,11 @@ describe("configureLogging", () => {
 		expect(shovelLogger).toBeDefined();
 	});
 
-	test("supports parentSinks override with factory", async () => {
+	test("supports parentSinks override with impl", async () => {
 		await configureLogging({
 			sinks: {
 				customSink: {
-					factory: getConsoleSink,
+					impl: getConsoleSink,
 				},
 			},
 			loggers: [
@@ -311,14 +311,14 @@ describe("configureLogging", () => {
 		expect(dbLogger).toBeDefined();
 	});
 
-	test("uses factory function when provided (build-time optimization)", async () => {
-		// The `factory` option is an internal mechanism for bundled builds.
+	test("uses impl function when provided (build-time optimization)", async () => {
+		// The `impl` option is an internal mechanism for bundled builds.
 		// The CLI generates code that statically imports sink factories,
 		// since dynamic import() can't resolve arbitrary paths in bundles.
 		await configureLogging({
 			sinks: {
 				buildTimeSink: {
-					factory: getConsoleSink,
+					impl: getConsoleSink,
 				},
 			},
 			loggers: [{category: ["build"], sinks: ["buildTimeSink"]}],
@@ -328,15 +328,15 @@ describe("configureLogging", () => {
 		expect(logger).toBeDefined();
 	});
 
-	test("throws error when sink has no factory", async () => {
+	test("throws error when sink has no impl", async () => {
 		await expect(
 			configureLogging({
 				sinks: {
-					badSink: {} as any, // No factory
+					badSink: {} as any, // No impl
 				},
 				loggers: [{category: ["test"], sinks: ["badSink"]}],
 			}),
-		).rejects.toThrow("Sink has no factory");
+		).rejects.toThrow("Sink has no impl");
 	});
 });
 

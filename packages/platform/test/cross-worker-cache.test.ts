@@ -41,12 +41,12 @@ import {initWorkerRuntime, startWorkerMessageLoop} from "@b9g/platform/runtime";
 import {MemoryCache} from "@b9g/cache/memory";
 
 // Initialize the worker runtime with PostMessageCache support
-// Config includes the cache with CacheClass as a static import (simulating build-time config)
+// Config includes the cache with impl as a static import (simulating build-time config)
 const {registration} = await initWorkerRuntime({
 	config: {
 		caches: {
 			"shared-cache": {
-				CacheClass: MemoryCache,
+				impl: MemoryCache,
 			},
 		},
 	},

@@ -235,8 +235,8 @@ describe("generateConfigModule", () => {
 
 			// Should have static import for the module
 			expect(module).toContain('from "@b9g/cache-redis"');
-			// Should reference the imported module via CacheClass
-			expect(module).toContain("CacheClass: cache_");
+			// Should reference the imported module via impl
+			expect(module).toContain("impl: cache_");
 		});
 
 		it("generates import with named export", () => {
@@ -315,7 +315,7 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(config);
 
 			expect(module).toContain('from "@b9g/filesystem-s3"');
-			expect(module).toContain("DirectoryClass: directory_");
+			expect(module).toContain("impl: directory_");
 		});
 
 		it("generates import for node-fs module", () => {
@@ -358,7 +358,7 @@ describe("generateConfigModule", () => {
 
 			// Should still have the import from platform defaults
 			expect(module).toContain('from "@b9g/filesystem/node-fs"');
-			expect(module).toContain("DirectoryClass: directory_");
+			expect(module).toContain("impl: directory_");
 			// User's path override should be present as literal
 			expect(module).toContain('path: "./my-tmp"');
 		});
@@ -385,7 +385,7 @@ describe("generateConfigModule", () => {
 
 			// Should still have the import from platform defaults
 			expect(module).toContain('from "@b9g/cache/memory"');
-			expect(module).toContain("CacheClass: cache_");
+			expect(module).toContain("impl: cache_");
 			// User's ttl override should be present
 			expect(module).toContain("3600");
 		});
@@ -545,8 +545,8 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(config);
 
 			expect(module).toContain('from "@logtape/logtape"');
-			expect(module).toContain("factory: sink_console");
-			expect(module).toContain("factory: sink_file");
+			expect(module).toContain("impl: sink_console");
+			expect(module).toContain("impl: sink_file");
 		});
 
 		it("includes logger config with categories", () => {
