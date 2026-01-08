@@ -1445,3 +1445,119 @@ test(
 	},
 	TIMEOUT,
 );
+
+test(
+	"relative module paths in config resolve relative to config file",
+	async () => {
+		// This test verifies that relative paths (like "./my-sink.js") in shovel.json
+		// resolve relative to the config file location, not the CLI location.
+		// This is important because users expect paths to be relative to their project.
+		const PORT = 13327;
+		let serverProcess;
+		let tempDir;
+
+		try {
+			// Create temp directory with node_modules symlink
+			tempDir = await mkdtemp(join(tmpdir(), "shovel-test-"));
+			const nodeModulesSource = join(process.cwd(), "node_modules");
+			const nodeModulesLink = join(tempDir, "node_modules");
+			await FS.symlink(nodeModulesSource, nodeModulesLink, "dir");
+
+			// Create a custom sink module in the project directory
+			// Sinks receive options as an object (not positional args)
+			const customSinkCode = `
+// Custom sink that writes to a marker file to prove it was loaded
+import { writeFileSync } from "fs";
+
+export function getCustomSink(options) {
+	const { markerPath } = options;
+	// Write marker file immediately on load to prove the module was found
+	writeFileSync(markerPath, "sink-loaded");
+	return (record) => {
+		// Append log messages to the marker file
+		writeFileSync(markerPath, "sink-loaded\\n" + record.message.join(""), { flag: "a" });
+	};
+}
+`;
+			await FS.writeFile(join(tempDir, "custom-sink.mjs"), customSinkCode);
+
+			// Create shovel.json with relative path to the custom sink
+			const markerPath = join(tempDir, "sink-marker.txt");
+			const shovelConfig = {
+				logging: {
+					sinks: {
+						custom: {
+							module: "./custom-sink.mjs",
+							export: "getCustomSink",
+							markerPath: markerPath,
+						},
+					},
+					loggers: [{category: "shovel", level: "info", sinks: ["custom"]}],
+				},
+			};
+			await FS.writeFile(
+				join(tempDir, "shovel.json"),
+				JSON.stringify(shovelConfig, null, 2),
+			);
+
+			// Create a simple app
+			const appCode = `
+addEventListener("fetch", (event) => {
+	event.respondWith(new Response("OK"));
+});
+`;
+			await FS.writeFile(join(tempDir, "app.js"), appCode);
+
+			// Start dev server - if relative paths resolve correctly, it should start
+			// If they resolve relative to CLI location, it will fail with ERR_MODULE_NOT_FOUND
+			const cliPath = join(process.cwd(), "./dist/bin/cli.js");
+			serverProcess = spawn(
+				"node",
+				[cliPath, "develop", "app.js", "--port", PORT.toString()],
+				{
+					stdio: ["ignore", "pipe", "pipe"],
+					cwd: tempDir,
+					env: {
+						...process.env,
+						NODE_ENV: "development",
+					},
+				},
+			);
+
+			let stderrOutput = "";
+			serverProcess.stderr.on("data", (data) => {
+				stderrOutput += data.toString();
+			});
+
+			// Wait a bit for the CLI to either start or fail
+			await new Promise((resolve) => setTimeout(resolve, 2000));
+
+			// Check if server exited early (indicates module resolution failure)
+			if (serverProcess.exitCode !== null) {
+				// Server exited - check if it's the path resolution error we're testing for
+				expect(stderrOutput).not.toContain("ERR_MODULE_NOT_FOUND");
+				throw new Error(
+					`CLI exited with code ${serverProcess.exitCode}: ${stderrOutput}`,
+				);
+			}
+
+			// Check that the custom sink was actually loaded by verifying marker file
+			const markerExists = await FS.access(markerPath)
+				.then(() => true)
+				.catch(() => false);
+			expect(markerExists).toBe(true);
+
+			const markerContent = await FS.readFile(markerPath, "utf-8");
+			expect(markerContent).toContain("sink-loaded");
+		} finally {
+			if (serverProcess && serverProcess.exitCode === null) {
+				serverProcess.kill("SIGTERM");
+				await new Promise((resolve) => setTimeout(resolve, 200));
+			}
+			if (tempDir) {
+				await FS.rm(tempDir, {recursive: true, force: true});
+			}
+		}
+	},
+	TIMEOUT,
+);

@@ -2,6 +2,7 @@
 //bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
 
 // Load config and configure logging before anything else
+import {resolve} from "path";
 import {findProjectRoot} from "../src/utils/project.js";
 import {loadConfig, DEFAULTS, type SinkConfig} from "../src/utils/config.js";
 import {configureLogging} from "@b9g/platform/runtime";
@@ -13,12 +14,20 @@ const config = loadConfig(projectRoot);
 // This allows CLI to use user-configured sinks (same as build-time reification for workers)
 async function reifySinks(
 	sinks: Record<string, SinkConfig> | undefined,
+	baseDir: string,
 ): Promise<Record<string, {impl: unknown; [key: string]: unknown}>> {
 	const reified: Record<string, {impl: unknown; [key: string]: unknown}> = {};
 	for (const [name, sinkConfig] of Object.entries(sinks ?? {})) {
 		const {module: modulePath, export: exportName, ...rest} = sinkConfig;
 		if (modulePath) {
-			const mod = await import(modulePath);
+			// Resolve relative paths against the config file location (baseDir)
+			// Package names (no ./ or ../) are left as-is for Node to resolve from node_modules
+			const resolvedPath =
+				modulePath.startsWith("./") || modulePath.startsWith("../")
+					? resolve(baseDir, modulePath)
+					: modulePath;
+			// eslint-disable-next-line no-restricted-syntax -- CLI runtime import of user-configured sinks
+			const mod = await import(resolvedPath);
 			const impl = exportName ? mod[exportName] : mod.default;
 			reified[name] = {...rest, impl};
 		} else if (sinkConfig.impl) {
@@ -29,7 +38,7 @@ async function reifySinks(
 	return reified;
 }
 
-const reifiedSinks = await reifySinks(config.logging?.sinks);
+const reifiedSinks = await reifySinks(config.logging?.sinks, projectRoot);
 await configureLogging({
 	sinks: reifiedSinks,
 	loggers: config.logging?.loggers,
