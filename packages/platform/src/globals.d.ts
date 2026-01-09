@@ -16,11 +16,11 @@ import type {DirectoryStorage} from "@b9g/filesystem";
 declare global {
 	/**
 	 * Logger storage API for accessing named loggers.
-	 * @example const logger = self.loggers.get("app");
-	 * @example const dbLogger = self.loggers.get("app", "db");
+	 * @example const logger = self.loggers.get(["app"]);
+	 * @example const dbLogger = self.loggers.get(["app", "db"]);
 	 */
 	interface LoggerStorage {
-		get(...categories: string[]): Logger;
+		get(categories: string[]): Logger;
 	}
 
 	/**
@@ -72,8 +72,8 @@ declare global {
 
 	/**
 	 * Logger storage API for accessing named loggers.
-	 * @example const logger = self.loggers.get("app");
-	 * @example const dbLogger = self.loggers.get("app", "db");
+	 * @example const logger = self.loggers.get(["app"]);
+	 * @example const dbLogger = self.loggers.get(["app", "db"]);
 	 */
 	var loggers: LoggerStorage;
 

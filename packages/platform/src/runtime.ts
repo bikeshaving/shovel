@@ -338,23 +338,21 @@ import {
 
 /**
  * Logger storage interface for accessing loggers by category path.
- * Unlike CacheStorage/DirectoryStorage which use a registry pattern,
- * LoggerStorage uses variadic categories since logging backends are
- * always LogTape and per-category config is in shovel.config.json.
+ * Uses array signature (matching LogTape) to allow future options parameter.
  */
 export interface LoggerStorage {
 	/**
 	 * Get a logger by category path (sync)
-	 * @example const logger = self.loggers.get("app")
-	 * @example const logger = self.loggers.get("app", "db")
+	 * @example const logger = self.loggers.get(["app"])
+	 * @example const logger = self.loggers.get(["app", "db"])
 	 */
-	get(...categories: string[]): Logger;
+	get(categories: string[]): Logger;
 }
 
 /**
  * Factory function type for creating loggers (sync).
  */
-export type LoggerFactory = (...categories: string[]) => Logger;
+export type LoggerFactory = (categories: string[]) => Logger;
 
 /**
  * Custom logger storage implementation that wraps a factory function
@@ -366,8 +364,8 @@ export class CustomLoggerStorage implements LoggerStorage {
 		this.#factory = factory;
 	}
 
-	get(...categories: string[]): Logger {
-		return this.#factory(...categories);
+	get(categories: string[]): Logger {
+		return this.#factory(categories);
 	}
 }
 
@@ -2381,7 +2379,7 @@ export async function initWorkerRuntime(
 	}
 
 	// Create logger storage
-	const loggers = new CustomLoggerStorage((...categories) =>
+	const loggers = new CustomLoggerStorage((categories) =>
 		getLogger(categories),
 	);
 

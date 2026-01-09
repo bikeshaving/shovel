@@ -84,7 +84,7 @@ The core abstraction is the **ServiceWorker-style storage pattern**. Globals pro
 const cache  = await self.caches.open("sessions");     // Cache API
 const dir    = await self.directories.open("uploads"); // FileSystem API
 const db     = self.databases.get("main");             // Zen DB (opened on activate)
-const logger = self.loggers.get("app", "requests");    // LogTape
+const logger = self.loggers.get(["app", "requests"]); // LogTape
 ```
 
 Each storage type is:

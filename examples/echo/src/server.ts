@@ -5,7 +5,7 @@
 
 import {Router} from "@b9g/router";
 
-const logger = self.loggers.get("echo");
+const logger = self.loggers.get(["echo"]);
 
 const HOMEPAGE_HTML = `
 <!DOCTYPE html>

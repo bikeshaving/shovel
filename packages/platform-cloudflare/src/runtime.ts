@@ -106,7 +106,7 @@ export async function initializeRuntime(
 		registration: _registration,
 		caches,
 		directories,
-		loggers: new CustomLoggerStorage((...cats) => getLogger(cats)),
+		loggers: new CustomLoggerStorage((cats) => getLogger(cats)),
 	});
 
 	// Install globals (caches, directories, cookieStore, addEventListener, etc.)
