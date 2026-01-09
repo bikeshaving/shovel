@@ -41,7 +41,8 @@ import {getLogger} from "@logtape/logtape";
 const entryTemplate = `// Node.js Production Server Entry
 import {tmpdir} from "os"; // For [tmpdir] config expressions
 import * as HTTP from "http";
-import {Worker, parentPort} from "worker_threads";
+import {parentPort} from "worker_threads";
+import {Worker} from "@b9g/node-webworker";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging} from "@b9g/platform/runtime";
 import {config} from "shovel:config"; // Virtual module - resolved at build time
@@ -77,19 +78,19 @@ if (WORKERS === 1) {
 		await server.listen();
 
 		// Signal ready to main thread
-		parentPort?.postMessage({type: "ready"});
+		postMessage({type: "ready"});
 		logger.info("Worker started with server", {port: PORT});
 
 		// Graceful shutdown on message from main
-		parentPort?.on("message", async (msg) => {
-			if (msg.type === "shutdown") {
+		self.onmessage = async (event) => {
+			if (event.data.type === "shutdown") {
 				logger.info("Worker shutting down");
 				await server.close();
 				await serviceWorker.dispose();
 				await platform.dispose();
-				parentPort?.postMessage({type: "shutdown-complete"});
+				postMessage({type: "shutdown-complete"});
 			}
-		});
+		};
 	} else {
 		// Main thread: supervisor only - spawn single worker
 		logger.info("Starting production server (single worker)", {port: PORT});
@@ -112,27 +113,27 @@ if (WORKERS === 1) {
 		let shuttingDown = false;
 
 		const worker = new Worker(new URL(import.meta.url), {
-			env: {...process.env, SHOVEL_SPAWNED_WORKER: "1"},
+			env: {SHOVEL_SPAWNED_WORKER: "1"},
 		});
 
-		worker.on("message", (msg) => {
-			if (msg.type === "ready") {
+		worker.onmessage = (event) => {
+			if (event.data.type === "ready") {
 				logger.info("Worker ready", {port: PORT});
-			} else if (msg.type === "shutdown-complete") {
+			} else if (event.data.type === "shutdown-complete") {
 				logger.info("Worker shutdown complete");
 				process.exit(0);
 			}
-		});
+		};
 
-		worker.on("error", (err) => {
-			logger.error("Worker error", {error: err});
-		});
+		worker.onerror = (event) => {
+			logger.error("Worker error", {error: event.error});
+		};
 
 		// If a worker crashes, fail fast - let process supervisor handle restarts
-		worker.on("exit", (code) => {
+		worker.addEventListener("close", (event) => {
 			if (shuttingDown) return;
-			if (code === 0) return; // Clean exit
-			logger.error("Worker crashed", {exitCode: code});
+			if (event.code === 0) return; // Clean exit
+			logger.error("Worker crashed", {exitCode: event.code});
 			process.exit(1);
 		});
 

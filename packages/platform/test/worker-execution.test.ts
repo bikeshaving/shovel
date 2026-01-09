@@ -181,8 +181,8 @@ describe("Worker Execution Model", () => {
 				// Should track shutdown state
 				expect(wrapper).toContain("shuttingDown");
 
-				// Should handle worker exit and exit process
-				expect(wrapper).toMatch(/worker\.on\(["']exit["']/);
+				// Should handle worker close and exit process (Web Worker API)
+				expect(wrapper).toMatch(/worker\.addEventListener\(["']close["']/);
 				expect(wrapper).toContain("Worker crashed");
 				expect(wrapper).toContain("process.exit(1)");
 			},
@@ -275,8 +275,8 @@ describe("Worker Execution Model", () => {
 					type: "production",
 				});
 
-				// Worker should listen for shutdown message
-				expect(wrapper).toContain('msg.type === "shutdown"');
+				// Worker should listen for shutdown message (Web Worker API)
+				expect(wrapper).toContain('event.data.type === "shutdown"');
 				expect(wrapper).toContain('postMessage({type: "shutdown-complete"');
 			},
 			TIMEOUT,

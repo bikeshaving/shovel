@@ -238,6 +238,9 @@
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.20",
+        "@b9g/node-webworker": "workspace:*",
+        "@b9g/platform-bun": "workspace:*",
+        "@b9g/platform-node": "workspace:*",
       },
       "peerDependencies": {
         "@logtape/cloudwatch-logs": "^1.0.0",
