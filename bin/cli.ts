@@ -10,8 +10,10 @@ import {configureLogging} from "@b9g/platform/runtime";
 const projectRoot = findProjectRoot();
 const config = loadConfig(projectRoot);
 
-// Reify sink configs by dynamically importing their modules
-// This allows CLI to use user-configured sinks (same as build-time reification for workers)
+// Reify sink configs by dynamically importing their modules at runtime.
+// This is similar to config.ts's reifyModule(), but operates at runtime (dynamic import)
+// rather than build-time (static import codegen). Can't share code because CLI runs
+// before build, so we need runtime imports here.
 async function reifySinks(
 	sinks: Record<string, SinkConfig> | undefined,
 	baseDir: string,
@@ -26,14 +28,10 @@ async function reifySinks(
 				modulePath.startsWith("./") || modulePath.startsWith("../")
 					? resolve(baseDir, modulePath)
 					: modulePath;
-			try {
-				// eslint-disable-next-line no-restricted-syntax -- CLI runtime import of user-configured sinks
-				const mod = await import(resolvedPath);
-				const impl = exportName ? mod[exportName] : mod.default;
-				reified[name] = {...rest, impl};
-			} catch (err) {
-				console.error(`Failed to load sink "${name}" from ${resolvedPath}:`, err);
-			}
+			// eslint-disable-next-line no-restricted-syntax -- CLI runtime import of user-configured sinks
+			const mod = await import(resolvedPath);
+			const impl = exportName ? mod[exportName] : mod.default;
+			reified[name] = {...rest, impl};
 		} else if (sinkConfig.impl) {
 			// Already reified (shouldn't happen in CLI, but handle it)
 			reified[name] = sinkConfig as {impl: unknown};

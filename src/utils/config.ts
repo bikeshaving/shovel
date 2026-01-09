@@ -1214,11 +1214,11 @@ export function generateConfigModule(
 	let placeholderCounter = 0;
 
 	// Create a placeholder and track the JS code it represents
-	const createPlaceholder = (jsCode: string): string => {
+	function createPlaceholder(jsCode: string): string {
 		const placeholder = `${PLACEHOLDER_PREFIX}${placeholderCounter++}__`;
 		placeholders.set(placeholder, jsCode);
 		return placeholder;
-	};
+	}
 
 	// Track which imports have been added to avoid duplicates
 	// Maps import key (module:export) to the variable name used
@@ -1226,12 +1226,12 @@ export function generateConfigModule(
 
 	// Helper to generate import and placeholder for a module/export config
 	// Returns placeholder that will be replaced with the imported function/class
-	const processModule = (
+	function processModule(
 		modulePath: string | undefined,
 		exportName: string | undefined,
 		type: "cache" | "directory" | "sink" | "database",
 		name: string,
-	): string | null => {
+	): string | null {
 		if (!modulePath) return null;
 
 		const varName = `${type}_${sanitizeVarName(name)}`;
@@ -1257,33 +1257,33 @@ export function generateConfigModule(
 		}
 
 		return createPlaceholder(varName);
-	};
+	}
 
 	// Helper to process a config object with module/export pattern
 	// Replaces module/export with `impl` (the reified function/class)
-	const reifyModule = <T extends {module?: string; export?: string}>(
+	function reifyModule<T extends {module?: string; export?: string}>(
 		config: T,
 		type: "cache" | "directory" | "sink" | "database",
 		name: string,
-	): Omit<T, "module" | "export"> & {impl?: string} => {
+	): Omit<T, "module" | "export"> & {impl?: string} {
 		const {module: modulePath, export: exportName, ...rest} = config;
 		const implPlaceholder = processModule(modulePath, exportName, type, name);
 		if (implPlaceholder) {
 			return {...rest, impl: implPlaceholder} as any;
 		}
 		return rest as any;
-	};
+	}
 
 	// Process a sink config, replacing module/export with impl
-	const processSink = (
+	function processSink(
 		sink: SinkConfig,
 		sinkName: string,
-	): Record<string, unknown> => {
+	): Record<string, unknown> {
 		return reifyModule(sink, "sink", sinkName);
-	};
+	}
 
 	// Build the config object with placeholders
-	const buildConfig = (): Record<string, unknown> => {
+	function buildConfig(): Record<string, unknown> {
 		const config: Record<string, unknown> = {};
 
 		// Platform (if specified)
@@ -1404,7 +1404,7 @@ export function generateConfigModule(
 		}
 
 		return config;
-	};
+	}
 
 	// Build the config object
 	const config = buildConfig();
