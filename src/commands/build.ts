@@ -3,7 +3,7 @@
  * Creates self-contained, directly executable production builds
  */
 import * as ESBuild from "esbuild";
-import {builtinModules} from "node:module";
+import {builtinModules, createRequire} from "node:module";
 import {resolve, join, dirname} from "path";
 import {getLogger} from "@logtape/logtape";
 import * as Platform from "@b9g/platform";
@@ -271,10 +271,15 @@ async function loadUserPlugins(
 		} = pluginConfig;
 
 		try {
-			// Resolve module path relative to project root if it's a local path
+			// Resolve module path from the user's project root
+			// This ensures bare specifiers (e.g., "esbuild-plugin-tailwindcss")
+			// are resolved from the user's node_modules, not the CLI's location
+			// Note: We use createRequire instead of import.meta.resolve because
+			// Node's import.meta.resolve doesn't support a parent URL argument
+			const projectRequire = createRequire(join(projectRoot, "package.json"));
 			const resolvedPath = modulePath.startsWith(".")
 				? resolve(projectRoot, modulePath)
-				: modulePath;
+				: projectRequire.resolve(modulePath);
 
 			// Dynamic import the module (intentional variable import for user plugins)
 			// eslint-disable-next-line no-restricted-syntax
