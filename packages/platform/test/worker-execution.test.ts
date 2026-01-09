@@ -148,7 +148,7 @@ describe("Worker Execution Model", () => {
 
 	describe("Crash Handling", () => {
 		test(
-			"Bun entry template includes crash handling with backoff",
+			"Bun entry template fails fast on worker crash",
 			async () => {
 				const {BunPlatform} = await import("@b9g/platform-bun");
 				const platform = new BunPlatform();
@@ -157,23 +157,19 @@ describe("Worker Execution Model", () => {
 					type: "production",
 				});
 
-				// Should have restart limit
-				expect(wrapper).toContain("MAX_RESTARTS");
-
-				// Should have restart window
-				expect(wrapper).toContain("RESTART_WINDOW_MS");
-
-				// Should track shutdown state to prevent false restarts
+				// Should track shutdown state to avoid exit on graceful shutdown
 				expect(wrapper).toContain("shuttingDown");
 
-				// Should handle worker close/exit
+				// Should handle worker close/exit and exit process
 				expect(wrapper).toMatch(/worker\.addEventListener\(["']close["']/);
+				expect(wrapper).toContain("Worker crashed");
+				expect(wrapper).toContain("process.exit(1)");
 			},
 			TIMEOUT,
 		);
 
 		test(
-			"Node entry template includes crash handling with backoff",
+			"Node entry template fails fast on worker crash",
 			async () => {
 				const {default: NodePlatform} = await import("@b9g/platform-node");
 				const platform = new NodePlatform();
@@ -182,17 +178,13 @@ describe("Worker Execution Model", () => {
 					type: "production",
 				});
 
-				// Should have restart limit
-				expect(wrapper).toContain("MAX_RESTARTS");
-
-				// Should have restart window
-				expect(wrapper).toContain("RESTART_WINDOW_MS");
-
 				// Should track shutdown state
 				expect(wrapper).toContain("shuttingDown");
 
-				// Should handle worker exit
+				// Should handle worker exit and exit process
 				expect(wrapper).toMatch(/worker\.on\(["']exit["']/);
+				expect(wrapper).toContain("Worker crashed");
+				expect(wrapper).toContain("process.exit(1)");
 			},
 			TIMEOUT,
 		);

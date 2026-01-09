@@ -93,26 +93,13 @@ if (isShovelWorker) {
 	};
 	await checkPort();
 
-	// Worker crash handling configuration
-	const MAX_RESTARTS = 3;
-	const RESTART_WINDOW_MS = 60000; // 1 minute
 	let shuttingDown = false;
-
-	// Track worker state for crash handling
-	const workerStates = new Map();
 	const workers = [];
 	let readyCount = 0;
 
-	function createWorker(index) {
+	for (let i = 0; i < WORKERS; i++) {
 		const worker = new Worker(import.meta.path, {
 			env: {...process.env, SHOVEL_SPAWNED_WORKER: "1"},
-		});
-
-		// Initialize worker state for crash tracking
-		workerStates.set(worker, {
-			index,
-			restartCount: 0,
-			lastRestartTime: 0,
 		});
 
 		worker.onmessage = (event) => {
@@ -125,49 +112,17 @@ if (isShovelWorker) {
 		};
 
 		worker.onerror = (error) => {
-			logger.error("Worker error", {index, error: error.message});
+			logger.error("Worker error", {error: error.message});
 		};
 
-		// Handle worker exit for crash recovery
+		// If a worker crashes, fail fast - let process supervisor handle restarts
 		worker.addEventListener("close", () => {
-			// Don't restart if we're shutting down
 			if (shuttingDown) return;
-
-			const state = workerStates.get(worker);
-			const now = Date.now();
-
-			// Reset counter if outside restart window
-			if (now - state.lastRestartTime > RESTART_WINDOW_MS) {
-				state.restartCount = 0;
-			}
-
-			if (state.restartCount < MAX_RESTARTS) {
-				state.restartCount++;
-				state.lastRestartTime = now;
-				logger.warn("Worker crashed, restarting", {
-					index: state.index,
-					restartCount: state.restartCount,
-				});
-
-				// Replace crashed worker
-				const workerIndex = workers.indexOf(worker);
-				if (workerIndex !== -1) {
-					workers[workerIndex] = createWorker(state.index);
-				}
-			} else {
-				logger.error("Worker exceeded restart limit, failing fast", {
-					index: state.index,
-					restarts: state.restartCount,
-				});
-				process.exit(1);
-			}
+			logger.error("Worker crashed, exiting");
+			process.exit(1);
 		});
 
-		return worker;
-	}
-
-	for (let i = 0; i < WORKERS; i++) {
-		workers.push(createWorker(i));
+		workers.push(worker);
 	}
 
 	logger.info("Spawned workers", {count: WORKERS, port: PORT});

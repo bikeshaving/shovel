@@ -41,7 +41,7 @@ import {getLogger} from "@logtape/logtape";
 const entryTemplate = `// Node.js Production Server Entry
 import {tmpdir} from "os"; // For [tmpdir] config expressions
 import * as HTTP from "http";
-import {Worker, parentPort, isMainThread} from "worker_threads";
+import {Worker, parentPort} from "worker_threads";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging} from "@b9g/platform/runtime";
 import {config} from "shovel:config"; // Virtual module - resolved at build time
@@ -109,74 +109,38 @@ if (WORKERS === 1) {
 			process.exit(1);
 		}
 
-		// Worker crash handling configuration
-		const MAX_RESTARTS = 3;
-		const RESTART_WINDOW_MS = 60000; // 1 minute
 		let shuttingDown = false;
-		let restartCount = 0;
-		let lastRestartTime = 0;
-		let currentWorker = null;
 
-		function createWorker() {
-			const worker = new Worker(new URL(import.meta.url), {
-				env: {...process.env, SHOVEL_SPAWNED_WORKER: "1"},
-			});
+		const worker = new Worker(new URL(import.meta.url), {
+			env: {...process.env, SHOVEL_SPAWNED_WORKER: "1"},
+		});
 
-			worker.on("message", (msg) => {
-				if (msg.type === "ready") {
-					logger.info("Worker ready", {port: PORT});
-				} else if (msg.type === "shutdown-complete") {
-					logger.info("Worker shutdown complete");
-					process.exit(0);
-				}
-			});
+		worker.on("message", (msg) => {
+			if (msg.type === "ready") {
+				logger.info("Worker ready", {port: PORT});
+			} else if (msg.type === "shutdown-complete") {
+				logger.info("Worker shutdown complete");
+				process.exit(0);
+			}
+		});
 
-			worker.on("error", (err) => {
-				logger.error("Worker error", {error: err});
-			});
+		worker.on("error", (err) => {
+			logger.error("Worker error", {error: err});
+		});
 
-			// Handle worker exit for crash recovery
-			worker.on("exit", (code) => {
-				// Don't restart if we're shutting down or exit was clean
-				if (shuttingDown) return;
-
-				// Code 0 is clean exit (e.g., from shutdown)
-				if (code === 0) return;
-
-				const now = Date.now();
-
-				// Reset counter if outside restart window
-				if (now - lastRestartTime > RESTART_WINDOW_MS) {
-					restartCount = 0;
-				}
-
-				if (restartCount < MAX_RESTARTS) {
-					restartCount++;
-					lastRestartTime = now;
-					logger.warn("Worker crashed, restarting", {
-						exitCode: code,
-						restartCount,
-					});
-					currentWorker = createWorker();
-				} else {
-					logger.error("Worker exceeded restart limit, failing fast", {
-						exitCode: code,
-						restarts: restartCount,
-					});
-					process.exit(1);
-				}
-			});
-
-			return worker;
-		}
-
-		currentWorker = createWorker();
+		// If a worker crashes, fail fast - let process supervisor handle restarts
+		worker.on("exit", (code) => {
+			if (shuttingDown) return;
+			if (code === 0) return; // Clean exit
+			logger.error("Worker crashed", {exitCode: code});
+			process.exit(1);
+		});
 
 		// Graceful shutdown
 		const shutdown = () => {
 			shuttingDown = true;
 			logger.info("Shutting down");
-			currentWorker.postMessage({type: "shutdown"});
+			worker.postMessage({type: "shutdown"});
 		};
 
 		process.on("SIGINT", shutdown);
