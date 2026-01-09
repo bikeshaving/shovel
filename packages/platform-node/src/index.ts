@@ -68,10 +68,27 @@ if (WORKERS === 1) {
 	if (isShovelWorker) {
 		// Worker thread: runs BOTH server AND ServiceWorker
 		const platform = new Platform({port: PORT, host: HOST, workers: 1});
-		const userCodePath = new URL("./server.js", import.meta.url).pathname;
-		const serviceWorker = await platform.loadServiceWorker(userCodePath);
 
-		const server = platform.createServer(serviceWorker.handleRequest, {
+		// Track resources for shutdown - these get assigned during startup
+		let server;
+		let serviceWorker;
+
+		// Register shutdown handler BEFORE async startup to prevent race condition
+		// where SIGINT arrives during startup and the shutdown message is dropped
+		self.onmessage = async (event) => {
+			if (event.data.type === "shutdown") {
+				logger.info("Worker shutting down");
+				if (server) await server.close();
+				if (serviceWorker) await serviceWorker.dispose();
+				await platform.dispose();
+				postMessage({type: "shutdown-complete"});
+			}
+		};
+
+		const userCodePath = new URL("./server.js", import.meta.url).pathname;
+		serviceWorker = await platform.loadServiceWorker(userCodePath);
+
+		server = platform.createServer(serviceWorker.handleRequest, {
 			port: PORT,
 			host: HOST,
 		});
@@ -80,17 +97,6 @@ if (WORKERS === 1) {
 		// Signal ready to main thread
 		postMessage({type: "ready"});
 		logger.info("Worker started with server", {port: PORT});
-
-		// Graceful shutdown on message from main
-		self.onmessage = async (event) => {
-			if (event.data.type === "shutdown") {
-				logger.info("Worker shutting down");
-				await server.close();
-				await serviceWorker.dispose();
-				await platform.dispose();
-				postMessage({type: "shutdown-complete"});
-			}
-		};
 	} else {
 		// Main thread: supervisor only - spawn single worker
 		logger.info("Starting production server (single worker)", {port: PORT});

@@ -281,6 +281,32 @@ describe("Worker Execution Model", () => {
 			},
 			TIMEOUT,
 		);
+
+		test(
+			"Node worker registers shutdown handler before async startup",
+			async () => {
+				const {default: NodePlatform} = await import("@b9g/platform-node");
+				const platform = new NodePlatform();
+
+				const wrapper = platform.getEntryWrapper("/app/entry.js", {
+					type: "production",
+				});
+
+				// The shutdown handler (self.onmessage) must be registered BEFORE
+				// any async operations like server.listen() to prevent race conditions
+				// where SIGINT arrives during startup and the shutdown message is dropped
+				const onmessageIndex = wrapper.indexOf("self.onmessage");
+				const serverListenIndex = wrapper.indexOf("server.listen()");
+
+				// Both should exist
+				expect(onmessageIndex).toBeGreaterThan(-1);
+				expect(serverListenIndex).toBeGreaterThan(-1);
+
+				// onmessage handler must come BEFORE server.listen()
+				expect(onmessageIndex).toBeLessThan(serverListenIndex);
+			},
+			TIMEOUT,
+		);
 	});
 });
 
