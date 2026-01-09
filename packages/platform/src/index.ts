@@ -52,11 +52,6 @@ export interface ServerOptions {
 	port?: number;
 	/** Host to bind to */
 	host?: string;
-	/** Development mode settings */
-	development?: {
-		/** Source maps support */
-		sourceMaps?: boolean;
-	};
 }
 
 /**
