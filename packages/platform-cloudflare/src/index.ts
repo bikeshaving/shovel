@@ -102,11 +102,11 @@ export class CloudflarePlatform extends BasePlatform {
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
 		// Runtime defaults with actual class references (not module/export strings)
-		const runtimeDefaults: Record<string, {CacheClass: any}> = {
-			default: {CacheClass: CloudflareNativeCache},
+		const runtimeDefaults: Record<string, {impl: any}> = {
+			default: {impl: CloudflareNativeCache},
 		};
 		const userCaches = this.#options.config?.caches ?? {};
-		// Deep merge per entry so user can override options without losing CacheClass
+		// Deep merge per entry so user can override options without losing impl
 		const configs: Record<string, any> = {};
 		const allNames = new Set([
 			...Object.keys(runtimeDefaults),
