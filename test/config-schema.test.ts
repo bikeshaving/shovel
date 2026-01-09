@@ -6,6 +6,8 @@ import {
 	DatabaseConfigSchema,
 	LoggerConfigSchema,
 	SinkConfigSchema,
+	BuildConfigSchema,
+	BuildPluginConfigSchema,
 } from "../src/utils/config.js";
 
 describe("config validation", () => {
@@ -229,6 +231,185 @@ describe("config validation", () => {
 				maxFiles: 5,
 			});
 			expect((result as any).maxSize).toBe(10485760);
+		});
+	});
+
+	describe("BuildConfigSchema", () => {
+		test("accepts empty build config", () => {
+			const result = BuildConfigSchema.parse({});
+			expect(result).toEqual({});
+		});
+
+		test("accepts target as string", () => {
+			const result = BuildConfigSchema.parse({
+				target: "es2020",
+			});
+			expect(result.target).toBe("es2020");
+		});
+
+		test("accepts target as array", () => {
+			const result = BuildConfigSchema.parse({
+				target: ["es2020", "chrome100"],
+			});
+			expect(result.target).toEqual(["es2020", "chrome100"]);
+		});
+
+		test("accepts minify boolean", () => {
+			const result = BuildConfigSchema.parse({
+				minify: true,
+			});
+			expect(result.minify).toBe(true);
+		});
+
+		test("accepts sourcemap variations", () => {
+			expect(BuildConfigSchema.parse({sourcemap: true}).sourcemap).toBe(true);
+			expect(BuildConfigSchema.parse({sourcemap: false}).sourcemap).toBe(false);
+			expect(BuildConfigSchema.parse({sourcemap: "inline"}).sourcemap).toBe(
+				"inline",
+			);
+			expect(BuildConfigSchema.parse({sourcemap: "external"}).sourcemap).toBe(
+				"external",
+			);
+			expect(BuildConfigSchema.parse({sourcemap: "linked"}).sourcemap).toBe(
+				"linked",
+			);
+		});
+
+		test("rejects invalid sourcemap value", () => {
+			expect(() =>
+				BuildConfigSchema.parse({sourcemap: "invalid"}),
+			).toThrow();
+		});
+
+		test("accepts treeShaking boolean", () => {
+			const result = BuildConfigSchema.parse({
+				treeShaking: false,
+			});
+			expect(result.treeShaking).toBe(false);
+		});
+
+		test("accepts define as record", () => {
+			const result = BuildConfigSchema.parse({
+				define: {
+					__DEV__: "true",
+					"process.env.NODE_ENV": '"production"',
+				},
+			});
+			expect(result.define?.__DEV__).toBe("true");
+		});
+
+		test("accepts alias as record", () => {
+			const result = BuildConfigSchema.parse({
+				alias: {
+					"@": "./src",
+					"@components": "./src/components",
+				},
+			});
+			expect(result.alias?.["@"]).toBe("./src");
+		});
+
+		test("accepts external as array", () => {
+			const result = BuildConfigSchema.parse({
+				external: ["react", "react-dom"],
+			});
+			expect(result.external).toEqual(["react", "react-dom"]);
+		});
+
+		test("accepts plugins array", () => {
+			const result = BuildConfigSchema.parse({
+				plugins: [
+					{module: "esbuild-plugin-tailwindcss"},
+					{module: "./my-plugin.js", export: "myPlugin"},
+				],
+			});
+			expect(result.plugins?.length).toBe(2);
+			expect(result.plugins?.[0].module).toBe("esbuild-plugin-tailwindcss");
+		});
+
+		test("rejects unknown keys (strict)", () => {
+			expect(() =>
+				BuildConfigSchema.parse({
+					unknownOption: "value",
+				}),
+			).toThrow(/Unrecognized key/);
+		});
+
+		test("accepts full build config", () => {
+			const result = BuildConfigSchema.parse({
+				target: "es2022",
+				minify: true,
+				sourcemap: "external",
+				treeShaking: true,
+				define: {"__VERSION__": '"1.0.0"'},
+				alias: {"@": "./src"},
+				external: ["native-module"],
+				plugins: [{module: "esbuild-plugin-tailwindcss", export: "default"}],
+			});
+			expect(result.target).toBe("es2022");
+			expect(result.minify).toBe(true);
+			expect(result.plugins?.length).toBe(1);
+		});
+	});
+
+	describe("BuildPluginConfigSchema", () => {
+		test("requires module", () => {
+			expect(() => BuildPluginConfigSchema.parse({})).toThrow();
+		});
+
+		test("accepts plugin with module only", () => {
+			const result = BuildPluginConfigSchema.parse({
+				module: "esbuild-plugin-tailwindcss",
+			});
+			expect(result.module).toBe("esbuild-plugin-tailwindcss");
+		});
+
+		test("accepts plugin with module and export", () => {
+			const result = BuildPluginConfigSchema.parse({
+				module: "./my-plugin.js",
+				export: "myPlugin",
+			});
+			expect(result.module).toBe("./my-plugin.js");
+			expect(result.export).toBe("myPlugin");
+		});
+
+		test("allows extra plugin-specific options (passthrough)", () => {
+			const result = BuildPluginConfigSchema.parse({
+				module: "esbuild-plugin-tailwindcss",
+				cssModules: {enabled: true},
+				minify: false,
+			});
+			expect((result as any).cssModules).toEqual({enabled: true});
+			expect((result as any).minify).toBe(false);
+		});
+	});
+
+	describe("ShovelConfigSchema with build", () => {
+		test("accepts config with build section", () => {
+			const result = ShovelConfigSchema.parse({
+				port: 3000,
+				build: {
+					target: "es2020",
+					minify: true,
+				},
+			});
+			expect(result.build?.target).toBe("es2020");
+			expect(result.build?.minify).toBe(true);
+		});
+
+		test("accepts full config with build and other sections", () => {
+			const result = ShovelConfigSchema.parse({
+				platform: "bun",
+				port: 8080,
+				build: {
+					target: "es2022",
+					sourcemap: "external",
+					plugins: [{module: "esbuild-plugin-tailwindcss"}],
+				},
+				logging: {
+					loggers: [{category: "app", level: "debug"}],
+				},
+			});
+			expect(result.build?.plugins?.length).toBe(1);
 		});
 	});
 });

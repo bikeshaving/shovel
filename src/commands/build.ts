@@ -19,7 +19,11 @@ import {
 	findWorkspaceRoot,
 	getNodeModulesPath,
 } from "../utils/project.js";
-import type {ProcessedShovelConfig} from "../utils/config.js";
+import type {
+	ProcessedShovelConfig,
+	ProcessedBuildConfig,
+	BuildPluginConfig,
+} from "../utils/config.js";
 
 const logger = getLogger(["shovel"]);
 
@@ -132,11 +136,13 @@ export async function buildForProduction({
 	outDir,
 	platform = "node",
 	workerCount = 1,
+	userBuildConfig,
 }: {
 	entrypoint: string;
 	outDir: string;
 	platform?: string;
 	workerCount?: number;
+	userBuildConfig?: ProcessedBuildConfig;
 }) {
 	const buildContext = await initializeBuild({
 		entrypoint,
@@ -144,7 +150,14 @@ export async function buildForProduction({
 		platform,
 		workerCount,
 	});
-	const buildConfig = await createBuildConfig(buildContext);
+	const buildConfig = await createBuildConfig({
+		entryPath: buildContext.entryPath,
+		outputDir: buildContext.outputDir,
+		serverDir: buildContext.serverDir,
+		projectRoot: buildContext.projectRoot,
+		platform: buildContext.platform,
+		shovelBuildConfig: userBuildConfig,
+	});
 
 	// Use build() for one-time builds (not context API which is for watch/incremental)
 	// This automatically handles cleanup and prevents process hanging
@@ -241,6 +254,60 @@ async function initializeBuild({
 }
 
 /**
+ * Load user ESBuild plugins from build config
+ * Uses the module/export pattern same as logging sinks
+ */
+async function loadUserPlugins(
+	plugins: BuildPluginConfig[],
+	projectRoot: string,
+): Promise<ESBuild.Plugin[]> {
+	const loadedPlugins: ESBuild.Plugin[] = [];
+
+	for (const pluginConfig of plugins) {
+		const {
+			module: modulePath,
+			export: exportName = "default",
+			...options
+		} = pluginConfig;
+
+		try {
+			// Resolve module path relative to project root if it's a local path
+			const resolvedPath = modulePath.startsWith(".")
+				? resolve(projectRoot, modulePath)
+				: modulePath;
+
+			// Dynamic import the module (intentional variable import for user plugins)
+			// eslint-disable-next-line no-restricted-syntax
+			const mod = await import(resolvedPath);
+			const pluginFactory =
+				exportName === "default" ? mod.default : mod[exportName];
+
+			if (typeof pluginFactory !== "function") {
+				throw new Error(
+					`Plugin export "${exportName}" from "${modulePath}" is not a function`,
+				);
+			}
+
+			// Call the factory with remaining options (passthrough pattern)
+			const hasOptions = Object.keys(options).length > 0;
+			const plugin = hasOptions ? pluginFactory(options) : pluginFactory();
+
+			loadedPlugins.push(plugin);
+			logger.debug("Loaded ESBuild plugin", {
+				module: modulePath,
+				export: exportName,
+			});
+		} catch (error) {
+			throw new Error(
+				`Failed to load ESBuild plugin "${modulePath}": ${error instanceof Error ? error.message : error}`,
+			);
+		}
+	}
+
+	return loadedPlugins;
+}
+
+/**
  * Create esbuild configuration for the target platform
  */
 async function createBuildConfig({
@@ -249,12 +316,14 @@ async function createBuildConfig({
 	serverDir,
 	projectRoot,
 	platform: platformName,
+	shovelBuildConfig,
 }: {
 	entryPath: string;
 	outputDir: string;
 	serverDir: string;
 	projectRoot: string;
 	platform: string;
+	shovelBuildConfig?: ProcessedBuildConfig;
 }) {
 	// Create platform instance to get configuration
 	const platform = await Platform.createPlatform(platformName);
@@ -270,9 +339,24 @@ async function createBuildConfig({
 	// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
 	const jsxOptions = await loadJSXConfig(projectRoot || dirname(entryPath));
 
+	// Merge user build config with defaults
+	// User config takes precedence, but some values are additive (define, external, plugins)
+	const target = shovelBuildConfig?.target ?? BUILD_DEFAULTS.target;
+	const minify = shovelBuildConfig?.minify ?? BUILD_DEFAULTS.minify;
+	const sourcemap = shovelBuildConfig?.sourcemap ?? BUILD_DEFAULTS.sourcemap;
+	const treeShaking =
+		shovelBuildConfig?.treeShaking ?? BUILD_DEFAULTS.treeShaking;
+
+	// Load user plugins if specified
+	const userPlugins = shovelBuildConfig?.plugins?.length
+		? await loadUserPlugins(shovelBuildConfig.plugins, projectRoot)
+		: [];
+
 	try {
-		// Use platform-specific externals
-		const external = platformESBuildConfig.external ?? ["node:*"];
+		// Merge externals: platform defaults + user additions
+		const platformExternal = platformESBuildConfig.external ?? ["node:*"];
+		const userExternal = shovelBuildConfig?.external ?? [];
+		const external = [...platformExternal, ...userExternal];
 
 		// For platforms that load user code at runtime (Node/Bun), build three files:
 		// - worker.js: Runtime shell that initializes ServiceWorker globals and message loop
@@ -287,7 +371,7 @@ async function createBuildConfig({
 			);
 
 			// Build worker.js, server.js, and config.js in a single build using three entry points
-			const userBuildConfig: ESBuild.BuildOptions = {
+			const workerBuildConfig: ESBuild.BuildOptions = {
 				entryPoints: {
 					worker: "shovel:entry",
 					server: entryPath,
@@ -295,7 +379,7 @@ async function createBuildConfig({
 				},
 				bundle: true,
 				format: BUILD_DEFAULTS.format as ESBuild.Format,
-				target: BUILD_DEFAULTS.target,
+				target,
 				platform: platformESBuildConfig.platform ?? "node",
 				outdir: serverDir,
 				entryNames: "[name]",
@@ -304,7 +388,9 @@ async function createBuildConfig({
 				conditions: platformESBuildConfig.conditions ?? ["import", "module"],
 				// Resolve packages from the user's project node_modules
 				nodePaths: [getNodeModulesPath()],
+				// User plugins run first, then Shovel's core plugins
 				plugins: [
+					...userPlugins,
 					createConfigPlugin(projectRoot, outputDir, {platformDefaults}),
 					createEntryPlugin(projectRoot, workerEntryWrapper),
 					importMetaPlugin(),
@@ -319,32 +405,38 @@ async function createBuildConfig({
 					}),
 				],
 				metafile: true,
-				sourcemap: BUILD_DEFAULTS.sourcemap,
-				minify: BUILD_DEFAULTS.minify,
-				treeShaking: BUILD_DEFAULTS.treeShaking,
+				sourcemap,
+				minify,
+				treeShaking,
 				define: {
 					...(platformESBuildConfig.define ?? {}),
+					// User-defined constants
+					...(shovelBuildConfig?.define ?? {}),
 					// Inject output directory for runtime.outdir() resolution
 					__SHOVEL_OUTDIR__: JSON.stringify(outputDir),
 					// Inject git commit SHA for [git] placeholder
 					__SHOVEL_GIT__: JSON.stringify(getGitSHA(projectRoot)),
 				},
+				// Path aliases from user config
+				alias: shovelBuildConfig?.alias,
 				// Mark ./server.js as external so it's imported at runtime (sibling output file)
 				external: [...external, "./server.js"],
 			};
 
 			// Apply JSX configuration (from tsconfig.json or @b9g/crank defaults)
-			applyJSXOptions(userBuildConfig, jsxOptions);
+			applyJSXOptions(workerBuildConfig, jsxOptions);
 
 			// Build worker.js (runtime shell) + server.js (user code)
-			const userBuildResult = await ESBuild.build(userBuildConfig);
+			const workerBuildResult = await ESBuild.build(workerBuildConfig);
 
 			// Validate no non-bundleable dynamic imports in user code
 			// Exclude our intentional ./server.js import from worker -> server
-			validateDynamicImports(userBuildResult, "worker bundle", ["./server.js"]);
+			validateDynamicImports(workerBuildResult, "worker bundle", [
+				"./server.js",
+			]);
 
 			// Validate no unexpected externals that would fail at runtime
-			validateExternals(userBuildResult, external, "worker bundle");
+			validateExternals(workerBuildResult, external, "worker bundle");
 		}
 
 		// All platforms now provide entry wrappers via getEntryWrapper()
@@ -357,7 +449,7 @@ async function createBuildConfig({
 			},
 			bundle: true,
 			format: BUILD_DEFAULTS.format as ESBuild.Format,
-			target: BUILD_DEFAULTS.target,
+			target,
 			platform: platformESBuildConfig.platform ?? "node",
 			// Inline bundling (Cloudflare): single-file (server.js contains everything)
 			// Separate bundling (Node/Bun): multi-file (index.js is entry, server.js is user code)
@@ -370,8 +462,10 @@ async function createBuildConfig({
 			conditions: platformESBuildConfig.conditions ?? ["import", "module"],
 			// Resolve packages from the user's project node_modules
 			nodePaths: [getNodeModulesPath()],
+			// User plugins run first, then Shovel's core plugins
 			plugins: bundlesUserCodeInline
 				? [
+						...userPlugins,
 						createConfigPlugin(projectRoot, outputDir, {platformDefaults}),
 						importMetaPlugin(),
 						assetsPlugin({
@@ -386,16 +480,20 @@ async function createBuildConfig({
 					]
 				: [createConfigPlugin(projectRoot, outputDir, {platformDefaults})], // Config plugin needed for entry wrapper
 			metafile: true,
-			sourcemap: BUILD_DEFAULTS.sourcemap,
-			minify: BUILD_DEFAULTS.minify,
-			treeShaking: BUILD_DEFAULTS.treeShaking,
+			sourcemap,
+			minify,
+			treeShaking,
 			define: {
 				...(platformESBuildConfig.define ?? {}),
+				// User-defined constants
+				...(shovelBuildConfig?.define ?? {}),
 				// Inject output directory for runtime.outdir() resolution
 				__SHOVEL_OUTDIR__: JSON.stringify(outputDir),
 				// Inject git commit SHA for [git] placeholder
 				__SHOVEL_GIT__: JSON.stringify(getGitSHA(projectRoot)),
 			},
+			// Path aliases from user config
+			alias: shovelBuildConfig?.alias,
 			external,
 		};
 
@@ -535,6 +633,7 @@ export async function buildCommand(
 		workerCount: options.workers
 			? parseInt(options.workers, 10)
 			: config.workers,
+		userBuildConfig: config.build,
 	});
 
 	// Workaround for Bun-specific issue: esbuild keeps child processes alive
