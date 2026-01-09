@@ -17,7 +17,7 @@ import {
 import {PageLayout} from "./ui/Layout.js";
 import {ModelForm, parseFormData} from "./ui/Form.js";
 
-const logger = self.loggers.get("shovel", "admin");
+const logger = self.loggers.get(["shovel", "admin"]);
 
 // ============================================================================
 // Configuration Types

@@ -133,7 +133,7 @@ export class CloudflarePlatform extends BasePlatform {
 	 * Create logger storage for Cloudflare Workers
 	 */
 	async createLoggers(): Promise<LoggerStorage> {
-		return new CustomLoggerStorage((...categories) => getLogger(categories));
+		return new CustomLoggerStorage((categories) => getLogger(categories));
 	}
 
 	/**

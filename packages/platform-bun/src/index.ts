@@ -262,7 +262,7 @@ export class BunPlatform extends BasePlatform {
 	 * Create logger storage using config from shovel.json
 	 */
 	async createLoggers(): Promise<CustomLoggerStorage> {
-		return new CustomLoggerStorage((...categories) => getLogger(categories));
+		return new CustomLoggerStorage((categories) => getLogger(categories));
 	}
 
 	/**
@@ -444,7 +444,7 @@ export class BunPlatform extends BasePlatform {
 			caches: this.#cacheStorage,
 			directories: this.#directoryStorage,
 			databases: this.#databaseStorage,
-			loggers: new CustomLoggerStorage((...cats) => getLogger(cats)),
+			loggers: new CustomLoggerStorage((cats) => getLogger(cats)),
 		});
 
 		// Initialize and load entrypoint

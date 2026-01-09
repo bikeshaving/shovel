@@ -9,7 +9,7 @@
 import {Router} from "@b9g/router";
 import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 
-const logger = self.loggers.get("blog");
+const logger = self.loggers.get(["blog"]);
 
 // Cache control constants
 const CACHE_HEADERS = {

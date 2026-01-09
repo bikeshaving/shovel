@@ -12,7 +12,7 @@ import {assets} from "@b9g/assets/middleware";
 import {createAdmin} from "@b9g/admin";
 import * as schema from "./schema.js";
 
-const logger = self.loggers.get("shovel", "server");
+const logger = self.loggers.get(["shovel", "server"]);
 
 // Import USWDS assets - these will be processed at build time
 // The @uswds/uswds package exports:

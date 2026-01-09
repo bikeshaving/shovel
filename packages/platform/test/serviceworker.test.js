@@ -198,7 +198,7 @@ test(
 
 		// Create mock logger factory that tracks calls
 		const loggerCalls = [];
-		const mockLoggerFactory = (...categories) => {
+		const mockLoggerFactory = (categories) => {
 			loggerCalls.push(categories);
 			// Return a mock logger with standard methods
 			return {
@@ -223,18 +223,18 @@ test(
 		expect(typeof globalThis.loggers.get).toBe("function");
 
 		// Test getting logger with single category (sync API)
-		const appLogger = globalThis.loggers.get("app");
+		const appLogger = globalThis.loggers.get(["app"]);
 		expect(loggerCalls[0]).toEqual(["app"]);
 		expect(typeof appLogger.info).toBe("function");
 		expect(typeof appLogger.warn).toBe("function");
 		expect(typeof appLogger.error).toBe("function");
 
 		// Test getting logger with multiple categories
-		const _dbLogger = globalThis.loggers.get("app", "db");
+		const _dbLogger = globalThis.loggers.get(["app", "db"]);
 		expect(loggerCalls[1]).toEqual(["app", "db"]);
 
 		// Test getting logger with deeply nested categories
-		const _queryLogger = globalThis.loggers.get("app", "db", "queries");
+		const _queryLogger = globalThis.loggers.get(["app", "db", "queries"]);
 		expect(loggerCalls[2]).toEqual(["app", "db", "queries"]);
 	},
 	TIMEOUT,
@@ -253,7 +253,7 @@ test(
 
 		// Track log messages
 		const logMessages = [];
-		const mockLoggerFactory = (...categories) => ({
+		const mockLoggerFactory = (categories) => ({
 			debug: (msg) => logMessages.push({level: "debug", categories, msg}),
 			info: (msg) => logMessages.push({level: "info", categories, msg}),
 			warn: (msg) => logMessages.push({level: "warn", categories, msg}),
@@ -271,7 +271,7 @@ test(
 
 		// ServiceWorker that uses logging (sync API)
 		globalThis.addEventListener("fetch", (event) => {
-			const logger = globalThis.loggers.get("app");
+			const logger = globalThis.loggers.get(["app"]);
 			logger.info("Handling request");
 			event.respondWith(new Response("OK"));
 		});
