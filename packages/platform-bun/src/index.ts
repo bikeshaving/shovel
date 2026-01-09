@@ -54,10 +54,13 @@ const logger = getLogger(["shovel", "platform"]);
 const PORT = config.port;
 const HOST = config.host;
 const WORKERS = config.workers;
-const isWorker = !Bun.isMainThread;
 
-// Worker thread entry - each worker runs its own Bun.serve with reusePort
-if (isWorker) {
+// Use explicit marker instead of Bun.isMainThread
+// This handles the edge case where Shovel's build output is embedded in another worker
+const isShovelWorker = process.env.SHOVEL_SPAWNED_WORKER === "1";
+
+if (isShovelWorker) {
+	// Worker thread: runs BOTH server AND ServiceWorker
 	const platform = new BunPlatform({port: PORT, host: HOST, workers: 1});
 	const userCodePath = new URL("./server.js", import.meta.url).pathname;
 	const serviceWorker = await platform.loadServiceWorker(userCodePath);
@@ -65,44 +68,122 @@ if (isWorker) {
 	Bun.serve({
 		port: PORT,
 		hostname: HOST,
-		reusePort: true,
+		// Only need reusePort for multi-worker (multiple listeners on same port)
+		reusePort: WORKERS > 1,
 		fetch: serviceWorker.handleRequest,
 	});
 
+	// Signal ready to main thread
+	postMessage({type: "ready", thread: Bun.threadId});
 	logger.info("Worker started", {port: PORT, thread: Bun.threadId});
 } else {
-	// Main thread - spawn worker threads, each binds to same port with reusePort
-	if (WORKERS > 1) {
-		for (let i = 0; i < WORKERS; i++) {
-			new Worker(import.meta.path);
+	// Main thread: supervisor only - ALWAYS spawn workers (even for workers:1)
+	// This ensures ServiceWorker code always runs in a worker thread for dev/prod parity
+
+	// Port availability check - fail fast if port is in use
+	// Prevents accidental port sharing with other processes
+	const checkPort = async () => {
+		try {
+			const testServer = Bun.serve({port: PORT, hostname: HOST, fetch: () => new Response()});
+			testServer.stop();
+		} catch (err) {
+			logger.error("Port unavailable", {port: PORT, host: HOST, error: err});
+			process.exit(1);
 		}
-		logger.info("Spawned workers", {count: WORKERS, port: PORT});
-	} else {
-		// Single worker mode - run directly in main thread
-		const platform = new BunPlatform({port: PORT, host: HOST, workers: 1});
-		const userCodePath = new URL("./server.js", import.meta.url).pathname;
-		const serviceWorker = await platform.loadServiceWorker(userCodePath);
+	};
+	await checkPort();
 
-		const server = platform.createServer(serviceWorker.handleRequest, {
-			port: PORT,
-			host: HOST,
+	// Worker crash handling configuration
+	const MAX_RESTARTS = 3;
+	const RESTART_WINDOW_MS = 60000; // 1 minute
+	let shuttingDown = false;
+
+	// Track worker state for crash handling
+	const workerStates = new Map();
+	const workers = [];
+	let readyCount = 0;
+
+	function createWorker(index) {
+		const worker = new Worker(import.meta.path, {
+			env: {...process.env, SHOVEL_SPAWNED_WORKER: "1"},
 		});
-		await server.listen();
 
-		logger.info("Server started", {url: server.url});
+		// Initialize worker state for crash tracking
+		workerStates.set(worker, {
+			index,
+			restartCount: 0,
+			lastRestartTime: 0,
+		});
 
-		// Graceful shutdown
-		const shutdown = async () => {
-			logger.info("Shutting down");
-			await serviceWorker.dispose();
-			await platform.dispose();
-			await server.close();
-			process.exit(0);
+		worker.onmessage = (event) => {
+			if (event.data.type === "ready") {
+				readyCount++;
+				if (readyCount === WORKERS) {
+					logger.info("All workers ready", {count: WORKERS, port: PORT});
+				}
+			}
 		};
 
-		process.on("SIGINT", shutdown);
-		process.on("SIGTERM", shutdown);
+		worker.onerror = (error) => {
+			logger.error("Worker error", {index, error: error.message});
+		};
+
+		// Handle worker exit for crash recovery
+		worker.addEventListener("close", () => {
+			// Don't restart if we're shutting down
+			if (shuttingDown) return;
+
+			const state = workerStates.get(worker);
+			const now = Date.now();
+
+			// Reset counter if outside restart window
+			if (now - state.lastRestartTime > RESTART_WINDOW_MS) {
+				state.restartCount = 0;
+			}
+
+			if (state.restartCount < MAX_RESTARTS) {
+				state.restartCount++;
+				state.lastRestartTime = now;
+				logger.warn("Worker crashed, restarting", {
+					index: state.index,
+					restartCount: state.restartCount,
+				});
+
+				// Replace crashed worker
+				const workerIndex = workers.indexOf(worker);
+				if (workerIndex !== -1) {
+					workers[workerIndex] = createWorker(state.index);
+				}
+			} else {
+				logger.error("Worker exceeded restart limit, failing fast", {
+					index: state.index,
+					restarts: state.restartCount,
+				});
+				process.exit(1);
+			}
+		});
+
+		return worker;
 	}
+
+	for (let i = 0; i < WORKERS; i++) {
+		workers.push(createWorker(i));
+	}
+
+	logger.info("Spawned workers", {count: WORKERS, port: PORT});
+
+	// Graceful shutdown
+	const shutdown = async () => {
+		shuttingDown = true;
+		logger.info("Shutting down workers");
+		for (const worker of workers) {
+			worker.terminate();
+		}
+		process.exit(0);
+	};
+
+	process.on("SIGINT", shutdown);
+	process.on("SIGTERM", shutdown);
 }
 `;
 
