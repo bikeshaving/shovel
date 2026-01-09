@@ -216,11 +216,11 @@ export class BunPlatform extends BasePlatform {
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
 		// Runtime defaults with actual class references (not module/export strings)
-		const runtimeDefaults: Record<string, {CacheClass: any}> = {
-			default: {CacheClass: MemoryCache},
+		const runtimeDefaults: Record<string, {impl: any}> = {
+			default: {impl: MemoryCache},
 		};
 		const userCaches = this.#options.config?.caches ?? {};
-		// Deep merge per entry so user can override options without losing CacheClass
+		// Deep merge per entry so user can override options without losing impl
 		const configs: Record<string, any> = {};
 		const allNames = new Set([
 			...Object.keys(runtimeDefaults),
@@ -239,14 +239,13 @@ export class BunPlatform extends BasePlatform {
 	async createDirectories(): Promise<CustomDirectoryStorage> {
 		// Runtime defaults with actual class references (not module/export strings)
 		// Note: These are test-time defaults - production uses build-time resolved paths
-		const runtimeDefaults: Record<string, {DirectoryClass: any; path: string}> =
-			{
-				server: {DirectoryClass: NodeFSDirectory, path: this.#options.cwd},
-				public: {DirectoryClass: NodeFSDirectory, path: this.#options.cwd},
-				tmp: {DirectoryClass: NodeFSDirectory, path: tmpdir()},
-			};
+		const runtimeDefaults: Record<string, {impl: any; path: string}> = {
+			server: {impl: NodeFSDirectory, path: this.#options.cwd},
+			public: {impl: NodeFSDirectory, path: this.#options.cwd},
+			tmp: {impl: NodeFSDirectory, path: tmpdir()},
+		};
 		const userDirs = this.#options.config?.directories ?? {};
-		// Deep merge per entry so user can override options without losing DirectoryClass
+		// Deep merge per entry so user can override options without losing impl
 		const configs: Record<string, any> = {};
 		const allNames = new Set([
 			...Object.keys(runtimeDefaults),
@@ -378,11 +377,11 @@ export class BunPlatform extends BasePlatform {
 		// Create shared cache storage from config (with runtime defaults)
 		if (!this.#cacheStorage) {
 			// Runtime defaults with actual class references
-			const runtimeCacheDefaults: Record<string, {CacheClass: any}> = {
-				default: {CacheClass: MemoryCache},
+			const runtimeCacheDefaults: Record<string, {impl: any}> = {
+				default: {impl: MemoryCache},
 			};
 			const userCaches = config?.caches ?? {};
-			// Deep merge per entry so user can override options without losing CacheClass
+			// Deep merge per entry so user can override options without losing impl
 			const cacheConfigs: Record<string, any> = {};
 			const allCacheNames = new Set([
 				...Object.keys(runtimeCacheDefaults),
@@ -401,12 +400,12 @@ export class BunPlatform extends BasePlatform {
 
 		// Create shared directory storage from config (with runtime defaults)
 		if (!this.#directoryStorage) {
-			// Runtime defaults provide DirectoryClass for platform-provided directories
+			// Runtime defaults provide impl for platform-provided directories
 			// Paths come from the generated config (resolved at build time)
-			const runtimeDirDefaults: Record<string, {DirectoryClass: any}> = {
-				server: {DirectoryClass: NodeFSDirectory},
-				public: {DirectoryClass: NodeFSDirectory},
-				tmp: {DirectoryClass: NodeFSDirectory},
+			const runtimeDirDefaults: Record<string, {impl: any}> = {
+				server: {impl: NodeFSDirectory},
+				public: {impl: NodeFSDirectory},
+				tmp: {impl: NodeFSDirectory},
 			};
 			const userDirs = config?.directories ?? {};
 			// Deep merge per entry
