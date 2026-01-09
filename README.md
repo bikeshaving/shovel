@@ -250,6 +250,15 @@ Configure directory backends. Platforms provide defaults for well-known director
 
 Shovel uses [LogTape](https://logtape.org/) for logging:
 
+```typescript
+const logger = self.loggers.get(["shovel", "myapp"]);
+logger.info`Request received: ${request.url}`;
+```
+
+**Zero-config logging**: Use the `["shovel", ...]` category hierarchy to inherit Shovel's default logging (info level to console). No configuration needed.
+
+For custom configuration, use `shovel.json`:
+
 ```json
 {
   "logging": {
@@ -261,15 +270,15 @@ Shovel uses [LogTape](https://logtape.org/) for logging:
       }
     },
     "loggers": [
-      {"category": ["app"], "level": "info", "sinks": ["console"]},
-      {"category": ["app", "db"], "level": "debug", "sinks": ["file"]}
+      {"category": ["myapp"], "level": "info", "sinks": ["console"]},
+      {"category": ["myapp", "db"], "level": "debug", "sinks": ["file"]}
     ]
   }
 }
 ```
 
 - **Console sink is implicit** - always available as `"console"`
-- **Category hierarchy** - `["app", "db"]` inherits from `["app"]`
+- **Category hierarchy** - `["myapp", "db"]` inherits from `["myapp"]`
 - **parentSinks** - use `"override"` to replace parent sinks instead of inheriting
 
 ### Databases
