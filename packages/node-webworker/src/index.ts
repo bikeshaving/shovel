@@ -34,6 +34,19 @@ export class ErrorEvent extends Event {
 }
 
 /**
+ * Close event for worker termination
+ * Includes exit code for crash detection
+ */
+export class CloseEvent extends Event {
+	readonly code: number;
+
+	constructor(code: number) {
+		super("close");
+		this.code = code;
+	}
+}
+
+/**
  * Worker wrapper code as a data URL
  * This provides Web Worker globals in the Node.js worker_threads context
  * Using a data URL avoids needing to write any files to disk (temp or otherwise)
@@ -57,22 +70,26 @@ export class Worker {
 	#messageListeners: Set<(event: MessageEvent) => void>;
 	#errorListeners: Set<(event: ErrorEvent) => void>;
 	#messageerrorListeners: Set<(event: MessageEvent) => void>;
+	#closeListeners: Set<(event: CloseEvent) => void>;
 
 	// Web Worker standard properties
 	onmessage: ((event: MessageEvent) => void) | null;
 	onerror: ((event: ErrorEvent) => void) | null;
 	onmessageerror: ((event: MessageEvent) => void) | null;
+	onclose: ((event: CloseEvent) => void) | null;
 
 	constructor(
 		scriptURL: string | URL,
-		_options?: {type?: "classic" | "module"},
+		_options?: {type?: "classic" | "module"; env?: Record<string, string>},
 	) {
 		this.#messageListeners = new Set<(event: MessageEvent) => void>();
 		this.#errorListeners = new Set<(event: ErrorEvent) => void>();
 		this.#messageerrorListeners = new Set<(event: MessageEvent) => void>();
+		this.#closeListeners = new Set<(event: CloseEvent) => void>();
 		this.onmessage = null;
 		this.onerror = null;
 		this.onmessageerror = null;
+		this.onclose = null;
 
 		// Convert scriptURL to string (handles URL objects via toString())
 		// Per Web Worker spec: accepts both strings and URL objects
@@ -107,11 +124,29 @@ export class Worker {
 			env: {
 				// eslint-disable-next-line no-restricted-properties -- Workers inherit parent env
 				...process.env,
+				..._options?.env,
 				WORKER_SCRIPT_URL: workerScriptURL,
 			},
 		});
 
 		this.#setupEventForwarding();
+	}
+
+	/**
+	 * Report a close event when the worker exits
+	 */
+	#reportClose(code: number): void {
+		const event = new CloseEvent(code);
+
+		// Call onclose handler if set
+		if (this.onclose) {
+			this.onclose(event);
+		}
+
+		// Call close event listeners
+		this.#closeListeners.forEach((listener) => {
+			listener(event);
+		});
 	}
 
 	/**
@@ -177,6 +212,10 @@ export class Worker {
 				listener(event);
 			});
 		});
+
+		this.#nodeWorker.on("exit", (code) => {
+			this.#reportClose(code);
+		});
 	}
 
 	/**
@@ -203,6 +242,7 @@ export class Worker {
 		type: "messageerror",
 		listener: (event: MessageEvent) => void,
 	): void;
+	addEventListener(type: "close", listener: (event: CloseEvent) => void): void;
 	addEventListener(type: string, listener: (event: any) => void): void {
 		if (type === "message") {
 			this.#messageListeners.add(listener as (event: MessageEvent) => void);
@@ -212,6 +252,8 @@ export class Worker {
 			this.#messageerrorListeners.add(
 				listener as (event: MessageEvent) => void,
 			);
+		} else if (type === "close") {
+			this.#closeListeners.add(listener as (event: CloseEvent) => void);
 		}
 		// Silently ignore unsupported event types for API compatibility
 	}
@@ -231,6 +273,10 @@ export class Worker {
 		type: "messageerror",
 		listener: (event: MessageEvent) => void,
 	): void;
+	removeEventListener(
+		type: "close",
+		listener: (event: CloseEvent) => void,
+	): void;
 	removeEventListener(type: string, listener: (event: any) => void): void {
 		if (type === "message") {
 			this.#messageListeners.delete(listener as (event: MessageEvent) => void);
@@ -240,6 +286,8 @@ export class Worker {
 			this.#messageerrorListeners.delete(
 				listener as (event: MessageEvent) => void,
 			);
+		} else if (type === "close") {
+			this.#closeListeners.delete(listener as (event: CloseEvent) => void);
 		}
 	}
 
@@ -258,9 +306,11 @@ export class Worker {
 		this.#messageListeners.clear();
 		this.#errorListeners.clear();
 		this.#messageerrorListeners.clear();
+		this.#closeListeners.clear();
 		this.onmessage = null;
 		this.onerror = null;
 		this.onmessageerror = null;
+		this.onclose = null;
 	}
 }
 

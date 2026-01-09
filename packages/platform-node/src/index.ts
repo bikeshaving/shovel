@@ -39,8 +39,10 @@ import {getLogger} from "@logtape/logtape";
 
 // Entry template embedded as string
 const entryTemplate = `// Node.js Production Server Entry
-// This file is imported as text and used as the entry wrapper template
 import {tmpdir} from "os"; // For [tmpdir] config expressions
+import * as HTTP from "http";
+import {parentPort} from "worker_threads";
+import {Worker} from "@b9g/node-webworker";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging} from "@b9g/platform/runtime";
 import {config} from "shovel:config"; // Virtual module - resolved at build time
@@ -51,48 +53,148 @@ await configureLogging(config.logging);
 
 const logger = getLogger(["shovel", "platform"]);
 
-// Create platform instance
-const platform = new Platform();
-
-// Configuration from shovel:config (with process.env fallbacks baked in)
+// Configuration from shovel:config
 const PORT = config.port;
 const HOST = config.host;
-const WORKER_COUNT = config.workers;
+const WORKERS = config.workers;
 
-logger.info("Starting production server", {});
-logger.info("Workers", {count: WORKER_COUNT});
+// Use explicit marker instead of isMainThread
+// This handles the edge case where Shovel's build output is embedded in another worker
+const isShovelWorker = process.env.SHOVEL_SPAWNED_WORKER === "1";
 
-// Get the path to the user's ServiceWorker code
-const userCodeURL = new URL("./server.js", import.meta.url);
-const userCodePath = userCodeURL.pathname;
+if (WORKERS === 1) {
+	// Single worker mode: worker owns server (same as Bun)
+	// No reusePort needed since there's only one listener
+	if (isShovelWorker) {
+		// Worker thread: runs BOTH server AND ServiceWorker
+		const platform = new Platform({port: PORT, host: HOST, workers: 1});
 
-// Load ServiceWorker with worker pool
-const serviceWorker = await platform.loadServiceWorker(userCodePath, {
-	workerCount: WORKER_COUNT,
-});
+		// Track resources for shutdown - these get assigned during startup
+		let server;
+		let serviceWorker;
 
-// Create HTTP server
-const server = platform.createServer(serviceWorker.handleRequest, {
-	port: PORT,
-	host: HOST,
-});
+		// Register shutdown handler BEFORE async startup to prevent race condition
+		// where SIGINT arrives during startup and the shutdown message is dropped
+		self.onmessage = async (event) => {
+			if (event.data.type === "shutdown") {
+				logger.info("Worker shutting down");
+				if (server) await server.close();
+				if (serviceWorker) await serviceWorker.dispose();
+				await platform.dispose();
+				postMessage({type: "shutdown-complete"});
+			}
+		};
 
-await server.listen();
-logger.info("Server running", {url: \`http://\${HOST}:\${PORT}\`});
-logger.info("Load balancing", {workers: WORKER_COUNT});
+		const userCodePath = new URL("./server.js", import.meta.url).pathname;
+		serviceWorker = await platform.loadServiceWorker(userCodePath);
 
-// Graceful shutdown
-const shutdown = async () => {
-	logger.info("Shutting down server", {});
-	await serviceWorker.dispose();
-	await platform.dispose();
-	await server.close();
-	logger.info("Server stopped", {});
-	process.exit(0);
-};
+		server = platform.createServer(serviceWorker.handleRequest, {
+			port: PORT,
+			host: HOST,
+		});
+		await server.listen();
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+		// Signal ready to main thread
+		postMessage({type: "ready"});
+		logger.info("Worker started with server", {port: PORT});
+	} else {
+		// Main thread: supervisor only - spawn single worker
+		logger.info("Starting production server (single worker)", {port: PORT});
+
+		// Port availability check - fail fast if port is in use
+		const checkPort = () => new Promise((resolve, reject) => {
+			const testServer = HTTP.createServer();
+			testServer.once("error", reject);
+			testServer.listen(PORT, HOST, () => {
+				testServer.close(() => resolve(undefined));
+			});
+		});
+		try {
+			await checkPort();
+		} catch (err) {
+			logger.error("Port unavailable", {port: PORT, host: HOST, error: err});
+			process.exit(1);
+		}
+
+		let shuttingDown = false;
+
+		const worker = new Worker(new URL(import.meta.url), {
+			env: {SHOVEL_SPAWNED_WORKER: "1"},
+		});
+
+		worker.onmessage = (event) => {
+			if (event.data.type === "ready") {
+				logger.info("Worker ready", {port: PORT});
+			} else if (event.data.type === "shutdown-complete") {
+				logger.info("Worker shutdown complete");
+				process.exit(0);
+			}
+		};
+
+		worker.onerror = (event) => {
+			logger.error("Worker error", {error: event.error});
+		};
+
+		// If a worker crashes, fail fast - let process supervisor handle restarts
+		worker.addEventListener("close", (event) => {
+			if (shuttingDown) return;
+			if (event.code === 0) return; // Clean exit
+			logger.error("Worker crashed", {exitCode: event.code});
+			process.exit(1);
+		});
+
+		// Graceful shutdown
+		const shutdown = () => {
+			shuttingDown = true;
+			logger.info("Shutting down");
+			worker.postMessage({type: "shutdown"});
+		};
+
+		process.on("SIGINT", shutdown);
+		process.on("SIGTERM", shutdown);
+	}
+} else {
+	// Multi-worker mode: main thread owns server (no reusePort in Node.js)
+	// Workers handle ServiceWorker code via postMessage
+	if (isShovelWorker) {
+		// Worker: ServiceWorker only, respond via message loop
+		// This path uses the workerEntryTemplate, not this template
+		throw new Error("Multi-worker mode uses workerEntryTemplate, not entryTemplate");
+	} else {
+		// Main thread: HTTP server + dispatch to worker pool
+		const platform = new Platform({port: PORT, host: HOST, workers: WORKERS});
+		const userCodePath = new URL("./server.js", import.meta.url).pathname;
+
+		logger.info("Starting production server (multi-worker)", {workers: WORKERS, port: PORT});
+
+		// Load ServiceWorker with worker pool
+		const serviceWorker = await platform.loadServiceWorker(userCodePath, {
+			workerCount: WORKERS,
+		});
+
+		// Create HTTP server
+		const server = platform.createServer(serviceWorker.handleRequest, {
+			port: PORT,
+			host: HOST,
+		});
+
+		await server.listen();
+		logger.info("Server running", {url: \`http://\${HOST}:\${PORT}\`, workers: WORKERS});
+
+		// Graceful shutdown
+		const shutdown = async () => {
+			logger.info("Shutting down server");
+			await serviceWorker.dispose();
+			await platform.dispose();
+			await server.close();
+			logger.info("Server stopped");
+			process.exit(0);
+		};
+
+		process.on("SIGINT", shutdown);
+		process.on("SIGTERM", shutdown);
+	}
+}
 `;
 
 // Worker entry template - platform defaults are merged at build time into config
