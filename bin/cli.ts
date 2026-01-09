@@ -26,10 +26,14 @@ async function reifySinks(
 				modulePath.startsWith("./") || modulePath.startsWith("../")
 					? resolve(baseDir, modulePath)
 					: modulePath;
-			// eslint-disable-next-line no-restricted-syntax -- CLI runtime import of user-configured sinks
-			const mod = await import(resolvedPath);
-			const impl = exportName ? mod[exportName] : mod.default;
-			reified[name] = {...rest, impl};
+			try {
+				// eslint-disable-next-line no-restricted-syntax -- CLI runtime import of user-configured sinks
+				const mod = await import(resolvedPath);
+				const impl = exportName ? mod[exportName] : mod.default;
+				reified[name] = {...rest, impl};
+			} catch (err) {
+				console.error(`Failed to load sink "${name}" from ${resolvedPath}:`, err);
+			}
 		} else if (sinkConfig.impl) {
 			// Already reified (shouldn't happen in CLI, but handle it)
 			reified[name] = sinkConfig as {impl: unknown};
