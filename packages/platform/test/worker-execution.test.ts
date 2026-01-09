@@ -32,7 +32,9 @@ describe("Worker Execution Model", () => {
 				expect(wrapper).toContain('process.env.SHOVEL_SPAWNED_WORKER === "1"');
 
 				// Should use isShovelWorker variable for the conditional, not Bun.isMainThread
-				expect(wrapper).toContain("const isShovelWorker = process.env.SHOVEL_SPAWNED_WORKER");
+				expect(wrapper).toContain(
+					"const isShovelWorker = process.env.SHOVEL_SPAWNED_WORKER",
+				);
 				expect(wrapper).toContain("if (isShovelWorker)");
 			},
 			TIMEOUT,
@@ -53,7 +55,9 @@ describe("Worker Execution Model", () => {
 				expect(wrapper).toContain('process.env.SHOVEL_SPAWNED_WORKER === "1"');
 
 				// Should use isShovelWorker variable for the conditional
-				expect(wrapper).toContain("const isShovelWorker = process.env.SHOVEL_SPAWNED_WORKER");
+				expect(wrapper).toContain(
+					"const isShovelWorker = process.env.SHOVEL_SPAWNED_WORKER",
+				);
 				expect(wrapper).toContain("if (isShovelWorker)");
 			},
 			TIMEOUT,
@@ -131,7 +135,9 @@ describe("Worker Execution Model", () => {
 				expect(wrapper).toContain("if (WORKERS === 1)");
 
 				// workers=1: worker owns server
-				expect(wrapper).toContain("platform.createServer(serviceWorker.handleRequest");
+				expect(wrapper).toContain(
+					"platform.createServer(serviceWorker.handleRequest",
+				);
 
 				// workers=N: main thread owns server
 				expect(wrapper).toContain("Multi-worker mode");
