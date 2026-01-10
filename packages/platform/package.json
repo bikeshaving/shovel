@@ -1,6 +1,6 @@
 {
   "name": "@b9g/platform",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "The portable meta-framework built on web standards.",
   "type": "module",
   "scripts": {
@@ -96,6 +96,5 @@
       "types": "./dist/src/config.d.ts",
       "import": "./dist/src/config.js"
     }
-  },
-  "private": true
+  }
 }
