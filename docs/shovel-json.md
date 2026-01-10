@@ -81,6 +81,8 @@ Use `$VAR` to reference environment variables:
 
 ### Operators
 
+**Important:** All infix operators require spaces on both sides. This allows values like `redis://localhost:6379`, `bun:sqlite`, and `node:fs` to be parsed as single values.
+
 | Operator | Description | Example |
 |----------|-------------|---------|
 | `\|\|` | Fallback if falsy | `"$PORT \|\| 3000"` |
@@ -89,7 +91,16 @@ Use `$VAR` to reference environment variables:
 | `===`, `!==` | Strict equality | `"$NODE_ENV === production"` |
 | `==`, `!=` | Loose equality | `"$DEBUG == true"` |
 | `? :` | Ternary | `"$NODE_ENV === production ? redis : memory"` |
-| `!` | Logical NOT | `"!$DISABLED"` |
+| `!` | Logical NOT (prefix) | `"!$DISABLED"` |
+
+```json
+// Correct - spaces around operators
+{ "url": "$REDIS_URL || redis://localhost:6379" }
+{ "driver": "$PLATFORM === bun ? bun:sqlite : better-sqlite3" }
+
+// Incorrect - no spaces
+{ "url": "$REDIS_URL||redis://localhost:6379" }  // parsed as single identifier
+```
 
 ### Path Placeholders
 

@@ -2,20 +2,23 @@
  * Configuration expression parser
  *
  * Embeddable JavaScript-like expressions for JSON config:
- * - ALL_CAPS = env var reference (e.g., NODE_ENV, PORT)
+ * - $VAR = env var reference (e.g., $NODE_ENV, $PORT)
  * - Everything else = string literal (kebab-case, URLs, camelCase, PascalCase)
  * - Quoted strings = explicit strings (escape hatch)
  * - JavaScript keywords: true, false, null, undefined
  * - Operators: ||, ??, &&, ===, !==, ==, !=, ? :, !
  * - No eval - uses recursive descent parser
  *
+ * IMPORTANT: All infix operators require spaces on both sides.
+ * This allows URLs (redis://localhost), module specifiers (bun:sqlite),
+ * and other colon-containing values to be parsed as single identifiers.
+ *
  * Examples:
- *   "PORT || 3000"           - fallback if falsy
- *   "PORT ?? 3000"           - fallback only if null/undefined (keeps empty string)
- *   "NODE_ENV === production ? redis : memory"
- *   "REDIS_URL || redis://localhost:6379"
- *   "S3_BUCKET || my-bucket-name"
- *   "BASE_PATH || ./uploads"
+ *   "$PORT || 3000"                              - fallback if falsy
+ *   "$PORT ?? 3000"                              - fallback only if null/undefined
+ *   "$NODE_ENV === production ? redis : memory"  - ternary with spaces
+ *   "$REDIS_URL || redis://localhost:6379"       - URL as fallback value
+ *   "$PLATFORM === bun ? bun:sqlite : better-sqlite3"  - module specifiers
  */
 
 import {readFileSync} from "fs";
@@ -132,6 +135,18 @@ class Tokenizer {
 		}
 	}
 
+	/**
+	 * Check if an operator at the current position has required whitespace.
+	 * Infix operators must have whitespace on both sides.
+	 * Returns true if the operator should be tokenized, false if it should be
+	 * treated as part of an identifier.
+	 */
+	#hasInfixWhitespace(operatorLength: number): boolean {
+		const charBefore = this.#pos > 0 ? this.#input[this.#pos - 1] : " ";
+		const charAfter = this.#input[this.#pos + operatorLength] || " ";
+		return /\s/.test(charBefore) && /\s/.test(charAfter);
+	}
+
 	next(): Token {
 		this.#skipWhitespace();
 
@@ -181,49 +196,87 @@ class Tokenizer {
 			};
 		}
 
-		// Operators (multi-char)
+		// Infix operators - require whitespace on both sides
+		// This allows things like "bun:sqlite", "node:fs", URLs with ://, etc.
+		// to be parsed as single identifiers while still supporting operators
+
+		// === (strict equality)
 		if (
 			ch === "=" &&
 			this.#input[this.#pos + 1] === "=" &&
-			this.#input[this.#pos + 2] === "="
+			this.#input[this.#pos + 2] === "=" &&
+			this.#hasInfixWhitespace(3)
 		) {
 			this.#pos += 3;
 			return {type: TokenType.EQ_STRICT, value: "===", start, end: this.#pos};
 		}
+		// !== (strict inequality)
 		if (
 			ch === "!" &&
 			this.#input[this.#pos + 1] === "=" &&
-			this.#input[this.#pos + 2] === "="
+			this.#input[this.#pos + 2] === "=" &&
+			this.#hasInfixWhitespace(3)
 		) {
 			this.#pos += 3;
 			return {type: TokenType.NE_STRICT, value: "!==", start, end: this.#pos};
 		}
-		if (ch === "=" && this.#input[this.#pos + 1] === "=") {
+		// == (equality)
+		if (
+			ch === "=" &&
+			this.#input[this.#pos + 1] === "=" &&
+			this.#hasInfixWhitespace(2)
+		) {
 			this.#pos += 2;
 			return {type: TokenType.EQ, value: "==", start, end: this.#pos};
 		}
-		if (ch === "!" && this.#input[this.#pos + 1] === "=") {
+		// != (inequality)
+		if (
+			ch === "!" &&
+			this.#input[this.#pos + 1] === "=" &&
+			this.#hasInfixWhitespace(2)
+		) {
 			this.#pos += 2;
 			return {type: TokenType.NE, value: "!=", start, end: this.#pos};
 		}
-		if (ch === "|" && this.#input[this.#pos + 1] === "|") {
+		// || (logical or)
+		if (
+			ch === "|" &&
+			this.#input[this.#pos + 1] === "|" &&
+			this.#hasInfixWhitespace(2)
+		) {
 			this.#pos += 2;
 			return {type: TokenType.OR, value: "||", start, end: this.#pos};
 		}
-		if (ch === "&" && this.#input[this.#pos + 1] === "&") {
+		// && (logical and)
+		if (
+			ch === "&" &&
+			this.#input[this.#pos + 1] === "&" &&
+			this.#hasInfixWhitespace(2)
+		) {
 			this.#pos += 2;
 			return {type: TokenType.AND, value: "&&", start, end: this.#pos};
 		}
-
-		// Question mark operators: ?? (nullish) or ? (ternary)
-		if (ch === "?") {
-			if (this.#input[this.#pos + 1] === "?") {
-				this.#pos += 2;
-				return {type: TokenType.NULLISH, value: "??", start, end: this.#pos};
-			}
+		// ?? (nullish coalescing)
+		if (
+			ch === "?" &&
+			this.#input[this.#pos + 1] === "?" &&
+			this.#hasInfixWhitespace(2)
+		) {
+			this.#pos += 2;
+			return {type: TokenType.NULLISH, value: "??", start, end: this.#pos};
+		}
+		// ? (ternary) - requires whitespace
+		if (ch === "?" && this.#hasInfixWhitespace(1)) {
 			this.#advance();
 			return {type: TokenType.QUESTION, value: "?", start, end: this.#pos};
 		}
+		// : (ternary else) - requires whitespace
+		if (ch === ":" && this.#hasInfixWhitespace(1)) {
+			this.#advance();
+			return {type: TokenType.COLON, value: ":", start, end: this.#pos};
+		}
+
+		// Prefix operators (don't require whitespace after)
 		if (ch === "!") {
 			this.#advance();
 			return {type: TokenType.NOT, value: "!", start, end: this.#pos};
@@ -292,39 +345,18 @@ class Tokenizer {
 			);
 		}
 
-		// Colon - only tokenize as ternary operator when surrounded by whitespace
-		// This allows word:word patterns (like bun:sqlite, node:fs, custom:thing) to be single identifiers
-		// Ternary expressions use spaces: "cond ? a : b" not "cond?a:b"
-		if (ch === ":") {
-			// Check if there's whitespace before (we just skipped it, so check if start > 0 and char before start is whitespace)
-			const charBefore = start > 0 ? this.#input[start - 1] : "";
-			const charAfter = this.#input[this.#pos + 1] || "";
-			const hasSpaceBefore = start === 0 || /\s/.test(charBefore);
-			const hasSpaceAfter = !charAfter || /\s/.test(charAfter);
-
-			if (hasSpaceBefore && hasSpaceAfter) {
-				this.#advance();
-				return {type: TokenType.COLON, value: ":", start, end: this.#pos};
-			}
-			// Otherwise fall through to identifier parsing - colon is part of an identifier
-		}
-
 		// Identifiers and literals
-		// Catchall: consume everything that's not whitespace or an operator
+		// Catchall: consume everything that's not whitespace or a special character
 		// This naturally handles: kebab-case, camelCase, module specifiers (bun:sqlite), URLs, etc.
-		// Excludes: operators, $, single / (which have special meaning)
-		if (/\S/.test(ch) && !/[?!()=|&$/]/.test(ch)) {
+		// Since all infix operators require surrounding whitespace, we can be more permissive here.
+		// Special chars that break identifiers: $, (, ), and single / (path join)
+		if (/\S/.test(ch) && !/[$()/]/.test(ch)) {
 			let value = "";
-			while (/\S/.test(this.#peek()) && !/[?!()=|&$]/.test(this.#peek())) {
-				// Colon: include it in identifier if followed by non-whitespace (word:word pattern)
-				// Stop only if colon is followed by whitespace (ternary context)
-				if (this.#peek() === ":") {
-					const next = this.#input[this.#pos + 1];
-					if (!next || /\s/.test(next)) {
-						break; // Ternary colon (followed by space or EOF)
-					}
-					// Otherwise include colon and continue (module specifier, URL pattern)
-				}
+			while (
+				this.#peek() &&
+				/\S/.test(this.#peek()) &&
+				!/[$()]/.test(this.#peek())
+			) {
 				// Slash: include // (URLs) but stop at single / (path join)
 				if (this.#peek() === "/") {
 					if (this.#input[this.#pos + 1] === "/") {
@@ -397,13 +429,11 @@ class Parser {
 	#tokens: Token[];
 	#pos: number;
 	#env: Record<string, string | undefined>;
-	#strict: boolean;
 	#platform: PlatformFunctions;
 
 	constructor(
 		input: string,
 		env: Record<string, string | undefined>,
-		strict: boolean,
 		platform: PlatformFunctions = defaultPlatformFunctions,
 	) {
 		const tokenizer = new Tokenizer(input);
@@ -416,7 +446,6 @@ class Parser {
 
 		this.#pos = 0;
 		this.#env = env;
-		this.#strict = strict;
 		this.#platform = platform;
 	}
 
@@ -669,7 +698,7 @@ export function parseConfigExpr(
 	const strict = options.strict !== false; // default true
 
 	try {
-		const parser = new Parser(expr, env, strict, options.platform);
+		const parser = new Parser(expr, env, options.platform);
 		const result = parser.parse();
 
 		// Strict mode: throw if final result is nullish (undefined or null)
