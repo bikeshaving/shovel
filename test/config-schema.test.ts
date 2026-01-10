@@ -276,9 +276,7 @@ describe("config validation", () => {
 		});
 
 		test("rejects invalid sourcemap value", () => {
-			expect(() =>
-				BuildConfigSchema.parse({sourcemap: "invalid"}),
-			).toThrow();
+			expect(() => BuildConfigSchema.parse({sourcemap: "invalid"})).toThrow();
 		});
 
 		test("accepts treeShaking boolean", () => {
@@ -340,7 +338,7 @@ describe("config validation", () => {
 				minify: true,
 				sourcemap: "external",
 				treeShaking: true,
-				define: {"__VERSION__": '"1.0.0"'},
+				define: {__VERSION__: '"1.0.0"'},
 				alias: {"@": "./src"},
 				external: ["native-module"],
 				plugins: [{module: "esbuild-plugin-tailwindcss", export: "default"}],
