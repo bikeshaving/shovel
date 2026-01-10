@@ -16,6 +16,7 @@ import {tmpdir} from "os";
 import {join} from "path";
 import {test, expect} from "bun:test";
 import {buildForProduction} from "../src/commands/build.js";
+import {loadConfig} from "../src/utils/config.js";
 import {spawn} from "child_process";
 import {getLogger} from "@logtape/logtape";
 
@@ -877,6 +878,378 @@ self.addEventListener("fetch", (event) => {
 			// There should be no dynamic import of sink modules by path string
 			// Pattern: import("@logtape/...) with a variable would fail
 			expect(workerContent).not.toMatch(/await\s+import\s*\(\s*["']@logtape/);
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);
+
+// ======================
+// BUILD CONFIG E2E TESTS
+// ======================
+
+test(
+	"E2E: build config define option injects constants",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const projectDir = await createTestProject({
+				"app.js": `
+console.log("BUILD_CONFIG_TEST_START");
+console.log("VERSION:", __APP_VERSION__);
+console.log("BUILD_ENV:", __BUILD_ENV__);
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response("Version: " + __APP_VERSION__));
+});
+
+console.log("BUILD_CONFIG_TEST_READY");
+				`,
+				"shovel.json": JSON.stringify({
+					port: 3000,
+					workers: 1,
+					build: {
+						define: {
+							__APP_VERSION__: '"1.2.3"',
+							__BUILD_ENV__: '"production"',
+						},
+					},
+				}),
+			});
+			cleanup_paths.push(projectDir);
+
+			const outDir = join(projectDir, "dist");
+
+			const originalCwd = process.cwd();
+			process.chdir(projectDir);
+			try {
+				// Load config to get build settings
+				const config = loadConfig(projectDir);
+				await buildForProduction({
+					entrypoint: join(projectDir, "app.js"),
+					outDir,
+					verbose: false,
+					platform: "node",
+					userBuildConfig: config.build,
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			// Verify defines are injected in the bundle
+			const serverContent = await FS.readFile(
+				join(outDir, "server", "server.js"),
+				"utf8",
+			);
+
+			// The define values should be inlined in the bundle
+			expect(serverContent).toContain("1.2.3");
+			expect(serverContent).toContain("production");
+
+			// Run the bundle
+			const result = await runBundle(join(outDir, "server"));
+
+			// Should print the defined constants
+			expect(result.stdout).toContain("BUILD_CONFIG_TEST_START");
+			expect(result.stdout).toContain("VERSION:");
+			expect(result.stdout).toContain("1.2.3");
+			expect(result.stdout).toContain("BUILD_ENV:");
+			expect(result.stdout).toContain("production");
+			expect(result.stdout).toContain("BUILD_CONFIG_TEST_READY");
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"E2E: build config minify option minifies output",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const projectDir = await createTestProject({
+				"app.js": `
+// This is a comment that should be removed when minified
+const veryLongVariableNameThatShouldBeShortened = "hello";
+const anotherLongVariableName = "world";
+
+function aFunctionWithAVeryLongNameForTesting() {
+	return veryLongVariableNameThatShouldBeShortened + " " + anotherLongVariableName;
+}
+
+console.log("MINIFY_TEST_MARKER");
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response(aFunctionWithAVeryLongNameForTesting()));
+});
+				`,
+				"shovel.json": JSON.stringify({
+					port: 3000,
+					workers: 1,
+					build: {
+						minify: true,
+					},
+				}),
+			});
+			cleanup_paths.push(projectDir);
+
+			const outDir = join(projectDir, "dist");
+
+			const originalCwd = process.cwd();
+			process.chdir(projectDir);
+			try {
+				// Load config to get build settings
+				const config = loadConfig(projectDir);
+				await buildForProduction({
+					entrypoint: join(projectDir, "app.js"),
+					outDir,
+					verbose: false,
+					platform: "node",
+					userBuildConfig: config.build,
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			// Verify the server.js (user code) is minified
+			const serverContent = await FS.readFile(
+				join(outDir, "server", "server.js"),
+				"utf8",
+			);
+
+			// Comments should be removed
+			expect(serverContent).not.toContain(
+				"This is a comment that should be removed",
+			);
+
+			// Long variable names should be shortened
+			expect(serverContent).not.toContain(
+				"veryLongVariableNameThatShouldBeShortened",
+			);
+			expect(serverContent).not.toContain(
+				"aFunctionWithAVeryLongNameForTesting",
+			);
+
+			// But the marker string should still be present (strings aren't renamed)
+			expect(serverContent).toContain("MINIFY_TEST_MARKER");
+
+			// Run the bundle to verify it still works
+			const result = await runBundle(join(outDir, "server"));
+			expect(result.stdout).toContain("MINIFY_TEST_MARKER");
+			expect(result.stderr).not.toContain("Cannot find module");
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"E2E: build config sourcemap option generates source maps",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const projectDir = await createTestProject({
+				"app.js": `
+console.log("SOURCEMAP_TEST");
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response("OK"));
+});
+				`,
+				"shovel.json": JSON.stringify({
+					port: 3000,
+					workers: 1,
+					build: {
+						sourcemap: "external",
+					},
+				}),
+			});
+			cleanup_paths.push(projectDir);
+
+			const outDir = join(projectDir, "dist");
+
+			const originalCwd = process.cwd();
+			process.chdir(projectDir);
+			try {
+				// Load config to get build settings
+				const config = loadConfig(projectDir);
+				await buildForProduction({
+					entrypoint: join(projectDir, "app.js"),
+					outDir,
+					verbose: false,
+					platform: "node",
+					userBuildConfig: config.build,
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			// Verify source maps are generated
+			const serverDir = join(outDir, "server");
+			const files = await FS.readdir(serverDir);
+
+			// Should have .js.map files
+			const mapFiles = files.filter((f) => f.endsWith(".map"));
+			expect(mapFiles.length).toBeGreaterThan(0);
+
+			// Verify the map files include our source files
+			expect(mapFiles).toContain("server.js.map");
+			expect(mapFiles).toContain("worker.js.map");
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"E2E: build config external option excludes modules from bundle",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const projectDir = await createTestProject({
+				"app.js": `
+console.log("EXTERNAL_TEST_START");
+
+// This import should be kept as external (not bundled)
+// Using a Node builtin that we explicitly mark as external
+import {platform} from "node:os";
+
+console.log("Platform:", platform());
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response("Platform: " + platform()));
+});
+
+console.log("EXTERNAL_TEST_READY");
+				`,
+				"shovel.json": JSON.stringify({
+					port: 3000,
+					workers: 1,
+					build: {
+						// Add additional externals beyond the default node:* pattern
+						external: ["some-native-module"],
+					},
+				}),
+			});
+			cleanup_paths.push(projectDir);
+
+			const outDir = join(projectDir, "dist");
+
+			const originalCwd = process.cwd();
+			process.chdir(projectDir);
+			try {
+				// Load config to get build settings
+				const config = loadConfig(projectDir);
+				await buildForProduction({
+					entrypoint: join(projectDir, "app.js"),
+					outDir,
+					verbose: false,
+					platform: "node",
+					userBuildConfig: config.build,
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			// Verify the server code has external import
+			const serverContent = await FS.readFile(
+				join(outDir, "server", "server.js"),
+				"utf8",
+			);
+
+			// node:os should be an external import (not bundled)
+			expect(serverContent).toContain("node:os");
+
+			// Run the bundle to verify it works
+			const result = await runBundle(join(outDir, "server"));
+			expect(result.stdout).toContain("EXTERNAL_TEST_START");
+			expect(result.stdout).toContain("Platform:");
+			expect(result.stdout).toContain("EXTERNAL_TEST_READY");
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"E2E: build config plugin loads from project node_modules",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			// Create a simple esbuild plugin in the project
+			const projectDir = await createTestProject({
+				"app.js": `
+console.log("PLUGIN_TEST_START");
+// The plugin should add this marker during build
+console.log("PLUGIN_TRANSFORM_MARKER");
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response("OK"));
+});
+
+console.log("PLUGIN_TEST_READY");
+				`,
+				// Create a local plugin file (simulating a plugin in node_modules)
+				"my-plugin.js": `
+// Simple esbuild plugin that adds a banner comment
+export default function myPlugin(options = {}) {
+	return {
+		name: "my-plugin",
+		setup(build) {
+			build.onEnd(() => {
+				console.log("MY_PLUGIN_EXECUTED");
+			});
+		}
+	};
+}
+				`,
+				"shovel.json": JSON.stringify({
+					port: 3000,
+					workers: 1,
+					build: {
+						plugins: [
+							{
+								module: "./my-plugin.js",
+							},
+						],
+					},
+				}),
+			});
+			cleanup_paths.push(projectDir);
+
+			const outDir = join(projectDir, "dist");
+
+			const originalCwd = process.cwd();
+			process.chdir(projectDir);
+			try {
+				// Load config to get build settings
+				const config = loadConfig(projectDir);
+				await buildForProduction({
+					entrypoint: join(projectDir, "app.js"),
+					outDir,
+					verbose: false,
+					platform: "node",
+					userBuildConfig: config.build,
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			// Run the bundle to verify it works
+			const result = await runBundle(join(outDir, "server"));
+			expect(result.stdout).toContain("PLUGIN_TEST_START");
+			expect(result.stdout).toContain("PLUGIN_TEST_READY");
+			expect(result.stderr).not.toContain("Cannot find module");
 		} finally {
 			await cleanup(cleanup_paths);
 		}

@@ -1564,6 +1564,44 @@ export const LoggingConfigSchema = z
 
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
 
+/** ESBuild plugin configuration schema - uses module/export pattern */
+export const BuildPluginConfigSchema = z
+	.object({
+		/** Module path to import (e.g., "esbuild-plugin-tailwindcss") */
+		module: z.string(),
+		/** Named export to use (defaults to "default") */
+		export: z.string().optional(),
+	})
+	.passthrough(); // Allow additional plugin-specific options
+
+export type BuildPluginConfig = z.infer<typeof BuildPluginConfigSchema>;
+
+/** Build configuration schema for ESBuild options */
+export const BuildConfigSchema = z
+	.object({
+		/** ES target (e.g., "es2020", "es2022", ["es2020", "chrome100"]) */
+		target: z.union([z.string(), z.array(z.string())]).optional(),
+		/** Enable minification for production builds */
+		minify: z.boolean().optional(),
+		/** Sourcemap generation: false, true, "inline", "external", "linked" */
+		sourcemap: z
+			.union([z.boolean(), z.enum(["inline", "external", "linked"])])
+			.optional(),
+		/** Enable tree-shaking (default: true) */
+		treeShaking: z.boolean().optional(),
+		/** Global constant definitions (added to Shovel's defaults) */
+		define: z.record(z.string(), z.string()).optional(),
+		/** Path aliases (e.g., {"@": "./src"}) */
+		alias: z.record(z.string(), z.string()).optional(),
+		/** Additional external packages (added to platform defaults) */
+		external: z.array(z.string()).optional(),
+		/** ESBuild plugins using module/export pattern */
+		plugins: z.array(BuildPluginConfigSchema).optional(),
+	})
+	.strict();
+
+export type BuildConfig = z.infer<typeof BuildConfigSchema>;
+
 /** Main Shovel configuration schema */
 export const ShovelConfigSchema = z
 	.object({
@@ -1572,6 +1610,7 @@ export const ShovelConfigSchema = z
 		host: z.string().optional(),
 		workers: z.union([z.number(), z.string()]).optional(),
 		logging: LoggingConfigSchema.optional(),
+		build: BuildConfigSchema.optional(),
 		caches: z.record(z.string(), CacheConfigSchema).optional(),
 		directories: z.record(z.string(), DirectoryConfigSchema).optional(),
 		databases: z.record(z.string(), DatabaseConfigSchema).optional(),
@@ -1586,12 +1625,25 @@ export interface ProcessedLoggingConfig {
 	loggers: LoggerConfig[];
 }
 
+/** Processed build config with defaults applied */
+export interface ProcessedBuildConfig {
+	target: string | string[];
+	minify: boolean;
+	sourcemap: boolean | "inline" | "external" | "linked";
+	treeShaking: boolean;
+	define: Record<string, string>;
+	alias: Record<string, string>;
+	external: string[];
+	plugins: BuildPluginConfig[];
+}
+
 export interface ProcessedShovelConfig {
 	platform?: string;
 	port: number;
 	host: string;
 	workers: number;
 	logging: ProcessedLoggingConfig;
+	build: ProcessedBuildConfig;
 	caches: Record<string, CacheConfig>;
 	directories: Record<string, DirectoryConfig>;
 	databases: Record<string, DatabaseConfig>;
@@ -1667,6 +1719,16 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 		logging: {
 			sinks: processed.logging?.sinks || {},
 			loggers: processed.logging?.loggers || [],
+		},
+		build: {
+			target: processed.build?.target ?? "es2022",
+			minify: processed.build?.minify ?? false,
+			sourcemap: processed.build?.sourcemap ?? false,
+			treeShaking: processed.build?.treeShaking ?? true,
+			define: processed.build?.define ?? {},
+			alias: processed.build?.alias ?? {},
+			external: processed.build?.external ?? [],
+			plugins: processed.build?.plugins ?? [],
 		},
 		caches: processed.caches || {},
 		directories: processed.directories || {},
