@@ -22,7 +22,6 @@
  */
 
 import {readFileSync} from "fs";
-import {tmpdir} from "os";
 import {join} from "path";
 import {z} from "zod";
 
@@ -397,98 +396,23 @@ class Tokenizer {
 // PARSER
 // ============================================================================
 
-/**
- * Platform functions for runtime expression evaluation.
- * These are injected to allow testing and platform-specific implementations.
- */
-interface PlatformFunctions {
-	outdir: () => string;
-	tmpdir: () => string;
-	git: () => string;
-	joinPath: (...segments: string[]) => string;
-}
-
-/**
- * Default platform functions using Node.js APIs
- */
-const defaultPlatformFunctions: PlatformFunctions = {
-	outdir: () => {
-		// Default to cwd - in real usage, this is set by the build system
-		// eslint-disable-next-line no-restricted-properties
-		return process.cwd();
-	},
-	tmpdir: () => tmpdir(),
-	git: () => {
-		// Default to "unknown" - in real usage, this is set by the build system
-		return "unknown";
-	},
-	joinPath: (...segments: string[]) => join(...segments),
-};
-
-/** Options for parsing config expressions */
-export interface ParseOptions {
-	/** Environment variables (defaults to process.env) */
-	env?: Record<string, string | undefined>;
-	/** Platform functions for [outdir], [tmpdir], [git], path joining */
-	platform?: PlatformFunctions;
-	/** Throw if result is nullish (default: true) */
-	strict?: boolean;
-}
-
 export class Parser {
 	#tokens: Token[];
 	#pos: number;
 	#env: Record<string, string | undefined>;
-	#platform: PlatformFunctions;
 
 	/**
 	 * Parse and evaluate a config expression.
-	 *
-	 * @param expr - The expression string to parse
-	 * @param options - Parse options (env, platform, strict)
-	 * @returns The evaluated result
-	 * @throws Error if expression is invalid or evaluates to nullish in strict mode
 	 */
-	static parse(expr: string, options: ParseOptions = {}): any {
-		const env = options.env ?? getEnv();
-		const platform = options.platform ?? defaultPlatformFunctions;
-		const strict = options.strict !== false;
-
-		try {
-			const parser = new Parser(expr, env, platform);
-			const result = parser.#parse();
-
-			if (strict && (result === undefined || result === null)) {
-				throw new Error(
-					`Expression evaluated to ${result}\n` +
-						`The expression "${expr}" resulted in a nullish value.\n` +
-						`Fix:\n` +
-						`  1. Set the missing env var(s)\n` +
-						`  2. Add a fallback: $VAR || defaultValue\n` +
-						`  3. Add a nullish fallback: $VAR ?? defaultValue`,
-				);
-			}
-
-			return result;
-		} catch (error) {
-			if (
-				error instanceof Error &&
-				error.message.includes("Expression evaluated to")
-			) {
-				throw error; // Re-throw strict mode errors as-is
-			}
-			throw new Error(
-				`Invalid config expression: ${expr}\n` +
-					`Error: ${error instanceof Error ? error.message : String(error)}`,
-			);
-		}
+	static parse(
+		expr: string,
+		env: Record<string, string | undefined> = {},
+	): any {
+		const parser = new Parser(expr, env);
+		return parser.#parse();
 	}
 
-	private constructor(
-		input: string,
-		env: Record<string, string | undefined>,
-		platform: PlatformFunctions,
-	) {
+	constructor(input: string, env: Record<string, string | undefined>) {
 		const tokenizer = new Tokenizer(input);
 		this.#tokens = [];
 		let token: Token;
@@ -499,7 +423,6 @@ export class Parser {
 
 		this.#pos = 0;
 		this.#env = env;
-		this.#platform = platform;
 	}
 
 	#peek(): Token {
@@ -673,18 +596,15 @@ export class Parser {
 			return this.#parsePathSuffix(result);
 		}
 
-		// Bracket placeholders (may have path suffix)
-		if (token.type === TokenType.OUTDIR) {
-			this.#advance();
-			return this.#parsePathSuffix(this.#platform.outdir());
-		}
-		if (token.type === TokenType.TMPDIR) {
-			this.#advance();
-			return this.#parsePathSuffix(this.#platform.tmpdir());
-		}
-		if (token.type === TokenType.GIT) {
-			this.#advance();
-			return this.#parsePathSuffix(this.#platform.git());
+		// Bracket placeholders - only valid in build-time code generation
+		if (
+			token.type === TokenType.OUTDIR ||
+			token.type === TokenType.TMPDIR ||
+			token.type === TokenType.GIT
+		) {
+			throw new Error(
+				`${token.value} placeholder is only valid in build config, not runtime`,
+			);
 		}
 
 		// Identifier (string literal - may have path suffix for paths like ./data)
@@ -735,36 +655,36 @@ export class Parser {
 			return undefined;
 		}
 
-		// Join base with segments using platform joinPath
-		return this.#platform.joinPath(String(base), ...segments);
+		// Join base with segments
+		return join(String(base), ...segments);
 	}
 }
 
 /**
- * Process a config value (handles nested objects/arrays)
+ * Process a config value, evaluating any expressions.
+ * Recursively handles nested objects/arrays.
  */
-export function processConfigValue(
+function processConfigValue(
 	value: any,
-	env: Record<string, string | undefined> = getEnv(),
-	options: {strict?: boolean} = {},
+	env: Record<string, string | undefined>,
 ): any {
 	if (typeof value === "string") {
 		// Check if it looks like an expression (contains operators or env vars)
 		if (EXPRESSION_PATTERN.test(value)) {
-			return Parser.parse(value, {env, ...options});
+			return Parser.parse(value, env);
 		}
 		// Plain string
 		return value;
 	}
 
 	if (Array.isArray(value)) {
-		return value.map((item) => processConfigValue(item, env, options));
+		return value.map((item) => processConfigValue(item, env));
 	}
 
 	if (value !== null && typeof value === "object") {
 		const processed: any = {};
 		for (const [key, val] of Object.entries(value)) {
-			processed[key] = processConfigValue(val, env, options);
+			processed[key] = processConfigValue(val, env);
 		}
 		return processed;
 	}
@@ -1734,10 +1654,8 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 		}
 	}
 
-	// Process config with expression parser (strict by default)
-	const processed = processConfigValue(rawConfig, env, {
-		strict: true,
-	}) as ShovelConfig;
+	// Process config expressions
+	const processed = processConfigValue(rawConfig, env) as ShovelConfig;
 
 	// Apply config precedence: json value > canonical env var > default
 	// If a key exists in json, use it (already processed with expressions)

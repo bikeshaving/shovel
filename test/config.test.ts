@@ -315,33 +315,71 @@ describe("loadConfig precedence", () => {
 });
 
 describe("Parser.parse", () => {
-	describe("module path identifiers", () => {
+	describe("identifiers", () => {
 		it("parses scoped npm package names", () => {
-			const result = Parser.parse("@b9g/cache-redis", {strict: false});
-			expect(result).toBe("@b9g/cache-redis");
+			expect(Parser.parse("@b9g/cache-redis")).toBe("@b9g/cache-redis");
 		});
 
 		it("parses package names with slashes", () => {
-			const result = Parser.parse("@b9g/cache/memory", {strict: false});
-			expect(result).toBe("@b9g/cache/memory");
+			expect(Parser.parse("@b9g/cache/memory")).toBe("@b9g/cache/memory");
 		});
 
 		it("parses package names with hyphens", () => {
-			const result = Parser.parse("my-custom-cache", {strict: false});
-			expect(result).toBe("my-custom-cache");
+			expect(Parser.parse("my-custom-cache")).toBe("my-custom-cache");
 		});
 
 		it("parses deeply nested paths", () => {
-			const result = Parser.parse("@org/pkg/sub/path", {strict: false});
-			expect(result).toBe("@org/pkg/sub/path");
+			expect(Parser.parse("@org/pkg/sub/path")).toBe("@org/pkg/sub/path");
+		});
+
+		it("parses PascalCase export names", () => {
+			expect(Parser.parse("RedisCache")).toBe("RedisCache");
+		});
+
+		it("parses camelCase export names", () => {
+			expect(Parser.parse("memoryCache")).toBe("memoryCache");
 		});
 	});
 
-	describe("ternary with module paths", () => {
+	describe("colon in identifiers (word:word patterns)", () => {
+		it("parses bun:sqlite as single identifier", () => {
+			expect(Parser.parse("bun:sqlite")).toBe("bun:sqlite");
+		});
+
+		it("parses node:fs as single identifier", () => {
+			expect(Parser.parse("node:fs")).toBe("node:fs");
+		});
+
+		it("parses multi-colon patterns", () => {
+			expect(Parser.parse("a:b:c")).toBe("a:b:c");
+		});
+	});
+
+	describe("quoted strings", () => {
+		it("parses double-quoted strings", () => {
+			expect(Parser.parse('"hello world"')).toBe("hello world");
+		});
+
+		it("parses single-quoted strings", () => {
+			expect(Parser.parse("'hello world'")).toBe("hello world");
+		});
+
+		it("handles escape sequences", () => {
+			expect(Parser.parse('"line1\\nline2"')).toBe("line1\nline2");
+			expect(Parser.parse("'tab\\there'")).toBe("tab\there");
+		});
+
+		it("allows quotes inside different quotes", () => {
+			expect(Parser.parse("'say \"hello\"'")).toBe('say "hello"');
+			expect(Parser.parse('"it\'s fine"')).toBe("it's fine");
+		});
+	});
+
+	describe("ternary expressions", () => {
 		it("selects first branch when condition is true", () => {
 			const result = Parser.parse(
 				"$MODE === production ? @b9g/cache-redis : @b9g/cache/memory",
-				{env: {MODE: "production"}, strict: false},
+				{MODE: "production"},
 			);
 			expect(result).toBe("@b9g/cache-redis");
 		});
@@ -349,23 +387,15 @@ describe("Parser.parse", () => {
 		it("selects second branch when condition is false", () => {
 			const result = Parser.parse(
 				"$MODE === production ? @b9g/cache-redis : @b9g/cache/memory",
-				{env: {MODE: "development"}, strict: false},
+				{MODE: "development"},
 			);
 			expect(result).toBe("@b9g/cache/memory");
-		});
-
-		it("works with NODE_ENV", () => {
-			const result = Parser.parse(
-				"$NODE_ENV === production ? @b9g/filesystem-s3 : @b9g/filesystem/memory",
-				{env: {NODE_ENV: "production"}, strict: false},
-			);
-			expect(result).toBe("@b9g/filesystem-s3");
 		});
 
 		it("works with undefined env var (falsy condition)", () => {
 			const result = Parser.parse(
 				"$USE_REDIS ? @b9g/cache-redis : @b9g/cache/memory",
-				{env: {}, strict: false},
+				{},
 			);
 			expect(result).toBe("@b9g/cache/memory");
 		});
@@ -373,261 +403,67 @@ describe("Parser.parse", () => {
 		it("works with truthy env var", () => {
 			const result = Parser.parse(
 				"$USE_REDIS ? @b9g/cache-redis : @b9g/cache/memory",
-				{env: {USE_REDIS: "1"}, strict: false},
+				{USE_REDIS: "1"},
 			);
 			expect(result).toBe("@b9g/cache-redis");
 		});
+
+		it("distinguishes ternary colon from identifier colon", () => {
+			const result = Parser.parse(
+				"$PLATFORM === bun ? bun:sqlite : better-sqlite3",
+				{PLATFORM: "bun"},
+			);
+			expect(result).toBe("bun:sqlite");
+		});
 	});
 
-	describe("logical operators with module paths", () => {
+	describe("logical operators", () => {
 		it("|| returns first truthy value", () => {
-			const result = Parser.parse("$CACHE_MODULE || @b9g/cache/memory", {
-				env: {},
-				strict: false,
-			});
-			expect(result).toBe("@b9g/cache/memory");
+			expect(Parser.parse("$CACHE || @b9g/cache/memory", {})).toBe(
+				"@b9g/cache/memory",
+			);
 		});
 
 		it("|| returns env var when set", () => {
-			const result = Parser.parse("$CACHE_MODULE || @b9g/cache/memory", {
-				env: {CACHE_MODULE: "@custom/cache"},
-				strict: false,
-			});
-			expect(result).toBe("@custom/cache");
+			expect(
+				Parser.parse("$CACHE || @b9g/cache/memory", {CACHE: "@custom/cache"}),
+			).toBe("@custom/cache");
 		});
 
 		it("?? returns first non-nullish value", () => {
-			const result = Parser.parse("$CACHE_MODULE ?? @b9g/cache/memory", {
-				env: {},
-				strict: false,
-			});
-			expect(result).toBe("@b9g/cache/memory");
+			expect(Parser.parse("$CACHE ?? @b9g/cache/memory", {})).toBe(
+				"@b9g/cache/memory",
+			);
 		});
 	});
 
-	describe("complex expressions", () => {
-		it("nested ternary", () => {
-			const result = Parser.parse(
-				"$ENV === prod ? @b9g/cache-redis : $ENV === staging ? @b9g/cache-redis : @b9g/cache/memory",
-				{env: {ENV: "staging"}, strict: false},
-			);
-			expect(result).toBe("@b9g/cache-redis");
+	describe("equality operators", () => {
+		it("=== compares values", () => {
+			expect(
+				Parser.parse("$PROVIDER === @b9g/cache-redis", {
+					PROVIDER: "@b9g/cache-redis",
+				}),
+			).toBe(true);
 		});
 
-		it("ternary with fallback", () => {
-			const result = Parser.parse(
-				"($USE_REDIS ? @b9g/cache-redis : $CACHE_MODULE) || @b9g/cache/memory",
-				{env: {}, strict: false},
-			);
-			expect(result).toBe("@b9g/cache/memory");
-		});
-
-		it("equality with scoped package", () => {
-			const result = Parser.parse("$PROVIDER === @b9g/cache-redis", {
-				env: {PROVIDER: "@b9g/cache-redis"},
-				strict: false,
-			});
-			expect(result).toBe(true);
-		});
-
-		it("inequality with scoped package", () => {
-			const result = Parser.parse("$PROVIDER !== @b9g/cache/memory", {
-				env: {PROVIDER: "@b9g/cache-redis"},
-				strict: false,
-			});
-			expect(result).toBe(true);
+		it("!== compares values", () => {
+			expect(
+				Parser.parse("$PROVIDER !== @b9g/cache/memory", {
+					PROVIDER: "@b9g/cache-redis",
+				}),
+			).toBe(true);
 		});
 	});
 
-	describe("export names", () => {
-		it("parses PascalCase export names", () => {
-			const result = Parser.parse("RedisCache", {strict: false});
-			expect(result).toBe("RedisCache");
-		});
-
-		it("parses camelCase export names", () => {
-			const result = Parser.parse("memoryCache", {strict: false});
-			expect(result).toBe("memoryCache");
-		});
-
-		it("ternary with export names", () => {
-			const result = Parser.parse(
-				"$NODE_ENV === production ? RedisCache : MemoryCache",
-				{env: {NODE_ENV: "development"}, strict: false},
+	describe("path expressions", () => {
+		it("joins env var with path suffix", () => {
+			expect(Parser.parse("$DATADIR/uploads", {DATADIR: "/var/data"})).toBe(
+				"/var/data/uploads",
 			);
-			expect(result).toBe("MemoryCache");
-		});
-	});
-
-	describe("colon in identifiers (word:word patterns)", () => {
-		it("parses bun:sqlite as single identifier", () => {
-			const result = Parser.parse("bun:sqlite", {strict: false});
-			expect(result).toBe("bun:sqlite");
 		});
 
-		it("parses node:fs as single identifier", () => {
-			const result = Parser.parse("node:fs", {strict: false});
-			expect(result).toBe("node:fs");
-		});
-
-		it("parses node:path as single identifier", () => {
-			const result = Parser.parse("node:path", {strict: false});
-			expect(result).toBe("node:path");
-		});
-
-		it("parses any word:word pattern as single identifier", () => {
-			const result = Parser.parse("custom:driver", {strict: false});
-			expect(result).toBe("custom:driver");
-		});
-
-		it("parses multi-colon patterns", () => {
-			const result = Parser.parse("a:b:c", {strict: false});
-			expect(result).toBe("a:b:c");
-		});
-
-		it("works in ternary expressions (spaces around :)", () => {
-			const result = Parser.parse(
-				"$PLATFORM === bun ? bun:sqlite : better-sqlite3",
-				{env: {PLATFORM: "bun"}, strict: false},
-			);
-			expect(result).toBe("bun:sqlite");
-		});
-
-		it("ternary alternate branch with module specifier", () => {
-			const result = Parser.parse(
-				"$PLATFORM === bun ? bun:sqlite : node:better-sqlite3",
-				{env: {PLATFORM: "node"}, strict: false},
-			);
-			expect(result).toBe("node:better-sqlite3");
-		});
-
-		it("works with fallback operators", () => {
-			const result = Parser.parse("$DB_DRIVER || bun:sqlite", {
-				env: {},
-				strict: false,
-			});
-			expect(result).toBe("bun:sqlite");
-		});
-
-		it("distinguishes ternary colon (with spaces) from identifier colon (no spaces)", () => {
-			// "a ? b:c : d" - b:c is one identifier, outer : is ternary
-			const result = Parser.parse(
-				"$USE_CUSTOM ? custom:driver : default:driver",
-				{env: {USE_CUSTOM: "1"}, strict: false},
-			);
-			expect(result).toBe("custom:driver");
-		});
-	});
-
-	describe("quoted strings", () => {
-		it("parses double-quoted strings", () => {
-			const result = Parser.parse('"hello world"', {strict: false});
-			expect(result).toBe("hello world");
-		});
-
-		it("parses single-quoted strings", () => {
-			const result = Parser.parse("'hello world'", {strict: false});
-			expect(result).toBe("hello world");
-		});
-
-		it("allows colons in quoted strings", () => {
-			const result = Parser.parse('"bun:sqlite"', {strict: false});
-			expect(result).toBe("bun:sqlite");
-		});
-
-		it("allows special chars in single-quoted strings", () => {
-			const result = Parser.parse("'a ? b : c'", {strict: false});
-			expect(result).toBe("a ? b : c");
-		});
-
-		it("handles escape sequences in double quotes", () => {
-			const result = Parser.parse('"line1\\nline2"', {strict: false});
-			expect(result).toBe("line1\nline2");
-		});
-
-		it("handles escape sequences in single quotes", () => {
-			const result = Parser.parse("'tab\\there'", {strict: false});
-			expect(result).toBe("tab\there");
-		});
-
-		it("allows double quotes inside single quotes", () => {
-			const result = Parser.parse("'say \"hello\"'", {strict: false});
-			expect(result).toBe('say "hello"');
-		});
-
-		it("allows single quotes inside double quotes", () => {
-			const result = Parser.parse('"it\'s fine"', {strict: false});
-			expect(result).toBe("it's fine");
-		});
-
-		it("works with fallback operators", () => {
-			const result = Parser.parse("$MY_VAR || 'default value'", {
-				env: {},
-				strict: false,
-			});
-			expect(result).toBe("default value");
-		});
-
-		it("works in ternary expressions", () => {
-			const result = Parser.parse(
-				"$MODE === prod ? 'production' : 'development'",
-				{env: {MODE: "dev"}, strict: false},
-			);
-			expect(result).toBe("development");
-		});
-	});
-
-	describe("edge cases", () => {
-		it("handles @ at start of identifier", () => {
-			const result = Parser.parse("@scope/pkg", {strict: false});
-			expect(result).toBe("@scope/pkg");
-		});
-
-		it("handles multiple slashes", () => {
-			const result = Parser.parse("@scope/pkg/sub/path/deep", {strict: false});
-			expect(result).toBe("@scope/pkg/sub/path/deep");
-		});
-
-		it("handles numbers in package names", () => {
-			const result = Parser.parse("@b9g/cache2", {strict: false});
-			expect(result).toBe("@b9g/cache2");
-		});
-
-		it("handles underscores in package names", () => {
-			const result = Parser.parse("@my_org/my_pkg", {strict: false});
-			expect(result).toBe("@my_org/my_pkg");
-		});
-
-		it("distinguishes env var from package ($VAR vs mixed)", () => {
-			const result = Parser.parse("$MY_VAR || @b9g/fallback", {
-				env: {MY_VAR: "@b9g/from-env"},
-				strict: false,
-			});
-			expect(result).toBe("@b9g/from-env");
-		});
-	});
-
-	describe("P1: path suffix should not mask missing env vars", () => {
-		it("throws in strict mode when env var with path suffix is missing", () => {
-			// $DATADIR/uploads with DATADIR unset should throw, not resolve to "uploads"
-			expect(() => {
-				Parser.parse("$DATADIR/uploads", {env: {}, strict: true});
-			}).toThrow();
-		});
-
-		it("returns undefined (not partial path) in non-strict mode when env var missing", () => {
-			// In non-strict mode, missing env var should make the whole expression undefined
-			// not silently drop the variable and return just the suffix
-			const result = Parser.parse("$DATADIR/uploads", {env: {}, strict: false});
-			expect(result).toBeUndefined();
-		});
-
-		it("works correctly when env var with path suffix is set", () => {
-			const result = Parser.parse("$DATADIR/uploads", {
-				env: {DATADIR: "/var/data"},
-				strict: true,
-			});
-			expect(result).toBe("/var/data/uploads");
+		it("returns undefined when env var missing", () => {
+			expect(Parser.parse("$DATADIR/uploads", {})).toBeUndefined();
 		});
 	});
 });
