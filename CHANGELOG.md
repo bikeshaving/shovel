@@ -2,7 +2,32 @@
 
 All notable changes to Shovel will be documented in this file.
 
-## [0.2.0-beta] - 2025-01-10
+## [0.2.0-beta.11] - 2026-01-10
+
+### Changes since beta.10
+- **ESBuild configuration support (#18)** - Custom esbuild options in shovel.json
+- **Config expression syntax** - `$PORT || 3000`, `$DATABASE_URL ?? null`
+- **Null fallback fix** - Allow intentional null fallbacks in config expressions
+- **DatabaseStorage API redesign** - New open/get pattern with IndexedDB-style migrations
+- **Migrated from Drizzle to @b9g/zen** - Simpler, more portable database layer
+- **Logging DX improvements** - Better defaults, consolidated categories
+- **`impl` key unification** - Simplified resource configuration
+- **CI/lint enforcement** - ESLint and Prettier standardized
+- **Documentation** - Comprehensive docs for all APIs
+
+### Package Updates
+- `@b9g/router` → 0.2.0-beta.1 (CORS middleware, trailingSlash moved)
+- `@b9g/node-webworker` → 0.2.0-beta.1 (CloseEvent, onclose, env option)
+- `@b9g/cache-redis` → 0.2.0-beta.1 (logger category fix)
+- `@b9g/assets` → 0.2.0-beta.0
+- `@b9g/async-context` → 0.2.0-beta.0
+- `@b9g/cache` → 0.2.0-beta.0
+- `@b9g/http-errors` → 0.2.0-beta.0
+- `@b9g/match-pattern` → 0.2.0-beta.0
+
+---
+
+## [0.2.0-beta.10] - Previous Beta
 
 This is a major release that establishes Shovel as a complete ServiceWorker-based meta-framework. The 0.2.0 beta introduces locked-down APIs for core packages, a unified configuration system, and comprehensive platform support.
 
