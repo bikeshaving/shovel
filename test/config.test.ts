@@ -12,7 +12,15 @@ import {tmpdir} from "os";
 
 // Store original env values for the keys we'll modify
 const savedEnv: Record<string, string | undefined> = {};
-const envKeys = ["PORT", "HOST", "WORKERS", "PLATFORM", "MY_HOST"];
+const envKeys = [
+	"PORT",
+	"HOST",
+	"WORKERS",
+	"PLATFORM",
+	"MY_HOST",
+	"DATABASE_URL",
+	"REDIS_URL",
+];
 
 function saveEnv() {
 	for (const key of envKeys) {
@@ -372,6 +380,28 @@ describe("loadConfig precedence", () => {
 				const config = loadConfig(testDir);
 
 				expect(config.databases.main.url).toBe("postgres://localhost/mydb");
+			});
+		});
+
+		it("allows intentional null fallbacks", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({
+						databases: {
+							main: {
+								module: "@b9g/zen/postgres",
+								url: "$DATABASE_URL ?? null",
+							},
+						},
+					}),
+				);
+				// DATABASE_URL not set, but null fallback is intentional
+
+				const config = loadConfig(testDir);
+
+				expect(config.databases.main.url).toBe(null);
 			});
 		});
 	});

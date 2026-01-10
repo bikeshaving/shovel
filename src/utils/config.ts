@@ -673,9 +673,9 @@ function processConfigValue(
 		// Check if it looks like an expression (contains operators or env vars)
 		if (EXPRESSION_PATTERN.test(value)) {
 			const result = Parser.parse(value, env);
-			if (result === undefined || result === null) {
+			if (result === undefined) {
 				throw new Error(
-					`Config expression "${value}" evaluated to ${result}.\n` +
+					`Config expression "${value}" evaluated to undefined.\n` +
 						`Add a fallback: ${value} || defaultValue`,
 				);
 			}
