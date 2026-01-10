@@ -425,16 +425,69 @@ const defaultPlatformFunctions: PlatformFunctions = {
 	joinPath: (...segments: string[]) => join(...segments),
 };
 
-class Parser {
+/** Options for parsing config expressions */
+export interface ParseOptions {
+	/** Environment variables (defaults to process.env) */
+	env?: Record<string, string | undefined>;
+	/** Platform functions for [outdir], [tmpdir], [git], path joining */
+	platform?: PlatformFunctions;
+	/** Throw if result is nullish (default: true) */
+	strict?: boolean;
+}
+
+export class Parser {
 	#tokens: Token[];
 	#pos: number;
 	#env: Record<string, string | undefined>;
 	#platform: PlatformFunctions;
 
-	constructor(
+	/**
+	 * Parse and evaluate a config expression.
+	 *
+	 * @param expr - The expression string to parse
+	 * @param options - Parse options (env, platform, strict)
+	 * @returns The evaluated result
+	 * @throws Error if expression is invalid or evaluates to nullish in strict mode
+	 */
+	static parse(expr: string, options: ParseOptions = {}): any {
+		const env = options.env ?? getEnv();
+		const platform = options.platform ?? defaultPlatformFunctions;
+		const strict = options.strict !== false;
+
+		try {
+			const parser = new Parser(expr, env, platform);
+			const result = parser.#parse();
+
+			if (strict && (result === undefined || result === null)) {
+				throw new Error(
+					`Expression evaluated to ${result}\n` +
+						`The expression "${expr}" resulted in a nullish value.\n` +
+						`Fix:\n` +
+						`  1. Set the missing env var(s)\n` +
+						`  2. Add a fallback: $VAR || defaultValue\n` +
+						`  3. Add a nullish fallback: $VAR ?? defaultValue`,
+				);
+			}
+
+			return result;
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.includes("Expression evaluated to")
+			) {
+				throw error; // Re-throw strict mode errors as-is
+			}
+			throw new Error(
+				`Invalid config expression: ${expr}\n` +
+					`Error: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+
+	private constructor(
 		input: string,
 		env: Record<string, string | undefined>,
-		platform: PlatformFunctions = defaultPlatformFunctions,
+		platform: PlatformFunctions,
 	) {
 		const tokenizer = new Tokenizer(input);
 		this.#tokens = [];
@@ -467,7 +520,7 @@ class Parser {
 		return this.#advance();
 	}
 
-	parse(): any {
+	#parse(): any {
 		const result = this.#parseExpr();
 		this.#expect(TokenType.EOF);
 		return result;
@@ -688,42 +741,6 @@ class Parser {
 }
 
 /**
- * Parse a configuration expression with the DSL
- */
-export function parseConfigExpr(
-	expr: string,
-	env: Record<string, string | undefined> = getEnv(),
-	options: {strict?: boolean; platform?: PlatformFunctions} = {},
-): any {
-	const strict = options.strict !== false; // default true
-
-	try {
-		const parser = new Parser(expr, env, options.platform);
-		const result = parser.parse();
-
-		// Strict mode: throw if final result is nullish (undefined or null)
-		// This allows || and ?? to provide fallbacks for undefined env vars
-		if (strict && (result === undefined || result === null)) {
-			throw new Error(
-				`Expression evaluated to ${result}\n` +
-					`The expression "${expr}" resulted in a nullish value.\n` +
-					`Fix:\n` +
-					`  1. Set the missing env var(s)\n` +
-					`  2. Add a fallback: $VAR || defaultValue\n` +
-					`  3. Add a nullish fallback: $VAR ?? defaultValue`,
-			);
-		}
-
-		return result;
-	} catch (error) {
-		throw new Error(
-			`Invalid config expression: ${expr}\n` +
-				`Error: ${error instanceof Error ? error.message : String(error)}`,
-		);
-	}
-}
-
-/**
  * Process a config value (handles nested objects/arrays)
  */
 export function processConfigValue(
@@ -734,7 +751,7 @@ export function processConfigValue(
 	if (typeof value === "string") {
 		// Check if it looks like an expression (contains operators or env vars)
 		if (EXPRESSION_PATTERN.test(value)) {
-			return parseConfigExpr(value, env, options);
+			return Parser.parse(value, {env, ...options});
 		}
 		// Plain string
 		return value;
