@@ -1,6 +1,6 @@
 {
   "name": "@b9g/platform-cloudflare",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Cloudflare Workers platform adapter for Shovel - already ServiceWorker-based!",
   "type": "module",
   "scripts": {
