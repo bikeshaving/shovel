@@ -1491,8 +1491,8 @@ export const DatabaseConfigSchema = z
 		module: z.string(),
 		/** Named export to use (defaults to "default") */
 		export: z.string().optional(),
-		/** Database connection URL */
-		url: z.string(),
+		/** Database connection URL (can be null for intentional null fallbacks) */
+		url: z.string().nullable(),
 	})
 	.passthrough(); // Allow additional driver-specific options (max, idleTimeout, etc.)
 
