@@ -1,6 +1,6 @@
 {
   "name": "@b9g/filesystem",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Universal File System Access API implementations for all platforms",
   "license": "MIT",
   "type": "module",
