@@ -663,6 +663,7 @@ export class Parser {
 /**
  * Process a config value, evaluating any expressions.
  * Recursively handles nested objects/arrays.
+ * @throws Error if an expression evaluates to undefined (missing env var without fallback)
  */
 function processConfigValue(
 	value: any,
@@ -671,7 +672,14 @@ function processConfigValue(
 	if (typeof value === "string") {
 		// Check if it looks like an expression (contains operators or env vars)
 		if (EXPRESSION_PATTERN.test(value)) {
-			return Parser.parse(value, env);
+			const result = Parser.parse(value, env);
+			if (result === undefined || result === null) {
+				throw new Error(
+					`Config expression "${value}" evaluated to ${result}.\n` +
+						`Add a fallback: ${value} || defaultValue`,
+				);
+			}
+			return result;
 		}
 		// Plain string
 		return value;

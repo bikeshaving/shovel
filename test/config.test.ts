@@ -312,6 +312,69 @@ describe("loadConfig precedence", () => {
 			});
 		});
 	});
+
+	describe("missing env var without fallback", () => {
+		it("throws when expression evaluates to undefined", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({
+						databases: {
+							main: {
+								module: "@b9g/zen/postgres",
+								url: "$DATABASE_URL",
+							},
+						},
+					}),
+				);
+				// DATABASE_URL not set, no fallback provided
+
+				expect(() => loadConfig(testDir)).toThrow();
+			});
+		});
+
+		it("throws with helpful error message", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({
+						caches: {
+							redis: {
+								module: "@b9g/cache/redis",
+								url: "$REDIS_URL",
+							},
+						},
+					}),
+				);
+
+				expect(() => loadConfig(testDir)).toThrow(/REDIS_URL|fallback/i);
+			});
+		});
+
+		it("works when env var is set", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({
+						databases: {
+							main: {
+								module: "@b9g/zen/postgres",
+								url: "$DATABASE_URL",
+							},
+						},
+					}),
+				);
+				process.env.DATABASE_URL = "postgres://localhost/mydb";
+
+				const config = loadConfig(testDir);
+
+				expect(config.databases.main.url).toBe("postgres://localhost/mydb");
+			});
+		});
+	});
 });
 
 describe("Parser.parse", () => {
