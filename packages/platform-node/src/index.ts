@@ -17,6 +17,7 @@ import {
 	type ServiceWorkerInstance,
 	type EntryWrapperOptions,
 	type PlatformESBuildConfig,
+	type ProductionEntryPoints,
 	ServiceWorkerPool,
 	SingleThreadedRuntime,
 	CustomLoggerStorage,
@@ -776,6 +777,93 @@ export class NodePlatform extends BasePlatform {
 		}
 		// Default to production entry template
 		return entryTemplate;
+	}
+
+	/**
+	 * Get production entry points for bundling.
+	 *
+	 * Node.js produces two files:
+	 * - index.js: Supervisor that spawns workers and owns the HTTP server
+	 * - worker.js: Worker that handles requests via message loop
+	 */
+	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints {
+		const safePath = JSON.stringify(userEntryPath);
+
+		// Supervisor: uses runtime utilities for worker management
+		const supervisorCode = `// Node.js Production Supervisor
+import {Worker} from "@b9g/node-webworker";
+import {getLogger} from "@logtape/logtape";
+import {configureLogging, initSupervisorRuntime} from "@b9g/platform/runtime";
+import NodePlatform from "@b9g/platform-node";
+import {config} from "shovel:config";
+
+await configureLogging(config.logging);
+const logger = getLogger(["shovel", "platform"]);
+
+logger.info("Starting production server", {port: config.port, workers: config.workers});
+
+// Initialize supervisor with worker pool
+const {handleRequest, shutdown, waitForReady} = initSupervisorRuntime({
+	workerCount: config.workers,
+	createWorker: () => {
+		const worker = new Worker(new URL("./worker.js", import.meta.url));
+		// Adapt close event to onclose property
+		worker.addEventListener("close", (event) => {
+			if (worker.onclose) worker.onclose(event);
+		});
+		return worker;
+	},
+	onWorkerCrash: (exitCode) => {
+		logger.error("Worker crashed, exiting", {exitCode});
+		process.exit(1);
+	},
+});
+
+await waitForReady();
+
+// Create HTTP server using platform abstraction
+const platform = new NodePlatform({port: config.port, host: config.host});
+const server = platform.createServer(handleRequest);
+await server.listen();
+
+logger.info("Server started", {port: config.port, host: config.host, workers: config.workers});
+
+// Graceful shutdown
+const handleShutdown = async () => {
+	logger.info("Shutting down");
+	await server.close();
+	await shutdown();
+	process.exit(0);
+};
+process.on("SIGINT", handleShutdown);
+process.on("SIGTERM", handleShutdown);
+`;
+
+		// Worker: uses runtime utilities for ServiceWorker lifecycle and message handling
+		const workerCode = `// Node.js Production Worker
+import {configureLogging, initWorkerRuntime, startWorkerMessageLoop} from "@b9g/platform/runtime";
+import {config} from "shovel:config";
+
+await configureLogging(config.logging);
+
+// Initialize worker runtime (installs ServiceWorker globals)
+const {registration, databases} = await initWorkerRuntime({config});
+
+// Import user code (registers event handlers)
+await import(${safePath});
+
+// Run ServiceWorker lifecycle
+await registration.install();
+await registration.activate();
+
+// Start message loop for request handling
+startWorkerMessageLoop({registration, databases});
+`;
+
+		return {
+			index: supervisorCode,
+			worker: workerCode,
+		};
 	}
 
 	/**

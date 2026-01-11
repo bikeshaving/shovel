@@ -5,6 +5,7 @@
 Shovel is a CLI platform for developing and deploying service workers as application servers.
 
 ```javascript
+// src/server.ts
 import {Router} from "@b9g/router";
 const router = new Router();
 
@@ -16,12 +17,12 @@ self.addEventListener("fetch", (ev) => {
 ```
 
 ```bash
-shovel develop app.js
+shovel develop src/server.ts
 ```
 ## Quick Start
 
 ```javascript
-// app.js
+// src/server.js
 import {Router} from "@b9g/router";
 
 const router = new Router();
@@ -42,12 +43,12 @@ self.addEventListener("fetch", (event) => {
 npm create @b9g/shovel my-app
 
 # Development with hot reload
-npx @b9g/shovel develop app.js
+npx @b9g/shovel develop src/server.ts
 
 # Build for production
-npx @b9g/shovel build app.js --platform=node
-npx @b9g/shovel build app.js --platform=bun
-npx @b9g/shovel build app.js --platform=cloudflare
+npx @b9g/shovel build src/server.ts --platform=node
+npx @b9g/shovel build src/server.ts --platform=bun
+npx @b9g/shovel build src/server.ts --platform=cloudflare
 ```
 
 
@@ -57,7 +58,7 @@ Shovel is obsessively standards-first. All Shovel APIs use web standards, and Sh
   | API | Standard | Purpose |
   |-----|----------|--------------|
   | `fetch()` | [Fetch](https://fetch.spec.whatwg.org) | Networking |
-  | `"install"`, `"activate"`, `"fetch"` events | [Service Workers](https://w3c.github.io/ServiceWorker/) | Server lifecycle |
+  | `install`, `activate`, `fetch` events | [Service Workers](https://w3c.github.io/ServiceWorker/) | Server lifecycle |
   | `AsyncContext.Variable` | [TC39 Stage 2](https://github.com/tc39/proposal-async-context) | Request-scoped state |
   | `self.caches` | [Cache API](https://w3c.github.io/ServiceWorker/#cache-interface) | Response caching |
   | `self.directories` | [FileSystem API](https://fs.spec.whatwg.org/) | Storage (local, S3, R2) |
@@ -92,13 +93,12 @@ Each storage type is:
 - **Configured uniformly** - all are configured by `shovel.json`
 - **Platform-aware** - sensible defaults per platform, override what you need
 
-This pattern means your app logic stays clean. Swap Redis for memory cache, S3 for local filesystem, Postgres for SQLite - change the config, not the code.
-
+This pattern means your app logic stays clean. Swap in Redis for caches, S3 for local filesystem, Postgres for SQLite - change the config, not the code.
 
 ## Platform APIs
 
 ```javascript
-// Cache API - response caching
+// Cache API - Request/Response-based caching
 const cache = await self.caches.open("my-cache");
 await cache.put(request, response.clone());
 const cached = await cache.match(request);
@@ -124,8 +124,8 @@ requestId.run(crypto.randomUUID(), async () => {
 Import any file and get its production URL with content hashing:
 
 ```javascript
-import styles from "./styles.css" with { assetBase: "/assets" };
-import logo from "./logo.png" with { assetBase: "/assets" };
+import styles from "./styles.css" with {assetBase: "/assets"};
+import logo from "./logo.png" with {assetBase: "/assets"};
 
 // styles = "/assets/styles-a1b2c3d4.css"
 // logo = "/assets/logo-e5f6g7h8.png"
@@ -137,8 +137,8 @@ At build time, Shovel:
 - Transforms imports to return the final URLs
 
 Assets are served via the platform's best option:
-- **Cloudflare**: Workers Assets (edge-cached, zero config)
 - **Node/Bun**: Static file middleware or directory storage
+- **Cloudflare**: Workers Assets (edge-cached, zero config)
 
 ## Configuration
 

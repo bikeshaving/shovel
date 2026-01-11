@@ -22,6 +22,7 @@ import {
 	ServiceWorkerInstance,
 	EntryWrapperOptions,
 	PlatformESBuildConfig,
+	type ProductionEntryPoints,
 	CustomLoggerStorage,
 	type LoggerStorage,
 } from "@b9g/platform";
@@ -280,6 +281,38 @@ export default { fetch: createFetchHandler(registration) };
 	}
 
 	/**
+	 * Get production entry points for bundling.
+	 *
+	 * Cloudflare produces a single file:
+	 * - server.js: Everything bundled inline (runtime + user code)
+	 *
+	 * Cloudflare Workers don't support spawning sub-workers, so everything
+	 * must be in one file.
+	 */
+	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints {
+		const safePath = JSON.stringify(userEntryPath);
+		const serverCode = `// Cloudflare Worker Entry
+import { config } from "shovel:config";
+import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
+
+const registration = await initializeRuntime(config);
+
+// Import user code (bundled inline - this is a static import)
+import ${safePath};
+
+// Run ServiceWorker lifecycle
+await registration.install();
+await registration.activate();
+
+export default { fetch: createFetchHandler(registration) };
+`;
+
+		return {
+			worker: serverCode,
+		};
+	}
+
+	/**
 	 * Get Cloudflare-specific esbuild configuration
 	 *
 	 * Note: Cloudflare Workers natively support import.meta.env, so no define alias
@@ -303,8 +336,6 @@ export default { fetch: createFetchHandler(registration) };
 				"buffer",
 				"events",
 			],
-			// Cloudflare bundles user code inline via `import "user-entry"`
-			bundlesUserCodeInline: true,
 		};
 	}
 

@@ -26,6 +26,7 @@ describe("@b9g/platform", () => {
 					throw new Error("Not implemented");
 				},
 				getEntryWrapper: () => "// entry wrapper",
+				getProductionEntryPoints: () => ({server: "// server code"}),
 				getESBuildConfig: () => ({}),
 				getDefaults: () => ({}),
 			};

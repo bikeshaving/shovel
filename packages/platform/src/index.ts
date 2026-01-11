@@ -52,6 +52,8 @@ export interface ServerOptions {
 	port?: number;
 	/** Host to bind to */
 	host?: string;
+	/** Enable SO_REUSEPORT for multi-worker deployments (Bun only) */
+	reusePort?: boolean;
 }
 
 /**
@@ -110,6 +112,7 @@ export interface ServiceWorkerInstance {
 
 /**
  * Options for getEntryWrapper()
+ * @deprecated Use getProductionEntryPoints() instead
  */
 export interface EntryWrapperOptions {
 	/**
@@ -126,6 +129,16 @@ export interface EntryWrapperOptions {
 }
 
 /**
+ * Production entry points returned by getProductionEntryPoints().
+ * Each key is the output filename (without .js), value is the code.
+ *
+ * Examples:
+ * - Cloudflare: { "worker": "<code>" } - single worker file
+ * - Node/Bun: { "index": "<supervisor>", "worker": "<worker>" } - two files
+ */
+export type ProductionEntryPoints = Record<string, string>;
+
+/**
  * ESBuild configuration subset that platforms can customize
  */
 export interface PlatformESBuildConfig {
@@ -137,16 +150,6 @@ export interface PlatformESBuildConfig {
 	external?: string[];
 	/** Compile-time defines */
 	define?: Record<string, string>;
-	/**
-	 * Whether the entry wrapper imports user code inline (bundled together)
-	 * or references it as a separate file (loaded at runtime).
-	 *
-	 * - true: User code is imported inline (e.g., Cloudflare: `import "user-entry"`)
-	 * - false: User code is loaded separately (e.g., Node/Bun: `loadServiceWorker("./server.js")`)
-	 *
-	 * Default: false (separate build)
-	 */
-	bundlesUserCodeInline?: boolean;
 }
 
 /**
@@ -212,8 +215,25 @@ export interface Platform {
 	 *
 	 * @param entryPath - Absolute path to user's entrypoint file
 	 * @param options - Additional options
+	 * @deprecated Use getProductionEntryPoints() instead
 	 */
 	getEntryWrapper(entryPath: string, options?: EntryWrapperOptions): string;
+
+	/**
+	 * BUILD SUPPORT - Get production entry points for bundling
+	 *
+	 * Returns a map of output filenames to their source code.
+	 * The build system creates one output file per entry point.
+	 *
+	 * Platform determines the structure:
+	 * - Cloudflare: { "worker": "<code>" } - single worker file
+	 * - Node/Bun: { "index": "<supervisor>", "worker": "<runtime + user code>" }
+	 *
+	 * The user's entrypoint code is statically imported into the appropriate file.
+	 *
+	 * @param userEntryPath - Path to user's entrypoint (will be imported)
+	 */
+	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints;
 
 	/**
 	 * BUILD SUPPORT - Get platform-specific esbuild configuration
@@ -424,11 +444,20 @@ export abstract class BasePlatform implements Platform {
 	/**
 	 * Get virtual entry wrapper template for user code
 	 * Subclasses must override to provide platform-specific wrappers
+	 * @deprecated Use getProductionEntryPoints() instead
 	 */
 	abstract getEntryWrapper(
 		entryPath: string,
 		options?: EntryWrapperOptions,
 	): string;
+
+	/**
+	 * Get production entry points for bundling
+	 * Subclasses must override to provide platform-specific entry points
+	 */
+	abstract getProductionEntryPoints(
+		userEntryPath: string,
+	): ProductionEntryPoints;
 
 	/**
 	 * Get platform-specific esbuild configuration
