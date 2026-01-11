@@ -1,8 +1,6 @@
-#!/usr/bin/env sh
-//bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
-
 // Load config and configure logging before anything else
 import {resolve} from "path";
+import {spawnSync} from "child_process";
 import {findProjectRoot} from "../src/utils/project.js";
 import {loadConfig, DEFAULTS, type SinkConfig} from "../src/utils/config.js";
 import {configureLogging} from "@b9g/platform/runtime";
@@ -54,6 +52,31 @@ const program = new Command();
 program.name("shovel").description("Shovel CLI").version(pkg.version);
 
 /**
+ * Re-exec under a different runtime if --platform requests it.
+ * Called at the start of command actions that support --platform.
+ */
+function checkPlatformReexec(options: {platform?: string}) {
+	const platform = options.platform ?? config.platform;
+	const isBun = typeof globalThis.Bun !== "undefined";
+
+	if (platform === "bun" && !isBun) {
+		// Node → Bun
+		const result = spawnSync("bun", process.argv.slice(1), {stdio: "inherit"});
+		process.exit(result.status ?? 1);
+	}
+
+	if (platform === "node" && isBun) {
+		// Bun → Node
+		const result = Bun.spawnSync(["node", ...process.argv.slice(1)], {
+			stdout: "inherit",
+			stderr: "inherit",
+			stdin: "inherit",
+		});
+		process.exit(result.exitCode ?? 1);
+	}
+}
+
+/**
  * Development server command
  */
 program
@@ -68,6 +91,7 @@ program
 	)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
 	.action(async (entrypoint, options) => {
+		checkPlatformReexec(options);
 		const {developCommand} = await import("../src/commands/develop.ts");
 		await developCommand(entrypoint, options, config);
 	});
@@ -81,6 +105,7 @@ program
 	.option("-w, --workers <count>", "Worker count (defaults to 1)", undefined)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
 	.action(async (entrypoint, options) => {
+		checkPlatformReexec(options);
 		const {buildCommand} = await import("../src/commands/build.ts");
 		await buildCommand(entrypoint, options, config);
 	});
@@ -100,6 +125,7 @@ program
 		DEFAULTS.WORKERS.toString(),
 	)
 	.action(async (entrypoint, options) => {
+		checkPlatformReexec(options);
 		const {activateCommand} = await import("../src/commands/activate.ts");
 		await activateCommand(entrypoint, options, config);
 	});
