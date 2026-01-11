@@ -95,6 +95,15 @@ export class Watcher {
 		const platformESBuildConfig = this.#options.platformESBuildConfig;
 		const external = platformESBuildConfig.external ?? ["node:*"];
 
+		// Shim require() for Node.js ESM bundles with external CJS dependencies.
+		// Node.js ESM doesn't have require defined, but external deps may use it.
+		// Only add for Node platform - browser/neutral platforms don't have 'module' builtin.
+		const isNodePlatform =
+			(platformESBuildConfig.platform ?? "node") === "node";
+		const requireShim = isNodePlatform
+			? `import{createRequire as __cR}from'module';const require=__cR(import.meta.url);`
+			: "";
+
 		// Build options for esbuild context
 		// Two entry points:
 		// - server: unified bundle with worker runtime + user code
@@ -256,6 +265,8 @@ export class Watcher {
 			sourcemap: "inline",
 			minify: false,
 			treeShaking: true,
+			// Only add banner if we have a shim (Node platforms only)
+			...(requireShim && {banner: {js: requireShim}}),
 		};
 
 		// Apply JSX configuration (from tsconfig.json or @b9g/crank defaults)

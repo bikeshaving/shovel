@@ -87,6 +87,14 @@ async function buildForActivate(
 	// Use platform-specific externals
 	const external = platformESBuildConfig.external ?? ["node:*"];
 
+	// Shim require() for Node.js ESM bundles with external CJS dependencies.
+	// Node.js ESM doesn't have require defined, but external deps may use it.
+	// Only add for Node platform - browser/neutral platforms don't have 'module' builtin.
+	const isNodePlatform = (platformESBuildConfig.platform ?? "node") === "node";
+	const requireShim = isNodePlatform
+		? `import{createRequire as __cR}from'module';const require=__cR(import.meta.url);`
+		: "";
+
 	const buildConfig: ESBuild.BuildOptions = {
 		entryPoints: [entryPath],
 		bundle: true,
@@ -112,6 +120,8 @@ async function buildForActivate(
 		],
 		define: platformESBuildConfig.define ?? {},
 		external,
+		// Only add banner if we have a shim (Node platforms only)
+		...(requireShim && {banner: {js: requireShim}}),
 	};
 
 	// Apply JSX configuration
