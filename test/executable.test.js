@@ -101,21 +101,23 @@ test(
 				platform: "node",
 			});
 
-			// Verify build output
+			// Verify build output (Node platform: index.js + worker.js)
 			const indexPath = join(fixture.dist, "server", "index.js");
-			const serverPath = join(fixture.dist, "server", "server.js");
+			const workerPath = join(fixture.dist, "server", "worker.js");
 			const packagePath = join(fixture.dist, "server", "package.json");
 
 			expect(await fileExists(indexPath)).toBe(true);
-			expect(await fileExists(serverPath)).toBe(true);
+			expect(await fileExists(workerPath)).toBe(true);
 			expect(await fileExists(packagePath)).toBe(true);
 
 			// Verify bundled code contains expected content
+			// index.js is the supervisor that spawns workers
 			const indexContent = await FS.readFile(indexPath, "utf8");
-			expect(indexContent).toContain("ServiceWorkerPool");
+			expect(indexContent).toContain("Worker"); // Uses @b9g/node-webworker
 
-			const serverContent = await FS.readFile(serverPath, "utf8");
-			expect(serverContent).toContain("health");
+			// worker.js contains the runtime and user code
+			const workerContent = await FS.readFile(workerPath, "utf8");
+			expect(workerContent).toContain("health");
 		} finally {
 			await fixture.cleanup();
 		}
@@ -332,3 +334,101 @@ test(
 	},
 	TIMEOUT,
 );
+
+// ======================
+// MULTI-WORKER TESTS
+// ======================
+
+test("run basic-app with multiple workers", async () => {
+	const fixture = await copyFixtureToTemp("basic-app");
+	let serverProcess;
+
+	try {
+		const {buildForProduction} = await import("../src/commands/build.js");
+
+		await buildForProduction({
+			entrypoint: join(fixture.src, "app.js"),
+			outDir: fixture.dist,
+			verbose: false,
+			platform: "node",
+		});
+
+		const indexPath = join(fixture.dist, "server", "index.js");
+		const PORT = 19010;
+
+		// Run with multiple workers - this should NOT cause EADDRINUSE
+		serverProcess = runExecutable(indexPath, {
+			PORT: PORT.toString(),
+			WORKERS: "2",
+		});
+
+		// Wait for server to be ready
+		await waitForServer(PORT);
+
+		// Make multiple requests to verify load balancing works
+		const responses = await Promise.all([
+			fetch(`http://localhost:${PORT}/health`),
+			fetch(`http://localhost:${PORT}/health`),
+			fetch(`http://localhost:${PORT}/health`),
+			fetch(`http://localhost:${PORT}/health`),
+		]);
+
+		// All requests should succeed
+		for (const response of responses) {
+			expect(response.status).toBe(200);
+			const data = await response.json();
+			expect(data.status).toBe("ok");
+		}
+	} finally {
+		if (serverProcess) {
+			await killProcess(serverProcess);
+		}
+		await fixture.cleanup();
+	}
+}, 15000); // Longer timeout for multi-worker startup
+
+test("run basic-app with 4 workers handles concurrent requests", async () => {
+	const fixture = await copyFixtureToTemp("basic-app");
+	let serverProcess;
+
+	try {
+		const {buildForProduction} = await import("../src/commands/build.js");
+
+		await buildForProduction({
+			entrypoint: join(fixture.src, "app.js"),
+			outDir: fixture.dist,
+			verbose: false,
+			platform: "node",
+		});
+
+		const indexPath = join(fixture.dist, "server", "index.js");
+		const PORT = 19011;
+
+		// Run with 4 workers
+		serverProcess = runExecutable(indexPath, {
+			PORT: PORT.toString(),
+			WORKERS: "4",
+		});
+
+		// Wait for server to be ready
+		await waitForServer(PORT);
+
+		// Make many concurrent requests
+		const requests = Array.from({length: 20}, () =>
+			fetch(`http://localhost:${PORT}/health`).then((r) => r.json()),
+		);
+
+		const results = await Promise.all(requests);
+
+		// All requests should succeed
+		for (const data of results) {
+			expect(data.status).toBe("ok");
+			expect(typeof data.timestamp).toBe("number");
+		}
+	} finally {
+		if (serverProcess) {
+			await killProcess(serverProcess);
+		}
+		await fixture.cleanup();
+	}
+}, 20000); // Longer timeout for 4-worker startup

@@ -938,15 +938,15 @@ console.log("BUILD_CONFIG_TEST_READY");
 				process.chdir(originalCwd);
 			}
 
-			// Verify defines are injected in the bundle
-			const serverContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+			// Verify defines are injected in the bundle (worker.js for Node platform)
+			const workerContent = await FS.readFile(
+				join(outDir, "server", "worker.js"),
 				"utf8",
 			);
 
 			// The define values should be inlined in the bundle
-			expect(serverContent).toContain("1.2.3");
-			expect(serverContent).toContain("production");
+			expect(workerContent).toContain("1.2.3");
+			expect(workerContent).toContain("production");
 
 			// Run the bundle
 			const result = await runBundle(join(outDir, "server"));
@@ -1015,27 +1015,27 @@ self.addEventListener("fetch", (event) => {
 				process.chdir(originalCwd);
 			}
 
-			// Verify the server.js (user code) is minified
-			const serverContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+			// Verify the worker.js (user code for Node platform) is minified
+			const workerContent = await FS.readFile(
+				join(outDir, "server", "worker.js"),
 				"utf8",
 			);
 
 			// Comments should be removed
-			expect(serverContent).not.toContain(
+			expect(workerContent).not.toContain(
 				"This is a comment that should be removed",
 			);
 
 			// Long variable names should be shortened
-			expect(serverContent).not.toContain(
+			expect(workerContent).not.toContain(
 				"veryLongVariableNameThatShouldBeShortened",
 			);
-			expect(serverContent).not.toContain(
+			expect(workerContent).not.toContain(
 				"aFunctionWithAVeryLongNameForTesting",
 			);
 
 			// But the marker string should still be present (strings aren't renamed)
-			expect(serverContent).toContain("MINIFY_TEST_MARKER");
+			expect(workerContent).toContain("MINIFY_TEST_MARKER");
 
 			// Run the bundle to verify it still works
 			const result = await runBundle(join(outDir, "server"));
@@ -1098,8 +1098,8 @@ self.addEventListener("fetch", (event) => {
 			const mapFiles = files.filter((f) => f.endsWith(".map"));
 			expect(mapFiles.length).toBeGreaterThan(0);
 
-			// Verify the map files include our source files
-			expect(mapFiles).toContain("server.js.map");
+			// Verify the map files include our source files (Node platform: index.js + worker.js)
+			expect(mapFiles).toContain("index.js.map");
 			expect(mapFiles).toContain("worker.js.map");
 		} finally {
 			await cleanup(cleanup_paths);
@@ -1159,14 +1159,14 @@ console.log("EXTERNAL_TEST_READY");
 				process.chdir(originalCwd);
 			}
 
-			// Verify the server code has external import
-			const serverContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+			// Verify the worker code has external import (Node platform)
+			const workerContent = await FS.readFile(
+				join(outDir, "server", "worker.js"),
 				"utf8",
 			);
 
 			// node:os should be an external import (not bundled)
-			expect(serverContent).toContain("node:os");
+			expect(workerContent).toContain("node:os");
 
 			// Run the bundle to verify it works
 			const result = await runBundle(join(outDir, "server"));

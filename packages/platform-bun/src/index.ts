@@ -17,6 +17,7 @@ import {
 	type ServiceWorkerInstance,
 	type EntryWrapperOptions,
 	type PlatformESBuildConfig,
+	type ProductionEntryPoints,
 	ServiceWorkerPool,
 	type WorkerPoolOptions,
 	SingleThreadedRuntime,
@@ -320,11 +321,13 @@ export class BunPlatform extends BasePlatform {
 	createServer(handler: Handler, options: ServerOptions = {}): Server {
 		const requestedPort = options.port ?? this.#options.port;
 		const hostname = options.host ?? this.#options.host;
+		const reusePort = options.reusePort ?? false;
 
 		// Bun.serve is much simpler than Node.js
 		const server = Bun.serve({
 			port: requestedPort,
 			hostname,
+			reusePort,
 			async fetch(request) {
 				try {
 					return await handler(request);
@@ -632,6 +635,132 @@ export class BunPlatform extends BasePlatform {
 		}
 		// Default to production entry template
 		return entryTemplate;
+	}
+
+	/**
+	 * Get production entry points for bundling.
+	 *
+	 * Bun produces two files:
+	 * - index.js: Supervisor that spawns workers and handles signals
+	 * - worker.js: Worker with its own HTTP server (uses reusePort for multi-worker)
+	 *
+	 * Unlike Node.js, Bun workers each bind their own server with reusePort,
+	 * allowing the OS to load-balance across workers without message passing overhead.
+	 */
+	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints {
+		const safePath = JSON.stringify(userEntryPath);
+
+		// Supervisor: spawns workers, handles signals (no HTTP server)
+		const supervisorCode = `// Bun Production Supervisor
+import {getLogger} from "@logtape/logtape";
+import {configureLogging} from "@b9g/platform/runtime";
+import {config} from "shovel:config";
+
+await configureLogging(config.logging);
+const logger = getLogger(["shovel", "platform"]);
+
+logger.info("Starting production server", {port: config.port, workers: config.workers});
+
+const workers = [];
+let shuttingDown = false;
+let readyCount = 0;
+
+// Spawn workers
+for (let i = 0; i < config.workers; i++) {
+	const worker = new Worker(new URL("./worker.js", import.meta.url).href);
+
+	worker.onmessage = (event) => {
+		if (event.data.type === "ready") {
+			readyCount++;
+			if (readyCount === config.workers) {
+				logger.info("All workers ready", {port: config.port, workers: config.workers});
+			}
+		} else if (event.data.type === "shutdown-complete") {
+			workers.splice(workers.indexOf(worker), 1);
+			if (workers.length === 0) {
+				logger.info("All workers stopped");
+				process.exit(0);
+			}
+		}
+	};
+
+	worker.onerror = (event) => {
+		logger.error("Worker error", {error: event.error});
+	};
+
+	workers.push(worker);
+}
+
+// Graceful shutdown
+const handleShutdown = () => {
+	if (shuttingDown) return;
+	shuttingDown = true;
+	logger.info("Shutting down");
+	for (const worker of workers) {
+		worker.postMessage({type: "shutdown"});
+	}
+};
+process.on("SIGINT", handleShutdown);
+process.on("SIGTERM", handleShutdown);
+`;
+
+		// Worker: each worker has its own HTTP server with reusePort
+		const workerCode = `// Bun Production Worker
+import BunPlatform from "@b9g/platform-bun";
+import {getLogger} from "@logtape/logtape";
+import {configureLogging, initWorkerRuntime, ShovelFetchEvent} from "@b9g/platform/runtime";
+import {config} from "shovel:config";
+
+await configureLogging(config.logging);
+const logger = getLogger(["shovel", "platform"]);
+
+// Track resources for shutdown
+let server;
+let databases;
+
+// Register shutdown handler before async startup
+self.onmessage = async (event) => {
+	if (event.data.type === "shutdown") {
+		logger.info("Worker shutting down");
+		if (server) await server.close();
+		if (databases) await databases.closeAll();
+		postMessage({type: "shutdown-complete"});
+	}
+};
+
+// Initialize worker runtime (installs ServiceWorker globals)
+const result = await initWorkerRuntime({config});
+const registration = result.registration;
+databases = result.databases;
+
+// Import user code (registers event handlers)
+await import(${safePath});
+
+// Run ServiceWorker lifecycle
+await registration.install();
+await registration.activate();
+
+// Create server with reusePort for multi-worker support
+const platform = new BunPlatform({port: config.port, host: config.host});
+const handleRequest = (request) => {
+	const event = new ShovelFetchEvent(request);
+	return registration.handleRequest(event);
+};
+server = platform.createServer(handleRequest, {
+	port: config.port,
+	host: config.host,
+	reusePort: config.workers > 1,
+});
+await server.listen();
+
+postMessage({type: "ready"});
+logger.info("Worker started", {port: config.port});
+`;
+
+		return {
+			index: supervisorCode,
+			worker: workerCode,
+		};
 	}
 
 	/**

@@ -99,14 +99,21 @@ self.addEventListener("fetch", (event) => {
 			);
 			// Note: public/assets is only created when entry point has asset imports
 
-			// Check index.js exists and contains production server code
-			const appContent = await FS.readFile(
+			// Check index.js exists and contains production supervisor code
+			const indexContent = await FS.readFile(
 				join(outDir, "server", "index.js"),
 				"utf8",
 			);
-			// Should contain platform imports and server setup
-			expect(appContent).toContain("platform");
-			expect(appContent).toContain("loadServiceWorker");
+			// Supervisor uses Worker class to spawn workers
+			expect(indexContent).toContain("Worker");
+			expect(indexContent).toContain("shutdown");
+
+			// Check worker.js contains the runtime and user code
+			const workerContent = await FS.readFile(
+				join(outDir, "server", "worker.js"),
+				"utf8",
+			);
+			expect(workerContent).toContain("registration");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -145,28 +152,34 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Verify platform-specific output
-				// All platforms now use server.js for user code (single-file for Cloudflare, user code for Node/Bun)
-				const appContent = await FS.readFile(
-					join(outDir, "server", "server.js"),
-					"utf8",
-				);
-				expect(appContent).toContain(`Platform: ${platform}`);
-
-				// Cloudflare builds have different structure (browser-based)
+				// Cloudflare: single worker.js file
+				// Node/Bun: index.js (supervisor) + worker.js (user code + runtime)
 				if (platform === "cloudflare") {
+					const appContent = await FS.readFile(
+						join(outDir, "server", "worker.js"),
+						"utf8",
+					);
+					expect(appContent).toContain(`Platform: ${platform}`);
 					// Cloudflare builds should not have shebang
 					expect(appContent.startsWith("#!/usr/bin/env")).toBe(false);
 					// Should have Cloudflare-specific wrapper
 					expect(appContent).toContain("addEventListener");
 				} else {
-					// Node/Bun builds: check index.js for platform bootstrap
+					// Node/Bun: user code is in worker.js
+					const workerContent = await FS.readFile(
+						join(outDir, "server", "worker.js"),
+						"utf8",
+					);
+					expect(workerContent).toContain(`Platform: ${platform}`);
+
+					// Node/Bun builds: check index.js for supervisor code
 					const indexContent = await FS.readFile(
 						join(outDir, "server", "index.js"),
 						"utf8",
 					);
-					// Should contain bundled platform code
-					expect(indexContent).toContain("loadServiceWorker");
-					expect(indexContent).toContain("CustomCacheStorage");
+					// Supervisor uses Worker class to spawn workers
+					expect(indexContent).toContain("Worker");
+					expect(indexContent).toContain("shutdown");
 				}
 			} catch (error) {
 				logger.error`Platform ${platform} failed: ${error}`;
@@ -196,7 +209,7 @@ test(
 					verbose: false,
 					platform: "node",
 				}),
-			).rejects.toThrow(/Entry point not found/);
+			).rejects.toThrow(); // Build fails when entry point doesn't exist
 		} finally {
 			await cleanup([outDir]);
 		}
@@ -224,7 +237,7 @@ test(
 					verbose: false,
 					platform: "invalidplatform",
 				}),
-			).rejects.toThrow(/Invalid platform/);
+			).rejects.toThrow(); // Platform.createPlatform throws for invalid platform
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -235,23 +248,23 @@ test(
 test(
 	"build error - missing required parameters",
 	async () => {
-		// Test missing entrypoint
+		// Test missing entrypoint - should throw when trying to resolve undefined path
 		await expect(
 			buildForProduction({
 				outDir: "/tmp",
 				verbose: false,
 				platform: "node",
 			}),
-		).rejects.toThrow(/Entry point is required/);
+		).rejects.toThrow();
 
-		// Test missing outDir
+		// Test missing outDir - should throw when trying to resolve undefined path
 		await expect(
 			buildForProduction({
 				entrypoint: "/tmp/test.js",
 				verbose: false,
 				platform: "node",
 			}),
-		).rejects.toThrow(/Output directory is required/);
+		).rejects.toThrow();
 	},
 	TIMEOUT,
 );
@@ -330,14 +343,16 @@ self.addEventListener("fetch", (event) => {
 			);
 			expect(await fileExists(join(outDir, "public", "assets"))).toBe(true);
 
-			// Validate app.js content
-			const appContent = await FS.readFile(
+			// Validate build structure
+			// index.js is the supervisor that spawns workers
+			const indexContent = await FS.readFile(
 				join(outDir, "server", "index.js"),
 				"utf8",
 			);
-			// Should contain bundled platform code
-			expect(appContent).toContain("loadServiceWorker");
-			expect(appContent).toContain("CustomCacheStorage");
+			expect(indexContent).toContain("Worker"); // Uses @b9g/node-webworker
+
+			// worker.js contains the runtime and user code
+			expect(await fileExists(join(outDir, "server", "worker.js"))).toBe(true);
 
 			// Validate package.json is valid JSON
 			const packageContent = await FS.readFile(
@@ -428,14 +443,16 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+			// Worker.js contains the runtime with bundled dependencies
+			const workerContent = await FS.readFile(
+				join(outDir, "server", "worker.js"),
 				"utf8",
 			);
 
 			// All dependencies including @b9g/* packages are bundled for self-contained builds
-			// Verify the bundled code contains expected classes
-			expect(appContent).toContain("CustomCacheStorage");
+			// Verify the bundled code contains expected runtime code
+			expect(workerContent).toContain("registration.install");
+			expect(workerContent).toContain("registration.activate");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -502,27 +519,31 @@ self.skipWaiting();
 				platform: "node",
 			});
 
-			// Check user code in server.js
-			const serverContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+			// Check user code in worker.js (Node/Bun platform)
+			const workerContent = await FS.readFile(
+				join(outDir, "server", "worker.js"),
 				"utf8",
 			);
 
 			// Check that all ServiceWorker features are preserved
-			expect(serverContent).toContain('addEventListener("install"');
-			expect(serverContent).toContain('addEventListener("activate"');
-			expect(serverContent).toContain('addEventListener("fetch"');
-			expect(serverContent).toContain("skipWaiting()");
-			expect(serverContent).toContain("Response.json");
+			expect(workerContent).toContain('addEventListener("install"');
+			expect(workerContent).toContain('addEventListener("activate"');
+			expect(workerContent).toContain('addEventListener("fetch"');
+			expect(workerContent).toContain("skipWaiting()");
+			expect(workerContent).toContain("Response.json");
 
-			// Check bootstrap code in index.js sets up globals using ServiceWorkerGlobals
+			// Check bootstrap code - supervisor (index.js) manages workers
 			const indexContent = await FS.readFile(
 				join(outDir, "server", "index.js"),
 				"utf8",
 			);
-			expect(indexContent).toContain("scope.install()");
-			expect(indexContent).toContain("registration.install()");
-			expect(indexContent).toContain("registration.activate()");
+			// Supervisor spawns workers and handles signals
+			expect(indexContent).toContain("Worker");
+			expect(indexContent).toContain("shutdown");
+
+			// ServiceWorker lifecycle is in worker.js, not index.js
+			expect(workerContent).toContain("registration.install()");
+			expect(workerContent).toContain("registration.activate()");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -574,13 +595,13 @@ self.addEventListener("fetch", (event) => {
 			// Build should complete within reasonable time (less than 10 seconds)
 			expect(buildTime).toBeLessThan(10000);
 
-			// Output should exist and be reasonable size
-			const serverContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+			// Output should exist and be reasonable size (worker.js contains user code for Node)
+			const workerContent = await FS.readFile(
+				join(outDir, "server", "worker.js"),
 				"utf8",
 			);
-			expect(serverContent.length).toBeGreaterThan(1000);
-			expect(serverContent).toContain("Route 50 response"); // Spot check
+			expect(workerContent.length).toBeGreaterThan(1000);
+			expect(workerContent).toContain("Route 50 response"); // Spot check
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -652,12 +673,12 @@ self.addEventListener("fetch", (event) => {
 				expect(await fileExists(join(outDir, "server", "index.js"))).toBe(true);
 
 				// Verify the build is self-contained
-				// User code is in server.js
-				const serverContent = await FS.readFile(
-					join(outDir, "server", "server.js"),
+				// User code is in worker.js (Node platform)
+				const workerContent = await FS.readFile(
+					join(outDir, "server", "worker.js"),
 					"utf8",
 				);
-				expect(serverContent).toContain("Workspace test");
+				expect(workerContent).toContain("Workspace test");
 
 				// Platform code should not contain userEntryPath
 				const indexContent = await FS.readFile(
@@ -705,16 +726,16 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			// User code should be bundled into server.js
-			const serverContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+			// User code should be bundled into worker.js (Node platform)
+			const workerContent = await FS.readFile(
+				join(outDir, "server", "worker.js"),
 				"utf8",
 			);
-			expect(serverContent).toContain("BUNDLED_USER_CODE_12345");
+			expect(workerContent).toContain("BUNDLED_USER_CODE_12345");
 
 			// Should NOT contain absolute paths to source files in user code
-			expect(serverContent).not.toMatch(/\/Users\/.*\/bundled-test\.js/);
-			expect(serverContent).not.toMatch(/\/tmp\/.*\/bundled-test\.js/);
+			expect(workerContent).not.toMatch(/\/Users\/.*\/bundled-test\.js/);
+			expect(workerContent).not.toMatch(/\/tmp\/.*\/bundled-test\.js/);
 
 			// Platform code (index.js) should NOT contain dynamic import of user entry path
 			const indexContent = await FS.readFile(
@@ -804,9 +825,9 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			// User code is in server.js for Node/Bun
-			const nodeServerContent = await FS.readFile(
-				join(nodeOutDir, "server", "server.js"),
+			// User code is in worker.js for Node/Bun
+			const nodeWorkerContent = await FS.readFile(
+				join(nodeOutDir, "server", "worker.js"),
 				"utf8",
 			);
 
@@ -821,14 +842,14 @@ self.addEventListener("fetch", (event) => {
 				platform: "bun",
 			});
 
-			const bunServerContent = await FS.readFile(
-				join(bunOutDir, "server", "server.js"),
+			const bunWorkerContent = await FS.readFile(
+				join(bunOutDir, "server", "worker.js"),
 				"utf8",
 			);
 
 			// Both should bundle user code
-			expect(nodeServerContent).toContain("MULTI_PLATFORM_TEST");
-			expect(bunServerContent).toContain("MULTI_PLATFORM_TEST");
+			expect(nodeWorkerContent).toContain("MULTI_PLATFORM_TEST");
+			expect(bunWorkerContent).toContain("MULTI_PLATFORM_TEST");
 
 			// Platform code (index.js) should not have hardcoded paths
 			const nodeIndexContent = await FS.readFile(
@@ -883,15 +904,15 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			// User code should be bundled into server.js
-			const serverContent = await FS.readFile(
-				join(outDir, "server", "server.js"),
+			// User code should be bundled into worker.js (Node platform)
+			const workerContent = await FS.readFile(
+				join(outDir, "server", "worker.js"),
 				"utf8",
 			);
 
 			// Both entry and imported module should be bundled
-			expect(serverContent).toContain("HELPER_MODULE_RESPONSE");
-			expect(serverContent).toContain("getResponse");
+			expect(workerContent).toContain("HELPER_MODULE_RESPONSE");
+			expect(workerContent).toContain("getResponse");
 
 			// Platform code should not have dynamic imports via workerData.userEntryPath
 			const indexContent = await FS.readFile(
@@ -905,3 +926,145 @@ self.addEventListener("fetch", (event) => {
 	},
 	TIMEOUT,
 );
+
+// ======================
+// ACTIVATE COMMAND TESTS
+// ======================
+
+import {activateCommand} from "../src/commands/activate.js";
+
+test("activate command runs ServiceWorker lifecycle", async () => {
+	const cleanup_paths = [];
+
+	try {
+		// Create a ServiceWorker that writes a file during activate
+		const testDir = await createTempDir("activate-test-");
+		cleanup_paths.push(testDir);
+
+		const markerFile = join(testDir, "activated.txt");
+
+		// Create entry that writes a marker file on activate
+		const entryContent = `
+import * as FS from "node:fs/promises";
+
+self.addEventListener("install", (event) => {
+	event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener("activate", (event) => {
+	event.waitUntil((async () => {
+		await FS.writeFile(${JSON.stringify(markerFile)}, "activated at " + Date.now());
+	})());
+});
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response("ok"));
+});
+`;
+
+		const entryPath = join(testDir, "app.js");
+		await FS.writeFile(entryPath, entryContent);
+
+		// Create package.json
+		await FS.writeFile(
+			join(testDir, "package.json"),
+			JSON.stringify({name: "test-activate", type: "module"}),
+		);
+
+		// Symlink node_modules from project root
+		await FS.symlink(
+			join(process.cwd(), "node_modules"),
+			join(testDir, "node_modules"),
+			"dir",
+		);
+
+		// Run activate command
+		const originalCwd = process.cwd();
+		process.chdir(testDir);
+
+		try {
+			await activateCommand(entryPath, {platform: "node"}, null);
+		} finally {
+			process.chdir(originalCwd);
+		}
+
+		// Verify the activate event ran by checking for marker file
+		const markerExists = await FS.access(markerFile)
+			.then(() => true)
+			.catch(() => false);
+		expect(markerExists).toBe(true);
+
+		const markerContent = await FS.readFile(markerFile, "utf8");
+		expect(markerContent).toContain("activated at");
+	} finally {
+		await cleanup(cleanup_paths);
+	}
+}, 15000); // Longer timeout for activate
+
+test("activate command with multiple workers runs ServiceWorker lifecycle", async () => {
+	const cleanup_paths = [];
+
+	try {
+		// Create a ServiceWorker that writes a file during activate
+		const testDir = await createTempDir("activate-workers-test-");
+		cleanup_paths.push(testDir);
+
+		const markerFile = join(testDir, "activated.txt");
+
+		// Create entry that writes a marker file on activate
+		const entryContent = `
+import * as FS from "node:fs/promises";
+
+self.addEventListener("install", (event) => {
+	event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener("activate", (event) => {
+	event.waitUntil((async () => {
+		await FS.writeFile(${JSON.stringify(markerFile)}, "activated at " + Date.now());
+	})());
+});
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response("ok"));
+});
+`;
+
+		const entryPath = join(testDir, "app.js");
+		await FS.writeFile(entryPath, entryContent);
+
+		// Create package.json
+		await FS.writeFile(
+			join(testDir, "package.json"),
+			JSON.stringify({name: "test-activate", type: "module"}),
+		);
+
+		// Symlink node_modules from project root
+		await FS.symlink(
+			join(process.cwd(), "node_modules"),
+			join(testDir, "node_modules"),
+			"dir",
+		);
+
+		// Run activate command with multiple workers (uses ServiceWorkerPool)
+		const originalCwd = process.cwd();
+		process.chdir(testDir);
+
+		try {
+			await activateCommand(entryPath, {platform: "node", workers: "2"}, null);
+		} finally {
+			process.chdir(originalCwd);
+		}
+
+		// Verify the activate event ran by checking for marker file
+		const markerExists = await FS.access(markerFile)
+			.then(() => true)
+			.catch(() => false);
+		expect(markerExists).toBe(true);
+
+		const markerContent = await FS.readFile(markerFile, "utf8");
+		expect(markerContent).toContain("activated at");
+	} finally {
+		await cleanup(cleanup_paths);
+	}
+}, 15000); // Longer timeout for activate

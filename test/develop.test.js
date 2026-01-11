@@ -1278,14 +1278,14 @@ self.addEventListener("fetch", (event) => {
 // HOT RELOAD TESTS
 // =======================
 
-import {Watcher} from "../src/utils/watcher.ts";
+import {ServerBundler} from "../src/utils/bundler.ts";
 import * as Platform from "@b9g/platform";
 import {existsSync} from "fs";
 
 test(
-	"watcher onBuild receives valid new bundle path on rebuild",
+	"ServerBundler onBuild receives valid new bundle path on rebuild",
 	async () => {
-		const fixtureDir = await mkdtemp(join(tmpdir(), "watcher-rebuild-test-"));
+		const fixtureDir = await mkdtemp(join(tmpdir(), "bundler-rebuild-test-"));
 
 		try {
 			// Create package.json
@@ -1316,11 +1316,11 @@ test(
 			const originalCwd = process.cwd();
 			process.chdir(fixtureDir);
 
-			// Create platform instance for watcher
+			// Create platform instance for bundler
 			const platform = await Platform.createPlatform("bun");
 			const platformESBuildConfig = platform.getESBuildConfig();
 
-			const watcher = new Watcher({
+			const bundler = new ServerBundler({
 				entrypoint: "app.ts",
 				outDir: "dist",
 				platform,
@@ -1341,8 +1341,8 @@ test(
 			});
 
 			try {
-				// Initial build
-				const {success, entrypoint} = await watcher.start();
+				// Initial build (watch mode)
+				const {success, entrypoint} = await bundler.watch();
 				expect(success).toBe(true);
 				initialEntrypoint = entrypoint;
 				expect(existsSync(initialEntrypoint)).toBe(true);
@@ -1365,7 +1365,7 @@ test(
 				expect(existsSync(receivedEntrypoint)).toBe(true);
 			} finally {
 				process.chdir(originalCwd);
-				await watcher.stop();
+				await bundler.stop();
 			}
 		} finally {
 			await FS.rm(fixtureDir, {recursive: true, force: true});
