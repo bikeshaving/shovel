@@ -650,10 +650,10 @@ export class BunPlatform extends BasePlatform {
 	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints {
 		const safePath = JSON.stringify(userEntryPath);
 
-		// Supervisor: spawns workers, handles signals (no HTTP server)
+		// Supervisor: uses runtime utilities for worker management (no HTTP server)
 		const supervisorCode = `// Bun Production Supervisor
 import {getLogger} from "@logtape/logtape";
-import {configureLogging} from "@b9g/platform/runtime";
+import {configureLogging, initSupervisorRuntime} from "@b9g/platform/runtime";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -661,44 +661,23 @@ const logger = getLogger(["shovel", "platform"]);
 
 logger.info("Starting production server", {port: config.port, workers: config.workers});
 
-const workers = [];
-let shuttingDown = false;
-let readyCount = 0;
+// Initialize supervisor with worker pool (workers handle their own HTTP via reusePort)
+const {shutdown, waitForReady} = initSupervisorRuntime({
+	workerCount: config.workers,
+	createWorker: () => new Worker(new URL("./worker.js", import.meta.url).href),
+	onWorkerCrash: (exitCode) => {
+		logger.error("Worker crashed, exiting", {exitCode});
+		process.exit(1);
+	},
+});
 
-// Spawn workers
-for (let i = 0; i < config.workers; i++) {
-	const worker = new Worker(new URL("./worker.js", import.meta.url).href);
-
-	worker.onmessage = (event) => {
-		if (event.data.type === "ready") {
-			readyCount++;
-			if (readyCount === config.workers) {
-				logger.info("All workers ready", {port: config.port, workers: config.workers});
-			}
-		} else if (event.data.type === "shutdown-complete") {
-			workers.splice(workers.indexOf(worker), 1);
-			if (workers.length === 0) {
-				logger.info("All workers stopped");
-				process.exit(0);
-			}
-		}
-	};
-
-	worker.onerror = (event) => {
-		logger.error("Worker error", {error: event.error});
-	};
-
-	workers.push(worker);
-}
+await waitForReady();
 
 // Graceful shutdown
-const handleShutdown = () => {
-	if (shuttingDown) return;
-	shuttingDown = true;
+const handleShutdown = async () => {
 	logger.info("Shutting down");
-	for (const worker of workers) {
-		worker.postMessage({type: "shutdown"});
-	}
+	await shutdown();
+	process.exit(0);
 };
 process.on("SIGINT", handleShutdown);
 process.on("SIGTERM", handleShutdown);
@@ -746,11 +725,7 @@ const handleRequest = (request) => {
 	const event = new ShovelFetchEvent(request);
 	return registration.handleRequest(event);
 };
-server = platform.createServer(handleRequest, {
-	port: config.port,
-	host: config.host,
-	reusePort: config.workers > 1,
-});
+server = platform.createServer(handleRequest, {reusePort: config.workers > 1});
 await server.listen();
 
 postMessage({type: "ready"});
