@@ -118,11 +118,6 @@ program
 		"Activate ServiceWorker (for static site generation in activate event)",
 	)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
-	.option(
-		"-w, --workers <count>",
-		"Number of workers",
-		DEFAULTS.WORKERS.toString(),
-	)
 	.action(async (entrypoint, options) => {
 		checkPlatformReexec(options);
 		const {activateCommand} = await import("../src/commands/activate.ts");

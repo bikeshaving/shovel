@@ -8,20 +8,12 @@
  *
  * This module contains:
  * - Platform interface and base classes
- * - SingleThreadedRuntime for main-thread execution
  * - ServiceWorkerPool for multi-worker execution
  */
 
 import {getLogger} from "@logtape/logtape";
 import type {DirectoryStorage} from "@b9g/filesystem";
-import {
-	ServiceWorkerGlobals,
-	ShovelServiceWorkerRegistration,
-	ShovelFetchEvent,
-	CustomLoggerStorage,
-	type LoggerStorage,
-	type DatabaseStorage,
-} from "./runtime.js";
+import {CustomLoggerStorage, type LoggerStorage} from "./runtime.js";
 
 // Re-export config validation utilities
 export {validateConfig, ConfigValidationError} from "./config.js";
@@ -111,24 +103,6 @@ export interface ServiceWorkerInstance {
 }
 
 /**
- * Options for getEntryWrapper()
- * @deprecated Use getProductionEntryPoints() instead
- */
-export interface EntryWrapperOptions {
-	/**
-	 * Type of entry wrapper to generate:
-	 * - "production": Production server entry (default) - runs the server directly
-	 * - "worker": Worker entry for ServiceWorkerPool - sets up runtime and message loop
-	 */
-	type?: "production" | "worker";
-	/**
-	 * Output directory for the build. Used to generate absolute paths for
-	 * directory defaults (server, public). Required for "worker" type.
-	 */
-	outDir?: string;
-}
-
-/**
  * Production entry points returned by getProductionEntryPoints().
  * Each key is the output filename (without .js), value is the code.
  *
@@ -201,23 +175,6 @@ export interface Platform {
 	 * SUPPORTING UTILITY - Create server instance for this platform
 	 */
 	createServer(handler: Handler, options?: ServerOptions): Server;
-
-	/**
-	 * BUILD SUPPORT - Get virtual entry wrapper template for user code
-	 *
-	 * Returns a JavaScript/TypeScript string that:
-	 * 1. Initializes platform-specific runtime (polyfills, globals)
-	 * 2. Imports the user's entrypoint
-	 * 3. Exports any required handlers (e.g., ES module export for Cloudflare)
-	 *
-	 * The CLI uses this to create a virtual entry point for bundling.
-	 * Every platform must provide a wrapper - there is no "raw user code" mode.
-	 *
-	 * @param entryPath - Absolute path to user's entrypoint file
-	 * @param options - Additional options
-	 * @deprecated Use getProductionEntryPoints() instead
-	 */
-	getEntryWrapper(entryPath: string, options?: EntryWrapperOptions): string;
 
 	/**
 	 * BUILD SUPPORT - Get production entry points for bundling
@@ -442,16 +399,6 @@ export abstract class BasePlatform implements Platform {
 	abstract createServer(handler: any, options?: any): any;
 
 	/**
-	 * Get virtual entry wrapper template for user code
-	 * Subclasses must override to provide platform-specific wrappers
-	 * @deprecated Use getProductionEntryPoints() instead
-	 */
-	abstract getEntryWrapper(
-		entryPath: string,
-		options?: EntryWrapperOptions,
-	): string;
-
-	/**
 	 * Get production entry points for bundling
 	 * Subclasses must override to provide platform-specific entry points
 	 */
@@ -581,7 +528,7 @@ export async function getPlatformAsync(name?: string): Promise<Platform> {
 }
 
 // ============================================================================
-// SingleThreadedRuntime - Main thread ServiceWorker execution
+// ServiceWorkerPool - Multi-worker ServiceWorker execution
 // ============================================================================
 
 /**
@@ -595,131 +542,6 @@ export interface ServiceWorkerRuntime {
 	readonly workerCount: number;
 	readonly ready: boolean;
 }
-
-export interface SingleThreadedRuntimeOptions {
-	/** Cache storage for the runtime */
-	caches: CacheStorage;
-	/** Directory storage for the runtime */
-	directories: DirectoryStorage;
-	/** Database storage for the runtime */
-	databases?: DatabaseStorage;
-	/** Logger storage for the runtime */
-	loggers: LoggerStorage;
-}
-
-/**
- * Single-threaded ServiceWorker runtime
- *
- * Runs ServiceWorker code directly in the main thread.
- * Implements ServiceWorkerRuntime interface for interchangeability with ServiceWorkerPool.
- */
-export class SingleThreadedRuntime implements ServiceWorkerRuntime {
-	#registration: ShovelServiceWorkerRegistration;
-	#scope: ServiceWorkerGlobals;
-	#ready: boolean;
-	#entrypoint?: string;
-
-	constructor(options: SingleThreadedRuntimeOptions) {
-		this.#ready = false;
-
-		// Create registration and scope
-		this.#registration = new ShovelServiceWorkerRegistration();
-		this.#scope = new ServiceWorkerGlobals({
-			registration: this.#registration,
-			caches: options.caches,
-			directories: options.directories,
-			databases: options.databases,
-			loggers: options.loggers,
-		});
-
-		logger.debug("SingleThreadedRuntime created");
-	}
-
-	/**
-	 * Initialize the runtime (install ServiceWorker globals)
-	 */
-	async init(): Promise<void> {
-		// Install ServiceWorker globals (caches, directories, fetch, addEventListener, etc.)
-		this.#scope.install();
-		logger.debug("SingleThreadedRuntime initialized - globals installed");
-	}
-
-	/**
-	 * Load (or reload) a ServiceWorker entrypoint
-	 * @param entrypoint - Path to the entrypoint file (content-hashed filename)
-	 */
-	async load(entrypoint: string): Promise<void> {
-		const isReload = this.#entrypoint !== undefined;
-
-		if (isReload) {
-			logger.debug("Reloading ServiceWorker", {
-				oldEntrypoint: this.#entrypoint,
-				newEntrypoint: entrypoint,
-			});
-			// Reset registration state for reload
-			this.#registration._serviceWorker._setState("parsed");
-		} else {
-			logger.debug("Loading ServiceWorker entrypoint", {entrypoint});
-		}
-
-		this.#entrypoint = entrypoint;
-		this.#ready = false;
-
-		// Import the user's ServiceWorker code
-		// Filename is content-hashed, so fresh import is guaranteed on reload
-		// eslint-disable-next-line no-restricted-syntax -- Runtime dynamic import of user code
-		await import(entrypoint);
-
-		// Run lifecycle events
-		await this.#registration.install();
-		await this.#registration.activate();
-
-		this.#ready = true;
-		logger.debug("ServiceWorker loaded and activated", {entrypoint});
-	}
-
-	/**
-	 * Handle an HTTP request
-	 * This is the key method - direct call, no postMessage!
-	 */
-	async handleRequest(request: Request): Promise<Response> {
-		if (!this.#ready) {
-			throw new Error(
-				"SingleThreadedRuntime not ready - ServiceWorker not loaded",
-			);
-		}
-
-		// Create event and call handleRequest - no serialization, no postMessage
-		const event = new ShovelFetchEvent(request);
-		return this.#registration.handleRequest(event);
-	}
-
-	/**
-	 * Graceful shutdown
-	 */
-	async terminate(): Promise<void> {
-		this.#ready = false;
-		logger.debug("SingleThreadedRuntime terminated");
-	}
-
-	/**
-	 * Get the number of workers (always 1 for single-threaded)
-	 */
-	get workerCount(): number {
-		return 1;
-	}
-
-	/**
-	 * Check if ready to handle requests
-	 */
-	get ready(): boolean {
-		return this.#ready;
-	}
-}
-
-// ============================================================================
-// ServiceWorkerPool - Multi-worker ServiceWorker execution
-// ============================================================================
 
 /**
  * Worker pool options

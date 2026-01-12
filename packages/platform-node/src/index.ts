@@ -15,11 +15,9 @@ import {
 	type ServerOptions,
 	type ServiceWorkerOptions,
 	type ServiceWorkerInstance,
-	type EntryWrapperOptions,
 	type PlatformESBuildConfig,
 	type ProductionEntryPoints,
 	ServiceWorkerPool,
-	SingleThreadedRuntime,
 	CustomLoggerStorage,
 	CustomDatabaseStorage,
 	createDatabaseFactory,
@@ -37,194 +35,6 @@ import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import * as HTTP from "http";
 import * as Path from "path";
 import {getLogger} from "@logtape/logtape";
-
-// Entry template embedded as string
-const entryTemplate = `// Node.js Production Server Entry
-import {tmpdir} from "os"; // For [tmpdir] config expressions
-import * as HTTP from "http";
-import {parentPort} from "worker_threads";
-import {Worker} from "@b9g/node-webworker";
-import {getLogger} from "@logtape/logtape";
-import {configureLogging} from "@b9g/platform/runtime";
-import {config} from "shovel:config"; // Virtual module - resolved at build time
-import Platform from "@b9g/platform-node";
-
-// Configure logging before anything else
-await configureLogging(config.logging);
-
-const logger = getLogger(["shovel", "platform"]);
-
-// Configuration from shovel:config
-const PORT = config.port;
-const HOST = config.host;
-const WORKERS = config.workers;
-
-// Use explicit marker instead of isMainThread
-// This handles the edge case where Shovel's build output is embedded in another worker
-const isShovelWorker = process.env.SHOVEL_SPAWNED_WORKER === "1";
-
-if (WORKERS === 1) {
-	// Single worker mode: worker owns server (same as Bun)
-	// No reusePort needed since there's only one listener
-	if (isShovelWorker) {
-		// Worker thread: runs BOTH server AND ServiceWorker
-		const platform = new Platform({port: PORT, host: HOST, workers: 1});
-
-		// Track resources for shutdown - these get assigned during startup
-		let server;
-		let serviceWorker;
-
-		// Register shutdown handler BEFORE async startup to prevent race condition
-		// where SIGINT arrives during startup and the shutdown message is dropped
-		self.onmessage = async (event) => {
-			if (event.data.type === "shutdown") {
-				logger.info("Worker shutting down");
-				if (server) await server.close();
-				if (serviceWorker) await serviceWorker.dispose();
-				await platform.dispose();
-				postMessage({type: "shutdown-complete"});
-			}
-		};
-
-		const userCodePath = new URL("./server.js", import.meta.url).pathname;
-		serviceWorker = await platform.loadServiceWorker(userCodePath);
-
-		server = platform.createServer(serviceWorker.handleRequest, {
-			port: PORT,
-			host: HOST,
-		});
-		await server.listen();
-
-		// Signal ready to main thread
-		postMessage({type: "ready"});
-		logger.info("Worker started with server", {port: PORT});
-	} else {
-		// Main thread: supervisor only - spawn single worker
-		logger.info("Starting production server (single worker)", {port: PORT});
-
-		// Port availability check - fail fast if port is in use
-		const checkPort = () => new Promise((resolve, reject) => {
-			const testServer = HTTP.createServer();
-			testServer.once("error", reject);
-			testServer.listen(PORT, HOST, () => {
-				testServer.close(() => resolve(undefined));
-			});
-		});
-		try {
-			await checkPort();
-		} catch (err) {
-			logger.error("Port unavailable", {port: PORT, host: HOST, error: err});
-			process.exit(1);
-		}
-
-		let shuttingDown = false;
-
-		const worker = new Worker(new URL(import.meta.url), {
-			env: {SHOVEL_SPAWNED_WORKER: "1"},
-		});
-
-		worker.onmessage = (event) => {
-			if (event.data.type === "ready") {
-				logger.info("Worker ready", {port: PORT});
-			} else if (event.data.type === "shutdown-complete") {
-				logger.info("Worker shutdown complete");
-				process.exit(0);
-			}
-		};
-
-		worker.onerror = (event) => {
-			logger.error("Worker error", {error: event.error});
-		};
-
-		// If a worker crashes, fail fast - let process supervisor handle restarts
-		worker.addEventListener("close", (event) => {
-			if (shuttingDown) return;
-			if (event.code === 0) return; // Clean exit
-			logger.error("Worker crashed", {exitCode: event.code});
-			process.exit(1);
-		});
-
-		// Graceful shutdown
-		const shutdown = () => {
-			shuttingDown = true;
-			logger.info("Shutting down");
-			worker.postMessage({type: "shutdown"});
-		};
-
-		process.on("SIGINT", shutdown);
-		process.on("SIGTERM", shutdown);
-	}
-} else {
-	// Multi-worker mode: main thread owns server (no reusePort in Node.js)
-	// Workers handle ServiceWorker code via postMessage
-	if (isShovelWorker) {
-		// Worker: ServiceWorker only, respond via message loop
-		// This path uses the workerEntryTemplate, not this template
-		throw new Error("Multi-worker mode uses workerEntryTemplate, not entryTemplate");
-	} else {
-		// Main thread: HTTP server + dispatch to worker pool
-		const platform = new Platform({port: PORT, host: HOST, workers: WORKERS});
-		const userCodePath = new URL("./server.js", import.meta.url).pathname;
-
-		logger.info("Starting production server (multi-worker)", {workers: WORKERS, port: PORT});
-
-		// Load ServiceWorker with worker pool
-		const serviceWorker = await platform.loadServiceWorker(userCodePath, {
-			workerCount: WORKERS,
-		});
-
-		// Create HTTP server
-		const server = platform.createServer(serviceWorker.handleRequest, {
-			port: PORT,
-			host: HOST,
-		});
-
-		await server.listen();
-		logger.info("Server running", {url: \`http://\${HOST}:\${PORT}\`, workers: WORKERS});
-
-		// Graceful shutdown
-		const shutdown = async () => {
-			logger.info("Shutting down server");
-			await serviceWorker.dispose();
-			await platform.dispose();
-			await server.close();
-			logger.info("Server stopped");
-			process.exit(0);
-		};
-
-		process.on("SIGINT", shutdown);
-		process.on("SIGTERM", shutdown);
-	}
-}
-`;
-
-// Worker entry template - platform defaults are merged at build time into config
-// Paths are resolved at build time by the path syntax parser
-const workerEntryTemplate = `// Worker Entry for ServiceWorkerPool
-// This file sets up the ServiceWorker runtime and message loop
-import {tmpdir} from "os"; // For [tmpdir] config expressions
-import {config} from "shovel:config";
-import {initWorkerRuntime, startWorkerMessageLoop, configureLogging} from "@b9g/platform/runtime";
-
-// Configure logging before anything else
-await configureLogging(config.logging);
-
-// Initialize the worker runtime (installs ServiceWorker globals)
-// Platform defaults and paths are already resolved at build time
-const {registration, databases} = await initWorkerRuntime({config});
-
-// Import user code (registers event handlers via addEventListener)
-// Must use dynamic import to ensure globals are installed first
-await import("__USER_ENTRY__");
-
-// Run ServiceWorker lifecycle
-await registration.install();
-await registration.activate();
-
-// Start the message loop (handles request/response messages from main thread)
-// Pass databases for graceful shutdown (close connections before termination)
-startWorkerMessageLoop({registration, databases});
-`;
 
 const logger = getLogger(["shovel", "platform"]);
 
@@ -264,9 +74,7 @@ export class NodePlatform extends BasePlatform {
 		config?: ShovelConfig;
 	};
 	#workerPool?: ServiceWorkerPool;
-	#singleThreadedRuntime?: SingleThreadedRuntime;
 	#cacheStorage?: CustomCacheStorage;
-	#directoryStorage?: CustomDirectoryStorage;
 	#databaseStorage?: CustomDatabaseStorage;
 
 	constructor(options: NodePlatformOptions = {}) {
@@ -311,162 +119,7 @@ export class NodePlatform extends BasePlatform {
 		entrypoint: string,
 		options: ServiceWorkerOptions = {},
 	): Promise<ServiceWorkerInstance> {
-		// Use worker count from: 1) options, 2) platform options, 3) default 1
 		const workerCount = options.workerCount ?? this.#options.workers;
-
-		// Single-threaded mode: skip workers entirely for maximum performance
-		// BUT: Use workers in dev mode (hotReload) for reliable hot reload
-		if (workerCount === 1 && !options.hotReload) {
-			return this.#loadServiceWorkerDirect(entrypoint, options);
-		}
-
-		// Multi-worker mode OR dev mode: use ServiceWorkerPool
-		return this.#loadServiceWorkerWithPool(entrypoint, options, workerCount);
-	}
-
-	/**
-	 * Load ServiceWorker directly in main thread (single-threaded mode)
-	 * No postMessage overhead - maximum performance for production
-	 */
-	async #loadServiceWorkerDirect(
-		entrypoint: string,
-		_options: ServiceWorkerOptions,
-	): Promise<ServiceWorkerInstance> {
-		const entryPath = Path.resolve(this.#options.cwd, entrypoint);
-
-		// Try to import the generated config module (built alongside the worker entry)
-		// Falls back to platform config if config.js doesn't exist (e.g., for tests)
-		let config = this.#options.config;
-		const configPath = Path.join(Path.dirname(entryPath), "config.js");
-		try {
-			// eslint-disable-next-line no-restricted-syntax -- Import generated config at runtime
-			const configModule = await import(configPath);
-			config = configModule.config ?? config;
-		} catch (err) {
-			// config.js doesn't exist - use platform config instead
-			logger.debug`Using platform config (no config.js): ${err}`;
-		}
-
-		// Create shared cache storage from config (with runtime defaults)
-		if (!this.#cacheStorage) {
-			// Runtime defaults with actual class references
-			const runtimeCacheDefaults: Record<string, {impl: any}> = {
-				default: {impl: MemoryCache},
-			};
-			const userCaches = config?.caches ?? {};
-			// Deep merge per entry so user can override options without losing impl
-			const cacheConfigs: Record<string, any> = {};
-			const allCacheNames = new Set([
-				...Object.keys(runtimeCacheDefaults),
-				...Object.keys(userCaches),
-			]);
-			for (const name of allCacheNames) {
-				cacheConfigs[name] = {
-					...runtimeCacheDefaults[name],
-					...userCaches[name],
-				};
-			}
-			this.#cacheStorage = new CustomCacheStorage(
-				createCacheFactory({configs: cacheConfigs}),
-			);
-		}
-
-		// Create shared directory storage from config (with runtime defaults)
-		if (!this.#directoryStorage) {
-			// Runtime defaults provide impl for platform-provided directories
-			// Paths come from the generated config (resolved at build time)
-			const runtimeDirDefaults: Record<string, {impl: any}> = {
-				server: {impl: NodeFSDirectory},
-				public: {impl: NodeFSDirectory},
-				tmp: {impl: NodeFSDirectory},
-			};
-			const userDirs = config?.directories ?? {};
-			// Deep merge per entry
-			const dirConfigs: Record<string, any> = {};
-			const allDirNames = new Set([
-				...Object.keys(runtimeDirDefaults),
-				...Object.keys(userDirs),
-			]);
-			for (const name of allDirNames) {
-				dirConfigs[name] = {...runtimeDirDefaults[name], ...userDirs[name]};
-			}
-			this.#directoryStorage = new CustomDirectoryStorage(
-				createDirectoryFactory(dirConfigs),
-			);
-		}
-
-		// Create shared database storage from generated config
-		if (!this.#databaseStorage) {
-			this.#databaseStorage = this.createDatabases(config);
-		}
-
-		// Terminate any existing runtime
-		if (this.#singleThreadedRuntime) {
-			await this.#singleThreadedRuntime.terminate();
-		}
-		if (this.#workerPool) {
-			await this.#workerPool.terminate();
-			this.#workerPool = undefined;
-		}
-
-		logger.debug("Creating single-threaded ServiceWorker runtime", {entryPath});
-
-		// Create single-threaded runtime with caches, directories, databases, and loggers
-		this.#singleThreadedRuntime = new SingleThreadedRuntime({
-			caches: this.#cacheStorage,
-			directories: this.#directoryStorage,
-			databases: this.#databaseStorage,
-			loggers: new CustomLoggerStorage((cats) => getLogger(cats)),
-		});
-
-		// Initialize and load entrypoint
-		await this.#singleThreadedRuntime.init();
-		await this.#singleThreadedRuntime.load(entryPath);
-
-		// Capture reference for closures
-		const runtime = this.#singleThreadedRuntime;
-		const platform = this;
-
-		const instance: ServiceWorkerInstance = {
-			runtime,
-			handleRequest: async (request: Request) => {
-				if (!platform.#singleThreadedRuntime) {
-					throw new Error("SingleThreadedRuntime not initialized");
-				}
-				return platform.#singleThreadedRuntime.handleRequest(request);
-			},
-			install: async () => {
-				logger.debug("ServiceWorker installed", {method: "single_threaded"});
-			},
-			activate: async () => {
-				logger.debug("ServiceWorker activated", {method: "single_threaded"});
-			},
-			get ready() {
-				return runtime?.ready ?? false;
-			},
-			dispose: async () => {
-				if (platform.#singleThreadedRuntime) {
-					await platform.#singleThreadedRuntime.terminate();
-					platform.#singleThreadedRuntime = undefined;
-				}
-				logger.debug("ServiceWorker disposed", {});
-			},
-		};
-
-		logger.debug("ServiceWorker loaded", {
-			features: ["single_threaded", "no_postmessage_overhead"],
-		});
-		return instance;
-	}
-
-	/**
-	 * Load ServiceWorker using worker pool (multi-threaded mode or dev mode)
-	 */
-	async #loadServiceWorkerWithPool(
-		entrypoint: string,
-		_options: ServiceWorkerOptions,
-		workerCount: number,
-	): Promise<ServiceWorkerInstance> {
 		const entryPath = Path.resolve(this.#options.cwd, entrypoint);
 
 		// Try to import the generated config module (built alongside the worker entry)
@@ -491,14 +144,7 @@ export class NodePlatform extends BasePlatform {
 			);
 		}
 
-		// Note: Directory storage is handled in runtime.ts using import.meta.url
-		// Workers calculate directory paths relative to their script location
-
-		// Terminate any existing runtime
-		if (this.#singleThreadedRuntime) {
-			await this.#singleThreadedRuntime.terminate();
-			this.#singleThreadedRuntime = undefined;
-		}
+		// Terminate any existing worker pool
 		if (this.#workerPool) {
 			await this.#workerPool.terminate();
 		}
@@ -754,29 +400,7 @@ export class NodePlatform extends BasePlatform {
 	async reloadWorkers(entrypoint: string): Promise<void> {
 		if (this.#workerPool) {
 			await this.#workerPool.reloadWorkers(entrypoint);
-		} else if (this.#singleThreadedRuntime) {
-			await this.#singleThreadedRuntime.load(entrypoint);
 		}
-	}
-
-	/**
-	 * Get virtual entry wrapper for Node.js
-	 *
-	 * @param entryPath - Absolute path to user's entrypoint file
-	 * @param options - Entry wrapper options
-	 * @param options.type - "production" (default) or "worker"
-	 *
-	 * Returns:
-	 * - "production": Server entry that loads ServiceWorkerPool
-	 * - "worker": Worker entry that sets up runtime and message loop
-	 */
-	getEntryWrapper(entryPath: string, options?: EntryWrapperOptions): string {
-		if (options?.type === "worker") {
-			// Return worker entry template with user code path substituted
-			return workerEntryTemplate.replace("__USER_ENTRY__", entryPath);
-		}
-		// Default to production entry template
-		return entryTemplate;
 	}
 
 	/**
@@ -921,12 +545,6 @@ startWorkerMessageLoop({registration, databases});
 	 * Dispose of platform resources
 	 */
 	async dispose(): Promise<void> {
-		// Dispose single-threaded runtime
-		if (this.#singleThreadedRuntime) {
-			await this.#singleThreadedRuntime.terminate();
-			this.#singleThreadedRuntime = undefined;
-		}
-
 		// Dispose worker pool
 		if (this.#workerPool) {
 			await this.#workerPool.terminate();
