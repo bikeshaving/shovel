@@ -20,7 +20,6 @@ import {
 	ServerOptions,
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
-	EntryWrapperOptions,
 	PlatformESBuildConfig,
 	type ProductionEntryPoints,
 	CustomLoggerStorage,
@@ -247,37 +246,6 @@ export class CloudflarePlatform extends BasePlatform {
 			await this.#assetsMiniflare.dispose();
 			this.#assetsMiniflare = null;
 		}
-	}
-
-	/**
-	 * Get virtual entry wrapper for Cloudflare Workers
-	 *
-	 * Wraps user code with:
-	 * 1. Config import (shovel:config virtual module)
-	 * 2. Runtime initialization (ServiceWorkerGlobals)
-	 * 3. User code import (registers fetch handlers)
-	 * 4. ES module export for Cloudflare Workers format
-	 *
-	 * Note: Unlike Node/Bun, Cloudflare bundles user code inline, so the
-	 * entryPath is embedded directly in the wrapper.
-	 */
-	getEntryWrapper(entryPath: string, _options?: EntryWrapperOptions): string {
-		// Use JSON.stringify to safely escape the path (prevents code injection)
-		const safePath = JSON.stringify(entryPath);
-		return `// Cloudflare Worker Entry
-import { config } from "shovel:config";
-import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
-
-const registration = await initializeRuntime(config);
-
-import ${safePath};
-
-// Run ServiceWorker lifecycle (install/activate events for migrations, cache warmup, etc.)
-await registration.install();
-await registration.activate();
-
-export default { fetch: createFetchHandler(registration) };
-`;
 	}
 
 	/**
