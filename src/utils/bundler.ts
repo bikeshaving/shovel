@@ -54,7 +54,7 @@ export interface BuildOutputs {
 	/** Supervisor entry point (Node/Bun only) */
 	index?: string;
 	/** Worker entry point (all platforms) */
-	worker: string;
+	worker?: string;
 }
 
 /**
@@ -299,7 +299,7 @@ export class ServerBundler {
 	 * Extract output paths from metafile.
 	 */
 	#extractOutputPaths(metafile?: ESBuild.Metafile): BuildOutputs {
-		const outputs: BuildOutputs = {worker: ""};
+		const outputs: BuildOutputs = {};
 
 		if (!metafile) return outputs;
 

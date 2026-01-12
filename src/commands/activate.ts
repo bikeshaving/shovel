@@ -39,8 +39,10 @@ export async function activateCommand(
 		// Spawn the worker directly - it runs lifecycle automatically and posts "ready"
 		// The worker entry (from getProductionEntryPoints) already calls:
 		// initWorkerRuntime -> import user code -> registration.install() -> registration.activate()
-		const workerPath = resolve(outputs.worker);
-		await spawnWorkerAndWaitForReady(platformName, workerPath);
+		if (!outputs.worker) {
+			throw new Error("No worker entry point found in build outputs");
+		}
+		await spawnWorkerAndWaitForReady(platformName, resolve(outputs.worker));
 
 		// The ServiceWorker install/activate lifecycle will have completed
 		// Apps can use self.directories.open("public") in their activate event to pre-render
