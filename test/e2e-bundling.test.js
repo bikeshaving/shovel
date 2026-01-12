@@ -1022,17 +1022,17 @@ self.addEventListener("fetch", (event) => {
 			);
 
 			// Comments should be removed
-			expect(workerContent).not.toContain(
-				"This is a comment that should be removed",
-			);
+			expect(
+				workerContent.includes("This is a comment that should be removed"),
+			).toBe(false);
 
 			// Long variable names should be shortened
-			expect(workerContent).not.toContain(
-				"veryLongVariableNameThatShouldBeShortened",
-			);
-			expect(workerContent).not.toContain(
-				"aFunctionWithAVeryLongNameForTesting",
-			);
+			expect(
+				workerContent.includes("veryLongVariableNameThatShouldBeShortened"),
+			).toBe(false);
+			expect(
+				workerContent.includes("aFunctionWithAVeryLongNameForTesting"),
+			).toBe(false);
 
 			// But the marker string should still be present (strings aren't renamed)
 			expect(workerContent).toContain("MINIFY_TEST_MARKER");

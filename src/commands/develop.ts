@@ -1,6 +1,5 @@
 import {DEFAULTS} from "../utils/config.js";
 import {getLogger} from "@logtape/logtape";
-import {dirname, join} from "path";
 import * as Platform from "@b9g/platform";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 import {ServerBundler} from "../utils/bundler.js";
@@ -42,12 +41,6 @@ export async function developCommand(
 		let server: ReturnType<typeof platformInstance.createServer> | undefined;
 		let serverStarted = false;
 
-		// Helper to get worker entrypoint from build output
-		const getWorkerPath = (builtEntrypoint: string) =>
-			builtEntrypoint.endsWith("index.js")
-				? join(dirname(builtEntrypoint), "worker.js")
-				: builtEntrypoint;
-
 		// Helper to start or reload the server
 		const startOrReloadServer = async (workerPath: string) => {
 			if (!serverStarted) {
@@ -81,22 +74,20 @@ export async function developCommand(
 			outDir,
 			platform: platformInstance,
 			platformESBuildConfig,
-			onBuild: async (success, builtEntrypoint) => {
-				if (success && builtEntrypoint) {
-					const workerPath = getWorkerPath(builtEntrypoint);
-					await startOrReloadServer(workerPath);
+		});
+
+		// Initial build and start watching
+		const {success: buildSuccess, outputs} = await bundler.watch({
+			onRebuild: async (result) => {
+				if (result.success && result.outputs.worker) {
+					await startOrReloadServer(result.outputs.worker);
 				}
 			},
 		});
 
-		// Initial build and start watching
-		const {success: buildSuccess, entrypoint: builtEntrypoint} =
-			await bundler.watch();
-
-		if (buildSuccess && builtEntrypoint) {
+		if (buildSuccess && outputs.worker) {
 			// Initial build succeeded - start server immediately
-			const workerPath = getWorkerPath(builtEntrypoint);
-			await startOrReloadServer(workerPath);
+			await startOrReloadServer(outputs.worker);
 		} else {
 			// Initial build failed - server will start on first successful rebuild
 			logger.error("Initial build failed, watching for changes to retry");

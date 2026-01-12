@@ -22,9 +22,8 @@ export async function activateCommand(
 		const platformInstance = await Platform.createPlatform(platformName);
 		const platformESBuildConfig = platformInstance.getESBuildConfig();
 
-		// Build the entrypoint using the unified bundler
-		// Use buildForActivation() to get worker with message loop (not production server)
-		logger.info("Building ServiceWorker for activation");
+		// Build the entrypoint
+		logger.debug("Building ServiceWorker for activation");
 		const bundler = new ServerBundler({
 			entrypoint,
 			outDir: "dist",
@@ -32,18 +31,16 @@ export async function activateCommand(
 			platformESBuildConfig,
 		});
 
-		const {success, entrypoint: builtEntrypoint} =
-			await bundler.buildForActivation();
+		const {success, outputs} = await bundler.build();
 		if (!success) {
 			throw new Error("Build failed");
 		}
 
-		logger.info("Activating ServiceWorker");
+		logger.debug("Activating ServiceWorker");
 
-		// Load the BUILT ServiceWorker (not the source file)
-		// buildForActivation() returns worker.js directly (message loop entry)
+		// Load the worker (not the supervisor) for running lifecycle
 		const serviceWorker = await platformInstance.loadServiceWorker(
-			builtEntrypoint,
+			outputs.worker,
 			{
 				hotReload: false,
 				workerCount,
@@ -52,7 +49,7 @@ export async function activateCommand(
 
 		// The ServiceWorker install/activate lifecycle will handle any self-generation
 		// Apps can use self.directories.open("public") in their activate event to pre-render
-		logger.info("ServiceWorker activated - check dist/ for generated content");
+		logger.debug("ServiceWorker activated - check dist/ for generated content");
 
 		await serviceWorker.dispose();
 		await platformInstance.dispose();
