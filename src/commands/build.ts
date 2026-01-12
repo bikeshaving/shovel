@@ -179,7 +179,7 @@ async function generateExecutablePackageJSON(platform: string) {
  */
 export async function buildCommand(
 	entrypoint: string,
-	options: {workers?: string; platform?: string},
+	options: {platform?: string},
 	config: ProcessedShovelConfig,
 ) {
 	// Use same platform resolution as develop command

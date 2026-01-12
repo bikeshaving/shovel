@@ -102,7 +102,6 @@ program
 program
 	.command("build <entrypoint>")
 	.description("Build app for production")
-	.option("-w, --workers <count>", "Worker count (defaults to 1)", undefined)
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
 	.action(async (entrypoint, options) => {
 		checkPlatformReexec(options);
