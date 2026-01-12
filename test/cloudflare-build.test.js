@@ -25,7 +25,7 @@ test(
 			});
 
 			// Verify output files exist
-			expect(await fileExists(join(fixture.dist, "server", "server.js"))).toBe(
+			expect(await fileExists(join(fixture.dist, "server", "worker.js"))).toBe(
 				true,
 			);
 			expect(
@@ -37,7 +37,7 @@ test(
 
 			// Verify Cloudflare-specific output
 			const serverContent = await FS.readFile(
-				join(fixture.dist, "server", "server.js"),
+				join(fixture.dist, "server", "worker.js"),
 				"utf8",
 			);
 
@@ -77,7 +77,7 @@ test(
 			expect(buildTime).toBeLessThan(5000);
 
 			// Verify output was created
-			expect(await fileExists(join(fixture.dist, "server", "server.js"))).toBe(
+			expect(await fileExists(join(fixture.dist, "server", "worker.js"))).toBe(
 				true,
 			);
 		} finally {
@@ -101,7 +101,7 @@ test(
 			});
 
 			// Verify output structure
-			expect(await fileExists(join(fixture.dist, "server", "server.js"))).toBe(
+			expect(await fileExists(join(fixture.dist, "server", "worker.js"))).toBe(
 				true,
 			);
 			expect(await fileExists(join(fixture.dist, "public", "assets"))).toBe(

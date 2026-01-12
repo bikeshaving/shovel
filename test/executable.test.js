@@ -28,7 +28,7 @@ async function waitForServer(port, host = "localhost", timeoutMs = 3000) {
 				return await response.text();
 			}
 		} catch (err) {
-			logger.debug`Waiting for server: ${err}`;
+			logger.debug`Waiting for server: ${err.message}`;
 		}
 
 		await new Promise((resolve) => setTimeout(resolve, 50));
