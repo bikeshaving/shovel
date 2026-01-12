@@ -14,6 +14,16 @@ import type {ProcessedShovelConfig} from "../utils/config.js";
 const logger = getLogger(["shovel"]);
 
 /**
+ * Build result returned to callers
+ */
+export interface BuildResult {
+	/** Platform instance (for running lifecycle) */
+	platform: Platform.Platform;
+	/** Path to worker entry point */
+	workerPath: string | undefined;
+}
+
+/**
  * Build ServiceWorker app for production deployment
  * Uses the unified ServerBundler for consistent build output across all commands
  */
@@ -27,7 +37,7 @@ export async function buildForProduction({
 	outDir: string;
 	platform?: string;
 	userBuildConfig?: ProcessedShovelConfig["build"];
-}) {
+}): Promise<BuildResult> {
 	const entryPath = resolve(entrypoint);
 	const outputDir = resolve(outDir);
 	const serverDir = join(outputDir, "server");
@@ -66,6 +76,11 @@ export async function buildForProduction({
 	logger.info("Build complete: {path}", {
 		path: outputs.index || outputs.worker,
 	});
+
+	return {
+		platform: platformInstance,
+		workerPath: outputs.worker,
+	};
 }
 
 /**
@@ -179,22 +194,35 @@ async function generateExecutablePackageJSON(platform: string) {
  */
 export async function buildCommand(
 	entrypoint: string,
-	options: {platform?: string},
+	options: {platform?: string; lifecycle?: boolean},
 	config: ProcessedShovelConfig,
 ) {
 	// Use same platform resolution as develop command
 	const platform = Platform.resolvePlatform({...options, config});
 
-	await buildForProduction({
+	const {platform: platformInstance, workerPath} = await buildForProduction({
 		entrypoint,
 		outDir: "dist",
 		platform,
 		userBuildConfig: config.build,
 	});
 
-	// Workaround for Bun-specific issue: esbuild keeps child processes alive
-	// even after build() completes, preventing the Node/Bun process from exiting.
-	// This is documented in https://github.com/evanw/esbuild/issues/3558
-	// Node.js exits naturally via reference counting, but Bun doesn't.
-	process.exit(0);
+	// Run lifecycle if requested
+	// --lifecycle runs the full ServiceWorker lifecycle (install + activate)
+	if (options.lifecycle) {
+		if (!workerPath) {
+			throw new Error("No worker entry point found in build outputs");
+		}
+
+		logger.info("Running ServiceWorker lifecycle");
+
+		// Load the worker via the platform
+		// Lifecycle runs at module load time - install and activate events fire
+		const serviceWorker = await platformInstance.loadServiceWorker(workerPath);
+
+		await serviceWorker.dispose();
+		logger.info("Lifecycle complete");
+	}
+
+	await platformInstance.dispose();
 }

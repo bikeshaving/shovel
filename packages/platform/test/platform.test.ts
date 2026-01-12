@@ -28,6 +28,7 @@ describe("@b9g/platform", () => {
 				getProductionEntryPoints: () => ({server: "// server code"}),
 				getESBuildConfig: () => ({}),
 				getDefaults: () => ({}),
+				dispose: async () => {},
 			};
 
 			platformRegistry.register("test", mockPlatform);
