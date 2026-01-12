@@ -1995,9 +1995,9 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 	 * Allows the ServiceWorker to activate immediately
 	 */
 	async skipWaiting(): Promise<void> {
-		getLogger(["shovel", "platform"]).info("skipWaiting() called");
+		getLogger(["shovel", "platform"]).debug("skipWaiting() called");
 		if (!this.#isDevelopment) {
-			getLogger(["shovel", "platform"]).info(
+			getLogger(["shovel", "platform"]).debug(
 				"skipWaiting() - production graceful restart not implemented",
 			);
 			// In production, this would normally activate the waiting worker

@@ -1,12 +1,10 @@
 /**
- * Unified ESBuild orchestration for Shovel apps.
+ * ESBuild bundler for Shovel apps.
  *
- * ServerBundler handles all build modes:
- * - One-shot builds for production (build command)
- * - Watch mode for development (develop command)
- * - Build for activation (activate command)
- *
- * Consolidates shared logic: requireShim, JSX config, plugins, defines, externals, validation.
+ * Provides a consistent API for building ServiceWorker apps:
+ * - build() produces all entry points (supervisor + worker for Node/Bun, worker for Cloudflare)
+ * - Callers decide which output file to use based on their needs
+ * - MODE (minify, sourcemaps) comes from config, not hardcoded per use case
  */
 
 import * as ESBuild from "esbuild";
@@ -30,34 +28,68 @@ const logger = getLogger(["shovel"]);
 
 /**
  * Node.js ESM require() shim for external CJS dependencies.
- * Node.js ESM doesn't have require defined, but external deps may use it.
  */
 const REQUIRE_SHIM = `import{createRequire as __cR}from'module';const require=__cR(import.meta.url);`;
 
+/**
+ * Options for creating a ServerBundler instance.
+ */
 export interface BundlerOptions {
 	/** Entry point to build */
 	entrypoint: string;
 	/** Output directory */
 	outDir: string;
-	/** Platform instance for getting entry wrappers and config */
+	/** Platform instance */
 	platform: Platform;
 	/** Platform-specific esbuild configuration */
 	platformESBuildConfig: PlatformESBuildConfig;
 	/** User build config from shovel.json */
 	userBuildConfig?: ProcessedBuildConfig;
-	/** Callback when build completes (watch mode only) */
-	onBuild?: (success: boolean, entrypoint: string) => void;
-}
-
-export interface BuildResult {
-	success: boolean;
-	entrypoint: string;
 }
 
 /**
- * Unified ESBuild bundler for Shovel apps.
+ * Build output paths.
+ */
+export interface BuildOutputs {
+	/** Supervisor entry point (Node/Bun only) */
+	index?: string;
+	/** Worker entry point (all platforms) */
+	worker: string;
+}
+
+/**
+ * Result of a build operation.
+ */
+export interface BuildResult {
+	success: boolean;
+	outputs: BuildOutputs;
+}
+
+/**
+ * Options for watch mode.
+ */
+export interface WatchOptions {
+	/** Called after each rebuild */
+	onRebuild?: (result: BuildResult) => void | Promise<void>;
+}
+
+/**
+ * ESBuild bundler for Shovel apps.
  *
- * Handles production builds, development watch mode, and activation builds.
+ * Usage:
+ * ```typescript
+ * const bundler = new ServerBundler({entrypoint, outDir, platform, ...});
+ *
+ * // One-shot build
+ * const {success, outputs} = await bundler.build();
+ * // outputs.index = supervisor (Node/Bun)
+ * // outputs.worker = worker (all platforms)
+ *
+ * // Watch mode
+ * const {success, outputs} = await bundler.watch({
+ *   onRebuild: (result) => console.log("Rebuilt:", result.success)
+ * });
+ * ```
  */
 export class ServerBundler {
 	#options: BundlerOptions;
@@ -65,136 +97,94 @@ export class ServerBundler {
 	#projectRoot: string;
 	#initialBuildComplete: boolean;
 	#initialBuildResolve?: (result: BuildResult) => void;
-	// Track current entrypoint for potential future use (e.g., status queries)
-	#currentEntrypoint: string;
+	#currentOutputs: BuildOutputs;
 	#configWatchers: FSWatcher[];
 	#dirWatchers: Map<string, {watcher: FSWatcher; files: Set<string>}>;
 	#userEntryPath: string;
+	#watchOptions?: WatchOptions;
 
 	constructor(options: BundlerOptions) {
 		this.#options = options;
 		this.#projectRoot = findProjectRoot();
 		this.#initialBuildComplete = false;
-		this.#currentEntrypoint = "";
+		this.#currentOutputs = {worker: ""};
 		this.#configWatchers = [];
 		this.#dirWatchers = new Map();
 		this.#userEntryPath = "";
 	}
 
 	/**
-	 * One-shot build for production deployment.
-	 * Creates standalone executables (supervisor + worker with server).
-	 * @returns Result with success status and the output entrypoint path
+	 * One-shot build.
+	 *
+	 * Produces all platform entry points:
+	 * - Node/Bun: index.js (supervisor) + worker.js
+	 * - Cloudflare: worker.js
+	 *
+	 * Build options (minify, sourcemap, etc.) come from userBuildConfig.
 	 */
 	async build(): Promise<BuildResult> {
-		return this.#buildInternal({production: true});
-	}
-
-	/**
-	 * One-shot build for activation (running ServiceWorker lifecycle).
-	 * Creates worker with message loop (for use with loadServiceWorker/ServiceWorkerPool).
-	 * @returns Result with success status and the output entrypoint path
-	 */
-	async buildForActivation(): Promise<BuildResult> {
-		return this.#buildInternal({production: false});
-	}
-
-	/**
-	 * Internal build implementation.
-	 * @param options.production - If true, use production entry points (standalone server).
-	 *                             If false, use development entry points (message loop).
-	 */
-	async #buildInternal(options: {production: boolean}): Promise<BuildResult> {
 		const entryPath = resolve(this.#projectRoot, this.#options.entrypoint);
 		const outputDir = resolve(this.#projectRoot, this.#options.outDir);
 		const serverDir = join(outputDir, "server");
 
-		// Ensure output directory structure exists
 		await mkdir(serverDir, {recursive: true});
 		await mkdir(join(outputDir, "public"), {recursive: true});
 
-		// Use production entry points for build(), development entry points for activation
-		const buildOptions = await this.#createBuildOptions(entryPath, outputDir, {
-			watchMode: !options.production, // watchMode=true uses dev entry points
-		});
-
-		// Use build() for one-shot builds (not context API which is for watch/incremental)
+		const buildOptions = await this.#createBuildOptions(entryPath, outputDir);
 		const result = await ESBuild.build(buildOptions);
 
-		// Validate the build
 		const external = buildOptions.external as string[] | undefined;
 		this.#validateBuildResult(result, external ?? ["node:*"]);
 
-		// Extract main entry output path from metafile
-		// Production: Node/Bun uses index.js (supervisor), Cloudflare uses worker.js directly
-		// Activation/Dev: All platforms use worker.js (message loop entry)
-		let outputPath = "";
-		if (result.metafile) {
-			const outputs = Object.keys(result.metafile.outputs);
-			// For production, prefer index.js (supervisor) if it exists, else worker.js
-			// For activation/dev, always use worker.js
-			const mainOutput = options.production
-				? outputs.find((p) => p.endsWith("index.js")) ||
-					outputs.find((p) => p.endsWith("worker.js"))
-				: outputs.find((p) => p.endsWith("worker.js"));
-			if (mainOutput) {
-				outputPath = resolve(this.#projectRoot, mainOutput);
-			}
-		}
-
+		const outputs = this.#extractOutputPaths(result.metafile);
 		const success = result.errors.length === 0;
-		logger.debug("Build complete", {entrypoint: outputPath, success});
 
-		return {success, entrypoint: outputPath};
+		logger.debug("Build complete", {outputs, success});
+
+		return {success, outputs};
 	}
 
 	/**
-	 * Start watching and building for development.
-	 * @returns Result with success status and the hashed entrypoint path
+	 * Start watching and building.
+	 *
+	 * Returns after the initial build completes. Subsequent rebuilds
+	 * trigger the onRebuild callback.
 	 */
-	async watch(): Promise<BuildResult> {
+	async watch(options: WatchOptions = {}): Promise<BuildResult> {
+		this.#watchOptions = options;
 		const entryPath = resolve(this.#projectRoot, this.#options.entrypoint);
-		this.#userEntryPath = entryPath; // Store for native file watching
+		this.#userEntryPath = entryPath;
 		const outputDir = resolve(this.#projectRoot, this.#options.outDir);
 
-		// Ensure output directory structure exists
 		await mkdir(join(outputDir, "server"), {recursive: true});
 
-		// Create a promise that resolves when the initial build completes
 		const initialBuildPromise = new Promise<BuildResult>((resolve) => {
 			this.#initialBuildResolve = resolve;
 		});
 
 		const buildOptions = await this.#createBuildOptions(entryPath, outputDir, {
-			watchMode: true,
+			watch: true,
 		});
 
-		// Create esbuild context with watch support
 		this.#ctx = await ESBuild.context(buildOptions);
 
-		// Start watching - this does the initial build and watches all dependencies
 		logger.debug("Starting esbuild watch mode");
 		await this.#ctx.watch();
 
-		// Watch config files (shovel.json, package.json) for changes
-		// ESBuild doesn't track these since they're not imported
 		this.#watchConfigFiles();
 
-		// Wait for initial build to complete
 		return initialBuildPromise;
 	}
 
 	/**
-	 * Stop watching and dispose of esbuild context
+	 * Stop watching and dispose of resources.
 	 */
 	async stop(): Promise<void> {
-		// Close config file watchers
 		for (const watcher of this.#configWatchers) {
 			watcher.close();
 		}
 		this.#configWatchers = [];
 
-		// Close directory watchers
 		for (const entry of this.#dirWatchers.values()) {
 			entry.watcher.close();
 		}
@@ -207,63 +197,43 @@ export class ServerBundler {
 	}
 
 	/**
-	 * Create ESBuild options for the build.
-	 *
-	 * Entry points are determined by the platform:
-	 * - Cloudflare: { server: "<code>" } - single file with everything inline
-	 * - Node/Bun: { index: "<supervisor>", worker: "<runtime + user code>" }
-	 *
-	 * The config entry is always added for runtime configuration.
+	 * Create ESBuild options.
 	 */
 	async #createBuildOptions(
 		entryPath: string,
 		outputDir: string,
-		options: {watchMode?: boolean} = {},
+		options: {watch?: boolean} = {},
 	): Promise<ESBuild.BuildOptions> {
-		const {watchMode = false} = options;
+		const {watch = false} = options;
 		const platformESBuildConfig = this.#options.platformESBuildConfig;
 		const platformDefaults = this.#options.platform.getDefaults();
 		const userBuildConfig = this.#options.userBuildConfig;
 
-		// Get platform-specific entry points based on mode:
-		// - Production: getProductionEntryPoints() returns supervisor + worker with server
-		// - Development: getEntryWrapper() returns worker with message loop (no server)
-		const platformEntryPoints = watchMode
-			? {
-					worker: this.#options.platform.getEntryWrapper(entryPath, {
-						type: "worker",
-					}),
-				}
-			: this.#options.platform.getProductionEntryPoints(entryPath);
+		// Always use production entry points - they include both supervisor and worker
+		const platformEntryPoints =
+			this.#options.platform.getProductionEntryPoints(entryPath);
 
-		// Load JSX configuration from tsconfig.json or use @b9g/crank defaults
 		const jsxOptions = await loadJSXConfig(this.#projectRoot);
 
-		// Load user plugins if specified
 		const userPlugins = userBuildConfig?.plugins?.length
 			? await this.#loadUserPlugins(userBuildConfig.plugins)
 			: [];
 
-		// Merge externals: platform defaults + user additions
 		const platformExternal = platformESBuildConfig.external ?? ["node:*"];
 		const userExternal = userBuildConfig?.external ?? [];
 		const external = [...platformExternal, ...userExternal];
 
-		// Determine if we need the require shim (Node.js only)
 		const isNodePlatform =
 			(platformESBuildConfig.platform ?? "node") === "node";
 		const requireShim = isNodePlatform ? REQUIRE_SHIM : "";
 
-		// Build config values
+		// Build config from userBuildConfig (respects MODE from config/env)
 		const target = userBuildConfig?.target ?? "es2022";
-		const sourcemap = watchMode
-			? ("inline" as const)
-			: (userBuildConfig?.sourcemap ?? false);
-		const minify = watchMode ? false : (userBuildConfig?.minify ?? false);
+		const sourcemap = userBuildConfig?.sourcemap ?? (watch ? "inline" : false);
+		const minify = userBuildConfig?.minify ?? false;
 		const treeShaking = userBuildConfig?.treeShaking ?? true;
 
 		// Build ESBuild entry points from platform entry points
-		// Each platform entry becomes shovel:entry:<name>
 		const esbuildEntryPoints: Record<string, string> = {
 			config: "shovel:config",
 		};
@@ -271,7 +241,6 @@ export class ServerBundler {
 			esbuildEntryPoints[name] = `shovel:entry:${name}`;
 		}
 
-		// Core plugins
 		const plugins: ESBuild.Plugin[] = [
 			...userPlugins,
 			createConfigPlugin(this.#projectRoot, this.#options.outDir, {
@@ -290,9 +259,8 @@ export class ServerBundler {
 			}),
 		];
 
-		// Add build-notify plugin for watch mode
-		if (watchMode) {
-			plugins.push(this.#createBuildNotifyPlugin(external, outputDir));
+		if (watch) {
+			plugins.push(this.#createBuildNotifyPlugin(external));
 		}
 
 		const buildOptions: ESBuild.BuildOptions = {
@@ -322,10 +290,32 @@ export class ServerBundler {
 			...(requireShim && {banner: {js: requireShim}}),
 		};
 
-		// Apply JSX configuration
 		applyJSXOptions(buildOptions, jsxOptions);
 
 		return buildOptions;
+	}
+
+	/**
+	 * Extract output paths from metafile.
+	 */
+	#extractOutputPaths(metafile?: ESBuild.Metafile): BuildOutputs {
+		const outputs: BuildOutputs = {worker: ""};
+
+		if (!metafile) return outputs;
+
+		const outputPaths = Object.keys(metafile.outputs);
+
+		const indexOutput = outputPaths.find((p) => p.endsWith("index.js"));
+		if (indexOutput) {
+			outputs.index = resolve(this.#projectRoot, indexOutput);
+		}
+
+		const workerOutput = outputPaths.find((p) => p.endsWith("worker.js"));
+		if (workerOutput) {
+			outputs.worker = resolve(this.#projectRoot, workerOutput);
+		}
+
+		return outputs;
 	}
 
 	/**
@@ -382,12 +372,8 @@ export class ServerBundler {
 
 	/**
 	 * Create the build-notify plugin for watch mode.
-	 * Handles build completion callbacks and native file watcher updates.
 	 */
-	#createBuildNotifyPlugin(
-		external: string[],
-		_outputDir: string,
-	): ESBuild.Plugin {
+	#createBuildNotifyPlugin(external: string[]): ESBuild.Plugin {
 		return {
 			name: "build-notify",
 			setup: (build) => {
@@ -454,39 +440,28 @@ export class ServerBundler {
 						}
 					}
 
-					// Extract main entry output path from metafile
-					// Watch mode always uses worker.js (message loop entry for dev)
-					let outputPath = "";
-					if (result.metafile) {
-						const outputs = Object.keys(result.metafile.outputs);
-						const mainOutput = outputs.find((p) => p.endsWith("worker.js"));
-						if (mainOutput) {
-							outputPath = resolve(this.#projectRoot, mainOutput);
-						}
-					}
+					const outputs = this.#extractOutputPaths(result.metafile);
 
 					if (success) {
-						logger.debug("Build complete", {entrypoint: outputPath});
+						logger.debug("Build complete", {outputs});
 					} else {
 						logger.error("Build errors: {errors}", {errors: result.errors});
 					}
 
-					this.#currentEntrypoint = outputPath;
+					this.#currentOutputs = outputs;
 
-					// Update native file watchers based on metafile inputs
 					if (result.metafile) {
 						this.#updateSourceWatchers(result.metafile);
 					}
 
-					// Handle initial build
+					const buildResult: BuildResult = {success, outputs};
+
 					if (!this.#initialBuildComplete) {
 						this.#initialBuildComplete = true;
-						// Yield to the event loop to ensure inotify watches are registered
 						await new Promise((resolve) => setTimeout(resolve, 0));
-						this.#initialBuildResolve?.({success, entrypoint: outputPath});
+						this.#initialBuildResolve?.(buildResult);
 					} else {
-						// Subsequent rebuilds triggered by watch
-						await this.#options.onBuild?.(success, outputPath);
+						await this.#watchOptions?.onRebuild?.(buildResult);
 					}
 				});
 			},
@@ -494,13 +469,12 @@ export class ServerBundler {
 	}
 
 	/**
-	 * Validate build result for dynamic imports and unexpected externals.
+	 * Validate build result.
 	 */
 	#validateBuildResult(
 		result: ESBuild.BuildResult,
 		allowedExternals: string[],
 	) {
-		// Check for non-bundleable dynamic imports
 		const dynamicImportWarnings = (result.warnings || []).filter(
 			(w) =>
 				(w.text.includes("cannot be bundled") ||
@@ -525,13 +499,11 @@ export class ServerBundler {
 			);
 		}
 
-		// Check for unexpected externals
 		if (result.metafile) {
 			const allowedSet = new Set(allowedExternals);
-			// Extract wildcard prefixes (e.g., "node:*" -> "node:", "bun:*" -> "bun:")
 			const wildcardPrefixes = allowedExternals
 				.filter((e) => e.endsWith(":*"))
-				.map((e) => e.slice(0, -1)); // "node:*" -> "node:"
+				.map((e) => e.slice(0, -1));
 			const unexpectedExternals: string[] = [];
 
 			for (const path of Object.keys(result.metafile.inputs)) {
@@ -557,7 +529,7 @@ export class ServerBundler {
 	}
 
 	/**
-	 * Watch shovel.json and package.json for changes.
+	 * Watch config files for changes.
 	 */
 	#watchConfigFiles() {
 		const configFiles = ["shovel.json", "package.json"];
@@ -587,12 +559,11 @@ export class ServerBundler {
 	}
 
 	/**
-	 * Update native directory watchers for source files from metafile.
+	 * Update source file watchers from metafile.
 	 */
 	#updateSourceWatchers(metafile: ESBuild.Metafile) {
 		const newDirFiles = new Map<string, Set<string>>();
 
-		// Always include the user entry file directory explicitly
 		if (this.#userEntryPath) {
 			const entryDir = dirname(this.#userEntryPath);
 			const entryFile = basename(this.#userEntryPath);
@@ -620,7 +591,6 @@ export class ServerBundler {
 			newDirFiles.get(dir)!.add(file);
 		}
 
-		// Remove watchers for directories no longer needed
 		for (const [dir, entry] of this.#dirWatchers) {
 			if (!newDirFiles.has(dir)) {
 				entry.watcher.close();
@@ -628,7 +598,6 @@ export class ServerBundler {
 			}
 		}
 
-		// Update or add watchers for each directory
 		for (const [dir, files] of newDirFiles) {
 			const existing = this.#dirWatchers.get(dir);
 

@@ -51,7 +51,7 @@ export async function buildForProduction({
 		userBuildConfig,
 	});
 
-	const {success, entrypoint: builtPath} = await bundler.build();
+	const {success, outputs} = await bundler.build();
 	if (!success) {
 		throw new Error("Build failed");
 	}
@@ -62,7 +62,10 @@ export async function buildForProduction({
 	logger.debug("Built app to", {outputDir});
 	logger.debug("Server files", {dir: serverDir});
 	logger.debug("Public files", {dir: join(outputDir, "public")});
-	logger.info("Build complete: {path}", {path: builtPath});
+	// Report the main entry point (supervisor for Node/Bun, worker for Cloudflare)
+	logger.info("Build complete: {path}", {
+		path: outputs.index || outputs.worker,
+	});
 }
 
 /**

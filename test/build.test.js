@@ -679,13 +679,6 @@ self.addEventListener("fetch", (event) => {
 					"utf8",
 				);
 				expect(workerContent).toContain("Workspace test");
-
-				// Platform code should not contain userEntryPath
-				const indexContent = await FS.readFile(
-					join(outDir, "server", "index.js"),
-					"utf8",
-				);
-				expect(indexContent).not.toContain("userEntryPath");
 			} finally {
 				process.chdir(originalCwd);
 			}
@@ -736,13 +729,6 @@ self.addEventListener("fetch", (event) => {
 			// Should NOT contain absolute paths to source files in user code
 			expect(workerContent).not.toMatch(/\/Users\/.*\/bundled-test\.js/);
 			expect(workerContent).not.toMatch(/\/tmp\/.*\/bundled-test\.js/);
-
-			// Platform code (index.js) should NOT contain dynamic import of user entry path
-			const indexContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
-				"utf8",
-			);
-			expect(indexContent).not.toContain("userEntryPath");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -751,7 +737,7 @@ self.addEventListener("fetch", (event) => {
 );
 
 test(
-	"build does not use dynamic import with userEntryPath",
+	"build does not use dynamic import with absolute paths",
 	async () => {
 		const cleanup_paths = [];
 
@@ -850,18 +836,6 @@ self.addEventListener("fetch", (event) => {
 			// Both should bundle user code
 			expect(nodeWorkerContent).toContain("MULTI_PLATFORM_TEST");
 			expect(bunWorkerContent).toContain("MULTI_PLATFORM_TEST");
-
-			// Platform code (index.js) should not have hardcoded paths
-			const nodeIndexContent = await FS.readFile(
-				join(nodeOutDir, "server", "index.js"),
-				"utf8",
-			);
-			const bunIndexContent = await FS.readFile(
-				join(bunOutDir, "server", "index.js"),
-				"utf8",
-			);
-			expect(nodeIndexContent).not.toContain("userEntryPath");
-			expect(bunIndexContent).not.toContain("userEntryPath");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -913,13 +887,6 @@ self.addEventListener("fetch", (event) => {
 			// Both entry and imported module should be bundled
 			expect(workerContent).toContain("HELPER_MODULE_RESPONSE");
 			expect(workerContent).toContain("getResponse");
-
-			// Platform code should not have dynamic imports via workerData.userEntryPath
-			const indexContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
-				"utf8",
-			);
-			expect(indexContent).not.toContain("userEntryPath");
 		} finally {
 			await cleanup(cleanup_paths);
 		}

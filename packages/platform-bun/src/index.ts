@@ -475,7 +475,7 @@ export class BunPlatform extends BasePlatform {
 			this.#workerPool = undefined;
 		}
 
-		logger.info("Creating single-threaded ServiceWorker runtime", {entryPath});
+		logger.debug("Creating single-threaded ServiceWorker runtime", {entryPath});
 
 		// Create single-threaded runtime with caches, directories, databases, and loggers
 		this.#singleThreadedRuntime = new SingleThreadedRuntime({
@@ -502,10 +502,10 @@ export class BunPlatform extends BasePlatform {
 				return platform.#singleThreadedRuntime.handleRequest(request);
 			},
 			install: async () => {
-				logger.info("ServiceWorker installed", {method: "single_threaded"});
+				logger.debug("ServiceWorker installed", {method: "single_threaded"});
 			},
 			activate: async () => {
-				logger.info("ServiceWorker activated", {method: "single_threaded"});
+				logger.debug("ServiceWorker activated", {method: "single_threaded"});
 			},
 			get ready() {
 				return runtime?.ready ?? false;
@@ -515,11 +515,11 @@ export class BunPlatform extends BasePlatform {
 					await platform.#singleThreadedRuntime.terminate();
 					platform.#singleThreadedRuntime = undefined;
 				}
-				logger.info("ServiceWorker disposed", {});
+				logger.debug("ServiceWorker disposed", {});
 			},
 		};
 
-		logger.info("ServiceWorker loaded", {
+		logger.debug("ServiceWorker loaded", {
 			features: ["single_threaded", "no_postmessage_overhead"],
 		});
 		return instance;
@@ -555,7 +555,7 @@ export class BunPlatform extends BasePlatform {
 			cwd: this.#options.cwd,
 		};
 
-		logger.info("Creating ServiceWorker pool", {entryPath, workerCount});
+		logger.debug("Creating ServiceWorker pool", {entryPath, workerCount});
 
 		// Bun has native Worker support - ServiceWorkerPool will use new Worker() directly
 		this.#workerPool = new ServiceWorkerPool(
@@ -581,10 +581,10 @@ export class BunPlatform extends BasePlatform {
 				return platform.#workerPool.handleRequest(request);
 			},
 			install: async () => {
-				logger.info("ServiceWorker installed", {method: "native_web_workers"});
+				logger.debug("ServiceWorker installed", {method: "native_web_workers"});
 			},
 			activate: async () => {
-				logger.info("ServiceWorker activated", {method: "native_web_workers"});
+				logger.debug("ServiceWorker activated", {method: "native_web_workers"});
 			},
 			get ready() {
 				return workerPool?.ready ?? false;
@@ -594,11 +594,11 @@ export class BunPlatform extends BasePlatform {
 					await platform.#workerPool.terminate();
 					platform.#workerPool = undefined;
 				}
-				logger.info("ServiceWorker disposed", {});
+				logger.debug("ServiceWorker disposed", {});
 			},
 		};
 
-		logger.info("ServiceWorker loaded", {
+		logger.debug("ServiceWorker loaded", {
 			features: ["native_web_workers", "coordinated_caches"],
 		});
 		return instance;

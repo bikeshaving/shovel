@@ -17,8 +17,8 @@ await configure({
 	sinks: {console: getConsoleSink()},
 	loggers: [
 		{category: ["logtape", "meta"], sinks: []},
-		{category: ["shovel"], level: "warning", sinks: ["console"]},
-		{category: ["test"], level: "debug", sinks: ["console"]},
+		{category: ["shovel"], lowestLevel: "warning", sinks: ["console"]},
+		{category: ["test"], lowestLevel: "debug", sinks: ["console"]},
 	],
 });
 
@@ -1308,9 +1308,9 @@ test(
 				`self.addEventListener("fetch", () => new Response("v1"));`,
 			);
 
-			let onBuildCalled = false;
-			let receivedEntrypoint = null;
-			let initialEntrypoint = null;
+			let onRebuildCalled = false;
+			let receivedOutputs = null;
+			let initialOutputs = null;
 
 			// Change to test directory
 			const originalCwd = process.cwd();
@@ -1325,27 +1325,28 @@ test(
 				outDir: "dist",
 				platform,
 				platformESBuildConfig,
-				onBuild: async (success, newEntrypoint) => {
-					onBuildCalled = true;
-					receivedEntrypoint = newEntrypoint;
-					// KEY ASSERTIONS:
-					// 1. Build should succeed
-					expect(success).toBe(true);
-					// 2. New entrypoint should be a valid, existing file
-					expect(existsSync(newEntrypoint)).toBe(true);
-					// 3. Unified build uses stable filename - hot reload terminates workers
-					expect(newEntrypoint).toBe(initialEntrypoint);
-					// 4. New entrypoint should end with .js
-					expect(newEntrypoint).toMatch(/\.js$/);
-				},
 			});
 
 			try {
 				// Initial build (watch mode)
-				const {success, entrypoint} = await bundler.watch();
+				const {success, outputs} = await bundler.watch({
+					onRebuild: async (result) => {
+						onRebuildCalled = true;
+						receivedOutputs = result.outputs;
+						// KEY ASSERTIONS:
+						// 1. Build should succeed
+						expect(result.success).toBe(true);
+						// 2. Worker output should be a valid, existing file
+						expect(existsSync(result.outputs.worker)).toBe(true);
+						// 3. Unified build uses stable filename - hot reload terminates workers
+						expect(result.outputs.worker).toBe(initialOutputs.worker);
+						// 4. Worker output should end with .js
+						expect(result.outputs.worker).toMatch(/\.js$/);
+					},
+				});
 				expect(success).toBe(true);
-				initialEntrypoint = entrypoint;
-				expect(existsSync(initialEntrypoint)).toBe(true);
+				initialOutputs = outputs;
+				expect(existsSync(initialOutputs.worker)).toBe(true);
 
 				// Trigger rebuild by modifying source
 				await FS.writeFile(
@@ -1355,14 +1356,14 @@ test(
 
 				// Wait for rebuild callback
 				const startTime = Date.now();
-				while (!onBuildCalled && Date.now() - startTime < 5000) {
+				while (!onRebuildCalled && Date.now() - startTime < 5000) {
 					await new Promise((r) => setTimeout(r, 50));
 				}
 
-				// Verify onBuild was called with valid new path
-				expect(onBuildCalled).toBe(true);
-				expect(receivedEntrypoint).not.toBeNull();
-				expect(existsSync(receivedEntrypoint)).toBe(true);
+				// Verify onRebuild was called with valid new path
+				expect(onRebuildCalled).toBe(true);
+				expect(receivedOutputs).not.toBeNull();
+				expect(existsSync(receivedOutputs.worker)).toBe(true);
 			} finally {
 				process.chdir(originalCwd);
 				await bundler.stop();
