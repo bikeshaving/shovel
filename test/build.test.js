@@ -3,7 +3,7 @@ import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
 import {test, expect} from "bun:test";
-import {buildForProduction} from "../src/commands/build.js";
+import {buildForProduction, buildCommand} from "../src/commands/build.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["test", "build"]);
@@ -895,17 +895,15 @@ self.addEventListener("fetch", (event) => {
 );
 
 // ======================
-// ACTIVATE COMMAND TESTS
+// LIFECYCLE COMMAND TESTS
 // ======================
 
-import {activateCommand} from "../src/commands/activate.js";
-
-test("activate command runs ServiceWorker lifecycle", async () => {
+test("build --lifecycle runs ServiceWorker lifecycle", async () => {
 	const cleanup_paths = [];
 
 	try {
 		// Create a ServiceWorker that writes a file during activate
-		const testDir = await createTempDir("activate-test-");
+		const testDir = await createTempDir("lifecycle-test-");
 		cleanup_paths.push(testDir);
 
 		const markerFile = join(testDir, "activated.txt");
@@ -935,7 +933,7 @@ self.addEventListener("fetch", (event) => {
 		// Create package.json
 		await FS.writeFile(
 			join(testDir, "package.json"),
-			JSON.stringify({name: "test-activate", type: "module"}),
+			JSON.stringify({name: "test-lifecycle", type: "module"}),
 		);
 
 		// Symlink node_modules from project root
@@ -945,12 +943,12 @@ self.addEventListener("fetch", (event) => {
 			"dir",
 		);
 
-		// Run activate command
+		// Run build with --lifecycle flag
 		const originalCwd = process.cwd();
 		process.chdir(testDir);
 
 		try {
-			await activateCommand(entryPath, {platform: "node"}, null);
+			await buildCommand(entryPath, {platform: "node", lifecycle: true}, {});
 		} finally {
 			process.chdir(originalCwd);
 		}
@@ -966,72 +964,4 @@ self.addEventListener("fetch", (event) => {
 	} finally {
 		await cleanup(cleanup_paths);
 	}
-}, 15000); // Longer timeout for activate
-
-test("activate command with multiple workers runs ServiceWorker lifecycle", async () => {
-	const cleanup_paths = [];
-
-	try {
-		// Create a ServiceWorker that writes a file during activate
-		const testDir = await createTempDir("activate-workers-test-");
-		cleanup_paths.push(testDir);
-
-		const markerFile = join(testDir, "activated.txt");
-
-		// Create entry that writes a marker file on activate
-		const entryContent = `
-import * as FS from "node:fs/promises";
-
-self.addEventListener("install", (event) => {
-	event.waitUntil(self.skipWaiting());
-});
-
-self.addEventListener("activate", (event) => {
-	event.waitUntil((async () => {
-		await FS.writeFile(${JSON.stringify(markerFile)}, "activated at " + Date.now());
-	})());
-});
-
-self.addEventListener("fetch", (event) => {
-	event.respondWith(new Response("ok"));
-});
-`;
-
-		const entryPath = join(testDir, "app.js");
-		await FS.writeFile(entryPath, entryContent);
-
-		// Create package.json
-		await FS.writeFile(
-			join(testDir, "package.json"),
-			JSON.stringify({name: "test-activate", type: "module"}),
-		);
-
-		// Symlink node_modules from project root
-		await FS.symlink(
-			join(process.cwd(), "node_modules"),
-			join(testDir, "node_modules"),
-			"dir",
-		);
-
-		// Run activate command with multiple workers (uses ServiceWorkerPool)
-		const originalCwd = process.cwd();
-		process.chdir(testDir);
-
-		try {
-			await activateCommand(entryPath, {platform: "node", workers: "2"}, null);
-		} finally {
-			process.chdir(originalCwd);
-		}
-
-		// Verify the activate event ran by checking for marker file
-		const markerExists = await FS.access(markerFile)
-			.then(() => true)
-			.catch(() => false);
-		expect(markerExists).toBe(true);
-
-		const markerContent = await FS.readFile(markerFile, "utf8");
-		expect(markerContent).toContain("activated at");
-	} finally {
-		await cleanup(cleanup_paths);
-	}
-}, 15000); // Longer timeout for activate
+}, 15000); // Longer timeout for lifecycle

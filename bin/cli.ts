@@ -103,25 +103,16 @@ program
 	.command("build <entrypoint>")
 	.description("Build app for production")
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
+	.option("--lifecycle", "Run ServiceWorker lifecycle after build")
 	.action(async (entrypoint, options) => {
 		checkPlatformReexec(options);
 		const {buildCommand} = await import("../src/commands/build.ts");
 		await buildCommand(entrypoint, options, config);
-	});
-
-/**
- * Activate command - runs ServiceWorker lifecycle for static generation
- */
-program
-	.command("activate <entrypoint>")
-	.description(
-		"Activate ServiceWorker (for static site generation in activate event)",
-	)
-	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
-	.action(async (entrypoint, options) => {
-		checkPlatformReexec(options);
-		const {activateCommand} = await import("../src/commands/activate.ts");
-		await activateCommand(entrypoint, options, config);
+		// Workaround for Bun-specific issue: esbuild keeps child processes alive
+		// even after build() completes, preventing the Node/Bun process from exiting.
+		// This is documented in https://github.com/evanw/esbuild/issues/3558
+		// Node.js exits naturally via reference counting, but Bun doesn't.
+		process.exit(0);
 	});
 
 /**

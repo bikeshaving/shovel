@@ -226,6 +226,17 @@ export interface Platform {
 	 * Uses platform-specific defaults, overridable via shovel.json config
 	 */
 	createLoggers(): Promise<LoggerStorage>;
+
+	/**
+	 * Dispose of platform resources (worker pools, connections, etc.)
+	 */
+	dispose(): Promise<void>;
+
+	/**
+	 * HOT RELOAD - Reload workers with a new entrypoint (development only)
+	 * Optional - only Node and Bun platforms implement this
+	 */
+	reloadWorkers?(entrypoint: string): Promise<void>;
 }
 
 // ============================================================================
@@ -354,7 +365,7 @@ export function resolvePlatform(options: {
 export async function createPlatform(
 	platformName: string,
 	options: any = {},
-): Promise<any> {
+): Promise<Platform> {
 	switch (platformName) {
 		case "node": {
 			const {default: NodePlatform} = await import("@b9g/platform-node");
@@ -435,6 +446,14 @@ export abstract class BasePlatform implements Platform {
 	 * Subclasses must override to provide platform-specific implementation
 	 */
 	abstract createLoggers(): Promise<LoggerStorage>;
+
+	/**
+	 * Dispose of platform resources
+	 * Subclasses should override to clean up worker pools, connections, etc.
+	 */
+	async dispose(): Promise<void> {
+		// Default no-op, subclasses override
+	}
 }
 
 // ============================================================================
