@@ -4,6 +4,7 @@ import {
 	ShovelServiceWorkerRegistration,
 	FetchEvent,
 	runLifecycle,
+	dispatchRequest,
 } from "../dist/src/runtime.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
@@ -51,8 +52,8 @@ group("Hot Path Components", () => {
 		return new FetchEvent("fetch", {request: testRequest});
 	});
 
-	bench("registration.handleRequest(request)", async () => {
-		return registration.handleRequest(testRequest);
+	bench("dispatchRequest(registration, request)", async () => {
+		return dispatchRequest(registration, testRequest);
 	});
 });
 

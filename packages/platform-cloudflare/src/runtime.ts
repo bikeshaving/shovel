@@ -15,6 +15,7 @@ import {
 	createCacheFactory,
 	createDirectoryFactory,
 	runLifecycle,
+	dispatchRequest,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
 
@@ -145,7 +146,7 @@ export function createFetchHandler(
 
 		// Run within envStorage for directory factory access
 		return envStorage.run(env as Record<string, unknown>, () =>
-			registration.handleRequest(event),
+			dispatchRequest(registration, event),
 		);
 	};
 }

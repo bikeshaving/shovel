@@ -1125,6 +1125,9 @@ export const kDispatchInstall = Symbol("dispatchInstall");
 /** @internal Symbol for dispatching the activate lifecycle event */
 export const kDispatchActivate = Symbol("dispatchActivate");
 
+/** @internal Symbol for handling fetch requests */
+const kHandleRequest = Symbol("handleRequest");
+
 /**
  * ShovelServiceWorkerRegistration - Internal implementation of ServiceWorkerRegistration
  * This is also the Shovel ServiceWorker runtime - they are unified into one class
@@ -1300,14 +1303,15 @@ export class ShovelServiceWorkerRegistration
 	}
 
 	/**
-	 * Handle a fetch request (Shovel extension)
+	 * Handle a fetch request
+	 * @internal Use the kHandleRequest symbol to access this method
 	 *
 	 * Platforms create a ShovelFetchEvent (or subclass) with platform-specific
 	 * properties and hooks, then pass it to this method for dispatching.
 	 *
 	 * @param event - The fetch event to handle (created by platform adapter)
 	 */
-	async handleRequest(event: ShovelFetchEvent): Promise<Response> {
+	async [kHandleRequest](event: ShovelFetchEvent): Promise<Response> {
 		if (this[kServiceWorker].state !== "activated") {
 			throw new Error("ServiceWorker not activated");
 		}
@@ -1395,6 +1399,37 @@ export async function runLifecycle(
 	if (stage === "activate") {
 		await registration[kDispatchActivate]();
 	}
+}
+
+/**
+ * Dispatch a fetch request to a ServiceWorker registration.
+ *
+ * This is the proper way to dispatch requests in Shovel's server-side runtime.
+ * Platforms should use this function rather than accessing internal methods directly.
+ *
+ * @param registration - The ServiceWorkerRegistration to dispatch to
+ * @param requestOrEvent - The Request to dispatch, or a pre-constructed ShovelFetchEvent
+ * @returns The Response from the ServiceWorker
+ *
+ * @example
+ * ```typescript
+ * // Simple usage with a Request
+ * const response = await dispatchRequest(registration, request);
+ *
+ * // Platform-specific usage with a custom FetchEvent subclass
+ * const event = new CloudflareFetchEvent(request, {env, platformWaitUntil});
+ * const response = await dispatchRequest(registration, event);
+ * ```
+ */
+export async function dispatchRequest(
+	registration: ShovelServiceWorkerRegistration,
+	requestOrEvent: Request | ShovelFetchEvent,
+): Promise<Response> {
+	const event =
+		requestOrEvent instanceof ShovelFetchEvent
+			? requestOrEvent
+			: new ShovelFetchEvent(requestOrEvent);
+	return registration[kHandleRequest](event);
 }
 
 /**
@@ -1504,8 +1539,7 @@ export class ShovelServiceWorkerContainer
 		if (matchingScope) {
 			const registration = this.#registrations.get(matchingScope);
 			if (registration && registration.ready) {
-				const event = new ShovelFetchEvent(request);
-				return await registration.handleRequest(event);
+				return await dispatchRequest(registration, request);
 			}
 		}
 
@@ -1906,10 +1940,10 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 
 		// Route through our own handler with incremented depth
 		return fetchDepthStorage.run(currentDepth + 1, () => {
-			const event = new ShovelFetchEvent(request);
-			return (
-				this.registration as ShovelServiceWorkerRegistration
-			).handleRequest(event);
+			return dispatchRequest(
+				this.registration as ShovelServiceWorkerRegistration,
+				request,
+			);
 		});
 	}
 
@@ -2500,8 +2534,7 @@ export function startWorkerMessageLoop(
 				body: message.request.body,
 			});
 
-			const event = new ShovelFetchEvent(request);
-			const response = await registration.handleRequest(event);
+			const response = await dispatchRequest(registration, request);
 
 			// Use arrayBuffer for zero-copy transfer
 			const body = await response.arrayBuffer();
