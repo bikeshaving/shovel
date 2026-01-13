@@ -124,8 +124,7 @@ router.use(cors({ origin: "https://example.com" }));
 ### CLI Changes
 
 - `shovel develop` - Development server with hot reload (note: `dev` alias removed)
-- `shovel build` - Production build
-- `shovel activate` - Static site generation
+- `shovel build` - Production build (use `--lifecycle` flag to run lifecycle events)
 - Removed `--verbose` flags (use logging config instead)
 
 ### Infrastructure

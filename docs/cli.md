@@ -8,7 +8,6 @@ Shovel provides a command-line interface for development, building, and running 
 |---------|-------------|
 | `shovel develop` | Start development server with hot reload |
 | `shovel build` | Build for production |
-| `shovel activate` | Run lifecycle events (for static generation) |
 
 ---
 
@@ -81,8 +80,8 @@ shovel build <entrypoint> [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-w, --workers <count>` | Number of workers | `1` |
 | `--platform <name>` | Target platform | Auto-detected |
+| `--lifecycle [stage]` | Run ServiceWorker lifecycle after build | - |
 
 ### Examples
 
@@ -90,11 +89,17 @@ shovel build <entrypoint> [options]
 # Basic build
 shovel build src/server.ts
 
-# Build for Bun with 4 workers
-shovel build src/server.ts --platform bun --workers 4
+# Build for Bun
+shovel build src/server.ts --platform bun
 
 # Build for Cloudflare
 shovel build src/server.ts --platform cloudflare
+
+# Build and run lifecycle (install + activate)
+shovel build src/server.ts --lifecycle
+
+# Build and run install only
+shovel build src/server.ts --lifecycle install
 ```
 
 ### Output Structure
@@ -149,40 +154,22 @@ Configure build options in `shovel.json`:
 
 See [shovel.json](./shovel-json.md#build) for all options.
 
----
+### The `--lifecycle` Flag
 
-## shovel activate
+The `--lifecycle` flag builds your app and then runs the ServiceWorker lifecycle events (install and activate) without starting the server. This is useful for:
 
-Run the ServiceWorker lifecycle events without starting the server. Useful for static site generation.
+- **Database migrations**: Run schema migrations during the activate event
+- **Static site generation**: Pre-render pages to cache
+- **Cache warming**: Pre-populate caches before deployment
 
-```bash
-shovel activate <entrypoint> [options]
-```
+#### Lifecycle Stages
 
-### Arguments
+| Stage | Events Run |
+|-------|-----------|
+| `install` | install only |
+| `activate` (default) | install + activate |
 
-| Argument | Description |
-|----------|-------------|
-| `entrypoint` | Path to your ServiceWorker entry file |
-
-### Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-w, --workers <count>` | Number of workers | `1` |
-| `--platform <name>` | Target platform | Auto-detected |
-
-### Examples
-
-```bash
-# Run activate event
-shovel activate src/server.ts
-
-# With specific platform
-shovel activate src/server.ts --platform bun
-```
-
-### Use Case: Static Site Generation
+#### Example: Static Site Generation
 
 Pre-render pages during the activate event:
 
@@ -205,10 +192,10 @@ async function generateStaticSite() {
 }
 ```
 
-Then run:
+Then build and run lifecycle:
 
 ```bash
-shovel activate src/server.ts
+shovel build src/server.ts --lifecycle
 ```
 
 ---
