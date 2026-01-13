@@ -24,6 +24,8 @@ import {
 	createDatabaseFactory,
 } from "@b9g/platform";
 import {
+	ShovelServiceWorkerRegistration,
+	kServiceWorker,
 	createCacheFactory,
 	createDirectoryFactory,
 	type ShovelConfig,
@@ -56,6 +58,136 @@ export interface BunPlatformOptions extends PlatformConfig {
 }
 
 // ============================================================================
+// SERVICE WORKER CONTAINER
+// ============================================================================
+
+/**
+ * Bun ServiceWorkerContainer implementation
+ * Manages ServiceWorker registrations backed by native Web Workers
+ *
+ * Note: In Bun's production model, workers handle their own HTTP servers
+ * via reusePort, so the supervisor doesn't route requests through the pool.
+ * This container is mainly for worker lifecycle management.
+ */
+export class BunServiceWorkerContainer
+	extends EventTarget
+	implements ServiceWorkerContainer
+{
+	#platform: BunPlatform;
+	#pool?: ServiceWorkerPool;
+	#registration?: ShovelServiceWorkerRegistration;
+	#readyPromise: Promise<ServiceWorkerRegistration>;
+	#readyResolve?: (registration: ServiceWorkerRegistration) => void;
+
+	// Standard ServiceWorkerContainer properties
+	readonly controller: ServiceWorker | null = null;
+	oncontrollerchange: ((ev: Event) => unknown) | null = null;
+	onmessage: ((ev: MessageEvent) => unknown) | null = null;
+	onmessageerror: ((ev: MessageEvent) => unknown) | null = null;
+
+	constructor(platform: BunPlatform) {
+		super();
+		this.#platform = platform;
+		this.#readyPromise = new Promise((resolve) => {
+			this.#readyResolve = resolve;
+		});
+	}
+
+	/**
+	 * Register a ServiceWorker script
+	 * Spawns Web Workers (each with their own HTTP server in production)
+	 */
+	async register(
+		scriptURL: string | URL,
+		options?: RegistrationOptions,
+	): Promise<ServiceWorkerRegistration> {
+		const url =
+			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
+		const scope = options?.scope ?? "/";
+
+		// Create worker pool using native Web Workers
+		this.#pool = new ServiceWorkerPool(
+			{
+				workerCount: this.#platform.options.workers,
+				createWorker: (entrypoint) => new Worker(entrypoint),
+			},
+			url,
+		);
+
+		// Initialize workers (waits for ready)
+		await this.#pool.init();
+
+		// Create registration to track state
+		this.#registration = new ShovelServiceWorkerRegistration(scope, url);
+		this.#registration[kServiceWorker]._setState("activated");
+
+		// Resolve ready promise
+		this.#readyResolve?.(this.#registration);
+
+		return this.#registration;
+	}
+
+	/**
+	 * Get registration for scope
+	 */
+	async getRegistration(
+		scope?: string,
+	): Promise<ServiceWorkerRegistration | undefined> {
+		if (
+			scope === undefined ||
+			scope === "/" ||
+			scope === this.#registration?.scope
+		) {
+			return this.#registration;
+		}
+		return undefined;
+	}
+
+	/**
+	 * Get all registrations
+	 */
+	async getRegistrations(): Promise<readonly ServiceWorkerRegistration[]> {
+		return this.#registration ? [this.#registration] : [];
+	}
+
+	/**
+	 * Start receiving messages (no-op in server context)
+	 */
+	startMessages(): void {
+		// No-op
+	}
+
+	/**
+	 * Ready promise - resolves when a registration is active
+	 */
+	get ready(): Promise<ServiceWorkerRegistration> {
+		return this.#readyPromise;
+	}
+
+	/**
+	 * Internal: Get worker pool for request handling
+	 */
+	get pool(): ServiceWorkerPool | undefined {
+		return this.#pool;
+	}
+
+	/**
+	 * Internal: Terminate workers
+	 */
+	async terminate(): Promise<void> {
+		await this.#pool?.terminate();
+		this.#pool = undefined;
+	}
+
+	/**
+	 * Internal: Reload workers (for hot reload)
+	 */
+	async reloadWorkers(entrypoint: string): Promise<void> {
+		await this.#pool?.reloadWorkers(entrypoint);
+	}
+}
+
+// ============================================================================
 // IMPLEMENTATION
 // ============================================================================
 
@@ -65,6 +197,8 @@ export interface BunPlatformOptions extends PlatformConfig {
  */
 export class BunPlatform extends BasePlatform {
 	readonly name: string;
+	readonly serviceWorker: BunServiceWorkerContainer;
+
 	#options: {
 		port: number;
 		host: string;
@@ -90,6 +224,8 @@ export class BunPlatform extends BasePlatform {
 			cwd,
 			config: options.config,
 		};
+
+		this.serviceWorker = new BunServiceWorkerContainer(this);
 	}
 
 	/**
@@ -329,13 +465,14 @@ export class BunPlatform extends BasePlatform {
 	 * allowing the OS to load-balance across workers without message passing overhead.
 	 */
 	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints {
-		const safePath = JSON.stringify(userEntryPath);
+		// Note: userEntryPath is used as a module specifier for esbuild to resolve,
+		// not as a runtime string. It should be quoted but not JSON-escaped.
 
-		// Supervisor: uses runtime utilities for worker management (no HTTP server)
+		// Supervisor: uses platform.serviceWorker for worker management (no HTTP server)
 		const supervisorCode = `// Bun Production Supervisor
 import {getLogger} from "@logtape/logtape";
-import {ServiceWorkerPool} from "@b9g/platform";
 import {configureLogging} from "@b9g/platform/runtime";
+import BunPlatform from "@b9g/platform-bun";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -343,23 +480,17 @@ const logger = getLogger(["shovel", "platform"]);
 
 logger.info("Starting production server", {port: config.port, workers: config.workers});
 
-// Initialize worker pool (workers handle their own HTTP via reusePort)
-const workerURL = new URL("./worker.js", import.meta.url).href;
-const pool = new ServiceWorkerPool(
-	{
-		workerCount: config.workers,
-		createWorker: () => new Worker(workerURL),
-	},
-	workerURL,
-);
-await pool.init();
+// Initialize platform and register ServiceWorker (workers handle their own HTTP via reusePort)
+const platform = new BunPlatform({port: config.port, host: config.host, workers: config.workers});
+await platform.serviceWorker.register(new URL("./worker.js", import.meta.url).href);
+await platform.serviceWorker.ready;
 
 logger.info("All workers ready", {port: config.port, workers: config.workers});
 
 // Graceful shutdown
 const handleShutdown = async () => {
 	logger.info("Shutting down");
-	await pool.terminate();
+	await platform.serviceWorker.terminate();
 	process.exit(0);
 };
 process.on("SIGINT", handleShutdown);
@@ -396,7 +527,7 @@ const registration = result.registration;
 databases = result.databases;
 
 // Import user code (registers event handlers)
-await import(${safePath});
+await import("${userEntryPath}");
 
 // Run ServiceWorker lifecycle (stage from config.lifecycle if present)
 await runLifecycle(registration, config.lifecycle?.stage);

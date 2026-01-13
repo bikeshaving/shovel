@@ -9,7 +9,7 @@
 
 import * as ESBuild from "esbuild";
 import {builtinModules, createRequire} from "node:module";
-import {resolve, join, dirname, basename} from "path";
+import {resolve, join, dirname, basename, relative} from "path";
 import {mkdir} from "fs/promises";
 import {watch, type FSWatcher, existsSync} from "fs";
 import {getLogger} from "@logtape/logtape";
@@ -214,9 +214,13 @@ export class ServerBundler {
 		const platformDefaults = this.#options.platform.getDefaults();
 		const userBuildConfig = this.#options.userBuildConfig;
 
+		// Convert absolute entry path to relative path for esbuild resolution
+		// (esbuild resolves imports relative to resolveDir in the entry plugin)
+		const relativeEntryPath = "./" + relative(this.#projectRoot, entryPath);
+
 		// Always use production entry points - they include both supervisor and worker
 		const platformEntryPoints =
-			this.#options.platform.getProductionEntryPoints(entryPath);
+			this.#options.platform.getProductionEntryPoints(relativeEntryPath);
 
 		const jsxOptions = await loadJSXConfig(this.#projectRoot);
 

@@ -61,30 +61,35 @@ test(
 test(
 	"ShovelServiceWorkerContainer registry - scope matching",
 	async () => {
-		const {ShovelServiceWorkerContainer} = await import("../src/runtime.js");
+		const {ShovelServiceWorkerContainer, dispatchRequest} = await import(
+			"../src/runtime.js"
+		);
 
 		const container = new ShovelServiceWorkerContainer();
 
 		// Register ServiceWorkers with different scopes
-		await container.register("/api-worker.js", {scope: "/api/"});
-		await container.register("/admin-worker.js", {scope: "/admin/"});
+		const apiReg = await container.register("/api-worker.js", {scope: "/api/"});
+		const adminReg = await container.register("/admin-worker.js", {
+			scope: "/admin/",
+		});
 
 		// Install and activate all registrations
 		await container.installAll();
 
-		// Test request routing - should correctly reject when no fetch listeners
+		// Test dispatching to registrations - should correctly reject when no fetch listeners
 		const apiRequest = new Request("http://localhost/api/users");
 		const adminRequest = new Request("http://localhost/admin/dashboard");
-		const rootRequest = new Request("http://localhost/");
+		const rootReg = await container.getRegistration("/");
 
 		// Should reject with "No response provided for fetch event" since no listeners are registered
-		await expect(container.handleRequest(apiRequest)).rejects.toThrow(
+		await expect(dispatchRequest(apiReg, apiRequest)).rejects.toThrow(
 			"No response provided for fetch event",
 		);
-		await expect(container.handleRequest(adminRequest)).rejects.toThrow(
+		await expect(dispatchRequest(adminReg, adminRequest)).rejects.toThrow(
 			"No response provided for fetch event",
 		);
-		await expect(container.handleRequest(rootRequest)).rejects.toThrow(
+		const rootRequest = new Request("http://localhost/");
+		await expect(dispatchRequest(rootReg, rootRequest)).rejects.toThrow(
 			"No response provided for fetch event",
 		);
 	},
