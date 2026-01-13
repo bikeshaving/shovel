@@ -103,7 +103,10 @@ program
 	.command("build <entrypoint>")
 	.description("Build app for production")
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
-	.option("--lifecycle", "Run ServiceWorker lifecycle after build")
+	.option(
+		"--lifecycle [stage]",
+		"Run ServiceWorker lifecycle after build (install or activate, default: activate)",
+	)
 	.action(async (entrypoint, options) => {
 		checkPlatformReexec(options);
 		const {buildCommand} = await import("../src/commands/build.ts");

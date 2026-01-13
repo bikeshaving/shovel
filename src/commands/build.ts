@@ -32,11 +32,13 @@ export async function buildForProduction({
 	outDir,
 	platform = "node",
 	userBuildConfig,
+	lifecycle,
 }: {
 	entrypoint: string;
 	outDir: string;
 	platform?: string;
 	userBuildConfig?: ProcessedShovelConfig["build"];
+	lifecycle?: {stage: "install" | "activate"};
 }): Promise<BuildResult> {
 	const entryPath = resolve(entrypoint);
 	const outputDir = resolve(outDir);
@@ -59,6 +61,7 @@ export async function buildForProduction({
 		platform: platformInstance,
 		platformESBuildConfig,
 		userBuildConfig,
+		lifecycle,
 	});
 
 	const {success, outputs} = await bundler.build();
@@ -194,30 +197,48 @@ async function generateExecutablePackageJSON(platform: string) {
  */
 export async function buildCommand(
 	entrypoint: string,
-	options: {platform?: string; lifecycle?: boolean},
+	options: {platform?: string; lifecycle?: boolean | string},
 	config: ProcessedShovelConfig,
 ) {
 	// Use same platform resolution as develop command
 	const platform = Platform.resolvePlatform({...options, config});
+
+	// Determine lifecycle stage if --lifecycle is provided
+	let lifecycleOption: {stage: "install" | "activate"} | undefined;
+	if (options.lifecycle) {
+		const stage =
+			typeof options.lifecycle === "string" ? options.lifecycle : "activate";
+		if (stage !== "install" && stage !== "activate") {
+			throw new Error(
+				`Invalid lifecycle stage: ${stage}. Must be "install" or "activate".`,
+			);
+		}
+		lifecycleOption = {stage};
+	}
 
 	const {platform: platformInstance, workerPath} = await buildForProduction({
 		entrypoint,
 		outDir: "dist",
 		platform,
 		userBuildConfig: config.build,
+		lifecycle: lifecycleOption,
 	});
 
 	// Run lifecycle if requested
-	// --lifecycle runs the full ServiceWorker lifecycle (install + activate)
-	if (options.lifecycle) {
+	// --lifecycle [stage] runs the ServiceWorker lifecycle
+	// - --lifecycle or --lifecycle activate: runs install + activate (default)
+	// - --lifecycle install: runs install only
+	if (lifecycleOption) {
 		if (!workerPath) {
 			throw new Error("No worker entry point found in build outputs");
 		}
 
-		logger.info("Running ServiceWorker lifecycle");
+		logger.info("Running ServiceWorker lifecycle: {stage}", {
+			stage: lifecycleOption.stage,
+		});
 
 		// Load the worker via the platform
-		// Lifecycle runs at module load time - install and activate events fire
+		// Lifecycle runs at module load time - the worker reads config.lifecycle.stage
 		const serviceWorker = await platformInstance.loadServiceWorker(workerPath);
 
 		await serviceWorker.dispose();

@@ -261,16 +261,15 @@ export class CloudflarePlatform extends BasePlatform {
 		const safePath = JSON.stringify(userEntryPath);
 		const serverCode = `// Cloudflare Worker Entry
 import { config } from "shovel:config";
-import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
+import { initializeRuntime, createFetchHandler, runLifecycle } from "@b9g/platform-cloudflare/runtime";
 
 const registration = await initializeRuntime(config);
 
 // Import user code (bundled inline - this is a static import)
 import ${safePath};
 
-// Run ServiceWorker lifecycle
-await registration.install();
-await registration.activate();
+// Run ServiceWorker lifecycle (stage from config.lifecycle if present)
+await runLifecycle(registration, config.lifecycle?.stage);
 
 export default { fetch: createFetchHandler(registration) };
 `;

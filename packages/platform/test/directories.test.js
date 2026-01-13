@@ -3,7 +3,7 @@ import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
 import {NodeFSDirectory} from "@b9g/filesystem/node-fs.js";
-import {ShovelFetchEvent} from "../src/runtime.js";
+import {ShovelFetchEvent, runLifecycle} from "../src/runtime.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["test", "directories"]);
@@ -305,8 +305,7 @@ test(
 			});
 
 			// Activate ServiceWorker
-			await registration.install();
-			await registration.activate();
+			await runLifecycle(registration);
 
 			// Test request
 			const request = new Request("http://localhost/");
@@ -389,8 +388,7 @@ test(
 			});
 
 			// Activate ServiceWorker
-			await registration.install();
-			await registration.activate();
+			await runLifecycle(registration);
 
 			// Test different file types
 			const cssRequest = new Request("http://localhost/style.css");

@@ -14,8 +14,12 @@ import {
 	configureLogging,
 	createCacheFactory,
 	createDirectoryFactory,
+	runLifecycle,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
+
+// Re-export runLifecycle for entry templates
+export {runLifecycle};
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";

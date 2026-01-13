@@ -45,6 +45,11 @@ export interface BundlerOptions {
 	platformESBuildConfig: PlatformESBuildConfig;
 	/** User build config from shovel.json */
 	userBuildConfig?: ProcessedBuildConfig;
+	/** Lifecycle options for --lifecycle flag */
+	lifecycle?: {
+		/** Lifecycle stage to run: "install" or "activate" */
+		stage: "install" | "activate";
+	};
 }
 
 /**
@@ -245,6 +250,7 @@ export class ServerBundler {
 			...userPlugins,
 			createConfigPlugin(this.#projectRoot, this.#options.outDir, {
 				platformDefaults,
+				lifecycle: this.#options.lifecycle,
 			}),
 			createEntryPlugin(this.#projectRoot, platformEntryPoints),
 			importMetaPlugin(),

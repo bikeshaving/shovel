@@ -32,6 +32,11 @@ export interface ConfigPluginOptions {
 			{module: string; export?: string; [key: string]: unknown}
 		>;
 	};
+	/** Lifecycle options for --lifecycle flag */
+	lifecycle?: {
+		/** Lifecycle stage to run: "install" or "activate" */
+		stage: "install" | "activate";
+	};
 }
 
 /**
@@ -79,6 +84,7 @@ export function createConfigPlugin(
 					projectDir: projectRoot,
 					outDir: absoluteOutDir,
 					platformDefaults: options.platformDefaults,
+					lifecycle: options.lifecycle,
 				});
 
 				// Generate storage types (for both develop and build)

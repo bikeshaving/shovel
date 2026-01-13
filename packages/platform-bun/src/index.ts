@@ -368,7 +368,7 @@ process.on("SIGTERM", handleShutdown);
 		const workerCode = `// Bun Production Worker
 import BunPlatform from "@b9g/platform-bun";
 import {getLogger} from "@logtape/logtape";
-import {configureLogging, initWorkerRuntime, ShovelFetchEvent} from "@b9g/platform/runtime";
+import {configureLogging, initWorkerRuntime, runLifecycle, ShovelFetchEvent} from "@b9g/platform/runtime";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -396,18 +396,19 @@ databases = result.databases;
 // Import user code (registers event handlers)
 await import(${safePath});
 
-// Run ServiceWorker lifecycle
-await registration.install();
-await registration.activate();
+// Run ServiceWorker lifecycle (stage from config.lifecycle if present)
+await runLifecycle(registration, config.lifecycle?.stage);
 
-// Create server with reusePort for multi-worker support
-const platform = new BunPlatform({port: config.port, host: config.host});
-const handleRequest = (request) => {
-	const event = new ShovelFetchEvent(request);
-	return registration.handleRequest(event);
-};
-server = platform.createServer(handleRequest, {reusePort: config.workers > 1});
-await server.listen();
+// Start server (skip in lifecycle-only mode)
+if (!config.lifecycle) {
+	const platform = new BunPlatform({port: config.port, host: config.host});
+	const handleRequest = (request) => {
+		const event = new ShovelFetchEvent(request);
+		return registration.handleRequest(event);
+	};
+	server = platform.createServer(handleRequest, {reusePort: config.workers > 1});
+	await server.listen();
+}
 
 postMessage({type: "ready"});
 logger.info("Worker started", {port: config.port});

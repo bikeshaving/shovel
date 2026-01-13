@@ -3,6 +3,7 @@ import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
 	FetchEvent,
+	runLifecycle,
 } from "../dist/src/runtime.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
@@ -27,8 +28,7 @@ self.addEventListener("fetch", (event) => {
 });
 
 // Activate
-await registration.install();
-await registration.activate();
+await runLifecycle(registration);
 
 // Create test request
 const testRequest = new Request("http://localhost:8080/json");
