@@ -413,11 +413,12 @@ export class NodePlatform extends BasePlatform {
 	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints {
 		const safePath = JSON.stringify(userEntryPath);
 
-		// Supervisor: uses runtime utilities for worker management
+		// Supervisor: uses ServiceWorkerPool for worker management
 		const supervisorCode = `// Node.js Production Supervisor
 import {Worker} from "@b9g/node-webworker";
 import {getLogger} from "@logtape/logtape";
-import {configureLogging, initSupervisorRuntime} from "@b9g/platform/runtime";
+import {ServiceWorkerPool} from "@b9g/platform";
+import {configureLogging} from "@b9g/platform/runtime";
 import NodePlatform from "@b9g/platform-node";
 import {config} from "shovel:config";
 
@@ -426,28 +427,20 @@ const logger = getLogger(["shovel", "platform"]);
 
 logger.info("Starting production server", {port: config.port, workers: config.workers});
 
-// Initialize supervisor with worker pool
-const {handleRequest, shutdown, waitForReady} = initSupervisorRuntime({
-	workerCount: config.workers,
-	createWorker: () => {
-		const worker = new Worker(new URL("./worker.js", import.meta.url));
-		// Adapt close event to onclose property
-		worker.addEventListener("close", (event) => {
-			if (worker.onclose) worker.onclose(event);
-		});
-		return worker;
+// Initialize worker pool
+const workerURL = new URL("./worker.js", import.meta.url).href;
+const pool = new ServiceWorkerPool(
+	{
+		workerCount: config.workers,
+		createWorker: () => new Worker(workerURL),
 	},
-	onWorkerCrash: (exitCode) => {
-		logger.error("Worker crashed, exiting", {exitCode});
-		process.exit(1);
-	},
-});
-
-await waitForReady();
+	workerURL,
+);
+await pool.init();
 
 // Create HTTP server using platform abstraction
 const platform = new NodePlatform({port: config.port, host: config.host});
-const server = platform.createServer(handleRequest);
+const server = platform.createServer((request) => pool.handleRequest(request));
 await server.listen();
 
 logger.info("Server started", {port: config.port, host: config.host, workers: config.workers});
@@ -456,7 +449,7 @@ logger.info("Server started", {port: config.port, host: config.host, workers: co
 const handleShutdown = async () => {
 	logger.info("Shutting down");
 	await server.close();
-	await shutdown();
+	await pool.terminate();
 	process.exit(0);
 };
 process.on("SIGINT", handleShutdown);
