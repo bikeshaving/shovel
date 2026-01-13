@@ -4,6 +4,7 @@ import {
 	ShovelServiceWorkerRegistration,
 	FetchEvent,
 	runLifecycle,
+	dispatchRequest,
 } from "../dist/src/runtime.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
@@ -46,8 +47,8 @@ group("handleRequest breakdown", () => {
 	});
 
 	// Step 3: Get response promise
-	bench("3. handleRequest + await response", async () => {
-		return registration.handleRequest(testRequest);
+	bench("3. dispatchRequest + await response", async () => {
+		return dispatchRequest(registration, testRequest);
 	});
 });
 
@@ -57,8 +58,8 @@ group("Direct vs Event-based", () => {
 		return new Response(jsonBody, {headers: jsonHeaders});
 	});
 
-	bench("Via handleRequest", async () => {
-		return registration.handleRequest(testRequest);
+	bench("Via dispatchRequest", async () => {
+		return dispatchRequest(registration, testRequest);
 	});
 });
 
