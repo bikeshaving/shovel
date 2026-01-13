@@ -1527,26 +1527,6 @@ export class ShovelServiceWorkerContainer
 	}
 
 	/**
-	 * Route a request to the appropriate registration based on scope matching
-	 */
-	async handleRequest(request: Request): Promise<Response | null> {
-		const url = new URL(request.url);
-		const pathname = url.pathname;
-
-		// Find the most specific scope that matches this request
-		const matchingScope = this.#findMatchingScope(pathname);
-
-		if (matchingScope) {
-			const registration = this.#registrations.get(matchingScope);
-			if (registration && registration.ready) {
-				return await dispatchRequest(registration, request);
-			}
-		}
-
-		return null;
-	}
-
-	/**
 	 * Install and activate all registrations
 	 */
 	async installAll(): Promise<void> {
@@ -1590,24 +1570,6 @@ export class ShovelServiceWorkerContainer
 		}
 
 		return scope;
-	}
-
-	/**
-	 * Find the most specific scope that matches a pathname
-	 */
-	#findMatchingScope(pathname: string): string | null {
-		const scopes = Array.from(this.#registrations.keys());
-
-		// Sort by length descending to find most specific match first
-		scopes.sort((a, b) => b.length - a.length);
-
-		for (const scope of scopes) {
-			if (pathname.startsWith(scope === "/" ? "/" : scope)) {
-				return scope;
-			}
-		}
-
-		return null;
 	}
 
 	// Events: controllerchange, message, messageerror, updatefound

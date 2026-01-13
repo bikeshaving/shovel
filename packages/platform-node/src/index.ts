@@ -23,6 +23,10 @@ import {
 	createDatabaseFactory,
 } from "@b9g/platform";
 import {
+	ShovelServiceWorkerRegistration,
+	kServiceWorker,
+} from "@b9g/platform/runtime";
+import {
 	createCacheFactory,
 	createDirectoryFactory,
 	type ShovelConfig,
@@ -56,6 +60,129 @@ export interface NodePlatformOptions extends PlatformConfig {
 }
 
 // ============================================================================
+// SERVICE WORKER CONTAINER
+// ============================================================================
+
+/**
+ * Node.js ServiceWorkerContainer implementation
+ * Manages ServiceWorker registrations backed by worker threads
+ */
+export class NodeServiceWorkerContainer
+	extends EventTarget
+	implements ServiceWorkerContainer
+{
+	#platform: NodePlatform;
+	#pool?: ServiceWorkerPool;
+	#registration?: ShovelServiceWorkerRegistration;
+	#readyPromise: Promise<ServiceWorkerRegistration>;
+	#readyResolve?: (registration: ServiceWorkerRegistration) => void;
+
+	// Standard ServiceWorkerContainer properties
+	readonly controller: ServiceWorker | null = null;
+	oncontrollerchange: ((ev: Event) => unknown) | null = null;
+	onmessage: ((ev: MessageEvent) => unknown) | null = null;
+	onmessageerror: ((ev: MessageEvent) => unknown) | null = null;
+
+	constructor(platform: NodePlatform) {
+		super();
+		this.#platform = platform;
+		this.#readyPromise = new Promise((resolve) => {
+			this.#readyResolve = resolve;
+		});
+	}
+
+	/**
+	 * Register a ServiceWorker script
+	 * Spawns worker threads and runs lifecycle
+	 */
+	async register(
+		scriptURL: string | URL,
+		options?: RegistrationOptions,
+	): Promise<ServiceWorkerRegistration> {
+		const url =
+			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
+		const scope = options?.scope ?? "/";
+
+		// Create worker pool
+		this.#pool = new ServiceWorkerPool(
+			{
+				workerCount: this.#platform.options.workers,
+				createWorker: (entrypoint) =>
+					this.#platform.createWorker(entrypoint),
+			},
+			url,
+		);
+
+		// Initialize workers (waits for ready)
+		await this.#pool.init();
+
+		// Create registration to track state
+		this.#registration = new ShovelServiceWorkerRegistration(scope, url);
+		this.#registration[kServiceWorker]._setState("activated");
+
+		// Resolve ready promise
+		this.#readyResolve?.(this.#registration);
+
+		return this.#registration;
+	}
+
+	/**
+	 * Get registration for scope
+	 */
+	async getRegistration(
+		scope?: string,
+	): Promise<ServiceWorkerRegistration | undefined> {
+		if (scope === undefined || scope === "/" || scope === this.#registration?.scope) {
+			return this.#registration;
+		}
+		return undefined;
+	}
+
+	/**
+	 * Get all registrations
+	 */
+	async getRegistrations(): Promise<readonly ServiceWorkerRegistration[]> {
+		return this.#registration ? [this.#registration] : [];
+	}
+
+	/**
+	 * Start receiving messages (no-op in server context)
+	 */
+	startMessages(): void {
+		// No-op
+	}
+
+	/**
+	 * Ready promise - resolves when a registration is active
+	 */
+	get ready(): Promise<ServiceWorkerRegistration> {
+		return this.#readyPromise;
+	}
+
+	/**
+	 * Internal: Get worker pool for request handling
+	 */
+	get pool(): ServiceWorkerPool | undefined {
+		return this.#pool;
+	}
+
+	/**
+	 * Internal: Terminate workers
+	 */
+	async terminate(): Promise<void> {
+		await this.#pool?.terminate();
+		this.#pool = undefined;
+	}
+
+	/**
+	 * Internal: Reload workers (for hot reload)
+	 */
+	async reloadWorkers(entrypoint: string): Promise<void> {
+		await this.#pool?.reloadWorkers(entrypoint);
+	}
+}
+
+// ============================================================================
 // PLATFORM IMPLEMENTATION
 // ============================================================================
 
@@ -65,6 +192,7 @@ export interface NodePlatformOptions extends PlatformConfig {
  */
 export class NodePlatform extends BasePlatform {
 	readonly name: string;
+	readonly serviceWorker: NodeServiceWorkerContainer;
 
 	#options: {
 		port: number;
@@ -76,6 +204,8 @@ export class NodePlatform extends BasePlatform {
 	#workerPool?: ServiceWorkerPool;
 	#cacheStorage?: CustomCacheStorage;
 	#databaseStorage?: CustomDatabaseStorage;
+
+	#server?: Server;
 
 	constructor(options: NodePlatformOptions = {}) {
 		super(options);
@@ -91,6 +221,41 @@ export class NodePlatform extends BasePlatform {
 			cwd,
 			config: options.config,
 		};
+
+		this.serviceWorker = new NodeServiceWorkerContainer(this);
+	}
+
+	/**
+	 * Create a worker instance for the pool
+	 * Can be overridden for testing
+	 */
+	createWorker(entrypoint: string): Worker {
+		const {Worker} = require("@b9g/node-webworker");
+		return new Worker(entrypoint);
+	}
+
+	/**
+	 * Start the HTTP server, routing requests to ServiceWorker
+	 */
+	async listen(): Promise<Server> {
+		const pool = this.serviceWorker.pool;
+		if (!pool) {
+			throw new Error(
+				"No ServiceWorker registered. Call serviceWorker.register() first.",
+			);
+		}
+
+		this.#server = this.createServer((request) => pool.handleRequest(request));
+		await this.#server.listen();
+		return this.#server;
+	}
+
+	/**
+	 * Close the server and terminate workers
+	 */
+	async close(): Promise<void> {
+		await this.#server?.close();
+		await this.serviceWorker.terminate();
 	}
 
 	/**
@@ -411,13 +576,13 @@ export class NodePlatform extends BasePlatform {
 	 * - worker.js: Worker that handles requests via message loop
 	 */
 	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints {
-		const safePath = JSON.stringify(userEntryPath);
+		// Note: userEntryPath is used as a module specifier for esbuild to resolve,
+		// not as a runtime string. It should be quoted but not JSON-escaped.
 
-		// Supervisor: uses ServiceWorkerPool for worker management
+		// Supervisor: uses platform.serviceWorker for worker management
 		const supervisorCode = `// Node.js Production Supervisor
 import {Worker} from "@b9g/node-webworker";
 import {getLogger} from "@logtape/logtape";
-import {ServiceWorkerPool} from "@b9g/platform";
 import {configureLogging} from "@b9g/platform/runtime";
 import NodePlatform from "@b9g/platform-node";
 import {config} from "shovel:config";
@@ -427,29 +592,22 @@ const logger = getLogger(["shovel", "platform"]);
 
 logger.info("Starting production server", {port: config.port, workers: config.workers});
 
-// Initialize worker pool
-const workerURL = new URL("./worker.js", import.meta.url).href;
-const pool = new ServiceWorkerPool(
-	{
-		workerCount: config.workers,
-		createWorker: () => new Worker(workerURL),
-	},
-	workerURL,
-);
-await pool.init();
+// Initialize platform and register ServiceWorker
+// Override createWorker to use the imported Worker class (avoids require() issues with ESM)
+const platform = new NodePlatform({port: config.port, host: config.host, workers: config.workers});
+platform.createWorker = (entrypoint) => new Worker(entrypoint);
+await platform.serviceWorker.register(new URL("./worker.js", import.meta.url).href);
+await platform.serviceWorker.ready;
 
-// Create HTTP server using platform abstraction
-const platform = new NodePlatform({port: config.port, host: config.host});
-const server = platform.createServer((request) => pool.handleRequest(request));
-await server.listen();
+// Start HTTP server
+await platform.listen();
 
 logger.info("Server started", {port: config.port, host: config.host, workers: config.workers});
 
 // Graceful shutdown
 const handleShutdown = async () => {
 	logger.info("Shutting down");
-	await server.close();
-	await pool.terminate();
+	await platform.close();
 	process.exit(0);
 };
 process.on("SIGINT", handleShutdown);
@@ -468,7 +626,7 @@ await configureLogging(config.logging);
 const {registration, databases} = await initWorkerRuntime({config});
 
 // Import user code (registers event handlers)
-await import(${safePath});
+await import("${userEntryPath}");
 
 // Run ServiceWorker lifecycle (stage from config.lifecycle if present)
 await runLifecycle(registration, config.lifecycle?.stage);
