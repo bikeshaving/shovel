@@ -572,6 +572,8 @@ export interface WorkerPoolOptions {
 	requestTimeout?: number;
 	/** Working directory for file resolution */
 	cwd?: string;
+	/** Custom worker factory (if not provided, uses createWebWorker) */
+	createWorker?: (entrypoint: string) => Worker | Promise<Worker>;
 }
 
 export interface WorkerMessage {
@@ -703,7 +705,10 @@ export class ServiceWorkerPool {
 		Worker,
 		{resolve: () => void; reject: (e: Error) => void}
 	>;
-	#options: Required<Omit<WorkerPoolOptions, "cwd">> & {cwd?: string};
+	#options: Required<Omit<WorkerPoolOptions, "cwd" | "createWorker">> & {
+		cwd?: string;
+		createWorker?: (entrypoint: string) => Worker | Promise<Worker>;
+	};
 	#appEntrypoint: string;
 	#cacheStorage?: CacheStorage & {
 		handleMessage?: (worker: Worker, message: any) => Promise<void>;
@@ -750,7 +755,9 @@ export class ServiceWorkerPool {
 	 * The bundle self-initializes and sends "ready" when done
 	 */
 	async #createWorker(entrypoint: string): Promise<Worker> {
-		const worker = await createWebWorker(entrypoint);
+		const worker = this.#options.createWorker
+			? await this.#options.createWorker(entrypoint)
+			: await createWebWorker(entrypoint);
 
 		// Set up promise to wait for ready signal
 		const readyPromise = new Promise<void>((resolve, reject) => {

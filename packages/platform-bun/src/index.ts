@@ -334,7 +334,8 @@ export class BunPlatform extends BasePlatform {
 		// Supervisor: uses runtime utilities for worker management (no HTTP server)
 		const supervisorCode = `// Bun Production Supervisor
 import {getLogger} from "@logtape/logtape";
-import {configureLogging, initSupervisorRuntime} from "@b9g/platform/runtime";
+import {ServiceWorkerPool} from "@b9g/platform";
+import {configureLogging} from "@b9g/platform/runtime";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -342,22 +343,23 @@ const logger = getLogger(["shovel", "platform"]);
 
 logger.info("Starting production server", {port: config.port, workers: config.workers});
 
-// Initialize supervisor with worker pool (workers handle their own HTTP via reusePort)
-const {shutdown, waitForReady} = initSupervisorRuntime({
-	workerCount: config.workers,
-	createWorker: () => new Worker(new URL("./worker.js", import.meta.url).href),
-	onWorkerCrash: (exitCode) => {
-		logger.error("Worker crashed, exiting", {exitCode});
-		process.exit(1);
+// Initialize worker pool (workers handle their own HTTP via reusePort)
+const workerURL = new URL("./worker.js", import.meta.url).href;
+const pool = new ServiceWorkerPool(
+	{
+		workerCount: config.workers,
+		createWorker: () => new Worker(workerURL),
 	},
-});
+	workerURL,
+);
+await pool.init();
 
-await waitForReady();
+logger.info("All workers ready", {port: config.port, workers: config.workers});
 
 // Graceful shutdown
 const handleShutdown = async () => {
 	logger.info("Shutting down");
-	await shutdown();
+	await pool.terminate();
 	process.exit(0);
 };
 process.on("SIGINT", handleShutdown);
