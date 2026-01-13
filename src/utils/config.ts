@@ -1179,9 +1179,14 @@ export function generateConfigModule(
 				{module: string; export?: string; [key: string]: unknown}
 			>;
 		};
+		/** Lifecycle options for --lifecycle flag */
+		lifecycle?: {
+			/** Lifecycle stage to run: "install" or "activate" */
+			stage: "install" | "activate";
+		};
 	},
 ): string {
-	const {platformDefaults = {}} = options;
+	const {platformDefaults = {}, lifecycle} = options;
 	// Track imports and their placeholder mappings
 	const imports: string[] = [];
 	const placeholders: Map<string, string> = new Map(); // placeholder -> JS code
@@ -1375,6 +1380,13 @@ export function generateConfigModule(
 				databases[name] = reifyModule(dbConfig, "database", name);
 			}
 			config.databases = databases;
+		}
+
+		// Lifecycle options (for --lifecycle flag)
+		if (lifecycle) {
+			config.lifecycle = {
+				stage: lifecycle.stage,
+			};
 		}
 
 		return config;

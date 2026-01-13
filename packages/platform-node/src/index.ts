@@ -465,7 +465,8 @@ process.on("SIGTERM", handleShutdown);
 
 		// Worker: uses runtime utilities for ServiceWorker lifecycle and message handling
 		const workerCode = `// Node.js Production Worker
-import {configureLogging, initWorkerRuntime, startWorkerMessageLoop} from "@b9g/platform/runtime";
+import {parentPort} from "node:worker_threads";
+import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop} from "@b9g/platform/runtime";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -476,12 +477,18 @@ const {registration, databases} = await initWorkerRuntime({config});
 // Import user code (registers event handlers)
 await import(${safePath});
 
-// Run ServiceWorker lifecycle
-await registration.install();
-await registration.activate();
+// Run ServiceWorker lifecycle (stage from config.lifecycle if present)
+await runLifecycle(registration, config.lifecycle?.stage);
 
-// Start message loop for request handling
-startWorkerMessageLoop({registration, databases});
+// Start message loop for request handling, or signal ready and exit in lifecycle-only mode
+if (config.lifecycle) {
+	parentPort?.postMessage({type: "ready"});
+	// Clean shutdown after lifecycle
+	if (databases) await databases.closeAll();
+	process.exit(0);
+} else {
+	startWorkerMessageLoop({registration, databases});
+}
 `;
 
 		return {

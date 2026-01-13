@@ -451,8 +451,8 @@ self.addEventListener("fetch", (event) => {
 
 			// All dependencies including @b9g/* packages are bundled for self-contained builds
 			// Verify the bundled code contains expected runtime code
-			expect(workerContent).toContain("registration.install");
-			expect(workerContent).toContain("registration.activate");
+			// runLifecycle dispatches the install and activate events internally
+			expect(workerContent).toContain("runLifecycle");
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -542,8 +542,7 @@ self.skipWaiting();
 			expect(indexContent).toContain("shutdown");
 
 			// ServiceWorker lifecycle is in worker.js, not index.js
-			expect(workerContent).toContain("registration.install()");
-			expect(workerContent).toContain("registration.activate()");
+			expect(workerContent).toContain("runLifecycle(registration,");
 		} finally {
 			await cleanup(cleanup_paths);
 		}

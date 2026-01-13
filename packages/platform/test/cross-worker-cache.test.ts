@@ -37,7 +37,7 @@ describe("cross-worker cache sharing", () => {
 		fs.writeFileSync(
 			workerSourcePath,
 			`
-import {initWorkerRuntime, startWorkerMessageLoop} from "@b9g/platform/runtime";
+import {initWorkerRuntime, runLifecycle, startWorkerMessageLoop} from "@b9g/platform/runtime";
 import {MemoryCache} from "@b9g/cache/memory";
 
 // Initialize the worker runtime with PostMessageCache support
@@ -89,8 +89,7 @@ self.addEventListener("fetch", (event: FetchEvent) => {
 });
 
 // Activate and start message loop
-await registration.install();
-await registration.activate();
+await runLifecycle(registration);
 startWorkerMessageLoop(registration);
 `,
 		);

@@ -1111,6 +1111,20 @@ export class ShovelNavigationPreloadManager implements NavigationPreloadManager 
 	}
 }
 
+// ============================================================================
+// Symbols for internal lifecycle methods
+// These allow runLifecycle() to access internal methods without polluting the public API
+// ============================================================================
+
+/** @internal Symbol for accessing the internal ServiceWorker instance */
+export const kServiceWorker = Symbol("serviceWorker");
+
+/** @internal Symbol for dispatching the install lifecycle event */
+export const kDispatchInstall = Symbol("dispatchInstall");
+
+/** @internal Symbol for dispatching the activate lifecycle event */
+export const kDispatchActivate = Symbol("dispatchActivate");
+
 /**
  * ShovelServiceWorkerRegistration - Internal implementation of ServiceWorkerRegistration
  * This is also the Shovel ServiceWorker runtime - they are unified into one class
@@ -1124,8 +1138,8 @@ export class ShovelServiceWorkerRegistration
 	readonly updateViaCache: "imports" | "all" | "none";
 	readonly navigationPreload: NavigationPreloadManager;
 
-	// ServiceWorker instances representing different lifecycle states
-	_serviceWorker: ShovelServiceWorker;
+	// Internal ServiceWorker instance (accessed via symbol for lifecycle management)
+	[kServiceWorker]: ShovelServiceWorker;
 
 	// Web API properties (not supported in server context, but required by interface)
 	readonly cookies: any;
@@ -1137,7 +1151,7 @@ export class ShovelServiceWorkerRegistration
 		this.scope = scope;
 		this.updateViaCache = "imports";
 		this.navigationPreload = new ShovelNavigationPreloadManager();
-		this._serviceWorker = new ShovelServiceWorker(scriptURL, "parsed");
+		this[kServiceWorker] = new ShovelServiceWorker(scriptURL, "parsed");
 		this.cookies = null;
 		this.pushManager = null;
 		this.onupdatefound = null;
@@ -1145,20 +1159,20 @@ export class ShovelServiceWorkerRegistration
 
 	// Standard ServiceWorkerRegistration properties
 	get active(): ServiceWorker | null {
-		return this._serviceWorker.state === "activated"
-			? this._serviceWorker
+		return this[kServiceWorker].state === "activated"
+			? this[kServiceWorker]
 			: null;
 	}
 
 	get installing(): ServiceWorker | null {
-		return this._serviceWorker.state === "installing"
-			? this._serviceWorker
+		return this[kServiceWorker].state === "installing"
+			? this[kServiceWorker]
 			: null;
 	}
 
 	get waiting(): ServiceWorker | null {
-		return this._serviceWorker.state === "installed"
-			? this._serviceWorker
+		return this[kServiceWorker].state === "installed"
+			? this[kServiceWorker]
 			: null;
 	}
 
@@ -1191,15 +1205,16 @@ export class ShovelServiceWorkerRegistration
 		return this;
 	}
 
-	// Shovel runtime extensions (non-standard but needed for platforms)
+	// Internal lifecycle methods (accessed via symbols by runLifecycle)
 
 	/**
-	 * Install the ServiceWorker (Shovel extension)
+	 * Dispatch the install lifecycle event
+	 * @internal Use runLifecycle() instead of calling this directly
 	 */
-	async install(): Promise<void> {
-		if (this._serviceWorker.state !== "parsed") return;
+	async [kDispatchInstall](): Promise<void> {
+		if (this[kServiceWorker].state !== "parsed") return;
 
-		this._serviceWorker._setState("installing");
+		this[kServiceWorker]._setState("installing");
 
 		return new Promise<void>((resolve, reject) => {
 			const event = new ShovelInstallEvent();
@@ -1217,7 +1232,7 @@ export class ShovelServiceWorkerRegistration
 
 				const promises = event.getPromises();
 				if (promises.length === 0) {
-					this._serviceWorker._setState("installed");
+					this[kServiceWorker]._setState("installed");
 					resolve();
 				} else {
 					// Use Promise.all() so waitUntil rejections fail the install
@@ -1228,7 +1243,7 @@ export class ShovelServiceWorkerRegistration
 						"ServiceWorker install event timed out after 30s - waitUntil promises did not resolve",
 					)
 						.then(() => {
-							this._serviceWorker._setState("installed");
+							this[kServiceWorker]._setState("installed");
 							resolve();
 						})
 						.catch(reject);
@@ -1238,14 +1253,15 @@ export class ShovelServiceWorkerRegistration
 	}
 
 	/**
-	 * Activate the ServiceWorker (Shovel extension)
+	 * Dispatch the activate lifecycle event
+	 * @internal Use runLifecycle() instead of calling this directly
 	 */
-	async activate(): Promise<void> {
-		if (this._serviceWorker.state !== "installed") {
+	async [kDispatchActivate](): Promise<void> {
+		if (this[kServiceWorker].state !== "installed") {
 			throw new Error("ServiceWorker must be installed before activation");
 		}
 
-		this._serviceWorker._setState("activating");
+		this[kServiceWorker]._setState("activating");
 
 		return new Promise<void>((resolve, reject) => {
 			const event = new ShovelActivateEvent();
@@ -1263,7 +1279,7 @@ export class ShovelServiceWorkerRegistration
 
 				const promises = event.getPromises();
 				if (promises.length === 0) {
-					this._serviceWorker._setState("activated");
+					this[kServiceWorker]._setState("activated");
 					resolve();
 				} else {
 					// Use Promise.all() so waitUntil rejections fail the activation
@@ -1274,7 +1290,7 @@ export class ShovelServiceWorkerRegistration
 						"ServiceWorker activate event timed out after 30s - waitUntil promises did not resolve",
 					)
 						.then(() => {
-							this._serviceWorker._setState("activated");
+							this[kServiceWorker]._setState("activated");
 							resolve();
 						})
 						.catch(reject);
@@ -1292,7 +1308,7 @@ export class ShovelServiceWorkerRegistration
 	 * @param event - The fetch event to handle (created by platform adapter)
 	 */
 	async handleRequest(event: ShovelFetchEvent): Promise<Response> {
-		if (this._serviceWorker.state !== "activated") {
+		if (this[kServiceWorker].state !== "activated") {
 			throw new Error("ServiceWorker not activated");
 		}
 
@@ -1346,10 +1362,39 @@ export class ShovelServiceWorkerRegistration
 	 * Check if ready to handle requests (Shovel extension)
 	 */
 	get ready(): boolean {
-		return this._serviceWorker.state === "activated";
+		return this[kServiceWorker].state === "activated";
 	}
 
 	// Events: updatefound (standard), plus Shovel lifecycle events
+}
+
+/**
+ * Run ServiceWorker lifecycle events on a registration.
+ *
+ * This is the proper way to trigger lifecycle events in Shovel's server-side runtime.
+ * Unlike browsers where lifecycle is automatic, server-side code must explicitly
+ * trigger these events after registering event handlers.
+ *
+ * @param registration - The ServiceWorkerRegistration to run lifecycle on
+ * @param stage - Which lifecycle stage to run:
+ *   - "install": Run only the install event
+ *   - "activate": Run install then activate (default)
+ *
+ * @example
+ * ```typescript
+ * const {registration} = await initWorkerRuntime({config});
+ * await import("./server.js"); // Register event handlers
+ * await runLifecycle(registration); // Runs install + activate
+ * ```
+ */
+export async function runLifecycle(
+	registration: ShovelServiceWorkerRegistration,
+	stage: "install" | "activate" = "activate",
+): Promise<void> {
+	await registration[kDispatchInstall]();
+	if (stage === "activate") {
+		await registration[kDispatchActivate]();
+	}
 }
 
 /**
@@ -1419,8 +1464,8 @@ export class ShovelServiceWorkerContainer
 
 		if (registration) {
 			// Update existing registration with new script
-			registration._serviceWorker.scriptURL = url;
-			registration._serviceWorker._setState("parsed");
+			registration[kServiceWorker].scriptURL = url;
+			registration[kServiceWorker]._setState("parsed");
 		} else {
 			// Create new registration
 			registration = new ShovelServiceWorkerRegistration(scope, url);
@@ -1473,8 +1518,7 @@ export class ShovelServiceWorkerContainer
 	async installAll(): Promise<void> {
 		const installations = Array.from(this.#registrations.values()).map(
 			async (registration) => {
-				await registration.install();
-				await registration.activate();
+				await runLifecycle(registration);
 			},
 		);
 
@@ -2332,16 +2376,15 @@ export interface InitWorkerRuntimeResult {
  * @example
  * ```typescript
  * import {config} from "shovel:config";
- * import {initWorkerRuntime, startWorkerMessageLoop} from "@b9g/platform/runtime";
+ * import {initWorkerRuntime, runLifecycle, startWorkerMessageLoop} from "@b9g/platform/runtime";
  *
  * const {registration} = await initWorkerRuntime({config});
  *
  * // Import user code (registers event handlers)
- * import "./server.js";
+ * await import("./server.js");
  *
  * // Run lifecycle and start message loop
- * await registration.install();
- * await registration.activate();
+ * await runLifecycle(registration);
  * startWorkerMessageLoop(registration);
  * ```
  */

@@ -1,5 +1,5 @@
 import {test, expect} from "bun:test";
-import {ShovelFetchEvent} from "../src/runtime.js";
+import {ShovelFetchEvent, runLifecycle} from "../src/runtime.js";
 
 /**
  * ServiceWorker globals and lifecycle tests
@@ -96,11 +96,11 @@ test(
 		});
 
 		// Test install event
-		await registration.install();
+		await runLifecycle(registration, "install");
 		expect(installCalled).toBe(true);
 
 		// Test activate event
-		await registration.activate();
+		await runLifecycle(registration, "activate");
 		expect(activateCalled).toBe(true);
 
 		// Test fetch event
@@ -276,8 +276,7 @@ test(
 			event.respondWith(new Response("OK"));
 		});
 
-		await registration.install();
-		await registration.activate();
+		await runLifecycle(registration);
 
 		const request = new Request("http://localhost/test");
 		const response = await registration.handleRequest(
@@ -315,10 +314,10 @@ test(
 		});
 
 		// Test lifecycle sequence
-		await runtime.install();
+		await runLifecycle(runtime, "install");
 		expect(installEventFired).toBe(true);
 
-		await runtime.activate();
+		await runLifecycle(runtime, "activate");
 		expect(activateEventFired).toBe(true);
 	},
 	TIMEOUT,
@@ -344,8 +343,7 @@ test(
 		});
 
 		// Install and activate before handling requests
-		await runtime.install();
-		await runtime.activate();
+		await runLifecycle(runtime);
 
 		// Test different request types
 		const helloRequest = new Request("http://localhost/hello");
@@ -413,8 +411,7 @@ test(
 		});
 
 		// Install and activate before handling requests
-		await runtime.install();
-		await runtime.activate();
+		await runLifecycle(runtime);
 
 		const request = new Request("http://localhost/test");
 		const response = await runtime.handleRequest(new ShovelFetchEvent(request));
@@ -451,7 +448,7 @@ test(
 		// Install should fail when waitUntil promise rejects
 		let errorCaught = false;
 		try {
-			await runtime.install();
+			await runLifecycle(runtime, "install");
 			// Should not reach here - install should have thrown
 		} catch (error) {
 			errorCaught = true;
@@ -474,7 +471,7 @@ test(
 		const runtime = new ShovelServiceWorkerRegistration();
 
 		// Install first without errors
-		await runtime.install();
+		await runLifecycle(runtime, "install");
 
 		runtime.addEventListener("activate", (event) => {
 			// Add a promise that will reject
@@ -488,7 +485,7 @@ test(
 		// Activate should fail when waitUntil promise rejects
 		let errorCaught = false;
 		try {
-			await runtime.activate();
+			await runLifecycle(runtime, "activate");
 			// Should not reach here - activate should have thrown
 		} catch (error) {
 			errorCaught = true;
@@ -520,8 +517,7 @@ test(
 			);
 		});
 
-		await runtime.install();
-		await runtime.activate();
+		await runLifecycle(runtime);
 
 		const request = new Request("http://localhost/test");
 		// Should successfully get response despite waitUntil rejection
@@ -590,10 +586,10 @@ test(
 		});
 
 		// Run complete lifecycle
-		await registration.install();
+		await runLifecycle(registration, "install");
 		expect(installed).toBe(true);
 
-		await registration.activate();
+		await runLifecycle(registration, "activate");
 		expect(activated).toBe(true);
 
 		// Test requests
