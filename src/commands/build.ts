@@ -237,11 +237,13 @@ export async function buildCommand(
 			stage: lifecycleOption.stage,
 		});
 
-		// Load the worker via the platform
+		// Register and wait for ServiceWorker to be ready
 		// Lifecycle runs at module load time - the worker reads config.lifecycle.stage
-		const serviceWorker = await platformInstance.loadServiceWorker(workerPath);
+		await platformInstance.serviceWorker.register(workerPath);
+		await platformInstance.serviceWorker.ready;
 
-		await serviceWorker.dispose();
+		// Terminate workers after lifecycle completes
+		await platformInstance.serviceWorker.terminate();
 		logger.info("Lifecycle complete");
 	}
 

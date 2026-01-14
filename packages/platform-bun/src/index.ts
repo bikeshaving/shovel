@@ -13,12 +13,9 @@ import {
 	type Handler,
 	type Server,
 	type ServerOptions,
-	type ServiceWorkerOptions,
-	type ServiceWorkerInstance,
 	type PlatformESBuildConfig,
 	type ProductionEntryPoints,
 	ServiceWorkerPool,
-	type WorkerPoolOptions,
 	CustomLoggerStorage,
 	CustomDatabaseStorage,
 	createDatabaseFactory,
@@ -75,6 +72,7 @@ export class BunServiceWorkerContainer
 {
 	#platform: BunPlatform;
 	#pool?: ServiceWorkerPool;
+	#cacheStorage?: CustomCacheStorage;
 	#registration?: ShovelServiceWorkerRegistration;
 	#readyPromise: Promise<ServiceWorkerRegistration>;
 	#readyResolve?: (registration: ServiceWorkerRegistration) => void;
@@ -101,9 +99,42 @@ export class BunServiceWorkerContainer
 		scriptURL: string | URL,
 		options?: RegistrationOptions,
 	): Promise<ServiceWorkerRegistration> {
-		const url =
+		const urlStr =
 			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
 		const scope = options?.scope ?? "/";
+
+		// Convert file:// URL to filesystem path, or resolve relative path
+		let entryPath: string;
+		if (urlStr.startsWith("file://")) {
+			// Use URL to properly parse the file:// URL
+			entryPath = new URL(urlStr).pathname;
+		} else {
+			entryPath = Path.resolve(this.#platform.options.cwd, urlStr);
+		}
+
+		// Try to load config.js for cache coordination (exists in built output)
+		let config = this.#platform.options.config;
+		const configPath = Path.join(Path.dirname(entryPath), "config.js");
+		try {
+			// eslint-disable-next-line no-restricted-syntax -- Import generated config at runtime
+			const configModule = await import(configPath);
+			config = configModule.config ?? config;
+		} catch {
+			// config.js doesn't exist - use platform config instead
+			logger.debug`Using platform config (no config.js found)`;
+		}
+
+		// Create cache storage for cross-worker coordination
+		if (!this.#cacheStorage && config?.caches) {
+			this.#cacheStorage = new CustomCacheStorage(
+				createCacheFactory({configs: config.caches}),
+			);
+		}
+
+		// Terminate any existing pool
+		if (this.#pool) {
+			await this.#pool.terminate();
+		}
 
 		// Create worker pool using native Web Workers
 		this.#pool = new ServiceWorkerPool(
@@ -111,14 +142,15 @@ export class BunServiceWorkerContainer
 				workerCount: this.#platform.options.workers,
 				createWorker: (entrypoint) => new Worker(entrypoint),
 			},
-			url,
+			entryPath,
+			this.#cacheStorage,
 		);
 
 		// Initialize workers (waits for ready)
 		await this.#pool.init();
 
 		// Create registration to track state
-		this.#registration = new ShovelServiceWorkerRegistration(scope, url);
+		this.#registration = new ShovelServiceWorkerRegistration(scope, urlStr);
 		this.#registration[kServiceWorker]._setState("activated");
 
 		// Resolve ready promise
@@ -172,11 +204,15 @@ export class BunServiceWorkerContainer
 	}
 
 	/**
-	 * Internal: Terminate workers
+	 * Internal: Terminate workers and dispose cache storage
 	 */
 	async terminate(): Promise<void> {
 		await this.#pool?.terminate();
 		this.#pool = undefined;
+
+		// Dispose cache storage (closes Redis connections, etc.)
+		await this.#cacheStorage?.dispose();
+		this.#cacheStorage = undefined;
 	}
 
 	/**
@@ -206,8 +242,7 @@ export class BunPlatform extends BasePlatform {
 		workers: number;
 		config?: ShovelConfig;
 	};
-	#workerPool?: ServiceWorkerPool;
-	#cacheStorage?: CustomCacheStorage;
+	#server?: Server;
 	#databaseStorage?: CustomDatabaseStorage;
 
 	constructor(options: BunPlatformOptions = {}) {
@@ -233,17 +268,6 @@ export class BunPlatform extends BasePlatform {
 	 */
 	get options() {
 		return this.#options;
-	}
-
-	/**
-	 * Get/set worker pool for testing
-	 */
-	get workerPool() {
-		return this.#workerPool;
-	}
-
-	set workerPool(pool: ServiceWorkerPool | undefined) {
-		this.#workerPool = pool;
 	}
 
 	/**
@@ -369,79 +393,28 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Load and run a ServiceWorker-style entrypoint with Bun
-	 * Uses native Web Workers with the common WorkerPool
+	 * Start listening for connections using pool's handlers
 	 */
-	async loadServiceWorker(
-		entrypoint: string,
-		options: ServiceWorkerOptions = {},
-	): Promise<ServiceWorkerInstance> {
-		const workerCount = options.workerCount ?? this.#options.workers;
-		const entryPath = Path.resolve(this.#options.cwd, entrypoint);
-
-		// Create shared cache storage if not already created
-		if (!this.#cacheStorage) {
-			this.#cacheStorage = await this.createCaches();
+	async listen(): Promise<Server> {
+		const pool = this.serviceWorker.pool;
+		if (!pool) {
+			throw new Error("No ServiceWorker registered - call serviceWorker.register() first");
 		}
 
-		// Terminate any existing worker pool
-		if (this.#workerPool) {
-			await this.#workerPool.terminate();
-		}
-
-		const poolOptions: WorkerPoolOptions = {
-			workerCount,
-			requestTimeout: 30000,
-			cwd: this.#options.cwd,
-		};
-
-		logger.debug("Creating ServiceWorker pool", {entryPath, workerCount});
-
-		// Bun has native Worker support - ServiceWorkerPool will use new Worker() directly
-		this.#workerPool = new ServiceWorkerPool(
-			poolOptions,
-			entryPath,
-			this.#cacheStorage,
+		this.#server = this.createServer(
+			(request) => pool.handleRequest(request),
+			{port: this.#options.port, host: this.#options.host},
 		);
+		await this.#server.listen();
+		return this.#server;
+	}
 
-		// Initialize workers (Bun has native Web Workers)
-		// init() creates workers and loads the ServiceWorker code
-		await this.#workerPool.init();
-
-		// Capture references for closures
-		const workerPool = this.#workerPool;
-		const platform = this;
-
-		const instance: ServiceWorkerInstance = {
-			runtime: workerPool,
-			handleRequest: async (request: Request) => {
-				if (!platform.#workerPool) {
-					throw new Error("WorkerPool not initialized");
-				}
-				return platform.#workerPool.handleRequest(request);
-			},
-			install: async () => {
-				logger.debug("ServiceWorker installed", {method: "native_web_workers"});
-			},
-			activate: async () => {
-				logger.debug("ServiceWorker activated", {method: "native_web_workers"});
-			},
-			get ready() {
-				return workerPool?.ready ?? false;
-			},
-			dispose: async () => {
-				if (platform.#workerPool) {
-					await platform.#workerPool.terminate();
-					platform.#workerPool = undefined;
-				}
-				logger.debug("ServiceWorker disposed", {});
-			},
-		};
-
-		logger.debug("ServiceWorker loaded", {
-			features: ["native_web_workers", "coordinated_caches"],
-		});
-		return instance;
+	/**
+	 * Close the server
+	 */
+	async close(): Promise<void> {
+		await this.#server?.close();
+		this.#server = undefined;
 	}
 
 	/**
@@ -449,9 +422,7 @@ export class BunPlatform extends BasePlatform {
 	 * @param entrypoint - Path to the new entrypoint (hashed filename)
 	 */
 	async reloadWorkers(entrypoint: string): Promise<void> {
-		if (this.#workerPool) {
-			await this.#workerPool.reloadWorkers(entrypoint);
-		}
+		await this.serviceWorker.reloadWorkers(entrypoint);
 	}
 
 	/**
@@ -603,17 +574,11 @@ logger.info("Worker started", {port: config.port});
 	 * Dispose of platform resources
 	 */
 	async dispose(): Promise<void> {
-		// Dispose worker pool
-		if (this.#workerPool) {
-			await this.#workerPool.terminate();
-			this.#workerPool = undefined;
-		}
+		// Close server
+		await this.close();
 
-		// Dispose cache storage (closes Redis connections, etc.)
-		if (this.#cacheStorage) {
-			await this.#cacheStorage.dispose();
-			this.#cacheStorage = undefined;
-		}
+		// Terminate workers via container
+		await this.serviceWorker.terminate();
 
 		// Dispose database storage (closes database connections)
 		if (this.#databaseStorage) {

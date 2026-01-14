@@ -152,6 +152,18 @@ export interface PlatformDefaults {
 }
 
 /**
+ * Extended ServiceWorkerContainer with internal methods for hot reload
+ */
+export interface ShovelServiceWorkerContainer extends ServiceWorkerContainer {
+	/** Internal: Get the worker pool for request handling */
+	readonly pool?: ServiceWorkerPool;
+	/** Internal: Terminate all workers */
+	terminate(): Promise<void>;
+	/** Internal: Reload workers (for hot reload) */
+	reloadWorkers(entrypoint: string): Promise<void>;
+}
+
+/**
  * Platform interface - ServiceWorker entrypoint loader for JavaScript runtimes
  *
  * The core responsibility: "Take a ServiceWorker-style app file and make it run in this environment"
@@ -163,13 +175,21 @@ export interface Platform {
 	readonly name: string;
 
 	/**
-	 * Load and run a ServiceWorker-style entrypoint
-	 * This is where all the platform-specific complexity lives
+	 * ServiceWorkerContainer for managing registrations (Node/Bun only)
+	 * Similar to navigator.serviceWorker in browsers
 	 */
-	loadServiceWorker(
-		entrypoint: string,
-		options?: ServiceWorkerOptions,
-	): Promise<ServiceWorkerInstance>;
+	readonly serviceWorker: ShovelServiceWorkerContainer;
+
+	/**
+	 * Start HTTP server and route requests to ServiceWorker (Node/Bun only)
+	 * Must call serviceWorker.register() first
+	 */
+	listen(): Promise<Server>;
+
+	/**
+	 * Close server and terminate workers (Node/Bun only)
+	 */
+	close(): Promise<void>;
 
 	/**
 	 * SUPPORTING UTILITY - Create server instance for this platform
@@ -406,7 +426,9 @@ export abstract class BasePlatform implements Platform {
 	}
 
 	abstract readonly name: string;
-	abstract loadServiceWorker(entrypoint: string, options?: any): Promise<any>;
+	abstract readonly serviceWorker: ShovelServiceWorkerContainer;
+	abstract listen(): Promise<Server>;
+	abstract close(): Promise<void>;
 	abstract createServer(handler: any, options?: any): any;
 
 	/**

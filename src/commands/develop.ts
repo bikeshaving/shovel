@@ -25,45 +25,30 @@ export async function developCommand(
 		logger.debug("Platform: {platform}", {platform: platformName});
 		logger.debug("Worker count: {workerCount}", {workerCount});
 
-		// Create platform with server defaults
+		// Create platform with server and worker settings
 		const platformInstance = await Platform.createPlatform(platformName, {
 			port,
 			host,
+			workers: workerCount,
 		});
 		const platformESBuildConfig = platformInstance.getESBuildConfig();
 
 		logger.info("Starting development server");
 
-		// Track state for hot reload recovery
-		let serviceWorker:
-			| Awaited<ReturnType<typeof platformInstance.loadServiceWorker>>
-			| undefined;
-		let server: ReturnType<typeof platformInstance.createServer> | undefined;
 		let serverStarted = false;
 
 		// Helper to start or reload the server
 		const startOrReloadServer = async (workerPath: string) => {
 			if (!serverStarted) {
-				// First successful build - start the server
-				serviceWorker = await platformInstance.loadServiceWorker(workerPath, {
-					hotReload: true,
-					workerCount,
-				});
-
-				server = platformInstance.createServer(serviceWorker.handleRequest, {
-					port,
-					host,
-				});
-
-				await server.listen();
+				// First successful build - register ServiceWorker and start server
+				await platformInstance.serviceWorker.register(workerPath);
+				await platformInstance.serviceWorker.ready;
+				await platformInstance.listen();
 				serverStarted = true;
 				logger.info("Server running at http://{host}:{port}", {host, port});
-			} else if (
-				platformInstance &&
-				typeof platformInstance.reloadWorkers === "function"
-			) {
+			} else {
 				// Subsequent builds - hot reload workers
-				await platformInstance.reloadWorkers(workerPath);
+				await platformInstance.serviceWorker.reloadWorkers(workerPath);
 				logger.info("Reloaded");
 			}
 		};
@@ -97,9 +82,7 @@ export async function developCommand(
 		const shutdown = async (signal: string) => {
 			logger.debug("Shutting down ({signal})", {signal});
 			await bundler.stop();
-			await serviceWorker?.dispose();
 			await platformInstance.dispose();
-			await server?.close();
 			logger.debug("Shutdown complete");
 			process.exit(0);
 		};
