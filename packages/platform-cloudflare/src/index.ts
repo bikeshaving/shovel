@@ -76,21 +76,26 @@ class CloudflareServiceWorkerContainer
 	implements ShovelServiceWorkerContainer
 {
 	#platform: CloudflarePlatform;
-	#instance: ServiceWorkerInstance | null = null;
+	#instance: ServiceWorkerInstance | null;
 	#readyPromise: Promise<ServiceWorkerRegistration>;
 	#readyResolve?: (reg: ServiceWorkerRegistration) => void;
 
-	readonly controller: ServiceWorker | null = null;
-	oncontrollerchange: ((ev: Event) => unknown) | null = null;
-	onmessage: ((ev: MessageEvent) => unknown) | null = null;
-	onmessageerror: ((ev: MessageEvent) => unknown) | null = null;
+	readonly controller: ServiceWorker | null;
+	oncontrollerchange: ((ev: Event) => unknown) | null;
+	onmessage: ((ev: MessageEvent) => unknown) | null;
+	onmessageerror: ((ev: MessageEvent) => unknown) | null;
 
 	constructor(platform: CloudflarePlatform) {
 		super();
 		this.#platform = platform;
+		this.#instance = null;
 		this.#readyPromise = new Promise((resolve) => {
 			this.#readyResolve = resolve;
 		});
+		this.controller = null;
+		this.oncontrollerchange = null;
+		this.onmessage = null;
+		this.onmessageerror = null;
 	}
 
 	get ready(): Promise<ServiceWorkerRegistration> {

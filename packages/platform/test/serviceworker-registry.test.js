@@ -61,9 +61,8 @@ test(
 test(
 	"ShovelServiceWorkerContainer registry - scope matching",
 	async () => {
-		const {ShovelServiceWorkerContainer, dispatchRequest} = await import(
-			"../src/runtime.js"
-		);
+		const {ShovelServiceWorkerContainer, dispatchRequest} =
+			await import("../src/runtime.js");
 
 		const container = new ShovelServiceWorkerContainer();
 

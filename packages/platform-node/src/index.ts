@@ -77,10 +77,10 @@ export class NodeServiceWorkerContainer
 	#readyResolve?: (registration: ServiceWorkerRegistration) => void;
 
 	// Standard ServiceWorkerContainer properties
-	readonly controller: ServiceWorker | null = null;
-	oncontrollerchange: ((ev: Event) => unknown) | null = null;
-	onmessage: ((ev: MessageEvent) => unknown) | null = null;
-	onmessageerror: ((ev: MessageEvent) => unknown) | null = null;
+	readonly controller: ServiceWorker | null;
+	oncontrollerchange: ((ev: Event) => unknown) | null;
+	onmessage: ((ev: MessageEvent) => unknown) | null;
+	onmessageerror: ((ev: MessageEvent) => unknown) | null;
 
 	constructor(platform: NodePlatform) {
 		super();
@@ -88,6 +88,10 @@ export class NodeServiceWorkerContainer
 		this.#readyPromise = new Promise((resolve) => {
 			this.#readyResolve = resolve;
 		});
+		this.controller = null;
+		this.oncontrollerchange = null;
+		this.onmessage = null;
+		this.onmessageerror = null;
 	}
 
 	/**
@@ -118,9 +122,9 @@ export class NodeServiceWorkerContainer
 			// eslint-disable-next-line no-restricted-syntax -- Import generated config at runtime
 			const configModule = await import(configPath);
 			config = configModule.config ?? config;
-		} catch {
+		} catch (error) {
 			// config.js doesn't exist - use platform config instead
-			logger.debug`Using platform config (no config.js found)`;
+			logger.debug`Using platform config (no config.js found): ${error}`;
 		}
 
 		// Create cache storage for cross-worker coordination
@@ -139,8 +143,7 @@ export class NodeServiceWorkerContainer
 		this.#pool = new ServiceWorkerPool(
 			{
 				workerCount: this.#platform.options.workers,
-				createWorker: (entrypoint) =>
-					this.#platform.createWorker(entrypoint),
+				createWorker: (entrypoint) => this.#platform.createWorker(entrypoint),
 			},
 			entryPath,
 			this.#cacheStorage,
@@ -165,7 +168,11 @@ export class NodeServiceWorkerContainer
 	async getRegistration(
 		scope?: string,
 	): Promise<ServiceWorkerRegistration | undefined> {
-		if (scope === undefined || scope === "/" || scope === this.#registration?.scope) {
+		if (
+			scope === undefined ||
+			scope === "/" ||
+			scope === this.#registration?.scope
+		) {
 			return this.#registration;
 		}
 		return undefined;
@@ -264,7 +271,6 @@ export class NodePlatform extends BasePlatform {
 	 * Can be overridden for testing
 	 */
 	async createWorker(entrypoint: string): Promise<Worker> {
-		// eslint-disable-next-line no-restricted-syntax -- Dynamic import for Node.js ESM compatibility
 		const {Worker: NodeWebWorker} = await import("@b9g/node-webworker");
 		// Cast to Worker - our shim implements the core functionality but not all Web Worker APIs
 		return new NodeWebWorker(entrypoint) as unknown as Worker;
@@ -300,7 +306,6 @@ export class NodePlatform extends BasePlatform {
 	get options() {
 		return this.#options;
 	}
-
 
 	/**
 	 * Create cache storage using config from shovel.json

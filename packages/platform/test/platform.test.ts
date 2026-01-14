@@ -14,7 +14,7 @@ describe("@b9g/platform", () => {
 				oncontrollerchange: null,
 				onmessage: null,
 				onmessageerror: null,
-				register: async () => ({} as ServiceWorkerRegistration),
+				register: async () => ({}) as ServiceWorkerRegistration,
 				getRegistration: async () => undefined,
 				getRegistrations: async () => [],
 				startMessages: () => {},

@@ -78,10 +78,10 @@ export class BunServiceWorkerContainer
 	#readyResolve?: (registration: ServiceWorkerRegistration) => void;
 
 	// Standard ServiceWorkerContainer properties
-	readonly controller: ServiceWorker | null = null;
-	oncontrollerchange: ((ev: Event) => unknown) | null = null;
-	onmessage: ((ev: MessageEvent) => unknown) | null = null;
-	onmessageerror: ((ev: MessageEvent) => unknown) | null = null;
+	readonly controller: ServiceWorker | null;
+	oncontrollerchange: ((ev: Event) => unknown) | null;
+	onmessage: ((ev: MessageEvent) => unknown) | null;
+	onmessageerror: ((ev: MessageEvent) => unknown) | null;
 
 	constructor(platform: BunPlatform) {
 		super();
@@ -89,6 +89,10 @@ export class BunServiceWorkerContainer
 		this.#readyPromise = new Promise((resolve) => {
 			this.#readyResolve = resolve;
 		});
+		this.controller = null;
+		this.oncontrollerchange = null;
+		this.onmessage = null;
+		this.onmessageerror = null;
 	}
 
 	/**
@@ -119,9 +123,9 @@ export class BunServiceWorkerContainer
 			// eslint-disable-next-line no-restricted-syntax -- Import generated config at runtime
 			const configModule = await import(configPath);
 			config = configModule.config ?? config;
-		} catch {
+		} catch (error) {
 			// config.js doesn't exist - use platform config instead
-			logger.debug`Using platform config (no config.js found)`;
+			logger.debug`Using platform config (no config.js found): ${error}`;
 		}
 
 		// Create cache storage for cross-worker coordination
@@ -398,13 +402,15 @@ export class BunPlatform extends BasePlatform {
 	async listen(): Promise<Server> {
 		const pool = this.serviceWorker.pool;
 		if (!pool) {
-			throw new Error("No ServiceWorker registered - call serviceWorker.register() first");
+			throw new Error(
+				"No ServiceWorker registered - call serviceWorker.register() first",
+			);
 		}
 
-		this.#server = this.createServer(
-			(request) => pool.handleRequest(request),
-			{port: this.#options.port, host: this.#options.host},
-		);
+		this.#server = this.createServer((request) => pool.handleRequest(request), {
+			port: this.#options.port,
+			host: this.#options.host,
+		});
 		await this.#server.listen();
 		return this.#server;
 	}
