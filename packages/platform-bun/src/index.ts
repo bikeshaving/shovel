@@ -4,8 +4,20 @@
  * Provides built-in TypeScript/JSX support and simplified server setup for Bun environments.
  */
 
+// Node.js built-ins (Bun is Node-compatible)
 import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
+import * as Path from "node:path";
+
+// External packages
+import {getLogger} from "@logtape/logtape";
+
+// Internal @b9g/* packages
+import {CustomCacheStorage} from "@b9g/cache";
+import {MemoryCache} from "@b9g/cache/memory";
+import {CustomDirectoryStorage} from "@b9g/filesystem";
+import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
+import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
 	BasePlatform,
 	type PlatformConfig,
@@ -27,13 +39,6 @@ import {
 	createDirectoryFactory,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
-import {CustomCacheStorage} from "@b9g/cache";
-import {MemoryCache} from "@b9g/cache/memory";
-import {CustomDirectoryStorage} from "@b9g/filesystem";
-import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
-import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
-import {getLogger} from "@logtape/logtape";
-import * as Path from "path";
 
 const logger = getLogger(["shovel", "platform"]);
 

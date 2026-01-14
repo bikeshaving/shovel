@@ -4,8 +4,21 @@
  * Provides hot reloading, ESBuild integration, and optimized caching for Node.js environments.
  */
 
+// Node.js built-ins
+import * as HTTP from "node:http";
 import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
+import * as Path from "node:path";
+
+// External packages
+import {getLogger} from "@logtape/logtape";
+
+// Internal @b9g/* packages
+import {CustomCacheStorage} from "@b9g/cache";
+import {MemoryCache} from "@b9g/cache/memory";
+import {CustomDirectoryStorage} from "@b9g/filesystem";
+import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
+import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
 	BasePlatform,
 	type PlatformConfig,
@@ -23,20 +36,10 @@ import {
 import {
 	ShovelServiceWorkerRegistration,
 	kServiceWorker,
-} from "@b9g/platform/runtime";
-import {
 	createCacheFactory,
 	createDirectoryFactory,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
-import {CustomCacheStorage} from "@b9g/cache";
-import {MemoryCache} from "@b9g/cache/memory";
-import {CustomDirectoryStorage} from "@b9g/filesystem";
-import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
-import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
-import * as HTTP from "http";
-import * as Path from "path";
-import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "platform"]);
 

@@ -10,7 +10,13 @@
  * - Caches use Cloudflare's native Cache API
  */
 
-// Platform imports (for CloudflarePlatform class - only used in Node.js context)
+// External packages
+import {getLogger} from "@logtape/logtape";
+import type {Miniflare} from "miniflare";
+
+// Internal @b9g/* packages
+import {CustomCacheStorage} from "@b9g/cache";
+import type {DirectoryStorage} from "@b9g/filesystem";
 import {
 	BasePlatform,
 	PlatformConfig,
@@ -27,15 +33,11 @@ import {
 	type ShovelServiceWorkerContainer,
 } from "@b9g/platform";
 import {createCacheFactory, type ShovelConfig} from "@b9g/platform/runtime";
-import {CustomCacheStorage} from "@b9g/cache";
-import type {DirectoryStorage} from "@b9g/filesystem";
-import {getLogger} from "@logtape/logtape";
-import type {Miniflare} from "miniflare";
+
+// Relative imports
+import {CloudflareNativeCache} from "./caches.js";
 
 const logger = getLogger(["shovel", "platform"]);
-
-// Import CloudflareNativeCache for local use (in createCaches)
-import {CloudflareNativeCache} from "./caches.js";
 
 // Re-export common platform types
 export type {
