@@ -8,6 +8,7 @@
         "@b9g/async-context": "workspace:*",
         "@b9g/zen": "^0.1.6",
         "@clack/prompts": "^0.7.0",
+        "@esbuild-plugins/node-modules-polyfill": "^0.2.2",
         "@logtape/logtape": "^1.2.0",
         "commander": "^13.1.0",
         "esbuild": "^0.27.2",
@@ -149,7 +150,7 @@
     },
     "packages/cache-redis": {
       "name": "@b9g/cache-redis",
-      "version": "0.2.0-beta.0",
+      "version": "0.2.0-beta.1",
       "dependencies": {
         "@logtape/logtape": "^1.2.0",
         "redis": "^4.6.10",
@@ -163,7 +164,7 @@
     },
     "packages/filesystem": {
       "name": "@b9g/filesystem",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "dependencies": {
         "mime": "^4.0.4",
       },
@@ -208,7 +209,7 @@
     },
     "packages/node-webworker": {
       "name": "@b9g/node-webworker",
-      "version": "0.2.0-beta.0",
+      "version": "0.2.0-beta.1",
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
         "@types/node": "^18.0.0",
@@ -228,7 +229,7 @@
     },
     "packages/platform": {
       "name": "@b9g/platform",
-      "version": "0.1.12",
+      "version": "0.1.14-beta.0",
       "dependencies": {
         "@b9g/async-context": "workspace:*",
         "@b9g/cache": "workspace:*",
@@ -259,7 +260,7 @@
     },
     "packages/platform-bun": {
       "name": "@b9g/platform-bun",
-      "version": "0.1.10",
+      "version": "0.1.12-beta.0",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/cache": "workspace:*",
@@ -273,7 +274,7 @@
     },
     "packages/platform-cloudflare": {
       "name": "@b9g/platform-cloudflare",
-      "version": "0.1.10",
+      "version": "0.1.12-beta.0",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/async-context": "workspace:*",
@@ -290,7 +291,7 @@
     },
     "packages/platform-node": {
       "name": "@b9g/platform-node",
-      "version": "0.1.12",
+      "version": "0.1.14-beta.0",
       "dependencies": {
         "@b9g/cache": "workspace:*",
         "@b9g/http-errors": "workspace:*",
@@ -305,7 +306,7 @@
     },
     "packages/router": {
       "name": "@b9g/router",
-      "version": "0.2.0-beta.0",
+      "version": "0.2.0-beta.1",
       "dependencies": {
         "@b9g/http-errors": "workspace:*",
         "@b9g/match-pattern": "workspace:*",
