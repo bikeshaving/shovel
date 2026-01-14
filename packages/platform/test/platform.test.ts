@@ -8,11 +8,30 @@ import {
 describe("@b9g/platform", () => {
 	describe("Platform registry", () => {
 		test("registers and retrieves platforms", () => {
+			const mockServiceWorkerContainer = {
+				controller: null,
+				ready: Promise.resolve({} as ServiceWorkerRegistration),
+				oncontrollerchange: null,
+				onmessage: null,
+				onmessageerror: null,
+				register: async () => ({} as ServiceWorkerRegistration),
+				getRegistration: async () => undefined,
+				getRegistrations: async () => [],
+				startMessages: () => {},
+				addEventListener: () => {},
+				removeEventListener: () => {},
+				dispatchEvent: () => true,
+				pool: undefined,
+				terminate: async () => {},
+				reloadWorkers: async () => {},
+			};
 			const mockPlatform: Platform = {
 				name: "test",
-				loadServiceWorker: async () => {
+				serviceWorker: mockServiceWorkerContainer,
+				listen: async () => {
 					throw new Error("Not implemented");
 				},
+				close: async () => {},
 				createCaches: async () => {
 					throw new Error("Not implemented");
 				},

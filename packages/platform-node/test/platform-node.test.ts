@@ -110,34 +110,26 @@ describe("NodePlatform", () => {
 		expect(await cached?.text()).toBe("test");
 	});
 
-	test("should reload workers", async () => {
-		// Create a mock worker pool
-		const mockWorkerPool = {
-			reloadWorkers: mock(() => Promise.resolve()),
-			terminate: mock(() => Promise.resolve()),
-		};
+	test("should reload workers via serviceWorker container", async () => {
+		// Create a mock for the reloadWorkers method
+		const mockReload = mock(() => Promise.resolve());
 
-		// Set the internal worker pool
-		(platform as any).workerPool = mockWorkerPool;
+		// Mock the serviceWorker.reloadWorkers method directly
+		(platform.serviceWorker as any).reloadWorkers = mockReload;
 
 		await platform.reloadWorkers("new-entrypoint.js");
-		expect(mockWorkerPool.reloadWorkers).toHaveBeenCalledWith(
-			"new-entrypoint.js",
-		);
+		expect(mockReload).toHaveBeenCalledWith("new-entrypoint.js");
 	});
 
-	test("should dispose resources", async () => {
-		// Create a mock worker pool
-		const mockWorkerPool = {
-			terminate: mock(() => Promise.resolve()),
-		};
+	test("should dispose resources via serviceWorker container", async () => {
+		// Create a mock for the terminate method
+		const mockTerminate = mock(() => Promise.resolve());
 
-		// Set the internal worker pool
-		(platform as any).workerPool = mockWorkerPool;
+		// Mock the serviceWorker.terminate method directly
+		(platform.serviceWorker as any).terminate = mockTerminate;
 
 		await platform.dispose();
-		expect(mockWorkerPool.terminate).toHaveBeenCalled();
-		expect((platform as any).workerPool).toBeUndefined();
+		expect(mockTerminate).toHaveBeenCalled();
 	});
 
 	test("should convert Node.js request to Web API Request", async () => {

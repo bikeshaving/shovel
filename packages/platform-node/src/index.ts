@@ -13,8 +13,6 @@ import {
 	type Handler,
 	type Server,
 	type ServerOptions,
-	type ServiceWorkerOptions,
-	type ServiceWorkerInstance,
 	type PlatformESBuildConfig,
 	type ProductionEntryPoints,
 	ServiceWorkerPool,
@@ -73,6 +71,7 @@ export class NodeServiceWorkerContainer
 {
 	#platform: NodePlatform;
 	#pool?: ServiceWorkerPool;
+	#cacheStorage?: CustomCacheStorage;
 	#registration?: ShovelServiceWorkerRegistration;
 	#readyPromise: Promise<ServiceWorkerRegistration>;
 	#readyResolve?: (registration: ServiceWorkerRegistration) => void;
@@ -99,25 +98,59 @@ export class NodeServiceWorkerContainer
 		scriptURL: string | URL,
 		options?: RegistrationOptions,
 	): Promise<ServiceWorkerRegistration> {
-		const url =
+		const urlStr =
 			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
 		const scope = options?.scope ?? "/";
 
-		// Create worker pool
+		// Convert file:// URL to filesystem path, or resolve relative path
+		let entryPath: string;
+		if (urlStr.startsWith("file://")) {
+			// Use URL to properly parse the file:// URL
+			entryPath = new URL(urlStr).pathname;
+		} else {
+			entryPath = Path.resolve(this.#platform.options.cwd, urlStr);
+		}
+
+		// Try to load config.js for cache coordination (exists in built output)
+		let config = this.#platform.options.config;
+		const configPath = Path.join(Path.dirname(entryPath), "config.js");
+		try {
+			// eslint-disable-next-line no-restricted-syntax -- Import generated config at runtime
+			const configModule = await import(configPath);
+			config = configModule.config ?? config;
+		} catch {
+			// config.js doesn't exist - use platform config instead
+			logger.debug`Using platform config (no config.js found)`;
+		}
+
+		// Create cache storage for cross-worker coordination
+		if (!this.#cacheStorage && config?.caches) {
+			this.#cacheStorage = new CustomCacheStorage(
+				createCacheFactory({configs: config.caches}),
+			);
+		}
+
+		// Terminate any existing pool
+		if (this.#pool) {
+			await this.#pool.terminate();
+		}
+
+		// Create worker pool with cache storage
 		this.#pool = new ServiceWorkerPool(
 			{
 				workerCount: this.#platform.options.workers,
 				createWorker: (entrypoint) =>
 					this.#platform.createWorker(entrypoint),
 			},
-			url,
+			entryPath,
+			this.#cacheStorage,
 		);
 
 		// Initialize workers (waits for ready)
 		await this.#pool.init();
 
 		// Create registration to track state
-		this.#registration = new ShovelServiceWorkerRegistration(scope, url);
+		this.#registration = new ShovelServiceWorkerRegistration(scope, urlStr);
 		this.#registration[kServiceWorker]._setState("activated");
 
 		// Resolve ready promise
@@ -167,11 +200,15 @@ export class NodeServiceWorkerContainer
 	}
 
 	/**
-	 * Internal: Terminate workers
+	 * Internal: Terminate workers and dispose cache storage
 	 */
 	async terminate(): Promise<void> {
 		await this.#pool?.terminate();
 		this.#pool = undefined;
+
+		// Dispose cache storage (closes Redis connections, etc.)
+		await this.#cacheStorage?.dispose();
+		this.#cacheStorage = undefined;
 	}
 
 	/**
@@ -201,10 +238,7 @@ export class NodePlatform extends BasePlatform {
 		workers: number;
 		config?: ShovelConfig;
 	};
-	#workerPool?: ServiceWorkerPool;
-	#cacheStorage?: CustomCacheStorage;
 	#databaseStorage?: CustomDatabaseStorage;
-
 	#server?: Server;
 
 	constructor(options: NodePlatformOptions = {}) {
@@ -229,9 +263,11 @@ export class NodePlatform extends BasePlatform {
 	 * Create a worker instance for the pool
 	 * Can be overridden for testing
 	 */
-	createWorker(entrypoint: string): Worker {
-		const {Worker} = require("@b9g/node-webworker");
-		return new Worker(entrypoint);
+	async createWorker(entrypoint: string): Promise<Worker> {
+		// eslint-disable-next-line no-restricted-syntax -- Dynamic import for Node.js ESM compatibility
+		const {Worker: NodeWebWorker} = await import("@b9g/node-webworker");
+		// Cast to Worker - our shim implements the core functionality but not all Web Worker APIs
+		return new NodeWebWorker(entrypoint) as unknown as Worker;
 	}
 
 	/**
@@ -265,112 +301,6 @@ export class NodePlatform extends BasePlatform {
 		return this.#options;
 	}
 
-	/**
-	 * Get/set worker pool for testing
-	 */
-	get workerPool() {
-		return this.#workerPool;
-	}
-
-	set workerPool(pool: ServiceWorkerPool | undefined) {
-		this.#workerPool = pool;
-	}
-
-	/**
-	 * THE MAIN JOB - Load and run a ServiceWorker-style entrypoint in Node.js
-	 * Uses Worker threads with coordinated cache storage for isolation and standards compliance
-	 */
-	async loadServiceWorker(
-		entrypoint: string,
-		options: ServiceWorkerOptions = {},
-	): Promise<ServiceWorkerInstance> {
-		const workerCount = options.workerCount ?? this.#options.workers;
-		const entryPath = Path.resolve(this.#options.cwd, entrypoint);
-
-		// Try to import the generated config module (built alongside the worker entry)
-		// Falls back to platform config if config.js doesn't exist (e.g., for tests)
-		let config = this.#options.config;
-		const configPath = Path.join(Path.dirname(entryPath), "config.js");
-		try {
-			// eslint-disable-next-line no-restricted-syntax -- Import generated config at runtime
-			const configModule = await import(configPath);
-			config = configModule.config ?? config;
-		} catch (err) {
-			// config.js doesn't exist - use platform config instead
-			logger.debug`Using platform config (no config.js): ${err}`;
-		}
-
-		// Create shared cache storage from config
-		if (!this.#cacheStorage) {
-			this.#cacheStorage = new CustomCacheStorage(
-				createCacheFactory({
-					configs: config?.caches ?? {},
-				}),
-			);
-		}
-
-		// Terminate any existing worker pool
-		if (this.#workerPool) {
-			await this.#workerPool.terminate();
-		}
-
-		logger.debug("Creating ServiceWorker pool", {
-			entryPath,
-			workerCount,
-		});
-		this.#workerPool = new ServiceWorkerPool(
-			{
-				workerCount,
-				requestTimeout: 30000,
-				cwd: this.#options.cwd,
-			},
-			entryPath,
-			this.#cacheStorage,
-		);
-
-		// Initialize workers with dynamic import handling
-		// init() creates workers and loads the ServiceWorker code
-		await this.#workerPool.init();
-
-		// Capture references for closures
-		const workerPool = this.#workerPool;
-		const platform = this;
-
-		const instance: ServiceWorkerInstance = {
-			runtime: workerPool,
-			handleRequest: async (request: Request) => {
-				if (!platform.#workerPool) {
-					throw new Error("ServiceWorkerPool not initialized");
-				}
-				return platform.#workerPool.handleRequest(request);
-			},
-			install: async () => {
-				logger.debug("ServiceWorker installed", {
-					method: "worker_threads",
-				});
-			},
-			activate: async () => {
-				logger.debug("ServiceWorker activated", {
-					method: "worker_threads",
-				});
-			},
-			get ready() {
-				return workerPool?.ready ?? false;
-			},
-			dispose: async () => {
-				if (platform.#workerPool) {
-					await platform.#workerPool.terminate();
-					platform.#workerPool = undefined;
-				}
-				logger.debug("ServiceWorker disposed", {});
-			},
-		};
-
-		logger.debug("ServiceWorker loaded", {
-			features: ["worker_threads", "coordinated_caches"],
-		});
-		return instance;
-	}
 
 	/**
 	 * Create cache storage using config from shovel.json
@@ -560,12 +490,11 @@ export class NodePlatform extends BasePlatform {
 
 	/**
 	 * Reload workers for hot reloading (called by CLI)
+	 * @deprecated Use serviceWorker.reloadWorkers() instead
 	 * @param entrypoint - Path to the new entrypoint (hashed filename)
 	 */
 	async reloadWorkers(entrypoint: string): Promise<void> {
-		if (this.#workerPool) {
-			await this.#workerPool.reloadWorkers(entrypoint);
-		}
+		await this.serviceWorker.reloadWorkers(entrypoint);
 	}
 
 	/**
@@ -703,17 +632,11 @@ if (config.lifecycle) {
 	 * Dispose of platform resources
 	 */
 	async dispose(): Promise<void> {
-		// Dispose worker pool
-		if (this.#workerPool) {
-			await this.#workerPool.terminate();
-			this.#workerPool = undefined;
-		}
+		// Close server first
+		await this.close();
 
-		// Dispose cache storage (closes Redis connections, etc.)
-		if (this.#cacheStorage) {
-			await this.#cacheStorage.dispose();
-			this.#cacheStorage = undefined;
-		}
+		// Dispose ServiceWorker container (terminates workers, closes cache storage)
+		await this.serviceWorker.terminate();
 
 		// Dispose database storage (closes database connections)
 		if (this.#databaseStorage) {

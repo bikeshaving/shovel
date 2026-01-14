@@ -16,27 +16,17 @@ const logger = getLogger(["test", "wpt", "platform"]);
  */
 interface Platform {
 	readonly name: string;
-	loadServiceWorker(
-		entrypoint: string,
-		options?: ServiceWorkerOptions,
-	): Promise<ServiceWorkerInstance>;
+	readonly serviceWorker: ShovelServiceWorkerContainer;
+	listen(): Promise<Server>;
+	close(): Promise<void>;
 	createCaches(): Promise<CacheStorage>;
 	createServer(handler: Handler, options?: ServerOptions): Server;
 }
 
-interface ServiceWorkerOptions {
-	context?: any;
-	workerCount?: number;
-	hotReload?: boolean;
-}
-
-interface ServiceWorkerInstance {
-	runtime: any;
-	handleRequest(request: Request): Promise<Response>;
-	install(): Promise<void>;
-	activate(): Promise<void>;
-	readonly ready: boolean;
-	dispose(): Promise<void>;
+interface ShovelServiceWorkerContainer extends ServiceWorkerContainer {
+	readonly pool?: any;
+	terminate(): Promise<void>;
+	reloadWorkers(entrypoint: string): Promise<void>;
 }
 
 type Handler = (
@@ -114,9 +104,9 @@ export function runPlatformTests(
 				expect(platform.name.length).toBeGreaterThan(0);
 			});
 
-			test("has loadServiceWorker method", () => {
-				expect(platform.loadServiceWorker).toBeDefined();
-				expect(typeof platform.loadServiceWorker).toBe("function");
+			test("has serviceWorker container", () => {
+				expect(platform.serviceWorker).toBeDefined();
+				expect(typeof platform.serviceWorker.register).toBe("function");
 			});
 
 			test("has createCaches method", () => {

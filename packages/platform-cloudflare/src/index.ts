@@ -24,6 +24,7 @@ import {
 	type ProductionEntryPoints,
 	CustomLoggerStorage,
 	type LoggerStorage,
+	type ShovelServiceWorkerContainer,
 } from "@b9g/platform";
 import {createCacheFactory, type ShovelConfig} from "@b9g/platform/runtime";
 import {CustomCacheStorage} from "@b9g/cache";
@@ -62,6 +63,106 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
 }
 
 // ============================================================================
+// SERVICE WORKER CONTAINER (stub for Cloudflare - uses Miniflare internally)
+// ============================================================================
+
+/**
+ * Stub ServiceWorkerContainer for Cloudflare
+ * Cloudflare Workers don't use the same supervisor/worker model as Node/Bun.
+ * This provides API compatibility but delegates to Miniflare for dev mode.
+ */
+class CloudflareServiceWorkerContainer
+	extends EventTarget
+	implements ShovelServiceWorkerContainer
+{
+	#platform: CloudflarePlatform;
+	#instance: ServiceWorkerInstance | null = null;
+	#readyPromise: Promise<ServiceWorkerRegistration>;
+	#readyResolve?: (reg: ServiceWorkerRegistration) => void;
+
+	readonly controller: ServiceWorker | null = null;
+	oncontrollerchange: ((ev: Event) => unknown) | null = null;
+	onmessage: ((ev: MessageEvent) => unknown) | null = null;
+	onmessageerror: ((ev: MessageEvent) => unknown) | null = null;
+
+	constructor(platform: CloudflarePlatform) {
+		super();
+		this.#platform = platform;
+		this.#readyPromise = new Promise((resolve) => {
+			this.#readyResolve = resolve;
+		});
+	}
+
+	get ready(): Promise<ServiceWorkerRegistration> {
+		return this.#readyPromise;
+	}
+
+	get pool() {
+		return undefined; // Cloudflare doesn't use ServiceWorkerPool
+	}
+
+	/**
+	 * Get the Miniflare instance for request handling
+	 */
+	get instance(): ServiceWorkerInstance | null {
+		return this.#instance;
+	}
+
+	async register(
+		scriptURL: string | URL,
+		_options?: RegistrationOptions,
+	): Promise<ServiceWorkerRegistration> {
+		const url =
+			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
+
+		// Delegate to loadServiceWorker which uses Miniflare
+		this.#instance = await this.#platform.loadServiceWorker(url);
+
+		// Create a mock registration to satisfy the interface
+		const registration = {
+			scope: "/",
+			installing: null,
+			waiting: null,
+			active: null,
+			navigationPreload: {} as NavigationPreloadManager,
+			onupdatefound: null,
+			update: async () => {},
+			unregister: async () => true,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			dispatchEvent: () => true,
+		} as unknown as ServiceWorkerRegistration;
+
+		this.#readyResolve?.(registration);
+		return registration;
+	}
+
+	async getRegistration(): Promise<ServiceWorkerRegistration | undefined> {
+		return undefined;
+	}
+
+	async getRegistrations(): Promise<readonly ServiceWorkerRegistration[]> {
+		return [];
+	}
+
+	startMessages(): void {}
+
+	async terminate(): Promise<void> {
+		// Dispose Miniflare instance
+		if (this.#instance) {
+			await this.#instance.dispose();
+			this.#instance = null;
+		}
+	}
+
+	async reloadWorkers(_entrypoint: string): Promise<void> {
+		// For Cloudflare, reloading requires restarting Miniflare
+		// This is typically handled by file watchers in development
+		logger.debug("Cloudflare hot reload requires Miniflare restart");
+	}
+}
+
+// ============================================================================
 // PLATFORM IMPLEMENTATION (for miniflare dev mode)
 // ============================================================================
 
@@ -70,6 +171,7 @@ export interface CloudflarePlatformOptions extends PlatformConfig {
  */
 export class CloudflarePlatform extends BasePlatform {
 	readonly name: string;
+	readonly serviceWorker: CloudflareServiceWorkerContainer;
 	#options: {
 		environment: "production" | "preview" | "dev";
 		assetsDirectory: string | undefined;
@@ -84,6 +186,7 @@ export class CloudflarePlatform extends BasePlatform {
 		this.#miniflare = null;
 		this.#assetsMiniflare = null;
 		this.name = "cloudflare";
+		this.serviceWorker = new CloudflareServiceWorkerContainer(this);
 
 		const cwd = options.cwd ?? ".";
 
@@ -139,7 +242,7 @@ export class CloudflarePlatform extends BasePlatform {
 	/**
 	 * Create "server" for Cloudflare Workers (stub for Platform interface)
 	 */
-	createServer(handler: Handler, _options: ServerOptions = {}): Server {
+	createServer(_handler: Handler, _options: ServerOptions = {}): Server {
 		return {
 			async listen() {
 				logger.info("Worker handler ready", {});
@@ -155,6 +258,22 @@ export class CloudflarePlatform extends BasePlatform {
 				return true;
 			},
 		};
+	}
+
+	/**
+	 * Start HTTP server (Cloudflare uses Miniflare's built-in server)
+	 * Returns a stub server since Miniflare manages its own listener
+	 */
+	async listen(): Promise<Server> {
+		// Miniflare handles its own HTTP server, return a stub
+		return this.createServer(() => new Response("Miniflare handles requests"));
+	}
+
+	/**
+	 * Close server (terminates Miniflare via serviceWorker container)
+	 */
+	async close(): Promise<void> {
+		await this.serviceWorker.terminate();
 	}
 
 	/**
