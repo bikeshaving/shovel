@@ -204,31 +204,26 @@ export class CloudflarePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Create cache storage using config from shovel.json
-	 * Default: Cloudflare's native Cache API
-	 * Merges with runtime defaults (actual class references) for fallback behavior
+	 * Create cache storage for Cloudflare Workers
+	 *
+	 * Default: CloudflareNativeCache using Cloudflare's Cache API.
+	 * Override via shovel.json caches config.
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
-		// Runtime defaults with actual class references (not module/export strings)
-		const runtimeDefaults: Record<string, {impl: any}> = {
-			default: {impl: CloudflareNativeCache},
-		};
-		const userCaches = this.#options.config?.caches ?? {};
-		// Deep merge per entry so user can override options without losing impl
-		const configs: Record<string, any> = {};
-		const allNames = new Set([
-			...Object.keys(runtimeDefaults),
-			...Object.keys(userCaches),
-		]);
-		for (const name of allNames) {
-			configs[name] = {...runtimeDefaults[name], ...userCaches[name]};
-		}
+		const defaults = {default: {impl: CloudflareNativeCache}};
+		const configs = this.mergeConfigWithDefaults(
+			defaults,
+			this.#options.config?.caches,
+		);
 		return new CustomCacheStorage(createCacheFactory({configs}));
 	}
 
 	/**
 	 * Create directory storage for Cloudflare Workers
-	 * Directories must be configured via shovel.json (no platform defaults)
+	 *
+	 * @throws Always throws - Cloudflare has no filesystem.
+	 * Configure directories in shovel.json using CloudflareAssetsDirectory
+	 * or CloudflareR2Directory for R2 bucket storage.
 	 */
 	async createDirectories(): Promise<DirectoryStorage> {
 		throw new Error(
@@ -239,6 +234,8 @@ export class CloudflarePlatform extends BasePlatform {
 
 	/**
 	 * Create logger storage for Cloudflare Workers
+	 *
+	 * Uses LogTape for structured logging.
 	 */
 	async createLoggers(): Promise<LoggerStorage> {
 		return new CustomLoggerStorage((categories) => getLogger(categories));

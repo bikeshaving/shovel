@@ -275,8 +275,11 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Create cache storage using config from shovel.json
-	 * Used for testing - production uses the generated config module
+	 * Create cache storage for Bun
+	 *
+	 * Default: MemoryCache (in-process LRU cache).
+	 * Override via shovel.json caches config.
+	 * Note: Used for dev/testing - production uses generated config module.
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
 		const defaults = {default: {impl: MemoryCache}};
@@ -288,8 +291,14 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Create directory storage using config from shovel.json
-	 * Used for testing - production uses the generated config module
+	 * Create directory storage for Bun
+	 *
+	 * Defaults:
+	 * - server: NodeFSDirectory at cwd (app files)
+	 * - public: NodeFSDirectory at cwd (static assets)
+	 * - tmp: NodeFSDirectory at OS temp dir
+	 *
+	 * Override via shovel.json directories config.
 	 */
 	async createDirectories(): Promise<CustomDirectoryStorage> {
 		const defaults = {
@@ -305,14 +314,19 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Create logger storage using config from shovel.json
+	 * Create logger storage for Bun
+	 *
+	 * Uses LogTape for structured logging.
 	 */
 	async createLoggers(): Promise<CustomLoggerStorage> {
 		return new CustomLoggerStorage((categories) => getLogger(categories));
 	}
 
 	/**
-	 * Create database storage from declarative config in shovel.json
+	 * Create database storage for Bun
+	 *
+	 * Returns undefined if no databases configured in shovel.json.
+	 * Supports SQLite via bun:sqlite.
 	 */
 	createDatabases(
 		configOverride?: BunPlatformOptions["config"],
