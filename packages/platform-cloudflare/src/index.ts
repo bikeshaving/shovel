@@ -31,6 +31,7 @@ import {
 	CustomLoggerStorage,
 	type LoggerStorage,
 	type ShovelServiceWorkerContainer,
+	mergeConfigWithDefaults,
 } from "@b9g/platform";
 import {createCacheFactory, type ShovelConfig} from "@b9g/platform/runtime";
 
@@ -213,7 +214,7 @@ export class CloudflarePlatform extends BasePlatform {
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
 		const defaults = {default: {impl: CloudflareNativeCache}};
-		const configs = this.mergeConfigWithDefaults(
+		const configs = mergeConfigWithDefaults(
 			defaults,
 			this.#options.config?.caches,
 		);

@@ -32,6 +32,7 @@ import {
 	CustomLoggerStorage,
 	CustomDatabaseStorage,
 	createDatabaseFactory,
+	mergeConfigWithDefaults,
 } from "@b9g/platform";
 import {
 	ShovelServiceWorkerRegistration,
@@ -319,7 +320,7 @@ export class NodePlatform extends BasePlatform {
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
 		const defaults = {default: {impl: MemoryCache}};
-		const configs = this.mergeConfigWithDefaults(
+		const configs = mergeConfigWithDefaults(
 			defaults,
 			this.#options.config?.caches,
 		);
@@ -342,7 +343,7 @@ export class NodePlatform extends BasePlatform {
 			public: {impl: NodeFSDirectory, path: this.#options.cwd},
 			tmp: {impl: NodeFSDirectory, path: tmpdir()},
 		};
-		const configs = this.mergeConfigWithDefaults(
+		const configs = mergeConfigWithDefaults(
 			defaults,
 			this.#options.config?.directories,
 		);
