@@ -1108,7 +1108,10 @@ function toJSLiteral(
 		}
 		// Process as config expression (handles env vars like "$PORT || 3000")
 		const result = exprToCode(value);
-		return {code: result.code, isDynamic: containsRuntimeExpressions(result.code)};
+		return {
+			code: result.code,
+			isDynamic: containsRuntimeExpressions(result.code),
+		};
 	}
 
 	if (typeof value === "number" || typeof value === "boolean") {
