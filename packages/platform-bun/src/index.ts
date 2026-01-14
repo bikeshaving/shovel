@@ -276,48 +276,31 @@ export class BunPlatform extends BasePlatform {
 
 	/**
 	 * Create cache storage using config from shovel.json
-	 * Merges with runtime defaults (actual class references) for fallback behavior
+	 * Used for testing - production uses the generated config module
 	 */
 	async createCaches(): Promise<CustomCacheStorage> {
-		// Runtime defaults with actual class references (not module/export strings)
-		const runtimeDefaults: Record<string, {impl: any}> = {
-			default: {impl: MemoryCache},
-		};
-		const userCaches = this.#options.config?.caches ?? {};
-		// Deep merge per entry so user can override options without losing impl
-		const configs: Record<string, any> = {};
-		const allNames = new Set([
-			...Object.keys(runtimeDefaults),
-			...Object.keys(userCaches),
-		]);
-		for (const name of allNames) {
-			configs[name] = {...runtimeDefaults[name], ...userCaches[name]};
-		}
+		const defaults = {default: {impl: MemoryCache}};
+		const configs = this.mergeConfigWithDefaults(
+			defaults,
+			this.#options.config?.caches,
+		);
 		return new CustomCacheStorage(createCacheFactory({configs}));
 	}
 
 	/**
 	 * Create directory storage using config from shovel.json
-	 * Merges with runtime defaults (actual class references) for fallback behavior
+	 * Used for testing - production uses the generated config module
 	 */
 	async createDirectories(): Promise<CustomDirectoryStorage> {
-		// Runtime defaults with actual class references (not module/export strings)
-		// Note: These are test-time defaults - production uses build-time resolved paths
-		const runtimeDefaults: Record<string, {impl: any; path: string}> = {
+		const defaults = {
 			server: {impl: NodeFSDirectory, path: this.#options.cwd},
 			public: {impl: NodeFSDirectory, path: this.#options.cwd},
 			tmp: {impl: NodeFSDirectory, path: tmpdir()},
 		};
-		const userDirs = this.#options.config?.directories ?? {};
-		// Deep merge per entry so user can override options without losing impl
-		const configs: Record<string, any> = {};
-		const allNames = new Set([
-			...Object.keys(runtimeDefaults),
-			...Object.keys(userDirs),
-		]);
-		for (const name of allNames) {
-			configs[name] = {...runtimeDefaults[name], ...userDirs[name]};
-		}
+		const configs = this.mergeConfigWithDefaults(
+			defaults,
+			this.#options.config?.directories,
+		);
 		return new CustomDirectoryStorage(createDirectoryFactory(configs));
 	}
 

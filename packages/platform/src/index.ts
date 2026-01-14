@@ -476,6 +476,29 @@ export abstract class BasePlatform implements Platform {
 	async dispose(): Promise<void> {
 		// Default no-op, subclasses override
 	}
+
+	/**
+	 * Merge platform defaults with user config
+	 *
+	 * Deep merges each entry so user can override specific options without
+	 * losing the platform's default implementation class.
+	 *
+	 * @param defaults - Platform's runtime defaults (with actual class refs)
+	 * @param userConfig - User's config from shovel.json (may be partial)
+	 * @returns Merged config with all entries
+	 */
+	protected mergeConfigWithDefaults(
+		defaults: Record<string, Record<string, unknown>>,
+		userConfig: Record<string, Record<string, unknown>> | undefined,
+	): Record<string, Record<string, unknown>> {
+		const user = userConfig ?? {};
+		const allNames = new Set([...Object.keys(defaults), ...Object.keys(user)]);
+		const merged: Record<string, Record<string, unknown>> = {};
+		for (const name of allNames) {
+			merged[name] = {...defaults[name], ...user[name]};
+		}
+		return merged;
+	}
 }
 
 // ============================================================================
