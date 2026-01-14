@@ -2,6 +2,57 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.0-beta.12] - 2026-01-14
+
+### Breaking Changes
+
+- **`shovel activate` command removed** - Use `shovel build --lifecycle` instead
+- **`loadServiceWorker()` removed** - Use `platform.serviceWorker.register()` instead
+- **`getEntryWrapper()` removed** - Use `getProductionEntryPoints()` instead
+
+### Build System Unification
+
+Major refactor of the build system to be platform-driven and unified across all commands.
+
+- **New `ServerBundler` class** - Unified bundler replacing separate build/watch logic
+- **Platform-driven entry points** - Platforms define their output structure via `getProductionEntryPoints()`:
+  - Node/Bun: `{ index: "<supervisor>", worker: "<worker>" }` - two files
+  - Cloudflare: `{ worker: "<code>" }` - single file
+- **Deleted `activate` command** - Replaced with `shovel build --lifecycle` flag
+  - `--lifecycle` - runs activate stage (default)
+  - `--lifecycle install` - runs install stage only
+
+### API Changes
+
+- **New `platform.serviceWorker.register()` API** - Mirrors browser's `navigator.serviceWorker.register()`
+- **Deleted `loadServiceWorker()`** - Use `serviceWorker.register()` instead
+- **New `platform.listen()` / `close()`** - Server lifecycle management
+- **New `runLifecycle()` and `dispatchRequest()`** - Public runtime utilities
+
+### Code Quality
+
+- Extracted `mergeConfigWithDefaults()` helper to reduce duplication
+- Added JSDoc to platform `create*` methods documenting defaults
+- Standardized import organization (node builtins → external → @b9g/* → relative)
+- Renamed `isDynamicCode` → `containsRuntimeExpressions` for clarity
+
+### Package Updates
+
+- `@b9g/platform` → 0.1.14-beta.0
+- `@b9g/platform-node` → 0.1.14-beta.0
+- `@b9g/platform-bun` → 0.1.12-beta.0
+- `@b9g/platform-cloudflare` → 0.1.12-beta.0
+
+### Deleted Files
+
+- `src/commands/activate.ts` - Replaced by `build --lifecycle`
+- `src/utils/watcher.ts` - Merged into `ServerBundler`
+- `src/plugins/shovel.ts` - Split into `config.ts` + `entry.ts`
+- `packages/platform/test/single-threaded.test.ts`
+- `SingleThreadedRuntime` class - All platforms now use `ServiceWorkerPool`
+
+---
+
 ## [0.2.0-beta.11] - 2026-01-10
 
 ### Changes since beta.10
