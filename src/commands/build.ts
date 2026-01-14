@@ -4,11 +4,12 @@
  */
 import {resolve, join, dirname} from "path";
 import {getLogger} from "@logtape/logtape";
-import * as Platform from "@b9g/platform";
+import {resolvePlatform, type Platform} from "@b9g/platform";
 import {readFile, writeFile} from "fs/promises";
 
 import {ServerBundler} from "../utils/bundler.js";
 import {findProjectRoot, findWorkspaceRoot} from "../utils/project.js";
+import {createPlatform} from "../utils/platform.js";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 
 const logger = getLogger(["shovel"]);
@@ -18,7 +19,7 @@ const logger = getLogger(["shovel"]);
  */
 export interface BuildResult {
 	/** Platform instance (for running lifecycle) */
-	platform: Platform.Platform;
+	platform: Platform;
 	/** Path to worker entry point */
 	workerPath: string | undefined;
 }
@@ -51,7 +52,7 @@ export async function buildForProduction({
 	logger.debug("Project root:", {projectRoot});
 
 	// Create platform instance
-	const platformInstance = await Platform.createPlatform(platform);
+	const platformInstance = await createPlatform(platform);
 	const platformESBuildConfig = platformInstance.getESBuildConfig();
 
 	// Build using the unified bundler
@@ -201,7 +202,7 @@ export async function buildCommand(
 	config: ProcessedShovelConfig,
 ) {
 	// Use same platform resolution as develop command
-	const platform = Platform.resolvePlatform({...options, config});
+	const platform = resolvePlatform({...options, config});
 
 	// Determine lifecycle stage if --lifecycle is provided
 	let lifecycleOption: {stage: "install" | "activate"} | undefined;

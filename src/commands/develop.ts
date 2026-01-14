@@ -1,8 +1,9 @@
 import {DEFAULTS} from "../utils/config.js";
 import {getLogger} from "@logtape/logtape";
-import * as Platform from "@b9g/platform";
+import {resolvePlatform} from "@b9g/platform";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 import {ServerBundler} from "../utils/bundler.js";
+import {createPlatform} from "../utils/platform.js";
 
 const logger = getLogger(["shovel"]);
 
@@ -17,7 +18,7 @@ export async function developCommand(
 	config: ProcessedShovelConfig,
 ) {
 	try {
-		const platformName = Platform.resolvePlatform({...options, config});
+		const platformName = resolvePlatform({...options, config});
 		const workerCount = getWorkerCount(options, config);
 		const port = parseInt(options.port || String(DEFAULTS.SERVER.PORT), 10);
 		const host = options.host || DEFAULTS.SERVER.HOST;
@@ -26,7 +27,7 @@ export async function developCommand(
 		logger.debug("Worker count: {workerCount}", {workerCount});
 
 		// Create platform with server and worker settings
-		const platformInstance = await Platform.createPlatform(platformName, {
+		const platformInstance = await createPlatform(platformName, {
 			port,
 			host,
 			workers: workerCount,
