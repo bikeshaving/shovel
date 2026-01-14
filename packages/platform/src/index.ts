@@ -156,7 +156,7 @@ export interface PlatformDefaults {
  */
 export interface ShovelServiceWorkerContainer extends ServiceWorkerContainer {
 	/** Internal: Get the worker pool for request handling */
-	readonly pool?: ServiceWorkerPool;
+	readonly pool?: {handleRequest(request: Request): Promise<Response>};
 	/** Internal: Terminate all workers */
 	terminate(): Promise<void>;
 	/** Internal: Reload workers (for hot reload) */
