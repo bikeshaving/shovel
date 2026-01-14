@@ -1070,10 +1070,17 @@ interface JSLiteralResult {
 }
 
 /**
- * Check if a code string contains dynamic expressions (process.env, tmpdir(), etc)
- * Note: __SHOVEL_OUTDIR__ and __SHOVEL_GIT__ are build-time constants, not dynamic
+ * Check if generated code contains runtime-evaluated expressions.
+ *
+ * Runtime expressions (return true):
+ * - process.env.* - environment variables read at startup
+ * - tmpdir() - OS temp directory resolved at runtime
+ * - .filter(Boolean).join - path assembly with env fallbacks
+ *
+ * Build-time constants (return false):
+ * - __SHOVEL_OUTDIR__, __SHOVEL_GIT__ - replaced during bundling
  */
-function isDynamicCode(code: string): boolean {
+function containsRuntimeExpressions(code: string): boolean {
 	return (
 		code.includes("process.env") ||
 		code.includes("tmpdir()") ||
@@ -1101,7 +1108,7 @@ function toJSLiteral(
 		}
 		// Process as config expression (handles env vars like "$PORT || 3000")
 		const result = exprToCode(value);
-		return {code: result.code, isDynamic: isDynamicCode(result.code)};
+		return {code: result.code, isDynamic: containsRuntimeExpressions(result.code)};
 	}
 
 	if (typeof value === "number" || typeof value === "boolean") {
