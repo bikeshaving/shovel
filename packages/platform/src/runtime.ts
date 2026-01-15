@@ -622,7 +622,16 @@ export function createDatabaseFactory(
 		}
 
 		// Dynamically import @b9g/zen only when databases are actually used
-		const {Database} = await import("@b9g/zen");
+		// try/catch tells esbuild to skip bundle-time resolution for this optional dep
+		let Database;
+		try {
+			({Database} = await import("@b9g/zen"));
+		} catch {
+			throw new Error(
+				"@b9g/zen is required for database support. Install it with: npm install @b9g/zen",
+			);
+		}
+
 		const driver = new impl(url, driverOptions);
 		const db = new Database(driver);
 
