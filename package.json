@@ -12,7 +12,8 @@
   },
   "workspaces": [
     "packages/*",
-    "examples/*"
+    "examples/*",
+    "website"
   ],
   "scripts": {
     "build": "bun run --filter './packages/*' build && libuild build --save",

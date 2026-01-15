@@ -1,0 +1,76 @@
+@import "normalize.css";
+@import "prism-themes/themes/prism-one-dark.css";
+
+:root {
+	--bg-color: #0d1117;
+	--text-color: #c9d1d9;
+	--highlight-color: #58a6ff;
+	--code-bg: #161b22;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html {
+	font-size: 16px;
+}
+
+body {
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+	background-color: var(--bg-color);
+	color: var(--text-color);
+	line-height: 1.6;
+}
+
+a {
+	color: var(--highlight-color);
+}
+
+h1, h2, h3, h4, h5, h6 {
+	line-height: 1.3;
+	margin-top: 1.5em;
+	margin-bottom: 0.5em;
+}
+
+h1 {
+	font-size: 2.5rem;
+}
+
+h2 {
+	font-size: 2rem;
+}
+
+h3 {
+	font-size: 1.5rem;
+}
+
+p {
+	margin: 1em 0;
+}
+
+pre {
+	background: var(--code-bg);
+	padding: 1rem;
+	border-radius: 4px;
+	overflow-x: auto;
+}
+
+code {
+	font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+	font-size: 0.9em;
+}
+
+:not(pre) > code {
+	background: var(--code-bg);
+	padding: 0.2em 0.4em;
+	border-radius: 3px;
+}
+
+ul, ol {
+	padding-left: 2em;
+}
+
+li {
+	margin: 0.5em 0;
+}

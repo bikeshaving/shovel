@@ -1,0 +1,24 @@
+{
+  "name": "@b9g/shovel-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "develop": "shovel develop src/server.ts --port 3000 --platform bun",
+    "build": "MODE=production shovel build src/server.ts --platform bun --lifecycle"
+  },
+  "dependencies": {
+    "@b9g/assets": "workspace:*",
+    "@b9g/crank": "^0.7.3",
+    "@b9g/platform": "workspace:*",
+    "@b9g/platform-bun": "workspace:*",
+    "@b9g/router": "workspace:*",
+    "@b9g/shovel": "*",
+    "@emotion/css": "^11.13.5",
+    "@emotion/server": "^11.11.0",
+    "front-matter": "^4.0.2",
+    "marked": "^4.3.0",
+    "normalize.css": "^8.0.1",
+    "prism-themes": "^1.9.0",
+    "prismjs": "^1.30.0"
+  }
+}
