@@ -1,6 +1,6 @@
 {
   "name": "@b9g/platform",
-  "version": "0.1.14-beta.2",
+  "version": "0.1.14-beta.3",
   "description": "The portable meta-framework built on web standards.",
   "type": "module",
   "scripts": {
