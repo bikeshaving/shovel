@@ -399,6 +399,38 @@ test(
 );
 
 test(
+	"basic server startup and response (bun platform)",
+	async () => {
+		const PORT = 13350;
+		let serverProcess;
+		let tempFixture;
+
+		try {
+			// Create temporary fixture copy
+			tempFixture = await createTempFixture("server-minimal.ts");
+
+			// Start development server with Bun platform
+			serverProcess = startDevServer(tempFixture.path, PORT, [
+				"--platform",
+				"bun",
+			]);
+
+			// Wait for server to be ready
+			const response = await waitForServer(PORT, serverProcess);
+
+			// Verify server responds correctly
+			expect(response).toContain("<marquee>Hello world</marquee>");
+		} finally {
+			await killServer(serverProcess, PORT);
+			if (tempFixture) {
+				await tempFixture.cleanup();
+			}
+		}
+	},
+	TIMEOUT,
+);
+
+test(
 	"hot reload on root file change",
 	async () => {
 		const PORT = 13311;

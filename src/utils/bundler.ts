@@ -50,6 +50,12 @@ export interface BundlerOptions {
 		/** Lifecycle stage to run: "install" or "activate" */
 		stage: "install" | "activate";
 	};
+	/**
+	 * Development mode: workers use message loop instead of own HTTP server.
+	 * In dev mode, workers handle requests via postMessage from ServiceWorkerPool.
+	 * In prod mode (default), each worker runs its own HTTP server with reusePort.
+	 */
+	development?: boolean;
 }
 
 /**
@@ -218,9 +224,10 @@ export class ServerBundler {
 		// (esbuild resolves imports relative to resolveDir in the entry plugin)
 		const relativeEntryPath = "./" + relative(this.#projectRoot, entryPath);
 
-		// Always use production entry points - they include both supervisor and worker
-		const platformEntryPoints =
-			this.#options.platform.getProductionEntryPoints(relativeEntryPath);
+		// In development mode, use message loop worker; in production, use platform entry points
+		const platformEntryPoints = this.#options.development
+			? this.#getDevelopmentEntryPoints(relativeEntryPath)
+			: this.#options.platform.getProductionEntryPoints(relativeEntryPath);
 
 		const jsxOptions = await loadJSXConfig(this.#projectRoot);
 
@@ -326,6 +333,25 @@ export class ServerBundler {
 		}
 
 		return outputs;
+	}
+
+	/**
+	 * Get development entry points.
+	 * Workers use startWorkerMessageLoop() to handle requests from ServiceWorkerPool.
+	 */
+	#getDevelopmentEntryPoints(userEntryPath: string): Record<string, string> {
+		const workerCode = `// Development Worker
+import {initWorkerRuntime, runLifecycle, startWorkerMessageLoop} from "@b9g/platform/runtime";
+import {config} from "shovel:config";
+
+const result = await initWorkerRuntime({config});
+const registration = result.registration;
+
+await import("${userEntryPath}");
+await runLifecycle(registration);
+startWorkerMessageLoop({registration, databases: result.databases});
+`;
+		return {worker: workerCode};
 	}
 
 	/**

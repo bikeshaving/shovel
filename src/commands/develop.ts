@@ -60,6 +60,7 @@ export async function developCommand(
 			outDir,
 			platform: platformInstance,
 			platformESBuildConfig,
+			development: true,
 		});
 
 		// Initial build and start watching
