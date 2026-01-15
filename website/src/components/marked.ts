@@ -7,7 +7,7 @@ export function Marked({markdown}: {markdown: string}) {
 		highlight: (code, lang) => {
 			try {
 				return highlight(code, lang || "javascript");
-			} catch {
+			} catch (_err) {
 				return code;
 			}
 		},

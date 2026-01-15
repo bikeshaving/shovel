@@ -105,7 +105,7 @@ export function Main({children}: {children: unknown}) {
 			}
 
 			code {
-				font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+				font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
 				font-size: 0.9em;
 			}
 

@@ -1,5 +1,3 @@
-import * as Path from "path";
-
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
