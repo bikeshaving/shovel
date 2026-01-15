@@ -373,8 +373,8 @@ export class CustomLoggerStorage implements LoggerStorage {
 // Database Storage API
 // ============================================================================
 
-// Import Database class from @b9g/zen
-import {Database} from "@b9g/zen";
+// Import Database type only - runtime import is done lazily in createDatabaseFactory
+import type {Database} from "@b9g/zen";
 
 /**
  * Database configuration from shovel.json.
@@ -621,6 +621,8 @@ export function createDatabaseFactory(
 			);
 		}
 
+		// Dynamically import @b9g/zen only when databases are actually used
+		const {Database} = await import("@b9g/zen");
 		const driver = new impl(url, driverOptions);
 		const db = new Database(driver);
 

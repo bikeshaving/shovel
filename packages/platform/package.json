@@ -29,30 +29,13 @@
     "@b9g/async-context": "workspace:*",
     "@b9g/cache": "workspace:*",
     "@b9g/filesystem": "workspace:*",
-    "@b9g/zen": "^0.1.6",
     "@logtape/logtape": "^1.2.0"
   },
   "peerDependencies": {
-    "@logtape/file": "^1.0.0",
-    "@logtape/otel": "^1.0.0",
-    "@logtape/sentry": "^1.0.0",
-    "@logtape/syslog": "^1.0.0",
-    "@logtape/cloudwatch-logs": "^1.0.0"
+    "@b9g/zen": "^0.1.6"
   },
   "peerDependenciesMeta": {
-    "@logtape/file": {
-      "optional": true
-    },
-    "@logtape/otel": {
-      "optional": true
-    },
-    "@logtape/sentry": {
-      "optional": true
-    },
-    "@logtape/syslog": {
-      "optional": true
-    },
-    "@logtape/cloudwatch-logs": {
+    "@b9g/zen": {
       "optional": true
     }
   },
