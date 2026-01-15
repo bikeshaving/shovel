@@ -310,6 +310,122 @@ export default styleUrl;`,
 	});
 });
 
+describe("Assets Plugin - user plugins", () => {
+	test("should apply user plugins to CSS bundling", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "css-plugin-test-"));
+
+		// Create CSS with content that our test plugin will transform
+		await writeFile(
+			join(testDir, "style.css"),
+			`body { color: REPLACE_ME; }`,
+		);
+
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import styleUrl from "./style.css" with { assetBase: "/static" };
+export default styleUrl;`,
+		);
+
+		// Create a simple plugin that transforms CSS content
+		const testPlugin: ESBuild.Plugin = {
+			name: "test-css-transform",
+			setup(build) {
+				build.onLoad({filter: /\.css$/}, async (args) => {
+					const content = await readFile(args.path, "utf8");
+					const transformed = content.replace("REPLACE_ME", "green");
+					return {contents: transformed, loader: "css"};
+				});
+			},
+		};
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+					plugins: [testPlugin],
+				}),
+			],
+		});
+
+		// Check the bundled CSS was transformed by our plugin
+		const files = await readdir(join(outDir, "public", "static"));
+		const cssFiles = files.filter((f) => f.endsWith(".css"));
+		expect(cssFiles.length).toBe(1);
+
+		const outputCSS = await readFile(
+			join(outDir, "public", "static", cssFiles[0]),
+			"utf8",
+		);
+
+		// Plugin should have replaced REPLACE_ME with green
+		expect(outputCSS).toContain("green");
+		expect(outputCSS).not.toContain("REPLACE_ME");
+	});
+
+	test("should apply user plugins to JS/TS transpilation", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "js-plugin-test-"));
+
+		// Create TS with content that our test plugin will transform
+		await writeFile(
+			join(testDir, "client.ts"),
+			`const msg: string = "REPLACE_ME"; console.log(msg);`,
+		);
+
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import clientUrl from "./client.ts" with { assetBase: "/static" };
+export default clientUrl;`,
+		);
+
+		// Create a simple plugin that transforms JS content
+		const testPlugin: ESBuild.Plugin = {
+			name: "test-js-transform",
+			setup(build) {
+				build.onLoad({filter: /\.ts$/}, async (args) => {
+					const content = await readFile(args.path, "utf8");
+					const transformed = content.replace("REPLACE_ME", "transformed");
+					return {contents: transformed, loader: "ts"};
+				});
+			},
+		};
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+					plugins: [testPlugin],
+				}),
+			],
+		});
+
+		// Check the bundled JS was transformed by our plugin
+		const files = await readdir(join(outDir, "public", "static"));
+		const jsFiles = files.filter((f) => f.endsWith(".js"));
+		expect(jsFiles.length).toBe(1);
+
+		const outputJS = await readFile(
+			join(outDir, "public", "static", jsFiles[0]),
+			"utf8",
+		);
+
+		// Plugin should have replaced REPLACE_ME with transformed
+		expect(outputJS).toContain("transformed");
+		expect(outputJS).not.toContain("REPLACE_ME");
+	});
+});
+
 describe("Assets Plugin - CSS bundling", () => {
 	test("should bundle CSS @import statements", async () => {
 		const testDir = await mkdtemp(join(tmpdir(), "css-import-test-"));

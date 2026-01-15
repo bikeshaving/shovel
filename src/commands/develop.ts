@@ -60,6 +60,7 @@ export async function developCommand(
 			outDir,
 			platform: platformInstance,
 			platformESBuildConfig,
+			userBuildConfig: config.build,
 			development: true,
 		});
 
