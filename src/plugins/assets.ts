@@ -58,31 +58,39 @@ const CSS_EXTENSIONS = new Set([".css"]);
 const logger = getLogger(["shovel"]);
 
 /**
- * ESBuild options that can be passed for client bundle transpilation
+ * Configuration for assets plugin (build-time)
  */
-export interface ClientBuildOptions {
+export interface AssetsPluginConfig {
 	/**
-	 * ESBuild plugins for client bundles (e.g., node polyfills)
+	 * Root output directory.
+	 * Assets go to {outDir}/public/{assetBase}/
+	 * Manifest goes to {outDir}/server/assets.json
+	 * @default 'dist'
+	 */
+	outDir?: string;
+
+	/**
+	 * ESBuild plugins for asset bundling
 	 */
 	plugins?: ESBuild.Plugin[];
 
 	/**
-	 * ESBuild define for client bundles
+	 * ESBuild define
 	 */
 	define?: Record<string, string>;
 
 	/**
-	 * ESBuild inject for client bundles
+	 * ESBuild inject
 	 */
 	inject?: string[];
 
 	/**
-	 * External packages for client bundles
+	 * External packages
 	 */
 	external?: string[];
 
 	/**
-	 * Alias for client bundles
+	 * Path aliases
 	 */
 	alias?: Record<string, string>;
 
@@ -112,49 +120,8 @@ export interface ClientBuildOptions {
 	jsxImportSource?: string;
 }
 
-/**
- * Configuration for assets plugin (build-time)
- */
-export interface AssetsPluginConfig {
-	/**
-	 * Root output directory.
-	 * Assets go to {outDir}/public/{assetBase}/
-	 * Manifest goes to {outDir}/server/assets.json
-	 * @default 'dist'
-	 */
-	outDir?: string;
-
-	/**
-	 * Custom ESBuild options for client bundle transpilation
-	 * Use this to add Node.js polyfills or other browser-specific configurations
-	 */
-	clientBuild?: ClientBuildOptions;
-}
-
-/**
- * Default configuration values
- */
-const DEFAULT_CONFIG: Required<Omit<AssetsPluginConfig, "clientBuild">> & {
-	clientBuild: ClientBuildOptions;
-} = {
-	outDir: "dist",
-	clientBuild: {},
-};
-
 /** Hash length for content-based cache busting */
 const HASH_LENGTH = 16;
-
-/**
- * Merge user config with defaults
- */
-function mergeConfig(
-	userConfig: AssetsPluginConfig = {},
-): Required<AssetsPluginConfig> {
-	return {
-		...DEFAULT_CONFIG,
-		...userConfig,
-	};
-}
 
 /**
  * Normalize asset base path to ensure consistent URL generation
@@ -179,12 +146,12 @@ function normalizePath(basePath: string): string {
  * @returns ESBuild/Bun plugin
  */
 export function assetsPlugin(options: AssetsPluginConfig = {}) {
-	const config = mergeConfig(options);
+	const outDir = options.outDir ?? "dist";
 	const manifest: AssetManifest = {
 		assets: {},
 		generated: new Date().toISOString(),
 		config: {
-			outDir: config.outDir,
+			outDir,
 		},
 	};
 
@@ -245,7 +212,6 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 
 					if (needsTranspilation) {
 						// Transpile TypeScript/JSX to JavaScript with Node.js polyfills for browser
-						const clientOpts = config.clientBuild;
 
 						// Default polyfill plugins for browser compatibility
 						const defaultPlugins: ESBuild.Plugin[] = [
@@ -257,8 +223,8 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 						];
 
 						// Merge user plugins with defaults (user plugins run first)
-						const plugins = clientOpts.plugins
-							? [...clientOpts.plugins, ...defaultPlugins]
+						const plugins = options.plugins
+							? [...options.plugins, ...defaultPlugins]
 							: defaultPlugins;
 
 						const ctx = await getContext(args.path, {
@@ -270,18 +236,18 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							write: false,
 							minify: true,
 							// outdir is required for esbuild to know where to put extracted CSS
-							outdir: config.outDir,
-							// Apply polyfills and user-provided client build options
+							outdir: outDir,
+							// Apply polyfills and user-provided build options
 							plugins,
-							define: clientOpts.define,
-							inject: clientOpts.inject,
-							external: clientOpts.external,
-							alias: clientOpts.alias,
+							define: options.define,
+							inject: options.inject,
+							external: options.external,
+							alias: options.alias,
 							// Apply JSX configuration (defaults to @b9g/crank automatic runtime)
-							jsx: clientOpts.jsx ?? "automatic",
-							jsxFactory: clientOpts.jsxFactory,
-							jsxFragment: clientOpts.jsxFragment,
-							jsxImportSource: clientOpts.jsxImportSource ?? "@b9g/crank",
+							jsx: options.jsx ?? "automatic",
+							jsxFactory: options.jsxFactory,
+							jsxFragment: options.jsxFragment,
+							jsxImportSource: options.jsxImportSource ?? "@b9g/crank",
 						});
 						const result = await ctx.rebuild();
 						if (!result.outputFiles) {
@@ -349,14 +315,20 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							},
 						};
 
+						// Merge user plugins with the external paths plugin
+						const plugins: ESBuild.Plugin[] = [
+							...(options.plugins || []),
+							externalAbsolutePathsPlugin,
+						];
+
 						const ctx = await getContext(entryPath, {
 							entryPoints: [entryPath],
 							bundle: true,
 							write: false,
 							minify: true,
 							// outdir required for esbuild to generate output paths
-							outdir: config.outDir,
-							plugins: [externalAbsolutePathsPlugin],
+							outdir: outDir,
+							plugins,
 							// Loaders for web assets referenced in CSS via url()
 							loader: {
 								// Fonts
@@ -393,7 +365,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 						// Write out any other output files (fonts, images referenced in CSS)
 						// These are placed relative to the CSS file location
 						const basePath = normalizePath(args.with.assetBase);
-						const cssOutputDir = join(config.outDir, "public", basePath);
+						const cssOutputDir = join(outDir, "public", basePath);
 						if (!existsSync(cssOutputDir)) {
 							mkdirSync(cssOutputDir, {recursive: true});
 						}
@@ -453,7 +425,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 
 					// Output directory: {outDir}/public/{assetBase}/
 					// e.g., outDir="dist", assetBase="/assets" → dist/public/assets/
-					const outputDir = join(config.outDir, "public", basePath);
+					const outputDir = join(outDir, "public", basePath);
 					if (!existsSync(outputDir)) {
 						mkdirSync(outputDir, {recursive: true});
 					}
@@ -505,7 +477,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 				try {
 					// Manifest goes to {outDir}/server/assets.json
 					// Server bucket keeps it non-public (contains internal build metadata)
-					const manifestPath = join(config.outDir, "server", "assets.json");
+					const manifestPath = join(outDir, "server", "assets.json");
 					const manifestDir = dirname(manifestPath);
 					if (!existsSync(manifestDir)) {
 						mkdirSync(manifestDir, {recursive: true});

@@ -267,12 +267,11 @@ export class ServerBundler {
 			importMetaPlugin(),
 			assetsPlugin({
 				outDir: outputDir,
-				clientBuild: {
-					jsx: jsxOptions.jsx,
-					jsxFactory: jsxOptions.jsxFactory,
-					jsxFragment: jsxOptions.jsxFragment,
-					jsxImportSource: jsxOptions.jsxImportSource,
-				},
+				plugins: userPlugins,
+				jsx: jsxOptions.jsx,
+				jsxFactory: jsxOptions.jsxFactory,
+				jsxFragment: jsxOptions.jsxFragment,
+				jsxImportSource: jsxOptions.jsxImportSource,
 			}),
 		];
 
