@@ -626,9 +626,10 @@ export function createDatabaseFactory(
 		let Database;
 		try {
 			({Database} = await import("@b9g/zen"));
-		} catch {
+		} catch (e) {
 			throw new Error(
 				"@b9g/zen is required for database support. Install it with: npm install @b9g/zen",
+				{cause: e},
 			);
 		}
 
