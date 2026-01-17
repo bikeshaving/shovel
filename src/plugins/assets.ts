@@ -195,6 +195,13 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 					const needsTranspilation = TRANSPILABLE_EXTENSIONS.has(ext);
 					const needsCSSBundling = CSS_EXTENSIONS.has(ext);
 
+					logger.debug("Processing asset: {path} ext={ext} needsCSS={needsCSSBundling} plugins={pluginCount}", {
+						path: args.path,
+						ext,
+						needsCSSBundling,
+						pluginCount: options.plugins?.length ?? 0,
+					});
+
 					// Validate type: "css" usage
 					if (wantsCSS && !needsTranspilation) {
 						return {
@@ -320,6 +327,9 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							...(options.plugins || []),
 							externalAbsolutePathsPlugin,
 						];
+						logger.debug("CSS bundling plugins: {plugins}", {
+							plugins: plugins.map((p) => p.name),
+						});
 
 						const ctx = await getContext(entryPath, {
 							entryPoints: [entryPath],

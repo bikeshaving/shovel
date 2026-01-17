@@ -257,8 +257,10 @@ export class ServerBundler {
 			esbuildEntryPoints[name] = `shovel:entry:${name}`;
 		}
 
+		// assetsPlugin runs FIRST to intercept imports with { assetBase: "..." }.
+		// userPlugins run after, so they can handle other file types (e.g., .glsl)
+		// that don't have assetBase but still need transformation.
 		const plugins: ESBuild.Plugin[] = [
-			...userPlugins,
 			createConfigPlugin(this.#projectRoot, this.#options.outDir, {
 				platformDefaults,
 				lifecycle: this.#options.lifecycle,
@@ -273,6 +275,7 @@ export class ServerBundler {
 				jsxFragment: jsxOptions.jsxFragment,
 				jsxImportSource: jsxOptions.jsxImportSource,
 			}),
+			...userPlugins,
 		];
 
 		if (watch) {

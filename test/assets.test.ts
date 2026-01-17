@@ -311,6 +311,90 @@ export default styleUrl;`,
 });
 
 describe("Assets Plugin - user plugins", () => {
+	test("should NOT be blocked by user plugins in main build when processing assetBase imports", async () => {
+		// This test verifies the bug where user plugins (like PostCSS) added to the main
+		// build intercept CSS files BEFORE the assets plugin can process them.
+		// The assets plugin should handle all files with { assetBase: "..." } imports,
+		// not user plugins in the main build.
+		const testDir = await mkdtemp(join(tmpdir(), "plugin-intercept-test-"));
+
+		// Create CSS with nested @media (requires PostCSS to transform)
+		await writeFile(
+			join(testDir, "style.css"),
+			`pre {
+  padding: 5px;
+  @media screen and (min-width: 800px) {
+    padding: 1em;
+  }
+}`,
+		);
+
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import styleUrl from "./style.css" with { assetBase: "/static/" };
+export default styleUrl;`,
+		);
+
+		// Simulate a CSS plugin like PostCSS that processes ALL CSS files
+		// and returns a result (never returning null)
+		const cssInterceptorPlugin: ESBuild.Plugin = {
+			name: "css-interceptor",
+			setup(build) {
+				build.onLoad({filter: /\.css$/}, async (args) => {
+					// This simulates what esbuild-postcss does - it processes ALL CSS
+					// and always returns a result, never passing through to other plugins
+					const content = await readFile(args.path, "utf8");
+					// Transform nested @media to proper CSS (like PostCSS does)
+					const transformed = content.replace(
+						/@media ([^{]+)\{([^}]+)\}/g,
+						"}\n@media $1{ pre {$2} }",
+					);
+					return {contents: transformed, loader: "css"};
+				});
+			},
+		};
+
+		const outDir = join(testDir, "dist");
+
+		// assetsPlugin runs FIRST to intercept { assetBase } imports.
+		// User plugins run AFTER, so they can handle files without assetBase
+		// (e.g., .glsl files used directly in server code).
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				// assetsPlugin comes first - intercepts assetBase imports
+				assetsPlugin({
+					outDir: outDir,
+					plugins: [cssInterceptorPlugin],
+				}),
+				// User plugins come after - handle everything else
+				cssInterceptorPlugin,
+			],
+		});
+
+		// The CSS should be in the manifest and in public/static/
+		const manifest = JSON.parse(
+			await readFile(join(outDir, "server", "assets.json"), "utf8"),
+		);
+
+		// Find the CSS asset
+		const cssAsset = Object.values(manifest.assets).find(
+			(a: any) => a.url?.endsWith(".css"),
+		);
+
+		expect(cssAsset).toBeDefined();
+		expect((cssAsset as any).url).toMatch(/^\/static\//);
+
+		// Verify the CSS file exists in public/static/
+		const files = await readdir(join(outDir, "public", "static"));
+		const cssFiles = files.filter((f) => f.endsWith(".css"));
+		expect(cssFiles.length).toBe(1);
+	});
+
 	test("should apply user plugins to CSS bundling", async () => {
 		const testDir = await mkdtemp(join(tmpdir(), "css-plugin-test-"));
 
