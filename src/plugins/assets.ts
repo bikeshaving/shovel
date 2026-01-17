@@ -195,12 +195,15 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 					const needsTranspilation = TRANSPILABLE_EXTENSIONS.has(ext);
 					const needsCSSBundling = CSS_EXTENSIONS.has(ext);
 
-					logger.debug("Processing asset: {path} ext={ext} needsCSS={needsCSSBundling} plugins={pluginCount}", {
-						path: args.path,
-						ext,
-						needsCSSBundling,
-						pluginCount: options.plugins?.length ?? 0,
-					});
+					logger.debug(
+						"Processing asset: {path} ext={ext} needsCSS={needsCSSBundling} plugins={pluginCount}",
+						{
+							path: args.path,
+							ext,
+							needsCSSBundling,
+							pluginCount: options.plugins?.length ?? 0,
+						},
+					);
 
 					// Validate type: "css" usage
 					if (wantsCSS && !needsTranspilation) {
@@ -238,7 +241,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							entryPoints: [args.path],
 							bundle: true,
 							format: "esm",
-							target: "es2022",
+							target: ["es2022", "chrome90"],
 							platform: "browser",
 							write: false,
 							minify: true,

@@ -382,8 +382,8 @@ export default styleUrl;`,
 		);
 
 		// Find the CSS asset
-		const cssAsset = Object.values(manifest.assets).find(
-			(a: any) => a.url?.endsWith(".css"),
+		const cssAsset = Object.values(manifest.assets).find((a: any) =>
+			a.url?.endsWith(".css"),
 		);
 
 		expect(cssAsset).toBeDefined();
@@ -399,10 +399,7 @@ export default styleUrl;`,
 		const testDir = await mkdtemp(join(tmpdir(), "css-plugin-test-"));
 
 		// Create CSS with content that our test plugin will transform
-		await writeFile(
-			join(testDir, "style.css"),
-			`body { color: REPLACE_ME; }`,
-		);
+		await writeFile(join(testDir, "style.css"), `body { color: REPLACE_ME; }`);
 
 		await writeFile(
 			join(testDir, "entry.js"),
