@@ -147,7 +147,6 @@ export async function developCommand(
 			onRebuild: async (result) => {
 				if (result.success && result.outputs.worker) {
 					await startOrReloadServer(result.outputs.worker);
-					logger.info("Reloaded");
 				}
 			},
 		});
