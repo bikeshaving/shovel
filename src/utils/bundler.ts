@@ -659,9 +659,6 @@ startWorkerMessageLoop({registration, databases: result.databases});
 				newDirFiles.set(entryDir, new Set());
 			}
 			newDirFiles.get(entryDir)!.add(entryFile);
-			logger.debug("Explicitly watching user entry file: {path}", {
-				path: this.#userEntryPath,
-			});
 		}
 
 		for (const inputPath of Object.keys(metafile.inputs)) {
@@ -716,7 +713,7 @@ startWorkerMessageLoop({registration, databases: result.databases});
 
 					this.#dirWatchers.set(dir, {watcher, files});
 				} catch (err) {
-					logger.debug("Failed to watch directory {dir}: {error}", {
+					logger.warn("Failed to watch directory {dir}: {error}", {
 						dir,
 						error: err,
 					});
@@ -729,15 +726,9 @@ startWorkerMessageLoop({registration, databases: result.databases});
 			0,
 		);
 
-		const watchedDirs = Array.from(this.#dirWatchers.keys());
-		logger.debug(
-			"Watching {fileCount} source files in {dirCount} directories with native fs.watch",
-			{fileCount: totalFiles, dirCount: this.#dirWatchers.size},
-		);
-		logger.debug("Watched directories: {dirs}", {
-			dirs:
-				watchedDirs.slice(0, 5).join(", ") +
-				(watchedDirs.length > 5 ? "..." : ""),
+		logger.info("Watching {fileCount} files in {dirCount} directories", {
+			fileCount: totalFiles,
+			dirCount: this.#dirWatchers.size,
 		});
 	}
 }

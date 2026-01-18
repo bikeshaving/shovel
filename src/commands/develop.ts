@@ -82,8 +82,10 @@ export async function developCommand(
 		const port = parseInt(options.port || String(DEFAULTS.SERVER.PORT), 10);
 		const host = options.host || DEFAULTS.SERVER.HOST;
 
-		logger.debug("Platform: {platform}", {platform: platformName});
-		logger.debug("Worker count: {workerCount}", {workerCount});
+		logger.info("Platform: {platform}, workers: {workerCount}", {
+			platform: platformName,
+			workerCount,
+		});
 
 		// Create platform with server and worker settings
 		const platformInstance = await createPlatform(platformName, {
@@ -92,8 +94,6 @@ export async function developCommand(
 			workers: workerCount,
 		});
 		const platformESBuildConfig = platformInstance.getESBuildConfig();
-
-		logger.info("Starting development server");
 
 		let serverStarted = false;
 
