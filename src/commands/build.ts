@@ -200,7 +200,7 @@ async function generatePackageJSON({
 			packageJSONContent,
 			"utf8",
 		);
-		logger.debug("Copied package.json", {serverDir});
+		logger.info("Copied package.json from source");
 	} catch (error) {
 		// If no package.json exists in source, generate one for executable builds
 		logger.debug("Could not copy package.json: {error}", {error});
@@ -213,7 +213,7 @@ async function generatePackageJSON({
 				JSON.stringify(generatedPackageJson, null, 2),
 				"utf8",
 			);
-			logger.debug("Generated package.json", {platform});
+			logger.info("Generated package.json for {platform}", {platform});
 		} catch (generateError) {
 			logger.debug("Could not generate package.json: {error}", {
 				error: generateError,
