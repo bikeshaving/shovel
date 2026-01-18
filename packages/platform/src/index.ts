@@ -1075,7 +1075,9 @@ export class ServiceWorkerPool {
 				createPromises.push(this.#createWorker(entrypoint));
 			}
 			await Promise.all(createPromises);
-			logger.debug("All workers reloaded", {entrypoint});
+			logger.info("Reloaded {count} workers", {
+				count: this.#options.workerCount,
+			});
 		} catch (error) {
 			// If worker creation fails, reject any pending request waiters
 			const waiters = this.#workerAvailableWaiters;
