@@ -55,7 +55,7 @@ const TRANSPILABLE_EXTENSIONS = new Set([
  */
 const CSS_EXTENSIONS = new Set([".css"]);
 
-const logger = getLogger(["shovel"]);
+const logger = getLogger(["shovel", "assets"]);
 
 /**
  * Configuration for assets plugin (build-time)

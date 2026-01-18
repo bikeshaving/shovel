@@ -24,7 +24,7 @@ import {findProjectRoot, getNodeModulesPath} from "./project.js";
 import {getGitSHA} from "./git-sha.js";
 import type {ProcessedBuildConfig, BuildPluginConfig} from "./config.js";
 
-const logger = getLogger(["shovel"]);
+const logger = getLogger(["shovel", "build"]);
 
 /**
  * Node.js ESM require() shim for external CJS dependencies.
@@ -74,6 +74,10 @@ export interface BuildOutputs {
 export interface BuildResult {
 	success: boolean;
 	outputs: BuildOutputs;
+	/** ESBuild metafile for bundle analysis */
+	metafile?: ESBuild.Metafile;
+	/** Build duration in milliseconds */
+	elapsed?: number;
 }
 
 /**
@@ -113,6 +117,9 @@ export class ServerBundler {
 	#dirWatchers: Map<string, {watcher: FSWatcher; files: Set<string>}>;
 	#userEntryPath: string;
 	#watchOptions?: WatchOptions;
+	#changedFiles: Set<string>;
+	#rebuildTimeout?: ReturnType<typeof setTimeout>;
+	#buildStartTime?: number;
 
 	constructor(options: BundlerOptions) {
 		this.#options = options;
@@ -122,6 +129,26 @@ export class ServerBundler {
 		this.#configWatchers = [];
 		this.#dirWatchers = new Map();
 		this.#userEntryPath = "";
+		this.#changedFiles = new Set();
+	}
+
+	/**
+	 * Schedule a debounced rebuild.
+	 * Collects file changes and triggers rebuild after 50ms of quiet.
+	 */
+	#scheduleRebuild(changedFile: string): void {
+		this.#changedFiles.add(changedFile);
+
+		if (this.#rebuildTimeout) {
+			clearTimeout(this.#rebuildTimeout);
+		}
+
+		this.#rebuildTimeout = setTimeout(() => {
+			this.#rebuildTimeout = undefined;
+			this.#ctx?.rebuild().catch((err) => {
+				logger.error("Rebuild failed: {error}", {error: err});
+			});
+		}, 50);
 	}
 
 	/**
@@ -152,7 +179,7 @@ export class ServerBundler {
 
 		logger.debug("Build complete", {outputs, success});
 
-		return {success, outputs};
+		return {success, outputs, metafile: result.metafile};
 	}
 
 	/**
@@ -191,6 +218,11 @@ export class ServerBundler {
 	 * Stop watching and dispose of resources.
 	 */
 	async stop(): Promise<void> {
+		if (this.#rebuildTimeout) {
+			clearTimeout(this.#rebuildTimeout);
+			this.#rebuildTimeout = undefined;
+		}
+
 		for (const watcher of this.#configWatchers) {
 			watcher.close();
 		}
@@ -416,7 +448,22 @@ startWorkerMessageLoop({registration, databases: result.databases});
 			name: "build-notify",
 			setup: (build) => {
 				build.onStart(() => {
-					logger.info("Building...");
+					this.#buildStartTime = performance.now();
+					if (this.#changedFiles.size > 0) {
+						const files = Array.from(this.#changedFiles).map((f) =>
+							relative(this.#projectRoot, f),
+						);
+						this.#changedFiles.clear();
+						if (files.length === 1) {
+							logger.info("Rebuilding: {file}", {file: files[0]});
+						} else {
+							logger.info("Rebuilding: {files}", {
+								files: files.join(", "),
+							});
+						}
+					} else {
+						logger.info("Building...");
+					}
 				});
 				build.onEnd(async (result) => {
 					let success = result.errors.length === 0;
@@ -479,11 +526,17 @@ startWorkerMessageLoop({registration, databases: result.databases});
 					}
 
 					const outputs = this.#extractOutputPaths(result.metafile);
+					const elapsed = this.#buildStartTime
+						? Math.round(performance.now() - this.#buildStartTime)
+						: 0;
 
 					if (success) {
-						logger.debug("Build complete", {outputs});
+						logger.info("Build complete in {elapsed}ms", {elapsed});
 					} else {
-						logger.error("Build errors: {errors}", {errors: result.errors});
+						logger.error("Build errors ({elapsed}ms): {errors}", {
+							elapsed,
+							errors: result.errors,
+						});
 					}
 
 					this.#currentOutputs = outputs;
@@ -492,7 +545,7 @@ startWorkerMessageLoop({registration, databases: result.databases});
 						this.#updateSourceWatchers(result.metafile);
 					}
 
-					const buildResult: BuildResult = {success, outputs};
+					const buildResult: BuildResult = {success, outputs, elapsed};
 
 					if (!this.#initialBuildComplete) {
 						this.#initialBuildComplete = true;
@@ -579,10 +632,7 @@ startWorkerMessageLoop({registration, databases: result.databases});
 			try {
 				const watcher = watch(filepath, {persistent: false}, (event) => {
 					if (event === "change") {
-						logger.info(`Config changed: ${filename}, rebuilding...`);
-						this.#ctx?.rebuild().catch((err) => {
-							logger.error("Rebuild failed: {error}", {error: err});
-						});
+						this.#scheduleRebuild(filepath);
 					}
 				});
 
@@ -655,12 +705,11 @@ startWorkerMessageLoop({registration, databases: result.databases});
 							const isTrackedFile = filename ? entry.files.has(filename) : true;
 
 							if (isTrackedFile) {
+								const changedFile = filename ? join(dir, filename) : dir;
 								logger.debug("Native watcher detected change: {file}", {
-									file: filename ? join(dir, filename) : dir,
+									file: changedFile,
 								});
-								this.#ctx?.rebuild().catch((err) => {
-									logger.error("Rebuild failed: {error}", {error: err});
-								});
+								this.#scheduleRebuild(changedFile);
 							}
 						},
 					);

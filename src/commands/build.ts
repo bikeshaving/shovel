@@ -2,17 +2,92 @@
  * Production build system for Shovel apps
  * Creates self-contained, directly executable production builds
  */
-import {resolve, join, dirname} from "path";
+import {resolve, join, dirname, basename} from "path";
 import {getLogger} from "@logtape/logtape";
 import {resolvePlatform, type Platform} from "@b9g/platform";
 import {readFile, writeFile} from "fs/promises";
+import type * as ESBuild from "esbuild";
 
 import {ServerBundler} from "../utils/bundler.js";
 import {findProjectRoot, findWorkspaceRoot} from "../utils/project.js";
 import {createPlatform} from "../utils/platform.js";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 
-const logger = getLogger(["shovel"]);
+const logger = getLogger(["shovel", "build"]);
+
+/**
+ * Format bytes to human readable string
+ */
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/**
+ * Log bundle sizes from metafile
+ */
+function logBundleSizes(metafile: ESBuild.Metafile): void {
+	const outputs: {name: string; bytes: number}[] = [];
+
+	for (const [outputPath, output] of Object.entries(metafile.outputs)) {
+		if (!outputPath.endsWith(".js")) continue;
+		outputs.push({
+			name: basename(outputPath),
+			bytes: output.bytes,
+		});
+	}
+
+	// Sort by size descending
+	outputs.sort((a, b) => b.bytes - a.bytes);
+
+	const total = outputs.reduce((sum, o) => sum + o.bytes, 0);
+
+	for (const output of outputs) {
+		logger.info("{name}: {size}", {
+			name: output.name,
+			size: formatBytes(output.bytes),
+		});
+	}
+	logger.info("Total: {size}", {size: formatBytes(total)});
+	logger.info("(set shovel.build log level to debug for breakdown)");
+
+	// Log detailed breakdown at debug level
+	for (const [outputPath, output] of Object.entries(metafile.outputs)) {
+		if (!outputPath.endsWith(".js")) continue;
+
+		// Collect inputs by category
+		const nodeModules: {path: string; bytes: number}[] = [];
+		const sourceFiles: {path: string; bytes: number}[] = [];
+
+		for (const [inputPath, input] of Object.entries(output.inputs)) {
+			if (inputPath.includes("node_modules")) {
+				nodeModules.push({path: inputPath, bytes: input.bytesInOutput});
+			} else if (
+				!inputPath.startsWith("<") &&
+				!inputPath.startsWith("shovel:")
+			) {
+				sourceFiles.push({path: inputPath, bytes: input.bytesInOutput});
+			}
+		}
+
+		// Sort by size and show top contributors
+		nodeModules.sort((a, b) => b.bytes - a.bytes);
+		const topDeps = nodeModules.slice(0, 5);
+
+		if (topDeps.length > 0) {
+			logger.debug("{output} top dependencies:", {
+				output: basename(outputPath),
+			});
+			for (const dep of topDeps) {
+				logger.debug("  {path}: {size}", {
+					path: dep.path,
+					size: formatBytes(dep.bytes),
+				});
+			}
+		}
+	}
+}
 
 /**
  * Build result returned to callers
@@ -65,7 +140,7 @@ export async function buildForProduction({
 		lifecycle,
 	});
 
-	const {success, outputs} = await bundler.build();
+	const {success, outputs, metafile} = await bundler.build();
 	if (!success) {
 		throw new Error("Build failed");
 	}
@@ -76,6 +151,12 @@ export async function buildForProduction({
 	logger.debug("Built app to", {outputDir});
 	logger.debug("Server files", {dir: serverDir});
 	logger.debug("Public files", {dir: join(outputDir, "public")});
+
+	// Log bundle sizes
+	if (metafile) {
+		logBundleSizes(metafile);
+	}
+
 	// Report the main entry point (supervisor for Node/Bun, worker for Cloudflare)
 	logger.info("Build complete: {path}", {
 		path: outputs.index || outputs.worker,
