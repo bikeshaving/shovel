@@ -3,8 +3,6 @@
 /* eslint-disable no-console -- CLI app uses console for terminal output */
 
 import {intro, outro, text, select, confirm, spinner} from "@clack/prompts";
-import picocolors from "picocolors";
-const {cyan, green, red, dim, bold} = picocolors;
 import {mkdir, writeFile} from "fs/promises";
 import {join, resolve} from "path";
 import {existsSync} from "fs";
@@ -19,9 +17,7 @@ interface ProjectConfig {
 async function main() {
 	console.info("");
 
-	intro(cyan("🚀 Create Shovel App"));
-
-	console.info(dim("The ServiceWorker framework that runs everywhere\n"));
+	intro("Create Shovel App");
 
 	// Get project name from args or prompt
 	let projectName = process.argv[2];
@@ -39,7 +35,7 @@ async function main() {
 		});
 
 		if (typeof nameResult === "symbol") {
-			outro(red("❌ Project creation cancelled"));
+			outro("Project creation cancelled");
 			process.exit(0);
 		}
 
@@ -56,7 +52,7 @@ async function main() {
 		});
 
 		if (typeof overwrite === "symbol" || !overwrite) {
-			outro(red("❌ Project creation cancelled"));
+			outro("Project creation cancelled");
 			process.exit(0);
 		}
 	}
@@ -67,22 +63,22 @@ async function main() {
 		options: [
 			{
 				value: "node" as const,
-				label: `${bold("Node.js")} - Traditional server with worker threads`,
+				label: `Node.js - Traditional server with worker threads`,
 				hint: "Most common choice",
 			},
 			{
 				value: "bun" as const,
-				label: `${bold("Bun")} - Native performance with Web Workers`,
+				label: `Bun - Native performance with Web Workers`,
 			},
 			{
 				value: "cloudflare" as const,
-				label: `${bold("Cloudflare")} - Edge runtime with KV/R2/D1`,
+				label: `Cloudflare - Edge runtime with KV/R2/D1`,
 			},
 		],
 	});
 
 	if (typeof platform === "symbol") {
-		outro(red("❌ Project creation cancelled"));
+		outro("Project creation cancelled");
 		process.exit(0);
 	}
 
@@ -92,21 +88,21 @@ async function main() {
 		options: [
 			{
 				value: "basic" as const,
-				label: `${bold("Basic")} - Simple hello world with routing`,
+				label: `Basic - Simple hello world with routing`,
 			},
 			{
 				value: "api" as const,
-				label: `${bold("API")} - REST endpoints with JSON responses`,
+				label: `API - REST endpoints with JSON responses`,
 			},
 			{
 				value: "echo" as const,
-				label: `${bold("Echo")} - HTTP request echo service (like httpbin)`,
+				label: `Echo - HTTP request echo service (like httpbin)`,
 			},
 		],
 	});
 
 	if (typeof template === "symbol") {
-		outro(red("❌ Project creation cancelled"));
+		outro("Project creation cancelled");
 		process.exit(0);
 	}
 
@@ -117,7 +113,7 @@ async function main() {
 	});
 
 	if (typeof typescript === "symbol") {
-		outro(red("❌ Project creation cancelled"));
+		outro("Project creation cancelled");
 		process.exit(0);
 	}
 
@@ -134,25 +130,22 @@ async function main() {
 
 	try {
 		await createProject(config, projectPath);
-		s.stop("✅ Project created successfully!");
+		s.stop("Project created");
 
 		console.info("");
-		outro(green("🎉 Your Shovel project is ready!"));
+		outro("Your Shovel project is ready!");
 
 		console.info("");
-		console.info(cyan("Next steps:"));
-		console.info(`  ${dim("$")} cd ${projectName}`);
-		console.info(`  ${dim("$")} npm install`);
-		console.info(`  ${dim("$")} npm run develop`);
+		console.info("Next steps:");
+		console.info(`  $ cd ${projectName}`);
+		console.info(`  $ npm install`);
+		console.info(`  $ npm run develop`);
 		console.info("");
-		console.info(
-			`🌐 Your app will be available at: ${bold("http://localhost:3000")}`,
-		);
+		console.info(`Your app will be available at: http://localhost:3000`);
 		console.info("");
-		console.info(dim("Happy coding with Shovel! 🚀"));
 	} catch (error) {
-		s.stop("❌ Failed to create project");
-		console.error(red("Error:"), error);
+		s.stop("Failed to create project");
+		console.error("Error:", error);
 		process.exit(1);
 	}
 }
@@ -694,11 +687,11 @@ Built with 🚀 [Shovel](https://github.com/b9g/shovel) - The ServiceWorker fram
 
 // Handle Ctrl+C gracefully
 process.on("SIGINT", () => {
-	outro(red("❌ Project creation cancelled"));
+	outro("Project creation cancelled");
 	process.exit(0);
 });
 
 main().catch((error) => {
-	console.error(red("Fatal error:"), error);
+	console.error("Fatal error:", error);
 	process.exit(1);
 });
