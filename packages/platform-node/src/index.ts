@@ -428,12 +428,21 @@ export class NodePlatform extends BasePlatform {
 				}
 			} catch (error) {
 				const err = error instanceof Error ? error : new Error(String(error));
-				logger.error("Request error: {error}", {error: err});
 
 				// Convert to HTTPError for consistent response format
 				const httpError = isHTTPError(error)
 					? (error as HTTPError)
 					: new InternalServerError(err.message, {cause: err});
+
+				// Log at appropriate level: warn for 4xx (client errors), error for 5xx (server errors)
+				if (httpError.status >= 500) {
+					logger.error("Request error: {error}", {error: err});
+				} else {
+					logger.warn("Request error: {status} {error}", {
+						status: httpError.status,
+						error: err,
+					});
+				}
 
 				// import.meta.env is aliased to process.env for Node.js builds
 				const isDev = import.meta.env?.MODE !== "production";
