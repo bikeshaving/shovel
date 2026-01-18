@@ -498,9 +498,12 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 
 					// Write manifest file
 					writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-					logger.debug("Generated asset manifest", {
+					const assetCount = Object.keys(manifest.assets).length;
+					if (assetCount > 0) {
+						logger.info("Processed {count} assets", {count: assetCount});
+					}
+					logger.debug("Generated asset manifest: {path}", {
 						path: manifestPath,
-						assetCount: Object.keys(manifest.assets).length,
 					});
 				} catch (error: any) {
 					logger.warn("Failed to write asset manifest: {error}", {error});
