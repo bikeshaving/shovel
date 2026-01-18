@@ -40,8 +40,7 @@
     "@b9g/crank": "^0.7.2",
     "@b9g/oauth2": "workspace:*",
     "@b9g/router": "workspace:*",
-    "@uswds/uswds": "^3.13.0",
-    "mime": "^4.1.0"
+    "@uswds/uswds": "^3.13.0"
   },
   "peerDependencies": {
     "@b9g/zen": "^0.1.6",
