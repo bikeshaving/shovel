@@ -118,15 +118,4 @@ program
 		process.exit(0);
 	});
 
-/**
- * Platform info command
- */
-program
-	.command("info")
-	.description("Display platform and runtime information")
-	.action(async () => {
-		const {infoCommand} = await import("../src/commands/info.ts");
-		await infoCommand();
-	});
-
 program.parse();
