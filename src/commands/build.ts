@@ -315,6 +315,7 @@ export async function buildCommand(
 			throw new Error("No worker entry point found in build outputs");
 		}
 
+		const lifecycleStart = performance.now();
 		logger.info("Running ServiceWorker lifecycle: {stage}", {
 			stage: lifecycleOption.stage,
 		});
@@ -326,7 +327,10 @@ export async function buildCommand(
 
 		// Terminate workers after lifecycle completes
 		await platformInstance.serviceWorker.terminate();
-		logger.info("Lifecycle complete");
+		const lifecycleElapsed = Math.round(performance.now() - lifecycleStart);
+		logger.info("Lifecycle complete in {elapsed}ms", {
+			elapsed: lifecycleElapsed,
+		});
 	}
 
 	await platformInstance.dispose();
