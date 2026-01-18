@@ -4,7 +4,6 @@ import {resolvePlatform} from "@b9g/platform";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 import {ServerBundler} from "../utils/bundler.js";
 import {createPlatform} from "../utils/platform.js";
-import pc from "picocolors";
 import {networkInterfaces} from "os";
 
 const logger = getLogger(["shovel", "develop"]);
@@ -106,26 +105,16 @@ export async function developCommand(
 				await platformInstance.listen();
 				serverStarted = true;
 
-				// Display server URLs (formatted output, not logging)
+				// Display server URLs
 				const urls = getDisplayUrls(host, port);
-				/* eslint-disable no-console */
-				console.log();
-				console.log(pc.bold("  Server running:"));
-				console.log();
-				console.log(`  ${pc.dim("Local:".padEnd(10))} ${pc.cyan(urls.local)}`);
 				if (urls.network) {
-					console.log(
-						`  ${pc.dim("Network:".padEnd(10))} ${pc.cyan(urls.network)}`,
-					);
+					logger.info("Server running at {local} and {network}", {
+						local: urls.local,
+						network: urls.network,
+					});
+				} else {
+					logger.info("Server running at {url}", {url: urls.local});
 				}
-				console.log();
-				console.log(
-					pc.dim(
-						`  Tip: Use subdomains like ${pc.reset("app.localhost:" + port)} for routing`,
-					),
-				);
-				console.log();
-				/* eslint-enable no-console */
 			} else {
 				// Subsequent builds - hot reload workers
 				await platformInstance.serviceWorker.reloadWorkers(workerPath);
