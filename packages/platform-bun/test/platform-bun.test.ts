@@ -175,6 +175,38 @@ describe("BunPlatform", () => {
 		expect(platform).toBeDefined();
 	});
 
+	describe("port binding", () => {
+		test("should fail when binding to same port with 0.0.0.0", async () => {
+			// This test verifies that using 0.0.0.0 prevents dual-instance issues.
+			// With "localhost", Bun can bind two servers (one IPv6, one IPv4).
+			// With "0.0.0.0", the second server correctly fails with EADDRINUSE.
+			const handler = mock(() => new Response("OK"));
+			const server1 = platform.createServer(handler, {
+				port: 0, // Let OS assign a port
+				host: "0.0.0.0",
+			});
+			await server1.listen();
+			const port = server1.address().port;
+
+			// Try to start second server on same port with 0.0.0.0 - should fail
+			const platform2 = new BunPlatform({cwd: tempDir});
+			let error: Error | null = null;
+			try {
+				platform2.createServer(handler, {
+					port,
+					host: "0.0.0.0",
+				});
+			} catch (e) {
+				error = e as Error;
+			}
+
+			expect(error).not.toBeNull();
+			expect((error as any).code).toBe("EADDRINUSE");
+
+			await server1.close();
+		});
+	});
+
 	describe("config integration", () => {
 		test("createCaches should use config.caches settings", async () => {
 			const platformWithConfig = new BunPlatform({
