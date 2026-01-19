@@ -390,7 +390,6 @@ export class NodePlatform extends BasePlatform {
 		const port = options.port ?? this.#options.port;
 		const host = options.host ?? this.#options.host;
 		const tls = options.tls ?? this.#options.tls;
-		const protocol = tls ? "https" : "http";
 
 		// Request handler shared between HTTP and HTTPS servers
 		const requestHandler = async (
@@ -398,6 +397,15 @@ export class NodePlatform extends BasePlatform {
 			res: HTTP.ServerResponse,
 		) => {
 			try {
+				// Determine protocol: honor X-Forwarded-Proto when TLS is terminated upstream
+				const forwardedProto = req.headers["x-forwarded-proto"];
+				const protocol =
+					typeof forwardedProto === "string"
+						? forwardedProto
+						: tls
+							? "https"
+							: "http";
+
 				// Convert Node.js request to Web API Request
 				const url = `${protocol}://${req.headers.host}${req.url}`;
 				const request = new Request(url, {

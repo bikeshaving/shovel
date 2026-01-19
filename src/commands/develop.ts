@@ -195,6 +195,16 @@ export async function developCommand(
 					tls = undefined;
 				}
 			}
+		} else if (port < 1024) {
+			// Handle privileged ports for HTTP (e.g., port 80)
+			const actualBindPort = await getBindPort(port);
+			if (actualBindPort !== port) {
+				logger.info("Using port forwarding: {requested} → {actual}", {
+					requested: port,
+					actual: actualBindPort,
+				});
+				port = actualBindPort;
+			}
 		}
 
 		logger.info("Platform: {platform}, workers: {workerCount}", {
