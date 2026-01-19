@@ -101,14 +101,15 @@ function isPortForwardingActive(): boolean {
  * This requires sudo once to set up the rule, but after that
  * the application can bind to HIGH_PORT without privileges.
  */
-async function setupMacOSPortForwarding(): Promise<void> {
-	logger.info("Setting up port forwarding (443 → {highPort})...", {
+async function setupMacOSPortForwarding(port: number): Promise<void> {
+	logger.info("Setting up port forwarding ({port} → {highPort})...", {
+		port,
 		highPort: HIGH_PORT,
 	});
 
 	// Create pf anchor file for shovel
 	const anchorPath = "/etc/pf.anchors/com.shovel";
-	const anchorContent = `rdr pass on lo0 inet proto tcp from any to 127.0.0.1 port 443 -> 127.0.0.1 port ${HIGH_PORT}\n`;
+	const anchorContent = `rdr pass on lo0 inet proto tcp from any to 127.0.0.1 port ${port} -> 127.0.0.1 port ${HIGH_PORT}\n`;
 
 	try {
 		// Write anchor file (requires sudo)
@@ -146,7 +147,7 @@ async function setupMacOSPortForwarding(): Promise<void> {
 		throw new Error(
 			`Failed to set up port forwarding: ${error instanceof Error ? error.message : error}\n` +
 				"You may need to run the following commands manually:\n" +
-				`  echo 'rdr pass on lo0 inet proto tcp from any to 127.0.0.1 port 443 -> 127.0.0.1 port ${HIGH_PORT}' | sudo tee /etc/pf.anchors/com.shovel\n` +
+				`  echo 'rdr pass on lo0 inet proto tcp from any to 127.0.0.1 port ${port} -> 127.0.0.1 port ${HIGH_PORT}' | sudo tee /etc/pf.anchors/com.shovel\n` +
 				"  sudo pfctl -f /etc/pf.conf\n" +
 				"  sudo pfctl -e",
 		);
@@ -162,21 +163,22 @@ async function setupMacOSPortForwarding(): Promise<void> {
  *
  * We prefer iptables redirect as it's less invasive.
  */
-async function setupLinuxPortForwarding(): Promise<void> {
-	logger.info("Setting up port forwarding (443 → {highPort})...", {
+async function setupLinuxPortForwarding(port: number): Promise<void> {
+	logger.info("Setting up port forwarding ({port} → {highPort})...", {
+		port,
 		highPort: HIGH_PORT,
 	});
 
 	try {
-		// Use iptables to redirect 443 to HIGH_PORT
+		// Use iptables to redirect the requested port to HIGH_PORT
 		execSync(
-			`sudo iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port ${HIGH_PORT}`,
+			`sudo iptables -t nat -A PREROUTING -p tcp --dport ${port} -j REDIRECT --to-port ${HIGH_PORT}`,
 			{stdio: "pipe"},
 		);
 
 		// Also handle localhost traffic (OUTPUT chain)
 		execSync(
-			`sudo iptables -t nat -A OUTPUT -o lo -p tcp --dport 443 -j REDIRECT --to-port ${HIGH_PORT}`,
+			`sudo iptables -t nat -A OUTPUT -o lo -p tcp --dport ${port} -j REDIRECT --to-port ${HIGH_PORT}`,
 			{stdio: "pipe"},
 		);
 
@@ -197,8 +199,8 @@ async function setupLinuxPortForwarding(): Promise<void> {
 		throw new Error(
 			`Failed to set up port forwarding: ${error instanceof Error ? error.message : error}\n` +
 				"You may need to run the following commands manually:\n" +
-				`  sudo iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port ${HIGH_PORT}\n` +
-				`  sudo iptables -t nat -A OUTPUT -o lo -p tcp --dport 443 -j REDIRECT --to-port ${HIGH_PORT}`,
+				`  sudo iptables -t nat -A PREROUTING -p tcp --dport ${port} -j REDIRECT --to-port ${HIGH_PORT}\n` +
+				`  sudo iptables -t nat -A OUTPUT -o lo -p tcp --dport ${port} -j REDIRECT --to-port ${HIGH_PORT}`,
 		);
 	}
 }
@@ -274,7 +276,7 @@ export async function ensurePrivilegedPort(
 		}
 
 		// Need to set up forwarding
-		await setupMacOSPortForwarding();
+		await setupMacOSPortForwarding(port);
 		markSetupComplete();
 
 		return {
@@ -294,7 +296,7 @@ export async function ensurePrivilegedPort(
 			};
 		}
 
-		await setupLinuxPortForwarding();
+		await setupLinuxPortForwarding(port);
 		markSetupComplete();
 
 		return {
