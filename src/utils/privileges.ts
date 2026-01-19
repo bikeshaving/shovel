@@ -43,23 +43,34 @@ export interface PrivilegeCheckResult {
 }
 
 /**
- * Check if we can bind to a specific port
+ * Result of checking if a port can be bound
  */
-export function canBindToPort(port: number): Promise<boolean> {
+export interface PortBindResult {
+	canBind: boolean;
+	error?: "EACCES" | "EADDRINUSE" | "OTHER";
+}
+
+/**
+ * Check if we can bind to a specific port
+ * Returns detailed result to distinguish permission denied from port in use
+ */
+export function canBindToPort(port: number): Promise<PortBindResult> {
 	return new Promise((resolve) => {
 		const server = createServer();
 
 		server.once("error", (err: NodeJS.ErrnoException) => {
-			if (err.code === "EACCES" || err.code === "EADDRINUSE") {
-				resolve(false);
+			if (err.code === "EACCES") {
+				resolve({canBind: false, error: "EACCES"});
+			} else if (err.code === "EADDRINUSE") {
+				resolve({canBind: false, error: "EADDRINUSE"});
 			} else {
 				// Other errors (like network issues) - assume we can try
-				resolve(true);
+				resolve({canBind: true});
 			}
 		});
 
 		server.once("listening", () => {
-			server.close(() => resolve(true));
+			server.close(() => resolve({canBind: true}));
 		});
 
 		server.listen(port, "127.0.0.1");
@@ -278,8 +289,17 @@ export async function ensurePrivilegedPort(
 	}
 
 	// Try to bind directly first
-	if (await canBindToPort(port)) {
+	const bindResult = await canBindToPort(port);
+	if (bindResult.canBind) {
 		return {accessible: true};
+	}
+
+	// If port is already in use, fail immediately - forwarding won't help
+	if (bindResult.error === "EADDRINUSE") {
+		throw new Error(
+			`Port ${port} is already in use by another process.\n` +
+				"Please stop the other service or use a different port.",
+		);
 	}
 
 	logger.debug("Cannot bind to port {port} directly, checking alternatives", {
