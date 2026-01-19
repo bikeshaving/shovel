@@ -389,7 +389,7 @@ export class NodePlatform extends BasePlatform {
 	createServer(handler: Handler, options: ServerOptions = {}): Server {
 		const port = options.port ?? this.#options.port;
 		const host = options.host ?? this.#options.host;
-		const tls = options.tls;
+		const tls = options.tls ?? this.#options.tls;
 		const protocol = tls ? "https" : "http";
 
 		// Request handler shared between HTTP and HTTPS servers

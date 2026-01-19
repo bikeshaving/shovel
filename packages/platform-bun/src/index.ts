@@ -356,7 +356,7 @@ export class BunPlatform extends BasePlatform {
 		const requestedPort = options.port ?? this.#options.port;
 		const hostname = options.host ?? this.#options.host;
 		const reusePort = options.reusePort ?? false;
-		const tls = options.tls;
+		const tls = options.tls ?? this.#options.tls;
 		const protocol = tls ? "https" : "http";
 
 		// Bun.serve is much simpler than Node.js

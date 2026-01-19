@@ -444,21 +444,31 @@ export class RouterClient {
 				this.#socket!.write(JSON.stringify(message) + "\n");
 			});
 
+			let buffer = "";
 			this.#socket.on("data", (data) => {
-				try {
-					const message = JSON.parse(data.toString().trim()) as AckMessage;
-					if (message.type === "ack") {
-						if (message.success) {
-							logger.info("Registered with router: {origin}", {
-								origin: this.#origin,
-							});
-							resolve();
-						} else {
-							reject(new Error(message.error || "Registration failed"));
+				buffer += data.toString();
+
+				// Process complete newline-delimited messages
+				const lines = buffer.split("\n");
+				buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+				for (const line of lines) {
+					if (!line.trim()) continue;
+					try {
+						const message = JSON.parse(line) as AckMessage;
+						if (message.type === "ack") {
+							if (message.success) {
+								logger.info("Registered with router: {origin}", {
+									origin: this.#origin,
+								});
+								resolve();
+							} else {
+								reject(new Error(message.error || "Registration failed"));
+							}
 						}
+					} catch (error) {
+						logger.error("Invalid router response: {error}", {error});
 					}
-				} catch (error) {
-					logger.error("Invalid router response: {error}", {error});
 				}
 			});
 
