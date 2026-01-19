@@ -153,23 +153,16 @@ export async function developCommand(
 
 				if (routerRunning) {
 					// Register with existing router
-					// We'll use a random high port for our actual server
+					// Use port 0 to let OS assign an available port
 					// Note: We don't use TLS here - the router terminates TLS and proxies plain HTTP to us
-					const actualPort = 10000 + Math.floor(Math.random() * 55000);
-					logger.info(
-						"Registering with existing router (local port: {actualPort})",
-						{actualPort},
-					);
-
 					routerClient = new RouterClient({
 						origin: origin.origin,
 						host: "127.0.0.1",
-						port: actualPort,
+						port: 0, // Will be updated after server starts
 					});
 
-					// Actual binding port is the random high port
 					// Clear TLS - router handles TLS termination, we serve plain HTTP
-					port = actualPort;
+					port = 0; // Let OS assign port, router will get actual port after listen
 					tls = undefined;
 				} else {
 					// Become the router
@@ -242,12 +235,16 @@ export async function developCommand(
 				// First successful build - register ServiceWorker and start server
 				await platformInstance.serviceWorker.register(workerPath);
 				await platformInstance.serviceWorker.ready;
-				await platformInstance.listen();
+				const server = await platformInstance.listen();
 				serverStarted = true;
 
-				// Connect to router if we're a client
+				// Connect to router if we're a client (pass actual port from server)
 				if (routerClient) {
-					await routerClient.connect();
+					const actualPort = server.address().port;
+					logger.info("Registering with router (local port: {port})", {
+						port: actualPort,
+					});
+					await routerClient.connect(actualPort);
 				}
 
 				// Display server URLs

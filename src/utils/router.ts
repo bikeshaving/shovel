@@ -428,8 +428,10 @@ export class RouterClient {
 
 	/**
 	 * Connect to the router and register this app
+	 * @param actualPort - The actual port the server is listening on (overrides constructor port)
 	 */
-	async connect(): Promise<void> {
+	async connect(actualPort?: number): Promise<void> {
+		const port = actualPort ?? this.#port;
 		return new Promise((resolve, reject) => {
 			this.#socket = new Socket();
 
@@ -439,7 +441,7 @@ export class RouterClient {
 					type: "register",
 					origin: this.#origin,
 					host: this.#host,
-					port: this.#port,
+					port,
 				};
 				this.#socket!.write(JSON.stringify(message) + "\n");
 			});
