@@ -86,8 +86,11 @@ function isPortForwardingActive(): boolean {
 		}
 
 		// Look for our forwarding rule
-		return result.stdout.includes(`rdr pass on lo0 inet proto tcp from any to 127.0.0.1 port 443`);
-	} catch {
+		return result.stdout.includes(
+			`rdr pass on lo0 inet proto tcp from any to 127.0.0.1 port 443`,
+		);
+	} catch (error) {
+		logger.debug("Port forwarding check failed: {error}", {error});
 		return false;
 	}
 }
@@ -184,9 +187,10 @@ async function setupLinuxPortForwarding(): Promise<void> {
 			execSync("sudo iptables-save | sudo tee /etc/iptables/rules.v4", {
 				stdio: "pipe",
 			});
-		} catch {
+		} catch (error) {
 			logger.warn(
-				"Could not persist iptables rules. They will be lost on reboot.",
+				"Could not persist iptables rules. They will be lost on reboot: {error}",
+				{error},
 			);
 		}
 	} catch (error) {
@@ -210,8 +214,8 @@ function markSetupComplete(): void {
 			highPort: HIGH_PORT,
 		};
 		writeFileSync(SETUP_COMPLETE_FILE, JSON.stringify(data, null, 2));
-	} catch {
-		// Non-fatal - we'll just check again next time
+	} catch (error) {
+		logger.debug("Could not save setup status: {error}", {error});
 	}
 }
 
@@ -224,8 +228,8 @@ function wasSetupCompleted(): boolean {
 			const data = JSON.parse(readFileSync(SETUP_COMPLETE_FILE, "utf-8"));
 			return data.platform === process.platform;
 		}
-	} catch {
-		// Ignore errors - will re-check
+	} catch (error) {
+		logger.debug("Could not read setup status: {error}", {error});
 	}
 	return false;
 }
@@ -321,13 +325,10 @@ export async function getBindPort(requestedPort: number): Promise<number> {
 	}
 
 	if (result.forwardingActive && result.highPort) {
-		logger.info(
-			"Port {requested} forwarded to {actual}",
-			{
-				requested: requestedPort,
-				actual: result.highPort,
-			},
-		);
+		logger.info("Port {requested} forwarded to {actual}", {
+			requested: requestedPort,
+			actual: result.highPort,
+		});
 		return result.highPort;
 	}
 

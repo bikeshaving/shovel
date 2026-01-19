@@ -11,8 +11,16 @@
  * - When router exits, another app can take over
  */
 
-import {createServer as createNetServer, Socket, Server as NetServer} from "net";
-import {createServer as createHttpServer, IncomingMessage, ServerResponse} from "http";
+import {
+	createServer as createNetServer,
+	Socket,
+	Server as NetServer,
+} from "net";
+import {
+	createServer as createHttpServer,
+	IncomingMessage,
+	ServerResponse,
+} from "http";
 import {createServer as createHttpsServer} from "https";
 import {existsSync, unlinkSync, mkdirSync} from "fs";
 import {join} from "path";
@@ -70,7 +78,7 @@ interface RegisteredApp {
  * Router class - manages multiple apps on a single port
  */
 export class Router {
-	#apps: Map<string, RegisteredApp> = new Map();
+	#apps: Map<string, RegisteredApp>;
 	#ipcServer?: NetServer;
 	#httpServer?: ReturnType<typeof createHttpServer>;
 	#httpsServer?: ReturnType<typeof createHttpsServer>;
@@ -79,6 +87,7 @@ export class Router {
 	#host: string;
 
 	constructor(options: {port: number; host: string; tls?: TLSConfig}) {
+		this.#apps = new Map();
 		this.#port = options.port;
 		this.#host = options.host;
 		this.#tls = options.tls;
@@ -101,8 +110,8 @@ export class Router {
 		if (existsSync(ROUTER_SOCKET_PATH)) {
 			try {
 				unlinkSync(ROUTER_SOCKET_PATH);
-			} catch {
-				// Socket might be in use - let the bind fail
+			} catch (error) {
+				logger.debug("Could not remove stale socket: {error}", {error});
 			}
 		}
 
@@ -145,8 +154,8 @@ export class Router {
 		if (existsSync(ROUTER_SOCKET_PATH)) {
 			try {
 				unlinkSync(ROUTER_SOCKET_PATH);
-			} catch {
-				// Ignore errors
+			} catch (error) {
+				logger.debug("Could not remove socket on stop: {error}", {error});
 			}
 		}
 

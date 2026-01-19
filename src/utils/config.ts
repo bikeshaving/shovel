@@ -70,7 +70,7 @@ export function parseOrigin(origin: string): ParsedOrigin {
 	let url: URL;
 	try {
 		url = new URL(origin);
-	} catch {
+	} catch (_error) {
 		throw new Error(`Invalid origin URL: ${origin}`);
 	}
 

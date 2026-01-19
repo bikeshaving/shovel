@@ -6,7 +6,7 @@
  */
 
 import {execSync, spawnSync} from "child_process";
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from "fs";
+import {existsSync, mkdirSync, readFileSync} from "fs";
 import {homedir} from "os";
 import {join} from "path";
 import {getLogger} from "@logtape/logtape";
@@ -47,7 +47,8 @@ export function isMkcertInstalled(): boolean {
 			encoding: "utf-8",
 		});
 		return result.status === 0;
-	} catch {
+	} catch (error) {
+		logger.debug("mkcert check failed: {error}", {error});
 		return false;
 	}
 }
@@ -70,7 +71,8 @@ export function isMkcertCAInstalled(): boolean {
 		const caRoot = result.stdout.trim();
 		const rootCert = join(caRoot, "rootCA.pem");
 		return existsSync(rootCert);
-	} catch {
+	} catch (error) {
+		logger.debug("mkcert CA check failed: {error}", {error});
 		return false;
 	}
 }

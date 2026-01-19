@@ -296,10 +296,9 @@ export class NodePlatform extends BasePlatform {
 			);
 		}
 
-		this.#server = this.createServer(
-			(request) => pool.handleRequest(request),
-			{tls: this.#options.tls},
-		);
+		this.#server = this.createServer((request) => pool.handleRequest(request), {
+			tls: this.#options.tls,
+		});
 		await this.#server.listen();
 		return this.#server;
 	}

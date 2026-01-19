@@ -86,7 +86,10 @@ program
 		"-o, --origin <url>",
 		"Origin URL for local HTTPS (e.g., https://myapp.localhost)",
 	)
-	.option("-p, --port <port>", "Port to listen on (shorthand for http://localhost:<port>)")
+	.option(
+		"-p, --port <port>",
+		"Port to listen on (shorthand for http://localhost:<port>)",
+	)
 	.option("-h, --host <host>", "Host to bind to")
 	.option(
 		"-w, --workers <count>",

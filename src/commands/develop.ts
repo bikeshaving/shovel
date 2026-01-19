@@ -7,11 +7,7 @@ import {createPlatform} from "../utils/platform.js";
 import {networkInterfaces} from "os";
 import {ensureCerts} from "../utils/certs.js";
 import {getBindPort} from "../utils/privileges.js";
-import {
-	Router,
-	RouterClient,
-	isRouterRunningAsync,
-} from "../utils/router.js";
+import {Router, RouterClient, isRouterRunningAsync} from "../utils/router.js";
 
 const logger = getLogger(["shovel", "develop"]);
 
@@ -160,10 +156,10 @@ export async function developCommand(
 					const actualBindPort = await getBindPort(port);
 
 					if (actualBindPort !== port) {
-						logger.info(
-							"Using port forwarding: {requested} → {actual}",
-							{requested: port, actual: actualBindPort},
-						);
+						logger.info("Using port forwarding: {requested} → {actual}", {
+							requested: port,
+							actual: actualBindPort,
+						});
 						// We bind to the high port, but forwarding makes 443 work
 						// Router will handle the forwarded traffic
 					}
@@ -177,7 +173,8 @@ export async function developCommand(
 
 					// Register ourselves with the router
 					// Use a different port for the actual app server
-					const appPort = actualBindPort === port ? port + 1000 : actualBindPort + 1;
+					const appPort =
+						actualBindPort === port ? port + 1000 : actualBindPort + 1;
 					router.registerApp({
 						origin: origin.origin,
 						host: "127.0.0.1",
@@ -294,15 +291,17 @@ export async function developCommand(
 		if (routerClient) {
 			try {
 				await routerClient.disconnect();
-			} catch {
-				// Ignore cleanup errors
+			} catch (cleanupError) {
+				logger.debug("Router client cleanup error: {error}", {
+					error: cleanupError,
+				});
 			}
 		}
 		if (router) {
 			try {
 				await router.stop();
-			} catch {
-				// Ignore cleanup errors
+			} catch (cleanupError) {
+				logger.debug("Router cleanup error: {error}", {error: cleanupError});
 			}
 		}
 
