@@ -516,7 +516,7 @@ export class NodePlatform extends BasePlatform {
 			},
 			address: () => ({port: actualPort, host}),
 			get url() {
-				return `${protocol}://${host}:${actualPort}`;
+				return `${serverProtocol}://${host}:${actualPort}`;
 			},
 			get ready() {
 				return isListening;
