@@ -359,19 +359,11 @@ export class BunPlatform extends BasePlatform {
 		const tls = options.tls ?? this.#options.tls;
 		const protocol = tls ? "https" : "http";
 
-		// Bun.serve is much simpler than Node.js
-		// TLS is configured via tls option in Bun.serve
 		const server = Bun.serve({
 			port: requestedPort,
 			hostname,
 			reusePort,
-			// Bun's TLS configuration
-			...(tls && {
-				tls: {
-					cert: tls.cert,
-					key: tls.key,
-				},
-			}),
+			tls,
 			async fetch(request) {
 				try {
 					// Honor X-Forwarded-Proto when TLS is terminated upstream (e.g., by router)
