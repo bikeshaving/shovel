@@ -123,7 +123,13 @@ export async function developCommand(
 			logger.info("Setting up HTTPS for {origin}", {origin: origin.origin});
 
 			// Step 1: Ensure certificates
-			const certs = await ensureCerts(origin.host);
+			// For router mode (port 443/80), use wildcard localhost cert to support multiple apps
+			// Otherwise use the specific origin host
+			const certHost =
+				(port === 443 || port === 80) && origin.host.endsWith(".localhost")
+					? "localhost"
+					: origin.host;
+			const certs = await ensureCerts(certHost);
 			tls = {cert: certs.cert, key: certs.key};
 
 			// Step 2: Handle privileged port (443)

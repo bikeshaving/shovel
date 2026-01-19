@@ -386,8 +386,9 @@ export class Router {
 					method: req.method,
 					headers: {
 						...req.headers,
-						// Preserve original host header
+						// Preserve original host and protocol for downstream apps
 						"X-Forwarded-Host": req.headers.host,
+						"X-Forwarded-Proto": this.#tls ? "https" : "http",
 					},
 				},
 				(proxyRes) => {
