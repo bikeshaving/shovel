@@ -11,6 +11,18 @@ import {Router, RouterClient, isRouterRunningAsync} from "../utils/router.js";
 
 const logger = getLogger(["shovel", "develop"]);
 
+function getWorkerCount(
+	options: {workers?: string},
+	config: {workers?: number} | null,
+) {
+	// CLI option overrides everything (explicit user intent)
+	if (options.workers) {
+		return parseInt(options.workers, 10);
+	}
+	// Config already handles: json value > WORKERS env > default
+	return config?.workers ?? DEFAULTS.WORKERS;
+}
+
 /**
  * Server URLs for display.
  */
@@ -133,8 +145,8 @@ export async function developCommand(
 			const certs = await ensureCerts(certHost);
 			tls = {cert: certs.cert, key: certs.key};
 
-			// Step 2: Handle privileged port (443)
-			if (port === 443 || port === 80) {
+			// Step 2: Handle privileged ports (any port < 1024)
+			if (port < 1024) {
 				// Check if router is already running
 				const routerRunning = await isRouterRunningAsync();
 
@@ -325,16 +337,4 @@ export async function developCommand(
 		logger.error("Failed to start development server: {error}", {error});
 		process.exit(1);
 	}
-}
-
-function getWorkerCount(
-	options: {workers?: string},
-	config: {workers?: number} | null,
-) {
-	// CLI option overrides everything (explicit user intent)
-	if (options.workers) {
-		return parseInt(options.workers, 10);
-	}
-	// Config already handles: json value > WORKERS env > default
-	return config?.workers ?? DEFAULTS.WORKERS;
 }

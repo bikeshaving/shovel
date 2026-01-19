@@ -374,7 +374,18 @@ export class BunPlatform extends BasePlatform {
 			}),
 			async fetch(request) {
 				try {
-					return await handler(request);
+					// Honor X-Forwarded-Proto when TLS is terminated upstream (e.g., by router)
+					const forwardedProto = request.headers.get("x-forwarded-proto");
+					let finalRequest = request;
+					if (forwardedProto) {
+						const proto = forwardedProto.split(",")[0].trim();
+						const url = new URL(request.url);
+						if (url.protocol !== `${proto}:`) {
+							url.protocol = `${proto}:`;
+							finalRequest = new Request(url.toString(), request);
+						}
+					}
+					return await handler(finalRequest);
 				} catch (error) {
 					const err = error instanceof Error ? error : new Error(String(error));
 
