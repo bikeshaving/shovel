@@ -104,8 +104,9 @@ export async function developCommand(
 		} else if (config.origin) {
 			origin = config.origin;
 		} else if (options.port) {
-			// --port is shorthand for http://localhost:<port>
-			origin = parseOrigin(`http://localhost:${options.port}`);
+			// --port is shorthand for http://<host>:<port>
+			const portHost = options.host ?? "localhost";
+			origin = parseOrigin(`http://${portHost}:${options.port}`);
 		}
 
 		// Derive port and host from origin or use defaults

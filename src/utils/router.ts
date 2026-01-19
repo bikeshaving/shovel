@@ -494,31 +494,6 @@ export class RouterClient {
 /**
  * Check if a router is already running
  */
-export function isRouterRunning(): boolean {
-	if (!existsSync(ROUTER_SOCKET_PATH)) {
-		return false;
-	}
-
-	// Try to connect to the socket
-	return new Promise<boolean>((resolve) => {
-		const socket = new Socket();
-
-		socket.on("connect", () => {
-			socket.destroy();
-			resolve(true);
-		});
-
-		socket.on("error", () => {
-			resolve(false);
-		});
-
-		socket.connect(ROUTER_SOCKET_PATH);
-	}) as unknown as boolean; // Type hack - we're treating the promise synchronously for now
-}
-
-/**
- * Check if a router is running (async version)
- */
 export async function isRouterRunningAsync(): Promise<boolean> {
 	if (!existsSync(ROUTER_SOCKET_PATH)) {
 		return false;
