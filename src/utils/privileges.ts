@@ -67,9 +67,9 @@ export function canBindToPort(port: number): Promise<boolean> {
 }
 
 /**
- * Check if port forwarding from 443 to HIGH_PORT is already active (macOS)
+ * Check if port forwarding for a specific port is already active (macOS)
  */
-function isPortForwardingActive(): boolean {
+function isPortForwardingActive(port: number): boolean {
 	if (process.platform !== "darwin") {
 		return false;
 	}
@@ -85,9 +85,9 @@ function isPortForwardingActive(): boolean {
 			return false;
 		}
 
-		// Look for our forwarding rule
+		// Look for our forwarding rule for the specific port
 		return result.stdout.includes(
-			`rdr pass on lo0 inet proto tcp from any to 127.0.0.1 port 443`,
+			`rdr pass on lo0 inet proto tcp from any to 127.0.0.1 port ${port}`,
 		);
 	} catch (error) {
 		logger.debug("Port forwarding check failed: {error}", {error});
@@ -206,14 +206,32 @@ async function setupLinuxPortForwarding(port: number): Promise<void> {
 }
 
 /**
- * Mark that privileged port setup has been completed
+ * Mark that privileged port setup has been completed for a specific port
  */
-function markSetupComplete(): void {
+function markSetupComplete(port: number): void {
 	try {
+		// Load existing data or create new
+		let portsSetup: number[] = [];
+		if (existsSync(SETUP_COMPLETE_FILE)) {
+			const existing = JSON.parse(readFileSync(SETUP_COMPLETE_FILE, "utf-8"));
+			if (
+				existing.platform === process.platform &&
+				Array.isArray(existing.ports)
+			) {
+				portsSetup = existing.ports;
+			}
+		}
+
+		// Add this port if not already tracked
+		if (!portsSetup.includes(port)) {
+			portsSetup.push(port);
+		}
+
 		const data = {
 			timestamp: new Date().toISOString(),
 			platform: process.platform,
 			highPort: HIGH_PORT,
+			ports: portsSetup,
 		};
 		writeFileSync(SETUP_COMPLETE_FILE, JSON.stringify(data, null, 2));
 	} catch (error) {
@@ -222,13 +240,17 @@ function markSetupComplete(): void {
 }
 
 /**
- * Check if setup was previously completed
+ * Check if setup was previously completed for a specific port
  */
-function wasSetupCompleted(): boolean {
+function wasSetupCompleted(port: number): boolean {
 	try {
 		if (existsSync(SETUP_COMPLETE_FILE)) {
 			const data = JSON.parse(readFileSync(SETUP_COMPLETE_FILE, "utf-8"));
-			return data.platform === process.platform;
+			if (data.platform !== process.platform) {
+				return false;
+			}
+			// Check if this specific port was set up
+			return Array.isArray(data.ports) && data.ports.includes(port);
 		}
 	} catch (error) {
 		logger.debug("Could not read setup status: {error}", {error});
@@ -267,7 +289,7 @@ export async function ensurePrivilegedPort(
 	// Platform-specific handling
 	if (process.platform === "darwin") {
 		// macOS: Use pf port forwarding
-		if (isPortForwardingActive() || wasSetupCompleted()) {
+		if (isPortForwardingActive(port) || wasSetupCompleted(port)) {
 			return {
 				accessible: false,
 				highPort: HIGH_PORT,
@@ -275,9 +297,9 @@ export async function ensurePrivilegedPort(
 			};
 		}
 
-		// Need to set up forwarding
+		// Need to set up forwarding for this specific port
 		await setupMacOSPortForwarding(port);
-		markSetupComplete();
+		markSetupComplete(port);
 
 		return {
 			accessible: false,
@@ -288,7 +310,7 @@ export async function ensurePrivilegedPort(
 
 	if (process.platform === "linux") {
 		// Linux: Use iptables redirect
-		if (wasSetupCompleted()) {
+		if (wasSetupCompleted(port)) {
 			return {
 				accessible: false,
 				highPort: HIGH_PORT,
@@ -297,7 +319,7 @@ export async function ensurePrivilegedPort(
 		}
 
 		await setupLinuxPortForwarding(port);
-		markSetupComplete();
+		markSetupComplete(port);
 
 		return {
 			accessible: false,
