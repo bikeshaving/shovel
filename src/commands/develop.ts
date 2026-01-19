@@ -123,7 +123,8 @@ export async function developCommand(
 
 		// Derive port and host from origin or use defaults
 		let port = origin?.port ?? config.port ?? DEFAULTS.SERVER.PORT;
-		const host = origin?.host ?? options.host ?? DEFAULTS.SERVER.HOST;
+		const host =
+			origin?.host ?? options.host ?? config.host ?? DEFAULTS.SERVER.HOST;
 		const isHttps = origin?.protocol === "https";
 
 		// For HTTPS origins, we need to:
