@@ -165,11 +165,16 @@ function generateCertificate(domain: string): {
 
 	logger.info("Generating certificate for {domain}", {domain});
 
+	// Check if domain is an IP address (wildcard SANs are invalid for IPs)
+	const isIP = /^(\d{1,3}\.){3}\d{1,3}$/.test(domain) || domain.includes(":");
+
 	try {
 		// Generate certificate with mkcert
 		// -cert-file and -key-file specify output paths
+		// Skip wildcard for IP addresses since *.IP is invalid
+		const domains = isIP ? `"${domain}"` : `"${domain}" "*.${domain}"`;
 		execSync(
-			`mkcert -cert-file "${certPath}" -key-file "${keyPath}" "${domain}" "*.${domain}"`,
+			`mkcert -cert-file "${certPath}" -key-file "${keyPath}" ${domains}`,
 			{
 				stdio: "pipe",
 				cwd: CERTS_DIR,
