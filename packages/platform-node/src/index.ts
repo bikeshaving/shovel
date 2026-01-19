@@ -6,6 +6,7 @@
 
 // Node.js built-ins
 import * as HTTP from "node:http";
+import * as HTTPS from "node:https";
 import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
 import * as Path from "node:path";
@@ -59,6 +60,8 @@ export interface NodePlatformOptions extends PlatformConfig {
 	workers?: number;
 	/** Shovel configuration (caches, directories, etc.) */
 	config?: ShovelConfig;
+	/** TLS configuration for HTTPS */
+	tls?: {cert: string; key: string};
 }
 
 // ============================================================================
@@ -248,6 +251,7 @@ export class NodePlatform extends BasePlatform {
 		cwd: string;
 		workers: number;
 		config?: ShovelConfig;
+		tls?: {cert: string; key: string};
 	};
 	#databaseStorage?: CustomDatabaseStorage;
 	#server?: Server;
@@ -265,6 +269,7 @@ export class NodePlatform extends BasePlatform {
 			workers: options.workers ?? 1,
 			cwd,
 			config: options.config,
+			tls: options.tls,
 		};
 
 		this.serviceWorker = new NodeServiceWorkerContainer(this);
@@ -281,7 +286,7 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Start the HTTP server, routing requests to ServiceWorker
+	 * Start the HTTP/HTTPS server, routing requests to ServiceWorker
 	 */
 	async listen(): Promise<Server> {
 		const pool = this.serviceWorker.pool;
@@ -291,7 +296,10 @@ export class NodePlatform extends BasePlatform {
 			);
 		}
 
-		this.#server = this.createServer((request) => pool.handleRequest(request));
+		this.#server = this.createServer(
+			(request) => pool.handleRequest(request),
+			{tls: this.#options.tls},
+		);
 		await this.#server.listen();
 		return this.#server;
 	}
@@ -377,17 +385,22 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * SUPPORTING UTILITY - Create HTTP server for Node.js
+	 * SUPPORTING UTILITY - Create HTTP/HTTPS server for Node.js
 	 */
 	createServer(handler: Handler, options: ServerOptions = {}): Server {
 		const port = options.port ?? this.#options.port;
 		const host = options.host ?? this.#options.host;
+		const tls = options.tls;
+		const protocol = tls ? "https" : "http";
 
-		// Create HTTP server with Web API Request/Response conversion
-		const httpServer = HTTP.createServer(async (req, res) => {
+		// Request handler shared between HTTP and HTTPS servers
+		const requestHandler = async (
+			req: HTTP.IncomingMessage,
+			res: HTTP.ServerResponse,
+		) => {
 			try {
 				// Convert Node.js request to Web API Request
-				const url = `http://${req.headers.host}${req.url}`;
+				const url = `${protocol}://${req.headers.host}${req.url}`;
 				const request = new Request(url, {
 					method: req.method,
 					headers: req.headers as HeadersInit,
@@ -455,7 +468,12 @@ export class NodePlatform extends BasePlatform {
 				});
 				res.end(await response.text());
 			}
-		});
+		};
+
+		// Create HTTP or HTTPS server based on TLS config
+		const httpServer = tls
+			? HTTPS.createServer({cert: tls.cert, key: tls.key}, requestHandler)
+			: HTTP.createServer(requestHandler);
 
 		let isListening = false;
 		let actualPort = port;
@@ -472,7 +490,8 @@ export class NodePlatform extends BasePlatform {
 						logger.info("Server started", {
 							host,
 							port: actualPort,
-							url: `http://${host}:${actualPort}`,
+							url: `${protocol}://${host}:${actualPort}`,
+							tls: !!tls,
 						});
 						isListening = true;
 						resolve();
@@ -493,7 +512,7 @@ export class NodePlatform extends BasePlatform {
 			},
 			address: () => ({port: actualPort, host}),
 			get url() {
-				return `http://${host}:${actualPort}`;
+				return `${protocol}://${host}:${actualPort}`;
 			},
 			get ready() {
 				return isListening;

@@ -37,6 +37,16 @@ export interface PlatformConfig {
 }
 
 /**
+ * TLS configuration for HTTPS servers
+ */
+export interface TLSConfig {
+	/** PEM-encoded certificate (content, not file path) */
+	cert: string;
+	/** PEM-encoded private key (content, not file path) */
+	key: string;
+}
+
+/**
  * Server options for platform implementations
  */
 export interface ServerOptions {
@@ -46,6 +56,8 @@ export interface ServerOptions {
 	host?: string;
 	/** Enable SO_REUSEPORT for multi-worker deployments (Bun only) */
 	reusePort?: boolean;
+	/** TLS configuration for HTTPS (if provided, server uses HTTPS) */
+	tls?: TLSConfig;
 }
 
 /**

@@ -82,8 +82,12 @@ function checkPlatformReexec(options: {platform?: string}) {
 program
 	.command("develop <entrypoint>")
 	.description("Start development server with hot reload")
-	.option("-p, --port <port>", "Port to listen on", DEFAULTS.SERVER.PORT)
-	.option("-h, --host <host>", "Host to bind to", DEFAULTS.SERVER.HOST)
+	.option(
+		"-o, --origin <url>",
+		"Origin URL for local HTTPS (e.g., https://myapp.localhost)",
+	)
+	.option("-p, --port <port>", "Port to listen on (shorthand for http://localhost:<port>)")
+	.option("-h, --host <host>", "Host to bind to")
 	.option(
 		"-w, --workers <count>",
 		"Number of workers (default: CPU cores)",

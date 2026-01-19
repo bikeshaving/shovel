@@ -31,11 +31,82 @@ import {z} from "zod";
  */
 export const DEFAULTS = {
 	SERVER: {
-		PORT: 3000,
+		PORT: 7777,
 		HOST: "0.0.0.0",
 	},
 	WORKERS: 1, // Single worker for development - user can override with --workers flag
 } as const;
+
+/**
+ * Parsed origin components
+ */
+export interface ParsedOrigin {
+	/** Protocol: 'http' or 'https' */
+	protocol: "http" | "https";
+	/** Hostname (e.g., 'myapp.localhost', 'localhost') */
+	host: string;
+	/** Port number (443 for https, 80 for http if not specified) */
+	port: number;
+	/** Full origin URL */
+	origin: string;
+}
+
+/**
+ * Parse an origin URL into its components.
+ *
+ * @param origin - Origin URL (e.g., 'https://myapp.localhost', 'http://localhost:8080')
+ * @returns Parsed origin components
+ * @throws Error if origin is invalid
+ *
+ * @example
+ * parseOrigin('https://myapp.localhost')
+ * // { protocol: 'https', host: 'myapp.localhost', port: 443, origin: 'https://myapp.localhost' }
+ *
+ * @example
+ * parseOrigin('http://localhost:8080')
+ * // { protocol: 'http', host: 'localhost', port: 8080, origin: 'http://localhost:8080' }
+ */
+export function parseOrigin(origin: string): ParsedOrigin {
+	let url: URL;
+	try {
+		url = new URL(origin);
+	} catch {
+		throw new Error(`Invalid origin URL: ${origin}`);
+	}
+
+	const protocol = url.protocol.replace(":", "") as "http" | "https";
+	if (protocol !== "http" && protocol !== "https") {
+		throw new Error(`Invalid protocol: ${protocol}. Must be http or https.`);
+	}
+
+	const host = url.hostname;
+	if (!host) {
+		throw new Error(`Invalid origin: missing hostname`);
+	}
+
+	// Determine port: explicit port, or default based on protocol
+	let port: number;
+	if (url.port) {
+		port = parseInt(url.port, 10);
+	} else {
+		port = protocol === "https" ? 443 : 80;
+	}
+
+	// Reconstruct canonical origin (without trailing slash, without default ports in display)
+	const displayPort =
+		(protocol === "https" && port === 443) ||
+		(protocol === "http" && port === 80)
+			? ""
+			: `:${port}`;
+	const canonicalOrigin = `${protocol}://${host}${displayPort}`;
+
+	return {
+		protocol,
+		host,
+		port,
+		origin: canonicalOrigin,
+	};
+}
 
 /**
  * Regex to detect if a string looks like a config expression
@@ -1602,6 +1673,8 @@ export type BuildConfig = z.infer<typeof BuildConfigSchema>;
 export const ShovelConfigSchema = z
 	.object({
 		platform: z.string().optional(),
+		/** Origin URL for local HTTPS development (e.g., "https://myapp.localhost") */
+		origin: z.string().optional(),
 		port: z.union([z.number(), z.string()]).optional(),
 		host: z.string().optional(),
 		workers: z.union([z.number(), z.string()]).optional(),
@@ -1635,6 +1708,8 @@ export interface ProcessedBuildConfig {
 
 export interface ProcessedShovelConfig {
 	platform?: string;
+	/** Parsed origin if specified (for HTTPS local development) */
+	origin?: ParsedOrigin;
 	port: number;
 	host: string;
 	workers: number;
@@ -1687,21 +1762,32 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 	// Process config expressions
 	const processed = processConfigValue(rawConfig, env) as ShovelConfig;
 
+	// Parse origin if specified
+	let parsedOrigin: ParsedOrigin | undefined;
+	if (processed.origin) {
+		parsedOrigin = parseOrigin(processed.origin);
+	}
+
 	// Apply config precedence: json value > canonical env var > default
 	// If a key exists in json, use it (already processed with expressions)
 	// Otherwise, check canonical env var (uppercase key name)
 	// Finally, fall back to default
+	// Note: If origin is specified, port/host are derived from it
 	const config: ProcessedShovelConfig = {
 		platform: processed.platform ?? env.PLATFORM ?? undefined,
-		port:
-			processed.port !== undefined
+		origin: parsedOrigin,
+		port: parsedOrigin
+			? parsedOrigin.port
+			: processed.port !== undefined
 				? typeof processed.port === "number"
 					? processed.port
 					: parseInt(String(processed.port), 10)
 				: env.PORT
 					? parseInt(env.PORT, 10)
-					: 3000,
-		host: processed.host ?? env.HOST ?? "localhost",
+					: DEFAULTS.SERVER.PORT,
+		host: parsedOrigin
+			? parsedOrigin.host
+			: (processed.host ?? env.HOST ?? "localhost"),
 		workers:
 			processed.workers !== undefined
 				? typeof processed.workers === "number"

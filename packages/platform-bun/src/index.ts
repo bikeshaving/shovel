@@ -58,6 +58,8 @@ export interface BunPlatformOptions extends PlatformConfig {
 	workers?: number;
 	/** Shovel configuration (caches, directories, etc.) */
 	config?: ShovelConfig;
+	/** TLS configuration for HTTPS */
+	tls?: {cert: string; key: string};
 }
 
 // ============================================================================
@@ -251,6 +253,7 @@ export class BunPlatform extends BasePlatform {
 		cwd: string;
 		workers: number;
 		config?: ShovelConfig;
+		tls?: {cert: string; key: string};
 	};
 	#server?: Server;
 	#databaseStorage?: CustomDatabaseStorage;
@@ -268,6 +271,7 @@ export class BunPlatform extends BasePlatform {
 			workers: options.workers ?? 1,
 			cwd,
 			config: options.config,
+			tls: options.tls,
 		};
 
 		this.serviceWorker = new BunServiceWorkerContainer(this);
@@ -346,18 +350,28 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Create HTTP server using Bun.serve
+	 * Create HTTP/HTTPS server using Bun.serve
 	 */
 	createServer(handler: Handler, options: ServerOptions = {}): Server {
 		const requestedPort = options.port ?? this.#options.port;
 		const hostname = options.host ?? this.#options.host;
 		const reusePort = options.reusePort ?? false;
+		const tls = options.tls;
+		const protocol = tls ? "https" : "http";
 
 		// Bun.serve is much simpler than Node.js
+		// TLS is configured via tls option in Bun.serve
 		const server = Bun.serve({
 			port: requestedPort,
 			hostname,
 			reusePort,
+			// Bun's TLS configuration
+			...(tls && {
+				tls: {
+					cert: tls.cert,
+					key: tls.key,
+				},
+			}),
 			async fetch(request) {
 				try {
 					return await handler(request);
@@ -392,7 +406,8 @@ export class BunPlatform extends BasePlatform {
 		return {
 			async listen() {
 				logger.info("Bun server running", {
-					url: `http://${hostname}:${actualPort}`,
+					url: `${protocol}://${hostname}:${actualPort}`,
+					tls: !!tls,
 				});
 			},
 			async close() {
@@ -400,7 +415,7 @@ export class BunPlatform extends BasePlatform {
 			},
 			address: () => ({port: actualPort, host: hostname}),
 			get url() {
-				return `http://${hostname}:${actualPort}`;
+				return `${protocol}://${hostname}:${actualPort}`;
 			},
 			get ready() {
 				return true; // Bun.serve starts immediately
@@ -422,6 +437,7 @@ export class BunPlatform extends BasePlatform {
 		this.#server = this.createServer((request) => pool.handleRequest(request), {
 			port: this.#options.port,
 			host: this.#options.host,
+			tls: this.#options.tls,
 		});
 		await this.#server.listen();
 		return this.#server;

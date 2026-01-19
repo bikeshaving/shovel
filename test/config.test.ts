@@ -161,7 +161,7 @@ describe("loadConfig precedence", () => {
 
 				const config = loadConfig(testDir);
 
-				expect(config.port).toBe(3000); // default
+				expect(config.port).toBe(7777); // default
 				expect(config.host).toBe("localhost"); // default
 				expect(config.workers).toBe(1); // default
 			});
@@ -206,7 +206,7 @@ describe("loadConfig precedence", () => {
 
 				const config = loadConfig(testDir);
 
-				expect(config.port).toBe(3000);
+				expect(config.port).toBe(7777);
 				expect(config.host).toBe("localhost");
 				expect(config.workers).toBe(1);
 			});
