@@ -264,7 +264,10 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		await waitForServer(baseUrl, {headers: echoHeaders});
 
 		// Start second app (client) - same echo example with different origin
-		const client = spawnShovelDevelop(ECHO_EXAMPLE_2, "https://echo2.localhost");
+		const client = spawnShovelDevelop(
+			ECHO_EXAMPLE_2,
+			"https://echo2.localhost",
+		);
 		processes.push(client);
 
 		// Client should register with VirtualHost
@@ -307,7 +310,10 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		await waitForServer(baseUrl, {headers: echoHeaders});
 
 		// Start second app (client)
-		const client = spawnShovelDevelop(ECHO_EXAMPLE_2, "https://echo2.localhost");
+		const client = spawnShovelDevelop(
+			ECHO_EXAMPLE_2,
+			"https://echo2.localhost",
+		);
 		processes.push(client);
 		await waitForOutput(client, "Server running at https://echo2.localhost");
 		await waitForServer(baseUrl, {headers: echo2Headers});

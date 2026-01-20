@@ -7,7 +7,11 @@
  */
 
 import * as FS from "fs/promises";
-import {spawn as nodeSpawn} from "child_process";
+import {
+	spawn as nodeSpawn,
+	type SpawnOptions,
+	type ChildProcess,
+} from "child_process";
 import {join, resolve} from "path";
 import {tmpdir} from "os";
 import {getLogger} from "@logtape/logtape";
@@ -20,7 +24,10 @@ export const FIXTURES_DIR = resolve(import.meta.dir, "fixtures");
  * Copy a fixture directory to a temp directory with node_modules symlink.
  * Returns the temp directory path and a cleanup function.
  */
-export async function copyFixtureToTemp(fixtureName, prefix = "shovel-test-") {
+export async function copyFixtureToTemp(
+	fixtureName: string,
+	prefix = "shovel-test-",
+) {
 	const fixtureDir = join(FIXTURES_DIR, fixtureName);
 	const tempDir = join(
 		tmpdir(),
@@ -52,7 +59,7 @@ export async function copyFixtureToTemp(fixtureName, prefix = "shovel-test-") {
 /**
  * Recursively copy a directory
  */
-async function copyDir(src, dest) {
+async function copyDir(src: string, dest: string) {
 	await FS.mkdir(dest, {recursive: true});
 	const entries = await FS.readdir(src, {withFileTypes: true});
 
@@ -71,13 +78,13 @@ async function copyDir(src, dest) {
 /**
  * Check if a file exists
  */
-export async function fileExists(path) {
+export async function fileExists(path: string) {
 	try {
 		await FS.access(path);
 		return true;
 	} catch (err) {
 		// ENOENT means file doesn't exist, other errors are unexpected
-		if (err.code !== "ENOENT") {
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
 			logger.warn`Unexpected error checking file ${path}: ${err}`;
 		}
 		return false;
@@ -90,14 +97,18 @@ export async function fileExists(path) {
  * This ensures error logs from spawned processes appear in CI output
  * while still allowing programmatic capture of output via pipes.
  */
-export function spawn(command, args, options = {}) {
+export function spawn(
+	command: string,
+	args: string[],
+	options: SpawnOptions = {},
+): ChildProcess {
 	const child = nodeSpawn(command, args, {
 		...options,
 		stdio: ["ignore", "pipe", "pipe"],
 	});
 
 	// Forward stderr to parent so logs appear in CI
-	child.stderr?.on("data", (data) => {
+	child.stderr?.on("data", (data: Buffer) => {
 		process.stderr.write(data);
 	});
 
