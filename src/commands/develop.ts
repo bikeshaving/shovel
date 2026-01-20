@@ -212,17 +212,17 @@ export async function developCommand(
 			}
 		};
 
-		// Setup for HTTPS with privileged ports
+		// Setup for HTTPS with privileged ports (or forced VirtualHost for testing)
 		if (isHttps && origin) {
 			logger.info("Setting up HTTPS for {origin}", {origin: origin.origin});
 
-			if (port < 1024) {
+			if (port < 1024 || forceVirtualHost) {
 				await establishRole();
 
 				// Adjust port and TLS based on our role
 				if (virtualHostRole?.role === "leader") {
-					// Leader: app runs on port+1000, VirtualHost handles TLS
-					port = port + 1000;
+					// Leader: app runs on vhostPort+1000, VirtualHost handles TLS
+					port = vhostPort + 1000;
 					tls = undefined;
 				} else if (virtualHostRole?.role === "client") {
 					// Client: app runs on ephemeral port, VirtualHost handles TLS

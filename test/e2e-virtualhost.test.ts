@@ -9,7 +9,7 @@ const TEST_HTTPS_PORT = 18443;
 
 const SHOVEL_CLI = join(import.meta.dir, "../dist/bin/cli.js");
 const ECHO_EXAMPLE = join(import.meta.dir, "../examples/echo");
-const ADMIN_EXAMPLE = join(import.meta.dir, "../examples/admin");
+const BLOG_EXAMPLE = join(import.meta.dir, "../examples/blog");
 
 /**
  * Spawn a shovel develop process
@@ -254,7 +254,7 @@ describe("e2e: shovel develop with VirtualHost", () => {
 	test("second app registers with existing VirtualHost", async () => {
 		const baseUrl = `https://127.0.0.1:${TEST_HTTPS_PORT}`;
 		const echoHeaders = {Host: "echo.localhost"};
-		const adminHeaders = {Host: "admin.localhost"};
+		const blogHeaders = {Host: "blog.localhost"};
 
 		// Start first app (leader)
 		const leader = spawnShovelDevelop(ECHO_EXAMPLE, "https://echo.localhost");
@@ -263,17 +263,17 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		await waitForServer(baseUrl, {headers: echoHeaders});
 
 		// Start second app (client)
-		const client = spawnShovelDevelop(ADMIN_EXAMPLE, "https://admin.localhost");
+		const client = spawnShovelDevelop(BLOG_EXAMPLE, "https://blog.localhost");
 		processes.push(client);
 
 		// Client should register with VirtualHost
 		const clientOutput = await waitForOutput(
 			client,
-			"Server running at https://admin.localhost",
+			"Server running at https://blog.localhost",
 		);
 		expect(clientOutput).toContain("Registering with VirtualHost");
 		expect(clientOutput).toContain(
-			"Registered with virtualhost: https://admin.localhost",
+			"Registered with virtualhost: https://blog.localhost",
 		);
 		// Client should NOT start its own VirtualHost
 		expect(clientOutput).not.toContain(
@@ -281,24 +281,23 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		);
 
 		// Both apps should be accessible
-		await waitForServer(baseUrl, {headers: adminHeaders});
+		await waitForServer(baseUrl, {headers: blogHeaders});
 
 		const echoResponse = await httpsGet(`${baseUrl}/`, {headers: echoHeaders});
 		expect(echoResponse.status).toBe(200);
 		expect(echoResponse.body).toContain("Echo");
 
-		const adminResponse = await httpsGet(`${baseUrl}/`, {
-			headers: adminHeaders,
+		const blogResponse = await httpsGet(`${baseUrl}/`, {
+			headers: blogHeaders,
 		});
-		// Admin redirects to /admin
-		expect(adminResponse.status).toBe(200);
-		expect(adminResponse.body).toContain("Admin");
+		expect(blogResponse.status).toBe(200);
+		expect(blogResponse.body).toContain("Shovel Blog");
 	}, 45000);
 
 	test("client becomes leader when original leader exits", async () => {
 		const baseUrl = `https://127.0.0.1:${TEST_HTTPS_PORT}`;
 		const echoHeaders = {Host: "echo.localhost"};
-		const adminHeaders = {Host: "admin.localhost"};
+		const blogHeaders = {Host: "blog.localhost"};
 
 		// Start first app (leader)
 		const leader = spawnShovelDevelop(ECHO_EXAMPLE, "https://echo.localhost");
@@ -307,17 +306,17 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		await waitForServer(baseUrl, {headers: echoHeaders});
 
 		// Start second app (client)
-		const client = spawnShovelDevelop(ADMIN_EXAMPLE, "https://admin.localhost");
+		const client = spawnShovelDevelop(BLOG_EXAMPLE, "https://blog.localhost");
 		processes.push(client);
-		await waitForOutput(client, "Server running at https://admin.localhost");
-		await waitForServer(baseUrl, {headers: adminHeaders});
+		await waitForOutput(client, "Server running at https://blog.localhost");
+		await waitForServer(baseUrl, {headers: blogHeaders});
 
 		// Verify both work
 		let echoResponse = await httpsGet(`${baseUrl}/`, {headers: echoHeaders});
 		expect(echoResponse.status).toBe(200);
 
-		let adminResponse = await httpsGet(`${baseUrl}/`, {headers: adminHeaders});
-		expect(adminResponse.status).toBe(200);
+		let blogResponse = await httpsGet(`${baseUrl}/`, {headers: blogHeaders});
+		expect(blogResponse.status).toBe(200);
 
 		// Capture client output to see succession logs
 		let clientOutput = "";
@@ -346,10 +345,10 @@ describe("e2e: shovel develop with VirtualHost", () => {
 
 		// Admin app should have become the new leader
 		// Give it more time to start the VirtualHost
-		await waitForServer(baseUrl, {timeout: 15000, headers: adminHeaders});
+		await waitForServer(baseUrl, {timeout: 15000, headers: blogHeaders});
 
-		adminResponse = await httpsGet(`${baseUrl}/`, {headers: adminHeaders});
-		expect(adminResponse.status).toBe(200);
+		blogResponse = await httpsGet(`${baseUrl}/`, {headers: blogHeaders});
+		expect(blogResponse.status).toBe(200);
 
 		// Echo should no longer be available (its process was killed)
 		try {
