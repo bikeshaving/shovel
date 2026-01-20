@@ -23,9 +23,8 @@ import {
 } from "http";
 import {createServer as createHttpsServer} from "https";
 import {existsSync, unlinkSync, mkdirSync} from "fs";
-import {join} from "path";
 import {getLogger} from "@logtape/logtape";
-import {SHOVEL_DIR} from "./certs.js";
+import {SHOVEL_DIR, VIRTUALHOST_SOCKET_PATH} from "./paths.js";
 import type {TLSConfig} from "@b9g/platform";
 
 const logger = getLogger(["shovel", "virtualhost"]);
@@ -80,10 +79,8 @@ function parseHostHeader(host: string): string {
 	return colonIndex !== -1 ? host.slice(0, colonIndex) : host;
 }
 
-/**
- * Path to the virtualhost's IPC socket
- */
-export const VIRTUALHOST_SOCKET_PATH = join(SHOVEL_DIR, "virtualhost.sock");
+// Re-export for backwards compatibility
+export {VIRTUALHOST_SOCKET_PATH};
 
 /**
  * Message types for IPC communication

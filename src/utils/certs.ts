@@ -2,26 +2,19 @@
  * Certificate management for local HTTPS development
  *
  * Uses mkcert to generate locally-trusted development certificates.
- * Certificates are cached in ~/.shovel/certs/ for reuse across sessions.
+ * A single wildcard certificate covers localhost, *.localhost, and *.*.localhost
  */
 
 import {execSync, spawnSync} from "child_process";
-import {existsSync, mkdirSync, readFileSync} from "fs";
-import {homedir} from "os";
+import {existsSync, mkdirSync, readFileSync, cpSync, rmSync} from "fs";
 import {join} from "path";
 import {getLogger} from "@logtape/logtape";
+import {SHOVEL_DIR, CERTS_DIR, LEGACY_SHOVEL_DIR} from "./paths.js";
 
 const logger = getLogger(["shovel", "certs"]);
 
-/**
- * Shovel data directory (~/.shovel)
- */
-export const SHOVEL_DIR = join(homedir(), ".shovel");
-
-/**
- * Certificate storage directory (~/.shovel/certs)
- */
-export const CERTS_DIR = join(SHOVEL_DIR, "certs");
+// Re-export for backwards compatibility
+export {SHOVEL_DIR, CERTS_DIR};
 
 /**
  * Certificate files returned by ensureCerts
@@ -145,12 +138,58 @@ export function installMkcertCA(): void {
 }
 
 /**
- * Generate a certificate for the given domain using mkcert
+ * The localhost wildcard certificate filename
+ */
+const LOCALHOST_CERT_NAME = "localhost";
+
+/**
+ * Migrate certificates from legacy ~/.shovel/certs to new location
+ */
+function migrateLegacyCerts(): void {
+	const legacyCertsDir = join(LEGACY_SHOVEL_DIR, "certs");
+	const legacyCertPath = join(legacyCertsDir, "localhost.pem");
+	const legacyKeyPath = join(legacyCertsDir, "localhost-key.pem");
+
+	// Check if legacy localhost cert exists and new one doesn't
+	if (
+		existsSync(legacyCertPath) &&
+		existsSync(legacyKeyPath) &&
+		!existsSync(join(CERTS_DIR, "localhost.pem"))
+	) {
+		logger.info("Migrating certificates from {legacy} to {new}", {
+			legacy: legacyCertsDir,
+			new: CERTS_DIR,
+		});
+
+		// Ensure new certs directory exists
+		if (!existsSync(CERTS_DIR)) {
+			mkdirSync(CERTS_DIR, {recursive: true});
+		}
+
+		// Copy localhost certs (the only ones we need with wildcard approach)
+		try {
+			cpSync(legacyCertPath, join(CERTS_DIR, "localhost.pem"));
+			cpSync(legacyKeyPath, join(CERTS_DIR, "localhost-key.pem"));
+			logger.info("Certificate migration complete");
+		} catch (err) {
+			logger.debug("Certificate migration failed: {error}", {error: err});
+		}
+	}
+}
+
+/**
+ * Generate the localhost wildcard certificate using mkcert
  *
- * @param domain - Domain to generate certificate for (e.g., 'myapp.localhost')
+ * Creates a single certificate valid for:
+ * - localhost
+ * - *.localhost (e.g., app.localhost, blog.localhost)
+ *
+ * Note: mkcert doesn't support multi-level wildcards like *.*.localhost.
+ * For deeper subdomains, use a flat structure (e.g., api-app.localhost).
+ *
  * @returns Paths to the generated cert and key files
  */
-function generateCertificate(domain: string): {
+function generateLocalhostCertificate(): {
 	certPath: string;
 	keyPath: string;
 } {
@@ -160,21 +199,16 @@ function generateCertificate(domain: string): {
 	}
 
 	// Certificate file paths
-	const certPath = join(CERTS_DIR, `${domain}.pem`);
-	const keyPath = join(CERTS_DIR, `${domain}-key.pem`);
+	const certPath = join(CERTS_DIR, `${LOCALHOST_CERT_NAME}.pem`);
+	const keyPath = join(CERTS_DIR, `${LOCALHOST_CERT_NAME}-key.pem`);
 
-	logger.info("Generating certificate for {domain}", {domain});
-
-	// Check if domain is an IP address (wildcard SANs are invalid for IPs)
-	const isIP = /^(\d{1,3}\.){3}\d{1,3}$/.test(domain) || domain.includes(":");
+	logger.info("Generating localhost wildcard certificate");
 
 	try {
-		// Generate certificate with mkcert
-		// -cert-file and -key-file specify output paths
-		// Skip wildcard for IP addresses since *.IP is invalid
-		const domains = isIP ? `"${domain}"` : `"${domain}" "*.${domain}"`;
+		// Generate certificate with mkcert for localhost and single-level wildcard
+		// Covers: localhost, *.localhost (e.g., app.localhost)
 		execSync(
-			`mkcert -cert-file "${certPath}" -key-file "${keyPath}" ${domains}`,
+			`mkcert -cert-file "${certPath}" -key-file "${keyPath}" "localhost" "*.localhost"`,
 			{
 				stdio: "pipe",
 				cwd: CERTS_DIR,
@@ -185,24 +219,28 @@ function generateCertificate(domain: string): {
 		return {certPath, keyPath};
 	} catch (error) {
 		throw new Error(
-			`Failed to generate certificate for ${domain}: ${error instanceof Error ? error.message : error}`,
+			`Failed to generate localhost certificate: ${error instanceof Error ? error.message : error}`,
 		);
 	}
 }
 
 /**
- * Ensure certificates exist for the given domain
+ * Ensure the localhost wildcard certificate exists
  *
  * This function:
  * 1. Checks if mkcert is installed (throws with install instructions if not)
  * 2. Checks if mkcert CA is installed (installs it if not)
- * 3. Generates or returns cached certificates for the domain
+ * 3. Migrates existing certs from legacy ~/.shovel location if needed
+ * 4. Generates or returns cached localhost wildcard certificate
  *
- * @param domain - Domain to get certificates for (e.g., 'myapp.localhost')
+ * The single certificate covers localhost and *.localhost,
+ * so it works for any local development domain like app.localhost or blog.localhost.
+ *
+ * @param _domain - Ignored, kept for API compatibility. Always uses localhost wildcard.
  * @returns Certificate and key content
  * @throws Error if mkcert is not installed
  */
-export async function ensureCerts(domain: string): Promise<CertFiles> {
+export async function ensureCerts(_domain?: string): Promise<CertFiles> {
 	// Step 1: Check mkcert installation
 	if (!isMkcertInstalled()) {
 		throw new Error(getMkcertInstallInstructions());
@@ -214,15 +252,18 @@ export async function ensureCerts(domain: string): Promise<CertFiles> {
 		installMkcertCA();
 	}
 
-	// Step 3: Check for cached certificate
-	const certPath = join(CERTS_DIR, `${domain}.pem`);
-	const keyPath = join(CERTS_DIR, `${domain}-key.pem`);
+	// Step 3: Try to migrate from legacy location
+	migrateLegacyCerts();
+
+	// Step 4: Check for cached certificate
+	const certPath = join(CERTS_DIR, `${LOCALHOST_CERT_NAME}.pem`);
+	const keyPath = join(CERTS_DIR, `${LOCALHOST_CERT_NAME}-key.pem`);
 
 	if (!existsSync(certPath) || !existsSync(keyPath)) {
-		// Generate new certificate
-		generateCertificate(domain);
+		// Generate new localhost wildcard certificate
+		generateLocalhostCertificate();
 	} else {
-		logger.debug("Using cached certificate for {domain}", {domain});
+		logger.debug("Using cached localhost wildcard certificate");
 	}
 
 	// Read and return certificate content
@@ -238,13 +279,14 @@ export async function ensureCerts(domain: string): Promise<CertFiles> {
 }
 
 /**
- * Get certificates for a wildcard localhost domain
+ * Get certificates for localhost wildcard domain
  *
- * Uses *.localhost which works for any subdomain like myapp.localhost, blog.localhost, etc.
+ * Uses a single certificate valid for localhost and *.localhost.
+ * Works for any subdomain like myapp.localhost, blog.localhost, etc.
  * Browsers trust .localhost domains by default (RFC 6761).
  *
  * @returns Certificate and key content for localhost wildcard
  */
 export async function ensureLocalhostCerts(): Promise<CertFiles> {
-	return ensureCerts("localhost");
+	return ensureCerts();
 }
