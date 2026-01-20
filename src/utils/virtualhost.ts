@@ -494,11 +494,19 @@ export class VirtualHostClient {
 	#origin: string;
 	#host: string;
 	#port: number;
+	#actualPort?: number;
+	#onDisconnect?: () => void;
 
-	constructor(options: {origin: string; host: string; port: number}) {
+	constructor(options: {
+		origin: string;
+		host: string;
+		port: number;
+		onDisconnect?: () => void;
+	}) {
 		this.#origin = options.origin;
 		this.#host = options.host;
 		this.#port = options.port;
+		this.#onDisconnect = options.onDisconnect;
 	}
 
 	/**
@@ -507,6 +515,7 @@ export class VirtualHostClient {
 	 */
 	async connect(actualPort?: number): Promise<void> {
 		const port = actualPort ?? this.#port;
+		this.#actualPort = port;
 		return new Promise((resolve, reject) => {
 			this.#socket = new Socket();
 
@@ -522,6 +531,7 @@ export class VirtualHostClient {
 			});
 
 			let buffer = "";
+			let registered = false;
 			this.#socket.on("data", (data) => {
 				buffer += data.toString();
 
@@ -538,6 +548,7 @@ export class VirtualHostClient {
 								logger.info("Registered with virtualhost: {origin}", {
 									origin: this.#origin,
 								});
+								registered = true;
 								resolve();
 							} else {
 								reject(new Error(message.error || "Registration failed"));
@@ -546,6 +557,14 @@ export class VirtualHostClient {
 					} catch (error) {
 						logger.error("Invalid virtualhost response: {error}", {error});
 					}
+				}
+			});
+
+			this.#socket.on("close", () => {
+				// Only trigger onDisconnect if we were successfully registered
+				if (registered && this.#onDisconnect) {
+					logger.info("VirtualHost connection lost, triggering reconnect");
+					this.#onDisconnect();
 				}
 			});
 
@@ -559,6 +578,13 @@ export class VirtualHostClient {
 
 			this.#socket.connect(VIRTUALHOST_SOCKET_PATH);
 		});
+	}
+
+	/**
+	 * Get the actual port this client registered with
+	 */
+	get actualPort(): number | undefined {
+		return this.#actualPort;
 	}
 
 	/**
@@ -607,4 +633,92 @@ export async function isVirtualHostRunningAsync(): Promise<boolean> {
 
 		socket.connect(VIRTUALHOST_SOCKET_PATH);
 	});
+}
+
+/**
+ * Result of attempting to establish a VirtualHost role
+ */
+export type VirtualHostRole =
+	| {role: "leader"; virtualHost: VirtualHost}
+	| {role: "client"; client: VirtualHostClient};
+
+/**
+ * Options for establishing a VirtualHost role
+ */
+export interface EstablishVirtualHostOptions {
+	origin: string;
+	port: number;
+	host: string;
+	tls?: TLSConfig;
+	/** Called when client needs to register with the leader after server starts */
+	onNeedRegistration: (client: VirtualHostClient) => Promise<void>;
+	/** Called when a client loses connection to the leader */
+	onDisconnect: () => void;
+}
+
+/**
+ * Attempt to become the VirtualHost leader or connect as a client.
+ * Uses the port as a natural lock - only one process can bind to it.
+ *
+ * @param options - Configuration for the VirtualHost
+ * @param maxAttempts - Maximum number of attempts before giving up
+ * @returns The role this process took (leader or client)
+ */
+export async function establishVirtualHostRole(
+	options: EstablishVirtualHostOptions,
+	maxAttempts = 5,
+): Promise<VirtualHostRole> {
+	const {origin, port, host, tls, onNeedRegistration, onDisconnect} = options;
+
+	for (let attempt = 0; attempt < maxAttempts; attempt++) {
+		// Check if a VirtualHost is already running
+		const isRunning = await isVirtualHostRunningAsync();
+
+		if (isRunning) {
+			// Try to connect as a client
+			try {
+				const client = new VirtualHostClient({
+					origin,
+					host: "127.0.0.1",
+					port: 0, // Will be set when registering
+					onDisconnect,
+				});
+				await onNeedRegistration(client);
+				return {role: "client", client};
+			} catch (err) {
+				logger.debug("Failed to connect as client: {error}", {error: err});
+				// Fall through to try becoming leader
+			}
+		}
+
+		// Try to become the leader
+		try {
+			const virtualHost = new VirtualHost({port, host, tls});
+			await virtualHost.start();
+			return {role: "leader", virtualHost};
+		} catch (err) {
+			const error = err as NodeJS.ErrnoException;
+			if (
+				error.message?.includes("already in use") ||
+				error.code === "EADDRINUSE"
+			) {
+				// Someone else won the race, wait with backoff and retry
+				const backoff = Math.min(
+					100 * Math.pow(1.5, attempt) + Math.random() * 100,
+					1000,
+				);
+				logger.debug("Port {port} in use, retrying in {ms}ms", {
+					port,
+					ms: Math.round(backoff),
+				});
+				await new Promise((resolve) => setTimeout(resolve, backoff));
+				continue;
+			}
+			throw err; // Other error, propagate
+		}
+	}
+
+	throw new Error(
+		`Failed to establish VirtualHost connection after ${maxAttempts} attempts`,
+	);
 }

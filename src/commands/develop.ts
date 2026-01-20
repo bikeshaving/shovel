@@ -7,9 +7,8 @@ import {createPlatform} from "../utils/platform.js";
 import {networkInterfaces} from "os";
 import {ensureCerts} from "../utils/certs.js";
 import {
-	VirtualHost,
-	VirtualHostClient,
-	isVirtualHostRunningAsync,
+	establishVirtualHostRole,
+	type VirtualHostRole,
 } from "../utils/virtualhost.js";
 
 const logger = getLogger(["shovel", "develop"]);
@@ -105,8 +104,7 @@ export async function developCommand(
 	},
 	config: ProcessedShovelConfig,
 ) {
-	let virtualHost: VirtualHost | undefined;
-	let virtualHostClient: VirtualHostClient | undefined;
+	let virtualHostRole: VirtualHostRole | undefined;
 
 	try {
 		const platformName = resolvePlatform({...options, config});
@@ -144,61 +142,83 @@ export async function developCommand(
 		// For HTTPS origins, we need to:
 		// 1. Ensure certificates are available
 		// 2. Handle privileged port access (443)
-		// 3. Potentially coordinate with virtualHost for multi-app support
+		// 3. Potentially coordinate with VirtualHost for multi-app support
 		let tls: TLSConfig | undefined;
 
+		// Track the actual port our server is listening on (for re-registration after failover)
+		let actualServerPort: number | undefined;
+
+		// Function to establish/re-establish VirtualHost role (used for initial setup and failover)
+		const establishRole = async (): Promise<void> => {
+			if (!isHttps || !origin || port >= 1024) {
+				return; // No VirtualHost needed for non-HTTPS or high ports
+			}
+
+			const certs = await ensureCerts(origin.host);
+			const vhostTls = {cert: certs.cert, key: certs.key};
+
+			virtualHostRole = await establishVirtualHostRole({
+				origin: origin.origin,
+				port,
+				host,
+				tls: vhostTls,
+				onNeedRegistration: async (client) => {
+					// This is called when we're a client and need to register
+					// We need the actual server port, which may not be available yet on first run
+					if (actualServerPort !== undefined) {
+						await client.connect(actualServerPort);
+					}
+					// If actualServerPort is undefined, we'll register later in startOrReloadServer
+				},
+				onDisconnect: () => {
+					// VirtualHost died, try to become the new leader
+					logger.info(
+						"VirtualHost connection lost, attempting to take over...",
+					);
+					establishRole().catch((err) => {
+						logger.error("Failed to re-establish VirtualHost role: {error}", {
+							error: err,
+						});
+					});
+				},
+			});
+
+			if (virtualHostRole.role === "leader") {
+				logger.debug("Became VirtualHost leader");
+				// Register ourselves with our own VirtualHost
+				const appPort = port + 1000;
+				virtualHostRole.virtualHost.registerApp({
+					origin: origin.origin,
+					host: "127.0.0.1",
+					port: appPort,
+					socket: null as any, // Self-registration doesn't need socket
+				});
+			} else {
+				logger.debug("Connected as VirtualHost client");
+			}
+		};
+
+		// Setup for HTTPS with privileged ports
 		if (isHttps && origin) {
 			logger.info("Setting up HTTPS for {origin}", {origin: origin.origin});
 
-			// Step 1: Ensure certificates for the origin host
-			const certs = await ensureCerts(origin.host);
-			tls = {cert: certs.cert, key: certs.key};
-
-			// Step 2: Handle privileged ports (any port < 1024)
 			if (port < 1024) {
-				// Check if virtualHost is already running
-				const virtualHostRunning = await isVirtualHostRunningAsync();
+				await establishRole();
 
-				if (virtualHostRunning) {
-					// Register with existing virtualHost
-					// Use port 0 to let OS assign an available port
-					// Note: We don't use TLS here - the virtualHost terminates TLS and proxies plain HTTP to us
-					// Use 127.0.0.1 for registration - 0.0.0.0 is for binding, not proxying
-					virtualHostClient = new VirtualHostClient({
-						origin: origin.origin,
-						host: "127.0.0.1",
-						port: 0, // Will be updated after server starts
-					});
-
-					// Clear TLS - virtualHost handles TLS termination, we serve plain HTTP
-					port = 0; // Let OS assign port, virtualHost will get actual port after listen
+				// Adjust port and TLS based on our role
+				if (virtualHostRole?.role === "leader") {
+					// Leader: app runs on port+1000, VirtualHost handles TLS
+					port = port + 1000;
 					tls = undefined;
-				} else {
-					// Become the virtualHost
-					logger.debug("Starting virtualHost on {host}:{port}", {host, port});
-					virtualHost = new VirtualHost({
-						port,
-						host,
-						tls,
-					});
-					await virtualHost.start();
-
-					// Register ourselves with the virtualHost
-					// Use a different port for the actual app server
-					// Use 127.0.0.1 for proxy target - 0.0.0.0 is for binding, not proxying
-					const appPort = port + 1000;
-					virtualHost.registerApp({
-						origin: origin.origin,
-						host: "127.0.0.1",
-						port: appPort,
-						socket: null as any, // Self-registration doesn't need socket
-					});
-
-					// Our server binds to appPort without TLS
-					// VirtualHost handles TLS termination and proxies plain HTTP to us
-					port = appPort;
+				} else if (virtualHostRole?.role === "client") {
+					// Client: app runs on ephemeral port, VirtualHost handles TLS
+					port = 0;
 					tls = undefined;
 				}
+			} else {
+				// High port HTTPS - no VirtualHost needed, just use TLS directly
+				const certs = await ensureCerts(origin.host);
+				tls = {cert: certs.cert, key: certs.key};
 			}
 		}
 
@@ -227,13 +247,15 @@ export async function developCommand(
 				const server = await platformInstance.listen();
 				serverStarted = true;
 
-				// Connect to virtualHost if we're a client (pass actual port from server)
-				if (virtualHostClient) {
-					const actualPort = server.address().port;
-					logger.info("Registering with virtualHost (local port: {port})", {
-						port: actualPort,
+				// Store the actual port for potential re-registration after failover
+				actualServerPort = server.address().port;
+
+				// Connect to VirtualHost if we're a client (pass actual port from server)
+				if (virtualHostRole?.role === "client") {
+					logger.info("Registering with VirtualHost (local port: {port})", {
+						port: actualServerPort,
 					});
-					await virtualHostClient.connect(actualPort);
+					await virtualHostRole.client.connect(actualServerPort);
 				}
 
 				// Display server URLs
@@ -284,12 +306,11 @@ export async function developCommand(
 			logger.debug("Shutting down ({signal})", {signal});
 			await bundler.stop();
 
-			// Disconnect from virtualHost or stop our virtualHost
-			if (virtualHostClient) {
-				await virtualHostClient.disconnect();
-			}
-			if (virtualHost) {
-				await virtualHost.stop();
+			// Disconnect from VirtualHost or stop our VirtualHost
+			if (virtualHostRole?.role === "client") {
+				await virtualHostRole.client.disconnect();
+			} else if (virtualHostRole?.role === "leader") {
+				await virtualHostRole.virtualHost.stop();
 			}
 
 			await platformInstance.dispose();
@@ -304,18 +325,17 @@ export async function developCommand(
 		await new Promise(() => {});
 	} catch (error) {
 		// Clean up on error
-		if (virtualHostClient) {
+		if (virtualHostRole?.role === "client") {
 			try {
-				await virtualHostClient.disconnect();
+				await virtualHostRole.client.disconnect();
 			} catch (cleanupError) {
 				logger.debug("VirtualHost client cleanup error: {error}", {
 					error: cleanupError,
 				});
 			}
-		}
-		if (virtualHost) {
+		} else if (virtualHostRole?.role === "leader") {
 			try {
-				await virtualHost.stop();
+				await virtualHostRole.virtualHost.stop();
 			} catch (cleanupError) {
 				logger.debug("VirtualHost cleanup error: {error}", {
 					error: cleanupError,
