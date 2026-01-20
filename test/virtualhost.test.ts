@@ -410,6 +410,53 @@ describe("VirtualHost", () => {
 		});
 	});
 
+	describe("IPv6 support", () => {
+		test("parses IPv6 Host headers correctly", async () => {
+			const {VirtualHost} = await import("../src/utils/virtualhost.js");
+
+			// Start a simple HTTP server for the app
+			const appPort = 19002;
+			const appServer = Bun.serve({
+				port: appPort,
+				fetch() {
+					return new Response(JSON.stringify({app: "ipv6test"}), {
+						headers: {"Content-Type": "application/json"},
+					});
+				},
+			});
+
+			try {
+				// Start VirtualHost on IPv6
+				const vhost = new VirtualHost({
+					port: TEST_PORT + 1,
+					host: "::1",
+				});
+				await vhost.start();
+
+				// Register the app with an IPv6 origin
+				vhost.registerApp({
+					origin: "http://[::1]",
+					host: "::1",
+					port: appPort,
+					socket: null as any,
+				});
+
+				// Make a request with IPv6 Host header (with port)
+				const response = await fetch(`http://[::1]:${TEST_PORT + 1}/`, {
+					headers: {Host: `[::1]:${TEST_PORT + 1}`},
+				});
+
+				expect(response.status).toBe(200);
+				const body = await response.json();
+				expect(body.app).toBe("ipv6test");
+
+				await vhost.stop();
+			} finally {
+				appServer.stop();
+			}
+		});
+	});
+
 	describe("proxying", () => {
 		test("VirtualHost proxies requests to registered apps", async () => {
 			const {VirtualHost} = await import("../src/utils/virtualhost.js");

@@ -31,6 +31,56 @@ import type {TLSConfig} from "@b9g/platform";
 const logger = getLogger(["shovel", "virtualhost"]);
 
 /**
+ * Normalize a hostname by stripping IPv6 brackets.
+ * Examples:
+ *   "[::1]" → "::1"
+ *   "localhost" → "localhost"
+ *   "::1" → "::1"
+ */
+function normalizeHostname(hostname: string): string {
+	if (hostname.startsWith("[") && hostname.endsWith("]")) {
+		return hostname.slice(1, -1);
+	}
+	return hostname;
+}
+
+/**
+ * Format a host for use in URLs. IPv6 addresses need brackets.
+ * Examples:
+ *   "::1" → "[::1]"
+ *   "localhost" → "localhost"
+ *   "127.0.0.1" → "127.0.0.1"
+ */
+function formatHostForUrl(host: string): string {
+	// If it contains a colon and doesn't already have brackets, it's IPv6
+	if (host.includes(":") && !host.startsWith("[")) {
+		return `[${host}]`;
+	}
+	return host;
+}
+
+/**
+ * Parse a Host header to extract the hostname, handling IPv6 addresses.
+ * Examples:
+ *   "localhost:8080" → "localhost"
+ *   "example.com" → "example.com"
+ *   "[::1]:8080" → "::1"
+ *   "[::1]" → "::1"
+ */
+function parseHostHeader(host: string): string {
+	// IPv6 addresses are wrapped in brackets: [::1] or [::1]:port
+	if (host.startsWith("[")) {
+		const closeBracket = host.indexOf("]");
+		if (closeBracket !== -1) {
+			return host.slice(1, closeBracket);
+		}
+	}
+	// IPv4 or hostname: split on first colon for port
+	const colonIndex = host.indexOf(":");
+	return colonIndex !== -1 ? host.slice(0, colonIndex) : host;
+}
+
+/**
  * Path to the virtualhost's IPC socket
  */
 export const VIRTUALHOST_SOCKET_PATH = join(SHOVEL_DIR, "virtualhost.sock");
@@ -176,7 +226,8 @@ export class VirtualHost {
 	 * Register a local app
 	 */
 	registerApp(app: RegisteredApp): void {
-		const hostname = new URL(app.origin).hostname;
+		// Normalize hostname to handle IPv6 brackets consistently
+		const hostname = normalizeHostname(new URL(app.origin).hostname);
 		this.#apps.set(hostname, app);
 		logger.info("App registered: {origin} → {host}:{port}", {
 			origin: app.origin,
@@ -189,7 +240,8 @@ export class VirtualHost {
 	 * Unregister an app
 	 */
 	unregisterApp(origin: string): void {
-		const hostname = new URL(origin).hostname;
+		// Normalize hostname to handle IPv6 brackets consistently
+		const hostname = normalizeHostname(new URL(origin).hostname);
 		this.#apps.delete(hostname);
 		logger.info("App unregistered: {origin}", {origin});
 	}
@@ -372,7 +424,7 @@ export class VirtualHost {
 				}
 
 				// Extract hostname (without port) and redirect to HTTPS
-				const hostname = host.split(":")[0];
+				const hostname = parseHostHeader(host);
 				const redirectUrl = `https://${hostname}${req.url || "/"}`;
 
 				logger.debug("Redirecting HTTP → HTTPS: {url}", {url: redirectUrl});
@@ -421,7 +473,7 @@ export class VirtualHost {
 		}
 
 		// Extract hostname (without port)
-		const hostname = host.split(":")[0];
+		const hostname = parseHostHeader(host);
 
 		// Find the app for this hostname
 		const app = this.getApp(hostname);
@@ -449,7 +501,9 @@ export class VirtualHost {
 		app: RegisteredApp,
 	): void {
 		const protocol = this.#tls ? "https:" : "http:";
-		const url = new URL(req.url || "/", `${protocol}//${app.host}:${app.port}`);
+		// Format host for URL (IPv6 needs brackets)
+		const urlHost = formatHostForUrl(app.host);
+		const url = new URL(req.url || "/", `${protocol}//${urlHost}:${app.port}`);
 
 		// Use dynamic import to avoid issues with ESM/CJS
 		import("http").then(({request: httpRequest}) => {
