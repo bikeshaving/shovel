@@ -7,10 +7,10 @@ import {createPlatform} from "../utils/platform.js";
 import {networkInterfaces} from "os";
 import {ensureCerts} from "../utils/certs.js";
 import {
-	Switchboard,
-	SwitchboardClient,
-	isSwitchboardRunningAsync,
-} from "../utils/switchboard.js";
+	VirtualHost,
+	VirtualHostClient,
+	isVirtualHostRunningAsync,
+} from "../utils/virtualhost.js";
 
 const logger = getLogger(["shovel", "develop"]);
 
@@ -105,8 +105,8 @@ export async function developCommand(
 	},
 	config: ProcessedShovelConfig,
 ) {
-	let switchboard: Switchboard | undefined;
-	let switchboardClient: SwitchboardClient | undefined;
+	let virtualHost: VirtualHost | undefined;
+	let virtualHostClient: VirtualHostClient | undefined;
 
 	try {
 		const platformName = resolvePlatform({...options, config});
@@ -144,7 +144,7 @@ export async function developCommand(
 		// For HTTPS origins, we need to:
 		// 1. Ensure certificates are available
 		// 2. Handle privileged port access (443)
-		// 3. Potentially coordinate with switchboard for multi-app support
+		// 3. Potentially coordinate with virtualHost for multi-app support
 		let tls: TLSConfig | undefined;
 
 		if (isHttps && origin) {
@@ -156,38 +156,38 @@ export async function developCommand(
 
 			// Step 2: Handle privileged ports (any port < 1024)
 			if (port < 1024) {
-				// Check if switchboard is already running
-				const switchboardRunning = await isSwitchboardRunningAsync();
+				// Check if virtualHost is already running
+				const virtualHostRunning = await isVirtualHostRunningAsync();
 
-				if (switchboardRunning) {
-					// Register with existing switchboard
+				if (virtualHostRunning) {
+					// Register with existing virtualHost
 					// Use port 0 to let OS assign an available port
-					// Note: We don't use TLS here - the switchboard terminates TLS and proxies plain HTTP to us
+					// Note: We don't use TLS here - the virtualHost terminates TLS and proxies plain HTTP to us
 					// Use 127.0.0.1 for registration - 0.0.0.0 is for binding, not proxying
-					switchboardClient = new SwitchboardClient({
+					virtualHostClient = new VirtualHostClient({
 						origin: origin.origin,
 						host: "127.0.0.1",
 						port: 0, // Will be updated after server starts
 					});
 
-					// Clear TLS - switchboard handles TLS termination, we serve plain HTTP
-					port = 0; // Let OS assign port, switchboard will get actual port after listen
+					// Clear TLS - virtualHost handles TLS termination, we serve plain HTTP
+					port = 0; // Let OS assign port, virtualHost will get actual port after listen
 					tls = undefined;
 				} else {
-					// Become the switchboard
-					logger.debug("Starting switchboard on {host}:{port}", {host, port});
-					switchboard = new Switchboard({
+					// Become the virtualHost
+					logger.debug("Starting virtualHost on {host}:{port}", {host, port});
+					virtualHost = new VirtualHost({
 						port,
 						host,
 						tls,
 					});
-					await switchboard.start();
+					await virtualHost.start();
 
-					// Register ourselves with the switchboard
+					// Register ourselves with the virtualHost
 					// Use a different port for the actual app server
 					// Use 127.0.0.1 for proxy target - 0.0.0.0 is for binding, not proxying
 					const appPort = port + 1000;
-					switchboard.registerApp({
+					virtualHost.registerApp({
 						origin: origin.origin,
 						host: "127.0.0.1",
 						port: appPort,
@@ -195,7 +195,7 @@ export async function developCommand(
 					});
 
 					// Our server binds to appPort without TLS
-					// Switchboard handles TLS termination and proxies plain HTTP to us
+					// VirtualHost handles TLS termination and proxies plain HTTP to us
 					port = appPort;
 					tls = undefined;
 				}
@@ -227,13 +227,13 @@ export async function developCommand(
 				const server = await platformInstance.listen();
 				serverStarted = true;
 
-				// Connect to switchboard if we're a client (pass actual port from server)
-				if (switchboardClient) {
+				// Connect to virtualHost if we're a client (pass actual port from server)
+				if (virtualHostClient) {
 					const actualPort = server.address().port;
-					logger.info("Registering with switchboard (local port: {port})", {
+					logger.info("Registering with virtualHost (local port: {port})", {
 						port: actualPort,
 					});
-					await switchboardClient.connect(actualPort);
+					await virtualHostClient.connect(actualPort);
 				}
 
 				// Display server URLs
@@ -284,12 +284,12 @@ export async function developCommand(
 			logger.debug("Shutting down ({signal})", {signal});
 			await bundler.stop();
 
-			// Disconnect from switchboard or stop our switchboard
-			if (switchboardClient) {
-				await switchboardClient.disconnect();
+			// Disconnect from virtualHost or stop our virtualHost
+			if (virtualHostClient) {
+				await virtualHostClient.disconnect();
 			}
-			if (switchboard) {
-				await switchboard.stop();
+			if (virtualHost) {
+				await virtualHost.stop();
 			}
 
 			await platformInstance.dispose();
@@ -304,20 +304,20 @@ export async function developCommand(
 		await new Promise(() => {});
 	} catch (error) {
 		// Clean up on error
-		if (switchboardClient) {
+		if (virtualHostClient) {
 			try {
-				await switchboardClient.disconnect();
+				await virtualHostClient.disconnect();
 			} catch (cleanupError) {
-				logger.debug("Switchboard client cleanup error: {error}", {
+				logger.debug("VirtualHost client cleanup error: {error}", {
 					error: cleanupError,
 				});
 			}
 		}
-		if (switchboard) {
+		if (virtualHost) {
 			try {
-				await switchboard.stop();
+				await virtualHost.stop();
 			} catch (cleanupError) {
-				logger.debug("Switchboard cleanup error: {error}", {
+				logger.debug("VirtualHost cleanup error: {error}", {
 					error: cleanupError,
 				});
 			}

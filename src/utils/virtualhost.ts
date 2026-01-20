@@ -1,14 +1,14 @@
 /**
- * Switchboard coordination for multi-app local HTTPS development
+ * VirtualHost coordination for multi-app local HTTPS development
  *
  * When running multiple `shovel develop` instances with different origins
  * (e.g., myapp.localhost, blog.localhost), they need to share port 443.
  *
  * Architecture:
- * - First app becomes the "switchboard" and owns port 443/80
- * - Additional apps register with the switchboard via IPC (Unix socket)
- * - Switchboard proxies requests by Host header to the correct app
- * - When switchboard exits, another app can take over
+ * - First app becomes the "virtual host" and owns port 443/80
+ * - Additional apps register with the virtual host via IPC (Unix socket)
+ * - VirtualHost proxies requests by Host header to the correct app
+ * - When virtual host exits, another app can take over
  */
 
 import {
@@ -28,12 +28,12 @@ import {getLogger} from "@logtape/logtape";
 import {SHOVEL_DIR} from "./certs.js";
 import type {TLSConfig} from "@b9g/platform";
 
-const logger = getLogger(["shovel", "switchboard"]);
+const logger = getLogger(["shovel", "virtualhost"]);
 
 /**
- * Path to the switchboard's IPC socket
+ * Path to the virtualhost's IPC socket
  */
-export const SWITCHBOARD_SOCKET_PATH = join(SHOVEL_DIR, "switchboard.sock");
+export const VIRTUALHOST_SOCKET_PATH = join(SHOVEL_DIR, "virtualhost.sock");
 
 /**
  * Message types for IPC communication
@@ -75,9 +75,9 @@ interface RegisteredApp {
 }
 
 /**
- * Switchboard class - manages multiple apps on a single port
+ * VirtualHost class - manages multiple apps on a single port
  */
-export class Switchboard {
+export class VirtualHost {
 	#apps: Map<string, RegisteredApp>;
 	#ipcServer?: NetServer;
 	#httpServer?: ReturnType<typeof createHttpServer>;
@@ -95,7 +95,7 @@ export class Switchboard {
 	}
 
 	/**
-	 * Start the switchboard
+	 * Start the virtualhost
 	 *
 	 * This creates:
 	 * 1. An IPC server for app registration
@@ -108,9 +108,9 @@ export class Switchboard {
 		}
 
 		// Clean up stale socket file
-		if (existsSync(SWITCHBOARD_SOCKET_PATH)) {
+		if (existsSync(VIRTUALHOST_SOCKET_PATH)) {
 			try {
-				unlinkSync(SWITCHBOARD_SOCKET_PATH);
+				unlinkSync(VIRTUALHOST_SOCKET_PATH);
 			} catch (error) {
 				logger.debug("Could not remove stale socket: {error}", {error});
 			}
@@ -127,11 +127,11 @@ export class Switchboard {
 			await this.#startHttpRedirectServer();
 		}
 
-		logger.info("Switchboard started on port {port}", {port: this.#port});
+		logger.info("VirtualHost started on port {port}", {port: this.#port});
 	}
 
 	/**
-	 * Stop the switchboard and clean up
+	 * Stop the virtualhost and clean up
 	 */
 	async stop(): Promise<void> {
 		// Close all app connections (skip self-registered apps with null socket)
@@ -161,15 +161,15 @@ export class Switchboard {
 		]);
 
 		// Clean up socket file
-		if (existsSync(SWITCHBOARD_SOCKET_PATH)) {
+		if (existsSync(VIRTUALHOST_SOCKET_PATH)) {
 			try {
-				unlinkSync(SWITCHBOARD_SOCKET_PATH);
+				unlinkSync(VIRTUALHOST_SOCKET_PATH);
 			} catch (error) {
 				logger.debug("Could not remove socket on stop: {error}", {error});
 			}
 		}
 
-		logger.info("Switchboard stopped");
+		logger.info("VirtualHost stopped");
 	}
 
 	/**
@@ -252,15 +252,15 @@ export class Switchboard {
 
 			this.#ipcServer.on("error", (error: NodeJS.ErrnoException) => {
 				if (error.code === "EADDRINUSE") {
-					reject(new Error("Switchboard socket already in use"));
+					reject(new Error("VirtualHost socket already in use"));
 				} else {
 					reject(error);
 				}
 			});
 
-			this.#ipcServer.listen(SWITCHBOARD_SOCKET_PATH, () => {
+			this.#ipcServer.listen(VIRTUALHOST_SOCKET_PATH, () => {
 				logger.debug("IPC server listening on {path}", {
-					path: SWITCHBOARD_SOCKET_PATH,
+					path: VIRTUALHOST_SOCKET_PATH,
 				});
 				resolve();
 			});
@@ -487,9 +487,9 @@ export class Switchboard {
 }
 
 /**
- * Switchboard client - connects to an existing switchboard
+ * VirtualHost client - connects to an existing virtualhost
  */
-export class SwitchboardClient {
+export class VirtualHostClient {
 	#socket?: Socket;
 	#origin: string;
 	#host: string;
@@ -502,7 +502,7 @@ export class SwitchboardClient {
 	}
 
 	/**
-	 * Connect to the switchboard and register this app
+	 * Connect to the virtualhost and register this app
 	 * @param actualPort - The actual port the server is listening on (overrides constructor port)
 	 */
 	async connect(actualPort?: number): Promise<void> {
@@ -535,7 +535,7 @@ export class SwitchboardClient {
 						const message = JSON.parse(line) as AckMessage;
 						if (message.type === "ack") {
 							if (message.success) {
-								logger.info("Registered with switchboard: {origin}", {
+								logger.info("Registered with virtualhost: {origin}", {
 									origin: this.#origin,
 								});
 								resolve();
@@ -544,25 +544,25 @@ export class SwitchboardClient {
 							}
 						}
 					} catch (error) {
-						logger.error("Invalid switchboard response: {error}", {error});
+						logger.error("Invalid virtualhost response: {error}", {error});
 					}
 				}
 			});
 
 			this.#socket.on("error", (error: NodeJS.ErrnoException) => {
 				if (error.code === "ENOENT" || error.code === "ECONNREFUSED") {
-					reject(new Error("Switchboard not available"));
+					reject(new Error("VirtualHost not available"));
 				} else {
 					reject(error);
 				}
 			});
 
-			this.#socket.connect(SWITCHBOARD_SOCKET_PATH);
+			this.#socket.connect(VIRTUALHOST_SOCKET_PATH);
 		});
 	}
 
 	/**
-	 * Disconnect from the switchboard
+	 * Disconnect from the virtualhost
 	 */
 	async disconnect(): Promise<void> {
 		if (this.#socket) {
@@ -579,10 +579,10 @@ export class SwitchboardClient {
 }
 
 /**
- * Check if a switchboard is already running
+ * Check if a virtualhost is already running
  */
-export async function isSwitchboardRunningAsync(): Promise<boolean> {
-	if (!existsSync(SWITCHBOARD_SOCKET_PATH)) {
+export async function isVirtualHostRunningAsync(): Promise<boolean> {
+	if (!existsSync(VIRTUALHOST_SOCKET_PATH)) {
 		return false;
 	}
 
@@ -605,6 +605,6 @@ export async function isSwitchboardRunningAsync(): Promise<boolean> {
 			resolve(false);
 		});
 
-		socket.connect(SWITCHBOARD_SOCKET_PATH);
+		socket.connect(VIRTUALHOST_SOCKET_PATH);
 	});
 }
