@@ -93,12 +93,14 @@ export function parseOrigin(origin: string): ParsedOrigin {
 	}
 
 	// Reconstruct canonical origin (without trailing slash, without default ports in display)
+	// IPv6 addresses need brackets in URLs
+	const displayHost = host.includes(":") ? `[${host}]` : host;
 	const displayPort =
 		(protocol === "https" && port === 443) ||
 		(protocol === "http" && port === 80)
 			? ""
 			: `:${port}`;
-	const canonicalOrigin = `${protocol}://${host}${displayPort}`;
+	const canonicalOrigin = `${protocol}://${displayHost}${displayPort}`;
 
 	return {
 		protocol,

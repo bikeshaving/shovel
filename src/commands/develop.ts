@@ -198,9 +198,17 @@ export async function developCommand(
 				// Register ourselves with our own VirtualHost
 				// Use actualServerPort if available (succession case), otherwise vhostPort+1000 (initial startup)
 				const appPort = actualServerPort ?? vhostPort + 1000;
+				// Normalize bind host to loopback for local proxying
+				// 0.0.0.0 → 127.0.0.1, :: → ::1, others stay as-is
+				const proxyHost =
+					host === "0.0.0.0"
+						? "127.0.0.1"
+						: host === "::"
+							? "::1"
+							: host;
 				virtualHostRole.virtualHost.registerApp({
 					origin: origin.origin,
-					host: "127.0.0.1",
+					host: proxyHost,
 					port: appPort,
 					socket: null as any, // Self-registration doesn't need socket
 				});

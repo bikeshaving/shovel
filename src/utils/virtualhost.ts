@@ -422,7 +422,7 @@ export class VirtualHost {
 
 				// Extract hostname (without port) and redirect to HTTPS
 				const hostname = parseHostHeader(host);
-				const redirectUrl = `https://${hostname}${req.url || "/"}`;
+				const redirectUrl = `https://${formatHostForUrl(hostname)}${req.url || "/"}`;
 
 				logger.debug("Redirecting HTTP → HTTPS: {url}", {url: redirectUrl});
 				res.writeHead(301, {Location: redirectUrl});
@@ -740,10 +740,18 @@ export async function establishVirtualHostRole(
 
 		if (isRunning) {
 			// Try to connect as a client
+			// Normalize bind host to loopback for local proxying
+			// 0.0.0.0 → 127.0.0.1, :: → ::1, others stay as-is
+			const proxyHost =
+				host === "0.0.0.0"
+					? "127.0.0.1"
+					: host === "::"
+						? "::1"
+						: host;
 			try {
 				const client = new VirtualHostClient({
 					origin,
-					host: "127.0.0.1",
+					host: proxyHost,
 					port: 0, // Will be set when registering
 					onDisconnect,
 				});
