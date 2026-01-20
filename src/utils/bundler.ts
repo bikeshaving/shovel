@@ -730,5 +730,13 @@ startWorkerMessageLoop({registration, databases: result.databases});
 			fileCount: totalFiles,
 			dirCount: this.#dirWatchers.size,
 		});
+
+		// Log full manifest at debug level
+		for (const [dir, entry] of this.#dirWatchers) {
+			logger.debug("Watching directory {dir}: {files}", {
+				dir,
+				files: Array.from(entry.files).join(", "),
+			});
+		}
 	}
 }
