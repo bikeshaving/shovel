@@ -4,9 +4,8 @@ import {join} from "path";
 import {existsSync, unlinkSync} from "fs";
 import {VIRTUALHOST_SOCKET_PATH} from "../src/utils/virtualhost.js";
 
-// Skip these tests in CI - they require port 443 which needs root/sudo
-// eslint-disable-next-line no-restricted-properties
-const isCI = process.env.CI === "true";
+// Use a high port for testing to avoid needing root/sudo
+const TEST_HTTPS_PORT = 18443;
 
 const SHOVEL_CLI = join(import.meta.dir, "../dist/bin/cli.js");
 const ECHO_EXAMPLE = join(import.meta.dir, "../examples/echo");
@@ -38,8 +37,13 @@ function spawnShovelDevelop(
 		],
 		{
 			cwd,
-			// eslint-disable-next-line no-restricted-properties
-			env: {...process.env, ...options.env},
+			env: {
+				// eslint-disable-next-line no-restricted-properties
+				...process.env,
+				// Force VirtualHost to use our test port
+				SHOVEL_TEST_VIRTUALHOST_PORT: String(TEST_HTTPS_PORT),
+				...options.env,
+			},
 			stdio: ["ignore", "pipe", "pipe"],
 		},
 	);
@@ -127,9 +131,13 @@ async function killAndWait(
  */
 async function httpsGet(
 	url: string,
-	options: {timeout?: number; followRedirects?: boolean} = {},
+	options: {
+		timeout?: number;
+		followRedirects?: boolean;
+		headers?: Record<string, string>;
+	} = {},
 ): Promise<{status: number; body: string; headers: Headers}> {
-	const {timeout = 5000, followRedirects = true} = options;
+	const {timeout = 5000, followRedirects = true, headers = {}} = options;
 
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -145,6 +153,7 @@ async function httpsGet(
 		const response = await fetch(url, {
 			signal: controller.signal,
 			redirect: followRedirects ? "follow" : "manual",
+			headers,
 		});
 		const body = await response.text();
 		return {status: response.status, body, headers: response.headers};
@@ -166,13 +175,17 @@ async function httpsGet(
  */
 async function waitForServer(
 	url: string,
-	timeout = 15000,
-	interval = 200,
+	options: {
+		timeout?: number;
+		interval?: number;
+		headers?: Record<string, string>;
+	} = {},
 ): Promise<void> {
+	const {timeout = 15000, interval = 200, headers} = options;
 	const start = Date.now();
 	while (Date.now() - start < timeout) {
 		try {
-			await httpsGet(url, {timeout: 1000});
+			await httpsGet(url, {timeout: 1000, headers});
 			return;
 		} catch (_err) {
 			// Server not ready yet, keep polling
@@ -196,7 +209,7 @@ function cleanup() {
 	}
 }
 
-describe.skipIf(isCI)("e2e: shovel develop with VirtualHost", () => {
+describe("e2e: shovel develop with VirtualHost", () => {
 	const processes: ChildProcess[] = [];
 
 	beforeAll(() => {
@@ -225,22 +238,29 @@ describe.skipIf(isCI)("e2e: shovel develop with VirtualHost", () => {
 			child,
 			"Server running at https://echo.localhost",
 		);
-		expect(output).toContain("VirtualHost started on port 443");
+		expect(output).toContain(`VirtualHost started on port ${TEST_HTTPS_PORT}`);
 		expect(output).toContain("App registered: https://echo.localhost");
 
-		// Verify HTTPS works
-		await waitForServer("https://echo.localhost");
-		const response = await httpsGet("https://echo.localhost/");
+		// Verify HTTPS works (need to use IP:port since .localhost won't resolve to our test port)
+		const headers = {Host: "echo.localhost"};
+		await waitForServer(`https://127.0.0.1:${TEST_HTTPS_PORT}`, {headers});
+		const response = await httpsGet(`https://127.0.0.1:${TEST_HTTPS_PORT}/`, {
+			headers,
+		});
 		expect(response.status).toBe(200);
 		expect(response.body).toContain("Echo");
 	}, 30000);
 
 	test("second app registers with existing VirtualHost", async () => {
+		const baseUrl = `https://127.0.0.1:${TEST_HTTPS_PORT}`;
+		const echoHeaders = {Host: "echo.localhost"};
+		const adminHeaders = {Host: "admin.localhost"};
+
 		// Start first app (leader)
 		const leader = spawnShovelDevelop(ECHO_EXAMPLE, "https://echo.localhost");
 		processes.push(leader);
 		await waitForOutput(leader, "Server running at https://echo.localhost");
-		await waitForServer("https://echo.localhost");
+		await waitForServer(baseUrl, {headers: echoHeaders});
 
 		// Start second app (client)
 		const client = spawnShovelDevelop(ADMIN_EXAMPLE, "https://admin.localhost");
@@ -256,39 +276,47 @@ describe.skipIf(isCI)("e2e: shovel develop with VirtualHost", () => {
 			"Registered with virtualhost: https://admin.localhost",
 		);
 		// Client should NOT start its own VirtualHost
-		expect(clientOutput).not.toContain("VirtualHost started on port 443");
+		expect(clientOutput).not.toContain(
+			`VirtualHost started on port ${TEST_HTTPS_PORT}`,
+		);
 
 		// Both apps should be accessible
-		await waitForServer("https://admin.localhost");
+		await waitForServer(baseUrl, {headers: adminHeaders});
 
-		const echoResponse = await httpsGet("https://echo.localhost/");
+		const echoResponse = await httpsGet(`${baseUrl}/`, {headers: echoHeaders});
 		expect(echoResponse.status).toBe(200);
 		expect(echoResponse.body).toContain("Echo");
 
-		const adminResponse = await httpsGet("https://admin.localhost/");
+		const adminResponse = await httpsGet(`${baseUrl}/`, {
+			headers: adminHeaders,
+		});
 		// Admin redirects to /admin
 		expect(adminResponse.status).toBe(200);
 		expect(adminResponse.body).toContain("Admin");
 	}, 45000);
 
 	test("client becomes leader when original leader exits", async () => {
+		const baseUrl = `https://127.0.0.1:${TEST_HTTPS_PORT}`;
+		const echoHeaders = {Host: "echo.localhost"};
+		const adminHeaders = {Host: "admin.localhost"};
+
 		// Start first app (leader)
 		const leader = spawnShovelDevelop(ECHO_EXAMPLE, "https://echo.localhost");
 		processes.push(leader);
 		await waitForOutput(leader, "Server running at https://echo.localhost");
-		await waitForServer("https://echo.localhost");
+		await waitForServer(baseUrl, {headers: echoHeaders});
 
 		// Start second app (client)
 		const client = spawnShovelDevelop(ADMIN_EXAMPLE, "https://admin.localhost");
 		processes.push(client);
 		await waitForOutput(client, "Server running at https://admin.localhost");
-		await waitForServer("https://admin.localhost");
+		await waitForServer(baseUrl, {headers: adminHeaders});
 
 		// Verify both work
-		let echoResponse = await httpsGet("https://echo.localhost/");
+		let echoResponse = await httpsGet(`${baseUrl}/`, {headers: echoHeaders});
 		expect(echoResponse.status).toBe(200);
 
-		let adminResponse = await httpsGet("https://admin.localhost/");
+		let adminResponse = await httpsGet(`${baseUrl}/`, {headers: adminHeaders});
 		expect(adminResponse.status).toBe(200);
 
 		// Capture client output to see succession logs
@@ -306,7 +334,7 @@ describe.skipIf(isCI)("e2e: shovel develop with VirtualHost", () => {
 
 		// Wait for client to detect disconnect and become the new leader
 		// The client should detect the TCP connection close and call onDisconnect
-		// Then it should try to bind port 443 and become the leader
+		// Then it should try to bind the test port and become the leader
 		await new Promise((resolve) => setTimeout(resolve, 3000));
 
 		// Check if client detected disconnect and became leader
@@ -314,18 +342,18 @@ describe.skipIf(isCI)("e2e: shovel develop with VirtualHost", () => {
 		const _becameLeader =
 			clientOutput.includes("VirtualHost connection lost") ||
 			clientOutput.includes("Became VirtualHost leader") ||
-			clientOutput.includes("VirtualHost started on port 443");
+			clientOutput.includes(`VirtualHost started on port ${TEST_HTTPS_PORT}`);
 
 		// Admin app should have become the new leader
 		// Give it more time to start the VirtualHost
-		await waitForServer("https://admin.localhost", 15000);
+		await waitForServer(baseUrl, {timeout: 15000, headers: adminHeaders});
 
-		adminResponse = await httpsGet("https://admin.localhost/");
+		adminResponse = await httpsGet(`${baseUrl}/`, {headers: adminHeaders});
 		expect(adminResponse.status).toBe(200);
 
 		// Echo should no longer be available (its process was killed)
 		try {
-			await httpsGet("https://echo.localhost/", {timeout: 2000});
+			await httpsGet(`${baseUrl}/`, {timeout: 2000, headers: echoHeaders});
 			// If we get here, it means something else is serving echo.localhost
 			// which is unexpected
 		} catch (_err) {
@@ -334,40 +362,32 @@ describe.skipIf(isCI)("e2e: shovel develop with VirtualHost", () => {
 	}, 90000);
 
 	test("requests to unknown hosts return 502", async () => {
+		const baseUrl = `https://127.0.0.1:${TEST_HTTPS_PORT}`;
+		const echoHeaders = {Host: "echo.localhost"};
+		const unknownHeaders = {Host: "unknown.localhost"};
+
 		// Start a single app
 		const child = spawnShovelDevelop(ECHO_EXAMPLE, "https://echo.localhost");
 		processes.push(child);
 		await waitForOutput(child, "Server running at https://echo.localhost");
-		await waitForServer("https://echo.localhost");
+		await waitForServer(baseUrl, {headers: echoHeaders});
 
-		// Note: Testing unknown hosts with custom Host headers is tricky because
-		// fetch will use the URL hostname for the Host header by default.
-		// The VirtualHost should still work if we manually set the Host header,
-		// but behavior depends on the HTTP client implementation.
-		// For now, we just verify the echo app works
-		const echoResponse = await httpsGet("https://echo.localhost/");
+		// Test that unknown hosts return 502
+		const unknownResponse = await httpsGet(`${baseUrl}/`, {
+			headers: unknownHeaders,
+		});
+		expect(unknownResponse.status).toBe(502);
+		expect(unknownResponse.body).toContain("No app registered");
+
+		// Verify echo app still works
+		const echoResponse = await httpsGet(`${baseUrl}/`, {headers: echoHeaders});
 		expect(echoResponse.status).toBe(200);
 	}, 30000);
 
-	test("HTTP redirects to HTTPS", async () => {
-		const child = spawnShovelDevelop(ECHO_EXAMPLE, "https://echo.localhost");
-		processes.push(child);
-		await waitForOutput(child, "Server running at https://echo.localhost");
-		await waitForServer("https://echo.localhost");
-
-		// Try HTTP request (port 80) - should redirect to HTTPS
-		// Note: This only works if the VirtualHost was able to bind port 80
-		try {
-			const response = await fetch("http://echo.localhost/", {
-				redirect: "manual",
-			});
-			if (response.status === 301) {
-				const location = response.headers.get("location");
-				expect(location).toBe("https://echo.localhost/");
-			}
-			// If we can't bind port 80, this test is skipped
-		} catch (_err) {
-			// Port 80 might not be available, skip this assertion
-		}
+	// Skip HTTP redirect test - it requires privileged port 80
+	// and the redirect logic is tested elsewhere
+	test.skip("HTTP redirects to HTTPS", async () => {
+		// This test would require setting up HTTP port redirect as well
+		// For now, HTTP redirect functionality is tested in unit tests
 	}, 30000);
 });

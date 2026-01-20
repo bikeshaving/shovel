@@ -149,12 +149,19 @@ export async function developCommand(
 		let actualServerPort: number | undefined;
 
 		// Save the original VirtualHost port (443) since `port` gets mutated
-		const vhostPort = port;
+		// Allow overriding for testing via environment variable
+		// eslint-disable-next-line no-restricted-properties
+		const vhostPort = process.env.SHOVEL_TEST_VIRTUALHOST_PORT
+			? // eslint-disable-next-line no-restricted-properties
+				parseInt(process.env.SHOVEL_TEST_VIRTUALHOST_PORT, 10)
+			: port;
+		// eslint-disable-next-line no-restricted-properties
+		const forceVirtualHost = !!process.env.SHOVEL_TEST_VIRTUALHOST_PORT;
 
 		// Function to establish/re-establish VirtualHost role (used for initial setup and failover)
 		const establishRole = async (): Promise<void> => {
-			if (!isHttps || !origin || vhostPort >= 1024) {
-				return; // No VirtualHost needed for non-HTTPS or high ports
+			if (!isHttps || !origin || (vhostPort >= 1024 && !forceVirtualHost)) {
+				return; // No VirtualHost needed for non-HTTPS or high ports (unless forced)
 			}
 
 			const certs = await ensureCerts(origin.host);
