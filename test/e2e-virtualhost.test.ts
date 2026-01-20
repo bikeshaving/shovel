@@ -4,6 +4,10 @@ import {join} from "path";
 import {existsSync, unlinkSync} from "fs";
 import {VIRTUALHOST_SOCKET_PATH} from "../src/utils/virtualhost.js";
 
+// Skip these tests in CI - they require port 443 which needs root/sudo
+// eslint-disable-next-line no-restricted-properties
+const isCI = process.env.CI === "true";
+
 const SHOVEL_CLI = join(import.meta.dir, "../dist/bin/cli.js");
 const ECHO_EXAMPLE = join(import.meta.dir, "../examples/echo");
 const ADMIN_EXAMPLE = join(import.meta.dir, "../examples/admin");
@@ -192,7 +196,7 @@ function cleanup() {
 	}
 }
 
-describe("e2e: shovel develop with VirtualHost", () => {
+describe.skipIf(isCI)("e2e: shovel develop with VirtualHost", () => {
 	const processes: ChildProcess[] = [];
 
 	beforeAll(() => {

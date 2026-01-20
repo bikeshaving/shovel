@@ -6,6 +6,7 @@ import {
 	isVirtualHostRunningAsync,
 	establishVirtualHostRole,
 	VIRTUALHOST_SOCKET_PATH,
+	type VirtualHostRole,
 } from "../src/utils/virtualhost.js";
 
 const TEST_PORT = 18443; // High port to avoid permission issues
@@ -224,8 +225,7 @@ describe("VirtualHost", () => {
 
 			// Start a client that will try to become leader on disconnect
 			let becameLeader = false;
-			let newRole: Awaited<ReturnType<typeof establishVirtualHostRole>> | null =
-				null;
+			let newRole: VirtualHostRole | null = null;
 
 			const clientResult = await establishVirtualHostRole({
 				origin: "http://app2.localhost",
@@ -264,9 +264,10 @@ describe("VirtualHost", () => {
 			expect(becameLeader).toBe(true);
 			expect(await isVirtualHostRunningAsync()).toBe(true);
 
-			// Clean up
-			if (newRole?.role === "leader") {
-				await newRole.virtualHost.stop();
+			// Clean up - use type assertion since TS can't track the async assignment
+			const finalRole = newRole as VirtualHostRole | null;
+			if (finalRole && finalRole.role === "leader") {
+				await finalRole.virtualHost.stop();
 			}
 		});
 
