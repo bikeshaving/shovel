@@ -162,7 +162,7 @@ describe("loadConfig precedence", () => {
 				const config = loadConfig(testDir);
 
 				expect(config.port).toBe(7777); // default
-				expect(config.host).toBe("localhost"); // default
+				expect(config.host).toBe("0.0.0.0"); // default
 				expect(config.workers).toBe(1); // default
 			});
 		});
@@ -181,7 +181,7 @@ describe("loadConfig precedence", () => {
 
 				expect(config.port).toBe(5000); // from json
 				expect(config.workers).toBe(2); // from env
-				expect(config.host).toBe("localhost"); // default
+				expect(config.host).toBe("0.0.0.0"); // default
 			});
 		});
 	});
@@ -207,7 +207,7 @@ describe("loadConfig precedence", () => {
 				const config = loadConfig(testDir);
 
 				expect(config.port).toBe(7777);
-				expect(config.host).toBe("localhost");
+				expect(config.host).toBe("0.0.0.0");
 				expect(config.workers).toBe(1);
 			});
 		});

@@ -6,7 +6,11 @@ import {ServerBundler} from "../utils/bundler.js";
 import {createPlatform} from "../utils/platform.js";
 import {networkInterfaces} from "os";
 import {ensureCerts} from "../utils/certs.js";
-import {Switchboard, SwitchboardClient, isSwitchboardRunningAsync} from "../utils/switchboard.js";
+import {
+	Switchboard,
+	SwitchboardClient,
+	isSwitchboardRunningAsync,
+} from "../utils/switchboard.js";
 
 const logger = getLogger(["shovel", "develop"]);
 
@@ -303,7 +307,9 @@ export async function developCommand(
 			try {
 				await switchboard.stop();
 			} catch (cleanupError) {
-				logger.debug("Switchboard cleanup error: {error}", {error: cleanupError});
+				logger.debug("Switchboard cleanup error: {error}", {
+					error: cleanupError,
+				});
 			}
 		}
 

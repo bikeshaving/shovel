@@ -82,6 +82,7 @@ export class Switchboard {
 	#ipcServer?: NetServer;
 	#httpServer?: ReturnType<typeof createHttpServer>;
 	#httpsServer?: ReturnType<typeof createHttpsServer>;
+	#httpRedirectServer?: ReturnType<typeof createHttpServer>;
 	#tls?: TLSConfig;
 	#port: number;
 	#host: string;
@@ -121,6 +122,11 @@ export class Switchboard {
 		// Start HTTP/HTTPS server
 		await this.#startProxyServer();
 
+		// Start HTTP→HTTPS redirect server if TLS is enabled
+		if (this.#tls) {
+			await this.#startHttpRedirectServer();
+		}
+
 		logger.info("Switchboard started on port {port}", {port: this.#port});
 	}
 
@@ -147,6 +153,10 @@ export class Switchboard {
 			new Promise<void>((resolve) => {
 				this.#httpsServer?.close(() => resolve());
 				if (!this.#httpsServer) resolve();
+			}),
+			new Promise<void>((resolve) => {
+				this.#httpRedirectServer?.close(() => resolve());
+				if (!this.#httpRedirectServer) resolve();
 			}),
 		]);
 
@@ -315,12 +325,15 @@ export class Switchboard {
 
 		return new Promise((resolve, reject) => {
 			server!.on("error", (error: NodeJS.ErrnoException) => {
-				logger.error("Server bind error: {code} {message} (host={host}, port={port})", {
-					code: error.code,
-					message: error.message,
-					host: this.#host,
-					port: this.#port,
-				});
+				logger.error(
+					"Server bind error: {code} {message} (host={host}, port={port})",
+					{
+						code: error.code,
+						message: error.message,
+						host: this.#host,
+						port: this.#port,
+					},
+				);
 				if (error.code === "EADDRINUSE") {
 					reject(new Error(`Port ${this.#port} already in use`));
 				} else if (error.code === "EACCES") {
@@ -339,6 +352,53 @@ export class Switchboard {
 				logger.debug("Proxy server listening on {host}:{port}", {
 					host: this.#host,
 					port: this.#port,
+				});
+				resolve();
+			});
+		});
+	}
+
+	/**
+	 * Start the HTTP→HTTPS redirect server on port 80
+	 */
+	async #startHttpRedirectServer(): Promise<void> {
+		return new Promise((resolve, reject) => {
+			this.#httpRedirectServer = createHttpServer((req, res) => {
+				const host = req.headers.host;
+				if (!host) {
+					res.writeHead(400, {"Content-Type": "text/plain"});
+					res.end("Bad Request: Missing Host header");
+					return;
+				}
+
+				// Extract hostname (without port) and redirect to HTTPS
+				const hostname = host.split(":")[0];
+				const redirectUrl = `https://${hostname}${req.url || "/"}`;
+
+				logger.debug("Redirecting HTTP → HTTPS: {url}", {url: redirectUrl});
+				res.writeHead(301, {Location: redirectUrl});
+				res.end();
+			});
+
+			this.#httpRedirectServer.on("error", (error: NodeJS.ErrnoException) => {
+				if (error.code === "EADDRINUSE") {
+					// Port 80 already in use - not critical, just log and continue
+					logger.debug("Port 80 already in use, HTTP redirect not available");
+					resolve();
+				} else if (error.code === "EACCES") {
+					// Permission denied - not critical for redirect server
+					logger.debug(
+						"Permission denied for port 80, HTTP redirect not available",
+					);
+					resolve();
+				} else {
+					reject(error);
+				}
+			});
+
+			this.#httpRedirectServer.listen(80, this.#host, () => {
+				logger.debug("HTTP redirect server listening on {host}:80", {
+					host: this.#host,
 				});
 				resolve();
 			});
