@@ -1,14 +1,14 @@
 /**
- * Router coordination for multi-app local HTTPS development
+ * Switchboard coordination for multi-app local HTTPS development
  *
  * When running multiple `shovel develop` instances with different origins
  * (e.g., myapp.localhost, blog.localhost), they need to share port 443.
  *
  * Architecture:
- * - First app becomes the "router" and owns port 443/80
- * - Additional apps register with the router via IPC (Unix socket)
- * - Router proxies requests by Host header to the correct app
- * - When router exits, another app can take over
+ * - First app becomes the "switchboard" and owns port 443/80
+ * - Additional apps register with the switchboard via IPC (Unix socket)
+ * - Switchboard proxies requests by Host header to the correct app
+ * - When switchboard exits, another app can take over
  */
 
 import {
@@ -28,12 +28,12 @@ import {getLogger} from "@logtape/logtape";
 import {SHOVEL_DIR} from "./certs.js";
 import type {TLSConfig} from "@b9g/platform";
 
-const logger = getLogger(["shovel", "router"]);
+const logger = getLogger(["shovel", "switchboard"]);
 
 /**
- * Path to the router's IPC socket
+ * Path to the switchboard's IPC socket
  */
-export const ROUTER_SOCKET_PATH = join(SHOVEL_DIR, "router.sock");
+export const SWITCHBOARD_SOCKET_PATH = join(SHOVEL_DIR, "switchboard.sock");
 
 /**
  * Message types for IPC communication
@@ -75,9 +75,9 @@ interface RegisteredApp {
 }
 
 /**
- * Router class - manages multiple apps on a single port
+ * Switchboard class - manages multiple apps on a single port
  */
-export class Router {
+export class Switchboard {
 	#apps: Map<string, RegisteredApp>;
 	#ipcServer?: NetServer;
 	#httpServer?: ReturnType<typeof createHttpServer>;
@@ -94,7 +94,7 @@ export class Router {
 	}
 
 	/**
-	 * Start the router
+	 * Start the switchboard
 	 *
 	 * This creates:
 	 * 1. An IPC server for app registration
@@ -107,9 +107,9 @@ export class Router {
 		}
 
 		// Clean up stale socket file
-		if (existsSync(ROUTER_SOCKET_PATH)) {
+		if (existsSync(SWITCHBOARD_SOCKET_PATH)) {
 			try {
-				unlinkSync(ROUTER_SOCKET_PATH);
+				unlinkSync(SWITCHBOARD_SOCKET_PATH);
 			} catch (error) {
 				logger.debug("Could not remove stale socket: {error}", {error});
 			}
@@ -121,11 +121,11 @@ export class Router {
 		// Start HTTP/HTTPS server
 		await this.#startProxyServer();
 
-		logger.info("Router started on port {port}", {port: this.#port});
+		logger.info("Switchboard started on port {port}", {port: this.#port});
 	}
 
 	/**
-	 * Stop the router and clean up
+	 * Stop the switchboard and clean up
 	 */
 	async stop(): Promise<void> {
 		// Close all app connections (skip self-registered apps with null socket)
@@ -151,15 +151,15 @@ export class Router {
 		]);
 
 		// Clean up socket file
-		if (existsSync(ROUTER_SOCKET_PATH)) {
+		if (existsSync(SWITCHBOARD_SOCKET_PATH)) {
 			try {
-				unlinkSync(ROUTER_SOCKET_PATH);
+				unlinkSync(SWITCHBOARD_SOCKET_PATH);
 			} catch (error) {
 				logger.debug("Could not remove socket on stop: {error}", {error});
 			}
 		}
 
-		logger.info("Router stopped");
+		logger.info("Switchboard stopped");
 	}
 
 	/**
@@ -242,15 +242,15 @@ export class Router {
 
 			this.#ipcServer.on("error", (error: NodeJS.ErrnoException) => {
 				if (error.code === "EADDRINUSE") {
-					reject(new Error("Router socket already in use"));
+					reject(new Error("Switchboard socket already in use"));
 				} else {
 					reject(error);
 				}
 			});
 
-			this.#ipcServer.listen(ROUTER_SOCKET_PATH, () => {
+			this.#ipcServer.listen(SWITCHBOARD_SOCKET_PATH, () => {
 				logger.debug("IPC server listening on {path}", {
-					path: ROUTER_SOCKET_PATH,
+					path: SWITCHBOARD_SOCKET_PATH,
 				});
 				resolve();
 			});
@@ -315,6 +315,12 @@ export class Router {
 
 		return new Promise((resolve, reject) => {
 			server!.on("error", (error: NodeJS.ErrnoException) => {
+				logger.error("Server bind error: {code} {message} (host={host}, port={port})", {
+					code: error.code,
+					message: error.message,
+					host: this.#host,
+					port: this.#port,
+				});
 				if (error.code === "EADDRINUSE") {
 					reject(new Error(`Port ${this.#port} already in use`));
 				} else if (error.code === "EACCES") {
@@ -345,6 +351,10 @@ export class Router {
 	#handleProxyRequest(req: IncomingMessage, res: ServerResponse): void {
 		const host = req.headers.host;
 		if (!host) {
+			logger.error("{method} {url} 400 (missing Host header)", {
+				method: req.method,
+				url: req.url,
+			});
 			res.writeHead(400, {"Content-Type": "text/plain"});
 			res.end("Bad Request: Missing Host header");
 			return;
@@ -356,6 +366,11 @@ export class Router {
 		// Find the app for this hostname
 		const app = this.getApp(hostname);
 		if (!app) {
+			logger.error("{method} {host}{url} 502 (no app registered)", {
+				method: req.method,
+				host,
+				url: req.url,
+			});
 			res.writeHead(502, {"Content-Type": "text/plain"});
 			res.end(`No app registered for ${hostname}`);
 			return;
@@ -412,9 +427,9 @@ export class Router {
 }
 
 /**
- * Router client - connects to an existing router
+ * Switchboard client - connects to an existing switchboard
  */
-export class RouterClient {
+export class SwitchboardClient {
 	#socket?: Socket;
 	#origin: string;
 	#host: string;
@@ -427,7 +442,7 @@ export class RouterClient {
 	}
 
 	/**
-	 * Connect to the router and register this app
+	 * Connect to the switchboard and register this app
 	 * @param actualPort - The actual port the server is listening on (overrides constructor port)
 	 */
 	async connect(actualPort?: number): Promise<void> {
@@ -460,7 +475,7 @@ export class RouterClient {
 						const message = JSON.parse(line) as AckMessage;
 						if (message.type === "ack") {
 							if (message.success) {
-								logger.info("Registered with router: {origin}", {
+								logger.info("Registered with switchboard: {origin}", {
 									origin: this.#origin,
 								});
 								resolve();
@@ -469,25 +484,25 @@ export class RouterClient {
 							}
 						}
 					} catch (error) {
-						logger.error("Invalid router response: {error}", {error});
+						logger.error("Invalid switchboard response: {error}", {error});
 					}
 				}
 			});
 
 			this.#socket.on("error", (error: NodeJS.ErrnoException) => {
 				if (error.code === "ENOENT" || error.code === "ECONNREFUSED") {
-					reject(new Error("Router not available"));
+					reject(new Error("Switchboard not available"));
 				} else {
 					reject(error);
 				}
 			});
 
-			this.#socket.connect(ROUTER_SOCKET_PATH);
+			this.#socket.connect(SWITCHBOARD_SOCKET_PATH);
 		});
 	}
 
 	/**
-	 * Disconnect from the router
+	 * Disconnect from the switchboard
 	 */
 	async disconnect(): Promise<void> {
 		if (this.#socket) {
@@ -504,10 +519,10 @@ export class RouterClient {
 }
 
 /**
- * Check if a router is already running
+ * Check if a switchboard is already running
  */
-export async function isRouterRunningAsync(): Promise<boolean> {
-	if (!existsSync(ROUTER_SOCKET_PATH)) {
+export async function isSwitchboardRunningAsync(): Promise<boolean> {
+	if (!existsSync(SWITCHBOARD_SOCKET_PATH)) {
 		return false;
 	}
 
@@ -530,6 +545,6 @@ export async function isRouterRunningAsync(): Promise<boolean> {
 			resolve(false);
 		});
 
-		socket.connect(ROUTER_SOCKET_PATH);
+		socket.connect(SWITCHBOARD_SOCKET_PATH);
 	});
 }

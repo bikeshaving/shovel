@@ -1785,9 +1785,7 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 				: env.PORT
 					? parseInt(env.PORT, 10)
 					: DEFAULTS.SERVER.PORT,
-		host: parsedOrigin
-			? parsedOrigin.host
-			: (processed.host ?? env.HOST ?? "localhost"),
+		host: processed.host ?? env.HOST ?? DEFAULTS.SERVER.HOST,
 		workers:
 			processed.workers !== undefined
 				? typeof processed.workers === "number"

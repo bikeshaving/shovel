@@ -6,8 +6,7 @@ import {ServerBundler} from "../utils/bundler.js";
 import {createPlatform} from "../utils/platform.js";
 import {networkInterfaces} from "os";
 import {ensureCerts} from "../utils/certs.js";
-import {getBindPort} from "../utils/privileges.js";
-import {Router, RouterClient, isRouterRunningAsync} from "../utils/router.js";
+import {Switchboard, SwitchboardClient, isSwitchboardRunningAsync} from "../utils/switchboard.js";
 
 const logger = getLogger(["shovel", "develop"]);
 
@@ -102,8 +101,8 @@ export async function developCommand(
 	},
 	config: ProcessedShovelConfig,
 ) {
-	let router: Router | undefined;
-	let routerClient: RouterClient | undefined;
+	let switchboard: Switchboard | undefined;
+	let switchboardClient: SwitchboardClient | undefined;
 
 	try {
 		const platformName = resolvePlatform({...options, config});
@@ -122,73 +121,59 @@ export async function developCommand(
 		}
 
 		// Derive port and host from origin or use defaults
+		// Note: origin.host is the hostname for routing (e.g., shovel.localhost)
+		// The bind host is the interface to listen on (default 0.0.0.0)
 		let port = origin?.port ?? config.port ?? DEFAULTS.SERVER.PORT;
-		const host =
-			origin?.host ?? options.host ?? config.host ?? DEFAULTS.SERVER.HOST;
+		const host = options.host ?? config.host ?? DEFAULTS.SERVER.HOST;
 		const isHttps = origin?.protocol === "https";
 
 		// For HTTPS origins, we need to:
 		// 1. Ensure certificates are available
 		// 2. Handle privileged port access (443)
-		// 3. Potentially coordinate with router for multi-app support
+		// 3. Potentially coordinate with switchboard for multi-app support
 		let tls: TLSConfig | undefined;
 
 		if (isHttps && origin) {
 			logger.info("Setting up HTTPS for {origin}", {origin: origin.origin});
 
-			// Step 1: Ensure certificates
-			// For router mode (port 443/80), use wildcard localhost cert to support multiple apps
-			// Otherwise use the specific origin host
-			const certHost =
-				(port === 443 || port === 80) && origin.host.endsWith(".localhost")
-					? "localhost"
-					: origin.host;
-			const certs = await ensureCerts(certHost);
+			// Step 1: Ensure certificates for the origin host
+			const certs = await ensureCerts(origin.host);
 			tls = {cert: certs.cert, key: certs.key};
 
 			// Step 2: Handle privileged ports (any port < 1024)
 			if (port < 1024) {
-				// Check if router is already running
-				const routerRunning = await isRouterRunningAsync();
+				// Check if switchboard is already running
+				const switchboardRunning = await isSwitchboardRunningAsync();
 
-				if (routerRunning) {
-					// Register with existing router
+				if (switchboardRunning) {
+					// Register with existing switchboard
 					// Use port 0 to let OS assign an available port
-					// Note: We don't use TLS here - the router terminates TLS and proxies plain HTTP to us
-					routerClient = new RouterClient({
+					// Note: We don't use TLS here - the switchboard terminates TLS and proxies plain HTTP to us
+					// Use 127.0.0.1 for registration - 0.0.0.0 is for binding, not proxying
+					switchboardClient = new SwitchboardClient({
 						origin: origin.origin,
 						host: "127.0.0.1",
 						port: 0, // Will be updated after server starts
 					});
 
-					// Clear TLS - router handles TLS termination, we serve plain HTTP
-					port = 0; // Let OS assign port, router will get actual port after listen
+					// Clear TLS - switchboard handles TLS termination, we serve plain HTTP
+					port = 0; // Let OS assign port, switchboard will get actual port after listen
 					tls = undefined;
 				} else {
-					// Become the router
-					const actualBindPort = await getBindPort(port);
-
-					if (actualBindPort !== port) {
-						logger.info("Using port forwarding: {requested} → {actual}", {
-							requested: port,
-							actual: actualBindPort,
-						});
-						// We bind to the high port, but forwarding makes 443 work
-						// Router will handle the forwarded traffic
-					}
-
-					router = new Router({
-						port: actualBindPort,
-						host: "127.0.0.1",
+					// Become the switchboard
+					logger.debug("Starting switchboard on {host}:{port}", {host, port});
+					switchboard = new Switchboard({
+						port,
+						host,
 						tls,
 					});
-					await router.start();
+					await switchboard.start();
 
-					// Register ourselves with the router
+					// Register ourselves with the switchboard
 					// Use a different port for the actual app server
-					const appPort =
-						actualBindPort === port ? port + 1000 : actualBindPort + 1;
-					router.registerApp({
+					// Use 127.0.0.1 for proxy target - 0.0.0.0 is for binding, not proxying
+					const appPort = port + 1000;
+					switchboard.registerApp({
 						origin: origin.origin,
 						host: "127.0.0.1",
 						port: appPort,
@@ -196,20 +181,10 @@ export async function developCommand(
 					});
 
 					// Our server binds to appPort without TLS
-					// Router handles TLS termination and proxies plain HTTP to us
+					// Switchboard handles TLS termination and proxies plain HTTP to us
 					port = appPort;
 					tls = undefined;
 				}
-			}
-		} else if (port < 1024) {
-			// Handle privileged ports for HTTP (e.g., port 80)
-			const actualBindPort = await getBindPort(port);
-			if (actualBindPort !== port) {
-				logger.info("Using port forwarding: {requested} → {actual}", {
-					requested: port,
-					actual: actualBindPort,
-				});
-				port = actualBindPort;
 			}
 		}
 
@@ -221,7 +196,7 @@ export async function developCommand(
 		// Create platform with server and worker settings
 		const platformInstance = await createPlatform(platformName, {
 			port,
-			host: isHttps ? "127.0.0.1" : host, // HTTPS always binds to localhost
+			host,
 			workers: workerCount,
 			tls,
 		});
@@ -238,13 +213,13 @@ export async function developCommand(
 				const server = await platformInstance.listen();
 				serverStarted = true;
 
-				// Connect to router if we're a client (pass actual port from server)
-				if (routerClient) {
+				// Connect to switchboard if we're a client (pass actual port from server)
+				if (switchboardClient) {
 					const actualPort = server.address().port;
-					logger.info("Registering with router (local port: {port})", {
+					logger.info("Registering with switchboard (local port: {port})", {
 						port: actualPort,
 					});
-					await routerClient.connect(actualPort);
+					await switchboardClient.connect(actualPort);
 				}
 
 				// Display server URLs
@@ -295,12 +270,12 @@ export async function developCommand(
 			logger.debug("Shutting down ({signal})", {signal});
 			await bundler.stop();
 
-			// Disconnect from router or stop our router
-			if (routerClient) {
-				await routerClient.disconnect();
+			// Disconnect from switchboard or stop our switchboard
+			if (switchboardClient) {
+				await switchboardClient.disconnect();
 			}
-			if (router) {
-				await router.stop();
+			if (switchboard) {
+				await switchboard.stop();
 			}
 
 			await platformInstance.dispose();
@@ -315,20 +290,20 @@ export async function developCommand(
 		await new Promise(() => {});
 	} catch (error) {
 		// Clean up on error
-		if (routerClient) {
+		if (switchboardClient) {
 			try {
-				await routerClient.disconnect();
+				await switchboardClient.disconnect();
 			} catch (cleanupError) {
-				logger.debug("Router client cleanup error: {error}", {
+				logger.debug("Switchboard client cleanup error: {error}", {
 					error: cleanupError,
 				});
 			}
 		}
-		if (router) {
+		if (switchboard) {
 			try {
-				await router.stop();
+				await switchboard.stop();
 			} catch (cleanupError) {
-				logger.debug("Router cleanup error: {error}", {error: cleanupError});
+				logger.debug("Switchboard cleanup error: {error}", {error: cleanupError});
 			}
 		}
 
