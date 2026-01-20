@@ -148,9 +148,12 @@ export async function developCommand(
 		// Track the actual port our server is listening on (for re-registration after failover)
 		let actualServerPort: number | undefined;
 
+		// Save the original VirtualHost port (443) since `port` gets mutated
+		const vhostPort = port;
+
 		// Function to establish/re-establish VirtualHost role (used for initial setup and failover)
 		const establishRole = async (): Promise<void> => {
-			if (!isHttps || !origin || port >= 1024) {
+			if (!isHttps || !origin || vhostPort >= 1024) {
 				return; // No VirtualHost needed for non-HTTPS or high ports
 			}
 
@@ -159,7 +162,7 @@ export async function developCommand(
 
 			virtualHostRole = await establishVirtualHostRole({
 				origin: origin.origin,
-				port,
+				port: vhostPort,
 				host,
 				tls: vhostTls,
 				onNeedRegistration: async (client) => {
@@ -186,13 +189,15 @@ export async function developCommand(
 			if (virtualHostRole.role === "leader") {
 				logger.debug("Became VirtualHost leader");
 				// Register ourselves with our own VirtualHost
-				const appPort = port + 1000;
+				// Use actualServerPort if available (succession case), otherwise vhostPort+1000 (initial startup)
+				const appPort = actualServerPort ?? vhostPort + 1000;
 				virtualHostRole.virtualHost.registerApp({
 					origin: origin.origin,
 					host: "127.0.0.1",
 					port: appPort,
 					socket: null as any, // Self-registration doesn't need socket
 				});
+				logger.info("Registered self as leader (app port: {port})", {port: appPort});
 			} else {
 				logger.debug("Connected as VirtualHost client");
 			}

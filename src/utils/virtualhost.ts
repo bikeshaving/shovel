@@ -659,7 +659,8 @@ export class VirtualHostClient {
 }
 
 /**
- * Check if a virtualhost is already running
+ * Check if a virtualhost is already running.
+ * If a stale socket file exists (from a crashed process), it will be cleaned up.
  */
 export async function isVirtualHostRunningAsync(): Promise<boolean> {
 	if (!existsSync(VIRTUALHOST_SOCKET_PATH)) {
@@ -669,8 +670,19 @@ export async function isVirtualHostRunningAsync(): Promise<boolean> {
 	return new Promise<boolean>((resolve) => {
 		const socket = new Socket();
 
+		const cleanupStaleSocket = () => {
+			// Socket exists but connection failed - it's stale, clean it up
+			try {
+				unlinkSync(VIRTUALHOST_SOCKET_PATH);
+				logger.debug("Cleaned up stale VirtualHost socket");
+			} catch (err) {
+				logger.debug("Could not clean up stale socket: {error}", {error: err});
+			}
+		};
+
 		const timeout = setTimeout(() => {
 			socket.destroy();
+			cleanupStaleSocket();
 			resolve(false);
 		}, 1000);
 
@@ -682,6 +694,7 @@ export async function isVirtualHostRunningAsync(): Promise<boolean> {
 
 		socket.on("error", () => {
 			clearTimeout(timeout);
+			cleanupStaleSocket();
 			resolve(false);
 		});
 
