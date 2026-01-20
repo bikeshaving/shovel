@@ -1,15 +1,17 @@
 import {describe, test, expect, beforeAll, afterAll, afterEach} from "bun:test";
-import {spawn, type ChildProcess} from "child_process";
+import {type ChildProcess} from "child_process";
 import {join} from "path";
 import {existsSync, unlinkSync} from "fs";
 import {VIRTUALHOST_SOCKET_PATH} from "../src/utils/virtualhost.js";
+import {spawn} from "./utils.js";
 
 // Use a high port for testing to avoid needing root/sudo
 const TEST_HTTPS_PORT = 18443;
 
 const SHOVEL_CLI = join(import.meta.dir, "../dist/bin/cli.js");
 const ECHO_EXAMPLE = join(import.meta.dir, "../examples/echo");
-const BLOG_EXAMPLE = join(import.meta.dir, "../examples/blog");
+// Use echo example for second app too - blog example is Cloudflare-specific
+const ECHO_EXAMPLE_2 = ECHO_EXAMPLE;
 
 /**
  * Spawn a shovel develop process
@@ -44,7 +46,6 @@ function spawnShovelDevelop(
 				SHOVEL_TEST_VIRTUALHOST_PORT: String(TEST_HTTPS_PORT),
 				...options.env,
 			},
-			stdio: ["ignore", "pipe", "pipe"],
 		},
 	);
 
@@ -254,7 +255,7 @@ describe("e2e: shovel develop with VirtualHost", () => {
 	test("second app registers with existing VirtualHost", async () => {
 		const baseUrl = `https://127.0.0.1:${TEST_HTTPS_PORT}`;
 		const echoHeaders = {Host: "echo.localhost"};
-		const blogHeaders = {Host: "blog.localhost"};
+		const echo2Headers = {Host: "echo2.localhost"};
 
 		// Start first app (leader)
 		const leader = spawnShovelDevelop(ECHO_EXAMPLE, "https://echo.localhost");
@@ -262,18 +263,18 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		await waitForOutput(leader, "Server running at https://echo.localhost");
 		await waitForServer(baseUrl, {headers: echoHeaders});
 
-		// Start second app (client)
-		const client = spawnShovelDevelop(BLOG_EXAMPLE, "https://blog.localhost");
+		// Start second app (client) - same echo example with different origin
+		const client = spawnShovelDevelop(ECHO_EXAMPLE_2, "https://echo2.localhost");
 		processes.push(client);
 
 		// Client should register with VirtualHost
 		const clientOutput = await waitForOutput(
 			client,
-			"Server running at https://blog.localhost",
+			"Server running at https://echo2.localhost",
 		);
 		expect(clientOutput).toContain("Registering with VirtualHost");
 		expect(clientOutput).toContain(
-			"Registered with virtualhost: https://blog.localhost",
+			"Registered with virtualhost: https://echo2.localhost",
 		);
 		// Client should NOT start its own VirtualHost
 		expect(clientOutput).not.toContain(
@@ -281,27 +282,23 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		);
 
 		// Both apps should be accessible
-		await waitForServer(baseUrl, {headers: blogHeaders});
+		await waitForServer(baseUrl, {headers: echo2Headers});
 
 		const echoResponse = await httpsGet(`${baseUrl}/`, {headers: echoHeaders});
 		expect(echoResponse.status).toBe(200);
 		expect(echoResponse.body).toContain("Echo");
 
-		const blogResponse = await httpsGet(`${baseUrl}/`, {
-			headers: blogHeaders,
+		const echo2Response = await httpsGet(`${baseUrl}/`, {
+			headers: echo2Headers,
 		});
-		if (blogResponse.status !== 200) {
-			// eslint-disable-next-line no-console
-			console.error("Blog response error:", blogResponse.body);
-		}
-		expect(blogResponse.status).toBe(200);
-		expect(blogResponse.body).toContain("Shovel Blog");
+		expect(echo2Response.status).toBe(200);
+		expect(echo2Response.body).toContain("Echo");
 	}, 45000);
 
 	test("client becomes leader when original leader exits", async () => {
 		const baseUrl = `https://127.0.0.1:${TEST_HTTPS_PORT}`;
 		const echoHeaders = {Host: "echo.localhost"};
-		const blogHeaders = {Host: "blog.localhost"};
+		const echo2Headers = {Host: "echo2.localhost"};
 
 		// Start first app (leader)
 		const leader = spawnShovelDevelop(ECHO_EXAMPLE, "https://echo.localhost");
@@ -310,21 +307,17 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		await waitForServer(baseUrl, {headers: echoHeaders});
 
 		// Start second app (client)
-		const client = spawnShovelDevelop(BLOG_EXAMPLE, "https://blog.localhost");
+		const client = spawnShovelDevelop(ECHO_EXAMPLE_2, "https://echo2.localhost");
 		processes.push(client);
-		await waitForOutput(client, "Server running at https://blog.localhost");
-		await waitForServer(baseUrl, {headers: blogHeaders});
+		await waitForOutput(client, "Server running at https://echo2.localhost");
+		await waitForServer(baseUrl, {headers: echo2Headers});
 
 		// Verify both work
 		let echoResponse = await httpsGet(`${baseUrl}/`, {headers: echoHeaders});
 		expect(echoResponse.status).toBe(200);
 
-		let blogResponse = await httpsGet(`${baseUrl}/`, {headers: blogHeaders});
-		if (blogResponse.status !== 200) {
-			// eslint-disable-next-line no-console
-			console.error("Blog response error:", blogResponse.body);
-		}
-		expect(blogResponse.status).toBe(200);
+		let echo2Response = await httpsGet(`${baseUrl}/`, {headers: echo2Headers});
+		expect(echo2Response.status).toBe(200);
 
 		// Capture client output to see succession logs
 		let clientOutput = "";
@@ -351,12 +344,12 @@ describe("e2e: shovel develop with VirtualHost", () => {
 			clientOutput.includes("Became VirtualHost leader") ||
 			clientOutput.includes(`VirtualHost started on port ${TEST_HTTPS_PORT}`);
 
-		// Admin app should have become the new leader
+		// Second app should have become the new leader
 		// Give it more time to start the VirtualHost
-		await waitForServer(baseUrl, {timeout: 15000, headers: blogHeaders});
+		await waitForServer(baseUrl, {timeout: 15000, headers: echo2Headers});
 
-		blogResponse = await httpsGet(`${baseUrl}/`, {headers: blogHeaders});
-		expect(blogResponse.status).toBe(200);
+		echo2Response = await httpsGet(`${baseUrl}/`, {headers: echo2Headers});
+		expect(echo2Response.status).toBe(200);
 
 		// Echo should no longer be available (its process was killed)
 		try {

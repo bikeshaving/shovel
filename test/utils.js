@@ -7,6 +7,7 @@
  */
 
 import * as FS from "fs/promises";
+import {spawn as nodeSpawn} from "child_process";
 import {join, resolve} from "path";
 import {tmpdir} from "os";
 import {getLogger} from "@logtape/logtape";
@@ -81,4 +82,24 @@ export async function fileExists(path) {
 		}
 		return false;
 	}
+}
+
+/**
+ * Spawn a child process with stderr forwarded to parent stderr.
+ *
+ * This ensures error logs from spawned processes appear in CI output
+ * while still allowing programmatic capture of output via pipes.
+ */
+export function spawn(command, args, options = {}) {
+	const child = nodeSpawn(command, args, {
+		...options,
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+
+	// Forward stderr to parent so logs appear in CI
+	child.stderr?.on("data", (data) => {
+		process.stderr.write(data);
+	});
+
+	return child;
 }

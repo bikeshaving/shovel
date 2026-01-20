@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-properties -- Tests need process.cwd/env */
 import * as FS from "fs/promises";
-import {spawn} from "child_process";
+import {spawn} from "./utils.js";
 import {createConnection} from "net";
 import {test, expect} from "bun:test";
 import {join, dirname as _dirname} from "path";
@@ -123,7 +123,6 @@ function startDevServer(fixture, port, extraArgs = []) {
 	];
 
 	const serverProcess = spawn("node", args, {
-		stdio: ["ignore", "pipe", "pipe"],
 		cwd: fixtureDir,
 		env: {
 			...process.env,
@@ -1270,7 +1269,6 @@ self.addEventListener("fetch", (event) => {
 				"node",
 				[cliPath, "develop", "app.ts", "--port", PORT.toString()],
 				{
-					stdio: ["ignore", "pipe", "pipe"],
 					cwd: appDir, // Running from packages/my-app, not monorepo root
 					env: {
 						...process.env,
@@ -1548,7 +1546,6 @@ addEventListener("fetch", (event) => {
 				"node",
 				[cliPath, "develop", "app.js", "--port", PORT.toString()],
 				{
-					stdio: ["ignore", "pipe", "pipe"],
 					cwd: tempDir,
 					env: {
 						...process.env,

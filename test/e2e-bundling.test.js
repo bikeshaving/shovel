@@ -17,7 +17,7 @@ import {join} from "path";
 import {test, expect} from "bun:test";
 import {buildForProduction} from "../src/commands/build.js";
 import {loadConfig} from "../src/utils/config.js";
-import {spawn} from "child_process";
+import {spawn} from "./utils.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["test", "e2e-bundling"]);
@@ -63,7 +63,6 @@ async function runBundle(serverDir, timeoutMs = 3000) {
 		const indexPath = join(serverDir, "index.js");
 		const child = spawn("node", [indexPath], {
 			cwd: serverDir,
-			stdio: ["pipe", "pipe", "pipe"],
 			env: {
 				...process.env,
 				// Set PORT to avoid conflicts
