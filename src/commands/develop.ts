@@ -131,6 +131,16 @@ export async function developCommand(
 		const host = options.host ?? config.host ?? DEFAULTS.SERVER.HOST;
 		const isHttps = origin?.protocol === "https";
 
+		// Validate host when origin is specified
+		// Origin-based routing only works with localhost bindings
+		const localhostHosts = ["0.0.0.0", "127.0.0.1", "localhost", "::1", "::"];
+		if (origin && !localhostHosts.includes(host)) {
+			throw new Error(
+				`Cannot use --origin with --host ${host}. ` +
+					`Origin-based routing requires binding to localhost (0.0.0.0, 127.0.0.1, or localhost).`,
+			);
+		}
+
 		// For HTTPS origins, we need to:
 		// 1. Ensure certificates are available
 		// 2. Handle privileged port access (443)
