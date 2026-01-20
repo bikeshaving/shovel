@@ -6,7 +6,7 @@
  */
 
 import {execSync, spawnSync} from "child_process";
-import {existsSync, mkdirSync, readFileSync, cpSync, rmSync} from "fs";
+import {existsSync, mkdirSync, readFileSync, cpSync} from "fs";
 import {join} from "path";
 import {getLogger} from "@logtape/logtape";
 import {SHOVEL_DIR, CERTS_DIR, LEGACY_SHOVEL_DIR} from "./paths.js";

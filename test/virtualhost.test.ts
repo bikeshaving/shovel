@@ -1,91 +1,14 @@
-import {describe, test, expect, beforeAll, afterAll, afterEach} from "bun:test";
-import {spawn, ChildProcess} from "child_process";
-import {join} from "path";
-import {existsSync, unlinkSync, mkdirSync, writeFileSync} from "fs";
-import {VIRTUALHOST_SOCKET_PATH} from "../src/utils/virtualhost.js";
+import {describe, test, expect, beforeEach, afterEach} from "bun:test";
+import {existsSync, unlinkSync} from "fs";
+import {
+	VirtualHost,
+	VirtualHostClient,
+	isVirtualHostRunningAsync,
+	establishVirtualHostRole,
+	VIRTUALHOST_SOCKET_PATH,
+} from "../src/utils/virtualhost.js";
 
 const TEST_PORT = 18443; // High port to avoid permission issues
-const TEST_HTTP_REDIRECT_PORT = 18080;
-const SHOVEL_DIR = join(process.env.HOME || "", ".shovel");
-
-/**
- * Helper to spawn a test server process
- */
-function spawnTestServer(
-	name: string,
-	port: number,
-	options: {
-		env?: Record<string, string>;
-		cwd?: string;
-	} = {},
-): ChildProcess {
-	const serverScript = `
-		const http = require("http");
-		const server = http.createServer((req, res) => {
-			res.writeHead(200, {"Content-Type": "application/json"});
-			res.end(JSON.stringify({server: "${name}", port: ${port}}));
-		});
-		server.listen(${port}, "127.0.0.1", () => {
-			console.log("${name} listening on port ${port}");
-		});
-		process.on("SIGTERM", () => {
-			server.close(() => process.exit(0));
-		});
-	`;
-
-	const child = spawn("node", ["-e", serverScript], {
-		env: {...process.env, ...options.env},
-		cwd: options.cwd,
-		stdio: ["ignore", "pipe", "pipe"],
-	});
-
-	return child;
-}
-
-/**
- * Wait for a process to output a specific string
- */
-async function waitForOutput(
-	child: ChildProcess,
-	pattern: string | RegExp,
-	timeout = 10000,
-): Promise<string> {
-	return new Promise((resolve, reject) => {
-		let output = "";
-		const timeoutId = setTimeout(() => {
-			reject(new Error(`Timeout waiting for pattern: ${pattern}`));
-		}, timeout);
-
-		const checkOutput = (data: Buffer) => {
-			output += data.toString();
-			const match =
-				typeof pattern === "string"
-					? output.includes(pattern)
-					: pattern.test(output);
-			if (match) {
-				clearTimeout(timeoutId);
-				resolve(output);
-			}
-		};
-
-		child.stdout?.on("data", checkOutput);
-		child.stderr?.on("data", checkOutput);
-	});
-}
-
-/**
- * Kill a process and wait for it to exit
- */
-async function killAndWait(child: ChildProcess, signal: NodeJS.Signals = "SIGTERM"): Promise<void> {
-	return new Promise((resolve) => {
-		if (!child.pid) {
-			resolve();
-			return;
-		}
-		child.on("exit", () => resolve());
-		child.kill(signal);
-	});
-}
 
 /**
  * Wait for a condition to be true
@@ -106,41 +29,32 @@ async function waitFor(
 }
 
 /**
- * Make an HTTP request and return the response
+ * Clean up socket file - called before and after each test
  */
-async function httpGet(url: string): Promise<{status: number; body: string}> {
-	const response = await fetch(url);
-	const body = await response.text();
-	return {status: response.status, body};
+async function cleanupSocket(): Promise<void> {
+	// First try to detect if there's a running VirtualHost and let it clean up
+	const isRunning = await isVirtualHostRunningAsync();
+	if (!isRunning && existsSync(VIRTUALHOST_SOCKET_PATH)) {
+		// Socket file exists but no VirtualHost is running - it's stale
+		try {
+			unlinkSync(VIRTUALHOST_SOCKET_PATH);
+		} catch (_err) {
+			// Already deleted or in use, safe to ignore
+		}
+	}
 }
 
 describe("VirtualHost", () => {
-	// Clean up socket file before tests
-	beforeAll(() => {
-		if (existsSync(VIRTUALHOST_SOCKET_PATH)) {
-			try {
-				unlinkSync(VIRTUALHOST_SOCKET_PATH);
-			} catch {
-				// Ignore
-			}
-		}
+	beforeEach(async () => {
+		await cleanupSocket();
 	});
 
-	afterEach(() => {
-		// Clean up socket file after each test
-		if (existsSync(VIRTUALHOST_SOCKET_PATH)) {
-			try {
-				unlinkSync(VIRTUALHOST_SOCKET_PATH);
-			} catch {
-				// Ignore
-			}
-		}
+	afterEach(async () => {
+		await cleanupSocket();
 	});
 
 	describe("leader election", () => {
 		test("first process becomes leader", async () => {
-			const {VirtualHost} = await import("../src/utils/virtualhost.js");
-
 			const vhost = new VirtualHost({
 				port: TEST_PORT,
 				host: "127.0.0.1",
@@ -158,9 +72,6 @@ describe("VirtualHost", () => {
 		});
 
 		test("second process becomes client", async () => {
-			const {VirtualHost, VirtualHostClient, isVirtualHostRunningAsync} =
-				await import("../src/utils/virtualhost.js");
-
 			// Start leader
 			const leader = new VirtualHost({
 				port: TEST_PORT,
@@ -172,13 +83,12 @@ describe("VirtualHost", () => {
 			expect(await isVirtualHostRunningAsync()).toBe(true);
 
 			// Start client
-			let disconnected = false;
 			const client = new VirtualHostClient({
 				origin: "http://test.localhost",
 				host: "127.0.0.1",
 				port: 9999,
 				onDisconnect: () => {
-					disconnected = true;
+					// Callback required by interface
 				},
 			});
 
@@ -195,9 +105,6 @@ describe("VirtualHost", () => {
 		});
 
 		test("client detects leader death and can become new leader", async () => {
-			const {VirtualHost, VirtualHostClient, isVirtualHostRunningAsync} =
-				await import("../src/utils/virtualhost.js");
-
 			// Start leader
 			const leader = new VirtualHost({
 				port: TEST_PORT,
@@ -240,10 +147,6 @@ describe("VirtualHost", () => {
 		});
 
 		test("establishVirtualHostRole handles election correctly", async () => {
-			const {establishVirtualHostRole, isVirtualHostRunningAsync} = await import(
-				"../src/utils/virtualhost.js"
-			);
-
 			let role1Connected = false;
 
 			// First call should become leader
@@ -306,9 +209,6 @@ describe("VirtualHost", () => {
 
 	describe("succession", () => {
 		test("client becomes leader when original leader dies", async () => {
-			const {VirtualHost, establishVirtualHostRole, isVirtualHostRunningAsync} =
-				await import("../src/utils/virtualhost.js");
-
 			// Start original leader directly
 			const originalLeader = new VirtualHost({
 				port: TEST_PORT,
@@ -324,7 +224,8 @@ describe("VirtualHost", () => {
 
 			// Start a client that will try to become leader on disconnect
 			let becameLeader = false;
-			let newRole: any;
+			let newRole: Awaited<ReturnType<typeof establishVirtualHostRole>> | null =
+				null;
 
 			const clientResult = await establishVirtualHostRole({
 				origin: "http://app2.localhost",
@@ -346,7 +247,7 @@ describe("VirtualHost", () => {
 							onDisconnect: () => {},
 						});
 						becameLeader = newRole.role === "leader";
-					} catch {
+					} catch (_err) {
 						// Might fail if another process won the race
 					}
 				},
@@ -370,8 +271,6 @@ describe("VirtualHost", () => {
 		});
 
 		test("racing to bind port results in one winner", async () => {
-			const {VirtualHost} = await import("../src/utils/virtualhost.js");
-
 			// Try to start multiple VirtualHosts simultaneously
 			const attempts = await Promise.allSettled([
 				(async () => {
@@ -412,8 +311,6 @@ describe("VirtualHost", () => {
 
 	describe("IPv6 support", () => {
 		test("parses IPv6 Host headers correctly", async () => {
-			const {VirtualHost} = await import("../src/utils/virtualhost.js");
-
 			// Start a simple HTTP server for the app
 			const appPort = 19002;
 			const appServer = Bun.serve({
@@ -459,8 +356,6 @@ describe("VirtualHost", () => {
 
 	describe("proxying", () => {
 		test("VirtualHost proxies requests to registered apps", async () => {
-			const {VirtualHost} = await import("../src/utils/virtualhost.js");
-
 			// Start a simple HTTP server for the app
 			const appPort = 19001;
 			const appServer = Bun.serve({
@@ -504,8 +399,6 @@ describe("VirtualHost", () => {
 		});
 
 		test("VirtualHost returns 502 for unknown hosts", async () => {
-			const {VirtualHost} = await import("../src/utils/virtualhost.js");
-
 			const vhost = new VirtualHost({
 				port: TEST_PORT,
 				host: "127.0.0.1",

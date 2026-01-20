@@ -197,7 +197,9 @@ export async function developCommand(
 					port: appPort,
 					socket: null as any, // Self-registration doesn't need socket
 				});
-				logger.info("Registered self as leader (app port: {port})", {port: appPort});
+				logger.info("Registered self as leader (app port: {port})", {
+					port: appPort,
+				});
 			} else {
 				logger.debug("Connected as VirtualHost client");
 			}

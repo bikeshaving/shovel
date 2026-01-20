@@ -1,7 +1,7 @@
 import {describe, test, expect, beforeAll, afterAll, afterEach} from "bun:test";
-import {spawn, ChildProcess} from "child_process";
+import {spawn, type ChildProcess} from "child_process";
 import {join} from "path";
-import {existsSync, unlinkSync, rmSync} from "fs";
+import {existsSync, unlinkSync} from "fs";
 import {VIRTUALHOST_SOCKET_PATH} from "../src/utils/virtualhost.js";
 
 const SHOVEL_CLI = join(import.meta.dir, "../dist/bin/cli.js");
@@ -34,6 +34,7 @@ function spawnShovelDevelop(
 		],
 		{
 			cwd,
+			// eslint-disable-next-line no-restricted-properties
 			env: {...process.env, ...options.env},
 			stdio: ["ignore", "pipe", "pipe"],
 		},
@@ -53,7 +54,11 @@ async function waitForOutput(
 	return new Promise((resolve, reject) => {
 		let output = "";
 		const timeoutId = setTimeout(() => {
-			reject(new Error(`Timeout waiting for pattern: ${pattern}\nOutput so far:\n${output}`));
+			reject(
+				new Error(
+					`Timeout waiting for pattern: ${pattern}\nOutput so far:\n${output}`,
+				),
+			);
 		}, timeout);
 
 		const checkOutput = (data: Buffer) => {
@@ -74,24 +79,12 @@ async function waitForOutput(
 		child.on("exit", (code) => {
 			clearTimeout(timeoutId);
 			if (!output.includes(typeof pattern === "string" ? pattern : "")) {
-				reject(new Error(`Process exited with code ${code} before pattern matched.\nOutput:\n${output}`));
+				reject(
+					new Error(
+						`Process exited with code ${code} before pattern matched.\nOutput:\n${output}`,
+					),
+				);
 			}
-		});
-	});
-}
-
-/**
- * Wait for a process to exit
- */
-async function waitForExit(child: ChildProcess, timeout = 5000): Promise<number | null> {
-	return new Promise((resolve, reject) => {
-		const timeoutId = setTimeout(() => {
-			reject(new Error("Timeout waiting for process to exit"));
-		}, timeout);
-
-		child.on("exit", (code) => {
-			clearTimeout(timeoutId);
-			resolve(code);
 		});
 	});
 }
@@ -104,7 +97,7 @@ async function killAndWait(
 	signal: NodeJS.Signals = "SIGTERM",
 	timeout = 5000,
 ): Promise<void> {
-	return new Promise((resolve, reject) => {
+	return new Promise((resolve) => {
 		if (!child.pid || child.killed) {
 			resolve();
 			return;
@@ -137,8 +130,13 @@ async function httpsGet(
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+	// Store original value to restore later
+	// eslint-disable-next-line no-restricted-properties
+	const originalTlsSetting = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+
 	try {
 		// Use fetch with rejectUnauthorized: false equivalent
+		// eslint-disable-next-line no-restricted-properties
 		process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 		const response = await fetch(url, {
 			signal: controller.signal,
@@ -148,7 +146,14 @@ async function httpsGet(
 		return {status: response.status, body, headers: response.headers};
 	} finally {
 		clearTimeout(timeoutId);
-		delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+		// Restore original value
+		if (originalTlsSetting === undefined) {
+			// eslint-disable-next-line no-restricted-properties
+			delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+		} else {
+			// eslint-disable-next-line no-restricted-properties
+			process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalTlsSetting;
+		}
 	}
 }
 
@@ -165,7 +170,8 @@ async function waitForServer(
 		try {
 			await httpsGet(url, {timeout: 1000});
 			return;
-		} catch {
+		} catch (_err) {
+			// Server not ready yet, keep polling
 			await new Promise((resolve) => setTimeout(resolve, interval));
 		}
 	}
@@ -180,8 +186,8 @@ function cleanup() {
 	if (existsSync(VIRTUALHOST_SOCKET_PATH)) {
 		try {
 			unlinkSync(VIRTUALHOST_SOCKET_PATH);
-		} catch {
-			// Ignore
+		} catch (_err) {
+			// Socket may already be deleted or in use, safe to ignore
 		}
 	}
 }
@@ -211,7 +217,10 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		processes.push(child);
 
 		// Wait for server to start
-		const output = await waitForOutput(child, "Server running at https://echo.localhost");
+		const output = await waitForOutput(
+			child,
+			"Server running at https://echo.localhost",
+		);
 		expect(output).toContain("VirtualHost started on port 443");
 		expect(output).toContain("App registered: https://echo.localhost");
 
@@ -234,9 +243,14 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		processes.push(client);
 
 		// Client should register with VirtualHost
-		const clientOutput = await waitForOutput(client, "Server running at https://admin.localhost");
+		const clientOutput = await waitForOutput(
+			client,
+			"Server running at https://admin.localhost",
+		);
 		expect(clientOutput).toContain("Registering with VirtualHost");
-		expect(clientOutput).toContain("Registered with virtualhost: https://admin.localhost");
+		expect(clientOutput).toContain(
+			"Registered with virtualhost: https://admin.localhost",
+		);
 		// Client should NOT start its own VirtualHost
 		expect(clientOutput).not.toContain("VirtualHost started on port 443");
 
@@ -292,7 +306,9 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		await new Promise((resolve) => setTimeout(resolve, 3000));
 
 		// Check if client detected disconnect and became leader
-		const becameLeader = clientOutput.includes("VirtualHost connection lost") ||
+		// We log this for debugging but don't assert on it since log messages may vary
+		const _becameLeader =
+			clientOutput.includes("VirtualHost connection lost") ||
 			clientOutput.includes("Became VirtualHost leader") ||
 			clientOutput.includes("VirtualHost started on port 443");
 
@@ -308,7 +324,7 @@ describe("e2e: shovel develop with VirtualHost", () => {
 			await httpsGet("https://echo.localhost/", {timeout: 2000});
 			// If we get here, it means something else is serving echo.localhost
 			// which is unexpected
-		} catch {
+		} catch (_err) {
 			// Expected - echo.localhost should not be available
 		}
 	}, 90000);
@@ -320,28 +336,10 @@ describe("e2e: shovel develop with VirtualHost", () => {
 		await waitForOutput(child, "Server running at https://echo.localhost");
 		await waitForServer("https://echo.localhost");
 
-		// Request to unknown host should return 502
-		// We need to make a request to the VirtualHost with a different Host header
-		// Since curl/fetch will resolve the hostname, we make a direct request
-		const response = await fetch("https://127.0.0.1:443/", {
-			headers: {Host: "unknown.localhost"},
-		}).catch(async () => {
-			// Bun's fetch might not allow this, try with a workaround
-			// The VirtualHost is listening on 127.0.0.1:443
-			process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-			try {
-				return await fetch("https://echo.localhost/", {
-					headers: {Host: "unknown.localhost"},
-				});
-			} finally {
-				delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-			}
-		});
-
-		// Note: This test is tricky because fetch will use the URL hostname
-		// for the Host header by default. The VirtualHost should still work
-		// if we manually set the Host header, but behavior depends on the
-		// HTTP client implementation.
+		// Note: Testing unknown hosts with custom Host headers is tricky because
+		// fetch will use the URL hostname for the Host header by default.
+		// The VirtualHost should still work if we manually set the Host header,
+		// but behavior depends on the HTTP client implementation.
 		// For now, we just verify the echo app works
 		const echoResponse = await httpsGet("https://echo.localhost/");
 		expect(echoResponse.status).toBe(200);
@@ -364,7 +362,7 @@ describe("e2e: shovel develop with VirtualHost", () => {
 				expect(location).toBe("https://echo.localhost/");
 			}
 			// If we can't bind port 80, this test is skipped
-		} catch {
+		} catch (_err) {
 			// Port 80 might not be available, skip this assertion
 		}
 	}, 30000);

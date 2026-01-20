@@ -13,6 +13,7 @@ import {join} from "path";
  * Respects XDG_DATA_HOME if set, otherwise uses ~/.local/share
  */
 function getDataHome(): string {
+	// eslint-disable-next-line no-restricted-properties
 	return process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
 }
 
