@@ -154,13 +154,12 @@ export class VirtualHost {
 			mkdirSync(SHOVEL_DIR, {recursive: true});
 		}
 
-		// Clean up stale socket file
-		if (existsSync(VIRTUALHOST_SOCKET_PATH)) {
-			try {
-				unlinkSync(VIRTUALHOST_SOCKET_PATH);
-			} catch (error) {
-				logger.debug("Could not remove stale socket: {error}", {error});
-			}
+		// Check if a VirtualHost is already running (also cleans up stale sockets)
+		const isRunning = await isVirtualHostRunningAsync();
+		if (isRunning) {
+			throw new Error(
+				"Another VirtualHost is already running. Use VirtualHostClient to connect.",
+			);
 		}
 
 		// Start IPC server
