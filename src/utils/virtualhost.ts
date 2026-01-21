@@ -60,23 +60,30 @@ function formatHostForUrl(host: string): string {
 
 /**
  * Parse a Host header to extract the hostname, handling IPv6 addresses.
+ * Returns lowercase hostname since DNS is case-insensitive.
  * Examples:
  *   "localhost:8080" → "localhost"
- *   "example.com" → "example.com"
+ *   "Example.COM" → "example.com"
  *   "[::1]:8080" → "::1"
  *   "[::1]" → "::1"
  */
 function parseHostHeader(host: string): string {
+	let hostname: string;
 	// IPv6 addresses are wrapped in brackets: [::1] or [::1]:port
 	if (host.startsWith("[")) {
 		const closeBracket = host.indexOf("]");
 		if (closeBracket !== -1) {
-			return host.slice(1, closeBracket);
+			hostname = host.slice(1, closeBracket);
+		} else {
+			hostname = host;
 		}
+	} else {
+		// IPv4 or hostname: split on first colon for port
+		const colonIndex = host.indexOf(":");
+		hostname = colonIndex !== -1 ? host.slice(0, colonIndex) : host;
 	}
-	// IPv4 or hostname: split on first colon for port
-	const colonIndex = host.indexOf(":");
-	return colonIndex !== -1 ? host.slice(0, colonIndex) : host;
+	// Normalize to lowercase (DNS is case-insensitive)
+	return hostname.toLowerCase();
 }
 
 // Re-export for backwards compatibility
@@ -420,8 +427,10 @@ export class VirtualHost {
 				}
 
 				// Extract hostname (without port) and redirect to HTTPS
+				// Include port in redirect URL if not standard 443
 				const hostname = parseHostHeader(host);
-				const redirectUrl = `https://${formatHostForUrl(hostname)}${req.url || "/"}`;
+				const portSuffix = this.#port !== 443 ? `:${this.#port}` : "";
+				const redirectUrl = `https://${formatHostForUrl(hostname)}${portSuffix}${req.url || "/"}`;
 
 				logger.debug("Redirecting HTTP → HTTPS: {url}", {url: redirectUrl});
 				res.writeHead(301, {Location: redirectUrl});
