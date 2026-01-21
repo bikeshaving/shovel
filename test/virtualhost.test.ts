@@ -3,9 +3,8 @@ import {existsSync, unlinkSync} from "fs";
 import {
 	VirtualHost,
 	VirtualHostClient,
-	isVirtualHostRunningAsync,
 	establishVirtualHostRole,
-	VIRTUALHOST_SOCKET_PATH,
+	getVirtualHostSocketPath,
 	type VirtualHostRole,
 } from "../src/utils/virtualhost.js";
 
@@ -30,15 +29,15 @@ async function waitFor(
 }
 
 /**
- * Clean up socket file - called before and after each test
+ * Clean up socket file - called before and after each test.
+ * With port-based coordination, socket cleanup is mostly automatic,
+ * but we clean up after tests to be safe.
  */
-async function cleanupSocket(): Promise<void> {
-	// First try to detect if there's a running VirtualHost and let it clean up
-	const isRunning = await isVirtualHostRunningAsync();
-	if (!isRunning && existsSync(VIRTUALHOST_SOCKET_PATH)) {
-		// Socket file exists but no VirtualHost is running - it's stale
+function cleanupSocket(): void {
+	const socketPath = getVirtualHostSocketPath(TEST_PORT);
+	if (existsSync(socketPath)) {
 		try {
-			unlinkSync(VIRTUALHOST_SOCKET_PATH);
+			unlinkSync(socketPath);
 		} catch (_err) {
 			// Already deleted or in use, safe to ignore
 		}
@@ -46,12 +45,12 @@ async function cleanupSocket(): Promise<void> {
 }
 
 describe("VirtualHost", () => {
-	beforeEach(async () => {
-		await cleanupSocket();
+	beforeEach(() => {
+		cleanupSocket();
 	});
 
-	afterEach(async () => {
-		await cleanupSocket();
+	afterEach(() => {
+		cleanupSocket();
 	});
 
 	describe("leader election", () => {
@@ -64,12 +63,13 @@ describe("VirtualHost", () => {
 			await vhost.start();
 
 			// Socket file should exist
-			expect(existsSync(VIRTUALHOST_SOCKET_PATH)).toBe(true);
+			const socketPath = getVirtualHostSocketPath(TEST_PORT);
+			expect(existsSync(socketPath)).toBe(true);
 
 			await vhost.stop();
 
 			// Socket file should be cleaned up
-			expect(existsSync(VIRTUALHOST_SOCKET_PATH)).toBe(false);
+			expect(existsSync(socketPath)).toBe(false);
 		});
 
 		test("second process becomes client", async () => {
@@ -80,14 +80,12 @@ describe("VirtualHost", () => {
 			});
 			await leader.start();
 
-			// Check if running
-			expect(await isVirtualHostRunningAsync()).toBe(true);
-
 			// Start client
 			const client = new VirtualHostClient({
 				origin: "http://test.localhost",
 				host: "127.0.0.1",
 				port: 9999,
+				vhostPort: TEST_PORT,
 				onDisconnect: () => {
 					// Callback required by interface
 				},
@@ -119,6 +117,7 @@ describe("VirtualHost", () => {
 				origin: "http://test.localhost",
 				host: "127.0.0.1",
 				port: 9999,
+				vhostPort: TEST_PORT,
 				onDisconnect: () => {
 					disconnectCalled = true;
 				},
@@ -132,9 +131,6 @@ describe("VirtualHost", () => {
 			await waitFor(() => disconnectCalled, 2000);
 			expect(disconnectCalled).toBe(true);
 
-			// VirtualHost should no longer be running
-			expect(await isVirtualHostRunningAsync()).toBe(false);
-
 			// A new process should be able to become leader
 			const newLeader = new VirtualHost({
 				port: TEST_PORT,
@@ -142,7 +138,9 @@ describe("VirtualHost", () => {
 			});
 			await newLeader.start();
 
-			expect(await isVirtualHostRunningAsync()).toBe(true);
+			// Socket file should exist for the new leader
+			const socketPath = getVirtualHostSocketPath(TEST_PORT);
+			expect(existsSync(socketPath)).toBe(true);
 
 			await newLeader.stop();
 		});
@@ -262,7 +260,6 @@ describe("VirtualHost", () => {
 			await waitFor(() => becameLeader, 5000);
 
 			expect(becameLeader).toBe(true);
-			expect(await isVirtualHostRunningAsync()).toBe(true);
 
 			// Clean up - use type assertion since TS can't track the async assignment
 			const finalRole = newRole as VirtualHostRole | null;

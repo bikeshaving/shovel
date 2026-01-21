@@ -22,9 +22,10 @@ import {
 	ServerResponse,
 } from "http";
 import {createServer as createHttpsServer} from "https";
+import {createSecureContext, type SecureContext} from "tls";
 import {existsSync, unlinkSync, mkdirSync} from "fs";
 import {getLogger} from "@logtape/logtape";
-import {SHOVEL_DIR, VIRTUALHOST_SOCKET_PATH} from "./paths.js";
+import {SHOVEL_DIR, getVirtualHostSocketPath} from "./paths.js";
 import type {TLSConfig} from "@b9g/platform";
 
 const logger = getLogger(["shovel", "virtualhost"]);
@@ -87,7 +88,7 @@ function parseHostHeader(host: string): string {
 }
 
 // Re-export for backwards compatibility
-export {VIRTUALHOST_SOCKET_PATH};
+export {getVirtualHostSocketPath};
 
 /**
  * Message types for IPC communication
@@ -105,6 +106,10 @@ interface RegisterMessage extends IPCMessage {
 	port: number;
 	/** Host where this app is listening */
 	host: string;
+	/** TLS certificate (PEM) for this origin */
+	cert?: string;
+	/** TLS private key (PEM) for this origin */
+	key?: string;
 }
 
 interface UnregisterMessage extends IPCMessage {
@@ -126,6 +131,10 @@ interface RegisteredApp {
 	host: string;
 	port: number;
 	socket: Socket;
+	/** TLS certificate (PEM) for this origin */
+	cert?: string;
+	/** TLS private key (PEM) for this origin */
+	key?: string;
 }
 
 /**
@@ -133,6 +142,7 @@ interface RegisteredApp {
  */
 export class VirtualHost {
 	#apps: Map<string, RegisteredApp>;
+	#secureContexts: Map<string, SecureContext>;
 	#ipcServer?: NetServer;
 	#httpServer?: ReturnType<typeof createHttpServer>;
 	#httpsServer?: ReturnType<typeof createHttpsServer>;
@@ -143,6 +153,7 @@ export class VirtualHost {
 
 	constructor(options: {port: number; host: string; tls?: TLSConfig}) {
 		this.#apps = new Map();
+		this.#secureContexts = new Map();
 		this.#port = options.port;
 		this.#host = options.host;
 		this.#tls = options.tls;
@@ -161,19 +172,13 @@ export class VirtualHost {
 			mkdirSync(SHOVEL_DIR, {recursive: true});
 		}
 
-		// Check if a VirtualHost is already running (also cleans up stale sockets)
-		const isRunning = await isVirtualHostRunningAsync();
-		if (isRunning) {
-			throw new Error(
-				"Another VirtualHost is already running. Use VirtualHostClient to connect.",
-			);
-		}
-
-		// Start IPC server
-		await this.#startIPCServer();
-
-		// Start HTTP/HTTPS server
+		// Start HTTP/HTTPS server first - this is the real "lock"
+		// If port is in use, this will throw EADDRINUSE
 		await this.#startProxyServer();
+
+		// Port bound successfully, we're the leader. Start IPC server.
+		// Any existing socket file is stale (since we own the port now)
+		await this.#startIPCServer();
 
 		// Start HTTP→HTTPS redirect server if TLS is enabled
 		if (this.#tls) {
@@ -192,6 +197,7 @@ export class VirtualHost {
 			app.socket?.destroy();
 		}
 		this.#apps.clear();
+		this.#secureContexts.clear();
 
 		// Close servers
 		await Promise.all([
@@ -214,9 +220,10 @@ export class VirtualHost {
 		]);
 
 		// Clean up socket file
-		if (existsSync(VIRTUALHOST_SOCKET_PATH)) {
+		const socketPath = getVirtualHostSocketPath(this.#port);
+		if (existsSync(socketPath)) {
 			try {
-				unlinkSync(VIRTUALHOST_SOCKET_PATH);
+				unlinkSync(socketPath);
 			} catch (error) {
 				logger.debug("Could not remove socket on stop: {error}", {error});
 			}
@@ -232,6 +239,14 @@ export class VirtualHost {
 		// Normalize hostname to handle IPv6 brackets consistently
 		const hostname = normalizeHostname(new URL(app.origin).hostname);
 		this.#apps.set(hostname, app);
+
+		// Create secure context for SNI if cert provided
+		if (app.cert && app.key) {
+			const ctx = createSecureContext({cert: app.cert, key: app.key});
+			this.#secureContexts.set(hostname, ctx);
+			logger.debug("Secure context created for {hostname}", {hostname});
+		}
+
 		logger.info("App registered: {origin} → {host}:{port}", {
 			origin: app.origin,
 			host: app.host,
@@ -246,6 +261,7 @@ export class VirtualHost {
 		// Normalize hostname to handle IPv6 brackets consistently
 		const hostname = normalizeHostname(new URL(origin).hostname);
 		this.#apps.delete(hostname);
+		this.#secureContexts.delete(hostname);
 		logger.info("App unregistered: {origin}", {origin});
 	}
 
@@ -267,6 +283,14 @@ export class VirtualHost {
 	 * Start IPC server for app registration
 	 */
 	async #startIPCServer(): Promise<void> {
+		const socketPath = getVirtualHostSocketPath(this.#port);
+
+		// Remove any stale socket file. This is safe because we already own the port,
+		// so any existing socket must be from a crashed process.
+		if (existsSync(socketPath)) {
+			unlinkSync(socketPath);
+		}
+
 		return new Promise((resolve, reject) => {
 			this.#ipcServer = createNetServer((socket) => {
 				let buffer = "";
@@ -306,17 +330,11 @@ export class VirtualHost {
 			});
 
 			this.#ipcServer.on("error", (error: NodeJS.ErrnoException) => {
-				if (error.code === "EADDRINUSE") {
-					reject(new Error("VirtualHost socket already in use"));
-				} else {
-					reject(error);
-				}
+				reject(error);
 			});
 
-			this.#ipcServer.listen(VIRTUALHOST_SOCKET_PATH, () => {
-				logger.debug("IPC server listening on {path}", {
-					path: VIRTUALHOST_SOCKET_PATH,
-				});
+			this.#ipcServer.listen(socketPath, () => {
+				logger.debug("IPC server listening on {path}", {path: socketPath});
 				resolve();
 			});
 		});
@@ -334,6 +352,8 @@ export class VirtualHost {
 					host: msg.host,
 					port: msg.port,
 					socket,
+					cert: msg.cert,
+					key: msg.key,
 				});
 				this.#sendAck(socket, true);
 				break;
@@ -368,8 +388,27 @@ export class VirtualHost {
 
 		// Create appropriate server based on TLS config
 		if (this.#tls) {
+			// SNI callback to serve different certs per hostname
+			const SNICallback = (
+				servername: string,
+				cb: (err: Error | null, ctx?: SecureContext) => void,
+			) => {
+				const hostname = servername.toLowerCase();
+				const ctx = this.#secureContexts.get(hostname);
+				if (ctx) {
+					cb(null, ctx);
+				} else {
+					// Fall back to default cert
+					cb(null);
+				}
+			};
+
 			this.#httpsServer = createHttpsServer(
-				{cert: this.#tls.cert, key: this.#tls.key},
+				{
+					cert: this.#tls.cert,
+					key: this.#tls.key,
+					SNICallback,
+				},
 				handler,
 			);
 		} else {
@@ -553,18 +592,28 @@ export class VirtualHostClient {
 	#origin: string;
 	#host: string;
 	#port: number;
+	#vhostPort: number;
 	#actualPort?: number;
+	#cert?: string;
+	#key?: string;
 	#onDisconnect?: () => void;
 
 	constructor(options: {
 		origin: string;
 		host: string;
 		port: number;
+		/** The VirtualHost port (for socket path) */
+		vhostPort: number;
+		cert?: string;
+		key?: string;
 		onDisconnect?: () => void;
 	}) {
 		this.#origin = options.origin;
 		this.#host = options.host;
 		this.#port = options.port;
+		this.#vhostPort = options.vhostPort;
+		this.#cert = options.cert;
+		this.#key = options.key;
 		this.#onDisconnect = options.onDisconnect;
 	}
 
@@ -585,6 +634,8 @@ export class VirtualHostClient {
 					origin: this.#origin,
 					host: this.#host,
 					port,
+					cert: this.#cert,
+					key: this.#key,
 				};
 				this.#socket!.write(JSON.stringify(message) + "\n");
 			});
@@ -635,7 +686,7 @@ export class VirtualHostClient {
 				}
 			});
 
-			this.#socket.connect(VIRTUALHOST_SOCKET_PATH);
+			this.#socket.connect(getVirtualHostSocketPath(this.#vhostPort));
 		});
 	}
 
@@ -661,50 +712,6 @@ export class VirtualHostClient {
 			this.#socket = undefined;
 		}
 	}
-}
-
-/**
- * Check if a virtualhost is already running.
- * If a stale socket file exists (from a crashed process), it will be cleaned up.
- */
-export async function isVirtualHostRunningAsync(): Promise<boolean> {
-	if (!existsSync(VIRTUALHOST_SOCKET_PATH)) {
-		return false;
-	}
-
-	return new Promise<boolean>((resolve) => {
-		const socket = new Socket();
-
-		const cleanupStaleSocket = () => {
-			// Socket exists but connection failed - it's stale, clean it up
-			try {
-				unlinkSync(VIRTUALHOST_SOCKET_PATH);
-				logger.debug("Cleaned up stale VirtualHost socket");
-			} catch (err) {
-				logger.debug("Could not clean up stale socket: {error}", {error: err});
-			}
-		};
-
-		const timeout = setTimeout(() => {
-			socket.destroy();
-			cleanupStaleSocket();
-			resolve(false);
-		}, 1000);
-
-		socket.on("connect", () => {
-			clearTimeout(timeout);
-			socket.destroy();
-			resolve(true);
-		});
-
-		socket.on("error", () => {
-			clearTimeout(timeout);
-			cleanupStaleSocket();
-			resolve(false);
-		});
-
-		socket.connect(VIRTUALHOST_SOCKET_PATH);
-	});
 }
 
 /**
@@ -743,31 +750,7 @@ export async function establishVirtualHostRole(
 	const {origin, port, host, tls, onNeedRegistration, onDisconnect} = options;
 
 	for (let attempt = 0; attempt < maxAttempts; attempt++) {
-		// Check if a VirtualHost is already running
-		const isRunning = await isVirtualHostRunningAsync();
-
-		if (isRunning) {
-			// Try to connect as a client
-			// Normalize bind host to loopback for local proxying
-			// 0.0.0.0 → 127.0.0.1, :: → ::1, others stay as-is
-			const proxyHost =
-				host === "0.0.0.0" ? "127.0.0.1" : host === "::" ? "::1" : host;
-			try {
-				const client = new VirtualHostClient({
-					origin,
-					host: proxyHost,
-					port: 0, // Will be set when registering
-					onDisconnect,
-				});
-				await onNeedRegistration(client);
-				return {role: "client", client};
-			} catch (err) {
-				logger.debug("Failed to connect as client: {error}", {error: err});
-				// Fall through to try becoming leader
-			}
-		}
-
-		// Try to become the leader
+		// Try to become the leader by binding the port
 		try {
 			const virtualHost = new VirtualHost({port, host, tls});
 			await virtualHost.start();
@@ -778,17 +761,36 @@ export async function establishVirtualHostRole(
 				error.message?.includes("already in use") ||
 				error.code === "EADDRINUSE"
 			) {
-				// Someone else won the race, wait with backoff and retry
-				const backoff = Math.min(
-					100 * Math.pow(1.5, attempt) + Math.random() * 100,
-					1000,
-				);
-				logger.debug("Port {port} in use, retrying in {ms}ms", {
-					port,
-					ms: Math.round(backoff),
-				});
-				await new Promise((resolve) => setTimeout(resolve, backoff));
-				continue;
+				// Port is in use, try to connect as a client
+				// Normalize bind host to loopback for local proxying
+				// 0.0.0.0 → 127.0.0.1, :: → ::1, others stay as-is
+				const proxyHost =
+					host === "0.0.0.0" ? "127.0.0.1" : host === "::" ? "::1" : host;
+				try {
+					const client = new VirtualHostClient({
+						origin,
+						host: proxyHost,
+						port: 0, // Will be set when registering
+						vhostPort: port,
+						cert: tls?.cert,
+						key: tls?.key,
+						onDisconnect,
+					});
+					await onNeedRegistration(client);
+					return {role: "client", client};
+				} catch (clientErr) {
+					// Client connection failed, maybe leader died. Retry with backoff.
+					logger.debug("Failed to connect as client: {error}", {
+						error: clientErr,
+					});
+					const backoff = Math.min(
+						100 * Math.pow(1.5, attempt) + Math.random() * 100,
+						1000,
+					);
+					logger.debug("Retrying in {ms}ms", {ms: Math.round(backoff)});
+					await new Promise((resolve) => setTimeout(resolve, backoff));
+					continue;
+				}
 			}
 			throw err; // Other error, propagate
 		}

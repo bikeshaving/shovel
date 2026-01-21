@@ -30,10 +30,13 @@ export const SHOVEL_DIR = join(getDataHome(), "shovel");
 export const CERTS_DIR = join(SHOVEL_DIR, "certs");
 
 /**
- * VirtualHost IPC socket path
- * Default: ~/.local/share/shovel/virtualhost.sock
+ * Get VirtualHost IPC socket path for a specific port.
+ * Each port gets its own socket to avoid conflicts.
+ * Default: ~/.local/share/shovel/virtualhost-{port}.sock
  */
-export const VIRTUALHOST_SOCKET_PATH = join(SHOVEL_DIR, "virtualhost.sock");
+export function getVirtualHostSocketPath(port: number): string {
+	return join(SHOVEL_DIR, `virtualhost-${port}.sock`);
+}
 
 /**
  * Legacy shovel directory (~/.shovel)

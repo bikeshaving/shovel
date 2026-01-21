@@ -10,7 +10,7 @@ import {
 import {type ChildProcess} from "child_process";
 import {join} from "path";
 import {existsSync, unlinkSync} from "fs";
-import {VIRTUALHOST_SOCKET_PATH} from "../src/utils/virtualhost.js";
+import {getVirtualHostSocketPath} from "../src/utils/virtualhost.js";
 import {spawn} from "./utils.js";
 
 // Use a high port for testing to avoid needing root/sudo
@@ -208,10 +208,11 @@ async function waitForServer(
  * Clean up any stale state
  */
 function cleanup() {
-	// Remove socket file
-	if (existsSync(VIRTUALHOST_SOCKET_PATH)) {
+	// Remove socket file for test port
+	const socketPath = getVirtualHostSocketPath(TEST_HTTPS_PORT);
+	if (existsSync(socketPath)) {
 		try {
-			unlinkSync(VIRTUALHOST_SOCKET_PATH);
+			unlinkSync(socketPath);
 		} catch (_err) {
 			// Socket may already be deleted or in use, safe to ignore
 		}

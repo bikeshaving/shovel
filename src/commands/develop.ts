@@ -222,6 +222,8 @@ export async function developCommand(
 					host: proxyHost,
 					port: appPort,
 					socket: null as any, // Self-registration doesn't need socket
+					cert: vhostTls.cert,
+					key: vhostTls.key,
 				});
 				logger.info("Registered self as leader (app port: {port})", {
 					port: appPort,

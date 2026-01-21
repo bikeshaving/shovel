@@ -1,11 +1,11 @@
 /**
  * Certificate management for local HTTPS development
  *
- * Uses OpenSSL to generate self-signed certificates for localhost development.
- * Modern browsers treat *.localhost as secure by default (RFC 6761).
+ * Uses mkcert to generate trusted certificates for localhost development.
+ * mkcert installs a local CA that browsers trust automatically.
  */
 
-import {execSync, spawnSync} from "child_process";
+import {spawnSync} from "child_process";
 import {existsSync, mkdirSync, readFileSync} from "fs";
 import {join} from "path";
 import {getLogger} from "@logtape/logtape";
@@ -31,106 +31,88 @@ export interface CertFiles {
 }
 
 /**
- * The localhost wildcard certificate filename
+ * Check if mkcert is installed and accessible
  */
-const LOCALHOST_CERT_NAME = "localhost";
-
-/**
- * Check if OpenSSL is installed and accessible
- */
-function isOpenSSLInstalled(): boolean {
+function isMkcertInstalled(): boolean {
 	try {
-		const result = spawnSync("openssl", ["version"], {
+		const result = spawnSync("mkcert", ["-help"], {
 			stdio: "pipe",
 			encoding: "utf-8",
 		});
 		return result.status === 0;
 	} catch (err) {
-		logger.debug("OpenSSL check failed: {error}", {error: err});
+		logger.debug("mkcert check failed: {error}", {error: err});
 		return false;
 	}
 }
 
 /**
- * Generate a self-signed certificate using OpenSSL
+ * Generate a certificate using mkcert
  */
-function generateCertificate(): {certPath: string; keyPath: string} {
+function generateCertificate(domain: string): {certPath: string; keyPath: string} {
 	// Ensure certs directory exists
 	if (!existsSync(CERTS_DIR)) {
 		mkdirSync(CERTS_DIR, {recursive: true});
 	}
 
-	const certPath = join(CERTS_DIR, `${LOCALHOST_CERT_NAME}.pem`);
-	const keyPath = join(CERTS_DIR, `${LOCALHOST_CERT_NAME}-key.pem`);
+	const certPath = join(CERTS_DIR, `${domain}.pem`);
+	const keyPath = join(CERTS_DIR, `${domain}-key.pem`);
 
-	logger.info("Generating self-signed certificate for localhost");
+	logger.info("Generating certificate for {domain}", {domain});
 
-	try {
-		// Generate self-signed certificate valid for localhost and *.localhost
-		// Using Subject Alternative Names (SAN) for wildcard support
-		execSync(
-			`openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 365 -nodes -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,DNS:*.localhost"`,
-			{
-				stdio: "pipe",
-				cwd: CERTS_DIR,
-			},
-		);
+	const result = spawnSync(
+		"mkcert",
+		["-cert-file", certPath, "-key-file", keyPath, domain],
+		{
+			stdio: "pipe",
+			encoding: "utf-8",
+		},
+	);
 
-		logger.info("Certificate generated: {certPath}", {certPath});
-		return {certPath, keyPath};
-	} catch (err) {
-		throw new Error(
-			`Failed to generate certificate: ${err instanceof Error ? err.message : err}`,
-		);
+	if (result.status !== 0) {
+		const error = result.stderr || result.stdout || "Unknown error";
+		throw new Error(`Failed to generate certificate: ${error}`);
 	}
+
+	logger.info("Certificate generated: {certPath}", {certPath});
+	return {certPath, keyPath};
 }
 
 /**
- * Ensure the localhost wildcard certificate exists
+ * Ensure a certificate exists for the given domain
  *
- * Generates a self-signed certificate using OpenSSL if one doesn't exist.
- * The certificate covers localhost and *.localhost domains.
+ * Uses mkcert to generate a trusted certificate if one doesn't exist.
+ * mkcert must be installed and its CA must be set up (`mkcert -install`).
  *
- * @param _domain - Ignored, kept for API compatibility. Always uses localhost wildcard.
+ * @param domain - The domain to generate a certificate for (e.g., "myapp.localhost")
  * @returns Certificate and key content
- * @throws Error if OpenSSL is not installed
+ * @throws Error if mkcert is not installed
  */
-export async function ensureCerts(_domain?: string): Promise<CertFiles> {
-	const certPath = join(CERTS_DIR, `${LOCALHOST_CERT_NAME}.pem`);
-	const keyPath = join(CERTS_DIR, `${LOCALHOST_CERT_NAME}-key.pem`);
+export async function ensureCerts(domain: string): Promise<CertFiles> {
+	const certPath = join(CERTS_DIR, `${domain}.pem`);
+	const keyPath = join(CERTS_DIR, `${domain}-key.pem`);
 
 	// Check for cached certificate
 	if (existsSync(certPath) && existsSync(keyPath)) {
-		logger.debug("Using cached localhost certificate");
+		logger.debug("Using cached certificate for {domain}", {domain});
 		const cert = readFileSync(certPath, "utf-8");
 		const key = readFileSync(keyPath, "utf-8");
 		return {cert, key, certPath, keyPath};
 	}
 
-	// Generate new certificate
-	if (!isOpenSSLInstalled()) {
+	// Check mkcert is available
+	if (!isMkcertInstalled()) {
 		throw new Error(
-			"OpenSSL is required for HTTPS development but was not found. " +
-				"Please install OpenSSL and ensure it's in your PATH.",
+			"mkcert is required for HTTPS development but was not found.\n" +
+				"Install it with:\n" +
+				"  brew install mkcert    # macOS\n" +
+				"  mkcert -install        # then install the CA",
 		);
 	}
 
-	generateCertificate();
+	generateCertificate(domain);
 
 	const cert = readFileSync(certPath, "utf-8");
 	const key = readFileSync(keyPath, "utf-8");
 	return {cert, key, certPath, keyPath};
-}
-
-/**
- * Get certificates for localhost wildcard domain
- *
- * Uses a single certificate valid for localhost and *.localhost.
- * Works for any subdomain like myapp.localhost, blog.localhost, etc.
- * Browsers treat .localhost domains as secure by default (RFC 6761).
- *
- * @returns Certificate and key content for localhost wildcard
- */
-export async function ensureLocalhostCerts(): Promise<CertFiles> {
-	return ensureCerts();
 }
