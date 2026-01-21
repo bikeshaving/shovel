@@ -45,8 +45,12 @@ function parseHostHeader(host: string): string {
 		// URL API handles IPv6 brackets, ports, and normalization
 		const url = new URL(`http://${host}`);
 		return url.hostname.toLowerCase();
-	} catch {
-		// Fallback for malformed hosts
+	} catch (err) {
+		// Fallback for malformed hosts (URL parsing can fail with unusual input)
+		logger.debug("Could not parse host header: {host} - {error}", {
+			host,
+			error: err,
+		});
 		return host.toLowerCase();
 	}
 }
@@ -447,7 +451,9 @@ export class VirtualHost {
 					redirectUrl.port = String(this.#port);
 				}
 
-				logger.debug("Redirecting HTTP → HTTPS: {url}", {url: redirectUrl.href});
+				logger.debug("Redirecting HTTP → HTTPS: {url}", {
+					url: redirectUrl.href,
+				});
 				res.writeHead(301, {Location: redirectUrl.href});
 				res.end();
 			});
@@ -520,7 +526,10 @@ export class VirtualHost {
 		res: ServerResponse,
 		app: RegisteredApp,
 	): void {
-		const url = new URL(req.url || "/", `http://${wrapIPv6(app.host)}:${app.port}`);
+		const url = new URL(
+			req.url || "/",
+			`http://${wrapIPv6(app.host)}:${app.port}`,
+		);
 
 		// Use dynamic import to avoid issues with ESM/CJS
 		import("http").then(({request: httpRequest}) => {

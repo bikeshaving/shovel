@@ -213,8 +213,24 @@ export async function developCommand(
 
 			if (virtualHostRole.role === "leader") {
 				logger.debug("Became VirtualHost leader");
-				// Leader self-registration happens after server starts (in startOrReloadServer)
-				// so we know the actual port
+				// If server is already running (succession case), register immediately
+				// Otherwise, registration happens in startOrReloadServer after server starts
+				if (actualServerPort !== undefined) {
+					const proxyHost =
+						host === "0.0.0.0" ? "127.0.0.1" : host === "::" ? "::1" : host;
+					virtualHostRole.virtualHost.registerApp({
+						origin: origin.origin,
+						host: proxyHost,
+						port: actualServerPort,
+						socket: null,
+						cert: vhostCerts?.cert,
+						key: vhostCerts?.key,
+					});
+					logger.info(
+						"Registered self with new VirtualHost after succession (local port: {port})",
+						{port: actualServerPort},
+					);
+				}
 			} else {
 				logger.debug("Connected as VirtualHost client");
 			}
