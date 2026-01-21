@@ -7,7 +7,7 @@ import {
 	afterEach,
 	setDefaultTimeout,
 } from "bun:test";
-import {type ChildProcess, spawnSync} from "child_process";
+import {type ChildProcess} from "child_process";
 import {join} from "path";
 import {existsSync, unlinkSync} from "fs";
 import {getVirtualHostSocketPath} from "../src/utils/virtualhost.js";
@@ -15,24 +15,6 @@ import {spawn} from "./utils.js";
 
 // Use a high port for testing to avoid needing root/sudo
 const TEST_HTTPS_PORT = 18443;
-
-/**
- * Check if mkcert is installed
- */
-function isMkcertInstalled(): boolean {
-	try {
-		const result = spawnSync("mkcert", ["-help"], {
-			stdio: "pipe",
-			encoding: "utf-8",
-		});
-		return result.status === 0;
-	} catch {
-		return false;
-	}
-}
-
-// Skip all tests in this file if mkcert is not installed
-const hasMkcert = isMkcertInstalled();
 
 const SHOVEL_CLI = join(import.meta.dir, "../dist/bin/cli.js");
 const ECHO_EXAMPLE = join(import.meta.dir, "../examples/echo");
@@ -237,7 +219,7 @@ function cleanup() {
 	}
 }
 
-describe.skipIf(!hasMkcert)("e2e: shovel develop with VirtualHost", () => {
+describe("e2e: shovel develop with VirtualHost", () => {
 	const processes: ChildProcess[] = [];
 
 	// Increase timeout for hooks - cleanup can take time with multiple processes
