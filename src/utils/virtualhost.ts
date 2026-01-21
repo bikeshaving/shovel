@@ -597,7 +597,7 @@ export class VirtualHostClient {
 	#cert?: string;
 	#key?: string;
 	#onDisconnect?: () => void;
-	#intentionalDisconnect = false;
+	#intentionalDisconnect: boolean;
 
 	constructor(options: {
 		origin: string;
@@ -616,6 +616,7 @@ export class VirtualHostClient {
 		this.#cert = options.cert;
 		this.#key = options.key;
 		this.#onDisconnect = options.onDisconnect;
+		this.#intentionalDisconnect = false;
 	}
 
 	/**
