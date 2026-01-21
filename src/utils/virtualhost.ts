@@ -446,7 +446,8 @@ export class VirtualHost {
 				}
 
 				// Redirect to HTTPS - strip any port from Host header (e.g., :80)
-				const hostname = parseHostHeader(host);
+				// Wrap IPv6 addresses in brackets for valid URL construction
+				const hostname = wrapIPv6(parseHostHeader(host));
 				const redirectUrl = new URL(req.url || "/", `https://${hostname}`);
 				// Use VirtualHost's HTTPS port if not standard 443
 				if (this.#port !== 443) {
