@@ -6,7 +6,6 @@
 
 // Node.js built-ins
 import * as HTTP from "node:http";
-import * as HTTPS from "node:https";
 import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
 import * as Path from "node:path";
@@ -60,8 +59,6 @@ export interface NodePlatformOptions extends PlatformConfig {
 	workers?: number;
 	/** Shovel configuration (caches, directories, etc.) */
 	config?: ShovelConfig;
-	/** TLS configuration for HTTPS */
-	tls?: {cert: string; key: string};
 }
 
 // ============================================================================
@@ -251,7 +248,6 @@ export class NodePlatform extends BasePlatform {
 		cwd: string;
 		workers: number;
 		config?: ShovelConfig;
-		tls?: {cert: string; key: string};
 	};
 	#databaseStorage?: CustomDatabaseStorage;
 	#server?: Server;
@@ -269,7 +265,6 @@ export class NodePlatform extends BasePlatform {
 			workers: options.workers ?? 1,
 			cwd,
 			config: options.config,
-			tls: options.tls,
 		};
 
 		this.serviceWorker = new NodeServiceWorkerContainer(this);
@@ -296,9 +291,7 @@ export class NodePlatform extends BasePlatform {
 			);
 		}
 
-		this.#server = this.createServer((request) => pool.handleRequest(request), {
-			tls: this.#options.tls,
-		});
+		this.#server = this.createServer((request) => pool.handleRequest(request));
 		await this.#server.listen();
 		return this.#server;
 	}
@@ -384,34 +377,27 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * SUPPORTING UTILITY - Create HTTP/HTTPS server for Node.js
+	 * SUPPORTING UTILITY - Create HTTP server for Node.js
 	 */
 	createServer(handler: Handler, options: ServerOptions = {}): Server {
 		const port = options.port ?? this.#options.port;
 		const host = options.host ?? this.#options.host;
-		const tls = options.tls ?? this.#options.tls;
-		const serverProtocol = tls ? "https" : "http";
 
-		// Request handler shared between HTTP and HTTPS servers
+		// Request handler
 		const requestHandler = async (
 			req: HTTP.IncomingMessage,
 			res: HTTP.ServerResponse,
 		) => {
 			try {
-				// Determine protocol:
-				// - If TLS is configured on this server, use that (don't trust headers)
-				// - If no TLS (behind VirtualHost/proxy), honor X-Forwarded-Proto
-				// This prevents clients from spoofing the protocol when accessing directly
-				let protocol = serverProtocol;
-				if (!tls) {
-					const forwardedProto = req.headers["x-forwarded-proto"];
-					if (typeof forwardedProto === "string") {
-						// Handle comma-delimited values from multiple proxies (e.g., "https, http")
-						const parsed = forwardedProto.split(",")[0].trim().toLowerCase();
-						// Only accept valid protocols to prevent injection
-						if (parsed === "https" || parsed === "http") {
-							protocol = parsed;
-						}
+				// Determine protocol from X-Forwarded-Proto (when behind VirtualHost/proxy)
+				let protocol = "http";
+				const forwardedProto = req.headers["x-forwarded-proto"];
+				if (typeof forwardedProto === "string") {
+					// Handle comma-delimited values from multiple proxies (e.g., "https, http")
+					const parsed = forwardedProto.split(",")[0].trim().toLowerCase();
+					// Only accept valid protocols to prevent injection
+					if (parsed === "https" || parsed === "http") {
+						protocol = parsed;
 					}
 				}
 
@@ -486,10 +472,7 @@ export class NodePlatform extends BasePlatform {
 			}
 		};
 
-		// Create HTTP or HTTPS server based on TLS config
-		const httpServer = tls
-			? HTTPS.createServer({cert: tls.cert, key: tls.key}, requestHandler)
-			: HTTP.createServer(requestHandler);
+		const httpServer = HTTP.createServer(requestHandler);
 
 		let isListening = false;
 		let actualPort = port;
@@ -506,8 +489,7 @@ export class NodePlatform extends BasePlatform {
 						logger.info("Server started", {
 							host,
 							port: actualPort,
-							url: `${serverProtocol}://${host}:${actualPort}`,
-							tls: !!tls,
+							url: `http://${host}:${actualPort}`,
 						});
 						isListening = true;
 						resolve();
@@ -528,7 +510,7 @@ export class NodePlatform extends BasePlatform {
 			},
 			address: () => ({port: actualPort, host}),
 			get url() {
-				return `${serverProtocol}://${host}:${actualPort}`;
+				return `http://${host}:${actualPort}`;
 			},
 			get ready() {
 				return isListening;

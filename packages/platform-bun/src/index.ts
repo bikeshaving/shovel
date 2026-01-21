@@ -58,8 +58,6 @@ export interface BunPlatformOptions extends PlatformConfig {
 	workers?: number;
 	/** Shovel configuration (caches, directories, etc.) */
 	config?: ShovelConfig;
-	/** TLS configuration for HTTPS */
-	tls?: {cert: string; key: string};
 }
 
 // ============================================================================
@@ -253,7 +251,6 @@ export class BunPlatform extends BasePlatform {
 		cwd: string;
 		workers: number;
 		config?: ShovelConfig;
-		tls?: {cert: string; key: string};
 	};
 	#server?: Server;
 	#databaseStorage?: CustomDatabaseStorage;
@@ -271,7 +268,6 @@ export class BunPlatform extends BasePlatform {
 			workers: options.workers ?? 1,
 			cwd,
 			config: options.config,
-			tls: options.tls,
 		};
 
 		this.serviceWorker = new BunServiceWorkerContainer(this);
@@ -356,26 +352,20 @@ export class BunPlatform extends BasePlatform {
 		const requestedPort = options.port ?? this.#options.port;
 		const hostname = options.host ?? this.#options.host;
 		const reusePort = options.reusePort ?? false;
-		const tls = options.tls ?? this.#options.tls;
-		const protocol = tls ? "https" : "http";
 
 		const server = Bun.serve({
 			port: requestedPort,
 			hostname,
 			reusePort,
-			tls,
 			async fetch(request) {
 				try {
-					// Honor X-Forwarded-Proto only when behind a proxy (no TLS configured)
-					// This prevents protocol spoofing when accessed directly
+					// Honor X-Forwarded-Proto when behind a proxy (VirtualHost, nginx, etc.)
 					let finalRequest = request;
-					if (!tls) {
-						const forwardedProto = request.headers.get("x-forwarded-proto");
-						if (forwardedProto === "https" || forwardedProto === "http") {
-							const url = new URL(request.url);
-							url.protocol = `${forwardedProto}:`;
-							finalRequest = new Request(url, request);
-						}
+					const forwardedProto = request.headers.get("x-forwarded-proto");
+					if (forwardedProto === "https" || forwardedProto === "http") {
+						const url = new URL(request.url);
+						url.protocol = `${forwardedProto}:`;
+						finalRequest = new Request(url, request);
 					}
 					return await handler(finalRequest);
 				} catch (error) {
@@ -409,8 +399,7 @@ export class BunPlatform extends BasePlatform {
 		return {
 			async listen() {
 				logger.info("Bun server running", {
-					url: `${protocol}://${hostname}:${actualPort}`,
-					tls: !!tls,
+					url: `http://${hostname}:${actualPort}`,
 				});
 			},
 			async close() {
@@ -418,7 +407,7 @@ export class BunPlatform extends BasePlatform {
 			},
 			address: () => ({port: actualPort, host: hostname}),
 			get url() {
-				return `${protocol}://${hostname}:${actualPort}`;
+				return `http://${hostname}:${actualPort}`;
 			},
 			get ready() {
 				return true; // Bun.serve starts immediately
@@ -440,7 +429,6 @@ export class BunPlatform extends BasePlatform {
 		this.#server = this.createServer((request) => pool.handleRequest(request), {
 			port: this.#options.port,
 			host: this.#options.host,
-			tls: this.#options.tls,
 		});
 		await this.#server.listen();
 		return this.#server;

@@ -1,6 +1,6 @@
 import {DEFAULTS, parseOrigin, type ParsedOrigin} from "../utils/config.js";
 import {getLogger} from "@logtape/logtape";
-import {resolvePlatform, type TLSConfig} from "@b9g/platform";
+import {resolvePlatform} from "@b9g/platform";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 import {ServerBundler} from "../utils/bundler.js";
 import {createPlatform} from "../utils/platform.js";
@@ -154,32 +154,24 @@ export async function developCommand(
 			}
 		}
 
-		// For HTTPS origins, we need to:
-		// 1. Ensure certificates are available
-		// 2. Handle privileged port access (443)
-		// 3. Potentially coordinate with VirtualHost for multi-app support
-		let tls: TLSConfig | undefined;
-
 		// Track the actual port our server is listening on (for re-registration after failover)
 		let actualServerPort: number | undefined;
 
 		// Store certs for leader self-registration (needed for SNI)
 		let vhostCerts: {cert: string; key: string} | undefined;
 
-		// Save the original VirtualHost port (443) since `port` gets mutated
+		// Save the original VirtualHost port since `port` gets mutated
 		// Allow overriding for testing via environment variable
 		// eslint-disable-next-line no-restricted-properties
 		const vhostPort = process.env.SHOVEL_TEST_VIRTUALHOST_PORT
 			? // eslint-disable-next-line no-restricted-properties
 				parseInt(process.env.SHOVEL_TEST_VIRTUALHOST_PORT, 10)
 			: port;
-		// eslint-disable-next-line no-restricted-properties
-		const forceVirtualHost = !!process.env.SHOVEL_TEST_VIRTUALHOST_PORT;
 
 		// Function to establish/re-establish VirtualHost role (used for initial setup and failover)
 		const establishRole = async (): Promise<void> => {
-			if (!isHttps || !origin || (vhostPort >= 1024 && !forceVirtualHost)) {
-				return; // No VirtualHost needed for non-HTTPS or high ports (unless forced)
+			if (!isHttps || !origin) {
+				return; // No VirtualHost needed for non-HTTPS
 			}
 
 			const certs = await ensureCerts(origin.host);
@@ -236,22 +228,14 @@ export async function developCommand(
 			}
 		};
 
-		// Setup for HTTPS with privileged ports (or forced VirtualHost for testing)
+		// Setup for HTTPS - VirtualHost handles TLS termination
 		if (isHttps && origin) {
 			logger.info("Setting up HTTPS for {origin}", {origin: origin.origin});
+			await establishRole();
 
-			if (port < 1024 || forceVirtualHost) {
-				await establishRole();
-
-				// VirtualHost handles TLS; app uses OS-assigned port
-				if (virtualHostRole) {
-					port = 0;
-					tls = undefined;
-				}
-			} else {
-				// High port HTTPS - no VirtualHost needed, just use TLS directly
-				const certs = await ensureCerts(origin.host);
-				tls = {cert: certs.cert, key: certs.key};
+			// VirtualHost handles TLS; app uses OS-assigned port
+			if (virtualHostRole) {
+				port = 0;
 			}
 		}
 
@@ -265,7 +249,6 @@ export async function developCommand(
 			port,
 			host,
 			workers: workerCount,
-			tls,
 		});
 		const platformESBuildConfig = platformInstance.getESBuildConfig();
 

@@ -27,9 +27,16 @@ import {createSecureContext, type SecureContext} from "tls";
 import {existsSync, unlinkSync, mkdirSync} from "fs";
 import {getLogger} from "@logtape/logtape";
 import {SHOVEL_DIR, getVirtualHostSocketPath} from "./paths.js";
-import type {TLSConfig} from "@b9g/platform";
 
 const logger = getLogger(["shovel", "virtualhost"]);
+
+/**
+ * TLS configuration for VirtualHost
+ */
+interface TLSConfig {
+	cert: string;
+	key: string;
+}
 
 /**
  * Parse a Host header to extract the hostname.
