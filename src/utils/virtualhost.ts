@@ -18,6 +18,7 @@ import {
 } from "net";
 import {
 	createServer as createHttpServer,
+	request as httpRequest,
 	IncomingMessage,
 	ServerResponse,
 } from "http";
@@ -522,38 +523,35 @@ export class VirtualHost {
 			`http://${wrapIPv6(app.host)}:${app.port}`,
 		);
 
-		// Use dynamic import to avoid issues with ESM/CJS
-		import("http").then(({request: httpRequest}) => {
-			const proxyReq = httpRequest(
-				{
-					hostname: app.host,
-					port: app.port,
-					path: url.pathname + url.search,
-					method: req.method,
-					headers: {
-						...req.headers,
-						// Preserve original host and protocol for downstream apps
-						"X-Forwarded-Host": req.headers.host,
-						"X-Forwarded-Proto": this.#tls ? "https" : "http",
-					},
+		const proxyReq = httpRequest(
+			{
+				hostname: app.host,
+				port: app.port,
+				path: url.pathname + url.search,
+				method: req.method,
+				headers: {
+					...req.headers,
+					// Preserve original host and protocol for downstream apps
+					"X-Forwarded-Host": req.headers.host,
+					"X-Forwarded-Proto": this.#tls ? "https" : "http",
 				},
-				(proxyRes) => {
-					res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
-					proxyRes.pipe(res);
-				},
-			);
+			},
+			(proxyRes) => {
+				res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
+				proxyRes.pipe(res);
+			},
+		);
 
-			proxyReq.on("error", (error) => {
-				logger.error("Proxy error: {error}", {error});
-				if (!res.headersSent) {
-					res.writeHead(502, {"Content-Type": "text/plain"});
-				}
-				res.end(`Proxy Error: ${error.message}`);
-			});
-
-			// Pipe request body
-			req.pipe(proxyReq);
+		proxyReq.on("error", (error) => {
+			logger.error("Proxy error: {error}", {error});
+			if (!res.headersSent) {
+				res.writeHead(502, {"Content-Type": "text/plain"});
+			}
+			res.end(`Proxy Error: ${error.message}`);
 		});
+
+		// Pipe request body
+		req.pipe(proxyReq);
 	}
 }
 
