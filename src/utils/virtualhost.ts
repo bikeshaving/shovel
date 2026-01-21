@@ -504,7 +504,7 @@ export class VirtualHost {
 		// Find the app for this hostname
 		const app = this.getApp(hostname);
 		if (!app) {
-			logger.error("{method} {host}{url} 502 (no app registered)", {
+			logger.debug("{method} {host}{url} 502 (no app registered)", {
 				method: req.method,
 				host,
 				url: req.url,
