@@ -297,6 +297,7 @@ export class VirtualHost {
 					for (const [hostname, app] of this.#apps.entries()) {
 						if (app.socket === socket) {
 							this.#apps.delete(hostname);
+							this.#secureContexts.delete(hostname);
 							logger.info("App disconnected: {hostname}", {hostname});
 							break;
 						}
