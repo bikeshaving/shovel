@@ -41,18 +41,9 @@ const logger = getLogger(["shovel", "virtualhost"]);
  *   "[::1]" → "[::1]"
  */
 function parseHostHeader(host: string): string {
-	try {
-		// URL API handles IPv6 brackets, ports, and normalization
-		const url = new URL(`http://${host}`);
-		return url.hostname.toLowerCase();
-	} catch (err) {
-		// Fallback for malformed hosts (URL parsing can fail with unusual input)
-		logger.debug("Could not parse host header: {host} - {error}", {
-			host,
-			error: err,
-		});
-		return host.toLowerCase();
-	}
+	// URL API handles IPv6 brackets, ports, and normalization
+	const url = new URL(`http://${host}`);
+	return url.hostname.toLowerCase();
 }
 
 /**
