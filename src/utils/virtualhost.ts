@@ -31,60 +31,36 @@ import type {TLSConfig} from "@b9g/platform";
 const logger = getLogger(["shovel", "virtualhost"]);
 
 /**
- * Normalize a hostname by stripping IPv6 brackets.
- * Examples:
- *   "[::1]" → "::1"
- *   "localhost" → "localhost"
- *   "::1" → "::1"
- */
-function normalizeHostname(hostname: string): string {
-	if (hostname.startsWith("[") && hostname.endsWith("]")) {
-		return hostname.slice(1, -1);
-	}
-	return hostname;
-}
-
-/**
- * Format a host for use in URLs. IPv6 addresses need brackets.
- * Examples:
- *   "::1" → "[::1]"
- *   "localhost" → "localhost"
- *   "127.0.0.1" → "127.0.0.1"
- */
-function formatHostForUrl(host: string): string {
-	// If it contains a colon and doesn't already have brackets, it's IPv6
-	if (host.includes(":") && !host.startsWith("[")) {
-		return `[${host}]`;
-	}
-	return host;
-}
-
-/**
- * Parse a Host header to extract the hostname, handling IPv6 addresses.
+ * Parse a Host header to extract the hostname.
+ * Uses URL API to handle IPv4, IPv6, and port parsing correctly.
  * Returns lowercase hostname since DNS is case-insensitive.
  * Examples:
  *   "localhost:8080" → "localhost"
  *   "Example.COM" → "example.com"
- *   "[::1]:8080" → "::1"
- *   "[::1]" → "::1"
+ *   "[::1]:8080" → "[::1]"
+ *   "[::1]" → "[::1]"
  */
 function parseHostHeader(host: string): string {
-	let hostname: string;
-	// IPv6 addresses are wrapped in brackets: [::1] or [::1]:port
-	if (host.startsWith("[")) {
-		const closeBracket = host.indexOf("]");
-		if (closeBracket !== -1) {
-			hostname = host.slice(1, closeBracket);
-		} else {
-			hostname = host;
-		}
-	} else {
-		// IPv4 or hostname: split on first colon for port
-		const colonIndex = host.indexOf(":");
-		hostname = colonIndex !== -1 ? host.slice(0, colonIndex) : host;
+	try {
+		// URL API handles IPv6 brackets, ports, and normalization
+		const url = new URL(`http://${host}`);
+		return url.hostname.toLowerCase();
+	} catch {
+		// Fallback for malformed hosts
+		return host.toLowerCase();
 	}
-	// Normalize to lowercase (DNS is case-insensitive)
-	return hostname.toLowerCase();
+}
+
+/**
+ * Wrap IPv6 addresses in brackets for use in URLs.
+ * IPv4 and hostnames are returned unchanged.
+ */
+function wrapIPv6(host: string): string {
+	// Already has brackets or is not IPv6
+	if (host.startsWith("[") || !host.includes(":")) {
+		return host;
+	}
+	return `[${host}]`;
 }
 
 // Re-export for backwards compatibility
@@ -237,8 +213,7 @@ export class VirtualHost {
 	 * Register a local app
 	 */
 	registerApp(app: RegisteredApp): void {
-		// Normalize hostname to handle IPv6 brackets consistently
-		const hostname = normalizeHostname(new URL(app.origin).hostname);
+		const hostname = new URL(app.origin).hostname;
 		this.#apps.set(hostname, app);
 
 		// Create secure context for SNI if cert provided
@@ -259,8 +234,7 @@ export class VirtualHost {
 	 * Unregister an app
 	 */
 	unregisterApp(origin: string): void {
-		// Normalize hostname to handle IPv6 brackets consistently
-		const hostname = normalizeHostname(new URL(origin).hostname);
+		const hostname = new URL(origin).hostname;
 		this.#apps.delete(hostname);
 		this.#secureContexts.delete(hostname);
 		logger.info("App unregistered: {origin}", {origin});
@@ -466,14 +440,15 @@ export class VirtualHost {
 					return;
 				}
 
-				// Extract hostname (without port) and redirect to HTTPS
-				// Include port in redirect URL if not standard 443
-				const hostname = parseHostHeader(host);
-				const portSuffix = this.#port !== 443 ? `:${this.#port}` : "";
-				const redirectUrl = `https://${formatHostForUrl(hostname)}${portSuffix}${req.url || "/"}`;
+				// Redirect to HTTPS using URL API
+				const redirectUrl = new URL(req.url || "/", `https://${host}`);
+				// Use VirtualHost's HTTPS port if not standard 443
+				if (this.#port !== 443) {
+					redirectUrl.port = String(this.#port);
+				}
 
-				logger.debug("Redirecting HTTP → HTTPS: {url}", {url: redirectUrl});
-				res.writeHead(301, {Location: redirectUrl});
+				logger.debug("Redirecting HTTP → HTTPS: {url}", {url: redirectUrl.href});
+				res.writeHead(301, {Location: redirectUrl.href});
 				res.end();
 			});
 
@@ -545,10 +520,7 @@ export class VirtualHost {
 		res: ServerResponse,
 		app: RegisteredApp,
 	): void {
-		const protocol = this.#tls ? "https:" : "http:";
-		// Format host for URL (IPv6 needs brackets)
-		const urlHost = formatHostForUrl(app.host);
-		const url = new URL(req.url || "/", `${protocol}//${urlHost}:${app.port}`);
+		const url = new URL(req.url || "/", `http://${wrapIPv6(app.host)}:${app.port}`);
 
 		// Use dynamic import to avoid issues with ESM/CJS
 		import("http").then(({request: httpRequest}) => {
