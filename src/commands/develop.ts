@@ -28,7 +28,7 @@ function getWorkerCount(
 /**
  * Server URLs for display.
  */
-interface DisplayUrls {
+interface DisplayURLs {
 	local: string;
 	network?: string;
 }
@@ -37,11 +37,11 @@ interface DisplayUrls {
  * Get display URLs for the server.
  * Returns localhost URLs for local access plus optional LAN URL.
  */
-function getDisplayUrls(
+function getDisplayURLs(
 	host: string,
 	port: number,
 	origin?: ParsedOrigin,
-): DisplayUrls {
+): DisplayURLs {
 	// If origin is specified, use that as the display URL
 	if (origin) {
 		return {
@@ -49,7 +49,7 @@ function getDisplayUrls(
 		};
 	}
 
-	const urls: DisplayUrls = {
+	const urls: DisplayURLs = {
 		local: `http://localhost:${port}`,
 	};
 
@@ -307,7 +307,7 @@ export async function developCommand(
 				}
 
 				// Display server URLs
-				const urls = getDisplayUrls(host, port, origin);
+				const urls = getDisplayURLs(host, port, origin);
 				if (urls.network) {
 					logger.info("Server running at {local} and {network}", {
 						local: urls.local,
