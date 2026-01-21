@@ -1,9 +1,8 @@
 /* eslint-disable no-restricted-properties -- Tests need process.env */
 import {test, expect} from "bun:test";
 import * as FS from "fs/promises";
-import {spawn} from "child_process";
 import {join} from "path";
-import {copyFixtureToTemp, fileExists} from "./utils.js";
+import {copyFixtureToTemp, fileExists, spawn} from "./utils.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["test", "executable"]);
@@ -42,7 +41,6 @@ async function waitForServer(port, host = "localhost", timeoutMs = 3000) {
 // Helper to run executable and get process
 function runExecutable(executablePath, env = {}) {
 	const proc = spawn("node", [executablePath], {
-		stdio: ["ignore", "pipe", "pipe"],
 		env: {...process.env, ...env},
 		cwd: join(executablePath, ".."),
 	});

@@ -1,17 +1,34 @@
-import {DEFAULTS} from "../utils/config.js";
+import {DEFAULTS, parseOrigin, type ParsedOrigin} from "../utils/config.js";
 import {getLogger} from "@logtape/logtape";
 import {resolvePlatform} from "@b9g/platform";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 import {ServerBundler} from "../utils/bundler.js";
 import {createPlatform} from "../utils/platform.js";
 import {networkInterfaces} from "os";
+import {ensureCerts} from "../utils/certs.js";
+import {
+	establishVirtualHostRole,
+	type VirtualHostRole,
+} from "../utils/virtualhost.js";
 
 const logger = getLogger(["shovel", "develop"]);
+
+function getWorkerCount(
+	options: {workers?: string},
+	config: {workers?: number} | null,
+) {
+	// CLI option overrides everything (explicit user intent)
+	if (options.workers) {
+		return parseInt(options.workers, 10);
+	}
+	// Config already handles: json value > WORKERS env > default
+	return config?.workers ?? DEFAULTS.WORKERS;
+}
 
 /**
  * Server URLs for display.
  */
-interface DisplayUrls {
+interface DisplayURLs {
 	local: string;
 	network?: string;
 }
@@ -20,8 +37,19 @@ interface DisplayUrls {
  * Get display URLs for the server.
  * Returns localhost URLs for local access plus optional LAN URL.
  */
-function getDisplayUrls(host: string, port: number): DisplayUrls {
-	const urls: DisplayUrls = {
+function getDisplayURLs(
+	host: string,
+	port: number,
+	origin?: ParsedOrigin,
+): DisplayURLs {
+	// If origin is specified, use that as the display URL
+	if (origin) {
+		return {
+			local: origin.origin,
+		};
+	}
+
+	const urls: DisplayURLs = {
 		local: `http://localhost:${port}`,
 	};
 
@@ -68,6 +96,7 @@ function getLanAddress(): string | null {
 export async function developCommand(
 	entrypoint: string,
 	options: {
+		origin?: string;
 		port?: string;
 		host?: string;
 		workers?: string;
@@ -75,11 +104,140 @@ export async function developCommand(
 	},
 	config: ProcessedShovelConfig,
 ) {
+	let virtualHostRole: VirtualHostRole | undefined;
+
 	try {
 		const platformName = resolvePlatform({...options, config});
 		const workerCount = getWorkerCount(options, config);
-		const port = parseInt(options.port || String(DEFAULTS.SERVER.PORT), 10);
-		const host = options.host || DEFAULTS.SERVER.HOST;
+
+		// Resolve origin: CLI flag > config > build from port/host
+		let origin: ParsedOrigin | undefined;
+		if (options.origin) {
+			origin = parseOrigin(options.origin);
+		} else if (config.origin) {
+			origin = config.origin;
+		} else if (options.port) {
+			// --port is shorthand for http://<host>:<port>
+			const portHost = options.host ?? "localhost";
+			origin = parseOrigin(`http://${portHost}:${options.port}`);
+		}
+
+		// Derive port and host from origin or use defaults
+		// Note: origin.host is the hostname for routing (e.g., shovel.localhost)
+		// The bind host is the interface to listen on (default 0.0.0.0)
+		let port = origin?.port ?? config.port ?? DEFAULTS.SERVER.PORT;
+		const host = options.host ?? config.host ?? DEFAULTS.SERVER.HOST;
+		const isHttps = origin?.protocol === "https";
+
+		// Validate host when HTTPS origin is specified
+		// VirtualHost routing only works with localhost bindings
+		const localhostHosts = ["0.0.0.0", "127.0.0.1", "localhost", "::1", "::"];
+		if (isHttps && origin && !localhostHosts.includes(host)) {
+			throw new Error(
+				`Cannot use HTTPS origin with --host ${host}. ` +
+					`VirtualHost routing requires binding to localhost (0.0.0.0, 127.0.0.1, or localhost).`,
+			);
+		}
+
+		// Validate HTTPS origins use localhost domains (required for auto-generated certs)
+		// Modern browsers treat *.localhost as secure by default (RFC 6761)
+		if (isHttps && origin) {
+			const originHost = origin.host.toLowerCase();
+			const isLocalhostDomain =
+				originHost === "localhost" || originHost.endsWith(".localhost");
+			if (!isLocalhostDomain) {
+				throw new Error(
+					`HTTPS origins must use localhost domains (e.g., https://myapp.localhost). ` +
+						`Got: ${origin.origin}. ` +
+						`Custom domains require manual certificate configuration.`,
+				);
+			}
+		}
+
+		// Track the actual port our server is listening on (for re-registration after failover)
+		let actualServerPort: number | undefined;
+
+		// Store certs for leader self-registration (needed for SNI)
+		let vhostCerts: {cert: string; key: string} | undefined;
+
+		// Save the original VirtualHost port since `port` gets mutated
+		// Allow overriding for testing via environment variable
+		// eslint-disable-next-line no-restricted-properties
+		const vhostPort = process.env.SHOVEL_TEST_VIRTUALHOST_PORT
+			? // eslint-disable-next-line no-restricted-properties
+				parseInt(process.env.SHOVEL_TEST_VIRTUALHOST_PORT, 10)
+			: port;
+
+		// Function to establish/re-establish VirtualHost role (used for initial setup and failover)
+		const establishRole = async (): Promise<void> => {
+			if (!isHttps || !origin) {
+				return; // No VirtualHost needed for non-HTTPS
+			}
+
+			const certs = await ensureCerts(origin.host);
+			vhostCerts = {cert: certs.cert, key: certs.key};
+
+			virtualHostRole = await establishVirtualHostRole({
+				origin: origin.origin,
+				port: vhostPort,
+				host,
+				tls: vhostCerts,
+				onNeedRegistration: async (client) => {
+					// This is called when we're a client and need to register
+					// We need the actual server port, which may not be available yet on first run
+					if (actualServerPort !== undefined) {
+						await client.connect(actualServerPort);
+					}
+					// If actualServerPort is undefined, we'll register later in startOrReloadServer
+				},
+				onDisconnect: () => {
+					// VirtualHost died, try to become the new leader
+					logger.info(
+						"VirtualHost connection lost, attempting to take over...",
+					);
+					establishRole().catch((err) => {
+						logger.error("Failed to re-establish VirtualHost role: {error}", {
+							error: err,
+						});
+					});
+				},
+			});
+
+			if (virtualHostRole.role === "leader") {
+				logger.debug("Became VirtualHost leader");
+				// If server is already running (succession case), register immediately
+				// Otherwise, registration happens in startOrReloadServer after server starts
+				if (actualServerPort !== undefined) {
+					const proxyHost =
+						host === "0.0.0.0" ? "127.0.0.1" : host === "::" ? "::1" : host;
+					virtualHostRole.virtualHost.registerApp({
+						origin: origin.origin,
+						host: proxyHost,
+						port: actualServerPort,
+						socket: null,
+						cert: vhostCerts?.cert,
+						key: vhostCerts?.key,
+					});
+					logger.info(
+						"Registered self with new VirtualHost after succession (local port: {port})",
+						{port: actualServerPort},
+					);
+				}
+			} else {
+				logger.debug("Connected as VirtualHost client");
+			}
+		};
+
+		// Setup for HTTPS - VirtualHost handles TLS termination
+		if (isHttps && origin) {
+			logger.info("Setting up HTTPS for {origin}", {origin: origin.origin});
+			await establishRole();
+
+			// VirtualHost handles TLS; app uses OS-assigned port
+			if (virtualHostRole) {
+				port = 0;
+			}
+		}
 
 		logger.info("Platform: {platform}, workers: {workerCount}", {
 			platform: platformName,
@@ -102,11 +260,37 @@ export async function developCommand(
 				// First successful build - register ServiceWorker and start server
 				await platformInstance.serviceWorker.register(workerPath);
 				await platformInstance.serviceWorker.ready;
-				await platformInstance.listen();
+				const server = await platformInstance.listen();
 				serverStarted = true;
 
+				// Store the actual port for potential re-registration after failover
+				actualServerPort = server.address().port;
+
+				// Register with VirtualHost now that we know our actual port
+				if (virtualHostRole?.role === "leader" && origin) {
+					// Leader registers itself with its own VirtualHost
+					const proxyHost =
+						host === "0.0.0.0" ? "127.0.0.1" : host === "::" ? "::1" : host;
+					virtualHostRole.virtualHost.registerApp({
+						origin: origin.origin,
+						host: proxyHost,
+						port: actualServerPort,
+						socket: null,
+						cert: vhostCerts?.cert,
+						key: vhostCerts?.key,
+					});
+					logger.info("Registered self with VirtualHost (local port: {port})", {
+						port: actualServerPort,
+					});
+				} else if (virtualHostRole?.role === "client") {
+					logger.info("Registering with VirtualHost (local port: {port})", {
+						port: actualServerPort,
+					});
+					await virtualHostRole.client.connect(actualServerPort);
+				}
+
 				// Display server URLs
-				const urls = getDisplayUrls(host, port);
+				const urls = getDisplayURLs(host, port, origin);
 				if (urls.network) {
 					logger.info("Server running at {local} and {network}", {
 						local: urls.local,
@@ -152,6 +336,14 @@ export async function developCommand(
 		const shutdown = async (signal: string) => {
 			logger.debug("Shutting down ({signal})", {signal});
 			await bundler.stop();
+
+			// Disconnect from VirtualHost or stop our VirtualHost
+			if (virtualHostRole?.role === "client") {
+				await virtualHostRole.client.disconnect();
+			} else if (virtualHostRole?.role === "leader") {
+				await virtualHostRole.virtualHost.stop();
+			}
+
 			await platformInstance.dispose();
 			logger.debug("Shutdown complete");
 			process.exit(0);
@@ -163,19 +355,26 @@ export async function developCommand(
 		// Keep the process alive
 		await new Promise(() => {});
 	} catch (error) {
+		// Clean up on error
+		if (virtualHostRole?.role === "client") {
+			try {
+				await virtualHostRole.client.disconnect();
+			} catch (cleanupError) {
+				logger.debug("VirtualHost client cleanup error: {error}", {
+					error: cleanupError,
+				});
+			}
+		} else if (virtualHostRole?.role === "leader") {
+			try {
+				await virtualHostRole.virtualHost.stop();
+			} catch (cleanupError) {
+				logger.debug("VirtualHost cleanup error: {error}", {
+					error: cleanupError,
+				});
+			}
+		}
+
 		logger.error("Failed to start development server: {error}", {error});
 		process.exit(1);
 	}
-}
-
-function getWorkerCount(
-	options: {workers?: string},
-	config: {workers?: number} | null,
-) {
-	// CLI option overrides everything (explicit user intent)
-	if (options.workers) {
-		return parseInt(options.workers, 10);
-	}
-	// Config already handles: json value > WORKERS env > default
-	return config?.workers ?? DEFAULTS.WORKERS;
 }

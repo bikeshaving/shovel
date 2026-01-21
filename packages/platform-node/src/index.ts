@@ -281,7 +281,7 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Start the HTTP server, routing requests to ServiceWorker
+	 * Start the HTTP/HTTPS server, routing requests to ServiceWorker
 	 */
 	async listen(): Promise<Server> {
 		const pool = this.serviceWorker.pool;
@@ -383,11 +383,26 @@ export class NodePlatform extends BasePlatform {
 		const port = options.port ?? this.#options.port;
 		const host = options.host ?? this.#options.host;
 
-		// Create HTTP server with Web API Request/Response conversion
-		const httpServer = HTTP.createServer(async (req, res) => {
+		// Request handler
+		const requestHandler = async (
+			req: HTTP.IncomingMessage,
+			res: HTTP.ServerResponse,
+		) => {
 			try {
+				// Determine protocol from X-Forwarded-Proto (when behind VirtualHost/proxy)
+				let protocol = "http";
+				const forwardedProto = req.headers["x-forwarded-proto"];
+				if (typeof forwardedProto === "string") {
+					// Handle comma-delimited values from multiple proxies (e.g., "https, http")
+					const parsed = forwardedProto.split(",")[0].trim().toLowerCase();
+					// Only accept valid protocols to prevent injection
+					if (parsed === "https" || parsed === "http") {
+						protocol = parsed;
+					}
+				}
+
 				// Convert Node.js request to Web API Request
-				const url = `http://${req.headers.host}${req.url}`;
+				const url = `${protocol}://${req.headers.host}${req.url}`;
 				const request = new Request(url, {
 					method: req.method,
 					headers: req.headers as HeadersInit,
@@ -455,7 +470,9 @@ export class NodePlatform extends BasePlatform {
 				});
 				res.end(await response.text());
 			}
-		});
+		};
+
+		const httpServer = HTTP.createServer(requestHandler);
 
 		let isListening = false;
 		let actualPort = port;

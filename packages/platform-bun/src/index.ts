@@ -346,21 +346,28 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Create HTTP server using Bun.serve
+	 * Create HTTP/HTTPS server using Bun.serve
 	 */
 	createServer(handler: Handler, options: ServerOptions = {}): Server {
 		const requestedPort = options.port ?? this.#options.port;
 		const hostname = options.host ?? this.#options.host;
 		const reusePort = options.reusePort ?? false;
 
-		// Bun.serve is much simpler than Node.js
 		const server = Bun.serve({
 			port: requestedPort,
 			hostname,
 			reusePort,
 			async fetch(request) {
 				try {
-					return await handler(request);
+					// Honor X-Forwarded-Proto when behind a proxy (VirtualHost, nginx, etc.)
+					let finalRequest = request;
+					const forwardedProto = request.headers.get("x-forwarded-proto");
+					if (forwardedProto === "https" || forwardedProto === "http") {
+						const url = new URL(request.url);
+						url.protocol = `${forwardedProto}:`;
+						finalRequest = new Request(url, request);
+					}
+					return await handler(finalRequest);
 				} catch (error) {
 					const err = error instanceof Error ? error : new Error(String(error));
 
