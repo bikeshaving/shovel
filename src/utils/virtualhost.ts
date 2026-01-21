@@ -444,8 +444,9 @@ export class VirtualHost {
 					return;
 				}
 
-				// Redirect to HTTPS using URL API
-				const redirectUrl = new URL(req.url || "/", `https://${host}`);
+				// Redirect to HTTPS - strip any port from Host header (e.g., :80)
+				const hostname = parseHostHeader(host);
+				const redirectUrl = new URL(req.url || "/", `https://${hostname}`);
 				// Use VirtualHost's HTTPS port if not standard 443
 				if (this.#port !== 443) {
 					redirectUrl.port = String(this.#port);
