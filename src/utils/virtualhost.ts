@@ -597,6 +597,7 @@ export class VirtualHostClient {
 	#cert?: string;
 	#key?: string;
 	#onDisconnect?: () => void;
+	#intentionalDisconnect = false;
 
 	constructor(options: {
 		origin: string;
@@ -672,7 +673,8 @@ export class VirtualHostClient {
 
 			this.#socket.on("close", () => {
 				// Only trigger onDisconnect if we were successfully registered
-				if (registered && this.#onDisconnect) {
+				// and this wasn't an intentional disconnect (e.g., during shutdown)
+				if (registered && this.#onDisconnect && !this.#intentionalDisconnect) {
 					logger.info("VirtualHost connection lost, triggering reconnect");
 					this.#onDisconnect();
 				}
@@ -702,6 +704,8 @@ export class VirtualHostClient {
 	 */
 	async disconnect(): Promise<void> {
 		if (this.#socket) {
+			// Mark as intentional so onDisconnect doesn't fire
+			this.#intentionalDisconnect = true;
 			// Send unregister message
 			const message: UnregisterMessage = {
 				type: "unregister",
