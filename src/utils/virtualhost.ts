@@ -743,11 +743,7 @@ export async function establishVirtualHostRole(
 			// Normalize bind host to loopback for local proxying
 			// 0.0.0.0 → 127.0.0.1, :: → ::1, others stay as-is
 			const proxyHost =
-				host === "0.0.0.0"
-					? "127.0.0.1"
-					: host === "::"
-						? "::1"
-						: host;
+				host === "0.0.0.0" ? "127.0.0.1" : host === "::" ? "::1" : host;
 			try {
 				const client = new VirtualHostClient({
 					origin,

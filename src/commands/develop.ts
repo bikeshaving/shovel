@@ -139,6 +139,21 @@ export async function developCommand(
 			);
 		}
 
+		// Validate HTTPS origins use localhost domains (required for auto-generated certs)
+		// Modern browsers treat *.localhost as secure by default (RFC 6761)
+		if (isHttps && origin) {
+			const originHost = origin.host.toLowerCase();
+			const isLocalhostDomain =
+				originHost === "localhost" || originHost.endsWith(".localhost");
+			if (!isLocalhostDomain) {
+				throw new Error(
+					`HTTPS origins must use localhost domains (e.g., https://myapp.localhost). ` +
+						`Got: ${origin.origin}. ` +
+						`Custom domains require manual certificate configuration.`,
+				);
+			}
+		}
+
 		// For HTTPS origins, we need to:
 		// 1. Ensure certificates are available
 		// 2. Handle privileged port access (443)
@@ -201,11 +216,7 @@ export async function developCommand(
 				// Normalize bind host to loopback for local proxying
 				// 0.0.0.0 → 127.0.0.1, :: → ::1, others stay as-is
 				const proxyHost =
-					host === "0.0.0.0"
-						? "127.0.0.1"
-						: host === "::"
-							? "::1"
-							: host;
+					host === "0.0.0.0" ? "127.0.0.1" : host === "::" ? "::1" : host;
 				virtualHostRole.virtualHost.registerApp({
 					origin: origin.origin,
 					host: proxyHost,

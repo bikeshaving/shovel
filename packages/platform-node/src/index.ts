@@ -398,13 +398,22 @@ export class NodePlatform extends BasePlatform {
 			res: HTTP.ServerResponse,
 		) => {
 			try {
-				// Determine protocol: honor X-Forwarded-Proto when TLS is terminated upstream
-				// Handle comma-delimited values from multiple proxies (e.g., "https, http")
-				const forwardedProto = req.headers["x-forwarded-proto"];
-				const protocol =
-					typeof forwardedProto === "string"
-						? forwardedProto.split(",")[0].trim()
-						: serverProtocol;
+				// Determine protocol:
+				// - If TLS is configured on this server, use that (don't trust headers)
+				// - If no TLS (behind VirtualHost/proxy), honor X-Forwarded-Proto
+				// This prevents clients from spoofing the protocol when accessing directly
+				let protocol = serverProtocol;
+				if (!tls) {
+					const forwardedProto = req.headers["x-forwarded-proto"];
+					if (typeof forwardedProto === "string") {
+						// Handle comma-delimited values from multiple proxies (e.g., "https, http")
+						const parsed = forwardedProto.split(",")[0].trim().toLowerCase();
+						// Only accept valid protocols to prevent injection
+						if (parsed === "https" || parsed === "http") {
+							protocol = parsed;
+						}
+					}
+				}
 
 				// Convert Node.js request to Web API Request
 				const url = `${protocol}://${req.headers.host}${req.url}`;
