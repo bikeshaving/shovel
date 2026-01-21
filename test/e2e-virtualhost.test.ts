@@ -1,4 +1,12 @@
-import {describe, test, expect, beforeAll, afterAll, afterEach} from "bun:test";
+import {
+	describe,
+	test,
+	expect,
+	beforeAll,
+	afterAll,
+	afterEach,
+	setDefaultTimeout,
+} from "bun:test";
 import {type ChildProcess} from "child_process";
 import {join} from "path";
 import {existsSync, unlinkSync} from "fs";
@@ -212,6 +220,9 @@ function cleanup() {
 
 describe("e2e: shovel develop with VirtualHost", () => {
 	const processes: ChildProcess[] = [];
+
+	// Increase timeout for hooks - cleanup can take time with multiple processes
+	setDefaultTimeout(30000);
 
 	beforeAll(() => {
 		cleanup();
