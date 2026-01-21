@@ -96,6 +96,8 @@ export async function fileExists(path: string) {
  *
  * This ensures error logs from spawned processes appear in CI output
  * while still allowing programmatic capture of output via pipes.
+ *
+ * Default stdio is ["ignore", "pipe", "pipe"] but can be overridden.
  */
 export function spawn(
 	command: string,
@@ -104,13 +106,15 @@ export function spawn(
 ): ChildProcess {
 	const child = nodeSpawn(command, args, {
 		...options,
-		stdio: ["ignore", "pipe", "pipe"],
+		stdio: options.stdio ?? ["ignore", "pipe", "pipe"],
 	});
 
-	// Forward stderr to parent so logs appear in CI
-	child.stderr?.on("data", (data: Buffer) => {
-		process.stderr.write(data);
-	});
+	// Forward stderr to parent so logs appear in CI (only if stderr is piped)
+	if (!options.stdio) {
+		child.stderr?.on("data", (data: Buffer) => {
+			process.stderr.write(data);
+		});
+	}
 
 	return child;
 }

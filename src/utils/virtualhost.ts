@@ -130,7 +130,8 @@ interface RegisteredApp {
 	origin: string;
 	host: string;
 	port: number;
-	socket: Socket;
+	/** Socket connection to the client (null for self-registration by leader) */
+	socket: Socket | null;
 	/** TLS certificate (PEM) for this origin */
 	cert?: string;
 	/** TLS private key (PEM) for this origin */

@@ -163,6 +163,9 @@ export async function developCommand(
 		// Track the actual port our server is listening on (for re-registration after failover)
 		let actualServerPort: number | undefined;
 
+		// Store certs for leader self-registration (needed for SNI)
+		let vhostCerts: {cert: string; key: string} | undefined;
+
 		// Save the original VirtualHost port (443) since `port` gets mutated
 		// Allow overriding for testing via environment variable
 		// eslint-disable-next-line no-restricted-properties
@@ -180,13 +183,13 @@ export async function developCommand(
 			}
 
 			const certs = await ensureCerts(origin.host);
-			const vhostTls = {cert: certs.cert, key: certs.key};
+			vhostCerts = {cert: certs.cert, key: certs.key};
 
 			virtualHostRole = await establishVirtualHostRole({
 				origin: origin.origin,
 				port: vhostPort,
 				host,
-				tls: vhostTls,
+				tls: vhostCerts,
 				onNeedRegistration: async (client) => {
 					// This is called when we're a client and need to register
 					// We need the actual server port, which may not be available yet on first run
@@ -210,24 +213,8 @@ export async function developCommand(
 
 			if (virtualHostRole.role === "leader") {
 				logger.debug("Became VirtualHost leader");
-				// Register ourselves with our own VirtualHost
-				// Use actualServerPort if available (succession case), otherwise vhostPort+1000 (initial startup)
-				const appPort = actualServerPort ?? vhostPort + 1000;
-				// Normalize bind host to loopback for local proxying
-				// 0.0.0.0 → 127.0.0.1, :: → ::1, others stay as-is
-				const proxyHost =
-					host === "0.0.0.0" ? "127.0.0.1" : host === "::" ? "::1" : host;
-				virtualHostRole.virtualHost.registerApp({
-					origin: origin.origin,
-					host: proxyHost,
-					port: appPort,
-					socket: null as any, // Self-registration doesn't need socket
-					cert: vhostTls.cert,
-					key: vhostTls.key,
-				});
-				logger.info("Registered self as leader (app port: {port})", {
-					port: appPort,
-				});
+				// Leader self-registration happens after server starts (in startOrReloadServer)
+				// so we know the actual port
 			} else {
 				logger.debug("Connected as VirtualHost client");
 			}
@@ -240,13 +227,8 @@ export async function developCommand(
 			if (port < 1024 || forceVirtualHost) {
 				await establishRole();
 
-				// Adjust port and TLS based on our role
-				if (virtualHostRole?.role === "leader") {
-					// Leader: app runs on vhostPort+1000, VirtualHost handles TLS
-					port = vhostPort + 1000;
-					tls = undefined;
-				} else if (virtualHostRole?.role === "client") {
-					// Client: app runs on ephemeral port, VirtualHost handles TLS
+				// VirtualHost handles TLS; app uses OS-assigned port
+				if (virtualHostRole) {
 					port = 0;
 					tls = undefined;
 				}
@@ -285,8 +267,23 @@ export async function developCommand(
 				// Store the actual port for potential re-registration after failover
 				actualServerPort = server.address().port;
 
-				// Connect to VirtualHost if we're a client (pass actual port from server)
-				if (virtualHostRole?.role === "client") {
+				// Register with VirtualHost now that we know our actual port
+				if (virtualHostRole?.role === "leader" && origin) {
+					// Leader registers itself with its own VirtualHost
+					const proxyHost =
+						host === "0.0.0.0" ? "127.0.0.1" : host === "::" ? "::1" : host;
+					virtualHostRole.virtualHost.registerApp({
+						origin: origin.origin,
+						host: proxyHost,
+						port: actualServerPort,
+						socket: null,
+						cert: vhostCerts?.cert,
+						key: vhostCerts?.key,
+					});
+					logger.info("Registered self with VirtualHost (local port: {port})", {
+						port: actualServerPort,
+					});
+				} else if (virtualHostRole?.role === "client") {
 					logger.info("Registering with VirtualHost (local port: {port})", {
 						port: actualServerPort,
 					});
