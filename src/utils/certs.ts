@@ -49,7 +49,10 @@ function isMkcertInstalled(): boolean {
 /**
  * Generate a certificate using mkcert
  */
-function generateCertificate(domain: string): {certPath: string; keyPath: string} {
+function generateCertificate(domain: string): {
+	certPath: string;
+	keyPath: string;
+} {
 	// Ensure certs directory exists
 	if (!existsSync(CERTS_DIR)) {
 		mkdirSync(CERTS_DIR, {recursive: true});
