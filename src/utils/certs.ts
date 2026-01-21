@@ -9,12 +9,9 @@ import {spawnSync} from "child_process";
 import {existsSync, mkdirSync, readFileSync} from "fs";
 import {join} from "path";
 import {getLogger} from "@logtape/logtape";
-import {SHOVEL_DIR, CERTS_DIR} from "./paths.js";
+import {CERTS_DIR} from "./paths.js";
 
 const logger = getLogger(["shovel", "certs"]);
-
-// Re-export for backwards compatibility
-export {SHOVEL_DIR, CERTS_DIR};
 
 /**
  * Certificate files returned by ensureCerts

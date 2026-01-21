@@ -67,9 +67,6 @@ function wrapIPv6(host: string): string {
 	return `[${host}]`;
 }
 
-// Re-export for backwards compatibility
-export {getVirtualHostSocketPath};
-
 /**
  * Message types for IPC communication
  */

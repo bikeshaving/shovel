@@ -37,9 +37,3 @@ export const CERTS_DIR = join(SHOVEL_DIR, "certs");
 export function getVirtualHostSocketPath(port: number): string {
 	return join(SHOVEL_DIR, `virtualhost-${port}.sock`);
 }
-
-/**
- * Legacy shovel directory (~/.shovel)
- * Used for migration from old location
- */
-export const LEGACY_SHOVEL_DIR = join(homedir(), ".shovel");

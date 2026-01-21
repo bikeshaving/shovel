@@ -4,9 +4,9 @@ import {
 	VirtualHost,
 	VirtualHostClient,
 	establishVirtualHostRole,
-	getVirtualHostSocketPath,
 	type VirtualHostRole,
 } from "../src/utils/virtualhost.js";
+import {getVirtualHostSocketPath} from "../src/utils/paths.js";
 
 const TEST_PORT = 18443; // High port to avoid permission issues
 

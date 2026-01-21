@@ -10,7 +10,7 @@ import {
 import {type ChildProcess} from "child_process";
 import {join} from "path";
 import {existsSync, unlinkSync} from "fs";
-import {getVirtualHostSocketPath} from "../src/utils/virtualhost.js";
+import {getVirtualHostSocketPath} from "../src/utils/paths.js";
 import {spawn} from "./utils.js";
 
 // Use a high port for testing to avoid needing root/sudo
