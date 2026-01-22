@@ -1,0 +1,5 @@
+{
+	"name": "cloudflare-lifecycle-fixture",
+	"private": true,
+	"type": "module"
+}
