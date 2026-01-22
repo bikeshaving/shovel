@@ -65,6 +65,30 @@ self.addEventListener("install", (event) => {
 - Install completes when all `waitUntil` promises resolve
 - Install fails if any promise rejects
 - 30-second timeout for all promises
+- `fetch()` with relative URLs routes through your own fetch handler
+
+#### Using fetch() During Install
+
+You can use `fetch()` during install to generate static content through your own routes:
+
+```typescript
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    (async () => {
+      // Fetch through your own router to generate static pages
+      const response = await fetch("/404.html");
+      const html = await response.text();
+
+      // Write to static output
+      const dir = await directories.open("public");
+      const file = await dir.getFileHandle("404.html", { create: true });
+      const writable = await file.createWritable();
+      await writable.write(html);
+      await writable.close();
+    })()
+  );
+});
+```
 
 ### 3. Activating
 
@@ -94,10 +118,11 @@ self.addEventListener("activate", (event) => {
 - Activation completes when all `waitUntil` promises resolve
 - Activation fails if any promise rejects
 - 30-second timeout for all promises
+- `fetch()` with relative URLs routes through your own fetch handler
 
 ### 4. Activated
 
-The worker is ready to handle requests. `fetch` events now fire.
+The worker is ready to handle external requests. `fetch` events fire for incoming HTTP requests.
 
 ---
 
