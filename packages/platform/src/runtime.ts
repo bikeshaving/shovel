@@ -1235,12 +1235,12 @@ export class ShovelServiceWorkerRegistration
 			const event = new ShovelInstallEvent();
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
-			process.nextTick(() => {
+			queueMicrotask(() => {
 				try {
 					this.dispatchEvent(event);
 				} catch (error) {
 					// Allow errors in event listeners to propagate as uncaught exceptions
-					process.nextTick(() => {
+					queueMicrotask(() => {
 						throw error;
 					});
 				}
@@ -1282,12 +1282,12 @@ export class ShovelServiceWorkerRegistration
 			const event = new ShovelActivateEvent();
 
 			// Dispatch event asynchronously to allow listener errors to be deferred
-			process.nextTick(() => {
+			queueMicrotask(() => {
 				try {
 					this.dispatchEvent(event);
 				} catch (error) {
 					// Allow errors in event listeners to propagate as uncaught exceptions
-					process.nextTick(() => {
+					queueMicrotask(() => {
 						throw error;
 					});
 				}

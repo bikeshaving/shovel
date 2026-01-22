@@ -385,16 +385,16 @@ export class CloudflarePlatform extends BasePlatform {
 		const safePath = JSON.stringify(userEntryPath);
 		const serverCode = `// Cloudflare Worker Entry
 import { config } from "shovel:config";
-import { initializeRuntime, createFetchHandler, runLifecycle } from "@b9g/platform-cloudflare/runtime";
+import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
 
+// Initialize runtime first (installs ServiceWorker globals like addEventListener)
 const registration = await initializeRuntime(config);
 
-// Import user code (bundled inline - this is a static import)
-import ${safePath};
+// Import user code (registers event handlers via self.addEventListener)
+// Must be dynamic import to ensure it runs after initializeRuntime
+await import(${safePath});
 
-// Run ServiceWorker lifecycle (stage from config.lifecycle if present)
-await runLifecycle(registration, config.lifecycle?.stage);
-
+// Lifecycle deferred to first request (workerd doesn't allow setTimeout in global scope)
 export default { fetch: createFetchHandler(registration) };
 `;
 

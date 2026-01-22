@@ -19,8 +19,7 @@ import {
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
 
-// Re-export runLifecycle for entry templates
-export {runLifecycle};
+// runLifecycle is used internally by createFetchHandler (not re-exported)
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
@@ -125,6 +124,10 @@ export async function initializeRuntime(
  *
  * Creates a CloudflareFetchEvent with env bindings and waitUntil hook,
  * then delegates to registration.handleEvent()
+ *
+ * Lifecycle (install/activate) is deferred to the first request because
+ * Cloudflare Workers don't allow setTimeout in global scope, and our
+ * lifecycle implementation uses timeouts for safety.
  */
 export function createFetchHandler(
 	registration: ShovelServiceWorkerRegistration,
@@ -133,11 +136,20 @@ export function createFetchHandler(
 	env: unknown,
 	ctx: ExecutionContext,
 ) => Promise<Response> {
+	// Defer lifecycle to first request (workerd restriction on setTimeout in global scope)
+	let lifecyclePromise: Promise<void> | null = null;
+
 	return async (
 		request: Request,
 		env: unknown,
 		ctx: ExecutionContext,
 	): Promise<Response> => {
+		// Run lifecycle once on first request
+		if (!lifecyclePromise) {
+			lifecyclePromise = runLifecycle(registration, "activate");
+		}
+		await lifecyclePromise;
+
 		// Create CloudflareFetchEvent with env and waitUntil hook
 		const event = new CloudflareFetchEvent(request, {
 			env: env as Record<string, unknown>,
