@@ -1,5 +1,5 @@
 name = "shovel-blog"
-main = "dist/server/server.js"
+main = "dist/server/worker.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 

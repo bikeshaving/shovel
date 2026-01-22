@@ -52,9 +52,8 @@ async function* pageCache(request, _context) {
 	}
 
 	logger.debug`Opening cache...`;
-	// Get the pages cache from platform with version for cache invalidation
-	const cacheVersion = "v2"; // Increment when asset paths change
-	const cache = await self.caches.open(`pages-${cacheVersion}`);
+	// Use the default cache (configured by platform)
+	const cache = await self.caches.open("default");
 	logger.debug`Cache opened`;
 	let cached;
 	try {
