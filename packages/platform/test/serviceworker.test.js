@@ -603,3 +603,82 @@ test(
 	},
 	TIMEOUT,
 );
+
+// ======================
+// FETCH DURING LIFECYCLE TESTS
+// ======================
+
+test(
+	"fetch() works during install lifecycle (issue #30)",
+	async () => {
+		const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
+			await import("../src/runtime.js");
+
+		const registration = new ShovelServiceWorkerRegistration();
+		const scope = new ServiceWorkerGlobals({registration});
+		scope.install();
+
+		let fetchResponseDuringInstall = null;
+
+		// Register fetch handler
+		globalThis.addEventListener("fetch", (event) => {
+			event.respondWith(new Response("Hello from fetch handler!"));
+		});
+
+		// Register install handler that uses fetch()
+		globalThis.addEventListener("install", (event) => {
+			event.waitUntil(
+				(async () => {
+					// This fetch() call should work during install
+					// It routes through the ServiceWorker's own fetch handler
+					const response = await fetch("/test");
+					fetchResponseDuringInstall = await response.text();
+				})(),
+			);
+		});
+
+		// Run install lifecycle
+		await runLifecycle(registration, "install");
+
+		// Verify fetch worked during install
+		expect(fetchResponseDuringInstall).toBe("Hello from fetch handler!");
+	},
+	TIMEOUT,
+);
+
+test(
+	"fetch() works during activate lifecycle",
+	async () => {
+		const {ShovelServiceWorkerRegistration, ServiceWorkerGlobals} =
+			await import("../src/runtime.js");
+
+		const registration = new ShovelServiceWorkerRegistration();
+		const scope = new ServiceWorkerGlobals({registration});
+		scope.install();
+
+		let fetchResponseDuringActivate = null;
+
+		// Register fetch handler
+		globalThis.addEventListener("fetch", (event) => {
+			event.respondWith(new Response("Hello from activate!"));
+		});
+
+		// Register activate handler that uses fetch()
+		globalThis.addEventListener("activate", (event) => {
+			event.waitUntil(
+				(async () => {
+					const response = await fetch("/test");
+					fetchResponseDuringActivate = await response.text();
+				})(),
+			);
+		});
+
+		// Run full lifecycle
+		await runLifecycle(registration, "install");
+		await runLifecycle(registration, "activate");
+
+		// Verify fetch worked during activate
+		expect(fetchResponseDuringActivate).toBe("Hello from activate!");
+	},
+	TIMEOUT,
+);

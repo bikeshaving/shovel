@@ -1324,8 +1324,12 @@ export class ShovelServiceWorkerRegistration
 	 * @param event - The fetch event to handle (created by platform adapter)
 	 */
 	async [kHandleRequest](event: ShovelFetchEvent): Promise<Response> {
-		if (this[kServiceWorker].state !== "activated") {
-			throw new Error("ServiceWorker not activated");
+		// Allow fetch during any lifecycle state after parsing (installing, installed,
+		// activating, activated). This enables fetch() during install/activate handlers
+		// for use cases like SSG cache warming. Fetch handlers are registered during
+		// module evaluation, before lifecycle events dispatch.
+		if (this[kServiceWorker].state === "parsed") {
+			throw new Error("ServiceWorker not initialized");
 		}
 
 		// Run the request handling within the AsyncLocalStorage context
