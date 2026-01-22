@@ -19,6 +19,7 @@ import {assetsPlugin} from "../plugins/assets.js";
 import {importMetaPlugin} from "../plugins/import-meta.js";
 import {createConfigPlugin} from "../plugins/config.js";
 import {createEntryPlugin} from "../plugins/entry.js";
+import {createAssetsManifestPlugin} from "../plugins/assets-manifest.js";
 import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
 import {findProjectRoot, getNodeModulesPath} from "./project.js";
 import {getGitSHA} from "./git-sha.js";
@@ -298,6 +299,7 @@ export class ServerBundler {
 				lifecycle: this.#options.lifecycle,
 			}),
 			createEntryPlugin(this.#projectRoot, platformEntryPoints),
+			createAssetsManifestPlugin(this.#projectRoot, this.#options.outDir),
 			importMetaPlugin(),
 			assetsPlugin({
 				outDir: outputDir,

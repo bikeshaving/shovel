@@ -7,10 +7,11 @@
  * - public/assets/app.[hash].js -> /assets/app.[hash].js
  * - public/index.html -> /index.html
  *
- * Manifest is read from the server directory (not publicly servable).
+ * Manifest is bundled via the shovel:assets virtual module at build time.
  */
 
 import Mime from "mime";
+import assetsManifest from "shovel:assets";
 
 // ============================================================================
 // Types
@@ -52,8 +53,6 @@ export interface AssetManifest {
  * Runtime configuration for assets middleware
  */
 export interface AssetsConfig {
-	/** Path to asset manifest file (default: 'assets.json') */
-	manifestPath?: string;
 	/** Cache control header value (default: 'public, max-age=31536000, immutable') */
 	cacheControl?: string;
 }
@@ -62,28 +61,19 @@ export interface AssetsConfig {
  * Assets middleware
  */
 export function assets(config: AssetsConfig = {}) {
-	const {
-		manifestPath = "assets.json",
-		cacheControl = "public, max-age=31536000, immutable",
-	} = config;
+	const {cacheControl = "public, max-age=31536000, immutable"} = config;
 
-	// Cache for manifest data
+	// Build URL -> entry map for O(1) lookup (computed once at module load)
 	let manifestEntries: Map<string, AssetManifestEntry> | null = null;
 
-	// Load manifest from server directory (not static - keeps it non-public)
-	async function loadManifest(): Promise<Map<string, AssetManifestEntry>> {
+	// Load manifest from bundled shovel:assets virtual module
+	function loadManifest(): Map<string, AssetManifestEntry> {
 		if (manifestEntries) return manifestEntries;
-
-		// Read manifest from server directory
-		const serverDir = await self.directories.open("server");
-		const manifestHandle = await serverDir.getFileHandle(manifestPath);
-		const manifestFile = await manifestHandle.getFile();
-		const manifest = JSON.parse(await manifestFile.text());
 
 		// Build URL -> entry map for O(1) lookup
 		manifestEntries = new Map();
-		if (manifest.assets) {
-			for (const entry of Object.values(manifest.assets)) {
+		if (assetsManifest.assets) {
+			for (const entry of Object.values(assetsManifest.assets)) {
 				if (entry && typeof entry === "object" && "url" in entry) {
 					manifestEntries.set(
 						(entry as AssetManifestEntry).url,
@@ -108,8 +98,8 @@ export function assets(config: AssetsConfig = {}) {
 			});
 		}
 
-		// Load manifest (throws if missing - app is misconfigured)
-		const entries = await loadManifest();
+		// Load manifest (bundled at build time via shovel:assets)
+		const entries = loadManifest();
 
 		// Not in manifest - pass through to next middleware
 		const manifestEntry = entries.get(requestedPath);
