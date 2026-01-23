@@ -185,6 +185,8 @@ export class CloudflarePlatform extends BasePlatform {
 		assetsDirectory: string | undefined;
 		cwd: string;
 		config?: ShovelConfig;
+		port: number;
+		host: string;
 	};
 	#miniflare: Miniflare | null;
 	#assetsMiniflare: Miniflare | null;
@@ -203,6 +205,8 @@ export class CloudflarePlatform extends BasePlatform {
 			assetsDirectory: options.assetsDirectory,
 			cwd,
 			config: options.config,
+			port: options.port ?? 3000,
+			host: options.host ?? "localhost",
 		};
 	}
 
@@ -298,6 +302,9 @@ export class CloudflarePlatform extends BasePlatform {
 			scriptPath: entrypoint,
 			compatibilityDate: "2024-09-23",
 			compatibilityFlags: ["nodejs_compat"],
+			// Start HTTP server for development
+			port: this.#options.port,
+			host: this.#options.host,
 		};
 
 		this.#miniflare = new Miniflare(miniflareOptions);
@@ -401,6 +408,21 @@ export default { fetch: createFetchHandler(registration) };
 		return {
 			worker: serverCode,
 		};
+	}
+
+	/**
+	 * Get development entry points for bundling (Cloudflare-specific).
+	 *
+	 * Cloudflare Workers have a restriction: no setTimeout in global scope.
+	 * The default development entry calls runLifecycle() which uses setTimeout.
+	 * We defer lifecycle to first request instead.
+	 *
+	 * For Cloudflare, development and production entries are identical since
+	 * both need to handle the workerd restriction.
+	 */
+	getDevelopmentEntryPoints(userEntryPath: string): ProductionEntryPoints {
+		// Reuse production entry - both need deferred lifecycle for workerd
+		return this.getProductionEntryPoints(userEntryPath);
 	}
 
 	/**

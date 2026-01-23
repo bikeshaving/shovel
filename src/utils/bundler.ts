@@ -257,9 +257,12 @@ export class ServerBundler {
 		// (esbuild resolves imports relative to resolveDir in the entry plugin)
 		const relativeEntryPath = "./" + relative(this.#projectRoot, entryPath);
 
-		// In development mode, use message loop worker; in production, use platform entry points
+		// In development mode, use platform-specific dev entry points if available,
+		// otherwise fall back to default message loop worker.
+		// In production, always use platform entry points.
 		const platformEntryPoints = this.#options.development
-			? this.#getDevelopmentEntryPoints(relativeEntryPath)
+			? (this.#options.platform.getDevelopmentEntryPoints?.(relativeEntryPath) ??
+					this.#getDevelopmentEntryPoints(relativeEntryPath))
 			: this.#options.platform.getProductionEntryPoints(relativeEntryPath);
 
 		const jsxOptions = await loadJSXConfig(this.#projectRoot);
