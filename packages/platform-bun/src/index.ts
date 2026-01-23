@@ -240,7 +240,7 @@ export class BunServiceWorkerContainer
  * ServiceWorker entrypoint loader for Bun with native TypeScript/JSX support
  */
 export class BunPlatform {
-	readonly name = "bun";
+	readonly name: string;
 	readonly serviceWorker: BunServiceWorkerContainer;
 
 	#options: {
@@ -254,7 +254,7 @@ export class BunPlatform {
 	#databaseStorage?: CustomDatabaseStorage;
 
 	constructor(options: BunPlatformOptions = {}) {
-
+		this.name = "bun";
 		// eslint-disable-next-line no-restricted-properties -- Platform adapter entry point
 		const cwd = options.cwd || process.cwd();
 

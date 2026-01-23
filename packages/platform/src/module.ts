@@ -40,8 +40,14 @@ export interface ESBuildConfig {
  * Module paths that get statically imported at build time.
  */
 export interface PlatformDefaults {
-	caches?: Record<string, { module: string; export?: string; [key: string]: unknown }>;
-	directories?: Record<string, { module: string; export?: string; [key: string]: unknown }>;
+	caches?: Record<
+		string,
+		{module: string; export?: string; [key: string]: unknown}
+	>;
+	directories?: Record<
+		string,
+		{module: string; export?: string; [key: string]: unknown}
+	>;
 }
 
 // ============================================================================
@@ -106,11 +112,15 @@ export type RequestHandler = (request: Request) => Response | Promise<Response>;
 
 /**
  * Fetch handler for Cloudflare Workers.
+ * ExecutionContext is Cloudflare-specific, so we use a generic type here.
  */
 export type FetchHandler = (
 	request: Request,
 	env: unknown,
-	ctx: ExecutionContext,
+	ctx: {
+		waitUntil(promise: Promise<unknown>): void;
+		passThroughOnException(): void;
+	},
 ) => Response | Promise<Response>;
 
 // ============================================================================

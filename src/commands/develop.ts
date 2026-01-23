@@ -91,7 +91,9 @@ export async function developCommand(
 		const platformESBuildConfig = platformModule.getESBuildConfig();
 
 		// Track dev server instance
-		let devServer: Awaited<ReturnType<typeof platformModule.createDevServer>> | null = null;
+		let devServer: Awaited<
+			ReturnType<typeof platformModule.createDevServer>
+		> | null = null;
 
 		// Helper to start or reload the server
 		const startOrReloadServer = async (workerPath: string) => {

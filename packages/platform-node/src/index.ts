@@ -237,7 +237,7 @@ export class NodeServiceWorkerContainer
  * ServiceWorker entrypoint loader for Node.js with ESBuild VM system
  */
 export class NodePlatform {
-	readonly name = "node";
+	readonly name: string;
 	readonly serviceWorker: NodeServiceWorkerContainer;
 
 	#options: {
@@ -251,7 +251,7 @@ export class NodePlatform {
 	#server?: Server;
 
 	constructor(options: NodePlatformOptions = {}) {
-
+		this.name = "node";
 		// eslint-disable-next-line no-restricted-properties -- Platform adapter entry point
 		const cwd = options.cwd || process.cwd();
 

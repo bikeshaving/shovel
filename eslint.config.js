@@ -14,6 +14,7 @@ export default [
 			"**/build/**",
 			"**/coverage/**",
 			"**/*.min.js",
+			"**/.wrangler/**", // Wrangler temp files
 			"examples/tfb/**", // Third-party framework benchmarks - not our code
 			"packages/shovel-wpt/wpt/**", // Web Platform Tests - third-party test suite
 			"packages/shovel-wpt/test/fixtures/**", // Dynamically generated test fixtures

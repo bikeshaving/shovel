@@ -165,7 +165,6 @@ export interface ShovelServiceWorkerContainer extends ServiceWorkerContainer {
 	reloadWorkers(entrypoint: string): Promise<void>;
 }
 
-
 // ============================================================================
 // Platform Detection
 // ============================================================================
@@ -274,7 +273,6 @@ export function resolvePlatform(options: {
 	return detectDevelopmentPlatform();
 }
 
-
 /**
  * Merge platform defaults with user config
  *
@@ -297,7 +295,6 @@ export function mergeConfigWithDefaults(
 	}
 	return merged;
 }
-
 
 // ============================================================================
 // ServiceWorkerPool - Multi-worker ServiceWorker execution
