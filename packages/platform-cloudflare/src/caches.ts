@@ -5,6 +5,17 @@
  */
 
 /**
+ * Store reference to the ORIGINAL native caches object before ServiceWorkerGlobals
+ * overwrites it. This is captured at module load time.
+ *
+ * This is critical because ServiceWorkerGlobals.install() replaces globalThis.caches
+ * with CustomCacheStorage. If we used globalThis.caches directly in #getCache(),
+ * we'd get infinite recursion: CustomCacheStorage.open() -> CloudflareNativeCache ->
+ * #getCache() -> CustomCacheStorage.open() -> ...
+ */
+const nativeCaches: CacheStorage | undefined = globalThis.caches;
+
+/**
  * CloudflareNativeCache - Wrapper around Cloudflare's native Cache API.
  * This allows the native cache to be used with the factory pattern.
  *
@@ -22,10 +33,12 @@ export class CloudflareNativeCache implements Cache {
 
 	#getCache(): Promise<Cache> {
 		if (!this.#cachePromise) {
-			if (!globalThis.caches) {
+			if (!nativeCaches) {
 				throw new Error("Cloudflare caches not available in this context");
 			}
-			this.#cachePromise = globalThis.caches.open(this.#name);
+			// Use the captured native caches reference, not globalThis.caches
+			// which may have been overwritten by ServiceWorkerGlobals
+			this.#cachePromise = nativeCaches.open(this.#name);
 		}
 		return this.#cachePromise;
 	}
