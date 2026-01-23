@@ -15,8 +15,7 @@
     "@b9g/match-pattern": "workspace:*",
     "@b9g/platform": "workspace:*",
     "@b9g/platform-cloudflare": "workspace:*",
-    "@b9g/router": "workspace:*",
-    "@b9g/shovel": "link:@b9g/shovel"
+    "@b9g/router": "workspace:*"
   },
   "devDependencies": {
     "wrangler": "^3.0.0"

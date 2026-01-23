@@ -12,8 +12,7 @@
   "dependencies": {
     "@b9g/router": "workspace:*",
     "@b9g/platform": "workspace:*",
-    "@b9g/platform-node": "workspace:*",
-    "@b9g/shovel": "link:@b9g/shovel"
+    "@b9g/platform-node": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^18.0.0"

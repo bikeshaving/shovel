@@ -15,7 +15,6 @@
     "@b9g/platform": "workspace:*",
     "@b9g/platform-bun": "workspace:*",
     "@b9g/router": "workspace:*",
-    "@b9g/shovel": "link:@b9g/shovel",
     "@b9g/zen": "0.1.6"
   }
 }
