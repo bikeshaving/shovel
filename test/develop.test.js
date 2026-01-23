@@ -1311,7 +1311,7 @@ self.addEventListener("fetch", (event) => {
 // =======================
 
 import {ServerBundler} from "../src/utils/bundler.ts";
-import {createPlatform} from "../src/utils/platform.ts";
+import {loadPlatformModule} from "../src/utils/platform.ts";
 import {existsSync} from "fs";
 
 test(
@@ -1348,14 +1348,14 @@ test(
 			const originalCwd = process.cwd();
 			process.chdir(fixtureDir);
 
-			// Create platform instance for bundler
-			const platform = await createPlatform("bun");
-			const platformESBuildConfig = platform.getESBuildConfig();
+			// Load platform module for bundler
+			const platformModule = await loadPlatformModule("bun");
+			const platformESBuildConfig = platformModule.getESBuildConfig();
 
 			const bundler = new ServerBundler({
 				entrypoint: "app.ts",
 				outDir: "dist",
-				platform,
+				platformModule,
 				platformESBuildConfig,
 			});
 

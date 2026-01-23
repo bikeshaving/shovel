@@ -12,7 +12,6 @@
  */
 
 import {getLogger} from "@logtape/logtape";
-import type {DirectoryStorage} from "@b9g/filesystem";
 import {CustomLoggerStorage, type LoggerStorage} from "./runtime.js";
 
 // Re-export config validation utilities
@@ -166,121 +165,10 @@ export interface ShovelServiceWorkerContainer extends ServiceWorkerContainer {
 	reloadWorkers(entrypoint: string): Promise<void>;
 }
 
-/**
- * Platform interface - ServiceWorker entrypoint loader for JavaScript runtimes
- *
- * The core responsibility: "Take a ServiceWorker-style app file and make it run in this environment"
- */
-export interface Platform {
-	/**
-	 * Platform name for identification
-	 */
-	readonly name: string;
-
-	/**
-	 * ServiceWorkerContainer for managing registrations (Node/Bun only)
-	 * Similar to navigator.serviceWorker in browsers
-	 */
-	readonly serviceWorker: ShovelServiceWorkerContainer;
-
-	/**
-	 * Start HTTP server and route requests to ServiceWorker (Node/Bun only)
-	 * Must call serviceWorker.register() first
-	 */
-	listen(): Promise<Server>;
-
-	/**
-	 * Close server and terminate workers (Node/Bun only)
-	 */
-	close(): Promise<void>;
-
-	/**
-	 * SUPPORTING UTILITY - Create server instance for this platform
-	 */
-	createServer(handler: Handler, options?: ServerOptions): Server;
-
-	/**
-	 * BUILD SUPPORT - Get entry points for bundling
-	 *
-	 * Returns a map of output filenames to their source code.
-	 * The build system creates one output file per entry point.
-	 *
-	 * Platform determines the structure:
-	 * - Cloudflare: { "worker": "<code>" } - single worker file
-	 * - Node/Bun: { "index": "<supervisor>", "worker": "<runtime + user code>" }
-	 *
-	 * The user's entrypoint code is statically imported into the appropriate file.
-	 *
-	 * @param userEntryPath - Path to user's entrypoint (will be imported)
-	 * @param mode - Build mode: "development" or "production"
-	 */
-	getEntryPoints(
-		userEntryPath: string,
-		mode: "development" | "production",
-	): EntryPoints;
-
-	/**
-	 * BUILD SUPPORT - Get platform-specific esbuild configuration
-	 *
-	 * Returns partial esbuild config that the CLI merges with common settings.
-	 * Includes platform target, conditions, externals, and defines.
-	 */
-	getESBuildConfig(): PlatformESBuildConfig;
-
-	/**
-	 * BUILD SUPPORT - Get platform-specific defaults for config generation
-	 *
-	 * Returns defaults for directories, caches, etc. that get merged with
-	 * user config at build time. These are used by generateConfigModule()
-	 * to create static imports for the default implementations.
-	 */
-	getDefaults(): PlatformDefaults;
-
-	/**
-	 * Create cache storage for this platform
-	 * Uses platform-specific defaults, overridable via shovel.json config
-	 */
-	createCaches(): Promise<CacheStorage>;
-
-	/**
-	 * Create directory storage for this platform
-	 * Uses platform-specific defaults, overridable via shovel.json config
-	 */
-	createDirectories(): Promise<DirectoryStorage>;
-
-	/**
-	 * Create logger storage for this platform
-	 * Uses platform-specific defaults, overridable via shovel.json config
-	 */
-	createLoggers(): Promise<LoggerStorage>;
-
-	/**
-	 * Dispose of platform resources (worker pools, connections, etc.)
-	 */
-	dispose(): Promise<void>;
-
-	/**
-	 * HOT RELOAD - Reload workers with a new entrypoint (development only)
-	 * Optional - only Node and Bun platforms implement this
-	 */
-	reloadWorkers?(entrypoint: string): Promise<void>;
-}
 
 // ============================================================================
 // Platform Detection
 // ============================================================================
-
-/**
- * Platform registry - internal implementation
- */
-interface PlatformRegistry {
-	/** Register a platform implementation */
-	register(name: string, platform: any): void;
-	/** Get platform by name */
-	get(name: string): any | undefined;
-	/** Get all registered platforms */
-	list(): string[];
-}
 
 /**
  * Detect the current JavaScript runtime
@@ -386,74 +274,6 @@ export function resolvePlatform(options: {
 	return detectDevelopmentPlatform();
 }
 
-// ============================================================================
-// Base Platform Class
-// ============================================================================
-
-/**
- * Base platform class with shared adapter loading logic
- * Platform implementations extend this and provide platform-specific methods
- */
-export abstract class BasePlatform implements Platform {
-	config: PlatformConfig;
-
-	constructor(config: PlatformConfig = {}) {
-		this.config = config;
-	}
-
-	abstract readonly name: string;
-	abstract readonly serviceWorker: ShovelServiceWorkerContainer;
-	abstract listen(): Promise<Server>;
-	abstract close(): Promise<void>;
-	abstract createServer(handler: any, options?: any): any;
-
-	/**
-	 * Get production entry points for bundling
-	 * Subclasses must override to provide platform-specific entry points
-	 */
-	abstract getEntryPoints(
-		userEntryPath: string,
-		mode: "development" | "production",
-	): EntryPoints;
-
-	/**
-	 * Get platform-specific esbuild configuration
-	 * Subclasses should override to provide platform-specific config
-	 */
-	abstract getESBuildConfig(): PlatformESBuildConfig;
-
-	/**
-	 * Get platform-specific defaults for config generation
-	 * Subclasses should override to provide platform-specific defaults
-	 */
-	abstract getDefaults(): PlatformDefaults;
-
-	/**
-	 * Create cache storage for this platform
-	 * Subclasses must override to provide platform-specific implementation
-	 */
-	abstract createCaches(): Promise<CacheStorage>;
-
-	/**
-	 * Create directory storage for this platform
-	 * Subclasses must override to provide platform-specific implementation
-	 */
-	abstract createDirectories(): Promise<DirectoryStorage>;
-
-	/**
-	 * Create logger storage for this platform
-	 * Subclasses must override to provide platform-specific implementation
-	 */
-	abstract createLoggers(): Promise<LoggerStorage>;
-
-	/**
-	 * Dispose of platform resources
-	 * Subclasses should override to clean up worker pools, connections, etc.
-	 */
-	async dispose(): Promise<void> {
-		// Default no-op, subclasses override
-	}
-}
 
 /**
  * Merge platform defaults with user config
@@ -478,95 +298,6 @@ export function mergeConfigWithDefaults(
 	return merged;
 }
 
-// ============================================================================
-// Platform Registry
-// ============================================================================
-
-/**
- * Global platform registry
- */
-class DefaultPlatformRegistry implements PlatformRegistry {
-	#platforms: Map<string, Platform>;
-
-	constructor() {
-		this.#platforms = new Map<string, Platform>();
-	}
-
-	register(name: string, platform: Platform): void {
-		this.#platforms.set(name, platform);
-	}
-
-	get(name: string): Platform | undefined {
-		return this.#platforms.get(name);
-	}
-
-	list(): string[] {
-		return Array.from(this.#platforms.keys());
-	}
-}
-
-/**
- * Global platform registry instance
- */
-export const platformRegistry = new DefaultPlatformRegistry();
-
-/**
- * Get platform by name with error handling
- */
-export function getPlatform(name?: string): Platform {
-	if (name) {
-		const platform = platformRegistry.get(name);
-		if (!platform) {
-			const available = platformRegistry.list();
-			throw new Error(
-				`Platform '${name}' not found. Available platforms: ${available.join(", ")}`,
-			);
-		}
-		return platform;
-	}
-
-	// Auto-detect platform from environment
-	const platformName =
-		detectDeploymentPlatform() || detectDevelopmentPlatform();
-	const platform = platformRegistry.get(platformName);
-
-	if (!platform) {
-		throw new Error(
-			`Detected platform '${platformName}' not registered. Please register it manually or specify a platform name.`,
-		);
-	}
-
-	return platform;
-}
-
-/**
- * Get platform with async auto-registration fallback
- */
-export async function getPlatformAsync(name?: string): Promise<Platform> {
-	if (name) {
-		const platform = platformRegistry.get(name);
-		if (!platform) {
-			const available = platformRegistry.list();
-			throw new Error(
-				`Platform '${name}' not found. Available platforms: ${available.join(", ")}`,
-			);
-		}
-		return platform;
-	}
-
-	// Auto-detect platform from environment
-	const platformName =
-		detectDeploymentPlatform() || detectDevelopmentPlatform();
-	const platform = platformRegistry.get(platformName);
-
-	if (!platform) {
-		throw new Error(
-			`Detected platform '${platformName}' not registered. Please register it manually using platformRegistry.register().`,
-		);
-	}
-
-	return platform;
-}
 
 // ============================================================================
 // ServiceWorkerPool - Multi-worker ServiceWorker execution

@@ -44,6 +44,14 @@
     "./index.js": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
+    },
+    "./platform": {
+      "types": "./dist/src/platform.d.ts",
+      "import": "./dist/src/platform.js"
+    },
+    "./platform.js": {
+      "types": "./dist/src/platform.d.ts",
+      "import": "./dist/src/platform.js"
     }
   }
 }

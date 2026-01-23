@@ -1,34 +1,40 @@
 /**
- * Platform factory for the Shovel CLI
+ * Platform module loader for the Shovel CLI
  *
- * Creates platform instances based on name. This lives in the CLI
- * rather than @b9g/platform to avoid circular dependencies.
+ * Loads platform modules (function-based) instead of instantiating classes.
+ * This enables tree-shaking - dev dependencies like Miniflare never end up
+ * in production bundles.
  */
 
-import type {Platform} from "@b9g/platform";
+import type {PlatformModule} from "@b9g/platform/module";
 
 /**
- * Create platform instance based on name
+ * Load a platform module by name.
+ *
+ * Platform modules export functions, not classes:
+ * - name: string
+ * - getEntryPoints(userPath, mode): EntryPoints
+ * - getESBuildConfig(): ESBuildConfig
+ * - getDefaults(): PlatformDefaults
+ * - createDevServer(options): Promise<DevServer>
  */
-export async function createPlatform(
+export async function loadPlatformModule(
 	platformName: string,
-	options: Record<string, unknown> = {},
-): Promise<Platform> {
+): Promise<PlatformModule> {
 	switch (platformName) {
 		case "node": {
-			const {default: NodePlatform} = await import("@b9g/platform-node");
-			return new NodePlatform(options);
+			const module = await import("@b9g/platform-node/platform");
+			return module as PlatformModule;
 		}
 
 		case "bun": {
-			const {default: BunPlatform} = await import("@b9g/platform-bun");
-			return new BunPlatform(options);
+			const module = await import("@b9g/platform-bun/platform");
+			return module as PlatformModule;
 		}
 
 		case "cloudflare": {
-			const {default: CloudflarePlatform} =
-				await import("@b9g/platform-cloudflare");
-			return new CloudflarePlatform(options);
+			const module = await import("@b9g/platform-cloudflare/platform");
+			return module as PlatformModule;
 		}
 
 		default:

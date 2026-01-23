@@ -18,15 +18,13 @@ import type {Miniflare} from "miniflare";
 import {CustomCacheStorage} from "@b9g/cache";
 import type {DirectoryStorage} from "@b9g/filesystem";
 import {
-	BasePlatform,
-	PlatformConfig,
 	type PlatformDefaults,
-	Handler,
-	Server,
-	ServerOptions,
-	ServiceWorkerOptions,
-	ServiceWorkerInstance,
-	PlatformESBuildConfig,
+	type Handler,
+	type Server,
+	type ServerOptions,
+	type ServiceWorkerOptions,
+	type ServiceWorkerInstance,
+	type PlatformESBuildConfig,
 	type EntryPoints,
 	CustomLoggerStorage,
 	type LoggerStorage,
@@ -42,7 +40,6 @@ const logger = getLogger(["shovel", "platform"]);
 
 // Re-export common platform types
 export type {
-	Platform,
 	Handler,
 	Server,
 	ServerOptions,
@@ -54,7 +51,11 @@ export type {
 // TYPES
 // ============================================================================
 
-export interface CloudflarePlatformOptions extends PlatformConfig {
+export interface CloudflarePlatformOptions {
+	/** Port for development server (default: 3000) */
+	port?: number;
+	/** Host for development server (default: localhost) */
+	host?: string;
 	/** Cloudflare Workers environment (production, preview, dev) */
 	environment?: "production" | "preview" | "dev";
 	/** Static assets directory for ASSETS binding (dev mode) */
@@ -177,8 +178,8 @@ class CloudflareServiceWorkerContainer
 /**
  * Cloudflare Workers platform implementation
  */
-export class CloudflarePlatform extends BasePlatform {
-	readonly name: string;
+export class CloudflarePlatform {
+	readonly name = "cloudflare";
 	readonly serviceWorker: CloudflareServiceWorkerContainer;
 	#options: {
 		environment: "production" | "preview" | "dev";
@@ -192,10 +193,8 @@ export class CloudflarePlatform extends BasePlatform {
 	#assetsMiniflare: Miniflare | null;
 
 	constructor(options: CloudflarePlatformOptions = {}) {
-		super(options);
 		this.#miniflare = null;
 		this.#assetsMiniflare = null;
-		this.name = "cloudflare";
 		this.serviceWorker = new CloudflareServiceWorkerContainer(this);
 
 		const cwd = options.cwd ?? ".";

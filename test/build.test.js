@@ -237,7 +237,7 @@ test(
 					verbose: false,
 					platform: "invalidplatform",
 				}),
-			).rejects.toThrow(); // Platform.createPlatform throws for invalid platform
+			).rejects.toThrow(); // loadPlatformModule throws for invalid platform
 		} finally {
 			await cleanup(cleanup_paths);
 		}

@@ -78,6 +78,14 @@
     "./config.js": {
       "types": "./dist/src/config.d.ts",
       "import": "./dist/src/config.js"
+    },
+    "./module": {
+      "types": "./dist/src/module.d.ts",
+      "import": "./dist/src/module.js"
+    },
+    "./module.js": {
+      "types": "./dist/src/module.d.ts",
+      "import": "./dist/src/module.js"
     }
   }
 }

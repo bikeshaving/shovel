@@ -19,8 +19,6 @@ import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
-	BasePlatform,
-	type PlatformConfig,
 	type PlatformDefaults,
 	type Handler,
 	type Server,
@@ -47,7 +45,7 @@ const logger = getLogger(["shovel", "platform"]);
 // TYPES
 // ============================================================================
 
-export interface BunPlatformOptions extends PlatformConfig {
+export interface BunPlatformOptions {
 	/** Port for development server (default: 3000) */
 	port?: number;
 	/** Host for development server (default: localhost) */
@@ -241,8 +239,8 @@ export class BunServiceWorkerContainer
  * Bun platform implementation
  * ServiceWorker entrypoint loader for Bun with native TypeScript/JSX support
  */
-export class BunPlatform extends BasePlatform {
-	readonly name: string;
+export class BunPlatform {
+	readonly name = "bun";
 	readonly serviceWorker: BunServiceWorkerContainer;
 
 	#options: {
@@ -256,8 +254,6 @@ export class BunPlatform extends BasePlatform {
 	#databaseStorage?: CustomDatabaseStorage;
 
 	constructor(options: BunPlatformOptions = {}) {
-		super(options);
-		this.name = "bun";
 
 		// eslint-disable-next-line no-restricted-properties -- Platform adapter entry point
 		const cwd = options.cwd || process.cwd();

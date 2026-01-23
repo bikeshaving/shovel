@@ -4,14 +4,15 @@
  */
 import {resolve, join, dirname, basename} from "path";
 import {getLogger} from "@logtape/logtape";
-import {resolvePlatform, type Platform} from "@b9g/platform";
+import {resolvePlatform} from "@b9g/platform";
 import {readFile, writeFile} from "fs/promises";
 import type * as ESBuild from "esbuild";
 
 import {ServerBundler} from "../utils/bundler.js";
 import {findProjectRoot, findWorkspaceRoot} from "../utils/project.js";
-import {createPlatform} from "../utils/platform.js";
+import {loadPlatformModule} from "../utils/platform.js";
 import type {ProcessedShovelConfig} from "../utils/config.js";
+import type {PlatformModule, DevServer} from "@b9g/platform/module";
 
 const logger = getLogger(["shovel", "build"]);
 
@@ -93,8 +94,8 @@ function logBundleSizes(metafile: ESBuild.Metafile): void {
  * Build result returned to callers
  */
 export interface BuildResult {
-	/** Platform instance (for running lifecycle) */
-	platform: Platform;
+	/** Platform module (for running lifecycle) */
+	platformModule: PlatformModule;
 	/** Path to worker entry point */
 	workerPath: string | undefined;
 }
@@ -126,15 +127,15 @@ export async function buildForProduction({
 	logger.debug("Target platform:", {platform});
 	logger.debug("Project root:", {projectRoot});
 
-	// Create platform instance
-	const platformInstance = await createPlatform(platform);
-	const platformESBuildConfig = platformInstance.getESBuildConfig();
+	// Load platform module (functions, not class)
+	const platformModule = await loadPlatformModule(platform);
+	const platformESBuildConfig = platformModule.getESBuildConfig();
 
 	// Build using the unified bundler
 	const bundler = new ServerBundler({
 		entrypoint,
 		outDir,
-		platform: platformInstance,
+		platformModule,
 		platformESBuildConfig,
 		userBuildConfig,
 		lifecycle,
@@ -163,7 +164,7 @@ export async function buildForProduction({
 	});
 
 	return {
-		platform: platformInstance,
+		platformModule,
 		workerPath: outputs.worker,
 	};
 }
@@ -298,7 +299,7 @@ export async function buildCommand(
 		lifecycleOption = {stage};
 	}
 
-	const {platform: platformInstance, workerPath} = await buildForProduction({
+	const {platformModule, workerPath} = await buildForProduction({
 		entrypoint,
 		outDir: "dist",
 		platform,
@@ -320,18 +321,28 @@ export async function buildCommand(
 			stage: lifecycleOption.stage,
 		});
 
-		// Register and wait for ServiceWorker to be ready
-		// Lifecycle runs at module load time - the worker reads config.lifecycle.stage
-		await platformInstance.serviceWorker.register(workerPath);
-		await platformInstance.serviceWorker.ready;
+		// Create a dev server to run the lifecycle
+		// This spawns a worker that runs the lifecycle and exits
+		let devServer: DevServer | undefined;
+		try {
+			devServer = await platformModule.createDevServer({
+				port: 0, // Use any available port
+				host: "localhost",
+				workerPath,
+				workers: 1,
+			});
 
-		// Terminate workers after lifecycle completes
-		await platformInstance.serviceWorker.terminate();
-		const lifecycleElapsed = Math.round(performance.now() - lifecycleStart);
-		logger.info("Lifecycle complete in {elapsed}ms", {
-			elapsed: lifecycleElapsed,
-		});
+			// Worker runs lifecycle at startup and signals ready when done
+			// For lifecycle-only mode, the worker exits after lifecycle completes
+
+			const lifecycleElapsed = Math.round(performance.now() - lifecycleStart);
+			logger.info("Lifecycle complete in {elapsed}ms", {
+				elapsed: lifecycleElapsed,
+			});
+		} finally {
+			if (devServer) {
+				await devServer.close();
+			}
+		}
 	}
-
-	await platformInstance.dispose();
 }
