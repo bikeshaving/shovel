@@ -213,6 +213,19 @@ export interface Platform {
 	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints;
 
 	/**
+	 * BUILD SUPPORT - Get development entry points for bundling (optional)
+	 *
+	 * Returns entry points for development mode. If not implemented,
+	 * the bundler uses a default entry that runs lifecycle at startup.
+	 *
+	 * Platforms with restrictions (e.g., Cloudflare's no-setTimeout-in-global-scope)
+	 * can override this to provide custom entry points that defer lifecycle.
+	 *
+	 * @param userEntryPath - Path to user's entrypoint (will be imported)
+	 */
+	getDevelopmentEntryPoints?(userEntryPath: string): ProductionEntryPoints;
+
+	/**
 	 * BUILD SUPPORT - Get platform-specific esbuild configuration
 	 *
 	 * Returns partial esbuild config that the CLI merges with common settings.
