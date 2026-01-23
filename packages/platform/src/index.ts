@@ -103,14 +103,17 @@ export interface ServiceWorkerInstance {
 }
 
 /**
- * Production entry points returned by getProductionEntryPoints().
+ * Entry points returned by getEntryPoints().
  * Each key is the output filename (without .js), value is the code.
  *
  * Examples:
  * - Cloudflare: { "worker": "<code>" } - single worker file
  * - Node/Bun: { "index": "<supervisor>", "worker": "<worker>" } - two files
  */
-export type ProductionEntryPoints = Record<string, string>;
+export type EntryPoints = Record<string, string>;
+
+/** @deprecated Use EntryPoints instead */
+export type ProductionEntryPoints = EntryPoints;
 
 /**
  * ESBuild configuration subset that platforms can customize
@@ -197,7 +200,7 @@ export interface Platform {
 	createServer(handler: Handler, options?: ServerOptions): Server;
 
 	/**
-	 * BUILD SUPPORT - Get production entry points for bundling
+	 * BUILD SUPPORT - Get entry points for bundling
 	 *
 	 * Returns a map of output filenames to their source code.
 	 * The build system creates one output file per entry point.
@@ -209,21 +212,12 @@ export interface Platform {
 	 * The user's entrypoint code is statically imported into the appropriate file.
 	 *
 	 * @param userEntryPath - Path to user's entrypoint (will be imported)
+	 * @param mode - Build mode: "development" or "production"
 	 */
-	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints;
-
-	/**
-	 * BUILD SUPPORT - Get development entry points for bundling (optional)
-	 *
-	 * Returns entry points for development mode. If not implemented,
-	 * the bundler uses a default entry that runs lifecycle at startup.
-	 *
-	 * Platforms with restrictions (e.g., Cloudflare's no-setTimeout-in-global-scope)
-	 * can override this to provide custom entry points that defer lifecycle.
-	 *
-	 * @param userEntryPath - Path to user's entrypoint (will be imported)
-	 */
-	getDevelopmentEntryPoints?(userEntryPath: string): ProductionEntryPoints;
+	getEntryPoints(
+		userEntryPath: string,
+		mode: "development" | "production",
+	): EntryPoints;
 
 	/**
 	 * BUILD SUPPORT - Get platform-specific esbuild configuration
@@ -417,9 +411,10 @@ export abstract class BasePlatform implements Platform {
 	 * Get production entry points for bundling
 	 * Subclasses must override to provide platform-specific entry points
 	 */
-	abstract getProductionEntryPoints(
+	abstract getEntryPoints(
 		userEntryPath: string,
-	): ProductionEntryPoints;
+		mode: "development" | "production",
+	): EntryPoints;
 
 	/**
 	 * Get platform-specific esbuild configuration

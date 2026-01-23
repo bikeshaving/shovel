@@ -257,13 +257,12 @@ export class ServerBundler {
 		// (esbuild resolves imports relative to resolveDir in the entry plugin)
 		const relativeEntryPath = "./" + relative(this.#projectRoot, entryPath);
 
-		// In development mode, use platform-specific dev entry points if available,
-		// otherwise fall back to default message loop worker.
-		// In production, always use platform entry points.
-		const platformEntryPoints = this.#options.development
-			? (this.#options.platform.getDevelopmentEntryPoints?.(relativeEntryPath) ??
-					this.#getDevelopmentEntryPoints(relativeEntryPath))
-			: this.#options.platform.getProductionEntryPoints(relativeEntryPath);
+		// Get platform-specific entry points for the current mode
+		const mode = this.#options.development ? "development" : "production";
+		const platformEntryPoints = this.#options.platform.getEntryPoints(
+			relativeEntryPath,
+			mode,
+		);
 
 		const jsxOptions = await loadJSXConfig(this.#projectRoot);
 
@@ -372,25 +371,6 @@ export class ServerBundler {
 		}
 
 		return outputs;
-	}
-
-	/**
-	 * Get development entry points.
-	 * Workers use startWorkerMessageLoop() to handle requests from ServiceWorkerPool.
-	 */
-	#getDevelopmentEntryPoints(userEntryPath: string): Record<string, string> {
-		const workerCode = `// Development Worker
-import {initWorkerRuntime, runLifecycle, startWorkerMessageLoop} from "@b9g/platform/runtime";
-import {config} from "shovel:config";
-
-const result = await initWorkerRuntime({config});
-const registration = result.registration;
-
-await import("${userEntryPath}");
-await runLifecycle(registration);
-startWorkerMessageLoop({registration, databases: result.databases});
-`;
-		return {worker: workerCode};
 	}
 
 	/**
