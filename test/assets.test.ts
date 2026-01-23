@@ -1,6 +1,21 @@
-import {test, expect, describe, beforeEach} from "bun:test";
-import {assets} from "@b9g/assets/middleware";
+import {test, expect, describe, beforeEach, mock} from "bun:test";
 import {assetsPlugin} from "../src/plugins/assets.js";
+
+// Mutable manifest that tests can update
+// The mock.module returns this object, so changes are reflected immediately
+const mockManifest = {
+	assets: {} as Record<string, any>,
+	generated: new Date().toISOString(),
+	config: {outDir: "dist"},
+};
+
+// Mock the shovel:assets virtual module before importing the middleware
+mock.module("shovel:assets", () => ({
+	default: mockManifest,
+}));
+
+// Now import assets middleware - it will use the mocked module
+import {assets} from "@b9g/assets/middleware";
 import {Router} from "@b9g/router";
 import {MemoryDirectory} from "@b9g/filesystem/memory";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
@@ -752,8 +767,9 @@ async function writeToMemoryDirectory(
 }
 
 describe("Assets Middleware", () => {
-	const manifest = {
-		assets: {
+	beforeEach(async () => {
+		// Update the mocked manifest with test data
+		mockManifest.assets = {
 			"/app.js": {
 				url: "/app.js",
 				type: "application/javascript",
@@ -766,17 +782,15 @@ describe("Assets Middleware", () => {
 				size: 567,
 				hash: "def456",
 			},
-		},
-	};
+		};
 
-	beforeEach(async () => {
 		const serverDirectory = new MemoryDirectory("server");
 		const publicDirectory = new MemoryDirectory("public");
 
 		await writeToMemoryDirectory(
 			serverDirectory,
 			"assets.json",
-			JSON.stringify(manifest),
+			JSON.stringify(mockManifest),
 		);
 		await writeToMemoryDirectory(
 			publicDirectory,
@@ -847,19 +861,18 @@ describe("Assets Middleware", () => {
 	});
 
 	test("should detect MIME type from extension when manifest type not present", async () => {
-		// Override with manifest that has no type field
+		// Update mock manifest with entry that has no type field
+		mockManifest.assets = {
+			"/app.js": {url: "/app.js", size: 1234, hash: "abc123"}, // No type
+		};
+
 		const serverDirectory = new MemoryDirectory("server");
 		const publicDirectory = new MemoryDirectory("public");
 
-		const noTypeManifest = {
-			assets: {
-				"/app.js": {url: "/app.js", size: 1234, hash: "abc123"}, // No type
-			},
-		};
 		await writeToMemoryDirectory(
 			serverDirectory,
 			"assets.json",
-			JSON.stringify(noTypeManifest),
+			JSON.stringify(mockManifest),
 		);
 		await writeToMemoryDirectory(
 			publicDirectory,
@@ -882,7 +895,7 @@ describe("Assets Middleware", () => {
 		const request = new Request("http://example.com/app.js");
 		const response = await router.handle(request);
 
-		// Should detect text/javascript from .js extension
+		// Should detect text/javascript from .js extension (via Mime library)
 		expect(response.headers.get("Content-Type")).toBe("text/javascript");
 	});
 
