@@ -26,7 +26,7 @@ import {
 	type Server,
 	type ServerOptions,
 	type PlatformESBuildConfig,
-	type ProductionEntryPoints,
+	type EntryPoints,
 	ServiceWorkerPool,
 	CustomLoggerStorage,
 	CustomDatabaseStorage,
@@ -444,50 +444,24 @@ export class BunPlatform extends BasePlatform {
 	}
 
 	/**
-	 * Get production entry points for bundling.
+	 * Get entry points for bundling.
 	 *
-	 * Bun produces two files:
+	 * Development mode:
+	 * - worker.js: Single worker with HTTP server (develop command manages process)
+	 *
+	 * Production mode:
 	 * - index.js: Supervisor that spawns workers and handles signals
 	 * - worker.js: Worker with its own HTTP server (uses reusePort for multi-worker)
 	 *
 	 * Unlike Node.js, Bun workers each bind their own server with reusePort,
 	 * allowing the OS to load-balance across workers without message passing overhead.
 	 */
-	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints {
-		// Note: userEntryPath is used as a module specifier for esbuild to resolve,
-		// not as a runtime string. It should be quoted but not JSON-escaped.
-
-		// Supervisor: uses platform.serviceWorker for worker management (no HTTP server)
-		const supervisorCode = `// Bun Production Supervisor
-import {getLogger} from "@logtape/logtape";
-import {configureLogging} from "@b9g/platform/runtime";
-import BunPlatform from "@b9g/platform-bun";
-import {config} from "shovel:config";
-
-await configureLogging(config.logging);
-const logger = getLogger(["shovel", "platform"]);
-
-logger.info("Starting production server", {port: config.port, workers: config.workers});
-
-// Initialize platform and register ServiceWorker (workers handle their own HTTP via reusePort)
-const platform = new BunPlatform({port: config.port, host: config.host, workers: config.workers});
-await platform.serviceWorker.register(new URL("./worker.js", import.meta.url).href);
-await platform.serviceWorker.ready;
-
-logger.info("All workers ready", {port: config.port, workers: config.workers});
-
-// Graceful shutdown
-const handleShutdown = async () => {
-	logger.info("Shutting down");
-	await platform.serviceWorker.terminate();
-	process.exit(0);
-};
-process.on("SIGINT", handleShutdown);
-process.on("SIGTERM", handleShutdown);
-`;
-
-		// Worker: each worker has its own HTTP server with reusePort
-		const workerCode = `// Bun Production Worker
+	getEntryPoints(
+		userEntryPath: string,
+		mode: "development" | "production",
+	): EntryPoints {
+		// Worker code for production (with message handling for supervisor communication)
+		const prodWorkerCode = `// Bun Production Worker
 import BunPlatform from "@b9g/platform-bun";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest} from "@b9g/platform/runtime";
@@ -535,9 +509,62 @@ postMessage({type: "ready"});
 logger.info("Worker started", {port: config.port});
 `;
 
+		// Development worker (simpler, managed by develop command via message loop)
+		const devWorkerCode = `// Bun Development Worker
+import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop} from "@b9g/platform/runtime";
+import {config} from "shovel:config";
+
+await configureLogging(config.logging);
+
+// Initialize worker runtime (installs ServiceWorker globals)
+const {registration, databases} = await initWorkerRuntime({config});
+
+// Import user code (registers event handlers)
+await import("${userEntryPath}");
+
+// Run ServiceWorker lifecycle
+await runLifecycle(registration);
+
+// Start message loop for request handling (develop command handles HTTP)
+startWorkerMessageLoop({registration, databases});
+`;
+
+		if (mode === "development") {
+			return {worker: devWorkerCode};
+		}
+
+		// Production: supervisor + worker
+		const supervisorCode = `// Bun Production Supervisor
+import {getLogger} from "@logtape/logtape";
+import {configureLogging} from "@b9g/platform/runtime";
+import BunPlatform from "@b9g/platform-bun";
+import {config} from "shovel:config";
+
+await configureLogging(config.logging);
+const logger = getLogger(["shovel", "platform"]);
+
+logger.info("Starting production server", {port: config.port, workers: config.workers});
+
+// Initialize platform and register ServiceWorker (workers handle their own HTTP via reusePort)
+const platform = new BunPlatform({port: config.port, host: config.host, workers: config.workers});
+await platform.serviceWorker.register(new URL("./worker.js", import.meta.url).href);
+await platform.serviceWorker.ready;
+
+logger.info("All workers ready", {port: config.port, workers: config.workers});
+
+// Graceful shutdown
+const handleShutdown = async () => {
+	logger.info("Shutting down");
+	await platform.serviceWorker.terminate();
+	process.exit(0);
+};
+process.on("SIGINT", handleShutdown);
+process.on("SIGTERM", handleShutdown);
+`;
+
 		return {
 			index: supervisorCode,
-			worker: workerCode,
+			worker: prodWorkerCode,
 		};
 	}
 

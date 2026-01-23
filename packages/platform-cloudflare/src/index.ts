@@ -27,7 +27,7 @@ import {
 	ServiceWorkerOptions,
 	ServiceWorkerInstance,
 	PlatformESBuildConfig,
-	type ProductionEntryPoints,
+	type EntryPoints,
 	CustomLoggerStorage,
 	type LoggerStorage,
 	type ShovelServiceWorkerContainer,
@@ -380,15 +380,20 @@ export class CloudflarePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Get production entry points for bundling.
+	 * Get entry points for bundling.
 	 *
-	 * Cloudflare produces a single file:
-	 * - server.js: Everything bundled inline (runtime + user code)
+	 * Cloudflare produces a single file for both dev and prod:
+	 * - worker.js: Everything bundled inline (runtime + user code)
 	 *
 	 * Cloudflare Workers don't support spawning sub-workers, so everything
-	 * must be in one file.
+	 * must be in one file. Dev and prod are identical because workerd
+	 * doesn't allow setTimeout in global scope, so lifecycle must be
+	 * deferred to first request in both cases.
 	 */
-	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints {
+	getEntryPoints(
+		userEntryPath: string,
+		_mode: "development" | "production",
+	): EntryPoints {
 		const safePath = JSON.stringify(userEntryPath);
 		const serverCode = `// Cloudflare Worker Entry
 import { config } from "shovel:config";
@@ -408,21 +413,6 @@ export default { fetch: createFetchHandler(registration) };
 		return {
 			worker: serverCode,
 		};
-	}
-
-	/**
-	 * Get development entry points for bundling (Cloudflare-specific).
-	 *
-	 * Cloudflare Workers have a restriction: no setTimeout in global scope.
-	 * The default development entry calls runLifecycle() which uses setTimeout.
-	 * We defer lifecycle to first request instead.
-	 *
-	 * For Cloudflare, development and production entries are identical since
-	 * both need to handle the workerd restriction.
-	 */
-	getDevelopmentEntryPoints(userEntryPath: string): ProductionEntryPoints {
-		// Reuse production entry - both need deferred lifecycle for workerd
-		return this.getProductionEntryPoints(userEntryPath);
 	}
 
 	/**

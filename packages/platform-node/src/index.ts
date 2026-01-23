@@ -27,7 +27,7 @@ import {
 	type Server,
 	type ServerOptions,
 	type PlatformESBuildConfig,
-	type ProductionEntryPoints,
+	type EntryPoints,
 	ServiceWorkerPool,
 	CustomLoggerStorage,
 	CustomDatabaseStorage,
@@ -511,17 +511,53 @@ export class NodePlatform extends BasePlatform {
 	}
 
 	/**
-	 * Get production entry points for bundling.
+	 * Get entry points for bundling.
 	 *
-	 * Node.js produces two files:
+	 * Development mode:
+	 * - worker.js: Single worker with message loop (develop command acts as supervisor)
+	 *
+	 * Production mode:
 	 * - index.js: Supervisor that spawns workers and owns the HTTP server
 	 * - worker.js: Worker that handles requests via message loop
 	 */
-	getProductionEntryPoints(userEntryPath: string): ProductionEntryPoints {
-		// Note: userEntryPath is used as a module specifier for esbuild to resolve,
-		// not as a runtime string. It should be quoted but not JSON-escaped.
+	getEntryPoints(
+		userEntryPath: string,
+		mode: "development" | "production",
+	): EntryPoints {
+		// Worker code is shared between dev and prod (message loop pattern)
+		const workerCode = `// Node.js Worker
+import {parentPort} from "node:worker_threads";
+import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop} from "@b9g/platform/runtime";
+import {config} from "shovel:config";
 
-		// Supervisor: uses platform.serviceWorker for worker management
+await configureLogging(config.logging);
+
+// Initialize worker runtime (installs ServiceWorker globals)
+const {registration, databases} = await initWorkerRuntime({config});
+
+// Import user code (registers event handlers)
+await import("${userEntryPath}");
+
+// Run ServiceWorker lifecycle (stage from config.lifecycle if present)
+await runLifecycle(registration, config.lifecycle?.stage);
+
+// Start message loop for request handling, or signal ready and exit in lifecycle-only mode
+if (config.lifecycle) {
+	parentPort?.postMessage({type: "ready"});
+	// Clean shutdown after lifecycle
+	if (databases) await databases.closeAll();
+	process.exit(0);
+} else {
+	startWorkerMessageLoop({registration, databases});
+}
+`;
+
+		if (mode === "development") {
+			// Development: single worker file (develop command manages the process)
+			return {worker: workerCode};
+		}
+
+		// Production: supervisor + worker
 		const supervisorCode = `// Node.js Production Supervisor
 import {Worker} from "@b9g/node-webworker";
 import {getLogger} from "@logtape/logtape";
@@ -554,34 +590,6 @@ const handleShutdown = async () => {
 };
 process.on("SIGINT", handleShutdown);
 process.on("SIGTERM", handleShutdown);
-`;
-
-		// Worker: uses runtime utilities for ServiceWorker lifecycle and message handling
-		const workerCode = `// Node.js Production Worker
-import {parentPort} from "node:worker_threads";
-import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop} from "@b9g/platform/runtime";
-import {config} from "shovel:config";
-
-await configureLogging(config.logging);
-
-// Initialize worker runtime (installs ServiceWorker globals)
-const {registration, databases} = await initWorkerRuntime({config});
-
-// Import user code (registers event handlers)
-await import("${userEntryPath}");
-
-// Run ServiceWorker lifecycle (stage from config.lifecycle if present)
-await runLifecycle(registration, config.lifecycle?.stage);
-
-// Start message loop for request handling, or signal ready and exit in lifecycle-only mode
-if (config.lifecycle) {
-	parentPort?.postMessage({type: "ready"});
-	// Clean shutdown after lifecycle
-	if (databases) await databases.closeAll();
-	process.exit(0);
-} else {
-	startWorkerMessageLoop({registration, databases});
-}
 `;
 
 		return {
