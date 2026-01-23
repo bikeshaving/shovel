@@ -12,6 +12,9 @@
 import * as ESBuild from "esbuild";
 import {existsSync, readFileSync} from "node:fs";
 import {join, isAbsolute} from "node:path";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["shovel", "assets"]);
 
 /**
  * Create the shovel:assets virtual module plugin.
@@ -49,8 +52,14 @@ export function createAssetsManifestPlugin(
 				if (existsSync(manifestPath)) {
 					try {
 						manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-					} catch {
-						// If manifest can't be read, use empty default
+					} catch (err) {
+						logger.warn(
+							"Failed to parse assets manifest, using empty default",
+							{
+								path: manifestPath,
+								error: err,
+							},
+						);
 					}
 				}
 

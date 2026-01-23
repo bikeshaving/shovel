@@ -179,7 +179,7 @@ class CloudflareServiceWorkerContainer
  * Cloudflare Workers platform implementation
  */
 export class CloudflarePlatform {
-	readonly name = "cloudflare";
+	readonly name: string;
 	readonly serviceWorker: CloudflareServiceWorkerContainer;
 	#options: {
 		environment: "production" | "preview" | "dev";
@@ -193,6 +193,7 @@ export class CloudflarePlatform {
 	#assetsMiniflare: Miniflare | null;
 
 	constructor(options: CloudflarePlatformOptions = {}) {
+		this.name = "cloudflare";
 		this.#miniflare = null;
 		this.#assetsMiniflare = null;
 		this.serviceWorker = new CloudflareServiceWorkerContainer(this);
