@@ -20,8 +20,6 @@ import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
-	BasePlatform,
-	type PlatformConfig,
 	type PlatformDefaults,
 	type Handler,
 	type Server,
@@ -48,7 +46,7 @@ const logger = getLogger(["shovel", "platform"]);
 // TYPES
 // ============================================================================
 
-export interface NodePlatformOptions extends PlatformConfig {
+export interface NodePlatformOptions {
 	/** Port for development server (default: 3000) */
 	port?: number;
 	/** Host for development server (default: localhost) */
@@ -238,8 +236,8 @@ export class NodeServiceWorkerContainer
  * Node.js platform implementation
  * ServiceWorker entrypoint loader for Node.js with ESBuild VM system
  */
-export class NodePlatform extends BasePlatform {
-	readonly name: string;
+export class NodePlatform {
+	readonly name = "node";
 	readonly serviceWorker: NodeServiceWorkerContainer;
 
 	#options: {
@@ -253,8 +251,6 @@ export class NodePlatform extends BasePlatform {
 	#server?: Server;
 
 	constructor(options: NodePlatformOptions = {}) {
-		super(options);
-		this.name = "node";
 
 		// eslint-disable-next-line no-restricted-properties -- Platform adapter entry point
 		const cwd = options.cwd || process.cwd();

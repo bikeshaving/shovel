@@ -3,7 +3,7 @@ import {getLogger} from "@logtape/logtape";
 import {resolvePlatform} from "@b9g/platform";
 import type {ProcessedShovelConfig} from "../utils/config.js";
 import {ServerBundler} from "../utils/bundler.js";
-import {createPlatform} from "../utils/platform.js";
+import {loadPlatformModule} from "../utils/platform.js";
 import {networkInterfaces} from "os";
 
 const logger = getLogger(["shovel", "develop"]);
@@ -86,24 +86,23 @@ export async function developCommand(
 			workerCount,
 		});
 
-		// Create platform with server and worker settings
-		const platformInstance = await createPlatform(platformName, {
-			port,
-			host,
-			workers: workerCount,
-		});
-		const platformESBuildConfig = platformInstance.getESBuildConfig();
+		// Load platform module (functions, not class)
+		const platformModule = await loadPlatformModule(platformName);
+		const platformESBuildConfig = platformModule.getESBuildConfig();
 
-		let serverStarted = false;
+		// Track dev server instance
+		let devServer: Awaited<ReturnType<typeof platformModule.createDevServer>> | null = null;
 
 		// Helper to start or reload the server
 		const startOrReloadServer = async (workerPath: string) => {
-			if (!serverStarted) {
-				// First successful build - register ServiceWorker and start server
-				await platformInstance.serviceWorker.register(workerPath);
-				await platformInstance.serviceWorker.ready;
-				await platformInstance.listen();
-				serverStarted = true;
+			if (!devServer) {
+				// First successful build - create dev server
+				devServer = await platformModule.createDevServer({
+					port,
+					host,
+					workerPath,
+					workers: workerCount,
+				});
 
 				// Display server URLs
 				const urls = getDisplayUrls(host, port);
@@ -117,7 +116,7 @@ export async function developCommand(
 				}
 			} else {
 				// Subsequent builds - hot reload workers
-				await platformInstance.serviceWorker.reloadWorkers(workerPath);
+				await devServer.reload(workerPath);
 			}
 		};
 
@@ -125,7 +124,7 @@ export async function developCommand(
 		const bundler = new ServerBundler({
 			entrypoint,
 			outDir,
-			platform: platformInstance,
+			platformModule,
 			platformESBuildConfig,
 			userBuildConfig: config.build,
 			development: true,
@@ -152,7 +151,9 @@ export async function developCommand(
 		const shutdown = async (signal: string) => {
 			logger.debug("Shutting down ({signal})", {signal});
 			await bundler.stop();
-			await platformInstance.dispose();
+			if (devServer) {
+				await devServer.close();
+			}
 			logger.debug("Shutdown complete");
 			process.exit(0);
 		};

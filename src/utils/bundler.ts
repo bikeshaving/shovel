@@ -13,7 +13,7 @@ import {resolve, join, dirname, basename, relative} from "path";
 import {mkdir} from "fs/promises";
 import {watch, type FSWatcher, existsSync} from "fs";
 import {getLogger} from "@logtape/logtape";
-import type {Platform, PlatformESBuildConfig} from "@b9g/platform";
+import type {PlatformModule, ESBuildConfig} from "@b9g/platform/module";
 
 import {assetsPlugin} from "../plugins/assets.js";
 import {importMetaPlugin} from "../plugins/import-meta.js";
@@ -40,10 +40,10 @@ export interface BundlerOptions {
 	entrypoint: string;
 	/** Output directory */
 	outDir: string;
-	/** Platform instance */
-	platform: Platform;
+	/** Platform module (functions, not class) */
+	platformModule: PlatformModule;
 	/** Platform-specific esbuild configuration */
-	platformESBuildConfig: PlatformESBuildConfig;
+	platformESBuildConfig: ESBuildConfig;
 	/** User build config from shovel.json */
 	userBuildConfig?: ProcessedBuildConfig;
 	/** Lifecycle options for --lifecycle flag */
@@ -250,7 +250,7 @@ export class ServerBundler {
 	): Promise<ESBuild.BuildOptions> {
 		const {watch = false} = options;
 		const platformESBuildConfig = this.#options.platformESBuildConfig;
-		const platformDefaults = this.#options.platform.getDefaults();
+		const platformDefaults = this.#options.platformModule.getDefaults();
 		const userBuildConfig = this.#options.userBuildConfig;
 
 		// Convert absolute entry path to relative path for esbuild resolution
@@ -259,7 +259,7 @@ export class ServerBundler {
 
 		// Get platform-specific entry points for the current mode
 		const mode = this.#options.development ? "development" : "production";
-		const platformEntryPoints = this.#options.platform.getEntryPoints(
+		const platformEntryPoints = this.#options.platformModule.getEntryPoints(
 			relativeEntryPath,
 			mode,
 		);

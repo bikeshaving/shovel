@@ -78,6 +78,14 @@
     "./directories.js": {
       "types": "./dist/src/directories.d.ts",
       "import": "./dist/src/directories.js"
+    },
+    "./platform": {
+      "types": "./dist/src/platform.d.ts",
+      "import": "./dist/src/platform.js"
+    },
+    "./platform.js": {
+      "types": "./dist/src/platform.d.ts",
+      "import": "./dist/src/platform.js"
     }
   }
 }
