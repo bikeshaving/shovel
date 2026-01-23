@@ -1,5 +1,6 @@
 import {test, expect, describe, beforeEach, mock} from "bun:test";
 import {assetsPlugin} from "../src/plugins/assets.js";
+import {Router} from "@b9g/router";
 
 // Mutable manifest that tests can update
 // The mock.module returns this object, so changes are reflected immediately
@@ -14,9 +15,8 @@ mock.module("shovel:assets", () => ({
 	default: mockManifest,
 }));
 
-// Now import assets middleware - it will use the mocked module
-import {assets} from "@b9g/assets/middleware";
-import {Router} from "@b9g/router";
+// Dynamic import to ensure mock is applied first
+const {assets} = await import("@b9g/assets/middleware");
 import {MemoryDirectory} from "@b9g/filesystem/memory";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import * as ESBuild from "esbuild";
