@@ -1,22 +1,7 @@
-import {test, expect, describe, beforeEach, mock} from "bun:test";
+import {test, expect, describe, beforeEach} from "bun:test";
 import {assetsPlugin} from "../src/plugins/assets.js";
+import {assets} from "../packages/assets/src/middleware.js";
 import {Router} from "@b9g/router";
-
-// Mutable manifest that tests can update
-// The mock.module returns this object, so changes are reflected immediately
-const mockManifest = {
-	assets: {} as Record<string, any>,
-	generated: new Date().toISOString(),
-	config: {outDir: "dist"},
-};
-
-// Mock the shovel:assets virtual module before importing the middleware
-mock.module("shovel:assets", () => ({
-	default: mockManifest,
-}));
-
-// Dynamic import to ensure mock is applied first
-const {assets} = await import("@b9g/assets/middleware");
 import {MemoryDirectory} from "@b9g/filesystem/memory";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import * as ESBuild from "esbuild";
@@ -767,31 +752,33 @@ async function writeToMemoryDirectory(
 }
 
 describe("Assets Middleware", () => {
-	beforeEach(async () => {
-		// Update the mocked manifest with test data
-		mockManifest.assets = {
+	// Test manifest passed directly to middleware
+	const testManifest = {
+		assets: {
 			"/app.js": {
+				source: "app.js",
+				output: "app.js",
 				url: "/app.js",
 				type: "application/javascript",
 				size: 1234,
 				hash: "abc123",
 			},
 			"/styles.css": {
+				source: "styles.css",
+				output: "styles.css",
 				url: "/styles.css",
 				type: "text/css",
 				size: 567,
 				hash: "def456",
 			},
-		};
+		},
+		generated: new Date().toISOString(),
+		config: {outDir: "dist"},
+	};
 
-		const serverDirectory = new MemoryDirectory("server");
+	beforeEach(async () => {
 		const publicDirectory = new MemoryDirectory("public");
 
-		await writeToMemoryDirectory(
-			serverDirectory,
-			"assets.json",
-			JSON.stringify(mockManifest),
-		);
 		await writeToMemoryDirectory(
 			publicDirectory,
 			"app.js",
@@ -800,7 +787,6 @@ describe("Assets Middleware", () => {
 		await writeToMemoryDirectory(publicDirectory, "styles.css", "body{}");
 
 		const directoryStorage = new CustomDirectoryStorage((name: string) => {
-			if (name === "server") return Promise.resolve(serverDirectory);
 			if (name === "public") return Promise.resolve(publicDirectory);
 			throw new Error(`Directory not found: ${name}`);
 		});
@@ -810,7 +796,7 @@ describe("Assets Middleware", () => {
 
 	test("should serve asset from manifest", async () => {
 		const router = new Router();
-		router.use(assets());
+		router.use(assets({manifest: testManifest}));
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const request = new Request("http://example.com/app.js");
@@ -824,7 +810,7 @@ describe("Assets Middleware", () => {
 
 	test("should pass through to next middleware for non-existent asset", async () => {
 		const router = new Router();
-		router.use(assets());
+		router.use(assets({manifest: testManifest}));
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const request = new Request("http://example.com/nonexistent.js");
@@ -836,7 +822,7 @@ describe("Assets Middleware", () => {
 
 	test("should block directory traversal with double slash", async () => {
 		const router = new Router();
-		router.use(assets());
+		router.use(assets({manifest: testManifest}));
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const request = new Request("http://example.com//etc/passwd");
@@ -848,7 +834,7 @@ describe("Assets Middleware", () => {
 
 	test("should handle conditional requests with 304", async () => {
 		const router = new Router();
-		router.use(assets());
+		router.use(assets({manifest: testManifest}));
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const futureDate = new Date(Date.now() + 100000).toUTCString();
@@ -861,35 +847,23 @@ describe("Assets Middleware", () => {
 	});
 
 	test("should detect MIME type from extension when manifest type not present", async () => {
-		// Update mock manifest with entry that has no type field
-		mockManifest.assets = {
-			"/app.js": {url: "/app.js", size: 1234, hash: "abc123"}, // No type
+		// Manifest with entry that has no type field
+		const noTypeManifest = {
+			assets: {
+				"/app.js": {
+					source: "app.js",
+					output: "app.js",
+					url: "/app.js",
+					size: 1234,
+					hash: "abc123",
+				},
+			},
+			generated: new Date().toISOString(),
+			config: {outDir: "dist"},
 		};
 
-		const serverDirectory = new MemoryDirectory("server");
-		const publicDirectory = new MemoryDirectory("public");
-
-		await writeToMemoryDirectory(
-			serverDirectory,
-			"assets.json",
-			JSON.stringify(mockManifest),
-		);
-		await writeToMemoryDirectory(
-			publicDirectory,
-			"app.js",
-			"console.log('app')",
-		);
-
-		const directoryStorage = new CustomDirectoryStorage((name: string) => {
-			if (name === "server") return Promise.resolve(serverDirectory);
-			if (name === "public") return Promise.resolve(publicDirectory);
-			throw new Error(`Directory not found: ${name}`);
-		});
-
-		(globalThis as any).directories = directoryStorage;
-
 		const router = new Router();
-		router.use(assets());
+		router.use(assets({manifest: noTypeManifest}));
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const request = new Request("http://example.com/app.js");
@@ -903,6 +877,7 @@ describe("Assets Middleware", () => {
 		const router = new Router();
 		router.use(
 			assets({
+				manifest: testManifest,
 				cacheControl: "no-cache",
 			}),
 		);

@@ -11,7 +11,17 @@
  */
 
 import Mime from "mime";
-import assetsManifest from "shovel:assets";
+
+// Lazy import of bundled manifest - only loaded when needed (not during tests)
+let _bundledManifest: AssetManifest | null = null;
+async function getBundledManifest(): Promise<AssetManifest> {
+	if (!_bundledManifest) {
+		// Dynamic import to defer loading until actually needed
+		const mod = await import("shovel:assets");
+		_bundledManifest = mod.default;
+	}
+	return _bundledManifest!;
+}
 
 // ============================================================================
 // Types
@@ -55,6 +65,8 @@ export interface AssetManifest {
 export interface AssetsConfig {
 	/** Cache control header value (default: 'public, max-age=31536000, immutable') */
 	cacheControl?: string;
+	/** Override manifest for testing (defaults to bundled shovel:assets) */
+	manifest?: AssetManifest;
 }
 
 /**
@@ -63,17 +75,20 @@ export interface AssetsConfig {
 export function assets(config: AssetsConfig = {}) {
 	const {cacheControl = "public, max-age=31536000, immutable"} = config;
 
-	// Build URL -> entry map for O(1) lookup (computed once at module load)
+	// Build URL -> entry map for O(1) lookup (computed once per middleware instance)
 	let manifestEntries: Map<string, AssetManifestEntry> | null = null;
 
-	// Load manifest from bundled shovel:assets virtual module
-	function loadManifest(): Map<string, AssetManifestEntry> {
+	// Load manifest from config or bundled shovel:assets virtual module
+	async function loadManifest(): Promise<Map<string, AssetManifestEntry>> {
 		if (manifestEntries) return manifestEntries;
+
+		// Use config manifest (for testing) or load from bundled module
+		const manifest = config.manifest ?? (await getBundledManifest());
 
 		// Build URL -> entry map for O(1) lookup
 		manifestEntries = new Map();
-		if (assetsManifest.assets) {
-			for (const entry of Object.values(assetsManifest.assets)) {
+		if (manifest.assets) {
+			for (const entry of Object.values(manifest.assets)) {
 				if (entry && typeof entry === "object" && "url" in entry) {
 					manifestEntries.set(
 						(entry as AssetManifestEntry).url,
@@ -99,7 +114,7 @@ export function assets(config: AssetsConfig = {}) {
 		}
 
 		// Load manifest (bundled at build time via shovel:assets)
-		const entries = loadManifest();
+		const entries = await loadManifest();
 
 		// Not in manifest - pass through to next middleware
 		const manifestEntry = entries.get(requestedPath);

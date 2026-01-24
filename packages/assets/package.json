@@ -17,12 +17,10 @@
   "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {
-      "bun": "./src/index.ts",
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
     "./middleware": {
-      "bun": "./src/middleware.ts",
       "types": "./dist/src/middleware.d.ts",
       "import": "./dist/src/middleware.js"
     },

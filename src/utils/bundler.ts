@@ -19,7 +19,10 @@ import {assetsPlugin} from "../plugins/assets.js";
 import {importMetaPlugin} from "../plugins/import-meta.js";
 import {createConfigPlugin} from "../plugins/config.js";
 import {createEntryPlugin} from "../plugins/entry.js";
-import {createAssetsManifestPlugin} from "../plugins/assets-manifest.js";
+import {
+	createAssetsManifestPlugin,
+	createSharedManifest,
+} from "../plugins/assets-manifest.js";
 import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
 import {findProjectRoot, getNodeModulesPath} from "./project.js";
 import {getGitSHA} from "./git-sha.js";
@@ -292,17 +295,22 @@ export class ServerBundler {
 			esbuildEntryPoints[name] = `shovel:entry:${name}`;
 		}
 
-		// assetsPlugin runs FIRST to intercept imports with { assetBase: "..." }.
-		// userPlugins run after, so they can handle other file types (e.g., .glsl)
-		// that don't have assetBase but still need transformation.
+		// Create shared manifest for coordination between assetsPlugin and assetsManifestPlugin.
+		// assetsPlugin populates the manifest during onLoad, assetsManifestPlugin reads it in onEnd.
+		const sharedManifest = createSharedManifest(this.#options.outDir);
+
+		// Plugin order matters for onEnd hooks - they run in registration order:
+		// 1. assetsPlugin: processes asset imports, populates sharedManifest
+		// 2. assetsManifestPlugin: replaces placeholder with actual manifest in onEnd
+		// userPlugins run after assetsPlugin to handle other file types (e.g., .glsl)
 		const plugins: ESBuild.Plugin[] = [
 			createConfigPlugin(this.#projectRoot, this.#options.outDir, {
 				platformDefaults,
 				lifecycle: this.#options.lifecycle,
 			}),
 			createEntryPlugin(this.#projectRoot, platformEntryPoints),
-			createAssetsManifestPlugin(this.#projectRoot, this.#options.outDir),
 			importMetaPlugin(),
+			// assetsPlugin must come before assetsManifestPlugin so onEnd order is correct
 			assetsPlugin({
 				outDir: outputDir,
 				plugins: userPlugins,
@@ -310,8 +318,15 @@ export class ServerBundler {
 				jsxFactory: jsxOptions.jsxFactory,
 				jsxFragment: jsxOptions.jsxFragment,
 				jsxImportSource: jsxOptions.jsxImportSource,
+				sharedManifest,
 			}),
 			...userPlugins,
+			// assetsManifestPlugin runs last to replace placeholder after all assets processed
+			createAssetsManifestPlugin(
+				this.#projectRoot,
+				this.#options.outDir,
+				sharedManifest,
+			),
 		];
 
 		if (watch) {
