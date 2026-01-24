@@ -306,12 +306,12 @@ export interface WorkerPoolOptions {
 	createWorker?: (entrypoint: string) => Worker | Promise<Worker>;
 }
 
-export interface WorkerMessage {
+interface WorkerMessage {
 	type: string;
 	[key: string]: any;
 }
 
-export interface WorkerRequest extends WorkerMessage {
+interface WorkerRequest extends WorkerMessage {
 	type: "request";
 	request: {
 		url: string;
@@ -322,7 +322,7 @@ export interface WorkerRequest extends WorkerMessage {
 	requestID: number;
 }
 
-export interface WorkerResponse extends WorkerMessage {
+interface WorkerResponse extends WorkerMessage {
 	type: "response";
 	response: {
 		status: number;
@@ -333,7 +333,7 @@ export interface WorkerResponse extends WorkerMessage {
 	requestID: number;
 }
 
-export interface WorkerErrorMessage extends WorkerMessage {
+interface WorkerErrorMessage extends WorkerMessage {
 	type: "error";
 	error: string;
 	stack?: string;
