@@ -203,8 +203,6 @@ const platform = new CloudflarePlatform({
 
 ### Types
 
-- `Platform` - Platform interface
-- `PlatformConfig` - Platform configuration options
 - `ServerOptions` - Server configuration options
 - `Handler` - Request handler function type
 - `Server` - Server interface

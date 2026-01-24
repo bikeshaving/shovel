@@ -28,14 +28,6 @@ const logger = getLogger(["shovel", "platform"]);
 // ============================================================================
 
 /**
- * Platform configuration
- * Extended by platform-specific implementations (NodePlatformOptions, etc.)
- */
-export interface PlatformConfig {
-	// Platform-specific configuration will be added here as needed
-}
-
-/**
  * Server options for platform implementations
  */
 export interface ServerOptions {
@@ -301,18 +293,6 @@ export function mergeConfigWithDefaults(
 // ============================================================================
 
 /**
- * Common interface for ServiceWorker runtimes
- */
-export interface ServiceWorkerRuntime {
-	init(): Promise<void>;
-	load(entrypoint: string): Promise<void>;
-	handleRequest(request: Request): Promise<Response>;
-	terminate(): Promise<void>;
-	readonly workerCount: number;
-	readonly ready: boolean;
-}
-
-/**
  * Worker pool options
  */
 export interface WorkerPoolOptions {
@@ -351,10 +331,6 @@ export interface WorkerResponse extends WorkerMessage {
 		body: ArrayBuffer; // Zero-copy transfer from worker
 	};
 	requestID: number;
-}
-
-export interface WorkerReadyMessage extends WorkerMessage {
-	type: "ready";
 }
 
 export interface WorkerErrorMessage extends WorkerMessage {
