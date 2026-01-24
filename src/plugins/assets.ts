@@ -36,6 +36,7 @@ import {
 	type AssetManifestEntry,
 } from "@b9g/assets/middleware";
 import {getLogger} from "@logtape/logtape";
+import type {SharedAssetsManifest} from "./assets-manifest.js";
 import {NodeModulesPolyfillPlugin} from "@esbuild-plugins/node-modules-polyfill";
 import {NodeGlobalsPolyfillPlugin} from "@esbuild-plugins/node-globals-polyfill";
 
@@ -118,6 +119,12 @@ export interface AssetsPluginConfig {
 	 * @default "@b9g/crank"
 	 */
 	jsxImportSource?: string;
+
+	/**
+	 * Shared manifest for coordination with assets-manifest plugin.
+	 * When provided, the manifest is populated here and read by the manifest plugin.
+	 */
+	sharedManifest?: SharedAssetsManifest;
 }
 
 /** Hash length for content-based cache busting */
@@ -147,6 +154,7 @@ function normalizePath(basePath: string): string {
  */
 export function assetsPlugin(options: AssetsPluginConfig = {}) {
 	const outDir = options.outDir ?? "dist";
+	const sharedManifest = options.sharedManifest;
 	const manifest: AssetManifest = {
 		assets: {},
 		generated: new Date().toISOString(),
@@ -461,6 +469,12 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 
 					// Add to manifest
 					manifest.assets[sourcePath] = manifestEntry;
+
+					// Also update shared manifest for assets-manifest plugin
+					if (sharedManifest) {
+						sharedManifest.assets[sourcePath] = manifestEntry;
+						sharedManifest.generated = manifest.generated;
+					}
 
 					// Return as JavaScript module that exports the URL string
 					return {
