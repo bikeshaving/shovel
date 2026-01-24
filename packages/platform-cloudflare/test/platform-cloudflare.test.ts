@@ -64,15 +64,6 @@ describe("CloudflarePlatform", () => {
 		expect(defaultPlatform.name).toBe("cloudflare");
 	});
 
-	test("should create cache storage using miniflare caches", async () => {
-		// Platform uses native Cloudflare caches (provided by miniflare in tests)
-		const caches = await platform.createCaches();
-		expect(caches).toBeDefined();
-
-		const cache = await caches.open("test");
-		expect(cache).toBeDefined();
-	});
-
 	test("should create server with Cloudflare Workers interface", () => {
 		const mockHandler = mock(() => new Response("OK"));
 		const server = platform.createServer(mockHandler, {

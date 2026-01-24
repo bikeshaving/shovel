@@ -19,7 +19,6 @@ interface Platform {
 	readonly serviceWorker: ShovelServiceWorkerContainer;
 	listen(): Promise<Server>;
 	close(): Promise<void>;
-	createCaches(): Promise<CacheStorage>;
 	createServer(handler: Handler, options?: ServerOptions): Server;
 }
 
@@ -109,93 +108,9 @@ export function runPlatformTests(
 				expect(typeof platform.serviceWorker.register).toBe("function");
 			});
 
-			test("has createCaches method", () => {
-				expect(platform.createCaches).toBeDefined();
-				expect(typeof platform.createCaches).toBe("function");
-			});
-
 			test("has createServer method", () => {
 				expect(platform.createServer).toBeDefined();
 				expect(typeof platform.createServer).toBe("function");
-			});
-		});
-
-		// =====================================================================
-		// CacheStorage Tests
-		// =====================================================================
-		describe("createCaches()", () => {
-			test("returns a CacheStorage-like object", async () => {
-				const caches = await platform.createCaches();
-				expect(caches).toBeDefined();
-			});
-
-			test("CacheStorage has open method", async () => {
-				const caches = await platform.createCaches();
-				expect(caches.open).toBeDefined();
-				expect(typeof caches.open).toBe("function");
-			});
-
-			test("CacheStorage has delete method", async () => {
-				const caches = await platform.createCaches();
-				expect(caches.delete).toBeDefined();
-				expect(typeof caches.delete).toBe("function");
-			});
-
-			test("CacheStorage has has method", async () => {
-				const caches = await platform.createCaches();
-				expect(caches.has).toBeDefined();
-				expect(typeof caches.has).toBe("function");
-			});
-
-			test("CacheStorage has keys method", async () => {
-				const caches = await platform.createCaches();
-				expect(caches.keys).toBeDefined();
-				expect(typeof caches.keys).toBe("function");
-			});
-
-			test("CacheStorage has match method", async () => {
-				const caches = await platform.createCaches();
-				expect(caches.match).toBeDefined();
-				expect(typeof caches.match).toBe("function");
-			});
-
-			test("can open a cache", async () => {
-				const caches = await platform.createCaches();
-				const cache = await caches.open("test-cache");
-				expect(cache).toBeDefined();
-				expect(cache.put).toBeDefined();
-				expect(cache.match).toBeDefined();
-			});
-
-			test("opened cache is functional", async () => {
-				const caches = await platform.createCaches();
-				const cache = await caches.open("functional-test");
-
-				// Put a response
-				const request = new Request("https://example.com/test");
-				const response = new Response("test body");
-				await cache.put(request.clone(), response);
-
-				// Match it back
-				const matched = await cache.match(request);
-				expect(matched).toBeDefined();
-				expect(await matched?.text()).toBe("test body");
-			});
-
-			test("cache names are isolated", async () => {
-				const caches = await platform.createCaches();
-
-				const cache1 = await caches.open("cache-1");
-				const cache2 = await caches.open("cache-2");
-
-				await cache1.put(
-					new Request("https://example.com/a"),
-					new Response("from cache 1"),
-				);
-
-				// cache2 shouldn't have the entry
-				const matched = await cache2.match("https://example.com/a");
-				expect(matched).toBeUndefined();
 			});
 		});
 

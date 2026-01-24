@@ -1,7 +1,5 @@
 import {test, expect, describe, beforeEach, afterEach, mock} from "bun:test";
 import {BunPlatform} from "../src/index.js";
-import {MemoryDirectory} from "@b9g/filesystem/memory";
-import {MemoryCache} from "@b9g/cache/memory";
 import {tmpdir} from "os";
 import {join} from "path";
 import {mkdtempSync, writeFileSync, rmSync} from "fs";
@@ -27,13 +25,6 @@ describe("BunPlatform", () => {
 		tempDir = mkdtempSync(join(tmpdir(), "bun-platform-test-"));
 		platform = new BunPlatform({
 			cwd: tempDir,
-			config: {
-				// Provide default cache config with pre-imported class for tests
-				caches: {
-					test: {impl: MemoryCache},
-					"env-test": {impl: MemoryCache},
-				},
-			},
 		});
 	});
 
@@ -67,33 +58,6 @@ describe("BunPlatform", () => {
 		expect(server.address().host).toBe("127.0.0.1");
 		expect(server.url).toBe("http://127.0.0.1:8080");
 		expect(server.ready).toBe(true);
-	});
-
-	test("should create custom cache storage", async () => {
-		// Override the worker detection to force MemoryCache usage
-		const originalSelf = (globalThis as any).self;
-		delete (globalThis as any).self;
-
-		const cacheStorage = await platform.createCaches();
-		expect(cacheStorage).toBeDefined();
-
-		// Test cache creation (should use MemoryCache)
-		const cache = await cacheStorage.open("test");
-		expect(cache).toBeDefined();
-
-		// Restore original
-		if (originalSelf) {
-			(globalThis as any).self = originalSelf;
-		}
-	});
-
-	test("should create cache storage with MemoryCache", async () => {
-		// Platform should create cache storage
-		const caches = await platform.createCaches();
-		expect(caches).toBeDefined();
-
-		const cache = await caches.open("test");
-		expect(cache).toBeDefined();
 	});
 
 	test("should load service worker", async () => {
@@ -148,25 +112,6 @@ describe("BunPlatform", () => {
 		expect(mockTerminate).toHaveBeenCalled();
 	});
 
-	test("should handle environment detection", async () => {
-		// Override the worker detection to force MemoryCache usage
-		const originalSelf = (globalThis as any).self;
-		delete (globalThis as any).self;
-
-		// Test that the platform correctly detects Bun environment
-		const cacheStorage = await platform.createCaches();
-		expect(cacheStorage).toBeDefined();
-
-		// The cache factory should handle worker thread detection
-		const cache = await cacheStorage.open("env-test");
-		expect(cache).toBeDefined();
-
-		// Restore original
-		if (originalSelf) {
-			(globalThis as any).self = originalSelf;
-		}
-	});
-
 	test("should warn about S3 adapter not implemented", () => {
 		// Create new platform (would log warning about S3 if configured to use it)
 		const platform = new BunPlatform();
@@ -204,51 +149,6 @@ describe("BunPlatform", () => {
 			expect((error as any).code).toBe("EADDRINUSE");
 
 			await server1.close();
-		});
-	});
-
-	describe("config integration", () => {
-		test("createCaches should use config.caches settings", async () => {
-			const platformWithConfig = new BunPlatform({
-				cwd: tempDir,
-				config: {
-					caches: {
-						"test-cache": {
-							impl: MemoryCache,
-						},
-					},
-				},
-			});
-
-			const caches = await platformWithConfig.createCaches();
-			const cache = await caches.open("test-cache");
-
-			// Verify the cache was created and is functional
-			expect(cache).toBeDefined();
-			// Test that cache operations work (proves config was applied)
-			const testRequest = new Request("https://test.com/foo");
-			const testResponse = new Response("test");
-			await cache.put(testRequest, testResponse);
-			const matched = await cache.match(testRequest);
-			expect(matched).toBeDefined();
-		});
-
-		test("createDirectories should use config.directories settings", async () => {
-			const platformWithConfig = new BunPlatform({
-				cwd: tempDir,
-				config: {
-					directories: {
-						uploads: {
-							impl: MemoryDirectory,
-						},
-					},
-				},
-			});
-
-			const directories = await platformWithConfig.createDirectories();
-			const uploadsDir = await directories.open("uploads");
-
-			expect(uploadsDir).toBeInstanceOf(MemoryDirectory);
 		});
 	});
 });

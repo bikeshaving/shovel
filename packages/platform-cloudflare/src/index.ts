@@ -15,8 +15,6 @@ import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
 
 // Internal @b9g/* packages
-import {CustomCacheStorage} from "@b9g/cache";
-import type {DirectoryStorage} from "@b9g/filesystem";
 import {
 	type PlatformDefaults,
 	type Handler,
@@ -26,15 +24,9 @@ import {
 	type ServiceWorkerInstance,
 	type PlatformESBuildConfig,
 	type EntryPoints,
-	CustomLoggerStorage,
-	type LoggerStorage,
 	type ShovelServiceWorkerContainer,
-	mergeConfigWithDefaults,
 } from "@b9g/platform";
-import {createCacheFactory, type ShovelConfig} from "@b9g/platform/runtime";
-
-// Relative imports
-import {CloudflareNativeCache} from "./caches.js";
+import {type ShovelConfig} from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform"]);
 
@@ -208,44 +200,6 @@ export class CloudflarePlatform {
 			port: options.port ?? 3000,
 			host: options.host ?? "localhost",
 		};
-	}
-
-	/**
-	 * Create cache storage for Cloudflare Workers
-	 *
-	 * Default: CloudflareNativeCache using Cloudflare's Cache API.
-	 * Override via shovel.json caches config.
-	 */
-	async createCaches(): Promise<CustomCacheStorage> {
-		const defaults = {default: {impl: CloudflareNativeCache}};
-		const configs = mergeConfigWithDefaults(
-			defaults,
-			this.#options.config?.caches,
-		);
-		return new CustomCacheStorage(createCacheFactory({configs}));
-	}
-
-	/**
-	 * Create directory storage for Cloudflare Workers
-	 *
-	 * @throws Always throws - Cloudflare has no filesystem.
-	 * Configure directories in shovel.json using CloudflareAssetsDirectory
-	 * or CloudflareR2Directory for R2 bucket storage.
-	 */
-	async createDirectories(): Promise<DirectoryStorage> {
-		throw new Error(
-			"Cloudflare Workers do not have default directories. " +
-				"Configure directories in shovel.json using Cloudflare directory classes.",
-		);
-	}
-
-	/**
-	 * Create logger storage for Cloudflare Workers
-	 *
-	 * Uses LogTape for structured logging.
-	 */
-	async createLoggers(): Promise<LoggerStorage> {
-		return new CustomLoggerStorage((categories) => getLogger(categories));
 	}
 
 	/**

@@ -1,7 +1,5 @@
 import {test, expect, describe, beforeEach, afterEach, mock} from "bun:test";
 import {NodePlatform} from "../src/index.js";
-import {MemoryDirectory} from "@b9g/filesystem/memory";
-import {MemoryCache} from "@b9g/cache/memory";
 import {tmpdir} from "os";
 import {join} from "path";
 import {mkdtempSync, rmSync} from "fs";
@@ -17,12 +15,6 @@ describe("NodePlatform", () => {
 		tempDir = mkdtempSync(join(tmpdir(), "node-platform-test-"));
 		platform = new NodePlatform({
 			cwd: tempDir,
-			config: {
-				// Provide default cache config with pre-imported class for tests
-				caches: {
-					test: {impl: MemoryCache},
-				},
-			},
 		});
 	});
 
@@ -72,42 +64,6 @@ describe("NodePlatform", () => {
 		// Test close
 		await server.close();
 		expect(server.ready).toBe(false);
-	});
-
-	test("should create custom cache storage", async () => {
-		// Force main thread detection by ensuring self is undefined
-		const originalSelf = (globalThis as any).self;
-		delete (globalThis as any).self;
-
-		const cacheStorage = await platform.createCaches();
-		expect(cacheStorage).toBeDefined();
-
-		// Test cache creation (should use MemoryCache in main thread)
-		const cache = await cacheStorage.open("test");
-		expect(cache).toBeDefined();
-
-		// Restore original
-		if (originalSelf !== undefined) {
-			(globalThis as any).self = originalSelf;
-		}
-	});
-
-	test("should create cache storage with MemoryCache", async () => {
-		// Platform should create cache storage that uses MemoryCache
-		const caches = await platform.createCaches();
-		expect(caches).toBeDefined();
-
-		const cache = await caches.open("test");
-		expect(cache).toBeDefined();
-
-		// Test basic cache operations
-		const req = new Request("http://example.com/test");
-		const res = new Response("test");
-		await cache.put(req, res);
-
-		const cached = await cache.match(req);
-		expect(cached).toBeDefined();
-		expect(await cached?.text()).toBe("test");
 	});
 
 	test("should reload workers via serviceWorker container", async () => {
@@ -229,50 +185,5 @@ describe("NodePlatform", () => {
 		});
 
 		expect((customPlatform as any).options.cwd).toBe(customCwd);
-	});
-
-	describe("config integration", () => {
-		test("createCaches should use config.caches settings", async () => {
-			const platformWithConfig = new NodePlatform({
-				cwd: tempDir,
-				config: {
-					caches: {
-						"test-cache": {
-							impl: MemoryCache,
-						},
-					},
-				},
-			});
-
-			const caches = await platformWithConfig.createCaches();
-			const cache = await caches.open("test-cache");
-
-			// Verify the cache was created and is functional
-			expect(cache).toBeDefined();
-			// Test that cache operations work (proves config was applied)
-			const testRequest = new Request("https://test.com/foo");
-			const testResponse = new Response("test");
-			await cache.put(testRequest, testResponse);
-			const matched = await cache.match(testRequest);
-			expect(matched).toBeDefined();
-		});
-
-		test("createDirectories should use config.directories settings", async () => {
-			const platformWithConfig = new NodePlatform({
-				cwd: tempDir,
-				config: {
-					directories: {
-						uploads: {
-							impl: MemoryDirectory,
-						},
-					},
-				},
-			});
-
-			const directories = await platformWithConfig.createDirectories();
-			const uploadsDir = await directories.open("uploads");
-
-			expect(uploadsDir).toBeInstanceOf(MemoryDirectory);
-		});
 	});
 });
