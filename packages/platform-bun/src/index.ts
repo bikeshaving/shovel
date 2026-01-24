@@ -14,9 +14,6 @@ import {getLogger} from "@logtape/logtape";
 
 // Internal @b9g/* packages
 import {CustomCacheStorage} from "@b9g/cache";
-import {MemoryCache} from "@b9g/cache/memory";
-import {CustomDirectoryStorage} from "@b9g/filesystem";
-import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
 	type PlatformDefaults,
@@ -26,16 +23,11 @@ import {
 	type PlatformESBuildConfig,
 	type EntryPoints,
 	ServiceWorkerPool,
-	CustomLoggerStorage,
-	CustomDatabaseStorage,
-	createDatabaseFactory,
-	mergeConfigWithDefaults,
 } from "@b9g/platform";
 import {
 	ShovelServiceWorkerRegistration,
 	kServiceWorker,
 	createCacheFactory,
-	createDirectoryFactory,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
 
@@ -251,7 +243,6 @@ export class BunPlatform {
 		config?: ShovelConfig;
 	};
 	#server?: Server;
-	#databaseStorage?: CustomDatabaseStorage;
 
 	constructor(options: BunPlatformOptions = {}) {
 		this.name = "bun";
@@ -274,71 +265,6 @@ export class BunPlatform {
 	 */
 	get options() {
 		return this.#options;
-	}
-
-	/**
-	 * Create cache storage for Bun
-	 *
-	 * Default: MemoryCache (in-process LRU cache).
-	 * Override via shovel.json caches config.
-	 * Note: Used for dev/testing - production uses generated config module.
-	 */
-	async createCaches(): Promise<CustomCacheStorage> {
-		const defaults = {default: {impl: MemoryCache}};
-		const configs = mergeConfigWithDefaults(
-			defaults,
-			this.#options.config?.caches,
-		);
-		return new CustomCacheStorage(createCacheFactory({configs}));
-	}
-
-	/**
-	 * Create directory storage for Bun
-	 *
-	 * Defaults:
-	 * - server: NodeFSDirectory at cwd (app files)
-	 * - public: NodeFSDirectory at cwd (static assets)
-	 * - tmp: NodeFSDirectory at OS temp dir
-	 *
-	 * Override via shovel.json directories config.
-	 */
-	async createDirectories(): Promise<CustomDirectoryStorage> {
-		const defaults = {
-			server: {impl: NodeFSDirectory, path: this.#options.cwd},
-			public: {impl: NodeFSDirectory, path: this.#options.cwd},
-			tmp: {impl: NodeFSDirectory, path: tmpdir()},
-		};
-		const configs = mergeConfigWithDefaults(
-			defaults,
-			this.#options.config?.directories,
-		);
-		return new CustomDirectoryStorage(createDirectoryFactory(configs));
-	}
-
-	/**
-	 * Create logger storage for Bun
-	 *
-	 * Uses LogTape for structured logging.
-	 */
-	async createLoggers(): Promise<CustomLoggerStorage> {
-		return new CustomLoggerStorage((categories) => getLogger(categories));
-	}
-
-	/**
-	 * Create database storage for Bun
-	 *
-	 * Returns undefined if no databases configured in shovel.json.
-	 * Supports SQLite via bun:sqlite.
-	 */
-	createDatabases(
-		configOverride?: BunPlatformOptions["config"],
-	): CustomDatabaseStorage | undefined {
-		const config = configOverride ?? this.#options.config;
-		if (config?.databases && Object.keys(config.databases).length > 0) {
-			const factory = createDatabaseFactory(config.databases);
-			return new CustomDatabaseStorage(factory);
-		}
-		return undefined;
 	}
 
 	/**
@@ -620,12 +546,6 @@ process.on("SIGTERM", handleShutdown);
 
 		// Terminate workers via container
 		await this.serviceWorker.terminate();
-
-		// Dispose database storage (closes database connections)
-		if (this.#databaseStorage) {
-			await this.#databaseStorage.closeAll();
-			this.#databaseStorage = undefined;
-		}
 	}
 
 	// =========================================================================
