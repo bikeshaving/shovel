@@ -249,7 +249,8 @@ export async function createDevServer(
 
 		async close() {
 			logger.info("Stopping Bun dev server");
-			await platform.close();
+			// Use dispose() to terminate workers, not just close HTTP server
+			await platform.dispose();
 		},
 	};
 }
