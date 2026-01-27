@@ -34,8 +34,8 @@ export const name = "node";
  * - worker.js: Single worker with message loop (develop command acts as supervisor)
  *
  * Production mode:
- * - index.js: Supervisor that spawns workers and owns the HTTP server
- * - worker.js: Worker that handles requests via message loop
+ * - supervisor.js: Spawns workers and owns the HTTP server
+ * - worker.js: Handles requests via message loop
  */
 export function getEntryPoints(
 	userEntryPath: string,
@@ -112,7 +112,7 @@ process.on("SIGTERM", handleShutdown);
 `;
 
 	return {
-		index: supervisorCode,
+		supervisor: supervisorCode,
 		worker: workerCode,
 	};
 }

@@ -160,7 +160,7 @@ export async function buildForProduction({
 
 	// Report the main entry point (supervisor for Node/Bun, worker for Cloudflare)
 	logger.info("Build complete: {path}", {
-		path: outputs.index || outputs.worker,
+		path: outputs.supervisor || outputs.worker,
 	});
 
 	return {

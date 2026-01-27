@@ -34,7 +34,7 @@ export const name = "bun";
  * - worker.js: Single worker with message loop (develop command manages process)
  *
  * Production mode:
- * - index.js: Supervisor that spawns workers and handles signals
+ * - supervisor.js: Spawns workers and handles signals
  * - worker.js: Worker with its own HTTP server (uses reusePort for multi-worker)
  *
  * Unlike Node.js, Bun workers each bind their own server with reusePort,
@@ -149,7 +149,7 @@ process.on("SIGTERM", handleShutdown);
 `;
 
 	return {
-		index: supervisorCode,
+		supervisor: supervisorCode,
 		worker: prodWorkerCode,
 	};
 }

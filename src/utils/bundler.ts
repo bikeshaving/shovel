@@ -67,7 +67,7 @@ export interface BundlerOptions {
  */
 export interface BuildOutputs {
 	/** Supervisor entry point (Node/Bun only) */
-	index?: string;
+	supervisor?: string;
 	/** Worker entry point (all platforms) */
 	worker?: string;
 }
@@ -101,8 +101,8 @@ export interface WatchOptions {
  *
  * // One-shot build
  * const {success, outputs} = await bundler.build();
- * // outputs.index = supervisor (Node/Bun)
- * // outputs.worker = worker (all platforms)
+ * // outputs.supervisor = supervisor entry (Node/Bun)
+ * // outputs.worker = worker entry (all platforms)
  *
  * // Watch mode
  * const {success, outputs} = await bundler.watch({
@@ -375,9 +375,11 @@ export class ServerBundler {
 
 		const outputPaths = Object.keys(metafile.outputs);
 
-		const indexOutput = outputPaths.find((p) => p.endsWith("index.js"));
-		if (indexOutput) {
-			outputs.index = resolve(this.#projectRoot, indexOutput);
+		const supervisorOutput = outputPaths.find((p) =>
+			p.endsWith("supervisor.js"),
+		);
+		if (supervisorOutput) {
+			outputs.supervisor = resolve(this.#projectRoot, supervisorOutput);
 		}
 
 		const workerOutput = outputPaths.find((p) => p.endsWith("worker.js"));
