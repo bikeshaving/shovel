@@ -101,19 +101,19 @@ test(
 				platform: "node",
 			});
 
-			// Verify build output (Node platform: index.js + worker.js)
-			const indexPath = join(fixture.dist, "server", "index.js");
+			// Verify build output (Node platform: supervisor.js + worker.js)
+			const supervisorPath = join(fixture.dist, "server", "supervisor.js");
 			const workerPath = join(fixture.dist, "server", "worker.js");
 			const packagePath = join(fixture.dist, "server", "package.json");
 
-			expect(await fileExists(indexPath)).toBe(true);
+			expect(await fileExists(supervisorPath)).toBe(true);
 			expect(await fileExists(workerPath)).toBe(true);
 			expect(await fileExists(packagePath)).toBe(true);
 
 			// Verify bundled code contains expected content
-			// index.js is the supervisor that spawns workers
-			const indexContent = await FS.readFile(indexPath, "utf8");
-			expect(indexContent).toContain("Worker"); // Uses @b9g/node-webworker
+			// supervisor.js spawns workers
+			const supervisorContent = await FS.readFile(supervisorPath, "utf8");
+			expect(supervisorContent).toContain("Worker"); // Uses @b9g/node-webworker
 
 			// worker.js contains the runtime and user code
 			const workerContent = await FS.readFile(workerPath, "utf8");
@@ -141,9 +141,9 @@ test(
 				platform: "node",
 			});
 
-			const indexPath = join(fixture.dist, "server", "index.js");
+			const supervisorPath = join(fixture.dist, "server", "supervisor.js");
 			const PORT = 19001;
-			serverProcess = runExecutable(indexPath, {PORT: PORT.toString()});
+			serverProcess = runExecutable(supervisorPath, {PORT: PORT.toString()});
 
 			await waitForServer(PORT);
 
@@ -184,10 +184,10 @@ test(
 				platform: "node",
 			});
 
-			const indexPath = join(fixture.dist, "server", "index.js");
+			const supervisorPath = join(fixture.dist, "server", "supervisor.js");
 			const PORT = 19002;
 			const HOST = "127.0.0.1";
-			serverProcess = runExecutable(indexPath, {
+			serverProcess = runExecutable(supervisorPath, {
 				PORT: PORT.toString(),
 				HOST,
 				NODE_ENV: "test",
@@ -231,9 +231,9 @@ test(
 				platform: "node",
 			});
 
-			const indexPath = join(fixture.dist, "server", "index.js");
+			const supervisorPath = join(fixture.dist, "server", "supervisor.js");
 			const PORT = 19003;
-			serverProcess = runExecutable(indexPath, {PORT: PORT.toString()});
+			serverProcess = runExecutable(supervisorPath, {PORT: PORT.toString()});
 
 			await waitForServer(PORT);
 
@@ -299,9 +299,9 @@ test(
 				platform: "node",
 			});
 
-			const indexPath = join(fixture.dist, "server", "index.js");
+			const supervisorPath = join(fixture.dist, "server", "supervisor.js");
 			const PORT = 19004;
-			serverProcess = runExecutable(indexPath, {PORT: PORT.toString()});
+			serverProcess = runExecutable(supervisorPath, {PORT: PORT.toString()});
 
 			await waitForServer(PORT);
 
@@ -353,11 +353,11 @@ test("run basic-app with multiple workers", async () => {
 			platform: "node",
 		});
 
-		const indexPath = join(fixture.dist, "server", "index.js");
+		const supervisorPath = join(fixture.dist, "server", "supervisor.js");
 		const PORT = 19010;
 
 		// Run with multiple workers - this should NOT cause EADDRINUSE
-		serverProcess = runExecutable(indexPath, {
+		serverProcess = runExecutable(supervisorPath, {
 			PORT: PORT.toString(),
 			WORKERS: "2",
 		});
@@ -401,11 +401,11 @@ test("run basic-app with 4 workers handles concurrent requests", async () => {
 			platform: "node",
 		});
 
-		const indexPath = join(fixture.dist, "server", "index.js");
+		const supervisorPath = join(fixture.dist, "server", "supervisor.js");
 		const PORT = 19011;
 
 		// Run with 4 workers
-		serverProcess = runExecutable(indexPath, {
+		serverProcess = runExecutable(supervisorPath, {
 			PORT: PORT.toString(),
 			WORKERS: "4",
 		});

@@ -90,7 +90,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Check output files exist in new structure
-			expect(await fileExists(join(outDir, "server", "index.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(true);
 			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
 				true,
 			);
@@ -99,14 +99,14 @@ self.addEventListener("fetch", (event) => {
 			);
 			// Note: public/assets is only created when entry point has asset imports
 
-			// Check index.js exists and contains production supervisor code
-			const indexContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+			// Check supervisor.js exists and contains production supervisor code
+			const supervisorContent = await FS.readFile(
+				join(outDir, "server", "supervisor.js"),
 				"utf8",
 			);
 			// Supervisor uses Worker class to spawn workers
-			expect(indexContent).toContain("Worker");
-			expect(indexContent).toContain("shutdown");
+			expect(supervisorContent).toContain("Worker");
+			expect(supervisorContent).toContain("shutdown");
 
 			// Check worker.js contains the runtime and user code
 			const workerContent = await FS.readFile(
@@ -153,7 +153,7 @@ self.addEventListener("fetch", (event) => {
 
 				// Verify platform-specific output
 				// Cloudflare: single worker.js file
-				// Node/Bun: index.js (supervisor) + worker.js (user code + runtime)
+				// Node/Bun: supervisor.js + worker.js (user code + runtime)
 				if (platform === "cloudflare") {
 					const appContent = await FS.readFile(
 						join(outDir, "server", "worker.js"),
@@ -172,14 +172,14 @@ self.addEventListener("fetch", (event) => {
 					);
 					expect(workerContent).toContain(`Platform: ${platform}`);
 
-					// Node/Bun builds: check index.js for supervisor code
-					const indexContent = await FS.readFile(
-						join(outDir, "server", "index.js"),
+					// Node/Bun builds: check supervisor.js for supervisor code
+					const supervisorContent = await FS.readFile(
+						join(outDir, "server", "supervisor.js"),
 						"utf8",
 					);
 					// Supervisor uses Worker class to spawn workers
-					expect(indexContent).toContain("Worker");
-					expect(indexContent).toContain("shutdown");
+					expect(supervisorContent).toContain("Worker");
+					expect(supervisorContent).toContain("shutdown");
 				}
 			} catch (error) {
 				logger.error`Platform ${platform} failed: ${error}`;
@@ -288,8 +288,8 @@ test(
 				platform: "node",
 			});
 
-			// Build should complete but app.js should have bootstrap + empty content
-			expect(await fileExists(join(outDir, "server", "index.js"))).toBe(true);
+			// Build should complete but supervisor.js should have bootstrap + empty content
+			expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(true);
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -334,7 +334,7 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Check required output structure
-			expect(await fileExists(join(outDir, "server", "index.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(true);
 			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
 				true,
 			);
@@ -344,12 +344,12 @@ self.addEventListener("fetch", (event) => {
 			expect(await fileExists(join(outDir, "public", "assets"))).toBe(true);
 
 			// Validate build structure
-			// index.js is the supervisor that spawns workers
-			const indexContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+			// supervisor.js spawns workers
+			const supervisorContent = await FS.readFile(
+				join(outDir, "server", "supervisor.js"),
 				"utf8",
 			);
-			expect(indexContent).toContain("Worker"); // Uses @b9g/node-webworker
+			expect(supervisorContent).toContain("Worker"); // Uses @b9g/node-webworker
 
 			// worker.js contains the runtime and user code
 			expect(await fileExists(join(outDir, "server", "worker.js"))).toBe(true);
@@ -404,8 +404,8 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Verify the build produced output
-			const indexPath = join(outDir, "server", "index.js");
-			const stat = await FS.stat(indexPath);
+			const supervisorPath = join(outDir, "server", "supervisor.js");
+			const stat = await FS.stat(supervisorPath);
 			expect(stat.isFile()).toBe(true);
 		} finally {
 			await cleanup(cleanup_paths);
@@ -532,16 +532,16 @@ self.skipWaiting();
 			expect(workerContent).toContain("skipWaiting()");
 			expect(workerContent).toContain("Response.json");
 
-			// Check bootstrap code - supervisor (index.js) manages workers
-			const indexContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+			// Check bootstrap code - supervisor.js manages workers
+			const supervisorContent = await FS.readFile(
+				join(outDir, "server", "supervisor.js"),
 				"utf8",
 			);
 			// Supervisor spawns workers and handles signals
-			expect(indexContent).toContain("Worker");
-			expect(indexContent).toContain("shutdown");
+			expect(supervisorContent).toContain("Worker");
+			expect(supervisorContent).toContain("shutdown");
 
-			// ServiceWorker lifecycle is in worker.js, not index.js
+			// ServiceWorker lifecycle is in worker.js, not supervisor.js
 			expect(workerContent).toContain("runLifecycle(registration,");
 		} finally {
 			await cleanup(cleanup_paths);
@@ -669,7 +669,7 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Should have found the workspace root and built successfully
-				expect(await fileExists(join(outDir, "server", "index.js"))).toBe(true);
+				expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(true);
 
 				// Verify the build is self-contained
 				// User code is in worker.js (Node platform)
@@ -764,17 +764,17 @@ self.addEventListener("fetch", (event) => {
 				platform: "node",
 			});
 
-			const appContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+			const supervisorContent = await FS.readFile(
+				join(outDir, "server", "supervisor.js"),
 				"utf8",
 			);
 
 			// Should not contain workerData.userEntryPath pattern (the bug we fixed)
-			expect(appContent).not.toMatch(/workerData\.userEntryPath/);
-			expect(appContent).not.toMatch(/await import\(workerData/);
+			expect(supervisorContent).not.toMatch(/workerData\.userEntryPath/);
+			expect(supervisorContent).not.toMatch(/await import\(workerData/);
 
 			// Should not have userEntryPath in workerData
-			expect(appContent).not.toMatch(/userEntryPath:\s*["']/);
+			expect(supervisorContent).not.toMatch(/userEntryPath:\s*["']/);
 		} finally {
 			await cleanup(cleanup_paths);
 		}

@@ -60,7 +60,7 @@ async function cleanup(paths) {
 // Helper to run the built bundle and capture output
 async function runBundle(serverDir, timeoutMs = 3000) {
 	return new Promise((resolve, reject) => {
-		const indexPath = join(serverDir, "index.js");
+		const indexPath = join(serverDir, "supervisor.js");
 		const child = spawn("node", [indexPath], {
 			cwd: serverDir,
 			stdio: ["pipe", "pipe", "pipe"],
@@ -219,7 +219,7 @@ console.log("LOGGING_TEST_READY");
 
 			// Verify the bundle contains the static import for console sink
 			const indexContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+				join(outDir, "server", "supervisor.js"),
 				"utf8",
 			);
 			// Should contain bundled getConsoleSink (the function, not an import statement since it's bundled)
@@ -295,7 +295,7 @@ console.log("MULTI_SINK_READY");
 
 			// Verify the bundle contains both sink functions
 			const indexContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+				join(outDir, "server", "supervisor.js"),
 				"utf8",
 			);
 			expect(indexContent).toContain("getConsoleSink");
@@ -528,7 +528,7 @@ console.log("FULL_E2E_READY");
 
 			// Verify the bundle structure
 			const indexContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+				join(outDir, "server", "supervisor.js"),
 				"utf8",
 			);
 
@@ -696,7 +696,7 @@ console.log("SINK_BUNDLE_TEST_READY");
 
 			// Verify sink factories are bundled (not dynamically imported)
 			const indexContent = await FS.readFile(
-				join(outDir, "server", "index.js"),
+				join(outDir, "server", "supervisor.js"),
 				"utf8",
 			);
 
@@ -1098,8 +1098,8 @@ self.addEventListener("fetch", (event) => {
 			const mapFiles = files.filter((f) => f.endsWith(".map"));
 			expect(mapFiles.length).toBeGreaterThan(0);
 
-			// Verify the map files include our source files (Node platform: index.js + worker.js)
-			expect(mapFiles).toContain("index.js.map");
+			// Verify the map files include our source files (Node platform: supervisor.js + worker.js)
+			expect(mapFiles).toContain("supervisor.js.map");
 			expect(mapFiles).toContain("worker.js.map");
 		} finally {
 			await cleanup(cleanup_paths);
