@@ -90,7 +90,9 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Check output files exist in new structure
-			expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(
+				true,
+			);
 			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
 				true,
 			);
@@ -289,7 +291,9 @@ test(
 			});
 
 			// Build should complete but supervisor.js should have bootstrap + empty content
-			expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(
+				true,
+			);
 		} finally {
 			await cleanup(cleanup_paths);
 		}
@@ -334,7 +338,9 @@ self.addEventListener("fetch", (event) => {
 			});
 
 			// Check required output structure
-			expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(
+				true,
+			);
 			expect(await fileExists(join(outDir, "server", "package.json"))).toBe(
 				true,
 			);
@@ -669,7 +675,9 @@ self.addEventListener("fetch", (event) => {
 				});
 
 				// Should have found the workspace root and built successfully
-				expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(true);
+				expect(await fileExists(join(outDir, "server", "supervisor.js"))).toBe(
+					true,
+				);
 
 				// Verify the build is self-contained
 				// User code is in worker.js (Node platform)
