@@ -1,6 +1,6 @@
 {
   "name": "@b9g/shovel",
-  "version": "0.2.0-beta.26",
+  "version": "0.2.0-beta.27",
   "description": "ServiceWorker-first universal deployment platform. Write ServiceWorker apps once, deploy anywhere (Node/Bun/Cloudflare). Registry-based multi-app orchestration.",
   "license": "MIT",
   "type": "module",
@@ -25,6 +25,14 @@
   },
   "dependencies": {
     "@b9g/async-context": "workspace:*",
+    "@b9g/cache": "workspace:*",
+    "@b9g/filesystem": "workspace:*",
+    "@b9g/http-errors": "workspace:*",
+    "@b9g/node-webworker": "workspace:*",
+    "@b9g/platform": "workspace:*",
+    "@b9g/platform-bun": "workspace:*",
+    "@b9g/platform-cloudflare": "workspace:*",
+    "@b9g/platform-node": "workspace:*",
     "@clack/prompts": "^0.7.0",
     "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
     "@esbuild-plugins/node-modules-polyfill": "^0.2.2",
@@ -33,39 +41,6 @@
     "esbuild": "^0.27.2",
     "mime": "^4.0.4",
     "zod": "^3.23.0"
-  },
-  "peerDependencies": {
-    "@b9g/node-webworker": "workspace:*",
-    "@b9g/platform": "workspace:*",
-    "@b9g/platform-node": "workspace:*",
-    "@b9g/platform-cloudflare": "workspace:*",
-    "@b9g/platform-bun": "workspace:*",
-    "@b9g/cache": "workspace:*",
-    "@b9g/filesystem": "workspace:*",
-    "@b9g/http-errors": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@b9g/platform": {
-      "optional": true
-    },
-    "@b9g/platform-node": {
-      "optional": true
-    },
-    "@b9g/platform-cloudflare": {
-      "optional": true
-    },
-    "@b9g/platform-bun": {
-      "optional": true
-    },
-    "@b9g/cache": {
-      "optional": true
-    },
-    "@b9g/filesystem": {
-      "optional": true
-    },
-    "@b9g/http-errors": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@b9g/assets": "workspace:*",
