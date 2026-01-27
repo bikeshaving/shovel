@@ -485,7 +485,7 @@ process.on("SIGTERM", handleShutdown);
 `;
 
 		return {
-			index: supervisorCode,
+			supervisor: supervisorCode,
 			worker: prodWorkerCode,
 		};
 	}
