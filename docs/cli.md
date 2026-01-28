@@ -251,6 +251,6 @@ shovel develop src/server.ts --port 8080
 
 ## See Also
 
-- [Getting Started](./getting-started.md) - Quick start guide
+- [Getting Started](./guides/01-getting-started.md) - Quick start guide
 - [shovel.json](./shovel-json.md) - Configuration reference
 - [Deployment](./deployment.md) - Production deployment

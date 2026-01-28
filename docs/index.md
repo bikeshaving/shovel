@@ -1,10 +1,17 @@
 # Shovel Documentation
 
-## Getting Started
+Shovel documentation is split into short Guides and detailed Reference pages. Guides are numbered to indicate the recommended reading order.
 
-- [Getting Started](./getting-started.md) - Quick start guide
+## Guides
+
+- [Guides](./guides/index.md) - Step-by-step introductions
+- [Getting Started](./guides/01-getting-started.md) - First run
+- [Configuration](./guides/02-configuration.md) - Project setup
+
+## Reference
+
 - [CLI](./cli.md) - Command reference
-- [Configuration](./shovel-json.md) - shovel.json reference
+- [shovel.json](./shovel-json.md) - Configuration reference
 - [Deployment](./deployment.md) - Production deployment
 
 ## Core Concepts
@@ -14,6 +21,7 @@
 - [Middleware](./middleware.md) - Request/response processing
 - [Assets](./assets.md) - Static asset pipeline
 - [HTTP Errors](./http-errors.md) - Error handling
+- [Glossary](./glossary.md) - Shared terminology
 
 ## Storage
 
