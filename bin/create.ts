@@ -19,6 +19,7 @@ interface ProjectConfig {
  */
 function detectPlatform(): "node" | "bun" {
 	// Check if running under Bun
+	// eslint-disable-next-line no-restricted-properties -- CLI needs to check runtime environment
 	if (process.env.npm_config_user_agent?.includes("bun")) {
 		return "bun";
 	}
