@@ -22,8 +22,14 @@
  */
 
 import {readFileSync} from "fs";
-import {join} from "path";
+import {join, resolve, relative, normalize} from "path";
 import {z} from "zod";
+
+/**
+ * Dangerous prototype keys that could enable prototype pollution attacks.
+ * These are blocked in config object processing.
+ */
+const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 /**
  * Default configuration constants
@@ -690,8 +696,15 @@ function processConfigValue(
 	}
 
 	if (value !== null && typeof value === "object") {
-		const processed: any = {};
+		// Use null prototype to prevent prototype pollution attacks
+		const processed: any = Object.create(null);
 		for (const [key, val] of Object.entries(value)) {
+			// Block dangerous prototype keys
+			if (DANGEROUS_KEYS.has(key)) {
+				throw new Error(
+					`Config key "${key}" is not allowed (potential prototype pollution)`,
+				);
+			}
 			processed[key] = processConfigValue(val, env);
 		}
 		return processed;
@@ -1222,6 +1235,19 @@ export function generateConfigModule(
 		name: string,
 	): string | null {
 		if (!modulePath) return null;
+
+		// Validate relative paths don't escape project root (path traversal defense)
+		if (modulePath.startsWith(".")) {
+			const resolvedPath = resolve(options.projectDir, modulePath);
+			const normalizedRoot = normalize(options.projectDir);
+			const normalizedResolved = normalize(resolvedPath);
+			const rel = relative(normalizedRoot, normalizedResolved);
+			if (rel.startsWith("..") || rel.startsWith("/")) {
+				throw new Error(
+					`Config ${type} "${name}" module path "${modulePath}" escapes project root`,
+				);
+			}
+		}
 
 		const varName = `${type}_${sanitizeVarName(name)}`;
 		const actualExport = exportName || "default";
