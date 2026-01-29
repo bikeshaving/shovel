@@ -10,8 +10,20 @@ import {existsSync} from "fs";
 interface ProjectConfig {
 	name: string;
 	platform: "node" | "bun" | "cloudflare";
-	template: "basic" | "api" | "echo";
+	template: "hello-world" | "api" | "static-site" | "full-stack";
 	typescript: boolean;
+}
+
+/**
+ * Auto-detect the best default platform based on the runtime environment.
+ */
+function detectPlatform(): "node" | "bun" {
+	// Check if running under Bun
+	if (process.env.npm_config_user_agent?.includes("bun")) {
+		return "bun";
+	}
+	// Default to Node.js
+	return "node";
 }
 
 function validateProjectName(name: string): string | undefined {
@@ -66,46 +78,29 @@ async function main() {
 		}
 	}
 
-	// Platform selection
-	const platform = await select({
-		message: "Which platform are you targeting?",
-		options: [
-			{
-				value: "node" as const,
-				label: `Node.js - Traditional server with worker threads`,
-				hint: "Most common choice",
-			},
-			{
-				value: "bun" as const,
-				label: `Bun - Native performance with Web Workers`,
-			},
-			{
-				value: "cloudflare" as const,
-				label: `Cloudflare - Edge runtime with KV/R2/D1`,
-			},
-		],
-	});
-
-	if (typeof platform === "symbol") {
-		outro("Project creation cancelled");
-		process.exit(0);
-	}
-
-	// Template selection
+	// 1. Template selection (most important question first)
 	const template = await select({
 		message: "Choose a starter template:",
 		options: [
 			{
-				value: "basic" as const,
-				label: `Basic - Simple hello world with routing`,
+				value: "hello-world" as const,
+				label: "Hello World",
+				hint: "Minimal fetch handler to get started",
 			},
 			{
 				value: "api" as const,
-				label: `API - REST endpoints with JSON responses`,
+				label: "API",
+				hint: "REST endpoints with JSON responses",
 			},
 			{
-				value: "echo" as const,
-				label: `Echo - HTTP request echo service (like httpbin)`,
+				value: "static-site" as const,
+				label: "Static Site",
+				hint: "Serve files from public/ directory",
+			},
+			{
+				value: "full-stack" as const,
+				label: "Full Stack",
+				hint: "HTML pages + API routes + static assets",
 			},
 		],
 	});
@@ -115,13 +110,42 @@ async function main() {
 		process.exit(0);
 	}
 
-	// TypeScript option
+	// 2. TypeScript option (default to yes)
 	const typescript = await confirm({
 		message: "Use TypeScript?",
-		initialValue: false,
+		initialValue: true,
 	});
 
 	if (typeof typescript === "symbol") {
+		outro("Project creation cancelled");
+		process.exit(0);
+	}
+
+	// 3. Platform selection (last, with auto-detected default)
+	const detectedPlatform = detectPlatform();
+	const platform = await select({
+		message: "Which platform?",
+		initialValue: detectedPlatform,
+		options: [
+			{
+				value: "node" as const,
+				label: "Node.js",
+				hint: detectedPlatform === "node" ? "detected" : undefined,
+			},
+			{
+				value: "bun" as const,
+				label: "Bun",
+				hint: detectedPlatform === "bun" ? "detected" : undefined,
+			},
+			{
+				value: "cloudflare" as const,
+				label: "Cloudflare Workers",
+				hint: "Edge runtime",
+			},
+		],
+	});
+
+	if (typeof platform === "symbol") {
 		outro("Project creation cancelled");
 		process.exit(0);
 	}
@@ -146,11 +170,11 @@ async function main() {
 
 		console.info("");
 		console.info("Next steps:");
-		console.info(`  $ cd ${projectName}`);
-		console.info(`  $ npm install`);
-		console.info(`  $ npm run develop`);
+		console.info(`  cd ${projectName}`);
+		console.info(`  npm install`);
+		console.info(`  npm run dev`);
 		console.info("");
-		console.info(`Your app will be available at: http://localhost:3000`);
+		console.info("Your app will be available at: http://localhost:3000");
 		console.info("");
 	} catch (error) {
 		s.stop("Failed to create project");
@@ -164,27 +188,32 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 	await mkdir(projectPath, {recursive: true});
 	await mkdir(join(projectPath, "src"), {recursive: true});
 
+	// Create public directory for static-site and full-stack templates
+	if (config.template === "static-site" || config.template === "full-stack") {
+		await mkdir(join(projectPath, "public"), {recursive: true});
+	}
+
 	// Create package.json
+	const ext = config.typescript ? "ts" : "js";
 	const packageJson = {
 		name: config.name,
 		private: true,
-		version: "1.0.0",
-		description: `Shovel ${config.template} app for ${config.platform}`,
+		version: "0.0.1",
 		type: "module",
 		scripts: {
-			develop: `shovel develop src/app.${config.typescript ? "ts" : "js"} --platform ${config.platform}`,
-			build: `shovel build src/app.${config.typescript ? "ts" : "js"} --platform ${config.platform}`,
-			start: "node dist/server/index.js",
+			dev: `shovel develop src/app.${ext} --platform ${config.platform}`,
+			build: `shovel build src/app.${ext} --platform ${config.platform}`,
+			start: "node dist/server/supervisor.js",
 		},
 		dependencies: {
-			"@b9g/router": "^0.1.0",
-			"@b9g/platform": "^0.1.0",
-			[`@b9g/platform-${config.platform}`]: "^0.1.0",
-			"@b9g/shovel": "^0.1.0",
+			"@b9g/router": "^0.2.0",
+			"@b9g/shovel": "^0.2.0",
+			"@b9g/filesystem": "^0.1.8",
+			"@b9g/cache": "^0.2.0",
 		},
 		devDependencies: config.typescript
 			? {
-					"@types/node": "^20.0.0",
+					"@types/node": "^18.0.0",
 					typescript: "^5.0.0",
 				}
 			: {},
@@ -197,8 +226,7 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 
 	// Create app file
 	const appFile = generateAppFile(config);
-	const appExt = config.typescript ? "ts" : "js";
-	await writeFile(join(projectPath, `src/app.${appExt}`), appFile);
+	await writeFile(join(projectPath, `src/app.${ext}`), appFile);
 
 	// Create TypeScript config if needed
 	if (config.typescript) {
@@ -224,6 +252,11 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 		);
 	}
 
+	// Create static files for templates that need them
+	if (config.template === "static-site" || config.template === "full-stack") {
+		await createStaticFiles(config, projectPath);
+	}
+
 	// Create README
 	const readme = generateReadme(config);
 	await writeFile(join(projectPath, "README.md"), readme);
@@ -239,458 +272,324 @@ dist/
 	await writeFile(join(projectPath, ".gitignore"), gitignore);
 }
 
+async function createStaticFiles(config: ProjectConfig, projectPath: string) {
+	// Create index.html
+	const indexHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${config.name}</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main>
+    <h1>Welcome to ${config.name}</h1>
+    <p>Edit <code>public/index.html</code> to get started.</p>
+    ${config.template === "full-stack" ? '<p>API endpoint: <a href="/api/hello">/api/hello</a></p>' : ""}
+  </main>
+</body>
+</html>
+`;
+	await writeFile(join(projectPath, "public/index.html"), indexHtml);
+
+	// Create styles.css
+	const stylesCss = `* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+  color: #333;
+  background: #fafafa;
+}
+
+main {
+  max-width: 640px;
+  margin: 4rem auto;
+  padding: 2rem;
+}
+
+h1 {
+  color: #2563eb;
+  margin-bottom: 1rem;
+}
+
+code {
+  background: #e5e7eb;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+a {
+  color: #2563eb;
+}
+`;
+	await writeFile(join(projectPath, "public/styles.css"), stylesCss);
+}
+
 function generateAppFile(config: ProjectConfig): string {
-	const helperImports =
-		config.template === "echo" && config.typescript
-			? `
-// Helper functions for echo service
-function getRequestInfo(request: Request) {
-  return {
-    method: request.method,
-    url: request.url,
-    headers: Object.fromEntries(request.headers.entries()),
-  };
+	switch (config.template) {
+		case "hello-world":
+			return generateHelloWorld(config);
+		case "api":
+			return generateApi(config);
+		case "static-site":
+			return generateStaticSite(config);
+		case "full-stack":
+			return generateFullStack(config);
+		default:
+			return generateHelloWorld(config);
+	}
 }
 
-async function parseBody(request: Request) {
-  const contentType = request.headers.get('content-type') || '';
-
-  if (contentType.includes('application/json')) {
-    try {
-      return await request.json();
-    } catch (err) {
-      // Only ignore JSON parse errors, rethrow others
-      if (
-        !(err instanceof SyntaxError) ||
-        !/^(Unexpected token|Expected|JSON)/i.test(String(err.message))
-      ) {
-        throw err;
-      }
-      return null;
-    }
-  }
-
-  if (contentType.includes('application/x-www-form-urlencoded')) {
-    try {
-      const formData = await request.formData();
-      return Object.fromEntries(formData.entries());
-    } catch (err) {
-      // Only ignore form data parse errors, rethrow others
-      if (
-        !(err instanceof TypeError) ||
-        !String(err.message).includes('FormData')
-      ) {
-        throw err;
-      }
-      return null;
-    }
-  }
-
-  try {
-    const text = await request.text();
-    return text || null;
-  } catch (err) {
-    // Only ignore body already consumed errors, rethrow others
-    if (
-      !(err instanceof TypeError) ||
-      !String(err.message).includes('body')
-    ) {
-      throw err;
-    }
-    return null;
-  }
-}
-`
-			: config.template === "echo"
-				? `
-// Helper functions for echo service
-function getRequestInfo(request) {
-  return {
-    method: request.method,
-    url: request.url,
-    headers: Object.fromEntries(request.headers.entries()),
-  };
-}
-
-async function parseBody(request) {
-  const contentType = request.headers.get('content-type') || '';
-
-  if (contentType.includes('application/json')) {
-    try {
-      return await request.json();
-    } catch (err) {
-      // Only ignore JSON parse errors, rethrow others
-      if (
-        !(err instanceof SyntaxError) ||
-        !/^(Unexpected token|Expected|JSON)/i.test(String(err.message))
-      ) {
-        throw err;
-      }
-      return null;
-    }
-  }
-
-  if (contentType.includes('application/x-www-form-urlencoded')) {
-    try {
-      const formData = await request.formData();
-      return Object.fromEntries(formData.entries());
-    } catch (err) {
-      // Only ignore form data parse errors, rethrow others
-      if (
-        !(err instanceof TypeError) ||
-        !String(err.message).includes('FormData')
-      ) {
-        throw err;
-      }
-      return null;
-    }
-  }
-
-  try {
-    const text = await request.text();
-    return text || null;
-  } catch (err) {
-    // Only ignore body already consumed errors, rethrow others
-    if (
-      !(err instanceof TypeError) ||
-      !String(err.message).includes('body')
-    ) {
-      throw err;
-    }
-    return null;
-  }
-}
-`
-				: "";
-
-	return `${helperImports}import { Router } from "@b9g/router";
-
-const router = new Router();
-
-${generateRoutes(config)}
-
-// ServiceWorker lifecycle events
-self.addEventListener("install", (event) => {
-  console.info("[${config.name}] ServiceWorker installed");
-});
-
-self.addEventListener("activate", (event) => {
-  console.info("[${config.name}] ServiceWorker activated");
-});
-
-// Handle HTTP requests
+function generateHelloWorld(config: ProjectConfig): string {
+	return `// ${config.name} - Hello World
 self.addEventListener("fetch", (event) => {
-  try {
-    const responsePromise = router.handle(event.request);
-    event.respondWith(responsePromise);
-  } catch (error) {
-    console.error("[${config.name}] Error handling request:", error);
-    event.respondWith(
-      new Response(
-        JSON.stringify({
-          error: "Internal server error",
-          message: error.message,
-        }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      )
-    );
-  }
+  event.respondWith(
+    new Response("Hello from Shovel!", {
+      headers: { "Content-Type": "text/plain" },
+    })
+  );
 });
 `;
 }
 
-function generateRoutes(config: ProjectConfig): string {
-	switch (config.template) {
-		case "basic":
-			return `// Basic routes
-router.route("/").get(async (request, context) => {
-  const html = \`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Welcome to Shovel!</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          body { font-family: system-ui; max-width: 600px; margin: 2rem auto; padding: 2rem; }
-          h1 { color: #2563eb; }
-          .info { background: #f1f5f9; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
-          code { background: #e2e8f0; padding: 0.2rem 0.4rem; border-radius: 4px; }
-        </style>
-      </head>
-      <body>
-        <h1>🚀 Welcome to Shovel!</h1>
-        <p>Your ${config.template} app is running on the <strong>${config.platform}</strong> platform.</p>
+function generateApi(config: ProjectConfig): string {
+	return `import { Router } from "@b9g/router";
 
-        <div class="info">
-          <strong>Try these endpoints:</strong>
-          <ul>
-            <li><a href="/api/hello">GET /api/hello</a> - Simple API endpoint</li>
-            <li><a href="/api/time">GET /api/time</a> - Current timestamp</li>
-          </ul>
-        </div>
+const router = new Router();
 
-        <p>Edit <code>src/app.${config.typescript ? "ts" : "js"}</code> to customize your app!</p>
-      </body>
-    </html>
-  \`;
-
-  return new Response(html, {
-    headers: { "Content-Type": "text/html" }
-  });
-});
-
-router.route("/api/hello").get(async (request, context) => {
-  return new Response(JSON.stringify({
-    message: "Hello from Shovel! 🚀",
-    platform: "${config.platform}",
-    timestamp: new Date().toISOString()
-  }), {
-    headers: { "Content-Type": "application/json" }
-  });
-});
-
-router.route("/api/time").get(async (request, context) => {
-  return new Response(JSON.stringify({
-    time: new Date().toISOString(),
-    unix: Date.now(),
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-  }), {
-    headers: { "Content-Type": "application/json" }
-  });
-});`;
-
-		case "api":
-			return `// API routes
-router.route("/").get(async (request, context) => {
-  return new Response(JSON.stringify({
-    name: "${config.name}",
-    platform: "${config.platform}",
-    endpoints: [
-      { method: "GET", path: "/api/users", description: "Get all users" },
-      { method: "POST", path: "/api/users", description: "Create a user" },
-      { method: "GET", path: "/api/users/:id", description: "Get user by ID" },
-      { method: "GET", path: "/health", description: "Health check" }
-    ]
-  }), {
-    headers: { "Content-Type": "application/json" }
-  });
-});
-
-// Mock users data
+// In-memory data store
 const users = [
-  { id: 1, name: "Alice Johnson", email: "alice@example.com", active: true },
-  { id: 2, name: "Bob Smith", email: "bob@example.com", active: true },
-  { id: 3, name: "Carol Davis", email: "carol@example.com", active: false }
+  { id: 1, name: "Alice", email: "alice@example.com" },
+  { id: 2, name: "Bob", email: "bob@example.com" },
 ];
 
-router.route("/api/users").get(async (request, context) => {
-  const url = new URL(request.url);
-  const active = url.searchParams.get('active');
-
-  let filteredUsers = users;
-  if (active !== null) {
-    filteredUsers = users.filter(user => user.active === (active === 'true'));
-  }
-
-  return new Response(JSON.stringify({
-    users: filteredUsers,
-    total: filteredUsers.length
-  }), {
-    headers: { "Content-Type": "application/json" }
-  });
+// List all users
+router.route("/api/users").get(() => {
+  return Response.json({ users });
 });
 
-router.route("/api/users").post(async (request, context) => {
-  const userData = await request.json();
-  const newUser = {
-    id: Math.max(...users.map(u => u.id)) + 1,
-    name: userData.name || "Unknown User",
-    email: userData.email || \`user\${Date.now()}@example.com\`,
-    active: userData.active !== false
-  };
-
-  users.push(newUser);
-
-  return new Response(JSON.stringify({
-    success: true,
-    user: newUser
-  }), {
-    status: 201,
-    headers: { "Content-Type": "application/json" }
-  });
-});
-
-router.route("/api/users/:id").get(async (request, context) => {
-  const id = parseInt(context.params.id);
-  const user = users.find(u => u.id === id);
-
+// Get user by ID
+router.route("/api/users/:id").get((req, ctx) => {
+  const user = users.find((u) => u.id === Number(ctx.params.id));
   if (!user) {
-    return new Response(JSON.stringify({
-      error: "User not found"
-    }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" }
-    });
+    return Response.json({ error: "User not found" }, { status: 404 });
+  }
+  return Response.json({ user });
+});
+
+// Create user
+router.route("/api/users").post(async (req) => {
+  const body = await req.json();
+  const user = {
+    id: users.length + 1,
+    name: body.name,
+    email: body.email,
+  };
+  users.push(user);
+  return Response.json({ user }, { status: 201 });
+});
+
+// Health check
+router.route("/health").get(() => {
+  return Response.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Root - API info
+router.route("/").get(() => {
+  return Response.json({
+    name: "${config.name}",
+    endpoints: [
+      "GET /api/users",
+      "GET /api/users/:id",
+      "POST /api/users",
+      "GET /health",
+    ],
+  });
+});
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(router.handle(event.request));
+});
+`;
+}
+
+function generateStaticSite(config: ProjectConfig): string {
+	return `// ${config.name} - Static Site
+// Serves files from the public/ directory
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(handleRequest(event.request));
+});
+
+async function handleRequest(request${config.typescript ? ": Request" : ""})${config.typescript ? ": Promise<Response>" : ""} {
+  const url = new URL(request.url);
+  let path = url.pathname;
+
+  // Default to index.html for root
+  if (path === "/") {
+    path = "/index.html";
   }
 
-  return new Response(JSON.stringify({ user }), {
-    headers: { "Content-Type": "application/json" }
-  });
-});
+  // Try to serve from public directory
+  try {
+    const publicDir = await directories.open("public");
+    const file = await publicDir.getFileHandle(path.slice(1)); // Remove leading /
+    const blob = await file.getFile();
 
-router.route("/health").get(async (request, context) => {
-  return new Response(JSON.stringify({
-    status: "ok",
-    platform: "${config.platform}",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  }), {
-    headers: { "Content-Type": "application/json" }
-  });
-});`;
+    return new Response(blob, {
+      headers: {
+        "Content-Type": getContentType(path),
+      },
+    });
+  } catch {
+    // File not found - return 404
+    return new Response("Not Found", { status: 404 });
+  }
+}
 
-		case "echo":
-			return `// Echo service routes (like httpbin)
-router.route("/").get(async (request, context) => {
-  const html = \`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>HTTP Echo Service</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          body { font-family: monospace; max-width: 800px; margin: 2rem auto; padding: 2rem; }
-          h1 { color: #059669; }
-          .endpoint { background: #f0fdf4; padding: 1rem; margin: 1rem 0; border-radius: 8px; }
-          code { background: #dcfce7; padding: 0.2rem 0.4rem; border-radius: 4px; }
-        </style>
-      </head>
-      <body>
-        <h1>🔄 HTTP Echo Service</h1>
-        <p>A simple HTTP request/response inspection service.</p>
-
-        <div class="endpoint">
-          <strong>POST /echo</strong><br>
-          Echo back request details including headers, body, and metadata.
-        </div>
-
-        <div class="endpoint">
-          <strong>GET /ip</strong><br>
-          Get your IP address.
-        </div>
-
-        <div class="endpoint">
-          <strong>GET /headers</strong><br>
-          Get your request headers.
-        </div>
-
-        <div class="endpoint">
-          <strong>GET /user-agent</strong><br>
-          Get your user agent string.
-        </div>
-
-        <p>Try: <code>curl -X POST https://your-app.com/echo -d '{"test": "data"}'</code></p>
-      </body>
-    </html>
-  \`;
-
-  return new Response(html, {
-    headers: { "Content-Type": "text/html" }
-  });
-});
-
-router.route("/echo").all(async (request, context) => {
-  const info = getRequestInfo(request);
-  const body = await parseBody(request);
-
-  const response = {
-    ...info,
-    body,
-    contentType: request.headers.get("content-type") || null,
-    timestamp: new Date().toISOString()
+function getContentType(path${config.typescript ? ": string" : ""})${config.typescript ? ": string" : ""} {
+  const ext = path.split(".").pop()?.toLowerCase();
+  const types${config.typescript ? ": Record<string, string>" : ""} = {
+    html: "text/html",
+    css: "text/css",
+    js: "text/javascript",
+    json: "application/json",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    svg: "image/svg+xml",
+    ico: "image/x-icon",
   };
+  return types[ext || ""] || "application/octet-stream";
+}
+`;
+}
 
-  return new Response(JSON.stringify(response, null, 2), {
-    headers: { "Content-Type": "application/json" }
+function generateFullStack(config: ProjectConfig): string {
+	return `import { Router } from "@b9g/router";
+
+const router = new Router();
+
+// API routes
+router.route("/api/hello").get(() => {
+  return Response.json({
+    message: "Hello from the API!",
+    timestamp: new Date().toISOString(),
   });
 });
 
-router.route("/ip").get(async (request, context) => {
-  const ip = request.headers.get("x-forwarded-for") ||
-            request.headers.get("x-real-ip") ||
-            "127.0.0.1";
-
-  return new Response(JSON.stringify({ ip }), {
-    headers: { "Content-Type": "application/json" }
-  });
+router.route("/api/echo").post(async (req) => {
+  const body = await req.json();
+  return Response.json({ echo: body });
 });
 
-router.route("/headers").get(async (request, context) => {
-  return new Response(JSON.stringify({
-    headers: Object.fromEntries(request.headers.entries())
-  }, null, 2), {
-    headers: { "Content-Type": "application/json" }
-  });
+// Serve static files from public/ for all other routes
+router.route("/*").get(async (req, ctx) => {
+  const url = new URL(req.url);
+  let path = url.pathname;
+
+  // Default to index.html for root
+  if (path === "/") {
+    path = "/index.html";
+  }
+
+  try {
+    const publicDir = await directories.open("public");
+    const file = await publicDir.getFileHandle(path.slice(1));
+    const blob = await file.getFile();
+
+    return new Response(blob, {
+      headers: {
+        "Content-Type": getContentType(path),
+      },
+    });
+  } catch {
+    // Try index.html for SPA routing
+    try {
+      const publicDir = await directories.open("public");
+      const file = await publicDir.getFileHandle("index.html");
+      const blob = await file.getFile();
+      return new Response(blob, {
+        headers: { "Content-Type": "text/html" },
+      });
+    } catch {
+      return new Response("Not Found", { status: 404 });
+    }
+  }
 });
 
-router.route("/user-agent").get(async (request, context) => {
-  return new Response(JSON.stringify({
-    userAgent: request.headers.get("user-agent") || "Unknown"
-  }), {
-    headers: { "Content-Type": "application/json" }
-  });
-});`;
+function getContentType(path${config.typescript ? ": string" : ""})${config.typescript ? ": string" : ""} {
+  const ext = path.split(".").pop()?.toLowerCase();
+  const types${config.typescript ? ": Record<string, string>" : ""} = {
+    html: "text/html",
+    css: "text/css",
+    js: "text/javascript",
+    json: "application/json",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    svg: "image/svg+xml",
+    ico: "image/x-icon",
+  };
+  return types[ext || ""] || "application/octet-stream";
+}
 
-		default:
-			return "// Routes will be added here";
-	}
+self.addEventListener("fetch", (event) => {
+  event.respondWith(router.handle(event.request));
+});
+`;
 }
 
 function generateReadme(config: ProjectConfig): string {
+	const templateDescriptions: Record<string, string> = {
+		"hello-world": "A minimal Shovel application",
+		api: "A REST API with JSON endpoints",
+		"static-site": "A static file server",
+		"full-stack": "A full-stack app with API routes and static files",
+	};
+
 	return `# ${config.name}
 
-A Shovel ${config.template} application for the ${config.platform} platform.
+${templateDescriptions[config.template]}, built with [Shovel](https://github.com/bikeshaving/shovel).
 
-## 🚀 Getting Started
+## Getting Started
 
 \`\`\`bash
 npm install
-npm run develop
+npm run dev
 \`\`\`
 
-Your app will be available at: **http://localhost:3000**
+Open http://localhost:3000
 
-## 📁 Project Structure
+## Scripts
 
-- \`src/app.${config.typescript ? "ts" : "js"}\` - Main ServiceWorker application
-- \`package.json\` - Dependencies and scripts${config.typescript ? "\n- `tsconfig.json` - TypeScript configuration" : ""}
-
-## 🛠️ Available Scripts
-
-- \`npm run develop\` - Start development server with hot reload
+- \`npm run dev\` - Start development server
 - \`npm run build\` - Build for production
-- \`npm run start\` - Start production server
+- \`npm start\` - Run production build
 
-## ✨ Features
+## Project Structure
 
-- ✅ **ServiceWorker APIs** - Standard web APIs (\`self.addEventListener\`, etc.)
-- ✅ **${config.platform} Runtime** - Optimized for ${config.platform}
-- ✅ **${config.typescript ? "TypeScript" : "JavaScript"}** - ${config.typescript ? "Full type safety" : "Modern JavaScript"} with ESM modules
-- ✅ **${config.template} Template** - Ready-to-use starter with routing
+\`\`\`
+${config.name}/
+├── src/
+│   └── app.${config.typescript ? "ts" : "js"}    # Application entry point
+${config.template === "static-site" || config.template === "full-stack" ? "├── public/           # Static files\n│   ├── index.html\n│   └── styles.css\n" : ""}├── package.json
+${config.typescript ? "├── tsconfig.json\n" : ""}└── README.md
+\`\`\`
 
-## 📚 Learn More
+## Learn More
 
-- [Shovel Documentation](https://github.com/b9g/shovel)
-- [ServiceWorker API](https://developer.mozilla.org/docs/Web/API/ServiceWorker)
-
----
-
-Built with 🚀 [Shovel](https://github.com/b9g/shovel) - The ServiceWorker framework that runs everywhere.
+- [Shovel Documentation](https://github.com/bikeshaving/shovel)
+- [ServiceWorker API](https://developer.mozilla.org/docs/Web/API/Service_Worker_API)
 `;
 }
 

@@ -51,5 +51,33 @@ export async function collectDocuments(
 		}
 	}
 
+	docs.sort((a, b) => {
+		const relA = Path.relative(rootPathname, a.filename);
+		const relB = Path.relative(rootPathname, b.filename);
+		const guidePrefix = `guides${Path.sep}`;
+		const isGuideA = relA.startsWith(guidePrefix);
+		const isGuideB = relB.startsWith(guidePrefix);
+
+		if (isGuideA !== isGuideB) {
+			return isGuideA ? -1 : 1;
+		}
+
+		if (isGuideA && isGuideB) {
+			const baseA = Path.basename(relA);
+			const baseB = Path.basename(relB);
+			const matchA = baseA.match(/^(\d+)-/);
+			const matchB = baseB.match(/^(\d+)-/);
+			if (matchA && matchB) {
+				const orderA = parseInt(matchA[1], 10);
+				const orderB = parseInt(matchB[1], 10);
+				if (orderA !== orderB) {
+					return orderA - orderB;
+				}
+			}
+		}
+
+		return relA.localeCompare(relB);
+	});
+
 	return docs;
 }
