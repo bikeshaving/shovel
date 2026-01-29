@@ -9,7 +9,7 @@
 
 import * as ESBuild from "esbuild";
 import {builtinModules, createRequire} from "node:module";
-import {resolve, join, dirname, basename, relative} from "path";
+import {resolve, join, dirname, basename, relative, normalize} from "path";
 import {mkdir} from "fs/promises";
 import {watch, type FSWatcher, existsSync} from "fs";
 import {getLogger} from "@logtape/logtape";
@@ -412,6 +412,16 @@ export class ServerBundler {
 				const resolvedPath = modulePath.startsWith(".")
 					? resolve(this.#projectRoot, modulePath)
 					: projectRequire.resolve(modulePath);
+
+				// Validate relative paths don't escape project root (path traversal defense)
+				if (modulePath.startsWith(".")) {
+					const normalizedRoot = normalize(this.#projectRoot);
+					const normalizedResolved = normalize(resolvedPath);
+					const rel = relative(normalizedRoot, normalizedResolved);
+					if (rel.startsWith("..") || rel.startsWith("/")) {
+						throw new Error(`Plugin path "${modulePath}" escapes project root`);
+					}
+				}
 
 				// eslint-disable-next-line no-restricted-syntax
 				const mod = await import(resolvedPath);

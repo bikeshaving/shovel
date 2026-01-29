@@ -26,35 +26,47 @@ function runCreate(projectName) {
 test("rejects project names with path traversal (..)", () => {
 	const result = runCreate("../malicious");
 	expect(result.exitCode).toBe(1);
-	expect(result.stderr).toContain("lowercase letters, numbers, and hyphens only");
+	expect(result.stderr).toContain(
+		"lowercase letters, numbers, and hyphens only",
+	);
 });
 
 test("rejects project names with slashes", () => {
 	const result = runCreate("foo/bar");
 	expect(result.exitCode).toBe(1);
-	expect(result.stderr).toContain("lowercase letters, numbers, and hyphens only");
+	expect(result.stderr).toContain(
+		"lowercase letters, numbers, and hyphens only",
+	);
 });
 
 test("rejects project names with uppercase", () => {
 	const result = runCreate("MyProject");
 	expect(result.exitCode).toBe(1);
-	expect(result.stderr).toContain("lowercase letters, numbers, and hyphens only");
+	expect(result.stderr).toContain(
+		"lowercase letters, numbers, and hyphens only",
+	);
 });
 
 test("rejects project names with spaces", () => {
 	const result = runCreate("my project");
 	expect(result.exitCode).toBe(1);
-	expect(result.stderr).toContain("lowercase letters, numbers, and hyphens only");
+	expect(result.stderr).toContain(
+		"lowercase letters, numbers, and hyphens only",
+	);
 });
 
 test("rejects project names with special characters", () => {
 	const result = runCreate("my_project!");
 	expect(result.exitCode).toBe(1);
-	expect(result.stderr).toContain("lowercase letters, numbers, and hyphens only");
+	expect(result.stderr).toContain(
+		"lowercase letters, numbers, and hyphens only",
+	);
 });
 
 test("rejects absolute paths", () => {
 	const result = runCreate("/tmp/malicious");
 	expect(result.exitCode).toBe(1);
-	expect(result.stderr).toContain("lowercase letters, numbers, and hyphens only");
+	expect(result.stderr).toContain(
+		"lowercase letters, numbers, and hyphens only",
+	);
 });

@@ -1,5 +1,5 @@
 // Load config and configure logging before anything else
-import {resolve} from "path";
+import {resolve, relative} from "path";
 import {spawnSync} from "child_process";
 import {findProjectRoot} from "../src/utils/project.js";
 import {loadConfig, DEFAULTS, type SinkConfig} from "../src/utils/config.js";
@@ -7,6 +7,23 @@ import {configureLogging} from "@b9g/platform/runtime";
 
 const projectRoot = findProjectRoot();
 const config = loadConfig(projectRoot);
+
+/**
+ * Validates that a resolved path stays within the allowed base directory.
+ * Prevents path traversal attacks via malicious config values.
+ */
+function validatePathWithinBase(
+	resolvedPath: string,
+	baseDir: string,
+	context: string,
+): void {
+	const relativePath = relative(baseDir, resolvedPath);
+	if (relativePath.startsWith("..") || relativePath.startsWith("/")) {
+		throw new Error(
+			`${context}: path "${resolvedPath}" escapes project root "${baseDir}"`,
+		);
+	}
+}
 
 // Reify sink configs by dynamically importing their modules at runtime.
 // This is similar to config.ts's reifyModule(), but operates at runtime (dynamic import)
@@ -26,6 +43,10 @@ async function reifySinks(
 				modulePath.startsWith("./") || modulePath.startsWith("../")
 					? resolve(baseDir, modulePath)
 					: modulePath;
+			// Validate relative paths don't escape project root
+			if (modulePath.startsWith("./") || modulePath.startsWith("../")) {
+				validatePathWithinBase(resolvedPath, baseDir, `Logging sink "${name}"`);
+			}
 			// eslint-disable-next-line no-restricted-syntax -- CLI runtime import of user-configured sinks
 			const mod = await import(resolvedPath);
 			const impl = exportName ? mod[exportName] : mod.default;
