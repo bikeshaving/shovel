@@ -69,7 +69,9 @@ Your code uses standards. Shovel makes them work everywhere.
 
 ## Meta-Framework
 
-Shovel is a meta-framework: it provides and implements primitives rather than opinions. Instead of dictating how you build, it gives you portable building blocks that work everywhere.
+Shovel is a meta-framework: it generates bundles and compiles your code with ESBuild for development and production workflows.
+You write code, and it runs in development and production workflows with the exact same APIs.
+Shovel takes care of single file bundle requirements, and transpiling JSX/TypeScript.
 
 ## True Portability
 
