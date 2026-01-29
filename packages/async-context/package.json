@@ -1,6 +1,6 @@
 {
   "name": "@b9g/async-context",
-  "version": "0.2.0-beta.0",
+  "version": "0.2.0",
   "description": "Lightweight AsyncContext polyfill for JavaScript runtimes. Implements TC39 AsyncContext proposal using AsyncLocalStorage.",
   "type": "module",
   "scripts": {

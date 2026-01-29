@@ -1,6 +1,6 @@
 {
   "name": "@b9g/node-webworker",
-  "version": "0.2.0-beta.1",
+  "version": "0.2.0",
   "description": "Minimal Web Worker shim for Node.js until native support arrives",
   "type": "module",
   "scripts": {
