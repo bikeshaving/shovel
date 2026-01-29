@@ -37,6 +37,16 @@ async function reifySinks(
 	for (const [name, sinkConfig] of Object.entries(sinks ?? {})) {
 		const {module: modulePath, export: exportName, ...rest} = sinkConfig;
 		if (modulePath) {
+			// Security: Block absolute paths and file:// URLs (arbitrary code execution)
+			if (
+				modulePath.startsWith("/") ||
+				modulePath.startsWith("file:") ||
+				/^[a-zA-Z]:/.test(modulePath) // Windows absolute paths
+			) {
+				throw new Error(
+					`Logging sink "${name}" module path "${modulePath}" must be a package name or relative path`,
+				);
+			}
 			// Resolve relative paths against the config file location (baseDir)
 			// Package names (no ./ or ../) are left as-is for Node to resolve from node_modules
 			const resolvedPath =

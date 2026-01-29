@@ -1236,6 +1236,17 @@ export function generateConfigModule(
 	): string | null {
 		if (!modulePath) return null;
 
+		// Security: Block absolute paths and file:// URLs (arbitrary code execution)
+		if (
+			modulePath.startsWith("/") ||
+			modulePath.startsWith("file:") ||
+			/^[a-zA-Z]:/.test(modulePath) // Windows absolute paths
+		) {
+			throw new Error(
+				`Config ${type} "${name}" module path "${modulePath}" must be a package name or relative path`,
+			);
+		}
+
 		// Validate relative paths don't escape project root (path traversal defense)
 		if (modulePath.startsWith(".")) {
 			const resolvedPath = resolve(options.projectDir, modulePath);

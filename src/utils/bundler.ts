@@ -406,6 +406,17 @@ export class ServerBundler {
 			} = pluginConfig;
 
 			try {
+				// Security: Block absolute paths and file:// URLs (arbitrary code execution)
+				if (
+					modulePath.startsWith("/") ||
+					modulePath.startsWith("file:") ||
+					/^[a-zA-Z]:/.test(modulePath) // Windows absolute paths
+				) {
+					throw new Error(
+						`Plugin path "${modulePath}" must be a package name or relative path`,
+					);
+				}
+
 				const projectRequire = createRequire(
 					join(this.#projectRoot, "package.json"),
 				);
