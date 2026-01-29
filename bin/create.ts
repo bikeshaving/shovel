@@ -14,6 +14,13 @@ interface ProjectConfig {
 	typescript: boolean;
 }
 
+function validateProjectName(name: string): string | undefined {
+	if (!name) return "Project name is required";
+	if (!/^[a-z0-9-]+$/.test(name))
+		return "Use lowercase letters, numbers, and hyphens only";
+	return undefined;
+}
+
 async function main() {
 	console.info("");
 
@@ -22,16 +29,18 @@ async function main() {
 	// Get project name from args or prompt
 	let projectName = process.argv[2];
 
-	if (!projectName) {
+	if (projectName) {
+		// Validate CLI argument the same way as interactive input
+		const validationError = validateProjectName(projectName);
+		if (validationError) {
+			console.error(`Error: ${validationError}`);
+			process.exit(1);
+		}
+	} else {
 		const nameResult = await text({
 			message: "What is your project name?",
 			placeholder: "my-shovel-app",
-			validate: (value) => {
-				if (!value) return "Project name is required";
-				if (!/^[a-z0-9-]+$/.test(value))
-					return "Use lowercase letters, numbers, and hyphens only";
-				return undefined;
-			},
+			validate: validateProjectName,
 		});
 
 		if (typeof nameResult === "symbol") {
