@@ -1617,7 +1617,9 @@ test(
 				JSON.stringify(
 					{
 						logging: {
-							loggers: [{category: "shovel", level: "info", sinks: ["console"]}],
+							loggers: [
+								{category: "shovel", level: "info", sinks: ["console"]},
+							],
 						},
 					},
 					null,
@@ -1629,7 +1631,15 @@ test(
 			const cliPath = join(process.cwd(), "./dist/bin/cli.js");
 			serverProcess = spawn(
 				"bun",
-				[cliPath, "develop", join(fixture.src, "app.js"), "--port", PORT.toString(), "--platform", "bun"],
+				[
+					cliPath,
+					"develop",
+					join(fixture.src, "app.js"),
+					"--port",
+					PORT.toString(),
+					"--platform",
+					"bun",
+				],
 				{
 					stdio: ["ignore", "pipe", "pipe"],
 					cwd: fixture.dir,
