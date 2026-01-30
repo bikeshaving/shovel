@@ -1594,3 +1594,142 @@ addEventListener("fetch", (event) => {
 	},
 	TIMEOUT,
 );
+
+// =======================
+// ASSET HOT RELOAD TEST
+// =======================
+
+test(
+	"asset manifest invalidates on client bundle change (issue #35)",
+	async () => {
+		const PORT = 13399;
+		let serverProcess;
+		let fixture;
+
+		try {
+			// Copy app-with-assets fixture to temp directory
+			const {copyFixtureToTemp} = await import("./utils.js");
+			fixture = await copyFixtureToTemp("app-with-assets");
+
+			// Add shovel.json for logging
+			await FS.writeFile(
+				join(fixture.dir, "shovel.json"),
+				JSON.stringify(
+					{
+						logging: {
+							loggers: [{category: "shovel", level: "info", sinks: ["console"]}],
+						},
+					},
+					null,
+					2,
+				),
+			);
+
+			// Start development server with Bun platform (Node dev mode has directory issues with assets)
+			const cliPath = join(process.cwd(), "./dist/bin/cli.js");
+			serverProcess = spawn(
+				"bun",
+				[cliPath, "develop", join(fixture.src, "app.js"), "--port", PORT.toString(), "--platform", "bun"],
+				{
+					stdio: ["ignore", "pipe", "pipe"],
+					cwd: fixture.dir,
+					env: {
+						...process.env,
+						NODE_ENV: "development",
+					},
+				},
+			);
+
+			let stdoutOutput = "";
+			let reloadResolvers = [];
+			let stdoutWaitPos = 0;
+
+			serverProcess.stdout.on("data", (data) => {
+				stdoutOutput += data.toString();
+				// Check for reload message
+				const content = stdoutOutput.slice(stdoutWaitPos);
+				if (content.includes("Reloaded")) {
+					const resolvers = reloadResolvers;
+					reloadResolvers = [];
+					resolvers.forEach((r) => r());
+				}
+			});
+
+			serverProcess.stderr.on("data", (data) => {
+				// Log stderr for debugging
+				logger.debug`stderr: ${data.toString()}`;
+			});
+
+			const waitForReload = (timeoutMs = 10000) => {
+				stdoutWaitPos = stdoutOutput.length;
+				return new Promise((resolve, reject) => {
+					const timeout = setTimeout(() => {
+						reject(new Error(`Reload not detected within ${timeoutMs}ms`));
+					}, timeoutMs);
+					reloadResolvers.push(() => {
+						clearTimeout(timeout);
+						resolve();
+					});
+				});
+			};
+
+			// Wait for server to be ready
+			await waitForServer(PORT, serverProcess);
+
+			// Step 1: Get the initial HTML and extract JS asset URL
+			const html1 = await (await fetch(`http://localhost:${PORT}/`)).text();
+			const match1 = html1.match(/src="(\/assets\/client[^"]+\.js)"/);
+			expect(match1).not.toBeNull();
+			const assetUrl1 = match1[1];
+			logger.debug`Initial asset URL: ${assetUrl1}`;
+
+			// Step 2: Verify the initial asset loads
+			const assetRes1 = await fetch(`http://localhost:${PORT}${assetUrl1}`);
+			expect(assetRes1.status).toBe(200);
+			const assetContent1 = await assetRes1.text();
+			expect(assetContent1).toContain("Asset loaded");
+
+			// Step 3: Modify the client file to change the content hash
+			const reloadPromise = waitForReload();
+			await FS.writeFile(
+				join(fixture.src, "client.js"),
+				'// eslint-disable-next-line no-console\nconsole.log("Asset reloaded v2");',
+			);
+
+			// Step 4: Wait for the rebuild and worker reload
+			await reloadPromise;
+
+			// Give extra time for workers to fully restart
+			await new Promise((resolve) => setTimeout(resolve, 500));
+
+			// Step 5: Get the new HTML and extract the NEW asset URL
+			const html2 = await (await fetch(`http://localhost:${PORT}/`)).text();
+			const match2 = html2.match(/src="(\/assets\/client[^"]+\.js)"/);
+			expect(match2).not.toBeNull();
+			const assetUrl2 = match2[1];
+			logger.debug`New asset URL: ${assetUrl2}`;
+
+			// The hash should have changed
+			expect(assetUrl2).not.toBe(assetUrl1);
+
+			// Step 6: THIS IS THE KEY TEST - the new asset URL should work
+			// Without the fix, this would 404 because manifestEntries was stale
+			const assetRes2 = await fetch(`http://localhost:${PORT}${assetUrl2}`);
+			logger.debug`Asset response status: ${assetRes2.status}`;
+			if (assetRes2.status !== 200) {
+				// Try fetching the old URL to see if it's a caching issue
+				const oldAssetRes = await fetch(`http://localhost:${PORT}${assetUrl1}`);
+				logger.debug`Old asset still works: ${oldAssetRes.status}`;
+			}
+			expect(assetRes2.status).toBe(200);
+			const assetContent2 = await assetRes2.text();
+			expect(assetContent2).toContain("Asset reloaded v2");
+		} finally {
+			await killServer(serverProcess, PORT);
+			if (fixture) {
+				await fixture.cleanup();
+			}
+		}
+	},
+	TIMEOUT,
+);

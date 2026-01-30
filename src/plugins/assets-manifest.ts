@@ -81,7 +81,17 @@ export function createAssetsManifestPlugin(
 
 			// Return a placeholder during build - replaced in onEnd after assets are processed
 			build.onLoad({filter: /.*/, namespace: "shovel-assets"}, () => {
-				// For rebuilds/watch mode, try to read existing manifest from filesystem
+				// If we have a shared manifest (watch mode via ServerBundler), always use
+				// the placeholder approach. This ensures we get the CURRENT build's manifest
+				// from onEnd, not a stale one from disk.
+				if (sharedManifest) {
+					return {
+						contents: `export default ${MANIFEST_PLACEHOLDER};`,
+						loader: "js",
+					};
+				}
+
+				// For standalone builds without sharedManifest, try to read from filesystem
 				if (existsSync(manifestPath)) {
 					try {
 						const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
