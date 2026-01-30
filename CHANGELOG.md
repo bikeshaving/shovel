@@ -2,6 +2,12 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.2] - 2026-01-30
+
+### Bug Fixes
+
+- **Fix asset manifest invalidation in dev mode** - Assets with new content hashes after client bundle changes no longer return 404. The root cause was build-time manifest resolution reading stale data from disk during rebuilds. ([#36](https://github.com/bikeshaving/shovel/pull/36), fixes [#35](https://github.com/bikeshaving/shovel/issues/35))
+
 ## [0.2.0-beta.12] - 2026-01-14
 
 ### Breaking Changes
