@@ -12,9 +12,18 @@
 
 import Mime from "mime";
 
+// Dev mode detection - in dev mode, don't cache manifest to support hot reload
+const isDev = import.meta.env?.MODE !== "production";
+
 // Lazy import of bundled manifest - only loaded when needed (not during tests)
+// In dev mode, we skip caching so hot reload gets fresh manifest
 let _bundledManifest: AssetManifest | null = null;
 async function getBundledManifest(): Promise<AssetManifest> {
+	// In dev mode, always re-import to get fresh manifest after rebuilds
+	if (isDev) {
+		const mod = await import("shovel:assets");
+		return mod.default;
+	}
 	if (!_bundledManifest) {
 		// Dynamic import to defer loading until actually needed
 		const mod = await import("shovel:assets");
@@ -76,21 +85,23 @@ export function assets(config: AssetsConfig = {}) {
 	const {cacheControl = "public, max-age=31536000, immutable"} = config;
 
 	// Build URL -> entry map for O(1) lookup (computed once per middleware instance)
+	// In dev mode, we skip caching so hot reload gets fresh manifest
 	let manifestEntries: Map<string, AssetManifestEntry> | null = null;
 
 	// Load manifest from config or bundled shovel:assets virtual module
 	async function loadManifest(): Promise<Map<string, AssetManifestEntry>> {
-		if (manifestEntries) return manifestEntries;
+		// In dev mode, skip cache to support hot reload
+		if (!isDev && manifestEntries) return manifestEntries;
 
 		// Use config manifest (for testing) or load from bundled module
 		const manifest = config.manifest ?? (await getBundledManifest());
 
 		// Build URL -> entry map for O(1) lookup
-		manifestEntries = new Map();
+		const entries = new Map<string, AssetManifestEntry>();
 		if (manifest.assets) {
 			for (const entry of Object.values(manifest.assets)) {
 				if (entry && typeof entry === "object" && "url" in entry) {
-					manifestEntries.set(
+					entries.set(
 						(entry as AssetManifestEntry).url,
 						entry as AssetManifestEntry,
 					);
@@ -98,7 +109,12 @@ export function assets(config: AssetsConfig = {}) {
 			}
 		}
 
-		return manifestEntries;
+		// Only cache in production mode
+		if (!isDev) {
+			manifestEntries = entries;
+		}
+
+		return entries;
 	}
 
 	return async function assetsMiddleware(request: Request) {
