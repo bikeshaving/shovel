@@ -45,6 +45,7 @@ export function Navbar({url}: {url: string}) {
 			<a href="/" class=${logoStyles}>Shovel</a>
 			<div class=${navLinksStyles}>
 				<a href="/guides/getting-started" aria-current=${url.startsWith("/guides") ? "page" : undefined}>Guides</a>
+				<a href="/docs/routing" aria-current=${url.startsWith("/docs") ? "page" : undefined}>Reference</a>
 				<a href="https://github.com/bikeshaving/shovel">GitHub</a>
 			</div>
 		</nav>

@@ -7,21 +7,24 @@ export function Sidebar({
 	docs,
 	title,
 	url,
+	urlPrefix = "",
 }: {
 	docs: Array<DocInfo>;
 	url: string;
 	title: string;
+	urlPrefix?: string;
 }) {
 	const links: Array<Element> = [];
 	for (const doc of docs) {
 		if (doc.attributes.publish) {
+			const docUrl = `${urlPrefix}${doc.url}`;
 			links.push(jsx`
 				<div class=${css`
 					margin: 10px 0;
 				`}>
 					<a
-						href=${doc.url}
-						aria-current=${doc.url === url && "page"}
+						href=${docUrl}
+						aria-current=${docUrl === url && "page"}
 						class=${css`
 							text-decoration: none;
 							color: var(--text-color);

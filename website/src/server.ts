@@ -7,6 +7,7 @@ import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 // Import views
 import HomeView from "./views/home.js";
 import GuideView from "./views/guide.js";
+import DocView from "./views/doc.js";
 
 // Import assets
 import clientCSS from "./styles/client.css" with {assetBase: "/static/"};
@@ -51,6 +52,11 @@ router.route("/").get(async (request) => {
 router.route("/guides/:slug").get(async (request, context) => {
 	const url = new URL(request.url);
 	return renderView(GuideView, url.pathname, context.params);
+});
+
+router.route("/docs/:slug").get(async (request, context) => {
+	const url = new URL(request.url);
+	return renderView(DocView, url.pathname, context.params);
 });
 
 // ServiceWorker fetch event
