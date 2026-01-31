@@ -35,14 +35,31 @@ export interface DocInfo {
 export async function collectDocuments(
 	pathname: string,
 	rootPathname: string = pathname,
+	options: {shallow?: boolean} = {},
 ): Promise<Array<DocInfo>> {
 	const docs: Array<DocInfo> = [];
 	for await (const {filename} of walk(pathname)) {
 		if (filename.endsWith(".md")) {
+			// Skip subdirectories in shallow mode
+			if (options.shallow) {
+				const relative = Path.relative(pathname, filename);
+				if (relative.includes(Path.sep)) {
+					continue;
+				}
+			}
+
 			const md = await FS.readFile(filename, {encoding: "utf8"});
 			const {attributes, body} = frontmatter(md) as unknown as DocInfo;
 			attributes.publish =
 				attributes.publish == null ? true : attributes.publish;
+
+			// If no title in frontmatter, extract from first heading
+			if (!attributes.title) {
+				const match = body.match(/^#\s+(.+)$/m);
+				if (match) {
+					attributes.title = match[1];
+				}
+			}
 
 			const url = Path.join("/", Path.relative(rootPathname, filename))
 				.replace(/\.md$/, "")
