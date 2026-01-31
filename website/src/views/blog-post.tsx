@@ -1,10 +1,10 @@
-import {jsx} from "@b9g/crank/standalone";
+/** @jsxImportSource @b9g/crank */
 import {css} from "@emotion/css";
 import * as Path from "path";
 
 import {Root} from "../components/root.js";
 import {Marked} from "../components/marked.js";
-import {collectBlogPosts, type BlogPost} from "../models/blog.js";
+import {collectBlogPosts} from "../models/blog.js";
 
 interface ViewProps {
 	url: string;
@@ -87,16 +87,16 @@ export default async function BlogPostView({url}: ViewProps) {
 		day: "numeric",
 	});
 
-	return jsx`
-		<${Root} title="Shovel | ${title}" url=${url} description=${description}>
-			<article class=${articleStyles}>
-				<a href="/blog" class=${backLinkStyles}>&larr; Back to Blog</a>
-				<h1>${title}</h1>
-				<p class=${metaStyles}>
-					${formattedDate}${author ? ` by ${author}` : ""}
+	return (
+		<Root title={`Shovel | ${title}`} url={url} description={description}>
+			<article class={articleStyles}>
+				<a href="/blog" class={backLinkStyles}>&larr; Back to Blog</a>
+				<h1>{title}</h1>
+				<p class={metaStyles}>
+					{formattedDate}{author ? ` by ${author}` : ""}
 				</p>
-				<${Marked} markdown=${body} />
+				<Marked markdown={body} />
 			</article>
-		<//Root>
-	`;
+		</Root>
+	);
 }

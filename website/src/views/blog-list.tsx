@@ -1,4 +1,4 @@
-import {jsx} from "@b9g/crank/standalone";
+/** @jsxImportSource @b9g/crank */
 import {css} from "@emotion/css";
 import * as Path from "path";
 
@@ -71,38 +71,38 @@ export default async function BlogListView({url}: ViewProps) {
 
 	const publishedPosts = posts.filter((p) => p.attributes.publish);
 
-	return jsx`
-		<${Root}
+	return (
+		<Root
 			title="Shovel | Blog"
-			url=${url}
+			url={url}
 			description="News and updates from the Shovel team."
 		>
-			<div class=${containerStyles}>
+			<div class={containerStyles}>
 				<h1>Blog</h1>
-				<ul class=${postListStyles}>
-					${publishedPosts.map((post) => {
+				<ul class={postListStyles}>
+					{publishedPosts.map((post) => {
 						const formattedDate = new Date(post.attributes.date).toLocaleDateString("en-US", {
 							year: "numeric",
 							month: "long",
 							day: "numeric",
 						});
 
-						return jsx`
-							<li class=${postItemStyles}>
-								<h2 class=${postTitleStyles}>
-									<a href=${post.url}>${post.attributes.title}</a>
+						return (
+							<li class={postItemStyles}>
+								<h2 class={postTitleStyles}>
+									<a href={post.url}>{post.attributes.title}</a>
 								</h2>
-								<p class=${postMetaStyles}>
-									${formattedDate}${post.attributes.author ? ` by ${post.attributes.author}` : ""}
+								<p class={postMetaStyles}>
+									{formattedDate}{post.attributes.author ? ` by ${post.attributes.author}` : ""}
 								</p>
-								${post.attributes.description && jsx`
-									<p class=${postDescriptionStyles}>${post.attributes.description}</p>
-								`}
+								{post.attributes.description && (
+									<p class={postDescriptionStyles}>{post.attributes.description}</p>
+								)}
 							</li>
-						`;
+						);
 					})}
 				</ul>
 			</div>
-		<//Root>
-	`;
+		</Root>
+	);
 }

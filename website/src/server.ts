@@ -8,8 +8,8 @@ import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 import HomeView from "./views/home.js";
 import GuideView from "./views/guide.js";
 import DocView from "./views/doc.js";
-import BlogListView from "./views/blog-list.js";
-import BlogPostView from "./views/blog-post.js";
+import BlogListView from "./views/blog-list.tsx";
+import BlogPostView from "./views/blog-post.tsx";
 
 // Import assets
 import clientCSS from "./styles/client.css" with {assetBase: "/static/"};
