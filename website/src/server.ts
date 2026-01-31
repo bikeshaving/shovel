@@ -8,6 +8,8 @@ import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 import HomeView from "./views/home.js";
 import GuideView from "./views/guide.js";
 import DocView from "./views/doc.js";
+import BlogListView from "./views/blog-list.js";
+import BlogPostView from "./views/blog-post.js";
 
 // Import assets
 import clientCSS from "./styles/client.css" with {assetBase: "/static/"};
@@ -57,6 +59,16 @@ router.route("/guides/:slug").get(async (request, context) => {
 router.route("/docs/:slug").get(async (request, context) => {
 	const url = new URL(request.url);
 	return renderView(DocView, url.pathname, context.params);
+});
+
+router.route("/blog").get(async (request) => {
+	const url = new URL(request.url);
+	return renderView(BlogListView, url.pathname);
+});
+
+router.route("/blog/:slug").get(async (request, context) => {
+	const url = new URL(request.url);
+	return renderView(BlogPostView, url.pathname, context.params);
 });
 
 // ServiceWorker fetch event
