@@ -66,7 +66,7 @@ const __dirname = new URL(".", import.meta.url).pathname;
 
 export default async function BlogListView({url}: ViewProps) {
 	const posts = await collectBlogPosts(
-		Path.join(__dirname, "../../../blog"),
+		Path.join(__dirname, "../../../docs/blog"),
 	);
 
 	const publishedPosts = posts.filter((p) => p.attributes.publish);

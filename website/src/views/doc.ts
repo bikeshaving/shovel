@@ -15,9 +15,8 @@ const __dirname = new URL(".", import.meta.url).pathname;
 
 export default async function Doc({url}: ViewProps) {
 	const docs = await collectDocuments(
-		Path.join(__dirname, "../../../docs"),
-		Path.join(__dirname, "../../../docs/"),
-		{shallow: true},
+		Path.join(__dirname, "../../../docs/reference"),
+		Path.join(__dirname, "../../../docs/reference"),
 	);
 
 	// Filter out index.md
