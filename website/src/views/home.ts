@@ -31,6 +31,25 @@ const subtitleStyles = css`
 	padding: 0 1rem;
 `;
 
+const codeBlockStyles = css`
+	background: var(--code-bg);
+	border-radius: 8px;
+	padding: 1.5rem 2rem;
+	margin: 2rem 1rem;
+	text-align: left;
+	max-width: 600px;
+	width: 100%;
+	overflow-x: auto;
+
+	pre {
+		margin: 0;
+		font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
+		font-size: 0.95rem;
+		line-height: 1.5;
+		color: var(--text-color);
+	}
+`;
+
 const ctaStyles = css`
 	margin-top: 2rem;
 	display: flex;
@@ -55,16 +74,20 @@ const ctaStyles = css`
 export default function Home({url}: ViewProps) {
 	return jsx`
 		<${Root}
-			title="Shovel - ServiceWorker-first Universal Deployment"
+			title="Shovel - Run Service Workers Everywhere"
 			url=${url}
-			description="Write ServiceWorker apps once, deploy anywhere. Node, Bun, Cloudflare Workers."
+			description="Run Service Workers anywhere Node, Bun, Cloudflare Workers."
 		>
 			<div class=${heroStyles}>
 				<h1 class=${titleStyles}>Shovel</h1>
 				<p class=${subtitleStyles}>
-					The ServiceWorker-first universal deployment platform.
-					Write once, deploy anywhere.
+					Run Service Workers anywhere
 				</p>
+				<div class=${codeBlockStyles}>
+					<pre>${`self.addEventListener("fetch", (event) => {
+  event.respondWith(new Response("Hello World"));
+});`}</pre>
+				</div>
 				<div class=${ctaStyles}>
 					<a href="/guides/getting-started">Get Started</a>
 					<a href="https://github.com/bikeshaving/shovel">GitHub</a>
