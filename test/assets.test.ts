@@ -739,6 +739,131 @@ export default imageCss;`,
 	});
 });
 
+describe("Assets Plugin - code splitting", () => {
+	test("should create separate chunks for dynamic imports", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "code-splitting-test-"));
+
+		// Create a "heavy" module that will be dynamically imported
+		await writeFile(
+			join(testDir, "heavy-dep.ts"),
+			`export const data = "heavy data"; export const compute = () => data.toUpperCase();`,
+		);
+
+		// Create a client file with a dynamic import
+		await writeFile(
+			join(testDir, "client.ts"),
+			`
+const condition = Math.random() > 0.5;
+if (condition) {
+	const { data } = await import("./heavy-dep.ts");
+	console.log(data);
+}
+export {};
+`,
+		);
+
+		// Create entry that imports the client as asset
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import clientUrl from "./client.ts" with { assetBase: "/static" };
+export default clientUrl;`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// Check output files - should have entry + chunk(s)
+		const files = await readdir(join(outDir, "public", "static"));
+		const jsFiles = files.filter((f) => f.endsWith(".js"));
+
+		// Should have at least 2 JS files (entry + chunk)
+		expect(jsFiles.length).toBeGreaterThanOrEqual(2);
+
+		// Should have the entry file
+		const entryFile = jsFiles.find((f) => f.startsWith("client-"));
+		expect(entryFile).toBeDefined();
+
+		// Should have chunk file(s)
+		const chunkFiles = jsFiles.filter((f) => f.startsWith("chunk-"));
+		expect(chunkFiles.length).toBeGreaterThanOrEqual(1);
+
+		// Check manifest contains entry file
+		const manifest = JSON.parse(
+			await readFile(join(outDir, "server", "assets.json"), "utf8"),
+		);
+
+		// Entry file should be in manifest with source path
+		const entryAsset = Object.values(manifest.assets).find(
+			(a: any) => a.output === entryFile,
+		);
+		expect(entryAsset).toBeDefined();
+		expect((entryAsset as any).type).toBe("application/javascript");
+
+		// Chunk files should also be in manifest
+		for (const chunkFile of chunkFiles) {
+			const chunkAsset = manifest.assets[chunkFile];
+			expect(chunkAsset).toBeDefined();
+			expect(chunkAsset.url).toBe(`/static/${chunkFile}`);
+			expect(chunkAsset.type).toBe("application/javascript");
+		}
+	});
+
+	test("should work without dynamic imports (no chunks)", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "no-splitting-test-"));
+
+		// Create a simple client with no dynamic imports
+		await writeFile(
+			join(testDir, "client.ts"),
+			`const msg: string = "Hello"; console.log(msg); export {};`,
+		);
+
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import clientUrl from "./client.ts" with { assetBase: "/static" };
+export default clientUrl;`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// Check output files - should have only entry file
+		const files = await readdir(join(outDir, "public", "static"));
+		const jsFiles = files.filter((f) => f.endsWith(".js"));
+
+		// Should have exactly 1 JS file (entry only)
+		expect(jsFiles.length).toBe(1);
+		expect(jsFiles[0]).toMatch(/^client-[a-f0-9]+\.js$/);
+
+		// Check manifest
+		const manifest = JSON.parse(
+			await readFile(join(outDir, "server", "assets.json"), "utf8"),
+		);
+		expect(Object.keys(manifest.assets).length).toBe(1);
+	});
+});
+
 // Helper to write content to a MemoryDirectory
 async function writeToMemoryDirectory(
 	directory: MemoryDirectory,
