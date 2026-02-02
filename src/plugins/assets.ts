@@ -491,12 +491,14 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 						writeFileSync(chunkPath, chunk.content);
 
 						// Add chunk to manifest so assets middleware can serve it
+						// Use the full URL as the key to avoid collisions when the same
+						// chunk filename appears in different assetBase directories
 						const chunkUrl = `${basePath}${chunk.filename}`;
 						const chunkHash = createHash("sha256")
 							.update(chunk.content)
 							.digest("hex")
 							.slice(0, HASH_LENGTH);
-						manifest.assets[chunk.filename] = {
+						manifest.assets[chunkUrl] = {
 							source: chunk.filename,
 							output: chunk.filename,
 							url: chunkUrl,
@@ -507,8 +509,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 
 						// Also update shared manifest
 						if (sharedManifest) {
-							sharedManifest.assets[chunk.filename] =
-								manifest.assets[chunk.filename];
+							sharedManifest.assets[chunkUrl] = manifest.assets[chunkUrl];
 						}
 					}
 
