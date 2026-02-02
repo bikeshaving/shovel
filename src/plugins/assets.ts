@@ -227,6 +227,8 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 					let content: Buffer;
 					let outputExt = ext;
 					let mimeType: string | undefined;
+					// Additional chunk files from code splitting (to be written alongside the entry)
+					let chunkFiles: Array<{filename: string; content: Buffer}> = [];
 
 					if (needsTranspilation) {
 						// Transpile TypeScript/JSX to JavaScript with Node.js polyfills for browser
@@ -249,11 +251,12 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							entryPoints: [args.path],
 							bundle: true,
 							format: "esm",
+							splitting: true,
 							target: ["es2022", "chrome90"],
 							platform: "browser",
 							write: false,
 							minify: true,
-							// outdir is required for esbuild to know where to put extracted CSS
+							// outdir is required for esbuild to know where to put extracted CSS and chunks
 							outdir: outDir,
 							// Apply polyfills and user-provided build options
 							plugins,
@@ -292,11 +295,13 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							outputExt = ".css";
 							mimeType = "text/css";
 						} else {
-							// Find the JS output file
-							const jsOutput = result.outputFiles.find((f) =>
+							// With splitting enabled, esbuild produces:
+							// - One entry file (named after the entry point, e.g., "client.js")
+							// - Zero or more chunk files (named "chunk-XXXX.js")
+							const jsOutputFiles = result.outputFiles.filter((f) =>
 								f.path.endsWith(".js"),
 							);
-							if (!jsOutput) {
+							if (jsOutputFiles.length === 0) {
 								return {
 									errors: [
 										{
@@ -305,9 +310,34 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 									],
 								};
 							}
-							content = Buffer.from(jsOutput.text);
+
+							// Find the entry file (matches the entry point name)
+							const entryBaseName = name + ".js";
+							const entryFile = jsOutputFiles.find(
+								(f) => basename(f.path) === entryBaseName,
+							);
+							if (!entryFile) {
+								return {
+									errors: [
+										{
+											text: `Could not find entry file ${entryBaseName} in output`,
+										},
+									],
+								};
+							}
+
+							content = Buffer.from(entryFile.text);
 							outputExt = ".js";
 							mimeType = "application/javascript";
+
+							// Collect chunk files to write alongside the entry
+							for (const file of jsOutputFiles) {
+								if (file === entryFile) continue;
+								chunkFiles.push({
+									filename: basename(file.path),
+									content: Buffer.from(file.text),
+								});
+							}
 						}
 					} else if (needsCSSBundling) {
 						// Bundle CSS files through esbuild to resolve @import statements
@@ -454,6 +484,33 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 					// Write file to output directory
 					const outputPath = join(outputDir, filename);
 					writeFileSync(outputPath, content);
+
+					// Write chunk files (from code splitting) to the same directory
+					for (const chunk of chunkFiles) {
+						const chunkPath = join(outputDir, chunk.filename);
+						writeFileSync(chunkPath, chunk.content);
+
+						// Add chunk to manifest so assets middleware can serve it
+						const chunkUrl = `${basePath}${chunk.filename}`;
+						const chunkHash = createHash("sha256")
+							.update(chunk.content)
+							.digest("hex")
+							.slice(0, HASH_LENGTH);
+						manifest.assets[chunk.filename] = {
+							source: chunk.filename,
+							output: chunk.filename,
+							url: chunkUrl,
+							hash: chunkHash,
+							size: chunk.content.length,
+							type: "application/javascript",
+						};
+
+						// Also update shared manifest
+						if (sharedManifest) {
+							sharedManifest.assets[chunk.filename] =
+								manifest.assets[chunk.filename];
+						}
+					}
 
 					// Create manifest entry
 					// eslint-disable-next-line no-restricted-properties -- esbuild plugin runs in build context
