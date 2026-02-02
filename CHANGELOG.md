@@ -2,6 +2,16 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.3] - 2026-02-02
+
+### Features
+
+- **Enable code splitting for client-side bundles** - Dynamic imports in client scripts now create separate chunks instead of being inlined, allowing heavy dependencies to be lazy-loaded. ([#39](https://github.com/bikeshaving/shovel/pull/39), fixes [#38](https://github.com/bikeshaving/shovel/issues/38))
+
+### Bug Fixes
+
+- **Use unique manifest keys for chunks** - Chunk files are now keyed by URL to avoid collisions when the same chunk appears in different assetBase directories.
+
 ## [0.2.2] - 2026-01-30
 
 ### Bug Fixes
