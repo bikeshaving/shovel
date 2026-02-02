@@ -810,11 +810,12 @@ export default clientUrl;`,
 		expect(entryAsset).toBeDefined();
 		expect((entryAsset as any).type).toBe("application/javascript");
 
-		// Chunk files should also be in manifest
+		// Chunk files should also be in manifest (keyed by URL)
 		for (const chunkFile of chunkFiles) {
-			const chunkAsset = manifest.assets[chunkFile];
+			const chunkUrl = `/static/${chunkFile}`;
+			const chunkAsset = manifest.assets[chunkUrl];
 			expect(chunkAsset).toBeDefined();
-			expect(chunkAsset.url).toBe(`/static/${chunkFile}`);
+			expect(chunkAsset.url).toBe(chunkUrl);
 			expect(chunkAsset.type).toBe("application/javascript");
 		}
 	});
@@ -861,6 +862,146 @@ export default clientUrl;`,
 			await readFile(join(outDir, "server", "assets.json"), "utf8"),
 		);
 		expect(Object.keys(manifest.assets).length).toBe(1);
+	});
+
+	test("should include CSS from dynamic imports when using type: css", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "css-dynamic-import-test-"));
+
+		// Create CSS for the main module
+		await writeFile(join(testDir, "main.css"), `.main { color: red; }`);
+
+		// Create CSS for the dynamically imported module
+		await writeFile(join(testDir, "lazy.css"), `.lazy { color: blue; }`);
+
+		// Create the lazy module that imports its own CSS
+		await writeFile(
+			join(testDir, "lazy.ts"),
+			`import "./lazy.css";
+export const lazyData = "lazy";`,
+		);
+
+		// Create the main client that imports main CSS and dynamically imports lazy
+		await writeFile(
+			join(testDir, "client.ts"),
+			`import "./main.css";
+const condition = true;
+if (condition) {
+	const { lazyData } = await import("./lazy.ts");
+	console.log(lazyData);
+}
+export {};`,
+		);
+
+		// Import with type: "css" to extract all CSS
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import clientCss from "./client.ts" with { assetBase: "/static", type: "css" };
+export default clientCss;`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// Check CSS output contains both main and lazy styles
+		const files = await readdir(join(outDir, "public", "static"));
+		const cssFiles = files.filter((f) => f.endsWith(".css"));
+		expect(cssFiles.length).toBeGreaterThanOrEqual(1);
+
+		// Read all CSS content
+		let allCSS = "";
+		for (const cssFile of cssFiles) {
+			allCSS += await readFile(
+				join(outDir, "public", "static", cssFile),
+				"utf8",
+			);
+		}
+
+		// Both .main and .lazy styles should be present
+		expect(allCSS).toContain(".main");
+		expect(allCSS).toContain(".lazy");
+	});
+
+	test("should use unique manifest keys for chunks across different assetBase imports", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "chunk-manifest-key-test-"));
+
+		// Create a shared module that will become a chunk
+		await writeFile(
+			join(testDir, "shared.ts"),
+			`export const sharedData = "shared";`,
+		);
+
+		// Create two clients that dynamically import the same shared module
+		await writeFile(
+			join(testDir, "client-a.ts"),
+			`if (true) { const { sharedData } = await import("./shared.ts"); console.log(sharedData); }
+export {};`,
+		);
+
+		await writeFile(
+			join(testDir, "client-b.ts"),
+			`if (true) { const { sharedData } = await import("./shared.ts"); console.log(sharedData); }
+export {};`,
+		);
+
+		// Import both clients with different assetBase paths
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import clientA from "./client-a.ts" with { assetBase: "/assets-a" };
+import clientB from "./client-b.ts" with { assetBase: "/assets-b" };
+export { clientA, clientB };`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				assetsPlugin({
+					outDir: outDir,
+				}),
+			],
+		});
+
+		// Check both directories have their chunk files
+		const assetsAFiles = await readdir(join(outDir, "public", "assets-a"));
+		const assetsBFiles = await readdir(join(outDir, "public", "assets-b"));
+
+		const chunksA = assetsAFiles.filter((f) => f.startsWith("chunk-"));
+		const chunksB = assetsBFiles.filter((f) => f.startsWith("chunk-"));
+
+		expect(chunksA.length).toBeGreaterThanOrEqual(1);
+		expect(chunksB.length).toBeGreaterThanOrEqual(1);
+
+		// Check manifest has entries for chunks in BOTH directories
+		const manifest = JSON.parse(
+			await readFile(join(outDir, "server", "assets.json"), "utf8"),
+		);
+
+		// Find chunk entries for each assetBase
+		const chunkEntriesA = Object.values(manifest.assets).filter((a: any) =>
+			a.url?.startsWith("/assets-a/chunk-"),
+		);
+		const chunkEntriesB = Object.values(manifest.assets).filter((a: any) =>
+			a.url?.startsWith("/assets-b/chunk-"),
+		);
+
+		// Both should have their chunk entries preserved (not overwritten)
+		expect(chunkEntriesA.length).toBeGreaterThanOrEqual(1);
+		expect(chunkEntriesB.length).toBeGreaterThanOrEqual(1);
 	});
 });
 
