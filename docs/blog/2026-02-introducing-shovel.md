@@ -3,6 +3,7 @@ title: Introducing Shovel
 description: The story behind Shovel.js
 date: 2026-02-05
 author: Brian Kim
+authorURL: https://github.com/brainkim
 ---
 
 Today, I’m happy to announce my first major AI-built open source project, which took approximately three months of development. No, it’s not an AI village tool where bots waste tokens. Rather, **Shovel.js** is a three-month meditation on the question “what if your server was just a service worker?” It is a CLI and set of libraries for developing and deploying Service Workers as web applications. It is both a full-stack server framework replacing tools like Express, Fastify or Hono, and a meta-framework / compiler replacing tools like Vite or Next.js.
@@ -19,7 +20,7 @@ Ultimately though, this signaled to me that I couldn’t wait for some other fra
 
 The plan for the design of Shovel was simple: create a way to run Service Workers anywhere and implement all related web standards. For the longest time I’ve been fascinated by this idea. In my free time, I would look through MDN the same way other people go down Wikipedia rabbit holes, finding hidden gems like [the FileSystem API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API), [the CookieStore API](https://developer.mozilla.org/en-US/docs/Web/API/CookieStore), and [the Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache). These are real, rigorously specified abstractions which are shipped in all major browsers.
 
-Could these battle-tested APIs be repurposed for servers? Most contemporary JavaScript server frameworks seem to be moving in this direction. For instance, almost all server frameworks written today use the fetch standard’s `Request` and `Response` classes rather than Node’s idiosyncratic `IncomingMessage` and `OutgoingMessage` ones. And there’s been a push to find a minimal common API for browsers (WinterTC). But I wanted to take things a step further. What if, rather than designing new APIs, we could just provide shims and implementations of all the applicable browser standards found on MDN?
+Could these battle-tested APIs be repurposed for servers? Most contemporary JavaScript server frameworks seem to be moving in this direction. For instance, almost all server frameworks written today use the fetch standard’s `Request` and `Response` classes rather than Node’s idiosyncratic `IncomingMessage` and `OutgoingMessage` ones. And there’s been a push to find a minimal common API across runtimes ([WinterCG](https://wintercg.org/)). But I wanted to take things a step further. What if, rather than designing new APIs, we could just provide shims and implementations of all the applicable browser standards found on MDN?
 
 I started by asking Claude Code to implement the Service Worker’s `Cache` and `CacheStorage` classes for Bun and Node. It did so quickly and accurately. As it turns out, this type of work is right in Claude’s wheelhouse. I discovered you could just direct Claude to a web specification, and it would write a reasonable implementation, usually by one-shot.
 
@@ -89,7 +90,7 @@ self.addEventListener("fetch", (ev) => {
 });
 ```
 
-The router uses `MatchPattern`, a URLPattern-compatible implementation with routing enhancements like order-independent search parameters. Our bundled `URLPattern` class passes 100% of the Web Platform Tests while being ~40-60x faster than the native browser implementation. Under the hood, routes compile to a radix tree for O(1) path matching—the same algorithm used by fastify and other high-performance routers.
+The router uses `MatchPattern`, a URLPattern-compatible implementation with routing enhancements like order-independent search parameters. Our bundled `URLPattern` class passes 100% of the Web Platform Tests while being significantly faster than native browser implementations in our benchmarks. Under the hood, routes compile to a radix tree for O(1) path matching—the same algorithm used by fastify and other high-performance routers.
 
 Of course, it wouldn't be a Brian Kim open source project without a creative use of generator functions. The router implements a flexible Rack-style (last in, first out) middleware system where you can modify requests and responses with functions and generator functions.
 
@@ -166,7 +167,7 @@ Shovel provides an env-driven configuration format `shovel.json` which ties it a
 }
 ```
 
-Same code, any backend. Your service worker calls `self.caches.open("pages")` or `self.databases.get("main")`, and it can be configured to work with SQLite or Postgres, local disk or Redis. Here's what file upload handler might look like using some of the global storages we mentioned:
+Same code, any backend. Your service worker calls `self.caches.open("pages")` or `self.databases.get("main")`, and it can be configured to work with SQLite or Postgres, local disk or Redis. Here's what a file upload handler might look like using some of the global storages we mentioned:
 
 ```ts
 router.route("/api/uploads").post(async (req, ctx) => {
@@ -198,9 +199,11 @@ router.route("/api/uploads").post(async (req, ctx) => {
 });
 ```
 
-### Client-side Assets
+### The Static Asset Problem
 
-One of the harder parts to design was the way client assets are referenced and used... The key innovation is that we use [import attributes](https://github.com/tc39/proposal-import-attributes) to declare asset dependencies:
+Every major bundler — Webpack, Parcel, Vite, Next.js — invents its own wildly complex loader system, or it requires brittle file-based routing to essentially inject asset references into the final bundle. What I wanted was simpler: pass a local filepath, get back a public URL.
+
+Luckily, another standard, [import attributes](https://github.com/tc39/proposal-import-attributes) allowed us to turn local references to public URLs, with the same import syntax you use to read modules:
 
 ```ts
 import favicon from "./favicon.ico" with { assetBase: "/", assetName: "favicon.ico" };
@@ -228,47 +231,38 @@ router.route("/").get(() => {
 });
 ```
 
-ESBuild handles bundling, content hashing, and code splitting under the hood. This approach works naturally with HTML-first UI libraries: [Crank](https://crank.js.org), [HTMX](https://htmx.org), [Lit](https://lit.dev), [Alpine.js](https://alpinejs.dev)—anything that doesn't require deep compiler integration. If your framework renders HTML strings or DOM nodes, it works with Shovel.
+Shovel passes imports to ESBuild for bundling, hashing, and code splitting, then serves them via middleware backed by `self.directories`. Because assets resolve to plain URL strings, Shovel works with any client framework — [HTMX](https://htmx.org), [Lit](https://lit.dev), [Alpine.js](https://alpinejs.dev), or raw template strings.
 
-### One Framework, Every Rendering Strategy
+### Truly Universal Rendering
 
-Shovel doesn't force you into a single architecture. The same codebase can serve:
+JavaScript frameworks love their acronyms: SSR (server-side rendering), SSG (static-site generation), ISR (incremental static regeneration), SPA (single-page app), MPA (multi-page app). These describe when and where HTML gets rendered, and frameworks might have wildly different workflows for each mode.
 
-- **SPA**: Serve a shell HTML file, let client JavaScript handle routing
-- **MPA**: Traditional multi-page apps with full page navigations
-- **SSR**: Dynamic server rendering on each request
-- **SSG**: Pre-rendered static HTML at build time
+With Shovel, there are no modes to choose between. Your fetch handler turns requests into responses. Everything else is just timing, and you can even use the ServiceWorker lifecycle to help.
 
-The clever bit is how SSG works. During the build, Shovel spins up your service worker and calls `fetch()` against your own routes. The responses get written to static HTML files:
+For instance, I’m particularly fond of how static-site generation is implemented with Shovel. You can use the service worker's `install` event to self-fetch your routes, essentially the same pattern browser service workers use to pre-cache pages:
 
 ```ts
 self.addEventListener("install", (ev) => {
-  ev.waitUntil(async () => {
-    // These fetch calls hit your own router
-    await fetch("/");
-    await fetch("/about");
-    await fetch("/blog");
-    // Responses are saved as static HTML in dist/public/
-  });
+  ev.waitUntil(generateStaticSite());
 });
+
+async function generateStaticSite() {
+  const publicDir = await self.directories.open("public");
+
+  for (const route of ["/", "/about", "/blog"]) {
+    const response = await fetch(route); // hits your own router
+    const html = await response.text();
+
+    // /about -> about/index.html
+    const path = route === "/" ? "index.html" : `${route.slice(1)}/index.html`;
+    const file = await publicDir.getFileHandle(path, {create: true});
+    const writable = await file.createWritable();
+    await writable.write(html);
+    await writable.close();
+  }
+}
 ```
 
-The same route handler that serves dynamic requests also generates your static pages. No separate SSG tooling, no duplicate templates, no build-time data fetching abstraction. Just `fetch()`.
+The same route handlers that serve dynamic requests also generate your static pages. No separate SSG tooling, no build-time data fetching abstraction. Just `fetch()`. And because it writes to the same directory where assets are written, the JavaScript and other static references just work.
 
 ## Shovel Ready
-
-Three months ago, I set out to answer a simple question: what if your server was just a service worker? With Claude Code as my pair programmer, I've shipped more code in less time than I ever thought possible. The AI didn't just write boilerplate—it implemented entire browser specifications from scratch, correctly, often in a single pass.
-
-But the interesting parts were still mine to figure out. The decision to extrapolate from standards rather than invent new APIs. The generator middleware pattern. The curated globals philosophy. The self-fetching SSG trick. Claude helped me move fast, but the architectural vision required a human touch.
-
-Shovel is ready for early adopters. The documentation is comprehensive, the test suite is thorough, and I'm using it in production for this very website. If you've been looking for a framework that respects web standards, runs anywhere, and doesn't lock you into a single rendering strategy, give it a try.
-
-```bash
-npm install -g @b9g/shovel
-shovel create my-app
-cd my-app && shovel dev
-```
-
-Star the repo, file issues, send PRs. Let's dig in.
-
-[GitHub](https://github.com/bikeshaving/shovel) · [Documentation](/docs)
