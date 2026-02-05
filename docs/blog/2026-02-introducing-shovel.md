@@ -6,7 +6,7 @@ author: Brian Kim
 authorURL: https://github.com/brainkim
 ---
 
-Today, I’m happy to announce my first major AI-built open source project, which took approximately three months of development. No, it’s not an AI village tool where bots waste tokens. Rather, **Shovel.js** is a three-month meditation on the question: “what if your server was just a service worker?” To that extent, Shovel is a command-line interface and set of libraries for developing and deploying Service Workers as web applications. It is both a full-stack server framework replacing tools like Express, Fastify or Hono, and a meta-framework / compiler replacing tools like Vite or Next.js.
+Today, I’m happy to announce my first major AI-built open source project, which took approximately three months of development. No, it’s not an AI village tool where bots waste tokens. Rather, **Shovel.js** is a three-month meditation on the question: “what if your server was just a service worker?” The result is a command-line interface and set of libraries for developing and deploying Service Workers as web applications. Shovel is both a full-stack server framework replacing tools like Express, Fastify or Hono, and a meta-framework / compiler replacing tools like Vite or Next.js.
 
 The following is a contemporary description of what building a greenfield open source project with AI is like, as well as a quick tour of some of its most delightful and elegant features.
 
@@ -22,7 +22,7 @@ The plan for the design of Shovel was simple: create a way to run Service Worker
 
 Could these battle-tested APIs be repurposed for server runtimes? Most contemporary JavaScript server frameworks seem to be moving in this direction. For instance, almost all server frameworks written today use the fetch standard’s `Request` and `Response` classes rather than Node’s idiosyncratic `IncomingMessage` and `OutgoingMessage` ones. And there’s been a push to find a **minimal common API** across runtimes (see [WinterTC](https://wintertc.org/)). But I wanted to take things a step further. What if, rather than designing new APIs, we could just provide shims and implementations of all the applicable browser standards found on MDN?
 
-I started by asking Claude Code to implement the Service Worker’s `Cache` abstractions for Bun and Node. It did so quickly and accurately. As it turns out, this type of work is right in Claude’s wheelhouse. I discovered you could just direct Claude to a web specification, and it would write a reasonable implementation, usually by one-shot.
+I started by asking Claude Code to implement the Service Worker’s `Cache` abstractions for Bun and Node. It did so quickly and accurately. As it turns out, this type of work is right in Claude’s wheelhouse. I discovered you could just direct Claude to a web specification, and it would write a reasonable implementation, often in a single pass.
 
 As of today, we’ve implemented at least six different browser standards and brought them together as a feature-complete constellation of NPM packages, tied together by a CLI which covers both development and deployment workflows. Together, these tools create a cohesive user experience where you can write code that looks like browser service workers but run it on Node, Bun or Cloudflare.
 
@@ -203,9 +203,9 @@ router.route("/api/uploads").post(async (req, ctx) => {
 
 I wanted Shovel to be a meta-framework, transpiling and bundling both server and client code with ESBuild. I knew that figuring out how to reference, transform and serve client assets was a key part of the developer experience, but I didn’t yet know what it would look like.
 
-To that end, every major JavaScript build tool — Webpack, Parcel, Vite, Next.js — invents its own frustratingly complex loader system, or it requires brittle file-based routing to essentially inject asset references into the final bundle. What I wanted was simpler: pass a local filepath, get back a public URL.
+It seemed like every major JavaScript build tool — Webpack, Parcel, Vite, Next.js — invented its own frustratingly complex loader system, or required brittle file-based routing to essentially inject asset references into the final bundle. What I wanted was simpler: pass a local filepath, get back a public URL.
 
-Luckily, another standard, [import attributes](https://github.com/tc39/proposal-import-attributes) allowed us to turn local references to public URLs, with the same import syntax you use to read modules:
+Luckily, another standard, [import attributes](https://github.com/tc39/proposal-import-attributes) allowed us to turn local references into public URLs, with the same import syntax you use to read modules:
 
 ```ts
 import favicon from "./favicon.ico" with { assetBase: "/", assetName: "favicon.ico" };
@@ -233,9 +233,7 @@ router.route("/").get(() => {
 });
 ```
 
-Shovel passes imports to ESBuild for bundling, hashing, and code splitting, then serves them via middleware backed by `self.directories`. Because assets resolve to plain URL strings, Shovel works with any client framework that doesn’t require complex bespoke compilation ([Preact](https://preactjs.com), [HTMX](https://htmx.org), [Lit](https://lit.dev), [Alpine.js](https://alpinejs.dev)), and it can even work with vanilla JavaScript.
-
-While I set out to build a meta-framework for my own UI framework Crank.js, it turned out that using import attributes meant I could build a framework-agnostic server and compiler.
+While I set out to build a meta-framework for my own UI framework Crank.js, it turned out that using import attributes meant I could build a framework-agnostic server and compiler. Shovel passes imports to ESBuild for bundling, hashing, and code splitting, then serves them via middleware backed by `self.directories`. Because assets resolve to plain URL strings, Shovel works with any client framework that doesn’t require complex bespoke compilation ([Preact](https://preactjs.com), [HTMX](https://htmx.org), [Lit](https://lit.dev), [Alpine.js](https://alpinejs.dev)), and it can even work with vanilla JavaScript.
 
 ### Truly Universal Rendering
 
@@ -273,7 +271,7 @@ The same route handlers that serve dynamic requests also generate your static pa
 
 Three months ago, I didn't know if AI could help me build a framework, or if the result would be good. Shovel turned out to be the web framework I've always wanted. It's obsessively standards-based, carefully designed, and not a vibe-coded throwaway.
 
-Shovel was built primarily with Claude Code, and in the development process I bore witness to numerous superhuman feats by it along the way: when the router was slow, Claude added radix trees; when native `URLPattern` was slow, Claude implemented a `RegExp`-based alternative passing 100% of web platform tests; when I wanted a DSL for `shovel.json`, Claude one-shot it; when I got frustrated with DrizzleORM, we designed [ZenDB](https://github.com/bikeshaving/zendb) over the holidays. It was still hard work, but it’s new work, where I ideate and plan with Claude, watch it grant my wishes, and then verify the code wasn’t written in a dumb way.
+Shovel was built primarily with Claude Code, and in the development process I bore witness to numerous superhuman feats by it along the way: when the router was slow, Claude added radix trees; when native `URLPattern` was slow, Claude implemented a `RegExp`-based alternative passing 100% of web platform tests; when I wanted a DSL for `shovel.json`, Claude one-shot it; when I got frustrated with DrizzleORM, we designed [ZenDB](https://github.com/bikeshaving/ZenDB) over the holidays. It was still hard work, but it’s new work, where I ideate and plan with Claude, watch it grant my wishes, and then verify the code wasn’t written in a dumb way.
 
 Therefore, I’m happy to announce that Shovel.js is ready for early adopters. There are certainly bugs, and there will be breaking changes, but I'm using it for everything now. The roadmap is ambitious: sessions, authentication, websockets, email — I want Shovel to be batteries included, with an admin interface like Django. If you know of web standards I should look at, let me know.
 
