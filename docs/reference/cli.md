@@ -42,7 +42,7 @@ shovel develop <entrypoint> [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-p, --port <port>` | Server port | `3000` |
+| `-p, --port <port>` | Server port | `7777` |
 | `-h, --host <host>` | Server host | `localhost` |
 | `-w, --workers <count>` | Worker count | `1` |
 | `--platform <name>` | Target platform | Auto-detected |

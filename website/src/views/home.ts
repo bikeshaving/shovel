@@ -119,16 +119,16 @@ self.addEventListener("fetch", (ev) => {
 });`;
 
 const terminalCode = `$ shovel develop server.ts
-listening on http://localhost:3000
+listening on http://localhost:7777
 
-$ curl -X PUT :3000/kv/hello -d "world"
+$ curl -X PUT :7777/kv/hello -d "world"
 
-$ curl :3000/kv/hello
+$ curl :7777/kv/hello
 world
 
-$ curl -X DELETE :3000/kv/hello
+$ curl -X DELETE :7777/kv/hello
 
-$ curl :3000/kv/hello
+$ curl :7777/kv/hello
 # 404`;
 
 export default function Home({url}: ViewProps) {

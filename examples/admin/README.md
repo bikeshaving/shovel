@@ -23,7 +23,7 @@ Admin dashboard with Google OAuth authentication and Redis caching.
 ```bash
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-GOOGLE_REDIRECT_URI=http://localhost:3000/auth/callback
+GOOGLE_REDIRECT_URI=http://localhost:7777/auth/callback
 REDIS_URL=redis://localhost:6379
 ```
 
@@ -39,7 +39,7 @@ docker run -d -p 6379:6379 redis
 # Run development server
 bun run develop
 
-# Visit http://localhost:3000
+# Visit http://localhost:7777
 ```
 
 ## Deployment

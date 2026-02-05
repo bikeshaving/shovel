@@ -37,7 +37,7 @@ const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
  */
 export const DEFAULTS = {
 	SERVER: {
-		PORT: 3000,
+		PORT: 7777,
 		HOST: "0.0.0.0",
 	},
 	WORKERS: 1, // Single worker for development - user can override with --workers flag

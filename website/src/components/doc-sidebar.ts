@@ -3,10 +3,7 @@ import {css} from "@emotion/css";
 import type {DocInfo} from "../models/document.js";
 
 // Category order - categories not listed here appear at the end alphabetically
-const CATEGORY_ORDER = [
-	"shovel",
-	"@b9g/router",
-];
+const CATEGORY_ORDER = ["shovel", "@b9g/router"];
 
 // Map slugs to categories (for docs where title doesn't indicate category)
 const SLUG_TO_CATEGORY: Record<string, string> = {

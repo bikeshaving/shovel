@@ -175,7 +175,7 @@ async function main() {
 		console.info(`  npm install`);
 		console.info(`  npm run dev`);
 		console.info("");
-		console.info("Your app will be available at: http://localhost:3000");
+		console.info("Your app will be available at: http://localhost:7777");
 		console.info("");
 	} catch (error) {
 		s.stop("Failed to create project");
@@ -569,7 +569,7 @@ npm install
 npm run dev
 \`\`\`
 
-Open http://localhost:3000
+Open http://localhost:7777
 
 ## Scripts
 

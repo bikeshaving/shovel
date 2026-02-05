@@ -57,7 +57,7 @@ module.exports = {
     exec_mode: "cluster",
     env: {
       NODE_ENV: "production",
-      PORT: 3000,
+      PORT: 7777,
     },
   }],
 };
@@ -118,10 +118,10 @@ COPY --from=builder /app/dist/server ./
 COPY --from=builder /app/dist/public ../public
 
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=7777
 ENV HOST=0.0.0.0
 
-EXPOSE 3000
+EXPOSE 7777
 CMD ["node", "server.js"]
 ```
 
@@ -143,10 +143,10 @@ COPY --from=builder /app/dist/server ./
 COPY --from=builder /app/dist/public ../public
 
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=7777
 ENV HOST=0.0.0.0
 
-EXPOSE 3000
+EXPOSE 7777
 CMD ["bun", "server.js"]
 ```
 
@@ -159,7 +159,7 @@ services:
   app:
     build: .
     ports:
-      - "3000:3000"
+      - "7777:7777"
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgres://user:pass@db:5432/myapp
@@ -261,7 +261,7 @@ Configure Cloudflare bindings in `shovel.json`:
 
 ```nginx
 upstream shovel_app {
-    server 127.0.0.1:3000;
+    server 127.0.0.1:7777;
     keepalive 64;
 }
 
@@ -291,7 +291,7 @@ server {
 
 ```
 example.com {
-    reverse_proxy localhost:3000
+    reverse_proxy localhost:7777
 
     handle /static/* {
         root * /app/dist/public
@@ -328,7 +328,7 @@ router.route("/ready").get(async () => {
 
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+  CMD curl -f http://localhost:7777/health || exit 1
 ```
 
 ### Kubernetes
@@ -343,13 +343,13 @@ spec:
       livenessProbe:
         httpGet:
           path: /health
-          port: 3000
+          port: 7777
         initialDelaySeconds: 5
         periodSeconds: 10
       readinessProbe:
         httpGet:
           path: /ready
-          port: 3000
+          port: 7777
         initialDelaySeconds: 5
         periodSeconds: 10
 ```
@@ -362,7 +362,7 @@ spec:
 
 ```json
 {
-  "port": "$PORT || 3000",
+  "port": "$PORT || 7777",
   "host": "$HOST || 0.0.0.0",
   "workers": "$WORKERS || 4",
   "databases": {
@@ -398,7 +398,7 @@ Document required variables for deployment:
 DATABASE_URL=postgres://user:pass@host:5432/db
 
 # Optional (with defaults)
-PORT=3000
+PORT=7777
 HOST=0.0.0.0
 WORKERS=4
 NODE_ENV=production

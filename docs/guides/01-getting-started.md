@@ -49,7 +49,7 @@ Run in development mode:
 npx shovel develop src/server.ts
 ```
 
-Your server is now running at `http://localhost:3000`.
+Your server is now running at `http://localhost:7777`.
 
 ## Building for Production
 

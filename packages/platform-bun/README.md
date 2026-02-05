@@ -28,7 +28,7 @@ const platform = new BunPlatform({
 
 const server = platform.createServer(async (request) => {
   return new Response('Hello from Bun');
-}, { port: 3000, host: 'localhost' });
+}, { port: 7777, host: 'localhost' });
 
 await server.listen();
 ```
@@ -60,7 +60,7 @@ Creates a new Bun platform instance.
 **Options:**
 - `cache`: Cache configuration (memory, filesystem)
 - `filesystem`: Filesystem configuration (local directory)
-- `port`: Default port (default: 3000)
+- `port`: Default port (default: 7777)
 - `host`: Default host (default: localhost)
 - `cwd`: Working directory for file resolution
 

@@ -31,10 +31,10 @@ const platform = new NodePlatform({
 
 const server = platform.createServer(async (request) => {
   return new Response('Hello from Node.js');
-}, { port: 3000, host: 'localhost' });
+}, { port: 7777, host: 'localhost' });
 
 await server.listen();
-console.log('Server running at http://localhost:3000');
+console.log('Server running at http://localhost:7777');
 ```
 
 ### ServiceWorker App
@@ -77,7 +77,7 @@ Creates a new Node.js platform instance.
 **Options:**
 - `caches`: Cache configuration object (see @b9g/platform)
 - `filesystem`: Filesystem configuration object
-- `port`: Default port for servers (default: 3000)
+- `port`: Default port for servers (default: 7777)
 - `host`: Default host for servers (default: localhost)
 - `cwd`: Working directory for file resolution (default: process.cwd())
 
