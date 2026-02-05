@@ -142,7 +142,7 @@ export default function Home({url}: ViewProps) {
 			description="The portable meta-framework built on web standards. Run Service Workers anywhere — Node, Bun, Cloudflare Workers."
 		>
 			<div class=${heroStyles}>
-				<h1 class=${titleStyles}>🪏 Shovel.js</h1>
+				<h1 class=${titleStyles}>Shovel.js</h1>
 				<p class=${subtitleStyles}>
 					The portable meta-framework built on web standards
 				</p>
