@@ -84,8 +84,22 @@ export default function Home({url}: ViewProps) {
 					Run Service Workers anywhere
 				</p>
 				<div class=${codeBlockStyles}>
-					<pre>${`self.addEventListener("fetch", (event) => {
-  event.respondWith(new Response("Hello World"));
+					<pre>${`import {Router} from "@b9g/router";
+
+const router = new Router();
+
+router.route("/").get(() => new Response("Hello World"));
+
+router.route("/api/users/:id").get(async (req, ctx) => {
+  const db = self.databases.get("main");
+  const user = await db.get\`
+    SELECT * FROM users WHERE id = \${ctx.params.id}
+  \`;
+  return Response.json(user);
+});
+
+self.addEventListener("fetch", (ev) => {
+  ev.respondWith(router.handle(ev.request));
 });`}</pre>
 				</div>
 				<div class=${ctaStyles}>

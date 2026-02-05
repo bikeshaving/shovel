@@ -432,7 +432,7 @@ User plugins run before Shovel's built-in plugins.
 
 - **Type:** `Record<string, CacheConfig>`
 
-Named cache stores accessible via `caches.open(name)` in your ServiceWorker.
+Named cache stores accessible via `self.caches.open(name)` in your ServiceWorker.
 
 ```json
 {
@@ -480,7 +480,7 @@ Use `"*"` as a catch-all pattern for any cache name:
 
 - **Type:** `Record<string, DirectoryConfig>`
 
-Named file storage directories accessible via `directories.open(name)` in your ServiceWorker.
+Named file storage directories accessible via `self.directories.open(name)` in your ServiceWorker.
 
 ```json
 {
@@ -624,11 +624,11 @@ Shovel generates a `shovel.d.ts` file during builds that provides type-safe acce
 
 ```typescript
 // These are type-checked against your shovel.json
-const cache = await caches.open("sessions");     // OK
-const cache = await caches.open("nonexistent");  // Type error!
+const cache = await self.caches.open("sessions");     // OK
+const cache = await self.caches.open("nonexistent");  // Type error!
 
-const db = await databases.open("main");         // OK
-const dir = await directories.open("uploads");   // OK
+const db = self.databases.get("main");                // OK
+const dir = await self.directories.open("uploads");   // OK
 ```
 
 ---

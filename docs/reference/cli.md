@@ -1,13 +1,68 @@
 # CLI
 
-Shovel provides a command-line interface for development, building, and running your application.
+Shovel provides a command-line interface for creating, developing, and building your application.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
+| `shovel create` | Create a new Shovel project |
 | `shovel develop` | Start development server with hot reload |
 | `shovel build` | Build for production |
+
+---
+
+## shovel create
+
+Scaffold a new Shovel project with interactive prompts.
+
+```bash
+shovel create [name]
+```
+
+Or use the npm create shorthand:
+
+```bash
+npm create shovel
+```
+
+### Templates
+
+| Template | Description |
+|----------|-------------|
+| `hello-world` | Minimal fetch handler to get started |
+| `api` | REST endpoints with JSON responses |
+| `static-site` | Serve files from public/ directory |
+| `full-stack` | HTML pages + API routes + static assets |
+
+### Example
+
+```bash
+$ shovel create my-app
+
+◆  Create Shovel App
+│
+◇  Choose a starter template:
+│  ● Hello World
+│  ○ API
+│  ○ Static Site
+│  ○ Full Stack
+│
+◇  Use TypeScript?
+│  Yes
+│
+◇  Which platform?
+│  Bun (detected)
+│
+◇  Project created
+│
+└  Your Shovel project is ready!
+
+Next steps:
+  cd my-app
+  npm install
+  npm run dev
+```
 
 ---
 
