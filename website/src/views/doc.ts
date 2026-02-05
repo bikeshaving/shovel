@@ -24,7 +24,7 @@ export default async function Doc({url}: ViewProps) {
 	const filteredDocs = docs.filter((doc) => doc.url !== "/index");
 
 	const post = filteredDocs.find(
-		(doc) => `/docs${doc.url}`.replace(/\/$/, "") === url.replace(/\/$/, ""),
+		(doc) => `/api${doc.url}`.replace(/\/$/, "") === url.replace(/\/$/, ""),
 	);
 	if (!post) {
 		throw new Error("Doc not found");

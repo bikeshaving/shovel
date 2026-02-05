@@ -11,27 +11,22 @@ const DOC_CATEGORIES: Array<{
 	{
 		name: "Core",
 		slug: "core",
-		items: ["serviceworker", "glossary"],
+		items: ["cli", "shovel-json", "serviceworker"],
+	},
+	{
+		name: "@b9g/router",
+		slug: "router",
+		items: ["router", "middleware"],
 	},
 	{
 		name: "Storage",
 		slug: "storage",
-		items: ["caches", "directories", "databases"],
+		items: ["cache", "filesystem", "zen", "cookies"],
 	},
 	{
-		name: "HTTP",
-		slug: "http",
-		items: ["routing", "middleware", "cookies", "http-errors", "assets"],
-	},
-	{
-		name: "Tooling",
-		slug: "tooling",
-		items: ["cli", "shovel-json", "logging"],
-	},
-	{
-		name: "Advanced",
-		slug: "advanced",
-		items: ["async-context"],
+		name: "Utilities",
+		slug: "utilities",
+		items: ["http-errors", "assets", "logging", "async-context"],
 	},
 ];
 
@@ -62,7 +57,7 @@ export function buildDocCategories(docs: DocInfo[]): DocCategory[] {
 				if (!doc) return null;
 				return {
 					title: doc.attributes.title,
-					url: `/docs${doc.url}`,
+					url: `/api${doc.url}`,
 					slug,
 				};
 			})
@@ -141,7 +136,7 @@ export function DocSidebar({
 			<h2 class=${css`
 				color: var(--highlight-color);
 				margin-top: 0;
-			`}>Reference</h2>
+			`}>API</h2>
 			${categories.map(
 				(category) => jsx`
 				<div class=${categoryStyle}>${category.name}</div>

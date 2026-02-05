@@ -76,5 +76,5 @@ npx shovel develop src/server.ts --platform node
 ## Next Steps
 
 - Learn about [Configuration](./02-configuration.md) options
-- Explore [Routing](../routing.md) with `@b9g/router`
-- Add [Static Assets](../assets.md) to your application
+- Explore [Routing](/api/router) with `@b9g/router`
+- Add [Static Assets](/api/assets) to your application

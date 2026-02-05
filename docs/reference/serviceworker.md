@@ -1,21 +1,44 @@
 # ServiceWorker
 
-Shovel applications use the [ServiceWorker API](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) for handling requests. Your code runs in a ServiceWorker-like environment with the same lifecycle events and global APIs.
+[ServiceWorker API](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) for request handling.
 
-## Quick Start
+---
+
+## Lifecycle
+
+```
+parsing → installing → installed → activating → activated
+```
+
+---
+
+## Events
+
+### fetch
+
+Fires for incoming requests.
 
 ```typescript
-// Handle incoming requests
 self.addEventListener("fetch", (event) => {
-  event.respondWith(new Response("Hello World"));
+  event.respondWith(new Response("Hello"));
 });
+```
 
-// Run setup tasks during install
+### install
+
+Fires once during worker registration.
+
+```typescript
 self.addEventListener("install", (event) => {
   event.waitUntil(initializeApp());
 });
+```
 
-// Run migrations during activation
+### activate
+
+Fires after successful installation.
+
+```typescript
 self.addEventListener("activate", (event) => {
   event.waitUntil(runMigrations());
 });
@@ -23,309 +46,45 @@ self.addEventListener("activate", (event) => {
 
 ---
 
-## Lifecycle
-
-The ServiceWorker goes through these states:
-
-```
-parsing → installing → installed → activating → activated
-```
-
-### 1. Parsing
-
-Your code is loaded and executed. Global setup runs here:
-
-```typescript
-// Runs during parsing
-const router = new Router();
-router.route("/").get(() => new Response("Home"));
-
-// Register event handlers
-self.addEventListener("fetch", ...);
-self.addEventListener("install", ...);
-self.addEventListener("activate", ...);
-```
-
-### 2. Installing
-
-The `install` event fires. Use `waitUntil` for async setup:
-
-```typescript
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    (async () => {
-      // Pre-cache static assets
-      const cache = await caches.open("static-v1");
-      await cache.addAll(["/app.js", "/styles.css"]);
-    })()
-  );
-});
-```
-
-- Install completes when all `waitUntil` promises resolve
-- Install fails if any promise rejects
-- 30-second timeout for all promises
-- `fetch()` with relative URLs routes through your own fetch handler
-
-#### Using fetch() During Install
-
-You can use `fetch()` during install to generate static content through your own routes:
-
-```typescript
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    (async () => {
-      // Fetch through your own router to generate static pages
-      const response = await fetch("/404.html");
-      const html = await response.text();
-
-      // Write to static output
-      const dir = await directories.open("public");
-      const file = await dir.getFileHandle("404.html", { create: true });
-      const writable = await file.createWritable();
-      await writable.write(html);
-      await writable.close();
-    })()
-  );
-});
-```
-
-### 3. Activating
-
-After install, the `activate` event fires:
-
-```typescript
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      // Run database migrations
-      await databases.open("main", 2, (e) => {
-        e.waitUntil(runMigrations(e.db, e.oldVersion));
-      });
-
-      // Clean old caches
-      const keys = await caches.keys();
-      await Promise.all(
-        keys
-          .filter((key) => key !== "static-v1")
-          .map((key) => caches.delete(key))
-      );
-    })()
-  );
-});
-```
-
-- Activation completes when all `waitUntil` promises resolve
-- Activation fails if any promise rejects
-- 30-second timeout for all promises
-- `fetch()` with relative URLs routes through your own fetch handler
-
-### 4. Activated
-
-The worker is ready to handle external requests. `fetch` events fire for incoming HTTP requests.
-
----
-
-## Fetch Event
-
-The [`fetch`](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerGlobalScope/fetch_event) event fires for every incoming request:
-
-```typescript
-self.addEventListener("fetch", (event) => {
-  event.respondWith(handleRequest(event.request));
-});
-
-async function handleRequest(request: Request): Promise<Response> {
-  const url = new URL(request.url);
-
-  if (url.pathname === "/api/health") {
-    return Response.json({ ok: true });
-  }
-
-  return new Response("Not Found", { status: 404 });
-}
-```
-
-### FetchEvent Properties
-
-The [`FetchEvent`](https://developer.mozilla.org/en-US/docs/Web/API/FetchEvent) interface:
+## FetchEvent
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `request` | [`Request`](https://developer.mozilla.org/en-US/docs/Web/API/Request) | The incoming request |
-| `clientId` | `string` | Unique client identifier |
+| `request` | `Request` | Incoming request |
+| `clientId` | `string` | Client identifier |
 
-### FetchEvent Methods
+### respondWith(response: Response | Promise\<Response\>): void
 
-#### event.respondWith(response)
-
-Sets the response for the request. Must be called synchronously during event dispatch.
+Sets the response.
 
 ```typescript
-self.addEventListener("fetch", (event) => {
-  // Synchronous - OK
-  event.respondWith(new Response("Hello"));
-});
-
-self.addEventListener("fetch", (event) => {
-  // Promise - OK
-  event.respondWith(fetchFromAPI(event.request));
-});
+event.respondWith(new Response("OK"));
+event.respondWith(fetchFromAPI(request));
 ```
 
-#### event.waitUntil(promise)
+### waitUntil(promise: Promise\<any\>): void
 
-Extends the event lifetime for background work. The response is sent immediately, but the worker stays alive until the promise resolves.
-
-```typescript
-self.addEventListener("fetch", (event) => {
-  event.respondWith(new Response("OK"));
-
-  // Log request in background (doesn't block response)
-  event.waitUntil(logRequest(event.request));
-});
-```
-
----
-
-## Install Event
-
-The `install` event fires once when the worker is first registered:
+Extends event lifetime for background work.
 
 ```typescript
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    (async () => {
-      console.log("Installing...");
-
-      // Pre-cache critical assets
-      const cache = await caches.open("app-v1");
-      await cache.addAll([
-        "/",
-        "/app.js",
-        "/styles.css",
-        "/logo.png",
-      ]);
-
-      console.log("Install complete");
-    })()
-  );
-});
-```
-
-### Common Install Tasks
-
-- Pre-cache static assets
-- Initialize global state
-- Validate configuration
-
----
-
-## Activate Event
-
-The `activate` event fires after successful installation:
-
-```typescript
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      // Open database with migrations
-      await databases.open("main", 1, (e) => {
-        e.waitUntil(
-          e.db.exec`
-            CREATE TABLE IF NOT EXISTS users (
-              id INTEGER PRIMARY KEY,
-              name TEXT NOT NULL
-            )
-          `
-        );
-      });
-    })()
-  );
-});
-```
-
-### Common Activate Tasks
-
-- Database migrations
-- Cache cleanup
-- State initialization
-- Pre-rendering static pages
-
-### Database Migrations
-
-The activate event is the ideal place for database migrations:
-
-```typescript
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    databases.open("main", 3, (e) => {
-      e.waitUntil(
-        (async () => {
-          const db = e.db;
-
-          if (e.oldVersion < 1) {
-            await db.exec`
-              CREATE TABLE users (
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL
-              )
-            `;
-          }
-
-          if (e.oldVersion < 2) {
-            await db.exec`
-              ALTER TABLE users ADD COLUMN email TEXT
-            `;
-          }
-
-          if (e.oldVersion < 3) {
-            await db.exec`
-              CREATE INDEX idx_users_email ON users(email)
-            `;
-          }
-        })()
-      );
-    })
-  );
-});
+event.respondWith(new Response("OK"));
+event.waitUntil(logRequest(request)); // Doesn't block response
 ```
 
 ---
 
 ## ExtendableEvent
 
-All lifecycle events extend [`ExtendableEvent`](https://developer.mozilla.org/en-US/docs/Web/API/ExtendableEvent):
+Base interface for lifecycle events.
+
+### waitUntil(promise: Promise\<any\>): void
+
+Delays event completion until promise resolves.
 
 ```typescript
-interface ExtendableEvent extends Event {
-  waitUntil(promise: Promise<any>): void;
-}
-```
-
-### waitUntil Rules
-
-1. Can be called synchronously during event dispatch
-2. Can be called asynchronously if there are pending promises
-3. Multiple calls are allowed
-4. All promises must resolve for the event to complete
-
-```typescript
-self.addEventListener("activate", (event) => {
-  // First waitUntil - synchronous
-  event.waitUntil(taskOne());
-
-  // Second waitUntil - also synchronous
-  event.waitUntil(taskTwo());
-
-  // Can chain more inside async code
-  event.waitUntil(
-    (async () => {
-      await taskThree();
-      // Third waitUntil - valid because prior promises still pending
-      event.waitUntil(taskFour());
-    })()
-  );
+self.addEventListener("install", (event) => {
+  event.waitUntil(cacheAssets());
+  event.waitUntil(validateConfig()); // Multiple calls OK
 });
 ```
 
@@ -333,185 +92,61 @@ self.addEventListener("activate", (event) => {
 
 ## Globals
 
-These globals are available in your ServiceWorker code:
-
 | Global | Type | Description |
 |--------|------|-------------|
-| `self` | `ServiceWorkerGlobalScope` | The global scope |
-| `caches` | [`CacheStorage`](https://developer.mozilla.org/en-US/docs/Web/API/CacheStorage) | Cache API |
-| `databases` | `DatabaseStorage` | SQL databases |
-| `directories` | `DirectoryStorage` | File system |
-| `loggers` | `LoggerStorage` | Structured logging |
-| `cookieStore` | [`CookieStore`](https://developer.mozilla.org/en-US/docs/Web/API/CookieStore) | Cookie access |
-| `crypto` | [`Crypto`](https://developer.mozilla.org/en-US/docs/Web/API/Crypto) | Web Crypto API |
-| `fetch` | `function` | [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) |
-
-### Request-Scoped Globals
-
-Some globals are request-scoped using AsyncContext:
-
-```typescript
-self.addEventListener("fetch", async (event) => {
-  // cookieStore is scoped to this request
-  const cookies = await cookieStore.getAll();
-
-  event.respondWith(Response.json({ cookies }));
-});
-```
+| `self` | `ServiceWorkerGlobalScope` | Global scope |
+| `caches` | `CacheStorage` | [Cache API](./cache.md) |
+| `databases` | `DatabaseStorage` | [ZenDB](./zen.md) |
+| `directories` | `DirectoryStorage` | [FileSystem](./filesystem.md) |
+| `loggers` | `LoggerStorage` | [Logging](./logging.md) |
+| `cookieStore` | `CookieStore` | [Cookies](./cookies.md) |
+| `crypto` | `Crypto` | Web Crypto API |
+| `fetch` | `function` | Fetch API |
 
 ---
 
-## Common Patterns
+## fetch() During Lifecycle
 
-### Router Integration
-
-```typescript
-import { Router } from "@b9g/router";
-
-const router = new Router();
-
-router.route("/").get(() => new Response("Home"));
-router.route("/api/users").get(getUsers);
-router.route("/api/users/:id").get(getUser);
-
-self.addEventListener("fetch", (event) => {
-  event.respondWith(router.handle(event.request));
-});
-```
-
-### Request Timeout
+Relative URLs route through your own fetch handler:
 
 ```typescript
-self.addEventListener("fetch", (event) => {
-  const responsePromise = handleRequest(event.request);
-
-  const timeoutPromise = new Promise<Response>((_, reject) => {
-    setTimeout(() => reject(new Error("Timeout")), 5000);
-  });
-
-  event.respondWith(
-    Promise.race([responsePromise, timeoutPromise]).catch(() => {
-      return new Response("Request Timeout", { status: 504 });
-    })
-  );
-});
-```
-
-### Background Logging
-
-```typescript
-self.addEventListener("fetch", (event) => {
-  const start = Date.now();
-
-  event.respondWith(handleRequest(event.request));
-
-  // Log after response is sent
+self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
-      const duration = Date.now() - start;
-      const logger = loggers.get(["app", "http"]);
-      logger.info("Request completed", {
-        url: event.request.url,
-        method: event.request.method,
-        duration,
-      });
+      const response = await fetch("/404.html");
+      const html = await response.text();
+      // Write to static output
     })()
-  );
-});
-```
-
-### Static Site Generation
-
-```typescript
-self.addEventListener("activate", (event) => {
-  event.waitUntil(generateStaticSite());
-});
-
-async function generateStaticSite() {
-  const pages = ["/", "/about", "/contact"];
-  const cache = await caches.open("static");
-
-  for (const path of pages) {
-    const html = await renderPage(path);
-    const response = new Response(html, {
-      headers: { "Content-Type": "text/html" },
-    });
-    await cache.put(new Request(path), response);
-  }
-}
-
-self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    (async () => {
-      const cache = await caches.open("static");
-      const cached = await cache.match(event.request);
-      if (cached) return cached;
-
-      return new Response("Not Found", { status: 404 });
-    })()
-  );
-});
-```
-
-### Error Boundary
-
-```typescript
-self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    handleRequest(event.request).catch((error) => {
-      const logger = loggers.get(["app"]);
-      logger.error("Unhandled error", {
-        error: error.message,
-        stack: error.stack,
-        url: event.request.url,
-      });
-
-      return Response.json(
-        { error: "Internal Server Error" },
-        { status: 500 }
-      );
-    })
   );
 });
 ```
 
 ---
 
-## Differences from Browser ServiceWorkers
-
-Shovel's ServiceWorker environment differs from browser ServiceWorkers:
+## Differences from Browser
 
 | Feature | Browser | Shovel |
 |---------|---------|--------|
-| Runs in | Browser | Server (Bun/Node.js) |
-| Scope | Origin + path | Entire application |
+| Runs in | Browser | Server |
 | Registration | JavaScript API | Automatic |
 | Updates | navigator.serviceWorker | App restart |
-| Clients | Browser tabs | N/A |
-| Push | Web Push API | N/A |
-| Sync | Background Sync API | N/A |
 
-### Supported APIs
+### Supported
 
 - Fetch event handling
 - Install/activate lifecycle
-- Cache API
-- CookieStore API
-- Crypto API
+- Cache API, CookieStore, Crypto
 
-### Server-Only APIs
+### Server-Only
 
-- `databases` - SQL database access
-- `directories` - File system access
+- `databases` - SQL databases
+- `directories` - File system
 - `loggers` - Structured logging
 
 ---
 
 ## See Also
 
-- [Routing](./routing.md) - Route definition and handlers
-- [Middleware](./middleware.md) - Request/response processing
-- [Caches](./caches.md) - Response caching
-- [Databases](./databases.md) - SQL database storage
-- [Directories](./directories.md) - File system storage
-- [Logging](./logging.md) - Structured logging
+- [Router](./router.md) - Route definition
+- [Middleware](./middleware.md) - Request processing
+

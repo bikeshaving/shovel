@@ -2,10 +2,11 @@
 @import "prism-themes/themes/prism-one-dark.css";
 
 :root {
-	--bg-color: #0d1117;
-	--text-color: #c9d1d9;
-	--highlight-color: #58a6ff;
-	--code-bg: #161b22;
+	--bg-color: #18181b;
+	--text-color: #d4d4d8;
+	--text-muted: #a1a1aa;
+	--highlight-color: #d97706;
+	--code-bg: #09090b;
 }
 
 * {
