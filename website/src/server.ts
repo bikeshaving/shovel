@@ -1,8 +1,15 @@
+import * as Path from "path";
+
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
 import {assets as assetsMiddleware} from "@b9g/assets/middleware";
+
+import {collectDocuments} from "./models/document.js";
+import {collectBlogPosts} from "./models/blog.js";
+
+const __dirname = new URL(".", import.meta.url).pathname;
 
 // Import views
 import HomeView from "./views/home.js";
@@ -75,3 +82,85 @@ router.route("/blog/:slug").get(async (request, context) => {
 self.addEventListener("fetch", (event) => {
 	event.respondWith(router.handle(event.request));
 });
+
+// ServiceWorker install event for static site generation
+self.addEventListener("install", (event) => {
+	event.waitUntil(generateStaticSite());
+});
+
+async function generateStaticSite() {
+	if (import.meta.env.MODE !== "production") {
+		return;
+	}
+
+	const logger = self.loggers.get(["shovel", "website"]);
+	logger.info("Starting static site generation...");
+
+	try {
+		const staticBucket = await self.directories.open("public");
+
+		// Static routes
+		const staticRoutes = ["/", "/blog"];
+
+		// Collect guides
+		const guideDocs = await collectDocuments(
+			Path.join(__dirname, "../../docs/guides"),
+			Path.join(__dirname, "../../docs"),
+		);
+		staticRoutes.push(...guideDocs.map((doc) => doc.url));
+
+		// Collect reference docs
+		const refDocs = await collectDocuments(
+			Path.join(__dirname, "../../docs/reference"),
+			Path.join(__dirname, "../../docs"),
+		);
+		staticRoutes.push(...refDocs.map((doc) => doc.url));
+
+		// Collect blog posts
+		const blogPosts = await collectBlogPosts(
+			Path.join(__dirname, "../../docs/blog"),
+		);
+		staticRoutes.push(...blogPosts.map((post) => post.url));
+
+		logger.info(`Pre-rendering ${staticRoutes.length} routes...`);
+
+		for (const route of staticRoutes) {
+			try {
+				const response = await fetch(route);
+
+				if (response.ok) {
+					const content = await response.text();
+					// Generate proper directory structure for static servers
+					// /blog/slug -> blog/slug/index.html
+					const filePath =
+						route === "/" ? "index.html" : `${route.slice(1)}/index.html`;
+
+					// Create nested directories if needed
+					const parts = filePath.split("/");
+					let currentDir = staticBucket;
+					for (let i = 0; i < parts.length - 1; i++) {
+						currentDir = await currentDir.getDirectoryHandle(parts[i], {
+							create: true,
+						});
+					}
+
+					const fileName = parts[parts.length - 1];
+					const fileHandle = await currentDir.getFileHandle(fileName, {
+						create: true,
+					});
+					const writable = await fileHandle.createWritable();
+					await writable.write(content);
+					await writable.close();
+
+					logger.info(`Generated ${route} -> ${filePath}`);
+				}
+			} catch (error: any) {
+				logger.error(`Failed to generate ${route}: ${error.message}`);
+			}
+		}
+
+		logger.info("Static site generation complete!");
+	} catch (error: any) {
+		logger.error(`Static site generation failed: ${error.message}`);
+	}
+}
