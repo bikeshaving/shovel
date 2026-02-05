@@ -1,36 +1,80 @@
-# Shovel Documentation
+# API Reference
 
-Shovel documentation is split into short Guides and detailed Reference pages. Guides are numbered to indicate the recommended reading order.
+API documentation organized by package. For step-by-step introductions, see the [Guides](../guides/index.md).
 
-## Guides
+---
 
-- [Guides](./guides/index.md) - Step-by-step introductions
-- [Getting Started](./guides/01-getting-started.md) - First run
-- [Configuration](./guides/02-configuration.md) - Project setup
+## shovel
 
-## Reference
+The CLI and core framework.
 
-- [CLI](./cli.md) - Command reference
-- [shovel.json](./shovel-json.md) - Configuration reference
-- [Deployment](./deployment.md) - Production deployment
-
-## Core Concepts
-
-- [ServiceWorker](./serviceworker.md) - Lifecycle events
-- [Routing](./routing.md) - URL routing and handlers
-- [Middleware](./middleware.md) - Request/response processing
+- [CLI](./cli.md) - Command-line interface
+- [shovel.json](./shovel-json.md) - Configuration file format
+- [ServiceWorker](./serviceworker.md) - Lifecycle events and globals
 - [Assets](./assets.md) - Static asset pipeline
-- [HTTP Errors](./http-errors.md) - Error handling
-- [Glossary](./glossary.md) - Shared terminology
+- [Glossary](./glossary.md) - Terminology
 
-## Storage
+---
 
-- [Databases](./databases.md) - SQL databases with migrations
-- [Caches](./caches.md) - Response caching
-- [Directories](./directories.md) - File system access
+## @b9g/router
 
-## Utilities
+Fast, fetch-based routing with middleware.
 
-- [Logging](./logging.md) - Structured logging
+- [Routing](./routing.md) - Router class, route matching, handlers
+- [Middleware](./middleware.md) - Function and generator middleware
+
+---
+
+## @b9g/cache
+
+Cache API implementation for servers.
+
+- [Caches](./caches.md) - CacheStorage and Cache classes
+
+---
+
+## @b9g/filesystem
+
+FileSystem API for servers.
+
+- [Directories](./directories.md) - FileSystemDirectoryHandle API
+
+---
+
+## @b9g/zen
+
+SQL database abstraction with migrations.
+
+- [Databases](./databases.md) - Database class, queries, migrations
+
+---
+
+## @b9g/http-errors
+
+HTTP error classes.
+
+- [HTTP Errors](./http-errors.md) - Error classes and handling
+
+---
+
+## @b9g/async-context
+
+Request-scoped state using AsyncLocalStorage.
+
+- [AsyncContext](./async-context.md) - AsyncContext class
+
+---
+
+## @b9g/cookies
+
+CookieStore API for servers.
+
 - [Cookies](./cookies.md) - Cookie management
-- [AsyncContext](./async-context.md) - Request-scoped state
+
+---
+
+## @logtape/logtape
+
+Structured logging (external package, Shovel-integrated).
+
+- [Logging](./logging.md) - Logger configuration

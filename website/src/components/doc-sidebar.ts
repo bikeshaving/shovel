@@ -26,7 +26,7 @@ const DOC_CATEGORIES: Array<{
 	{
 		name: "Tooling",
 		slug: "tooling",
-		items: ["cli", "shovel-json", "deployment", "logging"],
+		items: ["cli", "shovel-json", "logging"],
 	},
 	{
 		name: "Advanced",
