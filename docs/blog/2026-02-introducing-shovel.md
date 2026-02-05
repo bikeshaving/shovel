@@ -12,13 +12,13 @@ The following is a contemporary description of what building a greenfield open s
 
 ## The Start of the Journey
 
-Work on Shovel began in earnest in October 2025, right about when the Remix team announced a reboot of their full stack runtime. Notably, they decided to divorce from React.js as their UI framework, opting to roll their own instead. As the author of [Crank.js](https://crank.js.org), I was disappointed that they didn’t choose to adopt Crank directly, even though it was [mentioned as inspiration for the framework they built](https://xcancel.com/ryanflorence/status/1977719354180485197). Nevertheless, it would have been intensely hypocritical for me to begrudge any developer for choosing to roll their own anything, and it seems like the Remix team is having fun owning the entire stack.
+Work on Shovel began in earnest in October 2025, right about when the Remix team announced a reboot of their full stack runtime. Notably, they decided to [divorce from React.js as their UI framework](https://remix.run/blog/wake-up-remix), opting to roll their own instead. As the author of [Crank.js](https://crank.js.org), I was disappointed that they didn’t choose to adopt Crank directly, even though it was [mentioned as inspiration for the framework they built](https://xcancel.com/ryanflorence/status/1977719354180485197). Nevertheless, it would have been intensely hypocritical for me to begrudge any developer for choosing to roll their own anything, and it seems like the Remix team is having fun owning the entire stack.
 
 Ultimately though, this signaled to me that I couldn’t wait for someone else to build a full-stack Crank meta-framework: I would have to do it myself. At the time, the Crank documentation website was running on a rudimentary static site generator I had hacked together with ESBuild, aspirationally named “Shovel.js.” Could I expand this seed into a full-fledged framework? What would it look like? How long would this take? I was eager to see how much more efficiently I could complete this monumental task with Claude Code by my side.
 
 ## The Design Philosophy
 
-The plan for the design of Shovel was simple: create a way to run Service Workers anywhere, by implementing all related standards and specifications. For years, I’ve been fascinated by this idea. In my free time, I would look through MDN the same way other people go down Wikipedia rabbit holes, finding hidden gems like [the FileSystem API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API), [the CookieStore API](https://developer.mozilla.org/en-US/docs/Web/API/CookieStore), and [the Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache). These are real, rigorously specified abstractions which are shipped in all major browsers.
+The plan for the design of Shovel was simple: create a way to run Service Workers anywhere, by implementing any related standards and specifications. For years, I’ve been fascinated by this idea. In my free time, I would look through MDN the same way other people go down Wikipedia rabbit holes, finding hidden gems like [the FileSystem API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API), [the CookieStore API](https://developer.mozilla.org/en-US/docs/Web/API/CookieStore), and [the Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache). These are real, rigorously specified abstractions which are shipped in all major browsers.
 
 Could these battle-tested APIs be repurposed for server runtimes? Most contemporary JavaScript server frameworks seem to be moving in this direction. For instance, almost all server frameworks written today use the fetch standard’s `Request` and `Response` classes rather than Node’s idiosyncratic `IncomingMessage` and `OutgoingMessage` ones. And there’s been a push to find a **minimal common API** across runtimes (see [WinterTC](https://wintertc.org/)). But I wanted to take things a step further. What if, rather than designing new APIs, we could just provide shims and implementations of all the applicable browser standards found on MDN?
 
@@ -90,7 +90,7 @@ self.addEventListener("fetch", (ev) => {
 });
 ```
 
-The router uses `MatchPattern`, a URLPattern-compatible implementation with routing enhancements like order-independent search parameters. Our bundled `URLPattern` class passes 100% of the Web Platform Tests while being significantly faster than native browser implementations in our benchmarks. Under the hood, routes compile to a radix tree for O(1) path matching—the same algorithm used by fastify and other high-performance routers.
+The router uses [`MatchPattern`](https://github.com/bikeshaving/shovel/tree/main/packages/match-pattern), a URLPattern-compatible implementation with routing enhancements like order-independent search parameters. Our bundled `URLPattern` class passes 100% of the Web Platform Tests while being significantly faster than native browser implementations in our benchmarks. Under the hood, routes compile to a radix tree for O(1) path matching — the same algorithm used by fastify and other high-performance routers.
 
 Of course, it wouldn't be a Brian Kim open source project without a creative use of generator functions. The router implements a flexible, Rack-style (last in, first out) middleware system where you can modify requests and responses with functions and generator functions.
 
@@ -199,7 +199,7 @@ router.route("/api/uploads").post(async (req, ctx) => {
 });
 ```
 
-### The Static Asset Problem
+### Simpler Static Assets
 
 I wanted Shovel to be a meta-framework, transpiling and bundling both server and client code with ESBuild. I knew that figuring out how to reference, transform and serve client assets was a key part of the developer experience, but I didn’t yet know what it would look like.
 
@@ -232,6 +232,8 @@ router.route("/").get(() => {
   `, { headers: { "Content-Type": "text/html" } });
 });
 ```
+
+No file-based routing, no special bundler plugins.
 
 While I set out to build a meta-framework for my own UI framework Crank.js, it turned out that using import attributes meant I could build a framework-agnostic server and compiler. Shovel passes imports to ESBuild for bundling, hashing, and code splitting, then serves them via middleware backed by `self.directories`. Because assets resolve to plain URL strings, Shovel works with any client framework that doesn’t require complex bespoke compilation ([Preact](https://preactjs.com), [HTMX](https://htmx.org), [Lit](https://lit.dev), [Alpine.js](https://alpinejs.dev)), and it can even work with vanilla JavaScript.
 
@@ -267,12 +269,12 @@ async function generateStaticSite() {
 
 The same route handlers that serve dynamic requests also generate your static pages. No separate SSG tooling, no build-time data fetching abstraction, just `fetch()`. And because you can write to the same directory where assets are written, client-side JavaScript and other static references just work.
 
-## Shovel Ready
+## Early Adopters Welcome
 
 Three months ago, I didn't know if AI could help me build a framework, or if the result would be good. Shovel turned out to be the web framework I've always wanted. It's obsessively standards-based, carefully designed, and not a vibe-coded throwaway.
 
 Shovel was built primarily with Claude Code, and in the development process I bore witness to numerous superhuman feats by it along the way: when the router was slow, Claude added radix trees; when native `URLPattern` was slow, Claude implemented a `RegExp`-based alternative passing 100% of web platform tests; when I wanted a DSL for `shovel.json`, Claude one-shot it; when I got frustrated with DrizzleORM, we designed [ZenDB](https://github.com/bikeshaving/ZenDB) over the holidays. It was still hard work, but it’s new work, where I ideate and plan with Claude, watch it grant my wishes, and then verify the code wasn’t written in a dumb way.
 
-Therefore, I’m happy to announce that Shovel.js is ready for early adopters. There are certainly bugs, and there will be breaking changes, but I'm using it for everything now. The roadmap is ambitious: sessions, authentication, websockets, email — I want Shovel to be batteries included, with an admin interface like Django. If you know of web standards I should look at, let me know.
+Therefore, I’m happy to announce that Shovel.js is ready for early adopters. There are certainly bugs, and there will be breaking changes, but I'm using it for everything now. The roadmap is ambitious: sessions, authentication, websockets, email; ultimately, I want Shovel to be maximally batteries included, with an admin interface like Django. If you know of any web standards I should be looking at, let me know.
 
-To get started, run `npm create shovel` and [follow the docs](/guides/getting-started). You can watch me continue to build with Claude [on GitHub](https://github.com/bikeshaving/shovel). Thanks for reading!
+To get started, run `npm create shovel` and [follow the docs](/guides/getting-started). You can also watch me continue to build Shovel with Claude in the open [on GitHub](https://github.com/bikeshaving/shovel). Thanks for reading!
