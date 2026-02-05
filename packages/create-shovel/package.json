@@ -1,6 +1,6 @@
 {
   "name": "create-shovel",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Create a new Shovel project",
   "type": "module",
   "bin": "./index.js",
