@@ -77,7 +77,7 @@ export default async function BlogPostView({url}: ViewProps) {
 	}
 
 	const {
-		attributes: {title, description, date, author},
+		attributes: {title, description, date, author, authorURL},
 		body,
 	} = post;
 
@@ -85,6 +85,7 @@ export default async function BlogPostView({url}: ViewProps) {
 		year: "numeric",
 		month: "long",
 		day: "numeric",
+		timeZone: "UTC",
 	});
 
 	return (
@@ -96,7 +97,11 @@ export default async function BlogPostView({url}: ViewProps) {
 				<h1>{title}</h1>
 				<p class={metaStyles}>
 					{formattedDate}
-					{author ? ` by ${author}` : ""}
+					{author && authorURL ? (
+						<> by <a href={authorURL}>{author}</a></>
+					) : author ? (
+						<> by {author}</>
+					) : null}
 				</p>
 				<Marked markdown={body} />
 			</article>
