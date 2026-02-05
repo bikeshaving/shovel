@@ -109,12 +109,16 @@ async function generateStaticSite() {
 		);
 		staticRoutes.push(...guideDocs.map((doc) => doc.url));
 
-		// Collect reference docs
+		// Collect reference docs (served at /api/)
 		const refDocs = await collectDocuments(
 			Path.join(__dirname, "../../docs/reference"),
-			Path.join(__dirname, "../../docs"),
+			Path.join(__dirname, "../../docs/reference"),
 		);
-		staticRoutes.push(...refDocs.map((doc) => doc.url));
+		staticRoutes.push(
+			...refDocs
+				.filter((doc) => doc.url !== "/index")
+				.map((doc) => `/api${doc.url}`),
+		);
 
 		// Collect blog posts
 		const blogPosts = await collectBlogPosts(
