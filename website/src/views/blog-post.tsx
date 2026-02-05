@@ -90,10 +90,13 @@ export default async function BlogPostView({url}: ViewProps) {
 	return (
 		<Root title={`Shovel | ${title}`} url={url} description={description}>
 			<article class={articleStyles}>
-				<a href="/blog" class={backLinkStyles}>&larr; Back to Blog</a>
+				<a href="/blog" class={backLinkStyles}>
+					&larr; Back to Blog
+				</a>
 				<h1>{title}</h1>
 				<p class={metaStyles}>
-					{formattedDate}{author ? ` by ${author}` : ""}
+					{formattedDate}
+					{author ? ` by ${author}` : ""}
 				</p>
 				<Marked markdown={body} />
 			</article>

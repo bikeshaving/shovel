@@ -96,6 +96,10 @@ export function Main({children}: {children: unknown}) {
 				padding: 3rem 2rem;
 			}
 
+			> :first-child {
+				margin-top: 0;
+			}
+
 			p {
 				max-width: 800px;
 			}

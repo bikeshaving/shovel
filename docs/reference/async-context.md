@@ -1,6 +1,6 @@
 # AsyncContext
 
-Shovel provides `AsyncContext` for propagating values through asynchronous operations. This enables request-scoped data without passing context through every function.
+Shovel provides `AsyncContext` for propagating values through asynchronous operations. This implements the [TC39 AsyncContext proposal](https://github.com/tc39/proposal-async-context), enabling request-scoped data without passing context through every function.
 
 ## Quick Start
 

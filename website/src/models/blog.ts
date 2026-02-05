@@ -34,14 +34,17 @@ export interface BlogPost {
 	body: string;
 }
 
-export async function collectBlogPosts(pathname: string): Promise<Array<BlogPost>> {
+export async function collectBlogPosts(
+	pathname: string,
+): Promise<Array<BlogPost>> {
 	const posts: Array<BlogPost> = [];
 
 	for await (const {filename} of walk(pathname)) {
 		if (filename.endsWith(".md")) {
 			const md = await FS.readFile(filename, {encoding: "utf8"});
 			const {attributes, body} = frontmatter(md) as unknown as BlogPost;
-			attributes.publish = attributes.publish == null ? true : attributes.publish;
+			attributes.publish =
+				attributes.publish == null ? true : attributes.publish;
 
 			// Extract slug from filename (e.g., 2025-01-introducing-shovel.md -> introducing-shovel)
 			const basename = Path.basename(filename, ".md");

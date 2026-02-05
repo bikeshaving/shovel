@@ -81,7 +81,9 @@ export default async function BlogListView({url}: ViewProps) {
 				<h1>Blog</h1>
 				<ul class={postListStyles}>
 					{publishedPosts.map((post) => {
-						const formattedDate = new Date(post.attributes.date).toLocaleDateString("en-US", {
+						const formattedDate = new Date(
+							post.attributes.date,
+						).toLocaleDateString("en-US", {
 							year: "numeric",
 							month: "long",
 							day: "numeric",
@@ -93,10 +95,15 @@ export default async function BlogListView({url}: ViewProps) {
 									<a href={post.url}>{post.attributes.title}</a>
 								</h2>
 								<p class={postMetaStyles}>
-									{formattedDate}{post.attributes.author ? ` by ${post.attributes.author}` : ""}
+									{formattedDate}
+									{post.attributes.author
+										? ` by ${post.attributes.author}`
+										: ""}
 								</p>
 								{post.attributes.description && (
-									<p class={postDescriptionStyles}>{post.attributes.description}</p>
+									<p class={postDescriptionStyles}>
+										{post.attributes.description}
+									</p>
 								)}
 							</li>
 						);
