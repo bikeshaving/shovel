@@ -35,8 +35,10 @@ jobs:
           cd website
           bun run build
 
-      - name: Add CNAME
-        run: echo "shovel.js.org" > website/dist/public/CNAME
+      - name: Add CNAME and .nojekyll
+        run: |
+          touch website/dist/public/.nojekyll
+          echo "shovel.js.org" > website/dist/public/CNAME
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
