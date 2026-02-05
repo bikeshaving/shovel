@@ -52,7 +52,7 @@ await container.installAll();
 
 // Create server that routes to appropriate ServiceWorker
 const server = platform.createServer(container.handleRequest.bind(container), {
-  port: 3000,
+  port: 7777,
   host: 'localhost'
 });
 

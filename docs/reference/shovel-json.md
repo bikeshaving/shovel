@@ -10,7 +10,7 @@ String values support environment variables and expressions.
 
 ```json
 {
-  "port": "$PORT || 3000",
+  "port": "$PORT || 7777",
   "platform": "$NODE_ENV === production ? cloudflare : bun"
 }
 ```
@@ -19,8 +19,8 @@ String values support environment variables and expressions.
 
 | Operator | Example |
 |----------|---------|
-| `\|\|` | `"$PORT \|\| 3000"` |
-| `??` | `"$PORT ?? 3000"` |
+| `\|\|` | `"$PORT \|\| 7777"` |
+| `??` | `"$PORT ?? 7777"` |
 | `===`, `!==` | `"$ENV === production"` |
 | `? :` | `"$DEV ? memory : redis"` |
 
@@ -50,7 +50,7 @@ String values support environment variables and expressions.
 ## port
 
 - **Type:** `number | string`
-- **Default:** `3000`
+- **Default:** `7777`
 
 ---
 

@@ -34,7 +34,7 @@ logger.debug("Processing request", { url: request.url });
 Logs an informational message.
 
 ```typescript
-logger.info("Server started", { port: 3000 });
+logger.info("Server started", { port: 7777 });
 ```
 
 ### warning(message: string, data?: Record\<string, unknown\>): void

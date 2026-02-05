@@ -39,7 +39,7 @@ const logger = getLogger(["shovel", "platform"]);
 // ============================================================================
 
 export interface NodePlatformOptions {
-	/** Port for development server (default: 3000) */
+	/** Port for development server (default: 7777) */
 	port?: number;
 	/** Host for development server (default: localhost) */
 	host?: string;
@@ -247,7 +247,7 @@ export class NodePlatform {
 		const cwd = options.cwd || process.cwd();
 
 		this.#options = {
-			port: options.port ?? 3000,
+			port: options.port ?? 7777,
 			host: options.host ?? "localhost",
 			workers: options.workers ?? 1,
 			cwd,

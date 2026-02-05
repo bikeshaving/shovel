@@ -270,7 +270,7 @@ bun install
 # Run development server
 bun run develop
 
-# Visit http://localhost:3000
+# Visit http://localhost:7777
 ```
 
 ## Tech Stack

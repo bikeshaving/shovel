@@ -34,11 +34,11 @@ self.addEventListener("fetch", (ev) => {
 
 ```bash
 $ shovel develop server.ts
-listening on http://localhost:3000
+listening on http://localhost:7777
 
-$ curl -X PUT :3000/kv/hello -d "world"
+$ curl -X PUT :7777/kv/hello -d "world"
 
-$ curl :3000/kv/hello
+$ curl :7777/kv/hello
 world
 ```
 
