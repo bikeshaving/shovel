@@ -98,7 +98,10 @@ export default async function BlogPostView({url}: ViewProps) {
 				<p class={metaStyles}>
 					{formattedDate}
 					{author && authorURL ? (
-						<> by <a href={authorURL}>{author}</a></>
+						<>
+							{" "}
+							by <a href={authorURL}>{author}</a>
+						</>
 					) : author ? (
 						<> by {author}</>
 					) : null}
