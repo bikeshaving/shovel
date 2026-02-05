@@ -27,6 +27,7 @@ export interface BlogPost {
 		description?: string;
 		date: string;
 		author?: string;
+		authorURL?: string;
 		publish: boolean;
 	};
 	url: string;

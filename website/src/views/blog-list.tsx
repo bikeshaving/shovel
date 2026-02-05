@@ -87,6 +87,7 @@ export default async function BlogListView({url}: ViewProps) {
 							year: "numeric",
 							month: "long",
 							day: "numeric",
+							timeZone: "UTC",
 						});
 
 						return (
