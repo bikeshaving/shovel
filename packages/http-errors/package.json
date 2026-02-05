@@ -1,6 +1,6 @@
 {
   "name": "@b9g/http-errors",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Standard HTTP error classes with native cause support and automatic serialization",
   "keywords": [
