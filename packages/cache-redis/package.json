@@ -33,7 +33,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/b9g/shovel.git",
+    "url": "https://github.com/bikeshaving/shovel.git",
     "directory": "packages/cache-redis"
   },
   "module": "./dist/src/index.js",

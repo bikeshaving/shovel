@@ -38,5 +38,10 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bikeshaving/shovel.git",
+    "directory": "packages/http-errors"
   }
 }

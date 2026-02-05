@@ -137,7 +137,7 @@ export default function Home({url}: ViewProps) {
 
 	return jsx`
 		<${Root}
-			title="Shovel.js - Run Service Workers Everywhere"
+			title="Shovel.js - Run Service Workers Anywhere"
 			url=${url}
 			description="Run Service Workers anywhere — Node, Bun, Cloudflare Workers."
 		>

@@ -53,5 +53,10 @@
       "types": "./dist/src/platform.d.ts",
       "import": "./dist/src/platform.js"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bikeshaving/shovel.git",
+    "directory": "packages/platform-node"
   }
 }

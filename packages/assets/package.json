@@ -39,5 +39,10 @@
     },
     "./global.d.ts": "./dist/src/global.d.ts",
     "./shovel-assets.d.ts": "./dist/src/shovel-assets.d.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bikeshaving/shovel.git",
+    "directory": "packages/assets"
   }
 }
