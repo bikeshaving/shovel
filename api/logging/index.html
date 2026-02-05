@@ -1,0 +1,244 @@
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Shovel | @logtape/logtape</title><style>.css-xlwoin{position:fixed;top:0;left:0;right:0;height:50px;background-color:var(--bg-color);border-bottom:1px solid var(--text-color);display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;-webkit-align-items:center;-webkit-box-align:center;-ms-flex-align:center;align-items:center;padding:0 1rem;z-index:100;}.css-yq49om{font-size:1.5rem;font-weight:bold;color:var(--highlight-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo{display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;gap:1.5rem;margin-left:auto;}.css-1nfzlxo a{color:var(--text-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo a:hover{color:var(--highlight-color);}.css-1nfzlxo a[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-p83kyz{background-color:var(--bg-color);margin-top:50px;padding:2rem 0.4rem;color:var(--text-color);border-right:1px solid currentcolor;border-bottom:1px solid currentcolor;}@media screen and (min-width: 800px){.css-p83kyz{position:fixed;top:50px;bottom:0;overflow-x:hidden;overflow-y:auto;width:15rem;margin:0;padding:2rem 1rem;text-align:right;}}@media screen and (min-width: 1100px){.css-p83kyz{padding:3rem 2rem;width:20rem;}}.css-p83kyz &gt;:first-child{margin-top:0;}.css-l91ppu{font-size:0.85rem;color:var(--highlight-color);margin:1.5rem 0 0.5rem;text-transform:uppercase;letter-spacing:0.05em;font-weight:bold;}.css-l91ppu:first-of-type{margin-top:0;}.css-1jwyx8k{display:block;margin:0.5rem 0;-webkit-text-decoration:none;text-decoration:none;color:var(--text-color);}.css-1jwyx8k:hover{color:var(--highlight-color);}.css-1jwyx8k[aria-current=&quot;page&quot;]{color:var(--highlight-color);font-weight:bold;}.css-ep9szm{color:var(--highlight-color);margin-top:0;}.css-v6xkb5{margin:0 auto;padding:2rem 0.4rem;}@media screen and (min-width: 800px){.css-v6xkb5{margin-left:240px;padding:2rem 1rem;margin-top:50px;}}@media screen and (min-width: 1100px){.css-v6xkb5{margin-left:20rem;padding:3rem 2rem;}}.css-v6xkb5 &gt;:first-child{margin-top:0;}.css-v6xkb5 p{max-width:800px;}.css-v6xkb5 pre{background:var(--code-bg);padding:1rem;border-radius:4px;overflow-x:auto;}.css-v6xkb5 code{font-family:&quot;SF Mono&quot;,Menlo,Monaco,&quot;Courier New&quot;,monospace;font-size:0.9em;}.css-v6xkb5 code.inline{background:var(--code-bg);padding:0.2em 0.4em;border-radius:3px;}</style><link rel="stylesheet" type="text/css" href="/static/client-d338c3cf2d1d9d72.css"><meta name="description" content=""><meta property="og:title" content="Shovel | @logtape/logtape"><meta property="og:description" content=""><meta property="og:type" content="website"><meta property="og:site_name" content="Shovel"></head><body><div id="navbar-root"><nav class="css-xlwoin"><a href="/" class="css-yq49om">Shovel</a><div class="css-1nfzlxo"><a href="/guides/getting-started">Guides</a><a href="/api" aria-current="page">API</a><a href="/blog">Blog</a><a href="https://github.com/bikeshaving/shovel">GitHub</a></div></nav></div><div id="sidebar" class="css-p83kyz"><h2 class="css-ep9szm">API</h2><div class="css-l91ppu">shovel</div><a href="/api/cli" class="css-1jwyx8k">CLI</a><a href="/api/serviceworker" class="css-1jwyx8k">ServiceWorker</a><a href="/api/shovel-json" class="css-1jwyx8k">shovel.json</a><div class="css-l91ppu">@b9g/router</div><a href="/api/middleware" class="css-1jwyx8k">@b9g/router/middleware</a><a href="/api/router" class="css-1jwyx8k">Routing</a><div class="css-l91ppu">@b9g/assets</div><a href="/api/assets" class="css-1jwyx8k">@b9g/assets</a><div class="css-l91ppu">@b9g/async-context</div><a href="/api/async-context" class="css-1jwyx8k">@b9g/async-context</a><div class="css-l91ppu">@b9g/cache</div><a href="/api/cache" class="css-1jwyx8k">Caches</a><div class="css-l91ppu">@b9g/cookies</div><a href="/api/cookies" class="css-1jwyx8k">@b9g/cookies</a><div class="css-l91ppu">@b9g/filesystem</div><a href="/api/filesystem" class="css-1jwyx8k">@b9g/filesystem</a><div class="css-l91ppu">@b9g/http-errors</div><a href="/api/http-errors" class="css-1jwyx8k">@b9g/http-errors</a><div class="css-l91ppu">@b9g/zen</div><a href="/api/zen" class="css-1jwyx8k">@b9g/zen</a><div class="css-l91ppu">@logtape/logtape</div><a href="/api/logging" class="css-1jwyx8k" aria-current="page">@logtape/logtape</a></div><main class="css-v6xkb5"><h1 id="logtapelogtape">@logtape/logtape</h1>
+<p>Structured logging via <a href="https://logtape.org/">LogTape</a>.</p>
+<hr>
+<h2 id="loggerstorage">LoggerStorage</h2>
+<p>Global <code>self.loggers</code> provides access to loggers.</p>
+<h3 id="getcategories-string-logger">get(categories: string[]): Logger</h3>
+<p>Gets a logger for the given category path.</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> logger <span class="token operator">=</span> self<span class="token punctuation">.</span>loggers<span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token punctuation">[</span><span class="token string">"app"</span><span class="token punctuation">]</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token keyword">const</span> dbLogger <span class="token operator">=</span> self<span class="token punctuation">.</span>loggers<span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token punctuation">[</span><span class="token string">"app"</span><span class="token punctuation">,</span> <span class="token string">"database"</span><span class="token punctuation">]</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<hr>
+<h2 id="logger">Logger</h2>
+<h3 id="debugmessage-string-data-recordstring-unknown-void">debug(message: string, data?: Record&lt;string, unknown&gt;): void</h3>
+<p>Logs a debug message.</p>
+<pre><code class="language-typescript">logger<span class="token punctuation">.</span><span class="token function">debug</span><span class="token punctuation">(</span><span class="token string">"Processing request"</span><span class="token punctuation">,</span> <span class="token punctuation">{</span> url<span class="token operator">:</span> request<span class="token punctuation">.</span>url <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="infomessage-string-data-recordstring-unknown-void">info(message: string, data?: Record&lt;string, unknown&gt;): void</h3>
+<p>Logs an informational message.</p>
+<pre><code class="language-typescript">logger<span class="token punctuation">.</span><span class="token function">info</span><span class="token punctuation">(</span><span class="token string">"Server started"</span><span class="token punctuation">,</span> <span class="token punctuation">{</span> port<span class="token operator">:</span> <span class="token number">7777</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="warningmessage-string-data-recordstring-unknown-void">warning(message: string, data?: Record&lt;string, unknown&gt;): void</h3>
+<p>Logs a warning message.</p>
+<pre><code class="language-typescript">logger<span class="token punctuation">.</span><span class="token function">warning</span><span class="token punctuation">(</span><span class="token string">"Cache miss rate high"</span><span class="token punctuation">,</span> <span class="token punctuation">{</span> rate<span class="token operator">:</span> <span class="token number">0.8</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="errormessage-string-data-recordstring-unknown-void">error(message: string, data?: Record&lt;string, unknown&gt;): void</h3>
+<p>Logs an error message.</p>
+<pre><code class="language-typescript">logger<span class="token punctuation">.</span><span class="token function">error</span><span class="token punctuation">(</span><span class="token string">"Database connection failed"</span><span class="token punctuation">,</span> <span class="token punctuation">{</span> error<span class="token operator">:</span> err<span class="token punctuation">.</span>message <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="template-literal-syntax">Template Literal Syntax</h3>
+<pre><code class="language-typescript">logger<span class="token punctuation">.</span>info<span class="token template-string"><span class="token template-punctuation string">`</span><span class="token string">User </span><span class="token interpolation"><span class="token interpolation-punctuation punctuation">${</span>userId<span class="token interpolation-punctuation punctuation">}</span></span><span class="token string"> performed </span><span class="token interpolation"><span class="token interpolation-punctuation punctuation">${</span>action<span class="token interpolation-punctuation punctuation">}</span></span><span class="token template-punctuation string">`</span></span><span class="token punctuation">;</span>
+</code></pre>
+<hr>
+<h2 id="configuration">Configuration</h2>
+<p>Configure in <code>shovel.json</code>:</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"logging"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"sinks"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"console"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+        <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@logtape/logtape"</span><span class="token punctuation">,</span>
+        <span class="token property">"export"</span><span class="token operator">:</span> <span class="token string">"getConsoleSink"</span>
+      <span class="token punctuation">}</span>
+    <span class="token punctuation">}</span><span class="token punctuation">,</span>
+    <span class="token property">"loggers"</span><span class="token operator">:</span> <span class="token punctuation">[</span>
+      <span class="token punctuation">{</span>
+        <span class="token property">"category"</span><span class="token operator">:</span> <span class="token string">"app"</span><span class="token punctuation">,</span>
+        <span class="token property">"level"</span><span class="token operator">:</span> <span class="token string">"info"</span><span class="token punctuation">,</span>
+        <span class="token property">"sinks"</span><span class="token operator">:</span> <span class="token punctuation">[</span><span class="token string">"console"</span><span class="token punctuation">]</span>
+      <span class="token punctuation">}</span>
+    <span class="token punctuation">]</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<h3 id="sink-fields">Sink Fields</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>module</code></td>
+<td><code>string</code></td>
+<td>Module path</td>
+</tr>
+<tr>
+<td><code>export</code></td>
+<td><code>string</code></td>
+<td>Named export</td>
+</tr>
+<tr>
+<td>Additional fields passed to sink constructor</td>
+<td></td>
+<td></td>
+</tr>
+</tbody></table>
+<h3 id="logger-fields">Logger Fields</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>category</code></td>
+<td><code>string | string[]</code></td>
+<td>Logger category path</td>
+</tr>
+<tr>
+<td><code>level</code></td>
+<td><code>string</code></td>
+<td>Minimum log level</td>
+</tr>
+<tr>
+<td><code>sinks</code></td>
+<td><code>string[]</code></td>
+<td>Sink names to output to</td>
+</tr>
+<tr>
+<td><code>parentSinks</code></td>
+<td><code>&quot;override&quot;</code></td>
+<td>Don&#39;t inherit parent sinks</td>
+</tr>
+</tbody></table>
+<h3 id="log-levels">Log Levels</h3>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>debug</code></td>
+<td>Detailed debugging</td>
+</tr>
+<tr>
+<td><code>info</code></td>
+<td>General information</td>
+</tr>
+<tr>
+<td><code>warning</code></td>
+<td>Warning conditions</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>Error conditions</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="sinks">Sinks</h2>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Export</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@logtape/logtape</code></td>
+<td><code>getConsoleSink</code></td>
+<td>Console output</td>
+</tr>
+<tr>
+<td><code>@logtape/file</code></td>
+<td><code>getFileSink</code></td>
+<td>File output</td>
+</tr>
+<tr>
+<td><code>@logtape/file</code></td>
+<td><code>getRotatingFileSink</code></td>
+<td>Rotating file</td>
+</tr>
+<tr>
+<td><code>@logtape/otel</code></td>
+<td><code>getOpenTelemetrySink</code></td>
+<td>OpenTelemetry</td>
+</tr>
+</tbody></table>
+<h3 id="file-sink">File Sink</h3>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"logging"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"sinks"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"file"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+        <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@logtape/file"</span><span class="token punctuation">,</span>
+        <span class="token property">"export"</span><span class="token operator">:</span> <span class="token string">"getRotatingFileSink"</span><span class="token punctuation">,</span>
+        <span class="token property">"path"</span><span class="token operator">:</span> <span class="token string">"./logs/app.log"</span><span class="token punctuation">,</span>
+        <span class="token property">"maxSize"</span><span class="token operator">:</span> <span class="token number">10485760</span><span class="token punctuation">,</span>
+        <span class="token property">"maxFiles"</span><span class="token operator">:</span> <span class="token number">5</span>
+      <span class="token punctuation">}</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<hr>
+<h2 id="category-hierarchy">Category Hierarchy</h2>
+<p>Categories form a hierarchy. Child loggers inherit parent configuration.</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"logging"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"loggers"</span><span class="token operator">:</span> <span class="token punctuation">[</span>
+      <span class="token punctuation">{</span> <span class="token property">"category"</span><span class="token operator">:</span> <span class="token string">"app"</span><span class="token punctuation">,</span> <span class="token property">"level"</span><span class="token operator">:</span> <span class="token string">"info"</span><span class="token punctuation">,</span> <span class="token property">"sinks"</span><span class="token operator">:</span> <span class="token punctuation">[</span><span class="token string">"console"</span><span class="token punctuation">]</span> <span class="token punctuation">}</span><span class="token punctuation">,</span>
+      <span class="token punctuation">{</span> <span class="token property">"category"</span><span class="token operator">:</span> <span class="token punctuation">[</span><span class="token string">"app"</span><span class="token punctuation">,</span> <span class="token string">"database"</span><span class="token punctuation">]</span><span class="token punctuation">,</span> <span class="token property">"level"</span><span class="token operator">:</span> <span class="token string">"debug"</span><span class="token punctuation">,</span> <span class="token property">"sinks"</span><span class="token operator">:</span> <span class="token punctuation">[</span><span class="token string">"file"</span><span class="token punctuation">]</span> <span class="token punctuation">}</span>
+    <span class="token punctuation">]</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Logger</th>
+<th>Level</th>
+<th>Sinks</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>[&quot;app&quot;]</code></td>
+<td>info</td>
+<td>console</td>
+</tr>
+<tr>
+<td><code>[&quot;app&quot;, &quot;api&quot;]</code></td>
+<td>info</td>
+<td>console (inherited)</td>
+</tr>
+<tr>
+<td><code>[&quot;app&quot;, &quot;database&quot;]</code></td>
+<td>debug</td>
+<td>console, file</td>
+</tr>
+</tbody></table>
+<p>Use <code>parentSinks: &quot;override&quot;</code> to prevent inheritance.</p>
+<hr>
+<h2 id="shovel-internal-loggers">Shovel Internal Loggers</h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>shovel</code></td>
+<td>General Shovel logs</td>
+</tr>
+<tr>
+<td><code>shovel.platform</code></td>
+<td>Runtime logs</td>
+</tr>
+<tr>
+<td><code>shovel.build</code></td>
+<td>Build process</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="/api/shovel-json">shovel.json</a> - Configuration reference</li>
+<li><a href="https://logtape.org/">LogTape Documentation</a> - Full LogTape API</li>
+</ul>
+</main></body></html>

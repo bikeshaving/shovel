@@ -1,0 +1,164 @@
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Shovel | Routing</title><style>.css-xlwoin{position:fixed;top:0;left:0;right:0;height:50px;background-color:var(--bg-color);border-bottom:1px solid var(--text-color);display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;-webkit-align-items:center;-webkit-box-align:center;-ms-flex-align:center;align-items:center;padding:0 1rem;z-index:100;}.css-yq49om{font-size:1.5rem;font-weight:bold;color:var(--highlight-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo{display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;gap:1.5rem;margin-left:auto;}.css-1nfzlxo a{color:var(--text-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo a:hover{color:var(--highlight-color);}.css-1nfzlxo a[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-p83kyz{background-color:var(--bg-color);margin-top:50px;padding:2rem 0.4rem;color:var(--text-color);border-right:1px solid currentcolor;border-bottom:1px solid currentcolor;}@media screen and (min-width: 800px){.css-p83kyz{position:fixed;top:50px;bottom:0;overflow-x:hidden;overflow-y:auto;width:15rem;margin:0;padding:2rem 1rem;text-align:right;}}@media screen and (min-width: 1100px){.css-p83kyz{padding:3rem 2rem;width:20rem;}}.css-p83kyz &gt;:first-child{margin-top:0;}.css-l91ppu{font-size:0.85rem;color:var(--highlight-color);margin:1.5rem 0 0.5rem;text-transform:uppercase;letter-spacing:0.05em;font-weight:bold;}.css-l91ppu:first-of-type{margin-top:0;}.css-1jwyx8k{display:block;margin:0.5rem 0;-webkit-text-decoration:none;text-decoration:none;color:var(--text-color);}.css-1jwyx8k:hover{color:var(--highlight-color);}.css-1jwyx8k[aria-current=&quot;page&quot;]{color:var(--highlight-color);font-weight:bold;}.css-ep9szm{color:var(--highlight-color);margin-top:0;}.css-v6xkb5{margin:0 auto;padding:2rem 0.4rem;}@media screen and (min-width: 800px){.css-v6xkb5{margin-left:240px;padding:2rem 1rem;margin-top:50px;}}@media screen and (min-width: 1100px){.css-v6xkb5{margin-left:20rem;padding:3rem 2rem;}}.css-v6xkb5 &gt;:first-child{margin-top:0;}.css-v6xkb5 p{max-width:800px;}.css-v6xkb5 pre{background:var(--code-bg);padding:1rem;border-radius:4px;overflow-x:auto;}.css-v6xkb5 code{font-family:&quot;SF Mono&quot;,Menlo,Monaco,&quot;Courier New&quot;,monospace;font-size:0.9em;}.css-v6xkb5 code.inline{background:var(--code-bg);padding:0.2em 0.4em;border-radius:3px;}</style><link rel="stylesheet" type="text/css" href="/static/client-d338c3cf2d1d9d72.css"><meta name="description" content=""><meta property="og:title" content="Shovel | Routing"><meta property="og:description" content=""><meta property="og:type" content="website"><meta property="og:site_name" content="Shovel"></head><body><div id="navbar-root"><nav class="css-xlwoin"><a href="/" class="css-yq49om">Shovel</a><div class="css-1nfzlxo"><a href="/guides/getting-started">Guides</a><a href="/api" aria-current="page">API</a><a href="/blog">Blog</a><a href="https://github.com/bikeshaving/shovel">GitHub</a></div></nav></div><div id="sidebar" class="css-p83kyz"><h2 class="css-ep9szm">API</h2><div class="css-l91ppu">shovel</div><a href="/api/cli" class="css-1jwyx8k">CLI</a><a href="/api/serviceworker" class="css-1jwyx8k">ServiceWorker</a><a href="/api/shovel-json" class="css-1jwyx8k">shovel.json</a><div class="css-l91ppu">@b9g/router</div><a href="/api/middleware" class="css-1jwyx8k">@b9g/router/middleware</a><a href="/api/router" class="css-1jwyx8k" aria-current="page">Routing</a><div class="css-l91ppu">@b9g/assets</div><a href="/api/assets" class="css-1jwyx8k">@b9g/assets</a><div class="css-l91ppu">@b9g/async-context</div><a href="/api/async-context" class="css-1jwyx8k">@b9g/async-context</a><div class="css-l91ppu">@b9g/cache</div><a href="/api/cache" class="css-1jwyx8k">Caches</a><div class="css-l91ppu">@b9g/cookies</div><a href="/api/cookies" class="css-1jwyx8k">@b9g/cookies</a><div class="css-l91ppu">@b9g/filesystem</div><a href="/api/filesystem" class="css-1jwyx8k">@b9g/filesystem</a><div class="css-l91ppu">@b9g/http-errors</div><a href="/api/http-errors" class="css-1jwyx8k">@b9g/http-errors</a><div class="css-l91ppu">@b9g/zen</div><a href="/api/zen" class="css-1jwyx8k">@b9g/zen</a><div class="css-l91ppu">@logtape/logtape</div><a href="/api/logging" class="css-1jwyx8k">@logtape/logtape</a></div><main class="css-v6xkb5"><h1 id="routing">Routing</h1>
+<p>A fast router built on web standards. Part of <a href="https://npmjs.com/package/@b9g/router">@b9g/router</a>.</p>
+<hr>
+<h2 id="router">Router</h2>
+<pre><code class="language-typescript"><span class="token keyword">import</span> <span class="token punctuation">{</span> Router <span class="token punctuation">}</span> <span class="token keyword">from</span> <span class="token string">"@b9g/router"</span><span class="token punctuation">;</span>
+<span class="token keyword">const</span> router <span class="token operator">=</span> <span class="token keyword">new</span> <span class="token class-name">Router</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="routepattern-string-options-routeoptions-route">route(pattern: string, options?: RouteOptions): Route</h3>
+<p>Defines a route. Returns a <code>Route</code> object for chaining HTTP methods.</p>
+<pre><code class="language-typescript">router<span class="token punctuation">.</span><span class="token function">route</span><span class="token punctuation">(</span><span class="token string">"/users/:id"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span>handler<span class="token punctuation">)</span><span class="token punctuation">;</span>
+router<span class="token punctuation">.</span><span class="token function">route</span><span class="token punctuation">(</span><span class="token string">"/posts/:id"</span><span class="token punctuation">,</span> <span class="token punctuation">{</span> name<span class="token operator">:</span> <span class="token string">"post"</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span>handler<span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="usemiddleware-middleware-void">use(middleware: Middleware): void</h3>
+<h3 id="usepath-string-middleware-middleware-void">use(path: string, middleware: Middleware): void</h3>
+<p>Registers middleware globally or for a path prefix.</p>
+<pre><code class="language-typescript">router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span>loggingMiddleware<span class="token punctuation">)</span><span class="token punctuation">;</span>
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span><span class="token string">"/api"</span><span class="token punctuation">,</span> authMiddleware<span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="mountprefix-string-subrouter-router-void">mount(prefix: string, subrouter: Router): void</h3>
+<p>Mounts a subrouter at a path prefix.</p>
+<pre><code class="language-typescript">router<span class="token punctuation">.</span><span class="token function">mount</span><span class="token punctuation">(</span><span class="token string">"/api/v1"</span><span class="token punctuation">,</span> apiRouter<span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="handlerequest-request-promiseresponse">handle(request: Request): Promise&lt;Response&gt;</h3>
+<p>Handles a request and returns a response.</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> response <span class="token operator">=</span> <span class="token keyword">await</span> router<span class="token punctuation">.</span><span class="token function">handle</span><span class="token punctuation">(</span>request<span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="matchurl-string-routematch--null">match(url: string): RouteMatch | null</h3>
+<p>Tests if a URL matches any route.</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> match <span class="token operator">=</span> router<span class="token punctuation">.</span><span class="token function">match</span><span class="token punctuation">(</span><span class="token string">"/users/123"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token comment">// { params: { id: "123" }, methods: ["GET"], pattern: "/users/:id" }</span>
+</code></pre>
+<h3 id="urlname-string-params-recordstring-string-string">url(name: string, params: Record&lt;string, string&gt;): string</h3>
+<p>Generates a URL from a named route.</p>
+<pre><code class="language-typescript">router<span class="token punctuation">.</span><span class="token function">url</span><span class="token punctuation">(</span><span class="token string">"post"</span><span class="token punctuation">,</span> <span class="token punctuation">{</span> id<span class="token operator">:</span> <span class="token string">"123"</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// "/posts/123"</span>
+</code></pre>
+<hr>
+<h2 id="route">Route</h2>
+<p>Returned by <code>router.route()</code>. Chain HTTP methods:</p>
+<h3 id="gethandler-handler-route">get(handler: Handler): Route</h3>
+<h3 id="posthandler-handler-route">post(handler: Handler): Route</h3>
+<h3 id="puthandler-handler-route">put(handler: Handler): Route</h3>
+<h3 id="deletehandler-handler-route">delete(handler: Handler): Route</h3>
+<h3 id="patchhandler-handler-route">patch(handler: Handler): Route</h3>
+<h3 id="headhandler-handler-route">head(handler: Handler): Route</h3>
+<h3 id="optionshandler-handler-route">options(handler: Handler): Route</h3>
+<pre><code class="language-typescript">router<span class="token punctuation">.</span><span class="token function">route</span><span class="token punctuation">(</span><span class="token string">"/users/:id"</span><span class="token punctuation">)</span>
+  <span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span>getUser<span class="token punctuation">)</span>
+  <span class="token punctuation">.</span><span class="token function">put</span><span class="token punctuation">(</span>updateUser<span class="token punctuation">)</span>
+  <span class="token punctuation">.</span><span class="token function">delete</span><span class="token punctuation">(</span>deleteUser<span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<hr>
+<h2 id="handler">Handler</h2>
+<pre><code class="language-typescript"><span class="token keyword">type</span> <span class="token class-name">Handler</span> <span class="token operator">=</span> <span class="token punctuation">(</span>
+  request<span class="token operator">:</span> Request<span class="token punctuation">,</span>
+  context<span class="token operator">:</span> RouteContext
+<span class="token punctuation">)</span> <span class="token operator">=></span> Response <span class="token operator">|</span> <span class="token builtin">Promise</span><span class="token operator">&lt;</span>Response<span class="token operator">></span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="routecontext">RouteContext</h3>
+<pre><code class="language-typescript"><span class="token keyword">interface</span> <span class="token class-name">RouteContext</span> <span class="token punctuation">{</span>
+  params<span class="token operator">:</span> Record<span class="token operator">&lt;</span><span class="token builtin">string</span><span class="token punctuation">,</span> <span class="token builtin">string</span><span class="token operator">></span><span class="token punctuation">;</span>
+  <span class="token comment">// Plus properties added by middleware</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<hr>
+<h2 id="pattern-syntax">Pattern Syntax</h2>
+<table>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Matches</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>/users</code></td>
+<td>Static path</td>
+<td><code>/users</code></td>
+</tr>
+<tr>
+<td><code>/users/:id</code></td>
+<td>Named parameter</td>
+<td><code>/users/123</code> → <code>{ id: &quot;123&quot; }</code></td>
+</tr>
+<tr>
+<td><code>/users/:id(\\d+)</code></td>
+<td>With constraint</td>
+<td><code>/users/123</code> (not <code>/users/abc</code>)</td>
+</tr>
+<tr>
+<td><code>/users/:id?</code></td>
+<td>Optional parameter</td>
+<td><code>/users</code>, <code>/users/123</code></td>
+</tr>
+<tr>
+<td><code>/files/:path+</code></td>
+<td>One or more segments</td>
+<td><code>/files/a/b/c</code></td>
+</tr>
+<tr>
+<td><code>/files/:path*</code></td>
+<td>Zero or more segments</td>
+<td><code>/files</code>, <code>/files/a/b</code></td>
+</tr>
+<tr>
+<td><code>/files/*</code></td>
+<td>Wildcard</td>
+<td><code>/files/anything/here</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="routeoptions">RouteOptions</h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>name</code></td>
+<td><code>string</code></td>
+<td>Name for URL generation</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="routematch">RouteMatch</h2>
+<p>Returned by <code>router.match()</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>params</code></td>
+<td><code>Record&lt;string, string&gt;</code></td>
+<td>Extracted parameters</td>
+</tr>
+<tr>
+<td><code>methods</code></td>
+<td><code>string[]</code></td>
+<td>Registered HTTP methods</td>
+</tr>
+<tr>
+<td><code>pattern</code></td>
+<td><code>string</code></td>
+<td>Matched pattern</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td><code>string | undefined</code></td>
+<td>Route name if set</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="/api/middleware">Middleware</a> - Request/response middleware</li>
+<li><a href="/api/serviceworker">ServiceWorker</a> - Event handling</li>
+</ul>
+</main></body></html>

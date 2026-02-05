@@ -1,0 +1,82 @@
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Shovel | @b9g/async-context</title><style>.css-xlwoin{position:fixed;top:0;left:0;right:0;height:50px;background-color:var(--bg-color);border-bottom:1px solid var(--text-color);display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;-webkit-align-items:center;-webkit-box-align:center;-ms-flex-align:center;align-items:center;padding:0 1rem;z-index:100;}.css-yq49om{font-size:1.5rem;font-weight:bold;color:var(--highlight-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo{display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;gap:1.5rem;margin-left:auto;}.css-1nfzlxo a{color:var(--text-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo a:hover{color:var(--highlight-color);}.css-1nfzlxo a[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-p83kyz{background-color:var(--bg-color);margin-top:50px;padding:2rem 0.4rem;color:var(--text-color);border-right:1px solid currentcolor;border-bottom:1px solid currentcolor;}@media screen and (min-width: 800px){.css-p83kyz{position:fixed;top:50px;bottom:0;overflow-x:hidden;overflow-y:auto;width:15rem;margin:0;padding:2rem 1rem;text-align:right;}}@media screen and (min-width: 1100px){.css-p83kyz{padding:3rem 2rem;width:20rem;}}.css-p83kyz &gt;:first-child{margin-top:0;}.css-l91ppu{font-size:0.85rem;color:var(--highlight-color);margin:1.5rem 0 0.5rem;text-transform:uppercase;letter-spacing:0.05em;font-weight:bold;}.css-l91ppu:first-of-type{margin-top:0;}.css-1jwyx8k{display:block;margin:0.5rem 0;-webkit-text-decoration:none;text-decoration:none;color:var(--text-color);}.css-1jwyx8k:hover{color:var(--highlight-color);}.css-1jwyx8k[aria-current=&quot;page&quot;]{color:var(--highlight-color);font-weight:bold;}.css-ep9szm{color:var(--highlight-color);margin-top:0;}.css-v6xkb5{margin:0 auto;padding:2rem 0.4rem;}@media screen and (min-width: 800px){.css-v6xkb5{margin-left:240px;padding:2rem 1rem;margin-top:50px;}}@media screen and (min-width: 1100px){.css-v6xkb5{margin-left:20rem;padding:3rem 2rem;}}.css-v6xkb5 &gt;:first-child{margin-top:0;}.css-v6xkb5 p{max-width:800px;}.css-v6xkb5 pre{background:var(--code-bg);padding:1rem;border-radius:4px;overflow-x:auto;}.css-v6xkb5 code{font-family:&quot;SF Mono&quot;,Menlo,Monaco,&quot;Courier New&quot;,monospace;font-size:0.9em;}.css-v6xkb5 code.inline{background:var(--code-bg);padding:0.2em 0.4em;border-radius:3px;}</style><link rel="stylesheet" type="text/css" href="/static/client-d338c3cf2d1d9d72.css"><meta name="description" content=""><meta property="og:title" content="Shovel | @b9g/async-context"><meta property="og:description" content=""><meta property="og:type" content="website"><meta property="og:site_name" content="Shovel"></head><body><div id="navbar-root"><nav class="css-xlwoin"><a href="/" class="css-yq49om">Shovel</a><div class="css-1nfzlxo"><a href="/guides/getting-started">Guides</a><a href="/api" aria-current="page">API</a><a href="/blog">Blog</a><a href="https://github.com/bikeshaving/shovel">GitHub</a></div></nav></div><div id="sidebar" class="css-p83kyz"><h2 class="css-ep9szm">API</h2><div class="css-l91ppu">shovel</div><a href="/api/cli" class="css-1jwyx8k">CLI</a><a href="/api/serviceworker" class="css-1jwyx8k">ServiceWorker</a><a href="/api/shovel-json" class="css-1jwyx8k">shovel.json</a><div class="css-l91ppu">@b9g/router</div><a href="/api/middleware" class="css-1jwyx8k">@b9g/router/middleware</a><a href="/api/router" class="css-1jwyx8k">Routing</a><div class="css-l91ppu">@b9g/assets</div><a href="/api/assets" class="css-1jwyx8k">@b9g/assets</a><div class="css-l91ppu">@b9g/async-context</div><a href="/api/async-context" class="css-1jwyx8k" aria-current="page">@b9g/async-context</a><div class="css-l91ppu">@b9g/cache</div><a href="/api/cache" class="css-1jwyx8k">Caches</a><div class="css-l91ppu">@b9g/cookies</div><a href="/api/cookies" class="css-1jwyx8k">@b9g/cookies</a><div class="css-l91ppu">@b9g/filesystem</div><a href="/api/filesystem" class="css-1jwyx8k">@b9g/filesystem</a><div class="css-l91ppu">@b9g/http-errors</div><a href="/api/http-errors" class="css-1jwyx8k">@b9g/http-errors</a><div class="css-l91ppu">@b9g/zen</div><a href="/api/zen" class="css-1jwyx8k">@b9g/zen</a><div class="css-l91ppu">@logtape/logtape</div><a href="/api/logging" class="css-1jwyx8k">@logtape/logtape</a></div><main class="css-v6xkb5"><h1 id="b9gasync-context">@b9g/async-context</h1>
+<p><a href="https://github.com/tc39/proposal-async-context">TC39 AsyncContext proposal</a> implementation for request-scoped state.</p>
+<hr>
+<h2 id="asynccontextvariablet">AsyncContext.Variable&lt;T&gt;</h2>
+<p>Stores a value that propagates through async operations.</p>
+<h3 id="constructor">Constructor</h3>
+<pre><code class="language-typescript"><span class="token keyword">new</span> <span class="token class-name">AsyncContext</span><span class="token punctuation">.</span><span class="token generic-function"><span class="token function">Variable</span><span class="token generic class-name"><span class="token operator">&lt;</span><span class="token constant">T</span><span class="token operator">></span></span></span><span class="token punctuation">(</span>options<span class="token operator">?</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+  defaultValue<span class="token operator">?</span><span class="token operator">:</span> <span class="token constant">T</span><span class="token punctuation">;</span>
+  name<span class="token operator">?</span><span class="token operator">:</span> <span class="token builtin">string</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span>
+</code></pre>
+<h3 id="runrvalue-t-fn---r-r">run&lt;R&gt;(value: T, fn: () =&gt; R): R</h3>
+<p>Executes a function with the variable set.</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> user <span class="token operator">=</span> <span class="token keyword">new</span> <span class="token class-name">AsyncContext</span><span class="token punctuation">.</span><span class="token generic-function"><span class="token function">Variable</span><span class="token generic class-name"><span class="token operator">&lt;</span>User<span class="token operator">></span></span></span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+user<span class="token punctuation">.</span><span class="token function">run</span><span class="token punctuation">(</span><span class="token punctuation">{</span> id<span class="token operator">:</span> <span class="token number">1</span> <span class="token punctuation">}</span><span class="token punctuation">,</span> <span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span>user<span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// { id: 1 }</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="get-t--undefined">get(): T | undefined</h3>
+<p>Gets the current value.</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> current <span class="token operator">=</span> user<span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<hr>
+<h2 id="asynccontextsnapshot">AsyncContext.Snapshot</h2>
+<p>Captures and restores all variable values.</p>
+<h3 id="constructor-1">Constructor</h3>
+<pre><code class="language-typescript"><span class="token keyword">const</span> snapshot <span class="token operator">=</span> <span class="token keyword">new</span> <span class="token class-name">AsyncContext</span><span class="token punctuation">.</span><span class="token function">Snapshot</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="runrfn---r-r">run&lt;R&gt;(fn: () =&gt; R): R</h3>
+<p>Executes with captured values restored.</p>
+<pre><code class="language-typescript"><span class="token keyword">let</span> snapshot<span class="token operator">:</span> AsyncContext<span class="token punctuation">.</span>Snapshot<span class="token punctuation">;</span>
+
+requestId<span class="token punctuation">.</span><span class="token function">run</span><span class="token punctuation">(</span><span class="token string">"req-123"</span><span class="token punctuation">,</span> <span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  snapshot <span class="token operator">=</span> <span class="token keyword">new</span> <span class="token class-name">AsyncContext</span><span class="token punctuation">.</span><span class="token function">Snapshot</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+snapshot<span class="token punctuation">.</span><span class="token function">run</span><span class="token punctuation">(</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span>requestId<span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// "req-123"</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="static-wraptfn-t-t">static wrap&lt;T&gt;(fn: T): T</h3>
+<p>Wraps a function to run with current context.</p>
+<pre><code class="language-typescript">requestId<span class="token punctuation">.</span><span class="token function">run</span><span class="token punctuation">(</span><span class="token string">"req-123"</span><span class="token punctuation">,</span> <span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  <span class="token keyword">const</span> wrapped <span class="token operator">=</span> AsyncContext<span class="token punctuation">.</span>Snapshot<span class="token punctuation">.</span><span class="token function">wrap</span><span class="token punctuation">(</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+    <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span>requestId<span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token function">setTimeout</span><span class="token punctuation">(</span>wrapped<span class="token punctuation">,</span> <span class="token number">100</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// Logs "req-123"</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<hr>
+<h2 id="nesting">Nesting</h2>
+<p>Inner <code>run()</code> calls shadow outer values:</p>
+<pre><code class="language-typescript">level<span class="token punctuation">.</span><span class="token function">run</span><span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">,</span> <span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span>level<span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 1</span>
+  level<span class="token punctuation">.</span><span class="token function">run</span><span class="token punctuation">(</span><span class="token number">2</span><span class="token punctuation">,</span> <span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+    <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span>level<span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 2</span>
+  <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span>level<span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 1</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<hr>
+<h2 id="shovel-built-in-contexts">Shovel Built-in Contexts</h2>
+<table>
+<thead>
+<tr>
+<th>Global</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>cookieStore</code></td>
+<td>Request-scoped cookie access</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="/api/cookies">Cookies</a> - Request-scoped cookies</li>
+<li><a href="/api/serviceworker">ServiceWorker</a> - Request handling</li>
+</ul>
+</main></body></html>

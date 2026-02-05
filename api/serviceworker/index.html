@@ -1,0 +1,176 @@
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Shovel | ServiceWorker</title><style>.css-xlwoin{position:fixed;top:0;left:0;right:0;height:50px;background-color:var(--bg-color);border-bottom:1px solid var(--text-color);display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;-webkit-align-items:center;-webkit-box-align:center;-ms-flex-align:center;align-items:center;padding:0 1rem;z-index:100;}.css-yq49om{font-size:1.5rem;font-weight:bold;color:var(--highlight-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo{display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;gap:1.5rem;margin-left:auto;}.css-1nfzlxo a{color:var(--text-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo a:hover{color:var(--highlight-color);}.css-1nfzlxo a[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-p83kyz{background-color:var(--bg-color);margin-top:50px;padding:2rem 0.4rem;color:var(--text-color);border-right:1px solid currentcolor;border-bottom:1px solid currentcolor;}@media screen and (min-width: 800px){.css-p83kyz{position:fixed;top:50px;bottom:0;overflow-x:hidden;overflow-y:auto;width:15rem;margin:0;padding:2rem 1rem;text-align:right;}}@media screen and (min-width: 1100px){.css-p83kyz{padding:3rem 2rem;width:20rem;}}.css-p83kyz &gt;:first-child{margin-top:0;}.css-l91ppu{font-size:0.85rem;color:var(--highlight-color);margin:1.5rem 0 0.5rem;text-transform:uppercase;letter-spacing:0.05em;font-weight:bold;}.css-l91ppu:first-of-type{margin-top:0;}.css-1jwyx8k{display:block;margin:0.5rem 0;-webkit-text-decoration:none;text-decoration:none;color:var(--text-color);}.css-1jwyx8k:hover{color:var(--highlight-color);}.css-1jwyx8k[aria-current=&quot;page&quot;]{color:var(--highlight-color);font-weight:bold;}.css-ep9szm{color:var(--highlight-color);margin-top:0;}.css-v6xkb5{margin:0 auto;padding:2rem 0.4rem;}@media screen and (min-width: 800px){.css-v6xkb5{margin-left:240px;padding:2rem 1rem;margin-top:50px;}}@media screen and (min-width: 1100px){.css-v6xkb5{margin-left:20rem;padding:3rem 2rem;}}.css-v6xkb5 &gt;:first-child{margin-top:0;}.css-v6xkb5 p{max-width:800px;}.css-v6xkb5 pre{background:var(--code-bg);padding:1rem;border-radius:4px;overflow-x:auto;}.css-v6xkb5 code{font-family:&quot;SF Mono&quot;,Menlo,Monaco,&quot;Courier New&quot;,monospace;font-size:0.9em;}.css-v6xkb5 code.inline{background:var(--code-bg);padding:0.2em 0.4em;border-radius:3px;}</style><link rel="stylesheet" type="text/css" href="/static/client-d338c3cf2d1d9d72.css"><meta name="description" content=""><meta property="og:title" content="Shovel | ServiceWorker"><meta property="og:description" content=""><meta property="og:type" content="website"><meta property="og:site_name" content="Shovel"></head><body><div id="navbar-root"><nav class="css-xlwoin"><a href="/" class="css-yq49om">Shovel</a><div class="css-1nfzlxo"><a href="/guides/getting-started">Guides</a><a href="/api" aria-current="page">API</a><a href="/blog">Blog</a><a href="https://github.com/bikeshaving/shovel">GitHub</a></div></nav></div><div id="sidebar" class="css-p83kyz"><h2 class="css-ep9szm">API</h2><div class="css-l91ppu">shovel</div><a href="/api/cli" class="css-1jwyx8k">CLI</a><a href="/api/serviceworker" class="css-1jwyx8k" aria-current="page">ServiceWorker</a><a href="/api/shovel-json" class="css-1jwyx8k">shovel.json</a><div class="css-l91ppu">@b9g/router</div><a href="/api/middleware" class="css-1jwyx8k">@b9g/router/middleware</a><a href="/api/router" class="css-1jwyx8k">Routing</a><div class="css-l91ppu">@b9g/assets</div><a href="/api/assets" class="css-1jwyx8k">@b9g/assets</a><div class="css-l91ppu">@b9g/async-context</div><a href="/api/async-context" class="css-1jwyx8k">@b9g/async-context</a><div class="css-l91ppu">@b9g/cache</div><a href="/api/cache" class="css-1jwyx8k">Caches</a><div class="css-l91ppu">@b9g/cookies</div><a href="/api/cookies" class="css-1jwyx8k">@b9g/cookies</a><div class="css-l91ppu">@b9g/filesystem</div><a href="/api/filesystem" class="css-1jwyx8k">@b9g/filesystem</a><div class="css-l91ppu">@b9g/http-errors</div><a href="/api/http-errors" class="css-1jwyx8k">@b9g/http-errors</a><div class="css-l91ppu">@b9g/zen</div><a href="/api/zen" class="css-1jwyx8k">@b9g/zen</a><div class="css-l91ppu">@logtape/logtape</div><a href="/api/logging" class="css-1jwyx8k">@logtape/logtape</a></div><main class="css-v6xkb5"><h1 id="serviceworker">ServiceWorker</h1>
+<p><a href="https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API">ServiceWorker API</a> for request handling.</p>
+<hr>
+<h2 id="lifecycle">Lifecycle</h2>
+<pre><code>parsing → installing → installed → activating → activated
+</code></pre>
+<hr>
+<h2 id="events">Events</h2>
+<h3 id="fetch">fetch</h3>
+<p>Fires for incoming requests.</p>
+<pre><code class="language-typescript">self<span class="token punctuation">.</span><span class="token function">addEventListener</span><span class="token punctuation">(</span><span class="token string">"fetch"</span><span class="token punctuation">,</span> <span class="token punctuation">(</span>event<span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  event<span class="token punctuation">.</span><span class="token function">respondWith</span><span class="token punctuation">(</span><span class="token keyword">new</span> <span class="token class-name">Response</span><span class="token punctuation">(</span><span class="token string">"Hello"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="install">install</h3>
+<p>Fires once during worker registration.</p>
+<pre><code class="language-typescript">self<span class="token punctuation">.</span><span class="token function">addEventListener</span><span class="token punctuation">(</span><span class="token string">"install"</span><span class="token punctuation">,</span> <span class="token punctuation">(</span>event<span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  event<span class="token punctuation">.</span><span class="token function">waitUntil</span><span class="token punctuation">(</span><span class="token function">initializeApp</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="activate">activate</h3>
+<p>Fires after successful installation.</p>
+<pre><code class="language-typescript">self<span class="token punctuation">.</span><span class="token function">addEventListener</span><span class="token punctuation">(</span><span class="token string">"activate"</span><span class="token punctuation">,</span> <span class="token punctuation">(</span>event<span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  event<span class="token punctuation">.</span><span class="token function">waitUntil</span><span class="token punctuation">(</span><span class="token function">runMigrations</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<hr>
+<h2 id="fetchevent">FetchEvent</h2>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>request</code></td>
+<td><code>Request</code></td>
+<td>Incoming request</td>
+</tr>
+<tr>
+<td><code>clientId</code></td>
+<td><code>string</code></td>
+<td>Client identifier</td>
+</tr>
+</tbody></table>
+<h3 id="respondwithresponse-response--promiseresponse-void">respondWith(response: Response | Promise&lt;Response&gt;): void</h3>
+<p>Sets the response.</p>
+<pre><code class="language-typescript">event<span class="token punctuation">.</span><span class="token function">respondWith</span><span class="token punctuation">(</span><span class="token keyword">new</span> <span class="token class-name">Response</span><span class="token punctuation">(</span><span class="token string">"OK"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+event<span class="token punctuation">.</span><span class="token function">respondWith</span><span class="token punctuation">(</span><span class="token function">fetchFromAPI</span><span class="token punctuation">(</span>request<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="waituntilpromise-promiseany-void">waitUntil(promise: Promise&lt;any&gt;): void</h3>
+<p>Extends event lifetime for background work.</p>
+<pre><code class="language-typescript">event<span class="token punctuation">.</span><span class="token function">respondWith</span><span class="token punctuation">(</span><span class="token keyword">new</span> <span class="token class-name">Response</span><span class="token punctuation">(</span><span class="token string">"OK"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+event<span class="token punctuation">.</span><span class="token function">waitUntil</span><span class="token punctuation">(</span><span class="token function">logRequest</span><span class="token punctuation">(</span>request<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// Doesn't block response</span>
+</code></pre>
+<hr>
+<h2 id="extendableevent">ExtendableEvent</h2>
+<p>Base interface for lifecycle events.</p>
+<h3 id="waituntilpromise-promiseany-void-1">waitUntil(promise: Promise&lt;any&gt;): void</h3>
+<p>Delays event completion until promise resolves.</p>
+<pre><code class="language-typescript">self<span class="token punctuation">.</span><span class="token function">addEventListener</span><span class="token punctuation">(</span><span class="token string">"install"</span><span class="token punctuation">,</span> <span class="token punctuation">(</span>event<span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  event<span class="token punctuation">.</span><span class="token function">waitUntil</span><span class="token punctuation">(</span><span class="token function">cacheAssets</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  event<span class="token punctuation">.</span><span class="token function">waitUntil</span><span class="token punctuation">(</span><span class="token function">validateConfig</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// Multiple calls OK</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<hr>
+<h2 id="globals">Globals</h2>
+<table>
+<thead>
+<tr>
+<th>Global</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>self</code></td>
+<td><code>ServiceWorkerGlobalScope</code></td>
+<td>Global scope</td>
+</tr>
+<tr>
+<td><code>caches</code></td>
+<td><code>CacheStorage</code></td>
+<td><a href="/api/cache">Cache API</a></td>
+</tr>
+<tr>
+<td><code>databases</code></td>
+<td><code>DatabaseStorage</code></td>
+<td><a href="/api/zen">ZenDB</a></td>
+</tr>
+<tr>
+<td><code>directories</code></td>
+<td><code>DirectoryStorage</code></td>
+<td><a href="/api/filesystem">FileSystem</a></td>
+</tr>
+<tr>
+<td><code>loggers</code></td>
+<td><code>LoggerStorage</code></td>
+<td><a href="/api/logging">Logging</a></td>
+</tr>
+<tr>
+<td><code>cookieStore</code></td>
+<td><code>CookieStore</code></td>
+<td><a href="/api/cookies">Cookies</a></td>
+</tr>
+<tr>
+<td><code>crypto</code></td>
+<td><code>Crypto</code></td>
+<td>Web Crypto API</td>
+</tr>
+<tr>
+<td><code>fetch</code></td>
+<td><code>function</code></td>
+<td>Fetch API</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="fetch-during-lifecycle">fetch() During Lifecycle</h2>
+<p>Relative URLs route through your own fetch handler:</p>
+<pre><code class="language-typescript">self<span class="token punctuation">.</span><span class="token function">addEventListener</span><span class="token punctuation">(</span><span class="token string">"install"</span><span class="token punctuation">,</span> <span class="token punctuation">(</span>event<span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  event<span class="token punctuation">.</span><span class="token function">waitUntil</span><span class="token punctuation">(</span>
+    <span class="token punctuation">(</span><span class="token keyword">async</span> <span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+      <span class="token keyword">const</span> response <span class="token operator">=</span> <span class="token keyword">await</span> <span class="token function">fetch</span><span class="token punctuation">(</span><span class="token string">"/404.html"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+      <span class="token keyword">const</span> html <span class="token operator">=</span> <span class="token keyword">await</span> response<span class="token punctuation">.</span><span class="token function">text</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+      <span class="token comment">// Write to static output</span>
+    <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+  <span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<hr>
+<h2 id="differences-from-browser">Differences from Browser</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Browser</th>
+<th>Shovel</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Runs in</td>
+<td>Browser</td>
+<td>Server</td>
+</tr>
+<tr>
+<td>Registration</td>
+<td>JavaScript API</td>
+<td>Automatic</td>
+</tr>
+<tr>
+<td>Updates</td>
+<td>navigator.serviceWorker</td>
+<td>App restart</td>
+</tr>
+</tbody></table>
+<h3 id="supported">Supported</h3>
+<ul>
+<li>Fetch event handling</li>
+<li>Install/activate lifecycle</li>
+<li>Cache API, CookieStore, Crypto</li>
+</ul>
+<h3 id="server-only">Server-Only</h3>
+<ul>
+<li><code>databases</code> - SQL databases</li>
+<li><code>directories</code> - File system</li>
+<li><code>loggers</code> - Structured logging</li>
+</ul>
+<hr>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="/api/router">Router</a> - Route definition</li>
+<li><a href="/api/middleware">Middleware</a> - Request processing</li>
+</ul>
+</main></body></html>

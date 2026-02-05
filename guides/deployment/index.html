@@ -1,0 +1,324 @@
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Shovel | Deployment</title><style>.css-xlwoin{position:fixed;top:0;left:0;right:0;height:50px;background-color:var(--bg-color);border-bottom:1px solid var(--text-color);display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;-webkit-align-items:center;-webkit-box-align:center;-ms-flex-align:center;align-items:center;padding:0 1rem;z-index:100;}.css-yq49om{font-size:1.5rem;font-weight:bold;color:var(--highlight-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo{display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;gap:1.5rem;margin-left:auto;}.css-1nfzlxo a{color:var(--text-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo a:hover{color:var(--highlight-color);}.css-1nfzlxo a[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-ep9szm{color:var(--highlight-color);margin-top:0;}.css-v6xkb5{margin:0 auto;padding:2rem 0.4rem;}@media screen and (min-width: 800px){.css-v6xkb5{margin-left:240px;padding:2rem 1rem;margin-top:50px;}}@media screen and (min-width: 1100px){.css-v6xkb5{margin-left:20rem;padding:3rem 2rem;}}.css-v6xkb5 &gt;:first-child{margin-top:0;}.css-v6xkb5 p{max-width:800px;}.css-v6xkb5 pre{background:var(--code-bg);padding:1rem;border-radius:4px;overflow-x:auto;}.css-v6xkb5 code{font-family:&quot;SF Mono&quot;,Menlo,Monaco,&quot;Courier New&quot;,monospace;font-size:0.9em;}.css-v6xkb5 code.inline{background:var(--code-bg);padding:0.2em 0.4em;border-radius:3px;}.css-w1ljn4{margin:10px 0;}.css-1y6uk0k{-webkit-text-decoration:none;text-decoration:none;color:var(--text-color);}.css-1y6uk0k:hover{color:var(--highlight-color);}.css-1y6uk0k[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-1wkb9s8{background-color:var(--bg-color);margin-top:50px;padding:2rem 0.4rem;color:var(--text-color);border-right:1px solid currentcolor;border-bottom:1px solid currentcolor;}@media screen and (min-width: 800px){.css-1wkb9s8{position:fixed;top:50px;bottom:0;overflow-x:hidden;overflow-y:auto;width:15rem;margin:0;padding:2rem 1rem;text-align:right;}}@media screen and (min-width: 1100px){.css-1wkb9s8{padding:3rem 2rem;width:20rem;}}.css-1wkb9s8 &gt;:first-child{margin-top:0;}</style><link rel="stylesheet" type="text/css" href="/static/client-d338c3cf2d1d9d72.css"><meta name="description" content="Deploy Shovel applications to production"><meta property="og:title" content="Shovel | Deployment"><meta property="og:description" content="Deploy Shovel applications to production"><meta property="og:type" content="website"><meta property="og:site_name" content="Shovel"></head><body><div id="navbar-root"><nav class="css-xlwoin"><a href="/" class="css-yq49om">Shovel</a><div class="css-1nfzlxo"><a href="/guides/getting-started" aria-current="page">Guides</a><a href="/api">API</a><a href="/blog">Blog</a><a href="https://github.com/bikeshaving/shovel">GitHub</a></div></nav></div><div id="sidebar" class="css-1wkb9s8"><h2 class="css-ep9szm">Guides</h2><div class="css-w1ljn4"><a href="/guides/getting-started" class="css-1y6uk0k">Getting Started</a></div><div class="css-w1ljn4"><a href="/guides/configuration" class="css-1y6uk0k">Configuration</a></div><div class="css-w1ljn4"><a href="/guides/routing" class="css-1y6uk0k">Routing</a></div><div class="css-w1ljn4"><a href="/guides/assets" class="css-1y6uk0k">Static Assets</a></div><div class="css-w1ljn4"><a href="/guides/deployment" aria-current="page" class="css-1y6uk0k">Deployment</a></div><div class="css-w1ljn4"><a href="/guides/middleware" class="css-1y6uk0k">Middleware</a></div><div class="css-w1ljn4"><a href="/guides/caches" class="css-1y6uk0k">Caching</a></div><div class="css-w1ljn4"><a href="/guides/glossary" class="css-1y6uk0k">Glossary</a></div></div><main class="css-v6xkb5"><h1>Deployment</h1><h1 id="deployment">Deployment</h1>
+<p>Shovel applications can be deployed to various platforms. This guide covers production deployment patterns.</p>
+<h2 id="building-for-production">Building for Production</h2>
+<pre><code class="language-bash">shovel build src/server.ts
+</code></pre>
+<p>This creates a <code>dist/</code> directory with your bundled application:</p>
+<pre><code>dist<span class="token operator">/</span>
+├── server<span class="token operator">/</span>
+│   ├── worker<span class="token punctuation">.</span>js      # Bundled ServiceWorker
+│   ├── server<span class="token punctuation">.</span>js      # Server entry point
+│   └── <span class="token keyword">package</span><span class="token punctuation">.</span>json   # Dependencies
+└── <span class="token keyword">public</span><span class="token operator">/</span>            # Static assets
+</code></pre>
+<hr>
+<h2 id="nodejs">Node.js</h2>
+<h3 id="direct-execution">Direct Execution</h3>
+<pre><code class="language-bash"><span class="token builtin class-name">cd</span> dist/server
+<span class="token function">node</span> server.js
+</code></pre>
+<h3 id="with-process-manager-pm2">With Process Manager (PM2)</h3>
+<pre><code class="language-bash"><span class="token function">npm</span> <span class="token function">install</span> <span class="token parameter variable">-g</span> pm2
+
+<span class="token builtin class-name">cd</span> dist/server
+pm2 start server.js <span class="token parameter variable">--name</span> my-app <span class="token parameter variable">-i</span> max
+</code></pre>
+<p>PM2 ecosystem file (<code>ecosystem.config.js</code>):</p>
+<pre><code class="language-javascript">module<span class="token punctuation">.</span>exports <span class="token operator">=</span> <span class="token punctuation">{</span>
+  <span class="token literal-property property">apps</span><span class="token operator">:</span> <span class="token punctuation">[</span><span class="token punctuation">{</span>
+    <span class="token literal-property property">name</span><span class="token operator">:</span> <span class="token string">"my-app"</span><span class="token punctuation">,</span>
+    <span class="token literal-property property">script</span><span class="token operator">:</span> <span class="token string">"server.js"</span><span class="token punctuation">,</span>
+    <span class="token literal-property property">cwd</span><span class="token operator">:</span> <span class="token string">"./dist/server"</span><span class="token punctuation">,</span>
+    <span class="token literal-property property">instances</span><span class="token operator">:</span> <span class="token string">"max"</span><span class="token punctuation">,</span>
+    <span class="token literal-property property">exec_mode</span><span class="token operator">:</span> <span class="token string">"cluster"</span><span class="token punctuation">,</span>
+    <span class="token literal-property property">env</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token constant">NODE_ENV</span><span class="token operator">:</span> <span class="token string">"production"</span><span class="token punctuation">,</span>
+      <span class="token constant">PORT</span><span class="token operator">:</span> <span class="token number">7777</span><span class="token punctuation">,</span>
+    <span class="token punctuation">}</span><span class="token punctuation">,</span>
+  <span class="token punctuation">}</span><span class="token punctuation">]</span><span class="token punctuation">,</span>
+<span class="token punctuation">}</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="environment-variables">Environment Variables</h3>
+<pre><code class="language-bash"><span class="token assign-left variable">PORT</span><span class="token operator">=</span><span class="token number">8080</span> <span class="token assign-left variable">HOST</span><span class="token operator">=</span><span class="token number">0.0</span>.0.0 <span class="token function">node</span> dist/server/server.js
+</code></pre>
+<hr>
+<h2 id="bun">Bun</h2>
+<h3 id="direct-execution-1">Direct Execution</h3>
+<pre><code class="language-bash"><span class="token builtin class-name">cd</span> dist/server
+bun server.js
+</code></pre>
+<h3 id="with-multiple-workers">With Multiple Workers</h3>
+<p>Configure workers in <code>shovel.json</code>:</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"workers"</span><span class="token operator">:</span> <span class="token number">4</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<p>Or via environment variable:</p>
+<pre><code class="language-bash"><span class="token assign-left variable">WORKERS</span><span class="token operator">=</span><span class="token number">4</span> bun dist/server/server.js
+</code></pre>
+<hr>
+<h2 id="docker">Docker</h2>
+<h3 id="dockerfile-nodejs">Dockerfile (Node.js)</h3>
+<pre><code class="language-dockerfile"><span class="token constant">FROM</span> <span class="token literal-property property">node</span><span class="token operator">:</span><span class="token number">20</span><span class="token operator">-</span>slim <span class="token constant">AS</span> builder
+
+<span class="token constant">WORKDIR</span> <span class="token operator">/</span>app
+<span class="token constant">COPY</span> <span class="token keyword">package</span><span class="token operator">*</span><span class="token punctuation">.</span>json <span class="token punctuation">.</span><span class="token operator">/</span>
+<span class="token constant">RUN</span> npm ci
+<span class="token constant">COPY</span> <span class="token punctuation">.</span> <span class="token punctuation">.</span>
+<span class="token constant">RUN</span> npx shovel build src<span class="token operator">/</span>server<span class="token punctuation">.</span>ts
+
+<span class="token constant">FROM</span> <span class="token literal-property property">node</span><span class="token operator">:</span><span class="token number">20</span><span class="token operator">-</span>slim
+
+<span class="token constant">WORKDIR</span> <span class="token operator">/</span>app
+<span class="token constant">COPY</span> <span class="token operator">--</span>from<span class="token operator">=</span>builder <span class="token operator">/</span>app<span class="token operator">/</span>dist<span class="token operator">/</span>server <span class="token punctuation">.</span><span class="token operator">/</span>
+<span class="token constant">COPY</span> <span class="token operator">--</span>from<span class="token operator">=</span>builder <span class="token operator">/</span>app<span class="token operator">/</span>dist<span class="token operator">/</span><span class="token keyword">public</span> <span class="token punctuation">.</span><span class="token punctuation">.</span><span class="token operator">/</span><span class="token keyword">public</span>
+
+<span class="token constant">ENV</span> <span class="token constant">NODE_ENV</span><span class="token operator">=</span>production
+<span class="token constant">ENV</span> <span class="token constant">PORT</span><span class="token operator">=</span><span class="token number">7777</span>
+<span class="token constant">ENV</span> <span class="token constant">HOST</span><span class="token operator">=</span><span class="token number">0.0</span><span class="token number">.0</span><span class="token number">.0</span>
+
+<span class="token constant">EXPOSE</span> <span class="token number">7777</span>
+<span class="token constant">CMD</span> <span class="token punctuation">[</span><span class="token string">"node"</span><span class="token punctuation">,</span> <span class="token string">"server.js"</span><span class="token punctuation">]</span>
+</code></pre>
+<h3 id="dockerfile-bun">Dockerfile (Bun)</h3>
+<pre><code class="language-dockerfile"><span class="token constant">FROM</span> oven<span class="token operator">/</span>bun<span class="token operator">:</span><span class="token number">1</span> <span class="token constant">AS</span> builder
+
+<span class="token constant">WORKDIR</span> <span class="token operator">/</span>app
+<span class="token constant">COPY</span> <span class="token keyword">package</span><span class="token punctuation">.</span>json bun<span class="token punctuation">.</span>lockb <span class="token punctuation">.</span><span class="token operator">/</span>
+<span class="token constant">RUN</span> bun install <span class="token operator">--</span>frozen<span class="token operator">-</span>lockfile
+<span class="token constant">COPY</span> <span class="token punctuation">.</span> <span class="token punctuation">.</span>
+<span class="token constant">RUN</span> bun run shovel build src<span class="token operator">/</span>server<span class="token punctuation">.</span>ts
+
+<span class="token constant">FROM</span> oven<span class="token operator">/</span>bun<span class="token operator">:</span><span class="token number">1</span><span class="token operator">-</span>slim
+
+<span class="token constant">WORKDIR</span> <span class="token operator">/</span>app
+<span class="token constant">COPY</span> <span class="token operator">--</span>from<span class="token operator">=</span>builder <span class="token operator">/</span>app<span class="token operator">/</span>dist<span class="token operator">/</span>server <span class="token punctuation">.</span><span class="token operator">/</span>
+<span class="token constant">COPY</span> <span class="token operator">--</span>from<span class="token operator">=</span>builder <span class="token operator">/</span>app<span class="token operator">/</span>dist<span class="token operator">/</span><span class="token keyword">public</span> <span class="token punctuation">.</span><span class="token punctuation">.</span><span class="token operator">/</span><span class="token keyword">public</span>
+
+<span class="token constant">ENV</span> <span class="token constant">NODE_ENV</span><span class="token operator">=</span>production
+<span class="token constant">ENV</span> <span class="token constant">PORT</span><span class="token operator">=</span><span class="token number">7777</span>
+<span class="token constant">ENV</span> <span class="token constant">HOST</span><span class="token operator">=</span><span class="token number">0.0</span><span class="token number">.0</span><span class="token number">.0</span>
+
+<span class="token constant">EXPOSE</span> <span class="token number">7777</span>
+<span class="token constant">CMD</span> <span class="token punctuation">[</span><span class="token string">"bun"</span><span class="token punctuation">,</span> <span class="token string">"server.js"</span><span class="token punctuation">]</span>
+</code></pre>
+<h3 id="docker-compose">Docker Compose</h3>
+<pre><code class="language-yaml"><span class="token literal-property property">version</span><span class="token operator">:</span> <span class="token string">"3.8"</span>
+
+<span class="token literal-property property">services</span><span class="token operator">:</span>
+  <span class="token literal-property property">app</span><span class="token operator">:</span>
+    <span class="token literal-property property">build</span><span class="token operator">:</span> <span class="token punctuation">.</span>
+    <span class="token literal-property property">ports</span><span class="token operator">:</span>
+      <span class="token operator">-</span> <span class="token string">"7777:7777"</span>
+    <span class="token literal-property property">environment</span><span class="token operator">:</span>
+      <span class="token operator">-</span> <span class="token constant">NODE_ENV</span><span class="token operator">=</span>production
+      <span class="token operator">-</span> <span class="token constant">DATABASE_URL</span><span class="token operator">=</span>postgres<span class="token operator">:</span><span class="token operator">/</span><span class="token operator">/</span>user<span class="token operator">:</span>pass@db<span class="token operator">:</span><span class="token number">5432</span><span class="token operator">/</span>myapp
+    <span class="token literal-property property">depends_on</span><span class="token operator">:</span>
+      <span class="token operator">-</span> db
+
+  <span class="token literal-property property">db</span><span class="token operator">:</span>
+    <span class="token literal-property property">image</span><span class="token operator">:</span> postgres<span class="token operator">:</span><span class="token number">15</span>
+    <span class="token literal-property property">environment</span><span class="token operator">:</span>
+      <span class="token operator">-</span> <span class="token constant">POSTGRES_USER</span><span class="token operator">=</span>user
+      <span class="token operator">-</span> <span class="token constant">POSTGRES_PASSWORD</span><span class="token operator">=</span>pass
+      <span class="token operator">-</span> <span class="token constant">POSTGRES_DB</span><span class="token operator">=</span>myapp
+    <span class="token literal-property property">volumes</span><span class="token operator">:</span>
+      <span class="token operator">-</span> postgres_data<span class="token operator">:</span><span class="token operator">/</span><span class="token keyword">var</span><span class="token operator">/</span>lib<span class="token operator">/</span>postgresql<span class="token operator">/</span>data
+
+<span class="token literal-property property">volumes</span><span class="token operator">:</span>
+  <span class="token literal-property property">postgres_data</span><span class="token operator">:</span>
+</code></pre>
+<hr>
+<h2 id="cloudflare-workers">Cloudflare Workers</h2>
+<h3 id="configuration">Configuration</h3>
+<p>Set platform in <code>shovel.json</code>:</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"platform"</span><span class="token operator">:</span> <span class="token string">"cloudflare"</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<h3 id="build">Build</h3>
+<pre><code class="language-bash">shovel build src/server.ts <span class="token parameter variable">--platform</span> cloudflare
+</code></pre>
+<p>Output structure:</p>
+<pre><code>dist<span class="token operator">/</span>
+├── server<span class="token operator">/</span>
+│   └── server<span class="token punctuation">.</span>js      # Single bundled worker
+└── <span class="token keyword">public</span><span class="token operator">/</span>            # Static assets
+</code></pre>
+<h3 id="wranglertoml">wrangler.toml</h3>
+<pre><code class="language-toml">name <span class="token operator">=</span> <span class="token string">"my-app"</span>
+main <span class="token operator">=</span> <span class="token string">"dist/server/server.js"</span>
+compatibility_date <span class="token operator">=</span> <span class="token string">"2024-01-01"</span>
+
+<span class="token punctuation">[</span>site<span class="token punctuation">]</span>
+bucket <span class="token operator">=</span> <span class="token string">"./dist/public"</span>
+
+<span class="token punctuation">[</span><span class="token punctuation">[</span>d1_databases<span class="token punctuation">]</span><span class="token punctuation">]</span>
+binding <span class="token operator">=</span> <span class="token string">"DB"</span>
+database_name <span class="token operator">=</span> <span class="token string">"my-database"</span>
+database_id <span class="token operator">=</span> <span class="token string">"xxx"</span>
+
+<span class="token punctuation">[</span><span class="token punctuation">[</span>r2_buckets<span class="token punctuation">]</span><span class="token punctuation">]</span>
+binding <span class="token operator">=</span> <span class="token string">"UPLOADS"</span>
+bucket_name <span class="token operator">=</span> <span class="token string">"my-uploads"</span>
+</code></pre>
+<h3 id="deploy">Deploy</h3>
+<pre><code class="language-bash">npx wrangler deploy
+</code></pre>
+<h3 id="bindings">Bindings</h3>
+<p>Configure Cloudflare bindings in <code>shovel.json</code>:</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"databases"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"main"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"binding"</span><span class="token operator">:</span> <span class="token string">"DB"</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span><span class="token punctuation">,</span>
+  <span class="token property">"directories"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"uploads"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"binding"</span><span class="token operator">:</span> <span class="token string">"UPLOADS"</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<hr>
+<h2 id="reverse-proxy">Reverse Proxy</h2>
+<h3 id="nginx">Nginx</h3>
+<pre><code class="language-nginx">upstream shovel_app <span class="token punctuation">{</span>
+    server <span class="token number">127.0</span><span class="token number">.0</span><span class="token number">.1</span><span class="token operator">:</span><span class="token number">7777</span><span class="token punctuation">;</span>
+    keepalive <span class="token number">64</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span>
+
+server <span class="token punctuation">{</span>
+    listen <span class="token number">80</span><span class="token punctuation">;</span>
+    server_name example<span class="token punctuation">.</span>com<span class="token punctuation">;</span>
+
+    location <span class="token operator">/</span> <span class="token punctuation">{</span>
+        proxy_pass http<span class="token operator">:</span><span class="token operator">/</span><span class="token operator">/</span>shovel_app<span class="token punctuation">;</span>
+        proxy_http_version <span class="token number">1.1</span><span class="token punctuation">;</span>
+        proxy_set_header Host $host<span class="token punctuation">;</span>
+        proxy_set_header <span class="token constant">X</span><span class="token operator">-</span>Real<span class="token operator">-</span><span class="token constant">IP</span> $remote_addr<span class="token punctuation">;</span>
+        proxy_set_header <span class="token constant">X</span><span class="token operator">-</span>Forwarded<span class="token operator">-</span>For $proxy_add_x_forwarded_for<span class="token punctuation">;</span>
+        proxy_set_header <span class="token constant">X</span><span class="token operator">-</span>Forwarded<span class="token operator">-</span>Proto $scheme<span class="token punctuation">;</span>
+        proxy_set_header Connection <span class="token string">""</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    location <span class="token operator">/</span><span class="token keyword">static</span><span class="token operator">/</span> <span class="token punctuation">{</span>
+        alias <span class="token operator">/</span>app<span class="token operator">/</span>dist<span class="token operator">/</span><span class="token keyword">public</span><span class="token operator">/</span><span class="token punctuation">;</span>
+        expires 1y<span class="token punctuation">;</span>
+        add_header Cache<span class="token operator">-</span>Control <span class="token string">"public, immutable"</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<h3 id="caddy">Caddy</h3>
+<pre><code>example<span class="token punctuation">.</span>com <span class="token punctuation">{</span>
+    reverse_proxy localhost<span class="token operator">:</span><span class="token number">7777</span>
+
+    handle <span class="token operator">/</span><span class="token keyword">static</span><span class="token comment">/* {
+        root * /app/dist/public
+        file_server
+        header Cache-Control "public, max-age=31536000, immutable"
+    }
+}</span>
+</code></pre>
+<hr>
+<h2 id="health-checks">Health Checks</h2>
+<p>Add a health check endpoint:</p>
+<pre><code class="language-typescript">router<span class="token punctuation">.</span><span class="token function">route</span><span class="token punctuation">(</span><span class="token string">"/health"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  <span class="token keyword">return</span> Response<span class="token punctuation">.</span><span class="token function">json</span><span class="token punctuation">(</span><span class="token punctuation">{</span> ok<span class="token operator">:</span> <span class="token boolean">true</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+router<span class="token punctuation">.</span><span class="token function">route</span><span class="token punctuation">(</span><span class="token string">"/ready"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token keyword">async</span> <span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  <span class="token keyword">try</span> <span class="token punctuation">{</span>
+    <span class="token comment">// Check database connection</span>
+    <span class="token keyword">const</span> db <span class="token operator">=</span> databases<span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token string">"main"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token keyword">await</span> db<span class="token punctuation">.</span>get<span class="token template-string"><span class="token template-punctuation string">`</span><span class="token string">SELECT 1</span><span class="token template-punctuation string">`</span></span><span class="token punctuation">;</span>
+    <span class="token keyword">return</span> Response<span class="token punctuation">.</span><span class="token function">json</span><span class="token punctuation">(</span><span class="token punctuation">{</span> ok<span class="token operator">:</span> <span class="token boolean">true</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span> <span class="token keyword">catch</span> <span class="token punctuation">{</span>
+    <span class="token keyword">return</span> Response<span class="token punctuation">.</span><span class="token function">json</span><span class="token punctuation">(</span><span class="token punctuation">{</span> ok<span class="token operator">:</span> <span class="token boolean">false</span> <span class="token punctuation">}</span><span class="token punctuation">,</span> <span class="token punctuation">{</span> status<span class="token operator">:</span> <span class="token number">503</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h3 id="docker-health-check">Docker Health Check</h3>
+<pre><code class="language-dockerfile"><span class="token constant">HEALTHCHECK</span> <span class="token operator">--</span>interval<span class="token operator">=</span>30s <span class="token operator">--</span>timeout<span class="token operator">=</span>3s <span class="token operator">--</span>start<span class="token operator">-</span>period<span class="token operator">=</span>5s <span class="token operator">--</span>retries<span class="token operator">=</span><span class="token number">3</span> \
+  <span class="token constant">CMD</span> curl <span class="token operator">-</span>f http<span class="token operator">:</span><span class="token operator">/</span><span class="token operator">/</span>localhost<span class="token operator">:</span><span class="token number">7777</span><span class="token operator">/</span>health <span class="token operator">||</span> exit <span class="token number">1</span>
+</code></pre>
+<h3 id="kubernetes">Kubernetes</h3>
+<pre><code class="language-yaml"><span class="token literal-property property">apiVersion</span><span class="token operator">:</span> v1
+<span class="token literal-property property">kind</span><span class="token operator">:</span> Pod
+<span class="token literal-property property">spec</span><span class="token operator">:</span>
+  <span class="token literal-property property">containers</span><span class="token operator">:</span>
+    <span class="token operator">-</span> name<span class="token operator">:</span> app
+      <span class="token literal-property property">image</span><span class="token operator">:</span> my<span class="token operator">-</span>app<span class="token operator">:</span>latest
+      <span class="token literal-property property">livenessProbe</span><span class="token operator">:</span>
+        <span class="token literal-property property">httpGet</span><span class="token operator">:</span>
+          <span class="token literal-property property">path</span><span class="token operator">:</span> <span class="token operator">/</span>health
+          <span class="token literal-property property">port</span><span class="token operator">:</span> <span class="token number">7777</span>
+        <span class="token literal-property property">initialDelaySeconds</span><span class="token operator">:</span> <span class="token number">5</span>
+        <span class="token literal-property property">periodSeconds</span><span class="token operator">:</span> <span class="token number">10</span>
+      <span class="token literal-property property">readinessProbe</span><span class="token operator">:</span>
+        <span class="token literal-property property">httpGet</span><span class="token operator">:</span>
+          <span class="token literal-property property">path</span><span class="token operator">:</span> <span class="token operator">/</span>ready
+          <span class="token literal-property property">port</span><span class="token operator">:</span> <span class="token number">7777</span>
+        <span class="token literal-property property">initialDelaySeconds</span><span class="token operator">:</span> <span class="token number">5</span>
+        <span class="token literal-property property">periodSeconds</span><span class="token operator">:</span> <span class="token number">10</span>
+</code></pre>
+<hr>
+<h2 id="environment-configuration">Environment Configuration</h2>
+<h3 id="production-shoveljson">Production shovel.json</h3>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"port"</span><span class="token operator">:</span> <span class="token string">"$PORT || 7777"</span><span class="token punctuation">,</span>
+  <span class="token property">"host"</span><span class="token operator">:</span> <span class="token string">"$HOST || 0.0.0.0"</span><span class="token punctuation">,</span>
+  <span class="token property">"workers"</span><span class="token operator">:</span> <span class="token string">"$WORKERS || 4"</span><span class="token punctuation">,</span>
+  <span class="token property">"databases"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"main"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"$PLATFORM === bun ? @b9g/zen/bun : @b9g/zen/better-sqlite3"</span><span class="token punctuation">,</span>
+      <span class="token property">"url"</span><span class="token operator">:</span> <span class="token string">"$DATABASE_URL"</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span><span class="token punctuation">,</span>
+  <span class="token property">"logging"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"sinks"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"console"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+        <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@logtape/logtape"</span><span class="token punctuation">,</span>
+        <span class="token property">"export"</span><span class="token operator">:</span> <span class="token string">"getConsoleSink"</span>
+      <span class="token punctuation">}</span>
+    <span class="token punctuation">}</span><span class="token punctuation">,</span>
+    <span class="token property">"loggers"</span><span class="token operator">:</span> <span class="token punctuation">[</span>
+      <span class="token punctuation">{</span>
+        <span class="token property">"category"</span><span class="token operator">:</span> <span class="token string">"app"</span><span class="token punctuation">,</span>
+        <span class="token property">"level"</span><span class="token operator">:</span> <span class="token string">"$NODE_ENV === production ? info : debug"</span><span class="token punctuation">,</span>
+        <span class="token property">"sinks"</span><span class="token operator">:</span> <span class="token punctuation">[</span><span class="token string">"console"</span><span class="token punctuation">]</span>
+      <span class="token punctuation">}</span>
+    <span class="token punctuation">]</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<h3 id="required-environment-variables">Required Environment Variables</h3>
+<p>Document required variables for deployment:</p>
+<pre><code class="language-bash"><span class="token comment"># Required</span>
+<span class="token assign-left variable">DATABASE_URL</span><span class="token operator">=</span>postgres://user:pass@host:5432/db
+
+<span class="token comment"># Optional (with defaults)</span>
+<span class="token assign-left variable">PORT</span><span class="token operator">=</span><span class="token number">7777</span>
+<span class="token assign-left variable">HOST</span><span class="token operator">=</span><span class="token number">0.0</span>.0.0
+<span class="token assign-left variable">WORKERS</span><span class="token operator">=</span><span class="token number">4</span>
+<span class="token assign-left variable">NODE_ENV</span><span class="token operator">=</span>production
+</code></pre>
+<hr>
+<h2 id="graceful-shutdown">Graceful Shutdown</h2>
+<p>Shovel handles SIGINT and SIGTERM for graceful shutdown:</p>
+<ol>
+<li>Stop accepting new connections</li>
+<li>Wait for in-flight requests to complete</li>
+<li>Close database connections</li>
+<li>Exit cleanly</li>
+</ol>
+<p>Configure shutdown timeout in your process manager or orchestrator.</p>
+<hr>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="/api/cli">CLI</a> - Build commands</li>
+<li><a href="/api/shovel-json">shovel.json</a> - Configuration reference</li>
+<li><a href="/api/databases">Databases</a> - Database configuration</li>
+<li><a href="/api/directories">Directories</a> - File storage</li>
+</ul>
+</main></body></html>

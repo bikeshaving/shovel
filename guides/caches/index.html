@@ -1,0 +1,70 @@
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Shovel | Caching</title><style>.css-xlwoin{position:fixed;top:0;left:0;right:0;height:50px;background-color:var(--bg-color);border-bottom:1px solid var(--text-color);display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;-webkit-align-items:center;-webkit-box-align:center;-ms-flex-align:center;align-items:center;padding:0 1rem;z-index:100;}.css-yq49om{font-size:1.5rem;font-weight:bold;color:var(--highlight-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo{display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;gap:1.5rem;margin-left:auto;}.css-1nfzlxo a{color:var(--text-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo a:hover{color:var(--highlight-color);}.css-1nfzlxo a[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-ep9szm{color:var(--highlight-color);margin-top:0;}.css-v6xkb5{margin:0 auto;padding:2rem 0.4rem;}@media screen and (min-width: 800px){.css-v6xkb5{margin-left:240px;padding:2rem 1rem;margin-top:50px;}}@media screen and (min-width: 1100px){.css-v6xkb5{margin-left:20rem;padding:3rem 2rem;}}.css-v6xkb5 &gt;:first-child{margin-top:0;}.css-v6xkb5 p{max-width:800px;}.css-v6xkb5 pre{background:var(--code-bg);padding:1rem;border-radius:4px;overflow-x:auto;}.css-v6xkb5 code{font-family:&quot;SF Mono&quot;,Menlo,Monaco,&quot;Courier New&quot;,monospace;font-size:0.9em;}.css-v6xkb5 code.inline{background:var(--code-bg);padding:0.2em 0.4em;border-radius:3px;}.css-w1ljn4{margin:10px 0;}.css-1y6uk0k{-webkit-text-decoration:none;text-decoration:none;color:var(--text-color);}.css-1y6uk0k:hover{color:var(--highlight-color);}.css-1y6uk0k[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-1wkb9s8{background-color:var(--bg-color);margin-top:50px;padding:2rem 0.4rem;color:var(--text-color);border-right:1px solid currentcolor;border-bottom:1px solid currentcolor;}@media screen and (min-width: 800px){.css-1wkb9s8{position:fixed;top:50px;bottom:0;overflow-x:hidden;overflow-y:auto;width:15rem;margin:0;padding:2rem 1rem;text-align:right;}}@media screen and (min-width: 1100px){.css-1wkb9s8{padding:3rem 2rem;width:20rem;}}.css-1wkb9s8 &gt;:first-child{margin-top:0;}</style><link rel="stylesheet" type="text/css" href="/static/client-d338c3cf2d1d9d72.css"><meta name="description" content="Cache responses for better performance."><meta property="og:title" content="Shovel | Caching"><meta property="og:description" content="Cache responses for better performance."><meta property="og:type" content="website"><meta property="og:site_name" content="Shovel"></head><body><div id="navbar-root"><nav class="css-xlwoin"><a href="/" class="css-yq49om">Shovel</a><div class="css-1nfzlxo"><a href="/guides/getting-started" aria-current="page">Guides</a><a href="/api">API</a><a href="/blog">Blog</a><a href="https://github.com/bikeshaving/shovel">GitHub</a></div></nav></div><div id="sidebar" class="css-1wkb9s8"><h2 class="css-ep9szm">Guides</h2><div class="css-w1ljn4"><a href="/guides/getting-started" class="css-1y6uk0k">Getting Started</a></div><div class="css-w1ljn4"><a href="/guides/configuration" class="css-1y6uk0k">Configuration</a></div><div class="css-w1ljn4"><a href="/guides/routing" class="css-1y6uk0k">Routing</a></div><div class="css-w1ljn4"><a href="/guides/assets" class="css-1y6uk0k">Static Assets</a></div><div class="css-w1ljn4"><a href="/guides/deployment" class="css-1y6uk0k">Deployment</a></div><div class="css-w1ljn4"><a href="/guides/middleware" class="css-1y6uk0k">Middleware</a></div><div class="css-w1ljn4"><a href="/guides/caches" aria-current="page" class="css-1y6uk0k">Caching</a></div><div class="css-w1ljn4"><a href="/guides/glossary" class="css-1y6uk0k">Glossary</a></div></div><main class="css-v6xkb5"><h1>Caching</h1><p>Shovel provides the standard Cache API for storing request/response pairs.</p>
+<h2 id="basic-usage">Basic Usage</h2>
+<pre><code class="language-typescript"><span class="token keyword">const</span> cache <span class="token operator">=</span> <span class="token keyword">await</span> self<span class="token punctuation">.</span>caches<span class="token punctuation">.</span><span class="token function">open</span><span class="token punctuation">(</span><span class="token string">"pages"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token comment">// Store a response</span>
+<span class="token keyword">await</span> cache<span class="token punctuation">.</span><span class="token function">put</span><span class="token punctuation">(</span>request<span class="token punctuation">,</span> response<span class="token punctuation">.</span><span class="token function">clone</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token comment">// Retrieve from cache</span>
+<span class="token keyword">const</span> cached <span class="token operator">=</span> <span class="token keyword">await</span> cache<span class="token punctuation">.</span><span class="token function">match</span><span class="token punctuation">(</span>request<span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h2 id="cache-first-strategy">Cache-First Strategy</h2>
+<p>Serve from cache, fall back to network:</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> <span class="token function-variable function">cacheMiddleware</span> <span class="token operator">=</span> <span class="token keyword">async</span> <span class="token keyword">function</span><span class="token operator">*</span> <span class="token punctuation">(</span>request<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+  <span class="token keyword">const</span> cache <span class="token operator">=</span> <span class="token keyword">await</span> self<span class="token punctuation">.</span>caches<span class="token punctuation">.</span><span class="token function">open</span><span class="token punctuation">(</span><span class="token string">"pages"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">const</span> cached <span class="token operator">=</span> <span class="token keyword">await</span> cache<span class="token punctuation">.</span><span class="token function">match</span><span class="token punctuation">(</span>request<span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token keyword">if</span> <span class="token punctuation">(</span>cached<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token keyword">return</span> cached<span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+
+  <span class="token keyword">const</span> response <span class="token operator">=</span> <span class="token keyword">yield</span> request<span class="token punctuation">;</span>
+
+  <span class="token keyword">if</span> <span class="token punctuation">(</span>response<span class="token punctuation">.</span>ok<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token keyword">await</span> cache<span class="token punctuation">.</span><span class="token function">put</span><span class="token punctuation">(</span>request<span class="token punctuation">,</span> response<span class="token punctuation">.</span><span class="token function">clone</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+
+  <span class="token keyword">return</span> response<span class="token punctuation">;</span>
+<span class="token punctuation">}</span><span class="token punctuation">;</span>
+
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span>cacheMiddleware<span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h2 id="configuration">Configuration</h2>
+<p>Configure caches in <code>shovel.json</code>:</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"caches"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"pages"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@b9g/cache/memory"</span><span class="token punctuation">,</span>
+      <span class="token property">"maxEntries"</span><span class="token operator">:</span> <span class="token number">1000</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<h2 id="production-with-redis">Production with Redis</h2>
+<p>Use Redis for persistent caching:</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"caches"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"sessions"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@b9g/cache/redis"</span><span class="token punctuation">,</span>
+      <span class="token property">"url"</span><span class="token operator">:</span> <span class="token string">"$REDIS_URL"</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<h2 id="stale-while-revalidate">Stale-While-Revalidate</h2>
+<p>Serve stale content while updating in background:</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> cached <span class="token operator">=</span> <span class="token keyword">await</span> cache<span class="token punctuation">.</span><span class="token function">match</span><span class="token punctuation">(</span>request<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token keyword">const</span> networkPromise <span class="token operator">=</span> <span class="token function">fetch</span><span class="token punctuation">(</span>request<span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">then</span><span class="token punctuation">(</span><span class="token punctuation">(</span>response<span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  cache<span class="token punctuation">.</span><span class="token function">put</span><span class="token punctuation">(</span>request<span class="token punctuation">,</span> response<span class="token punctuation">.</span><span class="token function">clone</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token keyword">return</span> response<span class="token punctuation">;</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token keyword">return</span> cached <span class="token operator">||</span> networkPromise<span class="token punctuation">;</span>
+</code></pre>
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li>See <a href="/api/cache">Caches Reference</a> for all strategies</li>
+<li>Learn about <a href="/api/zen">Databases</a> for persistent storage</li>
+</ul>
+</main></body></html>

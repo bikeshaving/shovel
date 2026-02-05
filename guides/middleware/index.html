@@ -1,0 +1,75 @@
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Shovel | Middleware</title><style>.css-xlwoin{position:fixed;top:0;left:0;right:0;height:50px;background-color:var(--bg-color);border-bottom:1px solid var(--text-color);display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;-webkit-align-items:center;-webkit-box-align:center;-ms-flex-align:center;align-items:center;padding:0 1rem;z-index:100;}.css-yq49om{font-size:1.5rem;font-weight:bold;color:var(--highlight-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo{display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;gap:1.5rem;margin-left:auto;}.css-1nfzlxo a{color:var(--text-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo a:hover{color:var(--highlight-color);}.css-1nfzlxo a[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-ep9szm{color:var(--highlight-color);margin-top:0;}.css-v6xkb5{margin:0 auto;padding:2rem 0.4rem;}@media screen and (min-width: 800px){.css-v6xkb5{margin-left:240px;padding:2rem 1rem;margin-top:50px;}}@media screen and (min-width: 1100px){.css-v6xkb5{margin-left:20rem;padding:3rem 2rem;}}.css-v6xkb5 &gt;:first-child{margin-top:0;}.css-v6xkb5 p{max-width:800px;}.css-v6xkb5 pre{background:var(--code-bg);padding:1rem;border-radius:4px;overflow-x:auto;}.css-v6xkb5 code{font-family:&quot;SF Mono&quot;,Menlo,Monaco,&quot;Courier New&quot;,monospace;font-size:0.9em;}.css-v6xkb5 code.inline{background:var(--code-bg);padding:0.2em 0.4em;border-radius:3px;}.css-w1ljn4{margin:10px 0;}.css-1y6uk0k{-webkit-text-decoration:none;text-decoration:none;color:var(--text-color);}.css-1y6uk0k:hover{color:var(--highlight-color);}.css-1y6uk0k[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-1wkb9s8{background-color:var(--bg-color);margin-top:50px;padding:2rem 0.4rem;color:var(--text-color);border-right:1px solid currentcolor;border-bottom:1px solid currentcolor;}@media screen and (min-width: 800px){.css-1wkb9s8{position:fixed;top:50px;bottom:0;overflow-x:hidden;overflow-y:auto;width:15rem;margin:0;padding:2rem 1rem;text-align:right;}}@media screen and (min-width: 1100px){.css-1wkb9s8{padding:3rem 2rem;width:20rem;}}.css-1wkb9s8 &gt;:first-child{margin-top:0;}</style><link rel="stylesheet" type="text/css" href="/static/client-d338c3cf2d1d9d72.css"><meta name="description" content="Add authentication, logging, and other cross-cutting concerns."><meta property="og:title" content="Shovel | Middleware"><meta property="og:description" content="Add authentication, logging, and other cross-cutting concerns."><meta property="og:type" content="website"><meta property="og:site_name" content="Shovel"></head><body><div id="navbar-root"><nav class="css-xlwoin"><a href="/" class="css-yq49om">Shovel</a><div class="css-1nfzlxo"><a href="/guides/getting-started" aria-current="page">Guides</a><a href="/api">API</a><a href="/blog">Blog</a><a href="https://github.com/bikeshaving/shovel">GitHub</a></div></nav></div><div id="sidebar" class="css-1wkb9s8"><h2 class="css-ep9szm">Guides</h2><div class="css-w1ljn4"><a href="/guides/getting-started" class="css-1y6uk0k">Getting Started</a></div><div class="css-w1ljn4"><a href="/guides/configuration" class="css-1y6uk0k">Configuration</a></div><div class="css-w1ljn4"><a href="/guides/routing" class="css-1y6uk0k">Routing</a></div><div class="css-w1ljn4"><a href="/guides/assets" class="css-1y6uk0k">Static Assets</a></div><div class="css-w1ljn4"><a href="/guides/deployment" class="css-1y6uk0k">Deployment</a></div><div class="css-w1ljn4"><a href="/guides/middleware" aria-current="page" class="css-1y6uk0k">Middleware</a></div><div class="css-w1ljn4"><a href="/guides/caches" class="css-1y6uk0k">Caching</a></div><div class="css-w1ljn4"><a href="/guides/glossary" class="css-1y6uk0k">Glossary</a></div></div><main class="css-v6xkb5"><h1>Middleware</h1><p>Middleware intercepts requests and responses for authentication, logging, CORS, and more.</p>
+<h2 id="basic-middleware">Basic Middleware</h2>
+<p>Return <code>null</code> to continue, or a <code>Response</code> to stop:</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> <span class="token function-variable function">authMiddleware</span> <span class="token operator">=</span> <span class="token keyword">async</span> <span class="token punctuation">(</span>request<span class="token punctuation">,</span> context<span class="token punctuation">)</span> <span class="token operator">=></span> <span class="token punctuation">{</span>
+  <span class="token keyword">const</span> token <span class="token operator">=</span> request<span class="token punctuation">.</span>headers<span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span><span class="token string">"Authorization"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token operator">!</span>token<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token keyword">return</span> <span class="token keyword">new</span> <span class="token class-name">Response</span><span class="token punctuation">(</span><span class="token string">"Unauthorized"</span><span class="token punctuation">,</span> <span class="token punctuation">{</span> status<span class="token operator">:</span> <span class="token number">401</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+
+  context<span class="token punctuation">.</span>user <span class="token operator">=</span> <span class="token keyword">await</span> <span class="token function">validateToken</span><span class="token punctuation">(</span>token<span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token keyword">return</span> <span class="token keyword">null</span><span class="token punctuation">;</span> <span class="token comment">// Continue to handler</span>
+<span class="token punctuation">}</span><span class="token punctuation">;</span>
+
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span><span class="token string">"/api"</span><span class="token punctuation">,</span> authMiddleware<span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h2 id="generator-middleware">Generator Middleware</h2>
+<p>Use <code>yield</code> for before/after hooks:</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> <span class="token function-variable function">loggingMiddleware</span> <span class="token operator">=</span> <span class="token keyword">async</span> <span class="token keyword">function</span><span class="token operator">*</span> <span class="token punctuation">(</span>request<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+  <span class="token keyword">const</span> start <span class="token operator">=</span> Date<span class="token punctuation">.</span><span class="token function">now</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span><span class="token string">"→"</span><span class="token punctuation">,</span> request<span class="token punctuation">.</span>method<span class="token punctuation">,</span> request<span class="token punctuation">.</span>url<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">const</span> response <span class="token operator">=</span> <span class="token keyword">yield</span> request<span class="token punctuation">;</span>
+
+  <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span><span class="token string">"←"</span><span class="token punctuation">,</span> response<span class="token punctuation">.</span>status<span class="token punctuation">,</span> Date<span class="token punctuation">.</span><span class="token function">now</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-</span> start<span class="token punctuation">,</span> <span class="token string">"ms"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token keyword">return</span> response<span class="token punctuation">;</span>
+<span class="token punctuation">}</span><span class="token punctuation">;</span>
+
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span>loggingMiddleware<span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h2 id="scoped-middleware">Scoped Middleware</h2>
+<p>Apply middleware to specific paths or routes:</p>
+<pre><code class="language-typescript"><span class="token comment">// Global</span>
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span>loggingMiddleware<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token comment">// Path-scoped</span>
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span><span class="token string">"/api"</span><span class="token punctuation">,</span> authMiddleware<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token comment">// Route-scoped</span>
+router
+  <span class="token punctuation">.</span><span class="token function">route</span><span class="token punctuation">(</span><span class="token string">"/admin/users"</span><span class="token punctuation">)</span>
+  <span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span>requireAdmin<span class="token punctuation">)</span>
+  <span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span>listUsers<span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h2 id="built-in-cors">Built-in CORS</h2>
+<pre><code class="language-typescript"><span class="token keyword">import</span> <span class="token punctuation">{</span> cors <span class="token punctuation">}</span> <span class="token keyword">from</span> <span class="token string">"@b9g/router/middleware"</span><span class="token punctuation">;</span>
+
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span><span class="token function">cors</span><span class="token punctuation">(</span><span class="token punctuation">{</span>
+  origin<span class="token operator">:</span> <span class="token punctuation">[</span><span class="token string">"https://example.com"</span><span class="token punctuation">]</span><span class="token punctuation">,</span>
+  methods<span class="token operator">:</span> <span class="token punctuation">[</span><span class="token string">"GET"</span><span class="token punctuation">,</span> <span class="token string">"POST"</span><span class="token punctuation">]</span><span class="token punctuation">,</span>
+  credentials<span class="token operator">:</span> <span class="token boolean">true</span><span class="token punctuation">,</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h2 id="error-handling">Error Handling</h2>
+<p>Catch errors with generator middleware:</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> <span class="token function-variable function">errorHandler</span> <span class="token operator">=</span> <span class="token keyword">async</span> <span class="token keyword">function</span><span class="token operator">*</span> <span class="token punctuation">(</span>request<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+  <span class="token keyword">try</span> <span class="token punctuation">{</span>
+    <span class="token keyword">return</span> <span class="token keyword">yield</span> request<span class="token punctuation">;</span>
+  <span class="token punctuation">}</span> <span class="token keyword">catch</span> <span class="token punctuation">(</span>error<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">error</span><span class="token punctuation">(</span>error<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token keyword">return</span> Response<span class="token punctuation">.</span><span class="token function">json</span><span class="token punctuation">(</span>
+      <span class="token punctuation">{</span> error<span class="token operator">:</span> <span class="token string">"Internal Server Error"</span> <span class="token punctuation">}</span><span class="token punctuation">,</span>
+      <span class="token punctuation">{</span> status<span class="token operator">:</span> <span class="token number">500</span> <span class="token punctuation">}</span>
+    <span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span><span class="token punctuation">;</span>
+
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span>errorHandler<span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li>See <a href="/api/middleware">Middleware Reference</a> for all patterns</li>
+<li>Learn about <a href="/api/cache">Caches</a> for response caching</li>
+</ul>
+</main></body></html>

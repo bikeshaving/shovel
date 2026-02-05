@@ -1,0 +1,392 @@
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Shovel | shovel.json</title><style>.css-xlwoin{position:fixed;top:0;left:0;right:0;height:50px;background-color:var(--bg-color);border-bottom:1px solid var(--text-color);display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;-webkit-align-items:center;-webkit-box-align:center;-ms-flex-align:center;align-items:center;padding:0 1rem;z-index:100;}.css-yq49om{font-size:1.5rem;font-weight:bold;color:var(--highlight-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo{display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;gap:1.5rem;margin-left:auto;}.css-1nfzlxo a{color:var(--text-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo a:hover{color:var(--highlight-color);}.css-1nfzlxo a[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-p83kyz{background-color:var(--bg-color);margin-top:50px;padding:2rem 0.4rem;color:var(--text-color);border-right:1px solid currentcolor;border-bottom:1px solid currentcolor;}@media screen and (min-width: 800px){.css-p83kyz{position:fixed;top:50px;bottom:0;overflow-x:hidden;overflow-y:auto;width:15rem;margin:0;padding:2rem 1rem;text-align:right;}}@media screen and (min-width: 1100px){.css-p83kyz{padding:3rem 2rem;width:20rem;}}.css-p83kyz &gt;:first-child{margin-top:0;}.css-l91ppu{font-size:0.85rem;color:var(--highlight-color);margin:1.5rem 0 0.5rem;text-transform:uppercase;letter-spacing:0.05em;font-weight:bold;}.css-l91ppu:first-of-type{margin-top:0;}.css-1jwyx8k{display:block;margin:0.5rem 0;-webkit-text-decoration:none;text-decoration:none;color:var(--text-color);}.css-1jwyx8k:hover{color:var(--highlight-color);}.css-1jwyx8k[aria-current=&quot;page&quot;]{color:var(--highlight-color);font-weight:bold;}.css-ep9szm{color:var(--highlight-color);margin-top:0;}.css-v6xkb5{margin:0 auto;padding:2rem 0.4rem;}@media screen and (min-width: 800px){.css-v6xkb5{margin-left:240px;padding:2rem 1rem;margin-top:50px;}}@media screen and (min-width: 1100px){.css-v6xkb5{margin-left:20rem;padding:3rem 2rem;}}.css-v6xkb5 &gt;:first-child{margin-top:0;}.css-v6xkb5 p{max-width:800px;}.css-v6xkb5 pre{background:var(--code-bg);padding:1rem;border-radius:4px;overflow-x:auto;}.css-v6xkb5 code{font-family:&quot;SF Mono&quot;,Menlo,Monaco,&quot;Courier New&quot;,monospace;font-size:0.9em;}.css-v6xkb5 code.inline{background:var(--code-bg);padding:0.2em 0.4em;border-radius:3px;}</style><link rel="stylesheet" type="text/css" href="/static/client-d338c3cf2d1d9d72.css"><meta name="description" content=""><meta property="og:title" content="Shovel | shovel.json"><meta property="og:description" content=""><meta property="og:type" content="website"><meta property="og:site_name" content="Shovel"></head><body><div id="navbar-root"><nav class="css-xlwoin"><a href="/" class="css-yq49om">Shovel</a><div class="css-1nfzlxo"><a href="/guides/getting-started">Guides</a><a href="/api" aria-current="page">API</a><a href="/blog">Blog</a><a href="https://github.com/bikeshaving/shovel">GitHub</a></div></nav></div><div id="sidebar" class="css-p83kyz"><h2 class="css-ep9szm">API</h2><div class="css-l91ppu">shovel</div><a href="/api/cli" class="css-1jwyx8k">CLI</a><a href="/api/serviceworker" class="css-1jwyx8k">ServiceWorker</a><a href="/api/shovel-json" class="css-1jwyx8k" aria-current="page">shovel.json</a><div class="css-l91ppu">@b9g/router</div><a href="/api/middleware" class="css-1jwyx8k">@b9g/router/middleware</a><a href="/api/router" class="css-1jwyx8k">Routing</a><div class="css-l91ppu">@b9g/assets</div><a href="/api/assets" class="css-1jwyx8k">@b9g/assets</a><div class="css-l91ppu">@b9g/async-context</div><a href="/api/async-context" class="css-1jwyx8k">@b9g/async-context</a><div class="css-l91ppu">@b9g/cache</div><a href="/api/cache" class="css-1jwyx8k">Caches</a><div class="css-l91ppu">@b9g/cookies</div><a href="/api/cookies" class="css-1jwyx8k">@b9g/cookies</a><div class="css-l91ppu">@b9g/filesystem</div><a href="/api/filesystem" class="css-1jwyx8k">@b9g/filesystem</a><div class="css-l91ppu">@b9g/http-errors</div><a href="/api/http-errors" class="css-1jwyx8k">@b9g/http-errors</a><div class="css-l91ppu">@b9g/zen</div><a href="/api/zen" class="css-1jwyx8k">@b9g/zen</a><div class="css-l91ppu">@logtape/logtape</div><a href="/api/logging" class="css-1jwyx8k">@logtape/logtape</a></div><main class="css-v6xkb5"><h1 id="shoveljson">shovel.json</h1>
+<p>Configuration file reference. All fields are optional.</p>
+<hr>
+<h2 id="config-expressions">Config Expressions</h2>
+<p>String values support environment variables and expressions.</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"port"</span><span class="token operator">:</span> <span class="token string">"$PORT || 7777"</span><span class="token punctuation">,</span>
+  <span class="token property">"platform"</span><span class="token operator">:</span> <span class="token string">"$NODE_ENV === production ? cloudflare : bun"</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<p><strong>Note:</strong> Operators require spaces: <code>$VAR || default</code> not <code>$VAR||default</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Operator</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>||</code></td>
+<td><code>&quot;$PORT || 7777&quot;</code></td>
+</tr>
+<tr>
+<td><code>??</code></td>
+<td><code>&quot;$PORT ?? 7777&quot;</code></td>
+</tr>
+<tr>
+<td><code>===</code>, <code>!==</code></td>
+<td><code>&quot;$ENV === production&quot;</code></td>
+</tr>
+<tr>
+<td><code>? :</code></td>
+<td><code>&quot;$DEV ? memory : redis&quot;</code></td>
+</tr>
+</tbody></table>
+<h3 id="path-placeholders">Path Placeholders</h3>
+<table>
+<thead>
+<tr>
+<th>Placeholder</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>[outdir]</code></td>
+<td>Build output directory</td>
+</tr>
+<tr>
+<td><code>[tmpdir]</code></td>
+<td>System temp directory</td>
+</tr>
+<tr>
+<td><code>[git]</code></td>
+<td>Git commit SHA</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="platform">platform</h2>
+<ul>
+<li><strong>Type:</strong> <code>string</code></li>
+<li><strong>Default:</strong> Auto-detected</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>&quot;node&quot;</code></td>
+<td>Node.js</td>
+</tr>
+<tr>
+<td><code>&quot;bun&quot;</code></td>
+<td>Bun</td>
+</tr>
+<tr>
+<td><code>&quot;cloudflare&quot;</code></td>
+<td>Cloudflare Workers</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="port">port</h2>
+<ul>
+<li><strong>Type:</strong> <code>number | string</code></li>
+<li><strong>Default:</strong> <code>7777</code></li>
+</ul>
+<hr>
+<h2 id="host">host</h2>
+<ul>
+<li><strong>Type:</strong> <code>string</code></li>
+<li><strong>Default:</strong> <code>&quot;localhost&quot;</code></li>
+</ul>
+<hr>
+<h2 id="workers">workers</h2>
+<ul>
+<li><strong>Type:</strong> <code>number | string</code></li>
+<li><strong>Default:</strong> <code>1</code></li>
+</ul>
+<hr>
+<h2 id="logging">logging</h2>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"logging"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"sinks"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"console"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+        <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@logtape/logtape"</span><span class="token punctuation">,</span>
+        <span class="token property">"export"</span><span class="token operator">:</span> <span class="token string">"getConsoleSink"</span>
+      <span class="token punctuation">}</span>
+    <span class="token punctuation">}</span><span class="token punctuation">,</span>
+    <span class="token property">"loggers"</span><span class="token operator">:</span> <span class="token punctuation">[</span>
+      <span class="token punctuation">{</span> <span class="token property">"category"</span><span class="token operator">:</span> <span class="token string">"app"</span><span class="token punctuation">,</span> <span class="token property">"level"</span><span class="token operator">:</span> <span class="token string">"info"</span><span class="token punctuation">,</span> <span class="token property">"sinks"</span><span class="token operator">:</span> <span class="token punctuation">[</span><span class="token string">"console"</span><span class="token punctuation">]</span> <span class="token punctuation">}</span>
+    <span class="token punctuation">]</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<h3 id="sink-modules">Sink Modules</h3>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Export</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@logtape/logtape</code></td>
+<td><code>getConsoleSink</code></td>
+<td>Console</td>
+</tr>
+<tr>
+<td><code>@logtape/file</code></td>
+<td><code>getFileSink</code></td>
+<td>File</td>
+</tr>
+<tr>
+<td><code>@logtape/file</code></td>
+<td><code>getRotatingFileSink</code></td>
+<td>Rotating file</td>
+</tr>
+<tr>
+<td><code>@logtape/otel</code></td>
+<td><code>getOpenTelemetrySink</code></td>
+<td>OpenTelemetry</td>
+</tr>
+</tbody></table>
+<h3 id="logger-fields">Logger Fields</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>category</code></td>
+<td><code>string | string[]</code></td>
+</tr>
+<tr>
+<td><code>level</code></td>
+<td><code>&quot;debug&quot; | &quot;info&quot; | &quot;warning&quot; | &quot;error&quot;</code></td>
+</tr>
+<tr>
+<td><code>sinks</code></td>
+<td><code>string[]</code></td>
+</tr>
+<tr>
+<td><code>parentSinks</code></td>
+<td><code>&quot;override&quot;</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="build">build</h2>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"build"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"target"</span><span class="token operator">:</span> <span class="token string">"es2022"</span><span class="token punctuation">,</span>
+    <span class="token property">"minify"</span><span class="token operator">:</span> <span class="token boolean">true</span><span class="token punctuation">,</span>
+    <span class="token property">"sourcemap"</span><span class="token operator">:</span> <span class="token string">"external"</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>target</code></td>
+<td><code>string | string[]</code></td>
+<td><code>&quot;es2022&quot;</code></td>
+</tr>
+<tr>
+<td><code>minify</code></td>
+<td><code>boolean</code></td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>sourcemap</code></td>
+<td><code>boolean | &quot;inline&quot; | &quot;external&quot;</code></td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>treeShaking</code></td>
+<td><code>boolean</code></td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>define</code></td>
+<td><code>Record&lt;string, string&gt;</code></td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>alias</code></td>
+<td><code>Record&lt;string, string&gt;</code></td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>external</code></td>
+<td><code>string[]</code></td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>plugins</code></td>
+<td><code>BuildPluginConfig[]</code></td>
+<td>-</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="caches">caches</h2>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"caches"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"sessions"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@b9g/cache/memory"</span><span class="token punctuation">,</span>
+      <span class="token property">"maxEntries"</span><span class="token operator">:</span> <span class="token number">1000</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>module</code></td>
+<td><code>string</code></td>
+<td>Module path</td>
+</tr>
+<tr>
+<td><code>export</code></td>
+<td><code>string</code></td>
+<td>Named export</td>
+</tr>
+<tr>
+<td><code>maxEntries</code></td>
+<td><code>number</code></td>
+<td>Max entries</td>
+</tr>
+<tr>
+<td><code>TTL</code></td>
+<td><code>number</code></td>
+<td>TTL in seconds</td>
+</tr>
+</tbody></table>
+<p>Use <code>&quot;*&quot;</code> as catch-all.</p>
+<hr>
+<h2 id="directories">directories</h2>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"directories"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"uploads"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@b9g/filesystem/node-fs"</span><span class="token punctuation">,</span>
+      <span class="token property">"path"</span><span class="token operator">:</span> <span class="token string">"./uploads"</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>module</code></td>
+<td><code>string</code></td>
+<td>Module path</td>
+</tr>
+<tr>
+<td><code>export</code></td>
+<td><code>string</code></td>
+<td>Named export</td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td><code>string</code></td>
+<td>Filesystem path</td>
+</tr>
+<tr>
+<td><code>binding</code></td>
+<td><code>string</code></td>
+<td>Platform binding</td>
+</tr>
+<tr>
+<td><code>bucket</code></td>
+<td><code>string</code></td>
+<td>S3 bucket</td>
+</tr>
+<tr>
+<td><code>region</code></td>
+<td><code>string</code></td>
+<td>AWS region</td>
+</tr>
+<tr>
+<td><code>endpoint</code></td>
+<td><code>string</code></td>
+<td>S3 endpoint</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="databases">databases</h2>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"databases"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"main"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@b9g/zen/bun"</span><span class="token punctuation">,</span>
+      <span class="token property">"url"</span><span class="token operator">:</span> <span class="token string">"sqlite://./data.db"</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>module</code></td>
+<td><code>string</code></td>
+<td>Module path</td>
+</tr>
+<tr>
+<td><code>export</code></td>
+<td><code>string</code></td>
+<td>Named export</td>
+</tr>
+<tr>
+<td><code>url</code></td>
+<td><code>string</code></td>
+<td>Connection URL</td>
+</tr>
+</tbody></table>
+<h3 id="url-formats">URL Formats</h3>
+<table>
+<thead>
+<tr>
+<th>Database</th>
+<th>Format</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>SQLite</td>
+<td><code>sqlite://./path.db</code></td>
+</tr>
+<tr>
+<td>PostgreSQL</td>
+<td><code>postgres://user:pass@host:5432/db</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="moduleexport-pattern">Module/Export Pattern</h2>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"package-name"</span><span class="token punctuation">,</span>
+  <span class="token property">"export"</span><span class="token operator">:</span> <span class="token string">"namedExport"</span><span class="token punctuation">,</span>
+  <span class="token property">"...options"</span><span class="token operator">:</span> <span class="token string">"passed to factory"</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<hr>
+<h2 id="typescript">TypeScript</h2>
+<p>Shovel generates <code>shovel.d.ts</code> for type-safe resource access:</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> cache <span class="token operator">=</span> <span class="token keyword">await</span> self<span class="token punctuation">.</span>caches<span class="token punctuation">.</span><span class="token function">open</span><span class="token punctuation">(</span><span class="token string">"sessions"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>  <span class="token comment">// Type-checked</span>
+</code></pre>
+</main></body></html>

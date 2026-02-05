@@ -1,0 +1,184 @@
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Shovel | @b9g/http-errors</title><style>.css-xlwoin{position:fixed;top:0;left:0;right:0;height:50px;background-color:var(--bg-color);border-bottom:1px solid var(--text-color);display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;-webkit-align-items:center;-webkit-box-align:center;-ms-flex-align:center;align-items:center;padding:0 1rem;z-index:100;}.css-yq49om{font-size:1.5rem;font-weight:bold;color:var(--highlight-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo{display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;gap:1.5rem;margin-left:auto;}.css-1nfzlxo a{color:var(--text-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo a:hover{color:var(--highlight-color);}.css-1nfzlxo a[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-p83kyz{background-color:var(--bg-color);margin-top:50px;padding:2rem 0.4rem;color:var(--text-color);border-right:1px solid currentcolor;border-bottom:1px solid currentcolor;}@media screen and (min-width: 800px){.css-p83kyz{position:fixed;top:50px;bottom:0;overflow-x:hidden;overflow-y:auto;width:15rem;margin:0;padding:2rem 1rem;text-align:right;}}@media screen and (min-width: 1100px){.css-p83kyz{padding:3rem 2rem;width:20rem;}}.css-p83kyz &gt;:first-child{margin-top:0;}.css-l91ppu{font-size:0.85rem;color:var(--highlight-color);margin:1.5rem 0 0.5rem;text-transform:uppercase;letter-spacing:0.05em;font-weight:bold;}.css-l91ppu:first-of-type{margin-top:0;}.css-1jwyx8k{display:block;margin:0.5rem 0;-webkit-text-decoration:none;text-decoration:none;color:var(--text-color);}.css-1jwyx8k:hover{color:var(--highlight-color);}.css-1jwyx8k[aria-current=&quot;page&quot;]{color:var(--highlight-color);font-weight:bold;}.css-ep9szm{color:var(--highlight-color);margin-top:0;}.css-v6xkb5{margin:0 auto;padding:2rem 0.4rem;}@media screen and (min-width: 800px){.css-v6xkb5{margin-left:240px;padding:2rem 1rem;margin-top:50px;}}@media screen and (min-width: 1100px){.css-v6xkb5{margin-left:20rem;padding:3rem 2rem;}}.css-v6xkb5 &gt;:first-child{margin-top:0;}.css-v6xkb5 p{max-width:800px;}.css-v6xkb5 pre{background:var(--code-bg);padding:1rem;border-radius:4px;overflow-x:auto;}.css-v6xkb5 code{font-family:&quot;SF Mono&quot;,Menlo,Monaco,&quot;Courier New&quot;,monospace;font-size:0.9em;}.css-v6xkb5 code.inline{background:var(--code-bg);padding:0.2em 0.4em;border-radius:3px;}</style><link rel="stylesheet" type="text/css" href="/static/client-d338c3cf2d1d9d72.css"><meta name="description" content=""><meta property="og:title" content="Shovel | @b9g/http-errors"><meta property="og:description" content=""><meta property="og:type" content="website"><meta property="og:site_name" content="Shovel"></head><body><div id="navbar-root"><nav class="css-xlwoin"><a href="/" class="css-yq49om">Shovel</a><div class="css-1nfzlxo"><a href="/guides/getting-started">Guides</a><a href="/api" aria-current="page">API</a><a href="/blog">Blog</a><a href="https://github.com/bikeshaving/shovel">GitHub</a></div></nav></div><div id="sidebar" class="css-p83kyz"><h2 class="css-ep9szm">API</h2><div class="css-l91ppu">shovel</div><a href="/api/cli" class="css-1jwyx8k">CLI</a><a href="/api/serviceworker" class="css-1jwyx8k">ServiceWorker</a><a href="/api/shovel-json" class="css-1jwyx8k">shovel.json</a><div class="css-l91ppu">@b9g/router</div><a href="/api/middleware" class="css-1jwyx8k">@b9g/router/middleware</a><a href="/api/router" class="css-1jwyx8k">Routing</a><div class="css-l91ppu">@b9g/assets</div><a href="/api/assets" class="css-1jwyx8k">@b9g/assets</a><div class="css-l91ppu">@b9g/async-context</div><a href="/api/async-context" class="css-1jwyx8k">@b9g/async-context</a><div class="css-l91ppu">@b9g/cache</div><a href="/api/cache" class="css-1jwyx8k">Caches</a><div class="css-l91ppu">@b9g/cookies</div><a href="/api/cookies" class="css-1jwyx8k">@b9g/cookies</a><div class="css-l91ppu">@b9g/filesystem</div><a href="/api/filesystem" class="css-1jwyx8k">@b9g/filesystem</a><div class="css-l91ppu">@b9g/http-errors</div><a href="/api/http-errors" class="css-1jwyx8k" aria-current="page">@b9g/http-errors</a><div class="css-l91ppu">@b9g/zen</div><a href="/api/zen" class="css-1jwyx8k">@b9g/zen</a><div class="css-l91ppu">@logtape/logtape</div><a href="/api/logging" class="css-1jwyx8k">@logtape/logtape</a></div><main class="css-v6xkb5"><h1 id="b9ghttp-errors">@b9g/http-errors</h1>
+<p>HTTP error classes for consistent error handling.</p>
+<hr>
+<h2 id="httperror">HTTPError</h2>
+<p>Base class for all HTTP errors.</p>
+<h3 id="constructor">Constructor</h3>
+<pre><code class="language-typescript"><span class="token keyword">new</span> <span class="token class-name">HTTPError</span><span class="token punctuation">(</span>status<span class="token operator">:</span> <span class="token builtin">number</span><span class="token punctuation">,</span> message<span class="token operator">?</span><span class="token operator">:</span> <span class="token builtin">string</span><span class="token punctuation">,</span> options<span class="token operator">?</span><span class="token operator">:</span> HTTPErrorOptions<span class="token punctuation">)</span>
+</code></pre>
+<h3 id="httperroroptions">HTTPErrorOptions</h3>
+<pre><code class="language-typescript"><span class="token keyword">interface</span> <span class="token class-name">HTTPErrorOptions</span> <span class="token punctuation">{</span>
+  cause<span class="token operator">?</span><span class="token operator">:</span> Error<span class="token punctuation">;</span>
+  headers<span class="token operator">?</span><span class="token operator">:</span> Record<span class="token operator">&lt;</span><span class="token builtin">string</span><span class="token punctuation">,</span> <span class="token builtin">string</span><span class="token operator">></span><span class="token punctuation">;</span>
+  expose<span class="token operator">?</span><span class="token operator">:</span> <span class="token builtin">boolean</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<h3 id="properties">Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>status</code></td>
+<td><code>number</code></td>
+<td>HTTP status code</td>
+</tr>
+<tr>
+<td><code>statusCode</code></td>
+<td><code>number</code></td>
+<td>Alias for <code>status</code></td>
+</tr>
+<tr>
+<td><code>message</code></td>
+<td><code>string</code></td>
+<td>Error message</td>
+</tr>
+<tr>
+<td><code>expose</code></td>
+<td><code>boolean</code></td>
+<td>Expose message to clients</td>
+</tr>
+<tr>
+<td><code>headers</code></td>
+<td><code>Record&lt;string, string&gt;</code></td>
+<td>Custom headers</td>
+</tr>
+<tr>
+<td><code>cause</code></td>
+<td><code>Error</code></td>
+<td>Original error</td>
+</tr>
+</tbody></table>
+<h3 id="tojson-object">toJSON(): object</h3>
+<p>Serializes the error.</p>
+<pre><code class="language-typescript">error<span class="token punctuation">.</span><span class="token function">toJSON</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token comment">// { name, message, status, statusCode, expose }</span>
+</code></pre>
+<h3 id="toresponseisdev-boolean-response">toResponse(isDev?: boolean): Response</h3>
+<p>Converts to HTTP Response.</p>
+<pre><code class="language-typescript">error<span class="token punctuation">.</span><span class="token function">toResponse</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>      <span class="token comment">// Plain text</span>
+error<span class="token punctuation">.</span><span class="token function">toResponse</span><span class="token punctuation">(</span><span class="token boolean">true</span><span class="token punctuation">)</span><span class="token punctuation">;</span>  <span class="token comment">// HTML with stack trace</span>
+</code></pre>
+<hr>
+<h2 id="client-errors-4xx">Client Errors (4xx)</h2>
+<table>
+<thead>
+<tr>
+<th>Class</th>
+<th>Status</th>
+<th>Default Message</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BadRequest</code></td>
+<td>400</td>
+<td>Bad Request</td>
+</tr>
+<tr>
+<td><code>Unauthorized</code></td>
+<td>401</td>
+<td>Unauthorized</td>
+</tr>
+<tr>
+<td><code>Forbidden</code></td>
+<td>403</td>
+<td>Forbidden</td>
+</tr>
+<tr>
+<td><code>NotFound</code></td>
+<td>404</td>
+<td>Not Found</td>
+</tr>
+<tr>
+<td><code>MethodNotAllowed</code></td>
+<td>405</td>
+<td>Method Not Allowed</td>
+</tr>
+<tr>
+<td><code>Conflict</code></td>
+<td>409</td>
+<td>Conflict</td>
+</tr>
+<tr>
+<td><code>UnprocessableEntity</code></td>
+<td>422</td>
+<td>Unprocessable Entity</td>
+</tr>
+<tr>
+<td><code>TooManyRequests</code></td>
+<td>429</td>
+<td>Too Many Requests</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="server-errors-5xx">Server Errors (5xx)</h2>
+<table>
+<thead>
+<tr>
+<th>Class</th>
+<th>Status</th>
+<th>Default Message</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>InternalServerError</code></td>
+<td>500</td>
+<td>Internal Server Error</td>
+</tr>
+<tr>
+<td><code>NotImplemented</code></td>
+<td>501</td>
+<td>Not Implemented</td>
+</tr>
+<tr>
+<td><code>BadGateway</code></td>
+<td>502</td>
+<td>Bad Gateway</td>
+</tr>
+<tr>
+<td><code>ServiceUnavailable</code></td>
+<td>503</td>
+<td>Service Unavailable</td>
+</tr>
+<tr>
+<td><code>GatewayTimeout</code></td>
+<td>504</td>
+<td>Gateway Timeout</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="ishttperrorvalue-unknown-value-is-httperror">isHTTPError(value: unknown): value is HTTPError</h2>
+<p>Type guard for HTTP errors.</p>
+<pre><code class="language-typescript"><span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token function">isHTTPError</span><span class="token punctuation">(</span>error<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+  <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span>error<span class="token punctuation">.</span>status<span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<hr>
+<h2 id="usage">Usage</h2>
+<pre><code class="language-typescript"><span class="token keyword">import</span> <span class="token punctuation">{</span> NotFound<span class="token punctuation">,</span> BadRequest <span class="token punctuation">}</span> <span class="token keyword">from</span> <span class="token string">"@b9g/http-errors"</span><span class="token punctuation">;</span>
+
+<span class="token keyword">throw</span> <span class="token keyword">new</span> <span class="token class-name">NotFound</span><span class="token punctuation">(</span><span class="token string">"User not found"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token keyword">throw</span> <span class="token keyword">new</span> <span class="token class-name">BadRequest</span><span class="token punctuation">(</span><span class="token string">"Invalid email"</span><span class="token punctuation">,</span> <span class="token punctuation">{</span>
+  headers<span class="token operator">:</span> <span class="token punctuation">{</span> <span class="token string-property property">"X-Error-Code"</span><span class="token operator">:</span> <span class="token string">"INVALID_EMAIL"</span> <span class="token punctuation">}</span><span class="token punctuation">,</span>
+<span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<hr>
+<h2 id="exposure">Exposure</h2>
+<p>4xx errors expose messages by default; 5xx errors don&#39;t.</p>
+<pre><code class="language-typescript"><span class="token keyword">throw</span> <span class="token keyword">new</span> <span class="token class-name">BadRequest</span><span class="token punctuation">(</span><span class="token string">"Invalid input"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>  <span class="token comment">// Exposed</span>
+<span class="token keyword">throw</span> <span class="token keyword">new</span> <span class="token class-name">InternalServerError</span><span class="token punctuation">(</span><span class="token string">"DB failed"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>  <span class="token comment">// Hidden</span>
+
+<span class="token keyword">throw</span> <span class="token keyword">new</span> <span class="token class-name">InternalServerError</span><span class="token punctuation">(</span><span class="token string">"Overloaded"</span><span class="token punctuation">,</span> <span class="token punctuation">{</span> expose<span class="token operator">:</span> <span class="token boolean">true</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>  <span class="token comment">// Override</span>
+</code></pre>
+<hr>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="/api/middleware">Middleware</a> - Error handling</li>
+<li><a href="/api/router">Router</a> - Route handlers</li>
+</ul>
+</main></body></html>

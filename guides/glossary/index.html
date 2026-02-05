@@ -1,0 +1,41 @@
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Shovel | Glossary</title><style>.css-xlwoin{position:fixed;top:0;left:0;right:0;height:50px;background-color:var(--bg-color);border-bottom:1px solid var(--text-color);display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;-webkit-align-items:center;-webkit-box-align:center;-ms-flex-align:center;align-items:center;padding:0 1rem;z-index:100;}.css-yq49om{font-size:1.5rem;font-weight:bold;color:var(--highlight-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo{display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;gap:1.5rem;margin-left:auto;}.css-1nfzlxo a{color:var(--text-color);-webkit-text-decoration:none;text-decoration:none;}.css-1nfzlxo a:hover{color:var(--highlight-color);}.css-1nfzlxo a[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-ep9szm{color:var(--highlight-color);margin-top:0;}.css-v6xkb5{margin:0 auto;padding:2rem 0.4rem;}@media screen and (min-width: 800px){.css-v6xkb5{margin-left:240px;padding:2rem 1rem;margin-top:50px;}}@media screen and (min-width: 1100px){.css-v6xkb5{margin-left:20rem;padding:3rem 2rem;}}.css-v6xkb5 &gt;:first-child{margin-top:0;}.css-v6xkb5 p{max-width:800px;}.css-v6xkb5 pre{background:var(--code-bg);padding:1rem;border-radius:4px;overflow-x:auto;}.css-v6xkb5 code{font-family:&quot;SF Mono&quot;,Menlo,Monaco,&quot;Courier New&quot;,monospace;font-size:0.9em;}.css-v6xkb5 code.inline{background:var(--code-bg);padding:0.2em 0.4em;border-radius:3px;}.css-w1ljn4{margin:10px 0;}.css-1y6uk0k{-webkit-text-decoration:none;text-decoration:none;color:var(--text-color);}.css-1y6uk0k:hover{color:var(--highlight-color);}.css-1y6uk0k[aria-current=&quot;page&quot;]{color:var(--highlight-color);}.css-1wkb9s8{background-color:var(--bg-color);margin-top:50px;padding:2rem 0.4rem;color:var(--text-color);border-right:1px solid currentcolor;border-bottom:1px solid currentcolor;}@media screen and (min-width: 800px){.css-1wkb9s8{position:fixed;top:50px;bottom:0;overflow-x:hidden;overflow-y:auto;width:15rem;margin:0;padding:2rem 1rem;text-align:right;}}@media screen and (min-width: 1100px){.css-1wkb9s8{padding:3rem 2rem;width:20rem;}}.css-1wkb9s8 &gt;:first-child{margin-top:0;}</style><link rel="stylesheet" type="text/css" href="/static/client-d338c3cf2d1d9d72.css"><meta name="description" content=""><meta property="og:title" content="Shovel | Glossary"><meta property="og:description" content=""><meta property="og:type" content="website"><meta property="og:site_name" content="Shovel"></head><body><div id="navbar-root"><nav class="css-xlwoin"><a href="/" class="css-yq49om">Shovel</a><div class="css-1nfzlxo"><a href="/guides/getting-started" aria-current="page">Guides</a><a href="/api">API</a><a href="/blog">Blog</a><a href="https://github.com/bikeshaving/shovel">GitHub</a></div></nav></div><div id="sidebar" class="css-1wkb9s8"><h2 class="css-ep9szm">Guides</h2><div class="css-w1ljn4"><a href="/guides/getting-started" class="css-1y6uk0k">Getting Started</a></div><div class="css-w1ljn4"><a href="/guides/configuration" class="css-1y6uk0k">Configuration</a></div><div class="css-w1ljn4"><a href="/guides/routing" class="css-1y6uk0k">Routing</a></div><div class="css-w1ljn4"><a href="/guides/assets" class="css-1y6uk0k">Static Assets</a></div><div class="css-w1ljn4"><a href="/guides/deployment" class="css-1y6uk0k">Deployment</a></div><div class="css-w1ljn4"><a href="/guides/middleware" class="css-1y6uk0k">Middleware</a></div><div class="css-w1ljn4"><a href="/guides/caches" class="css-1y6uk0k">Caching</a></div><div class="css-w1ljn4"><a href="/guides/glossary" aria-current="page" class="css-1y6uk0k">Glossary</a></div></div><main class="css-v6xkb5"><h1>Glossary</h1><h1 id="glossary">Glossary</h1>
+<p>This glossary defines the terms used across Shovel docs and CLI output. It is intentionally concise and scoped to features described in this documentation set.</p>
+<h2 id="assets">Assets</h2>
+<p>Static files handled by Shovel’s asset pipeline and emitted to <code>dist/public/</code> during builds. See <a href="/api/assets">Assets</a>.</p>
+<h2 id="asynccontext">AsyncContext</h2>
+<p>Request-scoped state storage that stays isolated per request. See <a href="/api/async-context">AsyncContext</a>.</p>
+<h2 id="build">Build</h2>
+<p>The <code>shovel build</code> command that compiles your ServiceWorker entrypoint into a production-ready bundle. See <a href="./cli.md#shovel-build">CLI</a>.</p>
+<h2 id="build-output-dist">Build Output (<code>dist/</code>)</h2>
+<p>The output directory for production builds. Shovel writes bundled server code under <code>dist/server/</code> and static assets under <code>dist/public/</code>. See <a href="./cli.md#output-structure">CLI</a>.</p>
+<h2 id="cache--caches">Cache / Caches</h2>
+<p>Response caching APIs backed by platform-specific cache storage. See <a href="/api/caches">Caches</a>.</p>
+<h2 id="configuration">Configuration</h2>
+<p>Project configuration via <code>shovel.json</code> and environment variables. See <a href="/api/shovel-json">shovel.json</a>.</p>
+<h2 id="databases">Databases</h2>
+<p>SQL database access and migrations from within the ServiceWorker runtime. See <a href="/api/databases">Databases</a>.</p>
+<h2 id="develop-server">Develop Server</h2>
+<p>The <code>shovel develop</code> command that runs a development server with hot reload. See <a href="./cli.md#shovel-develop">CLI</a>.</p>
+<h2 id="directories">Directories</h2>
+<p>File system access abstraction for reading and writing files. See <a href="/api/directories">Directories</a>.</p>
+<h2 id="entry-point">Entry Point</h2>
+<p>The ServiceWorker script you pass to the CLI, such as <code>src/server.ts</code>. It registers event handlers and contains your app logic.</p>
+<h2 id="environment-variables">Environment Variables</h2>
+<p>CLI options can be provided via environment variables like <code>PORT</code>, <code>HOST</code>, and <code>PLATFORM</code>. See <a href="./cli.md#environment-variables">CLI</a>.</p>
+<h2 id="fetch-event">Fetch Event</h2>
+<p>The ServiceWorker event that handles incoming HTTP requests. See <a href="./serviceworker.md#fetch-event">ServiceWorker</a>.</p>
+<h2 id="lifecycle">Lifecycle</h2>
+<p>The ServiceWorker lifecycle stages, primarily <code>install</code> and <code>activate</code>, which Shovel can run during builds via <code>--lifecycle</code>. See <a href="./serviceworker.md#lifecycle">ServiceWorker</a> and <a href="./cli.md#the---lifecycle-flag">CLI</a>.</p>
+<h2 id="middleware">Middleware</h2>
+<p>Composable request/response processing before your route handlers run. See <a href="/api/middleware">Middleware</a>.</p>
+<h2 id="platform">Platform</h2>
+<p>The target runtime for your application, selected via <code>--platform</code> or <code>shovel.json</code> and auto-detected when omitted. Supported values include <code>node</code>, <code>bun</code>, and <code>cloudflare</code>. See <a href="./cli.md#platform-detection">CLI</a> and <a href="./shovel-json.md#platform">shovel.json</a>.</p>
+<h2 id="public-directory-public">Public Directory (<code>public/</code>)</h2>
+<p>Optional directory for static files in a project. See <a href="/api/assets">Assets</a>.</p>
+<h2 id="routing">Routing</h2>
+<p>URL routing and handler composition for requests. See <a href="/api/routing">Routing</a>.</p>
+<h2 id="serviceworker">ServiceWorker</h2>
+<p>The execution model Shovel uses for handling requests, with ServiceWorker-like lifecycle events and global APIs. See <a href="/api/serviceworker">ServiceWorker</a>.</p>
+<h2 id="shoveljson">shovel.json</h2>
+<p>Project configuration file that controls build, platform, and other settings. See <a href="/api/shovel-json">shovel.json</a>.</p>
+</main></body></html>
