@@ -1,10 +1,11 @@
 {
-  "name": "@b9g/shovel-website",
   "private": true,
   "type": "module",
   "scripts": {
-    "develop": "shovel develop src/server.ts --port 3000 --platform bun",
-    "build": "MODE=production shovel build src/server.ts --platform bun --lifecycle"
+    "predeploy": "npm run static",
+    "deploy": "gh-pages -d dist/public",
+    "develop": "shovel develop src/server.ts --port 1338 --platform bun",
+    "static": "MODE=production shovel build src/server.ts --platform bun --lifecycle && echo shovel.js.org > dist/public/CNAME"
   },
   "dependencies": {
     "@b9g/assets": "workspace:*",
@@ -20,5 +21,8 @@
     "normalize.css": "^8.0.1",
     "prism-themes": "^1.9.0",
     "prismjs": "^1.30.0"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0"
   }
 }
