@@ -58,64 +58,135 @@ self.addEventListener("fetch", (ev) => {
 
 ## Architectural Flourishes
 
-While the plan of implementing standards was straightforward, there were still gaps which needed to be filled. The browser service worker doesn’t really include features like routing, middleware, local filesystems, database adapters or logging. This would require some careful design thinking from me, the human. The approach I decided to take was to extrapolate rather than invent: if browser service workers look like this, then what do server features look like? Here’s what we’ve come up with.
+While the plan of implementing standards was straightforward, there were still gaps which needed to be filled. The browser service worker doesn’t implement essential features like routing, middleware, local filesystems, database adapters, logging, or the configuration of all requisite services. This would require some careful design thinking from me, the human. The approach I decided to take was to extrapolate rather than invent: if browser service workers look like this, then what do these server features look like? Here’s some of what we’ve come up with.
 
 ### Router and Middleware
 
-One part missing from web standards is
+While the browser has a concept of URLs and matching with [URLPattern](https://developer.mozilla.org/en-US/docs/Web/API/URLPattern), there is still no unified routing abstraction for calling code based on requests and method. Therefore, the package `@b9g/router` implements a fast, fetch and Promise-based router with middleware.
 
-<!--
-The router uses a radix tree for fast path matching, but the middleware system is where things get interesting.
+```ts
+import {Router} from "@b9g/router";
 
-```typescript
-async function* loggingMiddleware(request: Request) {
-  const start = Date.now();
-  const response = yield;
-  console.log(`${request.method} ${request.url} - ${Date.now() - start}ms`);
-  return response;
-}
-```
+const router = new Router();
+const cache = await caches.open("kv");
 
-The `yield` statement marks where control passes to the next middleware. When the handler returns, execution resumes after the yield with the response. This pattern makes before/after logic trivial to write and reason about.
--->
+router.route("/kv/:key")
+  .get(async (req, ctx) => {
+    const cached = await cache.match(ctx.params.key);
+    return cached || new Response("Not Found", {status: 404});
+  })
+  .put(async (req, ctx) => {
+    await cache.put(ctx.params.key, new Response(await req.text()));
+    return new Response("OK", {status: 201});
+  })
+  .delete(async (req, ctx) => {
+    await cache.delete(ctx.params.key);
+    return new Response(null, {status: 204});
+  });
 
-### Client-side assets and Filesystems
-
-<!--
-Static assets are compiled with content hashes and served via a bundled manifest. At build time, Shovel generates a virtual module `shovel:assets` containing the mapping from public URLs to hashed filenames. The assets middleware uses this manifest to serve files with aggressive caching:
-
-```typescript
-import manifest from "shovel:assets";
-// { "/app.js": { hash: "a1b2c3", url: "/app.a1b2c3.js" } }
-```
-
-Files are read through `self.directories.open("public")`, the same FileSystem API you'd use in the browser. No special Node APIs required.
--->
-
-### The ServiceWorker Globals Pattern
-
-<!--
-How do you run ServiceWorker code on Node.js or Bun, which have no ServiceWorker support? Shovel patches `globalThis` with the complete ServiceWorker API surface. After calling `scope.install()`, your code has access to `self.caches`, `self.clients`, `self.registration`, and all the event interfaces.
-
-This means any ServiceWorker-compatible code runs unmodified. The same fetch handler works in Cloudflare Workers, Node.js, and the browser.
--->
-
-### Static Site Generation as Build-time Server Side Rendering
-
-<!--
-The real trick was repurposing ServiceWorker lifecycle events for static site generation. In the browser, `install` fires when a ServiceWorker is first registered, and `activate` fires when it takes control. Shovel dispatches these same events during the build process:
-
-```typescript
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open("pages").then((cache) =>
-      cache.addAll(["/", "/about", "/blog"])
-    )
-  );
+self.addEventListener("fetch", (ev) => {
+  ev.respondWith(router.handle(ev.request));
 });
 ```
 
-During SSG, this code pre-renders pages into the cache. The output is written to disk as static HTML. The same code that warms a browser cache can generate a static site.
+The router uses MatchPattern, a slightly simplified subset of URLPattern optimized for server-side routing. Under the hood, routes compile to a radix tree for O(1) path matching—the same algorithm used by fastify and other high-performance routers.
+
+Of course, it wouldn't be a Brian Kim open source project without a creative use of generator functions. The router implements a flexible Rack-style (last in, first out) middleware system where you can modify requests and responses with functions and generator functions.
+
+```ts
+// Function middleware: return Response to short-circuit, or null to continue
+router.use("/api", async (req, ctx) => {
+  const token = req.headers.get("Authorization");
+  if (!token) {
+    return new Response("Unauthorized", {status: 401});
+  }
+  ctx.user = await verifyToken(token);
+});
+
+// Generator middleware: yield to call next, then modify the response
+router.use(async function* timing(req) {
+  const start = Date.now();
+  const response = yield;
+  response.headers.set("X-Response-Time", `${Date.now() - start}ms`);
+  return response;
+});
+
+// The router package provides built-in middleware as higher-order functions
+import {cors} from "@b9g/router/middleware";
+
+// Built-in CORS middleware
+router.use(cors({origin: "https://example.com"}));
+```
+
+The `yield` statement marks where control passes to the next handler. When that handler returns, execution resumes after the yield with the response. Most frameworks use a separate `next()` function parameter, but generators make the control flow explicit — before `yield` is the request phase, after `yield` is the response phase.
+
+### Curated Globals
+
+<!--
+Not everything earns a spot on `self`. Each API has to be:
+- Configurable backends (swap implementations without changing code)
+- Standards-quality rigor (feels like it belongs on MDN)
+- Universal runtime support (works on Node, Bun, and Cloudflare)
+
+Examples: caches, directories, databases, loggers, cookieStore
+
+Brief mention of how it works: Shovel patches globalThis with the ServiceWorker API surface.
+-->
+
+### Assets
+
+<!--
+Shovel is also a meta-framework/compiler (the Vite/Next.js replacement).
+
+Import attributes for assets:
+```ts
+import styles from "./styles.css" with { assetBase: "/static/" };
+```
+
+ESBuild under the hood, code splitting, content hashing.
+
+Works with HTML-first UI approaches: Crank, HTMX, Lit, Alpine.js - anything that doesn't require complex compiler integration.
+-->
+
+### Self-fetching and SSG
+
+<!--
+The clever bit: fetch() during install/activate calls your own router.
+
+```typescript
+self.addEventListener("install", (event) => {
+  event.waitUntil(async () => {
+    const response = await fetch("/about");
+    // writes to dist/public/about.html
+  });
+});
+```
+
+Same code serves dynamic requests and generates static pages. No separate SSG tooling.
+-->
+
+### Configuration
+
+<!--
+shovel.json ties it all together:
+
+```json
+{
+  "caches": {
+    "pages": {
+      "module": "$NODE_ENV === production ? @b9g/cache-redis : @b9g/cache"
+    }
+  },
+  "databases": {
+    "main": {
+      "module": "@b9g/zen/bun",
+      "url": "$DATABASE_URL"
+    }
+  }
+}
+```
+
+Same code, different backends per environment. The capstone of the curated globals story.
 -->
 
 ## Shovel Ready
