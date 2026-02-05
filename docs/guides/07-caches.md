@@ -89,5 +89,5 @@ return cached || networkPromise;
 
 ## Next Steps
 
-- See [Caches Reference](/docs/caches) for all strategies
-- Learn about [Databases](/docs/databases) for persistent storage
+- See [Caches Reference](/api/cache) for all strategies
+- Learn about [Databases](/api/zen) for persistent storage

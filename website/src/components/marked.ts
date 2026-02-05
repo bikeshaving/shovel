@@ -6,9 +6,9 @@ const renderer = new Renderer();
 const originalLink = renderer.link.bind(renderer);
 
 renderer.link = function (href, title, text) {
-	// Transform relative .md links to /docs/ URLs
+	// Transform relative .md links to /api/ URLs
 	if (href && href.startsWith("./") && href.endsWith(".md")) {
-		href = "/docs/" + href.slice(2, -3);
+		href = "/api/" + href.slice(2, -3);
 	}
 	return originalLink(href, title, text);
 };

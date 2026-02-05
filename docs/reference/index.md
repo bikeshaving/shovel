@@ -1,6 +1,6 @@
 # API Reference
 
-API documentation organized by package. For step-by-step introductions, see the [Guides](../guides/index.md).
+API documentation organized by package.
 
 ---
 
@@ -9,72 +9,61 @@ API documentation organized by package. For step-by-step introductions, see the 
 The CLI and core framework.
 
 - [CLI](./cli.md) - Command-line interface
-- [shovel.json](./shovel-json.md) - Configuration file format
-- [ServiceWorker](./serviceworker.md) - Lifecycle events and globals
-- [Assets](./assets.md) - Static asset pipeline
-- [Glossary](./glossary.md) - Terminology
+- [shovel.json](./shovel-json.md) - Configuration file
+- [ServiceWorker](./serviceworker.md) - Events and globals
 
 ---
 
 ## @b9g/router
 
-Fast, fetch-based routing with middleware.
-
-- [Routing](./routing.md) - Router class, route matching, handlers
-- [Middleware](./middleware.md) - Function and generator middleware
+- [Router](./router.md) - Routing and handlers
+- [Middleware](./middleware.md) - Request/response middleware
 
 ---
 
 ## @b9g/cache
 
-Cache API implementation for servers.
-
-- [Caches](./caches.md) - CacheStorage and Cache classes
+- [Cache](./cache.md) - CacheStorage and Cache
 
 ---
 
 ## @b9g/filesystem
 
-FileSystem API for servers.
-
-- [Directories](./directories.md) - FileSystemDirectoryHandle API
+- [FileSystem](./filesystem.md) - FileSystemDirectoryHandle
 
 ---
 
 ## @b9g/zen
 
-SQL database abstraction with migrations.
+- [ZenDB](./zen.md) - Database and migrations
 
-- [Databases](./databases.md) - Database class, queries, migrations
+---
+
+## @b9g/assets
+
+- [Assets](./assets.md) - Static asset pipeline
 
 ---
 
 ## @b9g/http-errors
 
-HTTP error classes.
-
-- [HTTP Errors](./http-errors.md) - Error classes and handling
+- [HTTP Errors](./http-errors.md) - Error classes
 
 ---
 
 ## @b9g/async-context
 
-Request-scoped state using AsyncLocalStorage.
-
-- [AsyncContext](./async-context.md) - AsyncContext class
+- [AsyncContext](./async-context.md) - Request-scoped state
 
 ---
 
 ## @b9g/cookies
 
-CookieStore API for servers.
-
-- [Cookies](./cookies.md) - Cookie management
+- [Cookies](./cookies.md) - CookieStore
 
 ---
 
 ## @logtape/logtape
 
-Structured logging (external package, Shovel-integrated).
+- [Logging](./logging.md) - Structured logging
 
-- [Logging](./logging.md) - Logger configuration

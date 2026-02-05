@@ -18,11 +18,11 @@ Ultimately though, this signaled to me that I couldn’t wait for someone else t
 
 ## The Design Philosophy
 
-The plan for the design of Shovel was simple: create a way to run Service Workers anywhere, by implementing any related standards and specifications. For years, I’ve been fascinated by this idea. In my free time, I would look through MDN the same way other people go down Wikipedia rabbit holes, finding hidden gems like [the FileSystem API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API), [the CookieStore API](https://developer.mozilla.org/en-US/docs/Web/API/CookieStore), and [the Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache). These are real, rigorously specified abstractions which are shipped in all major browsers.
+The plan for Shovel was simple: create a way to run Service Workers anywhere, by implementing all related standards and specifications. For years, I’ve been fascinated by this idea. In my free time, I would look through MDN the same way other people go down Wikipedia rabbit holes, finding hidden gems like [the FileSystem API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API), [the CookieStore API](https://developer.mozilla.org/en-US/docs/Web/API/CookieStore), and [the Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache). These are real, rigorously specified abstractions which are shipped in all major browsers.
 
 Could these battle-tested APIs be repurposed for server runtimes? Most contemporary JavaScript server frameworks seem to be moving in this direction. For instance, almost all server frameworks written today use the fetch standard’s `Request` and `Response` classes rather than Node’s idiosyncratic `IncomingMessage` and `OutgoingMessage` ones. And there’s been a push to find a **minimal common API** across runtimes (see [WinterTC](https://wintertc.org/)). But I wanted to take things a step further. What if, rather than designing new APIs, we could just provide shims and implementations of all the applicable browser standards found on MDN?
 
-I started by asking Claude Code to implement the Service Worker’s `Cache` abstractions for Bun and Node. It did so quickly and accurately. As it turns out, this type of work is right in Claude’s wheelhouse. I discovered you could just direct Claude to a web specification, and it would write a reasonable implementation, often in a single pass.
+I started by asking Claude Code to implement the Service Worker’s `Cache` abstractions for Bun and Node. It produced a working implementation in a single shot. As it turns out, this type of work is right in Claude’s wheelhouse. I discovered you could just direct Claude to a web specification, and it would write a reasonable implementation, often in a single pass.
 
 As of today, we’ve implemented at least six different browser standards and brought them together as a feature-complete constellation of NPM packages, tied together by a CLI which covers both development and deployment workflows. Together, these tools create a cohesive user experience where you can write code that looks like browser service workers but run it on Node, Bun or Cloudflare.
 
@@ -59,7 +59,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
 ## Architectural Flourishes
 
-While the plan of shimming all of MDN for servers was straightforward, there were still gaps which needed to be filled. Browser service workers don’t implement features like routing, middleware, local filesystems, database adapters, structured logging, or the configuration of all requisite services. This would require some careful design thinking from me, the human. The approach I decided to take was to extrapolate rather than invent: if browser service workers look like this, then what would the missing server features look like? Here’s some of what we’ve come up with.
+While the plan of shimming all of MDN for servers was straightforward, there were still gaps which needed to be filled. Browser service workers don’t implement features like routing, middleware, local filesystems, database adapters, structured logging, or the configuration of all requisite services. This would require some careful design thinking from me, the human. The approach I decided to take was to extrapolate rather than invent: if browser service workers look like *this*, then what would the missing server features look like? Here’s some of what we’ve come up with.
 
 ### Router and Middleware
 
@@ -130,7 +130,7 @@ Not everything earns a spot on `self`. Each API has to be:
 - Standards-quality rigor (feels like it belongs on MDN)
 - Universal runtime support (works on Node, Bun, and Cloudflare)
 
-Some are direct web standards: the [Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache) for caching, the [FileSystem API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API) for file storage, and the [CookieStore API](https://developer.mozilla.org/en-US/docs/Web/API/CookieStore) for cookie management. Others are carefully chosen libraries that feel like they *could* be standards: [LogTape](https://logtape.org/) for structured logging, or [ZenDB](https://github.com/bikeshaving/ZenDB), a SQL library (also written by me) with IndexedDB-style migrations and Zod-based schemas.
+Some are direct web standards: the [Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache) for caching, the [FileSystem API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API) for file storage, and the [CookieStore API](https://developer.mozilla.org/en-US/docs/Web/API/CookieStore) for cookie management. Others are carefully chosen libraries that feel like they *could* be standards: [LogTape](https://logtape.org/) for structured logging, or [ZenDB](https://github.com/bikeshaving/ZenDB), a SQL library (also written by me) which brings IndexedDB-style migrations and Zod-based schemas to relational databases.
 
 Shovel provides an env-driven configuration format `shovel.json` which ties all of these services together, following the [12-factor app](https://12factor.net/) philosophy of separating config from code:
 
@@ -275,6 +275,8 @@ Three months ago, I didn't know if AI could help me build a framework, or if the
 
 Shovel was built primarily with Claude Code, and in the development process I bore witness to numerous superhuman feats by it along the way: when the router was slow, Claude added radix trees; when native `URLPattern` was slow, Claude implemented a `RegExp`-based alternative passing 100% of web platform tests; when I wanted a DSL for `shovel.json`, Claude one-shot it; when I got frustrated with DrizzleORM, we designed [ZenDB](https://github.com/bikeshaving/ZenDB) over the holidays. It was still hard work, but it’s new work, where I ideate and plan with Claude, watch it grant my wishes, and then verify the code wasn’t written in a dumb way.
 
-Therefore, I’m happy to announce that Shovel.js is ready for early adopters. There are certainly bugs, and there will be breaking changes, but I'm using it for everything now. The roadmap is ambitious: sessions, authentication, websockets, email; ultimately, I want Shovel to be maximally batteries included, with an admin interface like Django. If you know of any web standards I should be looking at, let me know.
+Therefore, I’m happy to announce that Shovel.js is ready for early adopters. There are certainly bugs, and there will be breaking changes, but I'm using it for everything now. And if you’re building with AI, I’m pleased to announce that Shovel works great with LLMs because it targets one of their greatest strengths: high-fidelity knowledge of web standards. Shovel provides the predictable, standards-based foundation that lets agents do their best work.
+
+The roadmap is ambitious: sessions, authentication, websockets, cron jobs, email; ultimately, I want Shovel to be maximally batteries included, with an admin interface like Django. If you know of any web standards I should be looking at, let me know.
 
 To get started, run `npm create shovel` and [follow the docs](/guides/getting-started). You can also watch me continue to build Shovel with Claude in the open [on GitHub](https://github.com/bikeshaving/shovel). Thanks for reading!

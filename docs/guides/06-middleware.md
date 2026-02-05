@@ -94,5 +94,5 @@ router.use(errorHandler);
 
 ## Next Steps
 
-- See [Middleware Reference](/docs/middleware) for all patterns
-- Learn about [Caches](/docs/caches) for response caching
+- See [Middleware Reference](/api/middleware) for all patterns
+- Learn about [Caches](/api/cache) for response caching

@@ -34,26 +34,27 @@ const subtitleStyles = css`
 const codeContainerStyles = css`
 	display: grid;
 	grid-template-columns: 1fr 1fr;
-	gap: 1rem;
+	gap: 1.5rem;
 	width: 100%;
-	max-width: 900px;
+	max-width: 1100px;
 
-	@media (max-width: 768px) {
+	@media (max-width: 900px) {
 		grid-template-columns: 1fr;
+		max-width: 600px;
 	}
 `;
 
 const codeBlockStyles = css`
 	background: var(--code-bg);
-	border-radius: 6px;
-	padding: 1rem 1.25rem;
+	border-radius: 8px;
+	padding: 1.25rem 1.5rem;
 	text-align: left;
 
 	pre {
 		margin: 0;
 		font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
-		font-size: 0.8rem;
-		line-height: 1.4;
+		font-size: 0.9rem;
+		line-height: 1.5;
 		white-space: pre;
 		overflow: hidden;
 	}
@@ -64,9 +65,9 @@ const codeBlockStyles = css`
 `;
 
 const codeLabelStyles = css`
-	font-size: 0.7rem;
+	font-size: 0.75rem;
 	color: var(--text-muted);
-	margin-bottom: 0.5rem;
+	margin-bottom: 0.75rem;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 `;
