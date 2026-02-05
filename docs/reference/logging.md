@@ -1,12 +1,12 @@
 # Logging
 
-Shovel provides structured logging via [LogTape](https://logtape.org/). Loggers are available globally via `loggers` in your ServiceWorker code.
+Shovel provides structured logging via [LogTape](https://logtape.org/). Loggers are available globally via `self.loggers` in your ServiceWorker code.
 
 ## Quick Start
 
 ```typescript
 // Get a logger by category
-const logger = loggers.get(["app", "api"]);
+const logger = self.loggers.get(["app", "api"]);
 
 // Log at different levels
 logger.debug("Processing request", { url: request.url });
@@ -124,14 +124,14 @@ Loggers route messages from categories to sinks:
 
 ## Logger API
 
-### loggers.get(categories)
+### self.loggers.get(categories)
 
 Gets a logger for the given category path.
 
 ```typescript
-const logger = loggers.get(["app"]);
-const dbLogger = loggers.get(["app", "database"]);
-const apiLogger = loggers.get(["app", "api", "v2"]);
+const logger = self.loggers.get(["app"]);
+const dbLogger = self.loggers.get(["app", "database"]);
+const apiLogger = self.loggers.get(["app", "api", "v2"]);
 ```
 
 ### logger.debug(message, data?)
@@ -212,7 +212,7 @@ logger.info`User ${userId} performed ${action}`;
 ### Request Logging
 
 ```typescript
-const logger = loggers.get(["app", "http"]);
+const logger = self.loggers.get(["app", "http"]);
 
 addEventListener("fetch", (event) => {
   event.respondWith(
@@ -254,7 +254,7 @@ addEventListener("fetch", (event) => {
 ### Database Query Logging
 
 ```typescript
-const logger = loggers.get(["app", "database"]);
+const logger = self.loggers.get(["app", "database"]);
 
 async function queryUsers(filter: string) {
   logger.debug("Executing query", { table: "users", filter });
@@ -275,7 +275,7 @@ async function queryUsers(filter: string) {
 ### Error Logging with Context
 
 ```typescript
-const logger = loggers.get(["app", "api"]);
+const logger = self.loggers.get(["app", "api"]);
 
 async function handleApiRequest(request: Request) {
   const requestId = crypto.randomUUID();
@@ -302,7 +302,7 @@ async function handleApiRequest(request: Request) {
 ### Conditional Debug Logging
 
 ```typescript
-const logger = loggers.get(["app", "cache"]);
+const logger = self.loggers.get(["app", "cache"]);
 
 async function getCached(key: string) {
   const cached = await cache.match(key);

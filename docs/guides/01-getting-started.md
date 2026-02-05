@@ -3,32 +3,43 @@ title: Getting Started
 description: Get up and running with Shovel in minutes.
 ---
 
-Shovel is a ServiceWorker-first universal deployment platform. Write your application once using the ServiceWorker API, then deploy it anywhere - Node.js, Bun, or Cloudflare Workers.
+Shovel is a framework for building and deploying ServiceWorker applications. Write your application once using web standards, then deploy it anywhere—Node.js, Bun, or Cloudflare Workers.
 
-## Installation
+## Create a Project
 
-```bash
-npm install @b9g/shovel
-```
-
-Or with Bun:
+The fastest way to start is with `shovel create`:
 
 ```bash
-bun add @b9g/shovel
+npm create shovel my-app
+cd my-app
+npm install
+npm run dev
 ```
 
-## Quick Start
+This scaffolds a new project with your choice of template (hello-world, api, static-site, or full-stack).
 
-Create a simple ServiceWorker application:
+## Manual Setup
+
+Or set up manually:
+
+```bash
+npm install @b9g/shovel @b9g/router
+```
+
+Create a ServiceWorker entry point:
 
 ```typescript
 // src/server.ts
+import {Router} from "@b9g/router";
+
+const router = new Router();
+
+router.route("/").get(() => {
+  return new Response("Hello from Shovel!");
+});
+
 self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    new Response("Hello from Shovel!", {
-      headers: { "content-type": "text/plain" },
-    })
-  );
+  event.respondWith(router.handle(event.request));
 });
 ```
 

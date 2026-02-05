@@ -1,12 +1,12 @@
 # Directories
 
-Shovel provides the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API) for file storage. Directories are available globally via `directories` in your ServiceWorker code.
+Shovel provides the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API) for file storage. Directories are available globally via `self.directories` in your ServiceWorker code.
 
 ## Quick Start
 
 ```typescript
 // Open a named directory
-const uploads = await directories.open("uploads");
+const uploads = await self.directories.open("uploads");
 
 // Get a file handle
 const file = await uploads.getFileHandle("photo.jpg");
@@ -91,14 +91,14 @@ Shovel provides default directories for build output:
 
 ## DirectoryStorage API
 
-The global `directories` object provides:
+The global `self.directories` object provides:
 
-### directories.open(name)
+### self.directories.open(name)
 
 Opens a named directory.
 
 ```typescript
-const uploads = await directories.open("uploads");
+const uploads = await self.directories.open("uploads");
 ```
 
 ---
@@ -291,7 +291,7 @@ addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
       const url = new URL(event.request.url);
-      const publicDir = await directories.open("public");
+      const publicDir = await self.directories.open("public");
 
       try {
         const fileHandle = await publicDir.getFileHandle(url.pathname.slice(1));
@@ -317,7 +317,7 @@ addEventListener("fetch", (event) => {
         const formData = await event.request.formData();
         const file = formData.get("file") as File;
 
-        const uploads = await directories.open("uploads");
+        const uploads = await self.directories.open("uploads");
         const handle = await uploads.getFileHandle(file.name, { create: true });
         const writable = await handle.createWritable();
         await writable.write(await file.arrayBuffer());
@@ -334,14 +334,14 @@ addEventListener("fetch", (event) => {
 
 ```typescript
 async function loadConfig() {
-  const configDir = await directories.open("server");
+  const configDir = await self.directories.open("server");
   const handle = await configDir.getFileHandle("config.json");
   const file = await handle.getFile();
   return JSON.parse(await file.text());
 }
 
 async function saveConfig(config: object) {
-  const configDir = await directories.open("server");
+  const configDir = await self.directories.open("server");
   const handle = await configDir.getFileHandle("config.json", { create: true });
   const writable = await handle.createWritable();
   await writable.write(JSON.stringify(config, null, 2));
@@ -367,7 +367,7 @@ async function* listFiles(
 }
 
 // Usage
-const uploads = await directories.open("uploads");
+const uploads = await self.directories.open("uploads");
 for await (const file of listFiles(uploads)) {
   console.log(file);
 }
@@ -475,10 +475,10 @@ Shovel generates type definitions for your configured directories. After running
 
 ```typescript
 // OK - configured directory
-const uploads = await directories.open("uploads");
+const uploads = await self.directories.open("uploads");
 
 // Type error - unconfigured directory
-const unknown = await directories.open("not-configured");
+const unknown = await self.directories.open("not-configured");
 ```
 
 ---

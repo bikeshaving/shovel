@@ -1,12 +1,12 @@
 # Caches
 
-Shovel provides the standard [Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache) for storing Request/Response pairs. Caches are available globally via `caches` in your ServiceWorker code.
+Shovel provides the standard [Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache) for storing Request/Response pairs. Caches are available globally via `self.caches` in your ServiceWorker code.
 
 ## Quick Start
 
 ```typescript
 // Open a named cache
-const cache = await caches.open("pages-v1");
+const cache = await self.caches.open("pages-v1");
 
 // Store a response
 await cache.put(request, response);
@@ -77,14 +77,14 @@ Additional fields are passed to the cache factory function.
 
 ## CacheStorage API
 
-The global `caches` object implements [CacheStorage](https://developer.mozilla.org/en-US/docs/Web/API/CacheStorage):
+The global `self.caches` object implements [CacheStorage](https://developer.mozilla.org/en-US/docs/Web/API/CacheStorage):
 
-### caches.open(name)
+### self.caches.open(name)
 
 Opens a named cache, creating it if it doesn't exist.
 
 ```typescript
-const cache = await caches.open("my-cache");
+const cache = await self.caches.open("my-cache");
 ```
 
 ### caches.match(request, options?)
@@ -136,7 +136,7 @@ Each cache implements the [Cache](https://developer.mozilla.org/en-US/docs/Web/A
 Stores a request/response pair.
 
 ```typescript
-const cache = await caches.open("pages");
+const cache = await self.caches.open("pages");
 await cache.put(request, response.clone());
 ```
 
@@ -222,7 +222,7 @@ Serve from cache, falling back to network:
 addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
-      const cache = await caches.open("pages");
+      const cache = await self.caches.open("pages");
       const cached = await cache.match(event.request);
       if (cached) {
         return cached;
@@ -243,7 +243,7 @@ Try network first, fall back to cache:
 addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
-      const cache = await caches.open("pages");
+      const cache = await self.caches.open("pages");
       try {
         const response = await fetch(event.request);
         await cache.put(event.request, response.clone());
@@ -264,7 +264,7 @@ Serve from cache immediately, update in background:
 addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
-      const cache = await caches.open("pages");
+      const cache = await self.caches.open("pages");
       const cached = await cache.match(event.request);
 
       const networkPromise = fetch(event.request).then((response) => {
@@ -355,10 +355,10 @@ Shovel generates type definitions for your configured caches. After running `sho
 
 ```typescript
 // OK - configured cache
-const pages = await caches.open("pages");
+const pages = await self.caches.open("pages");
 
 // Type error - unconfigured cache
-const unknown = await caches.open("not-configured");
+const unknown = await self.caches.open("not-configured");
 ```
 
 ---

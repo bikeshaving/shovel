@@ -1,6 +1,8 @@
 # Databases
 
-Shovel provides a SQL database API with versioned migrations, inspired by [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)'s upgrade pattern. Databases are available globally via `databases` in your ServiceWorker code.
+Shovel provides a SQL database API with versioned migrations, inspired by [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)'s upgrade pattern. Databases are available globally via `self.databases` in your ServiceWorker code.
+
+The underlying database library is [ZenDB](https://github.com/bikeshaving/zendb)—see its documentation for the full API including Zod table definitions, typed queries, and relationship handling.
 
 ## Quick Start
 
@@ -8,7 +10,7 @@ Shovel provides a SQL database API with versioned migrations, inspired by [Index
 // Open database with version and migration
 addEventListener("activate", (event) => {
   event.waitUntil(
-    databases.open("main", 1, (e) => {
+    self.databases.open("main", 1, (e) => {
       e.waitUntil(
         e.db.exec`
           CREATE TABLE IF NOT EXISTS users (
@@ -24,7 +26,7 @@ addEventListener("activate", (event) => {
 
 // Query the database
 addEventListener("fetch", async (event) => {
-  const db = databases.get("main");
+  const db = self.databases.get("main");
   const users = await db.all`SELECT * FROM users`;
   event.respondWith(Response.json(users));
 });
@@ -81,14 +83,14 @@ Additional fields are passed to the driver (e.g., `max`, `idleTimeout` for conne
 
 ## DatabaseStorage API
 
-The global `databases` object provides:
+The global `self.databases` object provides:
 
-### databases.open(name, version, onUpgrade?)
+### self.databases.open(name, version, onUpgrade?)
 
 Opens a database with versioned migrations.
 
 ```typescript
-await databases.open("main", 1, (event) => {
+await self.databases.open("main", 1, (event) => {
   // Run migrations
 });
 ```
@@ -101,12 +103,12 @@ await databases.open("main", 1, (event) => {
 | `version` | `number` | Target schema version |
 | `onUpgrade` | `function` | Migration callback |
 
-### databases.get(name)
+### self.databases.get(name)
 
 Gets a previously opened database (synchronous).
 
 ```typescript
-const db = databases.get("main");
+const db = self.databases.get("main");
 ```
 
 **Throws** if the database hasn't been opened yet.
@@ -134,7 +136,7 @@ await databases.closeAll();
 The `onUpgrade` callback runs when the database version changes:
 
 ```typescript
-databases.open("main", 3, (event) => {
+self.databases.open("main", 3, (event) => {
   event.waitUntil(
     (async () => {
       const db = event.db;
@@ -364,7 +366,7 @@ Open databases during activation to run migrations:
 ```typescript
 addEventListener("activate", (event) => {
   event.waitUntil(
-    databases.open("main", 1, (e) => {
+    self.databases.open("main", 1, (e) => {
       e.waitUntil(runMigrations(e.db, e.oldVersion));
     })
   );
@@ -379,7 +381,7 @@ async function runMigrations(db: Database, oldVersion: number) {
 
 ### Fetch Event
 
-Use `databases.get()` for synchronous access:
+Use `self.databases.get()` for synchronous access:
 
 ```typescript
 addEventListener("fetch", (event) => {
@@ -387,7 +389,7 @@ addEventListener("fetch", (event) => {
 });
 
 async function handleRequest(request: Request) {
-  const db = databases.get("main");
+  const db = self.databases.get("main");
 
   const url = new URL(request.url);
   if (url.pathname === "/api/users") {
@@ -486,10 +488,10 @@ Shovel generates type definitions for your configured databases. After running `
 
 ```typescript
 // OK - configured database
-const db = databases.get("main");
+const db = self.databases.get("main");
 
 // Type error - unconfigured database
-const unknown = databases.get("not-configured");
+const unknown = self.databases.get("not-configured");
 ```
 
 ---

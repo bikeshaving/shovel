@@ -128,6 +128,22 @@ program
 	});
 
 /**
+ * Create command - scaffold a new project
+ */
+program
+	.command("create [name]")
+	.description("Create a new Shovel project")
+	.action(async (name) => {
+		// Re-invoke with the name argument if provided
+		if (name) {
+			process.argv = [process.argv[0], process.argv[1], name];
+		} else {
+			process.argv = [process.argv[0], process.argv[1]];
+		}
+		await import("./create.ts");
+	});
+
+/**
  * Build command - supports targeting different platforms
  */
 program

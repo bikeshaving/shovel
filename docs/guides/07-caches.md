@@ -8,7 +8,7 @@ Shovel provides the standard Cache API for storing request/response pairs.
 ## Basic Usage
 
 ```typescript
-const cache = await caches.open("pages");
+const cache = await self.caches.open("pages");
 
 // Store a response
 await cache.put(request, response.clone());
@@ -23,7 +23,7 @@ Serve from cache, fall back to network:
 
 ```typescript
 const cacheMiddleware = async function* (request) {
-  const cache = await caches.open("pages");
+  const cache = await self.caches.open("pages");
 
   const cached = await cache.match(request);
   if (cached) {
