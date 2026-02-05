@@ -161,11 +161,11 @@ describe("Generator Middleware Execution", () => {
 		const executionOrder: string[] = [];
 
 		async function* testMiddleware(
-			_request: Request,
+			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
 			executionOrder.push("middleware-before");
-			const response = yield; // Implicit yield request
+			const response = yield request;
 			executionOrder.push("middleware-after");
 			return response;
 		}
