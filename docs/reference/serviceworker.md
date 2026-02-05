@@ -1,6 +1,6 @@
 # ServiceWorker
 
-Shovel applications use the ServiceWorker API for handling requests. Your code runs in a ServiceWorker-like environment with the same lifecycle events and global APIs.
+Shovel applications use the [ServiceWorker API](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) for handling requests. Your code runs in a ServiceWorker-like environment with the same lifecycle events and global APIs.
 
 ## Quick Start
 
@@ -128,7 +128,7 @@ The worker is ready to handle external requests. `fetch` events fire for incomin
 
 ## Fetch Event
 
-The `fetch` event fires for every incoming request:
+The [`fetch`](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerGlobalScope/fetch_event) event fires for every incoming request:
 
 ```typescript
 self.addEventListener("fetch", (event) => {
@@ -148,9 +148,11 @@ async function handleRequest(request: Request): Promise<Response> {
 
 ### FetchEvent Properties
 
+The [`FetchEvent`](https://developer.mozilla.org/en-US/docs/Web/API/FetchEvent) interface:
+
 | Property | Type | Description |
 |----------|------|-------------|
-| `request` | `Request` | The incoming request |
+| `request` | [`Request`](https://developer.mozilla.org/en-US/docs/Web/API/Request) | The incoming request |
 | `clientId` | `string` | Unique client identifier |
 
 ### FetchEvent Methods
@@ -293,7 +295,7 @@ self.addEventListener("activate", (event) => {
 
 ## ExtendableEvent
 
-All lifecycle events extend `ExtendableEvent`:
+All lifecycle events extend [`ExtendableEvent`](https://developer.mozilla.org/en-US/docs/Web/API/ExtendableEvent):
 
 ```typescript
 interface ExtendableEvent extends Event {
@@ -336,13 +338,13 @@ These globals are available in your ServiceWorker code:
 | Global | Type | Description |
 |--------|------|-------------|
 | `self` | `ServiceWorkerGlobalScope` | The global scope |
-| `caches` | `CacheStorage` | Cache API |
+| `caches` | [`CacheStorage`](https://developer.mozilla.org/en-US/docs/Web/API/CacheStorage) | Cache API |
 | `databases` | `DatabaseStorage` | SQL databases |
 | `directories` | `DirectoryStorage` | File system |
 | `loggers` | `LoggerStorage` | Structured logging |
-| `cookieStore` | `CookieStore` | Cookie access |
-| `crypto` | `Crypto` | Web Crypto API |
-| `fetch` | `function` | Fetch API |
+| `cookieStore` | [`CookieStore`](https://developer.mozilla.org/en-US/docs/Web/API/CookieStore) | Cookie access |
+| `crypto` | [`Crypto`](https://developer.mozilla.org/en-US/docs/Web/API/Crypto) | Web Crypto API |
+| `fetch` | `function` | [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) |
 
 ### Request-Scoped Globals
 

@@ -1,6 +1,6 @@
 # Routing
 
-Shovel includes a fast, universal router built on web standards. It works across all JavaScript runtimes using the standard Request/Response APIs.
+Shovel includes a fast, universal router built on web standards. It works across all JavaScript runtimes using the standard [Request](https://developer.mozilla.org/en-US/docs/Web/API/Request)/[Response](https://developer.mozilla.org/en-US/docs/Web/API/Response) APIs.
 
 ## Quick Start
 

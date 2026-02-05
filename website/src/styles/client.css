@@ -33,6 +33,11 @@ h1, h2, h3, h4, h5, h6 {
 	margin-bottom: 0.5em;
 }
 
+main > :first-child,
+#sidebar > :first-child {
+	margin-top: 0;
+}
+
 h1 {
 	font-size: 2.5rem;
 }
@@ -49,11 +54,21 @@ p {
 	margin: 1em 0;
 }
 
-pre {
+pre,
+pre[class*="language-"],
+code[class*="language-"] {
 	background: var(--code-bg);
+}
+
+pre {
 	padding: 1rem;
 	border-radius: 4px;
 	overflow-x: auto;
+}
+
+pre code .token,
+.token {
+	background: transparent !important;
 }
 
 code {

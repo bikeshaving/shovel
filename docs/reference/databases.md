@@ -1,6 +1,6 @@
 # Databases
 
-Shovel provides a SQL database API with versioned migrations. Databases are available globally via `databases` in your ServiceWorker code.
+Shovel provides a SQL database API with versioned migrations, inspired by [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)'s upgrade pattern. Databases are available globally via `databases` in your ServiceWorker code.
 
 ## Quick Start
 

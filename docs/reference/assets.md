@@ -32,7 +32,7 @@ self.addEventListener("fetch", (event) => {
 
 ## Importing Assets
 
-Use import attributes to include assets in your build:
+Use [import attributes](https://github.com/tc39/proposal-import-attributes) to include assets in your build:
 
 ```typescript
 // Images
