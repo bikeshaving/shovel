@@ -1,4 +1,5 @@
 {
+  "name": "shovel-website",
   "private": true,
   "type": "module",
   "scripts": {
