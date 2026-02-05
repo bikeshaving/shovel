@@ -137,14 +137,14 @@ export default function Home({url}: ViewProps) {
 
 	return jsx`
 		<${Root}
-			title="Shovel.js - Run Service Workers Anywhere"
+			title="Shovel.js - The Portable Meta-Framework"
 			url=${url}
-			description="Run Service Workers anywhere — Node, Bun, Cloudflare Workers."
+			description="The portable meta-framework built on web standards. Run Service Workers anywhere — Node, Bun, Cloudflare Workers."
 		>
 			<div class=${heroStyles}>
-				<h1 class=${titleStyles}>Shovel.js</h1>
+				<h1 class=${titleStyles}>🪏 Shovel.js</h1>
 				<p class=${subtitleStyles}>
-					Run Service Workers anywhere
+					The portable meta-framework built on web standards
 				</p>
 				<div class=${codeContainerStyles}>
 					<div class=${codeBlockStyles}>
