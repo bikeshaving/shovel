@@ -2,33 +2,28 @@ import {jsx} from "@b9g/crank/standalone";
 import {css} from "@emotion/css";
 import type {DocInfo} from "../models/document.js";
 
-// Define the category structure for Shovel docs
-const DOC_CATEGORIES: Array<{
-	name: string;
-	slug: string;
-	items: string[]; // slugs of docs in this category
-}> = [
-	{
-		name: "Core",
-		slug: "core",
-		items: ["cli", "shovel-json", "serviceworker"],
-	},
-	{
-		name: "@b9g/router",
-		slug: "router",
-		items: ["router", "middleware"],
-	},
-	{
-		name: "Storage",
-		slug: "storage",
-		items: ["cache", "filesystem", "zen", "cookies"],
-	},
-	{
-		name: "Utilities",
-		slug: "utilities",
-		items: ["http-errors", "assets", "logging", "async-context"],
-	},
+// Category order - categories not listed here appear at the end alphabetically
+const CATEGORY_ORDER = [
+	"shovel",
+	"@b9g/router",
 ];
+
+// Map slugs to categories (for docs where title doesn't indicate category)
+const SLUG_TO_CATEGORY: Record<string, string> = {
+	cli: "shovel",
+	"shovel-json": "shovel",
+	serviceworker: "shovel",
+	router: "@b9g/router",
+	middleware: "@b9g/router",
+	cache: "@b9g/cache",
+	logging: "@logtape/logtape",
+};
+
+function getCategoryFromTitle(title: string): string | null {
+	// Match package names like @b9g/router or @logtape/logtape
+	const match = title.match(/^@[\w-]+\/[\w-]+/);
+	return match ? match[0] : null;
+}
 
 interface DocCategory {
 	name: string;
@@ -41,28 +36,49 @@ interface DocCategory {
 }
 
 export function buildDocCategories(docs: DocInfo[]): DocCategory[] {
-	const docMap = new Map<string, DocInfo>();
+	const categories = new Map<string, DocCategory>();
+
 	for (const doc of docs) {
-		// Extract slug from URL (e.g., "/caches" -> "caches")
 		const slug = doc.url.replace(/^\//, "").replace(/\/$/, "");
-		docMap.set(slug, doc);
+		const title = doc.attributes.title;
+
+		// Determine category: explicit mapping > title parsing
+		let categoryName = SLUG_TO_CATEGORY[slug] || getCategoryFromTitle(title);
+		if (!categoryName) {
+			categoryName = "Other";
+		}
+
+		if (!categories.has(categoryName)) {
+			categories.set(categoryName, {
+				name: categoryName,
+				slug: categoryName.replace(/[@/]/g, ""),
+				items: [],
+			});
+		}
+
+		categories.get(categoryName)!.items.push({
+			title,
+			url: `/api${doc.url}`,
+			slug,
+		});
 	}
 
-	return DOC_CATEGORIES.map((category) => ({
-		name: category.name,
-		slug: category.slug,
-		items: category.items
-			.map((slug) => {
-				const doc = docMap.get(slug);
-				if (!doc) return null;
-				return {
-					title: doc.attributes.title,
-					url: `/api${doc.url}`,
-					slug,
-				};
-			})
-			.filter((item): item is NonNullable<typeof item> => item !== null),
-	})).filter((category) => category.items.length > 0);
+	// Sort items within each category alphabetically
+	for (const category of categories.values()) {
+		category.items.sort((a, b) => a.title.localeCompare(b.title));
+	}
+
+	// Sort categories: ordered ones first, then alphabetically
+	const result = Array.from(categories.values()).sort((a, b) => {
+		const aIndex = CATEGORY_ORDER.indexOf(a.name);
+		const bIndex = CATEGORY_ORDER.indexOf(b.name);
+		if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+		if (aIndex !== -1) return -1;
+		if (bIndex !== -1) return 1;
+		return a.name.localeCompare(b.name);
+	});
+
+	return result;
 }
 
 const sidebarStyle = css`
