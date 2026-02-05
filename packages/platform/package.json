@@ -87,5 +87,10 @@
       "types": "./dist/src/module.d.ts",
       "import": "./dist/src/module.js"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bikeshaving/shovel.git",
+    "directory": "packages/platform"
   }
 }

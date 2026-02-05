@@ -25,5 +25,10 @@
       "import": "./dist/src/index.js"
     },
     "./package.json": "./dist/package.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bikeshaving/shovel.git",
+    "directory": "packages/match-pattern"
   }
 }

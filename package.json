@@ -3,6 +3,10 @@
   "version": "0.2.3",
   "description": "ServiceWorker-first universal deployment platform. Write ServiceWorker apps once, deploy anywhere (Node/Bun/Cloudflare). Registry-based multi-app orchestration.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bikeshaving/shovel.git"
+  },
   "type": "module",
   "bin": {
     "shovel": "./dist/bin/cli.js",

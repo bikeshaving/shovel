@@ -64,5 +64,10 @@
       "import": "./dist/src/node-fs.js"
     },
     "./package.json": "./dist/package.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bikeshaving/shovel.git",
+    "directory": "packages/filesystem"
   }
 }

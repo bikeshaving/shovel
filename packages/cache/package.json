@@ -52,5 +52,10 @@
       "types": "./dist/src/postmessage.d.ts",
       "import": "./dist/src/postmessage.js"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bikeshaving/shovel.git",
+    "directory": "packages/cache"
   }
 }
