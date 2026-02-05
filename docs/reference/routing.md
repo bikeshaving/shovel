@@ -1,23 +1,69 @@
 # Routing
 
-Shovel includes a fast, universal router built on web standards. It works across all JavaScript runtimes using the standard [Request](https://developer.mozilla.org/en-US/docs/Web/API/Request) / [Response](https://developer.mozilla.org/en-US/docs/Web/API/Response) APIs.
+A fast, universal router built on web standards. Part of the [@b9g/router](https://npmjs.com/package/@b9g/router) package. Works across all JavaScript runtimes using the standard [Request](https://developer.mozilla.org/en-US/docs/Web/API/Request) / [Response](https://developer.mozilla.org/en-US/docs/Web/API/Response) APIs.
 
-## Quick Start
+For a tutorial introduction, see the [Routing Guide](../guides/03-routing.md).
+
+---
+
+## Router Class
 
 ```typescript
 import { Router } from "@b9g/router";
 
 const router = new Router();
+```
 
-router.route("/").get(() => new Response("Hello World"));
+### router.route(pattern, options?)
 
-router.route("/users/:id").get((request, context) => {
-  return Response.json({ id: context.params.id });
-});
+Define a route with the given pattern:
 
-self.addEventListener("fetch", (event) => {
-  event.respondWith(router.handle(event.request));
-});
+```typescript
+router.route("/users/:id").get(handler);
+router.route("/posts/:id", { name: "post" }).get(handler);
+```
+
+### router.use(middleware) / router.use(path, middleware)
+
+Register middleware globally or for a path prefix:
+
+```typescript
+router.use(loggingMiddleware);
+router.use("/api", authMiddleware);
+```
+
+### router.mount(prefix, subrouter)
+
+Mount a subrouter at a path prefix:
+
+```typescript
+router.mount("/api/v1", apiRouter);
+```
+
+### router.handle(request)
+
+Handle a request and return a response:
+
+```typescript
+const response = await router.handle(request);
+```
+
+### router.match(url)
+
+Test if a URL matches any route:
+
+```typescript
+const match = router.match("/users/123");
+// { params: { id: "123" }, methods: ["GET"], pattern: "/users/:id" }
+```
+
+### router.url(name, params)
+
+Generate a URL from a named route:
+
+```typescript
+router.url("post", { id: "123" });
+// "/posts/123"
 ```
 
 ---
@@ -265,27 +311,6 @@ router.use(async function* (request) {
     return new Response("Not Found", { status: 404 });
   }
   return response;
-});
-```
-
----
-
-## ServiceWorker Integration
-
-Connect the router to the fetch event:
-
-```typescript
-import { Router } from "@b9g/router";
-
-const router = new Router();
-
-// Define routes
-router.route("/").get(() => new Response("Home"));
-router.route("/api/health").get(() => Response.json({ ok: true }));
-
-// Handle fetch events
-self.addEventListener("fetch", (event) => {
-  event.respondWith(router.handle(event.request));
 });
 ```
 
