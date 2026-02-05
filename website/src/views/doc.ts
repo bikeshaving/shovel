@@ -20,12 +20,16 @@ export default async function Doc({url}: ViewProps) {
 		Path.join(__dirname, "../../../docs/reference"),
 	);
 
-	// Filter out index.md
+	// For sidebar, filter out index.md
 	const filteredDocs = docs.filter((doc) => doc.url !== "/index");
 
-	const post = filteredDocs.find(
-		(doc) => `/api${doc.url}`.replace(/\/$/, "") === url.replace(/\/$/, ""),
-	);
+	// Find the doc - /api shows index, /api/:slug shows that doc
+	const isIndex = url.replace(/\/$/, "") === "/api";
+	const post = isIndex
+		? docs.find((doc) => doc.url === "/index")
+		: filteredDocs.find(
+				(doc) => `/api${doc.url}`.replace(/\/$/, "") === url.replace(/\/$/, ""),
+			);
 	if (!post) {
 		throw new Error("Doc not found");
 	}
