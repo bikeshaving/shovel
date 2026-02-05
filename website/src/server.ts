@@ -63,6 +63,11 @@ router.route("/guides/:slug").get(async (request, context) => {
 	return renderView(GuideView, url.pathname, context.params);
 });
 
+router.route("/api").get(async (request) => {
+	const url = new URL(request.url);
+	return renderView(DocView, url.pathname);
+});
+
 router.route("/api/:slug").get(async (request, context) => {
 	const url = new URL(request.url);
 	return renderView(DocView, url.pathname, context.params);
@@ -100,7 +105,7 @@ async function generateStaticSite() {
 		const staticBucket = await self.directories.open("public");
 
 		// Static routes
-		const staticRoutes = ["/", "/blog"];
+		const staticRoutes = ["/", "/api", "/blog"];
 
 		// Collect guides
 		const guideDocs = await collectDocuments(
