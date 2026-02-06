@@ -162,7 +162,7 @@ Use `"*"` for a catch-all default:
 | Module | Description |
 |--------|-------------|
 | `@b9g/cache/memory` | In-memory storage (lost on restart) |
-| `@b9g/cache/redis` | Redis-backed persistent cache |
+| `@b9g/cache-redis` | Redis-backed persistent cache |
 
 ---
 

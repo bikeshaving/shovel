@@ -65,7 +65,7 @@ Use Redis for persistent caching:
 {
   "caches": {
     "sessions": {
-      "module": "@b9g/cache/redis",
+      "module": "@b9g/cache-redis",
       "url": "$REDIS_URL"
     }
   }
