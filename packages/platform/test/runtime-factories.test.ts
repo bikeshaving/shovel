@@ -108,7 +108,7 @@ describe("createCacheFactory", () => {
 
 		const factory = createCacheFactory({
 			configs: {
-				"special": {impl: TrackingCache as any, maxEntries: 50},
+				special: {impl: TrackingCache as any, maxEntries: 50},
 				"*": {impl: MemoryCache as any},
 			},
 		});
@@ -137,9 +137,7 @@ describe("createCacheFactory", () => {
 		expect(apiProducts).toBeDefined();
 
 		// Should NOT match non-api names
-		await expect(factory("kv")).rejects.toThrow(
-			'Cache "kv" is not configured',
-		);
+		await expect(factory("kv")).rejects.toThrow('Cache "kv" is not configured');
 	});
 
 	test("suffix wildcard pattern like '*-cache' matches selectively", async () => {
