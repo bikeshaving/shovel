@@ -6,9 +6,9 @@ author: Brian Kim
 authorURL: https://github.com/brainkim
 ---
 
-Today, I’m happy to announce my first major AI-built open source project, which took approximately three months of development. No, it’s not an AI village tool where bots waste tokens. Rather, **Shovel.js** is a three-month meditation on the question: “what if your server was just a service worker?” The result is a command-line interface and set of libraries for developing and deploying Service Workers as web applications. Shovel is both a full-stack server framework replacing tools like Express, Fastify or Hono, and a meta-framework / compiler replacing tools like Vite or Next.js.
+Today, I’m happy to announce my first major AI-assisted open source project, which took approximately three months of development. No, it’s not an AI village tool where bots waste tokens. Rather, **Shovel.js** is a three-month meditation on the question: “what if your server was just a service worker?” The result is a command-line interface and set of libraries for developing and deploying Service Workers as web applications. Shovel is both a full-stack server framework replacing tools like Express, Fastify or Hono, and a meta-framework / compiler replacing tools like Vite or Next.js.
 
-The following is a contemporary description of what building a greenfield open source project with AI is like, as well as a quick tour of some of its most delightful and elegant features.
+The following is a contemporary description of what building a greenfield open source project with AI is like, as well as a quick tour of some of its most elegant features.
 
 ## The Start of the Journey
 
