@@ -271,3 +271,5 @@ export class MemoryCache extends Cache {
 		}
 	}
 }
+
+export default MemoryCache;

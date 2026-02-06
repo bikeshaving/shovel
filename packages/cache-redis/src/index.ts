@@ -379,3 +379,5 @@ export class RedisCache extends Cache {
 		}
 	}
 }
+
+export default RedisCache;
