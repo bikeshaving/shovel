@@ -310,15 +310,15 @@ export class NodePlatform {
 			try {
 				// Convert Node.js request to Web API Request
 				const url = `http://${req.headers.host}${req.url}`;
+				const hasBody = req.method !== "GET" && req.method !== "HEAD";
 				const request = new Request(url, {
 					method: req.method,
 					headers: req.headers as HeadersInit,
 					// Node.js IncomingMessage can be used as body (it's a readable stream)
-					body:
-						req.method !== "GET" && req.method !== "HEAD"
-							? (req as any)
-							: undefined,
-				});
+					body: hasBody ? (req as any) : undefined,
+					// Required by Node.js when Request has a streaming body
+					duplex: hasBody ? "half" : undefined,
+				} as RequestInit);
 
 				// Handle request via provided handler
 				const response = await handler(request);
