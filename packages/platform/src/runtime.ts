@@ -2359,6 +2359,9 @@ export interface WorkerErrorMessage {
 export interface InitWorkerRuntimeOptions {
 	/** Shovel configuration (from shovel:config) */
 	config: ShovelConfig;
+	/** Whether to use PostMessageCache for cache operations (default: true).
+	 * Set to false when the worker handles requests directly (no message loop). */
+	usePostMessage?: boolean;
 }
 
 /**
@@ -2403,7 +2406,7 @@ export interface InitWorkerRuntimeResult {
 export async function initWorkerRuntime(
 	options: InitWorkerRuntimeOptions,
 ): Promise<InitWorkerRuntimeResult> {
-	const {config} = options;
+	const {config, usePostMessage = true} = options;
 	const runtimeLogger = getLogger(["shovel", "platform"]);
 
 	// Configure logging if specified
@@ -2413,11 +2416,11 @@ export async function initWorkerRuntime(
 
 	runtimeLogger.debug("Initializing worker runtime");
 
-	// Create cache storage with PostMessage support for worker coordination
+	// Create cache storage (PostMessage for message-loop workers, direct for server-in-worker)
 	const caches = new CustomCacheStorage(
 		createCacheFactory({
 			configs: config?.caches ?? {},
-			usePostMessage: true,
+			usePostMessage,
 		}),
 	);
 
