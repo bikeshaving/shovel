@@ -363,9 +363,7 @@ self.addEventListener("fetch", (event) => {
 
 describe("code generation: Node.js platform", () => {
 	test("prod worker template has direct mode branching", async () => {
-		const {getEntryPoints} = await import(
-			"@b9g/platform-node/platform"
-		);
+		const {getEntryPoints} = await import("@b9g/platform-node/platform");
 		const {worker} = getEntryPoints("/fake/entry.js", "production");
 
 		// Should have direct mode variable and branching
@@ -382,9 +380,7 @@ describe("code generation: Node.js platform", () => {
 	});
 
 	test("prod supervisor template conditionally calls listen()", async () => {
-		const {getEntryPoints} = await import(
-			"@b9g/platform-node/platform"
-		);
+		const {getEntryPoints} = await import("@b9g/platform-node/platform");
 		const {supervisor} = getEntryPoints("/fake/entry.js", "production");
 
 		// Should have conditional listen
@@ -393,9 +389,7 @@ describe("code generation: Node.js platform", () => {
 	});
 
 	test("dev worker template uses message loop only", async () => {
-		const {getEntryPoints} = await import(
-			"@b9g/platform-node/platform"
-		);
+		const {getEntryPoints} = await import("@b9g/platform-node/platform");
 		const {worker} = getEntryPoints("/fake/entry.js", "development");
 
 		// Should use message loop
@@ -410,9 +404,7 @@ describe("code generation: Node.js platform", () => {
 
 describe("code generation: Bun platform", () => {
 	test("prod worker template has usePostMessage: false", async () => {
-		const {getEntryPoints} = await import(
-			"@b9g/platform-bun/platform"
-		);
+		const {getEntryPoints} = await import("@b9g/platform-bun/platform");
 		const {worker} = getEntryPoints("/fake/entry.js", "production");
 
 		expect(worker).toContain("usePostMessage: false");
