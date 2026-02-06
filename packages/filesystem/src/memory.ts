@@ -403,3 +403,5 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 		return "granted";
 	}
 }
+
+export default MemoryDirectory;

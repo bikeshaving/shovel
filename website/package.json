@@ -11,6 +11,7 @@
   "dependencies": {
     "@b9g/assets": "workspace:*",
     "@b9g/crank": "^0.7.3",
+    "@b9g/http-errors": "workspace:*",
     "@b9g/platform": "workspace:*",
     "@b9g/platform-bun": "workspace:*",
     "@b9g/router": "workspace:*",

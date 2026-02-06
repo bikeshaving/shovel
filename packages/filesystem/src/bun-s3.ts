@@ -396,3 +396,5 @@ export class S3Directory implements FileSystemDirectoryHandle {
 		return "granted";
 	}
 }
+
+export default S3Directory;

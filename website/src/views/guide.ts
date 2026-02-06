@@ -1,5 +1,6 @@
 import {jsx} from "@b9g/crank/standalone";
 import * as Path from "path";
+import {NotFound} from "@b9g/http-errors";
 
 import {Root} from "../components/root.js";
 import {Main, Sidebar} from "../components/sidebar.js";
@@ -23,7 +24,7 @@ export default async function Guide({url}: ViewProps) {
 		(doc) => doc.url.replace(/\/$/, "") === url.replace(/\/$/, ""),
 	);
 	if (!post) {
-		throw new Error("Guide not found");
+		throw new NotFound("Guide not found");
 	}
 
 	const {

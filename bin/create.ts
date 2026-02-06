@@ -12,6 +12,7 @@ interface ProjectConfig {
 	platform: "node" | "bun" | "cloudflare";
 	template: "hello-world" | "api" | "static-site" | "full-stack";
 	typescript: boolean;
+	uiFramework: "vanilla" | "htmx" | "alpine" | "crank";
 }
 
 /**
@@ -96,12 +97,12 @@ async function main() {
 			{
 				value: "static-site" as const,
 				label: "Static Site",
-				hint: "Serve files from public/ directory",
+				hint: "Server-rendered HTML pages",
 			},
 			{
 				value: "full-stack" as const,
 				label: "Full Stack",
-				hint: "HTML pages + API routes + static assets",
+				hint: "HTML pages + API routes",
 			},
 		],
 	});
@@ -111,7 +112,45 @@ async function main() {
 		process.exit(0);
 	}
 
-	// 2. TypeScript option (default to yes)
+	// 2. UI framework (only for HTML-serving templates)
+	let uiFramework: ProjectConfig["uiFramework"] = "vanilla";
+	if (template === "static-site" || template === "full-stack") {
+		const framework = await select({
+			message: "UI framework:",
+			initialValue: "crank" as ProjectConfig["uiFramework"],
+			options: [
+				{
+					value: "alpine" as const,
+					label: "Alpine.js",
+					hint: "Lightweight reactivity with x-data directives",
+				},
+				{
+					value: "crank" as const,
+					label: "Crank.js",
+					hint: "JSX components rendered on the server",
+				},
+				{
+					value: "htmx" as const,
+					label: "HTMX",
+					hint: "HTML-driven interactions with hx- attributes",
+				},
+				{
+					value: "vanilla" as const,
+					label: "Vanilla",
+					hint: "Plain HTML, no framework",
+				},
+			],
+		});
+
+		if (typeof framework === "symbol") {
+			outro("Project creation cancelled");
+			process.exit(0);
+		}
+
+		uiFramework = framework;
+	}
+
+	// 3. TypeScript (default to yes)
 	const typescript = await confirm({
 		message: "Use TypeScript?",
 		initialValue: true,
@@ -122,7 +161,7 @@ async function main() {
 		process.exit(0);
 	}
 
-	// 3. Platform selection (last, with auto-detected default)
+	// 4. Platform (last, with auto-detected default)
 	const detectedPlatform = detectPlatform();
 	const platform = await select({
 		message: "Which platform?",
@@ -156,6 +195,7 @@ async function main() {
 		platform,
 		template,
 		typescript,
+		uiFramework,
 	};
 
 	// Create project
@@ -173,7 +213,7 @@ async function main() {
 		console.info("Next steps:");
 		console.info(`  cd ${projectName}`);
 		console.info(`  npm install`);
-		console.info(`  npm run dev`);
+		console.info(`  npm run develop`);
 		console.info("");
 		console.info("Your app will be available at: http://localhost:7777");
 		console.info("");
@@ -189,29 +229,37 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 	await mkdir(projectPath, {recursive: true});
 	await mkdir(join(projectPath, "src"), {recursive: true});
 
-	// Create public directory for static-site and full-stack templates
-	if (config.template === "static-site" || config.template === "full-stack") {
-		await mkdir(join(projectPath, "public"), {recursive: true});
-	}
-
 	// Create package.json
-	const ext = config.typescript ? "ts" : "js";
+	const ext =
+		config.uiFramework === "crank"
+			? config.typescript
+				? "tsx"
+				: "jsx"
+			: config.typescript
+				? "ts"
+				: "js";
+	const startCmd =
+		config.platform === "bun"
+			? "bun dist/server/supervisor.js"
+			: "node dist/server/supervisor.js";
+	const dependencies: Record<string, string> = {
+		"@b9g/router": "^0.2.0",
+		"@b9g/shovel": "^0.2.0",
+	};
+	if (config.uiFramework === "crank") {
+		dependencies["@b9g/crank"] = "^0.7.2";
+	}
 	const packageJson = {
 		name: config.name,
 		private: true,
 		version: "0.0.1",
 		type: "module",
 		scripts: {
-			dev: `shovel develop src/app.${ext} --platform ${config.platform}`,
+			develop: `shovel develop src/app.${ext} --platform ${config.platform}`,
 			build: `shovel build src/app.${ext} --platform ${config.platform}`,
-			start: "node dist/server/supervisor.js",
+			start: startCmd,
 		},
-		dependencies: {
-			"@b9g/router": "^0.2.0",
-			"@b9g/shovel": "^0.2.0",
-			"@b9g/filesystem": "^0.1.8",
-			"@b9g/cache": "^0.2.0",
-		},
+		dependencies,
 		devDependencies: config.typescript
 			? {
 					"@types/node": "^18.0.0",
@@ -229,20 +277,25 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 	const appFile = generateAppFile(config);
 	await writeFile(join(projectPath, `src/app.${ext}`), appFile);
 
-	// Create TypeScript config if needed
+	// Create TypeScript config and declarations if needed
 	if (config.typescript) {
+		const compilerOptions: Record<string, unknown> = {
+			target: "ES2022",
+			module: "ESNext",
+			moduleResolution: "bundler",
+			allowSyntheticDefaultImports: true,
+			esModuleInterop: true,
+			strict: true,
+			skipLibCheck: true,
+			forceConsistentCasingInFileNames: true,
+			lib: ["ES2022", "WebWorker"],
+		};
+		if (config.uiFramework === "crank") {
+			compilerOptions.jsx = "react-jsx";
+			compilerOptions.jsxImportSource = "@b9g/crank";
+		}
 		const tsConfig = {
-			compilerOptions: {
-				target: "ES2022",
-				module: "ESNext",
-				moduleResolution: "bundler",
-				allowSyntheticDefaultImports: true,
-				esModuleInterop: true,
-				strict: true,
-				skipLibCheck: true,
-				forceConsistentCasingInFileNames: true,
-				lib: ["ES2022", "WebWorker"],
-			},
+			compilerOptions,
 			include: ["src/**/*"],
 			exclude: ["node_modules", "dist"],
 		};
@@ -251,11 +304,21 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 			join(projectPath, "tsconfig.json"),
 			JSON.stringify(tsConfig, null, 2),
 		);
-	}
 
-	// Create static files for templates that need them
-	if (config.template === "static-site" || config.template === "full-stack") {
-		await createStaticFiles(config, projectPath);
+		// Type declarations for Shovel's ServiceWorker environment
+		const envDts = `/// <reference lib="WebWorker" />
+
+// Shovel runs your code in a ServiceWorker-like environment.
+// This augments the Worker types with ServiceWorker events
+// so self.addEventListener("fetch", ...) etc. are properly typed.
+interface WorkerGlobalScopeEventMap {
+  fetch: FetchEvent;
+  install: ExtendableEvent;
+  activate: ExtendableEvent;
+}
+`;
+
+		await writeFile(join(projectPath, "src/env.d.ts"), envDts);
 	}
 
 	// Create README
@@ -271,66 +334,6 @@ dist/
 .DS_Store
 `;
 	await writeFile(join(projectPath, ".gitignore"), gitignore);
-}
-
-async function createStaticFiles(config: ProjectConfig, projectPath: string) {
-	// Create index.html
-	const indexHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${config.name}</title>
-  <link rel="stylesheet" href="/styles.css">
-</head>
-<body>
-  <main>
-    <h1>Welcome to ${config.name}</h1>
-    <p>Edit <code>public/index.html</code> to get started.</p>
-    ${config.template === "full-stack" ? '<p>API endpoint: <a href="/api/hello">/api/hello</a></p>' : ""}
-  </main>
-</body>
-</html>
-`;
-	await writeFile(join(projectPath, "public/index.html"), indexHtml);
-
-	// Create styles.css
-	const stylesCss = `* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  font-family: system-ui, -apple-system, sans-serif;
-  line-height: 1.6;
-  color: #333;
-  background: #fafafa;
-}
-
-main {
-  max-width: 640px;
-  margin: 4rem auto;
-  padding: 2rem;
-}
-
-h1 {
-  color: #2563eb;
-  margin-bottom: 1rem;
-}
-
-code {
-  background: #e5e7eb;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-
-a {
-  color: #2563eb;
-}
-`;
-	await writeFile(join(projectPath, "public/styles.css"), stylesCss);
 }
 
 function generateAppFile(config: ProjectConfig): string {
@@ -421,60 +424,294 @@ self.addEventListener("fetch", (event) => {
 `;
 }
 
+// Common CSS used across templates
+const css = `    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; color: #333; background: #fafafa; }
+    main { max-width: 640px; margin: 4rem auto; padding: 2rem; }
+    h1 { color: #2563eb; margin-bottom: 1rem; }
+    code { background: #e5e7eb; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+    a { color: #2563eb; }
+    ul { margin-top: 1rem; padding-left: 1.5rem; }
+    li { margin-bottom: 0.5rem; }
+    button { background: #2563eb; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+    button:hover { background: #1d4ed8; }
+    #result { margin-top: 1rem; padding: 1rem; background: #f3f4f6; border-radius: 4px; }`;
+
+// --- Static Site generators ---
+
 function generateStaticSite(config: ProjectConfig): string {
+	switch (config.uiFramework) {
+		case "vanilla":
+			return generateStaticSiteVanilla(config);
+		case "htmx":
+			return generateStaticSiteHtmx(config);
+		case "alpine":
+			return generateStaticSiteAlpine(config);
+		case "crank":
+			return generateStaticSiteCrank(config);
+	}
+}
+
+function generateStaticSiteVanilla(config: ProjectConfig): string {
+	const ext = config.typescript ? "ts" : "js";
+	const t = config.typescript;
 	return `// ${config.name} - Static Site
-// Serves files from the public/ directory
+// Renders HTML pages server-side
 
 self.addEventListener("fetch", (event) => {
   event.respondWith(handleRequest(event.request));
 });
 
-async function handleRequest(request${config.typescript ? ": Request" : ""})${config.typescript ? ": Promise<Response>" : ""} {
+async function handleRequest(request${t ? ": Request" : ""})${t ? ": Promise<Response>" : ""} {
   const url = new URL(request.url);
-  let path = url.pathname;
 
-  // Default to index.html for root
-  if (path === "/") {
-    path = "/index.html";
-  }
-
-  // Try to serve from public directory
-  try {
-    const publicDir = await directories.open("public");
-    const file = await publicDir.getFileHandle(path.slice(1)); // Remove leading /
-    const blob = await file.getFile();
-
-    return new Response(blob, {
-      headers: {
-        "Content-Type": getContentType(path),
-      },
+  if (url.pathname === "/") {
+    return new Response(renderPage("Home", \`
+      <h1>Welcome to ${config.name}</h1>
+      <p>Edit <code>src/app.${ext}</code> to get started.</p>
+      <p><a href="/about">About</a></p>
+    \`), {
+      headers: { "Content-Type": "text/html" },
     });
-  } catch {
-    // File not found - return 404
-    return new Response("Not Found", { status: 404 });
   }
+
+  if (url.pathname === "/about") {
+    return new Response(renderPage("About", \`
+      <h1>About</h1>
+      <p>This is a static site built with <strong>Shovel</strong>.</p>
+      <p><a href="/">Home</a></p>
+    \`), {
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  return new Response("Not Found", { status: 404 });
 }
 
-function getContentType(path${config.typescript ? ": string" : ""})${config.typescript ? ": string" : ""} {
-  const ext = path.split(".").pop()?.toLowerCase();
-  const types${config.typescript ? ": Record<string, string>" : ""} = {
-    html: "text/html",
-    css: "text/css",
-    js: "text/javascript",
-    json: "application/json",
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    svg: "image/svg+xml",
-    ico: "image/x-icon",
-  };
-  return types[ext || ""] || "application/octet-stream";
+function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})${t ? ": string" : ""} {
+  return \`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>\${title} - ${config.name}</title>
+  <style>
+${css}
+  </style>
+</head>
+<body>
+  <main>\${content}</main>
+</body>
+</html>\`;
 }
 `;
 }
 
+function generateStaticSiteHtmx(config: ProjectConfig): string {
+	const ext = config.typescript ? "ts" : "js";
+	const t = config.typescript;
+	return `// ${config.name} - Static Site with HTMX
+// Server-rendered HTML with HTMX interactions
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(handleRequest(event.request));
+});
+
+async function handleRequest(request${t ? ": Request" : ""})${t ? ": Promise<Response>" : ""} {
+  const url = new URL(request.url);
+
+  if (url.pathname === "/") {
+    return new Response(renderPage("Home", \`
+      <h1>Welcome to ${config.name}</h1>
+      <p>Edit <code>src/app.${ext}</code> to get started.</p>
+      <button hx-get="/greeting" hx-target="#result" hx-swap="innerHTML">Get Greeting</button>
+      <div id="result"></div>
+      <p style="margin-top: 1rem;"><a href="/about">About</a></p>
+    \`), {
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  if (url.pathname === "/greeting") {
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    return new Response(\`<p>\${greeting}! The time is \${new Date().toLocaleTimeString()}.</p>\`, {
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  if (url.pathname === "/about") {
+    return new Response(renderPage("About", \`
+      <h1>About</h1>
+      <p>This is a static site built with <strong>Shovel</strong> and <strong>HTMX</strong>.</p>
+      <p><a href="/">Home</a></p>
+    \`), {
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  return new Response("Not Found", { status: 404 });
+}
+
+function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})${t ? ": string" : ""} {
+  return \`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>\${title} - ${config.name}</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+${css}
+  </style>
+</head>
+<body>
+  <main>\${content}</main>
+</body>
+</html>\`;
+}
+`;
+}
+
+function generateStaticSiteAlpine(config: ProjectConfig): string {
+	const ext = config.typescript ? "ts" : "js";
+	const t = config.typescript;
+	return `// ${config.name} - Static Site with Alpine.js
+// Server-rendered HTML with Alpine.js interactions
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(handleRequest(event.request));
+});
+
+async function handleRequest(request${t ? ": Request" : ""})${t ? ": Promise<Response>" : ""} {
+  const url = new URL(request.url);
+
+  if (url.pathname === "/") {
+    return new Response(renderPage("Home", \`
+      <h1>Welcome to ${config.name}</h1>
+      <p>Edit <code>src/app.${ext}</code> to get started.</p>
+      <div x-data="{ count: 0 }">
+        <button @click="count++">Clicked: <span x-text="count"></span></button>
+      </div>
+      <p style="margin-top: 1rem;"><a href="/about">About</a></p>
+    \`), {
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  if (url.pathname === "/about") {
+    return new Response(renderPage("About", \`
+      <h1>About</h1>
+      <p>This is a static site built with <strong>Shovel</strong> and <strong>Alpine.js</strong>.</p>
+      <p><a href="/">Home</a></p>
+    \`), {
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  return new Response("Not Found", { status: 404 });
+}
+
+function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})${t ? ": string" : ""} {
+  return \`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>\${title} - ${config.name}</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+  <style>
+${css}
+  </style>
+</head>
+<body>
+  <main>\${content}</main>
+</body>
+</html>\`;
+}
+`;
+}
+
+function generateStaticSiteCrank(config: ProjectConfig): string {
+	const t = config.typescript;
+	return `import {renderer} from "@b9g/crank/html";
+
+// ${config.name} - Static Site with Crank.js
+// Server-rendered HTML with JSX components
+
+const css = \`
+${css}
+\`;
+
+function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{title} - ${config.name}</title>
+        <style>{css}</style>
+      </head>
+      <body>
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(handleRequest(event.request));
+});
+
+async function handleRequest(request${t ? ": Request" : ""})${t ? ": Promise<Response>" : ""} {
+  const url = new URL(request.url);
+  let html${t ? ": string" : ""};
+
+  if (url.pathname === "/") {
+    html = await renderer.render(
+      <Page title="Home">
+        <h1>Welcome to ${config.name}</h1>
+        <p>Edit <code>src/app.${t ? "tsx" : "jsx"}</code> to get started.</p>
+        <p><a href="/about">About</a></p>
+      </Page>
+    );
+  } else if (url.pathname === "/about") {
+    html = await renderer.render(
+      <Page title="About">
+        <h1>About</h1>
+        <p>This is a static site built with <strong>Shovel</strong> and <strong>Crank.js</strong>.</p>
+        <p><a href="/">Home</a></p>
+      </Page>
+    );
+  } else {
+    return new Response("Not Found", { status: 404 });
+  }
+
+  return new Response("<!DOCTYPE html>" + html, {
+    headers: { "Content-Type": "text/html" },
+  });
+}
+`;
+}
+
+// --- Full Stack generators ---
+
 function generateFullStack(config: ProjectConfig): string {
+	switch (config.uiFramework) {
+		case "vanilla":
+			return generateFullStackVanilla(config);
+		case "htmx":
+			return generateFullStackHtmx(config);
+		case "alpine":
+			return generateFullStackAlpine(config);
+		case "crank":
+			return generateFullStackCrank(config);
+	}
+}
+
+function generateFullStackVanilla(config: ProjectConfig): string {
+	const ext = config.typescript ? "ts" : "js";
+	const t = config.typescript;
 	return `import { Router } from "@b9g/router";
 
 const router = new Router();
@@ -492,56 +729,45 @@ router.route("/api/echo").post(async (req) => {
   return Response.json({ echo: body });
 });
 
-// Serve static files from public/ for all other routes
-router.route("/*").get(async (req, ctx) => {
-  const url = new URL(req.url);
-  let path = url.pathname;
-
-  // Default to index.html for root
-  if (path === "/") {
-    path = "/index.html";
-  }
-
-  try {
-    const publicDir = await directories.open("public");
-    const file = await publicDir.getFileHandle(path.slice(1));
-    const blob = await file.getFile();
-
-    return new Response(blob, {
-      headers: {
-        "Content-Type": getContentType(path),
-      },
-    });
-  } catch {
-    // Try index.html for SPA routing
-    try {
-      const publicDir = await directories.open("public");
-      const file = await publicDir.getFileHandle("index.html");
-      const blob = await file.getFile();
-      return new Response(blob, {
-        headers: { "Content-Type": "text/html" },
-      });
-    } catch {
-      return new Response("Not Found", { status: 404 });
-    }
-  }
+// HTML pages
+router.route("/").get(() => {
+  return new Response(renderPage("Home", \`
+    <h1>Welcome to ${config.name}</h1>
+    <p>Edit <code>src/app.${ext}</code> to get started.</p>
+    <ul>
+      <li><a href="/about">About</a></li>
+      <li><a href="/api/hello">API: /api/hello</a></li>
+    </ul>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
 });
 
-function getContentType(path${config.typescript ? ": string" : ""})${config.typescript ? ": string" : ""} {
-  const ext = path.split(".").pop()?.toLowerCase();
-  const types${config.typescript ? ": Record<string, string>" : ""} = {
-    html: "text/html",
-    css: "text/css",
-    js: "text/javascript",
-    json: "application/json",
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    svg: "image/svg+xml",
-    ico: "image/x-icon",
-  };
-  return types[ext || ""] || "application/octet-stream";
+router.route("/about").get(() => {
+  return new Response(renderPage("About", \`
+    <h1>About</h1>
+    <p>This is a full-stack app built with <strong>Shovel</strong>.</p>
+    <p><a href="/">Home</a></p>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})${t ? ": string" : ""} {
+  return \`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>\${title} - ${config.name}</title>
+  <style>
+${css}
+  </style>
+</head>
+<body>
+  <main>\${content}</main>
+</body>
+</html>\`;
 }
 
 self.addEventListener("fetch", (event) => {
@@ -550,30 +776,276 @@ self.addEventListener("fetch", (event) => {
 `;
 }
 
+function generateFullStackHtmx(config: ProjectConfig): string {
+	const ext = config.typescript ? "ts" : "js";
+	const t = config.typescript;
+	return `import { Router } from "@b9g/router";
+
+const router = new Router();
+
+// API routes — return HTML fragments when HTMX requests, JSON otherwise
+router.route("/api/hello").get((req) => {
+  const data = {
+    message: "Hello from the API!",
+    timestamp: new Date().toISOString(),
+  };
+
+  if (req.headers.get("HX-Request")) {
+    return new Response(\`<p>\${data.message}</p><p><small>\${data.timestamp}</small></p>\`, {
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+  return Response.json(data);
+});
+
+router.route("/api/echo").post(async (req) => {
+  const body = await req.json();
+  return Response.json({ echo: body });
+});
+
+// HTML pages
+router.route("/").get(() => {
+  return new Response(renderPage("Home", \`
+    <h1>Welcome to ${config.name}</h1>
+    <p>Edit <code>src/app.${ext}</code> to get started.</p>
+    <button hx-get="/api/hello" hx-target="#result" hx-swap="innerHTML">Call API</button>
+    <div id="result"></div>
+    <ul>
+      <li><a href="/about">About</a></li>
+      <li><a href="/api/hello">API: /api/hello</a></li>
+    </ul>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+router.route("/about").get(() => {
+  return new Response(renderPage("About", \`
+    <h1>About</h1>
+    <p>This is a full-stack app built with <strong>Shovel</strong> and <strong>HTMX</strong>.</p>
+    <p><a href="/">Home</a></p>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})${t ? ": string" : ""} {
+  return \`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>\${title} - ${config.name}</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+${css}
+  </style>
+</head>
+<body>
+  <main>\${content}</main>
+</body>
+</html>\`;
+}
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(router.handle(event.request));
+});
+`;
+}
+
+function generateFullStackAlpine(config: ProjectConfig): string {
+	const ext = config.typescript ? "ts" : "js";
+	const t = config.typescript;
+	return `import { Router } from "@b9g/router";
+
+const router = new Router();
+
+// API routes
+router.route("/api/hello").get(() => {
+  return Response.json({
+    message: "Hello from the API!",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+router.route("/api/echo").post(async (req) => {
+  const body = await req.json();
+  return Response.json({ echo: body });
+});
+
+// HTML pages
+router.route("/").get(() => {
+  return new Response(renderPage("Home", \`
+    <h1>Welcome to ${config.name}</h1>
+    <p>Edit <code>src/app.${ext}</code> to get started.</p>
+    <div x-data="{ result: null }">
+      <button @click="fetch('/api/hello').then(r => r.json()).then(d => result = d)">Call API</button>
+      <div id="result" x-show="result">
+        <p x-text="result?.message"></p>
+        <p><small x-text="result?.timestamp"></small></p>
+      </div>
+    </div>
+    <ul>
+      <li><a href="/about">About</a></li>
+      <li><a href="/api/hello">API: /api/hello</a></li>
+    </ul>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+router.route("/about").get(() => {
+  return new Response(renderPage("About", \`
+    <h1>About</h1>
+    <p>This is a full-stack app built with <strong>Shovel</strong> and <strong>Alpine.js</strong>.</p>
+    <p><a href="/">Home</a></p>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})${t ? ": string" : ""} {
+  return \`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>\${title} - ${config.name}</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+  <style>
+${css}
+  </style>
+</head>
+<body>
+  <main>\${content}</main>
+</body>
+</html>\`;
+}
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(router.handle(event.request));
+});
+`;
+}
+
+function generateFullStackCrank(config: ProjectConfig): string {
+	const t = config.typescript;
+	return `import { Router } from "@b9g/router";
+import {renderer} from "@b9g/crank/html";
+
+const router = new Router();
+
+const css = \`
+${css}
+\`;
+
+function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{title} - ${config.name}</title>
+        <style>{css}</style>
+      </head>
+      <body>
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+
+// API routes
+router.route("/api/hello").get(() => {
+  return Response.json({
+    message: "Hello from the API!",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+router.route("/api/echo").post(async (req) => {
+  const body = await req.json();
+  return Response.json({ echo: body });
+});
+
+// HTML pages
+router.route("/").get(async () => {
+  const html = await renderer.render(
+    <Page title="Home">
+      <h1>Welcome to ${config.name}</h1>
+      <p>Edit <code>src/app.${t ? "tsx" : "jsx"}</code> to get started.</p>
+      <ul>
+        <li><a href="/about">About</a></li>
+        <li><a href="/api/hello">API: /api/hello</a></li>
+      </ul>
+    </Page>
+  );
+  return new Response("<!DOCTYPE html>" + html, {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+router.route("/about").get(async () => {
+  const html = await renderer.render(
+    <Page title="About">
+      <h1>About</h1>
+      <p>This is a full-stack app built with <strong>Shovel</strong> and <strong>Crank.js</strong>.</p>
+      <p><a href="/">Home</a></p>
+    </Page>
+  );
+  return new Response("<!DOCTYPE html>" + html, {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(router.handle(event.request));
+});
+`;
+}
+
+// --- README generator ---
+
 function generateReadme(config: ProjectConfig): string {
 	const templateDescriptions: Record<string, string> = {
 		"hello-world": "A minimal Shovel application",
 		api: "A REST API with JSON endpoints",
-		"static-site": "A static file server",
-		"full-stack": "A full-stack app with API routes and static files",
+		"static-site": "A static site with server-rendered pages",
+		"full-stack": "A full-stack app with HTML pages and API routes",
 	};
+
+	const frameworkDescriptions: Record<string, string> = {
+		vanilla: "",
+		htmx: " using [HTMX](https://htmx.org)",
+		alpine: " using [Alpine.js](https://alpinejs.dev)",
+		crank: " using [Crank.js](https://crank.js.org)",
+	};
+
+	const ext =
+		config.uiFramework === "crank"
+			? config.typescript
+				? "tsx"
+				: "jsx"
+			: config.typescript
+				? "ts"
+				: "js";
 
 	return `# ${config.name}
 
-${templateDescriptions[config.template]}, built with [Shovel](https://github.com/bikeshaving/shovel).
+${templateDescriptions[config.template]}${frameworkDescriptions[config.uiFramework]}, built with [Shovel](https://github.com/bikeshaving/shovel).
 
 ## Getting Started
 
 \`\`\`bash
 npm install
-npm run dev
+npm run develop
 \`\`\`
 
 Open http://localhost:7777
 
 ## Scripts
 
-- \`npm run dev\` - Start development server
+- \`npm run develop\` - Start development server
 - \`npm run build\` - Build for production
 - \`npm start\` - Run production build
 
@@ -582,8 +1054,8 @@ Open http://localhost:7777
 \`\`\`
 ${config.name}/
 ├── src/
-│   └── app.${config.typescript ? "ts" : "js"}    # Application entry point
-${config.template === "static-site" || config.template === "full-stack" ? "├── public/           # Static files\n│   ├── index.html\n│   └── styles.css\n" : ""}├── package.json
+│   └── app.${ext}    # Application entry point
+├── package.json
 ${config.typescript ? "├── tsconfig.json\n" : ""}└── README.md
 \`\`\`
 

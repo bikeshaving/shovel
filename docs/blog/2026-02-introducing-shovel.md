@@ -34,22 +34,21 @@ self.addEventListener("fetch", (ev) => {
 });
 
 async function handleRequest(req: Request): Promise<Response> {
-  const url = new URL(req.url);
   const cache = await self.caches.open("kv");
 
   if (req.method === "GET") {
-    const cached = await cache.match(url);
+    const cached = await cache.match(req.url);
     return cached || new Response("Not Found", {status: 404});
   }
 
   if (req.method === "PUT") {
     const body = await req.text();
-    await cache.put(url, new Response(body));
+    await cache.put(req.url, new Response(body));
     return new Response("OK", {status: 201});
   }
 
   if (req.method === "DELETE") {
-    await cache.delete(url);
+    await cache.delete(req.url);
     return new Response("OK", {status: 204});
   }
 
@@ -69,19 +68,25 @@ While the browser has a concept of URLs and matching with [URLPattern](https://d
 import {Router} from "@b9g/router";
 
 const router = new Router();
-const cache = await self.caches.open("kv");
+const logger = self.loggers.get(["app", "cache"]);
 
 router.route("/kv/:key")
   .get(async (req, ctx) => {
-    const cached = await cache.match(ctx.params.key);
+    logger.info`GET ${ctx.params.key}`;
+    const cache = await self.caches.open("kv");
+    const cached = await cache.match(req.url);
     return cached || new Response("Not Found", {status: 404});
   })
   .put(async (req, ctx) => {
-    await cache.put(ctx.params.key, new Response(await req.text()));
+    logger.info`PUT ${ctx.params.key}`;
+    const cache = await self.caches.open("kv");
+    await cache.put(req.url, new Response(await req.text()));
     return new Response("OK", {status: 201});
   })
   .delete(async (req, ctx) => {
-    await cache.delete(ctx.params.key);
+    logger.info`DELETE ${ctx.params.key}`;
+    const cache = await self.caches.open("kv");
+    await cache.delete(req.url);
     return new Response(null, {status: 204});
   });
 

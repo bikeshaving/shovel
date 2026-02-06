@@ -1,6 +1,7 @@
 /** @jsxImportSource @b9g/crank */
 import {css} from "@emotion/css";
 import * as Path from "path";
+import {NotFound} from "@b9g/http-errors";
 
 import {Root} from "../components/root.js";
 import {Marked} from "../components/marked.js";
@@ -73,7 +74,7 @@ export default async function BlogPostView({url}: ViewProps) {
 	);
 
 	if (!post) {
-		throw new Error("Blog post not found");
+		throw new NotFound("Blog post not found");
 	}
 
 	const {

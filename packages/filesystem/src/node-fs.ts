@@ -205,3 +205,5 @@ export class NodeFSDirectory extends ShovelDirectoryHandle {
 		return Path.basename(this.#rootPath) || "root";
 	}
 }
+
+export default NodeFSDirectory;

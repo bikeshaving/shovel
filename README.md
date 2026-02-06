@@ -184,14 +184,12 @@ Shovel's configuration follows these principles:
   "caches": {
     "sessions": {
       "module": "@b9g/cache-redis",
-      "export": "RedisCache",
       "url": "$REDIS_URL"
     }
   },
   "directories": {
     "uploads": {
       "module": "@b9g/filesystem-s3",
-      "export": "S3Directory",
       "bucket": "$S3_BUCKET"
     }
   },
@@ -211,18 +209,16 @@ Shovel's configuration follows these principles:
 
 ### Caches
 
-Configure cache backends using `module` and `export`:
+Configure cache backends using `module` (uses default export, or specify `export` for named exports):
 
 ```json
 {
   "caches": {
     "api-responses": {
-      "module": "@b9g/cache/memory",
-      "export": "MemoryCache"
+      "module": "@b9g/cache/memory"
     },
     "sessions": {
       "module": "@b9g/cache-redis",
-      "export": "RedisCache",
       "url": "$REDIS_URL"
     }
   }
@@ -242,13 +238,11 @@ Configure directory backends. Platforms provide defaults for well-known director
   "directories": {
     "uploads": {
       "module": "@b9g/filesystem-s3",
-      "export": "S3Directory",
       "bucket": "MY_BUCKET",
       "region": "us-east-1"
     },
     "data": {
       "module": "@b9g/filesystem/node-fs",
-      "export": "NodeFSDirectory",
       "path": "./data"
     }
   }

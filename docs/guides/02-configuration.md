@@ -12,14 +12,12 @@ Shovel uses a `shovel.json` file in your project root for configuration.
   "directories": {
     "public": {
       "module": "@b9g/filesystem/node-fs",
-      "export": "NodeFSDirectory",
       "path": "./dist/public"
     }
   },
   "caches": {
     "main": {
-      "module": "@b9g/cache/memory",
-      "export": "MemoryCache"
+      "module": "@b9g/cache/memory"
     }
   }
 }
@@ -34,7 +32,6 @@ Directories provide access to the filesystem using the File System Access API:
   "directories": {
     "uploads": {
       "module": "@b9g/filesystem/node-fs",
-      "export": "NodeFSDirectory",
       "path": "./uploads"
     }
   }
@@ -58,8 +55,7 @@ Caches provide the standard Cache API for response caching:
 {
   "caches": {
     "responses": {
-      "module": "@b9g/cache/memory",
-      "export": "MemoryCache"
+      "module": "@b9g/cache/memory"
     }
   }
 }
