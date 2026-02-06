@@ -94,8 +94,8 @@ self.onmessage = async (event) => {
 	}
 };
 
-// Initialize worker runtime (installs ServiceWorker globals)
-const result = await initWorkerRuntime({config});
+// Initialize worker runtime (usePostMessage: false — worker owns its server, no message loop)
+const result = await initWorkerRuntime({config, usePostMessage: false});
 const registration = result.registration;
 databases = result.databases;
 
