@@ -88,7 +88,7 @@ export function getESBuildConfig(): ESBuildConfig {
 export function getDefaults(): PlatformDefaults {
 	return {
 		caches: {
-			default: {
+			"*": {
 				module: "@b9g/platform-cloudflare/caches",
 				export: "CloudflareNativeCache",
 			},

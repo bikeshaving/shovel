@@ -78,6 +78,145 @@ describe("createCacheFactory", () => {
 		expect(cache).toBeDefined();
 		expect(cache.constructor.name).toBe("PostMessageCache");
 	});
+
+	// ---- Pattern matching with wildcard configs ----
+
+	test("'*' wildcard matches any cache name", async () => {
+		const factory = createCacheFactory({
+			configs: {
+				"*": {impl: MemoryCache as any},
+			},
+		});
+
+		const kv = await factory("kv");
+		const sessions = await factory("sessions");
+		const anything = await factory("literally-anything");
+
+		expect(kv.constructor.name).toBe("MemoryCache");
+		expect(sessions.constructor.name).toBe("MemoryCache");
+		expect(anything.constructor.name).toBe("MemoryCache");
+	});
+
+	test("exact match takes priority over wildcard", async () => {
+		let lastConstructedName = "";
+		class TrackingCache extends MemoryCache {
+			constructor(name: string, options: any = {}) {
+				super(name, options);
+				lastConstructedName = name;
+			}
+		}
+
+		const factory = createCacheFactory({
+			configs: {
+				"special": {impl: TrackingCache as any, maxEntries: 50},
+				"*": {impl: MemoryCache as any},
+			},
+		});
+
+		// Exact match should use TrackingCache
+		const special = await factory("special");
+		expect(special.constructor.name).toBe("TrackingCache");
+		expect(lastConstructedName).toBe("special");
+
+		// Non-exact should fall through to wildcard
+		const other = await factory("other");
+		expect(other.constructor.name).toBe("MemoryCache");
+	});
+
+	test("prefix wildcard pattern like 'api-*' matches selectively", async () => {
+		const factory = createCacheFactory({
+			configs: {
+				"api-*": {impl: MemoryCache as any},
+			},
+		});
+
+		const apiUsers = await factory("api-users");
+		expect(apiUsers).toBeDefined();
+
+		const apiProducts = await factory("api-products");
+		expect(apiProducts).toBeDefined();
+
+		// Should NOT match non-api names
+		await expect(factory("kv")).rejects.toThrow(
+			'Cache "kv" is not configured',
+		);
+	});
+
+	test("suffix wildcard pattern like '*-cache' matches selectively", async () => {
+		const factory = createCacheFactory({
+			configs: {
+				"*-cache": {impl: MemoryCache as any},
+			},
+		});
+
+		const userCache = await factory("user-cache");
+		expect(userCache).toBeDefined();
+
+		await expect(factory("sessions")).rejects.toThrow(
+			'Cache "sessions" is not configured',
+		);
+	});
+
+	test("multiple wildcard patterns with different impls", async () => {
+		let constructedWith = "";
+		class CacheA extends MemoryCache {
+			constructor(name: string, opts: any = {}) {
+				super(name, opts);
+				constructedWith = "A";
+			}
+		}
+		class CacheB extends MemoryCache {
+			constructor(name: string, opts: any = {}) {
+				super(name, opts);
+				constructedWith = "B";
+			}
+		}
+
+		const factory = createCacheFactory({
+			configs: {
+				"hot-*": {impl: CacheA as any},
+				"cold-*": {impl: CacheB as any},
+			},
+		});
+
+		await factory("hot-sessions");
+		expect(constructedWith).toBe("A");
+
+		await factory("cold-archive");
+		expect(constructedWith).toBe("B");
+	});
+
+	test("wildcard with no other config acts as universal default", async () => {
+		const factory = createCacheFactory({
+			configs: {
+				"*": {impl: MemoryCache as any, maxEntries: 1000},
+			},
+		});
+
+		// Should be able to open any name without prior configuration
+		const names = ["default", "kv", "sessions", "api-cache", "x-y-z"];
+		for (const name of names) {
+			const cache = await factory(name);
+			expect(cache).toBeDefined();
+		}
+	});
+
+	test("factory function (non-class) impl works with wildcard", async () => {
+		function createCache(name: string, _options: any = {}) {
+			return new MemoryCache(name);
+		}
+		// factory function has no prototype
+		Object.defineProperty(createCache, "prototype", {value: undefined});
+
+		const factory = createCacheFactory({
+			configs: {
+				"*": {impl: createCache as any},
+			},
+		});
+
+		const cache = await factory("dynamic");
+		expect(cache).toBeDefined();
+	});
 });
 
 describe("createDirectoryFactory", () => {
@@ -186,6 +325,88 @@ describe("createDirectoryFactory", () => {
 
 		await factory("tmp");
 		expect(capturedOptions.path).toBe(resolvedTmpPath);
+	});
+
+	// ---- Pattern matching with wildcard configs ----
+
+	test("'*' wildcard matches any directory name", async () => {
+		const factory = createDirectoryFactory({
+			"*": {impl: MemoryDirectory as any},
+		});
+
+		const uploads = await factory("uploads");
+		const media = await factory("media");
+		const anything = await factory("whatever");
+
+		expect(uploads).toBeDefined();
+		expect(media).toBeDefined();
+		expect(anything).toBeDefined();
+	});
+
+	test("exact directory match takes priority over wildcard", async () => {
+		let capturedPath: string | undefined;
+
+		class TrackingDirectory {
+			constructor(_name: string, options: any) {
+				capturedPath = options.path;
+			}
+		}
+
+		const factory = createDirectoryFactory({
+			public: {impl: NodeFSDirectory as any, path: "/srv/public"},
+			"*": {impl: TrackingDirectory as any, path: "/srv/fallback"},
+		});
+
+		// Exact match
+		const pub = await factory("public");
+		expect(pub.constructor.name).toBe("NodeFSDirectory");
+
+		// Wildcard fallback
+		await factory("other");
+		expect(capturedPath).toBe("/srv/fallback");
+	});
+
+	test("prefix wildcard like 'user-*' matches directory names", async () => {
+		const factory = createDirectoryFactory({
+			"user-*": {impl: MemoryDirectory as any},
+		});
+
+		const userUploads = await factory("user-uploads");
+		expect(userUploads).toBeDefined();
+
+		await expect(factory("system-logs")).rejects.toThrow(
+			'Directory "system-logs" is not configured',
+		);
+	});
+
+	test("multiple directory patterns coexist", async () => {
+		let lastImpl = "";
+
+		class DirA {
+			constructor() {
+				lastImpl = "A";
+			}
+		}
+		class DirB {
+			constructor() {
+				lastImpl = "B";
+			}
+		}
+
+		const factory = createDirectoryFactory({
+			"cache-*": {impl: DirA as any},
+			"data-*": {impl: DirB as any},
+		});
+
+		await factory("cache-html");
+		expect(lastImpl).toBe("A");
+
+		await factory("data-exports");
+		expect(lastImpl).toBe("B");
+
+		await expect(factory("logs")).rejects.toThrow(
+			'Directory "logs" is not configured',
+		);
 	});
 });
 

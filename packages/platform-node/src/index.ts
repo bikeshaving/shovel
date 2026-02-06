@@ -456,7 +456,8 @@ import {config} from "shovel:config";
 await configureLogging(config.logging);
 
 // Initialize worker runtime (installs ServiceWorker globals)
-const {registration, databases} = await initWorkerRuntime({config});
+// Single-worker dev mode uses direct cache (no PostMessage overhead)
+const {registration, databases} = await initWorkerRuntime({config, usePostMessage: config.workers > 1});
 
 // Import user code (registers event handlers)
 await import("${userEntryPath}");
@@ -608,7 +609,7 @@ process.on("SIGTERM", handleShutdown);
 	getDefaults(): PlatformDefaults {
 		return {
 			caches: {
-				default: {
+				"*": {
 					module: "@b9g/cache/memory",
 					export: "MemoryCache",
 				},

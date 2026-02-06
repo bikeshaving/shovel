@@ -400,6 +400,14 @@ describe("code generation: Node.js platform", () => {
 		expect(worker).not.toContain("directMode");
 		expect(worker).not.toContain("NodePlatform");
 	});
+
+	test("dev worker template uses direct cache in single-worker mode", async () => {
+		const {getEntryPoints} = await import("@b9g/platform-node/platform");
+		const {worker} = getEntryPoints("/fake/entry.js", "development");
+
+		// Dev worker should conditionally skip PostMessage for single-worker
+		expect(worker).toContain("usePostMessage: config.workers > 1");
+	});
 });
 
 describe("code generation: Bun platform", () => {
@@ -408,6 +416,14 @@ describe("code generation: Bun platform", () => {
 		const {worker} = getEntryPoints("/fake/entry.js", "production");
 
 		expect(worker).toContain("usePostMessage: false");
+	});
+
+	test("dev worker template uses direct cache in single-worker mode", async () => {
+		const {getEntryPoints} = await import("@b9g/platform-bun/platform");
+		const {worker} = getEntryPoints("/fake/entry.js", "development");
+
+		// Dev worker should conditionally skip PostMessage for single-worker
+		expect(worker).toContain("usePostMessage: config.workers > 1");
 	});
 });
 
@@ -632,6 +648,248 @@ self.addEventListener("fetch", (event) => {
 				const body = await response.json();
 				expect(body.echo).toBe("hello world");
 				expect(body.method).toBe("POST");
+			} finally {
+				await killServer(server?.process, PORT);
+				await cleanup(cleanup_paths);
+			}
+		},
+		TIMEOUT,
+	);
+});
+
+describe("runtime: wildcard cache pattern matching", () => {
+	test(
+		"caches.open with arbitrary name works via '*' wildcard config",
+		async () => {
+			const PORT = 13416;
+			const cleanup_paths = [];
+			let server;
+
+			try {
+				const projectDir = await createTestProject({
+					"app.js": `
+self.addEventListener("fetch", (event) => {
+	event.respondWith((async () => {
+		const url = new URL(event.request.url);
+		const cache = await caches.open("kv");
+
+		if (event.request.method === "PUT") {
+			await cache.put(event.request.url, new Response(await event.request.text()));
+			return new Response(null, {status: 201});
+		}
+
+		if (event.request.method === "DELETE") {
+			const deleted = await cache.delete(event.request.url);
+			return new Response(null, {status: deleted ? 204 : 404});
+		}
+
+		const cached = await cache.match(event.request.url);
+		if (cached) return new Response(await cached.text());
+		return new Response("Not found", {status: 404});
+	})());
+});
+					`,
+					"shovel.json": JSON.stringify({
+						port: PORT,
+						host: "localhost",
+						workers: 1,
+						caches: {
+							"*": {
+								module: "@b9g/cache/memory",
+								export: "MemoryCache",
+							},
+						},
+					}),
+				});
+				cleanup_paths.push(projectDir);
+
+				const outDir = await buildProject(projectDir, "node");
+				server = startServer(join(outDir, "server"));
+
+				await waitForPort(PORT);
+
+				// PUT a value
+				const putRes = await fetch(`http://localhost:${PORT}/key/hello`, {
+					method: "PUT",
+					body: "world",
+				});
+				expect(putRes.status).toBe(201);
+
+				// GET the value back
+				const getRes = await fetch(`http://localhost:${PORT}/key/hello`);
+				expect(getRes.status).toBe(200);
+				expect(await getRes.text()).toBe("world");
+
+				// DELETE it
+				const delRes = await fetch(`http://localhost:${PORT}/key/hello`, {
+					method: "DELETE",
+				});
+				expect(delRes.status).toBe(204);
+
+				// GET after delete should 404
+				const goneRes = await fetch(`http://localhost:${PORT}/key/hello`);
+				expect(goneRes.status).toBe(404);
+			} finally {
+				await killServer(server?.process, PORT);
+				await cleanup(cleanup_paths);
+			}
+		},
+		TIMEOUT,
+	);
+
+	test(
+		"multiple named caches via wildcard are independent",
+		async () => {
+			const PORT = 13417;
+			const cleanup_paths = [];
+			let server;
+
+			try {
+				const projectDir = await createTestProject({
+					"app.js": `
+self.addEventListener("fetch", (event) => {
+	event.respondWith((async () => {
+		const url = new URL(event.request.url);
+		const parts = url.pathname.split("/").filter(Boolean);
+		const cacheName = parts[0] || "default";
+		const key = parts.slice(1).join("/") || "index";
+
+		const cache = await caches.open(cacheName);
+
+		if (event.request.method === "PUT") {
+			const fullUrl = new URL("/" + key, url.origin).href;
+			await cache.put(fullUrl, new Response(await event.request.text()));
+			return new Response(null, {status: 201});
+		}
+
+		const fullUrl = new URL("/" + key, url.origin).href;
+		const cached = await cache.match(fullUrl);
+		if (cached) return new Response(await cached.text());
+		return new Response("Not found", {status: 404});
+	})());
+});
+					`,
+					"shovel.json": JSON.stringify({
+						port: PORT,
+						host: "localhost",
+						workers: 1,
+						caches: {
+							"*": {
+								module: "@b9g/cache/memory",
+								export: "MemoryCache",
+							},
+						},
+					}),
+				});
+				cleanup_paths.push(projectDir);
+
+				const outDir = await buildProject(projectDir, "node");
+				server = startServer(join(outDir, "server"));
+
+				await waitForPort(PORT);
+
+				// Store in "users" cache
+				await fetch(`http://localhost:${PORT}/users/alice`, {
+					method: "PUT",
+					body: "Alice Data",
+				});
+
+				// Store same key in "sessions" cache with different value
+				await fetch(`http://localhost:${PORT}/sessions/alice`, {
+					method: "PUT",
+					body: "Session Token",
+				});
+
+				// Retrieve from each cache — should be independent
+				const usersRes = await fetch(`http://localhost:${PORT}/users/alice`);
+				expect(await usersRes.text()).toBe("Alice Data");
+
+				const sessionsRes = await fetch(
+					`http://localhost:${PORT}/sessions/alice`,
+				);
+				expect(await sessionsRes.text()).toBe("Session Token");
+
+				// A cache we never wrote to should 404
+				const emptyRes = await fetch(`http://localhost:${PORT}/orders/alice`);
+				expect(emptyRes.status).toBe(404);
+			} finally {
+				await killServer(server?.process, PORT);
+				await cleanup(cleanup_paths);
+			}
+		},
+		TIMEOUT,
+	);
+
+	test(
+		"exact cache config takes priority over wildcard",
+		async () => {
+			const PORT = 13418;
+			const cleanup_paths = [];
+			let server;
+
+			try {
+				const projectDir = await createTestProject({
+					"app.js": `
+self.addEventListener("fetch", (event) => {
+	event.respondWith((async () => {
+		const url = new URL(event.request.url);
+
+		// Open both "limited" (maxEntries: 2) and "unlimited" (wildcard) caches
+		const limited = await caches.open("limited");
+		const unlimited = await caches.open("unlimited");
+
+		if (url.pathname === "/test") {
+			// Store 3 items in each cache
+			for (let i = 1; i <= 3; i++) {
+				const k = new URL("/item" + i, url.origin).href;
+				await limited.put(k, new Response("v" + i));
+				await unlimited.put(k, new Response("v" + i));
+			}
+
+			// Count keys in each
+			const limitedKeys = await limited.keys();
+			const unlimitedKeys = await unlimited.keys();
+
+			return Response.json({
+				limited: limitedKeys.length,
+				unlimited: unlimitedKeys.length,
+			});
+		}
+		return new Response("Not found", {status: 404});
+	})());
+});
+					`,
+					"shovel.json": JSON.stringify({
+						port: PORT,
+						host: "localhost",
+						workers: 1,
+						caches: {
+							limited: {
+								module: "@b9g/cache/memory",
+								export: "MemoryCache",
+								maxEntries: 2,
+							},
+							"*": {
+								module: "@b9g/cache/memory",
+								export: "MemoryCache",
+							},
+						},
+					}),
+				});
+				cleanup_paths.push(projectDir);
+
+				const outDir = await buildProject(projectDir, "node");
+				server = startServer(join(outDir, "server"));
+
+				await waitForPort(PORT);
+
+				const res = await fetchWithRetry(`http://localhost:${PORT}/test`);
+				const body = await res.json();
+
+				// "limited" cache uses exact match config (maxEntries: 2), so only 2 keys
+				expect(body.limited).toBe(2);
+				// "unlimited" cache uses wildcard (no maxEntries), so all 3 keys
+				expect(body.unlimited).toBe(3);
 			} finally {
 				await killServer(server?.process, PORT);
 				await cleanup(cleanup_paths);

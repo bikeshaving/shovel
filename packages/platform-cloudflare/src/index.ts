@@ -402,8 +402,9 @@ export default { fetch: createFetchHandler(registration) };
 	getDefaults(): PlatformDefaults {
 		return {
 			caches: {
-				default: {
+				"*": {
 					module: "@b9g/platform-cloudflare/caches",
+					export: "CloudflareNativeCache",
 				},
 			},
 			directories: {
