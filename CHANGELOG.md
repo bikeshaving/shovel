@@ -2,6 +2,28 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.6] - 2026-02-06
+
+### Features
+
+- **UI framework selection in create-shovel** - Choose between Vanilla, HTMX, Alpine.js, and Crank.js when scaffolding static-site and full-stack templates ([#44](https://github.com/bikeshaving/shovel/pull/44))
+- **Default `["app"]` logger category** - User application logs under `["app", ...]` now work out of the box without configuration. Framework logs under `["shovel", ...]`, third-party libraries remain silent unless opted in.
+- **Default exports for cache and filesystem modules** - `@b9g/cache/memory`, `@b9g/cache-redis`, `@b9g/filesystem/node-fs`, `@b9g/filesystem/memory`, and `@b9g/filesystem/bun-s3` now have default exports, so `"export"` can be omitted from `shovel.json` config.
+
+### Bug Fixes
+
+- **Cache API compliance** - Wildcard pattern matching (`"*"`) for cache and directory configs, `PostMessageCache` now accepts `RequestInfo | URL` per spec, `matchPattern()` restored for config lookups ([#43](https://github.com/bikeshaving/shovel/pull/43))
+- **Direct cache in single-worker dev mode** - Dev workers now use `MemoryCache` directly instead of `PostMessageCache` when `workers: 1`, avoiding unnecessary serialization overhead
+- **Node.js Request body duplex** - Added `duplex: "half"` to Node.js Request construction to fix body streaming
+- **Website 404 errors** - Views now throw `NotFound` from `@b9g/http-errors` instead of raw errors, returning proper 404 responses
+- **Fixed `@b9g/cache-redis` module path in docs** - Documentation referenced `@b9g/cache/redis` instead of the correct `@b9g/cache-redis`
+
+### Tests
+
+- **PostMessageCache WPT tests** - 29 Web Platform Tests now run against PostMessageCache to verify serialization round-trip compliance
+- **Pattern matching unit tests** - Wildcard, prefix, and exact-match priority tests for cache and directory factories
+- **End-to-end cache tests** - Runtime tests for KV server, multi-cache independence, and wildcard priority
+
 ## [0.2.3] - 2026-02-02
 
 ### Features

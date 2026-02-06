@@ -1,6 +1,6 @@
 {
   "name": "@b9g/cache",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Universal Cache API for ServiceWorker applications. Provides standard CacheStorage and Cache interfaces across all JavaScript runtimes.",
   "type": "module",
   "scripts": {
