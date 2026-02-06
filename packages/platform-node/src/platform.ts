@@ -34,8 +34,9 @@ export const name = "node";
  * - worker.js: Single worker with message loop (develop command acts as supervisor)
  *
  * Production mode:
- * - supervisor.js: Spawns workers and owns the HTTP server
- * - worker.js: Handles requests via message loop
+ * - supervisor.js: Spawns workers and manages lifecycle
+ * - worker.js: Worker that either runs its own HTTP server (single-worker)
+ *   or uses message loop (multi-worker, supervisor owns the HTTP server)
  */
 export function getEntryPoints(
 	userEntryPath: string,
@@ -43,8 +44,8 @@ export function getEntryPoints(
 ): EntryPoints {
 	const safePath = JSON.stringify(userEntryPath);
 
-	// Worker code is shared between dev and prod (message loop pattern)
-	const workerCode = `// Node.js Worker
+	// Development worker: uses message loop (develop command owns the HTTP server)
+	const devWorkerCode = `// Node.js Development Worker
 import {parentPort} from "node:worker_threads";
 import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop} from "@b9g/platform/runtime";
 import {config} from "shovel:config";
@@ -73,8 +74,67 @@ if (config.lifecycle) {
 
 	if (mode === "development") {
 		// Development: single worker file (develop command manages the process)
-		return {worker: workerCode};
+		return {worker: devWorkerCode};
 	}
+
+	// Production worker: branches based on worker count
+	// - Single worker: creates own HTTP server (no postMessage overhead)
+	// - Multi-worker: uses message loop (supervisor owns the HTTP server)
+	const prodWorkerCode = `// Node.js Production Worker
+import {parentPort} from "node:worker_threads";
+import {getLogger} from "@logtape/logtape";
+import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest} from "@b9g/platform/runtime";
+import NodePlatform from "@b9g/platform-node";
+import {config} from "shovel:config";
+
+await configureLogging(config.logging);
+const logger = getLogger(["shovel", "platform"]);
+
+const directMode = config.workers <= 1;
+
+// Track resources for shutdown
+let server;
+let databases;
+
+// Register shutdown handler before async startup
+parentPort?.on("message", async (event) => {
+	if (event.type === "shutdown") {
+		logger.info("Worker shutting down");
+		if (server) await server.close();
+		if (databases) await databases.closeAll();
+		parentPort?.postMessage({type: "shutdown-complete"});
+	}
+});
+
+// Initialize worker runtime (usePostMessage: false when worker owns the server)
+const result = await initWorkerRuntime({config, usePostMessage: !directMode});
+const registration = result.registration;
+databases = result.databases;
+
+// Import user code (registers event handlers)
+await import(${safePath});
+
+// Run ServiceWorker lifecycle (stage from config.lifecycle if present)
+await runLifecycle(registration, config.lifecycle?.stage);
+
+if (config.lifecycle) {
+	parentPort?.postMessage({type: "ready"});
+	if (databases) await databases.closeAll();
+	process.exit(0);
+} else if (directMode) {
+	// Single worker: create own HTTP server
+	const platform = new NodePlatform({port: config.port, host: config.host});
+	server = platform.createServer(
+		(request) => dispatchRequest(registration, request),
+	);
+	await server.listen();
+	parentPort?.postMessage({type: "ready"});
+	logger.info("Worker started (direct mode)", {port: config.port});
+} else {
+	// Multi-worker: use message loop (supervisor owns the HTTP server)
+	startWorkerMessageLoop({registration, databases});
+}
+`;
 
 	// Production: supervisor + worker
 	const supervisorCode = `// Node.js Production Supervisor
@@ -96,8 +156,10 @@ platform.createWorker = (entrypoint) => new Worker(entrypoint);
 await platform.serviceWorker.register(new URL("./worker.js", import.meta.url).href);
 await platform.serviceWorker.ready;
 
-// Start HTTP server
-await platform.listen();
+// Single worker owns its own HTTP server — skip platform.listen()
+if (config.workers > 1) {
+	await platform.listen();
+}
 
 logger.info("Server started", {port: config.port, host: config.host, workers: config.workers});
 
@@ -113,7 +175,7 @@ process.on("SIGTERM", handleShutdown);
 
 	return {
 		supervisor: supervisorCode,
-		worker: workerCode,
+		worker: prodWorkerCode,
 	};
 }
 
