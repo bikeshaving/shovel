@@ -2229,6 +2229,28 @@ export interface ShovelConfig {
 // ============================================================================
 
 /**
+ * Match a name against pattern-keyed config.
+ * Tries exact match first, then glob-like patterns (* for wildcards).
+ */
+function matchPattern<T>(
+	name: string,
+	patterns: Record<string, T>,
+): T | undefined {
+	// Exact match first
+	if (patterns[name]) return patterns[name];
+
+	// Try pattern matching
+	for (const [pattern, value] of Object.entries(patterns)) {
+		if (pattern.includes("*")) {
+			const regex = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
+			if (regex.test(name)) return value;
+		}
+	}
+
+	return undefined;
+}
+
+/**
  * Check if a value is a class (has prototype) vs a plain function.
  * Used to determine whether to use `new` or call directly.
  */
@@ -2247,7 +2269,7 @@ export function createDirectoryFactory(
 	configs: Record<string, DirectoryConfig>,
 ) {
 	return async (name: string): Promise<FileSystemDirectoryHandle> => {
-		const config = configs[name];
+		const config = matchPattern(name, configs);
 		if (!config) {
 			throw new Error(
 				`Directory "${name}" is not configured. Available directories: ${Object.keys(configs).join(", ") || "(none)"}`,
@@ -2294,7 +2316,7 @@ export function createCacheFactory(options: CacheFactoryOptions) {
 			return new PostMessageCache(name);
 		}
 
-		const config = configs[name];
+		const config = matchPattern(name, configs);
 		if (!config) {
 			throw new Error(
 				`Cache "${name}" is not configured. Available caches: ${Object.keys(configs).join(", ") || "(none)"}`,

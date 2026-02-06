@@ -1,4 +1,4 @@
-import {Cache, type CacheQueryOptions} from "./index.js";
+import {Cache, type CacheQueryOptions, toRequest} from "./index.js";
 
 // Shared registry for pending requests across all PostMessageCache instances
 const pendingRequestsRegistry = new Map<
@@ -89,21 +89,22 @@ export class PostMessageCache extends Cache {
 	}
 
 	async match(
-		request: Request,
+		request: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<Response | undefined> {
+		const req = toRequest(request);
 		let requestBody: ArrayBuffer | undefined;
 		const transfer: ArrayBuffer[] = [];
 
-		if (request.method !== "GET" && request.method !== "HEAD") {
-			requestBody = await request.arrayBuffer();
+		if (req.method !== "GET" && req.method !== "HEAD") {
+			requestBody = await req.arrayBuffer();
 			transfer.push(requestBody);
 		}
 
 		const serializedRequest = {
-			url: request.url,
-			method: request.method,
-			headers: Object.fromEntries(request.headers),
+			url: req.url,
+			method: req.method,
+			headers: Object.fromEntries(req.headers),
 			body: requestBody,
 		};
 
@@ -127,13 +128,14 @@ export class PostMessageCache extends Cache {
 		});
 	}
 
-	async put(request: Request, response: Response): Promise<void> {
+	async put(request: RequestInfo | URL, response: Response): Promise<void> {
+		const req = toRequest(request);
 		const transfer: ArrayBuffer[] = [];
 		let requestBody: ArrayBuffer | undefined;
 		let responseBody: ArrayBuffer;
 
-		if (request.method !== "GET" && request.method !== "HEAD") {
-			requestBody = await request.clone().arrayBuffer();
+		if (req.method !== "GET" && req.method !== "HEAD") {
+			requestBody = await req.clone().arrayBuffer();
 			transfer.push(requestBody);
 		}
 
@@ -141,9 +143,9 @@ export class PostMessageCache extends Cache {
 		transfer.push(responseBody);
 
 		const serializedRequest = {
-			url: request.url,
-			method: request.method,
-			headers: Object.fromEntries(request.headers),
+			url: req.url,
+			method: req.method,
+			headers: Object.fromEntries(req.headers),
 			body: requestBody,
 		};
 
@@ -165,21 +167,22 @@ export class PostMessageCache extends Cache {
 	}
 
 	async delete(
-		request: Request,
+		request: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<boolean> {
+		const req = toRequest(request);
 		let requestBody: ArrayBuffer | undefined;
 		const transfer: ArrayBuffer[] = [];
 
-		if (request.method !== "GET" && request.method !== "HEAD") {
-			requestBody = await request.arrayBuffer();
+		if (req.method !== "GET" && req.method !== "HEAD") {
+			requestBody = await req.arrayBuffer();
 			transfer.push(requestBody);
 		}
 
 		const serializedRequest = {
-			url: request.url,
-			method: request.method,
-			headers: Object.fromEntries(request.headers),
+			url: req.url,
+			method: req.method,
+			headers: Object.fromEntries(req.headers),
 			body: requestBody,
 		};
 
@@ -194,23 +197,24 @@ export class PostMessageCache extends Cache {
 	}
 
 	async keys(
-		request?: Request,
+		request?: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<readonly Request[]> {
 		let serializedRequest;
 		const transfer: ArrayBuffer[] = [];
 
 		if (request) {
+			const req = toRequest(request);
 			let requestBody: ArrayBuffer | undefined;
-			if (request.method !== "GET" && request.method !== "HEAD") {
-				requestBody = await request.arrayBuffer();
+			if (req.method !== "GET" && req.method !== "HEAD") {
+				requestBody = await req.arrayBuffer();
 				transfer.push(requestBody);
 			}
 
 			serializedRequest = {
-				url: request.url,
-				method: request.method,
-				headers: Object.fromEntries(request.headers),
+				url: req.url,
+				method: req.method,
+				headers: Object.fromEntries(req.headers),
 				body: requestBody,
 			};
 		}
