@@ -1,5 +1,6 @@
 import {jsx} from "@b9g/crank/standalone";
 import * as Path from "path";
+import {NotFound} from "@b9g/http-errors";
 
 import {Root} from "../components/root.js";
 import {Main} from "../components/sidebar.js";
@@ -31,7 +32,7 @@ export default async function Doc({url}: ViewProps) {
 				(doc) => `/api${doc.url}`.replace(/\/$/, "") === url.replace(/\/$/, ""),
 			);
 	if (!post) {
-		throw new Error("Doc not found");
+		throw new NotFound("Doc not found");
 	}
 
 	const categories = buildDocCategories(filteredDocs);
