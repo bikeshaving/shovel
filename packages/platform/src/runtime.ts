@@ -2672,7 +2672,7 @@ export interface LoggerConfig {
 export interface LoggingConfig {
 	/** Named sinks. "console" is always available implicitly. */
 	sinks?: Record<string, SinkConfig>;
-	/** Logger configurations. Shovel provides defaults for ["shovel", ...] categories. */
+	/** Logger configurations. Shovel provides defaults for ["shovel", ...] and ["app", ...] categories. */
 	loggers?: LoggerConfig[];
 }
 
@@ -2686,9 +2686,10 @@ export interface ProcessedLoggingConfig {
 // Logging Implementation
 // ============================================================================
 
-/** Default Shovel loggers - provides logging for internal categories */
+/** Default loggers - provides logging for framework and app categories */
 const SHOVEL_DEFAULT_LOGGERS: LoggerConfig[] = [
 	{category: ["shovel"], level: "info", sinks: ["console"]},
+	{category: ["app"], level: "info", sinks: ["console"]},
 	{category: ["logtape", "meta"], level: "warning", sinks: ["console"]},
 ];
 
