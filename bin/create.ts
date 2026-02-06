@@ -96,12 +96,12 @@ async function main() {
 			{
 				value: "static-site" as const,
 				label: "Static Site",
-				hint: "Serve files from public/ directory",
+				hint: "Server-rendered HTML pages",
 			},
 			{
 				value: "full-stack" as const,
 				label: "Full Stack",
-				hint: "HTML pages + API routes + static assets",
+				hint: "HTML pages + API routes",
 			},
 		],
 	});
@@ -173,7 +173,7 @@ async function main() {
 		console.info("Next steps:");
 		console.info(`  cd ${projectName}`);
 		console.info(`  npm install`);
-		console.info(`  npm run dev`);
+		console.info(`  npm run develop`);
 		console.info("");
 		console.info("Your app will be available at: http://localhost:7777");
 		console.info("");
@@ -189,28 +189,25 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 	await mkdir(projectPath, {recursive: true});
 	await mkdir(join(projectPath, "src"), {recursive: true});
 
-	// Create public directory for static-site and full-stack templates
-	if (config.template === "static-site" || config.template === "full-stack") {
-		await mkdir(join(projectPath, "public"), {recursive: true});
-	}
-
 	// Create package.json
 	const ext = config.typescript ? "ts" : "js";
+	const startCmd =
+		config.platform === "bun"
+			? "bun dist/server/supervisor.js"
+			: "node dist/server/supervisor.js";
 	const packageJson = {
 		name: config.name,
 		private: true,
 		version: "0.0.1",
 		type: "module",
 		scripts: {
-			dev: `shovel develop src/app.${ext} --platform ${config.platform}`,
+			develop: `shovel develop src/app.${ext} --platform ${config.platform}`,
 			build: `shovel build src/app.${ext} --platform ${config.platform}`,
-			start: "node dist/server/supervisor.js",
+			start: startCmd,
 		},
 		dependencies: {
 			"@b9g/router": "^0.2.0",
 			"@b9g/shovel": "^0.2.0",
-			"@b9g/filesystem": "^0.1.8",
-			"@b9g/cache": "^0.2.0",
 		},
 		devDependencies: config.typescript
 			? {
@@ -229,7 +226,7 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 	const appFile = generateAppFile(config);
 	await writeFile(join(projectPath, `src/app.${ext}`), appFile);
 
-	// Create TypeScript config if needed
+	// Create TypeScript config and declarations if needed
 	if (config.typescript) {
 		const tsConfig = {
 			compilerOptions: {
@@ -251,11 +248,21 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 			join(projectPath, "tsconfig.json"),
 			JSON.stringify(tsConfig, null, 2),
 		);
-	}
 
-	// Create static files for templates that need them
-	if (config.template === "static-site" || config.template === "full-stack") {
-		await createStaticFiles(config, projectPath);
+		// Type declarations for Shovel's ServiceWorker environment
+		const envDts = `/// <reference lib="WebWorker" />
+
+// Shovel runs your code in a ServiceWorker-like environment.
+// This augments the Worker types with ServiceWorker events
+// so self.addEventListener("fetch", ...) etc. are properly typed.
+interface WorkerGlobalScopeEventMap {
+  fetch: FetchEvent;
+  install: ExtendableEvent;
+  activate: ExtendableEvent;
+}
+`;
+
+		await writeFile(join(projectPath, "src/env.d.ts"), envDts);
 	}
 
 	// Create README
@@ -271,66 +278,6 @@ dist/
 .DS_Store
 `;
 	await writeFile(join(projectPath, ".gitignore"), gitignore);
-}
-
-async function createStaticFiles(config: ProjectConfig, projectPath: string) {
-	// Create index.html
-	const indexHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${config.name}</title>
-  <link rel="stylesheet" href="/styles.css">
-</head>
-<body>
-  <main>
-    <h1>Welcome to ${config.name}</h1>
-    <p>Edit <code>public/index.html</code> to get started.</p>
-    ${config.template === "full-stack" ? '<p>API endpoint: <a href="/api/hello">/api/hello</a></p>' : ""}
-  </main>
-</body>
-</html>
-`;
-	await writeFile(join(projectPath, "public/index.html"), indexHtml);
-
-	// Create styles.css
-	const stylesCss = `* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  font-family: system-ui, -apple-system, sans-serif;
-  line-height: 1.6;
-  color: #333;
-  background: #fafafa;
-}
-
-main {
-  max-width: 640px;
-  margin: 4rem auto;
-  padding: 2rem;
-}
-
-h1 {
-  color: #2563eb;
-  margin-bottom: 1rem;
-}
-
-code {
-  background: #e5e7eb;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-
-a {
-  color: #2563eb;
-}
-`;
-	await writeFile(join(projectPath, "public/styles.css"), stylesCss);
 }
 
 function generateAppFile(config: ProjectConfig): string {
@@ -423,7 +370,7 @@ self.addEventListener("fetch", (event) => {
 
 function generateStaticSite(config: ProjectConfig): string {
 	return `// ${config.name} - Static Site
-// Serves files from the public/ directory
+// Renders HTML pages server-side
 
 self.addEventListener("fetch", (event) => {
   event.respondWith(handleRequest(event.request));
@@ -431,45 +378,50 @@ self.addEventListener("fetch", (event) => {
 
 async function handleRequest(request${config.typescript ? ": Request" : ""})${config.typescript ? ": Promise<Response>" : ""} {
   const url = new URL(request.url);
-  let path = url.pathname;
 
-  // Default to index.html for root
-  if (path === "/") {
-    path = "/index.html";
-  }
-
-  // Try to serve from public directory
-  try {
-    const publicDir = await directories.open("public");
-    const file = await publicDir.getFileHandle(path.slice(1)); // Remove leading /
-    const blob = await file.getFile();
-
-    return new Response(blob, {
-      headers: {
-        "Content-Type": getContentType(path),
-      },
+  if (url.pathname === "/") {
+    return new Response(renderPage("Home", \`
+      <h1>Welcome to ${config.name}</h1>
+      <p>Edit <code>src/app.${config.typescript ? "ts" : "js"}</code> to get started.</p>
+      <p><a href="/about">About</a></p>
+    \`), {
+      headers: { "Content-Type": "text/html" },
     });
-  } catch {
-    // File not found - return 404
-    return new Response("Not Found", { status: 404 });
   }
+
+  if (url.pathname === "/about") {
+    return new Response(renderPage("About", \`
+      <h1>About</h1>
+      <p>This is a static site built with <strong>Shovel</strong>.</p>
+      <p><a href="/">Home</a></p>
+    \`), {
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  return new Response("Not Found", { status: 404 });
 }
 
-function getContentType(path${config.typescript ? ": string" : ""})${config.typescript ? ": string" : ""} {
-  const ext = path.split(".").pop()?.toLowerCase();
-  const types${config.typescript ? ": Record<string, string>" : ""} = {
-    html: "text/html",
-    css: "text/css",
-    js: "text/javascript",
-    json: "application/json",
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    svg: "image/svg+xml",
-    ico: "image/x-icon",
-  };
-  return types[ext || ""] || "application/octet-stream";
+function renderPage(title${config.typescript ? ": string" : ""}, content${config.typescript ? ": string" : ""})${config.typescript ? ": string" : ""} {
+  return \`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>\${title} - ${config.name}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; color: #333; background: #fafafa; }
+    main { max-width: 640px; margin: 4rem auto; padding: 2rem; }
+    h1 { color: #2563eb; margin-bottom: 1rem; }
+    code { background: #e5e7eb; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+    a { color: #2563eb; }
+  </style>
+</head>
+<body>
+  <main>\${content}</main>
+</body>
+</html>\`;
 }
 `;
 }
@@ -492,56 +444,52 @@ router.route("/api/echo").post(async (req) => {
   return Response.json({ echo: body });
 });
 
-// Serve static files from public/ for all other routes
-router.route("/*").get(async (req, ctx) => {
-  const url = new URL(req.url);
-  let path = url.pathname;
-
-  // Default to index.html for root
-  if (path === "/") {
-    path = "/index.html";
-  }
-
-  try {
-    const publicDir = await directories.open("public");
-    const file = await publicDir.getFileHandle(path.slice(1));
-    const blob = await file.getFile();
-
-    return new Response(blob, {
-      headers: {
-        "Content-Type": getContentType(path),
-      },
-    });
-  } catch {
-    // Try index.html for SPA routing
-    try {
-      const publicDir = await directories.open("public");
-      const file = await publicDir.getFileHandle("index.html");
-      const blob = await file.getFile();
-      return new Response(blob, {
-        headers: { "Content-Type": "text/html" },
-      });
-    } catch {
-      return new Response("Not Found", { status: 404 });
-    }
-  }
+// HTML pages
+router.route("/").get(() => {
+  return new Response(renderPage("Home", \`
+    <h1>Welcome to ${config.name}</h1>
+    <p>Edit <code>src/app.${config.typescript ? "ts" : "js"}</code> to get started.</p>
+    <ul>
+      <li><a href="/about">About</a></li>
+      <li><a href="/api/hello">API: /api/hello</a></li>
+    </ul>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
 });
 
-function getContentType(path${config.typescript ? ": string" : ""})${config.typescript ? ": string" : ""} {
-  const ext = path.split(".").pop()?.toLowerCase();
-  const types${config.typescript ? ": Record<string, string>" : ""} = {
-    html: "text/html",
-    css: "text/css",
-    js: "text/javascript",
-    json: "application/json",
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    svg: "image/svg+xml",
-    ico: "image/x-icon",
-  };
-  return types[ext || ""] || "application/octet-stream";
+router.route("/about").get(() => {
+  return new Response(renderPage("About", \`
+    <h1>About</h1>
+    <p>This is a full-stack app built with <strong>Shovel</strong>.</p>
+    <p><a href="/">Home</a></p>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+function renderPage(title${config.typescript ? ": string" : ""}, content${config.typescript ? ": string" : ""})${config.typescript ? ": string" : ""} {
+  return \`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>\${title} - ${config.name}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; color: #333; background: #fafafa; }
+    main { max-width: 640px; margin: 4rem auto; padding: 2rem; }
+    h1 { color: #2563eb; margin-bottom: 1rem; }
+    code { background: #e5e7eb; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+    a { color: #2563eb; }
+    ul { margin-top: 1rem; padding-left: 1.5rem; }
+    li { margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <main>\${content}</main>
+</body>
+</html>\`;
 }
 
 self.addEventListener("fetch", (event) => {
@@ -554,8 +502,8 @@ function generateReadme(config: ProjectConfig): string {
 	const templateDescriptions: Record<string, string> = {
 		"hello-world": "A minimal Shovel application",
 		api: "A REST API with JSON endpoints",
-		"static-site": "A static file server",
-		"full-stack": "A full-stack app with API routes and static files",
+		"static-site": "A static site with server-rendered pages",
+		"full-stack": "A full-stack app with HTML pages and API routes",
 	};
 
 	return `# ${config.name}
@@ -566,14 +514,14 @@ ${templateDescriptions[config.template]}, built with [Shovel](https://github.com
 
 \`\`\`bash
 npm install
-npm run dev
+npm run develop
 \`\`\`
 
 Open http://localhost:7777
 
 ## Scripts
 
-- \`npm run dev\` - Start development server
+- \`npm run develop\` - Start development server
 - \`npm run build\` - Build for production
 - \`npm start\` - Run production build
 
@@ -583,7 +531,7 @@ Open http://localhost:7777
 ${config.name}/
 ├── src/
 │   └── app.${config.typescript ? "ts" : "js"}    # Application entry point
-${config.template === "static-site" || config.template === "full-stack" ? "├── public/           # Static files\n│   ├── index.html\n│   └── styles.css\n" : ""}├── package.json
+├── package.json
 ${config.typescript ? "├── tsconfig.json\n" : ""}└── README.md
 \`\`\`
 
