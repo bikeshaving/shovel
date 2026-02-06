@@ -15,7 +15,7 @@ const heroStyles = css`
 	justify-content: center;
 	align-items: center;
 	text-align: center;
-	padding: 2rem 1rem;
+	padding: 60px 1rem 2rem;
 	box-sizing: border-box;
 `;
 
@@ -98,19 +98,19 @@ const serverCode = `import {Router} from "@b9g/router";
 const router = new Router();
 
 router.route("/kv/:key")
-  .get(async (req, ctx) => {
+  .get(async (req) => {
     const cache = await self.caches.open("kv");
-    const cached = await cache.match(ctx.params.key);
+    const cached = await cache.match(req.url);
     return cached ?? new Response(null, {status: 404});
   })
-  .put(async (req, ctx) => {
+  .put(async (req) => {
     const cache = await self.caches.open("kv");
-    await cache.put(ctx.params.key, new Response(await req.text()));
+    await cache.put(req.url, new Response(await req.text()));
     return new Response(null, {status: 201});
   })
-  .delete(async (req, ctx) => {
+  .delete(async (req) => {
     const cache = await self.caches.open("kv");
-    await cache.delete(ctx.params.key);
+    await cache.delete(req.url);
     return new Response(null, {status: 204});
   });
 
@@ -118,22 +118,63 @@ self.addEventListener("fetch", (ev) => {
   ev.respondWith(router.handle(ev.request));
 });`;
 
-const terminalCode = `$ shovel develop server.ts
-listening on http://localhost:7777
+// Offsets in ms from page load, matching realistic shovel develop timing
+const logLines = [
+	{offset: 0, rest: " INF shovel\u00b7build Building..."},
+	{offset: 35, rest: " INF shovel\u00b7build Build complete in 35ms"},
+	{
+		offset: 109,
+		rest: " INF shovel\u00b7build Watching 27 files in 9 directories",
+	},
+	{offset: 147, rest: " INF shovel\u00b7platform Server ready"},
+	{offset: 147, rest: " INF shovel\u00b7develop http://localhost:7777"},
+];
 
-$ curl -X PUT :7777/kv/hello -d "world"
+function buildTerminalHtml(): string {
+	const lines: string[] = [];
+	lines.push("$ shovel develop server.ts");
+	for (const {offset, rest} of logLines) {
+		lines.push(`<span data-ts-offset="${offset}"></span>${escapeHtml(rest)}`);
+	}
+	lines.push("");
+	lines.push("$ curl -X PUT :7777/kv/hello -d &quot;world&quot;");
+	lines.push("# 201");
+	lines.push("$ curl :7777/kv/hello");
+	lines.push("world");
+	lines.push("$ curl -X DELETE :7777/kv/hello");
+	lines.push("# 204");
+	return lines.join("\n");
+}
 
-$ curl :7777/kv/hello
-world
+function escapeHtml(s: string): string {
+	return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
-$ curl -X DELETE :7777/kv/hello
-
-$ curl :7777/kv/hello
-# 404`;
+const timestampScript = `<script>
+(function() {
+  var now = new Date();
+  var h = String(now.getHours()).padStart(2, "0");
+  var m = String(now.getMinutes()).padStart(2, "0");
+  var s = String(now.getSeconds()).padStart(2, "0");
+  var ms = now.getMilliseconds();
+  var spans = document.querySelectorAll("[data-ts-offset]");
+  for (var i = 0; i < spans.length; i++) {
+    var offset = parseInt(spans[i].getAttribute("data-ts-offset"), 10);
+    var total = ms + offset;
+    var extraS = Math.floor(total / 1000);
+    var finalMs = String(total % 1000).padStart(3, "0");
+    var finalS = parseInt(s, 10) + extraS;
+    var finalM = parseInt(m, 10) + Math.floor(finalS / 60);
+    finalS = String(finalS % 60).padStart(2, "0");
+    finalM = String(finalM % 60).padStart(2, "0");
+    spans[i].textContent = h + ":" + finalM + ":" + finalS + "." + finalMs;
+  }
+})();
+</script>`;
 
 export default function Home({url}: ViewProps) {
 	const highlightedServer = highlight(serverCode, "typescript");
-	const highlightedTerminal = highlight(terminalCode, "bash");
+	const terminalHtml = buildTerminalHtml();
 
 	return jsx`
 		<${Root}
@@ -153,7 +194,7 @@ export default function Home({url}: ViewProps) {
 					</div>
 					<div class=${codeBlockStyles}>
 						<div class=${codeLabelStyles}>terminal</div>
-						<pre><code><${Raw} value=${highlightedTerminal} /></code></pre>
+						<pre><code><${Raw} value=${terminalHtml} /></code></pre>
 					</div>
 				</div>
 				<div class=${ctaStyles}>
@@ -161,6 +202,7 @@ export default function Home({url}: ViewProps) {
 					<a href="https://github.com/bikeshaving/shovel">GitHub</a>
 				</div>
 			</div>
+			<${Raw} value=${timestampScript} />
 		<//Root>
 	`;
 }

@@ -99,7 +99,7 @@
     },
     "packages/assets": {
       "name": "@b9g/assets",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "dependencies": {
         "mime": "^4.0.4",
       },
@@ -110,7 +110,7 @@
     },
     "packages/async-context": {
       "name": "@b9g/async-context",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
         "@types/node": "^20.0.0",
@@ -118,14 +118,14 @@
     },
     "packages/cache": {
       "name": "@b9g/cache",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
       },
     },
     "packages/cache-redis": {
       "name": "@b9g/cache-redis",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "dependencies": {
         "@logtape/logtape": "^1.2.0",
         "redis": "^4.6.10",
@@ -139,7 +139,7 @@
     },
     "packages/create-shovel": {
       "name": "create-shovel",
-      "version": "0.0.1",
+      "version": "0.1.0",
       "bin": "./index.js",
       "dependencies": {
         "@b9g/shovel": "^0.2.0",
@@ -147,7 +147,7 @@
     },
     "packages/filesystem": {
       "name": "@b9g/filesystem",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "dependencies": {
         "mime": "^4.0.4",
       },
@@ -164,7 +164,7 @@
     },
     "packages/filesystem-s3": {
       "name": "@b9g/filesystem-s3",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "dependencies": {
         "@b9g/filesystem": "workspace:*",
         "mime": "^4.0.4",
@@ -178,21 +178,21 @@
     },
     "packages/http-errors": {
       "name": "@b9g/http-errors",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
       },
     },
     "packages/match-pattern": {
       "name": "@b9g/match-pattern",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
       },
     },
     "packages/node-webworker": {
       "name": "@b9g/node-webworker",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
         "@types/node": "^18.0.0",
@@ -212,7 +212,7 @@
     },
     "packages/platform": {
       "name": "@b9g/platform",
-      "version": "0.1.15",
+      "version": "0.1.16",
       "dependencies": {
         "@b9g/async-context": "workspace:*",
         "@b9g/cache": "workspace:*",
@@ -234,7 +234,7 @@
     },
     "packages/platform-bun": {
       "name": "@b9g/platform-bun",
-      "version": "0.1.13",
+      "version": "0.1.14",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/cache": "workspace:*",
@@ -248,7 +248,7 @@
     },
     "packages/platform-cloudflare": {
       "name": "@b9g/platform-cloudflare",
-      "version": "0.1.13",
+      "version": "0.1.14",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/async-context": "workspace:*",
@@ -265,7 +265,7 @@
     },
     "packages/platform-node": {
       "name": "@b9g/platform-node",
-      "version": "0.1.15",
+      "version": "0.1.16",
       "dependencies": {
         "@b9g/cache": "workspace:*",
         "@b9g/http-errors": "workspace:*",
@@ -280,7 +280,7 @@
     },
     "packages/router": {
       "name": "@b9g/router",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "dependencies": {
         "@b9g/http-errors": "workspace:*",
         "@b9g/match-pattern": "workspace:*",
@@ -297,7 +297,7 @@
       },
     },
     "website": {
-      "name": "@b9g/shovel-website",
+      "name": "shovel-website",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/crank": "^0.7.3",
@@ -434,8 +434,6 @@
     "@b9g/router": ["@b9g/router@workspace:packages/router"],
 
     "@b9g/shovel": ["@b9g/shovel@0.2.2", "", { "dependencies": { "@b9g/async-context": "^0.2.0", "@b9g/cache": "^0.2.0", "@b9g/filesystem": "^0.1.8", "@b9g/http-errors": "^0.2.0", "@b9g/node-webworker": "^0.2.0", "@b9g/platform": "^0.1.15", "@b9g/platform-bun": "^0.1.13", "@b9g/platform-cloudflare": "^0.1.13", "@b9g/platform-node": "^0.1.15", "@clack/prompts": "^0.7.0", "@esbuild-plugins/node-globals-polyfill": "^0.2.3", "@esbuild-plugins/node-modules-polyfill": "^0.2.2", "@logtape/logtape": "^1.2.0", "commander": "^13.1.0", "esbuild": "^0.27.2", "mime": "^4.0.4", "zod": "^3.23.0" }, "bin": { "shovel": "bin/cli.js", "create-shovel": "bin/create.js", "cli": "bin/cli.js", "create": "bin/create.js" } }, "sha512-XvSvHpgF6wyVceqg8IheZgLDkWQu82JlWsWQHXTvlzuzgrtulzeSXWg9z4H2Wf/vplSIamUKdtgeXn68SrjIVw=="],
-
-    "@b9g/shovel-website": ["@b9g/shovel-website@workspace:website"],
 
     "@b9g/shovel-wpt": ["@b9g/shovel-wpt@workspace:packages/shovel-wpt"],
 
@@ -1179,6 +1177,8 @@
 
     "shovel-echo": ["shovel-echo@workspace:examples/echo"],
 
+    "shovel-website": ["shovel-website@workspace:website"],
+
     "simple-swizzle": ["simple-swizzle@0.2.4", "", { "dependencies": { "is-arrayish": "^0.3.1" } }, "sha512-nAu1WFPQSMNr2Zn9PGSZK9AGn4t/y97lEm+MXTtUDwfP0ksAIX4nO+6ruD9Jwut4C49SB1Ws+fbXsm/yScWOHw=="],
 
     "sisteransi": ["sisteransi@1.0.5", "", {}, "sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg=="],
@@ -1281,8 +1281,6 @@
 
     "@b9g/platform-node/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
 
-    "@b9g/shovel-website/@b9g/crank": ["@b9g/crank@0.7.3", "", {}, "sha512-neBwRrM3t65zkR8RqLWZMohy74A1nu5Ndd/CegnnsG/8OCZ1/q/DvfHVziukQJjZTDzqPdC5vo6+XuygoO4DGQ=="],
-
     "@b9g/zen/zod": ["zod@4.1.13", "", {}, "sha512-AvvthqfqrAhNH9dnfmrfKzX5upOdjUVJYFqNSlkmGf64gRaTzlPwz99IHYnVs28qYAybvAlBV+H7pn0saFY4Ig=="],
 
     "@babel/generator/@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
@@ -1326,6 +1324,8 @@
     "pkg-dir/find-up": ["find-up@4.1.0", "", { "dependencies": { "locate-path": "^5.0.0", "path-exists": "^4.0.0" } }, "sha512-PpOwAdQ/YlXQ2vj8a3h8IipDuYRi3wceVQQGYWxNINccq40Anw7BlsEXCMbt1Zt+OLA6Fq9suIpIWD0OsnISlw=="],
 
     "shovel-echo/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
+
+    "shovel-website/@b9g/crank": ["@b9g/crank@0.7.3", "", {}, "sha512-neBwRrM3t65zkR8RqLWZMohy74A1nu5Ndd/CegnnsG/8OCZ1/q/DvfHVziukQJjZTDzqPdC5vo6+XuygoO4DGQ=="],
 
     "strip-outer/escape-string-regexp": ["escape-string-regexp@1.0.5", "", {}, "sha512-vbRorB5FUQWvla16U8R/qgaFIya2qGzwDrNmCZuYKrbdSUMG6I1ZCGQRefkRVhuOkIGVne7BQ35DSfo1qvJqFg=="],
 

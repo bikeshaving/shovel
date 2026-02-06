@@ -4,7 +4,6 @@ description: The story behind Shovel.js
 date: 2026-02-05
 author: Brian Kim
 authorURL: https://github.com/brainkim
-publish: false
 ---
 
 Today, I’m happy to announce my first major AI-assisted open source project, which took approximately three months of development. No, it’s not an AI village tool where bots waste tokens. Rather, **Shovel.js** is a three-month meditation on the question: “what if your server was just a service worker?” The result is a command-line interface and set of libraries for developing and deploying Service Workers as web applications. Shovel is both a full-stack server framework replacing tools like Express, Fastify or Hono, and a meta-framework / compiler replacing tools like Vite or Next.js.
