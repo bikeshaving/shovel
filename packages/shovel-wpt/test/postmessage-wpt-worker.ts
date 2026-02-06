@@ -9,7 +9,10 @@
 
 import {parentPort} from "worker_threads";
 import {MemoryCache} from "../../cache/src/memory.js";
-import {handleCacheResponse, PostMessageCache} from "../../cache/src/postmessage.js";
+import {
+	handleCacheResponse,
+	PostMessageCache,
+} from "../../cache/src/postmessage.js";
 
 // Main-thread cache coordinator (MemoryCache instances per name)
 const memoryCaches = new Map<string, MemoryCache>();
@@ -170,9 +173,7 @@ if (parentPort) {
 
 				case "match": {
 					const {request, options} = message;
-					const req = request
-						? new Request(request.url, request)
-						: undefined;
+					const req = request ? new Request(request.url, request) : undefined;
 					const result = await cache.match(req!, options);
 					if (result) {
 						const body = await result.text();
@@ -230,10 +231,7 @@ if (parentPort) {
 					const {request, options} = message;
 					let keys: readonly Request[];
 					if (request) {
-						keys = await cache.keys(
-							new Request(request.url, request),
-							options,
-						);
+						keys = await cache.keys(new Request(request.url, request), options);
 					} else {
 						keys = await cache.keys();
 					}
