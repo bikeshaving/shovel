@@ -284,4 +284,10 @@ Therefore, I’m happy to announce that Shovel.js is ready for early adopters. T
 
 The roadmap is ambitious: sessions, authentication, websockets, cron jobs, email; ultimately, I want Shovel to be maximally batteries included, complete with an admin interface like Django. If you know of any interesting web standards, or libraries that are so well-specified that they *should* be web standards, please let me know.
 
-Thank you so much for reading this far. I hope I’ve convinced you to try Shovel, which you can do by running `npm create shovel`. You can also [read the docs](/guides/getting-started), or follow [development on GitHub](https://github.com/bikeshaving/shovel). Remember, if you know how to write a Service Worker, you already know how to write a Shovel app.
+Thank you so much for reading this far. I hope I've convinced you to try Shovel. You can get started right now:
+
+```bash
+npm create shovel my-app
+```
+
+You can also [read the docs](/guides/getting-started), or follow [development on GitHub](https://github.com/bikeshaving/shovel). Remember, if you know how to write a Service Worker, you already know how to write a Shovel app.

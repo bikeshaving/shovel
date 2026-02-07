@@ -72,8 +72,22 @@ const codeLabelStyles = css`
 	letter-spacing: 0.05em;
 `;
 
-const ctaStyles = css`
+const commandStyles = css`
 	margin-top: 2rem;
+	background: var(--code-bg);
+	border-radius: 6px;
+	padding: 0.75rem 1.25rem;
+	font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
+	font-size: 1rem;
+	color: var(--text-muted);
+
+	span {
+		color: var(--highlight-color);
+	}
+`;
+
+const ctaStyles = css`
+	margin-top: 1rem;
 	display: flex;
 	gap: 1rem;
 
@@ -206,6 +220,7 @@ export default function Home({url}: ViewProps) {
 						<pre><code><${Raw} value=${terminalHtml} /></code></pre>
 					</div>
 				</div>
+				<div class=${commandStyles}>$ <span>npm create shovel</span></div>
 				<div class=${ctaStyles}>
 					<a href="/guides/getting-started">Get Started</a>
 					<a href="https://github.com/bikeshaving/shovel">GitHub</a>
