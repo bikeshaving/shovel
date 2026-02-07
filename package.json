@@ -21,10 +21,11 @@
   ],
   "scripts": {
     "build": "bun run --filter './packages/*' build && libuild build --save",
-    "test": "bun test",
+    "test": "bun test packages/*/test test",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --ext .js,.jsx,.ts,.tsx .",
     "lint:fix": "eslint --ext .js,.jsx,.ts,.tsx . --fix",
+    "prepare": "bash scripts/setup-wpt.sh",
     "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
   },
   "dependencies": {

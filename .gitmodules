@@ -1,3 +1,4 @@
 [submodule "packages/shovel-wpt/wpt"]
 	path = packages/shovel-wpt/wpt
 	url = https://github.com/web-platform-tests/wpt.git
+	shallow = true

@@ -1,0 +1,2 @@
+[test]
+pathIgnorePatterns = ["**/shovel-wpt/wpt/**"]
