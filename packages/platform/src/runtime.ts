@@ -701,6 +701,7 @@ const PATCHED_KEYS = [
 	"DedicatedWorkerGlobalScope",
 	"cookieStore",
 	"BroadcastChannel",
+	"indexedDB",
 ] as const;
 
 type PatchedKey = (typeof PATCHED_KEYS)[number];
@@ -1790,6 +1791,8 @@ export interface ServiceWorkerGlobalsOptions {
 	loggers: LoggerStorage;
 	/** Cache storage (required by ServiceWorkerGlobalScope) - REQUIRED */
 	caches: CacheStorage;
+	/** IndexedDB factory - OPTIONAL */
+	indexedDB?: IDBFactory;
 	/** Development mode flag */
 	isDevelopment?: boolean;
 }
@@ -2012,6 +2015,7 @@ export class ServiceWorkerGlobals {
 		this.loggers = options.loggers;
 		this.#isDevelopment = options.isDevelopment ?? false;
 
+
 		// Create clients API implementation
 		this.clients = this.#createClientsAPI();
 
@@ -2021,7 +2025,7 @@ export class ServiceWorkerGlobals {
 		this.location = {} as WorkerLocation;
 		this.navigator = {} as WorkerNavigator;
 		this.fonts = {} as FontFaceSet;
-		this.indexedDB = {} as IDBFactory;
+		this.indexedDB = options.indexedDB ?? ({} as IDBFactory);
 		this.isSecureContext = true;
 		this.crossOriginIsolated = false;
 		this.origin = "";
@@ -2154,6 +2158,7 @@ export class ServiceWorkerGlobals {
 			g.databases = this.databases;
 		}
 		g.loggers = this.loggers;
+		g.indexedDB = this.indexedDB;
 
 		// ServiceWorker APIs
 		g.registration = this.registration;
@@ -2233,6 +2238,14 @@ export interface ShovelConfig {
 			| ((options: Record<string, unknown>) => BroadcastChannelBackend);
 		[key: string]: unknown;
 	};
+	indexedDB?: IndexedDBConfig;
+}
+
+export interface IndexedDBConfig {
+	/** The IDBBackend implementation class */
+	impl?: new (...args: any[]) => any;
+	/** Path for file-based backends (SQLite) */
+	path?: string;
 }
 
 // ============================================================================
@@ -2474,6 +2487,18 @@ export async function initWorkerRuntime(
 		getLogger(categories),
 	);
 
+	// Create IndexedDB factory if configured
+	let indexedDB: IDBFactory | undefined;
+	if (config?.indexedDB?.impl) {
+		const BackendClass = config.indexedDB.impl;
+		const backend = config.indexedDB.path
+			? new BackendClass(config.indexedDB.path)
+			: new BackendClass();
+		// Dynamically import to avoid hard dependency
+		const {IDBFactory: IDBFactoryImpl} = await import("@b9g/indexeddb");
+		indexedDB = new IDBFactoryImpl(backend) as unknown as IDBFactory;
+	}
+
 	// Create registration and scope
 	const registration = new ShovelServiceWorkerRegistration();
 	const scope = new ServiceWorkerGlobals({
@@ -2482,6 +2507,7 @@ export async function initWorkerRuntime(
 		directories,
 		databases,
 		loggers,
+		indexedDB,
 	});
 
 	// Install ServiceWorker globals

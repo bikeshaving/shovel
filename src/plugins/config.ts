@@ -31,6 +31,7 @@ export interface ConfigPluginOptions {
 			string,
 			{module: string; export?: string; [key: string]: unknown}
 		>;
+		indexedDB?: {module: string; export?: string; [key: string]: unknown};
 	};
 	/** Lifecycle options for --lifecycle flag */
 	lifecycle?: {
