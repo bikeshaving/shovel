@@ -89,6 +89,30 @@ Response ← Global (after) ← Path (after) ← Route (after)
 
 ## Built-in Middleware
 
+### logger(options?: LoggerOptions)
+
+```typescript
+import { logger } from "@b9g/router/middleware";
+
+router.use(logger());
+
+// Custom LogTape category
+router.use(logger({ category: ["app", "http"] }));
+```
+
+Logs incoming requests and outgoing responses with timing:
+
+```
+→ GET /
+← 200 GET / (3ms)
+```
+
+#### LoggerOptions
+
+| Option | Type | Default |
+|--------|------|---------|
+| `category` | `string[]` | `["app", "router"]` |
+
 ### cors(options?: CorsOptions)
 
 ```typescript

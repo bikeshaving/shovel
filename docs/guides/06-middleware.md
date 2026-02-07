@@ -29,17 +29,14 @@ router.use("/api", authMiddleware);
 Use `yield` for before/after hooks:
 
 ```typescript
-const loggingMiddleware = async function* (request) {
+const timing = async function* (request) {
   const start = Date.now();
-  console.log("→", request.method, request.url);
-
   const response = yield request;
-
-  console.log("←", response.status, Date.now() - start, "ms");
+  response.headers.set("X-Response-Time", `${Date.now() - start}ms`);
   return response;
 };
 
-router.use(loggingMiddleware);
+router.use(timing);
 ```
 
 ## Scoped Middleware
@@ -60,11 +57,15 @@ router
   .get(listUsers);
 ```
 
-## Built-in CORS
+## Built-in Middleware
 
 ```typescript
-import { cors } from "@b9g/router/middleware";
+import { cors, logger } from "@b9g/router/middleware";
 
+// Request logging via LogTape (category: ["app", "router"])
+router.use(logger());
+
+// CORS
 router.use(cors({
   origin: ["https://example.com"],
   methods: ["GET", "POST"],
