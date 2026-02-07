@@ -52,6 +52,33 @@ Response ← <span class="token function">Global</span> <span class="token punct
 </code></pre>
 <hr>
 <h2 id="built-in-middleware">Built-in Middleware</h2>
+<h3 id="loggeroptions-loggeroptions">logger(options?: LoggerOptions)</h3>
+<pre><code class="language-typescript"><span class="token keyword">import</span> <span class="token punctuation">{</span> logger <span class="token punctuation">}</span> <span class="token keyword">from</span> <span class="token string">"@b9g/router/middleware"</span><span class="token punctuation">;</span>
+
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span><span class="token function">logger</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token comment">// Custom LogTape category</span>
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span><span class="token function">logger</span><span class="token punctuation">(</span><span class="token punctuation">{</span> category<span class="token operator">:</span> <span class="token punctuation">[</span><span class="token string">"app"</span><span class="token punctuation">,</span> <span class="token string">"http"</span><span class="token punctuation">]</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+</code></pre>
+<p>Logs incoming requests and outgoing responses with timing:</p>
+<pre><code>→ <span class="token constant">GET</span> <span class="token operator">/</span>
+← <span class="token number">200</span> <span class="token constant">GET</span> <span class="token operator">/</span> <span class="token punctuation">(</span>3ms<span class="token punctuation">)</span>
+</code></pre>
+<h4 id="loggeroptions">LoggerOptions</h4>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Type</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>category</code></td>
+<td><code>string[]</code></td>
+<td><code>[&quot;app&quot;, &quot;router&quot;]</code></td>
+</tr>
+</tbody></table>
 <h3 id="corsoptions-corsoptions">cors(options?: CorsOptions)</h3>
 <pre><code class="language-typescript"><span class="token keyword">import</span> <span class="token punctuation">{</span> cors <span class="token punctuation">}</span> <span class="token keyword">from</span> <span class="token string">"@b9g/router/middleware"</span><span class="token punctuation">;</span>
 

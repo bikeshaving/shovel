@@ -16,17 +16,14 @@ router<span class="token punctuation">.</span><span class="token function">use</
 </code></pre>
 <h2 id="generator-middleware">Generator Middleware</h2>
 <p>Use <code>yield</code> for before/after hooks:</p>
-<pre><code class="language-typescript"><span class="token keyword">const</span> <span class="token function-variable function">loggingMiddleware</span> <span class="token operator">=</span> <span class="token keyword">async</span> <span class="token keyword">function</span><span class="token operator">*</span> <span class="token punctuation">(</span>request<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+<pre><code class="language-typescript"><span class="token keyword">const</span> <span class="token function-variable function">timing</span> <span class="token operator">=</span> <span class="token keyword">async</span> <span class="token keyword">function</span><span class="token operator">*</span> <span class="token punctuation">(</span>request<span class="token punctuation">)</span> <span class="token punctuation">{</span>
   <span class="token keyword">const</span> start <span class="token operator">=</span> Date<span class="token punctuation">.</span><span class="token function">now</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-  <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span><span class="token string">"→"</span><span class="token punctuation">,</span> request<span class="token punctuation">.</span>method<span class="token punctuation">,</span> request<span class="token punctuation">.</span>url<span class="token punctuation">)</span><span class="token punctuation">;</span>
-
   <span class="token keyword">const</span> response <span class="token operator">=</span> <span class="token keyword">yield</span> request<span class="token punctuation">;</span>
-
-  <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span><span class="token string">"←"</span><span class="token punctuation">,</span> response<span class="token punctuation">.</span>status<span class="token punctuation">,</span> Date<span class="token punctuation">.</span><span class="token function">now</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-</span> start<span class="token punctuation">,</span> <span class="token string">"ms"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  response<span class="token punctuation">.</span>headers<span class="token punctuation">.</span><span class="token function">set</span><span class="token punctuation">(</span><span class="token string">"X-Response-Time"</span><span class="token punctuation">,</span> <span class="token template-string"><span class="token template-punctuation string">`</span><span class="token interpolation"><span class="token interpolation-punctuation punctuation">${</span>Date<span class="token punctuation">.</span><span class="token function">now</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-</span> start<span class="token interpolation-punctuation punctuation">}</span></span><span class="token string">ms</span><span class="token template-punctuation string">`</span></span><span class="token punctuation">)</span><span class="token punctuation">;</span>
   <span class="token keyword">return</span> response<span class="token punctuation">;</span>
 <span class="token punctuation">}</span><span class="token punctuation">;</span>
 
-router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span>loggingMiddleware<span class="token punctuation">)</span><span class="token punctuation">;</span>
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span>timing<span class="token punctuation">)</span><span class="token punctuation">;</span>
 </code></pre>
 <h2 id="scoped-middleware">Scoped Middleware</h2>
 <p>Apply middleware to specific paths or routes:</p>
@@ -42,9 +39,13 @@ router
   <span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span>requireAdmin<span class="token punctuation">)</span>
   <span class="token punctuation">.</span><span class="token function">get</span><span class="token punctuation">(</span>listUsers<span class="token punctuation">)</span><span class="token punctuation">;</span>
 </code></pre>
-<h2 id="built-in-cors">Built-in CORS</h2>
-<pre><code class="language-typescript"><span class="token keyword">import</span> <span class="token punctuation">{</span> cors <span class="token punctuation">}</span> <span class="token keyword">from</span> <span class="token string">"@b9g/router/middleware"</span><span class="token punctuation">;</span>
+<h2 id="built-in-middleware">Built-in Middleware</h2>
+<pre><code class="language-typescript"><span class="token keyword">import</span> <span class="token punctuation">{</span> cors<span class="token punctuation">,</span> logger <span class="token punctuation">}</span> <span class="token keyword">from</span> <span class="token string">"@b9g/router/middleware"</span><span class="token punctuation">;</span>
 
+<span class="token comment">// Request logging via LogTape (category: ["app", "router"])</span>
+router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span><span class="token function">logger</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token comment">// CORS</span>
 router<span class="token punctuation">.</span><span class="token function">use</span><span class="token punctuation">(</span><span class="token function">cors</span><span class="token punctuation">(</span><span class="token punctuation">{</span>
   origin<span class="token operator">:</span> <span class="token punctuation">[</span><span class="token string">"https://example.com"</span><span class="token punctuation">]</span><span class="token punctuation">,</span>
   methods<span class="token operator">:</span> <span class="token punctuation">[</span><span class="token string">"GET"</span><span class="token punctuation">,</span> <span class="token string">"POST"</span><span class="token punctuation">]</span><span class="token punctuation">,</span>
