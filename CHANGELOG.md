@@ -2,6 +2,18 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.7] - 2026-02-06
+
+### Features
+
+- **Request logger middleware** - New `logger()` middleware in `@b9g/router/middleware` logs requests and responses with timing via LogTape (default category: `["app", "router"]`)
+- **CLI flags for create-shovel** - `--template`, `--typescript`/`--no-typescript`, `--platform` flags to bypass interactive prompts. `--template crank` is shorthand for static-site + Crank.js.
+- **Logger in generated templates** - All Router-based templates (api, full-stack) now include `router.use(logger())` out of the box
+
+### Dependencies
+
+- **`@b9g/router`** `0.2.2` - Added `@logtape/logtape` as explicit dependency (was previously resolved via workspace only)
+
 ## [0.2.6] - 2026-02-06
 
 ### Features
