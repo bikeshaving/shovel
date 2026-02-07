@@ -35,13 +35,42 @@ function validateProjectName(name: string): string | undefined {
 	return undefined;
 }
 
+/**
+ * Parse CLI flags from process.argv.
+ *
+ * Supports:
+ *   --template <name>       Skip template prompt (also accepts "crank" as shorthand for static-site + crank)
+ *   --typescript             Skip TypeScript prompt (yes)
+ *   --no-typescript          Skip TypeScript prompt (no)
+ *   --platform <name>       Skip platform prompt
+ */
+function parseFlags(args: string[]): {
+	template?: string;
+	typescript?: boolean;
+	platform?: string;
+} {
+	const flags: Record<string, string | boolean> = {};
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i];
+		if (arg === "--template" && args[i + 1]) flags.template = args[++i];
+		else if (arg === "--typescript") flags.typescript = true;
+		else if (arg === "--no-typescript") flags.typescript = false;
+		else if (arg === "--platform" && args[i + 1]) flags.platform = args[++i];
+	}
+	return flags;
+}
+
 async function main() {
 	console.info("");
 
 	intro("Create Shovel App");
 
-	// Get project name from args or prompt
-	let projectName = process.argv[2];
+	const flags = parseFlags(process.argv.slice(2));
+
+	// Get project name from args or prompt (skip --flags)
+	let projectName = process.argv[2]?.startsWith("-")
+		? undefined
+		: process.argv[2];
 
 	if (projectName) {
 		// Validate CLI argument the same way as interactive input
@@ -81,40 +110,61 @@ async function main() {
 	}
 
 	// 1. Template selection (most important question first)
-	const template = await select({
-		message: "Choose a starter template:",
-		options: [
-			{
-				value: "hello-world" as const,
-				label: "Hello World",
-				hint: "Minimal fetch handler to get started",
-			},
-			{
-				value: "api" as const,
-				label: "API",
-				hint: "REST endpoints with JSON responses",
-			},
-			{
-				value: "static-site" as const,
-				label: "Static Site",
-				hint: "Server-rendered HTML pages",
-			},
-			{
-				value: "full-stack" as const,
-				label: "Full Stack",
-				hint: "HTML pages + API routes",
-			},
-		],
-	});
+	// --template crank is a shorthand for static-site + crank UI framework
+	let template: ProjectConfig["template"];
+	let uiFramework: ProjectConfig["uiFramework"] = "vanilla";
 
-	if (typeof template === "symbol") {
-		outro("Project creation cancelled");
-		process.exit(0);
+	if (flags.template === "crank") {
+		template = "static-site";
+		uiFramework = "crank";
+	} else if (flags.template) {
+		const valid = ["hello-world", "api", "static-site", "full-stack"];
+		if (!valid.includes(flags.template)) {
+			console.error(
+				`Error: Unknown template "${flags.template}". Valid options: ${valid.join(", ")}, crank`,
+			);
+			process.exit(1);
+		}
+		template = flags.template as ProjectConfig["template"];
+	} else {
+		const templateResult = await select({
+			message: "Choose a starter template:",
+			options: [
+				{
+					value: "hello-world" as const,
+					label: "Hello World",
+					hint: "Minimal fetch handler to get started",
+				},
+				{
+					value: "api" as const,
+					label: "API",
+					hint: "REST endpoints with JSON responses",
+				},
+				{
+					value: "static-site" as const,
+					label: "Static Site",
+					hint: "Server-rendered HTML pages",
+				},
+				{
+					value: "full-stack" as const,
+					label: "Full Stack",
+					hint: "HTML pages + API routes",
+				},
+			],
+		});
+
+		if (typeof templateResult === "symbol") {
+			outro("Project creation cancelled");
+			process.exit(0);
+		}
+		template = templateResult;
 	}
 
-	// 2. UI framework (only for HTML-serving templates)
-	let uiFramework: ProjectConfig["uiFramework"] = "vanilla";
-	if (template === "static-site" || template === "full-stack") {
+	// 2. UI framework (only for HTML-serving templates, unless already set by --template crank)
+	if (
+		uiFramework === "vanilla" &&
+		(template === "static-site" || template === "full-stack")
+	) {
 		const framework = await select({
 			message: "UI framework:",
 			initialValue: "crank" as ProjectConfig["uiFramework"],
@@ -151,43 +201,62 @@ async function main() {
 	}
 
 	// 3. TypeScript (default to yes)
-	const typescript = await confirm({
-		message: "Use TypeScript?",
-		initialValue: true,
-	});
+	let typescript: boolean;
+	if (flags.typescript !== undefined) {
+		typescript = flags.typescript;
+	} else {
+		const tsResult = await confirm({
+			message: "Use TypeScript?",
+			initialValue: true,
+		});
 
-	if (typeof typescript === "symbol") {
-		outro("Project creation cancelled");
-		process.exit(0);
+		if (typeof tsResult === "symbol") {
+			outro("Project creation cancelled");
+			process.exit(0);
+		}
+		typescript = tsResult;
 	}
 
 	// 4. Platform (last, with auto-detected default)
-	const detectedPlatform = detectPlatform();
-	const platform = await select({
-		message: "Which platform?",
-		initialValue: detectedPlatform,
-		options: [
-			{
-				value: "node" as const,
-				label: "Node.js",
-				hint: detectedPlatform === "node" ? "detected" : undefined,
-			},
-			{
-				value: "bun" as const,
-				label: "Bun",
-				hint: detectedPlatform === "bun" ? "detected" : undefined,
-			},
-			{
-				value: "cloudflare" as const,
-				label: "Cloudflare Workers",
-				hint: "Edge runtime",
-			},
-		],
-	});
+	let platform: ProjectConfig["platform"];
+	if (flags.platform) {
+		const valid = ["node", "bun", "cloudflare"];
+		if (!valid.includes(flags.platform)) {
+			console.error(
+				`Error: Unknown platform "${flags.platform}". Valid options: ${valid.join(", ")}`,
+			);
+			process.exit(1);
+		}
+		platform = flags.platform as ProjectConfig["platform"];
+	} else {
+		const detectedPlatform = detectPlatform();
+		const platformResult = await select({
+			message: "Which platform?",
+			initialValue: detectedPlatform,
+			options: [
+				{
+					value: "node" as const,
+					label: "Node.js",
+					hint: detectedPlatform === "node" ? "detected" : undefined,
+				},
+				{
+					value: "bun" as const,
+					label: "Bun",
+					hint: detectedPlatform === "bun" ? "detected" : undefined,
+				},
+				{
+					value: "cloudflare" as const,
+					label: "Cloudflare Workers",
+					hint: "Edge runtime",
+				},
+			],
+		});
 
-	if (typeof platform === "symbol") {
-		outro("Project creation cancelled");
-		process.exit(0);
+		if (typeof platformResult === "symbol") {
+			outro("Project creation cancelled");
+			process.exit(0);
+		}
+		platform = platformResult;
 	}
 
 	const config: ProjectConfig = {
@@ -365,8 +434,10 @@ self.addEventListener("fetch", (event) => {
 
 function generateApi(config: ProjectConfig): string {
 	return `import { Router } from "@b9g/router";
+import { logger } from "@b9g/router/middleware";
 
 const router = new Router();
+router.use(logger());
 
 // In-memory data store
 const users = [
@@ -713,8 +784,10 @@ function generateFullStackVanilla(config: ProjectConfig): string {
 	const ext = config.typescript ? "ts" : "js";
 	const t = config.typescript;
 	return `import { Router } from "@b9g/router";
+import { logger } from "@b9g/router/middleware";
 
 const router = new Router();
+router.use(logger());
 
 // API routes
 router.route("/api/hello").get(() => {
@@ -780,8 +853,10 @@ function generateFullStackHtmx(config: ProjectConfig): string {
 	const ext = config.typescript ? "ts" : "js";
 	const t = config.typescript;
 	return `import { Router } from "@b9g/router";
+import { logger } from "@b9g/router/middleware";
 
 const router = new Router();
+router.use(logger());
 
 // API routes — return HTML fragments when HTMX requests, JSON otherwise
 router.route("/api/hello").get((req) => {
@@ -857,8 +932,10 @@ function generateFullStackAlpine(config: ProjectConfig): string {
 	const ext = config.typescript ? "ts" : "js";
 	const t = config.typescript;
 	return `import { Router } from "@b9g/router";
+import { logger } from "@b9g/router/middleware";
 
 const router = new Router();
+router.use(logger());
 
 // API routes
 router.route("/api/hello").get(() => {
@@ -931,9 +1008,11 @@ self.addEventListener("fetch", (event) => {
 function generateFullStackCrank(config: ProjectConfig): string {
 	const t = config.typescript;
 	return `import { Router } from "@b9g/router";
+import { logger } from "@b9g/router/middleware";
 import {renderer} from "@b9g/crank/html";
 
 const router = new Router();
+router.use(logger());
 
 const css = \`
 ${css}

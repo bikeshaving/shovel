@@ -2,6 +2,7 @@
  * Standard middleware utilities for HTTP routing
  */
 
+import {getLogger} from "@logtape/logtape";
 import type {FunctionMiddleware} from "./index.js";
 
 // ============================================================================
@@ -169,6 +170,68 @@ function getAllowedOrigin(
  * }));
  * ```
  */
+// ============================================================================
+// LOGGER
+// ============================================================================
+
+/**
+ * Logger configuration options
+ */
+export interface LoggerOptions {
+	/**
+	 * LogTape category for the logger
+	 * @default ["app", "router"]
+	 */
+	category?: string[];
+}
+
+/**
+ * Request logging middleware
+ *
+ * Logs incoming requests and outgoing responses with timing information.
+ * Uses LogTape via the specified category (default: ["app", "router"]).
+ *
+ * Output format:
+ * ```
+ * → GET /
+ * ← 200 GET / (3ms)
+ * ```
+ *
+ * @example
+ * ```typescript
+ * import {Router} from "@b9g/router";
+ * import {logger} from "@b9g/router/middleware";
+ *
+ * const router = new Router();
+ * router.use(logger());
+ *
+ * // Custom category
+ * router.use(logger({ category: ["app", "http"] }));
+ * ```
+ */
+export function logger(options: LoggerOptions = {}) {
+	const {category = ["app", "router"]} = options;
+	const log = getLogger(category);
+
+	return async function* (
+		request: Request,
+	): AsyncGenerator<Request, Response | undefined, Response> {
+		const url = new URL(request.url);
+		const method = request.method;
+		const pathname = url.pathname;
+
+		log.info`→ ${method} ${pathname}`;
+		const start = Date.now();
+
+		const response: Response = yield request;
+
+		const duration = Date.now() - start;
+		log.info`← ${response.status} ${method} ${pathname} (${duration}ms)`;
+
+		return response;
+	};
+}
+
 export function cors(options: CORSOptions = {}) {
 	const {
 		origin = "*",

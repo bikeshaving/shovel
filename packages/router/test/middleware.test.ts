@@ -1,6 +1,127 @@
-import {describe, test, expect} from "bun:test";
-import {cors, trailingSlash} from "../src/middleware.js";
+import {describe, test, expect, beforeEach, afterEach} from "bun:test";
+import {cors, logger, trailingSlash} from "../src/middleware.js";
 import {Router} from "@b9g/router";
+import {configure, type LogRecord} from "@logtape/logtape";
+
+// ============================================================================
+// Logger middleware
+// ============================================================================
+
+describe("logger middleware", () => {
+	let logs: LogRecord[];
+
+	beforeEach(async () => {
+		logs = [];
+		await configure({
+			reset: true,
+			sinks: {
+				test: (record: LogRecord) => logs.push(record),
+			},
+			loggers: [
+				{category: ["app"], lowestLevel: "info", sinks: ["test"]},
+				{
+					category: ["logtape", "meta"],
+					lowestLevel: "warning",
+					sinks: [],
+				},
+			],
+			// ["app"] captures ["app", "router"] via LogTape hierarchy
+		});
+	});
+
+	afterEach(async () => {
+		await configure({
+			reset: true,
+			sinks: {},
+			loggers: [
+				{category: ["logtape", "meta"], lowestLevel: "warning", sinks: []},
+			],
+		});
+	});
+
+	test("logs request and response", async () => {
+		const router = new Router();
+		router.use(logger());
+		router.route("/").get(() => new Response("ok"));
+
+		const request = new Request("http://localhost/");
+		await router.handle(request);
+
+		expect(logs.length).toBe(2);
+		// Request log: ["→ ", "GET", " ", "/"]
+		expect(logs[0].message).toContain("GET");
+		expect(logs[0].message).toContain("/");
+		// Response log: ["← ", 200, " ", "GET", " ", "/", " (", N, "ms)"]
+		expect(logs[1].message).toContain(200);
+		expect(logs[1].message).toContain("GET");
+	});
+
+	test("passes through response unchanged", async () => {
+		const router = new Router();
+		router.use(logger());
+		router.route("/test").get(
+			() =>
+				new Response("hello", {
+					status: 201,
+					headers: {"X-Custom": "value"},
+				}),
+		);
+
+		const request = new Request("http://localhost/test");
+		const response = await router.handle(request);
+
+		expect(response.status).toBe(201);
+		expect(await response.text()).toBe("hello");
+		expect(response.headers.get("X-Custom")).toBe("value");
+	});
+
+	test("logs correct pathname for nested routes", async () => {
+		const router = new Router();
+		router.use(logger());
+		router.route("/api/users").get(() => Response.json({users: []}));
+
+		const request = new Request("http://localhost/api/users");
+		await router.handle(request);
+
+		expect(logs.length).toBe(2);
+		expect(logs[0].message).toContain("/api/users");
+		expect(logs[1].message).toContain("/api/users");
+	});
+
+	test("supports custom category", async () => {
+		// Configure a custom category
+		await configure({
+			reset: true,
+			sinks: {
+				test: (record: LogRecord) => logs.push(record),
+			},
+			loggers: [
+				{
+					category: ["app", "http"],
+					lowestLevel: "info",
+					sinks: ["test"],
+				},
+				{
+					category: ["logtape", "meta"],
+					lowestLevel: "warning",
+					sinks: [],
+				},
+			],
+		});
+
+		const router = new Router();
+		router.use(logger({category: ["app", "http"]}));
+		router.route("/").get(() => new Response("ok"));
+
+		await router.handle(new Request("http://localhost/"));
+		expect(logs.length).toBe(2);
+		expect(logs[0].category).toEqual(["app", "http"]);
+	});
+});
+
+// ============================================================================
+// CORS middleware
+// ============================================================================
 
 describe("cors middleware", () => {
 	test("allows all origins with default config", async () => {
