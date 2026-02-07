@@ -631,6 +631,11 @@ process.on("SIGTERM", handleShutdown);
 					path: "[tmpdir]",
 				},
 			},
+			indexedDB: {
+				module: "@b9g/indexeddb/sqlite",
+				export: "SQLiteBackend",
+				path: "[outdir]/data",
+			},
 		};
 	}
 
