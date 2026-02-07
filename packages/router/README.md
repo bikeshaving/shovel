@@ -279,7 +279,10 @@ type TrailingSlashMode = "strip" | "add"
 Standard middleware is available from `@b9g/router/middleware`:
 
 ```typescript
-import {cors, trailingSlash} from '@b9g/router/middleware';
+import {cors, logger, trailingSlash} from '@b9g/router/middleware';
+
+// Request logging
+router.use(logger());
 
 // CORS middleware
 router.use(cors({
@@ -292,6 +295,21 @@ router.use(trailingSlash("strip")); // /path/ → /path
 ```
 
 ### Available Middleware
+
+#### `logger(options?: LoggerOptions)`
+
+Logs incoming requests and outgoing responses with timing information via [LogTape](https://github.com/dahlia/logtape).
+
+```
+→ GET /
+← 200 GET / (3ms)
+```
+
+```typescript
+interface LoggerOptions {
+  category?: string[];  // Default: ["app", "router"]
+}
+```
 
 #### `cors(options?: CORSOptions)`
 
