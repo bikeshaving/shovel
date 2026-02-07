@@ -1,6 +1,6 @@
 ---
 title: Introducing Shovel
-description: The story behind Shovel.js
+description: The story behind Shovel.js, a framework which asks the question “What if your server was just a service worker?”
 date: 2026-02-07
 author: Brian Kim
 authorURL: https://github.com/brainkim
