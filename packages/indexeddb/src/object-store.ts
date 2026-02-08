@@ -2,7 +2,7 @@
  * IDBObjectStore implementation.
  */
 
-import type {IDBTransaction} from "./transaction.js";
+import {type IDBTransaction, kHoldOpen, kRelease} from "./transaction.js";
 import {IDBRequest} from "./request.js";
 import {IDBKeyRange} from "./key-range.js";
 import {IDBIndex} from "./idb-index.js";
@@ -391,6 +391,7 @@ export class IDBObjectStore {
 		_tx: any,
 	): any {
 		const self = this;
+		const txn = this.#transaction;
 		const cursor = {
 			get key() {
 				return decodeKey(backendCursor.key);
@@ -411,35 +412,29 @@ export class IDBObjectStore {
 				return request;
 			},
 			continue() {
-				if (backendCursor.continue()) {
-					// Re-fire success with updated cursor
-					queueMicrotask(() => {
-						request._resolve(cursor);
-					});
-				} else {
-					queueMicrotask(() => {
-						request._resolve(null);
-					});
-				}
+				txn[kHoldOpen]();
+				const next = backendCursor.continue();
+				queueMicrotask(() => {
+					request._resolve(next ? cursor : null);
+					txn[kRelease]();
+				});
 			},
 			advance(count: number) {
+				txn[kHoldOpen]();
 				let advanced = true;
 				for (let i = 0; i < count && advanced; i++) {
 					advanced = backendCursor.continue();
 				}
-				if (advanced) {
-					queueMicrotask(() => request._resolve(cursor));
-				} else {
-					queueMicrotask(() => request._resolve(null));
-				}
+				queueMicrotask(() => {
+					request._resolve(advanced ? cursor : null);
+					txn[kRelease]();
+				});
 			},
 			delete() {
-				const delRequest = self.delete(cursor.primaryKey);
-				return delRequest;
+				return self.delete(cursor.primaryKey);
 			},
 			update(value: any) {
-				const putRequest = self.put(value, cursor.primaryKey);
-				return putRequest;
+				return self.put(value, cursor.primaryKey);
 			},
 		};
 		return cursor;
@@ -450,6 +445,8 @@ export class IDBObjectStore {
 		request: IDBRequest,
 		_tx: any,
 	): any {
+		const self = this;
+		const txn = this.#transaction;
 		const cursor = {
 			get key() {
 				return decodeKey(backendCursor.key);
@@ -458,7 +455,7 @@ export class IDBObjectStore {
 				return decodeKey(backendCursor.primaryKey);
 			},
 			get source() {
-				return this;
+				return self;
 			},
 			get direction() {
 				return "next";
@@ -467,11 +464,12 @@ export class IDBObjectStore {
 				return request;
 			},
 			continue() {
-				if (backendCursor.continue()) {
-					queueMicrotask(() => request._resolve(cursor));
-				} else {
-					queueMicrotask(() => request._resolve(null));
-				}
+				txn[kHoldOpen]();
+				const next = backendCursor.continue();
+				queueMicrotask(() => {
+					request._resolve(next ? cursor : null);
+					txn[kRelease]();
+				});
 			},
 		};
 		return cursor;

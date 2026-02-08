@@ -125,6 +125,13 @@ export class IDBFactory {
 				storeName: string,
 				options?: IDBObjectStoreParameters,
 			) => {
+				// Spec: throw ConstraintError if store already exists
+				if (db.objectStoreNames.contains(storeName)) {
+					throw new DOMException(
+						`Object store "${storeName}" already exists`,
+						"ConstraintError",
+					);
+				}
 				const meta = {
 					name: storeName,
 					keyPath: options?.keyPath ?? null,
@@ -155,13 +162,9 @@ export class IDBFactory {
 			// (IDB spec says result is available during upgradeneeded)
 			(request as any)._resolveWithoutEvent(db);
 
-			// Fire upgradeneeded
-			request._setTransaction(transaction);
-			request._fireUpgradeNeeded(oldVersion, requestedVersion);
-
-			// After upgradeneeded handler runs, commit the versionchange transaction
+			// Register listeners BEFORE firing upgradeneeded, because the
+			// handler may call transaction.abort() synchronously.
 			transaction.addEventListener("complete", () => {
-				// Restore original methods
 				db.createObjectStore = originalCreateObjectStore;
 				db.deleteObjectStore = originalDeleteObjectStore;
 				db._refreshStoreNames();
@@ -175,6 +178,10 @@ export class IDBFactory {
 					new DOMException("Version change transaction was aborted", "AbortError"),
 				);
 			});
+
+			// Fire upgradeneeded
+			request._setTransaction(transaction);
+			request._fireUpgradeNeeded(oldVersion, requestedVersion);
 
 			// Schedule auto-commit after upgrade handler completes synchronously
 			transaction._scheduleAutoCommit();

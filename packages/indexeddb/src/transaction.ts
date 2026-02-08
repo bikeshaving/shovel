@@ -6,11 +6,18 @@
  */
 
 import type {IDBBackendTransaction} from "./backend.js";
+import {SafeEventTarget} from "./event-target.js";
 import {IDBRequest} from "./request.js";
 import {AbortError, InvalidStateError, TransactionInactiveError} from "./errors.js";
 import type {TransactionMode} from "./types.js";
 
-export class IDBTransaction extends EventTarget {
+/** Hold the transaction open (increment pending count). Pair with kRelease. */
+export const kHoldOpen = Symbol("holdOpen");
+
+/** Release a hold on the transaction (decrement pending count). */
+export const kRelease = Symbol("release");
+
+export class IDBTransaction extends SafeEventTarget {
 	readonly mode: TransactionMode;
 	readonly objectStoreNames: string[];
 
@@ -22,9 +29,48 @@ export class IDBTransaction extends EventTarget {
 	#pendingRequests: number = 0;
 	#error: DOMException | null = null;
 
-	oncomplete: ((ev: Event) => void) | null = null;
-	onerror: ((ev: Event) => void) | null = null;
-	onabort: ((ev: Event) => void) | null = null;
+	#oncompleteHandler: ((ev: Event) => void) | null = null;
+	#onerrorHandler: ((ev: Event) => void) | null = null;
+	#onabortHandler: ((ev: Event) => void) | null = null;
+
+	get oncomplete(): ((ev: Event) => void) | null {
+		return this.#oncompleteHandler;
+	}
+	set oncomplete(handler: ((ev: Event) => void) | null) {
+		if (this.#oncompleteHandler) {
+			this.removeEventListener("complete", this.#oncompleteHandler);
+		}
+		this.#oncompleteHandler = handler;
+		if (handler) {
+			this.addEventListener("complete", handler);
+		}
+	}
+
+	get onerror(): ((ev: Event) => void) | null {
+		return this.#onerrorHandler;
+	}
+	set onerror(handler: ((ev: Event) => void) | null) {
+		if (this.#onerrorHandler) {
+			this.removeEventListener("error", this.#onerrorHandler);
+		}
+		this.#onerrorHandler = handler;
+		if (handler) {
+			this.addEventListener("error", handler);
+		}
+	}
+
+	get onabort(): ((ev: Event) => void) | null {
+		return this.#onabortHandler;
+	}
+	set onabort(handler: ((ev: Event) => void) | null) {
+		if (this.#onabortHandler) {
+			this.removeEventListener("abort", this.#onabortHandler);
+		}
+		this.#onabortHandler = handler;
+		if (handler) {
+			this.addEventListener("abort", handler);
+		}
+	}
 
 	constructor(
 		db: any,
@@ -73,7 +119,16 @@ export class IDBTransaction extends EventTarget {
 		// Lazy import to avoid circular dependency
 		const {IDBObjectStore} = require("./object-store.js");
 		const meta = this.#db._getStoreMeta(name);
-		return new IDBObjectStore(this, meta);
+		const store = new IDBObjectStore(this, meta);
+		// Populate indexNames from database metadata
+		const dbMeta = this.#db._connection.getMetadata();
+		const indexes = dbMeta.indexes.get(name) || [];
+		for (const idx of indexes) {
+			if (!store.indexNames.includes(idx.name)) {
+				store.indexNames.push(idx.name);
+			}
+		}
+		return store;
 	}
 
 	/**
@@ -89,9 +144,9 @@ export class IDBTransaction extends EventTarget {
 
 		this.#error = AbortError("Transaction was aborted");
 
-		const event = new Event("abort", {bubbles: true, cancelable: false});
-		if (this.onabort) this.onabort(event);
-		this.dispatchEvent(event);
+		this.dispatchEvent(
+			new Event("abort", {bubbles: true, cancelable: false}),
+		);
 	}
 
 	/**
@@ -157,6 +212,17 @@ export class IDBTransaction extends EventTarget {
 		});
 	}
 
+	/** Hold the transaction open (e.g. during cursor iteration). */
+	[kHoldOpen](): void {
+		this.#pendingRequests++;
+	}
+
+	/** Release a hold, allowing auto-commit when all pending work is done. */
+	[kRelease](): void {
+		this.#pendingRequests--;
+		this.#maybeAutoCommit();
+	}
+
 	#maybeAutoCommit(): void {
 		if (
 			this.#pendingRequests === 0 &&
@@ -187,20 +253,14 @@ export class IDBTransaction extends EventTarget {
 				error instanceof DOMException
 					? error
 					: new DOMException(String(error), "UnknownError");
-			const errorEvent = new Event("error", {
-				bubbles: true,
-				cancelable: false,
-			});
-			if (this.onerror) this.onerror(errorEvent);
-			this.dispatchEvent(errorEvent);
+			this.dispatchEvent(
+				new Event("error", {bubbles: true, cancelable: false}),
+			);
 			return;
 		}
 
-		const event = new Event("complete", {
-			bubbles: false,
-			cancelable: false,
-		});
-		if (this.oncomplete) this.oncomplete(event);
-		this.dispatchEvent(event);
+		this.dispatchEvent(
+			new Event("complete", {bubbles: false, cancelable: false}),
+		);
 	}
 }
