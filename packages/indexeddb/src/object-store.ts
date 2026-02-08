@@ -48,6 +48,7 @@ export class IDBObjectStore {
 	 */
 	add(value: any, key?: IDBValidKey): IDBRequest {
 		this.#checkWritable();
+		this.#validateKeyInput(value, key);
 		const request = new IDBRequest();
 		request._setSource(this);
 
@@ -67,6 +68,7 @@ export class IDBObjectStore {
 	 */
 	put(value: any, key?: IDBValidKey): IDBRequest {
 		this.#checkWritable();
+		this.#validateKeyInput(value, key);
 		const request = new IDBRequest();
 		request._setSource(this);
 
@@ -86,12 +88,15 @@ export class IDBObjectStore {
 	 */
 	get(query: IDBValidKey | IDBKeyRange): IDBRequest {
 		this.#checkActive();
+		// Validate key synchronously (throws DataError for invalid keys)
+		if (!(query instanceof IDBKeyRange)) {
+			validateKey(query);
+		}
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
 			if (query instanceof IDBKeyRange) {
-				// Get first record in range
 				const results = tx.getAll(this.name, query._toSpec(), 1);
 				return results.length > 0
 					? decodeValue(results[0].value)
@@ -108,6 +113,9 @@ export class IDBObjectStore {
 	 */
 	getKey(query: IDBValidKey | IDBKeyRange): IDBRequest {
 		this.#checkActive();
+		if (!(query instanceof IDBKeyRange)) {
+			validateKey(query);
+		}
 		const request = new IDBRequest();
 		request._setSource(this);
 
@@ -130,11 +138,11 @@ export class IDBObjectStore {
 		count?: number,
 	): IDBRequest {
 		this.#checkActive();
+		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const range = this.#toRangeSpec(query);
 			const records = tx.getAll(this.name, range, count);
 			return records.map((r) => decodeValue(r.value));
 		});
@@ -148,11 +156,11 @@ export class IDBObjectStore {
 		count?: number,
 	): IDBRequest {
 		this.#checkActive();
+		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const range = this.#toRangeSpec(query);
 			const keys = tx.getAllKeys(this.name, range, count);
 			return keys.map((k) => decodeKey(k));
 		});
@@ -163,11 +171,11 @@ export class IDBObjectStore {
 	 */
 	delete(query: IDBValidKey | IDBKeyRange): IDBRequest {
 		this.#checkWritable();
+		const range = this.#toDeleteRange(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const range = this.#toDeleteRange(query);
 			tx.delete(this.name, range);
 			return undefined;
 		});
@@ -192,11 +200,11 @@ export class IDBObjectStore {
 	 */
 	count(query?: IDBValidKey | IDBKeyRange | null): IDBRequest {
 		this.#checkActive();
+		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const range = this.#toRangeSpec(query);
 			return tx.count(this.name, range);
 		});
 	}
@@ -209,11 +217,11 @@ export class IDBObjectStore {
 		direction?: IDBCursorDirection,
 	): IDBRequest {
 		this.#checkActive();
+		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const range = this.#toRangeSpec(query);
 			const cursor = tx.openCursor(this.name, range, direction as any);
 			if (!cursor) return null;
 
@@ -229,11 +237,11 @@ export class IDBObjectStore {
 		direction?: IDBCursorDirection,
 	): IDBRequest {
 		this.#checkActive();
+		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const range = this.#toRangeSpec(query);
 			const cursor = tx.openKeyCursor(this.name, range, direction as any);
 			if (!cursor) return null;
 
@@ -321,6 +329,64 @@ export class IDBObjectStore {
 			this.#transaction.mode !== "versionchange"
 		) {
 			throw ReadOnlyError("Transaction is read-only");
+		}
+	}
+
+	/**
+	 * Synchronous validation per IDB spec — must throw before creating request.
+	 * Checks: in-line key + explicit key conflict, key injection feasibility,
+	 * out-of-line key validity.
+	 */
+	#validateKeyInput(value: any, key?: IDBValidKey): void {
+		if (this.keyPath !== null) {
+			// In-line keys: providing an explicit key is always an error
+			if (key !== undefined) {
+				throw DataError(
+					"Cannot provide a key when object store has a keyPath",
+				);
+			}
+			if (this.autoIncrement) {
+				// If autoIncrement, check if the key can be extracted or injected
+				if (typeof this.keyPath === "string") {
+					try {
+						extractKeyFromValue(value, this.keyPath);
+					} catch {
+						// Key not present — check if injection is possible per spec:
+						// Walk the path; if any existing segment is a non-object primitive,
+						// injection fails. Undefined/null segments are OK (will be created).
+						const parts = this.keyPath.split(".");
+						let current: any = value;
+						if (current == null || typeof current !== "object") {
+							throw DataError(
+								`Cannot inject key at path "${this.keyPath}": value is not an object`,
+							);
+						}
+						for (let i = 0; i < parts.length - 1; i++) {
+							const next = current[parts[i]];
+							if (next == null) break; // Will be created during injection
+							if (typeof next !== "object") {
+								throw DataError(
+									`Cannot inject key at path "${this.keyPath}": "${parts[i]}" is not an object`,
+								);
+							}
+							current = next;
+						}
+					}
+				}
+			} else {
+				// No autoIncrement: key MUST be extractable from value
+				extractKeyFromValue(value, this.keyPath);
+			}
+		} else {
+			// Out-of-line keys
+			if (key !== undefined) {
+				validateKey(key);
+			} else if (!this.autoIncrement) {
+				// No key provided and no key generator
+				throw DataError(
+					"No key provided and object store has no keyPath or autoIncrement",
+				);
+			}
 		}
 	}
 

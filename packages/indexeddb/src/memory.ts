@@ -462,10 +462,11 @@ class MemoryTransaction implements IDBBackendTransaction {
 
 	maybeUpdateKeyGenerator(storeName: string, key: number): void {
 		const store = this.#getStore(storeName);
-		// Spec §2.6.3: if key is a number and floor(key) + 1 > current generator,
-		// update the generator. Don't update if floor(key) + 1 > 2^53.
-		const newValue = Math.floor(key) + 1;
-		if (newValue > store.autoIncrementCurrent && newValue <= 2 ** 53) {
+		// Spec: set current number to smallest integer >= key.
+		// If that integer >= 2^53, the generator is "used up".
+		// Clamp at 2^53 so nextAutoIncrementKey will throw ConstraintError.
+		const newValue = Math.min(Math.floor(key), 2 ** 53);
+		if (newValue > store.autoIncrementCurrent) {
 			store.autoIncrementCurrent = newValue;
 		}
 	}

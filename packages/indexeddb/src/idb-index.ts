@@ -38,6 +38,9 @@ export class IDBIndex {
 
 	get(query: IDBValidKey | IDBKeyRange): IDBRequest {
 		this.#checkActive();
+		if (!(query instanceof IDBKeyRange)) {
+			validateKey(query);
+		}
 		const request = new IDBRequest();
 		request._setSource(this);
 
@@ -61,6 +64,9 @@ export class IDBIndex {
 
 	getKey(query: IDBValidKey | IDBKeyRange): IDBRequest {
 		this.#checkActive();
+		if (!(query instanceof IDBKeyRange)) {
+			validateKey(query);
+		}
 		const request = new IDBRequest();
 		request._setSource(this);
 
@@ -85,11 +91,11 @@ export class IDBIndex {
 		count?: number,
 	): IDBRequest {
 		this.#checkActive();
+		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const range = this.#toRangeSpec(query);
 			const records = tx.indexGetAll(
 				this.#storeName,
 				this.name,
@@ -105,11 +111,11 @@ export class IDBIndex {
 		count?: number,
 	): IDBRequest {
 		this.#checkActive();
+		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const range = this.#toRangeSpec(query);
 			return tx
 				.indexGetAllKeys(this.#storeName, this.name, range, count)
 				.map((k) => decodeKey(k));
@@ -118,11 +124,11 @@ export class IDBIndex {
 
 	count(query?: IDBValidKey | IDBKeyRange | null): IDBRequest {
 		this.#checkActive();
+		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const range = this.#toRangeSpec(query);
 			return tx.indexCount(this.#storeName, this.name, range);
 		});
 	}
@@ -132,11 +138,11 @@ export class IDBIndex {
 		direction?: IDBCursorDirection,
 	): IDBRequest {
 		this.#checkActive();
+		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const range = this.#toRangeSpec(query);
 			const cursor = tx.openIndexCursor(
 				this.#storeName,
 				this.name,
@@ -154,11 +160,11 @@ export class IDBIndex {
 		direction?: IDBCursorDirection,
 	): IDBRequest {
 		this.#checkActive();
+		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const range = this.#toRangeSpec(query);
 			const cursor = tx.openIndexKeyCursor(
 				this.#storeName,
 				this.name,
