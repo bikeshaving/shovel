@@ -14,6 +14,8 @@ import {
 	async_test,
 	setup,
 	done,
+	step_timeout,
+	format_value,
 	type TestContext,
 } from "../harness/testharness.js";
 import * as assertions from "../harness/assertions.js";
@@ -274,12 +276,13 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		};
 	}
 
-	// Provide a location-like object for indexeddb_test and support-promises.js
+	// Provide browser-like globals for WPT test infrastructure
 	const location = {
 		toString: () => "shovel-wpt-test",
 		href: "shovel-wpt-test",
 		pathname: "/shovel-wpt-test",
 	};
+	const document = {title: "WPT IndexedDB"};
 
 	/**
 	 * EventWatcher — watches events on a target and returns promises.
@@ -340,6 +343,8 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		async_test,
 		setup,
 		done,
+		step_timeout,
+		format_value,
 		...assertions,
 		// Override bun:test's expect with WPT's expect
 		expect: wpt_expect,
@@ -369,6 +374,7 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		barrier_func,
 		add_completion_callback,
 		location,
+		document,
 	});
 
 	// Also set on self for browser-compat patterns (support.js uses self.indexedDB)
@@ -384,6 +390,7 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 			IDBIndex,
 			IDBVersionChangeEvent,
 			location,
+			title: "WPT IndexedDB",
 		});
 	}
 }
