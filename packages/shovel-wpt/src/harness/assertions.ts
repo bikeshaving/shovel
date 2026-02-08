@@ -113,26 +113,40 @@ export function assert_throws_dom(
 	fn: () => void,
 	description?: string,
 ): void {
+	let threw = false;
+	let caught: unknown;
 	try {
 		fn();
+	} catch (e) {
+		threw = true;
+		caught = e;
+	}
+	if (!threw) {
 		throw new Error(
 			description
 				? `${description}: Expected to throw DOMException with name "${name}"`
 				: `Expected to throw DOMException with name "${name}"`,
 		);
-	} catch (e) {
-		if (e instanceof DOMException) {
-			expect(e.name).toBe(name);
-		} else if (e instanceof Error && "name" in e) {
-			// Some implementations use Error subclasses with name property
-			expect(e.name).toBe(name);
+	}
+	if (caught instanceof DOMException) {
+		if (description) {
+			expect(caught.name, description).toBe(name);
 		} else {
-			throw new Error(
-				description
-					? `${description}: Expected DOMException with name "${name}", got ${e}`
-					: `Expected DOMException with name "${name}", got ${e}`,
-			);
+			expect(caught.name).toBe(name);
 		}
+	} else if (caught instanceof Error && "name" in caught) {
+		// Some implementations use Error subclasses with name property
+		if (description) {
+			expect(caught.name, description).toBe(name);
+		} else {
+			expect(caught.name).toBe(name);
+		}
+	} else {
+		throw new Error(
+			description
+				? `${description}: Expected DOMException with name "${name}", got ${caught}`
+				: `Expected DOMException with name "${name}", got ${caught}`,
+		);
 	}
 }
 
@@ -144,25 +158,39 @@ export async function assert_throws_dom_async(
 	fn: () => Promise<unknown>,
 	description?: string,
 ): Promise<void> {
+	let threw = false;
+	let caught: unknown;
 	try {
 		await fn();
+	} catch (e) {
+		threw = true;
+		caught = e;
+	}
+	if (!threw) {
 		throw new Error(
 			description
 				? `${description}: Expected to throw DOMException with name "${name}"`
 				: `Expected to throw DOMException with name "${name}"`,
 		);
-	} catch (e) {
-		if (e instanceof DOMException) {
-			expect(e.name).toBe(name);
-		} else if (e instanceof Error && "name" in e) {
-			expect(e.name).toBe(name);
+	}
+	if (caught instanceof DOMException) {
+		if (description) {
+			expect(caught.name, description).toBe(name);
 		} else {
-			throw new Error(
-				description
-					? `${description}: Expected DOMException with name "${name}", got ${e}`
-					: `Expected DOMException with name "${name}", got ${e}`,
-			);
+			expect(caught.name).toBe(name);
 		}
+	} else if (caught instanceof Error && "name" in caught) {
+		if (description) {
+			expect(caught.name, description).toBe(name);
+		} else {
+			expect(caught.name).toBe(name);
+		}
+	} else {
+		throw new Error(
+			description
+				? `${description}: Expected DOMException with name "${name}", got ${caught}`
+				: `Expected DOMException with name "${name}", got ${caught}`,
+		);
 	}
 }
 
@@ -400,7 +428,62 @@ export function assert_idl_attribute(
 }
 
 /**
- * Assert that a promise rejects with any error
+ * Assert that a property is readonly (assignment doesn't change the value)
+ */
+export function assert_readonly(
+	object: any,
+	propertyName: string,
+	description?: string,
+): void {
+	const initial = object[propertyName];
+	try {
+		object[propertyName] = initial + "CHANGED";
+	} catch {
+		// Throws in strict mode — that's fine, it's readonly
+	}
+	if (object[propertyName] !== initial) {
+		throw new Error(
+			description
+				? `${description}: Property "${propertyName}" is not readonly`
+				: `Property "${propertyName}" is not readonly`,
+		);
+	}
+}
+
+/**
+ * Assert that a function throws a specific value (identity check)
+ */
+export function assert_throws_exactly(
+	expectedError: any,
+	fn: () => void,
+	description?: string,
+): void {
+	try {
+		fn();
+		throw new Error(
+			description
+				? `${description}: Expected function to throw`
+				: "Expected function to throw",
+		);
+	} catch (e) {
+		if (
+			e instanceof Error &&
+			e.message.includes("Expected function to throw")
+		) {
+			throw e;
+		}
+		if (e !== expectedError) {
+			throw new Error(
+				description
+					? `${description}: Expected thrown value to be ${expectedError}, got ${e}`
+					: `Expected thrown value to be ${expectedError}, got ${e}`,
+			);
+		}
+	}
+}
+
+/**
+ * Assert that a promise rejects with a specific value (identity check)
  */
 export async function promise_rejects_exactly(
 	testContext: {unreached_func?: (msg: string) => () => never},
