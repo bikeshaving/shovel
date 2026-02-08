@@ -2,14 +2,16 @@
  * IDBObjectStore implementation.
  */
 
-import {type IDBTransaction, kHoldOpen, kRelease} from "./transaction.js";
+import {type IDBTransaction} from "./transaction.js";
 import {IDBRequest} from "./request.js";
 import {IDBKeyRange} from "./key-range.js";
 import {IDBIndex} from "./idb-index.js";
+import {IDBCursor, IDBCursorWithValue} from "./cursor.js";
 import {
 	encodeKey,
 	decodeKey,
 	validateKey,
+	validateKeyPath,
 	extractKeyFromValue,
 	injectKeyIntoValue,
 } from "./key.js";
@@ -215,8 +217,7 @@ export class IDBObjectStore {
 			const cursor = tx.openCursor(this.name, range, direction as any);
 			if (!cursor) return null;
 
-			// Wrap in an IDBCursorWithValue-like object
-			return this.#wrapCursor(cursor, request, tx);
+			return this.#wrapCursor(cursor, request, tx, direction);
 		});
 	}
 
@@ -236,7 +237,7 @@ export class IDBObjectStore {
 			const cursor = tx.openKeyCursor(this.name, range, direction as any);
 			if (!cursor) return null;
 
-			return this.#wrapKeyCursor(cursor, request, tx);
+			return this.#wrapKeyCursor(cursor, request, tx, direction);
 		});
 	}
 
@@ -253,6 +254,7 @@ export class IDBObjectStore {
 				"createIndex can only be called during a versionchange transaction",
 			);
 		}
+		validateKeyPath(keyPath);
 		const meta = {
 			name,
 			storeName: this.name,
@@ -340,6 +342,10 @@ export class IDBObjectStore {
 				// Try to extract key from value; if not present, generate one
 				try {
 					resolvedKey = extractKeyFromValue(value, this.keyPath);
+					// Spec: update key generator if explicit key is numeric
+					if (typeof resolvedKey === "number") {
+						tx.maybeUpdateKeyGenerator(this.name, resolvedKey);
+					}
 				} catch {
 					const nextKey = tx.nextAutoIncrementKey(this.name);
 					resolvedKey = nextKey;
@@ -357,6 +363,10 @@ export class IDBObjectStore {
 			// Out-of-line keys
 			if (key !== undefined) {
 				resolvedKey = validateKey(key);
+				// Spec: update key generator if explicit key is numeric
+				if (this.autoIncrement && typeof resolvedKey === "number") {
+					tx.maybeUpdateKeyGenerator(this.name, resolvedKey);
+				}
 			} else if (this.autoIncrement) {
 				resolvedKey = tx.nextAutoIncrementKey(this.name);
 			} else {
@@ -389,89 +399,29 @@ export class IDBObjectStore {
 		backendCursor: any,
 		request: IDBRequest,
 		_tx: any,
-	): any {
-		const self = this;
-		const txn = this.#transaction;
-		const cursor = {
-			get key() {
-				return decodeKey(backendCursor.key);
-			},
-			get primaryKey() {
-				return decodeKey(backendCursor.primaryKey);
-			},
-			get value() {
-				return decodeValue(backendCursor.value);
-			},
-			get source() {
-				return self;
-			},
-			get direction() {
-				return "next";
-			},
-			get request() {
-				return request;
-			},
-			continue() {
-				txn[kHoldOpen]();
-				const next = backendCursor.continue();
-				queueMicrotask(() => {
-					request._resolve(next ? cursor : null);
-					txn[kRelease]();
-				});
-			},
-			advance(count: number) {
-				txn[kHoldOpen]();
-				let advanced = true;
-				for (let i = 0; i < count && advanced; i++) {
-					advanced = backendCursor.continue();
-				}
-				queueMicrotask(() => {
-					request._resolve(advanced ? cursor : null);
-					txn[kRelease]();
-				});
-			},
-			delete() {
-				return self.delete(cursor.primaryKey);
-			},
-			update(value: any) {
-				return self.put(value, cursor.primaryKey);
-			},
-		};
-		return cursor;
+		cursorDirection: IDBCursorDirection = "next",
+	): IDBCursorWithValue {
+		return new IDBCursorWithValue(
+			backendCursor,
+			request,
+			this.#transaction,
+			this,
+			cursorDirection,
+		);
 	}
 
 	#wrapKeyCursor(
 		backendCursor: any,
 		request: IDBRequest,
 		_tx: any,
-	): any {
-		const self = this;
-		const txn = this.#transaction;
-		const cursor = {
-			get key() {
-				return decodeKey(backendCursor.key);
-			},
-			get primaryKey() {
-				return decodeKey(backendCursor.primaryKey);
-			},
-			get source() {
-				return self;
-			},
-			get direction() {
-				return "next";
-			},
-			get request() {
-				return request;
-			},
-			continue() {
-				txn[kHoldOpen]();
-				const next = backendCursor.continue();
-				queueMicrotask(() => {
-					request._resolve(next ? cursor : null);
-					txn[kRelease]();
-				});
-			},
-		};
-		return cursor;
+		cursorDirection: IDBCursorDirection = "next",
+	): IDBCursor {
+		return new IDBCursor(
+			backendCursor,
+			request,
+			this.#transaction,
+			this,
+			cursorDirection,
+		);
 	}
 }

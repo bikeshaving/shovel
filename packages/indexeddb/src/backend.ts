@@ -107,6 +107,8 @@ export interface IDBBackendTransaction {
 
 	// Auto-increment
 	nextAutoIncrementKey(storeName: string): number;
+	/** Update the key generator if key > current generator value (spec §2.6.3) */
+	maybeUpdateKeyGenerator(storeName: string, key: number): void;
 
 	// Lifecycle
 	commit(): void;

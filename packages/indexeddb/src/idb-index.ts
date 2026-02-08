@@ -2,9 +2,10 @@
  * IDBIndex implementation.
  */
 
-import {type IDBTransaction, kHoldOpen, kRelease} from "./transaction.js";
+import {type IDBTransaction} from "./transaction.js";
 import {IDBRequest} from "./request.js";
 import {IDBKeyRange} from "./key-range.js";
+import {IDBCursor, IDBCursorWithValue} from "./cursor.js";
 import {encodeKey, decodeKey, validateKey} from "./key.js";
 import {decodeValue} from "./structured-clone.js";
 import {TransactionInactiveError} from "./errors.js";
@@ -144,7 +145,7 @@ export class IDBIndex {
 			);
 			if (!cursor) return null;
 
-			return this.#wrapCursor(cursor, request);
+			return this.#wrapCursor(cursor, request, direction);
 		});
 	}
 
@@ -166,7 +167,7 @@ export class IDBIndex {
 			);
 			if (!cursor) return null;
 
-			return this.#wrapKeyCursor(cursor, request);
+			return this.#wrapKeyCursor(cursor, request, direction);
 		});
 	}
 
@@ -185,62 +186,31 @@ export class IDBIndex {
 		return {lower: key, upper: key, lowerOpen: false, upperOpen: false};
 	}
 
-	#wrapCursor(backendCursor: any, request: IDBRequest): any {
-		const txn = this.#transaction;
-		const self = this;
-		const cursor = {
-			get key() {
-				return decodeKey(backendCursor.key);
-			},
-			get primaryKey() {
-				return decodeKey(backendCursor.primaryKey);
-			},
-			get value() {
-				return decodeValue(backendCursor.value);
-			},
-			get source() {
-				return self;
-			},
-			get request() {
-				return request;
-			},
-			continue() {
-				txn[kHoldOpen]();
-				const next = backendCursor.continue();
-				queueMicrotask(() => {
-					request._resolve(next ? cursor : null);
-					txn[kRelease]();
-				});
-			},
-		};
-		return cursor;
+	#wrapCursor(
+		backendCursor: any,
+		request: IDBRequest,
+		cursorDirection: IDBCursorDirection = "next",
+	): IDBCursorWithValue {
+		return new IDBCursorWithValue(
+			backendCursor,
+			request,
+			this.#transaction,
+			this,
+			cursorDirection,
+		);
 	}
 
-	#wrapKeyCursor(backendCursor: any, request: IDBRequest): any {
-		const txn = this.#transaction;
-		const self = this;
-		const cursor = {
-			get key() {
-				return decodeKey(backendCursor.key);
-			},
-			get primaryKey() {
-				return decodeKey(backendCursor.primaryKey);
-			},
-			get source() {
-				return self;
-			},
-			get request() {
-				return request;
-			},
-			continue() {
-				txn[kHoldOpen]();
-				const next = backendCursor.continue();
-				queueMicrotask(() => {
-					request._resolve(next ? cursor : null);
-					txn[kRelease]();
-				});
-			},
-		};
-		return cursor;
+	#wrapKeyCursor(
+		backendCursor: any,
+		request: IDBRequest,
+		cursorDirection: IDBCursorDirection = "next",
+	): IDBCursor {
+		return new IDBCursor(
+			backendCursor,
+			request,
+			this.#transaction,
+			this,
+			cursorDirection,
+		);
 	}
 }

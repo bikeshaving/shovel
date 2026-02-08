@@ -10,6 +10,7 @@ import {
 	NotFoundError,
 	ConstraintError,
 } from "./errors.js";
+import {validateKeyPath} from "./key.js";
 import type {ObjectStoreMeta, TransactionMode} from "./types.js";
 
 export class IDBDatabase extends EventTarget {
@@ -89,6 +90,11 @@ export class IDBDatabase extends EventTarget {
 		name: string,
 		options?: IDBObjectStoreParameters,
 	): IDBObjectStore {
+		// Validate keyPath before checking for duplicates
+		if (options?.keyPath !== undefined && options?.keyPath !== null) {
+			validateKeyPath(options.keyPath);
+		}
+
 		if (this.#objectStoreNames.includes(name)) {
 			throw ConstraintError(
 				`Object store "${name}" already exists`,

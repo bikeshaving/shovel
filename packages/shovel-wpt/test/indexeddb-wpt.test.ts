@@ -15,6 +15,8 @@ import {
 	IDBOpenDBRequest,
 	IDBKeyRange,
 	IDBIndex,
+	IDBCursor,
+	IDBCursorWithValue,
 	IDBVersionChangeEvent,
 	MemoryBackend,
 } from "../../indexeddb/src/index.js";
@@ -31,6 +33,8 @@ const idbClasses = {
 	IDBRequest,
 	IDBOpenDBRequest,
 	IDBIndex,
+	IDBCursor,
+	IDBCursorWithValue,
 	IDBVersionChangeEvent,
 };
 
@@ -156,6 +160,9 @@ const skip = [
 	"transaction-create_in_versionchange",
 	// getAllRecords (uses IDBRecord class we don't implement)
 	"getAllRecords",
+	// getAll/getAllKeys options (IDB 3.0 IDBGetAllOptions dictionary)
+	"getAll-options",
+	"getAllKeys-options",
 	// Explicit commit (uses commit() synchronously in ways that conflict with our auto-commit)
 	"idb-explicit-commit",
 	// Transaction requestqueue (uses keep_alive pattern)
@@ -173,10 +180,14 @@ const wptFiles = readdirSync(wptDir)
 	.filter((f) => !skip.some((s) => f.includes(s)))
 	.sort();
 
+// Single shared factory — database names include timestamps and random suffixes
+// so tests don't collide. Using one factory avoids the problem where
+// self.indexedDB changes between test registration and bun:test execution.
+const sharedFactory = new IDBFactory(new MemoryBackend());
+
 for (const file of wptFiles) {
-	// Fresh backend per file so tests don't interfere
 	setupIndexedDBTestGlobals({
-		indexedDB: new IDBFactory(new MemoryBackend()),
+		indexedDB: sharedFactory,
 		classes: idbClasses,
 	});
 
@@ -188,10 +199,17 @@ for (const file of wptFiles) {
 		// Load META-referenced support scripts into global scope
 		loadMetaScripts(join(wptDir, file));
 
-		// Load the test file via indirect eval (same as support scripts).
-		// require() would run in bun's module scope where `test` is
-		// bun:test's version, shadowing our WPT `test` wrapper.
-		loadWptScript(join(wptDir, file));
+		// Load the test file wrapped in an IIFE so its local function
+		// declarations (e.g. setOnUpgradeNeeded, createObjectStoreWithIndexAndPopulate)
+		// don't leak to globalThis. Without this, later files overwrite earlier
+		// files' functions, causing "Index not found" errors when bun:test
+		// runs tests from earlier files that reference the wrong version.
+		// Support scripts (loaded by loadMetaScripts above) are NOT wrapped
+		// because they need to be global (createdb, assert_key_equals, etc.).
+		let testCode = readFileSync(join(wptDir, file), "utf8");
+		testCode = testCode.replace(/^'use strict';?\s*$/m, "");
+		testCode = testCode.replace(/^(const|let) /gm, "var ");
+		(0, eval)(`(function() {\n${testCode}\n})();`);
 
 		flushTests(`WPT: ${file.replace(".any.js", "")}`, {timeout: 2000});
 	} catch (e) {
