@@ -22,13 +22,14 @@ import {
 	InvalidStateError,
 	TransactionInactiveError,
 } from "./errors.js";
+import {makeDOMStringList} from "./types.js";
 import type {ObjectStoreMeta, KeyRangeSpec} from "./types.js";
 
 export class IDBObjectStore {
 	readonly name: string;
 	readonly keyPath: string | string[] | null;
 	readonly autoIncrement: boolean;
-	readonly indexNames: string[] = [];
+	readonly _indexNames: string[] = [];
 
 	#transaction: IDBTransaction;
 
@@ -37,6 +38,10 @@ export class IDBObjectStore {
 		this.name = meta.name;
 		this.keyPath = meta.keyPath;
 		this.autoIncrement = meta.autoIncrement;
+	}
+
+	get indexNames(): DOMStringList {
+		return makeDOMStringList(this._indexNames);
 	}
 
 	get transaction(): IDBTransaction {
@@ -262,7 +267,23 @@ export class IDBObjectStore {
 				"createIndex can only be called during a versionchange transaction",
 			);
 		}
+		if (!this.#transaction._active) {
+			throw TransactionInactiveError("Transaction is not active");
+		}
+		// Spec: ConstraintError if index name already exists (before keyPath validation)
+		if (this._indexNames.includes(name)) {
+			throw new DOMException(
+				`Index "${name}" already exists on store "${this.name}"`,
+				"ConstraintError",
+			);
+		}
 		validateKeyPath(keyPath);
+		// multiEntry and array keyPath are incompatible
+		if (options?.multiEntry && Array.isArray(keyPath)) {
+			throw InvalidStateError(
+				"multiEntry flag cannot be combined with an array keyPath",
+			);
+		}
 		const meta = {
 			name,
 			storeName: this.name,
@@ -271,8 +292,8 @@ export class IDBObjectStore {
 			multiEntry: options?.multiEntry ?? false,
 		};
 		this.#transaction._backendTx.createIndex(meta);
-		if (!this.indexNames.includes(name)) {
-			(this.indexNames as string[]).push(name);
+		if (!this._indexNames.includes(name)) {
+			this._indexNames.push(name);
 		}
 		return new IDBIndex(this.#transaction, this.name, meta, this);
 	}
@@ -286,10 +307,19 @@ export class IDBObjectStore {
 				"deleteIndex can only be called during a versionchange transaction",
 			);
 		}
+		if (!this.#transaction._active) {
+			throw TransactionInactiveError("Transaction is not active");
+		}
+		if (!this._indexNames.includes(name)) {
+			throw new DOMException(
+				`Index "${name}" not found on store "${this.name}"`,
+				"NotFoundError",
+			);
+		}
 		this.#transaction._backendTx.deleteIndex(this.name, name);
-		const idx = (this.indexNames as string[]).indexOf(name);
+		const idx = this._indexNames.indexOf(name);
 		if (idx >= 0) {
-			(this.indexNames as string[]).splice(idx, 1);
+			this._indexNames.splice(idx, 1);
 		}
 	}
 
