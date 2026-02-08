@@ -188,11 +188,12 @@ for (const file of wptFiles) {
 		// Load META-referenced support scripts into global scope
 		loadMetaScripts(join(wptDir, file));
 
-		// Load the test file itself via require (test functions call
-		// global promise_test/async_test which push to our queue)
-		require(join(wptDir, file));
+		// Load the test file via indirect eval (same as support scripts).
+		// require() would run in bun's module scope where `test` is
+		// bun:test's version, shadowing our WPT `test` wrapper.
+		loadWptScript(join(wptDir, file));
 
-		flushTests(`WPT: ${file.replace(".any.js", "")}`, {timeout: 5000});
+		flushTests(`WPT: ${file.replace(".any.js", "")}`, {timeout: 2000});
 	} catch (e) {
 		bunTest(`WPT: ${file} (load error)`, () => {
 			throw e;
