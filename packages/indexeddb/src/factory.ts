@@ -7,6 +7,7 @@ import {IDBDatabase} from "./database.js";
 import {IDBObjectStore} from "./object-store.js";
 import {IDBTransaction} from "./transaction.js";
 import {IDBOpenDBRequest} from "./request.js";
+import {IDBVersionChangeEvent} from "./events.js";
 import {VersionError} from "./errors.js";
 import {validateKeyPath} from "./key.js";
 import type {TransactionMode} from "./types.js";
@@ -56,8 +57,12 @@ export class IDBFactory {
 
 		queueMicrotask(() => {
 			try {
+				// Get old version before deleting
+				const existing = this.#backend.databases().find((db) => db.name === name);
+				const oldVersion = existing?.version ?? 0;
 				this.#backend.deleteDatabase(name);
-				request._resolve(undefined);
+				// Spec: success event for deleteDatabase is IDBVersionChangeEvent
+				request._resolveWithVersionChange(undefined, oldVersion);
 			} catch (error) {
 				request._reject(
 					error instanceof DOMException
@@ -81,6 +86,11 @@ export class IDBFactory {
 	 * Compare two keys.
 	 */
 	cmp(first: any, second: any): number {
+		if (arguments.length < 2) {
+			throw new TypeError(
+				"Failed to execute 'cmp' on 'IDBFactory': 2 arguments required, but only " + arguments.length + " present.",
+			);
+		}
 		const {encodeKey, validateKey, compareKeys} = require("./key.js");
 		const a = encodeKey(validateKey(first));
 		const b = encodeKey(validateKey(second));
@@ -132,9 +142,11 @@ export class IDBFactory {
 			// and createObjectStore needs to use this transaction
 			const originalCreateObjectStore = db.createObjectStore.bind(db);
 			db.createObjectStore = (
-				storeName: string,
+				rawStoreName: string | any,
 				options?: IDBObjectStoreParameters,
 			) => {
+				// Web IDL: stringify the name
+				const storeName = String(rawStoreName);
 				// Validate keyPath before other checks
 				if (options?.keyPath !== undefined && options?.keyPath !== null) {
 					validateKeyPath(options.keyPath);
@@ -151,16 +163,31 @@ export class IDBFactory {
 				if (Array.isArray(keyPath)) {
 					keyPath = keyPath.map(String);
 				}
+				const autoIncrement = options?.autoIncrement ?? false;
+				// Spec: autoIncrement with empty string keyPath is invalid
+				if (autoIncrement && keyPath === "") {
+					throw new DOMException(
+						"autoIncrement is not allowed with an empty keyPath",
+						"InvalidAccessError",
+					);
+				}
+				// Spec: autoIncrement with array keyPath is invalid
+				if (autoIncrement && Array.isArray(keyPath)) {
+					throw new DOMException(
+						"autoIncrement is not allowed with an array keyPath",
+						"InvalidAccessError",
+					);
+				}
 				const meta = {
 					name: storeName,
 					keyPath,
-					autoIncrement: options?.autoIncrement ?? false,
+					autoIncrement,
 				};
 				backendTx.createObjectStore(meta);
 				db._refreshStoreNames();
 				// Update transaction scope to include new store
-				if (!transaction.objectStoreNames.includes(storeName)) {
-					(transaction.objectStoreNames as string[]).push(storeName);
+				if (!transaction._scope.includes(storeName)) {
+					transaction._scope.push(storeName);
 				}
 				return new IDBObjectStore(transaction, meta);
 			};
@@ -169,11 +196,9 @@ export class IDBFactory {
 			db.deleteObjectStore = (storeName: string) => {
 				backendTx.deleteObjectStore(storeName);
 				db._refreshStoreNames();
-				const idx = (transaction.objectStoreNames as string[]).indexOf(
-					storeName,
-				);
+				const idx = transaction._scope.indexOf(storeName);
 				if (idx >= 0) {
-					(transaction.objectStoreNames as string[]).splice(idx, 1);
+					transaction._scope.splice(idx, 1);
 				}
 			};
 
@@ -193,6 +218,14 @@ export class IDBFactory {
 			transaction.addEventListener("abort", () => {
 				db.createObjectStore = originalCreateObjectStore;
 				db.deleteObjectStore = originalDeleteObjectStore;
+				db._refreshStoreNames();
+				db._setVersion(oldVersion);
+				// If this was the initial creation, clean up the database
+				if (oldVersion === 0) {
+					try { this.#backend.deleteDatabase(name); } catch {}
+				}
+				// Clear the transaction on the request per spec
+				request._setTransaction(null);
 				request._reject(
 					new DOMException("Version change transaction was aborted", "AbortError"),
 				);

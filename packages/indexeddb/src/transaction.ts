@@ -9,6 +9,7 @@ import type {IDBBackendTransaction} from "./backend.js";
 import {SafeEventTarget} from "./event-target.js";
 import {IDBRequest} from "./request.js";
 import {AbortError, InvalidStateError, TransactionInactiveError} from "./errors.js";
+import {makeDOMStringList} from "./types.js";
 import type {TransactionMode} from "./types.js";
 
 /** Hold the transaction open (increment pending count). Pair with kRelease. */
@@ -19,7 +20,8 @@ export const kRelease = Symbol("release");
 
 export class IDBTransaction extends SafeEventTarget {
 	readonly mode: TransactionMode;
-	readonly objectStoreNames: string[];
+	readonly _scope: string[]; // mutable internal list
+	readonly durability: string;
 
 	#db: any; // IDBDatabase (avoid circular import)
 	#backendTx: IDBBackendTransaction;
@@ -77,12 +79,18 @@ export class IDBTransaction extends SafeEventTarget {
 		storeNames: string[],
 		mode: TransactionMode,
 		backendTx: IDBBackendTransaction,
+		durability: string = "default",
 	) {
 		super();
 		this.#db = db;
-		this.objectStoreNames = storeNames;
+		this._scope = [...storeNames];
 		this.mode = mode;
 		this.#backendTx = backendTx;
+		this.durability = durability;
+	}
+
+	get objectStoreNames(): DOMStringList {
+		return makeDOMStringList(this._scope);
 	}
 
 	get db(): any {
@@ -107,7 +115,7 @@ export class IDBTransaction extends SafeEventTarget {
 	 * Create an IDBObjectStore accessor for this transaction.
 	 */
 	objectStore(name: string): any {
-		if (!this.objectStoreNames.includes(name)) {
+		if (!this._scope.includes(name)) {
 			throw new DOMException(
 				`Object store "${name}" is not in this transaction's scope`,
 				"NotFoundError",
@@ -124,8 +132,8 @@ export class IDBTransaction extends SafeEventTarget {
 		const dbMeta = this.#db._connection.getMetadata();
 		const indexes = dbMeta.indexes.get(name) || [];
 		for (const idx of indexes) {
-			if (!store.indexNames.includes(idx.name)) {
-				store.indexNames.push(idx.name);
+			if (!store._indexNames.includes(idx.name)) {
+				store._indexNames.push(idx.name);
 			}
 		}
 		return store;
