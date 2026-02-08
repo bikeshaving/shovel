@@ -383,6 +383,23 @@ export async function promise_rejects_js(
 }
 
 /**
+ * Assert that an object has an IDL attribute (own or inherited)
+ */
+export function assert_idl_attribute(
+	object: object,
+	propertyName: string,
+	description?: string,
+): void {
+	if (!(propertyName in (object as any))) {
+		throw new Error(
+			description
+				? `${description}: Expected object to have IDL attribute "${propertyName}"`
+				: `Expected object to have IDL attribute "${propertyName}"`,
+		);
+	}
+}
+
+/**
  * Assert that a promise rejects with any error
  */
 export async function promise_rejects_exactly(
