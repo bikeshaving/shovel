@@ -51,6 +51,11 @@ export class IDBKeyRange {
 	 * Check if a key is within this range.
 	 */
 	includes(key: IDBValidKey): boolean {
+		if (arguments.length === 0) {
+			throw new TypeError(
+				"Failed to execute 'includes' on 'IDBKeyRange': 1 argument required, but only 0 present.",
+			);
+		}
 		const encoded = encodeKey(validateKey(key));
 		return this._includesEncoded(encoded);
 	}
@@ -97,6 +102,11 @@ export class IDBKeyRange {
 		lowerOpen: boolean = false,
 		upperOpen: boolean = false,
 	): IDBKeyRange {
+		if (arguments.length < 2) {
+			throw new TypeError(
+				"Failed to execute 'bound' on 'IDBKeyRange': 2 arguments required, but only " + arguments.length + " present.",
+			);
+		}
 		return new IDBKeyRange(
 			validateKey(lower),
 			validateKey(upper),

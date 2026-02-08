@@ -57,3 +57,18 @@ export interface DatabaseMeta {
 	objectStores: Map<string, ObjectStoreMeta>;
 	indexes: Map<string, IndexMeta[]>; // storeName -> indexes
 }
+
+/**
+ * Create a DOMStringList-like sorted array with contains() and item() methods.
+ */
+export function makeDOMStringList(names: string[]): DOMStringList {
+	const sorted = [...names].sort();
+	return Object.assign(sorted, {
+		contains(name: string) {
+			return sorted.includes(name);
+		},
+		item(index: number) {
+			return sorted[index] ?? null;
+		},
+	}) as unknown as DOMStringList;
+}

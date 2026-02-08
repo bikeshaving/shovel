@@ -95,6 +95,13 @@ export class IDBRequest extends SafeEventTarget {
 		this.#error = null;
 	}
 
+	/** @internal - Set result without firing events (base for subclass event dispatch) */
+	_resolveRaw(result: any): void {
+		this.#readyState = "done";
+		this.#result = result;
+		this.#error = null;
+	}
+
 	/** @internal - Resolve the request with a result */
 	_resolve(result: any): void {
 		this.#readyState = "done";
@@ -148,6 +155,17 @@ export class IDBOpenDBRequest extends IDBRequest {
 		if (handler) {
 			this.addEventListener("upgradeneeded", handler as EventListener);
 		}
+	}
+
+	/** @internal - Resolve with IDBVersionChangeEvent (for deleteDatabase success) */
+	_resolveWithVersionChange(result: any, oldVersion: number): void {
+		(this as any)._resolveRaw(result);
+		this.dispatchEvent(
+			new IDBVersionChangeEvent("success", {
+				oldVersion,
+				newVersion: null as any,
+			}),
+		);
 	}
 
 	/** @internal */

@@ -11,6 +11,7 @@ import {
 	ConstraintError,
 } from "./errors.js";
 import {validateKeyPath} from "./key.js";
+import {makeDOMStringList} from "./types.js";
 import type {ObjectStoreMeta, TransactionMode} from "./types.js";
 
 export class IDBDatabase extends EventTarget {
@@ -44,16 +45,7 @@ export class IDBDatabase extends EventTarget {
 	}
 
 	get objectStoreNames(): DOMStringList {
-		// Return a DOMStringList-like array
-		const names = [...this.#objectStoreNames].sort();
-		return Object.assign(names, {
-			contains(name: string) {
-				return names.includes(name);
-			},
-			item(index: number) {
-				return names[index] ?? null;
-			},
-		}) as unknown as DOMStringList;
+		return makeDOMStringList(this.#objectStoreNames);
 	}
 
 	/**
@@ -62,12 +54,27 @@ export class IDBDatabase extends EventTarget {
 	transaction(
 		storeNames: string | string[],
 		mode: IDBTransactionMode = "readonly",
+		options?: { durability?: string },
 	): IDBTransaction {
 		if (this.#closed) {
 			throw InvalidStateError("Database connection is closed");
 		}
 
+		// Validate mode
+		if (mode !== "readonly" && mode !== "readwrite") {
+			throw new TypeError(
+				`Failed to execute 'transaction' on 'IDBDatabase': The provided value '${mode}' is not a valid enum value of type IDBTransactionMode.`,
+			);
+		}
+
 		const names = typeof storeNames === "string" ? [storeNames] : [...storeNames];
+
+		if (names.length === 0) {
+			throw new DOMException(
+				"The storeNames parameter must not be empty",
+				"InvalidAccessError",
+			);
+		}
 
 		// Validate store names
 		for (const name of names) {
@@ -76,50 +83,43 @@ export class IDBDatabase extends EventTarget {
 			}
 		}
 
+		const durability = options?.durability ?? "default";
+		if (durability !== "default" && durability !== "strict" && durability !== "relaxed") {
+			throw new TypeError(
+				`Failed to execute 'transaction' on 'IDBDatabase': The provided value '${durability}' is not a valid enum value of type IDBTransactionDurability.`,
+			);
+		}
+
 		const backendTx = this.#connection.beginTransaction(
 			names,
 			mode as TransactionMode,
 		);
-		return new IDBTransaction(this, names, mode as TransactionMode, backendTx);
+		return new IDBTransaction(this, names, mode as TransactionMode, backendTx, durability);
 	}
 
 	/**
 	 * Create an object store (versionchange transactions only).
 	 */
 	createObjectStore(
-		name: string,
-		options?: IDBObjectStoreParameters,
+		_name: string,
+		_options?: IDBObjectStoreParameters,
 	): IDBObjectStore {
-		// Validate keyPath before checking for duplicates
-		if (options?.keyPath !== undefined && options?.keyPath !== null) {
-			validateKeyPath(options.keyPath);
-		}
-
-		if (this.#objectStoreNames.includes(name)) {
-			throw ConstraintError(
-				`Object store "${name}" already exists`,
-			);
-		}
-
-		const meta: ObjectStoreMeta = {
-			name,
-			keyPath: options?.keyPath ?? null,
-			autoIncrement: options?.autoIncrement ?? false,
-		};
-
-		this.#objectStoreNames.push(name);
-		return new IDBObjectStore(null as any, meta);
+		// This base implementation is only called outside of versionchange.
+		// During upgradeneeded, factory.ts replaces this method.
+		throw InvalidStateError(
+			"Failed to execute 'createObjectStore' on 'IDBDatabase': " +
+			"The database is not running a version change transaction.",
+		);
 	}
 
 	/**
 	 * Delete an object store (versionchange transactions only).
 	 */
-	deleteObjectStore(name: string): void {
-		const idx = this.#objectStoreNames.indexOf(name);
-		if (idx < 0) {
-			throw NotFoundError(`Object store "${name}" not found`);
-		}
-		this.#objectStoreNames.splice(idx, 1);
+	deleteObjectStore(_name: string): void {
+		throw InvalidStateError(
+			"Failed to execute 'deleteObjectStore' on 'IDBDatabase': " +
+			"The database is not running a version change transaction.",
+		);
 	}
 
 	/**
