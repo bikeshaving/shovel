@@ -2,7 +2,7 @@
  * IDBIndex implementation.
  */
 
-import type {IDBTransaction} from "./transaction.js";
+import {type IDBTransaction, kHoldOpen, kRelease} from "./transaction.js";
 import {IDBRequest} from "./request.js";
 import {IDBKeyRange} from "./key-range.js";
 import {encodeKey, decodeKey, validateKey} from "./key.js";
@@ -186,6 +186,8 @@ export class IDBIndex {
 	}
 
 	#wrapCursor(backendCursor: any, request: IDBRequest): any {
+		const txn = this.#transaction;
+		const self = this;
 		const cursor = {
 			get key() {
 				return decodeKey(backendCursor.key);
@@ -197,23 +199,26 @@ export class IDBIndex {
 				return decodeValue(backendCursor.value);
 			},
 			get source() {
-				return this;
+				return self;
 			},
 			get request() {
 				return request;
 			},
 			continue() {
-				if (backendCursor.continue()) {
-					queueMicrotask(() => request._resolve(cursor));
-				} else {
-					queueMicrotask(() => request._resolve(null));
-				}
+				txn[kHoldOpen]();
+				const next = backendCursor.continue();
+				queueMicrotask(() => {
+					request._resolve(next ? cursor : null);
+					txn[kRelease]();
+				});
 			},
 		};
 		return cursor;
 	}
 
 	#wrapKeyCursor(backendCursor: any, request: IDBRequest): any {
+		const txn = this.#transaction;
+		const self = this;
 		const cursor = {
 			get key() {
 				return decodeKey(backendCursor.key);
@@ -222,17 +227,18 @@ export class IDBIndex {
 				return decodeKey(backendCursor.primaryKey);
 			},
 			get source() {
-				return this;
+				return self;
 			},
 			get request() {
 				return request;
 			},
 			continue() {
-				if (backendCursor.continue()) {
-					queueMicrotask(() => request._resolve(cursor));
-				} else {
-					queueMicrotask(() => request._resolve(null));
-				}
+				txn[kHoldOpen]();
+				const next = backendCursor.continue();
+				queueMicrotask(() => {
+					request._resolve(next ? cursor : null);
+					txn[kRelease]();
+				});
 			},
 		};
 		return cursor;
