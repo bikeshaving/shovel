@@ -679,7 +679,7 @@ export class SQLiteBackend implements IDBBackend {
 			db = openSQLite(dbPath);
 			this.#connections.set(name, db);
 			// Initialize schema
-			this.#initSchema(db, version);
+			this.#initSchema(db, name, version);
 		} else {
 			// Update version
 			db.prepare(`INSERT OR REPLACE INTO _idb_meta (key, value) VALUES ('version', ?)`).run(String(version));
@@ -714,12 +714,13 @@ export class SQLiteBackend implements IDBBackend {
 		const files = readdirSync(this.#basePath);
 		for (const file of files) {
 			if (file.endsWith(".sqlite")) {
-				const name = file.slice(0, -7); // Remove .sqlite
 				try {
 					const dbPath = join(this.#basePath, file);
 					const db = openSQLite(dbPath);
-					const row = db.prepare(`SELECT value FROM _idb_meta WHERE key = 'version'`).get();
-					const version = row ? parseInt(row.value, 10) : 0;
+					const nameRow = db.prepare(`SELECT value FROM _idb_meta WHERE key = 'name'`).get();
+					const versionRow = db.prepare(`SELECT value FROM _idb_meta WHERE key = 'version'`).get();
+					const name = nameRow?.value ?? file.slice(0, -7);
+					const version = versionRow ? parseInt(versionRow.value, 10) : 0;
 					db.close();
 					results.push({name, version});
 				} catch {
@@ -743,7 +744,7 @@ export class SQLiteBackend implements IDBBackend {
 		return join(this.#basePath, `${sanitizeName(name)}.sqlite`);
 	}
 
-	#initSchema(db: SQLiteDB, version: number): void {
+	#initSchema(db: SQLiteDB, name: string, version: number): void {
 		db.exec(`CREATE TABLE IF NOT EXISTS _idb_meta (
 			key TEXT PRIMARY KEY,
 			value TEXT
@@ -752,6 +753,7 @@ export class SQLiteBackend implements IDBBackend {
 			store_name TEXT PRIMARY KEY,
 			current_key INTEGER DEFAULT 0
 		)`);
+		db.prepare(`INSERT OR REPLACE INTO _idb_meta (key, value) VALUES ('name', ?)`).run(name);
 		db.prepare(`INSERT OR REPLACE INTO _idb_meta (key, value) VALUES ('version', ?)`).run(String(version));
 	}
 }

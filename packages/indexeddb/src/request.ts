@@ -2,6 +2,7 @@
  * IDBRequest and IDBOpenDBRequest implementations.
  */
 
+import {SafeEventTarget} from "./event-target.js";
 import {IDBVersionChangeEvent} from "./events.js";
 
 export type IDBRequestReadyState = "pending" | "done";
@@ -9,15 +10,41 @@ export type IDBRequestReadyState = "pending" | "done";
 /**
  * IDBRequest - represents an async operation on the database.
  */
-export class IDBRequest extends EventTarget {
+export class IDBRequest extends SafeEventTarget {
 	#result: any = undefined;
 	#error: DOMException | null = null;
 	#readyState: IDBRequestReadyState = "pending";
 	#source: any = null;
 	#transaction: any = null;
 
-	onsuccess: ((ev: Event) => void) | null = null;
-	onerror: ((ev: Event) => void) | null = null;
+	#onsuccessHandler: ((ev: Event) => void) | null = null;
+	#onerrorHandler: ((ev: Event) => void) | null = null;
+
+	get onsuccess(): ((ev: Event) => void) | null {
+		return this.#onsuccessHandler;
+	}
+	set onsuccess(handler: ((ev: Event) => void) | null) {
+		if (this.#onsuccessHandler) {
+			this.removeEventListener("success", this.#onsuccessHandler);
+		}
+		this.#onsuccessHandler = handler;
+		if (handler) {
+			this.addEventListener("success", handler);
+		}
+	}
+
+	get onerror(): ((ev: Event) => void) | null {
+		return this.#onerrorHandler;
+	}
+	set onerror(handler: ((ev: Event) => void) | null) {
+		if (this.#onerrorHandler) {
+			this.removeEventListener("error", this.#onerrorHandler);
+		}
+		this.#onerrorHandler = handler;
+		if (handler) {
+			this.addEventListener("error", handler);
+		}
+	}
 
 	get result(): any {
 		if (this.#readyState === "pending") {
@@ -73,11 +100,9 @@ export class IDBRequest extends EventTarget {
 		this.#readyState = "done";
 		this.#result = result;
 		this.#error = null;
-		const event = new Event("success", {bubbles: false, cancelable: false});
-		if (this.onsuccess) {
-			this.onsuccess(event);
-		}
-		this.dispatchEvent(event);
+		this.dispatchEvent(
+			new Event("success", {bubbles: false, cancelable: false}),
+		);
 	}
 
 	/** @internal - Reject the request with an error */
@@ -85,11 +110,9 @@ export class IDBRequest extends EventTarget {
 		this.#readyState = "done";
 		this.#error = error;
 		this.#result = undefined;
-		const event = new Event("error", {bubbles: true, cancelable: true});
-		if (this.onerror) {
-			this.onerror(event);
-		}
-		this.dispatchEvent(event);
+		this.dispatchEvent(
+			new Event("error", {bubbles: true, cancelable: true}),
+		);
 	}
 }
 
@@ -97,30 +120,52 @@ export class IDBRequest extends EventTarget {
  * IDBOpenDBRequest - result of IDBFactory.open() or IDBFactory.deleteDatabase()
  */
 export class IDBOpenDBRequest extends IDBRequest {
-	onblocked: ((ev: Event) => void) | null = null;
-	onupgradeneeded: ((ev: IDBVersionChangeEvent) => void) | null = null;
+	#onblockedHandler: ((ev: Event) => void) | null = null;
+	#onupgradeneededHandler: ((ev: IDBVersionChangeEvent) => void) | null = null;
+
+	get onblocked(): ((ev: Event) => void) | null {
+		return this.#onblockedHandler;
+	}
+	set onblocked(handler: ((ev: Event) => void) | null) {
+		if (this.#onblockedHandler) {
+			this.removeEventListener("blocked", this.#onblockedHandler);
+		}
+		this.#onblockedHandler = handler;
+		if (handler) {
+			this.addEventListener("blocked", handler as EventListener);
+		}
+	}
+
+	get onupgradeneeded(): ((ev: IDBVersionChangeEvent) => void) | null {
+		return this.#onupgradeneededHandler;
+	}
+	set onupgradeneeded(handler: ((ev: IDBVersionChangeEvent) => void) | null) {
+		if (this.#onupgradeneededHandler) {
+			this.removeEventListener("upgradeneeded", this.#onupgradeneededHandler as EventListener);
+		}
+		this.#onupgradeneededHandler = handler;
+		if (handler) {
+			this.addEventListener("upgradeneeded", handler as EventListener);
+		}
+	}
 
 	/** @internal */
 	_fireUpgradeNeeded(oldVersion: number, newVersion: number): void {
-		const event = new IDBVersionChangeEvent("upgradeneeded", {
-			oldVersion,
-			newVersion,
-		});
-		if (this.onupgradeneeded) {
-			this.onupgradeneeded(event);
-		}
-		this.dispatchEvent(event);
+		this.dispatchEvent(
+			new IDBVersionChangeEvent("upgradeneeded", {
+				oldVersion,
+				newVersion,
+			}),
+		);
 	}
 
 	/** @internal */
 	_fireBlocked(oldVersion: number, newVersion: number): void {
-		const event = new IDBVersionChangeEvent("blocked", {
-			oldVersion,
-			newVersion,
-		});
-		if (this.onblocked) {
-			this.onblocked(event as unknown as Event);
-		}
-		this.dispatchEvent(event);
+		this.dispatchEvent(
+			new IDBVersionChangeEvent("blocked", {
+				oldVersion,
+				newVersion,
+			}),
+		);
 	}
 }
