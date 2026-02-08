@@ -452,8 +452,22 @@ class MemoryTransaction implements IDBBackendTransaction {
 
 	nextAutoIncrementKey(storeName: string): number {
 		const store = this.#getStore(storeName);
+		// Spec: if current >= 2^53 (maximum safe key generator value), throw ConstraintError
+		if (store.autoIncrementCurrent >= 2 ** 53) {
+			throw ConstraintError("Key generator has reached its maximum value");
+		}
 		store.autoIncrementCurrent++;
 		return store.autoIncrementCurrent;
+	}
+
+	maybeUpdateKeyGenerator(storeName: string, key: number): void {
+		const store = this.#getStore(storeName);
+		// Spec §2.6.3: if key is a number and floor(key) + 1 > current generator,
+		// update the generator. Don't update if floor(key) + 1 > 2^53.
+		const newValue = Math.floor(key) + 1;
+		if (newValue > store.autoIncrementCurrent && newValue <= 2 ** 53) {
+			store.autoIncrementCurrent = newValue;
+		}
 	}
 
 	// ---- Lifecycle ----

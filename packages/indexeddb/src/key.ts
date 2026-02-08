@@ -15,6 +15,72 @@
 import {KeyType} from "./types.js";
 import {DataError} from "./errors.js";
 
+// ECMAScript IdentifierName: starts with letter/$/_/Unicode, followed by same + digits
+const identifierPattern = /^[$_\p{L}][$_\p{L}\p{N}]*$/u;
+
+/**
+ * Validate a key path per the IDB spec.
+ * Throws DOMException with name "SyntaxError" for invalid key paths.
+ *
+ * Valid key paths:
+ *   - Empty string "" (value itself is the key)
+ *   - Dotted identifiers: "foo", "foo.bar", "a.b.c"
+ *   - Array of valid string key paths (non-empty, no nested arrays)
+ *
+ * Each identifier must be a valid ECMAScript IdentifierName.
+ */
+export function validateKeyPath(keyPath: unknown): void {
+	if (typeof keyPath === "string") {
+		validateStringKeyPath(keyPath);
+		return;
+	}
+	if (Array.isArray(keyPath)) {
+		if (keyPath.length === 0) {
+			throw new DOMException(
+				"The keyPath argument is an empty array",
+				"SyntaxError",
+			);
+		}
+		for (const element of keyPath) {
+			if (typeof element !== "string") {
+				throw new DOMException(
+					"The keyPath array contains a non-string element",
+					"SyntaxError",
+				);
+			}
+			validateStringKeyPath(element);
+		}
+		return;
+	}
+	// Objects with toString() get converted
+	if (keyPath != null && typeof keyPath === "object") {
+		validateStringKeyPath(String(keyPath));
+		return;
+	}
+	// null/undefined are valid (no key path)
+	if (keyPath == null) return;
+
+	throw new DOMException(
+		"The keyPath argument is not valid",
+		"SyntaxError",
+	);
+}
+
+function validateStringKeyPath(keyPath: string): void {
+	// Empty string is a valid key path
+	if (keyPath === "") return;
+
+	const parts = keyPath.split(".");
+	for (const part of parts) {
+		if (part === "" || !identifierPattern.test(part)) {
+			throw new DOMException(
+				`The keyPath "${keyPath}" contains an invalid identifier`,
+				"SyntaxError",
+			);
+		}
+	}
+}
+
 /**
  * Validate that a value is a valid IndexedDB key.
  * Returns the canonical key (e.g., Date → Date object).
@@ -41,11 +107,11 @@ export function validateKey(value: unknown): IDBValidKey {
 		return value;
 	}
 	if (ArrayBuffer.isView(value)) {
-		return new Uint8Array(
-			value.buffer as ArrayBuffer,
+		// Slice to get only the view's portion, not the entire backing buffer
+		return (value.buffer as ArrayBuffer).slice(
 			value.byteOffset,
-			value.byteLength,
-		).buffer as ArrayBuffer;
+			value.byteOffset + value.byteLength,
+		);
 	}
 	if (Array.isArray(value)) {
 		// Validate each element recursively
@@ -300,16 +366,29 @@ function extractSingleKey(value: unknown, path: string): IDBValidKey {
 /**
  * Inject a key into a value at the given key path.
  * Mutates the value object. Only for single-string key paths.
+ * Throws DataError if the value is not an object or if intermediate
+ * segments point to non-objects that can't hold properties.
  */
 export function injectKeyIntoValue(
 	value: unknown,
 	keyPath: string,
 	key: IDBValidKey,
 ): void {
+	if (value == null || typeof value !== "object") {
+		throw DataError(
+			`Cannot inject key into non-object value at path "${keyPath}"`,
+		);
+	}
 	const parts = keyPath.split(".");
 	let current: Record<string, unknown> = value as Record<string, unknown>;
 	for (let i = 0; i < parts.length - 1; i++) {
-		if (current[parts[i]] == null || typeof current[parts[i]] !== "object") {
+		const next = current[parts[i]];
+		if (next != null && typeof next !== "object") {
+			throw DataError(
+				`Cannot inject key at path "${keyPath}": "${parts.slice(0, i + 1).join(".")}" is not an object`,
+			);
+		}
+		if (next == null) {
 			current[parts[i]] = {};
 		}
 		current = current[parts[i]] as Record<string, unknown>;

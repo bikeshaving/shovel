@@ -11,12 +11,14 @@ export {IDBObjectStore} from "./object-store.js";
 export {IDBRequest, IDBOpenDBRequest} from "./request.js";
 export {IDBKeyRange} from "./key-range.js";
 export {IDBIndex} from "./idb-index.js";
+export {IDBCursor, IDBCursorWithValue} from "./cursor.js";
 export {IDBVersionChangeEvent} from "./events.js";
 export {
 	encodeKey,
 	decodeKey,
 	compareKeys,
 	validateKey,
+	validateKeyPath,
 } from "./key.js";
 export {encodeValue, decodeValue} from "./structured-clone.js";
 export {MemoryBackend} from "./memory.js";
