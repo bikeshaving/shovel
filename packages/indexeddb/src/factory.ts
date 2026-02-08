@@ -8,6 +8,7 @@ import {IDBObjectStore} from "./object-store.js";
 import {IDBTransaction} from "./transaction.js";
 import {IDBOpenDBRequest} from "./request.js";
 import {VersionError} from "./errors.js";
+import {validateKeyPath} from "./key.js";
 import type {TransactionMode} from "./types.js";
 
 export class IDBFactory {
@@ -21,6 +22,15 @@ export class IDBFactory {
 	 * Open a database.
 	 */
 	open(name: string, version?: number): IDBOpenDBRequest {
+		// Web IDL [EnforceRange] unsigned long long validation
+		if (version !== undefined) {
+			if (typeof version !== "number" || !Number.isFinite(version) || version < 1 || Math.floor(version) !== version) {
+				throw new TypeError(
+					`Failed to execute 'open' on 'IDBFactory': The optional version provided (${version}) is not a valid integer version.`,
+				);
+			}
+		}
+
 		const request = new IDBOpenDBRequest();
 
 		queueMicrotask(() => {
@@ -125,6 +135,10 @@ export class IDBFactory {
 				storeName: string,
 				options?: IDBObjectStoreParameters,
 			) => {
+				// Validate keyPath before other checks
+				if (options?.keyPath !== undefined && options?.keyPath !== null) {
+					validateKeyPath(options.keyPath);
+				}
 				// Spec: throw ConstraintError if store already exists
 				if (db.objectStoreNames.contains(storeName)) {
 					throw new DOMException(
