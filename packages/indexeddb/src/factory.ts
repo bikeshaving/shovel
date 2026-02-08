@@ -146,9 +146,14 @@ export class IDBFactory {
 						"ConstraintError",
 					);
 				}
+				// Normalize keyPath: stringify array elements per Web IDL
+				let keyPath: string | string[] | null = options?.keyPath ?? null;
+				if (Array.isArray(keyPath)) {
+					keyPath = keyPath.map(String);
+				}
 				const meta = {
 					name: storeName,
-					keyPath: options?.keyPath ?? null,
+					keyPath,
 					autoIncrement: options?.autoIncrement ?? false,
 				};
 				backendTx.createObjectStore(meta);

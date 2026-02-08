@@ -182,14 +182,16 @@ export class IDBTransaction extends SafeEventTarget {
 			});
 		} catch (error) {
 			queueMicrotask(() => {
-				request._reject(
+				const domError =
 					error instanceof DOMException
 						? error
-						: new DOMException(String(error), "UnknownError"),
-				);
+						: new DOMException(String(error), "UnknownError");
+				const prevented = request._reject(domError);
 				this.#pendingRequests--;
-				// On error, abort the transaction
-				if (!this.#aborted && !this.#committed) {
+				if (prevented) {
+					// preventDefault() was called — transaction continues
+					this.#maybeAutoCommit();
+				} else if (!this.#aborted && !this.#committed) {
 					this.abort();
 				}
 			});
