@@ -116,7 +116,7 @@ export function async_test(
 							return stepFn();
 						} catch (e) {
 							reject(e);
-							throw e;
+							return undefined as T;
 						}
 					},
 					step_func: <T extends (...args: unknown[]) => unknown>(
@@ -127,7 +127,6 @@ export function async_test(
 								return stepFn(...args);
 							} catch (e) {
 								reject(e);
-								throw e;
 							}
 						}) as T;
 					},
@@ -141,7 +140,6 @@ export function async_test(
 								return result;
 							} catch (e) {
 								reject(e);
-								throw e;
 							}
 						}) as T;
 					},
@@ -158,13 +156,16 @@ export function async_test(
  * Flush all queued tests into a bun:test describe block
  *
  * @param suiteName Name for the test suite
+ * @param options Optional settings (e.g., timeout per test in ms)
  */
-export function flushTests(suiteName: string): void {
+export function flushTests(suiteName: string, options?: {timeout?: number}): void {
 	const tests = [...testQueue];
 	testQueue.length = 0;
+	const timeout = options?.timeout;
 
 	describe(suiteName, () => {
 		for (const {name, fn, isAsync} of tests) {
+			const testOpts = timeout ? {timeout} : undefined;
 			bunTest(name, async () => {
 				currentCleanups = [];
 				const ctx = createTestContext();
@@ -180,7 +181,7 @@ export function flushTests(suiteName: string): void {
 						await cleanup();
 					}
 				}
-			});
+			}, testOpts);
 		}
 	});
 }
