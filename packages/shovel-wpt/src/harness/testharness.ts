@@ -214,6 +214,17 @@ export function async_test(
 		},
 	};
 
+	// Call fn immediately — just like the browser WPT harness.
+	// This is critical for tests that register event handlers synchronously
+	// (e.g. createdb_for_multiple_tests pattern) before microtasks fire.
+	if (fn) {
+		try {
+			fn(ctx);
+		} catch (e) {
+			doReject(e);
+		}
+	}
+
 	testQueue.push({
 		name,
 		fn: () => {
@@ -228,11 +239,6 @@ export function async_test(
 					} else {
 						reject(earlyResult.error);
 					}
-					return;
-				}
-
-				if (fn) {
-					fn(ctx);
 				}
 			});
 		},
