@@ -7,10 +7,15 @@
  */
 
 import {type IDBTransaction, kHoldOpen, kRelease} from "./transaction.js";
-import {type IDBRequest} from "./request.js";
-import {encodeKey, decodeKey, validateKey} from "./key.js";
-import {decodeValue} from "./structured-clone.js";
-import {TransactionInactiveError} from "./errors.js";
+import {IDBRequest} from "./request.js";
+import {encodeKey, decodeKey, validateKey, compareKeys} from "./key.js";
+import {encodeValue, decodeValue} from "./structured-clone.js";
+import {
+	DataError,
+	InvalidStateError,
+	TransactionInactiveError,
+	ReadOnlyError,
+} from "./errors.js";
 import type {IDBBackendCursor} from "./backend.js";
 
 /**
@@ -36,7 +41,7 @@ export class IDBCursor {
 		this._transaction = transaction;
 		this._source = source;
 		this._direction = direction;
-		this._gotValue = false;
+		this._gotValue = true;
 	}
 
 	get key(): IDBValidKey {
@@ -63,16 +68,33 @@ export class IDBCursor {
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
+		if (!this._gotValue) {
+			throw InvalidStateError("Cursor is not pointing at a value");
+		}
 		if (key !== undefined) {
 			const validated = validateKey(key);
 			const encoded = encodeKey(validated);
-			// Validate key direction
-			this._validateContinueKey(encoded);
+			// Validate key direction — key must be strictly in cursor's direction
+			const cmp = compareKeys(encoded, this._backendCursor.key);
+			if (this._direction === "next" || this._direction === "nextunique") {
+				if (cmp <= 0) {
+					throw DataError(
+						"The key is less than or equal to the cursor's current key",
+					);
+				}
+			} else {
+				if (cmp >= 0) {
+					throw DataError(
+						"The key is greater than or equal to the cursor's current key",
+					);
+				}
+			}
 		}
 		this._gotValue = false;
 		this._transaction[kHoldOpen]();
 		const next = this._backendCursor.continue();
 		queueMicrotask(() => {
+			if (next) this._gotValue = true;
 			this._request._resolve(next ? this : null);
 			this._transaction[kRelease]();
 		});
@@ -87,6 +109,9 @@ export class IDBCursor {
 				"Failed to execute 'advance' on 'IDBCursor': A count argument with value 0 (zero) was specified, must be greater than 0.",
 			);
 		}
+		if (!this._gotValue) {
+			throw InvalidStateError("Cursor is not pointing at a value");
+		}
 		this._gotValue = false;
 		this._transaction[kHoldOpen]();
 		let advanced = true;
@@ -94,13 +119,10 @@ export class IDBCursor {
 			advanced = this._backendCursor.continue();
 		}
 		queueMicrotask(() => {
+			if (advanced) this._gotValue = true;
 			this._request._resolve(advanced ? this : null);
 			this._transaction[kRelease]();
 		});
-	}
-
-	_validateContinueKey(_encoded: Uint8Array): void {
-		// Subclasses can override for direction-specific validation
 	}
 }
 
@@ -116,13 +138,70 @@ export class IDBCursorWithValue extends IDBCursor {
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
-		return this._source.delete(this.primaryKey);
+		if (
+			this._transaction.mode !== "readwrite" &&
+			this._transaction.mode !== "versionchange"
+		) {
+			throw ReadOnlyError("Transaction is read-only");
+		}
+		if (!this._gotValue) {
+			throw InvalidStateError("Cursor is not pointing at a value");
+		}
+		const request = new IDBRequest();
+		request._setSource(this);
+		const primaryKey = this._backendCursor.primaryKey;
+		// Get the effective object store name
+		const storeName = this._getEffectiveStoreName();
+
+		return this._transaction._executeRequest(request, (tx) => {
+			tx.delete(storeName, {
+				lower: primaryKey,
+				upper: primaryKey,
+				lowerOpen: false,
+				upperOpen: false,
+			});
+			return undefined;
+		});
 	}
 
 	update(value: any): IDBRequest {
+		if (arguments.length === 0) {
+			throw new TypeError(
+				"Failed to execute 'update' on 'IDBCursor': 1 argument required, but only 0 present.",
+			);
+		}
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
-		return this._source.put(value);
+		if (
+			this._transaction.mode !== "readwrite" &&
+			this._transaction.mode !== "versionchange"
+		) {
+			throw ReadOnlyError("Transaction is read-only");
+		}
+		if (!this._gotValue) {
+			throw InvalidStateError("Cursor is not pointing at a value");
+		}
+		const request = new IDBRequest();
+		request._setSource(this);
+		const primaryKey = this._backendCursor.primaryKey;
+		const storeName = this._getEffectiveStoreName();
+		const encodedValue = encodeValue(value);
+
+		return this._transaction._executeRequest(request, (tx) => {
+			tx.put(storeName, primaryKey, encodedValue);
+			return decodeKey(primaryKey);
+		});
+	}
+
+	_getEffectiveStoreName(): string {
+		// If source is an IDBObjectStore, use its name directly
+		// If source is an IDBIndex, use its objectStore's name
+		const source = this._source;
+		if (source.objectStore) {
+			// IDBIndex — has an objectStore property
+			return source.objectStore.name;
+		}
+		return source.name;
 	}
 }

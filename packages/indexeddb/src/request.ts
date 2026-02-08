@@ -105,14 +105,15 @@ export class IDBRequest extends SafeEventTarget {
 		);
 	}
 
-	/** @internal - Reject the request with an error */
-	_reject(error: DOMException): void {
+	/** @internal - Reject the request with an error.
+	 * Returns true if preventDefault() was called on the error event. */
+	_reject(error: DOMException): boolean {
 		this.#readyState = "done";
 		this.#error = error;
 		this.#result = undefined;
-		this.dispatchEvent(
-			new Event("error", {bubbles: true, cancelable: true}),
-		);
+		const event = new Event("error", {bubbles: true, cancelable: true});
+		this.dispatchEvent(event);
+		return event.defaultPrevented;
 	}
 }
 

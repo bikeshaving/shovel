@@ -42,13 +42,8 @@ export function validateKeyPath(keyPath: unknown): void {
 			);
 		}
 		for (const element of keyPath) {
-			if (typeof element !== "string") {
-				throw new DOMException(
-					"The keyPath array contains a non-string element",
-					"SyntaxError",
-				);
-			}
-			validateStringKeyPath(element);
+			// Web IDL stringifies non-string elements (e.g., ['x'] → "x")
+			validateStringKeyPath(String(element));
 		}
 		return;
 	}
@@ -350,14 +345,20 @@ export function extractKeyFromValue(
 }
 
 function extractSingleKey(value: unknown, path: string): IDBValidKey {
+	if (path === "") {
+		// Empty key path means the value itself is the key
+		return validateKey(value);
+	}
 	const parts = path.split(".");
 	let current: unknown = value;
 	for (const part of parts) {
-		if (current == null || typeof current !== "object") {
+		if (current == null) {
 			throw DataError(
 				`Unable to extract key from value at path "${path}"`,
 			);
 		}
+		// Property access works on any non-null/undefined value via auto-boxing
+		// (e.g., "pony".length === 4, [1,2].length === 2)
 		current = (current as Record<string, unknown>)[part];
 	}
 	return validateKey(current);
