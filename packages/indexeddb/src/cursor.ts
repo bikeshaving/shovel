@@ -28,6 +28,9 @@ export class IDBCursor {
 	_source: any;
 	_direction: IDBCursorDirection;
 	_gotValue: boolean;
+	// Snapshot of cursor state before advance/continue — serves old values until success fires
+	_keySnapshot: Uint8Array | null = null;
+	_primaryKeySnapshot: Uint8Array | null = null;
 
 	constructor(
 		backendCursor: IDBBackendCursor,
@@ -45,10 +48,12 @@ export class IDBCursor {
 	}
 
 	get key(): IDBValidKey {
+		if (this._keySnapshot) return decodeKey(this._keySnapshot);
 		return decodeKey(this._backendCursor.key);
 	}
 
 	get primaryKey(): IDBValidKey {
+		if (this._primaryKeySnapshot) return decodeKey(this._primaryKeySnapshot);
 		return decodeKey(this._backendCursor.primaryKey);
 	}
 
@@ -91,9 +96,17 @@ export class IDBCursor {
 			}
 		}
 		this._gotValue = false;
+		// Snapshot current state before advancing
+		this._keySnapshot = this._backendCursor.key;
+		this._primaryKeySnapshot = this._backendCursor.primaryKey;
+		this._snapshotValue();
 		this._transaction[kHoldOpen]();
 		const next = this._backendCursor.continue();
 		queueMicrotask(() => {
+			// Clear snapshots — getters now read from backend cursor
+			this._keySnapshot = null;
+			this._primaryKeySnapshot = null;
+			this._clearValueSnapshot();
 			if (next) this._gotValue = true;
 			this._request._resolve(next ? this : null);
 			this._transaction[kRelease]();
@@ -113,25 +126,120 @@ export class IDBCursor {
 			throw InvalidStateError("Cursor is not pointing at a value");
 		}
 		this._gotValue = false;
+		// Snapshot current state before advancing
+		this._keySnapshot = this._backendCursor.key;
+		this._primaryKeySnapshot = this._backendCursor.primaryKey;
+		this._snapshotValue();
 		this._transaction[kHoldOpen]();
 		let advanced = true;
 		for (let i = 0; i < count && advanced; i++) {
 			advanced = this._backendCursor.continue();
 		}
 		queueMicrotask(() => {
+			// Clear snapshots
+			this._keySnapshot = null;
+			this._primaryKeySnapshot = null;
+			this._clearValueSnapshot();
 			if (advanced) this._gotValue = true;
 			this._request._resolve(advanced ? this : null);
 			this._transaction[kRelease]();
 		});
 	}
+
+	continuePrimaryKey(key: IDBValidKey, primaryKey: IDBValidKey): void {
+		if (!this._transaction._active) {
+			throw TransactionInactiveError("Transaction is not active");
+		}
+		if (!this._gotValue) {
+			throw InvalidStateError("Cursor is not pointing at a value");
+		}
+		// continuePrimaryKey only works on index cursors with "next" or "prev" direction
+		if (!this._source.objectStore) {
+			throw new DOMException(
+				"continuePrimaryKey can only be called on index cursors",
+				"InvalidAccessError",
+			);
+		}
+		if (this._direction === "nextunique" || this._direction === "prevunique") {
+			throw new DOMException(
+				"continuePrimaryKey cannot be called with unique direction",
+				"InvalidAccessError",
+			);
+		}
+		const validatedKey = validateKey(key);
+		const validatedPK = validateKey(primaryKey);
+		const encodedKey = encodeKey(validatedKey);
+		const encodedPK = encodeKey(validatedPK);
+
+		// Key must be in cursor direction, or equal with primaryKey strictly in direction
+		const cmp = compareKeys(encodedKey, this._backendCursor.key);
+		if (this._direction === "next") {
+			if (cmp < 0) throw DataError("Key is before cursor's current key");
+			if (cmp === 0) {
+				const pkCmp = compareKeys(encodedPK, this._backendCursor.primaryKey);
+				if (pkCmp <= 0) throw DataError("Primary key is not after cursor's current primary key");
+			}
+		} else {
+			if (cmp > 0) throw DataError("Key is after cursor's current key");
+			if (cmp === 0) {
+				const pkCmp = compareKeys(encodedPK, this._backendCursor.primaryKey);
+				if (pkCmp >= 0) throw DataError("Primary key is not before cursor's current primary key");
+			}
+		}
+
+		this._gotValue = false;
+		this._keySnapshot = this._backendCursor.key;
+		this._primaryKeySnapshot = this._backendCursor.primaryKey;
+		this._snapshotValue();
+		this._transaction[kHoldOpen]();
+		// Advance until we reach or pass the target key+primaryKey
+		let found = false;
+		while (this._backendCursor.continue()) {
+			const keyCmp = compareKeys(this._backendCursor.key, encodedKey);
+			if (this._direction === "next") {
+				if (keyCmp > 0 || (keyCmp === 0 && compareKeys(this._backendCursor.primaryKey, encodedPK) >= 0)) {
+					found = true;
+					break;
+				}
+			} else {
+				if (keyCmp < 0 || (keyCmp === 0 && compareKeys(this._backendCursor.primaryKey, encodedPK) <= 0)) {
+					found = true;
+					break;
+				}
+			}
+		}
+		queueMicrotask(() => {
+			this._keySnapshot = null;
+			this._primaryKeySnapshot = null;
+			this._clearValueSnapshot();
+			if (found) this._gotValue = true;
+			this._request._resolve(found ? this : null);
+			this._transaction[kRelease]();
+		});
+	}
+
+	/** Override in IDBCursorWithValue to snapshot the value */
+	_snapshotValue(): void {}
+	_clearValueSnapshot(): void {}
 }
 
 /**
  * IDBCursorWithValue — iterates over records with values.
  */
 export class IDBCursorWithValue extends IDBCursor {
+	_valueSnapshot: Uint8Array | null = null;
+
 	get value(): any {
+		if (this._valueSnapshot) return decodeValue(this._valueSnapshot);
 		return decodeValue(this._backendCursor.value);
+	}
+
+	_snapshotValue(): void {
+		this._valueSnapshot = this._backendCursor.value;
+	}
+
+	_clearValueSnapshot(): void {
+		this._valueSnapshot = null;
 	}
 
 	delete(): IDBRequest {
