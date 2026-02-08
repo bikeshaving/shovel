@@ -32,6 +32,8 @@ export interface IndexedDBShimConfig {
 		IDBRequest?: any;
 		IDBOpenDBRequest?: any;
 		IDBIndex?: any;
+		IDBCursor?: any;
+		IDBCursorWithValue?: any;
 		IDBVersionChangeEvent?: any;
 	};
 }
@@ -52,6 +54,8 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		IDBRequest,
 		IDBOpenDBRequest,
 		IDBIndex,
+		IDBCursor,
+		IDBCursorWithValue,
 		IDBVersionChangeEvent,
 	} = config.classes;
 
@@ -358,6 +362,8 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		IDBRequest,
 		IDBOpenDBRequest,
 		IDBIndex,
+		IDBCursor,
+		IDBCursorWithValue,
 		IDBVersionChangeEvent,
 
 		// WPT harness infrastructure
@@ -388,6 +394,8 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 			IDBRequest,
 			IDBOpenDBRequest,
 			IDBIndex,
+			IDBCursor,
+			IDBCursorWithValue,
 			IDBVersionChangeEvent,
 			location,
 			title: "WPT IndexedDB",
