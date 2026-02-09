@@ -288,7 +288,7 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 	};
 	const document = {
 		title: "WPT IndexedDB",
-		getElementsByTagName(_tag: string) { return []; },
+		getElementsByTagName(_tag: string) { return {length: 0}; },
 	};
 
 	/**
