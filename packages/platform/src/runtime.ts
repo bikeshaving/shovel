@@ -15,6 +15,8 @@ import {getLogger, getConsoleSink} from "@logtape/logtape";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {CustomCacheStorage, Cache} from "@b9g/cache";
 import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
+import {ShovelBroadcastChannel} from "./broadcast-channel.js";
+import {WebSocketPair} from "./websocket.js";
 
 // ============================================================================
 // Cookie Store API Implementation
@@ -699,6 +701,8 @@ const PATCHED_KEYS = [
 	"WorkerGlobalScope",
 	"DedicatedWorkerGlobalScope",
 	"cookieStore",
+	"BroadcastChannel",
+	"WebSocketPair",
 ] as const;
 
 type PatchedKey = (typeof PATCHED_KEYS)[number];
@@ -2167,6 +2171,10 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 			get: () => cookieStoreStorage.get(),
 			configurable: true,
 		});
+
+		// Communication APIs
+		g.BroadcastChannel = ShovelBroadcastChannel;
+		g.WebSocketPair = WebSocketPair;
 	}
 
 	/**
@@ -2804,3 +2812,10 @@ export async function configureLogging(
 		loggers,
 	});
 }
+
+// ============================================================================
+// Re-exports: Communication APIs
+// ============================================================================
+
+export {ShovelBroadcastChannel} from "./broadcast-channel.js";
+export {ShovelWebSocket, WebSocketPair, kWebSocket} from "./websocket.js";
