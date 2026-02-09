@@ -25,18 +25,49 @@ import {
 import {makeDOMStringList} from "./types.js";
 import type {ObjectStoreMeta, KeyRangeSpec} from "./types.js";
 
+/**
+ * Web IDL [EnforceRange] unsigned long validation for count parameters.
+ */
+function enforceRangeCount(count: unknown): void {
+	const n = Number(count);
+	if (!Number.isFinite(n) || n < 0 || n > 0xFFFFFFFF) {
+		throw new TypeError(
+			`The count parameter is not a valid unsigned long value.`,
+		);
+	}
+}
+
 export class IDBObjectStore {
 	readonly name: string;
-	readonly keyPath: string | string[] | null;
 	readonly autoIncrement: boolean;
 	readonly _indexNames: string[] = [];
+	_deleted: boolean = false;
+	/** @internal - track IDBIndex instances for marking as deleted */
+	_indexInstances: IDBIndex[] = [];
 
 	#transaction: IDBTransaction;
+	#keyPath: string | string[] | null;
+	#keyPathCache: string[] | null = null;
+
+	get [Symbol.toStringTag](): string {
+		return "IDBObjectStore";
+	}
+
+	get keyPath(): string | string[] | null {
+		// Spec: return same array instance on repeated access
+		if (Array.isArray(this.#keyPath)) {
+			if (!this.#keyPathCache) {
+				this.#keyPathCache = [...this.#keyPath];
+			}
+			return this.#keyPathCache;
+		}
+		return this.#keyPath;
+	}
 
 	constructor(transaction: IDBTransaction, meta: ObjectStoreMeta) {
 		this.#transaction = transaction;
 		this.name = meta.name;
-		this.keyPath = meta.keyPath;
+		this.#keyPath = meta.keyPath;
 		this.autoIncrement = meta.autoIncrement;
 	}
 
@@ -117,6 +148,9 @@ export class IDBObjectStore {
 	 * Get a key by query.
 	 */
 	getKey(query: IDBValidKey | IDBKeyRange): IDBRequest {
+		if (arguments.length === 0) {
+			throw new TypeError("Failed to execute 'getKey' on 'IDBObjectStore': 1 argument required.");
+		}
 		this.#checkActive();
 		if (!(query instanceof IDBKeyRange)) {
 			validateKey(query);
@@ -143,6 +177,7 @@ export class IDBObjectStore {
 		count?: number,
 	): IDBRequest {
 		this.#checkActive();
+		if (count !== undefined) enforceRangeCount(count);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
@@ -161,6 +196,7 @@ export class IDBObjectStore {
 		count?: number,
 	): IDBRequest {
 		this.#checkActive();
+		if (count !== undefined) enforceRangeCount(count);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
@@ -258,10 +294,15 @@ export class IDBObjectStore {
 	 * Create an index (versionchange transactions only).
 	 */
 	createIndex(
-		name: string,
+		rawName: string,
 		keyPath: string | string[],
 		options?: {unique?: boolean; multiEntry?: boolean},
 	): any {
+		// Web IDL: stringify the name
+		const name = String(rawName);
+		if (this._deleted) {
+			throw InvalidStateError("Object store has been deleted");
+		}
 		if (this.#transaction.mode !== "versionchange") {
 			throw InvalidStateError(
 				"createIndex can only be called during a versionchange transaction",
@@ -278,10 +319,11 @@ export class IDBObjectStore {
 			);
 		}
 		validateKeyPath(keyPath);
-		// multiEntry and array keyPath are incompatible
+		// multiEntry and array keyPath are incompatible (spec: InvalidAccessError)
 		if (options?.multiEntry && Array.isArray(keyPath)) {
-			throw InvalidStateError(
+			throw new DOMException(
 				"multiEntry flag cannot be combined with an array keyPath",
+				"InvalidAccessError",
 			);
 		}
 		const meta = {
@@ -291,17 +333,40 @@ export class IDBObjectStore {
 			unique: options?.unique ?? false,
 			multiEntry: options?.multiEntry ?? false,
 		};
-		this.#transaction._backendTx.createIndex(meta);
+		try {
+			this.#transaction._backendTx.createIndex(meta);
+		} catch (e: any) {
+			// Spec: unique constraint violation during createIndex causes async abort.
+			// createIndex returns the IDBIndex, and the transaction aborts asynchronously.
+			if (e instanceof DOMException && e.name === "ConstraintError") {
+				if (!this._indexNames.includes(name)) {
+					this._indexNames.push(name);
+				}
+				const index = new IDBIndex(this.#transaction, this.name, meta, this);
+				this._indexInstances.push(index);
+				const txn = this.#transaction;
+				queueMicrotask(() => {
+					txn._abortWithError(e);
+				});
+				return index;
+			}
+			throw e;
+		}
 		if (!this._indexNames.includes(name)) {
 			this._indexNames.push(name);
 		}
-		return new IDBIndex(this.#transaction, this.name, meta, this);
+		const index = new IDBIndex(this.#transaction, this.name, meta, this);
+		this._indexInstances.push(index);
+		return index;
 	}
 
 	/**
 	 * Delete an index (versionchange transactions only).
 	 */
 	deleteIndex(name: string): void {
+		if (this._deleted) {
+			throw InvalidStateError("Object store has been deleted");
+		}
 		if (this.#transaction.mode !== "versionchange") {
 			throw InvalidStateError(
 				"deleteIndex can only be called during a versionchange transaction",
@@ -316,6 +381,12 @@ export class IDBObjectStore {
 				"NotFoundError",
 			);
 		}
+		// Mark all existing index instances as deleted
+		for (const inst of this._indexInstances) {
+			if (inst.name === name) {
+				inst._deleted = true;
+			}
+		}
 		this.#transaction._backendTx.deleteIndex(this.name, name);
 		const idx = this._indexNames.indexOf(name);
 		if (idx >= 0) {
@@ -327,8 +398,18 @@ export class IDBObjectStore {
 	 * Get an index by name.
 	 */
 	index(name: string): IDBIndex {
-		if (!this.#transaction._active) {
-			throw TransactionInactiveError("Transaction is not active");
+		if (this._deleted) {
+			throw InvalidStateError("Object store has been deleted");
+		}
+		if (this.#transaction._finished) {
+			throw InvalidStateError("Transaction has finished");
+		}
+		// Check if index exists in the indexNames list
+		if (!this._indexNames.includes(name)) {
+			throw new DOMException(
+				`Index "${name}" not found on store "${this.name}"`,
+				"NotFoundError",
+			);
 		}
 		// Get index metadata from the backend
 		const db = this.#transaction.db;
@@ -341,19 +422,29 @@ export class IDBObjectStore {
 				"NotFoundError",
 			);
 		}
-		return new IDBIndex(this.#transaction, this.name, indexMeta, this);
+		const index = new IDBIndex(this.#transaction, this.name, indexMeta, this);
+		this._indexInstances.push(index);
+		return index;
 	}
 
 	// ---- Private helpers ----
 
 	#checkActive(): void {
+		if (this._deleted) {
+			throw InvalidStateError("Object store has been deleted");
+		}
 		if (!this.#transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 	}
 
 	#checkWritable(): void {
-		this.#checkActive();
+		if (this._deleted) {
+			throw InvalidStateError("Object store has been deleted");
+		}
+		if (!this.#transaction._active) {
+			throw TransactionInactiveError("Transaction is not active");
+		}
 		if (
 			this.#transaction.mode !== "readwrite" &&
 			this.#transaction.mode !== "versionchange"
@@ -375,17 +466,27 @@ export class IDBObjectStore {
 					"Cannot provide a key when object store has a keyPath",
 				);
 			}
+			// Spec: clone the value first, then check key extraction.
+			// This ensures non-enumerable getters aren't accessed, and
+			// enumerable getter errors propagate from structuredClone.
+			let clonedValue: any;
+			try {
+				clonedValue = structuredClone(value);
+			} catch (e: any) {
+				// Re-throw clone errors as-is (getter errors should propagate)
+				throw e;
+			}
 			if (this.autoIncrement) {
 				// If autoIncrement, check if the key can be extracted or injected
 				if (typeof this.keyPath === "string") {
 					try {
-						extractKeyFromValue(value, this.keyPath);
+						extractKeyFromValue(clonedValue, this.keyPath);
 					} catch {
 						// Key not present — check if injection is possible per spec:
 						// Walk the path; if any existing segment is a non-object primitive,
 						// injection fails. Undefined/null segments are OK (will be created).
 						const parts = this.keyPath.split(".");
-						let current: any = value;
+						let current: any = clonedValue;
 						if (current == null || typeof current !== "object") {
 							throw DataError(
 								`Cannot inject key at path "${this.keyPath}": value is not an object`,
@@ -404,8 +505,8 @@ export class IDBObjectStore {
 					}
 				}
 			} else {
-				// No autoIncrement: key MUST be extractable from value
-				extractKeyFromValue(value, this.keyPath);
+				// No autoIncrement: key MUST be extractable from cloned value
+				extractKeyFromValue(clonedValue, this.keyPath);
 			}
 		} else {
 			// Out-of-line keys
@@ -427,6 +528,17 @@ export class IDBObjectStore {
 	): {encodedKey: Uint8Array; encodedValue: Uint8Array} {
 		let resolvedKey: IDBValidKey;
 
+		// Spec: clone the value before key extraction ("store a record" step 3).
+		// This ensures non-enumerable getters are not accessed during key extraction,
+		// and enumerable getter errors propagate from structuredClone.
+		let clonedValue: any;
+		try {
+			clonedValue = structuredClone(value);
+		} catch (e: any) {
+			// Re-throw clone errors as-is (getter errors should propagate)
+			throw e;
+		}
+
 		if (this.keyPath !== null) {
 			// In-line keys
 			if (key !== undefined) {
@@ -435,9 +547,9 @@ export class IDBObjectStore {
 				);
 			}
 			if (this.autoIncrement) {
-				// Try to extract key from value; if not present, generate one
+				// Try to extract key from cloned value; if not present, generate one
 				try {
-					resolvedKey = extractKeyFromValue(value, this.keyPath);
+					resolvedKey = extractKeyFromValue(clonedValue, this.keyPath);
 					// Spec: update key generator if explicit key is numeric
 					if (typeof resolvedKey === "number") {
 						tx.maybeUpdateKeyGenerator(this.name, resolvedKey);
@@ -445,15 +557,13 @@ export class IDBObjectStore {
 				} catch {
 					const nextKey = tx.nextAutoIncrementKey(this.name);
 					resolvedKey = nextKey;
-					// Inject into value
+					// Inject into cloned value
 					if (typeof this.keyPath === "string") {
-						// Clone value to avoid mutating the original
-						value = structuredClone(value);
-						injectKeyIntoValue(value, this.keyPath, nextKey);
+						injectKeyIntoValue(clonedValue, this.keyPath, nextKey);
 					}
 				}
 			} else {
-				resolvedKey = extractKeyFromValue(value, this.keyPath);
+				resolvedKey = extractKeyFromValue(clonedValue, this.keyPath);
 			}
 		} else {
 			// Out-of-line keys
@@ -472,15 +582,16 @@ export class IDBObjectStore {
 
 		return {
 			encodedKey: encodeKey(resolvedKey),
-			encodedValue: encodeValue(value),
+			encodedValue: encodeValue(clonedValue),
 		};
 	}
 
 	#toRangeSpec(
 		query: IDBValidKey | IDBKeyRange | null | undefined,
 	): KeyRangeSpec | undefined {
-		if (query == null) return undefined;
+		if (query === undefined || query === null) return undefined;
 		if (query instanceof IDBKeyRange) return query._toSpec();
+		// Validate key synchronously — throws DataError for invalid keys
 		const key = encodeKey(validateKey(query));
 		return {lower: key, upper: key, lowerOpen: false, upperOpen: false};
 	}

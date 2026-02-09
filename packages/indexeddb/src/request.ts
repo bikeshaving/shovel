@@ -20,6 +20,10 @@ export class IDBRequest extends SafeEventTarget {
 	#onsuccessHandler: ((ev: Event) => void) | null = null;
 	#onerrorHandler: ((ev: Event) => void) | null = null;
 
+	get [Symbol.toStringTag](): string {
+		return "IDBRequest";
+	}
+
 	get onsuccess(): ((ev: Event) => void) | null {
 		return this.#onsuccessHandler;
 	}
@@ -104,9 +108,10 @@ export class IDBRequest extends SafeEventTarget {
 
 	/** @internal - Resolve the request with a result */
 	_resolve(result: any): void {
+		// Guard: if already rejected (e.g., abort handler fired first), skip
+		if (this.#error !== null) return;
 		this.#readyState = "done";
 		this.#result = result;
-		this.#error = null;
 		this.dispatchEvent(
 			new Event("success", {bubbles: false, cancelable: false}),
 		);
@@ -130,6 +135,10 @@ export class IDBRequest extends SafeEventTarget {
 export class IDBOpenDBRequest extends IDBRequest {
 	#onblockedHandler: ((ev: Event) => void) | null = null;
 	#onupgradeneededHandler: ((ev: IDBVersionChangeEvent) => void) | null = null;
+
+	get [Symbol.toStringTag](): string {
+		return "IDBOpenDBRequest";
+	}
 
 	get onblocked(): ((ev: Event) => void) | null {
 		return this.#onblockedHandler;

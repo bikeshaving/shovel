@@ -286,7 +286,10 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		href: "shovel-wpt-test",
 		pathname: "/shovel-wpt-test",
 	};
-	const document = {title: "WPT IndexedDB"};
+	const document = {
+		title: "WPT IndexedDB",
+		getElementsByTagName(_tag: string) { return []; },
+	};
 
 	/**
 	 * EventWatcher — watches events on a target and returns promises.
@@ -400,5 +403,11 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 			location,
 			title: "WPT IndexedDB",
 		});
+		// Stub self.postMessage for WPT tests that use it to detach ArrayBuffers
+		if (!(self as any).postMessage) {
+			(self as any).postMessage = (msg: any, opts: any) => {
+				// No-op; just for compatibility with tests that check cloneability
+			};
+		}
 	}
 }

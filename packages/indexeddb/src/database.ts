@@ -5,26 +5,81 @@
 import type {IDBBackendConnection} from "./backend.js";
 import {IDBTransaction} from "./transaction.js";
 import {IDBObjectStore} from "./object-store.js";
+import {SafeEventTarget} from "./event-target.js";
 import {
 	InvalidStateError,
 	NotFoundError,
-	ConstraintError,
 } from "./errors.js";
-import {validateKeyPath} from "./key.js";
 import {makeDOMStringList} from "./types.js";
 import type {ObjectStoreMeta, TransactionMode} from "./types.js";
 
-export class IDBDatabase extends EventTarget {
+export class IDBDatabase extends SafeEventTarget {
 	readonly name: string;
 	#version: number;
 	#connection: IDBBackendConnection;
 	#closed: boolean = false;
 	#objectStoreNames: string[];
 
-	onabort: ((ev: Event) => void) | null = null;
-	onclose: ((ev: Event) => void) | null = null;
-	onerror: ((ev: Event) => void) | null = null;
-	onversionchange: ((ev: Event) => void) | null = null;
+	get [Symbol.toStringTag](): string {
+		return "IDBDatabase";
+	}
+
+	#onabortHandler: ((ev: Event) => void) | null = null;
+	#oncloseHandler: ((ev: Event) => void) | null = null;
+	#onerrorHandler: ((ev: Event) => void) | null = null;
+	#onversionchangeHandler: ((ev: Event) => void) | null = null;
+
+	get onabort(): ((ev: Event) => void) | null {
+		return this.#onabortHandler;
+	}
+	set onabort(handler: ((ev: Event) => void) | null) {
+		if (this.#onabortHandler) {
+			this.removeEventListener("abort", this.#onabortHandler);
+		}
+		this.#onabortHandler = handler;
+		if (handler) {
+			this.addEventListener("abort", handler);
+		}
+	}
+
+	get onclose(): ((ev: Event) => void) | null {
+		return this.#oncloseHandler;
+	}
+	set onclose(handler: ((ev: Event) => void) | null) {
+		if (this.#oncloseHandler) {
+			this.removeEventListener("close", this.#oncloseHandler);
+		}
+		this.#oncloseHandler = handler;
+		if (handler) {
+			this.addEventListener("close", handler);
+		}
+	}
+
+	get onerror(): ((ev: Event) => void) | null {
+		return this.#onerrorHandler;
+	}
+	set onerror(handler: ((ev: Event) => void) | null) {
+		if (this.#onerrorHandler) {
+			this.removeEventListener("error", this.#onerrorHandler);
+		}
+		this.#onerrorHandler = handler;
+		if (handler) {
+			this.addEventListener("error", handler);
+		}
+	}
+
+	get onversionchange(): ((ev: Event) => void) | null {
+		return this.#onversionchangeHandler;
+	}
+	set onversionchange(handler: ((ev: Event) => void) | null) {
+		if (this.#onversionchangeHandler) {
+			this.removeEventListener("versionchange", this.#onversionchangeHandler);
+		}
+		this.#onversionchangeHandler = handler;
+		if (handler) {
+			this.addEventListener("versionchange", handler);
+		}
+	}
 
 	constructor(
 		name: string,
@@ -67,7 +122,9 @@ export class IDBDatabase extends EventTarget {
 			);
 		}
 
-		const names = typeof storeNames === "string" ? [storeNames] : [...storeNames];
+		const rawNames = typeof storeNames === "string" ? [storeNames] : [...storeNames];
+		// Spec: deduplicate and sort store names
+		const names = [...new Set(rawNames)].sort();
 
 		if (names.length === 0) {
 			throw new DOMException(
@@ -94,7 +151,10 @@ export class IDBDatabase extends EventTarget {
 			names,
 			mode as TransactionMode,
 		);
-		return new IDBTransaction(this, names, mode as TransactionMode, backendTx, durability);
+		const tx = new IDBTransaction(this, names, mode as TransactionMode, backendTx, durability);
+		// Set parent for event bubbling: transaction → database
+		tx._parent = this;
+		return tx;
 	}
 
 	/**
@@ -132,6 +192,11 @@ export class IDBDatabase extends EventTarget {
 	/** @internal */
 	get _connection(): IDBBackendConnection {
 		return this.#connection;
+	}
+
+	/** @internal */
+	get _closed(): boolean {
+		return this.#closed;
 	}
 
 	/** @internal - Get object store metadata */

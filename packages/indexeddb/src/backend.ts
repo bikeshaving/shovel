@@ -124,6 +124,8 @@ export interface IDBBackendConnection {
 		storeNames: string[],
 		mode: "readonly" | "readwrite" | "versionchange",
 	): IDBBackendTransaction;
+	/** Set the database version (used during versionchange transactions) */
+	setVersion(version: number): void;
 }
 
 /**

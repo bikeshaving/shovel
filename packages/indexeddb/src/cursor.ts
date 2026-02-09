@@ -8,7 +8,7 @@
 
 import {type IDBTransaction, kHoldOpen, kRelease} from "./transaction.js";
 import {IDBRequest} from "./request.js";
-import {encodeKey, decodeKey, validateKey, compareKeys} from "./key.js";
+import {encodeKey, decodeKey, validateKey, compareKeys, extractKeyFromValue} from "./key.js";
 import {encodeValue, decodeValue} from "./structured-clone.js";
 import {
 	DataError,
@@ -31,6 +31,11 @@ export class IDBCursor {
 	// Snapshot of cursor state before advance/continue — serves old values until success fires
 	_keySnapshot: Uint8Array | null = null;
 	_primaryKeySnapshot: Uint8Array | null = null;
+	// Cached decoded keys — same object returned on repeated access (spec requirement)
+	_cachedKey: any = undefined;
+	_cachedKeySource: Uint8Array | null = null;
+	_cachedPrimaryKey: any = undefined;
+	_cachedPrimaryKeySource: Uint8Array | null = null;
 
 	constructor(
 		backendCursor: IDBBackendCursor,
@@ -47,14 +52,28 @@ export class IDBCursor {
 		this._gotValue = true;
 	}
 
+	get [Symbol.toStringTag](): string {
+		return "IDBCursor";
+	}
+
 	get key(): IDBValidKey {
-		if (this._keySnapshot) return decodeKey(this._keySnapshot);
-		return decodeKey(this._backendCursor.key);
+		const raw = this._keySnapshot ?? this._backendCursor.key;
+		if (this._cachedKeySource === raw && this._cachedKey !== undefined) {
+			return this._cachedKey;
+		}
+		this._cachedKey = decodeKey(raw);
+		this._cachedKeySource = raw;
+		return this._cachedKey;
 	}
 
 	get primaryKey(): IDBValidKey {
-		if (this._primaryKeySnapshot) return decodeKey(this._primaryKeySnapshot);
-		return decodeKey(this._backendCursor.primaryKey);
+		const raw = this._primaryKeySnapshot ?? this._backendCursor.primaryKey;
+		if (this._cachedPrimaryKeySource === raw && this._cachedPrimaryKey !== undefined) {
+			return this._cachedPrimaryKey;
+		}
+		this._cachedPrimaryKey = decodeKey(raw);
+		this._cachedPrimaryKeySource = raw;
+		return this._cachedPrimaryKey;
 	}
 
 	get source(): any {
@@ -73,9 +92,13 @@ export class IDBCursor {
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
+		if (this._source._deleted || (this._source.objectStore && this._source.objectStore._deleted)) {
+			throw InvalidStateError("The cursor's source or effective object store has been deleted");
+		}
 		if (!this._gotValue) {
 			throw InvalidStateError("Cursor is not pointing at a value");
 		}
+		let targetKey: Uint8Array | undefined;
 		if (key !== undefined) {
 			const validated = validateKey(key);
 			const encoded = encodeKey(validated);
@@ -94,6 +117,7 @@ export class IDBCursor {
 					);
 				}
 			}
+			targetKey = encoded;
 		}
 		this._gotValue = false;
 		// Snapshot current state before advancing
@@ -101,19 +125,36 @@ export class IDBCursor {
 		this._primaryKeySnapshot = this._backendCursor.primaryKey;
 		this._snapshotValue();
 		this._transaction[kHoldOpen]();
-		const next = this._backendCursor.continue();
+		// Advance cursor — if a target key was provided, advance until we reach/pass it
+		let found = false;
+		if (targetKey) {
+			while (this._backendCursor.continue()) {
+				const cmp = compareKeys(this._backendCursor.key, targetKey);
+				if (this._direction === "next" || this._direction === "nextunique") {
+					if (cmp >= 0) { found = true; break; }
+				} else {
+					if (cmp <= 0) { found = true; break; }
+				}
+			}
+		} else {
+			found = this._backendCursor.continue();
+		}
 		queueMicrotask(() => {
 			// Clear snapshots — getters now read from backend cursor
 			this._keySnapshot = null;
 			this._primaryKeySnapshot = null;
+			this._clearKeyCache();
 			this._clearValueSnapshot();
-			if (next) this._gotValue = true;
-			this._request._resolve(next ? this : null);
+			if (found) this._gotValue = true;
+			this._request._resolve(found ? this : null);
 			this._transaction[kRelease]();
 		});
 	}
 
 	advance(count: number): void {
+		if (this._source._deleted || (this._source.objectStore && this._source.objectStore._deleted)) {
+			throw InvalidStateError("The cursor's source or effective object store has been deleted");
+		}
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
@@ -139,6 +180,7 @@ export class IDBCursor {
 			// Clear snapshots
 			this._keySnapshot = null;
 			this._primaryKeySnapshot = null;
+			this._clearKeyCache();
 			this._clearValueSnapshot();
 			if (advanced) this._gotValue = true;
 			this._request._resolve(advanced ? this : null);
@@ -211,11 +253,19 @@ export class IDBCursor {
 		queueMicrotask(() => {
 			this._keySnapshot = null;
 			this._primaryKeySnapshot = null;
+			this._clearKeyCache();
 			this._clearValueSnapshot();
 			if (found) this._gotValue = true;
 			this._request._resolve(found ? this : null);
 			this._transaction[kRelease]();
 		});
+	}
+
+	_clearKeyCache(): void {
+		this._cachedKey = undefined;
+		this._cachedKeySource = null;
+		this._cachedPrimaryKey = undefined;
+		this._cachedPrimaryKeySource = null;
 	}
 
 	/** Override in IDBCursorWithValue to snapshot the value */
@@ -228,10 +278,23 @@ export class IDBCursor {
  */
 export class IDBCursorWithValue extends IDBCursor {
 	_valueSnapshot: Uint8Array | null = null;
+	/** Cached decoded value — same object returned on repeated access */
+	_cachedValue: any = undefined;
+	_cachedValueSource: Uint8Array | null = null;
+
+	get [Symbol.toStringTag](): string {
+		return "IDBCursorWithValue";
+	}
 
 	get value(): any {
-		if (this._valueSnapshot) return decodeValue(this._valueSnapshot);
-		return decodeValue(this._backendCursor.value);
+		const rawBytes = this._valueSnapshot ?? this._backendCursor.value;
+		// Return cached value if still reading from same bytes
+		if (this._cachedValueSource === rawBytes && this._cachedValue !== undefined) {
+			return this._cachedValue;
+		}
+		this._cachedValue = decodeValue(rawBytes);
+		this._cachedValueSource = rawBytes;
+		return this._cachedValue;
 	}
 
 	_snapshotValue(): void {
@@ -240,9 +303,14 @@ export class IDBCursorWithValue extends IDBCursor {
 
 	_clearValueSnapshot(): void {
 		this._valueSnapshot = null;
+		this._cachedValue = undefined;
+		this._cachedValueSource = null;
 	}
 
 	delete(): IDBRequest {
+		if (this._source._deleted || (this._source.objectStore && this._source.objectStore._deleted)) {
+			throw InvalidStateError("The cursor's source or effective object store has been deleted");
+		}
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
@@ -278,6 +346,9 @@ export class IDBCursorWithValue extends IDBCursor {
 				"Failed to execute 'update' on 'IDBCursor': 1 argument required, but only 0 present.",
 			);
 		}
+		if (this._source._deleted || (this._source.objectStore && this._source.objectStore._deleted)) {
+			throw InvalidStateError("The cursor's source or effective object store has been deleted");
+		}
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
@@ -290,11 +361,36 @@ export class IDBCursorWithValue extends IDBCursor {
 		if (!this._gotValue) {
 			throw InvalidStateError("Cursor is not pointing at a value");
 		}
+		// Spec: clone the value before key extraction
+		let clonedValue: any;
+		try {
+			clonedValue = structuredClone(value);
+		} catch (e: any) {
+			// Re-throw clone errors as-is (getter errors should propagate)
+			throw e;
+		}
+		// Validate in-line key: if the effective object store uses a keyPath,
+		// the key at that path in the cloned value must match the cursor's effective key
+		const effectiveStore = this._source.objectStore || this._source;
+		if (effectiveStore.keyPath !== null) {
+			try {
+				const keyInValue = extractKeyFromValue(clonedValue, effectiveStore.keyPath);
+				const encodedKeyInValue = encodeKey(keyInValue);
+				if (compareKeys(encodedKeyInValue, this._backendCursor.primaryKey) !== 0) {
+					throw DataError("The key in the value does not match the cursor's effective key");
+				}
+			} catch (e: any) {
+				if (e instanceof DOMException && e.name === "DataError") {
+					throw e;
+				}
+				throw DataError("The key in the value does not match the cursor's effective key");
+			}
+		}
 		const request = new IDBRequest();
 		request._setSource(this);
 		const primaryKey = this._backendCursor.primaryKey;
 		const storeName = this._getEffectiveStoreName();
-		const encodedValue = encodeValue(value);
+		const encodedValue = encodeValue(clonedValue);
 
 		return this._transaction._executeRequest(request, (tx) => {
 			tx.put(storeName, primaryKey, encodedValue);

@@ -173,6 +173,8 @@ const skip = [
 	"historical",
 	// Binary key conversion (typed array edge cases)
 	"idb_binary_key_conversion",
+	// Tombstone tests (requires transaction scheduling/queuing)
+	"idbindex_tombstones",
 ];
 
 const wptFiles = readdirSync(wptDir)
