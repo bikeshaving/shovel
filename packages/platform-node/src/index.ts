@@ -12,6 +12,7 @@ import * as Path from "node:path";
 
 // External packages
 import {getLogger} from "@logtape/logtape";
+import {WebSocketServer} from "ws";
 
 // Internal @b9g/* packages
 import {CustomCacheStorage} from "@b9g/cache";
@@ -29,6 +30,7 @@ import {
 	ShovelServiceWorkerRegistration,
 	kServiceWorker,
 	createCacheFactory,
+	kWebSocket,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
 
@@ -379,6 +381,85 @@ export class NodePlatform {
 			}
 		});
 
+		// WebSocket upgrade handling via ws package
+		const wss = new WebSocketServer({noServer: true});
+
+		httpServer.on("upgrade", (req, socket, head) => {
+			const url = `http://${req.headers.host}${req.url}`;
+			const request = new Request(url, {
+				method: req.method,
+				headers: req.headers as HeadersInit,
+			});
+
+			Promise.resolve(handler(request))
+				.then((response: Response) => {
+					if (response.status === 101) {
+						const clientSocket =
+							(response as any).webSocket ??
+							(response as any)[kWebSocket];
+						if (clientSocket) {
+							wss.handleUpgrade(req, socket, head, (ws) => {
+								// Accept the client socket so it can receive messages
+								clientSocket.accept();
+
+								// Outgoing: server.send() → client gets message → real socket
+								clientSocket.addEventListener(
+									"message",
+									(ev: MessageEvent) => {
+										if (ws.readyState === ws.OPEN) {
+											ws.send(ev.data);
+										}
+									},
+								);
+
+								// Close: server.close() → client gets close → real socket
+								clientSocket.addEventListener(
+									"close",
+									(ev: CloseEvent) => {
+										if (
+											ws.readyState !== ws.CLOSING &&
+											ws.readyState !== ws.CLOSED
+										) {
+											ws.close(ev.code, ev.reason);
+										}
+									},
+								);
+
+								// Incoming: real socket message → client.send() → server gets message
+								ws.on("message", (data, isBinary) => {
+									if (isBinary) {
+										// Convert Buffer to ArrayBuffer for web compat
+										const buf = data as Buffer;
+										clientSocket.send(
+											buf.buffer.slice(
+												buf.byteOffset,
+												buf.byteOffset + buf.byteLength,
+											),
+										);
+									} else {
+										clientSocket.send(data.toString());
+									}
+								});
+
+								// Close from real socket → close client → server gets close
+								ws.on("close", (code, reason) => {
+									clientSocket.close(
+										code,
+										reason.toString(),
+									);
+								});
+							});
+							return;
+						}
+					}
+					// Not a WebSocket upgrade — reject
+					socket.destroy();
+				})
+				.catch(() => {
+					socket.destroy();
+				});
+		});
+
 		let isListening = false;
 		let actualPort = port;
 
@@ -406,6 +487,13 @@ export class NodePlatform {
 				});
 			},
 			async close() {
+				// Close all WebSocket connections
+				for (const client of wss.clients) {
+					client.close(1001, "server shutting down");
+				}
+				wss.close();
+				// Force-close all active connections so server.close() resolves
+				httpServer.closeAllConnections();
 				return new Promise<void>((resolve) => {
 					httpServer.close(() => {
 						isListening = false;

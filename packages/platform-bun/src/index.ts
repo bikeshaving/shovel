@@ -28,6 +28,7 @@ import {
 	ShovelServiceWorkerRegistration,
 	kServiceWorker,
 	createCacheFactory,
+	kWebSocket,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
 
@@ -275,14 +276,69 @@ export class BunPlatform {
 		const hostname = options.host ?? this.#options.host;
 		const reusePort = options.reusePort ?? false;
 
-		// Bun.serve is much simpler than Node.js
-		const server = Bun.serve({
+		// Track WebSocket bridges by Bun ServerWebSocket → ShovelWebSocket
+		const wsBridges = new WeakMap<object, any>();
+
+		const server = Bun.serve<{clientSocket: any}>({
 			port: requestedPort,
 			hostname,
 			reusePort,
-			async fetch(request) {
+			websocket: {
+				open(ws) {
+					const clientSocket = ws.data.clientSocket;
+					clientSocket.accept();
+					wsBridges.set(ws, clientSocket);
+
+					// Outgoing: server.send() → client gets message → real socket
+					clientSocket.addEventListener("message", (ev: MessageEvent) => {
+						if (ws.readyState === 1 /* OPEN */) {
+							ws.send(ev.data);
+						}
+					});
+
+					// Close: server.close() → client gets close → real socket
+					clientSocket.addEventListener("close", (ev: CloseEvent) => {
+						if (ws.readyState < 2 /* not CLOSING/CLOSED */) {
+							ws.close(ev.code, ev.reason);
+						}
+					});
+				},
+				message(ws, data) {
+					// Incoming: real socket message → client.send() → server gets message
+					const clientSocket = wsBridges.get(ws);
+					if (clientSocket) {
+						clientSocket.send(data);
+					}
+				},
+				close(ws, code, reason) {
+					// Close from real socket → close client → server gets close
+					const clientSocket = wsBridges.get(ws);
+					if (clientSocket) {
+						clientSocket.close(code, reason);
+						wsBridges.delete(ws);
+					}
+				},
+			},
+			async fetch(request, bunServer) {
 				try {
-					return await handler(request);
+					const response = await handler(request);
+
+					// Detect WebSocket upgrade response
+					if (response.status === 101) {
+						const clientSocket =
+							(response as any).webSocket ??
+							(response as any)[kWebSocket];
+						if (
+							clientSocket &&
+							bunServer.upgrade(request, {
+								data: {clientSocket},
+							})
+						) {
+							return undefined as any;
+						}
+					}
+
+					return response;
 				} catch (error) {
 					const err = error instanceof Error ? error : new Error(String(error));
 

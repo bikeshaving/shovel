@@ -86,6 +86,22 @@
     "./module.js": {
       "types": "./dist/src/module.d.ts",
       "import": "./dist/src/module.js"
+    },
+    "./broadcast-channel": {
+      "types": "./dist/src/broadcast-channel.d.ts",
+      "import": "./dist/src/broadcast-channel.js"
+    },
+    "./broadcast-channel.js": {
+      "types": "./dist/src/broadcast-channel.d.ts",
+      "import": "./dist/src/broadcast-channel.js"
+    },
+    "./websocket": {
+      "types": "./dist/src/websocket.d.ts",
+      "import": "./dist/src/websocket.js"
+    },
+    "./websocket.js": {
+      "types": "./dist/src/websocket.d.ts",
+      "import": "./dist/src/websocket.js"
     }
   },
   "repository": {
