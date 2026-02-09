@@ -23,11 +23,16 @@ export class IDBTransaction extends SafeEventTarget {
 	readonly _scope: string[]; // mutable internal list
 	readonly durability: string;
 
+	get [Symbol.toStringTag](): string {
+		return "IDBTransaction";
+	}
+
 	#db: any; // IDBDatabase (avoid circular import)
 	#backendTx: IDBBackendTransaction;
 	#active: boolean = true;
 	#committed: boolean = false;
 	#aborted: boolean = false;
+	#commitPending: boolean = false;
 	#pendingRequests: number = 0;
 	#error: DOMException | null = null;
 
@@ -111,6 +116,16 @@ export class IDBTransaction extends SafeEventTarget {
 		return this.#active;
 	}
 
+	/** @internal */
+	get _aborted(): boolean {
+		return this.#aborted;
+	}
+
+	/** @internal - true if the transaction has committed or aborted */
+	get _finished(): boolean {
+		return this.#committed || this.#aborted;
+	}
+
 	/**
 	 * Create an IDBObjectStore accessor for this transaction.
 	 */
@@ -164,7 +179,25 @@ export class IDBTransaction extends SafeEventTarget {
 		if (this.#committed || this.#aborted) {
 			throw InvalidStateError("Transaction already finished");
 		}
-		this.#doCommit();
+		this.#active = false;
+		if (this.#pendingRequests === 0) {
+			this.#doCommit();
+		} else {
+			// Spec: commit waits for pending requests to complete
+			this.#commitPending = true;
+		}
+	}
+
+	/** @internal - Abort with a specific error (for async constraint violations) */
+	_abortWithError(error: DOMException): void {
+		if (this.#committed || this.#aborted) return;
+		this.#aborted = true;
+		this.#active = false;
+		this.#backendTx.abort();
+		this.#error = error;
+		this.dispatchEvent(
+			new Event("abort", {bubbles: true, cancelable: false}),
+		);
 	}
 
 	/** @internal - Execute a request within this transaction */
@@ -177,6 +210,8 @@ export class IDBTransaction extends SafeEventTarget {
 		}
 
 		request._setTransaction(this);
+		// Set parent for event bubbling: request → transaction → database
+		request._parent = this;
 		this.#pendingRequests++;
 
 		// Execute synchronously (memory/SQLite backends are sync)
@@ -184,23 +219,48 @@ export class IDBTransaction extends SafeEventTarget {
 			const result = operation(this.#backendTx);
 			// Fire success via microtask
 			queueMicrotask(() => {
-				request._resolve(result);
 				this.#pendingRequests--;
-				this.#maybeAutoCommit();
+				if (this.#aborted) {
+					// Transaction was aborted — fire error event with AbortError
+					request._reject(AbortError("Transaction was aborted"));
+					return;
+				}
+				request._resolve(result);
+				if (this.#commitPending && this.#pendingRequests === 0) {
+					this.#doCommit();
+				} else {
+					this.#maybeAutoCommit();
+				}
 			});
 		} catch (error) {
 			queueMicrotask(() => {
+				this.#pendingRequests--;
+				if (this.#aborted) {
+					// Transaction was already aborted — fire error on request
+					request._reject(AbortError("Transaction was aborted"));
+					return;
+				}
 				const domError =
 					error instanceof DOMException
 						? error
 						: new DOMException(String(error), "UnknownError");
 				const prevented = request._reject(domError);
-				this.#pendingRequests--;
 				if (prevented) {
 					// preventDefault() was called — transaction continues
-					this.#maybeAutoCommit();
+					if (this.#commitPending && this.#pendingRequests === 0) {
+						this.#doCommit();
+					} else {
+						this.#maybeAutoCommit();
+					}
 				} else if (!this.#aborted && !this.#committed) {
-					this.abort();
+					// Set the transaction error to the original request error
+					this.#error = domError;
+					this.#aborted = true;
+					this.#active = false;
+					this.#backendTx.abort();
+					this.dispatchEvent(
+						new Event("abort", {bubbles: true, cancelable: false}),
+					);
 				}
 			});
 		}
@@ -239,20 +299,33 @@ export class IDBTransaction extends SafeEventTarget {
 			!this.#committed &&
 			!this.#aborted
 		) {
-			// Schedule auto-commit at end of microtask
+			// Double-nested microtask: ensures auto-commit runs after promise
+			// continuations from EventWatcher/promiseForRequest chains settle.
+			// Without this, the commit check would fire between promise hops
+			// (e.g., EventWatcher.then → await continuation), committing
+			// the transaction before user code can issue the next request.
 			queueMicrotask(() => {
 				if (
 					this.#pendingRequests === 0 &&
 					!this.#committed &&
 					!this.#aborted
 				) {
-					this.#doCommit();
+					queueMicrotask(() => {
+						if (
+							this.#pendingRequests === 0 &&
+							!this.#committed &&
+							!this.#aborted
+						) {
+							this.#doCommit();
+						}
+					});
 				}
 			});
 		}
 	}
 
 	#doCommit(): void {
+		if (this.#aborted) return; // Safety guard
 		this.#committed = true;
 		this.#active = false;
 

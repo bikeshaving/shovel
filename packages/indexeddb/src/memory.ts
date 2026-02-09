@@ -4,7 +4,7 @@
  * Stores everything in sorted arrays. Used for testing and as the default backend.
  */
 
-import {compareKeys, encodeKey, extractKeyFromValue} from "./key.js";
+import {compareKeys, encodeKey, validateKey, extractKeyFromValue} from "./key.js";
 import {decodeValue} from "./structured-clone.js";
 import {ConstraintError, NotFoundError} from "./errors.js";
 import type {
@@ -22,6 +22,21 @@ import type {
 	IDBBackendTransaction,
 	IDBBackendCursor,
 } from "./backend.js";
+
+/**
+ * Extract a raw property value at a dot-path WITHOUT key validation.
+ * Used for multiEntry indexes where individual elements are validated separately.
+ */
+function extractRawPropertyValue(value: unknown, path: string): unknown {
+	if (path === "") return value;
+	const parts = path.split(".");
+	let current: unknown = value;
+	for (const part of parts) {
+		if (current == null) return undefined;
+		current = (current as Record<string, unknown>)[part];
+	}
+	return current;
+}
 
 // ============================================================================
 // Sorted array helpers
@@ -381,9 +396,10 @@ class MemoryTransaction implements IDBBackendTransaction {
 		direction: CursorDirection = "next",
 	): IDBBackendCursor | null {
 		const store = this.#getStore(storeName);
-		const entries = this.#filterAndSort(store.data, range, direction);
-		if (entries.length === 0) return null;
-		return new MemoryCursor(entries, 0);
+		// Find first entry matching range in the given direction
+		const first = this.#findFirstEntry(store.data, range, direction);
+		if (!first) return null;
+		return new MemoryCursor(store, range, direction, first);
 	}
 
 	openKeyCursor(
@@ -391,7 +407,6 @@ class MemoryTransaction implements IDBBackendTransaction {
 		range?: KeyRangeSpec,
 		direction: CursorDirection = "next",
 	): IDBBackendCursor | null {
-		// Same as openCursor for non-index stores
 		return this.openCursor(storeName, range, direction);
 	}
 
@@ -402,40 +417,60 @@ class MemoryTransaction implements IDBBackendTransaction {
 		direction: CursorDirection = "next",
 	): IDBBackendCursor | null {
 		const idx = this.#getIndex(storeName, indexName);
-		const filtered: {key: Uint8Array; primaryKey: Uint8Array; value: Uint8Array}[] = [];
+		const store = this.#getStore(storeName);
 
-		for (const entry of idx.data) {
-			if (matchesRange(entry.key, range)) {
-				const record = this.get(storeName, entry.primaryKey);
-				if (record) {
-					filtered.push({
-						key: entry.key,
-						primaryKey: entry.primaryKey,
-						value: record.value,
-					});
+		// Find the first matching entry in the given direction
+		let firstEntry: IndexEntry | null = null;
+
+		if (direction === "next" || direction === "nextunique") {
+			for (let i = 0; i < idx.data.length; i++) {
+				if (matchesRange(idx.data[i].key, range)) {
+					// Verify the primary key still exists in the store
+					const record = this.get(storeName, idx.data[i].primaryKey);
+					if (record) {
+						firstEntry = idx.data[i];
+						break;
+					}
 				}
 			}
-		}
-
-		if (direction === "prev" || direction === "prevunique") {
-			filtered.reverse();
-		}
-
-		if (direction === "nextunique" || direction === "prevunique") {
-			const unique: typeof filtered = [];
+		} else if (direction === "prev") {
+			for (let i = idx.data.length - 1; i >= 0; i--) {
+				if (matchesRange(idx.data[i].key, range)) {
+					const record = this.get(storeName, idx.data[i].primaryKey);
+					if (record) {
+						firstEntry = idx.data[i];
+						break;
+					}
+				}
+			}
+		} else {
+			// prevunique: start with the last unique key, but use first entry for that key
 			let lastKey: Uint8Array | null = null;
-			for (const e of filtered) {
-				if (lastKey === null || compareKeys(e.key, lastKey) !== 0) {
-					unique.push(e);
-					lastKey = e.key;
+			for (let i = idx.data.length - 1; i >= 0; i--) {
+				if (matchesRange(idx.data[i].key, range)) {
+					if (lastKey === null || compareKeys(idx.data[i].key, lastKey) !== 0) {
+						lastKey = idx.data[i].key;
+						// For prevunique, we want the first entry with this key value
+						let firstWithKey = i;
+						for (let j = i - 1; j >= 0; j--) {
+							if (compareKeys(idx.data[j].key, lastKey) === 0) {
+								firstWithKey = j;
+							} else {
+								break;
+							}
+						}
+						const record = this.get(storeName, idx.data[firstWithKey].primaryKey);
+						if (record) {
+							firstEntry = idx.data[firstWithKey];
+							break;
+						}
+					}
 				}
 			}
-			if (unique.length === 0) return null;
-			return new MemoryIndexCursor(unique, 0);
 		}
 
-		if (filtered.length === 0) return null;
-		return new MemoryIndexCursor(filtered, 0);
+		if (!firstEntry) return null;
+		return new MemoryIndexCursor(idx, store, range, direction, firstEntry);
 	}
 
 	openIndexKeyCursor(
@@ -507,27 +542,21 @@ class MemoryTransaction implements IDBBackendTransaction {
 		return idx;
 	}
 
-	#filterAndSort(
+	#findFirstEntry(
 		data: SortedEntry[],
 		range: KeyRangeSpec | undefined,
 		direction: CursorDirection,
-	): SortedEntry[] {
-		let filtered = data.filter((e) => matchesRange(e.key, range));
-		if (direction === "prev" || direction === "prevunique") {
-			filtered = filtered.slice().reverse();
-		}
-		if (direction === "nextunique" || direction === "prevunique") {
-			const unique: SortedEntry[] = [];
-			let lastKey: Uint8Array | null = null;
-			for (const e of filtered) {
-				if (lastKey === null || compareKeys(e.key, lastKey) !== 0) {
-					unique.push(e);
-					lastKey = e.key;
-				}
+	): SortedEntry | null {
+		if (direction === "next" || direction === "nextunique") {
+			for (let i = 0; i < data.length; i++) {
+				if (matchesRange(data[i].key, range)) return data[i];
 			}
-			return unique;
+		} else {
+			for (let i = data.length - 1; i >= 0; i--) {
+				if (matchesRange(data[i].key, range)) return data[i];
+			}
 		}
-		return filtered;
+		return null;
 	}
 
 	#addToAllIndexes(
@@ -559,12 +588,36 @@ class MemoryTransaction implements IDBBackendTransaction {
 		let indexKeys: Uint8Array[];
 		try {
 			if (meta.multiEntry && typeof meta.keyPath === "string") {
-				// For multiEntry, if the extracted value is an array, index each element
-				const extracted = extractKeyFromValue(decodedValue, meta.keyPath);
-				if (Array.isArray(extracted)) {
-					indexKeys = extracted.map((k) => encodeKey(k));
+				// For multiEntry, extract the raw value at the key path
+				const rawValue = extractRawPropertyValue(decodedValue, meta.keyPath);
+				if (rawValue === undefined) return; // No value at path
+				if (Array.isArray(rawValue)) {
+					// Spec: for each element, validate individually; skip invalid ones
+					indexKeys = [];
+					const seen = new Set<string>();
+					for (const item of rawValue) {
+						try {
+							const validated = validateKey(item);
+							const encoded = encodeKey(validated);
+							// Deduplicate per spec
+							const encodedStr = encoded.join(",");
+							if (!seen.has(encodedStr)) {
+								seen.add(encodedStr);
+								indexKeys.push(encoded);
+							}
+						} catch {
+							// Skip invalid keys per spec
+						}
+					}
+					if (indexKeys.length === 0) return;
 				} else {
-					indexKeys = [encodeKey(extracted)];
+					// Not an array — validate as single key
+					try {
+						const validated = validateKey(rawValue);
+						indexKeys = [encodeKey(validated)];
+					} catch {
+						return;
+					}
 				}
 			} else {
 				const extracted = extractKeyFromValue(decodedValue, meta.keyPath);
@@ -623,59 +676,166 @@ class MemoryTransaction implements IDBBackendTransaction {
 // ============================================================================
 
 class MemoryCursor implements IDBBackendCursor {
-	#entries: SortedEntry[];
-	#pos: number;
+	#store: MemoryStore;
+	#range: KeyRangeSpec | undefined;
+	#direction: CursorDirection;
+	#currentKey: Uint8Array;
+	#currentValue: Uint8Array;
 
-	constructor(entries: SortedEntry[], pos: number) {
-		this.#entries = entries;
-		this.#pos = pos;
+	constructor(store: MemoryStore, range: KeyRangeSpec | undefined, direction: CursorDirection, initialEntry: SortedEntry) {
+		this.#store = store;
+		this.#range = range;
+		this.#direction = direction;
+		this.#currentKey = initialEntry.key;
+		this.#currentValue = initialEntry.value;
 	}
 
 	get primaryKey(): EncodedKey {
-		return this.#entries[this.#pos].key;
+		return this.#currentKey;
 	}
 
 	get key(): EncodedKey {
-		return this.#entries[this.#pos].key;
+		return this.#currentKey;
 	}
 
 	get value(): Uint8Array {
-		return this.#entries[this.#pos].value;
+		return this.#currentValue;
 	}
 
 	continue(): boolean {
-		this.#pos++;
-		return this.#pos < this.#entries.length;
+		// Find next entry in the live data that comes after the current key
+		const data = this.#store.data;
+		if (this.#direction === "next" || this.#direction === "nextunique") {
+			// Find first entry with key > currentKey that matches range
+			for (let i = 0; i < data.length; i++) {
+				if (compareKeys(data[i].key, this.#currentKey) > 0 && matchesRange(data[i].key, this.#range)) {
+					this.#currentKey = data[i].key;
+					this.#currentValue = data[i].value;
+					return true;
+				}
+			}
+		} else {
+			// prev/prevunique: find last entry with key < currentKey that matches range
+			for (let i = data.length - 1; i >= 0; i--) {
+				if (compareKeys(data[i].key, this.#currentKey) < 0 && matchesRange(data[i].key, this.#range)) {
+					this.#currentKey = data[i].key;
+					this.#currentValue = data[i].value;
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 }
 
 class MemoryIndexCursor implements IDBBackendCursor {
-	#entries: {key: Uint8Array; primaryKey: Uint8Array; value: Uint8Array}[];
-	#pos: number;
+	#index: MemoryIndex;
+	#store: MemoryStore;
+	#range: KeyRangeSpec | undefined;
+	#direction: CursorDirection;
+	#currentKey: Uint8Array;
+	#currentPrimaryKey: Uint8Array;
+	#currentValue: Uint8Array;
 
 	constructor(
-		entries: {key: Uint8Array; primaryKey: Uint8Array; value: Uint8Array}[],
-		pos: number,
+		index: MemoryIndex,
+		store: MemoryStore,
+		range: KeyRangeSpec | undefined,
+		direction: CursorDirection,
+		initialEntry: IndexEntry,
 	) {
-		this.#entries = entries;
-		this.#pos = pos;
+		this.#index = index;
+		this.#store = store;
+		this.#range = range;
+		this.#direction = direction;
+		this.#currentKey = initialEntry.key;
+		this.#currentPrimaryKey = initialEntry.primaryKey;
+		// Cache value at positioning time
+		this.#currentValue = this.#lookupValue(initialEntry.primaryKey);
 	}
 
 	get primaryKey(): EncodedKey {
-		return this.#entries[this.#pos].primaryKey;
+		return this.#currentPrimaryKey;
 	}
 
 	get key(): EncodedKey {
-		return this.#entries[this.#pos].key;
+		return this.#currentKey;
 	}
 
 	get value(): Uint8Array {
-		return this.#entries[this.#pos].value;
+		return this.#currentValue;
+	}
+
+	#lookupValue(pk: Uint8Array): Uint8Array {
+		const data = this.#store.data;
+		for (let i = 0; i < data.length; i++) {
+			if (compareKeys(data[i].key, pk) === 0) {
+				return data[i].value;
+			}
+		}
+		return new Uint8Array(0);
 	}
 
 	continue(): boolean {
-		this.#pos++;
-		return this.#pos < this.#entries.length;
+		const data = this.#index.data;
+		if (this.#direction === "next") {
+			// Find next entry after current (key, primaryKey)
+			for (let i = 0; i < data.length; i++) {
+				const keyCmp = compareKeys(data[i].key, this.#currentKey);
+				if (keyCmp > 0 || (keyCmp === 0 && compareKeys(data[i].primaryKey, this.#currentPrimaryKey) > 0)) {
+					if (matchesRange(data[i].key, this.#range)) {
+						this.#currentKey = data[i].key;
+						this.#currentPrimaryKey = data[i].primaryKey;
+						this.#currentValue = this.#lookupValue(data[i].primaryKey);
+						return true;
+					}
+				}
+			}
+		} else if (this.#direction === "nextunique") {
+			// Find next entry with a different (greater) key
+			for (let i = 0; i < data.length; i++) {
+				if (compareKeys(data[i].key, this.#currentKey) > 0 && matchesRange(data[i].key, this.#range)) {
+					this.#currentKey = data[i].key;
+					this.#currentPrimaryKey = data[i].primaryKey;
+					this.#currentValue = this.#lookupValue(data[i].primaryKey);
+					return true;
+				}
+			}
+		} else if (this.#direction === "prev") {
+			// Find previous entry before current (key, primaryKey)
+			for (let i = data.length - 1; i >= 0; i--) {
+				const keyCmp = compareKeys(data[i].key, this.#currentKey);
+				if (keyCmp < 0 || (keyCmp === 0 && compareKeys(data[i].primaryKey, this.#currentPrimaryKey) < 0)) {
+					if (matchesRange(data[i].key, this.#range)) {
+						this.#currentKey = data[i].key;
+						this.#currentPrimaryKey = data[i].primaryKey;
+						this.#currentValue = this.#lookupValue(data[i].primaryKey);
+						return true;
+					}
+				}
+			}
+		} else {
+			// prevunique: find previous entry with a different (lesser) key
+			for (let i = data.length - 1; i >= 0; i--) {
+				if (compareKeys(data[i].key, this.#currentKey) < 0 && matchesRange(data[i].key, this.#range)) {
+					// For prevunique, we want the FIRST entry with this key (lowest primaryKey)
+					const targetKey = data[i].key;
+					let firstWithKey = i;
+					for (let j = i - 1; j >= 0; j--) {
+						if (compareKeys(data[j].key, targetKey) === 0) {
+							firstWithKey = j;
+						} else {
+							break;
+						}
+					}
+					this.#currentKey = data[firstWithKey].key;
+					this.#currentPrimaryKey = data[firstWithKey].primaryKey;
+					this.#currentValue = this.#lookupValue(data[firstWithKey].primaryKey);
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 }
 
@@ -719,6 +879,10 @@ class MemoryConnection implements IDBBackendConnection {
 	): IDBBackendTransaction {
 		return new MemoryTransaction(this.#db, storeNames, mode);
 	}
+
+	setVersion(version: number): void {
+		this.#db.version = version;
+	}
 }
 
 // ============================================================================
@@ -728,19 +892,20 @@ class MemoryConnection implements IDBBackendConnection {
 export class MemoryBackend implements IDBBackend {
 	#databases = new Map<string, MemoryDatabase>();
 
-	open(name: string, version: number): IDBBackendConnection {
+	open(name: string, _version: number): IDBBackendConnection {
 		let db = this.#databases.get(name);
 		if (!db) {
 			db = {
 				name,
-				version,
+				version: 0,
 				stores: new Map(),
 				indexes: new Map(),
 			};
 			this.#databases.set(name, db);
-		} else {
-			db.version = version;
 		}
+		// Don't set version here — the factory sets it via connection.setVersion()
+		// AFTER creating the versionchange transaction (so the snapshot captures
+		// the old version for correct rollback on abort).
 		return new MemoryConnection(db);
 	}
 

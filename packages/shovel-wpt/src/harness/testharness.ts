@@ -267,10 +267,17 @@ export function format_value(value: unknown): string {
 		return String(value);
 	if (typeof value === "function") return `function "${value.name || "anonymous"}"`;
 	if (Array.isArray(value)) return `[${value.map(format_value).join(", ")}]`;
+	if (typeof value === "object") {
+		try {
+			const json = JSON.stringify(value);
+			if (json !== undefined && json !== "{}") return json;
+		} catch {}
+		return "object";
+	}
 	try {
 		return JSON.stringify(value);
 	} catch {
-		return String(value);
+		return "value";
 	}
 }
 

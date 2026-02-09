@@ -81,7 +81,7 @@ function validateStringKeyPath(keyPath: string): void {
  * Returns the canonical key (e.g., Date → Date object).
  * Throws DataError for invalid keys.
  */
-export function validateKey(value: unknown): IDBValidKey {
+export function validateKey(value: unknown, seen?: Set<unknown>): IDBValidKey {
 	if (typeof value === "number") {
 		if (Number.isNaN(value)) {
 			throw DataError("NaN is not a valid key");
@@ -99,9 +99,17 @@ export function validateKey(value: unknown): IDBValidKey {
 		return value;
 	}
 	if (value instanceof ArrayBuffer) {
+		// Check for detached ArrayBuffer
+		if ((value as any).detached) {
+			throw DataError("A detached ArrayBuffer is not a valid key");
+		}
 		return value;
 	}
 	if (ArrayBuffer.isView(value)) {
+		// Check for detached TypedArray/DataView
+		if ((value.buffer as any).detached) {
+			throw DataError("A detached ArrayBuffer is not a valid key");
+		}
 		// Slice to get only the view's portion, not the entire backing buffer
 		return (value.buffer as ArrayBuffer).slice(
 			value.byteOffset,
@@ -109,10 +117,16 @@ export function validateKey(value: unknown): IDBValidKey {
 		);
 	}
 	if (Array.isArray(value)) {
+		// Cycle detection
+		if (!seen) seen = new Set();
+		if (seen.has(value)) {
+			throw DataError("Cyclic array key is not valid");
+		}
+		seen.add(value);
 		// Validate each element recursively
 		const result: IDBValidKey[] = [];
 		for (const item of value) {
-			result.push(validateKey(item));
+			result.push(validateKey(item, seen));
 		}
 		return result;
 	}
@@ -250,15 +264,19 @@ function decodeString(
 }
 
 /**
- * Encode binary data as 4-byte big-endian length + raw bytes.
+ * Encode binary data with byte stuffing for order-preserving comparison.
+ * 0x00 bytes are escaped as 0x00 0x01, terminated by 0x00 0x00.
+ * This ensures memcmp gives the same ordering as byte-by-byte comparison.
  */
 function encodeBinary(bytes: Uint8Array, out: number[]): void {
-	// Length prefix (4 bytes, big-endian)
-	const len = bytes.length;
-	out.push((len >> 24) & 0xff, (len >> 16) & 0xff, (len >> 8) & 0xff, len & 0xff);
-	for (let i = 0; i < len; i++) {
-		out.push(bytes[i]);
+	for (let i = 0; i < bytes.length; i++) {
+		if (bytes[i] === 0x00) {
+			out.push(0x00, 0x01); // escape null byte
+		} else {
+			out.push(bytes[i]);
+		}
 	}
+	out.push(0x00, 0x00); // terminator
 }
 
 /**
@@ -290,14 +308,24 @@ function decodeKeyAt(
 			return [str, offset + consumed];
 		}
 		case KeyType.Binary: {
-			const len =
-				(data[offset] << 24) |
-				(data[offset + 1] << 16) |
-				(data[offset + 2] << 8) |
-				data[offset + 3];
-			offset += 4;
-			const buf = data.slice(offset, offset + len).buffer;
-			return [buf, offset + len];
+			const bytes: number[] = [];
+			while (offset < data.length - 1) {
+				if (data[offset] === 0x00 && data[offset + 1] === 0x00) {
+					// Terminator
+					offset += 2;
+					break;
+				}
+				if (data[offset] === 0x00 && data[offset + 1] === 0x01) {
+					// Escaped null byte
+					bytes.push(0x00);
+					offset += 2;
+				} else {
+					bytes.push(data[offset]);
+					offset += 1;
+				}
+			}
+			const buf = new Uint8Array(bytes).buffer;
+			return [buf, offset];
 		}
 		case KeyType.Array: {
 			const items: IDBValidKey[] = [];
