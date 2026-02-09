@@ -8,18 +8,44 @@ import {IDBKeyRange} from "./key-range.js";
 import {IDBCursor, IDBCursorWithValue} from "./cursor.js";
 import {encodeKey, decodeKey, validateKey} from "./key.js";
 import {decodeValue} from "./structured-clone.js";
-import {TransactionInactiveError} from "./errors.js";
+import {TransactionInactiveError, InvalidStateError} from "./errors.js";
 import type {IndexMeta, KeyRangeSpec} from "./types.js";
+
+function enforceRangeCount(count: unknown): void {
+	const n = Number(count);
+	if (!Number.isFinite(n) || n < 0 || n > 0xFFFFFFFF) {
+		throw new TypeError(
+			`The count parameter is not a valid unsigned long value.`,
+		);
+	}
+}
 
 export class IDBIndex {
 	readonly name: string;
-	readonly keyPath: string | string[];
 	readonly unique: boolean;
 	readonly multiEntry: boolean;
 	readonly objectStore: any;
+	_deleted: boolean = false;
 
 	#transaction: IDBTransaction;
 	#storeName: string;
+	#keyPath: string | string[];
+	#keyPathCache: string[] | null = null;
+
+	get [Symbol.toStringTag](): string {
+		return "IDBIndex";
+	}
+
+	get keyPath(): string | string[] {
+		// Spec: return same array instance on repeated access
+		if (Array.isArray(this.#keyPath)) {
+			if (!this.#keyPathCache) {
+				this.#keyPathCache = [...this.#keyPath];
+			}
+			return this.#keyPathCache;
+		}
+		return this.#keyPath;
+	}
 
 	constructor(
 		transaction: IDBTransaction,
@@ -30,7 +56,7 @@ export class IDBIndex {
 		this.#transaction = transaction;
 		this.#storeName = storeName;
 		this.name = meta.name;
-		this.keyPath = meta.keyPath;
+		this.#keyPath = meta.keyPath;
 		this.unique = meta.unique;
 		this.multiEntry = meta.multiEntry;
 		this.objectStore = objectStore;
@@ -91,6 +117,7 @@ export class IDBIndex {
 		count?: number,
 	): IDBRequest {
 		this.#checkActive();
+		if (count !== undefined) enforceRangeCount(count);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
@@ -111,6 +138,7 @@ export class IDBIndex {
 		count?: number,
 	): IDBRequest {
 		this.#checkActive();
+		if (count !== undefined) enforceRangeCount(count);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
@@ -178,6 +206,9 @@ export class IDBIndex {
 	}
 
 	#checkActive(): void {
+		if (this._deleted || this.objectStore._deleted) {
+			throw InvalidStateError("Index or its object store has been deleted");
+		}
 		if (!this.#transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
