@@ -9,7 +9,7 @@ import {IDBTransaction} from "./transaction.js";
 import {IDBOpenDBRequest} from "./request.js";
 import {IDBVersionChangeEvent} from "./events.js";
 import {VersionError} from "./errors.js";
-import {validateKeyPath} from "./key.js";
+import {validateKeyPath, encodeKey, validateKey, compareKeys} from "./key.js";
 import type {TransactionMode} from "./types.js";
 
 export class IDBFactory {
@@ -25,11 +25,15 @@ export class IDBFactory {
 	open(name: string, version?: number): IDBOpenDBRequest {
 		// Web IDL [EnforceRange] unsigned long long validation
 		if (version !== undefined) {
-			if (typeof version !== "number" || !Number.isFinite(version) || version < 1 || Math.floor(version) !== version) {
+			// Convert to number (handles objects, strings, etc.)
+			const v = Number(version);
+			if (!Number.isFinite(v) || v < 1 || v > Number.MAX_SAFE_INTEGER) {
 				throw new TypeError(
-					`Failed to execute 'open' on 'IDBFactory': The optional version provided (${version}) is not a valid integer version.`,
+					`Failed to execute 'open' on 'IDBFactory': The optional version provided is not a valid integer version.`,
 				);
 			}
+			// Floor the version (Web IDL truncates non-integers)
+			version = Math.floor(v);
 		}
 
 		const request = new IDBOpenDBRequest();
@@ -91,7 +95,6 @@ export class IDBFactory {
 				"Failed to execute 'cmp' on 'IDBFactory': 2 arguments required, but only " + arguments.length + " present.",
 			);
 		}
-		const {encodeKey, validateKey, compareKeys} = require("./key.js");
 		const a = encodeKey(validateKey(first));
 		const b = encodeKey(validateKey(second));
 		return compareKeys(a, b);
@@ -118,7 +121,7 @@ export class IDBFactory {
 			);
 		}
 
-		// Open the backend connection
+		// Open the backend connection (does NOT set version yet)
 		const connection = this.#backend.open(name, requestedVersion);
 		const db = new IDBDatabase(name, requestedVersion, connection);
 
@@ -127,16 +130,34 @@ export class IDBFactory {
 			const storeNames = Array.from(
 				connection.getMetadata().objectStores.keys(),
 			);
+			// Create transaction BEFORE setting version so the snapshot
+			// captures the OLD version for correct rollback on abort.
 			const backendTx = connection.beginTransaction(
 				storeNames,
 				"versionchange",
 			);
+			// NOW set the version on the backend
+			connection.setVersion(requestedVersion);
 			const transaction = new IDBTransaction(
 				db,
 				storeNames,
 				"versionchange" as TransactionMode,
 				backendTx,
 			);
+			// Set parent for event bubbling: transaction → database
+			transaction._parent = db;
+
+			// Track stores/indexes created and deleted during upgrade for abort revert
+			const createdStores = new Set<string>();
+			const deletedStores = new Set<string>();
+			// Track all IDBObjectStore instances to mark as deleted on abort
+			const storeInstances: IDBObjectStore[] = [];
+			// Snapshot initial index names per store before upgrade
+			const initialIndexNames = new Map<string, string[]>();
+			const meta = connection.getMetadata();
+			for (const [sName, indexes] of meta.indexes) {
+				initialIndexNames.set(sName, indexes.map(i => i.name));
+			}
 
 			// The transaction's objectStore() needs to work during upgrade,
 			// and createObjectStore needs to use this transaction
@@ -189,42 +210,122 @@ export class IDBFactory {
 				if (!transaction._scope.includes(storeName)) {
 					transaction._scope.push(storeName);
 				}
-				return new IDBObjectStore(transaction, meta);
+				createdStores.add(storeName);
+				deletedStores.delete(storeName);
+				const store = new IDBObjectStore(transaction, meta);
+				storeInstances.push(store);
+				return store;
 			};
 
 			const originalDeleteObjectStore = db.deleteObjectStore.bind(db);
 			db.deleteObjectStore = (storeName: string) => {
+				// Spec: throw NotFoundError if store doesn't exist
+				if (!db.objectStoreNames.contains(storeName)) {
+					throw new DOMException(
+						`Object store "${storeName}" not found`,
+						"NotFoundError",
+					);
+				}
+				// Mark all instances of this store as deleted,
+				// clear indexNames, and mark index instances as deleted
+				for (const inst of storeInstances) {
+					if (inst.name === storeName) {
+						inst._deleted = true;
+						inst._indexNames.length = 0;
+						for (const idx of inst._indexInstances) {
+							idx._deleted = true;
+						}
+					}
+				}
 				backendTx.deleteObjectStore(storeName);
 				db._refreshStoreNames();
 				const idx = transaction._scope.indexOf(storeName);
 				if (idx >= 0) {
 					transaction._scope.splice(idx, 1);
 				}
+				if (!createdStores.has(storeName)) {
+					deletedStores.add(storeName);
+				}
+				createdStores.delete(storeName);
+			};
+
+			// Wrap transaction.objectStore to track instances for abort revert
+			const origObjectStore = transaction.objectStore.bind(transaction);
+			transaction.objectStore = (storeName: string) => {
+				const store = origObjectStore(storeName);
+				storeInstances.push(store);
+				return store;
 			};
 
 			// Set the request result early so it's accessible in upgradeneeded
 			// (IDB spec says result is available during upgradeneeded)
 			(request as any)._resolveWithoutEvent(db);
 
-			// Register listeners BEFORE firing upgradeneeded, because the
+			// Register abort listener BEFORE firing upgradeneeded, because the
 			// handler may call transaction.abort() synchronously.
-			transaction.addEventListener("complete", () => {
-				db.createObjectStore = originalCreateObjectStore;
-				db.deleteObjectStore = originalDeleteObjectStore;
-				db._refreshStoreNames();
-				request._resolve(db);
-			});
-
 			transaction.addEventListener("abort", () => {
 				db.createObjectStore = originalCreateObjectStore;
 				db.deleteObjectStore = originalDeleteObjectStore;
+
+				// Revert metadata: created stores → mark as deleted
+				for (const inst of storeInstances) {
+					if (createdStores.has(inst.name)) {
+						inst._deleted = true;
+						// All indexes on created stores are also deleted
+						inst._indexNames.length = 0;
+						for (const idx of inst._indexInstances) {
+							idx._deleted = true;
+						}
+					} else if (deletedStores.has(inst.name)) {
+						// Deleted stores → unmark as deleted
+						inst._deleted = false;
+						// Restore indexes that were on the store before deletion
+						for (const idx of inst._indexInstances) {
+							idx._deleted = false;
+						}
+						// Restore indexNames to initial state
+						const initial = initialIndexNames.get(inst.name) || [];
+						inst._indexNames.length = 0;
+						inst._indexNames.push(...initial);
+					} else {
+						// Existing store that wasn't created or deleted as a whole
+						// Determine which indexes were created/deleted
+						const initial = initialIndexNames.get(inst.name) || [];
+						for (const idx of inst._indexInstances) {
+							if (!initial.includes(idx.name)) {
+								// This index was created during the upgrade → mark deleted
+								idx._deleted = true;
+							} else if (!inst._indexNames.includes(idx.name)) {
+								// This index was deleted during the upgrade → unmark
+								idx._deleted = false;
+							}
+						}
+						// Restore indexNames to initial state
+						inst._indexNames.length = 0;
+						inst._indexNames.push(...initial);
+					}
+				}
+
+				// Revert scope to original store names
+				transaction._scope.length = 0;
+				transaction._scope.push(...storeNames);
+				// Add back deleted stores, remove created stores
+				for (const s of deletedStores) {
+					if (!transaction._scope.includes(s)) {
+						transaction._scope.push(s);
+					}
+				}
+				for (const s of createdStores) {
+					const idx = transaction._scope.indexOf(s);
+					if (idx >= 0) transaction._scope.splice(idx, 1);
+				}
+
 				db._refreshStoreNames();
 				db._setVersion(oldVersion);
 				// If this was the initial creation, clean up the database
 				if (oldVersion === 0) {
 					try { this.#backend.deleteDatabase(name); } catch {}
 				}
-				// Clear the transaction on the request per spec
 				request._setTransaction(null);
 				request._reject(
 					new DOMException("Version change transaction was aborted", "AbortError"),
@@ -233,12 +334,44 @@ export class IDBFactory {
 
 			// Fire upgradeneeded
 			request._setTransaction(transaction);
-			request._fireUpgradeNeeded(oldVersion, requestedVersion);
+			let upgradeError: any = null;
+			try {
+				request._fireUpgradeNeeded(oldVersion, requestedVersion);
+			} catch (e) {
+				upgradeError = e;
+			}
 
-			// Schedule auto-commit after upgrade handler completes synchronously
-			transaction._scheduleAutoCommit();
+			// Register complete listener AFTER upgradeneeded so that handlers
+			// registered by the upgradeneeded callback fire before this one.
+			// This ensures oncomplete fires before onsuccess per spec.
+			transaction.addEventListener("complete", () => {
+				db.createObjectStore = originalCreateObjectStore;
+				db.deleteObjectStore = originalDeleteObjectStore;
+				db._refreshStoreNames();
+				request._setTransaction(null);
+				// If db.close() was called during upgrade, fire error instead of success
+				if (db._closed) {
+					request._reject(
+						new DOMException("The connection was closed during upgrade", "AbortError"),
+					);
+				} else {
+					request._resolve(db);
+				}
+			});
+
+			// If the upgrade handler threw an error, abort the transaction
+			if (upgradeError && !transaction._finished) {
+				transaction.abort();
+				return;
+			}
+
+			// Schedule auto-commit (only if not already aborted/committed)
+			if (!transaction._finished) {
+				transaction._scheduleAutoCommit();
+			}
 		} else {
-			// No upgrade needed
+			// No upgrade needed — ensure version is set on the backend
+			connection.setVersion(requestedVersion);
 			request._resolve(db);
 		}
 	}
