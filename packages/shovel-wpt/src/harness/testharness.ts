@@ -184,10 +184,10 @@ export function async_test(
 				}
 			}) as T;
 		},
-		step_func_done<T extends (...args: any[]) => any>(stepFn: T): T {
+		step_func_done<T extends (...args: any[]) => any>(stepFn?: T): T {
 			return ((...args: any[]) => {
 				try {
-					const result = stepFn(...args);
+					const result = stepFn?.(...args);
 					doDone();
 					return result;
 				} catch (e) {
