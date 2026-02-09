@@ -385,9 +385,21 @@ function extractSingleKey(value: unknown, path: string): IDBValidKey {
 				`Unable to extract key from value at path "${path}"`,
 			);
 		}
-		// Property access works on any non-null/undefined value via auto-boxing
-		// (e.g., "pony".length === 4, [1,2].length === 2)
-		current = (current as Record<string, unknown>)[part];
+		// IDB spec: after cloning, only own properties exist on the clone.
+		// For cloned plain objects, use hasOwnProperty to avoid prototype
+		// getter side effects. For other objects (Blob, File, etc.),
+		// use normal property access since their properties are on prototypes.
+		const obj = current as Record<string, unknown>;
+		if (Object.getPrototypeOf(obj) === Object.prototype || Array.isArray(obj)) {
+			// Plain object or array — check own property only
+			if (!Object.prototype.hasOwnProperty.call(obj, part)) {
+				current = undefined;
+			} else {
+				current = obj[part];
+			}
+		} else {
+			current = obj[part];
+		}
 	}
 	return validateKey(current);
 }
