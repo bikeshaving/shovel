@@ -98,10 +98,19 @@ export function createConfigPlugin(
 					writeFileSync(typesPath, typesCode);
 				}
 
+				// Tell esbuild to watch config files so changes trigger a rebuild.
+				// Always include both paths — esbuild handles non-existent files
+				// by watching for their creation via the parent directory.
+				const watchFiles = [
+					join(projectRoot, "shovel.json"),
+					join(projectRoot, "package.json"),
+				];
+
 				return {
 					contents: configModuleCode,
 					loader: "js",
 					resolveDir: projectRoot,
+					watchFiles,
 				};
 			});
 		},

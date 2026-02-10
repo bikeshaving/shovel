@@ -1596,6 +1596,253 @@ addEventListener("fetch", (event) => {
 );
 
 // =======================
+// CONFIG FILE WATCHING TESTS
+// =======================
+
+test(
+	"shovel.json changes trigger rebuild (issue #59)",
+	async () => {
+		const PORT = 13328;
+		let serverProcess;
+		let tempDir;
+
+		try {
+			// Create isolated temp directory with app and shovel.json
+			tempDir = await createTempDir();
+			const appFile = join(tempDir.dir, "app.ts");
+
+			await FS.writeFile(
+				appFile,
+				`
+import {jsx} from "@b9g/crank/standalone";
+import {renderer} from "@b9g/crank/html";
+
+self.addEventListener("fetch", (event) => {
+	const html = renderer.render(jsx\`<div>Hello</div>\`);
+	event.respondWith(new Response(html, {
+		headers: {"content-type": "text/html; charset=UTF-8"},
+	}));
+});
+`,
+			);
+
+			// Start development server
+			serverProcess = startDevServer(appFile, PORT);
+
+			// Wait for initial server response
+			await waitForServer(PORT, serverProcess);
+
+			// Let initial build settle so stdout buffer is fully flushed
+			await new Promise((resolve) => setTimeout(resolve, 500));
+
+			// Set up reload listener BEFORE modifying shovel.json
+			const reloadPromise = serverProcess.waitForReload();
+
+			// Modify shovel.json — this should trigger an esbuild rebuild
+			// via the watchFiles mechanism in the config plugin
+			await FS.writeFile(
+				join(tempDir.dir, "shovel.json"),
+				JSON.stringify(
+					{
+						directories: {
+							docs: {module: "@b9g/filesystem/node-fs", path: "./docs"},
+						},
+						logging: {
+							loggers: [
+								{category: "shovel", level: "info", sinks: ["console"]},
+							],
+						},
+					},
+					null,
+					2,
+				),
+			);
+
+			// The key assertion: a rebuild + reload should be triggered
+			await reloadPromise;
+
+			// Verify server is still responsive after reload
+			const response = await fetchWithRetry(PORT);
+			expect(response).toBe("<div>Hello</div>");
+		} finally {
+			await killServer(serverProcess, PORT);
+			if (tempDir) await tempDir.cleanup();
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"creating shovel.json triggers rebuild when none existed (issue #59)",
+	async () => {
+		const PORT = 13329;
+		let serverProcess;
+		let tempDir;
+
+		try {
+			// Create temp directory WITHOUT shovel.json — start from no config
+			const tempDirPath = await mkdtemp(join(tmpdir(), "shovel-test-"));
+			const nodeModulesSource = join(process.cwd(), "node_modules");
+			await FS.symlink(nodeModulesSource, join(tempDirPath, "node_modules"), "dir");
+
+			tempDir = {
+				dir: tempDirPath,
+				async cleanup() {
+					await FS.rm(tempDirPath, {recursive: true, force: true});
+				},
+			};
+
+			const appFile = join(tempDir.dir, "app.ts");
+			await FS.writeFile(
+				appFile,
+				`
+import {jsx} from "@b9g/crank/standalone";
+import {renderer} from "@b9g/crank/html";
+
+self.addEventListener("fetch", (event) => {
+	const html = renderer.render(jsx\`<div>No config</div>\`);
+	event.respondWith(new Response(html, {
+		headers: {"content-type": "text/html; charset=UTF-8"},
+	}));
+});
+`,
+			);
+
+			// Start development server — no shovel.json exists yet
+			serverProcess = startDevServer(appFile, PORT);
+
+			// Wait for initial server response
+			await waitForServer(PORT, serverProcess);
+
+			// Let initial build settle
+			await new Promise((resolve) => setTimeout(resolve, 500));
+
+			// Set up reload listener BEFORE creating shovel.json
+			const reloadPromise = serverProcess.waitForReload();
+
+			// Create shovel.json for the first time
+			await FS.writeFile(
+				join(tempDir.dir, "shovel.json"),
+				JSON.stringify(
+					{
+						directories: {
+							uploads: {module: "@b9g/filesystem/node-fs", path: "./uploads"},
+						},
+					},
+					null,
+					2,
+				),
+			);
+
+			// Should trigger rebuild even though shovel.json didn't exist at startup
+			await reloadPromise;
+
+			// Server still works
+			const response = await fetchWithRetry(PORT);
+			expect(response).toBe("<div>No config</div>");
+		} finally {
+			await killServer(serverProcess, PORT);
+			if (tempDir) await tempDir.cleanup();
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"package.json shovel field changes trigger rebuild (issue #59)",
+	async () => {
+		const PORT = 13330;
+		let serverProcess;
+		let tempDir;
+
+		try {
+			// Create temp directory with only package.json (no shovel.json)
+			const tempDirPath = await mkdtemp(join(tmpdir(), "shovel-test-"));
+			const nodeModulesSource = join(process.cwd(), "node_modules");
+			await FS.symlink(nodeModulesSource, join(tempDirPath, "node_modules"), "dir");
+
+			// Create package.json with initial shovel config
+			await FS.writeFile(
+				join(tempDirPath, "package.json"),
+				JSON.stringify(
+					{
+						name: "test-app",
+						private: true,
+						shovel: {},
+					},
+					null,
+					2,
+				),
+			);
+
+			tempDir = {
+				dir: tempDirPath,
+				async cleanup() {
+					await FS.rm(tempDirPath, {recursive: true, force: true});
+				},
+			};
+
+			const appFile = join(tempDir.dir, "app.ts");
+			await FS.writeFile(
+				appFile,
+				`
+import {jsx} from "@b9g/crank/standalone";
+import {renderer} from "@b9g/crank/html";
+
+self.addEventListener("fetch", (event) => {
+	const html = renderer.render(jsx\`<div>Pkg config</div>\`);
+	event.respondWith(new Response(html, {
+		headers: {"content-type": "text/html; charset=UTF-8"},
+	}));
+});
+`,
+			);
+
+			// Start development server
+			serverProcess = startDevServer(appFile, PORT);
+
+			// Wait for initial server response
+			await waitForServer(PORT, serverProcess);
+
+			// Let initial build settle
+			await new Promise((resolve) => setTimeout(resolve, 500));
+
+			// Set up reload listener BEFORE modifying package.json
+			const reloadPromise = serverProcess.waitForReload();
+
+			// Modify the shovel field in package.json
+			await FS.writeFile(
+				join(tempDirPath, "package.json"),
+				JSON.stringify(
+					{
+						name: "test-app",
+						private: true,
+						shovel: {
+							directories: {
+								data: {module: "@b9g/filesystem/node-fs", path: "./data"},
+							},
+						},
+					},
+					null,
+					2,
+				),
+			);
+
+			// Should trigger rebuild from package.json change
+			await reloadPromise;
+
+			// Server still works
+			const response = await fetchWithRetry(PORT);
+			expect(response).toBe("<div>Pkg config</div>");
+		} finally {
+			await killServer(serverProcess, PORT);
+			if (tempDir) await tempDir.cleanup();
+		}
+	},
+	TIMEOUT,
+);
+
+// =======================
 // ASSET HOT RELOAD TEST
 // =======================
 
