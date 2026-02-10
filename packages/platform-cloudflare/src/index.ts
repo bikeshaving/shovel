@@ -256,6 +256,7 @@ export class CloudflarePlatform {
 			scriptPath: entrypoint,
 			compatibilityDate: "2024-09-23",
 			compatibilityFlags: ["nodejs_compat"],
+			durableObjects: {SHOVEL_PUBSUB: "ShovelPubSubDO"},
 			// Start HTTP server for development
 			port: this.#options.port,
 			host: this.#options.host,
@@ -354,6 +355,7 @@ export class CloudflarePlatform {
 		const serverCode = `// Cloudflare Worker Entry
 import { config } from "shovel:config";
 import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
+import { ShovelPubSubDO } from "@b9g/platform-cloudflare/pubsub";
 
 // Initialize runtime first (installs ServiceWorker globals like addEventListener)
 const registration = await initializeRuntime(config);
@@ -364,6 +366,7 @@ await import(${safePath});
 
 // Lifecycle deferred to first request (workerd doesn't allow setTimeout in global scope)
 export default { fetch: createFetchHandler(registration) };
+export { ShovelPubSubDO };
 `;
 
 		return {
@@ -385,6 +388,7 @@ export default { fetch: createFetchHandler(registration) };
 			// Externalize node builtins - available at runtime via nodejs_compat flag
 			// Include both node:* prefix and bare module names for compatibility
 			external: [
+				"cloudflare:workers",
 				"node:*",
 				"path",
 				"fs",
