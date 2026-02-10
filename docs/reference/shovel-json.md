@@ -171,12 +171,48 @@ Use `"*"` as catch-all.
 | Field | Type | Description |
 |-------|------|-------------|
 | `module` | `string` | Module path |
-| `export` | `string` | Named export |
-| `path` | `string` | Filesystem path |
-| `binding` | `string` | Platform binding |
+| `export` | `string` | Named export (default: `"default"`) |
+| `path` | `string` | Filesystem path (relative to project root, or absolute) |
+| `binding` | `string` | Platform binding (Cloudflare) |
 | `bucket` | `string` | S3 bucket |
 | `region` | `string` | AWS region |
 | `endpoint` | `string` | S3 endpoint |
+
+### Built-in Directories
+
+The names `server`, `public`, and `tmp` have platform defaults and do not require `module` or `export`:
+
+| Name | Default Path | Description |
+|------|--------------|-------------|
+| `server` | `[outdir]/server` | Server-side bundled code |
+| `public` | `[outdir]/public` | Static assets |
+| `tmp` | `[tmpdir]` | Temporary files |
+
+### Custom Directories
+
+Any other directory name requires an explicit `module` (and optionally `export`):
+
+```json
+{
+  "directories": {
+    "uploads": {
+      "module": "@b9g/filesystem/node-fs",
+      "path": "./uploads"
+    },
+    "shared": {
+      "module": "@b9g/filesystem/node-fs",
+      "path": "../shared-data"
+    },
+    "assets": {
+      "module": "@b9g/filesystem-s3",
+      "bucket": "my-assets",
+      "region": "us-east-1"
+    }
+  }
+}
+```
+
+The `path` field is resolved relative to the project root. Paths outside the project (e.g. `"../docs"`) are supported. Directory traversal within opened directories is blocked at the filesystem level.
 
 ---
 

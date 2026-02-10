@@ -182,6 +182,33 @@ const buffer = await fileData.arrayBuffer();
 const stream = fileData.stream();
 ```
 
+## Shovel Configuration
+
+When used with Shovel, directories are configured in `shovel.json`. The built-in names `server`, `public`, and `tmp` have platform defaults. Custom directory names require an explicit `module`:
+
+```json
+{
+  "directories": {
+    "uploads": {
+      "module": "@b9g/filesystem/node-fs",
+      "path": "./uploads"
+    },
+    "docs": {
+      "module": "@b9g/filesystem/node-fs",
+      "path": "../docs"
+    }
+  }
+}
+```
+
+The `path` field is resolved relative to the project root. Paths outside the project (e.g. `"../docs"`) are supported — the root path itself is unrestricted, while directory traversal within opened directories is blocked at the filesystem level.
+
+Access configured directories via the global `self.directories`:
+
+```typescript
+const uploads = await self.directories.open("uploads");
+```
+
 ## Integration Examples
 
 ### Cache Storage

@@ -188,7 +188,7 @@ Configure in `shovel.json`:
 |-------|------|-------------|
 | `module` | `string` | Module path |
 | `export` | `string` | Named export (default: `"default"`) |
-| `path` | `string` | Filesystem path |
+| `path` | `string` | Filesystem path (relative to project root, or absolute) |
 | `binding` | `string` | Platform binding (Cloudflare) |
 | `bucket` | `string` | S3 bucket name |
 | `region` | `string` | AWS region |
@@ -196,11 +196,43 @@ Configure in `shovel.json`:
 
 ### Built-in Directories
 
+The names `server`, `public`, and `tmp` are provided by the platform and do not require `module` or `export`:
+
 | Name | Path | Description |
 |------|------|-------------|
 | `server` | `[outdir]/server` | Server-side bundled code |
 | `public` | `[outdir]/public` | Static assets |
 | `tmp` | `[tmpdir]` | Temporary files |
+
+### Custom Directories
+
+Any other directory name requires an explicit `module` and optionally `export`. The `path` field is resolved relative to the project root. Paths outside the project are supported:
+
+```json
+{
+  "directories": {
+    "uploads": {
+      "module": "@b9g/filesystem/node-fs",
+      "path": "./uploads"
+    },
+    "docs": {
+      "module": "@b9g/filesystem/node-fs",
+      "path": "../docs"
+    }
+  }
+}
+```
+
+Once configured, access directories using the standard API:
+
+```typescript
+const docs = await self.directories.open("docs");
+for await (const [name, handle] of docs.entries()) {
+  console.log(name, handle.kind);
+}
+```
+
+Directory traversal within opened directories is blocked at the filesystem level — only the configured root path itself can point outside the project.
 
 ---
 

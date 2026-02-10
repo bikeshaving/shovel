@@ -25,7 +25,7 @@ Shovel uses a `shovel.json` file in your project root for configuration.
 
 ## Directories
 
-Directories provide access to the filesystem using the File System Access API:
+Directories provide access to the filesystem using the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API):
 
 ```json
 {
@@ -46,6 +46,23 @@ self.addEventListener("fetch", async (event) => {
   // Use File System Access API
 });
 ```
+
+Custom directories require `module` (and optionally `export`). The built-in names `server`, `public`, and `tmp` have platform defaults and don't need these fields.
+
+The `path` field is resolved relative to the project root. You can point to directories outside your project:
+
+```json
+{
+  "directories": {
+    "shared": {
+      "module": "@b9g/filesystem/node-fs",
+      "path": "../shared-data"
+    }
+  }
+}
+```
+
+See the [Filesystem Reference](/reference/filesystem) for all configuration fields and available implementations.
 
 ## Caches
 
