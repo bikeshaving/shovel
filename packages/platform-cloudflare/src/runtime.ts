@@ -16,14 +16,19 @@ import {
 	createDirectoryFactory,
 	runLifecycle,
 	dispatchRequest,
+	setBroadcastChannelBackend,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
+import {createWebSocketBridge} from "@b9g/platform";
 
 // runLifecycle is used internally by createFetchHandler (not re-exported)
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
 import {envStorage} from "./variables.js";
+
+// Capture native WebSocketPair before ServiceWorkerGlobals overwrites it
+const NativeWebSocketPair = (globalThis as any).WebSocketPair as typeof WebSocketPair;
 
 export type {ShovelConfig};
 
@@ -138,6 +143,7 @@ export function createFetchHandler(
 ) => Promise<Response> {
 	// Defer lifecycle to first request (workerd restriction on setTimeout in global scope)
 	let lifecyclePromise: Promise<void> | null = null;
+	let bcBackendConfigured = false;
 
 	return async (
 		request: Request,
@@ -150,16 +156,47 @@ export function createFetchHandler(
 		}
 		await lifecyclePromise;
 
+		// Auto-configure BroadcastChannel DO backend if binding is present
+		const envRecord = env as Record<string, unknown>;
+		if (!bcBackendConfigured && envRecord.SHOVEL_PUBSUB) {
+			const {CloudflarePubSubBackend} = await import("./pubsub.js");
+			setBroadcastChannelBackend(
+				new CloudflarePubSubBackend(envRecord.SHOVEL_PUBSUB as DurableObjectNamespace),
+			);
+			bcBackendConfigured = true;
+		}
+
 		// Create CloudflareFetchEvent with env and waitUntil hook
 		const event = new CloudflareFetchEvent(request, {
-			env: env as Record<string, unknown>,
+			env: envRecord,
 			platformWaitUntil: (promise) => ctx.waitUntil(promise),
 		});
 
 		// Run within envStorage for directory factory access
-		const result = await envStorage.run(env as Record<string, unknown>, () =>
+		const result = await envStorage.run(envRecord, () =>
 			dispatchRequest(registration, event),
 		);
+
+		// WebSocket upgrade: bridge ShovelWebSocket to Cloudflare native WebSocket
+		if (result.webSocket) {
+			const cfPair = new NativeWebSocketPair();
+			const cfClient = cfPair[0];
+			const cfServer = cfPair[1];
+			const bridge = createWebSocketBridge(result.webSocket);
+			bridge.connect(
+				(data) => cfServer.send(data),
+				(code, reason) => cfServer.close(code, reason),
+			);
+			cfServer.accept();
+			cfServer.addEventListener("message", (ev: MessageEvent) =>
+				bridge.deliver(ev.data),
+			);
+			cfServer.addEventListener("close", (ev: CloseEvent) =>
+				bridge.deliverClose(ev.code, ev.reason),
+			);
+			return new Response(null, {status: 101, webSocket: cfClient});
+		}
+
 		return result.response!;
 	};
 }
