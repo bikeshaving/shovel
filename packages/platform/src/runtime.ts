@@ -15,7 +15,13 @@ import {getLogger, getConsoleSink} from "@logtape/logtape";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {CustomCacheStorage, Cache} from "@b9g/cache";
 import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
-import {ShovelBroadcastChannel} from "./broadcast-channel.js";
+import {
+	ShovelBroadcastChannel,
+	setBroadcastChannelRelay,
+	deliverBroadcastMessage,
+	setBroadcastChannelBackend,
+} from "./broadcast-channel.js";
+import type {BroadcastChannelBackend} from "./broadcast-channel-backend.js";
 import {ShovelWebSocket, WebSocketPair} from "./websocket.js";
 
 // ============================================================================
@@ -2291,6 +2297,12 @@ export interface ShovelConfig {
 	caches?: Record<string, CacheConfig>;
 	directories?: Record<string, DirectoryConfig>;
 	databases?: Record<string, DatabaseConfig>;
+	broadcastChannel?: {
+		impl?:
+			| (new (options: Record<string, unknown>) => BroadcastChannelBackend)
+			| ((options: Record<string, unknown>) => BroadcastChannelBackend);
+		[key: string]: unknown;
+	};
 }
 
 // ============================================================================
@@ -2545,6 +2557,18 @@ export async function initWorkerRuntime(
 	// Install ServiceWorker globals
 	scope.install();
 
+	// Set up broadcast channel backend if configured
+	if (config?.broadcastChannel?.impl) {
+		const {impl, ...bcOptions} = config.broadcastChannel;
+		const opts = bcOptions as Record<string, unknown>;
+		const bcBackend = isClass(impl)
+			? new impl(opts)
+			: (impl as (options: Record<string, unknown>) => BroadcastChannelBackend)(
+					opts,
+				);
+		setBroadcastChannelBackend(bcBackend);
+	}
+
 	runtimeLogger.debug("Worker runtime initialized");
 
 	return {registration, scope, caches, directories, databases, loggers};
@@ -2717,6 +2741,12 @@ export function startWorkerMessageLoop(
 			return;
 		}
 
+		// Handle broadcast relay messages from supervisor
+		if (message?.type === "broadcast:deliver") {
+			deliverBroadcastMessage(message.channel, message.data);
+			return;
+		}
+
 		// Handle WebSocket relay messages from main thread
 		if (message?.type === "ws:message") {
 			const conn = wsConnections.get(message.connectionID);
@@ -2770,6 +2800,11 @@ export function startWorkerMessageLoop(
 	// Set up message handling via addEventListener
 	// ServiceWorkerGlobals delegates non-ServiceWorker events (like "message") to the native handler
 	self.addEventListener("message", handleMessage);
+
+	// Set up broadcast relay (posts go to supervisor for fan-out to other workers)
+	setBroadcastChannelRelay((channelName, data) => {
+		sendMessage({type: "broadcast:post", channel: channelName, data});
+	});
 
 	// Signal that the worker is ready
 	sendMessage({type: "ready"});
@@ -2943,5 +2978,11 @@ export async function configureLogging(
 // Re-exports: Communication APIs
 // ============================================================================
 
-export {ShovelBroadcastChannel} from "./broadcast-channel.js";
+export {
+	ShovelBroadcastChannel,
+	setBroadcastChannelRelay,
+	deliverBroadcastMessage,
+	setBroadcastChannelBackend,
+} from "./broadcast-channel.js";
+export type {BroadcastChannelBackend} from "./broadcast-channel-backend.js";
 export {ShovelWebSocket, WebSocketPair} from "./websocket.js";

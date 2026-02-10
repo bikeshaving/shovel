@@ -672,6 +672,17 @@ export class ServiceWorkerPool {
 							});
 						}
 					}
+				} else if (message.type === "broadcast:post") {
+					// Fan out to all OTHER workers
+					for (const w of this.#workers) {
+						if (w !== worker) {
+							w.postMessage({
+								type: "broadcast:deliver",
+								channel: message.channel,
+								data: message.data,
+							});
+						}
+					}
 				} else if (message.type?.startsWith("ws:")) {
 					this.#handleWebSocketMessage(worker, message);
 				}

@@ -95,6 +95,14 @@
       "types": "./dist/src/broadcast-channel.d.ts",
       "import": "./dist/src/broadcast-channel.js"
     },
+    "./broadcast-channel-backend": {
+      "types": "./dist/src/broadcast-channel-backend.d.ts",
+      "import": "./dist/src/broadcast-channel-backend.js"
+    },
+    "./broadcast-channel-backend.js": {
+      "types": "./dist/src/broadcast-channel-backend.d.ts",
+      "import": "./dist/src/broadcast-channel-backend.js"
+    },
     "./websocket": {
       "types": "./dist/src/websocket.d.ts",
       "import": "./dist/src/websocket.js"

@@ -261,6 +261,7 @@
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
+        "@cloudflare/workers-types": "^4.20250109.0",
       },
     },
     "packages/platform-node": {
@@ -272,12 +273,28 @@
         "@b9g/node-webworker": "workspace:*",
         "@b9g/platform": "workspace:*",
         "@logtape/logtape": "^1.2.0",
-        "ws": "^8.19.0",
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
         "@types/node": "^18.0.0",
         "@types/ws": "^8.18.1",
+      },
+      "optionalDependencies": {
+        "ws": "^8.19.0",
+      },
+    },
+    "packages/pubsub-redis": {
+      "name": "@b9g/pubsub-redis",
+      "version": "0.1.0",
+      "dependencies": {
+        "@logtape/logtape": "^1.2.0",
+        "redis": "^4.6.10",
+      },
+      "devDependencies": {
+        "@b9g/libuild": "^0.1.18",
+      },
+      "peerDependencies": {
+        "@b9g/platform": "workspace:*",
       },
     },
     "packages/router": {
@@ -436,6 +453,8 @@
 
     "@b9g/platform-node": ["@b9g/platform-node@workspace:packages/platform-node"],
 
+    "@b9g/pubsub-redis": ["@b9g/pubsub-redis@workspace:packages/pubsub-redis"],
+
     "@b9g/router": ["@b9g/router@workspace:packages/router"],
 
     "@b9g/shovel": ["@b9g/shovel@0.2.2", "", { "dependencies": { "@b9g/async-context": "^0.2.0", "@b9g/cache": "^0.2.0", "@b9g/filesystem": "^0.1.8", "@b9g/http-errors": "^0.2.0", "@b9g/node-webworker": "^0.2.0", "@b9g/platform": "^0.1.15", "@b9g/platform-bun": "^0.1.13", "@b9g/platform-cloudflare": "^0.1.13", "@b9g/platform-node": "^0.1.15", "@clack/prompts": "^0.7.0", "@esbuild-plugins/node-globals-polyfill": "^0.2.3", "@esbuild-plugins/node-modules-polyfill": "^0.2.2", "@logtape/logtape": "^1.2.0", "commander": "^13.1.0", "esbuild": "^0.27.2", "mime": "^4.0.4", "zod": "^3.23.0" }, "bin": { "shovel": "bin/cli.js", "create-shovel": "bin/create.js", "cli": "bin/cli.js", "create": "bin/create.js" } }, "sha512-XvSvHpgF6wyVceqg8IheZgLDkWQu82JlWsWQHXTvlzuzgrtulzeSXWg9z4H2Wf/vplSIamUKdtgeXn68SrjIVw=="],
@@ -483,6 +502,8 @@
     "@cloudflare/workerd-linux-arm64": ["@cloudflare/workerd-linux-arm64@1.20251118.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-bXZPJcwlq00MPOXqP7DMWjr+goYj0+Fqyw6zgEC2M3FR1+SWla4yjghnZ4IdpN+H1t7VbUrsi5np2LzMUFs0NA=="],
 
     "@cloudflare/workerd-windows-64": ["@cloudflare/workerd-windows-64@1.20251118.0", "", { "os": "win32", "cpu": "x64" }, "sha512-2LV99AHSlpr8WcCb/BYbU2QsYkXLUL1izN6YKWkN9Eibv80JKX0RtgmD3dfmajE5sNvClavxZejgzVvHD9N9Ag=="],
+
+    "@cloudflare/workers-types": ["@cloudflare/workers-types@4.20260210.0", "", {}, "sha512-zHaF0RZVYUQwNCJCECnNAJdMur72Lk3FMiD6wU78Dx3Bv7DQRcuXNmPNuJmsGnosVZCcWintHlPTQ/4BEiDG5w=="],
 
     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
 

@@ -1,0 +1,56 @@
+{
+  "name": "@b9g/pubsub-redis",
+  "version": "0.1.0",
+  "description": "Redis pub/sub backend for Shovel BroadcastChannel",
+  "type": "module",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "libuild --save",
+    "test": "echo \"Test suite to be implemented\"",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
+  },
+  "keywords": [
+    "broadcast-channel",
+    "redis",
+    "pubsub",
+    "service-workers",
+    "shovel"
+  ],
+  "author": "Shovel Team",
+  "license": "MIT",
+  "peerDependencies": {
+    "@b9g/platform": "workspace:*"
+  },
+  "dependencies": {
+    "@logtape/logtape": "^1.2.0",
+    "redis": "^4.6.10"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bikeshaving/shovel.git",
+    "directory": "packages/pubsub-redis"
+  },
+  "module": "./dist/src/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./package.json": "./dist/package.json"
+  }
+}
