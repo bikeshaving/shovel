@@ -422,6 +422,8 @@ export class BunPlatform {
 		userEntryPath: string,
 		mode: "development" | "production",
 	): EntryPoints {
+		const safePath = JSON.stringify(userEntryPath);
+
 		// Worker code for production (with message handling for supervisor communication)
 		const prodWorkerCode = `// Bun Production Worker
 import BunPlatform from "@b9g/platform-bun";
@@ -460,7 +462,7 @@ setBroadcastChannelRelay((channelName, data) => {
 });
 
 // Import user code (registers event handlers)
-await import("${userEntryPath}");
+await import(${safePath});
 
 // Run ServiceWorker lifecycle (stage from config.lifecycle if present)
 await runLifecycle(registration, config.lifecycle?.stage);
@@ -495,7 +497,7 @@ await configureLogging(config.logging);
 const {registration, databases} = await initWorkerRuntime({config, usePostMessage: config.workers > 1});
 
 // Import user code (registers event handlers)
-await import("${userEntryPath}");
+await import(${safePath});
 
 // Run ServiceWorker lifecycle
 await runLifecycle(registration);

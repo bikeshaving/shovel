@@ -539,6 +539,8 @@ export class NodePlatform {
 		userEntryPath: string,
 		mode: "development" | "production",
 	): EntryPoints {
+		const safePath = JSON.stringify(userEntryPath);
+
 		// Development worker: uses message loop (develop command owns the HTTP server)
 		const devWorkerCode = `// Node.js Development Worker
 import {parentPort} from "node:worker_threads";
@@ -552,7 +554,7 @@ await configureLogging(config.logging);
 const {registration, databases} = await initWorkerRuntime({config, usePostMessage: config.workers > 1});
 
 // Import user code (registers event handlers)
-await import("${userEntryPath}");
+await import(${safePath});
 
 // Run ServiceWorker lifecycle (stage from config.lifecycle if present)
 await runLifecycle(registration, config.lifecycle?.stage);
@@ -610,7 +612,7 @@ const registration = result.registration;
 databases = result.databases;
 
 // Import user code (registers event handlers)
-await import("${userEntryPath}");
+await import(${safePath});
 
 // Run ServiceWorker lifecycle (stage from config.lifecycle if present)
 await runLifecycle(registration, config.lifecycle?.stage);

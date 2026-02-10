@@ -182,6 +182,11 @@ export function createFetchHandler(
 
 		// WebSocket upgrade: bridge ShovelWebSocket to Cloudflare native WebSocket
 		if (result.webSocket) {
+			if (!NativeWebSocketPair) {
+				throw new Error(
+					"WebSocketPair not available. Are you running in a Cloudflare Workers environment?",
+				);
+			}
 			const cfPair = new NativeWebSocketPair();
 			const cfClient = cfPair[0];
 			const cfServer = cfPair[1];

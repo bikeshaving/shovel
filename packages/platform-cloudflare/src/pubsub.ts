@@ -1,32 +1,90 @@
 /**
  * Cloudflare Durable Object PubSub Backend
  *
- * Provides cross-worker BroadcastChannel relay via a Durable Object.
+ * Provides cross-isolate BroadcastChannel relay via a Durable Object.
  * - CloudflarePubSubBackend: BroadcastChannelBackend that publishes to a DO
  * - ShovelPubSubDO: Durable Object that broadcasts to connected WebSocket clients
  *
  * Opt-in: only active when env.SHOVEL_PUBSUB binding is present.
+ *
+ * Architecture:
+ * - publish() sends a POST to the DO with {channel, data, sender}
+ * - subscribe() opens a WebSocket to the DO to receive broadcasts
+ * - The DO fans out POST payloads to all connected WebSocket clients
+ * - Sender filtering happens client-side (same pattern as Redis backend)
+ *
+ * Note: Cloudflare Workers are ephemeral, so WebSocket subscriptions only
+ * live as long as the Worker's execution context. For typical request/response
+ * Workers this means subscriptions are short-lived. For Durable Object contexts
+ * or Workers using waitUntil(), subscriptions can persist longer.
  */
 
 import {DurableObject} from "cloudflare:workers";
 import type {BroadcastChannelBackend} from "@b9g/platform/broadcast-channel-backend";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["shovel", "pubsub"]);
 
 // ============================================================================
 // BACKEND (used by the Worker)
 // ============================================================================
 
 /**
- * BroadcastChannel backend that routes publishes to a Durable Object.
+ * BroadcastChannel backend that routes messages through a Durable Object.
  *
- * Workers are ephemeral and can't maintain persistent subscriptions,
- * so subscribe() is a no-op. Cross-instance delivery happens via
- * WebSocket clients connected to the DO.
+ * Uses an instance ID to filter out own messages (prevents echo),
+ * matching the pattern used by RedisPubSubBackend.
  */
 export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 	#ns: DurableObjectNamespace;
+	#instanceId: string;
+	#ws: WebSocket | null;
+	#wsReady: Promise<void> | null;
+	#callbacks: Map<string, Set<(data: unknown) => void>>;
 
 	constructor(ns: DurableObjectNamespace) {
 		this.#ns = ns;
+		this.#instanceId = crypto.randomUUID();
+		this.#ws = null;
+		this.#wsReady = null;
+		this.#callbacks = new Map();
+	}
+
+	#ensureConnection(): void {
+		if (this.#wsReady) return;
+		this.#wsReady = this.#connect().catch(() => {
+			// Connection failed — allow retry on next subscribe() call
+			this.#wsReady = null;
+		});
+	}
+
+	async #connect(): Promise<void> {
+		const id = this.#ns.idFromName("pubsub");
+		const stub = this.#ns.get(id);
+		const response = await stub.fetch("http://internal/subscribe", {
+			headers: {Upgrade: "websocket"},
+		});
+		const ws = (response as any).webSocket as WebSocket | undefined;
+		if (!ws) {
+			throw new Error("WebSocket upgrade to PubSub DO failed");
+		}
+		ws.accept();
+		this.#ws = ws;
+		ws.addEventListener("message", (ev: MessageEvent) => {
+			try {
+				const {channel, data, sender} = JSON.parse(ev.data as string);
+				// Skip messages from this instance (prevents echo)
+				if (sender === this.#instanceId) return;
+				const cbs = this.#callbacks.get(channel);
+				if (cbs) {
+					for (const cb of cbs) cb(data);
+				}
+			} catch (err) {
+				logger.debug("Failed to parse pubsub message: {error}", {
+					error: err,
+				});
+			}
+		});
 	}
 
 	publish(channelName: string, data: unknown): void {
@@ -36,21 +94,36 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 		stub.fetch("http://internal/broadcast", {
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
-			body: JSON.stringify({channel: channelName, data}),
+			body: JSON.stringify({
+				channel: channelName,
+				data,
+				sender: this.#instanceId,
+			}),
 		});
 	}
 
 	subscribe(
-		_channelName: string,
-		_callback: (data: unknown) => void,
+		channelName: string,
+		callback: (data: unknown) => void,
 	): () => void {
-		// Workers are ephemeral — can't maintain persistent subscriptions.
-		// Cross-instance delivery happens via WebSocket clients connected to the DO.
-		return () => {};
+		this.#ensureConnection();
+		let cbs = this.#callbacks.get(channelName);
+		if (!cbs) {
+			cbs = new Set();
+			this.#callbacks.set(channelName, cbs);
+		}
+		cbs.add(callback);
+		return () => {
+			cbs!.delete(callback);
+			if (cbs!.size === 0) this.#callbacks.delete(channelName);
+		};
 	}
 
 	async dispose(): Promise<void> {
-		// Nothing to clean up
+		this.#ws?.close();
+		this.#ws = null;
+		this.#wsReady = null;
+		this.#callbacks.clear();
 	}
 }
 
