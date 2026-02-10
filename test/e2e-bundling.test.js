@@ -538,7 +538,6 @@ console.log("FULL_E2E_READY");
 			// The runBundle test below validates the bundle actually works at runtime.
 			expect(indexContent).not.toMatch(/\brequire\s*\(\s*["'][@a-z]/);
 
-
 			// Run the bundle
 			const result = await runBundle(join(outDir, "server"));
 

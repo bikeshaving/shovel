@@ -38,7 +38,9 @@ describe("NodePlatform", () => {
 	});
 
 	test("should create HTTP server", async () => {
-		const mockHandler = mock(() => Promise.resolve({response: new Response("OK")}));
+		const mockHandler = mock(() =>
+			Promise.resolve({response: new Response("OK")}),
+		);
 		const server = platform.createServer(mockHandler, {
 			port: 8080,
 			host: "127.0.0.1",

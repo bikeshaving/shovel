@@ -391,7 +391,9 @@ test(
 			// Test different file types
 			const cssRequest = new Request("http://localhost/style.css");
 			const cssResult = await dispatchRequest(registration, cssRequest);
-			expect(await cssResult.response.text()).toBe("body { background: blue; }");
+			expect(await cssResult.response.text()).toBe(
+				"body { background: blue; }",
+			);
 			expect(cssResult.response.headers.get("content-type")).toBe("text/css");
 
 			const jsRequest = new Request("http://localhost/script.js");
@@ -404,7 +406,9 @@ test(
 			const jsonRequest = new Request("http://localhost/data.json");
 			const jsonResult = await dispatchRequest(registration, jsonRequest);
 			expect(await jsonResult.response.text()).toBe('{"message": "test"}');
-			expect(jsonResult.response.headers.get("content-type")).toBe("application/json");
+			expect(jsonResult.response.headers.get("content-type")).toBe(
+				"application/json",
+			);
 
 			// Test 404
 			const notFoundRequest = new Request("http://localhost/nonexistent.txt");

@@ -304,11 +304,13 @@ export class CloudflarePlatform {
 					body: request.body,
 					duplex: request.body ? "half" : undefined,
 				});
-				return new Response(cfResponse.body as BodyInit | null, {
-					status: cfResponse.status,
-					statusText: cfResponse.statusText,
-					headers: cfResponse.headers as HeadersInit,
-				});
+				return {
+					response: new Response(cfResponse.body as BodyInit | null, {
+						status: cfResponse.status,
+						statusText: cfResponse.statusText,
+						headers: cfResponse.headers as HeadersInit,
+					}),
+				};
 			},
 			install: () => Promise.resolve(),
 			activate: () => Promise.resolve(),

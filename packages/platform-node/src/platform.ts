@@ -265,8 +265,10 @@ export async function createDevServer(
 	try {
 		const wsModule = await import("ws");
 		WebSocketServer = wsModule.WebSocketServer;
-	} catch {
-		logger.debug("ws package not available, WebSocket upgrades disabled in dev mode");
+	} catch (error) {
+		logger.debug(
+			"ws package not available, WebSocket upgrades disabled in dev mode",
+		);
 	}
 
 	const platform = new NodePlatform({

@@ -8,30 +8,68 @@
  * bidirectional messaging.
  */
 
+// CloseEvent polyfill for Node.js < 23
+const _CloseEvent: typeof CloseEvent =
+	typeof CloseEvent !== "undefined"
+		? CloseEvent
+		: (class CloseEvent extends Event {
+				readonly code: number;
+				readonly reason: string;
+				readonly wasClean: boolean;
+				constructor(type: string, init: CloseEventInit = {}) {
+					super(type);
+					this.code = init.code ?? 0;
+					this.reason = init.reason ?? "";
+					this.wasClean = init.wasClean ?? false;
+				}
+			} as typeof globalThis.CloseEvent);
+
 export class ShovelWebSocket extends EventTarget {
-	static readonly CONNECTING = 0;
-	static readonly OPEN = 1;
-	static readonly CLOSING = 2;
-	static readonly CLOSED = 3;
+	static readonly CONNECTING: number;
+	static readonly OPEN: number;
+	static readonly CLOSING: number;
+	static readonly CLOSED: number;
+	static {
+		(this as any).CONNECTING = 0;
+		(this as any).OPEN = 1;
+		(this as any).CLOSING = 2;
+		(this as any).CLOSED = 3;
+	}
 
-	readonly CONNECTING = 0;
-	readonly OPEN = 1;
-	readonly CLOSING = 2;
-	readonly CLOSED = 3;
+	readonly CONNECTING: number;
+	readonly OPEN: number;
+	readonly CLOSING: number;
+	readonly CLOSED: number;
 
-	#readyState = ShovelWebSocket.CONNECTING;
-	#peer: ShovelWebSocket | null = null;
-	#accepted = false;
+	#readyState: number;
+	#peer: ShovelWebSocket | null;
+	#accepted: boolean;
 	#relay: {
 		send: (data: string | ArrayBuffer | ArrayBufferView) => void;
 		close: (code?: number, reason?: string) => void;
-	} | null = null;
+	} | null;
 
 	// Event handler properties (Web API compat)
-	onopen: ((ev: Event) => any) | null = null;
-	onmessage: ((ev: MessageEvent) => any) | null = null;
-	onclose: ((ev: CloseEvent) => any) | null = null;
-	onerror: ((ev: Event) => any) | null = null;
+	onopen: ((ev: Event) => any) | null;
+	onmessage: ((ev: MessageEvent) => any) | null;
+	onclose: ((ev: CloseEvent) => any) | null;
+	onerror: ((ev: Event) => any) | null;
+
+	constructor() {
+		super();
+		this.CONNECTING = 0;
+		this.OPEN = 1;
+		this.CLOSING = 2;
+		this.CLOSED = 3;
+		this.#readyState = ShovelWebSocket.CONNECTING;
+		this.#peer = null;
+		this.#accepted = false;
+		this.#relay = null;
+		this.onopen = null;
+		this.onmessage = null;
+		this.onclose = null;
+		this.onerror = null;
+	}
 
 	get readyState(): number {
 		return this.#readyState;
@@ -61,10 +99,7 @@ export class ShovelWebSocket extends EventTarget {
 			);
 		}
 		if (this.#readyState !== ShovelWebSocket.OPEN) {
-			throw new DOMException(
-				"WebSocket is not open",
-				"InvalidStateError",
-			);
+			throw new DOMException("WebSocket is not open", "InvalidStateError");
 		}
 
 		// If relay is set, forward through relay (worker-thread mode)
@@ -99,7 +134,7 @@ export class ShovelWebSocket extends EventTarget {
 		const peer = this.#peer;
 		queueMicrotask(() => {
 			this.#readyState = ShovelWebSocket.CLOSED;
-			const closeEvent = new CloseEvent("close", {
+			const closeEvent = new _CloseEvent("close", {
 				code: code ?? 1000,
 				reason: reason ?? "",
 				wasClean: true,
@@ -109,7 +144,7 @@ export class ShovelWebSocket extends EventTarget {
 
 			if (peer && peer.#readyState < ShovelWebSocket.CLOSING) {
 				peer.#readyState = ShovelWebSocket.CLOSED;
-				const peerCloseEvent = new CloseEvent("close", {
+				const peerCloseEvent = new _CloseEvent("close", {
 					code: code ?? 1000,
 					reason: reason ?? "",
 					wasClean: true,
@@ -156,7 +191,7 @@ export class ShovelWebSocket extends EventTarget {
 	_deliverClose(code?: number, reason?: string): void {
 		if (this.#readyState >= ShovelWebSocket.CLOSING) return;
 		this.#readyState = ShovelWebSocket.CLOSED;
-		const closeEvent = new CloseEvent("close", {
+		const closeEvent = new _CloseEvent("close", {
 			code: code ?? 1000,
 			reason: reason ?? "",
 			wasClean: true,

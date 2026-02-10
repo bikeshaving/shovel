@@ -17,6 +17,7 @@ import type {WebSocketServer as WSServerType, WebSocket as WSType} from "ws";
 import {CustomCacheStorage} from "@b9g/cache";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
+	type HandleResult,
 	type PlatformDefaults,
 	type RequestHandler,
 	type Server,
@@ -50,7 +51,7 @@ export interface NodePlatformOptions {
 	/** Shovel configuration (caches, directories, etc.) */
 	config?: ShovelConfig;
 	/** WebSocketServer class from 'ws' package. Passed by generated production code so ws gets bundled. Falls back to dynamic import("ws") if not provided. */
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 	WebSocketServer?: any;
 }
 
@@ -241,7 +242,7 @@ export class NodePlatform {
 		cwd: string;
 		workers: number;
 		config?: ShovelConfig;
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 		WebSocketServer?: any;
 	};
 	#server?: Server;
@@ -327,7 +328,9 @@ export class NodePlatform {
 				} as RequestInit);
 
 				// Handle request via provided handler
-				const result = await handler(request);
+				const raw = await handler(request);
+				const result: HandleResult =
+					raw instanceof Response ? {response: raw} : raw;
 
 				// WebSocket upgrade on a non-upgrade request — error
 				if (result.webSocket) {
@@ -404,7 +407,9 @@ export class NodePlatform {
 				if (!wss) {
 					const WSS = this.#options.WebSocketServer;
 					if (!WSS) {
-						logger.error("WebSocket upgrade requires WebSocketServer in platform options. Install ws and pass it via the WebSocketServer option.");
+						logger.error(
+							"WebSocket upgrade requires WebSocketServer in platform options. Install ws and pass it via the WebSocketServer option.",
+						);
 						socket.destroy();
 						return;
 					}
@@ -417,7 +422,9 @@ export class NodePlatform {
 					headers: req.headers as HeadersInit,
 				});
 
-				const result = await handler(request);
+				const raw = await handler(request);
+				const result: HandleResult =
+					raw instanceof Response ? {response: raw} : raw;
 
 				if (!result.webSocket) {
 					socket.destroy();
@@ -429,8 +436,7 @@ export class NodePlatform {
 				wss!.handleUpgrade(req, socket, head, (ws: WSType) => {
 					bridge.connect(
 						(data: string | ArrayBuffer) => ws.send(data),
-						(code?: number, reason?: string) =>
-							ws.close(code, reason),
+						(code?: number, reason?: string) => ws.close(code, reason),
 					);
 
 					ws.on("message", (data: Buffer, isBinary: boolean) => {
@@ -450,7 +456,8 @@ export class NodePlatform {
 						bridge.deliverClose(code, reason.toString());
 					});
 				});
-			} catch {
+			} catch (error) {
+				logger.error("WebSocket upgrade failed: {error}", {error});
 				socket.destroy();
 			}
 		});

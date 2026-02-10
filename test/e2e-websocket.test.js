@@ -285,11 +285,7 @@ describe("runtime: WebSocket multi-worker (relay mode)", () => {
 				ws.send("relay");
 				await allReceived;
 
-				expect(messages).toEqual([
-					"echo: hello",
-					"echo: world",
-					"echo: relay",
-				]);
+				expect(messages).toEqual(["echo: hello", "echo: world", "echo: relay"]);
 
 				ws.close();
 			} finally {

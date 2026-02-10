@@ -67,9 +67,10 @@ self.addEventListener("fetch", (event) => {
 		expect(instance.ready).toBe(true);
 
 		// Test API route
-		const response = await instance.handleRequest(
+		const result = await instance.handleRequest(
 			new Request("http://localhost/api/hello"),
 		);
+		const response = result.response!;
 
 		expect(response.status).toBe(200);
 
@@ -89,9 +90,10 @@ self.addEventListener("fetch", (event) => {
 		);
 
 		// Request a non-existent route to verify 404 comes from worker
-		const response = await instance.handleRequest(
+		const result = await instance.handleRequest(
 			new Request("http://localhost/nonexistent"),
 		);
+		const response = result.response!;
 
 		expect(response.status).toBe(404);
 		const text = await response.text();
@@ -132,9 +134,10 @@ self.addEventListener("fetch", (event) => {
 
 		const instance = await platform.loadServiceWorker(uniqueWorkerPath);
 
-		const response = await instance.handleRequest(
+		const result3 = await instance.handleRequest(
 			new Request("http://localhost/test-path?query=value", {method: "POST"}),
 		);
+		const response = result3.response!;
 
 		// Verify status
 		expect(response.status).toBe(201);
@@ -188,9 +191,10 @@ self.addEventListener("fetch", (event) => {
 		];
 
 		for (const {status, header} of testCases) {
-			const response = await instance.handleRequest(
+			const r = await instance.handleRequest(
 				new Request(`http://localhost/test?status=${status}&header=${header}`),
 			);
+			const response = r.response!;
 
 			expect(response.status).toBe(status);
 			expect(response.headers.get("X-Echo")).toBe(header);

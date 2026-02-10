@@ -11,15 +11,18 @@ const channels = new Map<string, Set<ShovelBroadcastChannel>>();
 
 export class ShovelBroadcastChannel extends EventTarget {
 	readonly name: string;
-	#closed = false;
+	#closed: boolean;
 
 	// Event handler properties (Web API compat)
-	onmessage: ((ev: MessageEvent) => any) | null = null;
-	onmessageerror: ((ev: MessageEvent) => any) | null = null;
+	onmessage: ((ev: MessageEvent) => any) | null;
+	onmessageerror: ((ev: MessageEvent) => any) | null;
 
 	constructor(name: string) {
 		super();
 		this.name = name;
+		this.#closed = false;
+		this.onmessage = null;
+		this.onmessageerror = null;
 		let set = channels.get(name);
 		if (!set) {
 			set = new Set();
@@ -30,10 +33,7 @@ export class ShovelBroadcastChannel extends EventTarget {
 
 	postMessage(message: unknown): void {
 		if (this.#closed) {
-			throw new DOMException(
-				"BroadcastChannel is closed",
-				"InvalidStateError",
-			);
+			throw new DOMException("BroadcastChannel is closed", "InvalidStateError");
 		}
 
 		// Structured clone the data

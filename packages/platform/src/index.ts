@@ -106,11 +106,12 @@ export type Handler = (
 /**
  * Request handler that can return either an HTTP response or a WebSocket upgrade.
  * Used by createServer() in platform adapters.
+ * Handlers may return a plain Response for convenience (auto-wrapped in HandleResult).
  */
 export type RequestHandler = (
 	request: Request,
 	context?: any,
-) => Promise<HandleResult> | HandleResult;
+) => Promise<HandleResult | Response> | HandleResult | Response;
 
 /**
  * Server instance returned by platform.createServer()
@@ -690,12 +691,8 @@ export class ServiceWorkerPool {
 				const connectionID = message.requestID as number;
 				const bridgeState = {
 					worker,
-					send: null as
-						| ((data: string | ArrayBuffer) => void)
-						| null,
-					close: null as
-						| ((code?: number, reason?: string) => void)
-						| null,
+					send: null as ((data: string | ArrayBuffer) => void) | null,
+					close: null as ((code?: number, reason?: string) => void) | null,
 					pendingSends: [] as (string | ArrayBuffer)[],
 				};
 				this.#wsBridges.set(connectionID, bridgeState);
@@ -717,10 +714,9 @@ export class ServiceWorkerPool {
 					// Called by adapter when real socket receives a message
 					deliver: (data: string | ArrayBuffer) => {
 						if (data instanceof ArrayBuffer) {
-							worker.postMessage(
-								{type: "ws:message", connectionID, data},
-								[data],
-							);
+							worker.postMessage({type: "ws:message", connectionID, data}, [
+								data,
+							]);
 						} else {
 							worker.postMessage({
 								type: "ws:message",

@@ -25,21 +25,24 @@ describe("Bun WebSocket upgrade", () => {
 		"WebSocket echo server via WebSocketPair",
 		async () => {
 			platform = new BunPlatform();
-			server = platform.createServer((request) => {
-				const url = new URL(request.url);
-				if (url.pathname === "/ws") {
-					const pair = new WebSocketPair();
-					const [client, ws] = [pair[0], pair[1]];
+			server = platform.createServer(
+				(request) => {
+					const url = new URL(request.url);
+					if (url.pathname === "/ws") {
+						const pair = new WebSocketPair();
+						const [client, ws] = [pair[0], pair[1]];
 
-					ws.accept();
-					ws.addEventListener("message", (ev: MessageEvent) => {
-						ws.send("echo: " + ev.data);
-					});
+						ws.accept();
+						ws.addEventListener("message", ((ev: MessageEvent) => {
+							ws.send("echo: " + ev.data);
+						}) as EventListener);
 
-					return {webSocket: createWebSocketBridge(client)};
-				}
-				return {response: new Response("OK")};
-			}, {port: 0, host: "127.0.0.1"});
+						return {webSocket: createWebSocketBridge(client)};
+					}
+					return {response: new Response("OK")};
+				},
+				{port: 0, host: "127.0.0.1"},
+			);
 
 			await server.listen();
 			const port = server.address().port;
@@ -71,21 +74,24 @@ describe("Bun WebSocket upgrade", () => {
 		"WebSocket multiple messages",
 		async () => {
 			platform = new BunPlatform();
-			server = platform.createServer((request) => {
-				const url = new URL(request.url);
-				if (url.pathname === "/ws") {
-					const pair = new WebSocketPair();
-					const [client, ws] = [pair[0], pair[1]];
+			server = platform.createServer(
+				(request) => {
+					const url = new URL(request.url);
+					if (url.pathname === "/ws") {
+						const pair = new WebSocketPair();
+						const [client, ws] = [pair[0], pair[1]];
 
-					ws.accept();
-					ws.addEventListener("message", (ev: MessageEvent) => {
-						ws.send(ev.data.toUpperCase());
-					});
+						ws.accept();
+						ws.addEventListener("message", ((ev: MessageEvent) => {
+							ws.send(ev.data.toUpperCase());
+						}) as EventListener);
 
-					return {webSocket: createWebSocketBridge(client)};
-				}
-				return {response: new Response("OK")};
-			}, {port: 0, host: "127.0.0.1"});
+						return {webSocket: createWebSocketBridge(client)};
+					}
+					return {response: new Response("OK")};
+				},
+				{port: 0, host: "127.0.0.1"},
+			);
 
 			await server.listen();
 			const port = server.address().port;
@@ -119,21 +125,24 @@ describe("Bun WebSocket upgrade", () => {
 		"WebSocket close from server",
 		async () => {
 			platform = new BunPlatform();
-			server = platform.createServer((request) => {
-				const url = new URL(request.url);
-				if (url.pathname === "/ws") {
-					const pair = new WebSocketPair();
-					const [client, ws] = [pair[0], pair[1]];
+			server = platform.createServer(
+				(request) => {
+					const url = new URL(request.url);
+					if (url.pathname === "/ws") {
+						const pair = new WebSocketPair();
+						const [client, ws] = [pair[0], pair[1]];
 
-					ws.accept();
-					ws.addEventListener("message", () => {
-						ws.close(1000, "done");
-					});
+						ws.accept();
+						ws.addEventListener("message", () => {
+							ws.close(1000, "done");
+						});
 
-					return {webSocket: createWebSocketBridge(client)};
-				}
-				return {response: new Response("OK")};
-			}, {port: 0, host: "127.0.0.1"});
+						return {webSocket: createWebSocketBridge(client)};
+					}
+					return {response: new Response("OK")};
+				},
+				{port: 0, host: "127.0.0.1"},
+			);
 
 			await server.listen();
 			const port = server.address().port;
@@ -161,15 +170,18 @@ describe("Bun WebSocket upgrade", () => {
 		"regular HTTP still works alongside WebSocket",
 		async () => {
 			platform = new BunPlatform();
-			server = platform.createServer((request) => {
-				const url = new URL(request.url);
-				if (url.pathname === "/ws") {
-					const pair = new WebSocketPair();
-					pair[1].accept();
-					return {webSocket: createWebSocketBridge(pair[0])};
-				}
-				return {response: new Response("Hello HTTP")};
-			}, {port: 0, host: "127.0.0.1"});
+			server = platform.createServer(
+				(request) => {
+					const url = new URL(request.url);
+					if (url.pathname === "/ws") {
+						const pair = new WebSocketPair();
+						pair[1].accept();
+						return {webSocket: createWebSocketBridge(pair[0])};
+					}
+					return {response: new Response("Hello HTTP")};
+				},
+				{port: 0, host: "127.0.0.1"},
+			);
 
 			await server.listen();
 			const port = server.address().port;
@@ -185,21 +197,24 @@ describe("Bun WebSocket upgrade", () => {
 		"WebSocket binary data",
 		async () => {
 			platform = new BunPlatform();
-			server = platform.createServer((request) => {
-				const url = new URL(request.url);
-				if (url.pathname === "/ws") {
-					const pair = new WebSocketPair();
-					const [client, ws] = [pair[0], pair[1]];
+			server = platform.createServer(
+				(request) => {
+					const url = new URL(request.url);
+					if (url.pathname === "/ws") {
+						const pair = new WebSocketPair();
+						const [client, ws] = [pair[0], pair[1]];
 
-					ws.accept();
-					ws.addEventListener("message", (ev: MessageEvent) => {
-						ws.send(ev.data);
-					});
+						ws.accept();
+						ws.addEventListener("message", ((ev: MessageEvent) => {
+							ws.send(ev.data);
+						}) as EventListener);
 
-					return {webSocket: createWebSocketBridge(client)};
-				}
-				return {response: new Response("OK")};
-			}, {port: 0, host: "127.0.0.1"});
+						return {webSocket: createWebSocketBridge(client)};
+					}
+					return {response: new Response("OK")};
+				},
+				{port: 0, host: "127.0.0.1"},
+			);
 
 			await server.listen();
 			const port = server.address().port;

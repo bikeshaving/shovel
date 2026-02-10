@@ -4,6 +4,7 @@
 
 import {describe, it, expect} from "bun:test";
 import {ShovelWebSocket, WebSocketPair} from "../src/websocket.js";
+import {ShovelFetchEvent} from "../src/runtime.js";
 
 describe("WebSocketPair", () => {
 	it("creates two linked sockets at indices 0 and 1", () => {
@@ -67,9 +68,7 @@ describe("ShovelWebSocket", () => {
 		server.accept();
 
 		const received = new Promise<MessageEvent>((resolve) => {
-			client.addEventListener("message", (ev) =>
-				resolve(ev as MessageEvent),
-			);
+			client.addEventListener("message", (ev) => resolve(ev as MessageEvent));
 		});
 
 		server.send("hello from server");
@@ -228,9 +227,8 @@ describe("ShovelWebSocket", () => {
 	it("upgradeWebSocket stores socket on event", () => {
 		const pair = new WebSocketPair();
 		const request = new Request("http://localhost/ws", {
-			headers: {"Upgrade": "websocket"},
+			headers: {Upgrade: "websocket"},
 		});
-		const {ShovelFetchEvent} = require("../src/runtime.js");
 		const event = new ShovelFetchEvent(request);
 		event.upgradeWebSocket(pair[0]);
 		expect(event.getUpgradeWebSocket()).toBe(pair[0]);

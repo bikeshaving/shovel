@@ -16,6 +16,7 @@ import {getLogger} from "@logtape/logtape";
 import {CustomCacheStorage} from "@b9g/cache";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
+	type HandleResult,
 	type PlatformDefaults,
 	type RequestHandler,
 	type Server,
@@ -285,12 +286,13 @@ export class BunPlatform {
 					// Connect the bridge to the real Bun WebSocket
 					ws.data.bridge.connect(
 						(data: string | ArrayBuffer) => ws.send(data),
-						(code?: number, reason?: string) =>
-							ws.close(code, reason),
+						(code?: number, reason?: string) => ws.close(code, reason),
 					);
 				},
 				message(ws, data) {
-					ws.data.bridge.deliver(data);
+					ws.data.bridge.deliver(
+						typeof data === "string" ? data : (data.buffer as ArrayBuffer),
+					);
 				},
 				close(ws, code, reason) {
 					ws.data.bridge.deliverClose(code, reason);
@@ -298,7 +300,10 @@ export class BunPlatform {
 			},
 			async fetch(request, bunServer) {
 				try {
-					const result = await handler(request);
+					const result: HandleResult = await (async () => {
+						const r = await handler(request);
+						return r instanceof Response ? {response: r} : r;
+					})();
 
 					// WebSocket upgrade
 					if (result.webSocket) {

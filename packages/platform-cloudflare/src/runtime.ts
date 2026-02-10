@@ -157,8 +157,9 @@ export function createFetchHandler(
 		});
 
 		// Run within envStorage for directory factory access
-		return envStorage.run(env as Record<string, unknown>, () =>
+		const result = await envStorage.run(env as Record<string, unknown>, () =>
 			dispatchRequest(registration, event),
 		);
+		return result.response!;
 	};
 }

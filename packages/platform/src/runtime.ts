@@ -2618,38 +2618,29 @@ export function startWorkerMessageLoop(
 				clientSocket.accept();
 
 				// Outgoing: server.send() → client gets message → forward to main thread
-				clientSocket.addEventListener(
-					"message",
-					(ev: MessageEvent) => {
-						const data = ev.data;
-						if (data instanceof ArrayBuffer) {
-							sendMessage(
-								{type: "ws:send", connectionID, data},
-								[data],
-							);
-						} else {
-							sendMessage({
-								type: "ws:send",
-								connectionID,
-								data,
-							});
-						}
-					},
-				);
+				clientSocket.addEventListener("message", ((ev: MessageEvent) => {
+					const data = ev.data;
+					if (data instanceof ArrayBuffer) {
+						sendMessage({type: "ws:send", connectionID, data}, [data]);
+					} else {
+						sendMessage({
+							type: "ws:send",
+							connectionID,
+							data,
+						});
+					}
+				}) as EventListener);
 
 				// Close: server.close() → client gets close → forward to main thread
-				clientSocket.addEventListener(
-					"close",
-					(ev: CloseEvent) => {
-						sendMessage({
-							type: "ws:close",
-							connectionID,
-							code: ev.code,
-							reason: ev.reason,
-						});
-						wsConnections.delete(connectionID);
-					},
-				);
+				clientSocket.addEventListener("close", ((ev: CloseEvent) => {
+					sendMessage({
+						type: "ws:close",
+						connectionID,
+						code: ev.code,
+						reason: ev.reason,
+					});
+					wsConnections.delete(connectionID);
+				}) as EventListener);
 
 				// Store for incoming messages from main thread
 				wsConnections.set(connectionID, clientSocket);

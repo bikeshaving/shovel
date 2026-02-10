@@ -174,9 +174,7 @@ describe("BroadcastChannel", () => {
 		const ch2 = new ShovelBroadcastChannel("error-test");
 
 		const received = new Promise<MessageEvent>((resolve) => {
-			ch2.addEventListener("messageerror", (ev) =>
-				resolve(ev as MessageEvent),
-			);
+			ch2.addEventListener("messageerror", (ev) => resolve(ev as MessageEvent));
 		});
 
 		// Functions can't be structured-cloned
