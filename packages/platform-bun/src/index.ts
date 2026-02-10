@@ -291,7 +291,9 @@ export class BunPlatform {
 				},
 				message(ws, data) {
 					ws.data.bridge.deliver(
-						typeof data === "string" ? data : (data.buffer as ArrayBuffer),
+						typeof data === "string"
+							? data
+							: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
 					);
 				},
 				close(ws, code, reason) {
