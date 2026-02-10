@@ -84,7 +84,7 @@ if (config.lifecycle) {
 import {parentPort} from "node:worker_threads";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest} from "@b9g/platform/runtime";
-import {createWebSocketBridge} from "@b9g/platform";
+import {createWebSocketBridge} from "@b9g/platform/websocket-bridge";
 import NodePlatform from "@b9g/platform-node";
 import {WebSocketServer} from "ws";
 import {config} from "shovel:config";

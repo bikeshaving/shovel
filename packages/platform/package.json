@@ -103,6 +103,14 @@
       "types": "./dist/src/broadcast-channel-backend.d.ts",
       "import": "./dist/src/broadcast-channel-backend.js"
     },
+    "./websocket-bridge": {
+      "types": "./dist/src/websocket-bridge.d.ts",
+      "import": "./dist/src/websocket-bridge.js"
+    },
+    "./websocket-bridge.js": {
+      "types": "./dist/src/websocket-bridge.d.ts",
+      "import": "./dist/src/websocket-bridge.js"
+    },
     "./websocket": {
       "types": "./dist/src/websocket.d.ts",
       "import": "./dist/src/websocket.js"

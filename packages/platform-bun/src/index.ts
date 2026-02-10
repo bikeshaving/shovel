@@ -424,7 +424,7 @@ export class BunPlatform {
 import BunPlatform from "@b9g/platform-bun";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
-import {createWebSocketBridge} from "@b9g/platform";
+import {createWebSocketBridge} from "@b9g/platform/websocket-bridge";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);

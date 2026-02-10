@@ -19,7 +19,7 @@ import {
 	setBroadcastChannelBackend,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
-import {createWebSocketBridge} from "@b9g/platform";
+import {createWebSocketBridge} from "@b9g/platform/websocket-bridge";
 
 // runLifecycle is used internally by createFetchHandler (not re-exported)
 import {CustomCacheStorage} from "@b9g/cache";
