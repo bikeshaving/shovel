@@ -532,9 +532,12 @@ console.log("FULL_E2E_READY");
 				"utf8",
 			);
 
-			// Should not have any require() or dynamic import() that would fail
-			// All modules should be statically bundled
-			expect(indexContent).not.toMatch(/require\s*\(\s*[^)]+\)/);
+			// Should not have any bare require("module") calls to external packages.
+			// esbuild's CJS-to-ESM helpers (__require, __commonJS) are expected when
+			// bundling CJS packages like ws — they resolve internal bundled modules.
+			// The runBundle test below validates the bundle actually works at runtime.
+			expect(indexContent).not.toMatch(/\brequire\s*\(\s*["'][@a-z]/);
+
 
 			// Run the bundle
 			const result = await runBundle(join(outDir, "server"));

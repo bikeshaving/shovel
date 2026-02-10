@@ -40,12 +40,77 @@ export interface ServerOptions {
 }
 
 /**
+ * WebSocket bridge for worker-mode relay.
+ * Platform adapters use this to bridge the real network socket to the worker.
+ */
+export interface WebSocketBridge {
+	/** Connect the real socket. Provide send/close callbacks for outgoing data. */
+	connect(
+		send: (data: string | ArrayBuffer) => void,
+		close: (code?: number, reason?: string) => void,
+	): void;
+	/** Deliver incoming data from the real socket to the worker. */
+	deliver(data: string | ArrayBuffer): void;
+	/** Deliver a close event from the real socket to the worker. */
+	deliverClose(code: number, reason: string): void;
+}
+
+/**
+ * Result of handling a request. Either an HTTP response or a WebSocket upgrade.
+ */
+export type HandleResult =
+	| {response: Response; webSocket?: undefined}
+	| {response?: undefined; webSocket: WebSocketBridge};
+
+/**
+ * Create a WebSocketBridge from a ShovelWebSocket (direct mode).
+ *
+ * In direct mode, the ShovelWebSocket's peer delivery handles the bridge:
+ * - clientSocket.send(data) delivers to the server socket (peer)
+ * - server.send(data) delivers to clientSocket, triggering our message listener
+ */
+export function createWebSocketBridge(
+	clientSocket: import("./websocket.js").ShovelWebSocket,
+): WebSocketBridge {
+	return {
+		connect(send, close) {
+			clientSocket.accept();
+
+			// Server.send() → client receives → forward to real socket
+			clientSocket.addEventListener("message", ((ev: MessageEvent) => {
+				send(ev.data);
+			}) as EventListener);
+
+			clientSocket.addEventListener("close", ((ev: CloseEvent) => {
+				close(ev.code, ev.reason);
+			}) as EventListener);
+		},
+		deliver(data) {
+			// Real socket received data → forward to server via client.send()
+			clientSocket.send(data);
+		},
+		deliverClose(code, reason) {
+			clientSocket.close(code, reason);
+		},
+	};
+}
+
+/**
  * Request handler function (Web Fetch API compatible)
  */
 export type Handler = (
 	request: Request,
 	context?: any,
 ) => Promise<Response> | Response;
+
+/**
+ * Request handler that can return either an HTTP response or a WebSocket upgrade.
+ * Used by createServer() in platform adapters.
+ */
+export type RequestHandler = (
+	request: Request,
+	context?: any,
+) => Promise<HandleResult> | HandleResult;
 
 /**
  * Server instance returned by platform.createServer()
@@ -82,7 +147,7 @@ export interface ServiceWorkerInstance {
 	/** The ServiceWorker runtime */
 	runtime: any; // WorkerPool or ServiceWorkerRegistration
 	/** Handle HTTP request */
-	handleRequest(request: Request): Promise<Response>;
+	handleRequest(request: Request): Promise<HandleResult>;
 	/** Install the ServiceWorker */
 	install(): Promise<void>;
 	/** Activate the ServiceWorker */
@@ -150,7 +215,7 @@ export interface PlatformDefaults {
  */
 export interface ShovelServiceWorkerContainer extends ServiceWorkerContainer {
 	/** Internal: Get the worker pool for request handling */
-	readonly pool?: {handleRequest(request: Request): Promise<Response>};
+	readonly pool?: {handleRequest(request: Request): Promise<HandleResult>};
 	/** Internal: Terminate all workers */
 	terminate(): Promise<void>;
 	/** Internal: Reload workers (for hot reload) */
@@ -422,7 +487,7 @@ export class ServiceWorkerPool {
 	#pendingRequests: Map<
 		number,
 		{
-			resolve: (response: Response) => void;
+			resolve: (result: HandleResult) => void;
 			reject: (error: Error) => void;
 			timeoutId?: ReturnType<typeof setTimeout>;
 		}
@@ -444,6 +509,16 @@ export class ServiceWorkerPool {
 		resolve: () => void;
 		reject: (error: Error) => void;
 	}>;
+	// WebSocket bridges: connectionID → bridge state (for worker-mode WS relay)
+	#wsBridges: Map<
+		number,
+		{
+			worker: Worker;
+			send: ((data: string | ArrayBuffer) => void) | null;
+			close: ((code?: number, reason?: string) => void) | null;
+			pendingSends: (string | ArrayBuffer)[];
+		}
+	>;
 
 	constructor(
 		options: WorkerPoolOptions = {},
@@ -456,6 +531,7 @@ export class ServiceWorkerPool {
 		this.#pendingRequests = new Map();
 		this.#pendingWorkerReady = new Map();
 		this.#workerAvailableWaiters = [];
+		this.#wsBridges = new Map();
 		this.#appEntrypoint = appEntrypoint;
 		this.#cacheStorage = cacheStorage;
 		this.#options = {
@@ -595,8 +671,103 @@ export class ServiceWorkerPool {
 							});
 						}
 					}
+				} else if (message.type?.startsWith("ws:")) {
+					this.#handleWebSocketMessage(worker, message);
 				}
 				break;
+		}
+	}
+
+	#handleWebSocketMessage(worker: Worker, message: WorkerMessage) {
+		switch (message.type) {
+			case "ws:upgrade": {
+				// Worker called event.upgradeWebSocket() — resolve with a bridge
+				// that connects the real network socket to the worker's WebSocketPair.
+				const pending = this.#pendingRequests.get(message.requestID);
+				if (!pending) break;
+				if (pending.timeoutId) clearTimeout(pending.timeoutId);
+
+				const connectionID = message.requestID as number;
+				const bridgeState = {
+					worker,
+					send: null as
+						| ((data: string | ArrayBuffer) => void)
+						| null,
+					close: null as
+						| ((code?: number, reason?: string) => void)
+						| null,
+					pendingSends: [] as (string | ArrayBuffer)[],
+				};
+				this.#wsBridges.set(connectionID, bridgeState);
+
+				const webSocket: WebSocketBridge = {
+					// Called by adapter after real socket upgrade completes
+					connect: (
+						send: (data: string | ArrayBuffer) => void,
+						close: (code?: number, reason?: string) => void,
+					) => {
+						bridgeState.send = send;
+						bridgeState.close = close;
+						// Flush any messages that arrived before connect
+						for (const data of bridgeState.pendingSends) {
+							send(data);
+						}
+						bridgeState.pendingSends = [];
+					},
+					// Called by adapter when real socket receives a message
+					deliver: (data: string | ArrayBuffer) => {
+						if (data instanceof ArrayBuffer) {
+							worker.postMessage(
+								{type: "ws:message", connectionID, data},
+								[data],
+							);
+						} else {
+							worker.postMessage({
+								type: "ws:message",
+								connectionID,
+								data,
+							});
+						}
+					},
+					// Called by adapter when real socket closes
+					deliverClose: (code: number, reason: string) => {
+						worker.postMessage({
+							type: "ws:closed",
+							connectionID,
+							code,
+							reason,
+						});
+						this.#wsBridges.delete(connectionID);
+					},
+				};
+
+				pending.resolve({webSocket});
+				this.#pendingRequests.delete(message.requestID);
+				break;
+			}
+
+			case "ws:send": {
+				// Worker's server.send() → forward to real socket via bridge
+				const bridge = this.#wsBridges.get(message.connectionID);
+				if (bridge) {
+					if (bridge.send) {
+						bridge.send(message.data);
+					} else {
+						bridge.pendingSends.push(message.data);
+					}
+				}
+				break;
+			}
+
+			case "ws:close": {
+				// Worker's server.close() → close real socket via bridge
+				const bridge = this.#wsBridges.get(message.connectionID);
+				if (bridge?.close) {
+					bridge.close(message.code, message.reason);
+				}
+				this.#wsBridges.delete(message.connectionID);
+				break;
+			}
 		}
 	}
 
@@ -611,7 +782,7 @@ export class ServiceWorkerPool {
 				statusText: message.response.statusText,
 				headers: message.response.headers,
 			});
-			pending.resolve(response);
+			pending.resolve({response});
 			this.#pendingRequests.delete(message.requestID);
 		}
 	}
@@ -638,7 +809,7 @@ export class ServiceWorkerPool {
 	/**
 	 * Handle HTTP request using round-robin worker selection
 	 */
-	async handleRequest(request: Request): Promise<Response> {
+	async handleRequest(request: Request): Promise<HandleResult> {
 		// Wait for workers to be available (e.g., during reload)
 		if (this.#workers.length === 0) {
 			logger.debug("No workers available, waiting for worker to be ready");
@@ -822,6 +993,7 @@ export class ServiceWorkerPool {
 		this.#currentWorker = 0; // Reset round-robin index
 		this.#pendingRequests.clear();
 		this.#pendingWorkerReady.clear();
+		this.#wsBridges.clear();
 
 		// Reject any pending request waiters
 		const waiters = this.#workerAvailableWaiters;

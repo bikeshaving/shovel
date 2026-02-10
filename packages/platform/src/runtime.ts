@@ -16,7 +16,7 @@ import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {CustomCacheStorage, Cache} from "@b9g/cache";
 import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
 import {ShovelBroadcastChannel} from "./broadcast-channel.js";
-import {WebSocketPair} from "./websocket.js";
+import {ShovelWebSocket, WebSocketPair} from "./websocket.js";
 
 // ============================================================================
 // Cookie Store API Implementation
@@ -837,6 +837,7 @@ export class ShovelFetchEvent
 	readonly resultingClientId: string;
 	#responsePromise: Promise<Response> | null;
 	#responded: boolean;
+	#webSocket: ShovelWebSocket | null;
 	#platformWaitUntil?: (promise: Promise<unknown>) => void;
 
 	constructor(request: Request, options?: ShovelFetchEventInit) {
@@ -849,6 +850,7 @@ export class ShovelFetchEvent
 		this.resultingClientId = "";
 		this.#responsePromise = null;
 		this.#responded = false;
+		this.#webSocket = null;
 		this.#platformWaitUntil = options?.platformWaitUntil;
 	}
 
@@ -880,6 +882,43 @@ export class ShovelFetchEvent
 		// Per spec, respondWith() extends the event lifetime (allows async waitUntil)
 		// We use waitUntil internally to track pending promise count
 		this.waitUntil(this.#responsePromise);
+	}
+
+	/**
+	 * Signal a WebSocket upgrade for this request.
+	 *
+	 * Pass the client socket (index 0) from a WebSocketPair. The platform
+	 * will bridge it to the real network connection. The server socket
+	 * (index 1) stays in user code for bidirectional messaging.
+	 *
+	 * @param socket - The client-side ShovelWebSocket from a WebSocketPair
+	 */
+	upgradeWebSocket(socket: ShovelWebSocket): void {
+		if (this.#responded) {
+			throw new Error("respondWith() or upgradeWebSocket() already called");
+		}
+
+		if (!this[kCanExtend]()) {
+			throw new DOMException(
+				"upgradeWebSocket() must be called synchronously during event dispatch",
+				"InvalidStateError",
+			);
+		}
+
+		if (!(socket instanceof ShovelWebSocket)) {
+			throw new TypeError("upgradeWebSocket() requires a ShovelWebSocket");
+		}
+
+		this.#responded = true;
+		this.#webSocket = socket;
+	}
+
+	/**
+	 * Get the WebSocket from upgradeWebSocket(), if any.
+	 * @internal Used by the dispatch pipeline.
+	 */
+	getUpgradeWebSocket(): ShovelWebSocket | null {
+		return this.#webSocket;
 	}
 
 	getResponse(): Promise<Response> | null {
@@ -1327,7 +1366,7 @@ export class ShovelServiceWorkerRegistration
 	 *
 	 * @param event - The fetch event to handle (created by platform adapter)
 	 */
-	async [kHandleRequest](event: ShovelFetchEvent): Promise<Response> {
+	async [kHandleRequest](event: ShovelFetchEvent): Promise<Response | null> {
 		// Allow fetch during any lifecycle state after parsing (installing, installed,
 		// activating, activated). This enables fetch() during install/activate handlers
 		// for use cases like SSG cache warming. Fetch handlers are registered during
@@ -1345,13 +1384,18 @@ export class ShovelServiceWorkerRegistration
 			// End the dispatch phase - after this, waitUntil/respondWith require pending promises
 			event[kEndDispatchPhase]();
 
-			// Per ServiceWorker spec, respondWith() must be called synchronously
-			// during event dispatch. No need to defer - check immediately.
+			// Per ServiceWorker spec, respondWith() or upgradeWebSocket() must be
+			// called synchronously during event dispatch.
 			if (!event.hasResponded()) {
 				throw new Error(
 					"No response provided for fetch event. " +
-						"respondWith() must be called synchronously during event dispatch.",
+						"respondWith() or upgradeWebSocket() must be called synchronously during event dispatch.",
 				);
+			}
+
+			// WebSocket upgrade — no HTTP response
+			if (event.getUpgradeWebSocket()) {
+				return null;
 			}
 
 			// Get the response (may be a Promise)
@@ -1422,6 +1466,14 @@ export async function runLifecycle(
 }
 
 /**
+ * Result of dispatching a fetch request.
+ * Either a normal HTTP response or a WebSocket upgrade.
+ */
+export type DispatchResult =
+	| {response: Response; webSocket?: undefined}
+	| {response?: undefined; webSocket: ShovelWebSocket};
+
+/**
  * Dispatch a fetch request to a ServiceWorker registration.
  *
  * This is the proper way to dispatch requests in Shovel's server-side runtime.
@@ -1429,27 +1481,32 @@ export async function runLifecycle(
  *
  * @param registration - The ServiceWorkerRegistration to dispatch to
  * @param requestOrEvent - The Request to dispatch, or a pre-constructed ShovelFetchEvent
- * @returns The Response from the ServiceWorker
+ * @returns A DispatchResult with either a Response or a WebSocket for upgrade
  *
  * @example
  * ```typescript
- * // Simple usage with a Request
- * const response = await dispatchRequest(registration, request);
- *
- * // Platform-specific usage with a custom FetchEvent subclass
- * const event = new CloudflareFetchEvent(request, {env, platformWaitUntil});
- * const response = await dispatchRequest(registration, event);
+ * const result = await dispatchRequest(registration, request);
+ * if (result.webSocket) {
+ *   // Handle WebSocket upgrade
+ * } else {
+ *   // Handle normal HTTP response
+ * }
  * ```
  */
 export async function dispatchRequest(
 	registration: ShovelServiceWorkerRegistration,
 	requestOrEvent: Request | ShovelFetchEvent,
-): Promise<Response> {
+): Promise<DispatchResult> {
 	const event =
 		requestOrEvent instanceof ShovelFetchEvent
 			? requestOrEvent
 			: new ShovelFetchEvent(requestOrEvent);
-	return registration[kHandleRequest](event);
+	const response = await registration[kHandleRequest](event);
+	const webSocket = event.getUpgradeWebSocket();
+	if (webSocket) {
+		return {webSocket};
+	}
+	return {response: response!};
 }
 
 /**
@@ -1921,11 +1978,15 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 		const request = new Request(new URL(urlString, "http://localhost"), init);
 
 		// Route through our own handler with incremented depth
-		return fetchDepthStorage.run(currentDepth + 1, () => {
-			return dispatchRequest(
+		return fetchDepthStorage.run(currentDepth + 1, async () => {
+			const result = await dispatchRequest(
 				this.registration as ShovelServiceWorkerRegistration,
 				request,
 			);
+			if (result.webSocket) {
+				throw new Error("Cannot upgrade WebSocket via internal fetch()");
+			}
+			return result.response;
 		});
 	}
 
@@ -2535,6 +2596,9 @@ export function startWorkerMessageLoop(
 	/**
 	 * Handle a fetch request
 	 */
+	// WebSocket connections: connectionID → client ShovelWebSocket (for relay)
+	const wsConnections = new Map<number, any>();
+
 	async function handleFetchRequest(
 		message: WorkerRequestMessage,
 	): Promise<void> {
@@ -2545,7 +2609,60 @@ export function startWorkerMessageLoop(
 				body: message.request.body,
 			});
 
-			const response = await dispatchRequest(registration, request);
+			const result = await dispatchRequest(registration, request);
+
+			// Handle WebSocket upgrade
+			if (result.webSocket) {
+				const clientSocket = result.webSocket;
+				const connectionID = message.requestID;
+				clientSocket.accept();
+
+				// Outgoing: server.send() → client gets message → forward to main thread
+				clientSocket.addEventListener(
+					"message",
+					(ev: MessageEvent) => {
+						const data = ev.data;
+						if (data instanceof ArrayBuffer) {
+							sendMessage(
+								{type: "ws:send", connectionID, data},
+								[data],
+							);
+						} else {
+							sendMessage({
+								type: "ws:send",
+								connectionID,
+								data,
+							});
+						}
+					},
+				);
+
+				// Close: server.close() → client gets close → forward to main thread
+				clientSocket.addEventListener(
+					"close",
+					(ev: CloseEvent) => {
+						sendMessage({
+							type: "ws:close",
+							connectionID,
+							code: ev.code,
+							reason: ev.reason,
+						});
+						wsConnections.delete(connectionID);
+					},
+				);
+
+				// Store for incoming messages from main thread
+				wsConnections.set(connectionID, clientSocket);
+
+				// Signal upgrade to main thread (don't send normal response)
+				sendMessage({
+					type: "ws:upgrade",
+					requestID: message.requestID,
+				});
+				return;
+			}
+
+			const response = result.response;
 
 			// Use arrayBuffer for zero-copy transfer
 			const body = await response.arrayBuffer();
@@ -2606,6 +2723,24 @@ export function startWorkerMessageLoop(
 					error,
 				});
 			});
+			return;
+		}
+
+		// Handle WebSocket relay messages from main thread
+		if (message?.type === "ws:message") {
+			const conn = wsConnections.get(message.connectionID);
+			if (conn) {
+				conn.send(message.data);
+			}
+			return;
+		}
+
+		if (message?.type === "ws:closed") {
+			const conn = wsConnections.get(message.connectionID);
+			if (conn) {
+				conn.close(message.code, message.reason);
+				wsConnections.delete(message.connectionID);
+			}
 			return;
 		}
 
@@ -2818,4 +2953,4 @@ export async function configureLogging(
 // ============================================================================
 
 export {ShovelBroadcastChannel} from "./broadcast-channel.js";
-export {ShovelWebSocket, WebSocketPair, kWebSocket} from "./websocket.js";
+export {ShovelWebSocket, WebSocketPair} from "./websocket.js";

@@ -5,7 +5,6 @@
  * Runtime functions are in ./runtime.ts
  */
 
-import {builtinModules} from "node:module";
 import {getLogger} from "@logtape/logtape";
 import type {
 	EntryPoints,
@@ -85,7 +84,9 @@ if (config.lifecycle) {
 import {parentPort} from "node:worker_threads";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest} from "@b9g/platform/runtime";
+import {createWebSocketBridge} from "@b9g/platform";
 import NodePlatform from "@b9g/platform-node";
+import {WebSocketServer} from "ws";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -124,9 +125,13 @@ if (config.lifecycle) {
 	process.exit(0);
 } else if (directMode) {
 	// Single worker: create own HTTP server
-	const platform = new NodePlatform({port: config.port, host: config.host});
+	const platform = new NodePlatform({port: config.port, host: config.host, WebSocketServer});
 	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
+		async (request) => {
+			const result = await dispatchRequest(registration, request);
+			if (result.webSocket) return {webSocket: createWebSocketBridge(result.webSocket)};
+			return {response: result.response};
+		},
 	);
 	await server.listen();
 	parentPort?.postMessage({type: "ready"});
@@ -143,6 +148,7 @@ import {Worker} from "@b9g/node-webworker";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging} from "@b9g/platform/runtime";
 import NodePlatform from "@b9g/platform-node";
+import {WebSocketServer} from "ws";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -152,7 +158,7 @@ logger.info("Starting production server", {port: config.port, workers: config.wo
 
 // Initialize platform and register ServiceWorker
 // Override createWorker to use the imported Worker class (avoids require() issues with ESM)
-const platform = new NodePlatform({port: config.port, host: config.host, workers: config.workers});
+const platform = new NodePlatform({port: config.port, host: config.host, workers: config.workers, WebSocketServer});
 platform.createWorker = (entrypoint) => new Worker(entrypoint);
 await platform.serviceWorker.register(new URL("./worker.js", import.meta.url).href);
 await platform.serviceWorker.ready;
@@ -189,7 +195,10 @@ process.on("SIGTERM", handleShutdown);
 export function getESBuildConfig(): ESBuildConfig {
 	return {
 		platform: "node",
-		external: ["node:*", ...builtinModules],
+		// platform: "node" tells esbuild to externalize all Node.js builtins.
+		// Don't spread builtinModules — Bun's builtinModules includes non-Node
+		// packages (ws, undici) that should be bundled, not externalized.
+		external: [],
 		define: {
 			// Node.js doesn't support import.meta.env, alias to process.env
 			"import.meta.env": "process.env",
@@ -251,10 +260,20 @@ export async function createDevServer(
 	// Dynamic import - keeps NodePlatform class out of prod bundle
 	const {default: NodePlatform} = await import("./index.js");
 
+	// Dynamically load ws for dev mode WebSocket support
+	let WebSocketServer;
+	try {
+		const wsModule = await import("ws");
+		WebSocketServer = wsModule.WebSocketServer;
+	} catch {
+		logger.debug("ws package not available, WebSocket upgrades disabled in dev mode");
+	}
+
 	const platform = new NodePlatform({
 		port,
 		host,
 		workers,
+		WebSocketServer,
 	});
 
 	// Register the worker

@@ -17,18 +17,18 @@ import {CustomCacheStorage} from "@b9g/cache";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
 	type PlatformDefaults,
-	type Handler,
+	type RequestHandler,
 	type Server,
 	type ServerOptions,
 	type PlatformESBuildConfig,
 	type EntryPoints,
+	type WebSocketBridge,
 	ServiceWorkerPool,
 } from "@b9g/platform";
 import {
 	ShovelServiceWorkerRegistration,
 	kServiceWorker,
 	createCacheFactory,
-	kWebSocket,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
 
@@ -271,74 +271,47 @@ export class BunPlatform {
 	/**
 	 * Create HTTP server using Bun.serve
 	 */
-	createServer(handler: Handler, options: ServerOptions = {}): Server {
+	createServer(handler: RequestHandler, options: ServerOptions = {}): Server {
 		const requestedPort = options.port ?? this.#options.port;
 		const hostname = options.host ?? this.#options.host;
 		const reusePort = options.reusePort ?? false;
 
-		// Track WebSocket bridges by Bun ServerWebSocket → ShovelWebSocket
-		const wsBridges = new WeakMap<object, any>();
-
-		const server = Bun.serve<{clientSocket: any}>({
+		const server = Bun.serve<{bridge: WebSocketBridge}>({
 			port: requestedPort,
 			hostname,
 			reusePort,
 			websocket: {
 				open(ws) {
-					const clientSocket = ws.data.clientSocket;
-					clientSocket.accept();
-					wsBridges.set(ws, clientSocket);
-
-					// Outgoing: server.send() → client gets message → real socket
-					clientSocket.addEventListener("message", (ev: MessageEvent) => {
-						if (ws.readyState === 1 /* OPEN */) {
-							ws.send(ev.data);
-						}
-					});
-
-					// Close: server.close() → client gets close → real socket
-					clientSocket.addEventListener("close", (ev: CloseEvent) => {
-						if (ws.readyState < 2 /* not CLOSING/CLOSED */) {
-							ws.close(ev.code, ev.reason);
-						}
-					});
+					// Connect the bridge to the real Bun WebSocket
+					ws.data.bridge.connect(
+						(data: string | ArrayBuffer) => ws.send(data),
+						(code?: number, reason?: string) =>
+							ws.close(code, reason),
+					);
 				},
 				message(ws, data) {
-					// Incoming: real socket message → client.send() → server gets message
-					const clientSocket = wsBridges.get(ws);
-					if (clientSocket) {
-						clientSocket.send(data);
-					}
+					ws.data.bridge.deliver(data);
 				},
 				close(ws, code, reason) {
-					// Close from real socket → close client → server gets close
-					const clientSocket = wsBridges.get(ws);
-					if (clientSocket) {
-						clientSocket.close(code, reason);
-						wsBridges.delete(ws);
-					}
+					ws.data.bridge.deliverClose(code, reason);
 				},
 			},
 			async fetch(request, bunServer) {
 				try {
-					const response = await handler(request);
+					const result = await handler(request);
 
-					// Detect WebSocket upgrade response
-					if (response.status === 101) {
-						const clientSocket =
-							(response as any).webSocket ??
-							(response as any)[kWebSocket];
+					// WebSocket upgrade
+					if (result.webSocket) {
 						if (
-							clientSocket &&
 							bunServer.upgrade(request, {
-								data: {clientSocket},
+								data: {bridge: result.webSocket},
 							})
 						) {
 							return undefined as any;
 						}
 					}
 
-					return response;
+					return result.response;
 				} catch (error) {
 					const err = error instanceof Error ? error : new Error(String(error));
 
@@ -443,6 +416,7 @@ export class BunPlatform {
 import BunPlatform from "@b9g/platform-bun";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest} from "@b9g/platform/runtime";
+import {createWebSocketBridge} from "@b9g/platform";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -477,7 +451,11 @@ await runLifecycle(registration, config.lifecycle?.stage);
 if (!config.lifecycle) {
 	const platform = new BunPlatform({port: config.port, host: config.host});
 	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
+		async (request) => {
+			const result = await dispatchRequest(registration, request);
+			if (result.webSocket) return {webSocket: createWebSocketBridge(result.webSocket)};
+			return {response: result.response};
+		},
 		{reusePort: config.workers > 1},
 	);
 	await server.listen();

@@ -3,12 +3,10 @@
  * https://developers.cloudflare.com/workers/runtime-apis/websockets/
  *
  * Provides in-process linked WebSocket pairs for the fetch handler model.
- * The worker creates a WebSocketPair, returns the client socket (index 0) in
- * a 101 Response, and keeps the server socket (index 1) for bidirectional messaging.
+ * The worker creates a WebSocketPair, passes the client socket (index 0) via
+ * event.upgradeWebSocket(), and keeps the server socket (index 1) for
+ * bidirectional messaging.
  */
-
-/** Symbol for attaching a WebSocket to a Response (CF Workers extension) */
-export const kWebSocket = Symbol("webSocket");
 
 export class ShovelWebSocket extends EventTarget {
 	static readonly CONNECTING = 0;
@@ -170,7 +168,7 @@ export class ShovelWebSocket extends EventTarget {
 
 /**
  * WebSocketPair creates two linked WebSocket objects.
- * Index 0 is the "client" (attached to the 101 Response).
+ * Index 0 is the "client" (passed to event.upgradeWebSocket()).
  * Index 1 is the "server" (kept by user code).
  */
 export class WebSocketPair {

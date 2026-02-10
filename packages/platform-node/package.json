@@ -23,7 +23,9 @@
     "@b9g/http-errors": "workspace:*",
     "@b9g/node-webworker": "workspace:*",
     "@b9g/platform": "workspace:*",
-    "@logtape/logtape": "^1.2.0",
+    "@logtape/logtape": "^1.2.0"
+  },
+  "optionalDependencies": {
     "ws": "^8.19.0"
   },
   "devDependencies": {

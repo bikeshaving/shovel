@@ -309,11 +309,11 @@ test(
 
 			// Test request
 			const request = new Request("http://localhost/");
-			const response = await dispatchRequest(registration, request);
-			const content = await response.text();
+			const result = await dispatchRequest(registration, request);
+			const content = await result.response.text();
 
 			expect(content).toContain("Hello from static file!");
-			expect(response.headers.get("content-type")).toBe(
+			expect(result.response.headers.get("content-type")).toBe(
 				"text/html; charset=utf-8",
 			);
 		} finally {
@@ -390,29 +390,29 @@ test(
 
 			// Test different file types
 			const cssRequest = new Request("http://localhost/style.css");
-			const cssResponse = await dispatchRequest(registration, cssRequest);
-			expect(await cssResponse.text()).toBe("body { background: blue; }");
-			expect(cssResponse.headers.get("content-type")).toBe("text/css");
+			const cssResult = await dispatchRequest(registration, cssRequest);
+			expect(await cssResult.response.text()).toBe("body { background: blue; }");
+			expect(cssResult.response.headers.get("content-type")).toBe("text/css");
 
 			const jsRequest = new Request("http://localhost/script.js");
-			const jsResponse = await dispatchRequest(registration, jsRequest);
-			expect(await jsResponse.text()).toBe("console.log('loaded');");
-			expect(jsResponse.headers.get("content-type")).toBe(
+			const jsResult = await dispatchRequest(registration, jsRequest);
+			expect(await jsResult.response.text()).toBe("console.log('loaded');");
+			expect(jsResult.response.headers.get("content-type")).toBe(
 				"application/javascript",
 			);
 
 			const jsonRequest = new Request("http://localhost/data.json");
-			const jsonResponse = await dispatchRequest(registration, jsonRequest);
-			expect(await jsonResponse.text()).toBe('{"message": "test"}');
-			expect(jsonResponse.headers.get("content-type")).toBe("application/json");
+			const jsonResult = await dispatchRequest(registration, jsonRequest);
+			expect(await jsonResult.response.text()).toBe('{"message": "test"}');
+			expect(jsonResult.response.headers.get("content-type")).toBe("application/json");
 
 			// Test 404
 			const notFoundRequest = new Request("http://localhost/nonexistent.txt");
-			const notFoundResponse = await dispatchRequest(
+			const notFoundResult = await dispatchRequest(
 				registration,
 				notFoundRequest,
 			);
-			expect(notFoundResponse.status).toBe(404);
+			expect(notFoundResult.response.status).toBe(404);
 		} finally {
 			await cleanup([tempDir]);
 		}

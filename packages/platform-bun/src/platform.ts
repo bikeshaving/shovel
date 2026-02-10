@@ -76,6 +76,7 @@ startWorkerMessageLoop({registration, databases});
 import BunPlatform from "@b9g/platform-bun";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest} from "@b9g/platform/runtime";
+import {createWebSocketBridge} from "@b9g/platform";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -110,7 +111,11 @@ await runLifecycle(registration, config.lifecycle?.stage);
 if (!config.lifecycle) {
 	const platform = new BunPlatform({port: config.port, host: config.host});
 	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
+		async (request) => {
+			const result = await dispatchRequest(registration, request);
+			if (result.webSocket) return {webSocket: createWebSocketBridge(result.webSocket)};
+			return {response: result.response};
+		},
 		{reusePort: config.workers > 1},
 	);
 	await server.listen();

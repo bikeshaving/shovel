@@ -1,13 +1,15 @@
 /**
  * WebSocket upgrade tests for Node.js platform adapter
  *
- * Tests createServer() WebSocket upgrade handling in direct mode
- * (handler returns 101 Response with WebSocketPair).
+ * Tests createServer() WebSocket upgrade handling via WebSocketPair
+ * and the createWebSocketBridge helper.
  */
 
 import {test, expect, describe, afterEach} from "bun:test";
 import {NodePlatform} from "../src/index.js";
 import {WebSocketPair} from "../../platform/src/websocket.js";
+import {createWebSocketBridge} from "../../platform/src/index.js";
+import {WebSocketServer} from "ws";
 
 const TIMEOUT = 10000;
 
@@ -23,7 +25,7 @@ describe("Node.js WebSocket upgrade", () => {
 	test(
 		"WebSocket echo server via WebSocketPair",
 		async () => {
-			platform = new NodePlatform();
+			platform = new NodePlatform({WebSocketServer});
 			server = platform.createServer((request) => {
 				const url = new URL(request.url);
 				if (url.pathname === "/ws") {
@@ -35,11 +37,9 @@ describe("Node.js WebSocket upgrade", () => {
 						ws.send("echo: " + ev.data);
 					});
 
-					const response = new Response(null, {status: 101});
-					(response as any).webSocket = client;
-					return response;
+					return {webSocket: createWebSocketBridge(client)};
 				}
-				return new Response("OK");
+				return {response: new Response("OK")};
 			}, {port: 0, host: "127.0.0.1"});
 
 			await server.listen();
@@ -72,7 +72,7 @@ describe("Node.js WebSocket upgrade", () => {
 	test(
 		"WebSocket multiple messages",
 		async () => {
-			platform = new NodePlatform();
+			platform = new NodePlatform({WebSocketServer});
 			server = platform.createServer((request) => {
 				const url = new URL(request.url);
 				if (url.pathname === "/ws") {
@@ -84,11 +84,9 @@ describe("Node.js WebSocket upgrade", () => {
 						ws.send(ev.data.toUpperCase());
 					});
 
-					const response = new Response(null, {status: 101});
-					(response as any).webSocket = client;
-					return response;
+					return {webSocket: createWebSocketBridge(client)};
 				}
-				return new Response("OK");
+				return {response: new Response("OK")};
 			}, {port: 0, host: "127.0.0.1"});
 
 			await server.listen();
@@ -122,7 +120,7 @@ describe("Node.js WebSocket upgrade", () => {
 	test(
 		"WebSocket close from server",
 		async () => {
-			platform = new NodePlatform();
+			platform = new NodePlatform({WebSocketServer});
 			server = platform.createServer((request) => {
 				const url = new URL(request.url);
 				if (url.pathname === "/ws") {
@@ -135,11 +133,9 @@ describe("Node.js WebSocket upgrade", () => {
 						ws.close(1000, "done");
 					});
 
-					const response = new Response(null, {status: 101});
-					(response as any).webSocket = client;
-					return response;
+					return {webSocket: createWebSocketBridge(client)};
 				}
-				return new Response("OK");
+				return {response: new Response("OK")};
 			}, {port: 0, host: "127.0.0.1"});
 
 			await server.listen();
@@ -167,17 +163,15 @@ describe("Node.js WebSocket upgrade", () => {
 	test(
 		"regular HTTP still works alongside WebSocket",
 		async () => {
-			platform = new NodePlatform();
+			platform = new NodePlatform({WebSocketServer});
 			server = platform.createServer((request) => {
 				const url = new URL(request.url);
 				if (url.pathname === "/ws") {
 					const pair = new WebSocketPair();
-					const response = new Response(null, {status: 101});
-					(response as any).webSocket = pair[0];
 					pair[1].accept();
-					return response;
+					return {webSocket: createWebSocketBridge(pair[0])};
 				}
-				return new Response("Hello HTTP");
+				return {response: new Response("Hello HTTP")};
 			}, {port: 0, host: "127.0.0.1"});
 
 			await server.listen();
@@ -194,7 +188,7 @@ describe("Node.js WebSocket upgrade", () => {
 	test(
 		"WebSocket binary data",
 		async () => {
-			platform = new NodePlatform();
+			platform = new NodePlatform({WebSocketServer});
 			server = platform.createServer((request) => {
 				const url = new URL(request.url);
 				if (url.pathname === "/ws") {
@@ -207,11 +201,9 @@ describe("Node.js WebSocket upgrade", () => {
 						ws.send(ev.data);
 					});
 
-					const response = new Response(null, {status: 101});
-					(response as any).webSocket = client;
-					return response;
+					return {webSocket: createWebSocketBridge(client)};
 				}
-				return new Response("OK");
+				return {response: new Response("OK")};
 			}, {port: 0, host: "127.0.0.1"});
 
 			await server.listen();

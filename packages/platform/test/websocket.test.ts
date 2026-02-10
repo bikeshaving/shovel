@@ -3,7 +3,7 @@
  */
 
 import {describe, it, expect} from "bun:test";
-import {ShovelWebSocket, WebSocketPair, kWebSocket} from "../src/websocket.js";
+import {ShovelWebSocket, WebSocketPair} from "../src/websocket.js";
 
 describe("WebSocketPair", () => {
 	it("creates two linked sockets at indices 0 and 1", () => {
@@ -225,11 +225,16 @@ describe("ShovelWebSocket", () => {
 		expect(new Uint8Array(result)).toEqual(new Uint8Array([1, 2, 3, 4]));
 	});
 
-	it("kWebSocket symbol can be set on Response", () => {
+	it("upgradeWebSocket stores socket on event", () => {
 		const pair = new WebSocketPair();
-		const response = new Response(null, {status: 101});
-		(response as any)[kWebSocket] = pair[0];
-		expect((response as any)[kWebSocket]).toBe(pair[0]);
+		const request = new Request("http://localhost/ws", {
+			headers: {"Upgrade": "websocket"},
+		});
+		const {ShovelFetchEvent} = require("../src/runtime.js");
+		const event = new ShovelFetchEvent(request);
+		event.upgradeWebSocket(pair[0]);
+		expect(event.getUpgradeWebSocket()).toBe(pair[0]);
+		expect(event.hasResponded()).toBe(true);
 	});
 });
 

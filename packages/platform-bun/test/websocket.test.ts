@@ -1,13 +1,14 @@
 /**
  * WebSocket upgrade tests for Bun platform adapter
  *
- * Tests createServer() WebSocket upgrade handling in direct mode
- * (handler returns 101 Response with WebSocketPair).
+ * Tests createServer() WebSocket upgrade handling via WebSocketPair
+ * and the createWebSocketBridge helper.
  */
 
 import {test, expect, describe, afterEach} from "bun:test";
 import {BunPlatform} from "../src/index.js";
 import {WebSocketPair} from "../../platform/src/websocket.js";
+import {createWebSocketBridge} from "../../platform/src/index.js";
 
 const TIMEOUT = 10000;
 
@@ -35,17 +36,14 @@ describe("Bun WebSocket upgrade", () => {
 						ws.send("echo: " + ev.data);
 					});
 
-					const response = new Response(null, {status: 101});
-					(response as any).webSocket = client;
-					return response;
+					return {webSocket: createWebSocketBridge(client)};
 				}
-				return new Response("OK");
+				return {response: new Response("OK")};
 			}, {port: 0, host: "127.0.0.1"});
 
 			await server.listen();
 			const port = server.address().port;
 
-			// Connect with WebSocket client
 			const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
 
 			const messages: string[] = [];
@@ -84,11 +82,9 @@ describe("Bun WebSocket upgrade", () => {
 						ws.send(ev.data.toUpperCase());
 					});
 
-					const response = new Response(null, {status: 101});
-					(response as any).webSocket = client;
-					return response;
+					return {webSocket: createWebSocketBridge(client)};
 				}
-				return new Response("OK");
+				return {response: new Response("OK")};
 			}, {port: 0, host: "127.0.0.1"});
 
 			await server.listen();
@@ -134,11 +130,9 @@ describe("Bun WebSocket upgrade", () => {
 						ws.close(1000, "done");
 					});
 
-					const response = new Response(null, {status: 101});
-					(response as any).webSocket = client;
-					return response;
+					return {webSocket: createWebSocketBridge(client)};
 				}
-				return new Response("OK");
+				return {response: new Response("OK")};
 			}, {port: 0, host: "127.0.0.1"});
 
 			await server.listen();
@@ -171,18 +165,15 @@ describe("Bun WebSocket upgrade", () => {
 				const url = new URL(request.url);
 				if (url.pathname === "/ws") {
 					const pair = new WebSocketPair();
-					const response = new Response(null, {status: 101});
-					(response as any).webSocket = pair[0];
 					pair[1].accept();
-					return response;
+					return {webSocket: createWebSocketBridge(pair[0])};
 				}
-				return new Response("Hello HTTP");
+				return {response: new Response("Hello HTTP")};
 			}, {port: 0, host: "127.0.0.1"});
 
 			await server.listen();
 			const port = server.address().port;
 
-			// Regular HTTP request should still work
 			const response = await fetch(`http://127.0.0.1:${port}/hello`);
 			expect(response.status).toBe(200);
 			expect(await response.text()).toBe("Hello HTTP");
@@ -205,11 +196,9 @@ describe("Bun WebSocket upgrade", () => {
 						ws.send(ev.data);
 					});
 
-					const response = new Response(null, {status: 101});
-					(response as any).webSocket = client;
-					return response;
+					return {webSocket: createWebSocketBridge(client)};
 				}
-				return new Response("OK");
+				return {response: new Response("OK")};
 			}, {port: 0, host: "127.0.0.1"});
 
 			await server.listen();
