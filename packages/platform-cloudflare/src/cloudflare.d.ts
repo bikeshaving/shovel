@@ -11,8 +11,8 @@
 // ---------------------------------------------------------------------------
 declare module "cloudflare:workers" {
 	abstract class DurableObject<Env = unknown> {
-		protected ctx: DurableObjectState;
-		protected env: Env;
+		ctx: DurableObjectState;
+		env: Env;
 		constructor(ctx: DurableObjectState, env: Env);
 		fetch?(request: Request): Response | Promise<Response>;
 		webSocketMessage?(
@@ -25,10 +25,7 @@ declare module "cloudflare:workers" {
 			reason: string,
 			wasClean: boolean,
 		): void | Promise<void>;
-		webSocketError?(
-			ws: WebSocket,
-			error: unknown,
-		): void | Promise<void>;
+		webSocketError?(ws: WebSocket, error: unknown): void | Promise<void>;
 	}
 }
 
@@ -57,7 +54,9 @@ interface DurableObjectStorage {
 	delete(key: string): Promise<boolean>;
 	delete(keys: string[]): Promise<number>;
 	deleteAll(): Promise<void>;
-	list<T = unknown>(options?: DurableObjectStorageListOptions): Promise<Map<string, T>>;
+	list<T = unknown>(
+		options?: DurableObjectStorageListOptions,
+	): Promise<Map<string, T>>;
 }
 
 interface DurableObjectStorageListOptions {

@@ -28,7 +28,8 @@ import {getLogger} from "@logtape/logtape";
 import {envStorage} from "./variables.js";
 
 // Capture native WebSocketPair before ServiceWorkerGlobals overwrites it
-const NativeWebSocketPair = (globalThis as any).WebSocketPair as typeof WebSocketPair;
+const NativeWebSocketPair = (globalThis as any)
+	.WebSocketPair as typeof WebSocketPair;
 
 export type {ShovelConfig};
 
@@ -161,7 +162,9 @@ export function createFetchHandler(
 		if (!bcBackendConfigured && envRecord.SHOVEL_PUBSUB) {
 			const {CloudflarePubSubBackend} = await import("./pubsub.js");
 			setBroadcastChannelBackend(
-				new CloudflarePubSubBackend(envRecord.SHOVEL_PUBSUB as DurableObjectNamespace),
+				new CloudflarePubSubBackend(
+					envRecord.SHOVEL_PUBSUB as DurableObjectNamespace,
+				),
 			);
 			bcBackendConfigured = true;
 		}

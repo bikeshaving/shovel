@@ -108,10 +108,7 @@ export class ShovelPubSubDO extends DurableObject {
 		// Hibernation API handles cleanup automatically
 	}
 
-	async webSocketError(
-		_ws: WebSocket,
-		_error: unknown,
-	): Promise<void> {
+	async webSocketError(_ws: WebSocket, _error: unknown): Promise<void> {
 		// Hibernation API handles cleanup automatically
 	}
 }

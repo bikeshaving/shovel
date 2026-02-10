@@ -293,7 +293,10 @@ export class BunPlatform {
 					ws.data.bridge.deliver(
 						typeof data === "string"
 							? data
-							: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+							: data.buffer.slice(
+									data.byteOffset,
+									data.byteOffset + data.byteLength,
+								),
 					);
 				},
 				close(ws, code, reason) {
