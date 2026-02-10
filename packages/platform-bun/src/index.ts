@@ -314,6 +314,7 @@ export class BunPlatform {
 						) {
 							return undefined as any;
 						}
+						return new Response("WebSocket upgrade failed", {status: 500});
 					}
 
 					return result.response;
