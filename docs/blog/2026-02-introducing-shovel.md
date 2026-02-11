@@ -95,7 +95,7 @@ self.addEventListener("fetch", (ev) => {
 });
 ```
 
-The router uses [`MatchPattern`](https://github.com/bikeshaving/shovel/tree/main/packages/match-pattern), a URLPattern-compatible class with some fixes for surprising behavior. The `URLPattern` class passes 100% of the Web Platform Tests while being significantly faster than native browser implementations. And under the hood, the router compiles routes to a radix tree for O(1) path matching — the same algorithm used by Fastify and other high-performance routers.
+This router is both fast and standards-aligned. For instance, it uses [`MatchPattern`](https://github.com/bikeshaving/shovel/tree/main/packages/match-pattern), a URLPattern-compatible class with some fixes for surprising behavior. This class passes 100% of the Web Platform Tests while being significantly faster than native browser implementations. And under the hood, the router compiles routes to a radix tree for O(1) path matching — the same algorithm used by Fastify and other high-performance routers.
 
 Of course, it wouldn’t be a Brian Kim open source project without a creative use of generator functions. The router implements a flexible, Rack-style (last in, first out) middleware system where you can modify requests and responses with functions and generator functions.
 
