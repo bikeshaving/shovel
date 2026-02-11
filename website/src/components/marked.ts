@@ -22,9 +22,7 @@ function createRenderer(linkBase: string): Renderer {
 				const sibling = href.match(/^\.\/(.+)\.md(#.*)?$/);
 				if (sibling) {
 					const slug =
-						linkBase === "guides"
-							? stripNumericPrefix(sibling[1])
-							: sibling[1];
+						linkBase === "guides" ? stripNumericPrefix(sibling[1]) : sibling[1];
 					href = "/" + linkBase + "/" + slug + (sibling[2] || "");
 				}
 			}
