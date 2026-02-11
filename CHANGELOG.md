@@ -2,6 +2,16 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.8] - 2026-02-10
+
+### Bug Fixes
+
+- **Config file watching during develop** - `shovel.json` and `package.json` changes are now correctly detected during `shovel develop`. The previous `fs.watch()` approach broke on atomic saves (most editors write to a temp file then rename). Now uses esbuild's native `watchFiles` mechanism which handles this correctly. ([#59](https://github.com/bikeshaving/shovel/issues/59))
+
+### Features
+
+- **Dev server keyboard shortcuts** - `Ctrl+R` (reload), `Ctrl+L` (clear), `Ctrl+C` (quit), `?` (help) shortcuts in the dev server terminal. Only active when stdin is a TTY. ([#60](https://github.com/bikeshaving/shovel/issues/60))
+
 ## [0.2.7] - 2026-02-06
 
 ### Features
