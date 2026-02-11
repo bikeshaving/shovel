@@ -22,6 +22,21 @@ The output directory for production builds. Shovel writes bundled server code un
 
 Response caching APIs backed by platform-specific cache storage. See [Caches](./caches.md).
 
+## Component
+
+A function used as a JSX element type. HTML has a fixed set of tags — `<div>`, `<span>`, `<h1>` — but JSX extends this so that any function can be used as a tag:
+
+```jsx
+function Greeting({name}) {
+  return <p>Hello, {name}!</p>;
+}
+
+// Use it like an HTML tag:
+<Greeting name="world" />
+```
+
+When you write `<Greeting name="world" />`, the function `Greeting` is called with `{name: "world"}` as its argument, and its return value is rendered. This is the core idea: functions become composable, callable HTML tags. Components can be sync functions, async functions, or generator functions. See [JSX](#jsx).
+
 ## Configuration
 
 Project configuration via `shovel.json` and environment variables. See [shovel.json](./shovel-json.md).
@@ -49,6 +64,20 @@ CLI options can be provided via environment variables like `PORT`, `HOST`, and `
 ## Fetch Event
 
 The ServiceWorker event that handles incoming HTTP requests. See [ServiceWorker](./serviceworker.md#fetch-event).
+
+## JSX
+
+A [syntax extension](https://facebook.github.io/jsx/) that lets you write HTML-like expressions in JavaScript. The key innovation is that JSX unifies HTML tags and function calls into one syntax: `<div>` renders a DOM element, `<MyComponent />` calls a function. Attributes become a props object passed as the first argument. This idea — that functions are callable tags — is not tied to JSX syntax specifically. Crank.js provides a [tagged template alternative](https://crank.js.org/guides/jsx-template-tag/) that expresses the same concept without a compilation step:
+
+```js
+// JSX (requires build step)
+<Greeting name="world" />
+
+// Tagged template (runs directly in browsers)
+jsx`<${Greeting} name="world" />`
+```
+
+Both forms compile or evaluate to the same function call. JSX itself has no runtime — it is compiled to function calls by the build system.
 
 ## Lifecycle
 

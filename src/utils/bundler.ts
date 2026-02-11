@@ -117,7 +117,6 @@ export class ServerBundler {
 	#initialBuildComplete: boolean;
 	#initialBuildResolve?: (result: BuildResult) => void;
 	#currentOutputs: BuildOutputs;
-	#configWatchers: FSWatcher[];
 	#dirWatchers: Map<string, {watcher: FSWatcher; files: Set<string>}>;
 	#userEntryPath: string;
 	#watchOptions?: WatchOptions;
@@ -130,7 +129,6 @@ export class ServerBundler {
 		this.#projectRoot = findProjectRoot();
 		this.#initialBuildComplete = false;
 		this.#currentOutputs = {worker: ""};
-		this.#configWatchers = [];
 		this.#dirWatchers = new Map();
 		this.#userEntryPath = "";
 		this.#changedFiles = new Set();
@@ -213,9 +211,19 @@ export class ServerBundler {
 		logger.debug("Starting esbuild watch mode");
 		await this.#ctx.watch();
 
-		this.#watchConfigFiles();
-
 		return initialBuildPromise;
+	}
+
+	/**
+	 * Trigger an immediate rebuild.
+	 * Only works in watch mode (after calling watch()).
+	 */
+	async rebuild(): Promise<void> {
+		if (!this.#ctx) {
+			throw new Error("Cannot rebuild: bundler is not in watch mode");
+		}
+
+		await this.#ctx.rebuild();
 	}
 
 	/**
@@ -226,11 +234,6 @@ export class ServerBundler {
 			clearTimeout(this.#rebuildTimeout);
 			this.#rebuildTimeout = undefined;
 		}
-
-		for (const watcher of this.#configWatchers) {
-			watcher.close();
-		}
-		this.#configWatchers = [];
 
 		for (const entry of this.#dirWatchers.values()) {
 			entry.watcher.close();
@@ -638,33 +641,6 @@ export class ServerBundler {
 					`Build failed: Unexpected external imports found:\n${externals}\n\n` +
 						`These modules are not bundled and won't be available at runtime.`,
 				);
-			}
-		}
-	}
-
-	/**
-	 * Watch config files for changes.
-	 */
-	#watchConfigFiles() {
-		const configFiles = ["shovel.json", "package.json"];
-
-		for (const filename of configFiles) {
-			const filepath = join(this.#projectRoot, filename);
-			if (!existsSync(filepath)) continue;
-
-			try {
-				const watcher = watch(filepath, {persistent: false}, (event) => {
-					if (event === "change") {
-						this.#scheduleRebuild(filepath);
-					}
-				});
-
-				this.#configWatchers.push(watcher);
-			} catch (err) {
-				logger.warn("Failed to watch {file}: {error}", {
-					file: filename,
-					error: err,
-				});
 			}
 		}
 	}

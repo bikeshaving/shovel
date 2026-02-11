@@ -95,6 +95,9 @@ export async function developCommand(
 			ReturnType<typeof platformModule.createDevServer>
 		> | null = null;
 
+		const SHORTCUTS_HELP =
+			"Shortcuts: Ctrl+R (reload) · Ctrl+L (clear) · Ctrl+C (quit) · ? (help)";
+
 		// Helper to start or reload the server
 		const startOrReloadServer = async (workerPath: string) => {
 			if (!devServer) {
@@ -115,6 +118,10 @@ export async function developCommand(
 					});
 				} else {
 					logger.info("Server running at {url}", {url: urls.local});
+				}
+
+				if (process.stdin.isTTY) {
+					logger.info(SHORTCUTS_HELP);
 				}
 			} else {
 				// Subsequent builds - hot reload workers
@@ -162,6 +169,32 @@ export async function developCommand(
 
 		process.on("SIGINT", () => shutdown("SIGINT"));
 		process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+		// Keyboard shortcuts when running interactively
+		if (process.stdin.isTTY) {
+			process.stdin.setRawMode(true);
+			process.stdin.resume();
+			process.stdin.setEncoding("utf8");
+
+			process.stdin.on("data", async (key: string) => {
+				switch (key) {
+					case "\x12": // Ctrl+R
+						logger.info("Manual reload...");
+						await bundler.rebuild();
+						break;
+					case "\x0C": // Ctrl+L
+						// eslint-disable-next-line no-console
+						console.clear();
+						break;
+					case "\x03": // Ctrl+C
+						await shutdown("SIGINT");
+						break;
+					case "?":
+						logger.info(SHORTCUTS_HELP);
+						break;
+				}
+			});
+		}
 
 		// Keep the process alive
 		await new Promise(() => {});

@@ -1,83 +1,124 @@
 # @b9g/platform-bun
 
-Bun platform adapter for Shovel. Runs ServiceWorker applications on Bun with native HTTP server integration and fast hot reloading.
+Bun platform adapter for Shovel. Runs ServiceWorker applications on [Bun](https://bun.sh) with native HTTP server, WebSocket support, and OS-level load balancing via `reusePort`.
 
 ## Features
 
-- Bun HTTP server integration
-- Fast hot module reloading
-- Worker thread support for concurrency
-- Memory and filesystem cache backends
-- File System Access API implementation via BunBucket
+- Native `Bun.serve()` HTTP + WebSocket server
+- Built-in TypeScript/JSX support (no transpilation step)
+- Worker threads with `reusePort` for zero-overhead load balancing
+- Hot module reloading for development
+- ServiceWorker lifecycle support (install, activate, fetch events)
+- File System Access API via `@b9g/filesystem`
 
 ## Installation
 
 ```bash
-bun install @b9g/platform-bun
+bun add @b9g/platform-bun
 ```
 
 ## Usage
 
-```javascript
-import BunPlatform from '@b9g/platform-bun';
+### ServiceWorker Application
 
-const platform = new BunPlatform({
-  cache: { type: 'memory' },
-  filesystem: { type: 'local', directory: './dist' }
-});
+```typescript
+import BunPlatform from "@b9g/platform-bun";
 
+const platform = new BunPlatform({port: 3000, workers: 4});
+await platform.serviceWorker.register("./dist/server/worker.js");
+await platform.serviceWorker.ready;
+await platform.listen();
+```
+
+### Standalone Server
+
+```typescript
+import BunPlatform from "@b9g/platform-bun";
+
+const platform = new BunPlatform();
 const server = platform.createServer(async (request) => {
-  return new Response('Hello from Bun');
-}, { port: 7777, host: 'localhost' });
-
+  return new Response("Hello from Bun");
+});
 await server.listen();
 ```
 
 ## Exports
 
-### Classes
-
-- `BunPlatform` - Bun platform implementation (extends BasePlatform)
-
-### Types
-
-- `BunPlatformOptions` - Configuration options for BunPlatform
-
-### Re-exports from @b9g/platform
-
-- `Platform`, `CacheConfig`, `StaticConfig`, `Handler`, `Server`, `ServerOptions`
-
-### Default Export
-
-- `BunPlatform` - The platform class
+- **`BunPlatform`** (default) -- Main platform class
+- **`BunServiceWorkerContainer`** -- ServiceWorker container managing worker lifecycle
+- **`BunPlatformOptions`** -- Constructor options type
+- **`DefaultCache`** -- Re-exported `MemoryCache` for config references
 
 ## API
 
 ### `new BunPlatform(options?)`
 
-Creates a new Bun platform instance.
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `port` | `number` | `7777` | Server port |
+| `host` | `string` | `"localhost"` | Server host |
+| `cwd` | `string` | `process.cwd()` | Working directory |
+| `workers` | `number` | `1` | Number of worker threads |
+| `config` | `ShovelConfig` | -- | Shovel config (caches, directories) |
 
-**Options:**
-- `cache`: Cache configuration (memory, filesystem)
-- `filesystem`: Filesystem configuration (local directory)
-- `port`: Default port (default: 7777)
-- `host`: Default host (default: localhost)
-- `cwd`: Working directory for file resolution
+### `platform.createServer(handler, options?)`
 
-### `platform.createServer(handler, options)`
+Creates a Bun HTTP server with WebSocket upgrade support.
 
-Creates a Bun HTTP server with the given request handler.
+- **`handler`**: `(request: Request) => Promise<Response | HandleResult>`
+- **`options.port`**: Override port
+- **`options.host`**: Override host
+- **`options.reusePort`**: Enable OS-level load balancing (used in multi-worker production)
 
-**Options:**
-- `port`: Port to listen on
-- `host`: Host to bind to
+Returns a `Server` with `listen()`, `close()`, `url`, `address()`, and `ready`.
 
-Returns a Server instance with `listen()` and `close()` methods.
+### `platform.serviceWorker`
 
-## Cache Backends
+`BunServiceWorkerContainer` implementing the standard `ServiceWorkerContainer` interface:
 
-- `memory`: In-memory caching using MemoryCache
-- `filesystem`: Filesystem-based caching using BunBucket
+- **`register(scriptURL, options?)`** -- Register a ServiceWorker, spawns worker threads
+- **`ready`** -- Promise resolving when registration is active
+- **`getRegistration(scope?)`** / **`getRegistrations()`** -- Query registrations
+
+### `platform.getEntryPoints(userEntryPath, mode)`
+
+Returns generated entry point code for bundling. Used by the build system.
+
+- **Development**: `{worker}` -- Single worker with message loop
+- **Production**: `{supervisor, worker}` -- Supervisor spawns workers with `reusePort`
+
+### `platform.getESBuildConfig()`
+
+Returns Bun-specific esbuild configuration: `platform: "node"`, externals for `node:*`, `bun`, `bun:*`, and Node.js builtins.
+
+## Worker Architecture
+
+### Development
+
+Single worker managed by the `shovel develop` CLI. The develop command owns the HTTP server; the worker handles requests via message loop.
+
+### Production
+
+Each worker creates its own `Bun.serve()` with `reusePort`, letting the OS kernel load-balance connections. No message passing overhead between supervisor and workers.
+
+```
+Supervisor (index.js)
+  ├── Worker 1 (worker.js) ── Bun.serve(:3000, reusePort)
+  ├── Worker 2 (worker.js) ── Bun.serve(:3000, reusePort)
+  └── Worker N (worker.js) ── Bun.serve(:3000, reusePort)
+```
+
+The supervisor handles graceful shutdown (SIGINT/SIGTERM) and BroadcastChannel relay between workers.
+
+## How It Differs from @b9g/platform-node
+
+| | Bun | Node.js |
+|---|---|---|
+| **HTTP** | `Bun.serve()` | `node:http` + `ws` |
+| **WebSocket** | Built-in | Requires `ws` package |
+| **Load balancing** | OS-level via `reusePort` | Round-robin message passing |
+| **TypeScript** | Native support | VM module transpilation |
+| **Multi-worker** | Each worker binds own port | Supervisor distributes requests |
 
 ## License
 
