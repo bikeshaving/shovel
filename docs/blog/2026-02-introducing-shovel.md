@@ -275,19 +275,19 @@ async function generateStaticSite() {
 }
 ```
 
-With this utility function and `install` handler, we can add SSG to any website without having to modify fetch handlers. And because you can write to the same FileSystem directory where assets are written (public), client-side JavaScript and other static references just work.
+With this utility function and `install` handler, we can add SSG to any website without having to modify fetch handlers. And because you can write to the same `FileSystem` directory where assets are written (public), client-side JavaScript and other static references just work.
 
 ## Early Adopters Welcome
 
-Three months ago, I didn’t know if AI could help me build a server framework, or if the result would be any good. Shovel turned out to be the framework I’ve always dreamed of. It’s obsessively standards-based, carefully designed, and definitely not a vibe-coded throwaway.
+Three months ago, I didn’t know if AI could help me build a server framework, or if the result would be any good. In the end, Shovel turned out to be the framework I’ve always dreamed of. It’s obsessively standards-based, carefully designed, and definitely not a vibe-coded throwaway.
 
 Shovel was built primarily with Claude Code, and in the development process I bore witness to numerous superhuman feats by it along the way: when the router was slow, Claude added radix trees; when native `URLPattern` was slow, Claude implemented a `RegExp`-based alternative passing 100% of web platform tests; when I wanted a DSL for `shovel.json`, Claude one-shot it after careful planning; when I got frustrated with DrizzleORM, we designed [ZenDB](https://github.com/bikeshaving/ZenDB) over the holidays. Open source software development is still hard work, but it’s new work, where I ideate and plan with Claude, watch it grant my wishes, and then verify the code wasn’t written in a dumb way.
 
-Therefore, I’m happy to announce that Shovel.js is ready for early adopters. There are certainly bugs, and there will be breaking changes, but I’m using it for everything now. And if you’re building with AI, you should know that Shovel works great with LLMs because it targets one of their greatest strengths: high-fidelity knowledge of web standards. Shovel provides the predictable, standards-based foundation that lets agents do their best work, and if you encounter any behavior which is inconsistent with standards that’s a bug.
+Therefore, I’m happy to announce that Shovel.js is ready for early adopters. There are certainly bugs, and there will be breaking changes, but I’m using it for everything now. And if you’re building with AI, you should know that Shovel works great with LLMs because it targets one of their greatest strengths: high-fidelity knowledge of web standards. Shovel provides the predictable, standards-based foundation that lets agents do their best work. And if you encounter any behavior which is inconsistent with standards, please open an issue because that’s a bug.
 
-The roadmap is ambitious: sessions, authentication, websockets, cron jobs, email; ultimately, I want Shovel to be maximally batteries included, complete with an admin interface like Django. To this extent, if you know of any interesting web standards, or libraries that are so well-specified that they *should* be web standards, please let me know.
+The roadmap is ambitious: sessions, authentication, websockets, cron jobs, email; ultimately, I want Shovel to be maximally batteries included, complete with an admin interface like Django. To this extent, if you know of any interesting web standards, or libraries that are so well-specified that they *should* be web standards, please let me know. I’ve already gotten started on implementing `IndexedDB` and `BroadcastChannel` across platforms.
 
-Thank you so much for reading this far. I hope I've convinced you to try Shovel. You can get started right now:
+If you’ve read this far, I hope I've convinced you to try Shovel. You can get started right now:
 
 ```bash
 npm create shovel my-app
