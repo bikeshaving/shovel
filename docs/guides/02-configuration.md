@@ -62,7 +62,7 @@ The `path` field is resolved relative to the project root. You can point to dire
 }
 ```
 
-See the [Filesystem Reference](/reference/filesystem) for all configuration fields and available implementations.
+See the [Filesystem Reference](../reference/filesystem.md) for all configuration fields and available implementations.
 
 ## Caches
 
