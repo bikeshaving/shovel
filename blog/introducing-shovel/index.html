@@ -95,7 +95,7 @@ router<span class="token punctuation">.</span><span class="token function">use</
 </code></pre>
 <p>The <code>yield</code> operator marks where control passes to the next handler. When that handler returns, execution resumes after the yield with the response. Other frameworks typically use a separate <code>next()</code> function to pass to later middleware, whereas the Shovel router uses control flow to clarify the middleware lifecycle: before <code>yield</code> is the request phase, after <code>yield</code> is the response phase. Using control flow means you can’t have situations where you forget to call <code>next()</code>, or call it outside of an async middleware’s execution window.</p>
 <h3 id="curated-globals">Curated Globals</h3>
-<p>As we’ve seen, browser Service Workers have a built-in cache abstraction (<code>self.caches</code>), but servers also need access to things like file systems, loggers and databases. While you could import libraries or use Node globals like Node’s <code>fs</code>, we’ve taken the Service Worker storage pattern and expanded them into a curated set of helpful globals.</p>
+<p>As we’ve seen, browser Service Workers have a built-in cache abstraction (<code>self.caches</code>), but servers also need access to things like file systems, loggers and databases. While you could import libraries or use Node globals like Node’s <code>fs</code>, we’ve taken the Service Worker storage pattern and expanded it into a curated set of helpful globals.</p>
 <p>Not everything earns a spot on <code>self</code>. Each API has to be:</p>
 <ul>
 <li>Configurable across multiple backends</li>
