@@ -64,5 +64,5 @@ return Response.redirect("/new-path", 301);
 
 ## Next Steps
 
-- See [Router Reference](/api/router) for advanced patterns
-- Learn about [Middleware](/api/middleware) for request processing
+- See [Router Reference](../reference/router.md) for advanced patterns
+- Learn about [Middleware](../reference/middleware.md) for request processing

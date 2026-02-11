@@ -421,7 +421,7 @@ Configure shutdown timeout in your process manager or orchestrator.
 
 ## See Also
 
-- [CLI](./cli.md) - Build commands
-- [shovel.json](./shovel-json.md) - Configuration reference
-- [Databases](./databases.md) - Database configuration
-- [Directories](./directories.md) - File storage
+- [CLI](../reference/cli.md) - Build commands
+- [shovel.json](../reference/shovel-json.md) - Configuration reference
+- [ZenDB](../reference/zen.md) - Database configuration
+- [FileSystem](../reference/filesystem.md) - File storage

@@ -72,5 +72,5 @@ import favicon from "./favicon.ico" with {
 
 ## Next Steps
 
-- See [Assets Reference](/api/assets) for all options
-- Learn about [Deployment](/api/cli) for production builds
+- See [Assets Reference](../reference/assets.md) for all options
+- Learn about [Deployment](../reference/cli.md) for production builds

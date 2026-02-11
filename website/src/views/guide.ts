@@ -36,7 +36,7 @@ export default async function Guide({url}: ViewProps) {
 			<${Sidebar} docs=${docs} url=${url} title="Guides" />
 			<${Main}>
 				<h1>${title}</h1>
-				<${Marked} markdown=${body} />
+				<${Marked} markdown=${body} linkBase="guides" />
 			<//Main>
 		<//Root>
 	`;
