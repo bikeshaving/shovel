@@ -243,9 +243,7 @@ router.route("/").get(() => {
 
 Using import attributes means no file-based routing, no special bundler plugins, no magical HTML file which gets rewritten with the correct final assets.
 
-Furthermore, while I set out to build a meta-framework for my own UI framework (Crank.js), it turned out that this approach meant that Shovel could be a framework-agnostic server and compiler.
-
-The framework passes imports to ESBuild for bundling, hashing, and code splitting, then serves them via middleware backed by `self.directories.open("public")`. Because assets resolve to plain URL strings, Shovel works with any client framework that doesn’t require complex bespoke compilation ([HTMX](https://htmx.org), [Lit](https://lit.dev), [Alpine.js](https://alpinejs.dev)). It can even work with vanilla JavaScript.
+Furthermore, while I set out to build a meta-framework for my own UI framework (Crank.js), it turned out that this approach meant that Shovel could be a framework-agnostic server and compiler. The framework passes imports to ESBuild for bundling, hashing, and code splitting, then serves them via middleware backed by `self.directories.open("public")`. Because assets resolve to plain URL strings, Shovel works with any client framework that doesn’t require complex bespoke compilation ([HTMX](https://htmx.org), [Lit](https://lit.dev), [Alpine.js](https://alpinejs.dev)). It can even work with vanilla JavaScript.
 
 ### Truly Universal Rendering
 
