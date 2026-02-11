@@ -156,7 +156,7 @@ handle<span class="token punctuation">.</span><span class="token function">close
 <tr>
 <td><code>path</code></td>
 <td><code>string</code></td>
-<td>Filesystem path</td>
+<td>Filesystem path (relative to project root, or absolute)</td>
 </tr>
 <tr>
 <td><code>binding</code></td>
@@ -180,6 +180,7 @@ handle<span class="token punctuation">.</span><span class="token function">close
 </tr>
 </tbody></table>
 <h3 id="built-in-directories">Built-in Directories</h3>
+<p>The names <code>server</code>, <code>public</code>, and <code>tmp</code> are provided by the platform and do not require <code>module</code> or <code>export</code>:</p>
 <table>
 <thead>
 <tr>
@@ -204,6 +205,28 @@ handle<span class="token punctuation">.</span><span class="token function">close
 <td>Temporary files</td>
 </tr>
 </tbody></table>
+<h3 id="custom-directories">Custom Directories</h3>
+<p>Any other directory name requires an explicit <code>module</code> and optionally <code>export</code>. The <code>path</code> field is resolved relative to the project root. Paths outside the project are supported:</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"directories"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"uploads"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@b9g/filesystem/node-fs"</span><span class="token punctuation">,</span>
+      <span class="token property">"path"</span><span class="token operator">:</span> <span class="token string">"./uploads"</span>
+    <span class="token punctuation">}</span><span class="token punctuation">,</span>
+    <span class="token property">"docs"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@b9g/filesystem/node-fs"</span><span class="token punctuation">,</span>
+      <span class="token property">"path"</span><span class="token operator">:</span> <span class="token string">"../docs"</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<p>Once configured, access directories using the standard API:</p>
+<pre><code class="language-typescript"><span class="token keyword">const</span> docs <span class="token operator">=</span> <span class="token keyword">await</span> self<span class="token punctuation">.</span>directories<span class="token punctuation">.</span><span class="token function">open</span><span class="token punctuation">(</span><span class="token string">"docs"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token keyword">for</span> <span class="token keyword">await</span> <span class="token punctuation">(</span><span class="token keyword">const</span> <span class="token punctuation">[</span>name<span class="token punctuation">,</span> handle<span class="token punctuation">]</span> <span class="token keyword">of</span> docs<span class="token punctuation">.</span><span class="token function">entries</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+  <span class="token builtin">console</span><span class="token punctuation">.</span><span class="token function">log</span><span class="token punctuation">(</span>name<span class="token punctuation">,</span> handle<span class="token punctuation">.</span>kind<span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<p>Directory traversal within opened directories is blocked at the filesystem level — only the configured root path itself can point outside the project.</p>
 <hr>
 <h2 id="implementations">Implementations</h2>
 <table>

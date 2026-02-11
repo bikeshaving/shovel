@@ -296,17 +296,17 @@
 <tr>
 <td><code>export</code></td>
 <td><code>string</code></td>
-<td>Named export</td>
+<td>Named export (default: <code>&quot;default&quot;</code>)</td>
 </tr>
 <tr>
 <td><code>path</code></td>
 <td><code>string</code></td>
-<td>Filesystem path</td>
+<td>Filesystem path (relative to project root, or absolute)</td>
 </tr>
 <tr>
 <td><code>binding</code></td>
 <td><code>string</code></td>
-<td>Platform binding</td>
+<td>Platform binding (Cloudflare)</td>
 </tr>
 <tr>
 <td><code>bucket</code></td>
@@ -324,6 +324,53 @@
 <td>S3 endpoint</td>
 </tr>
 </tbody></table>
+<h3 id="built-in-directories">Built-in Directories</h3>
+<p>The names <code>server</code>, <code>public</code>, and <code>tmp</code> have platform defaults and do not require <code>module</code> or <code>export</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Default Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>server</code></td>
+<td><code>[outdir]/server</code></td>
+<td>Server-side bundled code</td>
+</tr>
+<tr>
+<td><code>public</code></td>
+<td><code>[outdir]/public</code></td>
+<td>Static assets</td>
+</tr>
+<tr>
+<td><code>tmp</code></td>
+<td><code>[tmpdir]</code></td>
+<td>Temporary files</td>
+</tr>
+</tbody></table>
+<h3 id="custom-directories">Custom Directories</h3>
+<p>Any other directory name requires an explicit <code>module</code> (and optionally <code>export</code>):</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"directories"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"uploads"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@b9g/filesystem/node-fs"</span><span class="token punctuation">,</span>
+      <span class="token property">"path"</span><span class="token operator">:</span> <span class="token string">"./uploads"</span>
+    <span class="token punctuation">}</span><span class="token punctuation">,</span>
+    <span class="token property">"shared"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@b9g/filesystem/node-fs"</span><span class="token punctuation">,</span>
+      <span class="token property">"path"</span><span class="token operator">:</span> <span class="token string">"../shared-data"</span>
+    <span class="token punctuation">}</span><span class="token punctuation">,</span>
+    <span class="token property">"assets"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@b9g/filesystem-s3"</span><span class="token punctuation">,</span>
+      <span class="token property">"bucket"</span><span class="token operator">:</span> <span class="token string">"my-assets"</span><span class="token punctuation">,</span>
+      <span class="token property">"region"</span><span class="token operator">:</span> <span class="token string">"us-east-1"</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<p>The <code>path</code> field is resolved relative to the project root. Paths outside the project (e.g. <code>&quot;../docs&quot;</code>) are supported. Directory traversal within opened directories is blocked at the filesystem level.</p>
 <hr>
 <h2 id="databases">databases</h2>
 <pre><code class="language-json"><span class="token punctuation">{</span>

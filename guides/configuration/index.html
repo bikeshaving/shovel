@@ -15,7 +15,7 @@
 <span class="token punctuation">}</span>
 </code></pre>
 <h2 id="directories">Directories</h2>
-<p>Directories provide access to the filesystem using the File System Access API:</p>
+<p>Directories provide access to the filesystem using the <a href="https://developer.mozilla.org/en-US/docs/Web/API/File_System_API">File System Access API</a>:</p>
 <pre><code class="language-json"><span class="token punctuation">{</span>
   <span class="token property">"directories"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
     <span class="token property">"uploads"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
@@ -31,6 +31,18 @@
   <span class="token comment">// Use File System Access API</span>
 <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
 </code></pre>
+<p>Custom directories require <code>module</code> (and optionally <code>export</code>). The built-in names <code>server</code>, <code>public</code>, and <code>tmp</code> have platform defaults and don&#39;t need these fields.</p>
+<p>The <code>path</code> field is resolved relative to the project root. You can point to directories outside your project:</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"directories"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+    <span class="token property">"shared"</span><span class="token operator">:</span> <span class="token punctuation">{</span>
+      <span class="token property">"module"</span><span class="token operator">:</span> <span class="token string">"@b9g/filesystem/node-fs"</span><span class="token punctuation">,</span>
+      <span class="token property">"path"</span><span class="token operator">:</span> <span class="token string">"../shared-data"</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<p>See the <a href="/reference/filesystem">Filesystem Reference</a> for all configuration fields and available implementations.</p>
 <h2 id="caches">Caches</h2>
 <p>Caches provide the standard Cache API for response caching:</p>
 <pre><code class="language-json"><span class="token punctuation">{</span>
