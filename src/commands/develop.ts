@@ -183,6 +183,7 @@ export async function developCommand(
 						await bundler.rebuild();
 						break;
 					case "\x0C": // Ctrl+L
+						// eslint-disable-next-line no-console
 						console.clear();
 						break;
 					case "\x03": // Ctrl+C

@@ -1683,7 +1683,11 @@ test(
 			// Create temp directory WITHOUT shovel.json — start from no config
 			const tempDirPath = await mkdtemp(join(tmpdir(), "shovel-test-"));
 			const nodeModulesSource = join(process.cwd(), "node_modules");
-			await FS.symlink(nodeModulesSource, join(tempDirPath, "node_modules"), "dir");
+			await FS.symlink(
+				nodeModulesSource,
+				join(tempDirPath, "node_modules"),
+				"dir",
+			);
 
 			tempDir = {
 				dir: tempDirPath,
@@ -1759,7 +1763,11 @@ test(
 			// Create temp directory with only package.json (no shovel.json)
 			const tempDirPath = await mkdtemp(join(tmpdir(), "shovel-test-"));
 			const nodeModulesSource = join(process.cwd(), "node_modules");
-			await FS.symlink(nodeModulesSource, join(tempDirPath, "node_modules"), "dir");
+			await FS.symlink(
+				nodeModulesSource,
+				join(tempDirPath, "node_modules"),
+				"dir",
+			);
 
 			// Create package.json with initial shovel config
 			await FS.writeFile(
