@@ -128,7 +128,7 @@ The `yield` operator marks where control passes to the next handler. When that h
 
 ### Curated Globals
 
-As we’ve seen, browser Service Workers have a built-in cache abstraction (`self.caches`), but servers also need access to things like file systems, loggers and databases. While you could import libraries or use Node globals like Node’s `fs`, we’ve taken the Service Worker storage pattern and expanded them into a curated set of helpful globals.
+As we’ve seen, browser Service Workers have a built-in cache abstraction (`self.caches`), but servers also need access to things like file systems, loggers and databases. While you could import libraries or use Node globals like Node’s `fs`, we’ve taken the Service Worker storage pattern and expanded it into a curated set of helpful globals.
 
 Not everything earns a spot on `self`. Each API has to be:
 - Configurable across multiple backends
