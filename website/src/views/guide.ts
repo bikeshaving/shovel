@@ -1,5 +1,4 @@
 import {jsx} from "@b9g/crank/standalone";
-import * as Path from "path";
 import {NotFound} from "@b9g/http-errors";
 
 import {Root} from "../components/root.js";
@@ -12,13 +11,10 @@ interface ViewProps {
 	params: Record<string, string>;
 }
 
-const __dirname = new URL(".", import.meta.url).pathname;
-
 export default async function Guide({url}: ViewProps) {
-	const docs = await collectDocuments(
-		Path.join(__dirname, "../../../docs/guides"),
-		Path.join(__dirname, "../../../docs/"),
-	);
+	const docsDir = await self.directories.open("docs");
+	const guidesDir = await docsDir.getDirectoryHandle("guides");
+	const docs = await collectDocuments(guidesDir, {pathPrefix: "guides"});
 
 	const post = docs.find(
 		(doc) => doc.url.replace(/\/$/, "") === url.replace(/\/$/, ""),

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@b9g/assets": "workspace:*",
+    "@b9g/filesystem": "workspace:*",
     "@b9g/crank": "^0.7.5",
     "@b9g/http-errors": "workspace:*",
     "@b9g/platform": "workspace:*",

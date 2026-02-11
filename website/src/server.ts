@@ -1,5 +1,3 @@
-import * as Path from "path";
-
 import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
@@ -8,8 +6,6 @@ import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 
 import {collectDocuments} from "./models/document.js";
 import {collectBlogPosts} from "./models/blog.js";
-
-const __dirname = new URL(".", import.meta.url).pathname;
 
 // Import views
 import HomeView from "./views/home.js";
@@ -125,18 +121,16 @@ async function generateStaticSite() {
 		// Static routes
 		const staticRoutes = ["/", "/api", "/blog"];
 
+		const docsDir = await self.directories.open("docs");
+
 		// Collect guides
-		const guideDocs = await collectDocuments(
-			Path.join(__dirname, "../../docs/guides"),
-			Path.join(__dirname, "../../docs"),
-		);
+		const guidesDir = await docsDir.getDirectoryHandle("guides");
+		const guideDocs = await collectDocuments(guidesDir, {pathPrefix: "guides"});
 		staticRoutes.push(...guideDocs.map((doc) => doc.url));
 
 		// Collect reference docs (served at /api/)
-		const refDocs = await collectDocuments(
-			Path.join(__dirname, "../../docs/reference"),
-			Path.join(__dirname, "../../docs/reference"),
-		);
+		const refDir = await docsDir.getDirectoryHandle("reference");
+		const refDocs = await collectDocuments(refDir);
 		staticRoutes.push(
 			...refDocs
 				.filter((doc) => doc.url !== "/index")
@@ -144,9 +138,8 @@ async function generateStaticSite() {
 		);
 
 		// Collect blog posts
-		const blogPosts = await collectBlogPosts(
-			Path.join(__dirname, "../../docs/blog"),
-		);
+		const blogDir = await docsDir.getDirectoryHandle("blog");
+		const blogPosts = await collectBlogPosts(blogDir);
 		staticRoutes.push(...blogPosts.map((post) => post.url));
 
 		logger.info(`Pre-rendering ${staticRoutes.length} routes...`);

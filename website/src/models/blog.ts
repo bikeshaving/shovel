@@ -1,22 +1,26 @@
-import FS from "fs/promises";
-import type {Stats} from "fs";
-import * as Path from "path";
 import frontmatter from "front-matter";
 
 interface WalkInfo {
 	filename: string;
-	stats: Stats;
 }
 
-async function* walk(dir: string): AsyncGenerator<WalkInfo> {
-	const files = (await FS.readdir(dir)).sort();
-	for (let filename of files) {
-		filename = Path.join(dir, filename);
-		const stats = await FS.stat(filename);
-		if (stats.isDirectory()) {
-			yield* walk(filename);
-		} else if (stats.isFile()) {
-			yield {filename, stats};
+async function* walk(
+	dir: FileSystemDirectoryHandle,
+	basePath: string = "",
+): AsyncGenerator<WalkInfo> {
+	const entries: Array<[string, FileSystemHandle]> = [];
+	for await (const entry of dir.entries()) {
+		entries.push(entry);
+	}
+
+	entries.sort((a, b) => a[0].localeCompare(b[0]));
+
+	for (const [name, handle] of entries) {
+		const path = basePath ? `${basePath}/${name}` : name;
+		if (handle.kind === "directory") {
+			yield* walk(handle as FileSystemDirectoryHandle, path);
+		} else {
+			yield {filename: path};
 		}
 	}
 }
@@ -36,19 +40,28 @@ export interface BlogPost {
 }
 
 export async function collectBlogPosts(
-	pathname: string,
+	dir: FileSystemDirectoryHandle,
 ): Promise<Array<BlogPost>> {
 	const posts: Array<BlogPost> = [];
 
-	for await (const {filename} of walk(pathname)) {
+	for await (const {filename} of walk(dir)) {
 		if (filename.endsWith(".md")) {
-			const md = await FS.readFile(filename, {encoding: "utf8"});
+			// Navigate to the file handle
+			const parts = filename.split("/");
+			let current: FileSystemDirectoryHandle = dir;
+			for (let i = 0; i < parts.length - 1; i++) {
+				current = await current.getDirectoryHandle(parts[i]);
+			}
+
+			const fileHandle = await current.getFileHandle(parts[parts.length - 1]);
+			const file = await fileHandle.getFile();
+			const md = await file.text();
 			const {attributes, body} = frontmatter(md) as unknown as BlogPost;
 			attributes.publish =
 				attributes.publish == null ? true : attributes.publish;
 
 			// Extract slug from filename (e.g., 2025-01-introducing-shovel.md -> introducing-shovel)
-			const basename = Path.basename(filename, ".md");
+			const basename = filename.split("/").pop()!.replace(/\.md$/, "");
 			const slug = basename.replace(/^\d{4}-\d{2}-/, "");
 			const url = `/blog/${slug}`;
 

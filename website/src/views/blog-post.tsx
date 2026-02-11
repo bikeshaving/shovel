@@ -1,6 +1,5 @@
 /** @jsxImportSource @b9g/crank */
 import {css} from "@emotion/css";
-import * as Path from "path";
 import {NotFound} from "@b9g/http-errors";
 
 import {Root} from "../components/root.js";
@@ -62,12 +61,10 @@ const backLinkStyles = css`
 	}
 `;
 
-const __dirname = new URL(".", import.meta.url).pathname;
-
 export default async function BlogPostView({url}: ViewProps) {
-	const posts = await collectBlogPosts(
-		Path.join(__dirname, "../../../docs/blog"),
-	);
+	const docsDir = await self.directories.open("docs");
+	const blogDir = await docsDir.getDirectoryHandle("blog");
+	const posts = await collectBlogPosts(blogDir);
 
 	const post = posts.find(
 		(p) => p.url.replace(/\/$/, "") === url.replace(/\/$/, ""),

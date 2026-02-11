@@ -1,5 +1,4 @@
 import {jsx} from "@b9g/crank/standalone";
-import * as Path from "path";
 import {NotFound} from "@b9g/http-errors";
 
 import {Root} from "../components/root.js";
@@ -13,13 +12,10 @@ interface ViewProps {
 	params: Record<string, string>;
 }
 
-const __dirname = new URL(".", import.meta.url).pathname;
-
 export default async function Doc({url}: ViewProps) {
-	const docs = await collectDocuments(
-		Path.join(__dirname, "../../../docs/reference"),
-		Path.join(__dirname, "../../../docs/reference"),
-	);
+	const docsDir = await self.directories.open("docs");
+	const refDir = await docsDir.getDirectoryHandle("reference");
+	const docs = await collectDocuments(refDir);
 
 	// For sidebar, filter out index.md
 	const filteredDocs = docs.filter((doc) => doc.url !== "/index");

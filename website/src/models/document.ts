@@ -1,24 +1,41 @@
-import FS from "fs/promises";
-import type {Stats} from "fs";
-import * as Path from "path";
 import frontmatter from "front-matter";
 
 interface WalkInfo {
 	filename: string;
-	stats: Stats;
 }
 
-async function* walk(dir: string): AsyncGenerator<WalkInfo> {
-	const files = (await FS.readdir(dir)).sort();
-	for (let filename of files) {
-		filename = Path.join(dir, filename);
-		const stats = await FS.stat(filename);
-		if (stats.isDirectory()) {
-			yield* walk(filename);
-		} else if (stats.isFile()) {
-			yield {filename, stats};
+async function* walk(
+	dir: FileSystemDirectoryHandle,
+	basePath: string = "",
+): AsyncGenerator<WalkInfo> {
+	const entries: Array<[string, FileSystemHandle]> = [];
+	for await (const entry of dir.entries()) {
+		entries.push(entry);
+	}
+
+	entries.sort((a, b) => a[0].localeCompare(b[0]));
+
+	for (const [name, handle] of entries) {
+		const path = basePath ? `${basePath}/${name}` : name;
+		if (handle.kind === "directory") {
+			yield* walk(handle as FileSystemDirectoryHandle, path);
+		} else {
+			yield {filename: path};
 		}
 	}
+}
+
+async function navigatePath(
+	dir: FileSystemDirectoryHandle,
+	path: string,
+): Promise<FileSystemFileHandle> {
+	const parts = path.split("/");
+	let current: FileSystemDirectoryHandle = dir;
+	for (let i = 0; i < parts.length - 1; i++) {
+		current = await current.getDirectoryHandle(parts[i]);
+	}
+
+	return current.getFileHandle(parts[parts.length - 1]);
 }
 
 export interface DocInfo {
@@ -33,22 +50,20 @@ export interface DocInfo {
 }
 
 export async function collectDocuments(
-	pathname: string,
-	rootPathname: string = pathname,
-	options: {shallow?: boolean} = {},
+	dir: FileSystemDirectoryHandle,
+	options: {shallow?: boolean; pathPrefix?: string} = {},
 ): Promise<Array<DocInfo>> {
 	const docs: Array<DocInfo> = [];
-	for await (const {filename} of walk(pathname)) {
+	for await (const {filename} of walk(dir)) {
 		if (filename.endsWith(".md")) {
 			// Skip subdirectories in shallow mode
-			if (options.shallow) {
-				const relative = Path.relative(pathname, filename);
-				if (relative.includes(Path.sep)) {
-					continue;
-				}
+			if (options.shallow && filename.includes("/")) {
+				continue;
 			}
 
-			const md = await FS.readFile(filename, {encoding: "utf8"});
+			const fileHandle = await navigatePath(dir, filename);
+			const file = await fileHandle.getFile();
+			const md = await file.text();
 			const {attributes, body} = frontmatter(md) as unknown as DocInfo;
 			attributes.publish =
 				attributes.publish == null ? true : attributes.publish;
@@ -61,27 +76,27 @@ export async function collectDocuments(
 				}
 			}
 
-			const url = Path.join("/", Path.relative(rootPathname, filename))
+			const prefixedFilename = options.pathPrefix
+				? `${options.pathPrefix}/${filename}`
+				: filename;
+			const url = ("/" + prefixedFilename)
 				.replace(/\.md$/, "")
 				.replace(/([0-9]+-)+/, "");
-			docs.push({url, filename, body, attributes});
+			docs.push({url, filename: prefixedFilename, body, attributes});
 		}
 	}
 
 	docs.sort((a, b) => {
-		const relA = Path.relative(rootPathname, a.filename);
-		const relB = Path.relative(rootPathname, b.filename);
-		const guidePrefix = `guides${Path.sep}`;
-		const isGuideA = relA.startsWith(guidePrefix);
-		const isGuideB = relB.startsWith(guidePrefix);
+		const isGuideA = a.filename.startsWith("guides/");
+		const isGuideB = b.filename.startsWith("guides/");
 
 		if (isGuideA !== isGuideB) {
 			return isGuideA ? -1 : 1;
 		}
 
 		if (isGuideA && isGuideB) {
-			const baseA = Path.basename(relA);
-			const baseB = Path.basename(relB);
+			const baseA = a.filename.split("/").pop()!;
+			const baseB = b.filename.split("/").pop()!;
 			const matchA = baseA.match(/^(\d+)-/);
 			const matchB = baseB.match(/^(\d+)-/);
 			if (matchA && matchB) {
@@ -93,7 +108,7 @@ export async function collectDocuments(
 			}
 		}
 
-		return relA.localeCompare(relB);
+		return a.filename.localeCompare(b.filename);
 	});
 
 	return docs;

@@ -1,6 +1,5 @@
 /** @jsxImportSource @b9g/crank */
 import {css} from "@emotion/css";
-import * as Path from "path";
 
 import {Root} from "../components/root.js";
 import {collectBlogPosts} from "../models/blog.js";
@@ -62,12 +61,10 @@ const postDescriptionStyles = css`
 	margin: 0;
 `;
 
-const __dirname = new URL(".", import.meta.url).pathname;
-
 export default async function BlogListView({url}: ViewProps) {
-	const posts = await collectBlogPosts(
-		Path.join(__dirname, "../../../docs/blog"),
-	);
+	const docsDir = await self.directories.open("docs");
+	const blogDir = await docsDir.getDirectoryHandle("blog");
+	const posts = await collectBlogPosts(blogDir);
 
 	const publishedPosts = posts.filter((p) => p.attributes.publish);
 
