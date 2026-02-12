@@ -333,8 +333,54 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		};
 	}
 
+	/**
+	 * FileReader polyfill — Bun doesn't have FileReader but has Blob.arrayBuffer().
+	 * Only implements readAsArrayBuffer/readAsText (what WPT tests use).
+	 */
+	class FileReaderPolyfill extends EventTarget {
+		result: ArrayBuffer | string | null = null;
+		error: DOMException | null = null;
+		readyState = 0; // 0=EMPTY, 1=LOADING, 2=DONE
+		onloadend: ((ev: Event) => void) | null = null;
+		onload: ((ev: Event) => void) | null = null;
+		onerror: ((ev: Event) => void) | null = null;
+
+		readAsArrayBuffer(blob: Blob): void {
+			this.#read(blob, "arraybuffer");
+		}
+		readAsText(blob: Blob, _encoding?: string): void {
+			this.#read(blob, "text");
+		}
+
+		#read(blob: Blob, mode: "arraybuffer" | "text"): void {
+			this.readyState = 1;
+			(mode === "arraybuffer" ? blob.arrayBuffer() : blob.text())
+				.then((data: ArrayBuffer | string) => {
+					this.readyState = 2;
+					this.result = data;
+					const evt = new Event("load");
+					this.onload?.(evt);
+					this.dispatchEvent(evt);
+					const endEvt = new Event("loadend");
+					this.onloadend?.(endEvt);
+					this.dispatchEvent(endEvt);
+				})
+				.catch((err) => {
+					this.readyState = 2;
+					this.error = new DOMException(String(err), "NotReadableError");
+					const evt = new Event("error");
+					this.onerror?.(evt);
+					this.dispatchEvent(evt);
+					const endEvt = new Event("loadend");
+					this.onloadend?.(endEvt);
+					this.dispatchEvent(endEvt);
+				});
+		}
+	}
+
 	// Inject globals
 	Object.assign(globalThis, {
+		FileReader: FileReaderPolyfill,
 		// Core harness
 		promise_test,
 		test,
