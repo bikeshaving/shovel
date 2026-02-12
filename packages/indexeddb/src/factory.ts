@@ -11,6 +11,7 @@ import {IDBVersionChangeEvent} from "./events.js";
 import {VersionError} from "./errors.js";
 import {validateKeyPath, encodeKey, validateKey, compareKeys} from "./key.js";
 import type {TransactionMode} from "./types.js";
+import {scheduleTask} from "./task.js";
 
 interface PendingRequest {
 	name: string;
@@ -51,7 +52,7 @@ export class IDBFactory {
 
 		const request = new IDBOpenDBRequest();
 
-		queueMicrotask(() => {
+		scheduleTask(() => {
 			try {
 				this.#processOpen(name, version, request);
 			} catch (error) {
@@ -72,7 +73,7 @@ export class IDBFactory {
 	deleteDatabase(name: string): IDBOpenDBRequest {
 		const request = new IDBOpenDBRequest();
 
-		queueMicrotask(() => {
+		scheduleTask(() => {
 			try {
 				this.#processDelete(name, request);
 			} catch (error) {

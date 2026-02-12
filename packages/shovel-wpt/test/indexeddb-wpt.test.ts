@@ -127,15 +127,10 @@ const skip = [
 	"bindings-inject",
 	// Storage buckets (requires storage API)
 	"storage-buckets",
-	// Tests using setTimeout/keep_alive (hang: microtask chains starve event loop)
+	// Needs per-event-dispatch active flag (active during handler, inactive in setTimeout)
 	"event-dispatch-active-flag",
-	"transaction-deactivation-timing",
-	"upgrade-transaction-deactivation-timing",
-	// transaction-lifetime uses setTimeout; transaction-lifetime-empty needs tx scheduling
-	"transaction-lifetime.any.js",
+	// transaction-lifetime-empty needs tx scheduling
 	"transaction-lifetime-empty",
-	// Upgrade transaction lifecycle — user-aborted hangs (setTimeout in microtask loop)
-	"upgrade-transaction-lifecycle-user-aborted",
 	// Tombstone tests (requires transaction scheduling — txn2 waits for txn1)
 	"idbindex_tombstones",
 	// Get databases (shared factory overwrites globalThis.indexedDB after registration)
@@ -147,13 +142,27 @@ const skip = [
  * Used for tests that hang due to microtask starvation (keepAlive + setTimeout).
  */
 const skipTests: Record<string, string[]> = {
-	"idb-explicit-commit.any.js": [
-		// Uses keepAlive + timeoutPromise(0) — infinite microtask chain starves event loop
-		"txn.commit() when txn is inactive",
+	// Needs per-event-dispatch active flag deactivation
+	"idb-explicit-commit.any.js": ["txn is inactive should throw"],
+	// Node.js/Bun: setImmediate (cursor advance) fires after setTimeout(0),
+	// so the transaction isn't committed by the time the test checks.
+	"idbcursor-advance-exception-order.any.js": ["#2"],
+	// Needs per-event-dispatch active flag deactivation
+	"transaction-deactivation-timing.any.js": [
+		"deactivated before next task",
+		"end of invocation",
 	],
-	// setTimeout(0) tests hang (microtask starvation prevents macrotask)
-	"upgrade-transaction-lifecycle-committed.any.js": ["setTimeout"],
-	"upgrade-transaction-lifecycle-backend-aborted.any.js": ["setTimeout"],
+	"upgrade-transaction-deactivation-timing.any.js": [
+		"deactivated before next task",
+	],
+	// Blocked event test hangs (needs connection-level blocking)
+	"transaction-lifetime.any.js": ["Blocked event"],
+	// User-aborted upgrade lifecycle — needs active flag / timing fixes
+	"upgrade-transaction-lifecycle-user-aborted.any.js": [
+		"synchronously after abort",
+		"promise microtask after abort",
+		"abort event handler",
+	],
 	// databases() sees uncommitted versionchange transactions
 	"get-databases.any.js": ["haven't commited"],
 	// DOM geometry/image types — stubs don't survive v8 serialize round-trip
