@@ -243,9 +243,10 @@ describe("SQLite backend: cursors", () => {
 
 describe("SQLite backend: deleteDatabase", () => {
 	it("removes the database", async () => {
-		await openDB("todelete", 1, (db) => {
+		const db1 = await openDB("todelete", 1, (db) => {
 			db.createObjectStore("store");
 		});
+		db1.close();
 
 		await new Promise<void>((resolve, reject) => {
 			const req = factory.deleteDatabase("todelete");

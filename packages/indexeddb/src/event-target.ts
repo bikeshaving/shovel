@@ -63,6 +63,23 @@ export class SafeEventTarget {
 	}
 
 	dispatchEvent(event: Event): boolean {
+		// Intercept stopPropagation/stopImmediatePropagation so our
+		// custom dispatch respects them (native methods only affect
+		// the built-in EventTarget, not our propagation chain).
+		if (!(event as any)._stopPropagation) {
+			const origStop = event.stopPropagation.bind(event);
+			event.stopPropagation = () => {
+				(event as any)._stopPropagation = true;
+				origStop();
+			};
+			const origStopImm = event.stopImmediatePropagation.bind(event);
+			event.stopImmediatePropagation = () => {
+				(event as any)._stopPropagation = true;
+				(event as any)._stopImmediate = true;
+				origStopImm();
+			};
+		}
+
 		// Set target to the originating object (only on first dispatch)
 		if (!(event as any)._target) {
 			Object.defineProperty(event, "_target", {
@@ -136,6 +153,7 @@ export class SafeEventTarget {
 		if (!entries) return;
 		// Snapshot to handle removal during iteration
 		for (const entry of [...entries]) {
+			if ((event as any)._stopImmediate) break;
 			if (captureFilter !== null && entry.capture !== captureFilter) continue;
 			try {
 				const fn = entry.listener;
@@ -145,7 +163,9 @@ export class SafeEventTarget {
 					fn.handleEvent(event);
 				}
 			} catch (_error) {
-				// Errors in event handlers are absorbed (browser behavior)
+				// Errors in event handlers are absorbed (browser behavior).
+				// Track that an error occurred for fire-error/success-event spec behavior.
+				(event as any)._dispatchHadError = true;
 			}
 		}
 	}

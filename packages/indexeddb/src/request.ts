@@ -117,25 +117,32 @@ export class IDBRequest extends SafeEventTarget {
 		this.#error = null;
 	}
 
-	/** @internal - Resolve the request with a result */
-	_resolve(result: any): void {
+	/** @internal - Resolve the request with a result.
+	 * Returns true if an exception was thrown during dispatch. */
+	_resolve(result: any): boolean {
 		// Guard: if already rejected (e.g., abort handler fired first), skip
-		if (this.#error !== null) return;
+		if (this.#error !== null) return false;
 		this.#readyState = "done";
 		this.#result = result;
-		this.dispatchEvent(
-			new Event("success", {bubbles: false, cancelable: false}),
-		);
+		const event = new Event("success", {bubbles: false, cancelable: false});
+		this.dispatchEvent(event);
+		return !!(event as any)._dispatchHadError;
 	}
 
+	/** @internal - true if the last dispatch had an exception thrown in a handler */
+	_lastDispatchHadError: boolean = false;
+
 	/** @internal - Reject the request with an error.
-	 * Returns true if preventDefault() was called on the error event. */
+	 * Returns true if preventDefault() was called and no exception was thrown. */
 	_reject(error: DOMException): boolean {
 		this.#readyState = "done";
 		this.#error = error;
 		this.#result = undefined;
 		const event = new Event("error", {bubbles: true, cancelable: true});
 		this.dispatchEvent(event);
+		this._lastDispatchHadError = !!(event as any)._dispatchHadError;
+		// Spec: if an exception was thrown during dispatch, treat as not prevented
+		if (this._lastDispatchHadError) return false;
 		return event.defaultPrevented;
 	}
 }
@@ -197,14 +204,14 @@ export class IDBOpenDBRequest extends IDBRequest {
 		);
 	}
 
-	/** @internal */
-	_fireUpgradeNeeded(oldVersion: number, newVersion: number): void {
-		this.dispatchEvent(
-			new IDBVersionChangeEvent("upgradeneeded", {
-				oldVersion,
-				newVersion,
-			}),
-		);
+	/** @internal - Returns true if an exception was thrown during dispatch. */
+	_fireUpgradeNeeded(oldVersion: number, newVersion: number): boolean {
+		const event = new IDBVersionChangeEvent("upgradeneeded", {
+			oldVersion,
+			newVersion,
+		});
+		this.dispatchEvent(event);
+		return !!(event as any)._dispatchHadError;
 	}
 
 	/** @internal */

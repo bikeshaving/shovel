@@ -290,8 +290,13 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 
 		wait_for(type: string | string[]): Promise<Event> {
 			if (Array.isArray(type)) {
-				let chain = Promise.resolve(undefined as any as Event);
-				for (const t of type) {
+				if (type.length === 0)
+					return Promise.resolve(undefined as any as Event);
+				// Set up the first listener synchronously so it's ready before
+				// any already-queued microtasks fire events on the target.
+				let chain = this.wait_for(type[0]);
+				for (let i = 1; i < type.length; i++) {
+					const t = type[i];
 					chain = chain.then(() => this.wait_for(t));
 				}
 				return chain;

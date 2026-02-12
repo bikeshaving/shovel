@@ -36,8 +36,10 @@ export interface IDBBackendTransaction {
 	// Schema operations (versionchange only)
 	createObjectStore(meta: ObjectStoreMeta): void;
 	deleteObjectStore(name: string): void;
+	renameObjectStore(oldName: string, newName: string): void;
 	createIndex(meta: IndexMeta): void;
 	deleteIndex(storeName: string, indexName: string): void;
+	renameIndex(storeName: string, oldName: string, newName: string): void;
 
 	// Data operations
 	get(storeName: string, key: EncodedKey): StoredRecord | undefined;

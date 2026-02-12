@@ -333,6 +333,21 @@ export function clearTestQueue(): void {
 }
 
 /**
+ * Remove tests from the queue whose names match any of the given substrings.
+ * Returns the number of tests removed.
+ */
+export function filterTestQueue(skipPatterns: string[]): number {
+	let removed = 0;
+	for (let i = testQueue.length - 1; i >= 0; i--) {
+		if (skipPatterns.some((p) => testQueue[i].name.includes(p))) {
+			testQueue.splice(i, 1);
+			removed++;
+		}
+	}
+	return removed;
+}
+
+/**
  * Get the number of queued tests (for debugging)
  */
 export function getQueuedTestCount(): number {

@@ -178,6 +178,12 @@ export class IDBCursor {
 	}
 
 	advance(count: number): void {
+		// Spec order: count validation → transaction active → source deleted → gotValue
+		if (!Number.isInteger(count) || count <= 0) {
+			throw new TypeError(
+				"Failed to execute 'advance' on 'IDBCursor': A count argument with value 0 (zero) was specified, must be greater than 0.",
+			);
+		}
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
@@ -187,11 +193,6 @@ export class IDBCursor {
 		) {
 			throw InvalidStateError(
 				"The cursor's source or effective object store has been deleted",
-			);
-		}
-		if (!Number.isInteger(count) || count <= 0) {
-			throw new TypeError(
-				"Failed to execute 'advance' on 'IDBCursor': A count argument with value 0 (zero) was specified, must be greater than 0.",
 			);
 		}
 		if (!this._gotValue) {
@@ -220,11 +221,17 @@ export class IDBCursor {
 	}
 
 	continuePrimaryKey(key: IDBValidKey, primaryKey: IDBValidKey): void {
+		// Spec order: transaction active → deleted → source type → direction → gotValue → key validation
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
-		if (!this._gotValue) {
-			throw InvalidStateError("Cursor is not pointing at a value");
+		if (
+			this._source._deleted ||
+			(this._source.objectStore && this._source.objectStore._deleted)
+		) {
+			throw InvalidStateError(
+				"The cursor's source or effective object store has been deleted",
+			);
 		}
 		// continuePrimaryKey only works on index cursors with "next" or "prev" direction
 		if (!this._source.objectStore) {
@@ -238,6 +245,9 @@ export class IDBCursor {
 				"continuePrimaryKey cannot be called with unique direction",
 				"InvalidAccessError",
 			);
+		}
+		if (!this._gotValue) {
+			throw InvalidStateError("Cursor is not pointing at a value");
 		}
 		const validatedKey = validateKey(key);
 		const validatedPK = validateKey(primaryKey);
@@ -316,6 +326,132 @@ export class IDBCursor {
 	/** Override in IDBCursorWithValue to snapshot the value */
 	_snapshotValue(): void {}
 	_clearValueSnapshot(): void {}
+
+	/** True for key-only cursors (openKeyCursor), false for value cursors (openCursor) */
+	get _keyOnly(): boolean {
+		return true;
+	}
+
+	delete(): IDBRequest {
+		// Spec order: transaction active → deleted → read-only → key-only → gotValue
+		if (!this._transaction._active) {
+			throw TransactionInactiveError("Transaction is not active");
+		}
+		if (
+			this._source._deleted ||
+			(this._source.objectStore && this._source.objectStore._deleted)
+		) {
+			throw InvalidStateError(
+				"The cursor's source or effective object store has been deleted",
+			);
+		}
+		if (
+			this._transaction.mode !== "readwrite" &&
+			this._transaction.mode !== "versionchange"
+		) {
+			throw ReadOnlyError("Transaction is read-only");
+		}
+		if (this._keyOnly) {
+			throw InvalidStateError(
+				"The cursor is a key cursor (from openKeyCursor)",
+			);
+		}
+		if (!this._gotValue) {
+			throw InvalidStateError("Cursor is not pointing at a value");
+		}
+		const request = new IDBRequest();
+		request._setSource(this);
+		const primaryKey = this._backendCursor.primaryKey;
+		const storeName = this._getEffectiveStoreName();
+
+		return this._transaction._executeRequest(request, (tx) => {
+			tx.delete(storeName, {
+				lower: primaryKey,
+				upper: primaryKey,
+				lowerOpen: false,
+				upperOpen: false,
+			});
+			return undefined;
+		});
+	}
+
+	update(value: any): IDBRequest {
+		if (arguments.length === 0) {
+			throw new TypeError(
+				"Failed to execute 'update' on 'IDBCursor': 1 argument required, but only 0 present.",
+			);
+		}
+		// Spec order: transaction active → deleted → read-only → key-only → gotValue → key validation
+		if (!this._transaction._active) {
+			throw TransactionInactiveError("Transaction is not active");
+		}
+		if (
+			this._source._deleted ||
+			(this._source.objectStore && this._source.objectStore._deleted)
+		) {
+			throw InvalidStateError(
+				"The cursor's source or effective object store has been deleted",
+			);
+		}
+		if (
+			this._transaction.mode !== "readwrite" &&
+			this._transaction.mode !== "versionchange"
+		) {
+			throw ReadOnlyError("Transaction is read-only");
+		}
+		if (this._keyOnly) {
+			throw InvalidStateError(
+				"The cursor is a key cursor (from openKeyCursor)",
+			);
+		}
+		if (!this._gotValue) {
+			throw InvalidStateError("Cursor is not pointing at a value");
+		}
+		// Spec: clone the value before key extraction
+		const clonedValue = structuredClone(value);
+		const effectiveStore = this._source.objectStore || this._source;
+		if (effectiveStore.keyPath !== null) {
+			try {
+				const keyInValue = extractKeyFromValue(
+					clonedValue,
+					effectiveStore.keyPath,
+				);
+				const encodedKeyInValue = encodeKey(keyInValue);
+				if (
+					compareKeys(encodedKeyInValue, this._backendCursor.primaryKey) !== 0
+				) {
+					throw DataError(
+						"The key in the value does not match the cursor's effective key",
+					);
+				}
+			} catch (e: any) {
+				if (e instanceof DOMException && e.name === "DataError") {
+					throw e;
+				}
+				throw DataError(
+					"The key in the value does not match the cursor's effective key",
+				);
+			}
+		}
+		const request = new IDBRequest();
+		request._setSource(this);
+		const primaryKey = this._backendCursor.primaryKey;
+		const storeName = this._getEffectiveStoreName();
+		const encodedValue = encodeValue(clonedValue);
+
+		return this._transaction._executeRequest(request, (tx) => {
+			tx.put(storeName, primaryKey, encodedValue);
+			return decodeKey(primaryKey);
+		});
+	}
+
+	_getEffectiveStoreName(): string {
+		const source = this._source;
+		if (source.objectStore) {
+			return source.objectStore.name;
+		}
+		return source.name;
+	}
 }
 
 /**
@@ -368,118 +504,7 @@ export class IDBCursorWithValue extends IDBCursor {
 		this._cachedValueSource = null;
 	}
 
-	delete(): IDBRequest {
-		if (!this._transaction._active) {
-			throw TransactionInactiveError("Transaction is not active");
-		}
-		if (
-			this._source._deleted ||
-			(this._source.objectStore && this._source.objectStore._deleted)
-		) {
-			throw InvalidStateError(
-				"The cursor's source or effective object store has been deleted",
-			);
-		}
-		if (
-			this._transaction.mode !== "readwrite" &&
-			this._transaction.mode !== "versionchange"
-		) {
-			throw ReadOnlyError("Transaction is read-only");
-		}
-		if (!this._gotValue) {
-			throw InvalidStateError("Cursor is not pointing at a value");
-		}
-		const request = new IDBRequest();
-		request._setSource(this);
-		const primaryKey = this._backendCursor.primaryKey;
-		// Get the effective object store name
-		const storeName = this._getEffectiveStoreName();
-
-		return this._transaction._executeRequest(request, (tx) => {
-			tx.delete(storeName, {
-				lower: primaryKey,
-				upper: primaryKey,
-				lowerOpen: false,
-				upperOpen: false,
-			});
-			return undefined;
-		});
-	}
-
-	update(value: any): IDBRequest {
-		if (arguments.length === 0) {
-			throw new TypeError(
-				"Failed to execute 'update' on 'IDBCursor': 1 argument required, but only 0 present.",
-			);
-		}
-		if (!this._transaction._active) {
-			throw TransactionInactiveError("Transaction is not active");
-		}
-		if (
-			this._source._deleted ||
-			(this._source.objectStore && this._source.objectStore._deleted)
-		) {
-			throw InvalidStateError(
-				"The cursor's source or effective object store has been deleted",
-			);
-		}
-		if (
-			this._transaction.mode !== "readwrite" &&
-			this._transaction.mode !== "versionchange"
-		) {
-			throw ReadOnlyError("Transaction is read-only");
-		}
-		if (!this._gotValue) {
-			throw InvalidStateError("Cursor is not pointing at a value");
-		}
-		// Spec: clone the value before key extraction
-		const clonedValue = structuredClone(value);
-		// Validate in-line key: if the effective object store uses a keyPath,
-		// the key at that path in the cloned value must match the cursor's effective key
-		const effectiveStore = this._source.objectStore || this._source;
-		if (effectiveStore.keyPath !== null) {
-			try {
-				const keyInValue = extractKeyFromValue(
-					clonedValue,
-					effectiveStore.keyPath,
-				);
-				const encodedKeyInValue = encodeKey(keyInValue);
-				if (
-					compareKeys(encodedKeyInValue, this._backendCursor.primaryKey) !== 0
-				) {
-					throw DataError(
-						"The key in the value does not match the cursor's effective key",
-					);
-				}
-			} catch (e: any) {
-				if (e instanceof DOMException && e.name === "DataError") {
-					throw e;
-				}
-				throw DataError(
-					"The key in the value does not match the cursor's effective key",
-				);
-			}
-		}
-		const request = new IDBRequest();
-		request._setSource(this);
-		const primaryKey = this._backendCursor.primaryKey;
-		const storeName = this._getEffectiveStoreName();
-		const encodedValue = encodeValue(clonedValue);
-
-		return this._transaction._executeRequest(request, (tx) => {
-			tx.put(storeName, primaryKey, encodedValue);
-			return decodeKey(primaryKey);
-		});
-	}
-
-	_getEffectiveStoreName(): string {
-		// If source is an IDBObjectStore, use its name directly
-		// If source is an IDBIndex, use its objectStore's name
-		const source = this._source;
-		if (source.objectStore) {
-			// IDBIndex — has an objectStore property
-			return source.objectStore.name;
-		}
-		return source.name;
+	get _keyOnly(): boolean {
+		return false;
 	}
 }
