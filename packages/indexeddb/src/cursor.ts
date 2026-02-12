@@ -17,6 +17,7 @@ import {
 } from "./key.js";
 import {encodeValue, decodeValue} from "./structured-clone.js";
 import {
+	AbortError,
 	DataError,
 	InvalidStateError,
 	TransactionInactiveError,
@@ -171,6 +172,13 @@ export class IDBCursor {
 			this._primaryKeySnapshot = null;
 			this._clearKeyCache();
 			this._clearValueSnapshot();
+			if (this._transaction._aborted) {
+				this._request._reject(
+					AbortError("Transaction was aborted"),
+				);
+				this._transaction[kRelease]();
+				return;
+			}
 			if (found) this._gotValue = true;
 			this._request._resolve(found ? this : null);
 			this._transaction[kRelease]();
@@ -214,6 +222,13 @@ export class IDBCursor {
 			this._primaryKeySnapshot = null;
 			this._clearKeyCache();
 			this._clearValueSnapshot();
+			if (this._transaction._aborted) {
+				this._request._reject(
+					AbortError("Transaction was aborted"),
+				);
+				this._transaction[kRelease]();
+				return;
+			}
 			if (advanced) this._gotValue = true;
 			this._request._resolve(advanced ? this : null);
 			this._transaction[kRelease]();
@@ -310,6 +325,13 @@ export class IDBCursor {
 			this._primaryKeySnapshot = null;
 			this._clearKeyCache();
 			this._clearValueSnapshot();
+			if (this._transaction._aborted) {
+				this._request._reject(
+					AbortError("Transaction was aborted"),
+				);
+				this._transaction[kRelease]();
+				return;
+			}
 			if (found) this._gotValue = true;
 			this._request._resolve(found ? this : null);
 			this._transaction[kRelease]();
@@ -407,8 +429,14 @@ export class IDBCursor {
 		if (!this._gotValue) {
 			throw InvalidStateError("Cursor is not pointing at a value");
 		}
-		// Spec: clone the value before key extraction
-		const clonedValue = structuredClone(value);
+		// Spec: transaction is inactive during structured clone
+		this._transaction._active = false;
+		let clonedValue: any;
+		try {
+			clonedValue = structuredClone(value);
+		} finally {
+			this._transaction._active = true;
+		}
 		const effectiveStore = this._source.objectStore || this._source;
 		if (effectiveStore.keyPath !== null) {
 			try {
