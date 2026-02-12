@@ -137,15 +137,29 @@ export class IDBObjectStore {
 	 */
 	add(value: any, key?: IDBValidKey): IDBRequest {
 		this.#checkWritable();
-		// Spec: clone value once before key path evaluation
-		const clone = structuredClone(value);
+		// Spec: transaction is inactive during structured clone
+		this.#transaction._active = false;
+		let clone: any;
+		try {
+			clone = structuredClone(value);
+		} finally {
+			this.#transaction._active = true;
+		}
 		this.#validateKeyInput(clone, key);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
+			const savedAutoInc = tx.getAutoIncrementCurrent(this.name);
 			const {encodedKey, encodedValue} = this.#prepareRecord(clone, key, tx);
-			tx.add(this.name, encodedKey, encodedValue);
+			try {
+				tx.add(this.name, encodedKey, encodedValue);
+			} catch (e) {
+				if (savedAutoInc !== undefined) {
+					tx.setAutoIncrementCurrent(this.name, savedAutoInc);
+				}
+				throw e;
+			}
 			return decodeKey(encodedKey);
 		});
 	}
@@ -155,15 +169,29 @@ export class IDBObjectStore {
 	 */
 	put(value: any, key?: IDBValidKey): IDBRequest {
 		this.#checkWritable();
-		// Spec: clone value once before key path evaluation
-		const clone = structuredClone(value);
+		// Spec: transaction is inactive during structured clone
+		this.#transaction._active = false;
+		let clone: any;
+		try {
+			clone = structuredClone(value);
+		} finally {
+			this.#transaction._active = true;
+		}
 		this.#validateKeyInput(clone, key);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
+			const savedAutoInc = tx.getAutoIncrementCurrent(this.name);
 			const {encodedKey, encodedValue} = this.#prepareRecord(clone, key, tx);
-			tx.put(this.name, encodedKey, encodedValue);
+			try {
+				tx.put(this.name, encodedKey, encodedValue);
+			} catch (e) {
+				if (savedAutoInc !== undefined) {
+					tx.setAutoIncrementCurrent(this.name, savedAutoInc);
+				}
+				throw e;
+			}
 			return decodeKey(encodedKey);
 		});
 	}

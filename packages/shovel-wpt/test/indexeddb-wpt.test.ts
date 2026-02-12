@@ -117,25 +117,16 @@ const skip = [
 	"blob-contenttype",
 	// IDL harness (tests interface shapes via WebIDL, not behavior)
 	"idlharness",
-	// Structured clone of complex types (Map, Set, RegExp, etc.)
-	"structured-clone",
 	// Transaction scheduling (requires connection-level transaction queuing)
 	"transaction-scheduling-across-connections",
 	"transaction-scheduling-mixed-scopes",
 	"transaction-scheduling-ordering",
 	"transaction-scheduling-rw-scopes",
 	"open-request-queue",
-	// Storage buckets (requires storage API)
-	"storage-buckets",
 	// Bindings injection (tests V8/SpiderMonkey-specific behavior)
 	"bindings-inject",
-	// Large request tests (performance-oriented)
-	"large-requests",
-	// Request ordering tests (depend on async scheduling details)
-	"request-event-ordering-large-mixed",
-	"request-event-ordering-large-then-small",
-	"request-event-ordering-small-values",
-	"request-abort-ordering",
+	// Storage buckets (requires storage API)
+	"storage-buckets",
 	// Tests using setTimeout/keep_alive (hang: microtask chains starve event loop)
 	"event-dispatch-active-flag",
 	"transaction-deactivation-timing",
@@ -148,7 +139,7 @@ const skip = [
 	// getAll/getAllKeys options (IDB 3.0 IDBGetAllOptions dictionary)
 	"getAll-options",
 	"getAllKeys-options",
-	// Get databases (shared factory retains connections that block deleteAllDatabases)
+	// Get databases (shared factory overwrites globalThis.indexedDB after registration)
 	"get-databases",
 	// Tombstone tests (requires transaction scheduling/queuing)
 	"idbindex_tombstones",
@@ -166,6 +157,20 @@ const skipTests: Record<string, string[]> = {
 	// setTimeout(0) tests hang (microtask starvation prevents macrotask)
 	"upgrade-transaction-lifecycle-committed.any.js": ["setTimeout"],
 	"upgrade-transaction-lifecycle-backend-aborted.any.js": ["setTimeout"],
+	// databases() sees uncommitted versionchange transactions
+	"get-databases.any.js": ["haven't commited"],
+	// DOM geometry/image types — stubs don't survive v8 serialize round-trip
+	"structured-clone.any.js": [
+		"DOMMatrixStub",
+		"DOMMatrixStub",
+		"DOMPointStub",
+		"DOMPointReadOnlyStub",
+		"DOMRectStub",
+		"DOMRectReadOnlyStub",
+		"ImageDataStub",
+	],
+	// 250 cursors: performance test, times out with memory backend
+	"interleaved-cursors-large.any.js": ["250 cursors"],
 };
 
 const wptFiles = readdirSync(wptDir)
@@ -178,9 +183,16 @@ const wptFiles = readdirSync(wptDir)
 // self.indexedDB changes between test registration and bun:test execution.
 const sharedFactory = new IDBFactory(new MemoryBackend());
 
+// Files that need their own factory (e.g. get-databases uses deleteAllDatabases
+// which blocks on connections from prior test files)
+const needsFreshFactory = new Set(["get-databases.any.js"]);
+
 for (const file of wptFiles) {
+	const factory = needsFreshFactory.has(file)
+		? new IDBFactory(new MemoryBackend())
+		: sharedFactory;
 	setupIndexedDBTestGlobals({
-		indexedDB: sharedFactory,
+		indexedDB: factory,
 		classes: idbClasses,
 		filePath: file,
 	});

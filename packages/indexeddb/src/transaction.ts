@@ -138,6 +138,11 @@ export class IDBTransaction extends SafeEventTarget {
 		return this.#active;
 	}
 
+	/** @internal — temporarily deactivate during structuredClone */
+	set _active(value: boolean) {
+		this.#active = value;
+	}
+
 	/** @internal */
 	get _aborted(): boolean {
 		return this.#aborted;
