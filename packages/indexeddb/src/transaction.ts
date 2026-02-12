@@ -1,8 +1,9 @@
 /**
  * IDBTransaction implementation.
  *
- * Manages auto-commit: when no pending requests remain at microtask boundary,
- * the transaction commits automatically.
+ * Manages auto-commit: when no pending requests remain after all microtasks
+ * settle, the transaction commits automatically. Events fire as macrotasks
+ * (via scheduleTask/setImmediate) per the IDB spec.
  */
 
 import type {IDBBackendTransaction} from "./backend.js";
@@ -15,6 +16,7 @@ import {
 } from "./errors.js";
 import {makeDOMStringList} from "./types.js";
 import type {TransactionMode} from "./types.js";
+import {scheduleTask} from "./task.js";
 
 /** Hold the transaction open (increment pending count). Pair with kRelease. */
 export const kHoldOpen = Symbol("holdOpen");
@@ -279,8 +281,7 @@ export class IDBTransaction extends SafeEventTarget {
 		this.#commitPending = true;
 		if (this.#pendingRequests === 0) {
 			// Spec: commit is asynchronous — double-nested microtask so
-			// event handlers set up after commit() can still catch events,
-			// and EventWatcher promise chains have time to register listeners.
+			// EventWatcher promise chains have time to register listeners.
 			queueMicrotask(() => {
 				queueMicrotask(() => {
 					if (!this.#aborted && !this.#committed) {
@@ -333,8 +334,8 @@ export class IDBTransaction extends SafeEventTarget {
 		// Execute synchronously (memory/SQLite backends are sync)
 		try {
 			const result = operation(this.#backendTx);
-			// Fire success via microtask
-			queueMicrotask(() => {
+			// Fire success as a macrotask (IDB spec: events fire as tasks)
+			scheduleTask(() => {
 				this.#pendingRequests--;
 				if (this.#aborted) {
 					// Transaction was aborted — fire error event with AbortError
@@ -361,7 +362,7 @@ export class IDBTransaction extends SafeEventTarget {
 				}
 			});
 		} catch (error) {
-			queueMicrotask(() => {
+			scheduleTask(() => {
 				this.#pendingRequests--;
 				if (this.#aborted) {
 					// Transaction was already aborted — fire error on request
@@ -430,7 +431,11 @@ export class IDBTransaction extends SafeEventTarget {
 	/** Release a hold, allowing auto-commit when all pending work is done. */
 	[kRelease](): void {
 		this.#pendingRequests--;
-		this.#maybeAutoCommit();
+		if (this.#aborted) {
+			this.#maybeFireDeferredAbort();
+		} else {
+			this.#maybeAutoCommit();
+		}
 	}
 
 	#maybeFireDeferredAbort(): void {
@@ -446,9 +451,9 @@ export class IDBTransaction extends SafeEventTarget {
 		if (this.#pendingRequests === 0 && !this.#committed && !this.#aborted) {
 			// Double-nested microtask: ensures auto-commit runs after promise
 			// continuations from EventWatcher/promiseForRequest chains settle.
-			// Without this, the commit check would fire between promise hops
-			// (e.g., EventWatcher.then → await continuation), committing
-			// the transaction before user code can issue the next request.
+			// Since events fire as macrotasks (via scheduleTask), these microtasks
+			// run within that macrotask's microtask checkpoint — after promise
+			// chains but before the event loop yields to timers.
 			queueMicrotask(() => {
 				if (this.#pendingRequests === 0 && !this.#committed && !this.#aborted) {
 					queueMicrotask(() => {
