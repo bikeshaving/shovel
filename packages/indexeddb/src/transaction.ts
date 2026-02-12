@@ -35,6 +35,7 @@ export class IDBTransaction extends SafeEventTarget {
 	#commitPending: boolean = false;
 	#pendingRequests: number = 0;
 	#error: DOMException | null = null;
+	#needsAbortEvent: boolean = false;
 
 	#oncompleteHandler: ((ev: Event) => void) | null = null;
 	#onerrorHandler: ((ev: Event) => void) | null = null;
@@ -188,16 +189,24 @@ export class IDBTransaction extends SafeEventTarget {
 		}
 	}
 
-	/** @internal - Abort with a specific error (for async constraint violations) */
+	/** @internal - Abort with a specific error (for async constraint violations).
+	 * Defers the abort event until all pending requests have fired their errors,
+	 * matching the spec ordering: request errors first, then abort event. */
 	_abortWithError(error: DOMException): void {
 		if (this.#committed || this.#aborted) return;
 		this.#aborted = true;
 		this.#active = false;
 		this.#backendTx.abort();
 		this.#error = error;
-		this.dispatchEvent(
-			new Event("abort", {bubbles: true, cancelable: false}),
-		);
+		if (this.#pendingRequests > 0) {
+			// Pending requests will fire their error events first.
+			// The abort event fires when the last one settles.
+			this.#needsAbortEvent = true;
+		} else {
+			this.dispatchEvent(
+				new Event("abort", {bubbles: true, cancelable: false}),
+			);
+		}
 	}
 
 	/** @internal - Execute a request within this transaction */
@@ -223,6 +232,7 @@ export class IDBTransaction extends SafeEventTarget {
 				if (this.#aborted) {
 					// Transaction was aborted — fire error event with AbortError
 					request._reject(AbortError("Transaction was aborted"));
+					this.#maybeFireDeferredAbort();
 					return;
 				}
 				request._resolve(result);
@@ -238,6 +248,7 @@ export class IDBTransaction extends SafeEventTarget {
 				if (this.#aborted) {
 					// Transaction was already aborted — fire error on request
 					request._reject(AbortError("Transaction was aborted"));
+					this.#maybeFireDeferredAbort();
 					return;
 				}
 				const domError =
@@ -291,6 +302,15 @@ export class IDBTransaction extends SafeEventTarget {
 	[kRelease](): void {
 		this.#pendingRequests--;
 		this.#maybeAutoCommit();
+	}
+
+	#maybeFireDeferredAbort(): void {
+		if (this.#needsAbortEvent && this.#pendingRequests === 0) {
+			this.#needsAbortEvent = false;
+			this.dispatchEvent(
+				new Event("abort", {bubbles: true, cancelable: false}),
+			);
+		}
 	}
 
 	#maybeAutoCommit(): void {
