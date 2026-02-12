@@ -115,12 +115,14 @@ export class ShovelBroadcastChannel extends EventTarget {
 		}
 
 		// Fan out to all OTHER channels with same name (local)
+		// Each recipient gets an independent clone per the BroadcastChannel spec
 		const set = channels.get(this.name);
 		if (set) {
 			for (const ch of set) {
 				if (ch !== this && !ch.#closed) {
 					queueMicrotask(() => {
-						const event = new MessageEvent("message", {data});
+						const cloned = structuredClone(data);
+						const event = new MessageEvent("message", {data: cloned});
 						ch.dispatchEvent(event);
 						ch.onmessage?.call(ch, event);
 					});

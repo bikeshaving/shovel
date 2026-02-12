@@ -5,7 +5,6 @@
  * Runtime functions are in ./runtime.ts
  */
 
-import {builtinModules} from "node:module";
 import {getLogger} from "@logtape/logtape";
 import type {
 	EntryPoints,
@@ -176,7 +175,7 @@ process.on("SIGTERM", handleShutdown);
 export function getESBuildConfig(): ESBuildConfig {
 	return {
 		platform: "node",
-		external: ["node:*", "bun", "bun:*", ...builtinModules],
+		external: ["bun", "bun:*"],
 	};
 }
 

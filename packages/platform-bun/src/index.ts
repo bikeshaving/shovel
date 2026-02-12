@@ -5,7 +5,6 @@
  */
 
 // Node.js built-ins (Bun is Node-compatible)
-import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
 import * as Path from "node:path";
 
@@ -554,7 +553,7 @@ process.on("SIGTERM", handleShutdown);
 	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "node",
-			external: ["node:*", "bun", "bun:*", ...builtinModules],
+			external: ["bun", "bun:*"],
 		};
 	}
 

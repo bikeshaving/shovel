@@ -52,8 +52,11 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 
 	#ensureConnection(): void {
 		if (this.#wsReady) return;
-		this.#wsReady = this.#connect().catch(() => {
-			// Connection failed — allow retry on next subscribe() call
+		this.#wsReady = this.#connect().catch((err) => {
+			logger.error("PubSub WebSocket connection failed: {error}", {
+				error: err,
+			});
+			// Allow retry on next subscribe() call
 			this.#wsReady = null;
 		});
 	}
@@ -91,15 +94,19 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 		const id = this.#ns.idFromName("pubsub");
 		const stub = this.#ns.get(id);
 		// Fire-and-forget POST to the DO
-		stub.fetch("http://internal/broadcast", {
-			method: "POST",
-			headers: {"Content-Type": "application/json"},
-			body: JSON.stringify({
-				channel: channelName,
-				data,
-				sender: this.#instanceId,
-			}),
-		});
+		stub
+			.fetch("http://internal/broadcast", {
+				method: "POST",
+				headers: {"Content-Type": "application/json"},
+				body: JSON.stringify({
+					channel: channelName,
+					data,
+					sender: this.#instanceId,
+				}),
+			})
+			.catch((err) => {
+				logger.error("PubSub publish failed: {error}", {error: err});
+			});
 	}
 
 	subscribe(
