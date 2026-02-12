@@ -99,7 +99,11 @@ function loadMetaScripts(testFilePath: string): void {
 			}
 		}
 		// Stop scanning after first non-comment, non-empty line
-		if (line.trim() && !line.startsWith("//") && !line.startsWith("'use strict'")) {
+		if (
+			line.trim() &&
+			!line.startsWith("//") &&
+			!line.startsWith("'use strict'")
+		) {
 			break;
 		}
 	}

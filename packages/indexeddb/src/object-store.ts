@@ -30,7 +30,7 @@ import type {ObjectStoreMeta, KeyRangeSpec} from "./types.js";
  */
 function enforceRangeCount(count: unknown): void {
 	const n = Number(count);
-	if (!Number.isFinite(n) || n < 0 || n > 0xFFFFFFFF) {
+	if (!Number.isFinite(n) || n < 0 || n > 0xffffffff) {
 		throw new TypeError(
 			`The count parameter is not a valid unsigned long value.`,
 		);
@@ -40,14 +40,14 @@ function enforceRangeCount(count: unknown): void {
 export class IDBObjectStore {
 	readonly name: string;
 	readonly autoIncrement: boolean;
-	readonly _indexNames: string[] = [];
-	_deleted: boolean = false;
+	readonly _indexNames!: string[];
+	_deleted!: boolean;
 	/** @internal - track IDBIndex instances for marking as deleted */
-	_indexInstances: IDBIndex[] = [];
+	_indexInstances!: IDBIndex[];
 
 	#transaction: IDBTransaction;
 	#keyPath: string | string[] | null;
-	#keyPathCache: string[] | null = null;
+	#keyPathCache!: string[] | null;
 
 	get [Symbol.toStringTag](): string {
 		return "IDBObjectStore";
@@ -65,9 +65,13 @@ export class IDBObjectStore {
 	}
 
 	constructor(transaction: IDBTransaction, meta: ObjectStoreMeta) {
+		this._indexNames = [];
+		this._deleted = false;
+		this._indexInstances = [];
 		this.#transaction = transaction;
-		this.name = meta.name;
 		this.#keyPath = meta.keyPath;
+		this.#keyPathCache = null;
+		this.name = meta.name;
 		this.autoIncrement = meta.autoIncrement;
 	}
 
@@ -89,11 +93,7 @@ export class IDBObjectStore {
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const {encodedKey, encodedValue} = this.#prepareRecord(
-				value,
-				key,
-				tx,
-			);
+			const {encodedKey, encodedValue} = this.#prepareRecord(value, key, tx);
 			tx.add(this.name, encodedKey, encodedValue);
 			return decodeKey(encodedKey);
 		});
@@ -109,11 +109,7 @@ export class IDBObjectStore {
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const {encodedKey, encodedValue} = this.#prepareRecord(
-				value,
-				key,
-				tx,
-			);
+			const {encodedKey, encodedValue} = this.#prepareRecord(value, key, tx);
 			tx.put(this.name, encodedKey, encodedValue);
 			return decodeKey(encodedKey);
 		});
@@ -134,9 +130,7 @@ export class IDBObjectStore {
 		return this.#transaction._executeRequest(request, (tx) => {
 			if (query instanceof IDBKeyRange) {
 				const results = tx.getAll(this.name, query._toSpec(), 1);
-				return results.length > 0
-					? decodeValue(results[0].value)
-					: undefined;
+				return results.length > 0 ? decodeValue(results[0].value) : undefined;
 			}
 			const encoded = encodeKey(validateKey(query));
 			const record = tx.get(this.name, encoded);
@@ -149,7 +143,9 @@ export class IDBObjectStore {
 	 */
 	getKey(query: IDBValidKey | IDBKeyRange): IDBRequest {
 		if (arguments.length === 0) {
-			throw new TypeError("Failed to execute 'getKey' on 'IDBObjectStore': 1 argument required.");
+			throw new TypeError(
+				"Failed to execute 'getKey' on 'IDBObjectStore': 1 argument required.",
+			);
 		}
 		this.#checkActive();
 		if (!(query instanceof IDBKeyRange)) {
@@ -172,10 +168,7 @@ export class IDBObjectStore {
 	/**
 	 * Get all records matching a query.
 	 */
-	getAll(
-		query?: IDBValidKey | IDBKeyRange | null,
-		count?: number,
-	): IDBRequest {
+	getAll(query?: IDBValidKey | IDBKeyRange | null, count?: number): IDBRequest {
 		this.#checkActive();
 		if (count !== undefined) enforceRangeCount(count);
 		const range = this.#toRangeSpec(query);
@@ -462,26 +455,18 @@ export class IDBObjectStore {
 		if (this.keyPath !== null) {
 			// In-line keys: providing an explicit key is always an error
 			if (key !== undefined) {
-				throw DataError(
-					"Cannot provide a key when object store has a keyPath",
-				);
+				throw DataError("Cannot provide a key when object store has a keyPath");
 			}
 			// Spec: clone the value first, then check key extraction.
 			// This ensures non-enumerable getters aren't accessed, and
 			// enumerable getter errors propagate from structuredClone.
-			let clonedValue: any;
-			try {
-				clonedValue = structuredClone(value);
-			} catch (e: any) {
-				// Re-throw clone errors as-is (getter errors should propagate)
-				throw e;
-			}
+			const clonedValue = structuredClone(value);
 			if (this.autoIncrement) {
 				// If autoIncrement, check if the key can be extracted or injected
 				if (typeof this.keyPath === "string") {
 					try {
 						extractKeyFromValue(clonedValue, this.keyPath);
-					} catch {
+					} catch (_error) {
 						// Key not present — check if injection is possible per spec:
 						// Walk the path; if any existing segment is a non-object primitive,
 						// injection fails. Undefined/null segments are OK (will be created).
@@ -531,20 +516,12 @@ export class IDBObjectStore {
 		// Spec: clone the value before key extraction ("store a record" step 3).
 		// This ensures non-enumerable getters are not accessed during key extraction,
 		// and enumerable getter errors propagate from structuredClone.
-		let clonedValue: any;
-		try {
-			clonedValue = structuredClone(value);
-		} catch (e: any) {
-			// Re-throw clone errors as-is (getter errors should propagate)
-			throw e;
-		}
+		const clonedValue = structuredClone(value);
 
 		if (this.keyPath !== null) {
 			// In-line keys
 			if (key !== undefined) {
-				throw DataError(
-					"Cannot provide a key when object store has a keyPath",
-				);
+				throw DataError("Cannot provide a key when object store has a keyPath");
 			}
 			if (this.autoIncrement) {
 				// Try to extract key from cloned value; if not present, generate one
@@ -554,7 +531,7 @@ export class IDBObjectStore {
 					if (typeof resolvedKey === "number") {
 						tx.maybeUpdateKeyGenerator(this.name, resolvedKey);
 					}
-				} catch {
+				} catch (_error) {
 					const nextKey = tx.nextAutoIncrementKey(this.name);
 					resolvedKey = nextKey;
 					// Inject into cloned value
@@ -576,7 +553,9 @@ export class IDBObjectStore {
 			} else if (this.autoIncrement) {
 				resolvedKey = tx.nextAutoIncrementKey(this.name);
 			} else {
-				throw DataError("No key provided and object store has no keyPath or autoIncrement");
+				throw DataError(
+					"No key provided and object store has no keyPath or autoIncrement",
+				);
 			}
 		}
 

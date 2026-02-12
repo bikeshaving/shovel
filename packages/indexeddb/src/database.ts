@@ -6,10 +6,7 @@ import type {IDBBackendConnection} from "./backend.js";
 import {IDBTransaction} from "./transaction.js";
 import {IDBObjectStore} from "./object-store.js";
 import {SafeEventTarget} from "./event-target.js";
-import {
-	InvalidStateError,
-	NotFoundError,
-} from "./errors.js";
+import {InvalidStateError, NotFoundError} from "./errors.js";
 import {makeDOMStringList} from "./types.js";
 import type {ObjectStoreMeta, TransactionMode} from "./types.js";
 
@@ -17,17 +14,17 @@ export class IDBDatabase extends SafeEventTarget {
 	readonly name: string;
 	#version: number;
 	#connection: IDBBackendConnection;
-	#closed: boolean = false;
+	#closed!: boolean;
 	#objectStoreNames: string[];
 
 	get [Symbol.toStringTag](): string {
 		return "IDBDatabase";
 	}
 
-	#onabortHandler: ((ev: Event) => void) | null = null;
-	#oncloseHandler: ((ev: Event) => void) | null = null;
-	#onerrorHandler: ((ev: Event) => void) | null = null;
-	#onversionchangeHandler: ((ev: Event) => void) | null = null;
+	#onabortHandler!: ((ev: Event) => void) | null;
+	#oncloseHandler!: ((ev: Event) => void) | null;
+	#onerrorHandler!: ((ev: Event) => void) | null;
+	#onversionchangeHandler!: ((ev: Event) => void) | null;
 
 	get onabort(): ((ev: Event) => void) | null {
 		return this.#onabortHandler;
@@ -81,15 +78,17 @@ export class IDBDatabase extends SafeEventTarget {
 		}
 	}
 
-	constructor(
-		name: string,
-		version: number,
-		connection: IDBBackendConnection,
-	) {
+	constructor(name: string, version: number, connection: IDBBackendConnection) {
 		super();
 		this.name = name;
 		this.#version = version;
 		this.#connection = connection;
+		this.#closed = false;
+		this.#onabortHandler = null;
+		this.#oncloseHandler = null;
+		this.#onerrorHandler = null;
+		this.#onversionchangeHandler = null;
+		this.#onCloseCallback = null;
 
 		const meta = connection.getMetadata();
 		this.#objectStoreNames = Array.from(meta.objectStores.keys());
@@ -109,7 +108,7 @@ export class IDBDatabase extends SafeEventTarget {
 	transaction(
 		storeNames: string | string[],
 		mode: IDBTransactionMode = "readonly",
-		options?: { durability?: string },
+		options?: {durability?: string},
 	): IDBTransaction {
 		if (this.#closed) {
 			throw InvalidStateError("Database connection is closed");
@@ -122,7 +121,8 @@ export class IDBDatabase extends SafeEventTarget {
 			);
 		}
 
-		const rawNames = typeof storeNames === "string" ? [storeNames] : [...storeNames];
+		const rawNames =
+			typeof storeNames === "string" ? [storeNames] : [...storeNames];
 		// Spec: deduplicate and sort store names
 		const names = [...new Set(rawNames)].sort();
 
@@ -141,7 +141,11 @@ export class IDBDatabase extends SafeEventTarget {
 		}
 
 		const durability = options?.durability ?? "default";
-		if (durability !== "default" && durability !== "strict" && durability !== "relaxed") {
+		if (
+			durability !== "default" &&
+			durability !== "strict" &&
+			durability !== "relaxed"
+		) {
 			throw new TypeError(
 				`Failed to execute 'transaction' on 'IDBDatabase': The provided value '${durability}' is not a valid enum value of type IDBTransactionDurability.`,
 			);
@@ -151,7 +155,13 @@ export class IDBDatabase extends SafeEventTarget {
 			names,
 			mode as TransactionMode,
 		);
-		const tx = new IDBTransaction(this, names, mode as TransactionMode, backendTx, durability);
+		const tx = new IDBTransaction(
+			this,
+			names,
+			mode as TransactionMode,
+			backendTx,
+			durability,
+		);
 		// Set parent for event bubbling: transaction → database
 		tx._parent = this;
 		// Schedule auto-commit so empty transactions (no requests) complete
@@ -170,7 +180,7 @@ export class IDBDatabase extends SafeEventTarget {
 		// During upgradeneeded, factory.ts replaces this method.
 		throw InvalidStateError(
 			"Failed to execute 'createObjectStore' on 'IDBDatabase': " +
-			"The database is not running a version change transaction.",
+				"The database is not running a version change transaction.",
 		);
 	}
 
@@ -180,11 +190,11 @@ export class IDBDatabase extends SafeEventTarget {
 	deleteObjectStore(_name: string): void {
 		throw InvalidStateError(
 			"Failed to execute 'deleteObjectStore' on 'IDBDatabase': " +
-			"The database is not running a version change transaction.",
+				"The database is not running a version change transaction.",
 		);
 	}
 
-	#onCloseCallback: (() => void) | null = null;
+	#onCloseCallback!: (() => void) | null;
 
 	/**
 	 * Close the database connection.

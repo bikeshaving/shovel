@@ -4,7 +4,12 @@
  * Stores everything in sorted arrays. Used for testing and as the default backend.
  */
 
-import {compareKeys, encodeKey, validateKey, extractKeyFromValue} from "./key.js";
+import {
+	compareKeys,
+	encodeKey,
+	validateKey,
+	extractKeyFromValue,
+} from "./key.js";
 import {decodeValue} from "./structured-clone.js";
 import {ConstraintError, NotFoundError} from "./errors.js";
 import type {
@@ -100,11 +105,13 @@ function matchesRange(key: Uint8Array, range?: KeyRangeSpec): boolean {
 
 class MemoryStore {
 	meta: ObjectStoreMeta;
-	data: SortedEntry[] = [];
-	autoIncrementCurrent: number = 0;
+	data!: SortedEntry[];
+	autoIncrementCurrent!: number;
 
 	constructor(meta: ObjectStoreMeta) {
 		this.meta = meta;
+		this.data = [];
+		this.autoIncrementCurrent = 0;
 	}
 
 	clone(): MemoryStore {
@@ -120,10 +127,11 @@ class MemoryStore {
 
 class MemoryIndex {
 	meta: IndexMeta;
-	data: IndexEntry[] = [];
+	data!: IndexEntry[];
 
 	constructor(meta: IndexMeta) {
 		this.meta = meta;
+		this.data = [];
 	}
 
 	clone(): MemoryIndex {
@@ -154,11 +162,11 @@ interface MemoryDatabase {
 class MemoryTransaction implements IDBBackendTransaction {
 	#db: MemoryDatabase;
 	// Snapshots for rollback (readwrite/versionchange)
-	#snapshot: {
+	#snapshot!: {
 		stores: Map<string, MemoryStore>;
 		indexes: Map<string, MemoryIndex>;
 		version: number;
-	} | null = null;
+	} | null;
 
 	constructor(
 		db: MemoryDatabase,
@@ -166,6 +174,7 @@ class MemoryTransaction implements IDBBackendTransaction {
 		mode: "readonly" | "readwrite" | "versionchange",
 	) {
 		this.#db = db;
+		this.#snapshot = null;
 
 		// Save snapshot for rollback
 		if (mode !== "readonly") {
@@ -220,7 +229,10 @@ class MemoryTransaction implements IDBBackendTransaction {
 	get(storeName: string, key: EncodedKey): StoredRecord | undefined {
 		const store = this.#getStore(storeName);
 		const idx = binarySearch(store.data, key);
-		if (idx < store.data.length && compareKeys(store.data[idx].key, key) === 0) {
+		if (
+			idx < store.data.length &&
+			compareKeys(store.data[idx].key, key) === 0
+		) {
 			return store.data[idx];
 		}
 		return undefined;
@@ -263,8 +275,15 @@ class MemoryTransaction implements IDBBackendTransaction {
 		const idx = binarySearch(store.data, key);
 
 		// Remove old index entries if updating
-		if (idx < store.data.length && compareKeys(store.data[idx].key, key) === 0) {
-			this.#removeFromIndexes(storeName, store.data[idx].key, store.data[idx].value);
+		if (
+			idx < store.data.length &&
+			compareKeys(store.data[idx].key, key) === 0
+		) {
+			this.#removeFromIndexes(
+				storeName,
+				store.data[idx].key,
+				store.data[idx].value,
+			);
 			store.data[idx] = {key, value};
 		} else {
 			store.data.splice(idx, 0, {key, value});
@@ -277,7 +296,10 @@ class MemoryTransaction implements IDBBackendTransaction {
 	add(storeName: string, key: EncodedKey, value: Uint8Array): void {
 		const store = this.#getStore(storeName);
 		const idx = binarySearch(store.data, key);
-		if (idx < store.data.length && compareKeys(store.data[idx].key, key) === 0) {
+		if (
+			idx < store.data.length &&
+			compareKeys(store.data[idx].key, key) === 0
+		) {
 			throw ConstraintError(
 				`Key already exists in object store "${storeName}"`,
 			);
@@ -291,7 +313,11 @@ class MemoryTransaction implements IDBBackendTransaction {
 		const toRemove: number[] = [];
 		for (let i = 0; i < store.data.length; i++) {
 			if (matchesRange(store.data[i].key, range)) {
-				this.#removeFromIndexes(storeName, store.data[i].key, store.data[i].value);
+				this.#removeFromIndexes(
+					storeName,
+					store.data[i].key,
+					store.data[i].value,
+				);
 				toRemove.push(i);
 			}
 		}
@@ -459,7 +485,10 @@ class MemoryTransaction implements IDBBackendTransaction {
 								break;
 							}
 						}
-						const record = this.get(storeName, idx.data[firstWithKey].primaryKey);
+						const record = this.get(
+							storeName,
+							idx.data[firstWithKey].primaryKey,
+						);
 						if (record) {
 							firstEntry = idx.data[firstWithKey];
 							break;
@@ -581,7 +610,7 @@ class MemoryTransaction implements IDBBackendTransaction {
 		let decodedValue: unknown;
 		try {
 			decodedValue = decodeValue(value);
-		} catch {
+		} catch (_error) {
 			return; // Can't extract key — skip
 		}
 
@@ -605,7 +634,7 @@ class MemoryTransaction implements IDBBackendTransaction {
 								seen.add(encodedStr);
 								indexKeys.push(encoded);
 							}
-						} catch {
+						} catch (_error) {
 							// Skip invalid keys per spec
 						}
 					}
@@ -615,7 +644,7 @@ class MemoryTransaction implements IDBBackendTransaction {
 					try {
 						const validated = validateKey(rawValue);
 						indexKeys = [encodeKey(validated)];
-					} catch {
+					} catch (_error) {
 						return;
 					}
 				}
@@ -623,7 +652,7 @@ class MemoryTransaction implements IDBBackendTransaction {
 				const extracted = extractKeyFromValue(decodedValue, meta.keyPath);
 				indexKeys = [encodeKey(extracted)];
 			}
-		} catch {
+		} catch (_error) {
 			return; // Key extraction failed — skip this record for this index
 		}
 
@@ -682,7 +711,12 @@ class MemoryCursor implements IDBBackendCursor {
 	#currentKey: Uint8Array;
 	#currentValue: Uint8Array;
 
-	constructor(store: MemoryStore, range: KeyRangeSpec | undefined, direction: CursorDirection, initialEntry: SortedEntry) {
+	constructor(
+		store: MemoryStore,
+		range: KeyRangeSpec | undefined,
+		direction: CursorDirection,
+		initialEntry: SortedEntry,
+	) {
 		this.#store = store;
 		this.#range = range;
 		this.#direction = direction;
@@ -708,7 +742,10 @@ class MemoryCursor implements IDBBackendCursor {
 		if (this.#direction === "next" || this.#direction === "nextunique") {
 			// Find first entry with key > currentKey that matches range
 			for (let i = 0; i < data.length; i++) {
-				if (compareKeys(data[i].key, this.#currentKey) > 0 && matchesRange(data[i].key, this.#range)) {
+				if (
+					compareKeys(data[i].key, this.#currentKey) > 0 &&
+					matchesRange(data[i].key, this.#range)
+				) {
 					this.#currentKey = data[i].key;
 					this.#currentValue = data[i].value;
 					return true;
@@ -717,7 +754,10 @@ class MemoryCursor implements IDBBackendCursor {
 		} else {
 			// prev/prevunique: find last entry with key < currentKey that matches range
 			for (let i = data.length - 1; i >= 0; i--) {
-				if (compareKeys(data[i].key, this.#currentKey) < 0 && matchesRange(data[i].key, this.#range)) {
+				if (
+					compareKeys(data[i].key, this.#currentKey) < 0 &&
+					matchesRange(data[i].key, this.#range)
+				) {
 					this.#currentKey = data[i].key;
 					this.#currentValue = data[i].value;
 					return true;
@@ -782,7 +822,11 @@ class MemoryIndexCursor implements IDBBackendCursor {
 			// Find next entry after current (key, primaryKey)
 			for (let i = 0; i < data.length; i++) {
 				const keyCmp = compareKeys(data[i].key, this.#currentKey);
-				if (keyCmp > 0 || (keyCmp === 0 && compareKeys(data[i].primaryKey, this.#currentPrimaryKey) > 0)) {
+				if (
+					keyCmp > 0 ||
+					(keyCmp === 0 &&
+						compareKeys(data[i].primaryKey, this.#currentPrimaryKey) > 0)
+				) {
 					if (matchesRange(data[i].key, this.#range)) {
 						this.#currentKey = data[i].key;
 						this.#currentPrimaryKey = data[i].primaryKey;
@@ -794,7 +838,10 @@ class MemoryIndexCursor implements IDBBackendCursor {
 		} else if (this.#direction === "nextunique") {
 			// Find next entry with a different (greater) key
 			for (let i = 0; i < data.length; i++) {
-				if (compareKeys(data[i].key, this.#currentKey) > 0 && matchesRange(data[i].key, this.#range)) {
+				if (
+					compareKeys(data[i].key, this.#currentKey) > 0 &&
+					matchesRange(data[i].key, this.#range)
+				) {
 					this.#currentKey = data[i].key;
 					this.#currentPrimaryKey = data[i].primaryKey;
 					this.#currentValue = this.#lookupValue(data[i].primaryKey);
@@ -805,7 +852,11 @@ class MemoryIndexCursor implements IDBBackendCursor {
 			// Find previous entry before current (key, primaryKey)
 			for (let i = data.length - 1; i >= 0; i--) {
 				const keyCmp = compareKeys(data[i].key, this.#currentKey);
-				if (keyCmp < 0 || (keyCmp === 0 && compareKeys(data[i].primaryKey, this.#currentPrimaryKey) < 0)) {
+				if (
+					keyCmp < 0 ||
+					(keyCmp === 0 &&
+						compareKeys(data[i].primaryKey, this.#currentPrimaryKey) < 0)
+				) {
 					if (matchesRange(data[i].key, this.#range)) {
 						this.#currentKey = data[i].key;
 						this.#currentPrimaryKey = data[i].primaryKey;
@@ -817,7 +868,10 @@ class MemoryIndexCursor implements IDBBackendCursor {
 		} else {
 			// prevunique: find previous entry with a different (lesser) key
 			for (let i = data.length - 1; i >= 0; i--) {
-				if (compareKeys(data[i].key, this.#currentKey) < 0 && matchesRange(data[i].key, this.#range)) {
+				if (
+					compareKeys(data[i].key, this.#currentKey) < 0 &&
+					matchesRange(data[i].key, this.#range)
+				) {
 					// For prevunique, we want the FIRST entry with this key (lowest primaryKey)
 					const targetKey = data[i].key;
 					let firstWithKey = i;
@@ -890,7 +944,11 @@ class MemoryConnection implements IDBBackendConnection {
 // ============================================================================
 
 export class MemoryBackend implements IDBBackend {
-	#databases = new Map<string, MemoryDatabase>();
+	#databases!: Map<string, MemoryDatabase>;
+
+	constructor() {
+		this.#databases = new Map<string, MemoryDatabase>();
+	}
 
 	open(name: string, _version: number): IDBBackendConnection {
 		let db = this.#databases.get(name);
