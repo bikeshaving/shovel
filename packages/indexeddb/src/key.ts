@@ -1,3 +1,7 @@
+import {types} from "node:util";
+
+const isProxy = types.isProxy;
+
 /**
  * IndexedDB key encoding/decoding/validation/comparison.
  *
@@ -115,6 +119,12 @@ export function validateKey(value: unknown, seen?: Set<unknown>): IDBValidKey {
 			value.byteOffset,
 			value.byteOffset + value.byteLength,
 		);
+	}
+	// Reject Proxy-wrapped values — the IDB spec operates on the internal
+	// [[Class]] of the object, which native implementations can inspect directly.
+	// In JS we use util.types.isProxy (available in Node/Bun) to detect them.
+	if (isProxy(value)) {
+		throw DataError("The parameter is not a valid key (proxy)");
 	}
 	if (Array.isArray(value)) {
 		// Cycle detection
