@@ -83,14 +83,8 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 				);
 			} else if (e && e.message) {
 				assertions.assert_unreached(`${desc} (${e.message})`);
-			} else if (
-				e &&
-				e.target?.readyState === "done" &&
-				e.target?.error
-			) {
-				assertions.assert_unreached(
-					`${desc} (${e.target.error.name})`,
-				);
+			} else if (e && e.target?.readyState === "done" && e.target?.error) {
+				assertions.assert_unreached(`${desc} (${e.target.error.name})`);
 			} else {
 				assertions.assert_unreached(desc);
 			}
@@ -100,12 +94,8 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 	/**
 	 * createdb_for_multiple_tests — opens a database with auto-fail handlers.
 	 */
-	function createdb_for_multiple_tests(
-		dbname?: string,
-		version?: number,
-	): any {
-		const resolvedName =
-			dbname ?? `testdb-${Date.now()}${Math.random()}`;
+	function createdb_for_multiple_tests(dbname?: string, version?: number): any {
+		const resolvedName = dbname ?? `testdb-${Date.now()}${Math.random()}`;
 		const rq_open = version
 			? indexedDB.open(resolvedName, version)
 			: indexedDB.open(resolvedName);
@@ -121,9 +111,7 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 				if (currentTest !== test) return;
 				test.step(() => {
 					if (!rq_open.manually_handled[evt]) {
-						assertions.assert_unreached(
-							`unexpected open.${evt} event`,
-						);
+						assertions.assert_unreached(`unexpected open.${evt} event`);
 					}
 				});
 			});
@@ -159,11 +147,7 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 	/**
 	 * createdb — convenience wrapper around createdb_for_multiple_tests.
 	 */
-	function createdb(
-		t: TestContext,
-		dbname?: string,
-		version?: number,
-	): any {
+	function createdb(t: TestContext, dbname?: string, version?: number): any {
 		const rq_open = createdb_for_multiple_tests(dbname, version);
 		return rq_open.setTest(t);
 	}
@@ -176,11 +160,7 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		expected: any,
 		description?: string,
 	): void {
-		assertions.assert_equals(
-			indexedDB.cmp(actual, expected),
-			0,
-			description,
-		);
+		assertions.assert_equals(indexedDB.cmp(actual, expected), 0, description);
 	}
 
 	/**
@@ -292,7 +272,9 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 	};
 	const document = {
 		title: "WPT IndexedDB",
-		getElementsByTagName(_tag: string) { return {length: 0}; },
+		getElementsByTagName(_tag: string) {
+			return {length: 0};
+		},
 	};
 
 	/**
@@ -409,7 +391,7 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		});
 		// Stub self.postMessage for WPT tests that use it to detach ArrayBuffers
 		if (!(self as any).postMessage) {
-			(self as any).postMessage = (msg: any, opts: any) => {
+			(self as any).postMessage = (_msg: any, _opts: any) => {
 				// No-op; just for compatibility with tests that check cloneability
 			};
 		}

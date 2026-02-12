@@ -104,7 +104,9 @@ export class IDBKeyRange {
 	): IDBKeyRange {
 		if (arguments.length < 2) {
 			throw new TypeError(
-				"Failed to execute 'bound' on 'IDBKeyRange': 2 arguments required, but only " + arguments.length + " present.",
+				"Failed to execute 'bound' on 'IDBKeyRange': 2 arguments required, but only " +
+					arguments.length +
+					" present.",
 			);
 		}
 		return new IDBKeyRange(

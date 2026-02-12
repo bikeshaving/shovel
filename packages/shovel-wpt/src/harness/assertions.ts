@@ -438,7 +438,7 @@ export function assert_readonly(
 	const initial = object[propertyName];
 	try {
 		object[propertyName] = initial + "CHANGED";
-	} catch {
+	} catch (_error) {
 		// Throws in strict mode — that's fine, it's readonly
 	}
 	if (object[propertyName] !== initial) {

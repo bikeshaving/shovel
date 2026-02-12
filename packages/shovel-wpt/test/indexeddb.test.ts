@@ -5,7 +5,11 @@
  */
 
 import {runIndexedDBTests} from "../src/runners/indexeddb.js";
-import {IDBFactory, IDBKeyRange, MemoryBackend} from "../../indexeddb/src/index.js";
+import {
+	IDBFactory,
+	IDBKeyRange,
+	MemoryBackend,
+} from "../../indexeddb/src/index.js";
 
 runIndexedDBTests("MemoryBackend", {
 	createFactory: () => new IDBFactory(new MemoryBackend()),

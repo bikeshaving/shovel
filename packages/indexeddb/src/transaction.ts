@@ -8,7 +8,11 @@
 import type {IDBBackendTransaction} from "./backend.js";
 import {SafeEventTarget} from "./event-target.js";
 import {IDBRequest} from "./request.js";
-import {AbortError, InvalidStateError, TransactionInactiveError} from "./errors.js";
+import {
+	AbortError,
+	InvalidStateError,
+	TransactionInactiveError,
+} from "./errors.js";
 import {makeDOMStringList} from "./types.js";
 import type {TransactionMode} from "./types.js";
 
@@ -29,17 +33,17 @@ export class IDBTransaction extends SafeEventTarget {
 
 	#db: any; // IDBDatabase (avoid circular import)
 	#backendTx: IDBBackendTransaction;
-	#active: boolean = true;
-	#committed: boolean = false;
-	#aborted: boolean = false;
-	#commitPending: boolean = false;
-	#pendingRequests: number = 0;
-	#error: DOMException | null = null;
-	#needsAbortEvent: boolean = false;
+	#active!: boolean;
+	#committed!: boolean;
+	#aborted!: boolean;
+	#commitPending!: boolean;
+	#pendingRequests!: number;
+	#error!: DOMException | null;
+	#needsAbortEvent!: boolean;
 
-	#oncompleteHandler: ((ev: Event) => void) | null = null;
-	#onerrorHandler: ((ev: Event) => void) | null = null;
-	#onabortHandler: ((ev: Event) => void) | null = null;
+	#oncompleteHandler!: ((ev: Event) => void) | null;
+	#onerrorHandler!: ((ev: Event) => void) | null;
+	#onabortHandler!: ((ev: Event) => void) | null;
 
 	get oncomplete(): ((ev: Event) => void) | null {
 		return this.#oncompleteHandler;
@@ -88,6 +92,16 @@ export class IDBTransaction extends SafeEventTarget {
 		durability: string = "default",
 	) {
 		super();
+		this.#active = true;
+		this.#committed = false;
+		this.#aborted = false;
+		this.#commitPending = false;
+		this.#pendingRequests = 0;
+		this.#error = null;
+		this.#needsAbortEvent = false;
+		this.#oncompleteHandler = null;
+		this.#onerrorHandler = null;
+		this.#onabortHandler = null;
 		this.#db = db;
 		this._scope = [...storeNames];
 		this.mode = mode;
@@ -141,6 +155,7 @@ export class IDBTransaction extends SafeEventTarget {
 			throw InvalidStateError("Transaction is no longer active");
 		}
 		// Lazy import to avoid circular dependency
+		// eslint-disable-next-line no-restricted-globals
 		const {IDBObjectStore} = require("./object-store.js");
 		const meta = this.#db._getStoreMeta(name);
 		const store = new IDBObjectStore(this, meta);
@@ -168,9 +183,7 @@ export class IDBTransaction extends SafeEventTarget {
 
 		this.#error = AbortError("Transaction was aborted");
 
-		this.dispatchEvent(
-			new Event("abort", {bubbles: true, cancelable: false}),
-		);
+		this.dispatchEvent(new Event("abort", {bubbles: true, cancelable: false}));
 	}
 
 	/**
@@ -309,22 +322,14 @@ export class IDBTransaction extends SafeEventTarget {
 	}
 
 	#maybeAutoCommit(): void {
-		if (
-			this.#pendingRequests === 0 &&
-			!this.#committed &&
-			!this.#aborted
-		) {
+		if (this.#pendingRequests === 0 && !this.#committed && !this.#aborted) {
 			// Double-nested microtask: ensures auto-commit runs after promise
 			// continuations from EventWatcher/promiseForRequest chains settle.
 			// Without this, the commit check would fire between promise hops
 			// (e.g., EventWatcher.then → await continuation), committing
 			// the transaction before user code can issue the next request.
 			queueMicrotask(() => {
-				if (
-					this.#pendingRequests === 0 &&
-					!this.#committed &&
-					!this.#aborted
-				) {
+				if (this.#pendingRequests === 0 && !this.#committed && !this.#aborted) {
 					queueMicrotask(() => {
 						if (
 							this.#pendingRequests === 0 &&
