@@ -8,6 +8,7 @@ import {IDBKeyRange} from "./key-range.js";
 import {IDBCursor, IDBCursorWithValue} from "./cursor.js";
 import {encodeKey, decodeKey, validateKey} from "./key.js";
 import {decodeValue} from "./structured-clone.js";
+import {IDBRecord} from "./object-store.js";
 import {TransactionInactiveError, InvalidStateError} from "./errors.js";
 import type {IndexMeta, KeyRangeSpec} from "./types.js";
 
@@ -18,6 +19,27 @@ function enforceRangeCount(count: unknown): void {
 			`The count parameter is not a valid unsigned long value.`,
 		);
 	}
+}
+
+function parseGetAllArgs(
+	queryOrOptions?: any,
+	countArg?: number,
+): {query: any; count: number | undefined; direction: IDBCursorDirection | undefined} {
+	// Detect options dictionary: plain objects (not Date, Array, IDBKeyRange, etc.)
+	if (
+		queryOrOptions !== null &&
+		queryOrOptions !== undefined &&
+		typeof queryOrOptions === "object" &&
+		Object.getPrototypeOf(queryOrOptions) === Object.prototype
+	) {
+		const cnt = queryOrOptions.count;
+		return {
+			query: queryOrOptions.query ?? null,
+			count: cnt === 0 ? undefined : cnt,
+			direction: queryOrOptions.direction,
+		};
+	}
+	return {query: queryOrOptions, count: countArg === 0 ? undefined : countArg, direction: undefined};
 }
 
 export class IDBIndex {
@@ -157,33 +179,94 @@ export class IDBIndex {
 		});
 	}
 
-	getAll(query?: IDBValidKey | IDBKeyRange | null, count?: number): IDBRequest {
+	getAll(queryOrOptions?: any, count?: number): IDBRequest {
 		this.#checkActive();
-		if (count !== undefined) enforceRangeCount(count);
+		const {query, count: cnt, direction} = parseGetAllArgs(queryOrOptions, count);
+		if (cnt !== undefined) enforceRangeCount(cnt);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const records = tx.indexGetAll(this.#storeName, this.name, range, count);
+			if (direction && direction !== "next") {
+				// Use cursor for non-default directions
+				const results: any[] = [];
+				const cursor = tx.openIndexCursor(
+					this.#storeName, this.name, range, direction as any,
+				);
+				if (cursor) {
+					do {
+						results.push(decodeValue(cursor.value));
+						if (cnt !== undefined && results.length >= cnt) break;
+					} while (cursor.continue());
+				}
+				return results;
+			}
+			const records = tx.indexGetAll(this.#storeName, this.name, range, cnt);
 			return records.map((r) => decodeValue(r.value));
 		});
 	}
 
-	getAllKeys(
-		query?: IDBValidKey | IDBKeyRange | null,
-		count?: number,
-	): IDBRequest {
+	getAllKeys(queryOrOptions?: any, count?: number): IDBRequest {
 		this.#checkActive();
+		const {query, count: cnt, direction} = parseGetAllArgs(queryOrOptions, count);
+		if (cnt !== undefined) enforceRangeCount(cnt);
+		const range = this.#toRangeSpec(query);
+		const request = new IDBRequest();
+		request._setSource(this);
+
+		return this.#transaction._executeRequest(request, (tx) => {
+			if (direction && direction !== "next") {
+				// Use cursor for non-default directions
+				const results: any[] = [];
+				const cursor = tx.openIndexKeyCursor(
+					this.#storeName, this.name, range, direction as any,
+				);
+				if (cursor) {
+					do {
+						results.push(decodeKey(cursor.primaryKey));
+						if (cnt !== undefined && results.length >= cnt) break;
+					} while (cursor.continue());
+				}
+				return results;
+			}
+			return tx
+				.indexGetAllKeys(this.#storeName, this.name, range, cnt)
+				.map((k) => decodeKey(k));
+		});
+	}
+
+	getAllRecords(options?: any): IDBRequest {
+		this.#checkActive();
+		const {query, count, direction} = parseGetAllArgs(options);
 		if (count !== undefined) enforceRangeCount(count);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			return tx
-				.indexGetAllKeys(this.#storeName, this.name, range, count)
-				.map((k) => decodeKey(k));
+			// Use cursor-based iteration to get index key, primary key, and value
+			const results: IDBRecord[] = [];
+			const cursor = tx.openIndexCursor(
+				this.#storeName,
+				this.name,
+				range,
+				(direction || "next") as any,
+			);
+			if (cursor) {
+				do {
+					const record = tx.get(this.#storeName, cursor.primaryKey);
+					results.push(
+						new IDBRecord(
+							decodeKey(cursor.key),
+							decodeKey(cursor.primaryKey),
+							record ? decodeValue(record.value) : undefined,
+						),
+					);
+					if (count !== undefined && results.length >= count) break;
+				} while (cursor.continue());
+			}
+			return results;
 		});
 	}
 
