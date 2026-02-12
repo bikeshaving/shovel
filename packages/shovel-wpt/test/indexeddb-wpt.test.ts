@@ -20,7 +20,7 @@ import {
 	IDBVersionChangeEvent,
 	MemoryBackend,
 } from "../../indexeddb/src/index.js";
-import {flushTests, clearTestQueue} from "../src/harness/testharness.js";
+import {flushTests, clearTestQueue, filterTestQueue} from "../src/harness/testharness.js";
 import {test as bunTest} from "bun:test";
 import {join} from "node:path";
 import {readdirSync, readFileSync} from "node:fs";
@@ -120,15 +120,14 @@ const skip = [
 	// Structured clone of complex types (Map, Set, RegExp, etc.)
 	"structured-clone",
 	"nested-cloning",
-	"clone-before-keypath",
 	"value.any.js",
 	"value_recursive",
 	// Transaction scheduling (requires connection queuing)
 	"transaction-scheduling",
 	"writer-starvation",
 	"open-request-queue",
-	// Rename operations
-	"rename",
+	// Rename operations — now supported
+	// "rename",
 	// Storage buckets (requires storage API)
 	"storage-buckets",
 	// Bindings injection (tests V8/SpiderMonkey-specific behavior)
@@ -144,8 +143,6 @@ const skip = [
 	"parallel-cursors",
 	// SameObject identity checks (our impl creates new wrappers)
 	"SameObject",
-	// Exception ordering (tests precise throw order per spec)
-	"exception-order",
 	// Interleaved cursors (complex cursor scheduling)
 	"interleaved-cursors",
 	// Tests using setTimeout/keep_alive (hang: microtask chains starve event loop)
@@ -154,32 +151,32 @@ const skip = [
 	"upgrade-transaction-deactivation-timing",
 	"transaction-lifetime",
 	"upgrade-transaction-lifecycle",
-	// Fire-exception tests (test error propagation through dispatchEvent)
-	"fire-error-event",
-	"fire-success-event",
-	"fire-upgradeneeded-event",
-	// Request bubble/capture (needs DOM event propagation)
-	"bubble-and-capture",
-	// Transaction create in versionchange
-	"transaction-create_in_versionchange",
 	// getAllRecords (uses IDBRecord class we don't implement)
 	"getAllRecords",
 	// getAll/getAllKeys options (IDB 3.0 IDBGetAllOptions dictionary)
 	"getAll-options",
 	"getAllKeys-options",
-	// Explicit commit (uses commit() synchronously in ways that conflict with our auto-commit)
-	"idb-explicit-commit",
+	// Explicit commit throw — registers a global error handler that persists and
+	// breaks subsequent tests
+	"idb-explicit-commit-throw",
 	// Transaction requestqueue (uses keep_alive pattern)
 	"transaction-requestqueue",
-	// Get databases (uses sleep_sync busy-wait for 1000ms)
+	// Get databases (shared factory has leftover connections that block deleteAllDatabases)
 	"get-databases",
-	// Historical interface checks (IDBCursor class not exposed)
-	"historical",
-	// Binary key conversion (typed array edge cases)
-	"idb_binary_key_conversion",
 	// Tombstone tests (requires transaction scheduling/queuing)
 	"idbindex_tombstones",
 ];
+
+/**
+ * Per-test skip patterns — skip individual tests within a file by name substring.
+ * Used for tests that hang due to microtask starvation (keepAlive + setTimeout).
+ */
+const skipTests: Record<string, string[]> = {
+	"idb-explicit-commit.any.js": [
+		// Uses keepAlive + timeoutPromise(0) — infinite microtask chain starves event loop
+		"txn.commit() when txn is inactive",
+	],
+};
 
 const wptFiles = readdirSync(wptDir)
 	.filter((f) => f.endsWith(".any.js"))
@@ -217,6 +214,11 @@ for (const file of wptFiles) {
 		testCode = testCode.replace(/^'use strict';?\s*$/m, "");
 		testCode = testCode.replace(/^(const|let) /gm, "var ");
 		(0, eval)(`(function() {\n${testCode}\n})();`);
+
+		// Remove individual tests that would hang (e.g. keepAlive + setTimeout)
+		if (skipTests[file]) {
+			filterTestQueue(skipTests[file]);
+		}
 
 		flushTests(`WPT: ${file.replace(".any.js", "")}`, {timeout: 2000});
 	} catch (e) {

@@ -21,12 +21,12 @@ function enforceRangeCount(count: unknown): void {
 }
 
 export class IDBIndex {
-	readonly name: string;
 	readonly unique: boolean;
 	readonly multiEntry: boolean;
 	readonly objectStore: any;
 	_deleted!: boolean;
 
+	#name: string;
 	#transaction: IDBTransaction;
 	#storeName: string;
 	#keyPath: string | string[];
@@ -34,6 +34,51 @@ export class IDBIndex {
 
 	get [Symbol.toStringTag](): string {
 		return "IDBIndex";
+	}
+
+	get name(): string {
+		return this.#name;
+	}
+
+	set name(newName: string) {
+		// Web IDL: DOMString setter stringifies the value
+		newName = String(newName);
+		// Spec: renaming is only allowed during versionchange transactions
+		if (this.#transaction.mode !== "versionchange") {
+			throw InvalidStateError(
+				"Index name can only be changed during a versionchange transaction",
+			);
+		}
+		if (!this.#transaction._active) {
+			throw TransactionInactiveError("Transaction is not active");
+		}
+		if (this._deleted || this.objectStore._deleted) {
+			throw InvalidStateError("Index or its object store has been deleted");
+		}
+		const oldName = this.#name;
+		if (newName === oldName) return;
+		// Spec: ConstraintError if an index with the new name already exists on the same store
+		if (this.objectStore._indexNames.includes(newName)) {
+			throw new DOMException(
+				`Index "${newName}" already exists on store "${this.#storeName}"`,
+				"ConstraintError",
+			);
+		}
+		// Rename in backend
+		this.#transaction._backendTx.renameIndex(this.#storeName, oldName, newName);
+		this.#name = newName;
+		// Update objectStore._indexNames
+		const idx = this.objectStore._indexNames.indexOf(oldName);
+		if (idx >= 0) {
+			this.objectStore._indexNames[idx] = newName;
+		}
+		// Record for abort reversion
+		this.#transaction._recordIndexRename(this, this.objectStore, oldName, newName);
+	}
+
+	/** @internal - Revert name after transaction abort */
+	_revertName(name: string): void {
+		this.#name = name;
 	}
 
 	get keyPath(): string | string[] {
@@ -55,7 +100,7 @@ export class IDBIndex {
 	) {
 		this.#transaction = transaction;
 		this.#storeName = storeName;
-		this.name = meta.name;
+		this.#name = meta.name;
 		this.#keyPath = meta.keyPath;
 		this.unique = meta.unique;
 		this.multiEntry = meta.multiEntry;

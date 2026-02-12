@@ -40,6 +40,12 @@ export class IDBTransaction extends SafeEventTarget {
 	#pendingRequests!: number;
 	#error!: DOMException | null;
 	#needsAbortEvent!: boolean;
+	#storeCache: Map<string, any> = new Map();
+	/** Maps store instance → name before first rename in this transaction */
+	#originalStoreNames: Map<any, string> = new Map();
+	/** Maps index instance → {store, name before first rename} */
+	#originalIndexNames: Map<any, {store: any; name: string}> = new Map();
+	#initialScope!: string[];
 
 	#oncompleteHandler!: ((ev: Event) => void) | null;
 	#onerrorHandler!: ((ev: Event) => void) | null;
@@ -104,6 +110,7 @@ export class IDBTransaction extends SafeEventTarget {
 		this.#onabortHandler = null;
 		this.#db = db;
 		this._scope = [...storeNames];
+		this.#initialScope = [...storeNames];
 		this.mode = mode;
 		this.#backendTx = backendTx;
 		this.durability = durability;
@@ -145,15 +152,19 @@ export class IDBTransaction extends SafeEventTarget {
 	 * Create an IDBObjectStore accessor for this transaction.
 	 */
 	objectStore(name: string): any {
+		// Spec order: finished check before scope check
+		if (this.#aborted || this.#committed) {
+			throw InvalidStateError("Transaction is no longer active");
+		}
 		if (!this._scope.includes(name)) {
 			throw new DOMException(
 				`Object store "${name}" is not in this transaction's scope`,
 				"NotFoundError",
 			);
 		}
-		if (this.#aborted || this.#committed) {
-			throw InvalidStateError("Transaction is no longer active");
-		}
+		// Return cached instance if available (spec: same object identity)
+		const cached = this.#storeCache.get(name);
+		if (cached) return cached;
 		// Lazy import to avoid circular dependency
 		// eslint-disable-next-line no-restricted-globals
 		const {IDBObjectStore} = require("./object-store.js");
@@ -167,6 +178,7 @@ export class IDBTransaction extends SafeEventTarget {
 				store._indexNames.push(idx.name);
 			}
 		}
+		this.#storeCache.set(name, store);
 		return store;
 	}
 
@@ -174,31 +186,103 @@ export class IDBTransaction extends SafeEventTarget {
 	 * Abort the transaction.
 	 */
 	abort(): void {
-		if (this.#committed || this.#aborted) {
+		if (this.#committed || this.#aborted || this.#commitPending) {
 			throw InvalidStateError("Transaction already finished");
 		}
 		this.#aborted = true;
 		this.#active = false;
 		this.#backendTx.abort();
+		this.#revertRenames();
 
 		this.#error = AbortError("Transaction was aborted");
 
 		this.dispatchEvent(new Event("abort", {bubbles: true, cancelable: false}));
 	}
 
+	/** @internal - Update store cache when a store is renamed */
+	_renameStoreInCache(oldName: string, newName: string, store: any): void {
+		this.#storeCache.delete(oldName);
+		this.#storeCache.set(newName, store);
+		// Record original name only on first rename
+		if (!this.#originalStoreNames.has(store)) {
+			this.#originalStoreNames.set(store, oldName);
+		}
+	}
+
+	/** @internal - Record an index rename for abort reversion */
+	_recordIndexRename(
+		index: any,
+		store: any,
+		oldName: string,
+		_newName: string,
+	): void {
+		// Record original name only on first rename
+		if (!this.#originalIndexNames.has(index)) {
+			this.#originalIndexNames.set(index, {store, name: oldName});
+		}
+	}
+
+	#revertRenames(): void {
+		// After backend abort, metadata reflects pre-transaction state.
+		// Only revert names for pre-existing stores/indexes (not created in this tx).
+		const meta = this.#db._connection.getMetadata();
+
+		// Revert index renames — only for indexes that existed before this tx
+		for (const [index, {store, name: originalName}] of this
+			.#originalIndexNames) {
+			const storeOrigName = this.#originalStoreNames.has(store)
+				? this.#originalStoreNames.get(store)!
+				: store.name;
+			// Check if the index existed in the backend's reverted state
+			const storeIndexes = meta.indexes.get(storeOrigName) || [];
+			const indexExisted = storeIndexes.some(
+				(i: any) => i.name === originalName,
+			);
+			if (!indexExisted) continue;
+			const currentName = index.name;
+			if (currentName === originalName) continue;
+			index._revertName(originalName);
+			const idxNames: string[] = store._indexNames;
+			const pos = idxNames.indexOf(currentName);
+			if (pos >= 0) idxNames[pos] = originalName;
+		}
+		// Revert store renames — only for pre-existing stores
+		for (const [store, originalName] of this.#originalStoreNames) {
+			if (!this.#initialScope.includes(originalName)) continue;
+			const currentName = store.name;
+			if (currentName === originalName) continue;
+			store._revertName(originalName);
+			const pos = this._scope.indexOf(currentName);
+			if (pos >= 0) this._scope[pos] = originalName;
+			this.#storeCache.delete(currentName);
+			this.#storeCache.set(originalName, store);
+		}
+		this.#db._refreshStoreNames();
+	}
+
 	/**
 	 * Explicitly commit the transaction.
 	 */
 	commit(): void {
-		if (this.#committed || this.#aborted) {
+		if (this.#committed || this.#aborted || this.#commitPending) {
 			throw InvalidStateError("Transaction already finished");
 		}
+		if (!this.#active) {
+			throw InvalidStateError("Transaction is not active");
+		}
 		this.#active = false;
+		this.#commitPending = true;
 		if (this.#pendingRequests === 0) {
-			this.#doCommit();
-		} else {
-			// Spec: commit waits for pending requests to complete
-			this.#commitPending = true;
+			// Spec: commit is asynchronous — double-nested microtask so
+			// event handlers set up after commit() can still catch events,
+			// and EventWatcher promise chains have time to register listeners.
+			queueMicrotask(() => {
+				queueMicrotask(() => {
+					if (!this.#aborted && !this.#committed) {
+						this.#doCommit();
+					}
+				});
+			});
 		}
 	}
 
@@ -210,15 +294,20 @@ export class IDBTransaction extends SafeEventTarget {
 		this.#aborted = true;
 		this.#active = false;
 		this.#backendTx.abort();
+		this.#revertRenames();
 		this.#error = error;
 		if (this.#pendingRequests > 0) {
 			// Pending requests will fire their error events first.
 			// The abort event fires when the last one settles.
 			this.#needsAbortEvent = true;
 		} else {
-			this.dispatchEvent(
-				new Event("abort", {bubbles: true, cancelable: false}),
-			);
+			// Defer abort event by one microtask so that promise chains
+			// listening for 'error' have time to set up their 'abort' listener.
+			queueMicrotask(() => {
+				this.dispatchEvent(
+					new Event("abort", {bubbles: true, cancelable: false}),
+				);
+			});
 		}
 	}
 
@@ -248,8 +337,19 @@ export class IDBTransaction extends SafeEventTarget {
 					this.#maybeFireDeferredAbort();
 					return;
 				}
-				request._resolve(result);
-				if (this.#commitPending && this.#pendingRequests === 0) {
+				const hadError = request._resolve(result);
+				if (
+					hadError &&
+					!this.#aborted &&
+					!this.#committed &&
+					!this.#commitPending
+				) {
+					// Exception thrown during success dispatch → abort
+					// (but not if commit() was explicitly called)
+					this._abortWithError(
+						AbortError("An exception was thrown in an event handler"),
+					);
+				} else if (this.#commitPending && this.#pendingRequests === 0) {
 					this.#doCommit();
 				} else {
 					this.#maybeAutoCommit();
@@ -269,10 +369,26 @@ export class IDBTransaction extends SafeEventTarget {
 						? error
 						: new DOMException(String(error), "UnknownError");
 				const prevented = request._reject(domError);
-				if (prevented) {
+				if (
+					request._lastDispatchHadError &&
+					!this.#aborted &&
+					!this.#committed &&
+					!this.#commitPending
+				) {
+					// Exception thrown during error dispatch → abort with AbortError
+					this._abortWithError(
+						AbortError("An exception was thrown in an event handler"),
+					);
+				} else if (prevented) {
 					// preventDefault() was called — transaction continues
 					if (this.#commitPending && this.#pendingRequests === 0) {
-						this.#doCommit();
+						// Defer commit by one microtask so that promise chains
+						// listening for 'error' have time to set up their 'complete' listener.
+						queueMicrotask(() => {
+							if (!this.#aborted && !this.#committed) {
+								this.#doCommit();
+							}
+						});
 					} else {
 						this.#maybeAutoCommit();
 					}
@@ -345,7 +461,7 @@ export class IDBTransaction extends SafeEventTarget {
 	}
 
 	#doCommit(): void {
-		if (this.#aborted) return; // Safety guard
+		if (this.#aborted || this.#committed) return; // Safety guard
 		this.#committed = true;
 		this.#active = false;
 

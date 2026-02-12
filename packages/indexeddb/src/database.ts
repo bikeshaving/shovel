@@ -78,12 +78,16 @@ export class IDBDatabase extends SafeEventTarget {
 		}
 	}
 
+	/** @internal - the running versionchange transaction, if any */
+	_upgradeTx: IDBTransaction | null;
+
 	constructor(name: string, version: number, connection: IDBBackendConnection) {
 		super();
 		this.name = name;
 		this.#version = version;
 		this.#connection = connection;
 		this.#closed = false;
+		this._upgradeTx = null;
 		this.#onabortHandler = null;
 		this.#oncloseHandler = null;
 		this.#onerrorHandler = null;
@@ -114,10 +118,9 @@ export class IDBDatabase extends SafeEventTarget {
 			throw InvalidStateError("Database connection is closed");
 		}
 
-		// Validate mode
-		if (mode !== "readonly" && mode !== "readwrite") {
-			throw new TypeError(
-				`Failed to execute 'transaction' on 'IDBDatabase': The provided value '${mode}' is not a valid enum value of type IDBTransactionMode.`,
+		if (this._upgradeTx && !this._upgradeTx._finished) {
+			throw InvalidStateError(
+				"A version change transaction is running",
 			);
 		}
 
@@ -138,6 +141,13 @@ export class IDBDatabase extends SafeEventTarget {
 			if (!this.#objectStoreNames.includes(name)) {
 				throw NotFoundError(`Object store "${name}" not found`);
 			}
+		}
+
+		// Spec: mode check comes after store name validation
+		if (mode !== "readonly" && mode !== "readwrite") {
+			throw new TypeError(
+				`Failed to execute 'transaction' on 'IDBDatabase': The provided value '${mode}' is not a valid enum value of type IDBTransactionMode.`,
+			);
 		}
 
 		const durability = options?.durability ?? "default";

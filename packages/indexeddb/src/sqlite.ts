@@ -287,6 +287,47 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		this.#saveMeta();
 	}
 
+	renameObjectStore(oldName: string, newName: string): void {
+		const store = this.#meta.get(oldName);
+		if (!store) return;
+		// Rename store table
+		this.#db.exec(
+			`ALTER TABLE ${storeTable(oldName)} RENAME TO ${storeTable(newName)}`,
+		);
+		// Rename index tables
+		const indexes = this.#indexes.get(oldName) || [];
+		for (const idx of indexes) {
+			this.#db.exec(
+				`ALTER TABLE ${indexTable(oldName, idx.name)} RENAME TO ${indexTable(newName, idx.name)}`,
+			);
+			idx.storeName = newName;
+		}
+		// Update autoincrement
+		this.#db.exec(
+			`UPDATE _idb_autoincrement SET store_name = '${sanitizeName(newName)}' WHERE store_name = '${sanitizeName(oldName)}'`,
+		);
+		// Update metadata maps
+		this.#meta.delete(oldName);
+		this.#meta.set(newName, {...store, name: newName});
+		this.#indexes.delete(oldName);
+		this.#indexes.set(newName, indexes);
+		this.#saveMeta();
+	}
+
+	renameIndex(storeName: string, oldName: string, newName: string): void {
+		this.#db.exec(
+			`ALTER TABLE ${indexTable(storeName, oldName)} RENAME TO ${indexTable(storeName, newName)}`,
+		);
+		const storeIndexes = this.#indexes.get(storeName) || [];
+		for (const idx of storeIndexes) {
+			if (idx.name === oldName) {
+				idx.name = newName;
+				break;
+			}
+		}
+		this.#saveMeta();
+	}
+
 	// ---- Data operations ----
 
 	get(storeName: string, key: EncodedKey): StoredRecord | undefined {
