@@ -184,11 +184,15 @@ export class IDBDatabase extends SafeEventTarget {
 		);
 	}
 
+	#onCloseCallback: (() => void) | null = null;
+
 	/**
 	 * Close the database connection.
 	 */
 	close(): void {
+		if (this.#closed) return;
 		this.#closed = true;
+		this.#onCloseCallback?.();
 	}
 
 	/** @internal */
@@ -220,5 +224,10 @@ export class IDBDatabase extends SafeEventTarget {
 	/** @internal - Update version */
 	_setVersion(version: number): void {
 		this.#version = version;
+	}
+
+	/** @internal - Set callback for when the connection is closed */
+	_setOnClose(callback: () => void): void {
+		this.#onCloseCallback = callback;
 	}
 }
