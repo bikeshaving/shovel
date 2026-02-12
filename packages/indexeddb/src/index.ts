@@ -22,4 +22,8 @@ export {
 } from "./key.js";
 export {encodeValue, decodeValue} from "./structured-clone.js";
 export {MemoryBackend} from "./memory.js";
-export type {IDBBackend, IDBBackendConnection, IDBBackendTransaction} from "./backend.js";
+export type {
+	IDBBackend,
+	IDBBackendConnection,
+	IDBBackendTransaction,
+} from "./backend.js";

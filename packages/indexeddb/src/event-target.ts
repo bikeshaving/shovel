@@ -13,7 +13,7 @@
  * Phase order: capture (root → target's parent) → target → bubble (target's parent → root)
  */
 
-type Listener = EventListener | ((event: Event) => void);
+type Listener = EventListener | EventListenerObject;
 
 interface ListenerEntry {
 	listener: Listener;
@@ -21,8 +21,13 @@ interface ListenerEntry {
 }
 
 export class SafeEventTarget {
-	#listeners = new Map<string, ListenerEntry[]>();
-	_parent: SafeEventTarget | null = null;
+	#listeners: Map<string, ListenerEntry[]>;
+	_parent: SafeEventTarget | null;
+
+	constructor() {
+		this.#listeners = new Map();
+		this._parent = null;
+	}
 
 	addEventListener(
 		type: string,
@@ -139,7 +144,7 @@ export class SafeEventTarget {
 				} else {
 					fn.handleEvent(event);
 				}
-			} catch {
+			} catch (_error) {
 				// Errors in event handlers are absorbed (browser behavior)
 			}
 		}

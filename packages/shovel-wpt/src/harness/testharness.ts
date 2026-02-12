@@ -130,7 +130,9 @@ export function async_test(
 	} else {
 		// Two-arg form: async_test(fn, "description")
 		fn = fnOrName;
-		name = (nameOrProperties as string) ?? `unnamed async_test #${++asyncTestCounter}`;
+		name =
+			(nameOrProperties as string) ??
+			`unnamed async_test #${++asyncTestCounter}`;
 	}
 
 	// Deferred resolve/reject — works before the Promise is created
@@ -266,18 +268,21 @@ export function format_value(value: unknown): string {
 	if (typeof value === "string") return JSON.stringify(value);
 	if (typeof value === "number" || typeof value === "boolean")
 		return String(value);
-	if (typeof value === "function") return `function "${value.name || "anonymous"}"`;
+	if (typeof value === "function")
+		return `function "${value.name || "anonymous"}"`;
 	if (Array.isArray(value)) return `[${value.map(format_value).join(", ")}]`;
 	if (typeof value === "object") {
 		try {
 			const json = JSON.stringify(value);
 			if (json !== undefined && json !== "{}") return json;
-		} catch {}
+		} catch (_error) {
+			/* intentionally ignored */
+		}
 		return "object";
 	}
 	try {
 		return JSON.stringify(value);
-	} catch {
+	} catch (_error) {
 		return "value";
 	}
 }
@@ -296,22 +301,26 @@ export function flushTests(
 	describe(suiteName, () => {
 		for (const {name, fn, isAsync} of tests) {
 			const testOpts = timeout ? {timeout} : undefined;
-			bunTest(name, async () => {
-				currentCleanups = [];
-				const ctx = createTestContext(name);
-				try {
-					if (isAsync) {
-						await fn(ctx);
-					} else {
-						fn(ctx);
+			bunTest(
+				name,
+				async () => {
+					currentCleanups = [];
+					const ctx = createTestContext(name);
+					try {
+						if (isAsync) {
+							await fn(ctx);
+						} else {
+							fn(ctx);
+						}
+					} finally {
+						// Run cleanups in reverse order
+						for (const cleanup of currentCleanups.reverse()) {
+							await cleanup();
+						}
 					}
-				} finally {
-					// Run cleanups in reverse order
-					for (const cleanup of currentCleanups.reverse()) {
-						await cleanup();
-					}
-				}
-			}, testOpts);
+				},
+				testOpts,
+			);
 		}
 	});
 }

@@ -59,10 +59,7 @@ export function validateKeyPath(keyPath: unknown): void {
 	// null/undefined are valid (no key path)
 	if (keyPath == null) return;
 
-	throw new DOMException(
-		"The keyPath argument is not valid",
-		"SyntaxError",
-	);
+	throw new DOMException("The keyPath argument is not valid", "SyntaxError");
 }
 
 function validateStringKeyPath(keyPath: string): void {
@@ -140,9 +137,7 @@ export function validateKey(value: unknown, seen?: Set<unknown>): IDBValidKey {
 		}
 		return result;
 	}
-	throw DataError(
-		`The parameter is not a valid key (type: ${typeof value})`,
-	);
+	throw DataError(`The parameter is not a valid key (type: ${typeof value})`);
 }
 
 /**
@@ -247,10 +242,7 @@ function encodeString(str: string, out: number[]): void {
  * Decode a string from the encoded form.
  * Returns [decoded string, bytes consumed including tag].
  */
-function decodeString(
-	data: Uint8Array,
-	offset: number,
-): [string, number] {
+function decodeString(data: Uint8Array, offset: number): [string, number] {
 	const codes: number[] = [];
 	let i = offset;
 	while (i < data.length - 1) {
@@ -297,10 +289,7 @@ export function decodeKey(data: Uint8Array): IDBValidKey {
 	return key;
 }
 
-function decodeKeyAt(
-	data: Uint8Array,
-	offset: number,
-): [IDBValidKey, number] {
+function decodeKeyAt(data: Uint8Array, offset: number): [IDBValidKey, number] {
 	const tag = data[offset];
 	offset++;
 
@@ -391,9 +380,7 @@ function extractSingleKey(value: unknown, path: string): IDBValidKey {
 	let current: unknown = value;
 	for (const part of parts) {
 		if (current == null) {
-			throw DataError(
-				`Unable to extract key from value at path "${path}"`,
-			);
+			throw DataError(`Unable to extract key from value at path "${path}"`);
 		}
 		// IDB spec: after cloning, only own properties exist on the clone.
 		// For cloned plain objects, use hasOwnProperty to avoid prototype

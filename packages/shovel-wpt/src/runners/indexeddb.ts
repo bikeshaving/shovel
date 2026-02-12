@@ -45,10 +45,7 @@ type IDBDatabaseLike = {
 	name: string;
 	version: number;
 	objectStoreNames: string[];
-	transaction(
-		storeNames: string | string[],
-		mode?: string,
-	): any;
+	transaction(storeNames: string | string[], mode?: string): any;
 	createObjectStore(
 		name: string,
 		options?: {keyPath?: string | string[] | null; autoIncrement?: boolean},
@@ -87,10 +84,8 @@ function openDB(
  */
 function reqToPromise(request: any): Promise<any> {
 	return new Promise((resolve, reject) => {
-		request.onsuccess = (e: any) =>
-			resolve(e.target?.result ?? request.result);
-		request.onerror = (e: any) =>
-			reject(e.target?.error ?? request.error);
+		request.onsuccess = (e: any) => resolve(e.target?.result ?? request.result);
+		request.onerror = (e: any) => reject(e.target?.error ?? request.error);
 	});
 }
 
@@ -120,8 +115,7 @@ function cursorToArray(request: any): Promise<any[]> {
 				resolve(results);
 			}
 		};
-		request.onerror = (e: any) =>
-			reject(e.target?.error ?? request.error);
+		request.onerror = (e: any) => reject(e.target?.error ?? request.error);
 	});
 }
 
@@ -533,8 +527,7 @@ export function runIndexedDBTests(
 						e.preventDefault?.();
 						resolve(req2.error);
 					};
-					req2.onsuccess = () =>
-						resolve(new Error("Should not succeed"));
+					req2.onsuccess = () => resolve(new Error("Should not succeed"));
 				});
 				expect(err.name).toBe("ConstraintError");
 				db.close();
@@ -806,9 +799,7 @@ export function runIndexedDBTests(
 
 				// Verify data persisted via new transaction
 				const tx2 = db.transaction("store", "readonly");
-				const result = await reqToPromise(
-					tx2.objectStore("store").get(1),
-				);
+				const result = await reqToPromise(tx2.objectStore("store").get(1));
 				expect(result).toBe("value");
 				db.close();
 			});
@@ -831,9 +822,7 @@ export function runIndexedDBTests(
 
 				// Verify original data remains
 				const tx3 = db.transaction("store", "readonly");
-				const result = await reqToPromise(
-					tx3.objectStore("store").get(1),
-				);
+				const result = await reqToPromise(tx3.objectStore("store").get(1));
 				expect(result).toBe("original");
 				db.close();
 			});
@@ -870,24 +859,14 @@ export function runIndexedDBTests(
 					db.createObjectStore("store2");
 				});
 
-				const tx = db.transaction(
-					["store1", "store2"],
-					"readwrite",
-				);
+				const tx = db.transaction(["store1", "store2"], "readwrite");
 				tx.objectStore("store1").put("val1", 1);
 				tx.objectStore("store2").put("val2", 1);
 				await txComplete(tx);
 
-				const tx2 = db.transaction(
-					["store1", "store2"],
-					"readonly",
-				);
-				const r1 = await reqToPromise(
-					tx2.objectStore("store1").get(1),
-				);
-				const r2 = await reqToPromise(
-					tx2.objectStore("store2").get(1),
-				);
+				const tx2 = db.transaction(["store1", "store2"], "readonly");
+				const r1 = await reqToPromise(tx2.objectStore("store1").get(1));
+				const r2 = await reqToPromise(tx2.objectStore("store2").get(1));
 				expect(r1).toBe("val1");
 				expect(r2).toBe("val2");
 				db.close();
@@ -1059,8 +1038,7 @@ export function runIndexedDBTests(
 						e.preventDefault?.();
 						resolve(req2.error);
 					};
-					req2.onsuccess = () =>
-						resolve(new Error("Should not succeed"));
+					req2.onsuccess = () => resolve(new Error("Should not succeed"));
 				});
 				expect(err.name).toBe("ConstraintError");
 				db.close();
@@ -1148,7 +1126,7 @@ export function runIndexedDBTests(
 				db.close();
 			});
 
-		test("openCursor with key range", async () => {
+			test("openCursor with key range", async () => {
 				setup();
 				const db = await openDB(factory, uniqueName(), 1, (db) => {
 					db.createObjectStore("store");
@@ -1168,7 +1146,7 @@ export function runIndexedDBTests(
 				db.close();
 			});
 
-		test("openKeyCursor iterates keys only", async () => {
+			test("openKeyCursor iterates keys only", async () => {
 				setup();
 				const db = await openDB(factory, uniqueName(), 1, (db) => {
 					db.createObjectStore("store");
@@ -1215,8 +1193,7 @@ export function runIndexedDBTests(
 						const tx = e.target?.transaction ?? request.transaction;
 						tx.abort();
 					};
-					request.onsuccess = () =>
-						resolve(new Error("Should not succeed"));
+					request.onsuccess = () => resolve(new Error("Should not succeed"));
 					request.onerror = () => resolve(request.error);
 				});
 
@@ -1367,9 +1344,7 @@ export function runIndexedDBTests(
 
 				const db2 = await openDB(factory, dbName, 1);
 				const tx2 = db2.transaction("store", "readonly");
-				const result = await reqToPromise(
-					tx2.objectStore("store").get(1),
-				);
+				const result = await reqToPromise(tx2.objectStore("store").get(1));
 				expect(result).toBe("persisted");
 				db2.close();
 			});

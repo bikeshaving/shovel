@@ -13,7 +13,7 @@ import type {IndexMeta, KeyRangeSpec} from "./types.js";
 
 function enforceRangeCount(count: unknown): void {
 	const n = Number(count);
-	if (!Number.isFinite(n) || n < 0 || n > 0xFFFFFFFF) {
+	if (!Number.isFinite(n) || n < 0 || n > 0xffffffff) {
 		throw new TypeError(
 			`The count parameter is not a valid unsigned long value.`,
 		);
@@ -25,12 +25,12 @@ export class IDBIndex {
 	readonly unique: boolean;
 	readonly multiEntry: boolean;
 	readonly objectStore: any;
-	_deleted: boolean = false;
+	_deleted!: boolean;
 
 	#transaction: IDBTransaction;
 	#storeName: string;
 	#keyPath: string | string[];
-	#keyPathCache: string[] | null = null;
+	#keyPathCache!: string[] | null;
 
 	get [Symbol.toStringTag](): string {
 		return "IDBIndex";
@@ -60,6 +60,8 @@ export class IDBIndex {
 		this.unique = meta.unique;
 		this.multiEntry = meta.multiEntry;
 		this.objectStore = objectStore;
+		this._deleted = false;
+		this.#keyPathCache = null;
 	}
 
 	get(query: IDBValidKey | IDBKeyRange): IDBRequest {
@@ -78,9 +80,7 @@ export class IDBIndex {
 					query._toSpec(),
 					1,
 				);
-				return results.length > 0
-					? decodeValue(results[0].value)
-					: undefined;
+				return results.length > 0 ? decodeValue(results[0].value) : undefined;
 			}
 			const encoded = encodeKey(validateKey(query));
 			const record = tx.indexGet(this.#storeName, this.name, encoded);
@@ -112,10 +112,7 @@ export class IDBIndex {
 		});
 	}
 
-	getAll(
-		query?: IDBValidKey | IDBKeyRange | null,
-		count?: number,
-	): IDBRequest {
+	getAll(query?: IDBValidKey | IDBKeyRange | null, count?: number): IDBRequest {
 		this.#checkActive();
 		if (count !== undefined) enforceRangeCount(count);
 		const range = this.#toRangeSpec(query);
@@ -123,12 +120,7 @@ export class IDBIndex {
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const records = tx.indexGetAll(
-				this.#storeName,
-				this.name,
-				range,
-				count,
-			);
+			const records = tx.indexGetAll(this.#storeName, this.name, range, count);
 			return records.map((r) => decodeValue(r.value));
 		});
 	}

@@ -22,12 +22,14 @@ interface PendingRequest {
 export class IDBFactory {
 	#backend: IDBBackend;
 	/** Open connections per database name */
-	#connections = new Map<string, Set<IDBDatabase>>();
+	#connections: Map<string, Set<IDBDatabase>>;
 	/** Blocked requests waiting for connections to close */
-	#pendingRequests: PendingRequest[] = [];
+	#pendingRequests: PendingRequest[];
 
 	constructor(backend: IDBBackend) {
 		this.#backend = backend;
+		this.#connections = new Map();
+		this.#pendingRequests = [];
 	}
 
 	/**
@@ -98,7 +100,9 @@ export class IDBFactory {
 	cmp(first: any, second: any): number {
 		if (arguments.length < 2) {
 			throw new TypeError(
-				"Failed to execute 'cmp' on 'IDBFactory': 2 arguments required, but only " + arguments.length + " present.",
+				"Failed to execute 'cmp' on 'IDBFactory': 2 arguments required, but only " +
+					arguments.length +
+					" present.",
 			);
 		}
 		const a = encodeKey(validateKey(first));
@@ -224,13 +228,12 @@ export class IDBFactory {
 		const existing = this.#backend.databases().find((db) => db.name === name);
 		const oldVersion = existing?.version ?? 0;
 
-		const blocked = this.#checkBlocking(
+		const blocked = this.#checkBlocking(name, oldVersion, null, request, {
 			name,
-			oldVersion,
-			null,
+			version: undefined,
 			request,
-			{name, version: undefined, request, isDelete: true},
-		);
+			isDelete: true,
+		});
 		if (blocked) return;
 
 		this.#doDelete(name, request);
@@ -302,7 +305,10 @@ export class IDBFactory {
 			const initialIndexNames = new Map<string, string[]>();
 			const meta = connection.getMetadata();
 			for (const [sName, indexes] of meta.indexes) {
-				initialIndexNames.set(sName, indexes.map(i => i.name));
+				initialIndexNames.set(
+					sName,
+					indexes.map((i) => i.name),
+				);
 			}
 
 			// The transaction's objectStore() needs to work during upgrade,
@@ -479,11 +485,16 @@ export class IDBFactory {
 				this.#unregisterConnection(name, db);
 				// If this was the initial creation, clean up the database
 				if (oldVersion === 0) {
-					try { this.#backend.deleteDatabase(name); } catch {}
+					try {
+						this.#backend.deleteDatabase(name);
+					} catch (_error) {
+						/* ignored */
+					}
 				}
 				request._setTransaction(null);
 				const abortError = new DOMException(
-					"Version change transaction was aborted", "AbortError",
+					"Version change transaction was aborted",
+					"AbortError",
 				);
 				if (insideUpgrade) {
 					// Abort during upgradeneeded — defer to after handler returns
@@ -516,7 +527,10 @@ export class IDBFactory {
 				// If db.close() was called during upgrade, fire error instead of success
 				if (db._closed) {
 					request._reject(
-						new DOMException("The connection was closed during upgrade", "AbortError"),
+						new DOMException(
+							"The connection was closed during upgrade",
+							"AbortError",
+						),
 					);
 				} else {
 					request._resolve(db);
