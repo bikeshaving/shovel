@@ -206,6 +206,23 @@ class MemoryTransaction implements IDBBackendTransaction {
 		}
 	}
 
+	renameObjectStore(oldName: string, newName: string): void {
+		const store = this.#db.stores.get(oldName);
+		if (!store) return;
+		this.#db.stores.delete(oldName);
+		store.meta = {...store.meta, name: newName};
+		this.#db.stores.set(newName, store);
+		// Rename index keys that reference this store
+		for (const [key, idx] of this.#db.indexes) {
+			if (key.startsWith(oldName + "/")) {
+				const indexName = key.slice(oldName.length + 1);
+				this.#db.indexes.delete(key);
+				idx.meta = {...idx.meta, storeName: newName};
+				this.#db.indexes.set(`${newName}/${indexName}`, idx);
+			}
+		}
+	}
+
 	createIndex(meta: IndexMeta): void {
 		const indexKey = `${meta.storeName}/${meta.name}`;
 		const idx = new MemoryIndex(meta);
@@ -222,6 +239,15 @@ class MemoryTransaction implements IDBBackendTransaction {
 
 	deleteIndex(storeName: string, indexName: string): void {
 		this.#db.indexes.delete(`${storeName}/${indexName}`);
+	}
+
+	renameIndex(storeName: string, oldName: string, newName: string): void {
+		const key = `${storeName}/${oldName}`;
+		const idx = this.#db.indexes.get(key);
+		if (!idx) return;
+		this.#db.indexes.delete(key);
+		idx.meta = {...idx.meta, name: newName};
+		this.#db.indexes.set(`${storeName}/${newName}`, idx);
 	}
 
 	// ---- Data operations ----

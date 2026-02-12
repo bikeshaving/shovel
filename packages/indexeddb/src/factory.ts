@@ -318,9 +318,15 @@ export class IDBFactory {
 				rawStoreName: string | any,
 				options?: IDBObjectStoreParameters,
 			) => {
+				// Spec order: transaction active → keyPath validation → constraints
+				if (!transaction._active) {
+					throw new DOMException(
+						"The transaction is not active",
+						"TransactionInactiveError",
+					);
+				}
 				// Web IDL: stringify the name
 				const storeName = String(rawStoreName);
-				// Validate keyPath before other checks
 				if (options?.keyPath !== undefined && options?.keyPath !== null) {
 					validateKeyPath(options.keyPath);
 				}
@@ -371,6 +377,13 @@ export class IDBFactory {
 
 			const originalDeleteObjectStore = db.deleteObjectStore.bind(db);
 			db.deleteObjectStore = (storeName: string) => {
+				// Spec order: transaction active → existence check
+				if (!transaction._active) {
+					throw new DOMException(
+						"The transaction is not active",
+						"TransactionInactiveError",
+					);
+				}
 				// Spec: throw NotFoundError if store doesn't exist
 				if (!db.objectStoreNames.contains(storeName)) {
 					throw new DOMException(
@@ -423,8 +436,10 @@ export class IDBFactory {
 			// Register abort listener BEFORE firing upgradeneeded, because the
 			// handler may call transaction.abort() synchronously.
 			transaction.addEventListener("abort", () => {
-				db.createObjectStore = originalCreateObjectStore;
-				db.deleteObjectStore = originalDeleteObjectStore;
+				db._upgradeTx = null;
+				// Don't restore createObjectStore/deleteObjectStore here —
+				// the overrides handle the inactive case with TransactionInactiveError.
+				// They'll be restored after the pending reject fires.
 
 				// Revert metadata: created stores → mark as deleted
 				for (const inst of storeInstances) {
@@ -501,6 +516,8 @@ export class IDBFactory {
 					pendingRejectError = abortError;
 				} else {
 					// Abort after upgradeneeded (async) — defer via microtask
+					db.createObjectStore = originalCreateObjectStore;
+					db.deleteObjectStore = originalDeleteObjectStore;
 					queueMicrotask(() => {
 						request._reject(abortError);
 					});
@@ -508,18 +525,16 @@ export class IDBFactory {
 			});
 
 			// Fire upgradeneeded
+			db._upgradeTx = transaction;
 			request._setTransaction(transaction);
-			let upgradeError: any = null;
-			try {
+			const upgradeHadError =
 				request._fireUpgradeNeeded(oldVersion, requestedVersion);
-			} catch (e) {
-				upgradeError = e;
-			}
 
 			// Register complete listener AFTER upgradeneeded so that handlers
 			// registered by the upgradeneeded callback fire before this one.
 			// This ensures oncomplete fires before onsuccess per spec.
 			transaction.addEventListener("complete", () => {
+				db._upgradeTx = null;
 				db.createObjectStore = originalCreateObjectStore;
 				db.deleteObjectStore = originalDeleteObjectStore;
 				db._refreshStoreNames();
@@ -537,8 +552,8 @@ export class IDBFactory {
 				}
 			});
 
-			// If the upgrade handler threw an error, abort the transaction
-			if (upgradeError && !transaction._finished) {
+			// If an exception was thrown during upgradeneeded, abort the transaction
+			if (upgradeHadError && !transaction._finished) {
 				transaction.abort();
 			}
 
@@ -550,6 +565,8 @@ export class IDBFactory {
 			// handlers. Firing here (same microtask as #doOpen) ensures
 			// databases() sees consistent state (no other opens have run yet).
 			if (pendingRejectError) {
+				db.createObjectStore = originalCreateObjectStore;
+				db.deleteObjectStore = originalDeleteObjectStore;
 				request._reject(pendingRejectError);
 				return;
 			}

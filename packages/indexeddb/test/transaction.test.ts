@@ -166,10 +166,11 @@ describe("versionchange transaction", () => {
 	});
 
 	it("deletes object stores during upgrade", async () => {
-		await openDB("test", 1, (db) => {
+		const db1 = await openDB("test", 1, (db) => {
 			db.createObjectStore("store1");
 			db.createObjectStore("store2");
 		});
+		db1.close();
 
 		const db2 = await openDB("test", 2, (db) => {
 			db.deleteObjectStore("store1");

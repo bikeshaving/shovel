@@ -13,6 +13,7 @@ import {
 	validateKey,
 	validateKeyPath,
 	extractKeyFromValue,
+	extractRawValueAtKeyPath,
 	injectKeyIntoValue,
 } from "./key.js";
 import {encodeValue, decodeValue} from "./structured-clone.js";
@@ -38,19 +39,67 @@ function enforceRangeCount(count: unknown): void {
 }
 
 export class IDBObjectStore {
-	readonly name: string;
 	readonly autoIncrement: boolean;
 	readonly _indexNames!: string[];
 	_deleted!: boolean;
 	/** @internal - track IDBIndex instances for marking as deleted */
 	_indexInstances!: IDBIndex[];
 
+	#name: string;
 	#transaction: IDBTransaction;
 	#keyPath: string | string[] | null;
 	#keyPathCache!: string[] | null;
 
 	get [Symbol.toStringTag](): string {
 		return "IDBObjectStore";
+	}
+
+	get name(): string {
+		return this.#name;
+	}
+
+	set name(newName: string) {
+		// Web IDL: DOMString setter stringifies the value
+		newName = String(newName);
+		// Spec: renaming is only allowed during versionchange transactions
+		if (this.#transaction.mode !== "versionchange") {
+			throw InvalidStateError(
+				"Object store name can only be changed during a versionchange transaction",
+			);
+		}
+		if (!this.#transaction._active) {
+			throw TransactionInactiveError("Transaction is not active");
+		}
+		if (this._deleted) {
+			throw InvalidStateError("Object store has been deleted");
+		}
+		const oldName = this.#name;
+		if (newName === oldName) return;
+		// Spec: ConstraintError if a store with the new name already exists
+		const db = this.#transaction.db;
+		if (db.objectStoreNames.contains(newName)) {
+			throw new DOMException(
+				`Object store "${newName}" already exists`,
+				"ConstraintError",
+			);
+		}
+		// Rename in backend
+		this.#transaction._backendTx.renameObjectStore(oldName, newName);
+		this.#name = newName;
+		// Update transaction scope
+		const scopeIdx = this.#transaction._scope.indexOf(oldName);
+		if (scopeIdx >= 0) {
+			this.#transaction._scope[scopeIdx] = newName;
+		}
+		// Update transaction's store cache and record for abort reversion
+		this.#transaction._renameStoreInCache(oldName, newName, this);
+		// Refresh database store names
+		db._refreshStoreNames();
+	}
+
+	/** @internal - Revert name after transaction abort */
+	_revertName(name: string): void {
+		this.#name = name;
 	}
 
 	get keyPath(): string | string[] | null {
@@ -71,7 +120,7 @@ export class IDBObjectStore {
 		this.#transaction = transaction;
 		this.#keyPath = meta.keyPath;
 		this.#keyPathCache = null;
-		this.name = meta.name;
+		this.#name = meta.name;
 		this.autoIncrement = meta.autoIncrement;
 	}
 
@@ -88,12 +137,14 @@ export class IDBObjectStore {
 	 */
 	add(value: any, key?: IDBValidKey): IDBRequest {
 		this.#checkWritable();
-		this.#validateKeyInput(value, key);
+		// Spec: clone value once before key path evaluation
+		const clone = structuredClone(value);
+		this.#validateKeyInput(clone, key);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const {encodedKey, encodedValue} = this.#prepareRecord(value, key, tx);
+			const {encodedKey, encodedValue} = this.#prepareRecord(clone, key, tx);
 			tx.add(this.name, encodedKey, encodedValue);
 			return decodeKey(encodedKey);
 		});
@@ -104,12 +155,14 @@ export class IDBObjectStore {
 	 */
 	put(value: any, key?: IDBValidKey): IDBRequest {
 		this.#checkWritable();
-		this.#validateKeyInput(value, key);
+		// Spec: clone value once before key path evaluation
+		const clone = structuredClone(value);
+		this.#validateKeyInput(clone, key);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const {encodedKey, encodedValue} = this.#prepareRecord(value, key, tx);
+			const {encodedKey, encodedValue} = this.#prepareRecord(clone, key, tx);
 			tx.put(this.name, encodedKey, encodedValue);
 			return decodeKey(encodedKey);
 		});
@@ -404,6 +457,9 @@ export class IDBObjectStore {
 				"NotFoundError",
 			);
 		}
+		// Return cached instance if available (spec: same object identity)
+		const existing = this._indexInstances.find((i) => i.name === name);
+		if (existing) return existing;
 		// Get index metadata from the backend
 		const db = this.#transaction.db;
 		const dbMeta = db._connection.getMetadata();
@@ -450,6 +506,7 @@ export class IDBObjectStore {
 	 * Synchronous validation per IDB spec — must throw before creating request.
 	 * Checks: in-line key + explicit key conflict, key injection feasibility,
 	 * out-of-line key validity.
+	 * NOTE: `value` is expected to already be a structuredClone of the original.
 	 */
 	#validateKeyInput(value: any, key?: IDBValidKey): void {
 		if (this.keyPath !== null) {
@@ -457,21 +514,22 @@ export class IDBObjectStore {
 			if (key !== undefined) {
 				throw DataError("Cannot provide a key when object store has a keyPath");
 			}
-			// Spec: clone the value first, then check key extraction.
-			// This ensures non-enumerable getters aren't accessed, and
-			// enumerable getter errors propagate from structuredClone.
-			const clonedValue = structuredClone(value);
 			if (this.autoIncrement) {
-				// If autoIncrement, check if the key can be extracted or injected
+				// Spec: if a key generator is used, check the raw value at the key path.
+				// - undefined → will auto-generate (check injection feasibility)
+				// - valid key → will use it
+				// - exists but not valid → DataError
 				if (typeof this.keyPath === "string") {
-					try {
-						extractKeyFromValue(clonedValue, this.keyPath);
-					} catch (_error) {
+					const rawValue = extractRawValueAtKeyPath(value, this.keyPath);
+					if (rawValue !== undefined) {
+						// Value exists at key path — must be a valid key
+						validateKey(rawValue);
+					} else {
 						// Key not present — check if injection is possible per spec:
 						// Walk the path; if any existing segment is a non-object primitive,
 						// injection fails. Undefined/null segments are OK (will be created).
 						const parts = this.keyPath.split(".");
-						let current: any = clonedValue;
+						let current: any = value;
 						if (current == null || typeof current !== "object") {
 							throw DataError(
 								`Cannot inject key at path "${this.keyPath}": value is not an object`,
@@ -490,8 +548,8 @@ export class IDBObjectStore {
 					}
 				}
 			} else {
-				// No autoIncrement: key MUST be extractable from cloned value
-				extractKeyFromValue(clonedValue, this.keyPath);
+				// No autoIncrement: key MUST be extractable
+				extractKeyFromValue(value, this.keyPath);
 			}
 		} else {
 			// Out-of-line keys
@@ -506,17 +564,16 @@ export class IDBObjectStore {
 		}
 	}
 
+	/**
+	 * Prepare a record for storage.
+	 * NOTE: `value` is expected to already be a structuredClone of the original.
+	 */
 	#prepareRecord(
 		value: any,
 		key: IDBValidKey | undefined,
 		tx: any,
 	): {encodedKey: Uint8Array; encodedValue: Uint8Array} {
 		let resolvedKey: IDBValidKey;
-
-		// Spec: clone the value before key extraction ("store a record" step 3).
-		// This ensures non-enumerable getters are not accessed during key extraction,
-		// and enumerable getter errors propagate from structuredClone.
-		const clonedValue = structuredClone(value);
 
 		if (this.keyPath !== null) {
 			// In-line keys
@@ -526,7 +583,7 @@ export class IDBObjectStore {
 			if (this.autoIncrement) {
 				// Try to extract key from cloned value; if not present, generate one
 				try {
-					resolvedKey = extractKeyFromValue(clonedValue, this.keyPath);
+					resolvedKey = extractKeyFromValue(value, this.keyPath);
 					// Spec: update key generator if explicit key is numeric
 					if (typeof resolvedKey === "number") {
 						tx.maybeUpdateKeyGenerator(this.name, resolvedKey);
@@ -536,11 +593,11 @@ export class IDBObjectStore {
 					resolvedKey = nextKey;
 					// Inject into cloned value
 					if (typeof this.keyPath === "string") {
-						injectKeyIntoValue(clonedValue, this.keyPath, nextKey);
+						injectKeyIntoValue(value, this.keyPath, nextKey);
 					}
 				}
 			} else {
-				resolvedKey = extractKeyFromValue(clonedValue, this.keyPath);
+				resolvedKey = extractKeyFromValue(value, this.keyPath);
 			}
 		} else {
 			// Out-of-line keys
@@ -561,7 +618,7 @@ export class IDBObjectStore {
 
 		return {
 			encodedKey: encodeKey(resolvedKey),
-			encodedValue: encodeValue(clonedValue),
+			encodedValue: encodeValue(value),
 		};
 	}
 

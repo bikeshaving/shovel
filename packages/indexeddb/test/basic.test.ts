@@ -43,9 +43,10 @@ describe("IDBFactory.open", () => {
 	});
 
 	it("runs upgradeneeded when version increases", async () => {
-		await openDB("test", 1, (db) => {
+		const db1 = await openDB("test", 1, (db) => {
 			db.createObjectStore("store");
 		});
+		db1.close();
 
 		let oldVer = -1;
 		await openDB("test", 2, (db, oldVersion) => {
@@ -71,9 +72,10 @@ describe("IDBFactory.open", () => {
 
 describe("IDBFactory.deleteDatabase", () => {
 	it("deletes an existing database", async () => {
-		await openDB("test", 1, (db) => {
+		const db1 = await openDB("test", 1, (db) => {
 			db.createObjectStore("store");
 		});
+		db1.close();
 
 		await new Promise<void>((resolve, reject) => {
 			const request = factory.deleteDatabase("test");
@@ -349,15 +351,9 @@ describe("keyPath stores", () => {
 			db.createObjectStore("store", {keyPath: "id"});
 		});
 
-		const result = await new Promise<string>((resolve) => {
-			const tx = db.transaction("store", "readwrite");
-			const store = tx.objectStore("store");
-			const req = store.put({id: 1, name: "test"}, 999);
-			req.onerror = () => resolve("correctly errored");
-			req.onsuccess = () => resolve("should not succeed");
-			tx.onabort = () => resolve("correctly errored");
-		});
-		expect(result).toBe("correctly errored");
+		const tx = db.transaction("store", "readwrite");
+		const store = tx.objectStore("store");
+		expect(() => store.put({id: 1, name: "test"}, 999)).toThrow();
 	});
 });
 
