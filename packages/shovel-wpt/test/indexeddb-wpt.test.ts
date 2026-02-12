@@ -131,7 +131,9 @@ const skip = [
 	"event-dispatch-active-flag",
 	"transaction-deactivation-timing",
 	"upgrade-transaction-deactivation-timing",
-	"transaction-lifetime",
+	// transaction-lifetime uses setTimeout; transaction-lifetime-empty needs tx scheduling
+	"transaction-lifetime.any.js",
+	"transaction-lifetime-empty",
 	// Upgrade transaction lifecycle — user-aborted hangs (setTimeout in microtask loop)
 	"upgrade-transaction-lifecycle-user-aborted",
 	// Tombstone tests (requires transaction scheduling — txn2 waits for txn1)
