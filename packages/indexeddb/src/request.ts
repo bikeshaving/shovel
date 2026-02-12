@@ -11,14 +11,25 @@ export type IDBRequestReadyState = "pending" | "done";
  * IDBRequest - represents an async operation on the database.
  */
 export class IDBRequest extends SafeEventTarget {
-	#result: any = undefined;
-	#error: DOMException | null = null;
-	#readyState: IDBRequestReadyState = "pending";
-	#source: any = null;
-	#transaction: any = null;
+	#result!: any;
+	#error!: DOMException | null;
+	#readyState!: IDBRequestReadyState;
+	#source!: any;
+	#transaction!: any;
 
-	#onsuccessHandler: ((ev: Event) => void) | null = null;
-	#onerrorHandler: ((ev: Event) => void) | null = null;
+	#onsuccessHandler!: ((ev: Event) => void) | null;
+	#onerrorHandler!: ((ev: Event) => void) | null;
+
+	constructor() {
+		super();
+		this.#result = undefined;
+		this.#error = null;
+		this.#readyState = "pending";
+		this.#source = null;
+		this.#transaction = null;
+		this.#onsuccessHandler = null;
+		this.#onerrorHandler = null;
+	}
 
 	get [Symbol.toStringTag](): string {
 		return "IDBRequest";
@@ -133,8 +144,14 @@ export class IDBRequest extends SafeEventTarget {
  * IDBOpenDBRequest - result of IDBFactory.open() or IDBFactory.deleteDatabase()
  */
 export class IDBOpenDBRequest extends IDBRequest {
-	#onblockedHandler: ((ev: Event) => void) | null = null;
-	#onupgradeneededHandler: ((ev: IDBVersionChangeEvent) => void) | null = null;
+	#onblockedHandler!: ((ev: Event) => void) | null;
+	#onupgradeneededHandler!: ((ev: IDBVersionChangeEvent) => void) | null;
+
+	constructor() {
+		super();
+		this.#onblockedHandler = null;
+		this.#onupgradeneededHandler = null;
+	}
 
 	get [Symbol.toStringTag](): string {
 		return "IDBOpenDBRequest";
@@ -158,7 +175,10 @@ export class IDBOpenDBRequest extends IDBRequest {
 	}
 	set onupgradeneeded(handler: ((ev: IDBVersionChangeEvent) => void) | null) {
 		if (this.#onupgradeneededHandler) {
-			this.removeEventListener("upgradeneeded", this.#onupgradeneededHandler as EventListener);
+			this.removeEventListener(
+				"upgradeneeded",
+				this.#onupgradeneededHandler as EventListener,
+			);
 		}
 		this.#onupgradeneededHandler = handler;
 		if (handler) {

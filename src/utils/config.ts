@@ -1433,9 +1433,16 @@ export function generateConfigModule(
 		// IndexedDB - merge platform defaults with user config
 		const platformIndexedDB = platformDefaults.indexedDB;
 		const userIndexedDB = rawConfig.indexedDB;
-		const mergedIndexedDB = {...(platformIndexedDB || {}), ...(userIndexedDB || {})};
+		const mergedIndexedDB = {
+			...(platformIndexedDB || {}),
+			...(userIndexedDB || {}),
+		};
 		if (mergedIndexedDB.module) {
-			config.indexedDB = reifyModule(mergedIndexedDB as any, "cache", "indexedDB");
+			config.indexedDB = reifyModule(
+				mergedIndexedDB as any,
+				"cache",
+				"indexedDB",
+			);
 		}
 
 		// Lifecycle options (for --lifecycle flag)
