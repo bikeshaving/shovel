@@ -371,17 +371,12 @@ export function extractKeyFromValue(
 	return extractSingleKey(value, keyPath);
 }
 
-function extractSingleKey(value: unknown, path: string): IDBValidKey {
-	if (path === "") {
-		// Empty key path means the value itself is the key
-		return validateKey(value);
-	}
+function walkKeyPath(value: unknown, path: string): unknown {
+	if (path === "") return value;
 	const parts = path.split(".");
 	let current: unknown = value;
 	for (const part of parts) {
-		if (current == null) {
-			throw DataError(`Unable to extract key from value at path "${path}"`);
-		}
+		if (current == null) return undefined;
 		// IDB spec: after cloning, only own properties exist on the clone.
 		// For cloned plain objects, use hasOwnProperty to avoid prototype
 		// getter side effects. For other objects (Blob, File, etc.),
@@ -398,7 +393,31 @@ function extractSingleKey(value: unknown, path: string): IDBValidKey {
 			current = obj[part];
 		}
 	}
-	return validateKey(current);
+	return current;
+}
+
+function extractSingleKey(value: unknown, path: string): IDBValidKey {
+	if (path === "") {
+		// Empty key path means the value itself is the key
+		return validateKey(value);
+	}
+	const raw = walkKeyPath(value, path);
+	if (raw === undefined) {
+		throw DataError(`Unable to extract key from value at path "${path}"`);
+	}
+	return validateKey(raw);
+}
+
+/**
+ * Extract the raw value at a key path without validating it as a key.
+ * Returns undefined if the path doesn't exist. Used to distinguish
+ * "key is missing" (auto-generate) from "key exists but is invalid" (DataError).
+ */
+export function extractRawValueAtKeyPath(
+	value: unknown,
+	keyPath: string,
+): unknown {
+	return walkKeyPath(value, keyPath);
 }
 
 /**
