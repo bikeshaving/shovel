@@ -111,6 +111,10 @@ export interface IDBBackendTransaction {
 	nextAutoIncrementKey(storeName: string): number;
 	/** Update the key generator if key > current generator value (spec §2.6.3) */
 	maybeUpdateKeyGenerator(storeName: string, key: number): void;
+	/** Get the current auto-increment counter for rollback on constraint error */
+	getAutoIncrementCurrent(storeName: string): number;
+	/** Restore auto-increment counter after constraint error rollback */
+	setAutoIncrementCurrent(storeName: string, value: number): void;
 
 	// Lifecycle
 	commit(): void;

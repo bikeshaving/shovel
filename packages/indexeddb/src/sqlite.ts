@@ -636,6 +636,25 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			.run(Math.floor(key), name, Math.floor(key));
 	}
 
+	getAutoIncrementCurrent(storeName: string): number {
+		const name = sanitizeName(storeName);
+		const row = this.#db
+			.prepare(
+				`SELECT current_key FROM _idb_autoincrement WHERE store_name = ?`,
+			)
+			.get(name);
+		return row?.current_key ?? 0;
+	}
+
+	setAutoIncrementCurrent(storeName: string, value: number): void {
+		const name = sanitizeName(storeName);
+		this.#db
+			.prepare(
+				`UPDATE _idb_autoincrement SET current_key = ? WHERE store_name = ?`,
+			)
+			.run(value, name);
+	}
+
 	// ---- Lifecycle ----
 
 	commit(): void {
