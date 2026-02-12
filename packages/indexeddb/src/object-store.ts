@@ -38,6 +38,51 @@ function enforceRangeCount(count: unknown): void {
 	}
 }
 
+/**
+ * Parse getAll/getAllKeys arguments: supports both (query, count) and ({query, count}).
+ */
+/**
+ * IDBRecord — returned by getAllRecords().
+ */
+export class IDBRecord {
+	readonly key: any;
+	readonly primaryKey: any;
+	readonly value: any;
+	constructor(key: any, primaryKey: any, value: any) {
+		this.key = key;
+		this.primaryKey = primaryKey;
+		this.value = value;
+	}
+	get [Symbol.toStringTag](): string {
+		return "IDBRecord";
+	}
+}
+
+function makeIDBRecord(key: any, primaryKey: any, value: any): IDBRecord {
+	return new IDBRecord(key, primaryKey, value);
+}
+
+function parseGetAllArgs(
+	queryOrOptions?: any,
+	countArg?: number,
+): {query: any; count: number | undefined; direction: IDBCursorDirection | undefined} {
+	// Detect options dictionary: plain objects (not Date, Array, IDBKeyRange, etc.)
+	if (
+		queryOrOptions !== null &&
+		queryOrOptions !== undefined &&
+		typeof queryOrOptions === "object" &&
+		Object.getPrototypeOf(queryOrOptions) === Object.prototype
+	) {
+		const cnt = queryOrOptions.count;
+		return {
+			query: queryOrOptions.query ?? null,
+			count: cnt === 0 ? undefined : cnt,
+			direction: queryOrOptions.direction,
+		};
+	}
+	return {query: queryOrOptions, count: countArg === 0 ? undefined : countArg, direction: undefined};
+}
+
 export class IDBObjectStore {
 	readonly autoIncrement: boolean;
 	readonly _indexNames!: string[];
@@ -248,36 +293,98 @@ export class IDBObjectStore {
 
 	/**
 	 * Get all records matching a query.
+	 * Accepts (query, count) or ({query, count}) options dictionary.
 	 */
-	getAll(query?: IDBValidKey | IDBKeyRange | null, count?: number): IDBRequest {
+	getAll(queryOrOptions?: any, count?: number): IDBRequest {
 		this.#checkActive();
-		if (count !== undefined) enforceRangeCount(count);
+		const {query, count: cnt, direction} = parseGetAllArgs(queryOrOptions, count);
+		if (cnt !== undefined) enforceRangeCount(cnt);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const records = tx.getAll(this.name, range, count);
+			if (direction && direction !== "next" && direction !== "nextunique") {
+				// Use cursor for reverse directions
+				const results: any[] = [];
+				const cursor = tx.openCursor(this.name, range, direction);
+				if (cursor) {
+					do {
+						results.push(decodeValue(cursor.value));
+						if (cnt !== undefined && results.length >= cnt) break;
+					} while (cursor.continue());
+				}
+				return results;
+			}
+			const records = tx.getAll(this.name, range, cnt);
 			return records.map((r) => decodeValue(r.value));
 		});
 	}
 
 	/**
 	 * Get all keys matching a query.
+	 * Accepts (query, count) or ({query, count}) options dictionary.
 	 */
-	getAllKeys(
-		query?: IDBValidKey | IDBKeyRange | null,
-		count?: number,
-	): IDBRequest {
+	getAllKeys(queryOrOptions?: any, count?: number): IDBRequest {
 		this.#checkActive();
+		const {query, count: cnt, direction} = parseGetAllArgs(queryOrOptions, count);
+		if (cnt !== undefined) enforceRangeCount(cnt);
+		const range = this.#toRangeSpec(query);
+		const request = new IDBRequest();
+		request._setSource(this);
+
+		return this.#transaction._executeRequest(request, (tx) => {
+			if (direction && direction !== "next" && direction !== "nextunique") {
+				// Use cursor for reverse directions
+				const results: any[] = [];
+				const cursor = tx.openKeyCursor(this.name, range, direction);
+				if (cursor) {
+					do {
+						results.push(decodeKey(cursor.key));
+						if (cnt !== undefined && results.length >= cnt) break;
+					} while (cursor.continue());
+				}
+				return results;
+			}
+			const keys = tx.getAllKeys(this.name, range, cnt);
+			return keys.map((k) => decodeKey(k));
+		});
+	}
+
+	/**
+	 * Get all records matching a query, returning IDBRecord objects.
+	 */
+	getAllRecords(options?: any): IDBRequest {
+		this.#checkActive();
+		const {query, count, direction} = parseGetAllArgs(options);
 		if (count !== undefined) enforceRangeCount(count);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
 		request._setSource(this);
 
 		return this.#transaction._executeRequest(request, (tx) => {
-			const keys = tx.getAllKeys(this.name, range, count);
-			return keys.map((k) => decodeKey(k));
+			if (direction && direction !== "next" && direction !== "nextunique") {
+				// Use cursor for reverse directions
+				const results: IDBRecord[] = [];
+				const cursor = tx.openCursor(this.name, range, direction);
+				if (cursor) {
+					do {
+						results.push(
+							makeIDBRecord(
+								decodeKey(cursor.key),
+								decodeKey(cursor.key),
+								decodeValue(cursor.value),
+							),
+						);
+						if (count !== undefined && results.length >= count) break;
+					} while (cursor.continue());
+				}
+				return results;
+			}
+			const records = tx.getAll(this.name, range, count);
+			return records.map((r) =>
+				makeIDBRecord(decodeKey(r.key), decodeKey(r.key), decodeValue(r.value)),
+			);
 		});
 	}
 
