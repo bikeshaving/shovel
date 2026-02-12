@@ -33,16 +33,16 @@ export type HandleResult =
 /**
  * Create a WebSocketBridge from a ShovelWebSocket (direct mode).
  *
- * In direct mode, the ShovelWebSocket's peer delivery handles the bridge:
- * - clientSocket.send(data) delivers to the server socket (peer)
- * - server.send(data) delivers to clientSocket, triggering our message listener
+ * The bridge socket is the one passed to event.upgradeWebSocket(). Its peer
+ * stays in user code. Messages sent by the peer are delivered to the bridge
+ * socket, which forwards them to the real network connection via callbacks.
  *
- * Accepts and attaches listeners immediately so that early server messages
+ * Accepts and attaches listeners immediately so that early messages
  * (e.g. a "welcome" send before the platform adapter calls connect()) are
  * buffered and flushed once the real socket callbacks are available.
  */
 export function createWebSocketBridge(
-	clientSocket: ShovelWebSocket,
+	socket: ShovelWebSocket,
 ): WebSocketBridge {
 	let sendFn: ((data: string | ArrayBuffer) => void) | null = null;
 	let closeFn: ((code?: number, reason?: string) => void) | null = null;
@@ -52,10 +52,10 @@ export function createWebSocketBridge(
 	> = [];
 
 	// Accept immediately so peer delivery works before connect()
-	clientSocket.accept();
+	socket.accept();
 
 	// Buffer messages until connect() provides real callbacks
-	clientSocket.addEventListener("message", ((ev: MessageEvent) => {
+	socket.addEventListener("message", ((ev: MessageEvent) => {
 		if (sendFn) {
 			sendFn(ev.data);
 		} else {
@@ -63,7 +63,7 @@ export function createWebSocketBridge(
 		}
 	}) as EventListener);
 
-	clientSocket.addEventListener("close", ((ev: CloseEvent) => {
+	socket.addEventListener("close", ((ev: CloseEvent) => {
 		if (closeFn) {
 			closeFn(ev.code, ev.reason);
 		} else {
@@ -86,11 +86,11 @@ export function createWebSocketBridge(
 			pending.length = 0;
 		},
 		deliver(data) {
-			// Real socket received data → forward to server via client.send()
-			clientSocket.send(data);
+			// Real socket received data → forward to peer via bridge socket
+			socket.send(data);
 		},
 		deliverClose(code, reason) {
-			clientSocket.close(code, reason);
+			socket.close(code, reason);
 		},
 	};
 }

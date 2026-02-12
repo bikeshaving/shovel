@@ -703,7 +703,7 @@ export class ServiceWorkerPool {
 			}
 
 			case "ws:send": {
-				// Worker's server.send() → forward to real socket via bridge
+				// Worker's peer.send() → forward to real socket via bridge
 				const bridge = this.#wsBridges.get(message.connectionID);
 				if (bridge) {
 					if (bridge.send) {
@@ -716,7 +716,7 @@ export class ServiceWorkerPool {
 			}
 
 			case "ws:close": {
-				// Worker's server.close() → close real socket via bridge
+				// Worker's peer.close() → close real socket via bridge
 				const bridge = this.#wsBridges.get(message.connectionID);
 				if (bridge?.close) {
 					bridge.close(message.code, message.reason);

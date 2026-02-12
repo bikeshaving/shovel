@@ -3,9 +3,8 @@
  * https://developers.cloudflare.com/workers/runtime-apis/websockets/
  *
  * Provides in-process linked WebSocket pairs for the fetch handler model.
- * The worker creates a WebSocketPair, passes the client socket (index 0) via
- * event.upgradeWebSocket(), and keeps the server socket (index 1) for
- * bidirectional messaging.
+ * The two sockets are symmetric — either one can be passed to
+ * event.upgradeWebSocket() and the other kept for bidirectional messaging.
  */
 
 // CloseEvent polyfill for Node.js < 23
@@ -80,7 +79,7 @@ export class ShovelWebSocket extends EventTarget {
 	}
 
 	/**
-	 * CF Workers API: must call accept() before send/addEventListener on server socket.
+	 * CF Workers API: must call accept() before sending messages.
 	 * Transitions from CONNECTING to OPEN.
 	 */
 	accept(): void {
@@ -202,9 +201,12 @@ export class ShovelWebSocket extends EventTarget {
 }
 
 /**
- * WebSocketPair creates two linked WebSocket objects.
- * Index 0 is the "client" (passed to event.upgradeWebSocket()).
- * Index 1 is the "server" (kept by user code).
+ * WebSocketPair creates two linked, symmetric WebSocket objects.
+ * Either socket can be passed to event.upgradeWebSocket(); the other
+ * is kept by user code for bidirectional messaging.
+ *
+ * Supports indexed access (pair[0], pair[1]), Object.values() destructuring,
+ * and iteration (for..of, spread).
  */
 export class WebSocketPair {
 	0: ShovelWebSocket;
@@ -214,5 +216,10 @@ export class WebSocketPair {
 		this[0] = new ShovelWebSocket();
 		this[1] = new ShovelWebSocket();
 		ShovelWebSocket._link(this[0], this[1]);
+	}
+
+	*[Symbol.iterator](): Iterator<ShovelWebSocket> {
+		yield this[0];
+		yield this[1];
 	}
 }

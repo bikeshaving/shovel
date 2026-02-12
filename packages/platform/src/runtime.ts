@@ -893,11 +893,12 @@ export class ShovelFetchEvent
 	/**
 	 * Signal a WebSocket upgrade for this request.
 	 *
-	 * Pass the client socket (index 0) from a WebSocketPair. The platform
-	 * will bridge it to the real network connection. The server socket
-	 * (index 1) stays in user code for bidirectional messaging.
+	 * Pass one socket from a WebSocketPair. The platform will bridge it to
+	 * the real network connection. The other socket stays in user code for
+	 * bidirectional messaging. The two sockets are symmetric — either can
+	 * be passed here.
 	 *
-	 * @param socket - The client-side ShovelWebSocket from a WebSocketPair
+	 * @param socket - A ShovelWebSocket from a WebSocketPair
 	 */
 	upgradeWebSocket(socket: ShovelWebSocket): void {
 		if (this.#responded) {
@@ -2620,7 +2621,7 @@ export function startWorkerMessageLoop(
 	/**
 	 * Handle a fetch request
 	 */
-	// WebSocket connections: connectionID → client ShovelWebSocket (for relay)
+	// WebSocket connections: connectionID → bridge ShovelWebSocket (for relay)
 	const wsConnections = new Map<number, any>();
 
 	async function handleFetchRequest(
@@ -2637,12 +2638,12 @@ export function startWorkerMessageLoop(
 
 			// Handle WebSocket upgrade
 			if (result.webSocket) {
-				const clientSocket = result.webSocket;
+				const bridgeSocket = result.webSocket;
 				const connectionID = message.requestID;
-				clientSocket.accept();
+				bridgeSocket.accept();
 
-				// Outgoing: server.send() → client gets message → forward to main thread
-				clientSocket.addEventListener("message", ((ev: MessageEvent) => {
+				// Outgoing: peer.send() → bridge socket gets message → forward to main thread
+				bridgeSocket.addEventListener("message", ((ev: MessageEvent) => {
 					const data = ev.data;
 					if (data instanceof ArrayBuffer) {
 						sendMessage({type: "ws:send", connectionID, data}, [data]);
@@ -2655,8 +2656,8 @@ export function startWorkerMessageLoop(
 					}
 				}) as EventListener);
 
-				// Close: server.close() → client gets close → forward to main thread
-				clientSocket.addEventListener("close", ((ev: CloseEvent) => {
+				// Close: peer.close() → bridge socket gets close → forward to main thread
+				bridgeSocket.addEventListener("close", ((ev: CloseEvent) => {
 					sendMessage({
 						type: "ws:close",
 						connectionID,
@@ -2667,7 +2668,7 @@ export function startWorkerMessageLoop(
 				}) as EventListener);
 
 				// Store for incoming messages from main thread
-				wsConnections.set(connectionID, clientSocket);
+				wsConnections.set(connectionID, bridgeSocket);
 
 				// Signal upgrade to main thread (don't send normal response)
 				sendMessage({
