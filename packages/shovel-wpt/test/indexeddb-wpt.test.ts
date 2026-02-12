@@ -164,8 +164,6 @@ const skipTests: Record<string, string[]> = {
 		"DOMRectReadOnlyStub",
 		"ImageDataStub",
 	],
-	// 250 cursors: performance test, times out with memory backend
-	"interleaved-cursors-large.any.js": ["250 cursors"],
 };
 
 const wptFiles = readdirSync(wptDir)
@@ -217,7 +215,8 @@ for (const file of wptFiles) {
 			filterTestQueue(skipTests[file]);
 		}
 
-		flushTests(`WPT: ${file.replace(".any.js", "")}`, {timeout: 2000});
+		const timeout = file === "interleaved-cursors-large.any.js" ? 10000 : 2000;
+		flushTests(`WPT: ${file.replace(".any.js", "")}`, {timeout});
 	} catch (e) {
 		bunTest(`WPT: ${file} (load error)`, () => {
 			throw e;
