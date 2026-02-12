@@ -134,10 +134,10 @@ const skip = [
 	"transaction-lifetime",
 	// Upgrade transaction lifecycle — user-aborted hangs (setTimeout in microtask loop)
 	"upgrade-transaction-lifecycle-user-aborted",
+	// Tombstone tests (requires transaction scheduling — txn2 waits for txn1)
+	"idbindex_tombstones",
 	// Get databases (shared factory overwrites globalThis.indexedDB after registration)
 	"get-databases",
-	// Tombstone tests (requires transaction scheduling/queuing)
-	"idbindex_tombstones",
 ];
 
 /**
