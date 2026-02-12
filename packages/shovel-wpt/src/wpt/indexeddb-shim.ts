@@ -275,6 +275,13 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		getElementsByTagName(_tag: string) {
 			return {length: 0};
 		},
+		createElement(tag: string) {
+			// Minimal stub for structured-clone tests (creates <input> for FileList)
+			if (tag === "input") {
+				return {type: "", files: {length: 0, [Symbol.iterator]: [][Symbol.iterator]}};
+			}
+			return {};
+		},
 	};
 
 	/**
@@ -378,9 +385,85 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		}
 	}
 
+	/**
+	 * subsetTest — WPT test variant support.
+	 * In browsers, limits which tests run based on URL query params.
+	 * We run all tests, so just call the test function directly.
+	 */
+	function subsetTest(testFunc: (...args: any[]) => void, ...args: any[]): void {
+		testFunc(...args);
+	}
+
+	// Stub browser-only geometry/image types for structured-clone tests.
+	// These are just enough to be constructable; the values won't survive
+	// v8 serialize round-trip but the test handles that via cloneFailureTest.
+	class DOMMatrixStub {
+		constructor() {
+			return Object.create(DOMMatrixStub.prototype);
+		}
+	}
+	class DOMMatrixReadOnlyStub extends DOMMatrixStub {}
+	class DOMPointStub {
+		x = 0;
+		y = 0;
+		z = 0;
+		w = 1;
+		constructor(x?: number, y?: number, z?: number, w?: number) {
+			if (x !== undefined) this.x = x;
+			if (y !== undefined) this.y = y;
+			if (z !== undefined) this.z = z;
+			if (w !== undefined) this.w = w;
+		}
+	}
+	class DOMPointReadOnlyStub extends DOMPointStub {}
+	class DOMRectStub {
+		x = 0;
+		y = 0;
+		width = 0;
+		height = 0;
+		constructor(x?: number, y?: number, w?: number, h?: number) {
+			if (x !== undefined) this.x = x;
+			if (y !== undefined) this.y = y;
+			if (w !== undefined) this.width = w;
+			if (h !== undefined) this.height = h;
+		}
+	}
+	class DOMRectReadOnlyStub extends DOMRectStub {}
+	class DOMQuadStub {
+		constructor() {
+			return Object.create(DOMQuadStub.prototype);
+		}
+	}
+	class ImageDataStub {
+		data: Uint8ClampedArray;
+		width: number;
+		height: number;
+		constructor(w: number, h: number) {
+			this.width = w;
+			this.height = h;
+			this.data = new Uint8ClampedArray(w * h * 4);
+		}
+	}
+
 	// Inject globals
 	Object.assign(globalThis, {
 		FileReader: FileReaderPolyfill,
+		subsetTest,
+		// DOM geometry/image stubs for structured-clone tests
+		...(typeof DOMMatrix === "undefined" ? {DOMMatrix: DOMMatrixStub} : {}),
+		...(typeof DOMMatrixReadOnly === "undefined"
+			? {DOMMatrixReadOnly: DOMMatrixReadOnlyStub}
+			: {}),
+		...(typeof DOMPoint === "undefined" ? {DOMPoint: DOMPointStub} : {}),
+		...(typeof DOMPointReadOnly === "undefined"
+			? {DOMPointReadOnly: DOMPointReadOnlyStub}
+			: {}),
+		...(typeof DOMRect === "undefined" ? {DOMRect: DOMRectStub} : {}),
+		...(typeof DOMRectReadOnly === "undefined"
+			? {DOMRectReadOnly: DOMRectReadOnlyStub}
+			: {}),
+		...(typeof DOMQuad === "undefined" ? {DOMQuad: DOMQuadStub} : {}),
+		...(typeof ImageData === "undefined" ? {ImageData: ImageDataStub} : {}),
 		// Core harness
 		promise_test,
 		test,

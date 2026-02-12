@@ -301,22 +301,32 @@ class MemoryTransaction implements IDBBackendTransaction {
 		const idx = binarySearch(store.data, key);
 
 		// Remove old index entries if updating
+		let oldEntry: {key: Uint8Array; value: Uint8Array} | null = null;
 		if (
 			idx < store.data.length &&
 			compareKeys(store.data[idx].key, key) === 0
 		) {
-			this.#removeFromIndexes(
-				storeName,
-				store.data[idx].key,
-				store.data[idx].value,
-			);
+			oldEntry = store.data[idx];
+			this.#removeFromIndexes(storeName, oldEntry.key, oldEntry.value);
 			store.data[idx] = {key, value};
 		} else {
 			store.data.splice(idx, 0, {key, value});
 		}
 
-		// Add new index entries
-		this.#addToAllIndexes(storeName, key, value);
+		// Add new index entries — roll back on constraint error
+		try {
+			this.#addToAllIndexes(storeName, key, value);
+		} catch (e) {
+			if (oldEntry) {
+				// Restore the old entry
+				store.data[idx] = oldEntry;
+				this.#addToAllIndexes(storeName, oldEntry.key, oldEntry.value);
+			} else {
+				// Remove the newly inserted entry
+				store.data.splice(idx, 1);
+			}
+			throw e;
+		}
 	}
 
 	add(storeName: string, key: EncodedKey, value: Uint8Array): void {
@@ -331,7 +341,13 @@ class MemoryTransaction implements IDBBackendTransaction {
 			);
 		}
 		store.data.splice(idx, 0, {key, value});
-		this.#addToAllIndexes(storeName, key, value);
+		// Add index entries — roll back on constraint error
+		try {
+			this.#addToAllIndexes(storeName, key, value);
+		} catch (e) {
+			store.data.splice(idx, 1);
+			throw e;
+		}
 	}
 
 	delete(storeName: string, range: KeyRangeSpec): void {
@@ -559,6 +575,14 @@ class MemoryTransaction implements IDBBackendTransaction {
 		if (newValue > store.autoIncrementCurrent) {
 			store.autoIncrementCurrent = newValue;
 		}
+	}
+
+	getAutoIncrementCurrent(storeName: string): number {
+		return this.#getStore(storeName).autoIncrementCurrent;
+	}
+
+	setAutoIncrementCurrent(storeName: string, value: number): void {
+		this.#getStore(storeName).autoIncrementCurrent = value;
 	}
 
 	// ---- Lifecycle ----
