@@ -2,7 +2,7 @@
  * IDBObjectStore implementation.
  */
 
-import {type IDBTransaction} from "./transaction.js";
+import {type IDBTransaction, kHoldOpen, kRelease} from "./transaction.js";
 import {IDBRequest} from "./request.js";
 import {IDBKeyRange} from "./key-range.js";
 import {IDBIndex} from "./idb-index.js";
@@ -25,6 +25,7 @@ import {
 } from "./errors.js";
 import {makeDOMStringList} from "./types.js";
 import type {ObjectStoreMeta, KeyRangeSpec} from "./types.js";
+import {scheduleTask} from "./task.js";
 
 /**
  * Web IDL [EnforceRange] unsigned long validation for count parameters.
@@ -526,8 +527,12 @@ export class IDBObjectStore {
 				const index = new IDBIndex(this.#transaction, this.name, meta, this);
 				this._indexInstances.push(index);
 				const txn = this.#transaction;
-				queueMicrotask(() => {
+				// Hold transaction open so auto-commit doesn't race the deferred abort.
+				// The abort fires as a macrotask (after pending request events).
+				txn[kHoldOpen]();
+				scheduleTask(() => {
 					txn._abortWithError(e);
+					txn[kRelease]();
 				});
 				return index;
 			}
