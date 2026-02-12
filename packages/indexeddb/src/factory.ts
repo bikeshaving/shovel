@@ -12,8 +12,19 @@ import {VersionError} from "./errors.js";
 import {validateKeyPath, encodeKey, validateKey, compareKeys} from "./key.js";
 import type {TransactionMode} from "./types.js";
 
+interface PendingRequest {
+	name: string;
+	version: number | undefined;
+	request: IDBOpenDBRequest;
+	isDelete: boolean;
+}
+
 export class IDBFactory {
 	#backend: IDBBackend;
+	/** Open connections per database name */
+	#connections = new Map<string, Set<IDBDatabase>>();
+	/** Blocked requests waiting for connections to close */
+	#pendingRequests: PendingRequest[] = [];
 
 	constructor(backend: IDBBackend) {
 		this.#backend = backend;
@@ -40,7 +51,7 @@ export class IDBFactory {
 
 		queueMicrotask(() => {
 			try {
-				this.#doOpen(name, version, request);
+				this.#processOpen(name, version, request);
 			} catch (error) {
 				request._reject(
 					error instanceof DOMException
@@ -61,12 +72,7 @@ export class IDBFactory {
 
 		queueMicrotask(() => {
 			try {
-				// Get old version before deleting
-				const existing = this.#backend.databases().find((db) => db.name === name);
-				const oldVersion = existing?.version ?? 0;
-				this.#backend.deleteDatabase(name);
-				// Spec: success event for deleteDatabase is IDBVersionChangeEvent
-				request._resolveWithVersionChange(undefined, oldVersion);
+				this.#processDelete(name, request);
 			} catch (error) {
 				request._reject(
 					error instanceof DOMException
@@ -100,7 +106,144 @@ export class IDBFactory {
 		return compareKeys(a, b);
 	}
 
-	// ---- Private ----
+	// ---- Private: Connection blocking ----
+
+	#registerConnection(name: string, db: IDBDatabase): void {
+		if (!this.#connections.has(name)) {
+			this.#connections.set(name, new Set());
+		}
+		this.#connections.get(name)!.add(db);
+		db._setOnClose(() => {
+			this.#connections.get(name)?.delete(db);
+			queueMicrotask(() => this.#processPendingRequests(name));
+		});
+	}
+
+	#unregisterConnection(name: string, db: IDBDatabase): void {
+		this.#connections.get(name)?.delete(db);
+	}
+
+	#hasOpenConnections(name: string): boolean {
+		const conns = this.#connections.get(name);
+		if (!conns) return false;
+		for (const c of conns) {
+			if (!c._closed) return true;
+		}
+		return false;
+	}
+
+	/** Check for blocking connections, fire versionchange/blocked events.
+	 *  Returns true if the request was blocked and queued. */
+	#checkBlocking(
+		name: string,
+		oldVersion: number,
+		newVersion: number | null,
+		request: IDBOpenDBRequest,
+		pendingEntry: PendingRequest,
+	): boolean {
+		const conns = this.#connections.get(name);
+		if (!conns || conns.size === 0) return false;
+
+		// Fire versionchange on all open connections
+		for (const conn of [...conns]) {
+			if (!conn._closed) {
+				conn.dispatchEvent(
+					new IDBVersionChangeEvent("versionchange", {
+						oldVersion: conn.version,
+						newVersion,
+					}),
+				);
+			}
+		}
+
+		// Check if all connections are now closed (handlers may have called close())
+		if (!this.#hasOpenConnections(name)) return false;
+
+		// Still blocked — fire "blocked" event on the request
+		request._fireBlocked(oldVersion, newVersion);
+
+		// Check again — blocked handler may have closed connections
+		if (!this.#hasOpenConnections(name)) return false;
+
+		// Still blocked — queue for later processing
+		this.#pendingRequests.push(pendingEntry);
+		return true;
+	}
+
+	#processPendingRequests(name: string): void {
+		if (this.#hasOpenConnections(name)) return;
+
+		const idx = this.#pendingRequests.findIndex((r) => r.name === name);
+		if (idx < 0) return;
+		const pending = this.#pendingRequests.splice(idx, 1)[0];
+
+		try {
+			if (pending.isDelete) {
+				this.#doDelete(pending.name, pending.request);
+				// Delete doesn't create connections — process next
+				this.#processPendingRequests(name);
+			} else {
+				this.#doOpen(pending.name, pending.version, pending.request);
+			}
+		} catch (error) {
+			pending.request._reject(
+				error instanceof DOMException
+					? error
+					: new DOMException(String(error), "UnknownError"),
+			);
+		}
+	}
+
+	#processOpen(
+		name: string,
+		version: number | undefined,
+		request: IDBOpenDBRequest,
+	): void {
+		// Check if a version change is needed
+		const existingDbs = this.#backend.databases();
+		const existing = existingDbs.find((db) => db.name === name);
+		const oldVersion = existing?.version ?? 0;
+		const requestedVersion = version ?? (oldVersion || 1);
+
+		if (requestedVersion > oldVersion) {
+			// Version change needed — check for blocking connections
+			const blocked = this.#checkBlocking(
+				name,
+				oldVersion,
+				requestedVersion,
+				request,
+				{name, version, request, isDelete: false},
+			);
+			if (blocked) return;
+		}
+
+		this.#doOpen(name, version, request);
+	}
+
+	#processDelete(name: string, request: IDBOpenDBRequest): void {
+		const existing = this.#backend.databases().find((db) => db.name === name);
+		const oldVersion = existing?.version ?? 0;
+
+		const blocked = this.#checkBlocking(
+			name,
+			oldVersion,
+			null,
+			request,
+			{name, version: undefined, request, isDelete: true},
+		);
+		if (blocked) return;
+
+		this.#doDelete(name, request);
+	}
+
+	#doDelete(name: string, request: IDBOpenDBRequest): void {
+		const existing = this.#backend.databases().find((db) => db.name === name);
+		const oldVersion = existing?.version ?? 0;
+		this.#backend.deleteDatabase(name);
+		request._resolveWithVersionChange(undefined, oldVersion);
+	}
+
+	// ---- Private: Open implementation ----
 
 	#doOpen(
 		name: string,
@@ -124,6 +267,9 @@ export class IDBFactory {
 		// Open the backend connection (does NOT set version yet)
 		const connection = this.#backend.open(name, requestedVersion);
 		const db = new IDBDatabase(name, requestedVersion, connection);
+
+		// Track connection for blocking checks
+		this.#registerConnection(name, db);
 
 		if (requestedVersion > oldVersion) {
 			// Need to run upgrade
@@ -329,6 +475,8 @@ export class IDBFactory {
 
 				db._refreshStoreNames();
 				db._setVersion(oldVersion);
+				// Unregister the connection so it doesn't block future operations
+				this.#unregisterConnection(name, db);
 				// If this was the initial creation, clean up the database
 				if (oldVersion === 0) {
 					try { this.#backend.deleteDatabase(name); } catch {}

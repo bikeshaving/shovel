@@ -188,7 +188,7 @@ export class IDBOpenDBRequest extends IDBRequest {
 	}
 
 	/** @internal */
-	_fireBlocked(oldVersion: number, newVersion: number): void {
+	_fireBlocked(oldVersion: number, newVersion: number | null): void {
 		this.dispatchEvent(
 			new IDBVersionChangeEvent("blocked", {
 				oldVersion,

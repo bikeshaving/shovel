@@ -152,11 +152,11 @@ export class IDBCursor {
 	}
 
 	advance(count: number): void {
-		if (this._source._deleted || (this._source.objectStore && this._source.objectStore._deleted)) {
-			throw InvalidStateError("The cursor's source or effective object store has been deleted");
-		}
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
+		}
+		if (this._source._deleted || (this._source.objectStore && this._source.objectStore._deleted)) {
+			throw InvalidStateError("The cursor's source or effective object store has been deleted");
 		}
 		if (!Number.isInteger(count) || count <= 0) {
 			throw new TypeError(
@@ -308,11 +308,11 @@ export class IDBCursorWithValue extends IDBCursor {
 	}
 
 	delete(): IDBRequest {
-		if (this._source._deleted || (this._source.objectStore && this._source.objectStore._deleted)) {
-			throw InvalidStateError("The cursor's source or effective object store has been deleted");
-		}
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
+		}
+		if (this._source._deleted || (this._source.objectStore && this._source.objectStore._deleted)) {
+			throw InvalidStateError("The cursor's source or effective object store has been deleted");
 		}
 		if (
 			this._transaction.mode !== "readwrite" &&
@@ -346,11 +346,11 @@ export class IDBCursorWithValue extends IDBCursor {
 				"Failed to execute 'update' on 'IDBCursor': 1 argument required, but only 0 present.",
 			);
 		}
-		if (this._source._deleted || (this._source.objectStore && this._source.objectStore._deleted)) {
-			throw InvalidStateError("The cursor's source or effective object store has been deleted");
-		}
 		if (!this._transaction._active) {
 			throw TransactionInactiveError("Transaction is not active");
+		}
+		if (this._source._deleted || (this._source.objectStore && this._source.objectStore._deleted)) {
+			throw InvalidStateError("The cursor's source or effective object store has been deleted");
 		}
 		if (
 			this._transaction.mode !== "readwrite" &&

@@ -12,6 +12,7 @@ import {test as bunTest, describe} from "bun:test";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["test", "wpt", "harness"]);
+let asyncTestCounter = 0;
 
 /**
  * Test context passed to WPT test functions.
@@ -129,7 +130,7 @@ export function async_test(
 	} else {
 		// Two-arg form: async_test(fn, "description")
 		fn = fnOrName;
-		name = (nameOrProperties as string) ?? "unnamed async_test";
+		name = (nameOrProperties as string) ?? `unnamed async_test #${++asyncTestCounter}`;
 	}
 
 	// Deferred resolve/reject — works before the Promise is created

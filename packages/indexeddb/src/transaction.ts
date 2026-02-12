@@ -264,14 +264,9 @@ export class IDBTransaction extends SafeEventTarget {
 						this.#maybeAutoCommit();
 					}
 				} else if (!this.#aborted && !this.#committed) {
-					// Set the transaction error to the original request error
-					this.#error = domError;
-					this.#aborted = true;
-					this.#active = false;
-					this.#backendTx.abort();
-					this.dispatchEvent(
-						new Event("abort", {bubbles: true, cancelable: false}),
-					);
+					// Abort the transaction, deferring the abort event
+					// until all pending requests have fired their errors
+					this._abortWithError(domError);
 				}
 			});
 		}
