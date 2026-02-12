@@ -28,10 +28,14 @@ interface ShovelServiceWorkerContainer extends ServiceWorkerContainer {
 	reloadWorkers(entrypoint: string): Promise<void>;
 }
 
+type HandleResult =
+	| {response: Response; webSocket?: undefined}
+	| {response?: undefined; webSocket: unknown};
+
 type Handler = (
 	request: Request,
 	context?: any,
-) => Promise<Response> | Response;
+) => Promise<HandleResult | Response> | HandleResult | Response;
 
 interface ServerOptions {
 	port?: number;

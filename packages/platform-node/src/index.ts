@@ -6,19 +6,20 @@
 
 // Node.js built-ins
 import * as HTTP from "node:http";
-import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
 import * as Path from "node:path";
 
 // External packages
 import {getLogger} from "@logtape/logtape";
+import type {WebSocketServer as WSServerType, WebSocket as WSType} from "ws";
 
 // Internal @b9g/* packages
 import {CustomCacheStorage} from "@b9g/cache";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
+	type HandleResult,
 	type PlatformDefaults,
-	type Handler,
+	type RequestHandler,
 	type Server,
 	type ServerOptions,
 	type PlatformESBuildConfig,
@@ -49,6 +50,9 @@ export interface NodePlatformOptions {
 	workers?: number;
 	/** Shovel configuration (caches, directories, etc.) */
 	config?: ShovelConfig;
+	/** WebSocketServer class from 'ws' package. Passed by generated production code so ws gets bundled. Falls back to dynamic import("ws") if not provided. */
+
+	WebSocketServer?: any;
 }
 
 // ============================================================================
@@ -238,6 +242,8 @@ export class NodePlatform {
 		cwd: string;
 		workers: number;
 		config?: ShovelConfig;
+
+		WebSocketServer?: any;
 	};
 	#server?: Server;
 
@@ -252,6 +258,7 @@ export class NodePlatform {
 			workers: options.workers ?? 1,
 			cwd,
 			config: options.config,
+			WebSocketServer: options.WebSocketServer,
 		};
 
 		this.serviceWorker = new NodeServiceWorkerContainer(this);
@@ -301,7 +308,7 @@ export class NodePlatform {
 	/**
 	 * Create HTTP server for Node.js
 	 */
-	createServer(handler: Handler, options: ServerOptions = {}): Server {
+	createServer(handler: RequestHandler, options: ServerOptions = {}): Server {
 		const port = options.port ?? this.#options.port;
 		const host = options.host ?? this.#options.host;
 
@@ -321,7 +328,18 @@ export class NodePlatform {
 				} as RequestInit);
 
 				// Handle request via provided handler
-				const response = await handler(request);
+				const raw = await handler(request);
+				const result: HandleResult =
+					raw instanceof Response ? {response: raw} : raw;
+
+				// WebSocket upgrade on a non-upgrade request — error
+				if (result.webSocket) {
+					res.statusCode = 500;
+					res.end("WebSocket upgrade on non-upgrade request");
+					return;
+				}
+
+				const response = result.response;
 
 				// Convert Web API Response to Node.js response
 				res.statusCode = response.status;
@@ -379,6 +397,71 @@ export class NodePlatform {
 			}
 		});
 
+		// WebSocket upgrade handling — uses WebSocketServer from platform options.
+		// Production: generated code passes WebSocketServer from static import (gets bundled).
+		// Dev mode: createDevServer() dynamically imports ws and passes it here.
+		let wss: WSServerType | undefined;
+
+		httpServer.on("upgrade", async (req, socket, head) => {
+			try {
+				if (!wss) {
+					const WSS = this.#options.WebSocketServer;
+					if (!WSS) {
+						logger.error(
+							"WebSocket upgrade requires WebSocketServer in platform options. Install ws and pass it via the WebSocketServer option.",
+						);
+						socket.destroy();
+						return;
+					}
+					wss = new WSS({noServer: true});
+				}
+
+				const url = `http://${req.headers.host}${req.url}`;
+				const request = new Request(url, {
+					method: req.method,
+					headers: req.headers as HeadersInit,
+				});
+
+				const raw = await handler(request);
+				const result: HandleResult =
+					raw instanceof Response ? {response: raw} : raw;
+
+				if (!result.webSocket) {
+					socket.destroy();
+					return;
+				}
+
+				const bridge = result.webSocket;
+
+				wss!.handleUpgrade(req, socket, head, (ws: WSType) => {
+					bridge.connect(
+						(data: string | ArrayBuffer) => ws.send(data),
+						(code?: number, reason?: string) => ws.close(code, reason),
+					);
+
+					ws.on("message", (data: Buffer, isBinary: boolean) => {
+						if (isBinary) {
+							bridge.deliver(
+								data.buffer.slice(
+									data.byteOffset,
+									data.byteOffset + data.byteLength,
+								) as ArrayBuffer,
+							);
+						} else {
+							bridge.deliver(data.toString());
+						}
+					});
+
+					ws.on("close", (code: number, reason: Buffer) => {
+						bridge.deliverClose(code, reason.toString());
+					});
+				});
+			} catch (error) {
+				logger.error("WebSocket upgrade failed: {error}", {error});
+				socket.destroy();
+			}
+		});
+
 		let isListening = false;
 		let actualPort = port;
 
@@ -406,6 +489,15 @@ export class NodePlatform {
 				});
 			},
 			async close() {
+				// Close all WebSocket connections
+				if (wss) {
+					for (const client of wss.clients) {
+						client.close(1001, "server shutting down");
+					}
+					wss.close();
+				}
+				// Force-close all active connections so server.close() resolves
+				httpServer.closeAllConnections();
 				return new Promise<void>((resolve) => {
 					httpServer.close(() => {
 						isListening = false;
@@ -447,6 +539,8 @@ export class NodePlatform {
 		userEntryPath: string,
 		mode: "development" | "production",
 	): EntryPoints {
+		const safePath = JSON.stringify(userEntryPath);
+
 		// Development worker: uses message loop (develop command owns the HTTP server)
 		const devWorkerCode = `// Node.js Development Worker
 import {parentPort} from "node:worker_threads";
@@ -460,7 +554,7 @@ await configureLogging(config.logging);
 const {registration, databases} = await initWorkerRuntime({config, usePostMessage: config.workers > 1});
 
 // Import user code (registers event handlers)
-await import("${userEntryPath}");
+await import(${safePath});
 
 // Run ServiceWorker lifecycle (stage from config.lifecycle if present)
 await runLifecycle(registration, config.lifecycle?.stage);
@@ -488,7 +582,9 @@ if (config.lifecycle) {
 import {parentPort} from "node:worker_threads";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest} from "@b9g/platform/runtime";
+import {createWebSocketBridge} from "@b9g/platform/websocket-bridge";
 import NodePlatform from "@b9g/platform-node";
+import {WebSocketServer} from "ws";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -516,7 +612,7 @@ const registration = result.registration;
 databases = result.databases;
 
 // Import user code (registers event handlers)
-await import("${userEntryPath}");
+await import(${safePath});
 
 // Run ServiceWorker lifecycle (stage from config.lifecycle if present)
 await runLifecycle(registration, config.lifecycle?.stage);
@@ -527,9 +623,13 @@ if (config.lifecycle) {
 	process.exit(0);
 } else if (directMode) {
 	// Single worker: create own HTTP server
-	const platform = new NodePlatform({port: config.port, host: config.host});
+	const platform = new NodePlatform({port: config.port, host: config.host, WebSocketServer});
 	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
+		async (request) => {
+			const result = await dispatchRequest(registration, request);
+			if (result.webSocket) return {webSocket: createWebSocketBridge(result.webSocket)};
+			return {response: result.response};
+		},
 	);
 	await server.listen();
 	parentPort?.postMessage({type: "ready"});
@@ -546,6 +646,7 @@ import {Worker} from "@b9g/node-webworker";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging} from "@b9g/platform/runtime";
 import NodePlatform from "@b9g/platform-node";
+import {WebSocketServer} from "ws";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -555,7 +656,7 @@ logger.info("Starting production server", {port: config.port, workers: config.wo
 
 // Initialize platform and register ServiceWorker
 // Override createWorker to use the imported Worker class (avoids require() issues with ESM)
-const platform = new NodePlatform({port: config.port, host: config.host, workers: config.workers});
+const platform = new NodePlatform({port: config.port, host: config.host, workers: config.workers, WebSocketServer});
 platform.createWorker = (entrypoint) => new Worker(entrypoint);
 await platform.serviceWorker.register(new URL("./worker.js", import.meta.url).href);
 await platform.serviceWorker.ready;
@@ -592,7 +693,10 @@ process.on("SIGTERM", handleShutdown);
 	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "node",
-			external: ["node:*", ...builtinModules],
+			// platform: "node" tells esbuild to externalize all Node.js builtins.
+			// Don't spread builtinModules — Bun's builtinModules includes non-Node
+			// packages (ws, undici) that should be bundled, not externalized.
+			external: [],
 			define: {
 				// Node.js doesn't support import.meta.env, alias to process.env
 				"import.meta.env": "process.env",

@@ -105,9 +105,9 @@ test(
 
 		// Test fetch event
 		const request = new Request("http://localhost/test");
-		const response = await dispatchRequest(registration, request);
+		const result = await dispatchRequest(registration, request);
 		expect(fetchCalled).toBe(true);
-		expect(await response.text()).toBe("Hello from ServiceWorker!");
+		expect(await result.response.text()).toBe("Hello from ServiceWorker!");
 	},
 	TIMEOUT,
 );
@@ -277,9 +277,9 @@ test(
 		await runLifecycle(registration);
 
 		const request = new Request("http://localhost/test");
-		const response = await dispatchRequest(registration, request);
+		const result = await dispatchRequest(registration, request);
 
-		expect(await response.text()).toBe("OK");
+		expect(await result.response.text()).toBe("OK");
 		expect(logMessages.length).toBeGreaterThanOrEqual(1);
 		expect(logMessages.find((m) => m.categories[0] === "app")).toBeDefined();
 	},
@@ -343,13 +343,13 @@ test(
 
 		// Test different request types
 		const helloRequest = new Request("http://localhost/hello");
-		const helloResponse = await dispatchRequest(runtime, helloRequest);
-		expect(await helloResponse.text()).toBe("Hello World!");
+		const helloResult = await dispatchRequest(runtime, helloRequest);
+		expect(await helloResult.response.text()).toBe("Hello World!");
 		expect(fetchEventReceived.request.url).toBe("http://localhost/hello");
 
 		const jsonRequest = new Request("http://localhost/json");
-		const jsonResponse = await dispatchRequest(runtime, jsonRequest);
-		const jsonData = await jsonResponse.json();
+		const jsonResult = await dispatchRequest(runtime, jsonRequest);
+		const jsonData = await jsonResult.response.json();
 		expect(jsonData.message).toBe("JSON response");
 	},
 	TIMEOUT,
@@ -406,13 +406,13 @@ test(
 		await runLifecycle(runtime);
 
 		const request = new Request("http://localhost/test");
-		const response = await dispatchRequest(runtime, request);
+		const result = await dispatchRequest(runtime, request);
 
 		// Both listeners should be called
 		expect(calls).toEqual(["listener1", "listener2"]);
 
 		// First listener's response should be used
-		expect(await response.text()).toBe("Response 1");
+		expect(await result.response.text()).toBe("Response 1");
 	},
 	TIMEOUT,
 );
@@ -513,8 +513,8 @@ test(
 
 		const request = new Request("http://localhost/test");
 		// Should successfully get response despite waitUntil rejection
-		const response = await dispatchRequest(runtime, request);
-		expect(await response.text()).toBe("Hello World");
+		const result = await dispatchRequest(runtime, request);
+		expect(await result.response.text()).toBe("Hello World");
 	},
 	TIMEOUT,
 );
@@ -586,16 +586,16 @@ test(
 
 		// Test requests
 		const homeRequest = new Request("http://localhost/");
-		const homeResponse = await dispatchRequest(registration, homeRequest);
-		const homeText = await homeResponse.text();
+		const homeResult = await dispatchRequest(registration, homeRequest);
+		const homeText = await homeResult.response.text();
 		expect(homeText).toContain("Hello from ServiceWorker!");
-		expect(homeResponse.headers.get("content-type")).toBe(
+		expect(homeResult.response.headers.get("content-type")).toBe(
 			"text/html; charset=utf-8",
 		);
 
 		const healthRequest = new Request("http://localhost/api/health");
-		const healthResponse = await dispatchRequest(registration, healthRequest);
-		const healthData = await healthResponse.json();
+		const healthResult = await dispatchRequest(registration, healthRequest);
+		const healthData = await healthResult.response.json();
 		expect(healthData.status).toBe("ok");
 		expect(healthData.installed).toBe(true);
 		expect(healthData.activated).toBe(true);

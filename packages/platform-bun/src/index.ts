@@ -5,7 +5,6 @@
  */
 
 // Node.js built-ins (Bun is Node-compatible)
-import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
 import * as Path from "node:path";
 
@@ -16,12 +15,14 @@ import {getLogger} from "@logtape/logtape";
 import {CustomCacheStorage} from "@b9g/cache";
 import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
+	type HandleResult,
 	type PlatformDefaults,
-	type Handler,
+	type RequestHandler,
 	type Server,
 	type ServerOptions,
 	type PlatformESBuildConfig,
 	type EntryPoints,
+	type WebSocketBridge,
 	ServiceWorkerPool,
 } from "@b9g/platform";
 import {
@@ -270,19 +271,57 @@ export class BunPlatform {
 	/**
 	 * Create HTTP server using Bun.serve
 	 */
-	createServer(handler: Handler, options: ServerOptions = {}): Server {
+	createServer(handler: RequestHandler, options: ServerOptions = {}): Server {
 		const requestedPort = options.port ?? this.#options.port;
 		const hostname = options.host ?? this.#options.host;
 		const reusePort = options.reusePort ?? false;
 
-		// Bun.serve is much simpler than Node.js
-		const server = Bun.serve({
+		const server = Bun.serve<{bridge: WebSocketBridge}>({
 			port: requestedPort,
 			hostname,
 			reusePort,
-			async fetch(request) {
+			websocket: {
+				open(ws) {
+					// Connect the bridge to the real Bun WebSocket
+					ws.data.bridge.connect(
+						(data: string | ArrayBuffer) => ws.send(data),
+						(code?: number, reason?: string) => ws.close(code, reason),
+					);
+				},
+				message(ws, data) {
+					ws.data.bridge.deliver(
+						typeof data === "string"
+							? data
+							: data.buffer.slice(
+									data.byteOffset,
+									data.byteOffset + data.byteLength,
+								),
+					);
+				},
+				close(ws, code, reason) {
+					ws.data.bridge.deliverClose(code, reason);
+				},
+			},
+			async fetch(request, bunServer) {
 				try {
-					return await handler(request);
+					const result: HandleResult = await (async () => {
+						const r = await handler(request);
+						return r instanceof Response ? {response: r} : r;
+					})();
+
+					// WebSocket upgrade
+					if (result.webSocket) {
+						if (
+							bunServer.upgrade(request, {
+								data: {bridge: result.webSocket},
+							})
+						) {
+							return undefined as any;
+						}
+						return new Response("WebSocket upgrade failed", {status: 500});
+					}
+
+					return result.response;
 				} catch (error) {
 					const err = error instanceof Error ? error : new Error(String(error));
 
@@ -382,11 +421,14 @@ export class BunPlatform {
 		userEntryPath: string,
 		mode: "development" | "production",
 	): EntryPoints {
+		const safePath = JSON.stringify(userEntryPath);
+
 		// Worker code for production (with message handling for supervisor communication)
 		const prodWorkerCode = `// Bun Production Worker
 import BunPlatform from "@b9g/platform-bun";
 import {getLogger} from "@logtape/logtape";
-import {configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest} from "@b9g/platform/runtime";
+import {configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
+import {createWebSocketBridge} from "@b9g/platform/websocket-bridge";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -396,13 +438,15 @@ const logger = getLogger(["shovel", "platform"]);
 let server;
 let databases;
 
-// Register shutdown handler before async startup
+// Register message handler for shutdown and broadcast relay
 self.onmessage = async (event) => {
 	if (event.data.type === "shutdown") {
 		logger.info("Worker shutting down");
 		if (server) await server.close();
 		if (databases) await databases.closeAll();
 		postMessage({type: "shutdown-complete"});
+	} else if (event.data.type === "broadcast:deliver") {
+		deliverBroadcastMessage(event.data.channel, event.data.data);
 	}
 };
 
@@ -411,8 +455,13 @@ const result = await initWorkerRuntime({config, usePostMessage: false});
 const registration = result.registration;
 databases = result.databases;
 
+// Set up broadcast relay (posts go to supervisor for fan-out to other workers)
+setBroadcastChannelRelay((channelName, data) => {
+	postMessage({type: "broadcast:post", channel: channelName, data});
+});
+
 // Import user code (registers event handlers)
-await import("${userEntryPath}");
+await import(${safePath});
 
 // Run ServiceWorker lifecycle (stage from config.lifecycle if present)
 await runLifecycle(registration, config.lifecycle?.stage);
@@ -421,7 +470,11 @@ await runLifecycle(registration, config.lifecycle?.stage);
 if (!config.lifecycle) {
 	const platform = new BunPlatform({port: config.port, host: config.host});
 	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
+		async (request) => {
+			const result = await dispatchRequest(registration, request);
+			if (result.webSocket) return {webSocket: createWebSocketBridge(result.webSocket)};
+			return {response: result.response};
+		},
 		{reusePort: config.workers > 1},
 	);
 	await server.listen();
@@ -443,7 +496,7 @@ await configureLogging(config.logging);
 const {registration, databases} = await initWorkerRuntime({config, usePostMessage: config.workers > 1});
 
 // Import user code (registers event handlers)
-await import("${userEntryPath}");
+await import(${safePath});
 
 // Run ServiceWorker lifecycle
 await runLifecycle(registration);
@@ -500,7 +553,7 @@ process.on("SIGTERM", handleShutdown);
 	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "node",
-			external: ["node:*", "bun", "bun:*", ...builtinModules],
+			external: ["bun", "bun:*"],
 		};
 	}
 

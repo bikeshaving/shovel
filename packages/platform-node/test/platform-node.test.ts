@@ -38,7 +38,9 @@ describe("NodePlatform", () => {
 	});
 
 	test("should create HTTP server", async () => {
-		const mockHandler = mock(() => Promise.resolve(new Response("OK")));
+		const mockHandler = mock(() =>
+			Promise.resolve({response: new Response("OK")}),
+		);
 		const server = platform.createServer(mockHandler, {
 			port: 8080,
 			host: "127.0.0.1",
@@ -52,7 +54,7 @@ describe("NodePlatform", () => {
 	});
 
 	test("should handle server listen and close", async () => {
-		const handler = mock(() => Promise.resolve(new Response("OK")));
+		const handler = mock(() => Promise.resolve({response: new Response("OK")}));
 		const server = platform.createServer(handler, {
 			port: 0, // Use random port
 		});
@@ -92,7 +94,7 @@ describe("NodePlatform", () => {
 		const handler = mock((req: Request) => {
 			expect(req).toBeInstanceOf(Request);
 			expect(req.url).toContain("http://");
-			return Promise.resolve(new Response("OK"));
+			return Promise.resolve({response: new Response("OK")});
 		});
 
 		const server = platform.createServer(handler, {port: 0, host: "127.0.0.1"});
@@ -112,7 +114,7 @@ describe("NodePlatform", () => {
 			const body = await req.text();
 			expect(body).toBe("test data");
 			expect(req.method).toBe("POST");
-			return new Response("Received");
+			return {response: new Response("Received")};
 		});
 
 		const server = platform.createServer(handler, {port: 0, host: "127.0.0.1"});
@@ -130,7 +132,7 @@ describe("NodePlatform", () => {
 	});
 
 	test("should handle request errors gracefully", async () => {
-		const handler = mock(() => {
+		const handler = mock((): never => {
 			throw new Error("Handler error");
 		});
 
@@ -154,7 +156,7 @@ describe("NodePlatform", () => {
 					controller.close();
 				},
 			});
-			return Promise.resolve(new Response(stream));
+			return Promise.resolve({response: new Response(stream)});
 		});
 
 		const server = platform.createServer(handler, {port: 0, host: "127.0.0.1"});

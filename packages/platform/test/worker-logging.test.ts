@@ -78,10 +78,10 @@ describe("worker logging", () => {
 
 		await pool.init();
 
-		const response = await pool.handleRequest(
+		const result = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("ok");
+		expect(await result.response!.text()).toBe("ok");
 
 		await pool.terminate();
 	});
@@ -102,10 +102,10 @@ describe("worker logging", () => {
 
 		await pool.init();
 
-		const response = await pool.handleRequest(
+		const result = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("debug-ok");
+		expect(await result.response!.text()).toBe("debug-ok");
 
 		await pool.terminate();
 	});
@@ -126,10 +126,10 @@ describe("worker logging", () => {
 
 		await pool.init();
 
-		const response = await pool.handleRequest(
+		const result = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("warning-ok");
+		expect(await result.response!.text()).toBe("warning-ok");
 
 		await pool.terminate();
 	});
@@ -150,10 +150,10 @@ describe("worker logging", () => {
 
 		await pool.init();
 
-		const response = await pool.handleRequest(
+		const result = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("category-ok");
+		expect(await result.response!.text()).toBe("category-ok");
 
 		await pool.terminate();
 	});
@@ -174,10 +174,10 @@ describe("worker logging", () => {
 
 		await pool.init();
 
-		const response = await pool.handleRequest(
+		const result = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("empty-categories-ok");
+		expect(await result.response!.text()).toBe("empty-categories-ok");
 
 		await pool.terminate();
 	});
@@ -198,10 +198,10 @@ describe("worker logging", () => {
 
 		await pool.init();
 
-		const response = await pool.handleRequest(
+		const result = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("only-categories-ok");
+		expect(await result.response!.text()).toBe("only-categories-ok");
 
 		await pool.terminate();
 	});

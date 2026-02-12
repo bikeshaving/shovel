@@ -42,6 +42,7 @@ export function getEntryPoints(
 	const workerCode = `// Cloudflare Worker Entry
 import { config } from "shovel:config";
 import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
+import { ShovelPubSubDO } from "@b9g/platform-cloudflare/pubsub";
 
 // Initialize runtime (installs ServiceWorker globals)
 const registration = await initializeRuntime(config);
@@ -51,6 +52,7 @@ await import(${safePath});
 
 // Lifecycle deferred to first request (workerd restriction)
 export default { fetch: createFetchHandler(registration) };
+export { ShovelPubSubDO };
 `;
 
 	return {worker: workerCode};
@@ -67,6 +69,7 @@ export function getESBuildConfig(): ESBuildConfig {
 		platform: "browser",
 		conditions: ["worker", "browser"],
 		external: [
+			"cloudflare:workers",
 			"node:*",
 			"path",
 			"fs",
@@ -126,6 +129,7 @@ export async function createDevServer(
 		scriptPath: workerPath,
 		compatibilityDate: "2024-09-23",
 		compatibilityFlags: ["nodejs_compat"],
+		durableObjects: {SHOVEL_PUBSUB: "ShovelPubSubDO"},
 		port,
 		host,
 	});
@@ -149,6 +153,7 @@ export async function createDevServer(
 				scriptPath: newWorkerPath,
 				compatibilityDate: "2024-09-23",
 				compatibilityFlags: ["nodejs_compat"],
+				durableObjects: {SHOVEL_PUBSUB: "ShovelPubSubDO"},
 				port,
 				host,
 			});

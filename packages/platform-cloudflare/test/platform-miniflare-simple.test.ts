@@ -53,9 +53,10 @@ self.addEventListener("fetch", (event) => {
 		expect(instance.ready).toBe(true);
 
 		// Test API route
-		const response = await instance.handleRequest(
+		const result = await instance.handleRequest(
 			new Request("http://localhost/api/hello"),
 		);
+		const response = result.response!;
 
 		const text = await response.text();
 		logger.debug`Response status: ${response.status}, body: ${text}`;
@@ -73,9 +74,10 @@ self.addEventListener("fetch", (event) => {
 			path.join(testDir, "worker.js"),
 		);
 
-		const response = await instance.handleRequest(
+		const result = await instance.handleRequest(
 			new Request("http://localhost/unknown"),
 		);
+		const response = result.response!;
 
 		expect(response.status).toBe(404);
 		const text = await response.text();

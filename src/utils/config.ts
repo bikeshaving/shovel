@@ -1429,6 +1429,15 @@ export function generateConfigModule(
 			config.databases = databases;
 		}
 
+		// BroadcastChannel backend
+		if (rawConfig.broadcastChannel) {
+			config.broadcastChannel = reifyModule(
+				rawConfig.broadcastChannel,
+				"cache", // reuse "cache" type prefix for import naming
+				"broadcastChannel",
+			);
+		}
+
 		// Lifecycle options (for --lifecycle flag)
 		if (lifecycle) {
 			config.lifecycle = {
@@ -1635,6 +1644,20 @@ export const BuildConfigSchema = z
 
 export type BuildConfig = z.infer<typeof BuildConfigSchema>;
 
+/** BroadcastChannel backend configuration schema */
+export const BroadcastChannelConfigSchema = z
+	.object({
+		/** Module path to import (e.g., "@b9g/pubsub-redis") */
+		module: z.string(),
+		/** Named export to use (defaults to "default") */
+		export: z.string().optional(),
+	})
+	.passthrough(); // Allow additional backend-specific options (url, etc.)
+
+export type BroadcastChannelConfig = z.infer<
+	typeof BroadcastChannelConfigSchema
+>;
+
 /** Main Shovel configuration schema */
 export const ShovelConfigSchema = z
 	.object({
@@ -1647,6 +1670,7 @@ export const ShovelConfigSchema = z
 		caches: z.record(z.string(), CacheConfigSchema).optional(),
 		directories: z.record(z.string(), DirectoryConfigSchema).optional(),
 		databases: z.record(z.string(), DatabaseConfigSchema).optional(),
+		broadcastChannel: BroadcastChannelConfigSchema.optional(),
 	})
 	.strict();
 
@@ -1680,6 +1704,7 @@ export interface ProcessedShovelConfig {
 	caches: Record<string, CacheConfig>;
 	directories: Record<string, DirectoryConfig>;
 	databases: Record<string, DatabaseConfig>;
+	broadcastChannel?: BroadcastChannelConfig;
 }
 
 // ============================================================================
@@ -1764,6 +1789,7 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 		caches: processed.caches || {},
 		directories: processed.directories || {},
 		databases: processed.databases || {},
+		broadcastChannel: processed.broadcastChannel,
 	};
 
 	return config;

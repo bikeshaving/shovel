@@ -130,21 +130,21 @@ startWorkerMessageLoop(registration);
 
 	it("cache write in one worker is visible to another worker", async () => {
 		// Put a value via one request (goes to worker 1)
-		const putResponse = await pool.handleRequest(
+		const putResult = await pool.handleRequest(
 			new Request(
 				"http://localhost/cache-put?key=shared-key&value=shared-value",
 			),
 		);
-		expect(await putResponse.text()).toBe("cached: shared-key");
+		expect(await putResult.response!.text()).toBe("cached: shared-key");
 
 		// Get the value via another request (may go to worker 2)
 		// Make multiple requests to increase chance of hitting different worker
 		let hitCount = 0;
 		for (let i = 0; i < 10; i++) {
-			const getResponse = await pool.handleRequest(
+			const getResult = await pool.handleRequest(
 				new Request("http://localhost/cache-get?key=shared-key"),
 			);
-			const text = await getResponse.text();
+			const text = await getResult.response!.text();
 			if (text === "hit: shared-value") {
 				hitCount++;
 			}
@@ -164,10 +164,10 @@ startWorkerMessageLoop(registration);
 
 		// Verify all values are accessible (round-robin should hit both workers)
 		for (let i = 0; i < 5; i++) {
-			const response = await pool.handleRequest(
+			const result = await pool.handleRequest(
 				new Request(`http://localhost/cache-get?key=key-${i}`),
 			);
-			const text = await response.text();
+			const text = await result.response!.text();
 			expect(text).toBe(`hit: value-${i}`);
 		}
 	});
@@ -182,7 +182,7 @@ startWorkerMessageLoop(registration);
 		const beforeDelete = await pool.handleRequest(
 			new Request("http://localhost/cache-get?key=delete-test"),
 		);
-		expect(await beforeDelete.text()).toBe("hit: to-delete");
+		expect(await beforeDelete.response!.text()).toBe("hit: to-delete");
 
 		// Delete via the cache API (need to add delete endpoint to worker)
 		// For now, just verify the sharing works for put/get
