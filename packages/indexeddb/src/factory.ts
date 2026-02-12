@@ -261,6 +261,13 @@ export class IDBFactory {
 			// (IDB spec says result is available during upgradeneeded)
 			(request as any)._resolveWithoutEvent(db);
 
+			// Track whether we're still inside upgradeneeded dispatch.
+			// If abort happens during upgradeneeded, defer the reject to after
+			// the handler returns (same microtask — databases() sees consistent
+			// state). If abort happens later (async), use queueMicrotask.
+			let insideUpgrade = true;
+			let pendingRejectError: DOMException | null = null;
+
 			// Register abort listener BEFORE firing upgradeneeded, because the
 			// handler may call transaction.abort() synchronously.
 			transaction.addEventListener("abort", () => {
@@ -327,9 +334,18 @@ export class IDBFactory {
 					try { this.#backend.deleteDatabase(name); } catch {}
 				}
 				request._setTransaction(null);
-				request._reject(
-					new DOMException("Version change transaction was aborted", "AbortError"),
+				const abortError = new DOMException(
+					"Version change transaction was aborted", "AbortError",
 				);
+				if (insideUpgrade) {
+					// Abort during upgradeneeded — defer to after handler returns
+					pendingRejectError = abortError;
+				} else {
+					// Abort after upgradeneeded (async) — defer via microtask
+					queueMicrotask(() => {
+						request._reject(abortError);
+					});
+				}
 			});
 
 			// Fire upgradeneeded
@@ -362,6 +378,17 @@ export class IDBFactory {
 			// If the upgrade handler threw an error, abort the transaction
 			if (upgradeError && !transaction._finished) {
 				transaction.abort();
+			}
+
+			// No longer inside upgrade dispatch — future aborts use queueMicrotask
+			insideUpgrade = false;
+
+			// Fire deferred reject AFTER upgradeneeded handler has returned.
+			// The handler has had a chance to call t.done() or set up error
+			// handlers. Firing here (same microtask as #doOpen) ensures
+			// databases() sees consistent state (no other opens have run yet).
+			if (pendingRejectError) {
+				request._reject(pendingRejectError);
 				return;
 			}
 
