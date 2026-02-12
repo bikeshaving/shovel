@@ -154,6 +154,8 @@ export class IDBDatabase extends SafeEventTarget {
 		const tx = new IDBTransaction(this, names, mode as TransactionMode, backendTx, durability);
 		// Set parent for event bubbling: transaction → database
 		tx._parent = this;
+		// Schedule auto-commit so empty transactions (no requests) complete
+		tx._scheduleAutoCommit();
 		return tx;
 	}
 
