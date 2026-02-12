@@ -36,6 +36,8 @@ export interface IndexedDBShimConfig {
 		IDBCursorWithValue?: any;
 		IDBVersionChangeEvent?: any;
 	};
+	/** Optional file path for location uniqueness across test files */
+	filePath?: string;
 }
 
 /**
@@ -281,10 +283,12 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 	}
 
 	// Provide browser-like globals for WPT test infrastructure
+	// Use filePath to make location unique per test file (prevents DB name collisions)
+	const locPath = config.filePath ?? "shovel-wpt-test";
 	const location = {
-		toString: () => "shovel-wpt-test",
-		href: "shovel-wpt-test",
-		pathname: "/shovel-wpt-test",
+		toString: () => locPath,
+		href: locPath,
+		pathname: "/" + locPath,
 	};
 	const document = {
 		title: "WPT IndexedDB",

@@ -191,6 +191,7 @@ for (const file of wptFiles) {
 	setupIndexedDBTestGlobals({
 		indexedDB: sharedFactory,
 		classes: idbClasses,
+		filePath: file,
 	});
 
 	// Reset loaded scripts tracker and test queue
