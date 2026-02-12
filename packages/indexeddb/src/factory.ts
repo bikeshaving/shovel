@@ -318,7 +318,13 @@ export class IDBFactory {
 				rawStoreName: string | any,
 				options?: IDBObjectStoreParameters,
 			) => {
-				// Spec order: transaction active → keyPath validation → constraints
+				// Spec order: upgrade tx null → InvalidStateError, then active check
+				if (!db._upgradeTx) {
+					throw new DOMException(
+						"The database is not running a version change transaction",
+						"InvalidStateError",
+					);
+				}
 				if (!transaction._active) {
 					throw new DOMException(
 						"The transaction is not active",
@@ -377,7 +383,13 @@ export class IDBFactory {
 
 			const originalDeleteObjectStore = db.deleteObjectStore.bind(db);
 			db.deleteObjectStore = (storeName: string) => {
-				// Spec order: transaction active → existence check
+				// Spec order: upgrade tx null → InvalidStateError, then active check
+				if (!db._upgradeTx) {
+					throw new DOMException(
+						"The database is not running a version change transaction",
+						"InvalidStateError",
+					);
+				}
 				if (!transaction._active) {
 					throw new DOMException(
 						"The transaction is not active",
@@ -436,11 +448,18 @@ export class IDBFactory {
 			// Register abort listener BEFORE firing upgradeneeded, because the
 			// handler may call transaction.abort() synchronously.
 			transaction.addEventListener("abort", () => {
-				db._upgradeTx = null;
-				// Don't restore createObjectStore/deleteObjectStore here —
-				// the overrides handle the inactive case with TransactionInactiveError.
-				// They'll be restored after the pending reject fires.
-
+				if (insideUpgrade) {
+					// Synchronous abort (txn.abort() during upgradeneeded):
+					// defer clearing _upgradeTx so code after abort() returns
+					// sees TransactionInactiveError (not InvalidStateError).
+					queueMicrotask(() => {
+						db._upgradeTx = null;
+					});
+				} else {
+					// Async abort (ConstraintError, etc.): clear immediately
+					// so abort event listeners see InvalidStateError.
+					db._upgradeTx = null;
+				}
 				// Revert metadata: created stores → mark as deleted
 				for (const inst of storeInstances) {
 					if (createdStores.has(inst.name)) {
@@ -506,22 +525,34 @@ export class IDBFactory {
 						/* ignored */
 					}
 				}
-				request._setTransaction(null);
+				// Don't null out request.transaction here — other abort listeners
+				// registered by the test may still need to read it. Clean up after
+				// the abort event has fully dispatched.
 				const abortError = new DOMException(
 					"Version change transaction was aborted",
 					"AbortError",
 				);
 				if (insideUpgrade) {
 					// Abort during upgradeneeded — defer to after handler returns
+					request._setTransaction(null);
 					pendingRejectError = abortError;
 				} else {
-					// Abort after upgradeneeded (async) — defer via microtask
-					db.createObjectStore = originalCreateObjectStore;
-					db.deleteObjectStore = originalDeleteObjectStore;
+					// Abort after upgradeneeded (async) — defer cleanup via microtask
+					// so abort event listeners see request.transaction during dispatch
 					queueMicrotask(() => {
+						request._setTransaction(null);
+						db.createObjectStore = originalCreateObjectStore;
+						db.deleteObjectStore = originalDeleteObjectStore;
 						request._reject(abortError);
 					});
 				}
+			});
+
+			// Register early complete listener BEFORE upgradeneeded so that
+			// db._upgradeTx is cleared before test-registered listeners fire.
+			// Spec: upgrade transaction reference is cleared before complete event.
+			transaction.addEventListener("complete", () => {
+				db._upgradeTx = null;
 			});
 
 			// Fire upgradeneeded
@@ -534,7 +565,6 @@ export class IDBFactory {
 			// registered by the upgradeneeded callback fire before this one.
 			// This ensures oncomplete fires before onsuccess per spec.
 			transaction.addEventListener("complete", () => {
-				db._upgradeTx = null;
 				db.createObjectStore = originalCreateObjectStore;
 				db.deleteObjectStore = originalDeleteObjectStore;
 				db._refreshStoreNames();

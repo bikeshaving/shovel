@@ -113,55 +113,42 @@ function loadMetaScripts(testFilePath: string): void {
  * WPT test files to load. Skip tests that require unimplemented features.
  */
 const skip = [
-	// Blob storage
-	"blob-",
-	// IDL harness (tests interface shapes, not behavior)
+	// Blob content type (requires Blob.type propagation through IDB)
+	"blob-contenttype",
+	// IDL harness (tests interface shapes via WebIDL, not behavior)
 	"idlharness",
 	// Structured clone of complex types (Map, Set, RegExp, etc.)
 	"structured-clone",
-	"nested-cloning",
-	"value.any.js",
-	"value_recursive",
-	// Transaction scheduling (requires connection queuing)
-	"transaction-scheduling",
-	"writer-starvation",
+	// Transaction scheduling (requires connection-level transaction queuing)
+	"transaction-scheduling-across-connections",
+	"transaction-scheduling-mixed-scopes",
+	"transaction-scheduling-ordering",
+	"transaction-scheduling-rw-scopes",
 	"open-request-queue",
-	// Rename operations — now supported
-	// "rename",
 	// Storage buckets (requires storage API)
 	"storage-buckets",
 	// Bindings injection (tests V8/SpiderMonkey-specific behavior)
 	"bindings-inject",
-	// Binary keys with detached buffers
-	"idb-binary-key-detached",
 	// Large request tests (performance-oriented)
 	"large-requests",
 	// Request ordering tests (depend on async scheduling details)
-	"request-event-ordering",
+	"request-event-ordering-large-mixed",
+	"request-event-ordering-large-then-small",
+	"request-event-ordering-small-values",
 	"request-abort-ordering",
-	// Parallel cursors during upgrade
-	"parallel-cursors",
-	// SameObject identity checks (our impl creates new wrappers)
-	"SameObject",
-	// Interleaved cursors (complex cursor scheduling)
-	"interleaved-cursors",
 	// Tests using setTimeout/keep_alive (hang: microtask chains starve event loop)
 	"event-dispatch-active-flag",
 	"transaction-deactivation-timing",
 	"upgrade-transaction-deactivation-timing",
 	"transaction-lifetime",
-	"upgrade-transaction-lifecycle",
+	// Upgrade transaction lifecycle — user-aborted hangs (setTimeout in microtask loop)
+	"upgrade-transaction-lifecycle-user-aborted",
 	// getAllRecords (uses IDBRecord class we don't implement)
 	"getAllRecords",
 	// getAll/getAllKeys options (IDB 3.0 IDBGetAllOptions dictionary)
 	"getAll-options",
 	"getAllKeys-options",
-	// Explicit commit throw — registers a global error handler that persists and
-	// breaks subsequent tests
-	"idb-explicit-commit-throw",
-	// Transaction requestqueue (uses keep_alive pattern)
-	"transaction-requestqueue",
-	// Get databases (shared factory has leftover connections that block deleteAllDatabases)
+	// Get databases (shared factory retains connections that block deleteAllDatabases)
 	"get-databases",
 	// Tombstone tests (requires transaction scheduling/queuing)
 	"idbindex_tombstones",
@@ -176,6 +163,9 @@ const skipTests: Record<string, string[]> = {
 		// Uses keepAlive + timeoutPromise(0) — infinite microtask chain starves event loop
 		"txn.commit() when txn is inactive",
 	],
+	// setTimeout(0) tests hang (microtask starvation prevents macrotask)
+	"upgrade-transaction-lifecycle-committed.any.js": ["setTimeout"],
+	"upgrade-transaction-lifecycle-backend-aborted.any.js": ["setTimeout"],
 };
 
 const wptFiles = readdirSync(wptDir)
