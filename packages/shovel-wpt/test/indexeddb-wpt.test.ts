@@ -117,24 +117,10 @@ const skip = [
 	"blob-contenttype",
 	// IDL harness (tests interface shapes via WebIDL, not behavior)
 	"idlharness",
-	// Transaction scheduling (requires connection-level transaction queuing)
-	"transaction-scheduling-across-connections",
-	"transaction-scheduling-mixed-scopes",
-	"transaction-scheduling-ordering",
-	"transaction-scheduling-rw-scopes",
-	"open-request-queue",
 	// Bindings injection (tests V8/SpiderMonkey-specific behavior)
 	"bindings-inject",
 	// Storage buckets (requires storage API)
 	"storage-buckets",
-	// Needs per-event-dispatch active flag (active during handler, inactive in setTimeout)
-	"event-dispatch-active-flag",
-	// transaction-lifetime-empty needs tx scheduling
-	"transaction-lifetime-empty",
-	// Tombstone tests (requires transaction scheduling — txn2 waits for txn1)
-	"idbindex_tombstones",
-	// Get databases (shared factory overwrites globalThis.indexedDB after registration)
-	"get-databases",
 ];
 
 /**
@@ -142,29 +128,13 @@ const skip = [
  * Used for tests that hang due to microtask starvation (keepAlive + setTimeout).
  */
 const skipTests: Record<string, string[]> = {
-	// Needs per-event-dispatch active flag deactivation
-	"idb-explicit-commit.any.js": ["txn is inactive should throw"],
 	// Node.js/Bun: setImmediate (cursor advance) fires after setTimeout(0),
 	// so the transaction isn't committed by the time the test checks.
 	"idbcursor-advance-exception-order.any.js": ["#2"],
-	// Needs per-event-dispatch active flag deactivation
+	// Needs per-listener microtask checkpointing (browser-only behavior)
 	"transaction-deactivation-timing.any.js": [
-		"deactivated before next task",
 		"end of invocation",
 	],
-	"upgrade-transaction-deactivation-timing.any.js": [
-		"deactivated before next task",
-	],
-	// Blocked event test hangs (needs connection-level blocking)
-	"transaction-lifetime.any.js": ["Blocked event"],
-	// User-aborted upgrade lifecycle — needs active flag / timing fixes
-	"upgrade-transaction-lifecycle-user-aborted.any.js": [
-		"synchronously after abort",
-		"promise microtask after abort",
-		"abort event handler",
-	],
-	// databases() sees uncommitted versionchange transactions
-	"get-databases.any.js": ["haven't commited"],
 	// DOM geometry/image types — stubs don't survive v8 serialize round-trip
 	"structured-clone.any.js": [
 		"DOMMatrixStub",
@@ -189,7 +159,10 @@ const sharedFactory = new IDBFactory(new MemoryBackend());
 
 // Files that need their own factory (e.g. get-databases uses deleteAllDatabases
 // which blocks on connections from prior test files)
-const needsFreshFactory = new Set(["get-databases.any.js"]);
+const needsFreshFactory = new Set([
+	"get-databases.any.js",
+	"open-request-queue.any.js",
+]);
 
 for (const file of wptFiles) {
 	const factory = needsFreshFactory.has(file)
@@ -226,8 +199,16 @@ for (const file of wptFiles) {
 			filterTestQueue(skipTests[file]);
 		}
 
-		const timeout = file === "interleaved-cursors-large.any.js" ? 10000 : 2000;
-		flushTests(`WPT: ${file.replace(".any.js", "")}`, {timeout});
+		const needsLongTimeout =
+			file === "interleaved-cursors-large.any.js" ||
+			file === "open-request-queue.any.js";
+		const timeout = needsLongTimeout ? 10000 : 2000;
+		flushTests(`WPT: ${file.replace(".any.js", "")}`, {
+			timeout,
+			// Pass the factory so tests using a fresh factory get it restored
+			// at run time (globalThis.indexedDB is overwritten by later files).
+			...(needsFreshFactory.has(file) ? {indexedDB: factory} : {}),
+		});
 	} catch (e) {
 		bunTest(`WPT: ${file} (load error)`, () => {
 			throw e;

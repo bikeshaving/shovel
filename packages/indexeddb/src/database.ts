@@ -9,11 +9,13 @@ import {SafeEventTarget} from "./event-target.js";
 import {InvalidStateError, NotFoundError} from "./errors.js";
 import {makeDOMStringList} from "./types.js";
 import type {ObjectStoreMeta, TransactionMode} from "./types.js";
+import type {TransactionScheduler} from "./scheduler.js";
 
 export class IDBDatabase extends SafeEventTarget {
 	readonly name: string;
 	#version: number;
 	#connection: IDBBackendConnection;
+	#scheduler: TransactionScheduler | null = null;
 	#closed!: boolean;
 	#objectStoreNames: string[];
 
@@ -81,11 +83,17 @@ export class IDBDatabase extends SafeEventTarget {
 	/** @internal - the running versionchange transaction, if any */
 	_upgradeTx: IDBTransaction | null;
 
-	constructor(name: string, version: number, connection: IDBBackendConnection) {
+	constructor(
+		name: string,
+		version: number,
+		connection: IDBBackendConnection,
+		scheduler: TransactionScheduler | null = null,
+	) {
 		super();
 		this.name = name;
 		this.#version = version;
 		this.#connection = connection;
+		this.#scheduler = scheduler;
 		this.#closed = false;
 		this._upgradeTx = null;
 		this.#onabortHandler = null;
@@ -161,21 +169,44 @@ export class IDBDatabase extends SafeEventTarget {
 			);
 		}
 
-		const backendTx = this.#connection.beginTransaction(
-			names,
-			mode as TransactionMode,
-		);
+		// Create transaction with deferred backend tx (scheduler controls start)
 		const tx = new IDBTransaction(
 			this,
 			names,
 			mode as TransactionMode,
-			backendTx,
+			null,
 			durability,
 		);
 		// Set parent for event bubbling: transaction → database
 		tx._parent = this;
+
+		if (this.#scheduler) {
+			const conn = this.#connection;
+			const entry = this.#scheduler.enqueue(
+				names,
+				mode as string,
+				() => {
+					const backendTx = conn.beginTransaction(
+						names,
+						mode as TransactionMode,
+					);
+					tx._start(backendTx);
+				},
+			);
+			tx._onDone = () => this.#scheduler!.done(entry);
+		} else {
+			// No scheduler — start immediately (legacy/test path)
+			const backendTx = this.#connection.beginTransaction(
+				names,
+				mode as TransactionMode,
+			);
+			tx._start(backendTx);
+		}
+
 		// Schedule auto-commit so empty transactions (no requests) complete
 		tx._scheduleAutoCommit();
+		// Spec: deactivate after the creating task's microtask checkpoint
+		tx._scheduleDeactivation();
 		return tx;
 	}
 

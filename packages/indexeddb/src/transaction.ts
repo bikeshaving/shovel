@@ -34,7 +34,7 @@ export class IDBTransaction extends SafeEventTarget {
 	}
 
 	#db: any; // IDBDatabase (avoid circular import)
-	#backendTx: IDBBackendTransaction;
+	#backendTx: IDBBackendTransaction | null;
 	#active!: boolean;
 	#committed!: boolean;
 	#aborted!: boolean;
@@ -48,6 +48,17 @@ export class IDBTransaction extends SafeEventTarget {
 	/** Maps index instance → {store, name before first rename} */
 	#originalIndexNames: Map<any, {store: any; name: string}> = new Map();
 	#initialScope!: string[];
+	/** Buffered operations when backendTx is null (deferred start) */
+	#pendingOps: Array<{
+		request: IDBRequest;
+		operation: (tx: IDBBackendTransaction) => any;
+	}> | null = null;
+	/** @internal - Synchronous callback invoked during abort() before the event fires.
+	 *  Used by the factory to revert frontend metadata synchronously. */
+	_onSyncAbort: (() => void) | null = null;
+	/** @internal - Called when the transaction finishes (committed or aborted).
+	 *  Used by the scheduler to unblock waiting transactions. */
+	_onDone: (() => void) | null = null;
 
 	#oncompleteHandler!: ((ev: Event) => void) | null;
 	#onerrorHandler!: ((ev: Event) => void) | null;
@@ -96,7 +107,7 @@ export class IDBTransaction extends SafeEventTarget {
 		db: any,
 		storeNames: string[],
 		mode: TransactionMode,
-		backendTx: IDBBackendTransaction,
+		backendTx: IDBBackendTransaction | null,
 		durability: string = "default",
 	) {
 		super();
@@ -116,6 +127,9 @@ export class IDBTransaction extends SafeEventTarget {
 		this.mode = mode;
 		this.#backendTx = backendTx;
 		this.durability = durability;
+		if (!backendTx) {
+			this.#pendingOps = [];
+		}
 	}
 
 	get objectStoreNames(): DOMStringList {
@@ -130,9 +144,9 @@ export class IDBTransaction extends SafeEventTarget {
 		return this.#error;
 	}
 
-	/** @internal */
+	/** @internal — only access when the transaction has started (non-null) */
 	get _backendTx(): IDBBackendTransaction {
-		return this.#backendTx;
+		return this.#backendTx!;
 	}
 
 	/** @internal */
@@ -143,6 +157,20 @@ export class IDBTransaction extends SafeEventTarget {
 	/** @internal — temporarily deactivate during structuredClone */
 	set _active(value: boolean) {
 		this.#active = value;
+	}
+
+	/** @internal - Start a deferred transaction (called by scheduler). */
+	_start(backendTx: IDBBackendTransaction): void {
+		this.#backendTx = backendTx;
+		const ops = this.#pendingOps;
+		this.#pendingOps = null;
+		if (ops) {
+			for (const {request, operation} of ops) {
+				this.#executeOp(request, operation);
+			}
+		}
+		// Reschedule auto-commit (may have been skipped due to null backendTx)
+		this.#maybeAutoCommit();
 	}
 
 	/** @internal */
@@ -198,12 +226,41 @@ export class IDBTransaction extends SafeEventTarget {
 		}
 		this.#aborted = true;
 		this.#active = false;
-		this.#backendTx.abort();
+		if (this.#backendTx) {
+			this.#backendTx.abort();
+		}
 		this.#revertRenames();
+		// Invoke synchronous metadata revert (e.g. factory marks stores as deleted)
+		this._onSyncAbort?.();
+		// Clear buffered ops — they'll never execute
+		if (this.#pendingOps) {
+			this.#pendingRequests -= this.#pendingOps.length;
+			this.#pendingOps = null;
+		}
 
 		this.#error = AbortError("Transaction was aborted");
 
-		this.dispatchEvent(new Event("abort", {bubbles: true, cancelable: false}));
+		if (this.mode === ("versionchange" as TransactionMode)) {
+			// Spec: abort event fires after abort() returns and after one level
+			// of microtasks, so code after abort() AND Promise.resolve().then()
+			// still see request.transaction and db._upgradeTx set.
+			// Double-nested microtask ensures the abort event fires within the
+			// same macrotask's microtask checkpoint (no other scheduleTasks
+			// can interleave).
+			queueMicrotask(() => {
+				queueMicrotask(() => {
+					this.dispatchEvent(
+						new Event("abort", {bubbles: true, cancelable: false}),
+					);
+					this._onDone?.();
+				});
+			});
+		} else {
+			this.dispatchEvent(
+				new Event("abort", {bubbles: true, cancelable: false}),
+			);
+			this._onDone?.();
+		}
 	}
 
 	/** @internal - Update store cache when a store is renamed */
@@ -280,6 +337,7 @@ export class IDBTransaction extends SafeEventTarget {
 		this.#active = false;
 		this.#commitPending = true;
 		if (this.#pendingRequests === 0) {
+			if (!this.#backendTx) return; // Deferred — will commit after _start
 			// Spec: commit is asynchronous — double-nested microtask so
 			// EventWatcher promise chains have time to register listeners.
 			queueMicrotask(() => {
@@ -299,8 +357,16 @@ export class IDBTransaction extends SafeEventTarget {
 		if (this.#committed || this.#aborted) return;
 		this.#aborted = true;
 		this.#active = false;
-		this.#backendTx.abort();
+		if (this.#backendTx) {
+			this.#backendTx.abort();
+		}
 		this.#revertRenames();
+		this._onSyncAbort?.();
+		// Clear buffered ops
+		if (this.#pendingOps) {
+			this.#pendingRequests -= this.#pendingOps.length;
+			this.#pendingOps = null;
+		}
 		this.#error = error;
 		if (this.#pendingRequests > 0) {
 			// Pending requests will fire their error events first.
@@ -313,6 +379,7 @@ export class IDBTransaction extends SafeEventTarget {
 				this.dispatchEvent(
 					new Event("abort", {bubbles: true, cancelable: false}),
 				);
+				this._onDone?.();
 			});
 		}
 	}
@@ -331,9 +398,23 @@ export class IDBTransaction extends SafeEventTarget {
 		request._parent = this;
 		this.#pendingRequests++;
 
+		if (!this.#backendTx) {
+			// Transaction not yet started (deferred by scheduler) — buffer
+			this.#pendingOps!.push({request, operation});
+			return request;
+		}
+
+		this.#executeOp(request, operation);
+		return request;
+	}
+
+	#executeOp(
+		request: IDBRequest,
+		operation: (tx: IDBBackendTransaction) => any,
+	): void {
 		// Execute synchronously (memory/SQLite backends are sync)
 		try {
-			const result = operation(this.#backendTx);
+			const result = operation(this.#backendTx!);
 			// Fire success as a macrotask (IDB spec: events fire as tasks)
 			scheduleTask(() => {
 				this.#pendingRequests--;
@@ -343,7 +424,12 @@ export class IDBTransaction extends SafeEventTarget {
 					this.#maybeFireDeferredAbort();
 					return;
 				}
+				// Spec: transaction is active during event dispatch
+				this.#active = true;
 				const hadError = request._resolve(result);
+				// Deactivate after microtask checkpoint so Promise.resolve().then()
+				// in handlers still sees active, but setTimeout(0) sees inactive.
+				this._scheduleDeactivation();
 				if (
 					hadError &&
 					!this.#aborted &&
@@ -374,7 +460,11 @@ export class IDBTransaction extends SafeEventTarget {
 					error instanceof DOMException
 						? error
 						: new DOMException(String(error), "UnknownError");
+				// Spec: transaction is active during event dispatch
+				this.#active = true;
 				const prevented = request._reject(domError);
+				// Deactivate after microtask checkpoint
+				this._scheduleDeactivation();
 				if (
 					request._lastDispatchHadError &&
 					!this.#aborted &&
@@ -405,8 +495,6 @@ export class IDBTransaction extends SafeEventTarget {
 				}
 			});
 		}
-
-		return request;
 	}
 
 	/** @internal - Deactivate the transaction (end of upgradeneeded) */
@@ -418,6 +506,7 @@ export class IDBTransaction extends SafeEventTarget {
 	_scheduleAutoCommit(): void {
 		queueMicrotask(() => {
 			if (!this.#aborted && !this.#committed && this.#pendingRequests === 0) {
+				if (!this.#backendTx) return; // Deferred — _start will trigger
 				this.#doCommit();
 			}
 		});
@@ -444,11 +533,26 @@ export class IDBTransaction extends SafeEventTarget {
 			this.dispatchEvent(
 				new Event("abort", {bubbles: true, cancelable: false}),
 			);
+			this._onDone?.();
 		}
+	}
+
+	/** @internal - Schedule deactivation after all microtasks from the current
+	 * event dispatch settle. Double-nested so Promise.resolve().then() in
+	 * handlers still sees active, but setTimeout(0) sees inactive. */
+	_scheduleDeactivation(): void {
+		queueMicrotask(() => {
+			queueMicrotask(() => {
+				if (!this.#committed && !this.#aborted) {
+					this.#active = false;
+				}
+			});
+		});
 	}
 
 	#maybeAutoCommit(): void {
 		if (this.#pendingRequests === 0 && !this.#committed && !this.#aborted) {
+			if (!this.#backendTx) return; // Deferred — _start will trigger
 			// Double-nested microtask: ensures auto-commit runs after promise
 			// continuations from EventWatcher/promiseForRequest chains settle.
 			// Since events fire as macrotasks (via scheduleTask), these microtasks
@@ -476,7 +580,7 @@ export class IDBTransaction extends SafeEventTarget {
 		this.#active = false;
 
 		try {
-			this.#backendTx.commit();
+			this.#backendTx!.commit();
 		} catch (error) {
 			this.#error =
 				error instanceof DOMException
@@ -485,11 +589,13 @@ export class IDBTransaction extends SafeEventTarget {
 			this.dispatchEvent(
 				new Event("error", {bubbles: true, cancelable: false}),
 			);
+			this._onDone?.();
 			return;
 		}
 
 		this.dispatchEvent(
 			new Event("complete", {bubbles: false, cancelable: false}),
 		);
+		this._onDone?.();
 	}
 }
