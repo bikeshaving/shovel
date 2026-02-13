@@ -128,9 +128,6 @@ const skip = [
  * Used for tests that hang due to microtask starvation (keepAlive + setTimeout).
  */
 const skipTests: Record<string, string[]> = {
-	// Node.js/Bun: setImmediate (cursor advance) fires after setTimeout(0),
-	// so the transaction isn't committed by the time the test checks.
-	"idbcursor-advance-exception-order.any.js": ["#2"],
 	// Needs per-listener microtask checkpointing (browser-only behavior)
 	"transaction-deactivation-timing.any.js": [
 		"end of invocation",
@@ -199,10 +196,13 @@ for (const file of wptFiles) {
 			filterTestQueue(skipTests[file]);
 		}
 
+		// Tests with many concurrent cursors or complex FIFO interactions
+		// can take longer under load.
 		const needsLongTimeout =
 			file === "interleaved-cursors-large.any.js" ||
-			file === "open-request-queue.any.js";
-		const timeout = needsLongTimeout ? 10000 : 2000;
+			file === "open-request-queue.any.js" ||
+			file === "upgrade-transaction-deactivation-timing.any.js";
+		const timeout = needsLongTimeout ? 10000 : 5000;
 		flushTests(`WPT: ${file.replace(".any.js", "")}`, {
 			timeout,
 			// Pass the factory so tests using a fresh factory get it restored

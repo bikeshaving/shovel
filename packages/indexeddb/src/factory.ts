@@ -71,7 +71,12 @@ export class IDBFactory {
 		const onComplete = () => {
 			queue.shift();
 			if (queue.length > 0) {
-				scheduleTask(() => this.#startNextFIFO(name));
+				// Use queueMicrotask (not scheduleTask) to avoid growing the
+				// setImmediate chain.  Bun drains ALL setImmediate waves before
+				// timers, so each extra setImmediate delays setTimeout(0) callbacks
+				// across the entire process — causing timeouts when many FIFO
+				// queues run concurrently.
+				queueMicrotask(() => this.#startNextFIFO(name));
 			} else {
 				this.#fifoQueues.delete(name);
 			}
@@ -214,8 +219,12 @@ export class IDBFactory {
 
 		// Still blocked — queue for later processing, fire "blocked" asynchronously
 		// so EventWatcher listeners have a chance to register after awaiting versionchange.
+		// Use queueMicrotask (not scheduleTask/setImmediate) — the blocked event
+		// must fire before setTimeout(0) close callbacks, and microtasks always
+		// run before both setImmediate and timer phases.  This also avoids growing
+		// the setImmediate chain that starves timers in Bun.
 		this.#pendingRequests.push(pendingEntry);
-		scheduleTask(() => {
+		queueMicrotask(() => {
 			// Only fire if the request hasn't been processed yet
 			// (e.g. connections may have closed before this fires)
 			if (this.#pendingRequests.indexOf(pendingEntry) >= 0) {

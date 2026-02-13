@@ -2,11 +2,12 @@
  * Macrotask scheduler for IndexedDB event dispatch.
  *
  * The IDB spec says events fire as "tasks" (macrotasks), not microtasks.
- * Using setImmediate (available in Node.js and Bun) yields to the event loop
- * between operations, allowing setTimeout callbacks to fire — matching
- * real browser behavior.
+ * We use setImmediate which fires in the "check" phase — after the
+ * current task's microtask checkpoint but before setTimeout(0) callbacks.
+ * This ordering is critical: the "blocked" event (dispatched via
+ * scheduleTask) must fire before setTimeout(0) callbacks that close
+ * connections.
  */
-export const scheduleTask: (fn: () => void) => void =
-	typeof setImmediate !== "undefined"
-		? setImmediate
-		: (fn) => setTimeout(fn, 0);
+export function scheduleTask(fn: () => void): void {
+	setImmediate(fn);
+}
