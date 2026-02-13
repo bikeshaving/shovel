@@ -292,11 +292,12 @@ export function format_value(value: unknown): string {
  */
 export function flushTests(
 	suiteName: string,
-	options?: {timeout?: number},
+	options?: {timeout?: number; indexedDB?: any},
 ): void {
 	const tests = [...testQueue];
 	testQueue.length = 0;
 	const timeout = options?.timeout;
+	const idbOverride = options?.indexedDB;
 
 	describe(suiteName, () => {
 		for (const {name, fn, isAsync} of tests) {
@@ -304,6 +305,16 @@ export function flushTests(
 			bunTest(
 				name,
 				async () => {
+					// Restore per-file indexedDB if needed (e.g. fresh factory
+					// for get-databases tests that call deleteAllDatabases).
+					let savedIdb: any;
+					if (idbOverride) {
+						savedIdb = (globalThis as any).indexedDB;
+						(globalThis as any).indexedDB = idbOverride;
+						if (typeof self !== "undefined") {
+							(self as any).indexedDB = idbOverride;
+						}
+					}
 					currentCleanups = [];
 					const ctx = createTestContext(name);
 					try {
@@ -316,6 +327,12 @@ export function flushTests(
 						// Run cleanups in reverse order
 						for (const cleanup of currentCleanups.reverse()) {
 							await cleanup();
+						}
+						if (idbOverride) {
+							(globalThis as any).indexedDB = savedIdb;
+							if (typeof self !== "undefined") {
+								(self as any).indexedDB = savedIdb;
+							}
 						}
 					}
 				},
