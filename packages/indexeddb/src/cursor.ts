@@ -181,7 +181,10 @@ export class IDBCursor {
 				return;
 			}
 			if (found) this._gotValue = true;
+			// Spec: transaction is active during event dispatch
+			this._transaction._active = true;
 			this._request._resolve(found ? this : null);
+			this._transaction._scheduleDeactivation();
 			this._transaction[kRelease]();
 		});
 	}
@@ -231,7 +234,10 @@ export class IDBCursor {
 				return;
 			}
 			if (advanced) this._gotValue = true;
+			// Spec: transaction is active during event dispatch
+			this._transaction._active = true;
 			this._request._resolve(advanced ? this : null);
+			this._transaction._scheduleDeactivation();
 			this._transaction[kRelease]();
 		});
 	}
@@ -334,7 +340,10 @@ export class IDBCursor {
 				return;
 			}
 			if (found) this._gotValue = true;
+			// Spec: transaction is active during event dispatch
+			this._transaction._active = true;
 			this._request._resolve(found ? this : null);
+			this._transaction._scheduleDeactivation();
 			this._transaction[kRelease]();
 		});
 	}

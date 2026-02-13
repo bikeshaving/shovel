@@ -151,6 +151,8 @@ class MemoryIndex {
 interface MemoryDatabase {
 	name: string;
 	version: number;
+	/** Version visible to databases() — only updated on versionchange commit. */
+	committedVersion: number;
 	stores: Map<string, MemoryStore>;
 	indexes: Map<string, MemoryIndex>; // key: "storeName/indexName"
 }
@@ -588,7 +590,9 @@ class MemoryTransaction implements IDBBackendTransaction {
 	// ---- Lifecycle ----
 
 	commit(): void {
-		// For memory backend, data is already in place
+		// For memory backend, data is already in place.
+		// Commit the version so databases() reflects it.
+		this.#db.committedVersion = this.#db.version;
 		this.#snapshot = null;
 	}
 
@@ -1006,6 +1010,7 @@ export class MemoryBackend implements IDBBackend {
 			db = {
 				name,
 				version: 0,
+				committedVersion: 0,
 				stores: new Map(),
 				indexes: new Map(),
 			};
@@ -1022,10 +1027,16 @@ export class MemoryBackend implements IDBBackend {
 	}
 
 	databases(): Array<{name: string; version: number}> {
-		return Array.from(this.#databases.entries()).map(([name, db]) => ({
-			name,
-			version: db.version,
-		}));
+		// Return only databases whose version has been committed.
+		// Databases mid-versionchange (committedVersion still 0 for new DBs,
+		// or stale for upgrades) are excluded or show the old version.
+		const result: Array<{name: string; version: number}> = [];
+		for (const [name, db] of this.#databases) {
+			if (db.committedVersion > 0) {
+				result.push({name, version: db.committedVersion});
+			}
+		}
+		return result;
 	}
 
 	close(_name: string): void {
