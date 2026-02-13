@@ -12,12 +12,14 @@ import {VersionError} from "./errors.js";
 import {validateKeyPath, encodeKey, validateKey, compareKeys} from "./key.js";
 import type {TransactionMode} from "./types.js";
 import {scheduleTask} from "./task.js";
+import {TransactionScheduler} from "./scheduler.js";
 
 interface PendingRequest {
 	name: string;
 	version: number | undefined;
 	request: IDBOpenDBRequest;
 	isDelete: boolean;
+	onComplete?: () => void;
 }
 
 export class IDBFactory {
@@ -26,11 +28,76 @@ export class IDBFactory {
 	#connections: Map<string, Set<IDBDatabase>>;
 	/** Blocked requests waiting for connections to close */
 	#pendingRequests: PendingRequest[];
+	/** Per-database transaction schedulers (shared across connections) */
+	#schedulers: Map<string, TransactionScheduler> = new Map();
+	/** Per-database FIFO queue for open/delete requests (spec §2.7) */
+	#fifoQueues: Map<string, PendingRequest[]> = new Map();
 
 	constructor(backend: IDBBackend) {
 		this.#backend = backend;
 		this.#connections = new Map();
 		this.#pendingRequests = [];
+	}
+
+	#getScheduler(name: string): TransactionScheduler {
+		let scheduler = this.#schedulers.get(name);
+		if (!scheduler) {
+			scheduler = new TransactionScheduler();
+			this.#schedulers.set(name, scheduler);
+		}
+		return scheduler;
+	}
+
+	#enqueueFIFO(entry: PendingRequest): void {
+		let queue = this.#fifoQueues.get(entry.name);
+		if (!queue) {
+			queue = [];
+			this.#fifoQueues.set(entry.name, queue);
+		}
+		queue.push(entry);
+		if (queue.length === 1) {
+			this.#startNextFIFO(entry.name);
+		}
+	}
+
+	#startNextFIFO(name: string): void {
+		const queue = this.#fifoQueues.get(name);
+		if (!queue || queue.length === 0) {
+			this.#fifoQueues.delete(name);
+			return;
+		}
+		const entry = queue[0];
+
+		const onComplete = () => {
+			queue.shift();
+			if (queue.length > 0) {
+				scheduleTask(() => this.#startNextFIFO(name));
+			} else {
+				this.#fifoQueues.delete(name);
+			}
+		};
+
+		scheduleTask(() => {
+			try {
+				if (entry.isDelete) {
+					this.#processDelete(name, entry.request, onComplete);
+				} else {
+					this.#processOpen(
+						name,
+						entry.version,
+						entry.request,
+						onComplete,
+					);
+				}
+			} catch (error) {
+				entry.request._reject(
+					error instanceof DOMException
+						? error
+						: new DOMException(String(error), "UnknownError"),
+				);
+				onComplete();
+			}
+		});
 	}
 
 	/**
@@ -51,19 +118,7 @@ export class IDBFactory {
 		}
 
 		const request = new IDBOpenDBRequest();
-
-		scheduleTask(() => {
-			try {
-				this.#processOpen(name, version, request);
-			} catch (error) {
-				request._reject(
-					error instanceof DOMException
-						? error
-						: new DOMException(String(error), "UnknownError"),
-				);
-			}
-		});
-
+		this.#enqueueFIFO({name, version, request, isDelete: false});
 		return request;
 	}
 
@@ -72,19 +127,12 @@ export class IDBFactory {
 	 */
 	deleteDatabase(name: string): IDBOpenDBRequest {
 		const request = new IDBOpenDBRequest();
-
-		scheduleTask(() => {
-			try {
-				this.#processDelete(name, request);
-			} catch (error) {
-				request._reject(
-					error instanceof DOMException
-						? error
-						: new DOMException(String(error), "UnknownError"),
-				);
-			}
+		this.#enqueueFIFO({
+			name,
+			version: undefined,
+			request,
+			isDelete: true,
 		});
-
 		return request;
 	}
 
@@ -164,14 +212,16 @@ export class IDBFactory {
 		// Check if all connections are now closed (handlers may have called close())
 		if (!this.#hasOpenConnections(name)) return false;
 
-		// Still blocked — fire "blocked" event on the request
-		request._fireBlocked(oldVersion, newVersion);
-
-		// Check again — blocked handler may have closed connections
-		if (!this.#hasOpenConnections(name)) return false;
-
-		// Still blocked — queue for later processing
+		// Still blocked — queue for later processing, fire "blocked" asynchronously
+		// so EventWatcher listeners have a chance to register after awaiting versionchange.
 		this.#pendingRequests.push(pendingEntry);
+		scheduleTask(() => {
+			// Only fire if the request hasn't been processed yet
+			// (e.g. connections may have closed before this fires)
+			if (this.#pendingRequests.indexOf(pendingEntry) >= 0) {
+				request._fireBlocked(oldVersion, newVersion);
+			}
+		});
 		return true;
 	}
 
@@ -184,11 +234,18 @@ export class IDBFactory {
 
 		try {
 			if (pending.isDelete) {
-				this.#doDelete(pending.name, pending.request);
-				// Delete doesn't create connections — process next
-				this.#processPendingRequests(name);
+				this.#doDelete(
+					pending.name,
+					pending.request,
+					pending.onComplete,
+				);
 			} else {
-				this.#doOpen(pending.name, pending.version, pending.request);
+				this.#doOpen(
+					pending.name,
+					pending.version,
+					pending.request,
+					pending.onComplete,
+				);
 			}
 		} catch (error) {
 			pending.request._reject(
@@ -196,6 +253,7 @@ export class IDBFactory {
 					? error
 					: new DOMException(String(error), "UnknownError"),
 			);
+			pending.onComplete?.();
 		}
 	}
 
@@ -203,6 +261,7 @@ export class IDBFactory {
 		name: string,
 		version: number | undefined,
 		request: IDBOpenDBRequest,
+		onComplete?: () => void,
 	): void {
 		// Check if a version change is needed
 		const existingDbs = this.#backend.databases();
@@ -217,15 +276,19 @@ export class IDBFactory {
 				oldVersion,
 				requestedVersion,
 				request,
-				{name, version, request, isDelete: false},
+				{name, version, request, isDelete: false, onComplete},
 			);
 			if (blocked) return;
 		}
 
-		this.#doOpen(name, version, request);
+		this.#doOpen(name, version, request, onComplete);
 	}
 
-	#processDelete(name: string, request: IDBOpenDBRequest): void {
+	#processDelete(
+		name: string,
+		request: IDBOpenDBRequest,
+		onComplete?: () => void,
+	): void {
 		const existing = this.#backend.databases().find((db) => db.name === name);
 		const oldVersion = existing?.version ?? 0;
 
@@ -234,17 +297,23 @@ export class IDBFactory {
 			version: undefined,
 			request,
 			isDelete: true,
+			onComplete,
 		});
 		if (blocked) return;
 
-		this.#doDelete(name, request);
+		this.#doDelete(name, request, onComplete);
 	}
 
-	#doDelete(name: string, request: IDBOpenDBRequest): void {
+	#doDelete(
+		name: string,
+		request: IDBOpenDBRequest,
+		onComplete?: () => void,
+	): void {
 		const existing = this.#backend.databases().find((db) => db.name === name);
 		const oldVersion = existing?.version ?? 0;
 		this.#backend.deleteDatabase(name);
 		request._resolveWithVersionChange(undefined, oldVersion);
+		onComplete?.();
 	}
 
 	// ---- Private: Open implementation ----
@@ -253,6 +322,7 @@ export class IDBFactory {
 		name: string,
 		version: number | undefined,
 		request: IDBOpenDBRequest,
+		onComplete?: () => void,
 	): void {
 		// Check if database exists and get its current version
 		const existingDbs = this.#backend.databases();
@@ -270,7 +340,8 @@ export class IDBFactory {
 
 		// Open the backend connection (does NOT set version yet)
 		const connection = this.#backend.open(name, requestedVersion);
-		const db = new IDBDatabase(name, requestedVersion, connection);
+		const scheduler = this.#getScheduler(name);
+		const db = new IDBDatabase(name, requestedVersion, connection, scheduler);
 
 		// Track connection for blocking checks
 		this.#registerConnection(name, db);
@@ -439,62 +510,35 @@ export class IDBFactory {
 			// (IDB spec says result is available during upgradeneeded)
 			(request as any)._resolveWithoutEvent(db);
 
-			// Track whether we're still inside upgradeneeded dispatch.
-			// If abort happens during upgradeneeded, defer the reject to after
-			// the handler returns (same microtask — databases() sees consistent
-			// state). If abort happens later (async), use queueMicrotask.
-			let insideUpgrade = true;
-			let pendingRejectError: DOMException | null = null;
-
-			// Register abort listener BEFORE firing upgradeneeded, because the
-			// handler may call transaction.abort() synchronously.
-			transaction.addEventListener("abort", () => {
-				if (insideUpgrade) {
-					// Synchronous abort (txn.abort() during upgradeneeded):
-					// defer clearing _upgradeTx so code after abort() returns
-					// sees TransactionInactiveError (not InvalidStateError).
-					queueMicrotask(() => {
-						db._upgradeTx = null;
-					});
-				} else {
-					// Async abort (ConstraintError, etc.): clear immediately
-					// so abort event listeners see InvalidStateError.
-					db._upgradeTx = null;
-				}
-				// Revert metadata: created stores → mark as deleted
+			// Synchronous metadata revert — runs during abort() BEFORE
+			// the async abort event fires.  Ensures db.objectStoreNames,
+			// db.version, store._deleted etc. are correct immediately
+			// after abort() returns.
+			transaction._onSyncAbort = () => {
 				for (const inst of storeInstances) {
 					if (createdStores.has(inst.name)) {
 						inst._deleted = true;
-						// All indexes on created stores are also deleted
 						inst._indexNames.length = 0;
 						for (const idx of inst._indexInstances) {
 							idx._deleted = true;
 						}
 					} else if (deletedStores.has(inst.name)) {
-						// Deleted stores → unmark as deleted
 						inst._deleted = false;
-						// Restore indexes that were on the store before deletion
 						for (const idx of inst._indexInstances) {
 							idx._deleted = false;
 						}
-						// Restore indexNames to initial state
 						const initial = initialIndexNames.get(inst.name) || [];
 						inst._indexNames.length = 0;
 						inst._indexNames.push(...initial);
 					} else {
-						// Existing store that wasn't created or deleted as a whole
-						// Determine which indexes were created/deleted
 						const initial = initialIndexNames.get(inst.name) || [];
 						for (const idx of inst._indexInstances) {
 							if (!initial.includes(idx.name)) {
-								// This index was created during the upgrade → mark deleted
 								idx._deleted = true;
 							} else if (!inst._indexNames.includes(idx.name)) {
-								// This index was deleted during the upgrade → unmark
 								idx._deleted = false;
 							}
 						}
-						// Restore indexNames to initial state
 						inst._indexNames.length = 0;
 						inst._indexNames.push(...initial);
 					}
@@ -503,7 +547,6 @@ export class IDBFactory {
 				// Revert scope to original store names
 				transaction._scope.length = 0;
 				transaction._scope.push(...storeNames);
-				// Add back deleted stores, remove created stores
 				for (const s of deletedStores) {
 					if (!transaction._scope.includes(s)) {
 						transaction._scope.push(s);
@@ -516,9 +559,10 @@ export class IDBFactory {
 
 				db._refreshStoreNames();
 				db._setVersion(oldVersion);
-				// Unregister the connection so it doesn't block future operations
+
+				// Unregister connection and clean up database synchronously
+				// so databases() reflects the revert immediately.
 				this.#unregisterConnection(name, db);
-				// If this was the initial creation, clean up the database
 				if (oldVersion === 0) {
 					try {
 						this.#backend.deleteDatabase(name);
@@ -526,27 +570,31 @@ export class IDBFactory {
 						/* ignored */
 					}
 				}
-				// Don't null out request.transaction here — other abort listeners
-				// registered by the test may still need to read it. Clean up after
-				// the abort event has fully dispatched.
+			};
+
+			// Abort event listener — handles async cleanup.  The abort
+			// event for versionchange fires as a macrotask (scheduleTask
+			// in transaction.abort()), so db._upgradeTx and
+			// request.transaction remain set through abort() return and
+			// microtasks, matching spec timing.
+			transaction.addEventListener("abort", () => {
+				// Clear so abort-handler code sees InvalidStateError
+				// from createObjectStore (not TransactionInactiveError).
+				db._upgradeTx = null;
+
 				const abortError = new DOMException(
 					"Version change transaction was aborted",
 					"AbortError",
 				);
-				if (insideUpgrade) {
-					// Abort during upgradeneeded — defer to after handler returns
+				// Defer clearing request.transaction so other abort
+				// listeners still see it during dispatch.
+				queueMicrotask(() => {
 					request._setTransaction(null);
-					pendingRejectError = abortError;
-				} else {
-					// Abort after upgradeneeded (async) — defer cleanup via microtask
-					// so abort event listeners see request.transaction during dispatch
-					queueMicrotask(() => {
-						request._setTransaction(null);
-						db.createObjectStore = originalCreateObjectStore;
-						db.deleteObjectStore = originalDeleteObjectStore;
-						request._reject(abortError);
-					});
-				}
+					db.createObjectStore = originalCreateObjectStore;
+					db.deleteObjectStore = originalDeleteObjectStore;
+					request._reject(abortError);
+					onComplete?.();
+				});
 			});
 
 			// Register early complete listener BEFORE upgradeneeded so that
@@ -581,6 +629,7 @@ export class IDBFactory {
 				} else {
 					request._resolve(db);
 				}
+				onComplete?.();
 			});
 
 			// If an exception was thrown during upgradeneeded, abort the transaction
@@ -588,28 +637,17 @@ export class IDBFactory {
 				transaction.abort();
 			}
 
-			// No longer inside upgrade dispatch — future aborts use queueMicrotask
-			insideUpgrade = false;
-
-			// Fire deferred reject AFTER upgradeneeded handler has returned.
-			// The handler has had a chance to call t.done() or set up error
-			// handlers. Firing here (same microtask as #doOpen) ensures
-			// databases() sees consistent state (no other opens have run yet).
-			if (pendingRejectError) {
-				db.createObjectStore = originalCreateObjectStore;
-				db.deleteObjectStore = originalDeleteObjectStore;
-				request._reject(pendingRejectError);
-				return;
-			}
-
 			// Schedule auto-commit (only if not already aborted/committed)
 			if (!transaction._finished) {
+				// Spec: deactivate after the upgradeneeded task's microtask checkpoint
+				transaction._scheduleDeactivation();
 				transaction._scheduleAutoCommit();
 			}
 		} else {
 			// No upgrade needed — ensure version is set on the backend
 			connection.setVersion(requestedVersion);
 			request._resolve(db);
+			onComplete?.();
 		}
 	}
 }
