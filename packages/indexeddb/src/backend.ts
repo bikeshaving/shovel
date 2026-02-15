@@ -132,6 +132,8 @@ export interface IDBBackendConnection {
 	): IDBBackendTransaction;
 	/** Set the database version (used during versionchange transactions) */
 	setVersion(version: number): void;
+	/** Release resources held by this connection */
+	close(): void;
 }
 
 /**
