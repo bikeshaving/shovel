@@ -239,10 +239,24 @@ export class IDBDatabase extends SafeEventTarget {
 
 	/**
 	 * Close the database connection.
+	 * Per spec, sets the "close pending" flag immediately. The actual
+	 * backend close is deferred if a versionchange transaction is
+	 * still running (the factory completes the close when the tx finishes).
 	 */
 	close(): void {
 		if (this.#closed) return;
 		this.#closed = true;
+		// Defer backend close while a versionchange transaction is active
+		if (this._upgradeTx && !this._upgradeTx._finished) {
+			return;
+		}
+		this.#connection.close();
+		this.#onCloseCallback?.();
+	}
+
+	/** @internal - Actually close the backend connection (called by factory after upgrade tx finishes) */
+	_finishClose(): void {
+		this.#connection.close();
 		this.#onCloseCallback?.();
 	}
 

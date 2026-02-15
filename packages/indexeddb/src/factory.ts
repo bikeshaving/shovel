@@ -569,9 +569,10 @@ export class IDBFactory {
 				db._refreshStoreNames();
 				db._setVersion(oldVersion);
 
-				// Unregister connection and clean up database synchronously
+				// Unregister and close connection, clean up database synchronously
 				// so databases() reflects the revert immediately.
 				this.#unregisterConnection(name, db);
+				db.close();
 				if (oldVersion === 0) {
 					try {
 						this.#backend.deleteDatabase(name);
@@ -627,8 +628,10 @@ export class IDBFactory {
 				db.deleteObjectStore = originalDeleteObjectStore;
 				db._refreshStoreNames();
 				request._setTransaction(null);
-				// If db.close() was called during upgrade, fire error instead of success
+				// If db.close() was called during upgrade, finish closing
+				// the backend connection and fire error instead of success
 				if (db._closed) {
+					db._finishClose();
 					request._reject(
 						new DOMException(
 							"The connection was closed during upgrade",
