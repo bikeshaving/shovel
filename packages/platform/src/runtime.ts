@@ -2021,7 +2021,6 @@ export class ServiceWorkerGlobals {
 		this.loggers = options.loggers;
 		this.#isDevelopment = options.isDevelopment ?? false;
 
-
 		// Create clients API implementation
 		this.clients = this.#createClientsAPI();
 

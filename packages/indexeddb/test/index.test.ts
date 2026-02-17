@@ -106,9 +106,7 @@ describe("IDBIndex", () => {
 			const req = index.getAll("Alice");
 			req.onsuccess = () => {
 				expect(req.result.length).toBe(2);
-				expect(req.result.every((r: any) => r.name === "Alice")).toBe(
-					true,
-				);
+				expect(req.result.every((r: any) => r.name === "Alice")).toBe(true);
 				resolve();
 			};
 			req.onerror = () => reject(req.error);

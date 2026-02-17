@@ -65,7 +65,11 @@ function makeIDBRecord(key: any, primaryKey: any, value: any): IDBRecord {
 function parseGetAllArgs(
 	queryOrOptions?: any,
 	countArg?: number,
-): {query: any; count: number | undefined; direction: IDBCursorDirection | undefined} {
+): {
+	query: any;
+	count: number | undefined;
+	direction: IDBCursorDirection | undefined;
+} {
 	// Detect options dictionary: plain objects (not Date, Array, IDBKeyRange, etc.)
 	if (
 		queryOrOptions !== null &&
@@ -80,7 +84,11 @@ function parseGetAllArgs(
 			direction: queryOrOptions.direction,
 		};
 	}
-	return {query: queryOrOptions, count: countArg === 0 ? undefined : countArg, direction: undefined};
+	return {
+		query: queryOrOptions,
+		count: countArg === 0 ? undefined : countArg,
+		direction: undefined,
+	};
 }
 
 export class IDBObjectStore {
@@ -297,7 +305,11 @@ export class IDBObjectStore {
 	 */
 	getAll(queryOrOptions?: any, count?: number): IDBRequest {
 		this.#checkActive();
-		const {query, count: cnt, direction} = parseGetAllArgs(queryOrOptions, count);
+		const {
+			query,
+			count: cnt,
+			direction,
+		} = parseGetAllArgs(queryOrOptions, count);
 		if (cnt !== undefined) enforceRangeCount(cnt);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
@@ -327,7 +339,11 @@ export class IDBObjectStore {
 	 */
 	getAllKeys(queryOrOptions?: any, count?: number): IDBRequest {
 		this.#checkActive();
-		const {query, count: cnt, direction} = parseGetAllArgs(queryOrOptions, count);
+		const {
+			query,
+			count: cnt,
+			direction,
+		} = parseGetAllArgs(queryOrOptions, count);
 		if (cnt !== undefined) enforceRangeCount(cnt);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
