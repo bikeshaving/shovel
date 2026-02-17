@@ -992,6 +992,10 @@ class MemoryConnection implements IDBBackendConnection {
 		this.#db.version = version;
 	}
 
+	commitVersion(): void {
+		this.#db.committedVersion = this.#db.version;
+	}
+
 	close(): void {
 		// No resources to release — GC handles in-memory data.
 	}
