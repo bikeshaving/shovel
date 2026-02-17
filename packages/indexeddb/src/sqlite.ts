@@ -44,11 +44,7 @@ import {join} from "node:path";
 
 function openDatabase(path: string): Database {
 	const db = new Database(path);
-	db.exec("PRAGMA journal_mode=WAL");
-	db.exec("PRAGMA synchronous=NORMAL");
-	db.exec("PRAGMA foreign_keys=ON");
-	db.exec("PRAGMA busy_timeout=5000");
-	db.exec("PRAGMA cache_size=-2000");
+	db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA cache_size=-2000");
 	return db;
 }
 
@@ -230,12 +226,11 @@ class HybridCursor implements IDBBackendCursor {
 		const cmpOp = this.#forward ? ">" : "<";
 		const order = this.#forward ? "ASC" : "DESC";
 		const {sql: rangeSql, params: rangeParams} = buildRangeConditions(this.#range);
-		const rows = this.#db.query(
+		this.#snapshot = this.#db.query(
 			`SELECT key, value FROM _idb_records WHERE store_id = ? AND key ${cmpOp} ?${rangeSql} ORDER BY key ${order} LIMIT ${CURSOR_BATCH_SIZE}`,
-		).all(this.#storeId, this.#currentKey, ...rangeParams) as any[];
-		if (rows.length === 0) return false;
-		this.#snapshot = rows.map((r: any) => ({key: new Uint8Array(r.key), value: new Uint8Array(r.value)}));
-		this.#exhausted = rows.length < CURSOR_BATCH_SIZE;
+		).all(this.#storeId, this.#currentKey, ...rangeParams) as Array<{key: Uint8Array; value: Uint8Array}>;
+		if (this.#snapshot.length === 0) return false;
+		this.#exhausted = this.#snapshot.length < CURSOR_BATCH_SIZE;
 		this.#snapshotIdx = 0;
 		this.#snapshotGen = this.#generation.value;
 		this.#currentKey = this.#snapshot[0].key;
@@ -247,11 +242,10 @@ class HybridCursor implements IDBBackendCursor {
 		const cmpOp = this.#forward ? ">" : "<";
 		const order = this.#forward ? "ASC" : "DESC";
 		const {sql: rangeSql, params: rangeParams} = buildRangeConditions(this.#range);
-		const rows = this.#db.query(
+		this.#snapshot = this.#db.query(
 			`SELECT key, value FROM _idb_records WHERE store_id = ? AND key ${cmpOp} ?${rangeSql} ORDER BY key ${order} LIMIT ${CURSOR_BATCH_SIZE}`,
-		).all(this.#storeId, this.#currentKey, ...rangeParams) as any[];
-		this.#snapshot = rows.map((r: any) => ({key: new Uint8Array(r.key), value: new Uint8Array(r.value)}));
-		this.#exhausted = rows.length < CURSOR_BATCH_SIZE;
+		).all(this.#storeId, this.#currentKey, ...rangeParams) as Array<{key: Uint8Array; value: Uint8Array}>;
+		this.#exhausted = this.#snapshot.length < CURSOR_BATCH_SIZE;
 	}
 }
 
@@ -357,19 +351,14 @@ class HybridIndexCursor implements IDBBackendCursor {
 		const {sql: rangeSql, params: rangeParams} = buildRangeConditions(this.#range, "ie");
 		const {sql: positionSql, params: positionParams} = this.#positionCondition();
 
-		const rows = this.#db.query(
-			`SELECT ie.key, ie.primary_key, r.value FROM _idb_index_entries ie
+		this.#snapshot = this.#db.query(
+			`SELECT ie.key, ie.primary_key AS primaryKey, r.value FROM _idb_index_entries ie
 			JOIN _idb_records r ON r.store_id = ? AND r.key = ie.primary_key
 			WHERE ie.index_id = ?${positionSql}${rangeSql}
 			ORDER BY ie.key ${order}, ie.primary_key ${pkOrder} LIMIT ${CURSOR_BATCH_SIZE}`,
-		).all(this.#storeId, this.#indexId, ...positionParams, ...rangeParams) as any[];
-		if (rows.length === 0) return false;
-		this.#snapshot = rows.map((r: any) => ({
-			key: new Uint8Array(r.key),
-			primaryKey: new Uint8Array(r.primary_key),
-			value: new Uint8Array(r.value),
-		}));
-		this.#exhausted = rows.length < CURSOR_BATCH_SIZE;
+		).all(this.#storeId, this.#indexId, ...positionParams, ...rangeParams) as Array<{key: Uint8Array; primaryKey: Uint8Array; value: Uint8Array}>;
+		if (this.#snapshot.length === 0) return false;
+		this.#exhausted = this.#snapshot.length < CURSOR_BATCH_SIZE;
 		this.#snapshotIdx = 0;
 		this.#snapshotGen = this.#generation.value;
 		this.#currentKey = this.#snapshot[0].key;
@@ -404,18 +393,13 @@ class HybridIndexCursor implements IDBBackendCursor {
 		const {sql: rangeSql, params: rangeParams} = buildRangeConditions(this.#range, "ie");
 		const {sql: positionSql, params: positionParams} = this.#positionCondition();
 
-		const rows = this.#db.query(
-			`SELECT ie.key, ie.primary_key, r.value FROM _idb_index_entries ie
+		this.#snapshot = this.#db.query(
+			`SELECT ie.key, ie.primary_key AS primaryKey, r.value FROM _idb_index_entries ie
 			JOIN _idb_records r ON r.store_id = ? AND r.key = ie.primary_key
 			WHERE ie.index_id = ?${positionSql}${rangeSql}
 			ORDER BY ie.key ${order}, ie.primary_key ${pkOrder} LIMIT ${CURSOR_BATCH_SIZE}`,
-		).all(this.#storeId, this.#indexId, ...positionParams, ...rangeParams) as any[];
-		this.#snapshot = rows.map((r: any) => ({
-			key: new Uint8Array(r.key),
-			primaryKey: new Uint8Array(r.primary_key),
-			value: new Uint8Array(r.value),
-		}));
-		this.#exhausted = rows.length < CURSOR_BATCH_SIZE;
+		).all(this.#storeId, this.#indexId, ...positionParams, ...rangeParams) as Array<{key: Uint8Array; primaryKey: Uint8Array; value: Uint8Array}>;
+		this.#exhausted = this.#snapshot.length < CURSOR_BATCH_SIZE;
 	}
 }
 
@@ -512,19 +496,16 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	// ---- Schema operations ----
 
 	createObjectStore(meta: ObjectStoreMeta): void {
-		this.#db
+		const row = this.#db
 			.query(
-				"INSERT INTO _idb_stores (name, key_path, auto_increment, current_key) VALUES (?, ?, ?, ?)",
+				"INSERT INTO _idb_stores (name, key_path, auto_increment, current_key) VALUES (?, ?, ?, ?) RETURNING id",
 			)
-			.run(
+			.get(
 				encodeName(meta.name),
 				JSON.stringify(meta.keyPath),
 				meta.autoIncrement ? 1 : 0,
 				0,
-			);
-		const row = this.#db
-			.query("SELECT last_insert_rowid() as id")
-			.get();
+			) as any;
 		this.#storeIds.set(meta.name, row.id);
 	}
 
@@ -578,21 +559,18 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 	createIndex(meta: IndexMeta): void {
 		const storeId = this.#getStoreId(meta.storeName);
-		this.#db
+		const row = this.#db
 			.query(
-				'INSERT INTO _idb_indexes (store_id, name, store_name, key_path, "unique", multi_entry) VALUES (?, ?, ?, ?, ?, ?)',
+				'INSERT INTO _idb_indexes (store_id, name, store_name, key_path, "unique", multi_entry) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
 			)
-			.run(
+			.get(
 				storeId,
 				encodeName(meta.name),
 				encodeName(meta.storeName),
 				JSON.stringify(meta.keyPath),
 				meta.unique ? 1 : 0,
 				meta.multiEntry ? 1 : 0,
-			);
-		const row = this.#db
-			.query("SELECT last_insert_rowid() as id")
-			.get();
+			) as any;
 		const indexId = row.id;
 		const key = `${meta.storeName}/${meta.name}`;
 		this.#indexIds.set(key, indexId);
@@ -607,14 +585,15 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		// Populate from existing records
 		const records = this.#db
 			.query("SELECT key, value FROM _idb_records WHERE store_id = ?")
-			.all(storeId);
+			.all(storeId) as any[];
 		for (const record of records) {
-			this.#addToIndex(
-				meta,
-				indexId,
-				new Uint8Array(record.key),
-				new Uint8Array(record.value),
-			);
+			let decoded: unknown;
+			try {
+				decoded = decodeValue(record.value);
+			} catch (_error) {
+				continue;
+			}
+			this.#addToIndex(meta, indexId, record.key, decoded);
 		}
 	}
 
@@ -666,7 +645,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			)
 			.get(storeId, key);
 		if (!row) return undefined;
-		return {key: new Uint8Array(row.key), value: new Uint8Array(row.value)};
+		return row as StoredRecord;
 	}
 
 	getAll(
@@ -678,15 +657,11 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const {sql: rangeSql, params: rangeParams} =
 			buildRangeConditions(range);
 		const limit = count !== undefined ? ` LIMIT ${count}` : "";
-		const rows = this.#db
+		return this.#db
 			.query(
 				`SELECT key, value FROM _idb_records WHERE store_id = ?${rangeSql} ORDER BY key ASC${limit}`,
 			)
-			.all(storeId, ...rangeParams);
-		return rows.map((row: any) => ({
-			key: new Uint8Array(row.key),
-			value: new Uint8Array(row.value),
-		}));
+			.all(storeId, ...rangeParams) as StoredRecord[];
 	}
 
 	getAllKeys(
@@ -703,27 +678,36 @@ class SQLiteTransaction implements IDBBackendTransaction {
 				`SELECT key FROM _idb_records WHERE store_id = ?${rangeSql} ORDER BY key ASC${limit}`,
 			)
 			.all(storeId, ...rangeParams);
-		return rows.map((row: any) => new Uint8Array(row.key));
+		return rows.map((row: any) => row.key as Uint8Array);
 	}
 
 	put(storeName: string, key: EncodedKey, value: Uint8Array): void {
 		const storeId = this.#getStoreId(storeName);
-		this.#db.exec("SAVEPOINT put_op");
-		try {
-			this.#removeFromIndexes(storeId, key);
+		const hasIndexes = (this.#storeIndexes.get(storeName)?.length ?? 0) > 0;
+		if (hasIndexes) {
+			this.#db.exec("SAVEPOINT put_op");
+			try {
+				this.#removeFromIndexes(storeName, key);
+				this.#db
+					.query(
+						"INSERT OR REPLACE INTO _idb_records (store_id, key, value) VALUES (?, ?, ?)",
+					)
+					.run(storeId, key, value);
+				this.#addToAllIndexes(storeName, storeId, key, value);
+				this.#db.exec("RELEASE put_op");
+			} catch (e) {
+				this.#db.exec("ROLLBACK TO put_op");
+				this.#db.exec("RELEASE put_op");
+				throw e;
+			}
+		} else {
 			this.#db
 				.query(
 					"INSERT OR REPLACE INTO _idb_records (store_id, key, value) VALUES (?, ?, ?)",
 				)
 				.run(storeId, key, value);
-			this.#addToAllIndexes(storeName, storeId, key, value);
-			this.#db.exec("RELEASE put_op");
-			this._generation.value++;
-		} catch (e) {
-			this.#db.exec("ROLLBACK TO put_op");
-			this.#db.exec("RELEASE put_op");
-			throw e;
 		}
+		this._generation.value++;
 	}
 
 	add(storeName: string, key: EncodedKey, value: Uint8Array): void {
@@ -738,37 +722,48 @@ class SQLiteTransaction implements IDBBackendTransaction {
 				`Key already exists in object store "${storeName}"`,
 			);
 		}
-		this.#db.exec("SAVEPOINT add_op");
-		try {
+		const hasIndexes = (this.#storeIndexes.get(storeName)?.length ?? 0) > 0;
+		if (hasIndexes) {
+			this.#db.exec("SAVEPOINT add_op");
+			try {
+				this.#db
+					.query(
+						"INSERT INTO _idb_records (store_id, key, value) VALUES (?, ?, ?)",
+					)
+					.run(storeId, key, value);
+				this.#addToAllIndexes(storeName, storeId, key, value);
+				this.#db.exec("RELEASE add_op");
+			} catch (e) {
+				this.#db.exec("ROLLBACK TO add_op");
+				this.#db.exec("RELEASE add_op");
+				throw e;
+			}
+		} else {
 			this.#db
 				.query(
 					"INSERT INTO _idb_records (store_id, key, value) VALUES (?, ?, ?)",
 				)
 				.run(storeId, key, value);
-			this.#addToAllIndexes(storeName, storeId, key, value);
-			this.#db.exec("RELEASE add_op");
-			this._generation.value++;
-		} catch (e) {
-			this.#db.exec("ROLLBACK TO add_op");
-			this.#db.exec("RELEASE add_op");
-			throw e;
 		}
+		this._generation.value++;
 	}
 
 	delete(storeName: string, range: KeyRangeSpec): void {
 		const storeId = this.#getStoreId(storeName);
 		const {sql: rangeSql, params: rangeParams} =
 			buildRangeConditions(range);
-		// Delete index entries for matching records
-		this.#db
-			.query(
-				`DELETE FROM _idb_index_entries WHERE index_id IN (
-				SELECT id FROM _idb_indexes WHERE store_id = ?
-			) AND primary_key IN (
-				SELECT key FROM _idb_records WHERE store_id = ?${rangeSql}
-			)`,
-			)
-			.run(storeId, storeId, ...rangeParams);
+		// Delete index entries for matching records using direct index IDs
+		const indexes = this.#storeIndexes.get(storeName);
+		if (indexes && indexes.length > 0) {
+			const ids = indexes.map(i => i.id).join(",");
+			this.#db
+				.query(
+					`DELETE FROM _idb_index_entries WHERE index_id IN (${ids}) AND primary_key IN (
+					SELECT key FROM _idb_records WHERE store_id = ?${rangeSql}
+				)`,
+				)
+				.run(storeId, ...rangeParams);
+		}
 		// Delete records
 		this.#db
 			.query(
@@ -780,13 +775,11 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 	clear(storeName: string): void {
 		const storeId = this.#getStoreId(storeName);
-		this.#db
-			.query(
-				`DELETE FROM _idb_index_entries WHERE index_id IN (
-				SELECT id FROM _idb_indexes WHERE store_id = ?
-			)`,
-			)
-			.run(storeId);
+		const indexes = this.#storeIndexes.get(storeName);
+		if (indexes && indexes.length > 0) {
+			const ids = indexes.map(i => i.id).join(",");
+			this.#db.query(`DELETE FROM _idb_index_entries WHERE index_id IN (${ids})`).run();
+		}
 		this.#db
 			.query("DELETE FROM _idb_records WHERE store_id = ?")
 			.run(storeId);
@@ -816,17 +809,14 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const indexId = this.#getIndexId(storeName, indexName);
 		const row = this.#db
 			.query(
-				`SELECT ie.primary_key, r.value FROM _idb_index_entries ie
+				`SELECT ie.primary_key AS key, r.value FROM _idb_index_entries ie
 				JOIN _idb_records r ON r.store_id = ? AND r.key = ie.primary_key
 				WHERE ie.index_id = ? AND ie.key = ?
 				ORDER BY ie.primary_key ASC LIMIT 1`,
 			)
-			.get(storeId, indexId, key);
+			.get(storeId, indexId, key) as StoredRecord | null;
 		if (!row) return undefined;
-		return {
-			key: new Uint8Array(row.primary_key),
-			value: new Uint8Array(row.value),
-		};
+		return row;
 	}
 
 	indexGetAll(
@@ -842,18 +832,14 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			"ie",
 		);
 		const limit = count !== undefined ? ` LIMIT ${count}` : "";
-		const rows = this.#db
+		return this.#db
 			.query(
-				`SELECT ie.primary_key, r.value FROM _idb_index_entries ie
+				`SELECT ie.primary_key AS key, r.value FROM _idb_index_entries ie
 				JOIN _idb_records r ON r.store_id = ? AND r.key = ie.primary_key
 				WHERE ie.index_id = ?${rangeSql}
 				ORDER BY ie.key ASC, ie.primary_key ASC${limit}`,
 			)
-			.all(storeId, indexId, ...rangeParams);
-		return rows.map((row: any) => ({
-			key: new Uint8Array(row.primary_key),
-			value: new Uint8Array(row.value),
-		}));
+			.all(storeId, indexId, ...rangeParams) as StoredRecord[];
 	}
 
 	indexGetAllKeys(
@@ -866,13 +852,12 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const {sql: rangeSql, params: rangeParams} =
 			buildRangeConditions(range);
 		const limit = count !== undefined ? ` LIMIT ${count}` : "";
-		const rows = this.#db
+		return this.#db
 			.query(
 				`SELECT primary_key FROM _idb_index_entries WHERE index_id = ?${rangeSql}
 				ORDER BY key ASC, primary_key ASC${limit}`,
 			)
-			.all(indexId, ...rangeParams);
-		return rows.map((row: any) => new Uint8Array(row.primary_key));
+			.all(indexId, ...rangeParams).map((row: any) => row.primary_key as Uint8Array);
 	}
 
 	indexCount(
@@ -902,18 +887,13 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const {sql: rangeSql, params: rangeParams} =
 			buildRangeConditions(range);
 		const order = directionToOrder(direction);
-		const rows = this.#db
+		const snapshot = this.#db
 			.query(
 				`SELECT key, value FROM _idb_records WHERE store_id = ?${rangeSql} ORDER BY key ${order} LIMIT ${CURSOR_BATCH_SIZE}`,
 			)
-			.all(storeId, ...rangeParams) as any[];
+			.all(storeId, ...rangeParams) as Array<{key: Uint8Array; value: Uint8Array}>;
 
-		if (rows.length === 0) return null;
-
-		const snapshot = rows.map((r: any) => ({
-			key: new Uint8Array(r.key),
-			value: new Uint8Array(r.value),
-		}));
+		if (snapshot.length === 0) return null;
 
 		return new HybridCursor(
 			this.#db,
@@ -922,7 +902,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			direction,
 			this._generation,
 			snapshot,
-			rows.length < CURSOR_BATCH_SIZE,
+			snapshot.length < CURSOR_BATCH_SIZE,
 		);
 	}
 
@@ -950,22 +930,16 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 		// For prevunique, use ASC primary key to get the first record per key
 		const pkOrder = direction === "prevunique" ? "ASC" : order;
-		const rows = this.#db
+		const snapshot = this.#db
 			.query(
-				`SELECT ie.key, ie.primary_key, r.value FROM _idb_index_entries ie
+				`SELECT ie.key, ie.primary_key AS primaryKey, r.value FROM _idb_index_entries ie
 				JOIN _idb_records r ON r.store_id = ? AND r.key = ie.primary_key
 				WHERE ie.index_id = ?${rangeSql}
 				ORDER BY ie.key ${order}, ie.primary_key ${pkOrder} LIMIT ${CURSOR_BATCH_SIZE}`,
 			)
-			.all(storeId, indexId, ...rangeParams) as any[];
+			.all(storeId, indexId, ...rangeParams) as Array<{key: Uint8Array; primaryKey: Uint8Array; value: Uint8Array}>;
 
-		if (rows.length === 0) return null;
-
-		const snapshot = rows.map((r: any) => ({
-			key: new Uint8Array(r.key),
-			primaryKey: new Uint8Array(r.primary_key),
-			value: new Uint8Array(r.value),
-		}));
+		if (snapshot.length === 0) return null;
 
 		return new HybridIndexCursor(
 			this.#db,
@@ -975,7 +949,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			direction,
 			this._generation,
 			snapshot,
-			rows.length < CURSOR_BATCH_SIZE,
+			snapshot.length < CURSOR_BATCH_SIZE,
 		);
 	}
 
@@ -994,20 +968,17 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const storeId = this.#getStoreId(storeName);
 		const row = this.#db
 			.query("SELECT current_key FROM _idb_stores WHERE id = ?")
-			.get(storeId);
+			.get(storeId) as any;
 		if (row && row.current_key >= 2 ** 53) {
 			throw ConstraintError(
 				"Key generator has reached its maximum value",
 			);
 		}
-		this.#db
-			.query(
-				"UPDATE _idb_stores SET current_key = current_key + 1 WHERE id = ?",
-			)
-			.run(storeId);
 		const updated = this.#db
-			.query("SELECT current_key FROM _idb_stores WHERE id = ?")
-			.get(storeId);
+			.query(
+				"UPDATE _idb_stores SET current_key = current_key + 1 WHERE id = ? RETURNING current_key",
+			)
+			.get(storeId) as any;
 		return updated.current_key;
 	}
 
@@ -1053,14 +1024,20 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 	// ---- Private helpers ----
 
-	#removeFromIndexes(storeId: number, primaryKey: Uint8Array): void {
-		this.#db
-			.query(
-				`DELETE FROM _idb_index_entries WHERE index_id IN (
-				SELECT id FROM _idb_indexes WHERE store_id = ?
-			) AND primary_key = ?`,
-			)
-			.run(storeId, primaryKey);
+	#removeFromIndexes(storeName: string, primaryKey: Uint8Array): void {
+		const indexes = this.#storeIndexes.get(storeName);
+		if (!indexes || indexes.length === 0) return;
+		if (indexes.length === 1) {
+			this.#db
+				.query("DELETE FROM _idb_index_entries WHERE index_id = ? AND primary_key = ?")
+				.run(indexes[0].id, primaryKey);
+		} else {
+			// Batch delete: single query with IN clause (cached per unique set of index IDs)
+			const ids = indexes.map(i => i.id).join(",");
+			this.#db
+				.query(`DELETE FROM _idb_index_entries WHERE index_id IN (${ids}) AND primary_key = ?`)
+				.run(primaryKey);
+		}
 	}
 
 	#addToAllIndexes(
@@ -1070,10 +1047,16 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		value: Uint8Array,
 	): void {
 		const indexes = this.#storeIndexes.get(storeName);
-		if (indexes) {
-			for (const {id, meta} of indexes) {
-				this.#addToIndex(meta, id, primaryKey, value);
-			}
+		if (!indexes || indexes.length === 0) return;
+		// Decode value once for all indexes
+		let decoded: unknown;
+		try {
+			decoded = decodeValue(value);
+		} catch (_error) {
+			return;
+		}
+		for (const {id, meta} of indexes) {
+			this.#addToIndex(meta, id, primaryKey, decoded);
 		}
 	}
 
@@ -1081,15 +1064,8 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		meta: IndexMeta,
 		indexId: number,
 		primaryKey: Uint8Array,
-		value: Uint8Array,
+		decodedValue: unknown,
 	): void {
-		let decodedValue: unknown;
-		try {
-			decodedValue = decodeValue(value);
-		} catch (_error) {
-			return;
-		}
-
 		let indexKeys: Uint8Array[];
 		try {
 			if (meta.multiEntry && typeof meta.keyPath === "string") {
@@ -1419,38 +1395,38 @@ export class SQLiteBackend implements IDBBackend {
 	}
 
 	#initSchema(db: Database): void {
-		db.exec(`CREATE TABLE IF NOT EXISTS _idb_meta (
-			key TEXT PRIMARY KEY,
-			value TEXT
-		)`);
-		db.exec(`CREATE TABLE IF NOT EXISTS _idb_stores (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL UNIQUE,
-			key_path TEXT NOT NULL,
-			auto_increment INTEGER NOT NULL DEFAULT 0,
-			current_key REAL NOT NULL DEFAULT 0
-		)`);
-		db.exec(`CREATE TABLE IF NOT EXISTS _idb_indexes (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			store_id INTEGER NOT NULL REFERENCES _idb_stores(id) ON DELETE CASCADE,
-			name TEXT NOT NULL,
-			store_name TEXT NOT NULL,
-			key_path TEXT NOT NULL,
-			"unique" INTEGER NOT NULL DEFAULT 0,
-			multi_entry INTEGER NOT NULL DEFAULT 0,
-			UNIQUE(store_id, name)
-		)`);
-		db.exec(`CREATE TABLE IF NOT EXISTS _idb_records (
-			store_id INTEGER NOT NULL REFERENCES _idb_stores(id) ON DELETE CASCADE,
-			key BLOB NOT NULL,
-			value BLOB NOT NULL,
-			PRIMARY KEY (store_id, key)
-		)`);
-		db.exec(`CREATE TABLE IF NOT EXISTS _idb_index_entries (
-			index_id INTEGER NOT NULL REFERENCES _idb_indexes(id) ON DELETE CASCADE,
-			key BLOB NOT NULL,
-			primary_key BLOB NOT NULL,
-			PRIMARY KEY (index_id, key, primary_key)
-		)`);
+		db.exec(`
+			CREATE TABLE IF NOT EXISTS _idb_meta (key TEXT PRIMARY KEY, value TEXT);
+			CREATE TABLE IF NOT EXISTS _idb_stores (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL UNIQUE,
+				key_path TEXT NOT NULL,
+				auto_increment INTEGER NOT NULL DEFAULT 0,
+				current_key REAL NOT NULL DEFAULT 0
+			);
+			CREATE TABLE IF NOT EXISTS _idb_indexes (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				store_id INTEGER NOT NULL REFERENCES _idb_stores(id) ON DELETE CASCADE,
+				name TEXT NOT NULL,
+				store_name TEXT NOT NULL,
+				key_path TEXT NOT NULL,
+				"unique" INTEGER NOT NULL DEFAULT 0,
+				multi_entry INTEGER NOT NULL DEFAULT 0,
+				UNIQUE(store_id, name)
+			);
+			CREATE TABLE IF NOT EXISTS _idb_records (
+				store_id INTEGER NOT NULL REFERENCES _idb_stores(id) ON DELETE CASCADE,
+				key BLOB NOT NULL,
+				value BLOB NOT NULL,
+				PRIMARY KEY (store_id, key)
+			);
+			CREATE TABLE IF NOT EXISTS _idb_index_entries (
+				index_id INTEGER NOT NULL REFERENCES _idb_indexes(id) ON DELETE CASCADE,
+				key BLOB NOT NULL,
+				primary_key BLOB NOT NULL,
+				PRIMARY KEY (index_id, key, primary_key)
+			);
+			CREATE INDEX IF NOT EXISTS _idb_ie_pk ON _idb_index_entries (index_id, primary_key);
+		`);
 	}
 }
