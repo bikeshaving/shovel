@@ -11,5 +11,5 @@ export function encodeValue(value: unknown): Uint8Array {
 }
 
 export function decodeValue(data: Uint8Array): unknown {
-	return deserialize(Buffer.from(data));
+	return deserialize(data);
 }
