@@ -34,18 +34,42 @@ import type {
 	IDBBackendCursor,
 } from "./backend.js";
 
-import {Database} from "bun:sqlite";
 import {mkdirSync, existsSync, unlinkSync, readdirSync} from "node:fs";
 import {join} from "node:path";
 
 // ============================================================================
-// SQLite helpers
+// SQLite driver abstraction (bun:sqlite / better-sqlite3)
 // ============================================================================
 
-function openDatabase(path: string): Database {
-	const db = new Database(path);
+interface SQLiteDB {
+	exec(sql: string): void;
+	query(sql: string): SQLiteStatement;
+	close(): void;
+}
+
+interface SQLiteStatement {
+	get(...params: any[]): any;
+	all(...params: any[]): any[];
+	run(...params: any[]): any;
+}
+
+let _DatabaseCtor: new (path: string) => any;
+let _usePrepare = false;
+try {
+	_DatabaseCtor = (await import("bun:sqlite")).Database;
+} catch {
+	_DatabaseCtor = (await import("better-sqlite3")).default;
+	_usePrepare = true;
+}
+
+function openDatabase(path: string): SQLiteDB {
+	const db = new _DatabaseCtor(path);
+	if (_usePrepare) {
+		// better-sqlite3: .prepare() is the cached-statement API
+		db.query = db.prepare.bind(db);
+	}
 	db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA cache_size=-2000");
-	return db;
+	return db as SQLiteDB;
 }
 
 // ============================================================================
@@ -157,7 +181,7 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 class HybridCursor implements IDBBackendCursor {
-	#db: Database;
+	#db: SQLiteDB;
 	#storeId: number;
 	#range: KeyRangeSpec | undefined;
 	#forward: boolean;
@@ -170,7 +194,7 @@ class HybridCursor implements IDBBackendCursor {
 	#exhausted: boolean;
 
 	constructor(
-		db: Database,
+		db: SQLiteDB,
 		storeId: number,
 		range: KeyRangeSpec | undefined,
 		direction: CursorDirection,
@@ -250,7 +274,7 @@ class HybridCursor implements IDBBackendCursor {
 }
 
 class HybridIndexCursor implements IDBBackendCursor {
-	#db: Database;
+	#db: SQLiteDB;
 	#storeId: number;
 	#indexId: number;
 	#range: KeyRangeSpec | undefined;
@@ -267,7 +291,7 @@ class HybridIndexCursor implements IDBBackendCursor {
 	#exhausted: boolean;
 
 	constructor(
-		db: Database,
+		db: SQLiteDB,
 		storeId: number,
 		indexId: number,
 		range: KeyRangeSpec | undefined,
@@ -408,7 +432,7 @@ class HybridIndexCursor implements IDBBackendCursor {
 // ============================================================================
 
 class SQLiteTransaction implements IDBBackendTransaction {
-	#db: Database;
+	#db: SQLiteDB;
 	#readonly: boolean;
 	#aborted: boolean;
 	#storeIds: Map<string, number>;
@@ -420,7 +444,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	_generation: GenerationRef;
 
 	constructor(
-		db: Database,
+		db: SQLiteDB,
 		mode: "readonly" | "readwrite" | "versionchange",
 	) {
 		this.#db = db;
@@ -1141,12 +1165,12 @@ class SQLiteTransaction implements IDBBackendTransaction {
 // ============================================================================
 
 class SQLiteConnection implements IDBBackendConnection {
-	#db: Database;
+	#db: SQLiteDB;
 	#backend: SQLiteBackend;
 	#name: string;
 	#closed: boolean;
 
-	constructor(db: Database, backend: SQLiteBackend, name: string) {
+	constructor(db: SQLiteDB, backend: SQLiteBackend, name: string) {
 		this.#db = db;
 		this.#backend = backend;
 		this.#name = name;
@@ -1240,7 +1264,7 @@ class SQLiteConnection implements IDBBackendConnection {
 
 export class SQLiteBackend implements IDBBackend {
 	#basePath: string;
-	#handles: Map<string, Database>;
+	#handles: Map<string, SQLiteDB>;
 	#refcounts: Map<string, number>;
 	static MAX_HANDLES = 50;
 
@@ -1394,7 +1418,7 @@ export class SQLiteBackend implements IDBBackend {
 		return join(this.#basePath, `${encodeURIComponent(name)}.sqlite`);
 	}
 
-	#initSchema(db: Database): void {
+	#initSchema(db: SQLiteDB): void {
 		db.exec(`
 			CREATE TABLE IF NOT EXISTS _idb_meta (key TEXT PRIMARY KEY, value TEXT);
 			CREATE TABLE IF NOT EXISTS _idb_stores (
