@@ -162,7 +162,7 @@ for (const file of wptFiles) {
 		const tests = takeTestQueue();
 
 		// Run sub-tests sequentially — WPT promise_tests run one at a time.
-		const subTestTimeout = 10_000;
+		const subTestTimeout = 5_000;
 		const failures: string[] = [];
 		for (const t of tests) {
 			const ctx = createTestContext(t.name);
@@ -190,5 +190,5 @@ for (const file of wptFiles) {
 		if (failures.length > 0) {
 			throw new Error(`${failures.length}/${tests.length} sub-tests failed:\n${failures.join("\n")}`);
 		}
-	}, {timeout: 60_000});
+	}, {timeout: 30_000});
 }
