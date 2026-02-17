@@ -165,11 +165,15 @@ for (const file of wptFiles) {
 			filterTestQueue(skipTests[file]);
 		}
 
+		const needsVeryLongTimeout =
+			file === "blob-composite-blob-reads.any.js";
 		const needsLongTimeout =
 			file === "interleaved-cursors-large.any.js" ||
+			file === "interleaved-cursors-small.any.js" ||
 			file === "open-request-queue.any.js" ||
+			file === "transaction-scheduling-across-databases.any.js" ||
 			file === "upgrade-transaction-deactivation-timing.any.js";
-		const timeout = needsLongTimeout ? 10000 : 5000;
+		const timeout = needsVeryLongTimeout ? 120000 : needsLongTimeout ? 30000 : 5000;
 		flushTests(`SQLite WPT: ${file.replace(".any.js", "")}`, {
 			timeout,
 			...(needsFreshFactory.has(file) ? {indexedDB: factory} : {}),

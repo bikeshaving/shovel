@@ -17,6 +17,7 @@ import {
 import {makeDOMStringList} from "./types.js";
 import type {TransactionMode} from "./types.js";
 import {scheduleTask} from "./task.js";
+import {IDBObjectStore} from "./object-store.js";
 
 /** Hold the transaction open (increment pending count). Pair with kRelease. */
 export const kHoldOpen = Symbol("holdOpen");
@@ -200,9 +201,6 @@ export class IDBTransaction extends SafeEventTarget {
 		// Return cached instance if available (spec: same object identity)
 		const cached = this.#storeCache.get(name);
 		if (cached) return cached;
-		// Lazy import to avoid circular dependency
-		// eslint-disable-next-line no-restricted-globals
-		const {IDBObjectStore} = require("./object-store.js");
 		const meta = this.#db._getStoreMeta(name);
 		const store = new IDBObjectStore(this, meta);
 		// Populate indexNames from database metadata

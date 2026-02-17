@@ -34,92 +34,22 @@ import type {
 	IDBBackendCursor,
 } from "./backend.js";
 
+import {Database} from "bun:sqlite";
 import {mkdirSync, existsSync, unlinkSync, readdirSync} from "node:fs";
 import {join} from "node:path";
 
 // ============================================================================
-// SQLite driver abstraction
+// SQLite helpers
 // ============================================================================
 
-interface SQLiteDB {
-	exec(sql: string): void;
-	prepare(sql: string): SQLiteStatement;
-	close(): void;
-}
-
-interface SQLiteStatement {
-	run(...params: any[]): void;
-	get(...params: any[]): any;
-	all(...params: any[]): any[];
-}
-
-/**
- * Open a SQLite database, auto-detecting bun:sqlite vs better-sqlite3.
- */
-function openSQLite(path: string): SQLiteDB {
-	try {
-		// Try bun:sqlite first
-		// eslint-disable-next-line no-restricted-globals
-		const {Database} = require("bun:sqlite");
-		const db = new Database(path);
-		db.exec("PRAGMA journal_mode=WAL");
-		db.exec("PRAGMA foreign_keys=ON");
-		db.exec("PRAGMA busy_timeout=5000");
-		db.exec("PRAGMA cache_size=-256");
-		return {
-			exec(sql: string) {
-				db.exec(sql);
-			},
-			prepare(sql: string): SQLiteStatement {
-				const stmt = db.prepare(sql);
-				return {
-					run(...params: any[]) {
-						stmt.run(...params);
-					},
-					get(...params: any[]) {
-						return stmt.get(...params);
-					},
-					all(...params: any[]) {
-						return stmt.all(...params);
-					},
-				};
-			},
-			close() {
-				db.close();
-			},
-		};
-	} catch (_error) {
-		// Fall back to better-sqlite3
-		// eslint-disable-next-line no-restricted-globals
-		const BetterSqlite3 = require("better-sqlite3");
-		const db = new BetterSqlite3(path);
-		db.pragma("journal_mode = WAL");
-		db.pragma("foreign_keys = ON");
-		db.pragma("busy_timeout = 5000");
-		db.pragma("cache_size = -256");
-		return {
-			exec(sql: string) {
-				db.exec(sql);
-			},
-			prepare(sql: string): SQLiteStatement {
-				const stmt = db.prepare(sql);
-				return {
-					run(...params: any[]) {
-						stmt.run(...params);
-					},
-					get(...params: any[]) {
-						return stmt.get(...params);
-					},
-					all(...params: any[]) {
-						return stmt.all(...params);
-					},
-				};
-			},
-			close() {
-				db.close();
-			},
-		};
-	}
+function openDatabase(path: string): Database {
+	const db = new Database(path);
+	db.exec("PRAGMA journal_mode=WAL");
+	db.exec("PRAGMA synchronous=NORMAL");
+	db.exec("PRAGMA foreign_keys=ON");
+	db.exec("PRAGMA busy_timeout=5000");
+	db.exec("PRAGMA cache_size=-2000");
+	return db;
 }
 
 // ============================================================================
@@ -147,13 +77,53 @@ function buildRangeConditions(
 	const col = prefix ? `${prefix}.key` : "key";
 	if (range.lower) {
 		sql += ` AND ${col} ${range.lowerOpen ? ">" : ">="} ?`;
-		params.push(Buffer.from(range.lower));
+		params.push(range.lower);
 	}
 	if (range.upper) {
 		sql += ` AND ${col} ${range.upperOpen ? "<" : "<="} ?`;
-		params.push(Buffer.from(range.upper));
+		params.push(range.upper);
 	}
 	return {sql, params};
+}
+
+// ---- Name encoding for SQLite TEXT columns ----
+// Lone UTF-16 surrogates can't survive UTF-8 roundtripping through SQLite.
+// We detect them and hex-encode the entire string with a \x01 prefix.
+
+function hasLoneSurrogate(s: string): boolean {
+	for (let i = 0; i < s.length; i++) {
+		const code = s.charCodeAt(i);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			const next = s.charCodeAt(i + 1);
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				i++; // properly paired, skip low surrogate
+			} else {
+				return true; // lone high surrogate
+			}
+		} else if (code >= 0xdc00 && code <= 0xdfff) {
+			return true; // lone low surrogate
+		}
+	}
+	return false;
+}
+
+function encodeName(name: string): string {
+	if (!hasLoneSurrogate(name)) return name;
+	let hex = "";
+	for (let i = 0; i < name.length; i++) {
+		hex += name.charCodeAt(i).toString(16).padStart(4, "0");
+	}
+	return "\x01" + hex;
+}
+
+function decodeName(stored: string): string {
+	if (stored.charCodeAt(0) !== 1) return stored;
+	const hex = stored.slice(1);
+	let result = "";
+	for (let i = 0; i < hex.length; i += 4) {
+		result += String.fromCharCode(parseInt(hex.slice(i, i + 4), 16));
+	}
+	return result;
 }
 
 function directionToOrder(direction?: CursorDirection): string {
@@ -167,31 +137,62 @@ function directionToOrder(direction?: CursorDirection): string {
 }
 
 // ============================================================================
-// Live-querying cursors (re-query SQLite on each continue())
+// Hybrid cursors: snapshot when clean, re-query when mutated
 // ============================================================================
 
-class SQLiteCursor implements IDBBackendCursor {
-	#db: SQLiteDB;
+/**
+ * Shared generation counter for a transaction. Cursors compare their snapshot
+ * generation against this to decide whether to use the fast snapshot path or
+ * the slow re-query path.
+ */
+interface GenerationRef {
+	value: number;
+}
+
+/** Batch size for cursor snapshots — balances memory vs. query overhead. */
+const CURSOR_BATCH_SIZE = 100;
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] !== b[i]) return false;
+	}
+	return true;
+}
+
+class HybridCursor implements IDBBackendCursor {
+	#db: Database;
 	#storeId: number;
 	#range: KeyRangeSpec | undefined;
-	#direction: CursorDirection;
+	#forward: boolean;
+	#generation: GenerationRef;
+	#snapshotGen: number;
+	#snapshot: Array<{key: Uint8Array; value: Uint8Array}>;
+	#snapshotIdx: number;
 	#currentKey: Uint8Array;
 	#currentValue: Uint8Array;
+	#exhausted: boolean;
 
 	constructor(
-		db: SQLiteDB,
+		db: Database,
 		storeId: number,
 		range: KeyRangeSpec | undefined,
 		direction: CursorDirection,
-		initialKey: Uint8Array,
-		initialValue: Uint8Array,
+		generation: GenerationRef,
+		snapshot: Array<{key: Uint8Array; value: Uint8Array}>,
+		exhausted: boolean,
 	) {
 		this.#db = db;
 		this.#storeId = storeId;
 		this.#range = range;
-		this.#direction = direction;
-		this.#currentKey = initialKey;
-		this.#currentValue = initialValue;
+		this.#forward = direction === "next" || direction === "nextunique";
+		this.#generation = generation;
+		this.#snapshotGen = generation.value;
+		this.#snapshot = snapshot;
+		this.#snapshotIdx = 0;
+		this.#currentKey = snapshot[0].key;
+		this.#currentValue = snapshot[0].value;
+		this.#exhausted = exhausted;
 	}
 
 	get primaryKey(): EncodedKey {
@@ -205,61 +206,97 @@ class SQLiteCursor implements IDBBackendCursor {
 	}
 
 	continue(): boolean {
-		const forward =
-			this.#direction === "next" || this.#direction === "nextunique";
-		const cmpOp = forward ? ">" : "<";
-		const order = forward ? "ASC" : "DESC";
-
-		let rangeSql = "";
-		const params: any[] = [this.#storeId, Buffer.from(this.#currentKey)];
-		rangeSql += ` AND key ${cmpOp} ?`;
-		if (this.#range) {
-			const {sql, params: rp} = buildRangeConditions(this.#range);
-			rangeSql += sql;
-			params.push(...rp);
+		if (this.#generation.value === this.#snapshotGen) {
+			// Fast path: no mutations, use snapshot
+			this.#snapshotIdx++;
+			if (this.#snapshotIdx < this.#snapshot.length) {
+				this.#currentKey = this.#snapshot[this.#snapshotIdx].key;
+				this.#currentValue = this.#snapshot[this.#snapshotIdx].value;
+				return true;
+			}
+			// Batch exhausted — load next batch if more records exist
+			if (!this.#exhausted) {
+				this.#loadBatch();
+				if (this.#snapshot.length > 0) {
+					this.#snapshotIdx = 0;
+					this.#currentKey = this.#snapshot[0].key;
+					this.#currentValue = this.#snapshot[0].value;
+					return true;
+				}
+			}
+			return false;
 		}
-
-		const row = this.#db
-			.prepare(
-				`SELECT key, value FROM _idb_records WHERE store_id = ?${rangeSql} ORDER BY key ${order} LIMIT 1`,
-			)
-			.get(...params) as any;
-
-		if (!row) return false;
-		this.#currentKey = new Uint8Array(row.key);
-		this.#currentValue = new Uint8Array(row.value);
+		// Slow path: store was mutated, re-query from current position
+		const cmpOp = this.#forward ? ">" : "<";
+		const order = this.#forward ? "ASC" : "DESC";
+		const {sql: rangeSql, params: rangeParams} = buildRangeConditions(this.#range);
+		const rows = this.#db.query(
+			`SELECT key, value FROM _idb_records WHERE store_id = ? AND key ${cmpOp} ?${rangeSql} ORDER BY key ${order} LIMIT ${CURSOR_BATCH_SIZE}`,
+		).all(this.#storeId, this.#currentKey, ...rangeParams) as any[];
+		if (rows.length === 0) return false;
+		this.#snapshot = rows.map((r: any) => ({key: new Uint8Array(r.key), value: new Uint8Array(r.value)}));
+		this.#exhausted = rows.length < CURSOR_BATCH_SIZE;
+		this.#snapshotIdx = 0;
+		this.#snapshotGen = this.#generation.value;
+		this.#currentKey = this.#snapshot[0].key;
+		this.#currentValue = this.#snapshot[0].value;
 		return true;
+	}
+
+	#loadBatch(): void {
+		const cmpOp = this.#forward ? ">" : "<";
+		const order = this.#forward ? "ASC" : "DESC";
+		const {sql: rangeSql, params: rangeParams} = buildRangeConditions(this.#range);
+		const rows = this.#db.query(
+			`SELECT key, value FROM _idb_records WHERE store_id = ? AND key ${cmpOp} ?${rangeSql} ORDER BY key ${order} LIMIT ${CURSOR_BATCH_SIZE}`,
+		).all(this.#storeId, this.#currentKey, ...rangeParams) as any[];
+		this.#snapshot = rows.map((r: any) => ({key: new Uint8Array(r.key), value: new Uint8Array(r.value)}));
+		this.#exhausted = rows.length < CURSOR_BATCH_SIZE;
 	}
 }
 
-class SQLiteIndexCursor implements IDBBackendCursor {
-	#db: SQLiteDB;
+class HybridIndexCursor implements IDBBackendCursor {
+	#db: Database;
 	#storeId: number;
 	#indexId: number;
 	#range: KeyRangeSpec | undefined;
 	#direction: CursorDirection;
+	#unique: boolean;
+	#forward: boolean;
+	#generation: GenerationRef;
+	#snapshotGen: number;
+	#snapshot: Array<{key: Uint8Array; primaryKey: Uint8Array; value: Uint8Array}>;
+	#snapshotIdx: number;
 	#currentKey: Uint8Array;
 	#currentPrimaryKey: Uint8Array;
 	#currentValue: Uint8Array;
+	#exhausted: boolean;
 
 	constructor(
-		db: SQLiteDB,
+		db: Database,
 		storeId: number,
 		indexId: number,
 		range: KeyRangeSpec | undefined,
 		direction: CursorDirection,
-		initialKey: Uint8Array,
-		initialPrimaryKey: Uint8Array,
-		initialValue: Uint8Array,
+		generation: GenerationRef,
+		snapshot: Array<{key: Uint8Array; primaryKey: Uint8Array; value: Uint8Array}>,
+		exhausted: boolean,
 	) {
 		this.#db = db;
 		this.#storeId = storeId;
 		this.#indexId = indexId;
 		this.#range = range;
 		this.#direction = direction;
-		this.#currentKey = initialKey;
-		this.#currentPrimaryKey = initialPrimaryKey;
-		this.#currentValue = initialValue;
+		this.#unique = direction === "nextunique" || direction === "prevunique";
+		this.#forward = direction === "next" || direction === "nextunique";
+		this.#generation = generation;
+		this.#snapshotGen = generation.value;
+		this.#snapshot = snapshot;
+		this.#snapshotIdx = 0;
+		this.#currentKey = snapshot[0].key;
+		this.#currentPrimaryKey = snapshot[0].primaryKey;
+		this.#currentValue = snapshot[0].value;
+		this.#exhausted = exhausted;
 	}
 
 	get primaryKey(): EncodedKey {
@@ -273,58 +310,112 @@ class SQLiteIndexCursor implements IDBBackendCursor {
 	}
 
 	continue(): boolean {
-		const forward =
-			this.#direction === "next" || this.#direction === "nextunique";
-		const unique =
-			this.#direction === "nextunique" || this.#direction === "prevunique";
-		const order = forward ? "ASC" : "DESC";
-
-		let positionSql: string;
-		const params: any[] = [this.#storeId, this.#indexId];
-
-		if (unique) {
-			// For unique directions, skip to the next/prev distinct key
-			const cmpOp = forward ? ">" : "<";
-			positionSql = ` AND ie.key ${cmpOp} ?`;
-			params.push(Buffer.from(this.#currentKey));
-		} else {
-			// For non-unique, advance past (key, primaryKey) pair
-			if (forward) {
-				positionSql = ` AND (ie.key > ? OR (ie.key = ? AND ie.primary_key > ?))`;
-			} else {
-				positionSql = ` AND (ie.key < ? OR (ie.key = ? AND ie.primary_key < ?))`;
+		if (this.#generation.value === this.#snapshotGen) {
+			// Fast path: no mutations, use snapshot
+			const prevKey = this.#currentKey;
+			this.#snapshotIdx++;
+			// For *unique directions, skip entries with the same index key
+			if (this.#unique) {
+				while (this.#snapshotIdx < this.#snapshot.length &&
+					bytesEqual(this.#snapshot[this.#snapshotIdx].key, prevKey)) {
+					this.#snapshotIdx++;
+				}
 			}
-			params.push(
-				Buffer.from(this.#currentKey),
-				Buffer.from(this.#currentKey),
-				Buffer.from(this.#currentPrimaryKey),
-			);
+			if (this.#snapshotIdx < this.#snapshot.length) {
+				this.#currentKey = this.#snapshot[this.#snapshotIdx].key;
+				this.#currentPrimaryKey = this.#snapshot[this.#snapshotIdx].primaryKey;
+				this.#currentValue = this.#snapshot[this.#snapshotIdx].value;
+				return true;
+			}
+			// Batch exhausted — load next batch if more records exist
+			if (!this.#exhausted) {
+				this.#loadBatch();
+				// For unique: skip entries with the same key as the last entry we returned
+				if (this.#unique) {
+					let i = 0;
+					while (i < this.#snapshot.length &&
+						bytesEqual(this.#snapshot[i].key, prevKey)) {
+						i++;
+					}
+					if (i > 0) {
+						this.#snapshot = this.#snapshot.slice(i);
+					}
+				}
+				if (this.#snapshot.length > 0) {
+					this.#snapshotIdx = 0;
+					this.#currentKey = this.#snapshot[0].key;
+					this.#currentPrimaryKey = this.#snapshot[0].primaryKey;
+					this.#currentValue = this.#snapshot[0].value;
+					return true;
+				}
+			}
+			return false;
 		}
+		// Slow path: store was mutated, re-query from current position
+		const order = this.#forward ? "ASC" : "DESC";
+		const pkOrder = this.#direction === "prevunique" ? "ASC" : order;
+		const {sql: rangeSql, params: rangeParams} = buildRangeConditions(this.#range, "ie");
+		const {sql: positionSql, params: positionParams} = this.#positionCondition();
 
-		let rangeSql = "";
-		if (this.#range) {
-			const {sql, params: rp} = buildRangeConditions(this.#range, "ie");
-			rangeSql = sql;
-			params.push(...rp);
-		}
-
-		// For prevunique, use ASC primary key to get the first record per key
-		const pkOrder =
-			this.#direction === "prevunique" ? "ASC" : order;
-		const row = this.#db
-			.prepare(
-				`SELECT ie.key, ie.primary_key, r.value FROM _idb_index_entries ie
-				JOIN _idb_records r ON r.store_id = ? AND r.key = ie.primary_key
-				WHERE ie.index_id = ?${positionSql}${rangeSql}
-				ORDER BY ie.key ${order}, ie.primary_key ${pkOrder} LIMIT 1`,
-			)
-			.get(...params) as any;
-
-		if (!row) return false;
-		this.#currentKey = new Uint8Array(row.key);
-		this.#currentPrimaryKey = new Uint8Array(row.primary_key);
-		this.#currentValue = new Uint8Array(row.value);
+		const rows = this.#db.query(
+			`SELECT ie.key, ie.primary_key, r.value FROM _idb_index_entries ie
+			JOIN _idb_records r ON r.store_id = ? AND r.key = ie.primary_key
+			WHERE ie.index_id = ?${positionSql}${rangeSql}
+			ORDER BY ie.key ${order}, ie.primary_key ${pkOrder} LIMIT ${CURSOR_BATCH_SIZE}`,
+		).all(this.#storeId, this.#indexId, ...positionParams, ...rangeParams) as any[];
+		if (rows.length === 0) return false;
+		this.#snapshot = rows.map((r: any) => ({
+			key: new Uint8Array(r.key),
+			primaryKey: new Uint8Array(r.primary_key),
+			value: new Uint8Array(r.value),
+		}));
+		this.#exhausted = rows.length < CURSOR_BATCH_SIZE;
+		this.#snapshotIdx = 0;
+		this.#snapshotGen = this.#generation.value;
+		this.#currentKey = this.#snapshot[0].key;
+		this.#currentPrimaryKey = this.#snapshot[0].primaryKey;
+		this.#currentValue = this.#snapshot[0].value;
 		return true;
+	}
+
+	#positionCondition(): {sql: string; params: any[]} {
+		if (this.#unique) {
+			const cmpOp = this.#forward ? ">" : "<";
+			return {
+				sql: ` AND ie.key ${cmpOp} ?`,
+				params: [this.#currentKey],
+			};
+		} else if (this.#forward) {
+			return {
+				sql: ` AND (ie.key > ? OR (ie.key = ? AND ie.primary_key > ?))`,
+				params: [this.#currentKey, this.#currentKey, this.#currentPrimaryKey],
+			};
+		} else {
+			return {
+				sql: ` AND (ie.key < ? OR (ie.key = ? AND ie.primary_key < ?))`,
+				params: [this.#currentKey, this.#currentKey, this.#currentPrimaryKey],
+			};
+		}
+	}
+
+	#loadBatch(): void {
+		const order = this.#forward ? "ASC" : "DESC";
+		const pkOrder = this.#direction === "prevunique" ? "ASC" : order;
+		const {sql: rangeSql, params: rangeParams} = buildRangeConditions(this.#range, "ie");
+		const {sql: positionSql, params: positionParams} = this.#positionCondition();
+
+		const rows = this.#db.query(
+			`SELECT ie.key, ie.primary_key, r.value FROM _idb_index_entries ie
+			JOIN _idb_records r ON r.store_id = ? AND r.key = ie.primary_key
+			WHERE ie.index_id = ?${positionSql}${rangeSql}
+			ORDER BY ie.key ${order}, ie.primary_key ${pkOrder} LIMIT ${CURSOR_BATCH_SIZE}`,
+		).all(this.#storeId, this.#indexId, ...positionParams, ...rangeParams) as any[];
+		this.#snapshot = rows.map((r: any) => ({
+			key: new Uint8Array(r.key),
+			primaryKey: new Uint8Array(r.primary_key),
+			value: new Uint8Array(r.value),
+		}));
+		this.#exhausted = rows.length < CURSOR_BATCH_SIZE;
 	}
 }
 
@@ -333,15 +424,19 @@ class SQLiteIndexCursor implements IDBBackendCursor {
 // ============================================================================
 
 class SQLiteTransaction implements IDBBackendTransaction {
-	#db: SQLiteDB;
+	#db: Database;
 	#readonly: boolean;
 	#aborted: boolean;
 	#storeIds: Map<string, number>;
 	#indexIds: Map<string, number>;
 	#indexMeta: Map<string, IndexMeta>;
+	/** Indexes grouped by store name for O(1) lookup in #addToAllIndexes. */
+	#storeIndexes: Map<string, Array<{id: number; meta: IndexMeta}>>;
+	/** Shared generation counter — cursors use this to detect mutations. */
+	_generation: GenerationRef;
 
 	constructor(
-		db: SQLiteDB,
+		db: Database,
 		mode: "readonly" | "readwrite" | "versionchange",
 	) {
 		this.#db = db;
@@ -350,6 +445,8 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		this.#storeIds = new Map();
 		this.#indexIds = new Map();
 		this.#indexMeta = new Map();
+		this.#storeIndexes = new Map();
+		this._generation = {value: 0};
 
 		// Readonly: no SQL-level transaction needed (reads see committed state).
 		// Readwrite/versionchange: BEGIN IMMEDIATE for write serialization.
@@ -361,27 +458,36 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 	#loadCaches(): void {
 		const stores = this.#db
-			.prepare("SELECT id, name FROM _idb_stores")
-			.all();
+			.query("SELECT id, name FROM _idb_stores")
+			.all() as any[];
 		for (const s of stores) {
-			this.#storeIds.set(s.name, s.id);
+			this.#storeIds.set(decodeName(s.name), s.id);
 		}
 
 		const indexes = this.#db
-			.prepare(
+			.query(
 				'SELECT id, name, store_name, key_path, "unique", multi_entry FROM _idb_indexes',
 			)
-			.all();
+			.all() as any[];
 		for (const idx of indexes) {
-			const key = `${idx.store_name}/${idx.name}`;
+			const storeName = decodeName(idx.store_name);
+			const indexName = decodeName(idx.name);
+			const key = `${storeName}/${indexName}`;
 			this.#indexIds.set(key, idx.id);
-			this.#indexMeta.set(key, {
-				name: idx.name,
-				storeName: idx.store_name,
+			const meta: IndexMeta = {
+				name: indexName,
+				storeName,
 				keyPath: JSON.parse(idx.key_path),
 				unique: Boolean(idx.unique),
 				multiEntry: Boolean(idx.multi_entry),
-			});
+			};
+			this.#indexMeta.set(key, meta);
+			let arr = this.#storeIndexes.get(storeName);
+			if (!arr) {
+				arr = [];
+				this.#storeIndexes.set(storeName, arr);
+			}
+			arr.push({id: idx.id, meta});
 		}
 	}
 
@@ -407,17 +513,17 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 	createObjectStore(meta: ObjectStoreMeta): void {
 		this.#db
-			.prepare(
+			.query(
 				"INSERT INTO _idb_stores (name, key_path, auto_increment, current_key) VALUES (?, ?, ?, ?)",
 			)
 			.run(
-				meta.name,
+				encodeName(meta.name),
 				JSON.stringify(meta.keyPath),
 				meta.autoIncrement ? 1 : 0,
 				0,
 			);
 		const row = this.#db
-			.prepare("SELECT last_insert_rowid() as id")
+			.query("SELECT last_insert_rowid() as id")
 			.get();
 		this.#storeIds.set(meta.name, row.id);
 	}
@@ -426,7 +532,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const storeId = this.#getStoreId(name);
 		// CASCADE handles _idb_records, _idb_indexes, _idb_index_entries
 		this.#db
-			.prepare("DELETE FROM _idb_stores WHERE id = ?")
+			.query("DELETE FROM _idb_stores WHERE id = ?")
 			.run(storeId);
 		this.#storeIds.delete(name);
 		for (const [key] of this.#indexIds) {
@@ -435,17 +541,18 @@ class SQLiteTransaction implements IDBBackendTransaction {
 				this.#indexMeta.delete(key);
 			}
 		}
+		this.#storeIndexes.delete(name);
 	}
 
 	renameObjectStore(oldName: string, newName: string): void {
 		const storeId = this.#storeIds.get(oldName);
 		if (storeId === undefined) return;
 		this.#db
-			.prepare("UPDATE _idb_stores SET name = ? WHERE id = ?")
-			.run(newName, storeId);
+			.query("UPDATE _idb_stores SET name = ? WHERE id = ?")
+			.run(encodeName(newName), storeId);
 		this.#db
-			.prepare("UPDATE _idb_indexes SET store_name = ? WHERE store_id = ?")
-			.run(newName, storeId);
+			.query("UPDATE _idb_indexes SET store_name = ? WHERE store_id = ?")
+			.run(encodeName(newName), storeId);
 		this.#storeIds.delete(oldName);
 		this.#storeIds.set(newName, storeId);
 		for (const [key, indexId] of [...this.#indexIds]) {
@@ -459,33 +566,47 @@ class SQLiteTransaction implements IDBBackendTransaction {
 				this.#indexMeta.set(newKey, {...meta, storeName: newName});
 			}
 		}
+		const storeIdxs = this.#storeIndexes.get(oldName);
+		if (storeIdxs) {
+			this.#storeIndexes.delete(oldName);
+			for (const entry of storeIdxs) {
+				entry.meta = {...entry.meta, storeName: newName};
+			}
+			this.#storeIndexes.set(newName, storeIdxs);
+		}
 	}
 
 	createIndex(meta: IndexMeta): void {
 		const storeId = this.#getStoreId(meta.storeName);
 		this.#db
-			.prepare(
+			.query(
 				'INSERT INTO _idb_indexes (store_id, name, store_name, key_path, "unique", multi_entry) VALUES (?, ?, ?, ?, ?, ?)',
 			)
 			.run(
 				storeId,
-				meta.name,
-				meta.storeName,
+				encodeName(meta.name),
+				encodeName(meta.storeName),
 				JSON.stringify(meta.keyPath),
 				meta.unique ? 1 : 0,
 				meta.multiEntry ? 1 : 0,
 			);
 		const row = this.#db
-			.prepare("SELECT last_insert_rowid() as id")
+			.query("SELECT last_insert_rowid() as id")
 			.get();
 		const indexId = row.id;
 		const key = `${meta.storeName}/${meta.name}`;
 		this.#indexIds.set(key, indexId);
 		this.#indexMeta.set(key, meta);
+		let arr = this.#storeIndexes.get(meta.storeName);
+		if (!arr) {
+			arr = [];
+			this.#storeIndexes.set(meta.storeName, arr);
+		}
+		arr.push({id: indexId, meta});
 
 		// Populate from existing records
 		const records = this.#db
-			.prepare("SELECT key, value FROM _idb_records WHERE store_id = ?")
+			.query("SELECT key, value FROM _idb_records WHERE store_id = ?")
 			.all(storeId);
 		for (const record of records) {
 			this.#addToIndex(
@@ -503,10 +624,15 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		if (indexId !== undefined) {
 			// CASCADE handles _idb_index_entries
 			this.#db
-				.prepare("DELETE FROM _idb_indexes WHERE id = ?")
+				.query("DELETE FROM _idb_indexes WHERE id = ?")
 				.run(indexId);
 			this.#indexIds.delete(key);
 			this.#indexMeta.delete(key);
+			const arr = this.#storeIndexes.get(storeName);
+			if (arr) {
+				const i = arr.findIndex(e => e.id === indexId);
+				if (i >= 0) arr.splice(i, 1);
+			}
 		}
 	}
 
@@ -515,14 +641,19 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const indexId = this.#indexIds.get(oldKey);
 		if (indexId === undefined) return;
 		this.#db
-			.prepare("UPDATE _idb_indexes SET name = ? WHERE id = ?")
-			.run(newName, indexId);
+			.query("UPDATE _idb_indexes SET name = ? WHERE id = ?")
+			.run(encodeName(newName), indexId);
 		const newKey = `${storeName}/${newName}`;
 		this.#indexIds.delete(oldKey);
 		this.#indexIds.set(newKey, indexId);
-		const meta = this.#indexMeta.get(oldKey)!;
+		const newMeta = {...this.#indexMeta.get(oldKey)!, name: newName};
 		this.#indexMeta.delete(oldKey);
-		this.#indexMeta.set(newKey, {...meta, name: newName});
+		this.#indexMeta.set(newKey, newMeta);
+		const arr = this.#storeIndexes.get(storeName);
+		if (arr) {
+			const entry = arr.find(e => e.id === indexId);
+			if (entry) entry.meta = newMeta;
+		}
 	}
 
 	// ---- Data operations ----
@@ -530,10 +661,10 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	get(storeName: string, key: EncodedKey): StoredRecord | undefined {
 		const storeId = this.#getStoreId(storeName);
 		const row = this.#db
-			.prepare(
+			.query(
 				"SELECT key, value FROM _idb_records WHERE store_id = ? AND key = ?",
 			)
-			.get(storeId, Buffer.from(key));
+			.get(storeId, key);
 		if (!row) return undefined;
 		return {key: new Uint8Array(row.key), value: new Uint8Array(row.value)};
 	}
@@ -548,7 +679,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			buildRangeConditions(range);
 		const limit = count !== undefined ? ` LIMIT ${count}` : "";
 		const rows = this.#db
-			.prepare(
+			.query(
 				`SELECT key, value FROM _idb_records WHERE store_id = ?${rangeSql} ORDER BY key ASC${limit}`,
 			)
 			.all(storeId, ...rangeParams);
@@ -568,7 +699,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			buildRangeConditions(range);
 		const limit = count !== undefined ? ` LIMIT ${count}` : "";
 		const rows = this.#db
-			.prepare(
+			.query(
 				`SELECT key FROM _idb_records WHERE store_id = ?${rangeSql} ORDER BY key ASC${limit}`,
 			)
 			.all(storeId, ...rangeParams);
@@ -581,12 +712,13 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		try {
 			this.#removeFromIndexes(storeId, key);
 			this.#db
-				.prepare(
+				.query(
 					"INSERT OR REPLACE INTO _idb_records (store_id, key, value) VALUES (?, ?, ?)",
 				)
-				.run(storeId, Buffer.from(key), Buffer.from(value));
+				.run(storeId, key, value);
 			this.#addToAllIndexes(storeName, storeId, key, value);
 			this.#db.exec("RELEASE put_op");
+			this._generation.value++;
 		} catch (e) {
 			this.#db.exec("ROLLBACK TO put_op");
 			this.#db.exec("RELEASE put_op");
@@ -597,10 +729,10 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	add(storeName: string, key: EncodedKey, value: Uint8Array): void {
 		const storeId = this.#getStoreId(storeName);
 		const existing = this.#db
-			.prepare(
+			.query(
 				"SELECT 1 FROM _idb_records WHERE store_id = ? AND key = ?",
 			)
-			.get(storeId, Buffer.from(key));
+			.get(storeId, key);
 		if (existing) {
 			throw ConstraintError(
 				`Key already exists in object store "${storeName}"`,
@@ -609,12 +741,13 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		this.#db.exec("SAVEPOINT add_op");
 		try {
 			this.#db
-				.prepare(
+				.query(
 					"INSERT INTO _idb_records (store_id, key, value) VALUES (?, ?, ?)",
 				)
-				.run(storeId, Buffer.from(key), Buffer.from(value));
+				.run(storeId, key, value);
 			this.#addToAllIndexes(storeName, storeId, key, value);
 			this.#db.exec("RELEASE add_op");
+			this._generation.value++;
 		} catch (e) {
 			this.#db.exec("ROLLBACK TO add_op");
 			this.#db.exec("RELEASE add_op");
@@ -628,7 +761,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			buildRangeConditions(range);
 		// Delete index entries for matching records
 		this.#db
-			.prepare(
+			.query(
 				`DELETE FROM _idb_index_entries WHERE index_id IN (
 				SELECT id FROM _idb_indexes WHERE store_id = ?
 			) AND primary_key IN (
@@ -638,24 +771,26 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			.run(storeId, storeId, ...rangeParams);
 		// Delete records
 		this.#db
-			.prepare(
+			.query(
 				`DELETE FROM _idb_records WHERE store_id = ?${rangeSql}`,
 			)
 			.run(storeId, ...rangeParams);
+		this._generation.value++;
 	}
 
 	clear(storeName: string): void {
 		const storeId = this.#getStoreId(storeName);
 		this.#db
-			.prepare(
+			.query(
 				`DELETE FROM _idb_index_entries WHERE index_id IN (
 				SELECT id FROM _idb_indexes WHERE store_id = ?
 			)`,
 			)
 			.run(storeId);
 		this.#db
-			.prepare("DELETE FROM _idb_records WHERE store_id = ?")
+			.query("DELETE FROM _idb_records WHERE store_id = ?")
 			.run(storeId);
+		this._generation.value++;
 	}
 
 	count(storeName: string, range?: KeyRangeSpec): number {
@@ -663,7 +798,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const {sql: rangeSql, params: rangeParams} =
 			buildRangeConditions(range);
 		const row = this.#db
-			.prepare(
+			.query(
 				`SELECT COUNT(*) as count FROM _idb_records WHERE store_id = ?${rangeSql}`,
 			)
 			.get(storeId, ...rangeParams);
@@ -680,13 +815,13 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const storeId = this.#getStoreId(storeName);
 		const indexId = this.#getIndexId(storeName, indexName);
 		const row = this.#db
-			.prepare(
+			.query(
 				`SELECT ie.primary_key, r.value FROM _idb_index_entries ie
 				JOIN _idb_records r ON r.store_id = ? AND r.key = ie.primary_key
 				WHERE ie.index_id = ? AND ie.key = ?
 				ORDER BY ie.primary_key ASC LIMIT 1`,
 			)
-			.get(storeId, indexId, Buffer.from(key));
+			.get(storeId, indexId, key);
 		if (!row) return undefined;
 		return {
 			key: new Uint8Array(row.primary_key),
@@ -708,7 +843,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		);
 		const limit = count !== undefined ? ` LIMIT ${count}` : "";
 		const rows = this.#db
-			.prepare(
+			.query(
 				`SELECT ie.primary_key, r.value FROM _idb_index_entries ie
 				JOIN _idb_records r ON r.store_id = ? AND r.key = ie.primary_key
 				WHERE ie.index_id = ?${rangeSql}
@@ -732,7 +867,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			buildRangeConditions(range);
 		const limit = count !== undefined ? ` LIMIT ${count}` : "";
 		const rows = this.#db
-			.prepare(
+			.query(
 				`SELECT primary_key FROM _idb_index_entries WHERE index_id = ?${rangeSql}
 				ORDER BY key ASC, primary_key ASC${limit}`,
 			)
@@ -749,7 +884,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const {sql: rangeSql, params: rangeParams} =
 			buildRangeConditions(range);
 		const row = this.#db
-			.prepare(
+			.query(
 				`SELECT COUNT(*) as count FROM _idb_index_entries WHERE index_id = ?${rangeSql}`,
 			)
 			.get(indexId, ...rangeParams);
@@ -767,21 +902,27 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const {sql: rangeSql, params: rangeParams} =
 			buildRangeConditions(range);
 		const order = directionToOrder(direction);
-		const row = this.#db
-			.prepare(
-				`SELECT key, value FROM _idb_records WHERE store_id = ?${rangeSql} ORDER BY key ${order} LIMIT 1`,
+		const rows = this.#db
+			.query(
+				`SELECT key, value FROM _idb_records WHERE store_id = ?${rangeSql} ORDER BY key ${order} LIMIT ${CURSOR_BATCH_SIZE}`,
 			)
-			.get(storeId, ...rangeParams) as any;
+			.all(storeId, ...rangeParams) as any[];
 
-		if (!row) return null;
+		if (rows.length === 0) return null;
 
-		return new SQLiteCursor(
+		const snapshot = rows.map((r: any) => ({
+			key: new Uint8Array(r.key),
+			value: new Uint8Array(r.value),
+		}));
+
+		return new HybridCursor(
 			this.#db,
 			storeId,
 			range,
 			direction,
-			new Uint8Array(row.key),
-			new Uint8Array(row.value),
+			this._generation,
+			snapshot,
+			rows.length < CURSOR_BATCH_SIZE,
 		);
 	}
 
@@ -809,26 +950,32 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 		// For prevunique, use ASC primary key to get the first record per key
 		const pkOrder = direction === "prevunique" ? "ASC" : order;
-		const row = this.#db
-			.prepare(
+		const rows = this.#db
+			.query(
 				`SELECT ie.key, ie.primary_key, r.value FROM _idb_index_entries ie
 				JOIN _idb_records r ON r.store_id = ? AND r.key = ie.primary_key
 				WHERE ie.index_id = ?${rangeSql}
-				ORDER BY ie.key ${order}, ie.primary_key ${pkOrder} LIMIT 1`,
+				ORDER BY ie.key ${order}, ie.primary_key ${pkOrder} LIMIT ${CURSOR_BATCH_SIZE}`,
 			)
-			.get(storeId, indexId, ...rangeParams) as any;
+			.all(storeId, indexId, ...rangeParams) as any[];
 
-		if (!row) return null;
+		if (rows.length === 0) return null;
 
-		return new SQLiteIndexCursor(
+		const snapshot = rows.map((r: any) => ({
+			key: new Uint8Array(r.key),
+			primaryKey: new Uint8Array(r.primary_key),
+			value: new Uint8Array(r.value),
+		}));
+
+		return new HybridIndexCursor(
 			this.#db,
 			storeId,
 			indexId,
 			range,
 			direction,
-			new Uint8Array(row.key),
-			new Uint8Array(row.primary_key),
-			new Uint8Array(row.value),
+			this._generation,
+			snapshot,
+			rows.length < CURSOR_BATCH_SIZE,
 		);
 	}
 
@@ -846,7 +993,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	nextAutoIncrementKey(storeName: string): number {
 		const storeId = this.#getStoreId(storeName);
 		const row = this.#db
-			.prepare("SELECT current_key FROM _idb_stores WHERE id = ?")
+			.query("SELECT current_key FROM _idb_stores WHERE id = ?")
 			.get(storeId);
 		if (row && row.current_key >= 2 ** 53) {
 			throw ConstraintError(
@@ -854,12 +1001,12 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			);
 		}
 		this.#db
-			.prepare(
+			.query(
 				"UPDATE _idb_stores SET current_key = current_key + 1 WHERE id = ?",
 			)
 			.run(storeId);
 		const updated = this.#db
-			.prepare("SELECT current_key FROM _idb_stores WHERE id = ?")
+			.query("SELECT current_key FROM _idb_stores WHERE id = ?")
 			.get(storeId);
 		return updated.current_key;
 	}
@@ -868,7 +1015,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const storeId = this.#getStoreId(storeName);
 		const newValue = Math.min(Math.floor(key), 2 ** 53);
 		this.#db
-			.prepare(
+			.query(
 				"UPDATE _idb_stores SET current_key = ? WHERE id = ? AND current_key < ?",
 			)
 			.run(newValue, storeId, newValue);
@@ -877,7 +1024,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	getAutoIncrementCurrent(storeName: string): number {
 		const storeId = this.#getStoreId(storeName);
 		const row = this.#db
-			.prepare("SELECT current_key FROM _idb_stores WHERE id = ?")
+			.query("SELECT current_key FROM _idb_stores WHERE id = ?")
 			.get(storeId);
 		return row?.current_key ?? 0;
 	}
@@ -885,7 +1032,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	setAutoIncrementCurrent(storeName: string, value: number): void {
 		const storeId = this.#getStoreId(storeName);
 		this.#db
-			.prepare("UPDATE _idb_stores SET current_key = ? WHERE id = ?")
+			.query("UPDATE _idb_stores SET current_key = ? WHERE id = ?")
 			.run(value, storeId);
 	}
 
@@ -908,12 +1055,12 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 	#removeFromIndexes(storeId: number, primaryKey: Uint8Array): void {
 		this.#db
-			.prepare(
+			.query(
 				`DELETE FROM _idb_index_entries WHERE index_id IN (
 				SELECT id FROM _idb_indexes WHERE store_id = ?
 			) AND primary_key = ?`,
 			)
-			.run(storeId, Buffer.from(primaryKey));
+			.run(storeId, primaryKey);
 	}
 
 	#addToAllIndexes(
@@ -922,10 +1069,10 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		primaryKey: Uint8Array,
 		value: Uint8Array,
 	): void {
-		for (const [key, meta] of this.#indexMeta) {
-			if (key.startsWith(storeName + "/")) {
-				const indexId = this.#indexIds.get(key)!;
-				this.#addToIndex(meta, indexId, primaryKey, value);
+		const indexes = this.#storeIndexes.get(storeName);
+		if (indexes) {
+			for (const {id, meta} of indexes) {
+				this.#addToIndex(meta, id, primaryKey, value);
 			}
 		}
 	}
@@ -990,10 +1137,10 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		for (const indexKey of indexKeys) {
 			if (meta.unique) {
 				const existing = this.#db
-					.prepare(
+					.query(
 						"SELECT primary_key FROM _idb_index_entries WHERE index_id = ? AND key = ?",
 					)
-					.get(indexId, Buffer.from(indexKey));
+					.get(indexId, indexKey);
 				if (existing) {
 					throw ConstraintError(
 						`Unique constraint violated for index "${meta.name}"`,
@@ -1001,13 +1148,13 @@ class SQLiteTransaction implements IDBBackendTransaction {
 				}
 			}
 			this.#db
-				.prepare(
+				.query(
 					"INSERT OR IGNORE INTO _idb_index_entries (index_id, key, primary_key) VALUES (?, ?, ?)",
 				)
 				.run(
 					indexId,
-					Buffer.from(indexKey),
-					Buffer.from(primaryKey),
+					indexKey,
+					primaryKey,
 				);
 		}
 	}
@@ -1018,12 +1165,12 @@ class SQLiteTransaction implements IDBBackendTransaction {
 // ============================================================================
 
 class SQLiteConnection implements IDBBackendConnection {
-	#db: SQLiteDB;
+	#db: Database;
 	#backend: SQLiteBackend;
 	#name: string;
 	#closed: boolean;
 
-	constructor(db: SQLiteDB, backend: SQLiteBackend, name: string) {
+	constructor(db: Database, backend: SQLiteBackend, name: string) {
 		this.#db = db;
 		this.#backend = backend;
 		this.#name = name;
@@ -1032,19 +1179,20 @@ class SQLiteConnection implements IDBBackendConnection {
 
 	getMetadata(): DatabaseMeta {
 		const versionRow = this.#db
-			.prepare("SELECT value FROM _idb_meta WHERE key = 'version'")
+			.query("SELECT value FROM _idb_meta WHERE key = 'version'")
 			.get();
 		const version = versionRow ? parseInt(versionRow.value, 10) : 0;
 
 		const objectStores = new Map<string, ObjectStoreMeta>();
 		const storeRows = this.#db
-			.prepare(
+			.query(
 				"SELECT name, key_path, auto_increment FROM _idb_stores",
 			)
 			.all();
 		for (const row of storeRows) {
-			objectStores.set(row.name, {
-				name: row.name,
+			const name = decodeName(row.name);
+			objectStores.set(name, {
+				name,
 				keyPath: JSON.parse(row.key_path),
 				autoIncrement: Boolean(row.auto_increment),
 			});
@@ -1052,22 +1200,23 @@ class SQLiteConnection implements IDBBackendConnection {
 
 		const indexes = new Map<string, IndexMeta[]>();
 		const indexRows = this.#db
-			.prepare(
+			.query(
 				'SELECT name, store_name, key_path, "unique", multi_entry FROM _idb_indexes',
 			)
 			.all();
 		for (const row of indexRows) {
+			const storeName = decodeName(row.store_name);
 			const meta: IndexMeta = {
-				name: row.name,
-				storeName: row.store_name,
+				name: decodeName(row.name),
+				storeName,
 				keyPath: JSON.parse(row.key_path),
 				unique: Boolean(row.unique),
 				multiEntry: Boolean(row.multi_entry),
 			};
-			if (!indexes.has(row.store_name)) {
-				indexes.set(row.store_name, []);
+			if (!indexes.has(storeName)) {
+				indexes.set(storeName, []);
 			}
-			indexes.get(row.store_name)!.push(meta);
+			indexes.get(storeName)!.push(meta);
 		}
 
 		return {name: "", version, objectStores, indexes};
@@ -1075,15 +1224,23 @@ class SQLiteConnection implements IDBBackendConnection {
 
 	setVersion(version: number): void {
 		this.#db
-			.prepare(
+			.query(
 				"INSERT OR REPLACE INTO _idb_meta (key, value) VALUES ('version', ?)",
 			)
 			.run(String(version));
-		this.#db
-			.prepare(
-				"INSERT OR REPLACE INTO _idb_meta (key, value) VALUES ('committed_version', ?)",
-			)
-			.run(String(version));
+	}
+
+	commitVersion(): void {
+		const row = this.#db
+			.query("SELECT value FROM _idb_meta WHERE key = 'version'")
+			.get() as any;
+		if (row) {
+			this.#db
+				.query(
+					"INSERT OR REPLACE INTO _idb_meta (key, value) VALUES ('committed_version', ?)",
+				)
+				.run(row.value);
+		}
 	}
 
 	beginTransaction(
@@ -1107,7 +1264,7 @@ class SQLiteConnection implements IDBBackendConnection {
 
 export class SQLiteBackend implements IDBBackend {
 	#basePath: string;
-	#handles: Map<string, SQLiteDB>;
+	#handles: Map<string, Database>;
 	#refcounts: Map<string, number>;
 	static MAX_HANDLES = 50;
 
@@ -1123,14 +1280,14 @@ export class SQLiteBackend implements IDBBackend {
 		let db = this.#handles.get(name);
 		if (!db) {
 			this.#evictIfNeeded();
-			db = openSQLite(dbPath);
+			db = openDatabase(dbPath);
 			this.#initSchema(db);
 			this.#handles.set(name, db);
 		}
 		this.#refcounts.set(name, (this.#refcounts.get(name) ?? 0) + 1);
-		db.prepare(
+		db.query(
 			"INSERT OR REPLACE INTO _idb_meta (key, value) VALUES ('name', ?)",
-		).run(name);
+		).run(encodeName(name));
 		return new SQLiteConnection(db, this, name);
 	}
 
@@ -1193,7 +1350,7 @@ export class SQLiteBackend implements IDBBackend {
 					const cached = this.#handles.get(dbName);
 					if (cached) {
 						const versionRow = cached
-							.prepare(
+							.query(
 								"SELECT value FROM _idb_meta WHERE key = 'committed_version'",
 							)
 							.get();
@@ -1201,22 +1358,22 @@ export class SQLiteBackend implements IDBBackend {
 							const version = parseInt(versionRow.value, 10);
 							if (version > 0) {
 								const nameRow = cached
-									.prepare(
+									.query(
 										"SELECT value FROM _idb_meta WHERE key = 'name'",
 									)
 									.get();
 								results.push({
-									name: nameRow?.value ?? dbName,
+									name: nameRow ? decodeName(nameRow.value) : dbName,
 									version,
 								});
 							}
 						}
 						continue;
 					}
-					const db = openSQLite(dbPath);
+					const db = openDatabase(dbPath);
 					try {
 						const versionRow = db
-							.prepare(
+							.query(
 								"SELECT value FROM _idb_meta WHERE key = 'committed_version'",
 							)
 							.get();
@@ -1227,12 +1384,12 @@ export class SQLiteBackend implements IDBBackend {
 							);
 							if (version > 0) {
 								const nameRow = db
-									.prepare(
+									.query(
 										"SELECT value FROM _idb_meta WHERE key = 'name'",
 									)
 									.get();
 								results.push({
-									name: nameRow?.value ?? dbName,
+									name: nameRow ? decodeName(nameRow.value) : dbName,
 									version,
 								});
 							}
@@ -1261,7 +1418,7 @@ export class SQLiteBackend implements IDBBackend {
 		return join(this.#basePath, `${encodeURIComponent(name)}.sqlite`);
 	}
 
-	#initSchema(db: SQLiteDB): void {
+	#initSchema(db: Database): void {
 		db.exec(`CREATE TABLE IF NOT EXISTS _idb_meta (
 			key TEXT PRIMARY KEY,
 			value TEXT

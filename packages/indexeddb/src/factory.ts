@@ -627,6 +627,7 @@ export class IDBFactory {
 				db.createObjectStore = originalCreateObjectStore;
 				db.deleteObjectStore = originalDeleteObjectStore;
 				db._refreshStoreNames();
+				connection.commitVersion();
 				request._setTransaction(null);
 				// If db.close() was called during upgrade, finish closing
 				// the backend connection and fire error instead of success
