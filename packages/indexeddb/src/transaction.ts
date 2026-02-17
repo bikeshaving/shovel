@@ -3,7 +3,7 @@
  *
  * Manages auto-commit: when no pending requests remain after all microtasks
  * settle, the transaction commits automatically. Events fire as macrotasks
- * (via scheduleTask/setImmediate) per the IDB spec.
+ * (via setTimeout) per the IDB spec.
  */
 
 import type {IDBBackendTransaction} from "./backend.js";
@@ -16,7 +16,6 @@ import {
 } from "./errors.js";
 import {makeDOMStringList} from "./types.js";
 import type {TransactionMode} from "./types.js";
-import {scheduleTask} from "./task.js";
 import {IDBObjectStore} from "./object-store.js";
 
 /** Hold the transaction open (increment pending count). Pair with kRelease. */
@@ -243,8 +242,8 @@ export class IDBTransaction extends SafeEventTarget {
 			// of microtasks, so code after abort() AND Promise.resolve().then()
 			// still see request.transaction and db._upgradeTx set.
 			// Double-nested microtask ensures the abort event fires within the
-			// same macrotask's microtask checkpoint (no other scheduleTasks
-			// can interleave).
+			// same macrotask's microtask checkpoint (no other setTimeout
+			// callbacks can interleave).
 			queueMicrotask(() => {
 				queueMicrotask(() => {
 					this.dispatchEvent(
@@ -414,7 +413,7 @@ export class IDBTransaction extends SafeEventTarget {
 		try {
 			const result = operation(this.#backendTx!);
 			// Fire success as a macrotask (IDB spec: events fire as tasks)
-			scheduleTask(() => {
+			setTimeout(() => {
 				this.#pendingRequests--;
 				if (this.#aborted) {
 					// Transaction was aborted — fire error event with AbortError
@@ -446,7 +445,7 @@ export class IDBTransaction extends SafeEventTarget {
 				}
 			});
 		} catch (error) {
-			scheduleTask(() => {
+			setTimeout(() => {
 				this.#pendingRequests--;
 				if (this.#aborted) {
 					// Transaction was already aborted — fire error on request
@@ -553,7 +552,7 @@ export class IDBTransaction extends SafeEventTarget {
 			if (!this.#backendTx) return; // Deferred — _start will trigger
 			// Double-nested microtask: ensures auto-commit runs after promise
 			// continuations from EventWatcher/promiseForRequest chains settle.
-			// Since events fire as macrotasks (via scheduleTask), these microtasks
+			// Since events fire as macrotasks (via setTimeout), these microtasks
 			// run within that macrotask's microtask checkpoint — after promise
 			// chains but before the event loop yields to timers.
 			queueMicrotask(() => {

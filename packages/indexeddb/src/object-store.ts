@@ -25,7 +25,6 @@ import {
 } from "./errors.js";
 import {makeDOMStringList} from "./types.js";
 import type {ObjectStoreMeta, KeyRangeSpec} from "./types.js";
-import {scheduleTask} from "./task.js";
 
 /**
  * Web IDL [EnforceRange] unsigned long validation for count parameters.
@@ -530,7 +529,7 @@ export class IDBObjectStore {
 				// Hold transaction open so auto-commit doesn't race the deferred abort.
 				// The abort fires as a macrotask (after pending request events).
 				txn[kHoldOpen]();
-				scheduleTask(() => {
+				setTimeout(() => {
 					txn._abortWithError(e);
 					txn[kRelease]();
 				});

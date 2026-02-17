@@ -11,7 +11,6 @@ import {IDBVersionChangeEvent} from "./events.js";
 import {VersionError} from "./errors.js";
 import {validateKeyPath, encodeKey, validateKey, compareKeys} from "./key.js";
 import type {TransactionMode} from "./types.js";
-import {scheduleTask} from "./task.js";
 import {TransactionScheduler} from "./scheduler.js";
 
 interface PendingRequest {
@@ -71,18 +70,15 @@ export class IDBFactory {
 		const onComplete = () => {
 			queue.shift();
 			if (queue.length > 0) {
-				// Use queueMicrotask (not scheduleTask) to avoid growing the
-				// setImmediate chain.  Bun drains ALL setImmediate waves before
-				// timers, so each extra setImmediate delays setTimeout(0) callbacks
-				// across the entire process — causing timeouts when many FIFO
-				// queues run concurrently.
+				// Use queueMicrotask (not setTimeout) so the next FIFO entry
+				// starts promptly within the same microtask checkpoint.
 				queueMicrotask(() => this.#startNextFIFO(name));
 			} else {
 				this.#fifoQueues.delete(name);
 			}
 		};
 
-		scheduleTask(() => {
+		setTimeout(() => {
 			try {
 				if (entry.isDelete) {
 					this.#processDelete(name, entry.request, onComplete);
@@ -219,10 +215,8 @@ export class IDBFactory {
 
 		// Still blocked — queue for later processing, fire "blocked" asynchronously
 		// so EventWatcher listeners have a chance to register after awaiting versionchange.
-		// Use queueMicrotask (not scheduleTask/setImmediate) — the blocked event
-		// must fire before setTimeout(0) close callbacks, and microtasks always
-		// run before both setImmediate and timer phases.  This also avoids growing
-		// the setImmediate chain that starves timers in Bun.
+		// Use queueMicrotask — the blocked event must fire before close
+		// callbacks, and microtasks always run before timer callbacks.
 		this.#pendingRequests.push(pendingEntry);
 		queueMicrotask(() => {
 			// Only fire if the request hasn't been processed yet
@@ -273,9 +267,7 @@ export class IDBFactory {
 		onComplete?: () => void,
 	): void {
 		// Check if a version change is needed
-		const existingDbs = this.#backend.databases();
-		const existing = existingDbs.find((db) => db.name === name);
-		const oldVersion = existing?.version ?? 0;
+		const oldVersion = this.#backend.getVersion(name);
 		const requestedVersion = version ?? (oldVersion || 1);
 
 		if (requestedVersion > oldVersion) {
@@ -298,8 +290,7 @@ export class IDBFactory {
 		request: IDBOpenDBRequest,
 		onComplete?: () => void,
 	): void {
-		const existing = this.#backend.databases().find((db) => db.name === name);
-		const oldVersion = existing?.version ?? 0;
+		const oldVersion = this.#backend.getVersion(name);
 
 		const blocked = this.#checkBlocking(name, oldVersion, null, request, {
 			name,
@@ -318,8 +309,7 @@ export class IDBFactory {
 		request: IDBOpenDBRequest,
 		onComplete?: () => void,
 	): void {
-		const existing = this.#backend.databases().find((db) => db.name === name);
-		const oldVersion = existing?.version ?? 0;
+		const oldVersion = this.#backend.getVersion(name);
 		this.#backend.deleteDatabase(name);
 		request._resolveWithVersionChange(undefined, oldVersion);
 		onComplete?.();
@@ -334,9 +324,7 @@ export class IDBFactory {
 		onComplete?: () => void,
 	): void {
 		// Check if database exists and get its current version
-		const existingDbs = this.#backend.databases();
-		const existing = existingDbs.find((db) => db.name === name);
-		const oldVersion = existing?.version ?? 0;
+		const oldVersion = this.#backend.getVersion(name);
 
 		// Default version
 		const requestedVersion = version ?? (oldVersion || 1);
@@ -583,7 +571,7 @@ export class IDBFactory {
 			};
 
 			// Abort event listener — handles async cleanup.  The abort
-			// event for versionchange fires as a macrotask (scheduleTask
+			// event for versionchange fires as a macrotask (setTimeout
 			// in transaction.abort()), so db._upgradeTx and
 			// request.transaction remain set through abort() return and
 			// microtasks, matching spec timing.

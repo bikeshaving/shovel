@@ -24,7 +24,6 @@ import {
 	ReadOnlyError,
 } from "./errors.js";
 import type {IDBBackendCursor} from "./backend.js";
-import {scheduleTask} from "./task.js";
 
 /**
  * IDBCursor — iterates over records without values.
@@ -167,7 +166,7 @@ export class IDBCursor {
 		} else {
 			found = this._backendCursor.continue();
 		}
-		scheduleTask(() => {
+		setTimeout(() => {
 			// Clear snapshots — getters now read from backend cursor
 			this._keySnapshot = null;
 			this._primaryKeySnapshot = null;
@@ -220,7 +219,7 @@ export class IDBCursor {
 		for (let i = 0; i < count && advanced; i++) {
 			advanced = this._backendCursor.continue();
 		}
-		scheduleTask(() => {
+		setTimeout(() => {
 			// Clear snapshots
 			this._keySnapshot = null;
 			this._primaryKeySnapshot = null;
@@ -327,7 +326,7 @@ export class IDBCursor {
 				}
 			}
 		}
-		scheduleTask(() => {
+		setTimeout(() => {
 			this._keySnapshot = null;
 			this._primaryKeySnapshot = null;
 			this._clearKeyCache();

@@ -1047,6 +1047,10 @@ export class MemoryBackend implements IDBBackend {
 		return result;
 	}
 
+	getVersion(name: string): number {
+		return this.#databases.get(name)?.committedVersion ?? 0;
+	}
+
 	close(_name: string): void {
 		// No-op for memory backend
 	}
