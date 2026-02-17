@@ -173,9 +173,7 @@ export class IDBCursor {
 			this._clearKeyCache();
 			this._clearValueSnapshot();
 			if (this._transaction._aborted) {
-				this._request._reject(
-					AbortError("Transaction was aborted"),
-				);
+				this._request._reject(AbortError("Transaction was aborted"));
 				this._transaction[kRelease]();
 				return;
 			}
@@ -226,9 +224,7 @@ export class IDBCursor {
 			this._clearKeyCache();
 			this._clearValueSnapshot();
 			if (this._transaction._aborted) {
-				this._request._reject(
-					AbortError("Transaction was aborted"),
-				);
+				this._request._reject(AbortError("Transaction was aborted"));
 				this._transaction[kRelease]();
 				return;
 			}
@@ -332,9 +328,7 @@ export class IDBCursor {
 			this._clearKeyCache();
 			this._clearValueSnapshot();
 			if (this._transaction._aborted) {
-				this._request._reject(
-					AbortError("Transaction was aborted"),
-				);
+				this._request._reject(AbortError("Transaction was aborted"));
 				this._transaction[kRelease]();
 				return;
 			}

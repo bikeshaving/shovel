@@ -83,12 +83,7 @@ export class IDBFactory {
 				if (entry.isDelete) {
 					this.#processDelete(name, entry.request, onComplete);
 				} else {
-					this.#processOpen(
-						name,
-						entry.version,
-						entry.request,
-						onComplete,
-					);
+					this.#processOpen(name, entry.version, entry.request, onComplete);
 				}
 			} catch (error) {
 				entry.request._reject(
@@ -237,11 +232,7 @@ export class IDBFactory {
 
 		try {
 			if (pending.isDelete) {
-				this.#doDelete(
-					pending.name,
-					pending.request,
-					pending.onComplete,
-				);
+				this.#doDelete(pending.name, pending.request, pending.onComplete);
 			} else {
 				this.#doOpen(
 					pending.name,
@@ -605,8 +596,10 @@ export class IDBFactory {
 			// Fire upgradeneeded
 			db._upgradeTx = transaction;
 			request._setTransaction(transaction);
-			const upgradeHadError =
-				request._fireUpgradeNeeded(oldVersion, requestedVersion);
+			const upgradeHadError = request._fireUpgradeNeeded(
+				oldVersion,
+				requestedVersion,
+			);
 
 			// Register complete listener AFTER upgradeneeded so that handlers
 			// registered by the upgradeneeded callback fire before this one.

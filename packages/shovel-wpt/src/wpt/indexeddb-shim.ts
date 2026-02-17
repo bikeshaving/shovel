@@ -278,7 +278,10 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 		createElement(tag: string) {
 			// Minimal stub for structured-clone tests (creates <input> for FileList)
 			if (tag === "input") {
-				return {type: "", files: {length: 0, [Symbol.iterator]: [][Symbol.iterator]}};
+				return {
+					type: "",
+					files: {length: 0, [Symbol.iterator]: [][Symbol.iterator]},
+				};
 			}
 			return {};
 		},
@@ -390,7 +393,10 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 	 * In browsers, limits which tests run based on URL query params.
 	 * We run all tests, so just call the test function directly.
 	 */
-	function subsetTest(testFunc: (...args: any[]) => void, ...args: any[]): void {
+	function subsetTest(
+		testFunc: (...args: any[]) => void,
+		...args: any[]
+	): void {
 		testFunc(...args);
 	}
 

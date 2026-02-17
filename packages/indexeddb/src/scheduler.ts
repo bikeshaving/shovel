@@ -21,11 +21,7 @@ export class TransactionScheduler {
 	 * Enqueue a transaction.  If no conflicts exist it starts immediately
 	 * (synchronously calling startFn).
 	 */
-	enqueue(
-		scope: string[],
-		mode: string,
-		startFn: () => void,
-	): SchedulerEntry {
+	enqueue(scope: string[], mode: string, startFn: () => void): SchedulerEntry {
 		const entry: SchedulerEntry = {scope, mode, startFn};
 		this.#queue.push(entry);
 		this.#drain();

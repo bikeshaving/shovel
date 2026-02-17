@@ -18,7 +18,7 @@ beforeEach(() => {
 afterEach(() => {
 	try {
 		rmSync(testDir, {recursive: true, force: true});
-	} catch {
+	} catch (_) {
 		// Ignore cleanup errors
 	}
 });

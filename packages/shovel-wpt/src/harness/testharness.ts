@@ -382,7 +382,7 @@ export function takeTestQueue(): QueuedTest[] {
 	return tests;
 }
 
-export { createTestContext };
+export {createTestContext};
 
 /**
  * Setup function - WPT tests can call this to configure the test environment
