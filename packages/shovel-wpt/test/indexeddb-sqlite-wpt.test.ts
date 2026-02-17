@@ -20,7 +20,12 @@ import {
 	IDBVersionChangeEvent,
 } from "../../indexeddb/src/index.js";
 import {SQLiteBackend} from "../../indexeddb/src/sqlite.js";
-import {clearTestQueue, filterTestQueue, takeTestQueue, createTestContext} from "../src/harness/testharness.js";
+import {
+	clearTestQueue,
+	filterTestQueue,
+	takeTestQueue,
+	createTestContext,
+} from "../src/harness/testharness.js";
 import {test as bunTest, afterAll} from "bun:test";
 import {join} from "node:path";
 import {readdirSync, readFileSync, mkdirSync, rmSync} from "node:fs";
@@ -114,7 +119,7 @@ let wptFiles = readdirSync(wptDir)
 	.sort();
 
 // Support WPT_FILTER=pattern to run only matching files
-const wptFilter = process.env.WPT_FILTER;
+const wptFilter = import.meta.env.WPT_FILTER;
 if (wptFilter) {
 	wptFiles = wptFiles.filter((f) => f.includes(wptFilter));
 }
@@ -122,7 +127,10 @@ if (wptFilter) {
 const tempDirs: string[] = [];
 let dbCounter = 0;
 function makeSqliteFactory(): IDBFactory {
-	const dir = join(tmpdir(), `idb-wpt-sqlite-${process.pid}-${Date.now()}-${dbCounter++}`);
+	const dir = join(
+		tmpdir(),
+		`idb-wpt-sqlite-${process.pid}-${Date.now()}-${dbCounter++}`,
+	);
 	mkdirSync(dir, {recursive: true});
 	tempDirs.push(dir);
 	return new IDBFactory(new SQLiteBackend(dir));
@@ -130,65 +138,90 @@ function makeSqliteFactory(): IDBFactory {
 
 afterAll(() => {
 	for (const dir of tempDirs) {
-		try { rmSync(dir, {recursive: true, force: true}); } catch {}
+		try {
+			rmSync(dir, {recursive: true, force: true});
+		} catch (_) {
+			// Ignore cleanup errors
+		}
 	}
 });
 
 for (const file of wptFiles) {
-	bunTest(`SQLite WPT: ${file.replace(".any.js", "")}`, async () => {
-		// Each file gets its own factory — matches browser semantics where
-		// each test page has its own origin/database namespace.
-		const factory = makeSqliteFactory();
-		setupIndexedDBTestGlobals({
-			indexedDB: factory,
-			classes: idbClasses,
-			filePath: file,
-		});
+	bunTest(
+		`SQLite WPT: ${file.replace(".any.js", "")}`,
+		async () => {
+			// Each file gets its own factory — matches browser semantics where
+			// each test page has its own origin/database namespace.
+			const factory = makeSqliteFactory();
+			setupIndexedDBTestGlobals({
+				indexedDB: factory,
+				classes: idbClasses,
+				filePath: file,
+			});
 
-		loadedScripts.clear();
-		clearTestQueue();
+			loadedScripts.clear();
+			clearTestQueue();
 
-		loadMetaScripts(join(wptDir, file));
+			loadMetaScripts(join(wptDir, file));
 
-		let testCode = readFileSync(join(wptDir, file), "utf8");
-		testCode = testCode.replace(/^'use strict';?\s*$/m, "");
-		testCode = testCode.replace(/^(const|let) /gm, "var ");
-		(0, eval)(`(function() {\n${testCode}\n})();`);
+			let testCode = readFileSync(join(wptDir, file), "utf8");
+			testCode = testCode.replace(/^'use strict';?\s*$/m, "");
+			testCode = testCode.replace(/^(const|let) /gm, "var ");
+			(0, eval)(`(function() {\n${testCode}\n})();`);
 
-		if (skipTests[file]) {
-			filterTestQueue(skipTests[file]);
-		}
+			if (skipTests[file]) {
+				filterTestQueue(skipTests[file]);
+			}
 
-		const tests = takeTestQueue();
+			const tests = takeTestQueue();
 
-		// Run sub-tests sequentially — WPT promise_tests run one at a time.
-		const subTestTimeout = 5_000;
-		const failures: string[] = [];
-		for (const t of tests) {
-			const ctx = createTestContext(t.name);
-			try {
-				const work = t.isAsync
-					? t.fn(ctx) as Promise<void>
-					: Promise.resolve(t.fn(ctx));
-				await new Promise<void>((resolve, reject) => {
-					const id = setTimeout(() => reject(new Error("sub-test timed out")), subTestTimeout);
-					work.then(
-						() => { clearTimeout(id); resolve(); },
-						(e) => { clearTimeout(id); reject(e); },
-					);
-				});
-			} catch (e: any) {
-				failures.push(`${t.name}: ${e?.message ?? e}`);
-			} finally {
-				// Run cleanups in reverse order (close DBs, delete databases, etc.)
-				for (const cleanup of ((ctx as any)._cleanups ?? []).reverse()) {
-					try { await cleanup(); } catch {}
+			// Run sub-tests sequentially — WPT promise_tests run one at a time.
+			// Respect META: timeout=long (WPT convention for heavyweight tests).
+			const isLong = testCode.includes("META: timeout=long");
+			const subTestTimeout = isLong ? 15_000 : 5_000;
+			const failures: string[] = [];
+			for (const t of tests) {
+				const ctx = createTestContext(t.name);
+				try {
+					const work = t.isAsync
+						? (t.fn(ctx) as Promise<void>)
+						: Promise.resolve(t.fn(ctx));
+					await new Promise<void>((resolve, reject) => {
+						const id = setTimeout(
+							() => reject(new Error("sub-test timed out")),
+							subTestTimeout,
+						);
+						work.then(
+							() => {
+								clearTimeout(id);
+								resolve();
+							},
+							(e) => {
+								clearTimeout(id);
+								reject(e);
+							},
+						);
+					});
+				} catch (e: any) {
+					failures.push(`${t.name}: ${e?.message ?? e}`);
+				} finally {
+					// Run cleanups in reverse order (close DBs, delete databases, etc.)
+					for (const cleanup of ((ctx as any)._cleanups ?? []).reverse()) {
+						try {
+							await cleanup();
+						} catch (_) {
+							// Ignore cleanup errors
+						}
+					}
 				}
 			}
-		}
 
-		if (failures.length > 0) {
-			throw new Error(`${failures.length}/${tests.length} sub-tests failed:\n${failures.join("\n")}`);
-		}
-	}, {timeout: 30_000});
+			if (failures.length > 0) {
+				throw new Error(
+					`${failures.length}/${tests.length} sub-tests failed:\n${failures.join("\n")}`,
+				);
+			}
+		},
+		{timeout: 30_000},
+	);
 }

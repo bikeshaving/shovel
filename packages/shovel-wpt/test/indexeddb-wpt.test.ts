@@ -20,7 +20,11 @@ import {
 	IDBVersionChangeEvent,
 	MemoryBackend,
 } from "../../indexeddb/src/index.js";
-import {flushTests, clearTestQueue, filterTestQueue} from "../src/harness/testharness.js";
+import {
+	flushTests,
+	clearTestQueue,
+	filterTestQueue,
+} from "../src/harness/testharness.js";
 import {test as bunTest} from "bun:test";
 import {join} from "node:path";
 import {readdirSync, readFileSync} from "node:fs";
@@ -129,9 +133,7 @@ const skip = [
  */
 const skipTests: Record<string, string[]> = {
 	// Needs per-listener microtask checkpointing (browser-only behavior)
-	"transaction-deactivation-timing.any.js": [
-		"end of invocation",
-	],
+	"transaction-deactivation-timing.any.js": ["end of invocation"],
 	// DOM geometry/image types — stubs don't survive v8 serialize round-trip
 	"structured-clone.any.js": [
 		"DOMMatrixStub",

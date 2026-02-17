@@ -127,9 +127,7 @@ export class IDBDatabase extends SafeEventTarget {
 		}
 
 		if (this._upgradeTx && !this._upgradeTx._finished) {
-			throw InvalidStateError(
-				"A version change transaction is running",
-			);
+			throw InvalidStateError("A version change transaction is running");
 		}
 
 		const rawNames =
@@ -182,17 +180,10 @@ export class IDBDatabase extends SafeEventTarget {
 
 		if (this.#scheduler) {
 			const conn = this.#connection;
-			const entry = this.#scheduler.enqueue(
-				names,
-				mode as string,
-				() => {
-					const backendTx = conn.beginTransaction(
-						names,
-						mode as TransactionMode,
-					);
-					tx._start(backendTx);
-				},
-			);
+			const entry = this.#scheduler.enqueue(names, mode as string, () => {
+				const backendTx = conn.beginTransaction(names, mode as TransactionMode);
+				tx._start(backendTx);
+			});
 			tx._onDone = () => this.#scheduler!.done(entry);
 		} else {
 			// No scheduler — start immediately (legacy/test path)
