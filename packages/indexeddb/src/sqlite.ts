@@ -1428,6 +1428,28 @@ export class SQLiteBackend implements IDBBackend {
 		return results;
 	}
 
+	getVersion(name: string): number {
+		const cached = this.#handles.get(name);
+		if (cached) {
+			const row = cached
+				.query("SELECT value FROM _idb_meta WHERE key = 'committed_version'")
+				.get() as any;
+			return row ? parseInt(row.value, 10) : 0;
+		}
+		const dbPath = this.#dbPath(name);
+		if (!existsSync(dbPath)) return 0;
+		const db = openDatabase(dbPath);
+		try {
+			this.#initSchema(db);
+			const row = db
+				.query("SELECT value FROM _idb_meta WHERE key = 'committed_version'")
+				.get() as any;
+			return row ? parseInt(row.value, 10) : 0;
+		} finally {
+			db.close();
+		}
+	}
+
 	close(name: string): void {
 		const db = this.#handles.get(name);
 		if (db) {

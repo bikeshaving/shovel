@@ -145,5 +145,7 @@ export interface IDBBackend {
 	open(name: string, version: number): IDBBackendConnection;
 	deleteDatabase(name: string): void;
 	databases(): Array<{name: string; version: number}>;
+	/** Get the committed version of a single database (0 if not found). */
+	getVersion(name: string): number;
 	close(name: string): void;
 }
