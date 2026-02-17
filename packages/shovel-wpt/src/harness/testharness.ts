@@ -50,7 +50,7 @@ let currentCleanups: Array<() => void | Promise<void>> = [];
 function createTestContext(name: string): TestContext {
 	const cleanups: Array<() => void | Promise<void>> = [];
 
-	return {
+	const ctx: TestContext = {
 		name,
 		add_cleanup(fn: () => void | Promise<void>) {
 			cleanups.push(fn);
@@ -77,6 +77,9 @@ function createTestContext(name: string): TestContext {
 			setTimeout(fn, ms);
 		},
 	};
+	// Expose cleanups for external runners to execute after test completion
+	(ctx as any)._cleanups = cleanups;
+	return ctx;
 }
 
 /**
@@ -135,7 +138,6 @@ export function async_test(
 			`unnamed async_test #${++asyncTestCounter}`;
 	}
 
-	// Deferred resolve/reject — works before the Promise is created
 	let resolveFn: (() => void) | null = null;
 	let rejectFn: ((e: any) => void) | null = null;
 	let settled = false;
@@ -370,6 +372,17 @@ export function filterTestQueue(skipPatterns: string[]): number {
 export function getQueuedTestCount(): number {
 	return testQueue.length;
 }
+
+/**
+ * Take all queued tests (clears the queue).
+ */
+export function takeTestQueue(): QueuedTest[] {
+	const tests = [...testQueue];
+	testQueue.length = 0;
+	return tests;
+}
+
+export { createTestContext };
 
 /**
  * Setup function - WPT tests can call this to configure the test environment

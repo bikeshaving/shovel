@@ -1,7 +1,8 @@
 /**
  * WPT IndexedDB tests against SQLiteBackend.
  *
- * Same harness as indexeddb-wpt.test.ts but uses SQLiteBackend.
+ * Each WPT file is eval'd inside its own bun:test callback, so only one
+ * file's async work runs at a time — no thundering herd.
  */
 
 import {setupIndexedDBTestGlobals} from "../src/wpt/indexeddb-shim.js";
@@ -19,7 +20,7 @@ import {
 	IDBVersionChangeEvent,
 } from "../../indexeddb/src/index.js";
 import {SQLiteBackend} from "../../indexeddb/src/sqlite.js";
-import {flushTests, clearTestQueue, filterTestQueue} from "../src/harness/testharness.js";
+import {clearTestQueue, filterTestQueue, takeTestQueue, createTestContext} from "../src/harness/testharness.js";
 import {test as bunTest, afterAll} from "bun:test";
 import {join} from "node:path";
 import {readdirSync, readFileSync, mkdirSync, rmSync} from "node:fs";
@@ -133,27 +134,20 @@ afterAll(() => {
 	}
 });
 
-const sharedFactory = makeSqliteFactory();
-
-const needsFreshFactory = new Set([
-	"get-databases.any.js",
-	"open-request-queue.any.js",
-]);
-
 for (const file of wptFiles) {
-	const factory = needsFreshFactory.has(file)
-		? makeSqliteFactory()
-		: sharedFactory;
-	setupIndexedDBTestGlobals({
-		indexedDB: factory,
-		classes: idbClasses,
-		filePath: file,
-	});
+	bunTest(`SQLite WPT: ${file.replace(".any.js", "")}`, async () => {
+		// Each file gets its own factory — matches browser semantics where
+		// each test page has its own origin/database namespace.
+		const factory = makeSqliteFactory();
+		setupIndexedDBTestGlobals({
+			indexedDB: factory,
+			classes: idbClasses,
+			filePath: file,
+		});
 
-	loadedScripts.clear();
-	clearTestQueue();
+		loadedScripts.clear();
+		clearTestQueue();
 
-	try {
 		loadMetaScripts(join(wptDir, file));
 
 		let testCode = readFileSync(join(wptDir, file), "utf8");
@@ -165,23 +159,36 @@ for (const file of wptFiles) {
 			filterTestQueue(skipTests[file]);
 		}
 
-		const needsVeryLongTimeout =
-			file === "blob-composite-blob-reads.any.js";
-		const needsLongTimeout =
-			file === "interleaved-cursors-large.any.js" ||
-			file === "interleaved-cursors-small.any.js" ||
-			file === "open-request-queue.any.js" ||
-			file === "transaction-scheduling-across-databases.any.js" ||
-			file === "upgrade-transaction-deactivation-timing.any.js";
-		const timeout = needsVeryLongTimeout ? 120000 : needsLongTimeout ? 30000 : 5000;
-		flushTests(`SQLite WPT: ${file.replace(".any.js", "")}`, {
-			timeout,
-			...(needsFreshFactory.has(file) ? {indexedDB: factory} : {}),
-		});
-	} catch (e) {
-		bunTest(`SQLite WPT: ${file} (load error)`, () => {
-			throw e;
-		});
-		clearTestQueue();
-	}
+		const tests = takeTestQueue();
+
+		// Run sub-tests sequentially — WPT promise_tests run one at a time.
+		const subTestTimeout = 10_000;
+		const failures: string[] = [];
+		for (const t of tests) {
+			const ctx = createTestContext(t.name);
+			try {
+				const work = t.isAsync
+					? t.fn(ctx) as Promise<void>
+					: Promise.resolve(t.fn(ctx));
+				await new Promise<void>((resolve, reject) => {
+					const id = setTimeout(() => reject(new Error("sub-test timed out")), subTestTimeout);
+					work.then(
+						() => { clearTimeout(id); resolve(); },
+						(e) => { clearTimeout(id); reject(e); },
+					);
+				});
+			} catch (e: any) {
+				failures.push(`${t.name}: ${e?.message ?? e}`);
+			} finally {
+				// Run cleanups in reverse order (close DBs, delete databases, etc.)
+				for (const cleanup of ((ctx as any)._cleanups ?? []).reverse()) {
+					try { await cleanup(); } catch {}
+				}
+			}
+		}
+
+		if (failures.length > 0) {
+			throw new Error(`${failures.length}/${tests.length} sub-tests failed:\n${failures.join("\n")}`);
+		}
+	}, {timeout: 60_000});
 }
