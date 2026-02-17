@@ -68,7 +68,7 @@ function openDatabase(path: string): SQLiteDB {
 		// better-sqlite3: .prepare() is the cached-statement API
 		db.query = db.prepare.bind(db);
 	}
-	db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA cache_size=-2000");
+	db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA cache_size=-2000");
 	return db as SQLiteDB;
 }
 
@@ -428,6 +428,56 @@ class HybridIndexCursor implements IDBBackendCursor {
 }
 
 // ============================================================================
+// Connection-level metadata cache
+// ============================================================================
+
+/** Shared metadata cache — lives on the connection, passed to transactions. */
+interface MetadataCache {
+	storeIds: Map<string, number>;
+	indexIds: Map<string, number>;
+	indexMeta: Map<string, IndexMeta>;
+	storeIndexes: Map<string, Array<{id: number; meta: IndexMeta}>>;
+}
+
+function loadMetadataCache(db: SQLiteDB): MetadataCache {
+	const storeIds = new Map<string, number>();
+	const indexIds = new Map<string, number>();
+	const indexMeta = new Map<string, IndexMeta>();
+	const storeIndexes = new Map<string, Array<{id: number; meta: IndexMeta}>>();
+
+	const stores = db.query("SELECT id, name FROM _idb_stores").all() as any[];
+	for (const s of stores) {
+		storeIds.set(decodeName(s.name), s.id);
+	}
+
+	const indexes = db.query(
+		'SELECT id, name, store_name, key_path, "unique", multi_entry FROM _idb_indexes',
+	).all() as any[];
+	for (const idx of indexes) {
+		const storeName = decodeName(idx.store_name);
+		const indexName = decodeName(idx.name);
+		const key = `${storeName}/${indexName}`;
+		indexIds.set(key, idx.id);
+		const meta: IndexMeta = {
+			name: indexName,
+			storeName,
+			keyPath: JSON.parse(idx.key_path),
+			unique: Boolean(idx.unique),
+			multiEntry: Boolean(idx.multi_entry),
+		};
+		indexMeta.set(key, meta);
+		let arr = storeIndexes.get(storeName);
+		if (!arr) {
+			arr = [];
+			storeIndexes.set(storeName, arr);
+		}
+		arr.push({id: idx.id, meta});
+	}
+
+	return {storeIds, indexIds, indexMeta, storeIndexes};
+}
+
+// ============================================================================
 // SQLite Transaction
 // ============================================================================
 
@@ -435,25 +485,19 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	#db: SQLiteDB;
 	#readonly: boolean;
 	#aborted: boolean;
-	#storeIds: Map<string, number>;
-	#indexIds: Map<string, number>;
-	#indexMeta: Map<string, IndexMeta>;
-	/** Indexes grouped by store name for O(1) lookup in #addToAllIndexes. */
-	#storeIndexes: Map<string, Array<{id: number; meta: IndexMeta}>>;
+	#cache: MetadataCache;
 	/** Shared generation counter — cursors use this to detect mutations. */
 	_generation: GenerationRef;
 
 	constructor(
 		db: SQLiteDB,
 		mode: "readonly" | "readwrite" | "versionchange",
+		cache: MetadataCache,
 	) {
 		this.#db = db;
 		this.#readonly = mode === "readonly";
 		this.#aborted = false;
-		this.#storeIds = new Map();
-		this.#indexIds = new Map();
-		this.#indexMeta = new Map();
-		this.#storeIndexes = new Map();
+		this.#cache = cache;
 		this._generation = {value: 0};
 
 		// Readonly: no SQL-level transaction needed (reads see committed state).
@@ -461,46 +505,10 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		if (!this.#readonly) {
 			db.exec("BEGIN IMMEDIATE");
 		}
-		this.#loadCaches();
-	}
-
-	#loadCaches(): void {
-		const stores = this.#db
-			.query("SELECT id, name FROM _idb_stores")
-			.all() as any[];
-		for (const s of stores) {
-			this.#storeIds.set(decodeName(s.name), s.id);
-		}
-
-		const indexes = this.#db
-			.query(
-				'SELECT id, name, store_name, key_path, "unique", multi_entry FROM _idb_indexes',
-			)
-			.all() as any[];
-		for (const idx of indexes) {
-			const storeName = decodeName(idx.store_name);
-			const indexName = decodeName(idx.name);
-			const key = `${storeName}/${indexName}`;
-			this.#indexIds.set(key, idx.id);
-			const meta: IndexMeta = {
-				name: indexName,
-				storeName,
-				keyPath: JSON.parse(idx.key_path),
-				unique: Boolean(idx.unique),
-				multiEntry: Boolean(idx.multi_entry),
-			};
-			this.#indexMeta.set(key, meta);
-			let arr = this.#storeIndexes.get(storeName);
-			if (!arr) {
-				arr = [];
-				this.#storeIndexes.set(storeName, arr);
-			}
-			arr.push({id: idx.id, meta});
-		}
 	}
 
 	#getStoreId(name: string): number {
-		const id = this.#storeIds.get(name);
+		const id = this.#cache.storeIds.get(name);
 		if (id === undefined) {
 			throw new Error(`Store "${name}" not found`);
 		}
@@ -508,7 +516,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	}
 
 	#getIndexId(storeName: string, indexName: string): number {
-		const id = this.#indexIds.get(`${storeName}/${indexName}`);
+		const id = this.#cache.indexIds.get(`${storeName}/${indexName}`);
 		if (id === undefined) {
 			throw new Error(
 				`Index "${indexName}" not found on store "${storeName}"`,
@@ -530,27 +538,28 @@ class SQLiteTransaction implements IDBBackendTransaction {
 				meta.autoIncrement ? 1 : 0,
 				0,
 			) as any;
-		this.#storeIds.set(meta.name, row.id);
+		this.#cache.storeIds.set(meta.name, row.id);
 	}
 
 	deleteObjectStore(name: string): void {
 		const storeId = this.#getStoreId(name);
-		// CASCADE handles _idb_records, _idb_indexes, _idb_index_entries
-		this.#db
-			.query("DELETE FROM _idb_stores WHERE id = ?")
-			.run(storeId);
-		this.#storeIds.delete(name);
-		for (const [key] of this.#indexIds) {
+		// Manual cascade: index entries → records → indexes → store
+		this.#db.query("DELETE FROM _idb_index_entries WHERE index_id IN (SELECT id FROM _idb_indexes WHERE store_id = ?)").run(storeId);
+		this.#db.query("DELETE FROM _idb_records WHERE store_id = ?").run(storeId);
+		this.#db.query("DELETE FROM _idb_indexes WHERE store_id = ?").run(storeId);
+		this.#db.query("DELETE FROM _idb_stores WHERE id = ?").run(storeId);
+		this.#cache.storeIds.delete(name);
+		for (const [key] of this.#cache.indexIds) {
 			if (key.startsWith(name + "/")) {
-				this.#indexIds.delete(key);
-				this.#indexMeta.delete(key);
+				this.#cache.indexIds.delete(key);
+				this.#cache.indexMeta.delete(key);
 			}
 		}
-		this.#storeIndexes.delete(name);
+		this.#cache.storeIndexes.delete(name);
 	}
 
 	renameObjectStore(oldName: string, newName: string): void {
-		const storeId = this.#storeIds.get(oldName);
+		const storeId = this.#cache.storeIds.get(oldName);
 		if (storeId === undefined) return;
 		this.#db
 			.query("UPDATE _idb_stores SET name = ? WHERE id = ?")
@@ -558,26 +567,26 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		this.#db
 			.query("UPDATE _idb_indexes SET store_name = ? WHERE store_id = ?")
 			.run(encodeName(newName), storeId);
-		this.#storeIds.delete(oldName);
-		this.#storeIds.set(newName, storeId);
-		for (const [key, indexId] of [...this.#indexIds]) {
+		this.#cache.storeIds.delete(oldName);
+		this.#cache.storeIds.set(newName, storeId);
+		for (const [key, indexId] of [...this.#cache.indexIds]) {
 			if (key.startsWith(oldName + "/")) {
 				const indexName = key.slice(oldName.length + 1);
 				const newKey = `${newName}/${indexName}`;
-				this.#indexIds.delete(key);
-				this.#indexIds.set(newKey, indexId);
-				const meta = this.#indexMeta.get(key)!;
-				this.#indexMeta.delete(key);
-				this.#indexMeta.set(newKey, {...meta, storeName: newName});
+				this.#cache.indexIds.delete(key);
+				this.#cache.indexIds.set(newKey, indexId);
+				const meta = this.#cache.indexMeta.get(key)!;
+				this.#cache.indexMeta.delete(key);
+				this.#cache.indexMeta.set(newKey, {...meta, storeName: newName});
 			}
 		}
-		const storeIdxs = this.#storeIndexes.get(oldName);
+		const storeIdxs = this.#cache.storeIndexes.get(oldName);
 		if (storeIdxs) {
-			this.#storeIndexes.delete(oldName);
+			this.#cache.storeIndexes.delete(oldName);
 			for (const entry of storeIdxs) {
 				entry.meta = {...entry.meta, storeName: newName};
 			}
-			this.#storeIndexes.set(newName, storeIdxs);
+			this.#cache.storeIndexes.set(newName, storeIdxs);
 		}
 	}
 
@@ -597,12 +606,12 @@ class SQLiteTransaction implements IDBBackendTransaction {
 			) as any;
 		const indexId = row.id;
 		const key = `${meta.storeName}/${meta.name}`;
-		this.#indexIds.set(key, indexId);
-		this.#indexMeta.set(key, meta);
-		let arr = this.#storeIndexes.get(meta.storeName);
+		this.#cache.indexIds.set(key, indexId);
+		this.#cache.indexMeta.set(key, meta);
+		let arr = this.#cache.storeIndexes.get(meta.storeName);
 		if (!arr) {
 			arr = [];
-			this.#storeIndexes.set(meta.storeName, arr);
+			this.#cache.storeIndexes.set(meta.storeName, arr);
 		}
 		arr.push({id: indexId, meta});
 
@@ -623,15 +632,14 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 	deleteIndex(storeName: string, indexName: string): void {
 		const key = `${storeName}/${indexName}`;
-		const indexId = this.#indexIds.get(key);
+		const indexId = this.#cache.indexIds.get(key);
 		if (indexId !== undefined) {
-			// CASCADE handles _idb_index_entries
-			this.#db
-				.query("DELETE FROM _idb_indexes WHERE id = ?")
-				.run(indexId);
-			this.#indexIds.delete(key);
-			this.#indexMeta.delete(key);
-			const arr = this.#storeIndexes.get(storeName);
+			// Manual cascade: index entries → index
+			this.#db.query("DELETE FROM _idb_index_entries WHERE index_id = ?").run(indexId);
+			this.#db.query("DELETE FROM _idb_indexes WHERE id = ?").run(indexId);
+			this.#cache.indexIds.delete(key);
+			this.#cache.indexMeta.delete(key);
+			const arr = this.#cache.storeIndexes.get(storeName);
 			if (arr) {
 				const i = arr.findIndex(e => e.id === indexId);
 				if (i >= 0) arr.splice(i, 1);
@@ -641,18 +649,18 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 	renameIndex(storeName: string, oldName: string, newName: string): void {
 		const oldKey = `${storeName}/${oldName}`;
-		const indexId = this.#indexIds.get(oldKey);
+		const indexId = this.#cache.indexIds.get(oldKey);
 		if (indexId === undefined) return;
 		this.#db
 			.query("UPDATE _idb_indexes SET name = ? WHERE id = ?")
 			.run(encodeName(newName), indexId);
 		const newKey = `${storeName}/${newName}`;
-		this.#indexIds.delete(oldKey);
-		this.#indexIds.set(newKey, indexId);
-		const newMeta = {...this.#indexMeta.get(oldKey)!, name: newName};
-		this.#indexMeta.delete(oldKey);
-		this.#indexMeta.set(newKey, newMeta);
-		const arr = this.#storeIndexes.get(storeName);
+		this.#cache.indexIds.delete(oldKey);
+		this.#cache.indexIds.set(newKey, indexId);
+		const newMeta = {...this.#cache.indexMeta.get(oldKey)!, name: newName};
+		this.#cache.indexMeta.delete(oldKey);
+		this.#cache.indexMeta.set(newKey, newMeta);
+		const arr = this.#cache.storeIndexes.get(storeName);
 		if (arr) {
 			const entry = arr.find(e => e.id === indexId);
 			if (entry) entry.meta = newMeta;
@@ -707,7 +715,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 	put(storeName: string, key: EncodedKey, value: Uint8Array): void {
 		const storeId = this.#getStoreId(storeName);
-		const hasIndexes = (this.#storeIndexes.get(storeName)?.length ?? 0) > 0;
+		const hasIndexes = (this.#cache.storeIndexes.get(storeName)?.length ?? 0) > 0;
 		if (hasIndexes) {
 			this.#db.exec("SAVEPOINT put_op");
 			try {
@@ -746,7 +754,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 				`Key already exists in object store "${storeName}"`,
 			);
 		}
-		const hasIndexes = (this.#storeIndexes.get(storeName)?.length ?? 0) > 0;
+		const hasIndexes = (this.#cache.storeIndexes.get(storeName)?.length ?? 0) > 0;
 		if (hasIndexes) {
 			this.#db.exec("SAVEPOINT add_op");
 			try {
@@ -777,7 +785,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		const {sql: rangeSql, params: rangeParams} =
 			buildRangeConditions(range);
 		// Delete index entries for matching records using direct index IDs
-		const indexes = this.#storeIndexes.get(storeName);
+		const indexes = this.#cache.storeIndexes.get(storeName);
 		if (indexes && indexes.length > 0) {
 			const ids = indexes.map(i => i.id).join(",");
 			this.#db
@@ -799,7 +807,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 
 	clear(storeName: string): void {
 		const storeId = this.#getStoreId(storeName);
-		const indexes = this.#storeIndexes.get(storeName);
+		const indexes = this.#cache.storeIndexes.get(storeName);
 		if (indexes && indexes.length > 0) {
 			const ids = indexes.map(i => i.id).join(",");
 			this.#db.query(`DELETE FROM _idb_index_entries WHERE index_id IN (${ids})`).run();
@@ -1049,7 +1057,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	// ---- Private helpers ----
 
 	#removeFromIndexes(storeName: string, primaryKey: Uint8Array): void {
-		const indexes = this.#storeIndexes.get(storeName);
+		const indexes = this.#cache.storeIndexes.get(storeName);
 		if (!indexes || indexes.length === 0) return;
 		if (indexes.length === 1) {
 			this.#db
@@ -1070,7 +1078,7 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		primaryKey: Uint8Array,
 		value: Uint8Array,
 	): void {
-		const indexes = this.#storeIndexes.get(storeName);
+		const indexes = this.#cache.storeIndexes.get(storeName);
 		if (!indexes || indexes.length === 0) return;
 		// Decode value once for all indexes
 		let decoded: unknown;
@@ -1169,12 +1177,16 @@ class SQLiteConnection implements IDBBackendConnection {
 	#backend: SQLiteBackend;
 	#name: string;
 	#closed: boolean;
+	#cache: MetadataCache;
+	#cacheDirty: boolean;
 
 	constructor(db: SQLiteDB, backend: SQLiteBackend, name: string) {
 		this.#db = db;
 		this.#backend = backend;
 		this.#name = name;
 		this.#closed = false;
+		this.#cache = loadMetadataCache(db);
+		this.#cacheDirty = false;
 	}
 
 	getMetadata(): DatabaseMeta {
@@ -1247,7 +1259,17 @@ class SQLiteConnection implements IDBBackendConnection {
 		_storeNames: string[],
 		mode: "readonly" | "readwrite" | "versionchange",
 	): IDBBackendTransaction {
-		return new SQLiteTransaction(this.#db, mode);
+		if (mode === "versionchange") {
+			// Versionchange mutates the cache — give it a fresh copy.
+			// Mark connection cache dirty so next tx reloads.
+			this.#cacheDirty = true;
+			return new SQLiteTransaction(this.#db, mode, loadMetadataCache(this.#db));
+		}
+		if (this.#cacheDirty) {
+			this.#cache = loadMetadataCache(this.#db);
+			this.#cacheDirty = false;
+		}
+		return new SQLiteTransaction(this.#db, mode, this.#cache);
 	}
 
 	close(): void {
@@ -1430,7 +1452,7 @@ export class SQLiteBackend implements IDBBackend {
 			);
 			CREATE TABLE IF NOT EXISTS _idb_indexes (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				store_id INTEGER NOT NULL REFERENCES _idb_stores(id) ON DELETE CASCADE,
+				store_id INTEGER NOT NULL,
 				name TEXT NOT NULL,
 				store_name TEXT NOT NULL,
 				key_path TEXT NOT NULL,
@@ -1439,13 +1461,13 @@ export class SQLiteBackend implements IDBBackend {
 				UNIQUE(store_id, name)
 			);
 			CREATE TABLE IF NOT EXISTS _idb_records (
-				store_id INTEGER NOT NULL REFERENCES _idb_stores(id) ON DELETE CASCADE,
+				store_id INTEGER NOT NULL,
 				key BLOB NOT NULL,
 				value BLOB NOT NULL,
 				PRIMARY KEY (store_id, key)
 			);
 			CREATE TABLE IF NOT EXISTS _idb_index_entries (
-				index_id INTEGER NOT NULL REFERENCES _idb_indexes(id) ON DELETE CASCADE,
+				index_id INTEGER NOT NULL,
 				key BLOB NOT NULL,
 				primary_key BLOB NOT NULL,
 				PRIMARY KEY (index_id, key, primary_key)
