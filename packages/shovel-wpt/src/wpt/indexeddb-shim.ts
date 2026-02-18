@@ -348,12 +348,22 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 	 * Only implements readAsArrayBuffer/readAsText (what WPT tests use).
 	 */
 	class FileReaderPolyfill extends EventTarget {
-		result: ArrayBuffer | string | null = null;
-		error: DOMException | null = null;
-		readyState = 0; // 0=EMPTY, 1=LOADING, 2=DONE
-		onloadend: ((ev: Event) => void) | null = null;
-		onload: ((ev: Event) => void) | null = null;
-		onerror: ((ev: Event) => void) | null = null;
+		result: ArrayBuffer | string | null;
+		error: DOMException | null;
+		readyState: number; // 0=EMPTY, 1=LOADING, 2=DONE
+		onloadend: ((ev: Event) => void) | null;
+		onload: ((ev: Event) => void) | null;
+		onerror: ((ev: Event) => void) | null;
+
+		constructor() {
+			super();
+			this.result = null;
+			this.error = null;
+			this.readyState = 0;
+			this.onloadend = null;
+			this.onload = null;
+			this.onerror = null;
+		}
 
 		readAsArrayBuffer(blob: Blob): void {
 			this.#read(blob, "arraybuffer");
@@ -410,28 +420,28 @@ export function setupIndexedDBTestGlobals(config: IndexedDBShimConfig): void {
 	}
 	class DOMMatrixReadOnlyStub extends DOMMatrixStub {}
 	class DOMPointStub {
-		x = 0;
-		y = 0;
-		z = 0;
-		w = 1;
+		x: number;
+		y: number;
+		z: number;
+		w: number;
 		constructor(x?: number, y?: number, z?: number, w?: number) {
-			if (x !== undefined) this.x = x;
-			if (y !== undefined) this.y = y;
-			if (z !== undefined) this.z = z;
-			if (w !== undefined) this.w = w;
+			this.x = x !== undefined ? x : 0;
+			this.y = y !== undefined ? y : 0;
+			this.z = z !== undefined ? z : 0;
+			this.w = w !== undefined ? w : 1;
 		}
 	}
 	class DOMPointReadOnlyStub extends DOMPointStub {}
 	class DOMRectStub {
-		x = 0;
-		y = 0;
-		width = 0;
-		height = 0;
+		x: number;
+		y: number;
+		width: number;
+		height: number;
 		constructor(x?: number, y?: number, w?: number, h?: number) {
-			if (x !== undefined) this.x = x;
-			if (y !== undefined) this.y = y;
-			if (w !== undefined) this.width = w;
-			if (h !== undefined) this.height = h;
+			this.x = x !== undefined ? x : 0;
+			this.y = y !== undefined ? y : 0;
+			this.width = w !== undefined ? w : 0;
+			this.height = h !== undefined ? h : 0;
 		}
 	}
 	class DOMRectReadOnlyStub extends DOMRectStub {}
