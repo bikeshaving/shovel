@@ -14,8 +14,13 @@ export interface SchedulerEntry {
 }
 
 export class TransactionScheduler {
-	#queue: SchedulerEntry[] = [];
-	#active: Set<SchedulerEntry> = new Set();
+	#queue: SchedulerEntry[];
+	#active: Set<SchedulerEntry>;
+
+	constructor() {
+		this.#queue = [];
+		this.#active = new Set();
+	}
 
 	/**
 	 * Enqueue a transaction.  If no conflicts exist it starts immediately

@@ -15,7 +15,7 @@ export class IDBDatabase extends SafeEventTarget {
 	readonly name: string;
 	#version: number;
 	#connection: IDBBackendConnection;
-	#scheduler: TransactionScheduler | null = null;
+	#scheduler: TransactionScheduler | null;
 	#closed!: boolean;
 	#objectStoreNames: string[];
 

@@ -1329,7 +1329,11 @@ export class SQLiteBackend implements IDBBackend {
 	#basePath: string;
 	#handles: Map<string, SQLiteDB>;
 	#refcounts: Map<string, number>;
-	static MAX_HANDLES = 50;
+	static MAX_HANDLES: number;
+
+	static {
+		SQLiteBackend.MAX_HANDLES = 50;
+	}
 
 	constructor(basePath: string) {
 		this.#basePath = basePath;
