@@ -29,6 +29,7 @@ export class IDBRequest extends SafeEventTarget {
 		this.#transaction = null;
 		this.#onsuccessHandler = null;
 		this.#onerrorHandler = null;
+		this._lastDispatchHadError = false;
 	}
 
 	get [Symbol.toStringTag](): string {
@@ -130,7 +131,7 @@ export class IDBRequest extends SafeEventTarget {
 	}
 
 	/** @internal - true if the last dispatch had an exception thrown in a handler */
-	_lastDispatchHadError: boolean = false;
+	_lastDispatchHadError!: boolean;
 
 	/** @internal - Reject the request with an error.
 	 * Returns true if preventDefault() was called and no exception was thrown. */

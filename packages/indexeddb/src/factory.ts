@@ -28,14 +28,16 @@ export class IDBFactory {
 	/** Blocked requests waiting for connections to close */
 	#pendingRequests: PendingRequest[];
 	/** Per-database transaction schedulers (shared across connections) */
-	#schedulers: Map<string, TransactionScheduler> = new Map();
+	#schedulers: Map<string, TransactionScheduler>;
 	/** Per-database FIFO queue for open/delete requests (spec §2.7) */
-	#fifoQueues: Map<string, PendingRequest[]> = new Map();
+	#fifoQueues: Map<string, PendingRequest[]>;
 
 	constructor(backend: IDBBackend) {
 		this.#backend = backend;
 		this.#connections = new Map();
 		this.#pendingRequests = [];
+		this.#schedulers = new Map();
+		this.#fifoQueues = new Map();
 	}
 
 	#getScheduler(name: string): TransactionScheduler {

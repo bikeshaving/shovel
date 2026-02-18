@@ -42,23 +42,23 @@ export class IDBTransaction extends SafeEventTarget {
 	#pendingRequests!: number;
 	#error!: DOMException | null;
 	#needsAbortEvent!: boolean;
-	#storeCache: Map<string, any> = new Map();
+	#storeCache!: Map<string, any>;
 	/** Maps store instance → name before first rename in this transaction */
-	#originalStoreNames: Map<any, string> = new Map();
+	#originalStoreNames!: Map<any, string>;
 	/** Maps index instance → {store, name before first rename} */
-	#originalIndexNames: Map<any, {store: any; name: string}> = new Map();
+	#originalIndexNames!: Map<any, {store: any; name: string}>;
 	#initialScope!: string[];
 	/** Buffered operations when backendTx is null (deferred start) */
-	#pendingOps: Array<{
+	#pendingOps!: Array<{
 		request: IDBRequest;
 		operation: (tx: IDBBackendTransaction) => any;
-	}> | null = null;
+	}> | null;
 	/** @internal - Synchronous callback invoked during abort() before the event fires.
 	 *  Used by the factory to revert frontend metadata synchronously. */
-	_onSyncAbort: (() => void) | null = null;
+	_onSyncAbort!: (() => void) | null;
 	/** @internal - Called when the transaction finishes (committed or aborted).
 	 *  Used by the scheduler to unblock waiting transactions. */
-	_onDone: (() => void) | null = null;
+	_onDone!: (() => void) | null;
 
 	#oncompleteHandler!: ((ev: Event) => void) | null;
 	#onerrorHandler!: ((ev: Event) => void) | null;
@@ -118,6 +118,12 @@ export class IDBTransaction extends SafeEventTarget {
 		this.#pendingRequests = 0;
 		this.#error = null;
 		this.#needsAbortEvent = false;
+		this.#storeCache = new Map();
+		this.#originalStoreNames = new Map();
+		this.#originalIndexNames = new Map();
+		this.#pendingOps = null;
+		this._onSyncAbort = null;
+		this._onDone = null;
 		this.#oncompleteHandler = null;
 		this.#onerrorHandler = null;
 		this.#onabortHandler = null;
