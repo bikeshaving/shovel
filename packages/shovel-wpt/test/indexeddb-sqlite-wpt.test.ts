@@ -94,14 +94,16 @@ function loadMetaScripts(testFilePath: string): void {
 }
 
 const skip = [
-	"blob-contenttype",
-	"idlharness",
-	"bindings-inject",
-	"storage-buckets",
+	"blob-contenttype", // Blob/File storage not implemented
+	"idlharness", // Tests WebIDL interface shape, not behavior
+	"bindings-inject", // Tests browser binding injection mechanism
+	"storage-buckets", // Storage Buckets API not implemented
 ];
 
 const skipTests: Record<string, string[]> = {
+	// Requires browser-engine-level microtask draining between event listeners
 	"transaction-deactivation-timing.any.js": ["end of invocation"],
+	// Structured clone stubs — these types don't exist server-side
 	"structured-clone.any.js": [
 		"DOMMatrixStub",
 		"DOMMatrixStub",

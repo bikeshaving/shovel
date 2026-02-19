@@ -309,6 +309,8 @@ export class IDBFactory {
 	): void {
 		const oldVersion = this.#backend.getVersion(name);
 		this.#backend.deleteDatabase(name);
+		this.#schedulers.delete(name);
+		this.#connections.delete(name);
 		request._resolveWithVersionChange(undefined, oldVersion);
 		onComplete?.();
 	}

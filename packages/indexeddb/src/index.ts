@@ -6,7 +6,7 @@
 
 export {IDBFactory} from "./factory.js";
 export {IDBDatabase} from "./database.js";
-export {IDBTransaction, kHoldOpen, kRelease} from "./transaction.js";
+export {IDBTransaction} from "./transaction.js";
 export {IDBObjectStore, IDBRecord} from "./object-store.js";
 export {IDBRequest, IDBOpenDBRequest} from "./request.js";
 export {IDBKeyRange} from "./key-range.js";

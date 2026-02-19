@@ -1232,7 +1232,7 @@ export function generateConfigModule(
 	function processModule(
 		modulePath: string | undefined,
 		exportName: string | undefined,
-		type: "cache" | "directory" | "sink" | "database",
+		type: "cache" | "directory" | "sink" | "database" | "indexeddb",
 		name: string,
 	): string | null {
 		if (!modulePath) return null;
@@ -1290,7 +1290,7 @@ export function generateConfigModule(
 	// Replaces module/export with `impl` (the reified function/class)
 	function reifyModule<T extends {module?: string; export?: string}>(
 		config: T,
-		type: "cache" | "directory" | "sink" | "database",
+		type: "cache" | "directory" | "sink" | "database" | "indexeddb",
 		name: string,
 	): Omit<T, "module" | "export"> & {impl?: string} {
 		const {module: modulePath, export: exportName, ...rest} = config;
@@ -1440,7 +1440,7 @@ export function generateConfigModule(
 		if (mergedIndexedDB.module) {
 			config.indexedDB = reifyModule(
 				mergedIndexedDB as any,
-				"cache",
+				"indexeddb",
 				"indexedDB",
 			);
 		}
