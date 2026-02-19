@@ -11,6 +11,17 @@ import {decodeValue} from "./structured-clone.js";
 import {IDBRecord} from "./object-store.js";
 import {TransactionInactiveError, InvalidStateError} from "./errors.js";
 import type {IndexMeta, KeyRangeSpec} from "./types.js";
+import {
+	kActive,
+	kBackendTx,
+	kDeleted,
+	kExecuteRequest,
+	kIndexNames,
+	kRecordIndexRename,
+	kRevertName,
+	kSetSource,
+	kToSpec,
+} from "./symbols.js";
 
 function enforceRangeCount(count: unknown): void {
 	const n = Number(count);
@@ -54,7 +65,7 @@ export class IDBIndex {
 	readonly unique: boolean;
 	readonly multiEntry: boolean;
 	readonly objectStore: any;
-	_deleted!: boolean;
+	[kDeleted]!: boolean;
 
 	#name: string;
 	#transaction: IDBTransaction;
@@ -79,31 +90,35 @@ export class IDBIndex {
 				"Index name can only be changed during a versionchange transaction",
 			);
 		}
-		if (!this.#transaction._active) {
+		if (!this.#transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
-		if (this._deleted || this.objectStore._deleted) {
+		if (this[kDeleted] || this.objectStore[kDeleted]) {
 			throw InvalidStateError("Index or its object store has been deleted");
 		}
 		const oldName = this.#name;
 		if (newName === oldName) return;
 		// Spec: ConstraintError if an index with the new name already exists on the same store
-		if (this.objectStore._indexNames.includes(newName)) {
+		if (this.objectStore[kIndexNames].includes(newName)) {
 			throw new DOMException(
 				`Index "${newName}" already exists on store "${this.#storeName}"`,
 				"ConstraintError",
 			);
 		}
 		// Rename in backend
-		this.#transaction._backendTx.renameIndex(this.#storeName, oldName, newName);
+		this.#transaction[kBackendTx].renameIndex(
+			this.#storeName,
+			oldName,
+			newName,
+		);
 		this.#name = newName;
-		// Update objectStore._indexNames
-		const idx = this.objectStore._indexNames.indexOf(oldName);
+		// Update objectStore[kIndexNames]
+		const idx = this.objectStore[kIndexNames].indexOf(oldName);
 		if (idx >= 0) {
-			this.objectStore._indexNames[idx] = newName;
+			this.objectStore[kIndexNames][idx] = newName;
 		}
 		// Record for abort reversion
-		this.#transaction._recordIndexRename(
+		this.#transaction[kRecordIndexRename](
 			this,
 			this.objectStore,
 			oldName,
@@ -112,7 +127,7 @@ export class IDBIndex {
 	}
 
 	/** @internal - Revert name after transaction abort */
-	_revertName(name: string): void {
+	[kRevertName](name: string): void {
 		this.#name = name;
 	}
 
@@ -140,7 +155,7 @@ export class IDBIndex {
 		this.unique = meta.unique;
 		this.multiEntry = meta.multiEntry;
 		this.objectStore = objectStore;
-		this._deleted = false;
+		this[kDeleted] = false;
 		this.#keyPathCache = null;
 	}
 
@@ -150,14 +165,14 @@ export class IDBIndex {
 			validateKey(query);
 		}
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			if (query instanceof IDBKeyRange) {
 				const results = tx.indexGetAll(
 					this.#storeName,
 					this.name,
-					query._toSpec(),
+					query[kToSpec](),
 					1,
 				);
 				return results.length > 0 ? decodeValue(results[0].value) : undefined;
@@ -174,14 +189,14 @@ export class IDBIndex {
 			validateKey(query);
 		}
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			if (query instanceof IDBKeyRange) {
 				const keys = tx.indexGetAllKeys(
 					this.#storeName,
 					this.name,
-					query._toSpec(),
+					query[kToSpec](),
 					1,
 				);
 				return keys.length > 0 ? decodeKey(keys[0]) : undefined;
@@ -202,9 +217,9 @@ export class IDBIndex {
 		if (cnt !== undefined) enforceRangeCount(cnt);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			if (direction && direction !== "next") {
 				// Use cursor for non-default directions
 				const results: any[] = [];
@@ -237,9 +252,9 @@ export class IDBIndex {
 		if (cnt !== undefined) enforceRangeCount(cnt);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			if (direction && direction !== "next") {
 				// Use cursor for non-default directions
 				const results: any[] = [];
@@ -269,9 +284,9 @@ export class IDBIndex {
 		if (count !== undefined) enforceRangeCount(count);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			// Use cursor-based iteration to get index key, primary key, and value
 			const results: IDBRecord[] = [];
 			const cursor = tx.openIndexCursor(
@@ -301,9 +316,9 @@ export class IDBIndex {
 		this.#checkActive();
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			return tx.indexCount(this.#storeName, this.name, range);
 		});
 	}
@@ -315,9 +330,9 @@ export class IDBIndex {
 		this.#checkActive();
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			const cursor = tx.openIndexCursor(
 				this.#storeName,
 				this.name,
@@ -337,9 +352,9 @@ export class IDBIndex {
 		this.#checkActive();
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			const cursor = tx.openIndexKeyCursor(
 				this.#storeName,
 				this.name,
@@ -353,10 +368,10 @@ export class IDBIndex {
 	}
 
 	#checkActive(): void {
-		if (this._deleted || this.objectStore._deleted) {
+		if (this[kDeleted] || this.objectStore[kDeleted]) {
 			throw InvalidStateError("Index or its object store has been deleted");
 		}
-		if (!this.#transaction._active) {
+		if (!this.#transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 	}
@@ -365,7 +380,7 @@ export class IDBIndex {
 		query: IDBValidKey | IDBKeyRange | null | undefined,
 	): KeyRangeSpec | undefined {
 		if (query == null) return undefined;
-		if (query instanceof IDBKeyRange) return query._toSpec();
+		if (query instanceof IDBKeyRange) return query[kToSpec]();
 		const key = encodeKey(validateKey(query));
 		return {lower: key, upper: key, lowerOpen: false, upperOpen: false};
 	}

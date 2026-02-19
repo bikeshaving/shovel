@@ -10,6 +10,22 @@ import {InvalidStateError, NotFoundError} from "./errors.js";
 import {makeDOMStringList} from "./types.js";
 import type {ObjectStoreMeta, TransactionMode} from "./types.js";
 import type {TransactionScheduler} from "./scheduler.js";
+import {
+	kUpgradeTx,
+	kConnection,
+	kClosed,
+	kFinishClose,
+	kGetStoreMeta,
+	kRefreshStoreNames,
+	kSetVersion,
+	kSetOnClose,
+	kFinished,
+	kParent,
+	kStart,
+	kOnDone,
+	kScheduleAutoCommit,
+	kScheduleDeactivation,
+} from "./symbols.js";
 
 export class IDBDatabase extends SafeEventTarget {
 	readonly name: string;
@@ -81,7 +97,7 @@ export class IDBDatabase extends SafeEventTarget {
 	}
 
 	/** @internal - the running versionchange transaction, if any */
-	_upgradeTx: IDBTransaction | null;
+	[kUpgradeTx]: IDBTransaction | null;
 
 	constructor(
 		name: string,
@@ -95,7 +111,7 @@ export class IDBDatabase extends SafeEventTarget {
 		this.#connection = connection;
 		this.#scheduler = scheduler;
 		this.#closed = false;
-		this._upgradeTx = null;
+		this[kUpgradeTx] = null;
 		this.#onabortHandler = null;
 		this.#oncloseHandler = null;
 		this.#onerrorHandler = null;
@@ -126,7 +142,7 @@ export class IDBDatabase extends SafeEventTarget {
 			throw InvalidStateError("Database connection is closed");
 		}
 
-		if (this._upgradeTx && !this._upgradeTx._finished) {
+		if (this[kUpgradeTx] && !this[kUpgradeTx][kFinished]) {
 			throw InvalidStateError("A version change transaction is running");
 		}
 
@@ -176,28 +192,28 @@ export class IDBDatabase extends SafeEventTarget {
 			durability,
 		);
 		// Set parent for event bubbling: transaction → database
-		tx._parent = this;
+		tx[kParent] = this;
 
 		if (this.#scheduler) {
 			const conn = this.#connection;
 			const entry = this.#scheduler.enqueue(names, mode as string, () => {
 				const backendTx = conn.beginTransaction(names, mode as TransactionMode);
-				tx._start(backendTx);
+				tx[kStart](backendTx);
 			});
-			tx._onDone = () => this.#scheduler!.done(entry);
+			tx[kOnDone] = () => this.#scheduler!.done(entry);
 		} else {
 			// No scheduler — start immediately (legacy/test path)
 			const backendTx = this.#connection.beginTransaction(
 				names,
 				mode as TransactionMode,
 			);
-			tx._start(backendTx);
+			tx[kStart](backendTx);
 		}
 
 		// Schedule auto-commit so empty transactions (no requests) complete
-		tx._scheduleAutoCommit();
+		tx[kScheduleAutoCommit]();
 		// Spec: deactivate after the creating task's microtask checkpoint
-		tx._scheduleDeactivation();
+		tx[kScheduleDeactivation]();
 		return tx;
 	}
 
@@ -238,7 +254,7 @@ export class IDBDatabase extends SafeEventTarget {
 		if (this.#closed) return;
 		this.#closed = true;
 		// Defer backend close while a versionchange transaction is active
-		if (this._upgradeTx && !this._upgradeTx._finished) {
+		if (this[kUpgradeTx] && !this[kUpgradeTx][kFinished]) {
 			return;
 		}
 		this.#connection.close();
@@ -246,23 +262,23 @@ export class IDBDatabase extends SafeEventTarget {
 	}
 
 	/** @internal - Actually close the backend connection (called by factory after upgrade tx finishes) */
-	_finishClose(): void {
+	[kFinishClose](): void {
 		this.#connection.close();
 		this.#onCloseCallback?.();
 	}
 
 	/** @internal */
-	get _connection(): IDBBackendConnection {
+	get [kConnection](): IDBBackendConnection {
 		return this.#connection;
 	}
 
 	/** @internal */
-	get _closed(): boolean {
+	get [kClosed](): boolean {
 		return this.#closed;
 	}
 
 	/** @internal - Get object store metadata */
-	_getStoreMeta(name: string): ObjectStoreMeta {
+	[kGetStoreMeta](name: string): ObjectStoreMeta {
 		const meta = this.#connection.getMetadata();
 		const storeMeta = meta.objectStores.get(name);
 		if (!storeMeta) {
@@ -272,18 +288,18 @@ export class IDBDatabase extends SafeEventTarget {
 	}
 
 	/** @internal - Update store names after versionchange */
-	_refreshStoreNames(): void {
+	[kRefreshStoreNames](): void {
 		const meta = this.#connection.getMetadata();
 		this.#objectStoreNames = Array.from(meta.objectStores.keys());
 	}
 
 	/** @internal - Update version */
-	_setVersion(version: number): void {
+	[kSetVersion](version: number): void {
 		this.#version = version;
 	}
 
 	/** @internal - Set callback for when the connection is closed */
-	_setOnClose(callback: () => void): void {
+	[kSetOnClose](callback: () => void): void {
 		this.#onCloseCallback = callback;
 	}
 }
