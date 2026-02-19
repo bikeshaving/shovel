@@ -7,11 +7,13 @@
  * caught by the event loop. This implementation matches browser
  * behavior by catching and absorbing listener errors.
  *
- * Propagation: set `_parent` to enable event propagation from child to parent
+ * Propagation: set `[kParent]` to enable event propagation from child to parent
  * (e.g., IDBRequest → IDBTransaction → IDBDatabase).
  *
  * Phase order: capture (root → target's parent) → target → bubble (target's parent → root)
  */
+
+import {kParent} from "./symbols.js";
 
 type Listener = EventListener | EventListenerObject;
 
@@ -22,11 +24,11 @@ interface ListenerEntry {
 
 export class SafeEventTarget {
 	#listeners: Map<string, ListenerEntry[]>;
-	_parent: SafeEventTarget | null;
+	[kParent]!: SafeEventTarget | null;
 
 	constructor() {
 		this.#listeners = new Map();
-		this._parent = null;
+		this[kParent] = null;
 	}
 
 	addEventListener(
@@ -94,10 +96,10 @@ export class SafeEventTarget {
 
 		// Build ancestor chain: [parent, grandparent, ..., root]
 		const ancestors: SafeEventTarget[] = [];
-		let node: SafeEventTarget | null = this._parent;
+		let node: SafeEventTarget | null = this[kParent];
 		while (node) {
 			ancestors.push(node);
-			node = node._parent;
+			node = node[kParent];
 		}
 
 		// Capture phase: root → ... → parent (top-down, capture listeners only)
