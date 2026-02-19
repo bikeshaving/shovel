@@ -500,7 +500,7 @@ process.on("SIGTERM", handleShutdown);
 	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "node",
-			external: ["node:*", "bun", "bun:*", ...builtinModules],
+			external: ["node:*", "bun", "bun:*", "better-sqlite3", ...builtinModules],
 		};
 	}
 

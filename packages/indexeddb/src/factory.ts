@@ -80,12 +80,17 @@ export class IDBFactory {
 			}
 		};
 
-		setTimeout(() => {
+		setTimeout(async () => {
 			try {
 				if (entry.isDelete) {
 					this.#processDelete(name, entry.request, onComplete);
 				} else {
-					this.#processOpen(name, entry.version, entry.request, onComplete);
+					await this.#processOpen(
+						name,
+						entry.version,
+						entry.request,
+						onComplete,
+					);
 				}
 			} catch (error) {
 				entry.request._reject(
@@ -225,7 +230,7 @@ export class IDBFactory {
 		return true;
 	}
 
-	#processPendingRequests(name: string): void {
+	async #processPendingRequests(name: string): Promise<void> {
 		if (this.#hasOpenConnections(name)) return;
 
 		const idx = this.#pendingRequests.findIndex((r) => r.name === name);
@@ -236,7 +241,7 @@ export class IDBFactory {
 			if (pending.isDelete) {
 				this.#doDelete(pending.name, pending.request, pending.onComplete);
 			} else {
-				this.#doOpen(
+				await this.#doOpen(
 					pending.name,
 					pending.version,
 					pending.request,
@@ -253,12 +258,12 @@ export class IDBFactory {
 		}
 	}
 
-	#processOpen(
+	async #processOpen(
 		name: string,
 		version: number | undefined,
 		request: IDBOpenDBRequest,
 		onComplete?: () => void,
-	): void {
+	): Promise<void> {
 		// Check if a version change is needed
 		const oldVersion = this.#backend.getVersion(name);
 		const requestedVersion = version ?? (oldVersion || 1);
@@ -275,7 +280,7 @@ export class IDBFactory {
 			if (blocked) return;
 		}
 
-		this.#doOpen(name, version, request, onComplete);
+		await this.#doOpen(name, version, request, onComplete);
 	}
 
 	#processDelete(
@@ -310,12 +315,12 @@ export class IDBFactory {
 
 	// ---- Private: Open implementation ----
 
-	#doOpen(
+	async #doOpen(
 		name: string,
 		version: number | undefined,
 		request: IDBOpenDBRequest,
 		onComplete?: () => void,
-	): void {
+	): Promise<void> {
 		// Check if database exists and get its current version
 		const oldVersion = this.#backend.getVersion(name);
 
@@ -329,7 +334,7 @@ export class IDBFactory {
 		}
 
 		// Open the backend connection (does NOT set version yet)
-		const connection = this.#backend.open(name, requestedVersion);
+		const connection = await this.#backend.open(name, requestedVersion);
 		const scheduler = this.#getScheduler(name);
 		const db = new IDBDatabase(name, requestedVersion, connection, scheduler);
 

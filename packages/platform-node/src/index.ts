@@ -592,7 +592,7 @@ process.on("SIGTERM", handleShutdown);
 	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "node",
-			external: ["node:*", ...builtinModules],
+			external: ["node:*", "better-sqlite3", ...builtinModules],
 			define: {
 				// Node.js doesn't support import.meta.env, alias to process.env
 				"import.meta.env": "process.env",
