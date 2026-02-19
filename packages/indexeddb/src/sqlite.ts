@@ -50,12 +50,18 @@ interface SQLiteStatement {
 
 let _DatabaseCtor: new (path: string) => any;
 let _usePrepare = false;
-try {
-	_DatabaseCtor = (await import("bun:sqlite")).Database;
-} catch (_) {
-	// @ts-expect-error -- better-sqlite3 is an optional peer dependency
-	_DatabaseCtor = (await import("better-sqlite3")).default;
-	_usePrepare = true;
+let _driverLoaded = false;
+
+async function loadDriver(): Promise<void> {
+	if (_driverLoaded) return;
+	try {
+		_DatabaseCtor = (await import("bun:sqlite")).Database;
+	} catch (_) {
+		// @ts-expect-error -- better-sqlite3 is an optional peer dependency
+		_DatabaseCtor = (await import("better-sqlite3")).default;
+		_usePrepare = true;
+	}
+	_driverLoaded = true;
 }
 
 function openDatabase(path: string): SQLiteDB {
@@ -1342,7 +1348,8 @@ export class SQLiteBackend implements IDBBackend {
 		mkdirSync(basePath, {recursive: true});
 	}
 
-	open(name: string, _version: number): IDBBackendConnection {
+	async open(name: string, _version: number): Promise<IDBBackendConnection> {
+		await loadDriver();
 		const dbPath = this.#dbPath(name);
 		let db = this.#handles.get(name);
 		if (!db) {

@@ -1012,7 +1012,7 @@ export class MemoryBackend implements IDBBackend {
 		this.#databases = new Map<string, MemoryDatabase>();
 	}
 
-	open(name: string, _version: number): IDBBackendConnection {
+	async open(name: string, _version: number): Promise<IDBBackendConnection> {
 		let db = this.#databases.get(name);
 		if (!db) {
 			db = {

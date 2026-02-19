@@ -142,7 +142,7 @@ export interface IDBBackendConnection {
  * The top-level backend factory.
  */
 export interface IDBBackend {
-	open(name: string, version: number): IDBBackendConnection;
+	open(name: string, version: number): Promise<IDBBackendConnection>;
 	deleteDatabase(name: string): void;
 	databases(): Array<{name: string; version: number}>;
 	/** Get the committed version of a single database (0 if not found). */
