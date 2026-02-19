@@ -192,6 +192,9 @@ export async function developCommand(
 					case "?":
 						logger.info(SHORTCUTS_HELP);
 						break;
+					default:
+						process.stdout.write(key);
+						break;
 				}
 			});
 		}
