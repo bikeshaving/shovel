@@ -164,7 +164,7 @@ process.on("SIGTERM", handleShutdown);
 export function getESBuildConfig(): ESBuildConfig {
 	return {
 		platform: "node",
-		external: ["node:*", "bun", "bun:*", ...builtinModules],
+		external: ["node:*", "bun", "bun:*", "better-sqlite3", ...builtinModules],
 	};
 }
 
