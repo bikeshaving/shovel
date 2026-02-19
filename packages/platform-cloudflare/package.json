@@ -24,7 +24,7 @@
     "@b9g/cache": "workspace:*",
     "@b9g/filesystem": "workspace:*",
     "@b9g/platform": "workspace:*",
-    "@logtape/logtape": "^1.2.0",
+    "@logtape/logtape": "^2.0.0",
     "mime": "^4.0.4",
     "miniflare": "^4.20251118.1"
   },

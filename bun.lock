@@ -17,7 +17,7 @@
         "@clack/prompts": "^0.7.0",
         "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
         "@esbuild-plugins/node-modules-polyfill": "^0.2.2",
-        "@logtape/logtape": "^1.2.0",
+        "@logtape/logtape": "^2.0.0",
         "commander": "^13.1.0",
         "esbuild": "^0.27.2",
         "mime": "^4.0.4",
@@ -28,7 +28,7 @@
         "@b9g/crank": "^0.7.2",
         "@b9g/libuild": "^0.1.22",
         "@b9g/router": "workspace:*",
-        "@logtape/file": "^1.0.0",
+        "@logtape/file": "^2.0.0",
         "@types/bun": "^1.3.4",
         "@typescript-eslint/eslint-plugin": "^8.0.0",
         "@typescript-eslint/parser": "^8.0.0",
@@ -127,7 +127,7 @@
       "name": "@b9g/cache-redis",
       "version": "0.2.2",
       "dependencies": {
-        "@logtape/logtape": "^1.2.0",
+        "@logtape/logtape": "^2.0.0",
         "redis": "^4.6.10",
       },
       "devDependencies": {
@@ -217,7 +217,7 @@
         "@b9g/async-context": "workspace:*",
         "@b9g/cache": "workspace:*",
         "@b9g/filesystem": "workspace:*",
-        "@logtape/logtape": "^1.2.0",
+        "@logtape/logtape": "^2.0.0",
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.20",
@@ -240,7 +240,7 @@
         "@b9g/cache": "workspace:*",
         "@b9g/http-errors": "workspace:*",
         "@b9g/platform": "workspace:*",
-        "@logtape/logtape": "^1.2.0",
+        "@logtape/logtape": "^2.0.0",
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
@@ -255,7 +255,7 @@
         "@b9g/cache": "workspace:*",
         "@b9g/filesystem": "workspace:*",
         "@b9g/platform": "workspace:*",
-        "@logtape/logtape": "^1.2.0",
+        "@logtape/logtape": "^2.0.0",
         "mime": "^4.0.4",
         "miniflare": "^4.20251118.1",
       },
@@ -271,7 +271,7 @@
         "@b9g/http-errors": "workspace:*",
         "@b9g/node-webworker": "workspace:*",
         "@b9g/platform": "workspace:*",
-        "@logtape/logtape": "^1.2.0",
+        "@logtape/logtape": "^2.0.0",
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
@@ -284,7 +284,7 @@
       "dependencies": {
         "@b9g/http-errors": "workspace:*",
         "@b9g/match-pattern": "workspace:*",
-        "@logtape/logtape": "^1.2.0",
+        "@logtape/logtape": "^2.0.0",
       },
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
@@ -642,9 +642,9 @@
 
     "@lit/reactive-element": ["@lit/reactive-element@2.1.1", "", { "dependencies": { "@lit-labs/ssr-dom-shim": "^1.4.0" } }, "sha512-N+dm5PAYdQ8e6UlywyyrgI2t++wFGXfHx+dSJ1oBrg6FAxUj40jId++EaRm80MKX5JnlH1sBsyZ5h0bcZKemCg=="],
 
-    "@logtape/file": ["@logtape/file@1.2.2", "", { "peerDependencies": { "@logtape/logtape": "^1.2.2" } }, "sha512-WyWCOQr/g3rizEwrxybem0ASq+PvLIAfSPErUv5MlkqkHhnjGFG6esfh2cezOQtjaR3oGm/1FgI9+nuyjTpisg=="],
+    "@logtape/file": ["@logtape/file@2.0.2", "", { "peerDependencies": { "@logtape/logtape": "^2.0.2" } }, "sha512-M+xrTu1B+7IGhXqvZlT2mxnY2u1y/6K8Tp16MMwx16rSdz7CKGaXzlq3RLQYrz1GqtduvqGLHB7Hat1XXnb8VQ=="],
 
-    "@logtape/logtape": ["@logtape/logtape@1.2.0", "", {}, "sha512-L7aXBYrxpSUQcsZm/hCuh5REN+dckxmPmH7x7eCROiLAHUSPzc7AhbsxsZLDsXMM4ggtbmS3sUQVa+blfF4sZA=="],
+    "@logtape/logtape": ["@logtape/logtape@2.0.2", "", {}, "sha512-cveUBLbCMFkvkLycP/2vNWvywl47JcJbazHIju94/QNGboZ/jyYAgZIm0ZXezAOx3eIz8OG1EOZ5CuQP3+2FQg=="],
 
     "@nodelib/fs.scandir": ["@nodelib/fs.scandir@2.1.5", "", { "dependencies": { "@nodelib/fs.stat": "2.0.5", "run-parallel": "^1.1.9" } }, "sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g=="],
 
@@ -1282,6 +1282,8 @@
 
     "@b9g/platform-node/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
 
+    "@b9g/shovel/@logtape/logtape": ["@logtape/logtape@1.2.0", "", {}, "sha512-L7aXBYrxpSUQcsZm/hCuh5REN+dckxmPmH7x7eCROiLAHUSPzc7AhbsxsZLDsXMM4ggtbmS3sUQVa+blfF4sZA=="],
+
     "@b9g/zen/zod": ["zod@4.1.13", "", {}, "sha512-AvvthqfqrAhNH9dnfmrfKzX5upOdjUVJYFqNSlkmGf64gRaTzlPwz99IHYnVs28qYAybvAlBV+H7pn0saFY4Ig=="],
 
     "@babel/generator/@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
@@ -1407,6 +1409,8 @@
     "pkg-dir/find-up/locate-path": ["locate-path@5.0.0", "", { "dependencies": { "p-locate": "^4.1.0" } }, "sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g=="],
 
     "shovel-echo/@types/node/undici-types": ["undici-types@5.26.5", "", {}, "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="],
+
+    "shovel-website/@b9g/shovel/@logtape/logtape": ["@logtape/logtape@1.2.0", "", {}, "sha512-L7aXBYrxpSUQcsZm/hCuh5REN+dckxmPmH7x7eCROiLAHUSPzc7AhbsxsZLDsXMM4ggtbmS3sUQVa+blfF4sZA=="],
 
     "wrangler/esbuild/@esbuild/android-arm": ["@esbuild/android-arm@0.17.19", "", { "os": "android", "cpu": "arm" }, "sha512-rIKddzqhmav7MSmoFCmDIb6e2W57geRsM94gV2l38fzhXMwq7hZoClug9USI2pFRGL06f4IOPHHpFNOkWieR8A=="],
 

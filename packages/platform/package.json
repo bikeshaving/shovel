@@ -29,7 +29,7 @@
     "@b9g/async-context": "workspace:*",
     "@b9g/cache": "workspace:*",
     "@b9g/filesystem": "workspace:*",
-    "@logtape/logtape": "^1.2.0"
+    "@logtape/logtape": "^2.0.0"
   },
   "peerDependencies": {
     "@b9g/zen": "^0.1.6"

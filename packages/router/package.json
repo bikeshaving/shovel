@@ -20,7 +20,7 @@
   "dependencies": {
     "@b9g/http-errors": "workspace:*",
     "@b9g/match-pattern": "workspace:*",
-    "@logtape/logtape": "^1.2.0"
+    "@logtape/logtape": "^2.0.0"
   },
   "devDependencies": {
     "@b9g/libuild": "^0.1.18"
