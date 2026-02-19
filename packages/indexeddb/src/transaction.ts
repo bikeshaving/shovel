@@ -17,16 +17,39 @@ import {
 import {makeDOMStringList} from "./types.js";
 import type {TransactionMode} from "./types.js";
 import {IDBObjectStore} from "./object-store.js";
-
-/** Hold the transaction open (increment pending count). Pair with kRelease. */
-export const kHoldOpen = Symbol("holdOpen");
-
-/** Release a hold on the transaction (decrement pending count). */
-export const kRelease = Symbol("release");
+import {
+	kScope,
+	kParent,
+	kBackendTx,
+	kOnDone,
+	kOnSyncAbort,
+	kStart,
+	kAborted,
+	kActive,
+	kFinished,
+	kExecuteRequest,
+	kAbortWithError,
+	kRenameStoreInCache,
+	kRecordIndexRename,
+	kScheduleAutoCommit,
+	kScheduleDeactivation,
+	kDeactivate,
+	kHoldOpen,
+	kRelease,
+	kSetTransaction,
+	kResolve,
+	kReject,
+	kLastDispatchHadError,
+	kGetStoreMeta,
+	kConnection,
+	kRefreshStoreNames,
+	kIndexNames,
+	kRevertName,
+} from "./symbols.js";
 
 export class IDBTransaction extends SafeEventTarget {
 	readonly mode: TransactionMode;
-	readonly _scope: string[]; // mutable internal list
+	readonly [kScope]: string[]; // mutable internal list
 	readonly durability: string;
 
 	get [Symbol.toStringTag](): string {
@@ -55,10 +78,10 @@ export class IDBTransaction extends SafeEventTarget {
 	}> | null;
 	/** @internal - Synchronous callback invoked during abort() before the event fires.
 	 *  Used by the factory to revert frontend metadata synchronously. */
-	_onSyncAbort!: (() => void) | null;
+	[kOnSyncAbort]!: (() => void) | null;
 	/** @internal - Called when the transaction finishes (committed or aborted).
 	 *  Used by the scheduler to unblock waiting transactions. */
-	_onDone!: (() => void) | null;
+	[kOnDone]!: (() => void) | null;
 
 	#oncompleteHandler!: ((ev: Event) => void) | null;
 	#onerrorHandler!: ((ev: Event) => void) | null;
@@ -122,13 +145,13 @@ export class IDBTransaction extends SafeEventTarget {
 		this.#originalStoreNames = new Map();
 		this.#originalIndexNames = new Map();
 		this.#pendingOps = null;
-		this._onSyncAbort = null;
-		this._onDone = null;
+		this[kOnSyncAbort] = null;
+		this[kOnDone] = null;
 		this.#oncompleteHandler = null;
 		this.#onerrorHandler = null;
 		this.#onabortHandler = null;
 		this.#db = db;
-		this._scope = [...storeNames];
+		this[kScope] = [...storeNames];
 		this.#initialScope = [...storeNames];
 		this.mode = mode;
 		this.#backendTx = backendTx;
@@ -139,7 +162,7 @@ export class IDBTransaction extends SafeEventTarget {
 	}
 
 	get objectStoreNames(): DOMStringList {
-		return makeDOMStringList(this._scope);
+		return makeDOMStringList(this[kScope]);
 	}
 
 	get db(): any {
@@ -151,22 +174,22 @@ export class IDBTransaction extends SafeEventTarget {
 	}
 
 	/** @internal — only access when the transaction has started (non-null) */
-	get _backendTx(): IDBBackendTransaction {
+	get [kBackendTx](): IDBBackendTransaction {
 		return this.#backendTx!;
 	}
 
 	/** @internal */
-	get _active(): boolean {
+	get [kActive](): boolean {
 		return this.#active;
 	}
 
 	/** @internal — temporarily deactivate during structuredClone */
-	set _active(value: boolean) {
+	set [kActive](value: boolean) {
 		this.#active = value;
 	}
 
 	/** @internal - Start a deferred transaction (called by scheduler). */
-	_start(backendTx: IDBBackendTransaction): void {
+	[kStart](backendTx: IDBBackendTransaction): void {
 		this.#backendTx = backendTx;
 		const ops = this.#pendingOps;
 		this.#pendingOps = null;
@@ -180,12 +203,12 @@ export class IDBTransaction extends SafeEventTarget {
 	}
 
 	/** @internal */
-	get _aborted(): boolean {
+	get [kAborted](): boolean {
 		return this.#aborted;
 	}
 
 	/** @internal - true if the transaction has committed or aborted */
-	get _finished(): boolean {
+	get [kFinished](): boolean {
 		return this.#committed || this.#aborted;
 	}
 
@@ -197,7 +220,7 @@ export class IDBTransaction extends SafeEventTarget {
 		if (this.#aborted || this.#committed) {
 			throw InvalidStateError("Transaction is no longer active");
 		}
-		if (!this._scope.includes(name)) {
+		if (!this[kScope].includes(name)) {
 			throw new DOMException(
 				`Object store "${name}" is not in this transaction's scope`,
 				"NotFoundError",
@@ -206,14 +229,14 @@ export class IDBTransaction extends SafeEventTarget {
 		// Return cached instance if available (spec: same object identity)
 		const cached = this.#storeCache.get(name);
 		if (cached) return cached;
-		const meta = this.#db._getStoreMeta(name);
+		const meta = this.#db[kGetStoreMeta](name);
 		const store = new IDBObjectStore(this, meta);
 		// Populate indexNames from database metadata
-		const dbMeta = this.#db._connection.getMetadata();
+		const dbMeta = this.#db[kConnection].getMetadata();
 		const indexes = dbMeta.indexes.get(name) || [];
 		for (const idx of indexes) {
-			if (!store._indexNames.includes(idx.name)) {
-				store._indexNames.push(idx.name);
+			if (!store[kIndexNames].includes(idx.name)) {
+				store[kIndexNames].push(idx.name);
 			}
 		}
 		this.#storeCache.set(name, store);
@@ -234,7 +257,7 @@ export class IDBTransaction extends SafeEventTarget {
 		}
 		this.#revertRenames();
 		// Invoke synchronous metadata revert (e.g. factory marks stores as deleted)
-		this._onSyncAbort?.();
+		this[kOnSyncAbort]?.();
 		// Clear buffered ops — they'll never execute
 		if (this.#pendingOps) {
 			this.#pendingRequests -= this.#pendingOps.length;
@@ -246,7 +269,7 @@ export class IDBTransaction extends SafeEventTarget {
 		if (this.mode === ("versionchange" as TransactionMode)) {
 			// Spec: abort event fires after abort() returns and after one level
 			// of microtasks, so code after abort() AND Promise.resolve().then()
-			// still see request.transaction and db._upgradeTx set.
+			// still see request.transaction and db[kUpgradeTx] set.
 			// Double-nested microtask ensures the abort event fires within the
 			// same macrotask's microtask checkpoint (no other setTimeout
 			// callbacks can interleave).
@@ -255,19 +278,19 @@ export class IDBTransaction extends SafeEventTarget {
 					this.dispatchEvent(
 						new Event("abort", {bubbles: true, cancelable: false}),
 					);
-					this._onDone?.();
+					this[kOnDone]?.();
 				});
 			});
 		} else {
 			this.dispatchEvent(
 				new Event("abort", {bubbles: true, cancelable: false}),
 			);
-			this._onDone?.();
+			this[kOnDone]?.();
 		}
 	}
 
 	/** @internal - Update store cache when a store is renamed */
-	_renameStoreInCache(oldName: string, newName: string, store: any): void {
+	[kRenameStoreInCache](oldName: string, newName: string, store: any): void {
 		this.#storeCache.delete(oldName);
 		this.#storeCache.set(newName, store);
 		// Record original name only on first rename
@@ -277,7 +300,7 @@ export class IDBTransaction extends SafeEventTarget {
 	}
 
 	/** @internal - Record an index rename for abort reversion */
-	_recordIndexRename(
+	[kRecordIndexRename](
 		index: any,
 		store: any,
 		oldName: string,
@@ -292,7 +315,7 @@ export class IDBTransaction extends SafeEventTarget {
 	#revertRenames(): void {
 		// After backend abort, metadata reflects pre-transaction state.
 		// Only revert names for pre-existing stores/indexes (not created in this tx).
-		const meta = this.#db._connection.getMetadata();
+		const meta = this.#db[kConnection].getMetadata();
 
 		// Revert index renames — only for indexes that existed before this tx
 		for (const [index, {store, name: originalName}] of this
@@ -308,8 +331,8 @@ export class IDBTransaction extends SafeEventTarget {
 			if (!indexExisted) continue;
 			const currentName = index.name;
 			if (currentName === originalName) continue;
-			index._revertName(originalName);
-			const idxNames: string[] = store._indexNames;
+			index[kRevertName](originalName);
+			const idxNames: string[] = store[kIndexNames];
 			const pos = idxNames.indexOf(currentName);
 			if (pos >= 0) idxNames[pos] = originalName;
 		}
@@ -318,13 +341,13 @@ export class IDBTransaction extends SafeEventTarget {
 			if (!this.#initialScope.includes(originalName)) continue;
 			const currentName = store.name;
 			if (currentName === originalName) continue;
-			store._revertName(originalName);
-			const pos = this._scope.indexOf(currentName);
-			if (pos >= 0) this._scope[pos] = originalName;
+			store[kRevertName](originalName);
+			const pos = this[kScope].indexOf(currentName);
+			if (pos >= 0) this[kScope][pos] = originalName;
 			this.#storeCache.delete(currentName);
 			this.#storeCache.set(originalName, store);
 		}
-		this.#db._refreshStoreNames();
+		this.#db[kRefreshStoreNames]();
 	}
 
 	/**
@@ -356,7 +379,7 @@ export class IDBTransaction extends SafeEventTarget {
 	/** @internal - Abort with a specific error (for async constraint violations).
 	 * Defers the abort event until all pending requests have fired their errors,
 	 * matching the spec ordering: request errors first, then abort event. */
-	_abortWithError(error: DOMException): void {
+	[kAbortWithError](error: DOMException): void {
 		if (this.#committed || this.#aborted) return;
 		this.#aborted = true;
 		this.#active = false;
@@ -364,7 +387,7 @@ export class IDBTransaction extends SafeEventTarget {
 			this.#backendTx.abort();
 		}
 		this.#revertRenames();
-		this._onSyncAbort?.();
+		this[kOnSyncAbort]?.();
 		// Clear buffered ops
 		if (this.#pendingOps) {
 			this.#pendingRequests -= this.#pendingOps.length;
@@ -382,13 +405,13 @@ export class IDBTransaction extends SafeEventTarget {
 				this.dispatchEvent(
 					new Event("abort", {bubbles: true, cancelable: false}),
 				);
-				this._onDone?.();
+				this[kOnDone]?.();
 			});
 		}
 	}
 
 	/** @internal - Execute a request within this transaction */
-	_executeRequest(
+	[kExecuteRequest](
 		request: IDBRequest,
 		operation: (tx: IDBBackendTransaction) => any,
 	): IDBRequest {
@@ -396,9 +419,9 @@ export class IDBTransaction extends SafeEventTarget {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 
-		request._setTransaction(this);
+		request[kSetTransaction](this);
 		// Set parent for event bubbling: request → transaction → database
-		request._parent = this;
+		(request as any)[kParent] = this;
 		this.#pendingRequests++;
 
 		if (!this.#backendTx) {
@@ -423,16 +446,16 @@ export class IDBTransaction extends SafeEventTarget {
 				this.#pendingRequests--;
 				if (this.#aborted) {
 					// Transaction was aborted — fire error event with AbortError
-					request._reject(AbortError("Transaction was aborted"));
+					request[kReject](AbortError("Transaction was aborted"));
 					this.#maybeFireDeferredAbort();
 					return;
 				}
 				// Spec: transaction is active during event dispatch
 				this.#active = true;
-				const hadError = request._resolve(result);
+				const hadError = request[kResolve](result);
 				// Deactivate after microtask checkpoint so Promise.resolve().then()
 				// in handlers still sees active, but setTimeout(0) sees inactive.
-				this._scheduleDeactivation();
+				this[kScheduleDeactivation]();
 				if (
 					hadError &&
 					!this.#aborted &&
@@ -441,7 +464,7 @@ export class IDBTransaction extends SafeEventTarget {
 				) {
 					// Exception thrown during success dispatch → abort
 					// (but not if commit() was explicitly called)
-					this._abortWithError(
+					this[kAbortWithError](
 						AbortError("An exception was thrown in an event handler"),
 					);
 				} else if (this.#commitPending && this.#pendingRequests === 0) {
@@ -455,7 +478,7 @@ export class IDBTransaction extends SafeEventTarget {
 				this.#pendingRequests--;
 				if (this.#aborted) {
 					// Transaction was already aborted — fire error on request
-					request._reject(AbortError("Transaction was aborted"));
+					request[kReject](AbortError("Transaction was aborted"));
 					this.#maybeFireDeferredAbort();
 					return;
 				}
@@ -465,17 +488,17 @@ export class IDBTransaction extends SafeEventTarget {
 						: new DOMException(String(error), "UnknownError");
 				// Spec: transaction is active during event dispatch
 				this.#active = true;
-				const prevented = request._reject(domError);
+				const prevented = request[kReject](domError);
 				// Deactivate after microtask checkpoint
-				this._scheduleDeactivation();
+				this[kScheduleDeactivation]();
 				if (
-					request._lastDispatchHadError &&
+					request[kLastDispatchHadError] &&
 					!this.#aborted &&
 					!this.#committed &&
 					!this.#commitPending
 				) {
 					// Exception thrown during error dispatch → abort with AbortError
-					this._abortWithError(
+					this[kAbortWithError](
 						AbortError("An exception was thrown in an event handler"),
 					);
 				} else if (prevented) {
@@ -494,19 +517,19 @@ export class IDBTransaction extends SafeEventTarget {
 				} else if (!this.#aborted && !this.#committed) {
 					// Abort the transaction, deferring the abort event
 					// until all pending requests have fired their errors
-					this._abortWithError(domError);
+					this[kAbortWithError](domError);
 				}
 			});
 		}
 	}
 
 	/** @internal - Deactivate the transaction (end of upgradeneeded) */
-	_deactivate(): void {
+	[kDeactivate](): void {
 		this.#active = false;
 	}
 
 	/** @internal - Reactivate after upgradeneeded for auto-commit */
-	_scheduleAutoCommit(): void {
+	[kScheduleAutoCommit](): void {
 		queueMicrotask(() => {
 			if (!this.#aborted && !this.#committed && this.#pendingRequests === 0) {
 				if (!this.#backendTx) return; // Deferred — _start will trigger
@@ -536,14 +559,14 @@ export class IDBTransaction extends SafeEventTarget {
 			this.dispatchEvent(
 				new Event("abort", {bubbles: true, cancelable: false}),
 			);
-			this._onDone?.();
+			this[kOnDone]?.();
 		}
 	}
 
 	/** @internal - Schedule deactivation after all microtasks from the current
 	 * event dispatch settle. Double-nested so Promise.resolve().then() in
 	 * handlers still sees active, but setTimeout(0) sees inactive. */
-	_scheduleDeactivation(): void {
+	[kScheduleDeactivation](): void {
 		queueMicrotask(() => {
 			queueMicrotask(() => {
 				if (!this.#committed && !this.#aborted) {
@@ -592,13 +615,13 @@ export class IDBTransaction extends SafeEventTarget {
 			this.dispatchEvent(
 				new Event("error", {bubbles: true, cancelable: false}),
 			);
-			this._onDone?.();
+			this[kOnDone]?.();
 			return;
 		}
 
 		this.dispatchEvent(
 			new Event("complete", {bubbles: false, cancelable: false}),
 		);
-		this._onDone?.();
+		this[kOnDone]?.();
 	}
 }

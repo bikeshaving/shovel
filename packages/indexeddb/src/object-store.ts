@@ -2,11 +2,30 @@
  * IDBObjectStore implementation.
  */
 
-import {type IDBTransaction, kHoldOpen, kRelease} from "./transaction.js";
+import type {IDBTransaction} from "./transaction.js";
 import {IDBRequest} from "./request.js";
 import {IDBKeyRange} from "./key-range.js";
 import {IDBIndex} from "./idb-index.js";
 import {IDBCursor, IDBCursorWithValue} from "./cursor.js";
+import {
+	kDeleted,
+	kIndexNames,
+	kIndexInstances,
+	kRevertName,
+	kActive,
+	kFinished,
+	kBackendTx,
+	kScope,
+	kExecuteRequest,
+	kAbortWithError,
+	kRenameStoreInCache,
+	kSetSource,
+	kToSpec,
+	kConnection,
+	kRefreshStoreNames,
+	kHoldOpen,
+	kRelease,
+} from "./symbols.js";
 import {
 	encodeKey,
 	decodeKey,
@@ -93,10 +112,10 @@ function parseGetAllArgs(
 
 export class IDBObjectStore {
 	readonly autoIncrement: boolean;
-	readonly _indexNames!: string[];
-	_deleted!: boolean;
+	readonly [kIndexNames]!: string[];
+	[kDeleted]!: boolean;
 	/** @internal - track IDBIndex instances for marking as deleted */
-	_indexInstances!: IDBIndex[];
+	[kIndexInstances]!: IDBIndex[];
 
 	#name: string;
 	#transaction: IDBTransaction;
@@ -120,10 +139,10 @@ export class IDBObjectStore {
 				"Object store name can only be changed during a versionchange transaction",
 			);
 		}
-		if (!this.#transaction._active) {
+		if (!this.#transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
-		if (this._deleted) {
+		if (this[kDeleted]) {
 			throw InvalidStateError("Object store has been deleted");
 		}
 		const oldName = this.#name;
@@ -137,21 +156,21 @@ export class IDBObjectStore {
 			);
 		}
 		// Rename in backend
-		this.#transaction._backendTx.renameObjectStore(oldName, newName);
+		this.#transaction[kBackendTx].renameObjectStore(oldName, newName);
 		this.#name = newName;
 		// Update transaction scope
-		const scopeIdx = this.#transaction._scope.indexOf(oldName);
+		const scopeIdx = this.#transaction[kScope].indexOf(oldName);
 		if (scopeIdx >= 0) {
-			this.#transaction._scope[scopeIdx] = newName;
+			this.#transaction[kScope][scopeIdx] = newName;
 		}
 		// Update transaction's store cache and record for abort reversion
-		this.#transaction._renameStoreInCache(oldName, newName, this);
+		this.#transaction[kRenameStoreInCache](oldName, newName, this);
 		// Refresh database store names
-		db._refreshStoreNames();
+		db[kRefreshStoreNames]();
 	}
 
 	/** @internal - Revert name after transaction abort */
-	_revertName(name: string): void {
+	[kRevertName](name: string): void {
 		this.#name = name;
 	}
 
@@ -167,9 +186,9 @@ export class IDBObjectStore {
 	}
 
 	constructor(transaction: IDBTransaction, meta: ObjectStoreMeta) {
-		this._indexNames = [];
-		this._deleted = false;
-		this._indexInstances = [];
+		this[kIndexNames] = [];
+		this[kDeleted] = false;
+		this[kIndexInstances] = [];
 		this.#transaction = transaction;
 		this.#keyPath = meta.keyPath;
 		this.#keyPathCache = null;
@@ -178,7 +197,7 @@ export class IDBObjectStore {
 	}
 
 	get indexNames(): DOMStringList {
-		return makeDOMStringList(this._indexNames);
+		return makeDOMStringList(this[kIndexNames]);
 	}
 
 	get transaction(): IDBTransaction {
@@ -191,18 +210,18 @@ export class IDBObjectStore {
 	add(value: any, key?: IDBValidKey): IDBRequest {
 		this.#checkWritable();
 		// Spec: transaction is inactive during structured clone
-		this.#transaction._active = false;
+		this.#transaction[kActive] = false;
 		let clone: any;
 		try {
 			clone = structuredClone(value);
 		} finally {
-			this.#transaction._active = true;
+			this.#transaction[kActive] = true;
 		}
 		this.#validateKeyInput(clone, key);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			const savedAutoInc = tx.getAutoIncrementCurrent(this.name);
 			const {encodedKey, encodedValue} = this.#prepareRecord(clone, key, tx);
 			try {
@@ -223,18 +242,18 @@ export class IDBObjectStore {
 	put(value: any, key?: IDBValidKey): IDBRequest {
 		this.#checkWritable();
 		// Spec: transaction is inactive during structured clone
-		this.#transaction._active = false;
+		this.#transaction[kActive] = false;
 		let clone: any;
 		try {
 			clone = structuredClone(value);
 		} finally {
-			this.#transaction._active = true;
+			this.#transaction[kActive] = true;
 		}
 		this.#validateKeyInput(clone, key);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			const savedAutoInc = tx.getAutoIncrementCurrent(this.name);
 			const {encodedKey, encodedValue} = this.#prepareRecord(clone, key, tx);
 			try {
@@ -259,11 +278,11 @@ export class IDBObjectStore {
 			validateKey(query);
 		}
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			if (query instanceof IDBKeyRange) {
-				const results = tx.getAll(this.name, query._toSpec(), 1);
+				const results = tx.getAll(this.name, query[kToSpec](), 1);
 				return results.length > 0 ? decodeValue(results[0].value) : undefined;
 			}
 			const encoded = encodeKey(validateKey(query));
@@ -286,11 +305,11 @@ export class IDBObjectStore {
 			validateKey(query);
 		}
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			if (query instanceof IDBKeyRange) {
-				const keys = tx.getAllKeys(this.name, query._toSpec(), 1);
+				const keys = tx.getAllKeys(this.name, query[kToSpec](), 1);
 				return keys.length > 0 ? decodeKey(keys[0]) : undefined;
 			}
 			const encoded = encodeKey(validateKey(query));
@@ -313,9 +332,9 @@ export class IDBObjectStore {
 		if (cnt !== undefined) enforceRangeCount(cnt);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			if (direction && direction !== "next" && direction !== "nextunique") {
 				// Use cursor for reverse directions
 				const results: any[] = [];
@@ -347,9 +366,9 @@ export class IDBObjectStore {
 		if (cnt !== undefined) enforceRangeCount(cnt);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			if (direction && direction !== "next" && direction !== "nextunique") {
 				// Use cursor for reverse directions
 				const results: any[] = [];
@@ -376,9 +395,9 @@ export class IDBObjectStore {
 		if (count !== undefined) enforceRangeCount(count);
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			if (direction && direction !== "next" && direction !== "nextunique") {
 				// Use cursor for reverse directions
 				const results: IDBRecord[] = [];
@@ -411,9 +430,9 @@ export class IDBObjectStore {
 		this.#checkWritable();
 		const range = this.#toDeleteRange(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			tx.delete(this.name, range);
 			return undefined;
 		});
@@ -425,9 +444,9 @@ export class IDBObjectStore {
 	clear(): IDBRequest {
 		this.#checkWritable();
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			tx.clear(this.name);
 			return undefined;
 		});
@@ -440,9 +459,9 @@ export class IDBObjectStore {
 		this.#checkActive();
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			return tx.count(this.name, range);
 		});
 	}
@@ -457,9 +476,9 @@ export class IDBObjectStore {
 		this.#checkActive();
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			const cursor = tx.openCursor(this.name, range, direction as any);
 			if (!cursor) return null;
 
@@ -477,9 +496,9 @@ export class IDBObjectStore {
 		this.#checkActive();
 		const range = this.#toRangeSpec(query);
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 
-		return this.#transaction._executeRequest(request, (tx) => {
+		return this.#transaction[kExecuteRequest](request, (tx) => {
 			const cursor = tx.openKeyCursor(this.name, range, direction as any);
 			if (!cursor) return null;
 
@@ -497,7 +516,7 @@ export class IDBObjectStore {
 	): any {
 		// Web IDL: stringify the name
 		const name = String(rawName);
-		if (this._deleted) {
+		if (this[kDeleted]) {
 			throw InvalidStateError("Object store has been deleted");
 		}
 		if (this.#transaction.mode !== "versionchange") {
@@ -505,11 +524,11 @@ export class IDBObjectStore {
 				"createIndex can only be called during a versionchange transaction",
 			);
 		}
-		if (!this.#transaction._active) {
+		if (!this.#transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 		// Spec: ConstraintError if index name already exists (before keyPath validation)
-		if (this._indexNames.includes(name)) {
+		if (this[kIndexNames].includes(name)) {
 			throw new DOMException(
 				`Index "${name}" already exists on store "${this.name}"`,
 				"ConstraintError",
@@ -531,33 +550,33 @@ export class IDBObjectStore {
 			multiEntry: options?.multiEntry ?? false,
 		};
 		try {
-			this.#transaction._backendTx.createIndex(meta);
+			this.#transaction[kBackendTx].createIndex(meta);
 		} catch (e: any) {
 			// Spec: unique constraint violation during createIndex causes async abort.
 			// createIndex returns the IDBIndex, and the transaction aborts asynchronously.
 			if (e instanceof DOMException && e.name === "ConstraintError") {
-				if (!this._indexNames.includes(name)) {
-					this._indexNames.push(name);
+				if (!this[kIndexNames].includes(name)) {
+					this[kIndexNames].push(name);
 				}
 				const index = new IDBIndex(this.#transaction, this.name, meta, this);
-				this._indexInstances.push(index);
+				this[kIndexInstances].push(index);
 				const txn = this.#transaction;
 				// Hold transaction open so auto-commit doesn't race the deferred abort.
 				// The abort fires as a macrotask (after pending request events).
 				txn[kHoldOpen]();
 				setTimeout(() => {
-					txn._abortWithError(e);
+					txn[kAbortWithError](e);
 					txn[kRelease]();
 				});
 				return index;
 			}
 			throw e;
 		}
-		if (!this._indexNames.includes(name)) {
-			this._indexNames.push(name);
+		if (!this[kIndexNames].includes(name)) {
+			this[kIndexNames].push(name);
 		}
 		const index = new IDBIndex(this.#transaction, this.name, meta, this);
-		this._indexInstances.push(index);
+		this[kIndexInstances].push(index);
 		return index;
 	}
 
@@ -565,7 +584,7 @@ export class IDBObjectStore {
 	 * Delete an index (versionchange transactions only).
 	 */
 	deleteIndex(name: string): void {
-		if (this._deleted) {
+		if (this[kDeleted]) {
 			throw InvalidStateError("Object store has been deleted");
 		}
 		if (this.#transaction.mode !== "versionchange") {
@@ -573,25 +592,25 @@ export class IDBObjectStore {
 				"deleteIndex can only be called during a versionchange transaction",
 			);
 		}
-		if (!this.#transaction._active) {
+		if (!this.#transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
-		if (!this._indexNames.includes(name)) {
+		if (!this[kIndexNames].includes(name)) {
 			throw new DOMException(
 				`Index "${name}" not found on store "${this.name}"`,
 				"NotFoundError",
 			);
 		}
 		// Mark all existing index instances as deleted
-		for (const inst of this._indexInstances) {
+		for (const inst of this[kIndexInstances]) {
 			if (inst.name === name) {
-				inst._deleted = true;
+				inst[kDeleted] = true;
 			}
 		}
-		this.#transaction._backendTx.deleteIndex(this.name, name);
-		const idx = this._indexNames.indexOf(name);
+		this.#transaction[kBackendTx].deleteIndex(this.name, name);
+		const idx = this[kIndexNames].indexOf(name);
 		if (idx >= 0) {
-			this._indexNames.splice(idx, 1);
+			this[kIndexNames].splice(idx, 1);
 		}
 	}
 
@@ -599,25 +618,25 @@ export class IDBObjectStore {
 	 * Get an index by name.
 	 */
 	index(name: string): IDBIndex {
-		if (this._deleted) {
+		if (this[kDeleted]) {
 			throw InvalidStateError("Object store has been deleted");
 		}
-		if (this.#transaction._finished) {
+		if (this.#transaction[kFinished]) {
 			throw InvalidStateError("Transaction has finished");
 		}
 		// Check if index exists in the indexNames list
-		if (!this._indexNames.includes(name)) {
+		if (!this[kIndexNames].includes(name)) {
 			throw new DOMException(
 				`Index "${name}" not found on store "${this.name}"`,
 				"NotFoundError",
 			);
 		}
 		// Return cached instance if available (spec: same object identity)
-		const existing = this._indexInstances.find((i) => i.name === name);
+		const existing = this[kIndexInstances].find((i) => i.name === name);
 		if (existing) return existing;
 		// Get index metadata from the backend
 		const db = this.#transaction.db;
-		const dbMeta = db._connection.getMetadata();
+		const dbMeta = db[kConnection].getMetadata();
 		const indexes = dbMeta.indexes.get(this.name) || [];
 		const indexMeta = indexes.find((i: any) => i.name === name);
 		if (!indexMeta) {
@@ -627,26 +646,26 @@ export class IDBObjectStore {
 			);
 		}
 		const index = new IDBIndex(this.#transaction, this.name, indexMeta, this);
-		this._indexInstances.push(index);
+		this[kIndexInstances].push(index);
 		return index;
 	}
 
 	// ---- Private helpers ----
 
 	#checkActive(): void {
-		if (this._deleted) {
+		if (this[kDeleted]) {
 			throw InvalidStateError("Object store has been deleted");
 		}
-		if (!this.#transaction._active) {
+		if (!this.#transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 	}
 
 	#checkWritable(): void {
-		if (this._deleted) {
+		if (this[kDeleted]) {
 			throw InvalidStateError("Object store has been deleted");
 		}
-		if (!this.#transaction._active) {
+		if (!this.#transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 		if (
@@ -781,14 +800,14 @@ export class IDBObjectStore {
 		query: IDBValidKey | IDBKeyRange | null | undefined,
 	): KeyRangeSpec | undefined {
 		if (query === undefined || query === null) return undefined;
-		if (query instanceof IDBKeyRange) return query._toSpec();
+		if (query instanceof IDBKeyRange) return query[kToSpec]();
 		// Validate key synchronously — throws DataError for invalid keys
 		const key = encodeKey(validateKey(query));
 		return {lower: key, upper: key, lowerOpen: false, upperOpen: false};
 	}
 
 	#toDeleteRange(query: IDBValidKey | IDBKeyRange): KeyRangeSpec {
-		if (query instanceof IDBKeyRange) return query._toSpec();
+		if (query instanceof IDBKeyRange) return query[kToSpec]();
 		const key = encodeKey(validateKey(query));
 		return {lower: key, upper: key, lowerOpen: false, upperOpen: false};
 	}

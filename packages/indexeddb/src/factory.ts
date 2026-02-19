@@ -12,6 +12,31 @@ import {VersionError} from "./errors.js";
 import {validateKeyPath, encodeKey, validateKey, compareKeys} from "./key.js";
 import type {TransactionMode} from "./types.js";
 import {TransactionScheduler} from "./scheduler.js";
+import {
+	kResolve,
+	kReject,
+	kSetTransaction,
+	kResolveWithoutEvent,
+	kResolveWithVersionChange,
+	kFireUpgradeNeeded,
+	kFireBlocked,
+	kUpgradeTx,
+	kClosed,
+	kFinishClose,
+	kRefreshStoreNames,
+	kSetVersion,
+	kSetOnClose,
+	kParent,
+	kScope,
+	kActive,
+	kFinished,
+	kOnSyncAbort,
+	kScheduleAutoCommit,
+	kScheduleDeactivation,
+	kDeleted,
+	kIndexNames,
+	kIndexInstances,
+} from "./symbols.js";
 
 interface PendingRequest {
 	name: string;
@@ -93,7 +118,7 @@ export class IDBFactory {
 					);
 				}
 			} catch (error) {
-				entry.request._reject(
+				entry.request[kReject](
 					error instanceof DOMException
 						? error
 						: new DOMException(String(error), "UnknownError"),
@@ -169,7 +194,7 @@ export class IDBFactory {
 			this.#connections.set(name, new Set());
 		}
 		this.#connections.get(name)!.add(db);
-		db._setOnClose(() => {
+		db[kSetOnClose](() => {
 			this.#connections.get(name)?.delete(db);
 			queueMicrotask(() => this.#processPendingRequests(name));
 		});
@@ -183,7 +208,7 @@ export class IDBFactory {
 		const conns = this.#connections.get(name);
 		if (!conns) return false;
 		for (const c of conns) {
-			if (!c._closed) return true;
+			if (!c[kClosed]) return true;
 		}
 		return false;
 	}
@@ -202,7 +227,7 @@ export class IDBFactory {
 
 		// Fire versionchange on all open connections
 		for (const conn of [...conns]) {
-			if (!conn._closed) {
+			if (!conn[kClosed]) {
 				conn.dispatchEvent(
 					new IDBVersionChangeEvent("versionchange", {
 						oldVersion: conn.version,
@@ -224,7 +249,7 @@ export class IDBFactory {
 			// Only fire if the request hasn't been processed yet
 			// (e.g. connections may have closed before this fires)
 			if (this.#pendingRequests.indexOf(pendingEntry) >= 0) {
-				request._fireBlocked(oldVersion, newVersion);
+				request[kFireBlocked](oldVersion, newVersion);
 			}
 		});
 		return true;
@@ -249,7 +274,7 @@ export class IDBFactory {
 				);
 			}
 		} catch (error) {
-			pending.request._reject(
+			pending.request[kReject](
 				error instanceof DOMException
 					? error
 					: new DOMException(String(error), "UnknownError"),
@@ -311,7 +336,7 @@ export class IDBFactory {
 		this.#backend.deleteDatabase(name);
 		this.#schedulers.delete(name);
 		this.#connections.delete(name);
-		request._resolveWithVersionChange(undefined, oldVersion);
+		request[kResolveWithVersionChange](undefined, oldVersion);
 		onComplete?.();
 	}
 
@@ -363,7 +388,7 @@ export class IDBFactory {
 				backendTx,
 			);
 			// Set parent for event bubbling: transaction → database
-			transaction._parent = db;
+			transaction[kParent] = db;
 
 			// Track stores/indexes created and deleted during upgrade for abort revert
 			const createdStores = new Set<string>();
@@ -388,13 +413,13 @@ export class IDBFactory {
 				options?: IDBObjectStoreParameters,
 			) => {
 				// Spec order: upgrade tx null → InvalidStateError, then active check
-				if (!db._upgradeTx) {
+				if (!db[kUpgradeTx]) {
 					throw new DOMException(
 						"The database is not running a version change transaction",
 						"InvalidStateError",
 					);
 				}
-				if (!transaction._active) {
+				if (!transaction[kActive]) {
 					throw new DOMException(
 						"The transaction is not active",
 						"TransactionInactiveError",
@@ -438,10 +463,10 @@ export class IDBFactory {
 					autoIncrement,
 				};
 				backendTx.createObjectStore(meta);
-				db._refreshStoreNames();
+				db[kRefreshStoreNames]();
 				// Update transaction scope to include new store
-				if (!transaction._scope.includes(storeName)) {
-					transaction._scope.push(storeName);
+				if (!transaction[kScope].includes(storeName)) {
+					transaction[kScope].push(storeName);
 				}
 				createdStores.add(storeName);
 				deletedStores.delete(storeName);
@@ -453,13 +478,13 @@ export class IDBFactory {
 			const originalDeleteObjectStore = db.deleteObjectStore.bind(db);
 			db.deleteObjectStore = (storeName: string) => {
 				// Spec order: upgrade tx null → InvalidStateError, then active check
-				if (!db._upgradeTx) {
+				if (!db[kUpgradeTx]) {
 					throw new DOMException(
 						"The database is not running a version change transaction",
 						"InvalidStateError",
 					);
 				}
-				if (!transaction._active) {
+				if (!transaction[kActive]) {
 					throw new DOMException(
 						"The transaction is not active",
 						"TransactionInactiveError",
@@ -476,18 +501,18 @@ export class IDBFactory {
 				// clear indexNames, and mark index instances as deleted
 				for (const inst of storeInstances) {
 					if (inst.name === storeName) {
-						inst._deleted = true;
-						inst._indexNames.length = 0;
-						for (const idx of inst._indexInstances) {
-							idx._deleted = true;
+						inst[kDeleted] = true;
+						inst[kIndexNames].length = 0;
+						for (const idx of inst[kIndexInstances]) {
+							idx[kDeleted] = true;
 						}
 					}
 				}
 				backendTx.deleteObjectStore(storeName);
-				db._refreshStoreNames();
-				const idx = transaction._scope.indexOf(storeName);
+				db[kRefreshStoreNames]();
+				const idx = transaction[kScope].indexOf(storeName);
 				if (idx >= 0) {
-					transaction._scope.splice(idx, 1);
+					transaction[kScope].splice(idx, 1);
 				}
 				if (!createdStores.has(storeName)) {
 					deletedStores.add(storeName);
@@ -505,57 +530,57 @@ export class IDBFactory {
 
 			// Set the request result early so it's accessible in upgradeneeded
 			// (IDB spec says result is available during upgradeneeded)
-			(request as any)._resolveWithoutEvent(db);
+			(request as any)[kResolveWithoutEvent](db);
 
 			// Synchronous metadata revert — runs during abort() BEFORE
 			// the async abort event fires.  Ensures db.objectStoreNames,
-			// db.version, store._deleted etc. are correct immediately
+			// db.version, store[kDeleted] etc. are correct immediately
 			// after abort() returns.
-			transaction._onSyncAbort = () => {
+			transaction[kOnSyncAbort] = () => {
 				for (const inst of storeInstances) {
 					if (createdStores.has(inst.name)) {
-						inst._deleted = true;
-						inst._indexNames.length = 0;
-						for (const idx of inst._indexInstances) {
-							idx._deleted = true;
+						inst[kDeleted] = true;
+						inst[kIndexNames].length = 0;
+						for (const idx of inst[kIndexInstances]) {
+							idx[kDeleted] = true;
 						}
 					} else if (deletedStores.has(inst.name)) {
-						inst._deleted = false;
-						for (const idx of inst._indexInstances) {
-							idx._deleted = false;
+						inst[kDeleted] = false;
+						for (const idx of inst[kIndexInstances]) {
+							idx[kDeleted] = false;
 						}
 						const initial = initialIndexNames.get(inst.name) || [];
-						inst._indexNames.length = 0;
-						inst._indexNames.push(...initial);
+						inst[kIndexNames].length = 0;
+						inst[kIndexNames].push(...initial);
 					} else {
 						const initial = initialIndexNames.get(inst.name) || [];
-						for (const idx of inst._indexInstances) {
+						for (const idx of inst[kIndexInstances]) {
 							if (!initial.includes(idx.name)) {
-								idx._deleted = true;
-							} else if (!inst._indexNames.includes(idx.name)) {
-								idx._deleted = false;
+								idx[kDeleted] = true;
+							} else if (!inst[kIndexNames].includes(idx.name)) {
+								idx[kDeleted] = false;
 							}
 						}
-						inst._indexNames.length = 0;
-						inst._indexNames.push(...initial);
+						inst[kIndexNames].length = 0;
+						inst[kIndexNames].push(...initial);
 					}
 				}
 
 				// Revert scope to original store names
-				transaction._scope.length = 0;
-				transaction._scope.push(...storeNames);
+				transaction[kScope].length = 0;
+				transaction[kScope].push(...storeNames);
 				for (const s of deletedStores) {
-					if (!transaction._scope.includes(s)) {
-						transaction._scope.push(s);
+					if (!transaction[kScope].includes(s)) {
+						transaction[kScope].push(s);
 					}
 				}
 				for (const s of createdStores) {
-					const idx = transaction._scope.indexOf(s);
-					if (idx >= 0) transaction._scope.splice(idx, 1);
+					const idx = transaction[kScope].indexOf(s);
+					if (idx >= 0) transaction[kScope].splice(idx, 1);
 				}
 
-				db._refreshStoreNames();
-				db._setVersion(oldVersion);
+				db[kRefreshStoreNames]();
+				db[kSetVersion](oldVersion);
 
 				// Unregister and close connection, clean up database synchronously
 				// so databases() reflects the revert immediately.
@@ -572,13 +597,13 @@ export class IDBFactory {
 
 			// Abort event listener — handles async cleanup.  The abort
 			// event for versionchange fires as a macrotask (setTimeout
-			// in transaction.abort()), so db._upgradeTx and
+			// in transaction.abort()), so db[kUpgradeTx] and
 			// request.transaction remain set through abort() return and
 			// microtasks, matching spec timing.
 			transaction.addEventListener("abort", () => {
 				// Clear so abort-handler code sees InvalidStateError
 				// from createObjectStore (not TransactionInactiveError).
-				db._upgradeTx = null;
+				db[kUpgradeTx] = null;
 
 				const abortError = new DOMException(
 					"Version change transaction was aborted",
@@ -587,25 +612,25 @@ export class IDBFactory {
 				// Defer clearing request.transaction so other abort
 				// listeners still see it during dispatch.
 				queueMicrotask(() => {
-					request._setTransaction(null);
+					request[kSetTransaction](null);
 					db.createObjectStore = originalCreateObjectStore;
 					db.deleteObjectStore = originalDeleteObjectStore;
-					request._reject(abortError);
+					request[kReject](abortError);
 					onComplete?.();
 				});
 			});
 
 			// Register early complete listener BEFORE upgradeneeded so that
-			// db._upgradeTx is cleared before test-registered listeners fire.
+			// db[kUpgradeTx] is cleared before test-registered listeners fire.
 			// Spec: upgrade transaction reference is cleared before complete event.
 			transaction.addEventListener("complete", () => {
-				db._upgradeTx = null;
+				db[kUpgradeTx] = null;
 			});
 
 			// Fire upgradeneeded
-			db._upgradeTx = transaction;
-			request._setTransaction(transaction);
-			const upgradeHadError = request._fireUpgradeNeeded(
+			db[kUpgradeTx] = transaction;
+			request[kSetTransaction](transaction);
+			const upgradeHadError = request[kFireUpgradeNeeded](
 				oldVersion,
 				requestedVersion,
 			);
@@ -616,40 +641,40 @@ export class IDBFactory {
 			transaction.addEventListener("complete", () => {
 				db.createObjectStore = originalCreateObjectStore;
 				db.deleteObjectStore = originalDeleteObjectStore;
-				db._refreshStoreNames();
+				db[kRefreshStoreNames]();
 				connection.commitVersion();
-				request._setTransaction(null);
+				request[kSetTransaction](null);
 				// If db.close() was called during upgrade, finish closing
 				// the backend connection and fire error instead of success
-				if (db._closed) {
-					db._finishClose();
-					request._reject(
+				if (db[kClosed]) {
+					db[kFinishClose]();
+					request[kReject](
 						new DOMException(
 							"The connection was closed during upgrade",
 							"AbortError",
 						),
 					);
 				} else {
-					request._resolve(db);
+					request[kResolve](db);
 				}
 				onComplete?.();
 			});
 
 			// If an exception was thrown during upgradeneeded, abort the transaction
-			if (upgradeHadError && !transaction._finished) {
+			if (upgradeHadError && !transaction[kFinished]) {
 				transaction.abort();
 			}
 
 			// Schedule auto-commit (only if not already aborted/committed)
-			if (!transaction._finished) {
+			if (!transaction[kFinished]) {
 				// Spec: deactivate after the upgradeneeded task's microtask checkpoint
-				transaction._scheduleDeactivation();
-				transaction._scheduleAutoCommit();
+				transaction[kScheduleDeactivation]();
+				transaction[kScheduleAutoCommit]();
 			}
 		} else {
 			// No upgrade needed — ensure version is set on the backend
 			connection.setVersion(requestedVersion);
-			request._resolve(db);
+			request[kResolve](db);
 			onComplete?.();
 		}
 	}

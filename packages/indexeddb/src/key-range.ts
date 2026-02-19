@@ -4,6 +4,7 @@
 
 import {encodeKey, validateKey, compareKeys} from "./key.js";
 import {DataError} from "./errors.js";
+import {kToSpec} from "./symbols.js";
 import type {KeyRangeSpec, EncodedKey} from "./types.js";
 
 export class IDBKeyRange {
@@ -57,11 +58,10 @@ export class IDBKeyRange {
 			);
 		}
 		const encoded = encodeKey(validateKey(key));
-		return this._includesEncoded(encoded);
+		return this.#includesEncoded(encoded);
 	}
 
-	/** @internal */
-	_includesEncoded(encoded: EncodedKey): boolean {
+	#includesEncoded(encoded: EncodedKey): boolean {
 		if (this.#lowerEncoded) {
 			const cmp = compareKeys(encoded, this.#lowerEncoded);
 			if (this.lowerOpen ? cmp <= 0 : cmp < 0) return false;
@@ -74,7 +74,7 @@ export class IDBKeyRange {
 	}
 
 	/** @internal - Convert to backend spec */
-	_toSpec(): KeyRangeSpec {
+	[kToSpec](): KeyRangeSpec {
 		return {
 			lower: this.#lowerEncoded,
 			upper: this.#upperEncoded,

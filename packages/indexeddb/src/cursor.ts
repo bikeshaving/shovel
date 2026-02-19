@@ -6,7 +6,7 @@
  * value decoding, and event integration (continue/advance fire success events).
  */
 
-import {type IDBTransaction, kHoldOpen, kRelease} from "./transaction.js";
+import type {IDBTransaction} from "./transaction.js";
 import {IDBRequest} from "./request.js";
 import {
 	encodeKey,
@@ -24,6 +24,18 @@ import {
 	ReadOnlyError,
 } from "./errors.js";
 import type {IDBBackendCursor} from "./backend.js";
+import {
+	kActive,
+	kAborted,
+	kDeleted,
+	kExecuteRequest,
+	kHoldOpen,
+	kReject,
+	kRelease,
+	kResolve,
+	kScheduleDeactivation,
+	kSetSource,
+} from "./symbols.js";
 
 /**
  * IDBCursor — iterates over records without values.
@@ -105,12 +117,12 @@ export class IDBCursor {
 	}
 
 	continue(key?: IDBValidKey): void {
-		if (!this._transaction._active) {
+		if (!this._transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 		if (
-			this._source._deleted ||
-			(this._source.objectStore && this._source.objectStore._deleted)
+			this._source[kDeleted] ||
+			(this._source.objectStore && this._source.objectStore[kDeleted])
 		) {
 			throw InvalidStateError(
 				"The cursor's source or effective object store has been deleted",
@@ -172,16 +184,16 @@ export class IDBCursor {
 			this._primaryKeySnapshot = null;
 			this._clearKeyCache();
 			this._clearValueSnapshot();
-			if (this._transaction._aborted) {
-				this._request._reject(AbortError("Transaction was aborted"));
+			if (this._transaction[kAborted]) {
+				this._request[kReject](AbortError("Transaction was aborted"));
 				this._transaction[kRelease]();
 				return;
 			}
 			if (found) this._gotValue = true;
 			// Spec: transaction is active during event dispatch
-			this._transaction._active = true;
-			this._request._resolve(found ? this : null);
-			this._transaction._scheduleDeactivation();
+			this._transaction[kActive] = true;
+			this._request[kResolve](found ? this : null);
+			this._transaction[kScheduleDeactivation]();
 			this._transaction[kRelease]();
 		});
 	}
@@ -193,12 +205,12 @@ export class IDBCursor {
 				"Failed to execute 'advance' on 'IDBCursor': A count argument with value 0 (zero) was specified, must be greater than 0.",
 			);
 		}
-		if (!this._transaction._active) {
+		if (!this._transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 		if (
-			this._source._deleted ||
-			(this._source.objectStore && this._source.objectStore._deleted)
+			this._source[kDeleted] ||
+			(this._source.objectStore && this._source.objectStore[kDeleted])
 		) {
 			throw InvalidStateError(
 				"The cursor's source or effective object store has been deleted",
@@ -223,28 +235,28 @@ export class IDBCursor {
 			this._primaryKeySnapshot = null;
 			this._clearKeyCache();
 			this._clearValueSnapshot();
-			if (this._transaction._aborted) {
-				this._request._reject(AbortError("Transaction was aborted"));
+			if (this._transaction[kAborted]) {
+				this._request[kReject](AbortError("Transaction was aborted"));
 				this._transaction[kRelease]();
 				return;
 			}
 			if (advanced) this._gotValue = true;
 			// Spec: transaction is active during event dispatch
-			this._transaction._active = true;
-			this._request._resolve(advanced ? this : null);
-			this._transaction._scheduleDeactivation();
+			this._transaction[kActive] = true;
+			this._request[kResolve](advanced ? this : null);
+			this._transaction[kScheduleDeactivation]();
 			this._transaction[kRelease]();
 		});
 	}
 
 	continuePrimaryKey(key: IDBValidKey, primaryKey: IDBValidKey): void {
 		// Spec order: transaction active → deleted → source type → direction → gotValue → key validation
-		if (!this._transaction._active) {
+		if (!this._transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 		if (
-			this._source._deleted ||
-			(this._source.objectStore && this._source.objectStore._deleted)
+			this._source[kDeleted] ||
+			(this._source.objectStore && this._source.objectStore[kDeleted])
 		) {
 			throw InvalidStateError(
 				"The cursor's source or effective object store has been deleted",
@@ -327,16 +339,16 @@ export class IDBCursor {
 			this._primaryKeySnapshot = null;
 			this._clearKeyCache();
 			this._clearValueSnapshot();
-			if (this._transaction._aborted) {
-				this._request._reject(AbortError("Transaction was aborted"));
+			if (this._transaction[kAborted]) {
+				this._request[kReject](AbortError("Transaction was aborted"));
 				this._transaction[kRelease]();
 				return;
 			}
 			if (found) this._gotValue = true;
 			// Spec: transaction is active during event dispatch
-			this._transaction._active = true;
-			this._request._resolve(found ? this : null);
-			this._transaction._scheduleDeactivation();
+			this._transaction[kActive] = true;
+			this._request[kResolve](found ? this : null);
+			this._transaction[kScheduleDeactivation]();
 			this._transaction[kRelease]();
 		});
 	}
@@ -359,12 +371,12 @@ export class IDBCursor {
 
 	delete(): IDBRequest {
 		// Spec order: transaction active → deleted → read-only → key-only → gotValue
-		if (!this._transaction._active) {
+		if (!this._transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 		if (
-			this._source._deleted ||
-			(this._source.objectStore && this._source.objectStore._deleted)
+			this._source[kDeleted] ||
+			(this._source.objectStore && this._source.objectStore[kDeleted])
 		) {
 			throw InvalidStateError(
 				"The cursor's source or effective object store has been deleted",
@@ -385,11 +397,11 @@ export class IDBCursor {
 			throw InvalidStateError("Cursor is not pointing at a value");
 		}
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 		const primaryKey = this._backendCursor.primaryKey;
 		const storeName = this._getEffectiveStoreName();
 
-		return this._transaction._executeRequest(request, (tx) => {
+		return this._transaction[kExecuteRequest](request, (tx) => {
 			tx.delete(storeName, {
 				lower: primaryKey,
 				upper: primaryKey,
@@ -407,12 +419,12 @@ export class IDBCursor {
 			);
 		}
 		// Spec order: transaction active → deleted → read-only → key-only → gotValue → key validation
-		if (!this._transaction._active) {
+		if (!this._transaction[kActive]) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 		if (
-			this._source._deleted ||
-			(this._source.objectStore && this._source.objectStore._deleted)
+			this._source[kDeleted] ||
+			(this._source.objectStore && this._source.objectStore[kDeleted])
 		) {
 			throw InvalidStateError(
 				"The cursor's source or effective object store has been deleted",
@@ -433,12 +445,12 @@ export class IDBCursor {
 			throw InvalidStateError("Cursor is not pointing at a value");
 		}
 		// Spec: transaction is inactive during structured clone
-		this._transaction._active = false;
+		this._transaction[kActive] = false;
 		let clonedValue: any;
 		try {
 			clonedValue = structuredClone(value);
 		} finally {
-			this._transaction._active = true;
+			this._transaction[kActive] = true;
 		}
 		const effectiveStore = this._source.objectStore || this._source;
 		if (effectiveStore.keyPath !== null) {
@@ -465,12 +477,12 @@ export class IDBCursor {
 			}
 		}
 		const request = new IDBRequest();
-		request._setSource(this);
+		request[kSetSource](this);
 		const primaryKey = this._backendCursor.primaryKey;
 		const storeName = this._getEffectiveStoreName();
 		const encodedValue = encodeValue(clonedValue);
 
-		return this._transaction._executeRequest(request, (tx) => {
+		return this._transaction[kExecuteRequest](request, (tx) => {
 			tx.put(storeName, primaryKey, encodedValue);
 			return decodeKey(primaryKey);
 		});

@@ -4,6 +4,18 @@
 
 import {SafeEventTarget} from "./event-target.js";
 import {IDBVersionChangeEvent} from "./events.js";
+import {
+	kSetSource,
+	kSetTransaction,
+	kResolveWithoutEvent,
+	kResolveRaw,
+	kResolve,
+	kReject,
+	kLastDispatchHadError,
+	kResolveWithVersionChange,
+	kFireUpgradeNeeded,
+	kFireBlocked,
+} from "./symbols.js";
 
 export type IDBRequestReadyState = "pending" | "done";
 
@@ -29,7 +41,7 @@ export class IDBRequest extends SafeEventTarget {
 		this.#transaction = null;
 		this.#onsuccessHandler = null;
 		this.#onerrorHandler = null;
-		this._lastDispatchHadError = false;
+		this[kLastDispatchHadError] = false;
 	}
 
 	get [Symbol.toStringTag](): string {
@@ -95,24 +107,24 @@ export class IDBRequest extends SafeEventTarget {
 	}
 
 	/** @internal */
-	_setSource(source: any): void {
+	[kSetSource](source: any): void {
 		this.#source = source;
 	}
 
 	/** @internal */
-	_setTransaction(txn: any): void {
+	[kSetTransaction](txn: any): void {
 		this.#transaction = txn;
 	}
 
 	/** @internal - Set result without firing events (for upgradeneeded) */
-	_resolveWithoutEvent(result: any): void {
+	[kResolveWithoutEvent](result: any): void {
 		this.#readyState = "done";
 		this.#result = result;
 		this.#error = null;
 	}
 
 	/** @internal - Set result without firing events (base for subclass event dispatch) */
-	_resolveRaw(result: any): void {
+	[kResolveRaw](result: any): void {
 		this.#readyState = "done";
 		this.#result = result;
 		this.#error = null;
@@ -120,7 +132,7 @@ export class IDBRequest extends SafeEventTarget {
 
 	/** @internal - Resolve the request with a result.
 	 * Returns true if an exception was thrown during dispatch. */
-	_resolve(result: any): boolean {
+	[kResolve](result: any): boolean {
 		// Guard: if already rejected (e.g., abort handler fired first), skip
 		if (this.#error !== null) return false;
 		this.#readyState = "done";
@@ -131,19 +143,19 @@ export class IDBRequest extends SafeEventTarget {
 	}
 
 	/** @internal - true if the last dispatch had an exception thrown in a handler */
-	_lastDispatchHadError!: boolean;
+	[kLastDispatchHadError]!: boolean;
 
 	/** @internal - Reject the request with an error.
 	 * Returns true if preventDefault() was called and no exception was thrown. */
-	_reject(error: DOMException): boolean {
+	[kReject](error: DOMException): boolean {
 		this.#readyState = "done";
 		this.#error = error;
 		this.#result = undefined;
 		const event = new Event("error", {bubbles: true, cancelable: true});
 		this.dispatchEvent(event);
-		this._lastDispatchHadError = !!(event as any)._dispatchHadError;
+		this[kLastDispatchHadError] = !!(event as any)._dispatchHadError;
 		// Spec: if an exception was thrown during dispatch, treat as not prevented
-		if (this._lastDispatchHadError) return false;
+		if (this[kLastDispatchHadError]) return false;
 		return event.defaultPrevented;
 	}
 }
@@ -195,8 +207,8 @@ export class IDBOpenDBRequest extends IDBRequest {
 	}
 
 	/** @internal - Resolve with IDBVersionChangeEvent (for deleteDatabase success) */
-	_resolveWithVersionChange(result: any, oldVersion: number): void {
-		(this as any)._resolveRaw(result);
+	[kResolveWithVersionChange](result: any, oldVersion: number): void {
+		(this as any)[kResolveRaw](result);
 		this.dispatchEvent(
 			new IDBVersionChangeEvent("success", {
 				oldVersion,
@@ -206,7 +218,7 @@ export class IDBOpenDBRequest extends IDBRequest {
 	}
 
 	/** @internal - Returns true if an exception was thrown during dispatch. */
-	_fireUpgradeNeeded(oldVersion: number, newVersion: number): boolean {
+	[kFireUpgradeNeeded](oldVersion: number, newVersion: number): boolean {
 		const event = new IDBVersionChangeEvent("upgradeneeded", {
 			oldVersion,
 			newVersion,
@@ -216,7 +228,7 @@ export class IDBOpenDBRequest extends IDBRequest {
 	}
 
 	/** @internal */
-	_fireBlocked(oldVersion: number, newVersion: number | null): void {
+	[kFireBlocked](oldVersion: number, newVersion: number | null): void {
 		this.dispatchEvent(
 			new IDBVersionChangeEvent("blocked", {
 				oldVersion,
