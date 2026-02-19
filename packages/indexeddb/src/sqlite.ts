@@ -50,18 +50,21 @@ interface SQLiteStatement {
 
 let _DatabaseCtor: new (path: string) => any;
 let _usePrepare = false;
-let _driverLoaded = false;
+let _driverPromise: Promise<void> | undefined;
 
-async function loadDriver(): Promise<void> {
-	if (_driverLoaded) return;
-	try {
-		_DatabaseCtor = (await import("bun:sqlite")).Database;
-	} catch (_) {
-		// @ts-expect-error -- better-sqlite3 is an optional peer dependency
-		_DatabaseCtor = (await import("better-sqlite3")).default;
-		_usePrepare = true;
+function loadDriver(): Promise<void> {
+	if (!_driverPromise) {
+		_driverPromise = (async () => {
+			try {
+				_DatabaseCtor = (await import("bun:sqlite")).Database;
+			} catch (_) {
+				// @ts-expect-error -- better-sqlite3 is an optional peer dependency
+				_DatabaseCtor = (await import("better-sqlite3")).default;
+				_usePrepare = true;
+			}
+		})();
 	}
-	_driverLoaded = true;
+	return _driverPromise;
 }
 
 function openDatabase(path: string): SQLiteDB {
