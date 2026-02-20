@@ -307,7 +307,7 @@
         "@b9g/platform": "workspace:*",
         "@b9g/platform-bun": "workspace:*",
         "@b9g/router": "workspace:*",
-        "@b9g/shovel": "link:@b9g/shovel",
+        "@b9g/shovel": "^0.2.8",
         "@emotion/css": "^11.13.5",
         "@emotion/server": "^11.11.0",
         "front-matter": "^4.0.2",
@@ -1330,7 +1330,7 @@
 
     "shovel-website/@b9g/crank": ["@b9g/crank@0.7.5", "", {}, "sha512-tG82HhWizXZWVS2XZAElQ7/h31BrDoLh1N92M2JB8AOojc4xSHjZB2883ej9K7tbC3OnfA5dMp9IulJG1nrnBQ=="],
 
-    "shovel-website/@b9g/shovel": ["@b9g/shovel@link:@b9g/shovel", { "bin": { "shovel": "./dist/bin/cli.js", "create-shovel": "./dist/bin/create.js", "cli": "./dist/bin/cli.js", "create": "./dist/bin/create.js" } }],
+    "shovel-website/@b9g/shovel": ["@b9g/shovel@0.2.8", "", { "dependencies": { "@b9g/async-context": "^0.2.1", "@b9g/cache": "^0.2.2", "@b9g/filesystem": "^0.1.11", "@b9g/http-errors": "^0.2.1", "@b9g/node-webworker": "^0.2.1", "@b9g/platform": "^0.1.17", "@b9g/platform-bun": "^0.1.16", "@b9g/platform-cloudflare": "^0.1.15", "@b9g/platform-node": "^0.1.17", "@clack/prompts": "^0.7.0", "@esbuild-plugins/node-globals-polyfill": "^0.2.3", "@esbuild-plugins/node-modules-polyfill": "^0.2.2", "@logtape/logtape": "^1.2.0", "commander": "^13.1.0", "esbuild": "^0.27.2", "mime": "^4.0.4", "zod": "^3.23.0" }, "bin": { "shovel": "bin/cli.js", "create-shovel": "bin/create.js", "cli": "bin/cli.js", "create": "bin/create.js" } }, "sha512-7WkAiTh+Q/q2j/q4zR/WenrunEQ2QEjOpS2bL2F8Jgc5jPXOzy4QszBeCR0apBTPlCoqtIJhQUm7YhcqBDjHFA=="],
 
     "strip-outer/escape-string-regexp": ["escape-string-regexp@1.0.5", "", {}, "sha512-vbRorB5FUQWvla16U8R/qgaFIya2qGzwDrNmCZuYKrbdSUMG6I1ZCGQRefkRVhuOkIGVne7BQ35DSfo1qvJqFg=="],
 
@@ -1409,6 +1409,10 @@
     "pkg-dir/find-up/locate-path": ["locate-path@5.0.0", "", { "dependencies": { "p-locate": "^4.1.0" } }, "sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g=="],
 
     "shovel-echo/@types/node/undici-types": ["undici-types@5.26.5", "", {}, "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="],
+
+    "shovel-website/@b9g/shovel/@b9g/filesystem": ["@b9g/filesystem@0.1.11", "", { "dependencies": { "mime": "^4.0.4" }, "peerDependencies": { "@types/node": "^18.0.0" }, "optionalPeers": ["@types/node"] }, "sha512-+c3t4i6+qPOXSgWeVskhx7W3EUUpvL09CVWpausNNUCe6rSsVJTvpGCTEEGNOairjuvO63LSP0drhAoSauQbOg=="],
+
+    "shovel-website/@b9g/shovel/@logtape/logtape": ["@logtape/logtape@1.2.0", "", {}, "sha512-L7aXBYrxpSUQcsZm/hCuh5REN+dckxmPmH7x7eCROiLAHUSPzc7AhbsxsZLDsXMM4ggtbmS3sUQVa+blfF4sZA=="],
 
     "wrangler/esbuild/@esbuild/android-arm": ["@esbuild/android-arm@0.17.19", "", { "os": "android", "cpu": "arm" }, "sha512-rIKddzqhmav7MSmoFCmDIb6e2W57geRsM94gV2l38fzhXMwq7hZoClug9USI2pFRGL06f4IOPHHpFNOkWieR8A=="],
 
