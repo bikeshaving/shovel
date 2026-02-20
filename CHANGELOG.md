@@ -2,6 +2,28 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.9] - 2026-02-20
+
+### Features
+
+- **Dev server Ctrl+O** - Open the dev server URL in the default browser with `Ctrl+O`
+- **Dev server signal handling** - `Ctrl+Z` (suspend), `Ctrl+D` (quit), `Ctrl+\` (quit) now work correctly in raw mode instead of being silently swallowed
+- **Dev server input passthrough** - Typing, Enter, and Backspace now echo to stdout instead of being dropped
+
+### Dependencies
+
+- **`@logtape/logtape`** `^1.2.0` → `^2.0.0` across all packages
+- **`@logtape/file`** `^1.0.0` → `^2.0.0`
+- **`@b9g/filesystem`** `0.2.0` - Version bump
+- **`@b9g/filesystem-s3`** `0.2.0` - Version bump
+
+### Documentation
+
+- **`@b9g/filesystem` README rewritten** - All class names were fabricated in the previous README. Corrected to match actual exports: `MemoryDirectory`, `NodeFSDirectory`, `S3Directory`, `CustomDirectoryStorage`
+- Fixed inaccurate config options in `@b9g/assets` README
+- Fixed `PostMessageCache` constructor signature in `@b9g/cache` README
+- Fixed import paths in `@b9g/oauth2` README (`@b9g/auth` → `@b9g/oauth2`)
+
 ## [0.2.8] - 2026-02-10
 
 ### Bug Fixes
