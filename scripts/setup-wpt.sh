@@ -16,7 +16,8 @@ if [ ! -d "$ROOT/.git" ]; then
 fi
 
 # Skip if already checked out with the right files
-if [ -f "$WPT_FULL/fs/script-tests/FileSystemDirectoryHandle-getFileHandle.js" ]; then
+if [ -f "$WPT_FULL/fs/script-tests/FileSystemDirectoryHandle-getFileHandle.js" ] \
+   && [ -f "$WPT_FULL/IndexedDB/abort-in-initial-upgradeneeded.any.js" ]; then
   exit 0
 fi
 
@@ -36,7 +37,7 @@ git clone --no-checkout --depth=1 \
 
 # Configure sparse checkout — only pull what we need
 git -C "$WPT_FULL" sparse-checkout set --no-cone \
-  '/*' '!/*/' '/FileAPI/' '/cookiestore/' '/fs/' '/resources/'
+  '/*' '!/*/' '/FileAPI/' '/IndexedDB/' '/cookiestore/' '/fs/' '/resources/'
 
 # Move .git into parent repo's modules dir
 git -C "$ROOT" submodule absorbgitdirs "$WPT_PATH"
@@ -44,4 +45,4 @@ git -C "$ROOT" submodule absorbgitdirs "$WPT_PATH"
 # Fetch and checkout the pinned commit (respects sparse checkout)
 git -C "$ROOT" submodule update --force "$WPT_PATH"
 
-echo "WPT submodule ready (sparse: FileAPI, cookiestore, fs, resources)"
+echo "WPT submodule ready (sparse: FileAPI, IndexedDB, cookiestore, fs, resources)"

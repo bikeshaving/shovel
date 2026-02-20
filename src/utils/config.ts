@@ -1201,6 +1201,7 @@ export function generateConfigModule(
 				string,
 				{module: string; export?: string; [key: string]: unknown}
 			>;
+			indexedDB?: {module: string; export?: string; [key: string]: unknown};
 		};
 		/** Lifecycle options for --lifecycle flag */
 		lifecycle?: {
@@ -1231,7 +1232,7 @@ export function generateConfigModule(
 	function processModule(
 		modulePath: string | undefined,
 		exportName: string | undefined,
-		type: "cache" | "directory" | "sink" | "database",
+		type: "cache" | "directory" | "sink" | "database" | "indexeddb",
 		name: string,
 	): string | null {
 		if (!modulePath) return null;
@@ -1289,7 +1290,7 @@ export function generateConfigModule(
 	// Replaces module/export with `impl` (the reified function/class)
 	function reifyModule<T extends {module?: string; export?: string}>(
 		config: T,
-		type: "cache" | "directory" | "sink" | "database",
+		type: "cache" | "directory" | "sink" | "database" | "indexeddb",
 		name: string,
 	): Omit<T, "module" | "export"> & {impl?: string} {
 		const {module: modulePath, export: exportName, ...rest} = config;
@@ -1427,6 +1428,21 @@ export function generateConfigModule(
 				databases[name] = reifyModule(dbConfig, "database", name);
 			}
 			config.databases = databases;
+		}
+
+		// IndexedDB - merge platform defaults with user config
+		const platformIndexedDB = platformDefaults.indexedDB;
+		const userIndexedDB = rawConfig.indexedDB;
+		const mergedIndexedDB = {
+			...(platformIndexedDB || {}),
+			...(userIndexedDB || {}),
+		};
+		if (mergedIndexedDB.module) {
+			config.indexedDB = reifyModule(
+				mergedIndexedDB as any,
+				"indexeddb",
+				"indexedDB",
+			);
 		}
 
 		// Lifecycle options (for --lifecycle flag)
@@ -1635,6 +1651,20 @@ export const BuildConfigSchema = z
 
 export type BuildConfig = z.infer<typeof BuildConfigSchema>;
 
+/** IndexedDB configuration schema */
+export const IndexedDBConfigSchema = z
+	.object({
+		/** Module providing the IDBBackend implementation */
+		module: z.string().optional(),
+		/** Named export (defaults to "default") */
+		export: z.string().optional(),
+		/** Path for file-based backends (e.g., SQLite) */
+		path: z.string().optional(),
+	})
+	.passthrough();
+
+export type IndexedDBConfig = z.infer<typeof IndexedDBConfigSchema>;
+
 /** Main Shovel configuration schema */
 export const ShovelConfigSchema = z
 	.object({
@@ -1647,6 +1677,7 @@ export const ShovelConfigSchema = z
 		caches: z.record(z.string(), CacheConfigSchema).optional(),
 		directories: z.record(z.string(), DirectoryConfigSchema).optional(),
 		databases: z.record(z.string(), DatabaseConfigSchema).optional(),
+		indexedDB: IndexedDBConfigSchema.optional(),
 	})
 	.strict();
 

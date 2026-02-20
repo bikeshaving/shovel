@@ -183,6 +183,10 @@
         "@b9g/libuild": "^0.1.18",
       },
     },
+    "packages/indexeddb": {
+      "name": "@b9g/indexeddb",
+      "version": "0.1.0",
+    },
     "packages/match-pattern": {
       "name": "@b9g/match-pattern",
       "version": "0.2.1",
@@ -226,9 +230,11 @@
         "@b9g/platform-node": "workspace:*",
       },
       "peerDependencies": {
+        "@b9g/indexeddb": "workspace:*",
         "@b9g/zen": "^0.1.6",
       },
       "optionalPeers": [
+        "@b9g/indexeddb",
         "@b9g/zen",
       ],
     },
@@ -417,6 +423,8 @@
     "@b9g/filesystem-s3": ["@b9g/filesystem-s3@workspace:packages/filesystem-s3"],
 
     "@b9g/http-errors": ["@b9g/http-errors@workspace:packages/http-errors"],
+
+    "@b9g/indexeddb": ["@b9g/indexeddb@workspace:packages/indexeddb"],
 
     "@b9g/libuild": ["@b9g/libuild@0.1.22", "", { "dependencies": { "esbuild": "^0.19.0" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"], "bin": { "libuild": "src/cli.js" } }, "sha512-OlaRCqg7QIrMC4S4fPHZ6JkAmCoAKF+spiMEDqtm6AgUHVoRJbAyhNORKkthfcHg3eNTKUmRrEToF/E5UjrHVQ=="],
 
