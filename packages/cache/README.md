@@ -164,8 +164,7 @@ Worker-side cache that coordinates with main thread via PostMessage:
 import {PostMessageCache} from '@b9g/cache/postmessage';
 
 // In worker thread - forwards operations to main thread
-const cache = new PostMessageCache({
-  name: 'shared',
+const cache = new PostMessageCache('shared', {
   timeout: 30000, // Optional, defaults to 30000ms
 });
 

@@ -22,7 +22,6 @@ const router = new Router();
 // public/favicon.ico → /favicon.ico
 // public/assets/app-abc123.js → /assets/app-abc123.js
 router.use(assets({
-  manifestPath: 'assets.json',  // default
   cacheControl: 'public, max-age=31536000, immutable'  // default
 }));
 ```

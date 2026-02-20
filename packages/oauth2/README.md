@@ -19,21 +19,21 @@ WORK IN PROGRESS (do not use)
 ## Installation
 
 ```bash
-npm i @b9g/auth @b9g/router
+npm i @b9g/oauth2 @b9g/router
 ```
 
 ## Quick Start
 
 ```typescript
 import {Router} from "@b9g/router";
-import {OAuth2Client} from "@b9g/auth/oauth2";
-import {createProviderConfig, fetchUserInfo} from "@b9g/auth/providers";
+import {OAuth2Client} from "@b9g/oauth2/oauth2";
+import {createProviderConfig, fetchUserInfo} from "@b9g/oauth2/providers";
 import {
   redirectToProvider,
   handleCallback,
   requireAuth,
   createSession,
-} from "@b9g/auth/middleware";
+} from "@b9g/oauth2/middleware";
 
 // Create OAuth2 client with GitHub preset
 const config = createProviderConfig("github", {
@@ -92,9 +92,6 @@ self.addEventListener("fetch", (event) => {
 
 ### Functions
 
-#### CORS
-- `cors(options?)` - CORS middleware for cross-origin requests
-
 #### OAuth2 Flow
 - `redirectToProvider(client)` - Middleware to start OAuth2 flow
 - `handleCallback(client, options)` - Middleware to handle OAuth2 callback
@@ -128,7 +125,7 @@ self.addEventListener("fetch", (event) => {
 ### CORS
 
 ```typescript
-import {cors} from "@b9g/auth/middleware";
+import {cors} from "@b9g/router/middleware";
 
 // Allow all origins
 router.use(cors());
@@ -177,7 +174,7 @@ const client = new OAuth2Client({
 Built-in presets for popular providers:
 
 ```typescript
-import {createProviderConfig} from "@b9g/auth/providers";
+import {createProviderConfig} from "@b9g/oauth2/providers";
 
 // GitHub
 const github = createProviderConfig("github", {
