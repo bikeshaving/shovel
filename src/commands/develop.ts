@@ -5,6 +5,7 @@ import type {ProcessedShovelConfig} from "../utils/config.js";
 import {ServerBundler} from "../utils/bundler.js";
 import {loadPlatformModule} from "../utils/platform.js";
 import {networkInterfaces} from "os";
+import {exec} from "child_process";
 
 const logger = getLogger(["shovel", "develop"]);
 
@@ -95,8 +96,9 @@ export async function developCommand(
 			ReturnType<typeof platformModule.createDevServer>
 		> | null = null;
 
+		const localUrl = `http://localhost:${port}`;
 		const SHORTCUTS_HELP =
-			"Shortcuts: Ctrl+R (reload) · Ctrl+L (clear) · Ctrl+C (quit) · ? (help)";
+			"Ctrl+R (reload) · Ctrl+L (clear) · Ctrl+O (open) · Ctrl+C (quit) · ? (help)";
 
 		// Helper to start or reload the server
 		const startOrReloadServer = async (workerPath: string) => {
@@ -176,6 +178,11 @@ export async function developCommand(
 			process.stdin.resume();
 			process.stdin.setEncoding("utf8");
 
+			process.on("SIGCONT", () => {
+				process.stdin.setRawMode(true);
+				process.stdin.resume();
+			});
+
 			process.stdin.on("data", async (key: string) => {
 				switch (key) {
 					case "\x12": // Ctrl+R
@@ -189,6 +196,27 @@ export async function developCommand(
 					case "\x03": // Ctrl+C
 						await shutdown("SIGINT");
 						break;
+					case "\x1A": // Ctrl+Z — suspend
+						process.stdin.setRawMode(false);
+						process.kill(process.pid, "SIGTSTP");
+						break;
+					case "\x1C": // Ctrl+\ — quit
+						await shutdown("SIGQUIT");
+						break;
+					case "\x04": // Ctrl+D — quit
+						await shutdown("SIGINT");
+						break;
+					case "\x0F": {
+						// Ctrl+O — open in browser
+						const cmd =
+							process.platform === "win32"
+								? "start"
+								: process.platform === "darwin"
+									? "open"
+									: "xdg-open";
+						exec(`${cmd} ${localUrl}`);
+						break;
+					}
 					case "?":
 						logger.info(SHORTCUTS_HELP);
 						break;
