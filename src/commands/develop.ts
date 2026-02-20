@@ -98,7 +98,7 @@ export async function developCommand(
 
 		const localUrl = `http://localhost:${port}`;
 		const SHORTCUTS_HELP =
-			"Ctrl+R (reload) · Ctrl+L (clear) · Ctrl+O (open) · Ctrl+C (quit) · ? (help)";
+			"Ctrl+R (reload) Ctrl+O (open) Ctrl+C (quit) ? (help)";
 
 		// Helper to start or reload the server
 		const startOrReloadServer = async (workerPath: string) => {
@@ -217,6 +217,12 @@ export async function developCommand(
 						exec(`${cmd} ${localUrl}`);
 						break;
 					}
+					case "\r": // Enter
+						process.stdout.write("\n");
+						break;
+					case "\x7F": // Backspace
+						process.stdout.write("\b \b");
+						break;
 					case "?":
 						logger.info(SHORTCUTS_HELP);
 						break;

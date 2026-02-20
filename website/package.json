@@ -16,7 +16,7 @@
     "@b9g/platform": "workspace:*",
     "@b9g/platform-bun": "workspace:*",
     "@b9g/router": "workspace:*",
-    "@b9g/shovel": "^0.2.8",
+    "@b9g/shovel": "link:@b9g/shovel",
     "@emotion/css": "^11.13.5",
     "@emotion/server": "^11.11.0",
     "front-matter": "^4.0.2",
