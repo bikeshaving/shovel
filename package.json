@@ -1,6 +1,6 @@
 {
   "name": "@b9g/shovel",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "ServiceWorker-first universal deployment platform. Write ServiceWorker apps once, deploy anywhere (Node/Bun/Cloudflare). Registry-based multi-app orchestration.",
   "license": "MIT",
   "repository": {
