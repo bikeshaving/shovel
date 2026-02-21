@@ -1,9 +1,12 @@
 {
   "name": "create-shovel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Create a new Shovel project",
+  "license": "MIT",
   "type": "module",
-  "bin": "./index.js",
+  "bin": {
+    "create-shovel": "./index.js"
+  },
   "files": [
     "index.js"
   ],
@@ -11,14 +14,16 @@
     "shovel",
     "create",
     "scaffold",
-    "serviceworker"
+    "serviceworker",
+    "starter",
+    "template"
   ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bikeshaving/shovel.git",
     "directory": "packages/create-shovel"
   },
-  "license": "MIT",
+  "homepage": "https://github.com/bikeshaving/shovel",
   "dependencies": {
     "@b9g/shovel": "^0.2.0"
   }
