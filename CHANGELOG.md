@@ -2,6 +2,25 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.11] - 2026-02-21
+
+### Features
+
+- **Crank JSX / tagged template choice** - `create-shovel` now prompts "Use JSX?" when Crank is selected. Choose JSX (`.tsx`) or tagged template literals (`.ts`, no build step)
+- **Multi-file Crank templates** - Crank projects generate `server.{ext}` + `components.{ext}` with `@b9g/router` for route-based request handling
+- **`--framework` and `--jsx` CLI flags** - `create-shovel --framework crank --no-jsx` skips prompts for CI/scripting
+- **ESLint config for Crank projects** - Generates `eslint.config.js` with flat config format
+- **Bun-aware next steps** - Post-scaffold instructions show `bun install` / `bun run develop` when bun platform is selected
+
+### Bug Fixes
+
+- **Broken bin exports in published package** - Upgraded to `@b9g/libuild@0.1.24` which fixes `./dist/bin/` → `./bin/` rewriting in the exports map. `import "@b9g/shovel/bin/create.js"` now resolves correctly when installed from npm
+- **Removed redundant `env.d.ts`** - `@b9g/platform` already ships `globals.d.ts`; scaffolded projects now use `"types": ["@b9g/platform/globals"]` in tsconfig instead
+
+### Dependencies
+
+- **`@b9g/libuild`** `^0.1.22` → `^0.1.24`
+
 ## [0.2.9] - 2026-02-20
 
 ### Features
