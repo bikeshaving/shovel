@@ -310,11 +310,12 @@ async function main() {
 		console.info("");
 		outro("Your project is shovel-ready!");
 
+		const pm = platform === "bun" ? "bun" : "npm";
 		console.info("");
 		console.info("Next steps:");
 		console.info(`  cd ${projectName}`);
-		console.info(`  npm install`);
-		console.info(`  npm run develop`);
+		console.info(`  ${pm} install`);
+		console.info(`  ${pm} run develop`);
 		console.info("");
 		console.info("Your app will be available at: http://localhost:7777");
 		console.info("");
