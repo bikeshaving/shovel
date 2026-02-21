@@ -13,6 +13,7 @@ interface ProjectConfig {
 	template: "hello-world" | "api" | "static-site" | "full-stack";
 	typescript: boolean;
 	uiFramework: "vanilla" | "htmx" | "alpine" | "crank";
+	useJSX: boolean;
 }
 
 /**
@@ -39,22 +40,29 @@ function validateProjectName(name: string): string | undefined {
  * Parse CLI flags from process.argv.
  *
  * Supports:
- *   --template <name>       Skip template prompt (also accepts "crank" as shorthand for static-site + crank)
+ *   --template <name>       Skip template prompt
+ *   --framework <name>      Skip UI framework prompt (vanilla, htmx, alpine, crank)
  *   --typescript             Skip TypeScript prompt (yes)
  *   --no-typescript          Skip TypeScript prompt (no)
+ *   --jsx / --no-jsx         Skip JSX prompt (Crank only)
  *   --platform <name>       Skip platform prompt
  */
 function parseFlags(args: string[]): {
 	template?: string;
+	framework?: string;
 	typescript?: boolean;
+	jsx?: boolean;
 	platform?: string;
 } {
 	const flags: Record<string, string | boolean> = {};
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i];
 		if (arg === "--template" && args[i + 1]) flags.template = args[++i];
+		else if (arg === "--framework" && args[i + 1]) flags.framework = args[++i];
 		else if (arg === "--typescript") flags.typescript = true;
 		else if (arg === "--no-typescript") flags.typescript = false;
+		else if (arg === "--jsx") flags.jsx = true;
+		else if (arg === "--no-jsx") flags.jsx = false;
 		else if (arg === "--platform" && args[i + 1]) flags.platform = args[++i];
 	}
 	return flags;
@@ -110,18 +118,14 @@ async function main() {
 	}
 
 	// 1. Template selection (most important question first)
-	// --template crank is a shorthand for static-site + crank UI framework
 	let template: ProjectConfig["template"];
 	let uiFramework: ProjectConfig["uiFramework"] = "vanilla";
 
-	if (flags.template === "crank") {
-		template = "static-site";
-		uiFramework = "crank";
-	} else if (flags.template) {
+	if (flags.template) {
 		const valid = ["hello-world", "api", "static-site", "full-stack"];
 		if (!valid.includes(flags.template)) {
 			console.error(
-				`Error: Unknown template "${flags.template}". Valid options: ${valid.join(", ")}, crank`,
+				`Error: Unknown template "${flags.template}". Valid options: ${valid.join(", ")}`,
 			);
 			process.exit(1);
 		}
@@ -160,44 +164,71 @@ async function main() {
 		template = templateResult;
 	}
 
-	// 2. UI framework (only for HTML-serving templates, unless already set by --template crank)
-	if (
-		uiFramework === "vanilla" &&
-		(template === "static-site" || template === "full-stack")
-	) {
-		const framework = await select({
-			message: "UI framework:",
-			initialValue: "crank" as ProjectConfig["uiFramework"],
-			options: [
-				{
-					value: "alpine" as const,
-					label: "Alpine.js",
-					hint: "Lightweight reactivity with x-data directives",
-				},
-				{
-					value: "crank" as const,
-					label: "Crank.js",
-					hint: "JSX components rendered on the server",
-				},
-				{
-					value: "htmx" as const,
-					label: "HTMX",
-					hint: "HTML-driven interactions with hx- attributes",
-				},
-				{
-					value: "vanilla" as const,
-					label: "Vanilla",
-					hint: "Plain HTML, no framework",
-				},
-			],
-		});
+	// 2. UI framework (only for HTML-serving templates)
+	if (template === "static-site" || template === "full-stack") {
+		if (flags.framework) {
+			const valid = ["vanilla", "htmx", "alpine", "crank"];
+			if (!valid.includes(flags.framework)) {
+				console.error(
+					`Error: Unknown framework "${flags.framework}". Valid options: ${valid.join(", ")}`,
+				);
+				process.exit(1);
+			}
+			uiFramework = flags.framework as ProjectConfig["uiFramework"];
+		} else {
+			const framework = await select({
+				message: "UI framework:",
+				initialValue: "crank" as ProjectConfig["uiFramework"],
+				options: [
+					{
+						value: "alpine" as const,
+						label: "Alpine.js",
+						hint: "Lightweight reactivity with x-data directives",
+					},
+					{
+						value: "crank" as const,
+						label: "Crank.js",
+						hint: "JSX components rendered on the server",
+					},
+					{
+						value: "htmx" as const,
+						label: "HTMX",
+						hint: "HTML-driven interactions with hx- attributes",
+					},
+					{
+						value: "vanilla" as const,
+						label: "Vanilla",
+						hint: "Plain HTML, no framework",
+					},
+				],
+			});
 
-		if (typeof framework === "symbol") {
-			outro("Project creation cancelled");
-			process.exit(0);
+			if (typeof framework === "symbol") {
+				outro("Project creation cancelled");
+				process.exit(0);
+			}
+
+			uiFramework = framework;
 		}
+	}
 
-		uiFramework = framework;
+	// 2b. JSX preference (only for Crank)
+	let useJSX = true;
+	if (uiFramework === "crank") {
+		if (flags.jsx !== undefined) {
+			useJSX = flags.jsx;
+		} else {
+			const jsxResult = await confirm({
+				message: "Use JSX?",
+				initialValue: true,
+			});
+
+			if (typeof jsxResult === "symbol") {
+				outro("Project creation cancelled");
+				process.exit(0);
+			}
+			useJSX = jsxResult;
+		}
 	}
 
 	// 3. TypeScript (default to yes)
@@ -265,6 +296,7 @@ async function main() {
 		template,
 		typescript,
 		uiFramework,
+		useJSX,
 	};
 
 	// Create project
@@ -276,7 +308,7 @@ async function main() {
 		s.stop("Project created");
 
 		console.info("");
-		outro("Your Shovel project is ready!");
+		outro("Your project is shovel-ready!");
 
 		console.info("");
 		console.info("Next steps:");
@@ -300,13 +332,15 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 
 	// Create package.json
 	const ext =
-		config.uiFramework === "crank"
+		config.uiFramework === "crank" && config.useJSX
 			? config.typescript
 				? "tsx"
 				: "jsx"
 			: config.typescript
 				? "ts"
 				: "js";
+	const isCrank = config.uiFramework === "crank";
+	const entryFile = isCrank ? `src/server.${ext}` : `src/app.${ext}`;
 	const startCmd =
 		config.platform === "bun"
 			? "bun dist/server/supervisor.js"
@@ -315,26 +349,34 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 		"@b9g/router": "^0.2.0",
 		"@b9g/shovel": "^0.2.0",
 	};
-	if (config.uiFramework === "crank") {
+	if (isCrank) {
 		dependencies["@b9g/crank"] = "^0.7.2";
+	}
+	const devDependencies: Record<string, string> = {};
+	if (config.typescript) {
+		devDependencies["@types/node"] = "^18.0.0";
+		devDependencies["typescript"] = "^5.0.0";
+	}
+	if (isCrank) {
+		devDependencies["eslint"] = "^9.0.0";
+		devDependencies["@eslint/js"] = "^9.0.0";
+	}
+	const scripts: Record<string, string> = {
+		develop: `shovel develop ${entryFile} --platform ${config.platform}`,
+		build: `shovel build ${entryFile} --platform ${config.platform}`,
+		start: startCmd,
+	};
+	if (isCrank) {
+		scripts.lint = "eslint src/";
 	}
 	const packageJson = {
 		name: config.name,
 		private: true,
 		version: "0.0.1",
 		type: "module",
-		scripts: {
-			develop: `shovel develop src/app.${ext} --platform ${config.platform}`,
-			build: `shovel build src/app.${ext} --platform ${config.platform}`,
-			start: startCmd,
-		},
+		scripts,
 		dependencies,
-		devDependencies: config.typescript
-			? {
-					"@types/node": "^18.0.0",
-					typescript: "^5.0.0",
-				}
-			: {},
+		devDependencies,
 	};
 
 	await writeFile(
@@ -342,9 +384,15 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 		JSON.stringify(packageJson, null, 2),
 	);
 
-	// Create app file
-	const appFile = generateAppFile(config);
-	await writeFile(join(projectPath, `src/app.${ext}`), appFile);
+	// Create app file(s)
+	const appResult = generateAppFile(config);
+	if (typeof appResult === "string") {
+		await writeFile(join(projectPath, `src/app.${ext}`), appResult);
+	} else {
+		for (const [filename, content] of Object.entries(appResult)) {
+			await writeFile(join(projectPath, `src/${filename}`), content);
+		}
+	}
 
 	// Create TypeScript config and declarations if needed
 	if (config.typescript) {
@@ -359,12 +407,15 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 			forceConsistentCasingInFileNames: true,
 			lib: ["ES2022", "WebWorker"],
 		};
-		if (config.uiFramework === "crank") {
+		if (config.uiFramework === "crank" && config.useJSX) {
 			compilerOptions.jsx = "react-jsx";
 			compilerOptions.jsxImportSource = "@b9g/crank";
 		}
 		const tsConfig = {
-			compilerOptions,
+			compilerOptions: {
+				...compilerOptions,
+				types: ["@b9g/platform/globals"],
+			},
 			include: ["src/**/*"],
 			exclude: ["node_modules", "dist"],
 		};
@@ -373,21 +424,18 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 			join(projectPath, "tsconfig.json"),
 			JSON.stringify(tsConfig, null, 2),
 		);
+	}
 
-		// Type declarations for Shovel's ServiceWorker environment
-		const envDts = `/// <reference lib="WebWorker" />
+	// Create ESLint config for Crank projects
+	if (isCrank) {
+		const eslintConfig = `import js from "@eslint/js";
 
-// Shovel runs your code in a ServiceWorker-like environment.
-// This augments the Worker types with ServiceWorker events
-// so self.addEventListener("fetch", ...) etc. are properly typed.
-interface WorkerGlobalScopeEventMap {
-  fetch: FetchEvent;
-  install: ExtendableEvent;
-  activate: ExtendableEvent;
-}
+export default [
+  js.configs.recommended,
+  { ignores: ["dist/"] },
+];
 `;
-
-		await writeFile(join(projectPath, "src/env.d.ts"), envDts);
+		await writeFile(join(projectPath, "eslint.config.js"), eslintConfig);
 	}
 
 	// Create README
@@ -405,7 +453,9 @@ dist/
 	await writeFile(join(projectPath, ".gitignore"), gitignore);
 }
 
-function generateAppFile(config: ProjectConfig): string {
+function generateAppFile(
+	config: ProjectConfig,
+): string | Record<string, string> {
 	switch (config.template) {
 		case "hello-world":
 			return generateHelloWorld(config);
@@ -510,7 +560,9 @@ const css = `    * { box-sizing: border-box; margin: 0; padding: 0; }
 
 // --- Static Site generators ---
 
-function generateStaticSite(config: ProjectConfig): string {
+function generateStaticSite(
+	config: ProjectConfig,
+): string | Record<string, string> {
 	switch (config.uiFramework) {
 		case "vanilla":
 			return generateStaticSiteVanilla(config);
@@ -703,18 +755,61 @@ ${css}
 `;
 }
 
-function generateStaticSiteCrank(config: ProjectConfig): string {
+function generateStaticSiteCrank(
+	config: ProjectConfig,
+): Record<string, string> {
 	const t = config.typescript;
-	return `import {renderer} from "@b9g/crank/html";
+	const ext = config.useJSX
+		? config.typescript
+			? "tsx"
+			: "jsx"
+		: config.typescript
+			? "ts"
+			: "js";
 
-// ${config.name} - Static Site with Crank.js
-// Server-rendered HTML with JSX components
+	if (config.useJSX) {
+		return {
+			[`server.${ext}`]: `import {renderer} from "@b9g/crank/html";
+import {Router} from "@b9g/router";
+import {Page} from "./components";
 
-const css = \`
+const router = new Router();
+
+router.route("/").get(async () => {
+  const html = await renderer.render(
+    <Page title="Home">
+      <h1>Welcome to ${config.name}</h1>
+      <p>Edit <code>src/server.${ext}</code> to get started.</p>
+      <p><a href="/about">About</a></p>
+    </Page>
+  );
+  return new Response("<!DOCTYPE html>" + html, {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+router.route("/about").get(async () => {
+  const html = await renderer.render(
+    <Page title="About">
+      <h1>About</h1>
+      <p>This is a static site built with <strong>Shovel</strong> and <strong>Crank.js</strong>.</p>
+      <p><a href="/">Home</a></p>
+    </Page>
+  );
+  return new Response("<!DOCTYPE html>" + html, {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(router.handle(event.request));
+});
+`,
+			[`components.${ext}`]: `const css = \`
 ${css}
 \`;
 
-function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
+export function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
   return (
     <html lang="en">
       <head>
@@ -729,45 +824,79 @@ function Page({title, children}${t ? ": {title: string, children: unknown}" : ""
     </html>
   );
 }
+`,
+		};
+	}
 
-self.addEventListener("fetch", (event) => {
-  event.respondWith(handleRequest(event.request));
-});
+	// Tagged template literals path
+	return {
+		[`server.${ext}`]: `import {jsx} from "@b9g/crank/standalone";
+import {renderer} from "@b9g/crank/html";
+import {Router} from "@b9g/router";
+import {Page} from "./components";
 
-async function handleRequest(request${t ? ": Request" : ""})${t ? ": Promise<Response>" : ""} {
-  const url = new URL(request.url);
-  let html${t ? ": string" : ""};
+const router = new Router();
 
-  if (url.pathname === "/") {
-    html = await renderer.render(
-      <Page title="Home">
-        <h1>Welcome to ${config.name}</h1>
-        <p>Edit <code>src/app.${t ? "tsx" : "jsx"}</code> to get started.</p>
-        <p><a href="/about">About</a></p>
-      </Page>
-    );
-  } else if (url.pathname === "/about") {
-    html = await renderer.render(
-      <Page title="About">
-        <h1>About</h1>
-        <p>This is a static site built with <strong>Shovel</strong> and <strong>Crank.js</strong>.</p>
-        <p><a href="/">Home</a></p>
-      </Page>
-    );
-  } else {
-    return new Response("Not Found", { status: 404 });
-  }
-
+router.route("/").get(async () => {
+  const html = await renderer.render(jsx\`
+    <\${Page} title="Home">
+      <h1>Welcome to ${config.name}</h1>
+      <p>Edit <code>src/server.${ext}</code> to get started.</p>
+      <p><a href="/about">About</a></p>
+    </\${Page}>
+  \`);
   return new Response("<!DOCTYPE html>" + html, {
     headers: { "Content-Type": "text/html" },
   });
+});
+
+router.route("/about").get(async () => {
+  const html = await renderer.render(jsx\`
+    <\${Page} title="About">
+      <h1>About</h1>
+      <p>This is a static site built with <strong>Shovel</strong> and <strong>Crank.js</strong>.</p>
+      <p><a href="/">Home</a></p>
+    </\${Page}>
+  \`);
+  return new Response("<!DOCTYPE html>" + html, {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(router.handle(event.request));
+});
+`,
+		[`components.${ext}`]: `import {jsx} from "@b9g/crank/standalone";
+
+const css = \`
+${css}
+\`;
+
+export function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
+  return jsx\`
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>\${title} - ${config.name}</title>
+        <style>\${css}</style>
+      </head>
+      <body>
+        <main>\${children}</main>
+      </body>
+    </html>
+  \`;
 }
-`;
+`,
+	};
 }
 
 // --- Full Stack generators ---
 
-function generateFullStack(config: ProjectConfig): string {
+function generateFullStack(
+	config: ProjectConfig,
+): string | Record<string, string> {
 	switch (config.uiFramework) {
 		case "vanilla":
 			return generateFullStackVanilla(config);
@@ -1005,34 +1134,25 @@ self.addEventListener("fetch", (event) => {
 `;
 }
 
-function generateFullStackCrank(config: ProjectConfig): string {
+function generateFullStackCrank(config: ProjectConfig): Record<string, string> {
 	const t = config.typescript;
-	return `import { Router } from "@b9g/router";
-import { logger } from "@b9g/router/middleware";
-import {renderer} from "@b9g/crank/html";
+	const ext = config.useJSX
+		? config.typescript
+			? "tsx"
+			: "jsx"
+		: config.typescript
+			? "ts"
+			: "js";
+
+	if (config.useJSX) {
+		return {
+			[`server.${ext}`]: `import {renderer} from "@b9g/crank/html";
+import {Router} from "@b9g/router";
+import {logger} from "@b9g/router/middleware";
+import {Page} from "./components";
 
 const router = new Router();
 router.use(logger());
-
-const css = \`
-${css}
-\`;
-
-function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
-  return (
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>{title} - ${config.name}</title>
-        <style>{css}</style>
-      </head>
-      <body>
-        <main>{children}</main>
-      </body>
-    </html>
-  );
-}
 
 // API routes
 router.route("/api/hello").get(() => {
@@ -1052,7 +1172,7 @@ router.route("/").get(async () => {
   const html = await renderer.render(
     <Page title="Home">
       <h1>Welcome to ${config.name}</h1>
-      <p>Edit <code>src/app.${t ? "tsx" : "jsx"}</code> to get started.</p>
+      <p>Edit <code>src/server.${ext}</code> to get started.</p>
       <ul>
         <li><a href="/about">About</a></li>
         <li><a href="/api/hello">API: /api/hello</a></li>
@@ -1080,7 +1200,111 @@ router.route("/about").get(async () => {
 self.addEventListener("fetch", (event) => {
   event.respondWith(router.handle(event.request));
 });
-`;
+`,
+			[`components.${ext}`]: `const css = \`
+${css}
+\`;
+
+export function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{title} - ${config.name}</title>
+        <style>{css}</style>
+      </head>
+      <body>
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+`,
+		};
+	}
+
+	// Tagged template literals path
+	return {
+		[`server.${ext}`]: `import {jsx} from "@b9g/crank/standalone";
+import {renderer} from "@b9g/crank/html";
+import {Router} from "@b9g/router";
+import {logger} from "@b9g/router/middleware";
+import {Page} from "./components";
+
+const router = new Router();
+router.use(logger());
+
+// API routes
+router.route("/api/hello").get(() => {
+  return Response.json({
+    message: "Hello from the API!",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+router.route("/api/echo").post(async (req) => {
+  const body = await req.json();
+  return Response.json({ echo: body });
+});
+
+// HTML pages
+router.route("/").get(async () => {
+  const html = await renderer.render(jsx\`
+    <\${Page} title="Home">
+      <h1>Welcome to ${config.name}</h1>
+      <p>Edit <code>src/server.${ext}</code> to get started.</p>
+      <ul>
+        <li><a href="/about">About</a></li>
+        <li><a href="/api/hello">API: /api/hello</a></li>
+      </ul>
+    </\${Page}>
+  \`);
+  return new Response("<!DOCTYPE html>" + html, {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+router.route("/about").get(async () => {
+  const html = await renderer.render(jsx\`
+    <\${Page} title="About">
+      <h1>About</h1>
+      <p>This is a full-stack app built with <strong>Shovel</strong> and <strong>Crank.js</strong>.</p>
+      <p><a href="/">Home</a></p>
+    </\${Page}>
+  \`);
+  return new Response("<!DOCTYPE html>" + html, {
+    headers: { "Content-Type": "text/html" },
+  });
+});
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(router.handle(event.request));
+});
+`,
+		[`components.${ext}`]: `import {jsx} from "@b9g/crank/standalone";
+
+const css = \`
+${css}
+\`;
+
+export function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
+  return jsx\`
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>\${title} - ${config.name}</title>
+        <style>\${css}</style>
+      </head>
+      <body>
+        <main>\${children}</main>
+      </body>
+    </html>
+  \`;
+}
+`,
+	};
 }
 
 // --- README generator ---
@@ -1101,13 +1325,31 @@ function generateReadme(config: ProjectConfig): string {
 	};
 
 	const ext =
-		config.uiFramework === "crank"
+		config.uiFramework === "crank" && config.useJSX
 			? config.typescript
 				? "tsx"
 				: "jsx"
 			: config.typescript
 				? "ts"
 				: "js";
+	const isCrank = config.uiFramework === "crank";
+
+	let projectTree: string;
+	if (isCrank) {
+		projectTree = `${config.name}/
+├── src/
+│   ├── server.${ext}       # Application entry point
+│   └── components.${ext}   # Page components
+├── eslint.config.js
+├── package.json
+${config.typescript ? "├── tsconfig.json\n" : ""}└── README.md`;
+	} else {
+		projectTree = `${config.name}/
+├── src/
+│   └── app.${ext}    # Application entry point
+├── package.json
+${config.typescript ? "├── tsconfig.json\n" : ""}└── README.md`;
+	}
 
 	return `# ${config.name}
 
@@ -1126,16 +1368,12 @@ Open http://localhost:7777
 
 - \`npm run develop\` - Start development server
 - \`npm run build\` - Build for production
-- \`npm start\` - Run production build
+- \`npm start\` - Run production build${isCrank ? "\n- `npm run lint` - Lint source files" : ""}
 
 ## Project Structure
 
 \`\`\`
-${config.name}/
-├── src/
-│   └── app.${ext}    # Application entry point
-├── package.json
-${config.typescript ? "├── tsconfig.json\n" : ""}└── README.md
+${projectTree}
 \`\`\`
 
 ## Learn More
