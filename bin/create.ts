@@ -360,8 +360,8 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 		devDependencies["typescript"] = "^5.0.0";
 	}
 	if (isCrank) {
-		devDependencies["eslint"] = "^9.0.0";
-		devDependencies["@eslint/js"] = "^9.0.0";
+		devDependencies["eslint"] = "^10.0.0";
+		devDependencies["@eslint/js"] = "^10.0.0";
 	}
 	const scripts: Record<string, string> = {
 		develop: `shovel develop ${entryFile} --platform ${config.platform}`,
@@ -1210,7 +1210,7 @@ function generateFullStackCrank(config: ProjectConfig): Record<string, string> {
 import {Router} from "@b9g/router";
 import {logger} from "@b9g/router/middleware";
 import {assets} from "@b9g/assets/middleware";
-import {Page, APIDemo} from "./components";
+import {Page, Counter} from "./components";
 import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
@@ -1236,7 +1236,7 @@ router.route("/").get(async () => {
     <Page title="Home" clientUrl={clientUrl}>
       <h1>Welcome to ${config.name}</h1>
       <p>Edit <code>src/server.${ext}</code> to get started.</p>
-      <div id="api-demo"><APIDemo /></div>
+      <div id="counter"><Counter /></div>
       <ul>
         <li><a href="/about">About</a></li>
         <li><a href="/api/hello">API: /api/hello</a></li>
@@ -1286,32 +1286,21 @@ export function Page({title, children, clientUrl}${t ? ": {title: string, childr
   );
 }
 
-export function *APIDemo(${t ? "this: Context" : ""}) {
-  let result${t ? ": {message: string; timestamp: string} | null" : ""} = null;
-  const handleClick = async () => {
-    const res = await fetch("/api/hello");
-    result = await res.json();
+export function *Counter(${t ? "this: Context" : ""}) {
+  let count = 0;
+  const handleClick = () => {
+    count++;
     this.refresh();
   };
   for ({} of this) {
-    yield (
-      <div>
-        <button onclick={handleClick}>Call API</button>
-        {result && (
-          <div id="result">
-            <p>{result.message}</p>
-            <p><small>{result.timestamp}</small></p>
-          </div>
-        )}
-      </div>
-    );
+    yield <button onclick={handleClick}>Clicked: {count}</button>;
   }
 }
 `,
 			[`client.${ext}`]: `import {renderer} from "@b9g/crank/dom";
-import {APIDemo} from "./components";
+import {Counter} from "./components";
 
-renderer.hydrate(<APIDemo />, document.getElementById("api-demo")${t ? "!" : ""});
+renderer.hydrate(<Counter />, document.getElementById("counter")${t ? "!" : ""});
 `,
 		};
 	}
@@ -1323,7 +1312,7 @@ import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
 import {logger} from "@b9g/router/middleware";
 import {assets} from "@b9g/assets/middleware";
-import {Page, APIDemo} from "./components";
+import {Page, Counter} from "./components";
 import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
@@ -1349,7 +1338,7 @@ router.route("/").get(async () => {
     <\${Page} title="Home" clientUrl=\${clientUrl}>
       <h1>Welcome to ${config.name}</h1>
       <p>Edit <code>src/server.${ext}</code> to get started.</p>
-      <div id="api-demo"><\${APIDemo} /></div>
+      <div id="counter"><\${Counter} /></div>
       <ul>
         <li><a href="/about">About</a></li>
         <li><a href="/api/hello">API: /api/hello</a></li>
@@ -1400,32 +1389,21 @@ export function Page({title, children, clientUrl}${t ? ": {title: string, childr
   \`;
 }
 
-export function *APIDemo(${t ? "this: Context" : ""}) {
-  let result${t ? ": {message: string; timestamp: string} | null" : ""} = null;
-  const handleClick = async () => {
-    const res = await fetch("/api/hello");
-    result = await res.json();
+export function *Counter(${t ? "this: Context" : ""}) {
+  let count = 0;
+  const handleClick = () => {
+    count++;
     this.refresh();
   };
   for ({} of this) {
-    yield jsx\`
-      <div>
-        <button onclick=\${handleClick}>Call API</button>
-        \${result && jsx\`
-          <div id="result">
-            <p>\${result.message}</p>
-            <p><small>\${result.timestamp}</small></p>
-          </div>
-        \`}
-      </div>
-    \`;
+    yield jsx\`<button onclick=\${handleClick}>Clicked: \${count}</button>\`;
   }
 }
 `,
 		[`client.${ext}`]: `import {jsx, renderer} from "@b9g/crank/standalone";
-import {APIDemo} from "./components";
+import {Counter} from "./components";
 
-renderer.hydrate(jsx\`<\${APIDemo} />\`, document.getElementById("api-demo")${t ? "!" : ""});
+renderer.hydrate(jsx\`<\${Counter} />\`, document.getElementById("counter")${t ? "!" : ""});
 `,
 	};
 }

@@ -37,8 +37,7 @@ import {
 } from "@b9g/assets/middleware";
 import {getLogger} from "@logtape/logtape";
 import type {SharedAssetsManifest} from "./assets-manifest.js";
-import {NodeModulesPolyfillPlugin} from "@esbuild-plugins/node-modules-polyfill";
-import {NodeGlobalsPolyfillPlugin} from "@esbuild-plugins/node-globals-polyfill";
+import {nodeModulesPolyfillPlugin} from "esbuild-plugins-node-modules-polyfill";
 
 /**
  * File extensions that need transpilation (JS/TS files)
@@ -236,10 +235,8 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 
 						// Default polyfill plugins for browser compatibility
 						const defaultPlugins: ESBuild.Plugin[] = [
-							NodeModulesPolyfillPlugin(),
-							NodeGlobalsPolyfillPlugin({
-								process: true,
-								buffer: true,
+							nodeModulesPolyfillPlugin({
+								globals: {process: true, Buffer: true},
 							}),
 						];
 
