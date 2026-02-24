@@ -794,8 +794,8 @@ export default clientUrl;`,
 		const entryFile = jsFiles.find((f) => f.startsWith("client-"));
 		expect(entryFile).toBeDefined();
 
-		// Should have chunk file(s)
-		const chunkFiles = jsFiles.filter((f) => f.startsWith("chunk-"));
+		// Should have chunk file(s) — esbuild names chunks after the source module, not "chunk-"
+		const chunkFiles = jsFiles.filter((f) => f !== entryFile);
 		expect(chunkFiles.length).toBeGreaterThanOrEqual(1);
 
 		// Check manifest contains entry file
@@ -980,8 +980,13 @@ export { clientA, clientB };`,
 		const assetsAFiles = await readdir(join(outDir, "public", "assets-a"));
 		const assetsBFiles = await readdir(join(outDir, "public", "assets-b"));
 
-		const chunksA = assetsAFiles.filter((f) => f.startsWith("chunk-"));
-		const chunksB = assetsBFiles.filter((f) => f.startsWith("chunk-"));
+		// Chunks are named after the source module, not "chunk-" — filter out the entry files
+		const chunksA = assetsAFiles.filter(
+			(f) => f.endsWith(".js") && !f.startsWith("client-a-"),
+		);
+		const chunksB = assetsBFiles.filter(
+			(f) => f.endsWith(".js") && !f.startsWith("client-b-"),
+		);
 
 		expect(chunksA.length).toBeGreaterThanOrEqual(1);
 		expect(chunksB.length).toBeGreaterThanOrEqual(1);
@@ -991,12 +996,18 @@ export { clientA, clientB };`,
 			await readFile(join(outDir, "server", "assets.json"), "utf8"),
 		);
 
-		// Find chunk entries for each assetBase
-		const chunkEntriesA = Object.values(manifest.assets).filter((a: any) =>
-			a.url?.startsWith("/assets-a/chunk-"),
+		// Find chunk entries for each assetBase (non-entry JS files)
+		const chunkEntriesA = Object.values(manifest.assets).filter(
+			(a: any) =>
+				a.url?.startsWith("/assets-a/") &&
+				a.url?.endsWith(".js") &&
+				!a.url?.includes("/client-a-"),
 		);
-		const chunkEntriesB = Object.values(manifest.assets).filter((a: any) =>
-			a.url?.startsWith("/assets-b/chunk-"),
+		const chunkEntriesB = Object.values(manifest.assets).filter(
+			(a: any) =>
+				a.url?.startsWith("/assets-b/") &&
+				a.url?.endsWith(".js") &&
+				!a.url?.includes("/client-b-"),
 		);
 
 		// Both should have their chunk entries preserved (not overwritten)

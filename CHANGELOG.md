@@ -2,12 +2,19 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.13] - 2026-02-24
+
+### Bug Fixes
+
+- **`@b9g/shovel`** - Fixed missing `esbuild-plugins-node-modules-polyfill` dependency causing "Cannot find package" errors at runtime
+
 ## [0.2.12] - 2026-02-24
 
 ### Bug Fixes
 
 - **`@b9g/shovel`** - Plain `.js` and `.mjs` client assets are now bundled for the browser instead of copied raw. Previously only `.ts`/`.tsx`/`.jsx` were transpiled, so non-TypeScript Crank projects using `@b9g/crank/standalone` in client code failed with "Module name does not resolve to a valid URL" in the browser
 - **`@b9g/shovel`** - Removed `.cts` from asset transpilation list (no CJS in client assets)
+- **`@b9g/shovel`** - Replaced deprecated `@esbuild-plugins/node-modules-polyfill` and `@esbuild-plugins/node-globals-polyfill` with `esbuild-plugins-node-modules-polyfill`, eliminating deprecation warnings and audit vulnerabilities
 - **`@b9g/router`** - Simplified logger middleware to a single response line (`200 GET / (3ms)`) instead of logging both request and response with arrow prefixes
 
 ### Improvements
@@ -17,6 +24,7 @@ All notable changes to Shovel will be documented in this file.
 - **`create-shovel`** - Added API call demo to full-stack vanilla template
 - **`create-shovel`** - Crank templates now include client-side hydration with `@b9g/assets`
 - **`create-shovel`** - Initial project version is now `0.1.0` instead of `0.0.1`
+- **`create-shovel`** - Bumped generated eslint to `^10.0.0` (fixes audit vulnerabilities in generated projects)
 
 ### Dependencies
 
