@@ -2,7 +2,38 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.12] - 2026-02-24
+
+### Bug Fixes
+
+- **`@b9g/shovel`** - Plain `.js` and `.mjs` client assets are now bundled for the browser instead of copied raw. Previously only `.ts`/`.tsx`/`.jsx` were transpiled, so non-TypeScript Crank projects using `@b9g/crank/standalone` in client code failed with "Module name does not resolve to a valid URL" in the browser
+- **`@b9g/shovel`** - Removed `.cts` from asset transpilation list (no CJS in client assets)
+- **`@b9g/router`** - Simplified logger middleware to a single response line (`200 GET / (3ms)`) instead of logging both request and response with arrow prefixes
+
+### Improvements
+
+- **`create-shovel`** - Added CSS owl selector (`main > * + *`) for consistent vertical spacing, removed inline margin styles
+- **`create-shovel`** - Added interactive counter demo to static-site vanilla template
+- **`create-shovel`** - Added API call demo to full-stack vanilla template
+- **`create-shovel`** - Crank templates now include client-side hydration with `@b9g/assets`
+- **`create-shovel`** - Initial project version is now `0.1.0` instead of `0.0.1`
+
+### Dependencies
+
+- **`@b9g/crank`** `^0.7.2` → `^0.7.7` (type declarations)
+
 ## [0.2.11] - 2026-02-21
+
+### Bug Fixes
+
+- **Broken bin exports in published package** - Upgraded to `@b9g/libuild@0.1.24` which fixes `./dist/bin/` → `./bin/` rewriting in the exports map. `import "@b9g/shovel/bin/create.js"` now resolves correctly when installed from npm
+
+### Dependencies
+
+- **`@b9g/libuild`** `^0.1.22` → `^0.1.24`
+- **`create-shovel`** `0.1.1` - README and metadata updates
+
+## [0.2.10] - 2026-02-21
 
 ### Features
 
@@ -11,15 +42,7 @@ All notable changes to Shovel will be documented in this file.
 - **`--framework` and `--jsx` CLI flags** - `create-shovel --framework crank --no-jsx` skips prompts for CI/scripting
 - **ESLint config for Crank projects** - Generates `eslint.config.js` with flat config format
 - **Bun-aware next steps** - Post-scaffold instructions show `bun install` / `bun run develop` when bun platform is selected
-
-### Bug Fixes
-
-- **Broken bin exports in published package** - Upgraded to `@b9g/libuild@0.1.24` which fixes `./dist/bin/` → `./bin/` rewriting in the exports map. `import "@b9g/shovel/bin/create.js"` now resolves correctly when installed from npm
 - **Removed redundant `env.d.ts`** - `@b9g/platform` already ships `globals.d.ts`; scaffolded projects now use `"types": ["@b9g/platform/globals"]` in tsconfig instead
-
-### Dependencies
-
-- **`@b9g/libuild`** `^0.1.22` → `^0.1.24`
 
 ## [0.2.9] - 2026-02-20
 
