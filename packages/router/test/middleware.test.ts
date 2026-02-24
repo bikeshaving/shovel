@@ -47,13 +47,11 @@ describe("logger middleware", () => {
 		const request = new Request("http://localhost/");
 		await router.handle(request);
 
-		expect(logs.length).toBe(2);
-		// Request log: ["→ ", "GET", " ", "/"]
+		expect(logs.length).toBe(1);
+		// Response log: [200, " ", "GET", " ", "/", " (", N, "ms)"]
+		expect(logs[0].message).toContain(200);
 		expect(logs[0].message).toContain("GET");
 		expect(logs[0].message).toContain("/");
-		// Response log: ["← ", 200, " ", "GET", " ", "/", " (", N, "ms)"]
-		expect(logs[1].message).toContain(200);
-		expect(logs[1].message).toContain("GET");
 	});
 
 	test("passes through response unchanged", async () => {
@@ -83,9 +81,8 @@ describe("logger middleware", () => {
 		const request = new Request("http://localhost/api/users");
 		await router.handle(request);
 
-		expect(logs.length).toBe(2);
+		expect(logs.length).toBe(1);
 		expect(logs[0].message).toContain("/api/users");
-		expect(logs[1].message).toContain("/api/users");
 	});
 
 	test("supports custom category", async () => {
@@ -114,7 +111,7 @@ describe("logger middleware", () => {
 		router.route("/").get(() => new Response("ok"));
 
 		await router.handle(new Request("http://localhost/"));
-		expect(logs.length).toBe(2);
+		expect(logs.length).toBe(1);
 		expect(logs[0].category).toEqual(["app", "http"]);
 	});
 });

@@ -193,8 +193,7 @@ export interface LoggerOptions {
  *
  * Output format:
  * ```
- * → GET /
- * ← 200 GET / (3ms)
+ * 200 GET / (3ms)
  * ```
  *
  * @example
@@ -219,14 +218,12 @@ export function logger(options: LoggerOptions = {}) {
 		const url = new URL(request.url);
 		const method = request.method;
 		const pathname = url.pathname;
-
-		log.info`→ ${method} ${pathname}`;
 		const start = Date.now();
 
 		const response: Response = yield request;
 
 		const duration = Date.now() - start;
-		log.info`← ${response.status} ${method} ${pathname} (${duration}ms)`;
+		log.info`${response.status} ${method} ${pathname} (${duration}ms)`;
 
 		return response;
 	};

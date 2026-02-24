@@ -44,11 +44,12 @@ import {NodeGlobalsPolyfillPlugin} from "@esbuild-plugins/node-globals-polyfill"
  * File extensions that need transpilation (JS/TS files)
  */
 const TRANSPILABLE_EXTENSIONS = new Set([
+	".js",
 	".ts",
 	".tsx",
 	".jsx",
+	".mjs",
 	".mts",
-	".cts",
 ]);
 
 /**
