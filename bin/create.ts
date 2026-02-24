@@ -188,7 +188,7 @@ async function main() {
 					{
 						value: "crank" as const,
 						label: "Crank.js",
-						hint: "JSX components rendered on the server",
+						hint: "JSX components with server rendering and hydration",
 					},
 					{
 						value: "htmx" as const,
@@ -352,6 +352,7 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 	};
 	if (isCrank) {
 		dependencies["@b9g/crank"] = "^0.7.2";
+		dependencies["@b9g/assets"] = "^0.2.0";
 	}
 	const devDependencies: Record<string, string> = {};
 	if (config.typescript) {
@@ -370,10 +371,10 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 	if (isCrank) {
 		scripts.lint = "eslint src/";
 	}
-	const packageJson = {
+	const packageJSON = {
 		name: config.name,
 		private: true,
-		version: "0.0.1",
+		version: "0.1.0",
 		type: "module",
 		scripts,
 		dependencies,
@@ -382,7 +383,7 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 
 	await writeFile(
 		join(projectPath, "package.json"),
-		JSON.stringify(packageJson, null, 2),
+		JSON.stringify(packageJSON, null, 2),
 	);
 
 	// Create app file(s)
@@ -484,8 +485,8 @@ self.addEventListener("fetch", (event) => {
 }
 
 function generateApi(config: ProjectConfig): string {
-	return `import { Router } from "@b9g/router";
-import { logger } from "@b9g/router/middleware";
+	return `import {Router} from "@b9g/router";
+import {logger} from "@b9g/router/middleware";
 
 const router = new Router();
 router.use(logger());
@@ -551,9 +552,10 @@ const css = `    * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; color: #333; background: #fafafa; }
     main { max-width: 640px; margin: 4rem auto; padding: 2rem; }
     h1 { color: #2563eb; margin-bottom: 1rem; }
+    main > * + * { margin-top: 1rem; }
     code { background: #e5e7eb; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
     a { color: #2563eb; }
-    ul { margin-top: 1rem; padding-left: 1.5rem; }
+    ul { padding-left: 1.5rem; }
     li { margin-bottom: 0.5rem; }
     button { background: #2563eb; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-size: 1rem; }
     button:hover { background: #1d4ed8; }
@@ -593,6 +595,12 @@ async function handleRequest(request${t ? ": Request" : ""})${t ? ": Promise<Res
     return new Response(renderPage("Home", \`
       <h1>Welcome to ${config.name}</h1>
       <p>Edit <code>src/app.${ext}</code> to get started.</p>
+      <button id="counter">Clicked: 0</button>
+      <script>
+        let count = 0;
+        const btn = document.getElementById("counter");
+        btn.addEventListener("click", () => btn.textContent = "Clicked: " + ++count);
+      </script>
       <p><a href="/about">About</a></p>
     \`), {
       headers: { "Content-Type": "text/html" },
@@ -650,7 +658,7 @@ async function handleRequest(request${t ? ": Request" : ""})${t ? ": Promise<Res
       <p>Edit <code>src/app.${ext}</code> to get started.</p>
       <button hx-get="/greeting" hx-target="#result" hx-swap="innerHTML">Get Greeting</button>
       <div id="result"></div>
-      <p style="margin-top: 1rem;"><a href="/about">About</a></p>
+      <p><a href="/about">About</a></p>
     \`), {
       headers: { "Content-Type": "text/html" },
     });
@@ -717,7 +725,7 @@ async function handleRequest(request${t ? ": Request" : ""})${t ? ": Promise<Res
       <div x-data="{ count: 0 }">
         <button @click="count++">Clicked: <span x-text="count"></span></button>
       </div>
-      <p style="margin-top: 1rem;"><a href="/about">About</a></p>
+      <p><a href="/about">About</a></p>
     \`), {
       headers: { "Content-Type": "text/html" },
     });
@@ -772,15 +780,19 @@ function generateStaticSiteCrank(
 		return {
 			[`server.${ext}`]: `import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
-import {Page} from "./components";
+import {assets} from "@b9g/assets/middleware";
+import {Page, Counter} from "./components";
+import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
+router.use(assets());
 
 router.route("/").get(async () => {
   const html = await renderer.render(
-    <Page title="Home">
+    <Page title="Home" clientUrl={clientUrl}>
       <h1>Welcome to ${config.name}</h1>
       <p>Edit <code>src/server.${ext}</code> to get started.</p>
+      <div id="counter"><Counter /></div>
       <p><a href="/about">About</a></p>
     </Page>
   );
@@ -806,11 +818,11 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(router.handle(event.request));
 });
 `,
-			[`components.${ext}`]: `const css = \`
+			[`components.${ext}`]: `${t ? 'import type {Context} from "@b9g/crank";\n\n' : ""}const css = \`
 ${css}
 \`;
 
-export function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
+export function Page({title, children, clientUrl}${t ? ": {title: string, children: unknown, clientUrl?: string}" : ""}) {
   return (
     <html lang="en">
       <head>
@@ -821,10 +833,27 @@ export function Page({title, children}${t ? ": {title: string, children: unknown
       </head>
       <body>
         <main>{children}</main>
+        {clientUrl && <script src={clientUrl} type="module" />}
       </body>
     </html>
   );
 }
+
+export function *Counter(${t ? "this: Context" : ""}) {
+  let count = 0;
+  const handleClick = () => {
+    count++;
+    this.refresh();
+  };
+  for ({} of this) {
+    yield <button onclick={handleClick}>Clicked: {count}</button>;
+  }
+}
+`,
+			[`client.${ext}`]: `import {renderer} from "@b9g/crank/dom";
+import {Counter} from "./components";
+
+renderer.hydrate(<Counter />, document.getElementById("counter")${t ? "!" : ""});
 `,
 		};
 	}
@@ -834,15 +863,19 @@ export function Page({title, children}${t ? ": {title: string, children: unknown
 		[`server.${ext}`]: `import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
-import {Page} from "./components";
+import {assets} from "@b9g/assets/middleware";
+import {Page, Counter} from "./components";
+import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
+router.use(assets());
 
 router.route("/").get(async () => {
   const html = await renderer.render(jsx\`
-    <\${Page} title="Home">
+    <\${Page} title="Home" clientUrl=\${clientUrl}>
       <h1>Welcome to ${config.name}</h1>
       <p>Edit <code>src/server.${ext}</code> to get started.</p>
+      <div id="counter"><\${Counter} /></div>
       <p><a href="/about">About</a></p>
     </\${Page}>
   \`);
@@ -869,12 +902,11 @@ self.addEventListener("fetch", (event) => {
 });
 `,
 		[`components.${ext}`]: `import {jsx} from "@b9g/crank/standalone";
-
-const css = \`
+${t ? 'import type {Context} from "@b9g/crank/standalone";\n\n' : "\n"}const css = \`
 ${css}
 \`;
 
-export function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
+export function Page({title, children, clientUrl}${t ? ": {title: string, children: unknown, clientUrl?: string}" : ""}) {
   return jsx\`
     <html lang="en">
       <head>
@@ -885,10 +917,27 @@ export function Page({title, children}${t ? ": {title: string, children: unknown
       </head>
       <body>
         <main>\${children}</main>
+        \${clientUrl && jsx\`<script src=\${clientUrl} type="module" />\`}
       </body>
     </html>
   \`;
 }
+
+export function *Counter(${t ? "this: Context" : ""}) {
+  let count = 0;
+  const handleClick = () => {
+    count++;
+    this.refresh();
+  };
+  for ({} of this) {
+    yield jsx\`<button onclick=\${handleClick}>Clicked: \${count}</button>\`;
+  }
+}
+`,
+		[`client.${ext}`]: `import {jsx, renderer} from "@b9g/crank/standalone";
+import {Counter} from "./components";
+
+renderer.hydrate(jsx\`<\${Counter} />\`, document.getElementById("counter")${t ? "!" : ""});
 `,
 	};
 }
@@ -913,8 +962,8 @@ function generateFullStack(
 function generateFullStackVanilla(config: ProjectConfig): string {
 	const ext = config.typescript ? "ts" : "js";
 	const t = config.typescript;
-	return `import { Router } from "@b9g/router";
-import { logger } from "@b9g/router/middleware";
+	return `import {Router} from "@b9g/router";
+import {logger} from "@b9g/router/middleware";
 
 const router = new Router();
 router.use(logger());
@@ -937,6 +986,16 @@ router.route("/").get(() => {
   return new Response(renderPage("Home", \`
     <h1>Welcome to ${config.name}</h1>
     <p>Edit <code>src/app.${ext}</code> to get started.</p>
+    <button id="call-api">Call API</button>
+    <div id="result"></div>
+    <script>
+      document.getElementById("call-api").addEventListener("click", async () => {
+        const res = await fetch("/api/hello");
+        const data = await res.json();
+        document.getElementById("result").innerHTML =
+          "<p>" + data.message + "</p><p><small>" + data.timestamp + "</small></p>";
+      });
+    </script>
     <ul>
       <li><a href="/about">About</a></li>
       <li><a href="/api/hello">API: /api/hello</a></li>
@@ -982,8 +1041,8 @@ self.addEventListener("fetch", (event) => {
 function generateFullStackHtmx(config: ProjectConfig): string {
 	const ext = config.typescript ? "ts" : "js";
 	const t = config.typescript;
-	return `import { Router } from "@b9g/router";
-import { logger } from "@b9g/router/middleware";
+	return `import {Router} from "@b9g/router";
+import {logger} from "@b9g/router/middleware";
 
 const router = new Router();
 router.use(logger());
@@ -1061,8 +1120,8 @@ self.addEventListener("fetch", (event) => {
 function generateFullStackAlpine(config: ProjectConfig): string {
 	const ext = config.typescript ? "ts" : "js";
 	const t = config.typescript;
-	return `import { Router } from "@b9g/router";
-import { logger } from "@b9g/router/middleware";
+	return `import {Router} from "@b9g/router";
+import {logger} from "@b9g/router/middleware";
 
 const router = new Router();
 router.use(logger());
@@ -1150,10 +1209,13 @@ function generateFullStackCrank(config: ProjectConfig): Record<string, string> {
 			[`server.${ext}`]: `import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
 import {logger} from "@b9g/router/middleware";
-import {Page} from "./components";
+import {assets} from "@b9g/assets/middleware";
+import {Page, APIDemo} from "./components";
+import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
 router.use(logger());
+router.use(assets());
 
 // API routes
 router.route("/api/hello").get(() => {
@@ -1171,9 +1233,10 @@ router.route("/api/echo").post(async (req) => {
 // HTML pages
 router.route("/").get(async () => {
   const html = await renderer.render(
-    <Page title="Home">
+    <Page title="Home" clientUrl={clientUrl}>
       <h1>Welcome to ${config.name}</h1>
       <p>Edit <code>src/server.${ext}</code> to get started.</p>
+      <div id="api-demo"><APIDemo /></div>
       <ul>
         <li><a href="/about">About</a></li>
         <li><a href="/api/hello">API: /api/hello</a></li>
@@ -1202,11 +1265,11 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(router.handle(event.request));
 });
 `,
-			[`components.${ext}`]: `const css = \`
+			[`components.${ext}`]: `${t ? 'import type {Context} from "@b9g/crank";\n\n' : ""}const css = \`
 ${css}
 \`;
 
-export function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
+export function Page({title, children, clientUrl}${t ? ": {title: string, children: unknown, clientUrl?: string}" : ""}) {
   return (
     <html lang="en">
       <head>
@@ -1217,10 +1280,38 @@ export function Page({title, children}${t ? ": {title: string, children: unknown
       </head>
       <body>
         <main>{children}</main>
+        {clientUrl && <script src={clientUrl} type="module" />}
       </body>
     </html>
   );
 }
+
+export function *APIDemo(${t ? "this: Context" : ""}) {
+  let result${t ? ": {message: string; timestamp: string} | null" : ""} = null;
+  const handleClick = async () => {
+    const res = await fetch("/api/hello");
+    result = await res.json();
+    this.refresh();
+  };
+  for ({} of this) {
+    yield (
+      <div>
+        <button onclick={handleClick}>Call API</button>
+        {result && (
+          <div id="result">
+            <p>{result.message}</p>
+            <p><small>{result.timestamp}</small></p>
+          </div>
+        )}
+      </div>
+    );
+  }
+}
+`,
+			[`client.${ext}`]: `import {renderer} from "@b9g/crank/dom";
+import {APIDemo} from "./components";
+
+renderer.hydrate(<APIDemo />, document.getElementById("api-demo")${t ? "!" : ""});
 `,
 		};
 	}
@@ -1231,10 +1322,13 @@ export function Page({title, children}${t ? ": {title: string, children: unknown
 import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
 import {logger} from "@b9g/router/middleware";
-import {Page} from "./components";
+import {assets} from "@b9g/assets/middleware";
+import {Page, APIDemo} from "./components";
+import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
 router.use(logger());
+router.use(assets());
 
 // API routes
 router.route("/api/hello").get(() => {
@@ -1252,9 +1346,10 @@ router.route("/api/echo").post(async (req) => {
 // HTML pages
 router.route("/").get(async () => {
   const html = await renderer.render(jsx\`
-    <\${Page} title="Home">
+    <\${Page} title="Home" clientUrl=\${clientUrl}>
       <h1>Welcome to ${config.name}</h1>
       <p>Edit <code>src/server.${ext}</code> to get started.</p>
+      <div id="api-demo"><\${APIDemo} /></div>
       <ul>
         <li><a href="/about">About</a></li>
         <li><a href="/api/hello">API: /api/hello</a></li>
@@ -1284,12 +1379,11 @@ self.addEventListener("fetch", (event) => {
 });
 `,
 		[`components.${ext}`]: `import {jsx} from "@b9g/crank/standalone";
-
-const css = \`
+${t ? 'import type {Context} from "@b9g/crank/standalone";\n\n' : "\n"}const css = \`
 ${css}
 \`;
 
-export function Page({title, children}${t ? ": {title: string, children: unknown}" : ""}) {
+export function Page({title, children, clientUrl}${t ? ": {title: string, children: unknown, clientUrl?: string}" : ""}) {
   return jsx\`
     <html lang="en">
       <head>
@@ -1300,10 +1394,38 @@ export function Page({title, children}${t ? ": {title: string, children: unknown
       </head>
       <body>
         <main>\${children}</main>
+        \${clientUrl && jsx\`<script src=\${clientUrl} type="module" />\`}
       </body>
     </html>
   \`;
 }
+
+export function *APIDemo(${t ? "this: Context" : ""}) {
+  let result${t ? ": {message: string; timestamp: string} | null" : ""} = null;
+  const handleClick = async () => {
+    const res = await fetch("/api/hello");
+    result = await res.json();
+    this.refresh();
+  };
+  for ({} of this) {
+    yield jsx\`
+      <div>
+        <button onclick=\${handleClick}>Call API</button>
+        \${result && jsx\`
+          <div id="result">
+            <p>\${result.message}</p>
+            <p><small>\${result.timestamp}</small></p>
+          </div>
+        \`}
+      </div>
+    \`;
+  }
+}
+`,
+		[`client.${ext}`]: `import {jsx, renderer} from "@b9g/crank/standalone";
+import {APIDemo} from "./components";
+
+renderer.hydrate(jsx\`<\${APIDemo} />\`, document.getElementById("api-demo")${t ? "!" : ""});
 `,
 	};
 }
@@ -1322,7 +1444,7 @@ function generateReadme(config: ProjectConfig): string {
 		vanilla: "",
 		htmx: " using [HTMX](https://htmx.org)",
 		alpine: " using [Alpine.js](https://alpinejs.dev)",
-		crank: " using [Crank.js](https://crank.js.org)",
+		crank: " using [Crank.js](https://crank.js.org) with hydration",
 	};
 
 	const ext =
@@ -1340,7 +1462,8 @@ function generateReadme(config: ProjectConfig): string {
 		projectTree = `${config.name}/
 ├── src/
 │   ├── server.${ext}       # Application entry point
-│   └── components.${ext}   # Page components
+│   ├── components.${ext}   # Page components
+│   └── client.${ext}       # Client-side hydration
 ├── eslint.config.js
 ├── package.json
 ${config.typescript ? "├── tsconfig.json\n" : ""}└── README.md`;
