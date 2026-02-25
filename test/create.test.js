@@ -28,7 +28,13 @@ function runCreate(projectName) {
 	};
 }
 
-function generateProject({template, framework, typescript = true, jsx, platform = "node"}) {
+function generateProject({
+	template,
+	framework,
+	typescript = true,
+	jsx,
+	platform = "node",
+}) {
 	const tempDir = mkdtempSync(join(tmpdir(), "shovel-create-test-"));
 	const name = "test-app";
 	const args = [
@@ -233,9 +239,7 @@ afterAll(() => {
 });
 
 function comboLabel({template, framework, typescript, jsx}) {
-	const lang = typescript
-		? jsx ? "TSX" : "TS"
-		: jsx ? "JSX" : "JS";
+	const lang = typescript ? (jsx ? "TSX" : "TS") : jsx ? "JSX" : "JS";
 	return `${framework} ${template} (${lang})`;
 }
 
@@ -248,7 +252,8 @@ function entryExt({typescript, jsx, framework}) {
 
 for (const combo of ALL_COMBOS) {
 	const label = comboLabel(combo);
-	const hasClientBundle = combo.template === "static-site" || combo.template === "full-stack";
+	const hasClientBundle =
+		combo.template === "static-site" || combo.template === "full-stack";
 	const ext = entryExt(combo);
 
 	describe(label, () => {
@@ -262,7 +267,9 @@ for (const combo of ALL_COMBOS) {
 		test("package.json has correct name and scripts", () => {
 			const pkg = project.readJSON("package.json");
 			expect(pkg.name).toBe("test-app");
-			const entryFile = hasClientBundle ? `src/server.${ext}` : `src/app.${ext}`;
+			const entryFile = hasClientBundle
+				? `src/server.${ext}`
+				: `src/app.${ext}`;
 			expect(pkg.scripts.develop).toContain(entryFile);
 			expect(pkg.scripts.build).toContain(entryFile);
 			expect(pkg.scripts.start).toBeDefined();
@@ -335,7 +342,10 @@ for (const combo of ALL_COMBOS) {
 				}
 			});
 
-			if ((combo.framework === "htmx" || combo.framework === "alpine") && combo.typescript) {
+			if (
+				(combo.framework === "htmx" || combo.framework === "alpine") &&
+				combo.typescript
+			) {
 				test("generates type declarations for framework", () => {
 					expect(project.fileExists("src/env.d.ts")).toBe(true);
 					const envDts = project.readFile("src/env.d.ts");
@@ -377,32 +387,35 @@ for (const combo of ALL_COMBOS) {
 		} else {
 			test("does not generate TypeScript config or syntax", () => {
 				expect(project.fileExists("tsconfig.json")).toBe(false);
-				const entryFile = hasClientBundle ? `src/server.${ext}` : `src/app.${ext}`;
+				const entryFile = hasClientBundle
+					? `src/server.${ext}`
+					: `src/app.${ext}`;
 				const source = project.readFile(entryFile);
 				expect(source).not.toContain("@ts-expect-error");
 			});
 		}
 
 		// End-to-end: install, typecheck (TS), lint (if eslint configured)
-		test("end-to-end: install" + (combo.typescript ? " + typecheck" : "") + (hasClientBundle ? " + lint" : ""), () => {
-			const install = project.install();
-			expect(install.exitCode).toBe(0);
+		test(
+			"end-to-end: install" +
+				(combo.typescript ? " + typecheck" : "") +
+				(hasClientBundle ? " + lint" : ""),
+			() => {
+				const install = project.install();
+				expect(install.exitCode).toBe(0);
 
-			if (combo.typescript) {
-				const tsc = project.typecheck();
-				if (tsc.exitCode !== 0) {
-					console.error(`tsc failed for ${label}:\n${tsc.stdout}\n${tsc.stderr}`);
+				if (combo.typescript) {
+					const tsc = project.typecheck();
+					expect(tsc.stdout).toBe("");
+					expect(tsc.exitCode).toBe(0);
 				}
-				expect(tsc.exitCode).toBe(0);
-			}
 
-			if (hasClientBundle) {
-				const lint = project.lint();
-				if (lint.exitCode !== 0) {
-					console.error(`lint failed for ${label}:\n${lint.stdout}\n${lint.stderr}`);
+				if (hasClientBundle) {
+					const lint = project.lint();
+					expect(lint.stdout).toBe("");
+					expect(lint.exitCode).toBe(0);
 				}
-				expect(lint.exitCode).toBe(0);
-			}
-		});
+			},
+		);
 	});
 }

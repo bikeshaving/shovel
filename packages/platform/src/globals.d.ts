@@ -124,10 +124,7 @@ declare global {
 	interface Window {
 		addEventListener<K extends keyof WorkerGlobalScopeEventMap>(
 			type: K,
-			listener: (
-				this: Window,
-				ev: WorkerGlobalScopeEventMap[K],
-			) => any,
+			listener: (this: Window, ev: WorkerGlobalScopeEventMap[K]) => any,
 			options?: boolean | AddEventListenerOptions,
 		): void;
 	}
