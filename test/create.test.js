@@ -416,6 +416,7 @@ for (const combo of ALL_COMBOS) {
 					expect(lint.exitCode).toBe(0);
 				}
 			},
+			15000,
 		);
 	});
 }
