@@ -395,6 +395,27 @@ describe("trailingSlash middleware", () => {
 		expect(await response.text()).toBe("Users no slash");
 	});
 
+	test("redirects when error-handling middleware returns 404 response", async () => {
+		const router = new Router();
+		router.use(trailingSlash("strip"));
+		// Error-handling middleware that catches NotFound and returns a 404 Response
+		router.use(async function* (request) {
+			try {
+				const response: Response = yield request;
+				return response;
+			} catch (_err) {
+				return new Response("Not Found", {status: 404});
+			}
+		});
+		router.route("/users").get(async () => new Response("Users"));
+
+		const request = new Request("http://example.com/users/");
+		const response = await router.handle(request);
+
+		expect(response.status).toBe(301);
+		expect(response.headers.get("Location")).toBe("http://example.com/users");
+	});
+
 	test("works with path-scoped middleware", async () => {
 		const router = new Router();
 		router.use("/api", trailingSlash("strip"));

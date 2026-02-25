@@ -62,12 +62,10 @@ export function trailingSlash(mode: TrailingSlashMode) {
 		}
 
 		// Redirect might be needed - try matching a route first
+		let response: Response;
 		try {
-			const response: Response = yield request;
-			// Route matched - pass through without redirecting
-			return response;
+			response = yield request;
 		} catch (error) {
-			// Route didn't match (404) - redirect to normalized URL
 			if (isHTTPError(error) && error.status === 404) {
 				url.pathname = newPathname;
 				return new Response(null, {
@@ -75,9 +73,18 @@ export function trailingSlash(mode: TrailingSlashMode) {
 					headers: {Location: url.toString()},
 				});
 			}
-			// Re-throw non-404 errors
 			throw error;
 		}
+
+		if (response.status === 404) {
+			url.pathname = newPathname;
+			return new Response(null, {
+				status: 301,
+				headers: {Location: url.toString()},
+			});
+		}
+
+		return response;
 	};
 }
 
