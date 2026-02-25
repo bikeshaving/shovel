@@ -341,7 +341,9 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 				? "ts"
 				: "js";
 	const isCrank = config.uiFramework === "crank";
-	const entryFile = isCrank ? `src/server.${ext}` : `src/app.${ext}`;
+	const hasClientBundle =
+		config.template === "static-site" || config.template === "full-stack";
+	const entryFile = hasClientBundle ? `src/server.${ext}` : `src/app.${ext}`;
 	const startCmd =
 		config.platform === "bun"
 			? "bun dist/server/supervisor.js"
@@ -350,25 +352,36 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 		"@b9g/router": "^0.2.0",
 		"@b9g/shovel": "^0.2.0",
 	};
+	if (hasClientBundle) {
+		dependencies["@b9g/assets"] = "^0.2.0";
+	}
 	if (isCrank) {
 		dependencies["@b9g/crank"] = "^0.7.2";
-		dependencies["@b9g/assets"] = "^0.2.0";
+	}
+	if (config.uiFramework === "htmx") {
+		dependencies["htmx.org"] = "^2.0.0";
+	}
+	if (config.uiFramework === "alpine") {
+		dependencies["alpinejs"] = "^3.14.0";
 	}
 	const devDependencies: Record<string, string> = {};
 	if (config.typescript) {
 		devDependencies["@types/node"] = "^18.0.0";
 		devDependencies["typescript"] = "^5.0.0";
 	}
-	if (isCrank) {
+	if (hasClientBundle) {
 		devDependencies["eslint"] = "^10.0.0";
 		devDependencies["@eslint/js"] = "^10.0.0";
+		if (config.typescript) {
+			devDependencies["typescript-eslint"] = "^8.0.0";
+		}
 	}
 	const scripts: Record<string, string> = {
 		develop: `shovel develop ${entryFile} --platform ${config.platform}`,
 		build: `shovel build ${entryFile} --platform ${config.platform}`,
 		start: startCmd,
 	};
-	if (isCrank) {
+	if (hasClientBundle) {
 		scripts.lint = "eslint src/";
 	}
 	const packageJSON = {
@@ -406,20 +419,23 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 			esModuleInterop: true,
 			strict: true,
 			skipLibCheck: true,
+			noEmit: true,
+			allowImportingTsExtensions: true,
 			forceConsistentCasingInFileNames: true,
-			lib: ["ES2022", "WebWorker"],
+			lib: ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
 		};
 		if (config.uiFramework === "crank" && config.useJSX) {
 			compilerOptions.jsx = "react-jsx";
 			compilerOptions.jsxImportSource = "@b9g/crank";
 		}
 		const tsConfig = {
-			compilerOptions: {
-				...compilerOptions,
-				types: ["@b9g/platform/globals"],
-			},
-			include: ["src/**/*"],
-			exclude: ["node_modules", "dist"],
+			compilerOptions,
+			include: [
+				"src/**/*",
+				"node_modules/@b9g/platform/src/globals.d.ts",
+				"dist/server/shovel.d.ts",
+			],
+			exclude: [],
 		};
 
 		await writeFile(
@@ -428,15 +444,28 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 		);
 	}
 
-	// Create ESLint config for Crank projects
-	if (isCrank) {
-		const eslintConfig = `import js from "@eslint/js";
+	// Create ESLint config
+	if (hasClientBundle) {
+		let eslintConfig: string;
+		if (config.typescript) {
+			eslintConfig = `import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+
+export default tseslint.config(
+  js.configs.recommended,
+  tseslint.configs.recommended,
+  { ignores: ["dist/"] },
+);
+`;
+		} else {
+			eslintConfig = `import js from "@eslint/js";
 
 export default [
   js.configs.recommended,
   { ignores: ["dist/"] },
 ];
 `;
+		}
 		await writeFile(join(projectPath, "eslint.config.js"), eslintConfig);
 	}
 
@@ -578,47 +607,44 @@ function generateStaticSite(
 	}
 }
 
-function generateStaticSiteVanilla(config: ProjectConfig): string {
+function generateStaticSiteVanilla(
+	config: ProjectConfig,
+): Record<string, string> {
 	const ext = config.typescript ? "ts" : "js";
 	const t = config.typescript;
-	return `// ${config.name} - Static Site
-// Renders HTML pages server-side
+	return {
+		[`server.${ext}`]: `import {Router} from "@b9g/router";
+import {assets} from "@b9g/assets/middleware";
+${
+	t
+		? `// @ts-expect-error — asset URL resolved by Shovel build system
+`
+		: ""
+}import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
-self.addEventListener("fetch", (event) => {
-  event.respondWith(handleRequest(event.request));
+const router = new Router();
+router.use(assets());
+
+router.route("/").get(() => {
+  return new Response(renderPage("Home", \`
+    <h1>Welcome to ${config.name}</h1>
+    <p>Edit <code>src/server.${ext}</code> to get started.</p>
+    <button id="counter">Clicked: 0</button>
+    <p><a href="/about">About</a></p>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
 });
 
-async function handleRequest(request${t ? ": Request" : ""})${t ? ": Promise<Response>" : ""} {
-  const url = new URL(request.url);
-
-  if (url.pathname === "/") {
-    return new Response(renderPage("Home", \`
-      <h1>Welcome to ${config.name}</h1>
-      <p>Edit <code>src/app.${ext}</code> to get started.</p>
-      <button id="counter">Clicked: 0</button>
-      <script>
-        let count = 0;
-        const btn = document.getElementById("counter");
-        btn.addEventListener("click", () => btn.textContent = "Clicked: " + ++count);
-      </script>
-      <p><a href="/about">About</a></p>
-    \`), {
-      headers: { "Content-Type": "text/html" },
-    });
-  }
-
-  if (url.pathname === "/about") {
-    return new Response(renderPage("About", \`
-      <h1>About</h1>
-      <p>This is a static site built with <strong>Shovel</strong>.</p>
-      <p><a href="/">Home</a></p>
-    \`), {
-      headers: { "Content-Type": "text/html" },
-    });
-  }
-
-  return new Response("Not Found", { status: 404 });
-}
+router.route("/about").get(() => {
+  return new Response(renderPage("About", \`
+    <h1>About</h1>
+    <p>This is a static site built with <strong>Shovel</strong>.</p>
+    <p><a href="/">Home</a></p>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
+});
 
 function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})${t ? ": string" : ""} {
   return \`<!DOCTYPE html>
@@ -633,57 +659,69 @@ ${css}
 </head>
 <body>
   <main>\${content}</main>
+  <script src="\${clientUrl}" type="module"></script>
 </body>
 </html>\`;
 }
-`;
-}
-
-function generateStaticSiteHtmx(config: ProjectConfig): string {
-	const ext = config.typescript ? "ts" : "js";
-	const t = config.typescript;
-	return `// ${config.name} - Static Site with HTMX
-// Server-rendered HTML with HTMX interactions
 
 self.addEventListener("fetch", (event) => {
-  event.respondWith(handleRequest(event.request));
+  event.respondWith(router.handle(event.request));
+});
+`,
+		[`client.${ext}`]: `const btn = document.getElementById("counter");
+if (btn) {
+  let count = 0;
+  btn.addEventListener("click", () => btn.textContent = "Clicked: " + ++count);
+}
+`,
+	};
+}
+
+function generateStaticSiteHtmx(config: ProjectConfig): Record<string, string> {
+	const ext = config.typescript ? "ts" : "js";
+	const t = config.typescript;
+	const files: Record<string, string> = {
+		[`server.${ext}`]: `import {Router} from "@b9g/router";
+import {assets} from "@b9g/assets/middleware";
+${
+	t
+		? `// @ts-expect-error — asset URL resolved by Shovel build system
+`
+		: ""
+}import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
+
+const router = new Router();
+router.use(assets());
+
+router.route("/").get(() => {
+  return new Response(renderPage("Home", \`
+    <h1>Welcome to ${config.name}</h1>
+    <p>Edit <code>src/server.${ext}</code> to get started.</p>
+    <button hx-get="/greeting" hx-target="#result" hx-swap="innerHTML">Get Greeting</button>
+    <div id="result"></div>
+    <p><a href="/about">About</a></p>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
 });
 
-async function handleRequest(request${t ? ": Request" : ""})${t ? ": Promise<Response>" : ""} {
-  const url = new URL(request.url);
+router.route("/greeting").get(() => {
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  return new Response(\`<p>\${greeting}! The time is \${new Date().toLocaleTimeString()}.</p>\`, {
+    headers: { "Content-Type": "text/html" },
+  });
+});
 
-  if (url.pathname === "/") {
-    return new Response(renderPage("Home", \`
-      <h1>Welcome to ${config.name}</h1>
-      <p>Edit <code>src/app.${ext}</code> to get started.</p>
-      <button hx-get="/greeting" hx-target="#result" hx-swap="innerHTML">Get Greeting</button>
-      <div id="result"></div>
-      <p><a href="/about">About</a></p>
-    \`), {
-      headers: { "Content-Type": "text/html" },
-    });
-  }
-
-  if (url.pathname === "/greeting") {
-    const hour = new Date().getHours();
-    const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-    return new Response(\`<p>\${greeting}! The time is \${new Date().toLocaleTimeString()}.</p>\`, {
-      headers: { "Content-Type": "text/html" },
-    });
-  }
-
-  if (url.pathname === "/about") {
-    return new Response(renderPage("About", \`
-      <h1>About</h1>
-      <p>This is a static site built with <strong>Shovel</strong> and <strong>HTMX</strong>.</p>
-      <p><a href="/">Home</a></p>
-    \`), {
-      headers: { "Content-Type": "text/html" },
-    });
-  }
-
-  return new Response("Not Found", { status: 404 });
-}
+router.route("/about").get(() => {
+  return new Response(renderPage("About", \`
+    <h1>About</h1>
+    <p>This is a static site built with <strong>Shovel</strong> and <strong>HTMX</strong>.</p>
+    <p><a href="/">Home</a></p>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
+});
 
 function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})${t ? ": string" : ""} {
   return \`<!DOCTYPE html>
@@ -692,57 +730,71 @@ function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})$
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>\${title} - ${config.name}</title>
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <style>
 ${css}
   </style>
 </head>
 <body>
   <main>\${content}</main>
+  <script src="\${clientUrl}" type="module"></script>
 </body>
 </html>\`;
 }
-`;
-}
-
-function generateStaticSiteAlpine(config: ProjectConfig): string {
-	const ext = config.typescript ? "ts" : "js";
-	const t = config.typescript;
-	return `// ${config.name} - Static Site with Alpine.js
-// Server-rendered HTML with Alpine.js interactions
 
 self.addEventListener("fetch", (event) => {
-  event.respondWith(handleRequest(event.request));
+  event.respondWith(router.handle(event.request));
+});
+`,
+		[`client.${ext}`]: `import "htmx.org";
+`,
+	};
+	if (t) {
+		files[`env.d.ts`] = `declare module "htmx.org";
+`;
+	}
+	return files;
+}
+
+function generateStaticSiteAlpine(
+	config: ProjectConfig,
+): Record<string, string> {
+	const ext = config.typescript ? "ts" : "js";
+	const t = config.typescript;
+	const files: Record<string, string> = {
+		[`server.${ext}`]: `import {Router} from "@b9g/router";
+import {assets} from "@b9g/assets/middleware";
+${
+	t
+		? `// @ts-expect-error — asset URL resolved by Shovel build system
+`
+		: ""
+}import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
+
+const router = new Router();
+router.use(assets());
+
+router.route("/").get(() => {
+  return new Response(renderPage("Home", \`
+    <h1>Welcome to ${config.name}</h1>
+    <p>Edit <code>src/server.${ext}</code> to get started.</p>
+    <div x-data="{ count: 0 }">
+      <button @click="count++">Clicked: <span x-text="count"></span></button>
+    </div>
+    <p><a href="/about">About</a></p>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
 });
 
-async function handleRequest(request${t ? ": Request" : ""})${t ? ": Promise<Response>" : ""} {
-  const url = new URL(request.url);
-
-  if (url.pathname === "/") {
-    return new Response(renderPage("Home", \`
-      <h1>Welcome to ${config.name}</h1>
-      <p>Edit <code>src/app.${ext}</code> to get started.</p>
-      <div x-data="{ count: 0 }">
-        <button @click="count++">Clicked: <span x-text="count"></span></button>
-      </div>
-      <p><a href="/about">About</a></p>
-    \`), {
-      headers: { "Content-Type": "text/html" },
-    });
-  }
-
-  if (url.pathname === "/about") {
-    return new Response(renderPage("About", \`
-      <h1>About</h1>
-      <p>This is a static site built with <strong>Shovel</strong> and <strong>Alpine.js</strong>.</p>
-      <p><a href="/">Home</a></p>
-    \`), {
-      headers: { "Content-Type": "text/html" },
-    });
-  }
-
-  return new Response("Not Found", { status: 404 });
-}
+router.route("/about").get(() => {
+  return new Response(renderPage("About", \`
+    <h1>About</h1>
+    <p>This is a static site built with <strong>Shovel</strong> and <strong>Alpine.js</strong>.</p>
+    <p><a href="/">Home</a></p>
+  \`), {
+    headers: { "Content-Type": "text/html" },
+  });
+});
 
 function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})${t ? ": string" : ""} {
   return \`<!DOCTYPE html>
@@ -751,17 +803,38 @@ function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})$
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>\${title} - ${config.name}</title>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
   <style>
 ${css}
   </style>
 </head>
 <body>
   <main>\${content}</main>
+  <script src="\${clientUrl}" type="module"></script>
 </body>
 </html>\`;
 }
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(router.handle(event.request));
+});
+`,
+		[`client.${ext}`]: `import Alpine from "alpinejs";
+Alpine.start();
+`,
+	};
+	if (t) {
+		files[`env.d.ts`] = `declare module "alpinejs" {
+  interface Alpine {
+    start(): void;
+    plugin(plugin: unknown): void;
+    [key: string]: unknown;
+  }
+  const alpine: Alpine;
+  export default alpine;
+}
 `;
+	}
+	return files;
 }
 
 function generateStaticSiteCrank(
@@ -782,7 +855,12 @@ function generateStaticSiteCrank(
 import {Router} from "@b9g/router";
 import {assets} from "@b9g/assets/middleware";
 import {Page, Counter} from "./components";
-import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
+${
+	t
+		? `// @ts-expect-error — asset URL resolved by Shovel build system
+`
+		: ""
+}import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
 router.use(assets());
@@ -865,7 +943,12 @@ import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
 import {assets} from "@b9g/assets/middleware";
 import {Page, Counter} from "./components";
-import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
+${
+	t
+		? `// @ts-expect-error — asset URL resolved by Shovel build system
+`
+		: ""
+}import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
 router.use(assets());
@@ -959,14 +1042,25 @@ function generateFullStack(
 	}
 }
 
-function generateFullStackVanilla(config: ProjectConfig): string {
+function generateFullStackVanilla(
+	config: ProjectConfig,
+): Record<string, string> {
 	const ext = config.typescript ? "ts" : "js";
 	const t = config.typescript;
-	return `import {Router} from "@b9g/router";
+	return {
+		[`server.${ext}`]: `import {Router} from "@b9g/router";
 import {logger} from "@b9g/router/middleware";
+import {assets} from "@b9g/assets/middleware";
+${
+	t
+		? `// @ts-expect-error — asset URL resolved by Shovel build system
+`
+		: ""
+}import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
 router.use(logger());
+router.use(assets());
 
 // API routes
 router.route("/api/hello").get(() => {
@@ -985,17 +1079,9 @@ router.route("/api/echo").post(async (req) => {
 router.route("/").get(() => {
   return new Response(renderPage("Home", \`
     <h1>Welcome to ${config.name}</h1>
-    <p>Edit <code>src/app.${ext}</code> to get started.</p>
+    <p>Edit <code>src/server.${ext}</code> to get started.</p>
     <button id="call-api">Call API</button>
     <div id="result"></div>
-    <script>
-      document.getElementById("call-api").addEventListener("click", async () => {
-        const res = await fetch("/api/hello");
-        const data = await res.json();
-        document.getElementById("result").innerHTML =
-          "<p>" + data.message + "</p><p><small>" + data.timestamp + "</small></p>";
-      });
-    </script>
     <ul>
       <li><a href="/about">About</a></li>
       <li><a href="/api/hello">API: /api/hello</a></li>
@@ -1028,6 +1114,7 @@ ${css}
 </head>
 <body>
   <main>\${content}</main>
+  <script src="\${clientUrl}" type="module"></script>
 </body>
 </html>\`;
 }
@@ -1035,17 +1122,40 @@ ${css}
 self.addEventListener("fetch", (event) => {
   event.respondWith(router.handle(event.request));
 });
-`;
+`,
+		[`client.${ext}`]: `const callBtn = document.getElementById("call-api");
+if (callBtn) {
+  callBtn.addEventListener("click", async () => {
+    const res = await fetch("/api/hello");
+    const data = await res.json();
+    const result = document.getElementById("result");
+    if (result) {
+      result.innerHTML =
+        \`<p>\${data.message}</p><p><small>\${data.timestamp}</small></p>\`;
+    }
+  });
+}
+`,
+	};
 }
 
-function generateFullStackHtmx(config: ProjectConfig): string {
+function generateFullStackHtmx(config: ProjectConfig): Record<string, string> {
 	const ext = config.typescript ? "ts" : "js";
 	const t = config.typescript;
-	return `import {Router} from "@b9g/router";
+	const files: Record<string, string> = {
+		[`server.${ext}`]: `import {Router} from "@b9g/router";
 import {logger} from "@b9g/router/middleware";
+import {assets} from "@b9g/assets/middleware";
+${
+	t
+		? `// @ts-expect-error — asset URL resolved by Shovel build system
+`
+		: ""
+}import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
 router.use(logger());
+router.use(assets());
 
 // API routes — return HTML fragments when HTMX requests, JSON otherwise
 router.route("/api/hello").get((req) => {
@@ -1071,7 +1181,7 @@ router.route("/api/echo").post(async (req) => {
 router.route("/").get(() => {
   return new Response(renderPage("Home", \`
     <h1>Welcome to ${config.name}</h1>
-    <p>Edit <code>src/app.${ext}</code> to get started.</p>
+    <p>Edit <code>src/server.${ext}</code> to get started.</p>
     <button hx-get="/api/hello" hx-target="#result" hx-swap="innerHTML">Call API</button>
     <div id="result"></div>
     <ul>
@@ -1100,13 +1210,13 @@ function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})$
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>\${title} - ${config.name}</title>
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <style>
 ${css}
   </style>
 </head>
 <body>
   <main>\${content}</main>
+  <script src="\${clientUrl}" type="module"></script>
 </body>
 </html>\`;
 }
@@ -1114,17 +1224,36 @@ ${css}
 self.addEventListener("fetch", (event) => {
   event.respondWith(router.handle(event.request));
 });
+`,
+		[`client.${ext}`]: `import "htmx.org";
+`,
+	};
+	if (t) {
+		files[`env.d.ts`] = `declare module "htmx.org";
 `;
+	}
+	return files;
 }
 
-function generateFullStackAlpine(config: ProjectConfig): string {
+function generateFullStackAlpine(
+	config: ProjectConfig,
+): Record<string, string> {
 	const ext = config.typescript ? "ts" : "js";
 	const t = config.typescript;
-	return `import {Router} from "@b9g/router";
+	const files: Record<string, string> = {
+		[`server.${ext}`]: `import {Router} from "@b9g/router";
 import {logger} from "@b9g/router/middleware";
+import {assets} from "@b9g/assets/middleware";
+${
+	t
+		? `// @ts-expect-error — asset URL resolved by Shovel build system
+`
+		: ""
+}import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
 router.use(logger());
+router.use(assets());
 
 // API routes
 router.route("/api/hello").get(() => {
@@ -1143,7 +1272,7 @@ router.route("/api/echo").post(async (req) => {
 router.route("/").get(() => {
   return new Response(renderPage("Home", \`
     <h1>Welcome to ${config.name}</h1>
-    <p>Edit <code>src/app.${ext}</code> to get started.</p>
+    <p>Edit <code>src/server.${ext}</code> to get started.</p>
     <div x-data="{ result: null }">
       <button @click="fetch('/api/hello').then(r => r.json()).then(d => result = d)">Call API</button>
       <div id="result" x-show="result">
@@ -1177,13 +1306,13 @@ function renderPage(title${t ? ": string" : ""}, content${t ? ": string" : ""})$
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>\${title} - ${config.name}</title>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
   <style>
 ${css}
   </style>
 </head>
 <body>
   <main>\${content}</main>
+  <script src="\${clientUrl}" type="module"></script>
 </body>
 </html>\`;
 }
@@ -1191,7 +1320,24 @@ ${css}
 self.addEventListener("fetch", (event) => {
   event.respondWith(router.handle(event.request));
 });
+`,
+		[`client.${ext}`]: `import Alpine from "alpinejs";
+Alpine.start();
+`,
+	};
+	if (t) {
+		files[`env.d.ts`] = `declare module "alpinejs" {
+  interface Alpine {
+    start(): void;
+    plugin(plugin: unknown): void;
+    [key: string]: unknown;
+  }
+  const alpine: Alpine;
+  export default alpine;
+}
 `;
+	}
+	return files;
 }
 
 function generateFullStackCrank(config: ProjectConfig): Record<string, string> {
@@ -1211,7 +1357,12 @@ import {Router} from "@b9g/router";
 import {logger} from "@b9g/router/middleware";
 import {assets} from "@b9g/assets/middleware";
 import {Page, Counter} from "./components";
-import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
+${
+	t
+		? `// @ts-expect-error — asset URL resolved by Shovel build system
+`
+		: ""
+}import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
 router.use(logger());
@@ -1313,7 +1464,12 @@ import {Router} from "@b9g/router";
 import {logger} from "@b9g/router/middleware";
 import {assets} from "@b9g/assets/middleware";
 import {Page, Counter} from "./components";
-import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
+${
+	t
+		? `// @ts-expect-error — asset URL resolved by Shovel build system
+`
+		: ""
+}import clientUrl from "./client.${ext}" with {assetBase: "/assets/"};
 
 const router = new Router();
 router.use(logger());
@@ -1434,6 +1590,8 @@ function generateReadme(config: ProjectConfig): string {
 				? "ts"
 				: "js";
 	const isCrank = config.uiFramework === "crank";
+	const hasClientBundle =
+		config.template === "static-site" || config.template === "full-stack";
 
 	let projectTree: string;
 	if (isCrank) {
@@ -1442,6 +1600,14 @@ function generateReadme(config: ProjectConfig): string {
 │   ├── server.${ext}       # Application entry point
 │   ├── components.${ext}   # Page components
 │   └── client.${ext}       # Client-side hydration
+├── eslint.config.js
+├── package.json
+${config.typescript ? "├── tsconfig.json\n" : ""}└── README.md`;
+	} else if (hasClientBundle) {
+		projectTree = `${config.name}/
+├── src/
+│   ├── server.${ext}   # Application entry point
+│   └── client.${ext}   # Client-side code
 ├── eslint.config.js
 ├── package.json
 ${config.typescript ? "├── tsconfig.json\n" : ""}└── README.md`;
@@ -1470,7 +1636,7 @@ Open http://localhost:7777
 
 - \`npm run develop\` - Start development server
 - \`npm run build\` - Build for production
-- \`npm start\` - Run production build${isCrank ? "\n- `npm run lint` - Lint source files" : ""}
+- \`npm start\` - Run production build${hasClientBundle ? "\n- `npm run lint` - Lint source files" : ""}
 
 ## Project Structure
 

@@ -114,6 +114,23 @@ declare global {
 		message: ExtendableMessageEvent;
 		messageerror: MessageEvent;
 	}
+
+	/**
+	 * When both DOM and WebWorker libs are included (universal/isomorphic code),
+	 * the DOM lib's addEventListener overload on Window takes priority and infers
+	 * events as `Event` instead of `FetchEvent`/`ExtendableEvent`. This augmentation
+	 * adds a ServiceWorker-aware overload to Window so inference works in both contexts.
+	 */
+	interface Window {
+		addEventListener<K extends keyof WorkerGlobalScopeEventMap>(
+			type: K,
+			listener: (
+				this: Window,
+				ev: WorkerGlobalScopeEventMap[K],
+			) => any,
+			options?: boolean | AddEventListenerOptions,
+		): void;
+	}
 }
 
 export {};
