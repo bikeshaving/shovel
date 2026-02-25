@@ -2,6 +2,32 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.15] - 2026-02-25
+
+### Bug Fixes
+
+- **`create-shovel`** - Fixed JS project linting: added `globals` package for browser globals in ESLint configs
+- **`create-shovel`** - Fixed Crank project linting: use `eslint-plugin-crank` with recommended config instead of manual rule overrides
+- **`create-shovel`** - Fixed Crank JS+JSX linting: enabled JSX parsing in ESLint config
+- **`create-shovel`** - Fixed Crank `Counter` component to use `this.refresh(() => count++)` callback pattern
+
+### Tests
+
+- **`create-shovel`** - Comprehensive test suite covering all 24 permutations (4 frameworks × 2 templates × TS/JS + Crank JSX variants + hello-world + api) with end-to-end install, typecheck, and lint verification
+
+## [0.2.14] - 2026-02-24
+
+### Features
+
+- **`create-shovel`** - All static-site and full-stack templates now use bundled client entry points through Shovel's asset pipeline (`import ... with {assetBase}`) instead of CDN links or inline scripts
+- **`create-shovel`** - Added `@b9g/assets` middleware and `@b9g/router` to vanilla, htmx, and Alpine templates
+- **`create-shovel`** - Added type declarations (`env.d.ts`) for htmx and Alpine in TypeScript projects
+- **`create-shovel`** - Added ESLint with `typescript-eslint` for TypeScript projects, `globals` for JavaScript projects
+
+### Bug Fixes
+
+- **`@b9g/platform`** - Added `Window.addEventListener` overload for ServiceWorker event types in `globals.d.ts`
+
 ## [0.2.13] - 2026-02-24
 
 ### Bug Fixes
