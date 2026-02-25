@@ -40,7 +40,14 @@ router.use(assetsMiddleware());
 router.use(pageCache);
 
 // Cache middleware for pages using new generator API
-async function* pageCache(request, _context) {
+async function* pageCache(
+	request: Request,
+	_context: import("@b9g/router").RouteContext,
+): AsyncGenerator<
+	Request | undefined,
+	Response | null | undefined | void,
+	Response
+> {
 	logger.debug`Processing: ${request.url} Method: ${request.method}`;
 
 	if (request.method !== "GET" || !self.caches) {
@@ -142,15 +149,11 @@ const posts = [
 ];
 
 // Routes
-router
-	.route({
-		pattern: "/",
-	})
-	.get(async (_request, _context) => {
-		return new Response(
-			renderPage(
-				"Home",
-				`
+router.route("/").get(async (_request, _context) => {
+	return new Response(
+		renderPage(
+			"Home",
+			`
     <div class="cache-info">
       <strong>Cache Status:</strong> ${self.caches ? "Enabled" : "Disabled"} |
       <strong>Cache Type:</strong> ${self.caches ? "Platform-configured" : "N/A"}
@@ -170,43 +173,39 @@ router
 				.join("")}
     </div>
   `,
-			),
-			{
-				headers: {
-					"Content-Type": "text/html",
-					"Cache-Control": CACHE_HEADERS.PAGES,
-				},
+		),
+		{
+			headers: {
+				"Content-Type": "text/html",
+				"Cache-Control": CACHE_HEADERS.PAGES,
 			},
-		);
-	});
+		},
+	);
+});
 
-router
-	.route({
-		pattern: "/posts/:id",
-	})
-	.get(async (request, context) => {
-		const post = posts.find((p) => p.id === parseInt(context.params.id));
+router.route("/posts/:id").get(async (request, context) => {
+	const post = posts.find((p) => p.id === parseInt(context.params.id));
 
-		if (!post) {
-			return new Response(
-				renderPage(
-					"Post Not Found",
-					`
+	if (!post) {
+		return new Response(
+			renderPage(
+				"Post Not Found",
+				`
       <div class="post">
         <h2>Post Not Found</h2>
         <p>The post you're looking for doesn't exist.</p>
         <p><a href="/">← Back to Home</a></p>
       </div>
     `,
-				),
-				{status: 404, headers: {"Content-Type": "text/html"}},
-			);
-		}
+			),
+			{status: 404, headers: {"Content-Type": "text/html"}},
+		);
+	}
 
-		return new Response(
-			renderPage(
-				post.title,
-				`
+	return new Response(
+		renderPage(
+			post.title,
+			`
     <div class="cache-info">
       <strong>Cache Status:</strong> ${self.caches ? "Enabled" : "Disabled"} |
       <strong>Post ID:</strong> ${post.id}
@@ -219,54 +218,46 @@ router
       <p><a href="/">← Back to Home</a></p>
     </article>
   `,
-			),
-			{
-				headers: {
-					"Content-Type": "text/html",
-					"Cache-Control": CACHE_HEADERS.POSTS,
-				},
+		),
+		{
+			headers: {
+				"Content-Type": "text/html",
+				"Cache-Control": CACHE_HEADERS.POSTS,
 			},
-		);
-	});
+		},
+	);
+});
 
 // API route - no automatic caching, handled by manual logic if needed
-router
-	.route({
-		pattern: "/api/posts",
-	})
-	.get(async (_request, _context) => {
-		// Simulate API delay
-		await new Promise((resolve) => setTimeout(resolve, 100));
+router.route("/api/posts").get(async (_request, _context) => {
+	// Simulate API delay
+	await new Promise((resolve) => setTimeout(resolve, 100));
 
-		return Response.json(
-			{
-				posts: posts.map((p) => ({
-					id: p.id,
-					title: p.title,
-					author: p.author,
-					date: p.date,
-				})),
-				cached: !!self.caches,
-				timestamp: new Date().toISOString(),
+	return Response.json(
+		{
+			posts: posts.map((p) => ({
+				id: p.id,
+				title: p.title,
+				author: p.author,
+				date: p.date,
+			})),
+			cached: !!self.caches,
+			timestamp: new Date().toISOString(),
+		},
+		{
+			headers: {
+				"Cache-Control": CACHE_HEADERS.API,
 			},
-			{
-				headers: {
-					"Cache-Control": CACHE_HEADERS.API,
-				},
-			},
-		);
-	});
+		},
+	);
+});
 
 // About page
-router
-	.route({
-		pattern: "/about",
-	})
-	.get(async (_request, _context) => {
-		return new Response(
-			renderPage(
-				"About",
-				`
+router.route("/about").get(async (_request, _context) => {
+	return new Response(
+		renderPage(
+			"About",
+			`
     <div class="post">
       <h2>About This App</h2>
       <p>This is a demo blog built with Shovel's cache-first architecture. It showcases:</p>
@@ -286,15 +277,15 @@ router
       <p><a href="/">← Back to Home</a></p>
     </div>
   `,
-			),
-			{
-				headers: {
-					"Content-Type": "text/html",
-					"Cache-Control": CACHE_HEADERS.ABOUT,
-				},
+		),
+		{
+			headers: {
+				"Content-Type": "text/html",
+				"Cache-Control": CACHE_HEADERS.ABOUT,
 			},
-		);
-	});
+		},
+	);
+});
 
 /**
  * ServiceWorker install event - setup and initialization
@@ -381,7 +372,7 @@ self.addEventListener("fetch", (event) => {
 		const responsePromise = router.handle(event.request);
 
 		// Add timeout to detect hanging promises
-		const timeoutPromise = new Promise((_, reject) => {
+		const timeoutPromise = new Promise<Response>((_, reject) => {
 			setTimeout(
 				() => reject(new Error("Router response timeout")),
 				TIMEOUTS.ROUTER_RESPONSE,
@@ -389,7 +380,7 @@ self.addEventListener("fetch", (event) => {
 		});
 
 		event.respondWith(
-			Promise.race([responsePromise, timeoutPromise]).catch((error) => {
+			Promise.race([responsePromise, timeoutPromise]).catch((error: Error) => {
 				// In development, show full error details
 				const isDev = import.meta.env?.NODE_ENV !== "production";
 				const errorDetails = isDev
@@ -403,7 +394,8 @@ self.addEventListener("fetch", (event) => {
 				});
 			}),
 		);
-	} catch (error) {
+	} catch (err) {
+		const error = err as Error;
 		// In development, show full error details
 		const isDev = import.meta.env?.NODE_ENV !== "production";
 		const errorDetails = isDev
@@ -423,8 +415,8 @@ self.addEventListener("fetch", (event) => {
 /**
  * Static event - provide routes for static site generation
  */
-self.addEventListener("static", (event) => {
-	event.waitUntil(
+self.addEventListener("static", (event: Event) => {
+	(event as ExtendableEvent).waitUntil(
 		(async () => {
 			// Return all routes that should be pre-rendered
 			const staticRoutes = [
@@ -440,7 +432,7 @@ self.addEventListener("static", (event) => {
 });
 
 // Helper function to render HTML pages
-function renderPage(title, content) {
+function renderPage(title: string, content: string) {
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>

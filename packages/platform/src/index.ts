@@ -595,6 +595,17 @@ export class ServiceWorkerPool {
 							});
 						}
 					}
+				} else if (message.type === "broadcast:post") {
+					// Fan out to all OTHER workers
+					for (const w of this.#workers) {
+						if (w !== worker) {
+							w.postMessage({
+								type: "broadcast:deliver",
+								channel: message.channel,
+								data: message.data,
+							});
+						}
+					}
 				}
 				break;
 		}
@@ -861,3 +872,4 @@ export {
 	type DatabaseFactory,
 	type DatabaseUpgradeEvent,
 } from "./runtime.js";
+export type {BroadcastChannelBackend} from "./internal/broadcast-channel-backend.js";

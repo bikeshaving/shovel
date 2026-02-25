@@ -86,7 +86,16 @@
     "./platform.js": {
       "types": "./dist/src/platform.d.ts",
       "import": "./dist/src/platform.js"
-    }
+    },
+    "./pubsub": {
+      "types": "./dist/src/pubsub.d.ts",
+      "import": "./dist/src/pubsub.js"
+    },
+    "./pubsub.js": {
+      "types": "./dist/src/pubsub.d.ts",
+      "import": "./dist/src/pubsub.js"
+    },
+    "./cloudflare.d.ts": "./dist/src/cloudflare.d.ts"
   },
   "repository": {
     "type": "git",

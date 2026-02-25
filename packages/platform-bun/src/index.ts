@@ -386,7 +386,7 @@ export class BunPlatform {
 		const prodWorkerCode = `// Bun Production Worker
 import BunPlatform from "@b9g/platform-bun";
 import {getLogger} from "@logtape/logtape";
-import {configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest} from "@b9g/platform/runtime";
+import {configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -396,13 +396,15 @@ const logger = getLogger(["shovel", "platform"]);
 let server;
 let databases;
 
-// Register shutdown handler before async startup
+// Register message handler for shutdown and broadcast relay
 self.onmessage = async (event) => {
 	if (event.data.type === "shutdown") {
 		logger.info("Worker shutting down");
 		if (server) await server.close();
 		if (databases) await databases.closeAll();
 		postMessage({type: "shutdown-complete"});
+	} else if (event.data.type === "broadcast:deliver") {
+		deliverBroadcastMessage(event.data.channel, event.data.data);
 	}
 };
 
@@ -410,6 +412,11 @@ self.onmessage = async (event) => {
 const result = await initWorkerRuntime({config, usePostMessage: false});
 const registration = result.registration;
 databases = result.databases;
+
+// Set up broadcast relay (posts go to supervisor for fan-out to other workers)
+setBroadcastChannelRelay((channelName, data) => {
+	postMessage({type: "broadcast:post", channel: channelName, data});
+});
 
 // Import user code (registers event handlers)
 await import("${userEntryPath}");

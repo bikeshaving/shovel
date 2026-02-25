@@ -32,7 +32,7 @@ self.addEventListener("fetch", (event) => {
 		);
 
 		// Create platform WITHOUT assets directory
-		platform = new CloudflarePlatform({});
+		platform = new CloudflarePlatform({port: 0});
 	});
 
 	afterAll(async () => {

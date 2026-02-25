@@ -68,6 +68,7 @@ export function getESBuildConfig(): ESBuildConfig {
 		conditions: ["worker", "browser"],
 		external: [
 			"node:*",
+			"cloudflare:*",
 			"path",
 			"fs",
 			"fs/promises",
