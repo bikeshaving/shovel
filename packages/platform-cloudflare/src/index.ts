@@ -384,6 +384,7 @@ export default { fetch: createFetchHandler(registration) };
 			// Include both node:* prefix and bare module names for compatibility
 			external: [
 				"node:*",
+				"cloudflare:*",
 				"path",
 				"fs",
 				"fs/promises",

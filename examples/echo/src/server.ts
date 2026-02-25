@@ -184,10 +184,14 @@ async function parseBody(req: Request) {
 			return await req.json();
 		} else if (contentType?.includes("application/x-www-form-urlencoded")) {
 			const formData = await req.formData();
-			return Object.fromEntries(formData);
+			return Object.fromEntries(
+				formData as unknown as Iterable<readonly [PropertyKey, unknown]>,
+			);
 		} else if (contentType?.includes("multipart/form-data")) {
 			const formData = await req.formData();
-			return Object.fromEntries(formData);
+			return Object.fromEntries(
+				formData as unknown as Iterable<readonly [PropertyKey, unknown]>,
+			);
 		} else {
 			const text = await req.text();
 			return text || null;

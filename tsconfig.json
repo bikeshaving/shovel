@@ -10,10 +10,11 @@
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"noEmit": true,
+		"types": ["bun-types"],
 		"lib": ["ES2022", "WebWorker"],
 		"jsx": "react-jsx",
 		"jsxImportSource": "@b9g/crank"
 	},
-	"include": ["src/**/*", "packages/*/src/**/*", "test/**/*", "packages/*/test/**/*"],
-	"exclude": ["node_modules", "dist", "**/dist", "examples", "packages/shovel-wpt"]
+	"include": ["src/**/*", "packages/*/src/**/*", "test/**/*", "packages/*/test/**/*", "examples/*/src/**/*", "examples/globals.d.ts"],
+	"exclude": ["node_modules", "**/dist", "packages/shovel-wpt"]
 }

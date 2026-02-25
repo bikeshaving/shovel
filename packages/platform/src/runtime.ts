@@ -15,6 +15,13 @@ import {getLogger, getConsoleSink} from "@logtape/logtape";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {CustomCacheStorage, Cache} from "@b9g/cache";
 import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
+import {
+	ShovelBroadcastChannel,
+	setBroadcastChannelRelay,
+	deliverBroadcastMessage,
+	setBroadcastChannelBackend,
+} from "./internal/broadcast-channel.js";
+import type {BroadcastChannelBackend} from "./internal/broadcast-channel-backend.js";
 
 // ============================================================================
 // Cookie Store API Implementation
@@ -699,6 +706,7 @@ const PATCHED_KEYS = [
 	"WorkerGlobalScope",
 	"DedicatedWorkerGlobalScope",
 	"cookieStore",
+	"BroadcastChannel",
 ] as const;
 
 type PatchedKey = (typeof PATCHED_KEYS)[number];
@@ -1813,7 +1821,7 @@ export class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
  *
  * Use restore() to revert all patches (useful for testing).
  */
-export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
+export class ServiceWorkerGlobals {
 	// Self-reference (standard in ServiceWorkerGlobalScope)
 	// Type assertion: we provide a compatible subset of WorkerGlobalScope
 	readonly self: any;
@@ -2079,7 +2087,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 			const original = this.#originals
 				.addEventListener as typeof addEventListener;
 			if (original) {
-				original.call(globalThis, type, listener, options);
+				original.call(globalThis, type as any, listener, options);
 			}
 		}
 	}
@@ -2097,7 +2105,7 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 			const original = this.#originals
 				.removeEventListener as typeof removeEventListener;
 			if (original) {
-				original.call(globalThis, type, listener, options);
+				original.call(globalThis, type as any, listener, options);
 			}
 		}
 	}
@@ -2167,6 +2175,9 @@ export class ServiceWorkerGlobals implements ServiceWorkerGlobalScope {
 			get: () => cookieStoreStorage.get(),
 			configurable: true,
 		});
+
+		// Communication APIs
+		g.BroadcastChannel = ShovelBroadcastChannel;
 	}
 
 	/**
@@ -2222,6 +2233,12 @@ export interface ShovelConfig {
 	caches?: Record<string, CacheConfig>;
 	directories?: Record<string, DirectoryConfig>;
 	databases?: Record<string, DatabaseConfig>;
+	broadcastChannel?: {
+		impl?:
+			| (new (options: Record<string, unknown>) => BroadcastChannelBackend)
+			| ((options: Record<string, unknown>) => BroadcastChannelBackend);
+		[key: string]: unknown;
+	};
 }
 
 // ============================================================================
@@ -2476,6 +2493,18 @@ export async function initWorkerRuntime(
 	// Install ServiceWorker globals
 	scope.install();
 
+	// Set up broadcast channel backend if configured
+	if (config?.broadcastChannel?.impl) {
+		const {impl, ...bcOptions} = config.broadcastChannel;
+		const opts = bcOptions as Record<string, unknown>;
+		const bcBackend = isClass(impl)
+			? new impl(opts)
+			: (impl as (options: Record<string, unknown>) => BroadcastChannelBackend)(
+					opts,
+				);
+		setBroadcastChannelBackend(bcBackend);
+	}
+
 	runtimeLogger.debug("Worker runtime initialized");
 
 	return {registration, scope, caches, directories, databases, loggers};
@@ -2601,6 +2630,12 @@ export function startWorkerMessageLoop(
 			return;
 		}
 
+		// Handle broadcast relay messages from supervisor
+		if (message?.type === "broadcast:deliver") {
+			deliverBroadcastMessage(message.channel, message.data);
+			return;
+		}
+
 		// Handle shutdown message - close all resources before termination
 		if (message?.type === "shutdown") {
 			messageLogger.debug(`[Worker-${workerId}] Received shutdown signal`);
@@ -2636,6 +2671,11 @@ export function startWorkerMessageLoop(
 	// Set up message handling via addEventListener
 	// ServiceWorkerGlobals delegates non-ServiceWorker events (like "message") to the native handler
 	self.addEventListener("message", handleMessage);
+
+	// Set up broadcast relay (posts go to supervisor for fan-out to other workers)
+	setBroadcastChannelRelay((channelName, data) => {
+		sendMessage({type: "broadcast:post", channel: channelName, data});
+	});
 
 	// Signal that the worker is ready
 	sendMessage({type: "ready"});
@@ -2804,3 +2844,15 @@ export async function configureLogging(
 		loggers,
 	});
 }
+
+// ============================================================================
+// Re-exports: Communication APIs
+// ============================================================================
+
+export {
+	ShovelBroadcastChannel,
+	setBroadcastChannelRelay,
+	deliverBroadcastMessage,
+	setBroadcastChannelBackend,
+} from "./internal/broadcast-channel.js";
+export type {BroadcastChannelBackend} from "./internal/broadcast-channel-backend.js";

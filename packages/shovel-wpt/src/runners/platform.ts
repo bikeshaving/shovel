@@ -134,13 +134,13 @@ export function runPlatformTests(
 
 				test("creates a server instance", () => {
 					const handler: Handler = async () => new Response("ok");
-					server = platform.createServer(handler);
+					server = platform.createServer(handler, {port: 0});
 					expect(server).toBeDefined();
 				});
 
 				test("server has required methods", () => {
 					const handler: Handler = async () => new Response("ok");
-					server = platform.createServer(handler);
+					server = platform.createServer(handler, {port: 0});
 
 					expect(server.listen).toBeDefined();
 					expect(server.close).toBeDefined();

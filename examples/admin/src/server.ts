@@ -65,7 +65,7 @@ self.addEventListener("activate", (event) => {
 		self.databases.open("main", 1, (e) => {
 			e.waitUntil(
 				(async () => {
-					const db = e.db;
+					const db = e.db as {ensureTable(table: unknown): Promise<void>};
 					logger.info("Running migrations", {
 						oldVersion: e.oldVersion,
 						newVersion: e.newVersion,

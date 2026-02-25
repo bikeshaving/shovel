@@ -1,4 +1,7 @@
-import {test, expect, describe, afterAll} from "bun:test";
+import {test, expect, describe, afterAll, setDefaultTimeout} from "bun:test";
+
+// Scaffolding tests run bun install + tsc + eslint; cleanup removes node_modules dirs
+setDefaultTimeout(15_000);
 import {spawnSync} from "child_process";
 import {join} from "path";
 import {mkdtempSync, readFileSync, existsSync, rmSync, copyFileSync} from "fs";

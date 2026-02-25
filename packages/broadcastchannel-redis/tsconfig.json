@@ -14,14 +14,11 @@
 		"resolveJsonModule": true,
 		"noEmit": false,
 		"lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
-		"composite": true,
-		"types": []
+		"composite": true
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.js"],
 	"references": [
-		{"path": "../platform"},
-		{"path": "../cache"},
-		{"path": "../filesystem"}
+		{ "path": "../platform" }
 	]
 }

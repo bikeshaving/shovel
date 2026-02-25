@@ -16,6 +16,7 @@ import {
 	createDirectoryFactory,
 	runLifecycle,
 	dispatchRequest,
+	setBroadcastChannelBackend,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
 
@@ -138,6 +139,7 @@ export function createFetchHandler(
 ) => Promise<Response> {
 	// Defer lifecycle to first request (workerd restriction on setTimeout in global scope)
 	let lifecyclePromise: Promise<void> | null = null;
+	let bcBackendConfigured = false;
 
 	return async (
 		request: Request,
@@ -150,14 +152,26 @@ export function createFetchHandler(
 		}
 		await lifecyclePromise;
 
+		// Auto-configure BroadcastChannel DO backend if binding is present
+		const envRecord = env as Record<string, unknown>;
+		if (!bcBackendConfigured && envRecord.SHOVEL_PUBSUB) {
+			const {CloudflarePubSubBackend} = await import("./pubsub.js");
+			setBroadcastChannelBackend(
+				new CloudflarePubSubBackend(
+					envRecord.SHOVEL_PUBSUB as DurableObjectNamespace,
+				),
+			);
+			bcBackendConfigured = true;
+		}
+
 		// Create CloudflareFetchEvent with env and waitUntil hook
 		const event = new CloudflareFetchEvent(request, {
-			env: env as Record<string, unknown>,
+			env: envRecord,
 			platformWaitUntil: (promise) => ctx.waitUntil(promise),
 		});
 
 		// Run within envStorage for directory factory access
-		return envStorage.run(env as Record<string, unknown>, () =>
+		return envStorage.run(envRecord, () =>
 			dispatchRequest(registration, event),
 		);
 	};

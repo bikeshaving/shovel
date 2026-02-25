@@ -204,7 +204,7 @@ export class OAuth2Client {
 			);
 		}
 
-		const data = await response.json();
+		const data: Record<string, any> = await response.json();
 
 		return {
 			accessToken: data.access_token,
@@ -245,7 +245,7 @@ export class OAuth2Client {
 			);
 		}
 
-		const data = await response.json();
+		const data: Record<string, any> = await response.json();
 
 		return {
 			accessToken: data.access_token,

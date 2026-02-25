@@ -79,7 +79,7 @@ describe("BunPlatform", () => {
 
 	test("should handle server listen and close", async () => {
 		const handler = mock(() => new Response("OK"));
-		const server = platform.createServer(handler);
+		const server = platform.createServer(handler, {port: 0});
 
 		// Test listen (should not throw)
 		await server.listen();
