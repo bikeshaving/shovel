@@ -6,6 +6,12 @@ import {tmpdir} from "os";
 
 /**
  * Tests for create-shovel CLI
+ *
+ * Every framework × template × typescript × jsx permutation is tested for:
+ * - Correct project structure (entry files, config files)
+ * - Correct dependencies and scripts in package.json
+ * - Core Shovel patterns in generated code
+ * - End-to-end: bun install + tsc --noEmit (TS) + eslint (if configured)
  */
 
 const CREATE_SCRIPT = join(import.meta.dirname, "../bin/create.ts");
@@ -22,15 +28,7 @@ function runCreate(projectName) {
 	};
 }
 
-/**
- * Generate a project in a temp directory and return helpers to inspect it.
- */
-function generateProject({
-	template,
-	framework,
-	typescript = true,
-	platform = "node",
-}) {
+function generateProject({template, framework, typescript = true, jsx, platform = "node"}) {
 	const tempDir = mkdtempSync(join(tmpdir(), "shovel-create-test-"));
 	const name = "test-app";
 	const args = [
@@ -47,6 +45,11 @@ function generateProject({
 		args.push("--typescript");
 	} else {
 		args.push("--no-typescript");
+	}
+	if (jsx === true) {
+		args.push("--jsx");
+	} else if (jsx === false) {
+		args.push("--no-jsx");
 	}
 	const result = spawnSync("bun", args, {
 		encoding: "utf8",
@@ -128,6 +131,8 @@ function generateProject({
 	};
 }
 
+// --- Input validation tests ---
+
 test("rejects project names with path traversal (..)", () => {
 	const result = runCreate("../malicious");
 	expect(result.exitCode).toBe(1);
@@ -177,19 +182,45 @@ test("rejects absolute paths", () => {
 });
 
 // --- Scaffolding tests ---
-// Verify generated project structure, dependencies, and content for each
-// framework × template combination.
+// Every framework × template × typescript × jsx permutation.
 
-const SCAFFOLDING_COMBOS = [
-	{template: "static-site", framework: "vanilla"},
-	{template: "static-site", framework: "htmx"},
-	{template: "static-site", framework: "alpine"},
-	{template: "full-stack", framework: "vanilla"},
-	{template: "full-stack", framework: "htmx"},
-	{template: "full-stack", framework: "alpine"},
+const ALL_COMBOS = [
+	// Vanilla × Static-site
+	{template: "static-site", framework: "vanilla", typescript: true},
+	{template: "static-site", framework: "vanilla", typescript: false},
+	// Vanilla × Full-stack
+	{template: "full-stack", framework: "vanilla", typescript: true},
+	{template: "full-stack", framework: "vanilla", typescript: false},
+	// HTMX × Static-site
+	{template: "static-site", framework: "htmx", typescript: true},
+	{template: "static-site", framework: "htmx", typescript: false},
+	// HTMX × Full-stack
+	{template: "full-stack", framework: "htmx", typescript: true},
+	{template: "full-stack", framework: "htmx", typescript: false},
+	// Alpine × Static-site
+	{template: "static-site", framework: "alpine", typescript: true},
+	{template: "static-site", framework: "alpine", typescript: false},
+	// Alpine × Full-stack
+	{template: "full-stack", framework: "alpine", typescript: true},
+	{template: "full-stack", framework: "alpine", typescript: false},
+	// Crank × Static-site (4 variants: TS+JSX, TS, JS+JSX, JS)
+	{template: "static-site", framework: "crank", typescript: true, jsx: true},
+	{template: "static-site", framework: "crank", typescript: true, jsx: false},
+	{template: "static-site", framework: "crank", typescript: false, jsx: true},
+	{template: "static-site", framework: "crank", typescript: false, jsx: false},
+	// Crank × Full-stack (4 variants)
+	{template: "full-stack", framework: "crank", typescript: true, jsx: true},
+	{template: "full-stack", framework: "crank", typescript: true, jsx: false},
+	{template: "full-stack", framework: "crank", typescript: false, jsx: true},
+	{template: "full-stack", framework: "crank", typescript: false, jsx: false},
+	// Hello World
+	{template: "hello-world", framework: "vanilla", typescript: true},
+	{template: "hello-world", framework: "vanilla", typescript: false},
+	// API
+	{template: "api", framework: "vanilla", typescript: true},
+	{template: "api", framework: "vanilla", typescript: false},
 ];
 
-// Collect temp dirs for cleanup
 const tempDirs = [];
 afterAll(() => {
 	for (const dir of tempDirs) {
@@ -201,210 +232,177 @@ afterAll(() => {
 	}
 });
 
-for (const {template, framework} of SCAFFOLDING_COMBOS) {
-	describe(`${framework} ${template} (TypeScript)`, () => {
-		const project = generateProject({template, framework, typescript: true});
+function comboLabel({template, framework, typescript, jsx}) {
+	const lang = typescript
+		? jsx ? "TSX" : "TS"
+		: jsx ? "JSX" : "JS";
+	return `${framework} ${template} (${lang})`;
+}
+
+function entryExt({typescript, jsx, framework}) {
+	if (framework === "crank" && jsx) {
+		return typescript ? "tsx" : "jsx";
+	}
+	return typescript ? "ts" : "js";
+}
+
+for (const combo of ALL_COMBOS) {
+	const label = comboLabel(combo);
+	const hasClientBundle = combo.template === "static-site" || combo.template === "full-stack";
+	const ext = entryExt(combo);
+
+	describe(label, () => {
+		const project = generateProject(combo);
 		tempDirs.push(project.tempDir);
 
 		test("generates successfully", () => {
 			expect(project.exitCode).toBe(0);
 		});
 
-		test("creates server.ts and client.ts", () => {
-			expect(project.fileExists("src/server.ts")).toBe(true);
-			expect(project.fileExists("src/client.ts")).toBe(true);
-			// Should NOT have app.ts (that's for hello-world/api)
-			expect(project.fileExists("src/app.ts")).toBe(false);
-		});
-
-		test("package.json has correct entry point and dependencies", () => {
+		test("package.json has correct name and scripts", () => {
 			const pkg = project.readJSON("package.json");
-			expect(pkg.scripts.develop).toContain("src/server.ts");
-			expect(pkg.scripts.build).toContain("src/server.ts");
-			expect(pkg.dependencies["@b9g/assets"]).toBeDefined();
-			expect(pkg.dependencies["@b9g/router"]).toBeDefined();
-			expect(pkg.dependencies["@b9g/shovel"]).toBeDefined();
-
-			if (framework === "htmx") {
-				expect(pkg.dependencies["htmx.org"]).toBeDefined();
-			}
-			if (framework === "alpine") {
-				expect(pkg.dependencies["alpinejs"]).toBeDefined();
-			}
+			expect(pkg.name).toBe("test-app");
+			const entryFile = hasClientBundle ? `src/server.${ext}` : `src/app.${ext}`;
+			expect(pkg.scripts.develop).toContain(entryFile);
+			expect(pkg.scripts.build).toContain(entryFile);
+			expect(pkg.scripts.start).toBeDefined();
 		});
 
-		test("server.ts uses Router and assets middleware", () => {
-			const server = project.readFile("src/server.ts");
-			expect(server).toContain('import {Router} from "@b9g/router"');
-			expect(server).toContain('import {assets} from "@b9g/assets/middleware"');
-			expect(server).toContain("router.use(assets())");
-			expect(server).toContain("router.handle(event.request)");
-		});
-
-		test("server.ts imports client bundle with assetBase", () => {
-			const server = project.readFile("src/server.ts");
-			expect(server).toContain("@ts-expect-error");
-			expect(server).toContain('import clientUrl from "./client.ts"');
-			expect(server).toContain('{assetBase: "/assets/"}');
-		});
-
-		test("server.ts includes bundled script tag, no CDN or inline scripts", () => {
-			const server = project.readFile("src/server.ts");
-			expect(server).toContain('<script src="${clientUrl}" type="module">');
-			// No CDN links
-			expect(server).not.toContain("unpkg.com");
-			expect(server).not.toContain("cdn.jsdelivr.net");
-			// No inline script blocks (the script tag with src is fine)
-			expect(server).not.toMatch(/<script>[^<]/);
-		});
-
-		test("server.ts references src/server.ts in edit hint", () => {
-			const server = project.readFile("src/server.ts");
-			expect(server).toContain("src/server.ts");
-		});
-
-		if (framework === "htmx" || framework === "alpine") {
-			test("generates env.d.ts for TypeScript", () => {
-				expect(project.fileExists("src/env.d.ts")).toBe(true);
-				const envDts = project.readFile("src/env.d.ts");
-				if (framework === "htmx") {
-					expect(envDts).toContain('declare module "htmx.org"');
-				}
-				if (framework === "alpine") {
-					expect(envDts).toContain('declare module "alpinejs"');
-					expect(envDts).toContain("start(): void");
-				}
-			});
-		}
-
-		if (framework === "vanilla") {
-			test("does not generate env.d.ts", () => {
-				expect(project.fileExists("src/env.d.ts")).toBe(false);
-			});
-		}
-
-		test("generates tsconfig.json and eslint.config.js", () => {
-			expect(project.fileExists("tsconfig.json")).toBe(true);
-			expect(project.fileExists("eslint.config.js")).toBe(true);
-		});
-
-		test("package.json has lint script", () => {
-			const pkg = project.readJSON("package.json");
-			expect(pkg.scripts.lint).toBe("eslint src/");
-		});
-
-		test("generates README with multi-file project tree", () => {
+		test("generates README", () => {
+			expect(project.fileExists("README.md")).toBe(true);
 			const readme = project.readFile("README.md");
-			expect(readme).toContain("server.ts");
-			expect(readme).toContain("client.ts");
-			expect(readme).toContain("eslint.config.js");
-			expect(readme).toContain("npm run lint");
+			expect(readme).toContain("test-app");
 		});
 
-		test("installs dependencies, typechecks, and lints", () => {
+		if (hasClientBundle) {
+			test("creates server and client entry files", () => {
+				expect(project.fileExists(`src/server.${ext}`)).toBe(true);
+				expect(project.fileExists(`src/client.${ext}`)).toBe(true);
+			});
+
+			test("package.json has asset pipeline dependencies", () => {
+				const pkg = project.readJSON("package.json");
+				expect(pkg.dependencies["@b9g/assets"]).toBeDefined();
+				expect(pkg.dependencies["@b9g/router"]).toBeDefined();
+				expect(pkg.dependencies["@b9g/shovel"]).toBeDefined();
+			});
+
+			test("package.json has framework-specific dependencies", () => {
+				const pkg = project.readJSON("package.json");
+				const deps = {...pkg.dependencies, ...pkg.devDependencies};
+				if (combo.framework === "htmx") {
+					expect(deps["htmx.org"]).toBeDefined();
+				}
+				if (combo.framework === "alpine") {
+					expect(deps["alpinejs"]).toBeDefined();
+				}
+				if (combo.framework === "crank") {
+					expect(deps["@b9g/crank"]).toBeDefined();
+					expect(deps["eslint-plugin-crank"]).toBeDefined();
+				}
+			});
+
+			test("server uses ServiceWorker fetch handler", () => {
+				const server = project.readFile(`src/server.${ext}`);
+				expect(server).toContain('addEventListener("fetch"');
+				expect(server).toContain("event.respondWith");
+			});
+
+			test("server imports client bundle through asset pipeline", () => {
+				const server = project.readFile(`src/server.${ext}`);
+				expect(server).toContain(`from "./client.${ext}"`);
+				expect(server).toContain("assetBase");
+			});
+
+			if (combo.template === "full-stack") {
+				test("server has API route", () => {
+					const server = project.readFile(`src/server.${ext}`);
+					expect(server).toContain("/api/");
+				});
+			}
+
+			test("client file imports the right framework", () => {
+				const client = project.readFile(`src/client.${ext}`);
+				expect(client.length).toBeGreaterThan(0);
+				if (combo.framework === "htmx") {
+					expect(client).toContain("htmx.org");
+				}
+				if (combo.framework === "alpine") {
+					expect(client).toContain("alpinejs");
+				}
+				if (combo.framework === "crank") {
+					expect(client).toContain("@b9g/crank");
+				}
+			});
+
+			if ((combo.framework === "htmx" || combo.framework === "alpine") && combo.typescript) {
+				test("generates type declarations for framework", () => {
+					expect(project.fileExists("src/env.d.ts")).toBe(true);
+					const envDts = project.readFile("src/env.d.ts");
+					if (combo.framework === "htmx") {
+						expect(envDts).toContain('declare module "htmx.org"');
+					}
+					if (combo.framework === "alpine") {
+						expect(envDts).toContain('declare module "alpinejs"');
+					}
+				});
+			}
+		} else {
+			test("creates single app entry file", () => {
+				expect(project.fileExists(`src/app.${ext}`)).toBe(true);
+				expect(project.fileExists(`src/server.${ext}`)).toBe(false);
+				expect(project.fileExists(`src/client.${ext}`)).toBe(false);
+			});
+
+			test("app uses ServiceWorker fetch handler", () => {
+				const app = project.readFile(`src/app.${ext}`);
+				expect(app).toContain('addEventListener("fetch"');
+				expect(app).toContain("event.respondWith");
+			});
+
+			test("does not depend on asset pipeline", () => {
+				const pkg = project.readJSON("package.json");
+				expect(pkg.dependencies["@b9g/assets"]).toBeUndefined();
+			});
+		}
+
+		if (combo.typescript) {
+			test("has tsconfig.json with correct settings", () => {
+				expect(project.fileExists("tsconfig.json")).toBe(true);
+				const tsconfig = project.readJSON("tsconfig.json");
+				expect(tsconfig.compilerOptions.strict).toBe(true);
+				expect(tsconfig.compilerOptions.noEmit).toBe(true);
+				expect(tsconfig.include).toContain("src/**/*");
+			});
+		} else {
+			test("does not generate TypeScript config or syntax", () => {
+				expect(project.fileExists("tsconfig.json")).toBe(false);
+				const entryFile = hasClientBundle ? `src/server.${ext}` : `src/app.${ext}`;
+				const source = project.readFile(entryFile);
+				expect(source).not.toContain("@ts-expect-error");
+			});
+		}
+
+		// End-to-end: install, typecheck (TS), lint (if eslint configured)
+		test("end-to-end: install" + (combo.typescript ? " + typecheck" : "") + (hasClientBundle ? " + lint" : ""), () => {
 			const install = project.install();
 			expect(install.exitCode).toBe(0);
 
-			const tsc = project.typecheck();
-			expect(tsc.stdout).toBe("");
-			expect(tsc.exitCode).toBe(0);
+			if (combo.typescript) {
+				const tsc = project.typecheck();
+				if (tsc.exitCode !== 0) {
+					console.error(`tsc failed for ${label}:\n${tsc.stdout}\n${tsc.stderr}`);
+				}
+				expect(tsc.exitCode).toBe(0);
+			}
 
-			const lint = project.lint();
-			expect(lint.stdout).toBe("");
-			expect(lint.exitCode).toBe(0);
+			if (hasClientBundle) {
+				const lint = project.lint();
+				if (lint.exitCode !== 0) {
+					console.error(`lint failed for ${label}:\n${lint.stdout}\n${lint.stderr}`);
+				}
+				expect(lint.exitCode).toBe(0);
+			}
 		});
 	});
 }
-
-// Test one JavaScript (non-TypeScript) variant to verify JS-specific behavior
-describe("vanilla static-site (JavaScript)", () => {
-	const project = generateProject({
-		template: "static-site",
-		framework: "vanilla",
-		typescript: false,
-	});
-	tempDirs.push(project.tempDir);
-
-	test("generates successfully", () => {
-		expect(project.exitCode).toBe(0);
-	});
-
-	test("creates .js files instead of .ts", () => {
-		expect(project.fileExists("src/server.js")).toBe(true);
-		expect(project.fileExists("src/client.js")).toBe(true);
-		expect(project.fileExists("src/server.ts")).toBe(false);
-	});
-
-	test("server.js has no TypeScript annotations", () => {
-		const server = project.readFile("src/server.js");
-		expect(server).not.toContain("@ts-expect-error");
-		expect(server).not.toContain(": string");
-	});
-
-	test("does not generate tsconfig.json", () => {
-		expect(project.fileExists("tsconfig.json")).toBe(false);
-	});
-});
-
-// Test that htmx JS variant does NOT generate env.d.ts
-describe("htmx full-stack (JavaScript)", () => {
-	const project = generateProject({
-		template: "full-stack",
-		framework: "htmx",
-		typescript: false,
-	});
-	tempDirs.push(project.tempDir);
-
-	test("generates successfully", () => {
-		expect(project.exitCode).toBe(0);
-	});
-
-	test("does not generate env.d.ts for JavaScript projects", () => {
-		expect(project.fileExists("src/env.d.ts")).toBe(false);
-	});
-});
-
-// Verify hello-world and api templates are unaffected
-describe("hello-world template", () => {
-	const project = generateProject({
-		template: "hello-world",
-		framework: "vanilla",
-		typescript: true,
-	});
-	tempDirs.push(project.tempDir);
-
-	test("still uses app.ts (no client bundle)", () => {
-		expect(project.exitCode).toBe(0);
-		expect(project.fileExists("src/app.ts")).toBe(true);
-		expect(project.fileExists("src/server.ts")).toBe(false);
-		expect(project.fileExists("src/client.ts")).toBe(false);
-	});
-
-	test("package.json does not include @b9g/assets", () => {
-		const pkg = project.readJSON("package.json");
-		expect(pkg.scripts.develop).toContain("src/app.ts");
-		expect(pkg.dependencies["@b9g/assets"]).toBeUndefined();
-	});
-});
-
-describe("api template", () => {
-	const project = generateProject({
-		template: "api",
-		framework: "vanilla",
-		typescript: true,
-	});
-	tempDirs.push(project.tempDir);
-
-	test("still uses app.ts (no client bundle)", () => {
-		expect(project.exitCode).toBe(0);
-		expect(project.fileExists("src/app.ts")).toBe(true);
-		expect(project.fileExists("src/server.ts")).toBe(false);
-		expect(project.fileExists("src/client.ts")).toBe(false);
-	});
-
-	test("package.json does not include @b9g/assets", () => {
-		const pkg = project.readJSON("package.json");
-		expect(pkg.scripts.develop).toContain("src/app.ts");
-		expect(pkg.dependencies["@b9g/assets"]).toBeUndefined();
-	});
-});

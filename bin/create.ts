@@ -374,6 +374,11 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 		devDependencies["@eslint/js"] = "^10.0.0";
 		if (config.typescript) {
 			devDependencies["typescript-eslint"] = "^8.0.0";
+		} else {
+			devDependencies["globals"] = "^16.0.0";
+		}
+		if (isCrank) {
+			devDependencies["eslint-plugin-crank"] = "^0.2.0";
 		}
 	}
 	const scripts: Record<string, string> = {
@@ -446,23 +451,36 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 
 	// Create ESLint config
 	if (hasClientBundle) {
+		const crankImport = isCrank
+			? `import crank from "eslint-plugin-crank";\n`
+			: "";
+		const crankConfig = isCrank
+			? `\n  { plugins: { crank }, rules: crank.configs.recommended.rules },`
+			: "";
 		let eslintConfig: string;
 		if (config.typescript) {
 			eslintConfig = `import js from "@eslint/js";
 import tseslint from "typescript-eslint";
-
+${crankImport}
 export default tseslint.config(
   js.configs.recommended,
   tseslint.configs.recommended,
-  { ignores: ["dist/"] },
+  { ignores: ["dist/"] },${crankConfig}
 );
 `;
 		} else {
+			let langOpts = "globals: globals.browser";
+			let filesOpt = "";
+			if (isCrank && config.useJSX) {
+				filesOpt = `files: ["**/*.{js,jsx}"], `;
+				langOpts += ", parserOptions: { ecmaFeatures: { jsx: true } }";
+			}
 			eslintConfig = `import js from "@eslint/js";
-
+import globals from "globals";
+${crankImport}
 export default [
-  js.configs.recommended,
-  { ignores: ["dist/"] },
+  { ${filesOpt}...js.configs.recommended, languageOptions: { ${langOpts} } },
+  { ignores: ["dist/"] },${crankConfig}
 ];
 `;
 		}
@@ -920,8 +938,7 @@ export function Page({title, children, clientUrl}${t ? ": {title: string, childr
 export function *Counter(${t ? "this: Context" : ""}) {
   let count = 0;
   const handleClick = () => {
-    count++;
-    this.refresh();
+    this.refresh(() => count++);
   };
   for ({} of this) {
     yield <button onclick={handleClick}>Clicked: {count}</button>;
@@ -1009,8 +1026,7 @@ export function Page({title, children, clientUrl}${t ? ": {title: string, childr
 export function *Counter(${t ? "this: Context" : ""}) {
   let count = 0;
   const handleClick = () => {
-    count++;
-    this.refresh();
+    this.refresh(() => count++);
   };
   for ({} of this) {
     yield jsx\`<button onclick=\${handleClick}>Clicked: \${count}</button>\`;
@@ -1440,8 +1456,7 @@ export function Page({title, children, clientUrl}${t ? ": {title: string, childr
 export function *Counter(${t ? "this: Context" : ""}) {
   let count = 0;
   const handleClick = () => {
-    count++;
-    this.refresh();
+    this.refresh(() => count++);
   };
   for ({} of this) {
     yield <button onclick={handleClick}>Clicked: {count}</button>;
@@ -1548,8 +1563,7 @@ export function Page({title, children, clientUrl}${t ? ": {title: string, childr
 export function *Counter(${t ? "this: Context" : ""}) {
   let count = 0;
   const handleClick = () => {
-    count++;
-    this.refresh();
+    this.refresh(() => count++);
   };
   for ({} of this) {
     yield jsx\`<button onclick=\${handleClick}>Clicked: \${count}</button>\`;
