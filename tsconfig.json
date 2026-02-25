@@ -10,7 +10,6 @@
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"noEmit": true,
-		"types": ["bun-types"],
 		"lib": ["ES2022", "WebWorker"],
 		"jsx": "react-jsx",
 		"jsxImportSource": "@b9g/crank"
