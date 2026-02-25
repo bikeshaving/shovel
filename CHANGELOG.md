@@ -2,7 +2,13 @@
 
 All notable changes to Shovel will be documented in this file.
 
-## [0.2.16] - 2026-02-25
+## @b9g/router 0.2.5 - 2026-02-25
+
+### Bug Fixes
+
+- **`@b9g/router`** - Trailing slash middleware now also redirects when a catch-all route or error-handling middleware returns a 404 Response (not just thrown `NotFound` errors). In 0.2.4 the middleware only caught thrown errors, so catch-all routes returning 404 responses would not trigger the redirect
+
+## @b9g/router 0.2.4 - 2026-02-25
 
 ### Bug Fixes
 
