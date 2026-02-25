@@ -48,7 +48,10 @@ export function trailingSlash(mode: TrailingSlashMode) {
 		let newPathname: string | null = null;
 		if (mode === "strip" && pathname.endsWith("/")) {
 			newPathname = pathname.slice(0, -1);
-		} else if ((mode === "add" || mode === "append") && !pathname.endsWith("/")) {
+		} else if (
+			(mode === "add" || mode === "append") &&
+			!pathname.endsWith("/")
+		) {
 			newPathname = pathname + "/";
 		}
 
