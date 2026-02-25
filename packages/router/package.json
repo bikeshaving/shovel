@@ -1,6 +1,6 @@
 {
   "name": "@b9g/router",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Universal request router built on web standards with generator-based middleware.",
   "type": "module",
   "keywords": [

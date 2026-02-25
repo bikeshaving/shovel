@@ -2,6 +2,13 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.16] - 2026-02-25
+
+### Bug Fixes
+
+- **`@b9g/router`** - Trailing slash middleware now only redirects as a last resort. Previously it eagerly redirected before route matching, so routes explicitly defined with (or without) a trailing slash would always be redirected. Now the middleware yields to route matching first and only redirects on 404
+- **`@b9g/router`** - Added `"append"` as an alias for `"add"` in `trailingSlash()` mode
+
 ## [0.2.15] - 2026-02-25
 
 ### Bug Fixes
