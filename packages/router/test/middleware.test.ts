@@ -371,6 +371,30 @@ describe("trailingSlash middleware", () => {
 		);
 	});
 
+	test("strip mode does not redirect when route matches with trailing slash", async () => {
+		const router = new Router();
+		router.use(trailingSlash("strip"));
+		router.route("/users/").get(async () => new Response("Users with slash"));
+
+		const request = new Request("http://example.com/users/");
+		const response = await router.handle(request);
+
+		expect(response.status).toBe(200);
+		expect(await response.text()).toBe("Users with slash");
+	});
+
+	test("add mode does not redirect when route matches without trailing slash", async () => {
+		const router = new Router();
+		router.use(trailingSlash("add"));
+		router.route("/users").get(async () => new Response("Users no slash"));
+
+		const request = new Request("http://example.com/users");
+		const response = await router.handle(request);
+
+		expect(response.status).toBe(200);
+		expect(await response.text()).toBe("Users no slash");
+	});
+
 	test("works with path-scoped middleware", async () => {
 		const router = new Router();
 		router.use("/api", trailingSlash("strip"));

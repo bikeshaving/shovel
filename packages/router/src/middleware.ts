@@ -3,7 +3,7 @@
  */
 
 import {getLogger} from "@logtape/logtape";
-import type {FunctionMiddleware} from "./index.js";
+import {isHTTPError} from "@b9g/http-errors";
 
 // ============================================================================
 // TRAILING SLASH
@@ -12,13 +12,13 @@ import type {FunctionMiddleware} from "./index.js";
 /**
  * Mode for trailing slash normalization
  */
-export type TrailingSlashMode = "strip" | "add";
+export type TrailingSlashMode = "strip" | "add" | "append";
 
 /**
  * Middleware that normalizes trailing slashes via 301 redirect
  *
  * @param mode - "strip" removes trailing slash, "add" adds trailing slash
- * @returns Function middleware that redirects non-canonical URLs
+ * @returns Generator middleware that redirects non-canonical URLs as a last resort
  *
  * @example
  * ```typescript
@@ -32,27 +32,48 @@ export type TrailingSlashMode = "strip" | "add";
  * router.use("/api", trailingSlash("strip"));
  * ```
  */
-export function trailingSlash(mode: TrailingSlashMode): FunctionMiddleware {
-	return (req: Request) => {
-		const url = new URL(req.url);
+export function trailingSlash(mode: TrailingSlashMode) {
+	return async function* (
+		request: Request,
+	): AsyncGenerator<Request, Response | undefined, Response> {
+		const url = new URL(request.url);
 		const pathname = url.pathname;
 
 		// Skip root path - "/" is valid either way
-		if (pathname === "/") return;
+		if (pathname === "/") {
+			const response: Response = yield request;
+			return response;
+		}
 
 		let newPathname: string | null = null;
 		if (mode === "strip" && pathname.endsWith("/")) {
 			newPathname = pathname.slice(0, -1);
-		} else if (mode === "add" && !pathname.endsWith("/")) {
+		} else if ((mode === "add" || mode === "append") && !pathname.endsWith("/")) {
 			newPathname = pathname + "/";
 		}
 
-		if (newPathname) {
-			url.pathname = newPathname;
-			return new Response(null, {
-				status: 301,
-				headers: {Location: url.toString()},
-			});
+		// No redirect needed - pass through
+		if (!newPathname) {
+			const response: Response = yield request;
+			return response;
+		}
+
+		// Redirect might be needed - try matching a route first
+		try {
+			const response: Response = yield request;
+			// Route matched - pass through without redirecting
+			return response;
+		} catch (error) {
+			// Route didn't match (404) - redirect to normalized URL
+			if (isHTTPError(error) && error.status === 404) {
+				url.pathname = newPathname;
+				return new Response(null, {
+					status: 301,
+					headers: {Location: url.toString()},
+				});
+			}
+			// Re-throw non-404 errors
+			throw error;
 		}
 	};
 }
