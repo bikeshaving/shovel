@@ -2,6 +2,12 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.16] - 2026-02-26
+
+### Bug Fixes
+
+- **`@b9g/shovel`** - `build.minify` config in `shovel.json` now propagates to client asset builds. Previously client JS/CSS was always minified regardless of the setting (closes #67)
+
 ## @b9g/router 0.2.5 - 2026-02-25
 
 ### Bug Fixes
