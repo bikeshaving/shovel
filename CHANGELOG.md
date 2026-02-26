@@ -2,6 +2,12 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.17] - 2026-02-26
+
+### Bug Fixes
+
+- **`@b9g/shovel`** - Config expressions (e.g. `"$MODE == production"`) now work in boolean build fields (`build.minify`, `build.treeShaking`, `build.sourcemap`). Schema validation was running before expression evaluation; now expressions are evaluated first (closes #69)
+
 ## [0.2.16] - 2026-02-26
 
 ### Bug Fixes
