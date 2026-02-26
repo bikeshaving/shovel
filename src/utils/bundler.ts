@@ -317,6 +317,7 @@ export class ServerBundler {
 			assetsPlugin({
 				outDir: outputDir,
 				plugins: userPlugins,
+				minify,
 				jsx: jsxOptions.jsx,
 				jsxFactory: jsxOptions.jsxFactory,
 				jsxFragment: jsxOptions.jsxFragment,
