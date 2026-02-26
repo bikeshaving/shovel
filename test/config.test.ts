@@ -20,6 +20,7 @@ const envKeys = [
 	"MY_HOST",
 	"DATABASE_URL",
 	"REDIS_URL",
+	"MODE",
 ];
 
 function saveEnv() {
@@ -402,6 +403,75 @@ describe("loadConfig precedence", () => {
 				const config = loadConfig(testDir);
 
 				expect(config.databases.main.url).toBe(null);
+			});
+		});
+	});
+
+	describe("build config expressions", () => {
+		it("evaluates minify expression to true", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({
+						build: {minify: "$MODE == production"},
+					}),
+				);
+				process.env.MODE = "production";
+
+				const config = loadConfig(testDir);
+
+				expect(config.build.minify).toBe(true);
+			});
+		});
+
+		it("evaluates minify expression to false", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({
+						build: {minify: "$MODE == production"},
+					}),
+				);
+				process.env.MODE = "development";
+
+				const config = loadConfig(testDir);
+
+				expect(config.build.minify).toBe(false);
+			});
+		});
+
+		it("evaluates treeShaking expression", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({
+						build: {treeShaking: "$MODE == production"},
+					}),
+				);
+				process.env.MODE = "production";
+
+				const config = loadConfig(testDir);
+
+				expect(config.build.treeShaking).toBe(true);
+			});
+		});
+
+		it("accepts boolean minify directly", () => {
+			withTempDir((testDir) => {
+				clearEnv();
+				writeFileSync(
+					join(testDir, "shovel.json"),
+					JSON.stringify({
+						build: {minify: true},
+					}),
+				);
+
+				const config = loadConfig(testDir);
+
+				expect(config.build.minify).toBe(true);
 			});
 		});
 	});
