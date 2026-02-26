@@ -310,6 +310,107 @@ export default styleUrl;`,
 	});
 });
 
+describe("Assets Plugin - minify option", () => {
+	test("should minify JS output by default", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "minify-default-test-"));
+
+		await writeFile(
+			join(testDir, "client.js"),
+			`const longVariableName = "hello";\nconsole.log(longVariableName);`,
+		);
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import clientUrl from "./client.js" with { assetBase: "/static" };\nexport default clientUrl;`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [assetsPlugin({outDir})],
+		});
+
+		const files = await readdir(join(outDir, "public", "static"));
+		const jsFile = files.find((f) => f.endsWith(".js"))!;
+		const content = await readFile(
+			join(outDir, "public", "static", jsFile),
+			"utf8",
+		);
+
+		// Minified: variable name should be mangled
+		expect(content).not.toContain("longVariableName");
+	});
+
+	test("should not minify JS output when minify is false", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "no-minify-test-"));
+
+		await writeFile(
+			join(testDir, "client.js"),
+			`const longVariableName = "hello";\nconsole.log(longVariableName);`,
+		);
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import clientUrl from "./client.js" with { assetBase: "/static" };\nexport default clientUrl;`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [assetsPlugin({outDir, minify: false})],
+		});
+
+		const files = await readdir(join(outDir, "public", "static"));
+		const jsFile = files.find((f) => f.endsWith(".js"))!;
+		const content = await readFile(
+			join(outDir, "public", "static", jsFile),
+			"utf8",
+		);
+
+		// Not minified: variable name should be preserved
+		expect(content).toContain("longVariableName");
+	});
+
+	test("should not minify CSS output when minify is false", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "no-minify-css-test-"));
+
+		await writeFile(
+			join(testDir, "style.css"),
+			`body {\n  color: red;\n  background: blue;\n}`,
+		);
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import styleUrl from "./style.css" with { assetBase: "/static" };\nexport default styleUrl;`,
+		);
+
+		const outDir = join(testDir, "dist");
+		await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [assetsPlugin({outDir, minify: false})],
+		});
+
+		const files = await readdir(join(outDir, "public", "static"));
+		const cssFile = files.find((f) => f.endsWith(".css"))!;
+		const content = await readFile(
+			join(outDir, "public", "static", cssFile),
+			"utf8",
+		);
+
+		// Not minified: should preserve newlines/whitespace
+		expect(content).toContain("\n");
+	});
+});
+
 describe("Assets Plugin - user plugins", () => {
 	test("should NOT be blocked by user plugins in main build when processing assetBase imports", async () => {
 		// This test verifies the bug where user plugins (like PostCSS) added to the main
