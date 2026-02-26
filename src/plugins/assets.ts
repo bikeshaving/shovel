@@ -121,6 +121,12 @@ export interface AssetsPluginConfig {
 	jsxImportSource?: string;
 
 	/**
+	 * Minify asset output
+	 * @default true
+	 */
+	minify?: boolean;
+
+	/**
 	 * Shared manifest for coordination with assets-manifest plugin.
 	 * When provided, the manifest is populated here and read by the manifest plugin.
 	 */
@@ -154,6 +160,7 @@ function normalizePath(basePath: string): string {
  */
 export function assetsPlugin(options: AssetsPluginConfig = {}) {
 	const outDir = options.outDir ?? "dist";
+	const minify = options.minify ?? true;
 	const sharedManifest = options.sharedManifest;
 	const manifest: AssetManifest = {
 		assets: {},
@@ -253,7 +260,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							target: ["es2022", "chrome90"],
 							platform: "browser",
 							write: false,
-							minify: true,
+							minify,
 							// outdir is required for esbuild to know where to put extracted CSS and chunks
 							outdir: outDir,
 							// Apply polyfills and user-provided build options
@@ -374,7 +381,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							entryPoints: [entryPath],
 							bundle: true,
 							write: false,
-							minify: true,
+							minify,
 							// outdir required for esbuild to generate output paths
 							outdir: outDir,
 							plugins,
