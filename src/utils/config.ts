@@ -1460,10 +1460,6 @@ export const config = ${configCode};
 }
 
 /**
- * Load raw config from shovel.json without processing expressions.
- * Used at build time to get the config before code generation.
- */
-/**
  * Read raw config JSON from shovel.json or package.json.
  * No validation or expression evaluation — just file I/O.
  */
