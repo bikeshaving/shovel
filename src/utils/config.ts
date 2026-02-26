@@ -1460,52 +1460,46 @@ export const config = ${configCode};
 }
 
 /**
- * Load raw config from shovel.json without processing expressions.
- * Used at build time to get the config before code generation.
+ * Read raw config JSON from shovel.json or package.json.
+ * No validation or expression evaluation — just file I/O.
  */
-export function loadRawConfig(cwd: string): ShovelConfig {
-	let rawConfig: unknown = {};
-	let configSource = "defaults";
-
+function readConfigFile(cwd: string): {raw: unknown; source: string} {
 	// Try shovel.json first
 	try {
 		const shovelPath = `${cwd}/shovel.json`;
 		const content = readFileSync(shovelPath, "utf-8");
-		rawConfig = JSON.parse(content);
-		configSource = "shovel.json";
+		return {raw: JSON.parse(content), source: "shovel.json"};
 	} catch (error: any) {
 		if (error?.code !== "ENOENT") {
 			throw error;
 		}
-
-		// Try package.json
-		try {
-			const pkgPath = `${cwd}/package.json`;
-			const content = readFileSync(pkgPath, "utf-8");
-			const pkgJSON = JSON.parse(content);
-			if (pkgJSON.shovel) {
-				rawConfig = pkgJSON.shovel;
-				configSource = "package.json";
-			}
-		} catch (error: any) {
-			if (error?.code !== "ENOENT") {
-				throw error;
-			}
-		}
 	}
 
-	// Validate config with Zod (throws on invalid config)
+	// Try package.json
 	try {
-		return ShovelConfigSchema.parse(rawConfig);
-	} catch (error) {
-		if (error instanceof z.ZodError) {
-			const issues = error.issues
-				.map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
-				.join("\n");
-			throw new Error(`Invalid config in ${configSource}:\n${issues}`);
+		const pkgPath = `${cwd}/package.json`;
+		const content = readFileSync(pkgPath, "utf-8");
+		const pkgJSON = JSON.parse(content);
+		if (pkgJSON.shovel) {
+			return {raw: pkgJSON.shovel, source: "package.json"};
 		}
-		throw error;
+	} catch (error: any) {
+		if (error?.code !== "ENOENT") {
+			throw error;
+		}
 	}
+
+	return {raw: {}, source: "defaults"};
+}
+
+/**
+ * Load raw config without expression evaluation (for code generation).
+ * No Zod validation — validation happens in loadConfig() after expressions
+ * are evaluated.
+ */
+export function loadRawConfig(cwd: string): ShovelConfig {
+	const {raw} = readConfigFile(cwd);
+	return raw as ShovelConfig;
 }
 
 // ============================================================================
@@ -1693,77 +1687,63 @@ export interface ProcessedShovelConfig {
  */
 export function loadConfig(cwd: string): ProcessedShovelConfig {
 	const env = getEnv();
+	const {raw, source} = readConfigFile(cwd);
 
-	// Try to load configuration from shovel.json first, then package.json
-	let rawConfig: ShovelConfig = {};
+	// Evaluate config expressions FIRST, then validate with Zod.
+	// This allows expressions like "$MODE == production" in boolean fields —
+	// they evaluate to actual booleans before the schema checks types.
+	const evaluated = processConfigValue(raw, env);
 
-	// 1. Try shovel.json (preferred standalone config)
+	let validated: ShovelConfig;
 	try {
-		const shovelPath = `${cwd}/shovel.json`;
-		const content = readFileSync(shovelPath, "utf-8");
-		rawConfig = JSON.parse(content);
-	} catch (error: any) {
-		// Only fall back if file doesn't exist
-		if (error?.code !== "ENOENT") {
-			throw error;
+		validated = ShovelConfigSchema.parse(evaluated);
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			const issues = error.issues
+				.map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
+				.join("\n");
+			throw new Error(`Invalid config in ${source}:\n${issues}`);
 		}
-		// No shovel.json, try package.json
-		try {
-			const pkgPath = `${cwd}/package.json`;
-			const content = readFileSync(pkgPath, "utf-8");
-			const pkgJSON = JSON.parse(content);
-			rawConfig = pkgJSON.shovel || {};
-		} catch (error: any) {
-			// Only use defaults if file doesn't exist
-			if (error?.code !== "ENOENT") {
-				throw error;
-			}
-		}
+		throw error;
 	}
 
-	// Process config expressions
-	const processed = processConfigValue(rawConfig, env) as ShovelConfig;
-
 	// Apply config precedence: json value > canonical env var > default
-	// If a key exists in json, use it (already processed with expressions)
-	// Otherwise, check canonical env var (uppercase key name)
-	// Finally, fall back to default
 	const config: ProcessedShovelConfig = {
-		platform: processed.platform ?? env.PLATFORM ?? undefined,
+		platform: validated.platform ?? env.PLATFORM ?? undefined,
 		port:
-			processed.port !== undefined
-				? typeof processed.port === "number"
-					? processed.port
-					: parseInt(String(processed.port), 10)
+			validated.port !== undefined
+				? typeof validated.port === "number"
+					? validated.port
+					: parseInt(String(validated.port), 10)
 				: env.PORT
 					? parseInt(env.PORT, 10)
 					: 3000,
-		host: processed.host ?? env.HOST ?? "localhost",
+		host: validated.host ?? env.HOST ?? "localhost",
 		workers:
-			processed.workers !== undefined
-				? typeof processed.workers === "number"
-					? processed.workers
-					: parseInt(String(processed.workers), 10)
+			validated.workers !== undefined
+				? typeof validated.workers === "number"
+					? validated.workers
+					: parseInt(String(validated.workers), 10)
 				: env.WORKERS
 					? parseInt(env.WORKERS, 10)
 					: 1,
 		logging: {
-			sinks: processed.logging?.sinks || {},
-			loggers: processed.logging?.loggers || [],
+			sinks: validated.logging?.sinks || {},
+			loggers: validated.logging?.loggers || [],
 		},
 		build: {
-			target: processed.build?.target ?? "es2022",
-			minify: processed.build?.minify ?? false,
-			sourcemap: processed.build?.sourcemap ?? false,
-			treeShaking: processed.build?.treeShaking ?? true,
-			define: processed.build?.define ?? {},
-			alias: processed.build?.alias ?? {},
-			external: processed.build?.external ?? [],
-			plugins: processed.build?.plugins ?? [],
+			target: validated.build?.target ?? "es2022",
+			minify: validated.build?.minify ?? false,
+			sourcemap: validated.build?.sourcemap ?? false,
+			treeShaking: validated.build?.treeShaking ?? true,
+			define: validated.build?.define ?? {},
+			alias: validated.build?.alias ?? {},
+			external: validated.build?.external ?? [],
+			plugins: validated.build?.plugins ?? [],
 		},
-		caches: processed.caches || {},
-		directories: processed.directories || {},
-		databases: processed.databases || {},
+		caches: validated.caches || {},
+		directories: validated.directories || {},
+		databases: validated.databases || {},
 	};
 
 	return config;
