@@ -1201,6 +1201,11 @@ export function generateConfigModule(
 				string,
 				{module: string; export?: string; [key: string]: unknown}
 			>;
+			broadcastChannel?: {
+				module: string;
+				export?: string;
+				[key: string]: unknown;
+			};
 		};
 		/** Lifecycle options for --lifecycle flag */
 		lifecycle?: {
@@ -1231,7 +1236,7 @@ export function generateConfigModule(
 	function processModule(
 		modulePath: string | undefined,
 		exportName: string | undefined,
-		type: "cache" | "directory" | "sink" | "database",
+		type: "cache" | "directory" | "sink" | "database" | "broadcastChannel",
 		name: string,
 	): string | null {
 		if (!modulePath) return null;
@@ -1289,7 +1294,7 @@ export function generateConfigModule(
 	// Replaces module/export with `impl` (the reified function/class)
 	function reifyModule<T extends {module?: string; export?: string}>(
 		config: T,
-		type: "cache" | "directory" | "sink" | "database",
+		type: "cache" | "directory" | "sink" | "database" | "broadcastChannel",
 		name: string,
 	): Omit<T, "module" | "export"> & {impl?: string} {
 		const {module: modulePath, export: exportName, ...rest} = config;
@@ -1429,6 +1434,22 @@ export function generateConfigModule(
 			config.databases = databases;
 		}
 
+		// Broadcast channel - merge platform default with user config
+		// User config takes precedence; platform default provides fallback backend
+		const bcConfig =
+			rawConfig.broadcastChannel || platformDefaults.broadcastChannel;
+		if (bcConfig) {
+			const mergedBc = {
+				...(platformDefaults.broadcastChannel || {}),
+				...(rawConfig.broadcastChannel || {}),
+			};
+			config.broadcastChannel = reifyModule(
+				mergedBc,
+				"broadcastChannel",
+				"default",
+			);
+		}
+
 		// Lifecycle options (for --lifecycle flag)
 		if (lifecycle) {
 			config.lifecycle = {
@@ -1557,6 +1578,20 @@ export const DatabaseConfigSchema = z
 
 export type DatabaseConfig = z.infer<typeof DatabaseConfigSchema>;
 
+/** Broadcast channel backend configuration schema */
+export const BroadcastChannelConfigSchema = z
+	.object({
+		/** Module path to import (e.g., "@b9g/broadcastchannel-redis") */
+		module: z.string(),
+		/** Named export to use (defaults to "default") */
+		export: z.string().optional(),
+	})
+	.passthrough(); // Allow additional backend-specific options (url, etc.)
+
+export type BroadcastChannelConfig = z.infer<
+	typeof BroadcastChannelConfigSchema
+>;
+
 /** Log level for filtering */
 export const LogLevelSchema = z.enum(["debug", "info", "warning", "error"]);
 
@@ -1647,6 +1682,7 @@ export const ShovelConfigSchema = z
 		caches: z.record(z.string(), CacheConfigSchema).optional(),
 		directories: z.record(z.string(), DirectoryConfigSchema).optional(),
 		databases: z.record(z.string(), DatabaseConfigSchema).optional(),
+		broadcastChannel: BroadcastChannelConfigSchema.optional(),
 	})
 	.strict();
 
