@@ -706,7 +706,6 @@ const PATCHED_KEYS = [
 	"WorkerGlobalScope",
 	"DedicatedWorkerGlobalScope",
 	"cookieStore",
-	"BroadcastChannel",
 ] as const;
 
 type PatchedKey = (typeof PATCHED_KEYS)[number];
@@ -2175,9 +2174,6 @@ export class ServiceWorkerGlobals {
 			get: () => cookieStoreStorage.get(),
 			configurable: true,
 		});
-
-		// Communication APIs
-		g.BroadcastChannel = ShovelBroadcastChannel;
 	}
 
 	/**
@@ -2493,8 +2489,13 @@ export async function initWorkerRuntime(
 	// Install ServiceWorker globals
 	scope.install();
 
-	// Set up broadcast channel backend if configured
+	// Conditionally install ShovelBroadcastChannel:
+	// - If a backend is configured (e.g. Redis), install ShovelBroadcastChannel + backend
+	// - If native BroadcastChannel is missing (e.g. Cloudflare), install as polyfill
+	// - Otherwise, leave native BroadcastChannel alone (works cross-worker on Bun/Node 18+)
 	if (config?.broadcastChannel?.impl) {
+		const g = globalThis as Record<string, unknown>;
+		g.BroadcastChannel = ShovelBroadcastChannel;
 		const {impl, ...bcOptions} = config.broadcastChannel;
 		const opts = bcOptions as Record<string, unknown>;
 		const bcBackend = isClass(impl)
@@ -2503,6 +2504,9 @@ export async function initWorkerRuntime(
 					opts,
 				);
 		setBroadcastChannelBackend(bcBackend);
+	} else if (typeof globalThis.BroadcastChannel === "undefined") {
+		const g = globalThis as Record<string, unknown>;
+		g.BroadcastChannel = ShovelBroadcastChannel;
 	}
 
 	runtimeLogger.debug("Worker runtime initialized");
