@@ -6,6 +6,7 @@
  */
 
 import {getLogger} from "@logtape/logtape";
+import {dirname, join} from "path";
 import type {
 	EntryPoints,
 	ESBuildConfig,
@@ -122,14 +123,24 @@ export async function createDevServer(
 	// Dynamic import - Miniflare is never in prod bundle
 	const {Miniflare} = await import("miniflare");
 
-	let miniflare = new Miniflare({
+	// Derive the public assets directory from the worker path.
+	// workerPath is e.g. dist/server/worker.js → outDir is dist → public is dist/public
+	const publicDir = join(dirname(dirname(workerPath)), "public");
+
+	const getMiniflareOptions = (scriptPath: string) => ({
 		modules: true,
-		scriptPath: workerPath,
+		scriptPath,
 		compatibilityDate: "2024-09-23",
 		compatibilityFlags: ["nodejs_compat"],
 		port,
 		host,
+		assets: {
+			directory: publicDir,
+			binding: "ASSETS",
+		},
 	});
+
+	let miniflare = new Miniflare(getMiniflareOptions(workerPath));
 
 	await miniflare.ready;
 	logger.info("Miniflare dev server ready");
@@ -145,14 +156,7 @@ export async function createDevServer(
 			// Dispose old instance and create new one
 			await miniflare.dispose();
 
-			miniflare = new Miniflare({
-				modules: true,
-				scriptPath: newWorkerPath,
-				compatibilityDate: "2024-09-23",
-				compatibilityFlags: ["nodejs_compat"],
-				port,
-				host,
-			});
+			miniflare = new Miniflare(getMiniflareOptions(newWorkerPath));
 
 			await miniflare.ready;
 			logger.info("Miniflare reloaded");
