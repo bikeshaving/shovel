@@ -2,6 +2,13 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## @b9g/platform-cloudflare 0.1.16, create-shovel 0.1.3 - 2026-03-02
+
+### Features
+
+- **`@b9g/platform-cloudflare`** - Miniflare dev server now configures static assets directory and `ASSETS` binding, matching Cloudflare Workers production behavior (#71)
+- **`create-shovel`** - Cloudflare projects now generate a `wrangler.toml` with assets directory config (#71)
+
 ## [0.2.17] - 2026-02-26
 
 ### Bug Fixes
