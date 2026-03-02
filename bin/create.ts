@@ -500,6 +500,19 @@ dist/
 .DS_Store
 `;
 	await writeFile(join(projectPath, ".gitignore"), gitignore);
+
+	// Create wrangler.toml for Cloudflare projects
+	if (config.platform === "cloudflare") {
+		const wranglerToml = `name = "${config.name}"
+main = "dist/server/worker.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist/public"
+`;
+		await writeFile(join(projectPath, "wrangler.toml"), wranglerToml);
+	}
 }
 
 function generateAppFile(
