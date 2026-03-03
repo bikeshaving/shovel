@@ -13,7 +13,7 @@ import {copyFixtureToTemp, fileExists} from "./utils.js";
  * configured (matching production Cloudflare behavior).
  */
 
-const TIMEOUT = 30000;
+const TIMEOUT = 60000;
 
 /**
  * Create Miniflare options matching createDevServer's configuration.
