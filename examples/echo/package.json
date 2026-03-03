@@ -10,6 +10,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
+    "@b9g/shovel": "^0.2.17",
     "@b9g/router": "workspace:*",
     "@b9g/platform": "workspace:*",
     "@b9g/platform-cloudflare": "workspace:*"
