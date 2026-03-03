@@ -9,26 +9,26 @@ import {createClient} from "redis";
 import {getLogger} from "@logtape/logtape";
 import type {BroadcastChannelBackend} from "@b9g/platform/runtime";
 
-const logger = getLogger(["shovel", "pubsub"]);
+const logger = getLogger(["shovel", "broadcastchannel"]);
 
-export interface RedisPubSubOptions {
+export interface RedisBroadcastChannelOptions {
 	/** Redis connection URL (e.g., "redis://localhost:6379") */
 	url?: string;
 }
 
 /**
- * Redis pub/sub backend for BroadcastChannel.
+ * Redis backend for BroadcastChannel.
  * Publishes messages via PUBLISH and subscribes via SUBSCRIBE.
  * Filters own messages using an instance ID.
  */
-export class RedisPubSubBackend implements BroadcastChannelBackend {
+export class RedisBroadcastChannelBackend implements BroadcastChannelBackend {
 	#publisher: ReturnType<typeof createClient>;
 	#subscriber: ReturnType<typeof createClient>;
 	#instanceId: string;
 	#publisherReady: Promise<void>;
 	#subscriberReady: Promise<void>;
 
-	constructor(options: RedisPubSubOptions = {}) {
+	constructor(options: RedisBroadcastChannelOptions = {}) {
 		this.#instanceId = crypto.randomUUID();
 		const clientOptions = options.url ? {url: options.url} : {};
 
@@ -104,4 +104,4 @@ export class RedisPubSubBackend implements BroadcastChannelBackend {
 	}
 }
 
-export default RedisPubSubBackend;
+export default RedisBroadcastChannelBackend;

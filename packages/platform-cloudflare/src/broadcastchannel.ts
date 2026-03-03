@@ -1,11 +1,11 @@
 /**
- * Cloudflare Durable Object PubSub Backend
+ * Cloudflare Durable Object BroadcastChannel Backend
  *
  * Provides cross-isolate BroadcastChannel relay via a Durable Object.
- * - CloudflarePubSubBackend: BroadcastChannelBackend that publishes to a DO
- * - ShovelPubSubDO: Durable Object that broadcasts to connected WebSocket clients
+ * - CloudflareBroadcastChannelBackend: BroadcastChannelBackend that publishes to a DO
+ * - ShovelBroadcastChannelDO: Durable Object that broadcasts to connected WebSocket clients
  *
- * Opt-in: only active when env.SHOVEL_PUBSUB binding is present.
+ * Opt-in: only active when env.SHOVEL_BROADCAST_CHANNEL binding is present.
  *
  * Architecture:
  * - publish() sends a POST to the DO with {channel, data, sender}
@@ -23,7 +23,7 @@ import {DurableObject} from "cloudflare:workers";
 import type {BroadcastChannelBackend} from "@b9g/platform/runtime";
 import {getLogger} from "@logtape/logtape";
 
-const logger = getLogger(["shovel", "pubsub"]);
+const logger = getLogger(["shovel", "broadcastchannel"]);
 
 // ============================================================================
 // BACKEND (used by the Worker)
@@ -33,9 +33,11 @@ const logger = getLogger(["shovel", "pubsub"]);
  * BroadcastChannel backend that routes messages through a Durable Object.
  *
  * Uses an instance ID to filter out own messages (prevents echo),
- * matching the pattern used by RedisPubSubBackend.
+ * matching the pattern used by RedisBroadcastChannelBackend.
  */
-export class CloudflarePubSubBackend implements BroadcastChannelBackend {
+export class CloudflareBroadcastChannelBackend
+	implements BroadcastChannelBackend
+{
 	#ns: DurableObjectNamespace;
 	#instanceId: string;
 	#ws: WebSocket | null;
@@ -53,7 +55,7 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 	#ensureConnection(): void {
 		if (this.#wsReady) return;
 		this.#wsReady = this.#connect().catch((err) => {
-			logger.error("PubSub WebSocket connection failed: {error}", {
+			logger.error("BroadcastChannel WebSocket connection failed: {error}", {
 				error: err,
 			});
 			// Allow retry on next subscribe() call
@@ -62,14 +64,14 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 	}
 
 	async #connect(): Promise<void> {
-		const id = this.#ns.idFromName("pubsub");
+		const id = this.#ns.idFromName("broadcastchannel");
 		const stub = this.#ns.get(id);
 		const response = await stub.fetch("http://internal/subscribe", {
 			headers: {Upgrade: "websocket"},
 		});
 		const ws = (response as any).webSocket as WebSocket | undefined;
 		if (!ws) {
-			throw new Error("WebSocket upgrade to PubSub DO failed");
+			throw new Error("WebSocket upgrade to BroadcastChannel DO failed");
 		}
 		ws.accept();
 		this.#ws = ws;
@@ -83,7 +85,7 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 					for (const cb of cbs) cb(data);
 				}
 			} catch (err) {
-				logger.debug("Failed to parse pubsub message: {error}", {
+				logger.debug("Failed to parse broadcast message: {error}", {
 					error: err,
 				});
 			}
@@ -91,7 +93,7 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 	}
 
 	publish(channelName: string, data: unknown): void {
-		const id = this.#ns.idFromName("pubsub");
+		const id = this.#ns.idFromName("broadcastchannel");
 		const stub = this.#ns.get(id);
 		// Fire-and-forget POST to the DO
 		stub
@@ -105,7 +107,9 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 				}),
 			})
 			.catch((err) => {
-				logger.error("PubSub publish failed: {error}", {error: err});
+				logger.error("BroadcastChannel publish failed: {error}", {
+					error: err,
+				});
 			});
 	}
 
@@ -142,7 +146,7 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
  * Durable Object that fans out BroadcastChannel messages to connected
  * WebSocket clients. Uses WebSocket Hibernation API for efficiency.
  */
-export class ShovelPubSubDO extends DurableObject {
+export class ShovelBroadcastChannelDO extends DurableObject {
 	async fetch(request: Request): Promise<Response> {
 		const url = new URL(request.url);
 

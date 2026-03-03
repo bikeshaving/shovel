@@ -154,11 +154,13 @@ export function createFetchHandler(
 
 		// Auto-configure BroadcastChannel DO backend if binding is present
 		const envRecord = env as Record<string, unknown>;
-		if (!bcBackendConfigured && envRecord.SHOVEL_PUBSUB) {
-			const {CloudflarePubSubBackend} = await import("./pubsub.js");
+		if (!bcBackendConfigured && envRecord.SHOVEL_BROADCAST_CHANNEL) {
+			const {CloudflareBroadcastChannelBackend} = await import(
+				"./broadcastchannel.js"
+			);
 			setBroadcastChannelBackend(
-				new CloudflarePubSubBackend(
-					envRecord.SHOVEL_PUBSUB as DurableObjectNamespace,
+				new CloudflareBroadcastChannelBackend(
+					envRecord.SHOVEL_BROADCAST_CHANNEL as DurableObjectNamespace,
 				),
 			);
 			bcBackendConfigured = true;
