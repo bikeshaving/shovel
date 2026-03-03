@@ -2,6 +2,12 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## @b9g/platform-cloudflare 0.1.17 - 2026-03-03
+
+### Bug Fixes
+
+- **`@b9g/platform-cloudflare`** - Fix Miniflare dev server returning 404 for all routes by adding `routerConfig: {has_user_worker: true}` to assets config (#72)
+
 ## @b9g/platform-cloudflare 0.1.16, create-shovel 0.1.3 - 2026-03-02
 
 ### Features
