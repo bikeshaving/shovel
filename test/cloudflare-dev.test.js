@@ -5,13 +5,8 @@ import {Miniflare} from "miniflare";
 import {buildForProduction} from "../src/commands/build.js";
 import {copyFixtureToTemp} from "./utils.js";
 
-/**
- * Cloudflare dev server smoke test
- *
- * Builds a Cloudflare worker, starts Miniflare with the same assets
- * routing config that createDevServer uses, and verifies the worker
- * handles requests over real HTTP.
- */
+// Only one Miniflare-with-assets instance per file — sequential instances
+// hang on GitHub Actions (broken pipe on workerd control fd during dispose).
 
 test("cloudflare dev - worker handles requests with assets routing", async () => {
 	const fixture = await copyFixtureToTemp("cloudflare-basic");
