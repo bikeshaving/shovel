@@ -1,20 +1,20 @@
 {
   "name": "shovel-echo",
-	"private": true,
+  "private": true,
   "version": "1.0.0",
-  "description": "HTTP request echo and debugging API - Shovel Node.js Example",
+  "description": "HTTP request echo and debugging API - Shovel Cloudflare Workers Example",
   "type": "module",
   "scripts": {
-    "develop": "shovel develop src/server.ts --platform node",
-    "build": "shovel build src/server.ts --platform node",
-    "start": "shovel serve dist/server.js --platform node"
+    "develop": "shovel develop src/server.ts --platform cloudflare",
+    "build": "shovel build src/server.ts --platform cloudflare",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@b9g/router": "workspace:*",
     "@b9g/platform": "workspace:*",
-    "@b9g/platform-node": "workspace:*"
+    "@b9g/platform-cloudflare": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^18.0.0"
+    "wrangler": "^4.69.0"
   }
 }

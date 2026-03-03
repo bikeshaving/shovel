@@ -137,6 +137,7 @@ export async function createDevServer(
 		assets: {
 			directory: publicDir,
 			binding: "ASSETS",
+			routerConfig: {has_user_worker: true},
 		},
 	});
 
