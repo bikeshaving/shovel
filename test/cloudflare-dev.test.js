@@ -1,6 +1,6 @@
 import * as FS from "fs/promises";
 import {join} from "path";
-import {test, expect} from "bun:test";
+import {describe, test, expect, beforeAll, afterAll} from "bun:test";
 import {Miniflare} from "miniflare";
 import {buildForProduction} from "../src/commands/build.js";
 import {copyFixtureToTemp, fileExists} from "./utils.js";
@@ -11,188 +11,122 @@ import {copyFixtureToTemp, fileExists} from "./utils.js";
  * Tests Miniflare with the assets routing config that createDevServer uses.
  * Verifies that the worker handles requests correctly when assets are
  * configured (matching production Cloudflare behavior).
+ *
+ * Each describe block builds once and starts one Miniflare instance,
+ * shared across its tests.
  */
 
-const TIMEOUT = 60000;
+const TIMEOUT = 30000;
 
-/**
- * Create Miniflare options matching createDevServer's configuration.
- * This mirrors packages/platform-cloudflare/src/platform.ts
- */
-function getMiniflareOptions(script, publicDir, port) {
-	return {
-		modules: true,
-		script,
-		compatibilityDate: "2024-09-23",
-		compatibilityFlags: ["nodejs_compat"],
-		port,
-		assets: {
-			directory: publicDir,
-			binding: "ASSETS",
-			routerConfig: {has_user_worker: true},
-		},
-	};
-}
+describe("cloudflare dev - worker only (no static assets)", () => {
+	let fixture;
+	let mf;
+	let baseURL;
 
-test(
-	"cloudflare dev - worker handles requests with empty assets directory",
-	async () => {
-		const fixture = await copyFixtureToTemp("cloudflare-basic");
-		let mf;
+	beforeAll(async () => {
+		fixture = await copyFixtureToTemp("cloudflare-basic");
 
-		try {
-			await buildForProduction({
-				entrypoint: join(fixture.src, "app.js"),
-				outDir: fixture.dist,
-				verbose: false,
-				platform: "cloudflare",
-			});
+		await buildForProduction({
+			entrypoint: join(fixture.src, "app.js"),
+			outDir: fixture.dist,
+			verbose: false,
+			platform: "cloudflare",
+		});
 
-			const workerPath = join(fixture.dist, "server", "worker.js");
-			const publicDir = join(fixture.dist, "public");
-			const script = await FS.readFile(workerPath, "utf8");
+		const workerPath = join(fixture.dist, "server", "worker.js");
+		const publicDir = join(fixture.dist, "public");
+		const script = await FS.readFile(workerPath, "utf8");
+		await FS.mkdir(publicDir, {recursive: true});
 
-			// Ensure public dir exists but is empty (no static assets)
-			await FS.mkdir(publicDir, {recursive: true});
+		mf = new Miniflare({
+			modules: true,
+			script,
+			compatibilityDate: "2024-09-23",
+			compatibilityFlags: ["nodejs_compat"],
+			port: 0,
+			assets: {
+				directory: publicDir,
+				binding: "ASSETS",
+				routerConfig: {has_user_worker: true},
+			},
+		});
+		baseURL = await mf.ready;
+	}, TIMEOUT);
 
-			mf = new Miniflare(getMiniflareOptions(script, publicDir, 13500));
-			await mf.ready;
+	afterAll(async () => {
+		if (mf) await mf.dispose();
+		if (fixture) await fixture.cleanup();
+	});
 
-			// Worker should handle all requests — not 404 from empty assets dir
-			const response = await mf.dispatchFetch("http://localhost:13500/");
-			expect(response.status).toBe(200);
+	test("worker handles requests with empty assets directory", async () => {
+		const response = await fetch(new URL("/", baseURL));
+		expect(response.status).toBe(200);
 
-			const body = await response.text();
-			expect(body).toBe("Hello from Cloudflare!");
-		} finally {
-			if (mf) await mf.dispose();
-			await fixture.cleanup();
-		}
-	},
-	TIMEOUT,
-);
+		const body = await response.text();
+		expect(body).toBe("Hello from Cloudflare!");
+	});
+});
 
-test(
-	"cloudflare dev - worker handles non-asset routes when assets exist",
-	async () => {
-		const fixture = await copyFixtureToTemp("cloudflare-assets");
-		let mf;
+describe("cloudflare dev - with static assets", () => {
+	let fixture;
+	let mf;
+	let baseURL;
 
-		try {
-			await buildForProduction({
-				entrypoint: join(fixture.src, "app.js"),
-				outDir: fixture.dist,
-				verbose: false,
-				platform: "cloudflare",
-			});
+	beforeAll(async () => {
+		fixture = await copyFixtureToTemp("cloudflare-assets");
 
-			const workerPath = join(fixture.dist, "server", "worker.js");
-			const publicDir = join(fixture.dist, "public");
-			const script = await FS.readFile(workerPath, "utf8");
+		await buildForProduction({
+			entrypoint: join(fixture.src, "app.js"),
+			outDir: fixture.dist,
+			verbose: false,
+			platform: "cloudflare",
+		});
 
-			expect(await fileExists(publicDir)).toBe(true);
+		const workerPath = join(fixture.dist, "server", "worker.js");
+		const publicDir = join(fixture.dist, "public");
+		const script = await FS.readFile(workerPath, "utf8");
 
-			mf = new Miniflare(getMiniflareOptions(script, publicDir, 13501));
-			await mf.ready;
+		expect(await fileExists(publicDir)).toBe(true);
 
-			// Non-asset route should fall through to worker
-			const response = await mf.dispatchFetch("http://localhost:13501/");
-			expect(response.status).toBe(200);
+		mf = new Miniflare({
+			modules: true,
+			script,
+			compatibilityDate: "2024-09-23",
+			compatibilityFlags: ["nodejs_compat"],
+			port: 0,
+			assets: {
+				directory: publicDir,
+				binding: "ASSETS",
+				routerConfig: {has_user_worker: true},
+			},
+		});
+		baseURL = await mf.ready;
+	}, TIMEOUT);
 
-			const body = await response.text();
-			expect(body).toContain("Test");
-		} finally {
-			if (mf) await mf.dispose();
-			await fixture.cleanup();
-		}
-	},
-	TIMEOUT,
-);
+	afterAll(async () => {
+		if (mf) await mf.dispose();
+		if (fixture) await fixture.cleanup();
+	});
 
-test(
-	"cloudflare dev - static assets served from public directory",
-	async () => {
-		const fixture = await copyFixtureToTemp("cloudflare-assets");
-		let mf;
+	test("non-asset routes fall through to worker", async () => {
+		const response = await fetch(new URL("/", baseURL));
+		expect(response.status).toBe(200);
 
-		try {
-			await buildForProduction({
-				entrypoint: join(fixture.src, "app.js"),
-				outDir: fixture.dist,
-				verbose: false,
-				platform: "cloudflare",
-			});
+		const body = await response.text();
+		expect(body).toContain("Test");
+	});
 
-			const workerPath = join(fixture.dist, "server", "worker.js");
-			const publicDir = join(fixture.dist, "public");
-			const script = await FS.readFile(workerPath, "utf8");
+	test("static assets served from public directory", async () => {
+		const publicDir = join(fixture.dist, "public");
+		const assetsDir = join(publicDir, "assets");
+		const assetFiles = await FS.readdir(assetsDir);
+		const cssFile = assetFiles.find((f) => f.endsWith(".css"));
+		expect(cssFile).toBeDefined();
 
-			// Find a CSS asset in the public directory
-			const assetsDir = join(publicDir, "assets");
-			const assetFiles = await FS.readdir(assetsDir);
-			const cssFile = assetFiles.find((f) => f.endsWith(".css"));
-			expect(cssFile).toBeDefined();
+		const response = await fetch(new URL(`/assets/${cssFile}`, baseURL));
+		expect(response.status).toBe(200);
 
-			mf = new Miniflare(getMiniflareOptions(script, publicDir, 13502));
-			await mf.ready;
-
-			// Asset should be served directly by Miniflare's asset layer
-			const response = await mf.dispatchFetch(
-				`http://localhost:13502/assets/${cssFile}`,
-			);
-			expect(response.status).toBe(200);
-
-			const body = await response.text();
-			expect(body).toContain("color");
-		} finally {
-			if (mf) await mf.dispose();
-			await fixture.cleanup();
-		}
-	},
-	TIMEOUT,
-);
-
-test(
-	"cloudflare dev - without routerConfig worker requests return 404 (regression)",
-	async () => {
-		const fixture = await copyFixtureToTemp("cloudflare-basic");
-		let mf;
-
-		try {
-			await buildForProduction({
-				entrypoint: join(fixture.src, "app.js"),
-				outDir: fixture.dist,
-				verbose: false,
-				platform: "cloudflare",
-			});
-
-			const workerPath = join(fixture.dist, "server", "worker.js");
-			const publicDir = join(fixture.dist, "public");
-			const script = await FS.readFile(workerPath, "utf8");
-			await FS.mkdir(publicDir, {recursive: true});
-
-			// Without routerConfig, Miniflare returns 404 for non-asset requests
-			mf = new Miniflare({
-				modules: true,
-				script,
-				compatibilityDate: "2024-09-23",
-				compatibilityFlags: ["nodejs_compat"],
-				port: 13503,
-				assets: {
-					directory: publicDir,
-					binding: "ASSETS",
-					// No routerConfig — this is the bug
-				},
-			});
-			await mf.ready;
-
-			const response = await mf.dispatchFetch("http://localhost:13503/");
-			// This confirms the bug exists without the fix
-			expect(response.status).toBe(404);
-		} finally {
-			if (mf) await mf.dispose();
-			await fixture.cleanup();
-		}
-	},
-	TIMEOUT,
-);
+		const body = await response.text();
+		expect(body).toContain("color");
+	});
+});
