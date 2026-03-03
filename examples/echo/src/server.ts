@@ -71,10 +71,6 @@ const HOMEPAGE_HTML = `
   <h2>Control Headers</h2>
   <p>Modify response behavior using <code>X-Echo-*</code> headers:</p>
 
-  <h3><code>X-Echo-Delay</code></h3>
-  <p>Delay response by specified seconds (1-10).</p>
-  <pre><code>curl https://echo.shovel.run/echo -H "X-Echo-Delay: 3"</code></pre>
-
   <h3><code>X-Echo-Status</code></h3>
   <p>Return a specific HTTP status code (100-599).</p>
   <pre><code>curl https://echo.shovel.run/echo -H "X-Echo-Status: 404"</code></pre>
@@ -134,7 +130,7 @@ const HOMEPAGE_HTML = `
     <li>JSON, form data, and text body parsing</li>
     <li>Cache control headers</li>
     <li>Content type overrides</li>
-    <li>Status code and delay control</li>
+    <li>Status code control</li>
     <li>Clean header-based control mechanism</li>
   </ul>
 
@@ -145,13 +141,12 @@ const HOMEPAGE_HTML = `
     <li>CORS policy validation</li>
     <li>Frontend integration testing</li>
     <li>API error handling</li>
-    <li>Loading state demonstrations</li>
     <li>HTTP fundamentals learning</li>
     <li>Cache behavior validation</li>
   </ul>
 
   <footer>
-    <p>Built with <a href="https://github.com/anthropics/shovel">Shovel</a></p>
+    <p>Built with <a href="https://github.com/bikeshaving/shovel">Shovel</a></p>
   </footer>
 </body>
 </html>`;
@@ -293,23 +288,9 @@ router.route("/echo").all(async (request) => {
 	}
 
 	// Parse control headers
-	const delayHeader = request.headers.get("x-echo-delay");
 	const statusHeader = request.headers.get("x-echo-status");
 	const cacheHeader = request.headers.get("x-echo-cache");
 	const contentTypeHeader = request.headers.get("x-echo-content-type");
-
-	// Validate delay
-	let delay = 0;
-	if (delayHeader) {
-		const parsed = parseInt(delayHeader);
-		if (isNaN(parsed) || parsed < 1 || parsed > 10) {
-			return Response.json(
-				{error: "X-Echo-Delay must be between 1 and 10"},
-				{status: 400, headers: corsHeaders || {}},
-			);
-		}
-		delay = parsed;
-	}
 
 	// Validate status
 	let statusCode = 200;
@@ -324,11 +305,6 @@ router.route("/echo").all(async (request) => {
 		statusCode = parsed;
 	}
 
-	// Apply delay
-	if (delay > 0) {
-		await new Promise((resolve) => setTimeout(resolve, delay * 1000));
-	}
-
 	// Build response
 	const info = getRequestInfo(request);
 	const body = await parseBody(request);
@@ -339,9 +315,6 @@ router.route("/echo").all(async (request) => {
 		contentType: request.headers.get("content-type") || null,
 	};
 
-	if (delay > 0) {
-		response.delayed = `${delay} seconds`;
-	}
 	if (statusCode !== 200) {
 		response.requestedStatus = statusCode;
 	}
