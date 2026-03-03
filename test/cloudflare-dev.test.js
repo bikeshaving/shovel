@@ -1,5 +1,5 @@
 import * as FS from "fs/promises";
-import {join, dirname} from "path";
+import {join} from "path";
 import {test, expect} from "bun:test";
 import {Miniflare} from "miniflare";
 import {buildForProduction} from "../src/commands/build.js";
