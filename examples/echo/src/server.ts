@@ -7,14 +7,7 @@ import {Router} from "@b9g/router";
 
 const logger = self.loggers.get(["echo"]);
 
-const HOMEPAGE_HTML = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Echo - HTTP Request Echo API</title>
-  <style>
+const STYLES = `
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -26,7 +19,6 @@ const HOMEPAGE_HTML = `
     }
     h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
     h2 { margin-top: 2rem; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
-    h3 { margin-top: 1.5rem; margin-bottom: 0.5rem; }
     code {
       background: #f5f5f5;
       padding: 0.2rem 0.4rem;
@@ -41,8 +33,6 @@ const HOMEPAGE_HTML = `
       margin: 1rem 0;
     }
     pre code { background: none; padding: 0; }
-    ul { margin-left: 2rem; margin-top: 0.5rem; }
-    li { margin-bottom: 0.5rem; }
     .subtitle { color: #666; font-size: 1.1rem; margin-bottom: 2rem; }
     footer {
       margin-top: 4rem;
@@ -53,110 +43,198 @@ const HOMEPAGE_HTML = `
     }
     a { color: #0066cc; text-decoration: none; }
     a:hover { text-decoration: underline; }
-    details { margin: 1rem 0; }
-    summary { cursor: pointer; font-weight: bold; margin-bottom: 0.5rem; }
-    details[open] summary { margin-bottom: 1rem; }
-  </style>
+    .json-key { color: #881391; }
+    .json-string { color: #1a1aa6; }
+    .json-number { color: #1c00cf; }
+    .json-boolean { color: #0d22aa; }
+    .json-null { color: #808080; }
+    .fetch-demo { margin: 1.5rem 0; }
+    .fetch-demo .controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .fetch-demo select {
+      padding: 0.4rem;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      font-size: 0.9rem;
+    }
+    .fetch-demo input[type="text"] {
+      flex: 1;
+      padding: 0.4rem 0.6rem;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 0.9rem;
+    }
+    .fetch-demo textarea {
+      width: 100%;
+      min-height: 4rem;
+      padding: 0.6rem;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+      resize: vertical;
+    }
+    .fetch-demo button {
+      padding: 0.4rem 1.2rem;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .fetch-demo button:hover { background: #0052a3; }
+    .fetch-demo button:disabled { background: #999; cursor: default; }
+    .fetch-demo .status { font-size: 0.85rem; color: #666; margin-bottom: 0.5rem; }
+`;
+
+const HOMEPAGE_HTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Echo - HTTP Request Echo API</title>
+  <style>${STYLES}</style>
 </head>
 <body>
   <h1>Echo</h1>
   <p class="subtitle">HTTP request echo and debugging API</p>
 
-  <h2>Endpoint</h2>
-  <h3><code>ALL /echo</code></h3>
-  <p>Echoes back complete request information including method, path, query params, headers, and body.</p>
-
-  <pre><code>curl https://echo.shovel.run/echo</code></pre>
+  <h2>Try it</h2>
+  <div id="fetch-demo"></div>
+  <noscript><pre><code>curl https://echo.shovel.run/anything</code></pre></noscript>
 
   <h2>Control Headers</h2>
   <p>Modify response behavior using <code>X-Echo-*</code> headers:</p>
 
-  <h3><code>X-Echo-Status</code></h3>
-  <p>Return a specific HTTP status code (100-599).</p>
-  <pre><code>curl https://echo.shovel.run/echo -H "X-Echo-Status: 404"</code></pre>
+  <pre><code>curl https://echo.shovel.run/anything -H "X-Echo-Status: 404"
+curl https://echo.shovel.run/anything -H "X-Echo-CORS: origin:myapp.com"
+curl https://echo.shovel.run/anything -H "X-Echo-Cache: max-age:3600"
+curl https://echo.shovel.run/anything -H "X-Echo-Content-Type: application/xml"</code></pre>
 
-  <h3><code>X-Echo-CORS</code></h3>
-  <p>Simulate CORS restrictions for testing cross-origin behavior.</p>
-  <pre><code>curl https://echo.shovel.run/echo -H "X-Echo-CORS: origin:myapp.com"</code></pre>
+  <footer>
+    <p>Built with <a href="https://github.com/bikeshaving/shovel">Shovel</a></p>
+  </footer>
 
-  <h3><code>X-Echo-Cache</code></h3>
-  <p>Control caching headers.</p>
-  <pre><code>curl https://echo.shovel.run/echo -H "X-Echo-Cache: max-age:3600"</code></pre>
+  <script type="module">
+    import {jsx} from "https://esm.sh/@b9g/crank@0.7/standalone";
+    import {renderer} from "https://esm.sh/@b9g/crank@0.7/dom";
 
-  <h3><code>X-Echo-Content-Type</code></h3>
-  <p>Override response content type.</p>
-  <pre><code>curl https://echo.shovel.run/echo -H "X-Echo-Content-Type: application/xml"</code></pre>
+    function* FetchDemo() {
+      let method = "GET";
+      let path = "/hello";
+      let body = "";
+      let result = null;
+      let status = null;
+      let loading = false;
 
-  <h2>Examples</h2>
+      const send = async () => {
+        loading = true;
+        this.refresh();
+        try {
+          const opts = {method, headers: {"Accept": "application/json"}};
+          if (method !== "GET" && method !== "HEAD" && body) {
+            opts.body = body;
+            opts.headers["Content-Type"] = "application/json";
+          }
+          const res = await fetch(path, opts);
+          status = res.status;
+          result = await res.json();
+        } catch (e) {
+          status = null;
+          result = {error: e.message};
+        }
+        loading = false;
+        this.refresh();
+      };
 
-  <h3>Basic Echo</h3>
-  <pre><code>curl https://echo.shovel.run/echo?foo=bar</code></pre>
-  <details>
-    <summary>Example Response</summary>
-    <pre><code>{
-  "method": "GET",
-  "path": "/echo",
-  "query": {"foo": "bar"},
-  "headers": {
-    "user-agent": "curl/8.0.0",
-    "accept": "*/*"
-  },
-  "timestamp": "2025-10-17T12:00:00.000Z",
-  "body": null
-}</code></pre>
-  </details>
+      for ({} of this) {
+        yield jsx\`
+          <div class="fetch-demo">
+            <div class="controls">
+              <select onchange=\${(e) => { method = e.target.value; this.refresh(); }}>
+                <option>GET</option>
+                <option>POST</option>
+                <option>PUT</option>
+                <option>DELETE</option>
+                <option>PATCH</option>
+              </select>
+              <input type="text" value=\${path}
+                oninput=\${(e) => { path = e.target.value; }}
+                onkeydown=\${(e) => { if (e.key === "Enter") send(); }} />
+              <button onclick=\${send} disabled=\${loading}>
+                \${loading ? "..." : "Send"}
+              </button>
+            </div>
+            \${method !== "GET" && method !== "HEAD" ? jsx\`
+              <textarea placeholder="Request body (JSON)"
+                oninput=\${(e) => { body = e.target.value; }}>\${body}</textarea>
+            \` : null}
+            \${status != null ? jsx\`<div class="status">\${status}</div>\` : null}
+            \${result ? jsx\`<pre><code>\${JSON.stringify(result, null, 2)}</code></pre>\` : null}
+          </div>
+        \`;
+      }
+    }
 
-  <h3>POST with JSON</h3>
-  <pre><code>curl -X POST https://echo.shovel.run/echo \\
-  -H "Content-Type: application/json" \\
-  -d '{"hello": "world"}'</code></pre>
-  <details>
-    <summary>Example Response</summary>
-    <pre><code>{
-  "method": "POST",
-  "path": "/echo",
-  "headers": {
-    "content-type": "application/json"
-  },
-  "body": {"hello": "world"},
-  "contentType": "application/json"
-}</code></pre>
-  </details>
+    renderer.render(
+      jsx\`<\${FetchDemo} />\`,
+      document.getElementById("fetch-demo"),
+    );
+  </script>
+</body>
+</html>`;
 
-  <h2>Features</h2>
-  <ul>
-    <li>Full CORS support with simulation</li>
-    <li>All HTTP methods supported</li>
-    <li>JSON, form data, and text body parsing</li>
-    <li>Cache control headers</li>
-    <li>Content type overrides</li>
-    <li>Status code control</li>
-    <li>Clean header-based control mechanism</li>
-  </ul>
+function syntaxHighlightJson(json: string): string {
+	return json.replace(
+		/("(?:\\.|[^"\\])*")\s*:|("(?:\\.|[^"\\])*")|(\b\d+\.?\d*\b)|(true|false)|(null)/g,
+		(match, key, str, num, bool, nil) => {
+			if (key) return `<span class="json-key">${key}</span>:`;
+			if (str) return `<span class="json-string">${str}</span>`;
+			if (num) return `<span class="json-number">${num}</span>`;
+			if (bool) return `<span class="json-boolean">${bool}</span>`;
+			if (nil) return `<span class="json-null">${nil}</span>`;
+			return match;
+		},
+	);
+}
 
-  <h2>Use Cases</h2>
-  <ul>
-    <li>Webhook testing and debugging</li>
-    <li>HTTP client development</li>
-    <li>CORS policy validation</li>
-    <li>Frontend integration testing</li>
-    <li>API error handling</li>
-    <li>HTTP fundamentals learning</li>
-    <li>Cache behavior validation</li>
-  </ul>
-
+function renderJsonHtml(data: unknown, statusCode: number): string {
+	const json = JSON.stringify(data, null, 2);
+	const highlighted = syntaxHighlightJson(json);
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Echo ${statusCode}</title>
+  <style>${STYLES}</style>
+</head>
+<body>
+  <h1><a href="/">Echo</a></h1>
+  <pre><code>${highlighted}</code></pre>
   <footer>
     <p>Built with <a href="https://github.com/bikeshaving/shovel">Shovel</a></p>
   </footer>
 </body>
 </html>`;
+}
 
 // Helper functions
 function getRequestInfo(req: Request) {
 	const url = new URL(req.url);
+	const stripPrefixes = ["cf-", "x-real-ip", "x-forwarded-"];
 	const headers: Record<string, string> = {};
 	req.headers.forEach((value, key) => {
-		headers[key] = value;
+		if (!stripPrefixes.some((p) => key.startsWith(p))) {
+			headers[key] = value;
+		}
 	});
 
 	return {
@@ -192,7 +270,6 @@ async function parseBody(req: Request) {
 			return text || null;
 		}
 	} catch (_err: unknown) {
-		// Body parsing failed (invalid JSON, wrong content-type, etc.)
 		return null;
 	}
 }
@@ -264,6 +341,11 @@ function parseCacheHeader(cacheHeader: string | null): Record<string, string> {
 	return headers;
 }
 
+function wantsBrowserResponse(request: Request): boolean {
+	const accept = request.headers.get("accept") || "";
+	return accept.includes("text/html");
+}
+
 // Create router
 const router = new Router();
 
@@ -274,8 +356,8 @@ router.route("/").get(() => {
 	});
 });
 
-// Echo endpoint - handles all methods
-router.route("/echo").all(async (request) => {
+// Echo endpoint - handles all methods on any path
+router.route("/*").all(async (request) => {
 	const corsHeader = request.headers.get("x-echo-cors");
 	const corsHeaders = parseCorsHeader(corsHeader);
 
@@ -312,7 +394,6 @@ router.route("/echo").all(async (request) => {
 	const response: Record<string, unknown> = {
 		...info,
 		body,
-		contentType: request.headers.get("content-type") || null,
 	};
 
 	if (statusCode !== 200) {
@@ -328,29 +409,18 @@ router.route("/echo").all(async (request) => {
 		responseHeaders["Content-Type"] = contentTypeHeader;
 	}
 
+	// Pretty HTML for browsers, raw JSON for API clients
+	if (wantsBrowserResponse(request) && !contentTypeHeader) {
+		return new Response(renderJsonHtml(response, statusCode), {
+			status: statusCode,
+			headers: {...responseHeaders, "Content-Type": "text/html"},
+		});
+	}
+
 	return Response.json(response, {
 		status: statusCode,
 		headers: responseHeaders,
 	});
-});
-
-// 404 handler
-router.use(async function* (request) {
-	const response: Response | undefined = yield request;
-	if (response) return response;
-
-	const url = new URL(request.url);
-	return Response.json(
-		{
-			error: "Not found",
-			path: url.pathname,
-			suggestion: "Try /echo or see / for documentation",
-		},
-		{
-			status: 404,
-			headers: parseCorsHeader(null) || {},
-		},
-	);
 });
 
 // ServiceWorker event handlers
