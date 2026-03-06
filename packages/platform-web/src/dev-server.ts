@@ -11,10 +11,17 @@
  * - Everything else → HTML shell that registers the SW
  */
 
-import {createServer, type IncomingMessage, type ServerResponse} from "node:http";
+import {
+	createServer,
+	type IncomingMessage,
+	type ServerResponse,
+} from "node:http";
 import {readFile, stat} from "node:fs/promises";
 import {dirname, join, extname} from "node:path";
 import type {DevServerOptions, DevServer} from "@b9g/platform/module";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["shovel", "platform"]);
 
 // Simple MIME type map for static assets
 const MIME_TYPES: Record<string, string> = {
@@ -40,7 +47,9 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 function getMimeType(filePath: string): string {
-	return MIME_TYPES[extname(filePath).toLowerCase()] || "application/octet-stream";
+	return (
+		MIME_TYPES[extname(filePath).toLowerCase()] || "application/octet-stream"
+	);
 }
 
 /**
@@ -161,75 +170,80 @@ export async function createWebDevServer(
 
 	let currentWorkerPath = workerPath;
 
-	const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-		const url = new URL(req.url || "/", `http://${host}:${port}`);
-		const pathname = url.pathname;
+	const server = createServer(
+		async (req: IncomingMessage, res: ServerResponse) => {
+			const url = new URL(req.url || "/", `http://${host}:${port}`);
+			const pathname = url.pathname;
 
-		try {
-			// Serve the Service Worker bundle
-			if (pathname === "/sw.js") {
-				const content = await readFile(currentWorkerPath, "utf-8");
-				res.writeHead(200, {
-					"Content-Type": "application/javascript",
-					"Cache-Control": "no-cache",
-					"Service-Worker-Allowed": "/",
-				});
-				res.end(content);
-				return;
-			}
-
-			// SSE endpoint for live reload
-			if (pathname === "/__shovel/events") {
-				res.writeHead(200, {
-					"Content-Type": "text/event-stream",
-					"Cache-Control": "no-cache",
-					"Connection": "keep-alive",
-					"Access-Control-Allow-Origin": "*",
-				});
-				res.write(":\n\n"); // SSE comment to keep connection alive
-				sseClients.add(res);
-				req.on("close", () => {
-					sseClients.delete(res);
-				});
-				return;
-			}
-
-			// Serve static assets from dist/public/
-			if (pathname.startsWith("/static/")) {
-				const filePath = join(publicDir, pathname);
-				try {
-					const fileStat = await stat(filePath);
-					if (fileStat.isFile()) {
-						const content = await readFile(filePath);
-						res.writeHead(200, {
-							"Content-Type": getMimeType(filePath),
-							"Cache-Control": "public, max-age=31536000, immutable",
-						});
-						res.end(content);
-						return;
-					}
-				} catch {
-					// Fall through to 404
+			try {
+				// Serve the Service Worker bundle
+				if (pathname === "/sw.js") {
+					const content = await readFile(currentWorkerPath, "utf-8");
+					res.writeHead(200, {
+						"Content-Type": "application/javascript",
+						"Cache-Control": "no-cache",
+						"Service-Worker-Allowed": "/",
+					});
+					res.end(content);
+					return;
 				}
 
-				res.writeHead(404, {"Content-Type": "text/plain"});
-				res.end("Not Found");
-				return;
-			}
+				// SSE endpoint for live reload
+				if (pathname === "/__shovel/events") {
+					res.writeHead(200, {
+						"Content-Type": "text/event-stream",
+						"Cache-Control": "no-cache",
+						Connection: "keep-alive",
+						"Access-Control-Allow-Origin": "*",
+					});
+					res.write(":\n\n"); // SSE comment to keep connection alive
+					sseClients.add(res);
+					req.on("close", () => {
+						sseClients.delete(res);
+					});
+					return;
+				}
 
-			// Everything else → HTML shell
-			const html = getHTMLShell(port);
-			res.writeHead(200, {
-				"Content-Type": "text/html",
-				"Cache-Control": "no-cache",
-			});
-			res.end(html);
-		} catch (err) {
-			console.error("Dev server error:", err);
-			res.writeHead(500, {"Content-Type": "text/plain"});
-			res.end("Internal Server Error");
-		}
-	});
+				// Serve static assets from dist/public/
+				if (pathname.startsWith("/static/")) {
+					const filePath = join(publicDir, pathname);
+					try {
+						const fileStat = await stat(filePath);
+						if (fileStat.isFile()) {
+							const content = await readFile(filePath);
+							res.writeHead(200, {
+								"Content-Type": getMimeType(filePath),
+								"Cache-Control": "public, max-age=31536000, immutable",
+							});
+							res.end(content);
+							return;
+						}
+					} catch (e) {
+						logger.debug("Static file not found: {path}", {
+							path: filePath,
+							error: e,
+						});
+					}
+
+					res.writeHead(404, {"Content-Type": "text/plain"});
+					res.end("Not Found");
+					return;
+				}
+
+				// Everything else → HTML shell
+				const html = getHTMLShell(port);
+				res.writeHead(200, {
+					"Content-Type": "text/html",
+					"Cache-Control": "no-cache",
+				});
+				res.end(html);
+			} catch (err) {
+				logger.error("Dev server error: {error}", {error: err});
+				res.writeHead(500, {"Content-Type": "text/plain"});
+				res.end("Internal Server Error");
+			}
+		},
+	);
 
 	await new Promise<void>((resolve) => {
 		server.listen(port, host, () => resolve());
