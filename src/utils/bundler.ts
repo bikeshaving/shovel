@@ -356,7 +356,10 @@ export class ServerBundler {
 				__SHOVEL_OUTDIR__: JSON.stringify(outputDir),
 				__SHOVEL_GIT__: JSON.stringify(getGitSHA(this.#projectRoot)),
 			},
-			alias: userBuildConfig?.alias,
+			alias: {
+				...(platformESBuildConfig.alias ?? {}),
+				...(userBuildConfig?.alias ?? {}),
+			},
 			external,
 			sourcemap,
 			minify,
