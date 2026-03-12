@@ -1394,6 +1394,9 @@ export function generateConfigModule(
 				const platformConfig = platformCaches[name] || {};
 				const userConfig = userCaches[name] || {};
 				const mergedConfig = {...platformConfig, ...userConfig};
+				if (userConfig.module && !userConfig.export) {
+					delete mergedConfig.export;
+				}
 				caches[name] = reifyModule(mergedConfig, "cache", name);
 			}
 			config.caches = caches;
@@ -1415,6 +1418,9 @@ export function generateConfigModule(
 				const platformConfig = platformDirectories[name] || {};
 				const userConfig = userDirectories[name] || {};
 				const mergedConfig = {...platformConfig, ...userConfig};
+				if (userConfig.module && !userConfig.export) {
+					delete mergedConfig.export;
+				}
 				directories[name] = reifyModule(mergedConfig, "directory", name);
 			}
 			config.directories = directories;

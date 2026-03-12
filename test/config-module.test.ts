@@ -418,6 +418,61 @@ describe("generateConfigModule", () => {
 			expect(module).toContain('from "@b9g/filesystem/memory"');
 			expect(module).not.toContain('from "@b9g/filesystem/node-fs"');
 		});
+
+		it("clears platform export when user overrides directory module without export", () => {
+			// Bug: user overrides module but not export → platform's export leaks through
+			const module = generateConfigModule(
+				{
+					directories: {
+						public: {
+							module: "@b9g/filesystem/node-fs",
+							path: "./public",
+						},
+					},
+				},
+				{
+					platformDefaults: {
+						directories: {
+							public: {
+								module: "@b9g/platform-cloudflare/directories",
+								export: "CloudflareAssetsDirectory",
+							},
+						},
+					},
+				},
+			);
+
+			// Should use user's module with default import, NOT platform's named export
+			expect(module).toContain('from "@b9g/filesystem/node-fs"');
+			expect(module).not.toContain("CloudflareAssetsDirectory");
+		});
+
+		it("clears platform export when user overrides cache module without export", () => {
+			// Same bug for caches: user overrides module but not export
+			const module = generateConfigModule(
+				{
+					caches: {
+						sessions: {
+							module: "@b9g/cache/memory",
+						},
+					},
+				},
+				{
+					platformDefaults: {
+						caches: {
+							sessions: {
+								module: "@b9g/platform-cloudflare/caches",
+								export: "CloudflareKVCache",
+							},
+						},
+					},
+				},
+			);
+
+			// Should use user's module with default import, NOT platform's named export
+			expect(module).toContain('from "@b9g/cache/memory"');
+			expect(module).not.toContain("CloudflareKVCache");
+		});
 	});
 
 	describe("secrets handling", () => {
