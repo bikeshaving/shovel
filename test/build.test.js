@@ -972,3 +972,82 @@ self.addEventListener("fetch", (event) => {
 		await cleanup(cleanup_paths);
 	}
 }, 15000); // Longer timeout for lifecycle
+
+// ======================
+// CONFIG MERGE REGRESSION TESTS
+// ======================
+
+test(
+	"cloudflare build: user module override does not leak platform export",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const testDir = await createTempDir("config-merge-");
+			cleanup_paths.push(testDir);
+
+			const entryContent = `
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response("Config merge test"));
+});
+			`;
+
+			const entryPath = join(testDir, "app.js");
+			await FS.writeFile(entryPath, entryContent);
+
+			// shovel.json: user overrides public directory module without specifying export
+			// Bug: platform default's "CloudflareAssetsDirectory" export would leak through
+			await FS.writeFile(
+				join(testDir, "shovel.json"),
+				JSON.stringify({
+					directories: {
+						public: {
+							module: "@b9g/filesystem/node-fs",
+							path: "./public",
+						},
+					},
+				}),
+			);
+
+			await FS.writeFile(
+				join(testDir, "package.json"),
+				JSON.stringify({name: "test-config-merge", type: "module"}),
+			);
+
+			// Symlink node_modules
+			await FS.symlink(
+				join(process.cwd(), "node_modules"),
+				join(testDir, "node_modules"),
+				"dir",
+			);
+
+			const outDir = join(testDir, "dist");
+			const originalCwd = process.cwd();
+			process.chdir(testDir);
+
+			try {
+				await buildForProduction({
+					entrypoint: entryPath,
+					outDir,
+					verbose: false,
+					platform: "cloudflare",
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			const workerContent = await FS.readFile(
+				join(outDir, "server", "worker.js"),
+				"utf8",
+			);
+
+			// The generated config should use a default import from the user's module,
+			// NOT a named import of CloudflareAssetsDirectory
+			expect(workerContent).not.toContain("CloudflareAssetsDirectory");
+			expect(workerContent).toContain("Config merge test");
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);
