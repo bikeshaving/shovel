@@ -11,10 +11,7 @@ import {join} from "path";
 const packagesDir = join(import.meta.dir, "..", "packages");
 
 /** Extract named imports from `import { A, B } from "@b9g/platform/runtime"` */
-function extractImportsFrom(
-	code: string,
-	fromModule: string,
-): Set<string> {
+function extractImportsFrom(code: string, fromModule: string): Set<string> {
 	const imports = new Set<string>();
 	// Match: import { A, B, C } from "module"
 	// Handles multi-line imports
@@ -69,13 +66,7 @@ describe("platform export compatibility", () => {
 	});
 
 	for (const pkg of platformPackages) {
-		const runtimePath = join(
-			packagesDir,
-			pkg,
-			"dist",
-			"src",
-			"runtime.js",
-		);
+		const runtimePath = join(packagesDir, pkg, "dist", "src", "runtime.js");
 
 		it(`@b9g/${pkg}/runtime dist exists`, () => {
 			expect(existsSync(runtimePath)).toBe(true);
@@ -86,10 +77,7 @@ describe("platform export compatibility", () => {
 			const pkgCode = readFileSync(runtimePath, "utf-8");
 
 			const baseExports = extractExports(baseCode);
-			const pkgImports = extractImportsFrom(
-				pkgCode,
-				"@b9g/platform/runtime",
-			);
+			const pkgImports = extractImportsFrom(pkgCode, "@b9g/platform/runtime");
 
 			expect(pkgImports.size).toBeGreaterThan(0);
 
