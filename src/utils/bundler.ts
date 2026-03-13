@@ -197,6 +197,7 @@ export class ServerBundler {
 		const outputDir = resolve(this.#projectRoot, this.#options.outDir);
 
 		await mkdir(join(outputDir, "server"), {recursive: true});
+		await mkdir(join(outputDir, "public"), {recursive: true});
 
 		const initialBuildPromise = new Promise<BuildResult>((resolve) => {
 			this.#initialBuildResolve = resolve;
