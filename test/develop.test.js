@@ -125,6 +125,7 @@ function startDevServer(fixture, port, extraArgs = []) {
 	const serverProcess = spawn("node", args, {
 		stdio: ["ignore", "pipe", "pipe"],
 		cwd: fixtureDir,
+		detached: true,
 		env: {
 			...process.env,
 			NODE_ENV: "development",
@@ -326,26 +327,37 @@ async function fetchWithRetry(port, retries = 20, delay = 50) {
 	}
 }
 
-// Helper to kill process and wait for port to be free
-async function killServer(process, port) {
-	if (process && process.exitCode === null) {
-		process.kill("SIGTERM");
+// Helper to kill process tree and wait for port to be free
+async function killServer(serverProcess, port) {
+	if (serverProcess && serverProcess.exitCode === null) {
+		// Kill the entire process group (negated PID) so child workers also die
+		try {
+			process.kill(-serverProcess.pid, "SIGTERM");
+		} catch (_err) {
+			// Process group kill may fail if process already exited
+			serverProcess.kill("SIGTERM");
+		}
 
 		// Wait for process to exit
 		await new Promise((resolve) => {
 			const cleanup = () => {
-				process.removeListener("exit", cleanup);
-				process.removeListener("close", cleanup);
+				serverProcess.removeListener("exit", cleanup);
+				serverProcess.removeListener("close", cleanup);
 				resolve();
 			};
 
-			process.on("exit", cleanup);
-			process.on("close", cleanup);
+			serverProcess.on("exit", cleanup);
+			serverProcess.on("close", cleanup);
 
 			// Force kill if it doesn't exit gracefully
 			setTimeout(() => {
-				if (process.exitCode === null) {
-					process.kill("SIGKILL");
+				if (serverProcess.exitCode === null) {
+					try {
+						process.kill(-serverProcess.pid, "SIGKILL");
+					} catch (_err) {
+						// Process group kill may fail if process already exited
+						serverProcess.kill("SIGKILL");
+					}
 				}
 				// Resolve after a short delay even if exit/close doesn't fire
 				// (handles edge cases where signal delivery fails)
@@ -648,6 +660,111 @@ test(
 			if (tempFixture) {
 				await tempFixture.cleanup();
 			}
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"bun platform hot reload",
+	async () => {
+		const PORT = 13351;
+		let serverProcess;
+		let tempFixture;
+
+		try {
+			tempFixture = await createTempFixture("server-hello.ts");
+
+			serverProcess = startDevServer(tempFixture.path, PORT, [
+				"--platform",
+				"bun",
+			]);
+
+			const initialResponse = await waitForServer(PORT, serverProcess);
+			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
+
+			// Set up reload listener BEFORE modifying file
+			const reloadPromise = serverProcess.waitForReload();
+
+			await tempFixture.copyFrom("server-goodbye.ts");
+
+			await reloadPromise;
+
+			const updatedResponse = await fetchWithRetry(PORT);
+			expect(updatedResponse).toBe("<marquee>Goodbye world</marquee>");
+		} finally {
+			await killServer(serverProcess, PORT);
+			if (tempFixture) {
+				await tempFixture.cleanup();
+			}
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"bun platform error recovery",
+	async () => {
+		const PORT = 13352;
+		let serverProcess;
+		let tempDir;
+
+		const validContent = `
+import {jsx} from "@b9g/crank/standalone";
+import {renderer} from "@b9g/crank/html";
+
+self.addEventListener("fetch", (event) => {
+	const html = renderer.render(jsx\`<div>Valid Bun</div>\`);
+	event.respondWith(new Response(html, {
+		headers: {"content-type": "text/html; charset=UTF-8"},
+	}));
+});
+		`;
+		const invalidContent = "this is not valid typescript !!!";
+		const fixedContent = `
+import {jsx} from "@b9g/crank/standalone";
+import {renderer} from "@b9g/crank/html";
+
+self.addEventListener("fetch", (event) => {
+	const html = renderer.render(jsx\`<div>Fixed Bun</div>\`);
+	event.respondWith(new Response(html, {
+		headers: {"content-type": "text/html; charset=UTF-8"},
+	}));
+});
+		`;
+
+		try {
+			tempDir = await createTempDir();
+			const testFile = join(tempDir.dir, "app.ts");
+
+			await FS.writeFile(testFile, validContent);
+
+			serverProcess = startDevServer(testFile, PORT, ["--platform", "bun"]);
+
+			const initialResponse = await waitForServer(PORT, serverProcess);
+			expect(initialResponse).toBe("<div>Valid Bun</div>");
+
+			// Write syntax error
+			await FS.writeFile(testFile, invalidContent);
+
+			await serverProcess.waitForBuild();
+
+			// Server should still be running
+			const errorResponse = await fetchWithRetry(PORT);
+			expect(typeof errorResponse).toBe("string");
+
+			// Set up reload listener BEFORE fixing
+			const reloadPromise = serverProcess.waitForReload();
+
+			await FS.writeFile(testFile, fixedContent);
+
+			await reloadPromise;
+
+			const recoveredResponse = await fetchWithRetry(PORT);
+			expect(recoveredResponse).toBe("<div>Fixed Bun</div>");
+		} finally {
+			await killServer(serverProcess, PORT);
+			if (tempDir) await tempDir.cleanup();
 		}
 	},
 	TIMEOUT,
