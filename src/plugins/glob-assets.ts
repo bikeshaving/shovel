@@ -44,31 +44,56 @@ function getGlobRoot(pattern: string): string {
 }
 
 /**
+ * Apply esbuild aliases to the non-glob prefix of a pattern.
+ * e.g., with alias {"@": "./src"}, "@/assets/**\/*" → "./src/assets/**\/*"
+ */
+function applyAliases(
+	pattern: string,
+	aliases: Record<string, string> | undefined,
+): string {
+	if (!aliases) return pattern;
+	for (const [from, to] of Object.entries(aliases)) {
+		if (pattern === from) {
+			return to;
+		}
+		if (pattern.startsWith(from + "/")) {
+			return to + pattern.slice(from.length);
+		}
+	}
+	return pattern;
+}
+
+/**
  * ESBuild plugin for expanding glob patterns in asset imports.
  */
 export function globAssetsPlugin(): ESBuild.Plugin {
 	return {
 		name: "shovel-glob-assets",
 		setup(build) {
+			const aliases = build.initialOptions.alias;
+
 			// Intercept imports with glob patterns and assetBase attribute
 			build.onResolve({filter: /[*?{]/}, (args) => {
 				if (!args.with?.assetBase) return null;
 
+				// Apply aliases to the non-glob prefix
+				const resolvedPath = applyAliases(args.path, aliases);
+
 				return {
-					path: args.path,
+					path: resolvedPath,
 					namespace: GLOB_NAMESPACE,
 					pluginData: {
 						resolveDir: args.resolveDir,
-						assetBase: args.with.assetBase,
-						assetName: args.with.assetName,
+						importAttributes: args.with,
 					},
 				};
 			});
 
 			// Expand glob and generate virtual module with individual imports
 			build.onLoad({filter: /.*/, namespace: GLOB_NAMESPACE}, (args) => {
-				const {resolveDir, assetBase, assetName} = args.pluginData;
+				const {resolveDir, importAttributes} = args.pluginData;
 				const pattern = args.path;
+				const assetBase = importAttributes.assetBase;
 
 				// Expand the glob relative to the resolve directory
 				const files = globSync(pattern, {
@@ -102,27 +127,30 @@ export function globAssetsPlugin(): ESBuild.Plugin {
 					const relativeToRoot = posix.relative(globRoot, file);
 					const fileDir = posix.dirname(relativeToRoot);
 
-					// Compute per-file assetBase: user's base + subdirectory
+					// Build per-file attributes, forwarding all original attributes
+					const fileAttrs: Record<string, string> = {
+						...importAttributes,
+					};
+
+					// Adjust assetBase to include subdirectory
 					let fileAssetBase = assetBase;
 					if (fileDir && fileDir !== ".") {
 						fileAssetBase = posix.join(assetBase, fileDir, "/");
 					}
-					// Ensure trailing slash
 					if (!fileAssetBase.endsWith("/")) {
 						fileAssetBase += "/";
 					}
+					fileAttrs.assetBase = fileAssetBase;
 
-					// Build the with clause
-					const withParts = [`assetBase: ${JSON.stringify(fileAssetBase)}`];
-					if (assetName) {
-						withParts.push(`assetName: ${JSON.stringify(assetName)}`);
-					}
+					// Serialize all attributes into the with clause
+					const withClause = Object.entries(fileAttrs)
+						.map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+						.join(", ");
 
-					// Use ./ prefix for the import path relative to resolveDir
 					const importPath = file.startsWith(".") ? file : `./${file}`;
 
 					imports.push(
-						`import _${i} from ${JSON.stringify(importPath)} with { ${withParts.join(", ")} };`,
+						`import _${i} from ${JSON.stringify(importPath)} with { ${withClause} };`,
 					);
 					exports.push(`${JSON.stringify(relativeToRoot)}: _${i}`);
 				}
