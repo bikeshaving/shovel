@@ -16,7 +16,7 @@
  * import "./public/**\/*.{png,svg}" with { assetBase: "/" };
  */
 
-import fg from "fast-glob";
+import {globSync} from "glob";
 import {posix} from "path";
 import type * as ESBuild from "esbuild";
 
@@ -71,9 +71,9 @@ export function globAssetsPlugin(): ESBuild.Plugin {
 				const pattern = args.path;
 
 				// Expand the glob relative to the resolve directory
-				const files = fg.globSync(pattern, {
+				const files = globSync(pattern, {
 					cwd: resolveDir,
-					onlyFiles: true,
+					nodir: true,
 					dot: false,
 				});
 
