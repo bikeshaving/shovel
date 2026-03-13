@@ -1051,3 +1051,145 @@ self.addEventListener("fetch", (event) => {
 	},
 	TIMEOUT,
 );
+
+// ======================
+// PUBLIC DIRECTORY CONVENTION TESTS
+// ======================
+
+test(
+	"build copies ./public/ directory to dist/public/",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const testDir = await createTempDir("public-dir-");
+			cleanup_paths.push(testDir);
+
+			// Create entry point
+			const entryContent = `
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response("Public dir test"));
+});
+			`;
+			const entryPath = join(testDir, "app.js");
+			await FS.writeFile(entryPath, entryContent);
+
+			// Create ./public/ with some static files
+			const publicDir = join(testDir, "public");
+			await FS.mkdir(publicDir, {recursive: true});
+			await FS.writeFile(join(publicDir, "logo.txt"), "I am a logo");
+			await FS.writeFile(join(publicDir, "favicon.ico"), "fake-icon-data");
+
+			// Create a subdirectory
+			await FS.mkdir(join(publicDir, "images"), {recursive: true});
+			await FS.writeFile(
+				join(publicDir, "images", "hero.txt"),
+				"hero image data",
+			);
+
+			await FS.writeFile(
+				join(testDir, "package.json"),
+				JSON.stringify({name: "test-public-dir", type: "module"}),
+			);
+
+			await FS.symlink(
+				join(process.cwd(), "node_modules"),
+				join(testDir, "node_modules"),
+				"dir",
+			);
+
+			const outDir = join(testDir, "dist");
+			const originalCwd = process.cwd();
+			process.chdir(testDir);
+
+			try {
+				await buildForProduction({
+					entrypoint: entryPath,
+					outDir,
+					verbose: false,
+					platform: "node",
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			// Verify static files were copied to dist/public/
+			expect(await fileExists(join(outDir, "public", "logo.txt"))).toBe(true);
+			expect(await fileExists(join(outDir, "public", "favicon.ico"))).toBe(
+				true,
+			);
+			expect(
+				await fileExists(join(outDir, "public", "images", "hero.txt")),
+			).toBe(true);
+
+			// Verify content is preserved
+			const logoContent = await FS.readFile(
+				join(outDir, "public", "logo.txt"),
+				"utf8",
+			);
+			expect(logoContent).toBe("I am a logo");
+
+			const heroContent = await FS.readFile(
+				join(outDir, "public", "images", "hero.txt"),
+				"utf8",
+			);
+			expect(heroContent).toBe("hero image data");
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"build without ./public/ directory still works",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const testDir = await createTempDir("no-public-dir-");
+			cleanup_paths.push(testDir);
+
+			const entryContent = `
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response("No public dir"));
+});
+			`;
+			const entryPath = join(testDir, "app.js");
+			await FS.writeFile(entryPath, entryContent);
+
+			await FS.writeFile(
+				join(testDir, "package.json"),
+				JSON.stringify({name: "test-no-public", type: "module"}),
+			);
+
+			await FS.symlink(
+				join(process.cwd(), "node_modules"),
+				join(testDir, "node_modules"),
+				"dir",
+			);
+
+			const outDir = join(testDir, "dist");
+			const originalCwd = process.cwd();
+			process.chdir(testDir);
+
+			try {
+				await buildForProduction({
+					entrypoint: entryPath,
+					outDir,
+					verbose: false,
+					platform: "node",
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			// Build should succeed — dist/public exists (created by bundler) but is empty
+			expect(await fileExists(join(outDir, "public"))).toBe(true);
+			expect(await fileExists(join(outDir, "server", "worker.js"))).toBe(true);
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);

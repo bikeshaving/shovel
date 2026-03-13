@@ -79,6 +79,26 @@ export interface AssetsConfig {
 }
 
 /**
+ * Read a file from the public directory using the FileSystem API.
+ * Navigates directory handles for each path segment.
+ */
+async function readPublicFile(requestedPath: string): Promise<File> {
+	const dirPath = requestedPath.slice(1);
+	const pathParts = dirPath.split("/");
+	const filename = pathParts.pop()!;
+
+	const publicDir = await (self as any).directories.open("public");
+
+	let dirHandle = publicDir;
+	for (const dirName of pathParts) {
+		dirHandle = await dirHandle.getDirectoryHandle(dirName);
+	}
+
+	const fileHandle = await dirHandle.getFileHandle(filename);
+	return fileHandle.getFile();
+}
+
+/**
  * Assets middleware
  */
 export function assets(config: AssetsConfig = {}) {
@@ -132,69 +152,83 @@ export function assets(config: AssetsConfig = {}) {
 		// Load manifest (bundled at build time via shovel:assets)
 		const entries = await loadManifest();
 
-		// Not in manifest - pass through to next middleware
+		// Serve manifested assets (hashed filenames, immutable cache)
 		const manifestEntry = entries.get(requestedPath);
-		if (!manifestEntry) {
-			return;
+		if (manifestEntry) {
+			const file = await readPublicFile(requestedPath);
+
+			const contentType =
+				manifestEntry.type ||
+				Mime.getType(requestedPath) ||
+				"application/octet-stream";
+
+			const headers = new Headers({
+				"Content-Type": contentType,
+				"Content-Length":
+					manifestEntry.size?.toString() || file.size.toString(),
+				"Cache-Control": cacheControl,
+				"Last-Modified": new Date(file.lastModified).toUTCString(),
+			});
+
+			if (manifestEntry.hash) {
+				headers.set("ETag", `"${manifestEntry.hash}"`);
+			}
+
+			const ifModifiedSince = request.headers.get("if-modified-since");
+			if (ifModifiedSince) {
+				const modifiedSince = new Date(ifModifiedSince);
+				const lastModified = new Date(file.lastModified);
+				if (lastModified <= modifiedSince) {
+					return new Response(null, {
+						status: 304,
+						headers: new Headers({
+							"Cache-Control": cacheControl,
+							"Last-Modified": headers.get("Last-Modified")!,
+						}),
+					});
+				}
+			}
+
+			return new Response(file.stream(), {status: 200, headers});
 		}
 
-		// Get file from public directory
-		// Public URL /assets/app.js → directory path assets/app.js
-		// FileSystem API requires navigating directories, not path strings
-		const dirPath = requestedPath.slice(1);
-		const pathParts = dirPath.split("/");
-		const filename = pathParts.pop()!;
+		// Fallback: serve static files from public directory (copied from ./public/)
+		// Only try for URLs that look like files (have an extension)
+		const lastSegment = requestedPath.split("/").pop() || "";
+		if (!lastSegment.includes(".")) return;
 
-		const publicDir = await (self as any).directories.open("public");
+		try {
+			const file = await readPublicFile(requestedPath);
 
-		// Navigate through directories
-		let dirHandle = publicDir;
-		for (const dirName of pathParts) {
-			dirHandle = await dirHandle.getDirectoryHandle(dirName);
-		}
+			const contentType =
+				Mime.getType(requestedPath) || "application/octet-stream";
+			const etag = `"${file.lastModified.toString(36)}-${file.size.toString(36)}"`;
 
-		const fileHandle = await dirHandle.getFileHandle(filename);
-		const file = await fileHandle.getFile();
-
-		// Use content type from manifest if available, otherwise detect
-		const contentType =
-			manifestEntry.type ||
-			Mime.getType(requestedPath) ||
-			"application/octet-stream";
-
-		// Create response headers
-		const headers = new Headers({
-			"Content-Type": contentType,
-			"Content-Length": manifestEntry.size?.toString() || file.size.toString(),
-			"Cache-Control": cacheControl,
-			"Last-Modified": new Date(file.lastModified).toUTCString(),
-		});
-
-		// Add hash-based ETag if available
-		if (manifestEntry.hash) {
-			headers.set("ETag", `"${manifestEntry.hash}"`);
-		}
-
-		// Handle conditional requests (304 Not Modified)
-		const ifModifiedSince = request.headers.get("if-modified-since");
-		if (ifModifiedSince) {
-			const modifiedSince = new Date(ifModifiedSince);
-			const lastModified = new Date(file.lastModified);
-			if (lastModified <= modifiedSince) {
+			// Handle conditional requests (304 Not Modified)
+			const ifNoneMatch = request.headers.get("if-none-match");
+			if (ifNoneMatch === etag) {
 				return new Response(null, {
 					status: 304,
 					headers: new Headers({
-						"Cache-Control": cacheControl,
-						"Last-Modified": headers.get("Last-Modified")!,
+						"Cache-Control": "public, max-age=3600",
+						ETag: etag,
 					}),
 				});
 			}
-		}
 
-		// Return file response
-		return new Response(file.stream(), {
-			status: 200,
-			headers,
-		});
+			return new Response(file.stream(), {
+				status: 200,
+				headers: new Headers({
+					"Content-Type": contentType,
+					"Content-Length": file.size.toString(),
+					"Cache-Control": "public, max-age=3600",
+					"Last-Modified": new Date(file.lastModified).toUTCString(),
+					ETag: etag,
+				}),
+			});
+		} catch (_notFound) {
+			// File doesn't exist in public directory — pass through
+			return;
+		}
 	};
 }

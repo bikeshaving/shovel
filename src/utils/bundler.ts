@@ -10,7 +10,7 @@
 import * as ESBuild from "esbuild";
 import {builtinModules, createRequire} from "node:module";
 import {resolve, join, dirname, basename, relative, normalize} from "path";
-import {mkdir} from "fs/promises";
+import {mkdir, cp, copyFile} from "fs/promises";
 import {watch, type FSWatcher, existsSync} from "fs";
 import {getLogger} from "@logtape/logtape";
 import type {PlatformModule, ESBuildConfig} from "@b9g/platform/module";
@@ -118,6 +118,7 @@ export class ServerBundler {
 	#initialBuildResolve?: (result: BuildResult) => void;
 	#currentOutputs: BuildOutputs;
 	#dirWatchers: Map<string, {watcher: FSWatcher; files: Set<string>}>;
+	#publicDirWatcher?: FSWatcher;
 	#userEntryPath: string;
 	#watchOptions?: WatchOptions;
 	#changedFiles: Set<string>;
@@ -176,6 +177,9 @@ export class ServerBundler {
 		const external = buildOptions.external as string[] | undefined;
 		this.#validateBuildResult(result, external ?? ["node:*"]);
 
+		// Copy static files from ./public/ to dist/public/
+		await this.#copyPublicDir(outputDir);
+
 		const outputs = this.#extractOutputPaths(result.metafile);
 		const success = result.errors.length === 0;
 
@@ -198,6 +202,10 @@ export class ServerBundler {
 
 		await mkdir(join(outputDir, "server"), {recursive: true});
 		await mkdir(join(outputDir, "public"), {recursive: true});
+
+		// Copy static files from ./public/ and watch for changes
+		await this.#copyPublicDir(outputDir);
+		this.#watchPublicDir(outputDir);
 
 		const initialBuildPromise = new Promise<BuildResult>((resolve) => {
 			this.#initialBuildResolve = resolve;
@@ -234,6 +242,11 @@ export class ServerBundler {
 		if (this.#rebuildTimeout) {
 			clearTimeout(this.#rebuildTimeout);
 			this.#rebuildTimeout = undefined;
+		}
+
+		if (this.#publicDirWatcher) {
+			this.#publicDirWatcher.close();
+			this.#publicDirWatcher = undefined;
 		}
 
 		for (const entry of this.#dirWatchers.values()) {
@@ -731,5 +744,54 @@ export class ServerBundler {
 			fileCount: totalFiles,
 			dirCount: this.#dirWatchers.size,
 		});
+	}
+
+	/**
+	 * Copy ./public/ directory contents to dist/public/.
+	 * This makes static files available to all platforms (CDN, ASSETS binding, middleware).
+	 */
+	async #copyPublicDir(outputDir: string): Promise<void> {
+		const publicDir = join(this.#projectRoot, "public");
+		if (!existsSync(publicDir)) return;
+
+		const outputPublicDir = join(outputDir, "public");
+		await cp(publicDir, outputPublicDir, {recursive: true});
+		logger.debug("Copied public/ to output");
+	}
+
+	/**
+	 * Watch ./public/ for changes and copy updated files to dist/public/.
+	 */
+	#watchPublicDir(outputDir: string): void {
+		const publicDir = join(this.#projectRoot, "public");
+		if (!existsSync(publicDir)) return;
+
+		const outputPublicDir = join(outputDir, "public");
+
+		try {
+			this.#publicDirWatcher = watch(
+				publicDir,
+				{recursive: true, persistent: false},
+				async (_event, filename) => {
+					if (!filename) return;
+					const src = join(publicDir, filename);
+					const dest = join(outputPublicDir, filename);
+					try {
+						if (existsSync(src)) {
+							await mkdir(dirname(dest), {recursive: true});
+							await copyFile(src, dest);
+							logger.info("Copied public/{file}", {file: filename});
+						}
+					} catch (err) {
+						logger.warn("Failed to copy public/{file}: {error}", {
+							file: filename,
+							error: err,
+						});
+					}
+				},
+			);
+		} catch (err) {
+			logger.warn("Failed to watch public directory: {error}", {error: err});
+		}
 	}
 }
