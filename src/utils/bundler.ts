@@ -16,6 +16,7 @@ import {getLogger} from "@logtape/logtape";
 import type {PlatformModule, ESBuildConfig} from "@b9g/platform/module";
 
 import {assetsPlugin} from "../plugins/assets.js";
+import {globAssetsPlugin} from "../plugins/glob-assets.js";
 import {importMetaPlugin} from "../plugins/import-meta.js";
 import {createConfigPlugin} from "../plugins/config.js";
 import {createEntryPlugin} from "../plugins/entry.js";
@@ -314,6 +315,8 @@ export class ServerBundler {
 			}),
 			createEntryPlugin(this.#projectRoot, platformEntryPoints),
 			importMetaPlugin(),
+			// globAssetsPlugin expands glob patterns into individual imports for assetsPlugin
+			globAssetsPlugin(),
 			// assetsPlugin must come before assetsManifestPlugin so onEnd order is correct
 			assetsPlugin({
 				outDir: outputDir,
