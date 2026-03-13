@@ -1056,178 +1056,188 @@ self.addEventListener("fetch", (event) => {
 // GLOB ASSET IMPORT TESTS
 // ======================
 
-test(
-	"glob import processes multiple static files through asset pipeline",
-	async () => {
-		const cleanup_paths = [];
+for (const platform of ["node", "bun", "cloudflare"]) {
+	test(
+		`glob import processes static files through asset pipeline (${platform})`,
+		async () => {
+			const cleanup_paths = [];
 
-		try {
-			const testDir = await createTempDir("glob-assets-");
-			cleanup_paths.push(testDir);
+			try {
+				const testDir = await createTempDir(`glob-assets-${platform}-`);
+				cleanup_paths.push(testDir);
 
-			// Create a public/ directory with static files
-			const publicDir = join(testDir, "public");
-			await FS.mkdir(publicDir, {recursive: true});
-			await FS.writeFile(join(publicDir, "logo.txt"), "I am a logo");
-			await FS.writeFile(join(publicDir, "favicon.ico"), "fake-icon");
+				// Create a public/ directory with static files
+				const publicDir = join(testDir, "public");
+				await FS.mkdir(publicDir, {recursive: true});
+				await FS.writeFile(join(publicDir, "logo.txt"), "I am a logo");
+				await FS.writeFile(join(publicDir, "favicon.ico"), "fake-icon");
 
-			// Create a subdirectory
-			await FS.mkdir(join(publicDir, "images"), {recursive: true});
-			await FS.writeFile(join(publicDir, "images", "hero.txt"), "hero image");
+				// Create a subdirectory
+				await FS.mkdir(join(publicDir, "images"), {recursive: true});
+				await FS.writeFile(
+					join(publicDir, "images", "hero.txt"),
+					"hero image",
+				);
 
-			// Entry point uses glob import
-			const entryContent = `
+				// Entry point uses glob import
+				const entryContent = `
 import urls from "./public/**/*" with { assetBase: "/", assetName: "[name].[ext]" };
 
 self.addEventListener("fetch", (event) => {
 	event.respondWith(Response.json(urls));
 });
-			`;
+				`;
 
-			const entryPath = join(testDir, "app.js");
-			await FS.writeFile(entryPath, entryContent);
+				const entryPath = join(testDir, "app.js");
+				await FS.writeFile(entryPath, entryContent);
 
-			await FS.writeFile(
-				join(testDir, "package.json"),
-				JSON.stringify({name: "test-glob-assets", type: "module"}),
-			);
+				await FS.writeFile(
+					join(testDir, "package.json"),
+					JSON.stringify({name: "test-glob-assets", type: "module"}),
+				);
 
-			await FS.symlink(
-				join(process.cwd(), "node_modules"),
-				join(testDir, "node_modules"),
-				"dir",
-			);
+				await FS.symlink(
+					join(process.cwd(), "node_modules"),
+					join(testDir, "node_modules"),
+					"dir",
+				);
 
-			const outDir = join(testDir, "dist");
-			const originalCwd = process.cwd();
-			process.chdir(testDir);
+				const outDir = join(testDir, "dist");
+				const originalCwd = process.cwd();
+				process.chdir(testDir);
+
+				try {
+					await buildForProduction({
+						entrypoint: entryPath,
+						outDir,
+						verbose: false,
+						platform,
+					});
+				} finally {
+					process.chdir(originalCwd);
+				}
+
+				// Verify files were written to dist/public/
+				expect(await fileExists(join(outDir, "public", "logo.txt"))).toBe(
+					true,
+				);
+				expect(await fileExists(join(outDir, "public", "favicon.ico"))).toBe(
+					true,
+				);
+				expect(
+					await fileExists(join(outDir, "public", "images", "hero.txt")),
+				).toBe(true);
+
+				// Verify content is preserved
+				const logoContent = await FS.readFile(
+					join(outDir, "public", "logo.txt"),
+					"utf8",
+				);
+				expect(logoContent).toBe("I am a logo");
+
+				// Verify the worker has URL references
+				const workerContent = await FS.readFile(
+					join(outDir, "server", "worker.js"),
+					"utf8",
+				);
+				expect(workerContent).toContain("/logo.txt");
+				expect(workerContent).toContain("/favicon.ico");
+				expect(workerContent).toContain("/images/hero.txt");
+
+				// Verify manifest includes the glob assets
+				const manifest = JSON.parse(
+					await FS.readFile(join(outDir, "server", "assets.json"), "utf8"),
+				);
+				const urls = Object.values(manifest.assets).map((a) => a.url);
+				expect(urls).toContain("/logo.txt");
+				expect(urls).toContain("/favicon.ico");
+				expect(urls).toContain("/images/hero.txt");
+			} finally {
+				await cleanup(cleanup_paths);
+			}
+		},
+		TIMEOUT,
+	);
+
+	test(
+		`glob import with hashed filenames (${platform})`,
+		async () => {
+			const cleanup_paths = [];
 
 			try {
-				await buildForProduction({
-					entrypoint: entryPath,
-					outDir,
-					verbose: false,
-					platform: "node",
-				});
-			} finally {
-				process.chdir(originalCwd);
-			}
+				const testDir = await createTempDir(`glob-hashed-${platform}-`);
+				cleanup_paths.push(testDir);
 
-			// Verify files were written to dist/public/
-			expect(await fileExists(join(outDir, "public", "logo.txt"))).toBe(true);
-			expect(await fileExists(join(outDir, "public", "favicon.ico"))).toBe(
-				true,
-			);
-			expect(
-				await fileExists(join(outDir, "public", "images", "hero.txt")),
-			).toBe(true);
+				const assetsDir = join(testDir, "assets");
+				await FS.mkdir(assetsDir, {recursive: true});
+				await FS.writeFile(
+					join(assetsDir, "style.css"),
+					"body { color: red }",
+				);
+				await FS.writeFile(join(assetsDir, "icon.svg"), "<svg></svg>");
 
-			// Verify content is preserved
-			const logoContent = await FS.readFile(
-				join(outDir, "public", "logo.txt"),
-				"utf8",
-			);
-			expect(logoContent).toBe("I am a logo");
-
-			// Verify the worker has URL references
-			const workerContent = await FS.readFile(
-				join(outDir, "server", "worker.js"),
-				"utf8",
-			);
-			expect(workerContent).toContain("/logo.txt");
-			expect(workerContent).toContain("/favicon.ico");
-			expect(workerContent).toContain("/images/hero.txt");
-
-			// Verify manifest includes the glob assets
-			const manifest = JSON.parse(
-				await FS.readFile(join(outDir, "server", "assets.json"), "utf8"),
-			);
-			const urls = Object.values(manifest.assets).map((a) => a.url);
-			expect(urls).toContain("/logo.txt");
-			expect(urls).toContain("/favicon.ico");
-			expect(urls).toContain("/images/hero.txt");
-		} finally {
-			await cleanup(cleanup_paths);
-		}
-	},
-	TIMEOUT,
-);
-
-test(
-	"glob import with hashed filenames (no assetName)",
-	async () => {
-		const cleanup_paths = [];
-
-		try {
-			const testDir = await createTempDir("glob-hashed-");
-			cleanup_paths.push(testDir);
-
-			const assetsDir = join(testDir, "assets");
-			await FS.mkdir(assetsDir, {recursive: true});
-			await FS.writeFile(join(assetsDir, "style.css"), "body { color: red }");
-			await FS.writeFile(join(assetsDir, "icon.svg"), "<svg></svg>");
-
-			const entryContent = `
+				const entryContent = `
 import urls from "./assets/**/*" with { assetBase: "/static/" };
 
 self.addEventListener("fetch", (event) => {
 	event.respondWith(Response.json(urls));
 });
-			`;
+				`;
 
-			const entryPath = join(testDir, "app.js");
-			await FS.writeFile(entryPath, entryContent);
+				const entryPath = join(testDir, "app.js");
+				await FS.writeFile(entryPath, entryContent);
 
-			await FS.writeFile(
-				join(testDir, "package.json"),
-				JSON.stringify({name: "test-glob-hashed", type: "module"}),
-			);
+				await FS.writeFile(
+					join(testDir, "package.json"),
+					JSON.stringify({name: "test-glob-hashed", type: "module"}),
+				);
 
-			await FS.symlink(
-				join(process.cwd(), "node_modules"),
-				join(testDir, "node_modules"),
-				"dir",
-			);
+				await FS.symlink(
+					join(process.cwd(), "node_modules"),
+					join(testDir, "node_modules"),
+					"dir",
+				);
 
-			const outDir = join(testDir, "dist");
-			const originalCwd = process.cwd();
-			process.chdir(testDir);
+				const outDir = join(testDir, "dist");
+				const originalCwd = process.cwd();
+				process.chdir(testDir);
 
-			try {
-				await buildForProduction({
-					entrypoint: entryPath,
-					outDir,
-					verbose: false,
-					platform: "node",
-				});
+				try {
+					await buildForProduction({
+						entrypoint: entryPath,
+						outDir,
+						verbose: false,
+						platform,
+					});
+				} finally {
+					process.chdir(originalCwd);
+				}
+
+				// Verify hashed files exist in dist/public/static/
+				const staticDir = join(outDir, "public", "static");
+				const files = await FS.readdir(staticDir);
+
+				// Should have hashed filenames like style-abc123.css and icon-def456.svg
+				const cssFile = files.find(
+					(f) => f.startsWith("style-") && f.endsWith(".css"),
+				);
+				const svgFile = files.find(
+					(f) => f.startsWith("icon-") && f.endsWith(".svg"),
+				);
+				expect(cssFile).toBeTruthy();
+				expect(svgFile).toBeTruthy();
+
+				// Verify worker contains hashed URLs
+				const workerContent = await FS.readFile(
+					join(outDir, "server", "worker.js"),
+					"utf8",
+				);
+				expect(workerContent).toContain("/static/style-");
+				expect(workerContent).toContain("/static/icon-");
 			} finally {
-				process.chdir(originalCwd);
+				await cleanup(cleanup_paths);
 			}
-
-			// Verify hashed files exist in dist/public/static/
-			const staticDir = join(outDir, "public", "static");
-			const files = await FS.readdir(staticDir);
-
-			// Should have hashed filenames like style-abc123.css and icon-def456.svg
-			const cssFile = files.find(
-				(f) => f.startsWith("style-") && f.endsWith(".css"),
-			);
-			const svgFile = files.find(
-				(f) => f.startsWith("icon-") && f.endsWith(".svg"),
-			);
-			expect(cssFile).toBeTruthy();
-			expect(svgFile).toBeTruthy();
-
-			// Verify worker contains hashed URLs
-			const workerContent = await FS.readFile(
-				join(outDir, "server", "worker.js"),
-				"utf8",
-			);
-			expect(workerContent).toContain("/static/style-");
-			expect(workerContent).toContain("/static/icon-");
-		} finally {
-			await cleanup(cleanup_paths);
-		}
-	},
-	TIMEOUT,
-);
+		},
+		TIMEOUT,
+	);
+}

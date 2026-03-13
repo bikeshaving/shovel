@@ -1256,3 +1256,143 @@ export default function myPlugin(options = {}) {
 	},
 	TIMEOUT,
 );
+
+// ======================
+// GLOB ASSET IMPORT E2E
+// ======================
+
+test(
+	"E2E: glob asset imports build and run without errors",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const projectDir = await createTestProject({
+				"app.js": `
+import urls from "./public/**/*" with { assetBase: "/", assetName: "[name].[ext]" };
+
+console.log("GLOB_E2E_START");
+console.log("GLOB_URLS:", JSON.stringify(urls));
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(Response.json(urls));
+});
+
+console.log("GLOB_E2E_READY");
+				`,
+				"public/logo.txt": "I am a logo",
+				"public/favicon.ico": "fake-icon",
+				"public/images/hero.txt": "hero image",
+				"shovel.json": JSON.stringify({
+					port: 3000,
+					workers: 1,
+				}),
+			});
+			cleanup_paths.push(projectDir);
+
+			const outDir = join(projectDir, "dist");
+
+			const originalCwd = process.cwd();
+			process.chdir(projectDir);
+			try {
+				await buildForProduction({
+					entrypoint: join(projectDir, "app.js"),
+					outDir,
+					verbose: false,
+					platform: "node",
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			// Run the bundle
+			const result = await runBundle(join(outDir, "server"));
+
+			// Should start without module errors
+			expect(result.stderr).not.toContain("Cannot find module");
+			expect(result.stderr).not.toContain("Could not resolve");
+			expect(result.stderr).not.toContain("ERR_MODULE_NOT_FOUND");
+			expect(result.stdout).toContain("GLOB_E2E_START");
+			expect(result.stdout).toContain("GLOB_E2E_READY");
+
+			// Verify the URL map was populated correctly
+			expect(result.stdout).toContain("GLOB_URLS:");
+			expect(result.stdout).toContain("/logo.txt");
+			expect(result.stdout).toContain("/favicon.ico");
+			expect(result.stdout).toContain("/images/hero.txt");
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"E2E: glob asset side-effect import (no default export) runs without errors",
+	async () => {
+		const cleanup_paths = [];
+
+		try {
+			const projectDir = await createTestProject({
+				"app.js": `
+import "./static/**/*" with { assetBase: "/static/", assetName: "[name].[ext]" };
+
+console.log("GLOB_SIDEEFFECT_START");
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(new Response("OK"));
+});
+
+console.log("GLOB_SIDEEFFECT_READY");
+				`,
+				"static/image.png": "fake-png-data",
+				"static/sound.mp3": "fake-mp3-data",
+				"shovel.json": JSON.stringify({
+					port: 3000,
+					workers: 1,
+				}),
+			});
+			cleanup_paths.push(projectDir);
+
+			const outDir = join(projectDir, "dist");
+
+			const originalCwd = process.cwd();
+			process.chdir(projectDir);
+			try {
+				await buildForProduction({
+					entrypoint: join(projectDir, "app.js"),
+					outDir,
+					verbose: false,
+					platform: "node",
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			// Verify files ended up in dist/public/
+			expect(
+				await FS.access(join(outDir, "public", "static", "image.png")).then(
+					() => true,
+					() => false,
+				),
+			).toBe(true);
+			expect(
+				await FS.access(join(outDir, "public", "static", "sound.mp3")).then(
+					() => true,
+					() => false,
+				),
+			).toBe(true);
+
+			// Run the bundle
+			const result = await runBundle(join(outDir, "server"));
+
+			expect(result.stderr).not.toContain("Cannot find module");
+			expect(result.stderr).not.toContain("Could not resolve");
+			expect(result.stdout).toContain("GLOB_SIDEEFFECT_START");
+			expect(result.stdout).toContain("GLOB_SIDEEFFECT_READY");
+		} finally {
+			await cleanup(cleanup_paths);
+		}
+	},
+	TIMEOUT,
+);

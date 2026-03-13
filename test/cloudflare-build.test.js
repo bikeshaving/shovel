@@ -176,3 +176,115 @@ test(
 	},
 	MINIFLARE_TIMEOUT,
 );
+
+test(
+	"cloudflare build - glob asset imports served via Miniflare",
+	async () => {
+		const tempDir = join(
+			(await import("os")).tmpdir(),
+			`shovel-cf-glob-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		await FS.mkdir(tempDir, {recursive: true});
+		let mf;
+
+		try {
+			// Create static files
+			await FS.mkdir(join(tempDir, "public"), {recursive: true});
+			await FS.writeFile(join(tempDir, "public", "logo.txt"), "I am a logo");
+			await FS.mkdir(join(tempDir, "public", "images"), {recursive: true});
+			await FS.writeFile(
+				join(tempDir, "public", "images", "hero.txt"),
+				"hero image",
+			);
+
+			// Entry point: glob import + assets middleware + URL map route
+			await FS.writeFile(
+				join(tempDir, "app.js"),
+				`
+import urls from "./public/**/*" with { assetBase: "/", assetName: "[name].[ext]" };
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(Response.json(urls));
+});
+`,
+			);
+
+			await FS.writeFile(
+				join(tempDir, "package.json"),
+				JSON.stringify({name: "test-cf-glob", type: "module"}),
+			);
+
+			await FS.symlink(
+				join(process.cwd(), "node_modules"),
+				join(tempDir, "node_modules"),
+				"dir",
+			);
+
+			const outDir = join(tempDir, "dist");
+			const originalCwd = process.cwd();
+			process.chdir(tempDir);
+
+			try {
+				await buildForProduction({
+					entrypoint: join(tempDir, "app.js"),
+					outDir,
+					verbose: false,
+					platform: "cloudflare",
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			// Verify files in dist/public/
+			expect(await fileExists(join(outDir, "public", "logo.txt"))).toBe(true);
+			expect(
+				await fileExists(join(outDir, "public", "images", "hero.txt")),
+			).toBe(true);
+
+			// Load worker in Miniflare with assets directory
+			const workerPath = join(outDir, "server", "worker.js");
+			const script = await FS.readFile(workerPath, "utf8");
+
+			mf = new Miniflare({
+				modules: true,
+				script,
+				compatibilityDate: "2024-09-23",
+				compatibilityFlags: ["nodejs_compat"],
+				assets: {
+					directory: join(outDir, "public"),
+					binding: "ASSETS",
+					routerConfig: {has_user_worker: true},
+				},
+			});
+
+			await mf.ready;
+
+			// Fetch the URL map from the worker
+			const response = await mf.dispatchFetch("http://localhost/");
+			expect(response.status).toBe(200);
+
+			const urlMap = await response.json();
+			expect(urlMap["logo.txt"]).toBe("/logo.txt");
+			expect(urlMap["images/hero.txt"]).toBe("/images/hero.txt");
+
+			// Verify Miniflare can serve the actual asset files
+			const logoResponse = await mf.dispatchFetch(
+				"http://localhost/logo.txt",
+			);
+			expect(logoResponse.status).toBe(200);
+			expect(await logoResponse.text()).toBe("I am a logo");
+
+			const heroResponse = await mf.dispatchFetch(
+				"http://localhost/images/hero.txt",
+			);
+			expect(heroResponse.status).toBe(200);
+			expect(await heroResponse.text()).toBe("hero image");
+		} finally {
+			if (mf) {
+				await mf.dispose();
+			}
+			await FS.rm(tempDir, {recursive: true, force: true}).catch(() => {});
+		}
+	},
+	MINIFLARE_TIMEOUT,
+);
