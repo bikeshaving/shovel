@@ -1074,10 +1074,7 @@ for (const platform of ["node", "bun", "cloudflare"]) {
 
 				// Create a subdirectory
 				await FS.mkdir(join(publicDir, "images"), {recursive: true});
-				await FS.writeFile(
-					join(publicDir, "images", "hero.txt"),
-					"hero image",
-				);
+				await FS.writeFile(join(publicDir, "images", "hero.txt"), "hero image");
 
 				// Entry point uses glob import
 				const entryContent = `
@@ -1118,9 +1115,7 @@ self.addEventListener("fetch", (event) => {
 				}
 
 				// Verify files were written to dist/public/
-				expect(await fileExists(join(outDir, "public", "logo.txt"))).toBe(
-					true,
-				);
+				expect(await fileExists(join(outDir, "public", "logo.txt"))).toBe(true);
 				expect(await fileExists(join(outDir, "public", "favicon.ico"))).toBe(
 					true,
 				);
@@ -1170,10 +1165,7 @@ self.addEventListener("fetch", (event) => {
 
 				const assetsDir = join(testDir, "assets");
 				await FS.mkdir(assetsDir, {recursive: true});
-				await FS.writeFile(
-					join(assetsDir, "style.css"),
-					"body { color: red }",
-				);
+				await FS.writeFile(join(assetsDir, "style.css"), "body { color: red }");
 				await FS.writeFile(join(assetsDir, "icon.svg"), "<svg></svg>");
 
 				const entryContent = `

@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties -- Tests need process.cwd */
 import * as FS from "fs/promises";
 import {join} from "path";
 import {test, expect} from "bun:test";
@@ -268,9 +269,7 @@ self.addEventListener("fetch", (event) => {
 			expect(urlMap["images/hero.txt"]).toBe("/images/hero.txt");
 
 			// Verify Miniflare can serve the actual asset files
-			const logoResponse = await mf.dispatchFetch(
-				"http://localhost/logo.txt",
-			);
+			const logoResponse = await mf.dispatchFetch("http://localhost/logo.txt");
 			expect(logoResponse.status).toBe(200);
 			expect(await logoResponse.text()).toBe("I am a logo");
 
