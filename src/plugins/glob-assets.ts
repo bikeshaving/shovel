@@ -44,43 +44,18 @@ function getGlobRoot(pattern: string): string {
 }
 
 /**
- * Apply esbuild aliases to the non-glob prefix of a pattern.
- * e.g., with alias {"@": "./src"}, "@/assets/**\/*" → "./src/assets/**\/*"
- */
-function applyAliases(
-	pattern: string,
-	aliases: Record<string, string> | undefined,
-): string {
-	if (!aliases) return pattern;
-	for (const [from, to] of Object.entries(aliases)) {
-		if (pattern === from) {
-			return to;
-		}
-		if (pattern.startsWith(from + "/")) {
-			return to + pattern.slice(from.length);
-		}
-	}
-	return pattern;
-}
-
-/**
  * ESBuild plugin for expanding glob patterns in asset imports.
  */
 export function globAssetsPlugin(): ESBuild.Plugin {
 	return {
 		name: "shovel-glob-assets",
 		setup(build) {
-			const aliases = build.initialOptions.alias;
-
 			// Intercept imports with glob patterns and assetBase attribute
 			build.onResolve({filter: /[*?{]/}, (args) => {
 				if (!args.with?.assetBase) return null;
 
-				// Apply aliases to the non-glob prefix
-				const resolvedPath = applyAliases(args.path, aliases);
-
 				return {
-					path: resolvedPath,
+					path: args.path,
 					namespace: GLOB_NAMESPACE,
 					pluginData: {
 						resolveDir: args.resolveDir,
