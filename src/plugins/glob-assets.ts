@@ -23,21 +23,16 @@ import type * as ESBuild from "esbuild";
 const GLOB_NAMESPACE = "shovel-glob-assets";
 
 /**
- * Detect whether an import path contains glob characters.
- */
-function isGlobPattern(path: string): boolean {
-	return path.includes("*") || path.includes("{") || path.includes("?");
-}
-
-/**
  * Extract the non-glob prefix from a pattern as the root directory.
- * e.g., "./public/**\/*.png" → "./public/"
+ * e.g., "./public/**\/*.png" → "./public"
+ *
+ * Splits on "/" because import specifiers always use forward slashes.
  */
 function getGlobRoot(pattern: string): string {
 	const parts = pattern.split("/");
 	const rootParts: string[] = [];
 	for (const part of parts) {
-		if (isGlobPattern(part)) break;
+		if (part.includes("*")) break;
 		rootParts.push(part);
 	}
 	return rootParts.join("/") || ".";
@@ -51,7 +46,7 @@ export function globAssetsPlugin(): ESBuild.Plugin {
 		name: "shovel-glob-assets",
 		setup(build) {
 			// Intercept imports with glob patterns and assetBase attribute
-			build.onResolve({filter: /[*?{]/}, (args) => {
+			build.onResolve({filter: /\*/}, (args) => {
 				if (!args.with?.assetBase) return null;
 
 				return {
