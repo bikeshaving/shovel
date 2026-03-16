@@ -2,6 +2,31 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.18] - 2026-03-16
+
+### Features
+
+- **Glob asset imports** — Import multiple static files with a single glob pattern:
+  `import urls from "./public/**/*" with { assetBase: "/", assetName: "[name].[ext]" }`
+  Files flow through the existing asset pipeline (hashing, manifesting, dist/public/).
+  Works across all platforms (Node, Bun, Cloudflare). ([#75](https://github.com/bikeshaving/shovel/issues/75), [PR #77](https://github.com/bikeshaving/shovel/pull/77))
+
+### Dependencies
+
+- Added `glob` package for glob pattern expansion in asset imports
+
+## @b9g/platform-bun 0.1.17 - 2026-03-16
+
+### Features
+
+- **BroadcastChannel relay** — Worker code generation now includes BroadcastChannel message relay between supervisor and workers
+
+## @b9g/broadcastchannel-redis 0.1.0 - 2026-03-16
+
+### Features
+
+- **Initial release** — Redis pub/sub backend for Shovel BroadcastChannel, enabling cross-process message broadcasting via Redis
+
 ## @b9g/platform-cloudflare 0.1.17 - 2026-03-03
 
 ### Bug Fixes
