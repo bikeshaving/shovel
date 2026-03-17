@@ -1,5 +1,6 @@
 import {test, expect, describe, beforeEach} from "bun:test";
 import {assetsPlugin} from "../src/plugins/assets.js";
+import {globAssetsPlugin} from "../src/plugins/glob-assets.js";
 import {assets} from "../packages/assets/src/middleware.js";
 import {Router} from "@b9g/router";
 import {MemoryDirectory} from "@b9g/filesystem/memory";
@@ -1114,6 +1115,50 @@ export { clientA, clientB };`,
 		// Both should have their chunk entries preserved (not overwritten)
 		expect(chunkEntriesA.length).toBeGreaterThanOrEqual(1);
 		expect(chunkEntriesB.length).toBeGreaterThanOrEqual(1);
+	});
+
+	test("same file imported individually and via glob should produce separate manifest entries", async () => {
+		const testDir = await mkdtemp(join(tmpdir(), "glob-clobber-test-"));
+
+		// Create a static file
+		await mkdir(join(testDir, "static"), {recursive: true});
+		await writeFile(join(testDir, "static", "favicon.ico"), "fake-icon-data");
+
+		// Import the same file individually (at /) and via glob (at /static/)
+		await writeFile(
+			join(testDir, "entry.js"),
+			`import favicon from "./static/favicon.ico" with { assetBase: "/", assetName: "favicon.ico" };
+import staticFiles from "./static/*.ico" with { assetBase: "/static/", assetName: "[name].[ext]" };
+export { favicon, staticFiles };`,
+		);
+
+		const outDir = join(testDir, "dist");
+		const result = await ESBuild.build({
+			entryPoints: [join(testDir, "entry.js")],
+			bundle: true,
+			format: "esm",
+			outdir: join(outDir, "server"),
+			write: true,
+			plugins: [
+				globAssetsPlugin(),
+				assetsPlugin({outDir}),
+			],
+		});
+
+		expect(result.errors.length).toBe(0);
+
+		// Both files should exist on disk
+		expect(await pathExists(join(outDir, "public", "favicon.ico"))).toBe(true);
+		expect(await pathExists(join(outDir, "public", "static", "favicon.ico"))).toBe(true);
+
+		// Manifest should have entries for BOTH URLs
+		const manifest = JSON.parse(
+			await readFile(join(outDir, "server", "assets.json"), "utf8"),
+		);
+
+		const urls = Object.values(manifest.assets).map((a: any) => a.url);
+		expect(urls).toContain("/favicon.ico");
+		expect(urls).toContain("/static/favicon.ico");
 	});
 });
 

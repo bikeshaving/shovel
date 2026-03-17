@@ -2,6 +2,12 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.19] - 2026-03-17
+
+### Bug Fixes
+
+- **Glob asset import clobbers individual import** — When the same file was imported both individually and via a glob pattern with different `assetBase` values, the glob import overwrote the individual import's manifest entry. Both URLs now coexist correctly. (fixes [#81](https://github.com/bikeshaving/shovel/issues/81))
+
 ## [0.2.18] - 2026-03-16
 
 ### Features

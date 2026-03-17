@@ -531,11 +531,11 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 					};
 
 					// Add to manifest
-					manifest.assets[sourcePath] = manifestEntry;
+					manifest.assets[publicURL] = manifestEntry;
 
 					// Also update shared manifest for assets-manifest plugin
 					if (sharedManifest) {
-						sharedManifest.assets[sourcePath] = manifestEntry;
+						sharedManifest.assets[publicURL] = manifestEntry;
 						sharedManifest.generated = manifest.generated;
 					}
 
