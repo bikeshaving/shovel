@@ -1139,17 +1139,16 @@ export { favicon, staticFiles };`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				globAssetsPlugin(),
-				assetsPlugin({outDir}),
-			],
+			plugins: [globAssetsPlugin(), assetsPlugin({outDir})],
 		});
 
 		expect(result.errors.length).toBe(0);
 
 		// Both files should exist on disk
 		expect(await pathExists(join(outDir, "public", "favicon.ico"))).toBe(true);
-		expect(await pathExists(join(outDir, "public", "static", "favicon.ico"))).toBe(true);
+		expect(
+			await pathExists(join(outDir, "public", "static", "favicon.ico")),
+		).toBe(true);
 
 		// Manifest should have entries for BOTH URLs
 		const manifest = JSON.parse(
