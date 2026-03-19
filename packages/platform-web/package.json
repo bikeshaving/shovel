@@ -1,0 +1,100 @@
+{
+  "name": "@b9g/platform-web",
+  "version": "0.1.0",
+  "description": "Browser Service Worker platform adapter for Shovel - runs apps as real browser Service Workers",
+  "type": "module",
+  "scripts": {
+    "build": "libuild build --save",
+    "build:save": "libuild build --save",
+    "publish": "libuild publish",
+    "test": "bun test",
+    "prepublishOnly": "echo 'ERROR: Cannot publish from root directory. Use libuild publish instead.' && exit 1"
+  },
+  "keywords": [
+    "shovel",
+    "platform",
+    "web",
+    "browser",
+    "serviceworker",
+    "pwa"
+  ],
+  "dependencies": {
+    "@b9g/cache": "workspace:*",
+    "@b9g/filesystem": "workspace:*",
+    "@b9g/platform": "workspace:*",
+    "@logtape/logtape": "^2.0.0"
+  },
+  "devDependencies": {
+    "@b9g/libuild": "^0.1.18"
+  },
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./package.json": "./dist/package.json",
+    "./index": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./index.js": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/src/runtime.d.ts",
+      "import": "./dist/src/runtime.js"
+    },
+    "./runtime.js": {
+      "types": "./dist/src/runtime.d.ts",
+      "import": "./dist/src/runtime.js"
+    },
+    "./caches": {
+      "types": "./dist/src/caches.d.ts",
+      "import": "./dist/src/caches.js"
+    },
+    "./caches.js": {
+      "types": "./dist/src/caches.d.ts",
+      "import": "./dist/src/caches.js"
+    },
+    "./directories": {
+      "types": "./dist/src/directories.d.ts",
+      "import": "./dist/src/directories.js"
+    },
+    "./directories.js": {
+      "types": "./dist/src/directories.d.ts",
+      "import": "./dist/src/directories.js"
+    },
+    "./platform": {
+      "types": "./dist/src/platform.d.ts",
+      "import": "./dist/src/platform.js"
+    },
+    "./platform.js": {
+      "types": "./dist/src/platform.d.ts",
+      "import": "./dist/src/platform.js"
+    },
+    "./dev-server": {
+      "types": "./dist/src/dev-server.d.ts",
+      "import": "./dist/src/dev-server.js"
+    },
+    "./dev-server.js": {
+      "types": "./dist/src/dev-server.d.ts",
+      "import": "./dist/src/dev-server.js"
+    },
+    "./async-context-stub": {
+      "types": "./dist/src/async-context-stub.d.ts",
+      "import": "./dist/src/async-context-stub.js"
+    },
+    "./async-context-stub.js": {
+      "types": "./dist/src/async-context-stub.d.ts",
+      "import": "./dist/src/async-context-stub.js"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bikeshaving/shovel.git",
+    "directory": "packages/platform-web"
+  }
+}
