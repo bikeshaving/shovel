@@ -926,6 +926,14 @@ export class ShovelFetchEvent
 			);
 		}
 
+		// Must be called synchronously during dispatch, same as respondWith()
+		if (!this[kCanExtend]()) {
+			throw new DOMException(
+				"upgradeWebSocket() must be called synchronously during event dispatch",
+				"InvalidStateError",
+			);
+		}
+
 		const connectionID = crypto.randomUUID();
 		const client = new ShovelWebSocketClient({
 			id: connectionID,

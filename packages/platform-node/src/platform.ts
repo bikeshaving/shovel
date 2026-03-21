@@ -129,7 +129,7 @@ if (config.lifecycle) {
 	server = platform.createServer(
 		async (request) => {
 			const r = await pool.handleRequest(request);
-			if ("upgrade" in r) return new Response("Upgrade Required", {status: 426});
+			if ("upgrade" in r) { pool.sendWebSocketClose(r.connectionID, 1002, "Not a WebSocket request", false); return new Response("Upgrade Required", {status: 426}); }
 			return r;
 		},
 		{pool},
