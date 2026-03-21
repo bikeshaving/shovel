@@ -697,8 +697,7 @@ if (config.lifecycle) {
 	server = platform.createServer(
 		async (request) => {
 			const result = await pool.handleRequest(request);
-			// Non-upgrade requests always return Response
-			// (WebSocket upgrades are handled by the httpServer "upgrade" event)
+			if ("upgrade" in result) return new Response("Upgrade Required", {status: 426});
 			return result;
 		},
 		{pool},
