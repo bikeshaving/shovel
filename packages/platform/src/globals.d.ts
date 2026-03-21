@@ -109,6 +109,18 @@ declare global {
 	}
 
 	/**
+	 * Extend Clients API with WebSocket client lookup.
+	 *
+	 * Usage:
+	 *   const ws = await self.clients.get(connectionID) as WebSocketClient;
+	 *   const all = await self.clients.matchAll({type: "websocket"} as any) as WebSocketClient[];
+	 */
+	interface Clients {
+		/** Get a client by ID — returns WebSocketClient for WebSocket connections */
+		get(id: string): Promise<WebSocketClient | Client | undefined>;
+	}
+
+	/**
 	 * Event dispatched when a WebSocket message is received.
 	 */
 	interface WebSocketMessageEvent extends ExtendableEvent {

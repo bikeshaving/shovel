@@ -549,6 +549,7 @@ if (!config.lifecycle) {
 	server = platform.createServer(
 		async (request) => {
 			const r = await pool.handleRequest(request);
+			if ("upgrade" in r) return new Response("Upgrade Required", {status: 426});
 			return r;
 		},
 		{pool, reusePort: config.workers > 1},
