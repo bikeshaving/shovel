@@ -1665,8 +1665,13 @@ export async function dispatchRequest(
 			? requestOrEvent
 			: new ShovelFetchEvent(requestOrEvent);
 	const response = await registration[kHandleRequest](event);
-	// For backward compat: non-upgrade requests always return Response
-	return response!;
+	if (response === null) {
+		throw new Error(
+			"Cannot use dispatchRequest() with WebSocket upgrades. " +
+				"Use dispatchFetchEvent() instead to handle upgrade results.",
+		);
+	}
+	return response;
 }
 
 /**
@@ -1723,6 +1728,8 @@ export function createDirectModePool(
 	clients: ShovelClients,
 ) {
 	const logger = getLogger(["shovel", "platform"]);
+	// Per-connection dispatch queue to preserve message ordering
+	const dispatchQueues = new Map<string, Promise<void>>();
 	let sendCallback:
 		| ((connectionID: string, data: string | ArrayBuffer) => void)
 		| null = null;
@@ -1764,11 +1771,15 @@ export function createDirectModePool(
 		sendWebSocketMessage(connectionID: string, data: string | ArrayBuffer) {
 			const client = clients.getWebSocketClient(connectionID);
 			if (client) {
-				dispatchWebSocketMessage(registration, client, data).catch((err) => {
-					logger.error("WebSocket message dispatch failed: {error}", {
-						error: err,
+				const prev = dispatchQueues.get(connectionID) ?? Promise.resolve();
+				const next = prev
+					.then(() => dispatchWebSocketMessage(registration, client, data))
+					.catch((err) => {
+						logger.error("WebSocket message dispatch failed: {error}", {
+							error: err,
+						});
 					});
-				});
+				dispatchQueues.set(connectionID, next);
 			}
 		},
 		sendWebSocketClose(
@@ -1780,17 +1791,25 @@ export function createDirectModePool(
 			const client = clients.getWebSocketClient(connectionID);
 			if (client) {
 				clients.removeWebSocketClient(connectionID);
-				dispatchWebSocketClose(
-					registration,
-					client,
-					code,
-					reason,
-					wasClean,
-				).catch((err) => {
-					logger.error("WebSocket close dispatch failed: {error}", {
-						error: err,
+				const prev = dispatchQueues.get(connectionID) ?? Promise.resolve();
+				prev
+					.then(() =>
+						dispatchWebSocketClose(
+							registration,
+							client,
+							code,
+							reason,
+							wasClean,
+						),
+					)
+					.catch((err) => {
+						logger.error("WebSocket close dispatch failed: {error}", {
+							error: err,
+						});
+					})
+					.finally(() => {
+						dispatchQueues.delete(connectionID);
 					});
-				});
 			}
 		},
 	};
@@ -2894,6 +2913,8 @@ export function startWorkerMessageLoop(
 
 	// Track WebSocket connections in this worker
 	const wsClients = new Map<string, ShovelWebSocketClient>();
+	// Per-connection dispatch queue to preserve message ordering
+	const wsDispatchQueues = new Map<string, Promise<void>>();
 
 	// Get the ShovelClients instance from self.clients (installed by ServiceWorkerGlobals)
 	const shovelClients =
@@ -3027,14 +3048,19 @@ export function startWorkerMessageLoop(
 		if (message?.type === "ws:message") {
 			const client = wsClients.get(message.connectionID);
 			if (client) {
-				dispatchWebSocketMessage(registration, client, message.data).catch(
-					(error) => {
+				const connID = message.connectionID as string;
+				const prev = wsDispatchQueues.get(connID) ?? Promise.resolve();
+				const next = prev
+					.then(() =>
+						dispatchWebSocketMessage(registration, client, message.data),
+					)
+					.catch((error) => {
 						messageLogger.error(
 							`[Worker-${workerId}] WebSocket message dispatch failed: {error}`,
 							{error},
 						);
-					},
-				);
+					});
+				wsDispatchQueues.set(connID, next);
 			}
 			return;
 		}
@@ -3043,20 +3069,29 @@ export function startWorkerMessageLoop(
 		if (message?.type === "ws:close") {
 			const client = wsClients.get(message.connectionID);
 			if (client) {
-				wsClients.delete(message.connectionID);
-				shovelClients?.removeWebSocketClient(message.connectionID);
-				dispatchWebSocketClose(
-					registration,
-					client,
-					message.code ?? 1005,
-					message.reason ?? "",
-					message.wasClean ?? false,
-				).catch((error) => {
-					messageLogger.error(
-						`[Worker-${workerId}] WebSocket close dispatch failed: {error}`,
-						{error},
-					);
-				});
+				const connID = message.connectionID as string;
+				wsClients.delete(connID);
+				shovelClients?.removeWebSocketClient(connID);
+				const prev = wsDispatchQueues.get(connID) ?? Promise.resolve();
+				prev
+					.then(() =>
+						dispatchWebSocketClose(
+							registration,
+							client,
+							message.code ?? 1005,
+							message.reason ?? "",
+							message.wasClean ?? false,
+						),
+					)
+					.catch((error) => {
+						messageLogger.error(
+							`[Worker-${workerId}] WebSocket close dispatch failed: {error}`,
+							{error},
+						);
+					})
+					.finally(() => {
+						wsDispatchQueues.delete(connID);
+					});
 			}
 			return;
 		}
