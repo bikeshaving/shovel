@@ -81,7 +81,7 @@ describe("worker logging", () => {
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("ok");
+		expect(await (response as Response).text()).toBe("ok");
 
 		await pool.terminate();
 	});
@@ -105,7 +105,7 @@ describe("worker logging", () => {
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("debug-ok");
+		expect(await (response as Response).text()).toBe("debug-ok");
 
 		await pool.terminate();
 	});
@@ -129,7 +129,7 @@ describe("worker logging", () => {
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("warning-ok");
+		expect(await (response as Response).text()).toBe("warning-ok");
 
 		await pool.terminate();
 	});
@@ -153,7 +153,7 @@ describe("worker logging", () => {
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("category-ok");
+		expect(await (response as Response).text()).toBe("category-ok");
 
 		await pool.terminate();
 	});
@@ -177,7 +177,7 @@ describe("worker logging", () => {
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("empty-categories-ok");
+		expect(await (response as Response).text()).toBe("empty-categories-ok");
 
 		await pool.terminate();
 	});
@@ -201,7 +201,7 @@ describe("worker logging", () => {
 		const response = await pool.handleRequest(
 			new Request("http://localhost/test"),
 		);
-		expect(await response.text()).toBe("only-categories-ok");
+		expect(await (response as Response).text()).toBe("only-categories-ok");
 
 		await pool.terminate();
 	});
