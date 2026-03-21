@@ -282,7 +282,14 @@ export class NodePlatform {
 			async (request) => {
 				const result = await pool.handleRequest(request);
 				if ("upgrade" in result) {
-					// Worker called upgradeWebSocket() but this isn't a WebSocket request
+					// Worker called upgradeWebSocket() but this isn't a WebSocket request —
+					// clean up the connection state the worker already created
+					pool.sendWebSocketClose(
+						result.connectionID,
+						1002,
+						"Not a WebSocket request",
+						false,
+					);
 					return new Response("Upgrade Required", {status: 426});
 				}
 				return result;
@@ -711,7 +718,7 @@ if (config.lifecycle) {
 	server = platform.createServer(
 		async (request) => {
 			const result = await pool.handleRequest(request);
-			if ("upgrade" in result) return new Response("Upgrade Required", {status: 426});
+			if ("upgrade" in result) { pool.sendWebSocketClose(result.connectionID, 1002, "Not a WebSocket request", false); return new Response("Upgrade Required", {status: 426}); }
 			return result;
 		},
 		{pool},
