@@ -2964,8 +2964,7 @@ export function startWorkerMessageLoop(
 				body: message.request.body,
 			});
 
-			const event = new ShovelFetchEvent(request);
-			const response = await dispatchRequest(registration, event);
+			const {response, event} = await dispatchFetchEvent(registration, request);
 
 			// Check if this was a WebSocket upgrade
 			const upgradeResult = event[kGetUpgradeResult]();
@@ -2982,11 +2981,15 @@ export function startWorkerMessageLoop(
 				return;
 			}
 
+			// Non-upgrade path: response is always non-null here
+			// (upgrade case returns early above)
+			const httpResponse = response!;
+
 			// Use arrayBuffer for zero-copy transfer
-			const body = await response.arrayBuffer();
+			const body = await httpResponse.arrayBuffer();
 
 			// Ensure Content-Type is preserved
-			const headers = Object.fromEntries(response.headers.entries());
+			const headers = Object.fromEntries(httpResponse.headers.entries());
 			if (!headers["Content-Type"] && !headers["content-type"]) {
 				headers["Content-Type"] = "text/plain; charset=utf-8";
 			}
@@ -2994,8 +2997,8 @@ export function startWorkerMessageLoop(
 			const responseMsg: WorkerResponseMessage = {
 				type: "response",
 				response: {
-					status: response.status,
-					statusText: response.statusText,
+					status: httpResponse.status,
+					statusText: httpResponse.statusText,
 					headers,
 					body,
 				},
