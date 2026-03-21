@@ -190,7 +190,7 @@ async function fetchWithRetry(url, retries = 30, delay = 100) {
 
 describe("build output: Node.js direct mode", () => {
 	test(
-		"prod worker.js contains dispatchRequest for direct mode path",
+		"prod worker.js contains createDirectModePool for direct mode path",
 		async () => {
 			const cleanup_paths = [];
 			try {
@@ -211,8 +211,8 @@ self.addEventListener("fetch", (event) => {
 					"utf8",
 				);
 
-				// Worker should contain dispatchRequest for direct mode path
-				expect(workerContent).toContain("dispatchRequest");
+				// Worker should contain createDirectModePool for direct mode path
+				expect(workerContent).toContain("createDirectModePool");
 
 				// Worker should contain the "direct mode" log message string
 				expect(workerContent).toContain("direct mode");
@@ -311,7 +311,7 @@ self.addEventListener("fetch", (event) => {
 				// message loop for multi-worker
 				expect(workerContent).toContain("startWorkerMessageLoop");
 				// and direct mode for single-worker
-				expect(workerContent).toContain("dispatchRequest");
+				expect(workerContent).toContain("createDirectModePool");
 			} finally {
 				await cleanup(cleanup_paths);
 			}
