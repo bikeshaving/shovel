@@ -368,7 +368,7 @@ describe("code generation: Node.js platform", () => {
 
 		// Should have direct mode variable and branching
 		expect(worker).toContain("directMode");
-		expect(worker).toContain("dispatchRequest");
+		expect(worker).toContain("createDirectModePool");
 		expect(worker).toContain("usePostMessage: !directMode");
 
 		// Should have both code paths

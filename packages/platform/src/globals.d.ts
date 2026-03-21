@@ -96,6 +96,55 @@ declare global {
 	}
 
 	/**
+	 * WebSocket client accessible from websocketmessage/websocketclose events.
+	 * Created by FetchEvent.upgradeWebSocket().
+	 */
+	interface WebSocketClient extends Client {
+		/** Arbitrary user data attached during upgradeWebSocket() */
+		readonly data: any;
+		/** Send a message to the connected client */
+		send(data: string | ArrayBuffer): void;
+		/** Close the WebSocket connection */
+		close(code?: number, reason?: string): void;
+	}
+
+	/**
+	 * Event dispatched when a WebSocket message is received.
+	 */
+	interface WebSocketMessageEvent extends ExtendableEvent {
+		/** The WebSocket client that sent the message */
+		readonly source: WebSocketClient;
+		/** The message data (string or ArrayBuffer) */
+		readonly data: string | ArrayBuffer;
+	}
+
+	/**
+	 * Event dispatched when a WebSocket connection closes.
+	 */
+	interface WebSocketCloseEvent extends ExtendableEvent {
+		/** The WebSocket client that disconnected */
+		readonly source: WebSocketClient;
+		/** The close code */
+		readonly code: number;
+		/** The close reason */
+		readonly reason: string;
+		/** Whether the close was clean */
+		readonly wasClean: boolean;
+	}
+
+	/**
+	 * Augment FetchEvent with WebSocket upgrade support.
+	 */
+	interface FetchEvent {
+		/**
+		 * Upgrade this request to a WebSocket connection.
+		 * Returns a WebSocketClient for sending messages.
+		 * No respondWith() call is needed — the upgrade replaces the HTTP response.
+		 */
+		upgradeWebSocket(options?: {data?: any}): WebSocketClient;
+	}
+
+	/**
 	 * Augment WorkerGlobalScopeEventMap with ServiceWorker events.
 	 *
 	 * TypeScript's lib.webworker.d.ts declares `self` as `WorkerGlobalScope`, not
@@ -113,6 +162,8 @@ declare global {
 		activate: ExtendableEvent;
 		message: ExtendableMessageEvent;
 		messageerror: MessageEvent;
+		websocketmessage: WebSocketMessageEvent;
+		websocketclose: WebSocketCloseEvent;
 	}
 
 	/**

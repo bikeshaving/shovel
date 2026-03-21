@@ -84,7 +84,7 @@ if (config.lifecycle) {
 	const prodWorkerCode = `// Node.js Production Worker
 import {parentPort} from "node:worker_threads";
 import {getLogger} from "@logtape/logtape";
-import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest} from "@b9g/platform/runtime";
+import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, createDirectModePool} from "@b9g/platform/runtime";
 import NodePlatform from "@b9g/platform-node";
 import {config} from "shovel:config";
 
@@ -123,10 +123,15 @@ if (config.lifecycle) {
 	if (databases) await databases.closeAll();
 	process.exit(0);
 } else if (directMode) {
-	// Single worker: create own HTTP server
+	// Single worker: create own HTTP server with WebSocket support
+	const pool = createDirectModePool(registration, result.clients);
 	const platform = new NodePlatform({port: config.port, host: config.host});
 	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
+		async (request) => {
+			const r = await pool.handleRequest(request);
+			return r;
+		},
+		{pool},
 	);
 	await server.listen();
 	parentPort?.postMessage({type: "ready"});

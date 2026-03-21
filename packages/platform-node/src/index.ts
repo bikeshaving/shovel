@@ -278,7 +278,15 @@ export class NodePlatform {
 			);
 		}
 
-		this.#server = this.createServer((request) => pool.handleRequest(request));
+		this.#server = this.createServer(
+			async (request) => {
+				const result = await pool.handleRequest(request);
+				// WebSocket upgrades are handled by the httpServer "upgrade" event,
+				// so this handler only sees normal HTTP responses.
+				return result as Response;
+			},
+			{pool},
+		);
 		await this.#server.listen();
 		return this.#server;
 	}
@@ -379,6 +387,90 @@ export class NodePlatform {
 			}
 		});
 
+		// WebSocket upgrade handling (when pool is provided)
+		const pool = options.pool;
+		const wsConnections = new Map<string, any>();
+		if (pool) {
+			let wss: any;
+
+			pool.setWebSocketHandlers({
+				send(connectionID, data) {
+					const ws = wsConnections.get(connectionID);
+					if (ws?.readyState === 1) {
+						ws.send(data);
+					}
+				},
+				close(connectionID, code, reason) {
+					const ws = wsConnections.get(connectionID);
+					if (ws) {
+						ws.close(code ?? 1000, reason ?? "");
+						wsConnections.delete(connectionID);
+					}
+				},
+			});
+
+			httpServer.on("upgrade", async (req, socket, head) => {
+				try {
+					if (!wss) {
+						const ws = await import("ws");
+						wss = new ws.WebSocketServer({noServer: true});
+					}
+
+					const url = `http://${req.headers.host}${req.url}`;
+					const request = new Request(url, {
+						method: req.method,
+						headers: req.headers as HeadersInit,
+					});
+
+					const result = await pool.handleRequest(request);
+
+					if ("upgrade" in result) {
+						wss.handleUpgrade(req, socket, head, (ws: any) => {
+							wsConnections.set(result.connectionID, ws);
+
+							ws.on("message", (data: any, isBinary: boolean) => {
+								if (isBinary) {
+									const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+									pool.sendWebSocketMessage(
+										result.connectionID,
+										buf.buffer.slice(
+											buf.byteOffset,
+											buf.byteOffset + buf.byteLength,
+										),
+									);
+								} else {
+									pool.sendWebSocketMessage(
+										result.connectionID,
+										data.toString(),
+									);
+								}
+							});
+
+							ws.on("close", (code: number, reason: Buffer) => {
+								pool.sendWebSocketClose(
+									result.connectionID,
+									code,
+									reason.toString(),
+									true,
+								);
+								wsConnections.delete(result.connectionID);
+							});
+
+							ws.on("error", (err: Error) => {
+								logger.error("WebSocket error: {error}", {error: err});
+								wsConnections.delete(result.connectionID);
+							});
+						});
+					} else {
+						socket.destroy();
+					}
+				} catch (error) {
+					logger.error("WebSocket upgrade error: {error}", {error});
+					socket.destroy();
+				}
+			});
+		}
+
 		let isListening = false;
 		let actualPort = port;
 
@@ -406,6 +498,11 @@ export class NodePlatform {
 				});
 			},
 			async close() {
+				// Close all WebSocket connections
+				for (const [id, ws] of wsConnections) {
+					ws.close(1001, "Server shutting down");
+					wsConnections.delete(id);
+				}
 				return new Promise<void>((resolve) => {
 					httpServer.close(() => {
 						isListening = false;
@@ -487,7 +584,7 @@ if (config.lifecycle) {
 		const prodWorkerCode = `// Node.js Production Worker
 import {parentPort} from "node:worker_threads";
 import {getLogger} from "@logtape/logtape";
-import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest} from "@b9g/platform/runtime";
+import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest, createDirectModePool} from "@b9g/platform/runtime";
 import NodePlatform from "@b9g/platform-node";
 import {config} from "shovel:config";
 
@@ -526,10 +623,17 @@ if (config.lifecycle) {
 	if (databases) await databases.closeAll();
 	process.exit(0);
 } else if (directMode) {
-	// Single worker: create own HTTP server
+	// Single worker: create own HTTP server with WebSocket support
+	const pool = createDirectModePool(registration, result.clients);
 	const platform = new NodePlatform({port: config.port, host: config.host});
 	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
+		async (request) => {
+			const result = await pool.handleRequest(request);
+			// Non-upgrade requests always return Response
+			// (WebSocket upgrades are handled by the httpServer "upgrade" event)
+			return result;
+		},
+		{pool},
 	);
 	await server.listen();
 	parentPort?.postMessage({type: "ready"});
