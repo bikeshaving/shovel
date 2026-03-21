@@ -1044,20 +1044,19 @@ export class ShovelWindowClient extends ShovelClient implements WindowClient {
 // WebSocket Events (Shovel extensions)
 // ============================================================================
 
-/** Module-level relay for WebSocket send/close (set by startWorkerMessageLoop or platform code) */
-let wsRelay: {
+interface WebSocketRelay {
 	send: (connectionID: string, data: string | ArrayBuffer) => void;
 	close: (connectionID: string, code?: number, reason?: string) => void;
-} | null = null;
+}
+
+/** Module-level relay for WebSocket send/close (set by startWorkerMessageLoop) */
+let wsRelay: WebSocketRelay | null = null;
 
 /**
  * Set the relay functions for WebSocket message forwarding.
  * Called by startWorkerMessageLoop (multi-worker) or platform-specific direct mode code.
  */
-export function setWebSocketRelay(relay: {
-	send: (connectionID: string, data: string | ArrayBuffer) => void;
-	close: (connectionID: string, code?: number, reason?: string) => void;
-}): void {
+export function setWebSocketRelay(relay: WebSocketRelay): void {
 	wsRelay = relay;
 }
 
@@ -1070,30 +1069,44 @@ export function setWebSocketRelay(relay: {
 export class ShovelWebSocketClient extends ShovelClient {
 	/** Arbitrary user data attached during upgradeWebSocket(), persists across events */
 	data: any;
+	#relay: WebSocketRelay | null;
 
-	constructor(options: {id: string; url: string; data?: any}) {
+	constructor(options: {
+		id: string;
+		url: string;
+		data?: any;
+		relay?: WebSocketRelay | null;
+	}) {
 		super({...options, type: "worker"});
 		this.data = options.data;
+		this.#relay = options.relay ?? null;
+	}
+
+	/** @internal Bind this client to a platform relay */
+	setRelay(relay: WebSocketRelay): void {
+		this.#relay = relay;
 	}
 
 	/** Send a message to the connected WebSocket client */
 	send(data: string | ArrayBuffer): void {
-		if (!wsRelay) {
+		const relay = this.#relay ?? wsRelay;
+		if (!relay) {
 			throw new Error(
 				"WebSocket relay not initialized. send() can only be called inside a worker.",
 			);
 		}
-		wsRelay.send(this.id, data);
+		relay.send(this.id, data);
 	}
 
 	/** Close the WebSocket connection */
 	close(code?: number, reason?: string): void {
-		if (!wsRelay) {
+		const relay = this.#relay ?? wsRelay;
+		if (!relay) {
 			throw new Error(
 				"WebSocket relay not initialized. close() can only be called inside a worker.",
 			);
 		}
-		wsRelay.close(this.id, code, reason);
+		relay.close(this.id, code, reason);
 	}
 }
 
@@ -1699,16 +1712,14 @@ export function createDirectModePool(
 	let closeCallback:
 		| ((connectionID: string, code?: number, reason?: string) => void)
 		| null = null;
-
-	// Set up relay so ShovelWebSocketClient.send/close go to the real socket
-	setWebSocketRelay({
+	const relay: WebSocketRelay = {
 		send(connectionID: string, data: string | ArrayBuffer) {
 			sendCallback?.(connectionID, data);
 		},
 		close(connectionID: string, code?: number, reason?: string) {
 			closeCallback?.(connectionID, code, reason);
 		},
-	});
+	};
 
 	return {
 		async handleRequest(
@@ -1717,6 +1728,7 @@ export function createDirectModePool(
 			const {response, event} = await dispatchFetchEvent(registration, request);
 			const upgrade = event[kGetUpgradeResult]();
 			if (upgrade) {
+				upgrade.client.setRelay(relay);
 				clients.registerWebSocketClient(upgrade.client);
 				return {upgrade: true, connectionID: upgrade.connectionID};
 			}
