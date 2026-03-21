@@ -639,6 +639,15 @@ export class ServiceWorkerPool {
 						connectionID: message.connectionID,
 					});
 					this.#pendingRequests.delete(message.requestID);
+				} else {
+					// Request already timed out — tell the worker to clean up
+					worker.postMessage({
+						type: "ws:close",
+						connectionID: message.connectionID,
+						code: 1001,
+						reason: "Upgrade timed out",
+						wasClean: false,
+					});
 				}
 				break;
 			}
