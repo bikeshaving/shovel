@@ -281,9 +281,11 @@ export class NodePlatform {
 		this.#server = this.createServer(
 			async (request) => {
 				const result = await pool.handleRequest(request);
-				// WebSocket upgrades are handled by the httpServer "upgrade" event,
-				// so this handler only sees normal HTTP responses.
-				return result as Response;
+				if ("upgrade" in result) {
+					// Worker called upgradeWebSocket() but this isn't a WebSocket request
+					return new Response("Upgrade Required", {status: 426});
+				}
+				return result;
 			},
 			{pool},
 		);
@@ -485,11 +487,13 @@ export class NodePlatform {
 							});
 
 							ws.on("close", (code: number, reason: Buffer) => {
+								// 1006 = abnormal closure (no close frame received)
+								const wasClean = code !== 1006;
 								pool.sendWebSocketClose(
 									result.connectionID,
 									code,
 									reason.toString(),
-									true,
+									wasClean,
 								);
 								wsConnections.delete(result.connectionID);
 							});

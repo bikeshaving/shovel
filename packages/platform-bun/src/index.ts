@@ -407,7 +407,8 @@ export class BunPlatform {
 				close(ws, code, reason) {
 					const {connectionID} = ws.data;
 					if (pool) {
-						pool.sendWebSocketClose(connectionID, code, reason, true);
+						const wasClean = code !== 1006;
+						pool.sendWebSocketClose(connectionID, code, reason, wasClean);
 					}
 					wsConnections.delete(connectionID);
 				},
@@ -455,7 +456,10 @@ export class BunPlatform {
 		this.#server = this.createServer(
 			async (request) => {
 				const result = await pool.handleRequest(request);
-				return result as Response;
+				if ("upgrade" in result) {
+					return new Response("Upgrade Required", {status: 426});
+				}
+				return result;
 			},
 			{pool, port: this.#options.port, host: this.#options.host},
 		);
