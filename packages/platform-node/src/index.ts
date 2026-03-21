@@ -462,7 +462,18 @@ export class NodePlatform {
 							});
 						});
 					} else {
-						socket.destroy();
+						// Worker rejected the upgrade — write the HTTP response back
+						const resp = result as Response;
+						const body = await resp.text();
+						socket.write(
+							`HTTP/1.1 ${resp.status} ${resp.statusText}\r\n` +
+								[...resp.headers.entries()]
+									.map(([k, v]) => `${k}: ${v}`)
+									.join("\r\n") +
+								`\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n` +
+								body,
+						);
+						socket.end();
 					}
 				} catch (error) {
 					logger.error("WebSocket upgrade error: {error}", {error});
