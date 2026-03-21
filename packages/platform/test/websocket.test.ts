@@ -484,6 +484,71 @@ describe("createDirectModePool", () => {
 		// Simulate close
 		pool.sendWebSocketClose(connectionID, 1000, "bye", true);
 	});
+
+	it("keeps direct-mode relays isolated per pool", async () => {
+		const registrationOne = new ShovelServiceWorkerRegistration();
+		const clientsOne = new ShovelClients();
+		const sentOne: Array<{id: string; data: string | ArrayBuffer}> = [];
+
+		registrationOne.addEventListener("websocketmessage", ((
+			event: WebSocketMessageEvent,
+		) => {
+			event.source.send(`one:${event.data}`);
+		}) as EventListener);
+		registrationOne.addEventListener("fetch", ((event: FetchEvent) => {
+			event.upgradeWebSocket();
+		}) as EventListener);
+
+		const registrationTwo = new ShovelServiceWorkerRegistration();
+		const clientsTwo = new ShovelClients();
+		const sentTwo: Array<{id: string; data: string | ArrayBuffer}> = [];
+
+		registrationTwo.addEventListener("websocketmessage", ((
+			event: WebSocketMessageEvent,
+		) => {
+			event.source.send(`two:${event.data}`);
+		}) as EventListener);
+		registrationTwo.addEventListener("fetch", ((event: FetchEvent) => {
+			event.upgradeWebSocket();
+		}) as EventListener);
+
+		await runLifecycle(registrationOne);
+		await runLifecycle(registrationTwo);
+
+		const poolOne = createDirectModePool(registrationOne, clientsOne);
+		poolOne.setWebSocketHandlers({
+			send(id, data) {
+				sentOne.push({id, data});
+			},
+			close() {},
+		});
+
+		const poolTwo = createDirectModePool(registrationTwo, clientsTwo);
+		poolTwo.setWebSocketHandlers({
+			send(id, data) {
+				sentTwo.push({id, data});
+			},
+			close() {},
+		});
+
+		const resultOne = await poolOne.handleRequest(
+			new Request("http://localhost/ws"),
+		);
+		const resultTwo = await poolTwo.handleRequest(
+			new Request("http://localhost/ws"),
+		);
+
+		const connectionOne = (resultOne as any).connectionID;
+		const connectionTwo = (resultTwo as any).connectionID;
+
+		poolOne.sendWebSocketMessage(connectionOne, "alpha");
+		poolTwo.sendWebSocketMessage(connectionTwo, "beta");
+
+		await new Promise((r) => setTimeout(r, 10));
+
+		expect(sentOne).toEqual([{id: connectionOne, data: "one:alpha"}]);
+		expect(sentTwo).toEqual([{id: connectionTwo, data: "two:beta"}]);
+	});
 });
 
 // ============================================================================

@@ -1012,19 +1012,11 @@ export class ServiceWorkerPool {
 	#closeWorkerWebSockets(worker: Worker): void {
 		for (const [connectionID, conn] of this.#wsConnections) {
 			if (conn.worker === worker) {
-				// Notify the worker before removing state, so websocketclose handlers run
-				worker.postMessage({
-					type: "ws:close",
-					connectionID,
-					code: 1012,
-					reason: "Service Restart",
-					wasClean: false,
-				});
-				// Close the real socket
+				// Close the real socket first and let the normal adapter close path
+				// deliver websocketclose while ownership is still tracked.
 				if (this.#wsCloseCallback) {
 					this.#wsCloseCallback(connectionID, 1012, "Service Restart");
 				}
-				this.#wsConnections.delete(connectionID);
 			}
 		}
 	}
