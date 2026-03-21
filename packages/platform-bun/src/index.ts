@@ -276,19 +276,42 @@ export class BunPlatform {
 		const reusePort = options.reusePort ?? false;
 		const pool = options.pool;
 		const wsConnections = new Map<string, any>();
+		const wsPendingMessages = new Map<
+			string,
+			Array<
+				| {type: "send"; data: string | ArrayBuffer}
+				| {type: "close"; code?: number; reason?: string}
+			>
+		>();
 
 		// Wire up pool callbacks for outbound WebSocket I/O
 		if (pool) {
 			pool.setWebSocketHandlers({
 				send(connectionID: string, data: string | ArrayBuffer) {
 					const ws = wsConnections.get(connectionID);
-					if (ws) ws.send(data);
+					if (ws) {
+						ws.send(data);
+					} else {
+						let buf = wsPendingMessages.get(connectionID);
+						if (!buf) {
+							buf = [];
+							wsPendingMessages.set(connectionID, buf);
+						}
+						buf.push({type: "send", data});
+					}
 				},
 				close(connectionID: string, code?: number, reason?: string) {
 					const ws = wsConnections.get(connectionID);
 					if (ws) {
 						ws.close(code ?? 1000, reason ?? "");
 						wsConnections.delete(connectionID);
+					} else {
+						let buf = wsPendingMessages.get(connectionID);
+						if (!buf) {
+							buf = [];
+							wsPendingMessages.set(connectionID, buf);
+						}
+						buf.push({type: "close", code, reason});
 					}
 				},
 			});
@@ -353,6 +376,18 @@ export class BunPlatform {
 				open(ws) {
 					const {connectionID} = ws.data;
 					wsConnections.set(connectionID, ws);
+					// Flush any messages buffered before the socket opened
+					const pending = wsPendingMessages.get(connectionID);
+					if (pending) {
+						wsPendingMessages.delete(connectionID);
+						for (const msg of pending) {
+							if (msg.type === "send") {
+								ws.send(msg.data);
+							} else if (msg.type === "close") {
+								ws.close(msg.code ?? 1000, msg.reason ?? "");
+							}
+						}
+					}
 				},
 				message(ws, message) {
 					const {connectionID} = ws.data;
