@@ -85,6 +85,22 @@ describe("FetchEvent.upgradeWebSocket()", () => {
 		);
 	});
 
+	it("prevents upgradeWebSocket after respondWith", () => {
+		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		event.respondWith(new Response("already responded"));
+		expect(() => event.upgradeWebSocket()).toThrow(
+			"Cannot upgradeWebSocket() after respondWith() or upgradeWebSocket() was already called",
+		);
+	});
+
+	it("prevents double upgradeWebSocket", () => {
+		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		event.upgradeWebSocket();
+		expect(() => event.upgradeWebSocket()).toThrow(
+			"Cannot upgradeWebSocket() after respondWith() or upgradeWebSocket() was already called",
+		);
+	});
+
 	it("getResponse returns null after upgrade", () => {
 		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
 		event.upgradeWebSocket();

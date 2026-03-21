@@ -318,7 +318,10 @@ export class BunPlatform {
 			async fetch(request, server) {
 				try {
 					// Check for WebSocket upgrade when pool is available
-					if (pool && request.headers.get("upgrade") === "websocket") {
+					if (
+						pool &&
+						request.headers.get("upgrade")?.toLowerCase() === "websocket"
+					) {
 						const result = await pool.handleRequest(request);
 						if ("upgrade" in result) {
 							server.upgrade(request, {
