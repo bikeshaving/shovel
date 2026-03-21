@@ -449,6 +449,7 @@ export class NodePlatform {
 			});
 
 			httpServer.on("upgrade", async (req, socket, head) => {
+				let upgradeConnectionID: string | undefined;
 				try {
 					if (!wss) {
 						const ws = await import("ws");
@@ -464,6 +465,7 @@ export class NodePlatform {
 					const result = await pool.handleRequest(request);
 
 					if ("upgrade" in result) {
+						upgradeConnectionID = result.connectionID;
 						wss.handleUpgrade(req, socket, head, (ws: any) => {
 							wsConnections.set(result.connectionID, ws);
 							flushPending(result.connectionID, ws);
@@ -523,6 +525,18 @@ export class NodePlatform {
 						? (error as HTTPError)
 						: new InternalServerError(err.message, {cause: err});
 					logger.error("WebSocket upgrade error: {error}", {error: err});
+
+					// Clean up worker-side state if upgrade was already registered
+					if (upgradeConnectionID) {
+						pool.sendWebSocketClose(
+							upgradeConnectionID,
+							1006,
+							"Upgrade failed",
+							false,
+						);
+						wsPendingMessages.delete(upgradeConnectionID);
+					}
+
 					const isDev = import.meta.env?.MODE !== "production";
 					const errResp = httpError.toResponse(isDev);
 					const errBody = await errResp.text();
