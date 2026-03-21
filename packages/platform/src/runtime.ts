@@ -913,6 +913,12 @@ export class ShovelFetchEvent
 	 * Must be called synchronously during fetch event dispatch.
 	 */
 	upgradeWebSocket(options?: {data?: any}): ShovelWebSocketClient {
+		if (this.#responded) {
+			throw new Error(
+				"Cannot upgradeWebSocket() after respondWith() or upgradeWebSocket() was already called",
+			);
+		}
+
 		const connectionID = crypto.randomUUID();
 		const client = new ShovelWebSocketClient({
 			id: connectionID,
