@@ -827,6 +827,11 @@ export interface ShovelFetchEventInit extends EventInit {
 	 * (e.g., Cloudflare's ctx.waitUntil)
 	 */
 	platformWaitUntil?: (promise: Promise<unknown>) => void;
+	/**
+	 * WebSocket relay to attach to clients created by upgradeWebSocket().
+	 * Used by direct-mode pools so send()/close() work inside the fetch handler.
+	 */
+	wsRelay?: WebSocketRelay | null;
 }
 
 /** @internal Symbol for accessing WebSocket upgrade result from ShovelFetchEvent */
@@ -851,6 +856,7 @@ export class ShovelFetchEvent
 	#responsePromise: Promise<Response> | null;
 	#responded: boolean;
 	#platformWaitUntil?: (promise: Promise<unknown>) => void;
+	#wsRelay: WebSocketRelay | null;
 	#upgradeResult: {
 		client: ShovelWebSocketClient;
 		connectionID: string;
@@ -867,6 +873,7 @@ export class ShovelFetchEvent
 		this.#responsePromise = null;
 		this.#responded = false;
 		this.#platformWaitUntil = options?.platformWaitUntil;
+		this.#wsRelay = options?.wsRelay ?? null;
 		this.#upgradeResult = null;
 	}
 
@@ -924,6 +931,7 @@ export class ShovelFetchEvent
 			id: connectionID,
 			url: this.request.url,
 			data: options?.data,
+			relay: this.#wsRelay,
 		});
 
 		this.#upgradeResult = {client, connectionID};
@@ -1660,8 +1668,9 @@ export async function dispatchRequest(
 export async function dispatchFetchEvent(
 	registration: ShovelServiceWorkerRegistration,
 	request: Request,
+	options?: ShovelFetchEventInit,
 ): Promise<DispatchFetchResult> {
-	const event = new ShovelFetchEvent(request);
+	const event = new ShovelFetchEvent(request, options);
 	const response = await registration[kHandleRequest](event);
 	return {response, event};
 }
@@ -1725,10 +1734,13 @@ export function createDirectModePool(
 		async handleRequest(
 			request: Request,
 		): Promise<Response | {upgrade: true; connectionID: string}> {
-			const {response, event} = await dispatchFetchEvent(registration, request);
+			const {response, event} = await dispatchFetchEvent(
+				registration,
+				request,
+				{wsRelay: relay},
+			);
 			const upgrade = event[kGetUpgradeResult]();
 			if (upgrade) {
-				upgrade.client.setRelay(relay);
 				clients.registerWebSocketClient(upgrade.client);
 				return {upgrade: true, connectionID: upgrade.connectionID};
 			}

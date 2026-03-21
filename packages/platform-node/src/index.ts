@@ -390,14 +390,44 @@ export class NodePlatform {
 		// WebSocket upgrade handling (when pool is provided)
 		const pool = options.pool;
 		const wsConnections = new Map<string, any>();
+		// Buffer for messages arriving before the real socket is ready
+		const wsPendingMessages = new Map<
+			string,
+			Array<
+				| {type: "send"; data: string | ArrayBuffer}
+				| {type: "close"; code?: number; reason?: string}
+			>
+		>();
 		if (pool) {
 			let wss: any;
+
+			function flushPending(connectionID: string, ws: any) {
+				const pending = wsPendingMessages.get(connectionID);
+				if (pending) {
+					wsPendingMessages.delete(connectionID);
+					for (const msg of pending) {
+						if (msg.type === "send" && ws.readyState === 1) {
+							ws.send(msg.data);
+						} else if (msg.type === "close") {
+							ws.close(msg.code ?? 1000, msg.reason ?? "");
+						}
+					}
+				}
+			}
 
 			pool.setWebSocketHandlers({
 				send(connectionID, data) {
 					const ws = wsConnections.get(connectionID);
 					if (ws?.readyState === 1) {
 						ws.send(data);
+					} else {
+						// Buffer until handleUpgrade completes
+						let buf = wsPendingMessages.get(connectionID);
+						if (!buf) {
+							buf = [];
+							wsPendingMessages.set(connectionID, buf);
+						}
+						buf.push({type: "send", data});
 					}
 				},
 				close(connectionID, code, reason) {
@@ -405,6 +435,13 @@ export class NodePlatform {
 					if (ws) {
 						ws.close(code ?? 1000, reason ?? "");
 						wsConnections.delete(connectionID);
+					} else {
+						let buf = wsPendingMessages.get(connectionID);
+						if (!buf) {
+							buf = [];
+							wsPendingMessages.set(connectionID, buf);
+						}
+						buf.push({type: "close", code, reason});
 					}
 				},
 			});
@@ -427,6 +464,7 @@ export class NodePlatform {
 					if ("upgrade" in result) {
 						wss.handleUpgrade(req, socket, head, (ws: any) => {
 							wsConnections.set(result.connectionID, ws);
+							flushPending(result.connectionID, ws);
 
 							ws.on("message", (data: any, isBinary: boolean) => {
 								if (isBinary) {
@@ -476,8 +514,23 @@ export class NodePlatform {
 						socket.end();
 					}
 				} catch (error) {
-					logger.error("WebSocket upgrade error: {error}", {error});
-					socket.destroy();
+					const err = error instanceof Error ? error : new Error(String(error));
+					const httpError = isHTTPError(error)
+						? (error as HTTPError)
+						: new InternalServerError(err.message, {cause: err});
+					logger.error("WebSocket upgrade error: {error}", {error: err});
+					const isDev = import.meta.env?.MODE !== "production";
+					const errResp = httpError.toResponse(isDev);
+					const errBody = await errResp.text();
+					socket.write(
+						`HTTP/1.1 ${errResp.status} ${errResp.statusText}\r\n` +
+							[...errResp.headers.entries()]
+								.map(([k, v]) => `${k}: ${v}`)
+								.join("\r\n") +
+							`\r\nContent-Length: ${Buffer.byteLength(errBody)}\r\n\r\n` +
+							errBody,
+					);
+					socket.end();
 				}
 			});
 		}
