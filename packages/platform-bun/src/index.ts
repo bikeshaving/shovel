@@ -324,10 +324,22 @@ export class BunPlatform {
 					) {
 						const result = await pool.handleRequest(request);
 						if ("upgrade" in result) {
-							server.upgrade(request, {
+							const upgraded = server.upgrade(request, {
 								data: {connectionID: result.connectionID},
 							});
-							return undefined as any;
+							if (upgraded) {
+								return undefined as any;
+							}
+							// Bun rejected the handshake — clean up worker-side state
+							pool.sendWebSocketClose(
+								result.connectionID,
+								1006,
+								"Upgrade failed",
+								false,
+							);
+							return new Response("WebSocket upgrade failed", {
+								status: 500,
+							});
 						}
 						// Worker didn't upgrade — return as normal response
 						return result as Response;
