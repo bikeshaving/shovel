@@ -1692,6 +1692,7 @@ export function createDirectModePool(
 	registration: ShovelServiceWorkerRegistration,
 	clients: ShovelClients,
 ) {
+	const logger = getLogger(["shovel", "platform"]);
 	let sendCallback:
 		| ((connectionID: string, data: string | ArrayBuffer) => void)
 		| null = null;
@@ -1731,7 +1732,11 @@ export function createDirectModePool(
 		sendWebSocketMessage(connectionID: string, data: string | ArrayBuffer) {
 			const client = clients.getWebSocketClient(connectionID);
 			if (client) {
-				dispatchWebSocketMessage(registration, client, data);
+				dispatchWebSocketMessage(registration, client, data).catch((err) => {
+					logger.error("WebSocket message dispatch failed: {error}", {
+						error: err,
+					});
+				});
 			}
 		},
 		sendWebSocketClose(
@@ -1743,7 +1748,17 @@ export function createDirectModePool(
 			const client = clients.getWebSocketClient(connectionID);
 			if (client) {
 				clients.removeWebSocketClient(connectionID);
-				dispatchWebSocketClose(registration, client, code, reason, wasClean);
+				dispatchWebSocketClose(
+					registration,
+					client,
+					code,
+					reason,
+					wasClean,
+				).catch((err) => {
+					logger.error("WebSocket close dispatch failed: {error}", {
+						error: err,
+					});
+				});
 			}
 		},
 	};
