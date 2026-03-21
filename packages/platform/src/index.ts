@@ -651,6 +651,9 @@ export class ServiceWorkerPool {
 			}
 
 			case "ws:close": {
+				// Close the real socket — the adapter's close callback will call
+				// sendWebSocketClose() which routes websocketclose back to the worker
+				// and cleans up #wsConnections.
 				if (this.#wsCloseCallback) {
 					this.#wsCloseCallback(
 						message.connectionID,
@@ -658,7 +661,6 @@ export class ServiceWorkerPool {
 						message.reason,
 					);
 				}
-				this.#wsConnections.delete(message.connectionID);
 				break;
 			}
 
