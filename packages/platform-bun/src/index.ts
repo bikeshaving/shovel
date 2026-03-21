@@ -342,11 +342,16 @@ export class BunPlatform {
 				message(ws, message) {
 					const {connectionID} = ws.data;
 					if (pool) {
-						const data =
-							typeof message === "string"
-								? message
-								: (message.buffer as ArrayBuffer);
-						pool.sendWebSocketMessage(connectionID, data);
+						if (typeof message === "string") {
+							pool.sendWebSocketMessage(connectionID, message);
+						} else {
+							// Slice to respect byteOffset/byteLength of the typed array view
+							const buf = message.buffer.slice(
+								message.byteOffset,
+								message.byteOffset + message.byteLength,
+							);
+							pool.sendWebSocketMessage(connectionID, buf);
+						}
 					}
 				},
 				close(ws, code, reason) {
