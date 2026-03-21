@@ -584,7 +584,7 @@ if (config.lifecycle) {
 		const prodWorkerCode = `// Node.js Production Worker
 import {parentPort} from "node:worker_threads";
 import {getLogger} from "@logtape/logtape";
-import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest, createDirectModePool} from "@b9g/platform/runtime";
+import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, createDirectModePool} from "@b9g/platform/runtime";
 import NodePlatform from "@b9g/platform-node";
 import {config} from "shovel:config";
 
