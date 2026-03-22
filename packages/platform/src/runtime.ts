@@ -1680,10 +1680,13 @@ export async function dispatchRequest(
  */
 export async function dispatchFetchEvent(
 	registration: ShovelServiceWorkerRegistration,
-	request: Request,
+	requestOrEvent: Request | ShovelFetchEvent,
 	options?: ShovelFetchEventInit,
 ): Promise<DispatchFetchResult> {
-	const event = new ShovelFetchEvent(request, options);
+	const event =
+		requestOrEvent instanceof ShovelFetchEvent
+			? requestOrEvent
+			: new ShovelFetchEvent(requestOrEvent, options);
 	const response = await registration[kHandleRequest](event);
 	return {response, event};
 }
