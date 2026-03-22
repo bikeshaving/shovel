@@ -15,7 +15,10 @@ import {
 	createCacheFactory,
 	createDirectoryFactory,
 	runLifecycle,
-	dispatchRequest,
+	dispatchFetchEvent,
+	kGetUpgradeResult,
+	dispatchWebSocketMessage,
+	dispatchWebSocketClose,
 	setBroadcastChannelBackend,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
@@ -25,6 +28,8 @@ import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
 import {envStorage} from "./variables.js";
+
+const logger = getLogger(["shovel", "platform"]);
 
 export type {ShovelConfig};
 
@@ -165,14 +170,73 @@ export function createFetchHandler(
 		}
 
 		// Create CloudflareFetchEvent with env and waitUntil hook
-		const event = new CloudflareFetchEvent(request, {
+		const cfEvent = new CloudflareFetchEvent(request, {
 			env: envRecord,
-			platformWaitUntil: (promise) => ctx.waitUntil(promise),
+			platformWaitUntil: (promise: Promise<unknown>) => ctx.waitUntil(promise),
 		});
 
 		// Run within envStorage for directory factory access
-		return envStorage.run(envRecord, () =>
-			dispatchRequest(registration, event),
-		);
+		return envStorage.run(envRecord, async () => {
+			const {response, event: fetchEvent} = await dispatchFetchEvent(
+				registration,
+				cfEvent,
+			);
+
+			// WebSocket upgrade — use Cloudflare's WebSocketPair
+			const upgrade = fetchEvent[kGetUpgradeResult]?.();
+			if (upgrade) {
+				const pair = new WebSocketPair();
+				const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+
+				// Accept the server side to start receiving messages
+				(server as any).accept();
+
+				// Wire incoming messages → dispatch websocketmessage events
+				server.addEventListener("message", (msg: MessageEvent) => {
+					dispatchWebSocketMessage(
+						registration,
+						upgrade.client,
+						msg.data,
+					).catch((err) => {
+						logger.error("WebSocket message dispatch failed: {error}", {
+							error: err,
+						});
+					});
+				});
+
+				// Wire close → dispatch websocketclose events
+				server.addEventListener("close", (evt: CloseEvent) => {
+					dispatchWebSocketClose(
+						registration,
+						upgrade.client,
+						evt.code,
+						evt.reason,
+						evt.wasClean,
+					).catch((err) => {
+						logger.error("WebSocket close dispatch failed: {error}", {
+							error: err,
+						});
+					});
+				});
+
+				// Wire outbound: ShovelWebSocketClient.send/close → real socket
+				upgrade.client.setRelay({
+					send(_id: string, data: string | ArrayBuffer) {
+						server.send(data);
+					},
+					close(_id: string, code?: number, reason?: string) {
+						server.close(code ?? 1000, reason ?? "");
+					},
+				});
+
+				// Return the WebSocket upgrade response (Cloudflare allows status 101)
+				return new Response(null, {
+					status: 101,
+					webSocket: client,
+				} as any);
+			}
+
+			return response!;
+		});
 	};
 }
