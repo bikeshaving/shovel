@@ -43,6 +43,7 @@ export function getEntryPoints(
 	const workerCode = `// Cloudflare Worker Entry
 import { config } from "shovel:config";
 import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
+import { ShovelWebSocketDO } from "@b9g/platform-cloudflare/websocket-do";
 
 // Initialize runtime (installs ServiceWorker globals)
 const registration = await initializeRuntime(config);
@@ -52,6 +53,10 @@ await import(${safePath});
 
 // Lifecycle deferred to first request (workerd restriction)
 export default { fetch: createFetchHandler(registration) };
+
+// Durable Object for WebSocket hibernation support
+// Add to wrangler.toml: [[durable_objects.bindings]] name = "SHOVEL_WS" class_name = "ShovelWebSocketDO"
+export { ShovelWebSocketDO };
 `;
 
 	return {worker: workerCode};

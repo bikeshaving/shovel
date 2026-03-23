@@ -87,6 +87,14 @@
       "types": "./dist/src/platform.d.ts",
       "import": "./dist/src/platform.js"
     },
+    "./websocket-do": {
+      "types": "./dist/src/websocket-do.d.ts",
+      "import": "./dist/src/websocket-do.js"
+    },
+    "./websocket-do.js": {
+      "types": "./dist/src/websocket-do.d.ts",
+      "import": "./dist/src/websocket-do.js"
+    },
     "./pubsub": {
       "types": "./dist/src/pubsub.d.ts",
       "import": "./dist/src/pubsub.js"
