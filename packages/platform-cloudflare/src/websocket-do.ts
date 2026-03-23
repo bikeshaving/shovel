@@ -114,11 +114,21 @@ export class ShovelWebSocketDO extends DurableObject {
 		const env = (this.env ?? {}) as Record<string, unknown>;
 
 		return envStorage.run(env, async () => {
+			// Buffer messages sent during the fetch handler (before the real socket exists)
+			const pendingMessages: Array<
+				| {type: "send"; data: string | ArrayBuffer}
+				| {type: "close"; code?: number; reason?: string}
+			> = [];
+
 			const cfEvent = new CloudflareFetchEvent(request, {
 				env,
 				wsRelay: {
-					send() {},
-					close() {},
+					send(_id: string, data: string | ArrayBuffer) {
+						pendingMessages.push({type: "send", data});
+					},
+					close(_id: string, code?: number, reason?: string) {
+						pendingMessages.push({type: "close", code, reason});
+					},
 				},
 			});
 
@@ -137,6 +147,7 @@ export class ShovelWebSocketDO extends DurableObject {
 
 				this.ctx.acceptWebSocket(server);
 
+				// Bind the live relay
 				upgrade.client.setRelay({
 					send(_id: string, data: string | ArrayBuffer) {
 						server.send(data);
@@ -145,6 +156,15 @@ export class ShovelWebSocketDO extends DurableObject {
 						server.close(code ?? 1000, reason ?? "");
 					},
 				});
+
+				// Flush any messages buffered during the fetch handler
+				for (const msg of pendingMessages) {
+					if (msg.type === "send") {
+						server.send(msg.data);
+					} else if (msg.type === "close") {
+						server.close(msg.code ?? 1000, msg.reason ?? "");
+					}
+				}
 
 				this.#shovelClients?.registerWebSocketClient(upgrade.client);
 
@@ -170,6 +190,14 @@ export class ShovelWebSocketDO extends DurableObject {
 		const prev = this.#dispatchQueues.get(connectionID) ?? Promise.resolve();
 		const next = prev
 			.then(() => dispatchWebSocketMessage(registration, client, message))
+			.then(() => {
+				// Persist client.data mutations for hibernation survival
+				(ws as any).serializeAttachment({
+					connectionID: client.id,
+					url: client.url,
+					data: client.data,
+				} satisfies WSAttachment);
+			})
 			.catch((err) => {
 				logger.error("WebSocket message dispatch failed: {error}", {
 					error: err,

@@ -96,7 +96,7 @@ declare global {
 	}
 
 	/**
-	 * WebSocket client accessible from websocketmessage/websocketclose events.
+	 * WebSocket client accessible from wsmessage/wsclose events.
 	 * Created by FetchEvent.upgradeWebSocket().
 	 */
 	interface WebSocketClient extends Client {
@@ -174,8 +174,8 @@ declare global {
 		activate: ExtendableEvent;
 		message: ExtendableMessageEvent;
 		messageerror: MessageEvent;
-		websocketmessage: WebSocketMessageEvent;
-		websocketclose: WebSocketCloseEvent;
+		wsmessage: WebSocketMessageEvent;
+		wsclose: WebSocketCloseEvent;
 	}
 
 	/**

@@ -120,7 +120,7 @@ describe("WebSocketMessageEvent", () => {
 			data: null,
 		});
 		const event = new WebSocketMessageEvent(client, "hello");
-		expect(event.type).toBe("websocketmessage");
+		expect(event.type).toBe("wsmessage");
 		expect(event.source).toBe(client);
 		expect(event.data).toBe("hello");
 	});
@@ -145,7 +145,7 @@ describe("WebSocketCloseEvent", () => {
 			data: null,
 		});
 		const event = new WebSocketCloseEvent(client, 1000, "Normal", true);
-		expect(event.type).toBe("websocketclose");
+		expect(event.type).toBe("wsclose");
 		expect(event.source).toBe(client);
 		expect(event.code).toBe(1000);
 		expect(event.reason).toBe("Normal");
@@ -295,11 +295,11 @@ describe("ShovelClients WebSocket tracking", () => {
 // ============================================================================
 
 describe("WebSocket event dispatch", () => {
-	it("dispatches websocketmessage to registration listeners", async () => {
+	it("dispatches wsmessage to registration listeners", async () => {
 		const registration = new ShovelServiceWorkerRegistration();
 		const received: Array<{data: string | ArrayBuffer; clientId: string}> = [];
 
-		registration.addEventListener("websocketmessage", ((
+		registration.addEventListener("wsmessage", ((
 			event: WebSocketMessageEvent,
 		) => {
 			received.push({data: event.data, clientId: event.source.id});
@@ -320,7 +320,7 @@ describe("WebSocket event dispatch", () => {
 		]);
 	});
 
-	it("dispatches websocketclose to registration listeners", async () => {
+	it("dispatches wsclose to registration listeners", async () => {
 		const registration = new ShovelServiceWorkerRegistration();
 		const received: Array<{
 			code: number;
@@ -328,9 +328,7 @@ describe("WebSocket event dispatch", () => {
 			wasClean: boolean;
 		}> = [];
 
-		registration.addEventListener("websocketclose", ((
-			event: WebSocketCloseEvent,
-		) => {
+		registration.addEventListener("wsclose", ((event: WebSocketCloseEvent) => {
 			received.push({
 				code: event.code,
 				reason: event.reason,
@@ -442,8 +440,8 @@ describe("createDirectModePool", () => {
 			reason?: string;
 		}> = [];
 
-		// Track what the user's websocketmessage handler sends back
-		registration.addEventListener("websocketmessage", ((
+		// Track what the user's wsmessage handler sends back
+		registration.addEventListener("wsmessage", ((
 			event: WebSocketMessageEvent,
 		) => {
 			event.source.send(`Echo: ${event.data}`);
@@ -490,7 +488,7 @@ describe("createDirectModePool", () => {
 		const clientsOne = new ShovelClients();
 		const sentOne: Array<{id: string; data: string | ArrayBuffer}> = [];
 
-		registrationOne.addEventListener("websocketmessage", ((
+		registrationOne.addEventListener("wsmessage", ((
 			event: WebSocketMessageEvent,
 		) => {
 			event.source.send(`one:${event.data}`);
@@ -503,7 +501,7 @@ describe("createDirectModePool", () => {
 		const clientsTwo = new ShovelClients();
 		const sentTwo: Array<{id: string; data: string | ArrayBuffer}> = [];
 
-		registrationTwo.addEventListener("websocketmessage", ((
+		registrationTwo.addEventListener("wsmessage", ((
 			event: WebSocketMessageEvent,
 		) => {
 			event.source.send(`two:${event.data}`);
@@ -587,11 +585,11 @@ self.addEventListener("fetch", (event) => {
 	event.respondWith(new Response("not a websocket"));
 });
 
-self.addEventListener("websocketmessage", (event) => {
+self.addEventListener("wsmessage", (event) => {
 	event.source.send("Echo: " + event.data);
 });
 
-self.addEventListener("websocketclose", (event) => {
+self.addEventListener("wsclose", (event) => {
 	// no-op
 });
 

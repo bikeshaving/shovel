@@ -660,7 +660,7 @@ export function createDatabaseFactory(
 const SERVICE_WORKER_EVENTS = ["fetch", "install", "activate"] as const;
 
 /** Shovel extension event types dispatched on the registration */
-const SHOVEL_EVENTS = ["websocketmessage", "websocketclose"] as const;
+const SHOVEL_EVENTS = ["wsmessage", "wsclose"] as const;
 
 function isRegistrationEvent(type: string): boolean {
 	return (
@@ -1134,7 +1134,7 @@ export class WebSocketMessageEvent extends ShovelExtendableEvent {
 	readonly data: string | ArrayBuffer;
 
 	constructor(source: ShovelWebSocketClient, data: string | ArrayBuffer) {
-		super("websocketmessage");
+		super("wsmessage");
 		this.source = source;
 		this.data = data;
 	}
@@ -1155,7 +1155,7 @@ export class WebSocketCloseEvent extends ShovelExtendableEvent {
 		reason: string,
 		wasClean: boolean,
 	) {
-		super("websocketclose");
+		super("wsclose");
 		this.source = source;
 		this.code = code;
 		this.reason = reason;
