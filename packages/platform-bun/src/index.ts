@@ -394,8 +394,10 @@ export class BunPlatform {
 					if (pool) {
 						if (typeof message === "string") {
 							pool.sendWebSocketMessage(connectionID, message);
+						} else if (message instanceof ArrayBuffer) {
+							pool.sendWebSocketMessage(connectionID, message);
 						} else {
-							// Slice to respect byteOffset/byteLength of the typed array view
+							// Typed array view — slice to respect byteOffset/byteLength
 							const buf = message.buffer.slice(
 								message.byteOffset,
 								message.byteOffset + message.byteLength,
