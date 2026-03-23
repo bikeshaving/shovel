@@ -19,6 +19,7 @@ import {
 	kGetUpgradeResult,
 	dispatchWebSocketMessage,
 	dispatchWebSocketClose,
+	ShovelClients,
 	setBroadcastChannelBackend,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
@@ -146,6 +147,29 @@ export function createFetchHandler(
 	let lifecyclePromise: Promise<void> | null = null;
 	let bcBackendConfigured = false;
 
+	// Get the ShovelClients instance for WebSocket client registration
+	const shovelClients =
+		typeof self !== "undefined" &&
+		(self as any).clients instanceof ShovelClients
+			? ((self as any).clients as ShovelClients)
+			: null;
+
+	// Per-connection dispatch queue to preserve message ordering
+	const dispatchQueues = new Map<string, Promise<void>>();
+
+	// Relay for outbound WebSocket messages (set per-upgrade, closed over by the event)
+	// Each connection gets its own relay bound to its server socket
+	function createRelay(server: WebSocket) {
+		return {
+			send(_id: string, data: string | ArrayBuffer) {
+				server.send(data);
+			},
+			close(_id: string, code?: number, reason?: string) {
+				server.close(code ?? 1000, reason ?? "");
+			},
+		};
+	}
+
 	return async (
 		request: Request,
 		env: unknown,
@@ -169,64 +193,75 @@ export function createFetchHandler(
 			bcBackendConfigured = true;
 		}
 
-		// Create CloudflareFetchEvent with env and waitUntil hook
-		const cfEvent = new CloudflareFetchEvent(request, {
-			env: envRecord,
-			platformWaitUntil: (promise: Promise<unknown>) => ctx.waitUntil(promise),
-		});
-
 		// Run within envStorage for directory factory access
 		return envStorage.run(envRecord, async () => {
+			// Create WebSocketPair eagerly so we can pass the relay into the event.
+			// The relay lets upgradeWebSocket() return a client with working send/close.
+			const pair = new WebSocketPair();
+			const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+			const relay = createRelay(server);
+
+			// Create CloudflareFetchEvent with env, waitUntil, and WebSocket relay
+			const cfEvent = new CloudflareFetchEvent(request, {
+				env: envRecord,
+				platformWaitUntil: (promise: Promise<unknown>) =>
+					ctx.waitUntil(promise),
+				wsRelay: relay,
+			});
+
 			const {response, event: fetchEvent} = await dispatchFetchEvent(
 				registration,
 				cfEvent,
 			);
 
-			// WebSocket upgrade — use Cloudflare's WebSocketPair
+			// WebSocket upgrade — wire up the WebSocketPair
 			const upgrade = fetchEvent[kGetUpgradeResult]?.();
 			if (upgrade) {
-				const pair = new WebSocketPair();
-				const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+				const connectionID = upgrade.client.id;
+
+				// Register with self.clients so clients.get()/matchAll() work
+				shovelClients?.registerWebSocketClient(upgrade.client);
 
 				// Accept the server side to start receiving messages
 				(server as any).accept();
 
-				// Wire incoming messages → dispatch websocketmessage events
+				// Wire incoming messages with ordered dispatch
 				server.addEventListener("message", (msg: MessageEvent) => {
-					dispatchWebSocketMessage(
-						registration,
-						upgrade.client,
-						msg.data,
-					).catch((err) => {
-						logger.error("WebSocket message dispatch failed: {error}", {
-							error: err,
+					const prev = dispatchQueues.get(connectionID) ?? Promise.resolve();
+					const next = prev
+						.then(() =>
+							dispatchWebSocketMessage(registration, upgrade.client, msg.data),
+						)
+						.catch((err) => {
+							logger.error("WebSocket message dispatch failed: {error}", {
+								error: err,
+							});
 						});
-					});
+					dispatchQueues.set(connectionID, next);
 				});
 
-				// Wire close → dispatch websocketclose events
+				// Wire close with ordered dispatch
 				server.addEventListener("close", (evt: CloseEvent) => {
-					dispatchWebSocketClose(
-						registration,
-						upgrade.client,
-						evt.code,
-						evt.reason,
-						evt.wasClean,
-					).catch((err) => {
-						logger.error("WebSocket close dispatch failed: {error}", {
-							error: err,
+					shovelClients?.removeWebSocketClient(connectionID);
+					const prev = dispatchQueues.get(connectionID) ?? Promise.resolve();
+					prev
+						.then(() =>
+							dispatchWebSocketClose(
+								registration,
+								upgrade.client,
+								evt.code,
+								evt.reason,
+								evt.wasClean,
+							),
+						)
+						.catch((err) => {
+							logger.error("WebSocket close dispatch failed: {error}", {
+								error: err,
+							});
+						})
+						.finally(() => {
+							dispatchQueues.delete(connectionID);
 						});
-					});
-				});
-
-				// Wire outbound: ShovelWebSocketClient.send/close → real socket
-				upgrade.client.setRelay({
-					send(_id: string, data: string | ArrayBuffer) {
-						server.send(data);
-					},
-					close(_id: string, code?: number, reason?: string) {
-						server.close(code ?? 1000, reason ?? "");
-					},
 				});
 
 				// Return the WebSocket upgrade response (Cloudflare allows status 101)
