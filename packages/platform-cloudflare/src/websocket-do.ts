@@ -10,7 +10,6 @@ import {
 	ShovelServiceWorkerRegistration,
 	ShovelWebSocketClient,
 	ShovelClients,
-	runLifecycle,
 	dispatchFetchEvent,
 	kGetUpgradeResult,
 	dispatchWebSocketMessage,
@@ -51,14 +50,12 @@ interface WSAttachment {
 export class ShovelWebSocketDO extends DurableObject {
 	#registration: ShovelServiceWorkerRegistration | null;
 	#shovelClients: ShovelClients | null;
-	#lifecyclePromise: Promise<void> | null;
 	#dispatchQueues: Map<string, Promise<void>>;
 
 	constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
 		super(ctx, env as any);
 		this.#registration = null;
 		this.#shovelClients = null;
-		this.#lifecyclePromise = null;
 		this.#dispatchQueues = new Map();
 	}
 
@@ -78,10 +75,9 @@ export class ShovelWebSocketDO extends DurableObject {
 			);
 		}
 
-		if (!this.#lifecyclePromise) {
-			this.#lifecyclePromise = runLifecycle(this.#registration, "activate");
-		}
-		await this.#lifecyclePromise;
+		// Skip lifecycle — the Worker's createFetchHandler already ran
+		// runLifecycle(registration, "activate") before forwarding to this DO.
+		// Re-running would throw since the registration is already activated.
 
 		this.#shovelClients =
 			typeof self !== "undefined" &&
