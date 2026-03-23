@@ -661,7 +661,7 @@ export class ServiceWorkerPool {
 
 			case "ws:close": {
 				// Close the real socket — the adapter's close callback will call
-				// sendWebSocketClose() which routes websocketclose back to the worker
+				// sendWebSocketClose() which routes wsclose back to the worker
 				// and cleans up #wsConnections.
 				if (this.#wsCloseCallback) {
 					this.#wsCloseCallback(
@@ -1024,7 +1024,7 @@ export class ServiceWorkerPool {
 		for (const [connectionID, conn] of this.#wsConnections) {
 			if (conn.worker === worker) {
 				// Close the real socket first and let the normal adapter close path
-				// deliver websocketclose while ownership is still tracked.
+				// deliver wsclose while ownership is still tracked.
 				if (this.#wsCloseCallback) {
 					this.#wsCloseCallback(connectionID, 1012, "Service Restart");
 				}
