@@ -20,7 +20,6 @@ import {
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
 
-// runLifecycle is used internally by createFetchHandler (not re-exported)
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
@@ -164,6 +163,19 @@ export function createFetchHandler(
 			bcBackendConfigured = true;
 		}
 
+		// Route WebSocket upgrades to Durable Object for hibernation support
+		if (
+			request.headers.get("upgrade")?.toLowerCase() === "websocket" &&
+			envRecord.SHOVEL_WS
+		) {
+			const ns = envRecord.SHOVEL_WS as DurableObjectNamespace;
+			// Use a consistent ID so all connections share the same DO instance
+			// (users can customize routing by overriding this handler)
+			const id = ns.idFromName("default");
+			const stub = ns.get(id);
+			return stub.fetch(request);
+		}
+
 		// Create CloudflareFetchEvent with env and waitUntil hook
 		const event = new CloudflareFetchEvent(request, {
 			env: envRecord,
@@ -175,4 +187,13 @@ export function createFetchHandler(
 			dispatchRequest(registration, event),
 		);
 	};
+}
+
+/**
+ * Get the module-level registration singleton.
+ * Used by ShovelWebSocketDO after hibernation wake-up.
+ * @internal
+ */
+export function _getRegistration(): ShovelServiceWorkerRegistration | null {
+	return _registration;
 }

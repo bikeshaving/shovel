@@ -656,11 +656,17 @@ export function createDatabaseFactory(
 // ServiceWorker Event Constants
 // ============================================================================
 
-/** ServiceWorker-specific event types that go to registration instead of native handler */
+/** Standard ServiceWorker event types (W3C spec) */
 const SERVICE_WORKER_EVENTS = ["fetch", "install", "activate"] as const;
 
-function isServiceWorkerEvent(type: string): boolean {
-	return (SERVICE_WORKER_EVENTS as readonly string[]).includes(type);
+/** Shovel extension event types dispatched on the registration */
+const SHOVEL_EVENTS = ["wsmessage", "wsclose"] as const;
+
+function isRegistrationEvent(type: string): boolean {
+	return (
+		(SERVICE_WORKER_EVENTS as readonly string[]).includes(type) ||
+		(SHOVEL_EVENTS as readonly string[]).includes(type)
+	);
 }
 
 // Set MODE from NODE_ENV for Vite compatibility
@@ -821,7 +827,15 @@ export interface ShovelFetchEventInit extends EventInit {
 	 * (e.g., Cloudflare's ctx.waitUntil)
 	 */
 	platformWaitUntil?: (promise: Promise<unknown>) => void;
+	/**
+	 * WebSocket relay to attach to clients created by upgradeWebSocket().
+	 * Used by direct-mode pools so send()/close() work inside the fetch handler.
+	 */
+	wsRelay?: WebSocketRelay | null;
 }
+
+/** @internal Symbol for accessing WebSocket upgrade result from ShovelFetchEvent */
+export const kGetUpgradeResult = Symbol("getUpgradeResult");
 
 /**
  * Shovel's FetchEvent implementation.
@@ -842,6 +856,11 @@ export class ShovelFetchEvent
 	#responsePromise: Promise<Response> | null;
 	#responded: boolean;
 	#platformWaitUntil?: (promise: Promise<unknown>) => void;
+	#wsRelay: WebSocketRelay | null;
+	#upgradeResult: {
+		client: ShovelWebSocketClient;
+		connectionID: string;
+	} | null;
 
 	constructor(request: Request, options?: ShovelFetchEventInit) {
 		super("fetch", options);
@@ -854,6 +873,8 @@ export class ShovelFetchEvent
 		this.#responsePromise = null;
 		this.#responded = false;
 		this.#platformWaitUntil = options?.platformWaitUntil;
+		this.#wsRelay = options?.wsRelay ?? null;
+		this.#upgradeResult = null;
 	}
 
 	override waitUntil(promise: Promise<any>): void {
@@ -894,6 +915,49 @@ export class ShovelFetchEvent
 		return this.#responded;
 	}
 
+	/**
+	 * Upgrade this request to a WebSocket connection.
+	 * Must be called synchronously during fetch event dispatch.
+	 */
+	upgradeWebSocket(options?: {data?: any}): ShovelWebSocketClient {
+		if (this.#responded) {
+			throw new Error(
+				"Cannot upgradeWebSocket() after respondWith() or upgradeWebSocket() was already called",
+			);
+		}
+
+		// Must be called synchronously during dispatch, same as respondWith()
+		if (!this[kCanExtend]()) {
+			throw new DOMException(
+				"upgradeWebSocket() must be called synchronously during event dispatch",
+				"InvalidStateError",
+			);
+		}
+
+		const connectionID = crypto.randomUUID();
+		const client = new ShovelWebSocketClient({
+			id: connectionID,
+			url: this.request.url,
+			data: options?.data,
+			relay: this.#wsRelay,
+		});
+
+		this.#upgradeResult = {client, connectionID};
+
+		// Mark as handled — there is no HTTP response for an upgrade
+		this.#responded = true;
+
+		return client;
+	}
+
+	/** @internal Get upgrade result if upgradeWebSocket() was called */
+	[kGetUpgradeResult](): {
+		client: ShovelWebSocketClient;
+		connectionID: string;
+	} | null {
+		return this.#upgradeResult;
+	}
+
 	/** The URL of the request (convenience property) */
 	get url(): string {
 		return this.request.url;
@@ -917,6 +981,7 @@ export class ShovelActivateEvent extends ShovelExtendableEvent {
 		super("activate", eventInitDict);
 	}
 }
+
 // ============================================================================
 // ServiceWorker API Implementation
 // ============================================================================
@@ -991,22 +1056,138 @@ export class ShovelWindowClient extends ShovelClient implements WindowClient {
 	}
 }
 
+// ============================================================================
+// WebSocket Events (Shovel extensions)
+// ============================================================================
+
+interface WebSocketRelay {
+	send: (connectionID: string, data: string | ArrayBuffer) => void;
+	close: (connectionID: string, code?: number, reason?: string) => void;
+}
+
+/** Module-level relay for WebSocket send/close (set by startWorkerMessageLoop) */
+let wsRelay: WebSocketRelay | null = null;
+
+/**
+ * Set the relay functions for WebSocket message forwarding.
+ * Called by startWorkerMessageLoop (multi-worker) or platform-specific direct mode code.
+ */
+export function setWebSocketRelay(relay: WebSocketRelay): void {
+	wsRelay = relay;
+}
+
+/**
+ * ShovelWebSocketClient - Represents a WebSocket connection in the worker.
+ *
+ * Created by FetchEvent.upgradeWebSocket(). Provides send/close methods
+ * that relay to the real socket via postMessage or direct dispatch.
+ */
+export class ShovelWebSocketClient extends ShovelClient {
+	/** Arbitrary user data attached during upgradeWebSocket(), persists across events */
+	data: any;
+	#relay: WebSocketRelay | null;
+
+	constructor(options: {
+		id: string;
+		url: string;
+		data?: any;
+		relay?: WebSocketRelay | null;
+	}) {
+		super({...options, type: "worker"});
+		this.data = options.data;
+		this.#relay = options.relay ?? null;
+	}
+
+	/** @internal Bind this client to a platform relay */
+	setRelay(relay: WebSocketRelay): void {
+		this.#relay = relay;
+	}
+
+	/** Send a message to the connected WebSocket client */
+	send(data: string | ArrayBuffer): void {
+		const relay = this.#relay ?? wsRelay;
+		if (!relay) {
+			throw new Error(
+				"WebSocket relay not initialized. send() can only be called inside a worker.",
+			);
+		}
+		relay.send(this.id, data);
+	}
+
+	/** Close the WebSocket connection */
+	close(code?: number, reason?: string): void {
+		const relay = this.#relay ?? wsRelay;
+		if (!relay) {
+			throw new Error(
+				"WebSocket relay not initialized. close() can only be called inside a worker.",
+			);
+		}
+		relay.close(this.id, code, reason);
+	}
+}
+
+/**
+ * WebSocketMessageEvent - Dispatched when a WebSocket message is received.
+ */
+export class WebSocketMessageEvent extends ShovelExtendableEvent {
+	readonly source: ShovelWebSocketClient;
+	readonly data: string | ArrayBuffer;
+
+	constructor(source: ShovelWebSocketClient, data: string | ArrayBuffer) {
+		super("wsmessage");
+		this.source = source;
+		this.data = data;
+	}
+}
+
+/**
+ * WebSocketCloseEvent - Dispatched when a WebSocket connection closes.
+ */
+export class WebSocketCloseEvent extends ShovelExtendableEvent {
+	readonly source: ShovelWebSocketClient;
+	readonly code: number;
+	readonly reason: string;
+	readonly wasClean: boolean;
+
+	constructor(
+		source: ShovelWebSocketClient,
+		code: number,
+		reason: string,
+		wasClean: boolean,
+	) {
+		super("wsclose");
+		this.source = source;
+		this.code = code;
+		this.reason = reason;
+		this.wasClean = wasClean;
+	}
+}
+
 /**
  * ShovelClients - Internal implementation of Clients for Shovel runtime
  * Note: Standard Clients has no constructor - instances are created internally
  */
 export class ShovelClients implements Clients {
+	#websocketClients: Map<string, ShovelWebSocketClient>;
+
+	constructor() {
+		this.#websocketClients = new Map();
+	}
+
 	async claim(): Promise<void> {
 		// No-op: HTTP servers don't have persistent clients to claim
 	}
 
-	async get(_id: string): Promise<Client | undefined> {
-		return undefined;
+	async get(id: string): Promise<Client | undefined> {
+		return this.#websocketClients.get(id);
 	}
 
 	async matchAll<T extends ClientQueryOptions>(
-		_options?: T,
+		options?: T,
 	): Promise<readonly (T["type"] extends "window" ? WindowClient : Client)[]> {
+		if ((options as any)?.type === "websocket") {
+			return [...this.#websocketClients.values()] as any;
+		}
 		return [] as readonly (T["type"] extends "window"
 			? WindowClient
 			: Client)[];
@@ -1017,6 +1198,21 @@ export class ShovelClients implements Clients {
 			.open("platform")
 			.warn("Clients.openWindow() not supported in server context");
 		return null;
+	}
+
+	/** @internal Get a WebSocket client by ID (synchronous) */
+	getWebSocketClient(id: string): ShovelWebSocketClient | undefined {
+		return this.#websocketClients.get(id);
+	}
+
+	/** @internal Register a WebSocket client connection */
+	registerWebSocketClient(client: ShovelWebSocketClient): void {
+		this.#websocketClients.set(client.id, client);
+	}
+
+	/** @internal Remove a WebSocket client connection */
+	removeWebSocketClient(id: string): void {
+		this.#websocketClients.delete(id);
 	}
 }
 
@@ -1331,7 +1527,7 @@ export class ShovelServiceWorkerRegistration
 	 *
 	 * @param event - The fetch event to handle (created by platform adapter)
 	 */
-	async [kHandleRequest](event: ShovelFetchEvent): Promise<Response> {
+	async [kHandleRequest](event: ShovelFetchEvent): Promise<Response | null> {
 		// Allow fetch during any lifecycle state after parsing (installing, installed,
 		// activating, activated). This enables fetch() during install/activate handlers
 		// for use cases like SSG cache warming. Fetch handlers are registered during
@@ -1356,6 +1552,11 @@ export class ShovelServiceWorkerRegistration
 					"No response provided for fetch event. " +
 						"respondWith() must be called synchronously during event dispatch.",
 				);
+			}
+
+			// WebSocket upgrades have no HTTP response
+			if (event[kGetUpgradeResult]?.()) {
+				return null;
 			}
 
 			// Get the response (may be a Promise)
@@ -1445,6 +1646,16 @@ export async function runLifecycle(
  * const response = await dispatchRequest(registration, event);
  * ```
  */
+/**
+ * Result of dispatchFetchEvent() — either a Response or a WebSocket upgrade.
+ */
+export interface DispatchFetchResult {
+	/** The HTTP response, or null if the request was upgraded to WebSocket */
+	response: Response | null;
+	/** The fetch event (use kGetUpgradeResult to check for WebSocket upgrade) */
+	event: ShovelFetchEvent;
+}
+
 export async function dispatchRequest(
 	registration: ShovelServiceWorkerRegistration,
 	requestOrEvent: Request | ShovelFetchEvent,
@@ -1453,7 +1664,158 @@ export async function dispatchRequest(
 		requestOrEvent instanceof ShovelFetchEvent
 			? requestOrEvent
 			: new ShovelFetchEvent(requestOrEvent);
-	return registration[kHandleRequest](event);
+	const response = await registration[kHandleRequest](event);
+	if (response === null) {
+		throw new Error(
+			"Cannot use dispatchRequest() with WebSocket upgrades. " +
+				"Use dispatchFetchEvent() instead to handle upgrade results.",
+		);
+	}
+	return response;
+}
+
+/**
+ * Dispatch a fetch event and return both the response and event.
+ * Use this instead of dispatchRequest() when you need to detect WebSocket upgrades.
+ */
+export async function dispatchFetchEvent(
+	registration: ShovelServiceWorkerRegistration,
+	requestOrEvent: Request | ShovelFetchEvent,
+	options?: ShovelFetchEventInit,
+): Promise<DispatchFetchResult> {
+	const event =
+		requestOrEvent instanceof ShovelFetchEvent
+			? requestOrEvent
+			: new ShovelFetchEvent(requestOrEvent, options);
+	const response = await registration[kHandleRequest](event);
+	return {response, event};
+}
+
+/**
+ * Dispatch a WebSocket message event to a ServiceWorker registration.
+ */
+export async function dispatchWebSocketMessage(
+	registration: ShovelServiceWorkerRegistration,
+	client: ShovelWebSocketClient,
+	data: string | ArrayBuffer,
+): Promise<void> {
+	const event = new WebSocketMessageEvent(client, data);
+	registration.dispatchEvent(event);
+	event[kEndDispatchPhase]();
+	await Promise.all(event.getPromises());
+}
+
+/**
+ * Dispatch a WebSocket close event to a ServiceWorker registration.
+ */
+export async function dispatchWebSocketClose(
+	registration: ShovelServiceWorkerRegistration,
+	client: ShovelWebSocketClient,
+	code: number,
+	reason: string,
+	wasClean: boolean,
+): Promise<void> {
+	const event = new WebSocketCloseEvent(client, code, reason, wasClean);
+	registration.dispatchEvent(event);
+	event[kEndDispatchPhase]();
+	await Promise.all(event.getPromises());
+}
+
+/**
+ * Create a pool-compatible adapter for direct mode (single worker, no message passing).
+ * Returns an object with the same WebSocket interface as ServiceWorkerPool,
+ * so platform createServer() can handle upgrades without knowing the mode.
+ */
+export function createDirectModePool(
+	registration: ShovelServiceWorkerRegistration,
+	clients: ShovelClients,
+) {
+	const logger = getLogger(["shovel", "platform"]);
+	// Per-connection dispatch queue to preserve message ordering
+	const dispatchQueues = new Map<string, Promise<void>>();
+	let sendCallback:
+		| ((connectionID: string, data: string | ArrayBuffer) => void)
+		| null = null;
+	let closeCallback:
+		| ((connectionID: string, code?: number, reason?: string) => void)
+		| null = null;
+	const relay: WebSocketRelay = {
+		send(connectionID: string, data: string | ArrayBuffer) {
+			sendCallback?.(connectionID, data);
+		},
+		close(connectionID: string, code?: number, reason?: string) {
+			closeCallback?.(connectionID, code, reason);
+		},
+	};
+
+	return {
+		async handleRequest(
+			request: Request,
+		): Promise<Response | {upgrade: true; connectionID: string}> {
+			const {response, event} = await dispatchFetchEvent(
+				registration,
+				request,
+				{wsRelay: relay},
+			);
+			const upgrade = event[kGetUpgradeResult]();
+			if (upgrade) {
+				clients.registerWebSocketClient(upgrade.client);
+				return {upgrade: true, connectionID: upgrade.connectionID};
+			}
+			return response!;
+		},
+		setWebSocketHandlers(handlers: {
+			send: (connectionID: string, data: string | ArrayBuffer) => void;
+			close: (connectionID: string, code?: number, reason?: string) => void;
+		}) {
+			sendCallback = handlers.send;
+			closeCallback = handlers.close;
+		},
+		sendWebSocketMessage(connectionID: string, data: string | ArrayBuffer) {
+			const client = clients.getWebSocketClient(connectionID);
+			if (client) {
+				const prev = dispatchQueues.get(connectionID) ?? Promise.resolve();
+				const next = prev
+					.then(() => dispatchWebSocketMessage(registration, client, data))
+					.catch((err) => {
+						logger.error("WebSocket message dispatch failed: {error}", {
+							error: err,
+						});
+					});
+				dispatchQueues.set(connectionID, next);
+			}
+		},
+		sendWebSocketClose(
+			connectionID: string,
+			code: number,
+			reason: string,
+			wasClean: boolean,
+		) {
+			const client = clients.getWebSocketClient(connectionID);
+			if (client) {
+				clients.removeWebSocketClient(connectionID);
+				const prev = dispatchQueues.get(connectionID) ?? Promise.resolve();
+				prev
+					.then(() =>
+						dispatchWebSocketClose(
+							registration,
+							client,
+							code,
+							reason,
+							wasClean,
+						),
+					)
+					.catch((err) => {
+						logger.error("WebSocket close dispatch failed: {error}", {
+							error: err,
+						});
+					})
+					.finally(() => {
+						dispatchQueues.delete(connectionID);
+					});
+			}
+		},
+	};
 }
 
 /**
@@ -2080,7 +2442,7 @@ export class ServiceWorkerGlobals {
 	): void {
 		if (!listener) return;
 
-		if (isServiceWorkerEvent(type)) {
+		if (isRegistrationEvent(type)) {
 			this.registration.addEventListener(type, listener, options);
 		} else {
 			// Other events (e.g., "message" for worker threads) go to native
@@ -2099,7 +2461,7 @@ export class ServiceWorkerGlobals {
 	): void {
 		if (!listener) return;
 
-		if (isServiceWorkerEvent(type)) {
+		if (isRegistrationEvent(type)) {
 			this.registration.removeEventListener(type, listener, options);
 		} else {
 			const original = this.#originals
@@ -2111,7 +2473,7 @@ export class ServiceWorkerGlobals {
 	}
 
 	dispatchEvent(event: Event): boolean {
-		if (isServiceWorkerEvent(event.type)) {
+		if (isRegistrationEvent(event.type)) {
 			return this.registration.dispatchEvent(event);
 		}
 		// Other events go to native
@@ -2419,6 +2781,8 @@ export interface InitWorkerRuntimeResult {
 	databases?: CustomDatabaseStorage;
 	/** Logger storage instance */
 	loggers: CustomLoggerStorage;
+	/** Clients API instance (for WebSocket client tracking) */
+	clients: ShovelClients;
 }
 
 /**
@@ -2507,7 +2871,15 @@ export async function initWorkerRuntime(
 
 	runtimeLogger.debug("Worker runtime initialized");
 
-	return {registration, scope, caches, directories, databases, loggers};
+	return {
+		registration,
+		scope,
+		caches,
+		directories,
+		databases,
+		loggers,
+		clients: scope.clients as unknown as ShovelClients,
+	};
 }
 
 /**
@@ -2542,6 +2914,18 @@ export function startWorkerMessageLoop(
 	const messageLogger = getLogger(["shovel", "platform"]);
 	const workerId = Math.random().toString(36).substring(2, 8);
 
+	// Track WebSocket connections in this worker
+	const wsClients = new Map<string, ShovelWebSocketClient>();
+	// Per-connection dispatch queue to preserve message ordering
+	const wsDispatchQueues = new Map<string, Promise<void>>();
+
+	// Get the ShovelClients instance from self.clients (installed by ServiceWorkerGlobals)
+	const shovelClients =
+		typeof self !== "undefined" &&
+		(self as any).clients instanceof ShovelClients
+			? ((self as any).clients as ShovelClients)
+			: null;
+
 	/**
 	 * Send a message to the main thread
 	 */
@@ -2552,6 +2936,23 @@ export function startWorkerMessageLoop(
 			postMessage(message);
 		}
 	}
+
+	// Set up WebSocket relay so client.send/close relay via postMessage
+	setWebSocketRelay({
+		send(connectionID: string, data: string | ArrayBuffer) {
+			if (typeof data === "string") {
+				sendMessage({type: "ws:send", connectionID, data});
+			} else {
+				sendMessage(
+					{type: "ws:send", connectionID, data},
+					[data], // zero-copy transfer
+				);
+			}
+		},
+		close(connectionID: string, code?: number, reason?: string) {
+			sendMessage({type: "ws:close", connectionID, code, reason});
+		},
+	});
 
 	/**
 	 * Handle a fetch request
@@ -2566,13 +2967,32 @@ export function startWorkerMessageLoop(
 				body: message.request.body,
 			});
 
-			const response = await dispatchRequest(registration, request);
+			const {response, event} = await dispatchFetchEvent(registration, request);
+
+			// Check if this was a WebSocket upgrade
+			const upgradeResult = event[kGetUpgradeResult]();
+			if (upgradeResult) {
+				const {client, connectionID} = upgradeResult;
+				wsClients.set(connectionID, client);
+				shovelClients?.registerWebSocketClient(client);
+				sendMessage({
+					type: "ws:upgrade",
+					connectionID,
+					data: client.data,
+					requestID: message.requestID,
+				});
+				return;
+			}
+
+			// Non-upgrade path: response is always non-null here
+			// (upgrade case returns early above)
+			const httpResponse = response!;
 
 			// Use arrayBuffer for zero-copy transfer
-			const body = await response.arrayBuffer();
+			const body = await httpResponse.arrayBuffer();
 
 			// Ensure Content-Type is preserved
-			const headers = Object.fromEntries(response.headers.entries());
+			const headers = Object.fromEntries(httpResponse.headers.entries());
 			if (!headers["Content-Type"] && !headers["content-type"]) {
 				headers["Content-Type"] = "text/plain; charset=utf-8";
 			}
@@ -2580,8 +3000,8 @@ export function startWorkerMessageLoop(
 			const responseMsg: WorkerResponseMessage = {
 				type: "response",
 				response: {
-					status: response.status,
-					statusText: response.statusText,
+					status: httpResponse.status,
+					statusText: httpResponse.statusText,
 					headers,
 					body,
 				},
@@ -2627,6 +3047,58 @@ export function startWorkerMessageLoop(
 					error,
 				});
 			});
+			return;
+		}
+
+		// Handle WebSocket message from main thread
+		if (message?.type === "ws:message") {
+			const client = wsClients.get(message.connectionID);
+			if (client) {
+				const connID = message.connectionID as string;
+				const prev = wsDispatchQueues.get(connID) ?? Promise.resolve();
+				const next = prev
+					.then(() =>
+						dispatchWebSocketMessage(registration, client, message.data),
+					)
+					.catch((error) => {
+						messageLogger.error(
+							`[Worker-${workerId}] WebSocket message dispatch failed: {error}`,
+							{error},
+						);
+					});
+				wsDispatchQueues.set(connID, next);
+			}
+			return;
+		}
+
+		// Handle WebSocket close from main thread
+		if (message?.type === "ws:close") {
+			const client = wsClients.get(message.connectionID);
+			if (client) {
+				const connID = message.connectionID as string;
+				wsClients.delete(connID);
+				shovelClients?.removeWebSocketClient(connID);
+				const prev = wsDispatchQueues.get(connID) ?? Promise.resolve();
+				prev
+					.then(() =>
+						dispatchWebSocketClose(
+							registration,
+							client,
+							message.code ?? 1005,
+							message.reason ?? "",
+							message.wasClean ?? false,
+						),
+					)
+					.catch((error) => {
+						messageLogger.error(
+							`[Worker-${workerId}] WebSocket close dispatch failed: {error}`,
+							{error},
+						);
+					})
+					.finally(() => {
+						wsDispatchQueues.delete(connID);
+					});
+			}
 			return;
 		}
 
