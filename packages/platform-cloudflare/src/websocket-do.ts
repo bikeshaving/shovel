@@ -10,6 +10,7 @@ import {
 	ShovelServiceWorkerRegistration,
 	ShovelWebSocketClient,
 	ShovelClients,
+	runLifecycle,
 	dispatchFetchEvent,
 	kGetUpgradeResult,
 	dispatchWebSocketMessage,
@@ -75,9 +76,13 @@ export class ShovelWebSocketDO extends DurableObject {
 			);
 		}
 
-		// Skip lifecycle — the Worker's createFetchHandler already ran
-		// runLifecycle(registration, "activate") before forwarding to this DO.
-		// Re-running would throw since the registration is already activated.
+		// Run lifecycle if needed. On the initial request, the Worker already
+		// activated before forwarding to this DO. But after hibernation wake-up,
+		// the module is re-evaluated with a fresh registration that hasn't been
+		// activated in this isolate.
+		if (!this.#registration.ready) {
+			await runLifecycle(this.#registration, "activate");
+		}
 
 		this.#shovelClients =
 			typeof self !== "undefined" &&
@@ -179,13 +184,18 @@ export class ShovelWebSocketDO extends DurableObject {
 		message: string | ArrayBuffer,
 	): Promise<void> {
 		const registration = await this.#ensureRuntime();
+		const env = (this.env ?? {}) as Record<string, unknown>;
 		const client = this.#clientFromSocket(ws);
 		this.#shovelClients?.registerWebSocketClient(client);
 
 		const connectionID = client.id;
 		const prev = this.#dispatchQueues.get(connectionID) ?? Promise.resolve();
 		const next = prev
-			.then(() => dispatchWebSocketMessage(registration, client, message))
+			.then(() =>
+				envStorage.run(env, () =>
+					dispatchWebSocketMessage(registration, client, message),
+				),
+			)
 			.then(() => {
 				// Persist client.data mutations for hibernation survival
 				(ws as any).serializeAttachment({
@@ -209,13 +219,16 @@ export class ShovelWebSocketDO extends DurableObject {
 		wasClean: boolean,
 	): Promise<void> {
 		const registration = await this.#ensureRuntime();
+		const env = (this.env ?? {}) as Record<string, unknown>;
 		const client = this.#clientFromSocket(ws);
 
 		const connectionID = client.id;
 		const prev = this.#dispatchQueues.get(connectionID) ?? Promise.resolve();
 		prev
 			.then(() =>
-				dispatchWebSocketClose(registration, client, code, reason, wasClean),
+				envStorage.run(env, () =>
+					dispatchWebSocketClose(registration, client, code, reason, wasClean),
+				),
 			)
 			.catch((err) => {
 				logger.error("WebSocket close dispatch failed: {error}", {
