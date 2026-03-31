@@ -90,6 +90,16 @@ export class ShovelWebSocketDO extends DurableObject {
 				? ((self as any).clients as ShovelClients)
 				: null;
 
+		// Rehydrate all existing WebSocket connections from hibernation storage.
+		// After wake-up, ctx.getWebSockets() returns all accepted sockets but
+		// self.clients is empty. Rebuild so matchAll/get see all connections.
+		if (this.#shovelClients) {
+			for (const ws of this.ctx.getWebSockets()) {
+				const client = this.#clientFromSocket(ws);
+				this.#shovelClients.registerWebSocketClient(client);
+			}
+		}
+
 		return this.#registration;
 	}
 
@@ -123,6 +133,8 @@ export class ShovelWebSocketDO extends DurableObject {
 
 			const cfEvent = new CloudflareFetchEvent(request, {
 				env,
+				platformWaitUntil: (promise: Promise<unknown>) =>
+					this.ctx.waitUntil(promise),
 				wsRelay: {
 					send(_id: string, data: string | ArrayBuffer) {
 						pendingMessages.push({type: "send", data});
