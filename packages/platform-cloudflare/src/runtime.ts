@@ -164,14 +164,12 @@ export function createFetchHandler(
 		}
 
 		// Route WebSocket upgrades to Durable Object for hibernation support
-		if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
-			if (!envRecord.SHOVEL_WS) {
-				return new Response(
-					"WebSocket support requires SHOVEL_WS Durable Object binding. " +
-						'Add to wrangler.toml: [[durable_objects.bindings]] name = "SHOVEL_WS" class_name = "ShovelWebSocketDO"',
-					{status: 501},
-				);
-			}
+		// Only intercept when SHOVEL_WS binding is configured — otherwise
+		// let the request reach user code (for manual WebSocketPair usage)
+		if (
+			request.headers.get("upgrade")?.toLowerCase() === "websocket" &&
+			envRecord.SHOVEL_WS
+		) {
 			const ns = envRecord.SHOVEL_WS as DurableObjectNamespace;
 			const id = ns.idFromName("default");
 			const stub = ns.get(id);
