@@ -243,7 +243,20 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
+	[Symbol.asyncIterator](): any {
+		return this.entries();
+	}
+	entries(): any {
+		return this.#generateEntries();
+	}
+	keys(): any {
+		return this.#generateKeys();
+	}
+	values(): any {
+		return this.#generateValues();
+	}
+
+	async *#generateEntries() {
 		const listPrefix = this.#prefix ? `${this.#prefix}/` : "";
 
 		try {
@@ -262,7 +275,7 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 						yield [
 							name,
 							new R2FileSystemFileHandle(this.#r2Bucket, object.key),
-						];
+						] as [string, FileSystemHandle];
 					}
 				}
 			}
@@ -276,7 +289,7 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 							this.#r2Bucket,
 							prefix.replace(/\/$/, ""),
 						),
-					];
+					] as [string, FileSystemHandle];
 				}
 			}
 		} catch (error) {
@@ -284,13 +297,13 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		}
 	}
 
-	async *keys(): AsyncIterableIterator<string> {
+	async *#generateKeys() {
 		for await (const [name] of this.entries()) {
 			yield name;
 		}
 	}
 
-	async *values(): AsyncIterableIterator<FileSystemHandle> {
+	async *#generateValues() {
 		for await (const [, handle] of this.entries()) {
 			yield handle;
 		}
@@ -426,32 +439,29 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	// eslint-disable-next-line require-yield
-	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
+	[Symbol.asyncIterator](): any {
+		return this.entries();
+	}
+
+	entries(): any {
 		throw new DOMException(
 			"Directory listing not supported for ASSETS binding. Use an asset manifest for enumeration.",
 			"NotSupportedError",
 		);
 	}
 
-	// eslint-disable-next-line require-yield
-	async *keys(): AsyncIterableIterator<string> {
+	keys(): any {
 		throw new DOMException(
 			"Directory listing not supported for ASSETS binding",
 			"NotSupportedError",
 		);
 	}
 
-	// eslint-disable-next-line require-yield
-	async *values(): AsyncIterableIterator<FileSystemHandle> {
+	values(): any {
 		throw new DOMException(
 			"Directory listing not supported for ASSETS binding",
 			"NotSupportedError",
 		);
-	}
-
-	[Symbol.asyncIterator](): AsyncIterableIterator<[string, FileSystemHandle]> {
-		return this.entries();
 	}
 
 	isSameEntry(other: FileSystemHandle): Promise<boolean> {

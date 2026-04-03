@@ -315,7 +315,23 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	async *entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
+	// TS 5.6+ changed the async iterator return types on FileSystemDirectoryHandle
+	// to a branded type that async generators can't produce. The `any` return types
+	// let `implements` check all other methods while keeping runtime behavior correct.
+	[Symbol.asyncIterator](): any {
+		return this.entries();
+	}
+	entries(): any {
+		return this.#generateEntries();
+	}
+	keys(): any {
+		return this.#generateKeys();
+	}
+	values(): any {
+		return this.#generateValues();
+	}
+
+	async *#generateEntries() {
 		const listPrefix = this.#prefix ? `${this.#prefix}/` : "";
 
 		try {
@@ -378,13 +394,13 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		}
 	}
 
-	async *keys(): AsyncIterableIterator<string> {
+	async *#generateKeys() {
 		for await (const [name] of this.entries()) {
 			yield name;
 		}
 	}
 
-	async *values(): AsyncIterableIterator<FileSystemHandle> {
+	async *#generateValues() {
 		for await (const [, handle] of this.entries()) {
 			yield handle;
 		}
