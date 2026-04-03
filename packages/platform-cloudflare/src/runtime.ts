@@ -15,7 +15,10 @@ import {
 	createCacheFactory,
 	createDirectoryFactory,
 	runLifecycle,
-	dispatchRequest,
+	dispatchFetchEvent,
+	kGetUpgradeResult,
+	dispatchWebSocketMessage,
+	dispatchWebSocketClose,
 	setBroadcastChannelBackend,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
@@ -185,9 +188,53 @@ export function createFetchHandler(
 		});
 
 		// Run within envStorage for directory factory access
-		return envStorage.run(envRecord, () =>
-			dispatchRequest(registration, event),
-		);
+		return envStorage.run(envRecord, async () => {
+			const {response, event: fetchEvent} = await dispatchFetchEvent(
+				registration,
+				event,
+			);
+
+			// Handle WebSocket upgrade without DO (non-hibernation fallback)
+			const upgrade = fetchEvent[kGetUpgradeResult]?.();
+			if (upgrade) {
+				const pair = new WebSocketPair();
+				const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+				(server as any).accept();
+
+				server.addEventListener("message", (msg: MessageEvent) => {
+					dispatchWebSocketMessage(
+						registration,
+						upgrade.client,
+						msg.data,
+					).catch(() => {});
+				});
+				server.addEventListener("close", (evt: CloseEvent) => {
+					dispatchWebSocketClose(
+						registration,
+						upgrade.client,
+						evt.code,
+						evt.reason,
+						evt.wasClean,
+					).catch(() => {});
+				});
+
+				upgrade.client.setRelay({
+					send(_id: string, data: string | ArrayBuffer) {
+						server.send(data);
+					},
+					close(_id: string, code?: number, reason?: string) {
+						server.close(code ?? 1000, reason ?? "");
+					},
+				});
+
+				return new Response(null, {
+					status: 101,
+					webSocket: client,
+				} as any);
+			}
+
+			return response!;
+		});
 	};
 }
 

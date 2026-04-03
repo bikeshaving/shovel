@@ -197,24 +197,30 @@ export class ShovelWebSocketDO extends DurableObject {
 	): Promise<void> {
 		const registration = await this.#ensureRuntime();
 		const env = (this.env ?? {}) as Record<string, unknown>;
-		const client = this.#clientFromSocket(ws);
-		this.#shovelClients?.registerWebSocketClient(client);
+		// Read connectionID from attachment for queue key, but defer full
+		// client reconstruction until after previous dispatch completes
+		// so we get the latest client.data after prior mutations.
+		const attachment = (ws as any).deserializeAttachment() as WSAttachment;
+		const connectionID = attachment.connectionID;
 
-		const connectionID = client.id;
 		const prev = this.#dispatchQueues.get(connectionID) ?? Promise.resolve();
 		const next = prev
-			.then(() =>
-				envStorage.run(env, () =>
-					dispatchWebSocketMessage(registration, client, message),
-				),
-			)
 			.then(() => {
-				// Persist client.data mutations for hibernation survival
-				(ws as any).serializeAttachment({
-					connectionID: client.id,
-					url: client.url,
-					data: client.data,
-				} satisfies WSAttachment);
+				// Reconstruct client AFTER previous dispatch to get latest data
+				const client = this.#clientFromSocket(ws);
+				this.#shovelClients?.registerWebSocketClient(client);
+				return envStorage
+					.run(env, () =>
+						dispatchWebSocketMessage(registration, client, message),
+					)
+					.then(() => {
+						// Persist client.data mutations for hibernation survival
+						(ws as any).serializeAttachment({
+							connectionID: client.id,
+							url: client.url,
+							data: client.data,
+						} satisfies WSAttachment);
+					});
 			})
 			.catch((err) => {
 				logger.error("WebSocket message dispatch failed: {error}", {
@@ -222,7 +228,6 @@ export class ShovelWebSocketDO extends DurableObject {
 				});
 			});
 		this.#dispatchQueues.set(connectionID, next);
-		// Return so Cloudflare keeps the handler alive for async work
 		return next;
 	}
 
@@ -234,16 +239,17 @@ export class ShovelWebSocketDO extends DurableObject {
 	): Promise<void> {
 		const registration = await this.#ensureRuntime();
 		const env = (this.env ?? {}) as Record<string, unknown>;
-		const client = this.#clientFromSocket(ws);
+		const attachment = (ws as any).deserializeAttachment() as WSAttachment;
+		const connectionID = attachment.connectionID;
 
-		const connectionID = client.id;
 		const prev = this.#dispatchQueues.get(connectionID) ?? Promise.resolve();
 		const next = prev
-			.then(() =>
-				envStorage.run(env, () =>
+			.then(() => {
+				const client = this.#clientFromSocket(ws);
+				return envStorage.run(env, () =>
 					dispatchWebSocketClose(registration, client, code, reason, wasClean),
-				),
-			)
+				);
+			})
 			.catch((err) => {
 				logger.error("WebSocket close dispatch failed: {error}", {
 					error: err,
