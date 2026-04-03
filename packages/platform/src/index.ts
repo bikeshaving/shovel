@@ -877,6 +877,8 @@ export class ServiceWorkerPool {
 		for (const worker of this.#workers) {
 			this.#closeWorkerWebSockets(worker);
 		}
+		// Yield to let close callbacks fire and deliver wsclose to workers
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		// Gracefully shutdown existing workers - close resources before terminating
 		const shutdownPromises = this.#workers.map((worker) =>
@@ -923,6 +925,8 @@ export class ServiceWorkerPool {
 		for (const worker of this.#workers) {
 			this.#closeWorkerWebSockets(worker);
 		}
+		// Yield to let close callbacks fire and deliver wsclose to workers
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		// Gracefully shutdown workers first (close databases, etc.)
 		const shutdownPromises = this.#workers.map((worker) =>

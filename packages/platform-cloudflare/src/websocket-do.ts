@@ -164,11 +164,23 @@ export class ShovelWebSocketDO extends DurableObject {
 				const pair = new WebSocketPair();
 				const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
 
-				(server as any).serializeAttachment({
-					connectionID: upgrade.client.id,
-					url: request.url,
-					data: upgrade.client.data,
-				} satisfies WSAttachment);
+				try {
+					(server as any).serializeAttachment({
+						connectionID: upgrade.client.id,
+						url: request.url,
+						data: upgrade.client.data,
+					} satisfies WSAttachment);
+				} catch {
+					// data is not structured-cloneable — store without it
+					(server as any).serializeAttachment({
+						connectionID: upgrade.client.id,
+						url: request.url,
+						data: null,
+					} satisfies WSAttachment);
+					logger.warn(
+						"client.data is not structured-cloneable and will not survive hibernation",
+					);
+				}
 
 				this.ctx.acceptWebSocket(server);
 
@@ -227,11 +239,15 @@ export class ShovelWebSocketDO extends DurableObject {
 					)
 					.then(() => {
 						// Persist client.data mutations for hibernation survival
-						(ws as any).serializeAttachment({
-							connectionID: client.id,
-							url: client.url,
-							data: client.data,
-						} satisfies WSAttachment);
+						try {
+							(ws as any).serializeAttachment({
+								connectionID: client.id,
+								url: client.url,
+								data: client.data,
+							} satisfies WSAttachment);
+						} catch {
+							// data not structured-cloneable — skip persistence
+						}
 					});
 			})
 			.catch((err) => {
