@@ -170,7 +170,7 @@ export class ShovelWebSocketDO extends DurableObject {
 						url: request.url,
 						data: upgrade.client.data,
 					} satisfies WSAttachment);
-				} catch {
+				} catch (err) {
 					// data is not structured-cloneable — store without it
 					(server as any).serializeAttachment({
 						connectionID: upgrade.client.id,
@@ -245,8 +245,11 @@ export class ShovelWebSocketDO extends DurableObject {
 								url: client.url,
 								data: client.data,
 							} satisfies WSAttachment);
-						} catch {
-							// data not structured-cloneable — skip persistence
+						} catch (err) {
+							logger.warn(
+								"client.data not structured-cloneable, skipping persistence: {error}",
+								{error: err},
+							);
 						}
 					});
 			})
