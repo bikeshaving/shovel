@@ -19,6 +19,7 @@ import {
 	kGetUpgradeResult,
 	dispatchWebSocketMessage,
 	dispatchWebSocketClose,
+	ShovelClients,
 	setBroadcastChannelBackend,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
@@ -139,6 +140,8 @@ export function createFetchHandler(
 	env: unknown,
 	ctx: ExecutionContext,
 ) => Promise<Response> {
+	const logger = getLogger(["shovel", "platform"]);
+
 	// Defer lifecycle to first request (workerd restriction on setTimeout in global scope)
 	let lifecyclePromise: Promise<void> | null = null;
 	let bcBackendConfigured = false;
@@ -181,14 +184,36 @@ export function createFetchHandler(
 			return stub.fetch(request);
 		}
 
-		// Create CloudflareFetchEvent with env and waitUntil hook
+		// Build relay for WebSocketPair fallback (non-hibernation)
+		// Buffers until the real socket is wired up, same as Node/Bun
+		const pendingMessages: Array<
+			| {type: "send"; data: string | ArrayBuffer}
+			| {type: "close"; code?: number; reason?: string}
+		> = [];
+		const fallbackRelay = {
+			send(_id: string, data: string | ArrayBuffer) {
+				pendingMessages.push({type: "send", data});
+			},
+			close(_id: string, code?: number, reason?: string) {
+				pendingMessages.push({type: "close", code, reason});
+			},
+		};
+
+		// Create CloudflareFetchEvent with env, waitUntil, and relay
 		const event = new CloudflareFetchEvent(request, {
 			env: envRecord,
-			platformWaitUntil: (promise) => ctx.waitUntil(promise),
+			platformWaitUntil: (promise: Promise<unknown>) => ctx.waitUntil(promise),
+			wsRelay: fallbackRelay,
 		});
 
 		// Run within envStorage for directory factory access
 		return envStorage.run(envRecord, async () => {
+			const shovelClients =
+				typeof self !== "undefined" &&
+				(self as any).clients instanceof ShovelClients
+					? ((self as any).clients as ShovelClients)
+					: null;
+
 			const {response, event: fetchEvent} = await dispatchFetchEvent(
 				registration,
 				event,
@@ -201,23 +226,13 @@ export function createFetchHandler(
 				const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
 				(server as any).accept();
 
-				server.addEventListener("message", (msg: MessageEvent) => {
-					dispatchWebSocketMessage(
-						registration,
-						upgrade.client,
-						msg.data,
-					).catch(() => {});
-				});
-				server.addEventListener("close", (evt: CloseEvent) => {
-					dispatchWebSocketClose(
-						registration,
-						upgrade.client,
-						evt.code,
-						evt.reason,
-						evt.wasClean,
-					).catch(() => {});
-				});
+				const connectionID = upgrade.client.id;
+				const dispatchQueues = new Map<string, Promise<void>>();
 
+				// Register with self.clients
+				shovelClients?.registerWebSocketClient(upgrade.client);
+
+				// Bind live relay
 				upgrade.client.setRelay({
 					send(_id: string, data: string | ArrayBuffer) {
 						server.send(data);
@@ -225,6 +240,52 @@ export function createFetchHandler(
 					close(_id: string, code?: number, reason?: string) {
 						server.close(code ?? 1000, reason ?? "");
 					},
+				});
+
+				// Flush buffered messages
+				for (const msg of pendingMessages) {
+					if (msg.type === "send") {
+						server.send(msg.data);
+					} else {
+						server.close(msg.code ?? 1000, msg.reason ?? "");
+					}
+				}
+
+				// Ordered dispatch per connection
+				server.addEventListener("message", (msg: MessageEvent) => {
+					const prev = dispatchQueues.get(connectionID) ?? Promise.resolve();
+					const next = prev
+						.then(() =>
+							dispatchWebSocketMessage(registration, upgrade.client, msg.data),
+						)
+						.catch((err) => {
+							logger.error("WebSocket message dispatch failed: {error}", {
+								error: err,
+							});
+						});
+					dispatchQueues.set(connectionID, next);
+				});
+				server.addEventListener("close", (evt: CloseEvent) => {
+					const prev = dispatchQueues.get(connectionID) ?? Promise.resolve();
+					prev
+						.then(() =>
+							dispatchWebSocketClose(
+								registration,
+								upgrade.client,
+								evt.code,
+								evt.reason,
+								evt.wasClean,
+							),
+						)
+						.catch((err) => {
+							logger.error("WebSocket close dispatch failed: {error}", {
+								error: err,
+							});
+						})
+						.finally(() => {
+							shovelClients?.removeWebSocketClient(connectionID);
+							dispatchQueues.delete(connectionID);
+						});
 				});
 
 				return new Response(null, {
