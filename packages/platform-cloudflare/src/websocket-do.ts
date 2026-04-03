@@ -15,6 +15,7 @@ import {
 	kGetUpgradeResult,
 	dispatchWebSocketMessage,
 	dispatchWebSocketClose,
+	setBroadcastChannelBackend,
 } from "@b9g/platform/runtime";
 import {CloudflareFetchEvent} from "./runtime.js";
 import {envStorage} from "./variables.js";
@@ -82,6 +83,17 @@ export class ShovelWebSocketDO extends DurableObject {
 		// activated in this isolate.
 		if (!this.#registration.ready) {
 			await runLifecycle(this.#registration, "activate");
+		}
+
+		// Configure BroadcastChannel backend in the DO isolate if available
+		const env = (this.env ?? {}) as Record<string, unknown>;
+		if (env.SHOVEL_PUBSUB) {
+			const {CloudflarePubSubBackend} = await import("./pubsub.js");
+			setBroadcastChannelBackend(
+				new CloudflarePubSubBackend(
+					env.SHOVEL_PUBSUB as DurableObjectNamespace,
+				),
+			);
 		}
 
 		this.#shovelClients =
