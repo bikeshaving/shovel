@@ -171,7 +171,9 @@ export function createFetchHandler(
 			envRecord.SHOVEL_WS
 		) {
 			const ns = envRecord.SHOVEL_WS as DurableObjectNamespace;
-			const id = ns.idFromName("default");
+			// Each connection gets its own DO for scalability — hibernation
+			// keeps idle DOs cheap, and this avoids single-object bottlenecks
+			const id = ns.newUniqueId();
 			const stub = ns.get(id);
 			return stub.fetch(request);
 		}

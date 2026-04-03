@@ -1185,14 +1185,13 @@ export class ShovelClients implements Clients {
 	async matchAll<T extends ClientQueryOptions>(
 		options?: T,
 	): Promise<readonly (T["type"] extends "window" ? WindowClient : Client)[]> {
-		// WebSocket clients have type "worker", so include them in default/worker queries
-		const wsClients = [...this.#websocketClients.values()];
 		if ((options as any)?.type === "websocket") {
-			return wsClients as any;
+			return [...this.#websocketClients.values()] as any;
 		}
-		if (!options?.type || options.type === "worker" || options.type === "all") {
-			return wsClients as any;
+		if (options?.type === "all") {
+			return [...this.#websocketClients.values()] as any;
 		}
+		// Default (no type) returns window clients per spec — empty in server context
 		return [] as readonly (T["type"] extends "window"
 			? WindowClient
 			: Client)[];
