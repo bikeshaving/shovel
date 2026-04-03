@@ -14,6 +14,7 @@
         "@b9g/platform-bun": "workspace:*",
         "@b9g/platform-cloudflare": "workspace:*",
         "@b9g/platform-node": "workspace:*",
+        "@b9g/platform-web": "workspace:*",
         "@clack/prompts": "^0.7.0",
         "@logtape/logtape": "^2.0.0",
         "commander": "^13.1.0",
@@ -297,6 +298,19 @@
         "@types/node": "^18.0.0",
       },
     },
+    "packages/platform-web": {
+      "name": "@b9g/platform-web",
+      "version": "0.1.0",
+      "dependencies": {
+        "@b9g/cache": "workspace:*",
+        "@b9g/filesystem": "workspace:*",
+        "@b9g/platform": "workspace:*",
+        "@logtape/logtape": "^2.0.0",
+      },
+      "devDependencies": {
+        "@b9g/libuild": "^0.1.18",
+      },
+    },
     "packages/router": {
       "name": "@b9g/router",
       "version": "0.2.5",
@@ -458,6 +472,8 @@
     "@b9g/platform-cloudflare": ["@b9g/platform-cloudflare@workspace:packages/platform-cloudflare"],
 
     "@b9g/platform-node": ["@b9g/platform-node@workspace:packages/platform-node"],
+
+    "@b9g/platform-web": ["@b9g/platform-web@workspace:packages/platform-web"],
 
     "@b9g/router": ["@b9g/router@workspace:packages/router"],
 
