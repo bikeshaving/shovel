@@ -222,6 +222,8 @@ export class ShovelWebSocketDO extends DurableObject {
 				});
 			});
 		this.#dispatchQueues.set(connectionID, next);
+		// Return so Cloudflare keeps the handler alive for async work
+		return next;
 	}
 
 	async webSocketClose(
@@ -236,7 +238,7 @@ export class ShovelWebSocketDO extends DurableObject {
 
 		const connectionID = client.id;
 		const prev = this.#dispatchQueues.get(connectionID) ?? Promise.resolve();
-		prev
+		const next = prev
 			.then(() =>
 				envStorage.run(env, () =>
 					dispatchWebSocketClose(registration, client, code, reason, wasClean),
@@ -251,6 +253,7 @@ export class ShovelWebSocketDO extends DurableObject {
 				this.#shovelClients?.removeWebSocketClient(connectionID);
 				this.#dispatchQueues.delete(connectionID);
 			});
+		return next;
 	}
 
 	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
