@@ -304,6 +304,10 @@ export class CloudflarePlatform {
 					body: request.body,
 					duplex: request.body ? "half" : undefined,
 				});
+				// Preserve webSocket property for WebSocket upgrade responses
+				if ((cfResponse as any).webSocket) {
+					return cfResponse as Response;
+				}
 				return new Response(cfResponse.body as BodyInit | null, {
 					status: cfResponse.status,
 					statusText: cfResponse.statusText,
