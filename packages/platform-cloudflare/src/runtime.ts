@@ -169,21 +169,6 @@ export function createFetchHandler(
 			bcBackendConfigured = true;
 		}
 
-		// Route WebSocket upgrades to Durable Object for hibernation support
-		// Only intercept when SHOVEL_WS binding is configured — otherwise
-		// let the request reach user code (for manual WebSocketPair usage)
-		if (
-			request.headers.get("upgrade")?.toLowerCase() === "websocket" &&
-			envRecord.SHOVEL_WS
-		) {
-			const ns = envRecord.SHOVEL_WS as DurableObjectNamespace;
-			// Each connection gets its own DO for scalability — hibernation
-			// keeps idle DOs cheap, and this avoids single-object bottlenecks
-			const id = ns.newUniqueId();
-			const stub = ns.get(id);
-			return stub.fetch(request);
-		}
-
 		// Build relay for WebSocketPair fallback (non-hibernation)
 		// Buffers until the real socket is wired up, same as Node/Bun
 		const pendingMessages: Array<

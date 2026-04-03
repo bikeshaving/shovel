@@ -10,7 +10,6 @@ import {
 	ShovelServiceWorkerRegistration,
 	ShovelWebSocketClient,
 	ShovelClients,
-	runLifecycle,
 	dispatchFetchEvent,
 	kGetUpgradeResult,
 	dispatchWebSocketMessage,
@@ -77,13 +76,10 @@ export class ShovelWebSocketDO extends DurableObject {
 			);
 		}
 
-		// Run lifecycle if needed. On the initial request, the Worker already
-		// activated before forwarding to this DO. But after hibernation wake-up,
-		// the module is re-evaluated with a fresh registration that hasn't been
-		// activated in this isolate.
-		if (!this.#registration.ready) {
-			await runLifecycle(this.#registration, "activate");
-		}
+		// Skip lifecycle in DO — the worker already ran install/activate
+		// before forwarding. After hibernation wake-up, the module is
+		// re-evaluated (event handlers re-registered) but lifecycle side
+		// effects (migrations, cache warming) don't need to re-run.
 
 		// Configure BroadcastChannel backend in the DO isolate if available
 		const env = (this.env ?? {}) as Record<string, unknown>;
