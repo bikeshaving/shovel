@@ -143,6 +143,8 @@ export interface PlatformDefaults {
 	directories?: Record<string, ResourceDefault>;
 	/** Default cache configuration (e.g., memory cache) */
 	caches?: Record<string, ResourceDefault>;
+	/** Default IndexedDB configuration */
+	indexedDB?: ResourceDefault;
 }
 
 /**
