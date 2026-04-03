@@ -39,20 +39,26 @@ import * as esbuild from "esbuild";
 
 describe("FetchEvent.upgradeWebSocket()", () => {
 	it("returns a ShovelWebSocketClient", () => {
-		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		const event = new ShovelFetchEvent(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		const client = event.upgradeWebSocket();
 		expect(client).toBeInstanceOf(ShovelWebSocketClient);
 	});
 
 	it("sets responded to true", () => {
-		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		const event = new ShovelFetchEvent(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		expect(event.hasResponded()).toBe(false);
 		event.upgradeWebSocket();
 		expect(event.hasResponded()).toBe(true);
 	});
 
 	it("sets upgrade result accessible via kGetUpgradeResult", () => {
-		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		const event = new ShovelFetchEvent(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		expect(event[kGetUpgradeResult]()).toBeNull();
 
 		const client = event.upgradeWebSocket();
@@ -63,7 +69,9 @@ describe("FetchEvent.upgradeWebSocket()", () => {
 	});
 
 	it("assigns a UUID as connectionID", () => {
-		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		const event = new ShovelFetchEvent(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		const client = event.upgradeWebSocket();
 		// UUID v4 format
 		expect(client.id).toMatch(
@@ -72,13 +80,17 @@ describe("FetchEvent.upgradeWebSocket()", () => {
 	});
 
 	it("attaches user data to client", () => {
-		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		const event = new ShovelFetchEvent(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		const client = event.upgradeWebSocket({data: {room: "lobby"}});
 		expect(client.data).toEqual({room: "lobby"});
 	});
 
 	it("prevents respondWith after upgradeWebSocket", () => {
-		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		const event = new ShovelFetchEvent(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		event.upgradeWebSocket();
 		expect(() => event.respondWith(new Response("nope"))).toThrow(
 			"respondWith() already called",
@@ -86,7 +98,9 @@ describe("FetchEvent.upgradeWebSocket()", () => {
 	});
 
 	it("prevents upgradeWebSocket after respondWith", () => {
-		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		const event = new ShovelFetchEvent(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		event.respondWith(new Response("already responded"));
 		expect(() => event.upgradeWebSocket()).toThrow(
 			"Cannot upgradeWebSocket() after respondWith() or upgradeWebSocket() was already called",
@@ -94,7 +108,9 @@ describe("FetchEvent.upgradeWebSocket()", () => {
 	});
 
 	it("prevents double upgradeWebSocket", () => {
-		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		const event = new ShovelFetchEvent(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		event.upgradeWebSocket();
 		expect(() => event.upgradeWebSocket()).toThrow(
 			"Cannot upgradeWebSocket() after respondWith() or upgradeWebSocket() was already called",
@@ -102,9 +118,18 @@ describe("FetchEvent.upgradeWebSocket()", () => {
 	});
 
 	it("getResponse returns null after upgrade", () => {
-		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		const event = new ShovelFetchEvent(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		event.upgradeWebSocket();
 		expect(event.getResponse()).toBeNull();
+	});
+
+	it("throws on non-WebSocket request", () => {
+		const event = new ShovelFetchEvent(new Request("http://localhost/ws"));
+		expect(() => event.upgradeWebSocket()).toThrow(
+			"Cannot upgradeWebSocket() on a request without Upgrade: websocket header",
+		);
 	});
 });
 
@@ -366,7 +391,7 @@ describe("WebSocket event dispatch", () => {
 
 		const {response, event} = await dispatchFetchEvent(
 			registration,
-			new Request("http://localhost/ws"),
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
 		);
 
 		expect(response).toBeNull();
@@ -423,7 +448,7 @@ describe("createDirectModePool", () => {
 
 		// Upgrade request returns WebSocketUpgradeResult
 		const wsResult = await pool.handleRequest(
-			new Request("http://localhost/ws"),
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
 		);
 		expect("upgrade" in wsResult).toBe(true);
 		expect((wsResult as any).upgrade).toBe(true);
@@ -466,7 +491,9 @@ describe("createDirectModePool", () => {
 		});
 
 		// Perform upgrade
-		const result = await pool.handleRequest(new Request("http://localhost/ws"));
+		const result = await pool.handleRequest(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		const connectionID = (result as any).connectionID;
 
 		// Simulate incoming WebSocket message → should trigger echo
@@ -530,10 +557,10 @@ describe("createDirectModePool", () => {
 		});
 
 		const resultOne = await poolOne.handleRequest(
-			new Request("http://localhost/ws"),
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
 		);
 		const resultTwo = await poolTwo.handleRequest(
-			new Request("http://localhost/ws"),
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
 		);
 
 		const connectionOne = (resultOne as any).connectionID;
@@ -630,7 +657,9 @@ startWorkerMessageLoop({registration});
 	});
 
 	it("returns WebSocketUpgradeResult for upgrade requests", async () => {
-		const result = await pool.handleRequest(new Request("http://localhost/ws"));
+		const result = await pool.handleRequest(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		expect("upgrade" in result).toBe(true);
 		expect((result as any).upgrade).toBe(true);
 		expect((result as any).connectionID).toMatch(
@@ -649,7 +678,9 @@ startWorkerMessageLoop({registration});
 		});
 
 		// Upgrade
-		const result = await pool.handleRequest(new Request("http://localhost/ws"));
+		const result = await pool.handleRequest(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		const connectionID = (result as any).connectionID;
 
 		// Send message → worker echoes it back
@@ -673,7 +704,9 @@ startWorkerMessageLoop({registration});
 			close() {},
 		});
 
-		const result = await pool.handleRequest(new Request("http://localhost/ws"));
+		const result = await pool.handleRequest(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
 		const connectionID = (result as any).connectionID;
 
 		// Send binary data
@@ -699,10 +732,10 @@ startWorkerMessageLoop({registration});
 
 		// Open two connections
 		const result1 = await pool.handleRequest(
-			new Request("http://localhost/ws"),
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
 		);
 		const result2 = await pool.handleRequest(
-			new Request("http://localhost/ws"),
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
 		);
 		const id1 = (result1 as any).connectionID;
 		const id2 = (result2 as any).connectionID;

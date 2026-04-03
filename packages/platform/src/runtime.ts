@@ -926,6 +926,12 @@ export class ShovelFetchEvent
 			);
 		}
 
+		if (this.request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+			throw new Error(
+				"Cannot upgradeWebSocket() on a request without Upgrade: websocket header",
+			);
+		}
+
 		// Must be called synchronously during dispatch, same as respondWith()
 		if (!this[kCanExtend]()) {
 			throw new DOMException(
@@ -1797,7 +1803,6 @@ export function createDirectModePool(
 		) {
 			const client = clients.getWebSocketClient(connectionID);
 			if (client) {
-				clients.removeWebSocketClient(connectionID);
 				const prev = dispatchQueues.get(connectionID) ?? Promise.resolve();
 				prev
 					.then(() =>
@@ -1815,6 +1820,7 @@ export function createDirectModePool(
 						});
 					})
 					.finally(() => {
+						clients.removeWebSocketClient(connectionID);
 						dispatchQueues.delete(connectionID);
 					});
 			}
