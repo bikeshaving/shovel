@@ -15,7 +15,8 @@ import {
 	createCacheFactory,
 	createDirectoryFactory,
 	runLifecycle,
-	dispatchRequest,
+	dispatchFetchEvent,
+	kGetUpgradeResult,
 	setBroadcastChannelBackend,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
@@ -185,9 +186,22 @@ export function createFetchHandler(
 		});
 
 		// Run within envStorage for directory factory access
-		return envStorage.run(envRecord, () =>
-			dispatchRequest(registration, event),
-		);
+		return envStorage.run(envRecord, async () => {
+			const {response, event: fetchEvent} = await dispatchFetchEvent(
+				registration,
+				event,
+			);
+
+			// If user called upgradeWebSocket() without SHOVEL_WS binding, give a clear error
+			if (fetchEvent[kGetUpgradeResult]?.()) {
+				return new Response(
+					"WebSocket upgrade requires SHOVEL_WS Durable Object binding in wrangler.toml",
+					{status: 426},
+				);
+			}
+
+			return response!;
+		});
 	};
 }
 

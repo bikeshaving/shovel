@@ -3103,8 +3103,6 @@ export function startWorkerMessageLoop(
 			const client = wsClients.get(message.connectionID);
 			if (client) {
 				const connID = message.connectionID as string;
-				wsClients.delete(connID);
-				shovelClients?.removeWebSocketClient(connID);
 				const prev = wsDispatchQueues.get(connID) ?? Promise.resolve();
 				prev
 					.then(() =>
@@ -3123,6 +3121,10 @@ export function startWorkerMessageLoop(
 						);
 					})
 					.finally(() => {
+						// Remove after dispatch so wsclose handlers can still
+						// see the client via self.clients.get/matchAll
+						wsClients.delete(connID);
+						shovelClients?.removeWebSocketClient(connID);
 						wsDispatchQueues.delete(connID);
 					});
 			}
