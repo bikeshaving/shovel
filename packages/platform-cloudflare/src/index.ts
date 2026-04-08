@@ -356,6 +356,7 @@ export class CloudflarePlatform {
 		const serverCode = `// Cloudflare Worker Entry
 import { config } from "shovel:config";
 import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
+import { ShovelWebSocketDO } from "@b9g/platform-cloudflare/websocket-do";
 
 // Initialize runtime first (installs ServiceWorker globals like addEventListener)
 const registration = await initializeRuntime(config);
@@ -366,6 +367,10 @@ await import(${safePath});
 
 // Lifecycle deferred to first request (workerd doesn't allow setTimeout in global scope)
 export default { fetch: createFetchHandler(registration) };
+
+// Durable Object for WebSocket hibernation — auto-configured when
+// SHOVEL_WS binding is present in wrangler.toml
+export { ShovelWebSocketDO };
 `;
 
 		return {
