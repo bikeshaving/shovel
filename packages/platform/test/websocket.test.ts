@@ -577,6 +577,147 @@ describe("createDirectModePool", () => {
 });
 
 // ============================================================================
+// Regression: non-cloneable client.data must not break pool upgrade
+// ============================================================================
+
+describe("non-cloneable client.data in pool mode", () => {
+	let pool: ServiceWorkerPool;
+	let tempDir: string;
+
+	beforeAll(async () => {
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ws-clone-test-"));
+
+		const currentDir = path.dirname(fileURLToPath(import.meta.url));
+		const nodeModulesSource = path.resolve(currentDir, "../../../node_modules");
+		fs.symlinkSync(
+			nodeModulesSource,
+			path.join(tempDir, "node_modules"),
+			"dir",
+		);
+
+		const workerSourcePath = path.join(tempDir, "ws-nonclone-worker.ts");
+		fs.writeFileSync(
+			workerSourcePath,
+			`
+import {initWorkerRuntime, runLifecycle, startWorkerMessageLoop} from "@b9g/platform/runtime";
+
+const {registration} = await initWorkerRuntime({config: {}});
+
+self.addEventListener("fetch", (event) => {
+	// Store a function in client.data — not structured-cloneable
+	event.upgradeWebSocket({data: {handler: () => "not cloneable", symbol: Symbol("x")}});
+});
+
+self.addEventListener("wsmessage", (event) => {
+	// Verify the non-cloneable data survived in-worker
+	const hasHandler = typeof event.source.data?.handler === "function";
+	event.source.send(hasHandler ? "ok" : "missing");
+});
+
+await runLifecycle(registration);
+startWorkerMessageLoop({registration});
+`,
+		);
+
+		const bundledPath = path.join(tempDir, "ws-nonclone-worker.js");
+		await esbuild.build({
+			entryPoints: [workerSourcePath],
+			bundle: true,
+			outfile: bundledPath,
+			format: "esm",
+			platform: "node",
+			target: "esnext",
+			external: ["node:*", "bun:*"],
+		});
+
+		pool = new ServiceWorkerPool(
+			{workerCount: 1, requestTimeout: 5000},
+			bundledPath,
+		);
+		await pool.init();
+	});
+
+	afterAll(async () => {
+		if (pool) await pool.terminate();
+		if (tempDir) fs.rmSync(tempDir, {recursive: true, force: true});
+	});
+
+	it("upgrade succeeds with non-cloneable client.data", async () => {
+		const sent: Array<{id: string; data: string | ArrayBuffer}> = [];
+
+		pool.setWebSocketHandlers({
+			send(id, data) {
+				sent.push({id, data});
+			},
+			close() {},
+		});
+
+		// This would throw DataCloneError if client.data was passed through postMessage
+		const result = await pool.handleRequest(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
+		expect("upgrade" in result).toBe(true);
+
+		// Verify the worker kept the non-cloneable data locally
+		pool.sendWebSocketMessage((result as any).connectionID, "ping");
+		await new Promise((r) => setTimeout(r, 100));
+
+		expect(sent.length).toBe(1);
+		expect(sent[0].data).toBe("ok");
+	});
+});
+
+// Regression: close during upgrade handler must fire wsclose event
+// ============================================================================
+
+describe("close during upgrade in direct mode", () => {
+	it("fires wsclose when handler closes socket immediately after upgrade", async () => {
+		const registration = new ShovelServiceWorkerRegistration();
+		const clients = new ShovelClients();
+		const closedIds: string[] = [];
+
+		registration.addEventListener("fetch", ((event: FetchEvent) => {
+			const client = event.upgradeWebSocket();
+			// Immediately close — simulates rejecting a connection after upgrade
+			client.close(4000, "rejected");
+		}) as EventListener);
+
+		registration.addEventListener("wsclose", ((event: WebSocketCloseEvent) => {
+			closedIds.push(event.source.id);
+		}) as EventListener);
+
+		await runLifecycle(registration);
+
+		const pool = createDirectModePool(registration, clients);
+		const closed: Array<{id: string; code: number; reason: string}> = [];
+
+		pool.setWebSocketHandlers({
+			send() {},
+			close(id, code, reason) {
+				closed.push({id, code: code ?? 1000, reason: reason ?? ""});
+				// Simulate the platform adapter calling sendWebSocketClose
+				pool.sendWebSocketClose(id, code ?? 1000, reason ?? "", true);
+			},
+		});
+
+		const result = await pool.handleRequest(
+			new Request("http://localhost/ws", {headers: {upgrade: "websocket"}}),
+		);
+		expect("upgrade" in result).toBe(true);
+
+		// Give dispatch queue time to process
+		await new Promise((r) => setTimeout(r, 50));
+
+		expect(closed.length).toBe(1);
+		expect(closed[0].code).toBe(4000);
+		expect(closed[0].reason).toBe("rejected");
+
+		// wsclose event should have fired
+		expect(closedIds.length).toBe(1);
+	});
+});
+
+// ============================================================================
 // Integration: ServiceWorkerPool WebSocket upgrade
 // ============================================================================
 

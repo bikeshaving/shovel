@@ -832,6 +832,12 @@ export interface ShovelFetchEventInit extends EventInit {
 	 * Used by direct-mode pools so send()/close() work inside the fetch handler.
 	 */
 	wsRelay?: WebSocketRelay | null;
+	/**
+	 * Callback invoked immediately when upgradeWebSocket() creates a client.
+	 * Allows registering the client before the fetch handler returns,
+	 * so close/send during the handler can find the client.
+	 */
+	onUpgrade?: (client: ShovelWebSocketClient) => void;
 }
 
 /** @internal Symbol for accessing WebSocket upgrade result from ShovelFetchEvent */
@@ -857,6 +863,7 @@ export class ShovelFetchEvent
 	#responded: boolean;
 	#platformWaitUntil?: (promise: Promise<unknown>) => void;
 	#wsRelay: WebSocketRelay | null;
+	#onUpgrade?: (client: ShovelWebSocketClient) => void;
 	#upgradeResult: {
 		client: ShovelWebSocketClient;
 		connectionID: string;
@@ -874,6 +881,7 @@ export class ShovelFetchEvent
 		this.#responded = false;
 		this.#platformWaitUntil = options?.platformWaitUntil;
 		this.#wsRelay = options?.wsRelay ?? null;
+		this.#onUpgrade = options?.onUpgrade;
 		this.#upgradeResult = null;
 	}
 
@@ -952,6 +960,10 @@ export class ShovelFetchEvent
 
 		// Mark as handled — there is no HTTP response for an upgrade
 		this.#responded = true;
+
+		// Notify platform so client is registered before the handler continues
+		// (enables close/send during the fetch handler to find the client)
+		this.#onUpgrade?.(client);
 
 		return client;
 	}
@@ -1765,11 +1777,17 @@ export function createDirectModePool(
 			const {response, event} = await dispatchFetchEvent(
 				registration,
 				request,
-				{wsRelay: relay},
+				{
+					wsRelay: relay,
+					// Register client immediately on upgrade so close/send during
+					// the fetch handler can find it via clients.getWebSocketClient()
+					onUpgrade(client: ShovelWebSocketClient) {
+						clients.registerWebSocketClient(client);
+					},
+				},
 			);
 			const upgrade = event[kGetUpgradeResult]();
 			if (upgrade) {
-				clients.registerWebSocketClient(upgrade.client);
 				return {upgrade: true, connectionID: upgrade.connectionID};
 			}
 			return response!;
@@ -2988,7 +3006,6 @@ export function startWorkerMessageLoop(
 				sendMessage({
 					type: "ws:upgrade",
 					connectionID,
-					data: client.data,
 					requestID: message.requestID,
 				});
 				return;

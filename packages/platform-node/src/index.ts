@@ -475,7 +475,6 @@ export class NodePlatform {
 						upgradeConnectionID = result.connectionID;
 						wss.handleUpgrade(req, socket, head, (ws: any) => {
 							wsConnections.set(result.connectionID, ws);
-							flushPending(result.connectionID, ws);
 
 							ws.on("message", (data: any, isBinary: boolean) => {
 								if (isBinary) {
@@ -511,6 +510,10 @@ export class NodePlatform {
 								logger.error("WebSocket error: {error}", {error: err});
 								wsConnections.delete(result.connectionID);
 							});
+
+							// Flush after listeners are attached so buffered
+							// close/send ops trigger the handlers above
+							flushPending(result.connectionID, ws);
 						});
 					} else {
 						// Worker rejected the upgrade — write the HTTP response back
