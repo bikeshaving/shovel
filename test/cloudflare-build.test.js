@@ -14,6 +14,38 @@ import {copyFixtureToTemp, fileExists} from "./utils.js";
 const TIMEOUT = 10000;
 const MINIFLARE_TIMEOUT = 30000;
 
+/**
+ * Create a Miniflare instance with retry for flaky workerd spawns on CI.
+ */
+async function createMiniflare(options, retries = 3) {
+	let lastErr;
+	for (let i = 0; i < retries; i++) {
+		let mf;
+		try {
+			mf = new Miniflare(options);
+			// Miniflare's constructor fires an async init (#initPromise) that
+			// can reject before we await .ready (e.g. workerd spawn ENOENT).
+			// The internal .catch() re-throws, creating an unhandled rejection
+			// that Bun's test runner treats as a test failure — before our
+			// try/catch ever sees it. Eagerly awaiting .ready in the same
+			// microtask prevents this by handling the rejection immediately.
+			await mf.ready;
+			return mf;
+		} catch (err) {
+			lastErr = err;
+			try {
+				if (mf) await mf.dispose();
+			} catch (_disposeErr) {
+				// ignore dispose errors
+			}
+			if (i < retries - 1) {
+				await new Promise((r) => setTimeout(r, 1000));
+			}
+		}
+	}
+	throw lastErr;
+}
+
 test(
 	"cloudflare build - basic ServiceWorker",
 	async () => {
@@ -151,14 +183,12 @@ test(
 
 			// Load and run the worker in Miniflare
 			// This will fail if setTimeout is called in global scope during lifecycle
-			mf = new Miniflare({
+			mf = await createMiniflare({
 				modules: true,
 				script,
 				compatibilityDate: "2024-09-23",
 				compatibilityFlags: ["nodejs_compat"],
 			});
-
-			await mf.ready;
 
 			// Send a request to the worker
 			const response = await mf.dispatchFetch("http://localhost/");
@@ -246,7 +276,7 @@ self.addEventListener("fetch", (event) => {
 			const workerPath = join(outDir, "server", "worker.js");
 			const script = await FS.readFile(workerPath, "utf8");
 
-			mf = new Miniflare({
+			mf = await createMiniflare({
 				modules: true,
 				script,
 				compatibilityDate: "2024-09-23",
@@ -257,8 +287,6 @@ self.addEventListener("fetch", (event) => {
 					routerConfig: {has_user_worker: true},
 				},
 			});
-
-			await mf.ready;
 
 			// Fetch the URL map from the worker
 			const response = await mf.dispatchFetch("http://localhost/");

@@ -15,12 +15,12 @@ import {
 	createCacheFactory,
 	createDirectoryFactory,
 	runLifecycle,
-	dispatchRequest,
+	dispatchFetchEvent,
+	kGetUpgradeResult,
 	setBroadcastChannelBackend,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
 
-// runLifecycle is used internally by createFetchHandler (not re-exported)
 import {CustomCacheStorage} from "@b9g/cache";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {getLogger} from "@logtape/logtape";
@@ -164,6 +164,20 @@ export function createFetchHandler(
 			bcBackendConfigured = true;
 		}
 
+		// Route WebSocket upgrades to Durable Object for hibernation support
+		// Only intercept when SHOVEL_WS binding is configured — otherwise
+		// let the request reach user code (for manual WebSocketPair usage)
+		if (
+			request.headers.get("upgrade")?.toLowerCase() === "websocket" &&
+			envRecord.SHOVEL_WS
+		) {
+			const ns = envRecord.SHOVEL_WS as DurableObjectNamespace;
+			// Single shared DO so self.clients.matchAll() sees all connections
+			const id = ns.idFromName("shovel-ws");
+			const stub = ns.get(id);
+			return stub.fetch(request);
+		}
+
 		// Create CloudflareFetchEvent with env and waitUntil hook
 		const event = new CloudflareFetchEvent(request, {
 			env: envRecord,
@@ -171,8 +185,30 @@ export function createFetchHandler(
 		});
 
 		// Run within envStorage for directory factory access
-		return envStorage.run(envRecord, () =>
-			dispatchRequest(registration, event),
-		);
+		return envStorage.run(envRecord, async () => {
+			const {response, event: fetchEvent} = await dispatchFetchEvent(
+				registration,
+				event,
+			);
+
+			// If user called upgradeWebSocket() without SHOVEL_WS binding, give a clear error
+			if (fetchEvent[kGetUpgradeResult]?.()) {
+				return new Response(
+					"WebSocket upgrade requires SHOVEL_WS Durable Object binding in wrangler.toml",
+					{status: 426},
+				);
+			}
+
+			return response!;
+		});
 	};
+}
+
+/**
+ * Get the module-level registration singleton.
+ * Used by ShovelWebSocketDO after hibernation wake-up.
+ * @internal
+ */
+export function _getRegistration(): ShovelServiceWorkerRegistration | null {
+	return _registration;
 }

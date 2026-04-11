@@ -274,41 +274,150 @@ export class BunPlatform {
 		const requestedPort = options.port ?? this.#options.port;
 		const hostname = options.host ?? this.#options.host;
 		const reusePort = options.reusePort ?? false;
+		const pool = options.pool;
+		const wsConnections = new Map<string, any>();
+		const wsPendingMessages = new Map<
+			string,
+			Array<
+				| {type: "send"; data: string | ArrayBuffer}
+				| {type: "close"; code?: number; reason?: string}
+			>
+		>();
 
-		// Bun.serve is much simpler than Node.js
-		const server = Bun.serve({
+		// Wire up pool callbacks for outbound WebSocket I/O
+		if (pool) {
+			pool.setWebSocketHandlers({
+				send(connectionID: string, data: string | ArrayBuffer) {
+					const ws = wsConnections.get(connectionID);
+					if (ws) {
+						ws.send(data);
+					} else {
+						let buf = wsPendingMessages.get(connectionID);
+						if (!buf) {
+							buf = [];
+							wsPendingMessages.set(connectionID, buf);
+						}
+						buf.push({type: "send", data});
+					}
+				},
+				close(connectionID: string, code?: number, reason?: string) {
+					const ws = wsConnections.get(connectionID);
+					if (ws) {
+						ws.close(code ?? 1000, reason ?? "");
+						wsConnections.delete(connectionID);
+					} else {
+						let buf = wsPendingMessages.get(connectionID);
+						if (!buf) {
+							buf = [];
+							wsPendingMessages.set(connectionID, buf);
+						}
+						buf.push({type: "close", code, reason});
+					}
+				},
+			});
+		}
+
+		const handleError = (error: unknown): Response => {
+			const err = error instanceof Error ? error : new Error(String(error));
+			const httpError = isHTTPError(error)
+				? (error as HTTPError)
+				: new InternalServerError(err.message, {cause: err});
+			if (httpError.status >= 500) {
+				logger.error("Request error: {error}", {error: err});
+			} else {
+				logger.warn("Request error: {status} {error}", {
+					status: httpError.status,
+					error: err,
+				});
+			}
+			const isDev = import.meta.env?.MODE !== "production";
+			return httpError.toResponse(isDev);
+		};
+
+		const server = Bun.serve<{connectionID: string}>({
 			port: requestedPort,
 			hostname,
 			reusePort,
-			async fetch(request) {
+			async fetch(request, server) {
 				try {
+					// Check for WebSocket upgrade when pool is available
+					if (
+						pool &&
+						request.headers.get("upgrade")?.toLowerCase() === "websocket"
+					) {
+						const result = await pool.handleRequest(request);
+						if ("upgrade" in result) {
+							const upgraded = server.upgrade(request, {
+								data: {connectionID: result.connectionID},
+							});
+							if (upgraded) {
+								return undefined as any;
+							}
+							// Bun rejected the handshake — clean up worker-side state
+							pool.sendWebSocketClose(
+								result.connectionID,
+								1006,
+								"Upgrade failed",
+								false,
+							);
+							return new Response("WebSocket upgrade failed", {
+								status: 500,
+							});
+						}
+						// Worker didn't upgrade — return as normal response
+						return result as Response;
+					}
 					return await handler(request);
 				} catch (error) {
-					const err = error instanceof Error ? error : new Error(String(error));
-
-					// Convert to HTTPError for consistent response format
-					const httpError = isHTTPError(error)
-						? (error as HTTPError)
-						: new InternalServerError(err.message, {cause: err});
-
-					// Log at appropriate level: warn for 4xx (client errors), error for 5xx (server errors)
-					if (httpError.status >= 500) {
-						logger.error("Request error: {error}", {error: err});
-					} else {
-						logger.warn("Request error: {status} {error}", {
-							status: httpError.status,
-							error: err,
-						});
-					}
-
-					const isDev = import.meta.env?.MODE !== "production";
-					return httpError.toResponse(isDev);
+					return handleError(error);
 				}
+			},
+			websocket: {
+				open(ws) {
+					const {connectionID} = ws.data;
+					wsConnections.set(connectionID, ws);
+					// Flush any messages buffered before the socket opened
+					const pending = wsPendingMessages.get(connectionID);
+					if (pending) {
+						wsPendingMessages.delete(connectionID);
+						for (const msg of pending) {
+							if (msg.type === "send") {
+								ws.send(msg.data);
+							} else if (msg.type === "close") {
+								ws.close(msg.code ?? 1000, msg.reason ?? "");
+							}
+						}
+					}
+				},
+				message(ws, message) {
+					const {connectionID} = ws.data;
+					if (pool) {
+						if (typeof message === "string") {
+							pool.sendWebSocketMessage(connectionID, message);
+						} else if (message instanceof ArrayBuffer) {
+							pool.sendWebSocketMessage(connectionID, message);
+						} else {
+							// Typed array view — slice to respect byteOffset/byteLength
+							const buf = message.buffer.slice(
+								message.byteOffset,
+								message.byteOffset + message.byteLength,
+							);
+							pool.sendWebSocketMessage(connectionID, buf);
+						}
+					}
+				},
+				close(ws, code, reason) {
+					const {connectionID} = ws.data;
+					if (pool) {
+						const wasClean = code !== 1006;
+						pool.sendWebSocketClose(connectionID, code, reason, wasClean);
+					}
+					wsConnections.delete(connectionID);
+				},
 			},
 		});
 
 		// Get the actual port (important when port 0 was requested)
-		// server.port is always defined after Bun.serve() returns
 		const actualPort = server.port as number;
 
 		return {
@@ -318,6 +427,11 @@ export class BunPlatform {
 				});
 			},
 			async close() {
+				// Close all WebSocket connections
+				for (const [id, ws] of wsConnections) {
+					ws.close(1001, "Server shutting down");
+					wsConnections.delete(id);
+				}
 				server.stop();
 			},
 			address: () => ({port: actualPort, host: hostname}),
@@ -341,10 +455,22 @@ export class BunPlatform {
 			);
 		}
 
-		this.#server = this.createServer((request) => pool.handleRequest(request), {
-			port: this.#options.port,
-			host: this.#options.host,
-		});
+		this.#server = this.createServer(
+			async (request) => {
+				const result = await pool.handleRequest(request);
+				if ("upgrade" in result) {
+					pool.sendWebSocketClose(
+						result.connectionID,
+						1002,
+						"Not a WebSocket request",
+						false,
+					);
+					return new Response("Upgrade Required", {status: 426});
+				}
+				return result;
+			},
+			{pool, port: this.#options.port, host: this.#options.host},
+		);
 		await this.#server.listen();
 		return this.#server;
 	}
@@ -386,7 +512,7 @@ export class BunPlatform {
 		const prodWorkerCode = `// Bun Production Worker
 import BunPlatform from "@b9g/platform-bun";
 import {getLogger} from "@logtape/logtape";
-import {configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
+import {configureLogging, initWorkerRuntime, runLifecycle, createDirectModePool, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -426,10 +552,15 @@ await runLifecycle(registration, config.lifecycle?.stage);
 
 // Start server (skip in lifecycle-only mode)
 if (!config.lifecycle) {
+	const pool = createDirectModePool(registration, result.clients);
 	const platform = new BunPlatform({port: config.port, host: config.host});
 	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
-		{reusePort: config.workers > 1},
+		async (request) => {
+			const r = await pool.handleRequest(request);
+			if ("upgrade" in r) { pool.sendWebSocketClose(r.connectionID, 1002, "Not a WebSocket request", false); return new Response("Upgrade Required", {status: 426}); }
+			return r;
+		},
+		{pool, reusePort: config.workers > 1},
 	);
 	await server.listen();
 }

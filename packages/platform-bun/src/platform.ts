@@ -75,7 +75,7 @@ startWorkerMessageLoop({registration, databases});
 	const prodWorkerCode = `// Bun Production Worker
 import BunPlatform from "@b9g/platform-bun";
 import {getLogger} from "@logtape/logtape";
-import {configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest} from "@b9g/platform/runtime";
+import {configureLogging, initWorkerRuntime, runLifecycle, createDirectModePool} from "@b9g/platform/runtime";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -108,10 +108,15 @@ await runLifecycle(registration, config.lifecycle?.stage);
 
 // Start server (skip in lifecycle-only mode)
 if (!config.lifecycle) {
+	const pool = createDirectModePool(registration, result.clients);
 	const platform = new BunPlatform({port: config.port, host: config.host});
 	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
-		{reusePort: config.workers > 1},
+		async (request) => {
+			const r = await pool.handleRequest(request);
+			if ("upgrade" in r) { pool.sendWebSocketClose(r.connectionID, 1002, "Not a WebSocket request", false); return new Response("Upgrade Required", {status: 426}); }
+			return r;
+		},
+		{pool, reusePort: config.workers > 1},
 	);
 	await server.listen();
 }

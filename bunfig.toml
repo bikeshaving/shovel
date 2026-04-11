@@ -1,2 +1,2 @@
 [test]
-pathIgnorePatterns = ["**/shovel-wpt/wpt/**"]
+pathIgnorePatterns = ["**/shovel-wpt/wpt/**", "**/cloudflare-*.test.*"]

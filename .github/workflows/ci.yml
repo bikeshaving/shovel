@@ -114,4 +114,4 @@ jobs:
           path: .
 
       - name: Test
-        run: bun test
+        run: bun run test

@@ -37,6 +37,36 @@ export interface ServerOptions {
 	host?: string;
 	/** Enable SO_REUSEPORT for multi-worker deployments (Bun only) */
 	reusePort?: boolean;
+	/** WebSocket-capable dispatcher (ServiceWorkerPool or direct mode adapter) */
+	pool?: WebSocketDispatcher;
+}
+
+/**
+ * Returned by handleRequest() when the worker upgrades to WebSocket.
+ * Platform adapters check for this instead of a Response.
+ */
+export interface WebSocketUpgradeResult {
+	readonly upgrade: true;
+	readonly connectionID: string;
+}
+
+/**
+ * Interface for WebSocket-capable request dispatchers.
+ * Both ServiceWorkerPool and direct mode adapters implement this.
+ */
+export interface WebSocketDispatcher {
+	handleRequest(request: Request): Promise<Response | WebSocketUpgradeResult>;
+	setWebSocketHandlers(handlers: {
+		send: (connectionID: string, data: string | ArrayBuffer) => void;
+		close: (connectionID: string, code?: number, reason?: string) => void;
+	}): void;
+	sendWebSocketMessage(connectionID: string, data: string | ArrayBuffer): void;
+	sendWebSocketClose(
+		connectionID: string,
+		code: number,
+		reason: string,
+		wasClean: boolean,
+	): void;
 }
 
 /**
@@ -422,7 +452,7 @@ export class ServiceWorkerPool {
 	#pendingRequests: Map<
 		number,
 		{
-			resolve: (response: Response) => void;
+			resolve: (response: Response | WebSocketUpgradeResult) => void;
 			reject: (error: Error) => void;
 			timeoutId?: ReturnType<typeof setTimeout>;
 		}
@@ -444,6 +474,15 @@ export class ServiceWorkerPool {
 		resolve: () => void;
 		reject: (error: Error) => void;
 	}>;
+	// WebSocket connection tracking: connectionID -> worker
+	#wsConnections: Map<string, {workerIndex: number; worker: Worker}>;
+	// Platform-provided callbacks for real socket I/O
+	#wsSendCallback:
+		| ((connectionID: string, data: string | ArrayBuffer) => void)
+		| null;
+	#wsCloseCallback:
+		| ((connectionID: string, code?: number, reason?: string) => void)
+		| null;
 
 	constructor(
 		options: WorkerPoolOptions = {},
@@ -456,6 +495,9 @@ export class ServiceWorkerPool {
 		this.#pendingRequests = new Map();
 		this.#pendingWorkerReady = new Map();
 		this.#workerAvailableWaiters = [];
+		this.#wsConnections = new Map();
+		this.#wsSendCallback = null;
+		this.#wsCloseCallback = null;
 		this.#appEntrypoint = appEntrypoint;
 		this.#cacheStorage = cacheStorage;
 		this.#options = {
@@ -581,6 +623,56 @@ export class ServiceWorkerPool {
 				this.#handleError(message as WorkerErrorMessage);
 				break;
 
+			case "ws:upgrade": {
+				const upgradePending = this.#pendingRequests.get(message.requestID);
+				if (upgradePending) {
+					if (upgradePending.timeoutId) {
+						clearTimeout(upgradePending.timeoutId);
+					}
+					const workerIndex = this.#workers.indexOf(worker);
+					this.#wsConnections.set(message.connectionID, {
+						workerIndex,
+						worker,
+					});
+					upgradePending.resolve({
+						upgrade: true as const,
+						connectionID: message.connectionID,
+					});
+					this.#pendingRequests.delete(message.requestID);
+				} else {
+					// Request already timed out — tell the worker to clean up
+					worker.postMessage({
+						type: "ws:close",
+						connectionID: message.connectionID,
+						code: 1001,
+						reason: "Upgrade timed out",
+						wasClean: false,
+					});
+				}
+				break;
+			}
+
+			case "ws:send": {
+				if (this.#wsSendCallback) {
+					this.#wsSendCallback(message.connectionID, message.data);
+				}
+				break;
+			}
+
+			case "ws:close": {
+				// Close the real socket — the adapter's close callback will call
+				// sendWebSocketClose() which routes wsclose back to the worker
+				// and cleans up #wsConnections.
+				if (this.#wsCloseCallback) {
+					this.#wsCloseCallback(
+						message.connectionID,
+						message.code,
+						message.reason,
+					);
+				}
+				break;
+			}
+
 			default:
 				// Handle cache messages from PostMessageCache
 				if (message.type?.startsWith("cache:")) {
@@ -649,7 +741,9 @@ export class ServiceWorkerPool {
 	/**
 	 * Handle HTTP request using round-robin worker selection
 	 */
-	async handleRequest(request: Request): Promise<Response> {
+	async handleRequest(
+		request: Request,
+	): Promise<Response | WebSocketUpgradeResult> {
 		// Wait for workers to be available (e.g., during reload)
 		if (this.#workers.length === 0) {
 			logger.debug("No workers available, waiting for worker to be ready");
@@ -779,6 +873,13 @@ export class ServiceWorkerPool {
 		// Update stored entrypoint
 		this.#appEntrypoint = entrypoint;
 
+		// Close all WebSocket connections before shutting down workers
+		for (const worker of this.#workers) {
+			this.#closeWorkerWebSockets(worker);
+		}
+		// Yield to let close callbacks fire and deliver wsclose to workers
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
 		// Gracefully shutdown existing workers - close resources before terminating
 		const shutdownPromises = this.#workers.map((worker) =>
 			this.#gracefulShutdown(worker),
@@ -820,6 +921,13 @@ export class ServiceWorkerPool {
 	 * Graceful shutdown of all workers
 	 */
 	async terminate(): Promise<void> {
+		// Close all WebSocket connections before shutting down workers
+		for (const worker of this.#workers) {
+			this.#closeWorkerWebSockets(worker);
+		}
+		// Yield to let close callbacks fire and deliver wsclose to workers
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
 		// Gracefully shutdown workers first (close databases, etc.)
 		const shutdownPromises = this.#workers.map((worker) =>
 			this.#gracefulShutdown(worker),
@@ -855,6 +963,77 @@ export class ServiceWorkerPool {
 	 */
 	get ready(): boolean {
 		return this.#workers.length > 0;
+	}
+
+	// =========================================================================
+	// WebSocket API
+	// =========================================================================
+
+	/**
+	 * Set platform callbacks for WebSocket I/O.
+	 * Called by platform adapters (Node.js, Bun) to wire up real socket operations.
+	 */
+	setWebSocketHandlers(handlers: {
+		send: (connectionID: string, data: string | ArrayBuffer) => void;
+		close: (connectionID: string, code?: number, reason?: string) => void;
+	}): void {
+		this.#wsSendCallback = handlers.send;
+		this.#wsCloseCallback = handlers.close;
+	}
+
+	/**
+	 * Send a WebSocket message to the worker that owns this connection.
+	 */
+	sendWebSocketMessage(connectionID: string, data: string | ArrayBuffer): void {
+		const conn = this.#wsConnections.get(connectionID);
+		if (conn) {
+			if (typeof data === "string") {
+				conn.worker.postMessage({type: "ws:message", connectionID, data});
+			} else {
+				conn.worker.postMessage(
+					{type: "ws:message", connectionID, data},
+					[data], // zero-copy transfer
+				);
+			}
+		}
+	}
+
+	/**
+	 * Send a WebSocket close event to the worker that owns this connection.
+	 */
+	sendWebSocketClose(
+		connectionID: string,
+		code: number,
+		reason: string,
+		wasClean: boolean,
+	): void {
+		const conn = this.#wsConnections.get(connectionID);
+		if (conn) {
+			conn.worker.postMessage({
+				type: "ws:close",
+				connectionID,
+				code,
+				reason,
+				wasClean,
+			});
+		}
+		this.#wsConnections.delete(connectionID);
+	}
+
+	/**
+	 * Close all WebSocket connections for a specific worker.
+	 * Sends 1012 (Service Restart) close code to clients.
+	 */
+	#closeWorkerWebSockets(worker: Worker): void {
+		for (const [connectionID, conn] of this.#wsConnections) {
+			if (conn.worker === worker) {
+				// Close the real socket first and let the normal adapter close path
+				// deliver wsclose while ownership is still tracked.
+				if (this.#wsCloseCallback) {
+					this.#wsCloseCallback(connectionID, 1012, "Service Restart");
+				}
+			}
+		}
 	}
 }
 
