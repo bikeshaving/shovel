@@ -246,8 +246,15 @@ export class ShovelWebSocketDO extends DurableObject {
 								data: client.data,
 							} satisfies WSAttachment);
 						} catch (err) {
+							// Clear attachment to avoid resurrecting stale data
+							// after hibernation wake-up
+							(ws as any).serializeAttachment({
+								connectionID: client.id,
+								url: client.url,
+								data: null,
+							} satisfies WSAttachment);
 							logger.warn(
-								"client.data not structured-cloneable, skipping persistence: {error}",
+								"client.data not structured-cloneable, cleared for hibernation safety: {error}",
 								{error: err},
 							);
 						}
