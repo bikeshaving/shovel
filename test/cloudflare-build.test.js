@@ -23,6 +23,12 @@ async function createMiniflare(options, retries = 3) {
 		let mf;
 		try {
 			mf = new Miniflare(options);
+			// Miniflare's constructor fires an async init (#initPromise) that
+			// can reject before we await .ready (e.g. workerd spawn ENOENT).
+			// The internal .catch() re-throws, creating an unhandled rejection
+			// that Bun's test runner treats as a test failure — before our
+			// try/catch ever sees it. Eagerly awaiting .ready in the same
+			// microtask prevents this by handling the rejection immediately.
 			await mf.ready;
 			return mf;
 		} catch (err) {
