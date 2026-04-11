@@ -1774,23 +1774,35 @@ export function createDirectModePool(
 		async handleRequest(
 			request: Request,
 		): Promise<Response | {upgrade: true; connectionID: string}> {
-			const {response, event} = await dispatchFetchEvent(
-				registration,
-				request,
-				{
-					wsRelay: relay,
-					// Register client immediately on upgrade so close/send during
-					// the fetch handler can find it via clients.getWebSocketClient()
-					onUpgrade(client: ShovelWebSocketClient) {
-						clients.registerWebSocketClient(client);
+			// Track client ID registered during upgrade for cleanup on failure
+			const upgradedClientId: string[] = [];
+			try {
+				const {response, event} = await dispatchFetchEvent(
+					registration,
+					request,
+					{
+						wsRelay: relay,
+						// Register client immediately on upgrade so close/send during
+						// the fetch handler can find it via clients.getWebSocketClient()
+						onUpgrade(client: ShovelWebSocketClient) {
+							clients.registerWebSocketClient(client);
+							upgradedClientId.push(client.id);
+						},
 					},
-				},
-			);
-			const upgrade = event[kGetUpgradeResult]();
-			if (upgrade) {
-				return {upgrade: true, connectionID: upgrade.connectionID};
+				);
+				const upgrade = event[kGetUpgradeResult]();
+				if (upgrade) {
+					return {upgrade: true, connectionID: upgrade.connectionID};
+				}
+				return response!;
+			} catch (err) {
+				// If upgradeWebSocket() was called but the handler then threw,
+				// clean up the phantom client registration
+				if (upgradedClientId.length > 0) {
+					clients.removeWebSocketClient(upgradedClientId[0]);
+				}
+				throw err;
 			}
-			return response!;
 		},
 		setWebSocketHandlers(handlers: {
 			send: (connectionID: string, data: string | ArrayBuffer) => void;
