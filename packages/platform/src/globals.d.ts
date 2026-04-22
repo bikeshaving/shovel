@@ -96,6 +96,108 @@ declare global {
 	}
 
 	/**
+	 * Server-side handle to a WebSocket peer connected to the ServiceWorker.
+	 * Returned by `FetchEvent.upgradeWebSocket()` and available as `source` on
+	 * `WebSocketMessageEvent`.
+	 *
+	 * A stable handle to an accepted WebSocket connection, with
+	 * subscribe/unsubscribe semantics for runtime-mediated BroadcastChannel
+	 * fanout.
+	 *
+	 * References to instances do not survive hibernation — use the handle only
+	 * within the current event handler. To interact with a connection from a
+	 * different handler or context, publish on a channel the connection has
+	 * subscribed to.
+	 *
+	 * @example
+	 * self.addEventListener("fetch", async (event) => {
+	 *   if (event.request.headers.get("Upgrade") === "websocket") {
+	 *     const userId = await authenticate(event.request);
+	 *     const ws = event.upgradeWebSocket();
+	 *     ws.subscribe(`user:${userId}`);
+	 *     ws.send(JSON.stringify({type: "welcome", id: ws.id}));
+	 *     return;
+	 *   }
+	 *   event.respondWith(new Response("..."));
+	 * });
+	 */
+	interface WebSocketConnection {
+		/**
+		 * Stable, runtime-assigned connection id. Persists across hibernation.
+		 * Use to correlate with `websocketclose`.
+		 */
+		readonly id: string;
+		/** Send a message on this connection. */
+		send(data: string | ArrayBuffer): void;
+		/** Close this connection. */
+		close(code?: number, reason?: string): void;
+		/**
+		 * Subscribe this connection to a `BroadcastChannel` by name. Any
+		 * message published on that channel is delivered as `send()` on this
+		 * connection. Survives hibernation.
+		 */
+		subscribe(channel: string): void;
+		/** Remove a subscription. */
+		unsubscribe(channel: string): void;
+	}
+
+	/**
+	 * FetchEvent augmentation for WebSocket upgrades.
+	 *
+	 * Calling `upgradeWebSocket()` marks the fetch event as handled (no
+	 * `respondWith` needed) and initiates the WebSocket handshake. Subsequent
+	 * messages and close events for this connection dispatch to the
+	 * `websocketmessage` / `websocketclose` module-scope handlers.
+	 */
+	interface FetchEvent {
+		/**
+		 * Upgrade this request to a WebSocket connection. Must be called
+		 * during the synchronous portion of the fetch handler (before any
+		 * `await`). Throws if the request does not carry `Upgrade: websocket`.
+		 */
+		upgradeWebSocket(): WebSocketConnection;
+	}
+
+	/**
+	 * Fired when a message is received on an accepted WebSocket connection.
+	 * `source` is the connection that sent the message; call `source.send()`
+	 * to reply, or publish on a channel the connection subscribes to.
+	 *
+	 * Follows the `ExtendableMessageEvent.source` pattern.
+	 *
+	 * @example
+	 * self.addEventListener("websocketmessage", (event) => {
+	 *   event.source.send(`echo: ${event.data}`);
+	 * });
+	 */
+	interface WebSocketMessageEvent extends ExtendableEvent {
+		/** The connection that sent this message. */
+		readonly source: WebSocketConnection;
+		/** The message payload. */
+		readonly data: string | ArrayBuffer;
+	}
+
+	/**
+	 * Fired when an accepted WebSocket connection closes. After this event,
+	 * all subscriptions for the connection are removed and the id is released.
+	 *
+	 * @example
+	 * self.addEventListener("websocketclose", async (event) => {
+	 *   await storage.srem("room:lobby", event.id);
+	 * });
+	 */
+	interface WebSocketCloseEvent extends ExtendableEvent {
+		/** The closed connection's stable id. */
+		readonly id: string;
+		/** Close code, per RFC 6455. */
+		readonly code: number;
+		/** Close reason. */
+		readonly reason: string;
+		/** Whether the closing handshake completed cleanly. */
+		readonly wasClean: boolean;
+	}
+
+	/**
 	 * Augment WorkerGlobalScopeEventMap with ServiceWorker events.
 	 *
 	 * TypeScript's lib.webworker.d.ts declares `self` as `WorkerGlobalScope`, not
@@ -113,6 +215,8 @@ declare global {
 		activate: ExtendableEvent;
 		message: ExtendableMessageEvent;
 		messageerror: MessageEvent;
+		websocketmessage: WebSocketMessageEvent;
+		websocketclose: WebSocketCloseEvent;
 	}
 
 	/**
