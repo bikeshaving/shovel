@@ -657,7 +657,13 @@ export function createDatabaseFactory(
 // ============================================================================
 
 /** ServiceWorker-specific event types that go to registration instead of native handler */
-const SERVICE_WORKER_EVENTS = ["fetch", "install", "activate"] as const;
+const SERVICE_WORKER_EVENTS = [
+	"fetch",
+	"install",
+	"activate",
+	"websocketmessage",
+	"websocketclose",
+] as const;
 
 function isServiceWorkerEvent(type: string): boolean {
 	return (SERVICE_WORKER_EVENTS as readonly string[]).includes(type);
@@ -744,6 +750,32 @@ const kEndDispatchPhase = Symbol.for("shovel.endDispatchPhase");
 
 /** Symbol for checking if extensions are allowed (internal use only) */
 const kCanExtend = Symbol.for("shovel.canExtend");
+
+// ─── WebSocket symbols (declared early to avoid TDZ in ShovelFetchEvent) ────
+
+/** @internal Relay interface used by ShovelFetchEvent + ShovelWebSocketConnection. */
+export interface WebSocketRelay {
+	send(id: string, data: string | ArrayBuffer): void;
+	close(id: string, code?: number, reason?: string): void;
+}
+
+/** @internal Symbol for reading the upgrade result off a FetchEvent. */
+export const kGetUpgradeResult = Symbol("shovel.getUpgradeResult");
+
+/** @internal Symbol for reading a connection's persistable state. */
+export const kGetConnectionState = Symbol("shovel.getConnectionState");
+
+/** @internal Symbol for re-binding a relay after hibernation wake-up. */
+export const kBindRelay = Symbol("shovel.bindRelay");
+
+/**
+ * Serializable state for a WebSocket connection — survives hibernation.
+ */
+export interface WebSocketConnectionState {
+	id: string;
+	url: string;
+	subscribedChannels: string[];
+}
 
 // ============================================================================
 // Base Event Classes
@@ -1130,36 +1162,6 @@ export class ExtendableMessageEvent extends ShovelExtendableEvent {
 //   so handlers can still find the connection via event.source.
 // - Subscriptions are persistable data (Set<string>); BC listener closures
 //   are ephemeral and re-registered on each isolate wake.
-
-/**
- * Relay interface — bridges an in-runtime WebSocket connection to the
- * underlying platform socket (ws/Bun.serve/Cloudflare DO). Platform adapters
- * implement this when accepting a connection.
- */
-export interface WebSocketRelay {
-	send(id: string, data: string | ArrayBuffer): void;
-	close(id: string, code?: number, reason?: string): void;
-}
-
-/** @internal Symbol for reading the upgrade result off a FetchEvent. */
-export const kGetUpgradeResult = Symbol("shovel.getUpgradeResult");
-
-/** @internal Symbol for reading a connection's persistable state. */
-export const kGetConnectionState = Symbol("shovel.getConnectionState");
-
-/** @internal Symbol for re-binding a relay after hibernation wake-up. */
-export const kBindRelay = Symbol("shovel.bindRelay");
-
-/**
- * Serializable state for a WebSocket connection — survives hibernation.
- * Platform adapters store this in the DO attachment (Cloudflare) or
- * per-worker in-memory table (Node/Bun).
- */
-export interface WebSocketConnectionState {
-	id: string;
-	url: string;
-	subscribedChannels: string[];
-}
 
 /**
  * Runtime connection handle implementing the WebSocketConnection interface
