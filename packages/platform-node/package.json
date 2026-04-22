@@ -23,11 +23,13 @@
     "@b9g/http-errors": "workspace:*",
     "@b9g/node-webworker": "workspace:*",
     "@b9g/platform": "workspace:*",
-    "@logtape/logtape": "^2.0.0"
+    "@logtape/logtape": "^2.0.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@b9g/libuild": "^0.1.18",
-    "@types/node": "^18.0.0"
+    "@types/node": "^18.0.0",
+    "@types/ws": "^8.5.10"
   },
   "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -52,6 +54,14 @@
     "./platform.js": {
       "types": "./dist/src/platform.d.ts",
       "import": "./dist/src/platform.js"
+    },
+    "./websocket": {
+      "types": "./dist/src/websocket.d.ts",
+      "import": "./dist/src/websocket.js"
+    },
+    "./websocket.js": {
+      "types": "./dist/src/websocket.d.ts",
+      "import": "./dist/src/websocket.js"
     }
   },
   "repository": {
