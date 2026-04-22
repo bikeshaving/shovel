@@ -248,6 +248,174 @@ export function attachNodeWebSocketHandler(
 	};
 }
 
+/**
+ * Pool-mode WS handler: supervisor owns the real socket; workers own the
+ * runtime `ShovelWebSocketConnection`. Inbound frames are forwarded into
+ * the pool, outbound frames arrive via the pool's `sendFrame` callback.
+ */
+export function attachNodePoolWebSocketHandler(
+	httpServer: HTTP.Server,
+	pool: {
+		handleUpgradeRequest?: (
+			request: Request,
+		) => Promise<Response | {upgrade: true; connectionID: string}>;
+		setWebSocketHandlers?: (h: {
+			sendFrame: (id: string, data: string | ArrayBuffer) => void;
+			closeConnection: (id: string, code?: number, reason?: string) => void;
+		}) => void;
+		sendWebSocketMessage?: (id: string, data: string | ArrayBuffer) => void;
+		sendWebSocketClose?: (
+			id: string,
+			code: number,
+			reason: string,
+			wasClean: boolean,
+		) => void;
+	},
+): () => Promise<void> {
+	if (typeof pool.handleUpgradeRequest !== "function") {
+		// Pool without upgrade support — install a no-op so we don't cause
+		// uncaught errors on spurious upgrade requests.
+		const noop = () => {};
+		httpServer.on("upgrade", noop);
+		return async () => {
+			httpServer.off("upgrade", noop);
+		};
+	}
+	let wsServerPromise: Promise<{WebSocketServer: any}> | null = null;
+	const loadWs = () => {
+		if (!wsServerPromise) wsServerPromise = import("ws");
+		return wsServerPromise;
+	};
+
+	// connectionID → live ws socket
+	const liveSockets = new Map<string, any>();
+	// connectionID → frames queued before the physical socket is live
+	const pendingFrames = new Map<string, PendingFrame[]>();
+
+	pool.setWebSocketHandlers?.({
+		sendFrame(connectionID, data) {
+			const ws = liveSockets.get(connectionID);
+			if (ws) {
+				ws.send(data);
+			} else {
+				// Frames generated during the worker's fetch handler can arrive
+				// before the supervisor completes the physical handshake —
+				// buffer them until the socket is live.
+				let q = pendingFrames.get(connectionID);
+				if (!q) {
+					q = [];
+					pendingFrames.set(connectionID, q);
+				}
+				q.push({type: "send", data});
+			}
+		},
+		closeConnection(connectionID, code, reason) {
+			const ws = liveSockets.get(connectionID);
+			if (ws) {
+				ws.close(code ?? 1000, reason ?? "");
+			} else {
+				let q = pendingFrames.get(connectionID);
+				if (!q) {
+					q = [];
+					pendingFrames.set(connectionID, q);
+				}
+				q.push({type: "close", code, reason});
+			}
+		},
+	});
+
+	const upgradeListener = async (
+		req: HTTP.IncomingMessage,
+		socket: Socket,
+		head: Buffer,
+	) => {
+		const url = `http://${req.headers.host}${req.url}`;
+		const hasBody = req.method !== "GET" && req.method !== "HEAD";
+		const request = new Request(url, {
+			method: req.method,
+			headers: req.headers as HeadersInit,
+			body: hasBody ? (req as any) : undefined,
+			duplex: hasBody ? "half" : undefined,
+		} as RequestInit);
+
+		let result: any;
+		try {
+			result = await pool.handleUpgradeRequest!(request);
+		} catch (err) {
+			logger.error("Pool.handleRequest threw during upgrade: {error}", {
+				error: err,
+			});
+			writeErrorAndDestroy(socket, 500, "Internal Server Error");
+			return;
+		}
+
+		if (result && typeof result === "object" && result.upgrade === true) {
+			const connectionID = result.connectionID as string;
+			try {
+				const wsModule = await loadWs();
+				const wss = new wsModule.WebSocketServer({noServer: true});
+				wss.handleUpgrade(req, socket, head, (ws: any) => {
+					liveSockets.set(connectionID, ws);
+					// Attach inbound listeners BEFORE flushing buffered frames.
+					ws.on("message", (data: Buffer, isBinary: boolean) => {
+						const payload = isBinary
+							? bufferToArrayBuffer(data)
+							: data.toString("utf8");
+						pool.sendWebSocketMessage?.(connectionID, payload);
+					});
+					ws.on("close", (code: number, reason: Buffer) => {
+						liveSockets.delete(connectionID);
+						pool.sendWebSocketClose?.(
+							connectionID,
+							code,
+							reason.toString("utf8"),
+							code === 1000 || code === 1001,
+						);
+					});
+					ws.on("error", (err: Error) => {
+						logger.error("Pool WebSocket error: {error}", {error: err});
+					});
+					// Flush any frames queued by the worker before the socket
+					// became live (conn.send() during the fetch handler).
+					const queued = pendingFrames.get(connectionID);
+					if (queued) {
+						pendingFrames.delete(connectionID);
+						for (const frame of queued) {
+							if (frame.type === "send") ws.send(frame.data);
+							else ws.close(frame.code ?? 1000, frame.reason ?? "");
+						}
+					}
+				});
+			} catch (err) {
+				logger.error("Failed to complete pool WS handshake: {error}", {
+					error: err,
+				});
+				writeErrorAndDestroy(socket, 500, "WebSocket support unavailable");
+			}
+			return;
+		}
+
+		if (result instanceof Response) {
+			writeResponseAndDestroy(socket, result);
+		} else {
+			writeErrorAndDestroy(socket, 426, "Upgrade Required");
+		}
+	};
+
+	httpServer.on("upgrade", upgradeListener);
+
+	return async () => {
+		httpServer.off("upgrade", upgradeListener);
+		for (const ws of liveSockets.values()) {
+			try {
+				ws.close(1001, "Server shutting down");
+			} catch {
+				/* best-effort */
+			}
+		}
+	};
+}
+
 function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
 	// Return a fresh ArrayBuffer view over the Buffer's bytes (Buffer shares
 	// memory with its underlying Uint8Array, which we must not leak).

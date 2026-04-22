@@ -63,7 +63,28 @@ function addShovelListener(
 
 async function setupScope(): Promise<ShovelServiceWorkerRegistration> {
 	const registration = new ShovelServiceWorkerRegistration();
-	const scope = new ServiceWorkerGlobals({registration});
+	const scope = new ServiceWorkerGlobals({
+		registration,
+		directories: {open: async (name: string) => ({name}) as any} as any,
+		loggers: {get: () => console as any},
+		caches: {
+			async open() {
+				return {} as any;
+			},
+			async has() {
+				return false;
+			},
+			async delete() {
+				return false;
+			},
+			async keys() {
+				return [];
+			},
+			async match() {
+				return undefined;
+			},
+		} as any,
+	});
 	scope.install();
 	await runLifecycle(registration);
 	return registration;
