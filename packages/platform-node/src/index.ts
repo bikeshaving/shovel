@@ -287,6 +287,30 @@ export class NodePlatform {
 		}
 
 		this.#server = this.createServer((request) => pool.handleRequest(request));
+
+		// If the pool also needs to handle WebSocket upgrades, wire the
+		// platform adapter for pool-mode frame routing.
+		const poolWithWs = pool as typeof pool & {
+			handleUpgradeRequest?: (
+				request: Request,
+			) => Promise<Response | {upgrade: true; connectionID: string}>;
+			setWebSocketHandlers?: (h: {
+				sendFrame: (id: string, data: string | ArrayBuffer) => void;
+				closeConnection: (id: string, code?: number, reason?: string) => void;
+			}) => void;
+			sendWebSocketMessage?: (id: string, data: string | ArrayBuffer) => void;
+			sendWebSocketClose?: (
+				id: string,
+				code: number,
+				reason: string,
+				wasClean: boolean,
+			) => void;
+		};
+		if (typeof poolWithWs.setWebSocketHandlers === "function") {
+			const {attachNodePoolWebSocketHandler} = await import("./websocket.js");
+			attachNodePoolWebSocketHandler(this.#server.httpServer, poolWithWs);
+		}
+
 		await this.#server.listen();
 		return this.#server;
 	}

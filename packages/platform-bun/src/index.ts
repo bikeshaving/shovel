@@ -341,10 +341,10 @@ export class BunPlatform {
 			);
 		}
 
-		this.#server = this.createServer((request) => pool.handleRequest(request), {
-			port: this.#options.port,
-			host: this.#options.host,
-		});
+		this.#server = this.createServer(
+			(request) => pool.handleRequest(request),
+			{port: this.#options.port, host: this.#options.host},
+		);
 		await this.#server.listen();
 		return this.#server;
 	}

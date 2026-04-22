@@ -1011,4 +1011,75 @@ self.addEventListener("fetch", (event) => {
 		},
 		TIMEOUT,
 	);
+
+	test(
+		"multi-worker production server handles WebSocket upgrade via pool IPC",
+		async () => {
+			const PORT = 13418;
+			const cleanup_paths = [];
+			let server;
+			const WebSocket = (await import("ws")).default;
+
+			try {
+				const projectDir = await createTestProject({
+					"app.js": `
+self.addEventListener("fetch", (event) => {
+	if (event.request.headers.get("upgrade") === "websocket") {
+		const ws = event.upgradeWebSocket();
+		ws.send("hello from pool");
+		return;
+	}
+	event.respondWith(new Response("http ok"));
+});
+self.addEventListener("websocketmessage", (event) => {
+	event.source.send("pool echo: " + event.data);
+});
+					`,
+					"shovel.json": JSON.stringify({
+						port: PORT,
+						host: "localhost",
+						workers: 2,
+					}),
+				});
+				cleanup_paths.push(projectDir);
+
+				const outDir = await buildProject(projectDir, "node");
+				server = startServer(join(outDir, "server"));
+
+				await waitForPort(PORT);
+
+				const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+				await new Promise((resolve, reject) => {
+					ws.once("open", resolve);
+					ws.once("error", reject);
+					setTimeout(
+						() => reject(new Error("ws open timeout")),
+						5000,
+					);
+				});
+
+				const greeting = await new Promise((resolve, reject) => {
+					ws.once("message", (d) => resolve(d.toString("utf8")));
+					setTimeout(() => reject(new Error("no greeting")), 3000);
+				});
+				expect(greeting).toBe("hello from pool");
+
+				const echo = new Promise((resolve, reject) => {
+					ws.once("message", (d) => resolve(d.toString("utf8")));
+					setTimeout(() => reject(new Error("no echo")), 3000);
+				});
+				ws.send("hi");
+				expect(await echo).toBe("pool echo: hi");
+
+				await new Promise((resolve) => {
+					ws.once("close", resolve);
+					ws.close();
+				});
+			} finally {
+				await killServer(server?.process, PORT);
+				await cleanup(cleanup_paths);
+			}
+		},
+		TIMEOUT,
+	);
 });

@@ -2901,6 +2901,17 @@ export function startWorkerMessageLoop(
 	}
 
 	/**
+	 * Worker-local registry: connectionID → the ShovelWebSocketConnection that
+	 * owns it. Populated on upgrade, consulted on inbound ws:message/ws:close.
+	 */
+	const wsConnections = new Map<string, ShovelWebSocketConnection>();
+
+	/**
+	 * Per-connection ordered dispatch queues to serialize message delivery.
+	 */
+	const wsDispatchChains = new Map<string, Promise<void>>();
+
+	/**
 	 * Handle a fetch request
 	 */
 	async function handleFetchRequest(
@@ -2913,13 +2924,56 @@ export function startWorkerMessageLoop(
 				body: message.request.body,
 			});
 
-			const response = await dispatchRequest(registration, request);
+			// Pool-mode relay: outbound frames from the worker are posted to
+			// the supervisor which owns the real socket.
+			const wsRelay: WebSocketRelay = {
+				send(id, data) {
+					sendMessage({type: "ws:send", connectionID: id, data});
+				},
+				close(id, code, reason) {
+					sendMessage({type: "ws:close", connectionID: id, code, reason});
+				},
+			};
+
+			let upgradedConnection: ShovelWebSocketConnection | null = null;
+			const {event, response} = await dispatchFetchEvent(
+				registration,
+				request,
+				{
+					wsRelay,
+					onUpgrade(conn) {
+						upgradedConnection = conn;
+						wsConnections.set(conn.id, conn);
+					},
+				},
+			);
+
+			const upgradeConn = event[kGetUpgradeResult]();
+			if (upgradeConn) {
+				// Tell the supervisor to accept the WebSocket handshake. The
+				// supervisor will keep the socket and deliver inbound frames
+				// via ws:message / ws:close messages (see handleMessage below).
+				sendMessage({
+					type: "ws:upgrade",
+					requestID: message.requestID,
+					connectionID: upgradeConn.id,
+				});
+				return;
+			}
+
+			// If upgradedConnection was set in onUpgrade but upgradeConn is
+			// null, the handler raced (shouldn't happen). Clean up defensively.
+			if (upgradedConnection && !upgradeConn) {
+				const failedConn = upgradedConnection as ShovelWebSocketConnection;
+				wsConnections.delete(failedConn.id);
+				wsDispatchChains.delete(failedConn.id);
+			}
 
 			// Use arrayBuffer for zero-copy transfer
-			const body = await response.arrayBuffer();
+			const body = await response!.arrayBuffer();
 
 			// Ensure Content-Type is preserved
-			const headers = Object.fromEntries(response.headers.entries());
+			const headers = Object.fromEntries(response!.headers.entries());
 			if (!headers["Content-Type"] && !headers["content-type"]) {
 				headers["Content-Type"] = "text/plain; charset=utf-8";
 			}
@@ -2927,8 +2981,8 @@ export function startWorkerMessageLoop(
 			const responseMsg: WorkerResponseMessage = {
 				type: "response",
 				response: {
-					status: response.status,
-					statusText: response.statusText,
+					status: response!.status,
+					statusText: response!.statusText,
 					headers,
 					body,
 				},
@@ -2949,6 +3003,20 @@ export function startWorkerMessageLoop(
 			};
 			sendMessage(errorMsg);
 		}
+	}
+
+	/** Enqueue a per-connection dispatch to keep frame order stable. */
+	function enqueueWsDispatch(id: string, task: () => Promise<void>): void {
+		const prev = wsDispatchChains.get(id) ?? Promise.resolve();
+		const next = prev
+			.then(task)
+			.catch((err) =>
+				messageLogger.error(
+					`[Worker-${workerId}] WS dispatch failed: {error}`,
+					{error: err},
+				),
+			);
+		wsDispatchChains.set(id, next);
 	}
 
 	/**
@@ -2980,6 +3048,41 @@ export function startWorkerMessageLoop(
 		// Handle broadcast relay messages from supervisor
 		if (message?.type === "broadcast:deliver") {
 			deliverBroadcastMessage(message.channel, message.data);
+			return;
+		}
+
+		// Handle inbound WebSocket frame arriving from the supervisor's
+		// physical socket. Dispatch through this worker's Shovel runtime.
+		if (message?.type === "ws:message") {
+			const conn = wsConnections.get(message.connectionID);
+			if (!conn) return;
+			enqueueWsDispatch(message.connectionID, () =>
+				dispatchWebSocketMessage(registration, conn, message.data),
+			);
+			return;
+		}
+
+		// Handle close of an inbound WebSocket from the supervisor. We run
+		// the close dispatch through the ordered queue, then drop the
+		// connection from our local registry.
+		if (message?.type === "ws:close") {
+			const id = message.connectionID as string;
+			const conn = wsConnections.get(id);
+			if (!conn) return;
+			enqueueWsDispatch(id, async () => {
+				try {
+					await dispatchWebSocketClose(
+						registration,
+						conn,
+						message.code,
+						message.reason,
+						message.wasClean,
+					);
+				} finally {
+					wsConnections.delete(id);
+					wsDispatchChains.delete(id);
+				}
+			});
 			return;
 		}
 
