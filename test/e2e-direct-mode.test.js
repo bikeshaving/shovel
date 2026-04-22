@@ -655,6 +655,80 @@ self.addEventListener("fetch", (event) => {
 		},
 		TIMEOUT,
 	);
+
+	test(
+		"WebSocket echo via generated worker template",
+		async () => {
+			const PORT = 13417;
+			const cleanup_paths = [];
+			let server;
+			const WebSocket = (await import("ws")).default;
+
+			try {
+				const projectDir = await createTestProject({
+					"app.js": `
+self.addEventListener("fetch", (event) => {
+	if (event.request.headers.get("upgrade") === "websocket") {
+		const ws = event.upgradeWebSocket();
+		ws.send("welcome");
+		return;
+	}
+	event.respondWith(new Response("http fallback"));
+});
+self.addEventListener("websocketmessage", (event) => {
+	event.source.send("echo: " + event.data);
+});
+					`,
+					"shovel.json": JSON.stringify({
+						port: PORT,
+						host: "localhost",
+						workers: 1,
+					}),
+				});
+				cleanup_paths.push(projectDir);
+
+				const outDir = await buildProject(projectDir, "node");
+				server = startServer(join(outDir, "server"));
+
+				await waitForPort(PORT);
+
+				// Connect the WebSocket
+				const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+				await new Promise((resolve, reject) => {
+					ws.once("open", resolve);
+					ws.once("error", reject);
+					setTimeout(
+						() => reject(new Error("ws open timeout")),
+						5000,
+					);
+				});
+
+				// Greeting sent during upgrade
+				const greeting = await new Promise((resolve, reject) => {
+					ws.once("message", (d) => resolve(d.toString("utf8")));
+					setTimeout(() => reject(new Error("no greeting")), 3000);
+				});
+				expect(greeting).toBe("welcome");
+
+				// Echo round-trip
+				const echo = new Promise((resolve, reject) => {
+					ws.once("message", (d) => resolve(d.toString("utf8")));
+					setTimeout(() => reject(new Error("no echo")), 3000);
+				});
+				ws.send("hi");
+				expect(await echo).toBe("echo: hi");
+
+				await new Promise((resolve) => {
+					ws.once("close", resolve);
+					ws.close();
+				});
+			} finally {
+				await killServer(server?.process, PORT);
+				await cleanup(cleanup_paths);
+			}
+		},
+		TIMEOUT,
+	);
 });
 
 describe("runtime: wildcard cache pattern matching", () => {
