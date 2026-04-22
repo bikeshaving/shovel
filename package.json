@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "build": "bun run --filter './packages/*' build && libuild build --save",
-    "test": "bun test packages/*/test test && bun test test/cloudflare-build.test.js && bun test test/cloudflare-dev.test.js && bun test test/cloudflare-develop.test.js",
+    "test": "bun test packages/*/test test && bun test --path-ignore-patterns='**/shovel-wpt/**' ./test/cloudflare-build.test.js && bun test --path-ignore-patterns='**/shovel-wpt/**' ./test/cloudflare-dev.test.js && bun test --path-ignore-patterns='**/shovel-wpt/**' ./test/cloudflare-develop.test.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --ext .js,.jsx,.ts,.tsx .",
     "lint:fix": "eslint --ext .js,.jsx,.ts,.tsx . --fix",
