@@ -52,6 +52,14 @@
     "./platform.js": {
       "types": "./dist/src/platform.d.ts",
       "import": "./dist/src/platform.js"
+    },
+    "./websocket": {
+      "types": "./dist/src/websocket.d.ts",
+      "import": "./dist/src/websocket.js"
+    },
+    "./websocket.js": {
+      "types": "./dist/src/websocket.d.ts",
+      "import": "./dist/src/websocket.js"
     }
   },
   "repository": {
