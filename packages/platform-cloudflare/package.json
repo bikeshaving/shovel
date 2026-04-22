@@ -95,6 +95,14 @@
       "types": "./dist/src/pubsub.d.ts",
       "import": "./dist/src/pubsub.js"
     },
+    "./websocket-do": {
+      "types": "./dist/src/websocket-do.d.ts",
+      "import": "./dist/src/websocket-do.js"
+    },
+    "./websocket-do.js": {
+      "types": "./dist/src/websocket-do.d.ts",
+      "import": "./dist/src/websocket-do.js"
+    },
     "./cloudflare.d.ts": "./dist/src/cloudflare.d.ts"
   },
   "repository": {

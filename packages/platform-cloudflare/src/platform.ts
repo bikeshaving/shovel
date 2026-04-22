@@ -50,6 +50,11 @@ import { initializeRuntime, createFetchHandler, setAssetsManifest } from "@b9g/p
 // breaks consumers bundling outside a shovel build).
 setAssetsManifest(__shovelAssetsManifest);
 
+// Re-export the WebSocket Durable Object so wrangler can bind it. The class
+// is only referenced if the user configures a SHOVEL_WS binding in their
+// wrangler.toml; otherwise it's dead-code-eliminated at bundle time.
+export { ShovelWebSocketDO } from "@b9g/platform-cloudflare/websocket-do";
+
 // Initialize runtime (installs ServiceWorker globals)
 const registration = await initializeRuntime(config);
 
