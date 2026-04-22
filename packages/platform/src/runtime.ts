@@ -821,6 +821,19 @@ export interface ShovelFetchEventInit extends EventInit {
 	 * (e.g., Cloudflare's ctx.waitUntil)
 	 */
 	platformWaitUntil?: (promise: Promise<unknown>) => void;
+	/**
+	 * Platform-provided relay for a potential WebSocket upgrade. If
+	 * `upgradeWebSocket()` is called during dispatch, the created connection
+	 * is bound to this relay so `send()` / `close()` reach the real socket.
+	 */
+	wsRelay?: WebSocketRelay;
+	/**
+	 * Synchronous hook invoked immediately after a successful
+	 * `upgradeWebSocket()` call. Platform adapters use this to register the
+	 * connection in their isolate-local table so that later handlers (and
+	 * cleanup on upgrade failure) can find it by id.
+	 */
+	onUpgrade?: (connection: ShovelWebSocketConnection) => void;
 }
 
 /**
@@ -842,6 +855,9 @@ export class ShovelFetchEvent
 	#responsePromise: Promise<Response> | null;
 	#responded: boolean;
 	#platformWaitUntil?: (promise: Promise<unknown>) => void;
+	#wsRelay?: WebSocketRelay;
+	#onUpgrade?: (connection: ShovelWebSocketConnection) => void;
+	#upgradeResult: ShovelWebSocketConnection | null;
 
 	constructor(request: Request, options?: ShovelFetchEventInit) {
 		super("fetch", options);
@@ -854,6 +870,9 @@ export class ShovelFetchEvent
 		this.#responsePromise = null;
 		this.#responded = false;
 		this.#platformWaitUntil = options?.platformWaitUntil;
+		this.#wsRelay = options?.wsRelay;
+		this.#onUpgrade = options?.onUpgrade;
+		this.#upgradeResult = null;
 	}
 
 	override waitUntil(promise: Promise<any>): void {
@@ -895,7 +914,48 @@ export class ShovelFetchEvent
 	}
 
 	upgradeWebSocket(): WebSocketConnection {
-		throw new Error("upgradeWebSocket() not yet implemented");
+		if (this.#responded) {
+			throw new Error(
+				"Cannot upgradeWebSocket() after respondWith() or a previous upgradeWebSocket()",
+			);
+		}
+		if (this.request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+			throw new Error(
+				"Cannot upgradeWebSocket() on a request without Upgrade: websocket",
+			);
+		}
+		// Per spec, upgrade must be set up synchronously during dispatch —
+		// otherwise the platform has no chance to assemble the 101 response
+		// before the handler returns.
+		if (!this[kCanExtend]()) {
+			throw new DOMException(
+				"upgradeWebSocket() must be called synchronously during event dispatch",
+				"InvalidStateError",
+			);
+		}
+		if (!this.#wsRelay) {
+			throw new Error(
+				"upgradeWebSocket() requires a platform wsRelay (configure the adapter)",
+			);
+		}
+		const connection = new ShovelWebSocketConnection({
+			id: crypto.randomUUID(),
+			url: this.request.url,
+			relay: this.#wsRelay,
+		});
+		this.#upgradeResult = connection;
+		// Mark as handled — there is no HTTP response for a WebSocket upgrade.
+		this.#responded = true;
+		// Synchronous notify so the adapter can register the connection *before*
+		// the handler continues. This lets in-handler close()/send() find it,
+		// and lets the adapter clean it up if the handler throws later.
+		this.#onUpgrade?.(connection);
+		return connection;
+	}
+
+	/** @internal Platforms read this to complete the physical handshake. */
+	[kGetUpgradeResult](): ShovelWebSocketConnection | null {
+		return this.#upgradeResult;
 	}
 
 	/** The URL of the request (convenience property) */
@@ -1051,6 +1111,211 @@ export class ExtendableMessageEvent extends ShovelExtendableEvent {
 		this.ports = Object.freeze([...(eventInitDict?.ports ?? [])]);
 	}
 }
+
+// ─── WebSocket ──────────────────────────────────────────────────────────────
+// Functional events for server-side WebSocket handling in ServiceWorker.
+//
+// Design:
+// - FetchEvent.upgradeWebSocket() returns a WebSocketConnection (below)
+// - websocketmessage / websocketclose fire at ServiceWorkerGlobalScope
+// - Connection.subscribe(channel) routes BC messages on that channel to send()
+//
+// Constraints applied from prior PR's Codex reviews:
+// - Connection registration happens synchronously during upgradeWebSocket();
+//   if the handler throws afterward, the adapter must clean up (phantom
+//   client cleanup).
+// - Per-connection dispatch is serialized (ordered queues) so handlers can
+//   never observe out-of-order messages.
+// - Removal from registries is deferred until AFTER websocketclose dispatches,
+//   so handlers can still find the connection via event.source.
+// - Subscriptions are persistable data (Set<string>); BC listener closures
+//   are ephemeral and re-registered on each isolate wake.
+
+/**
+ * Relay interface — bridges an in-runtime WebSocket connection to the
+ * underlying platform socket (ws/Bun.serve/Cloudflare DO). Platform adapters
+ * implement this when accepting a connection.
+ */
+export interface WebSocketRelay {
+	send(id: string, data: string | ArrayBuffer): void;
+	close(id: string, code?: number, reason?: string): void;
+}
+
+/** @internal Symbol for reading the upgrade result off a FetchEvent. */
+export const kGetUpgradeResult = Symbol("shovel.getUpgradeResult");
+
+/** @internal Symbol for reading a connection's persistable state. */
+export const kGetConnectionState = Symbol("shovel.getConnectionState");
+
+/** @internal Symbol for re-binding a relay after hibernation wake-up. */
+export const kBindRelay = Symbol("shovel.bindRelay");
+
+/**
+ * Serializable state for a WebSocket connection — survives hibernation.
+ * Platform adapters store this in the DO attachment (Cloudflare) or
+ * per-worker in-memory table (Node/Bun).
+ */
+export interface WebSocketConnectionState {
+	id: string;
+	url: string;
+	subscribedChannels: string[];
+}
+
+/**
+ * Runtime connection handle implementing the WebSocketConnection interface
+ * from globals.d.ts. Instances are created by FetchEvent.upgradeWebSocket()
+ * or by platform adapters rehydrating from stored state after hibernation.
+ *
+ * Subscriptions are realized as BroadcastChannel listeners internal to the
+ * connection — when the subscribed channel sees a string/ArrayBuffer message
+ * (locally or via the backend), it forwards to `send()`. The BC instances are
+ * ephemeral closure state; the *set of subscribed channel names* is the
+ * persistable state recovered after hibernation, and the BC instances are
+ * rebuilt from that set on each wake.
+ */
+export class ShovelWebSocketConnection implements WebSocketConnection {
+	readonly id: string;
+	readonly url: string;
+	#relay: WebSocketRelay;
+	#subscribedChannels: Set<string>;
+	#subscriptions: Map<string, ShovelBroadcastChannel>;
+	#closed: boolean;
+
+	constructor(options: {
+		id: string;
+		url: string;
+		relay: WebSocketRelay;
+		subscribedChannels?: Iterable<string>;
+	}) {
+		this.id = options.id;
+		this.url = options.url;
+		this.#relay = options.relay;
+		this.#subscribedChannels = new Set(options.subscribedChannels ?? []);
+		this.#subscriptions = new Map();
+		this.#closed = false;
+		// On a fresh upgrade, #subscribedChannels is empty.
+		// On hibernation rehydration, we re-register BC listeners for each
+		// previously-subscribed channel so forwarding resumes.
+		for (const channel of this.#subscribedChannels) {
+			this.#openSubscription(channel);
+		}
+	}
+
+	send(data: string | ArrayBuffer): void {
+		if (this.#closed) return;
+		this.#relay.send(this.id, data);
+	}
+
+	close(code?: number, reason?: string): void {
+		if (this.#closed) return;
+		this.#closed = true;
+		this.#relay.close(this.id, code, reason);
+	}
+
+	subscribe(channel: string): void {
+		if (this.#closed) return;
+		if (this.#subscribedChannels.has(channel)) return;
+		this.#subscribedChannels.add(channel);
+		this.#openSubscription(channel);
+	}
+
+	unsubscribe(channel: string): void {
+		if (!this.#subscribedChannels.delete(channel)) return;
+		const bc = this.#subscriptions.get(channel);
+		if (bc) {
+			this.#subscriptions.delete(channel);
+			try {
+				bc.close();
+			} catch {
+				// Best-effort unsubscribe; never propagate backend errors.
+			}
+		}
+	}
+
+	/** @internal Called during teardown to release BC subscriptions. */
+	_releaseSubscriptions(): void {
+		for (const [, bc] of this.#subscriptions) {
+			try {
+				bc.close();
+			} catch {
+				/* best-effort */
+			}
+		}
+		this.#subscriptions.clear();
+		this.#subscribedChannels.clear();
+	}
+
+	/** @internal Serialize persistable state for hibernation storage. */
+	[kGetConnectionState](): WebSocketConnectionState {
+		return {
+			id: this.id,
+			url: this.url,
+			subscribedChannels: [...this.#subscribedChannels],
+		};
+	}
+
+	/** @internal Rebind the relay (used by platform adapters after wake-up). */
+	[kBindRelay](relay: WebSocketRelay): void {
+		this.#relay = relay;
+	}
+
+	#openSubscription(channel: string): void {
+		const bc = new ShovelBroadcastChannel(channel);
+		bc.onmessage = (event: MessageEvent) => {
+			if (this.#closed) return;
+			const data = event.data;
+			// Only forward string/ArrayBuffer — BC messages can be any
+			// structured-cloneable value, but WebSocket wire format is narrower.
+			// Other types are silently dropped (consistent with BC semantics of
+			// "fire-and-forget with best-effort delivery").
+			if (typeof data === "string" || data instanceof ArrayBuffer) {
+				this.send(data);
+			}
+		};
+		this.#subscriptions.set(channel, bc);
+	}
+}
+
+/**
+ * Dispatched when a message arrives on an accepted WebSocket connection.
+ * `source` is the connection that sent the message.
+ */
+export class ShovelWebSocketMessageEvent
+	extends ShovelExtendableEvent
+	implements WebSocketMessageEvent
+{
+	readonly source: ShovelWebSocketConnection;
+	readonly data: string | ArrayBuffer;
+
+	constructor(source: ShovelWebSocketConnection, data: string | ArrayBuffer) {
+		super("websocketmessage");
+		this.source = source;
+		this.data = data;
+	}
+}
+
+/**
+ * Dispatched when an accepted WebSocket connection closes.
+ */
+export class ShovelWebSocketCloseEvent
+	extends ShovelExtendableEvent
+	implements WebSocketCloseEvent
+{
+	readonly id: string;
+	readonly code: number;
+	readonly reason: string;
+	readonly wasClean: boolean;
+
+	constructor(id: string, code: number, reason: string, wasClean: boolean) {
+		super("websocketclose");
+		this.id = id;
+		this.code = code;
+		this.reason = reason;
+		this.wasClean = wasClean;
+	}
+}
+
+// ─── End WebSocket ──────────────────────────────────────────────────────────
 
 /**
  * ShovelServiceWorker - Internal implementation of ServiceWorker for Shovel runtime
@@ -1458,6 +1723,82 @@ export async function dispatchRequest(
 			? requestOrEvent
 			: new ShovelFetchEvent(requestOrEvent);
 	return registration[kHandleRequest](event);
+}
+
+/**
+ * Like `dispatchRequest` but returns both the event and the response (or null
+ * if the handler upgraded to WebSocket instead of responding). Platforms use
+ * this when they need to inspect `event[kGetUpgradeResult]()` after dispatch.
+ */
+export async function dispatchFetchEvent(
+	registration: ShovelServiceWorkerRegistration,
+	requestOrEvent: Request | ShovelFetchEvent,
+	init?: ShovelFetchEventInit,
+): Promise<{event: ShovelFetchEvent; response: Response | null}> {
+	const event =
+		requestOrEvent instanceof ShovelFetchEvent
+			? requestOrEvent
+			: new ShovelFetchEvent(requestOrEvent, init);
+	try {
+		const response = await registration[kHandleRequest](event);
+		return {event, response};
+	} catch (err) {
+		// If the handler invoked upgradeWebSocket(), kHandleRequest throws
+		// "No response provided" because there's no HTTP response for an upgrade.
+		// Distinguish that legitimate case from a real error.
+		if (event[kGetUpgradeResult]()) {
+			return {event, response: null};
+		}
+		throw err;
+	}
+}
+
+/**
+ * Dispatch a `websocketmessage` event on the registration. Called by platform
+ * adapters when a frame arrives on an accepted connection.
+ */
+export async function dispatchWebSocketMessage(
+	registration: ShovelServiceWorkerRegistration,
+	connection: ShovelWebSocketConnection,
+	data: string | ArrayBuffer,
+): Promise<void> {
+	const event = new ShovelWebSocketMessageEvent(connection, data);
+	registration.dispatchEvent(event);
+	event[kEndDispatchPhase]();
+	// Let any waitUntil promises resolve before returning so adapters can
+	// serialize per-connection delivery if they wish.
+	await Promise.allSettled(event.getPromises());
+}
+
+/**
+ * Dispatch a `websocketclose` event on the registration. Adapters invoke this
+ * exactly once per accepted connection; subscription teardown is handled
+ * internally after all handlers have observed the close.
+ */
+export async function dispatchWebSocketClose(
+	registration: ShovelServiceWorkerRegistration,
+	connection: ShovelWebSocketConnection,
+	code: number,
+	reason: string,
+	wasClean: boolean,
+): Promise<void> {
+	const event = new ShovelWebSocketCloseEvent(
+		connection.id,
+		code,
+		reason,
+		wasClean,
+	);
+	try {
+		registration.dispatchEvent(event);
+		event[kEndDispatchPhase]();
+		await Promise.allSettled(event.getPromises());
+	} finally {
+		// Release BC subscriptions *after* handlers have run, so a close handler
+		// could (in principle) still publish to a channel and reach other
+		// connections. The connection itself is no longer useful — callers
+		// drop their local registry entry in their own `finally` blocks.
+		connection._releaseSubscriptions();
+	}
 }
 
 /**
