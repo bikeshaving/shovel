@@ -48,6 +48,150 @@ export interface BunWebSocketData {
 }
 
 /**
+ * Pool-mode Bun adapter. Same shape as {@link createBunWebSocketServer} but
+ * for the supervisor-side in multi-worker deployments: the supervisor owns
+ * the Bun.serve, workers own the runtime Connections, and WS frames cross
+ * the worker boundary via pool IPC.
+ */
+export function createBunPoolWebSocketAdapter(pool: {
+	handleUpgradeRequest: (
+		request: Request,
+	) => Promise<Response | {upgrade: true; connectionID: string}>;
+	setWebSocketHandlers: (h: {
+		sendFrame: (id: string, data: string | ArrayBuffer) => void;
+		closeConnection: (id: string, code?: number, reason?: string) => void;
+	}) => void;
+	sendWebSocketMessage: (id: string, data: string | ArrayBuffer) => void;
+	sendWebSocketClose: (
+		id: string,
+		code: number,
+		reason: string,
+		wasClean: boolean,
+	) => void;
+	handleRequest: (request: Request) => Promise<Response>;
+}): {
+	fetch: (request: Request, server: any) => Promise<Response | undefined>;
+	websocket: {
+		open(ws: any): void;
+		message(ws: any, message: string | Buffer): void;
+		close(ws: any, code: number, reason: string): void;
+	};
+} {
+	const liveSockets = new Map<string, any>();
+	const pendingFrames = new Map<string, PendingFrame[]>();
+
+	pool.setWebSocketHandlers({
+		sendFrame(connectionID, data) {
+			const ws = liveSockets.get(connectionID);
+			if (ws) {
+				ws.send(data);
+			} else {
+				let q = pendingFrames.get(connectionID);
+				if (!q) {
+					q = [];
+					pendingFrames.set(connectionID, q);
+				}
+				q.push({type: "send", data});
+			}
+		},
+		closeConnection(connectionID, code, reason) {
+			const ws = liveSockets.get(connectionID);
+			if (ws) {
+				ws.close(code ?? 1000, reason ?? "");
+			} else {
+				let q = pendingFrames.get(connectionID);
+				if (!q) {
+					q = [];
+					pendingFrames.set(connectionID, q);
+				}
+				q.push({type: "close", code, reason});
+			}
+		},
+	});
+
+	const handleFetch = async (
+		request: Request,
+		server: any,
+	): Promise<Response | undefined> => {
+		const isUpgrade =
+			request.headers.get("upgrade")?.toLowerCase() === "websocket";
+		if (!isUpgrade) {
+			return pool.handleRequest(request);
+		}
+
+		let result: Response | {upgrade: true; connectionID: string};
+		try {
+			result = await pool.handleUpgradeRequest(request);
+		} catch (err) {
+			logger.error("Pool.handleUpgradeRequest threw: {error}", {error: err});
+			return new Response("Internal Server Error", {status: 500});
+		}
+
+		if (result instanceof Response) {
+			return result;
+		}
+
+		const ok = server.upgrade(request, {
+			data: {connectionId: result.connectionID} satisfies BunWebSocketData,
+		});
+		if (!ok) {
+			pool.sendWebSocketClose(
+				result.connectionID,
+				1006,
+				"Upgrade failed",
+				false,
+			);
+			return new Response("WebSocket upgrade failed", {status: 500});
+		}
+		return undefined;
+	};
+
+	const websocket = {
+		open(ws: any) {
+			const data = ws.data as BunWebSocketData;
+			liveSockets.set(data.connectionId, ws);
+			// Flush frames queued before the socket became live.
+			const queued = pendingFrames.get(data.connectionId);
+			if (queued) {
+				pendingFrames.delete(data.connectionId);
+				for (const frame of queued) {
+					if (frame.type === "send") ws.send(frame.data);
+					else ws.close(frame.code ?? 1000, frame.reason ?? "");
+				}
+			}
+		},
+		message(ws: any, message: string | Buffer) {
+			const data = ws.data as BunWebSocketData;
+			let payload: string | ArrayBuffer;
+			if (typeof message === "string") {
+				payload = message;
+			} else if (message instanceof ArrayBuffer) {
+				payload = message;
+			} else {
+				const view = message as Uint8Array;
+				payload = view.buffer.slice(
+					view.byteOffset,
+					view.byteOffset + view.byteLength,
+				) as ArrayBuffer;
+			}
+			pool.sendWebSocketMessage(data.connectionId, payload);
+		},
+		close(ws: any, code: number, reason: string) {
+			const data = ws.data as BunWebSocketData;
+			liveSockets.delete(data.connectionId);
+			pool.sendWebSocketClose(
+				data.connectionId,
+				code,
+				reason,
+				code !== 1006,
+			);
+		},
+	};
+
+	return {fetch: handleFetch, websocket};
+}
+
+/**
  * Build the fetch+websocket config for Bun.serve. Returned value is a subset
  * of Bun.ServeOptions that you can spread into your `Bun.serve()` call:
  *

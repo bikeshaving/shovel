@@ -341,6 +341,66 @@ export class BunPlatform {
 			);
 		}
 
+		// Wire pool-mode WebSocket support if the pool supports it.
+		const poolWithWs = pool as typeof pool & {
+			handleUpgradeRequest?: (
+				request: Request,
+			) => Promise<Response | {upgrade: true; connectionID: string}>;
+			setWebSocketHandlers?: (h: {
+				sendFrame: (id: string, data: string | ArrayBuffer) => void;
+				closeConnection: (
+					id: string,
+					code?: number,
+					reason?: string,
+				) => void;
+			}) => void;
+			sendWebSocketMessage?: (id: string, data: string | ArrayBuffer) => void;
+			sendWebSocketClose?: (
+				id: string,
+				code: number,
+				reason: string,
+				wasClean: boolean,
+			) => void;
+		};
+
+		if (
+			typeof poolWithWs.setWebSocketHandlers === "function" &&
+			typeof poolWithWs.handleUpgradeRequest === "function"
+		) {
+			const {createBunPoolWebSocketAdapter} = await import("./websocket.js");
+			const adapter = createBunPoolWebSocketAdapter(
+				poolWithWs as Required<typeof poolWithWs>,
+			);
+			const host = this.#options.host ?? "0.0.0.0";
+			const requestedPort = this.#options.port ?? 0;
+			const bunServe = Bun.serve({
+				port: requestedPort,
+				hostname: host,
+				fetch: adapter.fetch,
+				websocket: adapter.websocket,
+			});
+			const actualPort = bunServe.port as number;
+			const server: Server = {
+				async listen() {
+					logger.info("Bun supervisor server running", {
+						url: `http://${host}:${actualPort}`,
+					});
+				},
+				async close() {
+					bunServe.stop(true);
+				},
+				address: () => ({port: actualPort, host}),
+				get url() {
+					return `http://${host}:${actualPort}`;
+				},
+				get ready() {
+					return true;
+				},
+			};
+			this.#server = server;
+			return server;
+		}
+
 		this.#server = this.createServer(
 			(request) => pool.handleRequest(request),
 			{port: this.#options.port, host: this.#options.host},
