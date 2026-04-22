@@ -894,6 +894,10 @@ export class ShovelFetchEvent
 		return this.#responded;
 	}
 
+	upgradeWebSocket(): WebSocketConnection {
+		throw new Error("upgradeWebSocket() not yet implemented");
+	}
+
 	/** The URL of the request (convenience property) */
 	get url(): string {
 		return this.request.url;
