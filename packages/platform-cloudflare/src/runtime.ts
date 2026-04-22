@@ -15,7 +15,8 @@ import {
 	createCacheFactory,
 	createDirectoryFactory,
 	runLifecycle,
-	dispatchRequest,
+	dispatchFetchEvent,
+	kGetUpgradeResult,
 	setBroadcastChannelBackend,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
@@ -164,6 +165,20 @@ export function createFetchHandler(
 			bcBackendConfigured = true;
 		}
 
+		// Route WebSocket upgrades to the Durable Object for hibernation support.
+		// A single shared DO (`idFromName("shovel-ws")`) is used so that all
+		// connections land in the same isolate — this lets subscribe()/BC
+		// fan-out work without cross-DO RPC on the hot path.
+		if (
+			request.headers.get("upgrade")?.toLowerCase() === "websocket" &&
+			envRecord.SHOVEL_WS
+		) {
+			const ns = envRecord.SHOVEL_WS as DurableObjectNamespace;
+			const id = ns.idFromName("shovel-ws");
+			const stub = ns.get(id);
+			return stub.fetch(request);
+		}
+
 		// Create CloudflareFetchEvent with env and waitUntil hook
 		const event = new CloudflareFetchEvent(request, {
 			env: envRecord,
@@ -171,8 +186,29 @@ export function createFetchHandler(
 		});
 
 		// Run within envStorage for directory factory access
-		return envStorage.run(envRecord, () =>
-			dispatchRequest(registration, event),
-		);
+		return envStorage.run(envRecord, async () => {
+			const {event: fetchEvent, response} = await dispatchFetchEvent(
+				registration,
+				event,
+			);
+			// If user called upgradeWebSocket() but SHOVEL_WS isn't bound, the
+			// request fell through to here. Surface a clear error.
+			if (fetchEvent[kGetUpgradeResult]()) {
+				return new Response(
+					"WebSocket upgrade requires SHOVEL_WS Durable Object binding in wrangler.toml",
+					{status: 426},
+				);
+			}
+			return response!;
+		});
 	};
+}
+
+/**
+ * Get the module-level registration singleton.
+ * Used by ShovelWebSocketDO after hibernation wake-up.
+ * @internal
+ */
+export function _getRegistration(): ShovelServiceWorkerRegistration | null {
+	return _registration;
 }
