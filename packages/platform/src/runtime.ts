@@ -1745,9 +1745,10 @@ export async function dispatchFetchEvent(
 		const response = await registration[kHandleRequest](event);
 		return {event, response};
 	} catch (err) {
-		// If the handler invoked upgradeWebSocket(), kHandleRequest throws
-		// "No response provided" because there's no HTTP response for an upgrade.
-		// Distinguish that legitimate case from a real error.
+		// If the handler invoked upgradeWebSocket(), there's no HTTP response
+		// and the dispatch result is irrelevant — return the event so the
+		// caller can inspect kGetUpgradeResult. Platform adapters have
+		// already registered the connection via onUpgrade and own its cleanup.
 		if (event[kGetUpgradeResult]()) {
 			return {event, response: null};
 		}
