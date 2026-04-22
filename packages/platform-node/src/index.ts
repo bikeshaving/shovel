@@ -42,6 +42,14 @@ const logger = getLogger(["shovel", "platform"]);
 // TYPES
 // ============================================================================
 
+/**
+ * Node-specific Server extension. Exposes the underlying `http.Server` so
+ * callers can attach WebSocket upgrade handling (see `attachNodeWebSocketHandler`).
+ */
+export interface NodeServer extends Server {
+	readonly httpServer: HTTP.Server;
+}
+
 export interface NodePlatformOptions {
 	/** Port for development server (default: 7777) */
 	port?: number;
@@ -243,7 +251,7 @@ export class NodePlatform {
 		workers: number;
 		config?: ShovelConfig;
 	};
-	#server?: Server;
+	#server?: NodeServer;
 
 	constructor(options: NodePlatformOptions = {}) {
 		this.name = "node";
@@ -305,7 +313,7 @@ export class NodePlatform {
 	/**
 	 * Create HTTP server for Node.js
 	 */
-	createServer(handler: Handler, options: ServerOptions = {}): Server {
+	createServer(handler: Handler, options: ServerOptions = {}): NodeServer {
 		const port = options.port ?? this.#options.port;
 		const host = options.host ?? this.#options.host;
 
@@ -420,6 +428,10 @@ export class NodePlatform {
 			address: () => ({port: actualPort, host}),
 			get url() {
 				return `http://${host}:${actualPort}`;
+			},
+			/** @internal Exposed for WebSocket upgrade attachment. */
+			get httpServer() {
+				return httpServer;
 			},
 			get ready() {
 				return isListening;
