@@ -691,12 +691,21 @@ self.addEventListener("websocketmessage", (event) => {
 				server = startServer(join(outDir, "server"));
 
 				await waitForPort(PORT);
+				// Extra settle time so the upgrade listener has definitely
+				// been attached to the http.Server before we connect. CI
+				// runners see races here at ~100-200ms.
+				await new Promise((r) => setTimeout(r, 200));
 
 				// Connect the WebSocket
 				const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
 				await new Promise((resolve, reject) => {
 					ws.once("open", resolve);
-					ws.once("error", reject);
+					ws.once("error", (err) => {
+						logger.error(
+							`[ws open failed] ${err?.message}\nserver stdout:\n${server.stdout}\nserver stderr:\n${server.stderr}`,
+						);
+						reject(err);
+					});
 					setTimeout(() => reject(new Error("ws open timeout")), 5000);
 				});
 
