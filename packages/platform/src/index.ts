@@ -899,7 +899,7 @@ export class ServiceWorkerPool {
 
 			try {
 				worker.postMessage({type: "shutdown"});
-			} catch {
+			} catch (_err) {
 				// postMessage can throw on already-terminated workers; treat
 				// as immediate completion.
 				finish("error");
