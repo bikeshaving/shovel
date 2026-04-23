@@ -291,11 +291,12 @@ export function createBunWebSocketServer(
 			event = result.event;
 			response = result.response;
 		} catch (err) {
+			// Phantom-client cleanup.
 			if (upgradedId) connections.delete(upgradedId);
-			logger.error("Fetch dispatch threw during upgrade: {error}", {
-				error: err,
-			});
-			return new Response("Internal Server Error", {status: 500});
+			// If the handler rejected the upgrade by throwing HTTPError
+			// (e.g. UnauthorizedError) before calling upgradeWebSocket(),
+			// translate the same way ordinary HTTP traffic does.
+			return toHttpErrorResponse(err);
 		}
 
 		const conn = event![kGetUpgradeResult]();
