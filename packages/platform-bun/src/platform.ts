@@ -5,7 +5,6 @@
  * Runtime functions are in ./runtime.ts
  */
 
-import {builtinModules} from "node:module";
 import {getLogger} from "@logtape/logtape";
 import type {
 	EntryPoints,
@@ -167,7 +166,10 @@ process.on("SIGTERM", handleShutdown);
 export function getESBuildConfig(): ESBuildConfig {
 	return {
 		platform: "node",
-		external: ["node:*", "bun", "bun:*", ...builtinModules],
+		// Only scheme-prefixed builtins here — esbuild's `platform: "node"`
+		// auto-externalizes real Node builtins. Spreading `builtinModules`
+		// under Bun pulls in `ws`/`undici` which we want bundled.
+		external: ["node:*", "bun", "bun:*"],
 	};
 }
 
