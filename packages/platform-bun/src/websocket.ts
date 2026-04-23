@@ -20,6 +20,7 @@
  */
 
 import {getLogger} from "@logtape/logtape";
+import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
 	ShovelFetchEvent,
 	ShovelServiceWorkerRegistration,
@@ -34,6 +35,30 @@ import {
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform", "bun", "websocket"]);
+
+/**
+ * Mirrors the error wrapping `BunPlatform.createServer` applies around any
+ * handler it owns. Because our WS adapters replace `Bun.serve`'s `fetch`
+ * outright, they need to apply the same wrapper themselves — otherwise
+ * `HTTPError`s thrown by user code would bypass the framework's response
+ * formatting and surface as Bun's default 500.
+ */
+async function toHttpErrorResponse(error: unknown): Promise<Response> {
+	const err = error instanceof Error ? error : new Error(String(error));
+	const httpError = isHTTPError(error)
+		? (error as HTTPError)
+		: new InternalServerError(err.message, {cause: err});
+	if (httpError.status >= 500) {
+		logger.error("Request error: {error}", {error: err});
+	} else {
+		logger.warn("Request error: {status} {error}", {
+			status: httpError.status,
+			error: err,
+		});
+	}
+	const isDev = import.meta.env?.MODE !== "production";
+	return httpError.toResponse(isDev);
+}
 
 type PendingFrame =
 	| {type: "send"; data: string | ArrayBuffer}
@@ -116,15 +141,18 @@ export function createBunPoolWebSocketAdapter(pool: {
 		const isUpgrade =
 			request.headers.get("upgrade")?.toLowerCase() === "websocket";
 		if (!isUpgrade) {
-			return pool.handleRequest(request);
+			try {
+				return await pool.handleRequest(request);
+			} catch (err) {
+				return toHttpErrorResponse(err);
+			}
 		}
 
 		let result: Response | {upgrade: true; connectionID: string};
 		try {
 			result = await pool.handleUpgradeRequest(request);
 		} catch (err) {
-			logger.error("Pool.handleUpgradeRequest threw: {error}", {error: err});
-			return new Response("Internal Server Error", {status: 500});
+			return toHttpErrorResponse(err);
 		}
 
 		if (result instanceof Response) {
@@ -223,7 +251,11 @@ export function createBunWebSocketServer(
 		const isUpgrade =
 			request.headers.get("upgrade")?.toLowerCase() === "websocket";
 		if (!isUpgrade) {
-			return dispatchRequest(registration, request);
+			try {
+				return await dispatchRequest(registration, request);
+			} catch (err) {
+				return toHttpErrorResponse(err);
+			}
 		}
 
 		// Buffering relay — holds frames until websocket.open fires.
