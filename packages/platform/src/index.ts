@@ -871,35 +871,42 @@ export class ServiceWorkerPool {
 	/**
 	 * Gracefully shutdown a worker by closing all resources first
 	 */
-	async #gracefulShutdown(worker: Worker, timeout = 5000): Promise<void> {
+	async #gracefulShutdown(worker: Worker, timeout = 2000): Promise<void> {
 		return new Promise<void>((resolve) => {
 			let resolved = false;
+			const finish = (reason: "clean" | "error" | "timeout") => {
+				if (resolved) return;
+				resolved = true;
+				worker.removeEventListener("message", onMessage);
+				worker.removeEventListener("error", onError);
+				if (reason === "timeout") {
+					logger.warn("Worker shutdown timed out, forcing termination");
+				}
+				resolve();
+			};
 
-			// Set up listener for shutdown-complete
 			const onMessage = (event: MessageEvent) => {
 				const message = event.data || event;
-				if (message?.type === "shutdown-complete") {
-					if (!resolved) {
-						resolved = true;
-						worker.removeEventListener("message", onMessage);
-						resolve();
-					}
-				}
+				if (message?.type === "shutdown-complete") finish("clean");
 			};
+			// If the worker emits an error event, it's already in a dead/dying
+			// state — no point waiting the full timeout for a shutdown ack
+			// it will never send.
+			const onError = () => finish("error");
+
 			worker.addEventListener("message", onMessage);
+			worker.addEventListener("error", onError);
 
-			// Send shutdown signal
-			worker.postMessage({type: "shutdown"});
+			try {
+				worker.postMessage({type: "shutdown"});
+			} catch {
+				// postMessage can throw on already-terminated workers; treat
+				// as immediate completion.
+				finish("error");
+				return;
+			}
 
-			// Timeout fallback - don't hang forever
-			setTimeout(() => {
-				if (!resolved) {
-					resolved = true;
-					worker.removeEventListener("message", onMessage);
-					logger.warn("Worker shutdown timed out, forcing termination");
-					resolve();
-				}
-			}, timeout);
+			setTimeout(() => finish("timeout"), timeout);
 		});
 	}
 
