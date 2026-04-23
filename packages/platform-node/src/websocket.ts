@@ -63,7 +63,10 @@ export function attachNodeWebSocketHandler(
 	// Per-isolate registry of live connections. Allows cleanup on shutdown and
 	// defense-in-depth lookup on close/message (we also receive the connection
 	// object directly from dispatch, but storage makes shutdown clean).
-	const connections = new Map<string, {conn: ShovelWebSocketConnection; ws: any}>();
+	const connections = new Map<
+		string,
+		{conn: ShovelWebSocketConnection; ws: any}
+	>();
 
 	// Per-connection dispatch queues so messages are delivered in order.
 	const dispatchChains = new Map<string, Promise<void>>();
@@ -132,7 +135,9 @@ export function attachNodeWebSocketHandler(
 				connections.delete(upgradedConnectionId);
 				dispatchChains.delete(upgradedConnectionId);
 			}
-			logger.error("Fetch dispatch threw during upgrade: {error}", {error: err});
+			logger.error("Fetch dispatch threw during upgrade: {error}", {
+				error: err,
+			});
 			writeErrorAndDestroy(socket, 500, "Internal Server Error");
 			return;
 		}
@@ -185,7 +190,9 @@ export function attachNodeWebSocketHandler(
 			// close frame triggers ws.close() which triggers "close" — we
 			// need the listener in place to see it.
 			ws.on("message", (data: Buffer, isBinary: boolean) => {
-				const payload = isBinary ? bufferToArrayBuffer(data) : data.toString("utf8");
+				const payload = isBinary
+					? bufferToArrayBuffer(data)
+					: data.toString("utf8");
 				enqueue(conn.id, () =>
 					dispatchWebSocketMessage(registration, conn, payload),
 				);
@@ -239,7 +246,7 @@ export function attachNodeWebSocketHandler(
 		for (const {ws} of connections.values()) {
 			try {
 				ws.close(1001, "Server shutting down");
-			} catch {
+			} catch (_err) {
 				/* best-effort */
 			}
 		}
@@ -409,7 +416,7 @@ export function attachNodePoolWebSocketHandler(
 		for (const ws of liveSockets.values()) {
 			try {
 				ws.close(1001, "Server shutting down");
-			} catch {
+			} catch (_err) {
 				/* best-effort */
 			}
 		}

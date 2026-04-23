@@ -79,9 +79,9 @@ function addShovelListener(
 	handler: EventListener,
 ): void {
 	(globalThis as any).addEventListener(type, handler);
-	(
-		(globalThis as any)[`__wsBunTest_${type}`] as Array<EventListener>
-	).push(handler);
+	((globalThis as any)[`__wsBunTest_${type}`] as Array<EventListener>).push(
+		handler,
+	);
 }
 
 function connect(url: string): Promise<WebSocket> {
@@ -98,9 +98,7 @@ function waitForMessage(ws: WebSocket): Promise<string | ArrayBuffer> {
 	});
 }
 
-function waitForClose(
-	ws: WebSocket,
-): Promise<{code: number; reason: string}> {
+function waitForClose(ws: WebSocket): Promise<{code: number; reason: string}> {
 	return new Promise((resolve) => {
 		ws.addEventListener(
 			"close",
@@ -110,113 +108,93 @@ function waitForClose(
 	});
 }
 
-test(
-	"echo: handler sends data back to the sender",
-	async () => {
-		const url = await startServer(() => {
-			addShovelListener("fetch", (event: any) => {
-				event.upgradeWebSocket();
-			});
-			addShovelListener("websocketmessage", (event: any) => {
-				event.source.send(`echo: ${event.data}`);
-			});
+test("echo: handler sends data back to the sender", async () => {
+	const url = await startServer(() => {
+		addShovelListener("fetch", (event: any) => {
+			event.upgradeWebSocket();
 		});
-
-		const ws = await connect(url);
-		const msg = waitForMessage(ws);
-		ws.send("hello");
-		expect(await msg).toBe("echo: hello");
-		ws.close();
-		await waitForClose(ws);
-	},
-	5000,
-);
-
-test(
-	"greeting: connection.send() during upgrade is delivered",
-	async () => {
-		const url = await startServer(() => {
-			addShovelListener("fetch", (event: any) => {
-				const ws = event.upgradeWebSocket();
-				ws.send("welcome");
-			});
+		addShovelListener("websocketmessage", (event: any) => {
+			event.source.send(`echo: ${event.data}`);
 		});
+	});
 
-		const ws = await connect(url);
-		expect(await waitForMessage(ws)).toBe("welcome");
-		ws.close();
-		await waitForClose(ws);
-	},
-	5000,
-);
+	const ws = await connect(url);
+	const msg = waitForMessage(ws);
+	ws.send("hello");
+	expect(await msg).toBe("echo: hello");
+	ws.close();
+	await waitForClose(ws);
+}, 5000);
 
-test(
-	"subscribe: BC publish routes to subscribed connection",
-	async () => {
-		const url = await startServer(() => {
-			addShovelListener("fetch", (event: any) => {
-				const ws = event.upgradeWebSocket();
-				ws.subscribe("room:lobby");
-			});
+test("greeting: connection.send() during upgrade is delivered", async () => {
+	const url = await startServer(() => {
+		addShovelListener("fetch", (event: any) => {
+			const ws = event.upgradeWebSocket();
+			ws.send("welcome");
 		});
+	});
 
-		const ws = await connect(url);
-		const msg = waitForMessage(ws);
-		await new Promise((r) => setTimeout(r, 20));
-		const publisher = new ShovelBroadcastChannel("room:lobby");
-		publisher.postMessage("broadcast");
-		expect(await msg).toBe("broadcast");
-		ws.close();
-		await waitForClose(ws);
-	},
-	5000,
-);
+	const ws = await connect(url);
+	expect(await waitForMessage(ws)).toBe("welcome");
+	ws.close();
+	await waitForClose(ws);
+}, 5000);
 
-test(
-	"binary frame: ArrayBuffer round-trips",
-	async () => {
-		const url = await startServer(() => {
-			addShovelListener("fetch", (event: any) => {
-				event.upgradeWebSocket();
-			});
-			addShovelListener("websocketmessage", (event: any) => {
-				event.source.send(event.data);
-			});
+test("subscribe: BC publish routes to subscribed connection", async () => {
+	const url = await startServer(() => {
+		addShovelListener("fetch", (event: any) => {
+			const ws = event.upgradeWebSocket();
+			ws.subscribe("room:lobby");
 		});
+	});
 
-		const ws = await connect(url);
-		ws.binaryType = "arraybuffer";
-		const msg = waitForMessage(ws);
-		ws.send(new Uint8Array([9, 8, 7, 6]));
-		const got = await msg;
-		expect(got).toBeInstanceOf(ArrayBuffer);
-		expect(new Uint8Array(got as ArrayBuffer)).toEqual(
-			new Uint8Array([9, 8, 7, 6]),
-		);
-		ws.close();
-		await waitForClose(ws);
-	},
-	5000,
-);
+	const ws = await connect(url);
+	const msg = waitForMessage(ws);
+	await new Promise((r) => setTimeout(r, 20));
+	const publisher = new ShovelBroadcastChannel("room:lobby");
+	publisher.postMessage("broadcast");
+	expect(await msg).toBe("broadcast");
+	ws.close();
+	await waitForClose(ws);
+}, 5000);
 
-test(
-	"websocketclose fires with arrival code",
-	async () => {
-		const closeCodes: number[] = [];
-		const url = await startServer(() => {
-			addShovelListener("fetch", (event: any) => {
-				event.upgradeWebSocket();
-			});
-			addShovelListener("websocketclose", (event: any) => {
-				closeCodes.push(event.code);
-			});
+test("binary frame: ArrayBuffer round-trips", async () => {
+	const url = await startServer(() => {
+		addShovelListener("fetch", (event: any) => {
+			event.upgradeWebSocket();
 		});
+		addShovelListener("websocketmessage", (event: any) => {
+			event.source.send(event.data);
+		});
+	});
 
-		const ws = await connect(url);
-		ws.close(1000, "client done");
-		await waitForClose(ws);
-		await new Promise((r) => setTimeout(r, 50));
-		expect(closeCodes).toEqual([1000]);
-	},
-	5000,
-);
+	const ws = await connect(url);
+	ws.binaryType = "arraybuffer";
+	const msg = waitForMessage(ws);
+	ws.send(new Uint8Array([9, 8, 7, 6]));
+	const got = await msg;
+	expect(got).toBeInstanceOf(ArrayBuffer);
+	expect(new Uint8Array(got as ArrayBuffer)).toEqual(
+		new Uint8Array([9, 8, 7, 6]),
+	);
+	ws.close();
+	await waitForClose(ws);
+}, 5000);
+
+test("websocketclose fires with arrival code", async () => {
+	const closeCodes: number[] = [];
+	const url = await startServer(() => {
+		addShovelListener("fetch", (event: any) => {
+			event.upgradeWebSocket();
+		});
+		addShovelListener("websocketclose", (event: any) => {
+			closeCodes.push(event.code);
+		});
+	});
+
+	const ws = await connect(url);
+	ws.close(1000, "client done");
+	await waitForClose(ws);
+	await new Promise((r) => setTimeout(r, 50));
+	expect(closeCodes).toEqual([1000]);
+}, 5000);

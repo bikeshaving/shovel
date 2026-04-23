@@ -1226,7 +1226,7 @@ export class ShovelWebSocketConnection implements WebSocketConnection {
 			this.#subscriptions.delete(channel);
 			try {
 				bc.close();
-			} catch {
+			} catch (_err) {
 				// Best-effort unsubscribe; never propagate backend errors.
 			}
 		}
@@ -1237,7 +1237,7 @@ export class ShovelWebSocketConnection implements WebSocketConnection {
 		for (const [, bc] of this.#subscriptions) {
 			try {
 				bc.close();
-			} catch {
+			} catch (_err) {
 				/* best-effort */
 			}
 		}

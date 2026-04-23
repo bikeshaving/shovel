@@ -529,10 +529,7 @@ export class ServiceWorkerPool {
 	}
 
 	/** Route an inbound WS frame from the platform socket to the owning worker. */
-	sendWebSocketMessage(
-		connectionID: string,
-		data: string | ArrayBuffer,
-	): void {
+	sendWebSocketMessage(connectionID: string, data: string | ArrayBuffer): void {
 		const owner = this.#wsConnectionOwners.get(connectionID);
 		if (!owner) return;
 		owner.postMessage({type: "ws:message", connectionID, data});
@@ -697,11 +694,7 @@ export class ServiceWorkerPool {
 				// ws.close() on the real socket; the real-socket close
 				// eventually arrives and triggers sendWebSocketClose back
 				// into the pool for owner cleanup.
-				this.#wsHandlers?.closeConnection(
-					m.connectionID,
-					m.code,
-					m.reason,
-				);
+				this.#wsHandlers?.closeConnection(m.connectionID, m.code, m.reason);
 				break;
 			}
 

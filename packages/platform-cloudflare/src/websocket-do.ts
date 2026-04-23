@@ -113,7 +113,9 @@ export class ShovelWebSocketDO extends DurableObject {
 	#buildConnectionFromSocket(ws: WebSocket): ShovelWebSocketConnection | null {
 		let attachment: WebSocketConnectionState | null = null;
 		try {
-			attachment = (ws as any).deserializeAttachment() as WebSocketConnectionState;
+			attachment = (
+				ws as any
+			).deserializeAttachment() as WebSocketConnectionState;
 		} catch (err) {
 			logger.warn("Failed to deserialize WS attachment: {error}", {error: err});
 		}
@@ -230,7 +232,10 @@ export class ShovelWebSocketDO extends DurableObject {
 		});
 	}
 
-	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+	async webSocketMessage(
+		ws: WebSocket,
+		message: string | ArrayBuffer,
+	): Promise<void> {
 		const registration = await this.#ensureRuntime();
 		const env = (this.env ?? {}) as Record<string, unknown>;
 
@@ -239,9 +244,11 @@ export class ShovelWebSocketDO extends DurableObject {
 		// #ensureRuntime() when we woke up.
 		let id: string | null = null;
 		try {
-			const state = (ws as any).deserializeAttachment() as WebSocketConnectionState;
+			const state = (
+				ws as any
+			).deserializeAttachment() as WebSocketConnectionState;
 			id = state?.id ?? null;
-		} catch {
+		} catch (_err) {
 			/* fall through */
 		}
 		if (!id) {
@@ -287,9 +294,11 @@ export class ShovelWebSocketDO extends DurableObject {
 
 		let id: string | null = null;
 		try {
-			const state = (ws as any).deserializeAttachment() as WebSocketConnectionState;
+			const state = (
+				ws as any
+			).deserializeAttachment() as WebSocketConnectionState;
 			id = state?.id ?? null;
-		} catch {
+		} catch (_err) {
 			/* fall through */
 		}
 		if (!id) return;
@@ -301,13 +310,7 @@ export class ShovelWebSocketDO extends DurableObject {
 		const next = prev
 			.then(() =>
 				envStorage.run(env, () =>
-					dispatchWebSocketClose(
-						registration,
-						conn,
-						code,
-						reason,
-						wasClean,
-					),
+					dispatchWebSocketClose(registration, conn, code, reason, wasClean),
 				),
 			)
 			.catch((err) =>
@@ -324,9 +327,11 @@ export class ShovelWebSocketDO extends DurableObject {
 		logger.error("WebSocket error: {error}", {error});
 		let id: string | null = null;
 		try {
-			const state = (ws as any).deserializeAttachment() as WebSocketConnectionState;
+			const state = (
+				ws as any
+			).deserializeAttachment() as WebSocketConnectionState;
 			id = state?.id ?? null;
-		} catch {
+		} catch (_err) {
 			/* ignore */
 		}
 		if (id) {

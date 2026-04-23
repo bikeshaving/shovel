@@ -18,86 +18,79 @@ import {copyFixtureToTemp} from "./utils.js";
  * flake on CI (broken pipe on workerd control fd during dispose).
  */
 
-test(
-	"cloudflare websocket - upgrade, subscribe, echo, and close",
-	async () => {
-		const fixture = await copyFixtureToTemp("cloudflare-websocket");
-		let mf;
+test("cloudflare websocket - upgrade, subscribe, echo, and close", async () => {
+	const fixture = await copyFixtureToTemp("cloudflare-websocket");
+	let mf;
 
-		try {
-			await buildForProduction({
-				entrypoint: join(fixture.src, "app.js"),
-				outDir: fixture.dist,
-				verbose: false,
-				platform: "cloudflare",
-			});
+	try {
+		await buildForProduction({
+			entrypoint: join(fixture.src, "app.js"),
+			outDir: fixture.dist,
+			verbose: false,
+			platform: "cloudflare",
+		});
 
-			const workerPath = join(fixture.dist, "server", "worker.js");
-			const publicDir = join(fixture.dist, "public");
-			const script = await FS.readFile(workerPath, "utf8");
-			await FS.mkdir(publicDir, {recursive: true});
+		const workerPath = join(fixture.dist, "server", "worker.js");
+		const publicDir = join(fixture.dist, "public");
+		const script = await FS.readFile(workerPath, "utf8");
+		await FS.mkdir(publicDir, {recursive: true});
 
-			mf = new Miniflare({
-				modules: true,
-				script,
-				compatibilityDate: "2024-09-23",
-				compatibilityFlags: ["nodejs_compat"],
-				port: 0,
-				durableObjects: {
-					SHOVEL_WS: "ShovelWebSocketDO",
-				},
-				assets: {
-					directory: publicDir,
-					binding: "ASSETS",
-					routerConfig: {has_user_worker: true},
-				},
-			});
-			const baseURL = await mf.ready;
+		mf = new Miniflare({
+			modules: true,
+			script,
+			compatibilityDate: "2024-09-23",
+			compatibilityFlags: ["nodejs_compat"],
+			port: 0,
+			durableObjects: {
+				SHOVEL_WS: "ShovelWebSocketDO",
+			},
+			assets: {
+				directory: publicDir,
+				binding: "ASSETS",
+				routerConfig: {has_user_worker: true},
+			},
+		});
+		const baseURL = await mf.ready;
 
-			// Confirm HTTP fallback works via real fetch
-			const httpRes = await fetch(new URL("/plain", baseURL));
-			expect(httpRes.status).toBe(200);
-			expect(await httpRes.text()).toBe("HTTP fallback");
+		// Confirm HTTP fallback works via real fetch
+		const httpRes = await fetch(new URL("/plain", baseURL));
+		expect(httpRes.status).toBe(200);
+		expect(await httpRes.text()).toBe("HTTP fallback");
 
-			// Connect via real WebSocket client
-			const wsURL = new URL("/ws", baseURL);
-			wsURL.protocol = wsURL.protocol.replace("http", "ws");
-			const ws = new WebSocket(wsURL.href);
+		// Connect via real WebSocket client
+		const wsURL = new URL("/ws", baseURL);
+		wsURL.protocol = wsURL.protocol.replace("http", "ws");
+		const ws = new WebSocket(wsURL.href);
 
-			await new Promise((resolve, reject) => {
-				ws.addEventListener("open", resolve, {once: true});
-				ws.addEventListener("error", reject, {once: true});
-				setTimeout(
-					() => reject(new Error("WebSocket open timeout")),
-					5000,
-				);
-			});
+		await new Promise((resolve, reject) => {
+			ws.addEventListener("open", resolve, {once: true});
+			ws.addEventListener("error", reject, {once: true});
+			setTimeout(() => reject(new Error("WebSocket open timeout")), 5000);
+		});
 
-			// Server should greet us immediately
-			const greeting = await new Promise((resolve, reject) => {
-				ws.addEventListener("message", (e) => resolve(e.data), {once: true});
-				setTimeout(() => reject(new Error("greeting timeout")), 5000);
-			});
-			expect(greeting).toContain('"type":"welcome"');
+		// Server should greet us immediately
+		const greeting = await new Promise((resolve, reject) => {
+			ws.addEventListener("message", (e) => resolve(e.data), {once: true});
+			setTimeout(() => reject(new Error("greeting timeout")), 5000);
+		});
+		expect(greeting).toContain('"type":"welcome"');
 
-			// Echo round-trip
-			const echoed = new Promise((resolve, reject) => {
-				ws.addEventListener("message", (e) => resolve(e.data), {once: true});
-				setTimeout(() => reject(new Error("echo timeout")), 5000);
-			});
-			ws.send("hi");
-			expect(await echoed).toBe("echo: hi");
+		// Echo round-trip
+		const echoed = new Promise((resolve, reject) => {
+			ws.addEventListener("message", (e) => resolve(e.data), {once: true});
+			setTimeout(() => reject(new Error("echo timeout")), 5000);
+		});
+		ws.send("hi");
+		expect(await echoed).toBe("echo: hi");
 
-			// Client-initiated close
-			const closed = new Promise((resolve) => {
-				ws.addEventListener("close", (e) => resolve(e.code), {once: true});
-			});
-			ws.close(1000, "test done");
-			expect(await closed).toBe(1000);
-		} finally {
-			if (mf) await mf.dispose();
-			await fixture.cleanup();
-		}
-	},
-	30000,
-);
+		// Client-initiated close
+		const closed = new Promise((resolve) => {
+			ws.addEventListener("close", (e) => resolve(e.code), {once: true});
+		});
+		ws.close(1000, "test done");
+		expect(await closed).toBe(1000);
+	} finally {
+		if (mf) await mf.dispose();
+		await fixture.cleanup();
+	}
+}, 30000);

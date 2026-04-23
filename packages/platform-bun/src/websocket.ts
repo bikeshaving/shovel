@@ -179,12 +179,7 @@ export function createBunPoolWebSocketAdapter(pool: {
 		close(ws: any, code: number, reason: string) {
 			const data = ws.data as BunWebSocketData;
 			liveSockets.delete(data.connectionId);
-			pool.sendWebSocketClose(
-				data.connectionId,
-				code,
-				reason,
-				code !== 1006,
-			);
+			pool.sendWebSocketClose(data.connectionId, code, reason, code !== 1006);
 		},
 	};
 
@@ -265,7 +260,9 @@ export function createBunWebSocketServer(
 			response = result.response;
 		} catch (err) {
 			if (upgradedId) connections.delete(upgradedId);
-			logger.error("Fetch dispatch threw during upgrade: {error}", {error: err});
+			logger.error("Fetch dispatch threw during upgrade: {error}", {
+				error: err,
+			});
 			return new Response("Internal Server Error", {status: 500});
 		}
 
@@ -300,10 +297,9 @@ export function createBunWebSocketServer(
 			const entry = connections.get(data.connectionId);
 			if (!entry) {
 				// Shouldn't happen — upgrade succeeded without a registered conn
-				logger.warn(
-					"websocket.open for unknown connection: {id}",
-					{id: data.connectionId},
-				);
+				logger.warn("websocket.open for unknown connection: {id}", {
+					id: data.connectionId,
+				});
 				ws.close(1011, "Server state lost");
 				return;
 			}
@@ -385,7 +381,7 @@ export function createBunWebSocketServer(
 			for (const {ws} of connections.values()) {
 				try {
 					ws?.close(1001, "Server shutting down");
-				} catch {
+				} catch (_err) {
 					/* best-effort */
 				}
 			}
