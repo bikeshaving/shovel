@@ -697,10 +697,7 @@ self.addEventListener("websocketmessage", (event) => {
 				await new Promise((resolve, reject) => {
 					ws.once("open", resolve);
 					ws.once("error", reject);
-					setTimeout(
-						() => reject(new Error("ws open timeout")),
-						5000,
-					);
+					setTimeout(() => reject(new Error("ws open timeout")), 5000);
 				});
 
 				// Greeting sent during upgrade
@@ -1052,10 +1049,7 @@ self.addEventListener("websocketmessage", (event) => {
 				await new Promise((resolve, reject) => {
 					ws.once("open", resolve);
 					ws.once("error", reject);
-					setTimeout(
-						() => reject(new Error("ws open timeout")),
-						5000,
-					);
+					setTimeout(() => reject(new Error("ws open timeout")), 5000);
 				});
 
 				const greeting = await new Promise((resolve, reject) => {

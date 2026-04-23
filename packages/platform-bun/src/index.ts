@@ -348,11 +348,7 @@ export class BunPlatform {
 			) => Promise<Response | {upgrade: true; connectionID: string}>;
 			setWebSocketHandlers?: (h: {
 				sendFrame: (id: string, data: string | ArrayBuffer) => void;
-				closeConnection: (
-					id: string,
-					code?: number,
-					reason?: string,
-				) => void;
+				closeConnection: (id: string, code?: number, reason?: string) => void;
 			}) => void;
 			sendWebSocketMessage?: (id: string, data: string | ArrayBuffer) => void;
 			sendWebSocketClose?: (
@@ -401,10 +397,10 @@ export class BunPlatform {
 			return server;
 		}
 
-		this.#server = this.createServer(
-			(request) => pool.handleRequest(request),
-			{port: this.#options.port, host: this.#options.host},
-		);
+		this.#server = this.createServer((request) => pool.handleRequest(request), {
+			port: this.#options.port,
+			host: this.#options.host,
+		});
 		await this.#server.listen();
 		return this.#server;
 	}

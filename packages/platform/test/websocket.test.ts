@@ -450,7 +450,12 @@ test("ArrayBuffer BC messages forward as binary frames", async () => {
 });
 
 test("hibernation rehydration preserves all subscribed channels", async () => {
-	const channels = ["room:a", "room:b", "room:c", `user:${crypto.randomUUID()}`];
+	const channels = [
+		"room:a",
+		"room:b",
+		"room:c",
+		`user:${crypto.randomUUID()}`,
+	];
 	const {relay} = createMockRelay();
 	const original = new ShovelWebSocketConnection({
 		id: "chy",
