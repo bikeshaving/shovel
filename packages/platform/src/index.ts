@@ -528,6 +528,29 @@ export class ServiceWorkerPool {
 		this.#wsHandlers = handlers;
 	}
 
+	/**
+	 * Close every pool-owned WebSocket connection and clear ownership
+	 * bookkeeping. Called before reload / terminate so clients see a proper
+	 * close frame instead of a socket wired to a worker that no longer exists.
+	 */
+	#closePooledWebSockets(code: number, reason: string): void {
+		if (!this.#wsHandlers || this.#wsConnectionOwners.size === 0) {
+			this.#wsConnectionOwners.clear();
+			return;
+		}
+		for (const id of this.#wsConnectionOwners.keys()) {
+			try {
+				this.#wsHandlers.closeConnection(id, code, reason);
+			} catch (err) {
+				logger.warn("Failed to close pooled WebSocket {id}: {error}", {
+					id,
+					error: err,
+				});
+			}
+		}
+		this.#wsConnectionOwners.clear();
+	}
+
 	/** Route an inbound WS frame from the platform socket to the owning worker. */
 	sendWebSocketMessage(connectionID: string, data: string | ArrayBuffer): void {
 		const owner = this.#wsConnectionOwners.get(connectionID);
@@ -924,6 +947,11 @@ export class ServiceWorkerPool {
 		// Update stored entrypoint
 		this.#appEntrypoint = entrypoint;
 
+		// Close any pooled WebSockets before tearing workers down. The
+		// physical socket lives in the supervisor; if we don't close it,
+		// the client would keep sending frames to a terminated worker.
+		this.#closePooledWebSockets(1012, "Server reloading");
+
 		// Gracefully shutdown existing workers - close resources before terminating
 		const shutdownPromises = this.#workers.map((worker) =>
 			this.#gracefulShutdown(worker),
@@ -965,6 +993,10 @@ export class ServiceWorkerPool {
 	 * Graceful shutdown of all workers
 	 */
 	async terminate(): Promise<void> {
+		// Close any pooled WebSockets before shutting workers down so clients
+		// get a clean close frame instead of a silent drop when the server exits.
+		this.#closePooledWebSockets(1001, "Server shutting down");
+
 		// Gracefully shutdown workers first (close databases, etc.)
 		const shutdownPromises = this.#workers.map((worker) =>
 			this.#gracefulShutdown(worker),
