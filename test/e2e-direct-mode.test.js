@@ -691,30 +691,12 @@ self.addEventListener("websocketmessage", (event) => {
 				server = startServer(join(outDir, "server"));
 
 				await waitForPort(PORT);
-				// Extra settle time so the upgrade listener has definitely
-				// been attached to the http.Server before we connect. CI
-				// runners see races here at ~100-200ms.
-				await new Promise((r) => setTimeout(r, 200));
-
-				// Sanity-check HTTP path first — if this fails we know the
-				// server itself isn't even responding and WS is a red herring.
-				const httpRes = await fetchWithRetry(
-					`http://localhost:${PORT}/plain`,
-				);
-				process.stdout.write(
-					`[diag] http status=${httpRes.status} body=${await httpRes.text()}\n[diag] server stdout so far:\n${server.stdout}\n[diag] server stderr so far:\n${server.stderr}\n`,
-				);
 
 				// Connect the WebSocket
 				const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
 				await new Promise((resolve, reject) => {
 					ws.once("open", resolve);
-					ws.once("error", (err) => {
-						process.stdout.write(
-							`[ws open failed] ${err?.message}\nserver stdout:\n${server.stdout}\nserver stderr:\n${server.stderr}\n`,
-						);
-						reject(err);
-					});
+					ws.once("error", reject);
 					setTimeout(() => reject(new Error("ws open timeout")), 5000);
 				});
 

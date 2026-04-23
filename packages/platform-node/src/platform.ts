@@ -5,7 +5,6 @@
  * Runtime functions are in ./runtime.ts
  */
 
-import {builtinModules} from "node:module";
 import {getLogger} from "@logtape/logtape";
 import type {
 	EntryPoints,
@@ -194,7 +193,12 @@ process.on("SIGTERM", handleShutdown);
 export function getESBuildConfig(): ESBuildConfig {
 	return {
 		platform: "node",
-		external: ["node:*", ...builtinModules],
+		// Only `node:*` scheme here — esbuild's `platform: "node"` already
+		// externalizes every real Node builtin automatically. Do NOT spread
+		// `builtinModules` from `node:module`: under Bun that list contains
+		// non-Node packages ("ws", "undici", "bun:*") which would silently
+		// mark them external and cause runtime module-not-found errors.
+		external: ["node:*"],
 		define: {
 			// Node.js doesn't support import.meta.env, alias to process.env
 			"import.meta.env": "process.env",
