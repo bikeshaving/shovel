@@ -116,24 +116,32 @@ export function attachNodeWebSocketHandler(
 
 		let event: ShovelFetchEvent | undefined;
 		let response: Response | null | undefined;
+		// Tracked separately from `connections` so we can call
+		// `_releaseSubscriptions()` on a phantom upgrade. Typed as
+		// `unknown` so TypeScript doesn't narrow it to `never` after the
+		// always-null initializer.
+		let upgradedConn: ShovelWebSocketConnection | null =
+			null as unknown as ShovelWebSocketConnection | null;
 
 		try {
 			const result = await dispatchFetchEvent(registration, request, {
 				wsRelay: relay,
 				onUpgrade(conn) {
 					upgradedConnectionId = conn.id;
+					upgradedConn = conn;
 				},
 			});
 			event = result.event;
 			response = result.response;
 		} catch (err) {
-			// Phantom-client cleanup: if handler registered a connection and then
-			// threw, drop it from our registry (none was stored yet — onUpgrade
-			// only stores into the local variable — but if later we register on
-			// upgrade, cleanup goes here).
+			// Phantom-client cleanup: if the handler called upgradeWebSocket()
+			// and then threw, drop the connection AND release its BC
+			// subscriptions so we don't leak channel listeners attached to a
+			// socket that will never exist.
 			if (upgradedConnectionId) {
 				connections.delete(upgradedConnectionId);
 				dispatchChains.delete(upgradedConnectionId);
+				upgradedConn?._releaseSubscriptions();
 			}
 			logger.error("Fetch dispatch threw during upgrade: {error}", {
 				error: err,
@@ -166,6 +174,7 @@ export function attachNodeWebSocketHandler(
 			writeErrorAndDestroy(socket, 500, "WebSocket support unavailable");
 			connections.delete(conn.id);
 			dispatchChains.delete(conn.id);
+			conn._releaseSubscriptions();
 			return;
 		}
 

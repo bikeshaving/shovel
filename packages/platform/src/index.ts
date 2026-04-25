@@ -695,13 +695,27 @@ export class ServiceWorkerPool {
 
 			case "ws:upgrade": {
 				const m = message as WorkerUpgradeMessage;
-				this.#wsConnectionOwners.set(m.connectionID, worker);
 				const pending = this.#pendingRequests.get(m.requestID);
-				if (pending) {
-					if (pending.timeoutId) clearTimeout(pending.timeoutId);
-					pending.resolve({upgrade: true, connectionID: m.connectionID});
-					this.#pendingRequests.delete(m.requestID);
+				if (!pending) {
+					// The supervisor has already given up on this request
+					// (timeout or worker-side error rejection), so there's no
+					// physical socket to attach. Tell the worker to drop the
+					// connection it just registered, and don't record an owner
+					// — otherwise later ws:send / ws:close from this connection
+					// would route against a phantom.
+					worker.postMessage({
+						type: "ws:close",
+						connectionID: m.connectionID,
+						code: 1011,
+						reason: "Upgrade arrived after request timeout",
+						wasClean: false,
+					});
+					break;
 				}
+				this.#wsConnectionOwners.set(m.connectionID, worker);
+				if (pending.timeoutId) clearTimeout(pending.timeoutId);
+				pending.resolve({upgrade: true, connectionID: m.connectionID});
+				this.#pendingRequests.delete(m.requestID);
 				break;
 			}
 

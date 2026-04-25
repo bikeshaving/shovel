@@ -291,8 +291,14 @@ export function createBunWebSocketServer(
 			event = result.event;
 			response = result.response;
 		} catch (err) {
-			// Phantom-client cleanup.
-			if (upgradedId) connections.delete(upgradedId);
+			// Phantom-client cleanup. If the handler called upgradeWebSocket()
+			// before throwing, the connection object holds live BC
+			// subscriptions — release them so we don't leak channel listeners
+			// pointing at a socket that will never exist.
+			if (upgradedId) {
+				connections.delete(upgradedId);
+				entry.conn?._releaseSubscriptions();
+			}
 			// If the handler rejected the upgrade by throwing HTTPError
 			// (e.g. UnauthorizedError) before calling upgradeWebSocket(),
 			// translate the same way ordinary HTTP traffic does.
@@ -316,8 +322,11 @@ export function createBunWebSocketServer(
 			data: {connectionId: conn.id} satisfies BunWebSocketData,
 		});
 		if (!ok) {
+			// Bun rejected the handshake (e.g., client disconnected). Clear
+			// runtime state including BC subscriptions to avoid a phantom.
 			connections.delete(conn.id);
 			dispatchChains.delete(conn.id);
+			conn._releaseSubscriptions();
 			return new Response("WebSocket upgrade failed", {status: 500});
 		}
 		// Returning undefined tells Bun the request has been handed off.
