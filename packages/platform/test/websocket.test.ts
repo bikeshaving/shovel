@@ -327,6 +327,43 @@ test("send/close become no-ops after close", async () => {
 	expect(closes).toEqual([{id: "c1", code: 1000, reason: "bye"}]);
 });
 
+test("retained connection is inert after dispatchWebSocketClose", async () => {
+	// Codex P2: dispatchWebSocketClose calls _releaseSubscriptions which
+	// must mark the connection closed too — otherwise a user-retained
+	// reference from upgradeWebSocket() can still send / subscribe and
+	// recreate phantom subscriptions on a dead connection.
+	const registration = await setupScope();
+	const {relay, sends} = createMockRelay();
+
+	let retained: ShovelWebSocketConnection | null =
+		null as unknown as ShovelWebSocketConnection | null;
+	addShovelListener("fetch", (event: any) => {
+		retained = event.upgradeWebSocket();
+	});
+
+	const request = new Request("http://localhost/ws", {
+		headers: {Upgrade: "websocket"},
+	});
+	const {event} = await dispatchFetchEvent(registration, request, {
+		wsRelay: relay,
+	});
+	const conn = event[kGetUpgradeResult]()!;
+
+	await dispatchWebSocketClose(registration, conn, 1000, "done", true);
+
+	// The retained reference is the same object; everything must be inert
+	expect(retained).toBe(conn);
+	retained!.send("phantom");
+	retained!.subscribe("phantom-channel");
+
+	const publisher = new ShovelBroadcastChannel("phantom-channel");
+	publisher.postMessage("should-not-deliver");
+	await new Promise((r) => setTimeout(r, 0));
+
+	expect(sends).toEqual([]);
+	expect(retained![kGetConnectionState]().subscribedChannels).toEqual([]);
+});
+
 // ─── Regression tests ─────────────────────────────────────────────────────
 
 test("subscribe is idempotent — duplicate subscribe is a no-op", async () => {
