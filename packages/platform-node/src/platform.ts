@@ -5,7 +5,6 @@
  * Runtime functions are in ./runtime.ts
  */
 
-import {builtinModules} from "node:module";
 import {getLogger} from "@logtape/logtape";
 import type {
 	EntryPoints,
@@ -86,6 +85,7 @@ import {parentPort} from "node:worker_threads";
 import {getLogger} from "@logtape/logtape";
 import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest} from "@b9g/platform/runtime";
 import NodePlatform from "@b9g/platform-node";
+import {attachNodeWebSocketHandler} from "@b9g/platform-node/websocket";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -96,11 +96,13 @@ const directMode = config.workers <= 1;
 // Track resources for shutdown
 let server;
 let databases;
+let detachWs;
 
 // Register shutdown handler before async startup
 parentPort?.on("message", async (event) => {
 	if (event.type === "shutdown") {
 		logger.info("Worker shutting down");
+		if (detachWs) await detachWs();
 		if (server) await server.close();
 		if (databases) await databases.closeAll();
 		parentPort?.postMessage({type: "shutdown-complete"});
@@ -123,16 +125,18 @@ if (config.lifecycle) {
 	if (databases) await databases.closeAll();
 	process.exit(0);
 } else if (directMode) {
-	// Single worker: create own HTTP server
+	// Single worker: create own HTTP server and wire WebSocket upgrade handling
 	const platform = new NodePlatform({port: config.port, host: config.host});
 	server = platform.createServer(
 		(request) => dispatchRequest(registration, request),
 	);
+	detachWs = attachNodeWebSocketHandler(server.httpServer, registration);
 	await server.listen();
 	parentPort?.postMessage({type: "ready"});
 	logger.info("Worker started (direct mode)", {port: config.port});
 } else {
-	// Multi-worker: use message loop (supervisor owns the HTTP server)
+	// Multi-worker: use message loop (supervisor owns the HTTP server).
+	// WebSocket forwarding across worker threads is TODO — direct-mode only for now.
 	startWorkerMessageLoop({registration, databases});
 }
 `;
@@ -189,7 +193,12 @@ process.on("SIGTERM", handleShutdown);
 export function getESBuildConfig(): ESBuildConfig {
 	return {
 		platform: "node",
-		external: ["node:*", ...builtinModules],
+		// Only `node:*` scheme here — esbuild's `platform: "node"` already
+		// externalizes every real Node builtin automatically. Do NOT spread
+		// `builtinModules` from `node:module`: under Bun that list contains
+		// non-Node packages ("ws", "undici", "bun:*") which would silently
+		// mark them external and cause runtime module-not-found errors.
+		external: ["node:*"],
 		define: {
 			// Node.js doesn't support import.meta.env, alias to process.env
 			"import.meta.env": "process.env",

@@ -443,6 +443,99 @@ test(
 );
 
 test(
+	"WebSocket upgrade in dev mode (node)",
+	async () => {
+		const PORT = 13352;
+		let serverProcess;
+		let tempFixture;
+		const WebSocket = (await import("ws")).default;
+
+		try {
+			tempFixture = await createTempFixture("server-websocket.ts");
+			serverProcess = startDevServer(tempFixture.path, PORT);
+			await waitForServer(PORT, serverProcess);
+
+			const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+			await new Promise((resolve, reject) => {
+				ws.once("open", resolve);
+				ws.once("error", reject);
+				setTimeout(() => reject(new Error("ws open timeout")), 5000);
+			});
+
+			const greeting = await new Promise((resolve, reject) => {
+				ws.once("message", (d) => resolve(d.toString("utf8")));
+				setTimeout(() => reject(new Error("no greeting")), 3000);
+			});
+			expect(greeting).toBe("dev welcome");
+
+			const echo = new Promise((resolve, reject) => {
+				ws.once("message", (d) => resolve(d.toString("utf8")));
+				setTimeout(() => reject(new Error("no echo")), 3000);
+			});
+			ws.send("hi dev");
+			expect(await echo).toBe("dev echo: hi dev");
+
+			await new Promise((resolve) => {
+				ws.once("close", resolve);
+				ws.close();
+			});
+		} finally {
+			await killServer(serverProcess, PORT);
+			if (tempFixture) await tempFixture.cleanup();
+		}
+	},
+	TIMEOUT,
+);
+
+test(
+	"WebSocket upgrade in dev mode (bun platform)",
+	async () => {
+		const PORT = 13353;
+		let serverProcess;
+		let tempFixture;
+		const WebSocket = (await import("ws")).default;
+
+		try {
+			tempFixture = await createTempFixture("server-websocket.ts");
+			serverProcess = startDevServer(tempFixture.path, PORT, [
+				"--platform",
+				"bun",
+			]);
+			await waitForServer(PORT, serverProcess);
+
+			const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+			await new Promise((resolve, reject) => {
+				ws.once("open", resolve);
+				ws.once("error", reject);
+				setTimeout(() => reject(new Error("ws open timeout")), 5000);
+			});
+
+			const greeting = await new Promise((resolve, reject) => {
+				ws.once("message", (d) => resolve(d.toString("utf8")));
+				setTimeout(() => reject(new Error("no greeting")), 3000);
+			});
+			expect(greeting).toBe("dev welcome");
+
+			const echo = new Promise((resolve, reject) => {
+				ws.once("message", (d) => resolve(d.toString("utf8")));
+				setTimeout(() => reject(new Error("no echo")), 3000);
+			});
+			ws.send("hi dev");
+			expect(await echo).toBe("dev echo: hi dev");
+
+			await new Promise((resolve) => {
+				ws.once("close", resolve);
+				ws.close();
+			});
+		} finally {
+			await killServer(serverProcess, PORT);
+			if (tempFixture) await tempFixture.cleanup();
+		}
+	},
+	TIMEOUT,
+);
+
+test(
 	"hot reload on root file change",
 	async () => {
 		const PORT = 13311;

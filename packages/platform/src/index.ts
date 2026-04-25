@@ -341,6 +341,59 @@ interface WorkerErrorMessage extends WorkerMessage {
 }
 
 /**
+ * Worker → supervisor: "the fetch handler called upgradeWebSocket() for this
+ * request — don't wait for an HTTP response, complete the WebSocket handshake
+ * instead." The supervisor keeps the connectionID and owns the outbound relay.
+ */
+interface WorkerUpgradeMessage extends WorkerMessage {
+	type: "ws:upgrade";
+	requestID: number;
+	connectionID: string;
+}
+
+/** Worker → supervisor: forward a frame on an accepted connection. */
+interface WorkerWSSendMessage extends WorkerMessage {
+	type: "ws:send";
+	connectionID: string;
+	data: string | ArrayBuffer;
+}
+
+/** Worker → supervisor: close an accepted connection. */
+interface WorkerWSCloseMessage extends WorkerMessage {
+	type: "ws:close";
+	connectionID: string;
+	code?: number;
+	reason?: string;
+}
+
+/**
+ * Callbacks the platform adapter registers so the pool can direct outbound
+ * WS frames to the physical socket. Direction is worker → wire.
+ */
+export interface WebSocketPoolHandlers {
+	/** Send `data` on the real socket for `connectionID`. */
+	sendFrame: (connectionID: string, data: string | ArrayBuffer) => void;
+	/** Close the real socket for `connectionID`. */
+	closeConnection: (
+		connectionID: string,
+		code?: number,
+		reason?: string,
+	) => void;
+}
+
+/**
+ * Discriminated result from {@link ServiceWorkerPool.handleRequest}: either
+ * a normal HTTP response or a signal that the handler upgraded the request
+ * to a WebSocket. The platform adapter completes the handshake and then
+ * forwards frames using {@link ServiceWorkerPool.sendWebSocketMessage} /
+ * {@link ServiceWorkerPool.sendWebSocketClose}.
+ */
+export interface WebSocketUpgradeResult {
+	upgrade: true;
+	connectionID: string;
+}
+
+/**
  * Create a web-standard Worker with targeted Node.js fallback
  */
 async function createWebWorker(workerScript: string): Promise<Worker> {
@@ -422,7 +475,7 @@ export class ServiceWorkerPool {
 	#pendingRequests: Map<
 		number,
 		{
-			resolve: (response: Response) => void;
+			resolve: (result: Response | WebSocketUpgradeResult) => void;
 			reject: (error: Error) => void;
 			timeoutId?: ReturnType<typeof setTimeout>;
 		}
@@ -431,6 +484,9 @@ export class ServiceWorkerPool {
 		Worker,
 		{resolve: () => void; reject: (e: Error) => void}
 	>;
+	/** connectionID → worker that owns the runtime Connection object. */
+	#wsConnectionOwners: Map<string, Worker>;
+	#wsHandlers: WebSocketPoolHandlers | null;
 	#options: Required<Omit<WorkerPoolOptions, "cwd" | "createWorker">> & {
 		cwd?: string;
 		createWorker?: (entrypoint: string) => Worker | Promise<Worker>;
@@ -458,11 +514,67 @@ export class ServiceWorkerPool {
 		this.#workerAvailableWaiters = [];
 		this.#appEntrypoint = appEntrypoint;
 		this.#cacheStorage = cacheStorage;
+		this.#wsConnectionOwners = new Map();
+		this.#wsHandlers = null;
 		this.#options = {
 			workerCount: 1,
 			requestTimeout: 30000,
 			...options,
 		};
+	}
+
+	/** Register platform-level callbacks for inbound frame/close delivery. */
+	setWebSocketHandlers(handlers: WebSocketPoolHandlers): void {
+		this.#wsHandlers = handlers;
+	}
+
+	/**
+	 * Close every pool-owned WebSocket connection and clear ownership
+	 * bookkeeping. Called before reload / terminate so clients see a proper
+	 * close frame instead of a socket wired to a worker that no longer exists.
+	 */
+	#closePooledWebSockets(code: number, reason: string): void {
+		if (!this.#wsHandlers || this.#wsConnectionOwners.size === 0) {
+			this.#wsConnectionOwners.clear();
+			return;
+		}
+		for (const id of this.#wsConnectionOwners.keys()) {
+			try {
+				this.#wsHandlers.closeConnection(id, code, reason);
+			} catch (err) {
+				logger.warn("Failed to close pooled WebSocket {id}: {error}", {
+					id,
+					error: err,
+				});
+			}
+		}
+		this.#wsConnectionOwners.clear();
+	}
+
+	/** Route an inbound WS frame from the platform socket to the owning worker. */
+	sendWebSocketMessage(connectionID: string, data: string | ArrayBuffer): void {
+		const owner = this.#wsConnectionOwners.get(connectionID);
+		if (!owner) return;
+		owner.postMessage({type: "ws:message", connectionID, data});
+	}
+
+	/** Route a close event from the platform socket to the owning worker. */
+	sendWebSocketClose(
+		connectionID: string,
+		code: number,
+		reason: string,
+		wasClean: boolean,
+	): void {
+		const owner = this.#wsConnectionOwners.get(connectionID);
+		if (!owner) return;
+		owner.postMessage({
+			type: "ws:close",
+			connectionID,
+			code,
+			reason,
+			wasClean,
+		});
+		this.#wsConnectionOwners.delete(connectionID);
 	}
 
 	/**
@@ -581,6 +693,48 @@ export class ServiceWorkerPool {
 				this.#handleError(message as WorkerErrorMessage);
 				break;
 
+			case "ws:upgrade": {
+				const m = message as WorkerUpgradeMessage;
+				const pending = this.#pendingRequests.get(m.requestID);
+				if (!pending) {
+					// The supervisor has already given up on this request
+					// (timeout or worker-side error rejection), so there's no
+					// physical socket to attach. Tell the worker to drop the
+					// connection it just registered, and don't record an owner
+					// — otherwise later ws:send / ws:close from this connection
+					// would route against a phantom.
+					worker.postMessage({
+						type: "ws:close",
+						connectionID: m.connectionID,
+						code: 1011,
+						reason: "Upgrade arrived after request timeout",
+						wasClean: false,
+					});
+					break;
+				}
+				this.#wsConnectionOwners.set(m.connectionID, worker);
+				if (pending.timeoutId) clearTimeout(pending.timeoutId);
+				pending.resolve({upgrade: true, connectionID: m.connectionID});
+				this.#pendingRequests.delete(m.requestID);
+				break;
+			}
+
+			case "ws:send": {
+				const m = message as WorkerWSSendMessage;
+				this.#wsHandlers?.sendFrame(m.connectionID, m.data);
+				break;
+			}
+
+			case "ws:close": {
+				const m = message as WorkerWSCloseMessage;
+				// Worker is initiating a close. Platform adapter calls
+				// ws.close() on the real socket; the real-socket close
+				// eventually arrives and triggers sendWebSocketClose back
+				// into the pool for owner cleanup.
+				this.#wsHandlers?.closeConnection(m.connectionID, m.code, m.reason);
+				break;
+			}
+
 			default:
 				// Handle cache messages from PostMessageCache
 				if (message.type?.startsWith("cache:")) {
@@ -650,6 +804,27 @@ export class ServiceWorkerPool {
 	 * Handle HTTP request using round-robin worker selection
 	 */
 	async handleRequest(request: Request): Promise<Response> {
+		const result = await this.#dispatchToWorker(request);
+		if (result instanceof Response) return result;
+		throw new Error(
+			"handleRequest received a WebSocket upgrade; use handleUpgradeRequest for upgrade-capable paths",
+		);
+	}
+
+	/**
+	 * Handle a request that may upgrade to a WebSocket. Returns either a
+	 * standard `Response` (normal HTTP) or a `WebSocketUpgradeResult`
+	 * signaling that the worker accepted an upgrade.
+	 */
+	async handleUpgradeRequest(
+		request: Request,
+	): Promise<Response | WebSocketUpgradeResult> {
+		return this.#dispatchToWorker(request);
+	}
+
+	async #dispatchToWorker(
+		request: Request,
+	): Promise<Response | WebSocketUpgradeResult> {
 		// Wait for workers to be available (e.g., during reload)
 		if (this.#workers.length === 0) {
 			logger.debug("No workers available, waiting for worker to be ready");
@@ -733,35 +908,42 @@ export class ServiceWorkerPool {
 	/**
 	 * Gracefully shutdown a worker by closing all resources first
 	 */
-	async #gracefulShutdown(worker: Worker, timeout = 5000): Promise<void> {
+	async #gracefulShutdown(worker: Worker, timeout = 2000): Promise<void> {
 		return new Promise<void>((resolve) => {
 			let resolved = false;
+			const finish = (reason: "clean" | "error" | "timeout") => {
+				if (resolved) return;
+				resolved = true;
+				worker.removeEventListener("message", onMessage);
+				worker.removeEventListener("error", onError);
+				if (reason === "timeout") {
+					logger.warn("Worker shutdown timed out, forcing termination");
+				}
+				resolve();
+			};
 
-			// Set up listener for shutdown-complete
 			const onMessage = (event: MessageEvent) => {
 				const message = event.data || event;
-				if (message?.type === "shutdown-complete") {
-					if (!resolved) {
-						resolved = true;
-						worker.removeEventListener("message", onMessage);
-						resolve();
-					}
-				}
+				if (message?.type === "shutdown-complete") finish("clean");
 			};
+			// If the worker emits an error event, it's already in a dead/dying
+			// state — no point waiting the full timeout for a shutdown ack
+			// it will never send.
+			const onError = () => finish("error");
+
 			worker.addEventListener("message", onMessage);
+			worker.addEventListener("error", onError);
 
-			// Send shutdown signal
-			worker.postMessage({type: "shutdown"});
+			try {
+				worker.postMessage({type: "shutdown"});
+			} catch (_err) {
+				// postMessage can throw on already-terminated workers; treat
+				// as immediate completion.
+				finish("error");
+				return;
+			}
 
-			// Timeout fallback - don't hang forever
-			setTimeout(() => {
-				if (!resolved) {
-					resolved = true;
-					worker.removeEventListener("message", onMessage);
-					logger.warn("Worker shutdown timed out, forcing termination");
-					resolve();
-				}
-			}, timeout);
+			setTimeout(() => finish("timeout"), timeout);
 		});
 	}
 
@@ -778,6 +960,11 @@ export class ServiceWorkerPool {
 
 		// Update stored entrypoint
 		this.#appEntrypoint = entrypoint;
+
+		// Close any pooled WebSockets before tearing workers down. The
+		// physical socket lives in the supervisor; if we don't close it,
+		// the client would keep sending frames to a terminated worker.
+		this.#closePooledWebSockets(1012, "Server reloading");
 
 		// Gracefully shutdown existing workers - close resources before terminating
 		const shutdownPromises = this.#workers.map((worker) =>
@@ -820,6 +1007,10 @@ export class ServiceWorkerPool {
 	 * Graceful shutdown of all workers
 	 */
 	async terminate(): Promise<void> {
+		// Close any pooled WebSockets before shutting workers down so clients
+		// get a clean close frame instead of a silent drop when the server exits.
+		this.#closePooledWebSockets(1001, "Server shutting down");
+
 		// Gracefully shutdown workers first (close databases, etc.)
 		const shutdownPromises = this.#workers.map((worker) =>
 			this.#gracefulShutdown(worker),

@@ -38,6 +38,14 @@ const logger = getLogger(["shovel", "platform"]);
 // TYPES
 // ============================================================================
 
+/**
+ * Node-specific Server extension. Exposes the underlying `http.Server` so
+ * callers can attach WebSocket upgrade handling (see `attachNodeWebSocketHandler`).
+ */
+export interface NodeServer extends Server {
+	readonly httpServer: HTTP.Server;
+}
+
 export interface NodePlatformOptions {
 	/** Port for development server (default: 7777) */
 	port?: number;
@@ -239,7 +247,7 @@ export class NodePlatform {
 		workers: number;
 		config?: ShovelConfig;
 	};
-	#server?: Server;
+	#server?: NodeServer;
 
 	constructor(options: NodePlatformOptions = {}) {
 		this.name = "node";
@@ -279,6 +287,30 @@ export class NodePlatform {
 		}
 
 		this.#server = this.createServer((request) => pool.handleRequest(request));
+
+		// If the pool also needs to handle WebSocket upgrades, wire the
+		// platform adapter for pool-mode frame routing.
+		const poolWithWs = pool as typeof pool & {
+			handleUpgradeRequest?: (
+				request: Request,
+			) => Promise<Response | {upgrade: true; connectionID: string}>;
+			setWebSocketHandlers?: (h: {
+				sendFrame: (id: string, data: string | ArrayBuffer) => void;
+				closeConnection: (id: string, code?: number, reason?: string) => void;
+			}) => void;
+			sendWebSocketMessage?: (id: string, data: string | ArrayBuffer) => void;
+			sendWebSocketClose?: (
+				id: string,
+				code: number,
+				reason: string,
+				wasClean: boolean,
+			) => void;
+		};
+		if (typeof poolWithWs.setWebSocketHandlers === "function") {
+			const {attachNodePoolWebSocketHandler} = await import("./websocket.js");
+			attachNodePoolWebSocketHandler(this.#server.httpServer, poolWithWs);
+		}
+
 		await this.#server.listen();
 		return this.#server;
 	}
@@ -301,7 +333,7 @@ export class NodePlatform {
 	/**
 	 * Create HTTP server for Node.js
 	 */
-	createServer(handler: Handler, options: ServerOptions = {}): Server {
+	createServer(handler: Handler, options: ServerOptions = {}): NodeServer {
 		const port = options.port ?? this.#options.port;
 		const host = options.host ?? this.#options.host;
 
@@ -416,6 +448,10 @@ export class NodePlatform {
 			address: () => ({port: actualPort, host}),
 			get url() {
 				return `http://${host}:${actualPort}`;
+			},
+			/** @internal Exposed for WebSocket upgrade attachment. */
+			get httpServer() {
+				return httpServer;
 			},
 			get ready() {
 				return isListening;
