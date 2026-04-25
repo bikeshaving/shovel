@@ -1234,8 +1234,18 @@ export class ShovelWebSocketConnection implements WebSocketConnection {
 		}
 	}
 
-	/** @internal Called during teardown to release BC subscriptions. */
+	/**
+	 * @internal Called during teardown to retire the connection: marks it
+	 * closed (so any retained reference's `send` / `close` / `subscribe`
+	 * calls become no-ops) AND releases all BroadcastChannel subscriptions.
+	 *
+	 * Used by:
+	 *  - `dispatchWebSocketClose` after handlers run
+	 *  - platform adapters cleaning up after a failed handshake
+	 *  - the runtime when the worker drops a phantom upgrade
+	 */
 	_releaseSubscriptions(): void {
+		this.#closed = true;
 		for (const [, bc] of this.#subscriptions) {
 			try {
 				bc.close();
