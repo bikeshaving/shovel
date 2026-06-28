@@ -5,7 +5,6 @@
  */
 
 // Node.js built-ins (Bun is Node-compatible)
-import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
 import * as Path from "node:path";
 
@@ -441,8 +440,8 @@ export class BunPlatform {
 	): EntryPoints {
 		// Worker code for production (with message handling for supervisor communication)
 		const prodWorkerCode = `// Bun Production Worker
-import BunPlatform from "@b9g/platform-bun";
-import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
+import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
+import {createBunWebSocketServer} from "@b9g/platform-bun/websocket";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -451,12 +450,14 @@ const logger = getLogger(["shovel", "platform"]);
 // Track resources for shutdown
 let server;
 let databases;
+let wsCleanup;
 
 // Register message handler for shutdown and broadcast relay
 self.onmessage = async (event) => {
 	if (event.data.type === "shutdown") {
 		logger.info("Worker shutting down");
-		if (server) await server.close();
+		if (wsCleanup) await wsCleanup();
+		if (server) server.stop(true);
 		if (databases) await databases.closeAll();
 		postMessage({type: "shutdown-complete"});
 	} else if (event.data.type === "broadcast:deliver") {
@@ -482,16 +483,19 @@ await runLifecycle(registration, config.lifecycle?.stage);
 
 // Start server (skip in lifecycle-only mode)
 if (!config.lifecycle) {
-	const platform = new BunPlatform({port: config.port, host: config.host});
-	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
-		{reusePort: config.workers > 1},
-	);
-	await server.listen();
+	const adapter = createBunWebSocketServer(registration);
+	wsCleanup = adapter.cleanup;
+	server = Bun.serve({
+		port: config.port,
+		hostname: config.host,
+		reusePort: config.workers > 1,
+		fetch: adapter.fetch,
+		websocket: adapter.websocket,
+	});
+	logger.info("Worker started", {port: server.port});
 }
 
 postMessage({type: "ready"});
-logger.info("Worker started", {port: config.port});
 `;
 
 		// Development worker (simpler, managed by develop command via message loop)
@@ -562,7 +566,11 @@ process.on("SIGTERM", handleShutdown);
 	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "node",
-			external: ["node:*", "bun", "bun:*", ...builtinModules],
+			// Only scheme-prefixed builtins here — esbuild's `platform: "node"`
+			// auto-externalizes real Node builtins. Spreading `builtinModules`
+			// under Bun pulls in `ws`/`undici` which we want bundled so the
+			// WebSocket bridge ships in the worker output.
+			external: ["node:*", "bun", "bun:*"],
 		};
 	}
 

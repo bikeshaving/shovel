@@ -23,7 +23,6 @@ import {
 	createDirectoryFactory,
 	runLifecycle,
 	dispatchFetchEvent,
-	kGetUpgradeResult,
 	setBroadcastChannelBackend,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
@@ -160,13 +159,17 @@ export function createFetchHandler(
 		}
 		await lifecyclePromise;
 
-		// Auto-configure BroadcastChannel DO backend if binding is present
+		// Auto-configure BroadcastChannel DO backend if binding is present.
+		// Worker isolates are ephemeral and not addressable by the pubsub DO,
+		// so they pass `null` for the subscriber identity: they can publish
+		// but cannot receive cross-isolate publishes.
 		const envRecord = env as Record<string, unknown>;
 		if (!bcBackendConfigured && envRecord.SHOVEL_PUBSUB) {
 			const {CloudflarePubSubBackend} = await import("./pubsub.js");
 			setBroadcastChannelBackend(
 				new CloudflarePubSubBackend(
 					envRecord.SHOVEL_PUBSUB as DurableObjectNamespace,
+					null,
 				),
 			);
 			bcBackendConfigured = true;
@@ -176,10 +179,16 @@ export function createFetchHandler(
 		// A single shared DO (`idFromName("shovel-ws")`) is used so that all
 		// connections land in the same isolate — this lets subscribe()/BC
 		// fan-out work without cross-DO RPC on the hot path.
-		if (
-			request.headers.get("upgrade")?.toLowerCase() === "websocket" &&
-			envRecord.SHOVEL_WS
-		) {
+		if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+			if (!envRecord.SHOVEL_WS) {
+				// Surface this misconfiguration directly rather than letting
+				// the user's `upgradeWebSocket()` call throw "requires wsRelay"
+				// from inside dispatch — that turns into an unhelpful 500.
+				return new Response(
+					"WebSocket upgrade requires SHOVEL_WS Durable Object binding in wrangler.toml",
+					{status: 426},
+				);
+			}
 			const ns = envRecord.SHOVEL_WS as DurableObjectNamespace;
 			const id = ns.idFromName("shovel-ws");
 			const stub = ns.get(id);
@@ -194,18 +203,7 @@ export function createFetchHandler(
 
 		// Run within envStorage for directory factory access
 		return envStorage.run(envRecord, async () => {
-			const {event: fetchEvent, response} = await dispatchFetchEvent(
-				registration,
-				event,
-			);
-			// If user called upgradeWebSocket() but SHOVEL_WS isn't bound, the
-			// request fell through to here. Surface a clear error.
-			if (fetchEvent[kGetUpgradeResult]()) {
-				return new Response(
-					"WebSocket upgrade requires SHOVEL_WS Durable Object binding in wrangler.toml",
-					{status: 426},
-				);
-			}
+			const {response} = await dispatchFetchEvent(registration, event);
 			return response!;
 		});
 	};

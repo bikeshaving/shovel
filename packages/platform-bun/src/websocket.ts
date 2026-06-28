@@ -81,7 +81,10 @@ export interface BunWebSocketData {
 export function createBunPoolWebSocketAdapter(pool: {
 	handleUpgradeRequest: (
 		request: Request,
-	) => Promise<Response | {upgrade: true; connectionID: string}>;
+	) => Promise<
+		| Response
+		| {upgrade: true; connectionID: string; setCookieHeaders?: string[]}
+	>;
 	setWebSocketHandlers: (h: {
 		sendFrame: (id: string, data: string | ArrayBuffer) => void;
 		closeConnection: (id: string, code?: number, reason?: string) => void;
@@ -148,7 +151,9 @@ export function createBunPoolWebSocketAdapter(pool: {
 			}
 		}
 
-		let result: Response | {upgrade: true; connectionID: string};
+		let result:
+			| Response
+			| {upgrade: true; connectionID: string; setCookieHeaders?: string[]};
 		try {
 			result = await pool.handleUpgradeRequest(request);
 		} catch (err) {
@@ -159,8 +164,15 @@ export function createBunPoolWebSocketAdapter(pool: {
 			return result;
 		}
 
+		const upgradeHeaders = new Headers();
+		if (result.setCookieHeaders?.length) {
+			for (const sc of result.setCookieHeaders) {
+				upgradeHeaders.append("Set-Cookie", sc);
+			}
+		}
 		const ok = server.upgrade(request, {
 			data: {connectionId: result.connectionID} satisfies BunWebSocketData,
+			headers: upgradeHeaders,
 		});
 		if (!ok) {
 			pool.sendWebSocketClose(
@@ -316,10 +328,20 @@ export function createBunWebSocketServer(
 			pending: entry.pending,
 		});
 
+		// Carry any Set-Cookie values the handler added via cookieStore onto
+		// the 101 handshake. Bun's `server.upgrade` accepts a `headers` option
+		// whose values are attached to the upgrade response.
+		const upgradeHeaders = new Headers();
+		if (event!.cookieStore.hasChanges()) {
+			for (const sc of event!.cookieStore.getSetCookieHeaders()) {
+				upgradeHeaders.append("Set-Cookie", sc);
+			}
+		}
 		// Bun.serve.upgrade returns a boolean; we also store a small attachment
 		// that the websocket.open callback will read to find the runtime conn.
 		const ok = server.upgrade(request, {
 			data: {connectionId: conn.id} satisfies BunWebSocketData,
+			headers: upgradeHeaders,
 		});
 		if (!ok) {
 			// Bun rejected the handshake (e.g., client disconnected). Clear

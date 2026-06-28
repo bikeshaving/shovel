@@ -349,6 +349,8 @@ interface WorkerUpgradeMessage extends WorkerMessage {
 	type: "ws:upgrade";
 	requestID: number;
 	connectionID: string;
+	/** Set-Cookie values from the worker's event.cookieStore. */
+	setCookieHeaders?: string[];
 }
 
 /** Worker → supervisor: forward a frame on an accepted connection. */
@@ -391,6 +393,13 @@ export interface WebSocketPoolHandlers {
 export interface WebSocketUpgradeResult {
 	upgrade: true;
 	connectionID: string;
+	/**
+	 * Set-Cookie header values the user fetch handler added via
+	 * `event.cookieStore` during the upgrade. Adapters apply these onto the
+	 * 101 handshake so cookie-on-handshake auth flows behave the same as
+	 * cookie-on-Response flows.
+	 */
+	setCookieHeaders?: string[];
 }
 
 /**
@@ -534,11 +543,13 @@ export class ServiceWorkerPool {
 	 * close frame instead of a socket wired to a worker that no longer exists.
 	 */
 	#closePooledWebSockets(code: number, reason: string): void {
-		if (!this.#wsHandlers || this.#wsConnectionOwners.size === 0) {
-			this.#wsConnectionOwners.clear();
-			return;
-		}
-		for (const id of this.#wsConnectionOwners.keys()) {
+		if (!this.#wsHandlers || this.#wsConnectionOwners.size === 0) return;
+		// Ask the platform to close each pool-owned socket. The owner-map
+		// entries stay in place — the platform delivers the actual close back
+		// asynchronously through `sendWebSocketClose`, which is what removes
+		// the entry and forwards `websocketclose` to the owning worker.
+		// Pre-clearing here would drop those events.
+		for (const id of [...this.#wsConnectionOwners.keys()]) {
 			try {
 				this.#wsHandlers.closeConnection(id, code, reason);
 			} catch (err) {
@@ -548,7 +559,6 @@ export class ServiceWorkerPool {
 				});
 			}
 		}
-		this.#wsConnectionOwners.clear();
 	}
 
 	/** Route an inbound WS frame from the platform socket to the owning worker. */
@@ -714,7 +724,11 @@ export class ServiceWorkerPool {
 				}
 				this.#wsConnectionOwners.set(m.connectionID, worker);
 				if (pending.timeoutId) clearTimeout(pending.timeoutId);
-				pending.resolve({upgrade: true, connectionID: m.connectionID});
+				pending.resolve({
+					upgrade: true,
+					connectionID: m.connectionID,
+					setCookieHeaders: m.setCookieHeaders,
+				});
 				this.#pendingRequests.delete(m.requestID);
 				break;
 			}

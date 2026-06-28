@@ -133,6 +133,55 @@ test("upgradeWebSocket throws without Upgrade header", async () => {
 	expect(caught!.message).toMatch(/Upgrade: websocket/);
 });
 
+test("dispatchFetchEvent propagates errors from a rejected respondWith promise", async () => {
+	// Adapter contract: dispatchFetchEvent must NOT silently swallow errors
+	// that bubble out of the request handler. A previous version caught and
+	// dropped the error whenever an upgrade had been registered, which left
+	// platform adapters with no signal to run their phantom-cleanup paths.
+	// Verify the throw propagates so the adapter's own try/catch can react.
+	const registration = await setupScope();
+	const {relay} = createMockRelay();
+
+	addShovelListener("fetch", (event: any) => {
+		event.respondWith(Promise.reject(new Error("handler boom")));
+	});
+
+	const request = new Request("http://localhost/some-path");
+	let caught: Error | null = null;
+	try {
+		await dispatchFetchEvent(registration, request, {wsRelay: relay});
+	} catch (err) {
+		caught = err as Error;
+	}
+	expect(caught).not.toBeNull();
+	expect(caught!.message).toBe("handler boom");
+});
+
+test("event.cookieStore changes during upgrade are visible to adapters", async () => {
+	// Adapter contract: when a fetch handler calls cookieStore.set() during a
+	// WebSocket upgrade, the resulting Set-Cookie values are exposed via
+	// `event.cookieStore.getSetCookieHeaders()` so adapters can attach them
+	// to the 101 handshake. Without this, auth/login flows that mint a
+	// session cookie during the WS handshake would silently lose it.
+	const registration = await setupScope();
+	const {relay} = createMockRelay();
+
+	addShovelListener("fetch", (event: any) => {
+		event.cookieStore.set({name: "session", value: "abc123", path: "/"});
+		event.upgradeWebSocket();
+	});
+
+	const request = new Request("http://localhost/ws", {
+		headers: {Upgrade: "websocket"},
+	});
+	const {event} = await dispatchFetchEvent(registration, request, {
+		wsRelay: relay,
+	});
+	expect(event.cookieStore.hasChanges()).toBe(true);
+	const headers = event.cookieStore.getSetCookieHeaders();
+	expect(headers.some((h) => h.startsWith("session=abc123"))).toBe(true);
+});
+
 test("onUpgrade fires synchronously during the fetch handler", async () => {
 	const registration = await setupScope();
 	const {relay} = createMockRelay();

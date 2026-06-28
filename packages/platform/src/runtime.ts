@@ -974,7 +974,9 @@ export class ShovelFetchEvent
 			relay: this.#wsRelay,
 		});
 		this.#upgradeResult = connection;
-		// Mark as handled — there is no HTTP response for a WebSocket upgrade.
+		// Mark as handled — there is no HTTP response for a WebSocket
+		// upgrade. Adapters read `event.cookieStore.getSetCookieHeaders()`
+		// directly to thread Set-Cookie values onto the 101 handshake.
 		this.#responded = true;
 		// Synchronous notify so the adapter can register the connection *before*
 		// the handler continues. This lets in-handler close()/send() find it,
@@ -1271,17 +1273,17 @@ export class ShovelWebSocketConnection implements WebSocketConnection {
 
 	#openSubscription(channel: string): void {
 		const bc = new ShovelBroadcastChannel(channel);
-		bc.onmessage = (event: MessageEvent) => {
+		// Use addEventListener rather than `bc.onmessage = …`. workerd treats
+		// assigning the on-attribute as also registering a listener; combined
+		// with the BC delivery path that calls both `dispatchEvent` and
+		// `onmessage?.call`, a property-style handler fires twice per publish.
+		bc.addEventListener("message", (event: Event) => {
 			if (this.#closed) return;
-			const data = event.data;
-			// Only forward string/ArrayBuffer — BC messages can be any
-			// structured-cloneable value, but WebSocket wire format is narrower.
-			// Other types are silently dropped (consistent with BC semantics of
-			// "fire-and-forget with best-effort delivery").
+			const data = (event as MessageEvent).data;
 			if (typeof data === "string" || data instanceof ArrayBuffer) {
 				this.send(data);
 			}
-		};
+		});
 		this.#subscriptions.set(channel, bc);
 	}
 }
@@ -1637,14 +1639,18 @@ export class ShovelServiceWorkerRegistration
 				);
 			}
 
-			// Get the response (may be a Promise)
+			// Get the response (may be a Promise). Null when the handler
+			// called upgradeWebSocket() instead of respondWith() — the
+			// platform adapter assembles the 101 itself and reads
+			// `event.cookieStore.getSetCookieHeaders()` directly to decorate
+			// the handshake.
 			const response = await event.getResponse()!;
 
 			// Note: waitUntil promises are already handled via platformWaitUntil hook
 			// in the event constructor, so no additional handling needed here.
 
-			// Apply cookie changes from the cookieStore to the response
-			if (event.cookieStore.hasChanges()) {
+			// Apply cookie changes from the cookieStore to the response.
+			if (response && event.cookieStore.hasChanges()) {
 				const setCookieHeaders = event.cookieStore.getSetCookieHeaders();
 				const headers = new Headers(response.headers);
 
@@ -1749,19 +1755,8 @@ export async function dispatchFetchEvent(
 		requestOrEvent instanceof ShovelFetchEvent
 			? requestOrEvent
 			: new ShovelFetchEvent(requestOrEvent, init);
-	try {
-		const response = await registration[kHandleRequest](event);
-		return {event, response};
-	} catch (err) {
-		// If the handler invoked upgradeWebSocket(), there's no HTTP response
-		// and the dispatch result is irrelevant — return the event so the
-		// caller can inspect kGetUpgradeResult. Platform adapters have
-		// already registered the connection via onUpgrade and own its cleanup.
-		if (event[kGetUpgradeResult]()) {
-			return {event, response: null};
-		}
-		throw err;
-	}
+	const response = await registration[kHandleRequest](event);
+	return {event, response};
 }
 
 /**
@@ -2945,27 +2940,46 @@ export function startWorkerMessageLoop(
 			};
 
 			let upgradedConnection: ShovelWebSocketConnection | null = null;
-			const {event, response} = await dispatchFetchEvent(
-				registration,
-				request,
-				{
+			let event: ShovelFetchEvent;
+			let response: Response | null;
+			try {
+				const result = await dispatchFetchEvent(registration, request, {
 					wsRelay,
 					onUpgrade(conn) {
 						upgradedConnection = conn;
 						wsConnections.set(conn.id, conn);
 					},
-				},
-			);
+				});
+				event = result.event;
+				response = result.response;
+			} catch (error) {
+				// Phantom-connection cleanup: if the handler called
+				// upgradeWebSocket() and then threw (or rejected), drop the
+				// connection AND release any BC subscriptions it attached
+				// before throwing. Without this, BroadcastChannel fan-out
+				// keeps targeting a socket whose handshake never completed.
+				if (upgradedConnection) {
+					const failedConn = upgradedConnection as ShovelWebSocketConnection;
+					wsConnections.delete(failedConn.id);
+					wsDispatchChains.delete(failedConn.id);
+					failedConn._releaseSubscriptions();
+				}
+				throw error;
+			}
 
 			const upgradeConn = event[kGetUpgradeResult]();
 			if (upgradeConn) {
 				// Tell the supervisor to accept the WebSocket handshake. The
 				// supervisor will keep the socket and deliver inbound frames
 				// via ws:message / ws:close messages (see handleMessage below).
+				const setCookieHeaders = event.cookieStore.hasChanges()
+					? event.cookieStore.getSetCookieHeaders()
+					: undefined;
 				sendMessage({
 					type: "ws:upgrade",
 					requestID: message.requestID,
 					connectionID: upgradeConn.id,
+					setCookieHeaders,
 				});
 				return;
 			}
@@ -2976,6 +2990,7 @@ export function startWorkerMessageLoop(
 				const failedConn = upgradedConnection as ShovelWebSocketConnection;
 				wsConnections.delete(failedConn.id);
 				wsDispatchChains.delete(failedConn.id);
+				failedConn._releaseSubscriptions();
 			}
 
 			// Use arrayBuffer for zero-copy transfer

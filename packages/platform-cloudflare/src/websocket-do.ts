@@ -30,6 +30,7 @@
  */
 
 import {DurableObject} from "cloudflare:workers";
+import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
 	ShovelServiceWorkerRegistration,
 	ShovelWebSocketConnection,
@@ -40,6 +41,7 @@ import {
 	kBindRelay,
 	kGetConnectionState,
 	kGetUpgradeResult,
+	runLifecycle,
 	setBroadcastChannelBackend,
 	type WebSocketRelay,
 } from "@b9g/platform/runtime";
@@ -48,6 +50,29 @@ import {envStorage} from "./variables.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "platform", "cloudflare", "ws"]);
+
+/**
+ * Mirror the HTTPError handling normal HTTP requests get from the
+ * Cloudflare runtime so a fetch handler that throws `UnauthorizedError`
+ * (etc.) before `upgradeWebSocket()` returns the right 4xx instead of
+ * collapsing to a bare 500.
+ */
+function toHttpErrorResponse(error: unknown): Response {
+	const err = error instanceof Error ? error : new Error(String(error));
+	const httpError = isHTTPError(error)
+		? (error as HTTPError)
+		: new InternalServerError(err.message, {cause: err});
+	if (httpError.status >= 500) {
+		logger.error("WS upgrade error: {error}", {error: err});
+	} else {
+		logger.warn("WS upgrade error: {status} {error}", {
+			status: httpError.status,
+			error: err,
+		});
+	}
+	const isDev = (import.meta as any).env?.MODE !== "production";
+	return httpError.toResponse(isDev);
+}
 
 export class ShovelWebSocketDO extends DurableObject {
 	#registration: ShovelServiceWorkerRegistration | null;
@@ -77,23 +102,27 @@ export class ShovelWebSocketDO extends DurableObject {
 		}
 		this.#registration = reg;
 
-		// Skip re-running install/activate — the Worker ran them before
-		// forwarding the upgrade to the DO, and re-running would duplicate
-		// migrations/cache warming per wake.
+		// Run install/activate once per DO isolate. The main worker isolate
+		// runs them in its own module instance; this isolate is separate, so
+		// any per-isolate user setup (cache warming, DB opens, global seeding)
+		// has to happen here too. `runLifecycle` is idempotent against `reg`
+		// once `reg.ready === true`, so subsequent fetches/wakes don't re-run.
 		if (!reg.ready) {
-			const {kServiceWorker} = await import("@b9g/platform/runtime");
-			(reg as any)[kServiceWorker]._setState("activated");
+			await runLifecycle(reg, "activate");
 		}
 
 		// Configure the BroadcastChannel backend inside this DO isolate if
 		// the SHOVEL_PUBSUB binding is present. This is a no-op if already
-		// configured for this isolate.
+		// configured for this isolate. Pass our own DO ID so the pubsub
+		// registry can address us directly for cross-isolate wakes and skip
+		// self-fetches when this DO is the publisher.
 		const env = (this.env ?? {}) as Record<string, unknown>;
 		if (env.SHOVEL_PUBSUB) {
 			const {CloudflarePubSubBackend} = await import("./pubsub.js");
 			setBroadcastChannelBackend(
 				new CloudflarePubSubBackend(
 					env.SHOVEL_PUBSUB as DurableObjectNamespace,
+					this.ctx.id.toString(),
 				),
 			);
 		}
@@ -167,6 +196,22 @@ export class ShovelWebSocketDO extends DurableObject {
 		const registration = await this.#ensureRuntime();
 		const env = (this.env ?? {}) as Record<string, unknown>;
 
+		// Push-on-publish: pubsub DO wakes us via this internal route so
+		// cross-isolate publishes reach this DO's local BC subscribers even
+		// after hibernation. Handled before the upgrade-path branch.
+		if (request.method === "POST") {
+			const url = new URL(request.url);
+			if (url.pathname === "/_shovel_publish") {
+				const {channel, data} = (await request.json()) as {
+					channel: string;
+					data: unknown;
+				};
+				const {_dispatchPubSubMessage} = await import("./pubsub.js");
+				_dispatchPubSubMessage(channel, data);
+				return new Response(null, {status: 204});
+			}
+		}
+
 		return envStorage.run(env, async () => {
 			// Buffer frames the handler produces BEFORE the real socket exists.
 			const pending: Array<
@@ -175,6 +220,7 @@ export class ShovelWebSocketDO extends DurableObject {
 			> = [];
 
 			let upgradedId: string | null = null;
+			let upgradedConn: ShovelWebSocketConnection | null = null;
 			const event = new CloudflareFetchEvent(request, {
 				env,
 				platformWaitUntil: (p) => this.ctx.waitUntil(p),
@@ -188,6 +234,7 @@ export class ShovelWebSocketDO extends DurableObject {
 				},
 				onUpgrade: (conn) => {
 					upgradedId = conn.id;
+					upgradedConn = conn;
 					this.#connections.set(conn.id, conn);
 				},
 			});
@@ -200,11 +247,17 @@ export class ShovelWebSocketDO extends DurableObject {
 				if (upgradedId) {
 					this.#connections.delete(upgradedId);
 					this.#dispatchQueues.delete(upgradedId);
+					// Drop any BC subscriptions the handler attached before
+					// throwing — without this, BroadcastChannel fan-out keeps
+					// targeting a connection whose handshake never completed.
+					(
+						upgradedConn as ShovelWebSocketConnection | null
+					)?._releaseSubscriptions();
 				}
-				logger.error("Fetch dispatch threw during upgrade: {error}", {
-					error: err,
-				});
-				return new Response("Internal Server Error", {status: 500});
+				// Preserve HTTPError statuses (auth/validation rejections) the
+				// way ordinary HTTP traffic does — a bare 500 here would mask
+				// the 401/403/etc that the user code intentionally threw.
+				return toHttpErrorResponse(err);
 			}
 
 			const conn = event[kGetUpgradeResult]();
@@ -228,7 +281,21 @@ export class ShovelWebSocketDO extends DurableObject {
 				else server.close(frame.code ?? 1000, frame.reason ?? "");
 			}
 
-			return new Response(null, {status: 101, webSocket: client} as any);
+			// Carry any Set-Cookie values the handler added via cookieStore
+			// onto the 101 handshake (auth/login flows that mutate cookies
+			// during a WS upgrade rely on this — they otherwise vanish since
+			// the upgrade has no Response object to decorate).
+			const handshakeHeaders = new Headers();
+			if (event.cookieStore.hasChanges()) {
+				for (const sc of event.cookieStore.getSetCookieHeaders()) {
+					handshakeHeaders.append("Set-Cookie", sc);
+				}
+			}
+			return new Response(null, {
+				status: 101,
+				webSocket: client,
+				headers: handshakeHeaders,
+			} as any);
 		});
 	}
 
@@ -335,6 +402,13 @@ export class ShovelWebSocketDO extends DurableObject {
 			/* ignore */
 		}
 		if (id) {
+			// Drop BC subscriptions before forgetting the connection. workerd
+			// may report `webSocketError` without a follow-up `webSocketClose`
+			// on protocol/transport failures, so this is the only place we
+			// can clean up — otherwise channel listeners leak until eviction.
+			const conn =
+				this.#connections.get(id) ?? this.#buildConnectionFromSocket(ws);
+			conn?._releaseSubscriptions();
 			this.#connections.delete(id);
 			this.#dispatchQueues.delete(id);
 		}

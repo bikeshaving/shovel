@@ -184,6 +184,28 @@ test("websocketclose fires with arrival code", async () => {
 	expect(closeCodes).toEqual([1000]);
 }, 5000);
 
+test("websocketclose reports wasClean=true for app-defined close codes (4000-4999)", async () => {
+	// RFC 6455 reserves 4000-4999 for application use; closing with one of
+	// these via the standard close handshake is still a clean close. The
+	// previous implementation hard-coded `wasClean = code === 1000 || 1001`,
+	// which marked legitimate app-level closes as transport failures.
+	const events: Array<{code: number; wasClean: boolean}> = [];
+	const url = await startServer(() => {
+		addShovelListener("fetch", (event: any) => {
+			event.upgradeWebSocket();
+		});
+		addShovelListener("websocketclose", (event: any) => {
+			events.push({code: event.code, wasClean: event.wasClean});
+		});
+	});
+
+	const ws = await connect(url);
+	ws.close(4001, "app reason");
+	await waitForClose(ws);
+	await new Promise((r) => setTimeout(r, 50));
+	expect(events).toEqual([{code: 4001, wasClean: true}]);
+}, 5000);
+
 test("subscribe: BC publish routes to subscribed connection", async () => {
 	const url = await startServer(() => {
 		addShovelListener("fetch", (event: any) => {

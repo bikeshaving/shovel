@@ -23,6 +23,7 @@
     "@b9g/async-context": "workspace:*",
     "@b9g/cache": "workspace:*",
     "@b9g/filesystem": "workspace:*",
+    "@b9g/http-errors": "workspace:*",
     "@b9g/platform": "workspace:*",
     "@logtape/logtape": "^2.0.0",
     "mime": "^4.0.4",

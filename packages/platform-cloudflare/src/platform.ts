@@ -55,6 +55,11 @@ setAssetsManifest(__shovelAssetsManifest);
 // wrangler.toml; otherwise it's dead-code-eliminated at bundle time.
 export { ShovelWebSocketDO } from "@b9g/platform-cloudflare/websocket-do";
 
+// Re-export the PubSub Durable Object for wrangler binding. Only loaded when
+// SHOVEL_PUBSUB is configured; the cross-isolate BroadcastChannel relay uses
+// it as a registry that wakes subscriber DOs on publish via fetch.
+export { ShovelPubSubDO } from "@b9g/platform-cloudflare/pubsub";
+
 // Initialize runtime (installs ServiceWorker globals)
 const registration = await initializeRuntime(config);
 
@@ -145,6 +150,14 @@ export async function createDevServer(
 		compatibilityFlags: ["nodejs_compat"],
 		port,
 		host,
+		// Bind both Durable Objects exported by the generated worker so that
+		// `upgradeWebSocket()` works in dev exactly as it does in production.
+		// Production users still need the matching bindings in their
+		// wrangler.toml, but they shouldn't have to wire up dev separately.
+		durableObjects: {
+			SHOVEL_WS: "ShovelWebSocketDO",
+			SHOVEL_PUBSUB: "ShovelPubSubDO",
+		},
 		assets: {
 			directory: publicDir,
 			binding: "ASSETS",

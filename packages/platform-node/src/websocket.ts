@@ -24,6 +24,7 @@
 import * as HTTP from "node:http";
 import type {Socket} from "node:net";
 import {getLogger} from "@logtape/logtape";
+import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
 	ShovelFetchEvent,
 	ShovelServiceWorkerRegistration,
@@ -37,6 +38,29 @@ import {
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform", "node", "websocket"]);
+
+/**
+ * Mirror the HTTPError handling that NodePlatform.createServer applies to
+ * normal HTTP traffic. WebSocket upgrade paths bypass that wrapper, so a
+ * fetch handler that throws `UnauthorizedError` before `upgradeWebSocket()`
+ * would otherwise collapse to a bare 500.
+ */
+function toHttpErrorResponse(error: unknown): Response {
+	const err = error instanceof Error ? error : new Error(String(error));
+	const httpError = isHTTPError(error)
+		? (error as HTTPError)
+		: new InternalServerError(err.message, {cause: err});
+	if (httpError.status >= 500) {
+		logger.error("WS upgrade error: {error}", {error: err});
+	} else {
+		logger.warn("WS upgrade error: {status} {error}", {
+			status: httpError.status,
+			error: err,
+		});
+	}
+	const isDev = import.meta.env?.MODE !== "production";
+	return httpError.toResponse(isDev);
+}
 
 /** Frames buffered between `upgradeWebSocket()` and the real socket coming up. */
 type PendingFrame =
@@ -143,10 +167,10 @@ export function attachNodeWebSocketHandler(
 				dispatchChains.delete(upgradedConnectionId);
 				upgradedConn?._releaseSubscriptions();
 			}
-			logger.error("Fetch dispatch threw during upgrade: {error}", {
-				error: err,
-			});
-			writeErrorAndDestroy(socket, 500, "Internal Server Error");
+			// Preserve HTTPError statuses from auth/validation rejections —
+			// matches the regular HTTP path. A bare 500 here would mask
+			// 401/403/etc that the user code intentionally threw.
+			writeResponseAndDestroy(socket, toHttpErrorResponse(err));
 			return;
 		}
 
@@ -179,6 +203,15 @@ export function attachNodeWebSocketHandler(
 		}
 
 		const wss = new wsModule.WebSocketServer({noServer: true});
+		// Carry any Set-Cookie values the handler added via cookieStore onto
+		// the 101 handshake. `ws` exposes a "headers" event for adding raw
+		// HTTP header lines before it writes the response.
+		if (event!.cookieStore.hasChanges()) {
+			const setCookies = event!.cookieStore.getSetCookieHeaders();
+			wss.on("headers", (headers: string[]) => {
+				for (const sc of setCookies) headers.push(`Set-Cookie: ${sc}`);
+			});
+		}
 		wss.handleUpgrade(req, socket, head, (ws: any) => {
 			realWs = ws;
 			connections.set(conn.id, {conn, ws});
@@ -215,7 +248,11 @@ export function attachNodeWebSocketHandler(
 							conn,
 							code,
 							reason.toString("utf8"),
-							code === 1000 || code === 1001,
+							// 1006 ("abnormal closure") is the only code RFC 6455
+							// defines for a missing/incomplete close handshake;
+							// every other code — including app-defined 4000-4999
+							// — implies a close frame was exchanged cleanly.
+							code !== 1006,
 						);
 					} finally {
 						connections.delete(conn.id);
@@ -358,18 +395,23 @@ export function attachNodePoolWebSocketHandler(
 		try {
 			result = await pool.handleUpgradeRequest!(request);
 		} catch (err) {
-			logger.error("Pool.handleRequest threw during upgrade: {error}", {
-				error: err,
-			});
-			writeErrorAndDestroy(socket, 500, "Internal Server Error");
+			writeResponseAndDestroy(socket, toHttpErrorResponse(err));
 			return;
 		}
 
 		if (result && typeof result === "object" && result.upgrade === true) {
 			const connectionID = result.connectionID as string;
+			const setCookieHeaders = result.setCookieHeaders as string[] | undefined;
 			try {
 				const wsModule = await loadWs();
 				const wss = new wsModule.WebSocketServer({noServer: true});
+				if (setCookieHeaders?.length) {
+					wss.on("headers", (headers: string[]) => {
+						for (const sc of setCookieHeaders) {
+							headers.push(`Set-Cookie: ${sc}`);
+						}
+					});
+				}
 				wss.handleUpgrade(req, socket, head, (ws: any) => {
 					liveSockets.set(connectionID, ws);
 					// Attach inbound listeners BEFORE flushing buffered frames.
@@ -385,7 +427,9 @@ export function attachNodePoolWebSocketHandler(
 							connectionID,
 							code,
 							reason.toString("utf8"),
-							code === 1000 || code === 1001,
+							// `code !== 1006` — see direct-mode close handler
+							// above for rationale.
+							code !== 1006,
 						);
 					});
 					ws.on("error", (err: Error) => {
@@ -406,6 +450,16 @@ export function attachNodePoolWebSocketHandler(
 				logger.error("Failed to complete pool WS handshake: {error}", {
 					error: err,
 				});
+				// The worker has already accepted the upgrade and may hold BC
+				// subscriptions on its ShovelWebSocketConnection. Synthesize a
+				// close back through the pool so the worker drops the connection
+				// — otherwise it leaks as a phantom holding live subscriptions.
+				pool.sendWebSocketClose?.(
+					connectionID,
+					1011,
+					"WebSocket handshake failed",
+					false,
+				);
 				writeErrorAndDestroy(socket, 500, "WebSocket support unavailable");
 			}
 			return;
@@ -458,8 +512,11 @@ function writeResponseAndDestroy(socket: Socket, response: Response): void {
 			response.headers.forEach((value, key) => {
 				headerLines.push(`${key}: ${value}`);
 			});
-			socket.write(headerLines.join("\r\n") + "\r\n\r\n" + body);
-			socket.destroy();
+			// Use `socket.end(...)` rather than write+destroy so the bytes
+			// are flushed to the client before the FIN; an immediate
+			// `destroy()` after `write()` can race the kernel buffer and
+			// surface as ECONNRESET on fast clients.
+			socket.end(headerLines.join("\r\n") + "\r\n\r\n" + body);
 		})
 		.catch(() => socket.destroy());
 }
@@ -471,10 +528,12 @@ function writeErrorAndDestroy(
 ): void {
 	const statusText = httpStatusText(status);
 	const body = message;
-	socket.write(
+	// `socket.end(...)` flushes the kernel buffer before sending FIN;
+	// `socket.write(...)` followed by an immediate `destroy()` can race
+	// and surface as ECONNRESET on fast clients before they read the body.
+	socket.end(
 		`HTTP/1.1 ${status} ${statusText}\r\nContent-Length: ${Buffer.byteLength(body, "utf8")}\r\nConnection: close\r\n\r\n${body}`,
 	);
-	socket.destroy();
 }
 
 function httpStatusText(status: number): string {
