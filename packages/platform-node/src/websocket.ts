@@ -460,6 +460,9 @@ export function attachNodePoolWebSocketHandler(
 					"WebSocket handshake failed",
 					false,
 				);
+				// The handshake callback that flushes+clears these never ran, so
+				// drop any frames the worker buffered before the socket went live.
+				pendingFrames.delete(connectionID);
 				writeErrorAndDestroy(socket, 500, "WebSocket support unavailable");
 			}
 			return;

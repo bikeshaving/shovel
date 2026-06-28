@@ -354,9 +354,11 @@ export class ShovelPubSubDO extends DurableObject {
 				if (!wsNs) {
 					logger.error("Cannot push publish: SHOVEL_WS binding missing");
 				} else {
+					// Serialize the downstream payload once, not per subscriber.
+					const downstreamBody = JSON.stringify({channel, data});
 					for (const doId of set) {
 						if (doId === sender) continue;
-						this.#scheduleDelivery(wsNs, doId, channel, data);
+						this.#scheduleDelivery(wsNs, doId, downstreamBody);
 					}
 				}
 			}
@@ -380,8 +382,7 @@ export class ShovelPubSubDO extends DurableObject {
 	#scheduleDelivery(
 		wsNs: DurableObjectNamespace,
 		doId: string,
-		channel: string,
-		data: unknown,
+		body: string,
 	): void {
 		const prev = this.#pendingByDoId.get(doId) ?? Promise.resolve();
 		const next = prev
@@ -391,7 +392,7 @@ export class ShovelPubSubDO extends DurableObject {
 					await stub.fetch("http://internal/_shovel_publish", {
 						method: "POST",
 						headers: {"Content-Type": "application/json"},
-						body: JSON.stringify({channel, data}),
+						body,
 					});
 				} catch (err) {
 					logger.error("PubSub downstream fetch to {doId} failed: {error}", {

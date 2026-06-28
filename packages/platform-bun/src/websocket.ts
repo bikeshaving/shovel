@@ -181,6 +181,9 @@ export function createBunPoolWebSocketAdapter(pool: {
 				"Upgrade failed",
 				false,
 			);
+			// The `open` callback that normally flushes+clears these never fires
+			// on a failed upgrade, so drop any frames the handler buffered.
+			pendingFrames.delete(result.connectionID);
 			return new Response("WebSocket upgrade failed", {status: 500});
 		}
 		return undefined;

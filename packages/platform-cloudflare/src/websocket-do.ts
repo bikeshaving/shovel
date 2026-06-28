@@ -80,12 +80,29 @@ export class ShovelWebSocketDO extends DurableObject {
 	#connections: Map<string, ShovelWebSocketConnection>;
 	/** Per-connection ordered dispatch queues. */
 	#dispatchQueues: Map<string, Promise<void>>;
+	/**
+	 * Connection ids whose `websocketclose` has already been dispatched. workerd
+	 * can deliver `webSocketError` followed by `webSocketClose` for the same
+	 * socket; this guards against dispatching the user close handler twice.
+	 */
+	#finalized: Set<string>;
+	/**
+	 * Connection id → last-persisted `subscribedChannels` signature, so we only
+	 * re-serialize the hibernation attachment when subscription state actually
+	 * changed (not on every inbound data frame).
+	 */
+	#persistedChannels: Map<string, string>;
+	/** Captured `_dispatchPubSubMessage` so the hot publish route avoids a per-call dynamic import. */
+	#dispatchPubSub: ((channel: string, data: unknown) => void) | null;
 
 	constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
 		super(ctx, env as any);
 		this.#registration = null;
 		this.#connections = new Map();
 		this.#dispatchQueues = new Map();
+		this.#finalized = new Set();
+		this.#persistedChannels = new Map();
+		this.#dispatchPubSub = null;
 	}
 
 	async #ensureRuntime(): Promise<ShovelServiceWorkerRegistration> {
@@ -118,7 +135,9 @@ export class ShovelWebSocketDO extends DurableObject {
 		// self-fetches when this DO is the publisher.
 		const env = (this.env ?? {}) as Record<string, unknown>;
 		if (env.SHOVEL_PUBSUB) {
-			const {CloudflarePubSubBackend} = await import("./pubsub.js");
+			const {CloudflarePubSubBackend, _dispatchPubSubMessage} =
+				await import("./pubsub.js");
+			this.#dispatchPubSub = _dispatchPubSubMessage;
 			setBroadcastChannelBackend(
 				new CloudflarePubSubBackend(
 					env.SHOVEL_PUBSUB as DurableObjectNamespace,
@@ -171,12 +190,18 @@ export class ShovelWebSocketDO extends DurableObject {
 
 	#persistAttachment(ws: WebSocket, conn: ShovelWebSocketConnection): void {
 		const state = conn[kGetConnectionState]();
+		// id and url are immutable for a connection; subscribedChannels is the
+		// only field that changes, so skip re-serializing when it's unchanged
+		// (the common case — every data frame would otherwise re-persist).
+		const signature = state.subscribedChannels.join("\n");
+		if (this.#persistedChannels.get(state.id) === signature) return;
 		try {
 			(ws as any).serializeAttachment({
 				id: state.id,
 				url: state.url,
 				subscribedChannels: state.subscribedChannels,
 			} satisfies WebSocketConnectionState);
+			this.#persistedChannels.set(state.id, signature);
 		} catch (err) {
 			// subscribedChannels is always string[], so serialization should
 			// never actually fail. Log and clear if it does.
@@ -189,6 +214,7 @@ export class ShovelWebSocketDO extends DurableObject {
 				url: state.url,
 				subscribedChannels: [],
 			} satisfies WebSocketConnectionState);
+			this.#persistedChannels.set(state.id, "");
 		}
 	}
 
@@ -206,8 +232,12 @@ export class ShovelWebSocketDO extends DurableObject {
 					channel: string;
 					data: unknown;
 				};
-				const {_dispatchPubSubMessage} = await import("./pubsub.js");
-				_dispatchPubSubMessage(channel, data);
+				// Captured during #ensureRuntime (above) to avoid a dynamic import
+				// on every cross-isolate publish; fall back if pubsub wasn't wired.
+				const dispatch =
+					this.#dispatchPubSub ??
+					(await import("./pubsub.js"))._dispatchPubSubMessage;
+				dispatch(channel, data);
 				return new Response(null, {status: 204});
 			}
 		}
@@ -357,22 +387,65 @@ export class ShovelWebSocketDO extends DurableObject {
 		wasClean: boolean,
 	): Promise<void> {
 		const registration = await this.#ensureRuntime();
-		const env = (this.env ?? {}) as Record<string, unknown>;
+		const id = this.#connectionId(ws);
+		if (!id) return;
+		return this.#finalizeClose(registration, ws, id, code, reason, wasClean);
+	}
 
-		let id: string | null = null;
+	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+		logger.error("WebSocket error: {error}", {error});
+		const registration = await this.#ensureRuntime();
+		const id = this.#connectionId(ws);
+		if (!id) return;
+		// workerd may report `webSocketError` without a follow-up
+		// `webSocketClose` on protocol/transport failures, so run the close path
+		// here too. The #finalized guard makes whichever event arrives second a
+		// no-op, so the user's `websocketclose` handler fires exactly once and
+		// BC subscriptions are always released (via dispatchWebSocketClose).
+		return this.#finalizeClose(
+			registration,
+			ws,
+			id,
+			1006,
+			String(error),
+			false,
+		);
+	}
+
+	/** Read the connection id from the socket's hibernation attachment. */
+	#connectionId(ws: WebSocket): string | null {
 		try {
 			const state = (
 				ws as any
 			).deserializeAttachment() as WebSocketConnectionState;
-			id = state?.id ?? null;
+			return state?.id ?? null;
 		} catch (_err) {
-			/* fall through */
+			return null;
 		}
-		if (!id) return;
+	}
+
+	/**
+	 * Dispatch `websocketclose` exactly once for a connection and tear down all
+	 * per-connection state. Shared by webSocketClose and webSocketError so an
+	 * error-then-close (or close-then-error) sequence only closes once.
+	 */
+	#finalizeClose(
+		registration: ShovelServiceWorkerRegistration,
+		ws: WebSocket,
+		id: string,
+		code: number,
+		reason: string,
+		wasClean: boolean,
+	): Promise<void> | void {
+		if (this.#finalized.has(id)) return;
+		this.#finalized.add(id);
 		const conn =
 			this.#connections.get(id) ?? this.#buildConnectionFromSocket(ws);
-		if (!conn) return;
-
+		if (!conn) {
+			this.#cleanupConnection(id);
+			return;
+		}
+		const env = (this.env ?? {}) as Record<string, unknown>;
 		const prev = this.#dispatchQueues.get(id) ?? Promise.resolve();
 		const next = prev
 			.then(() =>
@@ -383,34 +456,14 @@ export class ShovelWebSocketDO extends DurableObject {
 			.catch((err) =>
 				logger.error("webSocketClose dispatch failed: {error}", {error: err}),
 			)
-			.finally(() => {
-				this.#connections.delete(id!);
-				this.#dispatchQueues.delete(id!);
-			});
+			.finally(() => this.#cleanupConnection(id));
+		this.#dispatchQueues.set(id, next);
 		return next;
 	}
 
-	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-		logger.error("WebSocket error: {error}", {error});
-		let id: string | null = null;
-		try {
-			const state = (
-				ws as any
-			).deserializeAttachment() as WebSocketConnectionState;
-			id = state?.id ?? null;
-		} catch (_err) {
-			/* ignore */
-		}
-		if (id) {
-			// Drop BC subscriptions before forgetting the connection. workerd
-			// may report `webSocketError` without a follow-up `webSocketClose`
-			// on protocol/transport failures, so this is the only place we
-			// can clean up — otherwise channel listeners leak until eviction.
-			const conn =
-				this.#connections.get(id) ?? this.#buildConnectionFromSocket(ws);
-			conn?._releaseSubscriptions();
-			this.#connections.delete(id);
-			this.#dispatchQueues.delete(id);
-		}
+	#cleanupConnection(id: string): void {
+		this.#connections.delete(id);
+		this.#dispatchQueues.delete(id);
+		this.#persistedChannels.delete(id);
 	}
 }
