@@ -169,3 +169,20 @@ test("publishes from a single source arrive in publish order", async () => {
 		}
 	});
 }, 30000);
+
+test("WS DO answers 409 for a publish on a channel it has no subscriber on", async () => {
+	// 409 is the signal the pubsub DO uses to reap a stale (channel, doId)
+	// registry entry left behind by a subscriber DO that went away without a
+	// clean unsubscribe. A DO with no live subscriber for the channel must
+	// report it so the registry self-heals.
+	await withMiniflare(async ({mf}) => {
+		const ns = await mf.getDurableObjectNamespace("SHOVEL_WS");
+		const stub = ns.get(ns.idFromName("shovel-ws"));
+		const res = await stub.fetch("http://internal/_shovel_publish", {
+			method: "POST",
+			headers: {"Content-Type": "application/json"},
+			body: JSON.stringify({channel: "room:nobody", data: "x"}),
+		});
+		expect(res.status).toBe(409);
+	});
+}, 30000);

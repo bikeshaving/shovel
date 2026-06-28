@@ -1298,11 +1298,27 @@ export class ShovelWebSocketMessageEvent
 {
 	readonly source: ShovelWebSocketConnection;
 	readonly data: string | ArrayBuffer;
+	#platformWaitUntil?: (promise: Promise<unknown>) => void;
 
-	constructor(source: ShovelWebSocketConnection, data: string | ArrayBuffer) {
+	constructor(
+		source: ShovelWebSocketConnection,
+		data: string | ArrayBuffer,
+		platformWaitUntil?: (promise: Promise<unknown>) => void,
+	) {
 		super("websocketmessage");
 		this.source = source;
 		this.data = data;
+		this.#platformWaitUntil = platformWaitUntil;
+	}
+
+	override waitUntil(promise: Promise<any>): void {
+		// Hand background work to the platform (e.g. Cloudflare ctx.waitUntil) so
+		// it survives past dispatch without the per-connection frame loop having
+		// to await it. Mirrors ShovelFetchEvent.
+		if (this.#platformWaitUntil) {
+			this.#platformWaitUntil(promise);
+		}
+		super.waitUntil(promise);
 	}
 }
 
@@ -1763,17 +1779,27 @@ export async function dispatchFetchEvent(
  * Dispatch a `websocketmessage` event on the registration. Called by platform
  * adapters when a frame arrives on an accepted connection.
  */
-export async function dispatchWebSocketMessage(
+export function dispatchWebSocketMessage(
 	registration: ShovelServiceWorkerRegistration,
 	connection: ShovelWebSocketConnection,
 	data: string | ArrayBuffer,
+	platformWaitUntil?: (promise: Promise<unknown>) => void,
 ): Promise<void> {
-	const event = new ShovelWebSocketMessageEvent(connection, data);
+	const event = new ShovelWebSocketMessageEvent(
+		connection,
+		data,
+		platformWaitUntil,
+	);
 	registration.dispatchEvent(event);
 	event[kEndDispatchPhase]();
-	// Let any waitUntil promises resolve before returning so adapters can
-	// serialize per-connection delivery if they wish.
-	await Promise.allSettled(event.getPromises());
+	// Resolve as soon as the synchronous handlers have run.
+	// Intentionally do NOT await the handler's waitUntil promises here:
+	// awaiting them inside the per-connection ordered dispatch chain would let
+	// one slow background task head-of-line block every later frame on the same
+	// connection. Synchronous handler execution already preserves frame order;
+	// background work is kept alive via `platformWaitUntil` (ctx.waitUntil on
+	// Cloudflare) or simply by the long-lived Node/Bun worker process.
+	return Promise.resolve();
 }
 
 /**

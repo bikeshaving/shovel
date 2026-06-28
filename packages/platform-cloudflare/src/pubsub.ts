@@ -56,9 +56,9 @@ const localCallbacks = new Map<string, Set<(data: unknown) => void>>();
  * channel. Internal — re-exported via the package runtime entry but not part
  * of the public API surface.
  */
-export function _dispatchPubSubMessage(channel: string, data: unknown): void {
+export function _dispatchPubSubMessage(channel: string, data: unknown): number {
 	const cbs = localCallbacks.get(channel);
-	if (!cbs) return;
+	if (!cbs) return 0;
 	for (const cb of cbs) {
 		try {
 			cb(data);
@@ -66,6 +66,7 @@ export function _dispatchPubSubMessage(channel: string, data: unknown): void {
 			logger.error("PubSub callback threw: {error}", {error: err});
 		}
 	}
+	return cbs.size;
 }
 
 // ============================================================================
@@ -358,7 +359,7 @@ export class ShovelPubSubDO extends DurableObject {
 					const downstreamBody = JSON.stringify({channel, data});
 					for (const doId of set) {
 						if (doId === sender) continue;
-						this.#scheduleDelivery(wsNs, doId, downstreamBody);
+						this.#scheduleDelivery(wsNs, doId, channel, downstreamBody);
 					}
 				}
 			}
@@ -382,18 +383,38 @@ export class ShovelPubSubDO extends DurableObject {
 	#scheduleDelivery(
 		wsNs: DurableObjectNamespace,
 		doId: string,
+		channel: string,
 		body: string,
 	): void {
 		const prev = this.#pendingByDoId.get(doId) ?? Promise.resolve();
 		const next = prev
 			.then(async () => {
+				let stub;
 				try {
-					const stub = wsNs.get(wsNs.idFromString(doId));
-					await stub.fetch("http://internal/_shovel_publish", {
+					stub = wsNs.get(wsNs.idFromString(doId));
+				} catch (err) {
+					// Malformed id can never address a DO — drop it permanently.
+					logger.warn("Pruning malformed pubsub subscriber {doId}: {error}", {
+						doId,
+						error: err,
+					});
+					await this.#pruneSubscriber(channel, doId);
+					return;
+				}
+				try {
+					const res = await stub.fetch("http://internal/_shovel_publish", {
 						method: "POST",
 						headers: {"Content-Type": "application/json"},
 						body,
 					});
+					// 409 = the subscriber DO woke, rehydrated, and found it has no
+					// local subscriber for this channel — a stale entry left by a DO
+					// that was evicted/crashed without a clean unsubscribe. Reap it.
+					// Transport errors (caught below) are left intact, since those
+					// are usually transient.
+					if (res.status === 409) {
+						await this.#pruneSubscriber(channel, doId);
+					}
 				} catch (err) {
 					logger.error("PubSub downstream fetch to {doId} failed: {error}", {
 						doId,
@@ -410,6 +431,24 @@ export class ShovelPubSubDO extends DurableObject {
 			});
 		this.#pendingByDoId.set(doId, next);
 		this.ctx.waitUntil(next);
+	}
+
+	/**
+	 * Remove a stale (channel, doId) entry from the in-memory registry and
+	 * persisted storage. Called when a subscriber DO is found to no longer hold
+	 * a subscriber for the channel (or its id is unaddressable), so future
+	 * publishes stop waking a dead DO.
+	 */
+	async #pruneSubscriber(channel: string, doId: string): Promise<void> {
+		const set = this.#subscribers.get(channel);
+		if (set?.delete(doId)) {
+			if (set.size === 0) this.#subscribers.delete(channel);
+			await this.ctx.storage.delete(subKey(channel, doId));
+			logger.info("Pruned stale pubsub subscriber {doId} from {channel}", {
+				doId,
+				channel,
+			});
+		}
 	}
 
 	// Hibernation API hooks. We don't act on inbound frames or close events

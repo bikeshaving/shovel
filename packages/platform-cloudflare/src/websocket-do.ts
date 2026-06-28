@@ -93,7 +93,7 @@ export class ShovelWebSocketDO extends DurableObject {
 	 */
 	#persistedChannels: Map<string, string>;
 	/** Captured `_dispatchPubSubMessage` so the hot publish route avoids a per-call dynamic import. */
-	#dispatchPubSub: ((channel: string, data: unknown) => void) | null;
+	#dispatchPubSub: ((channel: string, data: unknown) => number) | null;
 
 	constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
 		super(ctx, env as any);
@@ -234,11 +234,16 @@ export class ShovelWebSocketDO extends DurableObject {
 				};
 				// Captured during #ensureRuntime (above) to avoid a dynamic import
 				// on every cross-isolate publish; fall back if pubsub wasn't wired.
+				// #ensureRuntime already rehydrated hibernated connections and
+				// re-installed their channel subscriptions, so a zero count here
+				// means this DO genuinely has no subscriber for the channel — a
+				// stale registry entry. Signal that with 409 so the pubsub DO can
+				// prune us, distinguishing it from a transient transport failure.
 				const dispatch =
 					this.#dispatchPubSub ??
 					(await import("./pubsub.js"))._dispatchPubSubMessage;
-				dispatch(channel, data);
-				return new Response(null, {status: 204});
+				const delivered = dispatch(channel, data);
+				return new Response(null, {status: delivered > 0 ? 204 : 409});
 			}
 		}
 
@@ -363,7 +368,9 @@ export class ShovelWebSocketDO extends DurableObject {
 		const next = prev
 			.then(() =>
 				envStorage.run(env, () =>
-					dispatchWebSocketMessage(registration, conn!, message),
+					dispatchWebSocketMessage(registration, conn!, message, (p) =>
+						this.ctx.waitUntil(p),
+					),
 				),
 			)
 			.then(() => {

@@ -691,3 +691,53 @@ test("URL is exposed via connection state for hibernation inspection", async () 
 	expect(conn.url).toBe(url);
 	expect(conn[kGetConnectionState]().url).toBe(url);
 });
+
+test("websocketmessage waitUntil does not head-of-line block later frames", async () => {
+	const registration = await setupScope();
+	const {relay} = createMockRelay();
+
+	const order: string[] = [];
+	let releaseSlow!: () => void;
+	const slow = new Promise<void>((resolve) => {
+		releaseSlow = resolve;
+	});
+
+	addShovelListener("websocketmessage", (event: any) => {
+		order.push(`handle:${event.data}`);
+		// The first frame kicks off slow background work via waitUntil.
+		if (event.data === "1") {
+			event.waitUntil(
+				slow.then(() => {
+					order.push("waitUntil:1");
+				}),
+			);
+		}
+	});
+
+	const conn = new ShovelWebSocketConnection({
+		id: "c1",
+		url: "http://x/ws",
+		relay,
+	});
+
+	// Route background promises to a platform hook, mirroring ctx.waitUntil.
+	const platformPromises: Promise<unknown>[] = [];
+	const platformWaitUntil = (p: Promise<unknown>) => {
+		platformPromises.push(p);
+	};
+
+	// Deliver two frames in order, as an adapter's per-connection chain would.
+	await dispatchWebSocketMessage(registration, conn, "1", platformWaitUntil);
+	await dispatchWebSocketMessage(registration, conn, "2", platformWaitUntil);
+
+	// Frame 2 was handled even though frame 1's waitUntil is still pending —
+	// i.e. the slow background task did not block the next frame.
+	expect(order).toEqual(["handle:1", "handle:2"]);
+	// The background promise was handed to the platform for lifetime.
+	expect(platformPromises.length).toBe(1);
+
+	// Once the slow work completes it still runs; it just didn't block delivery.
+	releaseSlow();
+	await Promise.all(platformPromises);
+	expect(order).toEqual(["handle:1", "handle:2", "waitUntil:1"]);
+});
