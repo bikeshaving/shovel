@@ -73,7 +73,7 @@ startWorkerMessageLoop({registration, databases});
 	// Worker code for production (with message handling for supervisor communication)
 	const prodWorkerCode = `// Bun Production Worker
 import {getLogger, configureLogging, initWorkerRuntime, runLifecycle} from "@b9g/platform/runtime";
-import {createBunWebSocketServer} from "@b9g/platform-bun/websocket";
+import {createBunWebSocketServer} from "@b9g/platform-bun";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);

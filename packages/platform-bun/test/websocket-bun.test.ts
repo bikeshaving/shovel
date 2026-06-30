@@ -1,5 +1,5 @@
 import {test, expect, afterEach} from "bun:test";
-import {createBunWebSocketServer} from "../src/websocket.js";
+import {createBunWebSocketServer} from "../src/_websocket.js";
 import {
 	ShovelServiceWorkerRegistration,
 	ServiceWorkerGlobals,

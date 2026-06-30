@@ -29,6 +29,11 @@ import {
 	createCacheFactory,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
+import {createBunPoolWebSocketAdapter} from "./_websocket.js";
+// Re-exported so the generated worker can import the WebSocket adapter from
+// this package's main entry — keeps the adapter module itself internal
+// (`_websocket.ts`, not a published endpoint).
+export {createBunWebSocketServer} from "./_websocket.js";
 
 const logger = getLogger(["shovel", "platform"]);
 
@@ -363,7 +368,6 @@ export class BunPlatform {
 			typeof poolWithWs.setWebSocketHandlers === "function" &&
 			typeof poolWithWs.handleUpgradeRequest === "function"
 		) {
-			const {createBunPoolWebSocketAdapter} = await import("./websocket.js");
 			const adapter = createBunPoolWebSocketAdapter(
 				poolWithWs as Required<typeof poolWithWs>,
 			);
@@ -441,7 +445,7 @@ export class BunPlatform {
 		// Worker code for production (with message handling for supervisor communication)
 		const prodWorkerCode = `// Bun Production Worker
 import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
-import {createBunWebSocketServer} from "@b9g/platform-bun/websocket";
+import {createBunWebSocketServer} from "@b9g/platform-bun";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);

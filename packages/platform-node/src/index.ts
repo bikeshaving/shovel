@@ -35,6 +35,11 @@ import {
 	createCacheFactory,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
+import {attachNodePoolWebSocketHandler} from "./_websocket.js";
+// Re-exported so the generated worker can import the WebSocket adapter from
+// this package's main entry — keeps the adapter module itself internal
+// (`_websocket.ts`, not a published endpoint).
+export {attachNodeWebSocketHandler} from "./_websocket.js";
 
 const logger = getLogger(["shovel", "platform"]);
 
@@ -311,7 +316,6 @@ export class NodePlatform {
 			) => void;
 		};
 		if (typeof poolWithWs.setWebSocketHandlers === "function") {
-			const {attachNodePoolWebSocketHandler} = await import("./websocket.js");
 			attachNodePoolWebSocketHandler(this.#server.httpServer, poolWithWs);
 		}
 

@@ -1,7 +1,7 @@
 import {test, expect, afterEach} from "bun:test";
 import * as HTTP from "node:http";
 import WebSocket from "ws";
-import {attachNodeWebSocketHandler} from "../src/websocket.js";
+import {attachNodeWebSocketHandler} from "../src/_websocket.js";
 import {
 	ShovelServiceWorkerRegistration,
 	ServiceWorkerGlobals,

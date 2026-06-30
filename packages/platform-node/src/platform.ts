@@ -83,8 +83,7 @@ if (config.lifecycle) {
 	const prodWorkerCode = `// Node.js Production Worker
 import {parentPort} from "node:worker_threads";
 import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest} from "@b9g/platform/runtime";
-import NodePlatform from "@b9g/platform-node";
-import {attachNodeWebSocketHandler} from "@b9g/platform-node/websocket";
+import NodePlatform, {attachNodeWebSocketHandler} from "@b9g/platform-node";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
