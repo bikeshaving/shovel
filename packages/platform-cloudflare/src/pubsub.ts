@@ -56,9 +56,9 @@ const localCallbacks = new Map<string, Set<(data: unknown) => void>>();
  * channel. Internal — re-exported via the package runtime entry but not part
  * of the public API surface.
  */
-export function _dispatchPubSubMessage(channel: string, data: unknown): number {
+export function _dispatchPubSubMessage(channel: string, data: unknown): void {
 	const cbs = localCallbacks.get(channel);
-	if (!cbs) return 0;
+	if (!cbs) return;
 	for (const cb of cbs) {
 		try {
 			cb(data);
@@ -66,7 +66,6 @@ export function _dispatchPubSubMessage(channel: string, data: unknown): number {
 			logger.error("PubSub callback threw: {error}", {error: err});
 		}
 	}
-	return cbs.size;
 }
 
 // ============================================================================

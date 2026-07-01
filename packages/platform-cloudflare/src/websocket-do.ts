@@ -93,7 +93,7 @@ export class ShovelWebSocketDO extends DurableObject {
 	 */
 	#persistedChannels: Map<string, string>;
 	/** Captured `_dispatchPubSubMessage` so the hot publish route avoids a per-call dynamic import. */
-	#dispatchPubSub: ((channel: string, data: unknown) => number) | null;
+	#dispatchPubSub: ((channel: string, data: unknown) => void) | null;
 
 	constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
 		super(ctx, env as any);
@@ -234,16 +234,19 @@ export class ShovelWebSocketDO extends DurableObject {
 				};
 				// Captured during #ensureRuntime (above) to avoid a dynamic import
 				// on every cross-isolate publish; fall back if pubsub wasn't wired.
-				// #ensureRuntime already rehydrated hibernated connections and
-				// re-installed their channel subscriptions, so a zero count here
-				// means this DO genuinely has no subscriber for the channel — a
-				// stale registry entry. Signal that with 409 so the pubsub DO can
-				// prune us, distinguishing it from a transient transport failure.
 				const dispatch =
 					this.#dispatchPubSub ??
 					(await import("./pubsub.js"))._dispatchPubSubMessage;
-				const delivered = dispatch(channel, data);
-				return new Response(null, {status: delivered > 0 ? 204 : 409});
+				dispatch(channel, data);
+				// Prune signal (409): only when this DO holds NO live sockets at
+				// all — an evicted/gone subscriber whose registry entry lingered.
+				// #ensureRuntime has already rehydrated hibernated sockets, so a
+				// live-but-hibernated subscriber reports length > 0 and is never
+				// pruned. Keying off socket presence (not a per-channel subscriber
+				// count) means a momentary zero-subscriber window from
+				// unsubscribe/re-subscribe churn cannot reap a live subscriber.
+				const isStale = this.ctx.getWebSockets().length === 0;
+				return new Response(null, {status: isStale ? 409 : 204});
 			}
 		}
 
@@ -446,6 +449,14 @@ export class ShovelWebSocketDO extends DurableObject {
 	): Promise<void> | void {
 		if (this.#finalized.has(id)) return;
 		this.#finalized.add(id);
+		// Bound the dedup set. An error/close pair for one socket arrives within
+		// a single teardown, so ids far older than recent churn can never dedup
+		// anything; evict oldest (insertion order) once the set grows large,
+		// rather than leaking one entry per connection for the DO's lifetime.
+		if (this.#finalized.size > 2048) {
+			const oldest = this.#finalized.values().next().value as string;
+			this.#finalized.delete(oldest);
+		}
 		const conn =
 			this.#connections.get(id) ?? this.#buildConnectionFromSocket(ws);
 		if (!conn) {
