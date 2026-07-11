@@ -1661,7 +1661,13 @@ export interface ProcessedLoggingConfig {
 /** Processed build config with defaults applied */
 export interface ProcessedBuildConfig {
 	target: string | string[];
-	minify: boolean;
+	/**
+	 * Undefined means "unset" — the bundler applies mode-aware defaults (server
+	 * bundle stays opt-in; client assets minify in production). An explicit
+	 * boolean overrides both. Do not collapse this to `false` at load time, or
+	 * "unset" becomes indistinguishable from "explicitly disabled".
+	 */
+	minify?: boolean;
 	sourcemap: boolean | "inline" | "external" | "linked";
 	treeShaking: boolean;
 	define: Record<string, string>;
@@ -1739,7 +1745,10 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 		},
 		build: {
 			target: validated.build?.target ?? "es2022",
-			minify: validated.build?.minify ?? false,
+			// Preserve "unset" (undefined) so the bundler can apply mode-aware
+			// defaults; collapsing to false here would force production client
+			// assets unminified (regression from PR #68 / issue #67).
+			minify: validated.build?.minify,
 			sourcemap: validated.build?.sourcemap ?? false,
 			treeShaking: validated.build?.treeShaking ?? true,
 			define: validated.build?.define ?? {},
