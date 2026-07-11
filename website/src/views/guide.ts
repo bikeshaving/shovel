@@ -3,7 +3,8 @@ import {NotFound} from "@b9g/http-errors";
 
 import {Root} from "../components/root.js";
 import {Main, Sidebar} from "../components/sidebar.js";
-import {Marked} from "../components/marked.js";
+import {Marked} from "@b9g/crankdown";
+import {components} from "../components/marked-components.js";
 import {collectDocuments} from "../models/document.js";
 
 interface ViewProps {
@@ -32,7 +33,7 @@ export default async function Guide({url}: ViewProps) {
 			<${Sidebar} docs=${docs} url=${url} title="Guides" />
 			<${Main}>
 				<h1>${title}</h1>
-				<${Marked} markdown=${body} linkBase="guides" />
+				<${Marked} markdown=${body} components=${components} linkBase="guides" />
 			<//Main>
 		<//Root>
 	`;
