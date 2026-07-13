@@ -289,7 +289,14 @@ export class ServerBundler {
 		// Build config from userBuildConfig (respects MODE from config/env)
 		const target = userBuildConfig?.target ?? "es2022";
 		const sourcemap = userBuildConfig?.sourcemap ?? (watch ? "inline" : false);
+		// Server bundle: minify is opt-in (unchanged).
 		const minify = userBuildConfig?.minify ?? false;
+		// Client assets (CSS, client JS) minify in production by default —
+		// restoring the pre-#68 behavior where the asset path was hardcoded to
+		// minify. An explicit build.minify still wins for both; dev/watch builds
+		// stay unminified so source is readable during development.
+		const assetMinify =
+			userBuildConfig?.minify ?? (!this.#options.development && !watch);
 		const treeShaking = userBuildConfig?.treeShaking ?? true;
 
 		// Build ESBuild entry points from platform entry points
@@ -321,7 +328,7 @@ export class ServerBundler {
 			assetsPlugin({
 				outDir: outputDir,
 				plugins: userPlugins,
-				minify,
+				minify: assetMinify,
 				jsx: jsxOptions.jsx,
 				jsxFactory: jsxOptions.jsxFactory,
 				jsxFragment: jsxOptions.jsxFragment,
