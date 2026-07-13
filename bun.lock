@@ -327,7 +327,7 @@
         "@b9g/platform": "workspace:*",
         "@b9g/platform-bun": "workspace:*",
         "@b9g/router": "workspace:*",
-        "@b9g/shovel": "0.2.10",
+        "@b9g/shovel": "^0.2.20",
         "@emotion/css": "^11.13.5",
         "@emotion/server": "^11.11.0",
         "front-matter": "^4.0.2",
@@ -1453,6 +1453,8 @@
     "shovel-echo/@b9g/shovel": ["@b9g/shovel@0.2.17", "", { "dependencies": { "@b9g/async-context": "^0.2.1", "@b9g/cache": "^0.2.2", "@b9g/filesystem": "^0.2.0", "@b9g/http-errors": "^0.2.1", "@b9g/node-webworker": "^0.2.1", "@b9g/platform": "^0.1.18", "@b9g/platform-bun": "^0.1.16", "@b9g/platform-cloudflare": "^0.1.15", "@b9g/platform-node": "^0.1.17", "@clack/prompts": "^0.7.0", "@logtape/logtape": "^2.0.0", "commander": "^13.1.0", "esbuild": "^0.27.2", "esbuild-plugins-node-modules-polyfill": "^1.8.1", "mime": "^4.0.4", "zod": "^3.23.0" }, "bin": { "shovel": "bin/cli.js", "create-shovel": "bin/create.js", "cli": "bin/cli.js", "create": "bin/create.js" } }, "sha512-MrkxKH2BaE5mg2GUNZb6jJeLOPu6d8Pa0agIwiMhak5Klljl8RulmPK3TlT6eGlL7Qg8SQRplxEZtxVN+o7/6g=="],
 
     "shovel-echo/wrangler": ["wrangler@4.69.0", "", { "dependencies": { "@cloudflare/kv-asset-handler": "0.4.2", "@cloudflare/unenv-preset": "2.14.0", "blake3-wasm": "2.1.5", "esbuild": "0.27.3", "miniflare": "4.20260305.0", "path-to-regexp": "6.3.0", "unenv": "2.0.0-rc.24", "workerd": "1.20260305.0" }, "optionalDependencies": { "fsevents": "~2.3.2" }, "peerDependencies": { "@cloudflare/workers-types": "^4.20260305.0" }, "optionalPeers": ["@cloudflare/workers-types"], "bin": { "wrangler": "bin/wrangler.js", "wrangler2": "bin/wrangler.js" } }, "sha512-EmVfIM65I5b4ITHe3Y9R7zQyf4NUBQ1leStakMlWiVR9n6VlDwuEltyQI2l3i0JciDnWyR3uqe+T6C08ivniTQ=="],
+
+    "shovel-website/@b9g/shovel": ["@b9g/shovel@0.2.20", "", { "dependencies": { "@b9g/async-context": "^0.2.1", "@b9g/cache": "^0.2.2", "@b9g/filesystem": "^0.2.0", "@b9g/http-errors": "^0.2.1", "@b9g/node-webworker": "^0.2.1", "@b9g/platform": "^0.1.19", "@b9g/platform-bun": "^0.1.17", "@b9g/platform-cloudflare": "^0.1.17", "@b9g/platform-node": "^0.1.17", "@clack/prompts": "^0.7.0", "@logtape/logtape": "^2.0.0", "commander": "^13.1.0", "esbuild": "^0.27.2", "esbuild-plugins-node-modules-polyfill": "^1.8.1", "glob": "^13.0.6", "mime": "^4.0.4", "zod": "^3.23.0" }, "bin": { "shovel": "bin/cli.js", "create-shovel": "bin/create.js", "cli": "bin/cli.js", "create": "bin/create.js" } }, "sha512-ChaVsV8zUO2yxzz8bQTLurNS/2GooY8tj1BHEx5OSBQSWc6GOeeaeDYckwQE+cE7jPFz/MyOgJ/qzj8fPU75Uw=="],
 
     "stack-utils/escape-string-regexp": ["escape-string-regexp@2.0.0", "", {}, "sha512-UpzcLCXolUWcNu5HtVMHYdXJjArjsF9C0aNnquZYY4uW/Vu0miy5YoWvbV345HauVvcAUnpRuhMMcqTcGOY2+w=="],
 
