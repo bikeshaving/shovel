@@ -29,7 +29,13 @@ const logger = getLogger(["test", "worker-errors"]);
  * 5. Import errors - non-existent exports from existing modules
  */
 
-const TIMEOUT = 10000;
+// Per-test timeout. These tests spawn real workers and reload them, which is
+// slow under CI load; keep generous headroom so a slow spawn doesn't flake.
+const TIMEOUT = 20000;
+// Pool request timeout. Must comfortably exceed a real worker spawn/reload
+// under CI load — a too-tight value spuriously fails the "successful load"
+// assertion (observed timing out at ~5s on CI).
+const REQUEST_TIMEOUT = 15000;
 
 const GOOD_WORKER_CODE = `
 self.addEventListener("fetch", (event) => {
@@ -86,7 +92,7 @@ describe("Worker Error Propagation", () => {
 
 			const cacheStorage = createCacheStorage();
 			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
+				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
 			);
@@ -123,7 +129,7 @@ self.addEventListener("fetch", (event) => {
 
 			const cacheStorage = createCacheStorage();
 			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
+				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
 			);
@@ -161,7 +167,7 @@ self.addEventListener("fetch", (event) => {
 
 			const cacheStorage = createCacheStorage();
 			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
+				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
 			);
@@ -197,7 +203,7 @@ self.addEventListener("fetch", (event) => {
 
 			const cacheStorage = createCacheStorage();
 			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
+				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
 			);
@@ -243,7 +249,7 @@ self.addEventListener("fetch", (event) => {
 
 			const cacheStorage = createCacheStorage();
 			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
+				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
 			);
@@ -279,7 +285,7 @@ self.addEventListener("fetch", (event) => {
 
 			const cacheStorage = createCacheStorage();
 			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
+				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
 			);
@@ -316,7 +322,7 @@ self.addEventListener("fetch", (event) => {
 
 			const cacheStorage = createCacheStorage();
 			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
+				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
 			);
@@ -353,7 +359,7 @@ self.addEventListener("fetch", (event) => {
 
 			const cacheStorage = createCacheStorage();
 			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: 5000, cwd: tempDir},
+				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
 				goodEntrypoint,
 				cacheStorage,
 			);
