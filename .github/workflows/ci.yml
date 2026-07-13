@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Run on the merge queue's temporary branches so queued PRs get their
+  # required checks — without this the queue stalls with no status.
+  merge_group:
+
+# Least-privilege token: this workflow only builds/lints/typechecks/tests and
+# never writes to the repo. Lock it explicitly so it stays read-only regardless
+# of the repo's default-token setting.
+permissions:
+  contents: read
 
 jobs:
   build:
