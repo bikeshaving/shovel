@@ -2,6 +2,12 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.20] - 2026-07-13
+
+### Bug Fixes
+
+- **Client asset minification restored in production** — PR [#68](https://github.com/bikeshaving/shovel/pull/68) (issue [#67](https://github.com/bikeshaving/shovel/issues/67)) made the client asset path honor `build.minify`, but that option defaults to `false` — so it silently stopped minifying CSS/JS in production for any site that never set it (shovel.js.org's client CSS grew from 10,656 to 13,174 bytes). Client assets now minify in production by default again; an explicit `build.minify` still overrides both paths, and the server bundle stays opt-in. ([PR #93](https://github.com/bikeshaving/shovel/pull/93))
+
 ## [0.2.19] - 2026-03-17
 
 ### Bug Fixes
