@@ -321,16 +321,17 @@
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/crank": "^0.7.5",
+        "@b9g/crankdown": "^0.1.2",
         "@b9g/filesystem": "workspace:*",
         "@b9g/http-errors": "workspace:*",
         "@b9g/platform": "workspace:*",
         "@b9g/platform-bun": "workspace:*",
         "@b9g/router": "workspace:*",
-        "@b9g/shovel": "^0.2.8",
+        "@b9g/shovel": "0.2.10",
         "@emotion/css": "^11.13.5",
         "@emotion/server": "^11.11.0",
         "front-matter": "^4.0.2",
-        "marked": "^4.3.0",
+        "marked": "^18.0.0",
         "normalize.css": "^8.0.1",
         "prism-themes": "^1.9.0",
         "prismjs": "^1.30.0",
@@ -436,6 +437,8 @@
     "@b9g/cache-redis": ["@b9g/cache-redis@workspace:packages/cache-redis"],
 
     "@b9g/crank": ["@b9g/crank@0.7.7", "", {}, "sha512-QTNvABMxbWG2UX4/losnEe1cLGtGlJDeSKMR65jLffUNt9wtuulZYE3hK9Fwgr+VtB/Q8hLglVrSnnCLnXSQHA=="],
+
+    "@b9g/crankdown": ["@b9g/crankdown@0.1.2", "", { "peerDependencies": { "@b9g/crank": ">=0.7.0", "marked": ">=5.0.0" } }, "sha512-Ey7Vx5XPt1GP7cUsUVs//qmz6WiCdIybFwFJ9sokt9d7V03gk/qhSlJbpfdkq8/aRWSuqHvpxiXC0ntPIPanlg=="],
 
     "@b9g/filesystem": ["@b9g/filesystem@workspace:packages/filesystem"],
 
@@ -1151,7 +1154,7 @@
 
     "make-dir": ["make-dir@3.1.0", "", { "dependencies": { "semver": "^6.0.0" } }, "sha512-g3FeP20LNwhALb/6Cz6Dd4F2ngze0jz7tbzrD2wAV+o9FeNHe4rL+yK2md0J/fiSf1sa1ADhXqi5+oVwOM/eGw=="],
 
-    "marked": ["marked@4.3.0", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-PRsaiG84bK+AMvxziE/lCFss8juXjNaWzVbN5tXAm4XjeaS9NAHhop+PjQxz2A9h8Q4M/xGmzP8vqNwy6JeK0A=="],
+    "marked": ["marked@18.0.6", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-MrV5puXBfuiy6wl6DLaq3BtIJQAJToAd5zt/ZKhRfGRAuFPALE7/4Y7jnxRQoEgK/pBgurGqLyAuRgZ2xOjr6w=="],
 
     "matches-selector": ["matches-selector@1.2.0", "", {}, "sha512-c4vLwYWyl+Ji+U43eU/G5FwxWd4ZH0ePUsFs5y0uwD9HUEFBXUQ1zUUan+78IpRD+y4pUfG0nAzNM292K7ItvA=="],
 
@@ -1450,8 +1453,6 @@
     "shovel-echo/@b9g/shovel": ["@b9g/shovel@0.2.17", "", { "dependencies": { "@b9g/async-context": "^0.2.1", "@b9g/cache": "^0.2.2", "@b9g/filesystem": "^0.2.0", "@b9g/http-errors": "^0.2.1", "@b9g/node-webworker": "^0.2.1", "@b9g/platform": "^0.1.18", "@b9g/platform-bun": "^0.1.16", "@b9g/platform-cloudflare": "^0.1.15", "@b9g/platform-node": "^0.1.17", "@clack/prompts": "^0.7.0", "@logtape/logtape": "^2.0.0", "commander": "^13.1.0", "esbuild": "^0.27.2", "esbuild-plugins-node-modules-polyfill": "^1.8.1", "mime": "^4.0.4", "zod": "^3.23.0" }, "bin": { "shovel": "bin/cli.js", "create-shovel": "bin/create.js", "cli": "bin/cli.js", "create": "bin/create.js" } }, "sha512-MrkxKH2BaE5mg2GUNZb6jJeLOPu6d8Pa0agIwiMhak5Klljl8RulmPK3TlT6eGlL7Qg8SQRplxEZtxVN+o7/6g=="],
 
     "shovel-echo/wrangler": ["wrangler@4.69.0", "", { "dependencies": { "@cloudflare/kv-asset-handler": "0.4.2", "@cloudflare/unenv-preset": "2.14.0", "blake3-wasm": "2.1.5", "esbuild": "0.27.3", "miniflare": "4.20260305.0", "path-to-regexp": "6.3.0", "unenv": "2.0.0-rc.24", "workerd": "1.20260305.0" }, "optionalDependencies": { "fsevents": "~2.3.2" }, "peerDependencies": { "@cloudflare/workers-types": "^4.20260305.0" }, "optionalPeers": ["@cloudflare/workers-types"], "bin": { "wrangler": "bin/wrangler.js", "wrangler2": "bin/wrangler.js" } }, "sha512-EmVfIM65I5b4ITHe3Y9R7zQyf4NUBQ1leStakMlWiVR9n6VlDwuEltyQI2l3i0JciDnWyR3uqe+T6C08ivniTQ=="],
-
-    "shovel-website/@b9g/crank": ["@b9g/crank@0.7.6", "", {}, "sha512-SVD3VsdIjISL757MUoDu7xX+fGFwelktDNMGSnfZW4Q9vQD5id9rpUQoOFEBjlDBp5iLEP0mepzURmx3lETPaQ=="],
 
     "stack-utils/escape-string-regexp": ["escape-string-regexp@2.0.0", "", {}, "sha512-UpzcLCXolUWcNu5HtVMHYdXJjArjsF9C0aNnquZYY4uW/Vu0miy5YoWvbV345HauVvcAUnpRuhMMcqTcGOY2+w=="],
 

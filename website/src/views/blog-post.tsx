@@ -3,7 +3,8 @@ import {css} from "@emotion/css";
 import {NotFound} from "@b9g/http-errors";
 
 import {Root} from "../components/root.js";
-import {Marked} from "../components/marked.js";
+import {Marked} from "@b9g/crankdown";
+import {components} from "../components/marked-components.js";
 import {collectBlogPosts} from "../models/blog.js";
 
 interface ViewProps {
@@ -104,7 +105,7 @@ export default async function BlogPostView({url}: ViewProps) {
 						<> by {author}</>
 					) : null}
 				</p>
-				<Marked markdown={body} />
+				<Marked markdown={body} components={components} />
 			</article>
 		</Root>
 	);
