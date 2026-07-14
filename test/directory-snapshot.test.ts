@@ -1,9 +1,11 @@
 import {test, expect, describe, beforeEach} from "bun:test";
 import {createDirectorySnapshotPlugin} from "../src/plugins/directory-snapshot.js";
 import {generateConfigModule} from "../src/utils/config.js";
+import {buildForProduction} from "../src/commands/build.js";
 import * as ESBuild from "esbuild";
 import {findProjectRoot} from "../src/utils/project.js";
-import {mkdtemp, writeFile, mkdir} from "fs/promises";
+import {mkdtemp, writeFile, mkdir, readdir, readFile} from "fs/promises";
+import {symlinkSync} from "fs";
 import {tmpdir} from "os";
 import {join} from "path";
 
@@ -125,4 +127,58 @@ describe("directory snapshot — config generation", () => {
 		expect(code).toContain("directory_content");
 		expect(code).not.toContain('"snapshot"');
 	});
+});
+
+/**
+ * The tests above drive esbuild with the plugin directly, so they never touch
+ * bundler.ts — a break in the plugin's registration there would go unnoticed.
+ * This builds a real project through buildForProduction, on the platform the
+ * feature exists for (Cloudflare has no filesystem).
+ */
+describe("directory snapshot — through the real bundler", () => {
+	test("cloudflare production build bakes the snapshot into the worker", async () => {
+		const root = await makeProject();
+		// A real project: the bundler derives its root from cwd via the
+		// nearest package.json, and the emitted module imports
+		// @b9g/filesystem/memory by specifier.
+		await writeFile(
+			join(root, "package.json"),
+			JSON.stringify({name: "snap-fixture", version: "0.0.0", type: "module"}),
+		);
+		symlinkSync(REPO_NODE_MODULES, join(root, "node_modules"));
+		await writeFile(
+			join(root, "entry.js"),
+			`self.addEventListener("fetch", (event) => {
+					event.respondWith((async () => {
+						const dir = await self.directories.open("content");
+						const fh = await dir.getFileHandle("index.md");
+						return new Response(await (await fh.getFile()).text());
+					})());
+				});\n`,
+		);
+
+		// eslint-disable-next-line no-restricted-properties -- bundler resolves its root from cwd
+		const cwd = process.cwd();
+		try {
+			process.chdir(root);
+			await buildForProduction({
+				entrypoint: join(root, "entry.js"),
+				outDir: join(root, "dist"),
+				platform: "cloudflare",
+			});
+		} finally {
+			process.chdir(cwd);
+		}
+
+		const serverDir = join(root, "dist", "server");
+		const files = (await readdir(serverDir)).filter((f) => f.endsWith(".js"));
+		const bundle = (
+			await Promise.all(files.map((f) => readFile(join(serverDir, f), "utf8")))
+		).join("\n");
+
+		// Content is inlined as base64, including nested files.
+		expect(bundle).toContain(Buffer.from("# Home\n").toString("base64"));
+		expect(bundle).toContain(Buffer.from("intro body").toString("base64"));
+		expect(bundle).toContain("fromSnapshot");
+	}, 30000);
 });
