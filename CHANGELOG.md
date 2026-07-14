@@ -2,6 +2,16 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.21] - 2026-07-14
+
+### Security
+
+- **Unhandled errors leaked stack traces to clients** — The debug error page renders `error.stack` into the response body, gated on `import.meta.env.MODE !== "production"`. `MODE` was never set at build time, so on platforms with no populated `import.meta.env` (Cloudflare Workers) the check saw `undefined`, concluded "not production", and served stack traces to the public on every unhandled 4xx/5xx. Node and Bun leaked the same way unless `NODE_ENV=production` happened to be set.
+
+  The build now bakes `MODE` into the bundle, and the error-verbosity gates test `MODE === "development"` so an unset mode **fails closed**. The verbose branch is now a build-time constant and gets eliminated from production bundles entirely. Sites deployed to Cloudflare should upgrade. (fixes [#91](https://github.com/bikeshaving/shovel/issues/91), [#100](https://github.com/bikeshaving/shovel/issues/100); [PR #102](https://github.com/bikeshaving/shovel/pull/102))
+
+  **Note:** `@b9g/router` used standalone (outside shovel's bundler) now returns the minimal production error response by default instead of the HTML debug page. Set `MODE=development` to restore verbose errors.
+
 ## [0.2.20] - 2026-07-13
 
 ### Bug Fixes
