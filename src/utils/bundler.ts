@@ -360,6 +360,10 @@ export class ServerBundler {
 			define: {
 				...(platformESBuildConfig.define ?? {}),
 				...(userBuildConfig?.define ?? {}),
+				// Error verbosity keys off MODE. Platforms without a populated
+				// import.meta.env (Cloudflare) would otherwise leave it undefined,
+				// so bake it in — the check then folds away at build time.
+				"import.meta.env.MODE": JSON.stringify(mode),
 				__SHOVEL_OUTDIR__: JSON.stringify(outputDir),
 				__SHOVEL_GIT__: JSON.stringify(getGitSHA(this.#projectRoot)),
 			},

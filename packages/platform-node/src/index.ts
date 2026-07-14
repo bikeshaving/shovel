@@ -366,8 +366,8 @@ export class NodePlatform {
 					});
 				}
 
-				// import.meta.env is aliased to process.env for Node.js builds
-				const isDev = import.meta.env?.MODE !== "production";
+				// Fails closed: an unset MODE must not leak stack traces.
+				const isDev = import.meta.env?.MODE === "development";
 				const response = httpError.toResponse(isDev);
 
 				// Write response to Node.js res

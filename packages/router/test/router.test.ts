@@ -843,9 +843,11 @@ describe("Router Integration", () => {
 
 		expect(executionOrder).toEqual(["middleware"]);
 		expect(response.status).toBe(404);
-		// Router uses HTTPError.toResponse() which generates HTML in dev mode
-		expect(response.headers.get("Content-Type")).toContain("text/html");
-		expect(await response.text()).toContain("404 Not Found");
+		// Error verbosity fails closed: with MODE unset (as here, unbundled), the
+		// router serves the minimal production response, never the stack-trace
+		// page. The verbose page requires MODE === "development" (#91, #100).
+		expect(response.headers.get("Content-Type")).toContain("text/plain");
+		expect(await response.text()).toContain("Not Found");
 	});
 });
 

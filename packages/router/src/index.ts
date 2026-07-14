@@ -1052,8 +1052,9 @@ export class Router {
 	 * Uses HTTPError.toResponse() for consistent error formatting
 	 */
 	#createErrorResponse(error: Error): Response {
-		// Log the error in development for debugging
-		const isDev = import.meta.env?.MODE !== "production";
+		// Only be verbose when explicitly in development. An unset MODE must not
+		// leak stack traces to clients, so this fails closed.
+		const isDev = import.meta.env?.MODE === "development";
 		if (isDev && !isHTTPError(error)) {
 			logger.error`Unhandled error: ${error}`;
 		}
