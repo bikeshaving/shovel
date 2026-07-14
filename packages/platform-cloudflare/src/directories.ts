@@ -15,6 +15,29 @@ import mime from "mime";
 import {getEnv} from "./variables.js";
 
 // ============================================================================
+// ASSET MANIFEST
+// ============================================================================
+
+/** The subset of the shovel:assets manifest that enumeration needs. */
+export interface AssetManifest {
+	assets: Record<string, {url?: string}>;
+}
+
+let manifestPromise: Promise<AssetManifest | null> | undefined;
+
+/**
+ * Load the asset manifest the build bundles into the worker.
+ *
+ * Resolves to null when it isn't there — the directory is usable outside a
+ * shovel build (reads go straight through the binding), just not enumerable.
+ */
+function getAssetManifest(): Promise<AssetManifest | null> {
+	return (manifestPromise ??= import("shovel:assets")
+		.then((mod) => (mod.default as AssetManifest) ?? null)
+		.catch(() => null));
+}
+
+// ============================================================================
 // R2 TYPES
 // ============================================================================
 
@@ -391,12 +414,19 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	readonly name: string;
 	#assets: CFAssetsBinding;
 	#basePath: string;
+	#manifest?: AssetManifest;
 
-	constructor(assets: CFAssetsBinding, basePath = "/") {
+	constructor(
+		assets: CFAssetsBinding,
+		basePath = "/",
+		/** Overrides the bundled shovel:assets manifest (used by tests). */
+		manifest?: AssetManifest,
+	) {
 		this.kind = "directory";
 		this.#assets = assets;
 		this.#basePath = basePath.endsWith("/") ? basePath : basePath + "/";
 		this.name = basePath.split("/").filter(Boolean).pop() || "assets";
+		this.#manifest = manifest;
 	}
 
 	async getFileHandle(
@@ -423,7 +453,11 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		name: string,
 		_options?: FileSystemGetDirectoryOptions,
 	): Promise<FileSystemDirectoryHandle> {
-		return new CFAssetsDirectoryHandle(this.#assets, this.#basePath + name);
+		return new CFAssetsDirectoryHandle(
+			this.#assets,
+			this.#basePath + name,
+			this.#manifest,
+		);
 	}
 
 	async removeEntry(
@@ -443,25 +477,63 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		return this.entries();
 	}
 
-	entries(): any {
-		throw new DOMException(
-			"Directory listing not supported for ASSETS binding. Use an asset manifest for enumeration.",
-			"NotSupportedError",
-		);
+	/**
+	 * The ASSETS binding has no list API, but the build already knows every
+	 * asset it emitted: the manifest is bundled into the worker as
+	 * `shovel:assets`. Enumeration reads it and reports the direct children of
+	 * this directory's base path — files as file handles, and any deeper path
+	 * as a subdirectory (deduped).
+	 */
+	async *entries(): AsyncGenerator<
+		[string, FileSystemHandle],
+		void,
+		undefined
+	> {
+		const manifest = this.#manifest ?? (await getAssetManifest());
+		if (!manifest) {
+			throw new DOMException(
+				"Directory listing for the ASSETS binding needs the shovel:assets " +
+					"manifest, which is not supported outside a shovel build.",
+				"NotSupportedError",
+			);
+		}
+
+		const seen = new Set<string>();
+		for (const entry of Object.values(manifest.assets)) {
+			if (typeof entry?.url !== "string") continue;
+			if (!entry.url.startsWith(this.#basePath)) continue;
+
+			const rest = entry.url.slice(this.#basePath.length);
+			if (!rest) continue;
+
+			const slash = rest.indexOf("/");
+			if (slash === -1) {
+				if (seen.has(rest)) continue;
+				seen.add(rest);
+				yield [rest, new CFAssetsFileHandle(this.#assets, entry.url, rest)];
+			} else {
+				// A deeper asset implies a subdirectory child.
+				const dir = rest.slice(0, slash);
+				if (seen.has(dir)) continue;
+				seen.add(dir);
+				yield [
+					dir,
+					new CFAssetsDirectoryHandle(
+						this.#assets,
+						this.#basePath + dir,
+						manifest,
+					),
+				];
+			}
+		}
 	}
 
-	keys(): any {
-		throw new DOMException(
-			"Directory listing not supported for ASSETS binding",
-			"NotSupportedError",
-		);
+	async *keys(): AsyncGenerator<string, void, undefined> {
+		for await (const [name] of this.entries()) yield name;
 	}
 
-	values(): any {
-		throw new DOMException(
-			"Directory listing not supported for ASSETS binding",
-			"NotSupportedError",
-		);
+	async *values(): AsyncGenerator<FileSystemHandle, void, undefined> {
+		for await (const [, handle] of this.entries()) yield handle;
 	}
 
 	isSameEntry(other: FileSystemHandle): Promise<boolean> {
