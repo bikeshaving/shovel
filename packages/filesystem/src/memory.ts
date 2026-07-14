@@ -32,6 +32,49 @@ interface MemoryDirectoryData {
 }
 
 /**
+ * Serializable directory snapshot: a nested tree of files (base64-encoded
+ * content, so binary survives) and subdirectories. Emitted at build time by
+ * the directory-snapshot esbuild plugin and materialized at runtime via
+ * {@link MemoryDirectory.fromSnapshot} — this is how a source directory is
+ * baked into a bundle for platforms with no filesystem (e.g. Cloudflare).
+ */
+export interface DirectorySnapshot {
+	files?: Record<string, {data: string; type?: string; lastModified?: number}>;
+	directories?: Record<string, DirectorySnapshot>;
+}
+
+/** Decode base64 → bytes. Workers/Node/Bun-safe (atob, no Buffer dependency). */
+function base64ToBytes(b64: string): Uint8Array {
+	const bin = atob(b64);
+	const bytes = new Uint8Array(bin.length);
+	for (let i = 0; i < bin.length; i++) {
+		bytes[i] = bin.charCodeAt(i);
+	}
+	return bytes;
+}
+
+/** Recursively materialize a snapshot into the internal directory tree. */
+function snapshotToData(
+	name: string,
+	snap: DirectorySnapshot,
+): MemoryDirectoryData {
+	const files = new Map<string, MemoryFile>();
+	for (const [fileName, f] of Object.entries(snap.files ?? {})) {
+		files.set(fileName, {
+			name: fileName,
+			content: base64ToBytes(f.data),
+			lastModified: f.lastModified ?? 0,
+			type: f.type ?? "application/octet-stream",
+		});
+	}
+	const directories = new Map<string, MemoryDirectoryData>();
+	for (const [dirName, sub] of Object.entries(snap.directories ?? {})) {
+		directories.set(dirName, snapshotToData(dirName, sub));
+	}
+	return {name, files, directories};
+}
+
+/**
  * In-memory storage backend that implements FileSystemBackend
  */
 export class MemoryFileSystemBackend implements FileSystemBackend {
@@ -238,18 +281,28 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 	readonly name: string;
 	#backend: MemoryFileSystemBackend;
 
-	constructor(name = "root") {
+	constructor(name = "root", root?: MemoryDirectoryData) {
 		this.kind = "directory";
 		this.name = name;
 
-		// Create root directory structure
-		const root: MemoryDirectoryData = {
-			name,
-			files: new Map(),
-			directories: new Map(),
-		};
+		this.#backend = new MemoryFileSystemBackend(
+			root ?? {name, files: new Map(), directories: new Map()},
+		);
+	}
 
-		this.#backend = new MemoryFileSystemBackend(root);
+	/**
+	 * Build a fully-populated MemoryDirectory from a serializable snapshot.
+	 *
+	 * Used by the build-time directory-snapshot plugin to bake a source
+	 * directory into the bundle so `self.directories.open(name)` works on
+	 * platforms with no filesystem (Cloudflare Workers), where node-fs can't
+	 * read and CloudflareAssetsDirectory can't enumerate.
+	 */
+	static fromSnapshot(
+		name: string,
+		snapshot: DirectorySnapshot,
+	): MemoryDirectory {
+		return new MemoryDirectory(name, snapshotToData(name, snapshot));
 	}
 
 	async getFileHandle(

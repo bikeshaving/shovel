@@ -17,6 +17,7 @@ import type {PlatformModule, ESBuildConfig} from "@b9g/platform/module";
 
 import {assetsPlugin} from "../plugins/assets.js";
 import {globAssetsPlugin} from "../plugins/glob-assets.js";
+import {createDirectorySnapshotPlugin} from "../plugins/directory-snapshot.js";
 import {importMetaPlugin} from "../plugins/import-meta.js";
 import {createConfigPlugin} from "../plugins/config.js";
 import {createEntryPlugin} from "../plugins/entry.js";
@@ -318,6 +319,9 @@ export class ServerBundler {
 			}),
 			createEntryPlugin(this.#projectRoot, platformEntryPoints),
 			importMetaPlugin(),
+			// Resolves shovel:directory-snapshot:<name> — bakes a source dir into
+			// the bundle as a MemoryDirectory (config directories with "snapshot").
+			createDirectorySnapshotPlugin(this.#projectRoot),
 			// globAssetsPlugin expands glob patterns into individual imports for assetsPlugin
 			globAssetsPlugin(),
 			// assetsPlugin must come before assetsManifestPlugin so onEnd order is correct

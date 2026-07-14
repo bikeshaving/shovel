@@ -1418,10 +1418,30 @@ export function generateConfigModule(
 				const platformConfig = platformDirectories[name] || {};
 				const userConfig = userDirectories[name] || {};
 				const mergedConfig = {...platformConfig, ...userConfig};
-				if (userConfig.module && !userConfig.export) {
-					delete mergedConfig.export;
+				if (
+					(mergedConfig as {snapshot?: string}).snapshot &&
+					!mergedConfig.module
+				) {
+					// Build-time snapshot: import the factory from the virtual
+					// module the directory-snapshot plugin resolves. The plugin
+					// reads the "snapshot" source path from shovel.json itself.
+					const {
+						snapshot: _snapshot,
+						module: _m,
+						export: _e,
+						...rest
+					} = mergedConfig as Record<string, unknown>;
+					const varName = `directory_${sanitizeVarName(name)}`;
+					imports.push(
+						`import ${varName} from ${JSON.stringify(`shovel:directory-snapshot:${name}`)};`,
+					);
+					directories[name] = {...rest, impl: createPlaceholder(varName)};
+				} else {
+					if (userConfig.module && !userConfig.export) {
+						delete mergedConfig.export;
+					}
+					directories[name] = reifyModule(mergedConfig, "directory", name);
 				}
-				directories[name] = reifyModule(mergedConfig, "directory", name);
 			}
 			config.directories = directories;
 		}
@@ -1533,6 +1553,10 @@ export const DirectoryConfigSchema = z
 	.object({
 		module: z.string().optional(),
 		export: z.string().optional(),
+		// Build-time snapshot: a source directory (relative to the project root)
+		// baked into the bundle as a MemoryDirectory. Mutually exclusive with
+		// module/export; works on filesystem-less platforms (Cloudflare).
+		snapshot: z.string().optional(),
 		path: configExpr.optional(),
 		binding: configExpr.optional(),
 		bucket: configExpr.optional(),
