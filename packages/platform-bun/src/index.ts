@@ -301,7 +301,8 @@ export class BunPlatform {
 						});
 					}
 
-					const isDev = import.meta.env?.MODE !== "production";
+					// Fails closed: an unset MODE must not leak stack traces.
+					const isDev = import.meta.env?.MODE === "development";
 					return httpError.toResponse(isDev);
 				}
 			},
