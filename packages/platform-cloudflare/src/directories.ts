@@ -483,12 +483,12 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	 * `shovel:assets`. Enumeration reads it and reports the direct children of
 	 * this directory's base path — files as file handles, and any deeper path
 	 * as a subdirectory (deduped).
+	 *
+	 * Returns `any` because the lib declares these as
+	 * FileSystemDirectoryHandleAsyncIterator, which an AsyncGenerator can't
+	 * satisfy (BuiltinIteratorReturn).
 	 */
-	async *entries(): AsyncGenerator<
-		[string, FileSystemHandle],
-		void,
-		undefined
-	> {
+	async *entries(): any {
 		const manifest = this.#manifest ?? (await getAssetManifest());
 		if (!manifest) {
 			throw new DOMException(
@@ -528,11 +528,11 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		}
 	}
 
-	async *keys(): AsyncGenerator<string, void, undefined> {
+	async *keys(): any {
 		for await (const [name] of this.entries()) yield name;
 	}
 
-	async *values(): AsyncGenerator<FileSystemHandle, void, undefined> {
+	async *values(): any {
 		for await (const [, handle] of this.entries()) yield handle;
 	}
 
