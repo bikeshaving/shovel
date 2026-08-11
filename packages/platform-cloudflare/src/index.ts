@@ -351,7 +351,14 @@ export class CloudflarePlatform {
 		const safePath = JSON.stringify(userEntryPath);
 		const serverCode = `// Cloudflare Worker Entry
 import { config } from "shovel:config";
+import __shovelAssetsManifest from "shovel:assets";
+import { setAssetsManifest } from "@b9g/assets/manifest";
 import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
+
+// Register the build's asset manifest so directory handles can enumerate
+// ASSETS without importing the virtual module from library code (which
+// breaks consumers bundling outside a shovel build).
+setAssetsManifest(__shovelAssetsManifest);
 
 // Initialize runtime first (installs ServiceWorker globals like addEventListener)
 const registration = await initializeRuntime(config);
