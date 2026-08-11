@@ -12,29 +12,83 @@
  */
 
 import mime from "mime";
+import {getAssetsManifest} from "@b9g/assets/manifest";
 import {getEnv} from "./variables.js";
 
 // ============================================================================
 // ASSET MANIFEST
 // ============================================================================
 
-/** The subset of the shovel:assets manifest that enumeration needs. */
-export interface AssetManifest {
-	assets: Record<string, {url?: string}>;
+/**
+ * The subset of @b9g/assets' AssetManifest that enumeration reads. The
+ * canonical AssetManifest is assignable to this; tests can pass a minimal
+ * shape.
+ */
+export interface AssetManifestLike {
+	assets?: Record<string, {url?: string}>;
 }
 
-let manifestPromise: Promise<AssetManifest | null> | undefined;
-
 /**
- * Load the asset manifest the build bundles into the worker.
- *
- * Resolves to null when it isn't there — the directory is usable outside a
- * shovel build (reads go straight through the binding), just not enumerable.
+ * Per-manifest directory index: dirPath (with trailing slash) -> children.
+ * Built once per manifest object and memoized, so enumeration is a Map
+ * lookup instead of a full manifest sweep per directory per call.
  */
-function getAssetManifest(): Promise<AssetManifest | null> {
-	return (manifestPromise ??= import("shovel:assets")
-		.then((mod) => (mod.default as AssetManifest) ?? null)
-		.catch(() => null));
+type DirectoryIndex = Map<
+	string,
+	Map<string, {kind: "file" | "directory"; url: string}>
+>;
+
+const directoryIndexes = new WeakMap<AssetManifestLike, DirectoryIndex>();
+
+function getDirectoryIndex(manifest: AssetManifestLike): DirectoryIndex | null {
+	const assets = manifest.assets;
+	if (!assets || typeof assets !== "object") {
+		// A manifest without an assets record (stale or malformed build
+		// artifact) is treated as "no manifest" rather than crashing.
+		return null;
+	}
+
+	let index = directoryIndexes.get(manifest);
+	if (index) return index;
+
+	index = new Map();
+	for (const entry of Object.values(assets)) {
+		const url = entry?.url;
+		if (typeof url !== "string" || !url.startsWith("/")) continue;
+
+		const segments = url.split("/").slice(1);
+		let dirPath = "/";
+		for (let i = 0; i < segments.length; i++) {
+			const name = segments[i];
+			if (!name) continue;
+
+			let children = index.get(dirPath);
+			if (!children) {
+				children = new Map();
+				index.set(dirPath, children);
+			}
+
+			const isLeaf = i === segments.length - 1;
+			const existing = children.get(name);
+			if (isLeaf) {
+				// A name that exists as both a file and a directory keeps the
+				// directory: shadowing a subtree behind a same-named file would
+				// silently hide deeper content, and manifest iteration order is
+				// not stable enough to make the alternative deterministic.
+				if (!existing) children.set(name, {kind: "file", url});
+			} else if (!existing || existing.kind === "file") {
+				children.set(name, {
+					kind: "directory",
+					url: dirPath + name + "/",
+				});
+			}
+
+			dirPath = dirPath + name + "/";
+		}
+	}
+
+	directoryIndexes.set(manifest, index);
+	return index;
 }
 
 // ============================================================================
@@ -424,13 +478,13 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	readonly name: string;
 	#assets: CFAssetsBinding;
 	#basePath: string;
-	#manifest?: AssetManifest;
+	#manifest?: AssetManifestLike;
 
 	constructor(
 		assets: CFAssetsBinding,
 		basePath = "/",
-		/** Overrides the bundled shovel:assets manifest (used by tests). */
-		manifest?: AssetManifest,
+		/** Overrides the registered asset manifest (used by tests). */
+		manifest?: AssetManifestLike,
 	) {
 		this.kind = "directory";
 		this.#assets = assets;
@@ -445,6 +499,18 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	): Promise<FileSystemFileHandle> {
 		const path = this.#basePath + name;
 
+		// The manifest answers existence without a network round-trip — a
+		// list-then-read walk otherwise costs two ASSETS subrequests per file
+		// against the Workers subrequest cap.
+		const manifest = this.#manifest ?? getAssetsManifest();
+		const index = manifest && getDirectoryIndex(manifest);
+		const child = index?.get(this.#basePath)?.get(name);
+		if (child?.kind === "file") {
+			return new CFAssetsFileHandle(this.#assets, child.url, name);
+		}
+
+		// Not in the manifest (or no manifest): probe the binding, which also
+		// serves files that reached the assets directory outside the build.
 		const response = await this.#assets.fetch(
 			new Request("https://assets" + path),
 		);
@@ -462,7 +528,7 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	async getDirectoryHandle(
 		name: string,
 		_options?: FileSystemGetDirectoryOptions,
-	): Promise<FileSystemDirectoryHandle> {
+	): Promise<CFAssetsDirectoryHandle> {
 		return new CFAssetsDirectoryHandle(
 			this.#assets,
 			this.#basePath + name,
@@ -491,55 +557,49 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 
 	/**
 	 * The ASSETS binding has no list API, but the build already knows every
-	 * asset it emitted: the manifest is bundled into the worker as
-	 * `shovel:assets`. Enumeration reads it and reports the direct children of
-	 * this directory's base path — files as file handles, and any deeper path
-	 * as a subdirectory (deduped).
+	 * asset it emitted: the generated worker entry registers the bundled
+	 * manifest at startup. Enumeration reads the memoized directory index
+	 * over it — files as file handles, deeper paths as subdirectory handles.
 	 */
 	async *entries(): AsyncIterableIterator<
 		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
 	> {
-		const manifest = this.#manifest ?? (await getAssetManifest());
-		if (!manifest) {
-			throw new DOMException(
-				"Directory listing for the ASSETS binding needs the shovel:assets " +
-					"manifest, which is not supported outside a shovel build.",
-				"NotSupportedError",
-			);
-		}
-
-		const seen = new Set<string>();
-		for (const entry of Object.values(manifest.assets)) {
-			if (typeof entry?.url !== "string") continue;
-			if (!entry.url.startsWith(this.#basePath)) continue;
-
-			const rest = entry.url.slice(this.#basePath.length);
-			if (!rest) continue;
-
-			const slash = rest.indexOf("/");
-			if (slash === -1) {
-				if (seen.has(rest)) continue;
-				seen.add(rest);
-				yield [rest, new CFAssetsFileHandle(this.#assets, entry.url, rest)];
+		const children = this.#children();
+		if (!children) return;
+		for (const [name, child] of children) {
+			if (child.kind === "file") {
+				yield [name, new CFAssetsFileHandle(this.#assets, child.url, name)];
 			} else {
-				// A deeper asset implies a subdirectory child.
-				const dir = rest.slice(0, slash);
-				if (seen.has(dir)) continue;
-				seen.add(dir);
 				yield [
-					dir,
+					name,
 					new CFAssetsDirectoryHandle(
 						this.#assets,
-						this.#basePath + dir,
-						manifest,
+						this.#basePath + name,
+						this.#manifest,
 					),
 				];
 			}
 		}
 	}
 
+	/** Direct children from the manifest index; throws without a manifest. */
+	#children(): Map<string, {kind: "file" | "directory"; url: string}> | null {
+		const manifest = this.#manifest ?? getAssetsManifest();
+		const index = manifest && getDirectoryIndex(manifest);
+		if (!index) {
+			throw new DOMException(
+				"Directory listing for the ASSETS binding needs the shovel:assets " +
+					"manifest, which is not supported outside a shovel build.",
+				"NotSupportedError",
+			);
+		}
+		return index.get(this.#basePath) ?? null;
+	}
+
 	async *keys(): AsyncIterableIterator<string> {
-		for await (const [name] of this.entries()) yield name;
+		const children = this.#children();
+		if (!children) return;
+		yield* children.keys();
 	}
 
 	async *values(): AsyncIterableIterator<

@@ -95,8 +95,7 @@
       "types": "./dist/src/pubsub.d.ts",
       "import": "./dist/src/pubsub.js"
     },
-    "./cloudflare.d.ts": "./dist/src/cloudflare.d.ts",
-    "./shovel-assets.d.ts": "./dist/src/shovel-assets.d.ts"
+    "./cloudflare.d.ts": "./dist/src/cloudflare.d.ts"
   },
   "repository": {
     "type": "git",

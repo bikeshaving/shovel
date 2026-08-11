@@ -126,9 +126,12 @@ export function createAssetsManifestPlugin(
 					// When write: false, we can modify outputFiles directly
 					for (const file of result.outputFiles) {
 						if (file.text.includes(MANIFEST_PLACEHOLDER)) {
+							// Replacement via function: the manifest JSON contains
+							// user file paths, and string replacement would interpret
+							// $-patterns ($&, $', $`) in them.
 							const newText = file.text.replace(
 								MANIFEST_PLACEHOLDER,
-								manifestContent,
+								() => manifestContent,
 							);
 							// Update the file contents
 							(file as any).contents = new TextEncoder().encode(newText);
@@ -148,7 +151,7 @@ export function createAssetsManifestPlugin(
 								if (content.includes(MANIFEST_PLACEHOLDER)) {
 									const newContent = content.replace(
 										MANIFEST_PLACEHOLDER,
-										manifestContent,
+										() => manifestContent,
 									);
 									writeFileSync(filePath, newContent, "utf8");
 									logger.debug("Updated {file} with asset manifest", {
