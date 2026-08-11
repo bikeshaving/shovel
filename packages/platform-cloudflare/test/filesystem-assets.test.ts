@@ -102,7 +102,10 @@ describe("CFAssetsDirectoryHandle", () => {
 		expect(fileHandle.createWritable()).rejects.toThrow("read-only");
 	});
 
-	test("entries() throws NotSupportedError", async () => {
+	// The ASSETS binding has no list API, so enumeration reads the asset
+	// manifest the build bundles into the worker. Without one there is nothing
+	// to list; with one, the directory enumerates like any other.
+	test("entries() throws NotSupportedError without a manifest", async () => {
 		const dir = new CFAssetsDirectoryHandle(assets, "/");
 
 		expect(async () => {
@@ -110,6 +113,58 @@ describe("CFAssetsDirectoryHandle", () => {
 				// Should not reach here
 			}
 		}).toThrow("not supported");
+	});
+
+	describe("enumeration via the asset manifest", () => {
+		const manifest = {
+			assets: {
+				"src/styles/style.css": {url: "/assets/style.abc123.css"},
+				"src/app.ts": {url: "/assets/app.def456.js"},
+				"src/index.html": {url: "/index.html"},
+			},
+		};
+
+		test("keys() lists the direct children of the base path", async () => {
+			const dir = new CFAssetsDirectoryHandle(assets, "/assets", manifest);
+			const names: string[] = [];
+			for await (const name of dir.keys()) names.push(name);
+			expect(names.sort()).toEqual(["app.def456.js", "style.abc123.css"]);
+		});
+
+		test("a deeper asset surfaces as a subdirectory, not a file", async () => {
+			const dir = new CFAssetsDirectoryHandle(assets, "/", manifest);
+			const entries: Array<[string, string]> = [];
+			for await (const [name, handle] of dir.entries()) {
+				entries.push([name, handle.kind]);
+			}
+			expect(entries.sort()).toEqual([
+				["assets", "directory"],
+				["index.html", "file"],
+			]);
+		});
+
+		test("values() yield handles that read real content", async () => {
+			const dir = new CFAssetsDirectoryHandle(assets, "/assets", manifest);
+			const byName = new Map<string, FileSystemFileHandle>();
+			for await (const handle of dir.values()) {
+				byName.set(handle.name, handle as FileSystemFileHandle);
+			}
+
+			const css = byName.get("style.abc123.css")!;
+			expect(await (await css.getFile()).text()).toBe("body { color: blue; }");
+		});
+
+		test("navigating into a subdirectory keeps it enumerable", async () => {
+			const root = new CFAssetsDirectoryHandle(assets, "/", manifest);
+			// getDirectoryHandle is typed to the DOM handle, which predates
+			// keys()/entries() — the concrete class has them.
+			const sub = (await root.getDirectoryHandle(
+				"assets",
+			)) as CFAssetsDirectoryHandle;
+			const names: string[] = [];
+			for await (const name of sub.keys()) names.push(name);
+			expect(names.sort()).toEqual(["app.def456.js", "style.abc123.css"]);
+		});
 	});
 
 	test("isSameEntry returns true for same path", async () => {
