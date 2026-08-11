@@ -2,6 +2,16 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.22] - 2026-08-11
+
+### Features
+
+- **Directory enumeration on Cloudflare ASSETS** — Directories backed by the ASSETS binding (`CloudflareAssetsDirectory`) now support `entries()`/`keys()`/`values()`, powered by the asset manifest the build already bundles into the worker. The standard content-walking idiom — blog indexes, feeds, sitemaps, prerender route lists derived from `content/**` — now runs unchanged on Cloudflare Workers and Pages, with no new config. Enumeration reflects the build's asset snapshot (the same lifetime as the binding itself); outside a shovel build, listing still throws `NotSupportedError` while named reads work as before. ([PR #104](https://github.com/bikeshaving/shovel/pull/104))
+
+### Dependencies
+
+- `@b9g/platform-cloudflare` 0.1.18
+
 ## [0.2.21] - 2026-07-14
 
 ### Security
