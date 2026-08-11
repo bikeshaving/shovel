@@ -138,6 +138,11 @@ export async function createDevServer(
 			directory: publicDir,
 			binding: "ASSETS",
 			routerConfig: {has_user_worker: true},
+			// Directories over ASSETS need literal paths: the default
+			// html_handling canonicalizes .html URLs (newer workerd 500s on
+			// the explicit path), breaking getFileHandle("*.html"). This is
+			// also what --save writes to wrangler config, so dev matches prod.
+			assetConfig: {html_handling: "none" as const},
 		},
 	});
 
