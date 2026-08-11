@@ -266,20 +266,28 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	[Symbol.asyncIterator](): any {
+	[Symbol.asyncIterator](): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		return this.entries();
 	}
-	entries(): any {
+	entries(): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		return this.#generateEntries();
 	}
-	keys(): any {
+	keys(): AsyncIterableIterator<string> {
 		return this.#generateKeys();
 	}
-	values(): any {
+	values(): AsyncIterableIterator<
+		FileSystemFileHandle | FileSystemDirectoryHandle
+	> {
 		return this.#generateValues();
 	}
 
-	async *#generateEntries() {
+	async *#generateEntries(): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		const listPrefix = this.#prefix ? `${this.#prefix}/` : "";
 
 		try {
@@ -298,7 +306,7 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 						yield [
 							name,
 							new R2FileSystemFileHandle(this.#r2Bucket, object.key),
-						] as [string, FileSystemHandle];
+						] as [string, FileSystemFileHandle | FileSystemDirectoryHandle];
 					}
 				}
 			}
@@ -312,7 +320,7 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 							this.#r2Bucket,
 							prefix.replace(/\/$/, ""),
 						),
-					] as [string, FileSystemHandle];
+					] as [string, FileSystemFileHandle | FileSystemDirectoryHandle];
 				}
 			}
 		} catch (error) {
@@ -320,13 +328,15 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		}
 	}
 
-	async *#generateKeys() {
+	async *#generateKeys(): AsyncIterableIterator<string> {
 		for await (const [name] of this.entries()) {
 			yield name;
 		}
 	}
 
-	async *#generateValues() {
+	async *#generateValues(): AsyncIterableIterator<
+		FileSystemFileHandle | FileSystemDirectoryHandle
+	> {
 		for await (const [, handle] of this.entries()) {
 			yield handle;
 		}
@@ -473,7 +483,9 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	[Symbol.asyncIterator](): any {
+	[Symbol.asyncIterator](): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		return this.entries();
 	}
 
@@ -483,12 +495,10 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	 * `shovel:assets`. Enumeration reads it and reports the direct children of
 	 * this directory's base path — files as file handles, and any deeper path
 	 * as a subdirectory (deduped).
-	 *
-	 * Returns `any` because the lib declares these as
-	 * FileSystemDirectoryHandleAsyncIterator, which an AsyncGenerator can't
-	 * satisfy (BuiltinIteratorReturn).
 	 */
-	async *entries(): any {
+	async *entries(): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		const manifest = this.#manifest ?? (await getAssetManifest());
 		if (!manifest) {
 			throw new DOMException(
@@ -528,11 +538,13 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		}
 	}
 
-	async *keys(): any {
+	async *keys(): AsyncIterableIterator<string> {
 		for await (const [name] of this.entries()) yield name;
 	}
 
-	async *values(): any {
+	async *values(): AsyncIterableIterator<
+		FileSystemFileHandle | FileSystemDirectoryHandle
+	> {
 		for await (const [, handle] of this.entries()) yield handle;
 	}
 
