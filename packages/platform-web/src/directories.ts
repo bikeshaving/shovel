@@ -129,12 +129,14 @@ class WebCacheDirectoryHandle implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	// Return type is `any`: the repo's lib is WebWorker, whose
-	// lib.webworker.asynciterable.d.ts declares these as
-	// FileSystemDirectoryHandleAsyncIterator, which an async generator cannot
-	// satisfy. Typing `any` keeps the class assignable to FileSystemDirectoryHandle.
+	// The element type must be the FileSystemFileHandle | FileSystemDirectoryHandle
+	// union (not the FileSystemHandle base): newer lib.webworker declares the
+	// iterator members with the union, and a wider yield type makes the class
+	// unassignable to FileSystemDirectoryHandle.
 	// eslint-disable-next-line require-yield
-	async *entries(): any {
+	async *entries(): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		throw new DOMException(
 			"Directory listing not supported for cache-backed assets",
 			"NotSupportedError",
@@ -142,7 +144,7 @@ class WebCacheDirectoryHandle implements FileSystemDirectoryHandle {
 	}
 
 	// eslint-disable-next-line require-yield
-	async *keys(): any {
+	async *keys(): AsyncIterableIterator<string> {
 		throw new DOMException(
 			"Directory listing not supported for cache-backed assets",
 			"NotSupportedError",
@@ -150,14 +152,18 @@ class WebCacheDirectoryHandle implements FileSystemDirectoryHandle {
 	}
 
 	// eslint-disable-next-line require-yield
-	async *values(): any {
+	async *values(): AsyncIterableIterator<
+		FileSystemFileHandle | FileSystemDirectoryHandle
+	> {
 		throw new DOMException(
 			"Directory listing not supported for cache-backed assets",
 			"NotSupportedError",
 		);
 	}
 
-	[Symbol.asyncIterator](): any {
+	[Symbol.asyncIterator](): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		return this.entries();
 	}
 
