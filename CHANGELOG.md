@@ -10,7 +10,7 @@ All notable changes to Shovel will be documented in this file.
 
 ### Dependencies
 
-- `@b9g/platform-cloudflare` 0.1.19, `@b9g/assets` 0.2.2
+- `@b9g/platform-cloudflare` 0.1.19, `@b9g/assets` 0.2.2, `@b9g/platform` 0.1.20, `@b9g/platform-node` 0.1.18, `@b9g/platform-bun` 0.1.18 (generated-entry import resolution + manifest registry)
 
 ## [0.2.22] - 2026-08-11
 

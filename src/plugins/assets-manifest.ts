@@ -25,8 +25,9 @@ import {
 	writeFileSync,
 	readdirSync,
 	renameSync,
+	unlinkSync,
 } from "node:fs";
-import {join, isAbsolute} from "node:path";
+import {join, isAbsolute, resolve, basename} from "node:path";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "assets"]);
@@ -122,6 +123,10 @@ export function createAssetsManifestPlugin(
 
 			// After build completes, replace placeholder with actual manifest
 			build.onEnd((result) => {
+				// A failed build must not touch dist: rewriting whatever a prior
+				// build left there would stamp this build's manifest into stale
+				// bundles and make a broken dist look deployable.
+				if (result.errors.length > 0) return;
 				if (!sharedManifest) return;
 
 				// Generate final manifest content
@@ -135,7 +140,7 @@ export function createAssetsManifestPlugin(
 							// Replacement via function: the manifest JSON contains
 							// user file paths, and string replacement would interpret
 							// $-patterns ($&, $', $`) in them.
-							const newText = file.text.replace(
+							const newText = file.text.replaceAll(
 								MANIFEST_PLACEHOLDER,
 								() => manifestContent,
 							);
@@ -151,62 +156,86 @@ export function createAssetsManifestPlugin(
 					const serverDir = join(absoluteOutDir, "server");
 					const errors: ESBuild.PartialMessage[] = [];
 
+					// Scope the scan to this build's own outputs when the metafile
+					// is available (stale bundles from prior builds are not this
+					// build's invariant to enforce); fall back to a directory scan.
 					let jsFiles: string[] = [];
+					const metaOutputs = result.metafile
+						? Object.keys(result.metafile.outputs)
+								.map((o) => resolve(o))
+								.filter((o) => o.startsWith(serverDir) && o.endsWith(".js"))
+								.map((o) => basename(o))
+						: null;
+					if (metaOutputs && metaOutputs.length > 0) {
+						jsFiles = metaOutputs;
+					} else {
+						try {
+							jsFiles = readdirSync(serverDir).filter((f) => f.endsWith(".js"));
+						} catch (err) {
+							return {
+								errors: [
+									{
+										text: `assets manifest: cannot read ${serverDir}`,
+										detail: err,
+									},
+								],
+							};
+						}
+					}
+
+					// Best-effort sweep of orphaned temp files from interrupted
+					// prior builds (write-then-rename leftovers).
 					try {
-						jsFiles = readdirSync(serverDir).filter((f) => f.endsWith(".js"));
+						for (const f of readdirSync(serverDir)) {
+							if (f.endsWith(".js.tmp")) {
+								unlinkSync(join(serverDir, f));
+							}
+						}
 					} catch (err) {
-						return {
-							errors: [
-								{
-									text: `assets manifest: cannot read ${serverDir}`,
-									detail: err,
-								},
-							],
-						};
+						logger.debug("tmp sweep skipped", {err});
 					}
 
 					for (const jsFile of jsFiles) {
 						const filePath = join(serverDir, jsFile);
+						const tmpPath = filePath + ".tmp";
 						try {
 							const content = readFileSync(filePath, "utf8");
-							if (content.includes(MANIFEST_PLACEHOLDER)) {
-								const newContent = content.replace(
-									MANIFEST_PLACEHOLDER,
-									() => manifestContent,
-								);
-								// Write-then-rename so a failed write can't leave a
-								// truncated, deployable-looking bundle behind.
-								const tmpPath = filePath + ".tmp";
-								writeFileSync(tmpPath, newContent, "utf8");
-								renameSync(tmpPath, filePath);
-								logger.debug("Updated {file} with asset manifest", {
-									file: jsFile,
-								});
-							}
-						} catch (err) {
-							errors.push({
-								text: `Failed to update ${jsFile} with asset manifest`,
-								detail: err,
-							});
-						}
-					}
+							if (!content.includes(MANIFEST_PLACEHOLDER)) continue;
 
-					// Post-condition, fail closed: an unreplaced placeholder is a
-					// ReferenceError at module evaluation for the whole worker, not
-					// a degraded feature. No emitted bundle may still contain it.
-					for (const jsFile of jsFiles) {
-						try {
-							const content = readFileSync(join(serverDir, jsFile), "utf8");
-							if (content.includes(MANIFEST_PLACEHOLDER)) {
+							const newContent = content.replaceAll(
+								MANIFEST_PLACEHOLDER,
+								() => manifestContent,
+							);
+							// Fail closed, verified in memory: rename success below
+							// implies the on-disk content equals newContent, so this
+							// check IS the post-condition — no re-read, no window for
+							// a swallowed verification failure.
+							if (newContent.includes(MANIFEST_PLACEHOLDER)) {
 								errors.push({
 									text:
 										`${jsFile} still contains the asset manifest ` +
 										`placeholder after replacement`,
 								});
+								continue;
 							}
+							// Write-then-rename so a failed write can't leave a
+							// truncated, deployable-looking bundle behind.
+							writeFileSync(tmpPath, newContent, "utf8");
+							renameSync(tmpPath, filePath);
+							logger.debug("Updated {file} with asset manifest", {
+								file: jsFile,
+							});
 						} catch (err) {
-							// Read failure here was already reported by the loop above.
-							logger.debug("post-condition re-read failed", {err});
+							errors.push({
+								text: `Failed to update ${jsFile} with asset manifest`,
+								detail: err,
+							});
+							try {
+								unlinkSync(tmpPath);
+							} catch (cleanupErr) {
+								// Nothing to clean when the failure preceded the write.
+								logger.debug("tmp cleanup skipped", {cleanupErr});
+							}
 						}
 					}
 
