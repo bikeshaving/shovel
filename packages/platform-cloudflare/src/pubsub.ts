@@ -59,7 +59,7 @@ function subKey(channel: string, doId: string): string {
 }
 
 // ============================================================================
-// LOCAL DELIVERY (used by both the WS DO `/_shovel_publish` route and the
+// LOCAL DELIVERY (used by both the WS DO `_shovelPublish` RPC method and the
 // non-DO held-open WS receive path)
 // ============================================================================
 
@@ -75,7 +75,7 @@ const registrationOps = new Map<string, Promise<void>>();
 const localCallbacks = new Map<string, Set<(data: unknown) => void>>();
 
 /**
- * Invoked by ShovelWebSocketDO when its `/_shovel_publish` route receives a
+ * Invoked by ShovelWebSocketDO when its `_shovelPublish` RPC method receives a
  * payload. Fans out to all locally-registered BC subscribe callbacks for the
  * channel. Internal — re-exported via the package runtime entry but not part
  * of the public API surface.

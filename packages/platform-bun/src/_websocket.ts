@@ -34,6 +34,7 @@ import {
 	errorToResponse,
 	toArrayBuffer,
 	createOrderedDispatch,
+	drainWebSocketMessageWork,
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform", "bun", "websocket"]);
@@ -497,6 +498,7 @@ export function createBunWebSocketServer(
 				await new Promise((r) => setTimeout(r, 20));
 			}
 			await drainDispatch();
+			await drainWebSocketMessageWork();
 		},
 	};
 }

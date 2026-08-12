@@ -1236,16 +1236,6 @@ export class ShovelWebSocketConnection implements WebSocketConnection {
 	}
 
 	/**
-	 * @internal Called during teardown to retire the connection: marks it
-	 * closed (so any retained reference's `send` / `close` / `subscribe`
-	 * calls become no-ops) AND releases all BroadcastChannel subscriptions.
-	 *
-	 * Used by:
-	 *  - `dispatchWebSocketClose` after handlers run
-	 *  - platform adapters cleaning up after a failed handshake
-	 *  - the runtime when the worker drops a phantom upgrade
-	 */
-	/**
 	 * @internal Mark the connection closed without releasing subscriptions.
 	 * Set before `websocketclose` handlers run: a handler that publishes to a
 	 * channel this connection subscribes to must not echo into the
@@ -1257,6 +1247,16 @@ export class ShovelWebSocketConnection implements WebSocketConnection {
 		this.#closed = true;
 	}
 
+	/**
+	 * @internal Called during teardown to retire the connection: marks it
+	 * closed (so any retained reference's `send` / `close` / `subscribe`
+	 * calls become no-ops) AND releases all BroadcastChannel subscriptions.
+	 *
+	 * Used by:
+	 *  - `dispatchWebSocketClose` after handlers run
+	 *  - platform adapters cleaning up after a failed handshake
+	 *  - the runtime when the worker drops a phantom upgrade
+	 */
 	_releaseSubscriptions(): void {
 		this.#closed = true;
 		for (const [, bc] of this.#subscriptions) {
@@ -1956,6 +1956,23 @@ export async function dispatchFetchEvent(
  * Dispatch a `websocketmessage` event on the registration. Called by platform
  * adapters when a frame arrives on an accepted connection.
  */
+/**
+ * In-flight promises from async `websocketmessage` handlers. On Node/Bun there
+ * is no `platformWaitUntil` (that's Cloudflare's ctx.waitUntil), so a handler
+ * doing `await db.insert(...)` would otherwise be truncated when the worker
+ * shuts down and closes databases. The worker message loop drains this set
+ * before `databases.closeAll()`. NOT awaited in the ordered dispatch chain —
+ * that would head-of-line block later frames.
+ */
+const pendingMessageWork = new Set<Promise<unknown>>();
+
+/** @internal Drain outstanding async websocketmessage handler work. */
+export async function drainWebSocketMessageWork(): Promise<void> {
+	if (pendingMessageWork.size > 0) {
+		await Promise.allSettled([...pendingMessageWork]);
+	}
+}
+
 export function dispatchWebSocketMessage(
 	registration: ShovelServiceWorkerRegistration,
 	connection: ShovelWebSocketConnection,
@@ -1969,13 +1986,17 @@ export function dispatchWebSocketMessage(
 	);
 	registration.dispatchEvent(event);
 	event[kEndDispatchPhase]();
-	// Resolve as soon as the synchronous handlers have run.
-	// Intentionally do NOT await the handler's waitUntil promises here:
-	// awaiting them inside the per-connection ordered dispatch chain would let
-	// one slow background task head-of-line block every later frame on the same
-	// connection. Synchronous handler execution already preserves frame order;
-	// background work is kept alive via `platformWaitUntil` (ctx.waitUntil on
-	// Cloudflare) or simply by the long-lived Node/Bun worker process.
+	// Track (but do NOT await) the handler's extension promises: awaiting them
+	// inside the per-connection ordered chain would let one slow background
+	// task head-of-line block every later frame. Synchronous handler execution
+	// already preserves frame order; this side set lets shutdown drain the
+	// background work so an `await db.insert(...)` isn't truncated at exit.
+	for (const promise of event.getPromises()) {
+		const tracked = Promise.resolve(promise).finally(() => {
+			pendingMessageWork.delete(tracked);
+		});
+		pendingMessageWork.add(tracked);
+	}
 	return Promise.resolve();
 }
 
@@ -3330,6 +3351,9 @@ export function startWorkerMessageLoop(
 					if (wsDispatchChains.size > 0) {
 						await Promise.allSettled([...wsDispatchChains.values()]);
 					}
+					// Also drain async websocketmessage handler work (db writes,
+					// etc.) that resolves after the dispatch chain settles.
+					await drainWebSocketMessageWork();
 					// Close all databases
 					if (databases) {
 						await databases.closeAll();

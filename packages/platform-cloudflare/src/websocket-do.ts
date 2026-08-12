@@ -63,7 +63,7 @@ export class ShovelWebSocketDO extends DurableObject {
 	 * can deliver `webSocketError` followed by `webSocketClose` for the same
 	 * socket; this guards against dispatching the user close handler twice.
 	 */
-	#finalized: Set<string>;
+	#finalized: Map<string, number>;
 	/**
 	 * Connection id → last-persisted `subscribedChannels` signature, so we only
 	 * re-serialize the hibernation attachment when subscription state actually
@@ -84,7 +84,7 @@ export class ShovelWebSocketDO extends DurableObject {
 		this.#runtimePromise = null;
 		this.#connections = new Map();
 		this.#dispatchQueues = new Map();
-		this.#finalized = new Set();
+		this.#finalized = new Map();
 		this.#persistedChannels = new Map();
 		this.#dispatchPubSub = null;
 		this.#pendingUpgrades = 0;
@@ -523,14 +523,16 @@ export class ShovelWebSocketDO extends DurableObject {
 		wasClean: boolean,
 	): Promise<void> | void {
 		if (this.#finalized.has(id)) return;
-		this.#finalized.add(id);
-		// Bound the dedup set. An error/close pair for one socket arrives within
-		// a single teardown, so ids far older than recent churn can never dedup
-		// anything; evict oldest (insertion order) once the set grows large,
-		// rather than leaking one entry per connection for the DO's lifetime.
-		if (this.#finalized.size > 2048) {
-			const oldest = this.#finalized.values().next().value as string;
-			this.#finalized.delete(oldest);
+		const nowMs = Date.now();
+		this.#finalized.set(id, nowMs);
+		// TTL-keyed dedup. A close/error pair for one socket arrives within a
+		// single teardown, so a 30s window covers any delayed second event;
+		// evicting by AGE (not raw insertion count) means high lifetime churn
+		// can't drop a still-relevant id and let websocketclose double-fire.
+		const DEDUP_TTL = 30_000;
+		for (const [seenId, at] of this.#finalized) {
+			if (nowMs - at > DEDUP_TTL) this.#finalized.delete(seenId);
+			else break; // Map preserves insertion order; rest are newer.
 		}
 		const conn =
 			this.#connections.get(id) ?? this.#buildConnectionFromSocket(ws);

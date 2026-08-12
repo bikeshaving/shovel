@@ -359,9 +359,9 @@ import { initializeRuntime, createFetchHandler, setAssetsManifest } from "@b9g/p
 // breaks consumers bundling outside a shovel build).
 setAssetsManifest(__shovelAssetsManifest);
 
-// Re-export the WebSocket Durable Object so wrangler can bind it. The class
-// is only referenced if the user configures a SHOVEL_WS binding in their
-// wrangler.toml; otherwise it's dead-code-eliminated at bundle time.
+// Re-export the WebSocket Durable Object so wrangler can bind it. (A live
+// re-export from the entry, always retained — the DO code ships whether or
+// not a SHOVEL_WS binding is configured.)
 export { ShovelWebSocketDO } from "@b9g/platform-cloudflare/websocket-do";
 
 // Re-export the PubSub Durable Object for wrangler binding. Only loaded when

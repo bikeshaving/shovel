@@ -37,6 +37,7 @@ import {
 	errorToResponse,
 	toArrayBuffer,
 	createOrderedDispatch,
+	drainWebSocketMessageWork,
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform", "node", "websocket"]);
@@ -346,6 +347,7 @@ export function attachNodeWebSocketHandler(
 		}
 		// Now the close dispatches are enqueued; drain them.
 		await drainDispatch();
+		await drainWebSocketMessageWork();
 	};
 }
 
@@ -380,6 +382,10 @@ export function attachNodePoolWebSocketHandler(
 		// Upgrade request open forever — an unauthenticated FD-exhaustion
 		// vector.)
 		const refuse = (_req: HTTP.IncomingMessage, socket: Socket) => {
+			// Guard the hijacked socket (see the real listeners): writeError's
+			// end() defers behind a microtask, so a client RST in that window
+			// would hit a listener-less socket → uncaughtException.
+			socket.on("error", () => {});
 			writeErrorAndDestroy(socket, 426, "WebSocket upgrades not supported");
 		};
 		httpServer.on("upgrade", refuse);
@@ -656,13 +662,14 @@ function writeResponseAndDestroy(socket: Socket, response: Response): void {
 	// http.ServerResponse here because the socket is already hijacked for
 	// upgrade.
 	response
-		.text()
-		.then((body) => {
+		.arrayBuffer()
+		.then((buf) => {
+			const body = Buffer.from(buf);
 			const status = response.status;
 			const statusText = response.statusText || httpStatusText(status);
 			const headerLines: string[] = [
 				`HTTP/1.1 ${status} ${statusText}`,
-				`Content-Length: ${Buffer.byteLength(body, "utf8")}`,
+				`Content-Length: ${body.byteLength}`,
 				"Connection: close",
 			];
 			response.headers.forEach((value, key) => {
@@ -692,7 +699,12 @@ function writeResponseAndDestroy(socket: Socket, response: Response): void {
 			// are flushed to the client before the FIN; an immediate
 			// `destroy()` after `write()` can race the kernel buffer and
 			// surface as ECONNRESET on fast clients.
-			socket.end(headerLines.join("\r\n") + "\r\n\r\n" + body);
+			socket.end(
+				Buffer.concat([
+					Buffer.from(headerLines.join("\r\n") + "\r\n\r\n", "utf8"),
+					body,
+				]),
+			);
 		})
 		.catch(() => socket.destroy());
 }
