@@ -272,15 +272,28 @@ export function attachNodeWebSocketHandler(
 
 	return async () => {
 		httpServer.off("upgrade", upgradeListener);
-		// Close any still-open connections gracefully.
+		// Close any still-open connections gracefully, and WAIT (bounded) for
+		// their close events: the websocketclose dispatch is enqueued from the
+		// ws "close" callback, which fires after the closing handshake — an
+		// immediate drain would run before those tasks exist, and user close
+		// handlers (presence removal, DB writes) would race server/database
+		// shutdown.
+		const closePromises: Promise<void>[] = [];
 		for (const {ws} of connections.values()) {
 			try {
+				closePromises.push(
+					new Promise<void>((resolve) => {
+						ws.once("close", resolve);
+						setTimeout(resolve, 2000);
+					}),
+				);
 				ws.close(1001, "Server shutting down");
 			} catch (_err) {
 				/* best-effort */
 			}
 		}
-		// Wait for pending dispatch chains to drain.
+		await Promise.allSettled(closePromises);
+		// Now the close dispatches are enqueued; drain them.
 		await drainDispatch();
 	};
 }
@@ -396,7 +409,25 @@ export function attachNodePoolWebSocketHandler(
 						}
 					});
 				}
+				// Mirror the direct-mode guard: handleUpgrade destroys the socket
+				// without invoking the callback on a client abort or malformed
+				// handshake. The worker already registered the connection —
+				// synthesize a close so it releases subscriptions, and drop any
+				// buffered frames.
+				let upgraded = false;
+				socket.once("close", () => {
+					if (!upgraded) {
+						pendingFrames.delete(connectionID);
+						pool.sendWebSocketClose?.(
+							connectionID,
+							1006,
+							"handshake aborted",
+							false,
+						);
+					}
+				});
 				wss.handleUpgrade(req, socket, head, (ws: any) => {
+					upgraded = true;
 					liveSockets.set(connectionID, ws);
 					// Attach inbound listeners BEFORE flushing buffered frames.
 					ws.on("message", (data: Buffer, isBinary: boolean) => {

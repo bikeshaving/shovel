@@ -74,6 +74,9 @@ export class ShovelWebSocketDO extends DurableObject {
 	#dispatchPubSub: ((channel: string, data: unknown) => void) | null;
 	/** Upgrades in flight (subscribe registered, socket not yet accepted). */
 	#pendingUpgrades: number;
+	/** ws -> connection id; survives attachment read failures and avoids
+	 * a structured-clone deserialization per inbound frame. */
+	#socketIds: WeakMap<WebSocket, string>;
 
 	constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
 		super(ctx, env as any);
@@ -85,6 +88,7 @@ export class ShovelWebSocketDO extends DurableObject {
 		this.#persistedChannels = new Map();
 		this.#dispatchPubSub = null;
 		this.#pendingUpgrades = 0;
+		this.#socketIds = new WeakMap();
 	}
 
 	async #ensureRuntime(): Promise<ShovelServiceWorkerRegistration> {
@@ -93,7 +97,17 @@ export class ShovelWebSocketDO extends DurableObject {
 		// deliveries, or fetch + message in one tick) would otherwise run the
 		// whole body twice — double lifecycle, double rehydration, and
 		// duplicate connections whose dropped twins leak BC subscriptions.
-		this.#runtimePromise ??= this.#initializeRuntime();
+		if (!this.#runtimePromise) {
+			const p = this.#initializeRuntime();
+			this.#runtimePromise = p;
+			// A rejected init must not be memoized: it would brick the isolate
+			// (every later fetch/message/close awaits this and rejects, and
+			// existing sockets never dispatch websocketclose). Clear so the
+			// next entry retries, preserving pre-memoization behavior.
+			p.catch(() => {
+				if (this.#runtimePromise === p) this.#runtimePromise = null;
+			});
+		}
 		return this.#runtimePromise;
 	}
 
@@ -144,7 +158,10 @@ export class ShovelWebSocketDO extends DurableObject {
 		// dispatch correctly.
 		for (const ws of this.ctx.getWebSockets()) {
 			const conn = this.#buildConnectionFromSocket(ws);
-			if (conn) this.#connections.set(conn.id, conn);
+			if (conn) {
+				this.#connections.set(conn.id, conn);
+				this.#socketIds.set(ws, conn.id);
+			}
 		}
 
 		return reg;
@@ -240,21 +257,30 @@ export class ShovelWebSocketDO extends DurableObject {
 		// evicted/gone subscriber whose registry entry lingered. #ensureRuntime
 		// has already rehydrated hibernated sockets, so a live-but-hibernated
 		// subscriber reports length > 0 and is never pruned.
-		// Never report stale while an upgrade is mid-flight: the handler may
-		// have registered a subscription before acceptWebSocket() ran, and a
-		// wrongly-pruned registry entry is not re-asserted by later callbacks.
+		// stale means "prune my registry entry" — report it only when this
+		// isolate truly has no interest in the channel: no live sockets, no
+		// upgrade mid-flight (a handler may subscribe before acceptWebSocket
+		// runs), and no local BroadcastChannel subscriber (a module-scope
+		// channel keeps localCallbacks populated with zero sockets, and a
+		// wrongly-pruned entry is never re-asserted because later subscribes
+		// see isFirstForChannel === false).
+		const {_hasLocalSubscribers} = await import("./pubsub.js");
 		return {
 			stale:
-				this.ctx.getWebSockets().length === 0 && this.#pendingUpgrades === 0,
+				this.ctx.getWebSockets().length === 0 &&
+				this.#pendingUpgrades === 0 &&
+				!_hasLocalSubscribers(channel),
 		};
 	}
 
 	async fetch(request: Request): Promise<Response> {
-		const registration = await this.#ensureRuntime();
-		const env = (this.env ?? {}) as Record<string, unknown>;
-
+		// Count the upgrade BEFORE the first await: a cold wake's runtime init
+		// spans many event-loop turns, and a publish landing in that window
+		// must not see pendingUpgrades === 0 and prune us.
 		this.#pendingUpgrades++;
 		try {
+			const registration = await this.#ensureRuntime();
+			const env = (this.env ?? {}) as Record<string, unknown>;
 			return await envStorage.run(env, async () => {
 				// Buffer frames the handler produces BEFORE the real socket exists.
 				const pending: Array<
@@ -314,6 +340,7 @@ export class ShovelWebSocketDO extends DurableObject {
 
 				this.#persistAttachment(server, conn);
 				this.ctx.acceptWebSocket(server);
+				if (upgradedId) this.#socketIds.set(server, upgradedId);
 
 				// Rebind the runtime relay directly to the live server socket.
 				conn[kBindRelay](this.#relayFor(server));
@@ -450,13 +477,23 @@ export class ShovelWebSocketDO extends DurableObject {
 		);
 	}
 
-	/** Read the connection id from the socket's hibernation attachment. */
+	/**
+	 * Resolve a socket's connection id: the in-memory WeakMap first (set at
+	 * accept and rehydration — no per-frame deserialization, and immune to a
+	 * cleared/corrupt attachment), the hibernation attachment as fallback.
+	 * An unreadable attachment must not orphan the connection: close/error
+	 * paths depend on this id to release subscriptions.
+	 */
 	#connectionId(ws: WebSocket): string | null {
+		const cached = this.#socketIds.get(ws);
+		if (cached) return cached;
 		try {
 			const state = (
 				ws as any
 			).deserializeAttachment() as WebSocketConnectionState;
-			return state?.id ?? null;
+			const id = state?.id ?? null;
+			if (id) this.#socketIds.set(ws, id);
+			return id;
 		} catch (_err) {
 			return null;
 		}

@@ -72,6 +72,15 @@ const localCallbacks = new Map<string, Set<(data: unknown) => void>>();
  * channel. Internal — re-exported via the package runtime entry but not part
  * of the public API surface.
  */
+/**
+ * @internal Whether this isolate holds any local BroadcastChannel subscriber
+ * for a channel. The WS DO's stale-prune signal consults this: zero sockets
+ * does not mean zero subscribers.
+ */
+export function _hasLocalSubscribers(channel: string): boolean {
+	return (localCallbacks.get(channel)?.size ?? 0) > 0;
+}
+
 export function _dispatchPubSubMessage(channel: string, data: unknown): void {
 	const cbs = localCallbacks.get(channel);
 	if (!cbs) return;

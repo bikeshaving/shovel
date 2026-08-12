@@ -551,6 +551,14 @@ export class ServiceWorkerPool {
 	 * worker.
 	 */
 	async #drainClosedWebSockets(timeout = 1000): Promise<void> {
+		// Without platform handlers there is no adapter to deliver close
+		// events back — polling would burn the full timeout on every
+		// reload/terminate. (Owner entries can exist without handlers: a
+		// worker's ws:upgrade records ownership regardless.) Sweep directly.
+		if (!this.#wsHandlers) {
+			this.#wsConnectionOwners.clear();
+			return;
+		}
 		const deadline = Date.now() + timeout;
 		while (this.#wsConnectionOwners.size > 0 && Date.now() < deadline) {
 			await new Promise((resolve) => setTimeout(resolve, 20));
