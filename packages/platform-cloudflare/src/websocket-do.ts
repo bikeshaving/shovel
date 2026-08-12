@@ -128,11 +128,13 @@ export class ShovelWebSocketDO extends DurableObject {
 		// a retry after a failed activate would short-circuit here with the
 		// backend and rehydration steps never run.
 
-		// Run install/activate once per DO isolate. The main worker isolate
-		// runs them in its own module instance; this isolate is separate, so
-		// any per-isolate user setup (cache warming, DB opens, global seeding)
-		// has to happen here too. `runLifecycle` is idempotent against `reg`
-		// once `reg.ready === true`, so subsequent fetches/wakes don't re-run.
+		// Run install/activate once per DO instance. In production a DO runs
+		// in its own isolate, so per-isolate user setup (cache warming, DB
+		// opens, global seeding) must happen here too — the main worker's run
+		// doesn't carry over. (Under Miniflare the DO and worker share a module
+		// scope; the hasBroadcastChannelBackend guard in createFetchHandler
+		// exists for exactly that overlap.) `runLifecycle` is idempotent
+		// against `reg` once `reg.ready === true`, so wakes don't re-run it.
 		if (!reg.ready) {
 			await runLifecycle(reg, "activate");
 		}
@@ -342,9 +344,14 @@ export class ShovelWebSocketDO extends DurableObject {
 				const pair = new WebSocketPair();
 				const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
 
-				this.#persistAttachment(server, conn);
+				// Accept BEFORE persisting: workerd's documented order is
+				// accept-then-serializeAttachment, and serializeAttachment on a
+				// not-yet-accepted socket can throw (which #persistAttachment
+				// would swallow, silently leaving the connection with no
+				// attachment and unrecoverable after eviction).
 				this.ctx.acceptWebSocket(server);
 				if (upgradedId) this.#socketIds.set(server, upgradedId);
+				this.#persistAttachment(server, conn);
 
 				// Rebind the runtime relay directly to the live server socket.
 				conn[kBindRelay](this.#relayFor(server));

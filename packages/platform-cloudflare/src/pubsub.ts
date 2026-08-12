@@ -11,7 +11,7 @@
  *
  * 1. Durable Object subscribers (the ShovelWebSocketDO, primarily) — register
  *    their own DO ID with the pubsub DO. On each publish the pubsub DO does
- *    `env.SHOVEL_WS.get(doId).fetch("/_shovel_publish", ...)`, which Cloudflare
+ *    `stub._shovelPublish(channel, data)` (Durable Object RPC), which Cloudflare
  *    uses to wake hibernated subscriber DOs. The registry is persisted to
  *    `ctx.storage` so a pubsub-DO eviction doesn't drop subscriptions, and
  *    per-target deliveries are ordered via a per-doId promise chain.
@@ -210,12 +210,17 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 				? stub.subscribe(channel, doId)
 				: stub.unsubscribe(channel, doId));
 		});
-		registrationOps.set(
-			channel,
-			next.catch((err) => {
-				logger.error("PubSub {op} failed: {error}", {op, error: err});
-			}),
-		);
+		const tracked = next.catch((err) => {
+			logger.error("PubSub {op} failed: {error}", {op, error: err});
+		});
+		registrationOps.set(channel, tracked);
+		// Drop the tail once settled so dynamic channel names don't accumulate
+		// one map entry per channel for the isolate's lifetime.
+		void tracked.finally(() => {
+			if (registrationOps.get(channel) === tracked) {
+				registrationOps.delete(channel);
+			}
+		});
 	}
 
 	#ensureWS(): void {

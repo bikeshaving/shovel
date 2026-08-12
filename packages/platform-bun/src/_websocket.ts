@@ -162,7 +162,14 @@ export function createBunPoolWebSocketAdapter(pool: {
 		const upgradeHeaders = new Headers();
 		if (result.setCookieHeaders?.length) {
 			for (const sc of result.setCookieHeaders) {
-				upgradeHeaders.append("Set-Cookie", sc);
+				try {
+					upgradeHeaders.append("Set-Cookie", sc);
+				} catch (_err) {
+					// A CR/LF-bearing value throws AFTER the worker registered
+					// the connection; dropping the cookie beats leaking a
+					// phantom connection with live subscriptions.
+					logger.warn("Dropping invalid Set-Cookie on upgrade");
+				}
 			}
 		}
 		const ok = server.upgrade(request, {

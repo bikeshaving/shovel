@@ -83,6 +83,14 @@ export function attachNodeWebSocketHandler(
 		socket: Socket,
 		head: Buffer,
 	) => {
+		// A hijacked socket has NO error listener until ws's handleUpgrade
+		// attaches one — Node's HTTP server removes its own when upgrade
+		// listeners exist. A client RST during the handler's awaits would
+		// otherwise be an uncaughtException: remote, unauthenticated process
+		// kill. Errors here are connection-fatal but never process-fatal.
+		socket.on("error", (err: Error) => {
+			logger.debug("Upgrade socket error: {error}", {error: err});
+		});
 		// Request construction can throw on hostile-but-parseable headers
 		// (llhttp admits "Host: a b"; the WHATWG URL parser does not). The
 		// listener is async and Node discards its promise, so an uncaught
@@ -443,6 +451,14 @@ export function attachNodePoolWebSocketHandler(
 		socket: Socket,
 		head: Buffer,
 	) => {
+		// A hijacked socket has NO error listener until ws's handleUpgrade
+		// attaches one — Node's HTTP server removes its own when upgrade
+		// listeners exist. A client RST during the handler's awaits would
+		// otherwise be an uncaughtException: remote, unauthenticated process
+		// kill. Errors here are connection-fatal but never process-fatal.
+		socket.on("error", (err: Error) => {
+			logger.debug("Upgrade socket error: {error}", {error: err});
+		});
 		// Request construction can throw on hostile-but-parseable headers
 		// (llhttp admits "Host: a b"; the WHATWG URL parser does not). The
 		// listener is async and Node discards its promise, so an uncaught
