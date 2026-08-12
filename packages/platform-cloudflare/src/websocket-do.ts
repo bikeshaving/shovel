@@ -362,7 +362,13 @@ export class ShovelWebSocketDO extends DurableObject {
 				const handshakeHeaders = new Headers();
 				if (event.cookieStore.hasChanges()) {
 					for (const sc of event.cookieStore.getSetCookieHeaders()) {
-						handshakeHeaders.append("Set-Cookie", sc);
+						try {
+							handshakeHeaders.append("Set-Cookie", sc);
+						} catch (_err) {
+							// Invalid (CR/LF) values: drop the cookie rather than
+							// throwing after acceptWebSocket has already run.
+							logger.warn("Dropping invalid Set-Cookie on upgrade");
+						}
 					}
 				}
 				return new Response(null, {

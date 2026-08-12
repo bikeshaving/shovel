@@ -3543,5 +3543,6 @@ export {
 	setBroadcastChannelRelay,
 	deliverBroadcastMessage,
 	setBroadcastChannelBackend,
+	hasBroadcastChannelBackend,
 } from "./internal/broadcast-channel.js";
 export type {BroadcastChannelBackend} from "./internal/broadcast-channel-backend.js";

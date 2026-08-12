@@ -64,6 +64,14 @@ function subKey(channel: string, doId: string): string {
 // ============================================================================
 
 /** Per-isolate map: channel → set of subscribe-callbacks installed locally. */
+/**
+ * Per-channel registration chains, MODULE-scoped: ops must reach the pubsub
+ * DO in issue order even when they originate from different backend
+ * instances (a backend swap issues the old instance's unsubscribe and the
+ * new instance's subscribe — per-instance chains let them race).
+ */
+const registrationOps = new Map<string, Promise<void>>();
+
 const localCallbacks = new Map<string, Set<(data: unknown) => void>>();
 
 /**
@@ -116,7 +124,6 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 	 *   pubsub DO instead of fetch-based wake.
 	 */
 	constructor(ns: DurableObjectNamespace, subscriberId: string | null = null) {
-		this.#registrationOps = new Map();
 		this.#ns = ns;
 		this.#subscriberId = subscriberId;
 		this.#instanceId = crypto.randomUUID();
@@ -189,9 +196,6 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 		};
 	}
 
-	/** Per-channel registration chains: ops must apply in issue order. */
-	#registrationOps: Map<string, Promise<void>>;
-
 	#postRegistration(op: "subscribe" | "unsubscribe", channel: string): void {
 		const doId = this.#subscriberId;
 		if (!doId) return;
@@ -199,14 +203,14 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 		// connection closes, new one opens) must reach the registry in that
 		// order — two independent fire-and-forget stub calls can arrive
 		// swapped and permanently deregister a live subscriber.
-		const prev = this.#registrationOps.get(channel) ?? Promise.resolve();
+		const prev = registrationOps.get(channel) ?? Promise.resolve();
 		const next = prev.then(async () => {
 			const stub = this.#stub() as unknown as PubSubDORpc;
 			await (op === "subscribe"
 				? stub.subscribe(channel, doId)
 				: stub.unsubscribe(channel, doId));
 		});
-		this.#registrationOps.set(
+		registrationOps.set(
 			channel,
 			next.catch((err) => {
 				logger.error("PubSub {op} failed: {error}", {op, error: err});

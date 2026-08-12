@@ -387,6 +387,10 @@ export class BunPlatform {
 					});
 				},
 				async close() {
+					// Drain pooled WebSockets first: stop(true) would kill the
+					// sockets under the pool and websocketclose would never
+					// dispatch in the workers.
+					await adapter.cleanup();
 					bunServe.stop(true);
 				},
 				address: () => ({port: actualPort, host}),

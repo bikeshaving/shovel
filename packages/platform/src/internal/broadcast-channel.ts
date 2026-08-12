@@ -55,6 +55,14 @@ export function deliverBroadcastMessage(
  * Set a pluggable backend for cross-process BroadcastChannel relay.
  * When set, publish goes through the backend instead of postMessage relay.
  */
+/** Whether a backend is currently installed (adapters use this to avoid
+ * clobbering a more capable backend installed by another entrypoint in the
+ * same isolate — e.g. the WS DO's id-carrying backend vs the worker fetch
+ * handler's null-id one). */
+export function hasBroadcastChannelBackend(): boolean {
+	return backend !== null;
+}
+
 export function setBroadcastChannelBackend(b: BroadcastChannelBackend): void {
 	backend = b;
 	// Re-register EVERY live channel on the new backend:

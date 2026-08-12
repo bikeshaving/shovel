@@ -25,6 +25,7 @@ import {
 	dispatchFetchEvent,
 	setBroadcastChannelBackend,
 	type ShovelConfig,
+	hasBroadcastChannelBackend,
 } from "@b9g/platform/runtime";
 
 // runLifecycle is used internally by createFetchHandler (not re-exported)
@@ -164,7 +165,15 @@ export function createFetchHandler(
 		// so they pass `null` for the subscriber identity: they can publish
 		// but cannot receive cross-isolate publishes.
 		const envRecord = env as Record<string, unknown>;
-		if (!bcBackendConfigured && envRecord.SHOVEL_PUBSUB) {
+		// Also guard on ANY installed backend: the WS DO shares this module's
+		// state and installs a backend carrying its DO id — overwriting it
+		// with this null-id one would unsubscribe the DO from the pubsub
+		// registry and kill hibernation wake-ups.
+		if (
+			!bcBackendConfigured &&
+			!hasBroadcastChannelBackend() &&
+			envRecord.SHOVEL_PUBSUB
+		) {
 			const {CloudflarePubSubBackend} = await import("./pubsub.js");
 			setBroadcastChannelBackend(
 				new CloudflarePubSubBackend(

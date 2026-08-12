@@ -82,6 +82,7 @@ export function createBunPoolWebSocketAdapter(pool: {
 		message(ws: any, message: string | Buffer): void;
 		close(ws: any, code: number, reason: string): void;
 	};
+	cleanup: () => Promise<void>;
 } {
 	const liveSockets = new Map<string, any>();
 	const pendingFrames = new Map<string, PendingFrame[]>();
@@ -221,7 +222,30 @@ export function createBunPoolWebSocketAdapter(pool: {
 		},
 	};
 
-	return {fetch: handleFetch, websocket};
+	return {
+		fetch: handleFetch,
+		websocket,
+		/**
+		 * Close every pooled socket and wait (bounded) for the close events to
+		 * round-trip through sendWebSocketClose, so workers dispatch
+		 * websocketclose before the server force-stops. Without this, Bun
+		 * multi-worker shutdown killed sockets under the pool and user close
+		 * handlers never ran.
+		 */
+		async cleanup() {
+			for (const ws of liveSockets.values()) {
+				try {
+					ws.close(1001, "Server shutting down");
+				} catch (_err) {
+					/* best-effort */
+				}
+			}
+			const deadline = Date.now() + 2000;
+			while (liveSockets.size > 0 && Date.now() < deadline) {
+				await new Promise((r) => setTimeout(r, 20));
+			}
+		},
+	};
 }
 
 /**
@@ -339,7 +363,15 @@ export function createBunWebSocketServer(
 		const upgradeHeaders = new Headers();
 		if (event!.cookieStore.hasChanges()) {
 			for (const sc of event!.cookieStore.getSetCookieHeaders()) {
-				upgradeHeaders.append("Set-Cookie", sc);
+				try {
+					upgradeHeaders.append("Set-Cookie", sc);
+				} catch (_err) {
+					// Headers.append throws on CR/LF-bearing values. Dropping the
+					// cookie beats rejecting the upgrade: an uncaught throw here
+					// would leave the just-registered connection (and its BC
+					// subscriptions) leaking with an ever-growing pending buffer.
+					logger.warn("Dropping invalid Set-Cookie on upgrade");
+				}
 			}
 		}
 		// Bun.serve.upgrade returns a boolean; we also store a small attachment

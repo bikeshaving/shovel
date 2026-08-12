@@ -133,8 +133,8 @@ if (config.lifecycle) {
 	parentPort?.postMessage({type: "ready"});
 	logger.info("Worker started (direct mode)", {port: config.port});
 } else {
-	// Multi-worker: use message loop (supervisor owns the HTTP server).
-	// WebSocket forwarding across worker threads is TODO — direct-mode only for now.
+	// Multi-worker: use message loop (supervisor owns the HTTP server, wires
+	// the pool WebSocket adapter, and forwards ws:* messages both ways).
 	startWorkerMessageLoop({registration, databases});
 }
 `;
