@@ -85,11 +85,32 @@ export function createBunPoolWebSocketAdapter(pool: {
 } {
 	const liveSockets = new Map<string, any>();
 	const pendingFrames = new Map<string, PendingFrame[]>();
-	// Frames are buffered ONLY for connections whose upgrade is in flight
-	// (worker accepted, socket not yet live). Frames for any other unknown id
-	// (already-closed sockets included) are dropped — buffering them leaked
-	// one array per closed connection forever.
-	const pendingUpgradeIds = new Set<string>();
+	// Insert-time TTL sweep: frames can arrive BEFORE the adapter learns the
+	// connection id (the worker sends inside the upgrade handler, and
+	// postMessage ordering delivers ws:send ahead of the upgrade result), so
+	// buffering must accept unknown ids. Entries for ids that never become
+	// live sockets are evicted opportunistically instead of leaking forever.
+	const pendingFrameBirth = new Map<string, number>();
+	const PENDING_FRAME_TTL = 60_000;
+	function sweepPendingFrames(now: number): void {
+		for (const [id, born] of pendingFrameBirth) {
+			if (now - born > PENDING_FRAME_TTL) {
+				pendingFrameBirth.delete(id);
+				pendingFrames.delete(id);
+			}
+		}
+	}
+	function bufferPendingFrame(id: string, frame: PendingFrame): void {
+		const now = Date.now();
+		sweepPendingFrames(now);
+		let q = pendingFrames.get(id);
+		if (!q) {
+			q = [];
+			pendingFrames.set(id, q);
+			pendingFrameBirth.set(id, now);
+		}
+		q.push(frame);
+	}
 
 	pool.setWebSocketHandlers({
 		sendFrame(connectionID, data) {
@@ -97,13 +118,7 @@ export function createBunPoolWebSocketAdapter(pool: {
 			if (ws) {
 				ws.send(data);
 			} else {
-				if (!pendingUpgradeIds.has(connectionID)) return;
-				let q = pendingFrames.get(connectionID);
-				if (!q) {
-					q = [];
-					pendingFrames.set(connectionID, q);
-				}
-				q.push({type: "send", data});
+				bufferPendingFrame(connectionID, {type: "send", data});
 			}
 		},
 		closeConnection(connectionID, code, reason) {
@@ -111,13 +126,7 @@ export function createBunPoolWebSocketAdapter(pool: {
 			if (ws) {
 				ws.close(code ?? 1000, reason ?? "");
 			} else {
-				if (!pendingUpgradeIds.has(connectionID)) return;
-				let q = pendingFrames.get(connectionID);
-				if (!q) {
-					q = [];
-					pendingFrames.set(connectionID, q);
-				}
-				q.push({type: "close", code, reason});
+				bufferPendingFrame(connectionID, {type: "close", code, reason});
 			}
 		},
 	});
@@ -149,9 +158,6 @@ export function createBunPoolWebSocketAdapter(pool: {
 			return result;
 		}
 
-		// Buffering window opens: the worker holds a live connection, the
-		// physical socket doesn't exist yet.
-		pendingUpgradeIds.add(result.connectionID);
 		const upgradeHeaders = new Headers();
 		if (result.setCookieHeaders?.length) {
 			for (const sc of result.setCookieHeaders) {
@@ -171,8 +177,8 @@ export function createBunPoolWebSocketAdapter(pool: {
 			);
 			// The `open` callback that normally flushes+clears these never fires
 			// on a failed upgrade, so drop any frames the handler buffered.
-			pendingUpgradeIds.delete(result.connectionID);
 			pendingFrames.delete(result.connectionID);
+			pendingFrameBirth.delete(result.connectionID);
 			return new Response("WebSocket upgrade failed", {status: 500});
 		}
 		return undefined;
@@ -181,12 +187,12 @@ export function createBunPoolWebSocketAdapter(pool: {
 	const websocket = {
 		open(ws: any) {
 			const data = ws.data as BunWebSocketData;
-			pendingUpgradeIds.delete(data.connectionId);
 			liveSockets.set(data.connectionId, ws);
 			// Flush frames queued before the socket became live.
 			const queued = pendingFrames.get(data.connectionId);
 			if (queued) {
 				pendingFrames.delete(data.connectionId);
+				pendingFrameBirth.delete(data.connectionId);
 				for (const frame of queued) {
 					if (frame.type === "send") ws.send(frame.data);
 					else ws.close(frame.code ?? 1000, frame.reason ?? "");
@@ -209,8 +215,8 @@ export function createBunPoolWebSocketAdapter(pool: {
 		close(ws: any, code: number, reason: string) {
 			const data = ws.data as BunWebSocketData;
 			liveSockets.delete(data.connectionId);
-			pendingUpgradeIds.delete(data.connectionId);
 			pendingFrames.delete(data.connectionId);
+			pendingFrameBirth.delete(data.connectionId);
 			pool.sendWebSocketClose(data.connectionId, code, reason, code !== 1006);
 		},
 	};
@@ -318,11 +324,14 @@ export function createBunWebSocketServer(
 			return response ?? new Response("Upgrade Required", {status: 426});
 		}
 
-		connections.set(conn.id, {
-			conn,
-			ws: null,
-			pending: entry.pending,
-		});
+		// Store the SAME object the relay closed over: a copy would leave the
+		// relay's `entry.ws` permanently null (dead branch) and split state if
+		// Bun ever accepts an upgrade whose open callback doesn't fire.
+		entry.conn = conn;
+		connections.set(
+			conn.id,
+			entry as typeof entry & {conn: ShovelWebSocketConnection},
+		);
 
 		// Carry any Set-Cookie values the handler added via cookieStore onto
 		// the 101 handshake. Bun's `server.upgrade` accepts a `headers` option
@@ -425,9 +434,17 @@ export function createBunWebSocketServer(
 		fetch: handleFetch,
 		websocket,
 		async cleanup() {
-			for (const {ws} of connections.values()) {
+			for (const [id, entry] of connections) {
+				if (!entry.ws) {
+					// Never-opened entry (accepted upgrade whose open callback
+					// didn't fire): no close event will ever arrive — release it
+					// directly instead of stalling the bounded wait below.
+					entry.conn?._releaseSubscriptions();
+					connections.delete(id);
+					continue;
+				}
 				try {
-					ws?.close(1001, "Server shutting down");
+					entry.ws.close(1001, "Server shutting down");
 				} catch (_err) {
 					/* best-effort */
 				}

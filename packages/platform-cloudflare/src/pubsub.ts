@@ -306,7 +306,11 @@ export class ShovelPubSubDO extends DurableObject {
 
 	async #hydrate(): Promise<void> {
 		if (this.#hydrated) return this.#hydrated;
-		this.#hydrated = (async () => {
+		// A rejected hydration must not be memoized: one transient
+		// storage.list() failure would otherwise brick every later
+		// subscribe/publish for the isolate's lifetime (mirrors
+		// ShovelWebSocketDO.#ensureRuntime).
+		const p = (async () => {
 			const all = await this.ctx.storage.list<unknown>({prefix: SUB_PREFIX});
 			for (const key of all.keys()) {
 				const rest = key.slice(SUB_PREFIX.length);
@@ -322,7 +326,11 @@ export class ShovelPubSubDO extends DurableObject {
 				set.add(doId);
 			}
 		})();
-		return this.#hydrated;
+		this.#hydrated = p;
+		p.catch(() => {
+			if (this.#hydrated === p) this.#hydrated = null;
+		});
+		return p;
 	}
 
 	async fetch(request: Request): Promise<Response> {
@@ -362,6 +370,7 @@ export class ShovelPubSubDO extends DurableObject {
 		const set = this.#subscribers.get(channel);
 		if (set?.delete(doId)) {
 			if (set.size === 0) this.#subscribers.delete(channel);
+			this.#generations.delete(subKey(channel, doId));
 			await this.ctx.storage.delete(subKey(channel, doId));
 		}
 	}
@@ -472,6 +481,7 @@ export class ShovelPubSubDO extends DurableObject {
 		if ((this.#generations.get(subKey(channel, doId)) ?? 0) !== generation) {
 			return;
 		}
+		this.#generations.delete(subKey(channel, doId));
 		const set = this.#subscribers.get(channel);
 		if (set?.delete(doId)) {
 			if (set.size === 0) this.#subscribers.delete(channel);

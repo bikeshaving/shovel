@@ -58,6 +58,28 @@ describe("bun templates", () => {
 	}
 });
 
+describe("cloudflare templates", () => {
+	const cfPair = [
+		"packages/platform-cloudflare/src/platform.ts",
+		"packages/platform-cloudflare/src/index.ts",
+	];
+	for (const file of cfPair) {
+		test(`${file} re-exports both Durable Objects for wrangler binding`, () => {
+			const s = read(file);
+			expect(s).toContain(
+				'export { ShovelWebSocketDO } from "@b9g/platform-cloudflare/websocket-do";',
+			);
+			expect(s).toContain(
+				'export { ShovelPubSubDO } from "@b9g/platform-cloudflare/pubsub";',
+			);
+		});
+
+		test(`${file} registers the asset manifest at startup`, () => {
+			expect(read(file)).toContain("setAssetsManifest(__shovelAssetsManifest)");
+		});
+	}
+});
+
 describe("no bare transitive imports in generated code", () => {
 	// Generated entries resolve imports from the user's project root, where
 	// these packages are transitive — bare imports break pnpm-isolated and

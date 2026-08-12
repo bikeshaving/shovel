@@ -83,20 +83,39 @@ export function attachNodeWebSocketHandler(
 		socket: Socket,
 		head: Buffer,
 	) => {
-		const url = `http://${req.headers.host}${req.url}`;
-		const hasBody = req.method !== "GET" && req.method !== "HEAD";
-		const request = new Request(url, {
-			method: req.method,
-			headers: req.headers as HeadersInit,
-			body: hasBody ? (req as any) : undefined,
-			duplex: hasBody ? "half" : undefined,
-		} as RequestInit);
+		// Request construction can throw on hostile-but-parseable headers
+		// (llhttp admits "Host: a b"; the WHATWG URL parser does not). The
+		// listener is async and Node discards its promise, so an uncaught
+		// throw here is an unhandled rejection (process-fatal by default)
+		// AND a leaked hijacked socket.
+		let request: Request;
+		try {
+			const url = `http://${req.headers.host}${req.url}`;
+			const hasBody = req.method !== "GET" && req.method !== "HEAD";
+			request = new Request(url, {
+				method: req.method,
+				headers: req.headers as HeadersInit,
+				body: hasBody ? (req as any) : undefined,
+				duplex: hasBody ? "half" : undefined,
+			} as RequestInit);
+		} catch (_err) {
+			writeErrorAndDestroy(socket, 400, "Bad Request");
+			return;
+		}
 
 		// Frames the user's fetch handler emits BEFORE the real ws exists
 		// (e.g. conn.send("welcome") inside upgradeWebSocket handler).
 		const pending: PendingFrame[] = [];
 		let realWs: any = null;
 		let upgradedConnectionId: string | null = null;
+		// Track socket death from listener entry: a client that aborts during
+		// a slow handler (before our later once("close") guard exists) must
+		// not leave the accepted connection's subscriptions leaking with an
+		// unbounded pending buffer.
+		let socketClosed = false;
+		socket.once("close", () => {
+			socketClosed = true;
+		});
 
 		const flushPending = (ws: any) => {
 			for (const frame of pending) {
@@ -199,6 +218,14 @@ export function attachNodeWebSocketHandler(
 		// the client aborts mid-handshake — release the connection's resources
 		// on socket close if the callback never ran, or its BC subscriptions
 		// (and buffered frames) leak forever.
+		if (socketClosed || socket.destroyed) {
+			// Client aborted during dispatch/module load: handleUpgrade would
+			// destroy the socket without invoking its callback, and our close
+			// guard below would never have been attached.
+			conn._releaseSubscriptions();
+			releaseDispatch(conn.id);
+			return;
+		}
 		let upgraded = false;
 		socket.once("close", () => {
 			if (!upgraded) {
@@ -346,9 +373,32 @@ export function attachNodePoolWebSocketHandler(
 	const liveSockets = new Map<string, any>();
 	// connectionID → frames queued before the physical socket is live
 	const pendingFrames = new Map<string, PendingFrame[]>();
-	// Buffer only while an upgrade is in flight; frames for unknown ids
-	// (already-closed sockets) are dropped, not accumulated forever.
-	const pendingUpgradeIds = new Set<string>();
+	// Insert-time TTL sweep: frames can arrive BEFORE the adapter learns the
+	// connection id (the worker sends inside the upgrade handler, and
+	// postMessage ordering delivers ws:send ahead of the upgrade result), so
+	// buffering must accept unknown ids. Entries for ids that never become
+	// live sockets are evicted opportunistically instead of leaking forever.
+	const pendingFrameBirth = new Map<string, number>();
+	const PENDING_FRAME_TTL = 60_000;
+	function sweepPendingFrames(now: number): void {
+		for (const [id, born] of pendingFrameBirth) {
+			if (now - born > PENDING_FRAME_TTL) {
+				pendingFrameBirth.delete(id);
+				pendingFrames.delete(id);
+			}
+		}
+	}
+	function bufferPendingFrame(id: string, frame: PendingFrame): void {
+		const now = Date.now();
+		sweepPendingFrames(now);
+		let q = pendingFrames.get(id);
+		if (!q) {
+			q = [];
+			pendingFrames.set(id, q);
+			pendingFrameBirth.set(id, now);
+		}
+		q.push(frame);
+	}
 
 	pool.setWebSocketHandlers?.({
 		sendFrame(connectionID, data) {
@@ -359,13 +409,7 @@ export function attachNodePoolWebSocketHandler(
 				// Frames generated during the worker's fetch handler can arrive
 				// before the supervisor completes the physical handshake —
 				// buffer them until the socket is live.
-				if (!pendingUpgradeIds.has(connectionID)) return;
-				let q = pendingFrames.get(connectionID);
-				if (!q) {
-					q = [];
-					pendingFrames.set(connectionID, q);
-				}
-				q.push({type: "send", data});
+				bufferPendingFrame(connectionID, {type: "send", data});
 			}
 		},
 		closeConnection(connectionID, code, reason) {
@@ -373,13 +417,7 @@ export function attachNodePoolWebSocketHandler(
 			if (ws) {
 				ws.close(code ?? 1000, reason ?? "");
 			} else {
-				if (!pendingUpgradeIds.has(connectionID)) return;
-				let q = pendingFrames.get(connectionID);
-				if (!q) {
-					q = [];
-					pendingFrames.set(connectionID, q);
-				}
-				q.push({type: "close", code, reason});
+				bufferPendingFrame(connectionID, {type: "close", code, reason});
 			}
 		},
 	});
@@ -389,14 +427,31 @@ export function attachNodePoolWebSocketHandler(
 		socket: Socket,
 		head: Buffer,
 	) => {
-		const url = `http://${req.headers.host}${req.url}`;
-		const hasBody = req.method !== "GET" && req.method !== "HEAD";
-		const request = new Request(url, {
-			method: req.method,
-			headers: req.headers as HeadersInit,
-			body: hasBody ? (req as any) : undefined,
-			duplex: hasBody ? "half" : undefined,
-		} as RequestInit);
+		// Request construction can throw on hostile-but-parseable headers
+		// (llhttp admits "Host: a b"; the WHATWG URL parser does not). The
+		// listener is async and Node discards its promise, so an uncaught
+		// throw here is an unhandled rejection (process-fatal by default)
+		// AND a leaked hijacked socket.
+		let request: Request;
+		try {
+			const url = `http://${req.headers.host}${req.url}`;
+			const hasBody = req.method !== "GET" && req.method !== "HEAD";
+			request = new Request(url, {
+				method: req.method,
+				headers: req.headers as HeadersInit,
+				body: hasBody ? (req as any) : undefined,
+				duplex: hasBody ? "half" : undefined,
+			} as RequestInit);
+		} catch (_err) {
+			writeErrorAndDestroy(socket, 400, "Bad Request");
+			return;
+		}
+
+		// Track socket death from listener entry (see the direct-mode note).
+		let socketClosed = false;
+		socket.once("close", () => {
+			socketClosed = true;
+		});
 
 		let result: any;
 		try {
@@ -409,11 +464,22 @@ export function attachNodePoolWebSocketHandler(
 		if (result && typeof result === "object" && result.upgrade === true) {
 			const connectionID = result.connectionID as string;
 			const setCookieHeaders = result.setCookieHeaders as string[] | undefined;
-			// Buffering window opens: worker holds the connection, socket not
-			// yet live.
-			pendingUpgradeIds.add(connectionID);
 			try {
 				const wsModule = await loadWs();
+				if (socketClosed || socket.destroyed) {
+					// Client aborted while the worker was accepting: synthesize
+					// the close now — the once("close") guard below would never
+					// fire for an already-dead socket.
+					pendingFrames.delete(connectionID);
+					pendingFrameBirth.delete(connectionID);
+					pool.sendWebSocketClose?.(
+						connectionID,
+						1006,
+						"handshake aborted",
+						false,
+					);
+					return;
+				}
 				const wss = new wsModule.WebSocketServer({noServer: true});
 				if (setCookieHeaders?.length) {
 					wss.on("headers", (headers: string[]) => {
@@ -430,8 +496,8 @@ export function attachNodePoolWebSocketHandler(
 				let upgraded = false;
 				socket.once("close", () => {
 					if (!upgraded) {
-						pendingUpgradeIds.delete(connectionID);
 						pendingFrames.delete(connectionID);
+						pendingFrameBirth.delete(connectionID);
 						pool.sendWebSocketClose?.(
 							connectionID,
 							1006,
@@ -442,7 +508,6 @@ export function attachNodePoolWebSocketHandler(
 				});
 				wss.handleUpgrade(req, socket, head, (ws: any) => {
 					upgraded = true;
-					pendingUpgradeIds.delete(connectionID);
 					liveSockets.set(connectionID, ws);
 					// Attach inbound listeners BEFORE flushing buffered frames.
 					ws.on("message", (data: Buffer, isBinary: boolean) => {
@@ -453,8 +518,8 @@ export function attachNodePoolWebSocketHandler(
 					});
 					ws.on("close", (code: number, reason: Buffer) => {
 						liveSockets.delete(connectionID);
-						pendingUpgradeIds.delete(connectionID);
 						pendingFrames.delete(connectionID);
+						pendingFrameBirth.delete(connectionID);
 						pool.sendWebSocketClose?.(
 							connectionID,
 							code,
@@ -472,6 +537,7 @@ export function attachNodePoolWebSocketHandler(
 					const queued = pendingFrames.get(connectionID);
 					if (queued) {
 						pendingFrames.delete(connectionID);
+						pendingFrameBirth.delete(connectionID);
 						for (const frame of queued) {
 							if (frame.type === "send") ws.send(frame.data);
 							else ws.close(frame.code ?? 1000, frame.reason ?? "");
@@ -495,6 +561,7 @@ export function attachNodePoolWebSocketHandler(
 				// The handshake callback that flushes+clears these never ran, so
 				// drop any frames the worker buffered before the socket went live.
 				pendingFrames.delete(connectionID);
+				pendingFrameBirth.delete(connectionID);
 				writeErrorAndDestroy(socket, 500, "WebSocket support unavailable");
 			}
 			return;
@@ -539,18 +606,24 @@ function writeResponseAndDestroy(socket: Socket, response: Response): void {
 				// We computed our own framing from the decoded text() body: a
 				// proxied response's original content-length/encoding would
 				// conflict with it (two Content-Length headers, or an encoding
-				// header for a body that is no longer encoded).
+				// header for a body that is no longer encoded). Set-Cookie is
+				// handled below: Headers.forEach comma-joins repeated values,
+				// which corrupts cookies (including any Expires date).
 				const lower = key.toLowerCase();
 				if (
 					lower === "content-length" ||
 					lower === "content-encoding" ||
 					lower === "transfer-encoding" ||
-					lower === "connection"
+					lower === "connection" ||
+					lower === "set-cookie"
 				) {
 					return;
 				}
 				headerLines.push(`${key}: ${value}`);
 			});
+			for (const sc of response.headers.getSetCookie()) {
+				headerLines.push(`Set-Cookie: ${sc}`);
+			}
 			// Use `socket.end(...)` rather than write+destroy so the bytes
 			// are flushed to the client before the FIN; an immediate
 			// `destroy()` after `write()` can race the kernel buffer and
