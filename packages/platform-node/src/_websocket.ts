@@ -195,7 +195,19 @@ export function attachNodeWebSocketHandler(
 				for (const sc of setCookies) headers.push(`Set-Cookie: ${sc}`);
 			});
 		}
+		// handleUpgrade destroys the socket without invoking the callback when
+		// the client aborts mid-handshake — release the connection's resources
+		// on socket close if the callback never ran, or its BC subscriptions
+		// (and buffered frames) leak forever.
+		let upgraded = false;
+		socket.once("close", () => {
+			if (!upgraded) {
+				conn._releaseSubscriptions();
+				releaseDispatch(conn.id);
+			}
+		});
 		wss.handleUpgrade(req, socket, head, (ws: any) => {
+			upgraded = true;
 			realWs = ws;
 			connections.set(conn.id, {conn, ws});
 

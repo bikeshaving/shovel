@@ -53,6 +53,7 @@ const logger = getLogger(["shovel", "platform", "cloudflare", "ws"]);
 
 export class ShovelWebSocketDO extends DurableObject {
 	#registration: ShovelServiceWorkerRegistration | null;
+	#runtimePromise: Promise<ShovelServiceWorkerRegistration> | null;
 	/** Map from connection id → live runtime handle. Rebuilt on wake. */
 	#connections: Map<string, ShovelWebSocketConnection>;
 	/** Per-connection ordered dispatch queues. */
@@ -71,18 +72,32 @@ export class ShovelWebSocketDO extends DurableObject {
 	#persistedChannels: Map<string, string>;
 	/** Captured `_dispatchPubSubMessage` so the hot publish route avoids a per-call dynamic import. */
 	#dispatchPubSub: ((channel: string, data: unknown) => void) | null;
+	/** Upgrades in flight (subscribe registered, socket not yet accepted). */
+	#pendingUpgrades: number;
 
 	constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
 		super(ctx, env as any);
 		this.#registration = null;
+		this.#runtimePromise = null;
 		this.#connections = new Map();
 		this.#dispatchQueues = new Map();
 		this.#finalized = new Set();
 		this.#persistedChannels = new Map();
 		this.#dispatchPubSub = null;
+		this.#pendingUpgrades = 0;
 	}
 
 	async #ensureRuntime(): Promise<ShovelServiceWorkerRegistration> {
+		// Memoize the in-flight promise, not the resolved registration: the
+		// first await below yields, and a concurrent wake (two webSocketMessage
+		// deliveries, or fetch + message in one tick) would otherwise run the
+		// whole body twice — double lifecycle, double rehydration, and
+		// duplicate connections whose dropped twins leak BC subscriptions.
+		this.#runtimePromise ??= this.#initializeRuntime();
+		return this.#runtimePromise;
+	}
+
+	async #initializeRuntime(): Promise<ShovelServiceWorkerRegistration> {
 		if (this.#registration) return this.#registration;
 
 		// Module-level `initializeRuntime()` ran when workerd evaluated the
@@ -186,11 +201,19 @@ export class ShovelWebSocketDO extends DurableObject {
 				"Failed to persist WS attachment (clearing to avoid stale state): {error}",
 				{error: err},
 			);
-			(ws as any).serializeAttachment({
-				id: state.id,
-				url: state.url,
-				subscribedChannels: [],
-			} satisfies WebSocketConnectionState);
+			try {
+				(ws as any).serializeAttachment({
+					id: state.id,
+					url: state.url,
+					subscribedChannels: [],
+				} satisfies WebSocketConnectionState);
+			} catch (fallbackErr) {
+				// The API that just threw may throw again; never let it escape
+				// into the upgrade response or the dispatch chain.
+				logger.debug("attachment fallback failed: {error}", {
+					error: fallbackErr,
+				});
+			}
 			this.#persistedChannels.set(state.id, "");
 		}
 	}
@@ -217,98 +240,109 @@ export class ShovelWebSocketDO extends DurableObject {
 		// evicted/gone subscriber whose registry entry lingered. #ensureRuntime
 		// has already rehydrated hibernated sockets, so a live-but-hibernated
 		// subscriber reports length > 0 and is never pruned.
-		return {stale: this.ctx.getWebSockets().length === 0};
+		// Never report stale while an upgrade is mid-flight: the handler may
+		// have registered a subscription before acceptWebSocket() ran, and a
+		// wrongly-pruned registry entry is not re-asserted by later callbacks.
+		return {
+			stale:
+				this.ctx.getWebSockets().length === 0 && this.#pendingUpgrades === 0,
+		};
 	}
 
 	async fetch(request: Request): Promise<Response> {
 		const registration = await this.#ensureRuntime();
 		const env = (this.env ?? {}) as Record<string, unknown>;
 
-		return envStorage.run(env, async () => {
-			// Buffer frames the handler produces BEFORE the real socket exists.
-			const pending: Array<
-				| {type: "send"; data: string | ArrayBuffer}
-				| {type: "close"; code?: number; reason?: string}
-			> = [];
+		this.#pendingUpgrades++;
+		try {
+			return await envStorage.run(env, async () => {
+				// Buffer frames the handler produces BEFORE the real socket exists.
+				const pending: Array<
+					| {type: "send"; data: string | ArrayBuffer}
+					| {type: "close"; code?: number; reason?: string}
+				> = [];
 
-			let upgradedId: string | null = null;
-			let upgradedConn: ShovelWebSocketConnection | null = null;
-			const event = new CloudflareFetchEvent(request, {
-				env,
-				platformWaitUntil: (p) => this.ctx.waitUntil(p),
-				wsRelay: {
-					send(_id, data) {
-						pending.push({type: "send", data});
+				let upgradedId: string | null = null;
+				let upgradedConn: ShovelWebSocketConnection | null = null;
+				const event = new CloudflareFetchEvent(request, {
+					env,
+					platformWaitUntil: (p) => this.ctx.waitUntil(p),
+					wsRelay: {
+						send(_id, data) {
+							pending.push({type: "send", data});
+						},
+						close(_id, code, reason) {
+							pending.push({type: "close", code, reason});
+						},
 					},
-					close(_id, code, reason) {
-						pending.push({type: "close", code, reason});
+					onUpgrade: (conn) => {
+						upgradedId = conn.id;
+						upgradedConn = conn;
+						this.#connections.set(conn.id, conn);
 					},
-				},
-				onUpgrade: (conn) => {
-					upgradedId = conn.id;
-					upgradedConn = conn;
-					this.#connections.set(conn.id, conn);
-				},
+				});
+
+				let response: Response | null | undefined;
+				try {
+					const result = await dispatchFetchEvent(registration, event);
+					response = result.response;
+				} catch (err) {
+					if (upgradedId) {
+						this.#connections.delete(upgradedId);
+						this.#dispatchQueues.delete(upgradedId);
+						// Drop any BC subscriptions the handler attached before
+						// throwing — without this, BroadcastChannel fan-out keeps
+						// targeting a connection whose handshake never completed.
+						(
+							upgradedConn as ShovelWebSocketConnection | null
+						)?._releaseSubscriptions();
+					}
+					// Preserve HTTPError statuses (auth/validation rejections) the
+					// way ordinary HTTP traffic does — a bare 500 here would mask
+					// the 401/403/etc that the user code intentionally threw.
+					return errorToResponse(err);
+				}
+
+				const conn = event[kGetUpgradeResult]();
+				if (!conn) {
+					return response ?? new Response("Upgrade Required", {status: 426});
+				}
+
+				// Complete the physical WebSocket handshake.
+				const pair = new WebSocketPair();
+				const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+
+				this.#persistAttachment(server, conn);
+				this.ctx.acceptWebSocket(server);
+
+				// Rebind the runtime relay directly to the live server socket.
+				conn[kBindRelay](this.#relayFor(server));
+
+				// Flush any frames the handler produced during fetch dispatch.
+				for (const frame of pending) {
+					if (frame.type === "send") server.send(frame.data);
+					else server.close(frame.code ?? 1000, frame.reason ?? "");
+				}
+
+				// Carry any Set-Cookie values the handler added via cookieStore
+				// onto the 101 handshake (auth/login flows that mutate cookies
+				// during a WS upgrade rely on this — they otherwise vanish since
+				// the upgrade has no Response object to decorate).
+				const handshakeHeaders = new Headers();
+				if (event.cookieStore.hasChanges()) {
+					for (const sc of event.cookieStore.getSetCookieHeaders()) {
+						handshakeHeaders.append("Set-Cookie", sc);
+					}
+				}
+				return new Response(null, {
+					status: 101,
+					webSocket: client,
+					headers: handshakeHeaders,
+				} as any);
 			});
-
-			let response: Response | null | undefined;
-			try {
-				const result = await dispatchFetchEvent(registration, event);
-				response = result.response;
-			} catch (err) {
-				if (upgradedId) {
-					this.#connections.delete(upgradedId);
-					this.#dispatchQueues.delete(upgradedId);
-					// Drop any BC subscriptions the handler attached before
-					// throwing — without this, BroadcastChannel fan-out keeps
-					// targeting a connection whose handshake never completed.
-					(
-						upgradedConn as ShovelWebSocketConnection | null
-					)?._releaseSubscriptions();
-				}
-				// Preserve HTTPError statuses (auth/validation rejections) the
-				// way ordinary HTTP traffic does — a bare 500 here would mask
-				// the 401/403/etc that the user code intentionally threw.
-				return errorToResponse(err);
-			}
-
-			const conn = event[kGetUpgradeResult]();
-			if (!conn) {
-				return response ?? new Response("Upgrade Required", {status: 426});
-			}
-
-			// Complete the physical WebSocket handshake.
-			const pair = new WebSocketPair();
-			const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
-
-			this.#persistAttachment(server, conn);
-			this.ctx.acceptWebSocket(server);
-
-			// Rebind the runtime relay directly to the live server socket.
-			conn[kBindRelay](this.#relayFor(server));
-
-			// Flush any frames the handler produced during fetch dispatch.
-			for (const frame of pending) {
-				if (frame.type === "send") server.send(frame.data);
-				else server.close(frame.code ?? 1000, frame.reason ?? "");
-			}
-
-			// Carry any Set-Cookie values the handler added via cookieStore
-			// onto the 101 handshake (auth/login flows that mutate cookies
-			// during a WS upgrade rely on this — they otherwise vanish since
-			// the upgrade has no Response object to decorate).
-			const handshakeHeaders = new Headers();
-			if (event.cookieStore.hasChanges()) {
-				for (const sc of event.cookieStore.getSetCookieHeaders()) {
-					handshakeHeaders.append("Set-Cookie", sc);
-				}
-			}
-			return new Response(null, {
-				status: 101,
-				webSocket: client,
-				headers: handshakeHeaders,
-			} as any);
-		});
+		} finally {
+			this.#pendingUpgrades--;
+		}
 	}
 
 	async webSocketMessage(

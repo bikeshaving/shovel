@@ -256,6 +256,7 @@ export class NodePlatform {
 		config?: ShovelConfig;
 	};
 	#server?: NodeServer;
+	#wsCleanup?: () => Promise<void>;
 
 	constructor(options: NodePlatformOptions = {}) {
 		this.name = "node";
@@ -315,7 +316,10 @@ export class NodePlatform {
 			) => void;
 		};
 		if (typeof poolWithWs.setWebSocketHandlers === "function") {
-			attachNodePoolWebSocketHandler(this.#server.httpServer, poolWithWs);
+			this.#wsCleanup = attachNodePoolWebSocketHandler(
+				this.#server.httpServer,
+				poolWithWs,
+			);
 		}
 
 		await this.#server.listen();
@@ -326,6 +330,13 @@ export class NodePlatform {
 	 * Close the server and terminate workers
 	 */
 	async close(): Promise<void> {
+		// Close pooled WebSockets BEFORE httpServer.close(): close(cb) only
+		// completes when every connection (including hijacked upgrade sockets)
+		// has ended, so an open WebSocket would deadlock shutdown here.
+		if (this.#wsCleanup) {
+			await this.#wsCleanup();
+			this.#wsCleanup = undefined;
+		}
 		await this.#server?.close();
 		await this.serviceWorker.terminate();
 	}

@@ -1245,6 +1245,18 @@ export class ShovelWebSocketConnection implements WebSocketConnection {
 	 *  - platform adapters cleaning up after a failed handshake
 	 *  - the runtime when the worker drops a phantom upgrade
 	 */
+	/**
+	 * @internal Mark the connection closed without releasing subscriptions.
+	 * Set before `websocketclose` handlers run: a handler that publishes to a
+	 * channel this connection subscribes to must not echo into the
+	 * already-closed socket (Node surfaces it as a socket error, workerd
+	 * throws in the BC dispatch microtask), while other connections'
+	 * subscriptions still deliver.
+	 */
+	_markClosed(): void {
+		this.#closed = true;
+	}
+
 	_releaseSubscriptions(): void {
 		this.#closed = true;
 		for (const [, bc] of this.#subscriptions) {
@@ -1972,6 +1984,10 @@ export async function dispatchWebSocketClose(
 		reason,
 		wasClean,
 	);
+	// The socket is gone: silence this connection's own BC forwarding before
+	// handlers run (subscriptions release after, so handler publishes still
+	// reach everyone else).
+	connection._markClosed();
 	try {
 		registration.dispatchEvent(event);
 		event[kEndDispatchPhase]();
