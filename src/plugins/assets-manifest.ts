@@ -160,12 +160,18 @@ export function createAssetsManifestPlugin(
 					// is available (stale bundles from prior builds are not this
 					// build's invariant to enforce); fall back to a directory scan.
 					let jsFiles: string[] = [];
-					const metaOutputs = result.metafile
-						? Object.keys(result.metafile.outputs)
-								.map((o) => resolve(o))
-								.filter((o) => o.startsWith(serverDir) && o.endsWith(".js"))
-								.map((o) => basename(o))
-						: null;
+					// Metafile output keys are relative to esbuild's absWorkingDir
+					// (the project root), not necessarily the process cwd. Without
+					// absWorkingDir there is no reliable base, so fall back to the
+					// directory scan.
+					const metaBase = build.initialOptions.absWorkingDir;
+					const metaOutputs =
+						result.metafile && metaBase
+							? Object.keys(result.metafile.outputs)
+									.map((o) => resolve(metaBase, o))
+									.filter((o) => o.startsWith(serverDir) && o.endsWith(".js"))
+									.map((o) => basename(o))
+							: null;
 					if (metaOutputs && metaOutputs.length > 0) {
 						jsFiles = metaOutputs;
 					} else {
