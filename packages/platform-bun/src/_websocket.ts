@@ -20,7 +20,6 @@
  */
 
 import {getLogger} from "@logtape/logtape";
-import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
 	ShovelFetchEvent,
 	ShovelServiceWorkerRegistration,
@@ -33,10 +32,11 @@ import {
 	kGetUpgradeResult,
 	type WebSocketRelay,
 	errorToResponse,
+	toArrayBuffer,
+	createOrderedDispatch,
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform", "bun", "websocket"]);
-
 
 type PendingFrame =
 	| {type: "send"; data: string | ArrayBuffer}
@@ -190,10 +190,7 @@ export function createBunPoolWebSocketAdapter(pool: {
 				payload = message;
 			} else {
 				const view = message as Uint8Array;
-				payload = view.buffer.slice(
-					view.byteOffset,
-					view.byteOffset + view.byteLength,
-				) as ArrayBuffer;
+				payload = toArrayBuffer(view);
 			}
 			pool.sendWebSocketMessage(data.connectionId, payload);
 		},
@@ -235,7 +232,11 @@ export function createBunWebSocketServer(
 			pending: PendingFrame[];
 		}
 	>();
-	const dispatchChains = new Map<string, Promise<void>>();
+	const {
+		enqueue: enqueueDispatch,
+		release: releaseDispatch,
+		drain: drainDispatch,
+	} = createOrderedDispatch();
 
 	const handleFetch = async (
 		request: Request,
@@ -328,7 +329,7 @@ export function createBunWebSocketServer(
 			// Bun rejected the handshake (e.g., client disconnected). Clear
 			// runtime state including BC subscriptions to avoid a phantom.
 			connections.delete(conn.id);
-			dispatchChains.delete(conn.id);
+			releaseDispatch(conn.id);
 			conn._releaseSubscriptions();
 			return new Response("WebSocket upgrade failed", {status: 500});
 		}
@@ -378,10 +379,7 @@ export function createBunWebSocketServer(
 			} else {
 				// Uint8Array / Buffer — slice to preserve byteOffset/byteLength
 				const view = message as Uint8Array;
-				payload = view.buffer.slice(
-					view.byteOffset,
-					view.byteOffset + view.byteLength,
-				) as ArrayBuffer;
+				payload = toArrayBuffer(view);
 			}
 			enqueueDispatch(entry.conn.id, () =>
 				dispatchWebSocketMessage(registration, entry.conn, payload),
@@ -403,21 +401,11 @@ export function createBunWebSocketServer(
 					);
 				} finally {
 					connections.delete(entry.conn.id);
-					dispatchChains.delete(entry.conn.id);
+					releaseDispatch(entry.conn.id);
 				}
 			});
 		},
 	};
-
-	function enqueueDispatch(id: string, task: () => Promise<void>): void {
-		const prev = dispatchChains.get(id) ?? Promise.resolve();
-		const next = prev
-			.then(task)
-			.catch((err) =>
-				logger.error("WebSocket dispatch failed: {error}", {error: err}),
-			);
-		dispatchChains.set(id, next);
-	}
 
 	return {
 		fetch: handleFetch,
@@ -430,7 +418,9 @@ export function createBunWebSocketServer(
 					/* best-effort */
 				}
 			}
-			await Promise.allSettled([...dispatchChains.values()]);
+			// Wait for pending dispatch chains to drain — bun pool cleanup
+			// previously skipped this (node/bun drift).
+			await drainDispatch();
 		},
 	};
 }

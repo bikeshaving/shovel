@@ -107,6 +107,7 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 	 *   pubsub DO instead of fetch-based wake.
 	 */
 	constructor(ns: DurableObjectNamespace, subscriberId: string | null = null) {
+		this.#registrationOps = new Map();
 		this.#ns = ns;
 		this.#subscriberId = subscriberId;
 		this.#instanceId = crypto.randomUUID();
@@ -176,7 +177,7 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 	}
 
 	/** Per-channel registration chains: ops must apply in issue order. */
-	#registrationOps = new Map<string, Promise<void>>();
+	#registrationOps: Map<string, Promise<void>>;
 
 	#postRegistration(op: "subscribe" | "unsubscribe", channel: string): void {
 		const doId = this.#subscriberId;
@@ -403,9 +404,10 @@ export class ShovelPubSubDO extends DurableObject {
 					return;
 				}
 				try {
-					const res = await (
-						stub as unknown as WebSocketDORpc
-					)._shovelPublish(channel, data);
+					const res = await (stub as unknown as WebSocketDORpc)._shovelPublish(
+						channel,
+						data,
+					);
 					// stale = the subscriber DO woke, rehydrated, and found it has
 					// no live sockets at all — a stale entry left by a DO that was
 					// evicted/crashed without a clean unsubscribe. Reap it.

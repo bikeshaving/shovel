@@ -1468,10 +1468,11 @@ export class ShovelServiceWorkerRegistration
 	onupdatefound: ((ev: Event) => any) | null;
 
 	/** original listener -> wrapped listener, per event type (for removal). */
-	#wrappedListeners = new Map<string, WeakMap<object, EventListener>>();
+	#wrappedListeners: Map<string, WeakMap<object, EventListener>>;
 
 	constructor(scope: string = "/", scriptURL: string = "/") {
 		super();
+		this.#wrappedListeners = new Map();
 		this.scope = scope;
 		this.updateViaCache = "imports";
 		this.navigationPreload = new ShovelNavigationPreloadManager();
@@ -1839,6 +1840,54 @@ export async function dispatchRequest(
  * if the handler upgraded to WebSocket instead of responding). Platforms use
  * this when they need to inspect `event[kGetUpgradeResult]()` after dispatch.
  */
+/**
+ * Copy a Node Buffer / typed-array view into a standalone ArrayBuffer.
+ * Node's Buffer pooling shares one backing ArrayBuffer across many small
+ * buffers — handing `view.buffer` to user code would leak unrelated bytes
+ * and pin the pool slab. Every adapter converting inbound binary frames
+ * must use this (previously three hand-rolled copies).
+ */
+export function toArrayBuffer(view: Uint8Array): ArrayBuffer {
+	return view.buffer.slice(
+		view.byteOffset,
+		view.byteOffset + view.byteLength,
+	) as ArrayBuffer;
+}
+
+/**
+ * Per-connection ordered dispatch: frames and the final close for one
+ * connection run strictly in arrival order; separate connections proceed
+ * independently. Errors are logged and never break the chain. `release`
+ * drops the chain reference so long-lived pools don't retain settled
+ * promise chains.
+ */
+export function createOrderedDispatch(): {
+	enqueue(id: string, task: () => Promise<void>): void;
+	release(id: string): void;
+	drain(): Promise<void>;
+} {
+	const chains = new Map<string, Promise<void>>();
+	return {
+		enqueue(id, task) {
+			const prev = chains.get(id) ?? Promise.resolve();
+			const next = prev.then(task).catch((err) => {
+				getLogger(["shovel", "platform"]).error(
+					"WebSocket dispatch error: {error}",
+					{error: err},
+				);
+			});
+			chains.set(id, next);
+		},
+		release(id) {
+			chains.delete(id);
+		},
+		/** Settle every in-flight chain (shutdown/cleanup paths). */
+		async drain() {
+			await Promise.allSettled([...chains.values()]);
+		},
+	};
+}
+
 /**
  * Convert a thrown value from a fetch/upgrade handler into an HTTP response.
  *

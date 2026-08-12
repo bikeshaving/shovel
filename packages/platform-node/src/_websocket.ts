@@ -24,7 +24,6 @@
 import * as HTTP from "node:http";
 import type {Socket} from "node:net";
 import {getLogger} from "@logtape/logtape";
-import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
 	ShovelFetchEvent,
 	ShovelServiceWorkerRegistration,
@@ -36,10 +35,11 @@ import {
 	kGetUpgradeResult,
 	type WebSocketRelay,
 	errorToResponse,
+	toArrayBuffer,
+	createOrderedDispatch,
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform", "node", "websocket"]);
-
 
 /** Frames buffered between `upgradeWebSocket()` and the real socket coming up. */
 type PendingFrame =
@@ -72,7 +72,11 @@ export function attachNodeWebSocketHandler(
 	>();
 
 	// Per-connection dispatch queues so messages are delivered in order.
-	const dispatchChains = new Map<string, Promise<void>>();
+	const {
+		enqueue,
+		release: releaseDispatch,
+		drain: drainDispatch,
+	} = createOrderedDispatch();
 
 	const upgradeListener = async (
 		req: HTTP.IncomingMessage,
@@ -143,7 +147,7 @@ export function attachNodeWebSocketHandler(
 			// socket that will never exist.
 			if (upgradedConnectionId) {
 				connections.delete(upgradedConnectionId);
-				dispatchChains.delete(upgradedConnectionId);
+				releaseDispatch(upgradedConnectionId);
 				upgradedConn?._releaseSubscriptions();
 			}
 			// Preserve HTTPError statuses from auth/validation rejections —
@@ -176,7 +180,7 @@ export function attachNodeWebSocketHandler(
 			);
 			writeErrorAndDestroy(socket, 500, "WebSocket support unavailable");
 			connections.delete(conn.id);
-			dispatchChains.delete(conn.id);
+			releaseDispatch(conn.id);
 			conn._releaseSubscriptions();
 			return;
 		}
@@ -211,9 +215,7 @@ export function attachNodeWebSocketHandler(
 			// close frame triggers ws.close() which triggers "close" — we
 			// need the listener in place to see it.
 			ws.on("message", (data: Buffer, isBinary: boolean) => {
-				const payload = isBinary
-					? bufferToArrayBuffer(data)
-					: data.toString("utf8");
+				const payload = isBinary ? toArrayBuffer(data) : data.toString("utf8");
 				enqueue(conn.id, () =>
 					dispatchWebSocketMessage(registration, conn, payload),
 				);
@@ -235,7 +237,7 @@ export function attachNodeWebSocketHandler(
 						);
 					} finally {
 						connections.delete(conn.id);
-						dispatchChains.delete(conn.id);
+						releaseDispatch(conn.id);
 					}
 				});
 			});
@@ -255,15 +257,6 @@ export function attachNodeWebSocketHandler(
 	 * Chain a dispatch after the last one for this connection so handlers
 	 * observe messages (and the final close) in arrival order.
 	 */
-	function enqueue(id: string, task: () => Promise<void>): void {
-		const prev = dispatchChains.get(id) ?? Promise.resolve();
-		const next = prev
-			.then(task)
-			.catch((err) =>
-				logger.error("WebSocket dispatch failed: {error}", {error: err}),
-			);
-		dispatchChains.set(id, next);
-	}
 
 	return async () => {
 		httpServer.off("upgrade", upgradeListener);
@@ -276,7 +269,7 @@ export function attachNodeWebSocketHandler(
 			}
 		}
 		// Wait for pending dispatch chains to drain.
-		await Promise.allSettled([...dispatchChains.values()]);
+		await drainDispatch();
 	};
 }
 
@@ -396,7 +389,7 @@ export function attachNodePoolWebSocketHandler(
 					// Attach inbound listeners BEFORE flushing buffered frames.
 					ws.on("message", (data: Buffer, isBinary: boolean) => {
 						const payload = isBinary
-							? bufferToArrayBuffer(data)
+							? toArrayBuffer(data)
 							: data.toString("utf8");
 						pool.sendWebSocketMessage?.(connectionID, payload);
 					});
@@ -468,15 +461,6 @@ export function attachNodePoolWebSocketHandler(
 	};
 }
 
-function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
-	// Return a fresh ArrayBuffer view over the Buffer's bytes (Buffer shares
-	// memory with its underlying Uint8Array, which we must not leak).
-	return buf.buffer.slice(
-		buf.byteOffset,
-		buf.byteOffset + buf.byteLength,
-	) as ArrayBuffer;
-}
-
 function writeResponseAndDestroy(socket: Socket, response: Response): void {
 	// Cribbed from Node's internal HTTP response formatting. We can't use
 	// http.ServerResponse here because the socket is already hijacked for
@@ -492,6 +476,19 @@ function writeResponseAndDestroy(socket: Socket, response: Response): void {
 				"Connection: close",
 			];
 			response.headers.forEach((value, key) => {
+				// We computed our own framing from the decoded text() body: a
+				// proxied response's original content-length/encoding would
+				// conflict with it (two Content-Length headers, or an encoding
+				// header for a body that is no longer encoded).
+				const lower = key.toLowerCase();
+				if (
+					lower === "content-length" ||
+					lower === "content-encoding" ||
+					lower === "transfer-encoding" ||
+					lower === "connection"
+				) {
+					return;
+				}
 				headerLines.push(`${key}: ${value}`);
 			});
 			// Use `socket.end(...)` rather than write+destroy so the bytes
@@ -508,13 +505,14 @@ function writeErrorAndDestroy(
 	status: number,
 	message: string,
 ): void {
-	const statusText = httpStatusText(status);
-	const body = message;
-	// `socket.end(...)` flushes the kernel buffer before sending FIN;
-	// `socket.write(...)` followed by an immediate `destroy()` can race
-	// and surface as ECONNRESET on fast clients before they read the body.
-	socket.end(
-		`HTTP/1.1 ${status} ${statusText}\r\nContent-Length: ${Buffer.byteLength(body, "utf8")}\r\nConnection: close\r\n\r\n${body}`,
+	// One HTTP/1.1 formatter: delegate so the framing (and its
+	// flush-before-FIN behavior) has a single implementation.
+	writeResponseAndDestroy(
+		socket,
+		new Response(message, {
+			status,
+			statusText: httpStatusText(status),
+		}),
 	);
 }
 

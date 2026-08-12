@@ -179,12 +179,16 @@ export function createFetchHandler(
 		// A single shared DO (`idFromName("shovel-ws")`) is used so that all
 		// connections land in the same isolate — this lets subscribe()/BC
 		// fan-out work without cross-DO RPC on the hot path.
+		//
+		// TRADE-OFF: one DO means one isolate, one colo, one event loop for
+		// every WebSocket in the app — a hard throughput ceiling and global
+		// latency for far-away users. Fine for moderate scale; sharding by a
+		// stable key (room/path via idFromName) with cross-shard delivery
+		// through the pubsub DO is the growth path.
 		const upgradeHeader = request.headers.get("upgrade")?.toLowerCase() ?? "";
 		const isUpgradeRequest =
 			request.method === "GET" &&
-			upgradeHeader
-				.split(",")
-				.some((token) => token.trim() === "websocket");
+			upgradeHeader.split(",").some((token) => token.trim() === "websocket");
 		if (isUpgradeRequest) {
 			if (!envRecord.SHOVEL_WS) {
 				// Surface this misconfiguration directly rather than letting

@@ -30,7 +30,6 @@
  */
 
 import {DurableObject} from "cloudflare:workers";
-import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
 	ShovelServiceWorkerRegistration,
 	ShovelWebSocketConnection,
@@ -51,7 +50,6 @@ import {envStorage} from "./variables.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "platform", "cloudflare", "ws"]);
-
 
 export class ShovelWebSocketDO extends DurableObject {
 	#registration: ShovelServiceWorkerRegistration | null;

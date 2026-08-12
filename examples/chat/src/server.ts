@@ -13,6 +13,10 @@
  */
 
 const ROOM = "room:lobby";
+// One channel for the module's lifetime: BroadcastChannel instances register
+// in a process-global map until close(), so constructing one per event leaks
+// and makes every publish fan out to all prior instances.
+const roomChannel = new BroadcastChannel(ROOM);
 
 self.addEventListener("fetch", (event) => {
 	const url = new URL(event.request.url);
@@ -27,7 +31,7 @@ self.addEventListener("fetch", (event) => {
 				text: `Welcome — you are ${ws.id.slice(0, 8)}`,
 			}),
 		);
-		new BroadcastChannel(ROOM).postMessage(
+		roomChannel.postMessage(
 			JSON.stringify({
 				type: "system",
 				text: `${ws.id.slice(0, 8)} joined`,
@@ -60,7 +64,7 @@ self.addEventListener("websocketmessage", (event) => {
 	const text = String(payload.text ?? "").slice(0, 500);
 	if (!text) return;
 
-	new BroadcastChannel(ROOM).postMessage(
+	roomChannel.postMessage(
 		JSON.stringify({
 			type: "message",
 			from: event.source.id.slice(0, 8),
@@ -70,7 +74,7 @@ self.addEventListener("websocketmessage", (event) => {
 });
 
 self.addEventListener("websocketclose", (event) => {
-	new BroadcastChannel(ROOM).postMessage(
+	roomChannel.postMessage(
 		JSON.stringify({
 			type: "system",
 			text: `${event.id.slice(0, 8)} left`,
