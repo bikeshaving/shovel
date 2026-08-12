@@ -352,8 +352,7 @@ export class CloudflarePlatform {
 		const serverCode = `// Cloudflare Worker Entry
 import { config } from "shovel:config";
 import __shovelAssetsManifest from "shovel:assets";
-import { setAssetsManifest } from "@b9g/assets/manifest";
-import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
+import { initializeRuntime, createFetchHandler, setAssetsManifest } from "@b9g/platform-cloudflare/runtime";
 
 // Register the build's asset manifest so directory handles can enumerate
 // ASSETS without importing the virtual module from library code (which
