@@ -109,10 +109,24 @@ declare global {
 	 * different handler or context, publish on a channel the connection has
 	 * subscribed to.
 	 *
+	 * `upgradeWebSocket()` must be called synchronously during dispatch (like
+	 * `respondWith()`), and subscriptions should be registered synchronously
+	 * after it — on Cloudflare, hibernation state persists when dispatch
+	 * settles, so a subscribe() parked behind an un-tracked await can be lost.
+	 * Run async work (auth, loading state) BEFORE deciding to upgrade by
+	 * doing it in a respondWith-style wrapper that rejects the upgrade with a
+	 * Response, or after the upgrade via a `websocketmessage` handler.
+	 *
 	 * @example
-	 * self.addEventListener("fetch", async (event) => {
-	 *   if (event.request.headers.get("Upgrade") === "websocket") {
-	 *     const userId = await authenticate(event.request);
+	 * self.addEventListener("fetch", (event) => {
+	 *   if (event.request.headers.get("upgrade") === "websocket") {
+	 *     // Synchronous auth (cookie/token parse) — or reject with
+	 *     // event.respondWith(new Response("...", {status: 401})).
+	 *     const userId = parseSession(event.request);
+	 *     if (!userId) {
+	 *       event.respondWith(new Response("Unauthorized", {status: 401}));
+	 *       return;
+	 *     }
 	 *     const ws = event.upgradeWebSocket();
 	 *     ws.subscribe(`user:${userId}`);
 	 *     ws.send(JSON.stringify({type: "welcome", id: ws.id}));

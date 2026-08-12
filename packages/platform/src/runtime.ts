@@ -1718,7 +1718,9 @@ export class ShovelServiceWorkerRegistration
 	 *
 	 * @param event - The fetch event to handle (created by platform adapter)
 	 */
-	async [kHandleRequest](event: ShovelFetchEvent): Promise<Response> {
+	// Returns null when the handler upgraded the connection (no HTTP
+	// response exists); upgrade-aware callers check, dispatchRequest throws.
+	async [kHandleRequest](event: ShovelFetchEvent): Promise<Response | null> {
 		// Allow fetch during any lifecycle state after parsing (installing, installed,
 		// activating, activated). This enables fetch() during install/activate handlers
 		// for use cases like SSG cache warming. Fetch handlers are registered during
@@ -1750,7 +1752,7 @@ export class ShovelServiceWorkerRegistration
 			// platform adapter assembles the 101 itself and reads
 			// `event.cookieStore.getSetCookieHeaders()` directly to decorate
 			// the handshake.
-			const response = await event.getResponse()!;
+			const response = await event.getResponse();
 
 			// Note: waitUntil promises are already handled via platformWaitUntil hook
 			// in the event constructor, so no additional handling needed here.
@@ -1844,7 +1846,17 @@ export async function dispatchRequest(
 		requestOrEvent instanceof ShovelFetchEvent
 			? requestOrEvent
 			: new ShovelFetchEvent(requestOrEvent);
-	return registration[kHandleRequest](event);
+	const response = await registration[kHandleRequest](event);
+	if (response === null) {
+		// The handler upgraded the connection. Callers of dispatchRequest are
+		// plain HTTP paths with no socket to hand over — surfacing a typed
+		// error here beats every caller holding a silently-null "Response".
+		throw new Error(
+			"Request upgraded to a WebSocket through a non-upgrade path; " +
+				"use dispatchFetchEvent with a wsRelay for upgrade-capable paths",
+		);
+	}
+	return response;
 }
 
 /**
@@ -3310,6 +3322,14 @@ export function startWorkerMessageLoop(
 			messageLogger.debug(`[Worker-${workerId}] Received shutdown signal`);
 			(async () => {
 				try {
+					// Drain in-flight websocket dispatch chains FIRST: the
+					// supervisor's ws:close messages may only just have been
+					// enqueued, and a websocketclose handler writing to a
+					// database must complete before closeAll() pulls the
+					// connection out from under it.
+					if (wsDispatchChains.size > 0) {
+						await Promise.allSettled([...wsDispatchChains.values()]);
+					}
 					// Close all databases
 					if (databases) {
 						await databases.closeAll();

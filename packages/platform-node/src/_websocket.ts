@@ -211,7 +211,13 @@ export function attachNodeWebSocketHandler(
 		if (event!.cookieStore.hasChanges()) {
 			const setCookies = event!.cookieStore.getSetCookieHeaders();
 			wss.on("headers", (headers: string[]) => {
-				for (const sc of setCookies) headers.push(`Set-Cookie: ${sc}`);
+				for (const sc of setCookies) {
+					if (!isHeaderSafe(sc)) {
+						logger.warn("Dropping Set-Cookie with CR/LF on upgrade");
+						continue;
+					}
+					headers.push(`Set-Cookie: ${sc}`);
+				}
 			});
 		}
 		// handleUpgrade destroys the socket without invoking the callback when
@@ -320,6 +326,16 @@ export function attachNodeWebSocketHandler(
 			}
 		}
 		await Promise.allSettled(closePromises);
+		// Terminate anything still open: a client that never answers the
+		// close frame would otherwise hold its hijacked socket (and
+		// httpServer.close()) hostage for ws's internal 30s timeout.
+		for (const {ws} of connections.values()) {
+			try {
+				ws.terminate();
+			} catch (_err) {
+				/* best-effort */
+			}
+		}
 		// Now the close dispatches are enqueued; drain them.
 		await drainDispatch();
 	};
@@ -484,6 +500,10 @@ export function attachNodePoolWebSocketHandler(
 				if (setCookieHeaders?.length) {
 					wss.on("headers", (headers: string[]) => {
 						for (const sc of setCookieHeaders) {
+							if (!isHeaderSafe(sc)) {
+								logger.warn("Dropping Set-Cookie with CR/LF on upgrade");
+								continue;
+							}
 							headers.push(`Set-Cookie: ${sc}`);
 						}
 					});
@@ -578,14 +598,41 @@ export function attachNodePoolWebSocketHandler(
 
 	return async () => {
 		httpServer.off("upgrade", upgradeListener);
+		const closePromises: Promise<void>[] = [];
 		for (const ws of liveSockets.values()) {
 			try {
+				closePromises.push(
+					new Promise<void>((resolve) => {
+						ws.once("close", resolve);
+						setTimeout(resolve, 2000);
+					}),
+				);
 				ws.close(1001, "Server shutting down");
 			} catch (_err) {
 				/* best-effort */
 			}
 		}
+		// Bounded wait so sendWebSocketClose round-trips reach the workers,
+		// then terminate stragglers — a client that never answers the close
+		// frame would hold httpServer.close() hostage for ws's 30s timeout.
+		await Promise.allSettled(closePromises);
+		for (const ws of liveSockets.values()) {
+			try {
+				ws.terminate();
+			} catch (_err) {
+				/* best-effort */
+			}
+		}
 	};
+}
+
+/**
+ * Raw 101-handshake headers bypass Headers validation, so header values must
+ * be screened for CR/LF ourselves — an untrusted cookie path/domain reaching
+ * serializeCookie verbatim would otherwise inject arbitrary response headers.
+ */
+function isHeaderSafe(value: string): boolean {
+	return !/[\r\n]/.test(value);
 }
 
 function writeResponseAndDestroy(socket: Socket, response: Response): void {
@@ -622,6 +669,7 @@ function writeResponseAndDestroy(socket: Socket, response: Response): void {
 				headerLines.push(`${key}: ${value}`);
 			});
 			for (const sc of response.headers.getSetCookie()) {
+				if (!isHeaderSafe(sc)) continue;
 				headerLines.push(`Set-Cookie: ${sc}`);
 			}
 			// Use `socket.end(...)` rather than write+destroy so the bytes

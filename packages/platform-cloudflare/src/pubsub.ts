@@ -162,14 +162,18 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 		}
 		mine.add(callback);
 
-		if (isFirstForChannel) {
-			if (this.#subscriberId) {
-				// DO mode: register with pubsub DO so it can wake us via fetch.
-				this.#postRegistration("subscribe", channelName);
-			} else {
-				// Non-DO mode: open the held-open receive WebSocket on demand.
-				this.#ensureWS();
-			}
+		if (this.#subscriberId) {
+			// DO mode: register with the pubsub DO unconditionally — NOT gated
+			// on isFirstForChannel. localCallbacks is shared by every backend
+			// instance in the isolate, so a first-only gate means a second
+			// instance (or a re-install after a wrongful prune) never asserts
+			// its own registration and permanently misses cross-isolate
+			// publishes. Registration is chained per channel and idempotent
+			// server-side, so re-asserting is cheap and self-healing.
+			this.#postRegistration("subscribe", channelName);
+		} else if (isFirstForChannel) {
+			// Non-DO mode: open the held-open receive WebSocket on demand.
+			this.#ensureWS();
 		}
 
 		return () => {

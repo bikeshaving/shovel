@@ -123,7 +123,10 @@ export class ShovelWebSocketDO extends DurableObject {
 				"Shovel runtime not initialized — generated entry must call initializeRuntime()",
 			);
 		}
-		this.#registration = reg;
+		// NOTE: #registration is assigned at the END of this method — assigning
+		// before the awaits would defeat #ensureRuntime's rejection-clearing:
+		// a retry after a failed activate would short-circuit here with the
+		// backend and rehydration steps never run.
 
 		// Run install/activate once per DO isolate. The main worker isolate
 		// runs them in its own module instance; this isolate is separate, so
@@ -164,6 +167,7 @@ export class ShovelWebSocketDO extends DurableObject {
 			}
 		}
 
+		this.#registration = reg;
 		return reg;
 	}
 

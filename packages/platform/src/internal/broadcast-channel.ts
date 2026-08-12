@@ -57,17 +57,30 @@ export function deliverBroadcastMessage(
  */
 export function setBroadcastChannelBackend(b: BroadcastChannelBackend): void {
 	backend = b;
-	// Register channels created BEFORE the backend was installed (module-scope
-	// `new BroadcastChannel(...)` runs at module evaluation, ahead of runtime
-	// init). Without this they neither receive cross-isolate publishes nor
-	// count as local subscribers for the stale-prune signal.
+	// Re-register EVERY live channel on the new backend:
+	// - channels created before any backend existed (module-scope
+	//   `new BroadcastChannel(...)` runs at module evaluation) would otherwise
+	//   never receive cross-isolate publishes;
+	// - channels registered on a PREVIOUS backend (Cloudflare installs a
+	//   null-id backend on the first HTTP request, then the WS DO installs
+	//   one carrying its DO id) hold stale subscriptions whose registrations
+	//   never reached the new backend's registry.
 	for (const name of channels.keys()) {
-		if (!backendSubscriptions.has(name)) {
-			const unsub = b.subscribe(name, (data) => {
-				deliverBroadcastMessage(name, data);
-			});
-			backendSubscriptions.set(name, unsub);
+		const oldUnsub = backendSubscriptions.get(name);
+		if (oldUnsub) {
+			try {
+				oldUnsub();
+			} catch (_err) {
+				/* best-effort: the old backend may already be disposed */
+			}
+			backendSubscriptions.delete(name);
 		}
+		// Clearing the backend (tests, teardown) stops at unsubscription.
+		if (!b) continue;
+		const unsub = b.subscribe(name, (data) => {
+			deliverBroadcastMessage(name, data);
+		});
+		backendSubscriptions.set(name, unsub);
 	}
 }
 

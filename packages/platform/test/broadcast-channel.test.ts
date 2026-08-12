@@ -299,9 +299,11 @@ describe("BroadcastChannel backend", () => {
 		const ch1 = new ShovelBroadcastChannel("sub-test");
 		const ch2 = new ShovelBroadcastChannel("sub-test");
 
-		// Should only subscribe once per channel name
-		expect(subscriptions.length).toBe(1);
-		expect(subscriptions[0]).toBe("sub-test");
+		// Should only subscribe once per channel name. (Filtered: installing
+		// the backend also syncs channels other tests left open — intended
+		// behavior since module-scope channels must register on install.)
+		const subTest = subscriptions.filter((n) => n === "sub-test");
+		expect(subTest.length).toBe(1);
 
 		ch1.close();
 		ch2.close();
