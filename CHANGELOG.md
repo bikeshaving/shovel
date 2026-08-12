@@ -2,6 +2,16 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.23] - 2026-08-11
+
+### Bug Fixes
+
+- **ASSETS directory enumeration hardened** — `@b9g/platform-cloudflare/directories` no longer imports the `shovel:assets` virtual module from library code, which broke consumers bundling outside a shovel build ("Could not resolve shovel:assets" under plain wrangler/esbuild/Vite); the manifest is registered at worker startup via the new `@b9g/assets/manifest` registry. Enumeration is now indexed (no full-manifest rescan per call), malformed manifests degrade to `NotSupportedError` instead of crashing, file/directory name collisions resolve deterministically to the directory, and `getFileHandle` resolves through the manifest without a network probe — halving ASSETS subrequests for list-then-read walks. ([PR #109](https://github.com/bikeshaving/shovel/pull/109))
+
+### Dependencies
+
+- `@b9g/platform-cloudflare` 0.1.19, `@b9g/assets` 0.2.2
+
 ## [0.2.22] - 2026-08-11
 
 ### Features
