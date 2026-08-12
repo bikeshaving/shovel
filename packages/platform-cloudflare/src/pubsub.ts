@@ -286,6 +286,13 @@ export class ShovelPubSubDO extends DurableObject {
 	#subscribers: Map<string, Set<string>>;
 	/** Per-target promise chain so each subscriber sees publishes in order. */
 	#pendingByDoId: Map<string, Promise<unknown>>;
+	/**
+	 * (channel, doId) -> generation, bumped on every subscribe. A prune is
+	 * only honored if the entry's generation still matches the one captured
+	 * when the publish was issued — a re-subscribe that lands while a
+	 * stale-reporting publish is in flight must not be deleted by it.
+	 */
+	#generations: Map<string, number>;
 	/** Hydration state: ensure we read from storage before serving traffic. */
 	#hydrated: Promise<void> | null;
 
@@ -293,6 +300,7 @@ export class ShovelPubSubDO extends DurableObject {
 		super(ctx, env as any);
 		this.#subscribers = new Map();
 		this.#pendingByDoId = new Map();
+		this.#generations = new Map();
 		this.#hydrated = null;
 	}
 
@@ -336,6 +344,8 @@ export class ShovelPubSubDO extends DurableObject {
 
 	async subscribe(channel: string, doId: string): Promise<void> {
 		await this.#hydrate();
+		const key = subKey(channel, doId);
+		this.#generations.set(key, (this.#generations.get(key) ?? 0) + 1);
 		let set = this.#subscribers.get(channel);
 		if (!set) {
 			set = new Set();
@@ -343,7 +353,7 @@ export class ShovelPubSubDO extends DurableObject {
 		}
 		if (!set.has(doId)) {
 			set.add(doId);
-			await this.ctx.storage.put(subKey(channel, doId), 1);
+			await this.ctx.storage.put(key, 1);
 		}
 	}
 
@@ -397,6 +407,7 @@ export class ShovelPubSubDO extends DurableObject {
 		channel: string,
 		data: unknown,
 	): void {
+		const generation = this.#generations.get(subKey(channel, doId)) ?? 0;
 		const prev = this.#pendingByDoId.get(doId) ?? Promise.resolve();
 		const next = prev
 			.then(async () => {
@@ -409,7 +420,7 @@ export class ShovelPubSubDO extends DurableObject {
 						doId,
 						error: err,
 					});
-					await this.#pruneSubscriber(channel, doId);
+					await this.#pruneSubscriber(channel, doId, generation);
 					return;
 				}
 				try {
@@ -423,7 +434,7 @@ export class ShovelPubSubDO extends DurableObject {
 					// Transport errors (caught below) are left intact, since those
 					// are usually transient.
 					if (res.stale) {
-						await this.#pruneSubscriber(channel, doId);
+						await this.#pruneSubscriber(channel, doId, generation);
 					}
 				} catch (err) {
 					logger.error("PubSub downstream fetch to {doId} failed: {error}", {
@@ -449,7 +460,18 @@ export class ShovelPubSubDO extends DurableObject {
 	 * a subscriber for the channel (or its id is unaddressable), so future
 	 * publishes stop waking a dead DO.
 	 */
-	async #pruneSubscriber(channel: string, doId: string): Promise<void> {
+	async #pruneSubscriber(
+		channel: string,
+		doId: string,
+		generation: number,
+	): Promise<void> {
+		// A re-subscribe that landed after this publish was issued bumped the
+		// generation — the stale report describes a state that no longer
+		// exists, and honoring it would deregister a live subscriber that
+		// never re-asserts (isFirstForChannel gates re-registration).
+		if ((this.#generations.get(subKey(channel, doId)) ?? 0) !== generation) {
+			return;
+		}
 		const set = this.#subscribers.get(channel);
 		if (set?.delete(doId)) {
 			if (set.size === 0) this.#subscribers.delete(channel);

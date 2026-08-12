@@ -85,6 +85,11 @@ export function createBunPoolWebSocketAdapter(pool: {
 } {
 	const liveSockets = new Map<string, any>();
 	const pendingFrames = new Map<string, PendingFrame[]>();
+	// Frames are buffered ONLY for connections whose upgrade is in flight
+	// (worker accepted, socket not yet live). Frames for any other unknown id
+	// (already-closed sockets included) are dropped — buffering them leaked
+	// one array per closed connection forever.
+	const pendingUpgradeIds = new Set<string>();
 
 	pool.setWebSocketHandlers({
 		sendFrame(connectionID, data) {
@@ -92,6 +97,7 @@ export function createBunPoolWebSocketAdapter(pool: {
 			if (ws) {
 				ws.send(data);
 			} else {
+				if (!pendingUpgradeIds.has(connectionID)) return;
 				let q = pendingFrames.get(connectionID);
 				if (!q) {
 					q = [];
@@ -105,6 +111,7 @@ export function createBunPoolWebSocketAdapter(pool: {
 			if (ws) {
 				ws.close(code ?? 1000, reason ?? "");
 			} else {
+				if (!pendingUpgradeIds.has(connectionID)) return;
 				let q = pendingFrames.get(connectionID);
 				if (!q) {
 					q = [];
@@ -142,6 +149,9 @@ export function createBunPoolWebSocketAdapter(pool: {
 			return result;
 		}
 
+		// Buffering window opens: the worker holds a live connection, the
+		// physical socket doesn't exist yet.
+		pendingUpgradeIds.add(result.connectionID);
 		const upgradeHeaders = new Headers();
 		if (result.setCookieHeaders?.length) {
 			for (const sc of result.setCookieHeaders) {
@@ -161,6 +171,7 @@ export function createBunPoolWebSocketAdapter(pool: {
 			);
 			// The `open` callback that normally flushes+clears these never fires
 			// on a failed upgrade, so drop any frames the handler buffered.
+			pendingUpgradeIds.delete(result.connectionID);
 			pendingFrames.delete(result.connectionID);
 			return new Response("WebSocket upgrade failed", {status: 500});
 		}
@@ -170,6 +181,7 @@ export function createBunPoolWebSocketAdapter(pool: {
 	const websocket = {
 		open(ws: any) {
 			const data = ws.data as BunWebSocketData;
+			pendingUpgradeIds.delete(data.connectionId);
 			liveSockets.set(data.connectionId, ws);
 			// Flush frames queued before the socket became live.
 			const queued = pendingFrames.get(data.connectionId);
@@ -197,6 +209,8 @@ export function createBunPoolWebSocketAdapter(pool: {
 		close(ws: any, code: number, reason: string) {
 			const data = ws.data as BunWebSocketData;
 			liveSockets.delete(data.connectionId);
+			pendingUpgradeIds.delete(data.connectionId);
+			pendingFrames.delete(data.connectionId);
 			pool.sendWebSocketClose(data.connectionId, code, reason, code !== 1006);
 		},
 	};
@@ -418,8 +432,14 @@ export function createBunWebSocketServer(
 					/* best-effort */
 				}
 			}
-			// Wait for pending dispatch chains to drain — bun pool cleanup
-			// previously skipped this (node/bun drift).
+			// websocketclose dispatches are enqueued from Bun's close callback,
+			// which fires after the closing handshake — wait (bounded) for the
+			// connections to unregister before draining, or user close handlers
+			// race server/database shutdown (same fix as the Node adapter).
+			const deadline = Date.now() + 2000;
+			while (connections.size > 0 && Date.now() < deadline) {
+				await new Promise((r) => setTimeout(r, 20));
+			}
 			await drainDispatch();
 		},
 	};

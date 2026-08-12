@@ -57,6 +57,18 @@ export function deliverBroadcastMessage(
  */
 export function setBroadcastChannelBackend(b: BroadcastChannelBackend): void {
 	backend = b;
+	// Register channels created BEFORE the backend was installed (module-scope
+	// `new BroadcastChannel(...)` runs at module evaluation, ahead of runtime
+	// init). Without this they neither receive cross-isolate publishes nor
+	// count as local subscribers for the stale-prune signal.
+	for (const name of channels.keys()) {
+		if (!backendSubscriptions.has(name)) {
+			const unsub = b.subscribe(name, (data) => {
+				deliverBroadcastMessage(name, data);
+			});
+			backendSubscriptions.set(name, unsub);
+		}
+	}
 }
 
 export class ShovelBroadcastChannel extends EventTarget {

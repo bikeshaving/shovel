@@ -1867,9 +1867,10 @@ export function toArrayBuffer(view: Uint8Array): ArrayBuffer {
 }
 
 /**
- * Per-connection ordered dispatch: frames and the final close for one
- * connection run strictly in arrival order; separate connections proceed
- * independently. Errors are logged and never break the chain. `release`
+ * Per-connection ordered dispatch: the SYNCHRONOUS portion of handlers for
+ * frames and the final close runs strictly in arrival order; work a handler
+ * continues after an await (or via waitUntil) may interleave across frames
+ * by design. Separate connections proceed independently. Errors are logged and never break the chain. `release`
  * drops the chain reference so long-lived pools don't retain settled
  * promise chains.
  */

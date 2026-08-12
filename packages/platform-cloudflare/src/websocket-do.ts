@@ -379,20 +379,13 @@ export class ShovelWebSocketDO extends DurableObject {
 		const registration = await this.#ensureRuntime();
 		const env = (this.env ?? {}) as Record<string, unknown>;
 
-		// Identify the connection from the attachment (source of truth after
-		// hibernation). The rehydrated #connections map was populated in
-		// #ensureRuntime() when we woke up.
-		let id: string | null = null;
-		try {
-			const state = (
-				ws as any
-			).deserializeAttachment() as WebSocketConnectionState;
-			id = state?.id ?? null;
-		} catch (_err) {
-			/* fall through */
-		}
+		// Resolve the connection id through the WeakMap-first helper (the
+		// attachment is the fallback): an unreadable/cleared attachment must
+		// not silently drop inbound frames while close still resolves, and
+		// the cache avoids a structured-clone deserialization per frame.
+		const id = this.#connectionId(ws);
 		if (!id) {
-			logger.warn("webSocketMessage without attachment — ignoring");
+			logger.warn("webSocketMessage without connection id — ignoring");
 			return;
 		}
 		let conn = this.#connections.get(id);

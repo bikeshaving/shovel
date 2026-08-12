@@ -323,12 +323,17 @@ export function attachNodePoolWebSocketHandler(
 	},
 ): () => Promise<void> {
 	if (typeof pool.handleUpgradeRequest !== "function") {
-		// Pool without upgrade support — install a no-op so we don't cause
-		// uncaught errors on spurious upgrade requests.
-		const noop = () => {};
-		httpServer.on("upgrade", noop);
+		// Pool without upgrade support: refuse the upgrade and destroy the
+		// socket. (Node with NO upgrade listener destroys hijacked sockets
+		// itself; a listener that does nothing would hold every spurious
+		// Upgrade request open forever — an unauthenticated FD-exhaustion
+		// vector.)
+		const refuse = (_req: HTTP.IncomingMessage, socket: Socket) => {
+			writeErrorAndDestroy(socket, 426, "WebSocket upgrades not supported");
+		};
+		httpServer.on("upgrade", refuse);
 		return async () => {
-			httpServer.off("upgrade", noop);
+			httpServer.off("upgrade", refuse);
 		};
 	}
 	let wsServerPromise: Promise<{WebSocketServer: any}> | null = null;
@@ -341,6 +346,9 @@ export function attachNodePoolWebSocketHandler(
 	const liveSockets = new Map<string, any>();
 	// connectionID → frames queued before the physical socket is live
 	const pendingFrames = new Map<string, PendingFrame[]>();
+	// Buffer only while an upgrade is in flight; frames for unknown ids
+	// (already-closed sockets) are dropped, not accumulated forever.
+	const pendingUpgradeIds = new Set<string>();
 
 	pool.setWebSocketHandlers?.({
 		sendFrame(connectionID, data) {
@@ -351,6 +359,7 @@ export function attachNodePoolWebSocketHandler(
 				// Frames generated during the worker's fetch handler can arrive
 				// before the supervisor completes the physical handshake —
 				// buffer them until the socket is live.
+				if (!pendingUpgradeIds.has(connectionID)) return;
 				let q = pendingFrames.get(connectionID);
 				if (!q) {
 					q = [];
@@ -364,6 +373,7 @@ export function attachNodePoolWebSocketHandler(
 			if (ws) {
 				ws.close(code ?? 1000, reason ?? "");
 			} else {
+				if (!pendingUpgradeIds.has(connectionID)) return;
 				let q = pendingFrames.get(connectionID);
 				if (!q) {
 					q = [];
@@ -399,6 +409,9 @@ export function attachNodePoolWebSocketHandler(
 		if (result && typeof result === "object" && result.upgrade === true) {
 			const connectionID = result.connectionID as string;
 			const setCookieHeaders = result.setCookieHeaders as string[] | undefined;
+			// Buffering window opens: worker holds the connection, socket not
+			// yet live.
+			pendingUpgradeIds.add(connectionID);
 			try {
 				const wsModule = await loadWs();
 				const wss = new wsModule.WebSocketServer({noServer: true});
@@ -417,6 +430,7 @@ export function attachNodePoolWebSocketHandler(
 				let upgraded = false;
 				socket.once("close", () => {
 					if (!upgraded) {
+						pendingUpgradeIds.delete(connectionID);
 						pendingFrames.delete(connectionID);
 						pool.sendWebSocketClose?.(
 							connectionID,
@@ -428,6 +442,7 @@ export function attachNodePoolWebSocketHandler(
 				});
 				wss.handleUpgrade(req, socket, head, (ws: any) => {
 					upgraded = true;
+					pendingUpgradeIds.delete(connectionID);
 					liveSockets.set(connectionID, ws);
 					// Attach inbound listeners BEFORE flushing buffered frames.
 					ws.on("message", (data: Buffer, isBinary: boolean) => {
@@ -438,6 +453,8 @@ export function attachNodePoolWebSocketHandler(
 					});
 					ws.on("close", (code: number, reason: Buffer) => {
 						liveSockets.delete(connectionID);
+						pendingUpgradeIds.delete(connectionID);
+						pendingFrames.delete(connectionID);
 						pool.sendWebSocketClose?.(
 							connectionID,
 							code,
