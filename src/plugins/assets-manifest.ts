@@ -159,10 +159,14 @@ export function createAssetsManifestPlugin(
 									});
 								}
 							} catch (err) {
-								logger.warn("Failed to update {file} with manifest: {error}", {
+								// Fail closed: an unreplaced placeholder is a ReferenceError
+								// at module evaluation for the whole worker, not a degraded
+								// feature. Surface it as a build failure.
+								logger.error("Failed to update {file} with manifest: {error}", {
 									file: jsFile,
 									error: err,
 								});
+								throw err;
 							}
 						}
 					}
