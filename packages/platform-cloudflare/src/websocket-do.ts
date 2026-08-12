@@ -34,22 +34,40 @@ import {
 	ShovelServiceWorkerRegistration,
 	ShovelWebSocketConnection,
 	WebSocketConnectionState,
-	dispatchFetchEvent,
 	dispatchWebSocketMessage,
 	dispatchWebSocketClose,
-	kBindRelay,
 	kGetConnectionState,
-	kGetUpgradeResult,
 	runLifecycle,
 	setBroadcastChannelBackend,
 	type WebSocketRelay,
-	errorToResponse,
 } from "@b9g/platform/runtime";
-import {CloudflareFetchEvent} from "./runtime.js";
 import {envStorage} from "./variables.js";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "platform", "cloudflare", "ws"]);
+
+/** Decode a base64 frame payload (binary sends buffered before the socket). */
+function base64ToBytes(b64: string): Uint8Array {
+	const bin = atob(b64);
+	const out = new Uint8Array(bin.length);
+	for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+	return out;
+}
+
+/** Connection state the worker captures on upgradeWebSocket() and hands off. */
+interface EstablishState {
+	id: string;
+	url: string;
+	subscribedChannels?: string[];
+	frames?: Array<{
+		k: string;
+		s?: string;
+		b?: string;
+		code?: number;
+		reason?: string;
+	}>;
+	setCookies?: string[];
+}
 
 export class ShovelWebSocketDO extends DurableObject {
 	#registration: ShovelServiceWorkerRegistration | null;
@@ -77,6 +95,8 @@ export class ShovelWebSocketDO extends DurableObject {
 	/** ws -> connection id; survives attachment read failures and avoids
 	 * a structured-clone deserialization per inbound frame. */
 	#socketIds: WeakMap<WebSocket, string>;
+	/** Upgrade state staged by prepareUpgrade(), consumed by the next fetch. */
+	#pendingEstablish: Map<string, EstablishState>;
 
 	constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
 		super(ctx, env as any);
@@ -89,6 +109,7 @@ export class ShovelWebSocketDO extends DurableObject {
 		this.#dispatchPubSub = null;
 		this.#pendingUpgrades = 0;
 		this.#socketIds = new WeakMap();
+		this.#pendingEstablish = new Map();
 	}
 
 	async #ensureRuntime(): Promise<ShovelServiceWorkerRegistration> {
@@ -279,103 +300,84 @@ export class ShovelWebSocketDO extends DurableObject {
 		};
 	}
 
+	/**
+	 * Stage the connection state the WORKER captured when the fetch handler
+	 * called upgradeWebSocket(). An RPC method (binding-only, not externally
+	 * reachable), so an attacker can't inject an establish. The worker then
+	 * forwards the real upgrade request (see fetch) which materializes the
+	 * socket and consumes this entry, matched by connection id.
+	 */
+	async prepareUpgrade(state: EstablishState): Promise<void> {
+		this.#pendingEstablish.set(state.id, state);
+	}
+
+	/**
+	 * Materialize a WebSocket from state staged by prepareUpgrade(). This DO
+	 * never runs the fetch handler — the worker does, in the stateless isolate
+	 * — so the DO is only ever reached after a real upgradeWebSocket() call.
+	 * The forwarded request is the client's original upgrade GET, so workerd
+	 * threads the actual socket; the connection id header ties it to the
+	 * staged state.
+	 */
 	async fetch(request: Request): Promise<Response> {
+		const id = request.headers.get("x-shovel-conn-id");
+		const staged = id ? this.#pendingEstablish.get(id) : undefined;
+		if (!id || !staged) {
+			// No matching staged upgrade — nothing else legitimately reaches
+			// the DO's fetch (the handler runs in the worker now).
+			return new Response("Not Found", {status: 404});
+		}
+		this.#pendingEstablish.delete(id);
+
 		// Count the upgrade BEFORE the first await: a cold wake's runtime init
 		// spans many event-loop turns, and a publish landing in that window
 		// must not see pendingUpgrades === 0 and prune us.
 		this.#pendingUpgrades++;
 		try {
-			const registration = await this.#ensureRuntime();
+			const payload = staged;
+			await this.#ensureRuntime();
 			const env = (this.env ?? {}) as Record<string, unknown>;
-			return await envStorage.run(env, async () => {
-				// Buffer frames the handler produces BEFORE the real socket exists.
-				const pending: Array<
-					| {type: "send"; data: string | ArrayBuffer}
-					| {type: "close"; code?: number; reason?: string}
-				> = [];
-
-				let upgradedId: string | null = null;
-				let upgradedConn: ShovelWebSocketConnection | null = null;
-				const event = new CloudflareFetchEvent(request, {
-					env,
-					platformWaitUntil: (p) => this.ctx.waitUntil(p),
-					wsRelay: {
-						send(_id, data) {
-							pending.push({type: "send", data});
-						},
-						close(_id, code, reason) {
-							pending.push({type: "close", code, reason});
-						},
-					},
-					onUpgrade: (conn) => {
-						upgradedId = conn.id;
-						upgradedConn = conn;
-						this.#connections.set(conn.id, conn);
-					},
-				});
-
-				let response: Response | null | undefined;
-				try {
-					const result = await dispatchFetchEvent(registration, event);
-					response = result.response;
-				} catch (err) {
-					if (upgradedId) {
-						this.#connections.delete(upgradedId);
-						this.#dispatchQueues.delete(upgradedId);
-						// Drop any BC subscriptions the handler attached before
-						// throwing — without this, BroadcastChannel fan-out keeps
-						// targeting a connection whose handshake never completed.
-						(
-							upgradedConn as ShovelWebSocketConnection | null
-						)?._releaseSubscriptions();
-					}
-					// Preserve HTTPError statuses (auth/validation rejections) the
-					// way ordinary HTTP traffic does — a bare 500 here would mask
-					// the 401/403/etc that the user code intentionally threw.
-					return errorToResponse(err);
-				}
-
-				const conn = event[kGetUpgradeResult]();
-				if (!conn) {
-					return response ?? new Response("Upgrade Required", {status: 426});
-				}
-
-				// Complete the physical WebSocket handshake.
+			return envStorage.run(env, () => {
 				const pair = new WebSocketPair();
 				const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
 
 				// Accept BEFORE persisting: workerd's documented order is
 				// accept-then-serializeAttachment, and serializeAttachment on a
-				// not-yet-accepted socket can throw (which #persistAttachment
-				// would swallow, silently leaving the connection with no
-				// attachment and unrecoverable after eviction).
+				// not-yet-accepted socket can throw.
 				this.ctx.acceptWebSocket(server);
-				if (upgradedId) this.#socketIds.set(server, upgradedId);
+				this.#socketIds.set(server, payload.id);
+
+				// Build the connection from the worker's captured state, bound
+				// to the real socket. The constructor re-opens the handler's
+				// subscriptions in THIS isolate (registering with the pubsub DO).
+				const conn = new ShovelWebSocketConnection({
+					id: payload.id,
+					url: payload.url,
+					relay: this.#relayFor(server),
+					subscribedChannels: payload.subscribedChannels ?? [],
+				});
+				this.#connections.set(conn.id, conn);
 				this.#persistAttachment(server, conn);
 
-				// Rebind the runtime relay directly to the live server socket.
-				conn[kBindRelay](this.#relayFor(server));
-
-				// Flush any frames the handler produced during fetch dispatch.
-				for (const frame of pending) {
-					if (frame.type === "send") server.send(frame.data);
-					else server.close(frame.code ?? 1000, frame.reason ?? "");
+				// Replay frames the handler produced before the socket existed.
+				for (const frame of payload.frames ?? []) {
+					if (frame.k === "c") {
+						server.close(frame.code ?? 1000, frame.reason ?? "");
+					} else if (frame.k === "s" && typeof frame.s === "string") {
+						server.send(frame.s);
+					} else if (frame.k === "b" && typeof frame.b === "string") {
+						server.send(base64ToBytes(frame.b).buffer);
+					}
 				}
 
-				// Carry any Set-Cookie values the handler added via cookieStore
-				// onto the 101 handshake (auth/login flows that mutate cookies
-				// during a WS upgrade rely on this — they otherwise vanish since
-				// the upgrade has no Response object to decorate).
+				// Carry Set-Cookie values the handler set during the upgrade
+				// onto the 101 handshake (auth/login flows rely on this).
 				const handshakeHeaders = new Headers();
-				if (event.cookieStore.hasChanges()) {
-					for (const sc of event.cookieStore.getSetCookieHeaders()) {
-						try {
-							handshakeHeaders.append("Set-Cookie", sc);
-						} catch (_err) {
-							// Invalid (CR/LF) values: drop the cookie rather than
-							// throwing after acceptWebSocket has already run.
-							logger.warn("Dropping invalid Set-Cookie on upgrade");
-						}
+				for (const sc of payload.setCookies ?? []) {
+					try {
+						handshakeHeaders.append("Set-Cookie", sc);
+					} catch (_err) {
+						logger.warn("Dropping invalid Set-Cookie on upgrade");
 					}
 				}
 				return new Response(null, {

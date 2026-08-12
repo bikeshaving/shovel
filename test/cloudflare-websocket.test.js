@@ -89,6 +89,31 @@ test("cloudflare websocket - upgrade, subscribe, echo, and close", async () => {
 		});
 		ws.close(1000, "test done");
 		expect(await closed).toBe(1000);
+
+		// INVARIANT: an Upgrade request to a route whose handler does NOT call
+		// upgradeWebSocket() must not upgrade — the header alone cannot engage
+		// the Durable Object (the DoS fix). A WebSocket client aimed at
+		// /no-upgrade must fail (non-101), and the handler's normal HTTP
+		// response is served instead.
+		const noUpgradeURL = new URL("/no-upgrade", baseURL);
+		noUpgradeURL.protocol = noUpgradeURL.protocol.replace("http", "ws");
+		const rejected = new WebSocket(noUpgradeURL.href);
+		const outcome = await new Promise((resolve) => {
+			rejected.addEventListener("open", () => resolve("open"), {once: true});
+			rejected.addEventListener("error", () => resolve("error"), {once: true});
+			setTimeout(() => resolve("timeout"), 5000);
+		});
+		expect(outcome).toBe("error");
+		try {
+			rejected.close();
+		} catch (_err) {
+			/* already failed — nothing to close */
+		}
+
+		// And the same path over plain HTTP returns the handler's response.
+		const fallback = await fetch(new URL("/no-upgrade", baseURL));
+		expect(fallback.status).toBe(200);
+		expect(await fallback.text()).toBe("HTTP fallback");
 	} finally {
 		if (mf) await mf.dispose();
 		await fixture.cleanup();
