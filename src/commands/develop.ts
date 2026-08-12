@@ -187,13 +187,8 @@ export async function developCommand(
 				switch (key) {
 					case "\x12": // Ctrl+R
 						logger.info("Manual reload...");
-						try {
-							await bundler.rebuild();
-						} catch (err) {
-							// Mirror the watch path: a failed rebuild logs and keeps the
-							// dev server alive instead of dying on an unhandled rejection.
-							logger.error("Manual reload failed: {error}", {error: err});
-						}
+						// Bundler.rebuild() owns log-and-survive for failed rebuilds.
+						await bundler.rebuild();
 						break;
 					case "\x0C": // Ctrl+L
 						// eslint-disable-next-line no-console

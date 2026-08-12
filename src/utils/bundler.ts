@@ -225,7 +225,14 @@ export class ServerBundler {
 			throw new Error("Cannot rebuild: bundler is not in watch mode");
 		}
 
-		await this.#ctx.rebuild();
+		// Log-and-survive is this method's contract: every caller (watch
+		// debounce, Ctrl+R) wants the dev server to outlive a failed rebuild,
+		// so the catch lives here instead of at each call site.
+		try {
+			await this.#ctx.rebuild();
+		} catch (err) {
+			logger.error("Rebuild failed: {error}", {error: err});
+		}
 	}
 
 	/**
