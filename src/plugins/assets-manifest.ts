@@ -19,7 +19,13 @@
  */
 
 import * as ESBuild from "esbuild";
-import {existsSync, readFileSync, writeFileSync} from "node:fs";
+import {
+	existsSync,
+	readFileSync,
+	writeFileSync,
+	readdirSync,
+	renameSync,
+} from "node:fs";
 import {join, isAbsolute} from "node:path";
 import {getLogger} from "@logtape/logtape";
 
@@ -139,36 +145,73 @@ export function createAssetsManifestPlugin(
 					}
 				} else {
 					// When write: true, we need to read/modify/write the files
-					// This is the production build case
+					// This is the production build case. The scan is directory-driven
+					// (not a hardcoded name list) so any emitted server bundle —
+					// worker.js, index.js, supervisor.js, future names — is covered.
 					const serverDir = join(absoluteOutDir, "server");
-					const jsFiles = ["worker.js", "index.js"];
+					const errors: ESBuild.PartialMessage[] = [];
+
+					let jsFiles: string[] = [];
+					try {
+						jsFiles = readdirSync(serverDir).filter((f) => f.endsWith(".js"));
+					} catch (err) {
+						return {
+							errors: [
+								{
+									text: `assets manifest: cannot read ${serverDir}`,
+									detail: err,
+								},
+							],
+						};
+					}
 
 					for (const jsFile of jsFiles) {
 						const filePath = join(serverDir, jsFile);
-						if (existsSync(filePath)) {
-							try {
-								const content = readFileSync(filePath, "utf8");
-								if (content.includes(MANIFEST_PLACEHOLDER)) {
-									const newContent = content.replace(
-										MANIFEST_PLACEHOLDER,
-										() => manifestContent,
-									);
-									writeFileSync(filePath, newContent, "utf8");
-									logger.debug("Updated {file} with asset manifest", {
-										file: jsFile,
-									});
-								}
-							} catch (err) {
-								// Fail closed: an unreplaced placeholder is a ReferenceError
-								// at module evaluation for the whole worker, not a degraded
-								// feature. Surface it as a build failure.
-								logger.error("Failed to update {file} with manifest: {error}", {
+						try {
+							const content = readFileSync(filePath, "utf8");
+							if (content.includes(MANIFEST_PLACEHOLDER)) {
+								const newContent = content.replace(
+									MANIFEST_PLACEHOLDER,
+									() => manifestContent,
+								);
+								// Write-then-rename so a failed write can't leave a
+								// truncated, deployable-looking bundle behind.
+								const tmpPath = filePath + ".tmp";
+								writeFileSync(tmpPath, newContent, "utf8");
+								renameSync(tmpPath, filePath);
+								logger.debug("Updated {file} with asset manifest", {
 									file: jsFile,
-									error: err,
 								});
-								throw err;
 							}
+						} catch (err) {
+							errors.push({
+								text: `Failed to update ${jsFile} with asset manifest`,
+								detail: err,
+							});
 						}
+					}
+
+					// Post-condition, fail closed: an unreplaced placeholder is a
+					// ReferenceError at module evaluation for the whole worker, not
+					// a degraded feature. No emitted bundle may still contain it.
+					for (const jsFile of jsFiles) {
+						try {
+							const content = readFileSync(join(serverDir, jsFile), "utf8");
+							if (content.includes(MANIFEST_PLACEHOLDER)) {
+								errors.push({
+									text:
+										`${jsFile} still contains the asset manifest ` +
+										`placeholder after replacement`,
+								});
+							}
+						} catch (err) {
+							// Read failure here was already reported by the loop above.
+							logger.debug("post-condition re-read failed", {err});
+						}
+					}
+
+					if (errors.length > 0) {
+						return {errors};
 					}
 				}
 			});

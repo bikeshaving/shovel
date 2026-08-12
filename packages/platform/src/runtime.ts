@@ -12,6 +12,10 @@
 
 import {AsyncContext} from "@b9g/async-context";
 import {getLogger, getConsoleSink} from "@logtape/logtape";
+// Re-exported for generated worker entries: a bare "@logtape/logtape" import
+// in generated code resolves from the user's project root, where it is only
+// a transitive dependency (fails under pnpm-isolated/Yarn-PnP layouts).
+export {getLogger} from "@logtape/logtape";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {CustomCacheStorage, Cache} from "@b9g/cache";
 import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";

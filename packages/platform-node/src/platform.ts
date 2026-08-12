@@ -83,8 +83,7 @@ if (config.lifecycle) {
 	// - Multi-worker: uses message loop (supervisor owns the HTTP server)
 	const prodWorkerCode = `// Node.js Production Worker
 import {parentPort} from "node:worker_threads";
-import {getLogger} from "@logtape/logtape";
-import {configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest} from "@b9g/platform/runtime";
+import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest} from "@b9g/platform/runtime";
 import NodePlatform from "@b9g/platform-node";
 import {config} from "shovel:config";
 
@@ -139,10 +138,8 @@ if (config.lifecycle) {
 
 	// Production: supervisor + worker
 	const supervisorCode = `// Node.js Production Supervisor
-import {Worker} from "@b9g/node-webworker";
-import {getLogger} from "@logtape/logtape";
-import {configureLogging} from "@b9g/platform/runtime";
-import NodePlatform from "@b9g/platform-node";
+import {getLogger, configureLogging} from "@b9g/platform/runtime";
+import NodePlatform, {NodeWebWorker as Worker} from "@b9g/platform-node";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
