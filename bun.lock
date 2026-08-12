@@ -116,7 +116,7 @@
     },
     "packages/assets": {
       "name": "@b9g/assets",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
         "mime": "^4.0.4",
       },
@@ -245,11 +245,12 @@
     },
     "packages/platform": {
       "name": "@b9g/platform",
-      "version": "0.1.19",
+      "version": "0.1.20",
       "dependencies": {
         "@b9g/async-context": "workspace:*",
         "@b9g/cache": "workspace:*",
         "@b9g/filesystem": "workspace:*",
+        "@b9g/http-errors": "workspace:*",
         "@logtape/logtape": "^2.0.0",
       },
       "devDependencies": {
@@ -267,7 +268,7 @@
     },
     "packages/platform-bun": {
       "name": "@b9g/platform-bun",
-      "version": "0.1.17",
+      "version": "0.1.18",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/cache": "workspace:*",
@@ -281,7 +282,7 @@
     },
     "packages/platform-cloudflare": {
       "name": "@b9g/platform-cloudflare",
-      "version": "0.1.17",
+      "version": "0.1.19",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/async-context": "workspace:*",
@@ -299,7 +300,7 @@
     },
     "packages/platform-node": {
       "name": "@b9g/platform-node",
-      "version": "0.1.17",
+      "version": "0.1.18",
       "dependencies": {
         "@b9g/cache": "workspace:*",
         "@b9g/http-errors": "workspace:*",

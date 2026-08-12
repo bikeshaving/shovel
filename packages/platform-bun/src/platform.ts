@@ -72,7 +72,7 @@ startWorkerMessageLoop({registration, databases});
 
 	// Worker code for production (with message handling for supervisor communication)
 	const prodWorkerCode = `// Bun Production Worker
-import {getLogger, configureLogging, initWorkerRuntime, runLifecycle} from "@b9g/platform/runtime";
+import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
 import {createBunWebSocketServer} from "@b9g/platform-bun";
 import {config} from "shovel:config";
 
@@ -89,9 +89,16 @@ self.onmessage = async (event) => {
 	if (event.data.type === "shutdown") {
 		logger.info("Worker shutting down");
 		if (wsCleanup) await wsCleanup();
-		if (server) server.stop(true);
+		if (server) {
+			// Drain in-flight requests; force-abort only if draining stalls.
+			const force = setTimeout(() => server.stop(true), 4000);
+			await server.stop();
+			clearTimeout(force);
+		}
 		if (databases) await databases.closeAll();
 		postMessage({type: "shutdown-complete"});
+	} else if (event.data.type === "broadcast:deliver") {
+		deliverBroadcastMessage(event.data.channel, event.data.data);
 	}
 };
 
@@ -99,6 +106,13 @@ self.onmessage = async (event) => {
 const result = await initWorkerRuntime({config, usePostMessage: false});
 const registration = result.registration;
 databases = result.databases;
+
+// Cross-worker BroadcastChannel: outbound via supervisor relay, inbound via
+// the broadcast:deliver branch above. Without this, subscribe()/BC fan-out
+// works within one worker but silently drops across workers.
+setBroadcastChannelRelay((channelName, data) => {
+	postMessage({type: "broadcast:post", channel: channelName, data});
+});
 
 // Import user code (registers event handlers)
 await import(${safePath});

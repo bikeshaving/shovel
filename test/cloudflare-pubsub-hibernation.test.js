@@ -8,11 +8,12 @@ import {copyFixtureToTemp} from "./utils.js";
 /**
  * Cloudflare PubSub end-to-end tests for cross-isolate fanout.
  *
- * Validates the fetch-based push-on-publish architecture: the pubsub DO
- * holds a per-channel registry of subscriber DO IDs (persisted to
- * `ctx.storage` so eviction doesn't drop it) and dispatches each publish via
- * `env.SHOVEL_WS.get(doId).fetch("/_shovel_publish", ...)`, which Cloudflare
- * uses to wake hibernated subscriber DOs.
+ * Validates the RPC push-on-publish architecture: the pubsub DO holds a
+ * per-channel registry of subscriber DO IDs (persisted to `ctx.storage` so
+ * eviction doesn't drop it) and dispatches each publish via the subscriber
+ * DO's `_shovelPublish` RPC method, which Cloudflare uses to wake hibernated
+ * subscriber DOs. Control-plane operations are RPC (not fetch routes) so
+ * external clients can't forge internal publishes.
  *
  * These tests address the pubsub DO directly via Miniflare's namespace stub
  * rather than going through `BroadcastChannel.postMessage` from a user
@@ -114,14 +115,7 @@ async function collectMessages(ws, count, timeoutMs = 5000) {
 async function publishViaPubSubDO(mf, channel, data) {
 	const ns = await mf.getDurableObjectNamespace("SHOVEL_PUBSUB");
 	const stub = ns.get(ns.idFromName("pubsub"));
-	const res = await stub.fetch("http://internal/publish", {
-		method: "POST",
-		headers: {"Content-Type": "application/json"},
-		body: JSON.stringify({channel, data, sender: null}),
-	});
-	if (res.status !== 204) {
-		throw new Error(`publish status ${res.status}`);
-	}
+	await stub.publish(channel, data, null);
 }
 
 test("cross-isolate publish reaches WS subscriber via pubsub DO wake", async () => {
@@ -170,19 +164,51 @@ test("publishes from a single source arrive in publish order", async () => {
 	});
 }, 30000);
 
-test("WS DO answers 409 for a publish on a channel it has no subscriber on", async () => {
-	// 409 is the signal the pubsub DO uses to reap a stale (channel, doId)
-	// registry entry left behind by a subscriber DO that went away without a
-	// clean unsubscribe. A DO with no live subscriber for the channel must
-	// report it so the registry self-heals.
+test("WS DO reports stale for a publish when it holds no live sockets", async () => {
+	// `stale: true` is the signal the pubsub DO uses to reap a stale
+	// (channel, doId) registry entry left behind by a subscriber DO that went
+	// away without a clean unsubscribe. A DO with no live sockets must report
+	// it so the registry self-heals.
 	await withMiniflare(async ({mf}) => {
 		const ns = await mf.getDurableObjectNamespace("SHOVEL_WS");
 		const stub = ns.get(ns.idFromName("shovel-ws"));
-		const res = await stub.fetch("http://internal/_shovel_publish", {
-			method: "POST",
-			headers: {"Content-Type": "application/json"},
-			body: JSON.stringify({channel: "room:nobody", data: "x"}),
-		});
-		expect(res.status).toBe(409);
+		const res = await stub._shovelPublish("room:nobody", "x");
+		expect(res.stale).toBe(true);
+	});
+}, 30000);
+
+test("the control plane is not reachable over fetch", async () => {
+	// The worker forwards any websocket upgrade to these DOs, so their fetch
+	// surface is externally reachable. Control-plane operations must be RPC
+	// only — a fetch-based publish route would let outside clients inject
+	// messages into every subscribed socket.
+	await withMiniflare(async ({mf}) => {
+		const wsNs = await mf.getDurableObjectNamespace("SHOVEL_WS");
+		const wsStub = wsNs.get(wsNs.idFromName("shovel-ws"));
+		// workerd may reject POST+Upgrade at the HTTP layer (thrown error) or
+		// our fetch may answer with a non-2xx — either way, never an injection.
+		let injected = false;
+		try {
+			const forged = await wsStub.fetch("http://internal/_shovel_publish", {
+				method: "POST",
+				headers: {"Content-Type": "application/json", Upgrade: "websocket"},
+				body: JSON.stringify({channel: "room:a", data: "spoofed"}),
+			});
+			injected = forged.status < 400;
+		} catch (_err) {
+			// Rejected before reaching the DO — also not an injection.
+		}
+		expect(injected).toBe(false);
+
+		const psNs = await mf.getDurableObjectNamespace("SHOVEL_PUBSUB");
+		const psStub = psNs.get(psNs.idFromName("pubsub"));
+		for (const path of ["/publish", "/subscribe", "/unsubscribe"]) {
+			const res = await psStub.fetch(`http://internal${path}`, {
+				method: "POST",
+				headers: {"Content-Type": "application/json"},
+				body: JSON.stringify({channel: "room:a", data: "x", doId: "y"}),
+			});
+			expect(res.status).toBeGreaterThanOrEqual(400);
+		}
 	});
 }, 30000);

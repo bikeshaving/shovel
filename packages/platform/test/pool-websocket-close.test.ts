@@ -32,6 +32,12 @@ class FakeWorker {
 	postMessage(msg: any, _transfer?: any[]): void {
 		if (this.#terminated) return;
 		this.received.push(msg);
+		// Speak the pool's shutdown protocol: without a shutdown-complete
+		// reply, every terminate()/reload() waits out the full graceful
+		// timeout (the worker-errors flake, #107).
+		if (msg?.type === "shutdown") {
+			setTimeout(() => this.fireMessage({type: "shutdown-complete"}), 0);
+		}
 	}
 
 	addEventListener(type: string, listener: Listener): void {

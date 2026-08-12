@@ -12,6 +12,7 @@
 
 import {AsyncContext} from "@b9g/async-context";
 import {getLogger, getConsoleSink} from "@logtape/logtape";
+import {isHTTPError, InternalServerError} from "@b9g/http-errors";
 // Re-exported for generated worker entries: a bare "@logtape/logtape" import
 // in generated code resolves from the user's project root, where it is only
 // a transitive dependency (fails under pnpm-isolated/Yarn-PnP layouts).
@@ -1466,6 +1467,9 @@ export class ShovelServiceWorkerRegistration
 	readonly pushManager: any;
 	onupdatefound: ((ev: Event) => any) | null;
 
+	/** original listener -> wrapped listener, per event type (for removal). */
+	#wrappedListeners = new Map<string, WeakMap<object, EventListener>>();
+
 	constructor(scope: string = "/", scriptURL: string = "/") {
 		super();
 		this.scope = scope;
@@ -1475,6 +1479,79 @@ export class ShovelServiceWorkerRegistration
 		this.cookies = null;
 		this.pushManager = null;
 		this.onupdatefound = null;
+	}
+
+	/**
+	 * WebSocket events auto-extend with promises returned by async listeners:
+	 * `async (event) => {...}` has no respondWith() to absorb a rejection, so
+	 * without this an async handler's throw becomes an unhandled rejection
+	 * that can kill the worker thread — and any subscribe() after an await
+	 * would be invisible to adapters that persist state when dispatch
+	 * settles (Durable Object hibernation). The returned promise is fed to
+	 * event.waitUntil() with rejections logged, mirroring how respondWith
+	 * absorbs fetch handler rejections.
+	 */
+	override addEventListener(
+		type: string,
+		callback: EventListenerOrEventListenerObject | null,
+		options?: AddEventListenerOptions | boolean,
+	): void {
+		if (
+			(type === "websocketmessage" || type === "websocketclose") &&
+			callback !== null
+		) {
+			let byType = this.#wrappedListeners.get(type);
+			if (!byType) {
+				byType = new WeakMap();
+				this.#wrappedListeners.set(type, byType);
+			}
+			let wrapped = byType.get(callback);
+			if (!wrapped) {
+				wrapped = (event: Event) => {
+					const result =
+						typeof callback === "function"
+							? callback(event)
+							: callback.handleEvent(event);
+					const thenable = result as unknown as Promise<unknown> | undefined;
+					if (thenable && typeof thenable.then === "function") {
+						const absorbed = thenable.then(undefined, (err: unknown) => {
+							getLogger(["shovel", "platform"]).error(
+								"Async {type} listener rejected: {error}",
+								{type, error: err},
+							);
+						});
+						const maybeExtendable = event as Event & {
+							waitUntil?: (p: Promise<unknown>) => void;
+						};
+						if (typeof maybeExtendable.waitUntil === "function") {
+							maybeExtendable.waitUntil(absorbed);
+						}
+					}
+				};
+				byType.set(callback, wrapped);
+			}
+			super.addEventListener(type, wrapped, options);
+			return;
+		}
+		super.addEventListener(type, callback, options);
+	}
+
+	override removeEventListener(
+		type: string,
+		callback: EventListenerOrEventListenerObject | null,
+		options?: EventListenerOptions | boolean,
+	): void {
+		if (
+			(type === "websocketmessage" || type === "websocketclose") &&
+			callback !== null
+		) {
+			const wrapped = this.#wrappedListeners.get(type)?.get(callback);
+			if (wrapped) {
+				super.removeEventListener(type, wrapped, options);
+				return;
+			}
+		}
+		super.removeEventListener(type, callback, options);
 	}
 
 	// Standard ServiceWorkerRegistration properties
@@ -1762,6 +1839,32 @@ export async function dispatchRequest(
  * if the handler upgraded to WebSocket instead of responding). Platforms use
  * this when they need to inspect `event[kGetUpgradeResult]()` after dispatch.
  */
+/**
+ * Convert a thrown value from a fetch/upgrade handler into an HTTP response.
+ *
+ * Fails closed: an unset MODE must not leak stack traces (see the 0.2.21
+ * security fix) — verbose error bodies require MODE === "development"
+ * explicitly. One shared implementation so HTTP and WebSocket-upgrade paths
+ * on every platform apply the same policy.
+ */
+export function errorToResponse(error: unknown): Response {
+	const err = error instanceof Error ? error : new Error(String(error));
+	const httpError = isHTTPError(error)
+		? error
+		: new InternalServerError(err.message, {cause: err});
+	const errorLogger = getLogger(["shovel", "platform"]);
+	if (httpError.status >= 500) {
+		errorLogger.error("Handler error: {error}", {error: err});
+	} else {
+		errorLogger.warn("Handler error: {status} {error}", {
+			status: httpError.status,
+			error: err,
+		});
+	}
+	const isDev = import.meta.env?.MODE === "development";
+	return httpError.toResponse(isDev);
+}
+
 export async function dispatchFetchEvent(
 	registration: ShovelServiceWorkerRegistration,
 	requestOrEvent: Request | ShovelFetchEvent,

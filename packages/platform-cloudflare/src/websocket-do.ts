@@ -44,6 +44,7 @@ import {
 	runLifecycle,
 	setBroadcastChannelBackend,
 	type WebSocketRelay,
+	errorToResponse,
 } from "@b9g/platform/runtime";
 import {CloudflareFetchEvent} from "./runtime.js";
 import {envStorage} from "./variables.js";
@@ -51,28 +52,6 @@ import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "platform", "cloudflare", "ws"]);
 
-/**
- * Mirror the HTTPError handling normal HTTP requests get from the
- * Cloudflare runtime so a fetch handler that throws `UnauthorizedError`
- * (etc.) before `upgradeWebSocket()` returns the right 4xx instead of
- * collapsing to a bare 500.
- */
-function toHttpErrorResponse(error: unknown): Response {
-	const err = error instanceof Error ? error : new Error(String(error));
-	const httpError = isHTTPError(error)
-		? (error as HTTPError)
-		: new InternalServerError(err.message, {cause: err});
-	if (httpError.status >= 500) {
-		logger.error("WS upgrade error: {error}", {error: err});
-	} else {
-		logger.warn("WS upgrade error: {status} {error}", {
-			status: httpError.status,
-			error: err,
-		});
-	}
-	const isDev = (import.meta as any).env?.MODE !== "production";
-	return httpError.toResponse(isDev);
-}
 
 export class ShovelWebSocketDO extends DurableObject {
 	#registration: ShovelServiceWorkerRegistration | null;
@@ -218,37 +197,34 @@ export class ShovelWebSocketDO extends DurableObject {
 		}
 	}
 
+	/**
+	 * Push-on-publish (RPC): the pubsub DO wakes us so cross-isolate publishes
+	 * reach this DO's local BC subscribers even after hibernation. An RPC
+	 * method, not a fetch route — fetch is externally reachable through the
+	 * worker's upgrade forwarding, so a fetch-based control plane would let
+	 * outside clients inject messages into every subscribed socket.
+	 */
+	async _shovelPublish(
+		channel: string,
+		data: unknown,
+	): Promise<{stale: boolean}> {
+		await this.#ensureRuntime();
+		// Captured during #ensureRuntime (above) to avoid a dynamic import
+		// on every cross-isolate publish; fall back if pubsub wasn't wired.
+		const dispatch =
+			this.#dispatchPubSub ??
+			(await import("./pubsub.js"))._dispatchPubSubMessage;
+		dispatch(channel, data);
+		// Prune signal: only when this DO holds NO live sockets at all — an
+		// evicted/gone subscriber whose registry entry lingered. #ensureRuntime
+		// has already rehydrated hibernated sockets, so a live-but-hibernated
+		// subscriber reports length > 0 and is never pruned.
+		return {stale: this.ctx.getWebSockets().length === 0};
+	}
+
 	async fetch(request: Request): Promise<Response> {
 		const registration = await this.#ensureRuntime();
 		const env = (this.env ?? {}) as Record<string, unknown>;
-
-		// Push-on-publish: pubsub DO wakes us via this internal route so
-		// cross-isolate publishes reach this DO's local BC subscribers even
-		// after hibernation. Handled before the upgrade-path branch.
-		if (request.method === "POST") {
-			const url = new URL(request.url);
-			if (url.pathname === "/_shovel_publish") {
-				const {channel, data} = (await request.json()) as {
-					channel: string;
-					data: unknown;
-				};
-				// Captured during #ensureRuntime (above) to avoid a dynamic import
-				// on every cross-isolate publish; fall back if pubsub wasn't wired.
-				const dispatch =
-					this.#dispatchPubSub ??
-					(await import("./pubsub.js"))._dispatchPubSubMessage;
-				dispatch(channel, data);
-				// Prune signal (409): only when this DO holds NO live sockets at
-				// all — an evicted/gone subscriber whose registry entry lingered.
-				// #ensureRuntime has already rehydrated hibernated sockets, so a
-				// live-but-hibernated subscriber reports length > 0 and is never
-				// pruned. Keying off socket presence (not a per-channel subscriber
-				// count) means a momentary zero-subscriber window from
-				// unsubscribe/re-subscribe churn cannot reap a live subscriber.
-				const isStale = this.ctx.getWebSockets().length === 0;
-				return new Response(null, {status: isStale ? 409 : 204});
-			}
-		}
 
 		return envStorage.run(env, async () => {
 			// Buffer frames the handler produces BEFORE the real socket exists.
@@ -295,7 +271,7 @@ export class ShovelWebSocketDO extends DurableObject {
 				// Preserve HTTPError statuses (auth/validation rejections) the
 				// way ordinary HTTP traffic does — a bare 500 here would mask
 				// the 401/403/etc that the user code intentionally threw.
-				return toHttpErrorResponse(err);
+				return errorToResponse(err);
 			}
 
 			const conn = event[kGetUpgradeResult]();
@@ -370,15 +346,35 @@ export class ShovelWebSocketDO extends DurableObject {
 		const prev = this.#dispatchQueues.get(id) ?? Promise.resolve();
 		const next = prev
 			.then(() =>
-				envStorage.run(env, () =>
-					dispatchWebSocketMessage(registration, conn!, message, (p) =>
-						this.ctx.waitUntil(p),
-					),
-				),
+				envStorage.run(env, () => {
+					// Collect extension promises (waitUntil + auto-extended async
+					// listener returns) so subscription changes made after an
+					// `await` in the handler are persisted before hibernation —
+					// while still forwarding them to ctx.waitUntil so the DO
+					// isn't torn down under them.
+					const extensions: Promise<unknown>[] = [];
+					const dispatched = dispatchWebSocketMessage(
+						registration,
+						conn!,
+						message,
+						(p) => {
+							extensions.push(p);
+							this.ctx.waitUntil(p);
+						},
+					);
+					if (extensions.length > 0) {
+						this.ctx.waitUntil(
+							Promise.allSettled(extensions).then(() => {
+								this.#persistAttachment(ws, conn!);
+							}),
+						);
+					}
+					return dispatched;
+				}),
 			)
 			.then(() => {
 				// Persist updated subscription state (if the handler called
-				// subscribe/unsubscribe).
+				// subscribe/unsubscribe synchronously).
 				this.#persistAttachment(ws, conn!);
 			})
 			.catch((err) =>

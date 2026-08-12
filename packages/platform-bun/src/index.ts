@@ -461,7 +461,12 @@ self.onmessage = async (event) => {
 	if (event.data.type === "shutdown") {
 		logger.info("Worker shutting down");
 		if (wsCleanup) await wsCleanup();
-		if (server) server.stop(true);
+		if (server) {
+			// Drain in-flight requests; force-abort only if draining stalls.
+			const force = setTimeout(() => server.stop(true), 4000);
+			await server.stop();
+			clearTimeout(force);
+		}
 		if (databases) await databases.closeAll();
 		postMessage({type: "shutdown-complete"});
 	} else if (event.data.type === "broadcast:deliver") {

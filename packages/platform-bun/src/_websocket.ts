@@ -32,33 +32,11 @@ import {
 	kBindRelay,
 	kGetUpgradeResult,
 	type WebSocketRelay,
+	errorToResponse,
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform", "bun", "websocket"]);
 
-/**
- * Mirrors the error wrapping `BunPlatform.createServer` applies around any
- * handler it owns. Because our WS adapters replace `Bun.serve`'s `fetch`
- * outright, they need to apply the same wrapper themselves — otherwise
- * `HTTPError`s thrown by user code would bypass the framework's response
- * formatting and surface as Bun's default 500.
- */
-async function toHttpErrorResponse(error: unknown): Promise<Response> {
-	const err = error instanceof Error ? error : new Error(String(error));
-	const httpError = isHTTPError(error)
-		? (error as HTTPError)
-		: new InternalServerError(err.message, {cause: err});
-	if (httpError.status >= 500) {
-		logger.error("Request error: {error}", {error: err});
-	} else {
-		logger.warn("Request error: {status} {error}", {
-			status: httpError.status,
-			error: err,
-		});
-	}
-	const isDev = import.meta.env?.MODE !== "production";
-	return httpError.toResponse(isDev);
-}
 
 type PendingFrame =
 	| {type: "send"; data: string | ArrayBuffer}
@@ -147,7 +125,7 @@ export function createBunPoolWebSocketAdapter(pool: {
 			try {
 				return await pool.handleRequest(request);
 			} catch (err) {
-				return toHttpErrorResponse(err);
+				return errorToResponse(err);
 			}
 		}
 
@@ -157,7 +135,7 @@ export function createBunPoolWebSocketAdapter(pool: {
 		try {
 			result = await pool.handleUpgradeRequest(request);
 		} catch (err) {
-			return toHttpErrorResponse(err);
+			return errorToResponse(err);
 		}
 
 		if (result instanceof Response) {
@@ -269,7 +247,7 @@ export function createBunWebSocketServer(
 			try {
 				return await dispatchRequest(registration, request);
 			} catch (err) {
-				return toHttpErrorResponse(err);
+				return errorToResponse(err);
 			}
 		}
 
@@ -317,7 +295,7 @@ export function createBunWebSocketServer(
 			// If the handler rejected the upgrade by throwing HTTPError
 			// (e.g. UnauthorizedError) before calling upgradeWebSocket(),
 			// translate the same way ordinary HTTP traffic does.
-			return toHttpErrorResponse(err);
+			return errorToResponse(err);
 		}
 
 		const conn = event![kGetUpgradeResult]();

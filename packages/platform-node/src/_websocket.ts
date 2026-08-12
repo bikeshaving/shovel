@@ -35,32 +35,11 @@ import {
 	kBindRelay,
 	kGetUpgradeResult,
 	type WebSocketRelay,
+	errorToResponse,
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform", "node", "websocket"]);
 
-/**
- * Mirror the HTTPError handling that NodePlatform.createServer applies to
- * normal HTTP traffic. WebSocket upgrade paths bypass that wrapper, so a
- * fetch handler that throws `UnauthorizedError` before `upgradeWebSocket()`
- * would otherwise collapse to a bare 500.
- */
-function toHttpErrorResponse(error: unknown): Response {
-	const err = error instanceof Error ? error : new Error(String(error));
-	const httpError = isHTTPError(error)
-		? (error as HTTPError)
-		: new InternalServerError(err.message, {cause: err});
-	if (httpError.status >= 500) {
-		logger.error("WS upgrade error: {error}", {error: err});
-	} else {
-		logger.warn("WS upgrade error: {status} {error}", {
-			status: httpError.status,
-			error: err,
-		});
-	}
-	const isDev = import.meta.env?.MODE !== "production";
-	return httpError.toResponse(isDev);
-}
 
 /** Frames buffered between `upgradeWebSocket()` and the real socket coming up. */
 type PendingFrame =
@@ -170,7 +149,7 @@ export function attachNodeWebSocketHandler(
 			// Preserve HTTPError statuses from auth/validation rejections —
 			// matches the regular HTTP path. A bare 500 here would mask
 			// 401/403/etc that the user code intentionally threw.
-			writeResponseAndDestroy(socket, toHttpErrorResponse(err));
+			writeResponseAndDestroy(socket, errorToResponse(err));
 			return;
 		}
 
@@ -395,7 +374,7 @@ export function attachNodePoolWebSocketHandler(
 		try {
 			result = await pool.handleUpgradeRequest!(request);
 		} catch (err) {
-			writeResponseAndDestroy(socket, toHttpErrorResponse(err));
+			writeResponseAndDestroy(socket, errorToResponse(err));
 			return;
 		}
 

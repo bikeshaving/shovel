@@ -179,7 +179,13 @@ export function createFetchHandler(
 		// A single shared DO (`idFromName("shovel-ws")`) is used so that all
 		// connections land in the same isolate — this lets subscribe()/BC
 		// fan-out work without cross-DO RPC on the hot path.
-		if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+		const upgradeHeader = request.headers.get("upgrade")?.toLowerCase() ?? "";
+		const isUpgradeRequest =
+			request.method === "GET" &&
+			upgradeHeader
+				.split(",")
+				.some((token) => token.trim() === "websocket");
+		if (isUpgradeRequest) {
 			if (!envRecord.SHOVEL_WS) {
 				// Surface this misconfiguration directly rather than letting
 				// the user's `upgradeWebSocket()` call throw "requires wsRelay"

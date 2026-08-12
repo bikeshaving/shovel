@@ -542,6 +542,27 @@ export class ServiceWorkerPool {
 	 * bookkeeping. Called before reload / terminate so clients see a proper
 	 * close frame instead of a socket wired to a worker that no longer exists.
 	 */
+	/**
+	 * Wait (bounded) for the platform's close events to round-trip through
+	 * sendWebSocketClose after #closePooledWebSockets. Without this, worker
+	 * termination races the close events: the owner map still points at
+	 * soon-to-be-dead workers, so websocketclose handlers never run in them.
+	 * Whatever remains after the deadline is swept so no entry outlives its
+	 * worker.
+	 */
+	async #drainClosedWebSockets(timeout = 1000): Promise<void> {
+		const deadline = Date.now() + timeout;
+		while (this.#wsConnectionOwners.size > 0 && Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		if (this.#wsConnectionOwners.size > 0) {
+			logger.warn("Sweeping {count} WebSocket owner entries at shutdown", {
+				count: this.#wsConnectionOwners.size,
+			});
+			this.#wsConnectionOwners.clear();
+		}
+	}
+
 	#closePooledWebSockets(code: number, reason: string): void {
 		if (!this.#wsHandlers || this.#wsConnectionOwners.size === 0) return;
 		// Ask the platform to close each pool-owned socket. The owner-map
@@ -820,6 +841,18 @@ export class ServiceWorkerPool {
 	async handleRequest(request: Request): Promise<Response> {
 		const result = await this.#dispatchToWorker(request);
 		if (result instanceof Response) return result;
+		// A request that upgrades through a non-upgrade path (e.g. an Upgrade
+		// header without Connection: Upgrade, which Node routes to the plain
+		// request listener) has already registered the connection in the
+		// worker and the owner map. Tear both down before failing — otherwise
+		// the phantom id keeps its BC subscriptions and buffers relayed
+		// frames forever.
+		this.sendWebSocketClose(
+			result.connectionID,
+			1002,
+			"upgrade not supported on this path",
+			false,
+		);
 		throw new Error(
 			"handleRequest received a WebSocket upgrade; use handleUpgradeRequest for upgrade-capable paths",
 		);
@@ -922,7 +955,7 @@ export class ServiceWorkerPool {
 	/**
 	 * Gracefully shutdown a worker by closing all resources first
 	 */
-	async #gracefulShutdown(worker: Worker, timeout = 2000): Promise<void> {
+	async #gracefulShutdown(worker: Worker, timeout = 5000): Promise<void> {
 		return new Promise<void>((resolve) => {
 			let resolved = false;
 			const finish = (reason: "clean" | "error" | "timeout") => {
@@ -979,6 +1012,7 @@ export class ServiceWorkerPool {
 		// physical socket lives in the supervisor; if we don't close it,
 		// the client would keep sending frames to a terminated worker.
 		this.#closePooledWebSockets(1012, "Server reloading");
+		await this.#drainClosedWebSockets();
 
 		// Gracefully shutdown existing workers - close resources before terminating
 		const shutdownPromises = this.#workers.map((worker) =>
@@ -1024,6 +1058,7 @@ export class ServiceWorkerPool {
 		// Close any pooled WebSockets before shutting workers down so clients
 		// get a clean close frame instead of a silent drop when the server exits.
 		this.#closePooledWebSockets(1001, "Server shutting down");
+		await this.#drainClosedWebSockets();
 
 		// Gracefully shutdown workers first (close databases, etc.)
 		const shutdownPromises = this.#workers.map((worker) =>
