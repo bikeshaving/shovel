@@ -46,6 +46,9 @@ import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "platform", "cloudflare", "ws"]);
 
+/** How long a staged upgrade waits for its forwarded fetch before it's swept. */
+const ESTABLISH_TTL = 30_000;
+
 /** Decode a base64 frame payload (binary sends buffered before the socket). */
 function base64ToBytes(b64: string): Uint8Array {
 	const bin = atob(b64);
@@ -96,7 +99,7 @@ export class ShovelWebSocketDO extends DurableObject {
 	 * a structured-clone deserialization per inbound frame. */
 	#socketIds: WeakMap<WebSocket, string>;
 	/** Upgrade state staged by prepareUpgrade(), consumed by the next fetch. */
-	#pendingEstablish: Map<string, EstablishState>;
+	#pendingEstablish: Map<string, {state: EstablishState; at: number}>;
 
 	constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
 		super(ctx, env as any);
@@ -308,7 +311,16 @@ export class ShovelWebSocketDO extends DurableObject {
 	 * socket and consumes this entry, matched by connection id.
 	 */
 	async prepareUpgrade(state: EstablishState): Promise<void> {
-		this.#pendingEstablish.set(state.id, state);
+		// Sweep orphans first: the forwarded fetch consumes a staged entry
+		// almost immediately, so anything older than the TTL is from an upgrade
+		// whose forward never arrived (worker died / request aborted between
+		// the two calls). Bounds the map without a timer.
+		const now = Date.now();
+		for (const [seenId, entry] of this.#pendingEstablish) {
+			if (now - entry.at > ESTABLISH_TTL) this.#pendingEstablish.delete(seenId);
+			else break; // Map preserves insertion order; the rest are newer.
+		}
+		this.#pendingEstablish.set(state.id, {state, at: now});
 	}
 
 	/**
@@ -321,13 +333,14 @@ export class ShovelWebSocketDO extends DurableObject {
 	 */
 	async fetch(request: Request): Promise<Response> {
 		const id = request.headers.get("x-shovel-conn-id");
-		const staged = id ? this.#pendingEstablish.get(id) : undefined;
-		if (!id || !staged) {
+		const entry = id ? this.#pendingEstablish.get(id) : undefined;
+		if (!id || !entry) {
 			// No matching staged upgrade — nothing else legitimately reaches
 			// the DO's fetch (the handler runs in the worker now).
 			return new Response("Not Found", {status: 404});
 		}
 		this.#pendingEstablish.delete(id);
+		const staged = entry.state;
 
 		// Count the upgrade BEFORE the first await: a cold wake's runtime init
 		// spans many event-loop turns, and a publish landing in that window
