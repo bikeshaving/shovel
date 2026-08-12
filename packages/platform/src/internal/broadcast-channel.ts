@@ -55,8 +55,41 @@ export function deliverBroadcastMessage(
  * Set a pluggable backend for cross-process BroadcastChannel relay.
  * When set, publish goes through the backend instead of postMessage relay.
  */
+/** Whether a backend is currently installed (adapters use this to avoid
+ * clobbering a more capable backend installed by another entrypoint in the
+ * same isolate — e.g. the WS DO's id-carrying backend vs the worker fetch
+ * handler's null-id one). */
+export function hasBroadcastChannelBackend(): boolean {
+	return backend !== null;
+}
+
 export function setBroadcastChannelBackend(b: BroadcastChannelBackend): void {
 	backend = b;
+	// Re-register EVERY live channel on the new backend:
+	// - channels created before any backend existed (module-scope
+	//   `new BroadcastChannel(...)` runs at module evaluation) would otherwise
+	//   never receive cross-isolate publishes;
+	// - channels registered on a PREVIOUS backend (Cloudflare installs a
+	//   null-id backend on the first HTTP request, then the WS DO installs
+	//   one carrying its DO id) hold stale subscriptions whose registrations
+	//   never reached the new backend's registry.
+	for (const name of channels.keys()) {
+		const oldUnsub = backendSubscriptions.get(name);
+		if (oldUnsub) {
+			try {
+				oldUnsub();
+			} catch (_err) {
+				/* best-effort: the old backend may already be disposed */
+			}
+			backendSubscriptions.delete(name);
+		}
+		// Clearing the backend (tests, teardown) stops at unsubscription.
+		if (!b) continue;
+		const unsub = b.subscribe(name, (data) => {
+			deliverBroadcastMessage(name, data);
+		});
+		backendSubscriptions.set(name, unsub);
+	}
 }
 
 export class ShovelBroadcastChannel extends EventTarget {

@@ -5,7 +5,6 @@
  * Runtime functions are in ./runtime.ts
  */
 
-import {builtinModules} from "node:module";
 import {getLogger} from "@logtape/logtape";
 import type {
 	EntryPoints,
@@ -73,8 +72,8 @@ startWorkerMessageLoop({registration, databases});
 
 	// Worker code for production (with message handling for supervisor communication)
 	const prodWorkerCode = `// Bun Production Worker
-import BunPlatform from "@b9g/platform-bun";
-import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest} from "@b9g/platform/runtime";
+import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
+import {createBunWebSocketServer} from "@b9g/platform-bun";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -83,14 +82,23 @@ const logger = getLogger(["shovel", "platform"]);
 // Track resources for shutdown
 let server;
 let databases;
+let wsCleanup;
 
 // Register shutdown handler before async startup
 self.onmessage = async (event) => {
 	if (event.data.type === "shutdown") {
 		logger.info("Worker shutting down");
-		if (server) await server.close();
+		if (wsCleanup) await wsCleanup();
+		if (server) {
+			// Drain in-flight requests; force-abort only if draining stalls.
+			const force = setTimeout(() => server.stop(true), 4000);
+			await server.stop();
+			clearTimeout(force);
+		}
 		if (databases) await databases.closeAll();
 		postMessage({type: "shutdown-complete"});
+	} else if (event.data.type === "broadcast:deliver") {
+		deliverBroadcastMessage(event.data.channel, event.data.data);
 	}
 };
 
@@ -98,6 +106,13 @@ self.onmessage = async (event) => {
 const result = await initWorkerRuntime({config, usePostMessage: false});
 const registration = result.registration;
 databases = result.databases;
+
+// Cross-worker BroadcastChannel: outbound via supervisor relay, inbound via
+// the broadcast:deliver branch above. Without this, subscribe()/BC fan-out
+// works within one worker but silently drops across workers.
+setBroadcastChannelRelay((channelName, data) => {
+	postMessage({type: "broadcast:post", channel: channelName, data});
+});
 
 // Import user code (registers event handlers)
 await import(${safePath});
@@ -107,16 +122,19 @@ await runLifecycle(registration, config.lifecycle?.stage);
 
 // Start server (skip in lifecycle-only mode)
 if (!config.lifecycle) {
-	const platform = new BunPlatform({port: config.port, host: config.host});
-	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
-		{reusePort: config.workers > 1},
-	);
-	await server.listen();
+	const adapter = createBunWebSocketServer(registration);
+	wsCleanup = adapter.cleanup;
+	server = Bun.serve({
+		port: config.port,
+		hostname: config.host,
+		reusePort: config.workers > 1,
+		fetch: adapter.fetch,
+		websocket: adapter.websocket,
+	});
+	logger.info("Worker started", {port: server.port});
 }
 
 postMessage({type: "ready"});
-logger.info("Worker started", {port: config.port});
 `;
 
 	// Production: supervisor + worker
@@ -162,7 +180,10 @@ process.on("SIGTERM", handleShutdown);
 export function getESBuildConfig(): ESBuildConfig {
 	return {
 		platform: "node",
-		external: ["node:*", "bun", "bun:*", ...builtinModules],
+		// Only scheme-prefixed builtins here — esbuild's `platform: "node"`
+		// auto-externalizes real Node builtins. Spreading `builtinModules`
+		// under Bun pulls in `ws`/`undici` which we want bundled.
+		external: ["node:*", "bun", "bun:*"],
 	};
 }
 

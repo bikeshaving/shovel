@@ -655,6 +655,222 @@ self.addEventListener("fetch", (event) => {
 		},
 		TIMEOUT,
 	);
+
+	test(
+		"WebSocket echo via generated worker template",
+		async () => {
+			const PORT = 13417;
+			const cleanup_paths = [];
+			let server;
+			const WebSocket = (await import("ws")).default;
+
+			try {
+				const projectDir = await createTestProject({
+					"app.js": `
+self.addEventListener("fetch", (event) => {
+	if (event.request.headers.get("upgrade") === "websocket") {
+		const ws = event.upgradeWebSocket();
+		ws.send("welcome");
+		return;
+	}
+	event.respondWith(new Response("http fallback"));
+});
+self.addEventListener("websocketmessage", (event) => {
+	event.source.send("echo: " + event.data);
+});
+					`,
+					"shovel.json": JSON.stringify({
+						port: PORT,
+						host: "localhost",
+						workers: 1,
+					}),
+				});
+				cleanup_paths.push(projectDir);
+
+				const outDir = await buildProject(projectDir, "node");
+				server = startServer(join(outDir, "server"));
+
+				await waitForPort(PORT);
+
+				// Connect the WebSocket
+				const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+				await new Promise((resolve, reject) => {
+					ws.once("open", resolve);
+					ws.once("error", reject);
+					setTimeout(() => reject(new Error("ws open timeout")), 5000);
+				});
+
+				// Greeting sent during upgrade
+				const greeting = await new Promise((resolve, reject) => {
+					ws.once("message", (d) => resolve(d.toString("utf8")));
+					setTimeout(() => reject(new Error("no greeting")), 3000);
+				});
+				expect(greeting).toBe("welcome");
+
+				// Echo round-trip
+				const echo = new Promise((resolve, reject) => {
+					ws.once("message", (d) => resolve(d.toString("utf8")));
+					setTimeout(() => reject(new Error("no echo")), 3000);
+				});
+				ws.send("hi");
+				expect(await echo).toBe("echo: hi");
+
+				await new Promise((resolve) => {
+					ws.once("close", resolve);
+					ws.close();
+				});
+			} finally {
+				await killServer(server?.process, PORT);
+				await cleanup(cleanup_paths);
+			}
+		},
+		TIMEOUT,
+	);
+
+	test(
+		"chat-room scenario: BroadcastChannel fan-out to multiple connections",
+		async () => {
+			// The "real app" pattern from examples/chat: every connection
+			// subscribes to a room channel, message handlers re-publish to
+			// the channel, the runtime fans out to subscribers. This is
+			// the only test driving multi-client BC fanout end-to-end.
+			const PORT = 13419;
+			const cleanup_paths = [];
+			let server;
+			const WebSocket = (await import("ws")).default;
+
+			try {
+				const projectDir = await createTestProject({
+					"app.js": `
+const ROOM = "room:lobby";
+self.addEventListener("fetch", (event) => {
+	if (event.request.headers.get("upgrade") === "websocket") {
+		const ws = event.upgradeWebSocket();
+		ws.subscribe(ROOM);
+		ws.send(JSON.stringify({type: "welcome", id: ws.id}));
+		new BroadcastChannel(ROOM).postMessage(
+			JSON.stringify({type: "joined", id: ws.id}),
+		);
+		return;
+	}
+	event.respondWith(new Response("ok"));
+});
+self.addEventListener("websocketmessage", (event) => {
+	let payload = {};
+	try { payload = JSON.parse(event.data); } catch {}
+	const text = String(payload.text || "").slice(0, 200);
+	if (!text) return;
+	new BroadcastChannel(ROOM).postMessage(
+		JSON.stringify({type: "message", from: event.source.id, text}),
+	);
+});
+self.addEventListener("websocketclose", (event) => {
+	new BroadcastChannel(ROOM).postMessage(
+		JSON.stringify({type: "left", id: event.id}),
+	);
+});
+					`,
+					"shovel.json": JSON.stringify({
+						port: PORT,
+						host: "localhost",
+						workers: 1,
+					}),
+				});
+				cleanup_paths.push(projectDir);
+
+				const outDir = await buildProject(projectDir, "node");
+				server = startServer(join(outDir, "server"));
+				await waitForPort(PORT);
+
+				const url = `ws://localhost:${PORT}/ws`;
+
+				/** Collect every JSON message the client sees. */
+				function track(ws) {
+					const seen = [];
+					ws.on("message", (d) => {
+						try {
+							seen.push(JSON.parse(d.toString("utf8")));
+						} catch (_err) {
+							/* ignore non-JSON */
+						}
+					});
+					return seen;
+				}
+				function open(ws) {
+					return new Promise((resolve, reject) => {
+						ws.once("open", resolve);
+						ws.once("error", reject);
+						setTimeout(() => reject(new Error("ws open timeout")), 5000);
+					});
+				}
+
+				// First client joins
+				const a = new WebSocket(url);
+				const seenA = track(a);
+				await open(a);
+
+				// Second client joins
+				const b = new WebSocket(url);
+				const seenB = track(b);
+				await open(b);
+
+				// Give the runtime a moment to deliver join broadcasts
+				await new Promise((r) => setTimeout(r, 100));
+
+				// Both clients should have seen their welcome + the joined
+				// broadcasts. A's view: welcome(A) + joined(A) + joined(B).
+				// B's view: welcome(B) + joined(B). (B opened after A's join
+				// broadcast already fired, so B doesn't retroactively see it.)
+				const aWelcome = seenA.find((m) => m.type === "welcome");
+				const bWelcome = seenB.find((m) => m.type === "welcome");
+				expect(aWelcome).toBeDefined();
+				expect(bWelcome).toBeDefined();
+				expect(aWelcome.id).not.toBe(bWelcome.id);
+
+				const aJoinedSelf = seenA.find(
+					(m) => m.type === "joined" && m.id === aWelcome.id,
+				);
+				expect(aJoinedSelf).toBeDefined();
+				const aJoinedB = seenA.find(
+					(m) => m.type === "joined" && m.id === bWelcome.id,
+				);
+				expect(aJoinedB).toBeDefined();
+
+				// A sends a message — both A and B should receive it
+				seenA.length = 0;
+				seenB.length = 0;
+				a.send(JSON.stringify({text: "hello room"}));
+				await new Promise((r) => setTimeout(r, 100));
+
+				const aGot = seenA.find(
+					(m) => m.type === "message" && m.from === aWelcome.id,
+				);
+				const bGot = seenB.find(
+					(m) => m.type === "message" && m.from === aWelcome.id,
+				);
+				expect(aGot?.text).toBe("hello room");
+				expect(bGot?.text).toBe("hello room");
+
+				// B disconnects — A should see a "left" event for B
+				seenA.length = 0;
+				b.close();
+				await new Promise((r) => setTimeout(r, 200));
+				const aSawBLeft = seenA.find(
+					(m) => m.type === "left" && m.id === bWelcome.id,
+				);
+				expect(aSawBLeft).toBeDefined();
+
+				a.close();
+				await new Promise((r) => {
+					a.once("close", r);
+				});
+			} finally {
+				await killServer(server?.process, PORT);
+				await cleanup(cleanup_paths);
+			}
+		},
+		TIMEOUT,
+	);
 });
 
 describe("runtime: wildcard cache pattern matching", () => {
@@ -930,6 +1146,74 @@ self.addEventListener("fetch", (event) => {
 				const response = await fetchWithRetry(`http://localhost:${PORT}/`);
 				expect(response.status).toBe(200);
 				expect(await response.text()).toBe("Hello from multi-worker!");
+			} finally {
+				await killServer(server?.process, PORT);
+				await cleanup(cleanup_paths);
+			}
+		},
+		TIMEOUT,
+	);
+
+	test(
+		"multi-worker production server handles WebSocket upgrade via pool IPC",
+		async () => {
+			const PORT = 13418;
+			const cleanup_paths = [];
+			let server;
+			const WebSocket = (await import("ws")).default;
+
+			try {
+				const projectDir = await createTestProject({
+					"app.js": `
+self.addEventListener("fetch", (event) => {
+	if (event.request.headers.get("upgrade") === "websocket") {
+		const ws = event.upgradeWebSocket();
+		ws.send("hello from pool");
+		return;
+	}
+	event.respondWith(new Response("http ok"));
+});
+self.addEventListener("websocketmessage", (event) => {
+	event.source.send("pool echo: " + event.data);
+});
+					`,
+					"shovel.json": JSON.stringify({
+						port: PORT,
+						host: "localhost",
+						workers: 2,
+					}),
+				});
+				cleanup_paths.push(projectDir);
+
+				const outDir = await buildProject(projectDir, "node");
+				server = startServer(join(outDir, "server"));
+
+				await waitForPort(PORT);
+
+				const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+				await new Promise((resolve, reject) => {
+					ws.once("open", resolve);
+					ws.once("error", reject);
+					setTimeout(() => reject(new Error("ws open timeout")), 5000);
+				});
+
+				const greeting = await new Promise((resolve, reject) => {
+					ws.once("message", (d) => resolve(d.toString("utf8")));
+					setTimeout(() => reject(new Error("no greeting")), 3000);
+				});
+				expect(greeting).toBe("hello from pool");
+
+				const echo = new Promise((resolve, reject) => {
+					ws.once("message", (d) => resolve(d.toString("utf8")));
+					setTimeout(() => reject(new Error("no echo")), 3000);
+				});
+				ws.send("hi");
+				expect(await echo).toBe("pool echo: hi");
+
+				await new Promise((resolve) => {
+					ws.once("close", resolve);
+					ws.close();
+				});
 			} finally {
 				await killServer(server?.process, PORT);
 				await cleanup(cleanup_paths);

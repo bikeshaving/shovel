@@ -1,0 +1,24 @@
+{
+  "name": "shovel-chat",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Real-time chat room demonstrating Shovel's WebSocket functional events API",
+  "type": "module",
+  "scripts": {
+    "develop": "shovel develop src/server.ts",
+    "develop:cf": "shovel develop src/server.ts --platform cloudflare",
+    "build": "shovel build src/server.ts",
+    "build:cf": "shovel build src/server.ts --platform cloudflare",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@b9g/shovel": "^0.2.17",
+    "@b9g/platform": "workspace:*",
+    "@b9g/platform-bun": "workspace:*",
+    "@b9g/platform-cloudflare": "workspace:*",
+    "@b9g/platform-node": "workspace:*"
+  },
+  "devDependencies": {
+    "wrangler": "^4.69.0"
+  }
+}
