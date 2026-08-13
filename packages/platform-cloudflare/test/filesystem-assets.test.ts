@@ -107,14 +107,121 @@ describe("CFAssetsDirectoryHandle", () => {
 		expect(fileHandle.createWritable()).rejects.toThrow("read-only");
 	});
 
-	test("entries() throws NotSupportedError", async () => {
+	// The ASSETS binding has no list API, so enumeration reads the asset
+	// manifest the generated worker entry registers. Without one there is
+	// nothing to list; with one, the directory enumerates like any other.
+	test("entries() throws NotSupportedError without a manifest", async () => {
 		const dir = new CFAssetsDirectoryHandle(assets, "/");
 
-		expect(async () => {
-			for await (const _ of dir.entries()) {
-				// Should not reach here
+		// The rejection surfaces on first next(); expect().toThrow on an async
+		// arrow observes nothing (it returns a rejected promise).
+		await expect(
+			(async () => {
+				for await (const _ of dir.entries()) {
+					// Should not reach here
+				}
+			})(),
+		).rejects.toThrow("not supported");
+	});
+
+	test("a malformed manifest is treated as no manifest, not a crash", async () => {
+		const dir = new CFAssetsDirectoryHandle(assets, "/", {} as any);
+
+		await expect(
+			(async () => {
+				for await (const _ of dir.entries()) {
+					// Should not reach here
+				}
+			})(),
+		).rejects.toThrow("not supported");
+	});
+
+	describe("enumeration via the asset manifest", () => {
+		const manifest = {
+			assets: {
+				"src/styles/style.css": {url: "/assets/style.abc123.css"},
+				"src/app.ts": {url: "/assets/app.def456.js"},
+				"src/index.html": {url: "/index.html"},
+			},
+		};
+
+		test("keys() lists the direct children of the base path", async () => {
+			const dir = new CFAssetsDirectoryHandle(assets, "/assets", manifest);
+			const names: string[] = [];
+			for await (const name of dir.keys()) names.push(name);
+			expect(names.sort()).toEqual(["app.def456.js", "style.abc123.css"]);
+		});
+
+		test("a deeper asset surfaces as a subdirectory, not a file", async () => {
+			const dir = new CFAssetsDirectoryHandle(assets, "/", manifest);
+			const entries: Array<[string, string]> = [];
+			for await (const [name, handle] of dir.entries()) {
+				entries.push([name, handle.kind]);
 			}
-		}).toThrow("not supported");
+			expect(entries.sort()).toEqual([
+				["assets", "directory"],
+				["index.html", "file"],
+			]);
+		});
+
+		test("values() yield handles that read real content", async () => {
+			const dir = new CFAssetsDirectoryHandle(assets, "/assets", manifest);
+			const byName = new Map<string, FileSystemFileHandle>();
+			for await (const handle of dir.values()) {
+				byName.set(handle.name, handle as FileSystemFileHandle);
+			}
+
+			const css = byName.get("style.abc123.css")!;
+			expect(await (await css.getFile()).text()).toBe("body { color: blue; }");
+		});
+
+		test("navigating into a subdirectory keeps it enumerable", async () => {
+			const root = new CFAssetsDirectoryHandle(assets, "/", manifest);
+			const sub = await root.getDirectoryHandle("assets");
+			const names: string[] = [];
+			for await (const name of sub.keys()) names.push(name);
+			expect(names.sort()).toEqual(["app.def456.js", "style.abc123.css"]);
+		});
+
+		test("a name that is both file and directory keeps the directory", async () => {
+			const colliding = {
+				assets: {
+					a: {url: "/content/posts"},
+					b: {url: "/content/posts/first.md"},
+				},
+			};
+			const dir = new CFAssetsDirectoryHandle(assets, "/content", colliding);
+			const entries: Array<[string, string]> = [];
+			for await (const [name, handle] of dir.entries()) {
+				entries.push([name, handle.kind]);
+			}
+			// Deterministic regardless of manifest iteration order: the subtree
+			// must not be shadowed by the same-named file.
+			expect(entries).toEqual([["posts", "directory"]]);
+		});
+
+		test("an unknown directory enumerates as empty, reads still work", async () => {
+			const dir = new CFAssetsDirectoryHandle(
+				assets,
+				"/not-in-manifest",
+				manifest,
+			);
+			const names: string[] = [];
+			for await (const name of dir.keys()) names.push(name);
+			expect(names).toEqual([]);
+		});
+
+		test("getFileHandle resolves through the manifest without a probe", async () => {
+			// The binding would 404 this URL under html_handling none if probed;
+			// a manifest hit must not need the network. index.html IS served, so
+			// instead assert the manifest path by pointing at a manifest entry
+			// and reading real content through the returned handle.
+			const dir = new CFAssetsDirectoryHandle(assets, "/assets", manifest);
+			const handle = await dir.getFileHandle("style.abc123.css");
+			expect(await (await handle.getFile()).text()).toBe(
+				"body { color: blue; }",
+			);
+		});
 	});
 
 	test("isSameEntry returns true for same path", async () => {

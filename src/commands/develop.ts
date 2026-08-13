@@ -187,6 +187,7 @@ export async function developCommand(
 				switch (key) {
 					case "\x12": // Ctrl+R
 						logger.info("Manual reload...");
+						// Bundler.rebuild() owns log-and-survive for failed rebuilds.
 						await bundler.rebuild();
 						break;
 					case "\x0C": // Ctrl+L

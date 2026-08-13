@@ -42,7 +42,13 @@ export function getEntryPoints(
 
 	const workerCode = `// Cloudflare Worker Entry
 import { config } from "shovel:config";
-import { initializeRuntime, createFetchHandler } from "@b9g/platform-cloudflare/runtime";
+import __shovelAssetsManifest from "shovel:assets";
+import { initializeRuntime, createFetchHandler, setAssetsManifest } from "@b9g/platform-cloudflare/runtime";
+
+// Register the build's asset manifest so directory handles can enumerate
+// ASSETS without importing the virtual module from library code (which
+// breaks consumers bundling outside a shovel build).
+setAssetsManifest(__shovelAssetsManifest);
 
 // Initialize runtime (installs ServiceWorker globals)
 const registration = await initializeRuntime(config);

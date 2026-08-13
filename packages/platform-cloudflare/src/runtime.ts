@@ -1,3 +1,10 @@
+// Re-exported so generated worker entries can register the asset manifest
+// via a specifier that resolves from this package's own dependency context
+// (a bare "@b9g/assets/manifest" import in a generated entry resolves from
+// the user's project root, which fails under pnpm-isolated layouts and can
+// bundle a second registry copy).
+export {setAssetsManifest} from "@b9g/assets/manifest";
+
 /**
  * Cloudflare Worker Runtime
  *

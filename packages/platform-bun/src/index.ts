@@ -386,8 +386,7 @@ export class BunPlatform {
 		// Worker code for production (with message handling for supervisor communication)
 		const prodWorkerCode = `// Bun Production Worker
 import BunPlatform from "@b9g/platform-bun";
-import {getLogger} from "@logtape/logtape";
-import {configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
+import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -466,8 +465,7 @@ startWorkerMessageLoop({registration, databases});
 
 		// Production: supervisor + worker
 		const supervisorCode = `// Bun Production Supervisor
-import {getLogger} from "@logtape/logtape";
-import {configureLogging} from "@b9g/platform/runtime";
+import {getLogger, configureLogging} from "@b9g/platform/runtime";
 import BunPlatform from "@b9g/platform-bun";
 import {config} from "shovel:config";
 

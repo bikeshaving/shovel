@@ -287,3 +287,158 @@ self.addEventListener("fetch", (event) => {
 	},
 	MINIFLARE_TIMEOUT,
 );
+
+test(
+	"cloudflare build - directory enumeration over ASSETS via the bundled manifest",
+	async () => {
+		const tempDir = join(
+			(await import("os")).tmpdir(),
+			`shovel-cf-enum-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		await FS.mkdir(tempDir, {recursive: true});
+		let mf;
+
+		try {
+			// A content tree: a file and a subdirectory at the base path.
+			await FS.mkdir(join(tempDir, "content", "posts"), {recursive: true});
+			await FS.writeFile(join(tempDir, "content", "about.md"), "# About");
+			await FS.writeFile(
+				join(tempDir, "content", "posts", "first.md"),
+				"# First post",
+			);
+			await FS.writeFile(
+				join(tempDir, "content", "posts", "second.md"),
+				"# Second post",
+			);
+
+			// The real config story: a directory over the ASSETS binding. The
+			// glob import stages content/ into dist/public; the worker then
+			// enumerates it through self.directories with no injected manifest,
+			// so listing must go through the bundled shovel:assets module.
+			await FS.writeFile(
+				join(tempDir, "app.js"),
+				`
+import urls from "./content/**/*" with { assetBase: "/content/", assetName: "[name].[ext]" };
+
+self.addEventListener("fetch", (event) => {
+	event.respondWith(handle(event.request));
+});
+
+async function handle(request) {
+	const url = new URL(request.url);
+	const dir = await self.directories.open("content");
+	if (url.pathname === "/list") {
+		const listing = {};
+		for await (const [name, handle] of dir.entries()) {
+			listing[name] = handle.kind;
+		}
+		return Response.json({listing, staged: Object.keys(urls).length});
+	}
+	if (url.pathname === "/read-posts") {
+		const posts = await dir.getDirectoryHandle("posts");
+		const names = [];
+		for await (const name of posts.keys()) names.push(name);
+		names.sort();
+		const fileHandle = await posts.getFileHandle(names[0]);
+		const text = await (await fileHandle.getFile()).text();
+		return Response.json({names, text});
+	}
+	return new Response("not found", {status: 404});
+}
+`,
+			);
+
+			await FS.writeFile(
+				join(tempDir, "shovel.json"),
+				JSON.stringify({
+					directories: {
+						content: {
+							module: "@b9g/platform-cloudflare/directories",
+							export: "CloudflareAssetsDirectory",
+							path: "/content",
+						},
+					},
+				}),
+			);
+
+			await FS.writeFile(
+				join(tempDir, "package.json"),
+				JSON.stringify({name: "test-cf-enum", type: "module"}),
+			);
+
+			await FS.symlink(
+				join(process.cwd(), "node_modules"),
+				join(tempDir, "node_modules"),
+				"dir",
+			);
+
+			const outDir = join(tempDir, "dist");
+			const originalCwd = process.cwd();
+			process.chdir(tempDir);
+
+			try {
+				await buildForProduction({
+					entrypoint: join(tempDir, "app.js"),
+					outDir,
+					verbose: false,
+					platform: "cloudflare",
+				});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			expect(
+				await fileExists(join(outDir, "public", "content", "about.md")),
+			).toBe(true);
+
+			const script = await FS.readFile(
+				join(outDir, "server", "worker.js"),
+				"utf8",
+			);
+
+			mf = new Miniflare({
+				modules: true,
+				script,
+				compatibilityDate: "2024-09-23",
+				compatibilityFlags: ["nodejs_compat"],
+				assets: {
+					directory: join(outDir, "public"),
+					binding: "ASSETS",
+					routerConfig: {
+						has_user_worker: true,
+						invoke_user_worker_ahead_of_assets: true,
+					},
+					// A directory over ASSETS serves literal paths, no HTML
+					// canonicalization (newer workerd 500s on explicit .html
+					// paths under the default html_handling).
+					assetConfig: {html_handling: "none"},
+				},
+			});
+
+			await mf.ready;
+
+			// Direct children of the base path: a file and a subdirectory.
+			const listResponse = await mf.dispatchFetch("http://localhost/list");
+			expect(listResponse.status).toBe(200);
+			const {listing, staged} = await listResponse.json();
+			expect(staged).toBe(3);
+			expect(listing).toEqual({"about.md": "file", posts: "directory"});
+
+			// Navigating into the subdirectory keeps it enumerable, and the
+			// handles read real content through the binding.
+			const readResponse = await mf.dispatchFetch(
+				"http://localhost/read-posts",
+			);
+			expect(readResponse.status).toBe(200);
+			const {names, text} = await readResponse.json();
+			expect(names).toEqual(["first.md", "second.md"]);
+			expect(text).toBe("# First post");
+		} finally {
+			if (mf) {
+				await mf.dispose();
+			}
+			await FS.rm(tempDir, {recursive: true, force: true}).catch(() => {});
+		}
+	},
+	MINIFLARE_TIMEOUT,
+);

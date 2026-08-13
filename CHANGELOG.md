@@ -2,6 +2,29 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## [0.2.23] - 2026-08-12
+
+### Bug Fixes
+
+- **ASSETS directory enumeration hardened** — `@b9g/platform-cloudflare/directories` no longer imports the `shovel:assets` virtual module from library code, which broke consumers bundling outside a shovel build ("Could not resolve shovel:assets" under plain wrangler/esbuild/Vite); the manifest is registered at worker startup via the new `@b9g/assets/manifest` registry, routed through `@b9g/platform-cloudflare/runtime` so it resolves from the platform package's own dependency context (pnpm-isolated and Yarn PnP layouts included). Enumeration is now indexed (no full-manifest rescan per call), malformed manifests degrade to `NotSupportedError` instead of crashing, file/directory name collisions resolve deterministically to the directory, and `getFileHandle` resolves through the manifest without a network probe — halving ASSETS subrequests for list-then-read walks. ([#109](https://github.com/bikeshaving/shovel/pull/109), [#111](https://github.com/bikeshaving/shovel/pull/111))
+- **Generated node/bun entries no longer bare-import transitive dependencies** — generated worker and supervisor code imported `@logtape/logtape` and `@b9g/node-webworker` directly, which resolves from the user's project root and fails under pnpm-isolated/Yarn-PnP layouts; `getLogger` is now re-exported from `@b9g/platform/runtime` and `NodeWebWorker` from `@b9g/platform-node`. ([#112](https://github.com/bikeshaving/shovel/pull/112))
+- **Asset manifest injection fails closed** — the build-time placeholder replacement is scoped to the build's own emitted bundles, verifies the replaced content before an atomic write-then-rename, covers multiple placeholder occurrences, skips rewriting `dist/` entirely when the build failed, and reports failures once through esbuild's error channel. Previously a missed replacement could ship a worker that throws `ReferenceError` at module evaluation while the build reported success. ([#112](https://github.com/bikeshaving/shovel/pull/112), [#113](https://github.com/bikeshaving/shovel/pull/113), [#115](https://github.com/bikeshaving/shovel/pull/115))
+- **`shovel develop` survives failed rebuilds** — `Bundler.rebuild()` now owns log-and-survive error handling, so a failed manual reload (Ctrl+R) logs instead of killing the dev server. ([#113](https://github.com/bikeshaving/shovel/pull/113))
+
+### Dependencies
+
+- `@b9g/platform-cloudflare` 0.1.19, `@b9g/assets` 0.2.2, `@b9g/platform` 0.1.20, `@b9g/platform-node` 0.1.18, `@b9g/platform-bun` 0.1.18
+
+## [0.2.22] - 2026-08-11
+
+### Features
+
+- **Directory enumeration on Cloudflare ASSETS** — Directories backed by the ASSETS binding (`CloudflareAssetsDirectory`) now support `entries()`/`keys()`/`values()`, powered by the asset manifest the build already bundles into the worker. The standard content-walking idiom — blog indexes, feeds, sitemaps, prerender route lists derived from `content/**` — now runs unchanged on Cloudflare Workers and Pages, with no new config. Enumeration reflects the build's asset snapshot (the same lifetime as the binding itself); outside a shovel build, listing still throws `NotSupportedError` while named reads work as before. ([PR #104](https://github.com/bikeshaving/shovel/pull/104))
+
+### Dependencies
+
+- `@b9g/platform-cloudflare` 0.1.18
+
 ## [0.2.21] - 2026-07-14
 
 ### Security

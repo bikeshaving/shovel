@@ -12,7 +12,84 @@
  */
 
 import mime from "mime";
+import {getAssetsManifest} from "@b9g/assets/manifest";
 import {getEnv} from "./variables.js";
+
+// ============================================================================
+// ASSET MANIFEST
+// ============================================================================
+
+/**
+ * The subset of @b9g/assets' AssetManifest that enumeration reads. The
+ * canonical AssetManifest is assignable to this; tests can pass a minimal
+ * shape.
+ */
+export interface AssetManifestLike {
+	assets?: Record<string, {url?: string}>;
+}
+
+/**
+ * Per-manifest directory index: dirPath (with trailing slash) -> children.
+ * Built once per manifest object and memoized, so enumeration is a Map
+ * lookup instead of a full manifest sweep per directory per call.
+ */
+type DirectoryIndex = Map<
+	string,
+	Map<string, {kind: "file" | "directory"; url: string}>
+>;
+
+const directoryIndexes = new WeakMap<AssetManifestLike, DirectoryIndex>();
+
+function getDirectoryIndex(manifest: AssetManifestLike): DirectoryIndex | null {
+	const assets = manifest.assets;
+	if (!assets || typeof assets !== "object") {
+		// A manifest without an assets record (stale or malformed build
+		// artifact) is treated as "no manifest" rather than crashing.
+		return null;
+	}
+
+	let index = directoryIndexes.get(manifest);
+	if (index) return index;
+
+	index = new Map();
+	for (const entry of Object.values(assets)) {
+		const url = entry?.url;
+		if (typeof url !== "string" || !url.startsWith("/")) continue;
+
+		const segments = url.split("/").slice(1);
+		let dirPath = "/";
+		for (let i = 0; i < segments.length; i++) {
+			const name = segments[i];
+			if (!name) continue;
+
+			let children = index.get(dirPath);
+			if (!children) {
+				children = new Map();
+				index.set(dirPath, children);
+			}
+
+			const isLeaf = i === segments.length - 1;
+			const existing = children.get(name);
+			if (isLeaf) {
+				// A name that exists as both a file and a directory keeps the
+				// directory: shadowing a subtree behind a same-named file would
+				// silently hide deeper content, and manifest iteration order is
+				// not stable enough to make the alternative deterministic.
+				if (!existing) children.set(name, {kind: "file", url});
+			} else if (!existing || existing.kind === "file") {
+				children.set(name, {
+					kind: "directory",
+					url: dirPath + name + "/",
+				});
+			}
+
+			dirPath = dirPath + name + "/";
+		}
+	}
+
+	directoryIndexes.set(manifest, index);
+	return index;
+}
 
 // ============================================================================
 // R2 TYPES
@@ -243,20 +320,28 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	[Symbol.asyncIterator](): any {
+	[Symbol.asyncIterator](): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		return this.entries();
 	}
-	entries(): any {
+	entries(): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		return this.#generateEntries();
 	}
-	keys(): any {
+	keys(): AsyncIterableIterator<string> {
 		return this.#generateKeys();
 	}
-	values(): any {
+	values(): AsyncIterableIterator<
+		FileSystemFileHandle | FileSystemDirectoryHandle
+	> {
 		return this.#generateValues();
 	}
 
-	async *#generateEntries() {
+	async *#generateEntries(): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		const listPrefix = this.#prefix ? `${this.#prefix}/` : "";
 
 		try {
@@ -275,7 +360,7 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 						yield [
 							name,
 							new R2FileSystemFileHandle(this.#r2Bucket, object.key),
-						] as [string, FileSystemHandle];
+						] as [string, FileSystemFileHandle | FileSystemDirectoryHandle];
 					}
 				}
 			}
@@ -289,7 +374,7 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 							this.#r2Bucket,
 							prefix.replace(/\/$/, ""),
 						),
-					] as [string, FileSystemHandle];
+					] as [string, FileSystemFileHandle | FileSystemDirectoryHandle];
 				}
 			}
 		} catch (error) {
@@ -297,13 +382,15 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		}
 	}
 
-	async *#generateKeys() {
+	async *#generateKeys(): AsyncIterableIterator<string> {
 		for await (const [name] of this.entries()) {
 			yield name;
 		}
 	}
 
-	async *#generateValues() {
+	async *#generateValues(): AsyncIterableIterator<
+		FileSystemFileHandle | FileSystemDirectoryHandle
+	> {
 		for await (const [, handle] of this.entries()) {
 			yield handle;
 		}
@@ -391,12 +478,19 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	readonly name: string;
 	#assets: CFAssetsBinding;
 	#basePath: string;
+	#manifest?: AssetManifestLike;
 
-	constructor(assets: CFAssetsBinding, basePath = "/") {
+	constructor(
+		assets: CFAssetsBinding,
+		basePath = "/",
+		/** Overrides the registered asset manifest (used by tests). */
+		manifest?: AssetManifestLike,
+	) {
 		this.kind = "directory";
 		this.#assets = assets;
 		this.#basePath = basePath.endsWith("/") ? basePath : basePath + "/";
 		this.name = basePath.split("/").filter(Boolean).pop() || "assets";
+		this.#manifest = manifest;
 	}
 
 	async getFileHandle(
@@ -405,6 +499,18 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	): Promise<FileSystemFileHandle> {
 		const path = this.#basePath + name;
 
+		// The manifest answers existence without a network round-trip — a
+		// list-then-read walk otherwise costs two ASSETS subrequests per file
+		// against the Workers subrequest cap.
+		const manifest = this.#manifest ?? getAssetsManifest();
+		const index = manifest && getDirectoryIndex(manifest);
+		const child = index?.get(this.#basePath)?.get(name);
+		if (child?.kind === "file") {
+			return new CFAssetsFileHandle(this.#assets, child.url, name);
+		}
+
+		// Not in the manifest (or no manifest): probe the binding, which also
+		// serves files that reached the assets directory outside the build.
 		const response = await this.#assets.fetch(
 			new Request("https://assets" + path),
 		);
@@ -422,8 +528,12 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	async getDirectoryHandle(
 		name: string,
 		_options?: FileSystemGetDirectoryOptions,
-	): Promise<FileSystemDirectoryHandle> {
-		return new CFAssetsDirectoryHandle(this.#assets, this.#basePath + name);
+	): Promise<CFAssetsDirectoryHandle> {
+		return new CFAssetsDirectoryHandle(
+			this.#assets,
+			this.#basePath + name,
+			this.#manifest,
+		);
 	}
 
 	async removeEntry(
@@ -439,29 +549,63 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	[Symbol.asyncIterator](): any {
+	[Symbol.asyncIterator](): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
 		return this.entries();
 	}
 
-	entries(): any {
-		throw new DOMException(
-			"Directory listing not supported for ASSETS binding. Use an asset manifest for enumeration.",
-			"NotSupportedError",
-		);
+	/**
+	 * The ASSETS binding has no list API, but the build already knows every
+	 * asset it emitted: the generated worker entry registers the bundled
+	 * manifest at startup. Enumeration reads the memoized directory index
+	 * over it — files as file handles, deeper paths as subdirectory handles.
+	 */
+	async *entries(): AsyncIterableIterator<
+		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
+	> {
+		const children = this.#children();
+		if (!children) return;
+		for (const [name, child] of children) {
+			if (child.kind === "file") {
+				yield [name, new CFAssetsFileHandle(this.#assets, child.url, name)];
+			} else {
+				yield [
+					name,
+					new CFAssetsDirectoryHandle(
+						this.#assets,
+						this.#basePath + name,
+						this.#manifest,
+					),
+				];
+			}
+		}
 	}
 
-	keys(): any {
-		throw new DOMException(
-			"Directory listing not supported for ASSETS binding",
-			"NotSupportedError",
-		);
+	/** Direct children from the manifest index; throws without a manifest. */
+	#children(): Map<string, {kind: "file" | "directory"; url: string}> | null {
+		const manifest = this.#manifest ?? getAssetsManifest();
+		const index = manifest && getDirectoryIndex(manifest);
+		if (!index) {
+			throw new DOMException(
+				"Directory listing for the ASSETS binding needs the shovel:assets " +
+					"manifest, which is not supported outside a shovel build.",
+				"NotSupportedError",
+			);
+		}
+		return index.get(this.#basePath) ?? null;
 	}
 
-	values(): any {
-		throw new DOMException(
-			"Directory listing not supported for ASSETS binding",
-			"NotSupportedError",
-		);
+	async *keys(): AsyncIterableIterator<string> {
+		const children = this.#children();
+		if (!children) return;
+		yield* children.keys();
+	}
+
+	async *values(): AsyncIterableIterator<
+		FileSystemFileHandle | FileSystemDirectoryHandle
+	> {
+		for await (const [, handle] of this.entries()) yield handle;
 	}
 
 	isSameEntry(other: FileSystemHandle): Promise<boolean> {

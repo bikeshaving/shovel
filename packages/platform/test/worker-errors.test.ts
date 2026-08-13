@@ -37,9 +37,20 @@ const TIMEOUT = 20000;
 // assertion (observed timing out at ~5s on CI).
 const REQUEST_TIMEOUT = 15000;
 
+// Test workers must speak the pool's shutdown protocol: gracefulShutdown()
+// waits for "shutdown-complete" and only falls back to a 5s timeout. A worker
+// that never replies makes every terminate() stall for the full 5s, which
+// pushed the afterEach hook over bun's hook timeout on slow CI (the flake
+// #98 papered over with longer test timeouts).
 const GOOD_WORKER_CODE = `
 self.addEventListener("fetch", (event) => {
 	event.respondWith(new Response("Hello"));
+});
+self.addEventListener("message", (event) => {
+	const message = event.data || event;
+	if (message?.type === "shutdown") {
+		postMessage({type: "shutdown-complete"});
+	}
 });
 postMessage({type: "ready"});
 `;
@@ -386,6 +397,12 @@ throw new Error("Initial error");
 				`
 self.addEventListener("fetch", (event) => {
 	event.respondWith(new Response("Fixed!"));
+});
+self.addEventListener("message", (event) => {
+	const message = event.data || event;
+	if (message?.type === "shutdown") {
+		postMessage({type: "shutdown-complete"});
+	}
 });
 postMessage({type: "ready"});
 `,
