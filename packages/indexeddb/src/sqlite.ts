@@ -543,6 +543,9 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	#readonly: boolean;
 	#aborted: boolean;
 	#cache: MetadataCache;
+	#backend: SQLiteBackend | null;
+	#name: string;
+	#released: boolean;
 	/** Shared generation counter — cursors use this to detect mutations. */
 	_generation: GenerationRef;
 
@@ -550,11 +553,23 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		db: SQLiteDB,
 		mode: "readonly" | "readwrite" | "versionchange",
 		cache: MetadataCache,
+		backend?: SQLiteBackend,
+		name?: string,
 	) {
 		this.#db = db;
 		this.#readonly = mode === "readonly";
 		this.#aborted = false;
 		this.#cache = cache;
+		// The transaction holds its own reference on the shared handle so the
+		// db stays open for its entire lifetime — including a deferred commit
+		// that runs after the owning connection was closed (db.close() while a
+		// transaction is still auto-committing). Released exactly once on
+		// commit/abort. Without this, the last connection.close() could evict
+		// the handle out from under a pending commit ("Database has closed").
+		this.#backend = backend ?? null;
+		this.#name = name ?? "";
+		this.#released = false;
+		this.#backend?._acquireHandle(this.#name);
 		this._generation = {value: 0};
 
 		// Readonly: no SQL-level transaction needed (reads see committed state).
@@ -562,6 +577,12 @@ class SQLiteTransaction implements IDBBackendTransaction {
 		if (!this.#readonly) {
 			db.exec("BEGIN IMMEDIATE");
 		}
+	}
+
+	#release(): void {
+		if (this.#released) return;
+		this.#released = true;
+		this.#backend?._releaseHandle(this.#name);
 	}
 
 	#getStoreId(name: string): number {
@@ -1100,15 +1121,23 @@ class SQLiteTransaction implements IDBBackendTransaction {
 	// ---- Lifecycle ----
 
 	commit(): void {
-		if (!this.#aborted && !this.#readonly) {
-			this.#db.exec("COMMIT");
+		try {
+			if (!this.#aborted && !this.#readonly) {
+				this.#db.exec("COMMIT");
+			}
+		} finally {
+			this.#release();
 		}
 	}
 
 	abort(): void {
 		this.#aborted = true;
-		if (!this.#readonly) {
-			this.#db.exec("ROLLBACK");
+		try {
+			if (!this.#readonly) {
+				this.#db.exec("ROLLBACK");
+			}
+		} finally {
+			this.#release();
 		}
 	}
 
@@ -1313,13 +1342,25 @@ class SQLiteConnection implements IDBBackendConnection {
 			// Versionchange mutates the cache — give it a fresh copy.
 			// Mark connection cache dirty so next tx reloads.
 			this.#cacheDirty = true;
-			return new SQLiteTransaction(this.#db, mode, loadMetadataCache(this.#db));
+			return new SQLiteTransaction(
+				this.#db,
+				mode,
+				loadMetadataCache(this.#db),
+				this.#backend,
+				this.#name,
+			);
 		}
 		if (this.#cacheDirty) {
 			this.#cache = loadMetadataCache(this.#db);
 			this.#cacheDirty = false;
 		}
-		return new SQLiteTransaction(this.#db, mode, this.#cache);
+		return new SQLiteTransaction(
+			this.#db,
+			mode,
+			this.#cache,
+			this.#backend,
+			this.#name,
+		);
 	}
 
 	close(): void {
@@ -1366,6 +1407,15 @@ export class SQLiteBackend implements IDBBackend {
 			"INSERT OR REPLACE INTO _idb_meta (key, value) VALUES ('name', ?)",
 		).run(encodeName(name));
 		return new SQLiteConnection(db, this, name);
+	}
+
+	/**
+	 * @internal Acquire an extra reference on an already-open handle (no new
+	 * connection). Used by transactions to keep the handle alive across a
+	 * deferred commit even after the owning connection has closed.
+	 */
+	_acquireHandle(name: string): void {
+		this.#refcounts.set(name, (this.#refcounts.get(name) ?? 0) + 1);
 	}
 
 	/** @internal Called by SQLiteConnection.close() to release a handle. */

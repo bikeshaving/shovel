@@ -239,11 +239,21 @@ export class IDBObjectStore {
 		request[kSetSource](this);
 
 		return this.#transaction[kExecuteRequest](request, (tx) => {
+			// A failed insert must have NO side effects — including advancing
+			// the key generator (a generated key is "given back" when the store
+			// step throws, e.g. a unique-index ConstraintError). Save the
+			// generator before #prepareRecord generates the key, restore on
+			// failure. WPT request-event-ordering exercises exactly this.
+			const savedAutoInc = tx.getAutoIncrementCurrent(this.name);
 			const {encodedKey, encodedValue} = this.#prepareRecord(clone, key, tx);
-			// Spec: a failed insertion does NOT revert the key generator — the
-			// next auto-generated key must still advance (WPT
-			// keygenerator-constraint), so no save/restore around the insert.
-			tx.add(this.name, encodedKey, encodedValue);
+			try {
+				tx.add(this.name, encodedKey, encodedValue);
+			} catch (e) {
+				if (savedAutoInc !== undefined) {
+					tx.setAutoIncrementCurrent(this.name, savedAutoInc);
+				}
+				throw e;
+			}
 			return decodeKey(encodedKey);
 		});
 	}
@@ -266,10 +276,18 @@ export class IDBObjectStore {
 		request[kSetSource](this);
 
 		return this.#transaction[kExecuteRequest](request, (tx) => {
+			// A failed insert must have NO side effects — restore the key
+			// generator if the store step throws (see add() above).
+			const savedAutoInc = tx.getAutoIncrementCurrent(this.name);
 			const {encodedKey, encodedValue} = this.#prepareRecord(clone, key, tx);
-			// Spec: a failed insertion does NOT revert the key generator (WPT
-			// keygenerator-constraint).
-			tx.put(this.name, encodedKey, encodedValue);
+			try {
+				tx.put(this.name, encodedKey, encodedValue);
+			} catch (e) {
+				if (savedAutoInc !== undefined) {
+					tx.setAutoIncrementCurrent(this.name, savedAutoInc);
+				}
+				throw e;
+			}
 			return decodeKey(encodedKey);
 		});
 	}

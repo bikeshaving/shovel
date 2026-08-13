@@ -318,6 +318,15 @@ export class IDBTransaction extends SafeEventTarget {
 	}
 
 	#revertRenames(): void {
+		// Nothing renamed (the common case — only versionchange txns rename):
+		// don't touch the backend at all. Avoids a needless getMetadata() that
+		// would throw if the connection's handle is already gone.
+		if (
+			this.#originalStoreNames.size === 0 &&
+			this.#originalIndexNames.size === 0
+		) {
+			return;
+		}
 		// After backend abort, metadata reflects pre-transaction state.
 		// Only revert names for pre-existing stores/indexes (not created in this tx).
 		const meta = this.#db[kConnection].getMetadata();

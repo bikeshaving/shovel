@@ -241,6 +241,45 @@ describe("SQLite backend: cursors", () => {
 	});
 });
 
+describe("SQLite backend: handle lifetime", () => {
+	// Regression: a transaction's auto-commit is deferred (microtask). If the
+	// test awaits the last request and then calls db.close(), the connection
+	// released the shared SQLite handle before the deferred commit ran, which
+	// closed the handle out from under it ("Database has closed"). A
+	// transaction must keep its handle alive until commit/abort completes.
+	it("deferred commit survives db.close() and persists", async () => {
+		const db = await openDB("deferred-commit", 1, (db) => {
+			db.createObjectStore("store");
+		});
+
+		const tx = db.transaction("store", "readwrite");
+		const store = tx.objectStore("store");
+		store.put("v1", "k1");
+		store.put("v2", "k2");
+		// Await the last REQUEST (not tx.oncomplete), then close immediately —
+		// the auto-commit is still a pending microtask at this point.
+		await new Promise<void>((resolve, reject) => {
+			const req = store.getAllKeys();
+			req.onsuccess = () => resolve();
+			req.onerror = () => reject(req.error);
+		});
+		db.close();
+		// Let the deferred commit run; it must not throw on a closed handle.
+		await new Promise((r) => setTimeout(r, 10));
+
+		// Reopen: the writes must have committed.
+		const db2 = await openDB("deferred-commit", 1);
+		const values = await new Promise<any[]>((resolve, reject) => {
+			const tx2 = db2.transaction("store", "readonly");
+			const req = tx2.objectStore("store").getAll();
+			req.onsuccess = () => resolve(req.result);
+			req.onerror = () => reject(req.error);
+		});
+		db2.close();
+		expect(values).toEqual(["v1", "v2"]);
+	});
+});
+
 describe("SQLite backend: deleteDatabase", () => {
 	it("removes the database", async () => {
 		const db1 = await openDB("todelete", 1, (db) => {
