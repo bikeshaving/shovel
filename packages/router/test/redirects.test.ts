@@ -72,11 +72,11 @@ describe("Redirects as data", () => {
 		}
 	});
 
-	test("redirects serialize as plain data (no functions, no phase)", () => {
+	test("redirects serialize as plain data", () => {
 		const router = new Router();
 		router.redirect("/a", "/b");
-		expect(router.toJSON().redirects).toEqual([
-			{match: {pattern: "/a"}, target: "/b", status: 301},
+		expect(router.toJSON().entries).toEqual([
+			{redirect: {match: {pattern: "/a"}, target: "/b", status: 301}},
 		]);
 	});
 });

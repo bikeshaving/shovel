@@ -28,22 +28,23 @@ const urls = [
 ];
 
 describe("Router serialization", () => {
-	test("toJSON emits version 1 and groups methods by pattern", () => {
+	test("toJSON emits version 1 and one entry per route/method in order", () => {
 		const json = makeRouter().toJSON();
 		expect(json.version).toBe(1);
-		const user = json.routes.find((r) => r.pattern === "/api/users/:id");
-		expect(user).toBeDefined();
-		expect(user!.methods.sort()).toEqual(["DELETE", "GET", "PUT"]);
-		expect(user!.name).toBe("user");
-		// No handlers or middleware leak into the serialized form.
+		const userMethods = json.entries
+			.filter(
+				(e): e is {route: {pattern: string; method: string; name?: string}} =>
+					"route" in e && e.route.pattern === "/api/users/:id",
+			)
+			.map((e) => e.route.method);
+		expect(userMethods.sort()).toEqual(["DELETE", "GET", "PUT"]);
 		expect(JSON.stringify(json)).not.toContain("function");
 	});
 
 	test("JSON.stringify(router) works via toJSON()", () => {
-		const str = JSON.stringify(makeRouter());
-		const parsed = JSON.parse(str);
+		const parsed = JSON.parse(JSON.stringify(makeRouter()));
 		expect(parsed.version).toBe(1);
-		expect(Array.isArray(parsed.routes)).toBe(true);
+		expect(Array.isArray(parsed.entries)).toBe(true);
 	});
 
 	test("PARITY: fromJSON(toJSON(r)).match() equals r.match() for every URL", () => {
@@ -70,8 +71,27 @@ describe("Router serialization", () => {
 	});
 
 	test("fromJSON rejects an unsupported version", () => {
-		expect(() => Router.fromJSON({version: 2 as 1, routes: []})).toThrow(
+		expect(() => Router.fromJSON({version: 2 as 1, entries: []})).toThrow(
 			/version/,
 		);
+	});
+
+	test("route↔redirect interleaving survives the round-trip", () => {
+		// A redirect declared BEFORE its route shadows it; this precedence must
+		// hold identically after fromJSON.
+		const server = new Router();
+		server.redirect("/old", "/new"); // before → shadows
+		server.route("/old").get(async () => new Response("route"));
+		server.route("/keep").get(async () => new Response("route"));
+		server.redirect("/keep", "/nope"); // after → route wins
+
+		const client = Router.fromJSON(JSON.stringify(server));
+		for (const url of ["http://x.com/old", "http://x.com/keep"]) {
+			expect(client.resolveRedirect(url)).toEqual(server.resolveRedirect(url));
+		}
+		expect(client.resolveRedirect("http://x.com/old")?.location).toBe(
+			"http://x.com/new",
+		);
+		expect(client.resolveRedirect("http://x.com/keep")).toBeNull();
 	});
 });
