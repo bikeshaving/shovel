@@ -67,8 +67,12 @@ function enforceRangeCount(count: unknown): void {
 export function normalizeGetAllCount(cnt: unknown): number | undefined {
 	if (cnt === undefined) return undefined;
 	const n = Number(cnt);
-	if (n === 0) return undefined;
-	return Number.isFinite(n) ? n : (cnt as number);
+	// Pass non-finite through so enforceRangeCount() rejects it.
+	if (!Number.isFinite(n)) return cnt as number;
+	// WebIDL [EnforceRange] unsigned long truncates toward zero (1.5 → 1);
+	// 0 (and null/"0") means "retrieve all" → no limit.
+	const t = Math.trunc(n);
+	return t === 0 ? undefined : t;
 }
 
 /**

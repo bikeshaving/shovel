@@ -20,6 +20,7 @@ type Listener = EventListener | EventListenerObject;
 interface ListenerEntry {
 	listener: Listener;
 	capture: boolean;
+	once: boolean;
 }
 
 export class SafeEventTarget {
@@ -38,6 +39,10 @@ export class SafeEventTarget {
 	): void {
 		if (!listener) return;
 		const capture = typeof options === "boolean" ? options : !!options?.capture;
+		const once = typeof options === "object" && !!options?.once;
+		const signal = typeof options === "object" ? options?.signal : undefined;
+		// An already-aborted signal means the listener is never added.
+		if (signal?.aborted) return;
 		if (!this.#listeners.has(type)) {
 			this.#listeners.set(type, []);
 		}
@@ -46,7 +51,15 @@ export class SafeEventTarget {
 		if (entries.some((e) => e.listener === listener && e.capture === capture)) {
 			return;
 		}
-		entries.push({listener, capture});
+		entries.push({listener, capture, once});
+		// Removing the listener when its AbortSignal fires.
+		if (signal) {
+			signal.addEventListener(
+				"abort",
+				() => this.removeEventListener(type, listener, {capture}),
+				{once: true},
+			);
+		}
 	}
 
 	removeEventListener(
@@ -157,6 +170,11 @@ export class SafeEventTarget {
 		for (const entry of [...entries]) {
 			if ((event as any)._stopImmediate) break;
 			if (captureFilter !== null && entry.capture !== captureFilter) continue;
+			// Per spec, a `once` listener is removed before it is invoked.
+			if (entry.once) {
+				const idx = entries.indexOf(entry);
+				if (idx >= 0) entries.splice(idx, 1);
+			}
 			try {
 				const fn = entry.listener;
 				if (typeof fn === "function") {

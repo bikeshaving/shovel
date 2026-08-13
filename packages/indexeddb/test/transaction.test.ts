@@ -370,3 +370,49 @@ describe("conformance regressions (review batch 2)", () => {
 		});
 	});
 });
+
+describe("conformance regressions (review batch 3)", () => {
+	function open3(name: string, up: (db: any) => void): Promise<any> {
+		return new Promise((res, rej) => {
+			const r = factory.open(name, 1);
+			r.onupgradeneeded = () => up(r.result);
+			r.onsuccess = () => res(r.result);
+			r.onerror = () => rej(r.error);
+		});
+	}
+
+	it("getAll count truncates fractional values (1.5 → 1)", async () => {
+		const db = await open3("frac", (db) => {
+			const s = db.createObjectStore("s");
+			for (let i = 0; i < 5; i++) s.put(i, i);
+		});
+		const n = await new Promise<number>((resolve, reject) => {
+			const req = db.transaction("s").objectStore("s").getAll(null, 1.5);
+			req.onsuccess = () => resolve(req.result.length);
+			req.onerror = () => reject(req.error);
+		});
+		expect(n).toBe(1);
+	});
+
+	it("addEventListener {once} fires a cursor's request once, not per iteration", async () => {
+		const db = await open3("once", (db) => {
+			const s = db.createObjectStore("s");
+			for (let i = 0; i < 3; i++) s.put(i, i);
+		});
+		let calls = 0;
+		await new Promise<void>((resolve, reject) => {
+			const tx = db.transaction("s", "readonly");
+			const req = tx.objectStore("s").openCursor();
+			req.addEventListener("success", () => calls++, {once: true});
+			req.onsuccess = () => {
+				const cur = req.result;
+				if (cur) cur.continue();
+			};
+			tx.oncomplete = () => resolve();
+			tx.onerror = () => reject(tx.error);
+		});
+		// The cursor's success fires 4× (3 records + null), but the once
+		// listener must have run exactly once.
+		expect(calls).toBe(1);
+	});
+});
