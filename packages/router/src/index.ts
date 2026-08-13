@@ -124,17 +124,68 @@ export interface SerializedRoute {
 }
 
 /**
+ * When a redirect is applied relative to route matching.
+ * - `eager`: before matching — the path always redirects (Netlify "force").
+ * - `fallthrough`: only after a 404 — a last resort (e.g. trailing-slash).
+ */
+export type RedirectPhase = "eager" | "fallthrough";
+
+/**
+ * Canonical trailing-slash policy. `"strip"`: `/a/` → `/a`. `"append"`:
+ * `/a` → `/a/`. A serializable facet consumed by the redirector (a
+ * fallthrough canonicalization), the client matcher, and the prerender
+ * path-writer.
+ */
+export type TrailingSlashPolicy = "strip" | "append";
+
+/**
+ * A redirect expressed as pure, serializable data — NOT middleware. Two matcher
+ * flavors, both of which serialize to plain strings and recompile identically
+ * on each side:
+ * - MatchPattern syntax: `{pattern}` with `:name` groups, `:name` in `target`.
+ * - Raw regexp: `{source, flags}` (from `RegExp`), `$1`…`$n` in `target` — the
+ *   escape hatch for arbitrary rewrites, not just param swaps.
+ *
+ * Patterns are author-provided, so ReDoS is a config concern, not untrusted
+ * input. Position is three orthogonal facets: array order (first match wins),
+ * `phase`, and `scope` (path-prefix gate).
+ */
+export interface RedirectEntry {
+	match: {pattern: string} | {source: string; flags: string};
+	target: string;
+	phase: RedirectPhase;
+	status: number;
+	scope?: string;
+}
+
+/** The resolved outcome of applying a redirect to a URL. */
+export interface RedirectResolution {
+	location: string;
+	status: number;
+}
+
+/** Options for `Router.redirect()`. */
+export interface RedirectOptions {
+	/** @default "eager" */
+	phase?: RedirectPhase;
+	/** @default 301 */
+	status?: number;
+	/** Only apply when the pathname starts with this prefix. */
+	scope?: string;
+}
+
+/**
  * The serializable form of a Router's match table, produced by `toJSON()` and
  * consumed by `Router.fromJSON()`. One value drives the client router,
- * static-route enumeration, and app self-documentation.
- *
- * Only the routes facet is emitted today; redirects and trailing-slash policy
- * become additional serializable facets (issues #118 and #86). `version` gates
+ * static-route enumeration, and app self-documentation. `version` gates
  * forward-compatible additions.
  */
 export interface SerializedRouter {
 	version: 1;
 	routes: SerializedRoute[];
+	redirects: RedirectEntry[];
+	/** Canonical trailing-slash policy, omitted when none is set. */
+	trailingSlash?: TrailingSlashPolicy;
 }
 
 /**
@@ -624,12 +675,147 @@ export class RouteBuilder {
 export class Router {
 	readonly routes: RouteEntry[];
 	readonly middlewares: MiddlewareEntry[];
+	/** Declared redirects, first-match-wins in array order. Serializable data. */
+	readonly redirects: RedirectEntry[];
 	#executor: RadixTreeExecutor | null;
+	/** Compiled matchers for #redirects, kept in lockstep for reuse. */
+	#redirectMatchers: Array<
+		{kind: "pattern"; mp: MatchPattern} | {kind: "regexp"; re: RegExp}
+	>;
+	/** Canonical trailing-slash policy, or null for "no policy". */
+	#trailingSlash: TrailingSlashPolicy | null;
 
 	constructor() {
 		this.routes = [];
 		this.middlewares = [];
+		this.redirects = [];
 		this.#executor = null;
+		this.#redirectMatchers = [];
+		this.#trailingSlash = null;
+	}
+
+	/**
+	 * Set the canonical trailing-slash policy — a serializable facet (not
+	 * middleware). `"strip"` makes `/about/` redirect to `/about`; `"append"`
+	 * the reverse. Applied as a fallthrough (only after a 404), so an explicit
+	 * route or redirect always wins first. The policy also travels in
+	 * `toJSON()` for the client matcher and the prerender path-writer to read.
+	 */
+	trailingSlash(policy: TrailingSlashPolicy): void {
+		this.#trailingSlash = policy;
+	}
+
+	/** The current trailing-slash policy, or null if none is set. */
+	get trailingSlashPolicy(): TrailingSlashPolicy | null {
+		return this.#trailingSlash;
+	}
+
+	/**
+	 * Declare a redirect as data (not middleware). `from` is either a
+	 * MatchPattern string (`/old/:id`, with `:id` reusable in `to`) or a
+	 * `RegExp` (with `$1`…`$n` in `to`). Redirects are applied in declaration
+	 * order, first match wins.
+	 */
+	redirect(
+		from: string | RegExp,
+		to: string,
+		options: RedirectOptions = {},
+	): void {
+		const entry: RedirectEntry = {
+			match:
+				typeof from === "string"
+					? {pattern: from}
+					: {source: from.source, flags: from.flags},
+			target: to,
+			phase: options.phase ?? "eager",
+			status: options.status ?? 301,
+			...(options.scope !== undefined ? {scope: options.scope} : {}),
+		};
+		this.#addRedirect(entry);
+	}
+
+	/** @internal Register a redirect entry and compile its matcher. */
+	#addRedirect(entry: RedirectEntry): void {
+		this.redirects.push(entry);
+		if ("pattern" in entry.match) {
+			this.#redirectMatchers.push({
+				kind: "pattern",
+				mp: new MatchPattern(entry.match.pattern),
+			});
+		} else {
+			this.#redirectMatchers.push({
+				kind: "regexp",
+				re: new RegExp(entry.match.source, entry.match.flags),
+			});
+		}
+	}
+
+	/**
+	 * Resolve the first redirect that applies to `url` for the given `phase`.
+	 * Runs identically on client and server — it reads only serializable data.
+	 * Returns the absolute `Location` and status, or null if none apply.
+	 */
+	resolveRedirect(
+		url: string | URL,
+		phase: RedirectPhase,
+	): RedirectResolution | null {
+		const u = typeof url === "string" ? new URL(url) : url;
+		const pathname = u.pathname;
+		for (let i = 0; i < this.redirects.length; i++) {
+			const entry = this.redirects[i];
+			if (entry.phase !== phase) continue;
+			if (entry.scope !== undefined && !pathname.startsWith(entry.scope)) {
+				continue;
+			}
+			const matcher = this.#redirectMatchers[i];
+			let target: string | null = null;
+			if (matcher.kind === "pattern") {
+				const result = matcher.mp.exec(u);
+				if (result) {
+					target = entry.target.replace(
+						/:(\w+)/g,
+						(_m, name: string) => result.pathname.groups[name] ?? "",
+					);
+				}
+			} else {
+				const m = pathname.match(matcher.re);
+				if (m) {
+					target = entry.target.replace(
+						/\$(\d+)/g,
+						(_m, n: string) => m[Number(n)] ?? "",
+					);
+				}
+			}
+			if (target !== null) {
+				// Resolve against the request URL so a path target becomes
+				// absolute; the target controls its own query string.
+				return {location: new URL(target, u).toString(), status: entry.status};
+			}
+		}
+		// Trailing-slash canonicalization is the last-resort fallthrough, after
+		// all explicit redirects — an explicit rule always wins.
+		if (phase === "fallthrough" && this.#trailingSlash !== null) {
+			const canonical = this.#canonicalTrailingSlash(pathname);
+			if (canonical !== null) {
+				return {location: new URL(canonical, u).toString(), status: 301};
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Return the canonical form of a pathname under the trailing-slash policy,
+	 * or null if it is already canonical (or is the root "/").
+	 */
+	#canonicalTrailingSlash(pathname: string): string | null {
+		if (pathname === "/") return null;
+		if (this.#trailingSlash === "strip" && pathname.endsWith("/")) {
+			return pathname.slice(0, -1);
+		}
+		if (this.#trailingSlash === "append" && !pathname.endsWith("/")) {
+			return pathname + "/";
+		}
+		return null;
 	}
 
 	/**
@@ -733,8 +919,13 @@ export class Router {
 	 * Executes the matched handler with middleware chain
 	 */
 	async handle(request: Request): Promise<Response> {
+		// Eager redirects are data and run before matching or middleware.
+		const eager = this.resolveRedirect(request.url, "eager");
+		if (eager) return Router.#redirectResponse(eager);
+
 		const executor = this.#ensureCompiled();
 
+		let response: Response;
 		try {
 			// Find matching route
 			const matchResult = executor.matchRequest(request);
@@ -760,7 +951,7 @@ export class Router {
 			}
 
 			// Execute middleware chain with the handler
-			let response = await this.#executeMiddlewareStack(
+			response = await this.#executeMiddlewareStack(
 				this.middlewares,
 				routeMiddleware,
 				request,
@@ -776,12 +967,26 @@ export class Router {
 					headers: response.headers,
 				});
 			}
-
-			return response;
 		} catch (error) {
 			// Final catch-all for unhandled errors
-			return this.#createErrorResponse(error as Error);
+			response = this.#createErrorResponse(error as Error);
 		}
+
+		// Fallthrough redirects apply after a 404 (from any source).
+		if (response.status === 404) {
+			const fallthrough = this.resolveRedirect(request.url, "fallthrough");
+			if (fallthrough) return Router.#redirectResponse(fallthrough);
+		}
+
+		return response;
+	}
+
+	/** Build a redirect Response from a resolved redirect. */
+	static #redirectResponse(r: RedirectResolution): Response {
+		return new Response(null, {
+			status: r.status,
+			headers: {Location: r.location},
+		});
 	}
 
 	/**
@@ -1098,7 +1303,14 @@ export class Router {
 				entry.name = route.name;
 			}
 		}
-		return {version: 1, routes: Array.from(byPattern.values())};
+		return {
+			version: 1,
+			routes: Array.from(byPattern.values()),
+			redirects: this.redirects,
+			...(this.#trailingSlash !== null
+				? {trailingSlash: this.#trailingSlash}
+				: {}),
+		};
 	}
 
 	/**
@@ -1129,6 +1341,13 @@ export class Router {
 					route.name,
 				);
 			}
+		}
+		// Redirects are data — reapplied identically on the client.
+		for (const entry of parsed.redirects ?? []) {
+			router.#addRedirect(entry);
+		}
+		if (parsed.trailingSlash !== undefined) {
+			router.trailingSlash(parsed.trailingSlash);
 		}
 		return router;
 	}
