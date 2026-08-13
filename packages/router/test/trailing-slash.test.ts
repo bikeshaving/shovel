@@ -4,12 +4,12 @@ import {Router} from "../src/index.js";
 const req = (url: string) => new Request(url);
 
 /**
- * trailingSlash() is pure sugar over redirect() — a fallthrough redirect, not
- * a special facet. So it serializes as an ordinary redirect entry and obeys the
- * same first-match-wins ordering as every other redirect.
+ * trailingSlash() is pure sugar over redirect() — an ordinary redirect whose
+ * precedence is just where you call it. Call it after your routes (the usual
+ * spot) and it only fires when nothing matched.
  */
 describe("Trailing-slash (sugar over redirect)", () => {
-	test("strip: /about/ 301s to /about after a 404", async () => {
+	test("strip: /about/ 301s to /about when no route matched", async () => {
 		const router = new Router();
 		router.route("/about").get(async () => new Response("about"));
 		router.trailingSlash("strip");
@@ -40,50 +40,47 @@ describe("Trailing-slash (sugar over redirect)", () => {
 	test("root '/' is never redirected", () => {
 		const strip = new Router();
 		strip.trailingSlash("strip");
-		expect(strip.resolveRedirect("http://x.com/", "fallthrough")).toBeNull();
+		expect(strip.resolveRedirect("http://x.com/")).toBeNull();
 		const append = new Router();
 		append.trailingSlash("append");
-		expect(append.resolveRedirect("http://x.com/", "fallthrough")).toBeNull();
+		expect(append.resolveRedirect("http://x.com/")).toBeNull();
 	});
 
-	test("an explicit route on the non-canonical path wins (fallthrough)", async () => {
+	test("an explicit route on the non-canonical path wins", async () => {
 		const router = new Router();
-		router.route("/keep/").get(async () => new Response("kept"));
-		router.trailingSlash("strip");
+		router.route("/keep/").get(async () => new Response("kept")); // first
+		router.trailingSlash("strip"); // after → route wins on /keep/
 		const res = await router.handle(req("http://x.com/keep/"));
 		expect(res.status).toBe(200);
 		expect(await res.text()).toBe("kept");
 	});
 
-	test("precedence is just declaration order — declare specific redirects first", () => {
+	test("precedence is declaration order — specific redirect before the catch-all", () => {
 		const router = new Router();
-		// Specific redirect declared BEFORE the catch-all sugar → it wins.
-		router.redirect("/legacy/", "/brand-new", {phase: "fallthrough"});
+		router.redirect("/legacy/", "/brand-new"); // first → wins over strip
 		router.trailingSlash("strip");
-		expect(
-			router.resolveRedirect("http://x.com/legacy/", "fallthrough")?.location,
-		).toBe("http://x.com/brand-new");
+		expect(router.resolveRedirect("http://x.com/legacy/")?.location).toBe(
+			"http://x.com/brand-new",
+		);
 	});
 
 	test("serializes as an ordinary redirect (no special envelope field)", () => {
 		const server = new Router();
 		server.trailingSlash("strip");
 		const json = server.toJSON();
-		// No `trailingSlash` facet on the envelope — it's a normal redirect.
 		expect("trailingSlash" in json).toBe(false);
 		expect(json.redirects).toHaveLength(1);
-		expect(json.redirects[0].phase).toBe("fallthrough");
+		expect("phase" in json.redirects[0]).toBe(false);
 
-		// Round-trips like any other redirect.
 		const client = Router.fromJSON(JSON.stringify(server));
-		expect(client.resolveRedirect("http://x.com/a/", "fallthrough")).toEqual(
-			server.resolveRedirect("http://x.com/a/", "fallthrough"),
+		expect(client.resolveRedirect("http://x.com/a/")).toEqual(
+			server.resolveRedirect("http://x.com/a/"),
 		);
 	});
 
 	test("no trailingSlash() call → no redirect", () => {
 		const router = new Router();
 		expect(router.redirects).toHaveLength(0);
-		expect(router.resolveRedirect("http://x.com/a/", "fallthrough")).toBeNull();
+		expect(router.resolveRedirect("http://x.com/a/")).toBeNull();
 	});
 });
