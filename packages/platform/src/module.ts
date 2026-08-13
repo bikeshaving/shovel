@@ -48,6 +48,7 @@ export interface PlatformDefaults {
 		string,
 		{module: string; export?: string; [key: string]: unknown}
 	>;
+	indexedDB?: {module: string; export?: string; [key: string]: unknown};
 }
 
 // ============================================================================
