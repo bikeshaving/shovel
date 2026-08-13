@@ -40,9 +40,10 @@ describe("Redirects as data", () => {
 		expect(res.headers.get("Location")).toBe("http://x.com/posts/hello");
 	});
 
-	test("scope gates a redirect to a path prefix", () => {
+	test("limiting a redirect to a prefix is done in the matcher, not a facet", () => {
 		const router = new Router();
-		router.redirect("/:rest*", "/blocked", {scope: "/admin"});
+		// The prefix lives in the pattern — no separate `scope` field needed.
+		router.redirect("/admin/:rest*", "/blocked");
 		expect(
 			router.resolveRedirect("http://x.com/admin/x", "eager"),
 		).not.toBeNull();
@@ -61,7 +62,7 @@ describe("Redirects as data", () => {
 		const server = new Router();
 		server.redirect("/old/:id", "/new/:id");
 		server.redirect(/^\/x\/(.+)$/, "/y/$1", {status: 302});
-		server.redirect("/tmp", "/home", {phase: "fallthrough", scope: "/tmp"});
+		server.redirect("/tmp", "/home", {phase: "fallthrough"});
 
 		const client = Router.fromJSON(JSON.stringify(server));
 		for (const url of [

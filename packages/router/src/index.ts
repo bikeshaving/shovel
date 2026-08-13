@@ -130,12 +130,7 @@ export interface SerializedRoute {
  */
 export type RedirectPhase = "eager" | "fallthrough";
 
-/**
- * Canonical trailing-slash policy. `"strip"`: `/a/` → `/a`. `"append"`:
- * `/a` → `/a/`. A serializable facet consumed by the redirector (a
- * fallthrough canonicalization), the client matcher, and the prerender
- * path-writer.
- */
+/** Argument to the `trailingSlash()` sugar. `"strip"`: `/a/` → `/a`. */
 export type TrailingSlashPolicy = "strip" | "append";
 
 /**
@@ -147,15 +142,15 @@ export type TrailingSlashPolicy = "strip" | "append";
  *   escape hatch for arbitrary rewrites, not just param swaps.
  *
  * Patterns are author-provided, so ReDoS is a config concern, not untrusted
- * input. Position is three orthogonal facets: array order (first match wins),
- * `phase`, and `scope` (path-prefix gate).
+ * input. Position is two facets: array order (first match wins) and `phase`
+ * (a temporal relation to matching the pattern can't express). To limit a
+ * redirect to a path prefix, put the prefix in the matcher.
  */
 export interface RedirectEntry {
 	match: {pattern: string} | {source: string; flags: string};
 	target: string;
 	phase: RedirectPhase;
 	status: number;
-	scope?: string;
 }
 
 /** The resolved outcome of applying a redirect to a URL. */
@@ -170,8 +165,6 @@ export interface RedirectOptions {
 	phase?: RedirectPhase;
 	/** @default 301 */
 	status?: number;
-	/** Only apply when the pathname starts with this prefix. */
-	scope?: string;
 }
 
 /**
@@ -725,7 +718,6 @@ export class Router {
 			target: to,
 			phase: options.phase ?? "eager",
 			status: options.status ?? 301,
-			...(options.scope !== undefined ? {scope: options.scope} : {}),
 		};
 		this.#addRedirect(entry);
 	}
@@ -760,9 +752,6 @@ export class Router {
 		for (let i = 0; i < this.redirects.length; i++) {
 			const entry = this.redirects[i];
 			if (entry.phase !== phase) continue;
-			if (entry.scope !== undefined && !pathname.startsWith(entry.scope)) {
-				continue;
-			}
 			const matcher = this.#redirectMatchers[i];
 			let target: string | null = null;
 			if (matcher.kind === "pattern") {
