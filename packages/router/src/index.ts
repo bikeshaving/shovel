@@ -113,6 +113,31 @@ export interface RouteMatch {
 }
 
 /**
+ * A single route in the serialized form — pattern, the methods registered on
+ * it, and an optional name. Handlers are NEVER serialized: the contract is
+ * "client matches, server handles".
+ */
+export interface SerializedRoute {
+	pattern: string;
+	methods: string[];
+	name?: string;
+}
+
+/**
+ * The serializable form of a Router's match table, produced by `toJSON()` and
+ * consumed by `Router.fromJSON()`. One value drives the client router,
+ * static-route enumeration, and app self-documentation.
+ *
+ * Only the routes facet is emitted today; redirects and trailing-slash policy
+ * become additional serializable facets (issues #118 and #86). `version` gates
+ * forward-compatible additions.
+ */
+export interface SerializedRouter {
+	version: 1;
+	routes: SerializedRoute[];
+}
+
+/**
  * Route entry stored by the router
  */
 export interface RouteEntry {
@@ -1045,6 +1070,67 @@ export class Router {
 
 		// No generator handled the error
 		throw error;
+	}
+
+	/**
+	 * Serialize the router's match table to a plain, JSON-safe value. Named
+	 * `toJSON` so `JSON.stringify(router)` works for free.
+	 *
+	 * Handlers and middleware are intentionally omitted — they are server-only.
+	 * Per-method route entries are grouped by pattern so the output mirrors how
+	 * `match()` sees the table (one node per pattern, many methods).
+	 */
+	toJSON(): SerializedRouter {
+		const byPattern = new Map<string, SerializedRoute>();
+		// Preserve declaration order of first appearance for stable output.
+		for (const route of this.routes) {
+			const pattern = route.pattern.pathname;
+			let entry = byPattern.get(pattern);
+			if (entry === undefined) {
+				entry = {pattern, methods: []};
+				byPattern.set(pattern, entry);
+			}
+			if (!entry.methods.includes(route.method)) {
+				entry.methods.push(route.method);
+			}
+			// First declared name for the pattern wins.
+			if (entry.name === undefined && route.name !== undefined) {
+				entry.name = route.name;
+			}
+		}
+		return {version: 1, routes: Array.from(byPattern.values())};
+	}
+
+	/**
+	 * Reconstruct a **match-only** router from `toJSON()` output (an object or a
+	 * JSON string). `match()` behaves identically to the source router;
+	 * `handle()` 404s by design, because no handlers were serialized. This is
+	 * the client-side half of "client matches, server handles".
+	 */
+	static fromJSON(data: SerializedRouter | string): Router {
+		const parsed: SerializedRouter =
+			typeof data === "string" ? JSON.parse(data) : data;
+		if (parsed === null || typeof parsed !== "object") {
+			throw new Error("Cannot deserialize router: expected an object.");
+		}
+		if (parsed.version !== 1) {
+			throw new Error(
+				`Unsupported serialized router version: ${String(parsed.version)}`,
+			);
+		}
+		const router = new Router();
+		for (const route of parsed.routes) {
+			for (const method of route.methods) {
+				// No handler → match-only. handle() falls through to 404.
+				router.addRoute(
+					method as HTTPMethod,
+					route.pattern,
+					undefined,
+					route.name,
+				);
+			}
+		}
+		return router;
 	}
 
 	/**
