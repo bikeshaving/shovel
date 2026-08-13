@@ -8,7 +8,7 @@ import {IDBKeyRange} from "./key-range.js";
 import {IDBCursor, IDBCursorWithValue} from "./cursor.js";
 import {encodeKey, decodeKey, validateKey} from "./key.js";
 import {decodeValue} from "./structured-clone.js";
-import {IDBRecord} from "./object-store.js";
+import {IDBRecord, normalizeGetAllCount} from "./object-store.js";
 import {TransactionInactiveError, InvalidStateError} from "./errors.js";
 import type {IndexMeta, KeyRangeSpec} from "./types.js";
 import {
@@ -47,16 +47,15 @@ function parseGetAllArgs(
 		typeof queryOrOptions === "object" &&
 		Object.getPrototypeOf(queryOrOptions) === Object.prototype
 	) {
-		const cnt = queryOrOptions.count;
 		return {
 			query: queryOrOptions.query ?? null,
-			count: cnt === 0 ? undefined : cnt,
+			count: normalizeGetAllCount(queryOrOptions.count),
 			direction: queryOrOptions.direction,
 		};
 	}
 	return {
 		query: queryOrOptions,
-		count: countArg === 0 ? undefined : countArg,
+		count: normalizeGetAllCount(countArg),
 		direction: undefined,
 	};
 }

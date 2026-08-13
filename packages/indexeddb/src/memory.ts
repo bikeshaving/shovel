@@ -647,10 +647,27 @@ class MemoryTransaction implements IDBBackendTransaction {
 		primaryKey: Uint8Array,
 		value: Uint8Array,
 	): void {
-		for (const [key, idx] of this.#db.indexes) {
-			if (key.startsWith(storeName + "/")) {
-				this.#addToIndex(idx, primaryKey, value, idx.meta);
+		// Atomic across indexes: if a later unique index throws ConstraintError
+		// after earlier indexes were mutated, roll those back so no phantom
+		// entries survive (they otherwise persist when the request error is
+		// preventDefault()'d and the transaction commits). Record each index
+		// BEFORE mutating it, so a partial multiEntry insert in the failing
+		// index is rolled back too.
+		const touched: MemoryIndex[] = [];
+		try {
+			for (const [key, idx] of this.#db.indexes) {
+				if (key.startsWith(storeName + "/")) {
+					touched.push(idx);
+					this.#addToIndex(idx, primaryKey, value, idx.meta);
+				}
 			}
+		} catch (e) {
+			for (const idx of touched) {
+				idx.data = idx.data.filter(
+					(entry) => compareKeys(entry.primaryKey, primaryKey) !== 0,
+				);
+			}
+			throw e;
 		}
 	}
 

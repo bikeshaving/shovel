@@ -282,10 +282,15 @@ export class IDBTransaction extends SafeEventTarget {
 				});
 			});
 		} else {
-			this.dispatchEvent(
-				new Event("abort", {bubbles: true, cancelable: false}),
-			);
-			this[kOnDone]?.();
+			// Spec: the abort event fires from a queued task, so code after
+			// `tx.abort()` runs before `onabort` (matching the versionchange
+			// branch above and kAbortWithError, which already defer).
+			queueMicrotask(() => {
+				this.dispatchEvent(
+					new Event("abort", {bubbles: true, cancelable: false}),
+				);
+				this[kOnDone]?.();
+			});
 		}
 	}
 

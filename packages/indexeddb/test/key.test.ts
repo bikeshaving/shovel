@@ -65,9 +65,11 @@ describe("key encoding roundtrip", () => {
 		}
 	});
 
-	it("negative zero", () => {
+	it("negative zero normalizes to positive zero (spec: -0 === 0 as keys)", () => {
 		const decoded = decodeKey(encodeKey(-0));
-		expect(Object.is(decoded, -0)).toBe(true);
+		// IDB treats -0 and +0 as the same key, so -0 round-trips to +0.
+		expect(decoded).toBe(0);
+		expect(Object.is(decoded, -0)).toBe(false);
 	});
 
 	it("strings", () => {
@@ -132,12 +134,10 @@ describe("key ordering", () => {
 		}
 	});
 
-	it("negative zero < positive zero", () => {
-		// In IndexedDB spec, -0 and 0 are treated as equal,
-		// but our encoding distinguishes them for correctness
+	it("negative zero equals positive zero (spec: cmp(-0, 0) === 0)", () => {
 		const a = encodeKey(-0);
 		const b = encodeKey(0);
-		expect(compareKeys(a, b)).toBeLessThan(0);
+		expect(compareKeys(a, b)).toBe(0);
 	});
 
 	it("strings are ordered lexicographically by UTF-16 code units", () => {

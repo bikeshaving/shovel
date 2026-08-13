@@ -178,11 +178,14 @@ function encodeKeyInto(key: IDBValidKey, out: number[]): void {
  * This ensures memcmp gives correct numeric ordering.
  */
 function encodeFloat64(value: number, out: number[]): void {
+	// Normalize -0 to +0 so they encode identically — IDB requires
+	// cmp(-0, 0) === 0 and a record keyed by -0 to be retrievable via get(0).
+	if (Object.is(value, -0)) value = 0;
 	const buf = new ArrayBuffer(8);
 	new DataView(buf).setFloat64(0, value, false); // big-endian
 	const bytes = new Uint8Array(buf);
 
-	if (value < 0 || Object.is(value, -0)) {
+	if (value < 0) {
 		// Negative: XOR all bytes
 		for (let i = 0; i < 8; i++) {
 			out.push(bytes[i] ^ 0xff);
@@ -262,7 +265,13 @@ function decodeString(data: Uint8Array, offset: number): [string, number] {
 			i += 2;
 		}
 	}
-	return [String.fromCharCode(...codes), i - offset];
+	// Chunk the spread: `String.fromCharCode(...codes)` overflows the call
+	// stack for large string keys (~100k+ code units).
+	let str = "";
+	for (let k = 0; k < codes.length; k += 0x8000) {
+		str += String.fromCharCode(...codes.slice(k, k + 0x8000));
+	}
+	return [str, i - offset];
 }
 
 /**

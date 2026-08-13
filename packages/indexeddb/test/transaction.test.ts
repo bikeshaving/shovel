@@ -277,3 +277,96 @@ describe("commit conformance (regression)", () => {
 		expect(tx.error).toBeInstanceOf(DOMException);
 	});
 });
+
+describe("conformance regressions (review batch 2)", () => {
+	function open2(name: string, up: (db: any) => void): Promise<any> {
+		return new Promise((res, rej) => {
+			const r = factory.open(name, 1);
+			r.onupgradeneeded = () => up(r.result);
+			r.onsuccess = () => res(r.result);
+			r.onerror = () => rej(r.error);
+		});
+	}
+
+	it("a preventDefault'd unique-constraint failure leaves no phantom index entries", async () => {
+		const db = await open2("idx-atomic", (db) => {
+			const s = db.createObjectStore("s", {keyPath: "id"});
+			s.createIndex("byCat", "cat", {unique: false}); // added first
+			s.createIndex("byEmail", "email", {unique: true}); // fails second
+		});
+		await new Promise<void>((resolve, reject) => {
+			const tx = db.transaction("s", "readwrite");
+			const s = tx.objectStore("s");
+			s.put({id: 1, cat: "x", email: "a@b.com"});
+			// Second put collides on the unique email but not on cat.
+			const bad = s.put({id: 2, cat: "x", email: "a@b.com"});
+			bad.onerror = (e: any) => e.preventDefault(); // keep the tx alive
+			tx.oncomplete = async () => {
+				// byCat must contain exactly one entry for cat "x" (id 1),
+				// not a phantom for id 2 from the rolled-back insert.
+				const rtx = db.transaction("s", "readonly");
+				const idx = rtx.objectStore("s").index("byCat");
+				const req = idx.getAll("x");
+				req.onsuccess = () => {
+					const ids = req.result.map((r: any) => r.id).sort();
+					expect(ids).toEqual([1]);
+					resolve();
+				};
+				req.onerror = () => reject(req.error);
+			};
+			tx.onabort = () => reject(new Error("should not abort (preventDefault)"));
+		});
+	});
+
+	it("getAll count of null/0 means all records (not truncated to 1)", async () => {
+		const db = await open2("getall-count", (db) => {
+			const s = db.createObjectStore("s");
+			for (let i = 0; i < 5; i++) s.put(i, i);
+		});
+		const run = (count: any) =>
+			new Promise<number>((resolve, reject) => {
+				const req = db.transaction("s").objectStore("s").getAll(null, count);
+				req.onsuccess = () => resolve(req.result.length);
+				req.onerror = () => reject(req.error);
+			});
+		expect(await run(null)).toBe(5);
+		expect(await run(0)).toBe(5);
+		expect(await run(2)).toBe(2);
+	});
+
+	it("script abort() dispatches the abort event asynchronously", async () => {
+		const db = await open2("abort-async", (db) => {
+			db.createObjectStore("s");
+		});
+		await new Promise<void>((resolve) => {
+			const tx = db.transaction("s", "readwrite");
+			let afterAbortRan = false;
+			tx.onabort = () => {
+				// Code after abort() must have run first (event is a queued task).
+				expect(afterAbortRan).toBe(true);
+				resolve();
+			};
+			tx.abort();
+			afterAbortRan = true;
+		});
+	});
+
+	it("large string keys round-trip without stack overflow", async () => {
+		const big = "x".repeat(200_000);
+		const db = await open2("big-key", (db) => {
+			db.createObjectStore("s");
+		});
+		await new Promise<void>((resolve, reject) => {
+			const tx = db.transaction("s", "readwrite");
+			tx.objectStore("s").put("v", big);
+			tx.oncomplete = () => {
+				const req = db.transaction("s").objectStore("s").getKey(big);
+				req.onsuccess = () => {
+					expect(req.result).toBe(big);
+					resolve();
+				};
+				req.onerror = () => reject(req.error);
+			};
+		});
+	});
+});

@@ -58,6 +58,20 @@ function enforceRangeCount(count: unknown): void {
 }
 
 /**
+ * Normalize a getAll/getAllKeys count. Per WebIDL `[EnforceRange] unsigned
+ * long`, `null`, `"0"`, and `0` all convert to 0, which the getAll algorithm
+ * treats as "retrieve all" — so they must become undefined (no limit), not a
+ * literal 0 that truncates. Finite non-zero values pass through as numbers;
+ * anything else is returned as-is so enforceRangeCount() rejects it.
+ */
+export function normalizeGetAllCount(cnt: unknown): number | undefined {
+	if (cnt === undefined) return undefined;
+	const n = Number(cnt);
+	if (n === 0) return undefined;
+	return Number.isFinite(n) ? n : (cnt as number);
+}
+
+/**
  * Parse getAll/getAllKeys arguments: supports both (query, count) and ({query, count}).
  */
 /**
@@ -96,16 +110,15 @@ function parseGetAllArgs(
 		typeof queryOrOptions === "object" &&
 		Object.getPrototypeOf(queryOrOptions) === Object.prototype
 	) {
-		const cnt = queryOrOptions.count;
 		return {
 			query: queryOrOptions.query ?? null,
-			count: cnt === 0 ? undefined : cnt,
+			count: normalizeGetAllCount(queryOrOptions.count),
 			direction: queryOrOptions.direction,
 		};
 	}
 	return {
 		query: queryOrOptions,
-		count: countArg === 0 ? undefined : countArg,
+		count: normalizeGetAllCount(countArg),
 		direction: undefined,
 	};
 }
@@ -222,16 +235,11 @@ export class IDBObjectStore {
 		request[kSetSource](this);
 
 		return this.#transaction[kExecuteRequest](request, (tx) => {
-			const savedAutoInc = tx.getAutoIncrementCurrent(this.name);
 			const {encodedKey, encodedValue} = this.#prepareRecord(clone, key, tx);
-			try {
-				tx.add(this.name, encodedKey, encodedValue);
-			} catch (e) {
-				if (savedAutoInc !== undefined) {
-					tx.setAutoIncrementCurrent(this.name, savedAutoInc);
-				}
-				throw e;
-			}
+			// Spec: a failed insertion does NOT revert the key generator — the
+			// next auto-generated key must still advance (WPT
+			// keygenerator-constraint), so no save/restore around the insert.
+			tx.add(this.name, encodedKey, encodedValue);
 			return decodeKey(encodedKey);
 		});
 	}
@@ -254,16 +262,10 @@ export class IDBObjectStore {
 		request[kSetSource](this);
 
 		return this.#transaction[kExecuteRequest](request, (tx) => {
-			const savedAutoInc = tx.getAutoIncrementCurrent(this.name);
 			const {encodedKey, encodedValue} = this.#prepareRecord(clone, key, tx);
-			try {
-				tx.put(this.name, encodedKey, encodedValue);
-			} catch (e) {
-				if (savedAutoInc !== undefined) {
-					tx.setAutoIncrementCurrent(this.name, savedAutoInc);
-				}
-				throw e;
-			}
+			// Spec: a failed insertion does NOT revert the key generator (WPT
+			// keygenerator-constraint).
+			tx.put(this.name, encodedKey, encodedValue);
 			return decodeKey(encodedKey);
 		});
 	}
