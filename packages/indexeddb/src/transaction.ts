@@ -415,7 +415,12 @@ export class IDBTransaction extends SafeEventTarget {
 		request: IDBRequest,
 		operation: (tx: IDBBackendTransaction) => any,
 	): IDBRequest {
-		if (!this.#active) {
+		// `#commitPending` gates requests too: after an explicit commit() the
+		// transaction is "committing" and must reject new requests, even though
+		// `#active` is briefly set true again while a pending request's event
+		// dispatches. Checking only `#active` let a handler enqueue work after
+		// commit() (spec: TransactionInactiveError).
+		if (!this.#active || this.#commitPending) {
 			throw TransactionInactiveError("Transaction is not active");
 		}
 
@@ -602,23 +607,35 @@ export class IDBTransaction extends SafeEventTarget {
 
 	#doCommit(): void {
 		if (this.#aborted || this.#committed) return; // Safety guard
-		this.#committed = true;
 		this.#active = false;
 
 		try {
 			this.#backendTx!.commit();
 		} catch (error) {
+			// A failed commit ABORTS the transaction — it does not fire a
+			// transaction-level `error` (that's a per-request event). Per spec,
+			// set the error, roll back, and fire `abort` (bubbling). Do NOT mark
+			// `#committed` — the transaction did not commit.
+			this.#aborted = true;
 			this.#error =
 				error instanceof DOMException
 					? error
 					: new DOMException(String(error), "UnknownError");
+			try {
+				this.#backendTx!.abort();
+			} catch (_rollbackErr) {
+				// Backend may have already unwound on the failed commit.
+			}
+			this.#revertRenames();
+			this[kOnSyncAbort]?.();
 			this.dispatchEvent(
-				new Event("error", {bubbles: true, cancelable: false}),
+				new Event("abort", {bubbles: true, cancelable: false}),
 			);
 			this[kOnDone]?.();
 			return;
 		}
 
+		this.#committed = true;
 		this.dispatchEvent(
 			new Event("complete", {bubbles: false, cancelable: false}),
 		);

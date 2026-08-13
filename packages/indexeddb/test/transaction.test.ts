@@ -181,3 +181,99 @@ describe("versionchange transaction", () => {
 		expect(names).toContain("store2");
 	});
 });
+
+describe("commit conformance (regression)", () => {
+	it("rejects new requests after commit() — even during a pending request's handler", async () => {
+		const db = await openDB("commit-active", 1, (db) => {
+			db.createObjectStore("s");
+		});
+		await new Promise<void>((resolve, reject) => {
+			const tx = db.transaction("s", "readwrite");
+			const store = tx.objectStore("s");
+			const req = store.put(1, "a");
+			// Commit while a request is still pending. The transaction is now
+			// "committing"; the pending request's success handler must not be
+			// able to enqueue further work.
+			tx.commit();
+			req.onsuccess = () => {
+				let threw: string | null = null;
+				try {
+					store.put(2, "b");
+				} catch (e) {
+					threw = (e as DOMException).name;
+				}
+				expect(threw).toBe("TransactionInactiveError");
+			};
+			tx.oncomplete = () => resolve();
+			tx.onabort = () => reject(new Error("unexpected abort"));
+			tx.onerror = () => reject(new Error("unexpected error"));
+		});
+	});
+
+	it("a failed commit aborts the transaction (fires abort, not error)", async () => {
+		// Backend that delegates to MemoryBackend but fails the next commit.
+		let failNextCommit = false;
+		const bind = (obj: any, prop: PropertyKey) => {
+			const v = Reflect.get(obj, prop, obj);
+			return typeof v === "function" ? v.bind(obj) : v;
+		};
+		const base = new MemoryBackend();
+		const backend = new Proxy(base, {
+			get(target, prop) {
+				if (prop !== "open") return bind(target, prop);
+				return async (name: string, version: number) => {
+					const conn = await (target as any).open(name, version);
+					return new Proxy(conn, {
+						get(c, p) {
+							if (p !== "beginTransaction") return bind(c, p);
+							return (stores: string[], mode: string) => {
+								const tx = (c as any).beginTransaction(stores, mode);
+								return new Proxy(tx, {
+									get(t, tp) {
+										if (tp !== "commit") return bind(t, tp);
+										return () => {
+											if (failNextCommit) {
+												failNextCommit = false;
+												throw new DOMException("commit failed", "UnknownError");
+											}
+											return (t as any).commit();
+										};
+									},
+								});
+							};
+						},
+					});
+				};
+			},
+		});
+
+		const f = new IDBFactory(backend as any);
+		const db = await new Promise<any>((res, rej) => {
+			const r = f.open("commit-fail", 1);
+			r.onupgradeneeded = () => r.result.createObjectStore("s");
+			r.onsuccess = () => res(r.result);
+			r.onerror = () => rej(r.error);
+		});
+
+		failNextCommit = true;
+		const events: string[] = [];
+		const tx = db.transaction("s", "readwrite");
+		tx.objectStore("s").put(1, "k");
+		await new Promise<void>((resolve) => {
+			tx.oncomplete = () => {
+				events.push("complete");
+				resolve();
+			};
+			tx.onerror = () => {
+				events.push("error");
+				resolve();
+			};
+			tx.onabort = () => {
+				events.push("abort");
+				resolve();
+			};
+		});
+		expect(events).toEqual(["abort"]);
+		expect(tx.error).toBeInstanceOf(DOMException);
+	});
+});
