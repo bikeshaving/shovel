@@ -4,9 +4,9 @@ import {Router} from "../src/index.js";
 const req = (url: string) => new Request(url);
 
 describe("Redirects as data", () => {
-	test("eager redirect fires before matching, with :param substitution", async () => {
+	test("a redirect declared BEFORE a route shadows it (:param substitution)", async () => {
 		const router = new Router();
-		router.redirect("/old/:id", "/new/:id");
+		router.redirect("/old/:id", "/new/:id"); // declared first → wins
 		router.route("/old/:id").get(async () => new Response("should not run"));
 
 		const res = await router.handle(req("http://x.com/old/42"));
@@ -14,19 +14,18 @@ describe("Redirects as data", () => {
 		expect(res.headers.get("Location")).toBe("http://x.com/new/42");
 	});
 
-	test("fallthrough redirect only fires after a 404", async () => {
+	test("a redirect declared AFTER a route only fires when nothing matched", async () => {
 		const router = new Router();
-		router.redirect("/legacy", "/current", {phase: "fallthrough"});
-		router.route("/legacy").get(async () => new Response("live"));
+		router.route("/legacy").get(async () => new Response("live")); // first
+		router.redirect("/legacy", "/current"); // after → route wins on /legacy
 
-		// /legacy has a live route → no redirect (fallthrough didn't fire).
 		const live = await router.handle(req("http://x.com/legacy"));
 		expect(live.status).toBe(200);
 		expect(await live.text()).toBe("live");
 
-		// /gone has no route → 404 → fallthrough applies.
+		// A path with no route → the redirect applies.
 		const gone = new Router();
-		gone.redirect("/gone", "/home", {phase: "fallthrough"});
+		gone.redirect("/gone", "/home");
 		const res = await gone.handle(req("http://x.com/gone"));
 		expect(res.status).toBe(301);
 		expect(res.headers.get("Location")).toBe("http://x.com/home");
@@ -42,27 +41,25 @@ describe("Redirects as data", () => {
 
 	test("limiting a redirect to a prefix is done in the matcher, not a facet", () => {
 		const router = new Router();
-		// The prefix lives in the pattern — no separate `scope` field needed.
 		router.redirect("/admin/:rest*", "/blocked");
-		expect(
-			router.resolveRedirect("http://x.com/admin/x", "eager"),
-		).not.toBeNull();
-		expect(router.resolveRedirect("http://x.com/public/x", "eager")).toBeNull();
+		expect(router.resolveRedirect("http://x.com/admin/x")).not.toBeNull();
+		expect(router.resolveRedirect("http://x.com/public/x")).toBeNull();
 	});
 
 	test("first matching redirect wins (declaration order)", () => {
 		const router = new Router();
 		router.redirect("/a", "/first");
 		router.redirect("/a", "/second");
-		const r = router.resolveRedirect("http://x.com/a", "eager");
-		expect(r?.location).toBe("http://x.com/first");
+		expect(router.resolveRedirect("http://x.com/a")?.location).toBe(
+			"http://x.com/first",
+		);
 	});
 
 	test("PARITY: fromJSON reapplies redirects identically", () => {
 		const server = new Router();
 		server.redirect("/old/:id", "/new/:id");
 		server.redirect(/^\/x\/(.+)$/, "/y/$1", {status: 302});
-		server.redirect("/tmp", "/home", {phase: "fallthrough"});
+		server.redirect("/tmp", "/home");
 
 		const client = Router.fromJSON(JSON.stringify(server));
 		for (const url of [
@@ -71,20 +68,15 @@ describe("Redirects as data", () => {
 			"http://x.com/tmp",
 			"http://x.com/none",
 		]) {
-			for (const phase of ["eager", "fallthrough"] as const) {
-				expect(client.resolveRedirect(url, phase)).toEqual(
-					server.resolveRedirect(url, phase),
-				);
-			}
+			expect(client.resolveRedirect(url)).toEqual(server.resolveRedirect(url));
 		}
 	});
 
-	test("redirects serialize as plain data (no functions)", () => {
+	test("redirects serialize as plain data (no functions, no phase)", () => {
 		const router = new Router();
 		router.redirect("/a", "/b");
-		const json = router.toJSON();
-		expect(json.redirects).toEqual([
-			{match: {pattern: "/a"}, target: "/b", phase: "eager", status: 301},
+		expect(router.toJSON().redirects).toEqual([
+			{match: {pattern: "/a"}, target: "/b", status: 301},
 		]);
 	});
 });

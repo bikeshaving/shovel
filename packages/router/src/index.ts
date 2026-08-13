@@ -123,13 +123,6 @@ export interface SerializedRoute {
 	name?: string;
 }
 
-/**
- * When a redirect is applied relative to route matching.
- * - `eager`: before matching — the path always redirects (Netlify "force").
- * - `fallthrough`: only after a 404 — a last resort (e.g. trailing-slash).
- */
-export type RedirectPhase = "eager" | "fallthrough";
-
 /** Argument to the `trailingSlash()` sugar. `"strip"`: `/a/` → `/a`. */
 export type TrailingSlashPolicy = "strip" | "append";
 
@@ -142,14 +135,13 @@ export type TrailingSlashPolicy = "strip" | "append";
  *   escape hatch for arbitrary rewrites, not just param swaps.
  *
  * Patterns are author-provided, so ReDoS is a config concern, not untrusted
- * input. Position is two facets: array order (first match wins) and `phase`
- * (a temporal relation to matching the pattern can't express). To limit a
- * redirect to a path prefix, put the prefix in the matcher.
+ * input. There is no `phase` or `scope` — a redirect's precedence is just its
+ * declaration order relative to routes (see `redirect()`), and a prefix limit
+ * goes in the matcher.
  */
 export interface RedirectEntry {
 	match: {pattern: string} | {source: string; flags: string};
 	target: string;
-	phase: RedirectPhase;
 	status: number;
 }
 
@@ -161,8 +153,6 @@ export interface RedirectResolution {
 
 /** Options for `Router.redirect()`. */
 export interface RedirectOptions {
-	/** @default "eager" */
-	phase?: RedirectPhase;
 	/** @default 301 */
 	status?: number;
 }
@@ -188,6 +178,8 @@ export interface RouteEntry {
 	handler?: Handler;
 	name?: string;
 	middlewares: Middleware[];
+	/** Monotonic declaration order — used to resolve redirect vs route precedence. */
+	order: number;
 }
 
 /**
@@ -669,10 +661,14 @@ export class Router {
 	/** Declared redirects, first-match-wins in array order. Serializable data. */
 	readonly redirects: RedirectEntry[];
 	#executor: RadixTreeExecutor | null;
-	/** Compiled matchers for #redirects, kept in lockstep for reuse. */
+	/** Compiled matchers for #redirects, kept in lockstep, each with its
+	 * declaration order (shared counter with routes) for precedence. */
 	#redirectMatchers: Array<
-		{kind: "pattern"; mp: MatchPattern} | {kind: "regexp"; re: RegExp}
+		| {kind: "pattern"; mp: MatchPattern; order: number}
+		| {kind: "regexp"; re: RegExp; order: number}
 	>;
+	/** Monotonic declaration counter shared by routes and redirects. */
+	#seq: number;
 
 	constructor() {
 		this.routes = [];
@@ -680,30 +676,34 @@ export class Router {
 		this.redirects = [];
 		this.#executor = null;
 		this.#redirectMatchers = [];
+		this.#seq = 0;
 	}
 
 	/**
 	 * Sugar for the common canonical-slash redirect — nothing more. `"strip"`
-	 * adds a fallthrough redirect `/a/ → /a`; `"append"` adds `/a → /a/`. It is
-	 * exactly `router.redirect(<regexp>, ..., {phase: "fallthrough"})`, so it
-	 * serializes as an ordinary redirect entry (no special facet, no special
-	 * resolution). An explicit route or earlier redirect always wins first.
+	 * adds `/a/ → /a`; `"append"` adds `/a → /a/`. It is exactly
+	 * `router.redirect(<regexp>, ...)`, so it serializes as an ordinary redirect
+	 * and takes its precedence from where you call it: after your routes (the
+	 * usual spot) it only fires when nothing matched.
 	 */
 	trailingSlash(policy: TrailingSlashPolicy): void {
 		if (policy === "strip") {
 			// One or more trailing slashes on a non-root path collapse away.
-			this.redirect(/^(.+?)\/+$/, "$1", {phase: "fallthrough"});
+			this.redirect(/^(.+?)\/+$/, "$1");
 		} else {
 			// A non-root path with no trailing slash gets one.
-			this.redirect(/^(.+[^/])$/, "$1/", {phase: "fallthrough"});
+			this.redirect(/^(.+[^/])$/, "$1/");
 		}
 	}
 
 	/**
 	 * Declare a redirect as data (not middleware). `from` is either a
 	 * MatchPattern string (`/old/:id`, with `:id` reusable in `to`) or a
-	 * `RegExp` (with `$1`…`$n` in `to`). Redirects are applied in declaration
-	 * order, first match wins.
+	 * `RegExp` (with `$1`…`$n` in `to`).
+	 *
+	 * Precedence is declaration order, like everything else: a redirect
+	 * declared before a route it overlaps shadows that route; declared after,
+	 * it only applies when no route matched. Among redirects, first match wins.
 	 */
 	redirect(
 		from: string | RegExp,
@@ -716,7 +716,6 @@ export class Router {
 					? {pattern: from}
 					: {source: from.source, flags: from.flags},
 			target: to,
-			phase: options.phase ?? "eager",
 			status: options.status ?? 301,
 		};
 		this.#addRedirect(entry);
@@ -725,33 +724,49 @@ export class Router {
 	/** @internal Register a redirect entry and compile its matcher. */
 	#addRedirect(entry: RedirectEntry): void {
 		this.redirects.push(entry);
+		const order = this.#seq++;
 		if ("pattern" in entry.match) {
 			this.#redirectMatchers.push({
 				kind: "pattern",
 				mp: new MatchPattern(entry.match.pattern),
+				order,
 			});
 		} else {
 			this.#redirectMatchers.push({
 				kind: "regexp",
 				re: new RegExp(entry.match.source, entry.match.flags),
+				order,
 			});
 		}
 	}
 
 	/**
-	 * Resolve the first redirect that applies to `url` for the given `phase`.
-	 * Runs identically on client and server — it reads only serializable data.
-	 * Returns the absolute `Location` and status, or null if none apply.
+	 * Resolve what `url` redirects to, or null if it doesn't. A redirect applies
+	 * only if it out-ranks any route that also matches the URL — i.e. it was
+	 * declared earlier (same first-declaration-wins rule as everywhere else).
+	 * Reads only serializable data, so client and server agree.
 	 */
-	resolveRedirect(
-		url: string | URL,
-		phase: RedirectPhase,
-	): RedirectResolution | null {
+	resolveRedirect(url: string | URL): RedirectResolution | null {
 		const u = typeof url === "string" ? new URL(url) : url;
+		const red = this.#matchRedirect(u);
+		if (red === null) return null;
+		// A route matching this path that was declared before the redirect wins.
+		const match = this.#ensureCompiled().matchRequest(new Request(u));
+		const routeOrder = match ? match.entry.order : Number.POSITIVE_INFINITY;
+		if (red.order >= routeOrder) return null;
+		return {location: red.location, status: red.status};
+	}
+
+	/**
+	 * @internal First redirect (lowest declaration order) whose matcher matches
+	 * `url`, with its order attached so callers can compare against a route.
+	 */
+	#matchRedirect(
+		u: URL,
+	): {location: string; status: number; order: number} | null {
 		const pathname = u.pathname;
 		for (let i = 0; i < this.redirects.length; i++) {
 			const entry = this.redirects[i];
-			if (entry.phase !== phase) continue;
 			const matcher = this.#redirectMatchers[i];
 			let target: string | null = null;
 			if (matcher.kind === "pattern") {
@@ -774,7 +789,11 @@ export class Router {
 			if (target !== null) {
 				// Resolve against the request URL so a path target becomes
 				// absolute; the target controls its own query string.
-				return {location: new URL(target, u).toString(), status: entry.status};
+				return {
+					location: new URL(target, u).toString(),
+					status: entry.status,
+					order: matcher.order,
+				};
 			}
 		}
 		return null;
@@ -862,6 +881,7 @@ export class Router {
 			handler,
 			name,
 			middlewares: middlewares,
+			order: this.#seq++,
 		});
 		this.#executor = null;
 	}
@@ -881,16 +901,22 @@ export class Router {
 	 * Executes the matched handler with middleware chain
 	 */
 	async handle(request: Request): Promise<Response> {
-		// Eager redirects are data and run before matching or middleware.
-		const eager = this.resolveRedirect(request.url, "eager");
-		if (eager) return Router.#redirectResponse(eager);
-
 		const executor = this.#ensureCompiled();
 
 		let response: Response;
 		try {
 			// Find matching route
 			const matchResult = executor.matchRequest(request);
+
+			// A redirect applies iff it out-ranks the matched route by
+			// declaration order (or nothing matched). Same rule as resolveRedirect.
+			const redirect = this.#matchRedirect(new URL(request.url));
+			const routeOrder = matchResult
+				? matchResult.entry.order
+				: Number.POSITIVE_INFINITY;
+			if (redirect !== null && redirect.order < routeOrder) {
+				return Router.#redirectResponse(redirect);
+			}
 
 			let handler: Handler;
 			let context: RouteContext;
@@ -932,12 +958,6 @@ export class Router {
 		} catch (error) {
 			// Final catch-all for unhandled errors
 			response = this.#createErrorResponse(error as Error);
-		}
-
-		// Fallthrough redirects apply after a 404 (from any source).
-		if (response.status === 404) {
-			const fallthrough = this.resolveRedirect(request.url, "fallthrough");
-			if (fallthrough) return Router.#redirectResponse(fallthrough);
 		}
 
 		return response;
@@ -986,6 +1006,7 @@ export class Router {
 				handler: subroute.handler,
 				name: subroute.name,
 				middlewares: subroute.middlewares,
+				order: this.#seq++,
 			});
 		}
 
