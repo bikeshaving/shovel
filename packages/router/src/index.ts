@@ -113,31 +113,32 @@ export interface RouteMatch {
 }
 
 /**
- * A single route in the serialized form — pattern, the methods registered on
- * it, and an optional name. Handlers are NEVER serialized: the contract is
- * "client matches, server handles".
+ * A route in the serialized form: one pattern/method pair with an optional
+ * name. Handlers are never serialized — the client matches, the server handles.
  */
 export interface SerializedRoute {
 	pattern: string;
-	methods: string[];
+	method: string;
 	name?: string;
 }
+
+/**
+ * One entry in the serialized router, tagged by which key is present. Entries
+ * are stored in declaration order, so the exact route/redirect interleaving
+ * (which decides precedence) survives a round-trip.
+ */
+export type SerializedEntry =
+	| {route: SerializedRoute}
+	| {redirect: RedirectEntry};
 
 /** Argument to the `trailingSlash()` sugar. `"strip"`: `/a/` → `/a`. */
 export type TrailingSlashPolicy = "strip" | "append";
 
 /**
- * A redirect expressed as pure, serializable data — NOT middleware. Two matcher
- * flavors, both of which serialize to plain strings and recompile identically
- * on each side:
+ * A redirect as serializable data. Two matcher flavors, both of which
+ * serialize to plain strings and recompile identically on each side:
  * - MatchPattern syntax: `{pattern}` with `:name` groups, `:name` in `target`.
- * - Raw regexp: `{source, flags}` (from `RegExp`), `$1`…`$n` in `target` — the
- *   escape hatch for arbitrary rewrites, not just param swaps.
- *
- * Patterns are author-provided, so ReDoS is a config concern, not untrusted
- * input. There is no `phase` or `scope` — a redirect's precedence is just its
- * declaration order relative to routes (see `redirect()`), and a prefix limit
- * goes in the matcher.
+ * - Raw regexp: `{source, flags}`, with `$1`…`$n` in `target`.
  */
 export interface RedirectEntry {
 	match: {pattern: string} | {source: string; flags: string};
@@ -165,8 +166,7 @@ export interface RedirectOptions {
  */
 export interface SerializedRouter {
 	version: 1;
-	routes: SerializedRoute[];
-	redirects: RedirectEntry[];
+	entries: SerializedEntry[];
 }
 
 /**
@@ -697,13 +697,12 @@ export class Router {
 	}
 
 	/**
-	 * Declare a redirect as data (not middleware). `from` is either a
-	 * MatchPattern string (`/old/:id`, with `:id` reusable in `to`) or a
-	 * `RegExp` (with `$1`…`$n` in `to`).
+	 * Declare a redirect. `from` is either a MatchPattern string (`/old/:id`,
+	 * with `:id` reusable in `to`) or a `RegExp` (with `$1`…`$n` in `to`).
 	 *
-	 * Precedence is declaration order, like everything else: a redirect
-	 * declared before a route it overlaps shadows that route; declared after,
-	 * it only applies when no route matched. Among redirects, first match wins.
+	 * Precedence is declaration order: a redirect declared before a route it
+	 * overlaps shadows that route; declared after, it applies only when no
+	 * route matched. Among redirects, the first match wins.
 	 */
 	redirect(
 		from: string | RegExp,
@@ -1261,36 +1260,33 @@ export class Router {
 	}
 
 	/**
-	 * Serialize the router's match table to a plain, JSON-safe value. Named
-	 * `toJSON` so `JSON.stringify(router)` works for free.
-	 *
-	 * Handlers and middleware are intentionally omitted — they are server-only.
-	 * Per-method route entries are grouped by pattern so the output mirrors how
-	 * `match()` sees the table (one node per pattern, many methods).
+	 * Serialize the router to a plain, JSON-safe value. Named `toJSON` so
+	 * `JSON.stringify(router)` works for free. Routes and redirects are emitted
+	 * as one list in declaration order, so precedence survives the round-trip.
+	 * Handlers and middleware are server-only and left out.
 	 */
 	toJSON(): SerializedRouter {
-		const byPattern = new Map<string, SerializedRoute>();
-		// Preserve declaration order of first appearance for stable output.
+		const items: Array<{order: number; entry: SerializedEntry}> = [];
 		for (const route of this.routes) {
-			const pattern = route.pattern.pathname;
-			let entry = byPattern.get(pattern);
-			if (entry === undefined) {
-				entry = {pattern, methods: []};
-				byPattern.set(pattern, entry);
-			}
-			if (!entry.methods.includes(route.method)) {
-				entry.methods.push(route.method);
-			}
-			// First declared name for the pattern wins.
-			if (entry.name === undefined && route.name !== undefined) {
-				entry.name = route.name;
-			}
+			items.push({
+				order: route.order,
+				entry: {
+					route: {
+						pattern: route.pattern.pathname,
+						method: route.method,
+						...(route.name !== undefined ? {name: route.name} : {}),
+					},
+				},
+			});
 		}
-		return {
-			version: 1,
-			routes: Array.from(byPattern.values()),
-			redirects: this.redirects,
-		};
+		for (let i = 0; i < this.redirects.length; i++) {
+			items.push({
+				order: this.#redirectMatchers[i].order,
+				entry: {redirect: this.redirects[i]},
+			});
+		}
+		items.sort((a, b) => a.order - b.order);
+		return {version: 1, entries: items.map((it) => it.entry)};
 	}
 
 	/**
@@ -1311,22 +1307,20 @@ export class Router {
 			);
 		}
 		const router = new Router();
-		for (const route of parsed.routes) {
-			for (const method of route.methods) {
+		// Replay entries in declaration order so routes and redirects get the
+		// same relative order they had on the server — precedence matches.
+		for (const entry of parsed.entries) {
+			if ("route" in entry) {
 				// No handler → match-only. handle() falls through to 404.
 				router.addRoute(
-					method as HTTPMethod,
-					route.pattern,
+					entry.route.method as HTTPMethod,
+					entry.route.pattern,
 					undefined,
-					route.name,
+					entry.route.name,
 				);
+			} else {
+				router.#addRedirect(entry.redirect);
 			}
-		}
-		// Redirects are data — reapplied identically on the client. The
-		// trailing-slash helper is just sugar over redirect(), so its entry
-		// round-trips here like any other, with no special handling.
-		for (const entry of parsed.redirects ?? []) {
-			router.#addRedirect(entry);
 		}
 		return router;
 	}

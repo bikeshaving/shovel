@@ -64,13 +64,12 @@ describe("Trailing-slash (sugar over redirect)", () => {
 		);
 	});
 
-	test("serializes as an ordinary redirect (no special envelope field)", () => {
+	test("serializes as an ordinary redirect entry", () => {
 		const server = new Router();
 		server.trailingSlash("strip");
 		const json = server.toJSON();
-		expect("trailingSlash" in json).toBe(false);
-		expect(json.redirects).toHaveLength(1);
-		expect("phase" in json.redirects[0]).toBe(false);
+		expect(json.entries).toHaveLength(1);
+		expect("redirect" in json.entries[0]).toBe(true);
 
 		const client = Router.fromJSON(JSON.stringify(server));
 		expect(client.resolveRedirect("http://x.com/a/")).toEqual(
