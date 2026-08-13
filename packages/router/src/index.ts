@@ -184,8 +184,6 @@ export interface SerializedRouter {
 	version: 1;
 	routes: SerializedRoute[];
 	redirects: RedirectEntry[];
-	/** Canonical trailing-slash policy, omitted when none is set. */
-	trailingSlash?: TrailingSlashPolicy;
 }
 
 /**
@@ -682,8 +680,6 @@ export class Router {
 	#redirectMatchers: Array<
 		{kind: "pattern"; mp: MatchPattern} | {kind: "regexp"; re: RegExp}
 	>;
-	/** Canonical trailing-slash policy, or null for "no policy". */
-	#trailingSlash: TrailingSlashPolicy | null;
 
 	constructor() {
 		this.routes = [];
@@ -691,23 +687,23 @@ export class Router {
 		this.redirects = [];
 		this.#executor = null;
 		this.#redirectMatchers = [];
-		this.#trailingSlash = null;
 	}
 
 	/**
-	 * Set the canonical trailing-slash policy — a serializable facet (not
-	 * middleware). `"strip"` makes `/about/` redirect to `/about`; `"append"`
-	 * the reverse. Applied as a fallthrough (only after a 404), so an explicit
-	 * route or redirect always wins first. The policy also travels in
-	 * `toJSON()` for the client matcher and the prerender path-writer to read.
+	 * Sugar for the common canonical-slash redirect — nothing more. `"strip"`
+	 * adds a fallthrough redirect `/a/ → /a`; `"append"` adds `/a → /a/`. It is
+	 * exactly `router.redirect(<regexp>, ..., {phase: "fallthrough"})`, so it
+	 * serializes as an ordinary redirect entry (no special facet, no special
+	 * resolution). An explicit route or earlier redirect always wins first.
 	 */
 	trailingSlash(policy: TrailingSlashPolicy): void {
-		this.#trailingSlash = policy;
-	}
-
-	/** The current trailing-slash policy, or null if none is set. */
-	get trailingSlashPolicy(): TrailingSlashPolicy | null {
-		return this.#trailingSlash;
+		if (policy === "strip") {
+			// One or more trailing slashes on a non-root path collapse away.
+			this.redirect(/^(.+?)\/+$/, "$1", {phase: "fallthrough"});
+		} else {
+			// A non-root path with no trailing slash gets one.
+			this.redirect(/^(.+[^/])$/, "$1/", {phase: "fallthrough"});
+		}
 	}
 
 	/**
@@ -791,29 +787,6 @@ export class Router {
 				// absolute; the target controls its own query string.
 				return {location: new URL(target, u).toString(), status: entry.status};
 			}
-		}
-		// Trailing-slash canonicalization is the last-resort fallthrough, after
-		// all explicit redirects — an explicit rule always wins.
-		if (phase === "fallthrough" && this.#trailingSlash !== null) {
-			const canonical = this.#canonicalTrailingSlash(pathname);
-			if (canonical !== null) {
-				return {location: new URL(canonical, u).toString(), status: 301};
-			}
-		}
-		return null;
-	}
-
-	/**
-	 * Return the canonical form of a pathname under the trailing-slash policy,
-	 * or null if it is already canonical (or is the root "/").
-	 */
-	#canonicalTrailingSlash(pathname: string): string | null {
-		if (pathname === "/") return null;
-		if (this.#trailingSlash === "strip" && pathname.endsWith("/")) {
-			return pathname.slice(0, -1);
-		}
-		if (this.#trailingSlash === "append" && !pathname.endsWith("/")) {
-			return pathname + "/";
 		}
 		return null;
 	}
@@ -1307,9 +1280,6 @@ export class Router {
 			version: 1,
 			routes: Array.from(byPattern.values()),
 			redirects: this.redirects,
-			...(this.#trailingSlash !== null
-				? {trailingSlash: this.#trailingSlash}
-				: {}),
 		};
 	}
 
@@ -1342,12 +1312,11 @@ export class Router {
 				);
 			}
 		}
-		// Redirects are data — reapplied identically on the client.
+		// Redirects are data — reapplied identically on the client. The
+		// trailing-slash helper is just sugar over redirect(), so its entry
+		// round-trips here like any other, with no special handling.
 		for (const entry of parsed.redirects ?? []) {
 			router.#addRedirect(entry);
-		}
-		if (parsed.trailingSlash !== undefined) {
-			router.trailingSlash(parsed.trailingSlash);
 		}
 		return router;
 	}
