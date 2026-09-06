@@ -72,6 +72,18 @@ describe("Redirects as data", () => {
 		}
 	});
 
+	test("the request query carries over unless the target sets its own", () => {
+		const router = new Router();
+		router.redirect("/a", "/b");
+		router.redirect("/c", "/d?fixed=1");
+		expect(router.resolveRedirect("http://x.com/a?q=1")?.location).toBe(
+			"http://x.com/b?q=1",
+		);
+		expect(router.resolveRedirect("http://x.com/c?q=1")?.location).toBe(
+			"http://x.com/d?fixed=1",
+		);
+	});
+
 	test("redirects serialize as plain data", () => {
 		const router = new Router();
 		router.redirect("/a", "/b");

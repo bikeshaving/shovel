@@ -131,9 +131,6 @@ export type SerializedEntry =
 	| {route: SerializedRoute}
 	| {redirect: RedirectEntry};
 
-/** Argument to the `trailingSlash()` sugar. `"strip"`: `/a/` → `/a`. */
-export type TrailingSlashPolicy = "strip" | "append";
-
 /**
  * A redirect as serializable data. Two matcher flavors, both of which
  * serialize to plain strings and recompile identically on each side:
@@ -680,44 +677,36 @@ export class Router {
 	}
 
 	/**
-	 * Sugar for the common canonical-slash redirect — nothing more. `"strip"`
-	 * adds `/a/ → /a`; `"append"` adds `/a → /a/`. It is exactly
-	 * `router.redirect(<regexp>, ...)`, so it serializes as an ordinary redirect
-	 * and takes its precedence from where you call it: after your routes (the
-	 * usual spot) it only fires when nothing matched.
-	 */
-	trailingSlash(policy: TrailingSlashPolicy): void {
-		if (policy === "strip") {
-			// One or more trailing slashes on a non-root path collapse away.
-			this.redirect(/^(.+?)\/+$/, "$1");
-		} else {
-			// A non-root path with no trailing slash gets one.
-			this.redirect(/^(.+[^/])$/, "$1/");
-		}
-	}
-
-	/**
 	 * Declare a redirect. `from` is either a MatchPattern string (`/old/:id`,
-	 * with `:id` reusable in `to`) or a `RegExp` (with `$1`…`$n` in `to`).
+	 * with `:id` reusable in `to`), a `RegExp` (with `$1`…`$n` in `to`), or a
+	 * ready-made `RedirectEntry` such as the one `trailingSlash()` returns.
 	 *
 	 * Precedence is declaration order: a redirect declared before a route it
 	 * overlaps shadows that route; declared after, it applies only when no
 	 * route matched. Among redirects, the first match wins.
 	 */
+	redirect(entry: RedirectEntry): void;
+	redirect(from: string | RegExp, to: string, options?: RedirectOptions): void;
 	redirect(
-		from: string | RegExp,
-		to: string,
+		from: string | RegExp | RedirectEntry,
+		to?: string,
 		options: RedirectOptions = {},
 	): void {
-		const entry: RedirectEntry = {
-			match:
-				typeof from === "string"
-					? {pattern: from}
-					: {source: from.source, flags: from.flags},
-			target: to,
-			status: options.status ?? 301,
-		};
-		this.#addRedirect(entry);
+		if (typeof from === "string") {
+			this.#addRedirect({
+				match: {pattern: from},
+				target: to!,
+				status: options.status ?? 301,
+			});
+		} else if (from instanceof RegExp) {
+			this.#addRedirect({
+				match: {source: from.source, flags: from.flags},
+				target: to!,
+				status: options.status ?? 301,
+			});
+		} else {
+			this.#addRedirect(from);
+		}
 	}
 
 	/** @internal Register a redirect entry and compile its matcher. */
@@ -787,9 +776,12 @@ export class Router {
 			}
 			if (target !== null) {
 				// Resolve against the request URL so a path target becomes
-				// absolute; the target controls its own query string.
+				// absolute. The request's query carries over unless the target
+				// sets its own.
+				const location = new URL(target, u);
+				if (!target.includes("?")) location.search = u.search;
 				return {
-					location: new URL(target, u).toString(),
+					location: location.toString(),
 					status: entry.status,
 					order: matcher.order,
 				};

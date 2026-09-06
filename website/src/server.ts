@@ -25,9 +25,6 @@ export const assets = {
 // Create router
 const router = new Router();
 
-// Strip trailing slashes
-router.use(trailingSlash("strip"));
-
 // Serve static assets
 router.use(assetsMiddleware());
 
@@ -79,6 +76,9 @@ router.route("/blog/:slug").get(async (request, context) => {
 	const url = new URL(request.url);
 	return renderView(BlogPostView, url.pathname, context.params);
 });
+
+// Strip trailing slashes when nothing above matched
+router.redirect(trailingSlash("strip"));
 
 // ServiceWorker fetch event
 self.addEventListener("fetch", (event) => {

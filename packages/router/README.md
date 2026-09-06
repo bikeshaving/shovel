@@ -290,8 +290,8 @@ router.use(cors({
   credentials: true
 }));
 
-// Trailing slash normalization
-router.use(trailingSlash("strip")); // /path/ → /path
+// Trailing slash normalization — a redirect, declared after your routes
+router.redirect(trailingSlash("strip")); // /path/ → /path
 ```
 
 ### Available Middleware
@@ -328,7 +328,7 @@ interface CORSOptions {
 
 #### `trailingSlash(mode: TrailingSlashMode)`
 
-Normalizes URL trailing slashes via 301 redirect.
+Returns a `RedirectEntry` that normalizes trailing slashes with a 301. Pass it to `router.redirect()`; it serializes like any other redirect.
 
 ```typescript
 type TrailingSlashMode = "strip" | "add";
