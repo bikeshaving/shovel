@@ -3,7 +3,6 @@
  */
 
 import {getLogger} from "@logtape/logtape";
-import type {RedirectEntry} from "./index.js";
 
 // ============================================================================
 // TRAILING SLASH
@@ -15,12 +14,12 @@ import type {RedirectEntry} from "./index.js";
 export type TrailingSlashMode = "strip" | "add" | "append";
 
 /**
- * A redirect that normalizes trailing slashes with a 301. The root path is
- * left alone. "strip" collapses one or more trailing slashes; "add"/"append"
- * adds one.
+ * The `(from, to)` arguments for a `router.redirect()` that normalizes
+ * trailing slashes. The root path is left alone. "strip" collapses one or
+ * more trailing slashes; "add"/"append" adds one.
  *
- * Register it with `router.redirect()`. Like every redirect, its precedence is
- * where you declare it: after your routes, it only fires when nothing matched.
+ * Like every redirect, its precedence is where you declare it: after your
+ * routes, it only fires when nothing matched.
  *
  * @example
  * ```typescript
@@ -29,16 +28,11 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  *
  * const router = new Router();
  * router.route("/users").get(handler);
- * router.redirect(trailingSlash("strip")); // /users/ → /users
+ * router.redirect(...trailingSlash("strip")); // /users/ → /users
  * ```
  */
-export function trailingSlash(mode: TrailingSlashMode): RedirectEntry {
-	const re = mode === "strip" ? /^(.+?)\/+$/ : /^(.+[^/])$/;
-	return {
-		match: {source: re.source, flags: re.flags},
-		target: mode === "strip" ? "$1" : "$1/",
-		status: 301,
-	};
+export function trailingSlash(mode: TrailingSlashMode): [RegExp, string] {
+	return mode === "strip" ? [/^(.+?)\/+$/, "$1"] : [/^(.+[^/])$/, "$1/"];
 }
 
 // ============================================================================

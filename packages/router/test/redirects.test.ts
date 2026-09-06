@@ -3,10 +3,19 @@ import {Router} from "../src/index.js";
 
 const req = (url: string) => new Request(url);
 
+async function redirectOf(
+	router: Router,
+	url: string,
+): Promise<{location: string | null; status: number} | null> {
+	const res = await router.handle(req(url));
+	if (res.status < 300 || res.status > 399) return null;
+	return {location: res.headers.get("Location"), status: res.status};
+}
+
 describe("Redirects as data", () => {
 	test("a redirect declared BEFORE a route shadows it (:param substitution)", async () => {
 		const router = new Router();
-		router.redirect("/old/:id", "/new/:id"); // declared first → wins
+		router.redirect("/old/:id", "/new/:id");
 		router.route("/old/:id").get(async () => new Response("should not run"));
 
 		const res = await router.handle(req("http://x.com/old/42"));
@@ -16,14 +25,13 @@ describe("Redirects as data", () => {
 
 	test("a redirect declared AFTER a route only fires when nothing matched", async () => {
 		const router = new Router();
-		router.route("/legacy").get(async () => new Response("live")); // first
-		router.redirect("/legacy", "/current"); // after → route wins on /legacy
+		router.route("/legacy").get(async () => new Response("live"));
+		router.redirect("/legacy", "/current");
 
 		const live = await router.handle(req("http://x.com/legacy"));
 		expect(live.status).toBe(200);
 		expect(await live.text()).toBe("live");
 
-		// A path with no route → the redirect applies.
 		const gone = new Router();
 		gone.redirect("/gone", "/home");
 		const res = await gone.handle(req("http://x.com/gone"));
@@ -39,23 +47,23 @@ describe("Redirects as data", () => {
 		expect(res.headers.get("Location")).toBe("http://x.com/posts/hello");
 	});
 
-	test("limiting a redirect to a prefix is done in the matcher, not a facet", () => {
+	test("limiting a redirect to a prefix is done in the matcher", async () => {
 		const router = new Router();
 		router.redirect("/admin/:rest*", "/blocked");
-		expect(router.resolveRedirect("http://x.com/admin/x")).not.toBeNull();
-		expect(router.resolveRedirect("http://x.com/public/x")).toBeNull();
+		expect(await redirectOf(router, "http://x.com/admin/x")).not.toBeNull();
+		expect(await redirectOf(router, "http://x.com/public/x")).toBeNull();
 	});
 
-	test("first matching redirect wins (declaration order)", () => {
+	test("first matching redirect wins (declaration order)", async () => {
 		const router = new Router();
 		router.redirect("/a", "/first");
 		router.redirect("/a", "/second");
-		expect(router.resolveRedirect("http://x.com/a")?.location).toBe(
+		expect((await redirectOf(router, "http://x.com/a"))?.location).toBe(
 			"http://x.com/first",
 		);
 	});
 
-	test("PARITY: fromJSON reapplies redirects identically", () => {
+	test("PARITY: fromJSON reapplies redirects identically", async () => {
 		const server = new Router();
 		server.redirect("/old/:id", "/new/:id");
 		server.redirect(/^\/x\/(.+)$/, "/y/$1", {status: 302});
@@ -68,18 +76,20 @@ describe("Redirects as data", () => {
 			"http://x.com/tmp",
 			"http://x.com/none",
 		]) {
-			expect(client.resolveRedirect(url)).toEqual(server.resolveRedirect(url));
+			expect(await redirectOf(client, url)).toEqual(
+				await redirectOf(server, url),
+			);
 		}
 	});
 
-	test("the request query carries over unless the target sets its own", () => {
+	test("the request query carries over unless the target sets its own", async () => {
 		const router = new Router();
 		router.redirect("/a", "/b");
 		router.redirect("/c", "/d?fixed=1");
-		expect(router.resolveRedirect("http://x.com/a?q=1")?.location).toBe(
+		expect((await redirectOf(router, "http://x.com/a?q=1"))?.location).toBe(
 			"http://x.com/b?q=1",
 		);
-		expect(router.resolveRedirect("http://x.com/c?q=1")?.location).toBe(
+		expect((await redirectOf(router, "http://x.com/c?q=1"))?.location).toBe(
 			"http://x.com/d?fixed=1",
 		);
 	});

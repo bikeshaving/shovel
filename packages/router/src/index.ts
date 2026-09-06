@@ -143,18 +143,6 @@ export interface RedirectEntry {
 	status: number;
 }
 
-/** The resolved outcome of applying a redirect to a URL. */
-export interface RedirectResolution {
-	location: string;
-	status: number;
-}
-
-/** Options for `Router.redirect()`. */
-export interface RedirectOptions {
-	/** @default 301 */
-	status?: number;
-}
-
 /**
  * The serializable form of a Router's match table, produced by `toJSON()` and
  * consumed by `Router.fromJSON()`. One value drives the client router,
@@ -175,8 +163,6 @@ export interface RouteEntry {
 	handler?: Handler;
 	name?: string;
 	middlewares: Middleware[];
-	/** Monotonic declaration order — used to resolve redirect vs route precedence. */
-	order: number;
 }
 
 /**
@@ -664,6 +650,8 @@ export class Router {
 		| {kind: "pattern"; mp: MatchPattern; order: number}
 		| {kind: "regexp"; re: RegExp; order: number}
 	>;
+	/** Declaration order of each route, on the same counter as redirects. */
+	#routeOrder: WeakMap<RouteEntry, number>;
 	/** Monotonic declaration counter shared by routes and redirects. */
 	#seq: number;
 
@@ -673,40 +661,31 @@ export class Router {
 		this.redirects = [];
 		this.#executor = null;
 		this.#redirectMatchers = [];
+		this.#routeOrder = new WeakMap();
 		this.#seq = 0;
 	}
 
 	/**
 	 * Declare a redirect. `from` is either a MatchPattern string (`/old/:id`,
-	 * with `:id` reusable in `to`), a `RegExp` (with `$1`…`$n` in `to`), or a
-	 * ready-made `RedirectEntry` such as the one `trailingSlash()` returns.
+	 * with `:id` reusable in `to`) or a `RegExp` (with `$1`…`$n` in `to`).
 	 *
 	 * Precedence is declaration order: a redirect declared before a route it
 	 * overlaps shadows that route; declared after, it applies only when no
 	 * route matched. Among redirects, the first match wins.
 	 */
-	redirect(entry: RedirectEntry): void;
-	redirect(from: string | RegExp, to: string, options?: RedirectOptions): void;
 	redirect(
-		from: string | RegExp | RedirectEntry,
-		to?: string,
-		options: RedirectOptions = {},
+		from: string | RegExp,
+		to: string,
+		options: {status?: number} = {},
 	): void {
-		if (typeof from === "string") {
-			this.#addRedirect({
-				match: {pattern: from},
-				target: to!,
-				status: options.status ?? 301,
-			});
-		} else if (from instanceof RegExp) {
-			this.#addRedirect({
-				match: {source: from.source, flags: from.flags},
-				target: to!,
-				status: options.status ?? 301,
-			});
-		} else {
-			this.#addRedirect(from);
-		}
+		this.#addRedirect({
+			match:
+				typeof from === "string"
+					? {pattern: from}
+					: {source: from.source, flags: from.flags},
+			target: to,
+			status: options.status ?? 301,
+		});
 	}
 
 	/** @internal Register a redirect entry and compile its matcher. */
@@ -726,23 +705,6 @@ export class Router {
 				order,
 			});
 		}
-	}
-
-	/**
-	 * Resolve what `url` redirects to, or null if it doesn't. A redirect applies
-	 * only if it out-ranks any route that also matches the URL — i.e. it was
-	 * declared earlier (same first-declaration-wins rule as everywhere else).
-	 * Reads only serializable data, so client and server agree.
-	 */
-	resolveRedirect(url: string | URL): RedirectResolution | null {
-		const u = typeof url === "string" ? new URL(url) : url;
-		const red = this.#matchRedirect(u);
-		if (red === null) return null;
-		// A route matching this path that was declared before the redirect wins.
-		const match = this.#ensureCompiled().matchRequest(new Request(u));
-		const routeOrder = match ? match.entry.order : Number.POSITIVE_INFINITY;
-		if (red.order >= routeOrder) return null;
-		return {location: red.location, status: red.status};
 	}
 
 	/**
@@ -866,14 +828,15 @@ export class Router {
 	): void {
 		const matchPattern = new MatchPattern(pattern);
 
-		this.routes.push({
+		const entry: RouteEntry = {
 			pattern: matchPattern,
 			method: method.toUpperCase(),
 			handler,
 			name,
 			middlewares: middlewares,
-			order: this.#seq++,
-		});
+		};
+		this.routes.push(entry);
+		this.#routeOrder.set(entry, this.#seq++);
 		this.#executor = null;
 	}
 
@@ -900,13 +863,16 @@ export class Router {
 			const matchResult = executor.matchRequest(request);
 
 			// A redirect applies iff it out-ranks the matched route by
-			// declaration order (or nothing matched). Same rule as resolveRedirect.
+			// declaration order (or nothing matched).
 			const redirect = this.#matchRedirect(new URL(request.url));
 			const routeOrder = matchResult
-				? matchResult.entry.order
+				? this.#routeOrder.get(matchResult.entry)!
 				: Number.POSITIVE_INFINITY;
 			if (redirect !== null && redirect.order < routeOrder) {
-				return Router.#redirectResponse(redirect);
+				return new Response(null, {
+					status: redirect.status,
+					headers: {Location: redirect.location},
+				});
 			}
 
 			let handler: Handler;
@@ -954,14 +920,6 @@ export class Router {
 		return response;
 	}
 
-	/** Build a redirect Response from a resolved redirect. */
-	static #redirectResponse(r: RedirectResolution): Response {
-		return new Response(null, {
-			status: r.status,
-			headers: {Location: r.location},
-		});
-	}
-
 	/**
 	 * Mount a subrouter at a specific path prefix
 	 * All routes from the subrouter will be prefixed with the mount path
@@ -991,14 +949,15 @@ export class Router {
 			);
 
 			// Add the route to this router
-			this.routes.push({
+			const entry: RouteEntry = {
 				pattern: new MatchPattern(mountedPattern),
 				method: subroute.method,
 				handler: subroute.handler,
 				name: subroute.name,
 				middlewares: subroute.middlewares,
-				order: this.#seq++,
-			});
+			};
+			this.routes.push(entry);
+			this.#routeOrder.set(entry, this.#seq++);
 		}
 
 		// Get all middleware from the subrouter and add with mount path prefix
@@ -1261,7 +1220,7 @@ export class Router {
 		const items: Array<{order: number; entry: SerializedEntry}> = [];
 		for (const route of this.routes) {
 			items.push({
-				order: route.order,
+				order: this.#routeOrder.get(route)!,
 				entry: {
 					route: {
 						pattern: route.pattern.pathname,

@@ -78,7 +78,7 @@ router.route("/blog/:slug").get(async (request, context) => {
 });
 
 // Strip trailing slashes when nothing above matched
-router.redirect(trailingSlash("strip"));
+router.redirect(...trailingSlash("strip"));
 
 // ServiceWorker fetch event
 self.addEventListener("fetch", (event) => {

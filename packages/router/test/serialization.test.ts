@@ -76,7 +76,7 @@ describe("Router serialization", () => {
 		);
 	});
 
-	test("route↔redirect interleaving survives the round-trip", () => {
+	test("route↔redirect interleaving survives the round-trip", async () => {
 		// A redirect declared BEFORE its route shadows it; this precedence must
 		// hold identically after fromJSON.
 		const server = new Router();
@@ -86,12 +86,12 @@ describe("Router serialization", () => {
 		server.redirect("/keep", "/nope"); // after → route wins
 
 		const client = Router.fromJSON(JSON.stringify(server));
-		for (const url of ["http://x.com/old", "http://x.com/keep"]) {
-			expect(client.resolveRedirect(url)).toEqual(server.resolveRedirect(url));
-		}
-		expect(client.resolveRedirect("http://x.com/old")?.location).toBe(
-			"http://x.com/new",
-		);
-		expect(client.resolveRedirect("http://x.com/keep")).toBeNull();
+		const old = await client.handle(new Request("http://x.com/old"));
+		expect(old.status).toBe(301);
+		expect(old.headers.get("Location")).toBe("http://x.com/new");
+		// The route wins on the server; on the match-only client that is a 404,
+		// not a redirect.
+		const keep = await client.handle(new Request("http://x.com/keep"));
+		expect(keep.status).toBe(404);
 	});
 });
