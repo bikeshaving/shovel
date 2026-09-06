@@ -1048,7 +1048,7 @@ export class AdminRouter extends Router {
 		});
 
 		// Strip trailing slashes when no route above matched
-		this.redirect(trailingSlash("strip"));
+		this.redirect(...trailingSlash("strip"));
 	}
 }
 
