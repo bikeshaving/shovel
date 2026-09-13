@@ -41,6 +41,11 @@ export function* Root(
 					<meta property="og:description" content=${description} />
 					<meta property="og:type" content="website" />
 					<meta property="og:site_name" content="Shovel" />
+					<script
+						type="module"
+						src="https://static.cloudflareinsights.com/beacon.min.js"
+						data-cf-beacon='{"token": "50b68465b9fb4f47b2e2c20cec423cc1"}'
+					></script>
 				</head>
 				<body>
 					<${Raw} value=${html} />
