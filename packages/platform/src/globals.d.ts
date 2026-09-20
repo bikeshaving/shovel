@@ -84,6 +84,17 @@ declare global {
 	var databases: DatabaseStorage;
 
 	/**
+	 * IndexedDB factory for structured storage.
+	 * @example
+	 * const request = self.indexedDB.open("mydb", 1);
+	 * request.onupgradeneeded = (event) => {
+	 *   const db = request.result;
+	 *   db.createObjectStore("store", { keyPath: "id" });
+	 * };
+	 */
+	var indexedDB: IDBFactory;
+
+	/**
 	 * Environment variables available via import.meta.env
 	 * Works across all platforms (Node/Bun via esbuild shim, Cloudflare natively)
 	 */

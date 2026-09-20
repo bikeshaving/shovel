@@ -506,7 +506,7 @@ process.on("SIGTERM", handleShutdown);
 	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "node",
-			external: ["node:*", "bun", "bun:*", ...builtinModules],
+			external: ["node:*", "bun", "bun:*", "better-sqlite3", ...builtinModules],
 		};
 	}
 
@@ -540,6 +540,11 @@ process.on("SIGTERM", handleShutdown);
 					export: "NodeFSDirectory",
 					path: "[tmpdir]",
 				},
+			},
+			indexedDB: {
+				module: "@b9g/indexeddb/sqlite",
+				export: "SQLiteBackend",
+				path: "[outdir]/data",
 			},
 		};
 	}
