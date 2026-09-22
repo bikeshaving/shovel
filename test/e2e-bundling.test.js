@@ -526,15 +526,14 @@ console.log("FULL_E2E_READY");
 				process.chdir(originalCwd);
 			}
 
-			// Verify the bundle structure
-			const indexContent = await FS.readFile(
-				join(outDir, "server", "supervisor.js"),
-				"utf8",
-			);
-
-			// Should not have any require() or dynamic import() that would fail
-			// All modules should be statically bundled
-			expect(indexContent).not.toMatch(/require\s*\(\s*[^)]+\)/);
+			// Verify the bundle is actually produced. The real check that
+			// modules bundled cleanly is the runtime assertions below —
+			// a regex against the bundle text catches false positives from
+			// esbuild's CJS shim helper (__require) and from vendored deps
+			// (e.g., `ws` translates its internal `require("stream")` calls
+			// to `__require("stream")`, which resolves to a Node builtin
+			// just fine).
+			await FS.readFile(join(outDir, "server", "supervisor.js"), "utf8");
 
 			// Run the bundle
 			const result = await runBundle(join(outDir, "server"));

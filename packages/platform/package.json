@@ -27,6 +27,7 @@
   ],
   "dependencies": {
     "@b9g/async-context": "workspace:*",
+    "@b9g/http-errors": "workspace:*",
     "@b9g/cache": "workspace:*",
     "@b9g/filesystem": "workspace:*",
     "@logtape/logtape": "^2.0.0"

@@ -6,7 +6,6 @@
 
 // Node.js built-ins
 import * as HTTP from "node:http";
-import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
 import * as Path from "node:path";
 
@@ -35,12 +34,25 @@ import {
 	createCacheFactory,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
+import {attachNodePoolWebSocketHandler} from "./_websocket.js";
+// Re-exported so the generated worker can import the WebSocket adapter from
+// this package's main entry — keeps the adapter module itself internal
+// (`_websocket.ts`, not a published endpoint).
+export {attachNodeWebSocketHandler} from "./_websocket.js";
 
 const logger = getLogger(["shovel", "platform"]);
 
 // ============================================================================
 // TYPES
 // ============================================================================
+
+/**
+ * Node-specific Server extension. Exposes the underlying `http.Server` so
+ * callers can attach WebSocket upgrade handling (see `attachNodeWebSocketHandler`).
+ */
+export interface NodeServer extends Server {
+	readonly httpServer: HTTP.Server;
+}
 
 export interface NodePlatformOptions {
 	/** Port for development server (default: 7777) */
@@ -243,7 +255,8 @@ export class NodePlatform {
 		workers: number;
 		config?: ShovelConfig;
 	};
-	#server?: Server;
+	#server?: NodeServer;
+	#wsCleanup?: () => Promise<void>;
 
 	constructor(options: NodePlatformOptions = {}) {
 		this.name = "node";
@@ -283,6 +296,32 @@ export class NodePlatform {
 		}
 
 		this.#server = this.createServer((request) => pool.handleRequest(request));
+
+		// If the pool also needs to handle WebSocket upgrades, wire the
+		// platform adapter for pool-mode frame routing.
+		const poolWithWs = pool as typeof pool & {
+			handleUpgradeRequest?: (
+				request: Request,
+			) => Promise<Response | {upgrade: true; connectionID: string}>;
+			setWebSocketHandlers?: (h: {
+				sendFrame: (id: string, data: string | ArrayBuffer) => void;
+				closeConnection: (id: string, code?: number, reason?: string) => void;
+			}) => void;
+			sendWebSocketMessage?: (id: string, data: string | ArrayBuffer) => void;
+			sendWebSocketClose?: (
+				id: string,
+				code: number,
+				reason: string,
+				wasClean: boolean,
+			) => void;
+		};
+		if (typeof poolWithWs.setWebSocketHandlers === "function") {
+			this.#wsCleanup = attachNodePoolWebSocketHandler(
+				this.#server.httpServer,
+				poolWithWs,
+			);
+		}
+
 		await this.#server.listen();
 		return this.#server;
 	}
@@ -291,6 +330,13 @@ export class NodePlatform {
 	 * Close the server and terminate workers
 	 */
 	async close(): Promise<void> {
+		// Close pooled WebSockets BEFORE httpServer.close(): close(cb) only
+		// completes when every connection (including hijacked upgrade sockets)
+		// has ended, so an open WebSocket would deadlock shutdown here.
+		if (this.#wsCleanup) {
+			await this.#wsCleanup();
+			this.#wsCleanup = undefined;
+		}
 		await this.#server?.close();
 		await this.serviceWorker.terminate();
 	}
@@ -305,7 +351,7 @@ export class NodePlatform {
 	/**
 	 * Create HTTP server for Node.js
 	 */
-	createServer(handler: Handler, options: ServerOptions = {}): Server {
+	createServer(handler: Handler, options: ServerOptions = {}): NodeServer {
 		const port = options.port ?? this.#options.port;
 		const host = options.host ?? this.#options.host;
 
@@ -421,6 +467,10 @@ export class NodePlatform {
 			get url() {
 				return `http://${host}:${actualPort}`;
 			},
+			/** @internal Exposed for WebSocket upgrade attachment. */
+			get httpServer() {
+				return httpServer;
+			},
 			get ready() {
 				return isListening;
 			},
@@ -491,7 +541,7 @@ if (config.lifecycle) {
 		const prodWorkerCode = `// Node.js Production Worker
 import {parentPort} from "node:worker_threads";
 import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, startWorkerMessageLoop, dispatchRequest} from "@b9g/platform/runtime";
-import NodePlatform from "@b9g/platform-node";
+import NodePlatform, {attachNodeWebSocketHandler} from "@b9g/platform-node";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -502,11 +552,13 @@ const directMode = config.workers <= 1;
 // Track resources for shutdown
 let server;
 let databases;
+let detachWs;
 
 // Register shutdown handler before async startup
 parentPort?.on("message", async (event) => {
 	if (event.type === "shutdown") {
 		logger.info("Worker shutting down");
+		if (detachWs) await detachWs();
 		if (server) await server.close();
 		if (databases) await databases.closeAll();
 		parentPort?.postMessage({type: "shutdown-complete"});
@@ -529,11 +581,12 @@ if (config.lifecycle) {
 	if (databases) await databases.closeAll();
 	process.exit(0);
 } else if (directMode) {
-	// Single worker: create own HTTP server
+	// Single worker: create own HTTP server and wire WebSocket upgrade handling
 	const platform = new NodePlatform({port: config.port, host: config.host});
 	server = platform.createServer(
 		(request) => dispatchRequest(registration, request),
 	);
+	detachWs = attachNodeWebSocketHandler(server.httpServer, registration);
 	await server.listen();
 	parentPort?.postMessage({type: "ready"});
 	logger.info("Worker started (direct mode)", {port: config.port});
@@ -593,7 +646,11 @@ process.on("SIGTERM", handleShutdown);
 	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "node",
-			external: ["node:*", ...builtinModules],
+			// Only `node:*` scheme here — esbuild's `platform: "node"` already
+			// externalizes every real Node builtin automatically. Do NOT spread
+			// `builtinModules`: under Bun that list contains non-Node packages
+			// ("ws", "undici", "bun:*") which must stay bundled.
+			external: ["node:*"],
 			define: {
 				// Node.js doesn't support import.meta.env, alias to process.env
 				"import.meta.env": "process.env",

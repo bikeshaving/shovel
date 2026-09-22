@@ -1,0 +1,14 @@
+name = "shovel-chat"
+main = "dist/server/worker.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# WebSocket support requires the SHOVEL_WS Durable Object binding.
+# Without this, upgradeWebSocket() returns a 426 with a clear error.
+[[durable_objects.bindings]]
+name = "SHOVEL_WS"
+class_name = "ShovelWebSocketDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ShovelWebSocketDO"]

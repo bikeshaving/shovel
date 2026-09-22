@@ -123,4 +123,8 @@ jobs:
           path: .
 
       - name: Test
-        run: bun test
+        # bun run test (NOT bare `bun test`): bunfig excludes the
+        # Miniflare-based cloudflare-*.test.* files from the default walk
+        # (concurrent workerd spawns flake); the root test script runs them
+        # sequentially after the main suite.
+        run: bun run test

@@ -5,7 +5,6 @@
  */
 
 // Node.js built-ins (Bun is Node-compatible)
-import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
 import * as Path from "node:path";
 
@@ -30,6 +29,11 @@ import {
 	createCacheFactory,
 	type ShovelConfig,
 } from "@b9g/platform/runtime";
+import {createBunPoolWebSocketAdapter} from "./_websocket.js";
+// Re-exported so the generated worker can import the WebSocket adapter from
+// this package's main entry — keeps the adapter module itself internal
+// (`_websocket.ts`, not a published endpoint).
+export {createBunWebSocketServer} from "./_websocket.js";
 
 const logger = getLogger(["shovel", "platform"]);
 
@@ -342,6 +346,65 @@ export class BunPlatform {
 			);
 		}
 
+		// Wire pool-mode WebSocket support if the pool supports it.
+		const poolWithWs = pool as typeof pool & {
+			handleUpgradeRequest?: (
+				request: Request,
+			) => Promise<Response | {upgrade: true; connectionID: string}>;
+			setWebSocketHandlers?: (h: {
+				sendFrame: (id: string, data: string | ArrayBuffer) => void;
+				closeConnection: (id: string, code?: number, reason?: string) => void;
+			}) => void;
+			sendWebSocketMessage?: (id: string, data: string | ArrayBuffer) => void;
+			sendWebSocketClose?: (
+				id: string,
+				code: number,
+				reason: string,
+				wasClean: boolean,
+			) => void;
+		};
+
+		if (
+			typeof poolWithWs.setWebSocketHandlers === "function" &&
+			typeof poolWithWs.handleUpgradeRequest === "function"
+		) {
+			const adapter = createBunPoolWebSocketAdapter(
+				poolWithWs as Required<typeof poolWithWs>,
+			);
+			const host = this.#options.host ?? "0.0.0.0";
+			const requestedPort = this.#options.port ?? 0;
+			const bunServe = Bun.serve({
+				port: requestedPort,
+				hostname: host,
+				fetch: adapter.fetch,
+				websocket: adapter.websocket,
+			});
+			const actualPort = bunServe.port as number;
+			const server: Server = {
+				async listen() {
+					logger.info("Bun supervisor server running", {
+						url: `http://${host}:${actualPort}`,
+					});
+				},
+				async close() {
+					// Drain pooled WebSockets first: stop(true) would kill the
+					// sockets under the pool and websocketclose would never
+					// dispatch in the workers.
+					await adapter.cleanup();
+					bunServe.stop(true);
+				},
+				address: () => ({port: actualPort, host}),
+				get url() {
+					return `http://${host}:${actualPort}`;
+				},
+				get ready() {
+					return true;
+				},
+			};
+			this.#server = server;
+			return server;
+		}
+
 		this.#server = this.createServer((request) => pool.handleRequest(request), {
 			port: this.#options.port,
 			host: this.#options.host,
@@ -385,8 +448,8 @@ export class BunPlatform {
 	): EntryPoints {
 		// Worker code for production (with message handling for supervisor communication)
 		const prodWorkerCode = `// Bun Production Worker
-import BunPlatform from "@b9g/platform-bun";
-import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, dispatchRequest, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
+import {getLogger, configureLogging, initWorkerRuntime, runLifecycle, setBroadcastChannelRelay, deliverBroadcastMessage} from "@b9g/platform/runtime";
+import {createBunWebSocketServer} from "@b9g/platform-bun";
 import {config} from "shovel:config";
 
 await configureLogging(config.logging);
@@ -395,12 +458,19 @@ const logger = getLogger(["shovel", "platform"]);
 // Track resources for shutdown
 let server;
 let databases;
+let wsCleanup;
 
 // Register message handler for shutdown and broadcast relay
 self.onmessage = async (event) => {
 	if (event.data.type === "shutdown") {
 		logger.info("Worker shutting down");
-		if (server) await server.close();
+		if (wsCleanup) await wsCleanup();
+		if (server) {
+			// Drain in-flight requests; force-abort only if draining stalls.
+			const force = setTimeout(() => server.stop(true), 4000);
+			await server.stop();
+			clearTimeout(force);
+		}
 		if (databases) await databases.closeAll();
 		postMessage({type: "shutdown-complete"});
 	} else if (event.data.type === "broadcast:deliver") {
@@ -426,16 +496,19 @@ await runLifecycle(registration, config.lifecycle?.stage);
 
 // Start server (skip in lifecycle-only mode)
 if (!config.lifecycle) {
-	const platform = new BunPlatform({port: config.port, host: config.host});
-	server = platform.createServer(
-		(request) => dispatchRequest(registration, request),
-		{reusePort: config.workers > 1},
-	);
-	await server.listen();
+	const adapter = createBunWebSocketServer(registration);
+	wsCleanup = adapter.cleanup;
+	server = Bun.serve({
+		port: config.port,
+		hostname: config.host,
+		reusePort: config.workers > 1,
+		fetch: adapter.fetch,
+		websocket: adapter.websocket,
+	});
+	logger.info("Worker started", {port: server.port});
 }
 
 postMessage({type: "ready"});
-logger.info("Worker started", {port: config.port});
 `;
 
 		// Development worker (simpler, managed by develop command via message loop)
@@ -506,7 +579,11 @@ process.on("SIGTERM", handleShutdown);
 	getESBuildConfig(): PlatformESBuildConfig {
 		return {
 			platform: "node",
-			external: ["node:*", "bun", "bun:*", ...builtinModules],
+			// Only scheme-prefixed builtins here — esbuild's `platform: "node"`
+			// auto-externalizes real Node builtins. Spreading `builtinModules`
+			// under Bun pulls in `ws`/`undici` which we want bundled so the
+			// WebSocket bridge ships in the worker output.
+			external: ["node:*", "bun", "bun:*"],
 		};
 	}
 

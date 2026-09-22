@@ -8,6 +8,7 @@ import {
 	setBroadcastChannelRelay,
 	deliverBroadcastMessage,
 	setBroadcastChannelBackend,
+	hasBroadcastChannelBackend,
 } from "../src/internal/broadcast-channel.js";
 import type {BroadcastChannelBackend} from "../src/internal/broadcast-channel-backend.js";
 
@@ -299,12 +300,72 @@ describe("BroadcastChannel backend", () => {
 		const ch1 = new ShovelBroadcastChannel("sub-test");
 		const ch2 = new ShovelBroadcastChannel("sub-test");
 
-		// Should only subscribe once per channel name
-		expect(subscriptions.length).toBe(1);
-		expect(subscriptions[0]).toBe("sub-test");
+		// Should only subscribe once per channel name. (Filtered: installing
+		// the backend also syncs channels other tests left open — intended
+		// behavior since module-scope channels must register on install.)
+		const subTest = subscriptions.filter((n) => n === "sub-test");
+		expect(subTest.length).toBe(1);
 
 		ch1.close();
 		ch2.close();
+	});
+
+	it("hasBroadcastChannelBackend reflects install state", () => {
+		expect(hasBroadcastChannelBackend()).toBe(false);
+		setBroadcastChannelBackend({
+			publish() {},
+			subscribe() {
+				return () => {};
+			},
+			async dispose() {},
+		});
+		expect(hasBroadcastChannelBackend()).toBe(true);
+	});
+
+	it("installing a new backend re-registers channels that predate it", () => {
+		// A channel created before ANY backend exists (module-scope pattern)
+		// must be subscribed on the backend when it installs — otherwise it
+		// never receives cross-isolate publishes.
+		const early = new ShovelBroadcastChannel("pre-existing");
+		const subscribed: string[] = [];
+		setBroadcastChannelBackend({
+			publish() {},
+			subscribe(name) {
+				subscribed.push(name);
+				return () => {};
+			},
+			async dispose() {},
+		});
+		expect(subscribed).toContain("pre-existing");
+		early.close();
+	});
+
+	it("swapping backends re-registers live channels on the new one", () => {
+		const ch = new ShovelBroadcastChannel("swap-test");
+		const first: string[] = [];
+		const firstUnsub: string[] = [];
+		setBroadcastChannelBackend({
+			publish() {},
+			subscribe(name) {
+				first.push(name);
+				return () => firstUnsub.push(name);
+			},
+			async dispose() {},
+		});
+		const second: string[] = [];
+		setBroadcastChannelBackend({
+			publish() {},
+			subscribe(name) {
+				second.push(name);
+				return () => {};
+			},
+			async dispose() {},
+		});
+		// The old backend is unsubscribed and the new one re-subscribed, so a
+		// channel registered under a null-id backend reaches the DO-id one.
+		expect(firstUnsub).toContain("swap-test");
+		expect(second).toContain("swap-test");
+		ch.close();
 	});
 
 	it("backend unsubscribes when last instance for a channel closes", () => {
