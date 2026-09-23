@@ -5,12 +5,12 @@
  * using in-memory data structures.
  */
 
-import type {ShovelHandle} from "./index.js";
 import {
 	type FileSystemBackend,
 	ShovelDirectoryHandle,
 	ShovelFileHandle,
 } from "./index.js";
+import type {ShovelHandle} from "./index.js";
 
 /**
  * In-memory file data

@@ -16,9 +16,10 @@
  * import "./public/**\/*.{png,svg}" with { assetBase: "/" };
  */
 
-import {globSync} from "glob";
 import {posix} from "path";
+
 import type * as ESBuild from "esbuild";
+import {globSync} from "glob";
 
 const GLOB_NAMESPACE = "shovel-glob-assets";
 

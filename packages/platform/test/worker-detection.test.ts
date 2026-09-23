@@ -1,4 +1,6 @@
+import {CustomDirectoryStorage} from "@b9g/filesystem";
 import {describe, expect, test} from "bun:test";
+
 import {
 	CustomLoggerStorage,
 	DedicatedWorkerGlobalScope,
@@ -6,7 +8,6 @@ import {
 	ShovelServiceWorkerRegistration,
 	WorkerGlobalScope,
 } from "../src/runtime.js";
-import {CustomDirectoryStorage} from "@b9g/filesystem";
 
 describe("Worker Detection", () => {
 	test("WorkerGlobalScope class is defined", () => {

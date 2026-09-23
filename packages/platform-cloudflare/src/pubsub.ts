@@ -19,9 +19,9 @@
  * or Workers using waitUntil(), subscriptions can persist longer.
  */
 
-import {DurableObject} from "cloudflare:workers";
 import type {BroadcastChannelBackend} from "@b9g/platform/runtime";
 import {getLogger} from "@logtape/logtape";
+import {DurableObject} from "cloudflare:workers";
 
 const logger = getLogger(["shovel", "pubsub"]);
 

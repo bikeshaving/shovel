@@ -10,10 +10,11 @@
  * bundle executes from". Principle of least surprise.
  */
 
-import type * as ESBuild from "esbuild";
 import {readFile} from "fs/promises";
 import {dirname} from "path";
 import {pathToFileURL} from "url";
+
+import type * as ESBuild from "esbuild";
 
 export function importMetaPlugin(): ESBuild.Plugin {
 	return {

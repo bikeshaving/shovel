@@ -1,22 +1,20 @@
-import {jsx} from "@b9g/crank/standalone";
+import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 import {renderer} from "@b9g/crank/html";
+import {jsx} from "@b9g/crank/standalone";
 import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
-import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 
-import {collectDocuments} from "./models/document.js";
 import {collectBlogPosts} from "./models/blog.js";
-
-// Import views
-import HomeView from "./views/home.js";
-import GuideView from "./views/guide.js";
-import DocView from "./views/doc.js";
-import BlogListView from "./views/blog-list.tsx";
-import BlogPostView from "./views/blog-post.tsx";
-import NotFoundView from "./views/not-found.js";
-
+import {collectDocuments} from "./models/document.js";
 // Import assets
 import clientCSS from "./styles/client.css" with {assetBase: "/static/"};
+import BlogListView from "./views/blog-list.tsx";
+import BlogPostView from "./views/blog-post.tsx";
+import DocView from "./views/doc.js";
+import GuideView from "./views/guide.js";
+// Import views
+import HomeView from "./views/home.js";
+import NotFoundView from "./views/not-found.js";
 
 export const assets = {clientCSS};
 

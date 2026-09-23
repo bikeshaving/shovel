@@ -1,9 +1,11 @@
+import * as fs from "fs/promises";
+import * as path from "path";
+
 import {afterAll, beforeAll, describe, expect, test} from "bun:test";
 import {Miniflare} from "miniflare";
-import * as path from "path";
-import * as fs from "fs/promises";
-import type {CFAssetsBinding} from "../src/directories.js";
+
 import {CFAssetsDirectoryHandle} from "../src/directories.js";
+import type {CFAssetsBinding} from "../src/directories.js";
 
 describe("CFAssetsDirectoryHandle", () => {
 	let mf: Miniflare;

@@ -1,6 +1,7 @@
-import cssUrl from "./style.css" with {assetBase: "/assets/"};
-import jsUrl from "./client.js" with {assetBase: "/assets/"};
 import {assets} from "@b9g/assets/middleware";
+
+import jsUrl from "./client.js" with {assetBase: "/assets/"};
+import cssUrl from "./style.css" with {assetBase: "/assets/"};
 
 const serveAssets = assets();
 

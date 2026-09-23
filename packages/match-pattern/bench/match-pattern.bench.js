@@ -3,10 +3,10 @@
  */
 
 import {bench, group, run} from "mitata";
-import {MatchPattern} from "../src/index.ts";
-
 // Import polyfill directly without mutating globals
 import {URLPattern as URLPatternPolyfill} from "urlpattern-polyfill/urlpattern";
+
+import {MatchPattern} from "../src/index.ts";
 
 // Test URLs
 const staticURL = new URL("http://localhost/api/users");

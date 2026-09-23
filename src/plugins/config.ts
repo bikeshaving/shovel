@@ -8,9 +8,11 @@
  * Also generates typed overloads for storage APIs in dist/server/shovel.d.ts.
  */
 
-import type * as ESBuild from "esbuild";
 import {mkdirSync, writeFileSync} from "node:fs";
 import {isAbsolute, join} from "node:path";
+
+import type * as ESBuild from "esbuild";
+
 import {
 	generateConfigModule,
 	generateStorageTypes,

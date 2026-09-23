@@ -3,6 +3,7 @@
  */
 
 import {describe, expect, it} from "bun:test";
+
 import {ConfigValidationError, validateConfig} from "../src/config.js";
 
 describe("validateConfig", () => {

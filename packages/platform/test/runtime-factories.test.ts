@@ -1,4 +1,19 @@
+import {mkdtempSync, rmSync} from "fs";
+import {tmpdir} from "os";
+import {join} from "path";
+
+import {MemoryCache} from "@b9g/cache/memory";
+import {MemoryDirectory} from "@b9g/filesystem/memory";
+import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
+import {Database} from "@b9g/zen";
+import BunDriver from "@b9g/zen/bun";
+import {
+	getConsoleSink,
+	getLogger,
+	reset as resetLogtape,
+} from "@logtape/logtape";
 import {afterEach, describe, expect, test} from "bun:test";
+
 import {
 	configureLogging,
 	createCacheFactory,
@@ -6,19 +21,6 @@ import {
 	CustomDatabaseStorage,
 	CustomLoggerStorage,
 } from "../src/runtime.js";
-import {Database} from "@b9g/zen";
-import BunDriver from "@b9g/zen/bun";
-import {MemoryCache} from "@b9g/cache/memory";
-import {MemoryDirectory} from "@b9g/filesystem/memory";
-import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
-import {
-	getConsoleSink,
-	getLogger,
-	reset as resetLogtape,
-} from "@logtape/logtape";
-import {tmpdir} from "os";
-import {join} from "path";
-import {mkdtempSync, rmSync} from "fs";
 
 describe("createCacheFactory", () => {
 	test("creates cache from config with impl", async () => {

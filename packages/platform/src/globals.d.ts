@@ -10,8 +10,8 @@
  * or reference it with /// <reference types="@b9g/platform/globals" />
  */
 
-import type {Logger} from "@logtape/logtape";
 import type {DirectoryStorage} from "@b9g/filesystem";
+import type {Logger} from "@logtape/logtape";
 
 declare global {
 

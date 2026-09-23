@@ -2,9 +2,11 @@
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
-import {expect, test} from "bun:test";
-import {buildCommand, buildForProduction} from "../src/commands/build.js";
+
 import {getLogger} from "@logtape/logtape";
+import {expect, test} from "bun:test";
+
+import {buildCommand, buildForProduction} from "../src/commands/build.js";
 
 const logger = getLogger(["test", "build"]);
 

@@ -9,13 +9,10 @@ import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
 import * as Path from "node:path";
 
-// External packages
-import {getLogger} from "@logtape/logtape";
-
 // Internal @b9g/* packages
 import {CustomCacheStorage} from "@b9g/cache";
-import type {HTTPError} from "@b9g/http-errors";
 import {InternalServerError, isHTTPError} from "@b9g/http-errors";
+import type {HTTPError} from "@b9g/http-errors";
 import {
 	type EntryPoints,
 	type Handler,
@@ -31,6 +28,8 @@ import {
 	type ShovelConfig,
 	ShovelServiceWorkerRegistration,
 } from "@b9g/platform/runtime";
+// External packages
+import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "platform"]);
 

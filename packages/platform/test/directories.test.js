@@ -1,10 +1,12 @@
-import {expect, test} from "bun:test";
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
+
 import {NodeFSDirectory} from "@b9g/filesystem/node-fs.js";
-import {dispatchRequest, runLifecycle} from "../src/runtime.js";
 import {getLogger} from "@logtape/logtape";
+import {expect, test} from "bun:test";
+
+import {dispatchRequest, runLifecycle} from "../src/runtime.js";
 
 const logger = getLogger(["test", "directories"]);
 

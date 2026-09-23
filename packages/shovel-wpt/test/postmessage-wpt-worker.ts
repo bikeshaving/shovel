@@ -8,6 +8,7 @@
  */
 
 import {parentPort} from "worker_threads";
+
 import {MemoryCache} from "../../cache/src/memory.js";
 import {
 	handleCacheResponse,

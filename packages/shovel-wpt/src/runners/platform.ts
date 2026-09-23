@@ -6,8 +6,8 @@
  * not a web standard, so these are contract tests rather than WPT tests.
  */
 
-import {afterAll, afterEach, beforeAll, describe, expect, test} from "bun:test";
 import {getLogger} from "@logtape/logtape";
+import {afterAll, afterEach, beforeAll, describe, expect, test} from "bun:test";
 
 const logger = getLogger(["test", "wpt", "platform"]);
 

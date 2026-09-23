@@ -1,4 +1,7 @@
+import {CustomCacheStorage} from "@b9g/cache";
+import {MemoryCache} from "@b9g/cache/memory.js";
 import {bench, group, run} from "mitata";
+
 import {
 	dispatchRequest,
 	FetchEvent,
@@ -6,8 +9,6 @@ import {
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
 } from "../dist/src/runtime.js";
-import {CustomCacheStorage} from "@b9g/cache";
-import {MemoryCache} from "@b9g/cache/memory.js";
 
 // Setup: Create a minimal ServiceWorker environment
 const registration = new ShovelServiceWorkerRegistration();

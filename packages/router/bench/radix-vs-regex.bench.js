@@ -5,12 +5,12 @@
  * for typical web routing scenarios?
  */
 
-import {bench, group, run} from "mitata";
 import {
 	compilePathname,
 	isSimplePattern,
 	MatchPattern,
 } from "@b9g/match-pattern";
+import {bench, group, run} from "mitata";
 
 // ============================================================================
 // RADIX TREE IMPLEMENTATION (simplified)

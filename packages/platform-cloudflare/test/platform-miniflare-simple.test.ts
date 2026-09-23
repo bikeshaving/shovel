@@ -1,8 +1,10 @@
-import {afterAll, beforeAll, describe, expect, test} from "bun:test";
-import * as path from "path";
 import * as fs from "fs/promises";
-import {CloudflarePlatform} from "../src/index.js";
+import * as path from "path";
+
 import {getLogger} from "@logtape/logtape";
+import {afterAll, beforeAll, describe, expect, test} from "bun:test";
+
+import {CloudflarePlatform} from "../src/index.js";
 
 const logger = getLogger(["test", "platform-cloudflare-simple"]);
 

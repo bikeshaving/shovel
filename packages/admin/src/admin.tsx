@@ -3,19 +3,20 @@
  * @b9g/admin - AdminRouter implementation
  */
 
+import type {Children} from "@b9g/crank";
+import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
-import {renderer} from "@b9g/crank/html";
-import type {Children} from "@b9g/crank";
-import type {Database, Table} from "@b9g/zen";
 import {ValidationError} from "@b9g/zen";
+import type {Database, Table} from "@b9g/zen";
+
 import {
 	type AdminTableInfo,
 	getAdminSchemaInfo,
 	getDisplayName,
 } from "./core/introspection.js";
-import {PageLayout} from "./ui/Layout.js";
 import {ModelForm, parseFormData} from "./ui/Form.js";
+import {PageLayout} from "./ui/Layout.js";
 
 const logger = self.loggers.get(["shovel", "admin"]);
 

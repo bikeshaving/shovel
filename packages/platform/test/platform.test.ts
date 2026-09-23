@@ -1,4 +1,5 @@
 import {describe, expect, test} from "bun:test";
+
 import {detectDevelopmentPlatform} from "../src/index.js";
 
 describe("@b9g/platform", () => {

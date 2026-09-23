@@ -6,13 +6,15 @@
  * can initialize and handle requests properly.
  */
 
-import {afterAll, beforeAll, describe, expect, it} from "bun:test";
-import {ServiceWorkerPool} from "../src/index.js";
-import {CustomCacheStorage} from "@b9g/cache";
-import {MemoryCache} from "@b9g/cache/memory";
-import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
+import * as path from "path";
+
+import {CustomCacheStorage} from "@b9g/cache";
+import {MemoryCache} from "@b9g/cache/memory";
+import {afterAll, beforeAll, describe, expect, it} from "bun:test";
+
+import {ServiceWorkerPool} from "../src/index.js";
 
 // Worker code that properly signals ready and handles request messages
 const WORKER_CODE = (responseText: string) => `

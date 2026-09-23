@@ -2,17 +2,18 @@
  * Production build system for Shovel apps
  * Creates self-contained, directly executable production builds
  */
-import {basename, dirname, join, resolve} from "path";
-import {getLogger} from "@logtape/logtape";
-import {resolvePlatform} from "@b9g/platform";
 import {readFile, writeFile} from "fs/promises";
+import {basename, dirname, join, resolve} from "path";
+
+import {resolvePlatform} from "@b9g/platform";
+import type {DevServer, PlatformModule} from "@b9g/platform/module";
+import {getLogger} from "@logtape/logtape";
 import type * as ESBuild from "esbuild";
 
 import {ServerBundler} from "../utils/bundler.js";
-import {findProjectRoot, findWorkspaceRoot} from "../utils/project.js";
-import {loadPlatformModule} from "../utils/platform.js";
 import type {ProcessedShovelConfig} from "../utils/config.js";
-import type {DevServer, PlatformModule} from "@b9g/platform/module";
+import {loadPlatformModule} from "../utils/platform.js";
+import {findProjectRoot, findWorkspaceRoot} from "../utils/project.js";
 
 const logger = getLogger(["shovel", "build"]);
 

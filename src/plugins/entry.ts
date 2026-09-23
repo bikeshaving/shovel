@@ -10,8 +10,8 @@
  * - shovel:entry:server - Combined entry point (for Cloudflare single-file)
  */
 
-import type * as ESBuild from "esbuild";
 import type {ProductionEntryPoints} from "@b9g/platform";
+import type * as ESBuild from "esbuild";
 
 /**
  * Create the shovel:entry virtual module plugin.

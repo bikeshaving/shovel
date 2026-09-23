@@ -1,8 +1,9 @@
-import {jsx, Raw} from "@b9g/crank/standalone";
 import type {Children, Context} from "@b9g/crank";
+import {jsx, Raw} from "@b9g/crank/standalone";
 import {extractCritical} from "@emotion/server";
-import {Navbar} from "./navbar.js";
+
 import {assets} from "../server.js";
+import {Navbar} from "./navbar.js";
 
 export function *Root(
 	this: Context,

@@ -1,7 +1,8 @@
-import {afterEach, beforeEach, describe, expect, test} from "bun:test";
-import {cors, logger, trailingSlash} from "../src/middleware.js";
 import {Router} from "@b9g/router";
 import {configure, type LogRecord} from "@logtape/logtape";
+import {afterEach, beforeEach, describe, expect, test} from "bun:test";
+
+import {cors, logger, trailingSlash} from "../src/middleware.js";
 
 // ============================================================================
 // Logger middleware

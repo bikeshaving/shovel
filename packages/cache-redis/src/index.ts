@@ -5,8 +5,8 @@
  */
 
 import {Cache, type CacheQueryOptions, generateCacheKey} from "@b9g/cache";
-import {createClient, type RedisClientOptions} from "redis";
 import {getLogger} from "@logtape/logtape";
+import {createClient, type RedisClientOptions} from "redis";
 
 const logger = getLogger(["shovel", "cache"]);
 

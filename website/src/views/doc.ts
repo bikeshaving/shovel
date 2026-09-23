@@ -1,12 +1,12 @@
 import {jsx} from "@b9g/crank/standalone";
+import {Marked} from "@b9g/crankdown";
 import {NotFound} from "@b9g/http-errors";
 
+import {buildDocCategories, DocSidebar} from "../components/doc-sidebar.js";
+import {components} from "../components/marked-components.js";
 import {Root} from "../components/root.js";
 import {Main} from "../components/sidebar.js";
-import {Marked} from "@b9g/crankdown";
-import {components} from "../components/marked-components.js";
 import {collectDocuments} from "../models/document.js";
-import {buildDocCategories, DocSidebar} from "../components/doc-sidebar.js";
 
 interface ViewProps {
 	url: string;

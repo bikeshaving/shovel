@@ -9,14 +9,16 @@
  * Runtime tests build, start, and make HTTP requests to verify behavior.
  */
 
+import {spawn} from "child_process";
 import * as FS from "fs/promises";
+import {createConnection} from "net";
 import {tmpdir} from "os";
 import {join} from "path";
-import {describe, expect, test} from "bun:test";
-import {buildForProduction} from "../src/commands/build.js";
-import {spawn} from "child_process";
-import {createConnection} from "net";
+
 import {getLogger} from "@logtape/logtape";
+import {describe, expect, test} from "bun:test";
+
+import {buildForProduction} from "../src/commands/build.js";
 
 const logger = getLogger(["test", "e2e-direct-mode"]);
 

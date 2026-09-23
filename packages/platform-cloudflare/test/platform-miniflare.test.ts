@@ -1,8 +1,10 @@
-import {afterAll, beforeAll, describe, expect, test} from "bun:test";
-import * as path from "path";
 import * as fs from "fs/promises";
-import {CloudflarePlatform} from "../src/index.js";
+import * as path from "path";
+
 import type {ServiceWorkerInstance} from "@b9g/platform";
+import {afterAll, beforeAll, describe, expect, test} from "bun:test";
+
+import {CloudflarePlatform} from "../src/index.js";
 
 describe("CloudflarePlatform with miniflare", () => {
 	const testDir = path.resolve(import.meta.dir, "miniflare-fixtures");

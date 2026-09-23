@@ -11,14 +11,16 @@
  * these tests execute the bundle to catch runtime module resolution failures.
  */
 
+import {spawn} from "child_process";
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
+
+import {getLogger} from "@logtape/logtape";
 import {expect, test} from "bun:test";
+
 import {buildForProduction} from "../src/commands/build.js";
 import {loadConfig} from "../src/utils/config.js";
-import {spawn} from "child_process";
-import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["test", "e2e-bundling"]);
 

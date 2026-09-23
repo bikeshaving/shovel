@@ -1,11 +1,3 @@
-import {beforeEach, describe, expect, test} from "bun:test";
-import {assetsPlugin} from "../src/plugins/assets.js";
-import {globAssetsPlugin} from "../src/plugins/glob-assets.js";
-import {assets} from "../packages/assets/src/middleware.js";
-import {Router} from "@b9g/router";
-import {MemoryDirectory} from "@b9g/filesystem/memory";
-import {CustomDirectoryStorage} from "@b9g/filesystem";
-import * as ESBuild from "esbuild";
 import {
 	access,
 	mkdir,
@@ -16,6 +8,16 @@ import {
 } from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
+
+import {CustomDirectoryStorage} from "@b9g/filesystem";
+import {MemoryDirectory} from "@b9g/filesystem/memory";
+import {Router} from "@b9g/router";
+import {beforeEach, describe, expect, test} from "bun:test";
+import * as ESBuild from "esbuild";
+
+import {assets} from "../packages/assets/src/middleware.js";
+import {assetsPlugin} from "../src/plugins/assets.js";
+import {globAssetsPlugin} from "../src/plugins/glob-assets.js";
 
 // Helper to check if path exists
 async function pathExists(path: string): Promise<boolean> {

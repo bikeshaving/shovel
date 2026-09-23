@@ -26,15 +26,17 @@
  * // Returns: "/images/photo.png"
  */
 
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from "fs";
 import {createHash} from "crypto";
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from "fs";
 import {basename, dirname, extname, join, relative} from "path";
-import mime from "mime";
-import * as ESBuild from "esbuild";
+
 import type {AssetManifest, AssetManifestEntry} from "@b9g/assets/middleware";
 import {getLogger} from "@logtape/logtape";
-import type {SharedAssetsManifest} from "./assets-manifest.js";
+import * as ESBuild from "esbuild";
 import {nodeModulesPolyfillPlugin} from "esbuild-plugins-node-modules-polyfill";
+import mime from "mime";
+
+import type {SharedAssetsManifest} from "./assets-manifest.js";
 
 /**
  * File extensions that need transpilation (JS/TS files)

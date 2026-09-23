@@ -1,10 +1,10 @@
 import {jsx} from "@b9g/crank/standalone";
+import {Marked} from "@b9g/crankdown";
 import {NotFound} from "@b9g/http-errors";
 
+import {components} from "../components/marked-components.js";
 import {Root} from "../components/root.js";
 import {Main, Sidebar} from "../components/sidebar.js";
-import {Marked} from "@b9g/crankdown";
-import {components} from "../components/marked-components.js";
 import {collectDocuments} from "../models/document.js";
 
 interface ViewProps {

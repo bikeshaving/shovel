@@ -1,5 +1,6 @@
-import {describe, expect, test} from "bun:test";
 import {isTable, table, z} from "@b9g/zen";
+import {describe, expect, test} from "bun:test";
+
 import {
 	getAdminSchemaInfo,
 	getAdminTableInfo,

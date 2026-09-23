@@ -11,8 +11,9 @@
  * Named export: CloudflareAssetsDirectory (singleton for public assets)
  */
 
-import mime from "mime";
 import {getAssetsManifest} from "@b9g/assets/manifest";
+import mime from "mime";
+
 import {getEnv} from "./variables.js";
 
 // ============================================================================

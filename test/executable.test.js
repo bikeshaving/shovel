@@ -1,10 +1,12 @@
 /* eslint-disable no-restricted-properties -- Tests need process.env */
-import {expect, test} from "bun:test";
-import * as FS from "fs/promises";
 import {spawn} from "child_process";
+import * as FS from "fs/promises";
 import {join} from "path";
-import {copyFixtureToTemp, fileExists} from "./utils.js";
+
 import {getLogger} from "@logtape/logtape";
+import {expect, test} from "bun:test";
+
+import {copyFixtureToTemp, fileExists} from "./utils.js";
 
 const logger = getLogger(["test", "executable"]);
 

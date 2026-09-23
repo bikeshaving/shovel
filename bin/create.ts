@@ -1,10 +1,11 @@
 #!/usr/bin/env sh
 // bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
 
-import {confirm, intro, outro, select, spinner, text} from "@clack/prompts";
+import {existsSync} from "fs";
 import {mkdir, writeFile} from "fs/promises";
 import {join, resolve} from "path";
-import {existsSync} from "fs";
+
+import {confirm, intro, outro, select, spinner, text} from "@clack/prompts";
 
 interface ProjectConfig {
 	name: string;

@@ -1,9 +1,11 @@
 // Load config and configure logging before anything else
-import {relative, resolve} from "path";
 import {spawnSync} from "child_process";
-import {findProjectRoot} from "../src/utils/project.js";
-import {DEFAULTS, loadConfig, type SinkConfig} from "../src/utils/config.js";
+import {relative, resolve} from "path";
+
 import {configureLogging} from "@b9g/platform/runtime";
+
+import {DEFAULTS, loadConfig, type SinkConfig} from "../src/utils/config.js";
+import {findProjectRoot} from "../src/utils/project.js";
 
 const projectRoot = findProjectRoot();
 const config = loadConfig(projectRoot);

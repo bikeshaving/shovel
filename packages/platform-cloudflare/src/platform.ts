@@ -5,8 +5,8 @@
  * Runtime functions are in ./runtime.ts
  */
 
-import {getLogger} from "@logtape/logtape";
 import {dirname, join} from "path";
+
 import type {
 	DevServer,
 	DevServerOptions,
@@ -14,6 +14,7 @@ import type {
 	ESBuildConfig,
 	PlatformDefaults,
 } from "@b9g/platform/module";
+import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "platform"]);
 

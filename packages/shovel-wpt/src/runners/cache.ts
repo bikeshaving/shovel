@@ -5,12 +5,13 @@
  */
 
 import {afterEach, beforeEach, describe, expect, test} from "bun:test";
+
+import * as assertions from "../harness/assertions.js";
 import {
 	clearTestQueue,
 	promise_test,
 	type TestContext,
 } from "../harness/testharness.js";
-import * as assertions from "../harness/assertions.js";
 
 /**
  * Configuration for running cache tests

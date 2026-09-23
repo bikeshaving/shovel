@@ -7,27 +7,28 @@
  * - MODE (minify, sourcemaps) comes from config, not hardcoded per use case
  */
 
-import * as ESBuild from "esbuild";
+import {existsSync, type FSWatcher, watch} from "fs";
+import {mkdir} from "fs/promises";
 import {builtinModules, createRequire} from "node:module";
 import {basename, dirname, join, normalize, relative, resolve} from "path";
-import {mkdir} from "fs/promises";
-import {existsSync, type FSWatcher, watch} from "fs";
-import {getLogger} from "@logtape/logtape";
-import type {ESBuildConfig, PlatformModule} from "@b9g/platform/module";
 
-import {assetsPlugin} from "../plugins/assets.js";
-import {globAssetsPlugin} from "../plugins/glob-assets.js";
-import {importMetaPlugin} from "../plugins/import-meta.js";
-import {createConfigPlugin} from "../plugins/config.js";
-import {createEntryPlugin} from "../plugins/entry.js";
+import type {ESBuildConfig, PlatformModule} from "@b9g/platform/module";
+import {getLogger} from "@logtape/logtape";
+import * as ESBuild from "esbuild";
+
 import {
 	createAssetsManifestPlugin,
 	createSharedManifest,
 } from "../plugins/assets-manifest.js";
+import {assetsPlugin} from "../plugins/assets.js";
+import {createConfigPlugin} from "../plugins/config.js";
+import {createEntryPlugin} from "../plugins/entry.js";
+import {globAssetsPlugin} from "../plugins/glob-assets.js";
+import {importMetaPlugin} from "../plugins/import-meta.js";
+import type {BuildPluginConfig, ProcessedBuildConfig} from "./config.js";
+import {getGitSHA} from "./git-sha.js";
 import {applyJSXOptions, loadJSXConfig} from "./jsx-config.js";
 import {findProjectRoot, getNodeModulesPath} from "./project.js";
-import {getGitSHA} from "./git-sha.js";
-import type {BuildPluginConfig, ProcessedBuildConfig} from "./config.js";
 
 const logger = getLogger(["shovel", "build"]);
 

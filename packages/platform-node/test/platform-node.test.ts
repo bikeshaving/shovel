@@ -1,9 +1,11 @@
-import {afterEach, beforeEach, describe, expect, mock, test} from "bun:test";
-import {NodePlatform} from "../src/index.js";
+import {mkdtempSync, rmSync} from "fs";
 import {tmpdir} from "os";
 import {join} from "path";
-import {mkdtempSync, rmSync} from "fs";
+
 import {getLogger} from "@logtape/logtape";
+import {afterEach, beforeEach, describe, expect, mock, test} from "bun:test";
+
+import {NodePlatform} from "../src/index.js";
 
 const logger = getLogger(["test", "platform-node"]);
 

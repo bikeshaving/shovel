@@ -1,6 +1,7 @@
 import {jsx} from "@b9g/crank/standalone";
-import {css} from "@emotion/css";
 import type {Element} from "@b9g/crank/standalone";
+import {css} from "@emotion/css";
+
 import type {DocInfo} from "../models/document.js";
 
 export function Sidebar(

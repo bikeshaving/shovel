@@ -1,4 +1,5 @@
 import {describe, expect, test} from "bun:test";
+
 import {AsyncContext, AsyncSnapshot, AsyncVariable} from "../src/index.js";
 
 describe("AsyncVariable", () => {

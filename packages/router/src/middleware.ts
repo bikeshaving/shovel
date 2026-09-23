@@ -2,8 +2,8 @@
  * Standard middleware utilities for HTTP routing
  */
 
-import {getLogger} from "@logtape/logtape";
 import {isHTTPError} from "@b9g/http-errors";
+import {getLogger} from "@logtape/logtape";
 
 // ============================================================================
 // TRAILING SLASH

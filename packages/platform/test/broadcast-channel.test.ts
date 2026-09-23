@@ -3,13 +3,14 @@
  */
 
 import {afterEach, describe, expect, it} from "bun:test";
+
+import type {BroadcastChannelBackend} from "../src/internal/broadcast-channel-backend.js";
 import {
 	deliverBroadcastMessage,
 	setBroadcastChannelBackend,
 	setBroadcastChannelRelay,
 	ShovelBroadcastChannel,
 } from "../src/internal/broadcast-channel.js";
-import type {BroadcastChannelBackend} from "../src/internal/broadcast-channel-backend.js";
 
 describe("BroadcastChannel", () => {
 	it("constructor sets name", () => {

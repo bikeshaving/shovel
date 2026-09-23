@@ -5,8 +5,8 @@
  * with a custom Cache/CacheStorage implementation.
  */
 
-import {promise_test, type TestContext} from "../harness/testharness.js";
 import * as assertions from "../harness/assertions.js";
+import {promise_test, type TestContext} from "../harness/testharness.js";
 
 // Re-export Cache types
 type Cache = {

@@ -11,9 +11,6 @@
  */
 
 // External packages
-import {getLogger} from "@logtape/logtape";
-import type {Miniflare} from "miniflare";
-
 // Internal @b9g/* packages
 import type {
 	EntryPoints,
@@ -27,6 +24,8 @@ import type {
 	ShovelServiceWorkerContainer,
 } from "@b9g/platform";
 import type {ShovelConfig} from "@b9g/platform/runtime";
+import {getLogger} from "@logtape/logtape";
+import type {Miniflare} from "miniflare";
 
 const logger = getLogger(["shovel", "platform"]);
 

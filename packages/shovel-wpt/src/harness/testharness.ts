@@ -8,8 +8,8 @@
  * See: https://web-platform-tests.org/writing-tests/testharness-api.html
  */
 
-import {test as bunTest, describe} from "bun:test";
 import {getLogger} from "@logtape/logtape";
+import {test as bunTest, describe} from "bun:test";
 
 const logger = getLogger(["test", "wpt", "harness"]);
 

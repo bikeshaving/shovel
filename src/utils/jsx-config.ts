@@ -5,9 +5,10 @@
  * Respects inline JSX pragma comments (e.g., @jsx h, @jsxFrag Fragment).
  */
 
+import {existsSync} from "fs";
 import {readFile} from "fs/promises";
 import {dirname, join} from "path";
-import {existsSync} from "fs";
+
 import type {BuildOptions} from "esbuild";
 
 /**

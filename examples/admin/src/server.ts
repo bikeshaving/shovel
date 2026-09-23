@@ -7,9 +7,10 @@
  * - Session storage via self.caches (TODO)
  */
 
-import {Router} from "@b9g/router";
-import {assets} from "@b9g/assets/middleware";
 import {createAdmin} from "@b9g/admin";
+import {assets} from "@b9g/assets/middleware";
+import {Router} from "@b9g/router";
+
 import * as schema from "./schema.js";
 
 const logger = self.loggers.get(["shovel", "server"]);

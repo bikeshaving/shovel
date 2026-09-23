@@ -1,6 +1,6 @@
 /// <reference types="@b9g/platform" />
-import {jsx} from "@b9g/crank/standalone";
 import {renderer} from "@b9g/crank/html";
+import {jsx} from "@b9g/crank/standalone";
 
 self.addEventListener("fetch", (event) => {
 	const html = renderer.render(jsx`<marquee>Hello world</marquee>`) as string;

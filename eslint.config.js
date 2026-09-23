@@ -60,4 +60,9 @@ export default [
 			],
 		},
 	},
+	{
+		files: ["**/*"],
+		ignores: ["website/**", "packages/admin/**", "examples/**"],
+		rules: {"crank/require-cleanup-for-timers": "off"},
+	},
 ];

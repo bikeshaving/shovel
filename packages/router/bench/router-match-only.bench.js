@@ -4,6 +4,7 @@
  */
 
 import {bench, group, run} from "mitata";
+
 import {Router} from "../src/index.ts";
 
 // Create router with realistic route patterns

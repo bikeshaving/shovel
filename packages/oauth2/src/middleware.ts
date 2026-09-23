@@ -3,8 +3,9 @@
  * Includes OAuth2 integration and session management
  */
 
-import type {OAuth2Client, OAuth2Tokens} from "./index.js";
 import type {FunctionMiddleware} from "@b9g/router";
+
+import type {OAuth2Client, OAuth2Tokens} from "./index.js";
 
 // Augment RouteContext to include oauth2 property
 // Importing this module adds oauth2 tokens to context

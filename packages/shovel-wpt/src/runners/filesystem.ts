@@ -4,10 +4,11 @@
  * Runs vendored WPT fs tests against a FileSystemDirectoryHandle implementation.
  */
 
-import {afterEach, beforeEach, describe, expect, test} from "bun:test";
-import {promise_test} from "../harness/testharness.js";
-import * as assertions from "../harness/assertions.js";
 import {getLogger} from "@logtape/logtape";
+import {afterEach, beforeEach, describe, expect, test} from "bun:test";
+
+import * as assertions from "../harness/assertions.js";
+import {promise_test} from "../harness/testharness.js";
 
 const logger = getLogger(["test", "wpt", "filesystem"]);
 

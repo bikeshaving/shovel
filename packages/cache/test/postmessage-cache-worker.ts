@@ -4,6 +4,7 @@
  */
 
 import {parentPort} from "worker_threads";
+
 import {MemoryCache} from "../src/memory.js";
 import {handleCacheResponse, PostMessageCache} from "../src/postmessage.js";
 

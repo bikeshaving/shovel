@@ -8,8 +8,9 @@
 
 /* eslint-disable no-console -- Tests need to mock console methods */
 
-import {afterEach, beforeEach, describe, expect, it, mock} from "bun:test";
 import {configure, getLogger} from "@logtape/logtape";
+import {afterEach, beforeEach, describe, expect, it, mock} from "bun:test";
+
 import {configureLogging} from "../src/runtime.js";
 
 describe("configureLogging", () => {

@@ -4,11 +4,12 @@
  * Runs the actual WPT test script against MemoryDirectory.
  */
 
-import {describe, expect, test} from "bun:test";
-import {setupFilesystemTestGlobals} from "../src/wpt/filesystem-shim.js";
-import {clearTestQueue, runQueuedTests} from "../src/harness/testharness.js";
-import {MemoryDirectory} from "../../filesystem/src/memory.js";
 import {getLogger} from "@logtape/logtape";
+import {describe, expect, test} from "bun:test";
+
+import {MemoryDirectory} from "../../filesystem/src/memory.js";
+import {clearTestQueue, runQueuedTests} from "../src/harness/testharness.js";
+import {setupFilesystemTestGlobals} from "../src/wpt/filesystem-shim.js";
 
 const logger = getLogger(["test", "wpt", "fs-getFileHandle"]);
 

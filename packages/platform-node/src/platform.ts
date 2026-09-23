@@ -6,7 +6,7 @@
  */
 
 import {builtinModules} from "node:module";
-import {getLogger} from "@logtape/logtape";
+
 import type {
 	DevServer,
 	DevServerOptions,
@@ -14,6 +14,7 @@ import type {
 	ESBuildConfig,
 	PlatformDefaults,
 } from "@b9g/platform/module";
+import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "platform"]);
 

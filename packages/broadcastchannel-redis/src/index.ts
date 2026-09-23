@@ -5,9 +5,9 @@
  * Requires two Redis client connections (can't publish and subscribe on the same connection).
  */
 
-import {createClient} from "redis";
-import {getLogger} from "@logtape/logtape";
 import type {BroadcastChannelBackend} from "@b9g/platform/runtime";
+import {getLogger} from "@logtape/logtape";
+import {createClient} from "redis";
 
 const logger = getLogger(["shovel", "pubsub"]);
 

@@ -5,8 +5,8 @@
  * with a custom FileSystemDirectoryHandle implementation.
  */
 
-import {promise_test, type TestContext} from "../harness/testharness.js";
 import * as assertions from "../harness/assertions.js";
+import {promise_test, type TestContext} from "../harness/testharness.js";
 
 export interface FilesystemShimConfig {
 

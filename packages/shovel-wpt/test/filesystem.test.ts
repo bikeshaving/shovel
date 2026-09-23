@@ -5,12 +5,13 @@
  * to verify the test runner works correctly.
  */
 
-import {runFilesystemTests} from "../src/runners/filesystem.js";
-import {MemoryDirectory} from "../../filesystem/src/memory.js";
-import {NodeFSDirectory} from "../../filesystem/src/node-fs.js";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
+
+import {MemoryDirectory} from "../../filesystem/src/memory.js";
+import {NodeFSDirectory} from "../../filesystem/src/node-fs.js";
+import {runFilesystemTests} from "../src/runners/filesystem.js";
 
 // Run WPT filesystem tests against MemoryDirectory
 runFilesystemTests("MemoryDirectory", {

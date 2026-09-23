@@ -18,7 +18,6 @@
  * all assets have been processed.
  */
 
-import type * as ESBuild from "esbuild";
 import {
 	existsSync,
 	readdirSync,
@@ -28,7 +27,9 @@ import {
 	writeFileSync,
 } from "node:fs";
 import {basename, isAbsolute, join, resolve} from "node:path";
+
 import {getLogger} from "@logtape/logtape";
+import type * as ESBuild from "esbuild";
 
 const logger = getLogger(["shovel", "assets"]);
 

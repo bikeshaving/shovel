@@ -1,5 +1,6 @@
 import {jsx} from "@b9g/crank/standalone";
 import {css} from "@emotion/css";
+
 import type {DocInfo} from "../models/document.js";
 
 // Category order - categories not listed here appear at the end alphabetically

@@ -4,11 +4,13 @@
 
 /* eslint-disable no-restricted-properties -- Tests need direct process.env access */
 
-import {afterAll, beforeAll, describe, expect, it} from "bun:test";
-import {loadConfig, Parser} from "../src/utils/config.js";
 import {mkdtempSync, rmSync, writeFileSync} from "fs";
-import {join} from "path";
 import {tmpdir} from "os";
+import {join} from "path";
+
+import {afterAll, beforeAll, describe, expect, it} from "bun:test";
+
+import {loadConfig, Parser} from "../src/utils/config.js";
 
 // Store original env values for the keys we'll modify
 const savedEnv: Record<string, string | undefined> = {};

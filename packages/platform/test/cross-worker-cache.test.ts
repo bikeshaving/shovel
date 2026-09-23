@@ -6,15 +6,17 @@
  * to be properly wired up for memory caches in workers.
  */
 
-import {afterAll, beforeAll, describe, expect, it} from "bun:test";
-import {ServiceWorkerPool} from "../src/index.js";
-import {CustomCacheStorage} from "@b9g/cache";
-import {MemoryCache} from "@b9g/cache/memory";
-import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
+import * as path from "path";
 import {fileURLToPath} from "url";
+
+import {CustomCacheStorage} from "@b9g/cache";
+import {MemoryCache} from "@b9g/cache/memory";
+import {afterAll, beforeAll, describe, expect, it} from "bun:test";
 import * as esbuild from "esbuild";
+
+import {ServiceWorkerPool} from "../src/index.js";
 
 describe("cross-worker cache sharing", () => {
 	let pool: ServiceWorkerPool;

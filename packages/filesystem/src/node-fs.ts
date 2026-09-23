@@ -5,9 +5,10 @@
  * using Node.js fs module. Works in both Node.js and Bun.
  */
 
-import {type FileSystemBackend, ShovelDirectoryHandle} from "./index.js";
 import * as FS from "fs/promises";
 import * as Path from "path";
+
+import {type FileSystemBackend, ShovelDirectoryHandle} from "./index.js";
 
 /** Type guard for Node.js errors with error codes */
 function isErrnoException(error: unknown): error is NodeJS.ErrnoException {

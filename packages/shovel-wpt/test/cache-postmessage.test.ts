@@ -20,10 +20,12 @@
  *   PostMessageCacheProxy  ◀──res── parentPort.postMessage
  */
 
-import {Worker} from "worker_threads";
-import {fileURLToPath} from "url";
 import {dirname, join} from "path";
+import {fileURLToPath} from "url";
+import {Worker} from "worker_threads";
+
 import {afterAll, beforeAll} from "bun:test";
+
 import {runCacheTests} from "../src/runners/cache.js";
 
 let worker: Worker;

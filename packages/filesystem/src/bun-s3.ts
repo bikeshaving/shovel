@@ -5,12 +5,12 @@
  * using Bun's native S3 client.
  */
 
-import type {ShovelHandle} from "./index.js";
 import {
 	type FileSystemBackend,
 	ShovelDirectoryHandle,
 	ShovelFileHandle,
 } from "./index.js";
+import type {ShovelHandle} from "./index.js";
 
 /**
  * S3 storage backend that implements FileSystemBackend using Bun's S3 client

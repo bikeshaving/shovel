@@ -8,9 +8,10 @@ import {
 	mock,
 	test,
 } from "bun:test";
-import {CloudflarePlatform} from "../src/index.js";
-import {CloudflareNativeCache} from "../src/caches.js";
 import {Miniflare} from "miniflare";
+
+import {CloudflareNativeCache} from "../src/caches.js";
+import {CloudflarePlatform} from "../src/index.js";
 
 describe("CloudflarePlatform", () => {
 	let platform: CloudflarePlatform;

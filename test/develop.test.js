@@ -1,13 +1,14 @@
 /* eslint-disable no-restricted-properties -- Tests need process.cwd/env */
-import * as FS from "fs/promises";
 import {spawn} from "child_process";
-import {createConnection} from "net";
-import {expect, test} from "bun:test";
-import {dirname as _dirname, join} from "path";
-import {tmpdir} from "os";
+import * as FS from "fs/promises";
 import {mkdtemp} from "fs/promises";
-import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
+import {createConnection} from "net";
+import {tmpdir} from "os";
+import {dirname as _dirname, join} from "path";
+
 import {AsyncContext} from "@b9g/async-context";
+import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
+import {expect, test} from "bun:test";
 
 // Configure LogTape for tests (warnings only by default)
 // Debug logging is controlled per-test via shovel.json in temp directories

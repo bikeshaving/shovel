@@ -1,11 +1,13 @@
-import {afterEach, beforeEach, describe, expect, test} from "bun:test";
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
-import {ServiceWorkerPool} from "../src/index.js";
+
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
 import {getLogger} from "@logtape/logtape";
+import {afterEach, beforeEach, describe, expect, test} from "bun:test";
+
+import {ServiceWorkerPool} from "../src/index.js";
 
 const logger = getLogger(["test", "worker-errors"]);
 

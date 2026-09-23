@@ -6,10 +6,11 @@
  * If Redis is not reachable, the suite is skipped.
  */
 
-import {afterEach, beforeEach, describe, expect, test} from "bun:test";
-import {RedisCache} from "../src/index.js";
-import {createClient} from "redis";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
+import {afterEach, beforeEach, describe, expect, test} from "bun:test";
+import {createClient} from "redis";
+
+import {RedisCache} from "../src/index.js";
 
 await configure({
 	reset: true,

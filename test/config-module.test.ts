@@ -3,6 +3,7 @@
  */
 
 import {describe, expect, it} from "bun:test";
+
 import {
 	generateConfigModule as _generateConfigModule,
 	exprToCode,

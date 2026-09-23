@@ -1,11 +1,13 @@
 /* eslint-disable no-restricted-properties -- Tests need process.cwd/env */
-import * as FS from "fs/promises";
 import {spawn} from "child_process";
+import * as FS from "fs/promises";
 import {createConnection} from "net";
-import {expect, test} from "bun:test";
 import {join} from "path";
-import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
+
 import {AsyncContext} from "@b9g/async-context";
+import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
+import {expect, test} from "bun:test";
+
 import {copyFixtureToTemp} from "./utils.js";
 
 await configure({

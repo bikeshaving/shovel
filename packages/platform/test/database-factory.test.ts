@@ -1,4 +1,5 @@
 import {beforeEach, describe, expect, test} from "bun:test";
+
 import {createDatabaseFactory} from "../src/runtime.js";
 import DefaultDriver, {
 	closeCalls,

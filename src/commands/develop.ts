@@ -1,11 +1,13 @@
-import {DEFAULTS} from "../utils/config.js";
-import {getLogger} from "@logtape/logtape";
-import {resolvePlatform} from "@b9g/platform";
-import type {ProcessedShovelConfig} from "../utils/config.js";
-import {ServerBundler} from "../utils/bundler.js";
-import {loadPlatformModule} from "../utils/platform.js";
-import {networkInterfaces} from "os";
 import {exec} from "child_process";
+import {networkInterfaces} from "os";
+
+import {resolvePlatform} from "@b9g/platform";
+import {getLogger} from "@logtape/logtape";
+
+import {ServerBundler} from "../utils/bundler.js";
+import {DEFAULTS} from "../utils/config.js";
+import type {ProcessedShovelConfig} from "../utils/config.js";
+import {loadPlatformModule} from "../utils/platform.js";
 
 const logger = getLogger(["shovel", "develop"]);
 

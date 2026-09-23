@@ -1,10 +1,10 @@
 /** @jsxImportSource @b9g/crank */
-import {css} from "@emotion/css";
-import {NotFound} from "@b9g/http-errors";
-
-import {Root} from "../components/root.js";
 import {Marked} from "@b9g/crankdown";
+import {NotFound} from "@b9g/http-errors";
+import {css} from "@emotion/css";
+
 import {components} from "../components/marked-components.js";
+import {Root} from "../components/root.js";
 import {collectBlogPosts} from "../models/blog.js";
 
 interface ViewProps {

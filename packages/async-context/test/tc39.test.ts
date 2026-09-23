@@ -3,6 +3,7 @@
  * https://github.com/nicolo-ribaudo/proposal-async-context
  */
 import {describe, expect, test} from "bun:test";
+
 import {AsyncContext} from "../src/index.js";
 
 type Value = {id: number};
