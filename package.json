@@ -62,7 +62,7 @@
     "eslint": "^9.0.0",
     "eslint-plugin-acrocase": "^0.1.1",
     "eslint-plugin-crank": "^0.2.2",
-    "eslint-plugin-esfold": "^0.1.13",
+    "eslint-plugin-esfold": "^0.1.14",
     "miniflare": "^4.20260305.0",
     "mitata": "^1.0.34",
     "typescript": "^5.7.3"
