@@ -1,8 +1,8 @@
-import {test, expect, describe} from "bun:test";
-import {z, table, isTable} from "@b9g/zen";
+import {describe, expect, test} from "bun:test";
+import {isTable, table, z} from "@b9g/zen";
 import {
-	getAdminTableInfo,
 	getAdminSchemaInfo,
+	getAdminTableInfo,
 	getDisplayName,
 } from "../src/core/introspection.js";
 
@@ -27,10 +27,7 @@ const posts = table("posts", {
 	viewCount: z.number().db.inserted(() => 0),
 });
 
-const tags = table("tags", {
-	id: z.number().db.primary(),
-	name: z.string(),
-});
+const tags = table("tags", {id: z.number().db.primary(), name: z.string()});
 
 const files = table("files", {
 	id: z.number().db.primary(),

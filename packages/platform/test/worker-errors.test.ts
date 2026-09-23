@@ -1,4 +1,4 @@
-import {test, expect, describe, beforeEach, afterEach} from "bun:test";
+import {afterEach, beforeEach, describe, expect, test} from "bun:test";
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
@@ -102,11 +102,11 @@ describe("Worker Error Propagation", () => {
 			await FS.writeFile(goodEntrypoint, GOOD_WORKER_CODE);
 
 			const cacheStorage = createCacheStorage();
-			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
-				goodEntrypoint,
-				cacheStorage,
-			);
+			pool = new ServiceWorkerPool({
+				workerCount: 1,
+				requestTimeout: REQUEST_TIMEOUT,
+				cwd: tempDir,
+			}, goodEntrypoint, cacheStorage);
 			await pool.init();
 
 			// Create a broken worker file
@@ -139,11 +139,11 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(goodEntrypoint, GOOD_WORKER_CODE);
 
 			const cacheStorage = createCacheStorage();
-			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
-				goodEntrypoint,
-				cacheStorage,
-			);
+			pool = new ServiceWorkerPool({
+				workerCount: 1,
+				requestTimeout: REQUEST_TIMEOUT,
+				cwd: tempDir,
+			}, goodEntrypoint, cacheStorage);
 			await pool.init();
 
 			// Create a broken worker file
@@ -177,11 +177,11 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(goodEntrypoint, GOOD_WORKER_CODE);
 
 			const cacheStorage = createCacheStorage();
-			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
-				goodEntrypoint,
-				cacheStorage,
-			);
+			pool = new ServiceWorkerPool({
+				workerCount: 1,
+				requestTimeout: REQUEST_TIMEOUT,
+				cwd: tempDir,
+			}, goodEntrypoint, cacheStorage);
 			await pool.init();
 
 			// Create a broken worker file that imports non-existent module
@@ -213,11 +213,11 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(goodEntrypoint, GOOD_WORKER_CODE);
 
 			const cacheStorage = createCacheStorage();
-			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
-				goodEntrypoint,
-				cacheStorage,
-			);
+			pool = new ServiceWorkerPool({
+				workerCount: 1,
+				requestTimeout: REQUEST_TIMEOUT,
+				cwd: tempDir,
+			}, goodEntrypoint, cacheStorage);
 			await pool.init();
 
 			// Create a helper module with specific exports
@@ -259,11 +259,11 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(goodEntrypoint, GOOD_WORKER_CODE);
 
 			const cacheStorage = createCacheStorage();
-			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
-				goodEntrypoint,
-				cacheStorage,
-			);
+			pool = new ServiceWorkerPool({
+				workerCount: 1,
+				requestTimeout: REQUEST_TIMEOUT,
+				cwd: tempDir,
+			}, goodEntrypoint, cacheStorage);
 			await pool.init();
 
 			// Create a broken worker file that throws at module load
@@ -295,11 +295,11 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(goodEntrypoint, GOOD_WORKER_CODE);
 
 			const cacheStorage = createCacheStorage();
-			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
-				goodEntrypoint,
-				cacheStorage,
-			);
+			pool = new ServiceWorkerPool({
+				workerCount: 1,
+				requestTimeout: REQUEST_TIMEOUT,
+				cwd: tempDir,
+			}, goodEntrypoint, cacheStorage);
 			await pool.init();
 
 			// Create a broken worker file with top-level await that throws
@@ -332,11 +332,11 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(goodEntrypoint, GOOD_WORKER_CODE);
 
 			const cacheStorage = createCacheStorage();
-			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
-				goodEntrypoint,
-				cacheStorage,
-			);
+			pool = new ServiceWorkerPool({
+				workerCount: 1,
+				requestTimeout: REQUEST_TIMEOUT,
+				cwd: tempDir,
+			}, goodEntrypoint, cacheStorage);
 			await pool.init();
 
 			// Create a broken worker file that causes TypeError from property access
@@ -369,11 +369,11 @@ self.addEventListener("fetch", (event) => {
 			await FS.writeFile(goodEntrypoint, GOOD_WORKER_CODE);
 
 			const cacheStorage = createCacheStorage();
-			pool = new ServiceWorkerPool(
-				{workerCount: 1, requestTimeout: REQUEST_TIMEOUT, cwd: tempDir},
-				goodEntrypoint,
-				cacheStorage,
-			);
+			pool = new ServiceWorkerPool({
+				workerCount: 1,
+				requestTimeout: REQUEST_TIMEOUT,
+				cwd: tempDir,
+			}, goodEntrypoint, cacheStorage);
 			await pool.init();
 
 			// Create a broken worker file

@@ -1,4 +1,4 @@
-import {test, expect} from "bun:test";
+import {expect, test} from "bun:test";
 
 /**
  * ShovelServiceWorkerContainer registry tests
@@ -35,9 +35,8 @@ test(
 
 		// Register multiple ServiceWorkers with different scopes
 		const apiReg = await container.register("/api-worker.js", {scope: "/api/"});
-		const adminReg = await container.register("/admin-worker.js", {
-			scope: "/admin/",
-		});
+		const adminReg =
+			await container.register("/admin-worker.js", {scope: "/admin/"});
 
 		expect(apiReg.scope).toBe("/api/");
 		expect(adminReg.scope).toBe("/admin/");
@@ -68,9 +67,8 @@ test(
 
 		// Register ServiceWorkers with different scopes
 		const apiReg = await container.register("/api-worker.js", {scope: "/api/"});
-		const adminReg = await container.register("/admin-worker.js", {
-			scope: "/admin/",
-		});
+		const adminReg =
+			await container.register("/admin-worker.js", {scope: "/admin/"});
 
 		// Install and activate all registrations
 		await container.installAll();

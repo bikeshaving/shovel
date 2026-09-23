@@ -1,8 +1,8 @@
-import {test, expect, describe} from "bun:test";
+import {describe, expect, test} from "bun:test";
 import {
-	Router,
-	type RouteContext,
 	type GeneratorMiddleware,
+	type RouteContext,
+	Router,
 } from "../src/index.js";
 
 type MiddlewareGenerator = ReturnType<GeneratorMiddleware>;
@@ -58,10 +58,7 @@ describe("Router", () => {
 		const request = new Request("http://example.com/api/users/123/posts/456");
 		await router.handle(request);
 
-		expect(capturedParams).toEqual({
-			userId: "123",
-			postId: "456",
-		});
+		expect(capturedParams).toEqual({userId: "123", postId: "456"});
 	});
 });
 
@@ -69,7 +66,7 @@ describe("Middleware Detection", () => {
 	test("detects async generator functions as generator middleware", () => {
 		const router = new Router();
 
-		async function* generatorMiddleware(
+		async function *generatorMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -125,7 +122,7 @@ describe("Generator Middleware Execution", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* testMiddleware(
+		async function *testMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -160,7 +157,7 @@ describe("Generator Middleware Execution", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* testMiddleware(
+		async function *testMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -193,7 +190,7 @@ describe("Generator Middleware Execution", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* authMiddleware(
+		async function *authMiddleware(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -229,7 +226,7 @@ describe("Generator Middleware Execution", () => {
 	test("handles passthrough returns (null/undefined)", async () => {
 		const router = new Router();
 
-		async function* setupMiddleware(
+		async function *setupMiddleware(
 			_request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -254,7 +251,7 @@ describe("Generator Middleware Execution", () => {
 	test("modifies request before yield", async () => {
 		const router = new Router();
 
-		async function* headerMiddleware(
+		async function *headerMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -280,7 +277,7 @@ describe("Generator Middleware Execution", () => {
 	test("modifies response after yield", async () => {
 		const router = new Router();
 
-		async function* responseMiddleware(
+		async function *responseMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -333,7 +330,7 @@ describe("Middleware Short-Circuiting", () => {
 		const executionOrder: string[] = [];
 
 		// eslint-disable-next-line require-yield
-		async function* authMiddleware(
+		async function *authMiddleware(
 			_request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -341,7 +338,7 @@ describe("Middleware Short-Circuiting", () => {
 			return new Response("Unauthorized", {status: 401}); // Early return should short-circuit
 		}
 
-		async function* corsMiddleware(
+		async function *corsMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -351,7 +348,7 @@ describe("Middleware Short-Circuiting", () => {
 			return response;
 		}
 
-		async function* loggingMiddleware(
+		async function *loggingMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -429,7 +426,7 @@ describe("Middleware Short-Circuiting", () => {
 			return null; // Should continue to next middleware
 		}
 
-		async function* processingMiddleware(
+		async function *processingMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -500,21 +497,21 @@ describe("Middleware Short-Circuiting", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* middleware1(request: Request): MiddlewareGenerator {
+		async function *middleware1(request: Request): MiddlewareGenerator {
 			executionOrder.push("middleware1-before");
 			const response = yield request;
 			executionOrder.push("middleware1-after");
 			return response;
 		}
 
-		async function* middleware2(request: Request): MiddlewareGenerator {
+		async function *middleware2(request: Request): MiddlewareGenerator {
 			executionOrder.push("middleware2-before");
 			const response = yield request;
 			executionOrder.push("middleware2-after");
 			return response;
 		}
 
-		async function* middleware3(request: Request): MiddlewareGenerator {
+		async function *middleware3(request: Request): MiddlewareGenerator {
 			executionOrder.push("middleware3-before");
 			const response = yield request;
 			executionOrder.push("middleware3-after");
@@ -553,7 +550,7 @@ describe("Middleware Short-Circuiting", () => {
 		let secondURLError: Error | null = null;
 
 		// First generator middleware (like pageCache)
-		async function* firstMiddleware(
+		async function *firstMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -574,7 +571,7 @@ describe("Middleware Short-Circuiting", () => {
 		}
 
 		// Second generator middleware (like assets middleware)
-		async function* secondMiddleware(
+		async function *secondMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -624,7 +621,7 @@ describe("Middleware Short-Circuiting", () => {
 			context.func1 = true;
 		}
 
-		async function* generatorMiddleware(
+		async function *generatorMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -669,7 +666,7 @@ describe("Context Sharing", () => {
 	test("context is shared between all middleware and handlers", async () => {
 		const router = new Router();
 
-		async function* middleware1(
+		async function *middleware1(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -684,7 +681,7 @@ describe("Context Sharing", () => {
 			context.startTime = Date.now();
 		}
 
-		async function* middleware3(
+		async function *middleware3(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -722,7 +719,7 @@ describe("Context Sharing", () => {
 	test("middleware can enrich context for handlers", async () => {
 		const router = new Router();
 
-		async function* authMiddleware(
+		async function *authMiddleware(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -766,7 +763,7 @@ describe("Error Handling", () => {
 	test("middleware can handle errors with try/catch", async () => {
 		const router = new Router();
 
-		async function* errorHandlingMiddleware(
+		async function *errorHandlingMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -798,7 +795,7 @@ describe("Router Integration", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* middleware(
+		async function *middleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -826,7 +823,7 @@ describe("Router Integration", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* middleware(
+		async function *middleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -856,7 +853,7 @@ describe("Advanced Generator Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* authMiddleware(
+		async function *authMiddleware(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -868,7 +865,7 @@ describe("Advanced Generator Middleware", () => {
 			return response;
 		}
 
-		async function* loggingMiddleware(
+		async function *loggingMiddleware(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -880,7 +877,7 @@ describe("Advanced Generator Middleware", () => {
 			return response;
 		}
 
-		async function* corsMiddleware(
+		async function *corsMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -923,7 +920,7 @@ describe("Advanced Generator Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* rateLimitMiddleware(
+		async function *rateLimitMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -939,7 +936,7 @@ describe("Advanced Generator Middleware", () => {
 			return response;
 		}
 
-		async function* analyticsMiddleware(
+		async function *analyticsMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -984,7 +981,7 @@ describe("Advanced Generator Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* errorHandlingMiddleware(
+		async function *errorHandlingMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -999,7 +996,7 @@ describe("Advanced Generator Middleware", () => {
 			}
 		}
 
-		async function* normalMiddleware(
+		async function *normalMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -1038,7 +1035,7 @@ describe("Advanced Generator Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* dbMiddleware(
+		async function *dbMiddleware(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -1059,7 +1056,7 @@ describe("Advanced Generator Middleware", () => {
 			return response;
 		}
 
-		async function* cacheMiddleware(
+		async function *cacheMiddleware(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -1105,7 +1102,7 @@ describe("Advanced Generator Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* setupMiddleware(
+		async function *setupMiddleware(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -1115,7 +1112,7 @@ describe("Advanced Generator Middleware", () => {
 			// No yield - passthrough
 		}
 
-		async function* processingMiddleware(
+		async function *processingMiddleware(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -1162,7 +1159,7 @@ describe("Advanced Generator Middleware", () => {
 			context.asyncFunc = true;
 		}
 
-		async function* generatorMiddleware(
+		async function *generatorMiddleware(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -1218,7 +1215,7 @@ describe("Edge Cases and Error Scenarios", () => {
 		const router = new Router();
 
 		// eslint-disable-next-line require-yield
-		async function* faultyMiddleware(
+		async function *faultyMiddleware(
 			_request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -1237,7 +1234,7 @@ describe("Edge Cases and Error Scenarios", () => {
 	test("generator throws error after yield", async () => {
 		const router = new Router();
 
-		async function* faultyMiddleware(
+		async function *faultyMiddleware(
 			_request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -1301,7 +1298,7 @@ describe("Edge Cases and Error Scenarios", () => {
 	test("null and undefined return values", async () => {
 		const router = new Router();
 
-		async function* nullMiddleware(
+		async function *nullMiddleware(
 			_request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -1309,7 +1306,7 @@ describe("Edge Cases and Error Scenarios", () => {
 			return null; // Explicit null
 		}
 
-		async function* undefinedMiddleware(
+		async function *undefinedMiddleware(
 			_request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -1317,7 +1314,7 @@ describe("Edge Cases and Error Scenarios", () => {
 			return undefined; // Explicit undefined
 		}
 
-		async function* implicitMiddleware(
+		async function *implicitMiddleware(
 			_request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -1340,7 +1337,7 @@ describe("Edge Cases and Error Scenarios", () => {
 	test("request body handling across middleware", async () => {
 		const router = new Router();
 
-		async function* bodyReadingMiddleware(
+		async function *bodyReadingMiddleware(
 			request: Request,
 			context: RouteContext,
 		): MiddlewareGenerator {
@@ -1462,7 +1459,7 @@ describe("Path-Scoped Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* apiMiddleware(
+		async function *apiMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -1630,9 +1627,8 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		const router = new Router();
 		router.route("/api/users").get(async () => new Response("Users list"));
 
-		const request = new Request("http://example.com/api/users", {
-			method: "HEAD",
-		});
+		const request =
+			new Request("http://example.com/api/users", {method: "HEAD"});
 		const response = await router.handle(request);
 		expect(response?.status).toBe(200);
 	});
@@ -1643,9 +1639,8 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 			.route("/api/users")
 			.get(async () => new Response("This is the body content"));
 
-		const request = new Request("http://example.com/api/users", {
-			method: "HEAD",
-		});
+		const request =
+			new Request("http://example.com/api/users", {method: "HEAD"});
 		const response = await router.handle(request);
 		const body = await response?.text();
 		expect(body).toBe("");
@@ -1662,9 +1657,8 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 			});
 		});
 
-		const request = new Request("http://example.com/api/users", {
-			method: "HEAD",
-		});
+		const request =
+			new Request("http://example.com/api/users", {method: "HEAD"});
 		const response = await router.handle(request);
 		expect(response?.headers.get("Content-Type")).toBe("application/json");
 		expect(response?.headers.get("X-Custom-Header")).toBe("custom-value");
@@ -1679,9 +1673,8 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 			return new Response(`User ${context.params.id}`);
 		});
 
-		const request = new Request("http://example.com/api/users/123", {
-			method: "HEAD",
-		});
+		const request =
+			new Request("http://example.com/api/users/123", {method: "HEAD"});
 		const response = await router.handle(request);
 		expect(response?.status).toBe(200);
 		expect(capturedParams).toEqual({id: "123"});
@@ -1691,9 +1684,8 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		const router = new Router();
 		router.route("/api/users").post(async () => new Response("Created"));
 
-		const request = new Request("http://example.com/api/users", {
-			method: "HEAD",
-		});
+		const request =
+			new Request("http://example.com/api/users", {method: "HEAD"});
 		const response = await router.handle(request);
 
 		// No GET handler, so HEAD should return 404
@@ -1704,14 +1696,11 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		const router = new Router();
 		router.route("/api/users").get(async () => new Response("GET response"));
 		router.route("/api/users").head(async () => {
-			return new Response(null, {
-				headers: {"X-Method": "HEAD"},
-			});
+			return new Response(null, {headers: {"X-Method": "HEAD"}});
 		});
 
-		const request = new Request("http://example.com/api/users", {
-			method: "HEAD",
-		});
+		const request =
+			new Request("http://example.com/api/users", {method: "HEAD"});
 		const response = await router.handle(request);
 		expect(response?.headers.get("X-Method")).toBe("HEAD");
 	});
@@ -1720,7 +1709,7 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		async function* loggingMiddleware(
+		async function *loggingMiddleware(
 			request: Request,
 			_context: RouteContext,
 		): MiddlewareGenerator {
@@ -1737,9 +1726,8 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 			return new Response("Users");
 		});
 
-		const request = new Request("http://example.com/api/users", {
-			method: "HEAD",
-		});
+		const request =
+			new Request("http://example.com/api/users", {method: "HEAD"});
 		const response = await router.handle(request);
 		expect(executionOrder).toEqual([
 			"middleware-start",

@@ -2,7 +2,7 @@
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
 import {createConnection} from "net";
-import {test, expect} from "bun:test";
+import {expect, test} from "bun:test";
 import {join} from "path";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
 import {AsyncContext} from "@b9g/async-context";
@@ -141,10 +141,8 @@ function startDevServer(fixtureDir, entryFile, port) {
 		});
 	};
 
-	serverProcess.getOutput = () => ({
-		stdout: stdoutOutput,
-		stderr: stderrOutput,
-	});
+	serverProcess.getOutput =
+		() => ({stdout: stdoutOutput, stderr: stderrOutput});
 
 	return serverProcess;
 }
@@ -519,11 +517,13 @@ test(
 
 			// Fire 20 concurrent fetches
 			const results = await Promise.all(
-				Array.from({length: 20}, () =>
-					fetch(`http://localhost:${PORT}`).then(async (r) => ({
-						status: r.status,
-						body: await r.text(),
-					})),
+				Array.from(
+					{length: 20},
+					() =>
+						fetch(`http://localhost:${PORT}`).then(async (r) => ({
+							status: r.status,
+							body: await r.text(),
+						})),
 				),
 			);
 
@@ -582,8 +582,9 @@ test(
 
 			// Immediately fire 5 fetches during the reload window
 			const duringReload = await Promise.allSettled(
-				Array.from({length: 5}, () =>
-					fetch(`http://localhost:${PORT}`).then((r) => r.status),
+				Array.from(
+					{length: 5},
+					() => fetch(`http://localhost:${PORT}`).then((r) => r.status),
 				),
 			);
 

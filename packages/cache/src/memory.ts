@@ -1,14 +1,15 @@
 import {
 	Cache,
+	type CacheQueryOptions,
 	generateCacheKey,
 	toRequest,
-	type CacheQueryOptions,
 } from "./index.js";
 
 /**
  * Configuration options for MemoryCache
  */
 export interface MemoryCacheOptions {
+
 	/** Maximum number of entries to store */
 	maxEntries?: number;
 }

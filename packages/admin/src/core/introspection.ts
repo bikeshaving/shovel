@@ -6,7 +6,7 @@
  */
 
 import {isTable, z} from "@b9g/zen";
-import type {Table, FieldMeta, ReferenceInfo} from "@b9g/zen";
+import type {FieldMeta, ReferenceInfo, Table} from "@b9g/zen";
 
 // ============================================================================
 // Admin-specific types (simplified for UI rendering)
@@ -16,29 +16,31 @@ import type {Table, FieldMeta, ReferenceInfo} from "@b9g/zen";
  * Simplified data type for admin UI rendering
  */
 export type AdminDataType =
-	| "string"
-	| "number"
-	| "boolean"
-	| "date"
-	| "datetime"
-	| "json";
+	"string" | "number" | "boolean" | "date" | "datetime" | "json";
 
 /**
  * Admin-specific column info (derived from zen's FieldMeta)
  */
 export interface AdminColumnInfo {
+
 	/** Field name */
 	name: string;
+
 	/** Simplified data type for UI */
 	dataType: AdminDataType;
+
 	/** Whether the field is required for insert */
 	required: boolean;
+
 	/** Whether the field has an auto-generated value */
 	hasAutoValue: boolean;
+
 	/** Whether this is the primary key */
 	isPrimaryKey: boolean;
+
 	/** Enum values if this is an enum field */
 	enumValues?: string[];
+
 	/** The raw zen FieldMeta for advanced use */
 	fieldMeta: FieldMeta;
 }
@@ -47,18 +49,23 @@ export interface AdminColumnInfo {
  * Admin-specific table info
  */
 export interface AdminTableInfo {
+
 	/** Table name */
 	name: string;
+
 	/** Column info for each field */
 	columns: AdminColumnInfo[];
+
 	/** Primary key field name */
 	primaryKey: string | null;
+
 	/** Foreign key relationships */
-	foreignKeys: {
+	foreignKeys: Array<{
 		column: string;
 		foreignTable: string;
 		foreignColumn: string;
-	}[];
+	}>;
+
 	/** The raw zen Table for advanced use */
 	table: Table<any>;
 }
@@ -95,8 +102,9 @@ function inferDataType(schema: unknown): AdminDataType {
 	if (inner instanceof z.ZodBoolean) return "boolean";
 	if (inner instanceof z.ZodDate) return "date";
 	if (inner instanceof z.ZodEnum) return "string";
-	if (inner instanceof z.ZodObject || inner instanceof z.ZodArray)
+	if (inner instanceof z.ZodObject || inner instanceof z.ZodArray) {
 		return "json";
+	}
 
 	return "string"; // fallback
 }
@@ -126,9 +134,11 @@ export function getAdminTableInfo(table: Table<any>): AdminTableInfo {
 
 	// Filter to only actual column fields (have schema property)
 	// table.fields() also returns relation accessors which don't have schema
-	const columnEntries = Object.entries(fieldsMeta).filter(
-		([, field]) => field && "schema" in field,
-	) as [string, FieldMeta][];
+	const columnEntries = Object.entries(fieldsMeta)
+		.filter(([, field]) => field && "schema" in field) as Array<[
+		string,
+		FieldMeta,
+	]>;
 
 	const columns: AdminColumnInfo[] = columnEntries.map(([name, field]) => {
 		const isOptional = field.schema.isOptional();
@@ -153,13 +163,7 @@ export function getAdminTableInfo(table: Table<any>): AdminTableInfo {
 		foreignColumn: ref.referencedField,
 	}));
 
-	return {
-		name: table.name,
-		columns,
-		primaryKey: pk,
-		foreignKeys,
-		table,
-	};
+	return {name: table.name, columns, primaryKey: pk, foreignKeys, table};
 }
 
 /**

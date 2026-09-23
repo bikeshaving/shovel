@@ -2,7 +2,7 @@
  * Tests adapted from the TC39 AsyncContext proposal
  * https://github.com/nicolo-ribaudo/proposal-async-context
  */
-import {describe, test, expect} from "bun:test";
+import {describe, expect, test} from "bun:test";
 import {AsyncContext} from "../src/index.js";
 
 type Value = {id: number};

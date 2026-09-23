@@ -1,10 +1,10 @@
-import {test, expect, describe, afterEach} from "bun:test";
+import {afterEach, describe, expect, test} from "bun:test";
 import {
+	configureLogging,
 	createCacheFactory,
 	createDirectoryFactory,
-	configureLogging,
-	CustomLoggerStorage,
 	CustomDatabaseStorage,
+	CustomLoggerStorage,
 } from "../src/runtime.js";
 import {Database} from "@b9g/zen";
 import BunDriver from "@b9g/zen/bun";
@@ -12,8 +12,8 @@ import {MemoryCache} from "@b9g/cache/memory";
 import {MemoryDirectory} from "@b9g/filesystem/memory";
 import {NodeFSDirectory} from "@b9g/filesystem/node-fs";
 import {
-	getLogger,
 	getConsoleSink,
+	getLogger,
 	reset as resetLogtape,
 } from "@logtape/logtape";
 import {tmpdir} from "os";
@@ -23,9 +23,7 @@ import {mkdtempSync, rmSync} from "fs";
 describe("createCacheFactory", () => {
 	test("creates cache from config with impl", async () => {
 		const factory = createCacheFactory({
-			configs: {
-				"test-cache": {impl: MemoryCache as any},
-			},
+			configs: {"test-cache": {impl: MemoryCache as any}},
 		});
 		const cache = await factory("test-cache");
 
@@ -54,11 +52,7 @@ describe("createCacheFactory", () => {
 	test("passes options to cache constructor", async () => {
 		const factory = createCacheFactory({
 			configs: {
-				"test-cache": {
-					impl: MemoryCache as any,
-					maxEntries: 100,
-					TTL: 3600,
-				},
+				"test-cache": {impl: MemoryCache as any, maxEntries: 100, TTL: 3600},
 			},
 		});
 
@@ -68,9 +62,7 @@ describe("createCacheFactory", () => {
 
 	test("returns PostMessageCache when usePostMessage is true", async () => {
 		const factory = createCacheFactory({
-			configs: {
-				"test-cache": {impl: MemoryCache as any},
-			},
+			configs: {"test-cache": {impl: MemoryCache as any}},
 			usePostMessage: true,
 		});
 
@@ -83,9 +75,7 @@ describe("createCacheFactory", () => {
 
 	test("'*' wildcard matches any cache name", async () => {
 		const factory = createCacheFactory({
-			configs: {
-				"*": {impl: MemoryCache as any},
-			},
+			configs: {"*": {impl: MemoryCache as any}},
 		});
 
 		const kv = await factory("kv");
@@ -99,6 +89,7 @@ describe("createCacheFactory", () => {
 
 	test("exact match takes priority over wildcard", async () => {
 		let lastConstructedName = "";
+
 		class TrackingCache extends MemoryCache {
 			constructor(name: string, options: any = {}) {
 				super(name, options);
@@ -125,9 +116,7 @@ describe("createCacheFactory", () => {
 
 	test("prefix wildcard pattern like 'api-*' matches selectively", async () => {
 		const factory = createCacheFactory({
-			configs: {
-				"api-*": {impl: MemoryCache as any},
-			},
+			configs: {"api-*": {impl: MemoryCache as any}},
 		});
 
 		const apiUsers = await factory("api-users");
@@ -142,9 +131,7 @@ describe("createCacheFactory", () => {
 
 	test("suffix wildcard pattern like '*-cache' matches selectively", async () => {
 		const factory = createCacheFactory({
-			configs: {
-				"*-cache": {impl: MemoryCache as any},
-			},
+			configs: {"*-cache": {impl: MemoryCache as any}},
 		});
 
 		const userCache = await factory("user-cache");
@@ -157,12 +144,14 @@ describe("createCacheFactory", () => {
 
 	test("multiple wildcard patterns with different impls", async () => {
 		let constructedWith = "";
+
 		class CacheA extends MemoryCache {
 			constructor(name: string, opts: any = {}) {
 				super(name, opts);
 				constructedWith = "A";
 			}
 		}
+
 		class CacheB extends MemoryCache {
 			constructor(name: string, opts: any = {}) {
 				super(name, opts);
@@ -186,9 +175,7 @@ describe("createCacheFactory", () => {
 
 	test("wildcard with no other config acts as universal default", async () => {
 		const factory = createCacheFactory({
-			configs: {
-				"*": {impl: MemoryCache as any, maxEntries: 1000},
-			},
+			configs: {"*": {impl: MemoryCache as any, maxEntries: 1000}},
 		});
 
 		// Should be able to open any name without prior configuration
@@ -203,13 +190,12 @@ describe("createCacheFactory", () => {
 		function createCache(name: string, _options: any = {}) {
 			return new MemoryCache(name);
 		}
+
 		// factory function has no prototype
 		Object.defineProperty(createCache, "prototype", {value: undefined});
 
 		const factory = createCacheFactory({
-			configs: {
-				"*": {impl: createCache as any},
-			},
+			configs: {"*": {impl: createCache as any}},
 		});
 
 		const cache = await factory("dynamic");
@@ -264,10 +250,7 @@ describe("createDirectoryFactory", () => {
 		const customPath = join(tempDir, "custom-data");
 		try {
 			const factory = createDirectoryFactory({
-				data: {
-					impl: NodeFSDirectory as any,
-					path: customPath,
-				},
+				data: {impl: NodeFSDirectory as any, path: customPath},
 			});
 
 			const dir = await factory("data");
@@ -315,10 +298,7 @@ describe("createDirectoryFactory", () => {
 		// Simulate pre-resolved tmpdir path (as would be generated at build time)
 		const resolvedTmpPath = tmpdir();
 		const factory = createDirectoryFactory({
-			tmp: {
-				impl: TestDirectory as any,
-				path: resolvedTmpPath,
-			},
+			tmp: {impl: TestDirectory as any, path: resolvedTmpPath},
 		});
 
 		await factory("tmp");
@@ -385,6 +365,7 @@ describe("createDirectoryFactory", () => {
 				lastImpl = "A";
 			}
 		}
+
 		class DirB {
 			constructor() {
 				lastImpl = "B";
@@ -456,11 +437,7 @@ describe("configureLogging", () => {
 
 	test("handles named custom sinks with impl", async () => {
 		await configureLogging({
-			sinks: {
-				myConsole: {
-					impl: getConsoleSink,
-				},
-			},
+			sinks: {myConsole: {impl: getConsoleSink}},
 			loggers: [{category: ["app"], sinks: ["myConsole"]}],
 		});
 
@@ -510,11 +487,7 @@ describe("configureLogging", () => {
 
 	test("supports parentSinks override with impl", async () => {
 		await configureLogging({
-			sinks: {
-				customSink: {
-					impl: getConsoleSink,
-				},
-			},
+			sinks: {customSink: {impl: getConsoleSink}},
 			loggers: [
 				{category: ["app"], sinks: ["console"]},
 				// This logger replaces parent sinks instead of inheriting
@@ -535,11 +508,7 @@ describe("configureLogging", () => {
 		// The CLI generates code that statically imports sink factories,
 		// since dynamic import() can't resolve arbitrary paths in bundles.
 		await configureLogging({
-			sinks: {
-				buildTimeSink: {
-					impl: getConsoleSink,
-				},
-			},
+			sinks: {buildTimeSink: {impl: getConsoleSink}},
 			loggers: [{category: ["build"], sinks: ["buildTimeSink"]}],
 		});
 
@@ -621,10 +590,7 @@ describe("CustomDatabaseStorage", () => {
 			factoryCalls++;
 			const driver = new BunDriver(":memory:");
 			drivers.push(driver);
-			return {
-				db: new Database(driver),
-				close: () => driver.close(),
-			};
+			return {db: new Database(driver), close: () => driver.close()};
 		};
 
 		return {factory, getFactoryCalls: () => factoryCalls, drivers};
@@ -742,10 +708,7 @@ describe("CustomDatabaseStorage", () => {
 				throw new Error("First call fails");
 			}
 			const driver = new BunDriver(":memory:");
-			return {
-				db: new Database(driver),
-				close: async () => driver.close(),
-			};
+			return {db: new Database(driver), close: async () => driver.close()};
 		};
 
 		const storage = new CustomDatabaseStorage(failingFactory);

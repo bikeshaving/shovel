@@ -87,13 +87,12 @@ class PostMessageCacheProxy {
 			request: req,
 			options,
 		});
-		return (results || []).map(
-			(r: any) =>
-				new Response(r.body, {
-					status: r.status,
-					statusText: r.statusText,
-					headers: r.headers,
-				}),
+		return (results || []).map((r: any) =>
+			new Response(r.body, {
+				status: r.status,
+				statusText: r.statusText,
+				headers: r.headers,
+			}),
 		);
 	}
 
@@ -134,12 +133,8 @@ class PostMessageCacheProxy {
 			request: req,
 			options,
 		});
-		return (keys || []).map(
-			(k: any) =>
-				new Request(k.url, {
-					method: k.method,
-					headers: k.headers,
-				}),
+		return (keys || []).map((k: any) =>
+			new Request(k.url, {method: k.method, headers: k.headers}),
 		);
 	}
 
@@ -152,11 +147,9 @@ class PostMessageCacheProxy {
 	}
 }
 
-function toRequestInit(request: RequestInfo | URL): {
-	url: string;
-	method: string;
-	headers: Record<string, string>;
-} {
+function toRequestInit(
+	request: RequestInfo | URL,
+): {url: string; method: string; headers: Record<string, string>} {
 	if (typeof request === "string") {
 		return {url: request, method: "GET", headers: {}};
 	}

@@ -54,10 +54,7 @@ export class NodeFSBackend implements FileSystemBackend {
 				FS.readFile(fullPath),
 				FS.stat(fullPath),
 			]);
-			return {
-				content: new Uint8Array(buffer),
-				lastModified: stats.mtimeMs,
-			};
+			return {content: new Uint8Array(buffer), lastModified: stats.mtimeMs};
 		} catch (error) {
 			if (isErrnoException(error) && error.code === "ENOENT") {
 				throw new DOMException("File not found", "NotFoundError");

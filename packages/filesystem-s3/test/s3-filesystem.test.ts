@@ -1,15 +1,13 @@
-import {test, expect, describe} from "bun:test";
+import {describe, expect, test} from "bun:test";
 import {
-	S3FileSystemFileHandle,
-	S3FileSystemDirectoryHandle,
 	S3FileSystemAdapter,
+	S3FileSystemDirectoryHandle,
+	S3FileSystemFileHandle,
 	S3FileSystemWritableFileStream,
 } from "../src/index.js";
 
 describe("S3 Filesystem", () => {
-	const mockS3Client = {
-		send: () => Promise.resolve({}),
-	};
+	const mockS3Client = {send: () => Promise.resolve({})};
 	const testBucket = "test-bucket";
 
 	describe("S3FileSystemWritableFileStream", () => {
@@ -207,9 +205,8 @@ describe("S3 Filesystem", () => {
 
 	describe("S3FileSystemAdapter", () => {
 		test("should create adapter with correct config", () => {
-			const adapter = new S3FileSystemAdapter(mockS3Client, testBucket, {
-				name: "test-s3",
-			});
+			const adapter =
+				new S3FileSystemAdapter(mockS3Client, testBucket, {name: "test-s3"});
 
 			const config = adapter.getConfig();
 			expect(config.name).toBe("test-s3");

@@ -2,7 +2,7 @@
  * Production build system for Shovel apps
  * Creates self-contained, directly executable production builds
  */
-import {resolve, join, dirname, basename} from "path";
+import {basename, dirname, join, resolve} from "path";
 import {getLogger} from "@logtape/logtape";
 import {resolvePlatform} from "@b9g/platform";
 import {readFile, writeFile} from "fs/promises";
@@ -12,7 +12,7 @@ import {ServerBundler} from "../utils/bundler.js";
 import {findProjectRoot, findWorkspaceRoot} from "../utils/project.js";
 import {loadPlatformModule} from "../utils/platform.js";
 import type {ProcessedShovelConfig} from "../utils/config.js";
-import type {PlatformModule, DevServer} from "@b9g/platform/module";
+import type {DevServer, PlatformModule} from "@b9g/platform/module";
 
 const logger = getLogger(["shovel", "build"]);
 
@@ -29,14 +29,11 @@ function formatBytes(bytes: number): string {
  * Log bundle sizes from metafile
  */
 function logBundleSizes(metafile: ESBuild.Metafile): void {
-	const outputs: {name: string; bytes: number}[] = [];
+	const outputs: Array<{name: string; bytes: number}> = [];
 
 	for (const [outputPath, output] of Object.entries(metafile.outputs)) {
 		if (!outputPath.endsWith(".js")) continue;
-		outputs.push({
-			name: basename(outputPath),
-			bytes: output.bytes,
-		});
+		outputs.push({name: basename(outputPath), bytes: output.bytes});
 	}
 
 	// Sort by size descending
@@ -58,15 +55,14 @@ function logBundleSizes(metafile: ESBuild.Metafile): void {
 		if (!outputPath.endsWith(".js")) continue;
 
 		// Collect inputs by category
-		const nodeModules: {path: string; bytes: number}[] = [];
-		const sourceFiles: {path: string; bytes: number}[] = [];
+		const nodeModules: Array<{path: string; bytes: number}> = [];
+		const sourceFiles: Array<{path: string; bytes: number}> = [];
 
 		for (const [inputPath, input] of Object.entries(output.inputs)) {
 			if (inputPath.includes("node_modules")) {
 				nodeModules.push({path: inputPath, bytes: input.bytesInOutput});
 			} else if (
-				!inputPath.startsWith("<") &&
-				!inputPath.startsWith("shovel:")
+				!inputPath.startsWith("<") && !inputPath.startsWith("shovel:")
 			) {
 				sourceFiles.push({path: inputPath, bytes: input.bytesInOutput});
 			}
@@ -94,8 +90,10 @@ function logBundleSizes(metafile: ESBuild.Metafile): void {
  * Build result returned to callers
  */
 export interface BuildResult {
+
 	/** Platform module (for running lifecycle) */
 	platformModule: PlatformModule;
+
 	/** Path to worker entry point */
 	workerPath: string | undefined;
 }
@@ -104,19 +102,15 @@ export interface BuildResult {
  * Build ServiceWorker app for production deployment
  * Uses the unified ServerBundler for consistent build output across all commands
  */
-export async function buildForProduction({
-	entrypoint,
-	outDir,
-	platform = "node",
-	userBuildConfig,
-	lifecycle,
-}: {
-	entrypoint: string;
-	outDir: string;
-	platform?: string;
-	userBuildConfig?: ProcessedShovelConfig["build"];
-	lifecycle?: {stage: "install" | "activate"};
-}): Promise<BuildResult> {
+export async function buildForProduction(
+	{entrypoint, outDir, platform = "node", userBuildConfig, lifecycle}: {
+		entrypoint: string;
+		outDir: string;
+		platform?: string;
+		userBuildConfig?: ProcessedShovelConfig["build"];
+		lifecycle?: {stage: "install" | "activate"};
+	},
+): Promise<BuildResult> {
 	const entryPath = resolve(entrypoint);
 	const outputDir = resolve(outDir);
 	const serverDir = join(outputDir, "server");
@@ -163,24 +157,19 @@ export async function buildForProduction({
 		path: outputs.supervisor || outputs.worker,
 	});
 
-	return {
-		platformModule,
-		workerPath: outputs.worker,
-	};
+	return {platformModule, workerPath: outputs.worker};
 }
 
 /**
  * Generate or copy package.json to output directory for self-contained deployment
  */
-async function generatePackageJSON({
-	serverDir,
-	platform,
-	entryPath,
-}: {
-	serverDir: string;
-	platform: string;
-	entryPath: string;
-}) {
+async function generatePackageJSON(
+	{serverDir, platform, entryPath}: {
+		serverDir: string;
+		platform: string;
+		entryPath: string;
+	},
+) {
 	// Look for package.json in the same directory as the entrypoint, not cwd
 	const entryDir = dirname(entryPath);
 	const sourcePackageJsonPath = resolve(entryDir, "package.json");
@@ -289,8 +278,9 @@ export async function buildCommand(
 	// Determine lifecycle stage if --lifecycle is provided
 	let lifecycleOption: {stage: "install" | "activate"} | undefined;
 	if (options.lifecycle) {
-		const stage =
-			typeof options.lifecycle === "string" ? options.lifecycle : "activate";
+		const stage = typeof options.lifecycle === "string"
+			? options.lifecycle
+			: "activate";
 		if (stage !== "install" && stage !== "activate") {
 			throw new Error(
 				`Invalid lifecycle stage: ${stage}. Must be "install" or "activate".`,

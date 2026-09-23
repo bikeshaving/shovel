@@ -8,11 +8,11 @@
 import {builtinModules} from "node:module";
 import {getLogger} from "@logtape/logtape";
 import type {
+	DevServer,
+	DevServerOptions,
 	EntryPoints,
 	ESBuildConfig,
 	PlatformDefaults,
-	DevServerOptions,
-	DevServer,
 } from "@b9g/platform/module";
 
 const logger = getLogger(["shovel", "platform"]);
@@ -171,10 +171,7 @@ process.on("SIGINT", handleShutdown);
 process.on("SIGTERM", handleShutdown);
 `;
 
-	return {
-		supervisor: supervisorCode,
-		worker: prodWorkerCode,
-	};
+	return {supervisor: supervisorCode, worker: prodWorkerCode};
 }
 
 /**
@@ -202,12 +199,7 @@ export function getESBuildConfig(): ESBuildConfig {
  */
 export function getDefaults(): PlatformDefaults {
 	return {
-		caches: {
-			"*": {
-				module: "@b9g/cache/memory",
-				export: "MemoryCache",
-			},
-		},
+		caches: {"*": {module: "@b9g/cache/memory", export: "MemoryCache"}},
 		directories: {
 			server: {
 				module: "@b9g/filesystem/node-fs",
@@ -248,11 +240,7 @@ export async function createDevServer(
 	// Dynamic import - keeps NodePlatform class out of prod bundle
 	const {default: NodePlatform} = await import("./index.js");
 
-	const platform = new NodePlatform({
-		port,
-		host,
-		workers,
-	});
+	const platform = new NodePlatform({port, host, workers});
 
 	// Register the worker
 	await platform.serviceWorker.register(workerPath);

@@ -1,20 +1,20 @@
-import {test, expect, describe} from "bun:test";
+import {describe, expect, test} from "bun:test";
 import {
-	HTTPError,
-	isHTTPError,
-	BadRequest,
-	Unauthorized,
-	Forbidden,
-	NotFound,
-	MethodNotAllowed,
-	Conflict,
-	UnprocessableEntity,
-	TooManyRequests,
-	InternalServerError,
-	NotImplemented,
 	BadGateway,
-	ServiceUnavailable,
+	BadRequest,
+	Conflict,
+	Forbidden,
 	GatewayTimeout,
+	HTTPError,
+	InternalServerError,
+	isHTTPError,
+	MethodNotAllowed,
+	NotFound,
+	NotImplemented,
+	ServiceUnavailable,
+	TooManyRequests,
+	Unauthorized,
+	UnprocessableEntity,
 } from "../src/index.js";
 
 describe("HTTPError", () => {
@@ -89,11 +89,7 @@ describe("isHTTPError", () => {
 	});
 
 	test("should not identify error-like objects with status properties", () => {
-		const errorLike = {
-			status: 404,
-			statusCode: 404,
-			message: "Not Found",
-		};
+		const errorLike = {status: 404, statusCode: 404, message: "Not Found"};
 		Object.setPrototypeOf(errorLike, Error.prototype);
 
 		expect(isHTTPError(errorLike)).toBe(false);

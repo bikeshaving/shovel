@@ -39,9 +39,7 @@ export function FormField({column, value, error}: FormFieldProps) {
 				>
 					{!column.required && <option value="">-- Select --</option>}
 					{column.enumValues.map((opt) => (
-						<option value={opt} selected={value === opt}>
-							{opt}
-						</option>
+						<option value={opt} selected={value === opt}>{opt}</option>
 					))}
 				</select>
 				{error && <span class="usa-error-message">{error}</span>}
@@ -64,9 +62,7 @@ export function FormField({column, value, error}: FormFieldProps) {
 						value="true"
 						checked={isChecked}
 					/>
-					<label class="usa-checkbox__label" for={id}>
-						{column.name}
-					</label>
+					<label class="usa-checkbox__label" for={id}>{column.name}</label>
 				</div>
 				{error && <span class="usa-error-message">{error}</span>}
 			</div>
@@ -228,9 +224,7 @@ export function ModelForm({
 				/>
 			))}
 			<div class="admin-form-actions">
-				<button type="submit" class="usa-button">
-					{submitLabel}
-				</button>
+				<button type="submit" class="usa-button">{submitLabel}</button>
 				<a href={cancelUrl} class="usa-button usa-button--outline">
 					Cancel
 				</a>

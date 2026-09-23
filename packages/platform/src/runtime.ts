@@ -11,19 +11,20 @@
  */
 
 import {AsyncContext} from "@b9g/async-context";
-import {getLogger, getConsoleSink} from "@logtape/logtape";
+import {getConsoleSink, getLogger} from "@logtape/logtape";
 // Re-exported for generated worker entries: a bare "@logtape/logtape" import
 // in generated code resolves from the user's project root, where it is only
 // a transitive dependency (fails under pnpm-isolated/Yarn-PnP layouts).
 export {getLogger} from "@logtape/logtape";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
-import {CustomCacheStorage, Cache} from "@b9g/cache";
+import type {Cache} from "@b9g/cache";
+import {CustomCacheStorage} from "@b9g/cache";
 import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
 import {
-	ShovelBroadcastChannel,
-	setBroadcastChannelRelay,
 	deliverBroadcastMessage,
 	setBroadcastChannelBackend,
+	setBroadcastChannelRelay,
+	ShovelBroadcastChannel,
 } from "./internal/broadcast-channel.js";
 import type {BroadcastChannelBackend} from "./internal/broadcast-channel-backend.js";
 
@@ -79,7 +80,7 @@ export function parseCookieHeader(cookieHeader: string): Map<string, string> {
 export function serializeCookie(cookie: CookieInit): string {
 	let header = `${encodeURIComponent(cookie.name)}=${encodeURIComponent(cookie.value)}`;
 
-	if (cookie.expires !== undefined && cookie.expires !== null) {
+	if (cookie.expires != null) {
 		const date = new Date(cookie.expires);
 		header += `; Expires=${date.toUTCString()}`;
 	}
@@ -91,21 +92,21 @@ export function serializeCookie(cookie: CookieInit): string {
 	if (cookie.path) {
 		header += `; Path=${cookie.path}`;
 	} else {
-		header += `; Path=/`;
+		header += "; Path=/";
 	}
 
 	if (cookie.sameSite) {
 		header += `; SameSite=${cookie.sameSite.charAt(0).toUpperCase() + cookie.sameSite.slice(1)}`;
 	} else {
-		header += `; SameSite=Strict`;
+		header += "; SameSite=Strict";
 	}
 
 	if (cookie.partitioned) {
-		header += `; Partitioned`;
+		header += "; Partitioned";
 	}
 
 	// Secure is implied for all cookies in this implementation
-	header += `; Secure`;
+	header += "; Secure";
 
 	return header;
 }
@@ -174,7 +175,7 @@ export class RequestCookieStore extends EventTarget {
 	#request: Request | null;
 
 	// Event handler for cookie changes (spec compliance)
-	// eslint-disable-next-line no-restricted-syntax
+
 	onchange: ((this: RequestCookieStore, ev: Event) => any) | null = null;
 
 	constructor(request?: Request) {
@@ -198,8 +199,9 @@ export class RequestCookieStore extends EventTarget {
 	async get(
 		nameOrOptions: string | CookieStoreGetOptions,
 	): Promise<CookieListItem | null> {
-		const name =
-			typeof nameOrOptions === "string" ? nameOrOptions : nameOrOptions.name;
+		const name = typeof nameOrOptions === "string"
+			? nameOrOptions
+			: nameOrOptions.name;
 
 		if (!name) {
 			throw new TypeError("Cookie name is required");
@@ -208,7 +210,7 @@ export class RequestCookieStore extends EventTarget {
 		// Check changes first (for set/delete operations)
 		if (this.#changes.has(name)) {
 			const change = this.#changes.get(name);
-			if (change === null || change === undefined) return null;
+			if (change == null) return null;
 			return {
 				name: change.name,
 				value: change.value,
@@ -226,23 +228,21 @@ export class RequestCookieStore extends EventTarget {
 	async getAll(
 		nameOrOptions?: string | CookieStoreGetOptions,
 	): Promise<CookieList> {
-		const name =
-			typeof nameOrOptions === "string" ? nameOrOptions : nameOrOptions?.name;
+		const name = typeof nameOrOptions === "string"
+			? nameOrOptions
+			: nameOrOptions?.name;
 
 		const result: CookieList = [];
 
 		// Collect all cookies (original + changes)
-		const allNames = new Set([
-			...this.#cookies.keys(),
-			...this.#changes.keys(),
-		]);
+		const allNames =
+			new Set([...this.#cookies.keys(), ...this.#changes.keys()]);
 
 		for (const cookieName of allNames) {
 			if (name && cookieName !== name) continue;
 
 			if (
-				this.#changes.has(cookieName) &&
-				this.#changes.get(cookieName) === null
+				this.#changes.has(cookieName) && this.#changes.get(cookieName) === null
 			) {
 				continue;
 			}
@@ -263,18 +263,9 @@ export class RequestCookieStore extends EventTarget {
 			if (value === undefined) {
 				throw new TypeError("Cookie value is required");
 			}
-			cookie = {
-				name: nameOrOptions,
-				value,
-				path: "/",
-				sameSite: "strict",
-			};
+			cookie = {name: nameOrOptions, value, path: "/", sameSite: "strict"};
 		} else {
-			cookie = {
-				path: "/",
-				sameSite: "strict",
-				...nameOrOptions,
-			};
+			cookie = {path: "/", sameSite: "strict", ...nameOrOptions};
 		}
 
 		// Validate cookie size (spec: 4096 bytes combined)
@@ -291,8 +282,9 @@ export class RequestCookieStore extends EventTarget {
 	async delete(
 		nameOrOptions: string | CookieStoreDeleteOptions,
 	): Promise<void> {
-		const name =
-			typeof nameOrOptions === "string" ? nameOrOptions : nameOrOptions.name;
+		const name = typeof nameOrOptions === "string"
+			? nameOrOptions
+			: nameOrOptions.name;
 
 		if (!name) {
 			throw new TypeError("Cookie name is required");
@@ -311,14 +303,7 @@ export class RequestCookieStore extends EventTarget {
 		for (const [name, change] of this.#changes) {
 			if (change === null) {
 				// Delete cookie by setting expires to past date
-				headers.push(
-					serializeCookie({
-						name,
-						value: "",
-						expires: 0,
-						path: "/",
-					}),
-				);
+				headers.push(serializeCookie({name, value: "", expires: 0, path: "/"}));
 			} else {
 				headers.push(serializeCookie(change));
 			}
@@ -339,8 +324,8 @@ export class RequestCookieStore extends EventTarget {
 import type {DirectoryStorage} from "@b9g/filesystem";
 import {
 	configure,
-	type LogLevel as LogTapeLevel,
 	type Logger,
+	type LogLevel as LogTapeLevel,
 } from "@logtape/logtape";
 
 // ============================================================================
@@ -352,6 +337,7 @@ import {
  * Uses array signature (matching LogTape) to allow future options parameter.
  */
 export interface LoggerStorage {
+
 	/**
 	 * Get a logger by category path (sync)
 	 * @example const logger = self.loggers.get(["app"])
@@ -392,10 +378,13 @@ import type {Database} from "@b9g/zen";
  * Uses the unified impl pattern like directories and caches.
  */
 export interface DatabaseConfig {
+
 	/** Reified implementation (driver class from build-time code generation) */
 	impl?: new (url: string, options?: any) => any;
+
 	/** Database connection URL */
 	url?: string;
+
 	/** Additional driver-specific options */
 	[key: string]: unknown;
 }
@@ -404,12 +393,16 @@ export interface DatabaseConfig {
  * Upgrade event passed to onUpgrade callback during database.open().
  */
 export interface DatabaseUpgradeEvent {
+
 	/** The database being upgraded */
 	db: Database;
+
 	/** Previous database version (0 if new) */
 	oldVersion: number;
+
 	/** Target version being opened */
 	newVersion: number;
+
 	/** Register a promise that must complete before open() resolves */
 	waitUntil(promise: Promise<unknown>): void;
 }
@@ -436,6 +429,7 @@ export interface DatabaseUpgradeEvent {
  * ```
  */
 export interface DatabaseStorage {
+
 	/**
 	 * Open a database at a specific version.
 	 * Imports the driver, creates the Database, runs migrations if needed.
@@ -465,9 +459,10 @@ export interface DatabaseStorage {
  * Factory function type for creating database drivers.
  * Returns the Database instance and a close function.
  */
-export type DatabaseFactory = (
-	name: string,
-) => Promise<{db: Database; close: () => Promise<void>}>;
+export type DatabaseFactory = (name: string) => Promise<{
+	db: Database;
+	close: () => Promise<void>;
+}>;
 
 /**
  * CustomDatabaseStorage implements DatabaseStorage.
@@ -509,11 +504,12 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 			// Register upgrade handler if provided
 			if (onUpgrade) {
 				db.addEventListener("upgradeneeded", (e: Event) => {
-					const event = e as Event & {
-						oldVersion: number;
-						newVersion: number;
-						waitUntil: (p: Promise<unknown>) => void;
-					};
+					const event = e as Event &
+						{
+							oldVersion: number;
+							newVersion: number;
+							waitUntil: (p: Promise<unknown>) => void;
+						};
 					onUpgrade({
 						db,
 						oldVersion: event.oldVersion,
@@ -584,9 +580,8 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 		}
 
 		// Now close all databases
-		const promises = Array.from(this.#databases.keys()).map((name) =>
-			this.close(name),
-		);
+		const promises = Array.from(this.#databases.keys())
+			.map((name) => this.close(name));
 		await Promise.allSettled(promises);
 	}
 }
@@ -759,7 +754,7 @@ const kCanExtend = Symbol.for("shovel.canExtend");
  * See: https://github.com/w3c/ServiceWorker/issues/771
  */
 export class ShovelExtendableEvent extends Event implements ExtendableEvent {
-	#promises: Promise<any>[];
+	#promises: Array<Promise<any>>;
 	#dispatchPhase: boolean;
 	#pendingCount: number;
 
@@ -794,7 +789,7 @@ export class ShovelExtendableEvent extends Event implements ExtendableEvent {
 		this.#promises.push(trackedPromise);
 	}
 
-	getPromises(): Promise<any>[] {
+	getPromises(): Array<Promise<any>> {
 		return [...this.#promises];
 	}
 
@@ -813,6 +808,7 @@ export class ShovelExtendableEvent extends Event implements ExtendableEvent {
  * Options for ShovelFetchEvent constructor (non-standard Shovel extension)
  */
 export interface ShovelFetchEventInit extends EventInit {
+
 	/**
 	 * Platform-provided callback for extending request lifetime.
 	 * Called automatically when waitUntil() is invoked.
@@ -829,8 +825,7 @@ export interface ShovelFetchEventInit extends EventInit {
  */
 export class ShovelFetchEvent
 	extends ShovelExtendableEvent
-	implements FetchEvent
-{
+	implements FetchEvent {
 	readonly request: Request;
 	readonly cookieStore: RequestCookieStore;
 	readonly clientId: string;
@@ -929,11 +924,13 @@ export class ShovelClient implements Client {
 	readonly type: "window" | "worker" | "sharedworker";
 	readonly url: string;
 
-	constructor(options: {
-		id: string;
-		url: string;
-		type?: "window" | "worker" | "sharedworker";
-	}) {
+	constructor(
+		options: {
+			id: string;
+			url: string;
+			type?: "window" | "worker" | "sharedworker";
+		},
+	) {
 		this.frameType = "none";
 		this.id = options.id;
 		this.url = options.url;
@@ -963,12 +960,14 @@ export class ShovelWindowClient extends ShovelClient implements WindowClient {
 	readonly focused: boolean;
 	readonly visibilityState: DocumentVisibilityState;
 
-	constructor(options: {
-		id: string;
-		url: string;
-		focused?: boolean;
-		visibilityState?: DocumentVisibilityState;
-	}) {
+	constructor(
+		options: {
+			id: string;
+			url: string;
+			focused?: boolean;
+			visibilityState?: DocumentVisibilityState;
+		},
+	) {
 		super({...options, type: "window"});
 		this.focused = options.focused || false;
 		this.visibilityState = options.visibilityState || "hidden";
@@ -1004,10 +1003,12 @@ export class ShovelClients implements Clients {
 
 	async matchAll<T extends ClientQueryOptions>(
 		_options?: T,
-	): Promise<readonly (T["type"] extends "window" ? WindowClient : Client)[]> {
-		return [] as readonly (T["type"] extends "window"
+	): Promise<ReadonlyArray<T["type"] extends "window"
+		? WindowClient
+		: Client>> {
+		return [] as ReadonlyArray<T["type"] extends "window"
 			? WindowClient
-			: Client)[];
+			: Client>;
 	}
 
 	async openWindow(_url: string): Promise<WindowClient | null> {
@@ -1053,12 +1054,12 @@ export class ExtendableMessageEvent extends ShovelExtendableEvent {
 export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 	scriptURL: string;
 	state:
-		| "parsed"
-		| "installing"
-		| "installed"
-		| "activating"
-		| "activated"
-		| "redundant";
+		"parsed" |
+		"installing" |
+		"installed" |
+		"activating" |
+		"activated" |
+		"redundant";
 
 	// Event handlers required by Web API
 	onstatechange: ((ev: Event) => any) | null;
@@ -1068,12 +1069,12 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 		scriptURL: string,
 
 		state:
-			| "parsed"
-			| "installing"
-			| "installed"
-			| "activating"
-			| "activated"
-			| "redundant" = "parsed",
+			"parsed" |
+			"installing" |
+			"installed" |
+			"activating" |
+			"activated" |
+			"redundant" = "parsed",
 	) {
 		super();
 		this.scriptURL = scriptURL;
@@ -1111,7 +1112,8 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
  * ShovelNavigationPreloadManager - Internal implementation of NavigationPreloadManager
  * Note: Standard NavigationPreloadManager has no constructor - instances are created internally
  */
-export class ShovelNavigationPreloadManager implements NavigationPreloadManager {
+export class ShovelNavigationPreloadManager
+	implements NavigationPreloadManager {
 	async disable(): Promise<void> {
 		// No-op in server context
 	}
@@ -1153,8 +1155,7 @@ const kHandleRequest = Symbol("handleRequest");
  */
 export class ShovelServiceWorkerRegistration
 	extends EventTarget
-	implements ServiceWorkerRegistration
-{
+	implements ServiceWorkerRegistration {
 	readonly scope: string;
 	readonly updateViaCache: "imports" | "all" | "none";
 	readonly navigationPreload: NavigationPreloadManager;
@@ -1167,7 +1168,7 @@ export class ShovelServiceWorkerRegistration
 	readonly pushManager: any;
 	onupdatefound: ((ev: Event) => any) | null;
 
-	constructor(scope: string = "/", scriptURL: string = "/") {
+	constructor(scope = "/", scriptURL = "/") {
 		super();
 		this.scope = scope;
 		this.updateViaCache = "imports";
@@ -1447,10 +1448,9 @@ export async function dispatchRequest(
 	registration: ShovelServiceWorkerRegistration,
 	requestOrEvent: Request | ShovelFetchEvent,
 ): Promise<Response> {
-	const event =
-		requestOrEvent instanceof ShovelFetchEvent
-			? requestOrEvent
-			: new ShovelFetchEvent(requestOrEvent);
+	const event = requestOrEvent instanceof ShovelFetchEvent
+		? requestOrEvent
+		: new ShovelFetchEvent(requestOrEvent);
 	return registration[kHandleRequest](event);
 }
 
@@ -1461,8 +1461,7 @@ export async function dispatchRequest(
  */
 export class ShovelServiceWorkerContainer
 	extends EventTarget
-	implements ServiceWorkerContainer
-{
+	implements ServiceWorkerContainer {
 	#registrations: Map<string, ShovelServiceWorkerRegistration>;
 	readonly controller: ServiceWorker | null;
 	readonly ready: Promise<ServiceWorkerRegistration>;
@@ -1489,7 +1488,7 @@ export class ShovelServiceWorkerContainer
 	 * Get registration for a specific scope
 	 */
 	async getRegistration(
-		scope: string = "/",
+		scope = "/",
 	): Promise<ServiceWorkerRegistration | undefined> {
 		return this.#registrations.get(scope);
 	}
@@ -1512,8 +1511,9 @@ export class ShovelServiceWorkerContainer
 			updateViaCache?: "imports" | "all" | "none";
 		},
 	): Promise<ServiceWorkerRegistration> {
-		const url =
-			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
+		const url = typeof scriptURL === "string"
+			? scriptURL
+			: scriptURL.toString();
 		const scope = this.#normalizeScope(options?.scope || "/");
 
 		// Check if registration already exists for this scope
@@ -1784,16 +1784,22 @@ interface NotificationOptions {
 // ============================================================================
 
 export interface ServiceWorkerGlobalsOptions {
+
 	/** ServiceWorker registration instance */
 	registration: ServiceWorkerRegistration;
+
 	/** Directory storage (file system access) - REQUIRED */
 	directories: DirectoryStorage;
+
 	/** Database storage - OPTIONAL */
 	databases?: DatabaseStorage;
+
 	/** Logger storage (logging access) - REQUIRED */
 	loggers: LoggerStorage;
+
 	/** Cache storage (required by ServiceWorkerGlobalScope) - REQUIRED */
 	caches: CacheStorage;
+
 	/** Development mode flag */
 	isDevelopment?: boolean;
 }
@@ -1850,6 +1856,7 @@ export class ServiceWorkerGlobals {
 	get cookieStore(): any {
 		return cookieStoreStorage.get();
 	}
+
 	readonly serviceWorker: any;
 
 	// WorkerGlobalScope required properties (stubs for server context)
@@ -1864,7 +1871,7 @@ export class ServiceWorkerGlobals {
 	readonly crypto: Crypto;
 
 	// WorkerGlobalScope methods (stubs for server context)
-	importScripts(..._urls: (string | URL)[]): void {
+	importScripts(..._urls: Array<string | URL>): void {
 		(self as any).loggers
 			.open("platform")
 			.warn("importScripts() not supported in server context");
@@ -1894,12 +1901,9 @@ export class ServiceWorkerGlobals {
 
 	fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
 		// Determine URL string from input
-		const urlString =
-			typeof input === "string"
-				? input
-				: input instanceof URL
-					? input.href
-					: input.url;
+		const urlString = typeof input === "string"
+			? input
+			: input instanceof URL ? input.href : input.url;
 
 		// Check if relative URL (self-fetch)
 		const isRelative = urlString.startsWith("/") || urlString.startsWith("./");
@@ -1954,42 +1958,46 @@ export class ServiceWorkerGlobals {
 	// Event handlers required by ServiceWorkerGlobalScope
 	// Use Web API types (not our custom implementations) for event handler signatures
 	onactivate:
-		| ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any)
-		| null;
+		((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any) |
+		null;
+
 	oncookiechange: ((this: ServiceWorkerGlobalScope, ev: Event) => any) | null;
 	onfetch:
-		| ((this: ServiceWorkerGlobalScope, ev: globalThis.FetchEvent) => any)
-		| null;
+		((this: ServiceWorkerGlobalScope, ev: globalThis.FetchEvent) => any) | null;
+
 	oninstall:
-		| ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any)
-		| null;
+		((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any) |
+		null;
+
 	onmessage:
-		| ((
-				this: ServiceWorkerGlobalScope,
-				ev: globalThis.ExtendableMessageEvent,
-		  ) => any)
-		| null;
+		((
+			this: ServiceWorkerGlobalScope,
+			ev: globalThis.ExtendableMessageEvent,
+		) => any) | null;
+
 	onmessageerror:
-		| ((this: ServiceWorkerGlobalScope, ev: MessageEvent) => any)
-		| null;
+		((this: ServiceWorkerGlobalScope, ev: MessageEvent) => any) | null;
+
 	onnotificationclick:
-		| ((
-				this: ServiceWorkerGlobalScope,
-				ev: globalThis.NotificationEvent,
-		  ) => any)
-		| null;
+		((
+			this: ServiceWorkerGlobalScope,
+			ev: globalThis.NotificationEvent,
+		) => any) |
+		null;
+
 	onnotificationclose:
-		| ((
-				this: ServiceWorkerGlobalScope,
-				ev: globalThis.NotificationEvent,
-		  ) => any)
-		| null;
+		((
+			this: ServiceWorkerGlobalScope,
+			ev: globalThis.NotificationEvent,
+		) => any) |
+		null;
+
 	onpush:
-		| ((this: ServiceWorkerGlobalScope, ev: globalThis.PushEvent) => any)
-		| null;
+		((this: ServiceWorkerGlobalScope, ev: globalThis.PushEvent) => any) | null;
+
 	onpushsubscriptionchange:
-		| ((this: ServiceWorkerGlobalScope, ev: Event) => any)
-		| null;
+		((this: ServiceWorkerGlobalScope, ev: Event) => any) | null;
+
 	onsync: ((this: ServiceWorkerGlobalScope, ev: SyncEvent) => any) | null;
 
 	// WorkerGlobalScope event handlers (inherited by ServiceWorkerGlobalScope)
@@ -2201,22 +2209,25 @@ export class ServiceWorkerGlobals {
 
 /** Cache provider configuration */
 export interface CacheConfig {
+
 	/** Reified implementation (class or factory from build-time code generation) */
-	impl?:
-		| (new (name: string, options?: any) => Cache)
-		| ((name: string, options?: any) => Cache);
+	impl?: (new (name: string, options?: any) => Cache) |
+		((name: string, options?: any) => Cache);
+
 	/** Additional options passed to the constructor */
 	[key: string]: unknown;
 }
 
 /** Directory (filesystem) provider configuration */
 export interface DirectoryConfig {
+
 	/** Reified implementation (class or factory from build-time code generation) */
-	impl?:
-		| (new (name: string, options?: any) => FileSystemDirectoryHandle)
-		| ((name: string, options?: any) => FileSystemDirectoryHandle);
+	impl?: (new (name: string, options?: any) => FileSystemDirectoryHandle) |
+		((name: string, options?: any) => FileSystemDirectoryHandle);
+
 	/** Custom path for filesystem directories */
 	path?: string;
+
 	/** Additional options passed to the constructor */
 	[key: string]: unknown;
 }
@@ -2232,9 +2243,8 @@ export interface ShovelConfig {
 	directories?: Record<string, DirectoryConfig>;
 	databases?: Record<string, DatabaseConfig>;
 	broadcastChannel?: {
-		impl?:
-			| (new (options: Record<string, unknown>) => BroadcastChannelBackend)
-			| ((options: Record<string, unknown>) => BroadcastChannelBackend);
+		impl?: (new (options: Record<string, unknown>) => BroadcastChannelBackend) |
+			((options: Record<string, unknown>) => BroadcastChannelBackend);
 		[key: string]: unknown;
 	};
 }
@@ -2312,8 +2322,10 @@ export function createDirectoryFactory(
 // ============================================================================
 
 export interface CacheFactoryOptions {
+
 	/** Cache configurations with pre-imported CacheClass (from generated config module) */
 	configs: Record<string, CacheConfig>;
+
 	/** If true, use PostMessageCache (for workers communicating with main thread) */
 	usePostMessage?: boolean;
 }
@@ -2394,10 +2406,12 @@ export interface WorkerErrorMessage {
  * Options for initializing the worker runtime
  */
 export interface InitWorkerRuntimeOptions {
+
 	/** Shovel configuration (from shovel:config) */
 	config: ShovelConfig;
-	/** Whether to use PostMessageCache for cache operations (default: true).
-	 * Set to false when the worker handles requests directly (no message loop). */
+
+	// Whether to use PostMessageCache for cache operations (default: true).
+	// Set to false when the worker handles requests directly (no message loop).
 	usePostMessage?: boolean;
 }
 
@@ -2405,16 +2419,22 @@ export interface InitWorkerRuntimeOptions {
  * Result from initializing the worker runtime
  */
 export interface InitWorkerRuntimeResult {
+
 	/** The ServiceWorker registration instance */
 	registration: ShovelServiceWorkerRegistration;
+
 	/** The installed ServiceWorkerGlobals scope */
 	scope: ServiceWorkerGlobals;
+
 	/** Cache storage instance */
 	caches: CustomCacheStorage;
+
 	/** Directory storage instance */
 	directories: CustomDirectoryStorage;
+
 	/** Database storage instance (if configured) */
 	databases?: CustomDatabaseStorage;
+
 	/** Logger storage instance */
 	loggers: CustomLoggerStorage;
 }
@@ -2455,10 +2475,7 @@ export async function initWorkerRuntime(
 
 	// Create cache storage (PostMessage for message-loop workers, direct for server-in-worker)
 	const caches = new CustomCacheStorage(
-		createCacheFactory({
-			configs: config?.caches ?? {},
-			usePostMessage,
-		}),
+		createCacheFactory({configs: config?.caches ?? {}, usePostMessage}),
 	);
 
 	// Create directory storage - paths are already resolved at build time
@@ -2474,9 +2491,8 @@ export async function initWorkerRuntime(
 	}
 
 	// Create logger storage
-	const loggers = new CustomLoggerStorage((categories) =>
-		getLogger(categories),
-	);
+	const loggers =
+		new CustomLoggerStorage((categories) => getLogger(categories));
 
 	// Create registration and scope
 	const registration = new ShovelServiceWorkerRegistration();
@@ -2498,8 +2514,8 @@ export async function initWorkerRuntime(
 		const bcBackend = isClass(impl)
 			? new impl(opts)
 			: (impl as (options: Record<string, unknown>) => BroadcastChannelBackend)(
-					opts,
-				);
+				opts,
+			);
 		setBroadcastChannelBackend(bcBackend);
 	}
 
@@ -2528,14 +2544,12 @@ export function startWorkerMessageLoop(
 	options: ShovelServiceWorkerRegistration | WorkerMessageLoopOptions,
 ): void {
 	// Support both old signature (just registration) and new signature (options object)
-	const registration =
-		options instanceof ShovelServiceWorkerRegistration
-			? options
-			: options.registration;
-	const databases =
-		options instanceof ShovelServiceWorkerRegistration
-			? undefined
-			: options.databases;
+	const registration = options instanceof ShovelServiceWorkerRegistration
+		? options
+		: options.registration;
+	const databases = options instanceof ShovelServiceWorkerRegistration
+		? undefined
+		: options.databases;
 
 	const messageLogger = getLogger(["shovel", "platform"]);
 	const workerId = Math.random().toString(36).substring(2, 8);
@@ -2689,27 +2703,35 @@ export type LogLevel = "debug" | "info" | "warning" | "error";
 
 /** Sink configuration */
 export interface SinkConfig {
+
 	/** Reified implementation (factory function from build-time code generation) */
 	impl?: (...args: any[]) => unknown;
+
 	/** Additional options passed to the factory (path, maxSize, etc.) */
 	[key: string]: unknown;
 }
 
 /** Logger configuration - matches LogTape's logger config structure */
 export interface LoggerConfig {
+
 	/** Category as string or array for hierarchy. e.g. "myapp" or ["myapp", "db"] */
 	category: string | string[];
+
 	/** Log level for this category. Inherits from parent if not specified. */
 	level?: LogLevel;
+
 	/** Sink names to add. Inherits from parent by default. */
 	sinks?: string[];
+
 	/** Set to "override" to replace parent sinks instead of inherit */
 	parentSinks?: "override";
 }
 
 export interface LoggingConfig {
+
 	/** Named sinks. "console" is always available implicitly. */
 	sinks?: Record<string, SinkConfig>;
+
 	/** Logger configurations. Shovel provides defaults for ["shovel", ...] and ["app", ...] categories. */
 	loggers?: LoggerConfig[];
 }
@@ -2746,7 +2768,7 @@ async function createSink(config: SinkConfig): Promise<any> {
 
 	if (!impl) {
 		throw new Error(
-			`Sink has no impl. Ensure the sink module is configured in shovel.json.`,
+			"Sink has no impl. Ensure the sink module is configured in shovel.json.",
 		);
 	}
 
@@ -2787,9 +2809,7 @@ export async function configureLogging(
 
 	// Create sink instances
 	// Console sink is always available implicitly - use statically imported factory
-	const sinks: Record<string, any> = {
-		console: getConsoleSink(),
-	};
+	const sinks: Record<string, any> = {console: getConsoleSink()};
 
 	// Add user-defined sinks
 	for (const [name, config] of Object.entries(userSinks)) {
@@ -2804,10 +2824,8 @@ export async function configureLogging(
 
 	const mergedLoggers: LoggerConfig[] = [
 		// Shovel defaults (unless overridden by user)
-		...SHOVEL_DEFAULT_LOGGERS.filter(
-			(l) =>
-				!userCategoryKeys.has(JSON.stringify(normalizeCategory(l.category))),
-		),
+		...SHOVEL_DEFAULT_LOGGERS.filter((l) =>
+			!userCategoryKeys.has(JSON.stringify(normalizeCategory(l.category)))),
 		// User loggers
 		...userLoggers,
 	];
@@ -2819,9 +2837,7 @@ export async function configureLogging(
 			lowestLevel?: LogTapeLevel;
 			sinks?: string[];
 			parentSinks?: "override";
-		} = {
-			category: normalizeCategory(loggerConfig.category),
-		};
+		} = {category: normalizeCategory(loggerConfig.category)};
 
 		if (loggerConfig.level) {
 			result.lowestLevel = loggerConfig.level as LogTapeLevel;
@@ -2836,11 +2852,7 @@ export async function configureLogging(
 		return result;
 	});
 
-	await configure({
-		reset: true,
-		sinks,
-		loggers,
-	});
+	await configure({reset: true, sinks, loggers});
 }
 
 // ============================================================================

@@ -33,7 +33,7 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  * ```
  */
 export function trailingSlash(mode: TrailingSlashMode) {
-	return async function* (
+	return async function *(
 		request: Request,
 	): AsyncGenerator<Request, Response | undefined, Response> {
 		const url = new URL(request.url);
@@ -49,8 +49,7 @@ export function trailingSlash(mode: TrailingSlashMode) {
 		if (mode === "strip" && pathname.endsWith("/")) {
 			newPathname = pathname.slice(0, -1);
 		} else if (
-			(mode === "add" || mode === "append") &&
-			!pathname.endsWith("/")
+			(mode === "add" || mode === "append") && !pathname.endsWith("/")
 		) {
 			newPathname = pathname + "/";
 		}
@@ -96,6 +95,7 @@ export function trailingSlash(mode: TrailingSlashMode) {
  * CORS configuration options
  */
 export interface CORSOptions {
+
 	/**
 	 * Allowed origins. Can be:
 	 * - "*" for any origin (not recommended with credentials)
@@ -209,6 +209,7 @@ function getAllowedOrigin(
  * Logger configuration options
  */
 export interface LoggerOptions {
+
 	/**
 	 * LogTape category for the logger
 	 * @default ["app", "router"]
@@ -243,7 +244,7 @@ export function logger(options: LoggerOptions = {}) {
 	const {category = ["app", "router"]} = options;
 	const log = getLogger(category);
 
-	return async function* (
+	return async function *(
 		request: Request,
 	): AsyncGenerator<Request, Response | undefined, Response> {
 		const url = new URL(request.url);
@@ -277,7 +278,7 @@ export function cors(options: CORSOptions = {}) {
 		);
 	}
 
-	return async function* (
+	return async function *(
 		request: Request,
 		_context: any,
 	): AsyncGenerator<Request, Response | undefined, Response> {

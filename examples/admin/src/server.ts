@@ -32,17 +32,10 @@ router.use(assets());
 const admin = createAdmin({
 	database: "main",
 	schema,
-	auth: {
-		providers: ["google"],
-	},
-	branding: {
-		title: "Shovel Admin",
-	},
+	auth: {providers: ["google"]},
+	branding: {title: "Shovel Admin"},
 	// Pass the USWDS asset URLs to the admin
-	assets: {
-		css: uswdsCSS,
-		js: uswdsJS,
-	},
+	assets: {css: uswdsCSS, js: uswdsJS},
 });
 
 router.mount("/admin", admin);

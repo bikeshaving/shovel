@@ -9,8 +9,8 @@
  */
 
 import {
-	generateCodeVerifier,
 	generateCodeChallenge,
+	generateCodeVerifier,
 	generateState,
 } from "./pkce.js";
 
@@ -19,18 +19,25 @@ import {
 // ============================================================================
 
 export interface OAuth2Config {
+
 	/** OAuth2 authorization endpoint */
 	authorizationEndpoint: string;
+
 	/** OAuth2 token endpoint */
 	tokenEndpoint: string;
+
 	/** Client ID */
 	clientID: string;
+
 	/** Client secret (optional for PKCE) */
 	clientSecret?: string;
+
 	/** Redirect URI */
 	redirectURI: string;
+
 	/** OAuth2 scopes */
 	scopes?: string[];
+
 	/** Additional authorization parameters */
 	authorizationParams?: Record<string, string>;
 }
@@ -267,10 +274,7 @@ export class OAuth2Client {
 export async function createSession(
 	cookieStore: any,
 	tokens: OAuth2Tokens,
-	options?: {
-		sessionCookieName?: string;
-		maxAge?: number;
-	},
+	options?: {sessionCookieName?: string; maxAge?: number},
 ): Promise<void> {
 	const sessionCookieName = options?.sessionCookieName || "session";
 	const maxAge = options?.maxAge || tokens.expiresIn || 3600;
@@ -289,9 +293,7 @@ export async function createSession(
  */
 export async function clearSession(
 	cookieStore: any,
-	options?: {
-		sessionCookieName?: string;
-	},
+	options?: {sessionCookieName?: string},
 ): Promise<void> {
 	const sessionCookieName = options?.sessionCookieName || "session";
 	await cookieStore.delete(sessionCookieName);

@@ -75,10 +75,8 @@ export default async function BlogPostView({url}: ViewProps) {
 		throw new NotFound("Blog post not found");
 	}
 
-	const {
-		attributes: {title, description, date, author, authorURL},
-		body,
-	} = post;
+	const {attributes: {title, description, date, author, authorURL}, body} =
+		post;
 
 	const formattedDate = new Date(date).toLocaleDateString("en-US", {
 		year: "numeric",
@@ -96,14 +94,18 @@ export default async function BlogPostView({url}: ViewProps) {
 				<h1>{title}</h1>
 				<p class={metaStyles}>
 					{formattedDate}
-					{author && authorURL ? (
-						<>
-							{" "}
-							by <a href={authorURL}>{author}</a>
-						</>
-					) : author ? (
-						<> by {author}</>
-					) : null}
+					{author && authorURL
+						? (
+							<>
+								{" "}
+								by <a href={authorURL}>{author}</a>
+							</>
+						)
+						: author
+? (
+							<> by {author}</>
+						)
+						: null}
 				</p>
 				<Marked markdown={body} components={components} />
 			</article>

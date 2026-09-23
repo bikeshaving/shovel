@@ -29,6 +29,7 @@ let globalRequestID = 0;
  * Configuration options for PostMessageCache
  */
 export interface PostMessageCacheOptions {
+
 	/** Timeout for cache operations in milliseconds (default: 30000) */
 	timeout?: number;
 }
@@ -66,12 +67,7 @@ export class PostMessageCache extends Cache {
 		return new Promise((resolve, reject) => {
 			pendingRequestsRegistry.set(requestID, {resolve, reject});
 
-			const message = {
-				type,
-				requestID,
-				cacheName: this.#name,
-				...data,
-			};
+			const message = {type, requestID, cacheName: this.#name, ...data};
 
 			if (transfer && transfer.length > 0) {
 				self.postMessage(message, transfer);
@@ -110,10 +106,7 @@ export class PostMessageCache extends Cache {
 
 		const response = await this.#sendRequest(
 			"cache:match",
-			{
-				request: serializedRequest,
-				options,
-			},
+			{request: serializedRequest, options},
 			transfer,
 		);
 
@@ -158,10 +151,7 @@ export class PostMessageCache extends Cache {
 
 		await this.#sendRequest(
 			"cache:put",
-			{
-				request: serializedRequest,
-				response: serializedResponse,
-			},
+			{request: serializedRequest, response: serializedResponse},
 			transfer,
 		);
 	}
@@ -188,10 +178,7 @@ export class PostMessageCache extends Cache {
 
 		return await this.#sendRequest(
 			"cache:delete",
-			{
-				request: serializedRequest,
-				options,
-			},
+			{request: serializedRequest, options},
 			transfer,
 		);
 	}
@@ -221,20 +208,16 @@ export class PostMessageCache extends Cache {
 
 		const keys = await this.#sendRequest(
 			"cache:keys",
-			{
-				request: serializedRequest,
-				options,
-			},
+			{request: serializedRequest, options},
 			transfer,
 		);
 
-		return keys.map(
-			(req: any) =>
-				new Request(req.url, {
-					method: req.method,
-					headers: req.headers,
-					body: req.body,
-				}),
+		return keys.map((req: any) =>
+			new Request(req.url, {
+				method: req.method,
+				headers: req.headers,
+				body: req.body,
+			}),
 		);
 	}
 

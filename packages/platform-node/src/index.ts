@@ -19,21 +19,22 @@ export {Worker as NodeWebWorker} from "@b9g/node-webworker";
 
 // Internal @b9g/* packages
 import {CustomCacheStorage} from "@b9g/cache";
-import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
+import type {HTTPError} from "@b9g/http-errors";
+import {InternalServerError, isHTTPError} from "@b9g/http-errors";
 import {
-	type PlatformDefaults,
+	type EntryPoints,
 	type Handler,
+	type PlatformDefaults,
+	type PlatformESBuildConfig,
 	type Server,
 	type ServerOptions,
-	type PlatformESBuildConfig,
-	type EntryPoints,
 	ServiceWorkerPool,
 } from "@b9g/platform";
 import {
-	ShovelServiceWorkerRegistration,
-	kServiceWorker,
 	createCacheFactory,
+	kServiceWorker,
 	type ShovelConfig,
+	ShovelServiceWorkerRegistration,
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform"]);
@@ -43,14 +44,19 @@ const logger = getLogger(["shovel", "platform"]);
 // ============================================================================
 
 export interface NodePlatformOptions {
+
 	/** Port for development server (default: 7777) */
 	port?: number;
+
 	/** Host for development server (default: localhost) */
 	host?: string;
+
 	/** Working directory for file resolution */
 	cwd?: string;
+
 	/** Number of worker threads (default: 1) */
 	workers?: number;
+
 	/** Shovel configuration (caches, directories, etc.) */
 	config?: ShovelConfig;
 }
@@ -65,8 +71,7 @@ export interface NodePlatformOptions {
  */
 export class NodeServiceWorkerContainer
 	extends EventTarget
-	implements ServiceWorkerContainer
-{
+	implements ServiceWorkerContainer {
 	#platform: NodePlatform;
 	#pool?: ServiceWorkerPool;
 	#cacheStorage?: CustomCacheStorage;
@@ -100,8 +105,9 @@ export class NodeServiceWorkerContainer
 		scriptURL: string | URL,
 		options?: RegistrationOptions,
 	): Promise<ServiceWorkerRegistration> {
-		const urlStr =
-			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
+		const urlStr = typeof scriptURL === "string"
+			? scriptURL
+			: scriptURL.toString();
 		const scope = options?.scope ?? "/";
 
 		// Convert file:// URL to filesystem path, or resolve relative path
@@ -138,14 +144,10 @@ export class NodeServiceWorkerContainer
 		}
 
 		// Create worker pool with cache storage
-		this.#pool = new ServiceWorkerPool(
-			{
-				workerCount: this.#platform.options.workers,
-				createWorker: (entrypoint) => this.#platform.createWorker(entrypoint),
-			},
-			entryPath,
-			this.#cacheStorage,
-		);
+		this.#pool = new ServiceWorkerPool({
+			workerCount: this.#platform.options.workers,
+			createWorker: (entrypoint) => this.#platform.createWorker(entrypoint),
+		}, entryPath, this.#cacheStorage);
 
 		// Initialize workers (waits for ready)
 		await this.#pool.init();
@@ -243,6 +245,7 @@ export class NodePlatform {
 		workers: number;
 		config?: ShovelConfig;
 	};
+
 	#server?: Server;
 
 	constructor(options: NodePlatformOptions = {}) {
@@ -315,14 +318,17 @@ export class NodePlatform {
 				// Convert Node.js request to Web API Request
 				const url = `http://${req.headers.host}${req.url}`;
 				const hasBody = req.method !== "GET" && req.method !== "HEAD";
-				const request = new Request(url, {
-					method: req.method,
-					headers: req.headers as HeadersInit,
-					// Node.js IncomingMessage can be used as body (it's a readable stream)
-					body: hasBody ? (req as any) : undefined,
-					// Required by Node.js when Request has a streaming body
-					duplex: hasBody ? "half" : undefined,
-				} as RequestInit);
+				const request = new Request(
+					url,
+					{
+						method: req.method,
+						headers: req.headers as HeadersInit,
+						// Node.js IncomingMessage can be used as body (it's a readable stream)
+						body: hasBody ? (req as any) : undefined,
+						// Required by Node.js when Request has a streaming body
+						duplex: hasBody ? "half" : undefined,
+					} as RequestInit,
+				);
 
 				// Handle request via provided handler
 				const response = await handler(request);
@@ -578,10 +584,7 @@ process.on("SIGINT", handleShutdown);
 process.on("SIGTERM", handleShutdown);
 `;
 
-		return {
-			supervisor: supervisorCode,
-			worker: prodWorkerCode,
-		};
+		return {supervisor: supervisorCode, worker: prodWorkerCode};
 	}
 
 	/**
@@ -609,12 +612,7 @@ process.on("SIGTERM", handleShutdown);
 	 */
 	getDefaults(): PlatformDefaults {
 		return {
-			caches: {
-				"*": {
-					module: "@b9g/cache/memory",
-					export: "MemoryCache",
-				},
-			},
+			caches: {"*": {module: "@b9g/cache/memory", export: "MemoryCache"}},
 			directories: {
 				server: {
 					module: "@b9g/filesystem/node-fs",

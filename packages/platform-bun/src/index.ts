@@ -14,21 +14,22 @@ import {getLogger} from "@logtape/logtape";
 
 // Internal @b9g/* packages
 import {CustomCacheStorage} from "@b9g/cache";
-import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
+import type {HTTPError} from "@b9g/http-errors";
+import {InternalServerError, isHTTPError} from "@b9g/http-errors";
 import {
-	type PlatformDefaults,
+	type EntryPoints,
 	type Handler,
+	type PlatformDefaults,
+	type PlatformESBuildConfig,
 	type Server,
 	type ServerOptions,
-	type PlatformESBuildConfig,
-	type EntryPoints,
 	ServiceWorkerPool,
 } from "@b9g/platform";
 import {
-	ShovelServiceWorkerRegistration,
-	kServiceWorker,
 	createCacheFactory,
+	kServiceWorker,
 	type ShovelConfig,
+	ShovelServiceWorkerRegistration,
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform"]);
@@ -38,14 +39,19 @@ const logger = getLogger(["shovel", "platform"]);
 // ============================================================================
 
 export interface BunPlatformOptions {
+
 	/** Port for development server (default: 7777) */
 	port?: number;
+
 	/** Host for development server (default: localhost) */
 	host?: string;
+
 	/** Working directory for file resolution */
 	cwd?: string;
+
 	/** Number of worker threads (default: 1) */
 	workers?: number;
+
 	/** Shovel configuration (caches, directories, etc.) */
 	config?: ShovelConfig;
 }
@@ -64,8 +70,7 @@ export interface BunPlatformOptions {
  */
 export class BunServiceWorkerContainer
 	extends EventTarget
-	implements ServiceWorkerContainer
-{
+	implements ServiceWorkerContainer {
 	#platform: BunPlatform;
 	#pool?: ServiceWorkerPool;
 	#cacheStorage?: CustomCacheStorage;
@@ -99,8 +104,9 @@ export class BunServiceWorkerContainer
 		scriptURL: string | URL,
 		options?: RegistrationOptions,
 	): Promise<ServiceWorkerRegistration> {
-		const urlStr =
-			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
+		const urlStr = typeof scriptURL === "string"
+			? scriptURL
+			: scriptURL.toString();
 		const scope = options?.scope ?? "/";
 
 		// Convert file:// URL to filesystem path, or resolve relative path
@@ -137,14 +143,10 @@ export class BunServiceWorkerContainer
 		}
 
 		// Create worker pool using native Web Workers
-		this.#pool = new ServiceWorkerPool(
-			{
-				workerCount: this.#platform.options.workers,
-				createWorker: (entrypoint) => new Worker(entrypoint),
-			},
-			entryPath,
-			this.#cacheStorage,
-		);
+		this.#pool = new ServiceWorkerPool({
+			workerCount: this.#platform.options.workers,
+			createWorker: (entrypoint) => new Worker(entrypoint),
+		}, entryPath, this.#cacheStorage);
 
 		// Initialize workers (waits for ready)
 		await this.#pool.init();
@@ -242,6 +244,7 @@ export class BunPlatform {
 		workers: number;
 		config?: ShovelConfig;
 	};
+
 	#server?: Server;
 
 	constructor(options: BunPlatformOptions = {}) {
@@ -342,10 +345,10 @@ export class BunPlatform {
 			);
 		}
 
-		this.#server = this.createServer((request) => pool.handleRequest(request), {
-			port: this.#options.port,
-			host: this.#options.host,
-		});
+		this.#server = this.createServer(
+			(request) => pool.handleRequest(request),
+			{port: this.#options.port, host: this.#options.host},
+		);
 		await this.#server.listen();
 		return this.#server;
 	}
@@ -491,10 +494,7 @@ process.on("SIGINT", handleShutdown);
 process.on("SIGTERM", handleShutdown);
 `;
 
-		return {
-			supervisor: supervisorCode,
-			worker: prodWorkerCode,
-		};
+		return {supervisor: supervisorCode, worker: prodWorkerCode};
 	}
 
 	/**
@@ -518,12 +518,7 @@ process.on("SIGTERM", handleShutdown);
 	 */
 	getDefaults(): PlatformDefaults {
 		return {
-			caches: {
-				"*": {
-					module: "@b9g/cache/memory",
-					export: "MemoryCache",
-				},
-			},
+			caches: {"*": {module: "@b9g/cache/memory", export: "MemoryCache"}},
 			directories: {
 				server: {
 					module: "@b9g/filesystem/node-fs",

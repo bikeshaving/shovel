@@ -14,7 +14,7 @@
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
-import {test, expect} from "bun:test";
+import {expect, test} from "bun:test";
 import {buildForProduction} from "../src/commands/build.js";
 import {loadConfig} from "../src/utils/config.js";
 import {spawn} from "child_process";
@@ -61,17 +61,21 @@ async function cleanup(paths) {
 async function runBundle(serverDir, timeoutMs = 3000) {
 	return new Promise((resolve, reject) => {
 		const indexPath = join(serverDir, "supervisor.js");
-		const child = spawn("node", [indexPath], {
-			cwd: serverDir,
-			stdio: ["pipe", "pipe", "pipe"],
-			env: {
-				...process.env,
-				// Set PORT to avoid conflicts
-				PORT: "0",
-				// Ensure clean environment
-				NODE_ENV: "test",
+		const child = spawn(
+			"node",
+			[indexPath],
+			{
+				cwd: serverDir,
+				stdio: ["pipe", "pipe", "pipe"],
+				env: {
+					...process.env,
+					// Set PORT to avoid conflicts
+					PORT: "0",
+					// Ensure clean environment
+					NODE_ENV: "test",
+				},
 			},
-		});
+		);
 
 		let stdout = "";
 		let stderr = "";
@@ -125,10 +129,7 @@ self.addEventListener("fetch", (event) => {
 
 console.log("E2E_READY_MARKER");
 				`,
-				"shovel.json": JSON.stringify({
-					port: 3000,
-					workers: 1,
-				}),
+				"shovel.json": JSON.stringify({port: 3000, workers: 1}),
 			});
 			cleanup_paths.push(projectDir);
 
@@ -748,9 +749,7 @@ console.log("ISOLATION_TEST_READY");
 						},
 						loggers: [{category: [], level: "info", sinks: ["console"]}],
 					},
-					caches: {
-						"*": {module: "@b9g/cache/memory", export: "MemoryCache"},
-					},
+					caches: {"*": {module: "@b9g/cache/memory", export: "MemoryCache"}},
 					directories: {
 						uploads: {
 							module: "@b9g/filesystem/memory",
@@ -911,10 +910,7 @@ console.log("BUILD_CONFIG_TEST_READY");
 					port: 3000,
 					workers: 1,
 					build: {
-						define: {
-							__APP_VERSION__: '"1.2.3"',
-							__BUILD_ENV__: '"production"',
-						},
+						define: {__APP_VERSION__: '"1.2.3"', __BUILD_ENV__: '"production"'},
 					},
 				}),
 			});
@@ -990,9 +986,7 @@ self.addEventListener("fetch", (event) => {
 				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
-					build: {
-						minify: true,
-					},
+					build: {minify: true},
 				}),
 			});
 			cleanup_paths.push(projectDir);
@@ -1065,9 +1059,7 @@ self.addEventListener("fetch", (event) => {
 				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
-					build: {
-						sourcemap: "external",
-					},
+					build: {sourcemap: "external"},
 				}),
 			});
 			cleanup_paths.push(projectDir);
@@ -1216,13 +1208,7 @@ export default function myPlugin(options = {}) {
 				"shovel.json": JSON.stringify({
 					port: 3000,
 					workers: 1,
-					build: {
-						plugins: [
-							{
-								module: "./my-plugin.js",
-							},
-						],
-					},
+					build: {plugins: [{module: "./my-plugin.js"}]},
 				}),
 			});
 			cleanup_paths.push(projectDir);
@@ -1283,10 +1269,7 @@ console.log("GLOB_E2E_READY");
 				"public/logo.txt": "I am a logo",
 				"public/favicon.ico": "fake-icon",
 				"public/images/hero.txt": "hero image",
-				"shovel.json": JSON.stringify({
-					port: 3000,
-					workers: 1,
-				}),
+				"shovel.json": JSON.stringify({port: 3000, workers: 1}),
 			});
 			cleanup_paths.push(projectDir);
 
@@ -1347,10 +1330,7 @@ console.log("GLOB_SIDEEFFECT_READY");
 				`,
 				"static/image.png": "fake-png-data",
 				"static/sound.mp3": "fake-mp3-data",
-				"shovel.json": JSON.stringify({
-					port: 3000,
-					workers: 1,
-				}),
+				"shovel.json": JSON.stringify({port: 3000, workers: 1}),
 			});
 			cleanup_paths.push(projectDir);
 
@@ -1371,16 +1351,12 @@ console.log("GLOB_SIDEEFFECT_READY");
 
 			// Verify files ended up in dist/public/
 			expect(
-				await FS.access(join(outDir, "public", "static", "image.png")).then(
-					() => true,
-					() => false,
-				),
+				await FS.access(join(outDir, "public", "static", "image.png"))
+					.then(() => true, () => false),
 			).toBe(true);
 			expect(
-				await FS.access(join(outDir, "public", "static", "sound.mp3")).then(
-					() => true,
-					() => false,
-				),
+				await FS.access(join(outDir, "public", "static", "sound.mp3"))
+					.then(() => true, () => false),
 			).toBe(true);
 
 			// Run the bundle

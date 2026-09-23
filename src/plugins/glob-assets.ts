@@ -74,11 +74,7 @@ export function globAssetsPlugin(): ESBuild.Plugin {
 
 				if (files.length === 0) {
 					return {
-						warnings: [
-							{
-								text: `Glob pattern "${pattern}" matched no files`,
-							},
-						],
+						warnings: [{text: `Glob pattern "${pattern}" matched no files`}],
 						contents: "export default {};",
 						loader: "js" as const,
 					};
@@ -98,9 +94,7 @@ export function globAssetsPlugin(): ESBuild.Plugin {
 					const fileDir = posix.dirname(relativeToRoot);
 
 					// Build per-file attributes, forwarding all original attributes
-					const fileAttrs: Record<string, string> = {
-						...importAttributes,
-					};
+					const fileAttrs: Record<string, string> = {...importAttributes};
 
 					// Adjust assetBase to include subdirectory
 					let fileAssetBase = assetBase;
@@ -130,11 +124,7 @@ export function globAssetsPlugin(): ESBuild.Plugin {
 					`export default { ${exports.join(", ")} };`,
 				].join("\n");
 
-				return {
-					contents,
-					loader: "js" as const,
-					resolveDir,
-				};
+				return {contents, loader: "js" as const, resolveDir};
 			});
 		},
 	};

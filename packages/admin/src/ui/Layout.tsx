@@ -15,7 +15,7 @@ export interface PageLayoutProps {
 	title: string;
 	pageTitle: string;
 	basePath: string;
-	models: readonly {name: string; displayName: string}[];
+	models: ReadonlyArray<{name: string; displayName: string}>;
 	assets?: USWDSAssets;
 	children: Children;
 }
@@ -47,7 +47,8 @@ export function PageLayout({
 					{pageTitle} - {title}
 				</title>
 				<link rel="stylesheet" href={cssUrl} />
-				<style>{`
+				<style>
+					{`
 					/* Admin-specific overrides */
 					.admin-layout {
 						display: flex;
@@ -157,7 +158,8 @@ export function PageLayout({
 						padding-top: 1.5rem;
 						border-top: 1px solid #dfe1e2;
 					}
-				`}</style>
+				`}
+				</style>
 			</head>
 			<body>
 				<div class="admin-layout">

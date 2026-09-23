@@ -1,4 +1,4 @@
-import {test, expect, describe, beforeEach, afterEach, spyOn} from "bun:test";
+import {afterEach, beforeEach, describe, expect, spyOn, test} from "bun:test";
 import {CustomCacheStorage} from "../src/index.js";
 import {MemoryCache} from "../src/memory.js";
 
@@ -113,11 +113,11 @@ describe("MemoryCache", () => {
 
 	test("add() fetches and stores response", async () => {
 		// Mock fetch using spyOn
-		fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (
-			request: Request,
-		) => {
-			return new Response(`Fetched: ${(request as Request).url}`);
-		}) as typeof fetch);
+		fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+			(async (request: Request) => {
+				return new Response(`Fetched: ${(request as Request).url}`);
+			}) as typeof fetch,
+		);
 
 		const request = new Request("http://example.com/api/data");
 		await cache.add(request);
@@ -129,11 +129,11 @@ describe("MemoryCache", () => {
 
 	test("addAll() fetches and stores multiple responses", async () => {
 		// Mock fetch using spyOn
-		fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (
-			request: Request,
-		) => {
-			return new Response(`Fetched: ${(request as Request).url}`);
-		}) as typeof fetch);
+		fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+			(async (request: Request) => {
+				return new Response(`Fetched: ${(request as Request).url}`);
+			}) as typeof fetch,
+		);
 
 		const requests = [
 			new Request("http://example.com/api/data1"),
@@ -214,9 +214,8 @@ describe("MemoryCache", () => {
 		expect(matched2).toBeUndefined();
 
 		// With ignoreVary: true, should match regardless of headers
-		const matched3 = await cache.match(matchingDifferentHeaders, {
-			ignoreVary: true,
-		});
+		const matched3 =
+			await cache.match(matchingDifferentHeaders, {ignoreVary: true});
 		expect(matched3).toBeDefined();
 		expect(await matched3!.text()).toBe("gzipped");
 	});
@@ -225,9 +224,7 @@ describe("MemoryCache", () => {
 		const cache = new MemoryCache("test");
 
 		const request = new Request("http://example.com/api");
-		const response = new Response("data", {
-			headers: {Vary: "*"},
-		});
+		const response = new Response("data", {headers: {Vary: "*"}});
 		await cache.put(request, response);
 
 		// Vary: * means never match
@@ -243,10 +240,7 @@ describe("MemoryCache", () => {
 		const cache = new MemoryCache("test");
 
 		const request = new Request("http://example.com/api", {
-			headers: {
-				"Accept-Encoding": "gzip",
-				"User-Agent": "Chrome",
-			},
+			headers: {"Accept-Encoding": "gzip", "User-Agent": "Chrome"},
 		});
 		const response = new Response("data", {
 			headers: {Vary: "Accept-Encoding, User-Agent"},
@@ -256,10 +250,7 @@ describe("MemoryCache", () => {
 		// Both headers must match
 		const matched1 = await cache.match(
 			new Request("http://example.com/api", {
-				headers: {
-					"Accept-Encoding": "gzip",
-					"User-Agent": "Chrome",
-				},
+				headers: {"Accept-Encoding": "gzip", "User-Agent": "Chrome"},
 			}),
 		);
 		expect(matched1).toBeDefined();
@@ -267,10 +258,7 @@ describe("MemoryCache", () => {
 		// One header different = no match
 		const matched2 = await cache.match(
 			new Request("http://example.com/api", {
-				headers: {
-					"Accept-Encoding": "gzip",
-					"User-Agent": "Firefox",
-				},
+				headers: {"Accept-Encoding": "gzip", "User-Agent": "Firefox"},
 			}),
 		);
 		expect(matched2).toBeUndefined();
@@ -279,26 +267,19 @@ describe("MemoryCache", () => {
 
 describe("CustomCacheStorage message handling (PostMessage coordination)", () => {
 	test("CustomCacheStorage handles cache:match messages", async () => {
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage =
+			new CustomCacheStorage((name) => new MemoryCache(name));
 		const messages: any[] = [];
 
 		// Mock worker that captures postMessage calls
-		const mockWorker = {
-			postMessage: (msg: any) => messages.push(msg),
-		};
+		const mockWorker = {postMessage: (msg: any) => messages.push(msg)};
 
 		// Simulate a cache:match message from worker
 		const matchMessage = {
 			type: "cache:match",
 			requestID: "1",
 			cacheName: "test-cache",
-			request: {
-				url: "http://example.com/test",
-				method: "GET",
-				headers: {},
-			},
+			request: {url: "http://example.com/test", method: "GET", headers: {}},
 		};
 
 		await cacheStorage.handleMessage(mockWorker, matchMessage);
@@ -311,25 +292,18 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 	});
 
 	test("CustomCacheStorage handles cache:put and cache:match", async () => {
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage =
+			new CustomCacheStorage((name) => new MemoryCache(name));
 		const messages: any[] = [];
 
-		const mockWorker = {
-			postMessage: (msg: any) => messages.push(msg),
-		};
+		const mockWorker = {postMessage: (msg: any) => messages.push(msg)};
 
 		// Put a response in the cache
 		const putMessage = {
 			type: "cache:put",
 			requestID: "1",
 			cacheName: "test-cache",
-			request: {
-				url: "http://example.com/test",
-				method: "GET",
-				headers: {},
-			},
+			request: {url: "http://example.com/test", method: "GET", headers: {}},
 			response: {
 				status: 200,
 				statusText: "OK",
@@ -350,11 +324,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 			type: "cache:match",
 			requestID: "2",
 			cacheName: "test-cache",
-			request: {
-				url: "http://example.com/test",
-				method: "GET",
-				headers: {},
-			},
+			request: {url: "http://example.com/test", method: "GET", headers: {}},
 		};
 
 		await cacheStorage.handleMessage(mockWorker, matchMessage);
@@ -370,31 +340,19 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 	});
 
 	test("CustomCacheStorage handles cache:delete", async () => {
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage =
+			new CustomCacheStorage((name) => new MemoryCache(name));
 		const messages: any[] = [];
 
-		const mockWorker = {
-			postMessage: (msg: any) => messages.push(msg),
-		};
+		const mockWorker = {postMessage: (msg: any) => messages.push(msg)};
 
 		// Put then delete
 		await cacheStorage.handleMessage(mockWorker, {
 			type: "cache:put",
 			requestID: "1",
 			cacheName: "test-cache",
-			request: {
-				url: "http://example.com/test",
-				method: "GET",
-				headers: {},
-			},
-			response: {
-				status: 200,
-				statusText: "OK",
-				headers: {},
-				body: "Test",
-			},
+			request: {url: "http://example.com/test", method: "GET", headers: {}},
+			response: {status: 200, statusText: "OK", headers: {}, body: "Test"},
 		});
 
 		messages.length = 0;
@@ -403,11 +361,7 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 			type: "cache:delete",
 			requestID: "2",
 			cacheName: "test-cache",
-			request: {
-				url: "http://example.com/test",
-				method: "GET",
-				headers: {},
-			},
+			request: {url: "http://example.com/test", method: "GET", headers: {}},
 		});
 
 		expect(messages).toHaveLength(1);
@@ -416,14 +370,11 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 	});
 
 	test("CustomCacheStorage handles cache:keys", async () => {
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage =
+			new CustomCacheStorage((name) => new MemoryCache(name));
 		const messages: any[] = [];
 
-		const mockWorker = {
-			postMessage: (msg: any) => messages.push(msg),
-		};
+		const mockWorker = {postMessage: (msg: any) => messages.push(msg)};
 
 		// Put two items
 		await cacheStorage.handleMessage(mockWorker, {
@@ -458,14 +409,11 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 	});
 
 	test("CustomCacheStorage handles cache:clear", async () => {
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage =
+			new CustomCacheStorage((name) => new MemoryCache(name));
 		const messages: any[] = [];
 
-		const mockWorker = {
-			postMessage: (msg: any) => messages.push(msg),
-		};
+		const mockWorker = {postMessage: (msg: any) => messages.push(msg)};
 
 		// Put items then clear
 		await cacheStorage.handleMessage(mockWorker, {
@@ -500,14 +448,11 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 	});
 
 	test("CustomCacheStorage handles errors gracefully", async () => {
-		const cacheStorage = new CustomCacheStorage(
-			(name) => new MemoryCache(name),
-		);
+		const cacheStorage =
+			new CustomCacheStorage((name) => new MemoryCache(name));
 		const messages: any[] = [];
 
-		const mockWorker = {
-			postMessage: (msg: any) => messages.push(msg),
-		};
+		const mockWorker = {postMessage: (msg: any) => messages.push(msg)};
 
 		// Send invalid message (missing required fields)
 		await cacheStorage.handleMessage(mockWorker, {

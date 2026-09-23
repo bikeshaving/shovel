@@ -6,7 +6,7 @@
  * to be properly wired up for memory caches in workers.
  */
 
-import {describe, it, expect, beforeAll, afterAll} from "bun:test";
+import {afterAll, beforeAll, describe, expect, it} from "bun:test";
 import {ServiceWorkerPool} from "../src/index.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory";
@@ -110,11 +110,11 @@ startWorkerMessageLoop(registration);
 		cacheStorage = new CustomCacheStorage((name) => new MemoryCache(name));
 
 		// Create pool with 2 workers
-		pool = new ServiceWorkerPool(
-			{workerCount: 2, requestTimeout: 5000, cwd: tempDir},
-			bundledWorkerPath,
-			cacheStorage,
-		);
+		pool = new ServiceWorkerPool({
+			workerCount: 2,
+			requestTimeout: 5000,
+			cwd: tempDir,
+		}, bundledWorkerPath, cacheStorage);
 
 		await pool.init();
 	});

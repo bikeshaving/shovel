@@ -1,4 +1,4 @@
-import {describe, test, expect, beforeEach, afterEach} from "bun:test";
+import {afterEach, beforeEach, describe, expect, test} from "bun:test";
 import {cors, logger, trailingSlash} from "../src/middleware.js";
 import {Router} from "@b9g/router";
 import {configure, type LogRecord} from "@logtape/logtape";
@@ -14,16 +14,10 @@ describe("logger middleware", () => {
 		logs = [];
 		await configure({
 			reset: true,
-			sinks: {
-				test: (record: LogRecord) => logs.push(record),
-			},
+			sinks: {test: (record: LogRecord) => logs.push(record)},
 			loggers: [
 				{category: ["app"], lowestLevel: "info", sinks: ["test"]},
-				{
-					category: ["logtape", "meta"],
-					lowestLevel: "warning",
-					sinks: [],
-				},
+				{category: ["logtape", "meta"], lowestLevel: "warning", sinks: []},
 			],
 			// ["app"] captures ["app", "router"] via LogTape hierarchy
 		});
@@ -57,13 +51,11 @@ describe("logger middleware", () => {
 	test("passes through response unchanged", async () => {
 		const router = new Router();
 		router.use(logger());
-		router.route("/test").get(
-			() =>
-				new Response("hello", {
-					status: 201,
-					headers: {"X-Custom": "value"},
-				}),
-		);
+		router
+			.route("/test")
+			.get(() =>
+				new Response("hello", {status: 201, headers: {"X-Custom": "value"}}),
+			);
 
 		const request = new Request("http://localhost/test");
 		const response = await router.handle(request);
@@ -89,20 +81,10 @@ describe("logger middleware", () => {
 		// Configure a custom category
 		await configure({
 			reset: true,
-			sinks: {
-				test: (record: LogRecord) => logs.push(record),
-			},
+			sinks: {test: (record: LogRecord) => logs.push(record)},
 			loggers: [
-				{
-					category: ["app", "http"],
-					lowestLevel: "info",
-					sinks: ["test"],
-				},
-				{
-					category: ["logtape", "meta"],
-					lowestLevel: "warning",
-					sinks: [],
-				},
+				{category: ["app", "http"], lowestLevel: "info", sinks: ["test"]},
+				{category: ["logtape", "meta"], lowestLevel: "warning", sinks: []},
 			],
 		});
 
@@ -399,7 +381,7 @@ describe("trailingSlash middleware", () => {
 		const router = new Router();
 		router.use(trailingSlash("strip"));
 		// Error-handling middleware that catches NotFound and returns a 404 Response
-		router.use(async function* (request) {
+		router.use(async function *(request) {
 			try {
 				const response: Response = yield request;
 				return response;

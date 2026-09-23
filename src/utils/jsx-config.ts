@@ -6,7 +6,7 @@
  */
 
 import {readFile} from "fs/promises";
-import {join, dirname} from "path";
+import {dirname, join} from "path";
 import {existsSync} from "fs";
 import type {BuildOptions} from "esbuild";
 
@@ -168,10 +168,7 @@ export async function loadJSXConfig(projectRoot: string): Promise<JSXOptions> {
 		if (hasJSXConfig) {
 			const tsOptions = mapTSConfigToESBuild(compilerOptions);
 			// Merge with defaults (tsconfig takes precedence)
-			return {
-				...CRANK_JSX_DEFAULTS,
-				...tsOptions,
-			};
+			return {...CRANK_JSX_DEFAULTS, ...tsOptions};
 		}
 	}
 

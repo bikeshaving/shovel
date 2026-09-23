@@ -1,4 +1,4 @@
-import {test, expect, describe, beforeEach, afterEach, mock} from "bun:test";
+import {afterEach, beforeEach, describe, expect, mock, test} from "bun:test";
 import {NodePlatform} from "../src/index.js";
 import {tmpdir} from "os";
 import {join} from "path";
@@ -13,9 +13,7 @@ describe("NodePlatform", () => {
 
 	beforeEach(() => {
 		tempDir = mkdtempSync(join(tmpdir(), "node-platform-test-"));
-		platform = new NodePlatform({
-			cwd: tempDir,
-		});
+		platform = new NodePlatform({cwd: tempDir});
 	});
 
 	afterEach(async () => {
@@ -169,10 +167,7 @@ describe("NodePlatform", () => {
 	});
 
 	test("should use custom port and host", () => {
-		const customPlatform = new NodePlatform({
-			port: 9090,
-			host: "0.0.0.0",
-		});
+		const customPlatform = new NodePlatform({port: 9090, host: "0.0.0.0"});
 
 		expect((customPlatform as any).options.port).toBe(9090);
 		expect((customPlatform as any).options.host).toBe("0.0.0.0");
@@ -180,9 +175,7 @@ describe("NodePlatform", () => {
 
 	test("should use custom cwd", () => {
 		const customCwd = "/custom/path";
-		const customPlatform = new NodePlatform({
-			cwd: customCwd,
-		});
+		const customPlatform = new NodePlatform({cwd: customCwd});
 
 		expect((customPlatform as any).options.cwd).toBe(customCwd);
 	});

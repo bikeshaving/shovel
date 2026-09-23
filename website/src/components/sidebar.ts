@@ -3,22 +3,20 @@ import {css} from "@emotion/css";
 import type {Element} from "@b9g/crank/standalone";
 import type {DocInfo} from "../models/document.js";
 
-export function Sidebar({
-	docs,
-	title,
-	url,
-	urlPrefix = "",
-}: {
-	docs: Array<DocInfo>;
-	url: string;
-	title: string;
-	urlPrefix?: string;
-}) {
-	const links: Array<Element> = [];
+export function Sidebar(
+	{docs, title, url, urlPrefix = ""}: {
+		docs: DocInfo[];
+		url: string;
+		title: string;
+		urlPrefix?: string;
+	},
+) {
+	const links: Element[] = [];
 	for (const doc of docs) {
 		if (doc.attributes.publish) {
 			const docUrl = `${urlPrefix}${doc.url}`;
-			links.push(jsx`
+			links.push(
+				jsx`
 				<div class=${css`
 					margin: 10px 0;
 				`}>
@@ -37,7 +35,8 @@ export function Sidebar({
 						`}
 					>${doc.attributes.title}</a>
 				</div>
-			`);
+			`,
+			);
 		}
 	}
 

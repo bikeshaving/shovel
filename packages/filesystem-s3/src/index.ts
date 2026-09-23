@@ -116,14 +116,17 @@ export class S3FileSystemFileHandle implements FileSystemFileHandle {
 				offset += chunk.length;
 			}
 
-			return new File([arrayBuffer], this.name, {
-				lastModified: response.LastModified?.getTime() || Date.now(),
-				type: response.ContentType || this.#getMimeType(this.#key),
-			});
+			return new File(
+				[arrayBuffer],
+				this.name,
+				{
+					lastModified: response.LastModified?.getTime() || Date.now(),
+					type: response.ContentType || this.#getMimeType(this.#key),
+				},
+			);
 		} catch (error: any) {
 			if (
-				error.name === "NoSuchKey" ||
-				error.$metadata?.httpStatusCode === 404
+				error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404
 			) {
 				throw new DOMException("File not found", "NotFoundError");
 			}
@@ -209,15 +212,11 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 			// Check if file exists
 			try {
 				const {HeadObjectCommand} = await import("@aws-sdk/client-s3");
-				const command = new HeadObjectCommand({
-					Bucket: this.#bucket,
-					Key: key,
-				});
+				const command = new HeadObjectCommand({Bucket: this.#bucket, Key: key});
 				await this.#s3Client.send(command);
 			} catch (error: any) {
 				if (
-					error.name === "NoSuchKey" ||
-					error.$metadata?.httpStatusCode === 404
+					error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404
 				) {
 					throw new DOMException("File not found", "NotFoundError");
 				}
@@ -292,15 +291,11 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		// Delete the object itself (or directory marker)
 		try {
 			const {DeleteObjectCommand} = await import("@aws-sdk/client-s3");
-			const command = new DeleteObjectCommand({
-				Bucket: this.#bucket,
-				Key: key,
-			});
+			const command = new DeleteObjectCommand({Bucket: this.#bucket, Key: key});
 			await this.#s3Client.send(command);
 		} catch (error: any) {
 			if (
-				error.name === "NoSuchKey" ||
-				error.$metadata?.httpStatusCode === 404
+				error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404
 			) {
 				throw new DOMException("Entry not found", "NotFoundError");
 			}
@@ -321,12 +316,15 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 	[Symbol.asyncIterator](): any {
 		return this.entries();
 	}
+
 	entries(): any {
 		return this.#generateEntries();
 	}
+
 	keys(): any {
 		return this.#generateKeys();
 	}
+
 	values(): any {
 		return this.#generateValues();
 	}
@@ -351,8 +349,7 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 						const name = object.Key.substring(listPrefix.length);
 						// Skip directory markers and items with slashes (subdirectories)
 						if (
-							!name.includes("/") &&
-							!name.endsWith(".shovel_directory_marker")
+							!name.includes("/") && !name.endsWith(".shovel_directory_marker")
 						) {
 							yield [
 								name,
@@ -371,10 +368,9 @@ export class S3FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 			if (response.CommonPrefixes) {
 				for (const prefix of response.CommonPrefixes) {
 					if (prefix.Prefix) {
-						const name = prefix.Prefix.substring(listPrefix.length).replace(
-							/\/$/,
-							"",
-						);
+						const name = prefix
+							.Prefix.substring(listPrefix.length)
+							.replace(/\/$/, "");
 						if (name) {
 							yield [
 								name,
@@ -432,10 +428,7 @@ export class S3FileSystemAdapter {
 	#bucket: string;
 
 	constructor(s3Client: any, bucket: string, config: FileSystemConfig = {}) {
-		this.#config = {
-			name: "s3",
-			...config,
-		};
+		this.#config = {name: "s3", ...config};
 		this.#s3Client = s3Client;
 		this.#bucket = bucket;
 	}

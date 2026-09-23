@@ -34,29 +34,40 @@ function base64ToUint8Array(base64: string): Uint8Array {
 // ============================================================================
 
 export interface RedisCacheOptions {
+
 	/** Redis connection options */
 	redis?: RedisClientOptions;
+
 	/** Cache name prefix for Redis keys */
 	prefix?: string;
+
 	/** Default TTL in seconds (0 = no expiration) */
 	defaultTTL?: number;
+
 	/** Maximum cache entry size in bytes */
 	maxEntrySize?: number;
 }
 
 interface CacheEntry {
+
 	/** Response status code */
 	status: number;
+
 	/** Response status text */
 	statusText: string;
+
 	/** Response headers as key-value pairs */
 	headers: Record<string, string>;
+
 	/** Response body as base64-encoded string */
 	body: string;
+
 	/** Timestamp when cached */
 	cachedAt: number;
+
 	/** TTL in seconds (0 = no expiration) */
 	TTL: number;
+
 	/** Request headers for Vary checking */
 	requestHeaders: Record<string, string>;
 }

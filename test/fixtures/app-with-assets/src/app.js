@@ -14,8 +14,7 @@ self.addEventListener("fetch", (event) => {
 			// App routes
 			const url = new URL(event.request.url);
 			if (url.pathname === "/") {
-				return new Response(
-					`<!DOCTYPE html>
+				return new Response(`<!DOCTYPE html>
 <html>
 	<head>
 		<title>Assets Test</title>
@@ -25,11 +24,7 @@ self.addEventListener("fetch", (event) => {
 		<h1>App with Assets</h1>
 		<script src="${jsUrl}"></script>
 	</body>
-</html>`,
-					{
-						headers: {"content-type": "text/html; charset=utf-8"},
-					},
-				);
+</html>`, {headers: {"content-type": "text/html; charset=utf-8"}});
 			}
 
 			return new Response("Not found", {status: 404});

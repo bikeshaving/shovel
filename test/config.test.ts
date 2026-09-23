@@ -4,9 +4,9 @@
 
 /* eslint-disable no-restricted-properties -- Tests need direct process.env access */
 
-import {describe, it, expect, beforeAll, afterAll} from "bun:test";
+import {afterAll, beforeAll, describe, expect, it} from "bun:test";
 import {loadConfig, Parser} from "../src/utils/config.js";
-import {mkdtempSync, writeFileSync, rmSync} from "fs";
+import {mkdtempSync, rmSync, writeFileSync} from "fs";
 import {join} from "path";
 import {tmpdir} from "os";
 
@@ -220,13 +220,7 @@ describe("loadConfig precedence", () => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "package.json"),
-					JSON.stringify({
-						name: "test-app",
-						shovel: {
-							port: 7000,
-							workers: 3,
-						},
-					}),
+					JSON.stringify({name: "test-app", shovel: {port: 7000, workers: 3}}),
 				);
 
 				const config = loadConfig(testDir);
@@ -245,10 +239,7 @@ describe("loadConfig precedence", () => {
 				);
 				writeFileSync(
 					join(testDir, "package.json"),
-					JSON.stringify({
-						name: "test-app",
-						shovel: {port: 7000},
-					}),
+					JSON.stringify({name: "test-app", shovel: {port: 7000}}),
 				);
 
 				const config = loadConfig(testDir);
@@ -330,10 +321,7 @@ describe("loadConfig precedence", () => {
 					join(testDir, "shovel.json"),
 					JSON.stringify({
 						databases: {
-							main: {
-								module: "@b9g/zen/postgres",
-								url: "$DATABASE_URL",
-							},
+							main: {module: "@b9g/zen/postgres", url: "$DATABASE_URL"},
 						},
 					}),
 				);
@@ -349,12 +337,7 @@ describe("loadConfig precedence", () => {
 				writeFileSync(
 					join(testDir, "shovel.json"),
 					JSON.stringify({
-						caches: {
-							redis: {
-								module: "@b9g/cache/redis",
-								url: "$REDIS_URL",
-							},
-						},
+						caches: {redis: {module: "@b9g/cache/redis", url: "$REDIS_URL"}},
 					}),
 				);
 
@@ -369,10 +352,7 @@ describe("loadConfig precedence", () => {
 					join(testDir, "shovel.json"),
 					JSON.stringify({
 						databases: {
-							main: {
-								module: "@b9g/zen/postgres",
-								url: "$DATABASE_URL",
-							},
+							main: {module: "@b9g/zen/postgres", url: "$DATABASE_URL"},
 						},
 					}),
 				);
@@ -391,10 +371,7 @@ describe("loadConfig precedence", () => {
 					join(testDir, "shovel.json"),
 					JSON.stringify({
 						databases: {
-							main: {
-								module: "@b9g/zen/postgres",
-								url: "$DATABASE_URL ?? null",
-							},
+							main: {module: "@b9g/zen/postgres", url: "$DATABASE_URL ?? null"},
 						},
 					}),
 				);
@@ -413,9 +390,7 @@ describe("loadConfig precedence", () => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "shovel.json"),
-					JSON.stringify({
-						build: {minify: "$MODE == production"},
-					}),
+					JSON.stringify({build: {minify: "$MODE == production"}}),
 				);
 				process.env.MODE = "production";
 
@@ -430,9 +405,7 @@ describe("loadConfig precedence", () => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "shovel.json"),
-					JSON.stringify({
-						build: {minify: "$MODE == production"},
-					}),
+					JSON.stringify({build: {minify: "$MODE == production"}}),
 				);
 				process.env.MODE = "development";
 
@@ -447,9 +420,7 @@ describe("loadConfig precedence", () => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "shovel.json"),
-					JSON.stringify({
-						build: {treeShaking: "$MODE == production"},
-					}),
+					JSON.stringify({build: {treeShaking: "$MODE == production"}}),
 				);
 				process.env.MODE = "production";
 
@@ -464,9 +435,7 @@ describe("loadConfig precedence", () => {
 				clearEnv();
 				writeFileSync(
 					join(testDir, "shovel.json"),
-					JSON.stringify({
-						build: {minify: true},
-					}),
+					JSON.stringify({build: {minify: true}}),
 				);
 
 				const config = loadConfig(testDir);

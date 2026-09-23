@@ -1,8 +1,7 @@
 #!/usr/bin/env sh
-//bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
-/* eslint-disable no-console -- CLI app uses console for terminal output */
+// bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
 
-import {intro, outro, text, select, confirm, spinner} from "@clack/prompts";
+import {confirm, intro, outro, select, spinner, text} from "@clack/prompts";
 import {mkdir, writeFile} from "fs/promises";
 import {join, resolve} from "path";
 import {existsSync} from "fs";
@@ -31,8 +30,9 @@ function detectPlatform(): "node" | "bun" {
 
 function validateProjectName(name: string): string | undefined {
 	if (!name) return "Project name is required";
-	if (!/^[a-z0-9-]+$/.test(name))
+	if (!/^[a-z0-9-]+$/.test(name)) {
 		return "Use lowercase letters, numbers, and hyphens only";
+	}
 	return undefined;
 }
 
@@ -218,10 +218,8 @@ async function main() {
 		if (flags.jsx !== undefined) {
 			useJSX = flags.jsx;
 		} else {
-			const jsxResult = await confirm({
-				message: "Use JSX?",
-				initialValue: true,
-			});
+			const jsxResult =
+				await confirm({message: "Use JSX?", initialValue: true});
 
 			if (typeof jsxResult === "symbol") {
 				outro("Project creation cancelled");
@@ -332,22 +330,16 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 	await mkdir(join(projectPath, "src"), {recursive: true});
 
 	// Create package.json
-	const ext =
-		config.uiFramework === "crank" && config.useJSX
-			? config.typescript
-				? "tsx"
-				: "jsx"
-			: config.typescript
-				? "ts"
-				: "js";
+	const ext = config.uiFramework === "crank" && config.useJSX
+		? config.typescript ? "tsx" : "jsx"
+		: config.typescript ? "ts" : "js";
 	const isCrank = config.uiFramework === "crank";
 	const hasClientBundle =
 		config.template === "static-site" || config.template === "full-stack";
 	const entryFile = hasClientBundle ? `src/server.${ext}` : `src/app.${ext}`;
-	const startCmd =
-		config.platform === "bun"
-			? "bun dist/server/supervisor.js"
-			: "node dist/server/supervisor.js";
+	const startCmd = config.platform === "bun"
+		? "bun dist/server/supervisor.js"
+		: "node dist/server/supervisor.js";
 	const dependencies: Record<string, string> = {
 		"@b9g/router": "^0.2.0",
 		"@b9g/shovel": "^0.2.0",
@@ -452,10 +444,10 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 	// Create ESLint config
 	if (hasClientBundle) {
 		const crankImport = isCrank
-			? `import crank from "eslint-plugin-crank";\n`
+			? "import crank from \"eslint-plugin-crank\";\n"
 			: "";
 		const crankConfig = isCrank
-			? `\n  { plugins: { crank }, rules: crank.configs.recommended.rules },`
+			? "\n  { plugins: { crank }, rules: crank.configs.recommended.rules },"
 			: "";
 		let eslintConfig: string;
 		if (config.typescript) {
@@ -472,7 +464,7 @@ export default tseslint.config(
 			let langOpts = "globals: globals.browser";
 			let filesOpt = "";
 			if (isCrank && config.useJSX) {
-				filesOpt = `files: ["**/*.{js,jsx}"], `;
+				filesOpt = "files: [\"**/*.{js,jsx}\"], ";
 				langOpts += ", parserOptions: { ecmaFeatures: { jsx: true } }";
 			}
 			eslintConfig = `import js from "@eslint/js";
@@ -780,7 +772,7 @@ self.addEventListener("fetch", (event) => {
 `,
 	};
 	if (t) {
-		files[`env.d.ts`] = `declare module "htmx.org";
+		files["env.d.ts"] = `declare module "htmx.org";
 `;
 	}
 	return files;
@@ -854,7 +846,7 @@ Alpine.start();
 `,
 	};
 	if (t) {
-		files[`env.d.ts`] = `declare module "alpinejs" {
+		files["env.d.ts"] = `declare module "alpinejs" {
   interface Alpine {
     start(): void;
     plugin(plugin: unknown): void;
@@ -873,12 +865,8 @@ function generateStaticSiteCrank(
 ): Record<string, string> {
 	const t = config.typescript;
 	const ext = config.useJSX
-		? config.typescript
-			? "tsx"
-			: "jsx"
-		: config.typescript
-			? "ts"
-			: "js";
+		? config.typescript ? "tsx" : "jsx"
+		: config.typescript ? "ts" : "js";
 
 	if (config.useJSX) {
 		return {
@@ -1258,7 +1246,7 @@ self.addEventListener("fetch", (event) => {
 `,
 	};
 	if (t) {
-		files[`env.d.ts`] = `declare module "htmx.org";
+		files["env.d.ts"] = `declare module "htmx.org";
 `;
 	}
 	return files;
@@ -1355,7 +1343,7 @@ Alpine.start();
 `,
 	};
 	if (t) {
-		files[`env.d.ts`] = `declare module "alpinejs" {
+		files["env.d.ts"] = `declare module "alpinejs" {
   interface Alpine {
     start(): void;
     plugin(plugin: unknown): void;
@@ -1372,12 +1360,8 @@ Alpine.start();
 function generateFullStackCrank(config: ProjectConfig): Record<string, string> {
 	const t = config.typescript;
 	const ext = config.useJSX
-		? config.typescript
-			? "tsx"
-			: "jsx"
-		: config.typescript
-			? "ts"
-			: "js";
+		? config.typescript ? "tsx" : "jsx"
+		: config.typescript ? "ts" : "js";
 
 	if (config.useJSX) {
 		return {
@@ -1608,14 +1592,9 @@ function generateReadme(config: ProjectConfig): string {
 		crank: " using [Crank.js](https://crank.js.org) with hydration",
 	};
 
-	const ext =
-		config.uiFramework === "crank" && config.useJSX
-			? config.typescript
-				? "tsx"
-				: "jsx"
-			: config.typescript
-				? "ts"
-				: "js";
+	const ext = config.uiFramework === "crank" && config.useJSX
+		? config.typescript ? "tsx" : "jsx"
+		: config.typescript ? "ts" : "js";
 	const isCrank = config.uiFramework === "crank";
 	const hasClientBundle =
 		config.template === "static-site" || config.template === "full-stack";

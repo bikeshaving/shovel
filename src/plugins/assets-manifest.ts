@@ -18,16 +18,16 @@
  * all assets have been processed.
  */
 
-import * as ESBuild from "esbuild";
+import type * as ESBuild from "esbuild";
 import {
 	existsSync,
-	readFileSync,
-	writeFileSync,
 	readdirSync,
+	readFileSync,
 	renameSync,
 	unlinkSync,
+	writeFileSync,
 } from "node:fs";
-import {join, isAbsolute, resolve, basename} from "node:path";
+import {basename, isAbsolute, join, resolve} from "node:path";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "assets"]);
@@ -52,11 +52,7 @@ export interface SharedAssetsManifest {
  * Create a shared manifest object that both plugins can access.
  */
 export function createSharedManifest(outDir: string): SharedAssetsManifest {
-	return {
-		assets: {},
-		generated: "",
-		config: {outDir},
-	};
+	return {assets: {}, generated: "", config: {outDir}};
 }
 
 /**
@@ -68,7 +64,7 @@ export function createSharedManifest(outDir: string): SharedAssetsManifest {
  */
 export function createAssetsManifestPlugin(
 	projectRoot: string,
-	outDir: string = "dist",
+	outDir = "dist",
 	sharedManifest?: SharedAssetsManifest,
 ): ESBuild.Plugin {
 	// Resolve outDir to absolute path once
@@ -81,10 +77,10 @@ export function createAssetsManifestPlugin(
 		name: "shovel-assets-manifest",
 		setup(build) {
 			// Intercept imports of "shovel:assets"
-			build.onResolve({filter: /^shovel:assets$/}, (args) => ({
-				path: args.path,
-				namespace: "shovel-assets",
-			}));
+			build.onResolve(
+				{filter: /^shovel:assets$/},
+				(args) => ({path: args.path, namespace: "shovel-assets"}),
+			);
 
 			// Return a placeholder during build - replaced in onEnd after assets are processed
 			build.onLoad({filter: /.*/, namespace: "shovel-assets"}, () => {
@@ -165,13 +161,12 @@ export function createAssetsManifestPlugin(
 					// absWorkingDir there is no reliable base, so fall back to the
 					// directory scan.
 					const metaBase = build.initialOptions.absWorkingDir;
-					const metaOutputs =
-						result.metafile && metaBase
-							? Object.keys(result.metafile.outputs)
-									.map((o) => resolve(metaBase, o))
-									.filter((o) => o.startsWith(serverDir) && o.endsWith(".js"))
-									.map((o) => basename(o))
-							: null;
+					const metaOutputs = result.metafile && metaBase
+						? Object.keys(result.metafile.outputs)
+							.map((o) => resolve(metaBase, o))
+							.filter((o) => o.startsWith(serverDir) && o.endsWith(".js"))
+							.map((o) => basename(o))
+						: null;
 					if (metaOutputs && metaOutputs.length > 0) {
 						jsFiles = metaOutputs;
 					} else {
@@ -220,7 +215,7 @@ export function createAssetsManifestPlugin(
 								errors.push({
 									text:
 										`${jsFile} still contains the asset manifest ` +
-										`placeholder after replacement`,
+										"placeholder after replacement",
 								});
 								continue;
 							}

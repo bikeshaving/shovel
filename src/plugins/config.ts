@@ -8,19 +8,20 @@
  * Also generates typed overloads for storage APIs in dist/server/shovel.d.ts.
  */
 
-import * as ESBuild from "esbuild";
+import type * as ESBuild from "esbuild";
 import {mkdirSync, writeFileSync} from "node:fs";
-import {join, isAbsolute} from "node:path";
+import {isAbsolute, join} from "node:path";
 import {
-	loadRawConfig,
 	generateConfigModule,
 	generateStorageTypes,
+	loadRawConfig,
 } from "../utils/config.js";
 
 /**
  * Options for the shovel:config plugin
  */
 export interface ConfigPluginOptions {
+
 	/** Platform-specific defaults for directories, caches, etc. */
 	platformDefaults?: {
 		directories?: Record<
@@ -32,8 +33,10 @@ export interface ConfigPluginOptions {
 			{module: string; export?: string; [key: string]: unknown}
 		>;
 	};
+
 	/** Lifecycle options for --lifecycle flag */
 	lifecycle?: {
+
 		/** Lifecycle stage to run: "install" or "activate" */
 		stage: "install" | "activate";
 	};
@@ -56,7 +59,7 @@ export interface ConfigPluginOptions {
  */
 export function createConfigPlugin(
 	projectRoot: string,
-	outDir: string = "dist",
+	outDir = "dist",
 	options: ConfigPluginOptions = {},
 ): ESBuild.Plugin {
 	// Resolve outDir to absolute path once
@@ -69,10 +72,10 @@ export function createConfigPlugin(
 		name: "shovel-config",
 		setup(build) {
 			// Intercept imports of "shovel:config"
-			build.onResolve({filter: /^shovel:config$/}, (args) => ({
-				path: args.path,
-				namespace: "shovel-config",
-			}));
+			build.onResolve(
+				{filter: /^shovel:config$/},
+				(args) => ({path: args.path, namespace: "shovel-config"}),
+			);
 
 			// Return generated config module code
 			// Reload config on each build to support hot reload of shovel.json changes

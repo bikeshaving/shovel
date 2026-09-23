@@ -53,9 +53,7 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 	#ensureConnection(): void {
 		if (this.#wsReady) return;
 		this.#wsReady = this.#connect().catch((err) => {
-			logger.error("PubSub WebSocket connection failed: {error}", {
-				error: err,
-			});
+			logger.error("PubSub WebSocket connection failed: {error}", {error: err});
 			// Allow retry on next subscribe() call
 			this.#wsReady = null;
 		});
@@ -83,9 +81,7 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 					for (const cb of cbs) cb(data);
 				}
 			} catch (err) {
-				logger.debug("Failed to parse pubsub message: {error}", {
-					error: err,
-				});
+				logger.debug("Failed to parse pubsub message: {error}", {error: err});
 			}
 		});
 	}

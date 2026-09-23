@@ -78,14 +78,16 @@ export default async function BlogListView({url}: ViewProps) {
 				<h1>Blog</h1>
 				<ul class={postListStyles}>
 					{publishedPosts.map((post) => {
-						const formattedDate = new Date(
-							post.attributes.date,
-						).toLocaleDateString("en-US", {
-							year: "numeric",
-							month: "long",
-							day: "numeric",
-							timeZone: "UTC",
-						});
+						const formattedDate =
+							new Date(post.attributes.date).toLocaleDateString(
+								"en-US",
+								{
+									year: "numeric",
+									month: "long",
+									day: "numeric",
+									timeZone: "UTC",
+								},
+							);
 
 						return (
 							<li class={postItemStyles}>

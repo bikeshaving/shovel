@@ -338,8 +338,7 @@ export async function promise_rejects_dom(
 		if (e instanceof DOMException) {
 			expect(e.name).toBe(name);
 		} else if (
-			e instanceof Error &&
-			e.message.includes("Expected promise to reject")
+			e instanceof Error && e.message.includes("Expected promise to reject")
 		) {
 			throw e; // Re-throw our assertion error
 		} else if (e instanceof Error && "name" in e) {
@@ -373,8 +372,7 @@ export async function promise_rejects_js(
 		);
 	} catch (e) {
 		if (
-			e instanceof Error &&
-			e.message.includes("Expected promise to reject")
+			e instanceof Error && e.message.includes("Expected promise to reject")
 		) {
 			throw e; // Re-throw our assertion error
 		}
@@ -400,8 +398,7 @@ export async function promise_rejects_exactly(
 		);
 	} catch (e) {
 		if (
-			e instanceof Error &&
-			e.message.includes("Expected promise to reject")
+			e instanceof Error && e.message.includes("Expected promise to reject")
 		) {
 			throw e;
 		}

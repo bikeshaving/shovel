@@ -351,9 +351,7 @@ const router = new Router();
 
 // Homepage
 router.route("/").get(() => {
-	return new Response(HOMEPAGE_HTML, {
-		headers: {"Content-Type": "text/html"},
-	});
+	return new Response(HOMEPAGE_HTML, {headers: {"Content-Type": "text/html"}});
 });
 
 // Echo endpoint - handles all methods on any path
@@ -363,10 +361,7 @@ router.route("/*").all(async (request) => {
 
 	// Handle preflight
 	if (request.method === "OPTIONS") {
-		return new Response(null, {
-			status: 204,
-			headers: corsHeaders || {},
-		});
+		return new Response(null, {status: 204, headers: corsHeaders || {}});
 	}
 
 	// Parse control headers
@@ -391,10 +386,7 @@ router.route("/*").all(async (request) => {
 	const info = getRequestInfo(request);
 	const body = await parseBody(request);
 
-	const response: Record<string, unknown> = {
-		...info,
-		body,
-	};
+	const response: Record<string, unknown> = {...info, body};
 
 	if (statusCode !== 200) {
 		response.requestedStatus = statusCode;

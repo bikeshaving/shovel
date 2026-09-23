@@ -6,7 +6,7 @@
  * not a web standard, so these are contract tests rather than WPT tests.
  */
 
-import {describe, test, expect, beforeAll, afterAll, afterEach} from "bun:test";
+import {afterAll, afterEach, beforeAll, describe, expect, test} from "bun:test";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["test", "wpt", "platform"]);
@@ -50,10 +50,13 @@ interface Server {
  * Configuration for running platform tests
  */
 export interface PlatformTestConfig {
+
 	/** Factory function to create the platform instance */
 	createPlatform: () => Platform | Promise<Platform>;
+
 	/** Path to a simple test ServiceWorker entrypoint (optional) */
 	testEntrypoint?: string;
+
 	/**
 	 * Path to a ServiceWorker entrypoint that tests ServiceWorkerGlobals features.
 	 * The worker should handle these routes:
@@ -62,10 +65,13 @@ export interface PlatformTestConfig {
 	 * - /test-cookiestore: returns {cookieStoreAvailable, canReadCookie}
 	 */
 	testGlobalsEntrypoint?: string;
+
 	/** Optional cleanup function */
 	cleanup?: () => void | Promise<void>;
+
 	/** Skip service worker tests (for platforms that don't support them) */
 	skipServiceWorkerTests?: boolean;
+
 	/** Skip server tests */
 	skipServerTests?: boolean;
 }

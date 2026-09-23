@@ -17,16 +17,22 @@ const logger = getLogger(["test", "wpt", "harness"]);
  * Test context passed to WPT test functions
  */
 export interface TestContext {
+
 	/** Add a cleanup function to run after the test */
 	add_cleanup(fn: () => void | Promise<void>): void;
+
 	/** Step function for async tests */
 	step<T>(fn: () => T): T;
+
 	/** Step function for async tests with timeout */
 	step_func<T extends (...args: unknown[]) => unknown>(fn: T): T;
+
 	/** Step function that completes the test */
 	step_func_done<T extends (...args: unknown[]) => unknown>(fn: T): T;
+
 	/** Complete the test */
 	done(): void;
+
 	/** Unreached step */
 	unreached_func(description?: string): () => never;
 }

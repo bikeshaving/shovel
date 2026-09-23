@@ -31,10 +31,13 @@ const logger = getLogger(["shovel", "platform"]);
  * Server options for platform implementations
  */
 export interface ServerOptions {
+
 	/** Port to listen on */
 	port?: number;
+
 	/** Host to bind to */
 	host?: string;
+
 	/** Enable SO_REUSEPORT for multi-worker deployments (Bun only) */
 	reusePort?: boolean;
 }
@@ -51,14 +54,19 @@ export type Handler = (
  * Server instance returned by platform.createServer()
  */
 export interface Server {
+
 	/** Start listening for requests */
 	listen(): Promise<void>;
+
 	/** Stop the server */
 	close(): Promise<void>;
+
 	/** Get server address information */
 	address(): {port: number; host: string};
+
 	/** Get server URL */
 	readonly url: string;
+
 	/** Whether server is ready to accept requests */
 	readonly ready: boolean;
 }
@@ -67,10 +75,13 @@ export interface Server {
  * ServiceWorker entrypoint options
  */
 export interface ServiceWorkerOptions {
+
 	/** Additional context to provide */
 	context?: any;
+
 	/** Number of worker threads (Node/Bun only) */
 	workerCount?: number;
+
 	/** Enable hot reload (dev mode) - forces worker mode for reliable reloading */
 	hotReload?: boolean;
 }
@@ -79,16 +90,21 @@ export interface ServiceWorkerOptions {
  * ServiceWorker instance returned by platform
  */
 export interface ServiceWorkerInstance {
+
 	/** The ServiceWorker runtime */
 	runtime: any; // WorkerPool or ServiceWorkerRegistration
 	/** Handle HTTP request */
 	handleRequest(request: Request): Promise<Response>;
+
 	/** Install the ServiceWorker */
 	install(): Promise<void>;
+
 	/** Activate the ServiceWorker */
 	activate(): Promise<void>;
+
 	/** Check if ready to handle requests */
 	readonly ready: boolean;
+
 	/** Dispose of resources */
 	dispose(): Promise<void>;
 }
@@ -110,12 +126,16 @@ export type ProductionEntryPoints = EntryPoints;
  * ESBuild configuration subset that platforms can customize
  */
 export interface PlatformESBuildConfig {
+
 	/** Target platform: "node" or "browser" */
 	platform?: "node" | "browser" | "neutral";
+
 	/** Export conditions for package.json resolution */
 	conditions?: string[];
+
 	/** External modules to exclude from bundle */
 	external?: string[];
+
 	/** Compile-time defines */
 	define?: Record<string, string>;
 }
@@ -125,10 +145,13 @@ export interface PlatformESBuildConfig {
  * Used by platforms to define built-in defaults that get merged with user config.
  */
 export interface ResourceDefault {
+
 	/** Module path to import (e.g., "@b9g/cache/memory") */
 	module: string;
+
 	/** Named export to use (defaults to "default") */
 	export?: string;
+
 	/** Additional options (e.g., path for directories) */
 	[key: string]: unknown;
 }
@@ -139,8 +162,10 @@ export interface ResourceDefault {
  * sensible defaults for each platform.
  */
 export interface PlatformDefaults {
+
 	/** Default directory configurations (server, public, tmp, etc.) */
 	directories?: Record<string, ResourceDefault>;
+
 	/** Default cache configuration (e.g., memory cache) */
 	caches?: Record<string, ResourceDefault>;
 }
@@ -149,10 +174,13 @@ export interface PlatformDefaults {
  * Extended ServiceWorkerContainer with internal methods for hot reload
  */
 export interface ShovelServiceWorkerContainer extends ServiceWorkerContainer {
+
 	/** Internal: Get the worker pool for request handling */
 	readonly pool?: {handleRequest(request: Request): Promise<Response>};
+
 	/** Internal: Terminate all workers */
 	terminate(): Promise<void>;
+
 	/** Internal: Reload workers (for hot reload) */
 	reloadWorkers(entrypoint: string): Promise<void>;
 }
@@ -235,11 +263,9 @@ export function detectDevelopmentPlatform(): string {
  * 3. Deployment platform detection (production environments)
  * 4. Development platform detection (local runtime)
  */
-export function resolvePlatform(options: {
-	platform?: string;
-	target?: string;
-	config?: {platform?: string};
-}): string {
+export function resolvePlatform(
+	options: {platform?: string; target?: string; config?: {platform?: string}},
+): string {
 	// Explicit CLI platform takes precedence
 	if (options.platform) {
 		return options.platform;
@@ -296,12 +322,16 @@ export function mergeConfigWithDefaults(
  * Worker pool options
  */
 export interface WorkerPoolOptions {
+
 	/** Number of workers in the pool (default: 1) */
 	workerCount?: number;
+
 	/** Request timeout in milliseconds (default: 30000) */
 	requestTimeout?: number;
+
 	/** Working directory for file resolution */
 	cwd?: string;
+
 	/** Custom worker factory (if not provided, uses createWebWorker) */
 	createWorker?: (entrypoint: string) => Worker | Promise<Worker>;
 }
@@ -371,7 +401,8 @@ async function createWebWorker(workerScript: string): Promise<Worker> {
 				},
 			);
 
-			throw new Error(`❌ Web Worker not available on Node.js
+			throw new Error(
+				`❌ Web Worker not available on Node.js
 
 🔗 Node.js doesn't implement the Web Worker standard yet.
    CANONICAL ISSUE: https://github.com/nodejs/node/issues/43583
@@ -383,24 +414,24 @@ async function createWebWorker(workerScript: string): Promise<Worker> {
 
    This installs our minimal, reliable Web Worker shim for Node.js.
 
-📚 Learn more: https://developer.mozilla.org/en-US/docs/Web/API/Worker`);
+📚 Learn more: https://developer.mozilla.org/en-US/docs/Web/API/Worker`,
+			);
 		}
 	}
 
 	// For other runtimes, fail with generic message
-	const runtime =
-		typeof Bun !== "undefined"
-			? "Bun"
-			: typeof Deno !== "undefined"
-				? "Deno"
-				: "Unknown";
+	const runtime = typeof Bun !== "undefined"
+		? "Bun"
+		: typeof Deno !== "undefined" ? "Deno" : "Unknown";
 
-	throw new Error(`❌ Web Worker not available on ${runtime}
+	throw new Error(
+		`❌ Web Worker not available on ${runtime}
 
 This runtime should support Web Workers but the API is not available.
 Please check your runtime version and configuration.
 
-📚 Web Worker standard: https://developer.mozilla.org/en-US/docs/Web/API/Worker`);
+📚 Web Worker standard: https://developer.mozilla.org/en-US/docs/Web/API/Worker`,
+	);
 }
 
 /**
@@ -427,18 +458,22 @@ export class ServiceWorkerPool {
 			timeoutId?: ReturnType<typeof setTimeout>;
 		}
 	>;
+
 	#pendingWorkerReady: Map<
 		Worker,
 		{resolve: () => void; reject: (e: Error) => void}
 	>;
-	#options: Required<Omit<WorkerPoolOptions, "cwd" | "createWorker">> & {
-		cwd?: string;
-		createWorker?: (entrypoint: string) => Worker | Promise<Worker>;
-	};
+
+	#options: Required<Omit<WorkerPoolOptions, "cwd" | "createWorker">> &
+		{
+			cwd?: string;
+			createWorker?: (entrypoint: string) => Worker | Promise<Worker>;
+		};
+
 	#appEntrypoint: string;
-	#cacheStorage?: CacheStorage & {
-		handleMessage?: (worker: Worker, message: any) => Promise<void>;
-	};
+	#cacheStorage?: CacheStorage &
+		{handleMessage?: (worker: Worker, message: any) => Promise<void>};
+
 	// Waiters for when workers become available (used during reload)
 	#workerAvailableWaiters: Array<{
 		resolve: () => void;
@@ -458,18 +493,14 @@ export class ServiceWorkerPool {
 		this.#workerAvailableWaiters = [];
 		this.#appEntrypoint = appEntrypoint;
 		this.#cacheStorage = cacheStorage;
-		this.#options = {
-			workerCount: 1,
-			requestTimeout: 30000,
-			...options,
-		};
+		this.#options = {workerCount: 1, requestTimeout: 30000, ...options};
 	}
 
 	/**
 	 * Initialize workers (must be called after construction)
 	 */
 	async init(): Promise<void> {
-		const promises: Promise<Worker>[] = [];
+		const promises: Array<Promise<Worker>> = [];
 		for (let i = 0; i < this.#options.workerCount; i++) {
 			promises.push(this.#createWorker(this.#appEntrypoint));
 		}
@@ -793,7 +824,7 @@ export class ServiceWorkerPool {
 
 		// Create new workers with new bundle
 		try {
-			const createPromises: Promise<Worker>[] = [];
+			const createPromises: Array<Promise<Worker>> = [];
 			for (let i = 0; i < this.#options.workerCount; i++) {
 				createPromises.push(this.#createWorker(entrypoint));
 			}
@@ -805,10 +836,9 @@ export class ServiceWorkerPool {
 			// If worker creation fails, reject any pending request waiters
 			const waiters = this.#workerAvailableWaiters;
 			this.#workerAvailableWaiters = [];
-			const reloadError =
-				error instanceof Error
-					? error
-					: new Error("Worker creation failed during reload");
+			const reloadError = error instanceof Error
+				? error
+				: new Error("Worker creation failed during reload");
 			for (const waiter of waiters) {
 				waiter.reject(reloadError);
 			}

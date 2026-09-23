@@ -63,6 +63,7 @@ const DEFAULT_PORTS: Record<string, string> = {
 	wss: "443",
 	ftp: "21",
 };
+
 /**
  * Get the default port for a protocol, per URL spec
  */
@@ -129,16 +130,15 @@ function validateRegexGroupContent(regexContent: string): void {
 	for (const c of regexContent) {
 		if (c.charCodeAt(0) > 127) {
 			throw new TypeError(
-				`Invalid pattern: regex groups cannot contain non-ASCII characters`,
+				"Invalid pattern: regex groups cannot contain non-ASCII characters",
 			);
 		}
 	}
 
 	// Valid escapes: \d, \D, \w, \W, \s, \S, \b, \B, \n, \r, \t, \f, \v, \0, \cX, \xHH, \uHHHH, \\, \/, \., etc.
 	// Invalid escapes: \m, \a (not a valid escape), etc.
-	const invalidEscape = regexContent.match(
-		/\\([^dDwWsSnrtfv0cbBxu.\\[\](){}|^$*+?/=-])/,
-	);
+	const invalidEscape =
+		regexContent.match(/\\([^dDwWsSnrtfv0cbBxu.\\[\](){}|^$*+?/=-])/);
 	if (invalidEscape) {
 		throw new TypeError(
 			`Invalid pattern: invalid escape sequence '\\${invalidEscape[1]}' in regex group`,
@@ -228,7 +228,7 @@ function validateHostnamePattern(hostname: string): void {
 				// Escaped colon is forbidden in hostname (unlike pathname)
 				if (escaped === ":") {
 					throw new TypeError(
-						`Invalid hostname pattern: escaped colon is not allowed`,
+						"Invalid hostname pattern: escaped colon is not allowed",
 					);
 				}
 				// Escaped backslash is OK (\\)
@@ -250,8 +250,9 @@ function validateHostnamePattern(hostname: string): void {
 				}
 				i = closeIdx + 1;
 				// Skip modifier after }
-				if (hostname[i] === "?" || hostname[i] === "+" || hostname[i] === "*")
+				if (hostname[i] === "?" || hostname[i] === "+" || hostname[i] === "*") {
 					i++;
+				}
 				continue;
 			}
 		}
@@ -270,8 +271,9 @@ function validateHostnamePattern(hostname: string): void {
 			}
 			i = j;
 			// Skip modifier after )
-			if (hostname[i] === "?" || hostname[i] === "+" || hostname[i] === "*")
+			if (hostname[i] === "?" || hostname[i] === "+" || hostname[i] === "*") {
 				i++;
+			}
 			continue;
 		}
 
@@ -287,15 +289,16 @@ function validateHostnamePattern(hostname: string): void {
 			}
 			// Otherwise it's a literal colon which is forbidden
 			throw new TypeError(
-				`Invalid hostname pattern: unescaped colon outside of pattern syntax`,
+				"Invalid hostname pattern: unescaped colon outside of pattern syntax",
 			);
 		}
 
 		if (char === "*") {
 			i++;
 			// Skip modifier after *
-			if (hostname[i] === "?" || hostname[i] === "+" || hostname[i] === "*")
+			if (hostname[i] === "?" || hostname[i] === "+" || hostname[i] === "*") {
 				i++;
+			}
 			continue;
 		}
 
@@ -310,12 +313,12 @@ function validateHostnamePattern(hostname: string): void {
 				continue;
 			}
 			// Unmatched [ is forbidden
-			throw new TypeError(`Invalid hostname pattern: unmatched '[' character`);
+			throw new TypeError("Invalid hostname pattern: unmatched '[' character");
 		}
 
 		// Unmatched ] is also forbidden
 		if (char === "]") {
-			throw new TypeError(`Invalid hostname pattern: unmatched ']' character`);
+			throw new TypeError("Invalid hostname pattern: unmatched ']' character");
 		}
 
 		// Check for forbidden characters
@@ -377,7 +380,7 @@ function normalizeHostnamePattern(hostname: string): string {
  */
 function canonicalizePort(
 	port: string,
-	throwOnInvalid: boolean = false,
+	throwOnInvalid = false,
 ): string | undefined {
 	if (port === "") return ""; // Empty port is valid (default)
 
@@ -582,7 +585,7 @@ export interface MatchPatternResult {
 	username: {input: string; groups: Record<string, string>};
 	password: {input: string; groups: Record<string, string>};
 	hash: {input: string; groups: Record<string, string>};
-	inputs: (string | URLPatternInit)[];
+	inputs: Array<string | URLPatternInit>;
 }
 
 /**
@@ -598,9 +601,9 @@ export interface CompiledPattern {
  * Segment types for parsed patterns
  */
 export type PatternSegment =
-	| {type: "static"; value: string}
-	| {type: "param"; name: string}
-	| {type: "wildcard"};
+	{type: "static"; value: string} |
+	{type: "param"; name: string} |
+	{type: "wildcard"};
 
 /**
  * Result of parsing a simple pattern
@@ -795,10 +798,7 @@ function findSearchDelimiter(pattern: string): {index: number; offset: number} {
 
 		// Look for ? only if outside all groups
 		if (
-			char === "?" &&
-			parenDepth === 0 &&
-			bracketDepth === 0 &&
-			braceDepth === 0
+			char === "?" && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0
 		) {
 			// Check what precedes the ?
 			const prev = i > 0 ? pattern[i - 1] : "";
@@ -971,8 +971,7 @@ function parseStringPattern(pattern: string): {
 	// Match: protocol + ":" + optional rest (no // after the :)
 	const nonHierarchicalMatch = pattern.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*):/);
 	if (
-		nonHierarchicalMatch &&
-		!pattern.startsWith(nonHierarchicalMatch[0] + "/")
+		nonHierarchicalMatch && !pattern.startsWith(nonHierarchicalMatch[0] + "/")
 	) {
 		const protocol = nonHierarchicalMatch[1];
 		// Skip if this looks like it has :// (hierarchical)
@@ -1002,14 +1001,12 @@ function parseStringPattern(pattern: string): {
 
 			// Extract search
 			const searchDelim = findSearchDelimiter(beforeHash);
-			const search =
-				searchDelim.index === -1
-					? undefined
-					: beforeHash.slice(searchDelim.index + searchDelim.offset);
-			const pathname =
-				searchDelim.index === -1
-					? beforeHash
-					: beforeHash.slice(0, searchDelim.index);
+			const search = searchDelim.index === -1
+				? undefined
+				: beforeHash.slice(searchDelim.index + searchDelim.offset);
+			const pathname = searchDelim.index === -1
+				? beforeHash
+				: beforeHash.slice(0, searchDelim.index);
 
 			return {protocol, pathname, search, hash};
 		}
@@ -1054,8 +1051,9 @@ function parseStringPattern(pattern: string): {
 			// Find the end of hostname (first of /, ?, #)
 			let hostEnd = afterAt.length;
 			if (slashIdx !== -1 && slashIdx < hostEnd) hostEnd = slashIdx;
-			if (searchDelim.index !== -1 && searchDelim.index < hostEnd)
+			if (searchDelim.index !== -1 && searchDelim.index < hostEnd) {
 				hostEnd = searchDelim.index;
+			}
 			if (hashIdx !== -1 && hashIdx < hostEnd) hostEnd = hashIdx;
 
 			const hostPart = afterAt.slice(0, hostEnd);
@@ -1080,8 +1078,9 @@ function parseStringPattern(pattern: string): {
 			if (slashIdx !== -1) {
 				const pathStart = slashIdx;
 				let pathEnd = afterAt.length;
-				if (searchDelim.index !== -1 && searchDelim.index > slashIdx)
+				if (searchDelim.index !== -1 && searchDelim.index > slashIdx) {
 					pathEnd = Math.min(pathEnd, searchDelim.index);
+				}
 				if (hashIdx !== -1) pathEnd = Math.min(pathEnd, hashIdx);
 				pathname = afterAt.slice(pathStart, pathEnd);
 			}
@@ -1118,23 +1117,20 @@ function parseStringPattern(pattern: string): {
 
 		// Extract search
 		const searchDelim = findSearchDelimiter(beforeHash);
-		const search =
-			searchDelim.index === -1
-				? undefined
-				: beforeHash.slice(searchDelim.index + searchDelim.offset);
-		const pathname =
-			searchDelim.index === -1
-				? beforeHash
-				: beforeHash.slice(0, searchDelim.index);
+		const search = searchDelim.index === -1
+			? undefined
+			: beforeHash.slice(searchDelim.index + searchDelim.offset);
+		const pathname = searchDelim.index === -1
+			? beforeHash
+			: beforeHash.slice(0, searchDelim.index);
 
 		return {protocol, pathname, search, hash};
 	}
 
 	// Check if it's a full URL with :// (including protocol patterns like http{s}?://)
 	// Match protocols that may have pattern syntax like {s}? before ://
-	const protocolMatch = pattern.match(
-		/^([a-zA-Z][a-zA-Z0-9+\-.]*(?:\{[^}]*\}\??)?):/,
-	);
+	const protocolMatch =
+		pattern.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*(?:\{[^}]*\}\??)?):/);
 	if (protocolMatch && pattern.includes("://")) {
 		// Extract hash first (after #)
 		const hashIndex = pattern.indexOf("#");
@@ -1161,12 +1157,12 @@ function parseStringPattern(pattern: string): {
 			searchOffset = 1; // Skip just &
 		}
 
-		const search =
-			queryIndex === -1
-				? undefined
-				: beforeHash.slice(queryIndex + searchOffset);
-		const urlPart =
-			queryIndex === -1 ? beforeHash : beforeHash.slice(0, queryIndex);
+		const search = queryIndex === -1
+			? undefined
+			: beforeHash.slice(queryIndex + searchOffset);
+		const urlPart = queryIndex === -1
+			? beforeHash
+			: beforeHash.slice(0, queryIndex);
 
 		// Find where :// is to split protocol from rest
 		const schemeEndIdx = urlPart.indexOf("://");
@@ -1240,9 +1236,8 @@ function parseStringPattern(pattern: string): {
 				else if (char === ":" && braceDepth === 0) {
 					// Check if this colon starts a named parameter
 					const afterColon = userinfo.slice(i + 1);
-					const paramMatch = afterColon.match(
-						/^(\p{ID_Start}\p{ID_Continue}*)/u,
-					);
+					const paramMatch =
+						afterColon.match(/^(\p{ID_Start}\p{ID_Continue}*)/u);
 					if (paramMatch) {
 						// This is a named parameter, not a separator - skip it
 						i += 1 + paramMatch[1].length;
@@ -1352,12 +1347,12 @@ function parseStringPattern(pattern: string): {
 			searchOffset = 1;
 		}
 
-		const search =
-			queryIndex === -1
-				? undefined
-				: beforeHash.slice(queryIndex + searchOffset);
-		const pathname =
-			queryIndex === -1 ? beforeHash : beforeHash.slice(0, queryIndex);
+		const search = queryIndex === -1
+			? undefined
+			: beforeHash.slice(queryIndex + searchOffset);
+		const pathname = queryIndex === -1
+			? beforeHash
+			: beforeHash.slice(0, queryIndex);
 
 		return {pathname, search, hash};
 	}
@@ -1387,7 +1382,7 @@ function parseStringPattern(pattern: string): {
  */
 function compileComponentPattern(
 	component: string,
-	ignoreCase: boolean = false,
+	ignoreCase = false,
 ): CompiledPattern {
 	const paramNames: string[] = [];
 	let hasWildcard = false;
@@ -1582,8 +1577,8 @@ function compileComponentPattern(
  */
 export function compilePathname(
 	pathname: string,
-	encodeChars: boolean = true,
-	ignoreCase: boolean = false,
+	encodeChars = true,
+	ignoreCase = false,
 ): CompiledPattern {
 	const paramNames: string[] = [];
 	let hasWildcard = false;
@@ -1681,7 +1676,7 @@ export function compilePathname(
 						// Followed by literal: / is required, only param is optional
 						// e.g., /foo/:bar?baz - the / before bar is required
 						// Use * instead of + to allow empty match
-						pattern += `([^/]*?)`;
+						pattern += "([^/]*?)";
 					} else {
 						pattern += `(${basePattern})?`;
 					}
@@ -1717,7 +1712,7 @@ export function compilePathname(
 				const nextChar = pathname[i + 1];
 				if (nextChar && !/^[\s/?#(){}*+]$/.test(nextChar)) {
 					throw new TypeError(
-						`Invalid pattern: invalid parameter name character after ':'`,
+						"Invalid pattern: invalid parameter name character after ':'",
 					);
 				}
 			}
@@ -1826,25 +1821,25 @@ export function compilePathname(
 			if (modifier === "?") {
 				if (hasPrecedingSlash) {
 					pattern = pattern.slice(0, -1);
-					pattern += `(?:/(.*))?`;
+					pattern += "(?:/(.*))?";
 				} else {
-					pattern += `(.*)?`;
+					pattern += "(.*)?";
 				}
 				i += 2;
 			} else if (modifier === "+") {
 				if (hasPrecedingSlash) {
 					pattern = pattern.slice(0, -1);
-					pattern += `/(.*)(?:/(.*))*`;
+					pattern += "/(.*)(?:/(.*))*";
 				} else {
-					pattern += `(.*)+`;
+					pattern += "(.*)+";
 				}
 				i += 2;
 			} else if (modifier === "*") {
 				if (hasPrecedingSlash) {
 					pattern = pattern.slice(0, -1);
-					pattern += `(?:/(.*))*`;
+					pattern += "(?:/(.*))*";
 				} else {
-					pattern += `(.*)*`;
+					pattern += "(.*)*";
 				}
 				i += 2;
 			} else {
@@ -1879,8 +1874,9 @@ export function compilePathname(
 				const code2 = char.charCodeAt(0);
 				if (code2 >= 0xd800 && code2 <= 0xdbff) {
 					// High surrogate - check for pair
-					const nextCode =
-						i + 1 < pathname.length ? pathname.charCodeAt(i + 1) : 0;
+					const nextCode = i + 1 < pathname.length
+						? pathname.charCodeAt(i + 1)
+						: 0;
 					if (nextCode >= 0xdc00 && nextCode <= 0xdfff) {
 						// Valid pair - encode together
 						pattern += encodeURIComponent(char + pathname[i + 1]);
@@ -2348,24 +2344,31 @@ export class URLPattern {
 	get pathname(): string {
 		return this.#init.pathname || "*";
 	}
+
 	get search(): string {
 		return this.#init.search || "*";
 	}
+
 	get protocol(): string {
 		return this.#init.protocol || "*";
 	}
+
 	get hostname(): string {
 		return this.#init.hostname || "*";
 	}
+
 	get port(): string {
 		return this.#init.port || "*";
 	}
+
 	get username(): string {
 		return this.#init.username || "*";
 	}
+
 	get password(): string {
 		return this.#init.password || "*";
 	}
+
 	get hash(): string {
 		return this.#init.hash || "*";
 	}
@@ -2375,19 +2378,16 @@ export class URLPattern {
 		baseURLOrOptions?: string | URLPatternOptions,
 		options?: URLPatternOptions,
 	) {
-		const {
-			init,
-			baseURL,
-			options: opts,
-		} = parseConstructorArgs(input, baseURLOrOptions, options);
+		const {init, baseURL, options: opts} = parseConstructorArgs(
+			input,
+			baseURLOrOptions,
+			options,
+		);
 
 		// Strict: require baseURL for relative string patterns (not object patterns)
 		// Only strings like "/foo" are relative - object patterns like {pathname: "/foo"} are partial and valid
 		if (
-			typeof input === "string" &&
-			!init.protocol &&
-			!baseURL &&
-			!init.baseURL
+			typeof input === "string" && !init.protocol && !baseURL && !init.baseURL
 		) {
 			throw new TypeError(
 				"Invalid pattern: relative URL pattern requires a baseURL",
@@ -2449,10 +2449,10 @@ export class URLPattern {
 		if (protocol !== undefined && !isValidProtocol(protocol)) return false;
 		if (this.#compiled.protocol) {
 			if (
-				protocol === undefined ||
-				!this.#compiled.protocol.regex.test(protocol)
-			)
+				protocol === undefined || !this.#compiled.protocol.regex.test(protocol)
+			) {
 				return false;
+			}
 		}
 
 		// Test hostname
@@ -2475,8 +2475,9 @@ export class URLPattern {
 			}
 		}
 		if (this.#compiled.port) {
-			if (port === undefined || !this.#compiled.port.regex.test(port))
+			if (port === undefined || !this.#compiled.port.regex.test(port)) {
 				return false;
+			}
 		}
 
 		// Test username/password
@@ -2485,16 +2486,18 @@ export class URLPattern {
 			if (
 				username === undefined ||
 				!this.#compiled.username.regex.test(encodeURIComponent(username))
-			)
+			) {
 				return false;
+			}
 		}
 		if (this.#compiled.password) {
 			const password = input.password ?? baseURLObj?.password;
 			if (
 				password === undefined ||
 				!this.#compiled.password.regex.test(encodeURIComponent(password))
-			)
+			) {
 				return false;
+			}
 		}
 
 		// Test pathname
@@ -2685,24 +2688,31 @@ export class MatchPattern {
 	get pathname(): string {
 		return this.#init.pathname || "*";
 	}
+
 	get search(): string | undefined {
 		return this.#searchPattern;
 	}
+
 	get protocol(): string | undefined {
 		return this.#init.protocol;
 	}
+
 	get hostname(): string | undefined {
 		return this.#init.hostname;
 	}
+
 	get port(): string | undefined {
 		return this.#init.port;
 	}
+
 	get username(): string | undefined {
 		return this.#init.username;
 	}
+
 	get password(): string | undefined {
 		return this.#init.password;
 	}
+
 	get hash(): string | undefined {
 		return this.#init.hash;
 	}
@@ -2712,11 +2722,11 @@ export class MatchPattern {
 		baseURLOrOptions?: string | URLPatternOptions,
 		options?: URLPatternOptions,
 	) {
-		const {
-			init,
-			baseURL,
-			options: opts,
-		} = parseConstructorArgs(input, baseURLOrOptions, options);
+		const {init, baseURL, options: opts} = parseConstructorArgs(
+			input,
+			baseURLOrOptions,
+			options,
+		);
 		this.#init = init;
 		this.#searchPattern = init.search;
 		this.#compiled = compileURLPatternInit(init, baseURL, {
@@ -2783,10 +2793,10 @@ export class MatchPattern {
 		if (protocol !== undefined && !isValidProtocol(protocol)) return false;
 		if (this.#compiled.protocol) {
 			if (
-				protocol === undefined ||
-				!this.#compiled.protocol.regex.test(protocol)
-			)
+				protocol === undefined || !this.#compiled.protocol.regex.test(protocol)
+			) {
 				return false;
+			}
 		}
 
 		// Test hostname
@@ -2809,8 +2819,9 @@ export class MatchPattern {
 			}
 		}
 		if (this.#compiled.port) {
-			if (port === undefined || !this.#compiled.port.regex.test(port))
+			if (port === undefined || !this.#compiled.port.regex.test(port)) {
 				return false;
+			}
 		}
 
 		// Test username/password
@@ -2819,16 +2830,18 @@ export class MatchPattern {
 			if (
 				username === undefined ||
 				!this.#compiled.username.regex.test(encodeURIComponent(username))
-			)
+			) {
 				return false;
+			}
 		}
 		if (this.#compiled.password) {
 			const password = input.password ?? baseURLObj?.password;
 			if (
 				password === undefined ||
 				!this.#compiled.password.regex.test(encodeURIComponent(password))
-			)
+			) {
 				return false;
+			}
 		}
 
 		// Test pathname

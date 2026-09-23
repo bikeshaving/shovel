@@ -13,18 +13,18 @@ export {setAssetsManifest} from "@b9g/assets/manifest";
  */
 
 import {
-	ServiceWorkerGlobals,
-	ShovelServiceWorkerRegistration,
-	ShovelFetchEvent,
-	type ShovelFetchEventInit,
-	CustomLoggerStorage,
 	configureLogging,
 	createCacheFactory,
 	createDirectoryFactory,
-	runLifecycle,
+	CustomLoggerStorage,
 	dispatchRequest,
+	runLifecycle,
+	ServiceWorkerGlobals,
 	setBroadcastChannelBackend,
 	type ShovelConfig,
+	ShovelFetchEvent,
+	type ShovelFetchEventInit,
+	ShovelServiceWorkerRegistration,
 } from "@b9g/platform/runtime";
 
 // runLifecycle is used internally by createFetchHandler (not re-exported)
@@ -55,6 +55,7 @@ export interface ExecutionContext {
  * Options for CloudflareFetchEvent constructor
  */
 export interface CloudflareFetchEventInit extends ShovelFetchEventInit {
+
 	/** Cloudflare environment bindings (KV, R2, D1, etc.) */
 	env: Record<string, unknown>;
 }

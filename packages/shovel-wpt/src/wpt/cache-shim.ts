@@ -53,6 +53,7 @@ interface CacheQueryOptions {
 }
 
 export interface CacheShimConfig {
+
 	/** CacheStorage instance to use for tests */
 	caches: CacheStorage;
 }
@@ -131,9 +132,7 @@ export function setupCacheTestGlobals(config: CacheShimConfig): void {
 
 	// Also set on self for browser compatibility
 	if (typeof self !== "undefined") {
-		Object.assign(self, {
-			caches: config.caches,
-		});
+		Object.assign(self, {caches: config.caches});
 	}
 }
 

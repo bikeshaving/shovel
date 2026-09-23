@@ -18,6 +18,7 @@ const isDev = import.meta.env?.MODE !== "production";
 // Lazy import of bundled manifest - only loaded when needed (not during tests)
 // In dev mode, we skip caching so hot reload gets fresh manifest
 let _bundledManifest: AssetManifest | null = null;
+
 async function getBundledManifest(): Promise<AssetManifest> {
 	// In dev mode, always re-import to get fresh manifest after rebuilds
 	if (isDev) {
@@ -40,16 +41,22 @@ async function getBundledManifest(): Promise<AssetManifest> {
  * Asset manifest entry
  */
 export interface AssetManifestEntry {
+
 	/** Original file path relative to source */
 	source: string;
+
 	/** Output file path relative to outputDir */
 	output: string;
+
 	/** Public URL for the asset */
 	url: string;
+
 	/** Content hash */
 	hash: string;
+
 	/** File size in bytes */
 	size: number;
+
 	/** MIME type */
 	type?: string;
 }
@@ -58,22 +65,25 @@ export interface AssetManifestEntry {
  * Asset manifest structure
  */
 export interface AssetManifest {
+
 	/** Assets indexed by their source path */
 	assets: Record<string, AssetManifestEntry>;
+
 	/** Generation timestamp */
 	generated: string;
+
 	/** Configuration used */
-	config: {
-		outDir: string;
-	};
+	config: {outDir: string};
 }
 
 /**
  * Runtime configuration for assets middleware
  */
 export interface AssetsConfig {
+
 	/** Cache control header value (default: 'public, max-age=31536000, immutable') */
 	cacheControl?: string;
+
 	/** Override manifest for testing (defaults to bundled shovel:assets) */
 	manifest?: AssetManifest;
 }
@@ -192,9 +202,6 @@ export function assets(config: AssetsConfig = {}) {
 		}
 
 		// Return file response
-		return new Response(file.stream(), {
-			status: 200,
-			headers,
-		});
+		return new Response(file.stream(), {status: 200, headers});
 	};
 }

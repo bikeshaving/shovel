@@ -9,10 +9,11 @@ import {promise_test, type TestContext} from "../harness/testharness.js";
 import * as assertions from "../harness/assertions.js";
 
 export interface FilesystemShimConfig {
+
 	/** Factory function to get a clean test directory */
 	getDirectory: () =>
-		| FileSystemDirectoryHandle
-		| Promise<FileSystemDirectoryHandle>;
+		FileSystemDirectoryHandle | Promise<FileSystemDirectoryHandle>;
+
 	/** Optional cleanup function */
 	cleanup?: () => void | Promise<void>;
 }
@@ -26,13 +27,11 @@ async function cleanupDirectory(dir: FileSystemDirectoryHandle): Promise<void> {
 		entries.push(entry);
 	}
 
-	const removePromises = entries.map((entry) =>
-		dir
-			.removeEntry(entry.name, {recursive: entry.kind === "directory"})
-			.catch(() => {
-				// Ignore errors - entry may already be deleted
-			}),
-	);
+	const removePromises = entries.map((entry) => dir
+		.removeEntry(entry.name, {recursive: entry.kind === "directory"})
+		.catch(() => {
+			// Ignore errors - entry may already be deleted
+		}));
 
 	await Promise.allSettled(removePromises);
 }

@@ -36,7 +36,9 @@ function getPostMessageCache(name: string): PostMessageCache {
 
 // Set up WorkerGlobalScope shims
 class WorkerGlobalScope {}
+
 class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
+
 (globalThis as any).WorkerGlobalScope = WorkerGlobalScope;
 (globalThis as any).DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
 
@@ -130,11 +132,7 @@ globalThis.self = {
 					}
 				}
 
-				handleCacheResponse({
-					type: "cache:response",
-					requestID,
-					result,
-				});
+				handleCacheResponse({type: "cache:response", requestID, result});
 			} catch (error) {
 				handleCacheResponse({
 					type: "cache:error",

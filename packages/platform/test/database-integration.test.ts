@@ -1,4 +1,4 @@
-import {test, expect, describe, afterEach} from "bun:test";
+import {afterEach, describe, expect, test} from "bun:test";
 import {CustomDatabaseStorage} from "../src/runtime.js";
 import {Database} from "@b9g/zen";
 import BunDriver from "@b9g/zen/bun";
@@ -8,10 +8,7 @@ const createFactory = () => {
 	return async (name: string) => {
 		if (name === "main") {
 			const driver = new BunDriver(":memory:");
-			return {
-				db: new Database(driver),
-				close: () => driver.close(),
-			};
+			return {db: new Database(driver), close: () => driver.close()};
 		}
 		throw new Error(`Database "${name}" is not configured.`);
 	};

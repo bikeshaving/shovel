@@ -9,11 +9,11 @@
 
 import * as ESBuild from "esbuild";
 import {builtinModules, createRequire} from "node:module";
-import {resolve, join, dirname, basename, relative, normalize} from "path";
+import {basename, dirname, join, normalize, relative, resolve} from "path";
 import {mkdir} from "fs/promises";
-import {watch, type FSWatcher, existsSync} from "fs";
+import {existsSync, type FSWatcher, watch} from "fs";
 import {getLogger} from "@logtape/logtape";
-import type {PlatformModule, ESBuildConfig} from "@b9g/platform/module";
+import type {ESBuildConfig, PlatformModule} from "@b9g/platform/module";
 
 import {assetsPlugin} from "../plugins/assets.js";
 import {globAssetsPlugin} from "../plugins/glob-assets.js";
@@ -24,37 +24,45 @@ import {
 	createAssetsManifestPlugin,
 	createSharedManifest,
 } from "../plugins/assets-manifest.js";
-import {loadJSXConfig, applyJSXOptions} from "./jsx-config.js";
+import {applyJSXOptions, loadJSXConfig} from "./jsx-config.js";
 import {findProjectRoot, getNodeModulesPath} from "./project.js";
 import {getGitSHA} from "./git-sha.js";
-import type {ProcessedBuildConfig, BuildPluginConfig} from "./config.js";
+import type {BuildPluginConfig, ProcessedBuildConfig} from "./config.js";
 
 const logger = getLogger(["shovel", "build"]);
 
 /**
  * Node.js ESM require() shim for external CJS dependencies.
  */
-const REQUIRE_SHIM = `import{createRequire as __cR}from'module';const require=__cR(import.meta.url);`;
+const REQUIRE_SHIM = "import{createRequire as __cR}from'module';const require=__cR(import.meta.url);";
 
 /**
  * Options for creating a ServerBundler instance.
  */
 export interface BundlerOptions {
+
 	/** Entry point to build */
 	entrypoint: string;
+
 	/** Output directory */
 	outDir: string;
+
 	/** Platform module (functions, not class) */
 	platformModule: PlatformModule;
+
 	/** Platform-specific esbuild configuration */
 	platformESBuildConfig: ESBuildConfig;
+
 	/** User build config from shovel.json */
 	userBuildConfig?: ProcessedBuildConfig;
+
 	/** Lifecycle options for --lifecycle flag */
 	lifecycle?: {
+
 		/** Lifecycle stage to run: "install" or "activate" */
 		stage: "install" | "activate";
 	};
+
 	/**
 	 * Development mode: workers use message loop instead of own HTTP server.
 	 * In dev mode, workers handle requests via postMessage from ServiceWorkerPool.
@@ -67,8 +75,10 @@ export interface BundlerOptions {
  * Build output paths.
  */
 export interface BuildOutputs {
+
 	/** Supervisor entry point (Node/Bun only) */
 	supervisor?: string;
+
 	/** Worker entry point (all platforms) */
 	worker?: string;
 }
@@ -79,8 +89,10 @@ export interface BuildOutputs {
 export interface BuildResult {
 	success: boolean;
 	outputs: BuildOutputs;
+
 	/** ESBuild metafile for bundle analysis */
 	metafile?: ESBuild.Metafile;
+
 	/** Build duration in milliseconds */
 	elapsed?: number;
 }
@@ -89,6 +101,7 @@ export interface BuildResult {
  * Options for watch mode.
  */
 export interface WatchOptions {
+
 	/** Called after each rebuild */
 	onRebuild?: (result: BuildResult) => void | Promise<void>;
 }
@@ -204,9 +217,8 @@ export class ServerBundler {
 			this.#initialBuildResolve = resolve;
 		});
 
-		const buildOptions = await this.#createBuildOptions(entryPath, outputDir, {
-			watch: true,
-		});
+		const buildOptions =
+			await this.#createBuildOptions(entryPath, outputDir, {watch: true});
 
 		this.#ctx = await ESBuild.context(buildOptions);
 
@@ -303,9 +315,8 @@ export class ServerBundler {
 		const treeShaking = userBuildConfig?.treeShaking ?? true;
 
 		// Build ESBuild entry points from platform entry points
-		const esbuildEntryPoints: Record<string, string> = {
-			config: "shovel:config",
-		};
+		const esbuildEntryPoints: Record<string, string> =
+			{config: "shovel:config"};
 		for (const name of Object.keys(platformEntryPoints)) {
 			esbuildEntryPoints[name] = `shovel:entry:${name}`;
 		}
@@ -421,11 +432,8 @@ export class ServerBundler {
 		const loadedPlugins: ESBuild.Plugin[] = [];
 
 		for (const pluginConfig of plugins) {
-			const {
-				module: modulePath,
-				export: exportName = "default",
-				...options
-			} = pluginConfig;
+			const {module: modulePath, export: exportName = "default", ...options} =
+				pluginConfig;
 
 			try {
 				// Security: Block absolute paths and file:// URLs (arbitrary code execution)
@@ -458,8 +466,9 @@ export class ServerBundler {
 
 				// eslint-disable-next-line no-restricted-syntax
 				const mod = await import(resolvedPath);
-				const pluginFactory =
-					exportName === "default" ? mod.default : mod[exportName];
+				const pluginFactory = exportName === "default"
+					? mod.default
+					: mod[exportName];
 
 				if (typeof pluginFactory !== "function") {
 					throw new Error(
@@ -495,16 +504,13 @@ export class ServerBundler {
 				build.onStart(() => {
 					this.#buildStartTime = performance.now();
 					if (this.#changedFiles.size > 0) {
-						const files = Array.from(this.#changedFiles).map((f) =>
-							relative(this.#projectRoot, f),
-						);
+						const files = Array.from(this.#changedFiles)
+							.map((f) => relative(this.#projectRoot, f));
 						this.#changedFiles.clear();
 						if (files.length === 1) {
 							logger.info("Rebuilding: {file}", {file: files[0]});
 						} else {
-							logger.info("Rebuilding: {files}", {
-								files: files.join(", "),
-							});
+							logger.info("Rebuilding: {files}", {files: files.join(", ")});
 						}
 					} else {
 						logger.info("Building...");
@@ -615,8 +621,7 @@ export class ServerBundler {
 			(w) =>
 				(w.text.includes("cannot be bundled") ||
 					w.text.includes("import() call") ||
-					w.text.includes("dynamic import")) &&
-				!w.text.includes("./server.js"),
+					w.text.includes("dynamic import")) && !w.text.includes("./server.js"),
 		);
 
 		if (dynamicImportWarnings.length > 0) {
@@ -631,7 +636,7 @@ export class ServerBundler {
 
 			throw new Error(
 				`Build failed: Non-analyzable dynamic imports found:\n${locations}\n\n` +
-					`Dynamic imports must use literal strings, not variables.`,
+					"Dynamic imports must use literal strings, not variables.",
 			);
 		}
 
@@ -658,7 +663,7 @@ export class ServerBundler {
 				const externals = unexpectedExternals.map((e) => `  - ${e}`).join("\n");
 				throw new Error(
 					`Build failed: Unexpected external imports found:\n${externals}\n\n` +
-						`These modules are not bundled and won't be available at runtime.`,
+						"These modules are not bundled and won't be available at runtime.",
 				);
 			}
 		}
@@ -739,10 +744,8 @@ export class ServerBundler {
 			}
 		}
 
-		const totalFiles = Array.from(this.#dirWatchers.values()).reduce(
-			(sum, entry) => sum + entry.files.size,
-			0,
-		);
+		const totalFiles = Array.from(this.#dirWatchers.values())
+			.reduce((sum, entry) => sum + entry.files.size, 0);
 
 		logger.info("Watching {fileCount} files in {dirCount} directories", {
 			fileCount: totalFiles,

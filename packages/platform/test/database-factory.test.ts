@@ -1,12 +1,12 @@
-import {test, expect, describe, beforeEach} from "bun:test";
+import {beforeEach, describe, expect, test} from "bun:test";
 import {createDatabaseFactory} from "../src/runtime.js";
 import DefaultDriver, {
+	closeCalls,
+	lastDriver,
+	lastOptions,
+	lastUrl,
 	NamedDriver,
 	reset,
-	lastUrl,
-	lastOptions,
-	lastDriver,
-	closeCalls,
 } from "./fixtures/mock-driver.js";
 
 describe("createDatabaseFactory", () => {
@@ -16,11 +16,7 @@ describe("createDatabaseFactory", () => {
 
 	test("uses impl and passes driver options", async () => {
 		const factory = createDatabaseFactory({
-			main: {
-				impl: DefaultDriver,
-				url: "db://main",
-				poolSize: 5,
-			},
+			main: {impl: DefaultDriver, url: "db://main", poolSize: 5},
 		});
 
 		const {close} = await factory("main");
@@ -35,11 +31,7 @@ describe("createDatabaseFactory", () => {
 
 	test("uses named impl when configured", async () => {
 		const factory = createDatabaseFactory({
-			main: {
-				impl: NamedDriver,
-				url: "db://named",
-				ssl: true,
-			},
+			main: {impl: NamedDriver, url: "db://named", ssl: true},
 		});
 
 		const {close} = await factory("main");
@@ -53,11 +45,7 @@ describe("createDatabaseFactory", () => {
 	});
 
 	test("throws when impl is missing", async () => {
-		const factory = createDatabaseFactory({
-			main: {
-				url: "db://missing",
-			},
-		});
+		const factory = createDatabaseFactory({main: {url: "db://missing"}});
 
 		await expect(factory("main")).rejects.toThrow("has no impl");
 	});

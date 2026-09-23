@@ -22,7 +22,7 @@
  */
 
 import {readFileSync} from "fs";
-import {join, resolve, relative, normalize} from "path";
+import {join, normalize, relative, resolve} from "path";
 import {z} from "zod";
 
 /**
@@ -36,10 +36,7 @@ const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
  * Used as CLI option defaults and internal constants
  */
 export const DEFAULTS = {
-	SERVER: {
-		PORT: 7777,
-		HOST: "0.0.0.0",
-	},
+	SERVER: {PORT: 7777, HOST: "0.0.0.0"},
 	WORKERS: 1, // Single worker for development - user can override with --workers flag
 } as const;
 
@@ -338,12 +335,7 @@ class Tokenizer {
 			}
 			if (remaining.startsWith("[git]")) {
 				this.#pos += 5;
-				return {
-					type: TokenType.GIT,
-					value: "[git]",
-					start,
-					end: this.#pos,
-				};
+				return {type: TokenType.GIT, value: "[git]", start, end: this.#pos};
 			}
 			throw new Error(
 				`Unknown placeholder at position ${start}: ${remaining.slice(0, 10)}`,
@@ -358,9 +350,7 @@ class Tokenizer {
 		if (/\S/.test(ch) && !/[$()/]/.test(ch)) {
 			let value = "";
 			while (
-				this.#peek() &&
-				/\S/.test(this.#peek()) &&
-				!/[$()]/.test(this.#peek())
+				this.#peek() && /\S/.test(this.#peek()) && !/[$()]/.test(this.#peek())
 			) {
 				// Slash: include // (URLs) but stop at single / (path join)
 				if (this.#peek() === "/") {
@@ -376,19 +366,23 @@ class Tokenizer {
 			}
 
 			// Keywords
-			if (value === "true")
+			if (value === "true") {
 				return {type: TokenType.TRUE, value: true, start, end: this.#pos};
-			if (value === "false")
+			}
+			if (value === "false") {
 				return {type: TokenType.FALSE, value: false, start, end: this.#pos};
-			if (value === "null")
+			}
+			if (value === "null") {
 				return {type: TokenType.NULL, value: null, start, end: this.#pos};
-			if (value === "undefined")
+			}
+			if (value === "undefined") {
 				return {
 					type: TokenType.UNDEFINED,
 					value: undefined,
 					start,
 					end: this.#pos,
 				};
+			}
 
 			// Identifier (string literal - bare ALL_CAPS is now literal, not env var)
 			return {type: TokenType.IDENTIFIER, value, start, end: this.#pos};
@@ -462,7 +456,7 @@ export class Parser {
 
 	// Ternary := LogicalOr ('?' Expr ':' Expr)?
 	#parseTernary(): any {
-		let left = this.#parseLogicalOr();
+		const left = this.#parseLogicalOr();
 
 		if (this.#peek().type === TokenType.QUESTION) {
 			this.#advance(); // consume ?
@@ -770,7 +764,7 @@ class CodeGenerator {
 	}
 
 	#generateTernary(): string {
-		let left = this.#generateLogicalOr();
+		const left = this.#generateLogicalOr();
 
 		if (this.#peek().type === TokenType.QUESTION) {
 			this.#advance();
@@ -1078,6 +1072,7 @@ function needsQuoting(key: string): boolean {
 /** Result of toJSLiteral */
 interface JSLiteralResult {
 	code: string;
+
 	/** Whether this value contains dynamic expressions (process.env, etc) */
 	isDynamic: boolean;
 }
@@ -1109,7 +1104,7 @@ function containsRuntimeExpressions(code: string): boolean {
 function toJSLiteral(
 	value: unknown,
 	placeholders: Map<string, string>,
-	indent: string = "",
+	indent = "",
 ): JSLiteralResult {
 	if (value === null) return {code: "null", isDynamic: false};
 	if (value === undefined) return {code: "undefined", isDynamic: false};
@@ -1187,10 +1182,13 @@ function toJSLiteral(
 export function generateConfigModule(
 	rawConfig: ShovelConfig,
 	options: {
+
 		/** Absolute path to project directory (where shovel.json lives) */
 		projectDir: string;
+
 		/** Absolute path to output directory */
 		outDir: string;
+
 		/** Platform-specific defaults for directories, caches, etc. */
 		platformDefaults?: {
 			directories?: Record<
@@ -1202,8 +1200,10 @@ export function generateConfigModule(
 				{module: string; export?: string; [key: string]: unknown}
 			>;
 		};
+
 		/** Lifecycle options for --lifecycle flag */
 		lifecycle?: {
+
 			/** Lifecycle stage to run: "install" or "activate" */
 			stage: "install" | "activate";
 		};
@@ -1348,9 +1348,10 @@ export function generateConfigModule(
 		// Named sinks (console is implicit, always available)
 		const sinks: Record<string, unknown> = {};
 		if (rawConfig.logging?.sinks) {
-			for (const [name, sinkConfig] of Object.entries(
-				rawConfig.logging.sinks,
-			)) {
+			for (const [
+				name,
+				sinkConfig,
+			] of Object.entries(rawConfig.logging.sinks)) {
 				sinks[name] = processSink(sinkConfig, name);
 			}
 		}
@@ -1437,9 +1438,7 @@ export function generateConfigModule(
 
 		// Lifecycle options (for --lifecycle flag)
 		if (lifecycle) {
-			config.lifecycle = {
-				stage: lifecycle.stage,
-			};
+			config.lifecycle = {stage: lifecycle.stage};
 		}
 
 		return config;
@@ -1544,16 +1543,16 @@ export const DirectoryConfigSchema = z
 export type DirectoryConfig = z.infer<typeof DirectoryConfigSchema>;
 
 /** Database configuration schema - uses module/export pattern like directories/caches */
-export const DatabaseConfigSchema = z
-	.object({
-		/** Module path to import (e.g., "@b9g/zen/bun") */
-		module: z.string(),
-		/** Named export to use (defaults to "default") */
-		export: z.string().optional(),
-		/** Database connection URL (can be null for intentional null fallbacks) */
-		url: z.string().nullable(),
-	})
-	.passthrough(); // Allow additional driver-specific options (max, idleTimeout, etc.)
+export const DatabaseConfigSchema = z.object({
+	/** Module path to import (e.g., "@b9g/zen/bun") */
+	module: z.string(),
+
+	/** Named export to use (defaults to "default") */
+	export: z.string().optional(),
+
+	/** Database connection URL (can be null for intentional null fallbacks) */
+	url: z.string().nullable(),
+}).passthrough(); // Allow additional driver-specific options (max, idleTimeout, etc.)
 
 export type DatabaseConfig = z.infer<typeof DatabaseConfigSchema>;
 
@@ -1564,16 +1563,15 @@ export type LogLevel = z.infer<typeof LogLevelSchema>;
 
 /** Sink configuration schema - allows extra provider-specific options */
 export const SinkConfigSchema = z
-	.object({
-		module: z.string(),
-		export: z.string().optional(),
-	})
+	.object({module: z.string(), export: z.string().optional()})
 	.passthrough(); // Allow additional sink-specific options (path, maxSize, etc.)
 
-export type SinkConfig = z.infer<typeof SinkConfigSchema> & {
-	/** Reified implementation (factory function from build-time code generation) */
-	impl?: (options: Record<string, unknown>) => unknown;
-};
+export type SinkConfig =
+	z.infer<typeof SinkConfigSchema> & {
+
+		/** Reified implementation (factory function from build-time code generation) */
+		impl?: (options: Record<string, unknown>) => unknown;
+	};
 
 /** Logger configuration schema */
 export const LoggerConfigSchema = z
@@ -1598,40 +1596,44 @@ export const LoggingConfigSchema = z
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
 
 /** ESBuild plugin configuration schema - uses module/export pattern */
-export const BuildPluginConfigSchema = z
-	.object({
-		/** Module path to import (e.g., "esbuild-plugin-tailwindcss") */
-		module: z.string(),
-		/** Named export to use (defaults to "default") */
-		export: z.string().optional(),
-	})
-	.passthrough(); // Allow additional plugin-specific options
+export const BuildPluginConfigSchema = z.object({
+	/** Module path to import (e.g., "esbuild-plugin-tailwindcss") */
+	module: z.string(),
+
+	/** Named export to use (defaults to "default") */
+	export: z.string().optional(),
+}).passthrough(); // Allow additional plugin-specific options
 
 export type BuildPluginConfig = z.infer<typeof BuildPluginConfigSchema>;
 
 /** Build configuration schema for ESBuild options */
-export const BuildConfigSchema = z
-	.object({
-		/** ES target (e.g., "es2020", "es2022", ["es2020", "chrome100"]) */
-		target: z.union([z.string(), z.array(z.string())]).optional(),
-		/** Enable minification for production builds */
-		minify: z.boolean().optional(),
-		/** Sourcemap generation: false, true, "inline", "external", "linked" */
-		sourcemap: z
-			.union([z.boolean(), z.enum(["inline", "external", "linked"])])
-			.optional(),
-		/** Enable tree-shaking (default: true) */
-		treeShaking: z.boolean().optional(),
-		/** Global constant definitions (added to Shovel's defaults) */
-		define: z.record(z.string(), z.string()).optional(),
-		/** Path aliases (e.g., {"@": "./src"}) */
-		alias: z.record(z.string(), z.string()).optional(),
-		/** Additional external packages (added to platform defaults) */
-		external: z.array(z.string()).optional(),
-		/** ESBuild plugins using module/export pattern */
-		plugins: z.array(BuildPluginConfigSchema).optional(),
-	})
-	.strict();
+export const BuildConfigSchema = z.object({
+	/** ES target (e.g., "es2020", "es2022", ["es2020", "chrome100"]) */
+	target: z.union([z.string(), z.array(z.string())]).optional(),
+
+	/** Enable minification for production builds */
+	minify: z.boolean().optional(),
+
+	/** Sourcemap generation: false, true, "inline", "external", "linked" */
+	sourcemap: z
+		.union([z.boolean(), z.enum(["inline", "external", "linked"])])
+		.optional(),
+
+	/** Enable tree-shaking (default: true) */
+	treeShaking: z.boolean().optional(),
+
+	/** Global constant definitions (added to Shovel's defaults) */
+	define: z.record(z.string(), z.string()).optional(),
+
+	/** Path aliases (e.g., {"@": "./src"}) */
+	alias: z.record(z.string(), z.string()).optional(),
+
+	/** Additional external packages (added to platform defaults) */
+	external: z.array(z.string()).optional(),
+
+	/** ESBuild plugins using module/export pattern */
+	plugins: z.array(BuildPluginConfigSchema).optional(),
+}).strict();
 
 export type BuildConfig = z.infer<typeof BuildConfigSchema>;
 
@@ -1661,6 +1663,7 @@ export interface ProcessedLoggingConfig {
 /** Processed build config with defaults applied */
 export interface ProcessedBuildConfig {
 	target: string | string[];
+
 	/** Unset (undefined) lets the bundler apply mode-aware defaults; don't collapse it to a boolean. */
 	minify?: boolean;
 	sourcemap: boolean | "inline" | "external" | "linked";
@@ -1717,23 +1720,17 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
 	// Apply config precedence: json value > canonical env var > default
 	const config: ProcessedShovelConfig = {
 		platform: validated.platform ?? env.PLATFORM ?? undefined,
-		port:
-			validated.port !== undefined
-				? typeof validated.port === "number"
-					? validated.port
-					: parseInt(String(validated.port), 10)
-				: env.PORT
-					? parseInt(env.PORT, 10)
-					: 3000,
+		port: validated.port !== undefined
+			? typeof validated.port === "number"
+				? validated.port
+				: parseInt(String(validated.port), 10)
+			: env.PORT ? parseInt(env.PORT, 10) : 3000,
 		host: validated.host ?? env.HOST ?? "localhost",
-		workers:
-			validated.workers !== undefined
-				? typeof validated.workers === "number"
-					? validated.workers
-					: parseInt(String(validated.workers), 10)
-				: env.WORKERS
-					? parseInt(env.WORKERS, 10)
-					: 1,
+		workers: validated.workers !== undefined
+			? typeof validated.workers === "number"
+				? validated.workers
+				: parseInt(String(validated.workers), 10)
+			: env.WORKERS ? parseInt(env.WORKERS, 10) : 1,
 		logging: {
 			sinks: validated.logging?.sinks || {},
 			loggers: validated.logging?.loggers || [],
@@ -1766,6 +1763,7 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
  * Options for generating storage types
  */
 export interface GenerateStorageTypesOptions {
+
 	/** Platform-specific defaults for directories, caches, etc. */
 	platformDefaults?: {
 		directories?: Record<string, unknown>;
@@ -1814,11 +1812,12 @@ export function generateStorageTypes(
 
 	// Generate database type (union of valid names)
 	if (databaseNames.length > 0) {
-		imports.push(`import type {Database} from "@b9g/zen";`);
-		imports.push(`import type {DatabaseUpgradeEvent} from "@b9g/platform";`);
+		imports.push("import type {Database} from \"@b9g/zen\";");
+		imports.push("import type {DatabaseUpgradeEvent} from \"@b9g/platform\";");
 
 		const dbUnion = databaseNames.map((n) => `"${n}"`).join(" | ");
-		sections.push(`  /**
+		sections.push(
+			`  /**
    * Valid database names from shovel.json.
    * Using an invalid name will cause a TypeScript error.
    */
@@ -1837,13 +1836,15 @@ export function generateStorageTypes(
     close(name: ValidDatabaseName): Promise<void>;
     /** Close all databases */
     closeAll(): Promise<void>;
-  }`);
+  }`,
+		);
 	}
 
 	// Generate directory type (union of valid names)
 	if (directoryNames.length > 0) {
 		const dirUnion = directoryNames.map((n) => `"${n}"`).join(" | ");
-		sections.push(`  /**
+		sections.push(
+			`  /**
    * Valid directory names from shovel.json and platform defaults.
    * Using an invalid name will cause a TypeScript error.
    */
@@ -1852,13 +1853,15 @@ export function generateStorageTypes(
   interface DirectoryStorage {
     open(name: ValidDirectoryName): Promise<FileSystemDirectoryHandle>;
     has(name: ValidDirectoryName): Promise<boolean>;
-  }`);
+  }`,
+		);
 	}
 
 	// Generate cache type (union of valid names)
 	if (cacheNames.length > 0) {
 		const cacheUnion = cacheNames.map((n) => `"${n}"`).join(" | ");
-		sections.push(`  /**
+		sections.push(
+			`  /**
    * Valid cache names from shovel.json and platform defaults.
    * Using an invalid name will cause a TypeScript error.
    */
@@ -1869,7 +1872,8 @@ export function generateStorageTypes(
     has(name: ValidCacheName): Promise<boolean>;
     delete(name: ValidCacheName): Promise<boolean>;
     keys(): Promise<string[]>;
-  }`);
+  }`,
+		);
 	}
 
 	return `// Generated by Shovel - DO NOT EDIT

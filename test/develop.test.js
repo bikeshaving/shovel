@@ -2,8 +2,8 @@
 import * as FS from "fs/promises";
 import {spawn} from "child_process";
 import {createConnection} from "net";
-import {test, expect} from "bun:test";
-import {join, dirname as _dirname} from "path";
+import {expect, test} from "bun:test";
+import {dirname as _dirname, join} from "path";
 import {tmpdir} from "os";
 import {mkdtemp} from "fs/promises";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
@@ -45,15 +45,11 @@ async function createTempDir() {
 	// Use "info" level so we can detect "Reloaded" messages for test synchronization
 	await FS.writeFile(
 		join(tempDir, "shovel.json"),
-		JSON.stringify(
-			{
-				logging: {
-					loggers: [{category: "shovel", level: "info", sinks: ["console"]}],
-				},
+		JSON.stringify({
+			logging: {
+				loggers: [{category: "shovel", level: "info", sinks: ["console"]}],
 			},
-			null,
-			2,
-		),
+		}, null, 2),
 	);
 
 	return {
@@ -239,10 +235,8 @@ function startDevServer(fixture, port, extraArgs = []) {
 	};
 
 	// Expose output for debugging
-	serverProcess.getOutput = () => ({
-		stdout: stdoutOutput,
-		stderr: stderrOutput,
-	});
+	serverProcess.getOutput =
+		() => ({stdout: stdoutOutput, stderr: stderrOutput});
 
 	return serverProcess;
 }
@@ -602,8 +596,9 @@ test(
 			await tempFixture.copyFrom("server-goodbye.ts");
 
 			// Make multiple concurrent requests during reload
-			const concurrentRequests = Array.from({length: 10}, () =>
-				fetchWithRetry(PORT, 5, 100),
+			const concurrentRequests = Array.from(
+				{length: 10},
+				() => fetchWithRetry(PORT, 5, 100),
 			);
 
 			const responses = await Promise.all(concurrentRequests);
@@ -791,8 +786,8 @@ test(
 			const testFileMain = join(tempDir.dir, "chain-main.ts");
 
 			// File A (deepest dependency)
-			const contentA = `export const value = "A-original";`;
-			const modifiedA = `export const value = "A-modified";`;
+			const contentA = "export const value = \"A-original\";";
+			const modifiedA = "export const value = \"A-modified\";";
 
 			// File B (middle dependency, imports A)
 			const contentB = `
@@ -858,11 +853,14 @@ test(
 			tempDir = await createTempDir();
 
 			// Create multiple temporary test files
-			const testFiles = Array.from({length: 5}, (_, i) => ({
-				path: join(tempDir.dir, `dep-${i}.ts`),
-				content: `export const value${i} = "original-${i}";`,
-				modified: `export const value${i} = "modified-${i}";`,
-			}));
+			const testFiles = Array.from(
+				{length: 5},
+				(_, i) => ({
+					path: join(tempDir.dir, `dep-${i}.ts`),
+					content: `export const value${i} = "original-${i}";`,
+					modified: `export const value${i} = "modified-${i}";`,
+				}),
+			);
 
 			const mainFile = join(tempDir.dir, "main.ts");
 			const mainContent = `
@@ -926,18 +924,17 @@ test(
 			tempFixture = await createTempFixture("server-hello.ts");
 
 			// Start development server with 8 workers
-			serverProcess = startDevServer(tempFixture.path, PORT, [
-				"--workers",
-				"8",
-			]);
+			serverProcess =
+				startDevServer(tempFixture.path, PORT, ["--workers", "8"]);
 
 			// Wait for server to be ready
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
 
 			// Make 50 concurrent requests
-			const concurrentRequests = Array.from({length: 50}, () =>
-				fetchWithRetry(PORT),
+			const concurrentRequests = Array.from(
+				{length: 50},
+				() => fetchWithRetry(PORT),
 			);
 
 			const responses = await Promise.all(concurrentRequests);
@@ -1204,10 +1201,11 @@ self.addEventListener("fetch", (event) => {
 			await waitForServer(PORT, serverProcess);
 
 			// Perform rapid modifications
-			const rapidModifications = Array.from({length: 10}, (_, i) =>
-				FS.writeFile(cacheFile, cacheContent(`"rapid-${i}"`)).then(
-					() => new Promise((resolve) => setTimeout(resolve, 20)),
-				),
+			const rapidModifications = Array.from(
+				{length: 10},
+				(_, i) =>
+					FS.writeFile(cacheFile, cacheContent(`"rapid-${i}"`))
+						.then(() => new Promise((resolve) => setTimeout(resolve, 20))),
 			);
 
 			// Execute all modifications
@@ -1333,28 +1331,17 @@ test(
 			// Create workspace package.json at monorepo root
 			await FS.writeFile(
 				join(monorepoRoot, "package.json"),
-				JSON.stringify(
-					{
-						name: "test-monorepo",
-						private: true,
-						workspaces: ["packages/*"],
-					},
-					null,
-					2,
-				),
+				JSON.stringify({
+					name: "test-monorepo",
+					private: true,
+					workspaces: ["packages/*"],
+				}, null, 2),
 			);
 
 			// Create package.json for the app (each package in a monorepo has its own)
 			await FS.writeFile(
 				join(appDir, "package.json"),
-				JSON.stringify(
-					{
-						name: "my-app",
-						private: true,
-					},
-					null,
-					2,
-				),
+				JSON.stringify({name: "my-app", private: true}, null, 2),
 			);
 
 			// Create node_modules symlink at monorepo root
@@ -1389,10 +1376,7 @@ self.addEventListener("fetch", (event) => {
 				{
 					stdio: ["ignore", "pipe", "pipe"],
 					cwd: appDir, // Running from packages/my-app, not monorepo root
-					env: {
-						...process.env,
-						NODE_ENV: "development",
-					},
+					env: {...process.env, NODE_ENV: "development"},
 				},
 			);
 
@@ -1454,7 +1438,7 @@ test(
 			const appFile = join(fixtureDir, "app.ts");
 			await FS.writeFile(
 				appFile,
-				`self.addEventListener("fetch", () => new Response("v1"));`,
+				"self.addEventListener(\"fetch\", () => new Response(\"v1\"));",
 			);
 
 			let onRebuildCalled = false;
@@ -1500,7 +1484,7 @@ test(
 				// Trigger rebuild by modifying source
 				await FS.writeFile(
 					appFile,
-					`self.addEventListener("fetch", () => new Response("v2"));`,
+					"self.addEventListener(\"fetch\", () => new Response(\"v2\"));",
 				);
 
 				// Wait for rebuild callback
@@ -1639,7 +1623,7 @@ export function getCustomSink(options) {
 						custom: {
 							module: "./custom-sink.mjs",
 							export: "getCustomSink",
-							markerPath: markerPath,
+							markerPath,
 						},
 					},
 					loggers: [{category: "shovel", level: "info", sinks: ["custom"]}],
@@ -1667,10 +1651,7 @@ addEventListener("fetch", (event) => {
 				{
 					stdio: ["ignore", "pipe", "pipe"],
 					cwd: tempDir,
-					env: {
-						...process.env,
-						NODE_ENV: "development",
-					},
+					env: {...process.env, NODE_ENV: "development"},
 				},
 			);
 
@@ -1759,20 +1740,14 @@ self.addEventListener("fetch", (event) => {
 			// via the watchFiles mechanism in the config plugin
 			await FS.writeFile(
 				join(tempDir.dir, "shovel.json"),
-				JSON.stringify(
-					{
-						directories: {
-							docs: {module: "@b9g/filesystem/node-fs", path: "./docs"},
-						},
-						logging: {
-							loggers: [
-								{category: "shovel", level: "info", sinks: ["console"]},
-							],
-						},
+				JSON.stringify({
+					directories: {
+						docs: {module: "@b9g/filesystem/node-fs", path: "./docs"},
 					},
-					null,
-					2,
-				),
+					logging: {
+						loggers: [{category: "shovel", level: "info", sinks: ["console"]}],
+					},
+				}, null, 2),
 			);
 
 			// The key assertion: a rebuild + reload should be triggered
@@ -1844,15 +1819,11 @@ self.addEventListener("fetch", (event) => {
 			// Create shovel.json for the first time
 			await FS.writeFile(
 				join(tempDir.dir, "shovel.json"),
-				JSON.stringify(
-					{
-						directories: {
-							uploads: {module: "@b9g/filesystem/node-fs", path: "./uploads"},
-						},
+				JSON.stringify({
+					directories: {
+						uploads: {module: "@b9g/filesystem/node-fs", path: "./uploads"},
 					},
-					null,
-					2,
-				),
+				}, null, 2),
 			);
 
 			// Should trigger rebuild even though shovel.json didn't exist at startup
@@ -1889,15 +1860,7 @@ test(
 			// Create package.json with initial shovel config
 			await FS.writeFile(
 				join(tempDirPath, "package.json"),
-				JSON.stringify(
-					{
-						name: "test-app",
-						private: true,
-						shovel: {},
-					},
-					null,
-					2,
-				),
+				JSON.stringify({name: "test-app", private: true, shovel: {}}, null, 2),
 			);
 
 			tempDir = {
@@ -1938,19 +1901,15 @@ self.addEventListener("fetch", (event) => {
 			// Modify the shovel field in package.json
 			await FS.writeFile(
 				join(tempDirPath, "package.json"),
-				JSON.stringify(
-					{
-						name: "test-app",
-						private: true,
-						shovel: {
-							directories: {
-								data: {module: "@b9g/filesystem/node-fs", path: "./data"},
-							},
+				JSON.stringify({
+					name: "test-app",
+					private: true,
+					shovel: {
+						directories: {
+							data: {module: "@b9g/filesystem/node-fs", path: "./data"},
 						},
 					},
-					null,
-					2,
-				),
+				}, null, 2),
 			);
 
 			// Should trigger rebuild from package.json change
@@ -1986,17 +1945,11 @@ test(
 			// Add shovel.json for logging
 			await FS.writeFile(
 				join(fixture.dir, "shovel.json"),
-				JSON.stringify(
-					{
-						logging: {
-							loggers: [
-								{category: "shovel", level: "info", sinks: ["console"]},
-							],
-						},
+				JSON.stringify({
+					logging: {
+						loggers: [{category: "shovel", level: "info", sinks: ["console"]}],
 					},
-					null,
-					2,
-				),
+				}, null, 2),
 			);
 
 			// Start development server with Bun platform (Node dev mode has directory issues with assets)
@@ -2015,10 +1968,7 @@ test(
 				{
 					stdio: ["ignore", "pipe", "pipe"],
 					cwd: fixture.dir,
-					env: {
-						...process.env,
-						NODE_ENV: "development",
-					},
+					env: {...process.env, NODE_ENV: "development"},
 				},
 			);
 

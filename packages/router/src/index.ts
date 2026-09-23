@@ -1,17 +1,13 @@
 /** @b9g/router - Universal request router built on web standards */
 
 import {
-	MatchPattern,
-	isSimplePattern,
-	compilePathname,
 	type CompiledPattern,
+	compilePathname,
+	isSimplePattern,
+	MatchPattern,
 } from "@b9g/match-pattern";
-import {
-	HTTPError,
-	isHTTPError,
-	InternalServerError,
-	NotFound,
-} from "@b9g/http-errors";
+import type {HTTPError} from "@b9g/http-errors";
+import {InternalServerError, isHTTPError, NotFound} from "@b9g/http-errors";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "router"]);
@@ -26,8 +22,10 @@ const logger = getLogger(["shovel", "router"]);
  * Augmentable via module declaration for middleware-specific properties
  */
 export interface RouteContext {
+
 	/** Route parameters extracted from URL pattern matching */
 	params: Record<string, string>;
+
 	/** Allow middleware to add arbitrary properties to context */
 	[key: string]: unknown;
 }
@@ -45,31 +43,24 @@ export type Handler = (
  * Function middleware signature
  * Can modify request and context, and can return a Response to short-circuit
  */
-export type FunctionMiddleware = (
-	request: Request,
-	context: RouteContext,
-) =>
-	| Response
-	| null
-	| undefined
-	| void
-	| Promise<Response | null | undefined | void>;
+export type FunctionMiddleware = (request: Request, context: RouteContext) =>
+	Response |
+	null |
+	undefined |
+	void | Promise<Response | null | undefined | void>;
 
 /**
  * Generator middleware signature - uses yield for continuation.
  * Yield to pass control to the next middleware/handler, receive Response back.
  * Optionally yield a modified Request (or yield without value to use original).
  */
-export type GeneratorMiddleware = (
-	request: Request,
-	context: RouteContext,
-) =>
-	| Generator<Request | undefined, Response | null | undefined | void, Response>
-	| AsyncGenerator<
+export type GeneratorMiddleware = (request: Request, context: RouteContext) =>
+	Generator<Request | undefined, Response | null | undefined | void, Response> |
+	AsyncGenerator<
 			Request | undefined,
 			Response | null | undefined | void,
 			Response
-	  >;
+	>;
 
 /**
  * Union type for all supported middleware types
@@ -81,19 +72,14 @@ export type Middleware = GeneratorMiddleware | FunctionMiddleware;
  * HTTP methods supported by the router
  */
 export type HTTPMethod =
-	| "GET"
-	| "POST"
-	| "PUT"
-	| "DELETE"
-	| "PATCH"
-	| "HEAD"
-	| "OPTIONS";
+	"GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
 
 /**
  * Route options for configuring route metadata
  * Augmentable via module declaration for custom metadata
  */
 export interface RouteOptions {
+
 	/** Optional name for the route, useful for matching/identification */
 	name?: string;
 }
@@ -102,12 +88,16 @@ export interface RouteOptions {
  * Result of matching a URL against registered routes
  */
 export interface RouteMatch {
+
 	/** Route parameters extracted from URL pattern matching */
 	params: Record<string, string>;
+
 	/** HTTP methods registered for this pattern */
 	methods: string[];
+
 	/** Route name if provided */
 	name?: string;
+
 	/** Original pattern string */
 	pattern: string;
 }
@@ -128,6 +118,7 @@ export interface RouteEntry {
  */
 export interface MiddlewareEntry {
 	middleware: Middleware;
+
 	/** If set, middleware only runs for paths matching this prefix */
 	pathPrefix?: string;
 }
@@ -344,8 +335,9 @@ class RadixTreeExecutor {
 	 * Match a URL against registered routes (returns RouteMatch info)
 	 */
 	matchURL(url: string | URL): RouteMatch | null {
-		const urlObj =
-			typeof url === "string" ? new URL(url, "http://localhost") : url;
+		const urlObj = typeof url === "string"
+			? new URL(url, "http://localhost")
+			: url;
 		const pathname = urlObj.pathname;
 
 		// Try radix tree first (fast path for simple routes)
@@ -425,11 +417,7 @@ class RadixTreeExecutor {
 						params[compiled.paramNames[i]] = match[i + 1];
 					}
 				}
-				return {
-					handler: route.handler,
-					context: {params},
-					entry: route,
-				};
+				return {handler: route.handler, context: {params}, entry: route};
 			}
 		}
 
@@ -640,10 +628,7 @@ export class Router {
 					"Invalid middleware type. Must be function or async generator function.",
 				);
 			}
-			this.middlewares.push({
-				middleware,
-				pathPrefix: pathPrefixOrMiddleware,
-			});
+			this.middlewares.push({middleware, pathPrefix: pathPrefixOrMiddleware});
 		} else {
 			// Global middleware
 			if (!this.#isValidMiddleware(pathPrefixOrMiddleware)) {
@@ -688,7 +673,7 @@ export class Router {
 			method: method.toUpperCase(),
 			handler,
 			name,
-			middlewares: middlewares,
+			middlewares,
 		});
 		this.#executor = null;
 	}
@@ -939,9 +924,9 @@ export class Router {
 		context: RouteContext,
 		handler: Handler,
 	): Promise<Response> {
-		const runningGenerators: Array<{
-			generator: ReturnType<GeneratorMiddleware>;
-		}> = [];
+		const runningGenerators: Array<
+			{generator: ReturnType<GeneratorMiddleware>}
+		> = [];
 		let currentResponse: Response | null = null;
 
 		// Extract pathname from request URL for prefix matching

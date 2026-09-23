@@ -8,8 +8,10 @@ import mime from "mime";
  * Configuration for filesystem adapters
  */
 export interface FileSystemConfig {
+
 	/** Human readable name for this filesystem */
 	name?: string;
+
 	/** Platform-specific configuration */
 	[key: string]: any;
 }
@@ -30,6 +32,7 @@ export interface FileSystemPermissionDescriptor {
  * across different storage types (memory, local disk, S3, R2, etc.)
  */
 export interface FileSystemBackend {
+
 	/**
 	 * Check if entry exists and return its type
 	 * @param path Path to the entry
@@ -89,8 +92,7 @@ export interface FileSystemBackend {
  */
 class ShovelWritableFileStream
 	extends WritableStream
-	implements FileSystemWritableFileStream
-{
+	implements FileSystemWritableFileStream {
 	#chunks: Uint8Array[];
 	#backend: FileSystemBackend;
 	#path: string;
@@ -100,8 +102,9 @@ class ShovelWritableFileStream
 		super({
 			write: (chunk: Uint8Array | string) => {
 				// Convert string to Uint8Array if needed
-				const bytes =
-					typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk;
+				const bytes = typeof chunk === "string"
+					? new TextEncoder().encode(chunk)
+					: chunk;
 				chunks.push(bytes);
 				return Promise.resolve();
 			},
@@ -269,8 +272,7 @@ export abstract class ShovelHandle implements FileSystemHandle {
  */
 export class ShovelFileHandle
 	extends ShovelHandle
-	implements FileSystemFileHandle
-{
+	implements FileSystemFileHandle {
 	readonly kind: "file";
 
 	constructor(backend: FileSystemBackend, path: string) {
@@ -290,10 +292,11 @@ export class ShovelFileHandle
 			// This resolves type conflicts between lib.dom and lib.webworker
 			const buffer = content.slice().buffer;
 
-			return new File([buffer], filename, {
-				type: mimeType,
-				lastModified: lastModified ?? Date.now(),
-			});
+			return new File(
+				[buffer],
+				filename,
+				{type: mimeType, lastModified: lastModified ?? Date.now()},
+			);
 		} catch (error) {
 			throw new DOMException(`File not found: ${this.path}`, "NotFoundError");
 		}
@@ -321,8 +324,7 @@ export class ShovelFileHandle
  */
 export class ShovelDirectoryHandle
 	extends ShovelHandle
-	implements FileSystemDirectoryHandle
-{
+	implements FileSystemDirectoryHandle {
 	readonly kind: "directory";
 
 	constructor(backend: FileSystemBackend, path: string) {
@@ -404,12 +406,10 @@ export class ShovelDirectoryHandle
 	async resolve(
 		possibleDescendant: FileSystemHandle,
 	): Promise<string[] | null> {
-		if (
-			!(
-				possibleDescendant instanceof ShovelDirectoryHandle ||
+		if (!(
+			possibleDescendant instanceof ShovelDirectoryHandle ||
 				possibleDescendant instanceof ShovelFileHandle
-			)
-		) {
+		)) {
 			return null;
 		}
 
@@ -425,9 +425,10 @@ export class ShovelDirectoryHandle
 		return relativePath.split("/").filter(Boolean);
 	}
 
-	async *entries(): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+	async *entries(): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		try {
 			const entries = await this.backend.listDir(this.path);
 
@@ -462,9 +463,10 @@ export class ShovelDirectoryHandle
 		}
 	}
 
-	[Symbol.asyncIterator](): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+	[Symbol.asyncIterator](): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		return this.entries();
 	}
 
@@ -485,6 +487,7 @@ export class ShovelDirectoryHandle
  * Directory storage interface - parallels CacheStorage for filesystem access
  */
 export interface DirectoryStorage {
+
 	/**
 	 * Open a named directory - returns FileSystemDirectoryHandle (root)
 	 * Well-known names: 'static', 'tmp'
@@ -512,9 +515,8 @@ export interface DirectoryStorage {
  * @param name Directory name to create
  * @returns FileSystemDirectoryHandle instance
  */
-export type DirectoryFactory = (
-	name: string,
-) => FileSystemDirectoryHandle | Promise<FileSystemDirectoryHandle>;
+export type DirectoryFactory = (name: string) => FileSystemDirectoryHandle |
+	Promise<FileSystemDirectoryHandle>;
 
 /**
  * Custom directory storage with factory-based directory creation

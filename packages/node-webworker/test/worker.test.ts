@@ -1,8 +1,8 @@
-import {test, expect, describe, beforeEach, afterEach} from "bun:test";
+import {afterEach, beforeEach, describe, expect, test} from "bun:test";
 import {Worker} from "../src/index.js";
 import {tmpdir} from "os";
 import {join} from "path";
-import {writeFileSync, rmSync, mkdtempSync} from "fs";
+import {mkdtempSync, rmSync, writeFileSync} from "fs";
 
 describe("Node Web Worker", () => {
 	let tempDir: string;

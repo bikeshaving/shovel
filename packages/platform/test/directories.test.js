@@ -1,4 +1,4 @@
-import {test, expect} from "bun:test";
+import {expect, test} from "bun:test";
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
@@ -139,9 +139,8 @@ test(
 			const distHandle = await directories.open("dist");
 
 			// Test getting file handle
-			const fileHandle = await distHandle.getFileHandle("test.txt", {
-				create: true,
-			});
+			const fileHandle =
+				await distHandle.getFileHandle("test.txt", {create: true});
 			expect(fileHandle).toBeDefined();
 			expect(fileHandle.kind).toBe("file");
 			expect(fileHandle.name).toBe("test.txt");
@@ -177,17 +176,15 @@ test(
 			const distHandle = await directories.open("dist");
 
 			// Create subdirectory
-			const subHandle = await distHandle.getDirectoryHandle("assets", {
-				create: true,
-			});
+			const subHandle =
+				await distHandle.getDirectoryHandle("assets", {create: true});
 			expect(subHandle).toBeDefined();
 			expect(subHandle.kind).toBe("directory");
 			expect(subHandle.name).toBe("assets");
 
 			// Create file in subdirectory
-			const fileHandle = await subHandle.getFileHandle("style.css", {
-				create: true,
-			});
+			const fileHandle =
+				await subHandle.getFileHandle("style.css", {create: true});
 			const writable = await fileHandle.createWritable();
 			await writable.write("body { color: blue; }");
 			await writable.close();
@@ -432,16 +429,14 @@ test(
 		const directory = new MemoryDirectory();
 
 		// Test directory creation
-		const dirHandle = await directory.getDirectoryHandle("test", {
-			create: true,
-		});
+		const dirHandle =
+			await directory.getDirectoryHandle("test", {create: true});
 		expect(dirHandle.kind).toBe("directory");
 		expect(dirHandle.name).toBe("test");
 
 		// Test file creation
-		const fileHandle = await dirHandle.getFileHandle("test.txt", {
-			create: true,
-		});
+		const fileHandle =
+			await dirHandle.getFileHandle("test.txt", {create: true});
 		expect(fileHandle.kind).toBe("file");
 		expect(fileHandle.name).toBe("test.txt");
 
@@ -469,15 +464,13 @@ test(
 			const directory = new NodeFSDirectory(tempDir);
 
 			// Test directory creation
-			const dirHandle = await directory.getDirectoryHandle("local-test", {
-				create: true,
-			});
+			const dirHandle =
+				await directory.getDirectoryHandle("local-test", {create: true});
 			expect(dirHandle.kind).toBe("directory");
 
 			// Test file operations
-			const fileHandle = await dirHandle.getFileHandle("local.txt", {
-				create: true,
-			});
+			const fileHandle =
+				await dirHandle.getFileHandle("local.txt", {create: true});
 			const writable = await fileHandle.createWritable();
 			await writable.write("local filesystem test");
 			await writable.close();

@@ -77,10 +77,7 @@ function getDirectoryIndex(manifest: AssetManifestLike): DirectoryIndex | null {
 				// not stable enough to make the alternative deterministic.
 				if (!existing) children.set(name, {kind: "file", url});
 			} else if (!existing || existing.kind === "file") {
-				children.set(name, {
-					kind: "directory",
-					url: dirPath + name + "/",
-				});
+				children.set(name, {kind: "directory", url: dirPath + name + "/"});
 			}
 
 			dirPath = dirPath + name + "/";
@@ -190,10 +187,15 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 
 		const arrayBuffer = await r2Object.arrayBuffer();
 
-		return new File([arrayBuffer], this.name, {
-			lastModified: r2Object.uploaded.getTime(),
-			type: r2Object.httpMetadata?.contentType || this.#getMimeType(this.#key),
-		});
+		return new File(
+			[arrayBuffer],
+			this.name,
+			{
+				lastModified: r2Object.uploaded.getTime(),
+				type:
+					r2Object.httpMetadata?.contentType || this.#getMimeType(this.#key),
+			},
+		);
 	}
 
 	async createWritable(): Promise<FileSystemWritableFileStream> {
@@ -320,28 +322,34 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	[Symbol.asyncIterator](): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+	[Symbol.asyncIterator](): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		return this.entries();
 	}
-	entries(): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+
+	entries(): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		return this.#generateEntries();
 	}
+
 	keys(): AsyncIterableIterator<string> {
 		return this.#generateKeys();
 	}
+
 	values(): AsyncIterableIterator<
 		FileSystemFileHandle | FileSystemDirectoryHandle
 	> {
 		return this.#generateValues();
 	}
 
-	async *#generateEntries(): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+	async *#generateEntries(): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		const listPrefix = this.#prefix ? `${this.#prefix}/` : "";
 
 		try {
@@ -354,8 +362,7 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 				if (object.key !== listPrefix) {
 					const name = object.key.substring(listPrefix.length);
 					if (
-						!name.includes("/") &&
-						!name.endsWith(".shovel_directory_marker")
+						!name.includes("/") && !name.endsWith(".shovel_directory_marker")
 					) {
 						yield [
 							name,
@@ -483,6 +490,7 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	constructor(
 		assets: CFAssetsBinding,
 		basePath = "/",
+
 		/** Overrides the registered asset manifest (used by tests). */
 		manifest?: AssetManifestLike,
 	) {
@@ -549,9 +557,10 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	[Symbol.asyncIterator](): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+	[Symbol.asyncIterator](): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		return this.entries();
 	}
 
@@ -561,9 +570,10 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	 * manifest at startup. Enumeration reads the memoized directory index
 	 * over it — files as file handles, deeper paths as subdirectory handles.
 	 */
-	async *entries(): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+	async *entries(): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		const children = this.#children();
 		if (!children) return;
 		for (const [name, child] of children) {
@@ -599,7 +609,7 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	async *keys(): AsyncIterableIterator<string> {
 		const children = this.#children();
 		if (!children) return;
-		yield* children.keys();
+		yield *children.keys();
 	}
 
 	async *values(): AsyncIterableIterator<
@@ -621,8 +631,10 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 // ============================================================================
 
 export interface CloudflareR2DirectoryOptions {
+
 	/** R2 binding name (must match wrangler.toml binding). Defaults to "${NAME}_R2" */
 	binding?: string;
+
 	/** Optional prefix/path within the bucket */
 	path?: string;
 }
@@ -645,10 +657,10 @@ export class CloudflareR2Directory extends R2FileSystemDirectoryHandle {
 		if (!r2Bucket) {
 			throw new Error(
 				`R2 bucket binding "${bindingName}" not found. ` +
-					`Configure in wrangler.toml:\n\n` +
-					`[[r2_buckets]]\n` +
+					"Configure in wrangler.toml:\n\n" +
+					"[[r2_buckets]]\n" +
 					`binding = "${bindingName}"\n` +
-					`bucket_name = "your-bucket-name"`,
+					"bucket_name = \"your-bucket-name\"",
 			);
 		}
 
@@ -659,6 +671,7 @@ export class CloudflareR2Directory extends R2FileSystemDirectoryHandle {
 }
 
 export interface CloudflareAssetsDirectoryOptions {
+
 	/** Base path within assets (defaults to "/") */
 	path?: string;
 }
@@ -679,20 +692,17 @@ export class CloudflareAssetsDirectory extends CFAssetsDirectoryHandle {
 		const assets = env.ASSETS as CFAssetsBinding | undefined;
 		if (!assets) {
 			throw new Error(
-				`ASSETS binding not found. ` +
-					`Configure in wrangler.toml:\n\n` +
-					`[assets]\n` +
-					`directory = "./public"`,
+				"ASSETS binding not found. " +
+					"Configure in wrangler.toml:\n\n" +
+					"[assets]\n" +
+					"directory = \"./public\"",
 			);
 		}
 
 		const basePath = options.path ?? "/";
-		const normalizedBase =
-			basePath === "/"
-				? "/"
-				: basePath.startsWith("/")
-					? basePath
-					: `/${basePath}`;
+		const normalizedBase = basePath === "/"
+			? "/"
+			: basePath.startsWith("/") ? basePath : `/${basePath}`;
 		super(assets, normalizedBase);
 	}
 }

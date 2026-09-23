@@ -7,10 +7,13 @@
  */
 
 export interface BroadcastChannelBackend {
+
 	/** Publish a message to a channel (called when local BC posts) */
 	publish(channelName: string, data: unknown): void;
+
 	/** Subscribe to a channel (called when first BC instance for a name is created) */
 	subscribe(channelName: string, callback: (data: unknown) => void): () => void;
+
 	/** Cleanup connections */
 	dispose(): Promise<void>;
 }

@@ -7,7 +7,7 @@ import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
 import {renderer} from "@b9g/crank/html";
 import type {Children} from "@b9g/crank";
-import type {Table, Database} from "@b9g/zen";
+import type {Database, Table} from "@b9g/zen";
 import {ValidationError} from "@b9g/zen";
 import {
 	type AdminTableInfo,
@@ -28,60 +28,80 @@ export type AuthProvider = "google" | "github" | "microsoft";
 
 /** Authentication configuration */
 export interface AuthConfig {
+
 	/** OAuth2 providers to enable */
 	providers: AuthProvider[];
+
 	/** Optional email domain whitelist (e.g., ['mycompany.com']) */
 	allowedDomains?: string[];
+
 	/** Session max age in seconds (default: 7 days) */
 	sessionMaxAge?: number;
 }
 
 /** Per-model display and behavior configuration */
 export interface ModelConfig {
+
 	/** Display name for the model (defaults to table name) */
 	name?: string;
+
 	/** Columns to show in list view (defaults to all non-blob columns) */
 	listFields?: string[];
+
 	/** Fields that can be searched */
 	searchFields?: string[];
+
 	/** Fields to hide from forms */
 	excludeFields?: string[];
+
 	/** Fields that cannot be edited */
 	readOnlyFields?: string[];
+
 	/** Items per page in list view (default: 25) */
 	pageSize?: number;
 }
 
 /** Admin branding customization */
 export interface BrandingConfig {
+
 	/** Admin panel title */
 	title?: string;
+
 	/** Logo URL */
 	logo?: string;
 }
 
 /** USWDS asset URLs for the admin UI */
 interface AssetsConfig {
+
 	/** URL to USWDS CSS file */
 	css: string;
+
 	/** URL to USWDS main JS file */
 	js: string;
 }
 
 /** Main admin configuration */
 export interface AdminConfig {
+
 	/** Database name from shovel.json to use */
 	database: string;
+
 	/** Schema object containing @b9g/zen collection definitions */
 	schema: Record<string, unknown>;
+
 	/** Base path for admin routes (default: '/admin') */
 	basePath?: string;
+
 	/** Authentication configuration */
 	auth: AuthConfig;
+
 	/** Per-model customization keyed by table name */
 	models?: Record<string, ModelConfig>;
+
 	/** Branding customization */
 	branding?: BrandingConfig;
+
 	/** USWDS asset URLs - if not provided, will use default relative paths */
 	assets?: AssetsConfig;
 }
@@ -112,12 +132,16 @@ interface _AdminSession {
 
 /** Model information exposed by AdminRouter */
 export interface AdminModel {
+
 	/** Table name in the database */
 	name: string;
+
 	/** Human-readable display name */
 	displayName: string;
+
 	/** Admin-specific table info */
 	tableInfo: AdminTableInfo;
+
 	/** The @b9g/zen table definition */
 	table: Table<any>;
 }
@@ -229,7 +253,7 @@ function parseId(
  * Format a value for display in a table cell
  */
 function formatValue(value: unknown): string {
-	if (value === null || value === undefined) {
+	if (value == null) {
 		return "—";
 	}
 	if (value instanceof Date) {
@@ -362,9 +386,7 @@ export class AdminRouter extends Router {
 
 		this.route("/auth/:provider").get((_req, ctx) => {
 			const provider = ctx.params.provider;
-			return new Response(`TODO: Start ${provider} OAuth2 flow`, {
-				status: 501,
-			});
+			return new Response(`TODO: Start ${provider} OAuth2 flow`, {status: 501});
 		});
 
 		this.route("/auth/callback").get(() => {
@@ -482,62 +504,64 @@ export class AdminRouter extends Router {
 							</a>
 						</div>
 
-						{records.length === 0 ? (
-							<div class="admin-empty">
-								<p>No {model.displayName.toLowerCase()} found.</p>
-								<a
-									href={`${basePath}/${modelName}/new`}
-									class="usa-button margin-top-2"
-								>
-									Create your first {model.displayName.toLowerCase()}
-								</a>
-							</div>
-						) : (
-							<div class="admin-card" style="overflow-x: auto;">
-								<table class="usa-table usa-table--borderless">
-									<thead>
-										<tr>
-											{displayColumns.map((col) => (
-												<th scope="col">{col.name}</th>
-											))}
-											<th scope="col">Actions</th>
-										</tr>
-									</thead>
-									<tbody>
-										{records.map((record: Record<string, unknown>) => {
-											const pk = getPrimaryKeyValue(record, model.tableInfo);
-											return (
-												<tr>
-													{displayColumns.map((col) => (
-														<td>{formatValue(record[col.name])}</td>
-													))}
-													<td>
-														<a
-															href={`${basePath}/${modelName}/${pk}`}
-															class="usa-link margin-right-1"
-														>
-															View
-														</a>
-														<a
-															href={`${basePath}/${modelName}/${pk}/edit`}
-															class="usa-link margin-right-1"
-														>
-															Edit
-														</a>
-														<a
-															href={`${basePath}/${modelName}/${pk}/delete`}
-															class="usa-link text-secondary-dark"
-														>
-															Delete
-														</a>
-													</td>
-												</tr>
-											);
-										})}
-									</tbody>
-								</table>
-							</div>
-						)}
+						{records.length === 0
+							? (
+								<div class="admin-empty">
+									<p>No {model.displayName.toLowerCase()} found.</p>
+									<a
+										href={`${basePath}/${modelName}/new`}
+										class="usa-button margin-top-2"
+									>
+										Create your first {model.displayName.toLowerCase()}
+									</a>
+								</div>
+							)
+							: (
+								<div class="admin-card" style="overflow-x: auto;">
+									<table class="usa-table usa-table--borderless">
+										<thead>
+											<tr>
+												{displayColumns.map((col) => (
+													<th scope="col">{col.name}</th>
+												))}
+												<th scope="col">Actions</th>
+											</tr>
+										</thead>
+										<tbody>
+											{records.map((record: Record<string, unknown>) => {
+												const pk = getPrimaryKeyValue(record, model.tableInfo);
+												return (
+													<tr>
+														{displayColumns.map((col) => (
+															<td>{formatValue(record[col.name])}</td>
+														))}
+														<td>
+															<a
+																href={`${basePath}/${modelName}/${pk}`}
+																class="usa-link margin-right-1"
+															>
+																View
+															</a>
+															<a
+																href={`${basePath}/${modelName}/${pk}/edit`}
+																class="usa-link margin-right-1"
+															>
+																Edit
+															</a>
+															<a
+																href={`${basePath}/${modelName}/${pk}/delete`}
+																class="usa-link text-secondary-dark"
+															>
+																Delete
+															</a>
+														</td>
+													</tr>
+												);
+											})}
+										</tbody>
+									</table>
+								</div>
+							)}
 					</PageLayout>,
 				);
 			} catch (err) {
@@ -607,9 +631,10 @@ export class AdminRouter extends Router {
 				// Handle validation errors by re-rendering form with preserved values
 				if (err instanceof ValidationError) {
 					const errors: Record<string, string> = {};
-					for (const [field, messages] of Object.entries(
-						err.fieldErrors ?? {},
-					)) {
+					for (const [
+						field,
+						messages,
+					] of Object.entries(err.fieldErrors ?? {})) {
 						errors[field] = Array.isArray(messages)
 							? messages[0]
 							: String(messages);
@@ -865,9 +890,10 @@ export class AdminRouter extends Router {
 				// Handle validation errors by re-rendering form with preserved values
 				if (err instanceof ValidationError) {
 					const errors: Record<string, string> = {};
-					for (const [field, messages] of Object.entries(
-						err.fieldErrors ?? {},
-					)) {
+					for (const [
+						field,
+						messages,
+					] of Object.entries(err.fieldErrors ?? {})) {
 						errors[field] = Array.isArray(messages)
 							? messages[0]
 							: String(messages);

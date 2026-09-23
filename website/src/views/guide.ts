@@ -24,10 +24,7 @@ export default async function Guide({url}: ViewProps) {
 		throw new NotFound("Guide not found");
 	}
 
-	const {
-		attributes: {title, description},
-		body,
-	} = post;
+	const {attributes: {title, description}, body} = post;
 	return jsx`
 		<${Root} title="Shovel | ${title}" url=${url} description=${description}>
 			<${Sidebar} docs=${docs} url=${url} title="Guides" />

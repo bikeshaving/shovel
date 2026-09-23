@@ -13,12 +13,16 @@
  * Based on the Cache API specification
  */
 export interface CacheQueryOptions {
+
 	/** Ignore the search portion of the request URL */
 	ignoreSearch?: boolean;
+
 	/** Ignore the request method */
 	ignoreMethod?: boolean;
+
 	/** Ignore the Vary header */
 	ignoreVary?: boolean;
+
 	/** Custom cache name for scoped operations */
 	cacheName?: string;
 }
@@ -237,7 +241,7 @@ export class CustomCacheStorage implements CacheStorage {
 	 * Calls dispose() on each cache if it exists (e.g., RedisCache needs to close connections)
 	 */
 	async dispose(): Promise<void> {
-		const disposePromises: Promise<void>[] = [];
+		const disposePromises: Array<Promise<void>> = [];
 
 		for (const cache of this.#instances.values()) {
 			// Check if cache has a dispose method (RedisCache, etc.)

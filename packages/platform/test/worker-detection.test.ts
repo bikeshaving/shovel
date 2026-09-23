@@ -1,10 +1,10 @@
-import {test, expect, describe} from "bun:test";
+import {describe, expect, test} from "bun:test";
 import {
-	WorkerGlobalScope,
+	CustomLoggerStorage,
 	DedicatedWorkerGlobalScope,
 	ServiceWorkerGlobals,
 	ShovelServiceWorkerRegistration,
-	CustomLoggerStorage,
+	WorkerGlobalScope,
 } from "../src/runtime.js";
 import {CustomDirectoryStorage} from "@b9g/filesystem";
 
@@ -56,10 +56,10 @@ describe("Worker Detection", () => {
 		const mockLogger = {
 			category: [] as string[],
 			parent: null,
-			getChild: function () {
+			getChild() {
 				return this;
 			},
-			with: function () {
+			with() {
 				return this;
 			},
 			debug: () => {},

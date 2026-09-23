@@ -20,6 +20,7 @@ const NO_VALUE = Symbol("NO_VALUE");
  * Options for creating an AsyncContext.Variable
  */
 export interface AsyncVariableOptions<T> {
+
 	/**
 	 * Default value returned when no context value is set
 	 */
@@ -208,10 +209,7 @@ export class AsyncSnapshot {
 /**
  * AsyncContext object matching the TC39 AsyncContext proposal
  */
-export const AsyncContext = {
-	Variable: AsyncVariable,
-	Snapshot: AsyncSnapshot,
-};
+export const AsyncContext = {Variable: AsyncVariable, Snapshot: AsyncSnapshot};
 
 // Default export for convenience
 export default AsyncContext;

@@ -26,15 +26,12 @@
  * // Returns: "/images/photo.png"
  */
 
-import {readFileSync, writeFileSync, mkdirSync, existsSync} from "fs";
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from "fs";
 import {createHash} from "crypto";
-import {join, basename, extname, relative, dirname} from "path";
+import {basename, dirname, extname, join, relative} from "path";
 import mime from "mime";
 import * as ESBuild from "esbuild";
-import {
-	type AssetManifest,
-	type AssetManifestEntry,
-} from "@b9g/assets/middleware";
+import type {AssetManifest, AssetManifestEntry} from "@b9g/assets/middleware";
 import {getLogger} from "@logtape/logtape";
 import type {SharedAssetsManifest} from "./assets-manifest.js";
 import {nodeModulesPolyfillPlugin} from "esbuild-plugins-node-modules-polyfill";
@@ -62,6 +59,7 @@ const logger = getLogger(["shovel", "assets"]);
  * Configuration for assets plugin (build-time)
  */
 export interface AssetsPluginConfig {
+
 	/**
 	 * Root output directory.
 	 * Assets go to {outDir}/public/{assetBase}/
@@ -165,9 +163,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 	const manifest: AssetManifest = {
 		assets: {},
 		generated: new Date().toISOString(),
-		config: {
-			outDir,
-		},
+		config: {outDir},
 	};
 
 	// Cache esbuild contexts for incremental rebuilds (keyed by absolute path)
@@ -235,7 +231,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 					let outputExt = ext;
 					let mimeType: string | undefined;
 					// Additional chunk files from code splitting (to be written alongside the entry)
-					let chunkFiles: Array<{filename: string; content: Buffer}> = [];
+					const chunkFiles: Array<{filename: string; content: Buffer}> = [];
 
 					if (needsTranspilation) {
 						// Transpile TypeScript/JSX to JavaScript with Node.js polyfills for browser
@@ -360,10 +356,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 										return null;
 									}
 									// Mark as external (for CSS url() references like /assets/...)
-									return {
-										path: resolveArgs.path,
-										external: true,
-									};
+									return {path: resolveArgs.path, external: true};
 								});
 							},
 						};

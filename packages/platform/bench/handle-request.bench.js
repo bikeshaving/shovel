@@ -1,10 +1,10 @@
 import {bench, group, run} from "mitata";
 import {
-	ServiceWorkerGlobals,
-	ShovelServiceWorkerRegistration,
+	dispatchRequest,
 	FetchEvent,
 	runLifecycle,
-	dispatchRequest,
+	ServiceWorkerGlobals,
+	ShovelServiceWorkerRegistration,
 } from "../dist/src/runtime.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
@@ -12,10 +12,7 @@ import {MemoryCache} from "@b9g/cache/memory.js";
 // Setup
 const registration = new ShovelServiceWorkerRegistration();
 const cacheStorage = new CustomCacheStorage(() => new MemoryCache());
-const scope = new ServiceWorkerGlobals({
-	registration,
-	caches: cacheStorage,
-});
+const scope = new ServiceWorkerGlobals({registration, caches: cacheStorage});
 scope.install();
 
 // Pre-create response components

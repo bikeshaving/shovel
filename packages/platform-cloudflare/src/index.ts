@@ -15,18 +15,18 @@ import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
 
 // Internal @b9g/* packages
-import {
-	type PlatformDefaults,
-	type Handler,
-	type Server,
-	type ServerOptions,
-	type ServiceWorkerOptions,
-	type ServiceWorkerInstance,
-	type PlatformESBuildConfig,
-	type EntryPoints,
-	type ShovelServiceWorkerContainer,
+import type {
+	EntryPoints,
+	Handler,
+	PlatformDefaults,
+	PlatformESBuildConfig,
+	Server,
+	ServerOptions,
+	ServiceWorkerInstance,
+	ServiceWorkerOptions,
+	ShovelServiceWorkerContainer,
 } from "@b9g/platform";
-import {type ShovelConfig} from "@b9g/platform/runtime";
+import type {ShovelConfig} from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform"]);
 
@@ -44,16 +44,22 @@ export type {
 // ============================================================================
 
 export interface CloudflarePlatformOptions {
+
 	/** Port for development server (default: 7777) */
 	port?: number;
+
 	/** Host for development server (default: localhost) */
 	host?: string;
+
 	/** Cloudflare Workers environment (production, preview, dev) */
 	environment?: "production" | "preview" | "dev";
+
 	/** Static assets directory for ASSETS binding (dev mode) */
 	assetsDirectory?: string;
+
 	/** Working directory for config file resolution */
 	cwd?: string;
+
 	/** Shovel configuration (caches, directories, etc.) */
 	config?: ShovelConfig;
 }
@@ -69,8 +75,7 @@ export interface CloudflarePlatformOptions {
  */
 class CloudflareServiceWorkerContainer
 	extends EventTarget
-	implements ShovelServiceWorkerContainer
-{
+	implements ShovelServiceWorkerContainer {
 	#platform: CloudflarePlatform;
 	#instance: ServiceWorkerInstance | null;
 	#readyPromise: Promise<ServiceWorkerRegistration>;
@@ -113,8 +118,9 @@ class CloudflareServiceWorkerContainer
 		scriptURL: string | URL,
 		_options?: RegistrationOptions,
 	): Promise<ServiceWorkerRegistration> {
-		const url =
-			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
+		const url = typeof scriptURL === "string"
+			? scriptURL
+			: scriptURL.toString();
 
 		// Delegate to loadServiceWorker which uses Miniflare
 		this.#instance = await this.#platform.loadServiceWorker(url);
@@ -181,6 +187,7 @@ export class CloudflarePlatform {
 		port: number;
 		host: string;
 	};
+
 	#miniflare: Miniflare | null;
 	#assetsMiniflare: Miniflare | null;
 
@@ -271,11 +278,8 @@ export class CloudflarePlatform {
 
 			this.#assetsMiniflare = new Miniflare({
 				modules: true,
-				script: `export default { fetch() { return new Response("assets-only"); } }`,
-				assets: {
-					directory: this.#options.assetsDirectory,
-					binding: "ASSETS",
-				},
+				script: "export default { fetch() { return new Response(\"assets-only\"); } }",
+				assets: {directory: this.#options.assetsDirectory, binding: "ASSETS"},
 				compatibilityDate: "2024-09-23",
 			});
 
@@ -370,9 +374,7 @@ await import(${safePath});
 export default { fetch: createFetchHandler(registration) };
 `;
 
-		return {
-			worker: serverCode,
-		};
+		return {worker: serverCode};
 	}
 
 	/**

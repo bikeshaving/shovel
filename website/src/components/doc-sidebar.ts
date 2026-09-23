@@ -25,11 +25,7 @@ function getCategoryFromTitle(title: string): string | null {
 interface DocCategory {
 	name: string;
 	slug: string;
-	items: Array<{
-		title: string;
-		url: string;
-		slug: string;
-	}>;
+	items: Array<{title: string; url: string; slug: string}>;
 }
 
 export function buildDocCategories(docs: DocInfo[]): DocCategory[] {
@@ -137,33 +133,25 @@ const linkStyle = css`
 	}
 `;
 
-export function DocSidebar({
-	categories,
-	url,
-}: {
-	categories: DocCategory[];
-	url: string;
-}) {
+export function DocSidebar(
+	{categories, url}: {categories: DocCategory[]; url: string},
+) {
 	return jsx`
 		<div id="sidebar" class=${sidebarStyle}>
 			<h2 class=${css`
 				color: var(--highlight-color);
 				margin-top: 0;
 			`}>API</h2>
-			${categories.map(
-				(category) => jsx`
+			${categories.map((category) => jsx`
 				<div class=${categoryStyle}>${category.name}</div>
-				${category.items.map(
-					(item) => jsx`
+				${category.items.map((item) => jsx`
 					<a
 						href=${item.url}
 						class=${linkStyle}
 						aria-current=${url.replace(/\/$/, "") === item.url.replace(/\/$/, "") && "page"}
 					>${item.title}</a>
-				`,
-				)}
-			`,
-			)}
+				`)}
+			`)}
 		</div>
 	`;
 }

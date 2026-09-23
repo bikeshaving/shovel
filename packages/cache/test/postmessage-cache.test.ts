@@ -1,4 +1,4 @@
-import {test, expect, describe, beforeEach, afterEach} from "bun:test";
+import {afterEach, beforeEach, describe, expect, test} from "bun:test";
 import {Worker} from "worker_threads";
 import {fileURLToPath} from "url";
 import {dirname, join} from "path";
@@ -68,11 +68,7 @@ describe("PostMessageCache", () => {
 	test("can store and retrieve responses", async () => {
 		// Store a response
 		await sendCommand("put", {
-			request: {
-				url: "http://example.com/test",
-				method: "GET",
-				headers: {},
-			},
+			request: {url: "http://example.com/test", method: "GET", headers: {}},
 			response: {
 				body: "Hello World",
 				status: 200,
@@ -83,11 +79,7 @@ describe("PostMessageCache", () => {
 
 		// Retrieve it
 		const retrieved = await sendCommand("match", {
-			request: {
-				url: "http://example.com/test",
-				method: "GET",
-				headers: {},
-			},
+			request: {url: "http://example.com/test", method: "GET", headers: {}},
 		});
 
 		expect(retrieved).toBeDefined();
@@ -97,11 +89,7 @@ describe("PostMessageCache", () => {
 
 	test("returns undefined for cache miss", async () => {
 		const result = await sendCommand("match", {
-			request: {
-				url: "http://example.com/missing",
-				method: "GET",
-				headers: {},
-			},
+			request: {url: "http://example.com/missing", method: "GET", headers: {}},
 		});
 
 		expect(result).toBeUndefined();
@@ -110,26 +98,13 @@ describe("PostMessageCache", () => {
 	test("can delete cached entries", async () => {
 		// First store something
 		await sendCommand("put", {
-			request: {
-				url: "http://example.com/test",
-				method: "GET",
-				headers: {},
-			},
-			response: {
-				body: "Test",
-				status: 200,
-				statusText: "OK",
-				headers: {},
-			},
+			request: {url: "http://example.com/test", method: "GET", headers: {}},
+			response: {body: "Test", status: 200, statusText: "OK", headers: {}},
 		});
 
 		// Delete it
 		const deleted = await sendCommand("delete", {
-			request: {
-				url: "http://example.com/test",
-				method: "GET",
-				headers: {},
-			},
+			request: {url: "http://example.com/test", method: "GET", headers: {}},
 		});
 
 		expect(deleted).toBe(true);
@@ -138,31 +113,13 @@ describe("PostMessageCache", () => {
 	test("can retrieve cache keys", async () => {
 		// Store two entries
 		await sendCommand("put", {
-			request: {
-				url: "http://example.com/1",
-				method: "GET",
-				headers: {},
-			},
-			response: {
-				body: "Test 1",
-				status: 200,
-				statusText: "OK",
-				headers: {},
-			},
+			request: {url: "http://example.com/1", method: "GET", headers: {}},
+			response: {body: "Test 1", status: 200, statusText: "OK", headers: {}},
 		});
 
 		await sendCommand("put", {
-			request: {
-				url: "http://example.com/2",
-				method: "GET",
-				headers: {},
-			},
-			response: {
-				body: "Test 2",
-				status: 200,
-				statusText: "OK",
-				headers: {},
-			},
+			request: {url: "http://example.com/2", method: "GET", headers: {}},
+			response: {body: "Test 2", status: 200, statusText: "OK", headers: {}},
 		});
 
 		// Get keys
@@ -176,17 +133,8 @@ describe("PostMessageCache", () => {
 	test("supports cache query options", async () => {
 		// Store with query string
 		await sendCommand("put", {
-			request: {
-				url: "http://example.com/test",
-				method: "GET",
-				headers: {},
-			},
-			response: {
-				body: "Test",
-				status: 200,
-				statusText: "OK",
-				headers: {},
-			},
+			request: {url: "http://example.com/test", method: "GET", headers: {}},
+			response: {body: "Test", status: 200, statusText: "OK", headers: {}},
 		});
 
 		// Match with query string but ignoreSearch option
@@ -265,17 +213,9 @@ describe("PostMessageCache", () => {
 			request: {
 				url: "http://example.com/test",
 				method: "GET",
-				headers: {
-					"X-Custom-Header": "value",
-					Authorization: "Bearer token123",
-				},
+				headers: {"X-Custom-Header": "value", Authorization: "Bearer token123"},
 			},
-			response: {
-				body: "Test",
-				status: 200,
-				statusText: "OK",
-				headers: {},
-			},
+			response: {body: "Test", status: 200, statusText: "OK", headers: {}},
 		});
 
 		// Retrieve with same headers
@@ -283,10 +223,7 @@ describe("PostMessageCache", () => {
 			request: {
 				url: "http://example.com/test",
 				method: "GET",
-				headers: {
-					"X-Custom-Header": "value",
-					Authorization: "Bearer token123",
-				},
+				headers: {"X-Custom-Header": "value", Authorization: "Bearer token123"},
 			},
 		});
 

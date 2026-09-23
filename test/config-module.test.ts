@@ -2,10 +2,10 @@
  * Tests for config module generation (shovel:config virtual module)
  */
 
-import {describe, it, expect} from "bun:test";
+import {describe, expect, it} from "bun:test";
 import {
-	exprToCode,
 	generateConfigModule as _generateConfigModule,
+	exprToCode,
 	generateStorageTypes,
 	type ShovelConfig,
 } from "../src/utils/config.js";
@@ -13,18 +13,16 @@ import {
 // Helper to provide default projectDir and outDir for tests
 function generateConfigModule(
 	config: ShovelConfig,
-	options?: {
-		platformDefaults?: {
-			directories?: Record<
-				string,
-				{module: string; export?: string; [key: string]: unknown}
-			>;
-			caches?: Record<
-				string,
-				{module: string; export?: string; [key: string]: unknown}
-			>;
-		};
-	},
+	options?: {platformDefaults?: {
+		directories?: Record<
+			string,
+			{module: string; export?: string; [key: string]: unknown}
+		>;
+		caches?: Record<
+			string,
+			{module: string; export?: string; [key: string]: unknown}
+		>;
+	};},
 ) {
 	return _generateConfigModule(config, {
 		projectDir: "/test/project",
@@ -194,10 +192,7 @@ describe("generateConfigModule", () => {
 		});
 
 		it("includes explicit port/host values", () => {
-			const config = {
-				port: 8080,
-				host: "0.0.0.0",
-			};
+			const config = {port: 8080, host: "0.0.0.0"};
 
 			const module = generateConfigModule(config);
 
@@ -206,10 +201,7 @@ describe("generateConfigModule", () => {
 		});
 
 		it("handles port/host as expressions with $ prefix", () => {
-			const config = {
-				port: "$PORT || 3000",
-				host: "$HOST || localhost",
-			};
+			const config = {port: "$PORT || 3000", host: "$HOST || localhost"};
 
 			const module = generateConfigModule(config);
 
@@ -223,12 +215,7 @@ describe("generateConfigModule", () => {
 	describe("cache config with module", () => {
 		it("generates static import for cache module", () => {
 			const config = {
-				caches: {
-					sessions: {
-						module: "@b9g/cache-redis",
-						url: "REDIS_URL",
-					},
-				},
+				caches: {sessions: {module: "@b9g/cache-redis", url: "REDIS_URL"}},
 			};
 
 			const module = generateConfigModule(config);
@@ -259,14 +246,7 @@ describe("generateConfigModule", () => {
 		});
 
 		it("handles cache without module (passthrough)", () => {
-			const config = {
-				caches: {
-					sessions: {
-						maxEntries: 100,
-						TTL: 3600,
-					},
-				},
-			};
+			const config = {caches: {sessions: {maxEntries: 100, TTL: 3600}}};
 
 			const module = generateConfigModule(config);
 
@@ -280,14 +260,8 @@ describe("generateConfigModule", () => {
 		it("handles multiple caches", () => {
 			const config = {
 				caches: {
-					sessions: {
-						module: "@b9g/cache-redis",
-						TTL: 86400,
-					},
-					api: {
-						module: "@b9g/cache/memory",
-						maxEntries: 1000,
-					},
+					sessions: {module: "@b9g/cache-redis", TTL: 86400},
+					api: {module: "@b9g/cache/memory", maxEntries: 1000},
 				},
 			};
 
@@ -321,10 +295,7 @@ describe("generateConfigModule", () => {
 		it("generates import for node-fs module", () => {
 			const config = {
 				directories: {
-					uploads: {
-						module: "@b9g/filesystem/node-fs",
-						path: "./uploads",
-					},
+					uploads: {module: "@b9g/filesystem/node-fs", path: "./uploads"},
 				},
 			};
 
@@ -374,10 +345,7 @@ describe("generateConfigModule", () => {
 				{
 					platformDefaults: {
 						caches: {
-							sessions: {
-								module: "@b9g/cache/memory",
-								export: "MemoryCache",
-							},
+							sessions: {module: "@b9g/cache/memory", export: "MemoryCache"},
 						},
 					},
 				},
@@ -395,10 +363,7 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(
 				{
 					directories: {
-						tmp: {
-							module: "@b9g/filesystem/memory",
-							export: "MemoryDirectory",
-						},
+						tmp: {module: "@b9g/filesystem/memory", export: "MemoryDirectory"},
 					},
 				},
 				{
@@ -424,10 +389,7 @@ describe("generateConfigModule", () => {
 			const module = generateConfigModule(
 				{
 					directories: {
-						public: {
-							module: "@b9g/filesystem/node-fs",
-							path: "./public",
-						},
+						public: {module: "@b9g/filesystem/node-fs", path: "./public"},
 					},
 				},
 				{
@@ -450,13 +412,7 @@ describe("generateConfigModule", () => {
 		it("clears platform export when user overrides cache module without export", () => {
 			// Same bug for caches: user overrides module but not export
 			const module = generateConfigModule(
-				{
-					caches: {
-						sessions: {
-							module: "@b9g/cache/memory",
-						},
-					},
-				},
+				{caches: {sessions: {module: "@b9g/cache/memory"}}},
 				{
 					platformDefaults: {
 						caches: {
@@ -519,12 +475,7 @@ describe("generateConfigModule", () => {
 			const config = {
 				port: "$PORT || 3000",
 				host: "$HOST",
-				caches: {
-					sessions: {
-						module: "@b9g/cache-redis",
-						url: "$REDIS_URL",
-					},
-				},
+				caches: {sessions: {module: "@b9g/cache-redis", url: "$REDIS_URL"}},
 				directories: {
 					files: {
 						module: "@b9g/filesystem-s3",
@@ -575,9 +526,7 @@ describe("generateConfigModule", () => {
 		});
 
 		it("generates empty logging config when not specified", () => {
-			const config = {
-				port: 3000,
-			};
+			const config = {port: 3000};
 
 			const module = generateConfigModule(config);
 
@@ -607,15 +556,9 @@ describe("generateConfigModule", () => {
 		it("includes logger config with categories", () => {
 			const config = {
 				logging: {
-					sinks: {
-						dbFile: {module: "@logtape/logtape", export: "getFileSink"},
-					},
+					sinks: {dbFile: {module: "@logtape/logtape", export: "getFileSink"}},
 					loggers: [
-						{
-							category: ["app"],
-							level: "debug" as const,
-							sinks: ["dbFile"],
-						},
+						{category: ["app"], level: "debug" as const, sinks: ["dbFile"]},
 						{
 							category: ["app", "db"],
 							level: "warning" as const,
@@ -641,10 +584,7 @@ describe("generateConfigModule", () => {
 						customSink: {module: "@logtape/logtape", export: "getConsoleSink"},
 					},
 					loggers: [
-						{
-							category: ["lib"],
-							sinks: ["customSink"],
-						},
+						{category: ["lib"], sinks: ["customSink"]},
 						{
 							category: ["lib", "internal"],
 							sinks: ["customSink"],
@@ -689,9 +629,7 @@ describe("generateStorageTypes", () => {
 
 	it("includes database and directory overloads when configured", () => {
 		const result = generateStorageTypes({
-			databases: {
-				main: {module: "@b9g/zen/bun", url: "sqlite://./db.sqlite"},
-			},
+			databases: {main: {module: "@b9g/zen/bun", url: "sqlite://./db.sqlite"}},
 			directories: {
 				uploads: {module: "@b9g/filesystem/node-fs", path: "./uploads"},
 			},
@@ -727,13 +665,7 @@ describe("generateStorageTypes", () => {
 	it("includes platform defaults in cache types", () => {
 		const result = generateStorageTypes(
 			{}, // No user config
-			{
-				platformDefaults: {
-					caches: {
-						default: {module: "@b9g/cache/memory"},
-					},
-				},
-			},
+			{platformDefaults: {caches: {default: {module: "@b9g/cache/memory"}}}},
 		);
 
 		expect(result).toContain('type ValidCacheName = "default";');

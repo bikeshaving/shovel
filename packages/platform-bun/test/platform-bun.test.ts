@@ -1,8 +1,8 @@
-import {test, expect, describe, beforeEach, afterEach, mock} from "bun:test";
+import {afterEach, beforeEach, describe, expect, mock, test} from "bun:test";
 import {BunPlatform} from "../src/index.js";
 import {tmpdir} from "os";
 import {join} from "path";
-import {mkdtempSync, writeFileSync, rmSync} from "fs";
+import {mkdtempSync, rmSync, writeFileSync} from "fs";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["test", "platform-bun"]);
@@ -11,9 +11,7 @@ const logger = getLogger(["test", "platform-bun"]);
 if (typeof globalThis.Bun === "undefined") {
 	(globalThis as any).Bun = {
 		env: {NODE_ENV: "test"},
-		serve: mock((_options: any) => ({
-			stop: mock(() => {}),
-		})),
+		serve: mock((_options: any) => ({stop: mock(() => {})})),
 	};
 }
 
@@ -23,9 +21,7 @@ describe("BunPlatform", () => {
 
 	beforeEach(() => {
 		tempDir = mkdtempSync(join(tmpdir(), "bun-platform-test-"));
-		platform = new BunPlatform({
-			cwd: tempDir,
-		});
+		platform = new BunPlatform({cwd: tempDir});
 	});
 
 	afterEach(async () => {
@@ -137,10 +133,7 @@ describe("BunPlatform", () => {
 			const platform2 = new BunPlatform({cwd: tempDir});
 			let error: Error | null = null;
 			try {
-				platform2.createServer(handler, {
-					port,
-					host: "0.0.0.0",
-				});
+				platform2.createServer(handler, {port, host: "0.0.0.0"});
 			} catch (e) {
 				error = e as Error;
 			}

@@ -10,7 +10,7 @@
  * - shovel:entry:server - Combined entry point (for Cloudflare single-file)
  */
 
-import * as ESBuild from "esbuild";
+import type * as ESBuild from "esbuild";
 import type {ProductionEntryPoints} from "@b9g/platform";
 
 /**
@@ -31,10 +31,10 @@ export function createEntryPlugin(
 		name: "shovel-entry",
 		setup(build) {
 			// Match shovel:entry or shovel:entry:<name>
-			build.onResolve({filter: /^shovel:entry(:.+)?$/}, (args) => ({
-				path: args.path,
-				namespace: "shovel-entry",
-			}));
+			build.onResolve(
+				{filter: /^shovel:entry(:.+)?$/},
+				(args) => ({path: args.path, namespace: "shovel-entry"}),
+			);
 
 			build.onLoad({filter: /.*/, namespace: "shovel-entry"}, (args) => {
 				// Extract entry name: "shovel:entry" -> first key, "shovel:entry:worker" -> "worker"
@@ -53,11 +53,7 @@ export function createEntryPlugin(
 					};
 				}
 
-				return {
-					contents,
-					loader: "js",
-					resolveDir: projectRoot,
-				};
+				return {contents, loader: "js", resolveDir: projectRoot};
 			});
 		},
 	};

@@ -9,7 +9,7 @@
  * - cookieStore_set_arguments.https.any.js
  */
 
-import {describe, test, expect, beforeEach} from "bun:test";
+import {beforeEach, describe, expect, test} from "bun:test";
 import {RequestCookieStore} from "../../platform/src/runtime.js";
 
 describe("Cookie Store API", () => {
@@ -181,9 +181,7 @@ describe("Cookie Store API", () => {
 	describe("RequestCookieStore request parsing", () => {
 		test("parses cookies from Request Cookie header", async () => {
 			const request = new Request("https://example.com", {
-				headers: {
-					Cookie: "session=abc123; user=john",
-				},
+				headers: {Cookie: "session=abc123; user=john"},
 			});
 			const store = new RequestCookieStore(request);
 
@@ -196,9 +194,7 @@ describe("Cookie Store API", () => {
 
 		test("set overrides cookie from Request", async () => {
 			const request = new Request("https://example.com", {
-				headers: {
-					Cookie: "session=old-value",
-				},
+				headers: {Cookie: "session=old-value"},
 			});
 			const store = new RequestCookieStore(request);
 
@@ -209,9 +205,7 @@ describe("Cookie Store API", () => {
 
 		test("delete removes cookie from Request", async () => {
 			const request = new Request("https://example.com", {
-				headers: {
-					Cookie: "session=abc123",
-				},
+				headers: {Cookie: "session=abc123"},
 			});
 			const store = new RequestCookieStore(request);
 
@@ -222,9 +216,7 @@ describe("Cookie Store API", () => {
 
 		test("getAll includes both Request cookies and set cookies", async () => {
 			const request = new Request("https://example.com", {
-				headers: {
-					Cookie: "existing=from-request",
-				},
+				headers: {Cookie: "existing=from-request"},
 			});
 			const store = new RequestCookieStore(request);
 

@@ -9,12 +9,13 @@
  * These test the same spec behaviors but against our runtime implementation.
  */
 
-import {describe, test, expect} from "bun:test";
+import {describe, expect, test} from "bun:test";
 
 /**
  * Configuration for running runtime tests
  */
 export interface RuntimeTestConfig {
+
 	/**
 	 * Factory to create ExtendableEvent
 	 * Should match the ServiceWorker spec behavior
@@ -45,7 +46,7 @@ export interface RuntimeTestConfig {
 	/**
 	 * Get promises registered via waitUntil
 	 */
-	getPromises: (event: ExtendableEventLike) => Promise<any>[];
+	getPromises: (event: ExtendableEventLike) => Array<Promise<any>>;
 }
 
 interface ExtendableEventLike extends Event {

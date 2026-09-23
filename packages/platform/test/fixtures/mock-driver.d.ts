@@ -14,4 +14,5 @@ declare class DefaultDriver {
 	constructor(url: string, options?: Record<string, unknown>);
 	close(): Promise<void>;
 }
+
 export default DefaultDriver;

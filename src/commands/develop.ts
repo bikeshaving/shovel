@@ -22,9 +22,7 @@ interface DisplayUrls {
  * Returns localhost URLs for local access plus optional LAN URL.
  */
 function getDisplayUrls(host: string, port: number): DisplayUrls {
-	const urls: DisplayUrls = {
-		local: `http://localhost:${port}`,
-	};
+	const urls: DisplayUrls = {local: `http://localhost:${port}`};
 
 	// If bound to all interfaces (0.0.0.0), show LAN access info
 	if (host === "0.0.0.0") {
@@ -68,12 +66,7 @@ function getLanAddress(): string | null {
 
 export async function developCommand(
 	entrypoint: string,
-	options: {
-		port?: string;
-		host?: string;
-		workers?: string;
-		platform?: string;
-	},
+	options: {port?: string; host?: string; workers?: string; platform?: string},
 	config: ProcessedShovelConfig,
 ) {
 	try {
@@ -92,9 +85,8 @@ export async function developCommand(
 		const platformESBuildConfig = platformModule.getESBuildConfig();
 
 		// Track dev server instance
-		let devServer: Awaited<
-			ReturnType<typeof platformModule.createDevServer>
-		> | null = null;
+		let devServer: Awaited<ReturnType<typeof platformModule.createDevServer>> |
+			null = null;
 
 		const localUrl = `http://localhost:${port}`;
 		const SHORTCUTS_HELP =
@@ -209,12 +201,9 @@ export async function developCommand(
 						break;
 					case "\x0F": {
 						// Ctrl+O — open in browser
-						const cmd =
-							process.platform === "win32"
-								? "start"
-								: process.platform === "darwin"
-									? "open"
-									: "xdg-open";
+						const cmd = process.platform === "win32"
+							? "start"
+							: process.platform === "darwin" ? "open" : "xdg-open";
 						exec(`${cmd} ${localUrl}`);
 						break;
 					}

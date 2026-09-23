@@ -5,11 +5,11 @@
  * using in-memory data structures.
  */
 
+import type {ShovelHandle} from "./index.js";
 import {
 	type FileSystemBackend,
 	ShovelDirectoryHandle,
 	ShovelFileHandle,
-	ShovelHandle,
 } from "./index.js";
 
 /**
@@ -59,10 +59,7 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 		if (!entry || !("content" in entry)) {
 			throw new DOMException("File not found", "NotFoundError");
 		}
-		return {
-			content: entry.content,
-			lastModified: entry.lastModified,
-		};
+		return {content: entry.content, lastModified: entry.lastModified};
 	}
 
 	async writeFile(path: string, data: Uint8Array): Promise<void> {
@@ -337,12 +334,10 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 			return null;
 		}
 
-		if (
-			!(
-				possibleDescendant instanceof ShovelDirectoryHandle ||
+		if (!(
+			possibleDescendant instanceof ShovelDirectoryHandle ||
 				possibleDescendant instanceof ShovelFileHandle
-			)
-		) {
+		)) {
 			return null;
 		}
 
@@ -355,9 +350,10 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	async *entries(): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+	async *entries(): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		const entries = await this.#backend.listDir("/");
 
 		for (const entry of entries) {
@@ -384,9 +380,10 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 		}
 	}
 
-	[Symbol.asyncIterator](): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+	[Symbol.asyncIterator](): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		return this.entries();
 	}
 

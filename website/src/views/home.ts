@@ -156,14 +156,18 @@ function buildTerminalHtml(): string {
 	}
 	lines.push("");
 	lines.push("$ curl -X PUT :7777/kv/hello -d &quot;world&quot;");
-	lines.push(`<span data-ts-offset="200"></span> INF app\u00b7cache PUT hello`);
+	lines.push(
+		"<span data-ts-offset=\"200\"></span> INF app\u00b7cache PUT hello",
+	);
 	lines.push("# 201");
 	lines.push("$ curl :7777/kv/hello");
-	lines.push(`<span data-ts-offset="250"></span> INF app\u00b7cache GET hello`);
+	lines.push(
+		"<span data-ts-offset=\"250\"></span> INF app\u00b7cache GET hello",
+	);
 	lines.push("world");
 	lines.push("$ curl -X DELETE :7777/kv/hello");
 	lines.push(
-		`<span data-ts-offset="300"></span> INF app\u00b7cache DELETE hello`,
+		"<span data-ts-offset=\"300\"></span> INF app\u00b7cache DELETE hello",
 	);
 	lines.push("# 204");
 	return lines.join("\n");

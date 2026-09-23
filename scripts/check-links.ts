@@ -1,4 +1,4 @@
-/* eslint-disable no-console, no-restricted-syntax */
+/* eslint-disable no-console */
 /**
  * Crawl shovel.js.org (or a local dev server) and report broken links.
  *
@@ -37,14 +37,15 @@ while (queue.length > 0) {
 		const linkRegex = /<a\s[^>]*?href="([^"]*?)"/g;
 		let match;
 		while ((match = linkRegex.exec(html)) !== null) {
-			let href = match[1];
+			const href = match[1];
 			if (
 				!href ||
 				href.startsWith("#") ||
 				href.startsWith("mailto:") ||
 				href.startsWith("javascript:")
-			)
+			) {
 				continue;
+			}
 
 			// Resolve relative URLs
 			let resolved: string;

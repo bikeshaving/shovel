@@ -10,7 +10,7 @@
  * bundle executes from". Principle of least surprise.
  */
 
-import * as ESBuild from "esbuild";
+import type * as ESBuild from "esbuild";
 import {readFile} from "fs/promises";
 import {dirname} from "path";
 import {pathToFileURL} from "url";
@@ -23,8 +23,7 @@ export function importMetaPlugin(): ESBuild.Plugin {
 			build.onLoad({filter: /\.[jt]sx?$/, namespace: "file"}, async (args) => {
 				// Skip node_modules and monorepo packages - dependencies handle their own import.meta
 				if (
-					args.path.includes("node_modules") ||
-					args.path.includes("/packages/")
+					args.path.includes("node_modules") || args.path.includes("/packages/")
 				) {
 					return null;
 				}
@@ -70,10 +69,7 @@ export function importMetaPlugin(): ESBuild.Plugin {
 				else if (ext === "tsx") loader = "tsx";
 				else if (ext === "jsx") loader = "jsx";
 
-				return {
-					contents: transformed,
-					loader,
-				};
+				return {contents: transformed, loader};
 			});
 		},
 	};

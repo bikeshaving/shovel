@@ -13,7 +13,9 @@ const caches = new Map<string, MemoryCache>();
 // Set up WorkerGlobalScope classes (for compatibility)
 // This simulates what ServiceWorkerGlobals.install() does
 class WorkerGlobalScope {}
+
 class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
+
 (globalThis as any).WorkerGlobalScope = WorkerGlobalScope;
 (globalThis as any).DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
 
@@ -113,11 +115,7 @@ async function handleCacheOperation(message: any) {
 			}
 		}
 
-		const responseMessage = {
-			type: "cache:response",
-			requestID,
-			result,
-		};
+		const responseMessage = {type: "cache:response", requestID, result};
 
 		if (transfer.length > 0) {
 			return {message: responseMessage, transfer};

@@ -5,11 +5,11 @@
  * using Bun's native S3 client.
  */
 
+import type {ShovelHandle} from "./index.js";
 import {
 	type FileSystemBackend,
 	ShovelDirectoryHandle,
 	ShovelFileHandle,
-	ShovelHandle,
 } from "./index.js";
 
 /**
@@ -20,7 +20,7 @@ export class S3FileSystemBackend implements FileSystemBackend {
 	#bucketName: string;
 	#prefix: string;
 
-	constructor(s3Client: any, bucketName: string, prefix: string = "") {
+	constructor(s3Client: any, bucketName: string, prefix = "") {
 		this.#s3Client = s3Client;
 		this.#bucketName = bucketName;
 		this.#prefix = prefix;
@@ -88,10 +88,7 @@ export class S3FileSystemBackend implements FileSystemBackend {
 	async writeFile(path: string, data: Uint8Array): Promise<void> {
 		try {
 			const key = this.#getS3Key(path);
-			await this.#s3Client.put({
-				key,
-				body: data,
-			});
+			await this.#s3Client.put({key, body: data});
 		} catch (error) {
 			throw new DOMException(
 				`Failed to write file: ${error}`,
@@ -150,10 +147,7 @@ export class S3FileSystemBackend implements FileSystemBackend {
 			const key = this.#getS3Key(path);
 			const dirKey = key.endsWith("/") ? key : `${key}/`;
 
-			await this.#s3Client.put({
-				key: dirKey,
-				body: new Uint8Array(0),
-			});
+			await this.#s3Client.put({key: dirKey, body: new Uint8Array(0)});
 		} catch (error) {
 			throw new DOMException(
 				`Failed to create directory: ${error}`,
@@ -184,9 +178,8 @@ export class S3FileSystemBackend implements FileSystemBackend {
 				const result = await this.#s3Client.list({prefix: dirPrefix});
 
 				if (result.Contents && result.Contents.length > 0) {
-					const deleteKeys = result.Contents.map((obj: any) => ({
-						key: obj.Key,
-					}));
+					const deleteKeys =
+						result.Contents.map((obj: any) => ({key: obj.Key}));
 					await this.#s3Client.deleteObjects({delete: {objects: deleteKeys}});
 				}
 			} else {
@@ -270,7 +263,7 @@ export class S3Directory implements FileSystemDirectoryHandle {
 	constructor(
 		s3Client: any,
 		bucketName: string,
-		prefix: string = "", // No default prefix - let users explicitly namespace
+		prefix = "", // No default prefix - let users explicitly namespace
 	) {
 		this.kind = "directory";
 		this.#backend = new S3FileSystemBackend(s3Client, bucketName, prefix);
@@ -330,12 +323,10 @@ export class S3Directory implements FileSystemDirectoryHandle {
 	async resolve(
 		possibleDescendant: FileSystemHandle,
 	): Promise<string[] | null> {
-		if (
-			!(
-				possibleDescendant instanceof ShovelDirectoryHandle ||
+		if (!(
+			possibleDescendant instanceof ShovelDirectoryHandle ||
 				possibleDescendant instanceof ShovelFileHandle
-			)
-		) {
+		)) {
 			return null;
 		}
 
@@ -348,9 +339,10 @@ export class S3Directory implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	async *entries(): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+	async *entries(): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		const entries = await this.#backend.listDir("/");
 
 		for (const entry of entries) {
@@ -377,9 +369,10 @@ export class S3Directory implements FileSystemDirectoryHandle {
 		}
 	}
 
-	[Symbol.asyncIterator](): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+	[Symbol.asyncIterator](): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		return this.entries();
 	}
 

@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Benchmark: Router matching only (no middleware, no Response creation)
  * This measures the pure routing performance improvement from radix tree

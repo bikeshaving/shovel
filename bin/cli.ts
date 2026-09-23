@@ -1,8 +1,8 @@
 // Load config and configure logging before anything else
-import {resolve, relative} from "path";
+import {relative, resolve} from "path";
 import {spawnSync} from "child_process";
 import {findProjectRoot} from "../src/utils/project.js";
-import {loadConfig, DEFAULTS, type SinkConfig} from "../src/utils/config.js";
+import {DEFAULTS, loadConfig, type SinkConfig} from "../src/utils/config.js";
 import {configureLogging} from "@b9g/platform/runtime";
 
 const projectRoot = findProjectRoot();
@@ -50,7 +50,8 @@ async function reifySinks(
 			// Resolve relative paths against the config file location (baseDir)
 			// Package names (no ./ or ../) are left as-is for Node to resolve from node_modules
 			const resolvedPath =
-				modulePath.startsWith("./") || modulePath.startsWith("../")
+				modulePath.startsWith("./") ||
+				modulePath.startsWith("../")
 					? resolve(baseDir, modulePath)
 					: modulePath;
 			// Validate relative paths don't escape project root
@@ -70,10 +71,7 @@ async function reifySinks(
 }
 
 const reifiedSinks = await reifySinks(config.logging?.sinks, projectRoot);
-await configureLogging({
-	sinks: reifiedSinks,
-	loggers: config.logging?.loggers,
-});
+await configureLogging({sinks: reifiedSinks, loggers: config.logging?.loggers});
 
 import {Command} from "commander";
 import pkg from "../package.json" with {type: "json"};
@@ -98,11 +96,10 @@ function checkPlatformReexec(options: {platform?: string}) {
 
 	if (platform === "node" && isBun) {
 		// Bun → Node
-		const result = Bun.spawnSync(["node", ...process.argv.slice(1)], {
-			stdout: "inherit",
-			stderr: "inherit",
-			stdin: "inherit",
-		});
+		const result = Bun.spawnSync(
+			["node", ...process.argv.slice(1)],
+			{stdout: "inherit", stderr: "inherit", stdin: "inherit"},
+		);
 		process.exit(result.exitCode ?? 1);
 	}
 }

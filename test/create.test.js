@@ -1,10 +1,10 @@
-import {test, expect, describe, afterAll, setDefaultTimeout} from "bun:test";
+import {afterAll, describe, expect, setDefaultTimeout, test} from "bun:test";
 
 // Scaffolding tests run bun install + tsc + eslint; cleanup removes node_modules dirs
 setDefaultTimeout(15_000);
 import {spawnSync} from "child_process";
 import {join} from "path";
-import {mkdtempSync, readFileSync, existsSync, rmSync, copyFileSync} from "fs";
+import {copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync} from "fs";
 import {tmpdir} from "os";
 
 /**
@@ -20,10 +20,11 @@ import {tmpdir} from "os";
 const CREATE_SCRIPT = join(import.meta.dirname, "../bin/create.ts");
 
 function runCreate(projectName) {
-	const result = spawnSync("bun", [CREATE_SCRIPT, projectName], {
-		encoding: "utf8",
-		timeout: 5000,
-	});
+	const result = spawnSync(
+		"bun",
+		[CREATE_SCRIPT, projectName],
+		{encoding: "utf8", timeout: 5000},
+	);
 	return {
 		exitCode: result.status,
 		stdout: result.stdout || "",
@@ -82,11 +83,11 @@ function generateProject({
 			return JSON.parse(readFileSync(join(projectDir, relativePath), "utf8"));
 		},
 		install() {
-			const installResult = spawnSync("bun", ["install"], {
-				encoding: "utf8",
-				timeout: 30000,
-				cwd: projectDir,
-			});
+			const installResult = spawnSync(
+				"bun",
+				["install"],
+				{encoding: "utf8", timeout: 30000, cwd: projectDir},
+			);
 			// TODO: Remove after publishing @b9g/platform with the
 			// Window addEventListener overload fix in globals.d.ts
 			const globalsDts = join(
@@ -109,11 +110,7 @@ function generateProject({
 			const tscResult = spawnSync(
 				join(projectDir, "node_modules", ".bin", "tsc"),
 				["--noEmit"],
-				{
-					encoding: "utf8",
-					timeout: 15000,
-					cwd: projectDir,
-				},
+				{encoding: "utf8", timeout: 15000, cwd: projectDir},
 			);
 			return {
 				exitCode: tscResult.status,
@@ -125,11 +122,7 @@ function generateProject({
 			const lintResult = spawnSync(
 				join(projectDir, "node_modules", ".bin", "eslint"),
 				["src/"],
-				{
-					encoding: "utf8",
-					timeout: 15000,
-					cwd: projectDir,
-				},
+				{encoding: "utf8", timeout: 15000, cwd: projectDir},
 			);
 			return {
 				exitCode: lintResult.status,

@@ -12,6 +12,7 @@ import type {BroadcastChannelBackend} from "@b9g/platform/runtime";
 const logger = getLogger(["shovel", "pubsub"]);
 
 export interface RedisPubSubOptions {
+
 	/** Redis connection URL (e.g., "redis://localhost:6379") */
 	url?: string;
 }

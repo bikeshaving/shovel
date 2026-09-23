@@ -1,4 +1,4 @@
-import {describe, test, expect, beforeAll, afterAll} from "bun:test";
+import {afterAll, beforeAll, describe, expect, test} from "bun:test";
 import * as path from "path";
 import * as fs from "fs/promises";
 import {CloudflarePlatform} from "../src/index.js";

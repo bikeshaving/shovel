@@ -4,14 +4,9 @@ import {extractCritical} from "@emotion/server";
 import {Navbar} from "./navbar.js";
 import {assets} from "../server.js";
 
-export function* Root(
+export function *Root(
 	this: Context,
-	{
-		title,
-		children,
-		url,
-		description = "",
-	}: {
+	{title, children, url, description = ""}: {
 		title: string;
 		children: Children;
 		url: string;

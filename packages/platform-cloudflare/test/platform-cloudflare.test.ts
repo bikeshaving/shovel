@@ -1,12 +1,12 @@
 import {
-	test,
-	expect,
-	describe,
-	beforeEach,
+	afterAll,
 	afterEach,
 	beforeAll,
-	afterAll,
+	beforeEach,
+	describe,
+	expect,
 	mock,
+	test,
 } from "bun:test";
 import {CloudflarePlatform} from "../src/index.js";
 import {CloudflareNativeCache} from "../src/caches.js";
@@ -24,7 +24,7 @@ describe("CloudflarePlatform", () => {
 		// Create miniflare instance to provide Cloudflare environment
 		miniflare = new Miniflare({
 			modules: true,
-			script: `export default { fetch() { return new Response("ok"); } }`,
+			script: "export default { fetch() { return new Response(\"ok\"); } }",
 			compatibilityDate: "2024-09-23",
 		});
 
@@ -43,11 +43,7 @@ describe("CloudflarePlatform", () => {
 	beforeEach(() => {
 		platform = new CloudflarePlatform({
 			environment: "dev",
-			config: {
-				caches: {
-					test: {impl: CloudflareNativeCache},
-				},
-			},
+			config: {caches: {test: {impl: CloudflareNativeCache}}},
 		});
 	});
 

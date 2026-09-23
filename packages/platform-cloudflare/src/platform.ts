@@ -8,11 +8,11 @@
 import {getLogger} from "@logtape/logtape";
 import {dirname, join} from "path";
 import type {
+	DevServer,
+	DevServerOptions,
 	EntryPoints,
 	ESBuildConfig,
 	PlatformDefaults,
-	DevServerOptions,
-	DevServer,
 } from "@b9g/platform/module";
 
 const logger = getLogger(["shovel", "platform"]);

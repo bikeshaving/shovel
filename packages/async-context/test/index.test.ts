@@ -1,5 +1,5 @@
-import {describe, test, expect} from "bun:test";
-import {AsyncVariable, AsyncSnapshot, AsyncContext} from "../src/index.js";
+import {describe, expect, test} from "bun:test";
+import {AsyncContext, AsyncSnapshot, AsyncVariable} from "../src/index.js";
 
 describe("AsyncVariable", () => {
 	test("should store and retrieve values", () => {
@@ -183,14 +183,10 @@ describe("AsyncSnapshot", () => {
 		variable.run("test", () => {
 			const snapshot = new AsyncSnapshot();
 
-			const result = snapshot.run(
-				(a: number, b: string) => {
-					expect(variable.get()).toBe("test");
-					return `${a}-${b}`;
-				},
-				123,
-				"hello",
-			);
+			const result = snapshot.run((a: number, b: string) => {
+				expect(variable.get()).toBe("test");
+				return `${a}-${b}`;
+			}, 123, "hello");
 
 			expect(result).toBe("123-hello");
 		});
@@ -217,7 +213,7 @@ describe("AsyncSnapshot", () => {
 
 		const obj = {
 			name: "test-object",
-			getInfo: function () {
+			getInfo() {
 				return `${this.name}: ${variable.get()}`;
 			},
 		};
