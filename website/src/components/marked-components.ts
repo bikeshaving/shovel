@@ -1,5 +1,4 @@
-import {jsx, Raw} from "@b9g/crank/standalone";
-import type {Element} from "@b9g/crank/standalone";
+import {type Element, jsx, Raw} from "@b9g/crank/standalone";
 
 import {highlight} from "../utils/prism.js";
 

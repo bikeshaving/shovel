@@ -34,7 +34,6 @@ function base64ToUint8Array(base64: string): Uint8Array {
 // ============================================================================
 
 export interface RedisCacheOptions {
-
 	/** Redis connection options */
 	redis?: RedisClientOptions;
 
@@ -49,7 +48,6 @@ export interface RedisCacheOptions {
 }
 
 interface CacheEntry {
-
 	/** Response status code */
 	status: number;
 

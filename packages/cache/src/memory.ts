@@ -9,7 +9,6 @@ import {
  * Configuration options for MemoryCache
  */
 export interface MemoryCacheOptions {
-
 	/** Maximum number of entries to store */
 	maxEntries?: number;
 }

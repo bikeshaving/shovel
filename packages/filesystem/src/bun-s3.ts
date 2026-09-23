@@ -9,8 +9,8 @@ import {
 	type FileSystemBackend,
 	ShovelDirectoryHandle,
 	ShovelFileHandle,
+	type ShovelHandle,
 } from "./index.js";
-import type {ShovelHandle} from "./index.js";
 
 const kS3Client = Symbol("s3Client");
 const kPrefix = Symbol("prefix");

@@ -25,7 +25,7 @@ describe("CloudflarePlatform", () => {
 		// Create miniflare instance to provide Cloudflare environment
 		miniflare = new Miniflare({
 			modules: true,
-			script: "export default { fetch() { return new Response(\"ok\"); } }",
+			script: `export default { fetch() { return new Response("ok"); } }`,
 			compatibilityDate: "2024-09-23",
 		});
 

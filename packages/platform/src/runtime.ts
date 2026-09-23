@@ -16,9 +16,8 @@ import {getConsoleSink, getLogger} from "@logtape/logtape";
 // in generated code resolves from the user's project root, where it is only
 // a transitive dependency (fails under pnpm-isolated/Yarn-PnP layouts).
 export {getLogger} from "@logtape/logtape";
-import {CustomDirectoryStorage} from "@b9g/filesystem";
-import type {Cache} from "@b9g/cache";
-import {CustomCacheStorage} from "@b9g/cache";
+import {CustomDirectoryStorage, type DirectoryStorage} from "@b9g/filesystem";
+import {type Cache, CustomCacheStorage} from "@b9g/cache";
 import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
 import {
 	deliverBroadcastMessage,
@@ -327,7 +326,6 @@ export class RequestCookieStore extends EventTarget {
 	}
 }
 
-import type {DirectoryStorage} from "@b9g/filesystem";
 import {
 	configure,
 	type Logger,
@@ -343,7 +341,6 @@ import {
  * Uses array signature (matching LogTape) to allow future options parameter.
  */
 export interface LoggerStorage {
-
 	/**
 	 * Get a logger by category path (sync)
 	 * @example const logger = self.loggers.get(["app"])
@@ -388,7 +385,6 @@ import type {Database} from "@b9g/zen";
  * Uses the unified impl pattern like directories and caches.
  */
 export interface DatabaseConfig {
-
 	/** Reified implementation (driver class from build-time code generation) */
 	impl?: new (url: string, options?: any) => any;
 
@@ -403,7 +399,6 @@ export interface DatabaseConfig {
  * Upgrade event passed to onUpgrade callback during database.open().
  */
 export interface DatabaseUpgradeEvent {
-
 	/** The database being upgraded */
 	db: Database;
 
@@ -439,7 +434,6 @@ export interface DatabaseUpgradeEvent {
  * ```
  */
 export interface DatabaseStorage {
-
 	/**
 	 * Open a database at a specific version.
 	 * Imports the driver, creates the Database, runs migrations if needed.
@@ -831,7 +825,6 @@ export class ShovelExtendableEvent extends Event implements ExtendableEvent {
  * Options for ShovelFetchEvent constructor (non-standard Shovel extension)
  */
 export interface ShovelFetchEventInit extends EventInit {
-
 	/**
 	 * Platform-provided callback for extending request lifetime.
 	 * Called automatically when waitUntil() is invoked.
@@ -1831,7 +1824,6 @@ interface NotificationOptions {
 // ============================================================================
 
 export interface ServiceWorkerGlobalsOptions {
-
 	/** ServiceWorker registration instance */
 	registration: ServiceWorkerRegistration;
 
@@ -2258,7 +2250,6 @@ function createClientsAPI(): Clients {
 
 /** Cache provider configuration */
 export interface CacheConfig {
-
 	/** Reified implementation (class or factory from build-time code generation) */
 	impl?: (new (name: string, options?: any) => Cache) |
 		((name: string, options?: any) => Cache);
@@ -2269,7 +2260,6 @@ export interface CacheConfig {
 
 /** Directory (filesystem) provider configuration */
 export interface DirectoryConfig {
-
 	/** Reified implementation (class or factory from build-time code generation) */
 	impl?: (new (name: string, options?: any) => FileSystemDirectoryHandle) |
 		((name: string, options?: any) => FileSystemDirectoryHandle);
@@ -2371,7 +2361,6 @@ export function createDirectoryFactory(
 // ============================================================================
 
 export interface CacheFactoryOptions {
-
 	/** Cache configurations with pre-imported CacheClass (from generated config module) */
 	configs: Record<string, CacheConfig>;
 
@@ -2460,7 +2449,6 @@ export interface WorkerErrorMessage {
  * Options for initializing the worker runtime
  */
 export interface InitWorkerRuntimeOptions {
-
 	/** Shovel configuration (from shovel:config) */
 	config: ShovelConfig;
 
@@ -2473,7 +2461,6 @@ export interface InitWorkerRuntimeOptions {
  * Result from initializing the worker runtime
  */
 export interface InitWorkerRuntimeResult {
-
 	/** The ServiceWorker registration instance */
 	registration: ShovelServiceWorkerRegistration;
 
@@ -2761,7 +2748,6 @@ export type LogLevel = "debug" | "info" | "warning" | "error";
 
 /** Sink configuration */
 export interface SinkConfig {
-
 	/** Reified implementation (factory function from build-time code generation) */
 	impl?: (...args: any[]) => unknown;
 
@@ -2771,7 +2757,6 @@ export interface SinkConfig {
 
 /** Logger configuration - matches LogTape's logger config structure */
 export interface LoggerConfig {
-
 	/** Category as string or array for hierarchy. e.g. "myapp" or ["myapp", "db"] */
 	category: string | string[];
 
@@ -2786,7 +2771,6 @@ export interface LoggerConfig {
 }
 
 export interface LoggingConfig {
-
 	/** Named sinks. "console" is always available implicitly. */
 	sinks?: Record<string, SinkConfig>;
 

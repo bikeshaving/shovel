@@ -659,7 +659,6 @@ function assetsChildren(
 // ============================================================================
 
 export interface CloudflareR2DirectoryOptions {
-
 	/** R2 binding name (must match wrangler.toml binding). Defaults to "${NAME}_R2" */
 	binding?: string;
 
@@ -688,7 +687,7 @@ export class CloudflareR2Directory extends R2FileSystemDirectoryHandle {
 					"Configure in wrangler.toml:\n\n" +
 					"[[r2_buckets]]\n" +
 					`binding = "${bindingName}"\n` +
-					"bucket_name = \"your-bucket-name\"",
+					`bucket_name = "your-bucket-name"`,
 			);
 		}
 
@@ -699,7 +698,6 @@ export class CloudflareR2Directory extends R2FileSystemDirectoryHandle {
 }
 
 export interface CloudflareAssetsDirectoryOptions {
-
 	/** Base path within assets (defaults to "/") */
 	path?: string;
 }
@@ -723,7 +721,7 @@ export class CloudflareAssetsDirectory extends CFAssetsDirectoryHandle {
 				"ASSETS binding not found. " +
 					"Configure in wrangler.toml:\n\n" +
 					"[assets]\n" +
-					"directory = \"./public\"",
+					`directory = "./public"`,
 			);
 		}
 

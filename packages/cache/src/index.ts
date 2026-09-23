@@ -13,7 +13,6 @@
  * Based on the Cache API specification
  */
 export interface CacheQueryOptions {
-
 	/** Ignore the search portion of the request URL */
 	ignoreSearch?: boolean;
 

@@ -20,7 +20,6 @@ const NO_VALUE = Symbol("NO_VALUE");
  * Options for creating an AsyncContext.Variable
  */
 export interface AsyncVariableOptions<T> {
-
 	/**
 	 * Default value returned when no context value is set
 	 */

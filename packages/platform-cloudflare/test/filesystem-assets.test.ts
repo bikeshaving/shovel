@@ -4,8 +4,10 @@ import * as Path from "path";
 import {afterAll, beforeAll, describe, expect, test} from "bun:test";
 import {Miniflare} from "miniflare";
 
-import {CFAssetsDirectoryHandle} from "../src/directories.js";
-import type {CFAssetsBinding} from "../src/directories.js";
+import {
+	type CFAssetsBinding,
+	CFAssetsDirectoryHandle,
+} from "../src/directories.js";
 
 describe("CFAssetsDirectoryHandle", () => {
 	let mf: Miniflare;
@@ -28,7 +30,7 @@ describe("CFAssetsDirectoryHandle", () => {
 
 		mf = new Miniflare({
 			modules: true,
-			script: "export default { fetch() { return new Response(\"ok\"); } }",
+			script: `export default { fetch() { return new Response("ok"); } }`,
 			assets: {
 				directory: publicDir,
 				binding: "ASSETS",

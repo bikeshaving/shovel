@@ -53,7 +53,6 @@ interface CacheQueryOptions {
 }
 
 export interface CacheShimConfig {
-
 	/** CacheStorage instance to use for tests */
 	caches: CacheStorage;
 }

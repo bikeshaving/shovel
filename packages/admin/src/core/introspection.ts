@@ -5,8 +5,13 @@
  * Uses zen's raw schema/db APIs instead of deprecated cooked properties.
  */
 
-import {isTable, z} from "@b9g/zen";
-import type {FieldMeta, ReferenceInfo, Table} from "@b9g/zen";
+import {
+	type FieldMeta,
+	isTable,
+	type ReferenceInfo,
+	type Table,
+	z,
+} from "@b9g/zen";
 
 // ============================================================================
 // Admin-specific types (simplified for UI rendering)
@@ -22,7 +27,6 @@ export type AdminDataType =
  * Admin-specific column info (derived from zen's FieldMeta)
  */
 export interface AdminColumnInfo {
-
 	/** Field name */
 	name: string;
 
@@ -49,7 +53,6 @@ export interface AdminColumnInfo {
  * Admin-specific table info
  */
 export interface AdminTableInfo {
-
 	/** Table name */
 	name: string;
 

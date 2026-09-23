@@ -1,7 +1,11 @@
 /** @b9g/router - Universal request router built on web standards */
 
-import {InternalServerError, isHTTPError, NotFound} from "@b9g/http-errors";
-import type {HTTPError} from "@b9g/http-errors";
+import {
+	type HTTPError,
+	InternalServerError,
+	isHTTPError,
+	NotFound,
+} from "@b9g/http-errors";
 import {
 	type CompiledPattern,
 	compilePathname,
@@ -22,7 +26,6 @@ const logger = getLogger(["shovel", "router"]);
  * Augmentable via module declaration for middleware-specific properties
  */
 export interface RouteContext {
-
 	/** Route parameters extracted from URL pattern matching */
 	params: Record<string, string>;
 
@@ -47,7 +50,8 @@ export type FunctionMiddleware = (request: Request, context: RouteContext) =>
 	Response |
 	null |
 	undefined |
-	void | Promise<Response | null | undefined | void>;
+	void |
+	Promise<Response | null | undefined | void>;
 
 /**
  * Generator middleware signature - uses yield for continuation.
@@ -57,9 +61,9 @@ export type FunctionMiddleware = (request: Request, context: RouteContext) =>
 export type GeneratorMiddleware = (request: Request, context: RouteContext) =>
 	Generator<Request | undefined, Response | null | undefined | void, Response> |
 	AsyncGenerator<
-			Request | undefined,
-			Response | null | undefined | void,
-			Response
+		Request | undefined,
+		Response | null | undefined | void,
+		Response
 	>;
 
 /**
@@ -79,7 +83,6 @@ export type HTTPMethod =
  * Augmentable via module declaration for custom metadata
  */
 export interface RouteOptions {
-
 	/** Optional name for the route, useful for matching/identification */
 	name?: string;
 }
@@ -88,7 +91,6 @@ export interface RouteOptions {
  * Result of matching a URL against registered routes
  */
 export interface RouteMatch {
-
 	/** Route parameters extracted from URL pattern matching */
 	params: Record<string, string>;
 

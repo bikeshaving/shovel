@@ -448,7 +448,7 @@ async function createProject(
 	// Create ESLint config
 	if (hasClientBundle) {
 		const crankImport = isCrank
-			? "import crank from \"eslint-plugin-crank\";\n"
+			? `import crank from "eslint-plugin-crank";\n`
 			: "";
 		const crankConfig = isCrank
 			? "\n  { plugins: { crank }, rules: crank.configs.recommended.rules },"
@@ -468,7 +468,7 @@ export default tseslint.config(
 			let langOpts = "globals: globals.browser";
 			let filesOpt = "";
 			if (isCrank && config.useJSX) {
-				filesOpt = "files: [\"**/*.{js,jsx}\"], ";
+				filesOpt = `files: ["**/*.{js,jsx}"], `;
 				langOpts += ", parserOptions: { ecmaFeatures: { jsx: true } }";
 			}
 			eslintConfig = `import js from "@eslint/js";

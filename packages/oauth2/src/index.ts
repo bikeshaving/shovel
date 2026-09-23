@@ -19,7 +19,6 @@ import {
 // ============================================================================
 
 export interface OAuth2Config {
-
 	/** OAuth2 authorization endpoint */
 	authorizationEndpoint: string;
 

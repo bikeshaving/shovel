@@ -29,7 +29,6 @@ let globalRequestId = 0;
  * Configuration options for PostMessageCache
  */
 export interface PostMessageCacheOptions {
-
 	/** Timeout for cache operations in milliseconds (default: 30000) */
 	timeout?: number;
 }

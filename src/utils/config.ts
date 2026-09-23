@@ -1191,7 +1191,6 @@ function toJSLiteral(
 export function generateConfigModule(
 	rawConfig: ShovelConfig,
 	options: {
-
 		/** Absolute path to project directory (where shovel.json lives) */
 		projectDir: string;
 
@@ -1212,7 +1211,6 @@ export function generateConfigModule(
 
 		/** Lifecycle options for --lifecycle flag */
 		lifecycle?: {
-
 			/** Lifecycle stage to run: "install" or "activate" */
 			stage: "install" | "activate";
 		};
@@ -1577,7 +1575,6 @@ export const SinkConfigSchema = z
 
 export type SinkConfig =
 	z.infer<typeof SinkConfigSchema> & {
-
 		/** Reified implementation (factory function from build-time code generation) */
 		impl?: (options: Record<string, unknown>) => unknown;
 	};
@@ -1772,7 +1769,6 @@ export function loadConfig(cwd: string): ProcessedShovelConfig {
  * Options for generating storage types
  */
 export interface GenerateStorageTypesOptions {
-
 	/** Platform-specific defaults for directories, caches, etc. */
 	platformDefaults?: {
 		directories?: Record<string, unknown>;
@@ -1821,8 +1817,8 @@ export function generateStorageTypes(
 
 	// Generate database type (union of valid names)
 	if (databaseNames.length > 0) {
-		imports.push("import type {Database} from \"@b9g/zen\";");
-		imports.push("import type {DatabaseUpgradeEvent} from \"@b9g/platform\";");
+		imports.push(`import type {Database} from "@b9g/zen";`);
+		imports.push(`import type {DatabaseUpgradeEvent} from "@b9g/platform";`);
 
 		const dbUnion = databaseNames.map((n) => `"${n}"`).join(" | ");
 		sections.push(

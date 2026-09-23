@@ -17,7 +17,6 @@ import {
  * Configuration for running cache tests
  */
 export interface CacheTestConfig {
-
 	/** Factory function to create a Cache instance */
 	createCache: (name: string) => Cache | Promise<Cache>;
 

@@ -1,5 +1,4 @@
-import {jsx} from "@b9g/crank/standalone";
-import type {Element} from "@b9g/crank/standalone";
+import {type Element, jsx} from "@b9g/crank/standalone";
 import {css} from "@emotion/css";
 
 import {Root} from "../components/root.js";

@@ -53,7 +53,6 @@ const HTTP_ERROR = Symbol.for("shovel.http-error");
 
 /** Options for creating HTTP errors */
 export interface HTTPErrorOptions {
-
 	/** Original error that caused this HTTP error */
 	cause?: Error;
 

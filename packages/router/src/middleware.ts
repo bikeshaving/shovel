@@ -101,7 +101,6 @@ export function trailingSlash(
  * CORS configuration options
  */
 export interface CORSOptions {
-
 	/**
 	 * Allowed origins. Can be:
 	 * - "*" for any origin (not recommended with credentials)
@@ -215,7 +214,6 @@ function getAllowedOrigin(
  * Logger configuration options
  */
 export interface LoggerOptions {
-
 	/**
 	 * LogTape category for the logger
 	 * @default ["app", "router"]

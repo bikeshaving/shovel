@@ -16,7 +16,6 @@ const logger = getLogger(["test", "wpt", "filesystem"]);
  * Configuration for running filesystem tests
  */
 export interface FilesystemTestConfig {
-
 	/** Factory function to get a test directory handle */
 	getDirectory: () =>
 		FileSystemDirectoryHandle | Promise<FileSystemDirectoryHandle>;

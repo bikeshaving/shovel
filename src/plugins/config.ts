@@ -23,7 +23,6 @@ import {
  * Options for the shovel:config plugin
  */
 export interface ConfigPluginOptions {
-
 	/** Platform-specific defaults for directories, caches, etc. */
 	platformDefaults?: {
 		directories?: Record<
@@ -38,7 +37,6 @@ export interface ConfigPluginOptions {
 
 	/** Lifecycle options for --lifecycle flag */
 	lifecycle?: {
-
 		/** Lifecycle stage to run: "install" or "activate" */
 		stage: "install" | "activate";
 	};

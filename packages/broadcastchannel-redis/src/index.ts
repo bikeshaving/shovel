@@ -12,7 +12,6 @@ import {createClient} from "redis";
 const logger = getLogger(["shovel", "pubsub"]);
 
 export interface RedisPubSubOptions {
-
 	/** Redis connection URL (e.g., "redis://localhost:6379") */
 	url?: string;
 }

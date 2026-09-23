@@ -7,8 +7,7 @@
  */
 
 import {assets as assetsMiddleware} from "@b9g/assets/middleware";
-import {Router} from "@b9g/router";
-import type {RouteContext} from "@b9g/router";
+import {type RouteContext, Router} from "@b9g/router";
 
 const logger = self.loggers.get(["blog"]);
 

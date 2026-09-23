@@ -11,8 +11,11 @@ import * as Path from "node:path";
 
 // Internal @b9g/* packages
 import {CustomCacheStorage} from "@b9g/cache";
-import {InternalServerError, isHTTPError} from "@b9g/http-errors";
-import type {HTTPError} from "@b9g/http-errors";
+import {
+	type HTTPError,
+	InternalServerError,
+	isHTTPError,
+} from "@b9g/http-errors";
 import {
 	type EntryPoints,
 	type Handler,
@@ -38,7 +41,6 @@ const logger = getLogger(["shovel", "platform"]);
 // ============================================================================
 
 export interface BunPlatformOptions {
-
 	/** Port for development server (default: 7777) */
 	port?: number;
 

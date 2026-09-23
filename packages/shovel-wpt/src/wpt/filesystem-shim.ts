@@ -9,7 +9,6 @@ import * as Assertions from "../harness/assertions.js";
 import {promise_test, type TestContext} from "../harness/testharness.js";
 
 export interface FilesystemShimConfig {
-
 	/** Factory function to get a clean test directory */
 	getDirectory: () =>
 		FileSystemDirectoryHandle | Promise<FileSystemDirectoryHandle>;

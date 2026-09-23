@@ -5,8 +5,7 @@ import {resolvePlatform} from "@b9g/platform";
 import {getLogger} from "@logtape/logtape";
 
 import {ServerBundler} from "../utils/bundler.js";
-import {DEFAULTS} from "../utils/config.js";
-import type {ProcessedShovelConfig} from "../utils/config.js";
+import {DEFAULTS, type ProcessedShovelConfig} from "../utils/config.js";
 import {loadPlatformModule} from "../utils/platform.js";
 
 const logger = getLogger(["shovel", "develop"]);

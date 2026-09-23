@@ -1,5 +1,4 @@
-import {jsx} from "@b9g/crank/standalone";
-import type {Element} from "@b9g/crank/standalone";
+import {type Element, jsx} from "@b9g/crank/standalone";
 import {Marked} from "@b9g/crankdown";
 import {NotFound} from "@b9g/http-errors";
 

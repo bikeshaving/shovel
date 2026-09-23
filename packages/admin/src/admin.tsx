@@ -7,8 +7,7 @@ import type {Children} from "@b9g/crank";
 import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
-import {ValidationError} from "@b9g/zen";
-import type {Database, Table} from "@b9g/zen";
+import {type Database, type Table, ValidationError} from "@b9g/zen";
 
 import {
 	type AdminTableInfo,
@@ -29,7 +28,6 @@ export type AuthProvider = "google" | "github" | "microsoft";
 
 /** Authentication configuration */
 export interface AuthConfig {
-
 	/** OAuth2 providers to enable */
 	providers: AuthProvider[];
 
@@ -42,7 +40,6 @@ export interface AuthConfig {
 
 /** Per-model display and behavior configuration */
 export interface ModelConfig {
-
 	/** Display name for the model (defaults to table name) */
 	name?: string;
 
@@ -64,7 +61,6 @@ export interface ModelConfig {
 
 /** Admin branding customization */
 export interface BrandingConfig {
-
 	/** Admin panel title */
 	title?: string;
 
@@ -74,7 +70,6 @@ export interface BrandingConfig {
 
 /** USWDS asset URLs for the admin UI */
 interface AssetsConfig {
-
 	/** URL to USWDS CSS file */
 	css: string;
 
@@ -84,7 +79,6 @@ interface AssetsConfig {
 
 /** Main admin configuration */
 export interface AdminConfig {
-
 	/** Database name from shovel.json to use */
 	database: string;
 
@@ -133,7 +127,6 @@ interface _AdminSession {
 
 /** Model information exposed by AdminRouter */
 export interface AdminModel {
-
 	/** Table name in the database */
 	name: string;
 

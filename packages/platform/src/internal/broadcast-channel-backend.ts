@@ -7,7 +7,6 @@
  */
 
 export interface BroadcastChannelBackend {
-
 	/** Publish a message to a channel (called when local BC posts) */
 	publish(channelName: string, data: unknown): void;
 

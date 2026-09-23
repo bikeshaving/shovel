@@ -35,7 +35,6 @@ const logger = getLogger(["shovel", "platform"]);
  * Server options for platform implementations
  */
 export interface ServerOptions {
-
 	/** Port to listen on */
 	port?: number;
 
@@ -58,7 +57,6 @@ export type Handler = (
  * Server instance returned by platform.createServer()
  */
 export interface Server {
-
 	/** Start listening for requests */
 	listen(): Promise<void>;
 
@@ -79,7 +77,6 @@ export interface Server {
  * ServiceWorker entrypoint options
  */
 export interface ServiceWorkerOptions {
-
 	/** Additional context to provide */
 	context?: any;
 
@@ -94,7 +91,6 @@ export interface ServiceWorkerOptions {
  * ServiceWorker instance returned by platform
  */
 export interface ServiceWorkerInstance {
-
 	/** The ServiceWorker runtime */
 	runtime: any; // WorkerPool or ServiceWorkerRegistration
 	/** Handle HTTP request */
@@ -130,7 +126,6 @@ export type ProductionEntryPoints = EntryPoints;
  * ESBuild configuration subset that platforms can customize
  */
 export interface PlatformESBuildConfig {
-
 	/** Target platform: "node" or "browser" */
 	platform?: "node" | "browser" | "neutral";
 
@@ -149,7 +144,6 @@ export interface PlatformESBuildConfig {
  * Used by platforms to define built-in defaults that get merged with user config.
  */
 export interface ResourceDefault {
-
 	/** Module path to import (e.g., "@b9g/cache/memory") */
 	module: string;
 
@@ -166,7 +160,6 @@ export interface ResourceDefault {
  * sensible defaults for each platform.
  */
 export interface PlatformDefaults {
-
 	/** Default directory configurations (server, public, tmp, etc.) */
 	directories?: Record<string, ResourceDefault>;
 
@@ -178,7 +171,6 @@ export interface PlatformDefaults {
  * Extended ServiceWorkerContainer with internal methods for hot reload
  */
 export interface ShovelServiceWorkerContainer extends ServiceWorkerContainer {
-
 	/** Internal: Get the worker pool for request handling */
 	readonly pool?: {handleRequest(request: Request): Promise<Response>};
 
@@ -326,7 +318,6 @@ export function mergeConfigWithDefaults(
  * Worker pool options
  */
 export interface WorkerPoolOptions {
-
 	/** Number of workers in the pool (default: 1) */
 	workerCount?: number;
 

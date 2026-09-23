@@ -14,7 +14,6 @@ import type {DirectoryStorage} from "@b9g/filesystem";
 import type {Logger} from "@logtape/logtape";
 
 declare global {
-
 	/**
 	 * Logger storage API for accessing named loggers.
 	 * @example const logger = self.loggers.get(["app"]);
@@ -28,7 +27,6 @@ declare global {
 	 * Upgrade event passed to onUpgrade callback during database.open().
 	 */
 	interface DatabaseUpgradeEvent {
-
 		/** The database being upgraded */
 		db: unknown;
 
@@ -55,7 +53,6 @@ declare global {
 	 * const db = self.databases.get("main");
 	 */
 	interface DatabaseStorage {
-
 		/** Open a database at a specific version, running migrations if needed */
 		open(
 			name: string,

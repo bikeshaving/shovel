@@ -12,7 +12,6 @@ export interface ProviderConfig
 		OAuth2Config,
 		"clientID" | "clientSecret" | "redirectURI" | "scopes"
 	> {
-
 	/** User info endpoint */
 	userInfoEndpoint?: string;
 

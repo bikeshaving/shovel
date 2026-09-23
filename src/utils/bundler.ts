@@ -41,7 +41,6 @@ const REQUIRE_SHIM = "import{createRequire as __cR}from'module';const require=__
  * Options for creating a ServerBundler instance.
  */
 export interface BundlerOptions {
-
 	/** Entry point to build */
 	entrypoint: string;
 
@@ -59,7 +58,6 @@ export interface BundlerOptions {
 
 	/** Lifecycle options for --lifecycle flag */
 	lifecycle?: {
-
 		/** Lifecycle stage to run: "install" or "activate" */
 		stage: "install" | "activate";
 	};
@@ -76,7 +74,6 @@ export interface BundlerOptions {
  * Build output paths.
  */
 export interface BuildOutputs {
-
 	/** Supervisor entry point (Node/Bun only) */
 	supervisor?: string;
 
@@ -102,7 +99,6 @@ export interface BuildResult {
  * Options for watch mode.
  */
 export interface WatchOptions {
-
 	/** Called after each rebuild */
 	onRebuild?: (result: BuildResult) => void | Promise<void>;
 }

@@ -41,7 +41,6 @@ async function getBundledManifest(): Promise<AssetManifest> {
  * Asset manifest entry
  */
 export interface AssetManifestEntry {
-
 	/** Original file path relative to source */
 	source: string;
 
@@ -65,7 +64,6 @@ export interface AssetManifestEntry {
  * Asset manifest structure
  */
 export interface AssetManifest {
-
 	/** Assets indexed by their source path */
 	assets: Record<string, AssetManifestEntry>;
 
@@ -80,7 +78,6 @@ export interface AssetManifest {
  * Runtime configuration for assets middleware
  */
 export interface AssetsConfig {
-
 	/** Cache control header value (default: 'public, max-age=31536000, immutable') */
 	cacheControl?: string;
 

@@ -61,7 +61,6 @@ const logger = getLogger(["shovel", "assets"]);
  * Configuration for assets plugin (build-time)
  */
 export interface AssetsPluginConfig {
-
 	/**
 	 * Root output directory.
 	 * Assets go to {outDir}/public/{assetBase}/

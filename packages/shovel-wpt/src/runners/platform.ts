@@ -50,7 +50,6 @@ interface Server {
  * Configuration for running platform tests
  */
 export interface PlatformTestConfig {
-
 	/** Factory function to create the platform instance */
 	createPlatform: () => Platform | Promise<Platform>;
 

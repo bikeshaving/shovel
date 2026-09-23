@@ -8,7 +8,6 @@ import mime from "mime";
  * Configuration for filesystem adapters
  */
 export interface FileSystemConfig {
-
 	/** Human readable name for this filesystem */
 	name?: string;
 
@@ -32,7 +31,6 @@ export interface FileSystemPermissionDescriptor {
  * across different storage types (memory, local disk, S3, R2, etc.)
  */
 export interface FileSystemBackend {
-
 	/**
 	 * Check if entry exists and return its type
 	 * @param path Path to the entry
@@ -485,7 +483,6 @@ function joinPath(base: string, name: string): string {
  * Directory storage interface - parallels CacheStorage for filesystem access
  */
 export interface DirectoryStorage {
-
 	/**
 	 * Open a named directory - returns FileSystemDirectoryHandle (root)
 	 * Well-known names: 'static', 'tmp'

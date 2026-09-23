@@ -43,7 +43,6 @@ export type {
 // ============================================================================
 
 export interface CloudflarePlatformOptions {
-
 	/** Port for development server (default: 7777) */
 	port?: number;
 
@@ -290,7 +289,7 @@ export class CloudflarePlatform {
 
 			this[kAssetsMiniflare] = new Miniflare({
 				modules: true,
-				script: "export default { fetch() { return new Response(\"assets-only\"); } }",
+				script: `export default { fetch() { return new Response("assets-only"); } }`,
 				assets: {directory: this[kOptions].assetsDirectory, binding: "ASSETS"},
 				compatibilityDate: "2024-09-23",
 			});

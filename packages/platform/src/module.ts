@@ -25,7 +25,6 @@ export type EntryPoints = Record<string, string>;
  * ESBuild configuration that platforms can customize.
  */
 export interface ESBuildConfig {
-
 	/** Target platform: "node" or "browser" */
 	platform?: "node" | "browser";
 
@@ -62,7 +61,6 @@ export interface PlatformDefaults {
  * Options for creating a dev server.
  */
 export interface DevServerOptions {
-
 	/** Port to listen on */
 	port: number;
 
@@ -81,7 +79,6 @@ export interface DevServerOptions {
  * Abstracts over Miniflare, worker pools, etc.
  */
 export interface DevServer {
-
 	/** Server URL */
 	readonly url: string;
 
@@ -100,7 +97,6 @@ export interface DevServer {
  * Result from installGlobals().
  */
 export interface RuntimeContext {
-
 	/** ServiceWorker registration for dispatching events */
 	registration: ServiceWorkerRegistration;
 }
@@ -109,7 +105,6 @@ export interface RuntimeContext {
  * Server instance for Node/Bun.
  */
 export interface Server {
-
 	/** Start listening */
 	listen(): Promise<void>;
 
@@ -160,7 +155,6 @@ export type FetchHandler = (
  *   - Platform-specific: createServer, createFetchHandler, etc.
  */
 export interface PlatformModule {
-
 	/** Platform identifier */
 	readonly name: string;
 
@@ -187,7 +181,6 @@ export interface PlatformModule {
  * The specific functions vary by platform.
  */
 export interface PlatformRuntimeModule {
-
 	/** Install ServiceWorker globals (caches, directories, loggers) */
 	installGlobals(config: unknown): Promise<RuntimeContext>;
 }

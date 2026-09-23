@@ -55,7 +55,6 @@ export interface ExecutionContext {
  * Options for CloudflareFetchEvent constructor
  */
 export interface CloudflareFetchEventInit extends ShovelFetchEventInit {
-
 	/** Cloudflare environment bindings (KV, R2, D1, etc.) */
 	env: Record<string, unknown>;
 }

@@ -38,7 +38,7 @@ describe("Assets Plugin - output path structure", () => {
 
 		// Create CSS and JS files
 		await writeFile(join(testDir, "style.css"), "body { color: red; }");
-		await writeFile(join(testDir, "client.js"), "console.log(\"hi\");");
+		await writeFile(join(testDir, "client.js"), `console.log("hi");`);
 
 		// Create entry that imports with different assetBase paths
 		await writeFile(
@@ -210,7 +210,7 @@ describe("Assets Plugin - TypeScript transpilation", () => {
 		// Create a TypeScript client file
 		await writeFile(
 			join(testDir, "client.ts"),
-			"const message: string = \"Hello\"; export {};",
+			`const message: string = "Hello"; export {};`,
 		);
 
 		// Create entry that imports TS as asset
@@ -291,11 +291,11 @@ describe("Assets Plugin - minify option", () => {
 
 		await writeFile(
 			join(testDir, "client.js"),
-			"const longVariableName = \"hello\";\nconsole.log(longVariableName);",
+			`const longVariableName = "hello";\nconsole.log(longVariableName);`,
 		);
 		await writeFile(
 			join(testDir, "entry.js"),
-			"import clientUrl from \"./client.js\" with { assetBase: \"/static\" };\nexport default clientUrl;",
+			`import clientUrl from "./client.js" with { assetBase: "/static" };\nexport default clientUrl;`,
 		);
 
 		const outDir = join(testDir, "dist");
@@ -324,11 +324,11 @@ describe("Assets Plugin - minify option", () => {
 
 		await writeFile(
 			join(testDir, "client.js"),
-			"const longVariableName = \"hello\";\nconsole.log(longVariableName);",
+			`const longVariableName = "hello";\nconsole.log(longVariableName);`,
 		);
 		await writeFile(
 			join(testDir, "entry.js"),
-			"import clientUrl from \"./client.js\" with { assetBase: \"/static\" };\nexport default clientUrl;",
+			`import clientUrl from "./client.js" with { assetBase: "/static" };\nexport default clientUrl;`,
 		);
 
 		const outDir = join(testDir, "dist");
@@ -361,7 +361,7 @@ describe("Assets Plugin - minify option", () => {
 		);
 		await writeFile(
 			join(testDir, "entry.js"),
-			"import styleUrl from \"./style.css\" with { assetBase: \"/static\" };\nexport default styleUrl;",
+			`import styleUrl from "./style.css" with { assetBase: "/static" };\nexport default styleUrl;`,
 		);
 
 		const outDir = join(testDir, "dist");
@@ -523,7 +523,7 @@ export default styleUrl;`,
 		// Create TS with content that our test plugin will transform
 		await writeFile(
 			join(testDir, "client.ts"),
-			"const msg: string = \"REPLACE_ME\"; console.log(msg);",
+			`const msg: string = "REPLACE_ME"; console.log(msg);`,
 		);
 
 		await writeFile(
@@ -719,10 +719,7 @@ export default clientCss;`,
 		const testDir = await mkdtemp(join(tmpdir(), "type-css-error-test-"));
 
 		// Create a TS client that does NOT import CSS
-		await writeFile(
-			join(testDir, "client.ts"),
-			"console.log(\"no css here\");",
-		);
+		await writeFile(join(testDir, "client.ts"), `console.log("no css here");`);
 
 		await writeFile(
 			join(testDir, "entry.js"),
@@ -792,7 +789,7 @@ describe("Assets Plugin - code splitting", () => {
 		// Create a "heavy" module that will be dynamically imported
 		await writeFile(
 			join(testDir, "heavy-dep.ts"),
-			"export const data = \"heavy data\"; export const compute = () => data.toUpperCase();",
+			`export const data = "heavy data"; export const compute = () => data.toUpperCase();`,
 		);
 
 		// Create a client file with a dynamic import
@@ -867,7 +864,7 @@ export default clientUrl;`,
 		// Create a simple client with no dynamic imports
 		await writeFile(
 			join(testDir, "client.ts"),
-			"const msg: string = \"Hello\"; console.log(msg); export {};",
+			`const msg: string = "Hello"; console.log(msg); export {};`,
 		);
 
 		await writeFile(
@@ -971,7 +968,7 @@ export default clientCss;`,
 		// Create a shared module that will become a chunk
 		await writeFile(
 			join(testDir, "shared.ts"),
-			"export const sharedData = \"shared\";",
+			`export const sharedData = "shared";`,
 		);
 
 		// Create two clients that dynamically import the same shared module

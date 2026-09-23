@@ -787,8 +787,8 @@ test(
 			const testFileMain = join(tempDir.dir, "chain-main.ts");
 
 			// File A (deepest dependency)
-			const contentA = "export const value = \"A-original\";";
-			const modifiedA = "export const value = \"A-modified\";";
+			const contentA = `export const value = "A-original";`;
+			const modifiedA = `export const value = "A-modified";`;
 
 			// File B (middle dependency, imports A)
 			const contentB = `
@@ -1439,7 +1439,7 @@ test(
 			const appFile = join(fixtureDir, "app.ts");
 			await FS.writeFile(
 				appFile,
-				"self.addEventListener(\"fetch\", () => new Response(\"v1\"));",
+				`self.addEventListener("fetch", () => new Response("v1"));`,
 			);
 
 			let onRebuildCalled = false;
@@ -1485,7 +1485,7 @@ test(
 				// Trigger rebuild by modifying source
 				await FS.writeFile(
 					appFile,
-					"self.addEventListener(\"fetch\", () => new Response(\"v2\"));",
+					`self.addEventListener("fetch", () => new Response("v2"));`,
 				);
 
 				// Wait for rebuild callback

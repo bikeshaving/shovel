@@ -15,7 +15,6 @@ import {describe, expect, test} from "bun:test";
  * Configuration for running runtime tests
  */
 export interface RuntimeTestConfig {
-
 	/**
 	 * Factory to create ExtendableEvent
 	 * Should match the ServiceWorker spec behavior

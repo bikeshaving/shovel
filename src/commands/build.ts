@@ -91,7 +91,6 @@ function logBundleSizes(metafile: ESBuild.Metafile): void {
  * Build result returned to callers
  */
 export interface BuildResult {
-
 	/** Platform module (for running lifecycle) */
 	platformModule: PlatformModule;
 
