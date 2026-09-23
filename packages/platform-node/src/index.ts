@@ -31,10 +31,10 @@ import {
 	ServiceWorkerPool,
 } from "@b9g/platform";
 import {
+	createActivatedRegistration,
 	createCacheFactory,
-	kServiceWorker,
 	type ShovelConfig,
-	ShovelServiceWorkerRegistration,
+	type ShovelServiceWorkerRegistration,
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform"]);
@@ -176,8 +176,7 @@ export class NodeServiceWorkerContainer
 		await this[kPool].init();
 
 		// Create registration to track state
-		this[kRegistration] = new ShovelServiceWorkerRegistration(scope, urlStr);
-		this[kRegistration][kServiceWorker]._setState("activated");
+		this[kRegistration] = createActivatedRegistration(scope, urlStr);
 
 		// Resolve ready promise
 		this[kReadyResolve]?.(this[kRegistration]);

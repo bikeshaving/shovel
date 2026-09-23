@@ -1127,15 +1127,17 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 			.warn("ServiceWorker.postMessage() not implemented in server context");
 	}
 
-	// Internal method to update state and dispatch statechange event
-	_setState(newState: typeof this.state): void {
-		if (this.state !== newState) {
-			this.state = newState;
-			this.dispatchEvent(new Event("statechange"));
-		}
-	}
-
 	// Events: statechange, error
+}
+
+function setState(
+	serviceWorker: ShovelServiceWorker,
+	state: ShovelServiceWorker["state"],
+): void {
+	if (serviceWorker.state !== state) {
+		serviceWorker.state = state;
+		serviceWorker.dispatchEvent(new Event("statechange"));
+	}
 }
 
 /**
@@ -1161,22 +1163,14 @@ export class ShovelNavigationPreloadManager
 	}
 }
 
-// ============================================================================
-// Symbols for internal lifecycle methods
-// These allow runLifecycle() to access internal methods without polluting the public API
-// ============================================================================
-
-/** @internal Symbol for accessing the internal ServiceWorker instance */
-export const kServiceWorker = Symbol.for("shovel.serviceWorker");
-
-/** @internal Symbol for dispatching the install lifecycle event */
-export const kDispatchInstall = Symbol.for("shovel.dispatchInstall");
-
-/** @internal Symbol for dispatching the activate lifecycle event */
-export const kDispatchActivate = Symbol.for("shovel.dispatchActivate");
+const kServiceWorker = Symbol("serviceWorker");
 
 /** @internal Symbol for handling fetch requests */
 const kHandleRequest = Symbol("handleRequest");
+
+export interface ShovelServiceWorkerRegistration {
+	[kServiceWorker]: ShovelServiceWorker;
+}
 
 /**
  * ShovelServiceWorkerRegistration - Internal implementation of ServiceWorkerRegistration
@@ -1194,9 +1188,6 @@ export class ShovelServiceWorkerRegistration
 	readonly cookies: any;
 	readonly pushManager: any;
 	onupdatefound: ((ev: Event) => any) | null;
-
-	// Internal ServiceWorker instance (accessed via symbol for lifecycle management)
-	[kServiceWorker]: ShovelServiceWorker;
 
 	constructor(scope = "/", scriptURL = "/") {
 		super();
@@ -1262,100 +1253,6 @@ export class ShovelServiceWorkerRegistration
 	async update(): Promise<ServiceWorkerRegistration> {
 		// No-op in server context - just return this registration
 		return this;
-	}
-
-	// Internal lifecycle methods (accessed via symbols by runLifecycle)
-
-	/**
-	 * Dispatch the install lifecycle event
-	 * @internal Use runLifecycle() instead of calling this directly
-	 */
-	async [kDispatchInstall](): Promise<void> {
-		if (this[kServiceWorker].state !== "parsed") return;
-
-		this[kServiceWorker]._setState("installing");
-
-		return new Promise<void>((resolve, reject) => {
-			const event = new ShovelInstallEvent();
-
-			// Dispatch event asynchronously to allow listener errors to be deferred
-			queueMicrotask(() => {
-				try {
-					this.dispatchEvent(event);
-				} catch (error) {
-					// Allow errors in event listeners to propagate as uncaught exceptions
-					queueMicrotask(() => {
-						throw error;
-					});
-				}
-
-				const promises = event.getPromises();
-				if (promises.length === 0) {
-					this[kServiceWorker]._setState("installed");
-					resolve();
-				} else {
-					// Use Promise.all() so waitUntil rejections fail the install
-					// Wrap with timeout to prevent indefinite hangs
-					promiseWithTimeout(
-						Promise.all(promises),
-						30000,
-						"ServiceWorker install event timed out after 30s - waitUntil promises did not resolve",
-					)
-						.then(() => {
-							this[kServiceWorker]._setState("installed");
-							resolve();
-						})
-						.catch(reject);
-				}
-			});
-		});
-	}
-
-	/**
-	 * Dispatch the activate lifecycle event
-	 * @internal Use runLifecycle() instead of calling this directly
-	 */
-	async [kDispatchActivate](): Promise<void> {
-		if (this[kServiceWorker].state !== "installed") {
-			throw new Error("ServiceWorker must be installed before activation");
-		}
-
-		this[kServiceWorker]._setState("activating");
-
-		return new Promise<void>((resolve, reject) => {
-			const event = new ShovelActivateEvent();
-
-			// Dispatch event asynchronously to allow listener errors to be deferred
-			queueMicrotask(() => {
-				try {
-					this.dispatchEvent(event);
-				} catch (error) {
-					// Allow errors in event listeners to propagate as uncaught exceptions
-					queueMicrotask(() => {
-						throw error;
-					});
-				}
-
-				const promises = event.getPromises();
-				if (promises.length === 0) {
-					this[kServiceWorker]._setState("activated");
-					resolve();
-				} else {
-					// Use Promise.all() so waitUntil rejections fail the activation
-					// Wrap with timeout to prevent indefinite hangs
-					promiseWithTimeout(
-						Promise.all(promises),
-						30000,
-						"ServiceWorker activate event timed out after 30s - waitUntil promises did not resolve",
-					)
-						.then(() => {
-							this[kServiceWorker]._setState("activated");
-							resolve();
-						})
-						.catch(reject);
-				}
-			});
-		});
 	}
 
 	/**
@@ -1426,6 +1323,102 @@ export class ShovelServiceWorkerRegistration
 }
 
 /**
+ * Dispatch the install lifecycle event
+ * @internal Use runLifecycle() instead of calling registration directly
+ */
+async function dispatchInstall(
+	registration: ShovelServiceWorkerRegistration,
+): Promise<void> {
+	if (registration[kServiceWorker].state !== "parsed") return;
+
+	setState(registration[kServiceWorker], "installing");
+
+	return new Promise<void>((resolve, reject) => {
+		const event = new ShovelInstallEvent();
+
+		// Dispatch event asynchronously to allow listener errors to be deferred
+		queueMicrotask(() => {
+			try {
+				registration.dispatchEvent(event);
+			} catch (error) {
+				// Allow errors in event listeners to propagate as uncaught exceptions
+				queueMicrotask(() => {
+					throw error;
+				});
+			}
+
+			const promises = event.getPromises();
+			if (promises.length === 0) {
+				setState(registration[kServiceWorker], "installed");
+				resolve();
+			} else {
+				// Use Promise.all() so waitUntil rejections fail the install
+				// Wrap with timeout to prevent indefinite hangs
+				promiseWithTimeout(
+					Promise.all(promises),
+					30000,
+					"ServiceWorker install event timed out after 30s - waitUntil promises did not resolve",
+				)
+					.then(() => {
+						setState(registration[kServiceWorker], "installed");
+						resolve();
+					})
+					.catch(reject);
+			}
+		});
+	});
+}
+
+/**
+ * Dispatch the activate lifecycle event
+ * @internal Use runLifecycle() instead of calling registration directly
+ */
+async function dispatchActivate(
+	registration: ShovelServiceWorkerRegistration,
+): Promise<void> {
+	if (registration[kServiceWorker].state !== "installed") {
+		throw new Error("ServiceWorker must be installed before activation");
+	}
+
+	setState(registration[kServiceWorker], "activating");
+
+	return new Promise<void>((resolve, reject) => {
+		const event = new ShovelActivateEvent();
+
+		// Dispatch event asynchronously to allow listener errors to be deferred
+		queueMicrotask(() => {
+			try {
+				registration.dispatchEvent(event);
+			} catch (error) {
+				// Allow errors in event listeners to propagate as uncaught exceptions
+				queueMicrotask(() => {
+					throw error;
+				});
+			}
+
+			const promises = event.getPromises();
+			if (promises.length === 0) {
+				setState(registration[kServiceWorker], "activated");
+				resolve();
+			} else {
+				// Use Promise.all() so waitUntil rejections fail the activation
+				// Wrap with timeout to prevent indefinite hangs
+				promiseWithTimeout(
+					Promise.all(promises),
+					30000,
+					"ServiceWorker activate event timed out after 30s - waitUntil promises did not resolve",
+				)
+					.then(() => {
+						setState(registration[kServiceWorker], "activated");
+						resolve();
+					})
+					.catch(reject);
+			}
+		});
+	});
+}
+
+/**
  * Run ServiceWorker lifecycle events on a registration.
  *
  * This is the proper way to trigger lifecycle events in Shovel's server-side runtime.
@@ -1448,10 +1441,25 @@ export async function runLifecycle(
 	registration: ShovelServiceWorkerRegistration,
 	stage: "install" | "activate" = "activate",
 ): Promise<void> {
-	await registration[kDispatchInstall]();
+	await dispatchInstall(registration);
 	if (stage === "activate") {
-		await registration[kDispatchActivate]();
+		await dispatchActivate(registration);
 	}
+}
+
+/**
+ * Create a registration whose ServiceWorker is already activated.
+ *
+ * For supervisors that run the lifecycle inside worker threads and only
+ * need a registration that reflects the finished state.
+ */
+export function createActivatedRegistration(
+	scope: string,
+	scriptURL: string,
+): ShovelServiceWorkerRegistration {
+	const registration = new ShovelServiceWorkerRegistration(scope, scriptURL);
+	setState(registration[kServiceWorker], "activated");
+	return registration;
 }
 
 /**
@@ -1557,7 +1565,7 @@ export class ShovelServiceWorkerContainer
 		if (registration) {
 			// Update existing registration with new script
 			registration[kServiceWorker].scriptURL = url;
-			registration[kServiceWorker]._setState("parsed");
+			setState(registration[kServiceWorker], "parsed");
 		} else {
 			// Create new registration
 			registration = new ShovelServiceWorkerRegistration(scope, url);
