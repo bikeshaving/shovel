@@ -52,7 +52,9 @@ export class CloseEvent extends Event {
  * Using a data URL avoids needing to write any files to disk (temp or otherwise)
  */
 // Compact wrapper code to keep data URL length under limits
-const WORKER_WRAPPER_CODE = `import{parentPort as p}from"worker_threads";const l=new Set();globalThis.onmessage=null;globalThis.onmessageerror=null;globalThis.postMessage=(d,t)=>t?.length?p.postMessage(d,t):p.postMessage(d);globalThis.self=globalThis;globalThis.addEventListener=(t,f)=>t==="message"&&l.add(f);globalThis.removeEventListener=(t,f)=>t==="message"&&l.delete(f);p.on("message",d=>{const e={data:d,type:"message"};globalThis.onmessage?.(e);l.forEach(f=>f(e))});const u=process.env.WORKER_SCRIPT_URL;if(u)await import(u);else throw Error("WORKER_SCRIPT_URL not set");`;
+// Messages that arrive while the worker script is still loading are queued
+// and dispatched once it has registered its listeners.
+const WORKER_WRAPPER_CODE = `import{parentPort as p}from"worker_threads";const l=new Set();let q=[];globalThis.onmessage=null;globalThis.onmessageerror=null;globalThis.postMessage=(d,t)=>t?.length?p.postMessage(d,t):p.postMessage(d);globalThis.self=globalThis;globalThis.addEventListener=(t,f)=>t==="message"&&l.add(f);globalThis.removeEventListener=(t,f)=>t==="message"&&l.delete(f);const h=e=>{globalThis.onmessage?.(e);l.forEach(f=>f(e))};p.on("message",d=>{const e={data:d,type:"message"};q?q.push(e):h(e)});const u=process.env.WORKER_SCRIPT_URL;if(u)await import(u);else throw Error("WORKER_SCRIPT_URL not set");const b=q;q=null;b.forEach(h);`;
 
 // Create data URL from wrapper code (created once and reused)
 const WORKER_WRAPPER_DATA_URL = new URL(
