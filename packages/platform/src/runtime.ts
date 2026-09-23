@@ -157,6 +157,14 @@ export function parseSetCookieHeader(setCookieHeader: string): CookieListItem {
 	return cookie;
 }
 
+const kCookies = Symbol("cookies");
+const kChanges = Symbol("changes");
+
+export interface RequestCookieStore {
+	[kCookies]: Map<string, CookieListItem>;
+	[kChanges]: Map<string, CookieInit | null>; // null = deleted
+}
+
 /**
  * RequestCookieStore - Cookie Store implementation for ServiceWorker contexts
  *
@@ -168,14 +176,6 @@ export function parseSetCookieHeader(setCookieHeader: string): CookieListItem {
  * It follows the Cookie Store API spec but is designed for server-side
  * request handling rather than browser contexts.
  */
-const kCookies = Symbol("cookies");
-const kChanges = Symbol("changes");
-
-export interface RequestCookieStore {
-	[kCookies]: Map<string, CookieListItem>;
-	[kChanges]: Map<string, CookieInit | null>; // null = deleted
-}
-
 export class RequestCookieStore extends EventTarget {
 	// Event handler for cookie changes (spec compliance)
 	onchange: ((this: RequestCookieStore, ev: Event) => any) | null;
@@ -354,15 +354,15 @@ export interface LoggerStorage {
  */
 export type LoggerFactory = (categories: string[]) => Logger;
 
-/**
- * Custom logger storage implementation that wraps a factory function
- */
 const kLoggerFactory = Symbol("factory");
 
 export interface CustomLoggerStorage {
 	[kLoggerFactory]: LoggerFactory;
 }
 
+/**
+ * Custom logger storage implementation that wraps a factory function
+ */
 export class CustomLoggerStorage implements LoggerStorage {
 	constructor(factory: LoggerFactory) {
 		this[kLoggerFactory] = factory;
@@ -753,6 +753,16 @@ const kCanExtend = Symbol.for("shovel.canExtend");
 // Base Event Classes
 // ============================================================================
 
+const kPromises = Symbol("promises");
+const kDispatchPhase = Symbol("dispatchPhase");
+const kPendingCount = Symbol("pendingCount");
+
+export interface ShovelExtendableEvent {
+	[kPromises]: Array<Promise<any>>;
+	[kDispatchPhase]: boolean;
+	[kPendingCount]: number;
+}
+
 /**
  * Shovel's ExtendableEvent implementation following ServiceWorker spec.
  *
@@ -764,16 +774,6 @@ const kCanExtend = Symbol.for("shovel.canExtend");
  *
  * See: https://github.com/w3c/ServiceWorker/issues/771
  */
-const kPromises = Symbol("promises");
-const kDispatchPhase = Symbol("dispatchPhase");
-const kPendingCount = Symbol("pendingCount");
-
-export interface ShovelExtendableEvent {
-	[kPromises]: Array<Promise<any>>;
-	[kDispatchPhase]: boolean;
-	[kPendingCount]: number;
-}
-
 export class ShovelExtendableEvent extends Event implements ExtendableEvent {
 	constructor(type: string, eventInitDict?: EventInit) {
 		super(type, eventInitDict);
@@ -833,12 +833,6 @@ export interface ShovelFetchEventInit extends EventInit {
 	platformWaitUntil?: (promise: Promise<unknown>) => void;
 }
 
-/**
- * Shovel's FetchEvent implementation.
- *
- * Platforms can subclass this to add platform-specific properties (e.g., env bindings).
- * The platformWaitUntil hook allows platforms to extend request lifetime properly.
- */
 const kResponsePromise = Symbol("responsePromise");
 const kResponded = Symbol("responded");
 const kPlatformWaitUntil = Symbol("platformWaitUntil");
@@ -849,6 +843,12 @@ export interface ShovelFetchEvent {
 	[kPlatformWaitUntil]?: (promise: Promise<unknown>) => void;
 }
 
+/**
+ * Shovel's FetchEvent implementation.
+ *
+ * Platforms can subclass this to add platform-specific properties (e.g., env bindings).
+ * The platformWaitUntil hook allows platforms to extend request lifetime properly.
+ */
 export class ShovelFetchEvent
 	extends ShovelExtendableEvent
 	implements FetchEvent {
@@ -1485,17 +1485,17 @@ export async function dispatchRequest(
 	return registration[kHandleRequest](event);
 }
 
-/**
- * ShovelServiceWorkerContainer - Internal implementation of ServiceWorkerContainer
- * This is the registry that manages multiple ServiceWorkerRegistrations by scope
- * Note: Standard ServiceWorkerContainer has no constructor - instances are created internally
- */
 const kRegistrations = Symbol("registrations");
 
 export interface ShovelServiceWorkerContainer {
 	[kRegistrations]: Map<string, ShovelServiceWorkerRegistration>;
 }
 
+/**
+ * ShovelServiceWorkerContainer - Internal implementation of ServiceWorkerContainer
+ * This is the registry that manages multiple ServiceWorkerRegistrations by scope
+ * Note: Standard ServiceWorkerContainer has no constructor - instances are created internally
+ */
 export class ShovelServiceWorkerContainer
 	extends EventTarget
 	implements ServiceWorkerContainer {
@@ -1738,22 +1738,26 @@ export class PushEvent extends ShovelExtendableEvent {
 	}
 }
 
+const kData = Symbol("data");
+
+export interface ShovelPushMessageData {
+	[kData]: any;
+}
+
 /**
  * ShovelPushMessageData - Internal implementation of PushMessageData
  * Note: Standard PushMessageData has no constructor - instances are created internally
  */
 export class ShovelPushMessageData implements PushMessageData {
-	_data: any;
-
 	constructor(data: any) {
-		this._data = data;
+		this[kData] = data;
 	}
 
 	arrayBuffer(): ArrayBuffer {
-		if (this._data instanceof ArrayBuffer) {
-			return this._data;
+		if (this[kData] instanceof ArrayBuffer) {
+			return this[kData];
 		}
-		return new TextEncoder().encode(this._data).buffer;
+		return new TextEncoder().encode(this[kData]).buffer;
 	}
 
 	blob(): Blob {
@@ -1769,10 +1773,10 @@ export class ShovelPushMessageData implements PushMessageData {
 	}
 
 	text(): string {
-		if (typeof this._data === "string") {
-			return this._data;
+		if (typeof this[kData] === "string") {
+			return this[kData];
 		}
-		return new TextDecoder().decode(this._data);
+		return new TextDecoder().decode(this[kData]);
 	}
 }
 
@@ -1855,6 +1859,14 @@ export class WorkerGlobalScope {}
  */
 export class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
 
+const kIsDevelopment = Symbol("isDevelopment");
+const kOriginals = Symbol("originals");
+
+export interface ServiceWorkerGlobals {
+	[kIsDevelopment]: boolean;
+	[kOriginals]: Record<PatchedKey, unknown>;
+}
+
 /**
  * ServiceWorkerGlobals - Installs ServiceWorker globals onto globalThis
  *
@@ -1864,14 +1876,6 @@ export class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
  *
  * Use restore() to revert all patches (useful for testing).
  */
-const kIsDevelopment = Symbol("isDevelopment");
-const kOriginals = Symbol("originals");
-
-export interface ServiceWorkerGlobals {
-	[kIsDevelopment]: boolean;
-	[kOriginals]: Record<PatchedKey, unknown>;
-}
-
 export class ServiceWorkerGlobals {
 	// Self-reference (standard in ServiceWorkerGlobalScope)
 	// Type assertion: we provide a compatible subset of WorkerGlobalScope

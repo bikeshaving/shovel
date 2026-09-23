@@ -29,6 +29,11 @@ import type {Miniflare} from "miniflare";
 
 const logger = getLogger(["shovel", "platform"]);
 
+type DispatchFetch = (
+	url: string,
+	init: RequestInit & {duplex?: "half"},
+) => Promise<Response>;
+
 // Re-export common platform types
 export type {
 	Handler,
@@ -313,16 +318,15 @@ export class CloudflarePlatform {
 		const instance: ServiceWorkerInstance = {
 			runtime: mf,
 			handleRequest: async (request: Request) => {
-				const dispatchFetch = mf.dispatchFetch as unknown as (
-					url: string,
-					init: RequestInit & {duplex?: "half"},
-				) => Promise<Response>;
-				const cfResponse = await dispatchFetch(request.url, {
-					method: request.method,
-					headers: request.headers,
-					body: request.body,
-					duplex: request.body ? "half" : undefined,
-				});
+				const cfResponse = await (mf.dispatchFetch as unknown as DispatchFetch)(
+					request.url,
+					{
+						method: request.method,
+						headers: request.headers,
+						body: request.body,
+						duplex: request.body ? "half" : undefined,
+					},
+				);
 				return new Response(cfResponse.body as BodyInit | null, {
 					status: cfResponse.status,
 					statusText: cfResponse.statusText,

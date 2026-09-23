@@ -493,12 +493,6 @@ export class CFAssetsFileHandle implements FileSystemFileHandle {
 	}
 }
 
-/**
- * FileSystemDirectoryHandle implementation over Cloudflare ASSETS binding.
- *
- * Provides read-only access to static assets deployed with a CF Worker.
- * Directory listing is not supported (ASSETS binding limitation).
- */
 const kBasePath = Symbol("basePath");
 const kManifest = Symbol("manifest");
 
@@ -508,6 +502,12 @@ export interface CFAssetsDirectoryHandle {
 	[kManifest]?: AssetManifestLike;
 }
 
+/**
+ * FileSystemDirectoryHandle implementation over Cloudflare ASSETS binding.
+ *
+ * Provides read-only access to static assets deployed with a CF Worker.
+ * Directory listing is not supported (ASSETS binding limitation).
+ */
 export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	readonly kind: "directory";
 	readonly name: string;
