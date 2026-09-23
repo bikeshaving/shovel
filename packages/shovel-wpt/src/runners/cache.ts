@@ -6,7 +6,7 @@
 
 import {afterEach, beforeEach, describe, expect, test} from "bun:test";
 
-import * as assertions from "../harness/assertions.js";
+import * as Assertions from "../harness/assertions.js";
 import {
 	clearTestQueue,
 	promise_test,
@@ -103,7 +103,7 @@ export function runCacheTests(name: string, config: CacheTestConfig): void {
 	};
 
 	// Make WPT globals available
-	const globals = {...assertions, promise_test, cache_test};
+	const globals = {...Assertions, promise_test, cache_test};
 
 	// Inject globals for WPT test files
 	Object.assign(globalThis, globals);

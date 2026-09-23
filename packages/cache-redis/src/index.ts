@@ -76,155 +76,50 @@ interface CacheEntry {
 // IMPLEMENTATION
 // ============================================================================
 
+const kClient = Symbol("client");
+const kPrefix = Symbol("prefix");
+const kDefaultTTL = Symbol("defaultTTL");
+const kMaxEntrySize = Symbol("maxEntrySize");
+const kConnected = Symbol("connected");
+
+export interface RedisCache {
+	[kClient]: ReturnType<typeof createClient>;
+	[kPrefix]: string;
+	[kDefaultTTL]: number;
+	[kMaxEntrySize]: number;
+	[kConnected]: boolean;
+}
+
 /**
  * Redis-backed cache implementation
  * Stores HTTP responses with proper serialization and TTL support
  */
 export class RedisCache extends Cache {
-	#client: ReturnType<typeof createClient>;
-	#prefix: string;
-	#defaultTTL: number;
-	#maxEntrySize: number;
-	#connected: boolean;
-
 	constructor(name: string, options: RedisCacheOptions = {}) {
 		super();
 
-		this.#client = createClient(options.redis || {});
-		this.#prefix = options.prefix
+		this[kClient] = createClient(options.redis || {});
+		this[kPrefix] = options.prefix
 			? `${options.prefix}:${name}`
 			: `cache:${name}`;
-		this.#defaultTTL = options.defaultTTL || 0; // 0 = no expiration
-		this.#maxEntrySize = options.maxEntrySize || 10 * 1024 * 1024; // 10MB default
-		this.#connected = false;
+		this[kDefaultTTL] = options.defaultTTL || 0; // 0 = no expiration
+		this[kMaxEntrySize] = options.maxEntrySize || 10 * 1024 * 1024; // 10MB default
+		this[kConnected] = false;
 
 		// Set up error handling
-		this.#client.on("error", (err) => {
+		this[kClient].on("error", (err) => {
 			logger.error("Redis error: {error}", {error: err});
 		});
 
-		this.#client.on("connect", () => {
+		this[kClient].on("connect", () => {
 			logger.info("Connected to Redis", {cache: name});
-			this.#connected = true;
+			this[kConnected] = true;
 		});
 
-		this.#client.on("disconnect", () => {
+		this[kClient].on("disconnect", () => {
 			logger.warn("Disconnected from Redis", {cache: name});
-			this.#connected = false;
+			this[kConnected] = false;
 		});
-	}
-
-	/**
-	 * Ensure Redis client is connected
-	 */
-	async #ensureConnected(): Promise<void> {
-		if (!this.#client.isOpen && !this.#client.isReady) {
-			await this.#client.connect();
-		}
-	}
-
-	/**
-	 * Generate Redis key for cache entry
-	 */
-	#getRedisKey(request: Request, options?: CacheQueryOptions): string {
-		const cacheKey = generateCacheKey(request, options);
-		return `${this.#prefix}:${cacheKey}`;
-	}
-
-	/**
-	 * Serialize Response to cache entry
-	 */
-	async #serializeResponse(
-		request: Request,
-		response: Response,
-	): Promise<CacheEntry> {
-		// Check response size before serialization
-		const cloned = response.clone();
-		const body = await cloned.arrayBuffer();
-
-		if (body.byteLength > this.#maxEntrySize) {
-			throw new Error(
-				`Response body too large: ${body.byteLength} bytes (max: ${this.#maxEntrySize})`,
-			);
-		}
-
-		// Convert response headers to plain object
-		const headers: Record<string, string> = {};
-		response.headers.forEach((value, key) => {
-			headers[key] = value;
-		});
-
-		// Convert request headers to plain object (for Vary checking)
-		const requestHeaders: Record<string, string> = {};
-		request.headers.forEach((value, key) => {
-			requestHeaders[key] = value;
-		});
-
-		// Determine TTL from Cache-Control header or use default
-		let ttl = this.#defaultTTL;
-		const cacheControl = response.headers.get("cache-control");
-		if (cacheControl) {
-			const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
-			if (maxAgeMatch) {
-				ttl = parseInt(maxAgeMatch[1], 10);
-			}
-		}
-
-		return {
-			status: response.status,
-			statusText: response.statusText,
-			headers,
-			body: uint8ArrayToBase64(new Uint8Array(body)),
-			cachedAt: Date.now(),
-			TTL: ttl,
-			requestHeaders,
-		};
-	}
-
-	/**
-	 * Deserialize cache entry to Response
-	 */
-	#deserializeResponse(entry: CacheEntry): Response {
-		const body = base64ToUint8Array(entry.body);
-
-		return new Response(body as unknown as BodyInit, {
-			status: entry.status,
-			statusText: entry.statusText,
-			headers: entry.headers,
-		});
-	}
-
-	/**
-	 * Check if a request matches the Vary header of a cached entry
-	 * Returns true if the request matches or if there's no Vary header
-	 */
-	#matchesVary(request: Request, entry: CacheEntry): boolean {
-		const varyHeader = entry.headers["vary"] || entry.headers["Vary"];
-		if (!varyHeader) {
-			return true; // No Vary header means always matches
-		}
-
-		// Vary: * means never matches
-		if (varyHeader === "*") {
-			return false;
-		}
-
-		// Parse comma-separated header names
-		const varyHeaders = varyHeader
-			.split(",")
-			.map((h) => h.trim().toLowerCase());
-
-		// Check if all vary headers match
-		for (const headerName of varyHeaders) {
-			const requestValue = request.headers.get(headerName);
-			const cachedValue = entry.requestHeaders[headerName] || null;
-
-			if (requestValue !== cachedValue) {
-				return false;
-			}
-		}
-
-		return true;
 	}
 
 	/**
@@ -235,10 +130,10 @@ export class RedisCache extends Cache {
 		options?: CacheQueryOptions,
 	): Promise<Response | undefined> {
 		try {
-			await this.#ensureConnected();
+			await ensureConnected(this);
 
-			const key = this.#getRedisKey(request, options);
-			const cached = await this.#client.get(key);
+			const key = getRedisKey(this, request, options);
+			const cached = await this[kClient].get(key);
 
 			if (!cached) {
 				return undefined;
@@ -251,17 +146,17 @@ export class RedisCache extends Cache {
 				const ageInSeconds = (Date.now() - entry.cachedAt) / 1000;
 				if (ageInSeconds > entry.TTL) {
 					// Entry expired, delete it
-					await this.#client.del(key);
+					await this[kClient].del(key);
 					return undefined;
 				}
 			}
 
 			// Check Vary header unless ignoreVary is true
-			if (!options?.ignoreVary && !this.#matchesVary(request, entry)) {
+			if (!options?.ignoreVary && !matchesVary(request, entry)) {
 				return undefined;
 			}
 
-			return this.#deserializeResponse(entry);
+			return deserializeResponse(entry);
 		} catch (error) {
 			logger.error("Failed to match: {error}", {error});
 			return undefined;
@@ -273,17 +168,17 @@ export class RedisCache extends Cache {
 	 */
 	async put(request: Request, response: Response): Promise<void> {
 		try {
-			await this.#ensureConnected();
+			await ensureConnected(this);
 
-			const key = this.#getRedisKey(request);
-			const entry = await this.#serializeResponse(request, response);
+			const key = getRedisKey(this, request);
+			const entry = await serializeResponse(this, request, response);
 			const serialized = JSON.stringify(entry);
 
 			// Set with TTL if specified
 			if (entry.TTL > 0) {
-				await this.#client.setEx(key, entry.TTL, serialized);
+				await this[kClient].setEx(key, entry.TTL, serialized);
 			} else {
-				await this.#client.set(key, serialized);
+				await this[kClient].set(key, serialized);
 			}
 		} catch (error) {
 			logger.error("Failed to put: {error}", {error});
@@ -299,10 +194,10 @@ export class RedisCache extends Cache {
 		options?: CacheQueryOptions,
 	): Promise<boolean> {
 		try {
-			await this.#ensureConnected();
+			await ensureConnected(this);
 
-			const key = this.#getRedisKey(request, options);
-			const result = await this.#client.del(key);
+			const key = getRedisKey(this, request, options);
+			const result = await this[kClient].del(key);
 			return result > 0;
 		} catch (error) {
 			logger.error("Failed to delete: {error}", {error});
@@ -318,20 +213,20 @@ export class RedisCache extends Cache {
 		options?: CacheQueryOptions,
 	): Promise<Request[]> {
 		try {
-			await this.#ensureConnected();
+			await ensureConnected(this);
 
 			// If specific request provided, check if it exists
 			if (request) {
-				const key = this.#getRedisKey(request, options);
-				const exists = await this.#client.exists(key);
+				const key = getRedisKey(this, request, options);
+				const exists = await this[kClient].exists(key);
 				return exists ? [request] : [];
 			}
 
 			// Otherwise, scan for all keys with our prefix
-			const pattern = `${this.#prefix}:*`;
+			const pattern = `${this[kPrefix]}:*`;
 			const keys: string[] = [];
 
-			for await (const key of this.#client.scanIterator({
+			for await (const key of this[kClient].scanIterator({
 				MATCH: pattern,
 				COUNT: 100,
 			})) {
@@ -344,7 +239,7 @@ export class RedisCache extends Cache {
 			for (const key of keys) {
 				try {
 					// Extract the cache key part and parse it
-					const cacheKey = key.replace(`${this.#prefix}:`, "");
+					const cacheKey = key.replace(`${this[kPrefix]}:`, "");
 					// Split on first colon only (URL may contain colons)
 					const colonIndex = cacheKey.indexOf(":");
 					if (colonIndex === -1) continue;
@@ -372,15 +267,15 @@ export class RedisCache extends Cache {
 	 * Call this during graceful shutdown to properly close Redis connections
 	 */
 	async dispose(): Promise<void> {
-		if (this.#connected || this.#client.isReady) {
+		if (this[kConnected] || this[kClient].isReady) {
 			try {
-				await this.#client.quit(); // Graceful shutdown - waits for pending commands
-				logger.info("Redis connection closed", {prefix: this.#prefix});
+				await this[kClient].quit(); // Graceful shutdown - waits for pending commands
+				logger.info("Redis connection closed", {prefix: this[kPrefix]});
 			} catch (error) {
 				logger.error("Error closing Redis connection: {error}", {error});
 				// Force disconnect if graceful quit fails
 				try {
-					await this.#client.disconnect();
+					await this[kClient].disconnect();
 				} catch (disconnectError) {
 					logger.error("Error forcing Redis disconnect: {error}", {
 						error: disconnectError,
@@ -389,6 +284,122 @@ export class RedisCache extends Cache {
 			}
 		}
 	}
+}
+
+/**
+ * Ensure Redis client is connected
+ */
+async function ensureConnected(redisCache: RedisCache): Promise<void> {
+	if (!redisCache[kClient].isOpen && !redisCache[kClient].isReady) {
+		await redisCache[kClient].connect();
+	}
+}
+
+/**
+ * Generate Redis key for cache entry
+ */
+function getRedisKey(
+	redisCache: RedisCache,
+	request: Request,
+	options?: CacheQueryOptions,
+): string {
+	const cacheKey = generateCacheKey(request, options);
+	return `${redisCache[kPrefix]}:${cacheKey}`;
+}
+
+/**
+ * Serialize Response to cache entry
+ */
+async function serializeResponse(
+	redisCache: RedisCache,
+	request: Request,
+	response: Response,
+): Promise<CacheEntry> {
+	// Check response size before serialization
+	const cloned = response.clone();
+	const body = await cloned.arrayBuffer();
+
+	if (body.byteLength > redisCache[kMaxEntrySize]) {
+		throw new Error(
+			`Response body too large: ${body.byteLength} bytes (max: ${redisCache[kMaxEntrySize]})`,
+		);
+	}
+
+	// Convert response headers to plain object
+	const headers: Record<string, string> = {};
+	response.headers.forEach((value, key) => {
+		headers[key] = value;
+	});
+
+	// Convert request headers to plain object (for Vary checking)
+	const requestHeaders: Record<string, string> = {};
+	request.headers.forEach((value, key) => {
+		requestHeaders[key] = value;
+	});
+
+	// Determine TTL from Cache-Control header or use default
+	let ttl = redisCache[kDefaultTTL];
+	const cacheControl = response.headers.get("cache-control");
+	if (cacheControl) {
+		const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
+		if (maxAgeMatch) {
+			ttl = parseInt(maxAgeMatch[1], 10);
+		}
+	}
+
+	return {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+		body: uint8ArrayToBase64(new Uint8Array(body)),
+		cachedAt: Date.now(),
+		TTL: ttl,
+		requestHeaders,
+	};
+}
+
+/**
+ * Deserialize cache entry to Response
+ */
+function deserializeResponse(entry: CacheEntry): Response {
+	const body = base64ToUint8Array(entry.body);
+
+	return new Response(body as unknown as BodyInit, {
+		status: entry.status,
+		statusText: entry.statusText,
+		headers: entry.headers,
+	});
+}
+
+/**
+ * Check if a request matches the Vary header of a cached entry
+ * Returns true if the request matches or if there's no Vary header
+ */
+function matchesVary(request: Request, entry: CacheEntry): boolean {
+	const varyHeader = entry.headers["vary"] || entry.headers["Vary"];
+	if (!varyHeader) {
+		return true; // No Vary header means always matches
+	}
+
+	// Vary: * means never matches
+	if (varyHeader === "*") {
+		return false;
+	}
+
+	// Parse comma-separated header names
+	const varyHeaders = varyHeader.split(",").map((h) => h.trim().toLowerCase());
+
+	// Check if all vary headers match
+	for (const headerName of varyHeaders) {
+		const requestValue = request.headers.get(headerName);
+		const cachedValue = entry.requestHeaders[headerName] || null;
+
+		if (requestValue !== cachedValue) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 export default RedisCache;

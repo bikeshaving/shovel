@@ -1,4 +1,5 @@
 import {jsx} from "@b9g/crank/standalone";
+import type {Element} from "@b9g/crank/standalone";
 import {css} from "@emotion/css";
 
 import {Root} from "../components/root.js";
@@ -52,7 +53,7 @@ const linksStyles = css`
 	}
 `;
 
-export default function NotFoundView({url}: ViewProps) {
+export default function NotFoundView({url}: ViewProps): Element {
 	return jsx`
 		<${Root}
 			title="404 - Page Not Found"

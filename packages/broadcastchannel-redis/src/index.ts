@@ -17,45 +17,53 @@ export interface RedisPubSubOptions {
 	url?: string;
 }
 
+const kPublisher = Symbol("publisher");
+const kSubscriber = Symbol("subscriber");
+const kInstanceId = Symbol("instanceId");
+const kPublisherReady = Symbol("publisherReady");
+const kSubscriberReady = Symbol("subscriberReady");
+
+export interface RedisPubSubBackend {
+	[kPublisher]: ReturnType<typeof createClient>;
+	[kSubscriber]: ReturnType<typeof createClient>;
+	[kInstanceId]: string;
+	[kPublisherReady]: Promise<void>;
+	[kSubscriberReady]: Promise<void>;
+}
+
 /**
  * Redis pub/sub backend for BroadcastChannel.
  * Publishes messages via PUBLISH and subscribes via SUBSCRIBE.
  * Filters own messages using an instance ID.
  */
 export class RedisPubSubBackend implements BroadcastChannelBackend {
-	#publisher: ReturnType<typeof createClient>;
-	#subscriber: ReturnType<typeof createClient>;
-	#instanceId: string;
-	#publisherReady: Promise<void>;
-	#subscriberReady: Promise<void>;
-
 	constructor(options: RedisPubSubOptions = {}) {
-		this.#instanceId = crypto.randomUUID();
+		this[kInstanceId] = crypto.randomUUID();
 		const clientOptions = options.url ? {url: options.url} : {};
 
-		this.#publisher = createClient(clientOptions);
-		this.#subscriber = createClient(clientOptions);
+		this[kPublisher] = createClient(clientOptions);
+		this[kSubscriber] = createClient(clientOptions);
 
-		this.#publisher.on("error", (err) => {
+		this[kPublisher].on("error", (err) => {
 			logger.error("Redis publisher error: {error}", {error: err});
 		});
-		this.#subscriber.on("error", (err) => {
+		this[kSubscriber].on("error", (err) => {
 			logger.error("Redis subscriber error: {error}", {error: err});
 		});
 
-		this.#publisherReady = this.#publisher.connect().then(() => {
+		this[kPublisherReady] = this[kPublisher].connect().then(() => {
 			logger.info("Redis publisher connected");
 		});
-		this.#subscriberReady = this.#subscriber.connect().then(() => {
+		this[kSubscriberReady] = this[kSubscriber].connect().then(() => {
 			logger.info("Redis subscriber connected");
 		});
 	}
 
 	publish(channelName: string, data: unknown): void {
-		const payload = JSON.stringify({data, sender: this.#instanceId});
+		const payload = JSON.stringify({data, sender: this[kInstanceId]});
 		const redisChannel = `shovel:bc:${channelName}`;
-		this.#publisherReady.then(() => {
-			this.#publisher.publish(redisChannel, payload).catch((err) => {
+		this[kPublisherReady].then(() => {
+			this[kPublisher].publish(redisChannel, payload).catch((err) => {
 				logger.error("Redis publish failed: {error}", {error: err});
 			});
 		});
@@ -66,12 +74,12 @@ export class RedisPubSubBackend implements BroadcastChannelBackend {
 		callback: (data: unknown) => void,
 	): () => void {
 		const redisChannel = `shovel:bc:${channelName}`;
-		this.#subscriberReady.then(() => {
-			this.#subscriber
+		this[kSubscriberReady].then(() => {
+			this[kSubscriber]
 				.subscribe(redisChannel, (message) => {
 					try {
 						const {data, sender} = JSON.parse(message);
-						if (sender !== this.#instanceId) {
+						if (sender !== this[kInstanceId]) {
 							callback(data);
 						}
 					} catch (err) {
@@ -85,7 +93,7 @@ export class RedisPubSubBackend implements BroadcastChannelBackend {
 				});
 		});
 		return () => {
-			this.#subscriber.unsubscribe(redisChannel).catch((err) => {
+			this[kSubscriber].unsubscribe(redisChannel).catch((err) => {
 				logger.error("Redis unsubscribe failed: {error}", {error: err});
 			});
 		};
@@ -93,12 +101,12 @@ export class RedisPubSubBackend implements BroadcastChannelBackend {
 
 	async dispose(): Promise<void> {
 		try {
-			await this.#subscriber.quit();
+			await this[kSubscriber].quit();
 		} catch (err) {
 			logger.error("Error closing Redis subscriber: {error}", {error: err});
 		}
 		try {
-			await this.#publisher.quit();
+			await this[kPublisher].quit();
 		} catch (err) {
 			logger.error("Error closing Redis publisher: {error}", {error: err});
 		}

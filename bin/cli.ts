@@ -86,7 +86,7 @@ program.name("shovel").description("Shovel CLI").version(pkg.version);
  * Re-exec under a different runtime if --platform requests it.
  * Called at the start of command actions that support --platform.
  */
-function checkPlatformReexec(options: {platform?: string}) {
+function checkPlatformReexec(options: {platform?: string}): void {
 	const platform = options.platform ?? config.platform;
 	const isBun = typeof globalThis.Bun !== "undefined";
 

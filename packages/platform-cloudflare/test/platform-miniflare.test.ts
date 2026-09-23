@@ -1,5 +1,5 @@
-import * as fs from "fs/promises";
-import * as path from "path";
+import * as Fs from "fs/promises";
+import * as Path from "path";
 
 import type {ServiceWorkerInstance} from "@b9g/platform";
 import {afterAll, beforeAll, describe, expect, test} from "bun:test";
@@ -7,17 +7,17 @@ import {afterAll, beforeAll, describe, expect, test} from "bun:test";
 import {CloudflarePlatform} from "../src/index.js";
 
 describe("CloudflarePlatform with miniflare", () => {
-	const testDir = path.resolve(import.meta.dir, "miniflare-fixtures");
+	const testDir = Path.resolve(import.meta.dir, "miniflare-fixtures");
 	let platform: CloudflarePlatform;
 	let instance: ServiceWorkerInstance;
 
 	beforeAll(async () => {
-		await fs.mkdir(testDir, {recursive: true});
-		await fs.mkdir(path.join(testDir, "public", "assets"), {recursive: true});
+		await Fs.mkdir(testDir, {recursive: true});
+		await Fs.mkdir(Path.join(testDir, "public", "assets"), {recursive: true});
 
 		// Single worker that handles all test routes
-		await fs.writeFile(
-			path.join(testDir, "worker.js"),
+		await Fs.writeFile(
+			Path.join(testDir, "worker.js"),
 			`
 self.addEventListener("fetch", (event) => {
 	const url = new URL(event.request.url);
@@ -55,22 +55,22 @@ self.addEventListener("fetch", (event) => {
 `,
 		);
 
-		await fs.writeFile(
-			path.join(testDir, "public", "assets", "style.css"),
+		await Fs.writeFile(
+			Path.join(testDir, "public", "assets", "style.css"),
 			"body { color: blue; }",
 		);
-		await fs.writeFile(
-			path.join(testDir, "public", "index.html"),
+		await Fs.writeFile(
+			Path.join(testDir, "public", "index.html"),
 			"<html><body>Hello</body></html>",
 		);
 
 		platform = new CloudflarePlatform({
-			assetsDirectory: path.join(testDir, "public"),
+			assetsDirectory: Path.join(testDir, "public"),
 			port: 0,
 		});
 
 		instance = await platform.loadServiceWorker(
-			path.join(testDir, "worker.js"),
+			Path.join(testDir, "worker.js"),
 		);
 	});
 
@@ -78,7 +78,7 @@ self.addEventListener("fetch", (event) => {
 		await instance?.dispose();
 		await platform.dispose();
 		try {
-			await fs.rm(testDir, {recursive: true});
+			await Fs.rm(testDir, {recursive: true});
 		} catch (_err) {
 			// ignore cleanup errors
 		}

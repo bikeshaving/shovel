@@ -5,7 +5,7 @@
  * with a custom FileSystemDirectoryHandle implementation.
  */
 
-import * as assertions from "../harness/assertions.js";
+import * as Assertions from "../harness/assertions.js";
 import {promise_test, type TestContext} from "../harness/testharness.js";
 
 export interface FilesystemShimConfig {
@@ -102,7 +102,7 @@ export function setupFilesystemTestGlobals(config: FilesystemShimConfig): void {
 		parent: FileSystemDirectoryHandle,
 	): Promise<FileSystemFileHandle> {
 		const handle = await parent.getFileHandle(name, {create: true});
-		assertions.assert_equals(await getFileSize(handle), 0);
+		Assertions.assert_equals(await getFileSize(handle), 0);
 		return handle;
 	}
 
@@ -171,7 +171,7 @@ export function setupFilesystemTestGlobals(config: FilesystemShimConfig): void {
 	Object.assign(globalThis, {
 		// Core harness
 		promise_test,
-		...assertions,
+		...Assertions,
 
 		// Constants
 		kCurrentDirectory,

@@ -13,7 +13,7 @@ export function *Root(
 		url: string;
 		description?: string;
 	},
-) {
+): Generator<Children, void, any> {
 	for ({title, children, url, description = ""} of this) {
 		this.schedule(() => this.refresh());
 		const childrenHTML: string = yield jsx`

@@ -29,6 +29,20 @@ const logger = getLogger(["shovel", "pubsub"]);
 // BACKEND (used by the Worker)
 // ============================================================================
 
+const kNs = Symbol("ns");
+const kInstanceId = Symbol("instanceId");
+const kWs = Symbol("ws");
+const kWsReady = Symbol("wsReady");
+const kCallbacks = Symbol("callbacks");
+
+export interface CloudflarePubSubBackend {
+	[kNs]: DurableObjectNamespace;
+	[kInstanceId]: string;
+	[kWs]: WebSocket | null;
+	[kWsReady]: Promise<void> | null;
+	[kCallbacks]: Map<string, Set<(data: unknown) => void>>;
+}
+
 /**
  * BroadcastChannel backend that routes messages through a Durable Object.
  *
@@ -36,59 +50,17 @@ const logger = getLogger(["shovel", "pubsub"]);
  * matching the pattern used by RedisPubSubBackend.
  */
 export class CloudflarePubSubBackend implements BroadcastChannelBackend {
-	#ns: DurableObjectNamespace;
-	#instanceId: string;
-	#ws: WebSocket | null;
-	#wsReady: Promise<void> | null;
-	#callbacks: Map<string, Set<(data: unknown) => void>>;
-
 	constructor(ns: DurableObjectNamespace) {
-		this.#ns = ns;
-		this.#instanceId = crypto.randomUUID();
-		this.#ws = null;
-		this.#wsReady = null;
-		this.#callbacks = new Map();
-	}
-
-	#ensureConnection(): void {
-		if (this.#wsReady) return;
-		this.#wsReady = this.#connect().catch((err) => {
-			logger.error("PubSub WebSocket connection failed: {error}", {error: err});
-			// Allow retry on next subscribe() call
-			this.#wsReady = null;
-		});
-	}
-
-	async #connect(): Promise<void> {
-		const id = this.#ns.idFromName("pubsub");
-		const stub = this.#ns.get(id);
-		const response = await stub.fetch("http://internal/subscribe", {
-			headers: {Upgrade: "websocket"},
-		});
-		const ws = (response as any).webSocket as WebSocket | undefined;
-		if (!ws) {
-			throw new Error("WebSocket upgrade to PubSub DO failed");
-		}
-		ws.accept();
-		this.#ws = ws;
-		ws.addEventListener("message", (ev: MessageEvent) => {
-			try {
-				const {channel, data, sender} = JSON.parse(ev.data as string);
-				// Skip messages from this instance (prevents echo)
-				if (sender === this.#instanceId) return;
-				const cbs = this.#callbacks.get(channel);
-				if (cbs) {
-					for (const cb of cbs) cb(data);
-				}
-			} catch (err) {
-				logger.debug("Failed to parse pubsub message: {error}", {error: err});
-			}
-		});
+		this[kNs] = ns;
+		this[kInstanceId] = crypto.randomUUID();
+		this[kWs] = null;
+		this[kWsReady] = null;
+		this[kCallbacks] = new Map();
 	}
 
 	publish(channelName: string, data: unknown): void {
-		const id = this.#ns.idFromName("pubsub");
-		const stub = this.#ns.get(id);
+		const id = this[kNs].idFromName("pubsub");
+		const stub = this[kNs].get(id);
 		// Fire-and-forget POST to the DO
 		stub
 			.fetch("http://internal/broadcast", {
@@ -97,7 +69,7 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 				body: JSON.stringify({
 					channel: channelName,
 					data,
-					sender: this.#instanceId,
+					sender: this[kInstanceId],
 				}),
 			})
 			.catch((err) => {
@@ -109,25 +81,61 @@ export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 		channelName: string,
 		callback: (data: unknown) => void,
 	): () => void {
-		this.#ensureConnection();
-		let cbs = this.#callbacks.get(channelName);
+		ensureConnection(this);
+		let cbs = this[kCallbacks].get(channelName);
 		if (!cbs) {
 			cbs = new Set();
-			this.#callbacks.set(channelName, cbs);
+			this[kCallbacks].set(channelName, cbs);
 		}
 		cbs.add(callback);
 		return () => {
 			cbs!.delete(callback);
-			if (cbs!.size === 0) this.#callbacks.delete(channelName);
+			if (cbs!.size === 0) this[kCallbacks].delete(channelName);
 		};
 	}
 
 	async dispose(): Promise<void> {
-		this.#ws?.close();
-		this.#ws = null;
-		this.#wsReady = null;
-		this.#callbacks.clear();
+		this[kWs]?.close();
+		this[kWs] = null;
+		this[kWsReady] = null;
+		this[kCallbacks].clear();
 	}
+}
+
+function ensureConnection(backend: CloudflarePubSubBackend): void {
+	if (backend[kWsReady]) return;
+	backend[kWsReady] = connect(backend).catch((err) => {
+		logger.error("PubSub WebSocket connection failed: {error}", {error: err});
+		// Allow retry on next subscribe() call
+		backend[kWsReady] = null;
+	});
+}
+
+async function connect(backend: CloudflarePubSubBackend): Promise<void> {
+	const id = backend[kNs].idFromName("pubsub");
+	const stub = backend[kNs].get(id);
+	const response = await stub.fetch("http://internal/subscribe", {
+		headers: {Upgrade: "websocket"},
+	});
+	const ws = (response as any).webSocket as WebSocket | undefined;
+	if (!ws) {
+		throw new Error("WebSocket upgrade to PubSub DO failed");
+	}
+	ws.accept();
+	backend[kWs] = ws;
+	ws.addEventListener("message", (ev: MessageEvent) => {
+		try {
+			const {channel, data, sender} = JSON.parse(ev.data as string);
+			// Skip messages from this instance (prevents echo)
+			if (sender === backend[kInstanceId]) return;
+			const cbs = backend[kCallbacks].get(channel);
+			if (cbs) {
+				for (const cb of cbs) cb(data);
+			}
+		} catch (err) {
+			logger.debug("Failed to parse pubsub message: {error}", {error: err});
+		}
+	});
 }
 
 // ============================================================================

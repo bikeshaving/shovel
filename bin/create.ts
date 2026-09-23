@@ -69,7 +69,7 @@ function parseFlags(args: string[]): {
 	return flags;
 }
 
-async function main() {
+async function main(): Promise<void> {
 	console.info("");
 
 	intro("Create Shovel App");
@@ -325,7 +325,10 @@ async function main() {
 	}
 }
 
-async function createProject(config: ProjectConfig, projectPath: string) {
+async function createProject(
+	config: ProjectConfig,
+	projectPath: string,
+): Promise<void> {
 	// Create project directory
 	await mkdir(projectPath, {recursive: true});
 	await mkdir(join(projectPath, "src"), {recursive: true});
@@ -496,7 +499,7 @@ dist/
 
 	// Create wrangler.toml for Cloudflare projects
 	if (config.platform === "cloudflare") {
-		const wranglerToml = `name = "${config.name}"
+		const wranglerTOML = `name = "${config.name}"
 main = "dist/server/worker.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
@@ -504,7 +507,7 @@ compatibility_flags = ["nodejs_compat"]
 [assets]
 directory = "./dist/public"
 `;
-		await writeFile(join(projectPath, "wrangler.toml"), wranglerToml);
+		await writeFile(join(projectPath, "wrangler.toml"), wranglerTOML);
 	}
 }
 
@@ -515,7 +518,7 @@ function generateAppFile(
 		case "hello-world":
 			return generateHelloWorld(config);
 		case "api":
-			return generateApi(config);
+			return generateAPI(config);
 		case "static-site":
 			return generateStaticSite(config);
 		case "full-stack":
@@ -537,7 +540,7 @@ self.addEventListener("fetch", (event) => {
 `;
 }
 
-function generateApi(config: ProjectConfig): string {
+function generateAPI(config: ProjectConfig): string {
 	return `import {Router} from "@b9g/router";
 import {logger} from "@b9g/router/middleware";
 

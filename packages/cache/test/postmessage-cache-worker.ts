@@ -38,7 +38,7 @@ globalThis.self = {
 	},
 } as any;
 
-async function handleCacheOperation(message: any) {
+async function handleCacheOperation(message: any): Promise<any> {
 	const {type, requestID, cacheName} = message;
 
 	if (!type || !type.startsWith("cache:")) {
@@ -136,7 +136,7 @@ async function handleCacheOperation(message: any) {
 // Handle test commands from main thread
 if (parentPort) {
 	parentPort.on("message", async (message: any) => {
-		const {command, requestID} = message;
+		const {command, requestId} = message;
 
 		if (!command) return;
 
@@ -144,7 +144,7 @@ if (parentPort) {
 			if (command === "init") {
 				const cache = new PostMessageCache("test-cache");
 				(globalThis as any).testCache = cache;
-				parentPort!.postMessage({requestID, result: true});
+				parentPort!.postMessage({requestId, result: true});
 			} else if (command === "put") {
 				const cache = (globalThis as any).testCache;
 				const {request, response} = message;
@@ -152,7 +152,7 @@ if (parentPort) {
 					new Request(request.url, request),
 					new Response(response.body, response),
 				);
-				parentPort!.postMessage({requestID, result: true});
+				parentPort!.postMessage({requestId, result: true});
 			} else if (command === "match") {
 				const cache = (globalThis as any).testCache;
 				const {request, options} = message;
@@ -163,7 +163,7 @@ if (parentPort) {
 				if (result) {
 					const body = await result.text();
 					parentPort!.postMessage({
-						requestID,
+						requestId,
 						result: {
 							status: result.status,
 							statusText: result.statusText,
@@ -172,7 +172,7 @@ if (parentPort) {
 						},
 					});
 				} else {
-					parentPort!.postMessage({requestID, result: undefined});
+					parentPort!.postMessage({requestId, result: undefined});
 				}
 			} else if (command === "delete") {
 				const cache = (globalThis as any).testCache;
@@ -181,7 +181,7 @@ if (parentPort) {
 					new Request(request.url, request),
 					options,
 				);
-				parentPort!.postMessage({requestID, result});
+				parentPort!.postMessage({requestId, result});
 			} else if (command === "keys") {
 				const cache = (globalThis as any).testCache;
 				const keys = await cache.keys();
@@ -190,11 +190,11 @@ if (parentPort) {
 					method: req.method,
 					headers: Object.fromEntries(req.headers.entries()),
 				}));
-				parentPort!.postMessage({requestID, result: serializedKeys});
+				parentPort!.postMessage({requestId, result: serializedKeys});
 			}
 		} catch (error) {
 			parentPort!.postMessage({
-				requestID,
+				requestId,
 				error: error instanceof Error ? error.message : String(error),
 			});
 		}

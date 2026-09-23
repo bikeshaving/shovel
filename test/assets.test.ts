@@ -853,10 +853,10 @@ export default clientUrl;`,
 
 		// Chunk files should also be in manifest (keyed by URL)
 		for (const chunkFile of chunkFiles) {
-			const chunkUrl = `/static/${chunkFile}`;
-			const chunkAsset = manifest.assets[chunkUrl];
+			const chunkURL = `/static/${chunkFile}`;
+			const chunkAsset = manifest.assets[chunkURL];
 			expect(chunkAsset).toBeDefined();
-			expect(chunkAsset.url).toBe(chunkUrl);
+			expect(chunkAsset.url).toBe(chunkURL);
 			expect(chunkAsset.type).toBe("application/javascript");
 		}
 	});
@@ -1093,7 +1093,7 @@ async function writeToMemoryDirectory(
 	directory: MemoryDirectory,
 	path: string,
 	content: string,
-) {
+): Promise<void> {
 	const handle = await directory.getFileHandle(path, {create: true});
 	const writable = await handle.createWritable();
 	await writable.write(new TextEncoder().encode(content));

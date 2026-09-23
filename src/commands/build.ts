@@ -170,14 +170,14 @@ async function generatePackageJSON(
 		platform: string;
 		entryPath: string;
 	},
-) {
+): Promise<void> {
 	// Look for package.json in the same directory as the entrypoint, not cwd
 	const entryDir = dirname(entryPath);
-	const sourcePackageJsonPath = resolve(entryDir, "package.json");
+	const sourcePackageJSONPath = resolve(entryDir, "package.json");
 
 	try {
 		// First try to copy existing package.json from source directory
-		const packageJSONContent = await readFile(sourcePackageJsonPath, "utf8");
+		const packageJSONContent = await readFile(sourcePackageJSONPath, "utf8");
 
 		// Validate package.json is valid JSON
 		try {
@@ -197,11 +197,11 @@ async function generatePackageJSON(
 		logger.debug("Could not copy package.json: {error}", {error});
 
 		try {
-			const generatedPackageJson =
+			const generatedPackageJSON =
 				await generateExecutablePackageJSON(platform);
 			await writeFile(
 				join(serverDir, "package.json"),
-				JSON.stringify(generatedPackageJson, null, 2),
+				JSON.stringify(generatedPackageJSON, null, 2),
 				"utf8",
 			);
 			logger.info("Generated package.json for {platform}", {platform});
@@ -217,7 +217,15 @@ async function generatePackageJSON(
 /**
  * Generate a minimal package.json for executable builds
  */
-async function generateExecutablePackageJSON(platform: string) {
+async function generateExecutablePackageJSON(
+	platform: string,
+): Promise<{
+	name: string;
+	version: string;
+	type: string;
+	private: boolean;
+	dependencies: Record<string, string>;
+}> {
 	const packageJSON: {
 		name: string;
 		version: string;
@@ -272,7 +280,7 @@ export async function buildCommand(
 	entrypoint: string,
 	options: {platform?: string; lifecycle?: boolean | string},
 	config: ProcessedShovelConfig,
-) {
+): Promise<void> {
 	// Use same platform resolution as develop command
 	const platform = resolvePlatform({...options, config});
 

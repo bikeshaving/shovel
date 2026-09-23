@@ -363,8 +363,8 @@ self.addEventListener("fetch", (event) => {
 				join(outDir, "server", "package.json"),
 				"utf8",
 			);
-			const packageJson = JSON.parse(packageContent);
-			expect(typeof packageJson).toBe("object");
+			const packageJSON = JSON.parse(packageContent);
+			expect(typeof packageJSON).toBe("object");
 
 			// Validate assets manifest
 			const manifestContent = await FS.readFile(
@@ -621,10 +621,10 @@ test(
 		try {
 			// Create a temporary workspace structure
 			const workspaceRoot = await createTempDir("workspace-");
-			const packageJsonPath = join(workspaceRoot, "package.json");
+			const packageJSONPath = join(workspaceRoot, "package.json");
 
 			// Create workspace package.json with @b9g dependencies
-			const packageJson = {
+			const packageJSON = {
 				name: "test-workspace",
 				workspaces: ["packages/*"],
 				private: true,
@@ -635,7 +635,7 @@ test(
 					"@b9g/filesystem": "*",
 				},
 			};
-			await FS.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+			await FS.writeFile(packageJSONPath, JSON.stringify(packageJSON, null, 2));
 
 			const packagesDir = join(workspaceRoot, "packages", "test-app");
 			await FS.mkdir(packagesDir, {recursive: true});

@@ -163,24 +163,30 @@ export class R2FileSystemWritableFileStream extends WritableStream<Uint8Array> {
 	}
 }
 
+const kR2Bucket = Symbol("r2Bucket");
+const kKey = Symbol("key");
+
+export interface R2FileSystemFileHandle {
+	[kR2Bucket]: R2Bucket;
+	[kKey]: string;
+}
+
 /**
  * Cloudflare R2 implementation of FileSystemFileHandle
  */
 export class R2FileSystemFileHandle implements FileSystemFileHandle {
 	readonly kind: "file";
 	readonly name: string;
-	#r2Bucket: R2Bucket;
-	#key: string;
 
 	constructor(r2Bucket: R2Bucket, key: string) {
 		this.kind = "file";
-		this.#r2Bucket = r2Bucket;
-		this.#key = key;
+		this[kR2Bucket] = r2Bucket;
+		this[kKey] = key;
 		this.name = key.split("/").pop() || key;
 	}
 
 	async getFile(): Promise<File> {
-		const r2Object = await this.#r2Bucket.get(this.#key);
+		const r2Object = await this[kR2Bucket].get(this[kKey]);
 
 		if (!r2Object) {
 			throw new DOMException("File not found", "NotFoundError");
@@ -193,16 +199,15 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 			this.name,
 			{
 				lastModified: r2Object.uploaded.getTime(),
-				type:
-					r2Object.httpMetadata?.contentType || this.#getMimeType(this.#key),
+				type: r2Object.httpMetadata?.contentType || getMIMEType(this[kKey]),
 			},
 		);
 	}
 
 	async createWritable(): Promise<FileSystemWritableFileStream> {
 		return new R2FileSystemWritableFileStream(
-			this.#r2Bucket,
-			this.#key,
+			this[kR2Bucket],
+			this[kKey],
 		) as unknown as FileSystemWritableFileStream;
 	}
 
@@ -216,7 +221,7 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "file") return false;
 		if (!(other instanceof R2FileSystemFileHandle)) return false;
-		return this.#key === other.#key;
+		return this[kKey] === other[kKey];
 	}
 
 	async queryPermission(): Promise<PermissionState> {
@@ -226,10 +231,17 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 	async requestPermission(): Promise<PermissionState> {
 		return "granted";
 	}
+}
 
-	#getMimeType(key: string): string {
-		return mime.getType(key) || "application/octet-stream";
-	}
+function getMIMEType(key: string): string {
+	return mime.getType(key) || "application/octet-stream";
+}
+
+const kPrefix = Symbol("prefix");
+
+export interface R2FileSystemDirectoryHandle {
+	[kR2Bucket]: R2Bucket;
+	[kPrefix]: string;
 }
 
 /**
@@ -238,76 +250,74 @@ export class R2FileSystemFileHandle implements FileSystemFileHandle {
 export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 	readonly kind: "directory";
 	readonly name: string;
-	#r2Bucket: R2Bucket;
-	#prefix: string;
 
 	constructor(r2Bucket: R2Bucket, prefix: string) {
 		this.kind = "directory";
-		this.#r2Bucket = r2Bucket;
-		this.#prefix = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
-		this.name = this.#prefix.split("/").pop() || "root";
+		this[kR2Bucket] = r2Bucket;
+		this[kPrefix] = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+		this.name = this[kPrefix].split("/").pop() || "root";
 	}
 
 	async getFileHandle(
 		name: string,
 		options?: {create?: boolean},
 	): Promise<FileSystemFileHandle> {
-		const key = this.#prefix ? `${this.#prefix}/${name}` : name;
+		const key = this[kPrefix] ? `${this[kPrefix]}/${name}` : name;
 
-		const exists = await this.#r2Bucket.head(key);
+		const exists = await this[kR2Bucket].head(key);
 
 		if (!exists && options?.create) {
-			await this.#r2Bucket.put(key, new Uint8Array(0));
+			await this[kR2Bucket].put(key, new Uint8Array(0));
 		} else if (!exists) {
 			throw new DOMException("File not found", "NotFoundError");
 		}
 
-		return new R2FileSystemFileHandle(this.#r2Bucket, key);
+		return new R2FileSystemFileHandle(this[kR2Bucket], key);
 	}
 
 	async getDirectoryHandle(
 		name: string,
 		options?: {create?: boolean},
 	): Promise<FileSystemDirectoryHandle> {
-		const newPrefix = this.#prefix ? `${this.#prefix}/${name}` : name;
+		const newPrefix = this[kPrefix] ? `${this[kPrefix]}/${name}` : name;
 
 		if (options?.create) {
 			const markerKey = `${newPrefix}/.shovel_directory_marker`;
-			const exists = await this.#r2Bucket.head(markerKey);
+			const exists = await this[kR2Bucket].head(markerKey);
 			if (!exists) {
-				await this.#r2Bucket.put(markerKey, new Uint8Array(0));
+				await this[kR2Bucket].put(markerKey, new Uint8Array(0));
 			}
 		}
 
-		return new R2FileSystemDirectoryHandle(this.#r2Bucket, newPrefix);
+		return new R2FileSystemDirectoryHandle(this[kR2Bucket], newPrefix);
 	}
 
 	async removeEntry(
 		name: string,
 		options?: {recursive?: boolean},
 	): Promise<void> {
-		const key = this.#prefix ? `${this.#prefix}/${name}` : name;
+		const key = this[kPrefix] ? `${this[kPrefix]}/${name}` : name;
 
-		const fileExists = await this.#r2Bucket.head(key);
+		const fileExists = await this[kR2Bucket].head(key);
 
 		if (fileExists) {
-			await this.#r2Bucket.delete(key);
+			await this[kR2Bucket].delete(key);
 			return;
 		}
 
 		if (options?.recursive) {
 			const dirPrefix = `${key}/`;
-			const listed = await this.#r2Bucket.list({prefix: dirPrefix});
+			const listed = await this[kR2Bucket].list({prefix: dirPrefix});
 
 			const deletePromises = listed.objects.map((object) =>
-				this.#r2Bucket.delete(object.key),
+				this[kR2Bucket].delete(object.key),
 			);
 			await Promise.all(deletePromises);
 
 			const markerKey = `${key}/.shovel_directory_marker`;
-			const markerExists = await this.#r2Bucket.head(markerKey);
+			const markerExists = await this[kR2Bucket].head(markerKey);
 			if (markerExists) {
-				await this.#r2Bucket.delete(markerKey);
+				await this[kR2Bucket].delete(markerKey);
 			}
 		} else {
 			throw new DOMException(
@@ -334,80 +344,23 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 		string,
 		FileSystemFileHandle | FileSystemDirectoryHandle,
 	]> {
-		return this.#generateEntries();
+		return generateR2Entries(this);
 	}
 
 	keys(): AsyncIterableIterator<string> {
-		return this.#generateKeys();
+		return generateR2Keys(this);
 	}
 
 	values(): AsyncIterableIterator<
 		FileSystemFileHandle | FileSystemDirectoryHandle
 	> {
-		return this.#generateValues();
-	}
-
-	async *#generateEntries(): AsyncIterableIterator<[
-		string,
-		FileSystemFileHandle | FileSystemDirectoryHandle,
-	]> {
-		const listPrefix = this.#prefix ? `${this.#prefix}/` : "";
-
-		try {
-			const result = await this.#r2Bucket.list({
-				prefix: listPrefix,
-				delimiter: "/",
-			});
-
-			for (const object of result.objects) {
-				if (object.key !== listPrefix) {
-					const name = object.key.substring(listPrefix.length);
-					if (
-						!name.includes("/") && !name.endsWith(".shovel_directory_marker")
-					) {
-						yield [
-							name,
-							new R2FileSystemFileHandle(this.#r2Bucket, object.key),
-						] as [string, FileSystemFileHandle | FileSystemDirectoryHandle];
-					}
-				}
-			}
-
-			for (const prefix of result.delimitedPrefixes) {
-				const name = prefix.substring(listPrefix.length).replace(/\/$/, "");
-				if (name) {
-					yield [
-						name,
-						new R2FileSystemDirectoryHandle(
-							this.#r2Bucket,
-							prefix.replace(/\/$/, ""),
-						),
-					] as [string, FileSystemFileHandle | FileSystemDirectoryHandle];
-				}
-			}
-		} catch (error) {
-			throw new DOMException("Directory not found", "NotFoundError");
-		}
-	}
-
-	async *#generateKeys(): AsyncIterableIterator<string> {
-		for await (const [name] of this.entries()) {
-			yield name;
-		}
-	}
-
-	async *#generateValues(): AsyncIterableIterator<
-		FileSystemFileHandle | FileSystemDirectoryHandle
-	> {
-		for await (const [, handle] of this.entries()) {
-			yield handle;
-		}
+		return generateR2Values(this);
 	}
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		if (other.kind !== "directory") return false;
 		if (!(other instanceof R2FileSystemDirectoryHandle)) return false;
-		return this.#prefix === other.#prefix;
+		return this[kPrefix] === other[kPrefix];
 	}
 
 	async queryPermission(): Promise<PermissionState> {
@@ -419,9 +372,76 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 	}
 }
 
+async function *generateR2Entries(
+	directory: R2FileSystemDirectoryHandle,
+): AsyncIterableIterator<[
+	string,
+	FileSystemFileHandle | FileSystemDirectoryHandle,
+]> {
+	const listPrefix = directory[kPrefix] ? `${directory[kPrefix]}/` : "";
+
+	try {
+		const result = await directory[kR2Bucket].list({
+			prefix: listPrefix,
+			delimiter: "/",
+		});
+
+		for (const object of result.objects) {
+			if (object.key !== listPrefix) {
+				const name = object.key.substring(listPrefix.length);
+				if (!name.includes("/") && !name.endsWith(".shovel_directory_marker")) {
+					yield [
+						name,
+						new R2FileSystemFileHandle(directory[kR2Bucket], object.key),
+					] as [string, FileSystemFileHandle | FileSystemDirectoryHandle];
+				}
+			}
+		}
+
+		for (const prefix of result.delimitedPrefixes) {
+			const name = prefix.substring(listPrefix.length).replace(/\/$/, "");
+			if (name) {
+				yield [
+					name,
+					new R2FileSystemDirectoryHandle(
+						directory[kR2Bucket],
+						prefix.replace(/\/$/, ""),
+					),
+				] as [string, FileSystemFileHandle | FileSystemDirectoryHandle];
+			}
+		}
+	} catch (error) {
+		throw new DOMException("Directory not found", "NotFoundError");
+	}
+}
+
+async function *generateR2Keys(
+	directory: R2FileSystemDirectoryHandle,
+): AsyncIterableIterator<string> {
+	for await (const [name] of directory.entries()) {
+		yield name;
+	}
+}
+
+async function *generateR2Values(
+	directory: R2FileSystemDirectoryHandle,
+): AsyncIterableIterator<FileSystemFileHandle | FileSystemDirectoryHandle> {
+	for await (const [, handle] of directory.entries()) {
+		yield handle;
+	}
+}
+
 // ============================================================================
 // ASSETS FILESYSTEM IMPLEMENTATION
 // ============================================================================
+
+const kAssets = Symbol("assets");
+const kPath = Symbol("path");
+
+export interface CFAssetsFileHandle {
+	[kAssets]: CFAssetsBinding;
+	[kPath]: string;
+}
 
 /**
  * FileSystemFileHandle implementation for CF ASSETS binding files.
@@ -429,19 +449,17 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 export class CFAssetsFileHandle implements FileSystemFileHandle {
 	readonly kind: "file";
 	readonly name: string;
-	#assets: CFAssetsBinding;
-	#path: string;
 
 	constructor(assets: CFAssetsBinding, path: string, name: string) {
 		this.kind = "file";
-		this.#assets = assets;
-		this.#path = path;
+		this[kAssets] = assets;
+		this[kPath] = path;
 		this.name = name;
 	}
 
 	async getFile(): Promise<File> {
-		const response = await this.#assets.fetch(
-			new Request("https://assets" + this.#path),
+		const response = await this[kAssets].fetch(
+			new Request("https://assets" + this[kPath]),
 		);
 
 		if (!response.ok) {
@@ -470,7 +488,7 @@ export class CFAssetsFileHandle implements FileSystemFileHandle {
 
 	isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		return Promise.resolve(
-			other instanceof CFAssetsFileHandle && other.#path === this.#path,
+			other instanceof CFAssetsFileHandle && other[kPath] === this[kPath],
 		);
 	}
 }
@@ -481,12 +499,18 @@ export class CFAssetsFileHandle implements FileSystemFileHandle {
  * Provides read-only access to static assets deployed with a CF Worker.
  * Directory listing is not supported (ASSETS binding limitation).
  */
+const kBasePath = Symbol("basePath");
+const kManifest = Symbol("manifest");
+
+export interface CFAssetsDirectoryHandle {
+	[kAssets]: CFAssetsBinding;
+	[kBasePath]: string;
+	[kManifest]?: AssetManifestLike;
+}
+
 export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	readonly kind: "directory";
 	readonly name: string;
-	#assets: CFAssetsBinding;
-	#basePath: string;
-	#manifest?: AssetManifestLike;
 
 	constructor(
 		assets: CFAssetsBinding,
@@ -496,31 +520,32 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		manifest?: AssetManifestLike,
 	) {
 		this.kind = "directory";
-		this.#assets = assets;
-		this.#basePath = basePath.endsWith("/") ? basePath : basePath + "/";
+		this[kAssets] = assets;
+		this[kBasePath] = basePath.endsWith("/") ? basePath : basePath + "/";
 		this.name = basePath.split("/").filter(Boolean).pop() || "assets";
-		this.#manifest = manifest;
+		this[kManifest] = manifest;
 	}
 
 	async getFileHandle(
 		name: string,
 		_options?: FileSystemGetFileOptions,
 	): Promise<FileSystemFileHandle> {
-		const path = this.#basePath + name;
+		const path = this[kBasePath] + name;
 
 		// The manifest answers existence without a network round-trip — a
 		// list-then-read walk otherwise costs two ASSETS subrequests per file
 		// against the Workers subrequest cap.
-		const manifest = this.#manifest ?? getAssetsManifest();
+		const manifest = this[kManifest] ?? getAssetsManifest();
 		const index = manifest && getDirectoryIndex(manifest);
-		const child = index?.get(this.#basePath)?.get(name);
+		const dirChildren = index?.get(this[kBasePath]);
+		const child = dirChildren?.get(name);
 		if (child?.kind === "file") {
-			return new CFAssetsFileHandle(this.#assets, child.url, name);
+			return new CFAssetsFileHandle(this[kAssets], child.url, name);
 		}
 
 		// Not in the manifest (or no manifest): probe the binding, which also
 		// serves files that reached the assets directory outside the build.
-		const response = await this.#assets.fetch(
+		const response = await this[kAssets].fetch(
 			new Request("https://assets" + path),
 		);
 
@@ -531,7 +556,7 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 			);
 		}
 
-		return new CFAssetsFileHandle(this.#assets, path, name);
+		return new CFAssetsFileHandle(this[kAssets], path, name);
 	}
 
 	async getDirectoryHandle(
@@ -539,9 +564,9 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		_options?: FileSystemGetDirectoryOptions,
 	): Promise<CFAssetsDirectoryHandle> {
 		return new CFAssetsDirectoryHandle(
-			this.#assets,
-			this.#basePath + name,
-			this.#manifest,
+			this[kAssets],
+			this[kBasePath] + name,
+			this[kManifest],
 		);
 	}
 
@@ -575,40 +600,26 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		string,
 		FileSystemFileHandle | FileSystemDirectoryHandle,
 	]> {
-		const children = this.#children();
+		const children = assetsChildren(this);
 		if (!children) return;
 		for (const [name, child] of children) {
 			if (child.kind === "file") {
-				yield [name, new CFAssetsFileHandle(this.#assets, child.url, name)];
+				yield [name, new CFAssetsFileHandle(this[kAssets], child.url, name)];
 			} else {
 				yield [
 					name,
 					new CFAssetsDirectoryHandle(
-						this.#assets,
-						this.#basePath + name,
-						this.#manifest,
+						this[kAssets],
+						this[kBasePath] + name,
+						this[kManifest],
 					),
 				];
 			}
 		}
 	}
 
-	/** Direct children from the manifest index; throws without a manifest. */
-	#children(): Map<string, {kind: "file" | "directory"; url: string}> | null {
-		const manifest = this.#manifest ?? getAssetsManifest();
-		const index = manifest && getDirectoryIndex(manifest);
-		if (!index) {
-			throw new DOMException(
-				"Directory listing for the ASSETS binding needs the shovel:assets " +
-					"manifest, which is not supported outside a shovel build.",
-				"NotSupportedError",
-			);
-		}
-		return index.get(this.#basePath) ?? null;
-	}
-
 	async *keys(): AsyncIterableIterator<string> {
-		const children = this.#children();
+		const children = assetsChildren(this);
 		if (!children) return;
 		yield *children.keys();
 	}
@@ -622,9 +633,25 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 	isSameEntry(other: FileSystemHandle): Promise<boolean> {
 		return Promise.resolve(
 			other instanceof CFAssetsDirectoryHandle &&
-				other.#basePath === this.#basePath,
+				other[kBasePath] === this[kBasePath],
 		);
 	}
+}
+
+/** Direct children from the manifest index; throws without a manifest. */
+function assetsChildren(
+	directory: CFAssetsDirectoryHandle,
+): Map<string, {kind: "file" | "directory"; url: string}> | null {
+	const manifest = directory[kManifest] ?? getAssetsManifest();
+	const index = manifest && getDirectoryIndex(manifest);
+	if (!index) {
+		throw new DOMException(
+			"Directory listing for the ASSETS binding needs the shovel:assets " +
+				"manifest, which is not supported outside a shovel build.",
+			"NotSupportedError",
+		);
+	}
+	return index.get(directory[kBasePath]) ?? null;
 }
 
 // ============================================================================

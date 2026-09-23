@@ -93,10 +93,6 @@ export interface FileSystemBackend {
 class ShovelWritableFileStream
 	extends WritableStream
 	implements FileSystemWritableFileStream {
-	#chunks: Uint8Array[];
-	#backend: FileSystemBackend;
-	#path: string;
-
 	constructor(backend: FileSystemBackend, path: string) {
 		const chunks: Uint8Array[] = [];
 		super({
@@ -129,9 +125,6 @@ class ShovelWritableFileStream
 				return Promise.resolve();
 			},
 		});
-		this.#chunks = chunks;
-		this.#backend = backend;
-		this.#path = path;
 	}
 
 	// File System Access API write method
@@ -189,6 +182,12 @@ class ShovelWritableFileStream
 	}
 }
 
+const kBackend = Symbol("backend");
+
+export interface ShovelHandle {
+	[kBackend]: FileSystemBackend;
+}
+
 /**
  * Shared FileSystemHandle base implementation
  * Provides common functionality for both file and directory handles
@@ -196,10 +195,9 @@ class ShovelWritableFileStream
 export abstract class ShovelHandle implements FileSystemHandle {
 	abstract readonly kind: "file" | "directory";
 	readonly path: string;
-	#backend: FileSystemBackend;
 
 	constructor(backend: FileSystemBackend, path: string) {
-		this.#backend = backend;
+		this[kBackend] = backend;
 		this.path = path;
 	}
 
@@ -209,7 +207,7 @@ export abstract class ShovelHandle implements FileSystemHandle {
 	}
 
 	get backend(): FileSystemBackend {
-		return this.#backend;
+		return this[kBackend];
 	}
 
 	async isSameEntry(other: FileSystemHandle): Promise<boolean> {
@@ -286,7 +284,7 @@ export class ShovelFileHandle
 
 			// Extract filename and infer MIME type
 			const filename = this.name;
-			const mimeType = this.#getMimeType(filename);
+			const mimeType = getMIMEType(filename);
 
 			// Use slice() to ensure we have a copy with ArrayBuffer backing
 			// This resolves type conflicts between lib.dom and lib.webworker
@@ -312,10 +310,10 @@ export class ShovelFileHandle
 			"InvalidStateError",
 		);
 	}
+}
 
-	#getMimeType(filename: string): string {
-		return mime.getType(filename) || "application/octet-stream";
-	}
+function getMIMEType(filename: string): string {
+	return mime.getType(filename) || "application/octet-stream";
 }
 
 /**
@@ -337,7 +335,7 @@ export class ShovelDirectoryHandle
 		options?: {create?: boolean},
 	): Promise<FileSystemFileHandle> {
 		this.validateName(name);
-		const filePath = this.#joinPath(this.path, name);
+		const filePath = joinPath(this.path, name);
 		const stat = await this.backend.stat(filePath);
 
 		if (!stat && options?.create) {
@@ -360,7 +358,7 @@ export class ShovelDirectoryHandle
 		options?: {create?: boolean},
 	): Promise<FileSystemDirectoryHandle> {
 		this.validateName(name);
-		const dirPath = this.#joinPath(this.path, name);
+		const dirPath = joinPath(this.path, name);
 		const stat = await this.backend.stat(dirPath);
 
 		if (!stat && options?.create) {
@@ -393,7 +391,7 @@ export class ShovelDirectoryHandle
 			);
 		}
 
-		const entryPath = this.#joinPath(this.path, name);
+		const entryPath = joinPath(this.path, name);
 		const stat = await this.backend.stat(entryPath);
 
 		if (!stat) {
@@ -433,7 +431,7 @@ export class ShovelDirectoryHandle
 			const entries = await this.backend.listDir(this.path);
 
 			for (const entry of entries) {
-				const entryPath = this.#joinPath(this.path, entry.name);
+				const entryPath = joinPath(this.path, entry.name);
 				if (entry.kind === "file") {
 					yield [entry.name, new ShovelFileHandle(this.backend, entryPath)];
 				} else {
@@ -469,14 +467,14 @@ export class ShovelDirectoryHandle
 	]> {
 		return this.entries();
 	}
+}
 
-	#joinPath(base: string, name: string): string {
-		// Simple path joining - could be enhanced based on backend needs
-		if (base === "/" || base === "") {
-			return `/${name}`;
-		}
-		return `${base}/${name}`;
+function joinPath(base: string, name: string): string {
+	// Simple path joining - could be enhanced based on backend needs
+	if (base === "/" || base === "") {
+		return `/${name}`;
 	}
+	return `${base}/${name}`;
 }
 
 // ============================================================================
@@ -518,6 +516,14 @@ export interface DirectoryStorage {
 export type DirectoryFactory = (name: string) => FileSystemDirectoryHandle |
 	Promise<FileSystemDirectoryHandle>;
 
+const kInstances = Symbol("instances");
+const kFactory = Symbol("factory");
+
+export interface CustomDirectoryStorage {
+	[kInstances]: Map<string, FileSystemDirectoryHandle>;
+	[kFactory]: DirectoryFactory;
+}
+
 /**
  * Custom directory storage with factory-based directory creation
  *
@@ -527,15 +533,12 @@ export type DirectoryFactory = (name: string) => FileSystemDirectoryHandle |
  * Mirrors the CustomCacheStorage pattern for consistency across the platform.
  */
 export class CustomDirectoryStorage {
-	#instances: Map<string, FileSystemDirectoryHandle>;
-	#factory: DirectoryFactory;
-
 	/**
 	 * @param factory Function that creates directory instances by name
 	 */
 	constructor(factory: DirectoryFactory) {
-		this.#instances = new Map<string, FileSystemDirectoryHandle>();
-		this.#factory = factory;
+		this[kInstances] = new Map<string, FileSystemDirectoryHandle>();
+		this[kFactory] = factory;
 	}
 
 	/**
@@ -546,14 +549,14 @@ export class CustomDirectoryStorage {
 	 */
 	async open(name: string): Promise<FileSystemDirectoryHandle> {
 		// Return existing instance if already opened
-		const existing = this.#instances.get(name);
+		const existing = this[kInstances].get(name);
 		if (existing) {
 			return existing;
 		}
 
 		// Create new instance using factory
-		const dir = await this.#factory(name);
-		this.#instances.set(name, dir);
+		const dir = await this[kFactory](name);
+		this[kInstances].set(name, dir);
 		return dir;
 	}
 
@@ -564,7 +567,7 @@ export class CustomDirectoryStorage {
 	 * @returns true if directory has been opened
 	 */
 	async has(name: string): Promise<boolean> {
-		return this.#instances.has(name);
+		return this[kInstances].has(name);
 	}
 
 	/**
@@ -574,9 +577,9 @@ export class CustomDirectoryStorage {
 	 * @returns true if directory was deleted, false if it didn't exist
 	 */
 	async delete(name: string): Promise<boolean> {
-		const instance = this.#instances.get(name);
+		const instance = this[kInstances].get(name);
 		if (instance) {
-			this.#instances.delete(name);
+			this[kInstances].delete(name);
 			return true;
 		}
 		return false;
@@ -588,7 +591,7 @@ export class CustomDirectoryStorage {
 	 * @returns Array of directory names
 	 */
 	async keys(): Promise<string[]> {
-		return Array.from(this.#instances.keys());
+		return Array.from(this[kInstances].keys());
 	}
 
 	/**
@@ -596,10 +599,10 @@ export class CustomDirectoryStorage {
 	 *
 	 * @returns Object with directory statistics
 	 */
-	getStats() {
+	getStats(): {openInstances: number; directoryNames: string[]} {
 		return {
-			openInstances: this.#instances.size,
-			directoryNames: Array.from(this.#instances.keys()),
+			openInstances: this[kInstances].size,
+			directoryNames: Array.from(this[kInstances].keys()),
 		};
 	}
 }

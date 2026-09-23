@@ -1,3 +1,4 @@
+/* eslint-disable acrocase/acrocase -- requestID is the cache message field */
 import {afterEach, beforeEach, describe, expect, spyOn, test} from "bun:test";
 
 import {CustomCacheStorage} from "../src/index.js";

@@ -191,7 +191,7 @@ curl https://echo.shovel.run/anything -H "X-Echo-Content-Type: application/xml"<
 </body>
 </html>`;
 
-function syntaxHighlightJson(json: string): string {
+function syntaxHighlightJSON(json: string): string {
 	return json.replace(
 		/("(?:\\.|[^"\\])*")\s*:|("(?:\\.|[^"\\])*")|(\b\d+\.?\d*\b)|(true|false)|(null)/g,
 		(match, key, str, num, bool, nil) => {
@@ -205,9 +205,9 @@ function syntaxHighlightJson(json: string): string {
 	);
 }
 
-function renderJsonHtml(data: unknown, statusCode: number): string {
+function renderJSONHTML(data: unknown, statusCode: number): string {
 	const json = JSON.stringify(data, null, 2);
-	const highlighted = syntaxHighlightJson(json);
+	const highlighted = syntaxHighlightJSON(json);
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -227,7 +227,13 @@ function renderJsonHtml(data: unknown, statusCode: number): string {
 }
 
 // Helper functions
-function getRequestInfo(req: Request) {
+function getRequestInfo(req: Request): {
+	method: string;
+	path: string;
+	query: Record<string, string>;
+	headers: Record<string, string>;
+	timestamp: string;
+} {
 	const url = new URL(req.url);
 	const stripPrefixes = ["cf-", "x-real-ip", "x-forwarded-"];
 	const headers: Record<string, string> = {};
@@ -246,7 +252,7 @@ function getRequestInfo(req: Request) {
 	};
 }
 
-async function parseBody(req: Request) {
+async function parseBody(req: Request): Promise<any> {
 	if (req.method === "GET" || req.method === "HEAD") {
 		return null;
 	}
@@ -274,7 +280,7 @@ async function parseBody(req: Request) {
 	}
 }
 
-function parseCorsHeader(
+function parseCORSHeader(
 	corsHeader: string | null,
 ): Record<string, string> | null {
 	if (!corsHeader) {
@@ -357,7 +363,7 @@ router.route("/").get(() => {
 // Echo endpoint - handles all methods on any path
 router.route("/*").all(async (request) => {
 	const corsHeader = request.headers.get("x-echo-cors");
-	const corsHeaders = parseCorsHeader(corsHeader);
+	const corsHeaders = parseCORSHeader(corsHeader);
 
 	// Handle preflight
 	if (request.method === "OPTIONS") {
@@ -403,7 +409,7 @@ router.route("/*").all(async (request) => {
 
 	// Pretty HTML for browsers, raw JSON for API clients
 	if (wantsBrowserResponse(request) && !contentTypeHeader) {
-		return new Response(renderJsonHtml(response, statusCode), {
+		return new Response(renderJSONHTML(response, statusCode), {
 			status: statusCode,
 			headers: {...responseHeaders, "Content-Type": "text/html"},
 		});

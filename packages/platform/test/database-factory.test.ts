@@ -2,10 +2,7 @@ import {beforeEach, describe, expect, test} from "bun:test";
 
 import {createDatabaseFactory} from "../src/runtime.js";
 import DefaultDriver, {
-	closeCalls,
-	lastDriver,
-	lastOptions,
-	lastUrl,
+	calls,
 	NamedDriver,
 	reset,
 } from "./fixtures/mock-driver.js";
@@ -22,12 +19,12 @@ describe("createDatabaseFactory", () => {
 
 		const {close} = await factory("main");
 
-		expect(lastDriver).toBe("default");
-		expect(lastUrl).toBe("db://main");
-		expect(lastOptions).toEqual({poolSize: 5});
+		expect(calls.driver).toBe("default");
+		expect(calls.url).toBe("db://main");
+		expect(calls.options).toEqual({poolSize: 5});
 
 		await close();
-		expect(closeCalls).toBe(1);
+		expect(calls.close).toBe(1);
 	});
 
 	test("uses named impl when configured", async () => {
@@ -37,12 +34,12 @@ describe("createDatabaseFactory", () => {
 
 		const {close} = await factory("main");
 
-		expect(lastDriver).toBe("NamedDriver");
-		expect(lastUrl).toBe("db://named");
-		expect(lastOptions).toEqual({ssl: true});
+		expect(calls.driver).toBe("NamedDriver");
+		expect(calls.url).toBe("db://named");
+		expect(calls.options).toEqual({ssl: true});
 
 		await close();
-		expect(closeCalls).toBe(1);
+		expect(calls.close).toBe(1);
 	});
 
 	test("throws when impl is missing", async () => {

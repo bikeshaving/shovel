@@ -2,10 +2,10 @@ import {Database} from "@b9g/zen";
 import BunDriver from "@b9g/zen/bun";
 import {afterEach, describe, expect, test} from "bun:test";
 
-import {CustomDatabaseStorage} from "../src/runtime.js";
+import {CustomDatabaseStorage, type DatabaseFactory} from "../src/runtime.js";
 
 // Factory that creates in-memory SQLite databases
-const createFactory = () => {
+function createFactory(): DatabaseFactory {
 	return async (name: string) => {
 		if (name === "main") {
 			const driver = new BunDriver(":memory:");
@@ -13,7 +13,7 @@ const createFactory = () => {
 		}
 		throw new Error(`Database "${name}" is not configured.`);
 	};
-};
+}
 
 describe("Database Integration (Bun.SQL)", () => {
 	let storage: CustomDatabaseStorage | null = null;

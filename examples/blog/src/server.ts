@@ -8,6 +8,7 @@
 
 import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 import {Router} from "@b9g/router";
+import type {RouteContext} from "@b9g/router";
 
 const logger = self.loggers.get(["blog"]);
 
@@ -42,7 +43,7 @@ router.use(pageCache);
 // Cache middleware for pages using new generator API
 async function *pageCache(
 	request: Request,
-	_context: import("@b9g/router").RouteContext,
+	_context: RouteContext,
 ): AsyncGenerator<
 	Request | undefined,
 	Response | null | undefined | void,
@@ -281,7 +282,7 @@ self.addEventListener("activate", (event) => {
 	event.waitUntil(generateStaticSite());
 });
 
-async function generateStaticSite() {
+async function generateStaticSite(): Promise<void> {
 	logger.info`Starting static site generation...`;
 
 	try {
@@ -409,7 +410,7 @@ self.addEventListener("static", (event: Event) => {
 });
 
 // Helper function to render HTML pages
-function renderPage(title: string, content: string) {
+function renderPage(title: string, content: string): string {
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>

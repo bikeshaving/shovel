@@ -189,7 +189,7 @@ describe("createCacheFactory", () => {
 	});
 
 	test("factory function (non-class) impl works with wildcard", async () => {
-		function createCache(name: string, _options: any = {}) {
+		function createCache(name: string, _options: any = {}): MemoryCache {
 			return new MemoryCache(name);
 		}
 

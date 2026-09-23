@@ -16,8 +16,8 @@ self.addEventListener("fetch", (event) => {
 			try {
 				// Access the git SHA constant directly
 				// This will throw ReferenceError if __SHOVEL_GIT__ is not defined
-				const gitSha = __SHOVEL_GIT__;
-				return new Response(`[git] works: ${gitSha}`, {
+				const gitSHA = __SHOVEL_GIT__;
+				return new Response(`[git] works: ${gitSHA}`, {
 					headers: {"content-type": "text/plain"},
 				});
 			} catch (error) {

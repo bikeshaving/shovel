@@ -1,4 +1,5 @@
 import {jsx, Raw} from "@b9g/crank/standalone";
+import type {Element} from "@b9g/crank/standalone";
 import {css} from "@emotion/css";
 
 import {Root} from "../components/root.js";
@@ -149,11 +150,11 @@ const logLines = [
 	{offset: 147, rest: " INF shovel\u00b7develop http://localhost:7777"},
 ];
 
-function buildTerminalHtml(): string {
+function buildTerminalHTML(): string {
 	const lines: string[] = [];
 	lines.push("$ shovel develop server.ts");
 	for (const {offset, rest} of logLines) {
-		lines.push(`<span data-ts-offset="${offset}"></span>${escapeHtml(rest)}`);
+		lines.push(`<span data-ts-offset="${offset}"></span>${escapeHTML(rest)}`);
 	}
 	lines.push("");
 	lines.push("$ curl -X PUT :7777/kv/hello -d &quot;world&quot;");
@@ -174,7 +175,7 @@ function buildTerminalHtml(): string {
 	return lines.join("\n");
 }
 
-function escapeHtml(s: string): string {
+function escapeHTML(s: string): string {
 	return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
@@ -200,9 +201,9 @@ const timestampScript = `<script>
 })();
 </script>`;
 
-export default function Home({url}: ViewProps) {
+export default function Home({url}: ViewProps): Element {
 	const highlightedServer = highlight(serverCode, "typescript");
-	const terminalHtml = buildTerminalHtml();
+	const terminalHTML = buildTerminalHTML();
 
 	return jsx`
 		<${Root}
@@ -222,7 +223,7 @@ export default function Home({url}: ViewProps) {
 					</div>
 					<div class=${codeBlockStyles}>
 						<div class=${codeLabelStyles}>terminal</div>
-						<pre><code><${Raw} value=${terminalHtml} /></code></pre>
+						<pre><code><${Raw} value=${terminalHTML} /></code></pre>
 					</div>
 				</div>
 				<div class=${commandStyles}>$ <span>npm create shovel</span></div>

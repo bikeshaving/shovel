@@ -2329,6 +2329,14 @@ function parseConstructorArgs(
 	return {init, baseURL, options: opts};
 }
 
+const kCompiled = Symbol("compiled");
+const kInit = Symbol("init");
+
+export interface URLPattern {
+	[kCompiled]: CompiledPatterns;
+	[kInit]: URLPatternInit;
+}
+
 /**
  * URLPattern - Strict WPT-compliant URL pattern matching
  *
@@ -2338,41 +2346,6 @@ function parseConstructorArgs(
  * - No & syntax support
  */
 export class URLPattern {
-	#compiled: CompiledPatterns;
-	#init: URLPatternInit;
-
-	get pathname(): string {
-		return this.#init.pathname || "*";
-	}
-
-	get search(): string {
-		return this.#init.search || "*";
-	}
-
-	get protocol(): string {
-		return this.#init.protocol || "*";
-	}
-
-	get hostname(): string {
-		return this.#init.hostname || "*";
-	}
-
-	get port(): string {
-		return this.#init.port || "*";
-	}
-
-	get username(): string {
-		return this.#init.username || "*";
-	}
-
-	get password(): string {
-		return this.#init.password || "*";
-	}
-
-	get hash(): string {
-		return this.#init.hash || "*";
-	}
-
 	constructor(
 		input?: string | URLPatternInit,
 		baseURLOrOptions?: string | URLPatternOptions,
@@ -2394,10 +2367,42 @@ export class URLPattern {
 			);
 		}
 
-		this.#init = init;
-		this.#compiled = compileURLPatternInit(init, baseURL, {
+		this[kInit] = init;
+		this[kCompiled] = compileURLPatternInit(init, baseURL, {
 			ignoreCase: opts.ignoreCase ?? false,
 		});
+	}
+
+	get pathname(): string {
+		return this[kInit].pathname || "*";
+	}
+
+	get search(): string {
+		return this[kInit].search || "*";
+	}
+
+	get protocol(): string {
+		return this[kInit].protocol || "*";
+	}
+
+	get hostname(): string {
+		return this[kInit].hostname || "*";
+	}
+
+	get port(): string {
+		return this[kInit].port || "*";
+	}
+
+	get username(): string {
+		return this[kInit].username || "*";
+	}
+
+	get password(): string {
+		return this[kInit].password || "*";
+	}
+
+	get hash(): string {
+		return this[kInit].hash || "*";
 	}
 
 	test(input?: string | URL | URLPatternInit, baseURL?: string): boolean {
@@ -2407,7 +2412,7 @@ export class URLPattern {
 
 		// Handle URLPatternInit object
 		if (typeof input === "object" && !(input instanceof URL)) {
-			return this.#testInit(input, baseURL);
+			return testURLPatternInit(this, input, baseURL);
 		}
 
 		// Handle string and URL inputs
@@ -2424,117 +2429,12 @@ export class URLPattern {
 		}
 
 		// Test all components
-		if (!testURLComponents(this.#compiled, url)) {
+		if (!testURLComponents(this[kCompiled], url)) {
 			return false;
 		}
 
 		// Test search with regex (order-dependent)
-		return testSearchRegex(this.#compiled, url);
-	}
-
-	#testInit(input: URLPatternInit, baseURL?: string): boolean {
-		const base = input.baseURL || baseURL;
-		let baseURLObj: URL | undefined;
-		if (base) {
-			try {
-				baseURLObj = new URL(base);
-			} catch (err) {
-				if (!(err instanceof TypeError)) throw err; // URL parse error
-			}
-		}
-
-		// Test protocol
-		const protocol =
-			input.protocol ?? baseURLObj?.protocol.replace(":", "") ?? undefined;
-		if (protocol !== undefined && !isValidProtocol(protocol)) return false;
-		if (this.#compiled.protocol) {
-			if (
-				protocol === undefined || !this.#compiled.protocol.regex.test(protocol)
-			) {
-				return false;
-			}
-		}
-
-		// Test hostname
-		if (this.#compiled.hostname) {
-			let hostname = input.hostname ?? baseURLObj?.hostname;
-			if (hostname === undefined) return false;
-			hostname = toASCII(hostname);
-			if (!this.#compiled.hostname.regex.test(hostname)) return false;
-		}
-
-		// Test port
-		let port = input.port ?? baseURLObj?.port;
-		if (port !== undefined) {
-			const canonical = canonicalizePort(port);
-			if (canonical === undefined) return false;
-			port = canonical;
-			if (protocol) {
-				const defaultPort = getDefaultPort(protocol);
-				if (defaultPort && port === defaultPort) port = "";
-			}
-		}
-		if (this.#compiled.port) {
-			if (port === undefined || !this.#compiled.port.regex.test(port)) {
-				return false;
-			}
-		}
-
-		// Test username/password
-		if (this.#compiled.username) {
-			const username = input.username ?? baseURLObj?.username;
-			if (
-				username === undefined ||
-				!this.#compiled.username.regex.test(encodeURIComponent(username))
-			) {
-				return false;
-			}
-		}
-		if (this.#compiled.password) {
-			const password = input.password ?? baseURLObj?.password;
-			if (
-				password === undefined ||
-				!this.#compiled.password.regex.test(encodeURIComponent(password))
-			) {
-				return false;
-			}
-		}
-
-		// Test pathname
-		let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
-		// Resolve relative pathname against baseURL
-		if (baseURLObj && !pathname.startsWith("/")) {
-			// Manually resolve to preserve pattern syntax
-			const basePath = baseURLObj.pathname;
-			if (basePath.endsWith("/")) {
-				pathname = basePath + pathname;
-			} else {
-				pathname = basePath.slice(0, basePath.lastIndexOf("/") + 1) + pathname;
-			}
-		}
-		if (pathname.startsWith("/")) pathname = normalizePathname(pathname);
-		const shouldEncode = !protocol || isSpecialScheme(protocol);
-		if (shouldEncode) pathname = encodePathname(pathname);
-		if (!this.#compiled.pathname.regex.test(pathname)) return false;
-
-		// Test hash
-		if (this.#compiled.hash) {
-			let hash = input.hash ?? baseURLObj?.hash.replace("#", "") ?? undefined;
-			if (hash === undefined) return false;
-			if (hash.startsWith("#")) hash = hash.slice(1);
-			hash = encodeHash(hash);
-			if (!this.#compiled.hash.regex.test(hash)) return false;
-		}
-
-		// Test search with regex (order-dependent)
-		if (this.#compiled.search) {
-			let search = input.search ?? baseURLObj?.search?.replace("?", "") ?? "";
-			if (search.startsWith("?")) search = search.slice(1);
-			search = encodeSearch(search);
-			if (!this.#compiled.search.regex.test(search)) return false;
-		}
-
-		return true;
+		return testSearchRegex(this[kCompiled], url);
 	}
 
 	exec(
@@ -2545,7 +2445,7 @@ export class URLPattern {
 
 		// Handle URLPatternInit
 		if (typeof input === "object" && !(input instanceof URL)) {
-			return this.#execInit(input, baseURL);
+			return execURLPatternInit(this, input, baseURL);
 		}
 
 		// Handle URL
@@ -2561,10 +2461,10 @@ export class URLPattern {
 		const searchGroups: Record<string, string> = {};
 
 		// Extract pathname params
-		const match = this.#compiled.pathname.regex.exec(url.pathname);
+		const match = this[kCompiled].pathname.regex.exec(url.pathname);
 		if (match) {
-			for (let i = 0; i < this.#compiled.pathname.paramNames.length; i++) {
-				const name = this.#compiled.pathname.paramNames[i];
+			for (let i = 0; i < this[kCompiled].pathname.paramNames.length; i++) {
+				const name = this[kCompiled].pathname.paramNames[i];
 				const value = match[i + 1];
 				if (value !== undefined) {
 					params[name] = value;
@@ -2574,12 +2474,12 @@ export class URLPattern {
 		}
 
 		// Extract search params from regex
-		if (this.#compiled.search) {
+		if (this[kCompiled].search) {
 			const search = url.search.replace("?", "");
-			const searchMatch = this.#compiled.search.regex.exec(search);
+			const searchMatch = this[kCompiled].search.regex.exec(search);
 			if (searchMatch) {
-				for (let i = 0; i < this.#compiled.search.paramNames.length; i++) {
-					const name = this.#compiled.search.paramNames[i];
+				for (let i = 0; i < this[kCompiled].search.paramNames.length; i++) {
+					const name = this[kCompiled].search.paramNames[i];
 					const value = searchMatch[i + 1];
 					if (value !== undefined) {
 						params[name] = value;
@@ -2602,74 +2502,196 @@ export class URLPattern {
 			inputs: [input],
 		};
 	}
+}
 
-	#execInit(input: URLPatternInit, baseURL?: string): MatchPatternResult {
-		const base = input.baseURL || baseURL;
-		let baseURLObj: URL | undefined;
-		if (base) {
-			try {
-				baseURLObj = new URL(base);
-			} catch (err) {
-				if (!(err instanceof TypeError)) throw err; // URL parse error
+function testURLPatternInit(
+	urlPattern: URLPattern,
+	input: URLPatternInit,
+	baseURL?: string,
+): boolean {
+	const base = input.baseURL || baseURL;
+	let baseURLObj: URL | undefined;
+	if (base) {
+		try {
+			baseURLObj = new URL(base);
+		} catch (err) {
+			if (!(err instanceof TypeError)) throw err; // URL parse error
+		}
+	}
+
+	// Test protocol
+	const protocol =
+		input.protocol ?? baseURLObj?.protocol.replace(":", "") ?? undefined;
+	if (protocol !== undefined && !isValidProtocol(protocol)) return false;
+	if (urlPattern[kCompiled].protocol) {
+		if (
+			protocol === undefined ||
+				!urlPattern[kCompiled].protocol.regex.test(protocol)
+		) {
+			return false;
+		}
+	}
+
+	// Test hostname
+	if (urlPattern[kCompiled].hostname) {
+		let hostname = input.hostname ?? baseURLObj?.hostname;
+		if (hostname === undefined) return false;
+		hostname = toASCII(hostname);
+		if (!urlPattern[kCompiled].hostname.regex.test(hostname)) return false;
+	}
+
+	// Test port
+	let port = input.port ?? baseURLObj?.port;
+	if (port !== undefined) {
+		const canonical = canonicalizePort(port);
+		if (canonical === undefined) return false;
+		port = canonical;
+		if (protocol) {
+			const defaultPort = getDefaultPort(protocol);
+			if (defaultPort && port === defaultPort) port = "";
+		}
+	}
+	if (urlPattern[kCompiled].port) {
+		if (port === undefined || !urlPattern[kCompiled].port.regex.test(port)) {
+			return false;
+		}
+	}
+
+	// Test username/password
+	if (urlPattern[kCompiled].username) {
+		const username = input.username ?? baseURLObj?.username;
+		if (
+			username === undefined ||
+				!urlPattern[kCompiled].username.regex.test(encodeURIComponent(username))
+		) {
+			return false;
+		}
+	}
+	if (urlPattern[kCompiled].password) {
+		const password = input.password ?? baseURLObj?.password;
+		if (
+			password === undefined ||
+				!urlPattern[kCompiled].password.regex.test(encodeURIComponent(password))
+		) {
+			return false;
+		}
+	}
+
+	// Test pathname
+	let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
+	// Resolve relative pathname against baseURL
+	if (baseURLObj && !pathname.startsWith("/")) {
+		// Manually resolve to preserve pattern syntax
+		const basePath = baseURLObj.pathname;
+		if (basePath.endsWith("/")) {
+			pathname = basePath + pathname;
+		} else {
+			pathname = basePath.slice(0, basePath.lastIndexOf("/") + 1) + pathname;
+		}
+	}
+	if (pathname.startsWith("/")) pathname = normalizePathname(pathname);
+	const shouldEncode = !protocol || isSpecialScheme(protocol);
+	if (shouldEncode) pathname = encodePathname(pathname);
+	if (!urlPattern[kCompiled].pathname.regex.test(pathname)) return false;
+
+	// Test hash
+	if (urlPattern[kCompiled].hash) {
+		let hash = input.hash ?? baseURLObj?.hash.replace("#", "") ?? undefined;
+		if (hash === undefined) return false;
+		if (hash.startsWith("#")) hash = hash.slice(1);
+		hash = encodeHash(hash);
+		if (!urlPattern[kCompiled].hash.regex.test(hash)) return false;
+	}
+
+	// Test search with regex (order-dependent)
+	if (urlPattern[kCompiled].search) {
+		let search = input.search ?? baseURLObj?.search.replace("?", "") ?? "";
+		if (search.startsWith("?")) search = search.slice(1);
+		search = encodeSearch(search);
+		if (!urlPattern[kCompiled].search.regex.test(search)) return false;
+	}
+
+	return true;
+}
+
+function execURLPatternInit(
+	urlPattern: URLPattern,
+	input: URLPatternInit,
+	baseURL?: string,
+): MatchPatternResult {
+	const base = input.baseURL || baseURL;
+	let baseURLObj: URL | undefined;
+	if (base) {
+		try {
+			baseURLObj = new URL(base);
+		} catch (err) {
+			if (!(err instanceof TypeError)) throw err; // URL parse error
+		}
+	}
+
+	let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
+	pathname = normalizePathname(pathname);
+
+	const params: Record<string, string> = {};
+	const pathnameGroups: Record<string, string> = {};
+	const searchGroups: Record<string, string> = {};
+
+	const match = urlPattern[kCompiled].pathname.regex.exec(pathname);
+	if (match) {
+		for (let i = 0; i < urlPattern[kCompiled].pathname.paramNames.length; i++) {
+			const name = urlPattern[kCompiled].pathname.paramNames[i];
+			const value = match[i + 1];
+			if (value !== undefined) {
+				params[name] = value;
+				pathnameGroups[name] = value;
 			}
 		}
+	}
 
-		let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
-		pathname = normalizePathname(pathname);
-
-		const params: Record<string, string> = {};
-		const pathnameGroups: Record<string, string> = {};
-		const searchGroups: Record<string, string> = {};
-
-		const match = this.#compiled.pathname.regex.exec(pathname);
-		if (match) {
-			for (let i = 0; i < this.#compiled.pathname.paramNames.length; i++) {
-				const name = this.#compiled.pathname.paramNames[i];
-				const value = match[i + 1];
+	if (urlPattern[kCompiled].search) {
+		let search = input.search ?? baseURLObj?.search.replace("?", "") ?? "";
+		if (search.startsWith("?")) search = search.slice(1);
+		const searchMatch = urlPattern[kCompiled].search.regex.exec(search);
+		if (searchMatch) {
+			for (let i = 0; i < urlPattern[kCompiled].search.paramNames.length; i++) {
+				const name = urlPattern[kCompiled].search.paramNames[i];
+				const value = searchMatch[i + 1];
 				if (value !== undefined) {
 					params[name] = value;
-					pathnameGroups[name] = value;
+					searchGroups[name] = value;
 				}
 			}
 		}
-
-		if (this.#compiled.search) {
-			let search = input.search ?? baseURLObj?.search?.replace("?", "") ?? "";
-			if (search.startsWith("?")) search = search.slice(1);
-			const searchMatch = this.#compiled.search.regex.exec(search);
-			if (searchMatch) {
-				for (let i = 0; i < this.#compiled.search.paramNames.length; i++) {
-					const name = this.#compiled.search.paramNames[i];
-					const value = searchMatch[i + 1];
-					if (value !== undefined) {
-						params[name] = value;
-						searchGroups[name] = value;
-					}
-				}
-			}
-		}
-
-		const protocol =
-			input.protocol ?? baseURLObj?.protocol.replace(":", "") ?? "";
-		const hostname = input.hostname ?? baseURLObj?.hostname ?? "";
-		let port = input.port ?? baseURLObj?.port ?? "";
-		if (port) port = canonicalizePort(port) || "";
-		const hash = input.hash ?? baseURLObj?.hash?.replace("#", "") ?? "";
-		const search = input.search ?? baseURLObj?.search?.replace("?", "") ?? "";
-
-		return {
-			params,
-			pathname: {input: pathname, groups: pathnameGroups},
-			search: {input: search ? `?${search}` : "", groups: searchGroups},
-			protocol: {input: protocol ? `${protocol}:` : "", groups: {}},
-			hostname: {input: hostname, groups: {}},
-			port: {input: port, groups: {}},
-			username: {input: "", groups: {}},
-			password: {input: "", groups: {}},
-			hash: {input: hash ? `#${hash}` : "", groups: {}},
-			inputs: [input],
-		};
 	}
+
+	const protocol =
+		input.protocol ?? baseURLObj?.protocol.replace(":", "") ?? "";
+	const hostname = input.hostname ?? baseURLObj?.hostname ?? "";
+	let port = input.port ?? baseURLObj?.port ?? "";
+	if (port) port = canonicalizePort(port) || "";
+	const hash = input.hash ?? baseURLObj?.hash.replace("#", "") ?? "";
+	const search = input.search ?? baseURLObj?.search.replace("?", "") ?? "";
+
+	return {
+		params,
+		pathname: {input: pathname, groups: pathnameGroups},
+		search: {input: search ? `?${search}` : "", groups: searchGroups},
+		protocol: {input: protocol ? `${protocol}:` : "", groups: {}},
+		hostname: {input: hostname, groups: {}},
+		port: {input: port, groups: {}},
+		username: {input: "", groups: {}},
+		password: {input: "", groups: {}},
+		hash: {input: hash ? `#${hash}` : "", groups: {}},
+		inputs: [input],
+	};
+}
+
+const kSearchPattern = Symbol("searchPattern");
+
+export interface MatchPattern {
+	[kCompiled]: CompiledPatterns;
+	[kSearchPattern]?: string;
+	[kInit]: URLPatternInit;
 }
 
 /**
@@ -2681,42 +2703,6 @@ export class URLPattern {
  * - Order-independent search matching
  */
 export class MatchPattern {
-	#compiled: CompiledPatterns;
-	#searchPattern?: string;
-	#init: URLPatternInit;
-
-	get pathname(): string {
-		return this.#init.pathname || "*";
-	}
-
-	get search(): string | undefined {
-		return this.#searchPattern;
-	}
-
-	get protocol(): string | undefined {
-		return this.#init.protocol;
-	}
-
-	get hostname(): string | undefined {
-		return this.#init.hostname;
-	}
-
-	get port(): string | undefined {
-		return this.#init.port;
-	}
-
-	get username(): string | undefined {
-		return this.#init.username;
-	}
-
-	get password(): string | undefined {
-		return this.#init.password;
-	}
-
-	get hash(): string | undefined {
-		return this.#init.hash;
-	}
-
 	constructor(
 		input?: string | URLPatternInit,
 		baseURLOrOptions?: string | URLPatternOptions,
@@ -2727,11 +2713,43 @@ export class MatchPattern {
 			baseURLOrOptions,
 			options,
 		);
-		this.#init = init;
-		this.#searchPattern = init.search;
-		this.#compiled = compileURLPatternInit(init, baseURL, {
+		this[kInit] = init;
+		this[kSearchPattern] = init.search;
+		this[kCompiled] = compileURLPatternInit(init, baseURL, {
 			ignoreCase: opts.ignoreCase ?? false,
 		});
+	}
+
+	get pathname(): string {
+		return this[kInit].pathname || "*";
+	}
+
+	get search(): string | undefined {
+		return this[kSearchPattern];
+	}
+
+	get protocol(): string | undefined {
+		return this[kInit].protocol;
+	}
+
+	get hostname(): string | undefined {
+		return this[kInit].hostname;
+	}
+
+	get port(): string | undefined {
+		return this[kInit].port;
+	}
+
+	get username(): string | undefined {
+		return this[kInit].username;
+	}
+
+	get password(): string | undefined {
+		return this[kInit].password;
+	}
+
+	get hash(): string | undefined {
+		return this[kInit].hash;
 	}
 
 	test(input?: string | URL | URLPatternInit, baseURL?: string): boolean {
@@ -2741,7 +2759,7 @@ export class MatchPattern {
 
 		// Handle URLPatternInit object
 		if (typeof input === "object" && !(input instanceof URL)) {
-			return this.#testInit(input, baseURL);
+			return testMatchPatternInit(this, input, baseURL);
 		}
 
 		// Handle string and URL inputs
@@ -2758,144 +2776,22 @@ export class MatchPattern {
 		}
 
 		// Test all components except search
-		if (!testURLComponents(this.#compiled, url)) {
+		if (!testURLComponents(this[kCompiled], url)) {
 			return false;
 		}
 
 		// Test search - use regex if pattern contains URLPattern syntax (like :name)
 		// otherwise use order-independent key-value matching
-		if (this.#searchPattern && !this.#searchPattern.includes("=")) {
+		if (this[kSearchPattern] && !this[kSearchPattern].includes("=")) {
 			// Pattern-style search (like :café or *) - use regex matching
-			return testSearchRegex(this.#compiled, url);
+			return testSearchRegex(this[kCompiled], url);
 		}
 		// Key-value style search - use order-independent matching
 		// Use raw search string (without ?) to preserve percent-encoding
 		const rawSearch = url.search.startsWith("?")
 			? url.search.slice(1)
 			: url.search;
-		return testSearchParams(this.#searchPattern, rawSearch);
-	}
-
-	#testInit(input: URLPatternInit, baseURL?: string): boolean {
-		const base = input.baseURL || baseURL;
-		let baseURLObj: URL | undefined;
-		if (base) {
-			try {
-				baseURLObj = new URL(base);
-			} catch (err) {
-				if (!(err instanceof TypeError)) throw err; // URL parse error
-			}
-		}
-
-		// Test protocol
-		const protocol =
-			input.protocol ?? baseURLObj?.protocol.replace(":", "") ?? undefined;
-		if (protocol !== undefined && !isValidProtocol(protocol)) return false;
-		if (this.#compiled.protocol) {
-			if (
-				protocol === undefined || !this.#compiled.protocol.regex.test(protocol)
-			) {
-				return false;
-			}
-		}
-
-		// Test hostname
-		if (this.#compiled.hostname) {
-			let hostname = input.hostname ?? baseURLObj?.hostname;
-			if (hostname === undefined) return false;
-			hostname = toASCII(hostname);
-			if (!this.#compiled.hostname.regex.test(hostname)) return false;
-		}
-
-		// Test port
-		let port = input.port ?? baseURLObj?.port;
-		if (port !== undefined) {
-			const canonical = canonicalizePort(port);
-			if (canonical === undefined) return false;
-			port = canonical;
-			if (protocol) {
-				const defaultPort = getDefaultPort(protocol);
-				if (defaultPort && port === defaultPort) port = "";
-			}
-		}
-		if (this.#compiled.port) {
-			if (port === undefined || !this.#compiled.port.regex.test(port)) {
-				return false;
-			}
-		}
-
-		// Test username/password
-		if (this.#compiled.username) {
-			const username = input.username ?? baseURLObj?.username;
-			if (
-				username === undefined ||
-				!this.#compiled.username.regex.test(encodeURIComponent(username))
-			) {
-				return false;
-			}
-		}
-		if (this.#compiled.password) {
-			const password = input.password ?? baseURLObj?.password;
-			if (
-				password === undefined ||
-				!this.#compiled.password.regex.test(encodeURIComponent(password))
-			) {
-				return false;
-			}
-		}
-
-		// Test pathname
-		let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
-		// Resolve relative pathname against baseURL
-		if (baseURLObj && !pathname.startsWith("/")) {
-			try {
-				const resolved = new URL(pathname, baseURLObj.href);
-				pathname = resolved.pathname;
-			} catch (err) {
-				if (!(err instanceof TypeError)) throw err; // URL parse error
-				const basePath = baseURLObj.pathname;
-				if (basePath.endsWith("/")) {
-					pathname = basePath + pathname;
-				} else {
-					pathname =
-						basePath.slice(0, basePath.lastIndexOf("/") + 1) + pathname;
-				}
-			}
-		}
-		if (pathname.startsWith("/")) pathname = normalizePathname(pathname);
-		const shouldEncode = !protocol || isSpecialScheme(protocol);
-		if (shouldEncode) pathname = encodePathname(pathname);
-		if (!this.#compiled.pathname.regex.test(pathname)) return false;
-
-		// Test hash
-		if (this.#compiled.hash) {
-			let hash = input.hash ?? baseURLObj?.hash.replace("#", "") ?? undefined;
-			if (hash === undefined) return false;
-			if (hash.startsWith("#")) hash = hash.slice(1);
-			hash = encodeHash(hash);
-			if (!this.#compiled.hash.regex.test(hash)) return false;
-		}
-
-		// Test search - use regex if pattern contains URLPattern syntax (like :name)
-		// otherwise use order-independent key-value matching
-		if (this.#searchPattern) {
-			let search = input.search ?? baseURLObj?.search?.replace("?", "") ?? "";
-			if (search.startsWith("?")) search = search.slice(1);
-			// Normalize search to canonical percent-encoding (uppercase hex)
-			search = encodeSearch(search);
-
-			if (!this.#searchPattern.includes("=")) {
-				// Pattern-style search (like :café or *) - use regex matching
-				if (this.#compiled.search) {
-					return this.#compiled.search.regex.test(search);
-				}
-				return true;
-			}
-			// Key-value style search - use order-independent matching
-			return testSearchParams(this.#searchPattern, search);
-		}
-
-		return true;
+		return testSearchParams(this[kSearchPattern], rawSearch);
 	}
 
 	exec(
@@ -2906,7 +2802,7 @@ export class MatchPattern {
 
 		// Handle URLPatternInit
 		if (typeof input === "object" && !(input instanceof URL)) {
-			return this.#execInit(input, baseURL);
+			return execMatchPatternInit(this, input, baseURL);
 		}
 
 		// Handle URL
@@ -2922,10 +2818,10 @@ export class MatchPattern {
 		const searchGroups: Record<string, string> = {};
 
 		// Extract pathname params
-		const match = this.#compiled.pathname.regex.exec(url.pathname);
+		const match = this[kCompiled].pathname.regex.exec(url.pathname);
 		if (match) {
-			for (let i = 0; i < this.#compiled.pathname.paramNames.length; i++) {
-				const name = this.#compiled.pathname.paramNames[i];
+			for (let i = 0; i < this[kCompiled].pathname.paramNames.length; i++) {
+				const name = this[kCompiled].pathname.paramNames[i];
 				const value = match[i + 1];
 				if (value !== undefined) {
 					params[name] = value;
@@ -2935,9 +2831,9 @@ export class MatchPattern {
 		}
 
 		// Extract search params
-		if (this.#searchPattern) {
+		if (this[kSearchPattern]) {
 			const extracted = extractSearchParams(
-				this.#searchPattern,
+				this[kSearchPattern],
 				url.searchParams,
 			);
 			Object.assign(params, extracted);
@@ -2962,66 +2858,202 @@ export class MatchPattern {
 			inputs: [input],
 		};
 	}
+}
 
-	#execInit(input: URLPatternInit, baseURL?: string): MatchPatternResult {
-		const base = input.baseURL || baseURL;
-		let baseURLObj: URL | undefined;
-		if (base) {
-			try {
-				baseURLObj = new URL(base);
-			} catch (err) {
-				if (!(err instanceof TypeError)) throw err; // URL parse error
-			}
+function testMatchPatternInit(
+	matchPattern: MatchPattern,
+	input: URLPatternInit,
+	baseURL?: string,
+): boolean {
+	const base = input.baseURL || baseURL;
+	let baseURLObj: URL | undefined;
+	if (base) {
+		try {
+			baseURLObj = new URL(base);
+		} catch (err) {
+			if (!(err instanceof TypeError)) throw err; // URL parse error
 		}
-
-		let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
-		pathname = normalizePathname(pathname);
-
-		const params: Record<string, string> = {};
-		const pathnameGroups: Record<string, string> = {};
-		const searchGroups: Record<string, string> = {};
-
-		const match = this.#compiled.pathname.regex.exec(pathname);
-		if (match) {
-			for (let i = 0; i < this.#compiled.pathname.paramNames.length; i++) {
-				const name = this.#compiled.pathname.paramNames[i];
-				const value = match[i + 1];
-				if (value !== undefined) {
-					params[name] = value;
-					pathnameGroups[name] = value;
-				}
-			}
-		}
-
-		if (this.#searchPattern) {
-			const search = input.search ?? baseURLObj?.search?.replace("?", "") ?? "";
-			const extracted = extractSearchParams(
-				this.#searchPattern,
-				new URLSearchParams(search),
-			);
-			Object.assign(params, extracted);
-			Object.assign(searchGroups, extracted);
-		}
-
-		const protocol =
-			input.protocol ?? baseURLObj?.protocol.replace(":", "") ?? "";
-		const hostname = input.hostname ?? baseURLObj?.hostname ?? "";
-		let port = input.port ?? baseURLObj?.port ?? "";
-		if (port) port = canonicalizePort(port) || "";
-		const hash = input.hash ?? baseURLObj?.hash?.replace("#", "") ?? "";
-		const search = input.search ?? baseURLObj?.search?.replace("?", "") ?? "";
-
-		return {
-			params,
-			pathname: {input: pathname, groups: pathnameGroups},
-			search: {input: search ? `?${search}` : "", groups: searchGroups},
-			protocol: {input: protocol ? `${protocol}:` : "", groups: {}},
-			hostname: {input: hostname, groups: {}},
-			port: {input: port, groups: {}},
-			username: {input: "", groups: {}},
-			password: {input: "", groups: {}},
-			hash: {input: hash ? `#${hash}` : "", groups: {}},
-			inputs: [input],
-		};
 	}
+
+	// Test protocol
+	const protocol =
+		input.protocol ?? baseURLObj?.protocol.replace(":", "") ?? undefined;
+	if (protocol !== undefined && !isValidProtocol(protocol)) return false;
+	if (matchPattern[kCompiled].protocol) {
+		if (
+			protocol === undefined ||
+				!matchPattern[kCompiled].protocol.regex.test(protocol)
+		) {
+			return false;
+		}
+	}
+
+	// Test hostname
+	if (matchPattern[kCompiled].hostname) {
+		let hostname = input.hostname ?? baseURLObj?.hostname;
+		if (hostname === undefined) return false;
+		hostname = toASCII(hostname);
+		if (!matchPattern[kCompiled].hostname.regex.test(hostname)) return false;
+	}
+
+	// Test port
+	let port = input.port ?? baseURLObj?.port;
+	if (port !== undefined) {
+		const canonical = canonicalizePort(port);
+		if (canonical === undefined) return false;
+		port = canonical;
+		if (protocol) {
+			const defaultPort = getDefaultPort(protocol);
+			if (defaultPort && port === defaultPort) port = "";
+		}
+	}
+	if (matchPattern[kCompiled].port) {
+		if (port === undefined || !matchPattern[kCompiled].port.regex.test(port)) {
+			return false;
+		}
+	}
+
+	// Test username/password
+	if (matchPattern[kCompiled].username) {
+		const username = input.username ?? baseURLObj?.username;
+		if (
+			username === undefined ||
+				!matchPattern[kCompiled].username.regex.test(
+					encodeURIComponent(username),
+				)
+		) {
+			return false;
+		}
+	}
+	if (matchPattern[kCompiled].password) {
+		const password = input.password ?? baseURLObj?.password;
+		if (
+			password === undefined ||
+				!matchPattern[kCompiled].password.regex.test(
+					encodeURIComponent(password),
+				)
+		) {
+			return false;
+		}
+	}
+
+	// Test pathname
+	let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
+	// Resolve relative pathname against baseURL
+	if (baseURLObj && !pathname.startsWith("/")) {
+		try {
+			const resolved = new URL(pathname, baseURLObj.href);
+			pathname = resolved.pathname;
+		} catch (err) {
+			if (!(err instanceof TypeError)) throw err; // URL parse error
+			const basePath = baseURLObj.pathname;
+			if (basePath.endsWith("/")) {
+				pathname = basePath + pathname;
+			} else {
+				pathname = basePath.slice(0, basePath.lastIndexOf("/") + 1) + pathname;
+			}
+		}
+	}
+	if (pathname.startsWith("/")) pathname = normalizePathname(pathname);
+	const shouldEncode = !protocol || isSpecialScheme(protocol);
+	if (shouldEncode) pathname = encodePathname(pathname);
+	if (!matchPattern[kCompiled].pathname.regex.test(pathname)) return false;
+
+	// Test hash
+	if (matchPattern[kCompiled].hash) {
+		let hash = input.hash ?? baseURLObj?.hash.replace("#", "") ?? undefined;
+		if (hash === undefined) return false;
+		if (hash.startsWith("#")) hash = hash.slice(1);
+		hash = encodeHash(hash);
+		if (!matchPattern[kCompiled].hash.regex.test(hash)) return false;
+	}
+
+	// Test search - use regex if pattern contains URLPattern syntax (like :name)
+	// otherwise use order-independent key-value matching
+	if (matchPattern[kSearchPattern]) {
+		let search = input.search ?? baseURLObj?.search.replace("?", "") ?? "";
+		if (search.startsWith("?")) search = search.slice(1);
+		// Normalize search to canonical percent-encoding (uppercase hex)
+		search = encodeSearch(search);
+
+		if (!matchPattern[kSearchPattern].includes("=")) {
+			// Pattern-style search (like :café or *) - use regex matching
+			if (matchPattern[kCompiled].search) {
+				return matchPattern[kCompiled].search.regex.test(search);
+			}
+			return true;
+		}
+		// Key-value style search - use order-independent matching
+		return testSearchParams(matchPattern[kSearchPattern], search);
+	}
+
+	return true;
+}
+
+function execMatchPatternInit(
+	matchPattern: MatchPattern,
+	input: URLPatternInit,
+	baseURL?: string,
+): MatchPatternResult {
+	const base = input.baseURL || baseURL;
+	let baseURLObj: URL | undefined;
+	if (base) {
+		try {
+			baseURLObj = new URL(base);
+		} catch (err) {
+			if (!(err instanceof TypeError)) throw err; // URL parse error
+		}
+	}
+
+	let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
+	pathname = normalizePathname(pathname);
+
+	const params: Record<string, string> = {};
+	const pathnameGroups: Record<string, string> = {};
+	const searchGroups: Record<string, string> = {};
+
+	const match = matchPattern[kCompiled].pathname.regex.exec(pathname);
+	if (match) {
+		for (
+			let i = 0; i < matchPattern[kCompiled].pathname.paramNames.length; i++
+		) {
+			const name = matchPattern[kCompiled].pathname.paramNames[i];
+			const value = match[i + 1];
+			if (value !== undefined) {
+				params[name] = value;
+				pathnameGroups[name] = value;
+			}
+		}
+	}
+
+	if (matchPattern[kSearchPattern]) {
+		const search = input.search ?? baseURLObj?.search.replace("?", "") ?? "";
+		const extracted = extractSearchParams(
+			matchPattern[kSearchPattern],
+			new URLSearchParams(search),
+		);
+		Object.assign(params, extracted);
+		Object.assign(searchGroups, extracted);
+	}
+
+	const protocol =
+		input.protocol ?? baseURLObj?.protocol.replace(":", "") ?? "";
+	const hostname = input.hostname ?? baseURLObj?.hostname ?? "";
+	let port = input.port ?? baseURLObj?.port ?? "";
+	if (port) port = canonicalizePort(port) || "";
+	const hash = input.hash ?? baseURLObj?.hash.replace("#", "") ?? "";
+	const search = input.search ?? baseURLObj?.search.replace("?", "") ?? "";
+
+	return {
+		params,
+		pathname: {input: pathname, groups: pathnameGroups},
+		search: {input: search ? `?${search}` : "", groups: searchGroups},
+		protocol: {input: protocol ? `${protocol}:` : "", groups: {}},
+		hostname: {input: hostname, groups: {}},
+		port: {input: port, groups: {}},
+		username: {input: "", groups: {}},
+		password: {input: "", groups: {}},
+		hash: {input: hash ? `#${hash}` : "", groups: {}},
+		inputs: [input],
+	};
 }

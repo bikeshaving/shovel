@@ -1,4 +1,5 @@
 /** @jsxImportSource @b9g/crank */
+import type {Element} from "@b9g/crank";
 import {Marked} from "@b9g/crankdown";
 import {NotFound} from "@b9g/http-errors";
 import {css} from "@emotion/css";
@@ -62,7 +63,7 @@ const backLinkStyles = css`
 	}
 `;
 
-export default async function BlogPostView({url}: ViewProps) {
+export default async function BlogPostView({url}: ViewProps): Promise<Element> {
 	const docsDir = await self.directories.open("docs");
 	const blogDir = await docsDir.getDirectoryHandle("blog");
 	const posts = await collectBlogPosts(blogDir);

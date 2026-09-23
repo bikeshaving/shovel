@@ -4,6 +4,8 @@
  * Dynamic form generation from table metadata using Crank.js and USWDS
  */
 
+import type {Children} from "@b9g/crank";
+
 import type {AdminColumnInfo, AdminTableInfo} from "../core/introspection.js";
 
 export interface FormFieldProps {
@@ -15,7 +17,7 @@ export interface FormFieldProps {
 /**
  * Render a single form field based on column metadata
  */
-export function FormField({column, value, error}: FormFieldProps) {
+export function FormField({column, value, error}: FormFieldProps): Children {
 	const id = `field-${column.name}`;
 
 	// Skip auto-generated primary key fields
@@ -200,7 +202,7 @@ export interface ModelFormProps {
 	errors?: Record<string, string>;
 	action: string;
 	submitLabel: string;
-	cancelUrl: string;
+	cancelURL: string;
 }
 
 /**
@@ -212,8 +214,8 @@ export function ModelForm({
 	errors = {},
 	action,
 	submitLabel,
-	cancelUrl,
-}: ModelFormProps) {
+	cancelURL,
+}: ModelFormProps): Children {
 	return (
 		<form class="usa-form admin-form" method="POST" action={action}>
 			{tableInfo.columns.map((col) => (
@@ -225,7 +227,7 @@ export function ModelForm({
 			))}
 			<div class="admin-form-actions">
 				<button type="submit" class="usa-button">{submitLabel}</button>
-				<a href={cancelUrl} class="usa-button usa-button--outline">
+				<a href={cancelURL} class="usa-button usa-button--outline">
 					Cancel
 				</a>
 			</div>

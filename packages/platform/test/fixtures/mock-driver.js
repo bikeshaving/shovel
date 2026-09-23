@@ -1,36 +1,38 @@
-export let lastUrl;
-export let lastOptions;
-export let lastDriver;
-export let closeCalls = 0;
+export const calls = {
+	url: undefined,
+	options: undefined,
+	driver: undefined,
+	close: 0,
+};
 
 export function reset() {
-	lastUrl = undefined;
-	lastOptions = undefined;
-	lastDriver = undefined;
-	closeCalls = 0;
+	calls.url = undefined;
+	calls.options = undefined;
+	calls.driver = undefined;
+	calls.close = 0;
 }
 
 class BaseDriver {
 	constructor(url, options) {
-		lastUrl = url;
-		lastOptions = options;
+		calls.url = url;
+		calls.options = options;
 	}
 
 	async close() {
-		closeCalls += 1;
+		calls.close += 1;
 	}
 }
 
 export class NamedDriver extends BaseDriver {
 	constructor(url, options) {
 		super(url, options);
-		lastDriver = "NamedDriver";
+		calls.driver = "NamedDriver";
 	}
 }
 
 export default class DefaultDriver extends BaseDriver {
 	constructor(url, options) {
 		super(url, options);
-		lastDriver = "default";
+		calls.driver = "default";
 	}
 }

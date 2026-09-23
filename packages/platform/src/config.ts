@@ -8,15 +8,17 @@
  * Error thrown when config validation fails
  */
 export class ConfigValidationError extends Error {
-	constructor(
-		public readonly path: string,
-		public readonly issue: "undefined" | "NaN",
-	) {
+	readonly path: string;
+	readonly issue: "undefined" | "NaN";
+
+	constructor(path: string, issue: "undefined" | "NaN") {
 		const message = issue === "undefined"
 			? `Config "${path}" is undefined. Ensure required environment variables are set.`
 			: `Config "${path}" is NaN. Ensure the environment variable contains a valid number.`;
 		super(message);
 		this.name = "ConfigValidationError";
+		this.path = path;
+		this.issue = issue;
 	}
 }
 

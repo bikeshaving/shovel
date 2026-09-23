@@ -25,13 +25,13 @@ const envKeys = [
 	"MODE",
 ];
 
-function saveEnv() {
+function saveEnv(): void {
 	for (const key of envKeys) {
 		savedEnv[key] = process.env[key];
 	}
 }
 
-function restoreEnv() {
+function restoreEnv(): void {
 	for (const key of envKeys) {
 		if (savedEnv[key] === undefined) {
 			delete process.env[key];
@@ -41,13 +41,13 @@ function restoreEnv() {
 	}
 }
 
-function clearEnv() {
+function clearEnv(): void {
 	for (const key of envKeys) {
 		delete process.env[key];
 	}
 }
 
-function withTempDir(fn: (dir: string) => void) {
+function withTempDir(fn: (dir: string) => void): void {
 	const dir = mkdtempSync(join(tmpdir(), "shovel-config-test-"));
 	try {
 		fn(dir);

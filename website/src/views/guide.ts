@@ -1,4 +1,5 @@
 import {jsx} from "@b9g/crank/standalone";
+import type {Element} from "@b9g/crank/standalone";
 import {Marked} from "@b9g/crankdown";
 import {NotFound} from "@b9g/http-errors";
 
@@ -12,7 +13,7 @@ interface ViewProps {
 	params: Record<string, string>;
 }
 
-export default async function Guide({url}: ViewProps) {
+export default async function Guide({url}: ViewProps): Promise<Element> {
 	const docsDir = await self.directories.open("docs");
 	const guidesDir = await docsDir.getDirectoryHandle("guides");
 	const docs = await collectDocuments(guidesDir, {pathPrefix: "guides"});

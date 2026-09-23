@@ -91,7 +91,9 @@ export interface AssetsConfig {
 /**
  * Assets middleware
  */
-export function assets(config: AssetsConfig = {}) {
+export function assets(
+	config: AssetsConfig = {},
+): (request: Request) => Promise<Response | undefined> {
 	const {cacheControl = "public, max-age=31536000, immutable"} = config;
 
 	// Build URL -> entry map for O(1) lookup (computed once per middleware instance)
@@ -127,7 +129,9 @@ export function assets(config: AssetsConfig = {}) {
 		return entries;
 	}
 
-	return async function assetsMiddleware(request: Request) {
+	return async function assetsMiddleware(
+		request: Request,
+	): Promise<Response | undefined> {
 		const url = new URL(request.url);
 		const requestedPath = url.pathname;
 

@@ -106,7 +106,7 @@ export interface RouteMatch {
  * Route entry stored by the router
  */
 export interface RouteEntry {
-	pattern: import("@b9g/match-pattern").MatchPattern;
+	pattern: MatchPattern;
 	method: string;
 	handler?: Handler;
 	name?: string;

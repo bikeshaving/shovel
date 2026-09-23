@@ -94,7 +94,14 @@ export class HTTPError extends Error {
 	/**
 	 * Convert error to a plain object for serialization
 	 */
-	toJSON() {
+	toJSON(): {
+		name: string;
+		message: string;
+		status: number;
+		statusCode: number;
+		expose: boolean;
+		headers?: Record<string, string>;
+	} {
 		return {
 			name: this.name,
 			message: this.message,

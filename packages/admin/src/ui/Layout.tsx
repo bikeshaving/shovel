@@ -33,10 +33,10 @@ export function PageLayout({
 	models,
 	assets,
 	children,
-}: PageLayoutProps) {
+}: PageLayoutProps): Children {
 	// Use provided assets or fall back to defaults with basePath prefix
-	const cssUrl = assets?.css ?? `${basePath}${DEFAULT_ASSETS.css}`;
-	const jsUrl = assets?.js ?? `${basePath}${DEFAULT_ASSETS.js}`;
+	const cssURL = assets?.css ?? `${basePath}${DEFAULT_ASSETS.css}`;
+	const jsURL = assets?.js ?? `${basePath}${DEFAULT_ASSETS.js}`;
 
 	return (
 		<html lang="en">
@@ -46,7 +46,7 @@ export function PageLayout({
 				<title>
 					{pageTitle} - {title}
 				</title>
-				<link rel="stylesheet" href={cssUrl} />
+				<link rel="stylesheet" href={cssURL} />
 				<style>
 					{`
 					/* Admin-specific overrides */
@@ -180,7 +180,7 @@ export function PageLayout({
 					</aside>
 					<main class="admin-main">{children}</main>
 				</div>
-				<script src={jsUrl} />
+				<script src={jsURL} />
 			</body>
 		</html>
 	);

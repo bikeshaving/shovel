@@ -1,5 +1,3 @@
-/// <reference path="./globals.d.ts" />
-/// <reference path="./shovel-config.d.ts" />
 /**
  * @b9g/platform - Platform interface for ServiceWorker entrypoint loading
  *
@@ -10,6 +8,11 @@
  * - Platform interface and base classes
  * - ServiceWorkerPool for multi-worker execution
  */
+
+/* eslint-disable @typescript-eslint/triple-slash-reference -- ambient declarations, not modules */
+/// <reference path="./globals.d.ts" />
+/// <reference path="./shovel-config.d.ts" />
+/* eslint-enable @typescript-eslint/triple-slash-reference */
 
 import {getLogger} from "@logtape/logtape";
 
@@ -350,6 +353,7 @@ interface WorkerRequest extends WorkerMessage {
 		headers: Record<string, string>;
 		body?: ArrayBuffer | null; // Zero-copy transfer to worker
 	};
+	// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 	requestID: number;
 }
 
@@ -361,6 +365,7 @@ interface WorkerResponse extends WorkerMessage {
 		headers: Record<string, string>;
 		body: ArrayBuffer; // Zero-copy transfer from worker
 	};
+	// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 	requestID: number;
 }
 
@@ -368,6 +373,7 @@ interface WorkerErrorMessage extends WorkerMessage {
 	type: "error";
 	error: string;
 	stack?: string;
+	// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 	requestID?: number;
 }
 
@@ -435,6 +441,49 @@ Please check your runtime version and configuration.
 	);
 }
 
+type PendingRequest = {
+	resolve: (response: Response) => void;
+	reject: (error: Error) => void;
+	timeoutId?: ReturnType<typeof setTimeout>;
+};
+
+type PendingWorkerReady = {resolve: () => void; reject: (e: Error) => void};
+
+type WorkerAvailableWaiter = {
+	resolve: () => void;
+	reject: (error: Error) => void;
+};
+
+type ResolvedWorkerPoolOptions =
+	Required<Omit<WorkerPoolOptions, "cwd" | "createWorker">> &
+	{
+		cwd?: string;
+		createWorker?: (entrypoint: string) => Worker | Promise<Worker>;
+	};
+
+const kWorkers = Symbol("workers");
+const kCurrentWorker = Symbol("currentWorker");
+const kRequestId = Symbol("requestId");
+const kPendingRequests = Symbol("pendingRequests");
+const kPendingWorkerReady = Symbol("pendingWorkerReady");
+const kOptions = Symbol("options");
+const kAppEntrypoint = Symbol("appEntrypoint");
+const kCacheStorage = Symbol("cacheStorage");
+const kWorkerAvailableWaiters = Symbol("workerAvailableWaiters");
+
+export interface ServiceWorkerPool {
+	[kWorkers]: Worker[];
+	[kCurrentWorker]: number;
+	[kRequestId]: number;
+	[kPendingRequests]: Map<number, PendingRequest>;
+	[kPendingWorkerReady]: Map<Worker, PendingWorkerReady>;
+	[kOptions]: ResolvedWorkerPoolOptions;
+	[kAppEntrypoint]: string;
+	[kCacheStorage]?: CacheStorage &
+		{handleMessage?: (worker: Worker, message: any) => Promise<void>};
+	[kWorkerAvailableWaiters]: WorkerAvailableWaiter[];
+}
+
 /**
  * ServiceWorkerPool - manages a pool of ServiceWorker instances
  *
@@ -448,53 +497,35 @@ Please check your runtime version and configuration.
  * with the new bundle path.
  */
 export class ServiceWorkerPool {
-	#workers: Worker[];
-	#currentWorker: number;
-	#requestID: number;
-	#pendingRequests: Map<
-		number,
-		{
-			resolve: (response: Response) => void;
-			reject: (error: Error) => void;
-			timeoutId?: ReturnType<typeof setTimeout>;
-		}
-	>;
-
-	#pendingWorkerReady: Map<
-		Worker,
-		{resolve: () => void; reject: (e: Error) => void}
-	>;
-
-	#options: Required<Omit<WorkerPoolOptions, "cwd" | "createWorker">> &
-		{
-			cwd?: string;
-			createWorker?: (entrypoint: string) => Worker | Promise<Worker>;
-		};
-
-	#appEntrypoint: string;
-	#cacheStorage?: CacheStorage &
-		{handleMessage?: (worker: Worker, message: any) => Promise<void>};
-
-	// Waiters for when workers become available (used during reload)
-	#workerAvailableWaiters: Array<{
-		resolve: () => void;
-		reject: (error: Error) => void;
-	}>;
-
 	constructor(
+		// eslint-disable-next-line @typescript-eslint/default-param-last -- public constructor signature; positional args relied on by platform-node, platform-bun, and tests
 		options: WorkerPoolOptions = {},
 		appEntrypoint: string,
 		cacheStorage?: CacheStorage,
 	) {
-		this.#workers = [];
-		this.#currentWorker = 0;
-		this.#requestID = 0;
-		this.#pendingRequests = new Map();
-		this.#pendingWorkerReady = new Map();
-		this.#workerAvailableWaiters = [];
-		this.#appEntrypoint = appEntrypoint;
-		this.#cacheStorage = cacheStorage;
-		this.#options = {workerCount: 1, requestTimeout: 30000, ...options};
+		this[kWorkers] = [];
+		this[kCurrentWorker] = 0;
+		this[kRequestId] = 0;
+		this[kPendingRequests] = new Map();
+		this[kPendingWorkerReady] = new Map();
+		this[kWorkerAvailableWaiters] = [];
+		this[kAppEntrypoint] = appEntrypoint;
+		this[kCacheStorage] = cacheStorage;
+		this[kOptions] = {workerCount: 1, requestTimeout: 30000, ...options};
+	}
+
+	/**
+	 * Get the number of active workers
+	 */
+	get workerCount(): number {
+		return this[kWorkers].length;
+	}
+
+	/**
+	 * Check if the pool is ready to handle requests
+	 */
+	get ready(): boolean {
+		return this[kWorkers].length > 0;
 	}
 
 	/**
@@ -502,180 +533,10 @@ export class ServiceWorkerPool {
 	 */
 	async init(): Promise<void> {
 		const promises: Array<Promise<Worker>> = [];
-		for (let i = 0; i < this.#options.workerCount; i++) {
-			promises.push(this.#createWorker(this.#appEntrypoint));
+		for (let i = 0; i < this[kOptions].workerCount; i++) {
+			promises.push(createPoolWorker(this, this[kAppEntrypoint]));
 		}
 		await Promise.all(promises);
-	}
-
-	/**
-	 * Create a worker from the unified bundle
-	 * The bundle self-initializes and sends "ready" when done
-	 */
-	async #createWorker(entrypoint: string): Promise<Worker> {
-		const worker = this.#options.createWorker
-			? await this.#options.createWorker(entrypoint)
-			: await createWebWorker(entrypoint);
-
-		// Set up promise to wait for ready signal
-		const readyPromise = new Promise<void>((resolve, reject) => {
-			const timeoutId = setTimeout(() => {
-				this.#pendingWorkerReady.delete(worker);
-				reject(
-					new Error(
-						`Worker failed to become ready within 30000ms (${entrypoint})`,
-					),
-				);
-			}, 30000);
-
-			this.#pendingWorkerReady.set(worker, {
-				resolve: () => {
-					clearTimeout(timeoutId);
-					resolve();
-				},
-				reject: (error: Error) => {
-					clearTimeout(timeoutId);
-					reject(error);
-				},
-			});
-		});
-
-		// Set up message handler
-		worker.addEventListener("message", (event) => {
-			this.#handleWorkerMessage(worker, event.data || event);
-		});
-
-		// Set up error handler
-		worker.addEventListener("error", (event: any) => {
-			const errorMessage =
-				event.message || event.error?.message || "Unknown worker error";
-			const error = new Error(`Worker error: ${errorMessage}`);
-			logger.error("Worker error: {error}", {
-				error: event.error || errorMessage,
-				filename: event.filename,
-				lineno: event.lineno,
-				colno: event.colno,
-			});
-
-			// Reject pending ready promise if exists
-			const pending = this.#pendingWorkerReady.get(worker);
-			if (pending) {
-				this.#pendingWorkerReady.delete(worker);
-				pending.reject(error);
-			}
-		});
-
-		logger.debug("Waiting for worker ready signal", {entrypoint});
-
-		await readyPromise;
-		this.#pendingWorkerReady.delete(worker);
-
-		// Yield to event loop to ensure worker's message handler is fully active.
-		// This works around a timing issue in Node.js worker_threads where the
-		// worker may post "ready" before its event loop is ready to receive messages.
-		await new Promise((resolve) => setTimeout(resolve, 0));
-
-		// Only add worker to the pool AFTER it's ready to handle requests
-		// This prevents requests being dispatched to workers that haven't
-		// finished initializing their ServiceWorker code
-		this.#workers.push(worker);
-		logger.debug("Worker ready", {entrypoint});
-
-		// Notify any waiters that a worker is now available
-		const waiters = this.#workerAvailableWaiters;
-		this.#workerAvailableWaiters = [];
-		for (const waiter of waiters) {
-			waiter.resolve();
-		}
-
-		return worker;
-	}
-
-	#handleWorkerMessage(worker: Worker, message: WorkerMessage) {
-		logger.debug("Worker message received", {type: message.type});
-
-		switch (message.type) {
-			case "ready": {
-				// Worker finished initialization, resolve the ready promise
-				const pending = this.#pendingWorkerReady.get(worker);
-				if (pending) {
-					pending.resolve();
-				}
-				logger.debug("ServiceWorker ready");
-				break;
-			}
-
-			case "response":
-				this.#handleResponse(message as WorkerResponse);
-				break;
-
-			case "error":
-				this.#handleError(message as WorkerErrorMessage);
-				break;
-
-			default:
-				// Handle cache messages from PostMessageCache
-				if (message.type?.startsWith("cache:")) {
-					logger.debug("Cache message received", {type: message.type});
-					if (this.#cacheStorage) {
-						const storage = this.#cacheStorage as any;
-						if (typeof storage.handleMessage === "function") {
-							storage.handleMessage(worker, message).catch((err: Error) => {
-								logger.error("Cache message handling failed: {error}", {
-									error: err,
-								});
-							});
-						}
-					}
-				} else if (message.type === "broadcast:post") {
-					// Fan out to all OTHER workers
-					for (const w of this.#workers) {
-						if (w !== worker) {
-							w.postMessage({
-								type: "broadcast:deliver",
-								channel: message.channel,
-								data: message.data,
-							});
-						}
-					}
-				}
-				break;
-		}
-	}
-
-	#handleResponse(message: WorkerResponse) {
-		const pending = this.#pendingRequests.get(message.requestID);
-		if (pending) {
-			if (pending.timeoutId) {
-				clearTimeout(pending.timeoutId);
-			}
-			const response = new Response(message.response.body, {
-				status: message.response.status,
-				statusText: message.response.statusText,
-				headers: message.response.headers,
-			});
-			pending.resolve(response);
-			this.#pendingRequests.delete(message.requestID);
-		}
-	}
-
-	#handleError(message: WorkerErrorMessage) {
-		logger.error("Worker error message received: {error}", {
-			error: message.error,
-			stack: message.stack,
-			requestID: message.requestID,
-		});
-
-		if (message.requestID) {
-			const pending = this.#pendingRequests.get(message.requestID);
-			if (pending) {
-				if (pending.timeoutId) {
-					clearTimeout(pending.timeoutId);
-				}
-				pending.reject(new Error(message.error));
-				this.#pendingRequests.delete(message.requestID);
-			}
-		}
 	}
 
 	/**
@@ -683,20 +544,20 @@ export class ServiceWorkerPool {
 	 */
 	async handleRequest(request: Request): Promise<Response> {
 		// Wait for workers to be available (e.g., during reload)
-		if (this.#workers.length === 0) {
+		if (this[kWorkers].length === 0) {
 			logger.debug("No workers available, waiting for worker to be ready");
 			await new Promise<void>((resolve, reject) => {
 				const waiter = {resolve, reject};
-				this.#workerAvailableWaiters.push(waiter);
+				this[kWorkerAvailableWaiters].push(waiter);
 
 				// Timeout if no worker becomes available
 				const timeoutId = setTimeout(() => {
-					const index = this.#workerAvailableWaiters.indexOf(waiter);
+					const index = this[kWorkerAvailableWaiters].indexOf(waiter);
 					if (index !== -1) {
-						this.#workerAvailableWaiters.splice(index, 1);
+						this[kWorkerAvailableWaiters].splice(index, 1);
 						reject(new Error("Timeout waiting for worker to become available"));
 					}
-				}, this.#options.requestTimeout);
+				}, this[kOptions].requestTimeout);
 
 				// Clear timeout if resolved/rejected normally
 				const originalResolve = waiter.resolve;
@@ -712,88 +573,26 @@ export class ServiceWorkerPool {
 			});
 		}
 
-		const worker = this.#workers[this.#currentWorker];
+		const worker = this[kWorkers][this[kCurrentWorker]];
 		logger.debug("Dispatching to worker", {
-			workerIndex: this.#currentWorker + 1,
-			totalWorkers: this.#workers.length,
+			workerIndex: this[kCurrentWorker] + 1,
+			totalWorkers: this[kWorkers].length,
 		});
-		this.#currentWorker = (this.#currentWorker + 1) % this.#workers.length;
+		this[kCurrentWorker] = (this[kCurrentWorker] + 1) % this[kWorkers].length;
 
-		const requestID = ++this.#requestID;
+		// eslint-disable-next-line acrocase/acrocase -- flows into the WorkerRequest wire field requestID
+		const requestID = ++this[kRequestId];
 
 		return new Promise((resolve, reject) => {
 			const timeoutId = setTimeout(() => {
-				if (this.#pendingRequests.has(requestID)) {
-					this.#pendingRequests.delete(requestID);
+				if (this[kPendingRequests].has(requestID)) {
+					this[kPendingRequests].delete(requestID);
 					reject(new Error("Request timeout"));
 				}
-			}, this.#options.requestTimeout);
+			}, this[kOptions].requestTimeout);
 
-			this.#pendingRequests.set(requestID, {resolve, reject, timeoutId});
-			this.#sendRequest(worker, request, requestID).catch(reject);
-		});
-	}
-
-	async #sendRequest(
-		worker: Worker,
-		request: Request,
-		requestID: number,
-	): Promise<void> {
-		let body: ArrayBuffer | null = null;
-		if (request.body) {
-			body = await request.arrayBuffer();
-		}
-
-		const workerRequest: WorkerRequest = {
-			type: "request",
-			request: {
-				url: request.url,
-				method: request.method,
-				headers: Object.fromEntries(request.headers.entries()),
-				body,
-			},
-			requestID,
-		};
-
-		if (body) {
-			worker.postMessage(workerRequest, [body]);
-		} else {
-			worker.postMessage(workerRequest);
-		}
-	}
-
-	/**
-	 * Gracefully shutdown a worker by closing all resources first
-	 */
-	async #gracefulShutdown(worker: Worker, timeout = 5000): Promise<void> {
-		return new Promise<void>((resolve) => {
-			let resolved = false;
-
-			// Set up listener for shutdown-complete
-			const onMessage = (event: MessageEvent) => {
-				const message = event.data || event;
-				if (message?.type === "shutdown-complete") {
-					if (!resolved) {
-						resolved = true;
-						worker.removeEventListener("message", onMessage);
-						resolve();
-					}
-				}
-			};
-			worker.addEventListener("message", onMessage);
-
-			// Send shutdown signal
-			worker.postMessage({type: "shutdown"});
-
-			// Timeout fallback - don't hang forever
-			setTimeout(() => {
-				if (!resolved) {
-					resolved = true;
-					worker.removeEventListener("message", onMessage);
-					logger.warn("Worker shutdown timed out, forcing termination");
-					resolve();
-				}
-			}, timeout);
+			this[kPendingRequests].set(requestID, {resolve, reject, timeoutId});
+			sendRequest(worker, request, requestID).catch(reject);
 		});
 	}
 
@@ -809,34 +608,35 @@ export class ServiceWorkerPool {
 		logger.debug("Reloading workers", {entrypoint});
 
 		// Update stored entrypoint
-		this.#appEntrypoint = entrypoint;
+		this[kAppEntrypoint] = entrypoint;
 
 		// Gracefully shutdown existing workers - close resources before terminating
-		const shutdownPromises = this.#workers.map((worker) =>
-			this.#gracefulShutdown(worker),
+		const shutdownPromises = this[kWorkers].map((worker) =>
+			gracefulShutdown(worker),
 		);
 		await Promise.allSettled(shutdownPromises);
 
 		// Now terminate the workers
-		const terminatePromises = this.#workers.map((worker) => worker.terminate());
+		const terminatePromises = this[kWorkers].map((worker) => worker.terminate(),
+		);
 		await Promise.allSettled(terminatePromises);
-		this.#workers = [];
-		this.#currentWorker = 0; // Reset round-robin index
+		this[kWorkers] = [];
+		this[kCurrentWorker] = 0; // Reset round-robin index
 
 		// Create new workers with new bundle
 		try {
 			const createPromises: Array<Promise<Worker>> = [];
-			for (let i = 0; i < this.#options.workerCount; i++) {
-				createPromises.push(this.#createWorker(entrypoint));
+			for (let i = 0; i < this[kOptions].workerCount; i++) {
+				createPromises.push(createPoolWorker(this, entrypoint));
 			}
 			await Promise.all(createPromises);
 			logger.info("Reloaded {count} workers", {
-				count: this.#options.workerCount,
+				count: this[kOptions].workerCount,
 			});
 		} catch (error) {
 			// If worker creation fails, reject any pending request waiters
-			const waiters = this.#workerAvailableWaiters;
-			this.#workerAvailableWaiters = [];
+			const waiters = this[kWorkerAvailableWaiters];
+			this[kWorkerAvailableWaiters] = [];
 			const reloadError = error instanceof Error
 				? error
 				: new Error("Worker creation failed during reload");
@@ -852,41 +652,276 @@ export class ServiceWorkerPool {
 	 */
 	async terminate(): Promise<void> {
 		// Gracefully shutdown workers first (close databases, etc.)
-		const shutdownPromises = this.#workers.map((worker) =>
-			this.#gracefulShutdown(worker),
+		const shutdownPromises = this[kWorkers].map((worker) =>
+			gracefulShutdown(worker),
 		);
 		await Promise.allSettled(shutdownPromises);
 
 		// Now terminate
-		const terminatePromises = this.#workers.map((worker) => worker.terminate());
+		const terminatePromises = this[kWorkers].map((worker) => worker.terminate(),
+		);
 		await Promise.allSettled(terminatePromises);
-		this.#workers = [];
-		this.#currentWorker = 0; // Reset round-robin index
-		this.#pendingRequests.clear();
-		this.#pendingWorkerReady.clear();
+		this[kWorkers] = [];
+		this[kCurrentWorker] = 0; // Reset round-robin index
+		this[kPendingRequests].clear();
+		this[kPendingWorkerReady].clear();
 
 		// Reject any pending request waiters
-		const waiters = this.#workerAvailableWaiters;
-		this.#workerAvailableWaiters = [];
+		const waiters = this[kWorkerAvailableWaiters];
+		this[kWorkerAvailableWaiters] = [];
 		const terminateError = new Error("Worker pool terminated");
 		for (const waiter of waiters) {
 			waiter.reject(terminateError);
 		}
 	}
+}
 
-	/**
-	 * Get the number of active workers
-	 */
-	get workerCount(): number {
-		return this.#workers.length;
+/**
+ * Create a worker from the unified bundle
+ * The bundle self-initializes and sends "ready" when done
+ */
+async function createPoolWorker(
+	pool: ServiceWorkerPool,
+	entrypoint: string,
+): Promise<Worker> {
+	const worker = pool[kOptions].createWorker
+		? await pool[kOptions].createWorker(entrypoint)
+		: await createWebWorker(entrypoint);
+
+	// Set up promise to wait for ready signal
+	const readyPromise = new Promise<void>((resolve, reject) => {
+		const timeoutId = setTimeout(() => {
+			pool[kPendingWorkerReady].delete(worker);
+			reject(
+				new Error(
+					`Worker failed to become ready within 30000ms (${entrypoint})`,
+				),
+			);
+		}, 30000);
+
+		pool[kPendingWorkerReady].set(worker, {
+			resolve: () => {
+				clearTimeout(timeoutId);
+				resolve();
+			},
+			reject: (error: Error) => {
+				clearTimeout(timeoutId);
+				reject(error);
+			},
+		});
+	});
+
+	// Set up message handler
+	worker.addEventListener("message", (event) => {
+		handleWorkerMessage(pool, worker, event.data || event);
+	});
+
+	// Set up error handler
+	worker.addEventListener("error", (event: any) => {
+		const errorMessage =
+			event.message || event.error?.message || "Unknown worker error";
+		const error = new Error(`Worker error: ${errorMessage}`);
+		logger.error("Worker error: {error}", {
+			error: event.error || errorMessage,
+			filename: event.filename,
+			lineno: event.lineno,
+			colno: event.colno,
+		});
+
+		// Reject pending ready promise if exists
+		const pending = pool[kPendingWorkerReady].get(worker);
+		if (pending) {
+			pool[kPendingWorkerReady].delete(worker);
+			pending.reject(error);
+		}
+	});
+
+	logger.debug("Waiting for worker ready signal", {entrypoint});
+
+	await readyPromise;
+	pool[kPendingWorkerReady].delete(worker);
+
+	// Yield to event loop to ensure worker's message handler is fully active.
+	// This works around a timing issue in Node.js worker_threads where the
+	// worker may post "ready" before its event loop is ready to receive messages.
+	await new Promise((resolve) => setTimeout(resolve, 0));
+
+	// Only add worker to the pool AFTER it's ready to handle requests
+	// This prevents requests being dispatched to workers that haven't
+	// finished initializing their ServiceWorker code
+	pool[kWorkers].push(worker);
+	logger.debug("Worker ready", {entrypoint});
+
+	// Notify any waiters that a worker is now available
+	const waiters = pool[kWorkerAvailableWaiters];
+	pool[kWorkerAvailableWaiters] = [];
+	for (const waiter of waiters) {
+		waiter.resolve();
 	}
 
-	/**
-	 * Check if the pool is ready to handle requests
-	 */
-	get ready(): boolean {
-		return this.#workers.length > 0;
+	return worker;
+}
+
+function handleWorkerMessage(
+	pool: ServiceWorkerPool,
+	worker: Worker,
+	message: WorkerMessage,
+): void {
+	logger.debug("Worker message received", {type: message.type});
+
+	switch (message.type) {
+		case "ready": {
+			// Worker finished initialization, resolve the ready promise
+			const pending = pool[kPendingWorkerReady].get(worker);
+			if (pending) {
+				pending.resolve();
+			}
+			logger.debug("ServiceWorker ready");
+			break;
+		}
+
+		case "response":
+			handleResponse(pool, message as WorkerResponse);
+			break;
+
+		case "error":
+			handleError(pool, message as WorkerErrorMessage);
+			break;
+
+		default:
+			// Handle cache messages from PostMessageCache
+			if (message.type?.startsWith("cache:")) {
+				logger.debug("Cache message received", {type: message.type});
+				if (pool[kCacheStorage]) {
+					const storage = pool[kCacheStorage] as any;
+					if (typeof storage.handleMessage === "function") {
+						storage.handleMessage(worker, message).catch((err: Error) => {
+							logger.error("Cache message handling failed: {error}", {
+								error: err,
+							});
+						});
+					}
+				}
+			} else if (message.type === "broadcast:post") {
+				// Fan out to all OTHER workers
+				for (const w of pool[kWorkers]) {
+					if (w !== worker) {
+						w.postMessage({
+							type: "broadcast:deliver",
+							channel: message.channel,
+							data: message.data,
+						});
+					}
+				}
+			}
+			break;
 	}
+}
+
+function handleResponse(
+	pool: ServiceWorkerPool,
+	message: WorkerResponse,
+): void {
+	const pending = pool[kPendingRequests].get(message.requestID);
+	if (pending) {
+		if (pending.timeoutId) {
+			clearTimeout(pending.timeoutId);
+		}
+		const response = new Response(message.response.body, {
+			status: message.response.status,
+			statusText: message.response.statusText,
+			headers: message.response.headers,
+		});
+		pending.resolve(response);
+		pool[kPendingRequests].delete(message.requestID);
+	}
+}
+
+function handleError(
+	pool: ServiceWorkerPool,
+	message: WorkerErrorMessage,
+): void {
+	logger.error("Worker error message received: {error}", {
+		error: message.error,
+		stack: message.stack,
+		// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
+		requestID: message.requestID,
+	});
+
+	if (message.requestID) {
+		const pending = pool[kPendingRequests].get(message.requestID);
+		if (pending) {
+			if (pending.timeoutId) {
+				clearTimeout(pending.timeoutId);
+			}
+			pending.reject(new Error(message.error));
+			pool[kPendingRequests].delete(message.requestID);
+		}
+	}
+}
+
+async function sendRequest(
+	worker: Worker,
+	request: Request,
+	// eslint-disable-next-line acrocase/acrocase -- flows into the WorkerRequest wire field requestID
+	requestID: number,
+): Promise<void> {
+	let body: ArrayBuffer | null = null;
+	if (request.body) {
+		body = await request.arrayBuffer();
+	}
+
+	const workerRequest: WorkerRequest = {
+		type: "request",
+		request: {
+			url: request.url,
+			method: request.method,
+			headers: Object.fromEntries(request.headers.entries()),
+			body,
+		},
+		requestID,
+	};
+
+	if (body) {
+		worker.postMessage(workerRequest, [body]);
+	} else {
+		worker.postMessage(workerRequest);
+	}
+}
+
+/**
+ * Gracefully shutdown a worker by closing all resources first
+ */
+async function gracefulShutdown(worker: Worker, timeout = 5000): Promise<void> {
+	return new Promise<void>((resolve) => {
+		let resolved = false;
+
+		// Set up listener for shutdown-complete
+		const onMessage = (event: MessageEvent) => {
+			const message = event.data || event;
+			if (message?.type === "shutdown-complete") {
+				if (!resolved) {
+					resolved = true;
+					worker.removeEventListener("message", onMessage);
+					resolve();
+				}
+			}
+		};
+		worker.addEventListener("message", onMessage);
+
+		// Send shutdown signal
+		worker.postMessage({type: "shutdown"});
+
+		// Timeout fallback - don't hang forever
+		setTimeout(() => {
+			if (!resolved) {
+				resolved = true;
+				worker.removeEventListener("message", onMessage);
+				logger.warn("Worker shutdown timed out, forcing termination");
+				resolve();
+			}
+		}, timeout);
+	});
 }
 
 // ============================================================================

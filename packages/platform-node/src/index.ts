@@ -65,6 +65,22 @@ export interface NodePlatformOptions {
 // SERVICE WORKER CONTAINER
 // ============================================================================
 
+const kPlatform = Symbol("platform");
+const kPool = Symbol("pool");
+const kCacheStorage = Symbol("cacheStorage");
+const kRegistration = Symbol("registration");
+const kReadyPromise = Symbol("readyPromise");
+const kReadyResolve = Symbol("readyResolve");
+
+export interface NodeServiceWorkerContainer {
+	[kPlatform]: NodePlatform;
+	[kPool]?: ServiceWorkerPool;
+	[kCacheStorage]?: CustomCacheStorage;
+	[kRegistration]?: ShovelServiceWorkerRegistration;
+	[kReadyPromise]: Promise<ServiceWorkerRegistration>;
+	[kReadyResolve]?: (registration: ServiceWorkerRegistration) => void;
+}
+
 /**
  * Node.js ServiceWorkerContainer implementation
  * Manages ServiceWorker registrations backed by worker threads
@@ -72,13 +88,6 @@ export interface NodePlatformOptions {
 export class NodeServiceWorkerContainer
 	extends EventTarget
 	implements ServiceWorkerContainer {
-	#platform: NodePlatform;
-	#pool?: ServiceWorkerPool;
-	#cacheStorage?: CustomCacheStorage;
-	#registration?: ShovelServiceWorkerRegistration;
-	#readyPromise: Promise<ServiceWorkerRegistration>;
-	#readyResolve?: (registration: ServiceWorkerRegistration) => void;
-
 	// Standard ServiceWorkerContainer properties
 	readonly controller: ServiceWorker | null;
 	oncontrollerchange: ((ev: Event) => unknown) | null;
@@ -87,14 +96,28 @@ export class NodeServiceWorkerContainer
 
 	constructor(platform: NodePlatform) {
 		super();
-		this.#platform = platform;
-		this.#readyPromise = new Promise((resolve) => {
-			this.#readyResolve = resolve;
+		this[kPlatform] = platform;
+		this[kReadyPromise] = new Promise((resolve) => {
+			this[kReadyResolve] = resolve;
 		});
 		this.controller = null;
 		this.oncontrollerchange = null;
 		this.onmessage = null;
 		this.onmessageerror = null;
+	}
+
+	/**
+	 * Ready promise - resolves when a registration is active
+	 */
+	get ready(): Promise<ServiceWorkerRegistration> {
+		return this[kReadyPromise];
+	}
+
+	/**
+	 * Internal: Get worker pool for request handling
+	 */
+	get pool(): ServiceWorkerPool | undefined {
+		return this[kPool];
 	}
 
 	/**
@@ -116,11 +139,11 @@ export class NodeServiceWorkerContainer
 			// Use URL to properly parse the file:// URL
 			entryPath = new URL(urlStr).pathname;
 		} else {
-			entryPath = Path.resolve(this.#platform.options.cwd, urlStr);
+			entryPath = Path.resolve(this[kPlatform].options.cwd, urlStr);
 		}
 
 		// Try to load config.js for cache coordination (exists in built output)
-		let config = this.#platform.options.config;
+		let config = this[kPlatform].options.config;
 		const configPath = Path.join(Path.dirname(entryPath), "config.js");
 		try {
 			// eslint-disable-next-line no-restricted-syntax -- Import generated config at runtime
@@ -132,34 +155,34 @@ export class NodeServiceWorkerContainer
 		}
 
 		// Create cache storage for cross-worker coordination
-		if (!this.#cacheStorage && config?.caches) {
-			this.#cacheStorage = new CustomCacheStorage(
+		if (!this[kCacheStorage] && config?.caches) {
+			this[kCacheStorage] = new CustomCacheStorage(
 				createCacheFactory({configs: config.caches}),
 			);
 		}
 
 		// Terminate any existing pool
-		if (this.#pool) {
-			await this.#pool.terminate();
+		if (this[kPool]) {
+			await this[kPool].terminate();
 		}
 
 		// Create worker pool with cache storage
-		this.#pool = new ServiceWorkerPool({
-			workerCount: this.#platform.options.workers,
-			createWorker: (entrypoint) => this.#platform.createWorker(entrypoint),
-		}, entryPath, this.#cacheStorage);
+		this[kPool] = new ServiceWorkerPool({
+			workerCount: this[kPlatform].options.workers,
+			createWorker: (entrypoint) => this[kPlatform].createWorker(entrypoint),
+		}, entryPath, this[kCacheStorage]);
 
 		// Initialize workers (waits for ready)
-		await this.#pool.init();
+		await this[kPool].init();
 
 		// Create registration to track state
-		this.#registration = new ShovelServiceWorkerRegistration(scope, urlStr);
-		this.#registration[kServiceWorker]._setState("activated");
+		this[kRegistration] = new ShovelServiceWorkerRegistration(scope, urlStr);
+		this[kRegistration][kServiceWorker]._setState("activated");
 
 		// Resolve ready promise
-		this.#readyResolve?.(this.#registration);
+		this[kReadyResolve]?.(this[kRegistration]);
 
-		return this.#registration;
+		return this[kRegistration];
 	}
 
 	/**
@@ -171,9 +194,9 @@ export class NodeServiceWorkerContainer
 		if (
 			scope === undefined ||
 			scope === "/" ||
-			scope === this.#registration?.scope
+			scope === this[kRegistration]?.scope
 		) {
-			return this.#registration;
+			return this[kRegistration];
 		}
 		return undefined;
 	}
@@ -182,7 +205,7 @@ export class NodeServiceWorkerContainer
 	 * Get all registrations
 	 */
 	async getRegistrations(): Promise<readonly ServiceWorkerRegistration[]> {
-		return this.#registration ? [this.#registration] : [];
+		return this[kRegistration] ? [this[kRegistration]] : [];
 	}
 
 	/**
@@ -193,42 +216,42 @@ export class NodeServiceWorkerContainer
 	}
 
 	/**
-	 * Ready promise - resolves when a registration is active
-	 */
-	get ready(): Promise<ServiceWorkerRegistration> {
-		return this.#readyPromise;
-	}
-
-	/**
-	 * Internal: Get worker pool for request handling
-	 */
-	get pool(): ServiceWorkerPool | undefined {
-		return this.#pool;
-	}
-
-	/**
 	 * Internal: Terminate workers and dispose cache storage
 	 */
 	async terminate(): Promise<void> {
-		await this.#pool?.terminate();
-		this.#pool = undefined;
+		await this[kPool]?.terminate();
+		this[kPool] = undefined;
 
 		// Dispose cache storage (closes Redis connections, etc.)
-		await this.#cacheStorage?.dispose();
-		this.#cacheStorage = undefined;
+		await this[kCacheStorage]?.dispose();
+		this[kCacheStorage] = undefined;
 	}
 
 	/**
 	 * Internal: Reload workers (for hot reload)
 	 */
 	async reloadWorkers(entrypoint: string): Promise<void> {
-		await this.#pool?.reloadWorkers(entrypoint);
+		await this[kPool]?.reloadWorkers(entrypoint);
 	}
 }
 
 // ============================================================================
 // PLATFORM IMPLEMENTATION
 // ============================================================================
+
+const kOptions = Symbol("options");
+const kServer = Symbol("server");
+
+export interface NodePlatform {
+	[kOptions]: {
+		port: number;
+		host: string;
+		cwd: string;
+		workers: number;
+		config?: ShovelConfig;
+	};
+	[kServer]?: Server;
+}
 
 /**
  * Node.js platform implementation
@@ -238,22 +261,12 @@ export class NodePlatform {
 	readonly name: string;
 	readonly serviceWorker: NodeServiceWorkerContainer;
 
-	#options: {
-		port: number;
-		host: string;
-		cwd: string;
-		workers: number;
-		config?: ShovelConfig;
-	};
-
-	#server?: Server;
-
 	constructor(options: NodePlatformOptions = {}) {
 		this.name = "node";
 		// eslint-disable-next-line no-restricted-properties -- Platform adapter entry point
 		const cwd = options.cwd || process.cwd();
 
-		this.#options = {
+		this[kOptions] = {
 			port: options.port ?? 7777,
 			host: options.host ?? "localhost",
 			workers: options.workers ?? 1,
@@ -262,6 +275,19 @@ export class NodePlatform {
 		};
 
 		this.serviceWorker = new NodeServiceWorkerContainer(this);
+	}
+
+	/**
+	 * Get options for testing
+	 */
+	get options(): {
+		port: number;
+		host: string;
+		cwd: string;
+		workers: number;
+		config?: ShovelConfig;
+	} {
+		return this[kOptions];
 	}
 
 	/**
@@ -285,32 +311,25 @@ export class NodePlatform {
 			);
 		}
 
-		this.#server = this.createServer((request) => pool.handleRequest(request));
-		await this.#server.listen();
-		return this.#server;
+		this[kServer] = this.createServer((request) => pool.handleRequest(request));
+		await this[kServer].listen();
+		return this[kServer];
 	}
 
 	/**
 	 * Close the server and terminate workers
 	 */
 	async close(): Promise<void> {
-		await this.#server?.close();
+		await this[kServer]?.close();
 		await this.serviceWorker.terminate();
-	}
-
-	/**
-	 * Get options for testing
-	 */
-	get options() {
-		return this.#options;
 	}
 
 	/**
 	 * Create HTTP server for Node.js
 	 */
 	createServer(handler: Handler, options: ServerOptions = {}): Server {
-		const port = options.port ?? this.#options.port;
-		const host = options.host ?? this.#options.host;
+		const port = options.port ?? this[kOptions].port;
+		const host = options.host ?? this[kOptions].host;
 
 		// Create HTTP server with Web API Request/Response conversion
 		const httpServer = HTTP.createServer(async (req, res) => {

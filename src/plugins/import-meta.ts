@@ -41,7 +41,7 @@ export function importMetaPlugin(): ESBuild.Plugin {
 				}
 
 				// Compute the values for this specific file
-				const fileUrl = pathToFileURL(args.path).href;
+				const fileURL = pathToFileURL(args.path).href;
 				const fileDirname = dirname(args.path);
 				const fileFilename = args.path;
 
@@ -50,7 +50,7 @@ export function importMetaPlugin(): ESBuild.Plugin {
 
 				transformed = transformed.replace(
 					/\bimport\.meta\.url\b/g,
-					JSON.stringify(fileUrl),
+					JSON.stringify(fileURL),
 				);
 
 				transformed = transformed.replace(

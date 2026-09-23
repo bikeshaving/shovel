@@ -6,9 +6,9 @@
  * can initialize and handle requests properly.
  */
 
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
+import * as Fs from "fs";
+import * as Os from "os";
+import * as Path from "path";
 
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory";
@@ -56,18 +56,18 @@ describe("worker logging", () => {
 	let tempDir: string;
 
 	beforeAll(() => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "worker-logging-test-"));
+		tempDir = Fs.mkdtempSync(Path.join(Os.tmpdir(), "worker-logging-test-"));
 	});
 
 	afterAll(() => {
 		if (tempDir) {
-			fs.rmSync(tempDir, {recursive: true, force: true});
+			Fs.rmSync(tempDir, {recursive: true, force: true});
 		}
 	});
 
 	it("workers initialize without logging errors", async () => {
-		const workerPath = path.join(tempDir, "simple-worker.js");
-		fs.writeFileSync(workerPath, WORKER_CODE("ok"));
+		const workerPath = Path.join(tempDir, "simple-worker.js");
+		Fs.writeFileSync(workerPath, WORKER_CODE("ok"));
 
 		const cacheStorage =
 			new CustomCacheStorage((name) => new MemoryCache(name));
@@ -88,8 +88,8 @@ describe("worker logging", () => {
 	});
 
 	it("workers accept debug log level config", async () => {
-		const workerPath = path.join(tempDir, "debug-worker.js");
-		fs.writeFileSync(workerPath, WORKER_CODE("debug-ok"));
+		const workerPath = Path.join(tempDir, "debug-worker.js");
+		Fs.writeFileSync(workerPath, WORKER_CODE("debug-ok"));
 
 		const cacheStorage =
 			new CustomCacheStorage((name) => new MemoryCache(name));
@@ -111,8 +111,8 @@ describe("worker logging", () => {
 	});
 
 	it("workers accept warning log level config", async () => {
-		const workerPath = path.join(tempDir, "warning-worker.js");
-		fs.writeFileSync(workerPath, WORKER_CODE("warning-ok"));
+		const workerPath = Path.join(tempDir, "warning-worker.js");
+		Fs.writeFileSync(workerPath, WORKER_CODE("warning-ok"));
 
 		const cacheStorage =
 			new CustomCacheStorage((name) => new MemoryCache(name));
@@ -134,8 +134,8 @@ describe("worker logging", () => {
 	});
 
 	it("workers accept per-category log level config", async () => {
-		const workerPath = path.join(tempDir, "category-worker.js");
-		fs.writeFileSync(workerPath, WORKER_CODE("category-ok"));
+		const workerPath = Path.join(tempDir, "category-worker.js");
+		Fs.writeFileSync(workerPath, WORKER_CODE("category-ok"));
 
 		const cacheStorage =
 			new CustomCacheStorage((name) => new MemoryCache(name));
@@ -157,8 +157,8 @@ describe("worker logging", () => {
 	});
 
 	it("workers handle empty categories config", async () => {
-		const workerPath = path.join(tempDir, "empty-categories-worker.js");
-		fs.writeFileSync(workerPath, WORKER_CODE("empty-categories-ok"));
+		const workerPath = Path.join(tempDir, "empty-categories-worker.js");
+		Fs.writeFileSync(workerPath, WORKER_CODE("empty-categories-ok"));
 
 		const cacheStorage =
 			new CustomCacheStorage((name) => new MemoryCache(name));
@@ -180,8 +180,8 @@ describe("worker logging", () => {
 	});
 
 	it("workers handle logging config with only categories (no default level)", async () => {
-		const workerPath = path.join(tempDir, "only-categories-worker.js");
-		fs.writeFileSync(workerPath, WORKER_CODE("only-categories-ok"));
+		const workerPath = Path.join(tempDir, "only-categories-worker.js");
+		Fs.writeFileSync(workerPath, WORKER_CODE("only-categories-ok"));
 
 		const cacheStorage =
 			new CustomCacheStorage((name) => new MemoryCache(name));

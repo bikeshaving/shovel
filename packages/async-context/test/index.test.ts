@@ -270,7 +270,10 @@ describe("Real-world scenarios", () => {
 
 		const requestContext = new AsyncVariable<RequestContext>();
 
-		async function handleRequest(requestId: string, userId: string) {
+		async function handleRequest(
+			requestId: string,
+			userId: string,
+		): Promise<string> {
 			return requestContext.run({requestId, userId}, async () => {
 				// Simulate middleware/handler chain
 				await authenticateUser();
@@ -279,18 +282,18 @@ describe("Real-world scenarios", () => {
 			});
 		}
 
-		async function authenticateUser() {
+		async function authenticateUser(): Promise<void> {
 			const ctx = requestContext.get();
 			expect(ctx?.userId).toBeDefined();
 		}
 
-		async function processRequest() {
+		async function processRequest(): Promise<void> {
 			await new Promise((resolve) => setTimeout(resolve, 5));
 			const ctx = requestContext.get();
 			expect(ctx?.requestId).toBeDefined();
 		}
 
-		function logRequest() {
+		function logRequest(): string {
 			const ctx = requestContext.get();
 			return `Processed request ${ctx?.requestId} for user ${ctx?.userId}`;
 		}

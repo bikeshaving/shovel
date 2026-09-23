@@ -32,7 +32,13 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  * router.use("/api", trailingSlash("strip"));
  * ```
  */
-export function trailingSlash(mode: TrailingSlashMode) {
+export function trailingSlash(
+	mode: TrailingSlashMode,
+): (request: Request) => AsyncGenerator<
+	Request,
+	Response | undefined,
+	Response
+> {
 	return async function *(
 		request: Request,
 	): AsyncGenerator<Request, Response | undefined, Response> {
@@ -240,7 +246,13 @@ export interface LoggerOptions {
  * router.use(logger({ category: ["app", "http"] }));
  * ```
  */
-export function logger(options: LoggerOptions = {}) {
+export function logger(
+	options: LoggerOptions = {},
+): (request: Request) => AsyncGenerator<
+	Request,
+	Response | undefined,
+	Response
+> {
 	const {category = ["app", "router"]} = options;
 	const log = getLogger(category);
 
@@ -261,7 +273,12 @@ export function logger(options: LoggerOptions = {}) {
 	};
 }
 
-export function cors(options: CORSOptions = {}) {
+export function cors(
+	options: CORSOptions = {},
+): (
+	request: Request,
+	_context: any,
+) => AsyncGenerator<Request, Response | undefined, Response> {
 	const {
 		origin = "*",
 		methods = DEFAULT_CORS_METHODS,

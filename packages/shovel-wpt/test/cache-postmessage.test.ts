@@ -35,30 +35,31 @@ const pendingRequests = new Map<
 	{resolve: (value: any) => void; reject: (error: Error) => void}
 >();
 
-const sendCommand = (command: string, data: any = {}): Promise<any> => {
+function sendCommand(command: string, data: any = {}): Promise<any> {
 	return new Promise((resolve, reject) => {
-		const requestID = ++requestCounter;
-		pendingRequests.set(requestID, {resolve, reject});
-		worker.postMessage({command, requestID, ...data});
+		const requestId = ++requestCounter;
+		pendingRequests.set(requestId, {resolve, reject});
+		// eslint-disable-next-line acrocase/acrocase -- wire field shared with postmessage-wpt-worker.ts
+		worker.postMessage({command, requestID: requestId, ...data});
 
 		setTimeout(() => {
-			if (pendingRequests.has(requestID)) {
-				pendingRequests.delete(requestID);
-				reject(new Error(`Request ${requestID} (${command}) timed out`));
+			if (pendingRequests.has(requestId)) {
+				pendingRequests.delete(requestId);
+				reject(new Error(`Request ${requestId} (${command}) timed out`));
 			}
 		}, 5000);
 	});
-};
+}
 
 /**
  * Main-thread proxy implementing Cache by forwarding to PostMessageCache
  * running in the worker thread.
  */
 class PostMessageCacheProxy {
-	#cacheName: string;
+	cacheName: string;
 
-	constructor(cacheName: string) {
-		this.#cacheName = cacheName;
+	constructor(name: string) {
+		this.cacheName = name;
 	}
 
 	async match(
@@ -67,7 +68,7 @@ class PostMessageCacheProxy {
 	): Promise<Response | undefined> {
 		const req = toRequestInit(request);
 		const result = await sendCommand("match", {
-			cacheName: this.#cacheName,
+			cacheName: this.cacheName,
 			request: req,
 			options,
 		});
@@ -85,7 +86,7 @@ class PostMessageCacheProxy {
 	): Promise<readonly Response[]> {
 		const req = request ? toRequestInit(request) : undefined;
 		const results = await sendCommand("matchAll", {
-			cacheName: this.#cacheName,
+			cacheName: this.cacheName,
 			request: req,
 			options,
 		});
@@ -102,7 +103,7 @@ class PostMessageCacheProxy {
 		const req = toRequestInit(request);
 		const body = await response.text();
 		await sendCommand("put", {
-			cacheName: this.#cacheName,
+			cacheName: this.cacheName,
 			request: req,
 			response: {
 				body,
@@ -119,7 +120,7 @@ class PostMessageCacheProxy {
 	): Promise<boolean> {
 		const req = toRequestInit(request);
 		return await sendCommand("delete", {
-			cacheName: this.#cacheName,
+			cacheName: this.cacheName,
 			request: req,
 			options,
 		});
@@ -131,7 +132,7 @@ class PostMessageCacheProxy {
 	): Promise<readonly Request[]> {
 		const req = request ? toRequestInit(request) : undefined;
 		const keys = await sendCommand("keys", {
-			cacheName: this.#cacheName,
+			cacheName: this.cacheName,
 			request: req,
 			options,
 		});
@@ -173,10 +174,10 @@ beforeAll(async () => {
 	worker = new Worker(workerPath);
 
 	worker.on("message", (message: any) => {
-		const {requestID, result, error} = message;
-		const pending = pendingRequests.get(requestID);
+		const {requestID: requestId, result, error} = message;
+		const pending = pendingRequests.get(requestId);
 		if (pending) {
-			pendingRequests.delete(requestID);
+			pendingRequests.delete(requestId);
 			if (error) {
 				pending.reject(new Error(error));
 			} else {

@@ -24,7 +24,7 @@ function generateConfigModule(
 			{module: string; export?: string; [key: string]: unknown}
 		>;
 	};},
-) {
+): string {
 	return _generateConfigModule(config, {
 		projectDir: "/test/project",
 		outDir: "/test/project/dist",

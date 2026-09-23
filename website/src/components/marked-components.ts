@@ -1,4 +1,5 @@
 import {jsx, Raw} from "@b9g/crank/standalone";
+import type {Element} from "@b9g/crank/standalone";
 
 import {highlight} from "../utils/prism.js";
 
@@ -54,20 +55,20 @@ function resolveHref(href: string, linkBase: string): string {
 }
 
 export const components = {
-	heading({token, children, rootProps}: any) {
+	heading({token, children, rootProps}: any): Element {
 		const tag = `h${token.depth}`;
 		const id = uniqueSlug(rootProps, headingSlug(token.text));
 		return jsx`<${tag} id=${id}>${children}<//>`;
 	},
 
-	link({token, children, rootProps}: any) {
+	link({token, children, rootProps}: any): Element {
 		const {href, title} = token;
 		const linkBase = rootProps.linkBase ?? "api";
 		const resolved = href ? resolveHref(href, linkBase) : href;
 		return jsx`<a href=${resolved} title=${title}>${children}</a>`;
 	},
 
-	code({token}: any) {
+	code({token}: any): Element {
 		const {text, lang} = token;
 		let highlighted: string | null;
 		try {

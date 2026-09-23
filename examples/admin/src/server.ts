@@ -11,7 +11,7 @@ import {createAdmin} from "@b9g/admin";
 import {assets} from "@b9g/assets/middleware";
 import {Router} from "@b9g/router";
 
-import * as schema from "./schema.js";
+import * as Schema from "./schema.js";
 
 const logger = self.loggers.get(["shovel", "server"]);
 
@@ -32,7 +32,7 @@ router.use(assets());
 // Mount admin at /admin with USWDS asset URLs
 const admin = createAdmin({
 	database: "main",
-	schema,
+	schema: Schema,
 	auth: {providers: ["google"]},
 	branding: {title: "Shovel Admin"},
 	// Pass the USWDS asset URLs to the admin
@@ -67,9 +67,9 @@ self.addEventListener("activate", (event) => {
 
 					if (e.oldVersion < 1) {
 						// Create tables
-						await db.ensureTable(schema.users);
-						await db.ensureTable(schema.posts);
-						await db.ensureTable(schema.tags);
+						await db.ensureTable(Schema.users);
+						await db.ensureTable(Schema.posts);
+						await db.ensureTable(Schema.tags);
 						logger.info("Created tables: users, posts, tags");
 					}
 				})(),

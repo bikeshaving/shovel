@@ -7,7 +7,7 @@
 import {getLogger} from "@logtape/logtape";
 import {afterEach, beforeEach, describe, expect, test} from "bun:test";
 
-import * as assertions from "../harness/assertions.js";
+import * as Assertions from "../harness/assertions.js";
 import {promise_test} from "../harness/testharness.js";
 
 const logger = getLogger(["test", "wpt", "filesystem"]);
@@ -36,7 +36,7 @@ export function runFilesystemTests(
 	config: FilesystemTestConfig,
 ): void {
 	// Make WPT globals available
-	const globals = {...assertions, promise_test};
+	const globals = {...Assertions, promise_test};
 
 	Object.assign(globalThis, globals);
 

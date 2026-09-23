@@ -70,7 +70,7 @@ export async function developCommand(
 	entrypoint: string,
 	options: {port?: string; host?: string; workers?: string; platform?: string},
 	config: ProcessedShovelConfig,
-) {
+): Promise<void> {
 	try {
 		const platformName = resolvePlatform({...options, config});
 		const workerCount = getWorkerCount(options, config);
@@ -90,7 +90,7 @@ export async function developCommand(
 		let devServer: Awaited<ReturnType<typeof platformModule.createDevServer>> |
 			null = null;
 
-		const localUrl = `http://localhost:${port}`;
+		const localURL = `http://localhost:${port}`;
 		const SHORTCUTS_HELP =
 			"Ctrl+R (reload) Ctrl+O (open) Ctrl+C (quit) ? (help)";
 
@@ -206,7 +206,7 @@ export async function developCommand(
 						const cmd = process.platform === "win32"
 							? "start"
 							: process.platform === "darwin" ? "open" : "xdg-open";
-						exec(`${cmd} ${localUrl}`);
+						exec(`${cmd} ${localURL}`);
 						break;
 					}
 					case "\r": // Enter
@@ -236,7 +236,7 @@ export async function developCommand(
 function getWorkerCount(
 	options: {workers?: string},
 	config: {workers?: number} | null,
-) {
+): number {
 	// CLI option overrides everything (explicit user intent)
 	if (options.workers) {
 		return parseInt(options.workers, 10);

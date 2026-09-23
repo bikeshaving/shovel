@@ -163,17 +163,22 @@ export type CacheConstructor<T extends Cache = Cache, O = any> = new (
  */
 export type CacheFactory = (name: string) => Cache | Promise<Cache>;
 
+const kInstances = Symbol("instances");
+const kFactory = Symbol("factory");
+
+export interface CustomCacheStorage {
+	[kInstances]: Map<string, Cache>;
+	[kFactory]: CacheFactory;
+}
+
 /**
  * CustomCacheStorage implements CacheStorage interface with a configurable factory
  * The factory function receives the cache name and can return different cache types
  */
 export class CustomCacheStorage implements CacheStorage {
-	#instances: Map<string, Cache>;
-	#factory: CacheFactory;
-
 	constructor(factory: CacheFactory) {
-		this.#instances = new Map<string, Cache>();
-		this.#factory = factory;
+		this[kInstances] = new Map<string, Cache>();
+		this[kFactory] = factory;
 	}
 
 	/**
@@ -184,7 +189,7 @@ export class CustomCacheStorage implements CacheStorage {
 		options?: CacheQueryOptions,
 	): Promise<Response | undefined> {
 		// Try each cache in order until we find a match
-		for (const cache of this.#instances.values()) {
+		for (const cache of this[kInstances].values()) {
 			const response = await cache.match(request, options);
 			if (response) {
 				return response;
@@ -199,14 +204,14 @@ export class CustomCacheStorage implements CacheStorage {
 	 */
 	async open(name: string): Promise<Cache> {
 		// Return existing instance if already opened
-		const existingInstance = this.#instances.get(name);
+		const existingInstance = this[kInstances].get(name);
 		if (existingInstance) {
 			return existingInstance;
 		}
 
 		// Create new instance using factory function
-		const cache = await this.#factory(name);
-		this.#instances.set(name, cache);
+		const cache = await this[kFactory](name);
+		this[kInstances].set(name, cache);
 		return cache;
 	}
 
@@ -214,16 +219,16 @@ export class CustomCacheStorage implements CacheStorage {
 	 * Returns true if a cache with the given name exists (has been opened)
 	 */
 	async has(name: string): Promise<boolean> {
-		return this.#instances.has(name);
+		return this[kInstances].has(name);
 	}
 
 	/**
 	 * Deletes a cache with the given name
 	 */
 	async delete(name: string): Promise<boolean> {
-		const instance = this.#instances.get(name);
+		const instance = this[kInstances].get(name);
 		if (instance) {
-			this.#instances.delete(name);
+			this[kInstances].delete(name);
 			return true;
 		}
 		return false;
@@ -233,7 +238,7 @@ export class CustomCacheStorage implements CacheStorage {
 	 * Returns a list of all opened cache names
 	 */
 	async keys(): Promise<string[]> {
-		return Array.from(this.#instances.keys());
+		return Array.from(this[kInstances].keys());
 	}
 
 	/**
@@ -243,7 +248,7 @@ export class CustomCacheStorage implements CacheStorage {
 	async dispose(): Promise<void> {
 		const disposePromises: Array<Promise<void>> = [];
 
-		for (const cache of this.#instances.values()) {
+		for (const cache of this[kInstances].values()) {
 			// Check if cache has a dispose method (RedisCache, etc.)
 			if (typeof (cache as any).dispose === "function") {
 				disposePromises.push((cache as any).dispose());
@@ -254,7 +259,7 @@ export class CustomCacheStorage implements CacheStorage {
 		await Promise.allSettled(disposePromises);
 
 		// Clear the instances map
-		this.#instances.clear();
+		this[kInstances].clear();
 	}
 
 	/**

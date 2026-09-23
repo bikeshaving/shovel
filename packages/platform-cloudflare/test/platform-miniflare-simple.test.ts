@@ -1,5 +1,5 @@
-import * as fs from "fs/promises";
-import * as path from "path";
+import * as Fs from "fs/promises";
+import * as Path from "path";
 
 import {getLogger} from "@logtape/logtape";
 import {afterAll, beforeAll, describe, expect, test} from "bun:test";
@@ -9,15 +9,15 @@ import {CloudflarePlatform} from "../src/index.js";
 const logger = getLogger(["test", "platform-cloudflare-simple"]);
 
 describe("CloudflarePlatform with miniflare (no assets)", () => {
-	const testDir = path.resolve(import.meta.dir, "miniflare-simple-fixtures");
+	const testDir = Path.resolve(import.meta.dir, "miniflare-simple-fixtures");
 	let platform: CloudflarePlatform;
 
 	beforeAll(async () => {
-		await fs.mkdir(testDir, {recursive: true});
+		await Fs.mkdir(testDir, {recursive: true});
 
 		// Write a simple ServiceWorker
-		await fs.writeFile(
-			path.join(testDir, "worker.js"),
+		await Fs.writeFile(
+			Path.join(testDir, "worker.js"),
 			`
 self.addEventListener("fetch", (event) => {
 	const url = new URL(event.request.url);
@@ -41,7 +41,7 @@ self.addEventListener("fetch", (event) => {
 		// Dispose platform to clean up any remaining miniflare instances
 		await platform.dispose();
 		try {
-			await fs.rm(testDir, {recursive: true});
+			await Fs.rm(testDir, {recursive: true});
 		} catch (err) {
 			logger.debug`Cleanup of ${testDir} failed: ${err}`;
 		}
@@ -49,7 +49,7 @@ self.addEventListener("fetch", (event) => {
 
 	test("loadServiceWorker starts miniflare and handles requests", async () => {
 		const instance = await platform.loadServiceWorker(
-			path.join(testDir, "worker.js"),
+			Path.join(testDir, "worker.js"),
 		);
 
 		expect(instance.ready).toBe(true);
@@ -72,7 +72,7 @@ self.addEventListener("fetch", (event) => {
 
 	test("handles 404 from worker", async () => {
 		const instance = await platform.loadServiceWorker(
-			path.join(testDir, "worker.js"),
+			Path.join(testDir, "worker.js"),
 		);
 
 		const response = await instance.handleRequest(

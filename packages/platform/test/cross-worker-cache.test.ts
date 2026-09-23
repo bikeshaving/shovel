@@ -6,15 +6,15 @@
  * to be properly wired up for memory caches in workers.
  */
 
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
+import * as Fs from "fs";
+import * as Os from "os";
+import * as Path from "path";
 import {fileURLToPath} from "url";
 
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory";
 import {afterAll, beforeAll, describe, expect, it} from "bun:test";
-import * as esbuild from "esbuild";
+import * as Esbuild from "esbuild";
 
 import {ServiceWorkerPool} from "../src/index.js";
 
@@ -26,17 +26,17 @@ describe("cross-worker cache sharing", () => {
 
 	beforeAll(async () => {
 		// Create temp directory for test worker
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cache-test-"));
+		tempDir = Fs.mkdtempSync(Path.join(Os.tmpdir(), "cache-test-"));
 
 		// Symlink node_modules so esbuild can resolve packages
-		const currentDir = path.dirname(fileURLToPath(import.meta.url));
-		const nodeModulesSource = path.resolve(currentDir, "../../../node_modules");
-		const nodeModulesLink = path.join(tempDir, "node_modules");
-		fs.symlinkSync(nodeModulesSource, nodeModulesLink, "dir");
+		const currentDir = Path.dirname(fileURLToPath(import.meta.url));
+		const nodeModulesSource = Path.resolve(currentDir, "../../../node_modules");
+		const nodeModulesLink = Path.join(tempDir, "node_modules");
+		Fs.symlinkSync(nodeModulesSource, nodeModulesLink, "dir");
 
 		// Create a test worker source that uses the runtime
-		const workerSourcePath = path.join(tempDir, "cache-worker.ts");
-		fs.writeFileSync(
+		const workerSourcePath = Path.join(tempDir, "cache-worker.ts");
+		Fs.writeFileSync(
 			workerSourcePath,
 			`
 import {initWorkerRuntime, runLifecycle, startWorkerMessageLoop} from "@b9g/platform/runtime";
@@ -97,8 +97,8 @@ startWorkerMessageLoop(registration);
 		);
 
 		// Bundle the worker with esbuild
-		bundledWorkerPath = path.join(tempDir, "cache-worker.js");
-		await esbuild.build({
+		bundledWorkerPath = Path.join(tempDir, "cache-worker.js");
+		await Esbuild.build({
 			entryPoints: [workerSourcePath],
 			bundle: true,
 			format: "esm",
@@ -126,7 +126,7 @@ startWorkerMessageLoop(registration);
 			await pool.terminate();
 		}
 		if (tempDir) {
-			fs.rmSync(tempDir, {recursive: true, force: true});
+			Fs.rmSync(tempDir, {recursive: true, force: true});
 		}
 	});
 

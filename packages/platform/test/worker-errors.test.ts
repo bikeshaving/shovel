@@ -57,7 +57,7 @@ self.addEventListener("message", (event) => {
 postMessage({type: "ready"});
 `;
 
-async function createTempDir(prefix = "worker-error-test-") {
+async function createTempDir(prefix = "worker-error-test-"): Promise<string> {
 	const tempPath = join(
 		tmpdir(),
 		`${prefix}${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -66,7 +66,7 @@ async function createTempDir(prefix = "worker-error-test-") {
 	return tempPath;
 }
 
-async function cleanup(paths: string[]) {
+async function cleanup(paths: string[]): Promise<void> {
 	for (const path of paths) {
 		try {
 			await FS.rm(path, {recursive: true, force: true});

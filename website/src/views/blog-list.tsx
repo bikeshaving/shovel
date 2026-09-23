@@ -1,4 +1,5 @@
 /** @jsxImportSource @b9g/crank */
+import type {Element} from "@b9g/crank";
 import {css} from "@emotion/css";
 
 import {Root} from "../components/root.js";
@@ -61,7 +62,7 @@ const postDescriptionStyles = css`
 	margin: 0;
 `;
 
-export default async function BlogListView({url}: ViewProps) {
+export default async function BlogListView({url}: ViewProps): Promise<Element> {
 	const docsDir = await self.directories.open("docs");
 	const blogDir = await docsDir.getDirectoryHandle("blog");
 	const posts = await collectBlogPosts(blogDir);

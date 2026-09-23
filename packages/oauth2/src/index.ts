@@ -27,6 +27,7 @@ export interface OAuth2Config {
 	tokenEndpoint: string;
 
 	/** Client ID */
+	// eslint-disable-next-line acrocase/acrocase -- public API
 	clientID: string;
 
 	/** Client secret (optional for PKCE) */
@@ -62,11 +63,15 @@ export interface OAuth2User {
 // OAUTH2 CLIENT
 // ============================================================================
 
-export class OAuth2Client {
-	#config: OAuth2Config;
+const kConfig = Symbol("config");
 
+export interface OAuth2Client {
+	[kConfig]: OAuth2Config;
+}
+
+export class OAuth2Client {
 	constructor(config: OAuth2Config) {
-		this.#config = config;
+		this[kConfig] = config;
 	}
 
 	/**
@@ -97,22 +102,22 @@ export class OAuth2Client {
 		});
 
 		// Build authorization URL
-		const authURL = new URL(this.#config.authorizationEndpoint);
-		authURL.searchParams.set("client_id", this.#config.clientID);
-		authURL.searchParams.set("redirect_uri", this.#config.redirectURI);
+		const authURL = new URL(this[kConfig].authorizationEndpoint);
+		authURL.searchParams.set("client_id", this[kConfig].clientID);
+		authURL.searchParams.set("redirect_uri", this[kConfig].redirectURI);
 		authURL.searchParams.set("response_type", "code");
 		authURL.searchParams.set("code_challenge", codeChallenge);
 		authURL.searchParams.set("code_challenge_method", "S256");
 		authURL.searchParams.set("state", state);
 
-		if (this.#config.scopes && this.#config.scopes.length > 0) {
-			authURL.searchParams.set("scope", this.#config.scopes.join(" "));
+		if (this[kConfig].scopes && this[kConfig].scopes.length > 0) {
+			authURL.searchParams.set("scope", this[kConfig].scopes.join(" "));
 		}
 
 		// Add additional authorization parameters
-		if (this.#config.authorizationParams) {
+		if (this[kConfig].authorizationParams) {
 			for (const [key, value] of Object.entries(
-				this.#config.authorizationParams,
+				this[kConfig].authorizationParams,
 			)) {
 				authURL.searchParams.set(key, value);
 			}
@@ -163,7 +168,8 @@ export class OAuth2Client {
 		}
 
 		// Exchange code for tokens
-		const tokens = await this.#exchangeCodeForTokens(
+		const tokens = await exchangeCodeForTokens(
+			this,
 			code,
 			storedVerifier.value,
 		);
@@ -176,67 +182,20 @@ export class OAuth2Client {
 	}
 
 	/**
-	 * Exchange authorization code for tokens
-	 */
-	async #exchangeCodeForTokens(
-		code: string,
-		codeVerifier: string,
-	): Promise<OAuth2Tokens> {
-		const tokenParams = new URLSearchParams({
-			grant_type: "authorization_code",
-			code,
-			redirect_uri: this.#config.redirectURI,
-			client_id: this.#config.clientID,
-			code_verifier: codeVerifier,
-		});
-
-		// Add client secret if provided (confidential clients)
-		if (this.#config.clientSecret) {
-			tokenParams.set("client_secret", this.#config.clientSecret);
-		}
-
-		const response = await fetch(this.#config.tokenEndpoint, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-				Accept: "application/json",
-			},
-			body: tokenParams.toString(),
-		});
-
-		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(
-				`Token exchange failed: ${response.status} ${response.statusText} - ${errorText}`,
-			);
-		}
-
-		const data: Record<string, any> = await response.json();
-
-		return {
-			accessToken: data.access_token,
-			refreshToken: data.refresh_token,
-			expiresIn: data.expires_in,
-			tokenType: data.token_type,
-			scope: data.scope,
-		};
-	}
-
-	/**
 	 * Refresh access token using refresh token
 	 */
 	async refreshAccessToken(refreshToken: string): Promise<OAuth2Tokens> {
 		const tokenParams = new URLSearchParams({
 			grant_type: "refresh_token",
 			refresh_token: refreshToken,
-			client_id: this.#config.clientID,
+			client_id: this[kConfig].clientID,
 		});
 
-		if (this.#config.clientSecret) {
-			tokenParams.set("client_secret", this.#config.clientSecret);
+		if (this[kConfig].clientSecret) {
+			tokenParams.set("client_secret", this[kConfig].clientSecret);
 		}
 
-		const response = await fetch(this.#config.tokenEndpoint, {
+		const response = await fetch(this[kConfig].tokenEndpoint, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/x-www-form-urlencoded",
@@ -262,6 +221,54 @@ export class OAuth2Client {
 			scope: data.scope,
 		};
 	}
+}
+
+/**
+ * Exchange authorization code for tokens
+ */
+async function exchangeCodeForTokens(
+	client: OAuth2Client,
+	code: string,
+	codeVerifier: string,
+): Promise<OAuth2Tokens> {
+	const tokenParams = new URLSearchParams({
+		grant_type: "authorization_code",
+		code,
+		redirect_uri: client[kConfig].redirectURI,
+		client_id: client[kConfig].clientID,
+		code_verifier: codeVerifier,
+	});
+
+	// Add client secret if provided (confidential clients)
+	if (client[kConfig].clientSecret) {
+		tokenParams.set("client_secret", client[kConfig].clientSecret);
+	}
+
+	const response = await fetch(client[kConfig].tokenEndpoint, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/x-www-form-urlencoded",
+			Accept: "application/json",
+		},
+		body: tokenParams.toString(),
+	});
+
+	if (!response.ok) {
+		const errorText = await response.text();
+		throw new Error(
+			`Token exchange failed: ${response.status} ${response.statusText} - ${errorText}`,
+		);
+	}
+
+	const data: Record<string, any> = await response.json();
+
+	return {
+		accessToken: data.access_token,
+		refreshToken: data.refresh_token,
+		expiresIn: data.expires_in,
+		tokenType: data.token_type,
+		scope: data.scope,
+	};
 }
 
 // ============================================================================

@@ -105,7 +105,7 @@ self.addEventListener("install", (event) => {
 	event.waitUntil(generateStaticSite());
 });
 
-async function generateStaticSite() {
+async function generateStaticSite(): Promise<void> {
 	if (import.meta.env.MODE !== "production") {
 		return;
 	}
@@ -178,7 +178,7 @@ async function generateStaticSite() {
 
 		// Generate 404.html for static hosting (GitHub Pages, Cloudflare Pages, etc.)
 		try {
-			const notFoundHtml = await renderer.render(
+			const notFoundHTML = await renderer.render(
 				jsx`
 				<${NotFoundView} url="/404" />
 			`,
@@ -186,7 +186,7 @@ async function generateStaticSite() {
 			const fileHandle =
 				await staticBucket.getFileHandle("404.html", {create: true});
 			const writable = await fileHandle.createWritable();
-			await writable.write(notFoundHtml);
+			await writable.write(notFoundHTML);
 			await writable.close();
 			logger.info("Generated 404.html");
 		} catch (error: any) {

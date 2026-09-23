@@ -1,7 +1,9 @@
-export let lastUrl: string | undefined;
-export let lastOptions: Record<string, unknown> | undefined;
-export let lastDriver: string | undefined;
-export let closeCalls: number;
+export const calls: {
+	url: string | undefined;
+	options: Record<string, unknown> | undefined;
+	driver: string | undefined;
+	close: number;
+};
 
 export function reset(): void;
 

@@ -361,7 +361,8 @@ describe("config validation", () => {
 				},
 				logging: {loggers: [{category: "app", level: "debug"}]},
 			});
-			expect(result.build?.plugins?.length).toBe(1);
+			const plugins = result.build?.plugins;
+			expect(plugins?.length).toBe(1);
 		});
 	});
 });

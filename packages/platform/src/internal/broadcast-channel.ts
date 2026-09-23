@@ -59,9 +59,14 @@ export function setBroadcastChannelBackend(b: BroadcastChannelBackend): void {
 	backend = b;
 }
 
+const kClosed = Symbol("closed");
+
+export interface ShovelBroadcastChannel {
+	[kClosed]: boolean;
+}
+
 export class ShovelBroadcastChannel extends EventTarget {
 	readonly name: string;
-	#closed: boolean;
 
 	// Event handler properties (Web API compat)
 	onmessage: ((ev: MessageEvent) => any) | null;
@@ -70,7 +75,7 @@ export class ShovelBroadcastChannel extends EventTarget {
 	constructor(name: string) {
 		super();
 		this.name = name;
-		this.#closed = false;
+		this[kClosed] = false;
 		this.onmessage = null;
 		this.onmessageerror = null;
 		let set = channels.get(name);
@@ -90,7 +95,7 @@ export class ShovelBroadcastChannel extends EventTarget {
 	}
 
 	postMessage(message: unknown): void {
-		if (this.#closed) {
+		if (this[kClosed]) {
 			throw new DOMException("BroadcastChannel is closed", "InvalidStateError");
 		}
 
@@ -103,7 +108,7 @@ export class ShovelBroadcastChannel extends EventTarget {
 			const set = channels.get(this.name);
 			if (!set) return;
 			for (const ch of set) {
-				if (ch !== this && !ch.#closed) {
+				if (ch !== this && !ch[kClosed]) {
 					queueMicrotask(() => {
 						const event = new MessageEvent("messageerror");
 						ch.dispatchEvent(event);
@@ -119,7 +124,7 @@ export class ShovelBroadcastChannel extends EventTarget {
 		const set = channels.get(this.name);
 		if (set) {
 			for (const ch of set) {
-				if (ch !== this && !ch.#closed) {
+				if (ch !== this && !ch[kClosed]) {
 					queueMicrotask(() => {
 						const cloned = structuredClone(data);
 						const event = new MessageEvent("message", {data: cloned});
@@ -139,8 +144,8 @@ export class ShovelBroadcastChannel extends EventTarget {
 	}
 
 	close(): void {
-		if (this.#closed) return;
-		this.#closed = true;
+		if (this[kClosed]) return;
+		this[kClosed] = true;
 		const set = channels.get(this.name);
 		if (set) {
 			set.delete(this);

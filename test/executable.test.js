@@ -254,11 +254,11 @@ test(
 			expect(cssMatch).not.toBeNull();
 			expect(jsMatch).not.toBeNull();
 
-			const cssUrl = cssMatch[1];
-			const jsUrl = jsMatch[1];
+			const cssURL = cssMatch[1];
+			const jsURL = jsMatch[1];
 
 			// Test CSS asset
-			const cssResponse = await fetch(`http://localhost:${PORT}${cssUrl}`);
+			const cssResponse = await fetch(`http://localhost:${PORT}${cssURL}`);
 			expect(cssResponse.status).toBe(200);
 			expect(cssResponse.headers.get("content-type")).toBe("text/css");
 			const cssContent = await cssResponse.text();
@@ -268,7 +268,7 @@ test(
 			).toBe(true);
 
 			// Test JS asset
-			const jsResponse = await fetch(`http://localhost:${PORT}${jsUrl}`);
+			const jsResponse = await fetch(`http://localhost:${PORT}${jsURL}`);
 			expect(jsResponse.status).toBe(200);
 			expect(["text/javascript", "application/javascript"]).toContain(
 				jsResponse.headers.get("content-type"),

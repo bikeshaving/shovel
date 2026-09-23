@@ -1,4 +1,5 @@
 import {jsx} from "@b9g/crank/standalone";
+import type {Element} from "@b9g/crank/standalone";
 import {Marked} from "@b9g/crankdown";
 import {NotFound} from "@b9g/http-errors";
 
@@ -13,7 +14,7 @@ interface ViewProps {
 	params: Record<string, string>;
 }
 
-export default async function Doc({url}: ViewProps) {
+export default async function Doc({url}: ViewProps): Promise<Element> {
 	const docsDir = await self.directories.open("docs");
 	const refDir = await docsDir.getDirectoryHandle("reference");
 	const docs = await collectDocuments(refDir);

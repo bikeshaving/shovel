@@ -82,7 +82,10 @@ describe("Middleware Detection", () => {
 	test("detects regular async functions as function middleware", () => {
 		const router = new Router();
 
-		async function functionMiddleware(request: Request, context: any) {
+		async function functionMiddleware(
+			request: Request,
+			context: any,
+		): Promise<void> {
 			context.processed = true;
 		}
 
@@ -93,7 +96,7 @@ describe("Middleware Detection", () => {
 	test("detects regular functions as function middleware", () => {
 		const router = new Router();
 
-		function syncMiddleware(request: Request, context: any) {
+		function syncMiddleware(request: Request, context: any): void {
 			context.processed = true;
 		}
 
@@ -304,7 +307,10 @@ describe("Function Middleware Execution", () => {
 	test("executes function middleware with implicit passthrough", async () => {
 		const router = new Router();
 
-		async function functionMiddleware(request: Request, context: any) {
+		async function functionMiddleware(
+			request: Request,
+			context: any,
+		): Promise<void> {
 			context.processedByFunction = true;
 			request.headers.set("X-Function-Middleware", "true");
 		}
@@ -393,7 +399,10 @@ describe("Middleware Short-Circuiting", () => {
 			return new Response("Unauthorized", {status: 401}); // Early return should short-circuit
 		}
 
-		async function corsMiddleware(_request: Request, _context: any) {
+		async function corsMiddleware(
+			_request: Request,
+			_context: any,
+		): Promise<void> {
 			executionOrder.push("cors"); // Should NOT execute
 		}
 
@@ -463,7 +472,7 @@ describe("Middleware Short-Circuiting", () => {
 		async function implicitUndefinedMiddleware(
 			_request: Request,
 			_context: any,
-		) {
+		): Promise<void> {
 			executionOrder.push("implicit");
 			// Implicit undefined return
 		}
@@ -617,7 +626,7 @@ describe("Middleware Short-Circuiting", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		function functionMiddleware1(request: Request, context: any) {
+		function functionMiddleware1(request: Request, context: any): void {
 			executionOrder.push("function1");
 			context.func1 = true;
 		}
@@ -633,7 +642,10 @@ describe("Middleware Short-Circuiting", () => {
 			return response;
 		}
 
-		async function functionMiddleware2(request: Request, context: any) {
+		async function functionMiddleware2(
+			request: Request,
+			context: any,
+		): Promise<void> {
 			executionOrder.push("function2");
 			context.func2 = true;
 		}
@@ -677,7 +689,7 @@ describe("Context Sharing", () => {
 			return response;
 		}
 
-		function middleware2(request: Request, context: RouteContext) {
+		function middleware2(request: Request, context: RouteContext): void {
 			context.step2 = "completed";
 			context.startTime = Date.now();
 		}
@@ -732,7 +744,7 @@ describe("Context Sharing", () => {
 			return response;
 		}
 
-		function enrichMiddleware(request: Request, context: any) {
+		function enrichMiddleware(request: Request, context: any): void {
 			if (context.user) {
 				context.permissions = ["read", "write"];
 			}
@@ -1149,12 +1161,15 @@ describe("Advanced Generator Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		function syncMiddleware(request: Request, context: any) {
+		function syncMiddleware(request: Request, context: any): void {
 			executionOrder.push("sync");
 			context.sync = true;
 		}
 
-		async function asyncFunctionMiddleware(request: Request, context: any) {
+		async function asyncFunctionMiddleware(
+			request: Request,
+			context: any,
+		): Promise<void> {
 			executionOrder.push("async-function");
 			await new Promise((resolve) => setTimeout(resolve, 1));
 			context.asyncFunc = true;
@@ -1255,7 +1270,10 @@ describe("Edge Cases and Error Scenarios", () => {
 	test("function middleware throws error", async () => {
 		const router = new Router();
 
-		async function faultyMiddleware(_request: Request, _context: any) {
+		async function faultyMiddleware(
+			_request: Request,
+			_context: any,
+		): Promise<void> {
 			throw new Error("Function middleware error");
 		}
 
@@ -1374,7 +1392,7 @@ describe("Path-Scoped Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		function adminMiddleware(_request: Request, context: any) {
+		function adminMiddleware(_request: Request, context: any): void {
 			executionOrder.push("admin-middleware");
 			context.isAdmin = true;
 		}
@@ -1405,7 +1423,7 @@ describe("Path-Scoped Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		function adminMiddleware(_request: Request, _context: any) {
+		function adminMiddleware(_request: Request, _context: any): void {
 			executionOrder.push("admin");
 		}
 
@@ -1438,11 +1456,11 @@ describe("Path-Scoped Middleware", () => {
 		const router = new Router();
 		const executionOrder: string[] = [];
 
-		function globalMiddleware(_request: Request, _context: any) {
+		function globalMiddleware(_request: Request, _context: any): void {
 			executionOrder.push("global");
 		}
 
-		function adminMiddleware(_request: Request, _context: any) {
+		function adminMiddleware(_request: Request, _context: any): void {
 			executionOrder.push("admin");
 		}
 

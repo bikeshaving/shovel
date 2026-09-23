@@ -11,7 +11,7 @@ type Value = {id: number};
 // Test both from the initial state, and from a run state.
 // This is because the initial state might be "frozen", and
 // that can cause different code paths.
-function runTest(name: string, fn: () => void) {
+function runTest(name: string, fn: () => void): void {
 	test(name, () => {
 		fn();
 

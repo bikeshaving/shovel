@@ -42,10 +42,10 @@ test(
 		expect(adminReg.scope).toBe("/admin/");
 
 		// Should be able to retrieve by scope
-		const retrievedApi = await container.getRegistration("/api/");
+		const retrievedAPI = await container.getRegistration("/api/");
 		const retrievedAdmin = await container.getRegistration("/admin/");
 
-		expect(retrievedApi).toBe(apiReg);
+		expect(retrievedAPI).toBe(apiReg);
 		expect(retrievedAdmin).toBe(adminReg);
 
 		// Should list all scopes

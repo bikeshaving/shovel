@@ -51,7 +51,7 @@ while (queue.length > 0) {
 			let resolved: string;
 			try {
 				resolved = new URL(href, url).href;
-			} catch {
+			} catch (_error) {
 				continue;
 			}
 

@@ -11,19 +11,19 @@ export function Sidebar(
 		title: string;
 		urlPrefix?: string;
 	},
-) {
+): Element {
 	const links: Element[] = [];
 	for (const doc of docs) {
 		if (doc.attributes.publish) {
-			const docUrl = `${urlPrefix}${doc.url}`;
+			const docURL = `${urlPrefix}${doc.url}`;
 			links.push(
 				jsx`
 				<div class=${css`
 					margin: 10px 0;
 				`}>
 					<a
-						href=${docUrl}
-						aria-current=${docUrl === url && "page"}
+						href=${docURL}
+						aria-current=${docURL === url && "page"}
 						class=${css`
 							text-decoration: none;
 							color: var(--text-color);
@@ -79,7 +79,7 @@ export function Sidebar(
 	`;
 }
 
-export function Main({children}: {children: unknown}) {
+export function Main({children}: {children: unknown}): Element {
 	return jsx`
 		<main class=${css`
 			margin: 0 auto;

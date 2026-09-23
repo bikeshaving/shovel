@@ -66,6 +66,7 @@ export function getProvider(name: ProviderName): ProviderConfig {
 export function createProviderConfig(
 	provider: ProviderName,
 	options: {
+		// eslint-disable-next-line acrocase/acrocase -- public API
 		clientID: string;
 		clientSecret?: string;
 		redirectURI: string;
@@ -76,6 +77,7 @@ export function createProviderConfig(
 
 	return {
 		...preset,
+		// eslint-disable-next-line acrocase/acrocase -- public API
 		clientID: options.clientID,
 		clientSecret: options.clientSecret,
 		redirectURI: options.redirectURI,

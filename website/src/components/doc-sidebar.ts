@@ -1,4 +1,5 @@
 import {jsx} from "@b9g/crank/standalone";
+import type {Element} from "@b9g/crank/standalone";
 import {css} from "@emotion/css";
 
 import type {DocInfo} from "../models/document.js";
@@ -136,7 +137,7 @@ const linkStyle = css`
 
 export function DocSidebar(
 	{categories, url}: {categories: DocCategory[]; url: string},
-) {
+): Element {
 	return jsx`
 		<div id="sidebar" class=${sidebarStyle}>
 			<h2 class=${css`

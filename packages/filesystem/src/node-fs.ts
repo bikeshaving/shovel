@@ -15,19 +15,23 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
 	return error instanceof Error && "code" in error;
 }
 
+const kRootPath = Symbol("rootPath");
+
+export interface NodeFSBackend {
+	[kRootPath]: string;
+}
+
 /**
  * Node.js storage backend using node:fs
  */
 export class NodeFSBackend implements FileSystemBackend {
-	#rootPath: string;
-
 	constructor(rootPath: string) {
-		this.#rootPath = rootPath;
+		this[kRootPath] = rootPath;
 	}
 
 	async stat(filePath: string): Promise<{kind: "file" | "directory"} | null> {
 		try {
-			const fullPath = this.#resolvePath(filePath);
+			const fullPath = resolvePath(this, filePath);
 			const stats = await FS.stat(fullPath);
 
 			if (stats.isFile()) {
@@ -49,7 +53,7 @@ export class NodeFSBackend implements FileSystemBackend {
 		filePath: string,
 	): Promise<{content: Uint8Array; lastModified?: number}> {
 		try {
-			const fullPath = this.#resolvePath(filePath);
+			const fullPath = resolvePath(this, filePath);
 			// Read file content and stats together
 			const [buffer, stats] = await Promise.all([
 				FS.readFile(fullPath),
@@ -66,7 +70,7 @@ export class NodeFSBackend implements FileSystemBackend {
 
 	async writeFile(filePath: string, data: Uint8Array): Promise<void> {
 		try {
-			const fullPath = this.#resolvePath(filePath);
+			const fullPath = resolvePath(this, filePath);
 			// Ensure parent directory exists
 			await FS.mkdir(Path.dirname(fullPath), {recursive: true});
 			await FS.writeFile(fullPath, data);
@@ -82,7 +86,7 @@ export class NodeFSBackend implements FileSystemBackend {
 		dirPath: string,
 	): Promise<Array<{name: string; kind: "file" | "directory"}>> {
 		try {
-			const fullPath = this.#resolvePath(dirPath);
+			const fullPath = resolvePath(this, dirPath);
 			const entries = await FS.readdir(fullPath, {withFileTypes: true});
 
 			const results: Array<{name: string; kind: "file" | "directory"}> = [];
@@ -106,7 +110,7 @@ export class NodeFSBackend implements FileSystemBackend {
 
 	async createDir(dirPath: string): Promise<void> {
 		try {
-			const fullPath = this.#resolvePath(dirPath);
+			const fullPath = resolvePath(this, dirPath);
 			await FS.mkdir(fullPath, {recursive: true});
 		} catch (error) {
 			throw new DOMException(
@@ -118,7 +122,7 @@ export class NodeFSBackend implements FileSystemBackend {
 
 	async remove(entryPath: string, recursive?: boolean): Promise<void> {
 		try {
-			const fullPath = this.#resolvePath(entryPath);
+			const fullPath = resolvePath(this, entryPath);
 			const stats = await FS.stat(fullPath);
 
 			if (stats.isFile()) {
@@ -145,37 +149,43 @@ export class NodeFSBackend implements FileSystemBackend {
 			throw error;
 		}
 	}
+}
 
-	#resolvePath(relativePath: string): string {
-		// Remove leading slash for Path.join
-		const cleanPath = relativePath.startsWith("/")
-			? relativePath.slice(1)
-			: relativePath;
+function resolvePath(backend: NodeFSBackend, relativePath: string): string {
+	// Remove leading slash for Path.join
+	const cleanPath = relativePath.startsWith("/")
+		? relativePath.slice(1)
+		: relativePath;
 
-		if (!cleanPath) {
-			return this.#rootPath;
-		}
-
-		// Defense in depth: validate path components
-		if (cleanPath.includes("..") || cleanPath.includes("\0")) {
-			throw new DOMException(
-				"Invalid path: contains path traversal or null bytes",
-				"NotAllowedError",
-			);
-		}
-
-		const resolvedPath = Path.resolve(this.#rootPath, cleanPath);
-
-		// Ensure the resolved path is still within our root directory
-		if (!resolvedPath.startsWith(Path.resolve(this.#rootPath))) {
-			throw new DOMException(
-				"Invalid path: outside of root directory",
-				"NotAllowedError",
-			);
-		}
-
-		return resolvedPath;
+	if (!cleanPath) {
+		return backend[kRootPath];
 	}
+
+	// Defense in depth: validate path components
+	if (cleanPath.includes("..") || cleanPath.includes("\0")) {
+		throw new DOMException(
+			"Invalid path: contains path traversal or null bytes",
+			"NotAllowedError",
+		);
+	}
+
+	const resolvedPath = Path.resolve(backend[kRootPath], cleanPath);
+
+	// Ensure the resolved path is still within our root directory
+	if (!resolvedPath.startsWith(Path.resolve(backend[kRootPath]))) {
+		throw new DOMException(
+			"Invalid path: outside of root directory",
+			"NotAllowedError",
+		);
+	}
+
+	return resolvedPath;
+}
+
+const kDirectoryRootPath = Symbol("rootPath");
+
+export interface NodeFSDirectory {
+	[kDirectoryRootPath]: string;
 }
 
 /**
@@ -183,8 +193,6 @@ export class NodeFSBackend implements FileSystemBackend {
  * Extends ShovelDirectoryHandle with "/" as root path
  */
 export class NodeFSDirectory extends ShovelDirectoryHandle {
-	#rootPath: string;
-
 	/**
 	 * Create a NodeFSDirectory
 	 * @param name - Directory name (used for display)
@@ -195,12 +203,12 @@ export class NodeFSDirectory extends ShovelDirectoryHandle {
 		// Use options.path if provided, otherwise fall back to name as the path
 		const rootPath = options?.path ?? name;
 		super(new NodeFSBackend(rootPath), "/");
-		this.#rootPath = rootPath;
+		this[kDirectoryRootPath] = rootPath;
 	}
 
 	// Override name to use the directory basename instead of "/"
 	override get name(): string {
-		return Path.basename(this.#rootPath) || "root";
+		return Path.basename(this[kDirectoryRootPath]) || "root";
 	}
 }
 

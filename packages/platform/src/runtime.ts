@@ -169,20 +169,23 @@ export function parseSetCookieHeader(setCookieHeader: string): CookieListItem {
  * It follows the Cookie Store API spec but is designed for server-side
  * request handling rather than browser contexts.
  */
+const kCookies = Symbol("cookies");
+const kChanges = Symbol("changes");
+
+export interface RequestCookieStore {
+	[kCookies]: Map<string, CookieListItem>;
+	[kChanges]: Map<string, CookieInit | null>; // null = deleted
+}
+
 export class RequestCookieStore extends EventTarget {
-	#cookies: Map<string, CookieListItem>;
-	#changes: Map<string, CookieInit | null>; // null = deleted
-	#request: Request | null;
-
 	// Event handler for cookie changes (spec compliance)
-
-	onchange: ((this: RequestCookieStore, ev: Event) => any) | null = null;
+	onchange: ((this: RequestCookieStore, ev: Event) => any) | null;
 
 	constructor(request?: Request) {
 		super();
-		this.#cookies = new Map();
-		this.#changes = new Map();
-		this.#request = request || null;
+		this[kCookies] = new Map();
+		this[kChanges] = new Map();
+		this.onchange = null;
 
 		// Parse initial cookies from request
 		if (request) {
@@ -190,7 +193,7 @@ export class RequestCookieStore extends EventTarget {
 			if (cookieHeader) {
 				const parsed = parseCookieHeader(cookieHeader);
 				for (const [name, value] of parsed) {
-					this.#cookies.set(name, {name, value});
+					this[kCookies].set(name, {name, value});
 				}
 			}
 		}
@@ -208,8 +211,8 @@ export class RequestCookieStore extends EventTarget {
 		}
 
 		// Check changes first (for set/delete operations)
-		if (this.#changes.has(name)) {
-			const change = this.#changes.get(name);
+		if (this[kChanges].has(name)) {
+			const change = this[kChanges].get(name);
 			if (change == null) return null;
 			return {
 				name: change.name,
@@ -222,7 +225,7 @@ export class RequestCookieStore extends EventTarget {
 			};
 		}
 
-		return this.#cookies.get(name) || null;
+		return this[kCookies].get(name) || null;
 	}
 
 	async getAll(
@@ -235,14 +238,17 @@ export class RequestCookieStore extends EventTarget {
 		const result: CookieList = [];
 
 		// Collect all cookies (original + changes)
-		const allNames =
-			new Set([...this.#cookies.keys(), ...this.#changes.keys()]);
+		const allNames = new Set([
+			...this[kCookies].keys(),
+			...this[kChanges].keys(),
+		]);
 
 		for (const cookieName of allNames) {
 			if (name && cookieName !== name) continue;
 
 			if (
-				this.#changes.has(cookieName) && this.#changes.get(cookieName) === null
+				this[kChanges].has(cookieName) &&
+				this[kChanges].get(cookieName) === null
 			) {
 				continue;
 			}
@@ -276,7 +282,7 @@ export class RequestCookieStore extends EventTarget {
 			);
 		}
 
-		this.#changes.set(cookie.name, cookie);
+		this[kChanges].set(cookie.name, cookie);
 	}
 
 	async delete(
@@ -290,7 +296,7 @@ export class RequestCookieStore extends EventTarget {
 			throw new TypeError("Cookie name is required");
 		}
 
-		this.#changes.set(name, null);
+		this[kChanges].set(name, null);
 	}
 
 	/**
@@ -300,7 +306,7 @@ export class RequestCookieStore extends EventTarget {
 	getSetCookieHeaders(): string[] {
 		const headers: string[] = [];
 
-		for (const [name, change] of this.#changes) {
+		for (const [name, change] of this[kChanges]) {
 			if (change === null) {
 				// Delete cookie by setting expires to past date
 				headers.push(serializeCookie({name, value: "", expires: 0, path: "/"}));
@@ -313,11 +319,11 @@ export class RequestCookieStore extends EventTarget {
 	}
 
 	hasChanges(): boolean {
-		return this.#changes.size > 0;
+		return this[kChanges].size > 0;
 	}
 
 	clearChanges(): void {
-		this.#changes.clear();
+		this[kChanges].clear();
 	}
 }
 
@@ -354,15 +360,19 @@ export type LoggerFactory = (categories: string[]) => Logger;
 /**
  * Custom logger storage implementation that wraps a factory function
  */
-export class CustomLoggerStorage implements LoggerStorage {
-	#factory: LoggerFactory;
+const kLoggerFactory = Symbol("factory");
 
+export interface CustomLoggerStorage {
+	[kLoggerFactory]: LoggerFactory;
+}
+
+export class CustomLoggerStorage implements LoggerStorage {
 	constructor(factory: LoggerFactory) {
-		this.#factory = factory;
+		this[kLoggerFactory] = factory;
 	}
 
 	get(categories: string[]): Logger {
-		return this.#factory(categories);
+		return this[kLoggerFactory](categories);
 	}
 }
 
@@ -464,20 +474,27 @@ export type DatabaseFactory = (name: string) => Promise<{
 	close: () => Promise<void>;
 }>;
 
+const kDatabaseFactory = Symbol("factory");
+const kDatabases = Symbol("databases");
+const kClosers = Symbol("closers");
+const kPending = Symbol("pending");
+
+export interface CustomDatabaseStorage {
+	[kDatabaseFactory]: DatabaseFactory;
+	[kDatabases]: Map<string, Database>;
+	[kClosers]: Map<string, () => Promise<void>>;
+	[kPending]: Map<string, Promise<Database>>;
+}
+
 /**
  * CustomDatabaseStorage implements DatabaseStorage.
  */
 export class CustomDatabaseStorage implements DatabaseStorage {
-	#factory: DatabaseFactory;
-	#databases: Map<string, Database>;
-	#closers: Map<string, () => Promise<void>>;
-	#pending: Map<string, Promise<Database>>;
-
 	constructor(factory: DatabaseFactory) {
-		this.#factory = factory;
-		this.#databases = new Map();
-		this.#closers = new Map();
-		this.#pending = new Map();
+		this[kDatabaseFactory] = factory;
+		this[kDatabases] = new Map();
+		this[kClosers] = new Map();
+		this[kPending] = new Map();
 	}
 
 	async open(
@@ -486,20 +503,20 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 		onUpgrade?: (event: DatabaseUpgradeEvent) => void,
 	): Promise<Database> {
 		// Return cached instance if already opened
-		const existing = this.#databases.get(name);
+		const existing = this[kDatabases].get(name);
 		if (existing) {
 			return existing;
 		}
 
 		// Return in-flight promise if another caller is already opening this database
-		const pending = this.#pending.get(name);
+		const pending = this[kPending].get(name);
 		if (pending) {
 			return pending;
 		}
 
 		// Create and open the database
 		const promise = (async () => {
-			const {db, close} = await this.#factory(name);
+			const {db, close} = await this[kDatabaseFactory](name);
 
 			// Register upgrade handler if provided
 			if (onUpgrade) {
@@ -529,21 +546,21 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 			}
 
 			// Cache the opened database
-			this.#databases.set(name, db);
-			this.#closers.set(name, close);
+			this[kDatabases].set(name, db);
+			this[kClosers].set(name, close);
 
 			return db;
 		})().finally(() => {
 			// Always clear pending, whether success or failure
-			this.#pending.delete(name);
+			this[kPending].delete(name);
 		});
 
-		this.#pending.set(name, promise);
+		this[kPending].set(name, promise);
 		return promise;
 	}
 
 	get(name: string): Database {
-		const db = this.#databases.get(name);
+		const db = this[kDatabases].get(name);
 		if (!db) {
 			throw new Error(
 				`Database "${name}" has not been opened. ` +
@@ -555,7 +572,7 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 
 	async close(name: string): Promise<void> {
 		// Wait for any pending open to complete before closing
-		const pending = this.#pending.get(name);
+		const pending = this[kPending].get(name);
 		if (pending) {
 			try {
 				await pending;
@@ -565,22 +582,22 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 			}
 		}
 
-		const closer = this.#closers.get(name);
+		const closer = this[kClosers].get(name);
 		if (closer) {
 			await closer();
-			this.#databases.delete(name);
-			this.#closers.delete(name);
+			this[kDatabases].delete(name);
+			this[kClosers].delete(name);
 		}
 	}
 
 	async closeAll(): Promise<void> {
 		// Wait for any pending opens to complete first
-		if (this.#pending.size > 0) {
-			await Promise.allSettled(this.#pending.values());
+		if (this[kPending].size > 0) {
+			await Promise.allSettled(this[kPending].values());
 		}
 
 		// Now close all databases
-		const promises = Array.from(this.#databases.keys())
+		const promises = Array.from(this[kDatabases].keys())
 			.map((name) => this.close(name));
 		await Promise.allSettled(promises);
 	}
@@ -753,22 +770,28 @@ const kCanExtend = Symbol.for("shovel.canExtend");
  *
  * See: https://github.com/w3c/ServiceWorker/issues/771
  */
-export class ShovelExtendableEvent extends Event implements ExtendableEvent {
-	#promises: Array<Promise<any>>;
-	#dispatchPhase: boolean;
-	#pendingCount: number;
+const kPromises = Symbol("promises");
+const kDispatchPhase = Symbol("dispatchPhase");
+const kPendingCount = Symbol("pendingCount");
 
+export interface ShovelExtendableEvent {
+	[kPromises]: Array<Promise<any>>;
+	[kDispatchPhase]: boolean;
+	[kPendingCount]: number;
+}
+
+export class ShovelExtendableEvent extends Event implements ExtendableEvent {
 	constructor(type: string, eventInitDict?: EventInit) {
 		super(type, eventInitDict);
-		this.#promises = [];
-		this.#dispatchPhase = true; // Starts true, set to false after dispatch
-		this.#pendingCount = 0;
+		this[kPromises] = [];
+		this[kDispatchPhase] = true; // Starts true, set to false after dispatch
+		this[kPendingCount] = 0;
 	}
 
 	waitUntil(promise: Promise<any>): void {
 		// Per spec: waitUntil can be called during dispatch phase OR if there are pending promises
 		// See: https://w3c.github.io/ServiceWorker/#dom-extendableevent-waituntil
-		if (!this.#dispatchPhase && this.#pendingCount === 0) {
+		if (!this[kDispatchPhase] && this[kPendingCount] === 0) {
 			throw new DOMException(
 				"waitUntil() must be called synchronously during event dispatch, " +
 					"or while there are pending promises from respondWith()/waitUntil()",
@@ -777,30 +800,30 @@ export class ShovelExtendableEvent extends Event implements ExtendableEvent {
 		}
 
 		// Track pending count
-		this.#pendingCount++;
+		this[kPendingCount]++;
 		const trackedPromise = promise.finally(() => {
-			this.#pendingCount--;
+			this[kPendingCount]--;
 		});
 
 		// Attach catch handler to input promise to suppress unhandled rejection logging
 		trackedPromise.catch(() => {});
 
 		// Store the promise for Promise.all() to consume (rejection still propagates)
-		this.#promises.push(trackedPromise);
+		this[kPromises].push(trackedPromise);
 	}
 
 	getPromises(): Array<Promise<any>> {
-		return [...this.#promises];
+		return [...this[kPromises]];
 	}
 
 	/** @internal Called after synchronous dispatch completes */
 	[kEndDispatchPhase](): void {
-		this.#dispatchPhase = false;
+		this[kDispatchPhase] = false;
 	}
 
 	/** @internal Check if extensions are still allowed */
 	[kCanExtend](): boolean {
-		return this.#dispatchPhase || this.#pendingCount > 0;
+		return this[kDispatchPhase] || this[kPendingCount] > 0;
 	}
 }
 
@@ -823,6 +846,16 @@ export interface ShovelFetchEventInit extends EventInit {
  * Platforms can subclass this to add platform-specific properties (e.g., env bindings).
  * The platformWaitUntil hook allows platforms to extend request lifetime properly.
  */
+const kResponsePromise = Symbol("responsePromise");
+const kResponded = Symbol("responded");
+const kPlatformWaitUntil = Symbol("platformWaitUntil");
+
+export interface ShovelFetchEvent {
+	[kResponsePromise]: Promise<Response> | null;
+	[kResponded]: boolean;
+	[kPlatformWaitUntil]?: (promise: Promise<unknown>) => void;
+}
+
 export class ShovelFetchEvent
 	extends ShovelExtendableEvent
 	implements FetchEvent {
@@ -832,9 +865,6 @@ export class ShovelFetchEvent
 	readonly handled: Promise<undefined>;
 	readonly preloadResponse: Promise<any>;
 	readonly resultingClientId: string;
-	#responsePromise: Promise<Response> | null;
-	#responded: boolean;
-	#platformWaitUntil?: (promise: Promise<unknown>) => void;
 
 	constructor(request: Request, options?: ShovelFetchEventInit) {
 		super("fetch", options);
@@ -844,22 +874,27 @@ export class ShovelFetchEvent
 		this.handled = Promise.resolve(undefined);
 		this.preloadResponse = Promise.resolve(undefined);
 		this.resultingClientId = "";
-		this.#responsePromise = null;
-		this.#responded = false;
-		this.#platformWaitUntil = options?.platformWaitUntil;
+		this[kResponsePromise] = null;
+		this[kResponded] = false;
+		this[kPlatformWaitUntil] = options?.platformWaitUntil;
+	}
+
+	/** The URL of the request (convenience property) */
+	get url(): string {
+		return this.request.url;
 	}
 
 	override waitUntil(promise: Promise<any>): void {
 		// Call platform hook first (e.g., Cloudflare ctx.waitUntil)
-		if (this.#platformWaitUntil) {
-			this.#platformWaitUntil(promise);
+		if (this[kPlatformWaitUntil]) {
+			this[kPlatformWaitUntil](promise);
 		}
 		// Then call parent implementation for internal tracking
 		super.waitUntil(promise);
 	}
 
 	respondWith(response: Response | Promise<Response>): void {
-		if (this.#responded) {
+		if (this[kResponded]) {
 			throw new Error("respondWith() already called");
 		}
 
@@ -871,25 +906,20 @@ export class ShovelFetchEvent
 			);
 		}
 
-		this.#responded = true;
-		this.#responsePromise = Promise.resolve(response);
+		this[kResponded] = true;
+		this[kResponsePromise] = Promise.resolve(response);
 
 		// Per spec, respondWith() extends the event lifetime (allows async waitUntil)
 		// We use waitUntil internally to track pending promise count
-		this.waitUntil(this.#responsePromise);
+		this.waitUntil(this[kResponsePromise]);
 	}
 
 	getResponse(): Promise<Response> | null {
-		return this.#responsePromise;
+		return this[kResponsePromise];
 	}
 
 	hasResponded(): boolean {
-		return this.#responded;
-	}
-
-	/** The URL of the request (convenience property) */
-	get url(): string {
-		return this.request.url;
+		return this[kResponded];
 	}
 }
 
@@ -1137,13 +1167,13 @@ export class ShovelNavigationPreloadManager
 // ============================================================================
 
 /** @internal Symbol for accessing the internal ServiceWorker instance */
-export const kServiceWorker = Symbol("serviceWorker");
+export const kServiceWorker = Symbol.for("shovel.serviceWorker");
 
 /** @internal Symbol for dispatching the install lifecycle event */
-export const kDispatchInstall = Symbol("dispatchInstall");
+export const kDispatchInstall = Symbol.for("shovel.dispatchInstall");
 
 /** @internal Symbol for dispatching the activate lifecycle event */
-export const kDispatchActivate = Symbol("dispatchActivate");
+export const kDispatchActivate = Symbol.for("shovel.dispatchActivate");
 
 /** @internal Symbol for handling fetch requests */
 const kHandleRequest = Symbol("handleRequest");
@@ -1160,13 +1190,13 @@ export class ShovelServiceWorkerRegistration
 	readonly updateViaCache: "imports" | "all" | "none";
 	readonly navigationPreload: NavigationPreloadManager;
 
-	// Internal ServiceWorker instance (accessed via symbol for lifecycle management)
-	[kServiceWorker]: ShovelServiceWorker;
-
 	// Web API properties (not supported in server context, but required by interface)
 	readonly cookies: any;
 	readonly pushManager: any;
 	onupdatefound: ((ev: Event) => any) | null;
+
+	// Internal ServiceWorker instance (accessed via symbol for lifecycle management)
+	[kServiceWorker]: ShovelServiceWorker;
 
 	constructor(scope = "/", scriptURL = "/") {
 		super();
@@ -1196,6 +1226,13 @@ export class ShovelServiceWorkerRegistration
 		return this[kServiceWorker].state === "installed"
 			? this[kServiceWorker]
 			: null;
+	}
+
+	/**
+	 * Check if ready to handle requests (Shovel extension)
+	 */
+	get ready(): boolean {
+		return this[kServiceWorker].state === "activated";
 	}
 
 	// Standard ServiceWorkerRegistration methods
@@ -1385,13 +1422,6 @@ export class ShovelServiceWorkerRegistration
 		});
 	}
 
-	/**
-	 * Check if ready to handle requests (Shovel extension)
-	 */
-	get ready(): boolean {
-		return this[kServiceWorker].state === "activated";
-	}
-
 	// Events: updatefound (standard), plus Shovel lifecycle events
 }
 
@@ -1459,10 +1489,15 @@ export async function dispatchRequest(
  * This is the registry that manages multiple ServiceWorkerRegistrations by scope
  * Note: Standard ServiceWorkerContainer has no constructor - instances are created internally
  */
+const kRegistrations = Symbol("registrations");
+
+export interface ShovelServiceWorkerContainer {
+	[kRegistrations]: Map<string, ShovelServiceWorkerRegistration>;
+}
+
 export class ShovelServiceWorkerContainer
 	extends EventTarget
 	implements ServiceWorkerContainer {
-	#registrations: Map<string, ShovelServiceWorkerRegistration>;
 	readonly controller: ServiceWorker | null;
 	readonly ready: Promise<ServiceWorkerRegistration>;
 
@@ -1473,14 +1508,14 @@ export class ShovelServiceWorkerContainer
 
 	constructor() {
 		super();
-		this.#registrations = new Map<string, ShovelServiceWorkerRegistration>();
+		this[kRegistrations] = new Map<string, ShovelServiceWorkerRegistration>();
 		this.controller = null;
 		this.oncontrollerchange = null;
 		this.onmessage = null;
 		this.onmessageerror = null;
 		// Create default registration for root scope
 		const defaultRegistration = new ShovelServiceWorkerRegistration("/", "/");
-		this.#registrations.set("/", defaultRegistration);
+		this[kRegistrations].set("/", defaultRegistration);
 		this.ready = Promise.resolve(defaultRegistration);
 	}
 
@@ -1490,14 +1525,14 @@ export class ShovelServiceWorkerContainer
 	async getRegistration(
 		scope = "/",
 	): Promise<ServiceWorkerRegistration | undefined> {
-		return this.#registrations.get(scope);
+		return this[kRegistrations].get(scope);
 	}
 
 	/**
 	 * Get all registrations
 	 */
 	async getRegistrations(): Promise<ServiceWorkerRegistration[]> {
-		return Array.from(this.#registrations.values());
+		return Array.from(this[kRegistrations].values());
 	}
 
 	/**
@@ -1514,10 +1549,10 @@ export class ShovelServiceWorkerContainer
 		const url = typeof scriptURL === "string"
 			? scriptURL
 			: scriptURL.toString();
-		const scope = this.#normalizeScope(options?.scope || "/");
+		const scope = normalizeScope(options?.scope || "/");
 
 		// Check if registration already exists for this scope
-		let registration = this.#registrations.get(scope);
+		let registration = this[kRegistrations].get(scope);
 
 		if (registration) {
 			// Update existing registration with new script
@@ -1526,7 +1561,7 @@ export class ShovelServiceWorkerContainer
 		} else {
 			// Create new registration
 			registration = new ShovelServiceWorkerRegistration(scope, url);
-			this.#registrations.set(scope, registration);
+			this[kRegistrations].set(scope, registration);
 
 			// Dispatch updatefound event
 			this.dispatchEvent(new Event("updatefound"));
@@ -1539,10 +1574,10 @@ export class ShovelServiceWorkerContainer
 	 * Unregister a ServiceWorker registration
 	 */
 	async unregister(scope: string): Promise<boolean> {
-		const registration = this.#registrations.get(scope);
+		const registration = this[kRegistrations].get(scope);
 		if (registration) {
 			await registration.unregister();
-			this.#registrations.delete(scope);
+			this[kRegistrations].delete(scope);
 			return true;
 		}
 		return false;
@@ -1552,7 +1587,7 @@ export class ShovelServiceWorkerContainer
 	 * Install and activate all registrations
 	 */
 	async installAll(): Promise<void> {
-		const installations = Array.from(this.#registrations.values()).map(
+		const installations = Array.from(this[kRegistrations].values()).map(
 			async (registration) => {
 				await runLifecycle(registration);
 			},
@@ -1570,37 +1605,39 @@ export class ShovelServiceWorkerContainer
 	 * Get list of all scopes
 	 */
 	getScopes(): string[] {
-		return Array.from(this.#registrations.keys());
+		return Array.from(this[kRegistrations].keys());
 	}
 
 	startMessages(): void {
 		// No-op in server context
 	}
 
-	/**
-	 * Normalize scope to ensure it starts and ends correctly
-	 */
-	#normalizeScope(scope: string): string {
-		// Ensure scope starts with /
-		if (!scope.startsWith("/")) {
-			scope = "/" + scope;
-		}
+	// Events: controllerchange, message, messageerror, updatefound
+}
 
-		// Ensure scope ends with / unless it's the root
-		if (scope !== "/" && !scope.endsWith("/")) {
-			scope = scope + "/";
-		}
-
-		return scope;
+/**
+ * Normalize scope to ensure it starts and ends correctly
+ */
+function normalizeScope(scope: string): string {
+	// Ensure scope starts with /
+	if (!scope.startsWith("/")) {
+		scope = "/" + scope;
 	}
 
-	// Events: controllerchange, message, messageerror, updatefound
+	// Ensure scope ends with / unless it's the root
+	if (scope !== "/" && !scope.endsWith("/")) {
+		scope = scope + "/";
+	}
+
+	return scope;
 }
 
 /**
  * Notification interface for push notifications (server context stubs)
  */
 export class Notification extends EventTarget {
+	static permission: "default" | "denied" | "granted";
+
 	readonly actions: readonly NotificationAction[];
 	readonly badge: string;
 	readonly body: string;
@@ -1622,8 +1659,6 @@ export class Notification extends EventTarget {
 	onclose: ((ev: Event) => any) | null;
 	onerror: ((ev: Event) => any) | null;
 	onshow: ((ev: Event) => any) | null;
-
-	static permission: "default" | "denied" | "granted";
 
 	constructor(title: string, options: NotificationOptions = {}) {
 		super();
@@ -1648,14 +1683,14 @@ export class Notification extends EventTarget {
 		this.onshow = null;
 	}
 
+	static async requestPermission(): Promise<"default" | "denied" | "granted"> {
+		return "denied";
+	}
+
 	close(): void {
 		(self as any).loggers
 			.open("platform")
 			.warn("Notification.close() not supported in server context");
-	}
-
-	static async requestPermission(): Promise<"default" | "denied" | "granted"> {
-		return "denied";
 	}
 
 	// Events: click, close, error, show
@@ -1707,7 +1742,11 @@ export class PushEvent extends ShovelExtendableEvent {
  * Note: Standard PushMessageData has no constructor - instances are created internally
  */
 export class ShovelPushMessageData implements PushMessageData {
-	constructor(private _data: any) {}
+	_data: any;
+
+	constructor(data: any) {
+		this._data = data;
+	}
 
 	arrayBuffer(): ArrayBuffer {
 		if (this._data instanceof ArrayBuffer) {
@@ -1825,6 +1864,14 @@ export class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
  *
  * Use restore() to revert all patches (useful for testing).
  */
+const kIsDevelopment = Symbol("isDevelopment");
+const kOriginals = Symbol("originals");
+
+export interface ServiceWorkerGlobals {
+	[kIsDevelopment]: boolean;
+	[kOriginals]: Record<PatchedKey, unknown>;
+}
+
 export class ServiceWorkerGlobals {
 	// Self-reference (standard in ServiceWorkerGlobalScope)
 	// Type assertion: we provide a compatible subset of WorkerGlobalScope
@@ -1844,19 +1891,6 @@ export class ServiceWorkerGlobals {
 	// Our custom Clients implementation provides core functionality compatible with the Web API
 	readonly clients: Clients;
 
-	// Shovel-specific development features
-	#isDevelopment: boolean;
-
-	// Snapshot of original globals before patching (for restore())
-	#originals: Record<PatchedKey, unknown>;
-
-	// Web API required properties
-	// Note: Using RequestCookieStore but typing as any for flexibility with global CookieStore type
-	// cookieStore is retrieved from AsyncContext for per-request isolation
-	get cookieStore(): any {
-		return cookieStoreStorage.get();
-	}
-
 	readonly serviceWorker: any;
 
 	// WorkerGlobalScope required properties (stubs for server context)
@@ -1869,91 +1903,6 @@ export class ServiceWorkerGlobals {
 	readonly origin: string;
 	readonly performance: Performance;
 	readonly crypto: Crypto;
-
-	// WorkerGlobalScope methods (stubs for server context)
-	importScripts(..._urls: Array<string | URL>): void {
-		(self as any).loggers
-			.open("platform")
-			.warn("importScripts() not supported in server context");
-	}
-
-	atob(data: string): string {
-		return globalThis.atob(data);
-	}
-
-	btoa(data: string): string {
-		return globalThis.btoa(data);
-	}
-
-	clearInterval(id: number): void {
-		globalThis.clearInterval(id);
-	}
-
-	clearTimeout(id: number): void {
-		globalThis.clearTimeout(id);
-	}
-
-	createImageBitmap(..._args: any[]): Promise<ImageBitmap> {
-		throw new Error(
-			"[ServiceWorker] createImageBitmap() not supported in server context",
-		);
-	}
-
-	fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-		// Determine URL string from input
-		const urlString = typeof input === "string"
-			? input
-			: input instanceof URL ? input.href : input.url;
-
-		// Check if relative URL (self-fetch)
-		const isRelative = urlString.startsWith("/") || urlString.startsWith("./");
-
-		if (!isRelative) {
-			// Absolute URL - use network (original fetch to avoid recursion)
-			const originalFetch = this.#originals.fetch as typeof fetch;
-			return originalFetch(input, init);
-		}
-
-		// Relative URL - route internally through our own fetch handler
-		const currentDepth = fetchDepthStorage.get() ?? 0;
-		if (currentDepth >= MAX_FETCH_DEPTH) {
-			return Promise.reject(
-				new Error(`Maximum self-fetch depth (${MAX_FETCH_DEPTH}) exceeded`),
-			);
-		}
-
-		// Create request with a base URL for the relative path
-		// The actual host doesn't matter since we're routing internally
-		const request = new Request(new URL(urlString, "http://localhost"), init);
-
-		// Route through our own handler with incremented depth
-		return fetchDepthStorage.run(currentDepth + 1, () => {
-			return dispatchRequest(
-				this.registration as ShovelServiceWorkerRegistration,
-				request,
-			);
-		});
-	}
-
-	queueMicrotask(callback: VoidFunction): void {
-		globalThis.queueMicrotask(callback);
-	}
-
-	reportError(e: any): void {
-		getLogger(["shovel", "platform"]).error`reportError: ${e}`;
-	}
-
-	setInterval(handler: TimerHandler, timeout?: number, ...args: any[]): number {
-		return globalThis.setInterval(handler as any, timeout, ...args) as any;
-	}
-
-	setTimeout(handler: TimerHandler, timeout?: number, ...args: any[]): number {
-		return globalThis.setTimeout(handler as any, timeout, ...args) as any;
-	}
-
-	structuredClone<T>(value: T, options?: StructuredSerializeOptions): T {
-		return globalThis.structuredClone(value, options);
-	}
 
 	// Event handlers required by ServiceWorkerGlobalScope
 	// Use Web API types (not our custom implementations) for event handler signatures
@@ -2011,9 +1960,9 @@ export class ServiceWorkerGlobals {
 	constructor(options: ServiceWorkerGlobalsOptions) {
 		// Save originals for all keys we'll patch (for restore())
 		const g = globalThis as Record<string, unknown>;
-		this.#originals = {} as Record<PatchedKey, unknown>;
+		this[kOriginals] = {} as Record<PatchedKey, unknown>;
 		for (const key of PATCHED_KEYS) {
-			this.#originals[key] = g[key];
+			this[kOriginals][key] = g[key];
 		}
 
 		this.self = globalThis;
@@ -2022,10 +1971,10 @@ export class ServiceWorkerGlobals {
 		this.directories = options.directories;
 		this.databases = options.databases;
 		this.loggers = options.loggers;
-		this.#isDevelopment = options.isDevelopment ?? false;
+		this[kIsDevelopment] = options.isDevelopment ?? false;
 
 		// Create clients API implementation
-		this.clients = this.#createClientsAPI();
+		this.clients = createClientsAPI();
 
 		// Initialize Web API properties
 		// Note: cookieStore is per-request and retrieved via AsyncLocalStorage getter
@@ -2060,13 +2009,105 @@ export class ServiceWorkerGlobals {
 		this.onunhandledrejection = null;
 	}
 
+	// Web API required properties
+	// Note: Using RequestCookieStore but typing as any for flexibility with global CookieStore type
+	// cookieStore is retrieved from AsyncContext for per-request isolation
+	get cookieStore(): any {
+		return cookieStoreStorage.get();
+	}
+
+	// WorkerGlobalScope methods (stubs for server context)
+	importScripts(..._urls: Array<string | URL>): void {
+		(self as any).loggers
+			.open("platform")
+			.warn("importScripts() not supported in server context");
+	}
+
+	atob(data: string): string {
+		return globalThis.atob(data);
+	}
+
+	btoa(data: string): string {
+		return globalThis.btoa(data);
+	}
+
+	clearInterval(id: number): void {
+		globalThis.clearInterval(id);
+	}
+
+	clearTimeout(id: number): void {
+		globalThis.clearTimeout(id);
+	}
+
+	createImageBitmap(..._args: any[]): Promise<ImageBitmap> {
+		throw new Error(
+			"[ServiceWorker] createImageBitmap() not supported in server context",
+		);
+	}
+
+	fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+		// Determine URL string from input
+		const urlString = typeof input === "string"
+			? input
+			: input instanceof URL ? input.href : input.url;
+
+		// Check if relative URL (self-fetch)
+		const isRelative = urlString.startsWith("/") || urlString.startsWith("./");
+
+		if (!isRelative) {
+			// Absolute URL - use network (original fetch to avoid recursion)
+			const originalFetch = this[kOriginals].fetch as typeof fetch;
+			return originalFetch(input, init);
+		}
+
+		// Relative URL - route internally through our own fetch handler
+		const currentDepth = fetchDepthStorage.get() ?? 0;
+		if (currentDepth >= MAX_FETCH_DEPTH) {
+			return Promise.reject(
+				new Error(`Maximum self-fetch depth (${MAX_FETCH_DEPTH}) exceeded`),
+			);
+		}
+
+		// Create request with a base URL for the relative path
+		// The actual host doesn't matter since we're routing internally
+		const request = new Request(new URL(urlString, "http://localhost"), init);
+
+		// Route through our own handler with incremented depth
+		return fetchDepthStorage.run(currentDepth + 1, () => {
+			return dispatchRequest(
+				this.registration as ShovelServiceWorkerRegistration,
+				request,
+			);
+		});
+	}
+
+	queueMicrotask(callback: VoidFunction): void {
+		globalThis.queueMicrotask(callback);
+	}
+
+	reportError(e: any): void {
+		getLogger(["shovel", "platform"]).error`reportError: ${e}`;
+	}
+
+	setInterval(handler: TimerHandler, timeout?: number, ...args: any[]): number {
+		return globalThis.setInterval(handler as any, timeout, ...args) as any;
+	}
+
+	setTimeout(handler: TimerHandler, timeout?: number, ...args: any[]): number {
+		return globalThis.setTimeout(handler as any, timeout, ...args) as any;
+	}
+
+	structuredClone<T>(value: T, options?: StructuredSerializeOptions): T {
+		return globalThis.structuredClone(value, options);
+	}
+
 	/**
 	 * Standard ServiceWorker skipWaiting() implementation
 	 * Allows the ServiceWorker to activate immediately
 	 */
 	async skipWaiting(): Promise<void> {
 		getLogger(["shovel", "platform"]).debug("skipWaiting() called");
-		if (!this.#isDevelopment) {
+		if (!this[kIsDevelopment]) {
 			getLogger(["shovel", "platform"]).debug(
 				"skipWaiting() - production graceful restart not implemented",
 			);
@@ -2090,7 +2131,7 @@ export class ServiceWorkerGlobals {
 			this.registration.addEventListener(type, listener, options);
 		} else {
 			// Other events (e.g., "message" for worker threads) go to native
-			const original = this.#originals
+			const original = this[kOriginals]
 				.addEventListener as typeof addEventListener;
 			if (original) {
 				original.call(globalThis, type as any, listener, options);
@@ -2108,7 +2149,7 @@ export class ServiceWorkerGlobals {
 		if (isServiceWorkerEvent(type)) {
 			this.registration.removeEventListener(type, listener, options);
 		} else {
-			const original = this.#originals
+			const original = this[kOriginals]
 				.removeEventListener as typeof removeEventListener;
 			if (original) {
 				original.call(globalThis, type as any, listener, options);
@@ -2121,19 +2162,11 @@ export class ServiceWorkerGlobals {
 			return this.registration.dispatchEvent(event);
 		}
 		// Other events go to native
-		const original = this.#originals.dispatchEvent as typeof dispatchEvent;
+		const original = this[kOriginals].dispatchEvent as typeof dispatchEvent;
 		if (original) {
 			return original.call(globalThis, event);
 		}
 		return false;
-	}
-
-	/**
-	 * Create Clients API implementation
-	 * Note: HTTP requests are stateless, so most client operations are no-ops
-	 */
-	#createClientsAPI(): Clients {
-		return new ShovelClients();
 	}
 
 	/**
@@ -2193,7 +2226,7 @@ export class ServiceWorkerGlobals {
 	restore(): void {
 		const g = globalThis as Record<string, unknown>;
 		for (const key of PATCHED_KEYS) {
-			const original = this.#originals[key];
+			const original = this[kOriginals][key];
 			if (original === undefined) {
 				delete g[key];
 			} else {
@@ -2201,6 +2234,14 @@ export class ServiceWorkerGlobals {
 			}
 		}
 	}
+}
+
+/**
+ * Create Clients API implementation
+ * Note: HTTP requests are stateless, so most client operations are no-ops
+ */
+function createClientsAPI(): Clients {
+	return new ShovelClients();
 }
 
 // ============================================================================
@@ -2292,7 +2333,7 @@ function isClass(fn: unknown): fn is new (...args: any[]) => any {
  */
 export function createDirectoryFactory(
 	configs: Record<string, DirectoryConfig>,
-) {
+): (name: string) => Promise<FileSystemDirectoryHandle> {
 	return async (name: string): Promise<FileSystemDirectoryHandle> => {
 		const config = matchPattern(name, configs);
 		if (!config) {
@@ -2334,7 +2375,9 @@ export interface CacheFactoryOptions {
  * Creates a cache factory function for CustomCacheStorage.
  * Configs must have impl pre-imported (from generated config module).
  */
-export function createCacheFactory(options: CacheFactoryOptions) {
+export function createCacheFactory(
+	options: CacheFactoryOptions,
+): (name: string) => Promise<Cache> {
 	const {configs, usePostMessage = false} = options;
 
 	return async (name: string): Promise<Cache> => {
@@ -2381,6 +2424,7 @@ export interface WorkerRequestMessage {
 		headers: Record<string, string>;
 		body?: ArrayBuffer | null;
 	};
+	// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 	requestID: number;
 }
 
@@ -2392,6 +2436,7 @@ export interface WorkerResponseMessage {
 		headers: Record<string, string>;
 		body: ArrayBuffer;
 	};
+	// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 	requestID: number;
 }
 
@@ -2399,6 +2444,7 @@ export interface WorkerErrorMessage {
 	type: "error";
 	error: string;
 	stack?: string;
+	// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 	requestID?: number;
 }
 
@@ -2508,8 +2554,9 @@ export async function initWorkerRuntime(
 	scope.install();
 
 	// Set up broadcast channel backend if configured
-	if (config?.broadcastChannel?.impl) {
-		const {impl, ...bcOptions} = config.broadcastChannel;
+	const broadcastChannelConfig = config?.broadcastChannel;
+	if (broadcastChannelConfig?.impl) {
+		const {impl, ...bcOptions} = broadcastChannelConfig;
 		const opts = bcOptions as Record<string, unknown>;
 		const bcBackend = isClass(impl)
 			? new impl(opts)
@@ -2597,6 +2644,7 @@ export function startWorkerMessageLoop(
 					headers,
 					body,
 				},
+				// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 				requestID: message.requestID,
 			};
 
@@ -2610,6 +2658,7 @@ export function startWorkerMessageLoop(
 				type: "error",
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
+				// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 				requestID: message.requestID,
 			};
 			sendMessage(errorMsg);
@@ -2626,6 +2675,7 @@ export function startWorkerMessageLoop(
 		if (message?.type === "cache:response" || message?.type === "cache:error") {
 			messageLogger.debug(`[Worker-${workerId}] Forwarding cache message`, {
 				type: message.type,
+				// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 				requestID: message.requestID,
 			});
 			handleCacheResponse(message);

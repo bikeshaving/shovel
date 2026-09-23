@@ -2013,11 +2013,11 @@ test(
 			const html1 = await (await fetch(`http://localhost:${PORT}/`)).text();
 			const match1 = html1.match(/src="(\/assets\/client[^"]+\.js)"/);
 			expect(match1).not.toBeNull();
-			const assetUrl1 = match1[1];
-			logger.debug`Initial asset URL: ${assetUrl1}`;
+			const assetURL1 = match1[1];
+			logger.debug`Initial asset URL: ${assetURL1}`;
 
 			// Step 2: Verify the initial asset loads
-			const assetRes1 = await fetch(`http://localhost:${PORT}${assetUrl1}`);
+			const assetRes1 = await fetch(`http://localhost:${PORT}${assetURL1}`);
 			expect(assetRes1.status).toBe(200);
 			const assetContent1 = await assetRes1.text();
 			expect(assetContent1).toContain("Asset loaded");
@@ -2039,19 +2039,19 @@ test(
 			const html2 = await (await fetch(`http://localhost:${PORT}/`)).text();
 			const match2 = html2.match(/src="(\/assets\/client[^"]+\.js)"/);
 			expect(match2).not.toBeNull();
-			const assetUrl2 = match2[1];
-			logger.debug`New asset URL: ${assetUrl2}`;
+			const assetURL2 = match2[1];
+			logger.debug`New asset URL: ${assetURL2}`;
 
 			// The hash should have changed
-			expect(assetUrl2).not.toBe(assetUrl1);
+			expect(assetURL2).not.toBe(assetURL1);
 
 			// Step 6: THIS IS THE KEY TEST - the new asset URL should work
 			// Without the fix, this would 404 because manifestEntries was stale
-			const assetRes2 = await fetch(`http://localhost:${PORT}${assetUrl2}`);
+			const assetRes2 = await fetch(`http://localhost:${PORT}${assetURL2}`);
 			logger.debug`Asset response status: ${assetRes2.status}`;
 			if (assetRes2.status !== 200) {
 				// Try fetching the old URL to see if it's a caching issue
-				const oldAssetRes = await fetch(`http://localhost:${PORT}${assetUrl1}`);
+				const oldAssetRes = await fetch(`http://localhost:${PORT}${assetURL1}`);
 				logger.debug`Old asset still works: ${oldAssetRes.status}`;
 			}
 			expect(assetRes2.status).toBe(200);

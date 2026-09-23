@@ -72,41 +72,42 @@ function getEnv(): Record<string, string | undefined> {
 // TOKENIZER
 // ============================================================================
 
-enum TokenType {
+const TokenType = {
 	// Literals
-	STRING = "STRING",
-	NUMBER = "NUMBER",
-	TRUE = "TRUE",
-	FALSE = "FALSE",
-	NULL = "NULL",
-	UNDEFINED = "UNDEFINED",
-	IDENTIFIER = "IDENTIFIER",
+	STRING: "STRING",
+	NUMBER: "NUMBER",
+	TRUE: "TRUE",
+	FALSE: "FALSE",
+	NULL: "NULL",
+	UNDEFINED: "UNDEFINED",
+	IDENTIFIER: "IDENTIFIER",
 
 	// Expression-specific
-	ENV_VAR = "ENV_VAR", // $IDENTIFIER
-	OUTDIR = "OUTDIR", // [outdir]
-	TMPDIR = "TMPDIR", // [tmpdir]
-	GIT = "GIT", // [git]
-	SLASH = "SLASH", // / (path join operator)
+	ENV_VAR: "ENV_VAR", // $IDENTIFIER
+	OUTDIR: "OUTDIR", // [outdir]
+	TMPDIR: "TMPDIR", // [tmpdir]
+	GIT: "GIT", // [git]
+	SLASH: "SLASH", // / (path join operator)
 
 	// Operators
-	QUESTION = "?",
-	COLON = ":",
-	OR = "||",
-	NULLISH = "??",
-	AND = "&&",
-	EQ = "==",
-	NE = "!=",
-	EQ_STRICT = "===",
-	NE_STRICT = "!==",
-	NOT = "!",
+	QUESTION: "?",
+	COLON: ":",
+	OR: "||",
+	NULLISH: "??",
+	AND: "&&",
+	EQ: "==",
+	NE: "!=",
+	EQ_STRICT: "===",
+	NE_STRICT: "!==",
+	NOT: "!",
 
 	// Grouping
-	LPAREN = "(",
-	RPAREN = ")",
+	LPAREN: "(",
+	RPAREN: ")",
 
-	EOF = "EOF",
-}
+	EOF: "EOF",
+} as const;
+type TokenType = (typeof TokenType)[keyof typeof TokenType];
 
 interface Token {
 	type: TokenType;
@@ -116,25 +117,25 @@ interface Token {
 }
 
 class Tokenizer {
-	#input: string;
-	#pos: number;
+	input: string;
+	pos: number;
 
 	constructor(input: string) {
-		this.#input = input;
-		this.#pos = 0;
+		this.input = input;
+		this.pos = 0;
 	}
 
-	#peek(): string {
-		return this.#input[this.#pos] || "";
+	peek(): string {
+		return this.input[this.pos] || "";
 	}
 
-	#advance(): string {
-		return this.#input[this.#pos++] || "";
+	advance(): string {
+		return this.input[this.pos++] || "";
 	}
 
-	#skipWhitespace(): void {
-		while (/\s/.test(this.#peek())) {
-			this.#advance();
+	skipWhitespace(): void {
+		while (/\s/.test(this.peek())) {
+			this.advance();
 		}
 	}
 
@@ -144,17 +145,17 @@ class Tokenizer {
 	 * Returns true if the operator should be tokenized, false if it should be
 	 * treated as part of an identifier.
 	 */
-	#hasInfixWhitespace(operatorLength: number): boolean {
-		const charBefore = this.#pos > 0 ? this.#input[this.#pos - 1] : " ";
-		const charAfter = this.#input[this.#pos + operatorLength] || " ";
+	hasInfixWhitespace(operatorLength: number): boolean {
+		const charBefore = this.pos > 0 ? this.input[this.pos - 1] : " ";
+		const charAfter = this.input[this.pos + operatorLength] || " ";
 		return /\s/.test(charBefore) && /\s/.test(charAfter);
 	}
 
 	next(): Token {
-		this.#skipWhitespace();
+		this.skipWhitespace();
 
-		const start = this.#pos;
-		const ch = this.#peek();
+		const start = this.pos;
+		const ch = this.peek();
 
 		// EOF
 		if (!ch) {
@@ -164,38 +165,38 @@ class Tokenizer {
 		// Quoted strings (double or single quotes)
 		if (ch === '"' || ch === "'") {
 			const quote = ch;
-			this.#advance(); // consume opening quote
+			this.advance(); // consume opening quote
 			let value = "";
-			while (this.#peek() && this.#peek() !== quote) {
-				if (this.#peek() === "\\") {
-					this.#advance();
-					const next = this.#advance();
+			while (this.peek() && this.peek() !== quote) {
+				if (this.peek() === "\\") {
+					this.advance();
+					const next = this.advance();
 					// Simple escape handling
 					if (next === "n") value += "\n";
 					else if (next === "t") value += "\t";
 					else value += next;
 				} else {
-					value += this.#advance();
+					value += this.advance();
 				}
 			}
-			if (this.#peek() !== quote) {
+			if (this.peek() !== quote) {
 				throw new Error(`Unterminated string at position ${start}`);
 			}
-			this.#advance(); // consume closing quote
-			return {type: TokenType.STRING, value, start, end: this.#pos};
+			this.advance(); // consume closing quote
+			return {type: TokenType.STRING, value, start, end: this.pos};
 		}
 
 		// Numbers
 		if (/\d/.test(ch)) {
 			let value = "";
-			while (/\d/.test(this.#peek())) {
-				value += this.#advance();
+			while (/\d/.test(this.peek())) {
+				value += this.advance();
 			}
 			return {
 				type: TokenType.NUMBER,
 				value: parseInt(value, 10),
 				start,
-				end: this.#pos,
+				end: this.pos,
 			};
 		}
 
@@ -206,137 +207,137 @@ class Tokenizer {
 		// === (strict equality)
 		if (
 			ch === "=" &&
-			this.#input[this.#pos + 1] === "=" &&
-			this.#input[this.#pos + 2] === "=" &&
-			this.#hasInfixWhitespace(3)
+			this.input[this.pos + 1] === "=" &&
+			this.input[this.pos + 2] === "=" &&
+			this.hasInfixWhitespace(3)
 		) {
-			this.#pos += 3;
-			return {type: TokenType.EQ_STRICT, value: "===", start, end: this.#pos};
+			this.pos += 3;
+			return {type: TokenType.EQ_STRICT, value: "===", start, end: this.pos};
 		}
 		// !== (strict inequality)
 		if (
 			ch === "!" &&
-			this.#input[this.#pos + 1] === "=" &&
-			this.#input[this.#pos + 2] === "=" &&
-			this.#hasInfixWhitespace(3)
+			this.input[this.pos + 1] === "=" &&
+			this.input[this.pos + 2] === "=" &&
+			this.hasInfixWhitespace(3)
 		) {
-			this.#pos += 3;
-			return {type: TokenType.NE_STRICT, value: "!==", start, end: this.#pos};
+			this.pos += 3;
+			return {type: TokenType.NE_STRICT, value: "!==", start, end: this.pos};
 		}
 		// == (equality)
 		if (
 			ch === "=" &&
-			this.#input[this.#pos + 1] === "=" &&
-			this.#hasInfixWhitespace(2)
+			this.input[this.pos + 1] === "=" &&
+			this.hasInfixWhitespace(2)
 		) {
-			this.#pos += 2;
-			return {type: TokenType.EQ, value: "==", start, end: this.#pos};
+			this.pos += 2;
+			return {type: TokenType.EQ, value: "==", start, end: this.pos};
 		}
 		// != (inequality)
 		if (
 			ch === "!" &&
-			this.#input[this.#pos + 1] === "=" &&
-			this.#hasInfixWhitespace(2)
+			this.input[this.pos + 1] === "=" &&
+			this.hasInfixWhitespace(2)
 		) {
-			this.#pos += 2;
-			return {type: TokenType.NE, value: "!=", start, end: this.#pos};
+			this.pos += 2;
+			return {type: TokenType.NE, value: "!=", start, end: this.pos};
 		}
 		// || (logical or)
 		if (
 			ch === "|" &&
-			this.#input[this.#pos + 1] === "|" &&
-			this.#hasInfixWhitespace(2)
+			this.input[this.pos + 1] === "|" &&
+			this.hasInfixWhitespace(2)
 		) {
-			this.#pos += 2;
-			return {type: TokenType.OR, value: "||", start, end: this.#pos};
+			this.pos += 2;
+			return {type: TokenType.OR, value: "||", start, end: this.pos};
 		}
 		// && (logical and)
 		if (
 			ch === "&" &&
-			this.#input[this.#pos + 1] === "&" &&
-			this.#hasInfixWhitespace(2)
+			this.input[this.pos + 1] === "&" &&
+			this.hasInfixWhitespace(2)
 		) {
-			this.#pos += 2;
-			return {type: TokenType.AND, value: "&&", start, end: this.#pos};
+			this.pos += 2;
+			return {type: TokenType.AND, value: "&&", start, end: this.pos};
 		}
 		// ?? (nullish coalescing)
 		if (
 			ch === "?" &&
-			this.#input[this.#pos + 1] === "?" &&
-			this.#hasInfixWhitespace(2)
+			this.input[this.pos + 1] === "?" &&
+			this.hasInfixWhitespace(2)
 		) {
-			this.#pos += 2;
-			return {type: TokenType.NULLISH, value: "??", start, end: this.#pos};
+			this.pos += 2;
+			return {type: TokenType.NULLISH, value: "??", start, end: this.pos};
 		}
 		// ? (ternary) - requires whitespace
-		if (ch === "?" && this.#hasInfixWhitespace(1)) {
-			this.#advance();
-			return {type: TokenType.QUESTION, value: "?", start, end: this.#pos};
+		if (ch === "?" && this.hasInfixWhitespace(1)) {
+			this.advance();
+			return {type: TokenType.QUESTION, value: "?", start, end: this.pos};
 		}
 		// : (ternary else) - requires whitespace
-		if (ch === ":" && this.#hasInfixWhitespace(1)) {
-			this.#advance();
-			return {type: TokenType.COLON, value: ":", start, end: this.#pos};
+		if (ch === ":" && this.hasInfixWhitespace(1)) {
+			this.advance();
+			return {type: TokenType.COLON, value: ":", start, end: this.pos};
 		}
 
 		// Prefix operators (don't require whitespace after)
 		if (ch === "!") {
-			this.#advance();
-			return {type: TokenType.NOT, value: "!", start, end: this.#pos};
+			this.advance();
+			return {type: TokenType.NOT, value: "!", start, end: this.pos};
 		}
 		if (ch === "(") {
-			this.#advance();
-			return {type: TokenType.LPAREN, value: "(", start, end: this.#pos};
+			this.advance();
+			return {type: TokenType.LPAREN, value: "(", start, end: this.pos};
 		}
 		if (ch === ")") {
-			this.#advance();
-			return {type: TokenType.RPAREN, value: ")", start, end: this.#pos};
+			this.advance();
+			return {type: TokenType.RPAREN, value: ")", start, end: this.pos};
 		}
 
 		// Environment variable: $IDENTIFIER
 		if (ch === "$") {
-			this.#advance(); // consume $
+			this.advance(); // consume $
 			let name = "";
 			// Env var names: start with letter, then letters/digits/underscore
-			while (/[A-Za-z0-9_]/.test(this.#peek())) {
-				name += this.#advance();
+			while (/[A-Za-z0-9_]/.test(this.peek())) {
+				name += this.advance();
 			}
 			if (!name) {
 				throw new Error(`Expected env var name after $ at position ${start}`);
 			}
-			return {type: TokenType.ENV_VAR, value: name, start, end: this.#pos};
+			return {type: TokenType.ENV_VAR, value: name, start, end: this.pos};
 		}
 
 		// Slash for path joining
 		if (ch === "/") {
-			this.#advance();
-			return {type: TokenType.SLASH, value: "/", start, end: this.#pos};
+			this.advance();
+			return {type: TokenType.SLASH, value: "/", start, end: this.pos};
 		}
 
 		// Bracket placeholders: [outdir], [tmpdir], [git]
 		if (ch === "[") {
-			const remaining = this.#input.slice(this.#pos);
+			const remaining = this.input.slice(this.pos);
 			if (remaining.startsWith("[outdir]")) {
-				this.#pos += 8;
+				this.pos += 8;
 				return {
 					type: TokenType.OUTDIR,
 					value: "[outdir]",
 					start,
-					end: this.#pos,
+					end: this.pos,
 				};
 			}
 			if (remaining.startsWith("[tmpdir]")) {
-				this.#pos += 8;
+				this.pos += 8;
 				return {
 					type: TokenType.TMPDIR,
 					value: "[tmpdir]",
 					start,
-					end: this.#pos,
+					end: this.pos,
 				};
 			}
 			if (remaining.startsWith("[git]")) {
-				this.#pos += 5;
-				return {type: TokenType.GIT, value: "[git]", start, end: this.#pos};
+				this.pos += 5;
+				return {type: TokenType.GIT, value: "[git]", start, end: this.pos};
 			}
 			throw new Error(
 				`Unknown placeholder at position ${start}: ${remaining.slice(0, 10)}`,
@@ -351,42 +352,42 @@ class Tokenizer {
 		if (/\S/.test(ch) && !/[$()/]/.test(ch)) {
 			let value = "";
 			while (
-				this.#peek() && /\S/.test(this.#peek()) && !/[$()]/.test(this.#peek())
+				this.peek() && /\S/.test(this.peek()) && !/[$()]/.test(this.peek())
 			) {
 				// Slash: include // (URLs) but stop at single / (path join)
-				if (this.#peek() === "/") {
-					if (this.#input[this.#pos + 1] === "/") {
+				if (this.peek() === "/") {
+					if (this.input[this.pos + 1] === "/") {
 						// Double slash - part of URL, include both
-						value += this.#advance(); // first /
-						value += this.#advance(); // second /
+						value += this.advance(); // first /
+						value += this.advance(); // second /
 						continue;
 					}
 					break; // Single slash - path join operator
 				}
-				value += this.#advance();
+				value += this.advance();
 			}
 
 			// Keywords
 			if (value === "true") {
-				return {type: TokenType.TRUE, value: true, start, end: this.#pos};
+				return {type: TokenType.TRUE, value: true, start, end: this.pos};
 			}
 			if (value === "false") {
-				return {type: TokenType.FALSE, value: false, start, end: this.#pos};
+				return {type: TokenType.FALSE, value: false, start, end: this.pos};
 			}
 			if (value === "null") {
-				return {type: TokenType.NULL, value: null, start, end: this.#pos};
+				return {type: TokenType.NULL, value: null, start, end: this.pos};
 			}
 			if (value === "undefined") {
 				return {
 					type: TokenType.UNDEFINED,
 					value: undefined,
 					start,
-					end: this.#pos,
+					end: this.pos,
 				};
 			}
 
 			// Identifier (string literal - bare ALL_CAPS is now literal, not env var)
-			return {type: TokenType.IDENTIFIER, value, start, end: this.#pos};
+			return {type: TokenType.IDENTIFIER, value, start, end: this.pos};
 		}
 
 		throw new Error(`Unexpected character '${ch}' at position ${start}`);
@@ -397,10 +398,30 @@ class Tokenizer {
 // PARSER
 // ============================================================================
 
+const kTokens = Symbol("tokens");
+const kPos = Symbol("pos");
+const kEnv = Symbol("env");
+
+export interface Parser {
+	[kTokens]: Token[];
+	[kPos]: number;
+	[kEnv]: Record<string, string | undefined>;
+}
+
 export class Parser {
-	#tokens: Token[];
-	#pos: number;
-	#env: Record<string, string | undefined>;
+	constructor(input: string, env: Record<string, string | undefined>) {
+		const tokenizer = new Tokenizer(input);
+		const tokens: Token[] = [];
+		let token: Token;
+		do {
+			token = tokenizer.next();
+			tokens.push(token);
+		} while (token.type !== TokenType.EOF);
+
+		this[kTokens] = tokens;
+		this[kPos] = 0;
+		this[kEnv] = env;
+	}
 
 	/**
 	 * Parse and evaluate a config expression.
@@ -410,255 +431,242 @@ export class Parser {
 		env: Record<string, string | undefined> = {},
 	): any {
 		const parser = new Parser(expr, env);
-		return parser.#parse();
+		return runParser(parser);
 	}
+}
 
-	constructor(input: string, env: Record<string, string | undefined>) {
-		const tokenizer = new Tokenizer(input);
-		this.#tokens = [];
-		let token: Token;
-		do {
-			token = tokenizer.next();
-			this.#tokens.push(token);
-		} while (token.type !== TokenType.EOF);
+function parserPeek(parser: Parser): Token {
+	return parser[kTokens][parser[kPos]];
+}
 
-		this.#pos = 0;
-		this.#env = env;
-	}
+function parserAdvance(parser: Parser): Token {
+	return parser[kTokens][parser[kPos]++];
+}
 
-	#peek(): Token {
-		return this.#tokens[this.#pos];
-	}
-
-	#advance(): Token {
-		return this.#tokens[this.#pos++];
-	}
-
-	#expect(type: TokenType): Token {
-		const token = this.#peek();
-		if (token.type !== type) {
-			throw new Error(
-				`Expected ${type} but got ${token.type} at position ${token.start}`,
-			);
-		}
-		return this.#advance();
-	}
-
-	#parse(): any {
-		const result = this.#parseExpr();
-		this.#expect(TokenType.EOF);
-		return result;
-	}
-
-	// Expr := Ternary
-	#parseExpr(): any {
-		return this.#parseTernary();
-	}
-
-	// Ternary := LogicalOr ('?' Expr ':' Expr)?
-	#parseTernary(): any {
-		const left = this.#parseLogicalOr();
-
-		if (this.#peek().type === TokenType.QUESTION) {
-			this.#advance(); // consume ?
-			const trueBranch = this.#parseExpr();
-			this.#expect(TokenType.COLON);
-			const falseBranch = this.#parseExpr();
-			return left ? trueBranch : falseBranch;
-		}
-
-		return left;
-	}
-
-	// LogicalOr := LogicalAnd (('||' | '??') LogicalAnd)*
-	// ?? and || have same precedence, evaluated left-to-right
-	#parseLogicalOr(): any {
-		let left = this.#parseLogicalAnd();
-
-		while (
-			this.#peek().type === TokenType.OR ||
-			this.#peek().type === TokenType.NULLISH
-		) {
-			const isNullish = this.#peek().type === TokenType.NULLISH;
-			this.#advance(); // consume || or ??
-			const right = this.#parseLogicalAnd();
-			left = isNullish ? (left ?? right) : left || right;
-		}
-
-		return left;
-	}
-
-	// LogicalAnd := Equality ('&&' Equality)*
-	#parseLogicalAnd(): any {
-		let left = this.#parseEquality();
-
-		while (this.#peek().type === TokenType.AND) {
-			this.#advance(); // consume &&
-			const right = this.#parseEquality();
-			left = left && right;
-		}
-
-		return left;
-	}
-
-	// Equality := Unary (('===' | '!==' | '==' | '!=') Unary)*
-	#parseEquality(): any {
-		let left = this.#parseUnary();
-
-		while (true) {
-			const token = this.#peek();
-
-			if (token.type === TokenType.EQ_STRICT) {
-				this.#advance();
-				const right = this.#parseUnary();
-				left = left === right;
-			} else if (token.type === TokenType.NE_STRICT) {
-				this.#advance();
-				const right = this.#parseUnary();
-				left = left !== right;
-			} else if (token.type === TokenType.EQ) {
-				this.#advance();
-				const right = this.#parseUnary();
-				left = left == right;
-			} else if (token.type === TokenType.NE) {
-				this.#advance();
-				const right = this.#parseUnary();
-				left = left != right;
-			} else {
-				break;
-			}
-		}
-
-		return left;
-	}
-
-	// Unary := '!' Unary | Primary
-	#parseUnary(): any {
-		if (this.#peek().type === TokenType.NOT) {
-			this.#advance(); // consume !
-			return !this.#parseUnary();
-		}
-
-		return this.#parsePrimary();
-	}
-
-	// Primary := PathExpr | Literal | '(' Expr ')'
-	// PathExpr := (EnvVar | Dunder | Identifier) PathSuffix?
-	// PathSuffix := ('/' Segment)+
-	#parsePrimary(): any {
-		const token = this.#peek();
-
-		// Parenthesized expression (may have path suffix)
-		if (token.type === TokenType.LPAREN) {
-			this.#advance(); // consume (
-			const value = this.#parseExpr();
-			this.#expect(TokenType.RPAREN);
-			return this.#parsePathSuffix(value);
-		}
-
-		// Literals (no path suffix for these)
-		if (token.type === TokenType.STRING) {
-			this.#advance();
-			return token.value;
-		}
-		if (token.type === TokenType.NUMBER) {
-			this.#advance();
-			return token.value;
-		}
-		if (token.type === TokenType.TRUE) {
-			this.#advance();
-			return true;
-		}
-		if (token.type === TokenType.FALSE) {
-			this.#advance();
-			return false;
-		}
-		if (token.type === TokenType.NULL) {
-			this.#advance();
-			return null;
-		}
-		if (token.type === TokenType.UNDEFINED) {
-			this.#advance();
-			return undefined;
-		}
-
-		// Environment variable: $VAR (may have path suffix)
-		if (token.type === TokenType.ENV_VAR) {
-			this.#advance();
-			const name = token.value;
-			const value = this.#env[name];
-
-			// Auto-convert numeric strings to numbers
-			let result: any = value;
-			if (typeof value === "string" && /^\d+$/.test(value)) {
-				result = parseInt(value, 10);
-			}
-
-			return this.#parsePathSuffix(result);
-		}
-
-		// Bracket placeholders - only valid in build-time code generation
-		if (
-			token.type === TokenType.OUTDIR ||
-			token.type === TokenType.TMPDIR ||
-			token.type === TokenType.GIT
-		) {
-			throw new Error(
-				`${token.value} placeholder is only valid in build config, not runtime`,
-			);
-		}
-
-		// Identifier (string literal - may have path suffix for paths like ./data)
-		if (token.type === TokenType.IDENTIFIER) {
-			this.#advance();
-			return this.#parsePathSuffix(token.value);
-		}
-
+function parserExpect(parser: Parser, type: TokenType): Token {
+	const token = parserPeek(parser);
+	if (token.type !== type) {
 		throw new Error(
-			`Unexpected token ${token.type} at position ${token.start}`,
+			`Expected ${type} but got ${token.type} at position ${token.start}`,
+		);
+	}
+	return parserAdvance(parser);
+}
+
+function runParser(parser: Parser): any {
+	const result = parseExpr(parser);
+	parserExpect(parser, TokenType.EOF);
+	return result;
+}
+
+// Expr := Ternary
+function parseExpr(parser: Parser): any {
+	return parseTernary(parser);
+}
+
+// Ternary := LogicalOr ('?' Expr ':' Expr)?
+function parseTernary(parser: Parser): any {
+	const left = parseLogicalOr(parser);
+
+	if (parserPeek(parser).type === TokenType.QUESTION) {
+		parserAdvance(parser); // consume ?
+		const trueBranch = parseExpr(parser);
+		parserExpect(parser, TokenType.COLON);
+		const falseBranch = parseExpr(parser);
+		return left ? trueBranch : falseBranch;
+	}
+
+	return left;
+}
+
+// LogicalOr := LogicalAnd (('||' | '??') LogicalAnd)*
+// ?? and || have same precedence, evaluated left-to-right
+function parseLogicalOr(parser: Parser): any {
+	let left = parseLogicalAnd(parser);
+
+	while (
+		parserPeek(parser).type === TokenType.OR ||
+		parserPeek(parser).type === TokenType.NULLISH
+	) {
+		const isNullish = parserPeek(parser).type === TokenType.NULLISH;
+		parserAdvance(parser); // consume || or ??
+		const right = parseLogicalAnd(parser);
+		left = isNullish ? (left ?? right) : left || right;
+	}
+
+	return left;
+}
+
+// LogicalAnd := Equality ('&&' Equality)*
+function parseLogicalAnd(parser: Parser): any {
+	let left = parseEquality(parser);
+
+	while (parserPeek(parser).type === TokenType.AND) {
+		parserAdvance(parser); // consume &&
+		const right = parseEquality(parser);
+		left = left && right;
+	}
+
+	return left;
+}
+
+// Equality := Unary (('===' | '!==' | '==' | '!=') Unary)*
+function parseEquality(parser: Parser): any {
+	let left = parseUnary(parser);
+
+	while (true) {
+		const token = parserPeek(parser);
+
+		if (token.type === TokenType.EQ_STRICT) {
+			parserAdvance(parser);
+			const right = parseUnary(parser);
+			left = left === right;
+		} else if (token.type === TokenType.NE_STRICT) {
+			parserAdvance(parser);
+			const right = parseUnary(parser);
+			left = left !== right;
+		} else if (token.type === TokenType.EQ) {
+			parserAdvance(parser);
+			const right = parseUnary(parser);
+			// eslint-disable-next-line eqeqeq -- implements the config language's `==` operator
+			left = left == right;
+		} else if (token.type === TokenType.NE) {
+			parserAdvance(parser);
+			const right = parseUnary(parser);
+			// eslint-disable-next-line eqeqeq -- implements the config language's `!=` operator
+			left = left != right;
+		} else {
+			break;
+		}
+	}
+
+	return left;
+}
+
+// Unary := '!' Unary | Primary
+function parseUnary(parser: Parser): any {
+	if (parserPeek(parser).type === TokenType.NOT) {
+		parserAdvance(parser); // consume !
+		return !parseUnary(parser);
+	}
+
+	return parsePrimary(parser);
+}
+
+// Primary := PathExpr | Literal | '(' Expr ')'
+// PathExpr := (EnvVar | Dunder | Identifier) PathSuffix?
+// PathSuffix := ('/' Segment)+
+function parsePrimary(parser: Parser): any {
+	const token = parserPeek(parser);
+
+	// Parenthesized expression (may have path suffix)
+	if (token.type === TokenType.LPAREN) {
+		parserAdvance(parser); // consume (
+		const value = parseExpr(parser);
+		parserExpect(parser, TokenType.RPAREN);
+		return parsePathSuffix(parser, value);
+	}
+
+	// Literals (no path suffix for these)
+	if (token.type === TokenType.STRING) {
+		parserAdvance(parser);
+		return token.value;
+	}
+	if (token.type === TokenType.NUMBER) {
+		parserAdvance(parser);
+		return token.value;
+	}
+	if (token.type === TokenType.TRUE) {
+		parserAdvance(parser);
+		return true;
+	}
+	if (token.type === TokenType.FALSE) {
+		parserAdvance(parser);
+		return false;
+	}
+	if (token.type === TokenType.NULL) {
+		parserAdvance(parser);
+		return null;
+	}
+	if (token.type === TokenType.UNDEFINED) {
+		parserAdvance(parser);
+		return undefined;
+	}
+
+	// Environment variable: $VAR (may have path suffix)
+	if (token.type === TokenType.ENV_VAR) {
+		parserAdvance(parser);
+		const name = token.value;
+		const value = parser[kEnv][name];
+
+		// Auto-convert numeric strings to numbers
+		let result: any = value;
+		if (typeof value === "string" && /^\d+$/.test(value)) {
+			result = parseInt(value, 10);
+		}
+
+		return parsePathSuffix(parser, result);
+	}
+
+	// Bracket placeholders - only valid in build-time code generation
+	if (
+		token.type === TokenType.OUTDIR ||
+		token.type === TokenType.TMPDIR ||
+		token.type === TokenType.GIT
+	) {
+		throw new Error(
+			`${token.value} placeholder is only valid in build config, not runtime`,
 		);
 	}
 
-	// Parse optional path suffix: ('/' Segment)+
-	// Returns the value joined with any path segments
-	#parsePathSuffix(base: any): any {
-		const segments: string[] = [];
-
-		while (this.#peek().type === TokenType.SLASH) {
-			this.#advance(); // consume /
-
-			// Collect path segment (next identifier or string)
-			const segToken = this.#peek();
-			if (
-				segToken.type === TokenType.IDENTIFIER ||
-				segToken.type === TokenType.STRING
-			) {
-				this.#advance();
-				segments.push(segToken.value);
-			} else if (segToken.type === TokenType.NUMBER) {
-				this.#advance();
-				segments.push(String(segToken.value));
-			} else {
-				throw new Error(
-					`Expected path segment after / at position ${segToken.start}`,
-				);
-			}
-		}
-
-		// No suffix - return base as-is
-		if (segments.length === 0) {
-			return base;
-		}
-
-		// If base is undefined, propagate it - don't silently convert to empty string
-		// This ensures missing env vars with path suffixes are properly detected
-		if (base === undefined) {
-			return undefined;
-		}
-
-		// Join base with segments
-		return join(String(base), ...segments);
+	// Identifier (string literal - may have path suffix for paths like ./data)
+	if (token.type === TokenType.IDENTIFIER) {
+		parserAdvance(parser);
+		return parsePathSuffix(parser, token.value);
 	}
+
+	throw new Error(`Unexpected token ${token.type} at position ${token.start}`);
+}
+
+// Parse optional path suffix: ('/' Segment)+
+// Returns the value joined with any path segments
+function parsePathSuffix(parser: Parser, base: any): any {
+	const segments: string[] = [];
+
+	while (parserPeek(parser).type === TokenType.SLASH) {
+		parserAdvance(parser); // consume /
+
+		// Collect path segment (next identifier or string)
+		const segToken = parserPeek(parser);
+		if (
+			segToken.type === TokenType.IDENTIFIER ||
+			segToken.type === TokenType.STRING
+		) {
+			parserAdvance(parser);
+			segments.push(segToken.value);
+		} else if (segToken.type === TokenType.NUMBER) {
+			parserAdvance(parser);
+			segments.push(String(segToken.value));
+		} else {
+			throw new Error(
+				`Expected path segment after / at position ${segToken.start}`,
+			);
+		}
+	}
+
+	// No suffix - return base as-is
+	if (segments.length === 0) {
+		return base;
+	}
+
+	// If base is undefined, propagate it - don't silently convert to empty string
+	// This ensures missing env vars with path suffixes are properly detected
+	if (base === undefined) {
+		return undefined;
+	}
+
+	// Join base with segments
+	return join(String(base), ...segments);
 }
 
 /**
@@ -722,111 +730,111 @@ function processConfigValue(
  * This keeps secrets as runtime references (evaluated at runtime).
  */
 class CodeGenerator {
-	#tokens: Token[];
-	#pos: number;
+	tokens: Token[];
+	pos: number;
 
 	constructor(input: string) {
 		const tokenizer = new Tokenizer(input);
-		this.#tokens = [];
+		this.tokens = [];
 		let token: Token;
 		do {
 			token = tokenizer.next();
-			this.#tokens.push(token);
+			this.tokens.push(token);
 		} while (token.type !== TokenType.EOF);
-		this.#pos = 0;
+		this.pos = 0;
 	}
 
-	#peek(): Token {
-		return this.#tokens[this.#pos];
+	peek(): Token {
+		return this.tokens[this.pos];
 	}
 
-	#advance(): Token {
-		return this.#tokens[this.#pos++];
+	advance(): Token {
+		return this.tokens[this.pos++];
 	}
 
-	#expect(type: TokenType): Token {
-		const token = this.#peek();
+	expect(type: TokenType): Token {
+		const token = this.peek();
 		if (token.type !== type) {
 			throw new Error(
 				`Expected ${type} but got ${token.type} at position ${token.start}`,
 			);
 		}
-		return this.#advance();
+		return this.advance();
 	}
 
 	generate(): string {
-		const result = this.#generateExpr();
-		this.#expect(TokenType.EOF);
+		const result = this.generateExpr();
+		this.expect(TokenType.EOF);
 		return result;
 	}
 
-	#generateExpr(): string {
-		return this.#generateTernary();
+	generateExpr(): string {
+		return this.generateTernary();
 	}
 
-	#generateTernary(): string {
-		const left = this.#generateLogicalOr();
+	generateTernary(): string {
+		const left = this.generateLogicalOr();
 
-		if (this.#peek().type === TokenType.QUESTION) {
-			this.#advance();
-			const trueBranch = this.#generateExpr();
-			this.#expect(TokenType.COLON);
-			const falseBranch = this.#generateExpr();
+		if (this.peek().type === TokenType.QUESTION) {
+			this.advance();
+			const trueBranch = this.generateExpr();
+			this.expect(TokenType.COLON);
+			const falseBranch = this.generateExpr();
 			return `(${left} ? ${trueBranch} : ${falseBranch})`;
 		}
 
 		return left;
 	}
 
-	#generateLogicalOr(): string {
-		let left = this.#generateLogicalAnd();
+	generateLogicalOr(): string {
+		let left = this.generateLogicalAnd();
 
 		while (
-			this.#peek().type === TokenType.OR ||
-			this.#peek().type === TokenType.NULLISH
+			this.peek().type === TokenType.OR ||
+			this.peek().type === TokenType.NULLISH
 		) {
-			const op = this.#peek().type === TokenType.NULLISH ? "??" : "||";
-			this.#advance();
-			const right = this.#generateLogicalAnd();
+			const op = this.peek().type === TokenType.NULLISH ? "??" : "||";
+			this.advance();
+			const right = this.generateLogicalAnd();
 			left = `(${left} ${op} ${right})`;
 		}
 
 		return left;
 	}
 
-	#generateLogicalAnd(): string {
-		let left = this.#generateEquality();
+	generateLogicalAnd(): string {
+		let left = this.generateEquality();
 
-		while (this.#peek().type === TokenType.AND) {
-			this.#advance();
-			const right = this.#generateEquality();
+		while (this.peek().type === TokenType.AND) {
+			this.advance();
+			const right = this.generateEquality();
 			left = `(${left} && ${right})`;
 		}
 
 		return left;
 	}
 
-	#generateEquality(): string {
-		let left = this.#generateUnary();
+	generateEquality(): string {
+		let left = this.generateUnary();
 
 		while (true) {
-			const token = this.#peek();
+			const token = this.peek();
 
 			if (token.type === TokenType.EQ_STRICT) {
-				this.#advance();
-				const right = this.#generateUnary();
+				this.advance();
+				const right = this.generateUnary();
 				left = `(${left} === ${right})`;
 			} else if (token.type === TokenType.NE_STRICT) {
-				this.#advance();
-				const right = this.#generateUnary();
+				this.advance();
+				const right = this.generateUnary();
 				left = `(${left} !== ${right})`;
 			} else if (token.type === TokenType.EQ) {
-				this.#advance();
-				const right = this.#generateUnary();
+				this.advance();
+				const right = this.generateUnary();
 				left = `(${left} == ${right})`;
 			} else if (token.type === TokenType.NE) {
-				this.#advance();
-				const right = this.#generateUnary();
+				this.advance();
+				const right = this.generateUnary();
 				left = `(${left} != ${right})`;
 			} else {
 				break;
@@ -836,85 +844,85 @@ class CodeGenerator {
 		return left;
 	}
 
-	#generateUnary(): string {
-		if (this.#peek().type === TokenType.NOT) {
-			this.#advance();
-			return `!${this.#generateUnary()}`;
+	generateUnary(): string {
+		if (this.peek().type === TokenType.NOT) {
+			this.advance();
+			return `!${this.generateUnary()}`;
 		}
 
-		return this.#generatePrimary();
+		return this.generatePrimary();
 	}
 
-	#generatePrimary(): string {
-		const token = this.#peek();
+	generatePrimary(): string {
+		const token = this.peek();
 
 		// Parenthesized expression (may have path suffix)
 		if (token.type === TokenType.LPAREN) {
-			this.#advance();
-			const value = this.#generateExpr();
-			this.#expect(TokenType.RPAREN);
-			return this.#generatePathSuffix(`(${value})`);
+			this.advance();
+			const value = this.generateExpr();
+			this.expect(TokenType.RPAREN);
+			return this.generatePathSuffix(`(${value})`);
 		}
 
 		// Literals (no path suffix)
 		if (token.type === TokenType.STRING) {
-			this.#advance();
+			this.advance();
 			return JSON.stringify(token.value);
 		}
 		if (token.type === TokenType.NUMBER) {
-			this.#advance();
+			this.advance();
 			return String(token.value);
 		}
 		if (token.type === TokenType.TRUE) {
-			this.#advance();
+			this.advance();
 			return "true";
 		}
 		if (token.type === TokenType.FALSE) {
-			this.#advance();
+			this.advance();
 			return "false";
 		}
 		if (token.type === TokenType.NULL) {
-			this.#advance();
+			this.advance();
 			return "null";
 		}
 		if (token.type === TokenType.UNDEFINED) {
-			this.#advance();
+			this.advance();
 			return "undefined";
 		}
 
 		// Environment variable: $VAR → process.env.VAR or process.env["VAR"]
 		if (token.type === TokenType.ENV_VAR) {
-			this.#advance();
+			this.advance();
 			// Use bracket notation if name has special chars, dot notation otherwise
 			const name = token.value;
 			const code = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)
 				? `process.env.${name}`
 				: `process.env[${JSON.stringify(name)}]`;
 			// Mark as required env var - path suffix should not mask undefined
-			return this.#generatePathSuffix(code, {requiredEnvVar: name});
+			return this.generatePathSuffix(code, {requiredEnvVar: name});
 		}
 
 		// Bracket placeholders (may have path suffix)
 		// [outdir] → __SHOVEL_OUTDIR__ (injected by esbuild)
 		if (token.type === TokenType.OUTDIR) {
-			this.#advance();
-			return this.#generatePathSuffix("__SHOVEL_OUTDIR__");
+			this.advance();
+			return this.generatePathSuffix("__SHOVEL_OUTDIR__");
 		}
 		// [tmpdir] → tmpdir() (provided by platform entry wrapper via "os" import)
 		if (token.type === TokenType.TMPDIR) {
-			this.#advance();
-			return this.#generatePathSuffix("tmpdir()");
+			this.advance();
+			return this.generatePathSuffix("tmpdir()");
 		}
 		// [git] → __SHOVEL_GIT__ (injected by esbuild)
 		if (token.type === TokenType.GIT) {
-			this.#advance();
-			return this.#generatePathSuffix("__SHOVEL_GIT__");
+			this.advance();
+			return this.generatePathSuffix("__SHOVEL_GIT__");
 		}
 
 		// Identifier (string literal - may have path suffix for paths like ./data)
 		if (token.type === TokenType.IDENTIFIER) {
-			this.#advance();
-			return this.#generatePathSuffix(JSON.stringify(token.value));
+			this.advance();
+			return this.generatePathSuffix(JSON.stringify(token.value));
 		}
 
 		throw new Error(
@@ -924,24 +932,24 @@ class CodeGenerator {
 
 	// Generate path suffix code: base/segment/... → [base, "segment", ...].join("/")
 	// If requiredEnvVar is set, generate code that throws if the env var is missing
-	#generatePathSuffix(
+	generatePathSuffix(
 		baseCode: string,
 		options: {requiredEnvVar?: string} = {},
 	): string {
 		const segments: string[] = [];
 
-		while (this.#peek().type === TokenType.SLASH) {
-			this.#advance(); // consume /
+		while (this.peek().type === TokenType.SLASH) {
+			this.advance(); // consume /
 
-			const segToken = this.#peek();
+			const segToken = this.peek();
 			if (
 				segToken.type === TokenType.IDENTIFIER ||
 				segToken.type === TokenType.STRING
 			) {
-				this.#advance();
+				this.advance();
 				segments.push(JSON.stringify(segToken.value));
 			} else if (segToken.type === TokenType.NUMBER) {
-				this.#advance();
+				this.advance();
 				segments.push(JSON.stringify(String(segToken.value)));
 			} else {
 				throw new Error(

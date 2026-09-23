@@ -158,7 +158,7 @@ function normalizePath(basePath: string): string {
  * @param options - Plugin configuration options
  * @returns ESBuild/Bun plugin
  */
-export function assetsPlugin(options: AssetsPluginConfig = {}) {
+export function assetsPlugin(options: AssetsPluginConfig = {}): ESBuild.Plugin {
 	const outDir = options.outDir ?? "dist";
 	const minify = options.minify ?? true;
 	const sharedManifest = options.sharedManifest;
@@ -428,7 +428,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							writeFileSync(assetPath, file.contents);
 
 							// Add to manifest so assets middleware can serve it
-							const assetUrl = `${basePath}${assetFilename}`;
+							const assetURL = `${basePath}${assetFilename}`;
 							const assetHash = createHash("sha256")
 								.update(file.contents)
 								.digest("hex")
@@ -436,7 +436,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 							manifest.assets[assetFilename] = {
 								source: assetFilename,
 								output: assetFilename,
-								url: assetUrl,
+								url: assetURL,
 								hash: assetHash,
 								size: file.contents.length,
 								type: mime.getType(assetFilename) || undefined,
@@ -493,15 +493,15 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 						// Add chunk to manifest so assets middleware can serve it
 						// Use the full URL as the key to avoid collisions when the same
 						// chunk filename appears in different assetBase directories
-						const chunkUrl = `${basePath}${chunk.filename}`;
+						const chunkURL = `${basePath}${chunk.filename}`;
 						const chunkHash = createHash("sha256")
 							.update(chunk.content)
 							.digest("hex")
 							.slice(0, HASH_LENGTH);
-						manifest.assets[chunkUrl] = {
+						manifest.assets[chunkURL] = {
 							source: chunk.filename,
 							output: chunk.filename,
-							url: chunkUrl,
+							url: chunkURL,
 							hash: chunkHash,
 							size: chunk.content.length,
 							type: "application/javascript",
@@ -509,7 +509,7 @@ export function assetsPlugin(options: AssetsPluginConfig = {}) {
 
 						// Also update shared manifest
 						if (sharedManifest) {
-							sharedManifest.assets[chunkUrl] = manifest.assets[chunkUrl];
+							sharedManifest.assets[chunkURL] = manifest.assets[chunkURL];
 						}
 					}
 
