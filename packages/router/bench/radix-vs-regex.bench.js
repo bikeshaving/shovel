@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Benchmark: Radix Tree vs MatchPattern regex for route matching
  *
@@ -6,12 +5,12 @@
  * for typical web routing scenarios?
  */
 
-import {bench, group, run} from "mitata";
 import {
-	MatchPattern,
-	isSimplePattern,
 	compilePathname,
+	isSimplePattern,
+	MatchPattern,
 } from "@b9g/match-pattern";
+import {bench, group, run} from "mitata";
 
 // ============================================================================
 // RADIX TREE IMPLEMENTATION (simplified)
@@ -144,10 +143,7 @@ class RegexMatcher {
 	}
 
 	add(pattern, handler) {
-		this.routes.push({
-			pattern: new MatchPattern(pattern),
-			handler,
-		});
+		this.routes.push({pattern: new MatchPattern(pattern), handler});
 	}
 
 	match(pathname) {
@@ -275,7 +271,7 @@ for (const [name, path] of Object.entries(testPaths)) {
 		`  ${name}: radix=${radixMatched}, regex=${regexMatched}, hybrid=${hybridMatched}`,
 	);
 	if (radixMatched !== regexMatched || radixMatched !== hybridMatched) {
-		console.info(`    MISMATCH!`);
+		console.info("    MISMATCH!");
 	}
 }
 console.info("");

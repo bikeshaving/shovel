@@ -1,21 +1,23 @@
-import {test, expect, describe, beforeEach} from "bun:test";
-import {assetsPlugin} from "../src/plugins/assets.js";
-import {globAssetsPlugin} from "../src/plugins/glob-assets.js";
-import {assets} from "../packages/assets/src/middleware.js";
-import {Router} from "@b9g/router";
-import {MemoryDirectory} from "@b9g/filesystem/memory";
-import {CustomDirectoryStorage} from "@b9g/filesystem";
-import * as ESBuild from "esbuild";
 import {
-	mkdtemp,
-	writeFile,
-	readdir,
-	readFile,
 	access,
 	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	writeFile,
 } from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
+
+import {CustomDirectoryStorage} from "@b9g/filesystem";
+import {MemoryDirectory} from "@b9g/filesystem/memory";
+import {Router} from "@b9g/router";
+import {beforeEach, describe, expect, test} from "bun:test";
+import * as ESBuild from "esbuild";
+
+import {assets} from "../packages/assets/src/middleware.js";
+import {assetsPlugin} from "../src/plugins/assets.js";
+import {globAssetsPlugin} from "../src/plugins/glob-assets.js";
 
 // Helper to check if path exists
 async function pathExists(path: string): Promise<boolean> {
@@ -35,7 +37,7 @@ describe("Assets Plugin - output path structure", () => {
 		const testDir = await mkdtemp(join(tmpdir(), "asset-path-test-"));
 
 		// Create CSS and JS files
-		await writeFile(join(testDir, "style.css"), `body { color: red; }`);
+		await writeFile(join(testDir, "style.css"), "body { color: red; }");
 		await writeFile(join(testDir, "client.js"), `console.log("hi");`);
 
 		// Create entry that imports with different assetBase paths
@@ -53,11 +55,7 @@ export { cssUrl, jsUrl };`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// Assets should be in {outDir}/public/{assetBase}/
@@ -82,7 +80,7 @@ export { cssUrl, jsUrl };`,
 	test("should NOT create assets directly under outDir", async () => {
 		const testDir = await mkdtemp(join(tmpdir(), "asset-nodir-test-"));
 
-		await writeFile(join(testDir, "style.css"), `body { color: red; }`);
+		await writeFile(join(testDir, "style.css"), "body { color: red; }");
 		await writeFile(
 			join(testDir, "entry.js"),
 			`import cssUrl from "./style.css" with { assetBase: "/assets" };
@@ -96,11 +94,7 @@ export { cssUrl };`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// dist/assets should NOT exist (it should be dist/public/assets)
@@ -133,11 +127,7 @@ export { faviconUrl };`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// File should be exactly "favicon.ico" at root of static
@@ -171,11 +161,7 @@ console.log("app loaded");`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// File should still be copied even without URL reference
@@ -201,11 +187,7 @@ export { imgUrl };`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// File should be "photo.png" in public/images/
@@ -245,11 +227,7 @@ export default clientUrl;`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// Check output files - assets go to {outDir}/public/{assetBase}/
@@ -272,7 +250,7 @@ export default clientUrl;`,
 		const testDir = await mkdtemp(join(tmpdir(), "css-asset-test-"));
 
 		// Create a CSS file
-		await writeFile(join(testDir, "style.css"), `body { color: red; }`);
+		await writeFile(join(testDir, "style.css"), "body { color: red; }");
 
 		// Create entry that imports CSS as asset
 		await writeFile(
@@ -288,11 +266,7 @@ export default styleUrl;`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// Check output files - assets go to {outDir}/public/{assetBase}/
@@ -383,7 +357,7 @@ describe("Assets Plugin - minify option", () => {
 
 		await writeFile(
 			join(testDir, "style.css"),
-			`body {\n  color: red;\n  background: blue;\n}`,
+			"body {\n  color: red;\n  background: blue;\n}",
 		);
 		await writeFile(
 			join(testDir, "entry.js"),
@@ -469,10 +443,7 @@ export default styleUrl;`,
 			write: true,
 			plugins: [
 				// assetsPlugin comes first - intercepts assetBase imports
-				assetsPlugin({
-					outDir: outDir,
-					plugins: [cssInterceptorPlugin],
-				}),
+				assetsPlugin({outDir, plugins: [cssInterceptorPlugin]}),
 				// User plugins come after - handle everything else
 				cssInterceptorPlugin,
 			],
@@ -501,7 +472,7 @@ export default styleUrl;`,
 		const testDir = await mkdtemp(join(tmpdir(), "css-plugin-test-"));
 
 		// Create CSS with content that our test plugin will transform
-		await writeFile(join(testDir, "style.css"), `body { color: REPLACE_ME; }`);
+		await writeFile(join(testDir, "style.css"), "body { color: REPLACE_ME; }");
 
 		await writeFile(
 			join(testDir, "entry.js"),
@@ -528,12 +499,7 @@ export default styleUrl;`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-					plugins: [testPlugin],
-				}),
-			],
+			plugins: [assetsPlugin({outDir, plugins: [testPlugin]})],
 		});
 
 		// Check the bundled CSS was transformed by our plugin
@@ -585,12 +551,7 @@ export default clientUrl;`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-					plugins: [testPlugin],
-				}),
-			],
+			plugins: [assetsPlugin({outDir, plugins: [testPlugin]})],
 		});
 
 		// Check the bundled JS was transformed by our plugin
@@ -614,7 +575,7 @@ describe("Assets Plugin - CSS bundling", () => {
 		const testDir = await mkdtemp(join(tmpdir(), "css-import-test-"));
 
 		// Create a CSS file that imports another
-		await writeFile(join(testDir, "base.css"), `:root { --color: blue; }`);
+		await writeFile(join(testDir, "base.css"), ":root { --color: blue; }");
 		await writeFile(
 			join(testDir, "style.css"),
 			`@import "./base.css";
@@ -635,11 +596,7 @@ export default styleUrl;`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// Check output files
@@ -666,7 +623,7 @@ export default styleUrl;`,
 		await mkdir(nodeModulesDir, {recursive: true});
 		await writeFile(
 			join(nodeModulesDir, "style.css"),
-			`.fake-lib { display: block; }`,
+			".fake-lib { display: block; }",
 		);
 
 		// Create CSS that imports from node_modules
@@ -689,11 +646,7 @@ export default styleUrl;`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// Check the bundled CSS contains both
@@ -714,7 +667,7 @@ describe("Assets Plugin - type: css attribute", () => {
 		const testDir = await mkdtemp(join(tmpdir(), "type-css-test-"));
 
 		// Create a CSS file
-		await writeFile(join(testDir, "styles.css"), `.app { color: red; }`);
+		await writeFile(join(testDir, "styles.css"), ".app { color: red; }");
 
 		// Create a TS client that imports CSS
 		await writeFile(
@@ -737,11 +690,7 @@ export default clientCss;`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// Check that a CSS file was output
@@ -789,11 +738,7 @@ export default clientCss;`,
 				format: "esm",
 				outdir: join(outDir, "server"),
 				write: true,
-				plugins: [
-					assetsPlugin({
-						outDir: outDir,
-					}),
-				],
+				plugins: [assetsPlugin({outDir})],
 			});
 		} catch (e) {
 			error = e as Error;
@@ -826,11 +771,7 @@ export default imageCss;`,
 				format: "esm",
 				outdir: join(outDir, "server"),
 				write: true,
-				plugins: [
-					assetsPlugin({
-						outDir: outDir,
-					}),
-				],
+				plugins: [assetsPlugin({outDir})],
 			});
 		} catch (e) {
 			error = e as Error;
@@ -878,11 +819,7 @@ export default clientUrl;`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// Check output files - should have entry + chunk(s)
@@ -906,18 +843,17 @@ export default clientUrl;`,
 		);
 
 		// Entry file should be in manifest with source path
-		const entryAsset = Object.values(manifest.assets).find(
-			(a: any) => a.output === entryFile,
-		);
+		const entryAsset = Object.values(manifest.assets)
+			.find((a: any) => a.output === entryFile);
 		expect(entryAsset).toBeDefined();
 		expect((entryAsset as any).type).toBe("application/javascript");
 
 		// Chunk files should also be in manifest (keyed by URL)
 		for (const chunkFile of chunkFiles) {
-			const chunkUrl = `/static/${chunkFile}`;
-			const chunkAsset = manifest.assets[chunkUrl];
+			const chunkURL = `/static/${chunkFile}`;
+			const chunkAsset = manifest.assets[chunkURL];
 			expect(chunkAsset).toBeDefined();
-			expect(chunkAsset.url).toBe(chunkUrl);
+			expect(chunkAsset.url).toBe(chunkURL);
 			expect(chunkAsset.type).toBe("application/javascript");
 		}
 	});
@@ -944,11 +880,7 @@ export default clientUrl;`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// Check output files - should have only entry file
@@ -970,10 +902,10 @@ export default clientUrl;`,
 		const testDir = await mkdtemp(join(tmpdir(), "css-dynamic-import-test-"));
 
 		// Create CSS for the main module
-		await writeFile(join(testDir, "main.css"), `.main { color: red; }`);
+		await writeFile(join(testDir, "main.css"), ".main { color: red; }");
 
 		// Create CSS for the dynamically imported module
-		await writeFile(join(testDir, "lazy.css"), `.lazy { color: blue; }`);
+		await writeFile(join(testDir, "lazy.css"), ".lazy { color: blue; }");
 
 		// Create the lazy module that imports its own CSS
 		await writeFile(
@@ -1008,11 +940,7 @@ export default clientCss;`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// Check CSS output contains both main and lazy styles
@@ -1071,11 +999,7 @@ export { clientA, clientB };`,
 			format: "esm",
 			outdir: join(outDir, "server"),
 			write: true,
-			plugins: [
-				assetsPlugin({
-					outDir: outDir,
-				}),
-			],
+			plugins: [assetsPlugin({outDir})],
 		});
 
 		// Check both directories have their chunk files
@@ -1166,7 +1090,7 @@ async function writeToMemoryDirectory(
 	directory: MemoryDirectory,
 	path: string,
 	content: string,
-) {
+): Promise<void> {
 	const handle = await directory.getFileHandle(path, {create: true});
 	const writable = await handle.createWritable();
 	await writable.write(new TextEncoder().encode(content));
@@ -1297,12 +1221,7 @@ describe("Assets Middleware", () => {
 
 	test("should set custom cache headers", async () => {
 		const router = new Router();
-		router.use(
-			assets({
-				manifest: testManifest,
-				cacheControl: "no-cache",
-			}),
-		);
+		router.use(assets({manifest: testManifest, cacheControl: "no-cache"}));
 		router.route("/*").get(() => new Response("Not Found", {status: 404}));
 
 		const request = new Request("http://example.com/app.js");

@@ -1,10 +1,11 @@
 /** @jsxImportSource @b9g/crank */
-import {css} from "@emotion/css";
-import {NotFound} from "@b9g/http-errors";
-
-import {Root} from "../components/root.js";
+import type {Element} from "@b9g/crank";
 import {Marked} from "@b9g/crankdown";
+import {NotFound} from "@b9g/http-errors";
+import {css} from "@emotion/css";
+
 import {components} from "../components/marked-components.js";
+import {Root} from "../components/root.js";
 import {collectBlogPosts} from "../models/blog.js";
 
 interface ViewProps {
@@ -62,7 +63,7 @@ const backLinkStyles = css`
 	}
 `;
 
-export default async function BlogPostView({url}: ViewProps) {
+export default async function BlogPostView({url}: ViewProps): Promise<Element> {
 	const docsDir = await self.directories.open("docs");
 	const blogDir = await docsDir.getDirectoryHandle("blog");
 	const posts = await collectBlogPosts(blogDir);
@@ -75,10 +76,8 @@ export default async function BlogPostView({url}: ViewProps) {
 		throw new NotFound("Blog post not found");
 	}
 
-	const {
-		attributes: {title, description, date, author, authorURL},
-		body,
-	} = post;
+	const {attributes: {title, description, date, author, authorURL}, body} =
+		post;
 
 	const formattedDate = new Date(date).toLocaleDateString("en-US", {
 		year: "numeric",
@@ -96,14 +95,18 @@ export default async function BlogPostView({url}: ViewProps) {
 				<h1>{title}</h1>
 				<p class={metaStyles}>
 					{formattedDate}
-					{author && authorURL ? (
-						<>
-							{" "}
-							by <a href={authorURL}>{author}</a>
-						</>
-					) : author ? (
-						<> by {author}</>
-					) : null}
+					{author && authorURL
+						? (
+							<>
+								{" "}
+								by <a href={authorURL}>{author}</a>
+							</>
+						)
+						: author
+? (
+							<> by {author}</>
+						)
+						: null}
 				</p>
 				<Marked markdown={body} components={components} />
 			</article>

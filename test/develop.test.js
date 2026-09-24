@@ -1,13 +1,14 @@
 /* eslint-disable no-restricted-properties -- Tests need process.cwd/env */
-import * as FS from "fs/promises";
 import {spawn} from "child_process";
-import {createConnection} from "net";
-import {test, expect} from "bun:test";
-import {join, dirname as _dirname} from "path";
-import {tmpdir} from "os";
+import * as FS from "fs/promises";
 import {mkdtemp} from "fs/promises";
-import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
+import {createConnection} from "net";
+import {tmpdir} from "os";
+import {dirname as _dirname, join} from "path";
+
 import {AsyncContext} from "@b9g/async-context";
+import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
+import {expect, test} from "bun:test";
 
 // Configure LogTape for tests (warnings only by default)
 // Debug logging is controlled per-test via shovel.json in temp directories
@@ -45,15 +46,11 @@ async function createTempDir() {
 	// Use "info" level so we can detect "Reloaded" messages for test synchronization
 	await FS.writeFile(
 		join(tempDir, "shovel.json"),
-		JSON.stringify(
-			{
-				logging: {
-					loggers: [{category: "shovel", level: "info", sinks: ["console"]}],
-				},
+		JSON.stringify({
+			logging: {
+				loggers: [{category: "shovel", level: "info", sinks: ["console"]}],
 			},
-			null,
-			2,
-		),
+		}, null, 2),
 	);
 
 	return {
@@ -239,10 +236,8 @@ function startDevServer(fixture, port, extraArgs = []) {
 	};
 
 	// Expose output for debugging
-	serverProcess.getOutput = () => ({
-		stdout: stdoutOutput,
-		stderr: stderrOutput,
-	});
+	serverProcess.getOutput =
+		() => ({stdout: stdoutOutput, stderr: stderrOutput});
 
 	return serverProcess;
 }
@@ -602,8 +597,9 @@ test(
 			await tempFixture.copyFrom("server-goodbye.ts");
 
 			// Make multiple concurrent requests during reload
-			const concurrentRequests = Array.from({length: 10}, () =>
-				fetchWithRetry(PORT, 5, 100),
+			const concurrentRequests = Array.from(
+				{length: 10},
+				() => fetchWithRetry(PORT, 5, 100),
 			);
 
 			const responses = await Promise.all(concurrentRequests);
@@ -858,11 +854,14 @@ test(
 			tempDir = await createTempDir();
 
 			// Create multiple temporary test files
-			const testFiles = Array.from({length: 5}, (_, i) => ({
-				path: join(tempDir.dir, `dep-${i}.ts`),
-				content: `export const value${i} = "original-${i}";`,
-				modified: `export const value${i} = "modified-${i}";`,
-			}));
+			const testFiles = Array.from(
+				{length: 5},
+				(_, i) => ({
+					path: join(tempDir.dir, `dep-${i}.ts`),
+					content: `export const value${i} = "original-${i}";`,
+					modified: `export const value${i} = "modified-${i}";`,
+				}),
+			);
 
 			const mainFile = join(tempDir.dir, "main.ts");
 			const mainContent = `
@@ -926,18 +925,17 @@ test(
 			tempFixture = await createTempFixture("server-hello.ts");
 
 			// Start development server with 8 workers
-			serverProcess = startDevServer(tempFixture.path, PORT, [
-				"--workers",
-				"8",
-			]);
+			serverProcess =
+				startDevServer(tempFixture.path, PORT, ["--workers", "8"]);
 
 			// Wait for server to be ready
 			const initialResponse = await waitForServer(PORT, serverProcess);
 			expect(initialResponse).toBe("<marquee>Hello world</marquee>");
 
 			// Make 50 concurrent requests
-			const concurrentRequests = Array.from({length: 50}, () =>
-				fetchWithRetry(PORT),
+			const concurrentRequests = Array.from(
+				{length: 50},
+				() => fetchWithRetry(PORT),
 			);
 
 			const responses = await Promise.all(concurrentRequests);
@@ -1204,10 +1202,11 @@ self.addEventListener("fetch", (event) => {
 			await waitForServer(PORT, serverProcess);
 
 			// Perform rapid modifications
-			const rapidModifications = Array.from({length: 10}, (_, i) =>
-				FS.writeFile(cacheFile, cacheContent(`"rapid-${i}"`)).then(
-					() => new Promise((resolve) => setTimeout(resolve, 20)),
-				),
+			const rapidModifications = Array.from(
+				{length: 10},
+				(_, i) =>
+					FS.writeFile(cacheFile, cacheContent(`"rapid-${i}"`))
+						.then(() => new Promise((resolve) => setTimeout(resolve, 20))),
 			);
 
 			// Execute all modifications
@@ -1333,28 +1332,17 @@ test(
 			// Create workspace package.json at monorepo root
 			await FS.writeFile(
 				join(monorepoRoot, "package.json"),
-				JSON.stringify(
-					{
-						name: "test-monorepo",
-						private: true,
-						workspaces: ["packages/*"],
-					},
-					null,
-					2,
-				),
+				JSON.stringify({
+					name: "test-monorepo",
+					private: true,
+					workspaces: ["packages/*"],
+				}, null, 2),
 			);
 
 			// Create package.json for the app (each package in a monorepo has its own)
 			await FS.writeFile(
 				join(appDir, "package.json"),
-				JSON.stringify(
-					{
-						name: "my-app",
-						private: true,
-					},
-					null,
-					2,
-				),
+				JSON.stringify({name: "my-app", private: true}, null, 2),
 			);
 
 			// Create node_modules symlink at monorepo root
@@ -1389,10 +1377,7 @@ self.addEventListener("fetch", (event) => {
 				{
 					stdio: ["ignore", "pipe", "pipe"],
 					cwd: appDir, // Running from packages/my-app, not monorepo root
-					env: {
-						...process.env,
-						NODE_ENV: "development",
-					},
+					env: {...process.env, NODE_ENV: "development"},
 				},
 			);
 
@@ -1639,7 +1624,7 @@ export function getCustomSink(options) {
 						custom: {
 							module: "./custom-sink.mjs",
 							export: "getCustomSink",
-							markerPath: markerPath,
+							markerPath,
 						},
 					},
 					loggers: [{category: "shovel", level: "info", sinks: ["custom"]}],
@@ -1667,10 +1652,7 @@ addEventListener("fetch", (event) => {
 				{
 					stdio: ["ignore", "pipe", "pipe"],
 					cwd: tempDir,
-					env: {
-						...process.env,
-						NODE_ENV: "development",
-					},
+					env: {...process.env, NODE_ENV: "development"},
 				},
 			);
 
@@ -1759,20 +1741,14 @@ self.addEventListener("fetch", (event) => {
 			// via the watchFiles mechanism in the config plugin
 			await FS.writeFile(
 				join(tempDir.dir, "shovel.json"),
-				JSON.stringify(
-					{
-						directories: {
-							docs: {module: "@b9g/filesystem/node-fs", path: "./docs"},
-						},
-						logging: {
-							loggers: [
-								{category: "shovel", level: "info", sinks: ["console"]},
-							],
-						},
+				JSON.stringify({
+					directories: {
+						docs: {module: "@b9g/filesystem/node-fs", path: "./docs"},
 					},
-					null,
-					2,
-				),
+					logging: {
+						loggers: [{category: "shovel", level: "info", sinks: ["console"]}],
+					},
+				}, null, 2),
 			);
 
 			// The key assertion: a rebuild + reload should be triggered
@@ -1844,15 +1820,11 @@ self.addEventListener("fetch", (event) => {
 			// Create shovel.json for the first time
 			await FS.writeFile(
 				join(tempDir.dir, "shovel.json"),
-				JSON.stringify(
-					{
-						directories: {
-							uploads: {module: "@b9g/filesystem/node-fs", path: "./uploads"},
-						},
+				JSON.stringify({
+					directories: {
+						uploads: {module: "@b9g/filesystem/node-fs", path: "./uploads"},
 					},
-					null,
-					2,
-				),
+				}, null, 2),
 			);
 
 			// Should trigger rebuild even though shovel.json didn't exist at startup
@@ -1889,15 +1861,7 @@ test(
 			// Create package.json with initial shovel config
 			await FS.writeFile(
 				join(tempDirPath, "package.json"),
-				JSON.stringify(
-					{
-						name: "test-app",
-						private: true,
-						shovel: {},
-					},
-					null,
-					2,
-				),
+				JSON.stringify({name: "test-app", private: true, shovel: {}}, null, 2),
 			);
 
 			tempDir = {
@@ -1938,19 +1902,15 @@ self.addEventListener("fetch", (event) => {
 			// Modify the shovel field in package.json
 			await FS.writeFile(
 				join(tempDirPath, "package.json"),
-				JSON.stringify(
-					{
-						name: "test-app",
-						private: true,
-						shovel: {
-							directories: {
-								data: {module: "@b9g/filesystem/node-fs", path: "./data"},
-							},
+				JSON.stringify({
+					name: "test-app",
+					private: true,
+					shovel: {
+						directories: {
+							data: {module: "@b9g/filesystem/node-fs", path: "./data"},
 						},
 					},
-					null,
-					2,
-				),
+				}, null, 2),
 			);
 
 			// Should trigger rebuild from package.json change
@@ -1986,17 +1946,11 @@ test(
 			// Add shovel.json for logging
 			await FS.writeFile(
 				join(fixture.dir, "shovel.json"),
-				JSON.stringify(
-					{
-						logging: {
-							loggers: [
-								{category: "shovel", level: "info", sinks: ["console"]},
-							],
-						},
+				JSON.stringify({
+					logging: {
+						loggers: [{category: "shovel", level: "info", sinks: ["console"]}],
 					},
-					null,
-					2,
-				),
+				}, null, 2),
 			);
 
 			// Start development server with Bun platform (Node dev mode has directory issues with assets)
@@ -2015,10 +1969,7 @@ test(
 				{
 					stdio: ["ignore", "pipe", "pipe"],
 					cwd: fixture.dir,
-					env: {
-						...process.env,
-						NODE_ENV: "development",
-					},
+					env: {...process.env, NODE_ENV: "development"},
 				},
 			);
 
@@ -2062,11 +2013,11 @@ test(
 			const html1 = await (await fetch(`http://localhost:${PORT}/`)).text();
 			const match1 = html1.match(/src="(\/assets\/client[^"]+\.js)"/);
 			expect(match1).not.toBeNull();
-			const assetUrl1 = match1[1];
-			logger.debug`Initial asset URL: ${assetUrl1}`;
+			const assetURL1 = match1[1];
+			logger.debug`Initial asset URL: ${assetURL1}`;
 
 			// Step 2: Verify the initial asset loads
-			const assetRes1 = await fetch(`http://localhost:${PORT}${assetUrl1}`);
+			const assetRes1 = await fetch(`http://localhost:${PORT}${assetURL1}`);
 			expect(assetRes1.status).toBe(200);
 			const assetContent1 = await assetRes1.text();
 			expect(assetContent1).toContain("Asset loaded");
@@ -2088,19 +2039,19 @@ test(
 			const html2 = await (await fetch(`http://localhost:${PORT}/`)).text();
 			const match2 = html2.match(/src="(\/assets\/client[^"]+\.js)"/);
 			expect(match2).not.toBeNull();
-			const assetUrl2 = match2[1];
-			logger.debug`New asset URL: ${assetUrl2}`;
+			const assetURL2 = match2[1];
+			logger.debug`New asset URL: ${assetURL2}`;
 
 			// The hash should have changed
-			expect(assetUrl2).not.toBe(assetUrl1);
+			expect(assetURL2).not.toBe(assetURL1);
 
 			// Step 6: THIS IS THE KEY TEST - the new asset URL should work
 			// Without the fix, this would 404 because manifestEntries was stale
-			const assetRes2 = await fetch(`http://localhost:${PORT}${assetUrl2}`);
+			const assetRes2 = await fetch(`http://localhost:${PORT}${assetURL2}`);
 			logger.debug`Asset response status: ${assetRes2.status}`;
 			if (assetRes2.status !== 200) {
 				// Try fetching the old URL to see if it's a caching issue
-				const oldAssetRes = await fetch(`http://localhost:${PORT}${assetUrl1}`);
+				const oldAssetRes = await fetch(`http://localhost:${PORT}${assetURL1}`);
 				logger.debug`Old asset still works: ${oldAssetRes.status}`;
 			}
 			expect(assetRes2.status).toBe(200);

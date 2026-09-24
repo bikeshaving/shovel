@@ -18,6 +18,7 @@ const isDev = import.meta.env?.MODE !== "production";
 // Lazy import of bundled manifest - only loaded when needed (not during tests)
 // In dev mode, we skip caching so hot reload gets fresh manifest
 let _bundledManifest: AssetManifest | null = null;
+
 async function getBundledManifest(): Promise<AssetManifest> {
 	// In dev mode, always re-import to get fresh manifest after rebuilds
 	if (isDev) {
@@ -42,14 +43,19 @@ async function getBundledManifest(): Promise<AssetManifest> {
 export interface AssetManifestEntry {
 	/** Original file path relative to source */
 	source: string;
+
 	/** Output file path relative to outputDir */
 	output: string;
+
 	/** Public URL for the asset */
 	url: string;
+
 	/** Content hash */
 	hash: string;
+
 	/** File size in bytes */
 	size: number;
+
 	/** MIME type */
 	type?: string;
 }
@@ -60,12 +66,12 @@ export interface AssetManifestEntry {
 export interface AssetManifest {
 	/** Assets indexed by their source path */
 	assets: Record<string, AssetManifestEntry>;
+
 	/** Generation timestamp */
 	generated: string;
+
 	/** Configuration used */
-	config: {
-		outDir: string;
-	};
+	config: {outDir: string};
 }
 
 /**
@@ -74,6 +80,7 @@ export interface AssetManifest {
 export interface AssetsConfig {
 	/** Cache control header value (default: 'public, max-age=31536000, immutable') */
 	cacheControl?: string;
+
 	/** Override manifest for testing (defaults to bundled shovel:assets) */
 	manifest?: AssetManifest;
 }
@@ -81,7 +88,9 @@ export interface AssetsConfig {
 /**
  * Assets middleware
  */
-export function assets(config: AssetsConfig = {}) {
+export function assets(
+	config: AssetsConfig = {},
+): (request: Request) => Promise<Response | undefined> {
 	const {cacheControl = "public, max-age=31536000, immutable"} = config;
 
 	// Build URL -> entry map for O(1) lookup (computed once per middleware instance)
@@ -117,7 +126,9 @@ export function assets(config: AssetsConfig = {}) {
 		return entries;
 	}
 
-	return async function assetsMiddleware(request: Request) {
+	return async function assetsMiddleware(
+		request: Request,
+	): Promise<Response | undefined> {
 		const url = new URL(request.url);
 		const requestedPath = url.pathname;
 
@@ -192,9 +203,6 @@ export function assets(config: AssetsConfig = {}) {
 		}
 
 		// Return file response
-		return new Response(file.stream(), {
-			status: 200,
-			headers,
-		});
+		return new Response(file.stream(), {status: 200, headers});
 	};
 }

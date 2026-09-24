@@ -1,10 +1,10 @@
-import {jsx} from "@b9g/crank/standalone";
+import {type Element, jsx} from "@b9g/crank/standalone";
+import {Marked} from "@b9g/crankdown";
 import {NotFound} from "@b9g/http-errors";
 
+import {components} from "../components/marked-components.js";
 import {Root} from "../components/root.js";
 import {Main, Sidebar} from "../components/sidebar.js";
-import {Marked} from "@b9g/crankdown";
-import {components} from "../components/marked-components.js";
 import {collectDocuments} from "../models/document.js";
 
 interface ViewProps {
@@ -12,7 +12,7 @@ interface ViewProps {
 	params: Record<string, string>;
 }
 
-export default async function Guide({url}: ViewProps) {
+export default async function Guide({url}: ViewProps): Promise<Element> {
 	const docsDir = await self.directories.open("docs");
 	const guidesDir = await docsDir.getDirectoryHandle("guides");
 	const docs = await collectDocuments(guidesDir, {pathPrefix: "guides"});
@@ -24,10 +24,7 @@ export default async function Guide({url}: ViewProps) {
 		throw new NotFound("Guide not found");
 	}
 
-	const {
-		attributes: {title, description},
-		body,
-	} = post;
+	const {attributes: {title, description}, body} = post;
 	return jsx`
 		<${Root} title="Shovel | ${title}" url=${url} description=${description}>
 			<${Sidebar} docs=${docs} url=${url} title="Guides" />

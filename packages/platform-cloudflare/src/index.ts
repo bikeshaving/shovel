@@ -11,24 +11,28 @@
  */
 
 // External packages
+// Internal @b9g/* packages
+import type {
+	EntryPoints,
+	Handler,
+	PlatformDefaults,
+	PlatformESBuildConfig,
+	Server,
+	ServerOptions,
+	ServiceWorkerInstance,
+	ServiceWorkerOptions,
+	ShovelServiceWorkerContainer,
+} from "@b9g/platform";
+import type {ShovelConfig} from "@b9g/platform/runtime";
 import {getLogger} from "@logtape/logtape";
 import type {Miniflare} from "miniflare";
 
-// Internal @b9g/* packages
-import {
-	type PlatformDefaults,
-	type Handler,
-	type Server,
-	type ServerOptions,
-	type ServiceWorkerOptions,
-	type ServiceWorkerInstance,
-	type PlatformESBuildConfig,
-	type EntryPoints,
-	type ShovelServiceWorkerContainer,
-} from "@b9g/platform";
-import {type ShovelConfig} from "@b9g/platform/runtime";
-
 const logger = getLogger(["shovel", "platform"]);
+
+type DispatchFetch = (
+	url: string,
+	init: RequestInit & {duplex?: "half"},
+) => Promise<Response>;
 
 // Re-export common platform types
 export type {
@@ -46,14 +50,19 @@ export type {
 export interface CloudflarePlatformOptions {
 	/** Port for development server (default: 7777) */
 	port?: number;
+
 	/** Host for development server (default: localhost) */
 	host?: string;
+
 	/** Cloudflare Workers environment (production, preview, dev) */
 	environment?: "production" | "preview" | "dev";
+
 	/** Static assets directory for ASSETS binding (dev mode) */
 	assetsDirectory?: string;
+
 	/** Working directory for config file resolution */
 	cwd?: string;
+
 	/** Shovel configuration (caches, directories, etc.) */
 	config?: ShovelConfig;
 }
@@ -62,6 +71,18 @@ export interface CloudflarePlatformOptions {
 // SERVICE WORKER CONTAINER (stub for Cloudflare - uses Miniflare internally)
 // ============================================================================
 
+const kPlatform = Symbol("platform");
+const kInstance = Symbol("instance");
+const kReadyPromise = Symbol("readyPromise");
+const kReadyResolve = Symbol("readyResolve");
+
+interface CloudflareServiceWorkerContainer {
+	[kPlatform]: CloudflarePlatform;
+	[kInstance]: ServiceWorkerInstance | null;
+	[kReadyPromise]: Promise<ServiceWorkerRegistration>;
+	[kReadyResolve]?: (reg: ServiceWorkerRegistration) => void;
+}
+
 /**
  * Stub ServiceWorkerContainer for Cloudflare
  * Cloudflare Workers don't use the same supervisor/worker model as Node/Bun.
@@ -69,13 +90,7 @@ export interface CloudflarePlatformOptions {
  */
 class CloudflareServiceWorkerContainer
 	extends EventTarget
-	implements ShovelServiceWorkerContainer
-{
-	#platform: CloudflarePlatform;
-	#instance: ServiceWorkerInstance | null;
-	#readyPromise: Promise<ServiceWorkerRegistration>;
-	#readyResolve?: (reg: ServiceWorkerRegistration) => void;
-
+	implements ShovelServiceWorkerContainer {
 	readonly controller: ServiceWorker | null;
 	oncontrollerchange: ((ev: Event) => unknown) | null;
 	onmessage: ((ev: MessageEvent) => unknown) | null;
@@ -83,10 +98,10 @@ class CloudflareServiceWorkerContainer
 
 	constructor(platform: CloudflarePlatform) {
 		super();
-		this.#platform = platform;
-		this.#instance = null;
-		this.#readyPromise = new Promise((resolve) => {
-			this.#readyResolve = resolve;
+		this[kPlatform] = platform;
+		this[kInstance] = null;
+		this[kReadyPromise] = new Promise((resolve) => {
+			this[kReadyResolve] = resolve;
 		});
 		this.controller = null;
 		this.oncontrollerchange = null;
@@ -95,10 +110,10 @@ class CloudflareServiceWorkerContainer
 	}
 
 	get ready(): Promise<ServiceWorkerRegistration> {
-		return this.#readyPromise;
+		return this[kReadyPromise];
 	}
 
-	get pool() {
+	get pool(): {handleRequest(request: Request): Promise<Response>} | undefined {
 		return undefined; // Cloudflare doesn't use ServiceWorkerPool
 	}
 
@@ -106,18 +121,19 @@ class CloudflareServiceWorkerContainer
 	 * Get the Miniflare instance for request handling
 	 */
 	get instance(): ServiceWorkerInstance | null {
-		return this.#instance;
+		return this[kInstance];
 	}
 
 	async register(
 		scriptURL: string | URL,
 		_options?: RegistrationOptions,
 	): Promise<ServiceWorkerRegistration> {
-		const url =
-			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
+		const url = typeof scriptURL === "string"
+			? scriptURL
+			: scriptURL.toString();
 
 		// Delegate to loadServiceWorker which uses Miniflare
-		this.#instance = await this.#platform.loadServiceWorker(url);
+		this[kInstance] = await this[kPlatform].loadServiceWorker(url);
 
 		// Create a mock registration to satisfy the interface
 		const registration = {
@@ -134,7 +150,7 @@ class CloudflareServiceWorkerContainer
 			dispatchEvent: () => true,
 		} as unknown as ServiceWorkerRegistration;
 
-		this.#readyResolve?.(registration);
+		this[kReadyResolve]?.(registration);
 		return registration;
 	}
 
@@ -150,9 +166,9 @@ class CloudflareServiceWorkerContainer
 
 	async terminate(): Promise<void> {
 		// Dispose Miniflare instance
-		if (this.#instance) {
-			await this.#instance.dispose();
-			this.#instance = null;
+		if (this[kInstance]) {
+			await this[kInstance].dispose();
+			this[kInstance] = null;
 		}
 	}
 
@@ -167,13 +183,12 @@ class CloudflareServiceWorkerContainer
 // PLATFORM IMPLEMENTATION (for miniflare dev mode)
 // ============================================================================
 
-/**
- * Cloudflare Workers platform implementation
- */
-export class CloudflarePlatform {
-	readonly name: string;
-	readonly serviceWorker: CloudflareServiceWorkerContainer;
-	#options: {
+const kOptions = Symbol("options");
+const kMiniflare = Symbol("miniflare");
+const kAssetsMiniflare = Symbol("assetsMiniflare");
+
+export interface CloudflarePlatform {
+	[kOptions]: {
 		environment: "production" | "preview" | "dev";
 		assetsDirectory: string | undefined;
 		cwd: string;
@@ -181,18 +196,26 @@ export class CloudflarePlatform {
 		port: number;
 		host: string;
 	};
-	#miniflare: Miniflare | null;
-	#assetsMiniflare: Miniflare | null;
+	[kMiniflare]: Miniflare | null;
+	[kAssetsMiniflare]: Miniflare | null;
+}
+
+/**
+ * Cloudflare Workers platform implementation
+ */
+export class CloudflarePlatform {
+	readonly name: string;
+	readonly serviceWorker: CloudflareServiceWorkerContainer;
 
 	constructor(options: CloudflarePlatformOptions = {}) {
 		this.name = "cloudflare";
-		this.#miniflare = null;
-		this.#assetsMiniflare = null;
+		this[kMiniflare] = null;
+		this[kAssetsMiniflare] = null;
 		this.serviceWorker = new CloudflareServiceWorkerContainer(this);
 
 		const cwd = options.cwd ?? ".";
 
-		this.#options = {
+		this[kOptions] = {
 			environment: options.environment ?? "production",
 			assetsDirectory: options.assetsDirectory,
 			cwd,
@@ -257,53 +280,53 @@ export class CloudflarePlatform {
 			compatibilityDate: "2024-09-23",
 			compatibilityFlags: ["nodejs_compat"],
 			// Start HTTP server for development
-			port: this.#options.port,
-			host: this.#options.host,
+			port: this[kOptions].port,
+			host: this[kOptions].host,
 		};
 
-		this.#miniflare = new Miniflare(miniflareOptions);
-		await this.#miniflare.ready;
+		this[kMiniflare] = new Miniflare(miniflareOptions);
+		await this[kMiniflare].ready;
 
-		if (this.#options.assetsDirectory) {
+		if (this[kOptions].assetsDirectory) {
 			logger.info("Setting up ASSETS binding", {
-				directory: this.#options.assetsDirectory,
+				directory: this[kOptions].assetsDirectory,
 			});
 
-			this.#assetsMiniflare = new Miniflare({
+			this[kAssetsMiniflare] = new Miniflare({
 				modules: true,
 				script: `export default { fetch() { return new Response("assets-only"); } }`,
-				assets: {
-					directory: this.#options.assetsDirectory,
-					binding: "ASSETS",
-				},
+				assets: {directory: this[kOptions].assetsDirectory, binding: "ASSETS"},
 				compatibilityDate: "2024-09-23",
 			});
 
-			await this.#assetsMiniflare.ready;
+			await this[kAssetsMiniflare].ready;
 		}
 
-		const mf = this.#miniflare;
-		const assetsMf = this.#assetsMiniflare;
+		const mf = this[kMiniflare];
+		const assetsMf = this[kAssetsMiniflare];
 
 		// Create dispose function that also clears platform references
 		const disposeInstance = async () => {
 			await mf.dispose();
-			this.#miniflare = null;
+			this[kMiniflare] = null;
 			if (assetsMf) {
 				await assetsMf.dispose();
-				this.#assetsMiniflare = null;
+				this[kAssetsMiniflare] = null;
 			}
 		};
 
 		const instance: ServiceWorkerInstance = {
 			runtime: mf,
 			handleRequest: async (request: Request) => {
-				const cfResponse = await (mf.dispatchFetch as Function)(request.url, {
-					method: request.method,
-					headers: request.headers,
-					body: request.body,
-					duplex: request.body ? "half" : undefined,
-				});
+				const cfResponse = await (mf.dispatchFetch as unknown as DispatchFetch)(
+					request.url,
+					{
+						method: request.method,
+						headers: request.headers,
+						body: request.body,
+						duplex: request.body ? "half" : undefined,
+					},
+				);
 				return new Response(cfResponse.body as BodyInit | null, {
 					status: cfResponse.status,
 					statusText: cfResponse.statusText,
@@ -323,13 +346,13 @@ export class CloudflarePlatform {
 	}
 
 	async dispose(): Promise<void> {
-		if (this.#miniflare) {
-			await this.#miniflare.dispose();
-			this.#miniflare = null;
+		if (this[kMiniflare]) {
+			await this[kMiniflare].dispose();
+			this[kMiniflare] = null;
 		}
-		if (this.#assetsMiniflare) {
-			await this.#assetsMiniflare.dispose();
-			this.#assetsMiniflare = null;
+		if (this[kAssetsMiniflare]) {
+			await this[kAssetsMiniflare].dispose();
+			this[kAssetsMiniflare] = null;
 		}
 	}
 
@@ -370,9 +393,7 @@ await import(${safePath});
 export default { fetch: createFetchHandler(registration) };
 `;
 
-		return {
-			worker: serverCode,
-		};
+		return {worker: serverCode};
 	}
 
 	/**

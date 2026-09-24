@@ -1,11 +1,11 @@
-/* eslint-disable no-console */
 /**
  * Benchmark URLPattern implementations
  */
 
 import {bench, group, run} from "mitata";
-import {URLPattern as ShovelURLPattern, MatchPattern} from "../src/index.ts";
 import {URLPattern as PolyfillURLPattern} from "urlpattern-polyfill";
+
+import {MatchPattern, URLPattern as ShovelURLPattern} from "../src/index.ts";
 
 // Native URLPattern (Node.js only)
 const NativeURLPattern = globalThis.URLPattern;

@@ -1,11 +1,11 @@
 #!/usr/bin/env sh
-//bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
-/* eslint-disable no-console -- CLI app uses console for terminal output */
+// bin/true; exec "$([ "${npm_config_user_agent#bun/}" != "$npm_config_user_agent" ] && echo bun || echo node)" "$0" "$@"
 
-import {intro, outro, text, select, confirm, spinner} from "@clack/prompts";
+import {existsSync} from "fs";
 import {mkdir, writeFile} from "fs/promises";
 import {join, resolve} from "path";
-import {existsSync} from "fs";
+
+import {confirm, intro, outro, select, spinner, text} from "@clack/prompts";
 
 interface ProjectConfig {
 	name: string;
@@ -31,8 +31,9 @@ function detectPlatform(): "node" | "bun" {
 
 function validateProjectName(name: string): string | undefined {
 	if (!name) return "Project name is required";
-	if (!/^[a-z0-9-]+$/.test(name))
+	if (!/^[a-z0-9-]+$/.test(name)) {
 		return "Use lowercase letters, numbers, and hyphens only";
+	}
 	return undefined;
 }
 
@@ -68,7 +69,7 @@ function parseFlags(args: string[]): {
 	return flags;
 }
 
-async function main() {
+async function main(): Promise<void> {
 	console.info("");
 
 	intro("Create Shovel App");
@@ -218,10 +219,8 @@ async function main() {
 		if (flags.jsx !== undefined) {
 			useJSX = flags.jsx;
 		} else {
-			const jsxResult = await confirm({
-				message: "Use JSX?",
-				initialValue: true,
-			});
+			const jsxResult =
+				await confirm({message: "Use JSX?", initialValue: true});
 
 			if (typeof jsxResult === "symbol") {
 				outro("Project creation cancelled");
@@ -326,28 +325,25 @@ async function main() {
 	}
 }
 
-async function createProject(config: ProjectConfig, projectPath: string) {
+async function createProject(
+	config: ProjectConfig,
+	projectPath: string,
+): Promise<void> {
 	// Create project directory
 	await mkdir(projectPath, {recursive: true});
 	await mkdir(join(projectPath, "src"), {recursive: true});
 
 	// Create package.json
-	const ext =
-		config.uiFramework === "crank" && config.useJSX
-			? config.typescript
-				? "tsx"
-				: "jsx"
-			: config.typescript
-				? "ts"
-				: "js";
+	const ext = config.uiFramework === "crank" && config.useJSX
+		? config.typescript ? "tsx" : "jsx"
+		: config.typescript ? "ts" : "js";
 	const isCrank = config.uiFramework === "crank";
 	const hasClientBundle =
 		config.template === "static-site" || config.template === "full-stack";
 	const entryFile = hasClientBundle ? `src/server.${ext}` : `src/app.${ext}`;
-	const startCmd =
-		config.platform === "bun"
-			? "bun dist/server/supervisor.js"
-			: "node dist/server/supervisor.js";
+	const startCmd = config.platform === "bun"
+		? "bun dist/server/supervisor.js"
+		: "node dist/server/supervisor.js";
 	const dependencies: Record<string, string> = {
 		"@b9g/router": "^0.2.0",
 		"@b9g/shovel": "^0.2.0",
@@ -455,7 +451,7 @@ async function createProject(config: ProjectConfig, projectPath: string) {
 			? `import crank from "eslint-plugin-crank";\n`
 			: "";
 		const crankConfig = isCrank
-			? `\n  { plugins: { crank }, rules: crank.configs.recommended.rules },`
+			? "\n  { plugins: { crank }, rules: crank.configs.recommended.rules },"
 			: "";
 		let eslintConfig: string;
 		if (config.typescript) {
@@ -503,7 +499,7 @@ dist/
 
 	// Create wrangler.toml for Cloudflare projects
 	if (config.platform === "cloudflare") {
-		const wranglerToml = `name = "${config.name}"
+		const wranglerTOML = `name = "${config.name}"
 main = "dist/server/worker.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
@@ -511,7 +507,7 @@ compatibility_flags = ["nodejs_compat"]
 [assets]
 directory = "./dist/public"
 `;
-		await writeFile(join(projectPath, "wrangler.toml"), wranglerToml);
+		await writeFile(join(projectPath, "wrangler.toml"), wranglerTOML);
 	}
 }
 
@@ -522,7 +518,7 @@ function generateAppFile(
 		case "hello-world":
 			return generateHelloWorld(config);
 		case "api":
-			return generateApi(config);
+			return generateAPI(config);
 		case "static-site":
 			return generateStaticSite(config);
 		case "full-stack":
@@ -544,7 +540,7 @@ self.addEventListener("fetch", (event) => {
 `;
 }
 
-function generateApi(config: ProjectConfig): string {
+function generateAPI(config: ProjectConfig): string {
 	return `import {Router} from "@b9g/router";
 import {logger} from "@b9g/router/middleware";
 
@@ -780,7 +776,7 @@ self.addEventListener("fetch", (event) => {
 `,
 	};
 	if (t) {
-		files[`env.d.ts`] = `declare module "htmx.org";
+		files["env.d.ts"] = `declare module "htmx.org";
 `;
 	}
 	return files;
@@ -854,7 +850,7 @@ Alpine.start();
 `,
 	};
 	if (t) {
-		files[`env.d.ts`] = `declare module "alpinejs" {
+		files["env.d.ts"] = `declare module "alpinejs" {
   interface Alpine {
     start(): void;
     plugin(plugin: unknown): void;
@@ -873,12 +869,8 @@ function generateStaticSiteCrank(
 ): Record<string, string> {
 	const t = config.typescript;
 	const ext = config.useJSX
-		? config.typescript
-			? "tsx"
-			: "jsx"
-		: config.typescript
-			? "ts"
-			: "js";
+		? config.typescript ? "tsx" : "jsx"
+		: config.typescript ? "ts" : "js";
 
 	if (config.useJSX) {
 		return {
@@ -1258,7 +1250,7 @@ self.addEventListener("fetch", (event) => {
 `,
 	};
 	if (t) {
-		files[`env.d.ts`] = `declare module "htmx.org";
+		files["env.d.ts"] = `declare module "htmx.org";
 `;
 	}
 	return files;
@@ -1355,7 +1347,7 @@ Alpine.start();
 `,
 	};
 	if (t) {
-		files[`env.d.ts`] = `declare module "alpinejs" {
+		files["env.d.ts"] = `declare module "alpinejs" {
   interface Alpine {
     start(): void;
     plugin(plugin: unknown): void;
@@ -1372,12 +1364,8 @@ Alpine.start();
 function generateFullStackCrank(config: ProjectConfig): Record<string, string> {
 	const t = config.typescript;
 	const ext = config.useJSX
-		? config.typescript
-			? "tsx"
-			: "jsx"
-		: config.typescript
-			? "ts"
-			: "js";
+		? config.typescript ? "tsx" : "jsx"
+		: config.typescript ? "ts" : "js";
 
 	if (config.useJSX) {
 		return {
@@ -1608,14 +1596,9 @@ function generateReadme(config: ProjectConfig): string {
 		crank: " using [Crank.js](https://crank.js.org) with hydration",
 	};
 
-	const ext =
-		config.uiFramework === "crank" && config.useJSX
-			? config.typescript
-				? "tsx"
-				: "jsx"
-			: config.typescript
-				? "ts"
-				: "js";
+	const ext = config.uiFramework === "crank" && config.useJSX
+		? config.typescript ? "tsx" : "jsx"
+		: config.typescript ? "ts" : "js";
 	const isCrank = config.uiFramework === "crank";
 	const hasClientBundle =
 		config.template === "static-site" || config.template === "full-stack";

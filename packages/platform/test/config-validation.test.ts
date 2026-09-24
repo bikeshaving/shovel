@@ -2,24 +2,18 @@
  * Tests for config validation
  */
 
-import {describe, it, expect} from "bun:test";
-import {validateConfig, ConfigValidationError} from "../src/config.js";
+import {describe, expect, it} from "bun:test";
+
+import {ConfigValidationError, validateConfig} from "../src/config.js";
 
 describe("validateConfig", () => {
 	it("should pass for valid config with all values defined", () => {
-		const config = {
-			port: 3000,
-			host: "localhost",
-			workers: 1,
-		};
+		const config = {port: 3000, host: "localhost", workers: 1};
 		expect(() => validateConfig(config)).not.toThrow();
 	});
 
 	it("should throw ConfigValidationError for undefined value", () => {
-		const config = {
-			port: 3000,
-			host: undefined,
-		};
+		const config = {port: 3000, host: undefined};
 		expect(() => validateConfig(config)).toThrow(ConfigValidationError);
 		try {
 			validateConfig(config);
@@ -33,10 +27,7 @@ describe("validateConfig", () => {
 	});
 
 	it("should throw ConfigValidationError for NaN value", () => {
-		const config = {
-			port: NaN,
-			host: "localhost",
-		};
+		const config = {port: NaN, host: "localhost"};
 		expect(() => validateConfig(config)).toThrow(ConfigValidationError);
 		try {
 			validateConfig(config);
@@ -51,14 +42,7 @@ describe("validateConfig", () => {
 	it("should validate nested objects", () => {
 		const config = {
 			port: 3000,
-			databases: {
-				main: {
-					url: "postgres://localhost",
-				},
-				cache: {
-					url: undefined,
-				},
-			},
+			databases: {main: {url: "postgres://localhost"}, cache: {url: undefined}},
 		};
 		expect(() => validateConfig(config)).toThrow(ConfigValidationError);
 		try {
@@ -70,51 +54,32 @@ describe("validateConfig", () => {
 	});
 
 	it("should allow null values", () => {
-		const config = {
-			port: 3000,
-			optional: null,
-		};
+		const config = {port: 3000, optional: null};
 		expect(() => validateConfig(config)).not.toThrow();
 	});
 
 	it("should allow arrays", () => {
-		const config = {
-			port: 3000,
-			items: [1, 2, 3],
-		};
+		const config = {port: 3000, items: [1, 2, 3]};
 		expect(() => validateConfig(config)).not.toThrow();
 	});
 
 	it("should allow empty objects", () => {
-		const config = {
-			port: 3000,
-			caches: {},
-		};
+		const config = {port: 3000, caches: {}};
 		expect(() => validateConfig(config)).not.toThrow();
 	});
 
 	it("should allow string values", () => {
-		const config = {
-			host: "localhost",
-			path: "/data/uploads",
-		};
+		const config = {host: "localhost", path: "/data/uploads"};
 		expect(() => validateConfig(config)).not.toThrow();
 	});
 
 	it("should allow boolean values", () => {
-		const config = {
-			enabled: true,
-			debug: false,
-		};
+		const config = {enabled: true, debug: false};
 		expect(() => validateConfig(config)).not.toThrow();
 	});
 
 	it("should detect NaN in nested objects", () => {
-		const config = {
-			settings: {
-				timeout: NaN,
-			},
-		};
+		const config = {settings: {timeout: NaN}};
 		expect(() => validateConfig(config)).toThrow(ConfigValidationError);
 		try {
 			validateConfig(config);

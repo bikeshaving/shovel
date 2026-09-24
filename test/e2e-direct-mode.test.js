@@ -9,14 +9,16 @@
  * Runtime tests build, start, and make HTTP requests to verify behavior.
  */
 
+import {spawn} from "child_process";
 import * as FS from "fs/promises";
+import {createConnection} from "net";
 import {tmpdir} from "os";
 import {join} from "path";
-import {test, expect, describe} from "bun:test";
-import {buildForProduction} from "../src/commands/build.js";
-import {spawn} from "child_process";
-import {createConnection} from "net";
+
 import {getLogger} from "@logtape/logtape";
+import {describe, expect, test} from "bun:test";
+
+import {buildForProduction} from "../src/commands/build.js";
 
 const logger = getLogger(["test", "e2e-direct-mode"]);
 
@@ -115,14 +117,15 @@ async function waitForPortClose(port, timeoutMs = 5000) {
 /** Start a production server and return process + helpers */
 function startServer(serverDir) {
 	const indexPath = join(serverDir, "supervisor.js");
-	const child = spawn("node", [indexPath], {
-		cwd: serverDir,
-		stdio: ["pipe", "pipe", "pipe"],
-		env: {
-			...process.env,
-			NODE_ENV: "production",
+	const child = spawn(
+		"node",
+		[indexPath],
+		{
+			cwd: serverDir,
+			stdio: ["pipe", "pipe", "pipe"],
+			env: {...process.env, NODE_ENV: "production"},
 		},
-	});
+	);
 
 	let stdout = "";
 	let stderr = "";
@@ -467,9 +470,8 @@ self.addEventListener("fetch", (event) => {
 				await waitForPort(PORT);
 
 				// Make HTTP request
-				const response = await fetchWithRetry(
-					`http://localhost:${PORT}/health`,
-				);
+				const response =
+					await fetchWithRetry(`http://localhost:${PORT}/health`);
 				expect(response.status).toBe(200);
 
 				const body = await response.json();
@@ -580,8 +582,9 @@ self.addEventListener("fetch", (event) => {
 
 				// Fire 20 concurrent requests
 				const responses = await Promise.all(
-					Array.from({length: 20}, () =>
-						fetch(`http://localhost:${PORT}/`).then((r) => r.json()),
+					Array.from(
+						{length: 20},
+						() => fetch(`http://localhost:${PORT}/`).then((r) => r.json()),
 					),
 				);
 
@@ -693,12 +696,7 @@ self.addEventListener("fetch", (event) => {
 						port: PORT,
 						host: "localhost",
 						workers: 1,
-						caches: {
-							"*": {
-								module: "@b9g/cache/memory",
-								export: "MemoryCache",
-							},
-						},
+						caches: {"*": {module: "@b9g/cache/memory", export: "MemoryCache"}},
 					}),
 				});
 				cleanup_paths.push(projectDir);
@@ -721,9 +719,8 @@ self.addEventListener("fetch", (event) => {
 				expect(await getRes.text()).toBe("world");
 
 				// DELETE it
-				const delRes = await fetch(`http://localhost:${PORT}/key/hello`, {
-					method: "DELETE",
-				});
+				const delRes =
+					await fetch(`http://localhost:${PORT}/key/hello`, {method: "DELETE"});
 				expect(delRes.status).toBe(204);
 
 				// GET after delete should 404
@@ -773,12 +770,7 @@ self.addEventListener("fetch", (event) => {
 						port: PORT,
 						host: "localhost",
 						workers: 1,
-						caches: {
-							"*": {
-								module: "@b9g/cache/memory",
-								export: "MemoryCache",
-							},
-						},
+						caches: {"*": {module: "@b9g/cache/memory", export: "MemoryCache"}},
 					}),
 				});
 				cleanup_paths.push(projectDir);
@@ -804,9 +796,8 @@ self.addEventListener("fetch", (event) => {
 				const usersRes = await fetch(`http://localhost:${PORT}/users/alice`);
 				expect(await usersRes.text()).toBe("Alice Data");
 
-				const sessionsRes = await fetch(
-					`http://localhost:${PORT}/sessions/alice`,
-				);
+				const sessionsRes =
+					await fetch(`http://localhost:${PORT}/sessions/alice`);
 				expect(await sessionsRes.text()).toBe("Session Token");
 
 				// A cache we never wrote to should 404
@@ -869,10 +860,7 @@ self.addEventListener("fetch", (event) => {
 								export: "MemoryCache",
 								maxEntries: 2,
 							},
-							"*": {
-								module: "@b9g/cache/memory",
-								export: "MemoryCache",
-							},
+							"*": {module: "@b9g/cache/memory", export: "MemoryCache"},
 						},
 					}),
 				});

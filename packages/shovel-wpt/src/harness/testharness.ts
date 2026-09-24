@@ -8,8 +8,8 @@
  * See: https://web-platform-tests.org/writing-tests/testharness-api.html
  */
 
-import {test as bunTest, describe} from "bun:test";
 import {getLogger} from "@logtape/logtape";
+import {test as bunTest, describe} from "bun:test";
 
 const logger = getLogger(["test", "wpt", "harness"]);
 
@@ -19,14 +19,19 @@ const logger = getLogger(["test", "wpt", "harness"]);
 export interface TestContext {
 	/** Add a cleanup function to run after the test */
 	add_cleanup(fn: () => void | Promise<void>): void;
+
 	/** Step function for async tests */
 	step<T>(fn: () => T): T;
+
 	/** Step function for async tests with timeout */
 	step_func<T extends (...args: unknown[]) => unknown>(fn: T): T;
+
 	/** Step function that completes the test */
 	step_func_done<T extends (...args: unknown[]) => unknown>(fn: T): T;
+
 	/** Complete the test */
 	done(): void;
+
 	/** Unreached step */
 	unreached_func(description?: string): () => never;
 }

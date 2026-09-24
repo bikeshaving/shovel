@@ -9,27 +9,30 @@ import {builtinModules} from "node:module";
 import {tmpdir} from "node:os";
 import * as Path from "node:path";
 
-// External packages
-import {getLogger} from "@logtape/logtape";
-
 // Internal @b9g/* packages
 import {CustomCacheStorage} from "@b9g/cache";
-import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
 import {
-	type PlatformDefaults,
+	type HTTPError,
+	InternalServerError,
+	isHTTPError,
+} from "@b9g/http-errors";
+import {
+	type EntryPoints,
 	type Handler,
+	type PlatformDefaults,
+	type PlatformESBuildConfig,
 	type Server,
 	type ServerOptions,
-	type PlatformESBuildConfig,
-	type EntryPoints,
 	ServiceWorkerPool,
 } from "@b9g/platform";
 import {
-	ShovelServiceWorkerRegistration,
-	kServiceWorker,
+	createActivatedRegistration,
 	createCacheFactory,
 	type ShovelConfig,
+	type ShovelServiceWorkerRegistration,
 } from "@b9g/platform/runtime";
+// External packages
+import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "platform"]);
 
@@ -40,12 +43,16 @@ const logger = getLogger(["shovel", "platform"]);
 export interface BunPlatformOptions {
 	/** Port for development server (default: 7777) */
 	port?: number;
+
 	/** Host for development server (default: localhost) */
 	host?: string;
+
 	/** Working directory for file resolution */
 	cwd?: string;
+
 	/** Number of worker threads (default: 1) */
 	workers?: number;
+
 	/** Shovel configuration (caches, directories, etc.) */
 	config?: ShovelConfig;
 }
@@ -53,6 +60,22 @@ export interface BunPlatformOptions {
 // ============================================================================
 // SERVICE WORKER CONTAINER
 // ============================================================================
+
+const kPlatform = Symbol("platform");
+const kPool = Symbol("pool");
+const kCacheStorage = Symbol("cacheStorage");
+const kRegistration = Symbol("registration");
+const kReadyPromise = Symbol("readyPromise");
+const kReadyResolve = Symbol("readyResolve");
+
+export interface BunServiceWorkerContainer {
+	[kPlatform]: BunPlatform;
+	[kPool]?: ServiceWorkerPool;
+	[kCacheStorage]?: CustomCacheStorage;
+	[kRegistration]?: ShovelServiceWorkerRegistration;
+	[kReadyPromise]: Promise<ServiceWorkerRegistration>;
+	[kReadyResolve]?: (registration: ServiceWorkerRegistration) => void;
+}
 
 /**
  * Bun ServiceWorkerContainer implementation
@@ -64,15 +87,7 @@ export interface BunPlatformOptions {
  */
 export class BunServiceWorkerContainer
 	extends EventTarget
-	implements ServiceWorkerContainer
-{
-	#platform: BunPlatform;
-	#pool?: ServiceWorkerPool;
-	#cacheStorage?: CustomCacheStorage;
-	#registration?: ShovelServiceWorkerRegistration;
-	#readyPromise: Promise<ServiceWorkerRegistration>;
-	#readyResolve?: (registration: ServiceWorkerRegistration) => void;
-
+	implements ServiceWorkerContainer {
 	// Standard ServiceWorkerContainer properties
 	readonly controller: ServiceWorker | null;
 	oncontrollerchange: ((ev: Event) => unknown) | null;
@@ -81,14 +96,28 @@ export class BunServiceWorkerContainer
 
 	constructor(platform: BunPlatform) {
 		super();
-		this.#platform = platform;
-		this.#readyPromise = new Promise((resolve) => {
-			this.#readyResolve = resolve;
+		this[kPlatform] = platform;
+		this[kReadyPromise] = new Promise((resolve) => {
+			this[kReadyResolve] = resolve;
 		});
 		this.controller = null;
 		this.oncontrollerchange = null;
 		this.onmessage = null;
 		this.onmessageerror = null;
+	}
+
+	/**
+	 * Ready promise - resolves when a registration is active
+	 */
+	get ready(): Promise<ServiceWorkerRegistration> {
+		return this[kReadyPromise];
+	}
+
+	/**
+	 * Internal: Get worker pool for request handling
+	 */
+	get pool(): ServiceWorkerPool | undefined {
+		return this[kPool];
 	}
 
 	/**
@@ -99,8 +128,9 @@ export class BunServiceWorkerContainer
 		scriptURL: string | URL,
 		options?: RegistrationOptions,
 	): Promise<ServiceWorkerRegistration> {
-		const urlStr =
-			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
+		const urlStr = typeof scriptURL === "string"
+			? scriptURL
+			: scriptURL.toString();
 		const scope = options?.scope ?? "/";
 
 		// Convert file:// URL to filesystem path, or resolve relative path
@@ -109,11 +139,11 @@ export class BunServiceWorkerContainer
 			// Use URL to properly parse the file:// URL
 			entryPath = new URL(urlStr).pathname;
 		} else {
-			entryPath = Path.resolve(this.#platform.options.cwd, urlStr);
+			entryPath = Path.resolve(this[kPlatform].options.cwd, urlStr);
 		}
 
 		// Try to load config.js for cache coordination (exists in built output)
-		let config = this.#platform.options.config;
+		let config = this[kPlatform].options.config;
 		const configPath = Path.join(Path.dirname(entryPath), "config.js");
 		try {
 			// eslint-disable-next-line no-restricted-syntax -- Import generated config at runtime
@@ -125,38 +155,33 @@ export class BunServiceWorkerContainer
 		}
 
 		// Create cache storage for cross-worker coordination
-		if (!this.#cacheStorage && config?.caches) {
-			this.#cacheStorage = new CustomCacheStorage(
+		if (!this[kCacheStorage] && config?.caches) {
+			this[kCacheStorage] = new CustomCacheStorage(
 				createCacheFactory({configs: config.caches}),
 			);
 		}
 
 		// Terminate any existing pool
-		if (this.#pool) {
-			await this.#pool.terminate();
+		if (this[kPool]) {
+			await this[kPool].terminate();
 		}
 
 		// Create worker pool using native Web Workers
-		this.#pool = new ServiceWorkerPool(
-			{
-				workerCount: this.#platform.options.workers,
-				createWorker: (entrypoint) => new Worker(entrypoint),
-			},
-			entryPath,
-			this.#cacheStorage,
-		);
+		this[kPool] = new ServiceWorkerPool({
+			workerCount: this[kPlatform].options.workers,
+			createWorker: (entrypoint) => new Worker(entrypoint),
+		}, entryPath, this[kCacheStorage]);
 
 		// Initialize workers (waits for ready)
-		await this.#pool.init();
+		await this[kPool].init();
 
 		// Create registration to track state
-		this.#registration = new ShovelServiceWorkerRegistration(scope, urlStr);
-		this.#registration[kServiceWorker]._setState("activated");
+		this[kRegistration] = createActivatedRegistration(scope, urlStr);
 
 		// Resolve ready promise
-		this.#readyResolve?.(this.#registration);
+		this[kReadyResolve]?.(this[kRegistration]);
 
-		return this.#registration;
+		return this[kRegistration];
 	}
 
 	/**
@@ -168,9 +193,9 @@ export class BunServiceWorkerContainer
 		if (
 			scope === undefined ||
 			scope === "/" ||
-			scope === this.#registration?.scope
+			scope === this[kRegistration]?.scope
 		) {
-			return this.#registration;
+			return this[kRegistration];
 		}
 		return undefined;
 	}
@@ -179,7 +204,7 @@ export class BunServiceWorkerContainer
 	 * Get all registrations
 	 */
 	async getRegistrations(): Promise<readonly ServiceWorkerRegistration[]> {
-		return this.#registration ? [this.#registration] : [];
+		return this[kRegistration] ? [this[kRegistration]] : [];
 	}
 
 	/**
@@ -190,42 +215,42 @@ export class BunServiceWorkerContainer
 	}
 
 	/**
-	 * Ready promise - resolves when a registration is active
-	 */
-	get ready(): Promise<ServiceWorkerRegistration> {
-		return this.#readyPromise;
-	}
-
-	/**
-	 * Internal: Get worker pool for request handling
-	 */
-	get pool(): ServiceWorkerPool | undefined {
-		return this.#pool;
-	}
-
-	/**
 	 * Internal: Terminate workers and dispose cache storage
 	 */
 	async terminate(): Promise<void> {
-		await this.#pool?.terminate();
-		this.#pool = undefined;
+		await this[kPool]?.terminate();
+		this[kPool] = undefined;
 
 		// Dispose cache storage (closes Redis connections, etc.)
-		await this.#cacheStorage?.dispose();
-		this.#cacheStorage = undefined;
+		await this[kCacheStorage]?.dispose();
+		this[kCacheStorage] = undefined;
 	}
 
 	/**
 	 * Internal: Reload workers (for hot reload)
 	 */
 	async reloadWorkers(entrypoint: string): Promise<void> {
-		await this.#pool?.reloadWorkers(entrypoint);
+		await this[kPool]?.reloadWorkers(entrypoint);
 	}
 }
 
 // ============================================================================
 // IMPLEMENTATION
 // ============================================================================
+
+const kOptions = Symbol("options");
+const kServer = Symbol("server");
+
+export interface BunPlatform {
+	[kOptions]: {
+		port: number;
+		host: string;
+		cwd: string;
+		workers: number;
+		config?: ShovelConfig;
+	};
+	[kServer]?: Server;
+}
 
 /**
  * Bun platform implementation
@@ -235,21 +260,12 @@ export class BunPlatform {
 	readonly name: string;
 	readonly serviceWorker: BunServiceWorkerContainer;
 
-	#options: {
-		port: number;
-		host: string;
-		cwd: string;
-		workers: number;
-		config?: ShovelConfig;
-	};
-	#server?: Server;
-
 	constructor(options: BunPlatformOptions = {}) {
 		this.name = "bun";
 		// eslint-disable-next-line no-restricted-properties -- Platform adapter entry point
 		const cwd = options.cwd || process.cwd();
 
-		this.#options = {
+		this[kOptions] = {
 			port: options.port ?? 7777,
 			host: options.host ?? "localhost",
 			workers: options.workers ?? 1,
@@ -263,16 +279,22 @@ export class BunPlatform {
 	/**
 	 * Get options for testing
 	 */
-	get options() {
-		return this.#options;
+	get options(): {
+		port: number;
+		host: string;
+		cwd: string;
+		workers: number;
+		config?: ShovelConfig;
+	} {
+		return this[kOptions];
 	}
 
 	/**
 	 * Create HTTP server using Bun.serve
 	 */
 	createServer(handler: Handler, options: ServerOptions = {}): Server {
-		const requestedPort = options.port ?? this.#options.port;
-		const hostname = options.host ?? this.#options.host;
+		const requestedPort = options.port ?? this[kOptions].port;
+		const hostname = options.host ?? this[kOptions].host;
 		const reusePort = options.reusePort ?? false;
 
 		// Bun.serve is much simpler than Node.js
@@ -342,20 +364,20 @@ export class BunPlatform {
 			);
 		}
 
-		this.#server = this.createServer((request) => pool.handleRequest(request), {
-			port: this.#options.port,
-			host: this.#options.host,
-		});
-		await this.#server.listen();
-		return this.#server;
+		this[kServer] = this.createServer(
+			(request) => pool.handleRequest(request),
+			{port: this[kOptions].port, host: this[kOptions].host},
+		);
+		await this[kServer].listen();
+		return this[kServer];
 	}
 
 	/**
 	 * Close the server
 	 */
 	async close(): Promise<void> {
-		await this.#server?.close();
-		this.#server = undefined;
+		await this[kServer]?.close();
+		this[kServer] = undefined;
 	}
 
 	/**
@@ -491,10 +513,7 @@ process.on("SIGINT", handleShutdown);
 process.on("SIGTERM", handleShutdown);
 `;
 
-		return {
-			supervisor: supervisorCode,
-			worker: prodWorkerCode,
-		};
+		return {supervisor: supervisorCode, worker: prodWorkerCode};
 	}
 
 	/**
@@ -518,12 +537,7 @@ process.on("SIGTERM", handleShutdown);
 	 */
 	getDefaults(): PlatformDefaults {
 		return {
-			caches: {
-				"*": {
-					module: "@b9g/cache/memory",
-					export: "MemoryCache",
-				},
-			},
+			caches: {"*": {module: "@b9g/cache/memory", export: "MemoryCache"}},
 			directories: {
 				server: {
 					module: "@b9g/filesystem/node-fs",

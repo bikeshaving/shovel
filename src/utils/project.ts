@@ -40,10 +40,10 @@ export function findWorkspaceRoot(
 ): string | null {
 	let dir = startDir;
 	while (dir !== dirname(dir)) {
-		const packageJsonPath = join(dir, "package.json");
-		if (existsSync(packageJsonPath)) {
-			const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-			if (packageJson.workspaces) {
+		const packageJSONPath = join(dir, "package.json");
+		if (existsSync(packageJSONPath)) {
+			const packageJSON = JSON.parse(readFileSync(packageJSONPath, "utf8"));
+			if (packageJSON.workspaces) {
 				return dir;
 			}
 		}

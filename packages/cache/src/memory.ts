@@ -1,8 +1,8 @@
 import {
 	Cache,
+	type CacheQueryOptions,
 	generateCacheKey,
 	toRequest,
-	type CacheQueryOptions,
 } from "./index.js";
 
 /**
@@ -22,19 +22,24 @@ interface CacheEntry {
 	timestamp: number;
 }
 
+const kStorage = Symbol("storage");
+const kOptions = Symbol("options");
+
+export interface MemoryCache {
+	[kStorage]: Map<string, CacheEntry>;
+	[kOptions]: MemoryCacheOptions;
+}
+
 /**
  * In-memory cache implementation using Map for storage
  * Supports LRU eviction and TTL expiration
  * Uses Map's insertion order for LRU tracking
  */
 export class MemoryCache extends Cache {
-	#storage: Map<string, CacheEntry>;
-	#options: MemoryCacheOptions;
-
 	constructor(_name: string, options: MemoryCacheOptions = {}) {
 		super();
-		this.#storage = new Map<string, CacheEntry>();
-		this.#options = options;
+		this[kStorage] = new Map<string, CacheEntry>();
+		this[kOptions] = options;
 	}
 
 	/**
@@ -49,20 +54,20 @@ export class MemoryCache extends Cache {
 		// When ignoreSearch is true, we need to iterate to find matches
 		if (options?.ignoreSearch) {
 			const filterKey = generateCacheKey(request, options);
-			for (const [key, entry] of this.#storage) {
-				if (this.#isExpired(entry)) {
-					this.#storage.delete(key);
+			for (const [key, entry] of this[kStorage]) {
+				if (isExpired(entry)) {
+					this[kStorage].delete(key);
 					continue;
 				}
 				const entryKey = generateCacheKey(entry.request, options);
 				if (entryKey === filterKey) {
 					// Check Vary header unless ignoreVary is true
-					if (!options?.ignoreVary && !this.#matchesVary(req, entry)) {
+					if (!options?.ignoreVary && !matchesVary(req, entry)) {
 						continue;
 					}
 					// Move to end for LRU (delete and re-add)
-					this.#storage.delete(key);
-					this.#storage.set(key, entry);
+					this[kStorage].delete(key);
+					this[kStorage].set(key, entry);
 					return entry.response.clone();
 				}
 			}
@@ -70,26 +75,26 @@ export class MemoryCache extends Cache {
 		}
 
 		const key = generateCacheKey(request, options);
-		const entry = this.#storage.get(key);
+		const entry = this[kStorage].get(key);
 
 		if (!entry) {
 			return undefined;
 		}
 
 		// Check if entry has expired
-		if (this.#isExpired(entry)) {
-			this.#storage.delete(key);
+		if (isExpired(entry)) {
+			this[kStorage].delete(key);
 			return undefined;
 		}
 
 		// Check Vary header unless ignoreVary is true
-		if (!options?.ignoreVary && !this.#matchesVary(req, entry)) {
+		if (!options?.ignoreVary && !matchesVary(req, entry)) {
 			return undefined;
 		}
 
 		// Move to end for LRU (delete and re-add)
-		this.#storage.delete(key);
-		this.#storage.set(key, entry);
+		this[kStorage].delete(key);
+		this[kStorage].set(key, entry);
 
 		// Clone the response to avoid mutation
 		return entry.response.clone();
@@ -118,14 +123,14 @@ export class MemoryCache extends Cache {
 		};
 
 		// If updating existing entry, delete first to move to end
-		if (this.#storage.has(key)) {
-			this.#storage.delete(key);
+		if (this[kStorage].has(key)) {
+			this[kStorage].delete(key);
 		}
 
-		this.#storage.set(key, entry);
+		this[kStorage].set(key, entry);
 
 		// Enforce size limits
-		this.#enforceMaxEntries();
+		enforceMaxEntries(this);
 	}
 
 	/**
@@ -139,10 +144,10 @@ export class MemoryCache extends Cache {
 		if (options?.ignoreSearch) {
 			const filterKey = generateCacheKey(request, options);
 			let deleted = false;
-			for (const [key, entry] of this.#storage) {
+			for (const [key, entry] of this[kStorage]) {
 				const entryKey = generateCacheKey(entry.request, options);
 				if (entryKey === filterKey) {
-					this.#storage.delete(key);
+					this[kStorage].delete(key);
 					deleted = true;
 				}
 			}
@@ -150,7 +155,7 @@ export class MemoryCache extends Cache {
 		}
 
 		const key = generateCacheKey(request, options);
-		return this.#storage.delete(key);
+		return this[kStorage].delete(key);
 	}
 
 	/**
@@ -162,9 +167,9 @@ export class MemoryCache extends Cache {
 	): Promise<readonly Request[]> {
 		const keys: Request[] = [];
 
-		for (const [_, entry] of this.#storage) {
+		for (const [_, entry] of this[kStorage]) {
 			// Skip expired entries
-			if (this.#isExpired(entry)) {
+			if (isExpired(entry)) {
 				continue;
 			}
 
@@ -190,85 +195,84 @@ export class MemoryCache extends Cache {
 	 * Clear all entries from the cache
 	 */
 	async clear(): Promise<void> {
-		this.#storage.clear();
+		this[kStorage].clear();
+	}
+}
+
+/**
+ * Check if a cache entry has expired based on Cache-Control header
+ */
+function isExpired(entry: CacheEntry): boolean {
+	const cacheControl = entry.response.headers.get("cache-control");
+	if (!cacheControl) {
+		return false; // No expiration set
 	}
 
-	/**
-	 * Check if a cache entry has expired based on Cache-Control header
-	 */
-	#isExpired(entry: CacheEntry): boolean {
-		const cacheControl = entry.response.headers.get("cache-control");
-		if (!cacheControl) {
-			return false; // No expiration set
-		}
-
-		// Parse max-age from Cache-Control header
-		const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
-		if (!maxAgeMatch) {
-			return false;
-		}
-
-		const maxAge = parseInt(maxAgeMatch[1], 10) * 1000; // Convert to milliseconds
-		return Date.now() - entry.timestamp > maxAge;
+	// Parse max-age from Cache-Control header
+	const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
+	if (!maxAgeMatch) {
+		return false;
 	}
 
-	/**
-	 * Check if a request matches the Vary header of a cached entry
-	 * Returns true if the request matches or if there's no Vary header
-	 */
-	#matchesVary(request: Request, entry: CacheEntry): boolean {
-		const varyHeader = entry.response.headers.get("vary");
+	const maxAge = parseInt(maxAgeMatch[1], 10) * 1000; // Convert to milliseconds
+	return Date.now() - entry.timestamp > maxAge;
+}
 
-		// No Vary header means response doesn't vary on any headers
-		if (!varyHeader) {
-			return true;
-		}
+/**
+ * Check if a request matches the Vary header of a cached entry
+ * Returns true if the request matches or if there's no Vary header
+ */
+function matchesVary(request: Request, entry: CacheEntry): boolean {
+	const varyHeader = entry.response.headers.get("vary");
 
-		// Vary: * means response varies on everything, never matches
-		if (varyHeader === "*") {
-			return false;
-		}
-
-		// Parse Vary header (comma-separated list of header names)
-		const varyHeaders = varyHeader
-			.split(",")
-			.map((h) => h.trim().toLowerCase());
-
-		// Check if all varying headers match between requests
-		for (const headerName of varyHeaders) {
-			const requestValue = request.headers.get(headerName);
-			const cachedValue = entry.request.headers.get(headerName);
-
-			// Headers must match exactly (null === null is okay)
-			if (requestValue !== cachedValue) {
-				return false;
-			}
-		}
-
+	// No Vary header means response doesn't vary on any headers
+	if (!varyHeader) {
 		return true;
 	}
 
-	/**
-	 * Enforce maximum entry limits using LRU eviction
-	 * Removes oldest entries (first in Map iteration order)
-	 */
-	#enforceMaxEntries(): void {
-		if (
-			!this.#options.maxEntries ||
-			this.#storage.size <= this.#options.maxEntries
-		) {
-			return;
-		}
+	// Vary: * means response varies on everything, never matches
+	if (varyHeader === "*") {
+		return false;
+	}
 
-		// Remove oldest entries until we're under the limit
-		// Map iteration order is insertion order, so first entries are oldest
-		const toRemove = this.#storage.size - this.#options.maxEntries;
-		let removed = 0;
-		for (const key of this.#storage.keys()) {
-			if (removed >= toRemove) break;
-			this.#storage.delete(key);
-			removed++;
+	// Parse Vary header (comma-separated list of header names)
+	const varyHeaders = varyHeader.split(",").map((h) => h.trim().toLowerCase());
+
+	// Check if all varying headers match between requests
+	for (const headerName of varyHeaders) {
+		const requestValue = request.headers.get(headerName);
+		const cachedValue = entry.request.headers.get(headerName);
+
+		// Headers must match exactly (null === null is okay)
+		if (requestValue !== cachedValue) {
+			return false;
 		}
+	}
+
+	return true;
+}
+
+/**
+ * Enforce maximum entry limits using LRU eviction
+ * Removes oldest entries (first in Map iteration order)
+ */
+function enforceMaxEntries(memoryCache: MemoryCache): void {
+	if (
+		!memoryCache[kOptions].maxEntries ||
+		memoryCache[kStorage].size <= memoryCache[kOptions].maxEntries
+	) {
+		return;
+	}
+
+	// Remove oldest entries until we're under the limit
+	// Map iteration order is insertion order, so first entries are oldest
+	const toRemove =
+		memoryCache[kStorage].size - memoryCache[kOptions].maxEntries;
+	let removed = 0;
+	for (const key of memoryCache[kStorage].keys()) {
+		if (removed >= toRemove) break;
+		memoryCache[kStorage].delete(key);
+		removed++;
 	}
 }
 

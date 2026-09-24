@@ -1,16 +1,17 @@
 import {
-	test,
-	expect,
-	describe,
-	beforeEach,
+	afterAll,
 	afterEach,
 	beforeAll,
-	afterAll,
+	beforeEach,
+	describe,
+	expect,
 	mock,
+	test,
 } from "bun:test";
-import {CloudflarePlatform} from "../src/index.js";
-import {CloudflareNativeCache} from "../src/caches.js";
 import {Miniflare} from "miniflare";
+
+import {CloudflareNativeCache} from "../src/caches.js";
+import {CloudflarePlatform} from "../src/index.js";
 
 describe("CloudflarePlatform", () => {
 	let platform: CloudflarePlatform;
@@ -43,11 +44,7 @@ describe("CloudflarePlatform", () => {
 	beforeEach(() => {
 		platform = new CloudflarePlatform({
 			environment: "dev",
-			config: {
-				caches: {
-					test: {impl: CloudflareNativeCache},
-				},
-			},
+			config: {caches: {test: {impl: CloudflareNativeCache}}},
 		});
 	});
 

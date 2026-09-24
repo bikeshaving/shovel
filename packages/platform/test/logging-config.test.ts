@@ -8,8 +8,9 @@
 
 /* eslint-disable no-console -- Tests need to mock console methods */
 
-import {describe, it, expect, beforeEach, afterEach, mock} from "bun:test";
-import {getLogger, configure} from "@logtape/logtape";
+import {configure, getLogger} from "@logtape/logtape";
+import {afterEach, beforeEach, describe, expect, it, mock} from "bun:test";
+
 import {configureLogging} from "../src/runtime.js";
 
 describe("configureLogging", () => {
@@ -68,11 +69,7 @@ describe("configureLogging", () => {
 	it("keeps explicit sinks when specified", async () => {
 		await configureLogging({
 			loggers: [
-				{
-					category: ["test", "explicit"],
-					level: "debug",
-					sinks: ["console"],
-				},
+				{category: ["test", "explicit"], level: "debug", sinks: ["console"]},
 			],
 		});
 
@@ -103,14 +100,7 @@ describe("configureLogging", () => {
 	});
 
 	it("preserves shovel defaults when user adds new category", async () => {
-		await configureLogging({
-			loggers: [
-				{
-					category: ["myapp"],
-					level: "debug",
-				},
-			],
-		});
+		await configureLogging({loggers: [{category: ["myapp"], level: "debug"}]});
 
 		// User logger should work
 		const myLogger = getLogger(["myapp"]);

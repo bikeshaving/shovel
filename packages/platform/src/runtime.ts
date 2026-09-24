@@ -11,19 +11,19 @@
  */
 
 import {AsyncContext} from "@b9g/async-context";
-import {getLogger, getConsoleSink} from "@logtape/logtape";
+import {getConsoleSink, getLogger} from "@logtape/logtape";
 // Re-exported for generated worker entries: a bare "@logtape/logtape" import
 // in generated code resolves from the user's project root, where it is only
 // a transitive dependency (fails under pnpm-isolated/Yarn-PnP layouts).
 export {getLogger} from "@logtape/logtape";
-import {CustomDirectoryStorage} from "@b9g/filesystem";
-import {CustomCacheStorage, Cache} from "@b9g/cache";
+import {CustomDirectoryStorage, type DirectoryStorage} from "@b9g/filesystem";
+import {type Cache, CustomCacheStorage} from "@b9g/cache";
 import {handleCacheResponse, PostMessageCache} from "@b9g/cache/postmessage";
 import {
-	ShovelBroadcastChannel,
-	setBroadcastChannelRelay,
 	deliverBroadcastMessage,
 	setBroadcastChannelBackend,
+	setBroadcastChannelRelay,
+	ShovelBroadcastChannel,
 } from "./internal/broadcast-channel.js";
 import type {BroadcastChannelBackend} from "./internal/broadcast-channel-backend.js";
 
@@ -79,7 +79,7 @@ export function parseCookieHeader(cookieHeader: string): Map<string, string> {
 export function serializeCookie(cookie: CookieInit): string {
 	let header = `${encodeURIComponent(cookie.name)}=${encodeURIComponent(cookie.value)}`;
 
-	if (cookie.expires !== undefined && cookie.expires !== null) {
+	if (cookie.expires != null) {
 		const date = new Date(cookie.expires);
 		header += `; Expires=${date.toUTCString()}`;
 	}
@@ -91,21 +91,21 @@ export function serializeCookie(cookie: CookieInit): string {
 	if (cookie.path) {
 		header += `; Path=${cookie.path}`;
 	} else {
-		header += `; Path=/`;
+		header += "; Path=/";
 	}
 
 	if (cookie.sameSite) {
 		header += `; SameSite=${cookie.sameSite.charAt(0).toUpperCase() + cookie.sameSite.slice(1)}`;
 	} else {
-		header += `; SameSite=Strict`;
+		header += "; SameSite=Strict";
 	}
 
 	if (cookie.partitioned) {
-		header += `; Partitioned`;
+		header += "; Partitioned";
 	}
 
 	// Secure is implied for all cookies in this implementation
-	header += `; Secure`;
+	header += "; Secure";
 
 	return header;
 }
@@ -157,6 +157,14 @@ export function parseSetCookieHeader(setCookieHeader: string): CookieListItem {
 	return cookie;
 }
 
+const kCookies = Symbol("cookies");
+const kChanges = Symbol("changes");
+
+export interface RequestCookieStore {
+	[kCookies]: Map<string, CookieListItem>;
+	[kChanges]: Map<string, CookieInit | null>; // null = deleted
+}
+
 /**
  * RequestCookieStore - Cookie Store implementation for ServiceWorker contexts
  *
@@ -169,19 +177,14 @@ export function parseSetCookieHeader(setCookieHeader: string): CookieListItem {
  * request handling rather than browser contexts.
  */
 export class RequestCookieStore extends EventTarget {
-	#cookies: Map<string, CookieListItem>;
-	#changes: Map<string, CookieInit | null>; // null = deleted
-	#request: Request | null;
-
 	// Event handler for cookie changes (spec compliance)
-	// eslint-disable-next-line no-restricted-syntax
-	onchange: ((this: RequestCookieStore, ev: Event) => any) | null = null;
+	onchange: ((this: RequestCookieStore, ev: Event) => any) | null;
 
 	constructor(request?: Request) {
 		super();
-		this.#cookies = new Map();
-		this.#changes = new Map();
-		this.#request = request || null;
+		this[kCookies] = new Map();
+		this[kChanges] = new Map();
+		this.onchange = null;
 
 		// Parse initial cookies from request
 		if (request) {
@@ -189,7 +192,7 @@ export class RequestCookieStore extends EventTarget {
 			if (cookieHeader) {
 				const parsed = parseCookieHeader(cookieHeader);
 				for (const [name, value] of parsed) {
-					this.#cookies.set(name, {name, value});
+					this[kCookies].set(name, {name, value});
 				}
 			}
 		}
@@ -198,17 +201,18 @@ export class RequestCookieStore extends EventTarget {
 	async get(
 		nameOrOptions: string | CookieStoreGetOptions,
 	): Promise<CookieListItem | null> {
-		const name =
-			typeof nameOrOptions === "string" ? nameOrOptions : nameOrOptions.name;
+		const name = typeof nameOrOptions === "string"
+			? nameOrOptions
+			: nameOrOptions.name;
 
 		if (!name) {
 			throw new TypeError("Cookie name is required");
 		}
 
 		// Check changes first (for set/delete operations)
-		if (this.#changes.has(name)) {
-			const change = this.#changes.get(name);
-			if (change === null || change === undefined) return null;
+		if (this[kChanges].has(name)) {
+			const change = this[kChanges].get(name);
+			if (change == null) return null;
 			return {
 				name: change.name,
 				value: change.value,
@@ -220,29 +224,30 @@ export class RequestCookieStore extends EventTarget {
 			};
 		}
 
-		return this.#cookies.get(name) || null;
+		return this[kCookies].get(name) || null;
 	}
 
 	async getAll(
 		nameOrOptions?: string | CookieStoreGetOptions,
 	): Promise<CookieList> {
-		const name =
-			typeof nameOrOptions === "string" ? nameOrOptions : nameOrOptions?.name;
+		const name = typeof nameOrOptions === "string"
+			? nameOrOptions
+			: nameOrOptions?.name;
 
 		const result: CookieList = [];
 
 		// Collect all cookies (original + changes)
 		const allNames = new Set([
-			...this.#cookies.keys(),
-			...this.#changes.keys(),
+			...this[kCookies].keys(),
+			...this[kChanges].keys(),
 		]);
 
 		for (const cookieName of allNames) {
 			if (name && cookieName !== name) continue;
 
 			if (
-				this.#changes.has(cookieName) &&
-				this.#changes.get(cookieName) === null
+				this[kChanges].has(cookieName) &&
+				this[kChanges].get(cookieName) === null
 			) {
 				continue;
 			}
@@ -263,18 +268,9 @@ export class RequestCookieStore extends EventTarget {
 			if (value === undefined) {
 				throw new TypeError("Cookie value is required");
 			}
-			cookie = {
-				name: nameOrOptions,
-				value,
-				path: "/",
-				sameSite: "strict",
-			};
+			cookie = {name: nameOrOptions, value, path: "/", sameSite: "strict"};
 		} else {
-			cookie = {
-				path: "/",
-				sameSite: "strict",
-				...nameOrOptions,
-			};
+			cookie = {path: "/", sameSite: "strict", ...nameOrOptions};
 		}
 
 		// Validate cookie size (spec: 4096 bytes combined)
@@ -285,20 +281,21 @@ export class RequestCookieStore extends EventTarget {
 			);
 		}
 
-		this.#changes.set(cookie.name, cookie);
+		this[kChanges].set(cookie.name, cookie);
 	}
 
 	async delete(
 		nameOrOptions: string | CookieStoreDeleteOptions,
 	): Promise<void> {
-		const name =
-			typeof nameOrOptions === "string" ? nameOrOptions : nameOrOptions.name;
+		const name = typeof nameOrOptions === "string"
+			? nameOrOptions
+			: nameOrOptions.name;
 
 		if (!name) {
 			throw new TypeError("Cookie name is required");
 		}
 
-		this.#changes.set(name, null);
+		this[kChanges].set(name, null);
 	}
 
 	/**
@@ -308,17 +305,10 @@ export class RequestCookieStore extends EventTarget {
 	getSetCookieHeaders(): string[] {
 		const headers: string[] = [];
 
-		for (const [name, change] of this.#changes) {
+		for (const [name, change] of this[kChanges]) {
 			if (change === null) {
 				// Delete cookie by setting expires to past date
-				headers.push(
-					serializeCookie({
-						name,
-						value: "",
-						expires: 0,
-						path: "/",
-					}),
-				);
+				headers.push(serializeCookie({name, value: "", expires: 0, path: "/"}));
 			} else {
 				headers.push(serializeCookie(change));
 			}
@@ -328,19 +318,18 @@ export class RequestCookieStore extends EventTarget {
 	}
 
 	hasChanges(): boolean {
-		return this.#changes.size > 0;
+		return this[kChanges].size > 0;
 	}
 
 	clearChanges(): void {
-		this.#changes.clear();
+		this[kChanges].clear();
 	}
 }
 
-import type {DirectoryStorage} from "@b9g/filesystem";
 import {
 	configure,
-	type LogLevel as LogTapeLevel,
 	type Logger,
+	type LogLevel as LogTapeLevel,
 } from "@logtape/logtape";
 
 // ============================================================================
@@ -365,18 +354,22 @@ export interface LoggerStorage {
  */
 export type LoggerFactory = (categories: string[]) => Logger;
 
+const kLoggerFactory = Symbol("factory");
+
+export interface CustomLoggerStorage {
+	[kLoggerFactory]: LoggerFactory;
+}
+
 /**
  * Custom logger storage implementation that wraps a factory function
  */
 export class CustomLoggerStorage implements LoggerStorage {
-	#factory: LoggerFactory;
-
 	constructor(factory: LoggerFactory) {
-		this.#factory = factory;
+		this[kLoggerFactory] = factory;
 	}
 
 	get(categories: string[]): Logger {
-		return this.#factory(categories);
+		return this[kLoggerFactory](categories);
 	}
 }
 
@@ -394,8 +387,10 @@ import type {Database} from "@b9g/zen";
 export interface DatabaseConfig {
 	/** Reified implementation (driver class from build-time code generation) */
 	impl?: new (url: string, options?: any) => any;
+
 	/** Database connection URL */
 	url?: string;
+
 	/** Additional driver-specific options */
 	[key: string]: unknown;
 }
@@ -406,10 +401,13 @@ export interface DatabaseConfig {
 export interface DatabaseUpgradeEvent {
 	/** The database being upgraded */
 	db: Database;
+
 	/** Previous database version (0 if new) */
 	oldVersion: number;
+
 	/** Target version being opened */
 	newVersion: number;
+
 	/** Register a promise that must complete before open() resolves */
 	waitUntil(promise: Promise<unknown>): void;
 }
@@ -465,24 +463,32 @@ export interface DatabaseStorage {
  * Factory function type for creating database drivers.
  * Returns the Database instance and a close function.
  */
-export type DatabaseFactory = (
-	name: string,
-) => Promise<{db: Database; close: () => Promise<void>}>;
+export type DatabaseFactory = (name: string) => Promise<{
+	db: Database;
+	close: () => Promise<void>;
+}>;
+
+const kDatabaseFactory = Symbol("factory");
+const kDatabases = Symbol("databases");
+const kClosers = Symbol("closers");
+const kPending = Symbol("pending");
+
+export interface CustomDatabaseStorage {
+	[kDatabaseFactory]: DatabaseFactory;
+	[kDatabases]: Map<string, Database>;
+	[kClosers]: Map<string, () => Promise<void>>;
+	[kPending]: Map<string, Promise<Database>>;
+}
 
 /**
  * CustomDatabaseStorage implements DatabaseStorage.
  */
 export class CustomDatabaseStorage implements DatabaseStorage {
-	#factory: DatabaseFactory;
-	#databases: Map<string, Database>;
-	#closers: Map<string, () => Promise<void>>;
-	#pending: Map<string, Promise<Database>>;
-
 	constructor(factory: DatabaseFactory) {
-		this.#factory = factory;
-		this.#databases = new Map();
-		this.#closers = new Map();
-		this.#pending = new Map();
+		this[kDatabaseFactory] = factory;
+		this[kDatabases] = new Map();
+		this[kClosers] = new Map();
+		this[kPending] = new Map();
 	}
 
 	async open(
@@ -491,29 +497,30 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 		onUpgrade?: (event: DatabaseUpgradeEvent) => void,
 	): Promise<Database> {
 		// Return cached instance if already opened
-		const existing = this.#databases.get(name);
+		const existing = this[kDatabases].get(name);
 		if (existing) {
 			return existing;
 		}
 
 		// Return in-flight promise if another caller is already opening this database
-		const pending = this.#pending.get(name);
+		const pending = this[kPending].get(name);
 		if (pending) {
 			return pending;
 		}
 
 		// Create and open the database
 		const promise = (async () => {
-			const {db, close} = await this.#factory(name);
+			const {db, close} = await this[kDatabaseFactory](name);
 
 			// Register upgrade handler if provided
 			if (onUpgrade) {
 				db.addEventListener("upgradeneeded", (e: Event) => {
-					const event = e as Event & {
-						oldVersion: number;
-						newVersion: number;
-						waitUntil: (p: Promise<unknown>) => void;
-					};
+					const event = e as Event &
+						{
+							oldVersion: number;
+							newVersion: number;
+							waitUntil: (p: Promise<unknown>) => void;
+						};
 					onUpgrade({
 						db,
 						oldVersion: event.oldVersion,
@@ -533,21 +540,21 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 			}
 
 			// Cache the opened database
-			this.#databases.set(name, db);
-			this.#closers.set(name, close);
+			this[kDatabases].set(name, db);
+			this[kClosers].set(name, close);
 
 			return db;
 		})().finally(() => {
 			// Always clear pending, whether success or failure
-			this.#pending.delete(name);
+			this[kPending].delete(name);
 		});
 
-		this.#pending.set(name, promise);
+		this[kPending].set(name, promise);
 		return promise;
 	}
 
 	get(name: string): Database {
-		const db = this.#databases.get(name);
+		const db = this[kDatabases].get(name);
 		if (!db) {
 			throw new Error(
 				`Database "${name}" has not been opened. ` +
@@ -559,7 +566,7 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 
 	async close(name: string): Promise<void> {
 		// Wait for any pending open to complete before closing
-		const pending = this.#pending.get(name);
+		const pending = this[kPending].get(name);
 		if (pending) {
 			try {
 				await pending;
@@ -569,24 +576,23 @@ export class CustomDatabaseStorage implements DatabaseStorage {
 			}
 		}
 
-		const closer = this.#closers.get(name);
+		const closer = this[kClosers].get(name);
 		if (closer) {
 			await closer();
-			this.#databases.delete(name);
-			this.#closers.delete(name);
+			this[kDatabases].delete(name);
+			this[kClosers].delete(name);
 		}
 	}
 
 	async closeAll(): Promise<void> {
 		// Wait for any pending opens to complete first
-		if (this.#pending.size > 0) {
-			await Promise.allSettled(this.#pending.values());
+		if (this[kPending].size > 0) {
+			await Promise.allSettled(this[kPending].values());
 		}
 
 		// Now close all databases
-		const promises = Array.from(this.#databases.keys()).map((name) =>
-			this.close(name),
-		);
+		const promises = Array.from(this[kDatabases].keys())
+			.map((name) => this.close(name));
 		await Promise.allSettled(promises);
 	}
 }
@@ -747,6 +753,16 @@ const kCanExtend = Symbol.for("shovel.canExtend");
 // Base Event Classes
 // ============================================================================
 
+const kPromises = Symbol("promises");
+const kDispatchPhase = Symbol("dispatchPhase");
+const kPendingCount = Symbol("pendingCount");
+
+export interface ShovelExtendableEvent {
+	[kPromises]: Array<Promise<any>>;
+	[kDispatchPhase]: boolean;
+	[kPendingCount]: number;
+}
+
 /**
  * Shovel's ExtendableEvent implementation following ServiceWorker spec.
  *
@@ -759,21 +775,17 @@ const kCanExtend = Symbol.for("shovel.canExtend");
  * See: https://github.com/w3c/ServiceWorker/issues/771
  */
 export class ShovelExtendableEvent extends Event implements ExtendableEvent {
-	#promises: Promise<any>[];
-	#dispatchPhase: boolean;
-	#pendingCount: number;
-
 	constructor(type: string, eventInitDict?: EventInit) {
 		super(type, eventInitDict);
-		this.#promises = [];
-		this.#dispatchPhase = true; // Starts true, set to false after dispatch
-		this.#pendingCount = 0;
+		this[kPromises] = [];
+		this[kDispatchPhase] = true; // Starts true, set to false after dispatch
+		this[kPendingCount] = 0;
 	}
 
 	waitUntil(promise: Promise<any>): void {
 		// Per spec: waitUntil can be called during dispatch phase OR if there are pending promises
 		// See: https://w3c.github.io/ServiceWorker/#dom-extendableevent-waituntil
-		if (!this.#dispatchPhase && this.#pendingCount === 0) {
+		if (!this[kDispatchPhase] && this[kPendingCount] === 0) {
 			throw new DOMException(
 				"waitUntil() must be called synchronously during event dispatch, " +
 					"or while there are pending promises from respondWith()/waitUntil()",
@@ -782,30 +794,30 @@ export class ShovelExtendableEvent extends Event implements ExtendableEvent {
 		}
 
 		// Track pending count
-		this.#pendingCount++;
+		this[kPendingCount]++;
 		const trackedPromise = promise.finally(() => {
-			this.#pendingCount--;
+			this[kPendingCount]--;
 		});
 
 		// Attach catch handler to input promise to suppress unhandled rejection logging
 		trackedPromise.catch(() => {});
 
 		// Store the promise for Promise.all() to consume (rejection still propagates)
-		this.#promises.push(trackedPromise);
+		this[kPromises].push(trackedPromise);
 	}
 
-	getPromises(): Promise<any>[] {
-		return [...this.#promises];
+	getPromises(): Array<Promise<any>> {
+		return [...this[kPromises]];
 	}
 
 	/** @internal Called after synchronous dispatch completes */
 	[kEndDispatchPhase](): void {
-		this.#dispatchPhase = false;
+		this[kDispatchPhase] = false;
 	}
 
 	/** @internal Check if extensions are still allowed */
 	[kCanExtend](): boolean {
-		return this.#dispatchPhase || this.#pendingCount > 0;
+		return this[kDispatchPhase] || this[kPendingCount] > 0;
 	}
 }
 
@@ -821,6 +833,16 @@ export interface ShovelFetchEventInit extends EventInit {
 	platformWaitUntil?: (promise: Promise<unknown>) => void;
 }
 
+const kResponsePromise = Symbol("responsePromise");
+const kResponded = Symbol("responded");
+const kPlatformWaitUntil = Symbol("platformWaitUntil");
+
+export interface ShovelFetchEvent {
+	[kResponsePromise]: Promise<Response> | null;
+	[kResponded]: boolean;
+	[kPlatformWaitUntil]?: (promise: Promise<unknown>) => void;
+}
+
 /**
  * Shovel's FetchEvent implementation.
  *
@@ -829,17 +851,13 @@ export interface ShovelFetchEventInit extends EventInit {
  */
 export class ShovelFetchEvent
 	extends ShovelExtendableEvent
-	implements FetchEvent
-{
+	implements FetchEvent {
 	readonly request: Request;
 	readonly cookieStore: RequestCookieStore;
 	readonly clientId: string;
 	readonly handled: Promise<undefined>;
 	readonly preloadResponse: Promise<any>;
 	readonly resultingClientId: string;
-	#responsePromise: Promise<Response> | null;
-	#responded: boolean;
-	#platformWaitUntil?: (promise: Promise<unknown>) => void;
 
 	constructor(request: Request, options?: ShovelFetchEventInit) {
 		super("fetch", options);
@@ -849,22 +867,27 @@ export class ShovelFetchEvent
 		this.handled = Promise.resolve(undefined);
 		this.preloadResponse = Promise.resolve(undefined);
 		this.resultingClientId = "";
-		this.#responsePromise = null;
-		this.#responded = false;
-		this.#platformWaitUntil = options?.platformWaitUntil;
+		this[kResponsePromise] = null;
+		this[kResponded] = false;
+		this[kPlatformWaitUntil] = options?.platformWaitUntil;
+	}
+
+	/** The URL of the request (convenience property) */
+	get url(): string {
+		return this.request.url;
 	}
 
 	override waitUntil(promise: Promise<any>): void {
 		// Call platform hook first (e.g., Cloudflare ctx.waitUntil)
-		if (this.#platformWaitUntil) {
-			this.#platformWaitUntil(promise);
+		if (this[kPlatformWaitUntil]) {
+			this[kPlatformWaitUntil](promise);
 		}
 		// Then call parent implementation for internal tracking
 		super.waitUntil(promise);
 	}
 
 	respondWith(response: Response | Promise<Response>): void {
-		if (this.#responded) {
+		if (this[kResponded]) {
 			throw new Error("respondWith() already called");
 		}
 
@@ -876,25 +899,20 @@ export class ShovelFetchEvent
 			);
 		}
 
-		this.#responded = true;
-		this.#responsePromise = Promise.resolve(response);
+		this[kResponded] = true;
+		this[kResponsePromise] = Promise.resolve(response);
 
 		// Per spec, respondWith() extends the event lifetime (allows async waitUntil)
 		// We use waitUntil internally to track pending promise count
-		this.waitUntil(this.#responsePromise);
+		this.waitUntil(this[kResponsePromise]);
 	}
 
 	getResponse(): Promise<Response> | null {
-		return this.#responsePromise;
+		return this[kResponsePromise];
 	}
 
 	hasResponded(): boolean {
-		return this.#responded;
-	}
-
-	/** The URL of the request (convenience property) */
-	get url(): string {
-		return this.request.url;
+		return this[kResponded];
 	}
 }
 
@@ -929,11 +947,13 @@ export class ShovelClient implements Client {
 	readonly type: "window" | "worker" | "sharedworker";
 	readonly url: string;
 
-	constructor(options: {
-		id: string;
-		url: string;
-		type?: "window" | "worker" | "sharedworker";
-	}) {
+	constructor(
+		options: {
+			id: string;
+			url: string;
+			type?: "window" | "worker" | "sharedworker";
+		},
+	) {
 		this.frameType = "none";
 		this.id = options.id;
 		this.url = options.url;
@@ -963,12 +983,14 @@ export class ShovelWindowClient extends ShovelClient implements WindowClient {
 	readonly focused: boolean;
 	readonly visibilityState: DocumentVisibilityState;
 
-	constructor(options: {
-		id: string;
-		url: string;
-		focused?: boolean;
-		visibilityState?: DocumentVisibilityState;
-	}) {
+	constructor(
+		options: {
+			id: string;
+			url: string;
+			focused?: boolean;
+			visibilityState?: DocumentVisibilityState;
+		},
+	) {
 		super({...options, type: "window"});
 		this.focused = options.focused || false;
 		this.visibilityState = options.visibilityState || "hidden";
@@ -1004,10 +1026,12 @@ export class ShovelClients implements Clients {
 
 	async matchAll<T extends ClientQueryOptions>(
 		_options?: T,
-	): Promise<readonly (T["type"] extends "window" ? WindowClient : Client)[]> {
-		return [] as readonly (T["type"] extends "window"
+	): Promise<ReadonlyArray<T["type"] extends "window"
+		? WindowClient
+		: Client>> {
+		return [] as ReadonlyArray<T["type"] extends "window"
 			? WindowClient
-			: Client)[];
+			: Client>;
 	}
 
 	async openWindow(_url: string): Promise<WindowClient | null> {
@@ -1053,12 +1077,12 @@ export class ExtendableMessageEvent extends ShovelExtendableEvent {
 export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 	scriptURL: string;
 	state:
-		| "parsed"
-		| "installing"
-		| "installed"
-		| "activating"
-		| "activated"
-		| "redundant";
+		"parsed" |
+		"installing" |
+		"installed" |
+		"activating" |
+		"activated" |
+		"redundant";
 
 	// Event handlers required by Web API
 	onstatechange: ((ev: Event) => any) | null;
@@ -1068,12 +1092,12 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 		scriptURL: string,
 
 		state:
-			| "parsed"
-			| "installing"
-			| "installed"
-			| "activating"
-			| "activated"
-			| "redundant" = "parsed",
+			"parsed" |
+			"installing" |
+			"installed" |
+			"activating" |
+			"activated" |
+			"redundant" = "parsed",
 	) {
 		super();
 		this.scriptURL = scriptURL;
@@ -1096,22 +1120,25 @@ export class ShovelServiceWorker extends EventTarget implements ServiceWorker {
 			.warn("ServiceWorker.postMessage() not implemented in server context");
 	}
 
-	// Internal method to update state and dispatch statechange event
-	_setState(newState: typeof this.state): void {
-		if (this.state !== newState) {
-			this.state = newState;
-			this.dispatchEvent(new Event("statechange"));
-		}
-	}
-
 	// Events: statechange, error
+}
+
+function setState(
+	serviceWorker: ShovelServiceWorker,
+	state: ShovelServiceWorker["state"],
+): void {
+	if (serviceWorker.state !== state) {
+		serviceWorker.state = state;
+		serviceWorker.dispatchEvent(new Event("statechange"));
+	}
 }
 
 /**
  * ShovelNavigationPreloadManager - Internal implementation of NavigationPreloadManager
  * Note: Standard NavigationPreloadManager has no constructor - instances are created internally
  */
-export class ShovelNavigationPreloadManager implements NavigationPreloadManager {
+export class ShovelNavigationPreloadManager
+	implements NavigationPreloadManager {
 	async disable(): Promise<void> {
 		// No-op in server context
 	}
@@ -1129,22 +1156,14 @@ export class ShovelNavigationPreloadManager implements NavigationPreloadManager 
 	}
 }
 
-// ============================================================================
-// Symbols for internal lifecycle methods
-// These allow runLifecycle() to access internal methods without polluting the public API
-// ============================================================================
-
-/** @internal Symbol for accessing the internal ServiceWorker instance */
-export const kServiceWorker = Symbol("serviceWorker");
-
-/** @internal Symbol for dispatching the install lifecycle event */
-export const kDispatchInstall = Symbol("dispatchInstall");
-
-/** @internal Symbol for dispatching the activate lifecycle event */
-export const kDispatchActivate = Symbol("dispatchActivate");
+const kServiceWorker = Symbol("serviceWorker");
 
 /** @internal Symbol for handling fetch requests */
 const kHandleRequest = Symbol("handleRequest");
+
+export interface ShovelServiceWorkerRegistration {
+	[kServiceWorker]: ShovelServiceWorker;
+}
 
 /**
  * ShovelServiceWorkerRegistration - Internal implementation of ServiceWorkerRegistration
@@ -1153,21 +1172,17 @@ const kHandleRequest = Symbol("handleRequest");
  */
 export class ShovelServiceWorkerRegistration
 	extends EventTarget
-	implements ServiceWorkerRegistration
-{
+	implements ServiceWorkerRegistration {
 	readonly scope: string;
 	readonly updateViaCache: "imports" | "all" | "none";
 	readonly navigationPreload: NavigationPreloadManager;
-
-	// Internal ServiceWorker instance (accessed via symbol for lifecycle management)
-	[kServiceWorker]: ShovelServiceWorker;
 
 	// Web API properties (not supported in server context, but required by interface)
 	readonly cookies: any;
 	readonly pushManager: any;
 	onupdatefound: ((ev: Event) => any) | null;
 
-	constructor(scope: string = "/", scriptURL: string = "/") {
+	constructor(scope = "/", scriptURL = "/") {
 		super();
 		this.scope = scope;
 		this.updateViaCache = "imports";
@@ -1197,6 +1212,13 @@ export class ShovelServiceWorkerRegistration
 			: null;
 	}
 
+	/**
+	 * Check if ready to handle requests (Shovel extension)
+	 */
+	get ready(): boolean {
+		return this[kServiceWorker].state === "activated";
+	}
+
 	// Standard ServiceWorkerRegistration methods
 	async getNotifications(
 		_options?: NotificationOptions,
@@ -1224,100 +1246,6 @@ export class ShovelServiceWorkerRegistration
 	async update(): Promise<ServiceWorkerRegistration> {
 		// No-op in server context - just return this registration
 		return this;
-	}
-
-	// Internal lifecycle methods (accessed via symbols by runLifecycle)
-
-	/**
-	 * Dispatch the install lifecycle event
-	 * @internal Use runLifecycle() instead of calling this directly
-	 */
-	async [kDispatchInstall](): Promise<void> {
-		if (this[kServiceWorker].state !== "parsed") return;
-
-		this[kServiceWorker]._setState("installing");
-
-		return new Promise<void>((resolve, reject) => {
-			const event = new ShovelInstallEvent();
-
-			// Dispatch event asynchronously to allow listener errors to be deferred
-			queueMicrotask(() => {
-				try {
-					this.dispatchEvent(event);
-				} catch (error) {
-					// Allow errors in event listeners to propagate as uncaught exceptions
-					queueMicrotask(() => {
-						throw error;
-					});
-				}
-
-				const promises = event.getPromises();
-				if (promises.length === 0) {
-					this[kServiceWorker]._setState("installed");
-					resolve();
-				} else {
-					// Use Promise.all() so waitUntil rejections fail the install
-					// Wrap with timeout to prevent indefinite hangs
-					promiseWithTimeout(
-						Promise.all(promises),
-						30000,
-						"ServiceWorker install event timed out after 30s - waitUntil promises did not resolve",
-					)
-						.then(() => {
-							this[kServiceWorker]._setState("installed");
-							resolve();
-						})
-						.catch(reject);
-				}
-			});
-		});
-	}
-
-	/**
-	 * Dispatch the activate lifecycle event
-	 * @internal Use runLifecycle() instead of calling this directly
-	 */
-	async [kDispatchActivate](): Promise<void> {
-		if (this[kServiceWorker].state !== "installed") {
-			throw new Error("ServiceWorker must be installed before activation");
-		}
-
-		this[kServiceWorker]._setState("activating");
-
-		return new Promise<void>((resolve, reject) => {
-			const event = new ShovelActivateEvent();
-
-			// Dispatch event asynchronously to allow listener errors to be deferred
-			queueMicrotask(() => {
-				try {
-					this.dispatchEvent(event);
-				} catch (error) {
-					// Allow errors in event listeners to propagate as uncaught exceptions
-					queueMicrotask(() => {
-						throw error;
-					});
-				}
-
-				const promises = event.getPromises();
-				if (promises.length === 0) {
-					this[kServiceWorker]._setState("activated");
-					resolve();
-				} else {
-					// Use Promise.all() so waitUntil rejections fail the activation
-					// Wrap with timeout to prevent indefinite hangs
-					promiseWithTimeout(
-						Promise.all(promises),
-						30000,
-						"ServiceWorker activate event timed out after 30s - waitUntil promises did not resolve",
-					)
-						.then(() => {
-							this[kServiceWorker]._setState("activated");
-							resolve();
-						})
-						.catch(reject);
-				}
-			});
-		});
 	}
 
 	/**
@@ -1384,14 +1312,103 @@ export class ShovelServiceWorkerRegistration
 		});
 	}
 
-	/**
-	 * Check if ready to handle requests (Shovel extension)
-	 */
-	get ready(): boolean {
-		return this[kServiceWorker].state === "activated";
+	// Events: updatefound (standard), plus Shovel lifecycle events
+}
+
+/**
+ * Dispatch the install lifecycle event
+ * @internal Use runLifecycle() instead of calling registration directly
+ */
+async function dispatchInstall(
+	registration: ShovelServiceWorkerRegistration,
+): Promise<void> {
+	if (registration[kServiceWorker].state !== "parsed") return;
+
+	setState(registration[kServiceWorker], "installing");
+
+	return new Promise<void>((resolve, reject) => {
+		const event = new ShovelInstallEvent();
+
+		// Dispatch event asynchronously to allow listener errors to be deferred
+		queueMicrotask(() => {
+			try {
+				registration.dispatchEvent(event);
+			} catch (error) {
+				// Allow errors in event listeners to propagate as uncaught exceptions
+				queueMicrotask(() => {
+					throw error;
+				});
+			}
+
+			const promises = event.getPromises();
+			if (promises.length === 0) {
+				setState(registration[kServiceWorker], "installed");
+				resolve();
+			} else {
+				// Use Promise.all() so waitUntil rejections fail the install
+				// Wrap with timeout to prevent indefinite hangs
+				promiseWithTimeout(
+					Promise.all(promises),
+					30000,
+					"ServiceWorker install event timed out after 30s - waitUntil promises did not resolve",
+				)
+					.then(() => {
+						setState(registration[kServiceWorker], "installed");
+						resolve();
+					})
+					.catch(reject);
+			}
+		});
+	});
+}
+
+/**
+ * Dispatch the activate lifecycle event
+ * @internal Use runLifecycle() instead of calling registration directly
+ */
+async function dispatchActivate(
+	registration: ShovelServiceWorkerRegistration,
+): Promise<void> {
+	if (registration[kServiceWorker].state !== "installed") {
+		throw new Error("ServiceWorker must be installed before activation");
 	}
 
-	// Events: updatefound (standard), plus Shovel lifecycle events
+	setState(registration[kServiceWorker], "activating");
+
+	return new Promise<void>((resolve, reject) => {
+		const event = new ShovelActivateEvent();
+
+		// Dispatch event asynchronously to allow listener errors to be deferred
+		queueMicrotask(() => {
+			try {
+				registration.dispatchEvent(event);
+			} catch (error) {
+				// Allow errors in event listeners to propagate as uncaught exceptions
+				queueMicrotask(() => {
+					throw error;
+				});
+			}
+
+			const promises = event.getPromises();
+			if (promises.length === 0) {
+				setState(registration[kServiceWorker], "activated");
+				resolve();
+			} else {
+				// Use Promise.all() so waitUntil rejections fail the activation
+				// Wrap with timeout to prevent indefinite hangs
+				promiseWithTimeout(
+					Promise.all(promises),
+					30000,
+					"ServiceWorker activate event timed out after 30s - waitUntil promises did not resolve",
+				)
+					.then(() => {
+						setState(registration[kServiceWorker], "activated");
+						resolve();
+					})
+					.catch(reject);
+			}
+		});
+	});
 }
 
 /**
@@ -1417,10 +1434,25 @@ export async function runLifecycle(
 	registration: ShovelServiceWorkerRegistration,
 	stage: "install" | "activate" = "activate",
 ): Promise<void> {
-	await registration[kDispatchInstall]();
+	await dispatchInstall(registration);
 	if (stage === "activate") {
-		await registration[kDispatchActivate]();
+		await dispatchActivate(registration);
 	}
+}
+
+/**
+ * Create a registration whose ServiceWorker is already activated.
+ *
+ * For supervisors that run the lifecycle inside worker threads and only
+ * need a registration that reflects the finished state.
+ */
+export function createActivatedRegistration(
+	scope: string,
+	scriptURL: string,
+): ShovelServiceWorkerRegistration {
+	const registration = new ShovelServiceWorkerRegistration(scope, scriptURL);
+	setState(registration[kServiceWorker], "activated");
+	return registration;
 }
 
 /**
@@ -1447,11 +1479,16 @@ export async function dispatchRequest(
 	registration: ShovelServiceWorkerRegistration,
 	requestOrEvent: Request | ShovelFetchEvent,
 ): Promise<Response> {
-	const event =
-		requestOrEvent instanceof ShovelFetchEvent
-			? requestOrEvent
-			: new ShovelFetchEvent(requestOrEvent);
+	const event = requestOrEvent instanceof ShovelFetchEvent
+		? requestOrEvent
+		: new ShovelFetchEvent(requestOrEvent);
 	return registration[kHandleRequest](event);
+}
+
+const kRegistrations = Symbol("registrations");
+
+export interface ShovelServiceWorkerContainer {
+	[kRegistrations]: Map<string, ShovelServiceWorkerRegistration>;
 }
 
 /**
@@ -1461,9 +1498,7 @@ export async function dispatchRequest(
  */
 export class ShovelServiceWorkerContainer
 	extends EventTarget
-	implements ServiceWorkerContainer
-{
-	#registrations: Map<string, ShovelServiceWorkerRegistration>;
+	implements ServiceWorkerContainer {
 	readonly controller: ServiceWorker | null;
 	readonly ready: Promise<ServiceWorkerRegistration>;
 
@@ -1474,14 +1509,14 @@ export class ShovelServiceWorkerContainer
 
 	constructor() {
 		super();
-		this.#registrations = new Map<string, ShovelServiceWorkerRegistration>();
+		this[kRegistrations] = new Map<string, ShovelServiceWorkerRegistration>();
 		this.controller = null;
 		this.oncontrollerchange = null;
 		this.onmessage = null;
 		this.onmessageerror = null;
 		// Create default registration for root scope
 		const defaultRegistration = new ShovelServiceWorkerRegistration("/", "/");
-		this.#registrations.set("/", defaultRegistration);
+		this[kRegistrations].set("/", defaultRegistration);
 		this.ready = Promise.resolve(defaultRegistration);
 	}
 
@@ -1489,16 +1524,16 @@ export class ShovelServiceWorkerContainer
 	 * Get registration for a specific scope
 	 */
 	async getRegistration(
-		scope: string = "/",
+		scope = "/",
 	): Promise<ServiceWorkerRegistration | undefined> {
-		return this.#registrations.get(scope);
+		return this[kRegistrations].get(scope);
 	}
 
 	/**
 	 * Get all registrations
 	 */
 	async getRegistrations(): Promise<ServiceWorkerRegistration[]> {
-		return Array.from(this.#registrations.values());
+		return Array.from(this[kRegistrations].values());
 	}
 
 	/**
@@ -1512,21 +1547,22 @@ export class ShovelServiceWorkerContainer
 			updateViaCache?: "imports" | "all" | "none";
 		},
 	): Promise<ServiceWorkerRegistration> {
-		const url =
-			typeof scriptURL === "string" ? scriptURL : scriptURL.toString();
-		const scope = this.#normalizeScope(options?.scope || "/");
+		const url = typeof scriptURL === "string"
+			? scriptURL
+			: scriptURL.toString();
+		const scope = normalizeScope(options?.scope || "/");
 
 		// Check if registration already exists for this scope
-		let registration = this.#registrations.get(scope);
+		let registration = this[kRegistrations].get(scope);
 
 		if (registration) {
 			// Update existing registration with new script
 			registration[kServiceWorker].scriptURL = url;
-			registration[kServiceWorker]._setState("parsed");
+			setState(registration[kServiceWorker], "parsed");
 		} else {
 			// Create new registration
 			registration = new ShovelServiceWorkerRegistration(scope, url);
-			this.#registrations.set(scope, registration);
+			this[kRegistrations].set(scope, registration);
 
 			// Dispatch updatefound event
 			this.dispatchEvent(new Event("updatefound"));
@@ -1539,10 +1575,10 @@ export class ShovelServiceWorkerContainer
 	 * Unregister a ServiceWorker registration
 	 */
 	async unregister(scope: string): Promise<boolean> {
-		const registration = this.#registrations.get(scope);
+		const registration = this[kRegistrations].get(scope);
 		if (registration) {
 			await registration.unregister();
-			this.#registrations.delete(scope);
+			this[kRegistrations].delete(scope);
 			return true;
 		}
 		return false;
@@ -1552,7 +1588,7 @@ export class ShovelServiceWorkerContainer
 	 * Install and activate all registrations
 	 */
 	async installAll(): Promise<void> {
-		const installations = Array.from(this.#registrations.values()).map(
+		const installations = Array.from(this[kRegistrations].values()).map(
 			async (registration) => {
 				await runLifecycle(registration);
 			},
@@ -1570,37 +1606,39 @@ export class ShovelServiceWorkerContainer
 	 * Get list of all scopes
 	 */
 	getScopes(): string[] {
-		return Array.from(this.#registrations.keys());
+		return Array.from(this[kRegistrations].keys());
 	}
 
 	startMessages(): void {
 		// No-op in server context
 	}
 
-	/**
-	 * Normalize scope to ensure it starts and ends correctly
-	 */
-	#normalizeScope(scope: string): string {
-		// Ensure scope starts with /
-		if (!scope.startsWith("/")) {
-			scope = "/" + scope;
-		}
+	// Events: controllerchange, message, messageerror, updatefound
+}
 
-		// Ensure scope ends with / unless it's the root
-		if (scope !== "/" && !scope.endsWith("/")) {
-			scope = scope + "/";
-		}
-
-		return scope;
+/**
+ * Normalize scope to ensure it starts and ends correctly
+ */
+function normalizeScope(scope: string): string {
+	// Ensure scope starts with /
+	if (!scope.startsWith("/")) {
+		scope = "/" + scope;
 	}
 
-	// Events: controllerchange, message, messageerror, updatefound
+	// Ensure scope ends with / unless it's the root
+	if (scope !== "/" && !scope.endsWith("/")) {
+		scope = scope + "/";
+	}
+
+	return scope;
 }
 
 /**
  * Notification interface for push notifications (server context stubs)
  */
 export class Notification extends EventTarget {
+	static permission: "default" | "denied" | "granted";
+
 	readonly actions: readonly NotificationAction[];
 	readonly badge: string;
 	readonly body: string;
@@ -1622,8 +1660,6 @@ export class Notification extends EventTarget {
 	onclose: ((ev: Event) => any) | null;
 	onerror: ((ev: Event) => any) | null;
 	onshow: ((ev: Event) => any) | null;
-
-	static permission: "default" | "denied" | "granted";
 
 	constructor(title: string, options: NotificationOptions = {}) {
 		super();
@@ -1648,14 +1684,14 @@ export class Notification extends EventTarget {
 		this.onshow = null;
 	}
 
+	static async requestPermission(): Promise<"default" | "denied" | "granted"> {
+		return "denied";
+	}
+
 	close(): void {
 		(self as any).loggers
 			.open("platform")
 			.warn("Notification.close() not supported in server context");
-	}
-
-	static async requestPermission(): Promise<"default" | "denied" | "granted"> {
-		return "denied";
 	}
 
 	// Events: click, close, error, show
@@ -1702,18 +1738,26 @@ export class PushEvent extends ShovelExtendableEvent {
 	}
 }
 
+const kData = Symbol("data");
+
+export interface ShovelPushMessageData {
+	[kData]: any;
+}
+
 /**
  * ShovelPushMessageData - Internal implementation of PushMessageData
  * Note: Standard PushMessageData has no constructor - instances are created internally
  */
 export class ShovelPushMessageData implements PushMessageData {
-	constructor(private _data: any) {}
+	constructor(data: any) {
+		this[kData] = data;
+	}
 
 	arrayBuffer(): ArrayBuffer {
-		if (this._data instanceof ArrayBuffer) {
-			return this._data;
+		if (this[kData] instanceof ArrayBuffer) {
+			return this[kData];
 		}
-		return new TextEncoder().encode(this._data).buffer;
+		return new TextEncoder().encode(this[kData]).buffer;
 	}
 
 	blob(): Blob {
@@ -1729,10 +1773,10 @@ export class ShovelPushMessageData implements PushMessageData {
 	}
 
 	text(): string {
-		if (typeof this._data === "string") {
-			return this._data;
+		if (typeof this[kData] === "string") {
+			return this[kData];
 		}
-		return new TextDecoder().decode(this._data);
+		return new TextDecoder().decode(this[kData]);
 	}
 }
 
@@ -1786,14 +1830,19 @@ interface NotificationOptions {
 export interface ServiceWorkerGlobalsOptions {
 	/** ServiceWorker registration instance */
 	registration: ServiceWorkerRegistration;
+
 	/** Directory storage (file system access) - REQUIRED */
 	directories: DirectoryStorage;
+
 	/** Database storage - OPTIONAL */
 	databases?: DatabaseStorage;
+
 	/** Logger storage (logging access) - REQUIRED */
 	loggers: LoggerStorage;
+
 	/** Cache storage (required by ServiceWorkerGlobalScope) - REQUIRED */
 	caches: CacheStorage;
+
 	/** Development mode flag */
 	isDevelopment?: boolean;
 }
@@ -1809,6 +1858,14 @@ export class WorkerGlobalScope {}
  * Part of the Web Worker standard - extends WorkerGlobalScope
  */
 export class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
+
+const kIsDevelopment = Symbol("isDevelopment");
+const kOriginals = Symbol("originals");
+
+export interface ServiceWorkerGlobals {
+	[kIsDevelopment]: boolean;
+	[kOriginals]: Record<PatchedKey, unknown>;
+}
 
 /**
  * ServiceWorkerGlobals - Installs ServiceWorker globals onto globalThis
@@ -1838,18 +1895,6 @@ export class ServiceWorkerGlobals {
 	// Our custom Clients implementation provides core functionality compatible with the Web API
 	readonly clients: Clients;
 
-	// Shovel-specific development features
-	#isDevelopment: boolean;
-
-	// Snapshot of original globals before patching (for restore())
-	#originals: Record<PatchedKey, unknown>;
-
-	// Web API required properties
-	// Note: Using RequestCookieStore but typing as any for flexibility with global CookieStore type
-	// cookieStore is retrieved from AsyncContext for per-request isolation
-	get cookieStore(): any {
-		return cookieStoreStorage.get();
-	}
 	readonly serviceWorker: any;
 
 	// WorkerGlobalScope required properties (stubs for server context)
@@ -1863,8 +1908,120 @@ export class ServiceWorkerGlobals {
 	readonly performance: Performance;
 	readonly crypto: Crypto;
 
+	// Event handlers required by ServiceWorkerGlobalScope
+	// Use Web API types (not our custom implementations) for event handler signatures
+	onactivate:
+		((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any) |
+		null;
+
+	oncookiechange: ((this: ServiceWorkerGlobalScope, ev: Event) => any) | null;
+	onfetch:
+		((this: ServiceWorkerGlobalScope, ev: globalThis.FetchEvent) => any) | null;
+
+	oninstall:
+		((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any) |
+		null;
+
+	onmessage:
+		((
+			this: ServiceWorkerGlobalScope,
+			ev: globalThis.ExtendableMessageEvent,
+		) => any) | null;
+
+	onmessageerror:
+		((this: ServiceWorkerGlobalScope, ev: MessageEvent) => any) | null;
+
+	onnotificationclick:
+		((
+			this: ServiceWorkerGlobalScope,
+			ev: globalThis.NotificationEvent,
+		) => any) |
+		null;
+
+	onnotificationclose:
+		((
+			this: ServiceWorkerGlobalScope,
+			ev: globalThis.NotificationEvent,
+		) => any) |
+		null;
+
+	onpush:
+		((this: ServiceWorkerGlobalScope, ev: globalThis.PushEvent) => any) | null;
+
+	onpushsubscriptionchange:
+		((this: ServiceWorkerGlobalScope, ev: Event) => any) | null;
+
+	onsync: ((this: ServiceWorkerGlobalScope, ev: SyncEvent) => any) | null;
+
+	// WorkerGlobalScope event handlers (inherited by ServiceWorkerGlobalScope)
+	onerror: OnErrorEventHandlerNonNull | null;
+	onlanguagechange: ((ev: Event) => any) | null;
+	onoffline: ((ev: Event) => any) | null;
+	ononline: ((ev: Event) => any) | null;
+	onrejectionhandled: ((ev: PromiseRejectionEvent) => any) | null;
+	onunhandledrejection: ((ev: PromiseRejectionEvent) => any) | null;
+
+	constructor(options: ServiceWorkerGlobalsOptions) {
+		// Save originals for all keys we'll patch (for restore())
+		const g = globalThis as Record<string, unknown>;
+		this[kOriginals] = {} as Record<PatchedKey, unknown>;
+		for (const key of PATCHED_KEYS) {
+			this[kOriginals][key] = g[key];
+		}
+
+		this.self = globalThis;
+		this.registration = options.registration;
+		this.caches = options.caches;
+		this.directories = options.directories;
+		this.databases = options.databases;
+		this.loggers = options.loggers;
+		this[kIsDevelopment] = options.isDevelopment ?? false;
+
+		// Create clients API implementation
+		this.clients = createClientsAPI();
+
+		// Initialize Web API properties
+		// Note: cookieStore is per-request and retrieved via AsyncLocalStorage getter
+		this.serviceWorker = null;
+		this.location = {} as WorkerLocation;
+		this.navigator = {} as WorkerNavigator;
+		this.fonts = {} as FontFaceSet;
+		this.indexedDB = {} as IDBFactory;
+		this.isSecureContext = true;
+		this.crossOriginIsolated = false;
+		this.origin = "";
+		this.performance = {} as Performance;
+		this.crypto = {} as Crypto;
+
+		// Initialize event handlers
+		this.onactivate = null;
+		this.oncookiechange = null;
+		this.onfetch = null;
+		this.oninstall = null;
+		this.onmessage = null;
+		this.onmessageerror = null;
+		this.onnotificationclick = null;
+		this.onnotificationclose = null;
+		this.onpush = null;
+		this.onpushsubscriptionchange = null;
+		this.onsync = null;
+		this.onerror = null;
+		this.onlanguagechange = null;
+		this.onoffline = null;
+		this.ononline = null;
+		this.onrejectionhandled = null;
+		this.onunhandledrejection = null;
+	}
+
+	// Web API required properties
+	// Note: Using RequestCookieStore but typing as any for flexibility with global CookieStore type
+	// cookieStore is retrieved from AsyncContext for per-request isolation
+	get cookieStore(): any {
+		return cookieStoreStorage.get();
+	}
+
 	// WorkerGlobalScope methods (stubs for server context)
-	importScripts(..._urls: (string | URL)[]): void {
+	importScripts(..._urls: Array<string | URL>): void {
 		(self as any).loggers
 			.open("platform")
 			.warn("importScripts() not supported in server context");
@@ -1894,19 +2051,16 @@ export class ServiceWorkerGlobals {
 
 	fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
 		// Determine URL string from input
-		const urlString =
-			typeof input === "string"
-				? input
-				: input instanceof URL
-					? input.href
-					: input.url;
+		const urlString = typeof input === "string"
+			? input
+			: input instanceof URL ? input.href : input.url;
 
 		// Check if relative URL (self-fetch)
 		const isRelative = urlString.startsWith("/") || urlString.startsWith("./");
 
 		if (!isRelative) {
 			// Absolute URL - use network (original fetch to avoid recursion)
-			const originalFetch = this.#originals.fetch as typeof fetch;
+			const originalFetch = this[kOriginals].fetch as typeof fetch;
 			return originalFetch(input, init);
 		}
 
@@ -1951,114 +2105,13 @@ export class ServiceWorkerGlobals {
 		return globalThis.structuredClone(value, options);
 	}
 
-	// Event handlers required by ServiceWorkerGlobalScope
-	// Use Web API types (not our custom implementations) for event handler signatures
-	onactivate:
-		| ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any)
-		| null;
-	oncookiechange: ((this: ServiceWorkerGlobalScope, ev: Event) => any) | null;
-	onfetch:
-		| ((this: ServiceWorkerGlobalScope, ev: globalThis.FetchEvent) => any)
-		| null;
-	oninstall:
-		| ((this: ServiceWorkerGlobalScope, ev: globalThis.ExtendableEvent) => any)
-		| null;
-	onmessage:
-		| ((
-				this: ServiceWorkerGlobalScope,
-				ev: globalThis.ExtendableMessageEvent,
-		  ) => any)
-		| null;
-	onmessageerror:
-		| ((this: ServiceWorkerGlobalScope, ev: MessageEvent) => any)
-		| null;
-	onnotificationclick:
-		| ((
-				this: ServiceWorkerGlobalScope,
-				ev: globalThis.NotificationEvent,
-		  ) => any)
-		| null;
-	onnotificationclose:
-		| ((
-				this: ServiceWorkerGlobalScope,
-				ev: globalThis.NotificationEvent,
-		  ) => any)
-		| null;
-	onpush:
-		| ((this: ServiceWorkerGlobalScope, ev: globalThis.PushEvent) => any)
-		| null;
-	onpushsubscriptionchange:
-		| ((this: ServiceWorkerGlobalScope, ev: Event) => any)
-		| null;
-	onsync: ((this: ServiceWorkerGlobalScope, ev: SyncEvent) => any) | null;
-
-	// WorkerGlobalScope event handlers (inherited by ServiceWorkerGlobalScope)
-	onerror: OnErrorEventHandlerNonNull | null;
-	onlanguagechange: ((ev: Event) => any) | null;
-	onoffline: ((ev: Event) => any) | null;
-	ononline: ((ev: Event) => any) | null;
-	onrejectionhandled: ((ev: PromiseRejectionEvent) => any) | null;
-	onunhandledrejection: ((ev: PromiseRejectionEvent) => any) | null;
-
-	constructor(options: ServiceWorkerGlobalsOptions) {
-		// Save originals for all keys we'll patch (for restore())
-		const g = globalThis as Record<string, unknown>;
-		this.#originals = {} as Record<PatchedKey, unknown>;
-		for (const key of PATCHED_KEYS) {
-			this.#originals[key] = g[key];
-		}
-
-		this.self = globalThis;
-		this.registration = options.registration;
-		this.caches = options.caches;
-		this.directories = options.directories;
-		this.databases = options.databases;
-		this.loggers = options.loggers;
-		this.#isDevelopment = options.isDevelopment ?? false;
-
-		// Create clients API implementation
-		this.clients = this.#createClientsAPI();
-
-		// Initialize Web API properties
-		// Note: cookieStore is per-request and retrieved via AsyncLocalStorage getter
-		this.serviceWorker = null;
-		this.location = {} as WorkerLocation;
-		this.navigator = {} as WorkerNavigator;
-		this.fonts = {} as FontFaceSet;
-		this.indexedDB = {} as IDBFactory;
-		this.isSecureContext = true;
-		this.crossOriginIsolated = false;
-		this.origin = "";
-		this.performance = {} as Performance;
-		this.crypto = {} as Crypto;
-
-		// Initialize event handlers
-		this.onactivate = null;
-		this.oncookiechange = null;
-		this.onfetch = null;
-		this.oninstall = null;
-		this.onmessage = null;
-		this.onmessageerror = null;
-		this.onnotificationclick = null;
-		this.onnotificationclose = null;
-		this.onpush = null;
-		this.onpushsubscriptionchange = null;
-		this.onsync = null;
-		this.onerror = null;
-		this.onlanguagechange = null;
-		this.onoffline = null;
-		this.ononline = null;
-		this.onrejectionhandled = null;
-		this.onunhandledrejection = null;
-	}
-
 	/**
 	 * Standard ServiceWorker skipWaiting() implementation
 	 * Allows the ServiceWorker to activate immediately
 	 */
 	async skipWaiting(): Promise<void> {
 		getLogger(["shovel", "platform"]).debug("skipWaiting() called");
-		if (!this.#isDevelopment) {
+		if (!this[kIsDevelopment]) {
 			getLogger(["shovel", "platform"]).debug(
 				"skipWaiting() - production graceful restart not implemented",
 			);
@@ -2082,7 +2135,7 @@ export class ServiceWorkerGlobals {
 			this.registration.addEventListener(type, listener, options);
 		} else {
 			// Other events (e.g., "message" for worker threads) go to native
-			const original = this.#originals
+			const original = this[kOriginals]
 				.addEventListener as typeof addEventListener;
 			if (original) {
 				original.call(globalThis, type as any, listener, options);
@@ -2100,7 +2153,7 @@ export class ServiceWorkerGlobals {
 		if (isServiceWorkerEvent(type)) {
 			this.registration.removeEventListener(type, listener, options);
 		} else {
-			const original = this.#originals
+			const original = this[kOriginals]
 				.removeEventListener as typeof removeEventListener;
 			if (original) {
 				original.call(globalThis, type as any, listener, options);
@@ -2113,19 +2166,11 @@ export class ServiceWorkerGlobals {
 			return this.registration.dispatchEvent(event);
 		}
 		// Other events go to native
-		const original = this.#originals.dispatchEvent as typeof dispatchEvent;
+		const original = this[kOriginals].dispatchEvent as typeof dispatchEvent;
 		if (original) {
 			return original.call(globalThis, event);
 		}
 		return false;
-	}
-
-	/**
-	 * Create Clients API implementation
-	 * Note: HTTP requests are stateless, so most client operations are no-ops
-	 */
-	#createClientsAPI(): Clients {
-		return new ShovelClients();
 	}
 
 	/**
@@ -2185,7 +2230,7 @@ export class ServiceWorkerGlobals {
 	restore(): void {
 		const g = globalThis as Record<string, unknown>;
 		for (const key of PATCHED_KEYS) {
-			const original = this.#originals[key];
+			const original = this[kOriginals][key];
 			if (original === undefined) {
 				delete g[key];
 			} else {
@@ -2195,6 +2240,14 @@ export class ServiceWorkerGlobals {
 	}
 }
 
+/**
+ * Create Clients API implementation
+ * Note: HTTP requests are stateless, so most client operations are no-ops
+ */
+function createClientsAPI(): Clients {
+	return new ShovelClients();
+}
+
 // ============================================================================
 // Worker Runtime Initialization
 // ============================================================================
@@ -2202,9 +2255,9 @@ export class ServiceWorkerGlobals {
 /** Cache provider configuration */
 export interface CacheConfig {
 	/** Reified implementation (class or factory from build-time code generation) */
-	impl?:
-		| (new (name: string, options?: any) => Cache)
-		| ((name: string, options?: any) => Cache);
+	impl?: (new (name: string, options?: any) => Cache) |
+		((name: string, options?: any) => Cache);
+
 	/** Additional options passed to the constructor */
 	[key: string]: unknown;
 }
@@ -2212,11 +2265,12 @@ export interface CacheConfig {
 /** Directory (filesystem) provider configuration */
 export interface DirectoryConfig {
 	/** Reified implementation (class or factory from build-time code generation) */
-	impl?:
-		| (new (name: string, options?: any) => FileSystemDirectoryHandle)
-		| ((name: string, options?: any) => FileSystemDirectoryHandle);
+	impl?: (new (name: string, options?: any) => FileSystemDirectoryHandle) |
+		((name: string, options?: any) => FileSystemDirectoryHandle);
+
 	/** Custom path for filesystem directories */
 	path?: string;
+
 	/** Additional options passed to the constructor */
 	[key: string]: unknown;
 }
@@ -2232,9 +2286,8 @@ export interface ShovelConfig {
 	directories?: Record<string, DirectoryConfig>;
 	databases?: Record<string, DatabaseConfig>;
 	broadcastChannel?: {
-		impl?:
-			| (new (options: Record<string, unknown>) => BroadcastChannelBackend)
-			| ((options: Record<string, unknown>) => BroadcastChannelBackend);
+		impl?: (new (options: Record<string, unknown>) => BroadcastChannelBackend) |
+			((options: Record<string, unknown>) => BroadcastChannelBackend);
 		[key: string]: unknown;
 	};
 }
@@ -2282,7 +2335,7 @@ function isClass(fn: unknown): fn is new (...args: any[]) => any {
  */
 export function createDirectoryFactory(
 	configs: Record<string, DirectoryConfig>,
-) {
+): (name: string) => Promise<FileSystemDirectoryHandle> {
 	return async (name: string): Promise<FileSystemDirectoryHandle> => {
 		const config = matchPattern(name, configs);
 		if (!config) {
@@ -2314,6 +2367,7 @@ export function createDirectoryFactory(
 export interface CacheFactoryOptions {
 	/** Cache configurations with pre-imported CacheClass (from generated config module) */
 	configs: Record<string, CacheConfig>;
+
 	/** If true, use PostMessageCache (for workers communicating with main thread) */
 	usePostMessage?: boolean;
 }
@@ -2322,7 +2376,9 @@ export interface CacheFactoryOptions {
  * Creates a cache factory function for CustomCacheStorage.
  * Configs must have impl pre-imported (from generated config module).
  */
-export function createCacheFactory(options: CacheFactoryOptions) {
+export function createCacheFactory(
+	options: CacheFactoryOptions,
+): (name: string) => Promise<Cache> {
 	const {configs, usePostMessage = false} = options;
 
 	return async (name: string): Promise<Cache> => {
@@ -2369,6 +2425,7 @@ export interface WorkerRequestMessage {
 		headers: Record<string, string>;
 		body?: ArrayBuffer | null;
 	};
+	// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 	requestID: number;
 }
 
@@ -2380,6 +2437,7 @@ export interface WorkerResponseMessage {
 		headers: Record<string, string>;
 		body: ArrayBuffer;
 	};
+	// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 	requestID: number;
 }
 
@@ -2387,6 +2445,7 @@ export interface WorkerErrorMessage {
 	type: "error";
 	error: string;
 	stack?: string;
+	// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 	requestID?: number;
 }
 
@@ -2396,8 +2455,9 @@ export interface WorkerErrorMessage {
 export interface InitWorkerRuntimeOptions {
 	/** Shovel configuration (from shovel:config) */
 	config: ShovelConfig;
-	/** Whether to use PostMessageCache for cache operations (default: true).
-	 * Set to false when the worker handles requests directly (no message loop). */
+
+	// Whether to use PostMessageCache for cache operations (default: true).
+	// Set to false when the worker handles requests directly (no message loop).
 	usePostMessage?: boolean;
 }
 
@@ -2407,14 +2467,19 @@ export interface InitWorkerRuntimeOptions {
 export interface InitWorkerRuntimeResult {
 	/** The ServiceWorker registration instance */
 	registration: ShovelServiceWorkerRegistration;
+
 	/** The installed ServiceWorkerGlobals scope */
 	scope: ServiceWorkerGlobals;
+
 	/** Cache storage instance */
 	caches: CustomCacheStorage;
+
 	/** Directory storage instance */
 	directories: CustomDirectoryStorage;
+
 	/** Database storage instance (if configured) */
 	databases?: CustomDatabaseStorage;
+
 	/** Logger storage instance */
 	loggers: CustomLoggerStorage;
 }
@@ -2455,10 +2520,7 @@ export async function initWorkerRuntime(
 
 	// Create cache storage (PostMessage for message-loop workers, direct for server-in-worker)
 	const caches = new CustomCacheStorage(
-		createCacheFactory({
-			configs: config?.caches ?? {},
-			usePostMessage,
-		}),
+		createCacheFactory({configs: config?.caches ?? {}, usePostMessage}),
 	);
 
 	// Create directory storage - paths are already resolved at build time
@@ -2474,9 +2536,8 @@ export async function initWorkerRuntime(
 	}
 
 	// Create logger storage
-	const loggers = new CustomLoggerStorage((categories) =>
-		getLogger(categories),
-	);
+	const loggers =
+		new CustomLoggerStorage((categories) => getLogger(categories));
 
 	// Create registration and scope
 	const registration = new ShovelServiceWorkerRegistration();
@@ -2492,14 +2553,15 @@ export async function initWorkerRuntime(
 	scope.install();
 
 	// Set up broadcast channel backend if configured
-	if (config?.broadcastChannel?.impl) {
-		const {impl, ...bcOptions} = config.broadcastChannel;
+	const broadcastChannelConfig = config?.broadcastChannel;
+	if (broadcastChannelConfig?.impl) {
+		const {impl, ...bcOptions} = broadcastChannelConfig;
 		const opts = bcOptions as Record<string, unknown>;
 		const bcBackend = isClass(impl)
 			? new impl(opts)
 			: (impl as (options: Record<string, unknown>) => BroadcastChannelBackend)(
-					opts,
-				);
+				opts,
+			);
 		setBroadcastChannelBackend(bcBackend);
 	}
 
@@ -2528,14 +2590,12 @@ export function startWorkerMessageLoop(
 	options: ShovelServiceWorkerRegistration | WorkerMessageLoopOptions,
 ): void {
 	// Support both old signature (just registration) and new signature (options object)
-	const registration =
-		options instanceof ShovelServiceWorkerRegistration
-			? options
-			: options.registration;
-	const databases =
-		options instanceof ShovelServiceWorkerRegistration
-			? undefined
-			: options.databases;
+	const registration = options instanceof ShovelServiceWorkerRegistration
+		? options
+		: options.registration;
+	const databases = options instanceof ShovelServiceWorkerRegistration
+		? undefined
+		: options.databases;
 
 	const messageLogger = getLogger(["shovel", "platform"]);
 	const workerId = Math.random().toString(36).substring(2, 8);
@@ -2583,6 +2643,7 @@ export function startWorkerMessageLoop(
 					headers,
 					body,
 				},
+				// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 				requestID: message.requestID,
 			};
 
@@ -2596,6 +2657,7 @@ export function startWorkerMessageLoop(
 				type: "error",
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
+				// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 				requestID: message.requestID,
 			};
 			sendMessage(errorMsg);
@@ -2612,6 +2674,7 @@ export function startWorkerMessageLoop(
 		if (message?.type === "cache:response" || message?.type === "cache:error") {
 			messageLogger.debug(`[Worker-${workerId}] Forwarding cache message`, {
 				type: message.type,
+				// eslint-disable-next-line acrocase/acrocase -- wire field shared with packages/cache/src/postmessage.ts
 				requestID: message.requestID,
 			});
 			handleCacheResponse(message);
@@ -2691,6 +2754,7 @@ export type LogLevel = "debug" | "info" | "warning" | "error";
 export interface SinkConfig {
 	/** Reified implementation (factory function from build-time code generation) */
 	impl?: (...args: any[]) => unknown;
+
 	/** Additional options passed to the factory (path, maxSize, etc.) */
 	[key: string]: unknown;
 }
@@ -2699,10 +2763,13 @@ export interface SinkConfig {
 export interface LoggerConfig {
 	/** Category as string or array for hierarchy. e.g. "myapp" or ["myapp", "db"] */
 	category: string | string[];
+
 	/** Log level for this category. Inherits from parent if not specified. */
 	level?: LogLevel;
+
 	/** Sink names to add. Inherits from parent by default. */
 	sinks?: string[];
+
 	/** Set to "override" to replace parent sinks instead of inherit */
 	parentSinks?: "override";
 }
@@ -2710,6 +2777,7 @@ export interface LoggerConfig {
 export interface LoggingConfig {
 	/** Named sinks. "console" is always available implicitly. */
 	sinks?: Record<string, SinkConfig>;
+
 	/** Logger configurations. Shovel provides defaults for ["shovel", ...] and ["app", ...] categories. */
 	loggers?: LoggerConfig[];
 }
@@ -2746,7 +2814,7 @@ async function createSink(config: SinkConfig): Promise<any> {
 
 	if (!impl) {
 		throw new Error(
-			`Sink has no impl. Ensure the sink module is configured in shovel.json.`,
+			"Sink has no impl. Ensure the sink module is configured in shovel.json.",
 		);
 	}
 
@@ -2787,9 +2855,7 @@ export async function configureLogging(
 
 	// Create sink instances
 	// Console sink is always available implicitly - use statically imported factory
-	const sinks: Record<string, any> = {
-		console: getConsoleSink(),
-	};
+	const sinks: Record<string, any> = {console: getConsoleSink()};
 
 	// Add user-defined sinks
 	for (const [name, config] of Object.entries(userSinks)) {
@@ -2804,10 +2870,8 @@ export async function configureLogging(
 
 	const mergedLoggers: LoggerConfig[] = [
 		// Shovel defaults (unless overridden by user)
-		...SHOVEL_DEFAULT_LOGGERS.filter(
-			(l) =>
-				!userCategoryKeys.has(JSON.stringify(normalizeCategory(l.category))),
-		),
+		...SHOVEL_DEFAULT_LOGGERS.filter((l) =>
+			!userCategoryKeys.has(JSON.stringify(normalizeCategory(l.category)))),
 		// User loggers
 		...userLoggers,
 	];
@@ -2819,9 +2883,7 @@ export async function configureLogging(
 			lowestLevel?: LogTapeLevel;
 			sinks?: string[];
 			parentSinks?: "override";
-		} = {
-			category: normalizeCategory(loggerConfig.category),
-		};
+		} = {category: normalizeCategory(loggerConfig.category)};
 
 		if (loggerConfig.level) {
 			result.lowestLevel = loggerConfig.level as LogTapeLevel;
@@ -2836,11 +2898,7 @@ export async function configureLogging(
 		return result;
 	});
 
-	await configure({
-		reset: true,
-		sinks,
-		loggers,
-	});
+	await configure({reset: true, sinks, loggers});
 }
 
 // ============================================================================

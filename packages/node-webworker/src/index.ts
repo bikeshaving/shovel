@@ -52,12 +52,28 @@ export class CloseEvent extends Event {
  * Using a data URL avoids needing to write any files to disk (temp or otherwise)
  */
 // Compact wrapper code to keep data URL length under limits
-const WORKER_WRAPPER_CODE = `import{parentPort as p}from"worker_threads";const l=new Set();globalThis.onmessage=null;globalThis.onmessageerror=null;globalThis.postMessage=(d,t)=>t?.length?p.postMessage(d,t):p.postMessage(d);globalThis.self=globalThis;globalThis.addEventListener=(t,f)=>t==="message"&&l.add(f);globalThis.removeEventListener=(t,f)=>t==="message"&&l.delete(f);p.on("message",d=>{const e={data:d,type:"message"};globalThis.onmessage?.(e);l.forEach(f=>f(e))});const u=process.env.WORKER_SCRIPT_URL;if(u)await import(u);else throw Error("WORKER_SCRIPT_URL not set");`;
+// Messages that arrive before the worker script registers a message listener
+// are queued, then delivered in a microtask after the first registration.
+const WORKER_WRAPPER_CODE = `import{parentPort as p}from"worker_threads";const l=new Set();let q=[],m=null;const h=e=>{m?.(e);l.forEach(f=>f(e))};const r=()=>{if(q){const b=q;q=null;queueMicrotask(()=>b.forEach(h))}};Object.defineProperty(globalThis,"onmessage",{get:()=>m,set:f=>{m=f;if(f)r()},configurable:true});globalThis.onmessageerror=null;globalThis.postMessage=(d,t)=>t?.length?p.postMessage(d,t):p.postMessage(d);globalThis.self=globalThis;globalThis.addEventListener=(t,f)=>{if(t==="message"){l.add(f);r()}};globalThis.removeEventListener=(t,f)=>t==="message"&&l.delete(f);p.on("message",d=>{const e={data:d,type:"message"};q?q.push(e):h(e)});const u=process.env.WORKER_SCRIPT_URL;if(u)await import(u);else throw Error("WORKER_SCRIPT_URL not set");r();`;
 
 // Create data URL from wrapper code (created once and reused)
 const WORKER_WRAPPER_DATA_URL = new URL(
 	`data:text/javascript,${encodeURIComponent(WORKER_WRAPPER_CODE)}`,
 );
+
+const kNodeWorker = Symbol("nodeWorker");
+const kMessageListeners = Symbol("messageListeners");
+const kErrorListeners = Symbol("errorListeners");
+const kMessageerrorListeners = Symbol("messageerrorListeners");
+const kCloseListeners = Symbol("closeListeners");
+
+export interface Worker {
+	[kNodeWorker]: NodeWorker;
+	[kMessageListeners]: Set<(event: MessageEvent) => void>;
+	[kErrorListeners]: Set<(event: ErrorEvent) => void>;
+	[kMessageerrorListeners]: Set<(event: MessageEvent) => void>;
+	[kCloseListeners]: Set<(event: CloseEvent) => void>;
+}
 
 /**
  * Web Worker API implementation using Node.js worker_threads
@@ -66,12 +82,6 @@ const WORKER_WRAPPER_DATA_URL = new URL(
  * to Node.js worker_threads underneath.
  */
 export class Worker {
-	#nodeWorker: NodeWorker;
-	#messageListeners: Set<(event: MessageEvent) => void>;
-	#errorListeners: Set<(event: ErrorEvent) => void>;
-	#messageerrorListeners: Set<(event: MessageEvent) => void>;
-	#closeListeners: Set<(event: CloseEvent) => void>;
-
 	// Web Worker standard properties
 	onmessage: ((event: MessageEvent) => void) | null;
 	onerror: ((event: ErrorEvent) => void) | null;
@@ -82,10 +92,10 @@ export class Worker {
 		scriptURL: string | URL,
 		_options?: {type?: "classic" | "module"; env?: Record<string, string>},
 	) {
-		this.#messageListeners = new Set<(event: MessageEvent) => void>();
-		this.#errorListeners = new Set<(event: ErrorEvent) => void>();
-		this.#messageerrorListeners = new Set<(event: MessageEvent) => void>();
-		this.#closeListeners = new Set<(event: CloseEvent) => void>();
+		this[kMessageListeners] = new Set<(event: MessageEvent) => void>();
+		this[kErrorListeners] = new Set<(event: ErrorEvent) => void>();
+		this[kMessageerrorListeners] = new Set<(event: MessageEvent) => void>();
+		this[kCloseListeners] = new Set<(event: CloseEvent) => void>();
 		this.onmessage = null;
 		this.onerror = null;
 		this.onmessageerror = null;
@@ -107,8 +117,7 @@ export class Worker {
 		) {
 			// Check if it's a relative path
 			if (
-				scriptURLString.startsWith("./") ||
-				scriptURLString.startsWith("../")
+				scriptURLString.startsWith("./") || scriptURLString.startsWith("../")
 			) {
 				throw new Error(
 					"Relative paths are not supported. Use new Worker(new URL('./worker.js', import.meta.url)) instead.",
@@ -119,7 +128,7 @@ export class Worker {
 		}
 
 		// Create Node.js Worker using data URL wrapper (no temp files needed!)
-		this.#nodeWorker = new NodeWorker(WORKER_WRAPPER_DATA_URL, {
+		this[kNodeWorker] = new NodeWorker(WORKER_WRAPPER_DATA_URL, {
 			...({type: "module"} as object),
 			env: {
 				// eslint-disable-next-line no-restricted-properties -- Workers inherit parent env
@@ -129,93 +138,7 @@ export class Worker {
 			},
 		});
 
-		this.#setupEventForwarding();
-	}
-
-	/**
-	 * Report a close event when the worker exits
-	 */
-	#reportClose(code: number): void {
-		const event = new CloseEvent(code);
-
-		// Call onclose handler if set
-		if (this.onclose) {
-			this.onclose(event);
-		}
-
-		// Call close event listeners
-		this.#closeListeners.forEach((listener) => {
-			listener(event);
-		});
-	}
-
-	/**
-	 * Report an error through the error event mechanism
-	 */
-	#reportError(error: any): void {
-		const event = new ErrorEvent(error);
-
-		// Call onerror handler if set
-		if (this.onerror) {
-			this.onerror(event);
-		}
-
-		// Call error event listeners
-		this.#errorListeners.forEach((listener) => {
-			listener(event);
-		});
-	}
-
-	/**
-	 * Set up event forwarding from Node.js Worker to Web Worker API
-	 */
-	#setupEventForwarding(): void {
-		this.#nodeWorker.on("message", (data) => {
-			const event = new MessageEvent(data);
-
-			// Call onmessage handler if set (Web Worker standard)
-			if (this.onmessage) {
-				try {
-					this.onmessage(event);
-				} catch (error) {
-					// Report error through error event mechanism per spec
-					this.#reportError(error);
-				}
-			}
-
-			// Call addEventListener handlers
-			this.#messageListeners.forEach((listener) => {
-				try {
-					listener(event);
-				} catch (error) {
-					// Report error through error event mechanism per spec
-					this.#reportError(error);
-				}
-			});
-		});
-
-		this.#nodeWorker.on("error", (error) => {
-			// Report error through error event mechanism
-			this.#reportError(error);
-		});
-
-		this.#nodeWorker.on("messageerror", (data) => {
-			const event = new MessageEvent(data);
-
-			// Call onmessageerror handler if set
-			if (this.onmessageerror) {
-				this.onmessageerror(event);
-			}
-
-			// Call messageerror event listeners
-			this.#messageerrorListeners.forEach((listener) => {
-				listener(event);
-			});
-		});
-
-		this.#nodeWorker.on("exit", (code) => {
-			this.#reportClose(code);
-		});
+		setupEventForwarding(this);
 	}
 
 	/**
@@ -224,9 +147,9 @@ export class Worker {
 	postMessage(message: any, transfer?: Transferable[]): void {
 		if (transfer && transfer.length > 0) {
 			// Node.js Worker supports transferList in options
-			this.#nodeWorker.postMessage(message, transfer as any);
+			this[kNodeWorker].postMessage(message, transfer as any);
 		} else {
-			this.#nodeWorker.postMessage(message);
+			this[kNodeWorker].postMessage(message);
 		}
 	}
 
@@ -245,15 +168,15 @@ export class Worker {
 	addEventListener(type: "close", listener: (event: CloseEvent) => void): void;
 	addEventListener(type: string, listener: (event: any) => void): void {
 		if (type === "message") {
-			this.#messageListeners.add(listener as (event: MessageEvent) => void);
+			this[kMessageListeners].add(listener as (event: MessageEvent) => void);
 		} else if (type === "error") {
-			this.#errorListeners.add(listener as (event: ErrorEvent) => void);
+			this[kErrorListeners].add(listener as (event: ErrorEvent) => void);
 		} else if (type === "messageerror") {
-			this.#messageerrorListeners.add(
+			this[kMessageerrorListeners].add(
 				listener as (event: MessageEvent) => void,
 			);
 		} else if (type === "close") {
-			this.#closeListeners.add(listener as (event: CloseEvent) => void);
+			this[kCloseListeners].add(listener as (event: CloseEvent) => void);
 		}
 		// Silently ignore unsupported event types for API compatibility
 	}
@@ -279,15 +202,15 @@ export class Worker {
 	): void;
 	removeEventListener(type: string, listener: (event: any) => void): void {
 		if (type === "message") {
-			this.#messageListeners.delete(listener as (event: MessageEvent) => void);
+			this[kMessageListeners].delete(listener as (event: MessageEvent) => void);
 		} else if (type === "error") {
-			this.#errorListeners.delete(listener as (event: ErrorEvent) => void);
+			this[kErrorListeners].delete(listener as (event: ErrorEvent) => void);
 		} else if (type === "messageerror") {
-			this.#messageerrorListeners.delete(
+			this[kMessageerrorListeners].delete(
 				listener as (event: MessageEvent) => void,
 			);
 		} else if (type === "close") {
-			this.#closeListeners.delete(listener as (event: CloseEvent) => void);
+			this[kCloseListeners].delete(listener as (event: CloseEvent) => void);
 		}
 	}
 
@@ -298,20 +221,106 @@ export class Worker {
 		// Node.js worker.terminate() returns a promise, but Web Worker standard is sync
 		// We fire-and-forget here to match the standard API
 		// Errors during termination are silently ignored per Web Worker spec
-		this.#nodeWorker.terminate().catch(() => {
+		this[kNodeWorker].terminate().catch(() => {
 			// Silently ignore termination errors
 		});
 
 		// Clean up listeners immediately
-		this.#messageListeners.clear();
-		this.#errorListeners.clear();
-		this.#messageerrorListeners.clear();
-		this.#closeListeners.clear();
+		this[kMessageListeners].clear();
+		this[kErrorListeners].clear();
+		this[kMessageerrorListeners].clear();
+		this[kCloseListeners].clear();
 		this.onmessage = null;
 		this.onerror = null;
 		this.onmessageerror = null;
 		this.onclose = null;
 	}
+}
+
+/**
+ * Report a close event when the worker exits
+ */
+function reportClose(worker: Worker, code: number): void {
+	const event = new CloseEvent(code);
+
+	// Call onclose handler if set
+	if (worker.onclose) {
+		worker.onclose(event);
+	}
+
+	// Call close event listeners
+	worker[kCloseListeners].forEach((listener) => {
+		listener(event);
+	});
+}
+
+/**
+ * Report an error through the error event mechanism
+ */
+function reportError(worker: Worker, error: any): void {
+	const event = new ErrorEvent(error);
+
+	// Call onerror handler if set
+	if (worker.onerror) {
+		worker.onerror(event);
+	}
+
+	// Call error event listeners
+	worker[kErrorListeners].forEach((listener) => {
+		listener(event);
+	});
+}
+
+/**
+ * Set up event forwarding from Node.js Worker to Web Worker API
+ */
+function setupEventForwarding(worker: Worker): void {
+	worker[kNodeWorker].on("message", (data) => {
+		const event = new MessageEvent(data);
+
+		// Call onmessage handler if set (Web Worker standard)
+		if (worker.onmessage) {
+			try {
+				worker.onmessage(event);
+			} catch (error) {
+				// Report error through error event mechanism per spec
+				reportError(worker, error);
+			}
+		}
+
+		// Call addEventListener handlers
+		worker[kMessageListeners].forEach((listener) => {
+			try {
+				listener(event);
+			} catch (error) {
+				// Report error through error event mechanism per spec
+				reportError(worker, error);
+			}
+		});
+	});
+
+	worker[kNodeWorker].on("error", (error) => {
+		// Report error through error event mechanism
+		reportError(worker, error);
+	});
+
+	worker[kNodeWorker].on("messageerror", (data) => {
+		const event = new MessageEvent(data);
+
+		// Call onmessageerror handler if set
+		if (worker.onmessageerror) {
+			worker.onmessageerror(event);
+		}
+
+		// Call messageerror event listeners
+		worker[kMessageerrorListeners].forEach((listener) => {
+			listener(event);
+		});
+	});
+
+	worker[kNodeWorker].on("exit", (code) => {
+		reportClose(worker, code);
+	});
 }
 
 // Re-export for convenience

@@ -1,6 +1,7 @@
-import cssUrl from "./style.css" with {assetBase: "/assets/"};
-import jsUrl from "./client.js" with {assetBase: "/assets/"};
 import {assets} from "@b9g/assets/middleware";
+
+import jsUrl from "./client.js" with {assetBase: "/assets/"};
+import cssUrl from "./style.css" with {assetBase: "/assets/"};
 
 const serveAssets = assets();
 
@@ -14,8 +15,7 @@ self.addEventListener("fetch", (event) => {
 			// App routes
 			const url = new URL(event.request.url);
 			if (url.pathname === "/") {
-				return new Response(
-					`<!DOCTYPE html>
+				return new Response(`<!DOCTYPE html>
 <html>
 	<head>
 		<title>Assets Test</title>
@@ -25,11 +25,7 @@ self.addEventListener("fetch", (event) => {
 		<h1>App with Assets</h1>
 		<script src="${jsUrl}"></script>
 	</body>
-</html>`,
-					{
-						headers: {"content-type": "text/html; charset=utf-8"},
-					},
-				);
+</html>`, {headers: {"content-type": "text/html; charset=utf-8"}});
 			}
 
 			return new Response("Not found", {status: 404});

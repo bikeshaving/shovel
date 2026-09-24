@@ -5,12 +5,13 @@
  * to verify the test runner works correctly.
  */
 
-import {runFilesystemTests} from "../src/runners/filesystem.js";
+import * as Fs from "fs/promises";
+import * as Os from "os";
+import * as Path from "path";
+
 import {MemoryDirectory} from "../../filesystem/src/memory.js";
 import {NodeFSDirectory} from "../../filesystem/src/node-fs.js";
-import * as fs from "fs/promises";
-import * as os from "os";
-import * as path from "path";
+import {runFilesystemTests} from "../src/runners/filesystem.js";
 
 // Run WPT filesystem tests against MemoryDirectory
 runFilesystemTests("MemoryDirectory", {
@@ -26,12 +27,12 @@ let nodeDirectoryTestDir: string | null = null;
 runFilesystemTests("NodeFSDirectory", {
 	getDirectory: async () => {
 		// Create a temp directory for each test
-		nodeDirectoryTestDir = await fs.mkdtemp(path.join(os.tmpdir(), "wpt-fs-"));
+		nodeDirectoryTestDir = await Fs.mkdtemp(Path.join(Os.tmpdir(), "wpt-fs-"));
 		return new NodeFSDirectory(nodeDirectoryTestDir);
 	},
 	cleanup: async () => {
 		if (nodeDirectoryTestDir) {
-			await fs.rm(nodeDirectoryTestDir, {recursive: true, force: true});
+			await Fs.rm(nodeDirectoryTestDir, {recursive: true, force: true});
 			nodeDirectoryTestDir = null;
 		}
 	},

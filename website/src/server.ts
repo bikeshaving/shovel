@@ -1,26 +1,22 @@
-import {jsx} from "@b9g/crank/standalone";
+import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 import {renderer} from "@b9g/crank/html";
+import {jsx} from "@b9g/crank/standalone";
 import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
-import {assets as assetsMiddleware} from "@b9g/assets/middleware";
 
-import {collectDocuments} from "./models/document.js";
 import {collectBlogPosts} from "./models/blog.js";
-
-// Import views
-import HomeView from "./views/home.js";
-import GuideView from "./views/guide.js";
-import DocView from "./views/doc.js";
-import BlogListView from "./views/blog-list.tsx";
-import BlogPostView from "./views/blog-post.tsx";
-import NotFoundView from "./views/not-found.js";
-
+import {collectDocuments} from "./models/document.js";
 // Import assets
 import clientCSS from "./styles/client.css" with {assetBase: "/static/"};
+import BlogListView from "./views/blog-list.tsx";
+import BlogPostView from "./views/blog-post.tsx";
+import DocView from "./views/doc.js";
+import GuideView from "./views/guide.js";
+// Import views
+import HomeView from "./views/home.js";
+import NotFoundView from "./views/not-found.js";
 
-export const assets = {
-	clientCSS,
-};
+export const assets = {clientCSS};
 
 // Create router
 const router = new Router();
@@ -37,16 +33,16 @@ async function renderView(
 	url: string,
 	params: Record<string, string> = {},
 ): Promise<Response> {
-	const html = await renderer.render(jsx`
+	const html = await renderer.render(
+		jsx`
 		<${View}
 			url=${url}
 			params=${params}
 		/>
-	`);
+	`,
+	);
 
-	return new Response(html, {
-		headers: {"Content-Type": "text/html"},
-	});
+	return new Response(html, {headers: {"Content-Type": "text/html"}});
 }
 
 // Routes
@@ -89,9 +85,11 @@ async function handleRequest(request: Request): Promise<Response> {
 	const response = await router.handle(request);
 	if (response.status === 404) {
 		const url = new URL(request.url);
-		const html = await renderer.render(jsx`
+		const html = await renderer.render(
+			jsx`
 			<${NotFoundView} url=${url.pathname} />
-		`);
+		`,
+		);
 
 		return new Response(html, {
 			status: 404,
@@ -107,7 +105,7 @@ self.addEventListener("install", (event) => {
 	event.waitUntil(generateStaticSite());
 });
 
-async function generateStaticSite() {
+async function generateStaticSite(): Promise<void> {
 	if (import.meta.env.MODE !== "production") {
 		return;
 	}
@@ -152,22 +150,21 @@ async function generateStaticSite() {
 					const content = await response.text();
 					// Generate proper directory structure for static servers
 					// /blog/slug -> blog/slug/index.html
-					const filePath =
-						route === "/" ? "index.html" : `${route.slice(1)}/index.html`;
+					const filePath = route === "/"
+						? "index.html"
+						: `${route.slice(1)}/index.html`;
 
 					// Create nested directories if needed
 					const parts = filePath.split("/");
 					let currentDir = staticBucket;
 					for (let i = 0; i < parts.length - 1; i++) {
-						currentDir = await currentDir.getDirectoryHandle(parts[i], {
-							create: true,
-						});
+						currentDir =
+							await currentDir.getDirectoryHandle(parts[i], {create: true});
 					}
 
 					const fileName = parts[parts.length - 1];
-					const fileHandle = await currentDir.getFileHandle(fileName, {
-						create: true,
-					});
+					const fileHandle =
+						await currentDir.getFileHandle(fileName, {create: true});
 					const writable = await fileHandle.createWritable();
 					await writable.write(content);
 					await writable.close();
@@ -181,14 +178,15 @@ async function generateStaticSite() {
 
 		// Generate 404.html for static hosting (GitHub Pages, Cloudflare Pages, etc.)
 		try {
-			const notFoundHtml = await renderer.render(jsx`
+			const notFoundHTML = await renderer.render(
+				jsx`
 				<${NotFoundView} url="/404" />
-			`);
-			const fileHandle = await staticBucket.getFileHandle("404.html", {
-				create: true,
-			});
+			`,
+			);
+			const fileHandle =
+				await staticBucket.getFileHandle("404.html", {create: true});
 			const writable = await fileHandle.createWritable();
-			await writable.write(notFoundHtml);
+			await writable.write(notFoundHTML);
 			await writable.close();
 			logger.info("Generated 404.html");
 		} catch (error: any) {

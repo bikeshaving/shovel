@@ -9,6 +9,7 @@
  */
 
 import {bench, group, run} from "mitata";
+
 import {Router} from "../src/index.ts";
 
 // Create router with realistic route patterns
@@ -49,9 +50,8 @@ const middleStaticReq = new Request("http://localhost/blog");
 const lastStaticReq = new Request("http://localhost/api/metrics");
 
 const simpleDynamicReq = new Request("http://localhost/users/123");
-const nestedDynamicReq = new Request(
-	"http://localhost/api/posts/789/comments/42",
-);
+const nestedDynamicReq =
+	new Request("http://localhost/api/posts/789/comments/42");
 
 const wildcardReq = new Request("http://localhost/files/document.pdf");
 

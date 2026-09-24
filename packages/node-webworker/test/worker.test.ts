@@ -1,8 +1,10 @@
-import {test, expect, describe, beforeEach, afterEach} from "bun:test";
-import {Worker} from "../src/index.js";
+import {mkdtempSync, rmSync, writeFileSync} from "fs";
 import {tmpdir} from "os";
 import {join} from "path";
-import {writeFileSync, rmSync, mkdtempSync} from "fs";
+
+import {afterEach, beforeEach, describe, expect, test} from "bun:test";
+
+import {Worker} from "../src/index.js";
 
 describe("Node Web Worker", () => {
 	let tempDir: string;
@@ -88,6 +90,13 @@ describe("Node Web Worker", () => {
 		let listener2Called = false;
 
 		return new Promise((resolve) => {
+			const checkCompletion = () => {
+				if (listener1Called && listener2Called) {
+					worker.terminate();
+					resolve(true);
+				}
+			};
+
 			const listener1 = () => {
 				listener1Called = true;
 				checkCompletion();
@@ -96,13 +105,6 @@ describe("Node Web Worker", () => {
 			const listener2 = () => {
 				listener2Called = true;
 				checkCompletion();
-			};
-
-			const checkCompletion = () => {
-				if (listener1Called && listener2Called) {
-					worker.terminate();
-					resolve(true);
-				}
 			};
 
 			worker.addEventListener("message", listener1);
@@ -178,6 +180,61 @@ describe("Node Web Worker", () => {
 		});
 	});
 
+	test("delivers a message a worker awaits at top level", async () => {
+		workerScript = join(tempDir, "top-level-await-worker.js");
+		writeFileSync(
+			workerScript,
+			`
+			const data = await new Promise((resolve) => {
+				addEventListener("message", (event) => resolve(event.data));
+			});
+			postMessage({got: data});
+		`,
+		);
+
+		const worker = new Worker(workerScript);
+
+		return new Promise((resolve) => {
+			worker.addEventListener("message", (event) => {
+				expect(event.data).toEqual({got: "config"});
+				worker.terminate();
+				resolve(true);
+			});
+
+			worker.postMessage("config");
+		});
+	});
+
+	test("delivers early messages to onmessage in order", async () => {
+		workerScript = join(tempDir, "onmessage-worker.js");
+		writeFileSync(
+			workerScript,
+			`
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			const received = [];
+			onmessage = (event) => {
+				received.push(event.data);
+				if (received.length === 3) {
+					postMessage(received);
+				}
+			};
+		`,
+		);
+
+		const worker = new Worker(workerScript);
+
+		return new Promise((resolve) => {
+			worker.addEventListener("message", (event) => {
+				expect(event.data).toEqual([1, 2, 3]);
+				worker.terminate();
+				resolve(true);
+			});
+
+			worker.postMessage(1);
+			worker.postMessage(2);
+			worker.postMessage(3);
+		});
+	});
 	test("should silently ignore unsupported event types", () => {
 		workerScript = join(tempDir, "unsupported-worker.js");
 		writeFileSync(workerScript, "// Worker for unsupported event test");

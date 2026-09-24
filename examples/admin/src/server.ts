@@ -7,10 +7,11 @@
  * - Session storage via self.caches (TODO)
  */
 
-import {Router} from "@b9g/router";
-import {assets} from "@b9g/assets/middleware";
 import {createAdmin} from "@b9g/admin";
-import * as schema from "./schema.js";
+import {assets} from "@b9g/assets/middleware";
+import {Router} from "@b9g/router";
+
+import * as Schema from "./schema.js";
 
 const logger = self.loggers.get(["shovel", "server"]);
 
@@ -31,18 +32,11 @@ router.use(assets());
 // Mount admin at /admin with USWDS asset URLs
 const admin = createAdmin({
 	database: "main",
-	schema,
-	auth: {
-		providers: ["google"],
-	},
-	branding: {
-		title: "Shovel Admin",
-	},
+	schema: Schema,
+	auth: {providers: ["google"]},
+	branding: {title: "Shovel Admin"},
 	// Pass the USWDS asset URLs to the admin
-	assets: {
-		css: uswdsCSS,
-		js: uswdsJS,
-	},
+	assets: {css: uswdsCSS, js: uswdsJS},
 });
 
 router.mount("/admin", admin);
@@ -73,9 +67,9 @@ self.addEventListener("activate", (event) => {
 
 					if (e.oldVersion < 1) {
 						// Create tables
-						await db.ensureTable(schema.users);
-						await db.ensureTable(schema.posts);
-						await db.ensureTable(schema.tags);
+						await db.ensureTable(Schema.users);
+						await db.ensureTable(Schema.posts);
+						await db.ensureTable(Schema.tags);
 						logger.info("Created tables: users, posts, tags");
 					}
 				})(),

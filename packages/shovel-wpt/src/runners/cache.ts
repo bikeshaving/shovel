@@ -4,13 +4,14 @@
  * Runs vendored WPT cache-storage tests against a Cache implementation.
  */
 
-import {describe, test, expect, beforeEach, afterEach} from "bun:test";
+import {afterEach, beforeEach, describe, expect, test} from "bun:test";
+
+import * as Assertions from "../harness/assertions.js";
 import {
-	promise_test,
 	clearTestQueue,
+	promise_test,
 	type TestContext,
 } from "../harness/testharness.js";
-import * as assertions from "../harness/assertions.js";
 
 /**
  * Configuration for running cache tests
@@ -18,8 +19,10 @@ import * as assertions from "../harness/assertions.js";
 export interface CacheTestConfig {
 	/** Factory function to create a Cache instance */
 	createCache: (name: string) => Cache | Promise<Cache>;
+
 	/** Factory function to create a CacheStorage instance */
 	createCacheStorage?: () => CacheStorage | Promise<CacheStorage>;
+
 	/** Optional cleanup function called after each test */
 	cleanup?: () => void | Promise<void>;
 }
@@ -75,7 +78,7 @@ interface CacheQueryOptions {
  * @param config Test configuration
  */
 export function runCacheTests(name: string, config: CacheTestConfig): void {
-	let _currentCache: Cache | null = null;
+	const _currentCache: Cache | null = null;
 	let cacheCounter = 0;
 
 	// Helper to get a unique cache name for each test
@@ -99,11 +102,7 @@ export function runCacheTests(name: string, config: CacheTestConfig): void {
 	};
 
 	// Make WPT globals available
-	const globals = {
-		...assertions,
-		promise_test,
-		cache_test,
-	};
+	const globals = {...Assertions, promise_test, cache_test};
 
 	// Inject globals for WPT test files
 	Object.assign(globalThis, globals);

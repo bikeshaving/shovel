@@ -9,7 +9,7 @@ import {
 	type FileSystemBackend,
 	ShovelDirectoryHandle,
 	ShovelFileHandle,
-	ShovelHandle,
+	type ShovelHandle,
 } from "./index.js";
 
 /**
@@ -31,18 +31,22 @@ interface MemoryDirectoryData {
 	directories: Map<string, MemoryDirectoryData>;
 }
 
+const kRoot = Symbol("root");
+
+export interface MemoryFileSystemBackend {
+	[kRoot]: MemoryDirectoryData;
+}
+
 /**
  * In-memory storage backend that implements FileSystemBackend
  */
 export class MemoryFileSystemBackend implements FileSystemBackend {
-	#root: MemoryDirectoryData;
-
 	constructor(root: MemoryDirectoryData) {
-		this.#root = root;
+		this[kRoot] = root;
 	}
 
 	async stat(path: string): Promise<{kind: "file" | "directory"} | null> {
-		const entry = this.#resolvePath(path);
+		const entry = resolvePath(this, path);
 		if (!entry) return null;
 
 		if ("content" in entry) {
@@ -55,18 +59,15 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 	async readFile(
 		path: string,
 	): Promise<{content: Uint8Array; lastModified?: number}> {
-		const entry = this.#resolvePath(path);
+		const entry = resolvePath(this, path);
 		if (!entry || !("content" in entry)) {
 			throw new DOMException("File not found", "NotFoundError");
 		}
-		return {
-			content: entry.content,
-			lastModified: entry.lastModified,
-		};
+		return {content: entry.content, lastModified: entry.lastModified};
 	}
 
 	async writeFile(path: string, data: Uint8Array): Promise<void> {
-		const {parentDir, name} = this.#resolveParent(path);
+		const {parentDir, name} = resolveParent(this, path);
 		if (!parentDir) {
 			throw new DOMException("Parent directory not found", "NotFoundError");
 		}
@@ -90,7 +91,7 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 	async listDir(
 		path: string,
 	): Promise<Array<{name: string; kind: "file" | "directory"}>> {
-		const entry = this.#resolvePath(path);
+		const entry = resolvePath(this, path);
 		if (!entry || "content" in entry) {
 			throw new DOMException("Directory not found", "NotFoundError");
 		}
@@ -111,7 +112,7 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 	}
 
 	async createDir(path: string): Promise<void> {
-		const {parentDir, name} = this.#resolveParent(path);
+		const {parentDir, name} = resolveParent(this, path);
 		if (!parentDir) {
 			throw new DOMException("Parent directory not found", "NotFoundError");
 		}
@@ -126,7 +127,7 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 	}
 
 	async remove(path: string, recursive?: boolean): Promise<void> {
-		const {parentDir, name} = this.#resolveParent(path);
+		const {parentDir, name} = resolveParent(this, path);
 		if (!parentDir) {
 			throw new DOMException("Entry not found", "NotFoundError");
 		}
@@ -152,81 +153,87 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 
 		throw new DOMException("Entry not found", "NotFoundError");
 	}
+}
 
-	#resolvePath(path: string): MemoryFile | MemoryDirectoryData | null {
-		// Defense in depth: validate path components
-		if (path.includes("..") || path.includes("\0")) {
-			throw new DOMException(
-				"Invalid path: contains path traversal or null bytes",
-				"NotAllowedError",
-			);
-		}
-
-		// Normalize path
-		const parts = path.split("/").filter(Boolean);
-
-		if (parts.length === 0) {
-			return this.#root;
-		}
-
-		// Validate each path component
-		for (const part of parts) {
-			if (
-				part === "." ||
-				part === ".." ||
-				part.includes("/") ||
-				part.includes("\\")
-			) {
-				throw new DOMException("Invalid path component", "NotAllowedError");
-			}
-		}
-
-		let current: MemoryDirectoryData = this.#root;
-
-		// Navigate through directories
-		for (let i = 0; i < parts.length - 1; i++) {
-			const nextDir = current.directories.get(parts[i]);
-			if (!nextDir) return null;
-			current = nextDir;
-		}
-
-		// Check final part
-		const finalName = parts[parts.length - 1];
-
-		// Try as file first
-		const file = current.files.get(finalName);
-		if (file) return file;
-
-		// Try as directory
-		const dir = current.directories.get(finalName);
-		if (dir) return dir;
-
-		return null;
+function resolvePath(
+	backend: MemoryFileSystemBackend,
+	path: string,
+): MemoryFile | MemoryDirectoryData | null {
+	// Defense in depth: validate path components
+	if (path.includes("..") || path.includes("\0")) {
+		throw new DOMException(
+			"Invalid path: contains path traversal or null bytes",
+			"NotAllowedError",
+		);
 	}
 
-	#resolveParent(path: string): {
-		parentDir: MemoryDirectoryData | null;
-		name: string;
-	} {
-		const parts = path.split("/").filter(Boolean);
-		const name = parts.pop() || "";
+	// Normalize path
+	const parts = path.split("/").filter(Boolean);
 
-		if (parts.length === 0) {
-			return {parentDir: this.#root, name};
-		}
-
-		let current: MemoryDirectoryData = this.#root;
-
-		for (const part of parts) {
-			const nextDir = current.directories.get(part);
-			if (!nextDir) {
-				return {parentDir: null, name};
-			}
-			current = nextDir;
-		}
-
-		return {parentDir: current, name};
+	if (parts.length === 0) {
+		return backend[kRoot];
 	}
+
+	// Validate each path component
+	for (const part of parts) {
+		if (
+			part === "." || part === ".." || part.includes("/") || part.includes("\\")
+		) {
+			throw new DOMException("Invalid path component", "NotAllowedError");
+		}
+	}
+
+	let current: MemoryDirectoryData = backend[kRoot];
+
+	// Navigate through directories
+	for (let i = 0; i < parts.length - 1; i++) {
+		const nextDir = current.directories.get(parts[i]);
+		if (!nextDir) return null;
+		current = nextDir;
+	}
+
+	// Check final part
+	const finalName = parts[parts.length - 1];
+
+	// Try as file first
+	const file = current.files.get(finalName);
+	if (file) return file;
+
+	// Try as directory
+	const dir = current.directories.get(finalName);
+	if (dir) return dir;
+
+	return null;
+}
+
+function resolveParent(
+	backend: MemoryFileSystemBackend,
+	path: string,
+): {parentDir: MemoryDirectoryData | null; name: string} {
+	const parts = path.split("/").filter(Boolean);
+	const name = parts.pop() || "";
+
+	if (parts.length === 0) {
+		return {parentDir: backend[kRoot], name};
+	}
+
+	let current: MemoryDirectoryData = backend[kRoot];
+
+	for (const part of parts) {
+		const nextDir = current.directories.get(part);
+		if (!nextDir) {
+			return {parentDir: null, name};
+		}
+		current = nextDir;
+	}
+
+	return {parentDir: current, name};
+}
+
+const kBackend = Symbol("backend");
+
+export interface MemoryDirectory {
+	[kBackend]: MemoryFileSystemBackend;
 }
 
 /**
@@ -236,7 +243,6 @@ export class MemoryFileSystemBackend implements FileSystemBackend {
 export class MemoryDirectory implements FileSystemDirectoryHandle {
 	readonly kind: "directory";
 	readonly name: string;
-	#backend: MemoryFileSystemBackend;
 
 	constructor(name = "root") {
 		this.kind = "directory";
@@ -249,7 +255,7 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 			directories: new Map(),
 		};
 
-		this.#backend = new MemoryFileSystemBackend(root);
+		this[kBackend] = new MemoryFileSystemBackend(root);
 	}
 
 	async getFileHandle(
@@ -268,10 +274,10 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 		}
 
 		const filePath = `/${name}`;
-		const stat = await this.#backend.stat(filePath);
+		const stat = await this[kBackend].stat(filePath);
 
 		if (!stat && options?.create) {
-			await this.#backend.writeFile(filePath, new Uint8Array(0));
+			await this[kBackend].writeFile(filePath, new Uint8Array(0));
 		} else if (!stat) {
 			throw new DOMException("File not found", "NotFoundError");
 		} else if (stat.kind !== "file") {
@@ -281,7 +287,7 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 			);
 		}
 
-		return new ShovelFileHandle(this.#backend, filePath);
+		return new ShovelFileHandle(this[kBackend], filePath);
 	}
 
 	async getDirectoryHandle(
@@ -300,10 +306,10 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 		}
 
 		const dirPath = `/${name}`;
-		const stat = await this.#backend.stat(dirPath);
+		const stat = await this[kBackend].stat(dirPath);
 
 		if (!stat && options?.create) {
-			await this.#backend.createDir(dirPath);
+			await this[kBackend].createDir(dirPath);
 		} else if (!stat) {
 			throw new DOMException("Directory not found", "NotFoundError");
 		} else if (stat.kind !== "directory") {
@@ -313,7 +319,7 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 			);
 		}
 
-		return new ShovelDirectoryHandle(this.#backend, dirPath);
+		return new ShovelDirectoryHandle(this[kBackend], dirPath);
 	}
 
 	async removeEntry(
@@ -321,7 +327,7 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 		options?: {recursive?: boolean},
 	): Promise<void> {
 		const entryPath = `/${name}`;
-		await this.#backend.remove(entryPath, options?.recursive);
+		await this[kBackend].remove(entryPath, options?.recursive);
 	}
 
 	async resolve(
@@ -337,12 +343,10 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 			return null;
 		}
 
-		if (
-			!(
-				possibleDescendant instanceof ShovelDirectoryHandle ||
+		if (!(
+			possibleDescendant instanceof ShovelDirectoryHandle ||
 				possibleDescendant instanceof ShovelFileHandle
-			)
-		) {
+		)) {
 			return null;
 		}
 
@@ -355,17 +359,21 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 		return null;
 	}
 
-	async *entries(): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
-		const entries = await this.#backend.listDir("/");
+	async *entries(): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
+		const entries = await this[kBackend].listDir("/");
 
 		for (const entry of entries) {
 			const entryPath = `/${entry.name}`;
 			if (entry.kind === "file") {
-				yield [entry.name, new ShovelFileHandle(this.#backend, entryPath)];
+				yield [entry.name, new ShovelFileHandle(this[kBackend], entryPath)];
 			} else {
-				yield [entry.name, new ShovelDirectoryHandle(this.#backend, entryPath)];
+				yield [
+					entry.name,
+					new ShovelDirectoryHandle(this[kBackend], entryPath),
+				];
 			}
 		}
 	}
@@ -384,9 +392,10 @@ export class MemoryDirectory implements FileSystemDirectoryHandle {
 		}
 	}
 
-	[Symbol.asyncIterator](): AsyncIterableIterator<
-		[string, FileSystemFileHandle | FileSystemDirectoryHandle]
-	> {
+	[Symbol.asyncIterator](): AsyncIterableIterator<[
+		string,
+		FileSystemFileHandle | FileSystemDirectoryHandle,
+	]> {
 		return this.entries();
 	}
 

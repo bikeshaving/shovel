@@ -1,4 +1,5 @@
-import {test, expect, describe} from "bun:test";
+import {describe, expect, test} from "bun:test";
+
 import {MatchPattern, URLPattern} from "../src/index.js";
 import testData from "./urlpatterntestdata.json";
 

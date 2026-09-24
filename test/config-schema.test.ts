@@ -1,13 +1,14 @@
-import {test, expect, describe} from "bun:test";
+import {describe, expect, test} from "bun:test";
+
 import {
-	ShovelConfigSchema,
-	CacheConfigSchema,
-	DirectoryConfigSchema,
-	DatabaseConfigSchema,
-	LoggerConfigSchema,
-	SinkConfigSchema,
 	BuildConfigSchema,
 	BuildPluginConfigSchema,
+	CacheConfigSchema,
+	DatabaseConfigSchema,
+	DirectoryConfigSchema,
+	LoggerConfigSchema,
+	ShovelConfigSchema,
+	SinkConfigSchema,
 } from "../src/utils/config.js";
 
 describe("config validation", () => {
@@ -18,27 +19,20 @@ describe("config validation", () => {
 		});
 
 		test("accepts valid minimal config", () => {
-			const result = ShovelConfigSchema.parse({
-				port: 3000,
-				host: "localhost",
-			});
+			const result = ShovelConfigSchema.parse({port: 3000, host: "localhost"});
 			expect(result.port).toBe(3000);
 			expect(result.host).toBe("localhost");
 		});
 
 		test("accepts port as string (config expression)", () => {
-			const result = ShovelConfigSchema.parse({
-				port: "PORT || 3000",
-			});
+			const result = ShovelConfigSchema.parse({port: "PORT || 3000"});
 			expect(result.port).toBe("PORT || 3000");
 		});
 
 		test("rejects unknown top-level keys", () => {
-			expect(() =>
-				ShovelConfigSchema.parse({
-					unknownKey: "value",
-				}),
-			).toThrow(/Unrecognized key/);
+			expect(() => ShovelConfigSchema.parse({unknownKey: "value"})).toThrow(
+				/Unrecognized key/,
+			);
 		});
 
 		test("accepts full valid config", () => {
@@ -47,9 +41,7 @@ describe("config validation", () => {
 				port: 8080,
 				host: "0.0.0.0",
 				workers: 4,
-				logging: {
-					loggers: [{category: "app", level: "debug"}],
-				},
+				logging: {loggers: [{category: "app", level: "debug"}]},
 				caches: {
 					sessions: {module: "@b9g/cache-redis", url: "redis://localhost"},
 				},
@@ -57,10 +49,7 @@ describe("config validation", () => {
 					uploads: {module: "@b9g/filesystem/node-fs.js", path: "./uploads"},
 				},
 				databases: {
-					main: {
-						module: "@b9g/zen/bun",
-						url: "postgres://localhost/db",
-					},
+					main: {module: "@b9g/zen/bun", url: "postgres://localhost/db"},
 				},
 			};
 
@@ -86,11 +75,9 @@ describe("config validation", () => {
 		});
 
 		test("rejects unknown keys", () => {
-			expect(() =>
-				CacheConfigSchema.parse({
-					provider: "redis", // old key
-				}),
-			).toThrow(/Unrecognized key/);
+			expect(() => CacheConfigSchema.parse({
+				provider: "redis", // old key
+			})).toThrow(/Unrecognized key/);
 		});
 	});
 
@@ -105,25 +92,20 @@ describe("config validation", () => {
 		});
 
 		test("accepts binding for platform-specific directories", () => {
-			const result = DirectoryConfigSchema.parse({
-				binding: "ASSETS",
-			});
+			const result = DirectoryConfigSchema.parse({binding: "ASSETS"});
 			expect(result.binding).toBe("ASSETS");
 		});
 
 		test("accepts path as number (config expression)", () => {
-			const result = DirectoryConfigSchema.parse({
-				path: "UPLOAD_PATH || ./uploads",
-			});
+			const result =
+				DirectoryConfigSchema.parse({path: "UPLOAD_PATH || ./uploads"});
 			expect(result.path).toBe("UPLOAD_PATH || ./uploads");
 		});
 
 		test("rejects unknown keys", () => {
-			expect(() =>
-				DirectoryConfigSchema.parse({
-					provider: "node-fs", // old key
-				}),
-			).toThrow(/Unrecognized key/);
+			expect(() => DirectoryConfigSchema.parse({
+				provider: "node-fs", // old key
+			})).toThrow(/Unrecognized key/);
 		});
 	});
 
@@ -174,10 +156,8 @@ describe("config validation", () => {
 
 	describe("LoggerConfigSchema", () => {
 		test("accepts category as string", () => {
-			const result = LoggerConfigSchema.parse({
-				category: "app",
-				level: "debug",
-			});
+			const result =
+				LoggerConfigSchema.parse({category: "app", level: "debug"});
 			expect(result.category).toBe("app");
 		});
 
@@ -191,10 +171,7 @@ describe("config validation", () => {
 
 		test("rejects invalid level", () => {
 			expect(() =>
-				LoggerConfigSchema.parse({
-					category: "app",
-					level: "invalid",
-				}),
+				LoggerConfigSchema.parse({category: "app", level: "invalid"}),
 			).toThrow();
 		});
 
@@ -241,23 +218,17 @@ describe("config validation", () => {
 		});
 
 		test("accepts target as string", () => {
-			const result = BuildConfigSchema.parse({
-				target: "es2020",
-			});
+			const result = BuildConfigSchema.parse({target: "es2020"});
 			expect(result.target).toBe("es2020");
 		});
 
 		test("accepts target as array", () => {
-			const result = BuildConfigSchema.parse({
-				target: ["es2020", "chrome100"],
-			});
+			const result = BuildConfigSchema.parse({target: ["es2020", "chrome100"]});
 			expect(result.target).toEqual(["es2020", "chrome100"]);
 		});
 
 		test("accepts minify boolean", () => {
-			const result = BuildConfigSchema.parse({
-				minify: true,
-			});
+			const result = BuildConfigSchema.parse({minify: true});
 			expect(result.minify).toBe(true);
 		});
 
@@ -280,36 +251,27 @@ describe("config validation", () => {
 		});
 
 		test("accepts treeShaking boolean", () => {
-			const result = BuildConfigSchema.parse({
-				treeShaking: false,
-			});
+			const result = BuildConfigSchema.parse({treeShaking: false});
 			expect(result.treeShaking).toBe(false);
 		});
 
 		test("accepts define as record", () => {
 			const result = BuildConfigSchema.parse({
-				define: {
-					__DEV__: "true",
-					"process.env.NODE_ENV": '"production"',
-				},
+				define: {__DEV__: "true", "process.env.NODE_ENV": '"production"'},
 			});
 			expect(result.define?.__DEV__).toBe("true");
 		});
 
 		test("accepts alias as record", () => {
 			const result = BuildConfigSchema.parse({
-				alias: {
-					"@": "./src",
-					"@components": "./src/components",
-				},
+				alias: {"@": "./src", "@components": "./src/components"},
 			});
 			expect(result.alias?.["@"]).toBe("./src");
 		});
 
 		test("accepts external as array", () => {
-			const result = BuildConfigSchema.parse({
-				external: ["react", "react-dom"],
-			});
+			const result =
+				BuildConfigSchema.parse({external: ["react", "react-dom"]});
 			expect(result.external).toEqual(["react", "react-dom"]);
 		});
 
@@ -325,11 +287,9 @@ describe("config validation", () => {
 		});
 
 		test("rejects unknown keys (strict)", () => {
-			expect(() =>
-				BuildConfigSchema.parse({
-					unknownOption: "value",
-				}),
-			).toThrow(/Unrecognized key/);
+			expect(() => BuildConfigSchema.parse({unknownOption: "value"})).toThrow(
+				/Unrecognized key/,
+			);
 		});
 
 		test("accepts full build config", () => {
@@ -355,9 +315,8 @@ describe("config validation", () => {
 		});
 
 		test("accepts plugin with module only", () => {
-			const result = BuildPluginConfigSchema.parse({
-				module: "esbuild-plugin-tailwindcss",
-			});
+			const result =
+				BuildPluginConfigSchema.parse({module: "esbuild-plugin-tailwindcss"});
 			expect(result.module).toBe("esbuild-plugin-tailwindcss");
 		});
 
@@ -385,10 +344,7 @@ describe("config validation", () => {
 		test("accepts config with build section", () => {
 			const result = ShovelConfigSchema.parse({
 				port: 3000,
-				build: {
-					target: "es2020",
-					minify: true,
-				},
+				build: {target: "es2020", minify: true},
 			});
 			expect(result.build?.target).toBe("es2020");
 			expect(result.build?.minify).toBe(true);
@@ -403,11 +359,10 @@ describe("config validation", () => {
 					sourcemap: "external",
 					plugins: [{module: "esbuild-plugin-tailwindcss"}],
 				},
-				logging: {
-					loggers: [{category: "app", level: "debug"}],
-				},
+				logging: {loggers: [{category: "app", level: "debug"}]},
 			});
-			expect(result.build?.plugins?.length).toBe(1);
+			const plugins = result.build?.plugins;
+			expect(plugins?.length).toBe(1);
 		});
 	});
 });

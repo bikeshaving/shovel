@@ -5,13 +5,13 @@
  * based on WPT service-worker tests.
  */
 
-import {runRuntimeTests} from "../src/runners/runtime.js";
 import {
+	ShovelActivateEvent,
 	ShovelExtendableEvent,
 	ShovelFetchEvent,
 	ShovelInstallEvent,
-	ShovelActivateEvent,
 } from "../../platform/src/runtime.js";
+import {runRuntimeTests} from "../src/runners/runtime.js";
 
 // Internal symbol for ending dispatch phase
 const kEndDispatchPhase = Symbol.for("shovel.endDispatchPhase");

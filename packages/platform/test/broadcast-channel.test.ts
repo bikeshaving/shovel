@@ -2,14 +2,15 @@
  * BroadcastChannel Tests
  */
 
-import {describe, it, expect, afterEach} from "bun:test";
+import {afterEach, describe, expect, it} from "bun:test";
+
+import type {BroadcastChannelBackend} from "../src/internal/broadcast-channel-backend.js";
 import {
-	ShovelBroadcastChannel,
-	setBroadcastChannelRelay,
 	deliverBroadcastMessage,
 	setBroadcastChannelBackend,
+	setBroadcastChannelRelay,
+	ShovelBroadcastChannel,
 } from "../src/internal/broadcast-channel.js";
-import type {BroadcastChannelBackend} from "../src/internal/broadcast-channel-backend.js";
 
 describe("BroadcastChannel", () => {
 	it("constructor sets name", () => {

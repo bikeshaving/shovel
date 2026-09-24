@@ -7,8 +7,9 @@
  */
 
 import * as FS from "fs/promises";
-import {join, resolve} from "path";
 import {tmpdir} from "os";
+import {join, resolve} from "path";
+
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["test", "utils"]);

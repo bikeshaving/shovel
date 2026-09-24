@@ -1,23 +1,19 @@
-import {jsx, Raw} from "@b9g/crank/standalone";
 import type {Children, Context} from "@b9g/crank";
+import {jsx, Raw} from "@b9g/crank/standalone";
 import {extractCritical} from "@emotion/server";
-import {Navbar} from "./navbar.js";
-import {assets} from "../server.js";
 
-export function* Root(
+import {assets} from "../server.js";
+import {Navbar} from "./navbar.js";
+
+export function *Root(
 	this: Context,
-	{
-		title,
-		children,
-		url,
-		description = "",
-	}: {
+	{title, children, url, description = ""}: {
 		title: string;
 		children: Children;
 		url: string;
 		description?: string;
 	},
-) {
+): Generator<Children, void, any> {
 	for ({title, children, url, description = ""} of this) {
 		this.schedule(() => this.refresh());
 		const childrenHTML: string = yield jsx`

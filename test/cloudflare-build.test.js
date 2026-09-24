@@ -1,8 +1,10 @@
 /* eslint-disable no-restricted-properties -- Tests need process.cwd */
 import * as FS from "fs/promises";
 import {join} from "path";
-import {test, expect} from "bun:test";
+
+import {expect, test} from "bun:test";
 import {Miniflare} from "miniflare";
+
 import {buildForProduction} from "../src/commands/build.js";
 import {copyFixtureToTemp, fileExists} from "./utils.js";
 
@@ -273,9 +275,8 @@ self.addEventListener("fetch", (event) => {
 			expect(logoResponse.status).toBe(200);
 			expect(await logoResponse.text()).toBe("I am a logo");
 
-			const heroResponse = await mf.dispatchFetch(
-				"http://localhost/images/hero.txt",
-			);
+			const heroResponse =
+				await mf.dispatchFetch("http://localhost/images/hero.txt");
 			expect(heroResponse.status).toBe(200);
 			expect(await heroResponse.text()).toBe("hero image");
 		} finally {
@@ -426,9 +427,8 @@ async function handle(request) {
 
 			// Navigating into the subdirectory keeps it enumerable, and the
 			// handles read real content through the binding.
-			const readResponse = await mf.dispatchFetch(
-				"http://localhost/read-posts",
-			);
+			const readResponse =
+				await mf.dispatchFetch("http://localhost/read-posts");
 			expect(readResponse.status).toBe(200);
 			const {names, text} = await readResponse.json();
 			expect(names).toEqual(["first.md", "second.md"]);

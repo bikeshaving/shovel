@@ -2,7 +2,7 @@
  * Example database schema for admin demo
  */
 
-import {z, table} from "@b9g/zen";
+import {table, z} from "@b9g/zen";
 
 export const users = table("users", {
 	id: z.number().int().db.auto().db.primary(),

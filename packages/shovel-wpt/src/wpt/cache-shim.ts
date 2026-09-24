@@ -5,8 +5,8 @@
  * with a custom Cache/CacheStorage implementation.
  */
 
+import * as Assertions from "../harness/assertions.js";
 import {promise_test, type TestContext} from "../harness/testharness.js";
-import * as assertions from "../harness/assertions.js";
 
 // Re-export Cache types
 type Cache = {
@@ -101,9 +101,9 @@ export function setupCacheTestGlobals(config: CacheShimConfig): void {
 		expected: Response,
 		description?: string,
 	): void {
-		assertions.assert_class_string(actual, "Response", description);
+		Assertions.assert_class_string(actual, "Response", description);
 		["type", "url", "status", "ok", "statusText"].forEach((attribute) => {
-			assertions.assert_equals(
+			Assertions.assert_equals(
 				(actual as any)[attribute],
 				(expected as any)[attribute],
 				description
@@ -117,7 +117,7 @@ export function setupCacheTestGlobals(config: CacheShimConfig): void {
 	Object.assign(globalThis, {
 		// Core harness
 		promise_test,
-		...assertions,
+		...Assertions,
 
 		// Cache-specific helpers
 		cache_test,
@@ -131,9 +131,7 @@ export function setupCacheTestGlobals(config: CacheShimConfig): void {
 
 	// Also set on self for browser compatibility
 	if (typeof self !== "undefined") {
-		Object.assign(self, {
-			caches: config.caches,
-		});
+		Object.assign(self, {caches: config.caches});
 	}
 }
 

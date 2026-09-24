@@ -4,9 +4,9 @@ interface WalkInfo {
 	filename: string;
 }
 
-async function* walk(
+async function *walk(
 	dir: FileSystemDirectoryHandle,
-	basePath: string = "",
+	basePath = "",
 ): AsyncGenerator<WalkInfo> {
 	const entries: Array<[string, FileSystemHandle]> = [];
 	for await (const entry of dir.entries()) {
@@ -18,7 +18,7 @@ async function* walk(
 	for (const [name, handle] of entries) {
 		const path = basePath ? `${basePath}/${name}` : name;
 		if (handle.kind === "directory") {
-			yield* walk(handle as FileSystemDirectoryHandle, path);
+			yield *walk(handle as FileSystemDirectoryHandle, path);
 		} else {
 			yield {filename: path};
 		}
@@ -41,8 +41,8 @@ export interface BlogPost {
 
 export async function collectBlogPosts(
 	dir: FileSystemDirectoryHandle,
-): Promise<Array<BlogPost>> {
-	const posts: Array<BlogPost> = [];
+): Promise<BlogPost[]> {
+	const posts: BlogPost[] = [];
 
 	for await (const {filename} of walk(dir)) {
 		if (filename.endsWith(".md")) {
@@ -57,8 +57,9 @@ export async function collectBlogPosts(
 			const file = await fileHandle.getFile();
 			const md = await file.text();
 			const {attributes, body} = frontmatter(md) as unknown as BlogPost;
-			attributes.publish =
-				attributes.publish == null ? true : attributes.publish;
+			attributes.publish = attributes.publish == null
+				? true
+				: attributes.publish;
 
 			// Extract slug from filename (e.g., 2025-01-introducing-shovel.md -> introducing-shovel)
 			const basename = filename.split("/").pop()!.replace(/\.md$/, "");

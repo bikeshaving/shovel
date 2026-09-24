@@ -23,7 +23,7 @@ export function handleCacheResponse(message: any): void {
 }
 
 // Global request ID counter
-let globalRequestID = 0;
+let globalRequestId = 0;
 
 /**
  * Configuration options for PostMessageCache
@@ -33,59 +33,23 @@ export interface PostMessageCacheOptions {
 	timeout?: number;
 }
 
+const kName = Symbol("name");
+const kTimeout = Symbol("timeout");
+
+export interface PostMessageCache {
+	[kName]: string;
+	[kTimeout]: number;
+}
+
 /**
  * Worker-side cache that forwards operations to main thread via postMessage.
  * Used for MemoryCache in multi-worker environments so all workers share state.
  */
 export class PostMessageCache extends Cache {
-	#name: string;
-	#timeout: number;
-
 	constructor(name: string, options: PostMessageCacheOptions = {}) {
 		super();
-		this.#name = name;
-		this.#timeout = options.timeout ?? 30000;
-	}
-
-	async #sendRequest(
-		type: string,
-		data: any,
-		transfer?: Transferable[],
-	): Promise<any> {
-		if (typeof self === "undefined") {
-			throw new Error("PostMessageCache can only be used in worker threads");
-		}
-
-		if (globalRequestID >= Number.MAX_SAFE_INTEGER) {
-			throw new Error(
-				"Congratulations! You've made 9 quadrillion cache requests. Please restart your server and tell us about your workload.",
-			);
-		}
-		const requestID = ++globalRequestID;
-
-		return new Promise((resolve, reject) => {
-			pendingRequestsRegistry.set(requestID, {resolve, reject});
-
-			const message = {
-				type,
-				requestID,
-				cacheName: this.#name,
-				...data,
-			};
-
-			if (transfer && transfer.length > 0) {
-				self.postMessage(message, transfer);
-			} else {
-				self.postMessage(message);
-			}
-
-			setTimeout(() => {
-				if (pendingRequestsRegistry.has(requestID)) {
-					pendingRequestsRegistry.delete(requestID);
-					reject(new Error("Cache operation timeout"));
-				}
-			}, this.#timeout);
-		});
+		this[kName] = name;
+		this[kTimeout] = options.timeout ?? 30000;
 	}
 
 	async match(
@@ -108,12 +72,10 @@ export class PostMessageCache extends Cache {
 			body: requestBody,
 		};
 
-		const response = await this.#sendRequest(
+		const response = await sendRequest(
+			this,
 			"cache:match",
-			{
-				request: serializedRequest,
-				options,
-			},
+			{request: serializedRequest, options},
 			transfer,
 		);
 
@@ -132,14 +94,13 @@ export class PostMessageCache extends Cache {
 		const req = toRequest(request);
 		const transfer: ArrayBuffer[] = [];
 		let requestBody: ArrayBuffer | undefined;
-		let responseBody: ArrayBuffer;
 
 		if (req.method !== "GET" && req.method !== "HEAD") {
 			requestBody = await req.clone().arrayBuffer();
 			transfer.push(requestBody);
 		}
 
-		responseBody = await response.clone().arrayBuffer();
+		const responseBody = await response.clone().arrayBuffer();
 		transfer.push(responseBody);
 
 		const serializedRequest = {
@@ -156,12 +117,10 @@ export class PostMessageCache extends Cache {
 			body: responseBody,
 		};
 
-		await this.#sendRequest(
+		await sendRequest(
+			this,
 			"cache:put",
-			{
-				request: serializedRequest,
-				response: serializedResponse,
-			},
+			{request: serializedRequest, response: serializedResponse},
 			transfer,
 		);
 	}
@@ -186,12 +145,10 @@ export class PostMessageCache extends Cache {
 			body: requestBody,
 		};
 
-		return await this.#sendRequest(
+		return await sendRequest(
+			this,
 			"cache:delete",
-			{
-				request: serializedRequest,
-				options,
-			},
+			{request: serializedRequest, options},
 			transfer,
 		);
 	}
@@ -219,26 +176,66 @@ export class PostMessageCache extends Cache {
 			};
 		}
 
-		const keys = await this.#sendRequest(
+		const keys = await sendRequest(
+			this,
 			"cache:keys",
-			{
-				request: serializedRequest,
-				options,
-			},
+			{request: serializedRequest, options},
 			transfer,
 		);
 
-		return keys.map(
-			(req: any) =>
-				new Request(req.url, {
-					method: req.method,
-					headers: req.headers,
-					body: req.body,
-				}),
+		return keys.map((req: any) =>
+			new Request(req.url, {
+				method: req.method,
+				headers: req.headers,
+				body: req.body,
+			}),
 		);
 	}
 
 	async clear(): Promise<void> {
-		await this.#sendRequest("cache:clear", {});
+		await sendRequest(this, "cache:clear", {});
 	}
+}
+
+async function sendRequest(
+	postMessageCache: PostMessageCache,
+	type: string,
+	data: any,
+	transfer?: Transferable[],
+): Promise<any> {
+	if (typeof self === "undefined") {
+		throw new Error("PostMessageCache can only be used in worker threads");
+	}
+
+	if (globalRequestId >= Number.MAX_SAFE_INTEGER) {
+		throw new Error(
+			"Congratulations! You've made 9 quadrillion cache requests. Please restart your server and tell us about your workload.",
+		);
+	}
+	const requestId = ++globalRequestId;
+
+	return new Promise((resolve, reject) => {
+		pendingRequestsRegistry.set(requestId, {resolve, reject});
+
+		const message = {
+			type,
+			// eslint-disable-next-line acrocase/acrocase -- message field read by @b9g/platform
+			requestID: requestId,
+			cacheName: postMessageCache[kName],
+			...data,
+		};
+
+		if (transfer && transfer.length > 0) {
+			self.postMessage(message, transfer);
+		} else {
+			self.postMessage(message);
+		}
+
+		setTimeout(() => {
+			if (pendingRequestsRegistry.has(requestId)) {
+				pendingRequestsRegistry.delete(requestId);
+				reject(new Error("Cache operation timeout"));
+			}
+		}, postMessageCache[kTimeout]);
+	});
 }
