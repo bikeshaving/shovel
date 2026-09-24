@@ -653,7 +653,10 @@ function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
 			? {kind: "pattern", mp: new MatchPattern(entry.match.pattern)}
 			: {
 					kind: "regexp",
-					re: new RegExp(entry.match.source, entry.match.flags),
+					re: new RegExp(
+						entry.match.source,
+						entry.match.flags.replace(/[gy]/g, ""),
+					),
 					base: entry.match.base,
 				};
 	return {entry, matcher, order};
@@ -697,11 +700,6 @@ function mountRedirect(entry: RedirectEntry, mountPath: string): RedirectEntry {
 	if (mountPath === "/") {
 		return entry;
 	}
-	const target = /^([a-z][a-z\d+.-]*:|\/\/)/i.test(entry.target)
-		? entry.target
-		: entry.target === "/"
-			? mountPath
-			: mountPath + entry.target;
 	if ("pattern" in entry.match) {
 		if (!entry.match.pattern.startsWith("/")) {
 			throw new Error(
@@ -710,13 +708,28 @@ function mountRedirect(entry: RedirectEntry, mountPath: string): RedirectEntry {
 		}
 		const pattern =
 			entry.match.pattern === "/" ? mountPath : mountPath + entry.match.pattern;
-		return {...entry, match: {pattern}, target};
+		return {
+			...entry,
+			match: {pattern},
+			target: targetUnder(entry.target, mountPath),
+		};
 	}
 	return {
 		...entry,
 		match: {...entry.match, base: mountPath + (entry.match.base ?? "")},
-		target,
 	};
+}
+
+/**
+ * A subrouter's redirect target as seen from its mount path. Only a path
+ * that starts at the subrouter's root moves: relative targets already
+ * resolve against the request URL, and absolute URLs stay as they are.
+ */
+function targetUnder(target: string, mountPath: string): string {
+	if (!target.startsWith("/") || target.startsWith("//")) {
+		return target;
+	}
+	return target === "/" ? mountPath : mountPath + target;
 }
 
 function escapeRegExp(text: string): string {
@@ -730,7 +743,8 @@ function escapeRegExp(text: string): string {
 export class Router {
 	readonly routes: RouteEntry[];
 	readonly middlewares: MiddlewareEntry[];
-	/** Declared redirects, first-match-wins in array order. Serializable data. */
+	/** Every redirect in declaration order, including those from middleware
+	 * such as trailingSlash(). First match wins. Serializable data. */
 	readonly redirects: RedirectEntry[];
 	#executor: RadixTreeExecutor | null;
 	/** Every redirect in declaration order: those from redirect() and those
@@ -797,6 +811,7 @@ export class Router {
 			throw new Error("Middleware can only serialize as a redirect.");
 		}
 		this.#redirectMiddlewares.add(middlewareEntry);
+		this.redirects.push(serialized.redirect);
 		this.#redirectTable.push({
 			...compileRedirect(serialized.redirect, this.#seq++),
 			middleware: middlewareEntry,
@@ -816,9 +831,9 @@ export class Router {
 			if (matcher.kind === "pattern") {
 				const result = matcher.mp.exec(u);
 				if (result) {
-					target = entry.target.replace(
-						/:(\w+)/g,
-						(_m, name: string) => result.pathname.groups[name] ?? "",
+					const groups = result.pathname.groups;
+					target = entry.target.replace(/:(\w+)/g, (m, name: string) =>
+						name in groups ? (groups[name] ?? "") : m,
 					);
 				}
 			} else {
@@ -835,6 +850,9 @@ export class Router {
 						/\$(\d+)/g,
 						(_m, n: string) => m[Number(n)] ?? "",
 					);
+					if (base !== undefined) {
+						target = targetUnder(target, base);
+					}
 				}
 			}
 			if (target !== null) {
@@ -1047,7 +1065,9 @@ export class Router {
 				middleware: submiddleware.middleware,
 				pathPrefix: submiddleware.pathPrefix
 					? this.#combinePaths(normalizedMountPath, submiddleware.pathPrefix)
-					: normalizedMountPath,
+					: normalizedMountPath === "/"
+						? undefined
+						: normalizedMountPath,
 			};
 			this.middlewares.push(entry);
 			mounted.set(submiddleware, entry);
@@ -1110,6 +1130,9 @@ export class Router {
 	 * Combine mount path with route pattern
 	 */
 	#combinePaths(mountPath: string, routePattern: string): string {
+		if (mountPath === "/") {
+			return routePattern.startsWith("/") ? routePattern : "/" + routePattern;
+		}
 		// Handle root path specially
 		if (routePattern === "/") {
 			return mountPath;
