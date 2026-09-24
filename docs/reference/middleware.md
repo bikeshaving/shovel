@@ -137,13 +137,11 @@ router.use(cors({
 
 ### trailingSlash(mode: "strip" | "add")
 
-Returns the `(from, to)` arguments for `router.redirect()`. Declare it after your routes so it only fires when nothing matched.
-
 ```typescript
 import { trailingSlash } from "@b9g/router/middleware";
 
-router.redirect(...trailingSlash("strip")); // /path/ → /path
-router.redirect(...trailingSlash("add"));   // /path → /path/
+router.use(trailingSlash("strip")); // /path/ → /path
+router.use(trailingSlash("add"));   // /path → /path/
 ```
 
 ---

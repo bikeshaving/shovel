@@ -283,6 +283,9 @@ export class AdminRouter extends Router {
 
 		logger.debug("AdminRouter created", {database: config.database});
 
+		// Normalize trailing slashes - strip them
+		this.use(trailingSlash("strip"));
+
 		// Store config for use in routes
 		this.#title = config.branding?.title ?? "Admin";
 		this.#assets = config.assets;
@@ -1046,9 +1049,6 @@ export class AdminRouter extends Router {
 				return errorPage(title, basePath, models, err, assets);
 			}
 		});
-
-		// Strip trailing slashes when no route above matched
-		this.redirect(...trailingSlash("strip"));
 	}
 }
 
