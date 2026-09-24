@@ -8,13 +8,14 @@ async function redirectOf(router: Router, url: string): Promise<string | null> {
 }
 
 describe("trailingSlash() serialization", () => {
-	test("serializes as a redirect entry after the routes", () => {
+	test("serializes as a redirect entry where it was registered", () => {
 		const router = new Router();
+		router.route("/").get(async () => new Response("home"));
 		router.use(trailingSlash("strip"));
 		router.route("/about").get(async () => new Response("about"));
 
 		expect(router.toJSON().entries).toEqual([
-			{route: {pattern: "/about", method: "GET"}},
+			{route: {pattern: "/", method: "GET"}},
 			{
 				redirect: {
 					match: {source: "^(.+)/$", flags: ""},
@@ -22,6 +23,7 @@ describe("trailingSlash() serialization", () => {
 					status: 301,
 				},
 			},
+			{route: {pattern: "/about", method: "GET"}},
 		]);
 	});
 
