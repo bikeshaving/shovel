@@ -3,6 +3,9 @@
  */
 
 import {getLogger} from "@logtape/logtape";
+import {isHTTPError} from "@b9g/http-errors";
+
+import type {GeneratorMiddleware, SerializedEntry} from "./index.js";
 
 // ============================================================================
 // TRAILING SLASH
@@ -14,12 +17,10 @@ import {getLogger} from "@logtape/logtape";
 export type TrailingSlashMode = "strip" | "add" | "append";
 
 /**
- * The `(from, to)` arguments for a `router.redirect()` that normalizes
- * trailing slashes. The root path is left alone. "strip" collapses one or
- * more trailing slashes; "add"/"append" adds one.
+ * Middleware that normalizes trailing slashes via 301 redirect
  *
- * Like every redirect, its precedence is where you declare it: after your
- * routes, it only fires when nothing matched.
+ * @param mode - "strip" removes trailing slash, "add" adds trailing slash
+ * @returns Generator middleware that redirects non-canonical URLs as a last resort
  *
  * @example
  * ```typescript
@@ -27,12 +28,75 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  * import {trailingSlash} from "@b9g/router/middleware";
  *
  * const router = new Router();
- * router.route("/users").get(handler);
- * router.redirect(...trailingSlash("strip")); // /users/ → /users
+ * router.use(trailingSlash("strip")); // Redirect /path/ → /path
+ *
+ * // Can also be scoped to specific paths
+ * router.use("/api", trailingSlash("strip"));
  * ```
  */
-export function trailingSlash(mode: TrailingSlashMode): [RegExp, string] {
-	return mode === "strip" ? [/^(.+?)\/+$/, "$1"] : [/^(.+[^/])$/, "$1/"];
+export function trailingSlash(
+	mode: TrailingSlashMode,
+): GeneratorMiddleware & {toJSON(): SerializedEntry} {
+	const middleware = async function* (
+		request: Request,
+	): AsyncGenerator<Request, Response | undefined, Response> {
+		const url = new URL(request.url);
+		const pathname = url.pathname;
+
+		// Skip root path - "/" is valid either way
+		if (pathname === "/") {
+			const response: Response = yield request;
+			return response;
+		}
+
+		let newPathname: string | null = null;
+		if (mode === "strip" && pathname.endsWith("/")) {
+			newPathname = pathname.slice(0, -1);
+		} else if (
+			(mode === "add" || mode === "append") &&
+			!pathname.endsWith("/")
+		) {
+			newPathname = pathname + "/";
+		}
+
+		// No redirect needed - pass through
+		if (!newPathname) {
+			const response: Response = yield request;
+			return response;
+		}
+
+		// Redirect might be needed - try matching a route first
+		let response: Response;
+		try {
+			response = yield request;
+		} catch (error) {
+			if (isHTTPError(error) && error.status === 404) {
+				url.pathname = newPathname;
+				return new Response(null, {
+					status: 301,
+					headers: {Location: url.toString()},
+				});
+			}
+			throw error;
+		}
+
+		if (response.status === 404) {
+			url.pathname = newPathname;
+			return new Response(null, {
+				status: 301,
+				headers: {Location: url.toString()},
+			});
+		}
+
+		return response;
+	};
+	return Object.assign(middleware, {
+		toJSON(): SerializedEntry {
+			const [source, target] =
+				mode === "strip" ? ["^(.+)/$", "$1"] : ["^(.*[^/])$", "$1/"];
+			return {redirect: {match: {source, flags: ""}, target, status: 301}};
+		},
+	});
 }
 
 // ============================================================================

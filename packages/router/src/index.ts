@@ -635,6 +635,32 @@ export class RouteBuilder {
 }
 
 /**
+ * Limit a middleware's serialized redirect to the path prefix it was
+ * registered under, matching on segment boundaries like the middleware does.
+ */
+function scopeEntry(
+	entry: SerializedEntry,
+	pathPrefix: string,
+): SerializedEntry {
+	if (!("redirect" in entry) || !("source" in entry.redirect.match)) {
+		throw new Error(
+			"Only regular expression redirects can be scoped to a path prefix.",
+		);
+	}
+	const {source, flags} = entry.redirect.match;
+	if (!source.startsWith("^")) {
+		throw new Error("A scoped redirect's pattern must be anchored with ^.");
+	}
+	const prefix = pathPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return {
+		redirect: {
+			...entry.redirect,
+			match: {source: `^(?=${prefix}(?:/|$))${source.slice(1)}`, flags},
+		},
+	};
+}
+
+/**
  * Router provides Request/Response routing with middleware support
  * Designed to work universally across all JavaScript runtimes
  */
@@ -1214,7 +1240,9 @@ export class Router {
 	 * Serialize the router to a plain, JSON-safe value. Named `toJSON` so
 	 * `JSON.stringify(router)` works for free. Routes and redirects are emitted
 	 * as one list in declaration order, so precedence survives the round-trip.
-	 * Handlers and middleware are server-only and left out.
+	 * Handlers and middleware are server-only and left out, except middleware
+	 * with its own `toJSON()`, such as `trailingSlash()`, whose entry follows
+	 * the routes so it only applies when nothing else matched.
 	 */
 	toJSON(): SerializedRouter {
 		const items: Array<{order: number; entry: SerializedEntry}> = [];
@@ -1237,7 +1265,15 @@ export class Router {
 			});
 		}
 		items.sort((a, b) => a.order - b.order);
-		return {version: 1, entries: items.map((it) => it.entry)};
+		const entries = items.map((it) => it.entry);
+		for (const {middleware, pathPrefix} of this.middlewares) {
+			const serialize = (middleware as {toJSON?: () => SerializedEntry}).toJSON;
+			if (typeof serialize === "function") {
+				const entry = serialize.call(middleware);
+				entries.push(pathPrefix ? scopeEntry(entry, pathPrefix) : entry);
+			}
+		}
+		return {version: 1, entries};
 	}
 
 	/**
