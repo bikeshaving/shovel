@@ -371,10 +371,10 @@ describe("trailingSlash middleware", () => {
 		);
 	});
 
-	test("strip mode does not redirect when route matches with trailing slash", async () => {
+	test("strip mode does not redirect a route declared before it", async () => {
 		const router = new Router();
-		router.use(trailingSlash("strip"));
 		router.route("/users/").get(async () => new Response("Users with slash"));
+		router.use(trailingSlash("strip"));
 
 		const request = new Request("http://example.com/users/");
 		const response = await router.handle(request);
@@ -383,10 +383,23 @@ describe("trailingSlash middleware", () => {
 		expect(await response.text()).toBe("Users with slash");
 	});
 
-	test("add mode does not redirect when route matches without trailing slash", async () => {
+	test("strip mode redirects a route declared after it", async () => {
 		const router = new Router();
-		router.use(trailingSlash("add"));
+		router.use(trailingSlash("strip"));
+		router.route("/users/").get(async () => new Response("Users with slash"));
+
+		const response = await router.handle(
+			new Request("http://example.com/users/"),
+		);
+
+		expect(response.status).toBe(301);
+		expect(response.headers.get("Location")).toBe("http://example.com/users");
+	});
+
+	test("add mode does not redirect a route declared before it", async () => {
+		const router = new Router();
 		router.route("/users").get(async () => new Response("Users no slash"));
+		router.use(trailingSlash("add"));
 
 		const request = new Request("http://example.com/users");
 		const response = await router.handle(request);

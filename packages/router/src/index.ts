@@ -113,6 +113,48 @@ export interface RouteMatch {
 }
 
 /**
+ * A route in the serialized form: one pattern/method pair with an optional
+ * name. Handlers are never serialized — the client matches, the server handles.
+ */
+export interface SerializedRoute {
+	pattern: string;
+	method: string;
+	name?: string;
+}
+
+/**
+ * One entry in the serialized router, tagged by which key is present. Entries
+ * are stored in declaration order, so the exact route/redirect interleaving
+ * (which decides precedence) survives a round-trip.
+ */
+export type SerializedEntry =
+	| {route: SerializedRoute}
+	| {redirect: RedirectEntry};
+
+/**
+ * A redirect as serializable data. Two matcher flavors, both of which
+ * serialize to plain strings and recompile identically on each side:
+ * - MatchPattern syntax: `{pattern}` with `:name` groups, `:name` in `target`.
+ * - Raw regexp: `{source, flags}`, with `$1`…`$n` in `target`.
+ */
+export interface RedirectEntry {
+	match: {pattern: string} | {source: string; flags: string};
+	target: string;
+	status: number;
+}
+
+/**
+ * The serializable form of a Router's match table, produced by `toJSON()` and
+ * consumed by `Router.fromJSON()`. One value drives the client router,
+ * static-route enumeration, and app self-documentation. `version` gates
+ * forward-compatible additions.
+ */
+export interface SerializedRouter {
+	version: 1;
+	entries: SerializedEntry[];
+}
+
+/**
  * Route entry stored by the router
  */
 export interface RouteEntry {
@@ -592,6 +634,51 @@ export class RouteBuilder {
 	}
 }
 
+type RedirectMatcher =
+	| {kind: "pattern"; mp: MatchPattern}
+	| {kind: "regexp"; re: RegExp};
+
+interface RedirectRecord {
+	entry: RedirectEntry;
+	matcher: RedirectMatcher;
+	order: number;
+	middleware?: MiddlewareEntry;
+}
+
+function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
+	const matcher: RedirectMatcher =
+		"pattern" in entry.match
+			? {kind: "pattern", mp: new MatchPattern(entry.match.pattern)}
+			: {kind: "regexp", re: new RegExp(entry.match.source, entry.match.flags)};
+	return {entry, matcher, order};
+}
+
+/**
+ * Limit a middleware's serialized redirect to the path prefix it was
+ * registered under, matching on segment boundaries like the middleware does.
+ */
+function scopeEntry(
+	entry: SerializedEntry,
+	pathPrefix: string,
+): SerializedEntry {
+	if (!("redirect" in entry) || !("source" in entry.redirect.match)) {
+		throw new Error(
+			"Only regular expression redirects can be scoped to a path prefix.",
+		);
+	}
+	const {source, flags} = entry.redirect.match;
+	if (!source.startsWith("^")) {
+		throw new Error("A scoped redirect's pattern must be anchored with ^.");
+	}
+	const prefix = pathPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return {
+		redirect: {
+			...entry.redirect,
+			match: {source: `^(?=${prefix}(?:/|$))${source.slice(1)}`, flags},
+		},
+	};
+}
+
 /**
  * Router provides Request/Response routing with middleware support
  * Designed to work universally across all JavaScript runtimes
@@ -599,12 +686,120 @@ export class RouteBuilder {
 export class Router {
 	readonly routes: RouteEntry[];
 	readonly middlewares: MiddlewareEntry[];
+	/** Declared redirects, first-match-wins in array order. Serializable data. */
+	readonly redirects: RedirectEntry[];
 	#executor: RadixTreeExecutor | null;
+	/** Every redirect in declaration order: those from redirect() and those
+	 * from self-describing middleware such as trailingSlash(). */
+	#redirectTable: RedirectRecord[];
+	/** Middleware entries handled as redirects instead of being run. */
+	#redirectMiddlewares: WeakSet<MiddlewareEntry>;
+	/** Declaration order of each route, on the same counter as redirects. */
+	#routeOrder: WeakMap<RouteEntry, number>;
+	/** Monotonic declaration counter shared by routes and redirects. */
+	#seq: number;
 
 	constructor() {
 		this.routes = [];
 		this.middlewares = [];
+		this.redirects = [];
 		this.#executor = null;
+		this.#redirectTable = [];
+		this.#redirectMiddlewares = new WeakSet();
+		this.#routeOrder = new WeakMap();
+		this.#seq = 0;
+	}
+
+	/**
+	 * Declare a redirect. `from` is either a MatchPattern string (`/old/:id`,
+	 * with `:id` reusable in `to`) or a `RegExp` (with `$1`…`$n` in `to`).
+	 *
+	 * Precedence is declaration order: a redirect declared before a route it
+	 * overlaps shadows that route; declared after, it applies only when no
+	 * route matched. Among redirects, the first match wins.
+	 */
+	redirect(
+		from: string | RegExp,
+		to: string,
+		options: {status?: number} = {},
+	): void {
+		this.#addRedirect({
+			match:
+				typeof from === "string"
+					? {pattern: from}
+					: {source: from.source, flags: from.flags},
+			target: to,
+			status: options.status ?? 301,
+		});
+	}
+
+	/** @internal Register a redirect entry and compile its matcher. */
+	#addRedirect(entry: RedirectEntry): void {
+		this.redirects.push(entry);
+		this.#redirectTable.push(compileRedirect(entry, this.#seq++));
+	}
+
+	/** @internal Register self-describing middleware as a redirect. */
+	#addMiddlewareRedirect(middlewareEntry: MiddlewareEntry): void {
+		const serialize = (
+			middlewareEntry.middleware as {toJSON?: () => SerializedEntry}
+		).toJSON;
+		if (typeof serialize !== "function") return;
+		let serialized = serialize.call(middlewareEntry.middleware);
+		if (middlewareEntry.pathPrefix) {
+			serialized = scopeEntry(serialized, middlewareEntry.pathPrefix);
+		}
+		if (!("redirect" in serialized)) {
+			throw new Error("Middleware can only serialize as a redirect.");
+		}
+		this.#redirectMiddlewares.add(middlewareEntry);
+		this.#redirectTable.push({
+			...compileRedirect(serialized.redirect, this.#seq++),
+			middleware: middlewareEntry,
+		});
+	}
+
+	/**
+	 * @internal First redirect (lowest declaration order) whose matcher matches
+	 * `url`, with its order attached so callers can compare against a route.
+	 */
+	#matchRedirect(
+		u: URL,
+	): {location: string; status: number; order: number} | null {
+		const pathname = u.pathname;
+		for (const {entry, matcher, order} of this.#redirectTable) {
+			let target: string | null = null;
+			if (matcher.kind === "pattern") {
+				const result = matcher.mp.exec(u);
+				if (result) {
+					target = entry.target.replace(
+						/:(\w+)/g,
+						(_m, name: string) => result.pathname.groups[name] ?? "",
+					);
+				}
+			} else {
+				const m = pathname.match(matcher.re);
+				if (m) {
+					target = entry.target.replace(
+						/\$(\d+)/g,
+						(_m, n: string) => m[Number(n)] ?? "",
+					);
+				}
+			}
+			if (target !== null) {
+				// Resolve against the request URL so a path target becomes
+				// absolute. The request's query carries over unless the target
+				// sets its own.
+				const location = new URL(target, u);
+				if (!target.includes("?")) location.search = u.search;
+				return {
+					location: location.toString(),
+					status: entry.status,
+					order,
+				};
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -640,10 +835,9 @@ export class Router {
 					"Invalid middleware type. Must be function or async generator function.",
 				);
 			}
-			this.middlewares.push({
-				middleware,
-				pathPrefix: pathPrefixOrMiddleware,
-			});
+			const entry = {middleware, pathPrefix: pathPrefixOrMiddleware};
+			this.middlewares.push(entry);
+			this.#addMiddlewareRedirect(entry);
 		} else {
 			// Global middleware
 			if (!this.#isValidMiddleware(pathPrefixOrMiddleware)) {
@@ -651,7 +845,9 @@ export class Router {
 					"Invalid middleware type. Must be function or async generator function.",
 				);
 			}
-			this.middlewares.push({middleware: pathPrefixOrMiddleware});
+			const entry = {middleware: pathPrefixOrMiddleware};
+			this.middlewares.push(entry);
+			this.#addMiddlewareRedirect(entry);
 		}
 		this.#executor = null;
 	}
@@ -683,13 +879,15 @@ export class Router {
 	): void {
 		const matchPattern = new MatchPattern(pattern);
 
-		this.routes.push({
+		const entry: RouteEntry = {
 			pattern: matchPattern,
 			method: method.toUpperCase(),
 			handler,
 			name,
 			middlewares: middlewares,
-		});
+		};
+		this.routes.push(entry);
+		this.#routeOrder.set(entry, this.#seq++);
 		this.#executor = null;
 	}
 
@@ -710,9 +908,23 @@ export class Router {
 	async handle(request: Request): Promise<Response> {
 		const executor = this.#ensureCompiled();
 
+		let response: Response;
 		try {
 			// Find matching route
 			const matchResult = executor.matchRequest(request);
+
+			// A redirect applies iff it out-ranks the matched route by
+			// declaration order (or nothing matched).
+			const redirect = this.#matchRedirect(new URL(request.url));
+			const routeOrder = matchResult
+				? this.#routeOrder.get(matchResult.entry)!
+				: Number.POSITIVE_INFINITY;
+			if (redirect !== null && redirect.order < routeOrder) {
+				return new Response(null, {
+					status: redirect.status,
+					headers: {Location: redirect.location},
+				});
+			}
 
 			let handler: Handler;
 			let context: RouteContext;
@@ -735,7 +947,7 @@ export class Router {
 			}
 
 			// Execute middleware chain with the handler
-			let response = await this.#executeMiddlewareStack(
+			response = await this.#executeMiddlewareStack(
 				this.middlewares,
 				routeMiddleware,
 				request,
@@ -751,12 +963,12 @@ export class Router {
 					headers: response.headers,
 				});
 			}
-
-			return response;
 		} catch (error) {
 			// Final catch-all for unhandled errors
-			return this.#createErrorResponse(error as Error);
+			response = this.#createErrorResponse(error as Error);
 		}
+
+		return response;
 	}
 
 	/**
@@ -776,47 +988,50 @@ export class Router {
 		// Normalize mount path - ensure it starts with / and doesn't end with /
 		const normalizedMountPath = this.#normalizeMountPath(mountPath);
 
-		// Get all routes from the subrouter
-		const subroutes = subrouter.routes;
-
-		// Add each subroute with the mount path prefix
-		for (const subroute of subroutes) {
-			// Combine mount path with subroute pattern
-			const mountedPattern = this.#combinePaths(
-				normalizedMountPath,
-				subroute.pattern.pathname,
-			);
-
-			// Add the route to this router
-			this.routes.push({
-				pattern: new MatchPattern(mountedPattern),
-				method: subroute.method,
-				handler: subroute.handler,
-				name: subroute.name,
-				middlewares: subroute.middlewares,
-			});
+		const mounted = new Map<MiddlewareEntry, MiddlewareEntry>();
+		for (const submiddleware of subrouter.middlewares) {
+			// If subrouter middleware has pathPrefix "/inner", and we mount at
+			// "/outer", the composed prefix becomes "/outer/inner"
+			const entry: MiddlewareEntry = {
+				middleware: submiddleware.middleware,
+				pathPrefix: submiddleware.pathPrefix
+					? this.#combinePaths(normalizedMountPath, submiddleware.pathPrefix)
+					: normalizedMountPath,
+			};
+			this.middlewares.push(entry);
+			mounted.set(submiddleware, entry);
 		}
 
-		// Get all middleware from the subrouter and add with mount path prefix
-		const submiddlewares = subrouter.middlewares;
-		for (const submiddleware of submiddlewares) {
-			// Compose the mount path with any existing pathPrefix
-			// If subrouter middleware has pathPrefix "/inner", and we mount at "/outer",
-			// the composed prefix becomes "/outer/inner"
-			let composedPrefix: string;
-			if (submiddleware.pathPrefix) {
-				composedPrefix = this.#combinePaths(
-					normalizedMountPath,
-					submiddleware.pathPrefix,
-				);
-			} else {
-				// Subrouter global middleware becomes scoped to mount path
-				composedPrefix = normalizedMountPath;
+		const items: Array<
+			| {order: number; route: RouteEntry}
+			| {order: number; middleware: MiddlewareEntry}
+		> = [];
+		for (const route of subrouter.routes) {
+			items.push({order: subrouter.#routeOrder.get(route)!, route});
+		}
+		for (const record of subrouter.#redirectTable) {
+			if (record.middleware) {
+				items.push({order: record.order, middleware: record.middleware});
 			}
-			this.middlewares.push({
-				middleware: submiddleware.middleware,
-				pathPrefix: composedPrefix,
-			});
+		}
+		items.sort((a, b) => a.order - b.order);
+		for (const item of items) {
+			if ("route" in item) {
+				const subroute = item.route;
+				const entry: RouteEntry = {
+					pattern: new MatchPattern(
+						this.#combinePaths(normalizedMountPath, subroute.pattern.pathname),
+					),
+					method: subroute.method,
+					handler: subroute.handler,
+					name: subroute.name,
+					middlewares: subroute.middlewares,
+				};
+				this.routes.push(entry);
+				this.#routeOrder.set(entry, this.#seq++);
+			} else {
+				this.#addMiddlewareRedirect(mounted.get(item.middleware)!);
+			}
 		}
 
 		this.#executor = null;
@@ -949,6 +1164,9 @@ export class Router {
 
 		// Phase 1a: Execute global/path-scoped middleware "before" phases
 		for (const entry of globalMiddlewares) {
+			if (this.#redirectMiddlewares.has(entry)) {
+				continue;
+			}
 			// Skip middleware if it has a pathPrefix that doesn't match
 			if (
 				entry.pathPrefix &&
@@ -1045,6 +1263,71 @@ export class Router {
 
 		// No generator handled the error
 		throw error;
+	}
+
+	/**
+	 * Serialize the router to a plain, JSON-safe value. Named `toJSON` so
+	 * `JSON.stringify(router)` works for free. Routes and redirects are emitted
+	 * as one list in declaration order, so precedence survives the round-trip.
+	 * Handlers and middleware are server-only and left out, except middleware
+	 * with its own `toJSON()`, such as `trailingSlash()`, which is a redirect
+	 * at the point it was registered.
+	 */
+	toJSON(): SerializedRouter {
+		const items: Array<{order: number; entry: SerializedEntry}> = [];
+		for (const route of this.routes) {
+			items.push({
+				order: this.#routeOrder.get(route)!,
+				entry: {
+					route: {
+						pattern: route.pattern.pathname,
+						method: route.method,
+						...(route.name !== undefined ? {name: route.name} : {}),
+					},
+				},
+			});
+		}
+		for (const {entry, order} of this.#redirectTable) {
+			items.push({order, entry: {redirect: entry}});
+		}
+		items.sort((a, b) => a.order - b.order);
+		return {version: 1, entries: items.map((it) => it.entry)};
+	}
+
+	/**
+	 * Reconstruct a **match-only** router from `toJSON()` output (an object or a
+	 * JSON string). `match()` behaves identically to the source router;
+	 * `handle()` 404s by design, because no handlers were serialized. This is
+	 * the client-side half of "client matches, server handles".
+	 */
+	static fromJSON(data: SerializedRouter | string): Router {
+		const parsed: SerializedRouter =
+			typeof data === "string" ? JSON.parse(data) : data;
+		if (parsed === null || typeof parsed !== "object") {
+			throw new Error("Cannot deserialize router: expected an object.");
+		}
+		if (parsed.version !== 1) {
+			throw new Error(
+				`Unsupported serialized router version: ${String(parsed.version)}`,
+			);
+		}
+		const router = new Router();
+		// Replay entries in declaration order so routes and redirects get the
+		// same relative order they had on the server — precedence matches.
+		for (const entry of parsed.entries) {
+			if ("route" in entry) {
+				// No handler → match-only. handle() falls through to 404.
+				router.addRoute(
+					entry.route.method as HTTPMethod,
+					entry.route.pattern,
+					undefined,
+					entry.route.name,
+				);
+			} else {
+				router.#addRedirect(entry.redirect);
+			}
+		}
+		return router;
 	}
 
 	/**

@@ -52,7 +52,9 @@ export class CloseEvent extends Event {
  * Using a data URL avoids needing to write any files to disk (temp or otherwise)
  */
 // Compact wrapper code to keep data URL length under limits
-const WORKER_WRAPPER_CODE = `import{parentPort as p}from"worker_threads";const l=new Set();globalThis.onmessage=null;globalThis.onmessageerror=null;globalThis.postMessage=(d,t)=>t?.length?p.postMessage(d,t):p.postMessage(d);globalThis.self=globalThis;globalThis.addEventListener=(t,f)=>t==="message"&&l.add(f);globalThis.removeEventListener=(t,f)=>t==="message"&&l.delete(f);p.on("message",d=>{const e={data:d,type:"message"};globalThis.onmessage?.(e);l.forEach(f=>f(e))});const u=process.env.WORKER_SCRIPT_URL;if(u)await import(u);else throw Error("WORKER_SCRIPT_URL not set");`;
+// Messages that arrive before the worker script registers a message listener
+// are queued, then delivered in a microtask after the first registration.
+const WORKER_WRAPPER_CODE = `import{parentPort as p}from"worker_threads";const l=new Set();let q=[],m=null;const h=e=>{m?.(e);l.forEach(f=>f(e))};const r=()=>{if(q){const b=q;q=null;queueMicrotask(()=>b.forEach(h))}};Object.defineProperty(globalThis,"onmessage",{get:()=>m,set:f=>{m=f;if(f)r()},configurable:true});globalThis.onmessageerror=null;globalThis.postMessage=(d,t)=>t?.length?p.postMessage(d,t):p.postMessage(d);globalThis.self=globalThis;globalThis.addEventListener=(t,f)=>{if(t==="message"){l.add(f);r()}};globalThis.removeEventListener=(t,f)=>t==="message"&&l.delete(f);p.on("message",d=>{const e={data:d,type:"message"};q?q.push(e):h(e)});const u=process.env.WORKER_SCRIPT_URL;if(u)await import(u);else throw Error("WORKER_SCRIPT_URL not set");r();`;
 
 // Create data URL from wrapper code (created once and reused)
 const WORKER_WRAPPER_DATA_URL = new URL(
