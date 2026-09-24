@@ -135,10 +135,12 @@ export type SerializedEntry =
  * A redirect as serializable data. Two matcher flavors, both of which
  * serialize to plain strings and recompile identically on each side:
  * - MatchPattern syntax: `{pattern}` with `:name` groups, `:name` in `target`.
- * - Raw regexp: `{source, flags}`, with `$1`…`$n` in `target`.
+ * - Raw regexp: `{source, flags}`, with `$1`…`$n` in `target`. With `base`
+ *   (set when a subrouter is mounted), the regexp only sees paths under
+ *   `base`, with `base` removed; the bare `base` path reads as `/`.
  */
 export interface RedirectEntry {
-	match: {pattern: string} | {source: string; flags: string};
+	match: {pattern: string} | {source: string; flags: string; base?: string};
 	target: string;
 	status: number;
 }
@@ -636,7 +638,7 @@ export class RouteBuilder {
 
 type RedirectMatcher =
 	| {kind: "pattern"; mp: MatchPattern}
-	| {kind: "regexp"; re: RegExp};
+	| {kind: "regexp"; re: RegExp; base?: string};
 
 interface RedirectRecord {
 	entry: RedirectEntry;
@@ -649,7 +651,11 @@ function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
 	const matcher: RedirectMatcher =
 		"pattern" in entry.match
 			? {kind: "pattern", mp: new MatchPattern(entry.match.pattern)}
-			: {kind: "regexp", re: new RegExp(entry.match.source, entry.match.flags)};
+			: {
+					kind: "regexp",
+					re: new RegExp(entry.match.source, entry.match.flags),
+					base: entry.match.base,
+				};
 	return {entry, matcher, order};
 }
 
@@ -684,7 +690,8 @@ function scopeEntry(
 /**
  * Rewrite a subrouter's redirect for its mount path. Like its routes, the
  * redirect's pattern and target are relative to the subrouter, so both move
- * under the mount path. A target that is an absolute URL stays as it is.
+ * under the mount path. A regexp keeps its source and gains a `base`. A
+ * target that is an absolute URL stays as it is.
  */
 function mountRedirect(entry: RedirectEntry, mountPath: string): RedirectEntry {
 	if (mountPath === "/") {
@@ -705,18 +712,9 @@ function mountRedirect(entry: RedirectEntry, mountPath: string): RedirectEntry {
 			entry.match.pattern === "/" ? mountPath : mountPath + entry.match.pattern;
 		return {...entry, match: {pattern}, target};
 	}
-	const {source, flags} = entry.match;
-	if (!source.startsWith("^")) {
-		throw new Error(
-			`Cannot mount the redirect from /${source}/: its pattern must be anchored with ^.`,
-		);
-	}
 	return {
 		...entry,
-		match: {
-			source: `^${escapeRegExp(mountPath)}(?=/|$)${source.slice(1)}`,
-			flags,
-		},
+		match: {...entry.match, base: mountPath + (entry.match.base ?? "")},
 		target,
 	};
 }
@@ -824,7 +822,14 @@ export class Router {
 					);
 				}
 			} else {
-				const m = pathname.match(matcher.re);
+				const {base} = matcher;
+				const path =
+					base === undefined
+						? pathname
+						: pathname === base || pathname.startsWith(base + "/")
+							? pathname.slice(base.length) || "/"
+							: null;
+				const m = path === null ? null : path.match(matcher.re);
 				if (m) {
 					target = entry.target.replace(
 						/\$(\d+)/g,
