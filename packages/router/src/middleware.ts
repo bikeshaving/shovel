@@ -3,7 +3,6 @@
  */
 
 import {getLogger} from "@logtape/logtape";
-import {isHTTPError} from "@b9g/http-errors";
 
 import type {GeneratorMiddleware, SerializedEntry} from "./index.js";
 
@@ -20,7 +19,8 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  * Middleware that normalizes trailing slashes via 301 redirect
  *
  * @param mode - "strip" removes trailing slash, "add" adds trailing slash
- * @returns Generator middleware that redirects non-canonical URLs as a last resort
+ * @returns Generator middleware that redirects non-canonical URLs. Like a
+ * redirect, it takes precedence over routes declared after it, not before.
  *
  * @example
  * ```typescript
@@ -37,63 +37,24 @@ export type TrailingSlashMode = "strip" | "add" | "append";
 export function trailingSlash(
 	mode: TrailingSlashMode,
 ): GeneratorMiddleware & {toJSON(): SerializedEntry} {
+	const [source, target] =
+		mode === "strip" ? ["^(.+)/$", "$1"] : ["^(.*[^/])$", "$1/"];
+	const pattern = new RegExp(source);
 	const middleware = async function* (
 		request: Request,
 	): AsyncGenerator<Request, Response | undefined, Response> {
 		const url = new URL(request.url);
-		const pathname = url.pathname;
-
-		// Skip root path - "/" is valid either way
-		if (pathname === "/") {
-			const response: Response = yield request;
-			return response;
+		if (!pattern.test(url.pathname)) {
+			return yield request;
 		}
-
-		let newPathname: string | null = null;
-		if (mode === "strip" && pathname.endsWith("/")) {
-			newPathname = pathname.slice(0, -1);
-		} else if (
-			(mode === "add" || mode === "append") &&
-			!pathname.endsWith("/")
-		) {
-			newPathname = pathname + "/";
-		}
-
-		// No redirect needed - pass through
-		if (!newPathname) {
-			const response: Response = yield request;
-			return response;
-		}
-
-		// Redirect might be needed - try matching a route first
-		let response: Response;
-		try {
-			response = yield request;
-		} catch (error) {
-			if (isHTTPError(error) && error.status === 404) {
-				url.pathname = newPathname;
-				return new Response(null, {
-					status: 301,
-					headers: {Location: url.toString()},
-				});
-			}
-			throw error;
-		}
-
-		if (response.status === 404) {
-			url.pathname = newPathname;
-			return new Response(null, {
-				status: 301,
-				headers: {Location: url.toString()},
-			});
-		}
-
-		return response;
+		url.pathname = url.pathname.replace(pattern, target);
+		return new Response(null, {
+			status: 301,
+			headers: {Location: url.toString()},
+		});
 	};
 	return Object.assign(middleware, {
 		toJSON(): SerializedEntry {
-			const [source, target] =
-				mode === "strip" ? ["^(.+)/$", "$1"] : ["^(.*[^/])$", "$1/"];
 			return {redirect: {match: {source, flags: ""}, target, status: 301}};
 		},
 	});
