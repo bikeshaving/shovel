@@ -137,8 +137,7 @@ export type SerializedEntry =
  * - MatchPattern syntax: `{pattern}` with `:name` groups, `:name` in `target`.
  * - Raw regexp: `{source, flags}`, with `$1`…`$n` in `target`. With `base`
  *   (set when a subrouter is mounted), the regexp only sees paths under
- *   `base`, as the subrouter sees them, and a path `target` is relative to
- *   `base` the same way.
+ *   `base`, with `base` removed; the bare `base` path reads as `/`.
  */
 export interface RedirectEntry {
 	match: {pattern: string} | {source: string; flags: string; base?: string};
@@ -691,20 +690,19 @@ function scopeEntry(
 /**
  * Rewrite a subrouter's redirect for its mount path. Like its routes, the
  * redirect's pattern and target are relative to the subrouter, so both move
- * under the mount path. A regexp keeps its source and target and gains a
- * `base` that both are read against. A target that is an absolute URL stays
- * as it is.
+ * under the mount path. A regexp keeps its source and gains a `base`. A
+ * target that is an absolute URL stays as it is.
  */
 function mountRedirect(entry: RedirectEntry, mountPath: string): RedirectEntry {
 	if (mountPath === "/") {
 		return entry;
 	}
+	const target = /^([a-z][a-z\d+.-]*:|\/\/)/i.test(entry.target)
+		? entry.target
+		: entry.target === "/"
+			? mountPath
+			: mountPath + entry.target;
 	if ("pattern" in entry.match) {
-		const target = /^([a-z][a-z\d+.-]*:|\/\/)/i.test(entry.target)
-			? entry.target
-			: entry.target === "/"
-				? mountPath
-				: mountPath + entry.target;
 		if (!entry.match.pattern.startsWith("/")) {
 			throw new Error(
 				`Cannot mount the redirect from "${entry.match.pattern}": only path patterns can be mounted.`,
@@ -717,25 +715,8 @@ function mountRedirect(entry: RedirectEntry, mountPath: string): RedirectEntry {
 	return {
 		...entry,
 		match: {...entry.match, base: mountPath + (entry.match.base ?? "")},
+		target,
 	};
-}
-
-/**
- * The path a mounted subrouter sees for `pathname`, or null if `pathname`
- * is not under `base`. Mounting absorbs the root's slash into `base`, so
- * `base` itself reads as "/", and `base` with a trailing slash reads as "//".
- */
-function pathFromBase(pathname: string, base: string): string | null {
-	if (pathname !== base && !pathname.startsWith(base + "/")) {
-		return null;
-	}
-	const rest = pathname.slice(base.length);
-	return /^\/*$/.test(rest) ? "/" + rest : rest;
-}
-
-/** The inverse of pathFromBase. */
-function pathToBase(path: string, base: string): string {
-	return /^\/+$/.test(path) ? base + path.slice(1) : base + path;
 }
 
 function escapeRegExp(text: string): string {
@@ -843,20 +824,17 @@ export class Router {
 			} else {
 				const {base} = matcher;
 				const path =
-					base === undefined ? pathname : pathFromBase(pathname, base);
+					base === undefined
+						? pathname
+						: pathname === base || pathname.startsWith(base + "/")
+							? pathname.slice(base.length) || "/"
+							: null;
 				const m = path === null ? null : path.match(matcher.re);
 				if (m) {
 					target = entry.target.replace(
 						/\$(\d+)/g,
 						(_m, n: string) => m[Number(n)] ?? "",
 					);
-					if (
-						base !== undefined &&
-						target.startsWith("/") &&
-						!/^\/\/[^/]/.test(target)
-					) {
-						target = pathToBase(target, base);
-					}
 				}
 			}
 			if (target !== null) {
