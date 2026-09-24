@@ -250,7 +250,7 @@ describe("Redirects in mounted subrouters", () => {
 			{
 				redirect: {
 					match: {source: "^\\/docs\\/(.+)$", flags: "", base: "/api/v1"},
-					target: "/api/v1/guides/$1",
+					target: "/guides/$1",
 					status: 301,
 				},
 			},
@@ -262,5 +262,83 @@ describe("Redirects in mounted subrouters", () => {
 				status: 301,
 			});
 		}
+	});
+});
+
+describe("Redirect edge cases", () => {
+	test("a port in an absolute target is kept", async () => {
+		const router = new Router();
+		router.redirect("/old/:id", "http://localhost:8080/new/:id");
+		expect(await redirectOf(router, "http://x.com/old/7")).toEqual({
+			location: "http://localhost:8080/new/7",
+			status: 301,
+		});
+	});
+
+	test("relative targets resolve the same mounted or not", async () => {
+		const build = (): Router => {
+			const r = new Router();
+			r.redirect("/a", "b");
+			r.redirect(/^\/c\/(.*)$/, "$1");
+			return r;
+		};
+		const router = new Router();
+		router.mount("/api", build());
+
+		expect(await redirectOf(build(), "http://x.com/a")).toEqual({
+			location: "http://x.com/b",
+			status: 301,
+		});
+		expect(await redirectOf(router, "http://x.com/api/a")).toEqual({
+			location: "http://x.com/api/b",
+			status: 301,
+		});
+		expect(await redirectOf(router, "http://x.com/api/c/foo")).toEqual({
+			location: "http://x.com/api/c/foo",
+			status: 301,
+		});
+	});
+
+	test("the global and sticky flags do not change matching", async () => {
+		const router = new Router();
+		router.redirect(/\/old\/(.*)/g, "/new/$1");
+		router.redirect(/^\/once$/y, "/twice");
+		expect(await redirectOf(router, "http://x.com/old/abc")).toEqual({
+			location: "http://x.com/new/abc",
+			status: 301,
+		});
+		for (let i = 0; i < 3; i++) {
+			expect(await redirectOf(router, "http://x.com/once")).toEqual({
+				location: "http://x.com/twice",
+				status: 301,
+			});
+		}
+	});
+
+	test("redirects lists middleware redirects on server and client alike", async () => {
+		const {trailingSlash} = await import("../src/middleware.js");
+		const router = new Router();
+		router.redirect("/old", "/new");
+		router.use(trailingSlash("strip"));
+		const client = Router.fromJSON(router.toJSON());
+		expect(router.redirects).toEqual(client.redirects);
+		expect(router.redirects.length).toBe(2);
+	});
+
+	test("mounting at the root keeps routes and middleware working", async () => {
+		const sub = new Router();
+		let ran = false;
+		sub.use(async () => {
+			ran = true;
+			return null;
+		});
+		sub.route("/users").get(async () => new Response("users"));
+		const router = new Router();
+		router.mount("/", sub);
+
+		const res = await router.handle(req("http://x.com/users"));
+		expect(res.status).toBe(200);
+		expect(ran).toBe(true);
+		expect(router.routes.map((r) => r.pattern.pathname)).toEqual(["/users"]);
 	});
 });
