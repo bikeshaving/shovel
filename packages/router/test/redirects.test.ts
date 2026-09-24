@@ -102,3 +102,116 @@ describe("Redirects as data", () => {
 		]);
 	});
 });
+
+describe("Redirects in mounted subrouters", () => {
+	test("a pattern redirect moves under the mount path", async () => {
+		const sub = new Router();
+		sub.redirect("/old/:id", "/new/:id");
+		const router = new Router();
+		router.mount("/api", sub);
+
+		expect(await redirectOf(router, "http://x.com/api/old/42")).toEqual({
+			location: "http://x.com/api/new/42",
+			status: 301,
+		});
+		expect(await redirectOf(router, "http://x.com/old/42")).toBe(null);
+	});
+
+	test("a regex redirect keeps its capture groups under the mount path", async () => {
+		const sub = new Router();
+		sub.redirect(/^\/docs\/(.+)$/, "/guides/$1", {status: 308});
+		const router = new Router();
+		router.mount("/api", sub);
+
+		expect(await redirectOf(router, "http://x.com/api/docs/a/b")).toEqual({
+			location: "http://x.com/api/guides/a/b",
+			status: 308,
+		});
+		expect(await redirectOf(router, "http://x.com/apidocs/a")).toBe(null);
+		expect(await redirectOf(router, "http://x.com/docs/a")).toBe(null);
+	});
+
+	test("a target made only of a capture stays under the mount path", async () => {
+		const sub = new Router();
+		sub.redirect(/^(.+)\/$/, "$1");
+		const router = new Router();
+		router.mount("/api", sub);
+
+		expect(await redirectOf(router, "http://x.com/api/users/")).toEqual({
+			location: "http://x.com/api/users",
+			status: 301,
+		});
+	});
+
+	test("an absolute URL target is left alone", async () => {
+		const sub = new Router();
+		sub.redirect("/away", "https://example.com/elsewhere");
+		const router = new Router();
+		router.mount("/api", sub);
+
+		expect(await redirectOf(router, "http://x.com/api/away")).toEqual({
+			location: "https://example.com/elsewhere",
+			status: 301,
+		});
+	});
+
+	test("routes and redirects keep the subrouter's order", async () => {
+		const sub = new Router();
+		sub.route("/a").get(async () => new Response("a"));
+		sub.redirect("/a", "/b");
+		sub.redirect("/c", "/d");
+		sub.route("/c").get(async () => new Response("c"));
+		const router = new Router();
+		router.mount("/api", sub);
+
+		const a = await router.handle(req("http://x.com/api/a"));
+		expect(a.status).toBe(200);
+		expect(await redirectOf(router, "http://x.com/api/c")).toEqual({
+			location: "http://x.com/api/d",
+			status: 301,
+		});
+	});
+
+	test("mounted redirects serialize and replay on the client", async () => {
+		const sub = new Router();
+		sub.redirect("/old/:id", "/new/:id");
+		sub.route("/new/:id").get(async () => new Response("new"));
+		const router = new Router();
+		router.mount("/api", sub);
+
+		expect(router.toJSON().entries).toEqual([
+			{
+				redirect: {
+					match: {pattern: "/api/old/:id"},
+					target: "/api/new/:id",
+					status: 301,
+				},
+			},
+			{route: {pattern: "/api/new/:id", method: "GET"}},
+		]);
+		const client = Router.fromJSON(JSON.stringify(router));
+		expect(await redirectOf(client, "http://x.com/api/old/7")).toEqual({
+			location: "http://x.com/api/new/7",
+			status: 301,
+		});
+	});
+
+	test("mounting at the root leaves redirects unchanged", async () => {
+		const sub = new Router();
+		sub.redirect("/old", "/new");
+		const router = new Router();
+		router.mount("/", sub);
+
+		expect(await redirectOf(router, "http://x.com/old")).toEqual({
+			location: "http://x.com/new",
+			status: 301,
+		});
+	});
+
+	test("an unanchored regex redirect cannot be mounted", () => {
+		const sub = new Router();
+		sub.redirect(/old/, "/new");
+		const router = new Router();
+		expect(() => router.mount("/api", sub)).toThrow(/anchored/);
+	});
+});

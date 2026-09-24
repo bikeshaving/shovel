@@ -670,13 +670,59 @@ function scopeEntry(
 	if (!source.startsWith("^")) {
 		throw new Error("A scoped redirect's pattern must be anchored with ^.");
 	}
-	const prefix = pathPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 	return {
 		redirect: {
 			...entry.redirect,
-			match: {source: `^(?=${prefix}(?:/|$))${source.slice(1)}`, flags},
+			match: {
+				source: `^(?=${escapeRegExp(pathPrefix)}(?:/|$))${source.slice(1)}`,
+				flags,
+			},
 		},
 	};
+}
+
+/**
+ * Rewrite a subrouter's redirect for its mount path. Like its routes, the
+ * redirect's pattern and target are relative to the subrouter, so both move
+ * under the mount path. A target that is an absolute URL stays as it is.
+ */
+function mountRedirect(entry: RedirectEntry, mountPath: string): RedirectEntry {
+	if (mountPath === "/") {
+		return entry;
+	}
+	const target = /^([a-z][a-z\d+.-]*:|\/\/)/i.test(entry.target)
+		? entry.target
+		: entry.target === "/"
+			? mountPath
+			: mountPath + entry.target;
+	if ("pattern" in entry.match) {
+		if (!entry.match.pattern.startsWith("/")) {
+			throw new Error(
+				`Cannot mount the redirect from "${entry.match.pattern}": only path patterns can be mounted.`,
+			);
+		}
+		const pattern =
+			entry.match.pattern === "/" ? mountPath : mountPath + entry.match.pattern;
+		return {...entry, match: {pattern}, target};
+	}
+	const {source, flags} = entry.match;
+	if (!source.startsWith("^")) {
+		throw new Error(
+			`Cannot mount the redirect from /${source}/: its pattern must be anchored with ^.`,
+		);
+	}
+	return {
+		...entry,
+		match: {
+			source: `^${escapeRegExp(mountPath)}(?=/|$)${source.slice(1)}`,
+			flags,
+		},
+		target,
+	};
+}
+
+function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -1005,14 +1051,17 @@ export class Router {
 		const items: Array<
 			| {order: number; route: RouteEntry}
 			| {order: number; middleware: MiddlewareEntry}
+			| {order: number; redirect: RedirectEntry}
 		> = [];
 		for (const route of subrouter.routes) {
 			items.push({order: subrouter.#routeOrder.get(route)!, route});
 		}
 		for (const record of subrouter.#redirectTable) {
-			if (record.middleware) {
-				items.push({order: record.order, middleware: record.middleware});
-			}
+			items.push(
+				record.middleware
+					? {order: record.order, middleware: record.middleware}
+					: {order: record.order, redirect: record.entry},
+			);
 		}
 		items.sort((a, b) => a.order - b.order);
 		for (const item of items) {
@@ -1029,8 +1078,10 @@ export class Router {
 				};
 				this.routes.push(entry);
 				this.#routeOrder.set(entry, this.#seq++);
-			} else {
+			} else if ("middleware" in item) {
 				this.#addMiddlewareRedirect(mounted.get(item.middleware)!);
+			} else {
+				this.#addRedirect(mountRedirect(item.redirect, normalizedMountPath));
 			}
 		}
 
