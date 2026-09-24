@@ -208,10 +208,59 @@ describe("Redirects in mounted subrouters", () => {
 		});
 	});
 
-	test("an unanchored regex redirect cannot be mounted", () => {
+	test("an unanchored regex redirect is mounted too", async () => {
 		const sub = new Router();
 		sub.redirect(/old/, "/new");
 		const router = new Router();
-		expect(() => router.mount("/api", sub)).toThrow(/anchored/);
+		router.mount("/api", sub);
+
+		expect(await redirectOf(router, "http://x.com/api/very/old")).toEqual({
+			location: "http://x.com/api/new",
+			status: 301,
+		});
+		expect(await redirectOf(router, "http://x.com/old")).toBe(null);
+	});
+
+	test("a regex for the subrouter's root matches the bare mount path", async () => {
+		const sub = new Router();
+		sub.redirect(/^\/$/, "/home");
+		const router = new Router();
+		router.mount("/api", sub);
+
+		expect(await redirectOf(router, "http://x.com/api")).toEqual({
+			location: "http://x.com/api/home",
+			status: 301,
+		});
+		expect(await redirectOf(router, "http://x.com/api/")).toEqual({
+			location: "http://x.com/api/home",
+			status: 301,
+		});
+		expect(await redirectOf(router, "http://x.com/api/x")).toBe(null);
+	});
+
+	test("nested mounts compose the base", async () => {
+		const inner = new Router();
+		inner.redirect(/^\/docs\/(.+)$/, "/guides/$1");
+		const middle = new Router();
+		middle.mount("/v1", inner);
+		const router = new Router();
+		router.mount("/api", middle);
+
+		expect(router.toJSON().entries).toEqual([
+			{
+				redirect: {
+					match: {source: "^\\/docs\\/(.+)$", flags: "", base: "/api/v1"},
+					target: "/api/v1/guides/$1",
+					status: 301,
+				},
+			},
+		]);
+		const client = Router.fromJSON(JSON.stringify(router));
+		for (const r of [router, client]) {
+			expect(await redirectOf(r, "http://x.com/api/v1/docs/a")).toEqual({
+				location: "http://x.com/api/v1/guides/a",
+				status: 301,
+			});
+		}
 	});
 });
