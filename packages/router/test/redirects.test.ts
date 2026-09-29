@@ -1,5 +1,5 @@
 import {test, expect, describe} from "bun:test";
-import {Router} from "../src/index.js";
+import {redirect, Router} from "../src/index.js";
 
 const req = (url: string) => new Request(url);
 
@@ -340,5 +340,56 @@ describe("Redirect edge cases", () => {
 		expect(res.status).toBe(200);
 		expect(ran).toBe(true);
 		expect(router.routes.map((r) => r.pattern.pathname)).toEqual(["/users"]);
+	});
+});
+
+describe("redirect()", () => {
+	test("called directly, it returns the redirect or null", () => {
+		const toNew = redirect("/old/:id", "/new/:id", {status: 302});
+		const res = toNew(req("http://x.com/old/7?q=1"));
+		expect(res?.status).toBe(302);
+		expect(res?.headers.get("Location")).toBe("http://x.com/new/7?q=1");
+		expect(toNew(req("http://x.com/other"))).toBe(null);
+	});
+
+	test("it can be called inside generator middleware", async () => {
+		const router = new Router();
+		router.use(async function* (request) {
+			if (request.headers.get("X-Legacy")) {
+				const response = redirect(/^\/(.*)$/, "/legacy/$1")(request);
+				if (response) return response;
+			}
+			return yield request;
+		});
+		router.route("/page").get(async () => new Response("page"));
+
+		expect((await router.handle(req("http://x.com/page"))).status).toBe(200);
+		const legacy = await router.handle(
+			new Request("http://x.com/page", {headers: {"X-Legacy": "1"}}),
+		);
+		expect(legacy.headers.get("Location")).toBe("http://x.com/legacy/page");
+		expect(router.toJSON().entries).toEqual([
+			{route: {pattern: "/page", method: "GET"}},
+		]);
+	});
+
+	test("registered with use(), it is serialized in declaration order", async () => {
+		const router = new Router();
+		router.route("/kept").get(async () => new Response("kept"));
+		router.use(redirect("/kept", "/elsewhere"));
+		router.use(redirect("/old", "/new"));
+		router.route("/old").get(async () => new Response("shadowed"));
+
+		expect((await router.handle(req("http://x.com/kept"))).status).toBe(200);
+		expect(await redirectOf(router, "http://x.com/old")).toEqual({
+			location: "http://x.com/new",
+			status: 301,
+		});
+		const client = Router.fromJSON(JSON.stringify(router));
+		expect(await redirectOf(client, "http://x.com/old")).toEqual({
+			location: "http://x.com/new",
+			status: 301,
+		});
+		expect(await redirectOf(client, "http://x.com/kept")).toBe(null);
 	});
 });

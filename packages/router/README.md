@@ -144,6 +144,24 @@ router.middlewares.forEach(mw => {
 });
 ```
 
+### `redirect(from, to, options?)`
+
+Create a redirect. `from` is a pattern like `/old/:id`, with `:id` reusable in `to`, or a `RegExp` with `$1` and so on in `to`. The default status is 301.
+
+```javascript
+import {redirect} from '@b9g/router';
+
+// Registered: takes its place in declaration order, like a route
+router.use(redirect('/old/:id', '/new/:id'));
+
+// Called inside middleware: returns the redirect Response, or null
+router.use(async function* (request) {
+  const response = redirect(/^\/beta\/(.*)$/, '/$1')(request);
+  if (response) return response;
+  return yield request;
+});
+```
+
 ### Context Object
 
 Handler and middleware functions receive a context object:

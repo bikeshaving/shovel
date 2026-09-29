@@ -116,7 +116,7 @@ export interface RouteMatch {
  * A route in the serialized form: one pattern/method pair with an optional
  * name. Handlers are never serialized — the client matches, the server handles.
  */
-export interface SerializedRoute {
+interface SerializedRoute {
 	pattern: string;
 	method: string;
 	name?: string;
@@ -127,9 +127,7 @@ export interface SerializedRoute {
  * are stored in declaration order, so the exact route/redirect interleaving
  * (which decides precedence) survives a round-trip.
  */
-export type SerializedEntry =
-	| {route: SerializedRoute}
-	| {redirect: RedirectEntry};
+type SerializedEntry = {route: SerializedRoute} | {redirect: RedirectEntry};
 
 /**
  * A redirect as serializable data. Two matcher flavors, both of which
@@ -139,7 +137,7 @@ export type SerializedEntry =
  *   (set when a subrouter is mounted), the regexp only sees paths under
  *   `base`, with `base` removed; the bare `base` path reads as `/`.
  */
-export interface RedirectEntry {
+interface RedirectEntry {
 	match: {pattern: string} | {source: string; flags: string; base?: string};
 	target: string;
 	status: number;
@@ -151,7 +149,7 @@ export interface RedirectEntry {
  * static-route enumeration, and app self-documentation. `version` gates
  * forward-compatible additions.
  */
-export interface SerializedRouter {
+interface SerializedRouter {
 	version: 1;
 	entries: SerializedEntry[];
 }
@@ -662,6 +660,95 @@ function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
 	return {entry, matcher, order};
 }
 
+const redirectEntries = new WeakMap<Middleware, RedirectEntry>();
+
+function toRedirectEntry(
+	from: string | RegExp,
+	to: string,
+	options: {status?: number},
+): RedirectEntry {
+	return {
+		match:
+			typeof from === "string"
+				? {pattern: from}
+				: {source: from.source, flags: from.flags},
+		target: to,
+		status: options.status ?? 301,
+	};
+}
+
+/**
+ * Where `record` redirects `u`, or null if it does not match. The request's
+ * query carries over unless the target sets its own.
+ */
+function redirectLocation(record: RedirectRecord, u: URL): string | null {
+	const {entry, matcher} = record;
+	let target: string | null = null;
+	if (matcher.kind === "pattern") {
+		const result = matcher.mp.exec(u);
+		if (result) {
+			const groups = result.pathname.groups;
+			target = entry.target.replace(/:(\w+)/g, (m, name: string) =>
+				name in groups ? (groups[name] ?? "") : m,
+			);
+		}
+	} else {
+		const {base} = matcher;
+		const pathname = u.pathname;
+		const path =
+			base === undefined
+				? pathname
+				: pathname === base || pathname.startsWith(base + "/")
+					? pathname.slice(base.length) || "/"
+					: null;
+		const m = path === null ? null : path.match(matcher.re);
+		if (m) {
+			target = entry.target.replace(
+				/\$(\d+)/g,
+				(_m, n: string) => m[Number(n)] ?? "",
+			);
+			if (base !== undefined) {
+				target = targetUnder(target, base);
+			}
+		}
+	}
+	if (target === null) {
+		return null;
+	}
+	const location = new URL(target, u);
+	if (!target.includes("?")) location.search = u.search;
+	return location.toString();
+}
+
+/**
+ * A redirect as middleware. `from` is a MatchPattern string (`/old/:id`, with
+ * `:id` reusable in `to`) or a `RegExp` (with `$1`…`$n` in `to`).
+ *
+ * Registered with `router.use()`, it becomes a serialized redirect that
+ * takes its place in declaration order. Called directly, for example inside
+ * generator middleware, it returns the redirect `Response`, or null when the
+ * request does not match; that call is not serialized.
+ */
+export function redirect(
+	from: string | RegExp,
+	to: string,
+	options: {status?: number} = {},
+): (request: Request) => Response | null {
+	const entry = toRedirectEntry(from, to, options);
+	const record = compileRedirect(entry, 0);
+	const middleware = (request: Request): Response | null => {
+		const location = redirectLocation(record, new URL(request.url));
+		return location === null
+			? null
+			: new Response(null, {
+					status: entry.status,
+					headers: {Location: location},
+				});
+	};
+	redirectEntries.set(middleware, entry);
+	return middleware;
+}
+
 /**
  * Limit a middleware's serialized redirect to the path prefix it was
  * registered under, matching on segment boundaries like the middleware does.
@@ -779,14 +866,7 @@ export class Router {
 		to: string,
 		options: {status?: number} = {},
 	): void {
-		this.#addRedirect({
-			match:
-				typeof from === "string"
-					? {pattern: from}
-					: {source: from.source, flags: from.flags},
-			target: to,
-			status: options.status ?? 301,
-		});
+		this.#addRedirect(toRedirectEntry(from, to, options));
 	}
 
 	/** @internal Register a redirect entry and compile its matcher. */
@@ -797,11 +877,9 @@ export class Router {
 
 	/** @internal Register self-describing middleware as a redirect. */
 	#addMiddlewareRedirect(middlewareEntry: MiddlewareEntry): void {
-		const serialize = (
-			middlewareEntry.middleware as {toJSON?: () => RedirectEntry}
-		).toJSON;
-		if (typeof serialize !== "function") return;
-		let redirect = serialize.call(middlewareEntry.middleware);
+		const entry = redirectEntries.get(middlewareEntry.middleware);
+		if (entry === undefined) return;
+		let redirect: RedirectEntry = {...entry, match: {...entry.match}};
 		if (middlewareEntry.pathPrefix) {
 			redirect = scopeRedirect(redirect, middlewareEntry.pathPrefix);
 		}
@@ -820,47 +898,10 @@ export class Router {
 	#matchRedirect(
 		u: URL,
 	): {location: string; status: number; order: number} | null {
-		const pathname = u.pathname;
-		for (const {entry, matcher, order} of this.#redirectTable) {
-			let target: string | null = null;
-			if (matcher.kind === "pattern") {
-				const result = matcher.mp.exec(u);
-				if (result) {
-					const groups = result.pathname.groups;
-					target = entry.target.replace(/:(\w+)/g, (m, name: string) =>
-						name in groups ? (groups[name] ?? "") : m,
-					);
-				}
-			} else {
-				const {base} = matcher;
-				const path =
-					base === undefined
-						? pathname
-						: pathname === base || pathname.startsWith(base + "/")
-							? pathname.slice(base.length) || "/"
-							: null;
-				const m = path === null ? null : path.match(matcher.re);
-				if (m) {
-					target = entry.target.replace(
-						/\$(\d+)/g,
-						(_m, n: string) => m[Number(n)] ?? "",
-					);
-					if (base !== undefined) {
-						target = targetUnder(target, base);
-					}
-				}
-			}
-			if (target !== null) {
-				// Resolve against the request URL so a path target becomes
-				// absolute. The request's query carries over unless the target
-				// sets its own.
-				const location = new URL(target, u);
-				if (!target.includes("?")) location.search = u.search;
-				return {
-					location: location.toString(),
-					status: entry.status,
-					order,
-				};
+		for (const record of this.#redirectTable) {
+			const location = redirectLocation(record, u);
+			if (location !== null) {
+				return {location, status: record.entry.status, order: record.order};
 			}
 		}
 		return null;
@@ -880,9 +921,9 @@ export class Router {
 	 * Register middleware that applies to all routes
 	 * Middleware executes in the order it was registered
 	 *
-	 * Middleware with a `toJSON()` method that returns a redirect, such as
-	 * `trailingSlash()`, is registered as that redirect instead. It takes its
-	 * place in declaration order like `redirect()`, and it is serialized.
+	 * Middleware made by `redirect()`, such as `trailingSlash()`, is
+	 * registered as that redirect instead. It takes its place in declaration
+	 * order like `router.redirect()`, and it is serialized.
 	 */
 	use(middleware: Middleware): void;
 
@@ -1348,8 +1389,8 @@ export class Router {
 	 * `JSON.stringify(router)` works for free. Routes and redirects are emitted
 	 * as one list in declaration order, so precedence survives the round-trip.
 	 * Handlers and middleware are server-only and left out, except middleware
-	 * with its own `toJSON()`, such as `trailingSlash()`, which is a redirect
-	 * at the point it was registered.
+	 * made by `redirect()`, such as `trailingSlash()`, which is a redirect at
+	 * the point it was registered.
 	 */
 	toJSON(): SerializedRouter {
 		const items: Array<{order: number; entry: SerializedEntry}> = [];
