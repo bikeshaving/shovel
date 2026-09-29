@@ -4,7 +4,7 @@
 
 import {getLogger} from "@logtape/logtape";
 
-import type {GeneratorMiddleware, SerializedEntry} from "./index.js";
+import type {GeneratorMiddleware, RedirectEntry} from "./index.js";
 
 // ============================================================================
 // TRAILING SLASH
@@ -36,9 +36,9 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  */
 export function trailingSlash(
 	mode: TrailingSlashMode,
-): GeneratorMiddleware & {toJSON(): SerializedEntry} {
-	const [source, target] =
-		mode === "strip" ? ["^(.+)/$", "$1"] : ["^(.*[^/])$", "$1/"];
+): GeneratorMiddleware & {toJSON(): RedirectEntry} {
+	const source = mode === "strip" ? "^(.+)/$" : "^(.*[^/])$";
+	const target = mode === "strip" ? "$1" : "$1/";
 	const pattern = new RegExp(source);
 	const middleware = async function* (
 		request: Request,
@@ -54,9 +54,11 @@ export function trailingSlash(
 		});
 	};
 	return Object.assign(middleware, {
-		toJSON(): SerializedEntry {
-			return {redirect: {match: {source, flags: ""}, target, status: 301}};
-		},
+		toJSON: (): RedirectEntry => ({
+			match: {source, flags: ""},
+			target,
+			status: 301,
+		}),
 	});
 }
 
