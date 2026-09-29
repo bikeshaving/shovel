@@ -19,8 +19,8 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  * Middleware that normalizes trailing slashes via 301 redirect
  *
  * @param mode - "strip" removes trailing slash, "add" adds trailing slash
- * @returns Generator middleware that redirects non-canonical URLs. Like a
- * redirect, it takes precedence over routes declared after it, not before.
+ * @returns A redirect made by `redirect()`. Registered, it takes precedence
+ * over routes declared after it, not before.
  *
  * @example
  * ```typescript
