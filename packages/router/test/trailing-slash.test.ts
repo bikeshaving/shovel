@@ -18,7 +18,7 @@ describe("trailingSlash() serialization", () => {
 			{route: {pattern: "/", method: "GET"}},
 			{
 				redirect: {
-					match: {source: "^(.+)/$", flags: ""},
+					match: {source: "^(.+)\\/$", flags: ""},
 					target: "$1",
 					status: 301,
 				},
