@@ -666,26 +666,24 @@ function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
  * Limit a middleware's serialized redirect to the path prefix it was
  * registered under, matching on segment boundaries like the middleware does.
  */
-function scopeEntry(
-	entry: SerializedEntry,
+function scopeRedirect(
+	redirect: RedirectEntry,
 	pathPrefix: string,
-): SerializedEntry {
-	if (!("redirect" in entry) || !("source" in entry.redirect.match)) {
+): RedirectEntry {
+	if (!("source" in redirect.match)) {
 		throw new Error(
 			"Only regular expression redirects can be scoped to a path prefix.",
 		);
 	}
-	const {source, flags} = entry.redirect.match;
+	const {source, flags} = redirect.match;
 	if (!source.startsWith("^")) {
 		throw new Error("A scoped redirect's pattern must be anchored with ^.");
 	}
 	return {
-		redirect: {
-			...entry.redirect,
-			match: {
-				source: `^(?=${escapeRegExp(pathPrefix)}(?:/|$))${source.slice(1)}`,
-				flags,
-			},
+		...redirect,
+		match: {
+			source: `^(?=${escapeRegExp(pathPrefix)}(?:/|$))${source.slice(1)}`,
+			flags,
 		},
 	};
 }
@@ -800,20 +798,17 @@ export class Router {
 	/** @internal Register self-describing middleware as a redirect. */
 	#addMiddlewareRedirect(middlewareEntry: MiddlewareEntry): void {
 		const serialize = (
-			middlewareEntry.middleware as {toJSON?: () => SerializedEntry}
+			middlewareEntry.middleware as {toJSON?: () => RedirectEntry}
 		).toJSON;
 		if (typeof serialize !== "function") return;
-		let serialized = serialize.call(middlewareEntry.middleware);
+		let redirect = serialize.call(middlewareEntry.middleware);
 		if (middlewareEntry.pathPrefix) {
-			serialized = scopeEntry(serialized, middlewareEntry.pathPrefix);
-		}
-		if (!("redirect" in serialized)) {
-			throw new Error("Middleware can only serialize as a redirect.");
+			redirect = scopeRedirect(redirect, middlewareEntry.pathPrefix);
 		}
 		this.#redirectMiddlewares.add(middlewareEntry);
-		this.redirects.push(serialized.redirect);
+		this.redirects.push(redirect);
 		this.#redirectTable.push({
-			...compileRedirect(serialized.redirect, this.#seq++),
+			...compileRedirect(redirect, this.#seq++),
 			middleware: middlewareEntry,
 		});
 	}
@@ -884,6 +879,10 @@ export class Router {
 	/**
 	 * Register middleware that applies to all routes
 	 * Middleware executes in the order it was registered
+	 *
+	 * Middleware with a `toJSON()` method that returns a redirect, such as
+	 * `trailingSlash()`, is registered as that redirect instead. It takes its
+	 * place in declaration order like `redirect()`, and it is serialized.
 	 */
 	use(middleware: Middleware): void;
 
