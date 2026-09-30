@@ -146,11 +146,11 @@ interface RedirectEntry {
 /**
  * The serializable form of a Router's match table, produced by `toJSON()` and
  * consumed by `Router.fromJSON()`. One value drives the client router,
- * static-route enumeration, and app self-documentation. `version` gates
- * forward-compatible additions.
+ * static-route enumeration, and app self-documentation. `format` is the
+ * version of this JSON shape, not of the routes it describes.
  */
 interface SerializedRouter {
-	version: 1;
+	format: 1;
 	entries: SerializedEntry[];
 }
 
@@ -1410,7 +1410,7 @@ export class Router {
 			items.push({order, entry: {redirect: entry}});
 		}
 		items.sort((a, b) => a.order - b.order);
-		return {version: 1, entries: items.map((it) => it.entry)};
+		return {format: 1, entries: items.map((it) => it.entry)};
 	}
 
 	/**
@@ -1425,9 +1425,9 @@ export class Router {
 		if (parsed === null || typeof parsed !== "object") {
 			throw new Error("Cannot deserialize router: expected an object.");
 		}
-		if (parsed.version !== 1) {
+		if (parsed.format !== 1) {
 			throw new Error(
-				`Unsupported serialized router version: ${String(parsed.version)}`,
+				`Unsupported serialized router format: ${String(parsed.format)}`,
 			);
 		}
 		const router = new Router();
