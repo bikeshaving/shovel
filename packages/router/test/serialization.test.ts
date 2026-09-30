@@ -28,9 +28,9 @@ const urls = [
 ];
 
 describe("Router serialization", () => {
-	test("toJSON emits version 1 and one entry per route/method in order", () => {
+	test("toJSON emits format 1 and one entry per route/method in order", () => {
 		const json = makeRouter().toJSON();
-		expect(json.version).toBe(1);
+		expect(json.format).toBe(1);
 		const userMethods = json.entries
 			.filter(
 				(e): e is {route: {pattern: string; method: string; name?: string}} =>
@@ -43,7 +43,7 @@ describe("Router serialization", () => {
 
 	test("JSON.stringify(router) works via toJSON()", () => {
 		const parsed = JSON.parse(JSON.stringify(makeRouter()));
-		expect(parsed.version).toBe(1);
+		expect(parsed.format).toBe(1);
 		expect(Array.isArray(parsed.entries)).toBe(true);
 	});
 
@@ -70,9 +70,9 @@ describe("Router serialization", () => {
 		expect(res.status).toBe(404);
 	});
 
-	test("fromJSON rejects an unsupported version", () => {
-		expect(() => Router.fromJSON({version: 2 as 1, entries: []})).toThrow(
-			/version/,
+	test("fromJSON rejects an unsupported format", () => {
+		expect(() => Router.fromJSON({format: 2 as 1, entries: []})).toThrow(
+			/format/,
 		);
 	});
 
