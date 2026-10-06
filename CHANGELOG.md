@@ -2,6 +2,16 @@
 
 All notable changes to Shovel will be documented in this file.
 
+## Unreleased
+
+### Bug Fixes
+
+- **`@b9g/node-webworker` no longer drops early messages** — a message posted right after `new Worker(...)` could arrive while the worker script was still loading, before it had a listener, and was lost. The worker now queues messages until the script registers a `message` listener or sets `onmessage`, then delivers them in order. A worker that awaits a message at top level receives it instead of hanging.
+
+### Dependencies
+
+- `@b9g/node-webworker` 0.2.2
+
 ## [0.2.23] - 2026-08-12
 
 ### Bug Fixes
