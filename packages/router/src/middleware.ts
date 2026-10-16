@@ -2,8 +2,8 @@
  * Standard middleware utilities for HTTP routing
  */
 
-import {getLogger} from "@logtape/logtape";
 import {isHTTPError} from "@b9g/http-errors";
+import {getLogger} from "@logtape/logtape";
 
 // ============================================================================
 // TRAILING SLASH
@@ -32,8 +32,14 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  * router.use("/api", trailingSlash("strip"));
  * ```
  */
-export function trailingSlash(mode: TrailingSlashMode) {
-	return async function* (
+export function trailingSlash(
+	mode: TrailingSlashMode,
+): (request: Request) => AsyncGenerator<
+	Request,
+	Response | undefined,
+	Response
+> {
+	return async function *(
 		request: Request,
 	): AsyncGenerator<Request, Response | undefined, Response> {
 		const url = new URL(request.url);
@@ -49,8 +55,7 @@ export function trailingSlash(mode: TrailingSlashMode) {
 		if (mode === "strip" && pathname.endsWith("/")) {
 			newPathname = pathname.slice(0, -1);
 		} else if (
-			(mode === "add" || mode === "append") &&
-			!pathname.endsWith("/")
+			(mode === "add" || mode === "append") && !pathname.endsWith("/")
 		) {
 			newPathname = pathname + "/";
 		}
@@ -239,11 +244,17 @@ export interface LoggerOptions {
  * router.use(logger({ category: ["app", "http"] }));
  * ```
  */
-export function logger(options: LoggerOptions = {}) {
+export function logger(
+	options: LoggerOptions = {},
+): (request: Request) => AsyncGenerator<
+	Request,
+	Response | undefined,
+	Response
+> {
 	const {category = ["app", "router"]} = options;
 	const log = getLogger(category);
 
-	return async function* (
+	return async function *(
 		request: Request,
 	): AsyncGenerator<Request, Response | undefined, Response> {
 		const url = new URL(request.url);
@@ -260,7 +271,12 @@ export function logger(options: LoggerOptions = {}) {
 	};
 }
 
-export function cors(options: CORSOptions = {}) {
+export function cors(
+	options: CORSOptions = {},
+): (
+	request: Request,
+	_context: any,
+) => AsyncGenerator<Request, Response | undefined, Response> {
 	const {
 		origin = "*",
 		methods = DEFAULT_CORS_METHODS,
@@ -277,7 +293,7 @@ export function cors(options: CORSOptions = {}) {
 		);
 	}
 
-	return async function* (
+	return async function *(
 		request: Request,
 		_context: any,
 	): AsyncGenerator<Request, Response | undefined, Response> {

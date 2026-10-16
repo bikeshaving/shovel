@@ -26,9 +26,7 @@ self.addEventListener("fetch", (event) => {
 				activated,
 				message: "Hello from Cloudflare with lifecycle!",
 			}),
-			{
-				headers: {"content-type": "application/json"},
-			},
+			{headers: {"content-type": "application/json"}},
 		),
 	);
 });

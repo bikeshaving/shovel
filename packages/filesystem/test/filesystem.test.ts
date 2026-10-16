@@ -1,8 +1,9 @@
-import {test, expect, describe, beforeEach} from "bun:test";
+import {beforeEach, describe, expect, test} from "bun:test";
+
 import {
-	ShovelFileHandle,
-	ShovelDirectoryHandle,
 	type FileSystemBackend,
+	ShovelDirectoryHandle,
+	ShovelFileHandle,
 } from "../src/index.js";
 
 describe("Filesystem Handles", () => {
@@ -156,9 +157,8 @@ describe("Filesystem Handles", () => {
 			const dirHandle = new ShovelDirectoryHandle(mockBackend, "/");
 
 			// This should work since we mock writeFile
-			const fileHandle = await dirHandle.getFileHandle("new.js", {
-				create: true,
-			});
+			const fileHandle =
+				await dirHandle.getFileHandle("new.js", {create: true});
 			expect(fileHandle.kind).toBe("file");
 			expect(fileHandle.name).toBe("new.js");
 		});
@@ -177,7 +177,7 @@ describe("Filesystem Handles", () => {
 
 		test("should iterate directory entries", async () => {
 			const dirHandle = new ShovelDirectoryHandle(mockBackend, "/");
-			const entries: [string, FileSystemHandle][] = [];
+			const entries: Array<[string, FileSystemHandle]> = [];
 
 			for await (const entry of dirHandle.entries()) {
 				entries.push(entry);

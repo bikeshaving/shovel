@@ -10,10 +10,11 @@
  * bundle executes from". Principle of least surprise.
  */
 
-import * as ESBuild from "esbuild";
 import {readFile} from "fs/promises";
 import {dirname} from "path";
 import {pathToFileURL} from "url";
+
+import type * as ESBuild from "esbuild";
 
 export function importMetaPlugin(): ESBuild.Plugin {
 	return {
@@ -23,8 +24,7 @@ export function importMetaPlugin(): ESBuild.Plugin {
 			build.onLoad({filter: /\.[jt]sx?$/, namespace: "file"}, async (args) => {
 				// Skip node_modules and monorepo packages - dependencies handle their own import.meta
 				if (
-					args.path.includes("node_modules") ||
-					args.path.includes("/packages/")
+					args.path.includes("node_modules") || args.path.includes("/packages/")
 				) {
 					return null;
 				}
@@ -41,7 +41,7 @@ export function importMetaPlugin(): ESBuild.Plugin {
 				}
 
 				// Compute the values for this specific file
-				const fileUrl = pathToFileURL(args.path).href;
+				const fileURL = pathToFileURL(args.path).href;
 				const fileDirname = dirname(args.path);
 				const fileFilename = args.path;
 
@@ -50,7 +50,7 @@ export function importMetaPlugin(): ESBuild.Plugin {
 
 				transformed = transformed.replace(
 					/\bimport\.meta\.url\b/g,
-					JSON.stringify(fileUrl),
+					JSON.stringify(fileURL),
 				);
 
 				transformed = transformed.replace(
@@ -70,10 +70,7 @@ export function importMetaPlugin(): ESBuild.Plugin {
 				else if (ext === "tsx") loader = "tsx";
 				else if (ext === "jsx") loader = "jsx";
 
-				return {
-					contents: transformed,
-					loader,
-				};
+				return {contents: transformed, loader};
 			});
 		},
 	};

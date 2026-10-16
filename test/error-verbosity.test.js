@@ -1,7 +1,9 @@
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
-import {test, expect} from "bun:test";
+
+import {expect, test} from "bun:test";
+
 import {buildForProduction} from "../src/commands/build.js";
 import {ServerBundler} from "../src/utils/bundler.js";
 import {loadPlatformModule} from "../src/utils/platform.js";

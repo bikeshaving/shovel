@@ -55,8 +55,10 @@ const HTTP_ERROR = Symbol.for("shovel.http-error");
 export interface HTTPErrorOptions {
 	/** Original error that caused this HTTP error */
 	cause?: Error;
+
 	/** Custom headers to include in the error */
 	headers?: Record<string, string>;
+
 	/** Whether the error details should be exposed to clients (defaults based on status) */
 	expose?: boolean;
 }
@@ -91,7 +93,14 @@ export class HTTPError extends Error {
 	/**
 	 * Convert error to a plain object for serialization
 	 */
-	toJSON() {
+	toJSON(): {
+		name: string;
+		message: string;
+		status: number;
+		statusCode: number;
+		expose: boolean;
+		headers?: Record<string, string>;
+	} {
 		return {
 			name: this.name,
 			message: this.message,
@@ -130,11 +139,7 @@ export class HTTPError extends Error {
   <pre>${escapeHTML(this.stack || "No stack trace available")}</pre>
 </body>
 </html>`;
-			return new Response(html, {
-				status: this.status,
-				statusText,
-				headers,
-			});
+			return new Response(html, {status: this.status, statusText, headers});
 		}
 
 		// Production mode: plain text, minimal info

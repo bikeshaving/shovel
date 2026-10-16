@@ -15,7 +15,7 @@ export interface PageLayoutProps {
 	title: string;
 	pageTitle: string;
 	basePath: string;
-	models: readonly {name: string; displayName: string}[];
+	models: ReadonlyArray<{name: string; displayName: string}>;
 	assets?: USWDSAssets;
 	children: Children;
 }
@@ -33,10 +33,10 @@ export function PageLayout({
 	models,
 	assets,
 	children,
-}: PageLayoutProps) {
+}: PageLayoutProps): Children {
 	// Use provided assets or fall back to defaults with basePath prefix
-	const cssUrl = assets?.css ?? `${basePath}${DEFAULT_ASSETS.css}`;
-	const jsUrl = assets?.js ?? `${basePath}${DEFAULT_ASSETS.js}`;
+	const cssURL = assets?.css ?? `${basePath}${DEFAULT_ASSETS.css}`;
+	const jsURL = assets?.js ?? `${basePath}${DEFAULT_ASSETS.js}`;
 
 	return (
 		<html lang="en">
@@ -46,8 +46,9 @@ export function PageLayout({
 				<title>
 					{pageTitle} - {title}
 				</title>
-				<link rel="stylesheet" href={cssUrl} />
-				<style>{`
+				<link rel="stylesheet" href={cssURL} />
+				<style>
+					{`
 					/* Admin-specific overrides */
 					.admin-layout {
 						display: flex;
@@ -157,7 +158,8 @@ export function PageLayout({
 						padding-top: 1.5rem;
 						border-top: 1px solid #dfe1e2;
 					}
-				`}</style>
+				`}
+				</style>
 			</head>
 			<body>
 				<div class="admin-layout">
@@ -178,7 +180,7 @@ export function PageLayout({
 					</aside>
 					<main class="admin-main">{children}</main>
 				</div>
-				<script src={jsUrl} />
+				<script src={jsURL} />
 			</body>
 		</html>
 	);

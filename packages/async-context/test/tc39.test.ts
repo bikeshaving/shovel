@@ -2,7 +2,8 @@
  * Tests adapted from the TC39 AsyncContext proposal
  * https://github.com/nicolo-ribaudo/proposal-async-context
  */
-import {describe, test, expect} from "bun:test";
+import {describe, expect, test} from "bun:test";
+
 import {AsyncContext} from "../src/index.js";
 
 type Value = {id: number};
@@ -10,7 +11,7 @@ type Value = {id: number};
 // Test both from the initial state, and from a run state.
 // This is because the initial state might be "frozen", and
 // that can cause different code paths.
-function runTest(name: string, fn: () => void) {
+function runTest(name: string, fn: () => void): void {
 	test(name, () => {
 		fn();
 

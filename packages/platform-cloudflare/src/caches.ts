@@ -15,6 +15,14 @@
  */
 const nativeCaches: CacheStorage | undefined = globalThis.caches;
 
+const kName = Symbol("name");
+const kCachePromise = Symbol("cachePromise");
+
+export interface CloudflareNativeCache {
+	[kName]: string;
+	[kCachePromise]: Promise<Cache> | null;
+}
+
 /**
  * CloudflareNativeCache - Wrapper around Cloudflare's native Cache API.
  * This allows the native cache to be used with the factory pattern.
@@ -23,33 +31,18 @@ const nativeCaches: CacheStorage | undefined = globalThis.caches;
  * globalThis.caches is available.
  */
 export class CloudflareNativeCache implements Cache {
-	#name: string;
-	#cachePromise: Promise<Cache> | null;
-
 	constructor(name: string, _options?: Record<string, unknown>) {
-		this.#name = name;
-		this.#cachePromise = null;
-	}
-
-	#getCache(): Promise<Cache> {
-		if (!this.#cachePromise) {
-			if (!nativeCaches) {
-				throw new Error("Cloudflare caches not available in this context");
-			}
-			// Use the captured native caches reference, not globalThis.caches
-			// which may have been overwritten by ServiceWorkerGlobals
-			this.#cachePromise = nativeCaches.open(this.#name);
-		}
-		return this.#cachePromise;
+		this[kName] = name;
+		this[kCachePromise] = null;
 	}
 
 	async add(request: RequestInfo | URL): Promise<void> {
-		const cache = await this.#getCache();
+		const cache = await getCache(this);
 		return cache.add(request);
 	}
 
 	async addAll(requests: RequestInfo[]): Promise<void> {
-		const cache = await this.#getCache();
+		const cache = await getCache(this);
 		return cache.addAll(requests);
 	}
 
@@ -57,7 +50,7 @@ export class CloudflareNativeCache implements Cache {
 		request: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<boolean> {
-		const cache = await this.#getCache();
+		const cache = await getCache(this);
 		return cache.delete(request, options);
 	}
 
@@ -65,7 +58,7 @@ export class CloudflareNativeCache implements Cache {
 		request?: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<readonly Request[]> {
-		const cache = await this.#getCache();
+		const cache = await getCache(this);
 		return cache.keys(request, options);
 	}
 
@@ -73,7 +66,7 @@ export class CloudflareNativeCache implements Cache {
 		request: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<Response | undefined> {
-		const cache = await this.#getCache();
+		const cache = await getCache(this);
 		return cache.match(request, options);
 	}
 
@@ -81,14 +74,26 @@ export class CloudflareNativeCache implements Cache {
 		request?: RequestInfo | URL,
 		options?: CacheQueryOptions,
 	): Promise<readonly Response[]> {
-		const cache = await this.#getCache();
+		const cache = await getCache(this);
 		return cache.matchAll(request, options);
 	}
 
 	async put(request: RequestInfo | URL, response: Response): Promise<void> {
-		const cache = await this.#getCache();
+		const cache = await getCache(this);
 		return cache.put(request, response);
 	}
+}
+
+function getCache(cache: CloudflareNativeCache): Promise<Cache> {
+	if (!cache[kCachePromise]) {
+		if (!nativeCaches) {
+			throw new Error("Cloudflare caches not available in this context");
+		}
+		// Use the captured native caches reference, not globalThis.caches
+		// which may have been overwritten by ServiceWorkerGlobals
+		cache[kCachePromise] = nativeCaches.open(cache[kName]);
+	}
+	return cache[kCachePromise];
 }
 
 export default CloudflareNativeCache;

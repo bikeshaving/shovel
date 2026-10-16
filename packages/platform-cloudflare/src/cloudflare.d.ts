@@ -44,10 +44,10 @@ declare class DurableObjectStorage {
 	put<T>(entries: Record<string, T>): Promise<void>;
 	delete(key: string): Promise<boolean>;
 	delete(keys: string[]): Promise<number>;
-	list<T = unknown>(options?: {
-		prefix?: string;
-		limit?: number;
-	}): Promise<Map<string, T>>;
+	list<T = unknown>(options?: {prefix?: string; limit?: number}): Promise<Map<
+		string,
+		T
+	>>;
 }
 
 declare class DurableObjectId {
@@ -68,9 +68,7 @@ declare interface DurableObjectStub {
 	fetch(requestOrUrl: string | Request, init?: RequestInit): Promise<Response>;
 }
 
-declare var WebSocketPair: {
-	new (): {0: WebSocket; 1: WebSocket};
-};
+declare let WebSocketPair: {new (): {0: WebSocket; 1: WebSocket}};
 
 // Augment Response constructor options for Cloudflare's webSocket field
 declare interface ResponseInit {

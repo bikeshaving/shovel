@@ -10,7 +10,7 @@
 // That wouldn't help at the module level
 
 // The standard approach: Just declare self as the narrower type
-declare var self: ServiceWorkerGlobalScope & typeof globalThis;
+declare let self: ServiceWorkerGlobalScope & typeof globalThis;
 
 self.addEventListener("fetch", (event) => {
 	// event should now be FetchEvent

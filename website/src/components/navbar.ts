@@ -1,4 +1,4 @@
-import {jsx} from "@b9g/crank/standalone";
+import {type Element, jsx} from "@b9g/crank/standalone";
 import {css} from "@emotion/css";
 
 const navbarStyles = css`
@@ -39,7 +39,7 @@ const navLinksStyles = css`
 	}
 `;
 
-export function Navbar({url}: {url: string}) {
+export function Navbar({url}: {url: string}): Element {
 	return jsx`
 		<nav class=${navbarStyles}>
 			<a href="/" class=${logoStyles}>Shovel</a>

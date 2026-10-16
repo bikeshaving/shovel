@@ -1,10 +1,12 @@
 /* eslint-disable no-restricted-properties -- Tests need process.env */
-import {test, expect} from "bun:test";
-import * as FS from "fs/promises";
 import {spawn} from "child_process";
+import * as FS from "fs/promises";
 import {join} from "path";
-import {copyFixtureToTemp, fileExists} from "./utils.js";
+
 import {getLogger} from "@logtape/logtape";
+import {expect, test} from "bun:test";
+
+import {copyFixtureToTemp, fileExists} from "./utils.js";
 
 const logger = getLogger(["test", "executable"]);
 
@@ -41,11 +43,15 @@ async function waitForServer(port, host = "localhost", timeoutMs = 3000) {
 
 // Helper to run executable and get process
 function runExecutable(executablePath, env = {}) {
-	const proc = spawn("node", [executablePath], {
-		stdio: ["ignore", "pipe", "pipe"],
-		env: {...process.env, ...env},
-		cwd: join(executablePath, ".."),
-	});
+	const proc = spawn(
+		"node",
+		[executablePath],
+		{
+			stdio: ["ignore", "pipe", "pipe"],
+			env: {...process.env, ...env},
+			cwd: join(executablePath, ".."),
+		},
+	);
 
 	let stderrData = "";
 	proc.stderr?.on("data", (data) => {
@@ -248,11 +254,11 @@ test(
 			expect(cssMatch).not.toBeNull();
 			expect(jsMatch).not.toBeNull();
 
-			const cssUrl = cssMatch[1];
-			const jsUrl = jsMatch[1];
+			const cssURL = cssMatch[1];
+			const jsURL = jsMatch[1];
 
 			// Test CSS asset
-			const cssResponse = await fetch(`http://localhost:${PORT}${cssUrl}`);
+			const cssResponse = await fetch(`http://localhost:${PORT}${cssURL}`);
 			expect(cssResponse.status).toBe(200);
 			expect(cssResponse.headers.get("content-type")).toBe("text/css");
 			const cssContent = await cssResponse.text();
@@ -262,7 +268,7 @@ test(
 			).toBe(true);
 
 			// Test JS asset
-			const jsResponse = await fetch(`http://localhost:${PORT}${jsUrl}`);
+			const jsResponse = await fetch(`http://localhost:${PORT}${jsURL}`);
 			expect(jsResponse.status).toBe(200);
 			expect(["text/javascript", "application/javascript"]).toContain(
 				jsResponse.headers.get("content-type"),
@@ -339,96 +345,105 @@ test(
 // MULTI-WORKER TESTS
 // ======================
 
-test("run basic-app with multiple workers", async () => {
-	const fixture = await copyFixtureToTemp("basic-app");
-	let serverProcess;
+test(
+	"run basic-app with multiple workers",
+	async () => {
+		const fixture = await copyFixtureToTemp("basic-app");
+		let serverProcess;
 
-	try {
-		const {buildForProduction} = await import("../src/commands/build.js");
+		try {
+			const {buildForProduction} = await import("../src/commands/build.js");
 
-		await buildForProduction({
-			entrypoint: join(fixture.src, "app.js"),
-			outDir: fixture.dist,
-			verbose: false,
-			platform: "node",
-		});
+			await buildForProduction({
+				entrypoint: join(fixture.src, "app.js"),
+				outDir: fixture.dist,
+				verbose: false,
+				platform: "node",
+			});
 
-		const supervisorPath = join(fixture.dist, "server", "supervisor.js");
-		const PORT = 19010;
+			const supervisorPath = join(fixture.dist, "server", "supervisor.js");
+			const PORT = 19010;
 
-		// Run with multiple workers - this should NOT cause EADDRINUSE
-		serverProcess = runExecutable(supervisorPath, {
-			PORT: PORT.toString(),
-			WORKERS: "2",
-		});
+			// Run with multiple workers - this should NOT cause EADDRINUSE
+			serverProcess = runExecutable(supervisorPath, {
+				PORT: PORT.toString(),
+				WORKERS: "2",
+			});
 
-		// Wait for server to be ready
-		await waitForServer(PORT);
+			// Wait for server to be ready
+			await waitForServer(PORT);
 
-		// Make multiple requests to verify load balancing works
-		const responses = await Promise.all([
-			fetch(`http://localhost:${PORT}/health`),
-			fetch(`http://localhost:${PORT}/health`),
-			fetch(`http://localhost:${PORT}/health`),
-			fetch(`http://localhost:${PORT}/health`),
-		]);
+			// Make multiple requests to verify load balancing works
+			const responses = await Promise.all([
+				fetch(`http://localhost:${PORT}/health`),
+				fetch(`http://localhost:${PORT}/health`),
+				fetch(`http://localhost:${PORT}/health`),
+				fetch(`http://localhost:${PORT}/health`),
+			]);
 
-		// All requests should succeed
-		for (const response of responses) {
-			expect(response.status).toBe(200);
-			const data = await response.json();
-			expect(data.status).toBe("ok");
+			// All requests should succeed
+			for (const response of responses) {
+				expect(response.status).toBe(200);
+				const data = await response.json();
+				expect(data.status).toBe("ok");
+			}
+		} finally {
+			if (serverProcess) {
+				await killProcess(serverProcess);
+			}
+			await fixture.cleanup();
 		}
-	} finally {
-		if (serverProcess) {
-			await killProcess(serverProcess);
+	},
+	15000,
+); // Longer timeout for multi-worker startup
+
+test(
+	"run basic-app with 4 workers handles concurrent requests",
+	async () => {
+		const fixture = await copyFixtureToTemp("basic-app");
+		let serverProcess;
+
+		try {
+			const {buildForProduction} = await import("../src/commands/build.js");
+
+			await buildForProduction({
+				entrypoint: join(fixture.src, "app.js"),
+				outDir: fixture.dist,
+				verbose: false,
+				platform: "node",
+			});
+
+			const supervisorPath = join(fixture.dist, "server", "supervisor.js");
+			const PORT = 19011;
+
+			// Run with 4 workers
+			serverProcess = runExecutable(supervisorPath, {
+				PORT: PORT.toString(),
+				WORKERS: "4",
+			});
+
+			// Wait for server to be ready
+			await waitForServer(PORT);
+
+			// Make many concurrent requests
+			const requests = Array.from(
+				{length: 20},
+				() => fetch(`http://localhost:${PORT}/health`).then((r) => r.json()),
+			);
+
+			const results = await Promise.all(requests);
+
+			// All requests should succeed
+			for (const data of results) {
+				expect(data.status).toBe("ok");
+				expect(typeof data.timestamp).toBe("number");
+			}
+		} finally {
+			if (serverProcess) {
+				await killProcess(serverProcess);
+			}
+			await fixture.cleanup();
 		}
-		await fixture.cleanup();
-	}
-}, 15000); // Longer timeout for multi-worker startup
-
-test("run basic-app with 4 workers handles concurrent requests", async () => {
-	const fixture = await copyFixtureToTemp("basic-app");
-	let serverProcess;
-
-	try {
-		const {buildForProduction} = await import("../src/commands/build.js");
-
-		await buildForProduction({
-			entrypoint: join(fixture.src, "app.js"),
-			outDir: fixture.dist,
-			verbose: false,
-			platform: "node",
-		});
-
-		const supervisorPath = join(fixture.dist, "server", "supervisor.js");
-		const PORT = 19011;
-
-		// Run with 4 workers
-		serverProcess = runExecutable(supervisorPath, {
-			PORT: PORT.toString(),
-			WORKERS: "4",
-		});
-
-		// Wait for server to be ready
-		await waitForServer(PORT);
-
-		// Make many concurrent requests
-		const requests = Array.from({length: 20}, () =>
-			fetch(`http://localhost:${PORT}/health`).then((r) => r.json()),
-		);
-
-		const results = await Promise.all(requests);
-
-		// All requests should succeed
-		for (const data of results) {
-			expect(data.status).toBe("ok");
-			expect(typeof data.timestamp).toBe("number");
-		}
-	} finally {
-		if (serverProcess) {
-			await killProcess(serverProcess);
-		}
-		await fixture.cleanup();
-	}
-}, 20000); // Longer timeout for 4-worker startup
+	},
+	20000,
+); // Longer timeout for 4-worker startup

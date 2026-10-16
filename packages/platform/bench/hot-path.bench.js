@@ -1,21 +1,19 @@
-import {bench, group, run} from "mitata";
-import {
-	ServiceWorkerGlobals,
-	ShovelServiceWorkerRegistration,
-	FetchEvent,
-	runLifecycle,
-	dispatchRequest,
-} from "../dist/src/runtime.js";
 import {CustomCacheStorage} from "@b9g/cache";
 import {MemoryCache} from "@b9g/cache/memory.js";
+import {bench, group, run} from "mitata";
+
+import {
+	dispatchRequest,
+	FetchEvent,
+	runLifecycle,
+	ServiceWorkerGlobals,
+	ShovelServiceWorkerRegistration,
+} from "../dist/src/runtime.js";
 
 // Setup: Create a minimal ServiceWorker environment
 const registration = new ShovelServiceWorkerRegistration();
 const cacheStorage = new CustomCacheStorage(() => new MemoryCache());
-const scope = new ServiceWorkerGlobals({
-	registration,
-	caches: cacheStorage,
-});
+const scope = new ServiceWorkerGlobals({registration, caches: cacheStorage});
 
 // Install scope
 scope.install();
@@ -111,7 +109,4 @@ group("JSON Operations", () => {
 	});
 });
 
-await run({
-	colors: true,
-	percentiles: true,
-});
+await run({colors: true, percentiles: true});

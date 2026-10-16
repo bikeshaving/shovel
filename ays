@@ -1,0 +1,91 @@
+ */
+class ShovelWritableFileStream
+	extends WritableStream
+	implements FileSystemWritableFileStream {
+	constructor(backend: FileSystemBackend, path: string) {
+		const chunks: Uint8Array[] = [];
+		super({
+			write: (chunk: Uint8Array | string) => {
+				// Convert string to Uint8Array if needed
+				const bytes = typeof chunk === "string"
+					? new TextEncoder().encode(chunk)
+					: chunk;
+				chunks.push(bytes);
+				return Promise.resolve();
+			},
+			close: async () => {
+				// Concatenate all chunks
+				const totalLength = chunks.reduce(
+					(sum, chunk) => sum + chunk.length,
+					0,
+				);
+				const content = new Uint8Array(totalLength);
+				let offset = 0;
+				for (const chunk of chunks) {
+					content.set(chunk, offset);
+					offset += chunk.length;
+				}
+
+				// Write to backend
+				await backend.writeFile(path, content);
+			},
+			abort: () => {
+				chunks.length = 0;
+				return Promise.resolve();
+			},
+		});
+	}
+
+	// File System Access API write method
+	async write(data: FileSystemWriteChunkType): Promise<void> {
+		const writer = this.getWriter();
+		try {
+			if (typeof data === "string") {
+				await writer.write(new TextEncoder().encode(data));
+			} else if (data instanceof Uint8Array) {
+				await writer.write(data);
+			} else if (data instanceof ArrayBuffer) {
+				await writer.write(new Uint8Array(data));
+			} else if (data instanceof Blob) {
+				// Handle Blob by reading its contents
+				const buffer = await data.arrayBuffer();
+				await writer.write(new Uint8Array(buffer));
+			} else if (ArrayBuffer.isView(data)) {
+				// Handle other TypedArray views (Int8Array, Float32Array, etc.)
+				await writer.write(
+					new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+				);
+			} else if (typeof data === "object" && data !== null && "type" in data) {
+				// Handle WriteParams object { type: 'write', data: ... }
+				const params = data as {type: string; data?: unknown};
+				if (params.type === "write" && params.data !== undefined) {
+					// Recursively handle the data
+					await this.write(params.data as FileSystemWriteChunkType);
+					return; // Skip releasing lock, already done in recursive call
+				}
+				throw new DOMException("Invalid write params", "NotSupportedError");
+			} else {
+				throw new DOMException(
+					"Invalid data type for write",
+					"NotSupportedError",
+				);
+			}
+		} finally {
+			writer.releaseLock();
+		}
+	}
+
+	// File System Access API seek method
+	async seek(_position: number): Promise<void> {
+		// Seeking not implemented in this simple version
+		throw new DOMException("Seek operation not supported", "NotSupportedError");
+	}
+
+	// File System Access API truncate method
+	async truncate(_size: number): Promise<void> {
+		// Truncating not implemented in this simple version
+		throw new DOMException(
+			"Truncate operation not supported",
+			"NotSupportedError",
+		);
+	}

@@ -2,12 +2,13 @@
  * Cookie Store API Tests
  */
 
-import {describe, it, expect} from "bun:test";
+import {describe, expect, it} from "bun:test";
+
 import {
-	RequestCookieStore,
 	parseCookieHeader,
-	serializeCookie,
 	parseSetCookieHeader,
+	RequestCookieStore,
+	serializeCookie,
 } from "../src/runtime.js";
 
 describe("Cookie Parsing", () => {
@@ -35,10 +36,7 @@ describe("Cookie Parsing", () => {
 
 describe("Cookie Serialization", () => {
 	it("should serialize basic cookie", () => {
-		const header = serializeCookie({
-			name: "session",
-			value: "abc123",
-		});
+		const header = serializeCookie({name: "session", value: "abc123"});
 		expect(header).toContain("session=abc123");
 		expect(header).toContain("Path=/");
 		expect(header).toContain("SameSite=Strict");
@@ -65,19 +63,15 @@ describe("Cookie Serialization", () => {
 	});
 
 	it("should encode special characters", () => {
-		const header = serializeCookie({
-			name: "data",
-			value: "hello world",
-		});
+		const header = serializeCookie({name: "data", value: "hello world"});
 		expect(header).toContain("data=hello%20world");
 	});
 });
 
 describe("Set-Cookie Parsing", () => {
 	it("should parse Set-Cookie header", () => {
-		const cookie = parseSetCookieHeader(
-			"session=abc123; Path=/; Secure; SameSite=Strict",
-		);
+		const cookie =
+			parseSetCookieHeader("session=abc123; Path=/; Secure; SameSite=Strict");
 		expect(cookie.name).toBe("session");
 		expect(cookie.value).toBe("abc123");
 		expect(cookie.path).toBe("/");
@@ -87,9 +81,8 @@ describe("Set-Cookie Parsing", () => {
 
 	it("should parse cookie with Expires", () => {
 		const expireDate = new Date(Date.now() + 3600000).toUTCString();
-		const cookie = parseSetCookieHeader(
-			`session=abc123; Expires=${expireDate}`,
-		);
+		const cookie =
+			parseSetCookieHeader(`session=abc123; Expires=${expireDate}`);
 		expect(cookie.expires).toBeGreaterThan(Date.now());
 	});
 
@@ -107,9 +100,7 @@ describe("RequestCookieStore", () => {
 
 	it("should parse cookies from request", async () => {
 		const request = new Request("https://example.com", {
-			headers: {
-				Cookie: "session=abc123; user=john",
-			},
+			headers: {Cookie: "session=abc123; user=john"},
 		});
 		const store = new RequestCookieStore(request);
 
@@ -122,9 +113,7 @@ describe("RequestCookieStore", () => {
 
 	it("should get all cookies", async () => {
 		const request = new Request("https://example.com", {
-			headers: {
-				Cookie: "a=1; b=2; c=3",
-			},
+			headers: {Cookie: "a=1; b=2; c=3"},
 		});
 		const store = new RequestCookieStore(request);
 
@@ -135,9 +124,7 @@ describe("RequestCookieStore", () => {
 
 	it("should filter cookies by name", async () => {
 		const request = new Request("https://example.com", {
-			headers: {
-				Cookie: "a=1; b=2; c=3",
-			},
+			headers: {Cookie: "a=1; b=2; c=3"},
 		});
 		const store = new RequestCookieStore(request);
 
@@ -174,9 +161,7 @@ describe("RequestCookieStore", () => {
 
 	it("should delete cookie", async () => {
 		const request = new Request("https://example.com", {
-			headers: {
-				Cookie: "session=abc123",
-			},
+			headers: {Cookie: "session=abc123"},
 		});
 		const store = new RequestCookieStore(request);
 
@@ -209,9 +194,7 @@ describe("RequestCookieStore", () => {
 
 	it("should generate delete Set-Cookie header", async () => {
 		const request = new Request("https://example.com", {
-			headers: {
-				Cookie: "session=abc123",
-			},
+			headers: {Cookie: "session=abc123"},
 		});
 		const store = new RequestCookieStore(request);
 

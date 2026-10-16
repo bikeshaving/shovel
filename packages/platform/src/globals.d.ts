@@ -10,8 +10,8 @@
  * or reference it with /// <reference types="@b9g/platform/globals" />
  */
 
-import type {Logger} from "@logtape/logtape";
 import type {DirectoryStorage} from "@b9g/filesystem";
+import type {Logger} from "@logtape/logtape";
 
 declare global {
 	/**
@@ -29,10 +29,13 @@ declare global {
 	interface DatabaseUpgradeEvent {
 		/** The database being upgraded */
 		db: unknown;
+
 		/** Previous database version (0 if new) */
 		oldVersion: number;
+
 		/** Target version being opened */
 		newVersion: number;
+
 		/** Register a promise that must complete before open() resolves */
 		waitUntil(promise: Promise<unknown>): void;
 	}
@@ -56,10 +59,13 @@ declare global {
 			version: number,
 			onUpgrade?: (event: DatabaseUpgradeEvent) => void,
 		): Promise<unknown>;
+
 		/** Get an already-opened database (throws if not opened) */
 		get(name: string): unknown;
+
 		/** Close a specific database */
 		close(name: string): Promise<void>;
+
 		/** Close all databases */
 		closeAll(): Promise<void>;
 	}

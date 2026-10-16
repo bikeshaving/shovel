@@ -4,9 +4,10 @@
  * setBroadcastChannelBackend in @b9g/platform@0.1.18.
  */
 
-import {describe, it, expect} from "bun:test";
-import {readFileSync, existsSync} from "fs";
+import {existsSync, readFileSync} from "fs";
 import {join} from "path";
+
+import {describe, expect, it} from "bun:test";
 
 const packagesDir = join(import.meta.dir, "..", "packages");
 

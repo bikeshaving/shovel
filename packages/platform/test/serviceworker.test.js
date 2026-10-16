@@ -1,4 +1,5 @@
-import {test, expect} from "bun:test";
+import {expect, test} from "bun:test";
+
 import {dispatchRequest, runLifecycle} from "../src/runtime.js";
 
 /**
@@ -38,12 +39,7 @@ test(
 			await import("../src/runtime.js");
 
 		const registration = new ShovelServiceWorkerRegistration();
-		const mockDirectories = {
-			open: async (name) => ({
-				name,
-				kind: "directory",
-			}),
-		};
+		const mockDirectories = {open: async (name) => ({name, kind: "directory"})};
 
 		// Create ServiceWorker globals installer
 		const scope = new ServiceWorkerGlobals({
@@ -151,7 +147,7 @@ test(
 			open: async (name) => ({
 				name,
 				kind: "directory",
-				entries: async function* () {
+				async *entries() {
 					yield ["test.txt", {kind: "file"}];
 				},
 			}),
@@ -210,10 +206,7 @@ test(
 
 		const loggers = new CustomLoggerStorage(mockLoggerFactory);
 
-		const scope = new ServiceWorkerGlobals({
-			registration,
-			loggers,
-		});
+		const scope = new ServiceWorkerGlobals({registration, loggers});
 		scope.install();
 
 		// Test loggers global
@@ -261,10 +254,7 @@ test(
 
 		const loggers = new CustomLoggerStorage(mockLoggerFactory);
 
-		const scope = new ServiceWorkerGlobals({
-			registration,
-			loggers,
-		});
+		const scope = new ServiceWorkerGlobals({registration, loggers});
 		scope.install();
 
 		// ServiceWorker that uses logging (sync API)
@@ -552,18 +542,13 @@ test(
 
 			if (url.pathname === "/") {
 				event.respondWith(
-					new Response(
-						`
+					new Response(`
 					<!DOCTYPE html>
 					<html>
 						<head><title>Test App</title></head>
 						<body><h1>Hello from ServiceWorker!</h1></body>
 					</html>
-				`,
-						{
-							headers: {"content-type": "text/html; charset=utf-8"},
-						},
-					),
+				`, {headers: {"content-type": "text/html; charset=utf-8"}}),
 				);
 			} else if (url.pathname === "/api/health") {
 				event.respondWith(

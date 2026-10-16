@@ -1,27 +1,32 @@
-import {describe, test, expect, beforeAll, afterAll} from "bun:test";
+import * as Fs from "fs/promises";
+import * as Path from "path";
+
+import {afterAll, beforeAll, describe, expect, test} from "bun:test";
 import {Miniflare} from "miniflare";
-import * as path from "path";
-import * as fs from "fs/promises";
-import {CFAssetsBinding, CFAssetsDirectoryHandle} from "../src/directories.js";
+
+import {
+	type CFAssetsBinding,
+	CFAssetsDirectoryHandle,
+} from "../src/directories.js";
 
 describe("CFAssetsDirectoryHandle", () => {
 	let mf: Miniflare;
 	let assets: CFAssetsBinding;
-	const publicDir = path.resolve(import.meta.dir, "static-fixtures");
+	const publicDir = Path.resolve(import.meta.dir, "static-fixtures");
 
 	beforeAll(async () => {
 		// Create test static files
-		await fs.mkdir(publicDir, {recursive: true});
-		await fs.mkdir(path.join(publicDir, "assets"), {recursive: true});
-		await fs.writeFile(
-			path.join(publicDir, "assets", "style.abc123.css"),
+		await Fs.mkdir(publicDir, {recursive: true});
+		await Fs.mkdir(Path.join(publicDir, "assets"), {recursive: true});
+		await Fs.writeFile(
+			Path.join(publicDir, "assets", "style.abc123.css"),
 			"body { color: blue; }",
 		);
-		await fs.writeFile(
-			path.join(publicDir, "assets", "app.def456.js"),
+		await Fs.writeFile(
+			Path.join(publicDir, "assets", "app.def456.js"),
 			'console.log("Hello");',
 		);
-		await fs.writeFile(path.join(publicDir, "index.html"), "<html></html>");
+		await Fs.writeFile(Path.join(publicDir, "index.html"), "<html></html>");
 
 		mf = new Miniflare({
 			modules: true,
@@ -39,7 +44,7 @@ describe("CFAssetsDirectoryHandle", () => {
 
 	afterAll(async () => {
 		await mf.dispose();
-		await fs.rm(publicDir, {recursive: true});
+		await Fs.rm(publicDir, {recursive: true});
 	});
 
 	test("creates handle with correct name and kind", () => {

@@ -1,5 +1,6 @@
-import {describe, test, expect} from "bun:test";
-import {AsyncVariable, AsyncSnapshot, AsyncContext} from "../src/index.js";
+import {describe, expect, test} from "bun:test";
+
+import {AsyncContext, AsyncSnapshot, AsyncVariable} from "../src/index.js";
 
 describe("AsyncVariable", () => {
 	test("should store and retrieve values", () => {
@@ -183,14 +184,10 @@ describe("AsyncSnapshot", () => {
 		variable.run("test", () => {
 			const snapshot = new AsyncSnapshot();
 
-			const result = snapshot.run(
-				(a: number, b: string) => {
-					expect(variable.get()).toBe("test");
-					return `${a}-${b}`;
-				},
-				123,
-				"hello",
-			);
+			const result = snapshot.run((a: number, b: string) => {
+				expect(variable.get()).toBe("test");
+				return `${a}-${b}`;
+			}, 123, "hello");
 
 			expect(result).toBe("123-hello");
 		});
@@ -217,7 +214,7 @@ describe("AsyncSnapshot", () => {
 
 		const obj = {
 			name: "test-object",
-			getInfo: function () {
+			getInfo() {
 				return `${this.name}: ${variable.get()}`;
 			},
 		};
@@ -273,7 +270,10 @@ describe("Real-world scenarios", () => {
 
 		const requestContext = new AsyncVariable<RequestContext>();
 
-		async function handleRequest(requestId: string, userId: string) {
+		async function handleRequest(
+			requestId: string,
+			userId: string,
+		): Promise<string> {
 			return requestContext.run({requestId, userId}, async () => {
 				// Simulate middleware/handler chain
 				await authenticateUser();
@@ -282,18 +282,18 @@ describe("Real-world scenarios", () => {
 			});
 		}
 
-		async function authenticateUser() {
+		async function authenticateUser(): Promise<void> {
 			const ctx = requestContext.get();
 			expect(ctx?.userId).toBeDefined();
 		}
 
-		async function processRequest() {
+		async function processRequest(): Promise<void> {
 			await new Promise((resolve) => setTimeout(resolve, 5));
 			const ctx = requestContext.get();
 			expect(ctx?.requestId).toBeDefined();
 		}
 
-		function logRequest() {
+		function logRequest(): string {
 			const ctx = requestContext.get();
 			return `Processed request ${ctx?.requestId} for user ${ctx?.userId}`;
 		}

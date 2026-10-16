@@ -6,8 +6,8 @@
  * but runs universally across all platforms.
  */
 
-import {Router} from "@b9g/router";
 import {assets as assetsMiddleware} from "@b9g/assets/middleware";
+import {type RouteContext, Router} from "@b9g/router";
 
 const logger = self.loggers.get(["blog"]);
 
@@ -40,9 +40,9 @@ router.use(assetsMiddleware());
 router.use(pageCache);
 
 // Cache middleware for pages using new generator API
-async function* pageCache(
+async function *pageCache(
 	request: Request,
-	_context: import("@b9g/router").RouteContext,
+	_context: RouteContext,
 ): AsyncGenerator<
 	Request | undefined,
 	Response | null | undefined | void,
@@ -150,62 +150,51 @@ const posts = [
 
 // Routes
 router.route("/").get(async (_request, _context) => {
-	return new Response(
-		renderPage(
-			"Home",
-			`
+	return new Response(renderPage(
+		"Home",
+		`
     <div class="cache-info">
       <strong>Cache Status:</strong> ${self.caches ? "Enabled" : "Disabled"} |
       <strong>Cache Type:</strong> ${self.caches ? "Platform-configured" : "N/A"}
     </div>
 
     <div class="posts">
-      ${posts
-				.map(
-					(post) => `
+      ${posts.map((post) => `
         <article class="post">
           <h2><a href="/posts/${post.id}">${post.title}</a></h2>
           <div class="meta">By ${post.author} on ${post.date}</div>
           <p>${post.content}</p>
         </article>
-      `,
-				)
-				.join("")}
+      `).join("")}
     </div>
   `,
-		),
-		{
-			headers: {
-				"Content-Type": "text/html",
-				"Cache-Control": CACHE_HEADERS.PAGES,
-			},
+	), {
+		headers: {
+			"Content-Type": "text/html",
+			"Cache-Control": CACHE_HEADERS.PAGES,
 		},
-	);
+	});
 });
 
 router.route("/posts/:id").get(async (request, context) => {
 	const post = posts.find((p) => p.id === parseInt(context.params.id));
 
 	if (!post) {
-		return new Response(
-			renderPage(
-				"Post Not Found",
-				`
+		return new Response(renderPage(
+			"Post Not Found",
+			`
       <div class="post">
         <h2>Post Not Found</h2>
         <p>The post you're looking for doesn't exist.</p>
         <p><a href="/">← Back to Home</a></p>
       </div>
     `,
-			),
-			{status: 404, headers: {"Content-Type": "text/html"}},
-		);
+		), {status: 404, headers: {"Content-Type": "text/html"}});
 	}
 
-	return new Response(
-		renderPage(
-			post.title,
-			`
+	return new Response(renderPage(
+		post.title,
+		`
     <div class="cache-info">
       <strong>Cache Status:</strong> ${self.caches ? "Enabled" : "Disabled"} |
       <strong>Post ID:</strong> ${post.id}
@@ -218,14 +207,12 @@ router.route("/posts/:id").get(async (request, context) => {
       <p><a href="/">← Back to Home</a></p>
     </article>
   `,
-		),
-		{
-			headers: {
-				"Content-Type": "text/html",
-				"Cache-Control": CACHE_HEADERS.POSTS,
-			},
+	), {
+		headers: {
+			"Content-Type": "text/html",
+			"Cache-Control": CACHE_HEADERS.POSTS,
 		},
-	);
+	});
 });
 
 // API route - no automatic caching, handled by manual logic if needed
@@ -244,20 +231,15 @@ router.route("/api/posts").get(async (_request, _context) => {
 			cached: !!self.caches,
 			timestamp: new Date().toISOString(),
 		},
-		{
-			headers: {
-				"Cache-Control": CACHE_HEADERS.API,
-			},
-		},
+		{headers: {"Cache-Control": CACHE_HEADERS.API}},
 	);
 });
 
 // About page
 router.route("/about").get(async (_request, _context) => {
-	return new Response(
-		renderPage(
-			"About",
-			`
+	return new Response(renderPage(
+		"About",
+		`
     <div class="post">
       <h2>About This App</h2>
       <p>This is a demo blog built with Shovel's cache-first architecture. It showcases:</p>
@@ -277,14 +259,12 @@ router.route("/about").get(async (_request, _context) => {
       <p><a href="/">← Back to Home</a></p>
     </div>
   `,
-		),
-		{
-			headers: {
-				"Content-Type": "text/html",
-				"Cache-Control": CACHE_HEADERS.ABOUT,
-			},
+	), {
+		headers: {
+			"Content-Type": "text/html",
+			"Cache-Control": CACHE_HEADERS.ABOUT,
 		},
-	);
+	});
 });
 
 /**
@@ -301,7 +281,7 @@ self.addEventListener("activate", (event) => {
 	event.waitUntil(generateStaticSite());
 });
 
-async function generateStaticSite() {
+async function generateStaticSite(): Promise<void> {
 	logger.info`Starting static site generation...`;
 
 	try {
@@ -342,9 +322,8 @@ async function generateStaticSite() {
 					}
 
 					// Write to static directory
-					const fileHandle = await staticDirectory.getFileHandle(fileName, {
-						create: true,
-					});
+					const fileHandle =
+						await staticDirectory.getFileHandle(fileName, {create: true});
 					const writable = await fileHandle.createWritable();
 					await writable.write(content);
 					await writable.close();
@@ -373,10 +352,8 @@ self.addEventListener("fetch", (event) => {
 
 		// Add timeout to detect hanging promises
 		const timeoutPromise = new Promise<Response>((_, reject) => {
-			setTimeout(
-				() => reject(new Error("Router response timeout")),
-				TIMEOUTS.ROUTER_RESPONSE,
-			);
+			setTimeout(() =>
+				reject(new Error("Router response timeout")), TIMEOUTS.ROUTER_RESPONSE);
 		});
 
 		event.respondWith(
@@ -432,7 +409,7 @@ self.addEventListener("static", (event: Event) => {
 });
 
 // Helper function to render HTML pages
-function renderPage(title: string, content: string) {
+function renderPage(title: string, content: string): string {
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>

@@ -1,4 +1,5 @@
-import {jsx, Raw} from "@b9g/crank/standalone";
+import {type Element, jsx, Raw} from "@b9g/crank/standalone";
+
 import {highlight} from "../utils/prism.js";
 
 // Strip numeric prefixes like "01-", "02-" from guide slugs
@@ -10,11 +11,7 @@ function stripNumericPrefix(slug: string): string {
 // punctuation, spaces to hyphens. Crank's default slugify turns punctuation
 // into hyphens instead, which would break existing #anchor links.
 function headingSlug(text: string): string {
-	return text
-		.toLowerCase()
-		.trim()
-		.replace(/[^\w\- ]+/g, "")
-		.replace(/ /g, "-");
+	return text.toLowerCase().trim().replace(/[^\w\- ]+/g, "").replace(/ /g, "-");
 }
 
 // marked also deduped repeated slugs ("parameters", then "parameters-1").
@@ -47,8 +44,9 @@ function resolveHref(href: string, linkBase: string): string {
 	// Sibling link: ./foo.md -> /{linkBase}/foo
 	const sibling = href.match(/^\.\/(.+)\.md(#.*)?$/);
 	if (sibling) {
-		const slug =
-			linkBase === "guides" ? stripNumericPrefix(sibling[1]) : sibling[1];
+		const slug = linkBase === "guides"
+			? stripNumericPrefix(sibling[1])
+			: sibling[1];
 		return "/" + linkBase + "/" + slug + (sibling[2] || "");
 	}
 
@@ -56,20 +54,20 @@ function resolveHref(href: string, linkBase: string): string {
 }
 
 export const components = {
-	heading({token, children, rootProps}: any) {
+	heading({token, children, rootProps}: any): Element {
 		const tag = `h${token.depth}`;
 		const id = uniqueSlug(rootProps, headingSlug(token.text));
 		return jsx`<${tag} id=${id}>${children}<//>`;
 	},
 
-	link({token, children, rootProps}: any) {
+	link({token, children, rootProps}: any): Element {
 		const {href, title} = token;
 		const linkBase = rootProps.linkBase ?? "api";
 		const resolved = href ? resolveHref(href, linkBase) : href;
 		return jsx`<a href=${resolved} title=${title}>${children}</a>`;
 	},
 
-	code({token}: any) {
+	code({token}: any): Element {
 		const {text, lang} = token;
 		let highlighted: string | null;
 		try {
@@ -84,10 +82,9 @@ export const components = {
 		// Fall back to the plain text child, which Crank escapes, rather than
 		// injecting unhighlighted source as raw markup. Kept on one line: any
 		// newline in this template would land inside the <pre>.
-		const content =
-			highlighted == null
-				? text + "\n"
-				: jsx`<${Raw} value=${highlighted + "\n"} />`;
+		const content = highlighted == null
+			? text + "\n"
+			: jsx`<${Raw} value=${highlighted + "\n"} />`;
 		return jsx`<pre><code class=${className}>${content}</code></pre>`;
 	},
 };

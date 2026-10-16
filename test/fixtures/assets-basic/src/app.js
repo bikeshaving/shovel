@@ -5,8 +5,7 @@ self.addEventListener("fetch", (event) => {
 
 	if (url.pathname === "/") {
 		event.respondWith(
-			new Response(
-				`
+			new Response(`
 			<!DOCTYPE html>
 			<html>
 				<head>
@@ -17,11 +16,7 @@ self.addEventListener("fetch", (event) => {
 					<h1 class="header">Hello with Assets!</h1>
 				</body>
 			</html>
-		`,
-				{
-					headers: {"content-type": "text/html; charset=utf-8"},
-				},
-			),
+		`, {headers: {"content-type": "text/html; charset=utf-8"}}),
 		);
 	}
 });

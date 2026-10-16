@@ -4,9 +4,9 @@ interface WalkInfo {
 	filename: string;
 }
 
-async function* walk(
+async function *walk(
 	dir: FileSystemDirectoryHandle,
-	basePath: string = "",
+	basePath = "",
 ): AsyncGenerator<WalkInfo> {
 	const entries: Array<[string, FileSystemHandle]> = [];
 	for await (const entry of dir.entries()) {
@@ -18,7 +18,7 @@ async function* walk(
 	for (const [name, handle] of entries) {
 		const path = basePath ? `${basePath}/${name}` : name;
 		if (handle.kind === "directory") {
-			yield* walk(handle as FileSystemDirectoryHandle, path);
+			yield *walk(handle as FileSystemDirectoryHandle, path);
 		} else {
 			yield {filename: path};
 		}
@@ -39,11 +39,7 @@ async function navigatePath(
 }
 
 export interface DocInfo {
-	attributes: {
-		title: string;
-		publish: boolean;
-		description?: string;
-	};
+	attributes: {title: string; publish: boolean; description?: string};
 	url: string;
 	filename: string;
 	body: string;
@@ -52,8 +48,8 @@ export interface DocInfo {
 export async function collectDocuments(
 	dir: FileSystemDirectoryHandle,
 	options: {shallow?: boolean; pathPrefix?: string} = {},
-): Promise<Array<DocInfo>> {
-	const docs: Array<DocInfo> = [];
+): Promise<DocInfo[]> {
+	const docs: DocInfo[] = [];
 	for await (const {filename} of walk(dir)) {
 		if (filename.endsWith(".md")) {
 			// Skip subdirectories in shallow mode
@@ -65,8 +61,9 @@ export async function collectDocuments(
 			const file = await fileHandle.getFile();
 			const md = await file.text();
 			const {attributes, body} = frontmatter(md) as unknown as DocInfo;
-			attributes.publish =
-				attributes.publish == null ? true : attributes.publish;
+			attributes.publish = attributes.publish == null
+				? true
+				: attributes.publish;
 
 			// If no title in frontmatter, extract from first heading
 			if (!attributes.title) {

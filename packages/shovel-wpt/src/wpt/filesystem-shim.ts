@@ -5,14 +5,14 @@
  * with a custom FileSystemDirectoryHandle implementation.
  */
 
+import * as Assertions from "../harness/assertions.js";
 import {promise_test, type TestContext} from "../harness/testharness.js";
-import * as assertions from "../harness/assertions.js";
 
 export interface FilesystemShimConfig {
 	/** Factory function to get a clean test directory */
 	getDirectory: () =>
-		| FileSystemDirectoryHandle
-		| Promise<FileSystemDirectoryHandle>;
+		FileSystemDirectoryHandle | Promise<FileSystemDirectoryHandle>;
+
 	/** Optional cleanup function */
 	cleanup?: () => void | Promise<void>;
 }
@@ -26,13 +26,11 @@ async function cleanupDirectory(dir: FileSystemDirectoryHandle): Promise<void> {
 		entries.push(entry);
 	}
 
-	const removePromises = entries.map((entry) =>
-		dir
-			.removeEntry(entry.name, {recursive: entry.kind === "directory"})
-			.catch(() => {
-				// Ignore errors - entry may already be deleted
-			}),
-	);
+	const removePromises = entries.map((entry) => dir
+		.removeEntry(entry.name, {recursive: entry.kind === "directory"})
+		.catch(() => {
+			// Ignore errors - entry may already be deleted
+		}));
 
 	await Promise.allSettled(removePromises);
 }
@@ -103,7 +101,7 @@ export function setupFilesystemTestGlobals(config: FilesystemShimConfig): void {
 		parent: FileSystemDirectoryHandle,
 	): Promise<FileSystemFileHandle> {
 		const handle = await parent.getFileHandle(name, {create: true});
-		assertions.assert_equals(await getFileSize(handle), 0);
+		Assertions.assert_equals(await getFileSize(handle), 0);
 		return handle;
 	}
 
@@ -172,7 +170,7 @@ export function setupFilesystemTestGlobals(config: FilesystemShimConfig): void {
 	Object.assign(globalThis, {
 		// Core harness
 		promise_test,
-		...assertions,
+		...Assertions,
 
 		// Constants
 		kCurrentDirectory,

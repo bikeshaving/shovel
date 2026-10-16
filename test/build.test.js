@@ -2,9 +2,11 @@
 import * as FS from "fs/promises";
 import {tmpdir} from "os";
 import {join} from "path";
-import {test, expect} from "bun:test";
-import {buildForProduction, buildCommand} from "../src/commands/build.js";
+
 import {getLogger} from "@logtape/logtape";
+import {expect, test} from "bun:test";
+
+import {buildCommand, buildForProduction} from "../src/commands/build.js";
 
 const logger = getLogger(["test", "build"]);
 
@@ -252,11 +254,7 @@ test(
 	async () => {
 		// Test missing entrypoint - should throw when trying to resolve undefined path
 		await expect(
-			buildForProduction({
-				outDir: "/tmp",
-				verbose: false,
-				platform: "node",
-			}),
+			buildForProduction({outDir: "/tmp", verbose: false, platform: "node"}),
 		).rejects.toThrow();
 
 		// Test missing outDir - should throw when trying to resolve undefined path
@@ -321,7 +319,7 @@ self.addEventListener("fetch", (event) => {
 });
 			`;
 
-			const styleContent = `body { color: blue; }`;
+			const styleContent = "body { color: blue; }";
 
 			const entryPath = await createTempFile("with-assets.js", entryContent);
 			const stylePath = await createTempFile("style.css", styleContent);
@@ -365,8 +363,8 @@ self.addEventListener("fetch", (event) => {
 				join(outDir, "server", "package.json"),
 				"utf8",
 			);
-			const packageJson = JSON.parse(packageContent);
-			expect(typeof packageJson).toBe("object");
+			const packageJSON = JSON.parse(packageContent);
+			expect(typeof packageJSON).toBe("object");
 
 			// Validate assets manifest
 			const manifestContent = await FS.readFile(
@@ -563,15 +561,12 @@ test(
 
 		try {
 			// Generate a large ServiceWorker file
-			const routes = Array.from(
-				{length: 100},
-				(_, i) => `
+			const routes = Array.from({length: 100}, (_, i) => `
 	if (url.pathname === "/route${i}") {
 		event.respondWith(new Response("Route ${i} response"));
 		return;
 	}
-			`,
-			).join("");
+			`).join("");
 
 			const entryContent = `
 self.addEventListener("fetch", (event) => {
@@ -626,10 +621,10 @@ test(
 		try {
 			// Create a temporary workspace structure
 			const workspaceRoot = await createTempDir("workspace-");
-			const packageJsonPath = join(workspaceRoot, "package.json");
+			const packageJSONPath = join(workspaceRoot, "package.json");
 
 			// Create workspace package.json with @b9g dependencies
-			const packageJson = {
+			const packageJSON = {
 				name: "test-workspace",
 				workspaces: ["packages/*"],
 				private: true,
@@ -640,7 +635,7 @@ test(
 					"@b9g/filesystem": "*",
 				},
 			};
-			await FS.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+			await FS.writeFile(packageJSONPath, JSON.stringify(packageJSON, null, 2));
 
 			const packagesDir = join(workspaceRoot, "packages", "test-app");
 			await FS.mkdir(packagesDir, {recursive: true});
@@ -905,18 +900,20 @@ self.addEventListener("fetch", (event) => {
 // LIFECYCLE COMMAND TESTS
 // ======================
 
-test("build --lifecycle runs ServiceWorker lifecycle", async () => {
-	const cleanup_paths = [];
+test(
+	"build --lifecycle runs ServiceWorker lifecycle",
+	async () => {
+		const cleanup_paths = [];
 
-	try {
-		// Create a ServiceWorker that writes a file during activate
-		const testDir = await createTempDir("lifecycle-test-");
-		cleanup_paths.push(testDir);
+		try {
+			// Create a ServiceWorker that writes a file during activate
+			const testDir = await createTempDir("lifecycle-test-");
+			cleanup_paths.push(testDir);
 
-		const markerFile = join(testDir, "activated.txt");
+			const markerFile = join(testDir, "activated.txt");
 
-		// Create entry that writes a marker file on activate
-		const entryContent = `
+			// Create entry that writes a marker file on activate
+			const entryContent = `
 import * as FS from "node:fs/promises";
 
 self.addEventListener("install", (event) => {
@@ -934,44 +931,46 @@ self.addEventListener("fetch", (event) => {
 });
 `;
 
-		const entryPath = join(testDir, "app.js");
-		await FS.writeFile(entryPath, entryContent);
+			const entryPath = join(testDir, "app.js");
+			await FS.writeFile(entryPath, entryContent);
 
-		// Create package.json
-		await FS.writeFile(
-			join(testDir, "package.json"),
-			JSON.stringify({name: "test-lifecycle", type: "module"}),
-		);
+			// Create package.json
+			await FS.writeFile(
+				join(testDir, "package.json"),
+				JSON.stringify({name: "test-lifecycle", type: "module"}),
+			);
 
-		// Symlink node_modules from project root
-		await FS.symlink(
-			join(process.cwd(), "node_modules"),
-			join(testDir, "node_modules"),
-			"dir",
-		);
+			// Symlink node_modules from project root
+			await FS.symlink(
+				join(process.cwd(), "node_modules"),
+				join(testDir, "node_modules"),
+				"dir",
+			);
 
-		// Run build with --lifecycle flag
-		const originalCwd = process.cwd();
-		process.chdir(testDir);
+			// Run build with --lifecycle flag
+			const originalCwd = process.cwd();
+			process.chdir(testDir);
 
-		try {
-			await buildCommand(entryPath, {platform: "node", lifecycle: true}, {});
+			try {
+				await buildCommand(entryPath, {platform: "node", lifecycle: true}, {});
+			} finally {
+				process.chdir(originalCwd);
+			}
+
+			// Verify the activate event ran by checking for marker file
+			const markerExists = await FS.access(markerFile)
+				.then(() => true)
+				.catch(() => false);
+			expect(markerExists).toBe(true);
+
+			const markerContent = await FS.readFile(markerFile, "utf8");
+			expect(markerContent).toContain("activated at");
 		} finally {
-			process.chdir(originalCwd);
+			await cleanup(cleanup_paths);
 		}
-
-		// Verify the activate event ran by checking for marker file
-		const markerExists = await FS.access(markerFile)
-			.then(() => true)
-			.catch(() => false);
-		expect(markerExists).toBe(true);
-
-		const markerContent = await FS.readFile(markerFile, "utf8");
-		expect(markerContent).toContain("activated at");
-	} finally {
-		await cleanup(cleanup_paths);
-	}
-}, 15000); // Longer timeout for lifecycle
+	},
+	15000,
+); // Longer timeout for lifecycle
 
 // ======================
 // CONFIG MERGE REGRESSION TESTS
@@ -1001,10 +1000,7 @@ self.addEventListener("fetch", (event) => {
 				join(testDir, "shovel.json"),
 				JSON.stringify({
 					directories: {
-						public: {
-							module: "@b9g/filesystem/node-fs",
-							path: "./public",
-						},
+						public: {module: "@b9g/filesystem/node-fs", path: "./public"},
 					},
 				}),
 			);

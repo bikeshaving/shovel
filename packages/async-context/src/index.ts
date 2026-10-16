@@ -31,6 +31,16 @@ export interface AsyncVariableOptions<T> {
 	name?: string;
 }
 
+const kStorage = Symbol("storage");
+const kDefaultValue = Symbol("defaultValue");
+const kName = Symbol("name");
+
+export interface AsyncVariable<T> {
+	[kStorage]: AsyncLocalStorage<T>;
+	[kDefaultValue]: T | undefined;
+	[kName]: string | undefined;
+}
+
 /**
  * AsyncContext.Variable - stores a value that propagates through async operations
  *
@@ -47,16 +57,19 @@ export interface AsyncVariableOptions<T> {
  * ```
  */
 export class AsyncVariable<T> {
-	readonly #storage: AsyncLocalStorage<T>;
-	readonly #defaultValue?: T;
-	readonly #name?: string;
-
 	constructor(options?: AsyncVariableOptions<T>) {
-		this.#storage = new AsyncLocalStorage<T>();
-		this.#defaultValue = options?.defaultValue;
-		this.#name = options?.name;
+		this[kStorage] = new AsyncLocalStorage<T>();
+		this[kDefaultValue] = options?.defaultValue;
+		this[kName] = options?.name;
 		// Register this variable for Snapshot support
 		variableRegistry.add(this as AsyncVariable<unknown>);
+	}
+
+	/**
+	 * Get the name of this variable (for debugging)
+	 */
+	get name(): string | undefined {
+		return this[kName];
 	}
 
 	/**
@@ -73,7 +86,7 @@ export class AsyncVariable<T> {
 		fn: (...args: Args) => R,
 		...args: Args
 	): R {
-		return this.#storage.run(value, fn, ...args);
+		return this[kStorage].run(value, fn, ...args);
 	}
 
 	/**
@@ -83,8 +96,8 @@ export class AsyncVariable<T> {
 	 * @returns The current context value or default value
 	 */
 	get(): T | undefined {
-		const value = this.#storage.getStore();
-		return value !== undefined ? value : this.#defaultValue;
+		const value = this[kStorage].getStore();
+		return value !== undefined ? value : this[kDefaultValue];
 	}
 
 	/**
@@ -94,14 +107,7 @@ export class AsyncVariable<T> {
 	 * @returns The current context value (without default value)
 	 */
 	getStore(): T | undefined {
-		return this.#storage.getStore();
-	}
-
-	/**
-	 * Get the name of this variable (for debugging)
-	 */
-	get name(): string | undefined {
-		return this.#name;
+		return this[kStorage].getStore();
 	}
 
 	/**
@@ -109,8 +115,14 @@ export class AsyncVariable<T> {
 	 * @internal
 	 */
 	_getStorage(): AsyncLocalStorage<T> {
-		return this.#storage;
+		return this[kStorage];
 	}
+}
+
+const kCaptured = Symbol("captured");
+
+export interface AsyncSnapshot {
+	[kCaptured]: Map<AsyncVariable<unknown>, unknown>;
 }
 
 /**
@@ -139,37 +151,14 @@ export class AsyncVariable<T> {
  * ```
  */
 export class AsyncSnapshot {
-	readonly #captured: Map<AsyncVariable<unknown>, unknown>;
-
 	constructor() {
 		// Capture current values of all registered variables
 		// We capture ALL variables, using NO_VALUE for undefined ones
-		this.#captured = new Map();
+		this[kCaptured] = new Map();
 		for (const variable of variableRegistry) {
 			const value = variable.getStore();
-			this.#captured.set(variable, value !== undefined ? value : NO_VALUE);
+			this[kCaptured].set(variable, value !== undefined ? value : NO_VALUE);
 		}
-	}
-
-	/**
-	 * Execute a function with the captured context values
-	 *
-	 * @param fn - The function to execute
-	 * @param args - Additional arguments to pass to fn
-	 * @returns The return value of fn
-	 */
-	run<R, Args extends unknown[]>(fn: (...args: Args) => R, ...args: Args): R {
-		// Restore all captured values by nesting run() calls
-		// For NO_VALUE, we run with undefined to clear any current context
-		let result: () => R = () => fn(...args);
-
-		for (const [variable, value] of this.#captured) {
-			const prev = result;
-			const actualValue = value === NO_VALUE ? undefined : value;
-			result = () => variable._getStorage().run(actualValue, prev);
-		}
-
-		return result();
 	}
 
 	/**
@@ -203,15 +192,33 @@ export class AsyncSnapshot {
 			return snapshot.run(() => fn.apply(this, args));
 		};
 	}
+
+	/**
+	 * Execute a function with the captured context values
+	 *
+	 * @param fn - The function to execute
+	 * @param args - Additional arguments to pass to fn
+	 * @returns The return value of fn
+	 */
+	run<R, Args extends unknown[]>(fn: (...args: Args) => R, ...args: Args): R {
+		// Restore all captured values by nesting run() calls
+		// For NO_VALUE, we run with undefined to clear any current context
+		let result: () => R = () => fn(...args);
+
+		for (const [variable, value] of this[kCaptured]) {
+			const prev = result;
+			const actualValue = value === NO_VALUE ? undefined : value;
+			result = () => variable._getStorage().run(actualValue, prev);
+		}
+
+		return result();
+	}
 }
 
 /**
  * AsyncContext object matching the TC39 AsyncContext proposal
  */
-export const AsyncContext = {
-	Variable: AsyncVariable,
-	Snapshot: AsyncSnapshot,
-};
+export const AsyncContext = {Variable: AsyncVariable, Snapshot: AsyncSnapshot};
 
 // Default export for convenience
 export default AsyncContext;

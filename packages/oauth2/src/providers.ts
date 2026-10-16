@@ -3,16 +3,18 @@
  * Pre-configured settings for popular OAuth2 providers
  */
 
-import {OAuth2Config} from "./index.js";
+import type {OAuth2Config} from "./index.js";
 
 export type ProviderName = "github" | "google" | "microsoft";
 
-export interface ProviderConfig extends Omit<
-	OAuth2Config,
-	"clientID" | "clientSecret" | "redirectURI" | "scopes"
-> {
+export interface ProviderConfig
+	extends Omit<
+		OAuth2Config,
+		"clientID" | "clientSecret" | "redirectURI" | "scopes"
+	> {
 	/** User info endpoint */
 	userInfoEndpoint?: string;
+
 	/** Default scopes */
 	defaultScopes?: string[];
 }
@@ -63,6 +65,7 @@ export function getProvider(name: ProviderName): ProviderConfig {
 export function createProviderConfig(
 	provider: ProviderName,
 	options: {
+		// eslint-disable-next-line acrocase/acrocase -- public API
 		clientID: string;
 		clientSecret?: string;
 		redirectURI: string;
@@ -73,6 +76,7 @@ export function createProviderConfig(
 
 	return {
 		...preset,
+		// eslint-disable-next-line acrocase/acrocase -- public API
 		clientID: options.clientID,
 		clientSecret: options.clientSecret,
 		redirectURI: options.redirectURI,

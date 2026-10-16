@@ -3,8 +3,9 @@
  * Includes OAuth2 integration and session management
  */
 
-import {OAuth2Client, OAuth2Tokens} from "./index.js";
 import type {FunctionMiddleware} from "@b9g/router";
+
+import type {OAuth2Client, OAuth2Tokens} from "./index.js";
 
 // Augment RouteContext to include oauth2 property
 // Importing this module adds oauth2 tokens to context
@@ -60,10 +61,7 @@ export function handleCallback(
 					error: "Authentication failed",
 					message: (error as Error).message,
 				}),
-				{
-					status: 400,
-					headers: {"Content-Type": "application/json"},
-				},
+				{status: 400, headers: {"Content-Type": "application/json"}},
 			);
 		}
 	};
@@ -73,10 +71,12 @@ export function handleCallback(
  * Create middleware to require authentication
  * Checks for session token and adds user to context
  */
-export function requireAuth(options?: {
-	sessionCookieName?: string;
-	onUnauthorized?: () => Response | Promise<Response>;
-}): FunctionMiddleware {
+export function requireAuth(
+	options?: {
+		sessionCookieName?: string;
+		onUnauthorized?: () => Response | Promise<Response>;
+	},
+): FunctionMiddleware {
 	const sessionCookieName = options?.sessionCookieName || "session";
 
 	return async (request, context) => {

@@ -8,8 +8,10 @@
  */
 
 import {join} from "path";
-import {runPlatformTests} from "../src/runners/platform.js";
+
 import {MemoryCache} from "@b9g/cache/memory";
+
+import {runPlatformTests} from "../src/runners/platform.js";
 
 const fixturesDir = join(import.meta.dir, "fixtures");
 

@@ -7,7 +7,7 @@
  * Generate a cryptographically random string for code verifier
  * @param length Length of the verifier (43-128 characters)
  */
-export function generateCodeVerifier(length: number = 128): string {
+export function generateCodeVerifier(length = 128): string {
 	if (length < 43 || length > 128) {
 		throw new Error("Code verifier length must be between 43 and 128");
 	}
@@ -54,6 +54,6 @@ function base64URLEncode(buffer: ArrayBuffer): string {
 /**
  * Generate a random state parameter for CSRF protection
  */
-export function generateState(length: number = 32): string {
+export function generateState(length = 32): string {
 	return generateCodeVerifier(length);
 }

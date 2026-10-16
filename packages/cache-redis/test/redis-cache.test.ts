@@ -6,10 +6,11 @@
  * If Redis is not reachable, the suite is skipped.
  */
 
-import {test, expect, describe, beforeEach, afterEach} from "bun:test";
-import {RedisCache} from "../src/index.js";
-import {createClient} from "redis";
 import {configure, getConsoleSink, getLogger} from "@logtape/logtape";
+import {afterEach, beforeEach, describe, expect, test} from "bun:test";
+import {createClient} from "redis";
+
+import {RedisCache} from "../src/index.js";
 
 await configure({
 	reset: true,
@@ -26,10 +27,7 @@ const REDIS_URL = import.meta.env.REDIS_URL || "redis://localhost:6379";
 async function isRedisAvailable(url: string): Promise<boolean> {
 	const client = createClient({
 		url,
-		socket: {
-			connectTimeout: 2000,
-			reconnectStrategy: false,
-		},
+		socket: {connectTimeout: 2000, reconnectStrategy: false},
 	});
 	try {
 		await client.connect();
@@ -174,9 +172,7 @@ describeRedis("RedisCache", () => {
 
 	test("handles Vary: * (never matches)", async () => {
 		const request = new Request("http://example.com/vary-star");
-		const response = new Response("data", {
-			headers: {Vary: "*"},
-		});
+		const response = new Response("data", {headers: {Vary: "*"}});
 
 		await cache.put(request, response);
 
@@ -191,10 +187,7 @@ describeRedis("RedisCache", () => {
 
 	test("handles multiple Vary headers", async () => {
 		const request = new Request("http://example.com/vary-multi", {
-			headers: {
-				"Accept-Encoding": "gzip",
-				"User-Agent": "TestClient",
-			},
+			headers: {"Accept-Encoding": "gzip", "User-Agent": "TestClient"},
 		});
 		const response = new Response("data", {
 			headers: {Vary: "Accept-Encoding, User-Agent"},
@@ -205,10 +198,7 @@ describeRedis("RedisCache", () => {
 		// Both headers match
 		const matched1 = await cache.match(
 			new Request("http://example.com/vary-multi", {
-				headers: {
-					"Accept-Encoding": "gzip",
-					"User-Agent": "TestClient",
-				},
+				headers: {"Accept-Encoding": "gzip", "User-Agent": "TestClient"},
 			}),
 		);
 		expect(matched1).toBeDefined();
@@ -216,10 +206,7 @@ describeRedis("RedisCache", () => {
 		// One header different
 		const matched2 = await cache.match(
 			new Request("http://example.com/vary-multi", {
-				headers: {
-					"Accept-Encoding": "gzip",
-					"User-Agent": "DifferentClient",
-				},
+				headers: {"Accept-Encoding": "gzip", "User-Agent": "DifferentClient"},
 			}),
 		);
 		expect(matched2).toBeUndefined();
@@ -285,10 +272,13 @@ describeRedis("RedisCache", () => {
 	});
 
 	test("handles concurrent requests", async () => {
-		const requests = Array.from({length: 10}, (_, i) => ({
-			request: new Request(`http://example.com/concurrent/${i}`),
-			response: new Response(`Response ${i}`),
-		}));
+		const requests = Array.from(
+			{length: 10},
+			(_, i) => ({
+				request: new Request(`http://example.com/concurrent/${i}`),
+				response: new Response(`Response ${i}`),
+			}),
+		);
 
 		// Put all concurrently
 		await Promise.all(

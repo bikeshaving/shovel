@@ -3,19 +3,19 @@
  * @b9g/admin - AdminRouter implementation
  */
 
+import type {Children} from "@b9g/crank";
+import {renderer} from "@b9g/crank/html";
 import {Router} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
-import {renderer} from "@b9g/crank/html";
-import type {Children} from "@b9g/crank";
-import type {Table, Database} from "@b9g/zen";
-import {ValidationError} from "@b9g/zen";
+import {type Database, type Table, ValidationError} from "@b9g/zen";
+
 import {
 	type AdminTableInfo,
 	getAdminSchemaInfo,
 	getDisplayName,
 } from "./core/introspection.js";
-import {PageLayout} from "./ui/Layout.js";
 import {ModelForm, parseFormData} from "./ui/Form.js";
+import {PageLayout} from "./ui/Layout.js";
 
 const logger = self.loggers.get(["shovel", "admin"]);
 
@@ -30,8 +30,10 @@ export type AuthProvider = "google" | "github" | "microsoft";
 export interface AuthConfig {
 	/** OAuth2 providers to enable */
 	providers: AuthProvider[];
+
 	/** Optional email domain whitelist (e.g., ['mycompany.com']) */
 	allowedDomains?: string[];
+
 	/** Session max age in seconds (default: 7 days) */
 	sessionMaxAge?: number;
 }
@@ -40,14 +42,19 @@ export interface AuthConfig {
 export interface ModelConfig {
 	/** Display name for the model (defaults to table name) */
 	name?: string;
+
 	/** Columns to show in list view (defaults to all non-blob columns) */
 	listFields?: string[];
+
 	/** Fields that can be searched */
 	searchFields?: string[];
+
 	/** Fields to hide from forms */
 	excludeFields?: string[];
+
 	/** Fields that cannot be edited */
 	readOnlyFields?: string[];
+
 	/** Items per page in list view (default: 25) */
 	pageSize?: number;
 }
@@ -56,6 +63,7 @@ export interface ModelConfig {
 export interface BrandingConfig {
 	/** Admin panel title */
 	title?: string;
+
 	/** Logo URL */
 	logo?: string;
 }
@@ -64,6 +72,7 @@ export interface BrandingConfig {
 interface AssetsConfig {
 	/** URL to USWDS CSS file */
 	css: string;
+
 	/** URL to USWDS main JS file */
 	js: string;
 }
@@ -72,16 +81,22 @@ interface AssetsConfig {
 export interface AdminConfig {
 	/** Database name from shovel.json to use */
 	database: string;
+
 	/** Schema object containing @b9g/zen collection definitions */
 	schema: Record<string, unknown>;
+
 	/** Base path for admin routes (default: '/admin') */
 	basePath?: string;
+
 	/** Authentication configuration */
 	auth: AuthConfig;
+
 	/** Per-model customization keyed by table name */
 	models?: Record<string, ModelConfig>;
+
 	/** Branding customization */
 	branding?: BrandingConfig;
+
 	/** USWDS asset URLs - if not provided, will use default relative paths */
 	assets?: AssetsConfig;
 }
@@ -114,10 +129,13 @@ interface _AdminSession {
 export interface AdminModel {
 	/** Table name in the database */
 	name: string;
+
 	/** Human-readable display name */
 	displayName: string;
+
 	/** Admin-specific table info */
 	tableInfo: AdminTableInfo;
+
 	/** The @b9g/zen table definition */
 	table: Table<any>;
 }
@@ -229,7 +247,7 @@ function parseId(
  * Format a value for display in a table cell
  */
 function formatValue(value: unknown): string {
-	if (value === null || value === undefined) {
+	if (value == null) {
 		return "—";
 	}
 	if (value instanceof Date) {
@@ -242,6 +260,14 @@ function formatValue(value: unknown): string {
 		return JSON.stringify(value);
 	}
 	return String(value);
+}
+
+const kTitle = Symbol("title");
+const kAssets = Symbol("assets");
+
+export interface AdminRouter {
+	[kTitle]: string;
+	[kAssets]: AssetsConfig | undefined;
 }
 
 /**
@@ -271,12 +297,6 @@ export class AdminRouter extends Router {
 	/** Introspected models from the schema */
 	readonly models: readonly AdminModel[];
 
-	/** Admin panel title */
-	readonly #title: string;
-
-	/** Asset URLs */
-	readonly #assets?: AssetsConfig;
-
 	constructor(config: AdminConfig) {
 		super();
 		this.config = config;
@@ -287,11 +307,11 @@ export class AdminRouter extends Router {
 		this.use(trailingSlash("strip"));
 
 		// Store config for use in routes
-		this.#title = config.branding?.title ?? "Admin";
-		this.#assets = config.assets;
+		this[kTitle] = config.branding?.title ?? "Admin";
+		this[kAssets] = config.assets;
 		logger.debug("Admin config", {
-			title: this.#title,
-			hasAssets: !!this.#assets,
+			title: this[kTitle],
+			hasAssets: !!this[kAssets],
 		});
 
 		// Introspect schema to get table info
@@ -315,174 +335,173 @@ export class AdminRouter extends Router {
 		this.models = models;
 
 		// Register all routes
-		this.#registerRoutes();
+		registerRoutes(this);
 	}
+}
 
-	/** Get the database instance */
-	#getDb(): Database {
-		return self.databases.get(this.config.database) as Database;
-	}
+/** Get the database instance */
+function getDB(adminRouter: AdminRouter): Database {
+	return self.databases.get(adminRouter.config.database) as Database;
+}
 
-	/** Register all admin routes */
-	#registerRoutes(): void {
-		const {models, config} = this;
-		const title = this.#title;
-		const assets = this.#assets;
-		const getDb = () => this.#getDb();
+/** Register all admin routes */
+function registerRoutes(adminRouter: AdminRouter): void {
+	const {models, config} = adminRouter;
+	const title = adminRouter[kTitle];
+	const assets = adminRouter[kAssets];
 
-		// ============================================================================
-		// Auth Routes
-		// ============================================================================
+	// ============================================================================
+	// Auth Routes
+	// ============================================================================
 
-		this.route("/auth/login").get((req) => {
-			const basePath = getBasePath(req.url, "/auth/login");
+	adminRouter.route("/auth/login").get((req) => {
+		const basePath = getBasePath(req.url, "/auth/login");
 
-			return html(
+		return html(
+			<PageLayout
+				title={title}
+				pageTitle="Login"
+				basePath={basePath}
+				models={models}
+				assets={assets}
+			>
+				<h1 class="usa-heading">Login</h1>
+				<div class="admin-card">
+					<p class="usa-prose">Choose a provider to sign in:</p>
+					<div class="usa-button-group margin-top-2">
+						{config.auth.providers.map((p) => (
+							<a href={`${basePath}/auth/${p}`} class="usa-button">
+								Sign in with {p.charAt(0).toUpperCase() + p.slice(1)}
+							</a>
+						))}
+					</div>
+				</div>
+			</PageLayout>,
+		);
+	});
+
+	adminRouter.route("/auth/:provider").get((_req, ctx) => {
+		const provider = ctx.params.provider;
+		return new Response(`TODO: Start ${provider} OAuth2 flow`, {status: 501});
+	});
+
+	adminRouter.route("/auth/callback").get(() => {
+		return new Response("TODO: Handle OAuth2 callback", {status: 501});
+	});
+
+	adminRouter.route("/auth/logout").get(() => {
+		return new Response("TODO: Logout", {status: 501});
+	});
+
+	// ============================================================================
+	// Dashboard
+	// ============================================================================
+
+	adminRouter.route("/").get((req) => {
+		logger.debug("Dashboard route hit", {url: req.url});
+		const basePath = getBasePath(req.url, "/");
+		logger.debug("Computed basePath", {basePath});
+
+		try {
+			const result = html(
 				<PageLayout
 					title={title}
-					pageTitle="Login"
+					pageTitle="Dashboard"
 					basePath={basePath}
 					models={models}
 					assets={assets}
 				>
-					<h1 class="usa-heading">Login</h1>
-					<div class="admin-card">
-						<p class="usa-prose">Choose a provider to sign in:</p>
-						<div class="usa-button-group margin-top-2">
-							{config.auth.providers.map((p) => (
-								<a href={`${basePath}/auth/${p}`} class="usa-button">
-									Sign in with {p.charAt(0).toUpperCase() + p.slice(1)}
-								</a>
-							))}
+					<h1 class="usa-heading">Dashboard</h1>
+					<p class="usa-intro text-base-dark margin-bottom-3">
+						Database: {config.database}
+					</p>
+
+					<ul class="usa-card-group">
+						{models.map((m) => (
+							<li class="usa-card tablet:grid-col-4">
+								<div class="usa-card__container">
+									<div class="usa-card__header">
+										<h2 class="usa-card__heading">
+											<a href={`${basePath}/${m.name}`} class="usa-link">
+												{m.displayName}
+											</a>
+										</h2>
+									</div>
+									<div class="usa-card__body">
+										<p>{m.tableInfo.columns.length} columns</p>
+									</div>
+									<div class="usa-card__footer">
+										<a
+											href={`${basePath}/${m.name}/new`}
+											class="usa-button usa-button--outline"
+										>
+											Add New
+										</a>
+									</div>
+								</div>
+							</li>
+						))}
+					</ul>
+
+					{models.length === 0 && (
+						<div class="admin-empty">
+							<p>No models found in schema.</p>
+							<p class="margin-top-1 text-base">
+								Make sure your schema exports @b9g/zen collections.
+							</p>
 						</div>
-					</div>
+					)}
 				</PageLayout>,
 			);
-		});
+			logger.debug("Dashboard render successful");
+			return result;
+		} catch (err) {
+			logger.error("Dashboard render error:", {error: err});
+			throw err;
+		}
+	});
 
-		this.route("/auth/:provider").get((_req, ctx) => {
-			const provider = ctx.params.provider;
-			return new Response(`TODO: Start ${provider} OAuth2 flow`, {
-				status: 501,
-			});
-		});
+	// ============================================================================
+	// CRUD Routes
+	// ============================================================================
 
-		this.route("/auth/callback").get(() => {
-			return new Response("TODO: Handle OAuth2 callback", {status: 501});
-		});
+	// List view
+	adminRouter.route("/:model").get(async (req, ctx) => {
+		const modelName = ctx.params.model;
+		const model = models.find((m) => m.name === modelName);
 
-		this.route("/auth/logout").get(() => {
-			return new Response("TODO: Logout", {status: 501});
-		});
+		if (!model) {
+			return new Response("Model not found", {status: 404});
+		}
 
-		// ============================================================================
-		// Dashboard
-		// ============================================================================
+		const basePath = getBasePath(req.url, `/${modelName}`);
 
-		this.route("/").get((req) => {
-			logger.debug("Dashboard route hit", {url: req.url});
-			const basePath = getBasePath(req.url, "/");
-			logger.debug("Computed basePath", {basePath});
+		try {
+			const db = getDB(adminRouter);
+			const records = await db.all(model.table)``;
 
-			try {
-				const result = html(
-					<PageLayout
-						title={title}
-						pageTitle="Dashboard"
-						basePath={basePath}
-						models={models}
-						assets={assets}
-					>
-						<h1 class="usa-heading">Dashboard</h1>
-						<p class="usa-intro text-base-dark margin-bottom-3">
-							Database: {config.database}
-						</p>
+			// Get columns for display (exclude json types)
+			const displayColumns = model.tableInfo.columns.filter(
+				(c) => c.dataType !== "json",
+			);
 
-						<ul class="usa-card-group">
-							{models.map((m) => (
-								<li class="usa-card tablet:grid-col-4">
-									<div class="usa-card__container">
-										<div class="usa-card__header">
-											<h2 class="usa-card__heading">
-												<a href={`${basePath}/${m.name}`} class="usa-link">
-													{m.displayName}
-												</a>
-											</h2>
-										</div>
-										<div class="usa-card__body">
-											<p>{m.tableInfo.columns.length} columns</p>
-										</div>
-										<div class="usa-card__footer">
-											<a
-												href={`${basePath}/${m.name}/new`}
-												class="usa-button usa-button--outline"
-											>
-												Add New
-											</a>
-										</div>
-									</div>
-								</li>
-							))}
-						</ul>
+			return html(
+				<PageLayout
+					title={title}
+					pageTitle={model.displayName}
+					basePath={basePath}
+					models={models}
+					assets={assets}
+				>
+					<div class="admin-header">
+						<h1 class="usa-heading">{model.displayName}</h1>
+						<a href={`${basePath}/${modelName}/new`} class="usa-button">
+							Add {model.displayName}
+						</a>
+					</div>
 
-						{models.length === 0 && (
-							<div class="admin-empty">
-								<p>No models found in schema.</p>
-								<p class="margin-top-1 text-base">
-									Make sure your schema exports @b9g/zen collections.
-								</p>
-							</div>
-						)}
-					</PageLayout>,
-				);
-				logger.debug("Dashboard render successful");
-				return result;
-			} catch (err) {
-				logger.error("Dashboard render error:", {error: err});
-				throw err;
-			}
-		});
-
-		// ============================================================================
-		// CRUD Routes
-		// ============================================================================
-
-		// List view
-		this.route("/:model").get(async (req, ctx) => {
-			const modelName = ctx.params.model;
-			const model = models.find((m) => m.name === modelName);
-
-			if (!model) {
-				return new Response("Model not found", {status: 404});
-			}
-
-			const basePath = getBasePath(req.url, `/${modelName}`);
-
-			try {
-				const db = getDb();
-				const records = await db.all(model.table)``;
-
-				// Get columns for display (exclude json types)
-				const displayColumns = model.tableInfo.columns.filter(
-					(c) => c.dataType !== "json",
-				);
-
-				return html(
-					<PageLayout
-						title={title}
-						pageTitle={model.displayName}
-						basePath={basePath}
-						models={models}
-						assets={assets}
-					>
-						<div class="admin-header">
-							<h1 class="usa-heading">{model.displayName}</h1>
-							<a href={`${basePath}/${modelName}/new`} class="usa-button">
-								Add {model.displayName}
-							</a>
-						</div>
-
-						{records.length === 0 ? (
+					{records.length === 0
+						? (
 							<div class="admin-empty">
 								<p>No {model.displayName.toLowerCase()} found.</p>
 								<a
@@ -492,7 +511,8 @@ export class AdminRouter extends Router {
 									Create your first {model.displayName.toLowerCase()}
 								</a>
 							</div>
-						) : (
+						)
+						: (
 							<div class="admin-card" style="overflow-x: auto;">
 								<table class="usa-table usa-table--borderless">
 									<thead>
@@ -538,270 +558,333 @@ export class AdminRouter extends Router {
 								</table>
 							</div>
 						)}
-					</PageLayout>,
-				);
-			} catch (err) {
-				logger.error("List view error:", {error: err, model: modelName});
-				return errorPage(title, basePath, models, err, assets);
-			}
-		});
-
-		// Create form
-		this.route("/:model/new").get((req, ctx) => {
-			const modelName = ctx.params.model;
-			const model = models.find((m) => m.name === modelName);
-
-			if (!model) {
-				return new Response("Model not found", {status: 404});
-			}
-
-			const basePath = getBasePath(req.url, `/${modelName}/new`);
-
-			return html(
-				<PageLayout
-					title={title}
-					pageTitle={`New ${model.displayName}`}
-					basePath={basePath}
-					models={models}
-					assets={assets}
-				>
-					<h1 class="usa-heading">New {model.displayName}</h1>
-					<div class="admin-card">
-						<ModelForm
-							tableInfo={model.tableInfo}
-							action={`${basePath}/${modelName}/new`}
-							submitLabel={`Create ${model.displayName}`}
-							cancelUrl={`${basePath}/${modelName}`}
-						/>
-					</div>
 				</PageLayout>,
 			);
-		});
+		} catch (err) {
+			logger.error("List view error:", {error: err, model: modelName});
+			return errorPage(title, basePath, models, err, assets);
+		}
+	});
 
-		// Handle create
-		this.route("/:model/new").post(async (req, ctx) => {
-			const modelName = ctx.params.model;
-			const model = models.find((m) => m.name === modelName);
+	// Create form
+	adminRouter.route("/:model/new").get((req, ctx) => {
+		const modelName = ctx.params.model;
+		const model = models.find((m) => m.name === modelName);
 
-			if (!model) {
-				return new Response("Model not found", {status: 404});
-			}
+		if (!model) {
+			return new Response("Model not found", {status: 404});
+		}
 
-			const basePath = getBasePath(req.url, `/${modelName}/new`);
+		const basePath = getBasePath(req.url, `/${modelName}/new`);
 
-			// Parse formData once before try block - streams can only be consumed once
-			const formData = await req.formData();
-			const values = Object.fromEntries(formData.entries());
+		return html(
+			<PageLayout
+				title={title}
+				pageTitle={`New ${model.displayName}`}
+				basePath={basePath}
+				models={models}
+				assets={assets}
+			>
+				<h1 class="usa-heading">New {model.displayName}</h1>
+				<div class="admin-card">
+					<ModelForm
+						tableInfo={model.tableInfo}
+						action={`${basePath}/${modelName}/new`}
+						submitLabel={`Create ${model.displayName}`}
+						cancelURL={`${basePath}/${modelName}`}
+					/>
+				</div>
+			</PageLayout>,
+		);
+	});
 
-			try {
-				const data = parseFormData(formData, model.tableInfo);
+	// Handle create
+	adminRouter.route("/:model/new").post(async (req, ctx) => {
+		const modelName = ctx.params.model;
+		const model = models.find((m) => m.name === modelName);
 
-				const db = getDb();
-				const created = await db.insert(model.table, data);
-				const pk = getPrimaryKeyValue(created, model.tableInfo);
+		if (!model) {
+			return new Response("Model not found", {status: 404});
+		}
 
-				return Response.redirect(`${basePath}/${modelName}/${pk}`, 303);
-			} catch (err) {
-				logger.error("Create error:", {error: err, model: modelName});
+		const basePath = getBasePath(req.url, `/${modelName}/new`);
 
-				// Handle validation errors by re-rendering form with preserved values
-				if (err instanceof ValidationError) {
-					const errors: Record<string, string> = {};
-					for (const [field, messages] of Object.entries(
-						err.fieldErrors ?? {},
-					)) {
+		// Parse formData once before try block - streams can only be consumed once
+		const formData = await req.formData();
+		const values = Object.fromEntries(formData.entries());
+
+		try {
+			const data = parseFormData(formData, model.tableInfo);
+
+			const db = getDB(adminRouter);
+			const created = await db.insert(model.table, data);
+			const pk = getPrimaryKeyValue(created, model.tableInfo);
+
+			return Response.redirect(`${basePath}/${modelName}/${pk}`, 303);
+		} catch (err) {
+			logger.error("Create error:", {error: err, model: modelName});
+
+			// Handle validation errors by re-rendering form with preserved values
+			if (err instanceof ValidationError) {
+				const errors: Record<string, string> = {};
+				for (const [field, messages] of Object.entries(err.fieldErrors ?? {})) {
 						errors[field] = Array.isArray(messages)
 							? messages[0]
 							: String(messages);
-					}
-
-					return html(
-						<PageLayout
-							title={title}
-							pageTitle={`New ${model.displayName}`}
-							basePath={basePath}
-							models={models}
-							assets={assets}
-						>
-							<h1 class="usa-heading">New {model.displayName}</h1>
-							<div
-								class="usa-alert usa-alert--error margin-bottom-2"
-								role="alert"
-							>
-								<div class="usa-alert__body">
-									<p class="usa-alert__text">
-										Please correct the errors below.
-									</p>
-								</div>
-							</div>
-							<div class="admin-card">
-								<ModelForm
-									tableInfo={model.tableInfo}
-									values={values}
-									errors={errors}
-									action={`${basePath}/${modelName}/new`}
-									submitLabel={`Create ${model.displayName}`}
-									cancelUrl={`${basePath}/${modelName}`}
-								/>
-							</div>
-						</PageLayout>,
-					);
-				}
-
-				return errorPage(title, basePath, models, err, assets);
-			}
-		});
-
-		// Detail view
-		this.route("/:model/:id").get(async (req, ctx) => {
-			const modelName = ctx.params.model;
-			const id = ctx.params.id;
-			const model = models.find((m) => m.name === modelName);
-
-			if (!model) {
-				return new Response("Model not found", {status: 404});
-			}
-
-			const basePath = getBasePath(req.url, `/${modelName}/${id}`);
-			const parsedId = parseId(id, model.tableInfo);
-			if (parsedId === null) {
-				return new Response("Invalid ID", {status: 404});
-			}
-
-			try {
-				const db = getDb();
-				const record = await db.get(model.table, parsedId);
-
-				if (!record) {
-					return html(
-						<PageLayout
-							title={title}
-							pageTitle="Not Found"
-							basePath={basePath}
-							models={models}
-							assets={assets}
-						>
-							<h1 class="usa-heading">Not Found</h1>
-							<div class="usa-alert usa-alert--warning" role="alert">
-								<div class="usa-alert__body">
-									<p class="usa-alert__text">
-										{model.displayName} with ID "{id}" was not found.
-									</p>
-								</div>
-							</div>
-							<a
-								href={`${basePath}/${modelName}`}
-								class="usa-button margin-top-2"
-							>
-								Back to {model.displayName}
-							</a>
-						</PageLayout>,
-					);
 				}
 
 				return html(
 					<PageLayout
 						title={title}
-						pageTitle={`${model.displayName} #${id}`}
+						pageTitle={`New ${model.displayName}`}
 						basePath={basePath}
 						models={models}
 						assets={assets}
 					>
-						<div class="admin-header">
-							<h1 class="usa-heading">
-								{model.displayName} #{id}
-							</h1>
-							<div>
-								<a
-									href={`${basePath}/${modelName}/${id}/edit`}
-									class="usa-button"
-								>
-									Edit
-								</a>
-								<a
-									href={`${basePath}/${modelName}/${id}/delete`}
-									class="usa-button usa-button--secondary margin-left-1"
-								>
-									Delete
-								</a>
+						<h1 class="usa-heading">New {model.displayName}</h1>
+						<div
+							class="usa-alert usa-alert--error margin-bottom-2"
+							role="alert"
+						>
+							<div class="usa-alert__body">
+								<p class="usa-alert__text">
+									Please correct the errors below.
+								</p>
 							</div>
 						</div>
-
-						<div class="admin-card admin-detail">
-							<dl>
-								{model.tableInfo.columns.map((col) => (
-									<>
-										<dt>{col.name}</dt>
-										<dd>
-											{formatValue(
-												(record as Record<string, unknown>)[col.name],
-											)}
-										</dd>
-									</>
-								))}
-							</dl>
+						<div class="admin-card">
+							<ModelForm
+								tableInfo={model.tableInfo}
+								values={values}
+								errors={errors}
+								action={`${basePath}/${modelName}/new`}
+								submitLabel={`Create ${model.displayName}`}
+								cancelURL={`${basePath}/${modelName}`}
+							/>
 						</div>
+					</PageLayout>,
+				);
+			}
 
+			return errorPage(title, basePath, models, err, assets);
+		}
+	});
+
+	// Detail view
+	adminRouter.route("/:model/:id").get(async (req, ctx) => {
+		const modelName = ctx.params.model;
+		const id = ctx.params.id;
+		const model = models.find((m) => m.name === modelName);
+
+		if (!model) {
+			return new Response("Model not found", {status: 404});
+		}
+
+		const basePath = getBasePath(req.url, `/${modelName}/${id}`);
+		const parsedId = parseId(id, model.tableInfo);
+		if (parsedId === null) {
+			return new Response("Invalid ID", {status: 404});
+		}
+
+		try {
+			const db = getDB(adminRouter);
+			const record = await db.get(model.table, parsedId);
+
+			if (!record) {
+				return html(
+					<PageLayout
+						title={title}
+						pageTitle="Not Found"
+						basePath={basePath}
+						models={models}
+						assets={assets}
+					>
+						<h1 class="usa-heading">Not Found</h1>
+						<div class="usa-alert usa-alert--warning" role="alert">
+							<div class="usa-alert__body">
+								<p class="usa-alert__text">
+									{model.displayName} with ID "{id}" was not found.
+								</p>
+							</div>
+						</div>
 						<a
 							href={`${basePath}/${modelName}`}
-							class="usa-link margin-top-2"
-							style="display: inline-block;"
+							class="usa-button margin-top-2"
 						>
-							← Back to {model.displayName}
+							Back to {model.displayName}
 						</a>
 					</PageLayout>,
 				);
-			} catch (err) {
-				logger.error("Detail view error:", {error: err, model: modelName, id});
-				return errorPage(title, basePath, models, err, assets);
-			}
-		});
-
-		// Edit form
-		this.route("/:model/:id/edit").get(async (req, ctx) => {
-			const modelName = ctx.params.model;
-			const id = ctx.params.id;
-			const model = models.find((m) => m.name === modelName);
-
-			if (!model) {
-				return new Response("Model not found", {status: 404});
 			}
 
-			const basePath = getBasePath(req.url, `/${modelName}/${id}/edit`);
-			const parsedId = parseId(id, model.tableInfo);
-			if (parsedId === null) {
-				return new Response("Invalid ID", {status: 404});
-			}
-
-			try {
-				const db = getDb();
-				const record = await db.get(model.table, parsedId);
-
-				if (!record) {
-					return html(
-						<PageLayout
-							title={title}
-							pageTitle="Not Found"
-							basePath={basePath}
-							models={models}
-							assets={assets}
-						>
-							<h1 class="usa-heading">Not Found</h1>
-							<div class="usa-alert usa-alert--warning" role="alert">
-								<div class="usa-alert__body">
-									<p class="usa-alert__text">
-										{model.displayName} with ID "{id}" was not found.
-									</p>
-								</div>
-							</div>
+			return html(
+				<PageLayout
+					title={title}
+					pageTitle={`${model.displayName} #${id}`}
+					basePath={basePath}
+					models={models}
+					assets={assets}
+				>
+					<div class="admin-header">
+						<h1 class="usa-heading">
+							{model.displayName} #{id}
+						</h1>
+						<div>
 							<a
-								href={`${basePath}/${modelName}`}
-								class="usa-button margin-top-2"
+								href={`${basePath}/${modelName}/${id}/edit`}
+								class="usa-button"
 							>
-								Back to {model.displayName}
+								Edit
 							</a>
-						</PageLayout>,
-					);
+							<a
+								href={`${basePath}/${modelName}/${id}/delete`}
+								class="usa-button usa-button--secondary margin-left-1"
+							>
+								Delete
+							</a>
+						</div>
+					</div>
+
+					<div class="admin-card admin-detail">
+						<dl>
+							{model.tableInfo.columns.map((col) => (
+								<>
+									<dt>{col.name}</dt>
+									<dd>
+										{formatValue((record as Record<string, unknown>)[col.name])}
+									</dd>
+								</>
+							))}
+						</dl>
+					</div>
+
+					<a
+						href={`${basePath}/${modelName}`}
+						class="usa-link margin-top-2"
+						style="display: inline-block;"
+					>
+						← Back to {model.displayName}
+					</a>
+				</PageLayout>,
+			);
+		} catch (err) {
+			logger.error("Detail view error:", {error: err, model: modelName, id});
+			return errorPage(title, basePath, models, err, assets);
+		}
+	});
+
+	// Edit form
+	adminRouter.route("/:model/:id/edit").get(async (req, ctx) => {
+		const modelName = ctx.params.model;
+		const id = ctx.params.id;
+		const model = models.find((m) => m.name === modelName);
+
+		if (!model) {
+			return new Response("Model not found", {status: 404});
+		}
+
+		const basePath = getBasePath(req.url, `/${modelName}/${id}/edit`);
+		const parsedId = parseId(id, model.tableInfo);
+		if (parsedId === null) {
+			return new Response("Invalid ID", {status: 404});
+		}
+
+		try {
+			const db = getDB(adminRouter);
+			const record = await db.get(model.table, parsedId);
+
+			if (!record) {
+				return html(
+					<PageLayout
+						title={title}
+						pageTitle="Not Found"
+						basePath={basePath}
+						models={models}
+						assets={assets}
+					>
+						<h1 class="usa-heading">Not Found</h1>
+						<div class="usa-alert usa-alert--warning" role="alert">
+							<div class="usa-alert__body">
+								<p class="usa-alert__text">
+									{model.displayName} with ID "{id}" was not found.
+								</p>
+							</div>
+						</div>
+						<a
+							href={`${basePath}/${modelName}`}
+							class="usa-button margin-top-2"
+						>
+							Back to {model.displayName}
+						</a>
+					</PageLayout>,
+				);
+			}
+
+			return html(
+				<PageLayout
+					title={title}
+					pageTitle={`Edit ${model.displayName} #${id}`}
+					basePath={basePath}
+					models={models}
+					assets={assets}
+				>
+					<h1 class="usa-heading">
+						Edit {model.displayName} #{id}
+					</h1>
+					<div class="admin-card">
+						<ModelForm
+							tableInfo={model.tableInfo}
+							values={record as Record<string, unknown>}
+							action={`${basePath}/${modelName}/${id}/edit`}
+							submitLabel="Save Changes"
+							cancelURL={`${basePath}/${modelName}/${id}`}
+						/>
+					</div>
+				</PageLayout>,
+			);
+		} catch (err) {
+			logger.error("Edit form error:", {error: err, model: modelName, id});
+			return errorPage(title, basePath, models, err, assets);
+		}
+	});
+
+	// Handle edit
+	adminRouter.route("/:model/:id/edit").post(async (req, ctx) => {
+		const modelName = ctx.params.model;
+		const id = ctx.params.id;
+		const model = models.find((m) => m.name === modelName);
+
+		if (!model) {
+			return new Response("Model not found", {status: 404});
+		}
+
+		const basePath = getBasePath(req.url, `/${modelName}/${id}/edit`);
+		const parsedId = parseId(id, model.tableInfo);
+		if (parsedId === null) {
+			return new Response("Invalid ID", {status: 404});
+		}
+
+		// Parse formData once before try block - streams can only be consumed once
+		const formData = await req.formData();
+		const values = Object.fromEntries(formData.entries());
+
+		try {
+			const data = parseFormData(formData, model.tableInfo, {isUpdate: true});
+
+			const db = getDB(adminRouter);
+			await db.update(model.table, data, parsedId);
+
+			return Response.redirect(`${basePath}/${modelName}/${id}`, 303);
+		} catch (err) {
+			logger.error("Update error:", {error: err, model: modelName, id});
+
+			// Handle validation errors by re-rendering form with preserved values
+			if (err instanceof ValidationError) {
+				const errors: Record<string, string> = {};
+				for (const [field, messages] of Object.entries(err.fieldErrors ?? {})) {
+						errors[field] = Array.isArray(messages)
+							? messages[0]
+							: String(messages);
 				}
 
 				return html(
@@ -815,241 +898,169 @@ export class AdminRouter extends Router {
 						<h1 class="usa-heading">
 							Edit {model.displayName} #{id}
 						</h1>
+						<div
+							class="usa-alert usa-alert--error margin-bottom-2"
+							role="alert"
+						>
+							<div class="usa-alert__body">
+								<p class="usa-alert__text">
+									Please correct the errors below.
+								</p>
+							</div>
+						</div>
 						<div class="admin-card">
 							<ModelForm
 								tableInfo={model.tableInfo}
-								values={record as Record<string, unknown>}
+								values={values}
+								errors={errors}
 								action={`${basePath}/${modelName}/${id}/edit`}
 								submitLabel="Save Changes"
-								cancelUrl={`${basePath}/${modelName}/${id}`}
+								cancelURL={`${basePath}/${modelName}/${id}`}
 							/>
 						</div>
 					</PageLayout>,
 				);
-			} catch (err) {
-				logger.error("Edit form error:", {error: err, model: modelName, id});
-				return errorPage(title, basePath, models, err, assets);
-			}
-		});
-
-		// Handle edit
-		this.route("/:model/:id/edit").post(async (req, ctx) => {
-			const modelName = ctx.params.model;
-			const id = ctx.params.id;
-			const model = models.find((m) => m.name === modelName);
-
-			if (!model) {
-				return new Response("Model not found", {status: 404});
 			}
 
-			const basePath = getBasePath(req.url, `/${modelName}/${id}/edit`);
-			const parsedId = parseId(id, model.tableInfo);
-			if (parsedId === null) {
-				return new Response("Invalid ID", {status: 404});
-			}
+			return errorPage(title, basePath, models, err, assets);
+		}
+	});
 
-			// Parse formData once before try block - streams can only be consumed once
-			const formData = await req.formData();
-			const values = Object.fromEntries(formData.entries());
+	// Delete confirmation
+	adminRouter.route("/:model/:id/delete").get(async (req, ctx) => {
+		const modelName = ctx.params.model;
+		const id = ctx.params.id;
+		const model = models.find((m) => m.name === modelName);
 
-			try {
-				const data = parseFormData(formData, model.tableInfo, {isUpdate: true});
+		if (!model) {
+			return new Response("Model not found", {status: 404});
+		}
 
-				const db = getDb();
-				await db.update(model.table, data, parsedId);
+		const basePath = getBasePath(req.url, `/${modelName}/${id}/delete`);
+		const parsedId = parseId(id, model.tableInfo);
+		if (parsedId === null) {
+			return new Response("Invalid ID", {status: 404});
+		}
 
-				return Response.redirect(`${basePath}/${modelName}/${id}`, 303);
-			} catch (err) {
-				logger.error("Update error:", {error: err, model: modelName, id});
+		try {
+			const db = getDB(adminRouter);
+			const record = await db.get(model.table, parsedId);
 
-				// Handle validation errors by re-rendering form with preserved values
-				if (err instanceof ValidationError) {
-					const errors: Record<string, string> = {};
-					for (const [field, messages] of Object.entries(
-						err.fieldErrors ?? {},
-					)) {
-						errors[field] = Array.isArray(messages)
-							? messages[0]
-							: String(messages);
-					}
-
-					return html(
-						<PageLayout
-							title={title}
-							pageTitle={`Edit ${model.displayName} #${id}`}
-							basePath={basePath}
-							models={models}
-							assets={assets}
-						>
-							<h1 class="usa-heading">
-								Edit {model.displayName} #{id}
-							</h1>
-							<div
-								class="usa-alert usa-alert--error margin-bottom-2"
-								role="alert"
-							>
-								<div class="usa-alert__body">
-									<p class="usa-alert__text">
-										Please correct the errors below.
-									</p>
-								</div>
-							</div>
-							<div class="admin-card">
-								<ModelForm
-									tableInfo={model.tableInfo}
-									values={values}
-									errors={errors}
-									action={`${basePath}/${modelName}/${id}/edit`}
-									submitLabel="Save Changes"
-									cancelUrl={`${basePath}/${modelName}/${id}`}
-								/>
-							</div>
-						</PageLayout>,
-					);
-				}
-
-				return errorPage(title, basePath, models, err, assets);
-			}
-		});
-
-		// Delete confirmation
-		this.route("/:model/:id/delete").get(async (req, ctx) => {
-			const modelName = ctx.params.model;
-			const id = ctx.params.id;
-			const model = models.find((m) => m.name === modelName);
-
-			if (!model) {
-				return new Response("Model not found", {status: 404});
-			}
-
-			const basePath = getBasePath(req.url, `/${modelName}/${id}/delete`);
-			const parsedId = parseId(id, model.tableInfo);
-			if (parsedId === null) {
-				return new Response("Invalid ID", {status: 404});
-			}
-
-			try {
-				const db = getDb();
-				const record = await db.get(model.table, parsedId);
-
-				if (!record) {
-					return html(
-						<PageLayout
-							title={title}
-							pageTitle="Not Found"
-							basePath={basePath}
-							models={models}
-							assets={assets}
-						>
-							<h1 class="usa-heading">Not Found</h1>
-							<div class="usa-alert usa-alert--warning" role="alert">
-								<div class="usa-alert__body">
-									<p class="usa-alert__text">
-										{model.displayName} with ID "{id}" was not found.
-									</p>
-								</div>
-							</div>
-							<a
-								href={`${basePath}/${modelName}`}
-								class="usa-button margin-top-2"
-							>
-								Back to {model.displayName}
-							</a>
-						</PageLayout>,
-					);
-				}
-
+			if (!record) {
 				return html(
 					<PageLayout
 						title={title}
-						pageTitle={`Delete ${model.displayName} #${id}`}
+						pageTitle="Not Found"
 						basePath={basePath}
 						models={models}
 						assets={assets}
 					>
-						<h1 class="usa-heading">
-							Delete {model.displayName} #{id}
-						</h1>
+						<h1 class="usa-heading">Not Found</h1>
 						<div class="usa-alert usa-alert--warning" role="alert">
 							<div class="usa-alert__body">
-								<h4 class="usa-alert__heading">Confirm Deletion</h4>
 								<p class="usa-alert__text">
-									Are you sure you want to delete this{" "}
-									{model.displayName.toLowerCase()}? This action cannot be
-									undone.
+									{model.displayName} with ID "{id}" was not found.
 								</p>
 							</div>
 						</div>
-
-						<div class="admin-card admin-detail margin-top-2">
-							<dl>
-								{model.tableInfo.columns.slice(0, 5).map((col) => (
-									<>
-										<dt>{col.name}</dt>
-										<dd>
-											{formatValue(
-												(record as Record<string, unknown>)[col.name],
-											)}
-										</dd>
-									</>
-								))}
-							</dl>
-						</div>
-
-						<form
-							method="POST"
-							action={`${basePath}/${modelName}/${id}/delete`}
-							class="margin-top-2"
+						<a
+							href={`${basePath}/${modelName}`}
+							class="usa-button margin-top-2"
 						>
-							<button type="submit" class="usa-button usa-button--secondary">
-								Delete {model.displayName}
-							</button>
-							<a
-								href={`${basePath}/${modelName}/${id}`}
-								class="usa-button usa-button--outline margin-left-1"
-							>
-								Cancel
-							</a>
-						</form>
+							Back to {model.displayName}
+						</a>
 					</PageLayout>,
 				);
-			} catch (err) {
-				logger.error("Delete confirmation error:", {
-					error: err,
-					model: modelName,
-					id,
-				});
-				return errorPage(title, basePath, models, err, assets);
-			}
-		});
-
-		// Handle delete
-		this.route("/:model/:id/delete").post(async (req, ctx) => {
-			const modelName = ctx.params.model;
-			const id = ctx.params.id;
-			const model = models.find((m) => m.name === modelName);
-
-			if (!model) {
-				return new Response("Model not found", {status: 404});
 			}
 
-			const basePath = getBasePath(req.url, `/${modelName}/${id}/delete`);
-			const parsedId = parseId(id, model.tableInfo);
-			if (parsedId === null) {
-				return new Response("Invalid ID", {status: 404});
-			}
+			return html(
+				<PageLayout
+					title={title}
+					pageTitle={`Delete ${model.displayName} #${id}`}
+					basePath={basePath}
+					models={models}
+					assets={assets}
+				>
+					<h1 class="usa-heading">
+						Delete {model.displayName} #{id}
+					</h1>
+					<div class="usa-alert usa-alert--warning" role="alert">
+						<div class="usa-alert__body">
+							<h4 class="usa-alert__heading">Confirm Deletion</h4>
+							<p class="usa-alert__text">
+								Are you sure you want to delete this{" "}
+								{model.displayName.toLowerCase()}? This action cannot be
+								undone.
+							</p>
+						</div>
+					</div>
 
-			try {
-				const db = getDb();
-				await db.delete(model.table, parsedId);
+					<div class="admin-card admin-detail margin-top-2">
+						<dl>
+							{model.tableInfo.columns.slice(0, 5).map((col) => (
+								<>
+									<dt>{col.name}</dt>
+									<dd>
+										{formatValue((record as Record<string, unknown>)[col.name])}
+									</dd>
+								</>
+							))}
+						</dl>
+					</div>
 
-				return Response.redirect(`${basePath}/${modelName}`, 303);
-			} catch (err) {
-				logger.error("Delete error:", {error: err, model: modelName, id});
-				return errorPage(title, basePath, models, err, assets);
-			}
-		});
-	}
+					<form
+						method="POST"
+						action={`${basePath}/${modelName}/${id}/delete`}
+						class="margin-top-2"
+					>
+						<button type="submit" class="usa-button usa-button--secondary">
+							Delete {model.displayName}
+						</button>
+						<a
+							href={`${basePath}/${modelName}/${id}`}
+							class="usa-button usa-button--outline margin-left-1"
+						>
+							Cancel
+						</a>
+					</form>
+				</PageLayout>,
+			);
+		} catch (err) {
+			logger.error("Delete confirmation error:", {
+				error: err,
+				model: modelName,
+				id,
+			});
+			return errorPage(title, basePath, models, err, assets);
+		}
+	});
+
+	// Handle delete
+	adminRouter.route("/:model/:id/delete").post(async (req, ctx) => {
+		const modelName = ctx.params.model;
+		const id = ctx.params.id;
+		const model = models.find((m) => m.name === modelName);
+
+		if (!model) {
+			return new Response("Model not found", {status: 404});
+		}
+
+		const basePath = getBasePath(req.url, `/${modelName}/${id}/delete`);
+		const parsedId = parseId(id, model.tableInfo);
+		if (parsedId === null) {
+			return new Response("Invalid ID", {status: 404});
+		}
+
+		try {
+			const db = getDB(adminRouter);
+			await db.delete(model.table, parsedId);
+
+			return Response.redirect(`${basePath}/${modelName}`, 303);
+		} catch (err) {
+			logger.error("Delete error:", {error: err, model: modelName, id});
+			return errorPage(title, basePath, models, err, assets);
+		}
+	});
 }
 
 /**

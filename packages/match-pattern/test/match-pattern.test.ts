@@ -1,4 +1,4 @@
-import {test, expect, describe} from "bun:test";
+import {describe, expect, test} from "bun:test";
 
 import {MatchPattern} from "../src/index.js";
 
@@ -43,9 +43,8 @@ describe("MatchPattern", () => {
 			pathname: "/api/posts",
 			search: "type=:type&sort=:sort",
 		});
-		const url = new URL(
-			"http://example.com/api/posts?type=blog&sort=date&extra=value",
-		);
+		const url =
+			new URL("http://example.com/api/posts?type=blog&sort=date&extra=value");
 
 		expect(pattern.test(url)).toBe(true);
 	});
@@ -55,9 +54,8 @@ describe("MatchPattern", () => {
 			pathname: "/api/:version/posts/:id",
 			search: "format=:format",
 		});
-		const url = new URL(
-			"http://example.com/api/v1/posts/123?format=json&page=1",
-		);
+		const url =
+			new URL("http://example.com/api/v1/posts/123?format=json&page=1");
 		const result = pattern.exec(url);
 
 		expect(result?.params).toEqual({

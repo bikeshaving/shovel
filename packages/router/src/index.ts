@@ -1,17 +1,17 @@
 /** @b9g/router - Universal request router built on web standards */
 
 import {
-	MatchPattern,
-	isSimplePattern,
-	compilePathname,
-	type CompiledPattern,
-} from "@b9g/match-pattern";
-import {
-	HTTPError,
-	isHTTPError,
+	type HTTPError,
 	InternalServerError,
+	isHTTPError,
 	NotFound,
 } from "@b9g/http-errors";
+import {
+	type CompiledPattern,
+	compilePathname,
+	isSimplePattern,
+	MatchPattern,
+} from "@b9g/match-pattern";
 import {getLogger} from "@logtape/logtape";
 
 const logger = getLogger(["shovel", "router"]);
@@ -28,6 +28,7 @@ const logger = getLogger(["shovel", "router"]);
 export interface RouteContext {
 	/** Route parameters extracted from URL pattern matching */
 	params: Record<string, string>;
+
 	/** Allow middleware to add arbitrary properties to context */
 	[key: string]: unknown;
 }
@@ -45,31 +46,25 @@ export type Handler = (
  * Function middleware signature
  * Can modify request and context, and can return a Response to short-circuit
  */
-export type FunctionMiddleware = (
-	request: Request,
-	context: RouteContext,
-) =>
-	| Response
-	| null
-	| undefined
-	| void
-	| Promise<Response | null | undefined | void>;
+export type FunctionMiddleware = (request: Request, context: RouteContext) =>
+	Response |
+	null |
+	undefined |
+	void |
+	Promise<Response | null | undefined | void>;
 
 /**
  * Generator middleware signature - uses yield for continuation.
  * Yield to pass control to the next middleware/handler, receive Response back.
  * Optionally yield a modified Request (or yield without value to use original).
  */
-export type GeneratorMiddleware = (
-	request: Request,
-	context: RouteContext,
-) =>
-	| Generator<Request | undefined, Response | null | undefined | void, Response>
-	| AsyncGenerator<
-			Request | undefined,
-			Response | null | undefined | void,
-			Response
-	  >;
+export type GeneratorMiddleware = (request: Request, context: RouteContext) =>
+	Generator<Request | undefined, Response | null | undefined | void, Response> |
+	AsyncGenerator<
+		Request | undefined,
+		Response | null | undefined | void,
+		Response
+	>;
 
 /**
  * Union type for all supported middleware types
@@ -81,13 +76,7 @@ export type Middleware = GeneratorMiddleware | FunctionMiddleware;
  * HTTP methods supported by the router
  */
 export type HTTPMethod =
-	| "GET"
-	| "POST"
-	| "PUT"
-	| "DELETE"
-	| "PATCH"
-	| "HEAD"
-	| "OPTIONS";
+	"GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
 
 /**
  * Route options for configuring route metadata
@@ -104,10 +93,13 @@ export interface RouteOptions {
 export interface RouteMatch {
 	/** Route parameters extracted from URL pattern matching */
 	params: Record<string, string>;
+
 	/** HTTP methods registered for this pattern */
 	methods: string[];
+
 	/** Route name if provided */
 	name?: string;
+
 	/** Original pattern string */
 	pattern: string;
 }
@@ -116,7 +108,7 @@ export interface RouteMatch {
  * Route entry stored by the router
  */
 export interface RouteEntry {
-	pattern: import("@b9g/match-pattern").MatchPattern;
+	pattern: MatchPattern;
 	method: string;
 	handler?: Handler;
 	name?: string;
@@ -128,6 +120,7 @@ export interface RouteEntry {
  */
 export interface MiddlewareEntry {
 	middleware: Middleware;
+
 	/** If set, middleware only runs for paths matching this prefix */
 	pathPrefix?: string;
 }
@@ -181,22 +174,22 @@ interface ComplexRouteEntry {
  * Complex patterns: /users/:id(\d+), /files/:path+, {/prefix}?/users
  */
 class RadixTreeExecutor {
-	#root: RadixNode;
-	#complexRoutes: ComplexRouteEntry[];
+	root: RadixNode;
+	complexRoutes: ComplexRouteEntry[];
 
 	constructor(routes: RouteEntry[]) {
-		this.#root = new RadixNode();
-		this.#complexRoutes = [];
+		this.root = new RadixNode();
+		this.complexRoutes = [];
 		for (const route of routes) {
 			const pathname = route.pattern.pathname;
 
 			if (isSimplePattern(pathname)) {
 				// Simple pattern - add to radix tree
-				this.#addToTree(pathname, route);
+				this.addToTree(pathname, route);
 			} else {
 				// Complex pattern - compile to regex
 				const compiled = compilePathname(pathname);
-				this.#complexRoutes.push({compiled, route});
+				this.complexRoutes.push({compiled, route});
 			}
 		}
 	}
@@ -204,8 +197,8 @@ class RadixTreeExecutor {
 	/**
 	 * Add a simple pattern to the radix tree
 	 */
-	#addToTree(pathname: string, route: RouteEntry): void {
-		let node = this.#root;
+	addToTree(pathname: string, route: RouteEntry): void {
+		let node = this.root;
 		let i = 0;
 
 		while (i < pathname.length) {
@@ -250,11 +243,11 @@ class RadixTreeExecutor {
 	/**
 	 * Match a pathname against the radix tree (for URL matching)
 	 */
-	#matchTreeByPath(
+	matchTreeByPath(
 		pathname: string,
 	): {node: RadixNode; params: Record<string, string>} | null {
 		const params: Record<string, string> = {};
-		let node = this.#root;
+		let node = this.root;
 		let i = 0;
 
 		// Handle empty pathname
@@ -320,11 +313,11 @@ class RadixTreeExecutor {
 	/**
 	 * Match a pathname against the radix tree (for request handling with method)
 	 */
-	#matchTree(
+	matchTree(
 		pathname: string,
 		method: string,
 	): {entry: RouteEntry; params: Record<string, string>} | null {
-		const result = this.#matchTreeByPath(pathname);
+		const result = this.matchTreeByPath(pathname);
 		if (!result) return null;
 
 		const {node, params} = result;
@@ -344,12 +337,13 @@ class RadixTreeExecutor {
 	 * Match a URL against registered routes (returns RouteMatch info)
 	 */
 	matchURL(url: string | URL): RouteMatch | null {
-		const urlObj =
-			typeof url === "string" ? new URL(url, "http://localhost") : url;
+		const urlObj = typeof url === "string"
+			? new URL(url, "http://localhost")
+			: url;
 		const pathname = urlObj.pathname;
 
 		// Try radix tree first (fast path for simple routes)
-		const treeResult = this.#matchTreeByPath(pathname);
+		const treeResult = this.matchTreeByPath(pathname);
 		if (treeResult) {
 			const {node, params} = treeResult;
 			const methods = Array.from(node.routes.keys());
@@ -364,7 +358,7 @@ class RadixTreeExecutor {
 		}
 
 		// Fall back to regex for complex routes
-		for (const {compiled, route} of this.#complexRoutes) {
+		for (const {compiled, route} of this.complexRoutes) {
 			const match = pathname.match(compiled.regex);
 			if (match) {
 				const params: Record<string, string> = {};
@@ -374,7 +368,7 @@ class RadixTreeExecutor {
 					}
 				}
 				// Collect all methods for this pattern
-				const methods = this.#complexRoutes
+				const methods = this.complexRoutes
 					.filter((r) => r.route.pattern.pathname === route.pattern.pathname)
 					.map((r) => r.route.method);
 				return {
@@ -398,7 +392,7 @@ class RadixTreeExecutor {
 		const pathname = url.pathname;
 
 		// Try radix tree first (fast path for simple routes)
-		const treeResult = this.#matchTree(pathname, method);
+		const treeResult = this.matchTree(pathname, method);
 		if (treeResult) {
 			return {
 				handler: treeResult.entry.handler,
@@ -408,7 +402,7 @@ class RadixTreeExecutor {
 		}
 
 		// Fall back to regex for complex routes
-		for (const {compiled, route} of this.#complexRoutes) {
+		for (const {compiled, route} of this.complexRoutes) {
 			// HEAD requests should fall back to GET handler (RFC 7231)
 			const methodMatches =
 				route.method === method ||
@@ -425,16 +419,24 @@ class RadixTreeExecutor {
 						params[compiled.paramNames[i]] = match[i + 1];
 					}
 				}
-				return {
-					handler: route.handler,
-					context: {params},
-					entry: route,
-				};
+				return {handler: route.handler, context: {params}, entry: route};
 			}
 		}
 
 		return null;
 	}
+}
+
+const kRouter = Symbol("router");
+const kPattern = Symbol("pattern");
+const kName = Symbol("name");
+const kMiddlewares = Symbol("middlewares");
+
+export interface RouteBuilder {
+	[kRouter]: Router;
+	[kPattern]: string;
+	[kName]: string | undefined;
+	[kMiddlewares]: Middleware[];
 }
 
 /**
@@ -448,23 +450,18 @@ class RadixTreeExecutor {
  *     .delete(deleteUserHandler);
  */
 export class RouteBuilder {
-	#router: Router;
-	#pattern: string;
-	#name?: string;
-	#middlewares: Middleware[];
-
 	constructor(router: Router, pattern: string, options?: RouteOptions) {
-		this.#router = router;
-		this.#pattern = pattern;
-		this.#name = options?.name;
-		this.#middlewares = [];
+		this[kRouter] = router;
+		this[kPattern] = pattern;
+		this[kName] = options?.name;
+		this[kMiddlewares] = [];
 	}
 
 	/**
 	 * Add route-scoped middleware that only runs when this pattern matches
 	 */
 	use(middleware: Middleware): RouteBuilder {
-		this.#middlewares.push(middleware);
+		this[kMiddlewares].push(middleware);
 		return this;
 	}
 
@@ -472,12 +469,12 @@ export class RouteBuilder {
 	 * Register a GET handler for this route pattern
 	 */
 	get(handler?: Handler): RouteBuilder {
-		this.#router.addRoute(
+		this[kRouter].addRoute(
 			"GET",
-			this.#pattern,
+			this[kPattern],
 			handler,
-			this.#name,
-			this.#middlewares,
+			this[kName],
+			this[kMiddlewares],
 		);
 		return this;
 	}
@@ -486,12 +483,12 @@ export class RouteBuilder {
 	 * Register a POST handler for this route pattern
 	 */
 	post(handler?: Handler): RouteBuilder {
-		this.#router.addRoute(
+		this[kRouter].addRoute(
 			"POST",
-			this.#pattern,
+			this[kPattern],
 			handler,
-			this.#name,
-			this.#middlewares,
+			this[kName],
+			this[kMiddlewares],
 		);
 		return this;
 	}
@@ -500,12 +497,12 @@ export class RouteBuilder {
 	 * Register a PUT handler for this route pattern
 	 */
 	put(handler?: Handler): RouteBuilder {
-		this.#router.addRoute(
+		this[kRouter].addRoute(
 			"PUT",
-			this.#pattern,
+			this[kPattern],
 			handler,
-			this.#name,
-			this.#middlewares,
+			this[kName],
+			this[kMiddlewares],
 		);
 		return this;
 	}
@@ -514,12 +511,12 @@ export class RouteBuilder {
 	 * Register a DELETE handler for this route pattern
 	 */
 	delete(handler?: Handler): RouteBuilder {
-		this.#router.addRoute(
+		this[kRouter].addRoute(
 			"DELETE",
-			this.#pattern,
+			this[kPattern],
 			handler,
-			this.#name,
-			this.#middlewares,
+			this[kName],
+			this[kMiddlewares],
 		);
 		return this;
 	}
@@ -528,12 +525,12 @@ export class RouteBuilder {
 	 * Register a PATCH handler for this route pattern
 	 */
 	patch(handler?: Handler): RouteBuilder {
-		this.#router.addRoute(
+		this[kRouter].addRoute(
 			"PATCH",
-			this.#pattern,
+			this[kPattern],
 			handler,
-			this.#name,
-			this.#middlewares,
+			this[kName],
+			this[kMiddlewares],
 		);
 		return this;
 	}
@@ -542,12 +539,12 @@ export class RouteBuilder {
 	 * Register a HEAD handler for this route pattern
 	 */
 	head(handler?: Handler): RouteBuilder {
-		this.#router.addRoute(
+		this[kRouter].addRoute(
 			"HEAD",
-			this.#pattern,
+			this[kPattern],
 			handler,
-			this.#name,
-			this.#middlewares,
+			this[kName],
+			this[kMiddlewares],
 		);
 		return this;
 	}
@@ -556,12 +553,12 @@ export class RouteBuilder {
 	 * Register an OPTIONS handler for this route pattern
 	 */
 	options(handler?: Handler): RouteBuilder {
-		this.#router.addRoute(
+		this[kRouter].addRoute(
 			"OPTIONS",
-			this.#pattern,
+			this[kPattern],
 			handler,
-			this.#name,
-			this.#middlewares,
+			this[kName],
+			this[kMiddlewares],
 		);
 		return this;
 	}
@@ -580,16 +577,22 @@ export class RouteBuilder {
 			"OPTIONS",
 		];
 		methods.forEach((method) => {
-			this.#router.addRoute(
+			this[kRouter].addRoute(
 				method,
-				this.#pattern,
+				this[kPattern],
 				handler,
-				this.#name,
-				this.#middlewares,
+				this[kName],
+				this[kMiddlewares],
 			);
 		});
 		return this;
 	}
+}
+
+const kExecutor = Symbol("executor");
+
+export interface Router {
+	[kExecutor]: RadixTreeExecutor | null;
 }
 
 /**
@@ -599,22 +602,11 @@ export class RouteBuilder {
 export class Router {
 	readonly routes: RouteEntry[];
 	readonly middlewares: MiddlewareEntry[];
-	#executor: RadixTreeExecutor | null;
 
 	constructor() {
 		this.routes = [];
 		this.middlewares = [];
-		this.#executor = null;
-	}
-
-	/**
-	 * Ensure the executor is compiled and up to date
-	 */
-	#ensureCompiled(): RadixTreeExecutor {
-		if (!this.#executor) {
-			this.#executor = new RadixTreeExecutor(this.routes);
-		}
-		return this.#executor;
+		this[kExecutor] = null;
 	}
 
 	/**
@@ -635,25 +627,22 @@ export class Router {
 		if (typeof pathPrefixOrMiddleware === "string") {
 			// Path-scoped middleware
 			const middleware = maybeMiddleware!;
-			if (!this.#isValidMiddleware(middleware)) {
+			if (!isValidMiddleware(middleware)) {
 				throw new Error(
 					"Invalid middleware type. Must be function or async generator function.",
 				);
 			}
-			this.middlewares.push({
-				middleware,
-				pathPrefix: pathPrefixOrMiddleware,
-			});
+			this.middlewares.push({middleware, pathPrefix: pathPrefixOrMiddleware});
 		} else {
 			// Global middleware
-			if (!this.#isValidMiddleware(pathPrefixOrMiddleware)) {
+			if (!isValidMiddleware(pathPrefixOrMiddleware)) {
 				throw new Error(
 					"Invalid middleware type. Must be function or async generator function.",
 				);
 			}
 			this.middlewares.push({middleware: pathPrefixOrMiddleware});
 		}
-		this.#executor = null;
+		this[kExecutor] = null;
 	}
 
 	/**
@@ -688,9 +677,9 @@ export class Router {
 			method: method.toUpperCase(),
 			handler,
 			name,
-			middlewares: middlewares,
+			middlewares,
 		});
-		this.#executor = null;
+		this[kExecutor] = null;
 	}
 
 	/**
@@ -699,7 +688,7 @@ export class Router {
 	 * Does not execute handlers - use handle() for that
 	 */
 	match(url: string | URL): RouteMatch | null {
-		const executor = this.#ensureCompiled();
+		const executor = ensureCompiled(this);
 		return executor.matchURL(url);
 	}
 
@@ -708,7 +697,7 @@ export class Router {
 	 * Executes the matched handler with middleware chain
 	 */
 	async handle(request: Request): Promise<Response> {
-		const executor = this.#ensureCompiled();
+		const executor = ensureCompiled(this);
 
 		try {
 			// Find matching route
@@ -735,7 +724,7 @@ export class Router {
 			}
 
 			// Execute middleware chain with the handler
-			let response = await this.#executeMiddlewareStack(
+			let response = await executeMiddlewareStack(
 				this.middlewares,
 				routeMiddleware,
 				request,
@@ -755,7 +744,7 @@ export class Router {
 			return response;
 		} catch (error) {
 			// Final catch-all for unhandled errors
-			return this.#createErrorResponse(error as Error);
+			return createErrorResponse(error as Error);
 		}
 	}
 
@@ -774,7 +763,7 @@ export class Router {
 	 */
 	mount(mountPath: string, subrouter: Router): void {
 		// Normalize mount path - ensure it starts with / and doesn't end with /
-		const normalizedMountPath = this.#normalizeMountPath(mountPath);
+		const normalizedMountPath = normalizeMountPath(mountPath);
 
 		// Get all routes from the subrouter
 		const subroutes = subrouter.routes;
@@ -782,7 +771,7 @@ export class Router {
 		// Add each subroute with the mount path prefix
 		for (const subroute of subroutes) {
 			// Combine mount path with subroute pattern
-			const mountedPattern = this.#combinePaths(
+			const mountedPattern = combinePaths(
 				normalizedMountPath,
 				subroute.pattern.pathname,
 			);
@@ -805,7 +794,7 @@ export class Router {
 			// the composed prefix becomes "/outer/inner"
 			let composedPrefix: string;
 			if (submiddleware.pathPrefix) {
-				composedPrefix = this.#combinePaths(
+				composedPrefix = combinePaths(
 					normalizedMountPath,
 					submiddleware.pathPrefix,
 				);
@@ -819,251 +808,259 @@ export class Router {
 			});
 		}
 
-		this.#executor = null;
+		this[kExecutor] = null;
 	}
+}
 
-	/**
-	 * Normalize mount path: ensure it starts with / and doesn't end with /
-	 */
-	#normalizeMountPath(mountPath: string): string {
-		if (!mountPath.startsWith("/")) {
-			mountPath = "/" + mountPath;
-		}
-		if (mountPath.endsWith("/") && mountPath.length > 1) {
-			mountPath = mountPath.slice(0, -1);
-		}
+/**
+ * Ensure the executor is compiled and up to date
+ */
+function ensureCompiled(router: Router): RadixTreeExecutor {
+	if (!router[kExecutor]) {
+		router[kExecutor] = new RadixTreeExecutor(router.routes);
+	}
+	return router[kExecutor];
+}
+
+/**
+ * Normalize mount path: ensure it starts with / and doesn't end with /
+ */
+function normalizeMountPath(mountPath: string): string {
+	if (!mountPath.startsWith("/")) {
+		mountPath = "/" + mountPath;
+	}
+	if (mountPath.endsWith("/") && mountPath.length > 1) {
+		mountPath = mountPath.slice(0, -1);
+	}
+	return mountPath;
+}
+
+/**
+ * Combine mount path with route pattern
+ */
+function combinePaths(mountPath: string, routePattern: string): string {
+	// Handle root path specially
+	if (routePattern === "/") {
 		return mountPath;
 	}
 
-	/**
-	 * Combine mount path with route pattern
-	 */
-	#combinePaths(mountPath: string, routePattern: string): string {
-		// Handle root path specially
-		if (routePattern === "/") {
-			return mountPath;
-		}
-
-		// Ensure route pattern starts with /
-		if (!routePattern.startsWith("/")) {
-			routePattern = "/" + routePattern;
-		}
-
-		return mountPath + routePattern;
+	// Ensure route pattern starts with /
+	if (!routePattern.startsWith("/")) {
+		routePattern = "/" + routePattern;
 	}
 
-	/**
-	 * Validate that a function is valid middleware
-	 */
-	#isValidMiddleware(middleware: Middleware): boolean {
-		const constructorName = middleware.constructor.name;
-		return (
-			constructorName === "AsyncGeneratorFunction" ||
-			constructorName === "GeneratorFunction" ||
-			constructorName === "AsyncFunction" ||
-			constructorName === "Function"
-		);
+	return mountPath + routePattern;
+}
+
+/**
+ * Validate that a function is valid middleware
+ */
+function isValidMiddleware(middleware: Middleware): boolean {
+	const constructorName = middleware.constructor.name;
+	return (
+		constructorName === "AsyncGeneratorFunction" ||
+		constructorName === "GeneratorFunction" ||
+		constructorName === "AsyncFunction" ||
+		constructorName === "Function"
+	);
+}
+
+/**
+ * Detect if a function is a generator middleware
+ */
+function isGeneratorMiddleware(middleware: Middleware): boolean {
+	const name = middleware.constructor.name;
+	return name === "GeneratorFunction" || name === "AsyncGeneratorFunction";
+}
+
+/**
+ * Check if a request pathname matches a middleware's path prefix
+ * Matches on segment boundaries: /admin matches /admin, /admin/, /admin/users
+ * but NOT /administrator
+ */
+function matchesPathPrefix(pathname: string, pathPrefix: string): boolean {
+	// Exact match
+	if (pathname === pathPrefix) {
+		return true;
 	}
 
-	/**
-	 * Detect if a function is a generator middleware
-	 */
-	#isGeneratorMiddleware(middleware: Middleware): boolean {
-		const name = middleware.constructor.name;
-		return name === "GeneratorFunction" || name === "AsyncGeneratorFunction";
+	// Check if pathname starts with prefix followed by / or end of string
+	if (pathname.startsWith(pathPrefix)) {
+		const nextChar = pathname[pathPrefix.length];
+		// Must be followed by / or be at end (for trailing slash case)
+		return nextChar === "/" || nextChar === undefined;
 	}
 
-	/**
-	 * Check if a request pathname matches a middleware's path prefix
-	 * Matches on segment boundaries: /admin matches /admin, /admin/, /admin/users
-	 * but NOT /administrator
-	 */
-	#matchesPathPrefix(pathname: string, pathPrefix: string): boolean {
-		// Exact match
-		if (pathname === pathPrefix) {
-			return true;
-		}
+	return false;
+}
 
-		// Check if pathname starts with prefix followed by / or end of string
-		if (pathname.startsWith(pathPrefix)) {
-			const nextChar = pathname[pathPrefix.length];
-			// Must be followed by / or be at end (for trailing slash case)
-			return nextChar === "/" || nextChar === undefined;
-		}
+/**
+ * Execute a single middleware and track generator state
+ * Returns true if middleware short-circuited (returned Response early)
+ */
+async function executeMiddleware(
+	middleware: Middleware,
+	request: Request,
+	context: RouteContext,
+	runningGenerators: Array<{generator: ReturnType<GeneratorMiddleware>}>,
+): Promise<Response | null> {
+	if (isGeneratorMiddleware(middleware)) {
+		const generator = (middleware as GeneratorMiddleware)(request, context);
+		const result = await generator.next();
 
-		return false;
-	}
-
-	/**
-	 * Execute a single middleware and track generator state
-	 * Returns true if middleware short-circuited (returned Response early)
-	 */
-	async #executeMiddleware(
-		middleware: Middleware,
-		request: Request,
-		context: RouteContext,
-		runningGenerators: Array<{generator: ReturnType<GeneratorMiddleware>}>,
-	): Promise<Response | null> {
-		if (this.#isGeneratorMiddleware(middleware)) {
-			const generator = (middleware as GeneratorMiddleware)(request, context);
-			const result = await generator.next();
-
-			if (result.done) {
-				// Early return (0 yields) - check if Response returned for short-circuiting
-				if (result.value) {
-					return result.value;
-				}
-			} else {
-				// Generator yielded - save for later resumption
-				runningGenerators.push({generator});
+		if (result.done) {
+			// Early return (0 yields) - check if Response returned for short-circuiting
+			if (result.value) {
+				return result.value;
 			}
 		} else {
-			// Function middleware - execute and check for short-circuit
-			const result = await (middleware as FunctionMiddleware)(request, context);
-			if (result) {
-				// Function middleware returned a Response - short-circuit
-				return result;
-			}
+			// Generator yielded - save for later resumption
+			runningGenerators.push({generator});
 		}
-		return null;
+	} else {
+		// Function middleware - execute and check for short-circuit
+		const result = await (middleware as FunctionMiddleware)(request, context);
+		if (result) {
+			// Function middleware returned a Response - short-circuit
+			return result;
+		}
+	}
+	return null;
+}
+
+/**
+ * Execute middleware stack with guaranteed execution using Rack-style LIFO order
+ * Global/path middleware runs first, then route-scoped middleware, then handler
+ */
+async function executeMiddlewareStack(
+	globalMiddlewares: MiddlewareEntry[],
+	routeMiddlewares: Middleware[],
+	request: Request,
+	context: RouteContext,
+	handler: Handler,
+): Promise<Response> {
+	const runningGenerators: Array<{generator: ReturnType<GeneratorMiddleware>}> =
+		[];
+	let currentResponse: Response | null = null;
+
+	// Extract pathname from request URL for prefix matching
+	const requestPathname = new URL(request.url).pathname;
+
+	// Phase 1a: Execute global/path-scoped middleware "before" phases
+	for (const entry of globalMiddlewares) {
+		// Skip middleware if it has a pathPrefix that doesn't match
+		if (
+			entry.pathPrefix && !matchesPathPrefix(requestPathname, entry.pathPrefix)
+		) {
+			continue;
+		}
+
+		currentResponse = await executeMiddleware(
+			entry.middleware,
+			request,
+			context,
+			runningGenerators,
+		);
+		if (currentResponse) break; // Short-circuit
 	}
 
-	/**
-	 * Execute middleware stack with guaranteed execution using Rack-style LIFO order
-	 * Global/path middleware runs first, then route-scoped middleware, then handler
-	 */
-	async #executeMiddlewareStack(
-		globalMiddlewares: MiddlewareEntry[],
-		routeMiddlewares: Middleware[],
-		request: Request,
-		context: RouteContext,
-		handler: Handler,
-	): Promise<Response> {
-		const runningGenerators: Array<{
-			generator: ReturnType<GeneratorMiddleware>;
-		}> = [];
-		let currentResponse: Response | null = null;
-
-		// Extract pathname from request URL for prefix matching
-		const requestPathname = new URL(request.url).pathname;
-
-		// Phase 1a: Execute global/path-scoped middleware "before" phases
-		for (const entry of globalMiddlewares) {
-			// Skip middleware if it has a pathPrefix that doesn't match
-			if (
-				entry.pathPrefix &&
-				!this.#matchesPathPrefix(requestPathname, entry.pathPrefix)
-			) {
-				continue;
-			}
-
-			currentResponse = await this.#executeMiddleware(
-				entry.middleware,
+	// Phase 1b: Execute route-scoped middleware "before" phases
+	if (!currentResponse) {
+		for (const middleware of routeMiddlewares) {
+			currentResponse = await executeMiddleware(
+				middleware,
 				request,
 				context,
 				runningGenerators,
 			);
 			if (currentResponse) break; // Short-circuit
 		}
-
-		// Phase 1b: Execute route-scoped middleware "before" phases
-		if (!currentResponse) {
-			for (const middleware of routeMiddlewares) {
-				currentResponse = await this.#executeMiddleware(
-					middleware,
-					request,
-					context,
-					runningGenerators,
-				);
-				if (currentResponse) break; // Short-circuit
-			}
-		}
-
-		// Phase 2: Get handler response if no middleware returned early
-		if (!currentResponse) {
-			// Execute handler
-			let handlerError: Error | null = null;
-			try {
-				currentResponse = await handler(request, context);
-			} catch (error) {
-				handlerError = error as Error;
-			}
-
-			// Handle errors through generator stack if needed
-			if (handlerError) {
-				currentResponse = await this.#handleErrorThroughGenerators(
-					handlerError,
-					runningGenerators,
-				);
-			}
-		}
-
-		// Phase 3: Resume all generators in reverse order (LIFO - Last In First Out)
-		// This implements the Rack-style guaranteed execution
-		for (let i = runningGenerators.length - 1; i >= 0; i--) {
-			const {generator} = runningGenerators[i];
-			// currentResponse should always be set by this point (from handler or short-circuit)
-			// Use non-null assertion since generators expect a Response
-			const result = await generator.next(currentResponse!);
-			// result.value is the return value (Response | null | undefined), not the yield (Request)
-			if (result.value && result.done) {
-				currentResponse = result.value;
-			}
-		}
-
-		return currentResponse!;
 	}
 
-	/**
-	 * Handle errors by trying generators in reverse order
-	 */
-	async #handleErrorThroughGenerators(
-		error: Error,
-		runningGenerators: Array<{generator: ReturnType<GeneratorMiddleware>}>,
-	): Promise<Response> {
-		// Try error handling starting from the innermost middleware (reverse order)
-		for (let i = runningGenerators.length - 1; i >= 0; i--) {
-			const {generator} = runningGenerators[i];
+	// Phase 2: Get handler response if no middleware returned early
+	if (!currentResponse) {
+		// Execute handler
+		let handlerError: Error | null = null;
+		try {
+			currentResponse = await handler(request, context);
+		} catch (error) {
+			handlerError = error as Error;
+		}
 
-			try {
-				const result = await generator.throw(error);
-				// When done=true, value is the return type (Response | null | undefined)
-				// When done=false, value is the yield type (Request) - generator caught and re-yielded
-				if (result.done && result.value) {
-					// This generator handled the error - remove it from the stack
-					// so it doesn't get resumed again in phase 3
-					runningGenerators.splice(i, 1);
-					return result.value;
-				}
-			} catch (generatorError) {
-				// This generator rethrew - continue to next generator
-				// Remove this generator from the stack since it failed
+		// Handle errors through generator stack if needed
+		if (handlerError) {
+			currentResponse = await handleErrorThroughGenerators(
+				handlerError,
+				runningGenerators,
+			);
+		}
+	}
+
+	// Phase 3: Resume all generators in reverse order (LIFO - Last In First Out)
+	// This implements the Rack-style guaranteed execution
+	for (let i = runningGenerators.length - 1; i >= 0; i--) {
+		const {generator} = runningGenerators[i];
+		// currentResponse should always be set by this point (from handler or short-circuit)
+		// Use non-null assertion since generators expect a Response
+		const result = await generator.next(currentResponse!);
+		// result.value is the return value (Response | null | undefined), not the yield (Request)
+		if (result.value && result.done) {
+			currentResponse = result.value;
+		}
+	}
+
+	return currentResponse!;
+}
+
+/**
+ * Handle errors by trying generators in reverse order
+ */
+async function handleErrorThroughGenerators(
+	error: Error,
+	runningGenerators: Array<{generator: ReturnType<GeneratorMiddleware>}>,
+): Promise<Response> {
+	// Try error handling starting from the innermost middleware (reverse order)
+	for (let i = runningGenerators.length - 1; i >= 0; i--) {
+		const {generator} = runningGenerators[i];
+
+		try {
+			const result = await generator.throw(error);
+			// When done=true, value is the return type (Response | null | undefined)
+			// When done=false, value is the yield type (Request) - generator caught and re-yielded
+			if (result.done && result.value) {
+				// This generator handled the error - remove it from the stack
+				// so it doesn't get resumed again in phase 3
 				runningGenerators.splice(i, 1);
-				continue;
+				return result.value;
 			}
+		} catch (generatorError) {
+			// This generator rethrew - continue to next generator
+			// Remove this generator from the stack since it failed
+			runningGenerators.splice(i, 1);
+			continue;
 		}
-
-		// No generator handled the error
-		throw error;
 	}
 
-	/**
-	 * Create an error response for unhandled errors
-	 * Uses HTTPError.toResponse() for consistent error formatting
-	 */
-	#createErrorResponse(error: Error): Response {
-		// Only be verbose when explicitly in development. An unset MODE must not
-		// leak stack traces to clients, so this fails closed.
-		const isDev = import.meta.env?.MODE === "development";
-		if (isDev && !isHTTPError(error)) {
-			logger.error`Unhandled error: ${error}`;
-		}
+	// No generator handled the error
+	throw error;
+}
 
-		// Convert to HTTPError for consistent response format
-		const httpError = isHTTPError(error)
-			? (error as HTTPError)
-			: new InternalServerError(error.message, {cause: error});
-
-		return httpError.toResponse(isDev);
+/**
+ * Create an error response for unhandled errors
+ * Uses HTTPError.toResponse() for consistent error formatting
+ */
+function createErrorResponse(error: Error): Response {
+	// Only be verbose when explicitly in development. An unset MODE must not
+	// leak stack traces to clients, so this fails closed.
+	const isDev = import.meta.env?.MODE === "development";
+	if (isDev && !isHTTPError(error)) {
+		logger.error`Unhandled error: ${error}`;
 	}
+
+	// Convert to HTTPError for consistent response format
+	const httpError = isHTTPError(error)
+		? (error as HTTPError)
+		: new InternalServerError(error.message, {cause: error});
+
+	return httpError.toResponse(isDev);
 }

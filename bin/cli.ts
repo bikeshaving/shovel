@@ -1,9 +1,11 @@
 // Load config and configure logging before anything else
-import {resolve, relative} from "path";
 import {spawnSync} from "child_process";
-import {findProjectRoot} from "../src/utils/project.js";
-import {loadConfig, DEFAULTS, type SinkConfig} from "../src/utils/config.js";
+import {relative, resolve} from "path";
+
 import {configureLogging} from "@b9g/platform/runtime";
+
+import {DEFAULTS, loadConfig, type SinkConfig} from "../src/utils/config.js";
+import {findProjectRoot} from "../src/utils/project.js";
 
 const projectRoot = findProjectRoot();
 const config = loadConfig(projectRoot);
@@ -50,7 +52,8 @@ async function reifySinks(
 			// Resolve relative paths against the config file location (baseDir)
 			// Package names (no ./ or ../) are left as-is for Node to resolve from node_modules
 			const resolvedPath =
-				modulePath.startsWith("./") || modulePath.startsWith("../")
+				modulePath.startsWith("./") ||
+				modulePath.startsWith("../")
 					? resolve(baseDir, modulePath)
 					: modulePath;
 			// Validate relative paths don't escape project root
@@ -70,10 +73,7 @@ async function reifySinks(
 }
 
 const reifiedSinks = await reifySinks(config.logging?.sinks, projectRoot);
-await configureLogging({
-	sinks: reifiedSinks,
-	loggers: config.logging?.loggers,
-});
+await configureLogging({sinks: reifiedSinks, loggers: config.logging?.loggers});
 
 import {Command} from "commander";
 import pkg from "../package.json" with {type: "json"};
@@ -86,7 +86,7 @@ program.name("shovel").description("Shovel CLI").version(pkg.version);
  * Re-exec under a different runtime if --platform requests it.
  * Called at the start of command actions that support --platform.
  */
-function checkPlatformReexec(options: {platform?: string}) {
+function checkPlatformReexec(options: {platform?: string}): void {
 	const platform = options.platform ?? config.platform;
 	const isBun = typeof globalThis.Bun !== "undefined";
 
@@ -98,11 +98,10 @@ function checkPlatformReexec(options: {platform?: string}) {
 
 	if (platform === "node" && isBun) {
 		// Bun → Node
-		const result = Bun.spawnSync(["node", ...process.argv.slice(1)], {
-			stdout: "inherit",
-			stderr: "inherit",
-			stdin: "inherit",
-		});
+		const result = Bun.spawnSync(
+			["node", ...process.argv.slice(1)],
+			{stdout: "inherit", stderr: "inherit", stdin: "inherit"},
+		);
 		process.exit(result.exitCode ?? 1);
 	}
 }

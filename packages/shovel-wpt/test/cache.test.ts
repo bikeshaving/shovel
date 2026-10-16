@@ -5,8 +5,8 @@
  * to verify the test runner works correctly.
  */
 
-import {runCacheTests} from "../src/runners/cache.js";
 import {MemoryCache} from "../../cache/src/memory.js";
+import {runCacheTests} from "../src/runners/cache.js";
 
 // Run WPT cache tests against MemoryCache
 runCacheTests("MemoryCache", {
