@@ -1,2 +1,7 @@
 [test]
-pathIgnorePatterns = ["**/shovel-wpt/wpt/**"]
+# Miniflare-based cloudflare-*.test.* files spawn workerd; running them
+# concurrently in the same `bun test` invocation causes flaky
+# "Broken pipe on control fd=3" failures (a bun/workerd interaction).
+# They're excluded from the default walk and run sequentially via the
+# root `test` script in package.json.
+pathIgnorePatterns = ["**/shovel-wpt/wpt/**", "**/cloudflare-*.test.*"]

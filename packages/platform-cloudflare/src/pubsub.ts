@@ -3,192 +3,524 @@
  *
  * Provides cross-isolate BroadcastChannel relay via a Durable Object.
  * - CloudflarePubSubBackend: BroadcastChannelBackend that publishes to a DO
- * - ShovelPubSubDO: Durable Object that broadcasts to connected WebSocket clients
+ * - ShovelPubSubDO: Durable Object that fans publishes out to subscribers
  *
  * Opt-in: only active when env.SHOVEL_PUBSUB binding is present.
  *
- * Architecture:
- * - publish() sends a POST to the DO with {channel, data, sender}
- * - subscribe() opens a WebSocket to the DO to receive broadcasts
- * - The DO fans out POST payloads to all connected WebSocket clients
- * - Sender filtering happens client-side (same pattern as Redis backend)
+ * Two subscriber paths coexist:
  *
- * Note: Cloudflare Workers are ephemeral, so WebSocket subscriptions only
- * live as long as the Worker's execution context. For typical request/response
- * Workers this means subscriptions are short-lived. For Durable Object contexts
- * or Workers using waitUntil(), subscriptions can persist longer.
+ * 1. Durable Object subscribers (the ShovelWebSocketDO, primarily) — register
+ *    their own DO ID with the pubsub DO. On each publish the pubsub DO does
+ *    `stub._shovelPublish(channel, data)` (Durable Object RPC), which Cloudflare
+ *    uses to wake hibernated subscriber DOs. The registry is persisted to
+ *    `ctx.storage` so a pubsub-DO eviction doesn't drop subscriptions, and
+ *    per-target deliveries are ordered via a per-doId promise chain.
+ *
+ * 2. Non-DO subscribers (regular workers, cron handlers using waitUntil) —
+ *    open a held-open WebSocket to the pubsub DO and receive every publish on
+ *    it. Each non-DO backend has a unique `instanceId` and tags its own
+ *    publishes with it, so receive-side filtering avoids echo. The WS dies
+ *    when the worker isolate goes away — fine because the subscription can't
+ *    outlive the isolate either way. This path is best-effort: a pubsub-DO
+ *    eviction interrupts it, same as the pre-PR design.
+ *
+ * Local in-isolate BC fan-out is unaffected; it happens in `ShovelBroadcastChannel`
+ * before the backend is invoked.
  */
 
 import {DurableObject} from "cloudflare:workers";
 import type {BroadcastChannelBackend} from "@b9g/platform/runtime";
 import {getLogger} from "@logtape/logtape";
 
+/**
+ * RPC surfaces. Control-plane operations use Durable Object RPC methods, not
+ * fetch routes: fetch on these DOs is externally reachable (the worker
+ * forwards any websocket upgrade), so a fetch-based control plane would let
+ * outside clients forge internal publishes. RPC methods are only callable
+ * from code holding the binding.
+ */
+interface PubSubDORpc {
+	subscribe(channel: string, doId: string): Promise<void>;
+	unsubscribe(channel: string, doId: string): Promise<void>;
+	publish(channel: string, data: unknown, sender: string | null): Promise<void>;
+}
+interface WebSocketDORpc {
+	_shovelPublish(channel: string, data: unknown): Promise<{stale: boolean}>;
+}
+
 const logger = getLogger(["shovel", "pubsub"]);
 
+// Storage key prefix for persisted (channel, doId) pairs.
+const SUB_PREFIX = "sub:";
+const SUB_SEP = "\x00";
+
+function subKey(channel: string, doId: string): string {
+	return `${SUB_PREFIX}${channel}${SUB_SEP}${doId}`;
+}
+
 // ============================================================================
-// BACKEND (used by the Worker)
+// LOCAL DELIVERY (used by both the WS DO `_shovelPublish` RPC method and the
+// non-DO held-open WS receive path)
 // ============================================================================
+
+/** Per-isolate map: channel → set of subscribe-callbacks installed locally. */
+/**
+ * Per-channel registration chains, MODULE-scoped: ops must reach the pubsub
+ * DO in issue order even when they originate from different backend
+ * instances (a backend swap issues the old instance's unsubscribe and the
+ * new instance's subscribe — per-instance chains let them race).
+ */
+const registrationOps = new Map<string, Promise<void>>();
+
+const localCallbacks = new Map<string, Set<(data: unknown) => void>>();
 
 /**
- * BroadcastChannel backend that routes messages through a Durable Object.
- *
- * Uses an instance ID to filter out own messages (prevents echo),
- * matching the pattern used by RedisPubSubBackend.
+ * Invoked by ShovelWebSocketDO when its `_shovelPublish` RPC method receives a
+ * payload. Fans out to all locally-registered BC subscribe callbacks for the
+ * channel. Internal — re-exported via the package runtime entry but not part
+ * of the public API surface.
  */
+/**
+ * @internal Whether this isolate holds any local BroadcastChannel subscriber
+ * for a channel. The WS DO's stale-prune signal consults this: zero sockets
+ * does not mean zero subscribers.
+ */
+export function _hasLocalSubscribers(channel: string): boolean {
+	return (localCallbacks.get(channel)?.size ?? 0) > 0;
+}
+
+export function _dispatchPubSubMessage(channel: string, data: unknown): void {
+	const cbs = localCallbacks.get(channel);
+	if (!cbs) return;
+	for (const cb of cbs) {
+		try {
+			cb(data);
+		} catch (err) {
+			logger.error("PubSub callback threw: {error}", {error: err});
+		}
+	}
+}
+
+// ============================================================================
+// BACKEND (used by Worker / DO isolates)
+// ============================================================================
+
 export class CloudflarePubSubBackend implements BroadcastChannelBackend {
 	#ns: DurableObjectNamespace;
+	#subscriberId: string | null;
 	#instanceId: string;
-	#ws: WebSocket | null;
-	#wsReady: Promise<void> | null;
 	#callbacks: Map<string, Set<(data: unknown) => void>>;
 
-	constructor(ns: DurableObjectNamespace) {
+	// Non-DO mode only: held-open WS to pubsub DO for receive.
+	#ws: WebSocket | null;
+	#wsReady: Promise<void> | null;
+
+	/**
+	 * @param ns - The SHOVEL_PUBSUB DurableObjectNamespace binding.
+	 * @param subscriberId - This isolate's addressable Durable Object ID
+	 *   string when running inside a DO that the pubsub layer can wake via
+	 *   `env.SHOVEL_WS.get(id).fetch(...)`. Pass `null` for non-DO worker
+	 *   isolates; receive then runs over a held-open WebSocket to the
+	 *   pubsub DO instead of fetch-based wake.
+	 */
+	constructor(ns: DurableObjectNamespace, subscriberId: string | null = null) {
 		this.#ns = ns;
+		this.#subscriberId = subscriberId;
 		this.#instanceId = crypto.randomUUID();
+		this.#callbacks = new Map();
 		this.#ws = null;
 		this.#wsReady = null;
-		this.#callbacks = new Map();
 	}
 
-	#ensureConnection(): void {
-		if (this.#wsReady) return;
-		this.#wsReady = this.#connect().catch((err) => {
-			logger.error("PubSub WebSocket connection failed: {error}", {
-				error: err,
-			});
-			// Allow retry on next subscribe() call
-			this.#wsReady = null;
-		});
-	}
-
-	async #connect(): Promise<void> {
+	#stub() {
 		const id = this.#ns.idFromName("pubsub");
-		const stub = this.#ns.get(id);
-		const response = await stub.fetch("http://internal/subscribe", {
-			headers: {Upgrade: "websocket"},
-		});
-		const ws = (response as any).webSocket as WebSocket | undefined;
-		if (!ws) {
-			throw new Error("WebSocket upgrade to PubSub DO failed");
-		}
-		ws.accept();
-		this.#ws = ws;
-		ws.addEventListener("message", (ev: MessageEvent) => {
-			try {
-				const {channel, data, sender} = JSON.parse(ev.data as string);
-				// Skip messages from this instance (prevents echo)
-				if (sender === this.#instanceId) return;
-				const cbs = this.#callbacks.get(channel);
-				if (cbs) {
-					for (const cb of cbs) cb(data);
-				}
-			} catch (err) {
-				logger.debug("Failed to parse pubsub message: {error}", {
-					error: err,
-				});
-			}
-		});
+		return this.#ns.get(id);
+	}
+
+	/** Tag publishes so each receiver can skip its own messages. */
+	#sender(): string {
+		return this.#subscriberId ?? this.#instanceId;
 	}
 
 	publish(channelName: string, data: unknown): void {
-		const id = this.#ns.idFromName("pubsub");
-		const stub = this.#ns.get(id);
-		// Fire-and-forget POST to the DO
-		stub
-			.fetch("http://internal/broadcast", {
-				method: "POST",
-				headers: {"Content-Type": "application/json"},
-				body: JSON.stringify({
-					channel: channelName,
-					data,
-					sender: this.#instanceId,
-				}),
-			})
-			.catch((err) => {
-				logger.error("PubSub publish failed: {error}", {error: err});
-			});
+		const stub = this.#stub() as unknown as PubSubDORpc;
+		stub.publish(channelName, data, this.#sender()).catch((err) => {
+			logger.error("PubSub publish failed: {error}", {error: err});
+		});
 	}
 
 	subscribe(
 		channelName: string,
 		callback: (data: unknown) => void,
 	): () => void {
-		this.#ensureConnection();
-		let cbs = this.#callbacks.get(channelName);
+		let cbs = localCallbacks.get(channelName);
+		const isFirstForChannel = !cbs || cbs.size === 0;
 		if (!cbs) {
 			cbs = new Set();
-			this.#callbacks.set(channelName, cbs);
+			localCallbacks.set(channelName, cbs);
 		}
 		cbs.add(callback);
+
+		// Track in our own per-instance map so dispose() can clean up.
+		let mine = this.#callbacks.get(channelName);
+		if (!mine) {
+			mine = new Set();
+			this.#callbacks.set(channelName, mine);
+		}
+		mine.add(callback);
+
+		if (this.#subscriberId) {
+			// DO mode: register with the pubsub DO unconditionally — NOT gated
+			// on isFirstForChannel. localCallbacks is shared by every backend
+			// instance in the isolate, so a first-only gate means a second
+			// instance (or a re-install after a wrongful prune) never asserts
+			// its own registration and permanently misses cross-isolate
+			// publishes. Registration is chained per channel and idempotent
+			// server-side, so re-asserting is cheap and self-healing.
+			this.#postRegistration("subscribe", channelName);
+		} else if (isFirstForChannel) {
+			// Non-DO mode: open the held-open receive WebSocket on demand.
+			this.#ensureWS();
+		}
+
 		return () => {
 			cbs!.delete(callback);
-			if (cbs!.size === 0) this.#callbacks.delete(channelName);
+			mine!.delete(callback);
+			if (mine!.size === 0) this.#callbacks.delete(channelName);
+			if (cbs!.size === 0) {
+				localCallbacks.delete(channelName);
+				if (this.#subscriberId) {
+					this.#postRegistration("unsubscribe", channelName);
+				}
+			}
 		};
 	}
 
+	#postRegistration(op: "subscribe" | "unsubscribe", channel: string): void {
+		const doId = this.#subscriberId;
+		if (!doId) return;
+		// Chain per channel: an unsubscribe followed by a resubscribe (last
+		// connection closes, new one opens) must reach the registry in that
+		// order — two independent fire-and-forget stub calls can arrive
+		// swapped and permanently deregister a live subscriber.
+		const prev = registrationOps.get(channel) ?? Promise.resolve();
+		const next = prev.then(async () => {
+			const stub = this.#stub() as unknown as PubSubDORpc;
+			await (op === "subscribe"
+				? stub.subscribe(channel, doId)
+				: stub.unsubscribe(channel, doId));
+		});
+		const tracked = next.catch((err) => {
+			logger.error("PubSub {op} failed: {error}", {op, error: err});
+		});
+		registrationOps.set(channel, tracked);
+		// Drop the tail once settled so dynamic channel names don't accumulate
+		// one map entry per channel for the isolate's lifetime.
+		void tracked.finally(() => {
+			if (registrationOps.get(channel) === tracked) {
+				registrationOps.delete(channel);
+			}
+		});
+	}
+
+	#ensureWS(): void {
+		if (this.#wsReady) return;
+		this.#wsReady = this.#connectWS().catch((err) => {
+			logger.error("PubSub receive-WS failed: {error}", {error: err});
+			this.#wsReady = null;
+		});
+	}
+
+	async #connectWS(): Promise<void> {
+		const stub = this.#stub();
+		const response = await stub.fetch("http://internal/subscribe", {
+			headers: {Upgrade: "websocket"},
+		});
+		const ws = (response as any).webSocket as WebSocket | undefined;
+		if (!ws) throw new Error("WebSocket upgrade to PubSub DO failed");
+		ws.accept();
+		this.#ws = ws;
+		ws.addEventListener("message", (ev: MessageEvent) => {
+			try {
+				const {channel, data, sender} = JSON.parse(ev.data as string) as {
+					channel: string;
+					data: unknown;
+					sender: string;
+				};
+				// Skip echo of our own publishes.
+				if (sender === this.#instanceId) return;
+				_dispatchPubSubMessage(channel, data);
+			} catch (err) {
+				logger.debug("Failed to parse pubsub WS message: {error}", {
+					error: err,
+				});
+			}
+		});
+	}
+
 	async dispose(): Promise<void> {
-		this.#ws?.close();
-		this.#ws = null;
-		this.#wsReady = null;
+		// Best-effort unsubscribe per active channel before clearing local state.
+		if (this.#subscriberId) {
+			for (const channel of this.#callbacks.keys()) {
+				this.#postRegistration("unsubscribe", channel);
+			}
+		}
+		// Drop our own callbacks from the shared localCallbacks map.
+		for (const [channel, mine] of this.#callbacks) {
+			const shared = localCallbacks.get(channel);
+			if (!shared) continue;
+			for (const cb of mine) shared.delete(cb);
+			if (shared.size === 0) localCallbacks.delete(channel);
+		}
 		this.#callbacks.clear();
+		// Close the receive WS if we opened one (non-DO mode).
+		if (this.#ws) {
+			try {
+				this.#ws.close();
+			} catch (_err) {
+				/* best-effort */
+			}
+			this.#ws = null;
+			this.#wsReady = null;
+		}
 	}
 }
 
 // ============================================================================
-// DURABLE OBJECT (implementation detail)
+// DURABLE OBJECT (registry + push-on-publish + held-open receive WS)
 // ============================================================================
 
-/**
- * Durable Object that fans out BroadcastChannel messages to connected
- * WebSocket clients. Uses WebSocket Hibernation API for efficiency.
- */
+interface PubSubEnv {
+	SHOVEL_WS?: DurableObjectNamespace;
+}
+
 export class ShovelPubSubDO extends DurableObject {
-	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url);
+	/** channel → set of subscriber DO ID strings. */
+	#subscribers: Map<string, Set<string>>;
+	/** Per-target promise chain so each subscriber sees publishes in order. */
+	#pendingByDoId: Map<string, Promise<unknown>>;
+	/**
+	 * (channel, doId) -> generation, bumped on every subscribe. A prune is
+	 * only honored if the entry's generation still matches the one captured
+	 * when the publish was issued — a re-subscribe that lands while a
+	 * stale-reporting publish is in flight must not be deleted by it.
+	 */
+	#generations: Map<string, number>;
+	/** Hydration state: ensure we read from storage before serving traffic. */
+	#hydrated: Promise<void> | null;
 
-		// WebSocket upgrade — clients connect to receive broadcasts
-		if (request.headers.get("Upgrade") === "websocket") {
-			const pair = new WebSocketPair();
-			const [client, server] = Object.values(pair);
-			this.ctx.acceptWebSocket(server);
-			return new Response(null, {status: 101, webSocket: client});
-		}
+	constructor(ctx: DurableObjectState, env: PubSubEnv) {
+		super(ctx, env as any);
+		this.#subscribers = new Map();
+		this.#pendingByDoId = new Map();
+		this.#generations = new Map();
+		this.#hydrated = null;
+	}
 
-		// POST /broadcast — fan out to all connected sockets
-		if (request.method === "POST" && url.pathname === "/broadcast") {
-			const payload = await request.text();
-			for (const ws of this.ctx.getWebSockets()) {
-				ws.send(payload);
+	async #hydrate(): Promise<void> {
+		if (this.#hydrated) return this.#hydrated;
+		// A rejected hydration must not be memoized: one transient
+		// storage.list() failure would otherwise brick every later
+		// subscribe/publish for the isolate's lifetime (mirrors
+		// ShovelWebSocketDO.#ensureRuntime).
+		const p = (async () => {
+			const all = await this.ctx.storage.list<unknown>({prefix: SUB_PREFIX});
+			for (const key of all.keys()) {
+				const rest = key.slice(SUB_PREFIX.length);
+				const sep = rest.indexOf(SUB_SEP);
+				if (sep < 0) continue;
+				const channel = rest.slice(0, sep);
+				const doId = rest.slice(sep + 1);
+				let set = this.#subscribers.get(channel);
+				if (!set) {
+					set = new Set();
+					this.#subscribers.set(channel, set);
+				}
+				set.add(doId);
 			}
-			return new Response("OK");
+		})();
+		this.#hydrated = p;
+		p.catch(() => {
+			if (this.#hydrated === p) this.#hydrated = null;
+		});
+		return p;
+	}
+
+	async fetch(request: Request): Promise<Response> {
+		await this.#hydrate();
+
+		// The ONLY fetch surface: the held-open receive WebSocket for non-DO
+		// subscribers. All control-plane operations (subscribe/unsubscribe/
+		// publish) are RPC methods — fetch is externally reachable via the
+		// worker's upgrade forwarding, RPC is not.
+		if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
+			const pair = new WebSocketPair();
+			const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+			this.ctx.acceptWebSocket(server);
+			return new Response(null, {status: 101, webSocket: client} as any);
 		}
 
 		return new Response("Not Found", {status: 404});
 	}
 
-	async webSocketMessage(
-		ws: WebSocket,
-		message: string | ArrayBuffer,
+	async subscribe(channel: string, doId: string): Promise<void> {
+		await this.#hydrate();
+		const key = subKey(channel, doId);
+		this.#generations.set(key, (this.#generations.get(key) ?? 0) + 1);
+		let set = this.#subscribers.get(channel);
+		if (!set) {
+			set = new Set();
+			this.#subscribers.set(channel, set);
+		}
+		if (!set.has(doId)) {
+			set.add(doId);
+			await this.ctx.storage.put(key, 1);
+		}
+	}
+
+	async unsubscribe(channel: string, doId: string): Promise<void> {
+		await this.#hydrate();
+		const set = this.#subscribers.get(channel);
+		if (set?.delete(doId)) {
+			if (set.size === 0) this.#subscribers.delete(channel);
+			this.#generations.delete(subKey(channel, doId));
+			await this.ctx.storage.delete(subKey(channel, doId));
+		}
+	}
+
+	async publish(
+		channel: string,
+		data: unknown,
+		sender: string | null,
 	): Promise<void> {
-		// Fan out to all OTHER connected sockets
-		const data = typeof message === "string" ? message : message;
-		for (const peer of this.ctx.getWebSockets()) {
-			if (peer !== ws) {
-				peer.send(data);
+		await this.#hydrate();
+		const set = this.#subscribers.get(channel);
+		if (set) {
+			const wsNs = (this.env as PubSubEnv).SHOVEL_WS;
+			if (!wsNs) {
+				logger.error("Cannot push publish: SHOVEL_WS binding missing");
+			} else {
+				for (const doId of set) {
+					if (doId === sender) continue;
+					this.#scheduleDelivery(wsNs, doId, channel, data);
+				}
+			}
+		}
+		// Broadcast to non-DO subscribers over their held-open WS, but only
+		// when any exist — skip the serialization otherwise. Receivers filter
+		// by sender to skip their own publishes.
+		const sockets = this.ctx.getWebSockets();
+		if (sockets.length > 0) {
+			const payload = JSON.stringify({channel, data, sender});
+			for (const ws of sockets) {
+				try {
+					ws.send(payload);
+				} catch (err) {
+					// Closed sockets are cleaned up by the hibernation API; skip.
+					logger.debug("receive-WS send skipped: {error}", {error: err});
+				}
 			}
 		}
 	}
 
-	async webSocketClose(
-		_ws: WebSocket,
-		_code: number,
-		_reason: string,
-		_wasClean: boolean,
-	): Promise<void> {
-		// Hibernation API handles cleanup automatically
+	#scheduleDelivery(
+		wsNs: DurableObjectNamespace,
+		doId: string,
+		channel: string,
+		data: unknown,
+	): void {
+		const generation = this.#generations.get(subKey(channel, doId)) ?? 0;
+		const prev = this.#pendingByDoId.get(doId) ?? Promise.resolve();
+		const next = prev
+			.then(async () => {
+				let stub;
+				try {
+					stub = wsNs.get(wsNs.idFromString(doId));
+				} catch (err) {
+					// Malformed id can never address a DO — drop it permanently.
+					logger.warn("Pruning malformed pubsub subscriber {doId}: {error}", {
+						doId,
+						error: err,
+					});
+					await this.#pruneSubscriber(channel, doId, generation);
+					return;
+				}
+				try {
+					const res = await (stub as unknown as WebSocketDORpc)._shovelPublish(
+						channel,
+						data,
+					);
+					// stale = the subscriber DO woke, rehydrated, and found it has
+					// no live sockets at all — a stale entry left by a DO that was
+					// evicted/crashed without a clean unsubscribe. Reap it.
+					// Transport errors (caught below) are left intact, since those
+					// are usually transient.
+					if (res.stale) {
+						await this.#pruneSubscriber(channel, doId, generation);
+					}
+				} catch (err) {
+					logger.error("PubSub downstream fetch to {doId} failed: {error}", {
+						doId,
+						error: err,
+					});
+				}
+			})
+			.finally(() => {
+				// Drop the chain head when we're caught up to avoid unbounded
+				// map growth; if more publishes arrive, a fresh entry is created.
+				if (this.#pendingByDoId.get(doId) === next) {
+					this.#pendingByDoId.delete(doId);
+				}
+			});
+		this.#pendingByDoId.set(doId, next);
+		this.ctx.waitUntil(next);
 	}
 
-	async webSocketError(_ws: WebSocket, _error: unknown): Promise<void> {
-		// Hibernation API handles cleanup automatically
+	/**
+	 * Remove a stale (channel, doId) entry from the in-memory registry and
+	 * persisted storage. Called when a subscriber DO is found to no longer hold
+	 * a subscriber for the channel (or its id is unaddressable), so future
+	 * publishes stop waking a dead DO.
+	 */
+	async #pruneSubscriber(
+		channel: string,
+		doId: string,
+		generation: number,
+	): Promise<void> {
+		// A re-subscribe that landed after this publish was issued bumped the
+		// generation — the stale report describes a state that no longer
+		// exists, and honoring it would deregister a live subscriber that
+		// never re-asserts (isFirstForChannel gates re-registration).
+		if ((this.#generations.get(subKey(channel, doId)) ?? 0) !== generation) {
+			return;
+		}
+		this.#generations.delete(subKey(channel, doId));
+		const set = this.#subscribers.get(channel);
+		if (set?.delete(doId)) {
+			if (set.size === 0) this.#subscribers.delete(channel);
+			await this.ctx.storage.delete(subKey(channel, doId));
+			logger.info("Pruned stale pubsub subscriber {doId} from {channel}", {
+				doId,
+				channel,
+			});
+		}
+	}
+
+	// Hibernation API hooks. We don't act on inbound frames or close events
+	// from the receive sockets — they're a one-way push channel — but workerd
+	// requires the DO class to implement these when sockets are accepted.
+	async webSocketMessage(
+		_ws: WebSocket,
+		_message: string | ArrayBuffer,
+	): Promise<void> {
+		// no-op — backends don't send anything to us via WS.
+	}
+
+	async webSocketClose(): Promise<void> {
+		// hibernation API handles cleanup
+	}
+
+	async webSocketError(): Promise<void> {
+		// hibernation API handles cleanup
 	}
 }

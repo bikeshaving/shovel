@@ -120,4 +120,40 @@ describe("Cloudflare runtime functions", () => {
 		expect(typeof initializeRuntime).toBe("function");
 		expect(typeof createFetchHandler).toBe("function");
 	});
+
+	test("returns 426 when the handler upgrades without SHOVEL_WS bound", async () => {
+		// The worker runs the handler; if it calls upgradeWebSocket() but no
+		// SHOVEL_WS binding exists to materialize the socket, the handler must
+		// short-circuit with a clear 426 (not an opaque 500). A request whose
+		// handler does NOT upgrade never reaches this path.
+		const {initializeRuntime, createFetchHandler} =
+			await import("../src/runtime.js");
+		const config = {
+			lifecycle: {stage: "activate" as const},
+			caches: {},
+			directories: {},
+		};
+		const registration = await initializeRuntime(config as any);
+		const handler = createFetchHandler(registration);
+
+		const upgradeHandler = (event: any) => {
+			event.upgradeWebSocket();
+		};
+		(globalThis as any).self.addEventListener("fetch", upgradeHandler);
+		try {
+			const request = new Request("http://localhost/ws", {
+				headers: {Upgrade: "websocket"},
+			});
+			const ctx = {
+				waitUntil() {},
+				passThroughOnException() {},
+			} as any;
+			const response = await handler(request, {}, ctx);
+			expect(response.status).toBe(426);
+			const text = await response.text();
+			expect(text).toMatch(/SHOVEL_WS/);
+		} finally {
+			(globalThis as any).self.removeEventListener("fetch", upgradeHandler);
+		}
+	});
 });

@@ -1,0 +1,579 @@
+/**
+ * WebSocket Durable Object with Hibernation API support.
+ *
+ * Separate file because `cloudflare:workers` can only be imported inside
+ * workerd. The generated entry re-exports this class so wrangler can bind
+ * it; it is never loaded outside Cloudflare.
+ *
+ * The DO is used as a single shared instance (`idFromName("shovel-ws")`)
+ * so that all accepted connections live in the same isolate. This keeps
+ * `WebSocketConnection.subscribe()` fan-out purely in-process for the
+ * common case (cross-DO / cross-colo relay is handled by BroadcastChannel's
+ * backend, independent of this DO).
+ *
+ * Hibernation model:
+ * - `ctx.acceptWebSocket(ws)` registers the socket for hibernation-capable
+ *   dispatch. The runtime can evict the DO between messages.
+ * - `ws.serializeAttachment({id, url, subscribedChannels})` stashes enough
+ *   state to reconstruct a `ShovelWebSocketConnection` after wake.
+ * - On wake, module re-evaluation runs user code (so event handlers are
+ *   re-registered) and then `#ensureRuntime()` rebuilds one connection
+ *   object per `ctx.getWebSockets()` entry. Rebuilding re-registers BC
+ *   listeners for each subscribed channel (re-wires fan-out forwarding).
+ *
+ * Hardening from prior PR:
+ * - Per-connection ordered dispatch queue so handlers see messages in order.
+ * - Connection removal deferred until AFTER `websocketclose` handlers run.
+ * - Phantom cleanup if the handler throws after `onUpgrade`.
+ * - Non-cloneable subscribed-channel set: `subscribedChannels` is a plain
+ *   array of strings, always structured-cloneable.
+ */
+
+import {DurableObject} from "cloudflare:workers";
+import {
+	ShovelServiceWorkerRegistration,
+	ShovelWebSocketConnection,
+	WebSocketConnectionState,
+	dispatchWebSocketMessage,
+	dispatchWebSocketClose,
+	kGetConnectionState,
+	runLifecycle,
+	setBroadcastChannelBackend,
+	type WebSocketRelay,
+} from "@b9g/platform/runtime";
+import {envStorage} from "./variables.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["shovel", "platform", "cloudflare", "ws"]);
+
+/** How long a staged upgrade waits for its forwarded fetch before it's swept. */
+const ESTABLISH_TTL = 30_000;
+
+/** Decode a base64 frame payload (binary sends buffered before the socket). */
+function base64ToBytes(b64: string): Uint8Array {
+	const bin = atob(b64);
+	const out = new Uint8Array(bin.length);
+	for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+	return out;
+}
+
+/** Connection state the worker captures on upgradeWebSocket() and hands off. */
+interface EstablishState {
+	id: string;
+	url: string;
+	subscribedChannels?: string[];
+	frames?: Array<{
+		k: string;
+		s?: string;
+		b?: string;
+		code?: number;
+		reason?: string;
+	}>;
+	setCookies?: string[];
+}
+
+export class ShovelWebSocketDO extends DurableObject {
+	#registration: ShovelServiceWorkerRegistration | null;
+	#runtimePromise: Promise<ShovelServiceWorkerRegistration> | null;
+	/** Map from connection id → live runtime handle. Rebuilt on wake. */
+	#connections: Map<string, ShovelWebSocketConnection>;
+	/** Per-connection ordered dispatch queues. */
+	#dispatchQueues: Map<string, Promise<void>>;
+	/**
+	 * Connection ids whose `websocketclose` has already been dispatched. workerd
+	 * can deliver `webSocketError` followed by `webSocketClose` for the same
+	 * socket; this guards against dispatching the user close handler twice.
+	 */
+	#finalized: Map<string, number>;
+	/**
+	 * Connection id → last-persisted `subscribedChannels` signature, so we only
+	 * re-serialize the hibernation attachment when subscription state actually
+	 * changed (not on every inbound data frame).
+	 */
+	#persistedChannels: Map<string, string>;
+	/** Captured `_dispatchPubSubMessage` so the hot publish route avoids a per-call dynamic import. */
+	#dispatchPubSub: ((channel: string, data: unknown) => void) | null;
+	/** Upgrades in flight (subscribe registered, socket not yet accepted). */
+	#pendingUpgrades: number;
+	/** ws -> connection id; survives attachment read failures and avoids
+	 * a structured-clone deserialization per inbound frame. */
+	#socketIds: WeakMap<WebSocket, string>;
+	/** Upgrade state staged by prepareUpgrade(), consumed by the next fetch. */
+	#pendingEstablish: Map<string, {state: EstablishState; at: number}>;
+
+	constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
+		super(ctx, env as any);
+		this.#registration = null;
+		this.#runtimePromise = null;
+		this.#connections = new Map();
+		this.#dispatchQueues = new Map();
+		this.#finalized = new Map();
+		this.#persistedChannels = new Map();
+		this.#dispatchPubSub = null;
+		this.#pendingUpgrades = 0;
+		this.#socketIds = new WeakMap();
+		this.#pendingEstablish = new Map();
+	}
+
+	async #ensureRuntime(): Promise<ShovelServiceWorkerRegistration> {
+		// Memoize the in-flight promise, not the resolved registration: the
+		// first await below yields, and a concurrent wake (two webSocketMessage
+		// deliveries, or fetch + message in one tick) would otherwise run the
+		// whole body twice — double lifecycle, double rehydration, and
+		// duplicate connections whose dropped twins leak BC subscriptions.
+		if (!this.#runtimePromise) {
+			const p = this.#initializeRuntime();
+			this.#runtimePromise = p;
+			// A rejected init must not be memoized: it would brick the isolate
+			// (every later fetch/message/close awaits this and rejects, and
+			// existing sockets never dispatch websocketclose). Clear so the
+			// next entry retries, preserving pre-memoization behavior.
+			p.catch(() => {
+				if (this.#runtimePromise === p) this.#runtimePromise = null;
+			});
+		}
+		return this.#runtimePromise;
+	}
+
+	async #initializeRuntime(): Promise<ShovelServiceWorkerRegistration> {
+		if (this.#registration) return this.#registration;
+
+		// Module-level `initializeRuntime()` ran when workerd evaluated the
+		// generated entry. Retrieve the registration singleton it produced.
+		const {_getRegistration} = await import("./runtime.js");
+		const reg = _getRegistration();
+		if (!reg) {
+			throw new Error(
+				"Shovel runtime not initialized — generated entry must call initializeRuntime()",
+			);
+		}
+		// NOTE: #registration is assigned at the END of this method — assigning
+		// before the awaits would defeat #ensureRuntime's rejection-clearing:
+		// a retry after a failed activate would short-circuit here with the
+		// backend and rehydration steps never run.
+
+		// Run install/activate once per DO instance. In production a DO runs
+		// in its own isolate, so per-isolate user setup (cache warming, DB
+		// opens, global seeding) must happen here too — the main worker's run
+		// doesn't carry over. (Under Miniflare the DO and worker share a module
+		// scope; the hasBroadcastChannelBackend guard in createFetchHandler
+		// exists for exactly that overlap.) `runLifecycle` is idempotent
+		// against `reg` once `reg.ready === true`, so wakes don't re-run it.
+		if (!reg.ready) {
+			await runLifecycle(reg, "activate");
+		}
+
+		// Configure the BroadcastChannel backend inside this DO isolate if
+		// the SHOVEL_PUBSUB binding is present. This is a no-op if already
+		// configured for this isolate. Pass our own DO ID so the pubsub
+		// registry can address us directly for cross-isolate wakes and skip
+		// self-fetches when this DO is the publisher.
+		const env = (this.env ?? {}) as Record<string, unknown>;
+		if (env.SHOVEL_PUBSUB) {
+			const {CloudflarePubSubBackend, _dispatchPubSubMessage} =
+				await import("./pubsub.js");
+			this.#dispatchPubSub = _dispatchPubSubMessage;
+			setBroadcastChannelBackend(
+				new CloudflarePubSubBackend(
+					env.SHOVEL_PUBSUB as DurableObjectNamespace,
+					this.ctx.id.toString(),
+				),
+			);
+		}
+
+		// Rehydrate connections from stored attachments. After wake, any WS
+		// accepted pre-hibernation is available via ctx.getWebSockets(); we
+		// reconstruct a runtime Connection for each so subsequent messages
+		// dispatch correctly.
+		for (const ws of this.ctx.getWebSockets()) {
+			const conn = this.#buildConnectionFromSocket(ws);
+			if (conn) {
+				this.#connections.set(conn.id, conn);
+				this.#socketIds.set(ws, conn.id);
+			}
+		}
+
+		this.#registration = reg;
+		return reg;
+	}
+
+	#buildConnectionFromSocket(ws: WebSocket): ShovelWebSocketConnection | null {
+		let attachment: WebSocketConnectionState | null = null;
+		try {
+			attachment = (
+				ws as any
+			).deserializeAttachment() as WebSocketConnectionState;
+		} catch (err) {
+			logger.warn("Failed to deserialize WS attachment: {error}", {error: err});
+		}
+		if (!attachment) return null;
+		const relay = this.#relayFor(ws);
+		return new ShovelWebSocketConnection({
+			id: attachment.id,
+			url: attachment.url,
+			relay,
+			subscribedChannels: attachment.subscribedChannels ?? [],
+		});
+	}
+
+	#relayFor(ws: WebSocket): WebSocketRelay {
+		return {
+			send(_id, data) {
+				ws.send(data);
+			},
+			close(_id, code, reason) {
+				ws.close(code ?? 1000, reason ?? "");
+			},
+		};
+	}
+
+	#persistAttachment(ws: WebSocket, conn: ShovelWebSocketConnection): void {
+		const state = conn[kGetConnectionState]();
+		// id and url are immutable for a connection; subscribedChannels is the
+		// only field that changes, so skip re-serializing when it's unchanged
+		// (the common case — every data frame would otherwise re-persist).
+		const signature = state.subscribedChannels.join("\n");
+		if (this.#persistedChannels.get(state.id) === signature) return;
+		try {
+			(ws as any).serializeAttachment({
+				id: state.id,
+				url: state.url,
+				subscribedChannels: state.subscribedChannels,
+			} satisfies WebSocketConnectionState);
+			this.#persistedChannels.set(state.id, signature);
+		} catch (err) {
+			// subscribedChannels is always string[], so serialization should
+			// never actually fail. Log and clear if it does.
+			logger.error(
+				"Failed to persist WS attachment (clearing to avoid stale state): {error}",
+				{error: err},
+			);
+			try {
+				(ws as any).serializeAttachment({
+					id: state.id,
+					url: state.url,
+					subscribedChannels: [],
+				} satisfies WebSocketConnectionState);
+			} catch (fallbackErr) {
+				// The API that just threw may throw again; never let it escape
+				// into the upgrade response or the dispatch chain.
+				logger.debug("attachment fallback failed: {error}", {
+					error: fallbackErr,
+				});
+			}
+			this.#persistedChannels.set(state.id, "");
+		}
+	}
+
+	/**
+	 * Push-on-publish (RPC): the pubsub DO wakes us so cross-isolate publishes
+	 * reach this DO's local BC subscribers even after hibernation. An RPC
+	 * method, not a fetch route — fetch is externally reachable through the
+	 * worker's upgrade forwarding, so a fetch-based control plane would let
+	 * outside clients inject messages into every subscribed socket.
+	 */
+	async _shovelPublish(
+		channel: string,
+		data: unknown,
+	): Promise<{stale: boolean}> {
+		await this.#ensureRuntime();
+		// Captured during #ensureRuntime (above) to avoid a dynamic import
+		// on every cross-isolate publish; fall back if pubsub wasn't wired.
+		const dispatch =
+			this.#dispatchPubSub ??
+			(await import("./pubsub.js"))._dispatchPubSubMessage;
+		dispatch(channel, data);
+		// Prune signal: only when this DO holds NO live sockets at all — an
+		// evicted/gone subscriber whose registry entry lingered. #ensureRuntime
+		// has already rehydrated hibernated sockets, so a live-but-hibernated
+		// subscriber reports length > 0 and is never pruned.
+		// stale means "prune my registry entry" — report it only when this
+		// isolate truly has no interest in the channel: no live sockets, no
+		// upgrade mid-flight (a handler may subscribe before acceptWebSocket
+		// runs), and no local BroadcastChannel subscriber (a module-scope
+		// channel keeps localCallbacks populated with zero sockets, and a
+		// wrongly-pruned entry is never re-asserted because later subscribes
+		// see isFirstForChannel === false).
+		const {_hasLocalSubscribers} = await import("./pubsub.js");
+		return {
+			stale:
+				this.ctx.getWebSockets().length === 0 &&
+				this.#pendingUpgrades === 0 &&
+				!_hasLocalSubscribers(channel),
+		};
+	}
+
+	/**
+	 * Stage the connection state the WORKER captured when the fetch handler
+	 * called upgradeWebSocket(). An RPC method (binding-only, not externally
+	 * reachable), so an attacker can't inject an establish. The worker then
+	 * forwards the real upgrade request (see fetch) which materializes the
+	 * socket and consumes this entry, matched by connection id.
+	 */
+	async prepareUpgrade(state: EstablishState): Promise<void> {
+		// Sweep orphans first: the forwarded fetch consumes a staged entry
+		// almost immediately, so anything older than the TTL is from an upgrade
+		// whose forward never arrived (worker died / request aborted between
+		// the two calls). Bounds the map without a timer.
+		const now = Date.now();
+		for (const [seenId, entry] of this.#pendingEstablish) {
+			if (now - entry.at > ESTABLISH_TTL) this.#pendingEstablish.delete(seenId);
+			else break; // Map preserves insertion order; the rest are newer.
+		}
+		this.#pendingEstablish.set(state.id, {state, at: now});
+	}
+
+	/**
+	 * Materialize a WebSocket from state staged by prepareUpgrade(). This DO
+	 * never runs the fetch handler — the worker does, in the stateless isolate
+	 * — so the DO is only ever reached after a real upgradeWebSocket() call.
+	 * The forwarded request is the client's original upgrade GET, so workerd
+	 * threads the actual socket; the connection id header ties it to the
+	 * staged state.
+	 */
+	async fetch(request: Request): Promise<Response> {
+		const id = request.headers.get("x-shovel-conn-id");
+		const entry = id ? this.#pendingEstablish.get(id) : undefined;
+		if (!id || !entry) {
+			// No matching staged upgrade — nothing else legitimately reaches
+			// the DO's fetch (the handler runs in the worker now).
+			return new Response("Not Found", {status: 404});
+		}
+		this.#pendingEstablish.delete(id);
+		const staged = entry.state;
+
+		// Count the upgrade BEFORE the first await: a cold wake's runtime init
+		// spans many event-loop turns, and a publish landing in that window
+		// must not see pendingUpgrades === 0 and prune us.
+		this.#pendingUpgrades++;
+		try {
+			const payload = staged;
+			await this.#ensureRuntime();
+			const env = (this.env ?? {}) as Record<string, unknown>;
+			return envStorage.run(env, () => {
+				const pair = new WebSocketPair();
+				const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+
+				// Accept BEFORE persisting: workerd's documented order is
+				// accept-then-serializeAttachment, and serializeAttachment on a
+				// not-yet-accepted socket can throw.
+				this.ctx.acceptWebSocket(server);
+				this.#socketIds.set(server, payload.id);
+
+				// Build the connection from the worker's captured state, bound
+				// to the real socket. The constructor re-opens the handler's
+				// subscriptions in THIS isolate (registering with the pubsub DO).
+				const conn = new ShovelWebSocketConnection({
+					id: payload.id,
+					url: payload.url,
+					relay: this.#relayFor(server),
+					subscribedChannels: payload.subscribedChannels ?? [],
+				});
+				this.#connections.set(conn.id, conn);
+				this.#persistAttachment(server, conn);
+
+				// Replay frames the handler produced before the socket existed.
+				for (const frame of payload.frames ?? []) {
+					if (frame.k === "c") {
+						server.close(frame.code ?? 1000, frame.reason ?? "");
+					} else if (frame.k === "s" && typeof frame.s === "string") {
+						server.send(frame.s);
+					} else if (frame.k === "b" && typeof frame.b === "string") {
+						server.send(base64ToBytes(frame.b).buffer);
+					}
+				}
+
+				// Carry Set-Cookie values the handler set during the upgrade
+				// onto the 101 handshake (auth/login flows rely on this).
+				const handshakeHeaders = new Headers();
+				for (const sc of payload.setCookies ?? []) {
+					try {
+						handshakeHeaders.append("Set-Cookie", sc);
+					} catch (_err) {
+						logger.warn("Dropping invalid Set-Cookie on upgrade");
+					}
+				}
+				return new Response(null, {
+					status: 101,
+					webSocket: client,
+					headers: handshakeHeaders,
+				} as any);
+			});
+		} finally {
+			this.#pendingUpgrades--;
+		}
+	}
+
+	async webSocketMessage(
+		ws: WebSocket,
+		message: string | ArrayBuffer,
+	): Promise<void> {
+		const registration = await this.#ensureRuntime();
+		const env = (this.env ?? {}) as Record<string, unknown>;
+
+		// Resolve the connection id through the WeakMap-first helper (the
+		// attachment is the fallback): an unreadable/cleared attachment must
+		// not silently drop inbound frames while close still resolves, and
+		// the cache avoids a structured-clone deserialization per frame.
+		const id = this.#connectionId(ws);
+		if (!id) {
+			logger.warn("webSocketMessage without connection id — ignoring");
+			return;
+		}
+		let conn = this.#connections.get(id);
+		if (!conn) {
+			conn = this.#buildConnectionFromSocket(ws) ?? undefined;
+			if (conn) this.#connections.set(id, conn);
+		}
+		if (!conn) return;
+
+		const prev = this.#dispatchQueues.get(id) ?? Promise.resolve();
+		const next = prev
+			.then(() =>
+				envStorage.run(env, () => {
+					// Collect extension promises (waitUntil + auto-extended async
+					// listener returns) so subscription changes made after an
+					// `await` in the handler are persisted before hibernation —
+					// while still forwarding them to ctx.waitUntil so the DO
+					// isn't torn down under them.
+					const extensions: Promise<unknown>[] = [];
+					const dispatched = dispatchWebSocketMessage(
+						registration,
+						conn!,
+						message,
+						(p) => {
+							extensions.push(p);
+							this.ctx.waitUntil(p);
+						},
+					);
+					if (extensions.length > 0) {
+						this.ctx.waitUntil(
+							Promise.allSettled(extensions).then(() => {
+								this.#persistAttachment(ws, conn!);
+							}),
+						);
+					}
+					return dispatched;
+				}),
+			)
+			.then(() => {
+				// Persist updated subscription state (if the handler called
+				// subscribe/unsubscribe synchronously).
+				this.#persistAttachment(ws, conn!);
+			})
+			.catch((err) =>
+				logger.error("webSocketMessage dispatch failed: {error}", {
+					error: err,
+				}),
+			);
+		this.#dispatchQueues.set(id, next);
+		return next;
+	}
+
+	async webSocketClose(
+		ws: WebSocket,
+		code: number,
+		reason: string,
+		wasClean: boolean,
+	): Promise<void> {
+		const registration = await this.#ensureRuntime();
+		const id = this.#connectionId(ws);
+		if (!id) return;
+		return this.#finalizeClose(registration, ws, id, code, reason, wasClean);
+	}
+
+	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+		logger.error("WebSocket error: {error}", {error});
+		const registration = await this.#ensureRuntime();
+		const id = this.#connectionId(ws);
+		if (!id) return;
+		// workerd may report `webSocketError` without a follow-up
+		// `webSocketClose` on protocol/transport failures, so run the close path
+		// here too. The #finalized guard makes whichever event arrives second a
+		// no-op, so the user's `websocketclose` handler fires exactly once and
+		// BC subscriptions are always released (via dispatchWebSocketClose).
+		return this.#finalizeClose(
+			registration,
+			ws,
+			id,
+			1006,
+			String(error),
+			false,
+		);
+	}
+
+	/**
+	 * Resolve a socket's connection id: the in-memory WeakMap first (set at
+	 * accept and rehydration — no per-frame deserialization, and immune to a
+	 * cleared/corrupt attachment), the hibernation attachment as fallback.
+	 * An unreadable attachment must not orphan the connection: close/error
+	 * paths depend on this id to release subscriptions.
+	 */
+	#connectionId(ws: WebSocket): string | null {
+		const cached = this.#socketIds.get(ws);
+		if (cached) return cached;
+		try {
+			const state = (
+				ws as any
+			).deserializeAttachment() as WebSocketConnectionState;
+			const id = state?.id ?? null;
+			if (id) this.#socketIds.set(ws, id);
+			return id;
+		} catch (_err) {
+			return null;
+		}
+	}
+
+	/**
+	 * Dispatch `websocketclose` exactly once for a connection and tear down all
+	 * per-connection state. Shared by webSocketClose and webSocketError so an
+	 * error-then-close (or close-then-error) sequence only closes once.
+	 */
+	#finalizeClose(
+		registration: ShovelServiceWorkerRegistration,
+		ws: WebSocket,
+		id: string,
+		code: number,
+		reason: string,
+		wasClean: boolean,
+	): Promise<void> | void {
+		if (this.#finalized.has(id)) return;
+		const nowMs = Date.now();
+		this.#finalized.set(id, nowMs);
+		// TTL-keyed dedup. A close/error pair for one socket arrives within a
+		// single teardown, so a 30s window covers any delayed second event;
+		// evicting by AGE (not raw insertion count) means high lifetime churn
+		// can't drop a still-relevant id and let websocketclose double-fire.
+		const DEDUP_TTL = 30_000;
+		for (const [seenId, at] of this.#finalized) {
+			if (nowMs - at > DEDUP_TTL) this.#finalized.delete(seenId);
+			else break; // Map preserves insertion order; rest are newer.
+		}
+		const conn =
+			this.#connections.get(id) ?? this.#buildConnectionFromSocket(ws);
+		if (!conn) {
+			this.#cleanupConnection(id);
+			return;
+		}
+		const env = (this.env ?? {}) as Record<string, unknown>;
+		const prev = this.#dispatchQueues.get(id) ?? Promise.resolve();
+		const next = prev
+			.then(() =>
+				envStorage.run(env, () =>
+					dispatchWebSocketClose(registration, conn, code, reason, wasClean),
+				),
+			)
+			.catch((err) =>
+				logger.error("webSocketClose dispatch failed: {error}", {error: err}),
+			)
+			.finally(() => this.#cleanupConnection(id));
+		this.#dispatchQueues.set(id, next);
+		return next;
+	}
+
+	#cleanupConnection(id: string): void {
+		this.#connections.delete(id);
+		this.#dispatchQueues.delete(id);
+		this.#persistedChannels.delete(id);
+	}
+}

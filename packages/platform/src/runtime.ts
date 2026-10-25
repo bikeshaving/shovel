@@ -12,6 +12,7 @@
 
 import {AsyncContext} from "@b9g/async-context";
 import {getLogger, getConsoleSink} from "@logtape/logtape";
+import {isHTTPError, InternalServerError} from "@b9g/http-errors";
 // Re-exported for generated worker entries: a bare "@logtape/logtape" import
 // in generated code resolves from the user's project root, where it is only
 // a transitive dependency (fails under pnpm-isolated/Yarn-PnP layouts).
@@ -661,7 +662,13 @@ export function createDatabaseFactory(
 // ============================================================================
 
 /** ServiceWorker-specific event types that go to registration instead of native handler */
-const SERVICE_WORKER_EVENTS = ["fetch", "install", "activate"] as const;
+const SERVICE_WORKER_EVENTS = [
+	"fetch",
+	"install",
+	"activate",
+	"websocketmessage",
+	"websocketclose",
+] as const;
 
 function isServiceWorkerEvent(type: string): boolean {
 	return (SERVICE_WORKER_EVENTS as readonly string[]).includes(type);
@@ -743,6 +750,32 @@ const kEndDispatchPhase = Symbol.for("shovel.endDispatchPhase");
 /** Symbol for checking if extensions are allowed (internal use only) */
 const kCanExtend = Symbol.for("shovel.canExtend");
 
+// ─── WebSocket symbols (declared early to avoid TDZ in ShovelFetchEvent) ────
+
+/** @internal Relay interface used by ShovelFetchEvent + ShovelWebSocketConnection. */
+export interface WebSocketRelay {
+	send(id: string, data: string | ArrayBuffer): void;
+	close(id: string, code?: number, reason?: string): void;
+}
+
+/** @internal Symbol for reading the upgrade result off a FetchEvent. */
+export const kGetUpgradeResult = Symbol("shovel.getUpgradeResult");
+
+/** @internal Symbol for reading a connection's persistable state. */
+export const kGetConnectionState = Symbol("shovel.getConnectionState");
+
+/** @internal Symbol for re-binding a relay after hibernation wake-up. */
+export const kBindRelay = Symbol("shovel.bindRelay");
+
+/**
+ * Serializable state for a WebSocket connection — survives hibernation.
+ */
+export interface WebSocketConnectionState {
+	id: string;
+	url: string;
+	subscribedChannels: string[];
+}
+
 // ============================================================================
 // Base Event Classes
 // ============================================================================
@@ -819,6 +852,19 @@ export interface ShovelFetchEventInit extends EventInit {
 	 * (e.g., Cloudflare's ctx.waitUntil)
 	 */
 	platformWaitUntil?: (promise: Promise<unknown>) => void;
+	/**
+	 * Platform-provided relay for a potential WebSocket upgrade. If
+	 * `upgradeWebSocket()` is called during dispatch, the created connection
+	 * is bound to this relay so `send()` / `close()` reach the real socket.
+	 */
+	wsRelay?: WebSocketRelay;
+	/**
+	 * Synchronous hook invoked immediately after a successful
+	 * `upgradeWebSocket()` call. Platform adapters use this to register the
+	 * connection in their isolate-local table so that later handlers (and
+	 * cleanup on upgrade failure) can find it by id.
+	 */
+	onUpgrade?: (connection: ShovelWebSocketConnection) => void;
 }
 
 /**
@@ -840,6 +886,9 @@ export class ShovelFetchEvent
 	#responsePromise: Promise<Response> | null;
 	#responded: boolean;
 	#platformWaitUntil?: (promise: Promise<unknown>) => void;
+	#wsRelay?: WebSocketRelay;
+	#onUpgrade?: (connection: ShovelWebSocketConnection) => void;
+	#upgradeResult: ShovelWebSocketConnection | null;
 
 	constructor(request: Request, options?: ShovelFetchEventInit) {
 		super("fetch", options);
@@ -852,6 +901,9 @@ export class ShovelFetchEvent
 		this.#responsePromise = null;
 		this.#responded = false;
 		this.#platformWaitUntil = options?.platformWaitUntil;
+		this.#wsRelay = options?.wsRelay;
+		this.#onUpgrade = options?.onUpgrade;
+		this.#upgradeResult = null;
 	}
 
 	override waitUntil(promise: Promise<any>): void {
@@ -890,6 +942,53 @@ export class ShovelFetchEvent
 
 	hasResponded(): boolean {
 		return this.#responded;
+	}
+
+	upgradeWebSocket(): WebSocketConnection {
+		if (this.#responded) {
+			throw new Error(
+				"Cannot upgradeWebSocket() after respondWith() or a previous upgradeWebSocket()",
+			);
+		}
+		if (this.request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+			throw new Error(
+				"Cannot upgradeWebSocket() on a request without Upgrade: websocket",
+			);
+		}
+		// Per spec, upgrade must be set up synchronously during dispatch —
+		// otherwise the platform has no chance to assemble the 101 response
+		// before the handler returns.
+		if (!this[kCanExtend]()) {
+			throw new DOMException(
+				"upgradeWebSocket() must be called synchronously during event dispatch",
+				"InvalidStateError",
+			);
+		}
+		if (!this.#wsRelay) {
+			throw new Error(
+				"upgradeWebSocket() requires a platform wsRelay (configure the adapter)",
+			);
+		}
+		const connection = new ShovelWebSocketConnection({
+			id: crypto.randomUUID(),
+			url: this.request.url,
+			relay: this.#wsRelay,
+		});
+		this.#upgradeResult = connection;
+		// Mark as handled — there is no HTTP response for a WebSocket
+		// upgrade. Adapters read `event.cookieStore.getSetCookieHeaders()`
+		// directly to thread Set-Cookie values onto the 101 handshake.
+		this.#responded = true;
+		// Synchronous notify so the adapter can register the connection *before*
+		// the handler continues. This lets in-handler close()/send() find it,
+		// and lets the adapter clean it up if the handler throws later.
+		this.#onUpgrade?.(connection);
+		return connection;
+	}
+
+	/** @internal Platforms read this to complete the physical handshake. */
+	[kGetUpgradeResult](): ShovelWebSocketConnection | null {
+		return this.#upgradeResult;
 	}
 
 	/** The URL of the request (convenience property) */
@@ -1046,6 +1145,219 @@ export class ExtendableMessageEvent extends ShovelExtendableEvent {
 	}
 }
 
+// ─── WebSocket ──────────────────────────────────────────────────────────────
+// Functional events for server-side WebSocket handling in ServiceWorker.
+//
+// Design:
+// - FetchEvent.upgradeWebSocket() returns a WebSocketConnection (below)
+// - websocketmessage / websocketclose fire at ServiceWorkerGlobalScope
+// - Connection.subscribe(channel) routes BC messages on that channel to send()
+//
+// Constraints applied from prior PR's Codex reviews:
+// - Connection registration happens synchronously during upgradeWebSocket();
+//   if the handler throws afterward, the adapter must clean up (phantom
+//   client cleanup).
+// - Per-connection dispatch is serialized (ordered queues) so handlers can
+//   never observe out-of-order messages.
+// - Removal from registries is deferred until AFTER websocketclose dispatches,
+//   so handlers can still find the connection via event.source.
+// - Subscriptions are persistable data (Set<string>); BC listener closures
+//   are ephemeral and re-registered on each isolate wake.
+
+/**
+ * Runtime connection handle implementing the WebSocketConnection interface
+ * from globals.d.ts. Instances are created by FetchEvent.upgradeWebSocket()
+ * or by platform adapters rehydrating from stored state after hibernation.
+ *
+ * Subscriptions are realized as BroadcastChannel listeners internal to the
+ * connection — when the subscribed channel sees a string/ArrayBuffer message
+ * (locally or via the backend), it forwards to `send()`. The BC instances are
+ * ephemeral closure state; the *set of subscribed channel names* is the
+ * persistable state recovered after hibernation, and the BC instances are
+ * rebuilt from that set on each wake.
+ */
+export class ShovelWebSocketConnection implements WebSocketConnection {
+	readonly id: string;
+	readonly url: string;
+	#relay: WebSocketRelay;
+	#subscribedChannels: Set<string>;
+	#subscriptions: Map<string, ShovelBroadcastChannel>;
+	#closed: boolean;
+
+	constructor(options: {
+		id: string;
+		url: string;
+		relay: WebSocketRelay;
+		subscribedChannels?: Iterable<string>;
+	}) {
+		this.id = options.id;
+		this.url = options.url;
+		this.#relay = options.relay;
+		this.#subscribedChannels = new Set(options.subscribedChannels ?? []);
+		this.#subscriptions = new Map();
+		this.#closed = false;
+		// On a fresh upgrade, #subscribedChannels is empty.
+		// On hibernation rehydration, we re-register BC listeners for each
+		// previously-subscribed channel so forwarding resumes.
+		for (const channel of this.#subscribedChannels) {
+			this.#openSubscription(channel);
+		}
+	}
+
+	send(data: string | ArrayBuffer): void {
+		if (this.#closed) return;
+		this.#relay.send(this.id, data);
+	}
+
+	close(code?: number, reason?: string): void {
+		if (this.#closed) return;
+		this.#closed = true;
+		this.#relay.close(this.id, code, reason);
+	}
+
+	subscribe(channel: string): void {
+		if (this.#closed) return;
+		if (this.#subscribedChannels.has(channel)) return;
+		this.#subscribedChannels.add(channel);
+		this.#openSubscription(channel);
+	}
+
+	unsubscribe(channel: string): void {
+		if (!this.#subscribedChannels.delete(channel)) return;
+		const bc = this.#subscriptions.get(channel);
+		if (bc) {
+			this.#subscriptions.delete(channel);
+			try {
+				bc.close();
+			} catch (_err) {
+				// Best-effort unsubscribe; never propagate backend errors.
+			}
+		}
+	}
+
+	/**
+	 * @internal Mark the connection closed without releasing subscriptions.
+	 * Set before `websocketclose` handlers run: a handler that publishes to a
+	 * channel this connection subscribes to must not echo into the
+	 * already-closed socket (Node surfaces it as a socket error, workerd
+	 * throws in the BC dispatch microtask), while other connections'
+	 * subscriptions still deliver.
+	 */
+	_markClosed(): void {
+		this.#closed = true;
+	}
+
+	/**
+	 * @internal Called during teardown to retire the connection: marks it
+	 * closed (so any retained reference's `send` / `close` / `subscribe`
+	 * calls become no-ops) AND releases all BroadcastChannel subscriptions.
+	 *
+	 * Used by:
+	 *  - `dispatchWebSocketClose` after handlers run
+	 *  - platform adapters cleaning up after a failed handshake
+	 *  - the runtime when the worker drops a phantom upgrade
+	 */
+	_releaseSubscriptions(): void {
+		this.#closed = true;
+		for (const [, bc] of this.#subscriptions) {
+			try {
+				bc.close();
+			} catch (_err) {
+				/* best-effort */
+			}
+		}
+		this.#subscriptions.clear();
+		this.#subscribedChannels.clear();
+	}
+
+	/** @internal Serialize persistable state for hibernation storage. */
+	[kGetConnectionState](): WebSocketConnectionState {
+		return {
+			id: this.id,
+			url: this.url,
+			subscribedChannels: [...this.#subscribedChannels],
+		};
+	}
+
+	/** @internal Rebind the relay (used by platform adapters after wake-up). */
+	[kBindRelay](relay: WebSocketRelay): void {
+		this.#relay = relay;
+	}
+
+	#openSubscription(channel: string): void {
+		const bc = new ShovelBroadcastChannel(channel);
+		// Use addEventListener rather than `bc.onmessage = …`. workerd treats
+		// assigning the on-attribute as also registering a listener; combined
+		// with the BC delivery path that calls both `dispatchEvent` and
+		// `onmessage?.call`, a property-style handler fires twice per publish.
+		bc.addEventListener("message", (event: Event) => {
+			if (this.#closed) return;
+			const data = (event as MessageEvent).data;
+			if (typeof data === "string" || data instanceof ArrayBuffer) {
+				this.send(data);
+			}
+		});
+		this.#subscriptions.set(channel, bc);
+	}
+}
+
+/**
+ * Dispatched when a message arrives on an accepted WebSocket connection.
+ * `source` is the connection that sent the message.
+ */
+export class ShovelWebSocketMessageEvent
+	extends ShovelExtendableEvent
+	implements WebSocketMessageEvent
+{
+	readonly source: ShovelWebSocketConnection;
+	readonly data: string | ArrayBuffer;
+	#platformWaitUntil?: (promise: Promise<unknown>) => void;
+
+	constructor(
+		source: ShovelWebSocketConnection,
+		data: string | ArrayBuffer,
+		platformWaitUntil?: (promise: Promise<unknown>) => void,
+	) {
+		super("websocketmessage");
+		this.source = source;
+		this.data = data;
+		this.#platformWaitUntil = platformWaitUntil;
+	}
+
+	override waitUntil(promise: Promise<any>): void {
+		// Hand background work to the platform (e.g. Cloudflare ctx.waitUntil) so
+		// it survives past dispatch without the per-connection frame loop having
+		// to await it. Mirrors ShovelFetchEvent.
+		if (this.#platformWaitUntil) {
+			this.#platformWaitUntil(promise);
+		}
+		super.waitUntil(promise);
+	}
+}
+
+/**
+ * Dispatched when an accepted WebSocket connection closes.
+ */
+export class ShovelWebSocketCloseEvent
+	extends ShovelExtendableEvent
+	implements WebSocketCloseEvent
+{
+	readonly id: string;
+	readonly code: number;
+	readonly reason: string;
+	readonly wasClean: boolean;
+
+	constructor(id: string, code: number, reason: string, wasClean: boolean) {
+		super("websocketclose");
+		this.id = id;
+		this.code = code;
+		this.reason = reason;
+		this.wasClean = wasClean;
+	}
+}
+
+// ─── End WebSocket ──────────────────────────────────────────────────────────
+
 /**
  * ShovelServiceWorker - Internal implementation of ServiceWorker for Shovel runtime
  * Note: Standard ServiceWorker has no constructor - instances are created internally
@@ -1167,8 +1479,12 @@ export class ShovelServiceWorkerRegistration
 	readonly pushManager: any;
 	onupdatefound: ((ev: Event) => any) | null;
 
+	/** original listener -> wrapped listener, per event type (for removal). */
+	#wrappedListeners: Map<string, WeakMap<object, EventListener>>;
+
 	constructor(scope: string = "/", scriptURL: string = "/") {
 		super();
+		this.#wrappedListeners = new Map();
 		this.scope = scope;
 		this.updateViaCache = "imports";
 		this.navigationPreload = new ShovelNavigationPreloadManager();
@@ -1176,6 +1492,79 @@ export class ShovelServiceWorkerRegistration
 		this.cookies = null;
 		this.pushManager = null;
 		this.onupdatefound = null;
+	}
+
+	/**
+	 * WebSocket events auto-extend with promises returned by async listeners:
+	 * `async (event) => {...}` has no respondWith() to absorb a rejection, so
+	 * without this an async handler's throw becomes an unhandled rejection
+	 * that can kill the worker thread — and any subscribe() after an await
+	 * would be invisible to adapters that persist state when dispatch
+	 * settles (Durable Object hibernation). The returned promise is fed to
+	 * event.waitUntil() with rejections logged, mirroring how respondWith
+	 * absorbs fetch handler rejections.
+	 */
+	override addEventListener(
+		type: string,
+		callback: EventListenerOrEventListenerObject | null,
+		options?: AddEventListenerOptions | boolean,
+	): void {
+		if (
+			(type === "websocketmessage" || type === "websocketclose") &&
+			callback !== null
+		) {
+			let byType = this.#wrappedListeners.get(type);
+			if (!byType) {
+				byType = new WeakMap();
+				this.#wrappedListeners.set(type, byType);
+			}
+			let wrapped = byType.get(callback);
+			if (!wrapped) {
+				wrapped = (event: Event) => {
+					const result =
+						typeof callback === "function"
+							? callback(event)
+							: callback.handleEvent(event);
+					const thenable = result as unknown as Promise<unknown> | undefined;
+					if (thenable && typeof thenable.then === "function") {
+						const absorbed = thenable.then(undefined, (err: unknown) => {
+							getLogger(["shovel", "platform"]).error(
+								"Async {type} listener rejected: {error}",
+								{type, error: err},
+							);
+						});
+						const maybeExtendable = event as Event & {
+							waitUntil?: (p: Promise<unknown>) => void;
+						};
+						if (typeof maybeExtendable.waitUntil === "function") {
+							maybeExtendable.waitUntil(absorbed);
+						}
+					}
+				};
+				byType.set(callback, wrapped);
+			}
+			super.addEventListener(type, wrapped, options);
+			return;
+		}
+		super.addEventListener(type, callback, options);
+	}
+
+	override removeEventListener(
+		type: string,
+		callback: EventListenerOrEventListenerObject | null,
+		options?: EventListenerOptions | boolean,
+	): void {
+		if (
+			(type === "websocketmessage" || type === "websocketclose") &&
+			callback !== null
+		) {
+			const wrapped = this.#wrappedListeners.get(type)?.get(callback);
+			if (wrapped) {
+				super.removeEventListener(type, wrapped, options);
+				return;
+			}
+		}
+		super.removeEventListener(type, callback, options);
 	}
 
 	// Standard ServiceWorkerRegistration properties
@@ -1329,7 +1718,9 @@ export class ShovelServiceWorkerRegistration
 	 *
 	 * @param event - The fetch event to handle (created by platform adapter)
 	 */
-	async [kHandleRequest](event: ShovelFetchEvent): Promise<Response> {
+	// Returns null when the handler upgraded the connection (no HTTP
+	// response exists); upgrade-aware callers check, dispatchRequest throws.
+	async [kHandleRequest](event: ShovelFetchEvent): Promise<Response | null> {
 		// Allow fetch during any lifecycle state after parsing (installing, installed,
 		// activating, activated). This enables fetch() during install/activate handlers
 		// for use cases like SSG cache warming. Fetch handlers are registered during
@@ -1356,14 +1747,18 @@ export class ShovelServiceWorkerRegistration
 				);
 			}
 
-			// Get the response (may be a Promise)
-			const response = await event.getResponse()!;
+			// Get the response (may be a Promise). Null when the handler
+			// called upgradeWebSocket() instead of respondWith() — the
+			// platform adapter assembles the 101 itself and reads
+			// `event.cookieStore.getSetCookieHeaders()` directly to decorate
+			// the handshake.
+			const response = await event.getResponse();
 
 			// Note: waitUntil promises are already handled via platformWaitUntil hook
 			// in the event constructor, so no additional handling needed here.
 
-			// Apply cookie changes from the cookieStore to the response
-			if (event.cookieStore.hasChanges()) {
+			// Apply cookie changes from the cookieStore to the response.
+			if (response && event.cookieStore.hasChanges()) {
 				const setCookieHeaders = event.cookieStore.getSetCookieHeaders();
 				const headers = new Headers(response.headers);
 
@@ -1451,7 +1846,193 @@ export async function dispatchRequest(
 		requestOrEvent instanceof ShovelFetchEvent
 			? requestOrEvent
 			: new ShovelFetchEvent(requestOrEvent);
-	return registration[kHandleRequest](event);
+	const response = await registration[kHandleRequest](event);
+	if (response === null) {
+		// The handler upgraded the connection. Callers of dispatchRequest are
+		// plain HTTP paths with no socket to hand over — surfacing a typed
+		// error here beats every caller holding a silently-null "Response".
+		throw new Error(
+			"Request upgraded to a WebSocket through a non-upgrade path; " +
+				"use dispatchFetchEvent with a wsRelay for upgrade-capable paths",
+		);
+	}
+	return response;
+}
+
+/**
+ * Like `dispatchRequest` but returns both the event and the response (or null
+ * if the handler upgraded to WebSocket instead of responding). Platforms use
+ * this when they need to inspect `event[kGetUpgradeResult]()` after dispatch.
+ */
+/**
+ * Copy a Node Buffer / typed-array view into a standalone ArrayBuffer.
+ * Node's Buffer pooling shares one backing ArrayBuffer across many small
+ * buffers — handing `view.buffer` to user code would leak unrelated bytes
+ * and pin the pool slab. Every adapter converting inbound binary frames
+ * must use this (previously three hand-rolled copies).
+ */
+export function toArrayBuffer(view: Uint8Array): ArrayBuffer {
+	return view.buffer.slice(
+		view.byteOffset,
+		view.byteOffset + view.byteLength,
+	) as ArrayBuffer;
+}
+
+/**
+ * Per-connection ordered dispatch: the SYNCHRONOUS portion of handlers for
+ * frames and the final close runs strictly in arrival order; work a handler
+ * continues after an await (or via waitUntil) may interleave across frames
+ * by design. Separate connections proceed independently. Errors are logged and never break the chain. `release`
+ * drops the chain reference so long-lived pools don't retain settled
+ * promise chains.
+ */
+export function createOrderedDispatch(): {
+	enqueue(id: string, task: () => Promise<void>): void;
+	release(id: string): void;
+	drain(): Promise<void>;
+} {
+	const chains = new Map<string, Promise<void>>();
+	return {
+		enqueue(id, task) {
+			const prev = chains.get(id) ?? Promise.resolve();
+			const next = prev.then(task).catch((err) => {
+				getLogger(["shovel", "platform"]).error(
+					"WebSocket dispatch error: {error}",
+					{error: err},
+				);
+			});
+			chains.set(id, next);
+		},
+		release(id) {
+			chains.delete(id);
+		},
+		/** Settle every in-flight chain (shutdown/cleanup paths). */
+		async drain() {
+			await Promise.allSettled([...chains.values()]);
+		},
+	};
+}
+
+/**
+ * Convert a thrown value from a fetch/upgrade handler into an HTTP response.
+ *
+ * Fails closed: an unset MODE must not leak stack traces (see the 0.2.21
+ * security fix) — verbose error bodies require MODE === "development"
+ * explicitly. One shared implementation so HTTP and WebSocket-upgrade paths
+ * on every platform apply the same policy.
+ */
+export function errorToResponse(error: unknown): Response {
+	const err = error instanceof Error ? error : new Error(String(error));
+	const httpError = isHTTPError(error)
+		? error
+		: new InternalServerError(err.message, {cause: err});
+	const errorLogger = getLogger(["shovel", "platform"]);
+	if (httpError.status >= 500) {
+		errorLogger.error("Handler error: {error}", {error: err});
+	} else {
+		errorLogger.warn("Handler error: {status} {error}", {
+			status: httpError.status,
+			error: err,
+		});
+	}
+	const isDev = import.meta.env?.MODE === "development";
+	return httpError.toResponse(isDev);
+}
+
+export async function dispatchFetchEvent(
+	registration: ShovelServiceWorkerRegistration,
+	requestOrEvent: Request | ShovelFetchEvent,
+	init?: ShovelFetchEventInit,
+): Promise<{event: ShovelFetchEvent; response: Response | null}> {
+	const event =
+		requestOrEvent instanceof ShovelFetchEvent
+			? requestOrEvent
+			: new ShovelFetchEvent(requestOrEvent, init);
+	const response = await registration[kHandleRequest](event);
+	return {event, response};
+}
+
+/**
+ * Dispatch a `websocketmessage` event on the registration. Called by platform
+ * adapters when a frame arrives on an accepted connection.
+ */
+/**
+ * In-flight promises from async `websocketmessage` handlers. On Node/Bun there
+ * is no `platformWaitUntil` (that's Cloudflare's ctx.waitUntil), so a handler
+ * doing `await db.insert(...)` would otherwise be truncated when the worker
+ * shuts down and closes databases. The worker message loop drains this set
+ * before `databases.closeAll()`. NOT awaited in the ordered dispatch chain —
+ * that would head-of-line block later frames.
+ */
+const pendingMessageWork = new Set<Promise<unknown>>();
+
+/** @internal Drain outstanding async websocketmessage handler work. */
+export async function drainWebSocketMessageWork(): Promise<void> {
+	if (pendingMessageWork.size > 0) {
+		await Promise.allSettled([...pendingMessageWork]);
+	}
+}
+
+export function dispatchWebSocketMessage(
+	registration: ShovelServiceWorkerRegistration,
+	connection: ShovelWebSocketConnection,
+	data: string | ArrayBuffer,
+	platformWaitUntil?: (promise: Promise<unknown>) => void,
+): Promise<void> {
+	const event = new ShovelWebSocketMessageEvent(
+		connection,
+		data,
+		platformWaitUntil,
+	);
+	registration.dispatchEvent(event);
+	event[kEndDispatchPhase]();
+	// Track (but do NOT await) the handler's extension promises: awaiting them
+	// inside the per-connection ordered chain would let one slow background
+	// task head-of-line block every later frame. Synchronous handler execution
+	// already preserves frame order; this side set lets shutdown drain the
+	// background work so an `await db.insert(...)` isn't truncated at exit.
+	for (const promise of event.getPromises()) {
+		const tracked = Promise.resolve(promise).finally(() => {
+			pendingMessageWork.delete(tracked);
+		});
+		pendingMessageWork.add(tracked);
+	}
+	return Promise.resolve();
+}
+
+/**
+ * Dispatch a `websocketclose` event on the registration. Adapters invoke this
+ * exactly once per accepted connection; subscription teardown is handled
+ * internally after all handlers have observed the close.
+ */
+export async function dispatchWebSocketClose(
+	registration: ShovelServiceWorkerRegistration,
+	connection: ShovelWebSocketConnection,
+	code: number,
+	reason: string,
+	wasClean: boolean,
+): Promise<void> {
+	const event = new ShovelWebSocketCloseEvent(
+		connection.id,
+		code,
+		reason,
+		wasClean,
+	);
+	// The socket is gone: silence this connection's own BC forwarding before
+	// handlers run (subscriptions release after, so handler publishes still
+	// reach everyone else).
+	connection._markClosed();
+	try {
+		registration.dispatchEvent(event);
+		event[kEndDispatchPhase]();
+		await Promise.allSettled(event.getPromises());
+	} finally {
+		// Release BC subscriptions *after* handlers have run, so a close handler
+		// could (in principle) still publish to a channel and reach other
+		// connections. The connection itself is no longer useful — callers
+		// drop their local registry entry in their own `finally` blocks.
+		connection._releaseSubscriptions();
+	}
 }
 
 /**
@@ -2552,6 +3133,17 @@ export function startWorkerMessageLoop(
 	}
 
 	/**
+	 * Worker-local registry: connectionID → the ShovelWebSocketConnection that
+	 * owns it. Populated on upgrade, consulted on inbound ws:message/ws:close.
+	 */
+	const wsConnections = new Map<string, ShovelWebSocketConnection>();
+
+	/**
+	 * Per-connection ordered dispatch queues to serialize message delivery.
+	 */
+	const wsDispatchChains = new Map<string, Promise<void>>();
+
+	/**
 	 * Handle a fetch request
 	 */
 	async function handleFetchRequest(
@@ -2564,13 +3156,76 @@ export function startWorkerMessageLoop(
 				body: message.request.body,
 			});
 
-			const response = await dispatchRequest(registration, request);
+			// Pool-mode relay: outbound frames from the worker are posted to
+			// the supervisor which owns the real socket.
+			const wsRelay: WebSocketRelay = {
+				send(id, data) {
+					sendMessage({type: "ws:send", connectionID: id, data});
+				},
+				close(id, code, reason) {
+					sendMessage({type: "ws:close", connectionID: id, code, reason});
+				},
+			};
+
+			let upgradedConnection: ShovelWebSocketConnection | null = null;
+			let event: ShovelFetchEvent;
+			let response: Response | null;
+			try {
+				const result = await dispatchFetchEvent(registration, request, {
+					wsRelay,
+					onUpgrade(conn) {
+						upgradedConnection = conn;
+						wsConnections.set(conn.id, conn);
+					},
+				});
+				event = result.event;
+				response = result.response;
+			} catch (error) {
+				// Phantom-connection cleanup: if the handler called
+				// upgradeWebSocket() and then threw (or rejected), drop the
+				// connection AND release any BC subscriptions it attached
+				// before throwing. Without this, BroadcastChannel fan-out
+				// keeps targeting a socket whose handshake never completed.
+				if (upgradedConnection) {
+					const failedConn = upgradedConnection as ShovelWebSocketConnection;
+					wsConnections.delete(failedConn.id);
+					wsDispatchChains.delete(failedConn.id);
+					failedConn._releaseSubscriptions();
+				}
+				throw error;
+			}
+
+			const upgradeConn = event[kGetUpgradeResult]();
+			if (upgradeConn) {
+				// Tell the supervisor to accept the WebSocket handshake. The
+				// supervisor will keep the socket and deliver inbound frames
+				// via ws:message / ws:close messages (see handleMessage below).
+				const setCookieHeaders = event.cookieStore.hasChanges()
+					? event.cookieStore.getSetCookieHeaders()
+					: undefined;
+				sendMessage({
+					type: "ws:upgrade",
+					requestID: message.requestID,
+					connectionID: upgradeConn.id,
+					setCookieHeaders,
+				});
+				return;
+			}
+
+			// If upgradedConnection was set in onUpgrade but upgradeConn is
+			// null, the handler raced (shouldn't happen). Clean up defensively.
+			if (upgradedConnection && !upgradeConn) {
+				const failedConn = upgradedConnection as ShovelWebSocketConnection;
+				wsConnections.delete(failedConn.id);
+				wsDispatchChains.delete(failedConn.id);
+				failedConn._releaseSubscriptions();
+			}
 
 			// Use arrayBuffer for zero-copy transfer
-			const body = await response.arrayBuffer();
+			const body = await response!.arrayBuffer();
 
 			// Ensure Content-Type is preserved
-			const headers = Object.fromEntries(response.headers.entries());
+			const headers = Object.fromEntries(response!.headers.entries());
 			if (!headers["Content-Type"] && !headers["content-type"]) {
 				headers["Content-Type"] = "text/plain; charset=utf-8";
 			}
@@ -2578,8 +3233,8 @@ export function startWorkerMessageLoop(
 			const responseMsg: WorkerResponseMessage = {
 				type: "response",
 				response: {
-					status: response.status,
-					statusText: response.statusText,
+					status: response!.status,
+					statusText: response!.statusText,
 					headers,
 					body,
 				},
@@ -2600,6 +3255,20 @@ export function startWorkerMessageLoop(
 			};
 			sendMessage(errorMsg);
 		}
+	}
+
+	/** Enqueue a per-connection dispatch to keep frame order stable. */
+	function enqueueWsDispatch(id: string, task: () => Promise<void>): void {
+		const prev = wsDispatchChains.get(id) ?? Promise.resolve();
+		const next = prev
+			.then(task)
+			.catch((err) =>
+				messageLogger.error(
+					`[Worker-${workerId}] WS dispatch failed: {error}`,
+					{error: err},
+				),
+			);
+		wsDispatchChains.set(id, next);
 	}
 
 	/**
@@ -2634,11 +3303,57 @@ export function startWorkerMessageLoop(
 			return;
 		}
 
+		// Handle inbound WebSocket frame arriving from the supervisor's
+		// physical socket. Dispatch through this worker's Shovel runtime.
+		if (message?.type === "ws:message") {
+			const conn = wsConnections.get(message.connectionID);
+			if (!conn) return;
+			enqueueWsDispatch(message.connectionID, () =>
+				dispatchWebSocketMessage(registration, conn, message.data),
+			);
+			return;
+		}
+
+		// Handle close of an inbound WebSocket from the supervisor. We run
+		// the close dispatch through the ordered queue, then drop the
+		// connection from our local registry.
+		if (message?.type === "ws:close") {
+			const id = message.connectionID as string;
+			const conn = wsConnections.get(id);
+			if (!conn) return;
+			enqueueWsDispatch(id, async () => {
+				try {
+					await dispatchWebSocketClose(
+						registration,
+						conn,
+						message.code,
+						message.reason,
+						message.wasClean,
+					);
+				} finally {
+					wsConnections.delete(id);
+					wsDispatchChains.delete(id);
+				}
+			});
+			return;
+		}
+
 		// Handle shutdown message - close all resources before termination
 		if (message?.type === "shutdown") {
 			messageLogger.debug(`[Worker-${workerId}] Received shutdown signal`);
 			(async () => {
 				try {
+					// Drain in-flight websocket dispatch chains FIRST: the
+					// supervisor's ws:close messages may only just have been
+					// enqueued, and a websocketclose handler writing to a
+					// database must complete before closeAll() pulls the
+					// connection out from under it.
+					if (wsDispatchChains.size > 0) {
+						await Promise.allSettled([...wsDispatchChains.values()]);
+					}
+					// Also drain async websocketmessage handler work (db writes,
+					// etc.) that resolves after the dispatch chain settles.
+					await drainWebSocketMessageWork();
 					// Close all databases
 					if (databases) {
 						await databases.closeAll();
@@ -2852,5 +3567,6 @@ export {
 	setBroadcastChannelRelay,
 	deliverBroadcastMessage,
 	setBroadcastChannelBackend,
+	hasBroadcastChannelBackend,
 } from "./internal/broadcast-channel.js";
 export type {BroadcastChannelBackend} from "./internal/broadcast-channel-backend.js";
