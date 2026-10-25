@@ -133,12 +133,16 @@ type SerializedEntry = {route: SerializedRoute} | {redirect: RedirectEntry};
  * A redirect as serializable data. Two matcher flavors, both of which
  * serialize to plain strings and recompile identically on each side:
  * - MatchPattern syntax: `{pattern}` with `:name` groups, `:name` in `target`.
+ *   With `scope` (set when registered under a path prefix), it only matches
+ *   paths under `scope`.
  * - Raw regexp: `{source, flags}`, with `$1`…`$n` in `target`. With `base`
  *   (set when a subrouter is mounted), the regexp only sees paths under
  *   `base`, with `base` removed; the bare `base` path reads as `/`.
  */
 interface RedirectEntry {
-	match: {pattern: string} | {source: string; flags: string; base?: string};
+	match:
+		| {pattern: string; scope?: string}
+		| {source: string; flags: string; base?: string};
 	target: string;
 	status: number;
 }
@@ -635,7 +639,7 @@ export class RouteBuilder {
 }
 
 type RedirectMatcher =
-	| {kind: "pattern"; mp: MatchPattern}
+	| {kind: "pattern"; mp: MatchPattern; scope?: string}
 	| {kind: "regexp"; re: RegExp; base?: string};
 
 interface RedirectRecord {
@@ -648,7 +652,11 @@ interface RedirectRecord {
 function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
 	const matcher: RedirectMatcher =
 		"pattern" in entry.match
-			? {kind: "pattern", mp: new MatchPattern(entry.match.pattern)}
+			? {
+					kind: "pattern",
+					mp: new MatchPattern(entry.match.pattern),
+					scope: entry.match.scope,
+				}
 			: {
 					kind: "regexp",
 					re: new RegExp(
@@ -685,7 +693,12 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 	const {entry, matcher} = record;
 	let target: string | null = null;
 	if (matcher.kind === "pattern") {
-		const result = matcher.mp.exec(u);
+		const {scope} = matcher;
+		const inScope =
+			scope === undefined ||
+			u.pathname === scope ||
+			u.pathname.startsWith(scope + "/");
+		const result = inScope ? matcher.mp.exec(u) : null;
 		if (result) {
 			const groups = result.pathname.groups;
 			target = entry.target.replace(/:(\w+)/g, (m, name: string) =>
@@ -772,10 +785,8 @@ function scopeRedirect(
 	redirect: RedirectEntry,
 	pathPrefix: string,
 ): RedirectEntry {
-	if (!("source" in redirect.match)) {
-		throw new Error(
-			"Only regular expression redirects can be scoped to a path prefix.",
-		);
+	if ("pattern" in redirect.match) {
+		return {...redirect, match: {...redirect.match, scope: pathPrefix}};
 	}
 	const {source, flags} = redirect.match;
 	if (!source.startsWith("^")) {
@@ -808,9 +819,13 @@ function mountRedirect(entry: RedirectEntry, mountPath: string): RedirectEntry {
 		}
 		const pattern =
 			entry.match.pattern === "/" ? mountPath : mountPath + entry.match.pattern;
+		const {scope} = entry.match;
 		return {
 			...entry,
-			match: {pattern},
+			match:
+				scope === undefined
+					? {pattern}
+					: {pattern, scope: scope === "/" ? mountPath : mountPath + scope},
 			target: targetUnder(entry.target, mountPath),
 		};
 	}
@@ -1043,18 +1058,20 @@ export class Router {
 			const routeOrder = matchResult
 				? this.#routeOrder.get(matchResult.entry)!
 				: Number.POSITIVE_INFINITY;
-			if (redirect !== null && redirect.order < routeOrder) {
-				return new Response(null, {
-					status: redirect.status,
-					headers: {Location: redirect.location},
-				});
-			}
-
 			let handler: Handler;
 			let context: RouteContext;
 			let routeMiddleware: Middleware[] = [];
 
-			if (matchResult) {
+			if (redirect !== null && redirect.order < routeOrder) {
+				// The redirect takes the route's place, so middleware wraps it
+				// like any handler.
+				handler = async () =>
+					new Response(null, {
+						status: redirect.status,
+						headers: {Location: redirect.location},
+					});
+				context = {params: {}};
+			} else if (matchResult) {
 				// Route found - use its handler and context
 				if (!matchResult.handler) {
 					throw new NotFound("Route has no handler");
@@ -1130,7 +1147,10 @@ export class Router {
 
 		const items: Array<
 			| {order: number; route: RouteEntry}
-			| {order: number; middleware: MiddlewareEntry}
+			| {
+					order: number;
+					middleware: {middleware: MiddlewareEntry; redirect: RedirectEntry};
+			  }
 			| {order: number; redirect: RedirectEntry}
 		> = [];
 		for (const route of subrouter.routes) {
@@ -1139,7 +1159,13 @@ export class Router {
 		for (const record of subrouter.#redirectTable) {
 			items.push(
 				record.middleware
-					? {order: record.order, middleware: record.middleware}
+					? {
+							order: record.order,
+							middleware: {
+								middleware: record.middleware,
+								redirect: record.entry,
+							},
+						}
 					: {order: record.order, redirect: record.entry},
 			);
 		}
@@ -1159,7 +1185,18 @@ export class Router {
 				this.routes.push(entry);
 				this.#routeOrder.set(entry, this.#seq++);
 			} else if ("middleware" in item) {
-				this.#addMiddlewareRedirect(mounted.get(item.middleware)!);
+				// Already scoped by the subrouter; mount it like .redirect().
+				const entry = mounted.get(item.middleware.middleware)!;
+				const redirect = mountRedirect(
+					item.middleware.redirect,
+					normalizedMountPath,
+				);
+				this.#redirectMiddlewares.add(entry);
+				this.redirects.push(redirect);
+				this.#redirectTable.push({
+					...compileRedirect(redirect, this.#seq++),
+					middleware: entry,
+				});
 			} else {
 				this.#addRedirect(mountRedirect(item.redirect, normalizedMountPath));
 			}

@@ -365,6 +365,83 @@ describe("Redirect edge cases", () => {
 		});
 	});
 
+	test("middleware wraps a redirect like it wraps a route", async () => {
+		const {trailingSlash} = await import("../src/middleware.js");
+		const router = new Router();
+		router.use(async function* (request) {
+			const response: Response = yield request;
+			response.headers.set("X-Seen", "yes");
+			return response;
+		});
+		router.use(trailingSlash("strip"));
+		router.redirect("/old", "/new");
+		router.use(async function* (request) {
+			const response: Response = yield request;
+			response.headers.set("X-After", "yes");
+			return response;
+		});
+		router.route("/a").get(async () => new Response("a"));
+		for (const url of ["http://x.com/a/", "http://x.com/old"]) {
+			const res = await router.handle(req(url));
+			expect(res.status).toBe(301);
+			expect(res.headers.get("X-Seen")).toBe("yes");
+			expect(res.headers.get("X-After")).toBe("yes");
+		}
+	});
+
+	test("middleware that answers first still wins over a redirect", async () => {
+		const router = new Router();
+		router.use(() => new Response("denied", {status: 401}));
+		router.redirect("/old", "/new");
+		const res = await router.handle(req("http://x.com/old"));
+		expect(res.status).toBe(401);
+	});
+
+	test("use(redirect()) mounts the same as .redirect()", async () => {
+		const forms: Array<(sub: Router) => void> = [
+			(sub) => sub.redirect(/^\/old$/, "/new"),
+			(sub) => sub.use(redirect(/^\/old$/, "/new")),
+			(sub) => sub.redirect("/old", "/new"),
+			(sub) => sub.use(redirect("/old", "/new")),
+		];
+		for (const register of forms) {
+			const sub = new Router();
+			register(sub);
+			const app = new Router();
+			app.mount("/api", sub);
+			for (const router of [app, Router.fromJSON(app.toJSON())]) {
+				expect(await redirectOf(router, "http://x.com/api/old")).toEqual({
+					location: "http://x.com/api/new",
+					status: 301,
+				});
+				expect(await redirectOf(router, "http://x.com/old")).toBeNull();
+			}
+		}
+	});
+
+	test("a pattern redirect under a path prefix only fires under it", async () => {
+		const router = new Router();
+		router.use("/api", redirect("/:any/old", "/:any/new"));
+		const client = Router.fromJSON(router.toJSON());
+		for (const r of [router, client]) {
+			expect(await redirectOf(r, "http://x.com/api/old")).toEqual({
+				location: "http://x.com/api/new",
+				status: 301,
+			});
+			expect(await redirectOf(r, "http://x.com/web/old")).toBeNull();
+		}
+
+		const sub = new Router();
+		sub.use("/v1", redirect("/:any/old", "/:any/new"));
+		const app = new Router();
+		app.mount("/api", sub);
+		expect(await redirectOf(app, "http://x.com/api/v1/old")).toEqual({
+			location: "http://x.com/api/v1/new",
+			status: 301,
+		});
+		expect(await redirectOf(app, "http://x.com/api/v2/old")).toBeNull();
+	});
+
 	test("redirects lists middleware redirects on server and client alike", async () => {
 		const {trailingSlash} = await import("../src/middleware.js");
 		const router = new Router();
