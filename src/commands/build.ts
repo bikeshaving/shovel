@@ -9,6 +9,11 @@ import {readFile, writeFile} from "fs/promises";
 import type * as ESBuild from "esbuild";
 
 import {ServerBundler} from "../utils/bundler.js";
+import {
+	computeDesired,
+	syncWranglerConfig,
+	usesAssetsDirectory,
+} from "../utils/wrangler.js";
 import {findProjectRoot, findWorkspaceRoot} from "../utils/project.js";
 import {loadPlatformModule} from "../utils/platform.js";
 import type {ProcessedShovelConfig} from "../utils/config.js";
@@ -280,7 +285,7 @@ async function generateExecutablePackageJSON(platform: string) {
  */
 export async function buildCommand(
 	entrypoint: string,
-	options: {platform?: string; lifecycle?: boolean | string},
+	options: {platform?: string; lifecycle?: boolean | string; save?: boolean},
 	config: ProcessedShovelConfig,
 ) {
 	// Use same platform resolution as develop command
@@ -306,6 +311,55 @@ export async function buildCommand(
 		userBuildConfig: config.build,
 		lifecycle: lifecycleOption,
 	});
+
+	// Cloudflare deploys read wrangler config; keep it in step with the build
+	// output. Missing keys are reported (or written with --save); values the
+	// user set are never changed.
+	if (platform === "cloudflare") {
+		const projectRoot = findProjectRoot(dirname(resolve(entrypoint)));
+		const desired = computeDesired({
+			projectRoot,
+			outDir: resolve("dist"),
+			assetsDirectory: usesAssetsDirectory(
+				platformModule.getDefaults().directories ?? {},
+				config.directories ?? {},
+			),
+		});
+		const result = syncWranglerConfig({
+			projectRoot,
+			desired,
+			save: Boolean(options.save),
+		});
+
+		const additions = result.actions.filter((a) => a.kind === "add");
+		const notices = result.actions.filter((a) => a.kind === "notice");
+		const configName = basename(result.path);
+
+		if (result.wrote) {
+			logger.info(
+				result.created
+					? "Created {config}"
+					: "Updated {config} with {count} setting(s)",
+				{config: configName, count: additions.length},
+			);
+			for (const action of additions) {
+				logger.info("  + {change}", {change: action.description});
+			}
+		} else if (additions.length > 0) {
+			logger.warn(
+				result.created
+					? "No wrangler config found. Run with --save to create {config}:"
+					: "{config} is missing settings this build needs (--save to apply):",
+				{config: configName},
+			);
+			for (const action of additions) {
+				logger.warn("  + {change}", {change: action.description});
+			}
+		}
+		for (const action of notices) {
+			logger.warn("wrangler config: {notice}", {notice: action.description});
+		}
+	}
 
 	// Run lifecycle if requested
 	// --lifecycle [stage] runs the ServiceWorker lifecycle

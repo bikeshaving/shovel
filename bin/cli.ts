@@ -151,6 +151,10 @@ program
 	.description("Build app for production")
 	.option("--platform <name>", "Runtime platform (node, cloudflare, bun)")
 	.option(
+		"--save",
+		"Write missing wrangler config settings the build needs (Cloudflare); never changes values you set",
+	)
+	.option(
 		"--lifecycle [stage]",
 		"Run ServiceWorker lifecycle after build (install or activate, default: activate)",
 	)
