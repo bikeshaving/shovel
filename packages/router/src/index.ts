@@ -716,8 +716,23 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 		return null;
 	}
 	const location = new URL(target, u);
+	// Captures come from the request, so they can turn a same-origin target
+	// into a protocol-relative one (`$1` from `//evil.com/`). Only a target
+	// written as a URL or `//host` may leave the request's origin.
+	if (location.origin !== u.origin && !isCrossOriginTarget(entry.target)) {
+		return null;
+	}
 	if (!target.includes("?")) location.search = u.search;
 	return location.toString();
+}
+
+/**
+ * Whether a redirect's target, as written, names another origin: an absolute
+ * URL or a protocol-relative `//host`. Anything else stays on the request's
+ * origin whatever its captures expand to.
+ */
+function isCrossOriginTarget(target: string): boolean {
+	return target.startsWith("//") || /^[a-z][a-z\d+.-]*:/i.test(target);
 }
 
 /**

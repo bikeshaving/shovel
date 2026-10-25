@@ -315,6 +315,56 @@ describe("Redirect edge cases", () => {
 		}
 	});
 
+	test("captures cannot send a same-origin target to another host", async () => {
+		const {trailingSlash} = await import("../src/middleware.js");
+		const build = (): Router => {
+			const r = new Router();
+			r.use(trailingSlash("strip"));
+			r.redirect(/^\/go(\/.*)$/, "$1");
+			r.redirect(/^\/to\/(.*)$/, "/$1");
+			r.redirect("/p/:rest", "/:rest");
+			return r;
+		};
+		const server = build();
+		const client = Router.fromJSON(server.toJSON());
+		for (const router of [server, client]) {
+			for (const url of [
+				"http://x.com//evil.com/",
+				"http://x.com/go//evil.com",
+				"http://x.com/to//evil.com",
+				"http://x.com/to/%2Fevil.com",
+				"http://x.com/p/%2F%2Fevil.com",
+			]) {
+				const res = await router.handle(req(url));
+				const location = res.headers.get("Location");
+				if (location !== null) {
+					expect(new URL(location).origin).toBe("http://x.com");
+				}
+			}
+		}
+
+		const add = new Router();
+		add.use(trailingSlash("add"));
+		expect(await redirectOf(add, "http://x.com//evil.com")).toBeNull();
+		expect(
+			redirect(/^\/to\/(.*)$/, "/$1")(req("http://x.com/to//evil.com")),
+		).toBeNull();
+	});
+
+	test("a target written as another origin may still leave", async () => {
+		const router = new Router();
+		router.redirect("/a/:id", "https://other.com/:id");
+		router.redirect("/b/:id", "//cdn.other.com/:id");
+		expect(await redirectOf(router, "http://x.com/a/1")).toEqual({
+			location: "https://other.com/1",
+			status: 301,
+		});
+		expect(await redirectOf(router, "http://x.com/b/2")).toEqual({
+			location: "http://cdn.other.com/2",
+			status: 301,
+		});
+	});
+
 	test("redirects lists middleware redirects on server and client alike", async () => {
 		const {trailingSlash} = await import("../src/middleware.js");
 		const router = new Router();
