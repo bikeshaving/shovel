@@ -646,7 +646,6 @@ interface RedirectRecord {
 	entry: RedirectEntry;
 	matcher: RedirectMatcher;
 	order: number;
-	middleware?: MiddlewareEntry;
 }
 
 function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
@@ -768,27 +767,35 @@ function isCrossOriginTarget(target: string): boolean {
  * A redirect as middleware. `from` is a MatchPattern string (`/old/:id`, with
  * `:id` reusable in `to`) or a `RegExp` (with `$1`…`$n` in `to`).
  *
- * Registered with `router.use()`, it becomes a serialized redirect that
- * takes its place in declaration order. Called directly, for example inside
- * generator middleware, it returns the redirect `Response`, or null when the
- * request does not match; that call is not serialized.
+ * Registered with `router.use()`, it runs in declaration order like any
+ * other middleware, and it is serialized. Called directly, for example
+ * inside generator middleware, it returns the redirect `Response`, or null
+ * when the request does not match; that call is not serialized.
  */
 export function redirect(
 	from: string | RegExp,
 	to: string,
 	options: {status?: number} = {},
 ): (request: Request) => Response | null {
-	const entry = toRedirectEntry(from, to, options);
+	return redirectMiddleware(toRedirectEntry(from, to, options));
+}
+
+function redirectResponse(record: RedirectRecord, u: URL): Response | null {
+	const location = redirectLocation(record, u);
+	return location === null
+		? null
+		: new Response(null, {
+				status: record.entry.status,
+				headers: {Location: location},
+			});
+}
+
+function redirectMiddleware(
+	entry: RedirectEntry,
+): (request: Request) => Response | null {
 	const record = compileRedirect(entry, 0);
-	const middleware = (request: Request): Response | null => {
-		const location = redirectLocation(record, new URL(request.url));
-		return location === null
-			? null
-			: new Response(null, {
-					status: entry.status,
-					headers: {Location: location},
-				});
-	};
+	const middleware = (request: Request): Response | null =>
+		redirectResponse(record, new URL(request.url));
 	redirectEntries.set(middleware, entry);
 	return middleware;
 }
@@ -878,11 +885,10 @@ export class Router {
 	 * such as trailingSlash(). First match wins. Serializable data. */
 	readonly redirects: RedirectEntry[];
 	#executor: RadixTreeExecutor | null;
-	/** Every redirect in declaration order: those from redirect() and those
-	 * from self-describing middleware such as trailingSlash(). */
-	#redirectTable: RedirectRecord[];
-	/** Middleware entries handled as redirects instead of being run. */
-	#redirectMiddlewares: WeakSet<MiddlewareEntry>;
+	/** Every redirect in declaration order, for toJSON() and mount(). */
+	#redirectTable: Array<RedirectRecord & {middleware: MiddlewareEntry}>;
+	/** The compiled redirect each redirect middleware entry runs. */
+	#redirectRecords: WeakMap<MiddlewareEntry, RedirectRecord>;
 	/** Declaration order of each route, on the same counter as redirects. */
 	#routeOrder: WeakMap<RouteEntry, number>;
 	/** Monotonic declaration counter shared by routes and redirects. */
@@ -894,31 +900,20 @@ export class Router {
 		this.redirects = [];
 		this.#executor = null;
 		this.#redirectTable = [];
-		this.#redirectMiddlewares = new WeakSet();
+		this.#redirectRecords = new WeakMap();
 		this.#routeOrder = new WeakMap();
 		this.#seq = 0;
 	}
 
 	/**
-	 * Declare a redirect. `from` is either a MatchPattern string (`/old/:id`,
-	 * with `:id` reusable in `to`) or a `RegExp` (with `$1`…`$n` in `to`).
-	 *
-	 * Precedence is declaration order: a redirect declared before a route it
-	 * overlaps shadows that route; declared after, it applies only when no
-	 * route matched. Among redirects, the first match wins.
+	 * Declare a redirect. Shorthand for `router.use(redirect(from, to))`.
 	 */
 	redirect(
 		from: string | RegExp,
 		to: string,
 		options: {status?: number} = {},
 	): void {
-		this.#addRedirect(toRedirectEntry(from, to, options));
-	}
-
-	/** @internal Register a redirect entry and compile its matcher. */
-	#addRedirect(entry: RedirectEntry): void {
-		this.redirects.push(entry);
-		this.#redirectTable.push(compileRedirect(entry, this.#seq++));
+		this.use(redirect(from, to, options));
 	}
 
 	/** @internal Register self-describing middleware as a redirect. */
@@ -929,28 +924,17 @@ export class Router {
 		if (middlewareEntry.pathPrefix) {
 			redirect = scopeRedirect(redirect, middlewareEntry.pathPrefix);
 		}
-		this.#redirectMiddlewares.add(middlewareEntry);
-		this.redirects.push(redirect);
-		this.#redirectTable.push({
-			...compileRedirect(redirect, this.#seq++),
-			middleware: middlewareEntry,
-		});
+		this.#addRedirectRecord(middlewareEntry, redirect);
 	}
 
-	/**
-	 * @internal First redirect (lowest declaration order) whose matcher matches
-	 * `url`, with its order attached so callers can compare against a route.
-	 */
-	#matchRedirect(
-		u: URL,
-	): {location: string; status: number; order: number} | null {
-		for (const record of this.#redirectTable) {
-			const location = redirectLocation(record, u);
-			if (location !== null) {
-				return {location, status: record.entry.status, order: record.order};
-			}
-		}
-		return null;
+	#addRedirectRecord(
+		middlewareEntry: MiddlewareEntry,
+		redirect: RedirectEntry,
+	): void {
+		const record = compileRedirect(redirect, this.#seq++);
+		this.#redirectRecords.set(middlewareEntry, record);
+		this.redirects.push(redirect);
+		this.#redirectTable.push({...record, middleware: middlewareEntry});
 	}
 
 	/**
@@ -967,9 +951,8 @@ export class Router {
 	 * Register middleware that applies to all routes
 	 * Middleware executes in the order it was registered
 	 *
-	 * Middleware made by `redirect()`, such as `trailingSlash()`, is
-	 * registered as that redirect instead. It takes its place in declaration
-	 * order like `router.redirect()`, and it is serialized.
+	 * Middleware made by `redirect()`, such as `trailingSlash()`, runs in
+	 * declaration order like any other middleware, and it is serialized.
 	 */
 	use(middleware: Middleware): void;
 
@@ -1067,10 +1050,6 @@ export class Router {
 		try {
 			// Find matching route
 			const matchResult = executor.matchRequest(request);
-
-			// A redirect applies iff it out-ranks the matched route by
-			// declaration order (or nothing matched).
-			const redirect = this.#matchRedirect(new URL(request.url));
 			const routeOrder = matchResult
 				? this.#routeOrder.get(matchResult.entry)!
 				: Number.POSITIVE_INFINITY;
@@ -1078,21 +1057,13 @@ export class Router {
 			let context: RouteContext;
 			let routeMiddleware: Middleware[] = [];
 
-			if (redirect !== null && redirect.order < routeOrder) {
-				// The redirect takes the route's place, so middleware wraps it
-				// like any handler.
-				handler = async () =>
-					new Response(null, {
-						status: redirect.status,
-						headers: {Location: redirect.location},
-					});
-				context = {params: {}};
-			} else if (matchResult) {
+			if (matchResult) {
 				// Route found - use its handler and context
-				if (!matchResult.handler) {
-					throw new NotFound("Route has no handler");
-				}
-				handler = matchResult.handler;
+				handler =
+					matchResult.handler ??
+					(async () => {
+						throw new NotFound("Route has no handler");
+					});
 				context = matchResult.context;
 				routeMiddleware = matchResult.entry.middlewares;
 			} else {
@@ -1110,6 +1081,7 @@ export class Router {
 				request,
 				context,
 				handler,
+				routeOrder,
 			);
 
 			// HEAD requests should return headers only, no body (RFC 7231)
@@ -1163,27 +1135,17 @@ export class Router {
 
 		const items: Array<
 			| {order: number; route: RouteEntry}
-			| {
-					order: number;
-					middleware: {middleware: MiddlewareEntry; redirect: RedirectEntry};
-			  }
-			| {order: number; redirect: RedirectEntry}
+			| {order: number; middleware: MiddlewareEntry; redirect: RedirectEntry}
 		> = [];
 		for (const route of subrouter.routes) {
 			items.push({order: subrouter.#routeOrder.get(route)!, route});
 		}
 		for (const record of subrouter.#redirectTable) {
-			items.push(
-				record.middleware
-					? {
-							order: record.order,
-							middleware: {
-								middleware: record.middleware,
-								redirect: record.entry,
-							},
-						}
-					: {order: record.order, redirect: record.entry},
-			);
+			items.push({
+				order: record.order,
+				middleware: record.middleware,
+				redirect: record.entry,
+			});
 		}
 		items.sort((a, b) => a.order - b.order);
 		for (const item of items) {
@@ -1200,21 +1162,11 @@ export class Router {
 				};
 				this.routes.push(entry);
 				this.#routeOrder.set(entry, this.#seq++);
-			} else if ("middleware" in item) {
-				// Already scoped by the subrouter; mount it like .redirect().
-				const entry = mounted.get(item.middleware.middleware)!;
-				const redirect = mountRedirect(
-					item.middleware.redirect,
-					normalizedMountPath,
-				);
-				this.#redirectMiddlewares.add(entry);
-				this.redirects.push(redirect);
-				this.#redirectTable.push({
-					...compileRedirect(redirect, this.#seq++),
-					middleware: entry,
-				});
 			} else {
-				this.#addRedirect(mountRedirect(item.redirect, normalizedMountPath));
+				this.#addRedirectRecord(
+					mounted.get(item.middleware)!,
+					mountRedirect(item.redirect, normalizedMountPath),
+				);
 			}
 		}
 
@@ -1340,6 +1292,7 @@ export class Router {
 		request: Request,
 		context: RouteContext,
 		handler: Handler,
+		routeOrder: number,
 	): Promise<Response> {
 		const runningGenerators: Array<{
 			generator: ReturnType<GeneratorMiddleware>;
@@ -1351,14 +1304,19 @@ export class Router {
 
 		// Phase 1a: Execute global/path-scoped middleware "before" phases
 		for (const entry of globalMiddlewares) {
-			if (this.#redirectMiddlewares.has(entry)) {
-				continue;
-			}
 			// Skip middleware if it has a pathPrefix that doesn't match
 			if (
 				entry.pathPrefix &&
 				!this.#matchesPathPrefix(requestPathname, entry.pathPrefix)
 			) {
+				continue;
+			}
+
+			const record = this.#redirectRecords.get(entry);
+			if (record) {
+				if (record.order > routeOrder) continue;
+				currentResponse = redirectResponse(record, new URL(request.url));
+				if (currentResponse) break;
 				continue;
 			}
 
@@ -1455,7 +1413,7 @@ export class Router {
 	/**
 	 * Serialize the router to a plain, JSON-safe value. Named `toJSON` so
 	 * `JSON.stringify(router)` works for free. Routes and redirects are emitted
-	 * as one list in declaration order, so precedence survives the round-trip.
+	 * as one list in declaration order.
 	 * Handlers and middleware are server-only and left out, except middleware
 	 * made by `redirect()`, such as `trailingSlash()`, which is a redirect at
 	 * the point it was registered.
@@ -1499,8 +1457,6 @@ export class Router {
 			);
 		}
 		const router = new Router();
-		// Replay entries in declaration order so routes and redirects get the
-		// same relative order they had on the server — precedence matches.
 		for (const entry of parsed.entries) {
 			if ("route" in entry) {
 				// No handler → match-only. handle() falls through to 404.
@@ -1511,7 +1467,7 @@ export class Router {
 					entry.route.name,
 				);
 			} else {
-				router.#addRedirect(entry.redirect);
+				router.use(redirectMiddleware(entry.redirect));
 			}
 		}
 		return router;

@@ -151,7 +151,7 @@ Create a redirect. `from` is a pattern like `/old/:id`, with `:id` reusable in `
 ```javascript
 import {redirect} from '@b9g/router';
 
-// Registered: takes its place in declaration order, like a route
+// Registered: runs at its place in the middleware chain
 router.use(redirect('/old/:id', '/new/:id'));
 
 // Called inside middleware: returns the redirect Response, or null
@@ -160,6 +160,14 @@ router.use(async function* (request) {
   if (response) return response;
   return yield request;
 });
+```
+
+A registered redirect runs where it was declared. Middleware declared before it wraps the redirect response, and middleware declared after it does not run when it redirects. It does not redirect a route declared before it.
+
+```javascript
+router.use(cors());            // adds CORS headers to the redirect
+router.use(trailingSlash('strip'));
+router.use(auth);              // skipped when trailingSlash redirects
 ```
 
 ### Context Object

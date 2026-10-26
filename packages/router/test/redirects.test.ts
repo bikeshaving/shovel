@@ -418,7 +418,7 @@ describe("Redirect edge cases", () => {
 		});
 	});
 
-	test("middleware wraps a redirect like it wraps a route", async () => {
+	test("a redirect runs at its place in the middleware chain", async () => {
 		const {trailingSlash} = await import("../src/middleware.js");
 		const router = new Router();
 		router.use(async function* (request) {
@@ -438,8 +438,29 @@ describe("Redirect edge cases", () => {
 			const res = await router.handle(req(url));
 			expect(res.status).toBe(301);
 			expect(res.headers.get("X-Seen")).toBe("yes");
-			expect(res.headers.get("X-After")).toBe("yes");
+			expect(res.headers.get("X-After")).toBeNull();
 		}
+	});
+
+	test("middleware declared after a redirect does not run when it redirects", async () => {
+		const {cors, trailingSlash} = await import("../src/middleware.js");
+		const router = new Router();
+		router.use(cors({origin: "*"}));
+		router.use(trailingSlash("strip"));
+		router.use(() => new Response("unauthorized", {status: 401}));
+		router.route("/about").get(async () => new Response("about"));
+
+		const res = await router.handle(
+			new Request("http://x.com/about/", {
+				headers: {Origin: "http://other.com"},
+			}),
+		);
+		expect(res.status).toBe(301);
+		expect(res.headers.get("Location")).toBe("http://x.com/about");
+		expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+
+		const about = await router.handle(req("http://x.com/about"));
+		expect(about.status).toBe(401);
 	});
 
 	test("middleware that answers first still wins over a redirect", async () => {
