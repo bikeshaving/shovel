@@ -111,6 +111,16 @@ const result = pattern.exec('/api/v1/posts/123?format=json&page=1');
 console.log(result.params); // {version: 'v1', id: '123', format: 'json', page: '1'}
 ```
 
+Pathname params take precedence: a search param never overrides a name declared in the pathname pattern, so a query string can't spoof a path param. The search value is still available in `result.search.groups`:
+
+```javascript
+const result = new MatchPattern('/users/:id').exec('/users/1?id=2');
+console.log(result.params.id);        // '1'
+console.log(result.search.groups.id); // '2'
+```
+
+`params` and the `groups` objects have a `null` prototype, so keys from the URL such as `__proto__` or `constructor` are ordinary own properties.
+
 ### 4. Enhanced String Pattern Syntax
 
 It's not possible to separate pathname from search with `?` because the syntax is used to indicate optionality, so MatchPattern supports convenient string patterns with `&` separator:
@@ -258,7 +268,7 @@ function compilePathname(
 
 ```typescript
 interface MatchPatternResult extends URLPatternResult {
-  params: Record<string, string>;  // Unified parameters from pathname and search
+  params: Record<string, string>;  // Unified pathname and search params (pathname wins, null prototype)
 }
 
 interface URLPatternOptions {
