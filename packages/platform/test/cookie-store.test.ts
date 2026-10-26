@@ -64,6 +64,16 @@ describe("Cookie Serialization", () => {
 		expect(header).toContain("Secure");
 	});
 
+	it("should serialize HttpOnly only when requested", () => {
+		const header = serializeCookie({
+			name: "session",
+			value: "abc123",
+			httpOnly: true,
+		});
+		expect(header).toContain("HttpOnly");
+		expect(serializeCookie({name: "a", value: "b"})).not.toContain("HttpOnly");
+	});
+
 	it("should encode special characters", () => {
 		const header = serializeCookie({
 			name: "data",
@@ -76,12 +86,13 @@ describe("Cookie Serialization", () => {
 describe("Set-Cookie Parsing", () => {
 	it("should parse Set-Cookie header", () => {
 		const cookie = parseSetCookieHeader(
-			"session=abc123; Path=/; Secure; SameSite=Strict",
+			"session=abc123; Path=/; Secure; HttpOnly; SameSite=Strict",
 		);
 		expect(cookie.name).toBe("session");
 		expect(cookie.value).toBe("abc123");
 		expect(cookie.path).toBe("/");
 		expect(cookie.secure).toBe(true);
+		expect(cookie.httpOnly).toBe(true);
 		expect(cookie.sameSite).toBe("strict");
 	});
 
