@@ -13,6 +13,9 @@ import {
 	generateCodeChallenge,
 	generateState,
 } from "./pkce.js";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["shovel", "oauth2"]);
 
 // ============================================================================
 // TYPES
@@ -261,27 +264,192 @@ export class OAuth2Client {
 // SESSION HELPERS
 // ============================================================================
 
+export interface SessionOptions {
+	/**
+	 * Secret used to encrypt and authenticate the session cookie.
+	 * Must be at least 32 characters; keep it out of source control.
+	 */
+	secret: string;
+	/** Session cookie name (default: "session") */
+	sessionCookieName?: string;
+}
+
+const SESSION_VERSION = "v1";
+const MIN_SECRET_LENGTH = 32;
+const sessionKeys = new Map<string, Promise<CryptoKey>>();
+
 /**
- * Helper to store session token in cookie
+ * Derive (and cache) the AES-GCM key for a session secret
+ */
+function getSessionKey(secret: string): Promise<CryptoKey> {
+	if (typeof secret !== "string" || secret.length < MIN_SECRET_LENGTH) {
+		throw new TypeError(
+			`Session secret must be a string of at least ${MIN_SECRET_LENGTH} characters`,
+		);
+	}
+
+	let key = sessionKeys.get(secret);
+	if (!key) {
+		key = (async () => {
+			const material = await crypto.subtle.importKey(
+				"raw",
+				new TextEncoder().encode(secret),
+				"HKDF",
+				false,
+				["deriveKey"],
+			);
+			return crypto.subtle.deriveKey(
+				{
+					name: "HKDF",
+					hash: "SHA-256",
+					salt: new Uint8Array(0),
+					info: new TextEncoder().encode("@b9g/oauth2 session"),
+				},
+				material,
+				{name: "AES-GCM", length: 256},
+				false,
+				["encrypt", "decrypt"],
+			);
+		})();
+		sessionKeys.set(secret, key);
+	}
+
+	return key;
+}
+
+function base64URLEncode(bytes: Uint8Array): string {
+	let binary = "";
+	for (let i = 0; i < bytes.length; i++) {
+		binary += String.fromCharCode(bytes[i]);
+	}
+
+	return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+function base64URLDecode(input: string): Uint8Array<ArrayBuffer> {
+	const binary = atob(input.replace(/-/g, "+").replace(/_/g, "/"));
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+
+	return bytes;
+}
+
+/**
+ * Encrypt tokens into a session cookie value.
+ * AES-GCM authenticates the payload, and the cookie name is bound as
+ * additional data so a value can't be moved between cookies.
+ */
+async function sealSession(
+	tokens: OAuth2Tokens,
+	expires: number,
+	options: SessionOptions & {sessionCookieName: string},
+): Promise<string> {
+	const key = await getSessionKey(options.secret);
+	const iv = crypto.getRandomValues(new Uint8Array(12));
+	const plaintext = new TextEncoder().encode(JSON.stringify({tokens, expires}));
+	const ciphertext = await crypto.subtle.encrypt(
+		{
+			name: "AES-GCM",
+			iv,
+			additionalData: new TextEncoder().encode(options.sessionCookieName),
+		},
+		key,
+		plaintext,
+	);
+
+	return `${SESSION_VERSION}.${base64URLEncode(iv)}.${base64URLEncode(new Uint8Array(ciphertext))}`;
+}
+
+/**
+ * Decrypt and validate a session cookie value.
+ * Returns null for anything malformed, forged, or expired.
+ */
+async function unsealSession(
+	value: string,
+	options: SessionOptions & {sessionCookieName: string},
+): Promise<OAuth2Tokens | null> {
+	const key = await getSessionKey(options.secret);
+	const [version, iv, ciphertext, ...rest] = value.split(".");
+	if (version !== SESSION_VERSION || !iv || !ciphertext || rest.length) {
+		return null;
+	}
+
+	let payload: any;
+	try {
+		const plaintext = await crypto.subtle.decrypt(
+			{
+				name: "AES-GCM",
+				iv: base64URLDecode(iv),
+				additionalData: new TextEncoder().encode(options.sessionCookieName),
+			},
+			key,
+			base64URLDecode(ciphertext),
+		);
+		payload = JSON.parse(new TextDecoder().decode(plaintext));
+	} catch (error) {
+		// Bad encoding, wrong key, or tampered ciphertext
+		logger.debug("Rejected session cookie: {error}", {error});
+		return null;
+	}
+
+	if (
+		typeof payload?.expires !== "number" ||
+		payload.expires <= Date.now() ||
+		typeof payload.tokens?.accessToken !== "string"
+	) {
+		return null;
+	}
+
+	return payload.tokens as OAuth2Tokens;
+}
+
+/**
+ * Helper to store tokens in an encrypted, HttpOnly session cookie.
+ * The session expires with the access token (tokens.expiresIn) unless
+ * maxAge is given, defaulting to one hour.
  */
 export async function createSession(
 	cookieStore: any,
 	tokens: OAuth2Tokens,
-	options?: {
-		sessionCookieName?: string;
+	options: SessionOptions & {
+		/** Session lifetime in seconds */
 		maxAge?: number;
 	},
 ): Promise<void> {
-	const sessionCookieName = options?.sessionCookieName || "session";
-	const maxAge = options?.maxAge || tokens.expiresIn || 3600;
+	const sessionCookieName = options.sessionCookieName || "session";
+	const maxAge = options.maxAge || tokens.expiresIn || 3600;
+	const expires = Date.now() + maxAge * 1000;
 
 	await cookieStore.set({
 		name: sessionCookieName,
-		value: tokens.accessToken,
+		value: await sealSession(tokens, expires, {...options, sessionCookieName}),
 		path: "/",
 		sameSite: "lax",
-		expires: Date.now() + maxAge * 1000,
+		httpOnly: true,
+		secure: true,
+		expires,
 	});
+}
+
+/**
+ * Helper to read tokens from the session cookie.
+ * Returns null if the cookie is missing, forged, or expired.
+ */
+export async function getSession(
+	cookieStore: any,
+	options: SessionOptions,
+): Promise<OAuth2Tokens | null> {
+	const sessionCookieName = options.sessionCookieName || "session";
+	// Validate the secret even when no cookie is present
+	await getSessionKey(options.secret);
+	const cookie = await cookieStore.get(sessionCookieName);
+	if (!cookie || typeof cookie.value !== "string") {
+		return null;
+	}
+
+	return unsealSession(cookie.value, {...options, sessionCookieName});
 }
 
 /**
