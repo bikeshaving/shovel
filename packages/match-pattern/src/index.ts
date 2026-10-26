@@ -570,9 +570,23 @@ function normalizePathname(pathname: string): string {
 }
 
 /**
+ * Create a prototype-less record for params and groups. Keys can come from
+ * the URL (e.g. "__proto__" or "constructor" in a query string), so they must
+ * be plain own properties that can't shadow or pollute Object.prototype.
+ */
+function createRecord(): Record<string, string> {
+	return Object.create(null);
+}
+
+/**
  * Result of pattern matching
  */
 export interface MatchPatternResult {
+	/**
+	 * Unified pathname and search params (null-prototype object). Pathname
+	 * params take precedence: a search param never overrides a name declared
+	 * in the pathname pattern.
+	 */
 	params: Record<string, string>;
 	pathname: {input: string; groups: Record<string, string>};
 	search: {input: string; groups: Record<string, string>};
@@ -1966,7 +1980,7 @@ function extractSearchParams(
 	searchPattern: string,
 	actualParams: URLSearchParams,
 ): Record<string, string> {
-	const params: Record<string, string> = {};
+	const params = createRecord();
 	const patternParams = parseSearchPattern(searchPattern);
 
 	for (const [key, paramDef] of patternParams) {
@@ -1978,9 +1992,10 @@ function extractSearchParams(
 		}
 	}
 
-	// Also capture extra params
+	// Also capture extra params (own-key check: params has no prototype, and
+	// an empty named value must not be replaced by an extra param)
 	for (const [key, value] of actualParams) {
-		if (!params[key]) {
+		if (!(key in params)) {
 			params[key] = value;
 		}
 	}
@@ -2553,9 +2568,9 @@ export class URLPattern {
 			url = input;
 		}
 
-		const params: Record<string, string> = {};
-		const pathnameGroups: Record<string, string> = {};
-		const searchGroups: Record<string, string> = {};
+		const params = createRecord();
+		const pathnameGroups = createRecord();
+		const searchGroups = createRecord();
 
 		// Extract pathname params
 		const match = this.#compiled.pathname.regex.exec(url.pathname);
@@ -2579,8 +2594,11 @@ export class URLPattern {
 					const name = this.#compiled.search.paramNames[i];
 					const value = searchMatch[i + 1];
 					if (value !== undefined) {
-						params[name] = value;
 						searchGroups[name] = value;
+						// Pathname params take precedence in the unified params
+						if (!this.#compiled.pathname.paramNames.includes(name)) {
+							params[name] = value;
+						}
 					}
 				}
 			}
@@ -2614,9 +2632,9 @@ export class URLPattern {
 		let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
 		pathname = normalizePathname(pathname);
 
-		const params: Record<string, string> = {};
-		const pathnameGroups: Record<string, string> = {};
-		const searchGroups: Record<string, string> = {};
+		const params = createRecord();
+		const pathnameGroups = createRecord();
+		const searchGroups = createRecord();
 
 		const match = this.#compiled.pathname.regex.exec(pathname);
 		if (match) {
@@ -2639,8 +2657,11 @@ export class URLPattern {
 					const name = this.#compiled.search.paramNames[i];
 					const value = searchMatch[i + 1];
 					if (value !== undefined) {
-						params[name] = value;
 						searchGroups[name] = value;
+						// Pathname params take precedence in the unified params
+						if (!this.#compiled.pathname.paramNames.includes(name)) {
+							params[name] = value;
+						}
 					}
 				}
 			}
@@ -2885,6 +2906,22 @@ export class MatchPattern {
 		return true;
 	}
 
+	/**
+	 * Copy search params into the unified params, skipping any name declared in
+	 * the pathname pattern so that e.g. "?id=2" can't spoof "/users/:id"
+	 */
+	#mergeSearchParams(
+		params: Record<string, string>,
+		searchGroups: Record<string, string>,
+	): void {
+		const pathnameNames = this.#compiled.pathname.paramNames;
+		for (const key in searchGroups) {
+			if (!pathnameNames.includes(key)) {
+				params[key] = searchGroups[key];
+			}
+		}
+	}
+
 	exec(
 		input: string | URL | URLPatternInit,
 		baseURL?: string,
@@ -2904,9 +2941,9 @@ export class MatchPattern {
 			url = input;
 		}
 
-		const params: Record<string, string> = {};
-		const pathnameGroups: Record<string, string> = {};
-		const searchGroups: Record<string, string> = {};
+		const params = createRecord();
+		const pathnameGroups = createRecord();
+		const searchGroups = createRecord();
 
 		// Extract pathname params
 		const match = this.#compiled.pathname.regex.exec(url.pathname);
@@ -2927,14 +2964,13 @@ export class MatchPattern {
 				this.#searchPattern,
 				url.searchParams,
 			);
-			Object.assign(params, extracted);
 			Object.assign(searchGroups, extracted);
 		} else {
 			for (const [key, value] of url.searchParams) {
-				params[key] = value;
 				searchGroups[key] = value;
 			}
 		}
+		this.#mergeSearchParams(params, searchGroups);
 
 		return {
 			params,
@@ -2964,9 +3000,9 @@ export class MatchPattern {
 		let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
 		pathname = normalizePathname(pathname);
 
-		const params: Record<string, string> = {};
-		const pathnameGroups: Record<string, string> = {};
-		const searchGroups: Record<string, string> = {};
+		const params = createRecord();
+		const pathnameGroups = createRecord();
+		const searchGroups = createRecord();
 
 		const match = this.#compiled.pathname.regex.exec(pathname);
 		if (match) {
@@ -2986,8 +3022,8 @@ export class MatchPattern {
 				this.#searchPattern,
 				new URLSearchParams(search),
 			);
-			Object.assign(params, extracted);
 			Object.assign(searchGroups, extracted);
+			this.#mergeSearchParams(params, searchGroups);
 		}
 
 		const protocol =
