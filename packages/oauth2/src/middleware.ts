@@ -3,7 +3,12 @@
  * Includes OAuth2 integration and session management
  */
 
-import {OAuth2Client, OAuth2Tokens} from "./index.js";
+import {
+	OAuth2Client,
+	OAuth2Tokens,
+	getSession,
+	type SessionOptions,
+} from "./index.js";
 import type {FunctionMiddleware} from "@b9g/router";
 
 // Augment RouteContext to include oauth2 property
@@ -71,19 +76,23 @@ export function handleCallback(
 
 /**
  * Create middleware to require authentication
- * Checks for session token and adds user to context
+ * Verifies the session cookie created by createSession() and adds the
+ * session's tokens to context.oauth2
  */
-export function requireAuth(options?: {
-	sessionCookieName?: string;
-	onUnauthorized?: () => Response | Promise<Response>;
-}): FunctionMiddleware {
-	const sessionCookieName = options?.sessionCookieName || "session";
+export function requireAuth(
+	options: SessionOptions & {
+		onUnauthorized?: () => Response | Promise<Response>;
+	},
+): FunctionMiddleware {
+	if (!options?.secret) {
+		throw new TypeError("requireAuth() requires a session secret");
+	}
 
 	return async (request, context) => {
-		const session = await (self as any).cookieStore.get(sessionCookieName);
+		const tokens = await getSession((self as any).cookieStore, options);
 
-		if (!session) {
-			if (options?.onUnauthorized) {
+		if (!tokens) {
+			if (options.onUnauthorized) {
 				return await options.onUnauthorized();
 			}
 
@@ -94,7 +103,7 @@ export function requireAuth(options?: {
 		}
 
 		// Add OAuth2 tokens to context for handlers
-		context.oauth2 = session.value;
+		context.oauth2 = tokens;
 
 		// Continue to next middleware/handler
 		return null;
