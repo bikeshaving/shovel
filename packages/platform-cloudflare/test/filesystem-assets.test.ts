@@ -233,3 +233,56 @@ describe("CFAssetsDirectoryHandle", () => {
 		expect(await dir1.isSameEntry(dir2)).toBe(false);
 	});
 });
+
+describe("CFAssetsDirectoryHandle name validation", () => {
+	// A binding that serves a file outside the handle's base path, so any
+	// traversal that reaches it shows up as a successful read.
+	const files: Record<string, string> = {
+		"/public/app.js": "public js",
+		"/private/secret.txt": "TOP SECRET",
+	};
+	const fetched: string[] = [];
+	const assets: CFAssetsBinding = {
+		async fetch(request: Request) {
+			const pathname = new URL(request.url).pathname;
+			fetched.push(pathname);
+			return files[pathname]
+				? new Response(files[pathname])
+				: new Response("not found", {status: 404});
+		},
+	} as CFAssetsBinding;
+	const manifest = {assets: {}};
+
+	test("getFileHandle rejects names that escape the base path", async () => {
+		const pub = new CFAssetsDirectoryHandle(assets, "/public", manifest);
+		for (const name of [
+			"../private/secret.txt",
+			"%2e%2e/private/secret.txt",
+			"..%2fprivate%2fsecret.txt",
+			"..",
+			".",
+			"%2e%2e",
+			"%2E.",
+			"a\\b",
+			"%5c",
+			"",
+		]) {
+			await expect(pub.getFileHandle(name)).rejects.toThrow(TypeError);
+		}
+		expect(fetched).toEqual([]);
+	});
+
+	test("getDirectoryHandle rejects names that escape the base path", async () => {
+		const pub = new CFAssetsDirectoryHandle(assets, "/public", manifest);
+		for (const name of ["..", ".", "%2e%2e", ".%2E", "a/b", "%2f"]) {
+			await expect(pub.getDirectoryHandle(name)).rejects.toThrow(TypeError);
+		}
+	});
+
+	test("valid names still resolve", async () => {
+		const root = new CFAssetsDirectoryHandle(assets, "/", manifest);
+		const pub = await root.getDirectoryHandle("public");
+		const file = await (await pub.getFileHandle("app.js")).getFile();
+		expect(await file.text()).toBe("public js");
+	});
+});

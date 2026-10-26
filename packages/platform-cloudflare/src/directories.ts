@@ -13,6 +13,7 @@
 
 import mime from "mime";
 import {getAssetsManifest} from "@b9g/assets/manifest";
+import {validateName} from "@b9g/filesystem";
 import {getEnv} from "./variables.js";
 
 // ============================================================================
@@ -416,6 +417,26 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 // ============================================================================
 
 /**
+ * Validates a name that will be joined into an ASSETS URL path. On top of the
+ * shared name rules, the URL parser treats "%2e%2e" as ".." and the binding
+ * may decode "%2f", so a name must also be valid once percent-decoded.
+ */
+function validateAssetName(name: string): void {
+	validateName(name);
+	let decoded: string;
+	try {
+		decoded = decodeURIComponent(name);
+	} catch (error) {
+		throw new TypeError("Name is not a valid URL path segment", {
+			cause: error,
+		});
+	}
+	if (decoded !== name) {
+		validateName(decoded);
+	}
+}
+
+/**
  * FileSystemFileHandle implementation for CF ASSETS binding files.
  */
 export class CFAssetsFileHandle implements FileSystemFileHandle {
@@ -497,6 +518,7 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		name: string,
 		_options?: FileSystemGetFileOptions,
 	): Promise<FileSystemFileHandle> {
+		validateAssetName(name);
 		const path = this.#basePath + name;
 
 		// The manifest answers existence without a network round-trip — a
@@ -529,6 +551,7 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 		name: string,
 		_options?: FileSystemGetDirectoryOptions,
 	): Promise<CFAssetsDirectoryHandle> {
+		validateAssetName(name);
 		return new CFAssetsDirectoryHandle(
 			this.#assets,
 			this.#basePath + name,
