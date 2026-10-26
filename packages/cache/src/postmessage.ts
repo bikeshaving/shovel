@@ -152,7 +152,8 @@ export class PostMessageCache extends Cache {
 		const serializedResponse = {
 			status: response.status,
 			statusText: response.statusText,
-			headers: Object.fromEntries(response.headers),
+			// Entries rather than a record so repeated Set-Cookie survives
+			headers: [...response.headers],
 			body: responseBody,
 		};
 

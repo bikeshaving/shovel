@@ -2377,7 +2377,8 @@ export interface WorkerResponseMessage {
 	response: {
 		status: number;
 		statusText: string;
-		headers: Record<string, string>;
+		// Entries rather than a record so repeated headers (Set-Cookie) survive
+		headers: [string, string][];
 		body: ArrayBuffer;
 	};
 	requestID: number;
@@ -2570,9 +2571,10 @@ export function startWorkerMessageLoop(
 			const body = await response.arrayBuffer();
 
 			// Ensure Content-Type is preserved
-			const headers = Object.fromEntries(response.headers.entries());
-			if (!headers["Content-Type"] && !headers["content-type"]) {
-				headers["Content-Type"] = "text/plain; charset=utf-8";
+			// Headers iteration yields each Set-Cookie value as its own entry
+			const headers = [...response.headers];
+			if (!response.headers.has("content-type")) {
+				headers.push(["content-type", "text/plain; charset=utf-8"]);
 			}
 
 			const responseMsg: WorkerResponseMessage = {
