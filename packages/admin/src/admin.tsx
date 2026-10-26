@@ -3,7 +3,7 @@
  * @b9g/admin - AdminRouter implementation
  */
 
-import {Router} from "@b9g/router";
+import {Router, type RouteContext} from "@b9g/router";
 import {trailingSlash} from "@b9g/router/middleware";
 import {renderer} from "@b9g/crank/html";
 import type {Children} from "@b9g/crank";
@@ -23,18 +23,17 @@ const logger = self.loggers.get(["shovel", "admin"]);
 // Configuration Types
 // ============================================================================
 
-/** OAuth2 provider names supported by the admin */
-export type AuthProvider = "google" | "github" | "microsoft";
-
-/** Authentication configuration */
-export interface AuthConfig {
-	/** OAuth2 providers to enable */
-	providers: AuthProvider[];
-	/** Optional email domain whitelist (e.g., ['mycompany.com']) */
-	allowedDomains?: string[];
-	/** Session max age in seconds (default: 7 days) */
-	sessionMaxAge?: number;
-}
+/**
+ * Authorization check run before every admin request.
+ *
+ * Return `true` to allow the request, a `Response` to send instead (e.g. a
+ * redirect to your login page or a 401 challenge), or `false` to deny with
+ * 403. Any other result also denies, so the check fails closed.
+ */
+export type AdminAuthorize = (
+	request: Request,
+	context: RouteContext,
+) => boolean | Response | Promise<boolean | Response>;
 
 /** Per-model display and behavior configuration */
 export interface ModelConfig {
@@ -76,34 +75,20 @@ export interface AdminConfig {
 	schema: Record<string, unknown>;
 	/** Base path for admin routes (default: '/admin') */
 	basePath?: string;
-	/** Authentication configuration */
-	auth: AuthConfig;
+	/**
+	 * Required authorization check for every admin route.
+	 *
+	 * Pass "unsafe-allow-all" to disable authorization entirely. This exposes
+	 * full read and write access to the database and is only meant for local
+	 * development.
+	 */
+	authorize: AdminAuthorize | "unsafe-allow-all";
 	/** Per-model customization keyed by table name */
 	models?: Record<string, ModelConfig>;
 	/** Branding customization */
 	branding?: BrandingConfig;
 	/** USWDS asset URLs - if not provided, will use default relative paths */
 	assets?: AssetsConfig;
-}
-
-// ============================================================================
-// Internal Types (not exported) - for future auth implementation
-// ============================================================================
-
-/** Authenticated admin user */
-interface _AdminUser {
-	id: string;
-	email: string;
-	name?: string;
-	picture?: string;
-	provider: AuthProvider;
-}
-
-/** Admin session data stored in cache */
-interface _AdminSession {
-	user: _AdminUser;
-	createdAt: number;
-	expiresAt: number;
 }
 
 // ============================================================================
@@ -178,12 +163,47 @@ function errorPage(
 }
 
 /**
- * Get the base path from a request URL by removing the known route suffix
+ * Get the base path from a request URL by removing as many trailing segments
+ * as the route pattern has. Request data never becomes a RegExp here.
  */
-function getBasePath(url: string, suffix: string): string {
-	const urlObj = new URL(url);
-	const pattern = new RegExp(suffix.replace(/:[^/]+/g, "[^/]+") + "$");
-	return urlObj.pathname.replace(pattern, "").replace(/\/$/, "");
+function getBasePath(url: string, pattern: string): string {
+	let pathname = new URL(url).pathname;
+	while (pathname.endsWith("/")) {
+		pathname = pathname.slice(0, -1);
+	}
+	const segments = pathname.split("/");
+	const depth = pattern.split("/").filter(Boolean).length;
+	return segments.slice(0, segments.length - depth).join("/");
+}
+
+/** Methods that cannot change state and are exempt from the CSRF check */
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * Stateless CSRF check for state-changing requests.
+ *
+ * Modern browsers send Sec-Fetch-Site on every request, so when it is present
+ * it must be "same-origin". Otherwise Origin, then Referer, must match the
+ * request's origin. Requests with none of these headers are rejected.
+ */
+function isSameOriginRequest(request: Request): boolean {
+	const fetchSite = request.headers.get("Sec-Fetch-Site");
+	if (fetchSite !== null) {
+		return fetchSite === "same-origin";
+	}
+
+	const expected = new URL(request.url).origin;
+	const origin = request.headers.get("Origin");
+	if (origin !== null) {
+		return origin === expected;
+	}
+
+	const referer = request.headers.get("Referer");
+	if (referer !== null && URL.canParse(referer)) {
+		return new URL(referer).origin === expected;
+	}
+
+	return false;
 }
 
 /**
@@ -248,13 +268,15 @@ function formatValue(value: unknown): string {
  * Admin router that can be mounted on any path.
  *
  * Extends Router with admin-specific properties and auto-generated CRUD routes.
+ * Every request is checked by `config.authorize`, and state-changing requests
+ * must also pass a same-origin CSRF check.
  *
  * @example
  * ```typescript
  * const admin = new AdminRouter({
  *   database: "main",
  *   schema,
- *   auth: { providers: ["google"] },
+ *   authorize: async (request) => (await getSession(request))?.isAdmin ?? false,
  * });
  *
  * // Access introspected models
@@ -279,9 +301,51 @@ export class AdminRouter extends Router {
 
 	constructor(config: AdminConfig) {
 		super();
+		const authorize = config.authorize;
+		if (typeof authorize !== "function" && authorize !== "unsafe-allow-all") {
+			throw new TypeError(
+				"AdminRouter requires an `authorize` option: a function " +
+					"(request, context) => boolean | Response that allows only " +
+					'admins, or "unsafe-allow-all" to disable authorization for ' +
+					"local development.",
+			);
+		}
+
 		this.config = config;
 
 		logger.debug("AdminRouter created", {database: config.database});
+
+		// Security middleware must be registered before anything else so it runs
+		// first, including when this router is mounted on another router.
+		this.use((req) => {
+			if (!SAFE_METHODS.has(req.method.toUpperCase())) {
+				if (!isSameOriginRequest(req)) {
+					logger.warn("Rejected cross-origin admin request", {
+						method: req.method,
+						url: req.url,
+					});
+					return new Response("Cross-origin request rejected", {status: 403});
+				}
+			}
+		});
+
+		if (authorize === "unsafe-allow-all") {
+			logger.warn(
+				'AdminRouter authorization is disabled ("unsafe-allow-all"). ' +
+					"Do not use this in production.",
+			);
+		} else {
+			this.use(async (req, ctx) => {
+				const result = await authorize(req, ctx);
+				if (result === true) {
+					return;
+				}
+				if (result instanceof Response) {
+					return result;
+				}
+				return new Response("Forbidden", {status: 403});
+			});
+		}
 
 		// Normalize trailing slashes - strip them
 		this.use(trailingSlash("strip"));
@@ -329,51 +393,6 @@ export class AdminRouter extends Router {
 		const title = this.#title;
 		const assets = this.#assets;
 		const getDb = () => this.#getDb();
-
-		// ============================================================================
-		// Auth Routes
-		// ============================================================================
-
-		this.route("/auth/login").get((req) => {
-			const basePath = getBasePath(req.url, "/auth/login");
-
-			return html(
-				<PageLayout
-					title={title}
-					pageTitle="Login"
-					basePath={basePath}
-					models={models}
-					assets={assets}
-				>
-					<h1 class="usa-heading">Login</h1>
-					<div class="admin-card">
-						<p class="usa-prose">Choose a provider to sign in:</p>
-						<div class="usa-button-group margin-top-2">
-							{config.auth.providers.map((p) => (
-								<a href={`${basePath}/auth/${p}`} class="usa-button">
-									Sign in with {p.charAt(0).toUpperCase() + p.slice(1)}
-								</a>
-							))}
-						</div>
-					</div>
-				</PageLayout>,
-			);
-		});
-
-		this.route("/auth/:provider").get((_req, ctx) => {
-			const provider = ctx.params.provider;
-			return new Response(`TODO: Start ${provider} OAuth2 flow`, {
-				status: 501,
-			});
-		});
-
-		this.route("/auth/callback").get(() => {
-			return new Response("TODO: Handle OAuth2 callback", {status: 501});
-		});
-
-		this.route("/auth/logout").get(() => {
-			return new Response("TODO: Logout", {status: 501});
-		});
 
 		// ============================================================================
 		// Dashboard
@@ -456,7 +475,7 @@ export class AdminRouter extends Router {
 				return new Response("Model not found", {status: 404});
 			}
 
-			const basePath = getBasePath(req.url, `/${modelName}`);
+			const basePath = getBasePath(req.url, "/:model");
 
 			try {
 				const db = getDb();
@@ -555,7 +574,7 @@ export class AdminRouter extends Router {
 				return new Response("Model not found", {status: 404});
 			}
 
-			const basePath = getBasePath(req.url, `/${modelName}/new`);
+			const basePath = getBasePath(req.url, "/:model/new");
 
 			return html(
 				<PageLayout
@@ -587,7 +606,7 @@ export class AdminRouter extends Router {
 				return new Response("Model not found", {status: 404});
 			}
 
-			const basePath = getBasePath(req.url, `/${modelName}/new`);
+			const basePath = getBasePath(req.url, "/:model/new");
 
 			// Parse formData once before try block - streams can only be consumed once
 			const formData = await req.formData();
@@ -662,7 +681,7 @@ export class AdminRouter extends Router {
 				return new Response("Model not found", {status: 404});
 			}
 
-			const basePath = getBasePath(req.url, `/${modelName}/${id}`);
+			const basePath = getBasePath(req.url, "/:model/:id");
 			const parsedId = parseId(id, model.tableInfo);
 			if (parsedId === null) {
 				return new Response("Invalid ID", {status: 404});
@@ -767,7 +786,7 @@ export class AdminRouter extends Router {
 				return new Response("Model not found", {status: 404});
 			}
 
-			const basePath = getBasePath(req.url, `/${modelName}/${id}/edit`);
+			const basePath = getBasePath(req.url, "/:model/:id/edit");
 			const parsedId = parseId(id, model.tableInfo);
 			if (parsedId === null) {
 				return new Response("Invalid ID", {status: 404});
@@ -842,7 +861,7 @@ export class AdminRouter extends Router {
 				return new Response("Model not found", {status: 404});
 			}
 
-			const basePath = getBasePath(req.url, `/${modelName}/${id}/edit`);
+			const basePath = getBasePath(req.url, "/:model/:id/edit");
 			const parsedId = parseId(id, model.tableInfo);
 			if (parsedId === null) {
 				return new Response("Invalid ID", {status: 404});
@@ -922,7 +941,7 @@ export class AdminRouter extends Router {
 				return new Response("Model not found", {status: 404});
 			}
 
-			const basePath = getBasePath(req.url, `/${modelName}/${id}/delete`);
+			const basePath = getBasePath(req.url, "/:model/:id/delete");
 			const parsedId = parseId(id, model.tableInfo);
 			if (parsedId === null) {
 				return new Response("Invalid ID", {status: 404});
@@ -1033,7 +1052,7 @@ export class AdminRouter extends Router {
 				return new Response("Model not found", {status: 404});
 			}
 
-			const basePath = getBasePath(req.url, `/${modelName}/${id}/delete`);
+			const basePath = getBasePath(req.url, "/:model/:id/delete");
 			const parsedId = parseId(id, model.tableInfo);
 			if (parsedId === null) {
 				return new Response("Invalid ID", {status: 404});
