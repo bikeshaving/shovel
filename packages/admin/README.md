@@ -8,7 +8,8 @@ Admin app interface for Shovel applications. Auto-generates CRUD interfaces from
 - **Schema introspection** - Automatically detects columns, types, primary keys, foreign keys
 - **Form generation** - Builds forms based on column types (text, number, date, boolean, enum)
 - **USWDS styling** - Uses the U.S. Web Design System for accessible, professional UI
-- **OAuth2 authentication** - Google, GitHub, Microsoft providers (WIP)
+- **Required authorization** - Every route runs your `authorize` check; fails closed
+- **CSRF protection** - State-changing requests must come from the same origin
 - **Mountable router** - Mount on any path in your Shovel app
 
 ## Installation
@@ -30,8 +31,10 @@ const router = new Router();
 const admin = createAdmin({
   database: "main",
   schema,
-  auth: {
-    providers: ["google"],
+  // Runs before every admin request. Return true to allow.
+  authorize: async (request) => {
+    const session = await getSession(request); // your session lookup
+    return session?.user.isAdmin ?? false;
   },
 });
 
@@ -52,12 +55,11 @@ interface AdminConfig {
   /** Schema object containing @b9g/zen tables */
   schema: Record<string, unknown>;
 
-  /** Authentication configuration */
-  auth: {
-    providers: ("google" | "github" | "microsoft")[];
-    allowedDomains?: string[];  // Email domain whitelist
-    sessionMaxAge?: number;      // Session TTL in seconds
-  };
+  /** Required authorization check (see Security below) */
+  authorize:
+    | ((request: Request, context: RouteContext) =>
+        boolean | Response | Promise<boolean | Response>)
+    | "unsafe-allow-all";
 
   /** Per-model customization */
   models?: {
@@ -84,6 +86,52 @@ interface AdminConfig {
   };
 }
 ```
+
+## Security
+
+The admin exposes full read and write access to your database, so
+`AdminRouter` refuses to construct without an `authorize` option.
+
+### Authorization
+
+`authorize(request, context)` runs before every admin route, including 404s:
+
+- `true` allows the request
+- a `Response` is sent instead, e.g. a redirect to your login page or a `401`
+  challenge
+- `false` (or anything else) denies with `403 Forbidden`
+
+The check is registered as middleware in the `AdminRouter` constructor, so it
+also applies when the admin is mounted on another router.
+
+```typescript
+const admin = new AdminRouter({
+  database: "main",
+  schema,
+  authorize: (request) => {
+    if (!isAdmin(request)) {
+      return Response.redirect("/login", 302);
+    }
+    return true;
+  },
+});
+```
+
+For local development only, `authorize: "unsafe-allow-all"` disables the
+check and logs a warning. Never deploy with it.
+
+### CSRF
+
+Every request other than `GET`, `HEAD` and `OPTIONS` must be same-origin:
+
+- If the browser sends `Sec-Fetch-Site`, it must be `same-origin`
+- Otherwise `Origin` must match the request URL's origin, falling back to
+  `Referer` when `Origin` is absent
+- Requests with none of these headers are rejected with `403`
+
+The admin's own forms pass this check without any tokens. Behind a TLS
+terminating proxy, older browsers without `Sec-Fetch-Site` only pass if
+`request.url` reflects the public origin.
 
 ## Schema Introspection
 
@@ -112,11 +160,11 @@ When mounted at `/admin`, the following routes are available:
 | `/admin` | Dashboard with model cards |
 | `/admin/:model` | List view for a model |
 | `/admin/:model/new` | Create new record |
-| `/admin/:model/:id` | View/edit record |
+| `/admin/:model/:id` | View record |
+| `/admin/:model/:id/edit` | Edit record |
 | `/admin/:model/:id/delete` | Delete confirmation |
-| `/admin/auth/login` | Login page |
-| `/admin/auth/:provider` | OAuth2 flow start |
-| `/admin/auth/callback` | OAuth2 callback |
+
+Login and logout are up to your application; point `authorize` at them.
 
 ## Display Names
 
@@ -135,7 +183,8 @@ getPluralDisplayName("category");    // "Categories"
 - [x] CRUD routes (list, create, edit, delete)
 - [x] Form generation with validation
 - [x] USWDS styling
-- [ ] OAuth2 authentication (stub routes exist)
+- [x] Required authorization hook and CSRF protection
+- [ ] Built-in OAuth2 login
 - [ ] Search and filtering
 - [ ] Pagination
 - [ ] Foreign key dropdowns

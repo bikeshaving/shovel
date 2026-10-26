@@ -1,6 +1,6 @@
 # Shovel Admin
 
-Admin dashboard with Google OAuth authentication and Redis caching.
+Admin dashboard built with `@b9g/admin`, protected by HTTP Basic auth.
 
 **Live at:** https://admin.shovel.run
 
@@ -20,7 +20,11 @@ Admin dashboard with Google OAuth authentication and Redis caching.
 
 ## Environment Variables
 
+`ADMIN_PASSWORD` is required; without it every admin request is denied.
+
 ```bash
+ADMIN_USERNAME=admin          # optional, defaults to "admin"
+ADMIN_PASSWORD=change-me
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_REDIRECT_URI=http://localhost:7777/auth/callback
@@ -46,6 +50,7 @@ bun run develop
 
 ```bash
 # Set secrets on Fly.io
+fly secrets set ADMIN_PASSWORD=...
 fly secrets set GOOGLE_CLIENT_ID=...
 fly secrets set GOOGLE_CLIENT_SECRET=...
 fly secrets set GOOGLE_REDIRECT_URI=https://admin.shovel.run/auth/callback

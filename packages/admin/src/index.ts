@@ -2,8 +2,8 @@
  * @b9g/admin - Django-like admin interface for Shovel applications
  *
  * Provides automatic CRUD interfaces for @b9g/zen tables with:
- * - OAuth2 authentication (Google, GitHub, Microsoft)
- * - Session management via Cache API
+ * - A required authorization check on every route
+ * - Same-origin CSRF protection for form submissions
  * - Crank.js + USWDS for the UI
  *
  * @example
@@ -15,9 +15,10 @@
  * const admin = new AdminRouter({
  *   database: 'main',
  *   schema,
- *   auth: {
- *     providers: ['google', 'github'],
- *     allowedDomains: ['mycompany.com'],
+ *   // Called for every admin request; return true to allow
+ *   authorize: async (request) => {
+ *     const session = await getSession(request);
+ *     return session?.user.isAdmin ?? false;
  *   },
  * });
  *
@@ -34,8 +35,7 @@ export {
 	AdminRouter,
 	createAdmin,
 	type AdminConfig,
-	type AuthConfig,
-	type AuthProvider,
+	type AdminAuthorize,
 	type ModelConfig,
 	type BrandingConfig,
 } from "./admin.jsx";
