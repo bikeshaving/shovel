@@ -570,9 +570,23 @@ function normalizePathname(pathname: string): string {
 }
 
 /**
+ * Create a prototype-less record for params and groups. Keys can come from
+ * the URL (e.g. "__proto__" or "constructor" in a query string), so they must
+ * be plain own properties that can't shadow or pollute Object.prototype.
+ */
+function createRecord(): Record<string, string> {
+	return Object.create(null);
+}
+
+/**
  * Result of pattern matching
  */
 export interface MatchPatternResult {
+	/**
+	 * Unified pathname and search params (null-prototype object). Pathname
+	 * params take precedence: a search param never overrides a name declared
+	 * in the pathname pattern.
+	 */
 	params: Record<string, string>;
 	pathname: {input: string; groups: Record<string, string>};
 	search: {input: string; groups: Record<string, string>};
@@ -1379,6 +1393,695 @@ function parseStringPattern(pattern: string): {
 	};
 }
 
+// ============================================================================
+// Linear-time matching
+// ============================================================================
+//
+// Patterns compile to JavaScript regexes, and the backtracking engines in V8
+// and JavaScriptCore take polynomial time when several unbounded quantifiers
+// compete for the same characters: "/*/*/*/end" compiles to
+// ^\/(.*)\/(.*)\/(.*)\/end$ and "/:a-:b-:c" to ^\/([^/]+?)-([^/]+?)-([^/]+?)$,
+// and a long non-matching path makes them try every way of splitting it.
+//
+// Regexes at risk (see needsLinearMatching) are created as LinearRegExp,
+// which runs the same regex on a Pike VM (a breadth-first NFA simulation)
+// instead. It takes O(input × pattern) time and yields exactly the captures
+// backtracking would: threads are kept in priority order (greedy/lazy, left
+// alternative first), and JavaScript's quantifier rules are replicated
+// (captures inside a quantified atom reset on each iteration, and an
+// iteration that matches the empty string fails once the minimum count is
+// reached). Regexes using syntax outside the supported subset (lookarounds,
+// backreferences, {n,m}, the u/v flags, ...) keep using the native engine.
+
+/** Character set: flat [lo, hi, lo, hi, ...] code unit ranges */
+interface LinearCharSet {
+	ranges: number[];
+	negate: boolean;
+	/** Canonicalized members, for case-insensitive regexes */
+	folded?: Set<number>;
+}
+
+type LinearNode =
+	| {type: "char"; set: LinearCharSet}
+	| {type: "seq"; items: LinearNode[]}
+	| {type: "alt"; alts: LinearNode[]}
+	| {type: "group"; index: number; body: LinearNode}
+	| {
+			type: "repeat";
+			body: LinearNode;
+			min: number;
+			max: number;
+			greedy: boolean;
+			/** Capture groups inside body, as [first, last] group indices */
+			groups: [number, number];
+	  }
+	| {type: "start"}
+	| {type: "end"};
+
+const OP_CHAR = 0;
+const OP_SPLIT = 1; // Try x, then y
+const OP_JMP = 2;
+const OP_SAVE = 3; // slots[a] = position
+const OP_RESET = 4; // slots[a..b] = -1
+const OP_CHECK = 5; // Fail if slots[a] === position (empty iteration)
+const OP_START = 6;
+const OP_END = 7;
+const OP_MATCH = 8;
+
+interface LinearInst {
+	op: number;
+	a: number;
+	b: number;
+	set?: LinearCharSet;
+}
+
+interface LinearProgram {
+	insts: LinearInst[];
+	groupCount: number;
+	slotCount: number;
+	ignoreCase: boolean;
+}
+
+/** Thrown while parsing a regex that the linear engine doesn't support */
+const UNSUPPORTED = Symbol("unsupported");
+
+const DOT_RANGES = [0x0a, 0x0a, 0x0d, 0x0d, 0x2028, 0x2029];
+const DIGIT_RANGES = [0x30, 0x39];
+const WORD_RANGES = [0x30, 0x39, 0x41, 0x5a, 0x5f, 0x5f, 0x61, 0x7a];
+
+/**
+ * Canonicalize a code unit for case-insensitive matching without the u flag
+ * (ECMAScript Canonicalize with rer.[[IgnoreCase]] and no Unicode)
+ */
+function canonicalize(code: number): number {
+	const upper = String.fromCharCode(code).toUpperCase();
+	if (upper.length !== 1) return code;
+	const upperCode = upper.charCodeAt(0);
+	if (code >= 128 && upperCode < 128) return code;
+	return upperCode;
+}
+
+function linearCharSetHas(
+	set: LinearCharSet,
+	code: number,
+	canonical: number,
+): boolean {
+	let found = false;
+	if (set.folded) {
+		found = set.folded.has(canonical);
+	} else {
+		const ranges = set.ranges;
+		for (let i = 0; i < ranges.length; i += 2) {
+			if (code >= ranges[i] && code <= ranges[i + 1]) {
+				found = true;
+				break;
+			}
+		}
+	}
+	return found !== set.negate;
+}
+
+/**
+ * Parse a regex source into a LinearNode tree
+ * Throws UNSUPPORTED for syntax outside the supported subset
+ */
+class LinearParser {
+	source: string;
+	pos: number;
+	groupCount: number;
+
+	constructor(source: string) {
+		this.source = source;
+		this.pos = 0;
+		this.groupCount = 0;
+	}
+
+	parse(): LinearNode {
+		const node = this.parseAlternation();
+		if (this.pos !== this.source.length) throw UNSUPPORTED;
+		return node;
+	}
+
+	parseAlternation(): LinearNode {
+		const alts = [this.parseSequence()];
+		while (this.source[this.pos] === "|") {
+			this.pos++;
+			alts.push(this.parseSequence());
+		}
+		return alts.length === 1 ? alts[0] : {type: "alt", alts};
+	}
+
+	parseSequence(): LinearNode {
+		const items: LinearNode[] = [];
+		while (this.pos < this.source.length) {
+			const char = this.source[this.pos];
+			if (char === "|" || char === ")") break;
+
+			const firstGroup = this.groupCount + 1;
+			const atom = this.parseAtom();
+			const quantifier = this.source[this.pos];
+			if (quantifier !== "*" && quantifier !== "+" && quantifier !== "?") {
+				if (quantifier === "{") throw UNSUPPORTED;
+				items.push(atom);
+				continue;
+			}
+			if (atom.type === "start" || atom.type === "end") throw UNSUPPORTED;
+			this.pos++;
+			const greedy = this.source[this.pos] !== "?";
+			if (!greedy) this.pos++;
+			const max = quantifier === "?" ? 1 : Infinity;
+			items.push({
+				type: "repeat",
+				body: atom,
+				min: quantifier === "+" ? 1 : 0,
+				max,
+				greedy,
+				groups: [firstGroup, this.groupCount],
+			});
+		}
+		return items.length === 1 ? items[0] : {type: "seq", items};
+	}
+
+	parseAtom(): LinearNode {
+		const source = this.source;
+		const char = source[this.pos];
+		switch (char) {
+			case "^":
+				this.pos++;
+				return {type: "start"};
+			case "$":
+				this.pos++;
+				return {type: "end"};
+			case ".":
+				this.pos++;
+				return {type: "char", set: {ranges: DOT_RANGES, negate: true}};
+			case "(": {
+				let index = -1;
+				if (source.startsWith("(?:", this.pos)) {
+					this.pos += 3;
+				} else if (source[this.pos + 1] === "?") {
+					throw UNSUPPORTED; // Lookarounds and named groups
+				} else {
+					this.pos++;
+					index = ++this.groupCount;
+				}
+				const body = this.parseAlternation();
+				if (source[this.pos] !== ")") throw UNSUPPORTED;
+				this.pos++;
+				return {type: "group", index, body};
+			}
+			case "[":
+				return {type: "char", set: this.parseClass()};
+			case "\\": {
+				const set = this.parseEscape();
+				if (typeof set === "number") {
+					return {type: "char", set: {ranges: [set, set], negate: false}};
+				}
+				return {type: "char", set};
+			}
+			case "*":
+			case "+":
+			case "?":
+			case "{":
+			case "}":
+				throw UNSUPPORTED;
+			default: {
+				const code = source.charCodeAt(this.pos++);
+				return {type: "char", set: {ranges: [code, code], negate: false}};
+			}
+		}
+	}
+
+	/**
+	 * Parse an escape at pos (which points at the backslash)
+	 * Returns a code unit for literal escapes, or a set for class escapes
+	 */
+	parseEscape(): number | LinearCharSet {
+		const next = this.source[this.pos + 1];
+		if (next === undefined) throw UNSUPPORTED;
+		this.pos += 2;
+		switch (next) {
+			case "d":
+				return {ranges: DIGIT_RANGES, negate: false};
+			case "D":
+				return {ranges: DIGIT_RANGES, negate: true};
+			case "w":
+				return {ranges: WORD_RANGES, negate: false};
+			case "W":
+				return {ranges: WORD_RANGES, negate: true};
+		}
+		// Identity escapes of syntax characters; anything alphanumeric (\b, \1,
+		// \u, \s, ...) has a special meaning that isn't supported
+		if (/[A-Za-z0-9]/.test(next)) throw UNSUPPORTED;
+		return next.charCodeAt(0);
+	}
+
+	parseClass(): LinearCharSet {
+		const source = this.source;
+		this.pos++; // Skip [
+		let negate = false;
+		if (source[this.pos] === "^") {
+			negate = true;
+			this.pos++;
+		}
+		const ranges: number[] = [];
+		while (source[this.pos] !== "]") {
+			if (this.pos >= source.length) throw UNSUPPORTED;
+			const lo = this.parseClassAtom();
+			if (
+				source[this.pos] === "-" &&
+				source[this.pos + 1] !== "]" &&
+				this.pos + 1 < source.length
+			) {
+				this.pos++;
+				const hi = this.parseClassAtom();
+				if (typeof lo !== "number" || typeof hi !== "number" || lo > hi) {
+					throw UNSUPPORTED;
+				}
+				ranges.push(lo, hi);
+			} else if (typeof lo === "number") {
+				ranges.push(lo, lo);
+			} else {
+				// Class escapes inside a class; negated ones can't be flattened
+				if (lo.negate) throw UNSUPPORTED;
+				ranges.push(...lo.ranges);
+			}
+		}
+		this.pos++; // Skip ]
+		return {ranges, negate};
+	}
+
+	parseClassAtom(): number | LinearCharSet {
+		if (this.source[this.pos] === "\\") return this.parseEscape();
+		return this.source.charCodeAt(this.pos++);
+	}
+}
+
+/**
+ * Compile a LinearNode tree into Pike VM instructions
+ */
+function emitLinear(
+	node: LinearNode,
+	insts: LinearInst[],
+	nextSlot: {value: number},
+): void {
+	const emit = (op: number, a = 0, b = 0, set?: LinearCharSet) => {
+		insts.push({op, a, b, set});
+		return insts.length - 1;
+	};
+
+	switch (node.type) {
+		case "char":
+			emit(OP_CHAR, 0, 0, node.set);
+			break;
+		case "start":
+			emit(OP_START);
+			break;
+		case "end":
+			emit(OP_END);
+			break;
+		case "seq":
+			for (const item of node.items) emitLinear(item, insts, nextSlot);
+			break;
+		case "alt": {
+			const jumps: number[] = [];
+			for (let i = 0; i < node.alts.length; i++) {
+				if (i < node.alts.length - 1) {
+					const split = emit(OP_SPLIT);
+					insts[split].a = insts.length;
+					emitLinear(node.alts[i], insts, nextSlot);
+					jumps.push(emit(OP_JMP));
+					insts[split].b = insts.length;
+				} else {
+					emitLinear(node.alts[i], insts, nextSlot);
+				}
+			}
+			for (const jump of jumps) insts[jump].a = insts.length;
+			break;
+		}
+		case "group":
+			if (node.index >= 0) emit(OP_SAVE, node.index * 2);
+			emitLinear(node.body, insts, nextSlot);
+			if (node.index >= 0) emit(OP_SAVE, node.index * 2 + 1);
+			break;
+		case "repeat": {
+			const [firstGroup, lastGroup] = node.groups;
+			// Captures inside the atom are cleared at the start of each iteration
+			const emitBody = () => {
+				if (firstGroup <= lastGroup) {
+					emit(OP_RESET, firstGroup * 2, lastGroup * 2 + 1);
+				}
+				emitLinear(node.body, insts, nextSlot);
+			};
+			// x+ is x followed by x*
+			if (node.min === 1) emitBody();
+
+			// Optional iteration: record the start position so an iteration that
+			// consumes nothing can be rejected, as JavaScript does
+			const slot = nextSlot.value++;
+			const loop = emit(OP_SPLIT);
+			const bodyStart = insts.length;
+			emit(OP_SAVE, slot);
+			emitBody();
+			emit(OP_CHECK, slot);
+			if (node.max === Infinity) emit(OP_JMP, loop);
+			const exit = insts.length;
+			insts[loop].a = node.greedy ? bodyStart : exit;
+			insts[loop].b = node.greedy ? exit : bodyStart;
+			break;
+		}
+	}
+}
+
+/**
+ * Members of a set (canonicalized when ignoring case), or null if too large
+ */
+function linearCharSetMembers(
+	set: LinearCharSet,
+	ignoreCase: boolean,
+): Set<number> | null {
+	const members = new Set<number>();
+	const ranges = set.ranges;
+	for (let i = 0; i < ranges.length; i += 2) {
+		if (ranges[i + 1] - ranges[i] > 1024) return null;
+		for (let code = ranges[i]; code <= ranges[i + 1]; code++) {
+			members.add(ignoreCase ? canonicalize(code) : code);
+		}
+	}
+	return members;
+}
+
+/**
+ * Conservatively check whether two character sets can match the same character
+ */
+function linearCharSetsOverlap(
+	a: LinearCharSet,
+	b: LinearCharSet,
+	ignoreCase: boolean,
+): boolean {
+	if (a.negate && b.negate) return true;
+	const membersA = linearCharSetMembers(a, ignoreCase);
+	const membersB = linearCharSetMembers(b, ignoreCase);
+	if (!membersA || !membersB) return true;
+	if (a.negate) return [...membersB].some((code) => !membersA.has(code));
+	if (b.negate) return [...membersA].some((code) => !membersB.has(code));
+	return [...membersA].some((code) => membersB.has(code));
+}
+
+/**
+ * First characters a node can match, and whether it can match empty
+ */
+function linearFirst(node: LinearNode): {
+	sets: LinearCharSet[];
+	nullable: boolean;
+} {
+	switch (node.type) {
+		case "char":
+			return {sets: [node.set], nullable: false};
+		case "start":
+		case "end":
+			return {sets: [], nullable: true};
+		case "group":
+			return linearFirst(node.body);
+		case "repeat": {
+			const first = linearFirst(node.body);
+			return {sets: first.sets, nullable: first.nullable || node.min === 0};
+		}
+		case "alt": {
+			const sets: LinearCharSet[] = [];
+			let nullable = false;
+			for (const alt of node.alts) {
+				const first = linearFirst(alt);
+				sets.push(...first.sets);
+				nullable ||= first.nullable;
+			}
+			return {sets, nullable};
+		}
+		case "seq": {
+			const sets: LinearCharSet[] = [];
+			for (const item of node.items) {
+				const first = linearFirst(item);
+				sets.push(...first.sets);
+				if (!first.nullable) return {sets, nullable: false};
+			}
+			return {sets, nullable: true};
+		}
+	}
+}
+
+/**
+ * Decide whether a regex can backtrack super-linearly, by looking for choice
+ * points: a quantifier is ambiguous when its atom can start with a character
+ * that could also follow it, and an alternation when two alternatives can
+ * start with the same character. Backtracking stays linear when no unbounded
+ * quantifier follows an ambiguous one (e.g. "/*" or "/files/:path+/edit"),
+ * and no unbounded quantifier contains a choice point. Both engines give the
+ * same results, so a false positive only costs speed.
+ */
+function needsLinearMatching(root: LinearNode, ignoreCase: boolean): boolean {
+	let needed = false;
+	let choicePoints = 0;
+	let afterAmbiguous = false;
+
+	const overlaps = (a: LinearCharSet[], b: LinearCharSet[]) =>
+		a.some((x) => b.some((y) => linearCharSetsOverlap(x, y, ignoreCase)));
+
+	// follow: the sets of characters that can come right after node
+	const visit = (node: LinearNode, follow: LinearCharSet[]): void => {
+		switch (node.type) {
+			case "group":
+				visit(node.body, follow);
+				break;
+			case "seq": {
+				// Compute each item's follow set right to left, then visit in order
+				const follows: LinearCharSet[][] = [];
+				let next = follow;
+				for (let i = node.items.length - 1; i >= 0; i--) {
+					follows[i] = next;
+					const first = linearFirst(node.items[i]);
+					next = first.nullable ? [...first.sets, ...next] : first.sets;
+				}
+				node.items.forEach((item, i) => visit(item, follows[i]));
+				break;
+			}
+			case "alt": {
+				// An alternative that can match empty also starts with what follows
+				const firsts = node.alts.map((alt) => linearFirst(alt));
+				const starts = firsts.map((first) =>
+					first.nullable ? [...first.sets, ...follow] : first.sets,
+				);
+				for (let i = 0; i < firsts.length; i++) {
+					for (let j = i + 1; j < firsts.length; j++) {
+						if (
+							(firsts[i].nullable && firsts[j].nullable) ||
+							overlaps(starts[i], starts[j])
+						) {
+							choicePoints++;
+						}
+					}
+				}
+				for (const alt of node.alts) visit(alt, follow);
+				break;
+			}
+			case "repeat": {
+				const unbounded = node.max === Infinity;
+				if (unbounded && afterAmbiguous) needed = true;
+				const first = linearFirst(node.body);
+				const before = choicePoints;
+				visit(node.body, unbounded ? [...first.sets, ...follow] : follow);
+				if (unbounded && choicePoints > before) needed = true;
+				if (overlaps(first.sets, follow)) {
+					choicePoints++;
+					if (unbounded) afterAmbiguous = true;
+				}
+				break;
+			}
+		}
+	};
+
+	visit(root, []);
+	return needed;
+}
+
+/**
+ * Build a Pike VM program for a regex, or return null if the regex should
+ * keep using the native engine (unsupported syntax, or no risk of
+ * super-linear backtracking)
+ */
+function compileLinearProgram(
+	source: string,
+	flags: string,
+): LinearProgram | null {
+	if (flags !== "" && flags !== "i") return null;
+	const ignoreCase = flags === "i";
+
+	let root: LinearNode;
+	const parser = new LinearParser(source);
+	try {
+		root = parser.parse();
+	} catch (err) {
+		if (err !== UNSUPPORTED) throw err;
+		return null;
+	}
+	// Only anchored regexes are supported: matching is attempted at index 0
+	if (root.type !== "seq" || root.items[0].type !== "start") return null;
+	if (!needsLinearMatching(root, ignoreCase)) return null;
+
+	const groupCount = parser.groupCount;
+	const insts: LinearInst[] = [];
+	const nextSlot = {value: (groupCount + 1) * 2};
+	insts.push({op: OP_SAVE, a: 0, b: 0});
+	emitLinear(root, insts, nextSlot);
+	insts.push({op: OP_SAVE, a: 1, b: 0});
+	insts.push({op: OP_MATCH, a: 0, b: 0});
+
+	if (ignoreCase) {
+		// Case-insensitive sets compare canonicalized code units, so enumerate
+		// each set's members; bail out on sets too large to enumerate
+		for (const inst of insts) {
+			if (!inst.set) continue;
+			const folded = linearCharSetMembers(inst.set, true);
+			if (!folded) return null;
+			inst.set = {...inst.set, folded};
+		}
+	}
+
+	return {insts, groupCount, slotCount: nextSlot.value, ignoreCase};
+}
+
+/**
+ * Run a Pike VM program against an input
+ * Returns capture slots (start/end pairs, -1 when unset) or null
+ */
+function runLinearProgram(
+	program: LinearProgram,
+	input: string,
+): number[] | null {
+	const {insts, slotCount, ignoreCase} = program;
+	const length = input.length;
+	// Instruction index -> generation it was last queued in, for dedup
+	const queued = new Int32Array(insts.length).fill(-1);
+	let generation = 0;
+	let current: {pc: number; slots: number[]}[] = [];
+	let next: {pc: number; slots: number[]}[] = [];
+	let matched: number[] | null = null;
+
+	// Follow non-consuming instructions, queueing CHAR/MATCH threads in
+	// priority order. A thread reaching an instruction already queued this
+	// generation is dropped: the earlier thread has priority and the same
+	// future, since everything after a CHAR consumes input first.
+	const add = (
+		list: {pc: number; slots: number[]}[],
+		pc: number,
+		slots: number[],
+		pos: number,
+	): void => {
+		const inst = insts[pc];
+		switch (inst.op) {
+			case OP_JMP:
+				add(list, inst.a, slots, pos);
+				return;
+			case OP_SPLIT:
+				add(list, inst.a, slots, pos);
+				add(list, inst.b, slots, pos);
+				return;
+			case OP_SAVE: {
+				const copy = slots.slice();
+				copy[inst.a] = pos;
+				add(list, pc + 1, copy, pos);
+				return;
+			}
+			case OP_RESET: {
+				const copy = slots.slice();
+				copy.fill(-1, inst.a, inst.b + 1);
+				add(list, pc + 1, copy, pos);
+				return;
+			}
+			case OP_CHECK:
+				if (slots[inst.a] !== pos) add(list, pc + 1, slots, pos);
+				return;
+			case OP_START:
+				if (pos === 0) add(list, pc + 1, slots, pos);
+				return;
+			case OP_END:
+				if (pos === length) add(list, pc + 1, slots, pos);
+				return;
+			default:
+				if (queued[pc] === generation) return;
+				queued[pc] = generation;
+				list.push({pc, slots});
+		}
+	};
+
+	add(current, 0, new Array(slotCount).fill(-1), 0);
+	for (let pos = 0; current.length > 0; pos++) {
+		generation++;
+		const code = pos < length ? input.charCodeAt(pos) : -1;
+		const canonical = ignoreCase && code >= 0 ? canonicalize(code) : code;
+		for (const thread of current) {
+			const inst = insts[thread.pc];
+			if (inst.op === OP_MATCH) {
+				// Lower-priority threads can't override this match
+				matched = thread.slots;
+				break;
+			}
+			if (code >= 0 && linearCharSetHas(inst.set!, code, canonical)) {
+				add(next, thread.pc + 1, thread.slots, pos + 1);
+			}
+		}
+		[current, next] = [next, current];
+		next.length = 0;
+	}
+
+	return matched;
+}
+
+/**
+ * A RegExp that matches with the linear-time engine when its source and flags
+ * are supported, and with the native engine otherwise. test(), match() and
+ * friends go through exec(), so they use the same engine.
+ */
+class LinearRegExp extends RegExp {
+	#program: LinearProgram | null;
+
+	constructor(pattern: string | RegExp, flags?: string) {
+		super(pattern, flags);
+		this.#program = compileLinearProgram(this.source, this.flags);
+	}
+
+	exec(string: string): RegExpExecArray | null {
+		if (!this.#program) return super.exec(string);
+
+		const input = String(string);
+		const slots = runLinearProgram(this.#program, input);
+		if (!slots) return null;
+
+		const values: (string | undefined)[] = [];
+		for (let group = 0; group <= this.#program.groupCount; group++) {
+			const start = slots[group * 2];
+			const end = slots[group * 2 + 1];
+			values.push(start >= 0 && end >= 0 ? input.slice(start, end) : undefined);
+		}
+		return Object.assign(values, {
+			index: 0,
+			input,
+			groups: undefined,
+		}) as RegExpExecArray;
+	}
+}
+
+/**
+ * Create the RegExp for a compiled pattern, using the linear-time engine for
+ * regexes prone to polynomial backtracking
+ */
+function createPatternRegExp(source: string, flags: string): RegExp {
+	// Construct natively first so invalid regexes throw the usual SyntaxError
+	const regex = new RegExp(source, flags || undefined);
+	return compileLinearProgram(source, flags)
+		? new LinearRegExp(source, flags)
+		: regex;
+}
+
 /**
  * Compile a URL component pattern (protocol, hostname, port, hash) to RegExp
  * These components don't use / as delimiter
@@ -1570,7 +2273,7 @@ function compileComponentPattern(
 	let flags = "";
 	if (ignoreCase) flags += "i";
 	if (needsVFlag) flags += "v";
-	const regex = new RegExp(`^${pattern}$`, flags || undefined);
+	const regex = createPatternRegExp(`^${pattern}$`, flags);
 	return {regex, paramNames, hasWildcard};
 }
 
@@ -1909,7 +2612,7 @@ export function compilePathname(
 	let flags = "";
 	if (ignoreCase) flags += "i";
 	if (needsVFlag) flags += "v";
-	const regex = new RegExp(`^${pattern}$`, flags || undefined);
+	const regex = createPatternRegExp(`^${pattern}$`, flags);
 
 	return {regex, paramNames, hasWildcard};
 }
@@ -1966,7 +2669,7 @@ function extractSearchParams(
 	searchPattern: string,
 	actualParams: URLSearchParams,
 ): Record<string, string> {
-	const params: Record<string, string> = {};
+	const params = createRecord();
 	const patternParams = parseSearchPattern(searchPattern);
 
 	for (const [key, paramDef] of patternParams) {
@@ -1978,9 +2681,10 @@ function extractSearchParams(
 		}
 	}
 
-	// Also capture extra params
+	// Also capture extra params (own-key check: params has no prototype, and
+	// an empty named value must not be replaced by an extra param)
 	for (const [key, value] of actualParams) {
-		if (!params[key]) {
+		if (!(key in params)) {
 			params[key] = value;
 		}
 	}
@@ -2553,9 +3257,9 @@ export class URLPattern {
 			url = input;
 		}
 
-		const params: Record<string, string> = {};
-		const pathnameGroups: Record<string, string> = {};
-		const searchGroups: Record<string, string> = {};
+		const params = createRecord();
+		const pathnameGroups = createRecord();
+		const searchGroups = createRecord();
 
 		// Extract pathname params
 		const match = this.#compiled.pathname.regex.exec(url.pathname);
@@ -2579,8 +3283,11 @@ export class URLPattern {
 					const name = this.#compiled.search.paramNames[i];
 					const value = searchMatch[i + 1];
 					if (value !== undefined) {
-						params[name] = value;
 						searchGroups[name] = value;
+						// Pathname params take precedence in the unified params
+						if (!this.#compiled.pathname.paramNames.includes(name)) {
+							params[name] = value;
+						}
 					}
 				}
 			}
@@ -2614,9 +3321,9 @@ export class URLPattern {
 		let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
 		pathname = normalizePathname(pathname);
 
-		const params: Record<string, string> = {};
-		const pathnameGroups: Record<string, string> = {};
-		const searchGroups: Record<string, string> = {};
+		const params = createRecord();
+		const pathnameGroups = createRecord();
+		const searchGroups = createRecord();
 
 		const match = this.#compiled.pathname.regex.exec(pathname);
 		if (match) {
@@ -2639,8 +3346,11 @@ export class URLPattern {
 					const name = this.#compiled.search.paramNames[i];
 					const value = searchMatch[i + 1];
 					if (value !== undefined) {
-						params[name] = value;
 						searchGroups[name] = value;
+						// Pathname params take precedence in the unified params
+						if (!this.#compiled.pathname.paramNames.includes(name)) {
+							params[name] = value;
+						}
 					}
 				}
 			}
@@ -2885,6 +3595,22 @@ export class MatchPattern {
 		return true;
 	}
 
+	/**
+	 * Copy search params into the unified params, skipping any name declared in
+	 * the pathname pattern so that e.g. "?id=2" can't spoof "/users/:id"
+	 */
+	#mergeSearchParams(
+		params: Record<string, string>,
+		searchGroups: Record<string, string>,
+	): void {
+		const pathnameNames = this.#compiled.pathname.paramNames;
+		for (const key in searchGroups) {
+			if (!pathnameNames.includes(key)) {
+				params[key] = searchGroups[key];
+			}
+		}
+	}
+
 	exec(
 		input: string | URL | URLPatternInit,
 		baseURL?: string,
@@ -2904,9 +3630,9 @@ export class MatchPattern {
 			url = input;
 		}
 
-		const params: Record<string, string> = {};
-		const pathnameGroups: Record<string, string> = {};
-		const searchGroups: Record<string, string> = {};
+		const params = createRecord();
+		const pathnameGroups = createRecord();
+		const searchGroups = createRecord();
 
 		// Extract pathname params
 		const match = this.#compiled.pathname.regex.exec(url.pathname);
@@ -2927,14 +3653,13 @@ export class MatchPattern {
 				this.#searchPattern,
 				url.searchParams,
 			);
-			Object.assign(params, extracted);
 			Object.assign(searchGroups, extracted);
 		} else {
 			for (const [key, value] of url.searchParams) {
-				params[key] = value;
 				searchGroups[key] = value;
 			}
 		}
+		this.#mergeSearchParams(params, searchGroups);
 
 		return {
 			params,
@@ -2964,9 +3689,9 @@ export class MatchPattern {
 		let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
 		pathname = normalizePathname(pathname);
 
-		const params: Record<string, string> = {};
-		const pathnameGroups: Record<string, string> = {};
-		const searchGroups: Record<string, string> = {};
+		const params = createRecord();
+		const pathnameGroups = createRecord();
+		const searchGroups = createRecord();
 
 		const match = this.#compiled.pathname.regex.exec(pathname);
 		if (match) {
@@ -2986,8 +3711,8 @@ export class MatchPattern {
 				this.#searchPattern,
 				new URLSearchParams(search),
 			);
-			Object.assign(params, extracted);
 			Object.assign(searchGroups, extracted);
+			this.#mergeSearchParams(params, searchGroups);
 		}
 
 		const protocol =
