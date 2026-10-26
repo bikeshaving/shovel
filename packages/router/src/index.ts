@@ -197,18 +197,26 @@ interface InternalMatchResult {
  */
 class RadixNode {
 	children: Map<string, RadixNode>; // char -> RadixNode
-	routes: Map<string, RouteEntry>; // method -> RouteEntry
-	paramName: string | null; // param name if this is a :param segment
+	routes: Map<string, RadixLeaf>; // method -> RadixLeaf
 	paramChild: RadixNode | null; // child node for :param
 	wildcardChild: RadixNode | null; // child node for * wildcard
 
 	constructor() {
 		this.children = new Map();
 		this.routes = new Map();
-		this.paramName = null;
 		this.paramChild = null;
 		this.wildcardChild = null;
 	}
+}
+
+/**
+ * A route stored in the radix tree. Param names belong to the route, not to
+ * the node: sibling routes such as /orgs/:org/settings and /orgs/:user/profile
+ * share one param node but name its value differently.
+ */
+interface RadixLeaf {
+	route: RouteEntry;
+	paramNames: string[];
 }
 
 /**
@@ -253,19 +261,18 @@ class RadixTreeExecutor {
 	#addToTree(pathname: string, route: RouteEntry): void {
 		let node = this.#root;
 		let i = 0;
+		const paramNames: string[] = [];
 
 		while (i < pathname.length) {
 			const char = pathname[i];
 
 			if (char === ":") {
 				// Named parameter - find the param name
-				const match = pathname.slice(i).match(/^:(\w+)/);
+				const match = pathname.slice(i).match(/^:(\p{ID_Continue}+)/u);
 				if (match) {
-					const paramName = match[1];
-
+					paramNames.push(match[1]);
 					if (!node.paramChild) {
 						node.paramChild = new RadixNode();
-						node.paramChild.paramName = paramName;
 					}
 					node = node.paramChild;
 					i += match[0].length;
@@ -290,7 +297,7 @@ class RadixTreeExecutor {
 			i++;
 		}
 
-		node.routes.set(route.method, route);
+		node.routes.set(route.method, {route, paramNames});
 	}
 
 	/**
@@ -298,14 +305,15 @@ class RadixTreeExecutor {
 	 */
 	#matchTreeByPath(
 		pathname: string,
-	): {node: RadixNode; params: Record<string, string>} | null {
-		const params: Record<string, string> = {};
+	): {node: RadixNode; values: string[]; wildcard?: string} | null {
+		// Param values in path order; each route names them on the way out
+		const values: string[] = [];
 		let node = this.#root;
 		let i = 0;
 
 		// Handle empty pathname
 		if (!pathname) {
-			return node.routes.size > 0 ? {node, params} : null;
+			return node.routes.size > 0 ? {node, values} : null;
 		}
 
 		while (i < pathname.length) {
@@ -329,7 +337,7 @@ class RadixTreeExecutor {
 				const value = pathname.slice(i, j);
 				if (value) {
 					// Non-empty segment
-					params[node.paramChild.paramName!] = value;
+					values.push(value);
 					node = node.paramChild;
 					i = j;
 					continue;
@@ -339,10 +347,7 @@ class RadixTreeExecutor {
 			// Try wildcard match
 			if (node.wildcardChild) {
 				// Wildcard captures rest of path (without leading /)
-				const rest = pathname.slice(i);
-				params["0"] = rest; // Use "0" as wildcard param name
-				node = node.wildcardChild;
-				break;
+				return {node: node.wildcardChild, values, wildcard: pathname.slice(i)};
 			}
 
 			// No match
@@ -351,16 +356,33 @@ class RadixTreeExecutor {
 
 		// Check if this node has any routes or a wildcard child with routes
 		if (node.routes.size > 0) {
-			return {node, params};
+			return {node, values};
 		}
 
 		// Check wildcard at terminal node (for patterns like /files/*)
 		if (node.wildcardChild && node.wildcardChild.routes.size > 0) {
-			params["0"] = ""; // Empty wildcard match
-			return {node: node.wildcardChild, params};
+			return {node: node.wildcardChild, values, wildcard: ""};
 		}
 
 		return null;
+	}
+
+	/**
+	 * Name a tree match's param values for one of the routes at its node
+	 */
+	#params(
+		leaf: RadixLeaf,
+		values: string[],
+		wildcard?: string,
+	): Record<string, string> {
+		const params: Record<string, string> = {};
+		for (let i = 0; i < leaf.paramNames.length; i++) {
+			params[leaf.paramNames[i]] = values[i];
+		}
+		if (wildcard !== undefined) {
+			params["0"] = wildcard; // Use "0" as wildcard param name
+		}
+		return params;
 	}
 
 	/**
@@ -373,14 +395,14 @@ class RadixTreeExecutor {
 		const result = this.#matchTreeByPath(pathname);
 		if (!result) return null;
 
-		const {node, params} = result;
-		let entry = node.routes.get(method);
+		const {node, values, wildcard} = result;
+		let leaf = node.routes.get(method);
 		// HEAD requests should fall back to GET handler (RFC 7231)
-		if (!entry && method === "HEAD") {
-			entry = node.routes.get("GET");
+		if (!leaf && method === "HEAD") {
+			leaf = node.routes.get("GET");
 		}
-		if (entry) {
-			return {entry, params};
+		if (leaf) {
+			return {entry: leaf.route, params: this.#params(leaf, values, wildcard)};
 		}
 
 		return null;
@@ -397,15 +419,19 @@ class RadixTreeExecutor {
 		// Try radix tree first (fast path for simple routes)
 		const treeResult = this.#matchTreeByPath(pathname);
 		if (treeResult) {
-			const {node, params} = treeResult;
-			const methods = Array.from(node.routes.keys());
-			// Get name from first route entry (all entries for same pattern should have same name)
-			const firstEntry = node.routes.values().next().value;
+			const {node, values, wildcard} = treeResult;
+			// Report the first route's pattern, and only the methods registered
+			// for that same pattern: /a/:x and /a/:y share a node but not params
+			const first = node.routes.values().next().value!;
+			const pattern = first.route.pattern.pathname;
+			const methods = Array.from(node.routes.values())
+				.filter((leaf) => leaf.route.pattern.pathname === pattern)
+				.map((leaf) => leaf.route.method);
 			return {
-				params,
+				params: this.#params(first, values, wildcard),
 				methods,
-				name: firstEntry?.name,
-				pattern: firstEntry?.pattern.pathname ?? "",
+				name: first.route.name,
+				pattern,
 			};
 		}
 
