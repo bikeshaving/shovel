@@ -90,6 +90,15 @@ Add global middleware.
 router.use(loggingMiddleware);
 ```
 
+##### `use(pathPrefix, middleware)`
+
+Add middleware that only runs for paths under `pathPrefix`. Prefixes match on segment boundaries, so `/admin` covers `/admin` and `/admin/users` but not `/administrator`. A trailing slash is ignored (`/admin/` is the same as `/admin`), and `/` is the same as global middleware. Prefixes use the same pattern syntax as routes:
+
+```javascript
+router.use('/admin', authMiddleware);
+router.use('/users/:id', loadUserMiddleware); // /users/42, /users/42/posts
+```
+
 ##### `handle(request): Promise<Response>`
 
 Handle an incoming request and return a response.
@@ -110,6 +119,8 @@ const mainRouter = new Router();
 mainRouter.mount('/api/v1', apiRouter);
 // Routes become: /api/v1/users
 ```
+
+The mount path may use pattern syntax, such as `/:tenant`; the subrouter's middleware then runs for every path the mount path matches. `mount()` copies the subrouter's routes, middleware and redirects, so a mounted router throws if you add more to it afterwards. Register everything before mounting.
 
 ##### `match(url): RouteMatch | null`
 

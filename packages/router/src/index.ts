@@ -724,9 +724,7 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 	if (matcher.kind === "pattern") {
 		const {scope} = matcher;
 		const inScope =
-			scope === undefined ||
-			u.pathname === scope ||
-			u.pathname.startsWith(scope + "/");
+			scope === undefined || matchPrefix(u.pathname, scope) !== null;
 		const result = inScope ? matcher.mp.exec(u) : null;
 		if (result) {
 			const groups = result.pathname.groups;
@@ -740,12 +738,10 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 	} else {
 		const {base} = matcher;
 		const pathname = u.pathname;
+		// The request's own text for `base`, which may hold params
+		const covered = base === undefined ? "" : matchPrefix(pathname, base);
 		const path =
-			base === undefined
-				? pathname
-				: pathname === base || pathname.startsWith(base + "/")
-					? pathname.slice(base.length) || "/"
-					: null;
+			covered === null ? null : pathname.slice(covered.length) || "/";
 		const m = path === null ? null : path.match(matcher.re);
 		if (m) {
 			target = entry.target.replace(
@@ -754,7 +750,7 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 			);
 			written = entry.target.replace(/\$(\d+)/g, "");
 			if (base !== undefined) {
-				target = targetUnder(target, base);
+				target = targetUnder(target, covered!);
 			}
 		}
 	}
@@ -877,12 +873,16 @@ function scopeRedirect(
 	if (!source.startsWith("^")) {
 		throw new Error("A scoped redirect's pattern must be anchored with ^.");
 	}
+	// The prefix's params become the first groups, so `$n` moves past them
+	const prefix = compilePrefix(pathPrefix).source.slice(1);
+	const groups = new RegExp(prefix + "|").exec("")!.length - 1;
 	return {
 		...redirect,
-		match: {
-			source: `^(?=${escapeRegExp(pathPrefix)}(?:/|$))(?:${source.slice(1)})`,
-			flags,
-		},
+		match: {source: `^(?=${prefix})(?:${source.slice(1)})`, flags},
+		target: redirect.target.replace(
+			/\$([1-9]\d*)/g,
+			(_m, n: string) => "$" + (Number(n) + groups),
+		),
 	};
 }
 
@@ -932,8 +932,45 @@ function targetUnder(target: string, mountPath: string): string {
 	return target === "/" ? mountPath : mountPath + target;
 }
 
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * Normalize a mount path or middleware prefix: ensure it starts with / and
+ * doesn't end with /, so "/admin/" and "admin" both scope like "/admin"
+ */
+function normalizePathPrefix(path: string): string {
+	if (!path.startsWith("/")) {
+		path = "/" + path;
+	}
+	return path.replace(/\/+$/, "") || "/";
+}
+
+const prefixMatchers = new Map<string, RegExp>();
+
+/**
+ * Compile a path prefix to a regexp that matches the start of a pathname on
+ * a segment boundary. Prefixes use MatchPattern syntax like the routes they
+ * scope, so "/:tenant" covers /acme and /acme/users, and "/admin" covers
+ * /admin/users but not /administrator.
+ */
+function compilePrefix(prefix: string): RegExp {
+	let matcher = prefixMatchers.get(prefix);
+	if (matcher === undefined) {
+		const {regex} = compilePathname(prefix);
+		if (!regex.source.endsWith("$")) {
+			throw new Error(`Cannot use "${prefix}" as a path prefix.`);
+		}
+		matcher = new RegExp(regex.source.slice(0, -1) + "(?=/|$)", regex.flags);
+		prefixMatchers.set(prefix, matcher);
+	}
+	return matcher;
+}
+
+/**
+ * The start of `pathname` that `prefix` covers, or null if it is not under
+ * `prefix`
+ */
+function matchPrefix(pathname: string, prefix: string): string | null {
+	const match = compilePrefix(prefix).exec(pathname);
+	return match === null ? null : match[0];
 }
 
 /**
@@ -955,6 +992,8 @@ export class Router {
 	#routeOrder: WeakMap<RouteEntry, number>;
 	/** Monotonic declaration counter shared by routes and redirects. */
 	#seq: number;
+	/** Set once this router is mounted; it then rejects new routes. */
+	#mounted: boolean;
 
 	constructor() {
 		this.routes = [];
@@ -965,6 +1004,7 @@ export class Router {
 		this.#redirectRecords = new WeakMap();
 		this.#routeOrder = new WeakMap();
 		this.#seq = 0;
+		this.#mounted = false;
 	}
 
 	/**
@@ -1027,6 +1067,7 @@ export class Router {
 		pathPrefixOrMiddleware: string | Middleware,
 		maybeMiddleware?: Middleware,
 	): void {
+		this.#assertNotMounted();
 		if (typeof pathPrefixOrMiddleware === "string") {
 			// Path-scoped middleware
 			const middleware = maybeMiddleware!;
@@ -1035,7 +1076,13 @@ export class Router {
 					"Invalid middleware type. Must be function or async generator function.",
 				);
 			}
-			const entry = {middleware, pathPrefix: pathPrefixOrMiddleware};
+			// "/admin/" scopes like "/admin", and "/" like global middleware
+			const pathPrefix = normalizePathPrefix(pathPrefixOrMiddleware);
+			const entry: MiddlewareEntry =
+				pathPrefix === "/" ? {middleware} : {middleware, pathPrefix};
+			if (entry.pathPrefix) {
+				compilePrefix(entry.pathPrefix);
+			}
 			this.middlewares.push(entry);
 			this.#addMiddlewareRedirect(entry);
 		} else {
@@ -1077,6 +1124,7 @@ export class Router {
 		name?: string,
 		middlewares: Middleware[] = [],
 	): void {
+		this.#assertNotMounted();
 		const matchPattern = new MatchPattern(pattern);
 
 		const entry: RouteEntry = {
@@ -1177,7 +1225,13 @@ export class Router {
 	 */
 	mount(mountPath: string, subrouter: Router): void {
 		// Normalize mount path - ensure it starts with / and doesn't end with /
-		const normalizedMountPath = this.#normalizeMountPath(mountPath);
+		this.#assertNotMounted();
+		const normalizedMountPath = normalizePathPrefix(mountPath);
+		if (normalizedMountPath !== "/") {
+			compilePrefix(normalizedMountPath);
+		}
+		// mount() copies the subrouter, so later changes to it would be lost
+		subrouter.#mounted = true;
 
 		const mounted = new Map<MiddlewareEntry, MiddlewareEntry>();
 		for (const submiddleware of subrouter.middlewares) {
@@ -1191,6 +1245,9 @@ export class Router {
 						? undefined
 						: normalizedMountPath,
 			};
+			if (entry.pathPrefix) {
+				compilePrefix(entry.pathPrefix);
+			}
 			this.middlewares.push(entry);
 			mounted.set(submiddleware, entry);
 		}
@@ -1236,16 +1293,15 @@ export class Router {
 	}
 
 	/**
-	 * Normalize mount path: ensure it starts with / and doesn't end with /
+	 * Throw if this router has been mounted. mount() copies routes and
+	 * middleware once, so anything added afterwards would silently not apply.
 	 */
-	#normalizeMountPath(mountPath: string): string {
-		if (!mountPath.startsWith("/")) {
-			mountPath = "/" + mountPath;
+	#assertNotMounted(): void {
+		if (this.#mounted) {
+			throw new Error(
+				"Cannot add routes, middleware or redirects to a router after it has been mounted. Register them before calling mount().",
+			);
 		}
-		if (mountPath.endsWith("/") && mountPath.length > 1) {
-			mountPath = mountPath.slice(0, -1);
-		}
-		return mountPath;
 	}
 
 	/**
@@ -1292,22 +1348,10 @@ export class Router {
 	/**
 	 * Check if a request pathname matches a middleware's path prefix
 	 * Matches on segment boundaries: /admin matches /admin, /admin/, /admin/users
-	 * but NOT /administrator
+	 * but NOT /administrator. Prefixes may use pattern syntax, like /:tenant
 	 */
 	#matchesPathPrefix(pathname: string, pathPrefix: string): boolean {
-		// Exact match
-		if (pathname === pathPrefix) {
-			return true;
-		}
-
-		// Check if pathname starts with prefix followed by / or end of string
-		if (pathname.startsWith(pathPrefix)) {
-			const nextChar = pathname[pathPrefix.length];
-			// Must be followed by / or be at end (for trailing slash case)
-			return nextChar === "/" || nextChar === undefined;
-		}
-
-		return false;
+		return matchPrefix(pathname, pathPrefix) !== null;
 	}
 
 	/**
