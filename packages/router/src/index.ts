@@ -691,7 +691,10 @@ function toRedirectEntry(
  */
 function redirectLocation(record: RedirectRecord, u: URL): string | null {
 	const {entry, matcher} = record;
+	// The target with its captures filled in, and with them left empty: the
+	// empty one says which origin the target was written for.
 	let target: string | null = null;
+	let written = "";
 	if (matcher.kind === "pattern") {
 		const {scope} = matcher;
 		const inScope =
@@ -701,9 +704,12 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 		const result = inScope ? matcher.mp.exec(u) : null;
 		if (result) {
 			const groups = result.pathname.groups;
-			target = entry.target.replace(/:(\w+)/g, (m, name: string) =>
-				name in groups ? (groups[name] ?? "") : m,
-			);
+			const fill = (empty: boolean): string =>
+				entry.target.replace(/:(\w+)/g, (m, name: string) =>
+					Object.hasOwn(groups, name) ? (empty ? "" : (groups[name] ?? "")) : m,
+				);
+			target = fill(false);
+			written = fill(true);
 		}
 	} else {
 		const {base} = matcher;
@@ -720,6 +726,7 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 				/\$(\d+)/g,
 				(_m, n: string) => m[Number(n)] ?? "",
 			);
+			written = entry.target.replace(/\$(\d+)/g, "");
 			if (base !== undefined) {
 				target = targetUnder(target, base);
 			}
@@ -729,10 +736,19 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 		return null;
 	}
 	const location = new URL(target, u);
-	// Captures come from the request, so they can turn a same-origin target
-	// into a protocol-relative one (`$1` from `//evil.com/`). Only a target
-	// written as a URL or `//host` may leave the request's origin.
-	if (location.origin !== u.origin && !isCrossOriginTarget(entry.target)) {
+	// Captures come from the request, so they must not change the origin the
+	// target was written for: `$1` from `//evil.com/` would make "$1"
+	// protocol-relative, and `@evil.com` after "https://example.com" would
+	// make evil.com the host. Only a target written as a URL or `//host` may
+	// leave the request's origin, and only for the origin it names.
+	let origin = u.origin;
+	if (isCrossOriginTarget(entry.target)) {
+		if (!URL.canParse(written, u)) {
+			return null;
+		}
+		origin = new URL(written, u).origin;
+	}
+	if (location.origin !== origin) {
 		return null;
 	}
 	if (!target.includes("?")) location.search = u.search;
@@ -795,7 +811,7 @@ function scopeRedirect(
 	return {
 		...redirect,
 		match: {
-			source: `^(?=${escapeRegExp(pathPrefix)}(?:/|$))${source.slice(1)}`,
+			source: `^(?=${escapeRegExp(pathPrefix)}(?:/|$))(?:${source.slice(1)})`,
 			flags,
 		},
 	};

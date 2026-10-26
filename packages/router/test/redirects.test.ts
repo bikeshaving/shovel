@@ -365,6 +365,59 @@ describe("Redirect edge cases", () => {
 		});
 	});
 
+	test("captures cannot change the host of an absolute target", async () => {
+		const build = (): Router => {
+			const r = new Router();
+			r.redirect(/^\/blog(.*)$/, "https://blog.example.com$1");
+			r.redirect("/go:rest*", "https://new.example.com:rest");
+			r.redirect("/cdn/:file", "//cdn.example.com/:file");
+			r.redirect("/new/:path", "https://new.example.com/:path");
+			return r;
+		};
+		const server = build();
+		for (const router of [server, Router.fromJSON(server.toJSON())]) {
+			for (const url of [
+				"http://x.com/blog@evil.com",
+				"http://x.com/blog.evil.com/x",
+				"http://x.com/go@evil.com",
+				"http://x.com/go.evil.com",
+			]) {
+				expect(await redirectOf(router, url)).toBeNull();
+			}
+			expect(await redirectOf(router, "http://x.com/blog/post")).toEqual({
+				location: "https://blog.example.com/post",
+				status: 301,
+			});
+			expect(await redirectOf(router, "http://x.com/new/a")).toEqual({
+				location: "https://new.example.com/a",
+				status: 301,
+			});
+			expect(await redirectOf(router, "http://x.com/cdn/a.js")).toEqual({
+				location: "http://cdn.example.com/a.js",
+				status: 301,
+			});
+		}
+	});
+
+	test("a scoped regex with alternation stays inside its prefix", async () => {
+		const router = new Router();
+		router.use("/api", redirect(/^\/api\/old|\/api\/legacy|\/legacy/, "/new"));
+		expect(await redirectOf(router, "http://x.com/legacy")).toBeNull();
+		expect(await redirectOf(router, "http://x.com/api/old")).toEqual({
+			location: "http://x.com/new",
+			status: 301,
+		});
+	});
+
+	test("target names only substitute the pattern's own groups", async () => {
+		const router = new Router();
+		router.redirect("/a/:id", "/b/:id?x=:constructor");
+		expect(await redirectOf(router, "http://x.com/a/1")).toEqual({
+			location: "http://x.com/b/1?x=:constructor",
+			status: 301,
+		});
+	});
+
 	test("middleware wraps a redirect like it wraps a route", async () => {
 		const {trailingSlash} = await import("../src/middleware.js");
 		const router = new Router();
