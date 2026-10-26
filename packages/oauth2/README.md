@@ -211,7 +211,10 @@ Starts OAuth2 flow by redirecting to provider's authorization endpoint.
 
 #### `handleCallback(client, options)`
 
-Handles OAuth2 callback, exchanges code for tokens.
+Handles OAuth2 callback, exchanges code for tokens. Without `onError`, failures
+return `400 {"error": "Authentication failed"}` and the underlying error (which
+may include the provider's response body) is logged with LogTape under the
+`["shovel", "oauth2"]` category.
 
 ```typescript
 handleCallback(oauth, {

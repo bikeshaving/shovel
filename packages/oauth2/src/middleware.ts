@@ -10,6 +10,9 @@ import {
 	type SessionOptions,
 } from "./index.js";
 import type {FunctionMiddleware} from "@b9g/router";
+import {getLogger} from "@logtape/logtape";
+
+const logger = getLogger(["shovel", "oauth2"]);
 
 // Augment RouteContext to include oauth2 property
 // Importing this module adds oauth2 tokens to context
@@ -59,17 +62,13 @@ export function handleCallback(
 				return await options.onError(error as Error);
 			}
 
-			// Default error handler
-			return new Response(
-				JSON.stringify({
-					error: "Authentication failed",
-					message: (error as Error).message,
-				}),
-				{
-					status: 400,
-					headers: {"Content-Type": "application/json"},
-				},
-			);
+			// Default error handler: details (which may include the provider's
+			// response body) go to the log, not the client
+			logger.error("OAuth2 callback failed: {error}", {error});
+			return new Response(JSON.stringify({error: "Authentication failed"}), {
+				status: 400,
+				headers: {"Content-Type": "application/json"},
+			});
 		}
 	};
 }
