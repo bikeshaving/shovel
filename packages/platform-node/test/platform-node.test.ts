@@ -265,6 +265,24 @@ describe("NodePlatform", () => {
 		});
 	});
 
+	test("should send every Set-Cookie header", async () => {
+		const handler = () => {
+			const headers = new Headers();
+			headers.append("set-cookie", "a=1");
+			headers.append("set-cookie", "b=2");
+			return Promise.resolve(new Response("OK", {headers}));
+		};
+
+		const server = platform.createServer(handler, {port: 0, host: "127.0.0.1"});
+		await server.listen();
+
+		const port = server.address().port;
+		const response = await fetch(`http://127.0.0.1:${port}/test`);
+		expect(response.headers.getSetCookie()).toEqual(["a=1", "b=2"]);
+
+		await server.close();
+	});
+
 	test("should use custom port and host", () => {
 		const customPlatform = new NodePlatform({
 			port: 9090,

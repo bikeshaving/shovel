@@ -49,6 +49,22 @@ const logger = getLogger(["shovel", "platform"]);
 const HOST_HEADER_RE = /^(?:[A-Za-z0-9._-]+|\[[0-9A-Fa-f:.]+\])(?::\d{1,5})?$/;
 
 /**
+ * Copy Web API response headers onto a Node.js response. Set-Cookie is the
+ * one header that can't be comma-joined, so each value is sent separately.
+ */
+function setResponseHeaders(res: HTTP.ServerResponse, headers: Headers): void {
+	headers.forEach((value, key) => {
+		if (key !== "set-cookie") {
+			res.setHeader(key, value);
+		}
+	});
+	const setCookies = headers.getSetCookie();
+	if (setCookies.length > 0) {
+		res.setHeader("set-cookie", setCookies);
+	}
+}
+
+/**
  * Build the Web API request URL from a Node.js request.
  *
  * The authority comes only from the (validated) Host header, or from the
@@ -391,9 +407,7 @@ export class NodePlatform {
 				res.statusMessage = response.statusText;
 
 				// Set headers
-				response.headers.forEach((value, key) => {
-					res.setHeader(key, value);
-				});
+				setResponseHeaders(res, response.headers);
 
 				// Stream response body
 				if (response.body) {
@@ -435,9 +449,7 @@ export class NodePlatform {
 
 				// Write response to Node.js res
 				res.statusCode = response.status;
-				response.headers.forEach((value, key) => {
-					res.setHeader(key, value);
-				});
+				setResponseHeaders(res, response.headers);
 				res.end(await response.text());
 			}
 		});
