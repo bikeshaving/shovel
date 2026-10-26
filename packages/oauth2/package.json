@@ -62,7 +62,9 @@
   ],
   "author": "b9g",
   "license": "MIT",
-  "dependencies": {},
+  "dependencies": {
+    "@logtape/logtape": "^2.0.0"
+  },
   "peerDependencies": {
     "@b9g/router": "workspace:*"
   },
