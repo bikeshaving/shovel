@@ -50,6 +50,10 @@ MatchPattern compiles patterns directly to optimized RegExp in a single pass, wh
 
 MatchPattern adds ~35ns overhead for order-independent search parameter matching - a feature the [URLPattern spec explicitly doesn't support](https://github.com/whatwg/urlpattern/discussions/60).
 
+### Backtracking Safety
+
+Patterns where several unbounded parts compete for the same characters, such as `/*/*/*/end`, `/:a-:b-:c` or `/:a+/:b+`, compile to regexes that backtracking engines match in polynomial time: a few KB of non-matching path can take seconds. These patterns are detected at compile time and matched with a built-in linear-time engine (a Pike VM over the same regex) that produces exactly the same matches and captures. It costs roughly 1-3µs per match instead of ~50ns, so other patterns keep using native RegExp. Regex groups using syntax the linear engine doesn't support (lookarounds, backreferences, `{n,m}` quantifiers, `v`-flag character classes) always use native RegExp, so avoid ambiguous custom regexes in routes that see untrusted input.
+
 All URLPattern syntax is fully supported including:
 - Named parameters with regex constraints: `:id(\d+)`
 - Optional parameters: `:id?`

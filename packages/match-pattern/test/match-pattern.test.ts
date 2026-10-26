@@ -1,6 +1,6 @@
 import {test, expect, describe} from "bun:test";
 
-import {MatchPattern, URLPattern} from "../src/index.js";
+import {MatchPattern, URLPattern, compilePathname} from "../src/index.js";
 
 describe("MatchPattern", () => {
 	test("should be instantiable", () => {
@@ -167,6 +167,75 @@ describe("Unified params", () => {
 
 		expect(result?.params.q).toBe("");
 	});
+});
+
+describe("Backtracking-prone patterns", () => {
+	// Several unbounded quantifiers competing for the same characters used to
+	// make the backtracking regex engine take seconds or more on long paths
+	const cases: [pattern: string, path: string][] = [
+		["/*/*/*/end", "/" + "a/".repeat(2000)],
+		["/(.*)/(.*)/(.*)/end", "/" + "a/".repeat(2000)],
+		["/:a-:b-:c-:d", "/" + "a-".repeat(600) + "/"],
+		["/:a+/:b+/:c+/:d+", "/" + "a/".repeat(400)],
+	];
+
+	for (const [source, path] of cases) {
+		test(`${source} rejects a long path in bounded time`, () => {
+			const pattern = new MatchPattern(source);
+			const start = performance.now();
+			expect(pattern.test("http://example.com" + path)).toBe(false);
+			expect(compilePathname(source).regex.test(path)).toBe(false);
+			// Generous bound: linear matching takes a few milliseconds here
+			expect(performance.now() - start).toBeLessThan(1000);
+		});
+	}
+
+	test("matches long paths that should match", () => {
+		const pattern = new MatchPattern("/*/*/*/end");
+		const path = "/" + "a/".repeat(2000) + "end";
+		const result = pattern.exec("http://example.com" + path);
+
+		expect(result?.params).toEqual({
+			"0": "a/".repeat(1997) + "a",
+			"1": "a",
+			"2": "a",
+		});
+	});
+
+	// The linear-time engine must produce exactly the native engine's results
+	const patterns = [
+		"/*/*/*/end",
+		"/*/x/*",
+		"/:a-:b-:c",
+		"/:name.:ext",
+		"/:a+/:b+",
+		"/:a*-:b*",
+		"/:a+/:b(a|-)+",
+		"/(.*?)-(.*)",
+		"/((?:a|)*)/(.*)",
+		"{/:a}?/:b-*",
+	];
+	const inputs = ["/"];
+	for (let i = 0; i < inputs.length && inputs[i].length < 7; i++) {
+		for (const char of ["/", "a", "-", "."]) inputs.push(inputs[i] + char);
+	}
+
+	for (const source of patterns) {
+		for (const ignoreCase of [false, true]) {
+			test(`${source}${ignoreCase ? " (ignoreCase)" : ""} captures like the native engine`, () => {
+				const {regex} = compilePathname(source, true, ignoreCase);
+				expect(regex.constructor).not.toBe(RegExp);
+				const native = new RegExp(regex.source, regex.flags);
+				for (const input of inputs) {
+					const actual = regex.exec(ignoreCase ? input.toUpperCase() : input);
+					const expected = native.exec(
+						ignoreCase ? input.toUpperCase() : input,
+					);
+					expect(actual && [...actual]).toEqual(expected && [...expected]);
+				}
+			});
+		}
+	}
 });
 
 describe("URLPattern Spec Compliance", () => {
