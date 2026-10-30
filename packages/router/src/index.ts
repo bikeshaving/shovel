@@ -420,18 +420,14 @@ class RadixTreeExecutor {
 		const treeResult = this.#matchTreeByPath(pathname);
 		if (treeResult) {
 			const {node, values, wildcard} = treeResult;
-			// Report the first route's pattern, and only the methods registered
-			// for that same pattern: /a/:x and /a/:y share a node but not params
+			// Report the first route's pattern and params. /a/:x and /a/:y share
+			// a node, so methods lists every method handle() serves here.
 			const first = node.routes.values().next().value!;
-			const pattern = first.route.pattern.pathname;
-			const methods = Array.from(node.routes.values())
-				.filter((leaf) => leaf.route.pattern.pathname === pattern)
-				.map((leaf) => leaf.route.method);
 			return {
 				params: this.#params(first, values, wildcard),
-				methods,
+				methods: Array.from(node.routes.values(), (leaf) => leaf.route.method),
 				name: first.route.name,
-				pattern,
+				pattern: first.route.pattern.pathname,
 			};
 		}
 
@@ -876,6 +872,11 @@ function scopeRedirect(
 	// The prefix's params become the first groups, so `$n` moves past them
 	const prefix = compilePrefix(pathPrefix).source.slice(1);
 	const groups = new RegExp(prefix + "|").exec("")!.length - 1;
+	if (groups > 0 && /(?:^|[^\\])(?:\\\\)*\\[1-9]/.test(source)) {
+		throw new Error(
+			"A redirect under a path prefix with params cannot use numbered back-references; use named groups.",
+		);
+	}
 	return {
 		...redirect,
 		match: {source: `^(?=${prefix})(?:${source.slice(1)})`, flags},
@@ -1230,10 +1231,9 @@ export class Router {
 		if (normalizedMountPath !== "/") {
 			compilePrefix(normalizedMountPath);
 		}
-		// mount() copies the subrouter, so later changes to it would be lost
-		subrouter.#mounted = true;
-
-		const mounted = new Map<MiddlewareEntry, MiddlewareEntry>();
+		// Build every copied entry first, so a mount that throws leaves both
+		// routers unchanged.
+		const middlewares = new Map<MiddlewareEntry, MiddlewareEntry>();
 		for (const submiddleware of subrouter.middlewares) {
 			// If subrouter middleware has pathPrefix "/inner", and we mount at
 			// "/outer", the composed prefix becomes "/outer/inner"
@@ -1248,8 +1248,7 @@ export class Router {
 			if (entry.pathPrefix) {
 				compilePrefix(entry.pathPrefix);
 			}
-			this.middlewares.push(entry);
-			mounted.set(submiddleware, entry);
+			middlewares.set(submiddleware, entry);
 		}
 
 		const items: Array<
@@ -1257,35 +1256,39 @@ export class Router {
 			| {order: number; middleware: MiddlewareEntry; redirect: RedirectEntry}
 		> = [];
 		for (const route of subrouter.routes) {
-			items.push({order: subrouter.#routeOrder.get(route)!, route});
+			items.push({
+				order: subrouter.#routeOrder.get(route)!,
+				route: {
+					pattern: new MatchPattern(
+						this.#combinePaths(normalizedMountPath, route.pattern.pathname),
+					),
+					method: route.method,
+					handler: route.handler,
+					name: route.name,
+					middlewares: route.middlewares,
+				},
+			});
 		}
 		for (const record of subrouter.#redirectTable) {
+			const redirect = mountRedirect(record.entry, normalizedMountPath);
+			compileRedirect(redirect, 0);
 			items.push({
 				order: record.order,
-				middleware: record.middleware,
-				redirect: record.entry,
+				middleware: middlewares.get(record.middleware)!,
+				redirect,
 			});
 		}
 		items.sort((a, b) => a.order - b.order);
+
+		// mount() copies the subrouter, so later changes to it would be lost
+		subrouter.#mounted = true;
+		this.middlewares.push(...middlewares.values());
 		for (const item of items) {
 			if ("route" in item) {
-				const subroute = item.route;
-				const entry: RouteEntry = {
-					pattern: new MatchPattern(
-						this.#combinePaths(normalizedMountPath, subroute.pattern.pathname),
-					),
-					method: subroute.method,
-					handler: subroute.handler,
-					name: subroute.name,
-					middlewares: subroute.middlewares,
-				};
-				this.routes.push(entry);
-				this.#routeOrder.set(entry, this.#seq++);
+				this.routes.push(item.route);
+				this.#routeOrder.set(item.route, this.#seq++);
 			} else {
-				this.#addRedirectRecord(
-					mounted.get(item.middleware)!,
-					mountRedirect(item.redirect, normalizedMountPath),
-				);
+				this.#addRedirectRecord(item.middleware, item.redirect);
 			}
 		}
 

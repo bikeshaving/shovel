@@ -4,6 +4,10 @@ All notable changes to Shovel will be documented in this file.
 
 ## Unreleased
 
+### Breaking Changes
+
+- **`@b9g/router` middleware prefixes are patterns** — the prefix in `router.use(prefix, middleware)` is now matched like a route pattern, on segment boundaries, so `:params`, `*` and `(...)` in a prefix are pattern syntax instead of literal text. `use("/files*", mw)` now runs on `/files/a`, and `use("/a(b)", mw)` runs on `/ab` instead of `/a(b)`. A prefix of `/` now applies to every path, like global middleware. ([#125](https://github.com/bikeshaving/shovel/pull/125))
+
 ### Bug Fixes
 
 - **`@b9g/node-webworker` no longer drops early messages** — a message posted right after `new Worker(...)` could arrive while the worker script was still loading, before it had a listener, and was lost. The worker now queues messages until the script registers a `message` listener or sets `onmessage`, then delivers them in order. A worker that awaits a message at top level receives it instead of hanging.

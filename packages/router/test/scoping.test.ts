@@ -1,5 +1,5 @@
 import {test, expect, describe} from "bun:test";
-import {Router} from "../src/index.js";
+import {redirect, Router} from "../src/index.js";
 import {trailingSlash} from "../src/middleware.js";
 
 const auth = (request: Request) =>
@@ -168,6 +168,37 @@ describe("Changing a router after mounting it", () => {
 		expect(await statusOf(router, "/v1/x")).toBe(401);
 		expect(await statusOf(router, "/v2/x")).toBe(401);
 	});
+
+	test("a mount that throws leaves both routers unchanged", async () => {
+		const sub = new Router();
+		sub.use(auth);
+		sub.redirect("https://a.com/x", "/y");
+		const router = new Router();
+
+		expect(() => router.mount("/api", sub)).toThrow(/only path patterns/);
+		expect(router.middlewares).toEqual([]);
+		expect(router.routes).toEqual([]);
+		expect(await statusOf(router, "/api/z")).toBe(404);
+		expect(() => sub.route("/y").get(secret)).not.toThrow();
+	});
+});
+
+describe("Regex redirects under a parameterized prefix", () => {
+	test("numbered back-references are refused", () => {
+		const router = new Router();
+		expect(() =>
+			router.use("/:t", redirect(/^\/\w+\/(\w+)\/\1$/, "/x/$1")),
+		).toThrow(/numbered back-references/);
+	});
+
+	test("named back-references still work", async () => {
+		const router = new Router();
+		router.use("/:t", redirect(/^\/\w+\/(?<w>\w+)\/\k<w>$/, "/x/$1"));
+		const res = await router.handle(new Request("http://x.com/t/a/a"));
+		expect(res.status).toBe(301);
+		expect(res.headers.get("Location")).toBe("http://x.com/x/a");
+		expect(await statusOf(router, "/t/a/b")).toBe(404);
+	});
 });
 
 describe("Param names in the radix tree", () => {
@@ -205,7 +236,7 @@ describe("Param names in the radix tree", () => {
 		});
 	});
 
-	test("methods on the same path under different param names stay apart", async () => {
+	test("each route keeps its param names, and match() lists every method", async () => {
 		const router = new Router();
 		router.route("/items/:id").get(params);
 		router.route("/items/:slug").post(params);
@@ -216,7 +247,7 @@ describe("Param names in the radix tree", () => {
 		expect(await res.json()).toEqual({slug: "a"});
 		expect(router.match("/items/a")).toEqual({
 			params: {id: "a"},
-			methods: ["GET"],
+			methods: ["GET", "POST"],
 			name: undefined,
 			pattern: "/items/:id",
 		});
