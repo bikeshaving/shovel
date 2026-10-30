@@ -419,18 +419,14 @@ export class R2FileSystemDirectoryHandle implements FileSystemDirectoryHandle {
 /**
  * Validates a name that will be joined into an ASSETS URL path. On top of the
  * shared name rules, the URL parser treats "%2e%2e" as ".." and the binding
- * may decode "%2f", so a name must also be valid once percent-decoded.
+ * may decode "%2f", so a name must also be valid once percent-decoded. Each
+ * escape is decoded on its own, so a literal "%" as in "100%.png" is allowed.
  */
 function validateAssetName(name: string): void {
 	validateName(name);
-	let decoded: string;
-	try {
-		decoded = decodeURIComponent(name);
-	} catch (error) {
-		throw new TypeError("Name is not a valid URL path segment", {
-			cause: error,
-		});
-	}
+	const decoded = name.replace(/%([0-9a-f]{2})/gi, (_m, hex: string) =>
+		String.fromCharCode(parseInt(hex, 16)),
+	);
 	if (decoded !== name) {
 		validateName(decoded);
 	}
