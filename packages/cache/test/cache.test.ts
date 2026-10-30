@@ -369,6 +369,38 @@ describe("CustomCacheStorage message handling (PostMessage coordination)", () =>
 		expect(decoder.decode(messages[0].result.body)).toBe("Hello World");
 	});
 
+	test("CustomCacheStorage cache:match keeps every Set-Cookie header", async () => {
+		const cacheStorage = new CustomCacheStorage(
+			(name) => new MemoryCache(name),
+		);
+		const cache = await cacheStorage.open("test-cache");
+		const headers = new Headers();
+		headers.append("set-cookie", "a=1");
+		headers.append("set-cookie", "b=2");
+		await cache.put(
+			new Request("http://example.com/test"),
+			new Response("Hello World", {headers}),
+		);
+
+		const messages: any[] = [];
+		const mockWorker = {
+			postMessage: (msg: any) => messages.push(msg),
+		};
+		await cacheStorage.handleMessage(mockWorker, {
+			type: "cache:match",
+			requestID: "1",
+			cacheName: "test-cache",
+			request: {
+				url: "http://example.com/test",
+				method: "GET",
+				headers: {},
+			},
+		});
+
+		const response = new Response(messages[0].result.body, messages[0].result);
+		expect(response.headers.getSetCookie()).toEqual(["a=1", "b=2"]);
+	});
+
 	test("CustomCacheStorage handles cache:delete", async () => {
 		const cacheStorage = new CustomCacheStorage(
 			(name) => new MemoryCache(name),
