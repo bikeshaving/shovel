@@ -279,6 +279,15 @@ describe("CFAssetsDirectoryHandle name validation", () => {
 		}
 	});
 
+	test("names with a literal percent sign are allowed", async () => {
+		const root = new CFAssetsDirectoryHandle(assets, "/", manifest);
+		await expect(root.getFileHandle("100%.png")).rejects.toThrow(
+			"could not be found",
+		);
+		await expect(root.getDirectoryHandle("50% off")).resolves.toBeDefined();
+		await expect(root.getFileHandle("%zz%2f..")).rejects.toThrow(TypeError);
+	});
+
 	test("valid names still resolve", async () => {
 		const root = new CFAssetsDirectoryHandle(assets, "/", manifest);
 		const pub = await root.getDirectoryHandle("public");
