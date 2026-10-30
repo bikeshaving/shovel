@@ -463,6 +463,21 @@ describe("Redirect edge cases", () => {
 		expect(about.status).toBe(401);
 	});
 
+	test("a capture in the target's origin is rejected when created", () => {
+		expect(() => redirect(/^\/u\/(\w+)$/, "https://$1.example.com/")).toThrow(
+			"cannot use captures in its origin",
+		);
+		expect(() => redirect("/u/:name", "https://:name.example.com/")).toThrow(
+			"cannot use captures in its origin",
+		);
+		expect(() =>
+			redirect("/u/:name", "https://example.com:8080/u/:name"),
+		).not.toThrow();
+		expect(() =>
+			redirect(/^\/u\/(\w+)$/, "https://example.com/$1"),
+		).not.toThrow();
+	});
+
 	test("middleware that answers first still wins over a redirect", async () => {
 		const router = new Router();
 		router.use(() => new Response("denied", {status: 401}));

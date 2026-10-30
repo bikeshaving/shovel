@@ -649,6 +649,7 @@ interface RedirectRecord {
 }
 
 function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
+	checkTargetOrigin(entry);
 	const matcher: RedirectMatcher =
 		"pattern" in entry.match
 			? {
@@ -752,6 +753,41 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 	}
 	if (!target.includes("?")) location.search = u.search;
 	return location.toString();
+}
+
+/**
+ * Throw if captures could change the origin a target was written for, such
+ * as `https://$1.example.com/`. Such a redirect could never fire.
+ */
+function checkTargetOrigin(entry: RedirectEntry): void {
+	const {target} = entry;
+	if (!isCrossOriginTarget(target)) {
+		return;
+	}
+	let fill: (value: string) => string;
+	if ("pattern" in entry.match) {
+		const names = new Set(
+			Array.from(entry.match.pattern.matchAll(/:(\w+)/g), (m) => m[1]),
+		);
+		fill = (value) =>
+			target.replace(/:(\w+)/g, (m, name: string) =>
+				names.has(name) ? value : m,
+			);
+	} else {
+		fill = (value) => target.replace(/\$\d+/g, value);
+	}
+	const base = "http://localhost";
+	const written = fill("");
+	const filled = fill("/a");
+	if (
+		!URL.canParse(written, base) ||
+		!URL.canParse(filled, base) ||
+		new URL(written, base).origin !== new URL(filled, base).origin
+	) {
+		throw new Error(
+			`Redirect target "${target}" cannot use captures in its origin.`,
+		);
+	}
 }
 
 /**
