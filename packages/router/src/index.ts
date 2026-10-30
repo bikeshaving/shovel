@@ -197,18 +197,26 @@ interface InternalMatchResult {
  */
 class RadixNode {
 	children: Map<string, RadixNode>; // char -> RadixNode
-	routes: Map<string, RouteEntry>; // method -> RouteEntry
-	paramName: string | null; // param name if this is a :param segment
+	routes: Map<string, RadixLeaf>; // method -> RadixLeaf
 	paramChild: RadixNode | null; // child node for :param
 	wildcardChild: RadixNode | null; // child node for * wildcard
 
 	constructor() {
 		this.children = new Map();
 		this.routes = new Map();
-		this.paramName = null;
 		this.paramChild = null;
 		this.wildcardChild = null;
 	}
+}
+
+/**
+ * A route stored in the radix tree. Param names belong to the route, not to
+ * the node: sibling routes such as /orgs/:org/settings and /orgs/:user/profile
+ * share one param node but name its value differently.
+ */
+interface RadixLeaf {
+	route: RouteEntry;
+	paramNames: string[];
 }
 
 /**
@@ -253,19 +261,18 @@ class RadixTreeExecutor {
 	#addToTree(pathname: string, route: RouteEntry): void {
 		let node = this.#root;
 		let i = 0;
+		const paramNames: string[] = [];
 
 		while (i < pathname.length) {
 			const char = pathname[i];
 
 			if (char === ":") {
 				// Named parameter - find the param name
-				const match = pathname.slice(i).match(/^:(\w+)/);
+				const match = pathname.slice(i).match(/^:(\p{ID_Continue}+)/u);
 				if (match) {
-					const paramName = match[1];
-
+					paramNames.push(match[1]);
 					if (!node.paramChild) {
 						node.paramChild = new RadixNode();
-						node.paramChild.paramName = paramName;
 					}
 					node = node.paramChild;
 					i += match[0].length;
@@ -290,7 +297,7 @@ class RadixTreeExecutor {
 			i++;
 		}
 
-		node.routes.set(route.method, route);
+		node.routes.set(route.method, {route, paramNames});
 	}
 
 	/**
@@ -298,14 +305,15 @@ class RadixTreeExecutor {
 	 */
 	#matchTreeByPath(
 		pathname: string,
-	): {node: RadixNode; params: Record<string, string>} | null {
-		const params: Record<string, string> = {};
+	): {node: RadixNode; values: string[]; wildcard?: string} | null {
+		// Param values in path order; each route names them on the way out
+		const values: string[] = [];
 		let node = this.#root;
 		let i = 0;
 
 		// Handle empty pathname
 		if (!pathname) {
-			return node.routes.size > 0 ? {node, params} : null;
+			return node.routes.size > 0 ? {node, values} : null;
 		}
 
 		while (i < pathname.length) {
@@ -329,7 +337,7 @@ class RadixTreeExecutor {
 				const value = pathname.slice(i, j);
 				if (value) {
 					// Non-empty segment
-					params[node.paramChild.paramName!] = value;
+					values.push(value);
 					node = node.paramChild;
 					i = j;
 					continue;
@@ -339,10 +347,7 @@ class RadixTreeExecutor {
 			// Try wildcard match
 			if (node.wildcardChild) {
 				// Wildcard captures rest of path (without leading /)
-				const rest = pathname.slice(i);
-				params["0"] = rest; // Use "0" as wildcard param name
-				node = node.wildcardChild;
-				break;
+				return {node: node.wildcardChild, values, wildcard: pathname.slice(i)};
 			}
 
 			// No match
@@ -351,16 +356,33 @@ class RadixTreeExecutor {
 
 		// Check if this node has any routes or a wildcard child with routes
 		if (node.routes.size > 0) {
-			return {node, params};
+			return {node, values};
 		}
 
 		// Check wildcard at terminal node (for patterns like /files/*)
 		if (node.wildcardChild && node.wildcardChild.routes.size > 0) {
-			params["0"] = ""; // Empty wildcard match
-			return {node: node.wildcardChild, params};
+			return {node: node.wildcardChild, values, wildcard: ""};
 		}
 
 		return null;
+	}
+
+	/**
+	 * Name a tree match's param values for one of the routes at its node
+	 */
+	#params(
+		leaf: RadixLeaf,
+		values: string[],
+		wildcard?: string,
+	): Record<string, string> {
+		const params: Record<string, string> = {};
+		for (let i = 0; i < leaf.paramNames.length; i++) {
+			params[leaf.paramNames[i]] = values[i];
+		}
+		if (wildcard !== undefined) {
+			params["0"] = wildcard; // Use "0" as wildcard param name
+		}
+		return params;
 	}
 
 	/**
@@ -373,14 +395,14 @@ class RadixTreeExecutor {
 		const result = this.#matchTreeByPath(pathname);
 		if (!result) return null;
 
-		const {node, params} = result;
-		let entry = node.routes.get(method);
+		const {node, values, wildcard} = result;
+		let leaf = node.routes.get(method);
 		// HEAD requests should fall back to GET handler (RFC 7231)
-		if (!entry && method === "HEAD") {
-			entry = node.routes.get("GET");
+		if (!leaf && method === "HEAD") {
+			leaf = node.routes.get("GET");
 		}
-		if (entry) {
-			return {entry, params};
+		if (leaf) {
+			return {entry: leaf.route, params: this.#params(leaf, values, wildcard)};
 		}
 
 		return null;
@@ -397,15 +419,15 @@ class RadixTreeExecutor {
 		// Try radix tree first (fast path for simple routes)
 		const treeResult = this.#matchTreeByPath(pathname);
 		if (treeResult) {
-			const {node, params} = treeResult;
-			const methods = Array.from(node.routes.keys());
-			// Get name from first route entry (all entries for same pattern should have same name)
-			const firstEntry = node.routes.values().next().value;
+			const {node, values, wildcard} = treeResult;
+			// Report the first route's pattern and params. /a/:x and /a/:y share
+			// a node, so methods lists every method handle() serves here.
+			const first = node.routes.values().next().value!;
 			return {
-				params,
-				methods,
-				name: firstEntry?.name,
-				pattern: firstEntry?.pattern.pathname ?? "",
+				params: this.#params(first, values, wildcard),
+				methods: Array.from(node.routes.values(), (leaf) => leaf.route.method),
+				name: first.route.name,
+				pattern: first.route.pattern.pathname,
 			};
 		}
 
@@ -698,9 +720,7 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 	if (matcher.kind === "pattern") {
 		const {scope} = matcher;
 		const inScope =
-			scope === undefined ||
-			u.pathname === scope ||
-			u.pathname.startsWith(scope + "/");
+			scope === undefined || matchPrefix(u.pathname, scope) !== null;
 		const result = inScope ? matcher.mp.exec(u) : null;
 		if (result) {
 			const groups = result.pathname.groups;
@@ -714,12 +734,10 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 	} else {
 		const {base} = matcher;
 		const pathname = u.pathname;
+		// The request's own text for `base`, which may hold params
+		const covered = base === undefined ? "" : matchPrefix(pathname, base);
 		const path =
-			base === undefined
-				? pathname
-				: pathname === base || pathname.startsWith(base + "/")
-					? pathname.slice(base.length) || "/"
-					: null;
+			covered === null ? null : pathname.slice(covered.length) || "/";
 		const m = path === null ? null : path.match(matcher.re);
 		if (m) {
 			target = entry.target.replace(
@@ -728,7 +746,7 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 			);
 			written = entry.target.replace(/\$(\d+)/g, "");
 			if (base !== undefined) {
-				target = targetUnder(target, base);
+				target = targetUnder(target, covered!);
 			}
 		}
 	}
@@ -851,12 +869,21 @@ function scopeRedirect(
 	if (!source.startsWith("^")) {
 		throw new Error("A scoped redirect's pattern must be anchored with ^.");
 	}
+	// The prefix's params become the first groups, so `$n` moves past them
+	const prefix = compilePrefix(pathPrefix).source.slice(1);
+	const groups = new RegExp(prefix + "|").exec("")!.length - 1;
+	if (groups > 0 && /(?:^|[^\\])(?:\\\\)*\\[1-9]/.test(source)) {
+		throw new Error(
+			"A redirect under a path prefix with params cannot use numbered back-references; use named groups.",
+		);
+	}
 	return {
 		...redirect,
-		match: {
-			source: `^(?=${escapeRegExp(pathPrefix)}(?:/|$))(?:${source.slice(1)})`,
-			flags,
-		},
+		match: {source: `^(?=${prefix})(?:${source.slice(1)})`, flags},
+		target: redirect.target.replace(
+			/\$([1-9]\d*)/g,
+			(_m, n: string) => "$" + (Number(n) + groups),
+		),
 	};
 }
 
@@ -906,8 +933,45 @@ function targetUnder(target: string, mountPath: string): string {
 	return target === "/" ? mountPath : mountPath + target;
 }
 
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * Normalize a mount path or middleware prefix: ensure it starts with / and
+ * doesn't end with /, so "/admin/" and "admin" both scope like "/admin"
+ */
+function normalizePathPrefix(path: string): string {
+	if (!path.startsWith("/")) {
+		path = "/" + path;
+	}
+	return path.replace(/\/+$/, "") || "/";
+}
+
+const prefixMatchers = new Map<string, RegExp>();
+
+/**
+ * Compile a path prefix to a regexp that matches the start of a pathname on
+ * a segment boundary. Prefixes use MatchPattern syntax like the routes they
+ * scope, so "/:tenant" covers /acme and /acme/users, and "/admin" covers
+ * /admin/users but not /administrator.
+ */
+function compilePrefix(prefix: string): RegExp {
+	let matcher = prefixMatchers.get(prefix);
+	if (matcher === undefined) {
+		const {regex} = compilePathname(prefix);
+		if (!regex.source.endsWith("$")) {
+			throw new Error(`Cannot use "${prefix}" as a path prefix.`);
+		}
+		matcher = new RegExp(regex.source.slice(0, -1) + "(?=/|$)", regex.flags);
+		prefixMatchers.set(prefix, matcher);
+	}
+	return matcher;
+}
+
+/**
+ * The start of `pathname` that `prefix` covers, or null if it is not under
+ * `prefix`
+ */
+function matchPrefix(pathname: string, prefix: string): string | null {
+	const match = compilePrefix(prefix).exec(pathname);
+	return match === null ? null : match[0];
 }
 
 /**
@@ -929,6 +993,8 @@ export class Router {
 	#routeOrder: WeakMap<RouteEntry, number>;
 	/** Monotonic declaration counter shared by routes and redirects. */
 	#seq: number;
+	/** Set once this router is mounted; it then rejects new routes. */
+	#mounted: boolean;
 
 	constructor() {
 		this.routes = [];
@@ -939,6 +1005,7 @@ export class Router {
 		this.#redirectRecords = new WeakMap();
 		this.#routeOrder = new WeakMap();
 		this.#seq = 0;
+		this.#mounted = false;
 	}
 
 	/**
@@ -1001,6 +1068,7 @@ export class Router {
 		pathPrefixOrMiddleware: string | Middleware,
 		maybeMiddleware?: Middleware,
 	): void {
+		this.#assertNotMounted();
 		if (typeof pathPrefixOrMiddleware === "string") {
 			// Path-scoped middleware
 			const middleware = maybeMiddleware!;
@@ -1009,7 +1077,13 @@ export class Router {
 					"Invalid middleware type. Must be function or async generator function.",
 				);
 			}
-			const entry = {middleware, pathPrefix: pathPrefixOrMiddleware};
+			// "/admin/" scopes like "/admin", and "/" like global middleware
+			const pathPrefix = normalizePathPrefix(pathPrefixOrMiddleware);
+			const entry: MiddlewareEntry =
+				pathPrefix === "/" ? {middleware} : {middleware, pathPrefix};
+			if (entry.pathPrefix) {
+				compilePrefix(entry.pathPrefix);
+			}
 			this.middlewares.push(entry);
 			this.#addMiddlewareRedirect(entry);
 		} else {
@@ -1051,6 +1125,7 @@ export class Router {
 		name?: string,
 		middlewares: Middleware[] = [],
 	): void {
+		this.#assertNotMounted();
 		const matchPattern = new MatchPattern(pattern);
 
 		const entry: RouteEntry = {
@@ -1151,9 +1226,14 @@ export class Router {
 	 */
 	mount(mountPath: string, subrouter: Router): void {
 		// Normalize mount path - ensure it starts with / and doesn't end with /
-		const normalizedMountPath = this.#normalizeMountPath(mountPath);
-
-		const mounted = new Map<MiddlewareEntry, MiddlewareEntry>();
+		this.#assertNotMounted();
+		const normalizedMountPath = normalizePathPrefix(mountPath);
+		if (normalizedMountPath !== "/") {
+			compilePrefix(normalizedMountPath);
+		}
+		// Build every copied entry first, so a mount that throws leaves both
+		// routers unchanged.
+		const middlewares = new Map<MiddlewareEntry, MiddlewareEntry>();
 		for (const submiddleware of subrouter.middlewares) {
 			// If subrouter middleware has pathPrefix "/inner", and we mount at
 			// "/outer", the composed prefix becomes "/outer/inner"
@@ -1165,8 +1245,10 @@ export class Router {
 						? undefined
 						: normalizedMountPath,
 			};
-			this.middlewares.push(entry);
-			mounted.set(submiddleware, entry);
+			if (entry.pathPrefix) {
+				compilePrefix(entry.pathPrefix);
+			}
+			middlewares.set(submiddleware, entry);
 		}
 
 		const items: Array<
@@ -1174,35 +1256,39 @@ export class Router {
 			| {order: number; middleware: MiddlewareEntry; redirect: RedirectEntry}
 		> = [];
 		for (const route of subrouter.routes) {
-			items.push({order: subrouter.#routeOrder.get(route)!, route});
+			items.push({
+				order: subrouter.#routeOrder.get(route)!,
+				route: {
+					pattern: new MatchPattern(
+						this.#combinePaths(normalizedMountPath, route.pattern.pathname),
+					),
+					method: route.method,
+					handler: route.handler,
+					name: route.name,
+					middlewares: route.middlewares,
+				},
+			});
 		}
 		for (const record of subrouter.#redirectTable) {
+			const redirect = mountRedirect(record.entry, normalizedMountPath);
+			compileRedirect(redirect, 0);
 			items.push({
 				order: record.order,
-				middleware: record.middleware,
-				redirect: record.entry,
+				middleware: middlewares.get(record.middleware)!,
+				redirect,
 			});
 		}
 		items.sort((a, b) => a.order - b.order);
+
+		// mount() copies the subrouter, so later changes to it would be lost
+		subrouter.#mounted = true;
+		this.middlewares.push(...middlewares.values());
 		for (const item of items) {
 			if ("route" in item) {
-				const subroute = item.route;
-				const entry: RouteEntry = {
-					pattern: new MatchPattern(
-						this.#combinePaths(normalizedMountPath, subroute.pattern.pathname),
-					),
-					method: subroute.method,
-					handler: subroute.handler,
-					name: subroute.name,
-					middlewares: subroute.middlewares,
-				};
-				this.routes.push(entry);
-				this.#routeOrder.set(entry, this.#seq++);
+				this.routes.push(item.route);
+				this.#routeOrder.set(item.route, this.#seq++);
 			} else {
-				this.#addRedirectRecord(
-					mounted.get(item.middleware)!,
-					mountRedirect(item.redirect, normalizedMountPath),
-				);
+				this.#addRedirectRecord(item.middleware, item.redirect);
 			}
 		}
 
@@ -1210,16 +1296,15 @@ export class Router {
 	}
 
 	/**
-	 * Normalize mount path: ensure it starts with / and doesn't end with /
+	 * Throw if this router has been mounted. mount() copies routes and
+	 * middleware once, so anything added afterwards would silently not apply.
 	 */
-	#normalizeMountPath(mountPath: string): string {
-		if (!mountPath.startsWith("/")) {
-			mountPath = "/" + mountPath;
+	#assertNotMounted(): void {
+		if (this.#mounted) {
+			throw new Error(
+				"Cannot add routes, middleware or redirects to a router after it has been mounted. Register them before calling mount().",
+			);
 		}
-		if (mountPath.endsWith("/") && mountPath.length > 1) {
-			mountPath = mountPath.slice(0, -1);
-		}
-		return mountPath;
 	}
 
 	/**
@@ -1266,22 +1351,10 @@ export class Router {
 	/**
 	 * Check if a request pathname matches a middleware's path prefix
 	 * Matches on segment boundaries: /admin matches /admin, /admin/, /admin/users
-	 * but NOT /administrator
+	 * but NOT /administrator. Prefixes may use pattern syntax, like /:tenant
 	 */
 	#matchesPathPrefix(pathname: string, pathPrefix: string): boolean {
-		// Exact match
-		if (pathname === pathPrefix) {
-			return true;
-		}
-
-		// Check if pathname starts with prefix followed by / or end of string
-		if (pathname.startsWith(pathPrefix)) {
-			const nextChar = pathname[pathPrefix.length];
-			// Must be followed by / or be at end (for trailing slash case)
-			return nextChar === "/" || nextChar === undefined;
-		}
-
-		return false;
+		return matchPrefix(pathname, pathPrefix) !== null;
 	}
 
 	/**
