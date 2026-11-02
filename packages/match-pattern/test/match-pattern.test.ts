@@ -1,6 +1,6 @@
 import {test, expect, describe} from "bun:test";
 
-import {MatchPattern} from "../src/index.js";
+import {MatchPattern, URLPattern} from "../src/index.js";
 
 describe("MatchPattern", () => {
 	test("should be instantiable", () => {
@@ -80,6 +80,80 @@ describe("MatchPattern", () => {
 	test("should support search-only patterns", () => {
 		const pattern = new MatchPattern("&q=:query&page=:page");
 		expect(pattern.search).toBe("q=:query&page=:page");
+	});
+});
+
+describe("Unified params", () => {
+	test("pathname params take precedence over search params", () => {
+		const pattern = new MatchPattern("/users/:id");
+		const result = pattern.exec("http://example.com/users/1?id=2&page=3");
+
+		expect(result?.params).toEqual({id: "1", page: "3"});
+		// The search value is still available on its own
+		expect(result?.search.groups).toEqual({id: "2", page: "3"});
+	});
+
+	test("search params don't fill in an absent pathname param", () => {
+		const pattern = new MatchPattern("/users/:id?");
+		const result = pattern.exec("http://example.com/users?id=2");
+
+		expect(result?.params.id).toBeUndefined();
+	});
+
+	test("search pattern params don't override pathname params", () => {
+		const pattern = new MatchPattern("/users/:id&id=:other");
+		const result = pattern.exec("http://example.com/users/1?id=2");
+
+		expect(result?.params).toEqual({id: "1", other: "2"});
+	});
+
+	test("URLInit search params don't override pathname params", () => {
+		const pattern = new MatchPattern({
+			pathname: "/users/:id",
+			search: "id=:other",
+		});
+		const result = pattern.exec({pathname: "/users/1", search: "id=2"});
+
+		expect(result?.params).toEqual({id: "1", other: "2"});
+	});
+
+	test("URLPattern params prefer pathname groups", () => {
+		const pattern = new URLPattern({pathname: "/users/:id", search: "id=:id"});
+		const result = pattern.exec("http://example.com/users/1?id=2");
+
+		expect(result?.params.id).toBe("1");
+		expect(result?.search.groups.id).toBe("2");
+	});
+
+	test("params and groups are ordinary objects", () => {
+		const pattern = new MatchPattern("/users/:id");
+		const result = pattern.exec(
+			"http://example.com/users/1?constructor=c&__proto__=p&toString=t",
+		);
+
+		expect(Object.getPrototypeOf(result!.params)).toBe(Object.prototype);
+		expect(Object.getPrototypeOf(result!.pathname.groups)).toBe(
+			Object.prototype,
+		);
+		expect(Object.hasOwn(result!.params, "id")).toBe(true);
+		expect(result!.params.constructor).toBe("c");
+		expect(result!.params.toString).toBe("t");
+		expect(({} as Record<string, unknown>).p).toBeUndefined();
+	});
+
+	test("hasOwnProperty works on params", () => {
+		const result = new MatchPattern("/users/:id").exec(
+			"http://example.com/users/1",
+		);
+		// eslint-disable-next-line no-prototype-builtins -- the point of the test
+		expect(result!.params.hasOwnProperty("id")).toBe(true);
+	});
+
+	test("extra search params don't replace empty named values", () => {
+		const pattern = new MatchPattern("&x=:q");
+		const result = pattern.exec("http://example.com/?x=&q=zz");
+
+		expect(result?.params.q).toBe("");
 	});
 });
 

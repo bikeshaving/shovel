@@ -573,6 +573,11 @@ function normalizePathname(pathname: string): string {
  * Result of pattern matching
  */
 export interface MatchPatternResult {
+	/**
+	 * Unified pathname and search params (null-prototype object). Pathname
+	 * params take precedence: a search param never overrides a name declared
+	 * in the pathname pattern.
+	 */
 	params: Record<string, string>;
 	pathname: {input: string; groups: Record<string, string>};
 	search: {input: string; groups: Record<string, string>};
@@ -1978,9 +1983,10 @@ function extractSearchParams(
 		}
 	}
 
-	// Also capture extra params
+	// Also capture extra params (own-key check: params has no prototype, and
+	// an empty named value must not be replaced by an extra param)
 	for (const [key, value] of actualParams) {
-		if (!params[key]) {
+		if (!(key in params)) {
 			params[key] = value;
 		}
 	}
@@ -2579,8 +2585,11 @@ export class URLPattern {
 					const name = this.#compiled.search.paramNames[i];
 					const value = searchMatch[i + 1];
 					if (value !== undefined) {
-						params[name] = value;
 						searchGroups[name] = value;
+						// Pathname params take precedence in the unified params
+						if (!this.#compiled.pathname.paramNames.includes(name)) {
+							params[name] = value;
+						}
 					}
 				}
 			}
@@ -2639,8 +2648,11 @@ export class URLPattern {
 					const name = this.#compiled.search.paramNames[i];
 					const value = searchMatch[i + 1];
 					if (value !== undefined) {
-						params[name] = value;
 						searchGroups[name] = value;
+						// Pathname params take precedence in the unified params
+						if (!this.#compiled.pathname.paramNames.includes(name)) {
+							params[name] = value;
+						}
 					}
 				}
 			}
@@ -2885,6 +2897,22 @@ export class MatchPattern {
 		return true;
 	}
 
+	/**
+	 * Copy search params into the unified params, skipping any name declared in
+	 * the pathname pattern so that e.g. "?id=2" can't spoof "/users/:id"
+	 */
+	#mergeSearchParams(
+		params: Record<string, string>,
+		searchGroups: Record<string, string>,
+	): void {
+		const pathnameNames = this.#compiled.pathname.paramNames;
+		for (const key in searchGroups) {
+			if (!pathnameNames.includes(key)) {
+				params[key] = searchGroups[key];
+			}
+		}
+	}
+
 	exec(
 		input: string | URL | URLPatternInit,
 		baseURL?: string,
@@ -2927,14 +2955,13 @@ export class MatchPattern {
 				this.#searchPattern,
 				url.searchParams,
 			);
-			Object.assign(params, extracted);
 			Object.assign(searchGroups, extracted);
 		} else {
 			for (const [key, value] of url.searchParams) {
-				params[key] = value;
 				searchGroups[key] = value;
 			}
 		}
+		this.#mergeSearchParams(params, searchGroups);
 
 		return {
 			params,
@@ -2986,8 +3013,8 @@ export class MatchPattern {
 				this.#searchPattern,
 				new URLSearchParams(search),
 			);
-			Object.assign(params, extracted);
 			Object.assign(searchGroups, extracted);
+			this.#mergeSearchParams(params, searchGroups);
 		}
 
 		const protocol =
