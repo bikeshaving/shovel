@@ -99,6 +99,18 @@ export interface RouteOptions {
 }
 
 /**
+ * Options for a Router
+ */
+export interface RouterOptions {
+	/**
+	 * Longest pathname the router will match, in characters. Longer requests
+	 * get 414 URI Too Long before any matching, which bounds how long a
+	 * backtracking-prone pattern can take. Defaults to 2048.
+	 */
+	maxPathLength?: number;
+}
+
+/**
  * Result of matching a URL against registered routes
  */
 export interface RouteMatch {
@@ -600,11 +612,13 @@ export class Router {
 	readonly routes: RouteEntry[];
 	readonly middlewares: MiddlewareEntry[];
 	#executor: RadixTreeExecutor | null;
+	#maxPathLength: number;
 
-	constructor() {
+	constructor(options: RouterOptions = {}) {
 		this.routes = [];
 		this.middlewares = [];
 		this.#executor = null;
+		this.#maxPathLength = options.maxPathLength ?? 2048;
 	}
 
 	/**
@@ -700,6 +714,13 @@ export class Router {
 	 */
 	match(url: string | URL): RouteMatch | null {
 		const executor = this.#ensureCompiled();
+		const pathname =
+			typeof url === "string"
+				? new URL(url, "http://localhost").pathname
+				: url.pathname;
+		if (pathname.length > this.#maxPathLength) {
+			return null;
+		}
 		return executor.matchURL(url);
 	}
 
@@ -711,6 +732,10 @@ export class Router {
 		const executor = this.#ensureCompiled();
 
 		try {
+			if (new URL(request.url).pathname.length > this.#maxPathLength) {
+				throw new HTTPError(414);
+			}
+
 			// Find matching route
 			const matchResult = executor.matchRequest(request);
 

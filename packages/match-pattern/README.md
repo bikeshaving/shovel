@@ -119,8 +119,6 @@ console.log(result.params.id);        // '1'
 console.log(result.search.groups.id); // '2'
 ```
 
-`params` and the `groups` objects have a `null` prototype, so keys from the URL such as `__proto__` or `constructor` are ordinary own properties.
-
 ### 4. Enhanced String Pattern Syntax
 
 It's not possible to separate pathname from search with `?` because the syntax is used to indicate optionality, so MatchPattern supports convenient string patterns with `&` separator:

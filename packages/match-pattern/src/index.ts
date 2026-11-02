@@ -570,15 +570,6 @@ function normalizePathname(pathname: string): string {
 }
 
 /**
- * Create a prototype-less record for params and groups. Keys can come from
- * the URL (e.g. "__proto__" or "constructor" in a query string), so they must
- * be plain own properties that can't shadow or pollute Object.prototype.
- */
-function createRecord(): Record<string, string> {
-	return Object.create(null);
-}
-
-/**
  * Result of pattern matching
  */
 export interface MatchPatternResult {
@@ -1980,7 +1971,7 @@ function extractSearchParams(
 	searchPattern: string,
 	actualParams: URLSearchParams,
 ): Record<string, string> {
-	const params = createRecord();
+	const params: Record<string, string> = {};
 	const patternParams = parseSearchPattern(searchPattern);
 
 	for (const [key, paramDef] of patternParams) {
@@ -2568,9 +2559,9 @@ export class URLPattern {
 			url = input;
 		}
 
-		const params = createRecord();
-		const pathnameGroups = createRecord();
-		const searchGroups = createRecord();
+		const params: Record<string, string> = {};
+		const pathnameGroups: Record<string, string> = {};
+		const searchGroups: Record<string, string> = {};
 
 		// Extract pathname params
 		const match = this.#compiled.pathname.regex.exec(url.pathname);
@@ -2632,9 +2623,9 @@ export class URLPattern {
 		let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
 		pathname = normalizePathname(pathname);
 
-		const params = createRecord();
-		const pathnameGroups = createRecord();
-		const searchGroups = createRecord();
+		const params: Record<string, string> = {};
+		const pathnameGroups: Record<string, string> = {};
+		const searchGroups: Record<string, string> = {};
 
 		const match = this.#compiled.pathname.regex.exec(pathname);
 		if (match) {
@@ -2941,9 +2932,9 @@ export class MatchPattern {
 			url = input;
 		}
 
-		const params = createRecord();
-		const pathnameGroups = createRecord();
-		const searchGroups = createRecord();
+		const params: Record<string, string> = {};
+		const pathnameGroups: Record<string, string> = {};
+		const searchGroups: Record<string, string> = {};
 
 		// Extract pathname params
 		const match = this.#compiled.pathname.regex.exec(url.pathname);
@@ -3000,9 +2991,9 @@ export class MatchPattern {
 		let pathname = input.pathname ?? baseURLObj?.pathname ?? "/";
 		pathname = normalizePathname(pathname);
 
-		const params = createRecord();
-		const pathnameGroups = createRecord();
-		const searchGroups = createRecord();
+		const params: Record<string, string> = {};
+		const pathnameGroups: Record<string, string> = {};
+		const searchGroups: Record<string, string> = {};
 
 		const match = this.#compiled.pathname.regex.exec(pathname);
 		if (match) {

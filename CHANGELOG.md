@@ -4,7 +4,13 @@ All notable changes to Shovel will be documented in this file.
 
 ## Unreleased
 
+### Features
+
+- **`@b9g/router` limits pathname length** — `new Router({maxPathLength})`, default 2048 characters. A longer pathname gets `414 URI Too Long` before any matching, which bounds how long a backtracking-prone pattern such as `/*/*/*/end` can take to fail. ([#129](https://github.com/bikeshaving/shovel/pull/129))
+
 ### Bug Fixes
+
+- **`MatchPattern` path params win over search params** — in `/users/:id`, a request for `/users/1?id=2` now gives `params.id === "1"`, so a query string can't spoof a path param. The search value stays in `search.groups`. ([#129](https://github.com/bikeshaving/shovel/pull/129))
 
 - **`@b9g/node-webworker` no longer drops early messages** — a message posted right after `new Worker(...)` could arrive while the worker script was still loading, before it had a listener, and was lost. The worker now queues messages until the script registers a `message` listener or sets `onmessage`, then delivers them in order. A worker that awaits a message at top level receives it instead of hanging.
 
