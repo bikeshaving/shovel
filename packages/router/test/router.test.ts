@@ -1750,3 +1750,49 @@ describe("HEAD Request Handling (RFC 7231)", () => {
 		expect(await response?.text()).toBe("");
 	});
 });
+
+describe("maxPathLength", () => {
+	test("a longer pathname gets 414 before any matching", async () => {
+		const router = new Router({maxPathLength: 16});
+		let ran = false;
+		router.use(() => {
+			ran = true;
+			return null;
+		});
+		router.route("/*").get(() => new Response("ok"));
+
+		const long = await router.handle(
+			new Request("http://x.com/" + "a".repeat(16)),
+		);
+		expect(long.status).toBe(414);
+		expect(ran).toBe(false);
+		expect(router.match("/" + "a".repeat(16))).toBeNull();
+
+		const ok = await router.handle(
+			new Request("http://x.com/" + "a".repeat(15)),
+		);
+		expect(ok.status).toBe(200);
+	});
+
+	test("the query string doesn't count", async () => {
+		const router = new Router({maxPathLength: 16});
+		router.route("/a").get(() => new Response("ok"));
+		const res = await router.handle(
+			new Request("http://x.com/a?q=" + "b".repeat(100)),
+		);
+		expect(res.status).toBe(200);
+	});
+
+	test("defaults to 2048", async () => {
+		const router = new Router();
+		router.route("/*").get(() => new Response("ok"));
+		const at = await router.handle(
+			new Request("http://x.com/" + "a".repeat(2047)),
+		);
+		expect(at.status).toBe(200);
+		const over = await router.handle(
+			new Request("http://x.com/" + "a".repeat(2048)),
+		);
+		expect(over.status).toBe(414);
+	});
+});

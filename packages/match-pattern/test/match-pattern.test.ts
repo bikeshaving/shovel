@@ -125,40 +125,28 @@ describe("Unified params", () => {
 		expect(result?.search.groups.id).toBe("2");
 	});
 
-	test("params have no prototype", () => {
+	test("params and groups are ordinary objects", () => {
 		const pattern = new MatchPattern("/users/:id");
 		const result = pattern.exec(
 			"http://example.com/users/1?constructor=c&__proto__=p&toString=t",
 		);
 
-		expect(Object.getPrototypeOf(result!.params)).toBeNull();
-		expect(Object.getPrototypeOf(result!.search.groups)).toBeNull();
-		expect(Object.keys(result!.params)).toEqual([
-			"id",
-			"constructor",
-			"__proto__",
-			"toString",
-		]);
-		expect(result!.params.__proto__).toBe("p");
+		expect(Object.getPrototypeOf(result!.params)).toBe(Object.prototype);
+		expect(Object.getPrototypeOf(result!.pathname.groups)).toBe(
+			Object.prototype,
+		);
+		expect(Object.hasOwn(result!.params, "id")).toBe(true);
+		expect(result!.params.constructor).toBe("c");
+		expect(result!.params.toString).toBe("t");
 		expect(({} as Record<string, unknown>).p).toBeUndefined();
 	});
 
-	test("missing params don't resolve to prototype properties", () => {
-		const pattern = new MatchPattern("/users/:id");
-		const result = pattern.exec("http://example.com/users/1");
-
-		expect(result!.params.constructor).toBeUndefined();
-		expect(result!.params.toString).toBeUndefined();
-		expect("hasOwnProperty" in result!.params).toBe(false);
-	});
-
-	test("pathname params can be named after prototype properties", () => {
-		const pattern = new MatchPattern("/:__proto__/:constructor");
-		const result = pattern.exec("http://example.com/a/b");
-
-		expect(Object.keys(result!.params)).toEqual(["__proto__", "constructor"]);
-		expect(result!.params.__proto__).toBe("a");
-		expect(result!.pathname.groups.__proto__).toBe("a");
+	test("hasOwnProperty works on params", () => {
+		const result = new MatchPattern("/users/:id").exec(
+			"http://example.com/users/1",
+		);
+		// eslint-disable-next-line no-prototype-builtins -- the point of the test
+		expect(result!.params.hasOwnProperty("id")).toBe(true);
 	});
 
 	test("extra search params don't replace empty named values", () => {
