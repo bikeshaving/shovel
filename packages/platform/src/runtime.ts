@@ -42,6 +42,14 @@ declare global {
 		secure?: boolean;
 		sameSite?: CookieSameSite;
 		partitioned?: boolean;
+		httpOnly?: boolean;
+	}
+
+	// Server-side extension: the Cookie Store API has no HttpOnly attribute
+	// because browsers never expose such cookies to scripts, but a server
+	// setting cookies needs to be able to mark them HttpOnly
+	interface CookieInit {
+		httpOnly?: boolean;
 	}
 }
 
@@ -104,6 +112,10 @@ export function serializeCookie(cookie: CookieInit): string {
 		header += `; Partitioned`;
 	}
 
+	if (cookie.httpOnly) {
+		header += `; HttpOnly`;
+	}
+
 	// Secure is implied for all cookies in this implementation
 	header += `; Secure`;
 
@@ -150,6 +162,9 @@ export function parseSetCookieHeader(setCookieHeader: string): CookieListItem {
 				break;
 			case "partitioned":
 				cookie.partitioned = true;
+				break;
+			case "httponly":
+				cookie.httpOnly = true;
 				break;
 		}
 	}
@@ -217,6 +232,7 @@ export class RequestCookieStore extends EventTarget {
 				expires: change.expires ?? undefined,
 				sameSite: change.sameSite,
 				partitioned: change.partitioned,
+				httpOnly: change.httpOnly,
 			};
 		}
 
@@ -2377,7 +2393,8 @@ export interface WorkerResponseMessage {
 	response: {
 		status: number;
 		statusText: string;
-		headers: Record<string, string>;
+		// Entries rather than a record so repeated headers (Set-Cookie) survive
+		headers: [string, string][];
 		body: ArrayBuffer;
 	};
 	requestID: number;
@@ -2570,9 +2587,10 @@ export function startWorkerMessageLoop(
 			const body = await response.arrayBuffer();
 
 			// Ensure Content-Type is preserved
-			const headers = Object.fromEntries(response.headers.entries());
-			if (!headers["Content-Type"] && !headers["content-type"]) {
-				headers["Content-Type"] = "text/plain; charset=utf-8";
+			// Headers iteration yields each Set-Cookie value as its own entry
+			const headers = [...response.headers];
+			if (!response.headers.has("content-type")) {
+				headers.push(["content-type", "text/plain; charset=utf-8"]);
 			}
 
 			const responseMsg: WorkerResponseMessage = {

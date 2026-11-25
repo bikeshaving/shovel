@@ -274,7 +274,8 @@ export class CustomCacheStorage implements CacheStorage {
 						result = {
 							status: response.status,
 							statusText: response.statusText,
-							headers: Object.fromEntries(response.headers),
+							// Entries rather than a record so repeated Set-Cookie survives
+							headers: [...response.headers],
 							body,
 						};
 					} else {

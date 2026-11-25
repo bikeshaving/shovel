@@ -187,6 +187,29 @@ class ShovelWritableFileStream
 }
 
 /**
+ * Validates that a name is actually a name and not a path
+ * The File System Access API only accepts names, not paths
+ * WPT expects TypeError for invalid names
+ */
+export function validateName(name: string): void {
+	if (!name || name.trim() === "") {
+		throw new TypeError("Name cannot be empty");
+	}
+
+	if (name.includes("/") || name.includes("\\")) {
+		throw new TypeError("Name cannot contain path separators");
+	}
+
+	if (name === "." || name === "..") {
+		throw new TypeError("Name cannot be '.' or '..'");
+	}
+
+	// Additional platform-specific invalid characters could be checked here
+	// Windows: < > : " | ? * and control characters
+	// But for simplicity, we'll focus on path traversal prevention
+}
+
+/**
  * Shared FileSystemHandle base implementation
  * Provides common functionality for both file and directory handles
  */
@@ -245,21 +268,7 @@ export abstract class ShovelHandle implements FileSystemHandle {
 	 * WPT expects TypeError for invalid names
 	 */
 	validateName(name: string): void {
-		if (!name || name.trim() === "") {
-			throw new TypeError("Name cannot be empty");
-		}
-
-		if (name.includes("/") || name.includes("\\")) {
-			throw new TypeError("Name cannot contain path separators");
-		}
-
-		if (name === "." || name === "..") {
-			throw new TypeError("Name cannot be '.' or '..'");
-		}
-
-		// Additional platform-specific invalid characters could be checked here
-		// Windows: < > : " | ? * and control characters
-		// But for simplicity, we'll focus on path traversal prevention
+		validateName(name);
 	}
 }
 

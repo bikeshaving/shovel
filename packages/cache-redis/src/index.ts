@@ -49,8 +49,11 @@ interface CacheEntry {
 	status: number;
 	/** Response status text */
 	statusText: string;
-	/** Response headers as key-value pairs */
-	headers: Record<string, string>;
+	/**
+	 * Response headers as entries, so repeated headers (Set-Cookie) survive.
+	 * Entries written before this format are plain records.
+	 */
+	headers: [string, string][] | Record<string, string>;
 	/** Response body as base64-encoded string */
 	body: string;
 	/** Timestamp when cached */
@@ -137,11 +140,8 @@ export class RedisCache extends Cache {
 			);
 		}
 
-		// Convert response headers to plain object
-		const headers: Record<string, string> = {};
-		response.headers.forEach((value, key) => {
-			headers[key] = value;
-		});
+		// Headers iteration yields each Set-Cookie value as its own entry
+		const headers = [...response.headers];
 
 		// Convert request headers to plain object (for Vary checking)
 		const requestHeaders: Record<string, string> = {};
@@ -188,7 +188,7 @@ export class RedisCache extends Cache {
 	 * Returns true if the request matches or if there's no Vary header
 	 */
 	#matchesVary(request: Request, entry: CacheEntry): boolean {
-		const varyHeader = entry.headers["vary"] || entry.headers["Vary"];
+		const varyHeader = new Headers(entry.headers).get("vary");
 		if (!varyHeader) {
 			return true; // No Vary header means always matches
 		}

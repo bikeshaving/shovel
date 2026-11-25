@@ -327,7 +327,7 @@ interface WorkerResponse extends WorkerMessage {
 	response: {
 		status: number;
 		statusText: string;
-		headers: Record<string, string>;
+		headers: [string, string][]; // Entries, so repeated Set-Cookie survives
 		body: ArrayBuffer; // Zero-copy transfer from worker
 	};
 	requestID: number;
