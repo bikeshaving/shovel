@@ -3,8 +3,7 @@
  *
  * Demonstrates @b9g/admin package with:
  * - Auto-generated CRUD for @b9g/zen schema
- * - Google OAuth authentication (TODO)
- * - Session storage via self.caches (TODO)
+ * - HTTP Basic authentication via the required `authorize` option
  */
 
 import {Router} from "@b9g/router";
@@ -23,6 +22,71 @@ import uswdsCSS from "@uswds/uswds/css/uswds.min.css" with {
 };
 import uswdsJS from "@uswds/uswds" with {assetBase: "/static/"};
 
+/**
+ * Compare two strings without leaking where they differ through timing
+ */
+async function safeEqual(a: string, b: string): Promise<boolean> {
+	const encoder = new TextEncoder();
+	const [hashA, hashB] = await Promise.all([
+		crypto.subtle.digest("SHA-256", encoder.encode(a)),
+		crypto.subtle.digest("SHA-256", encoder.encode(b)),
+	]);
+	const bytesA = new Uint8Array(hashA);
+	const bytesB = new Uint8Array(hashB);
+	let diff = 0;
+	for (let i = 0; i < bytesA.length; i++) {
+		diff |= bytesA[i] ^ bytesB[i];
+	}
+	return diff === 0;
+}
+
+/**
+ * Decode the credentials of a Basic Authorization header, or null if malformed
+ */
+function decodeBasicAuth(header: string | null): string | null {
+	if (!header?.startsWith("Basic ")) {
+		return null;
+	}
+	try {
+		return atob(header.slice("Basic ".length));
+	} catch (err) {
+		logger.debug("Malformed Basic credentials", {error: err});
+		return null;
+	}
+}
+
+/**
+ * HTTP Basic auth against ADMIN_USERNAME / ADMIN_PASSWORD.
+ * Denies everything when ADMIN_PASSWORD is not set.
+ */
+async function authorize(request: Request): Promise<boolean | Response> {
+	const username = import.meta.env.ADMIN_USERNAME || "admin";
+	const password = import.meta.env.ADMIN_PASSWORD;
+	if (!password) {
+		logger.error("ADMIN_PASSWORD is not set; denying admin access");
+		return false;
+	}
+
+	const credentials = decodeBasicAuth(request.headers.get("Authorization"));
+	if (credentials) {
+		const separator = credentials.indexOf(":");
+		if (
+			separator !== -1 &&
+			(await safeEqual(credentials.slice(0, separator), username)) &&
+			(await safeEqual(credentials.slice(separator + 1), password))
+		) {
+			return true;
+		}
+	}
+
+	return new Response("Authentication required", {
+		status: 401,
+		headers: {
+			"WWW-Authenticate": 'Basic realm="Shovel Admin", charset="UTF-8"',
+		},
+	});
+}
+
 const router = new Router();
 
 // Serve static assets (USWDS CSS, JS, fonts, images)
@@ -32,9 +96,7 @@ router.use(assets());
 const admin = createAdmin({
 	database: "main",
 	schema,
-	auth: {
-		providers: ["google"],
-	},
+	authorize,
 	branding: {
 		title: "Shovel Admin",
 	},
