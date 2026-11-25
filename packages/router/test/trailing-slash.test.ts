@@ -21,6 +21,7 @@ describe("trailingSlash() serialization", () => {
 					match: {source: "^\\/(?:(.*)\\/)?$", flags: ""},
 					target: "/$1",
 					status: 301,
+					fallback: true,
 				},
 			},
 			{route: {pattern: "/about", method: "GET"}},

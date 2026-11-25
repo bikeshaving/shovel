@@ -347,6 +347,9 @@ export class AdminRouter extends Router {
 			});
 		}
 
+		// Normalize trailing slashes - strip them
+		this.use(trailingSlash("strip"));
+
 		// Store config for use in routes
 		this.#title = config.branding?.title ?? "Admin";
 		this.#assets = config.assets;
@@ -377,10 +380,6 @@ export class AdminRouter extends Router {
 
 		// Register all routes
 		this.#registerRoutes();
-
-		// Strip trailing slashes. Declared after the routes so a matching route
-		// always wins.
-		this.use(trailingSlash("strip"));
 	}
 
 	/** Get the database instance */

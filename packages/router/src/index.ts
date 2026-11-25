@@ -151,6 +151,9 @@ type SerializedEntry = {route: SerializedRoute} | {redirect: RedirectEntry};
  * - Raw regexp: `{source, flags}`, with `$1`…`$n` in `target`. With `base`
  *   (set when a subrouter is mounted), the regexp only sees paths under
  *   `base`, with `base` removed; the bare `base` path reads as `/`.
+ *
+ * A `fallback` redirect only applies when no route matches the request,
+ * wherever it was declared.
  */
 interface RedirectEntry {
 	match:
@@ -158,6 +161,20 @@ interface RedirectEntry {
 		| {source: string; flags: string; base?: string};
 	target: string;
 	status: number;
+	fallback?: true;
+}
+
+/**
+ * Options for `redirect()` and `router.redirect()`
+ */
+export interface RedirectOptions {
+	/** Response status (default: 301) */
+	status?: number;
+	/**
+	 * Only redirect when no route matches the request, wherever the redirect
+	 * was declared. Without it, a redirect wins over routes declared after it.
+	 */
+	fallback?: boolean;
 }
 
 /**
@@ -686,7 +703,7 @@ const redirectEntries = new WeakMap<Middleware, RedirectEntry>();
 function toRedirectEntry(
 	from: string | RegExp,
 	to: string,
-	options: {status?: number},
+	options: RedirectOptions,
 ): RedirectEntry {
 	return {
 		match:
@@ -695,6 +712,7 @@ function toRedirectEntry(
 				: {source: from.source, flags: from.flags},
 		target: to,
 		status: options.status ?? 301,
+		...(options.fallback ? {fallback: true as const} : {}),
 	};
 }
 
@@ -821,14 +839,16 @@ function isCrossOriginTarget(target: string): boolean {
  * `:id` reusable in `to`) or a `RegExp` (with `$1`…`$n` in `to`).
  *
  * Registered with `router.use()`, it runs in declaration order like any
- * other middleware, and it is serialized. Called directly, for example
- * inside generator middleware, it returns the redirect `Response`, or null
- * when the request does not match; that call is not serialized.
+ * other middleware, and it is serialized. It wins over routes declared after
+ * it, unless `fallback` is set: a fallback redirect only applies when no
+ * route matches. Called directly, for example inside generator middleware,
+ * it returns the redirect `Response`, or null when the request does not
+ * match; that call is not serialized and ignores `fallback`.
  */
 export function redirect(
 	from: string | RegExp,
 	to: string,
-	options: {status?: number} = {},
+	options: RedirectOptions = {},
 ): (request: Request) => Response | null {
 	return redirectMiddleware(toRedirectEntry(from, to, options));
 }
@@ -972,7 +992,7 @@ export class Router {
 	redirect(
 		from: string | RegExp,
 		to: string,
-		options: {status?: number} = {},
+		options: RedirectOptions = {},
 	): void {
 		this.use(redirect(from, to, options));
 	}
@@ -1386,7 +1406,12 @@ export class Router {
 
 			const record = this.#redirectRecords.get(entry);
 			if (record) {
-				if (record.order > routeOrder) continue;
+				// A fallback redirect yields to any matching route; any other
+				// redirect yields to the routes declared before it
+				const yields = record.entry.fallback
+					? routeOrder !== Number.POSITIVE_INFINITY
+					: record.order > routeOrder;
+				if (yields) continue;
 				currentResponse = redirectResponse(record, new URL(request.url));
 				if (currentResponse) break;
 				continue;

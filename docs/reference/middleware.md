@@ -144,7 +144,7 @@ router.use(trailingSlash("strip")); // /path/ → /path
 router.use(trailingSlash("add"));   // /path → /path/
 ```
 
-It is a redirect, so where you declare it matters: it wins over routes declared after it and yields to routes declared before it. Declare it after your routes, so that a route which matches the request as written is always served.
+It only redirects when no route matches the request as written, wherever you declare it.
 
 ---
 

@@ -19,8 +19,8 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  * Middleware that normalizes trailing slashes via 301 redirect
  *
  * @param mode - "strip" removes trailing slash, "add" adds trailing slash
- * @returns A redirect made by `redirect()`. Registered, it takes precedence
- * over routes declared after it, not before.
+ * @returns A fallback redirect made by `redirect()`. It only redirects when
+ * no route matches the request as written, wherever it is declared.
  *
  * @example
  * ```typescript
@@ -28,7 +28,6 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  * import {trailingSlash} from "@b9g/router/middleware";
  *
  * const router = new Router();
- * // ...routes...
  * router.use(trailingSlash("strip")); // Redirect /path/ → /path
  *
  * // Can also be scoped to specific paths
@@ -42,8 +41,8 @@ export function trailingSlash(
 	// mounted subrouter that is the mount path, so "/api/" goes to "/api".
 	// Unmounted, it points "/" at itself, which redirect() never does.
 	return mode === "strip"
-		? redirect(/^\/(?:(.*)\/)?$/, "/$1")
-		: redirect(/^(.*[^/])$/, "$1/");
+		? redirect(/^\/(?:(.*)\/)?$/, "/$1", {fallback: true})
+		: redirect(/^(.*[^/])$/, "$1/", {fallback: true});
 }
 
 // ============================================================================

@@ -299,6 +299,25 @@ describe("Redirect edge cases", () => {
 		});
 	});
 
+	test("a fallback redirect yields to any matching route", async () => {
+		const server = new Router();
+		server.redirect("/docs/:page", "/guides/:page", {fallback: true});
+		server.route("/docs/intro").get(async () => new Response("intro"));
+		const client = Router.fromJSON(server.toJSON());
+
+		const response = await server.handle(
+			new Request("http://x.com/docs/intro"),
+		);
+		expect(await response.text()).toBe("intro");
+		for (const router of [server, client]) {
+			expect(await redirectOf(router, "http://x.com/docs/intro")).toBe(null);
+			expect(await redirectOf(router, "http://x.com/docs/other")).toEqual({
+				location: "http://x.com/guides/other",
+				status: 301,
+			});
+		}
+	});
+
 	test("a redirect never points a request at itself", async () => {
 		const router = new Router();
 		router.redirect(/^\/c\/(.*)$/, "$1");
