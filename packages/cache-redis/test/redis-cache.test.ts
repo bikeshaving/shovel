@@ -142,6 +142,46 @@ describeRedis("RedisCache", () => {
 		expect(cached2).toBeUndefined();
 	});
 
+	test("keeps every Set-Cookie header", async () => {
+		const request = new Request("http://example.com/cookies");
+		const headers = new Headers();
+		headers.append("Set-Cookie", "a=1");
+		headers.append("Set-Cookie", "b=2");
+		await cache.put(request, new Response("ok", {headers}));
+
+		const cached = await cache.match(request);
+		expect(cached!.headers.getSetCookie()).toEqual(["a=1", "b=2"]);
+	});
+
+	test("reads entries stored with headers as a record", async () => {
+		const request = new Request("http://example.com/legacy", {
+			headers: {"Accept-Encoding": "gzip"},
+		});
+		await cache.put(
+			request,
+			new Response("legacy", {headers: {Vary: "Accept-Encoding"}}),
+		);
+
+		// Rewrite the stored entry into the old record format
+		const client = createClient({url: REDIS_URL});
+		await client.connect();
+		try {
+			const [key] = await client.keys(`${testPrefix}:*`);
+			const entry = JSON.parse((await client.get(key))!);
+			entry.headers = Object.fromEntries(entry.headers);
+			await client.set(key, JSON.stringify(entry));
+		} finally {
+			await client.quit();
+		}
+
+		const cached = await cache.match(request);
+		expect(await cached!.text()).toBe("legacy");
+		const other = new Request("http://example.com/legacy", {
+			headers: {"Accept-Encoding": "br"},
+		});
+		expect(await cache.match(other)).toBeUndefined();
+	});
+
 	test("respects Vary header", async () => {
 		const request1 = new Request("http://example.com/vary-test", {
 			headers: {"Accept-Encoding": "gzip"},

@@ -19,7 +19,12 @@ export {Worker as NodeWebWorker} from "@b9g/node-webworker";
 
 // Internal @b9g/* packages
 import {CustomCacheStorage} from "@b9g/cache";
-import {InternalServerError, isHTTPError, HTTPError} from "@b9g/http-errors";
+import {
+	BadRequest,
+	InternalServerError,
+	isHTTPError,
+	HTTPError,
+} from "@b9g/http-errors";
 import {
 	type PlatformDefaults,
 	type Handler,
@@ -37,6 +42,75 @@ import {
 } from "@b9g/platform/runtime";
 
 const logger = getLogger(["shovel", "platform"]);
+
+// A Host header is a hostname or IPv4 address, or a bracketed IPv6 literal,
+// with an optional port. Anything else (e.g. "x/admin" or "x#") would let the
+// client rewrite the pathname the handler sees.
+const HOST_HEADER_RE = /^(?:[A-Za-z0-9._-]+|\[[0-9A-Fa-f:.]+\])(?::\d{1,5})?$/;
+
+/**
+ * Copy Web API response headers onto a Node.js response. Set-Cookie is the
+ * one header that can't be comma-joined, so each value is sent separately.
+ */
+function setResponseHeaders(res: HTTP.ServerResponse, headers: Headers): void {
+	headers.forEach((value, key) => {
+		if (key !== "set-cookie") {
+			res.setHeader(key, value);
+		}
+	});
+	const setCookies = headers.getSetCookie();
+	if (setCookies.length > 0) {
+		res.setHeader("set-cookie", setCookies);
+	}
+}
+
+/**
+ * Build the Web API request URL from a Node.js request.
+ *
+ * The authority comes only from the (validated) Host header, or from the
+ * server's own address when Host is absent (HTTP/1.0). The request-target
+ * only ever contributes a path and query.
+ */
+function buildRequestURL(
+	req: HTTP.IncomingMessage,
+	fallbackHost: string,
+	fallbackPort: number,
+): URL {
+	let authority = req.headers.host;
+	if (authority === undefined || authority === "") {
+		authority = fallbackHost.includes(":")
+			? `[${fallbackHost}]:${fallbackPort}`
+			: `${fallbackHost}:${fallbackPort}`;
+	} else if (!HOST_HEADER_RE.test(authority)) {
+		throw new BadRequest("Invalid Host header");
+	}
+
+	let target = req.url || "/";
+	if (!target.startsWith("/")) {
+		// Absolute-form (proxy-style) request-target: keep only path and query
+		let absolute: URL;
+		try {
+			absolute = new URL(target);
+		} catch (error) {
+			throw new BadRequest("Invalid request target", {cause: error as Error});
+		}
+		if (absolute.protocol !== "http:" && absolute.protocol !== "https:") {
+			throw new BadRequest("Invalid request target");
+		}
+		target = absolute.pathname + absolute.search;
+	}
+
+	let origin: URL;
+	try {
+		origin = new URL(`http://${authority}`);
+	} catch (error) {
+		throw new BadRequest("Invalid Host header", {cause: error as Error});
+	}
+
+	// Prefixing with "." keeps a target like "//evil.test/a" from being parsed
+	// as a scheme-relative URL with its own authority.
+	return new URL("." + target, origin);
+}
 
 // ============================================================================
 // TYPES
@@ -308,12 +382,13 @@ export class NodePlatform {
 	createServer(handler: Handler, options: ServerOptions = {}): Server {
 		const port = options.port ?? this.#options.port;
 		const host = options.host ?? this.#options.host;
+		let actualPort = port;
 
 		// Create HTTP server with Web API Request/Response conversion
 		const httpServer = HTTP.createServer(async (req, res) => {
 			try {
 				// Convert Node.js request to Web API Request
-				const url = `http://${req.headers.host}${req.url}`;
+				const url = buildRequestURL(req, host, actualPort);
 				const hasBody = req.method !== "GET" && req.method !== "HEAD";
 				const request = new Request(url, {
 					method: req.method,
@@ -332,9 +407,7 @@ export class NodePlatform {
 				res.statusMessage = response.statusText;
 
 				// Set headers
-				response.headers.forEach((value, key) => {
-					res.setHeader(key, value);
-				});
+				setResponseHeaders(res, response.headers);
 
 				// Stream response body
 				if (response.body) {
@@ -376,15 +449,12 @@ export class NodePlatform {
 
 				// Write response to Node.js res
 				res.statusCode = response.status;
-				response.headers.forEach((value, key) => {
-					res.setHeader(key, value);
-				});
+				setResponseHeaders(res, response.headers);
 				res.end(await response.text());
 			}
 		});
 
 		let isListening = false;
-		let actualPort = port;
 
 		return {
 			async listen() {
