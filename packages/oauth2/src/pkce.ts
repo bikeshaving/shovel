@@ -12,6 +12,13 @@ export function generateCodeVerifier(length: number = 128): string {
 		throw new Error("Code verifier length must be between 43 and 128");
 	}
 
+	return randomString(length);
+}
+
+/**
+ * Generate a cryptographically random string of unreserved URL characters
+ */
+function randomString(length: number): string {
 	const charset =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
 	const randomValues = new Uint8Array(length);
@@ -55,5 +62,6 @@ function base64URLEncode(buffer: ArrayBuffer): string {
  * Generate a random state parameter for CSRF protection
  */
 export function generateState(length: number = 32): string {
-	return generateCodeVerifier(length);
+	// Not a code verifier, so the verifier's 43-128 length rule doesn't apply
+	return randomString(length);
 }

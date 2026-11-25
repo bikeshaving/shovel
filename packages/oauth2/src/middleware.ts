@@ -6,6 +6,7 @@
 import {
 	OAuth2Client,
 	OAuth2Tokens,
+	assertSessionSecret,
 	getSession,
 	type SessionOptions,
 } from "./index.js";
@@ -83,9 +84,8 @@ export function requireAuth(
 		onUnauthorized?: () => Response | Promise<Response>;
 	},
 ): FunctionMiddleware {
-	if (!options?.secret) {
-		throw new TypeError("requireAuth() requires a session secret");
-	}
+	// Fail at startup rather than on the first request
+	assertSessionSecret(options);
 
 	return async (request, context) => {
 		const tokens = await getSession((self as any).cookieStore, options);

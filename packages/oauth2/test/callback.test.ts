@@ -26,6 +26,26 @@ function setCookieStore(store: RequestCookieStore) {
 	});
 }
 
+describe("startAuthorization", () => {
+	test("stores state and verifier in HttpOnly cookies", async () => {
+		const client = new OAuth2Client({
+			authorizationEndpoint: "https://provider.test/authorize",
+			tokenEndpoint: "https://provider.test/token",
+			clientID: "client",
+			redirectURI: "https://app.test/callback",
+		});
+		const store = new RequestCookieStore();
+		await client.startAuthorization(store as any);
+
+		const headers = store.getSetCookieHeaders();
+		expect(headers).toHaveLength(2);
+		for (const header of headers) {
+			expect(header).toMatch(/^oauth_(state|verifier)=/);
+			expect(header).toContain("HttpOnly");
+		}
+	});
+});
+
 describe("handleCallback", () => {
 	let logs: LogRecord[];
 	let originalFetch: typeof fetch;

@@ -97,6 +97,13 @@ describe("createSession", () => {
 		await expect(createSession(store, TOKENS, {} as any)).rejects.toThrow(
 			TypeError,
 		);
+		// The pre-secret call signature gets the same clear error
+		await expect((createSession as any)(store, TOKENS)).rejects.toThrow(
+			"Session secret must be",
+		);
+		await expect((getSession as any)(store)).rejects.toThrow(
+			"Session secret must be",
+		);
 	});
 });
 
@@ -141,6 +148,7 @@ describe("requireAuth", () => {
 	test("throws without a secret", () => {
 		expect(() => (requireAuth as any)()).toThrow(TypeError);
 		expect(() => requireAuth({} as any)).toThrow(TypeError);
+		expect(() => requireAuth({secret: "too-short"})).toThrow(TypeError);
 	});
 
 	test("rejects a missing cookie", async () => {

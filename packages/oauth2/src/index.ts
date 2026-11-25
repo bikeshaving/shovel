@@ -81,6 +81,7 @@ export class OAuth2Client {
 			value: codeVerifier,
 			path: "/",
 			sameSite: "lax",
+			httpOnly: true,
 			expires: Date.now() + 10 * 60 * 1000, // 10 minutes
 		});
 
@@ -89,6 +90,7 @@ export class OAuth2Client {
 			value: state,
 			path: "/",
 			sameSite: "lax",
+			httpOnly: true,
 			expires: Date.now() + 10 * 60 * 1000, // 10 minutes
 		});
 
@@ -279,14 +281,24 @@ const MIN_SECRET_LENGTH = 32;
 const sessionKeys = new Map<string, Promise<CryptoKey>>();
 
 /**
- * Derive (and cache) the AES-GCM key for a session secret
+ * Throw unless the options carry a usable session secret
  */
-function getSessionKey(secret: string): Promise<CryptoKey> {
+export function assertSessionSecret(
+	options: {secret?: unknown} | undefined,
+): void {
+	const secret = options?.secret;
 	if (typeof secret !== "string" || secret.length < MIN_SECRET_LENGTH) {
 		throw new TypeError(
 			`Session secret must be a string of at least ${MIN_SECRET_LENGTH} characters`,
 		);
 	}
+}
+
+/**
+ * Derive (and cache) the AES-GCM key for a session secret
+ */
+function getSessionKey(secret: string): Promise<CryptoKey> {
+	assertSessionSecret({secret});
 
 	let key = sessionKeys.get(secret);
 	if (!key) {
@@ -418,6 +430,7 @@ export async function createSession(
 		maxAge?: number;
 	},
 ): Promise<void> {
+	assertSessionSecret(options);
 	const sessionCookieName = options.sessionCookieName || "session";
 	const maxAge = options.maxAge || tokens.expiresIn || 3600;
 	const expires = Date.now() + maxAge * 1000;
@@ -441,9 +454,9 @@ export async function getSession(
 	cookieStore: any,
 	options: SessionOptions,
 ): Promise<OAuth2Tokens | null> {
-	const sessionCookieName = options.sessionCookieName || "session";
 	// Validate the secret even when no cookie is present
-	await getSessionKey(options.secret);
+	assertSessionSecret(options);
+	const sessionCookieName = options.sessionCookieName || "session";
 	const cookie = await cookieStore.get(sessionCookieName);
 	if (!cookie || typeof cookie.value !== "string") {
 		return null;
