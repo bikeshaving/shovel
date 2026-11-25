@@ -574,7 +574,7 @@ function normalizePathname(pathname: string): string {
  */
 export interface MatchPatternResult {
 	/**
-	 * Unified pathname and search params (null-prototype object). Pathname
+	 * Unified pathname and search params. Pathname
 	 * params take precedence: a search param never overrides a name declared
 	 * in the pathname pattern.
 	 */
@@ -1983,10 +1983,11 @@ function extractSearchParams(
 		}
 	}
 
-	// Also capture extra params (own-key check: params has no prototype, and
-	// an empty named value must not be replaced by an extra param)
+	// Also capture extra params. Own-key check: an empty named value must not
+	// be replaced by an extra param, and a param named like an Object.prototype
+	// member (e.g. "toString") must not be dropped.
 	for (const [key, value] of actualParams) {
-		if (!(key in params)) {
+		if (!Object.hasOwn(params, key)) {
 			params[key] = value;
 		}
 	}

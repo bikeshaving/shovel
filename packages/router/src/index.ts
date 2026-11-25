@@ -104,8 +104,9 @@ export interface RouteOptions {
 export interface RouterOptions {
 	/**
 	 * Longest pathname the router will match, in characters. Longer requests
-	 * get 414 URI Too Long before any matching, which bounds how long a
-	 * backtracking-prone pattern can take. Defaults to 2048.
+	 * get 414 URI Too Long before any matching, which caps how long a
+	 * backtracking-prone pattern can take. Defaults to 2048; Infinity
+	 * disables the limit.
 	 */
 	maxPathLength?: number;
 }
@@ -618,7 +619,13 @@ export class Router {
 		this.routes = [];
 		this.middlewares = [];
 		this.#executor = null;
-		this.#maxPathLength = options.maxPathLength ?? 2048;
+		const maxPathLength = options.maxPathLength ?? 2048;
+		if (!(maxPathLength > 0)) {
+			throw new RangeError(
+				"maxPathLength must be a positive number (use Infinity for no limit)",
+			);
+		}
+		this.#maxPathLength = maxPathLength;
 	}
 
 	/**

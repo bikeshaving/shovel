@@ -266,7 +266,7 @@ function compilePathname(
 
 ```typescript
 interface MatchPatternResult extends URLPatternResult {
-  params: Record<string, string>;  // Unified pathname and search params (pathname wins, null prototype)
+  params: Record<string, string>;  // Unified pathname and search params (pathname wins)
 }
 
 interface URLPatternOptions {

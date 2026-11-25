@@ -1783,6 +1783,13 @@ describe("maxPathLength", () => {
 		expect(res.status).toBe(200);
 	});
 
+	test("rejects a limit that isn't a positive number", () => {
+		for (const maxPathLength of [0, -1, NaN]) {
+			expect(() => new Router({maxPathLength})).toThrow(RangeError);
+		}
+		expect(() => new Router({maxPathLength: Infinity})).not.toThrow();
+	});
+
 	test("defaults to 2048", async () => {
 		const router = new Router();
 		router.route("/*").get(() => new Response("ok"));

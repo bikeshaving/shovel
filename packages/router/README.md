@@ -69,9 +69,9 @@ new Router()
 new Router({maxPathLength: 4096})
 ```
 
-`maxPathLength` is the longest pathname the router will match, in characters, and defaults to 2048. A longer request gets `414 URI Too Long` before any route or middleware runs, and `match()` returns `null`. The query string doesn't count.
+`maxPathLength` is the longest pathname the router will match, in characters, and defaults to 2048. A longer request gets `414 URI Too Long` before any route or middleware runs, and `match()` returns `null`. The query string doesn't count. It must be a positive number; `Infinity` disables the limit.
 
-The limit bounds how long matching can take. A pattern with three or more params or wildcards that can split a URL several ways, such as `/:a-:b-:c` or `/*/*/*/end`, makes the regular expression engine try each split before it fails, and the time grows quickly with the path's length. Prefer patterns with at most two such pieces.
+The limit caps how long matching can take, but it doesn't make every pattern safe. A pattern with three or more params or wildcards that can split a URL several ways, such as `/:a-:b-:c` or `/*/*/*/end`, makes the regular expression engine try each split before it fails, and the time grows quickly with the path's length: at the default limit a crafted path can still take seconds to reject. Keep patterns to at most two such pieces, or lower `maxPathLength` if you need more.
 
 #### Methods
 

@@ -136,8 +136,8 @@ describe("Unified params", () => {
 			Object.prototype,
 		);
 		expect(Object.hasOwn(result!.params, "id")).toBe(true);
-		expect(result!.params.constructor).toBe("c");
-		expect(result!.params.toString).toBe("t");
+		expect(result!.params.constructor as unknown).toBe("c");
+		expect(result!.params.toString as unknown).toBe("t");
 		expect(({} as Record<string, unknown>).p).toBeUndefined();
 	});
 
@@ -147,6 +147,17 @@ describe("Unified params", () => {
 		);
 		// eslint-disable-next-line no-prototype-builtins -- the point of the test
 		expect(result!.params.hasOwnProperty("id")).toBe(true);
+	});
+
+	test("extra search params named like Object.prototype members are kept", () => {
+		const pattern = new MatchPattern("/api/posts/:id&format=:format");
+		const result = pattern.exec(
+			"http://example.com/api/posts/1?format=json&toString=t&constructor=c",
+		);
+
+		expect(result?.params.toString as unknown).toBe("t");
+		expect(result?.params.constructor as unknown).toBe("c");
+		expect(result?.params.format).toBe("json");
 	});
 
 	test("extra search params don't replace empty named values", () => {
