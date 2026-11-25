@@ -325,7 +325,9 @@ router.use(cors({
   credentials: true
 }));
 
-// Trailing slash normalization
+// ...your routes...
+
+// Trailing slash normalization, declared after the routes
 router.use(trailingSlash("strip")); // /path/ → /path
 ```
 
@@ -368,6 +370,8 @@ Normalizes URL trailing slashes via 301 redirect.
 ```typescript
 type TrailingSlashMode = "strip" | "add";
 ```
+
+It is a redirect, so where you declare it matters: it wins over routes declared after it and yields to routes declared before it. Declare it after your routes, so that a route which matches the request as written is always served.
 
 ## License
 

@@ -28,6 +28,7 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  * import {trailingSlash} from "@b9g/router/middleware";
  *
  * const router = new Router();
+ * // ...routes...
  * router.use(trailingSlash("strip")); // Redirect /path/ → /path
  *
  * // Can also be scoped to specific paths

@@ -213,6 +213,28 @@ describe("authorization", () => {
 // CSRF
 // ============================================================================
 
+describe("trailing slashes", () => {
+	test("are stripped, including on the mount path", async () => {
+		const app = mountAdmin(allowAll);
+		for (const [path, location] of [
+			["/admin/", "/admin"],
+			["/admin/users/", "/admin/users"],
+			["/admin/users/1/", "/admin/users/1"],
+		]) {
+			const response = await app.handle(get(path));
+			expect([path, response.status]).toEqual([path, 301]);
+			expect(response.headers.get("Location")).toBe(origin + location);
+		}
+		expect((await app.handle(get("/admin"))).status).toBe(200);
+		expect((await app.handle(get("/admin/users"))).status).toBe(200);
+	});
+
+	test("are not stripped for a request that isn't authorized", async () => {
+		const app = mountAdmin(denyAll);
+		expect((await app.handle(get("/admin/users/"))).status).toBe(403);
+	});
+});
+
 describe("CSRF protection", () => {
 	const crossSiteHeaders: Array<[string, HeadersInit]> = [
 		["Sec-Fetch-Site: cross-site", {"Sec-Fetch-Site": "cross-site"}],
