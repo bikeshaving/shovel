@@ -4,7 +4,13 @@ All notable changes to Shovel will be documented in this file.
 
 ## Unreleased
 
+### Breaking Changes
+
+- **`trailingSlash()` now runs in declaration order** — it used to redirect only after routing produced a 404, so a matching route always won. It is now an ordinary redirect: it wins over routes declared after it and yields to routes declared before it, and middleware declared after it doesn't run when it redirects. Declare it after your routes to keep the old behavior. It also no longer normalizes paths starting with `//` (such as `//foo/`), because the result would leave the origin. ([#121](https://github.com/bikeshaving/shovel/pull/121))
+
 ### Features
+
+- **`@b9g/router` routes and redirects are serializable** — `router.toJSON()` returns the router's routes and redirects in declaration order, and `Router.fromJSON()` rebuilds a match-only router from it, for example on the client. `redirect(from, to, {status?})` and `router.redirect()` declare redirects as data, from a pattern (`/old/:id` to `/new/:id`) or a `RegExp` (`$1`). Captures can't change the origin a redirect's target was written for, and a redirect never points a request at itself. `mount()` now carries a subrouter's redirects over and keeps its declaration order. ([#86](https://github.com/bikeshaving/shovel/issues/86), [#118](https://github.com/bikeshaving/shovel/issues/118), [#121](https://github.com/bikeshaving/shovel/pull/121))
 
 - **`@b9g/router` limits pathname length** — `new Router({maxPathLength})`, default 2048 characters. A longer pathname gets `414 URI Too Long` before any matching, which bounds how long a backtracking-prone pattern such as `/*/*/*/end` can take to fail. ([#129](https://github.com/bikeshaving/shovel/pull/129))
 

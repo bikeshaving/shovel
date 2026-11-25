@@ -279,7 +279,7 @@ describe("Redirect edge cases", () => {
 		const build = (): Router => {
 			const r = new Router();
 			r.redirect("/a", "b");
-			r.redirect(/^\/c\/(.*)$/, "$1");
+			r.redirect(/^\/c\/(.*)$/, "x-$1");
 			return r;
 		};
 		const router = new Router();
@@ -294,9 +294,18 @@ describe("Redirect edge cases", () => {
 			status: 301,
 		});
 		expect(await redirectOf(router, "http://x.com/api/c/foo")).toEqual({
-			location: "http://x.com/api/c/foo",
+			location: "http://x.com/api/c/x-foo",
 			status: 301,
 		});
+	});
+
+	test("a redirect never points a request at itself", async () => {
+		const router = new Router();
+		router.redirect(/^\/c\/(.*)$/, "$1");
+		router.route("/c/foo").get(async () => new Response("foo"));
+
+		const response = await router.handle(new Request("http://x.com/c/foo"));
+		expect(response.status).toBe(200);
 	});
 
 	test("the global and sticky flags do not change matching", async () => {

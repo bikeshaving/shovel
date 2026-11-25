@@ -765,6 +765,10 @@ function redirectLocation(record: RedirectRecord, u: URL): string | null {
 		return null;
 	}
 	if (!target.includes("?")) location.search = u.search;
+	// A redirect never points a request at itself
+	if (location.href === u.href) {
+		return null;
+	}
 	return location.toString();
 }
 

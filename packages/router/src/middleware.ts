@@ -37,8 +37,11 @@ export type TrailingSlashMode = "strip" | "add" | "append";
 export function trailingSlash(
 	mode: TrailingSlashMode,
 ): (request: Request) => Response | null {
+	// The strip pattern also matches the root, where "/$1" is "/": for a
+	// mounted subrouter that is the mount path, so "/api/" goes to "/api".
+	// Unmounted, it points "/" at itself, which redirect() never does.
 	return mode === "strip"
-		? redirect(/^(.+)\/$/, "$1")
+		? redirect(/^\/(?:(.*)\/)?$/, "/$1")
 		: redirect(/^(.*[^/])$/, "$1/");
 }
 

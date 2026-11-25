@@ -18,8 +18,8 @@ describe("trailingSlash() serialization", () => {
 			{route: {pattern: "/", method: "GET"}},
 			{
 				redirect: {
-					match: {source: "^(.+)\\/$", flags: ""},
-					target: "$1",
+					match: {source: "^\\/(?:(.*)\\/)?$", flags: ""},
+					target: "/$1",
 					status: 301,
 				},
 			},
@@ -87,6 +87,36 @@ describe("trailingSlash() serialization", () => {
 			"http://x.com/api/users",
 		);
 		expect(await redirectOf(client, "http://x.com/other/")).toBe(null);
+	});
+
+	test("a mounted subrouter's trailingSlash() strips the mount path's slash", async () => {
+		const sub = new Router();
+		sub.use(trailingSlash("strip"));
+		sub.route("/").get(async () => new Response("root"));
+		const server = new Router();
+		server.mount("/api", sub);
+		const client = Router.fromJSON(server.toJSON());
+
+		for (const router of [server, client]) {
+			expect(await redirectOf(router, "http://x.com/api/?q=1")).toBe(
+				"http://x.com/api?q=1",
+			);
+			expect(await redirectOf(router, "http://x.com/api")).toBe(null);
+		}
+		const response = await server.handle(new Request("http://x.com/api"));
+		expect(await response.text()).toBe("root");
+	});
+
+	test("trailingSlash() leaves the root alone", async () => {
+		const server = new Router();
+		server.use(trailingSlash("strip"));
+		server.route("/").get(async () => new Response("home"));
+
+		expect(await redirectOf(server, "http://x.com/")).toBe(null);
+		expect(await redirectOf(server, "http://x.com//foo/")).toBe(null);
+		expect(await redirectOf(server, "http://x.com/a/b/")).toBe(
+			"http://x.com/a/b",
+		);
 	});
 
 	test("other middleware is not serialized", () => {
