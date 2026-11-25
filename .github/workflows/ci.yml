@@ -82,7 +82,7 @@ jobs:
           path: .
 
       - name: Typecheck
-        run: tsc --noEmit
+        run: bun run typecheck
 
   test:
     runs-on: ubuntu-latest
