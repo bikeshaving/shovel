@@ -433,6 +433,18 @@ function validateAssetName(name: string): void {
 }
 
 /**
+ * Builds the request for an asset path. A "?" or "#" in a name is part of
+ * the file name, so it is escaped rather than left to start a query or
+ * fragment, which would make the binding serve a different file.
+ */
+function createAssetRequest(path: string): Request {
+	return new Request(
+		"https://assets" +
+			path.replace(/[?#]/g, (char) => encodeURIComponent(char)),
+	);
+}
+
+/**
  * FileSystemFileHandle implementation for CF ASSETS binding files.
  */
 export class CFAssetsFileHandle implements FileSystemFileHandle {
@@ -449,9 +461,7 @@ export class CFAssetsFileHandle implements FileSystemFileHandle {
 	}
 
 	async getFile(): Promise<File> {
-		const response = await this.#assets.fetch(
-			new Request("https://assets" + this.#path),
-		);
+		const response = await this.#assets.fetch(createAssetRequest(this.#path));
 
 		if (!response.ok) {
 			throw new DOMException(
@@ -529,9 +539,7 @@ export class CFAssetsDirectoryHandle implements FileSystemDirectoryHandle {
 
 		// Not in the manifest (or no manifest): probe the binding, which also
 		// serves files that reached the assets directory outside the build.
-		const response = await this.#assets.fetch(
-			new Request("https://assets" + path),
-		);
+		const response = await this.#assets.fetch(createAssetRequest(path));
 
 		if (!response.ok) {
 			throw new DOMException(

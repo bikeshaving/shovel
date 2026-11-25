@@ -288,6 +288,15 @@ describe("CFAssetsDirectoryHandle name validation", () => {
 		await expect(root.getFileHandle("%zz%2f..")).rejects.toThrow(TypeError);
 	});
 
+	test("a ? or # in a name does not resolve to another file", async () => {
+		const pub = new CFAssetsDirectoryHandle(assets, "/public", manifest);
+		for (const name of ["app.js?v=2", "app.js#top"]) {
+			await expect(pub.getFileHandle(name)).rejects.toThrow(
+				"could not be found",
+			);
+		}
+	});
+
 	test("valid names still resolve", async () => {
 		const root = new CFAssetsDirectoryHandle(assets, "/", manifest);
 		const pub = await root.getDirectoryHandle("public");
