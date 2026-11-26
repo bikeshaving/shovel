@@ -677,37 +677,17 @@ interface RedirectRecord {
 	entry: RedirectEntry;
 	matcher: RedirectMatcher;
 	order: number;
-	/** How a fallback redirect runs: built from the record, see below. */
-	fallback?: GeneratorMiddleware;
 }
 
 /**
- * The generator middleware a fallback redirect runs as. It lets the rest of
- * the chain handle the request and only redirects if the result is a 404,
- * thrown or returned.
+ * What is waiting for the response on its way back up the middleware chain:
+ * a generator middleware that yielded, or a fallback redirect. A fallback
+ * redirect holds a place in the chain like a generator would, and redirects
+ * if the response that reaches it is a 404, thrown or returned.
  */
-function createFallbackMiddleware(record: RedirectRecord): GeneratorMiddleware {
-	return async function* (request: Request) {
-		let response: Response;
-		try {
-			response = yield request;
-		} catch (error) {
-			if (isHTTPError(error) && error.status === 404) {
-				const redirected = redirectResponse(record, new URL(request.url));
-				if (redirected) {
-					return redirected;
-				}
-			}
-			throw error;
-		}
-
-		if (response.status === 404) {
-			return redirectResponse(record, new URL(request.url)) ?? response;
-		}
-
-		return response;
-	};
-}
+type PendingMiddleware =
+	| {generator: ReturnType<GeneratorMiddleware>; fallback?: undefined}
+	| {fallback: RedirectRecord; generator?: undefined};
 
 function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
 	checkTargetOrigin(entry);
@@ -726,11 +706,7 @@ function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
 					),
 					base: entry.match.base,
 				};
-	const record: RedirectRecord = {entry, matcher, order};
-	if (entry.fallback) {
-		record.fallback = createFallbackMiddleware(record);
-	}
-	return record;
+	return {entry, matcher, order};
 }
 
 const redirectEntries = new WeakMap<Middleware, RedirectEntry>();
@@ -1384,7 +1360,7 @@ export class Router {
 		middleware: Middleware,
 		request: Request,
 		context: RouteContext,
-		runningGenerators: Array<{generator: ReturnType<GeneratorMiddleware>}>,
+		runningGenerators: PendingMiddleware[],
 	): Promise<Response | null> {
 		if (this.#isGeneratorMiddleware(middleware)) {
 			const generator = (middleware as GeneratorMiddleware)(request, context);
@@ -1423,9 +1399,7 @@ export class Router {
 		routeOrder: number,
 		matchedWithoutHandler: boolean,
 	): Promise<Response> {
-		const runningGenerators: Array<{
-			generator: ReturnType<GeneratorMiddleware>;
-		}> = [];
+		const runningGenerators: PendingMiddleware[] = [];
 		let currentResponse: Response | null = null;
 
 		// Extract pathname from request URL for prefix matching
@@ -1443,18 +1417,14 @@ export class Router {
 
 			const record = this.#redirectRecords.get(entry);
 			if (record) {
-				if (record.fallback) {
-					// A fallback redirect wraps the rest of the chain and redirects
-					// if it ends in a 404. A match-only router has no handlers to
-					// run, so there a matching route counts as handled.
-					if (matchedWithoutHandler) continue;
-					currentResponse = await this.#executeMiddleware(
-						record.fallback,
-						request,
-						context,
-						runningGenerators,
-					);
-					if (currentResponse) break;
+				if (record.entry.fallback) {
+					// A fallback redirect decides once the rest of the chain has
+					// answered, so it waits here like a generator that yielded. A
+					// match-only router has no handlers to run, so there a
+					// matching route counts as handled.
+					if (!matchedWithoutHandler) {
+						runningGenerators.push({fallback: record});
+					}
 					continue;
 				}
 				// Any other redirect yields to the routes declared before it
@@ -1501,6 +1471,7 @@ export class Router {
 				currentResponse = await this.#handleErrorThroughGenerators(
 					handlerError,
 					runningGenerators,
+					request,
 				);
 			}
 		}
@@ -1508,7 +1479,14 @@ export class Router {
 		// Phase 3: Resume all generators in reverse order (LIFO - Last In First Out)
 		// This implements the Rack-style guaranteed execution
 		for (let i = runningGenerators.length - 1; i >= 0; i--) {
-			const {generator} = runningGenerators[i];
+			const {generator, fallback} = runningGenerators[i];
+			if (fallback) {
+				if (currentResponse!.status === 404) {
+					currentResponse =
+						redirectResponse(fallback, new URL(request.url)) ?? currentResponse;
+				}
+				continue;
+			}
 			// currentResponse should always be set by this point (from handler or short-circuit)
 			// Use non-null assertion since generators expect a Response
 			const result = await generator.next(currentResponse!);
@@ -1526,11 +1504,23 @@ export class Router {
 	 */
 	async #handleErrorThroughGenerators(
 		error: Error,
-		runningGenerators: Array<{generator: ReturnType<GeneratorMiddleware>}>,
+		runningGenerators: PendingMiddleware[],
+		request: Request,
 	): Promise<Response> {
 		// Try error handling starting from the innermost middleware (reverse order)
 		for (let i = runningGenerators.length - 1; i >= 0; i--) {
-			const {generator} = runningGenerators[i];
+			const {generator, fallback} = runningGenerators[i];
+			if (fallback) {
+				// Like a generator, it is done once the error has passed it
+				runningGenerators.splice(i, 1);
+				if (isHTTPError(error) && error.status === 404) {
+					const response = redirectResponse(fallback, new URL(request.url));
+					if (response) {
+						return response;
+					}
+				}
+				continue;
+			}
 
 			try {
 				const result = await generator.throw(error);

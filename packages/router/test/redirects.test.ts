@@ -326,6 +326,30 @@ describe("Redirect edge cases", () => {
 		expect(await redirectOf(router, "http://x.com/ok/a/")).toBe(null);
 	});
 
+	test("a fallback redirect applies when a catch-all route answers 404", async () => {
+		const {cors, trailingSlash} = await import("../src/middleware.js");
+		const router = new Router();
+		router.use(cors({origin: "*"}));
+		router.use(trailingSlash("strip"));
+		router.route("/about").get(async () => new Response("about"));
+		router.route("/*").get(async () => {
+			throw new NotFound();
+		});
+
+		const res = await router.handle(
+			new Request("http://x.com/about/", {
+				headers: {Origin: "http://other.com"},
+			}),
+		);
+		expect(res.status).toBe(301);
+		expect(res.headers.get("Location")).toBe("http://x.com/about");
+		// Middleware declared before it still wraps the redirect
+		expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+
+		const missing = await router.handle(req("http://x.com/missing"));
+		expect(missing.status).toBe(404);
+	});
+
 	test("a fallback redirect yields to any matching route", async () => {
 		const server = new Router();
 		server.redirect("/docs/:page", "/guides/:page", {fallback: true});
