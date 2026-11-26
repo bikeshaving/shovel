@@ -76,14 +76,14 @@ describe("Router serialization", () => {
 		);
 	});
 
-	test("route↔redirect interleaving survives the round-trip", async () => {
-		// A redirect declared BEFORE its route shadows it; this precedence must
-		// hold identically after fromJSON.
+	test("redirect and route precedence survives the round-trip", async () => {
+		// A redirect wins over a route wherever each is declared, and a
+		// fallback redirect loses to one; both must hold after fromJSON.
 		const server = new Router();
-		server.redirect("/old", "/new"); // before → shadows
 		server.route("/old").get(async () => new Response("route"));
+		server.redirect("/old", "/new");
+		server.redirect("/keep", "/nope", {fallback: true});
 		server.route("/keep").get(async () => new Response("route"));
-		server.redirect("/keep", "/nope"); // after → route wins
 
 		const client = Router.fromJSON(JSON.stringify(server));
 		const old = await client.handle(new Request("http://x.com/old"));

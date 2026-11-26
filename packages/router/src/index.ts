@@ -857,12 +857,13 @@ function isCrossOriginTarget(target: string): boolean {
  * A redirect as middleware. `from` is a MatchPattern string (`/old/:id`, with
  * `:id` reusable in `to`) or a `RegExp` (with `$1`…`$n` in `to`).
  *
- * Registered with `router.use()`, it runs in declaration order like any
- * other middleware, and it is serialized. It wins over routes declared after
- * it, unless `fallback` is set: a fallback redirect only applies when the
- * request would otherwise be a 404. Called directly, for example inside generator middleware,
- * it returns the redirect `Response`, or null when the request does not
- * match; that call is not serialized and ignores `fallback`.
+ * Registered with `router.use()`, it is serialized, and it runs at its place
+ * in the chain like middleware that returns a response: it answers before
+ * any route. With `fallback` set it instead waits for the rest of the chain
+ * and only applies when the result is a 404. Called directly, for example
+ * inside generator middleware, it returns the redirect `Response`, or null
+ * when the request does not match; that call is not serialized and ignores
+ * `fallback`.
  */
 export function redirect(
 	from: string | RegExp,
@@ -1104,19 +1105,15 @@ export class Router {
 		if (url.pathname.length > this.#maxPathLength) {
 			return null;
 		}
-		const match = this.#ensureCompiled().matchPath(url.pathname, method);
-		const routeOrder = match
-			? this.#routeOrder.get(match.entry)!
-			: Number.POSITIVE_INFINITY;
 		const table = this.#redirectTable;
 		for (const record of table) {
-			if (record.entry.fallback || record.order > routeOrder) continue;
+			if (record.entry.fallback) continue;
 			const location = redirectLocation(record, url);
 			if (location !== null) {
 				return {location, status: record.entry.status};
 			}
 		}
-		if (match) {
+		if (this.#ensureCompiled().matchPath(url.pathname, method)) {
 			return null;
 		}
 		// Fallback redirects answer on the way back up the chain, last first
@@ -1255,9 +1252,6 @@ export class Router {
 
 			// Find matching route
 			const matchResult = executor.matchRequest(request);
-			const routeOrder = matchResult
-				? this.#routeOrder.get(matchResult.entry)!
-				: Number.POSITIVE_INFINITY;
 			let handler: Handler;
 			let context: RouteContext;
 			let routeMiddleware: Middleware[] = [];
@@ -1286,7 +1280,6 @@ export class Router {
 				request,
 				context,
 				handler,
-				routeOrder,
 				matchResult !== null && !matchResult.handler,
 			);
 
@@ -1498,7 +1491,6 @@ export class Router {
 		request: Request,
 		context: RouteContext,
 		handler: Handler,
-		routeOrder: number,
 		matchedWithoutHandler: boolean,
 	): Promise<Response> {
 		const runningGenerators: PendingMiddleware[] = [];
@@ -1529,8 +1521,8 @@ export class Router {
 					}
 					continue;
 				}
-				// Any other redirect yields to the routes declared before it
-				if (record.order > routeOrder) continue;
+				// Any other redirect answers here, like middleware that returns
+				// a response
 				currentResponse = this.#redirect(record, request);
 				if (currentResponse) break;
 				continue;

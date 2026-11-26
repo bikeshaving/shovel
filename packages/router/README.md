@@ -156,7 +156,7 @@ Create a redirect. `from` is a pattern like `/old/:id`, with `:id` reusable in `
 ```javascript
 import {redirect} from '@b9g/router';
 
-// Registered: runs at its place in the middleware chain
+// Registered: answers before any route
 router.use(redirect('/old/:id', '/new/:id'));
 
 // Called inside middleware: returns the redirect Response, or null
@@ -167,7 +167,7 @@ router.use(async function* (request) {
 });
 ```
 
-A registered redirect runs where it was declared. Middleware declared before it wraps the redirect response, and middleware declared after it does not run when it redirects. It wins over routes declared after it and does not redirect a route declared before it. So watch the declaration order: to make a redirect win over every route, declare it before them.
+A registered redirect behaves like middleware that returns a response. It answers before any route, wherever the routes are declared. Middleware declared before it wraps the redirect response, and middleware declared after it does not run when it redirects.
 
 ```javascript
 router.use(cors());                 // adds CORS headers to the redirect
@@ -175,7 +175,7 @@ router.redirect('/old', '/new');
 router.use(auth);                   // skipped when /old redirects
 ```
 
-Pass `{fallback: true}` for a redirect that only applies when the request would otherwise be a 404, wherever it is declared. It lets the rest of the chain run first, middleware and route alike, and redirects if the result is a 404. `trailingSlash()` is a fallback redirect.
+Pass `{fallback: true}` for a redirect that only applies when the request would otherwise be a 404. It behaves like generator middleware that yields first: the rest of the chain runs, middleware and route alike, and it redirects if the result is a 404, thrown or returned. `trailingSlash()` is a fallback redirect.
 
 ```javascript
 // /docs/intro is served by its route; every other /docs/* page redirects

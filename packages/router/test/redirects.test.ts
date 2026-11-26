@@ -25,15 +25,17 @@ describe("Redirects as data", () => {
 		expect(res.headers.get("Location")).toBe("http://x.com/new/42");
 	});
 
-	test("a redirect declared AFTER a route only fires when nothing matched", async () => {
+	test("a redirect declared AFTER a route shadows it too", async () => {
 		const router = new Router();
 		router.route("/legacy").get(async () => new Response("live"));
 		router.redirect("/legacy", "/current");
 
-		const live = await router.handle(req("http://x.com/legacy"));
-		expect(live.status).toBe(200);
-		expect(await live.text()).toBe("live");
+		const res = await router.handle(req("http://x.com/legacy"));
+		expect(res.status).toBe(301);
+		expect(res.headers.get("Location")).toBe("http://x.com/current");
+	});
 
+	test("a redirect fires when no route matches", async () => {
 		const gone = new Router();
 		gone.redirect("/gone", "/home");
 		const res = await gone.handle(req("http://x.com/gone"));
@@ -157,12 +159,12 @@ describe("Redirects in mounted subrouters", () => {
 		});
 	});
 
-	test("routes and redirects keep the subrouter's order", async () => {
+	test("redirects keep their precedence over the subrouter's routes", async () => {
 		const sub = new Router();
 		sub.route("/a").get(async () => new Response("a"));
-		sub.redirect("/a", "/b");
-		sub.redirect("/c", "/d");
+		sub.redirect("/a", "/b", {fallback: true});
 		sub.route("/c").get(async () => new Response("c"));
+		sub.redirect("/c", "/d");
 		const router = new Router();
 		router.mount("/api", sub);
 
@@ -424,13 +426,7 @@ describe("Redirect edge cases", () => {
 			expect(await statusOf(router, "/foo/")).toBe(404);
 		});
 
-		test("a route on the way ends the chain", async () => {
-			const router = new Router();
-			router.route("/b").get(async () => new Response("b"));
-			router.redirect("/a", "/b");
-			router.redirect("/b", "/a");
-			expect(await statusOf(router, "/a")).toBe(301);
-
+		test("a route on the way ends a chain of fallback redirects", async () => {
 			const fallback = new Router();
 			fallback.redirect("/a", "/b", {fallback: true});
 			fallback.redirect("/b", "/a", {fallback: true});
@@ -441,15 +437,15 @@ describe("Redirect edge cases", () => {
 		test("a route that only answers another method does not end it", async () => {
 			const router = new Router();
 			router.route("/b").post(async () => new Response("b"));
-			router.redirect("/a", "/b");
-			router.redirect("/b", "/a");
+			router.redirect("/a", "/b", {fallback: true});
+			router.redirect("/b", "/a", {fallback: true});
 			// A 301 is followed with GET, which the POST route does not answer
 			expect(await statusOf(router, "/a", {method: "POST"})).toBe(404);
 
 			const kept = new Router();
 			kept.route("/b").post(async () => new Response("b"));
-			kept.redirect("/a", "/b", {status: 308});
-			kept.redirect("/b", "/a", {status: 308});
+			kept.redirect("/a", "/b", {status: 308, fallback: true});
+			kept.redirect("/b", "/a", {status: 308, fallback: true});
 			expect(await statusOf(kept, "/a", {method: "POST"})).toBe(308);
 			expect(await statusOf(kept, "/a")).toBe(404);
 		});
@@ -763,9 +759,9 @@ describe("redirect()", () => {
 	test("registered with use(), it is serialized in declaration order", async () => {
 		const router = new Router();
 		router.route("/kept").get(async () => new Response("kept"));
-		router.use(redirect("/kept", "/elsewhere"));
-		router.use(redirect("/old", "/new"));
+		router.use(redirect("/kept", "/elsewhere", {fallback: true}));
 		router.route("/old").get(async () => new Response("shadowed"));
+		router.use(redirect("/old", "/new"));
 
 		expect((await router.handle(req("http://x.com/kept"))).status).toBe(200);
 		expect(await redirectOf(router, "http://x.com/old")).toEqual({
