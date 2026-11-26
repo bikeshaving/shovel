@@ -20,7 +20,7 @@ export type TrailingSlashMode = "strip" | "add" | "append";
  *
  * @param mode - "strip" removes trailing slash, "add" adds trailing slash
  * @returns A fallback redirect made by `redirect()`. It only redirects when
- * no route matches the request as written, wherever it is declared.
+ * the request as written would be a 404, wherever it is declared.
  *
  * @example
  * ```typescript

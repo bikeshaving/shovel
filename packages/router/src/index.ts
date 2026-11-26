@@ -152,8 +152,8 @@ type SerializedEntry = {route: SerializedRoute} | {redirect: RedirectEntry};
  *   (set when a subrouter is mounted), the regexp only sees paths under
  *   `base`, with `base` removed; the bare `base` path reads as `/`.
  *
- * A `fallback` redirect only applies when no route matches the request,
- * wherever it was declared.
+ * A `fallback` redirect only applies when the request would otherwise be a
+ * 404, wherever it was declared.
  */
 interface RedirectEntry {
 	match:
@@ -171,8 +171,9 @@ export interface RedirectOptions {
 	/** Response status (default: 301) */
 	status?: number;
 	/**
-	 * Only redirect when no route matches the request, wherever the redirect
-	 * was declared. Without it, a redirect wins over routes declared after it.
+	 * Only redirect when the request would otherwise be a 404, wherever the
+	 * redirect was declared: the rest of the chain runs first. Without it, a
+	 * redirect wins over routes declared after it.
 	 */
 	fallback?: boolean;
 }
@@ -676,6 +677,36 @@ interface RedirectRecord {
 	entry: RedirectEntry;
 	matcher: RedirectMatcher;
 	order: number;
+	/** How a fallback redirect runs: built from the record, see below. */
+	fallback?: GeneratorMiddleware;
+}
+
+/**
+ * The generator middleware a fallback redirect runs as. It lets the rest of
+ * the chain handle the request and only redirects if the result is a 404,
+ * thrown or returned.
+ */
+function createFallbackMiddleware(record: RedirectRecord): GeneratorMiddleware {
+	return async function* (request: Request) {
+		let response: Response;
+		try {
+			response = yield request;
+		} catch (error) {
+			if (isHTTPError(error) && error.status === 404) {
+				const redirected = redirectResponse(record, new URL(request.url));
+				if (redirected) {
+					return redirected;
+				}
+			}
+			throw error;
+		}
+
+		if (response.status === 404) {
+			return redirectResponse(record, new URL(request.url)) ?? response;
+		}
+
+		return response;
+	};
 }
 
 function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
@@ -695,7 +726,11 @@ function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
 					),
 					base: entry.match.base,
 				};
-	return {entry, matcher, order};
+	const record: RedirectRecord = {entry, matcher, order};
+	if (entry.fallback) {
+		record.fallback = createFallbackMiddleware(record);
+	}
+	return record;
 }
 
 const redirectEntries = new WeakMap<Middleware, RedirectEntry>();
@@ -840,8 +875,8 @@ function isCrossOriginTarget(target: string): boolean {
  *
  * Registered with `router.use()`, it runs in declaration order like any
  * other middleware, and it is serialized. It wins over routes declared after
- * it, unless `fallback` is set: a fallback redirect only applies when no
- * route matches. Called directly, for example inside generator middleware,
+ * it, unless `fallback` is set: a fallback redirect only applies when the
+ * request would otherwise be a 404. Called directly, for example inside generator middleware,
  * it returns the redirect `Response`, or null when the request does not
  * match; that call is not serialized and ignores `fallback`.
  */
@@ -1174,6 +1209,7 @@ export class Router {
 				context,
 				handler,
 				routeOrder,
+				matchResult !== null && !matchResult.handler,
 			);
 
 			// HEAD requests should return headers only, no body (RFC 7231)
@@ -1385,6 +1421,7 @@ export class Router {
 		context: RouteContext,
 		handler: Handler,
 		routeOrder: number,
+		matchedWithoutHandler: boolean,
 	): Promise<Response> {
 		const runningGenerators: Array<{
 			generator: ReturnType<GeneratorMiddleware>;
@@ -1406,12 +1443,22 @@ export class Router {
 
 			const record = this.#redirectRecords.get(entry);
 			if (record) {
-				// A fallback redirect yields to any matching route; any other
-				// redirect yields to the routes declared before it
-				const yields = record.entry.fallback
-					? routeOrder !== Number.POSITIVE_INFINITY
-					: record.order > routeOrder;
-				if (yields) continue;
+				if (record.fallback) {
+					// A fallback redirect wraps the rest of the chain and redirects
+					// if it ends in a 404. A match-only router has no handlers to
+					// run, so there a matching route counts as handled.
+					if (matchedWithoutHandler) continue;
+					currentResponse = await this.#executeMiddleware(
+						record.fallback,
+						request,
+						context,
+						runningGenerators,
+					);
+					if (currentResponse) break;
+					continue;
+				}
+				// Any other redirect yields to the routes declared before it
+				if (record.order > routeOrder) continue;
 				currentResponse = redirectResponse(record, new URL(request.url));
 				if (currentResponse) break;
 				continue;

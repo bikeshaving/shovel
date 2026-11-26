@@ -1,4 +1,5 @@
 import {test, expect, describe} from "bun:test";
+import {NotFound} from "@b9g/http-errors";
 import {redirect, Router} from "../src/index.js";
 
 const req = (url: string) => new Request(url);
@@ -299,6 +300,32 @@ describe("Redirect edge cases", () => {
 		});
 	});
 
+	test("a fallback redirect lets the rest of the chain run first", async () => {
+		const router = new Router();
+		router.redirect(/^\/(.+)\/$/, "/$1", {fallback: true});
+		router.use("/private", () => new Response("unauthorized", {status: 401}));
+		router.route("/thrown/*").get(async () => {
+			throw new NotFound();
+		});
+		router.route("/returned/*").get(async () => {
+			return new Response("missing", {status: 404});
+		});
+		router.route("/ok/*").get(async () => new Response("ok"));
+
+		// Middleware declared after it answers first
+		const denied = await router.handle(req("http://x.com/private/a/"));
+		expect(denied.status).toBe(401);
+
+		// A 404 from a matching route redirects, thrown or returned
+		for (const path of ["/thrown/a/", "/returned/a/", "/nothing/"]) {
+			expect([path, await redirectOf(router, `http://x.com${path}`)]).toEqual([
+				path,
+				{location: `http://x.com${path.slice(0, -1)}`, status: 301},
+			]);
+		}
+		expect(await redirectOf(router, "http://x.com/ok/a/")).toBe(null);
+	});
+
 	test("a fallback redirect yields to any matching route", async () => {
 		const server = new Router();
 		server.redirect("/docs/:page", "/guides/:page", {fallback: true});
@@ -471,10 +498,10 @@ describe("Redirect edge cases", () => {
 	});
 
 	test("middleware declared after a redirect does not run when it redirects", async () => {
-		const {cors, trailingSlash} = await import("../src/middleware.js");
+		const {cors} = await import("../src/middleware.js");
 		const router = new Router();
 		router.use(cors({origin: "*"}));
-		router.use(trailingSlash("strip"));
+		router.use(redirect(/^\/about\/$/, "/about"));
 		router.use(() => new Response("unauthorized", {status: 401}));
 		router.route("/about").get(async () => new Response("about"));
 

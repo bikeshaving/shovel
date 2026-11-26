@@ -144,7 +144,7 @@ router.use(trailingSlash("strip")); // /path/ → /path
 router.use(trailingSlash("add"));   // /path → /path/
 ```
 
-It only redirects when no route matches the request as written, wherever you declare it.
+It only redirects when the request as written would be a 404, wherever you declare it.
 
 ---
 

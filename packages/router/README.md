@@ -169,18 +169,18 @@ router.use(async function* (request) {
 
 A registered redirect runs where it was declared. Middleware declared before it wraps the redirect response, and middleware declared after it does not run when it redirects. It wins over routes declared after it and does not redirect a route declared before it. So watch the declaration order: to make a redirect win over every route, declare it before them.
 
-Pass `{fallback: true}` for a redirect that only applies when no route matches the request, wherever it is declared. `trailingSlash()` is a fallback redirect.
+```javascript
+router.use(cors());                 // adds CORS headers to the redirect
+router.redirect('/old', '/new');
+router.use(auth);                   // skipped when /old redirects
+```
+
+Pass `{fallback: true}` for a redirect that only applies when the request would otherwise be a 404, wherever it is declared. It lets the rest of the chain run first, middleware and route alike, and redirects if the result is a 404. `trailingSlash()` is a fallback redirect.
 
 ```javascript
 // /docs/intro is served by its route; every other /docs/* page redirects
 router.redirect('/docs/:page', '/guides/:page', {fallback: true});
 router.route('/docs/intro').get(handler);
-```
-
-```javascript
-router.use(cors());            // adds CORS headers to the redirect
-router.use(trailingSlash('strip'));
-router.use(auth);              // skipped when trailingSlash redirects
 ```
 
 ### Context Object
@@ -371,7 +371,7 @@ interface CORSOptions {
 
 #### `trailingSlash(mode: TrailingSlashMode)`
 
-Normalizes URL trailing slashes via 301 redirect. It is a fallback redirect: it only redirects when no route matches the request as written, wherever you declare it.
+Normalizes URL trailing slashes via 301 redirect. It is a fallback redirect: it only redirects when the request as written would be a 404, wherever you declare it.
 
 ```typescript
 type TrailingSlashMode = "strip" | "add";
