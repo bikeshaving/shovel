@@ -167,7 +167,7 @@ router.use(async function* (request) {
 });
 ```
 
-A registered redirect runs where it was declared. Middleware declared before it wraps the redirect response, and middleware declared after it does not run when it redirects. It wins over routes declared after it and does not redirect a route declared before it.
+A registered redirect runs where it was declared. Middleware declared before it wraps the redirect response, and middleware declared after it does not run when it redirects. It wins over routes declared after it and does not redirect a route declared before it. So watch the declaration order: to make a redirect win over every route, declare it before them.
 
 Pass `{fallback: true}` for a redirect that only applies when no route matches the request, wherever it is declared. `trailingSlash()` is a fallback redirect.
 
