@@ -470,9 +470,14 @@ class RadixTreeExecutor {
 	 * Find the first route that matches the request (for handling)
 	 */
 	matchRequest(request: Request): InternalMatchResult | null {
-		const url = new URL(request.url);
-		const method = request.method.toUpperCase();
-		const pathname = url.pathname;
+		return this.matchPath(new URL(request.url).pathname, request.method);
+	}
+
+	/**
+	 * Find the first route that matches a pathname and method
+	 */
+	matchPath(pathname: string, method: string): InternalMatchResult | null {
+		method = method.toUpperCase();
 
 		// Try radix tree first (fast path for simple routes)
 		const treeResult = this.#matchTree(pathname, method);
@@ -708,6 +713,9 @@ function compileRedirect(entry: RedirectEntry, order: number): RedirectRecord {
 				};
 	return {entry, matcher, order};
 }
+
+/** How many of its own redirects the router follows looking for a loop. */
+const MAX_REDIRECT_HOPS = 8;
 
 const redirectEntries = new WeakMap<Middleware, RedirectEntry>();
 
@@ -1027,6 +1035,100 @@ export class Router {
 		this.#redirectRecords.set(middlewareEntry, record);
 		this.redirects.push(redirect);
 		this.#redirectTable.push({...record, middleware: middlewareEntry});
+	}
+
+	/**
+	 * The response for `record` redirecting `request`, or null if it does not
+	 * match. A redirect that this router's own redirects would lead back to a
+	 * URL already visited is refused, so the request carries on as if the
+	 * redirect were not there, rather than sending the client around a loop.
+	 */
+	#redirect(record: RedirectRecord, request: Request): Response | null {
+		const from = new URL(request.url);
+		const location = redirectLocation(record, from);
+		if (location === null) {
+			return null;
+		}
+		const {status} = record.entry;
+		if (this.#redirectLoops(from, location, status, request.method)) {
+			logger.error`Redirect loop: ${from.href} to ${location} leads back to a URL already visited, so it was not redirected`;
+			return null;
+		}
+		return new Response(null, {status, headers: {Location: location}});
+	}
+
+	/**
+	 * Whether following this router's redirects from `location` returns to a
+	 * URL already visited. Only redirects declared as data are followed: one
+	 * returned by a handler, other middleware or another server is not seen.
+	 */
+	#redirectLoops(
+		from: URL,
+		location: string,
+		status: number,
+		method: string,
+	): boolean {
+		const seen = new Set([from.href]);
+		let url = new URL(location);
+		for (let hops = 0; hops < MAX_REDIRECT_HOPS; hops++) {
+			if (url.origin !== from.origin) {
+				return false;
+			}
+			if (seen.has(url.href)) {
+				return true;
+			}
+			seen.add(url.href);
+			// Clients repeat the method only after a 307 or 308
+			if (status !== 307 && status !== 308 && method !== "HEAD") {
+				method = "GET";
+			}
+			const next = this.#nextRedirect(url, method);
+			if (next === null) {
+				return false;
+			}
+			url = new URL(next.location);
+			status = next.status;
+		}
+		return false;
+	}
+
+	/**
+	 * Where a request for `url` would be redirected, going by the routes and
+	 * redirects alone. A route that matches is taken to answer, so a fallback
+	 * redirect is only followed where no route matches.
+	 */
+	#nextRedirect(
+		url: URL,
+		method: string,
+	): {location: string; status: number} | null {
+		if (url.pathname.length > this.#maxPathLength) {
+			return null;
+		}
+		const match = this.#ensureCompiled().matchPath(url.pathname, method);
+		const routeOrder = match
+			? this.#routeOrder.get(match.entry)!
+			: Number.POSITIVE_INFINITY;
+		const table = this.#redirectTable;
+		for (const record of table) {
+			if (record.entry.fallback || record.order > routeOrder) continue;
+			const location = redirectLocation(record, url);
+			if (location !== null) {
+				return {location, status: record.entry.status};
+			}
+		}
+		if (match) {
+			return null;
+		}
+		// Fallback redirects answer on the way back up the chain, last first
+		for (let i = table.length - 1; i >= 0; i--) {
+			const record = table[i];
+			if (!record.entry.fallback) continue;
+			const location = redirectLocation(record, url);
+			if (location !== null) {
+				return {location, status: record.entry.status};
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -1429,7 +1531,7 @@ export class Router {
 				}
 				// Any other redirect yields to the routes declared before it
 				if (record.order > routeOrder) continue;
-				currentResponse = redirectResponse(record, new URL(request.url));
+				currentResponse = this.#redirect(record, request);
 				if (currentResponse) break;
 				continue;
 			}
@@ -1483,7 +1585,7 @@ export class Router {
 			if (fallback) {
 				if (currentResponse!.status === 404) {
 					currentResponse =
-						redirectResponse(fallback, new URL(request.url)) ?? currentResponse;
+						this.#redirect(fallback, request) ?? currentResponse;
 				}
 				continue;
 			}
@@ -1514,7 +1616,7 @@ export class Router {
 				// Like a generator, it is done once the error has passed it
 				runningGenerators.splice(i, 1);
 				if (isHTTPError(error) && error.status === 404) {
-					const response = redirectResponse(fallback, new URL(request.url));
+					const response = this.#redirect(fallback, request);
 					if (response) {
 						return response;
 					}

@@ -1,6 +1,7 @@
 import {test, expect, describe} from "bun:test";
 import {NotFound} from "@b9g/http-errors";
 import {redirect, Router} from "../src/index.js";
+import {trailingSlash} from "../src/middleware.js";
 
 const req = (url: string) => new Request(url);
 
@@ -376,6 +377,97 @@ describe("Redirect edge cases", () => {
 
 		const response = await router.handle(new Request("http://x.com/c/foo"));
 		expect(response.status).toBe(200);
+	});
+
+	describe("loops", () => {
+		async function statusOf(router: Router, path: string, init?: RequestInit) {
+			const response = await router.handle(
+				new Request("http://x.com" + path, init),
+			);
+			return response.status;
+		}
+
+		test("redirects that lead back to each other do not fire", async () => {
+			const server = new Router();
+			server.redirect("/a", "/b");
+			server.redirect("/b", "/c");
+			server.redirect("/c", "/a");
+			server.redirect("/in", "/a");
+			server.redirect("/fine", "/done");
+
+			for (const router of [server, Router.fromJSON(server.toJSON())]) {
+				for (const path of ["/a", "/b", "/c", "/in"]) {
+					expect([path, await statusOf(router, path)]).toEqual([path, 404]);
+				}
+				expect(await statusOf(router, "/fine")).toBe(301);
+			}
+		});
+
+		test("the query is part of the URL", async () => {
+			const router = new Router();
+			router.redirect("/a", "/b?step=1");
+			router.redirect("/b", "/a?step=2");
+			// /a -> /b?step=1 -> /a?step=2 -> /b?step=1
+			expect(await statusOf(router, "/a")).toBe(404);
+
+			const paged = new Router();
+			paged.redirect("/list", "/list?page=1");
+			expect(await statusOf(paged, "/list")).toBe(301);
+			expect(await statusOf(paged, "/list?page=1")).toBe(404);
+		});
+
+		test("trailingSlash() modes that fight do not redirect", async () => {
+			const router = new Router();
+			router.use(trailingSlash("strip"));
+			router.use(trailingSlash("add"));
+			expect(await statusOf(router, "/foo")).toBe(404);
+			expect(await statusOf(router, "/foo/")).toBe(404);
+		});
+
+		test("a route on the way ends the chain", async () => {
+			const router = new Router();
+			router.route("/b").get(async () => new Response("b"));
+			router.redirect("/a", "/b");
+			router.redirect("/b", "/a");
+			expect(await statusOf(router, "/a")).toBe(301);
+
+			const fallback = new Router();
+			fallback.redirect("/a", "/b", {fallback: true});
+			fallback.redirect("/b", "/a", {fallback: true});
+			fallback.route("/b").get(async () => new Response("b"));
+			expect(await statusOf(fallback, "/a")).toBe(301);
+		});
+
+		test("a route that only answers another method does not end it", async () => {
+			const router = new Router();
+			router.route("/b").post(async () => new Response("b"));
+			router.redirect("/a", "/b");
+			router.redirect("/b", "/a");
+			// A 301 is followed with GET, which the POST route does not answer
+			expect(await statusOf(router, "/a", {method: "POST"})).toBe(404);
+
+			const kept = new Router();
+			kept.route("/b").post(async () => new Response("b"));
+			kept.redirect("/a", "/b", {status: 308});
+			kept.redirect("/b", "/a", {status: 308});
+			expect(await statusOf(kept, "/a", {method: "POST"})).toBe(308);
+			expect(await statusOf(kept, "/a")).toBe(404);
+		});
+
+		test("a redirect to another origin is not followed", async () => {
+			const router = new Router();
+			router.redirect("/a", "https://other.example/b");
+			router.redirect("/b", "/a");
+			expect(await statusOf(router, "/a")).toBe(301);
+		});
+
+		test("a long chain that does not loop still redirects", async () => {
+			const router = new Router();
+			for (let i = 0; i < 20; i++) {
+				router.redirect(`/step${i}`, `/step${i + 1}`);
+			}
+			expect(await statusOf(router, "/step0")).toBe(301);
+		});
 	});
 
 	test("the global and sticky flags do not change matching", async () => {

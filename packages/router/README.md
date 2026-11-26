@@ -183,6 +183,8 @@ router.redirect('/docs/:page', '/guides/:page', {fallback: true});
 router.route('/docs/intro').get(handler);
 ```
 
+The router does not send a request around a loop of its own redirects. Before it redirects, it follows its redirects from the target, and if they lead back to a URL already visited, as with `/a` to `/b` and `/b` to `/a`, it logs an error and carries on as if the redirect were not there, which usually means a 404. It only sees redirects declared this way: one returned by a handler, by other middleware or by another server is not followed.
+
 ### Context Object
 
 Handler and middleware functions receive a context object:
