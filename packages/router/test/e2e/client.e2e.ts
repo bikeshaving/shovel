@@ -301,7 +301,16 @@ for (const name of names) {
 				const state = globalThis as any;
 				state.__downloads__ = [];
 				state.navigation.addEventListener("navigate", (event: any) => {
-					state.__downloads__.push(event.downloadRequest);
+					state.__downloads__.push(
+						[
+							event.navigationType,
+							new URL(event.destination.url).pathname,
+							`download=${JSON.stringify(event.downloadRequest)}`,
+							`canIntercept=${event.canIntercept}`,
+							`userInitiated=${event.userInitiated}`,
+							`sameDocument=${event.destination.sameDocument}`,
+						].join(" "),
+					);
 				});
 			});
 			const download = page
@@ -310,12 +319,19 @@ for (const name of names) {
 			await page.click("#download");
 			await (await download)?.cancel();
 
-			expect(
-				await page.evaluate(() => (globalThis as any).__downloads__),
-			).toEqual([""]);
-			expect(await handled(page)).toEqual([]);
-			expect(page.url()).toBe(origin + "/");
-			await expect(view(page)).resolves.toBe("server: home");
+			expect({
+				events: await page.evaluate(() => (globalThis as any).__downloads__),
+				handled: await handled(page),
+				url: page.url(),
+				view: await view(page),
+			}).toEqual({
+				events: [
+					'push /posts/1 download="" canIntercept=true userInitiated=true sameDocument=false',
+				],
+				handled: [],
+				url: origin + "/",
+				view: "server: home",
+			});
 		});
 	});
 }
