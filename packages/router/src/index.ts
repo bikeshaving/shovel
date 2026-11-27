@@ -96,6 +96,22 @@ export type HTTPMethod =
 export interface RouteOptions {
 	/** Optional name for the route, useful for matching/identification */
 	name?: string;
+	/**
+	 * Set to false to leave the route out of `toJSON()`, so its pattern and
+	 * name do not reach the client. The route works as usual on the server.
+	 */
+	serialize?: boolean;
+}
+
+/**
+ * Options for `router.mount()`
+ */
+export interface MountOptions {
+	/**
+	 * Set to false to leave all of the subrouter's routes and redirects out
+	 * of `toJSON()`.
+	 */
+	serialize?: boolean;
 }
 
 /**
@@ -532,12 +548,14 @@ export class RouteBuilder {
 	#router: Router;
 	#pattern: string;
 	#name?: string;
+	#serialize: boolean;
 	#middlewares: Middleware[];
 
 	constructor(router: Router, pattern: string, options?: RouteOptions) {
 		this.#router = router;
 		this.#pattern = pattern;
 		this.#name = options?.name;
+		this.#serialize = options?.serialize !== false;
 		this.#middlewares = [];
 	}
 
@@ -559,6 +577,7 @@ export class RouteBuilder {
 			handler,
 			this.#name,
 			this.#middlewares,
+			this.#serialize,
 		);
 		return this;
 	}
@@ -573,6 +592,7 @@ export class RouteBuilder {
 			handler,
 			this.#name,
 			this.#middlewares,
+			this.#serialize,
 		);
 		return this;
 	}
@@ -587,6 +607,7 @@ export class RouteBuilder {
 			handler,
 			this.#name,
 			this.#middlewares,
+			this.#serialize,
 		);
 		return this;
 	}
@@ -601,6 +622,7 @@ export class RouteBuilder {
 			handler,
 			this.#name,
 			this.#middlewares,
+			this.#serialize,
 		);
 		return this;
 	}
@@ -615,6 +637,7 @@ export class RouteBuilder {
 			handler,
 			this.#name,
 			this.#middlewares,
+			this.#serialize,
 		);
 		return this;
 	}
@@ -629,6 +652,7 @@ export class RouteBuilder {
 			handler,
 			this.#name,
 			this.#middlewares,
+			this.#serialize,
 		);
 		return this;
 	}
@@ -643,6 +667,7 @@ export class RouteBuilder {
 			handler,
 			this.#name,
 			this.#middlewares,
+			this.#serialize,
 		);
 		return this;
 	}
@@ -667,6 +692,7 @@ export class RouteBuilder {
 				handler,
 				this.#name,
 				this.#middlewares,
+				this.#serialize,
 			);
 		});
 		return this;
@@ -985,6 +1011,8 @@ export class Router {
 	#routeOrder: WeakMap<RouteEntry, number>;
 	/** Monotonic declaration counter shared by routes and redirects. */
 	#seq: number;
+	/** Routes and redirect middleware entries that toJSON() leaves out. */
+	#unserialized: WeakSet<RouteEntry | MiddlewareEntry>;
 	#maxPathLength: number;
 
 	constructor(options: RouterOptions = {}) {
@@ -996,6 +1024,7 @@ export class Router {
 		this.#redirectRecords = new WeakMap();
 		this.#routeOrder = new WeakMap();
 		this.#seq = 0;
+		this.#unserialized = new WeakSet();
 		const maxPathLength = options.maxPathLength ?? 2048;
 		if (!(maxPathLength > 0)) {
 			throw new RangeError(
@@ -1204,6 +1233,7 @@ export class Router {
 		handler?: Handler,
 		name?: string,
 		middlewares: Middleware[] = [],
+		serialize = true,
 	): void {
 		const matchPattern = new MatchPattern(pattern);
 
@@ -1216,6 +1246,9 @@ export class Router {
 		};
 		this.routes.push(entry);
 		this.#routeOrder.set(entry, this.#seq++);
+		if (!serialize) {
+			this.#unserialized.add(entry);
+		}
 		this.#executor = null;
 	}
 
@@ -1310,8 +1343,16 @@ export class Router {
 	 *   const mainRouter = new Router();
 	 *   mainRouter.mount('/api/v1', apiRouter);
 	 *   // Routes become: /api/v1/users, /api/v1/users/:id
+	 *
+	 * Pass `{serialize: false}` to keep the subrouter's routes and redirects
+	 * out of `toJSON()`.
 	 */
-	mount(mountPath: string, subrouter: Router): void {
+	mount(
+		mountPath: string,
+		subrouter: Router,
+		options: MountOptions = {},
+	): void {
+		const serialize = options.serialize !== false;
 		// Normalize mount path - ensure it starts with / and doesn't end with /
 		const normalizedMountPath = this.#normalizeMountPath(mountPath);
 
@@ -1360,11 +1401,18 @@ export class Router {
 				};
 				this.routes.push(entry);
 				this.#routeOrder.set(entry, this.#seq++);
+				if (!serialize || subrouter.#unserialized.has(subroute)) {
+					this.#unserialized.add(entry);
+				}
 			} else {
+				const entry = mounted.get(item.middleware)!;
 				this.#addRedirectRecord(
-					mounted.get(item.middleware)!,
+					entry,
 					mountRedirect(item.redirect, normalizedMountPath),
 				);
+				if (!serialize || subrouter.#unserialized.has(item.middleware)) {
+					this.#unserialized.add(entry);
+				}
 			}
 		}
 
@@ -1643,11 +1691,13 @@ export class Router {
 	 * as one list in declaration order.
 	 * Handlers and middleware are server-only and left out, except middleware
 	 * made by `redirect()`, such as `trailingSlash()`, which is a redirect at
-	 * the point it was registered.
+	 * the point it was registered. Routes declared with `serialize: false`,
+	 * and everything from a subrouter mounted with it, are left out too.
 	 */
 	toJSON(): SerializedRouter {
 		const items: Array<{order: number; entry: SerializedEntry}> = [];
 		for (const route of this.routes) {
+			if (this.#unserialized.has(route)) continue;
 			items.push({
 				order: this.#routeOrder.get(route)!,
 				entry: {
@@ -1659,7 +1709,8 @@ export class Router {
 				},
 			});
 		}
-		for (const {entry, order} of this.#redirectTable) {
+		for (const {entry, order, middleware} of this.#redirectTable) {
+			if (this.#unserialized.has(middleware)) continue;
 			items.push({order, entry: {redirect: entry}});
 		}
 		items.sort((a, b) => a.order - b.order);

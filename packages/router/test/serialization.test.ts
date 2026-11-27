@@ -76,6 +76,67 @@ describe("Router serialization", () => {
 		);
 	});
 
+	test("routes with serialize: false are left out", async () => {
+		const server = new Router();
+		server.route("/").get(async () => new Response("home"));
+		server
+			.route("/debug/:id", {name: "debug", serialize: false})
+			.get(async () => new Response("debug"))
+			.post(async () => new Response("debug"));
+
+		expect(server.toJSON().entries).toEqual([
+			{route: {pattern: "/", method: "GET"}},
+		]);
+		expect(JSON.stringify(server)).not.toContain("debug");
+		// The server still serves it
+		const response = await server.handle(new Request("http://x.com/debug/1"));
+		expect(response.status).toBe(200);
+		expect(Router.fromJSON(server.toJSON()).match("/debug/1")).toBe(null);
+	});
+
+	test("a subrouter mounted with serialize: false is left out whole", async () => {
+		const admin = new Router();
+		admin.redirect("/old", "/users");
+		admin
+			.route("/users", {name: "admin-users"})
+			.get(async () => new Response("users"));
+		const app = new Router();
+		app.route("/").get(async () => new Response("home"));
+		app.mount("/admin", admin, {serialize: false});
+		app.route("/about").get(async () => new Response("about"));
+
+		expect(app.toJSON().entries).toEqual([
+			{route: {pattern: "/", method: "GET"}},
+			{route: {pattern: "/about", method: "GET"}},
+		]);
+		expect(JSON.stringify(app)).not.toContain("admin");
+		expect(
+			(await app.handle(new Request("http://x.com/admin/users"))).status,
+		).toBe(200);
+		expect(
+			(await app.handle(new Request("http://x.com/admin/old"))).status,
+		).toBe(301);
+	});
+
+	test("serialize: false survives mounting, at any depth", () => {
+		const inner = new Router();
+		inner.route("/open").get(async () => new Response("open"));
+		inner
+			.route("/secret", {serialize: false})
+			.get(async () => new Response("secret"));
+		const hidden = new Router();
+		hidden.route("/x").get(async () => new Response("x"));
+		inner.mount("/hidden", hidden, {serialize: false});
+		const middle = new Router();
+		middle.mount("/inner", inner);
+		const app = new Router();
+		app.mount("/api", middle);
+
+		expect(app.toJSON().entries).toEqual([
+			{route: {pattern: "/api/inner/open", method: "GET"}},
+		]);
+	});
+
 	test("redirect and route precedence survives the round-trip", async () => {
 		// A redirect wins over a route wherever each is declared, and a
 		// fallback redirect loses to one; both must hold after fromJSON.

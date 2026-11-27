@@ -103,7 +103,7 @@ Handle an incoming request and return a response.
 const response = await router.handle(request);
 ```
 
-##### `mount(path, subrouter)`
+##### `mount(path, subrouter, options?)`
 
 Mount a subrouter at a specific path prefix.
 
@@ -184,6 +184,31 @@ router.route('/docs/intro').get(handler);
 ```
 
 The router does not send a request around a loop of its own redirects. Before it redirects, it follows its redirects from the target, and if they lead back to a URL already visited, as with `/a` to `/b` and `/b` to `/a`, it logs an error and carries on as if the redirect were not there, which usually means a 404. It only sees redirects declared this way: one returned by a handler, by other middleware or by another server is not followed.
+
+### Serialization
+
+`router.toJSON()` returns the router's routes and redirects as plain data, and `Router.fromJSON()` rebuilds a router from it, for example in the browser. Handlers and other middleware are never serialized.
+
+```javascript
+// Server
+const data = JSON.stringify(router);
+
+// Client
+const client = Router.fromJSON(data);
+client.match('/posts/42');            // {params: {id: '42'}, methods: ['GET']}
+await client.handle(request);         // the same redirect the server would send, or a 404
+```
+
+The rebuilt router is match-only: it knows which route matches a URL but has no handlers to run. A fallback redirect therefore fires on it only when no route matches, because it cannot tell whether a matching route's handler would answer 404.
+
+The serialized data lists every route's pattern and name. To keep a route out of it, pass `serialize: false` to the route, or to `mount()` to leave out all of a subrouter's routes and redirects:
+
+```javascript
+router.route('/debug/:id', {serialize: false}).get(handler);
+router.mount('/admin', adminRouter, {serialize: false});
+```
+
+These still work on the server. A client router does not know they exist, so it should send any URL it cannot match to the server. This does not replace access control.
 
 ### Context Object
 
