@@ -171,9 +171,8 @@ export interface RedirectOptions {
 	/** Response status (default: 301) */
 	status?: number;
 	/**
-	 * Only redirect when the request would otherwise be a 404, wherever the
-	 * redirect was declared: the rest of the chain runs first. Without it, a
-	 * redirect wins over routes declared after it.
+	 * Only redirect when the request would otherwise be a 404: the rest of
+	 * the chain runs first. Without it, a redirect answers before any route.
 	 */
 	fallback?: boolean;
 }
