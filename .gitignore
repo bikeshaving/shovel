@@ -128,3 +128,6 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*examples/tfb/
+
+# SQLite test databases
+.sqlite-test-dbs/

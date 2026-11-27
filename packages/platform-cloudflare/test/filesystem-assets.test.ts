@@ -30,6 +30,11 @@ describe("CFAssetsDirectoryHandle", () => {
 				directory: publicDir,
 				binding: "ASSETS",
 				routerConfig: {invoke_user_worker_ahead_of_assets: true},
+				// A directory handle exposes assets as a filesystem — literal paths,
+				// no HTML canonicalization. Without html_handling "none", workerd
+				// treats "/index.html" as a page to redirect to "/" (and newer
+				// workerd 500s on the explicit path), which is wrong for file access.
+				assetConfig: {html_handling: "none"},
 			},
 		});
 
