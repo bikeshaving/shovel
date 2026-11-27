@@ -37,9 +37,14 @@ export async function loadPlatformModule(
 			return module as PlatformModule;
 		}
 
+		case "web": {
+			const module = await import("@b9g/platform-web/platform");
+			return module as PlatformModule;
+		}
+
 		default:
 			throw new Error(
-				`Unknown platform: ${platformName}. Valid platforms: node, bun, cloudflare`,
+				`Unknown platform: ${platformName}. Valid platforms: node, bun, cloudflare, web`,
 			);
 	}
 }

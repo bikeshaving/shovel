@@ -33,6 +33,8 @@ export interface ESBuildConfig {
 	external?: string[];
 	/** Define replacements */
 	define?: Record<string, string>;
+	/** Module aliases (maps import paths to replacement paths) */
+	alias?: Record<string, string>;
 }
 
 /**
