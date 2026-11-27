@@ -48,7 +48,15 @@
       "types": "./dist/src/middleware.d.ts",
       "import": "./dist/src/middleware.js"
     },
-    "./package.json": "./dist/package.json"
+    "./package.json": "./dist/package.json",
+    "./client": {
+      "types": "./dist/src/client.d.ts",
+      "import": "./dist/src/client.js"
+    },
+    "./client.js": {
+      "types": "./dist/src/client.d.ts",
+      "import": "./dist/src/client.js"
+    }
   },
   "repository": {
     "type": "git",

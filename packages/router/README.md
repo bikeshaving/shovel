@@ -210,6 +210,46 @@ router.mount('/admin', adminRouter, {serialize: false});
 
 These still work on the server. A client router does not know they exist, so it should send any URL it cannot match to the server. This does not replace access control.
 
+##### `resolve(url, method?): Resolution | null`
+
+`router.resolve()` says what the routes and redirects make of a URL, without running any handler or middleware. It returns `{redirect: {location, status}}`, `{route}` with the same value as `match()`, or `null` when the router has nothing for the URL. `method` defaults to `GET`. On a router from `fromJSON()` it agrees with `handle()`.
+
+```javascript
+client.resolve('https://example.com/old/42');   // {redirect: {location: 'https://example.com/new/42', status: 301}}
+client.resolve('https://example.com/posts/42'); // {route: {params: {id: '42'}, methods: ['GET'], pattern: '/posts/:id'}}
+client.resolve('https://example.com/nope');     // null
+```
+
+### Client-side navigation
+
+`@b9g/router/client` turns a router into client-side navigation, using the browser's [Navigation API](https://developer.mozilla.org/en-US/docs/Web/API/Navigation_API).
+
+```javascript
+import {Router} from '@b9g/router';
+import {listen} from '@b9g/router/client';
+
+const router = Router.fromJSON(routes); // the server's JSON.stringify(router)
+
+const stop = listen(router, async ({url, route, signal, redirect}) => {
+  const response = await fetch(url, {signal});
+  if (response.redirected) {
+    // A redirect only the server could decide
+    return redirect(response.url);
+  }
+  render(route.name, route.params, await response.text());
+});
+```
+
+For each navigation, `listen()` asks the router what to do:
+
+- **A route matches:** the URL changes and your handler is called with the URL, the matched route (`name`, `params`, `pattern`), the `method` and `formData` of a form submission, and a `signal` that aborts if the navigation is superseded. The navigation finishes when the handler's promise settles. The browser restores scroll and resets focus.
+- **A redirect applies:** the navigation starts over at the redirect's target, without leaving a history entry for the URL that redirected.
+- **Anything else is left to the browser,** which loads the page from the server as usual: other origins, downloads, hash changes, and any URL the router has no route or redirect for, including routes declared with `serialize: false`.
+
+`listen()` returns a function that stops listening. It does not run for the page's first load, which the server has already rendered.
+
+There is no History API fallback. In a browser without the Navigation API, `listen()` does nothing and every navigation is an ordinary page load. Load a Navigation API polyfill before calling it if you need client-side navigation there, or pass your own object as `listen(router, handler, {navigation})`.
+
 ### Context Object
 
 Handler and middleware functions receive a context object:

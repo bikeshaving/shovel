@@ -141,6 +141,20 @@ export interface RouteMatch {
 	pattern: string;
 }
 
+/** A redirect the router would send for a URL */
+export interface RedirectResolution {
+	/** The absolute URL to go to */
+	location: string;
+	status: number;
+}
+
+/**
+ * What `router.resolve()` found for a URL: a redirect or a matching route
+ */
+export type Resolution =
+	| {redirect: RedirectResolution; route?: undefined}
+	| {route: RouteMatch; redirect?: undefined};
+
 /**
  * A route in the serialized form: one pattern/method pair with an optional
  * name. Handlers are never serialized — the client matches, the server handles.
@@ -1124,21 +1138,34 @@ export class Router {
 	/**
 	 * Where a request for `url` would be redirected, going by the routes and
 	 * redirects alone. A route that matches is taken to answer, so a fallback
-	 * redirect is only followed where no route matches.
+	 * redirect is only followed where no route matches. With `refuseLoops`, a
+	 * redirect that leads around a loop is passed over, as `handle()` does.
 	 */
 	#nextRedirect(
 		url: URL,
 		method: string,
-	): {location: string; status: number} | null {
+		refuseLoops = false,
+	): RedirectResolution | null {
 		if (url.pathname.length > this.#maxPathLength) {
 			return null;
 		}
+		const follow = (record: RedirectRecord): RedirectResolution | null => {
+			const location = redirectLocation(record, url);
+			if (location === null) {
+				return null;
+			}
+			const {status} = record.entry;
+			if (refuseLoops && this.#redirectLoops(url, location, status, method)) {
+				return null;
+			}
+			return {location, status};
+		};
 		const table = this.#redirectTable;
 		for (const record of table) {
 			if (record.entry.fallback) continue;
-			const location = redirectLocation(record, url);
-			if (location !== null) {
-				return {location, status: record.entry.status};
+			const redirect = follow(record);
+			if (redirect) {
+				return redirect;
 			}
 		}
 		if (this.#ensureCompiled().matchPath(url.pathname, method)) {
@@ -1148,12 +1175,35 @@ export class Router {
 		for (let i = table.length - 1; i >= 0; i--) {
 			const record = table[i];
 			if (!record.entry.fallback) continue;
-			const location = redirectLocation(record, url);
-			if (location !== null) {
-				return {location, status: record.entry.status};
+			const redirect = follow(record);
+			if (redirect) {
+				return redirect;
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * What this router's routes and redirects say about a URL, without running
+	 * any handler or middleware: the redirect it would be sent, the route that
+	 * matches it, or null when the router has nothing for it. On a router from
+	 * `fromJSON()` this agrees with `handle()`. A client router uses it to
+	 * decide whether a navigation is its to handle.
+	 */
+	resolve(url: string | URL, method = "GET"): Resolution | null {
+		const u = new URL(url, "http://localhost");
+		const redirect = this.#nextRedirect(u, method, true);
+		if (redirect) {
+			return {redirect};
+		}
+		if (
+			u.pathname.length > this.#maxPathLength ||
+			!this.#ensureCompiled().matchPath(u.pathname, method)
+		) {
+			return null;
+		}
+		const route = this.match(u);
+		return route ? {route} : null;
 	}
 
 	/**
