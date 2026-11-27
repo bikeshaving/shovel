@@ -286,17 +286,35 @@ for (const name of names) {
 			expect(await sameDocument(page)).toBe(false);
 		});
 
-		test("hash changes and downloads are not handled", async () => {
+		test("a hash change is not handled", async () => {
 			await page.click("#hash");
 			await page.waitForURL(origin + "/#section");
+
 			expect(await sameDocument(page)).toBe(true);
-
-			const download = page.waitForEvent("download");
-			await page.click("#download");
-			await (await download).cancel();
-			expect(page.url()).toBe(origin + "/#section");
-
 			expect(await handled(page)).toEqual([]);
+			await expect(view(page)).resolves.toBe("server: home");
+		});
+
+		test("a download is not handled", async () => {
+			// What the browser's own navigate event says about the click
+			await page.evaluate(() => {
+				const state = globalThis as any;
+				state.__downloads__ = [];
+				state.navigation.addEventListener("navigate", (event: any) => {
+					state.__downloads__.push(event.downloadRequest);
+				});
+			});
+			const download = page
+				.waitForEvent("download", {timeout: 5000})
+				.catch(() => null);
+			await page.click("#download");
+			await (await download)?.cancel();
+
+			expect(
+				await page.evaluate(() => (globalThis as any).__downloads__),
+			).toEqual([""]);
+			expect(await handled(page)).toEqual([]);
+			expect(page.url()).toBe(origin + "/");
 			await expect(view(page)).resolves.toBe("server: home");
 		});
 	});
