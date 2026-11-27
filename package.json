@@ -22,6 +22,7 @@
   "scripts": {
     "build": "bun run --filter './packages/*' build && libuild build --save",
     "test": "bun test packages/*/test test",
+    "test:e2e": "bun test --timeout 30000 ./packages/router/test/e2e/client.e2e.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --ext .js,.jsx,.ts,.tsx .",
     "lint:fix": "eslint --ext .js,.jsx,.ts,.tsx . --fix",
@@ -62,6 +63,7 @@
     "eslint-plugin-prettier": "^5.0.0",
     "miniflare": "^4.20260305.0",
     "mitata": "^1.0.34",
+    "playwright": "^1.65.1",
     "typescript": "^5.7.3"
   },
   "publishConfig": {

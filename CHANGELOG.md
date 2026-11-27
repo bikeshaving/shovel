@@ -4,7 +4,14 @@ All notable changes to Shovel will be documented in this file.
 
 ## Unreleased
 
+### Breaking Changes
+
+- **`trailingSlash()` no longer normalizes paths starting with `//`** — a path such as `//foo/` is left alone, because the redirect would leave the origin. Otherwise it behaves as before: it only redirects when the request would be a 404, wherever it is declared. ([#121](https://github.com/bikeshaving/shovel/pull/121))
+
 ### Features
+
+- **`@b9g/router/client`** — `listen(router, handler)` handles navigations on the client with the browser's Navigation API. It applies the router's redirects, calls the handler for navigations that match a route, and leaves everything else to the browser as an ordinary page load. `router.resolve(url, method?)` is the call behind it: it reports the redirect or route for a URL without running handlers. There is no History API fallback; without the Navigation API every navigation is a page load. ([#86](https://github.com/bikeshaving/shovel/issues/86), [#121](https://github.com/bikeshaving/shovel/pull/121))
+- **`@b9g/router` routes and redirects are serializable** — `router.toJSON()` returns the router's routes and redirects in declaration order, and `Router.fromJSON()` rebuilds a match-only router from it, for example on the client. `redirect(from, to, {status?, fallback?})` and `router.redirect()` declare redirects as data, from a pattern (`/old/:id` to `/new/:id`) or a `RegExp` (`$1`). A redirect answers before any route, like middleware that returns a response; with `fallback: true` it lets the rest of the chain run and only applies when the result is a 404. `trailingSlash()` is now a fallback redirect, so it serializes too. Captures can't change the origin a redirect's target was written for, and the router refuses a redirect that its own redirects would lead back around in a loop, logging an error instead. `mount()` now carries a subrouter's redirects over and keeps its declaration order. A route declared with `{serialize: false}`, or a subrouter mounted with it, is left out of `toJSON()`. ([#86](https://github.com/bikeshaving/shovel/issues/86), [#118](https://github.com/bikeshaving/shovel/issues/118), [#124](https://github.com/bikeshaving/shovel/issues/124), [#121](https://github.com/bikeshaving/shovel/pull/121))
 
 - **`@b9g/router` limits pathname length** — `new Router({maxPathLength})`, default 2048 characters. A longer pathname gets `414 URI Too Long` before any matching, which bounds how long a backtracking-prone pattern such as `/*/*/*/end` can take to fail. ([#129](https://github.com/bikeshaving/shovel/pull/129))
 

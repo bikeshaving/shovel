@@ -38,6 +38,7 @@
         "eslint-plugin-prettier": "^5.0.0",
         "miniflare": "^4.20260305.0",
         "mitata": "^1.0.34",
+        "playwright": "^1.65.1",
         "typescript": "^5.7.3",
       },
     },
@@ -102,7 +103,7 @@
     },
     "packages/assets": {
       "name": "@b9g/assets",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
         "mime": "^4.0.4",
       },
@@ -211,7 +212,7 @@
     },
     "packages/node-webworker": {
       "name": "@b9g/node-webworker",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "devDependencies": {
         "@b9g/libuild": "^0.1.18",
         "@types/node": "^18.0.0",
@@ -234,7 +235,7 @@
     },
     "packages/platform": {
       "name": "@b9g/platform",
-      "version": "0.1.19",
+      "version": "0.1.20",
       "dependencies": {
         "@b9g/async-context": "workspace:*",
         "@b9g/cache": "workspace:*",
@@ -256,7 +257,7 @@
     },
     "packages/platform-bun": {
       "name": "@b9g/platform-bun",
-      "version": "0.1.17",
+      "version": "0.1.18",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/cache": "workspace:*",
@@ -270,7 +271,7 @@
     },
     "packages/platform-cloudflare": {
       "name": "@b9g/platform-cloudflare",
-      "version": "0.1.17",
+      "version": "0.1.19",
       "dependencies": {
         "@b9g/assets": "workspace:*",
         "@b9g/async-context": "workspace:*",
@@ -287,7 +288,7 @@
     },
     "packages/platform-node": {
       "name": "@b9g/platform-node",
-      "version": "0.1.17",
+      "version": "0.1.18",
       "dependencies": {
         "@b9g/cache": "workspace:*",
         "@b9g/http-errors": "workspace:*",
@@ -1228,6 +1229,10 @@
     "pkg-dir": ["pkg-dir@4.2.0", "", { "dependencies": { "find-up": "^4.0.0" } }, "sha512-HRDzbaKjC+AOWVXxAU/x54COGeIv9eb+6CkDSQoNTt4XyWoIJvuPsXizxu/Fr23EiekbtZwmh1IcIG/l/a10GQ=="],
 
     "pkg-types": ["pkg-types@2.3.0", "", { "dependencies": { "confbox": "^0.2.2", "exsolve": "^1.0.7", "pathe": "^2.0.3" } }, "sha512-SIqCzDRg0s9npO5XQ3tNZioRY1uK06lA41ynBC1YmFTmnY6FjUjVt6s4LoADmwoig1qqD0oK8h1p/8mlMx8Oig=="],
+
+    "playwright": ["playwright@1.65.1", "", { "dependencies": { "playwright-core": "1.65.1" }, "bin": { "playwright": "cli.js" } }, "sha512-vJ1FuoOrNwOKHUIVEvSt3jT1L+wjjDpwhwIstKtfvTh8XIG4FG4bIFuvNdMxi81LGfAhUgUZleVFaOLY4RIUUw=="],
+
+    "playwright-core": ["playwright-core@1.65.1", "", { "bin": { "playwright-core": "cli.js" } }, "sha512-hqPpz7blSMPxWVdoeE1yiBSzXsKiVOd2k+kjCvmUywD2GPO2Dd9HfcWnq9NN0GHbNZDFgZ9JfBFr+X5/BLo0qw=="],
 
     "prelude-ls": ["prelude-ls@1.2.1", "", {}, "sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g=="],
 

@@ -103,7 +103,7 @@ Handle an incoming request and return a response.
 const response = await router.handle(request);
 ```
 
-##### `mount(path, subrouter)`
+##### `mount(path, subrouter, options?)`
 
 Mount a subrouter at a specific path prefix.
 
@@ -148,6 +148,107 @@ router.middlewares.forEach(mw => {
   console.log(mw.pathPrefix);
 });
 ```
+
+### `redirect(from, to, options?)`
+
+Create a redirect. `from` is a pattern like `/old/:id`, with `:id` reusable in `to`, or a `RegExp` with `$1` and so on in `to`. The default status is 301.
+
+```javascript
+import {redirect} from '@b9g/router';
+
+// Registered: answers before any route
+router.use(redirect('/old/:id', '/new/:id'));
+
+// Called inside middleware: returns the redirect Response, or null
+router.use(async function* (request) {
+  const response = redirect(/^\/beta\/(.*)$/, '/$1')(request);
+  if (response) return response;
+  return yield request;
+});
+```
+
+A registered redirect behaves like middleware that returns a response. It answers before any route, wherever the routes are declared. Middleware declared before it wraps the redirect response, and middleware declared after it does not run when it redirects.
+
+```javascript
+router.use(cors());                 // adds CORS headers to the redirect
+router.redirect('/old', '/new');
+router.use(auth);                   // skipped when /old redirects
+```
+
+Pass `{fallback: true}` for a redirect that only applies when the request would otherwise be a 404. It behaves like generator middleware that yields first: the rest of the chain runs, middleware and route alike, and it redirects if the result is a 404, thrown or returned. `trailingSlash()` is a fallback redirect.
+
+```javascript
+// /docs/intro is served by its route; every other /docs/* page redirects
+router.redirect('/docs/:page', '/guides/:page', {fallback: true});
+router.route('/docs/intro').get(handler);
+```
+
+The router does not send a request around a loop of its own redirects. Before it redirects, it follows its redirects from the target, and if they lead back to a URL already visited, as with `/a` to `/b` and `/b` to `/a`, it logs an error and carries on as if the redirect were not there, which usually means a 404. It only sees redirects declared this way: one returned by a handler, by other middleware or by another server is not followed.
+
+### Serialization
+
+`router.toJSON()` returns the router's routes and redirects as plain data, and `Router.fromJSON()` rebuilds a router from it, for example in the browser. Handlers and other middleware are never serialized.
+
+```javascript
+// Server
+const data = JSON.stringify(router);
+
+// Client
+const client = Router.fromJSON(data);
+client.match('/posts/42');            // {params: {id: '42'}, methods: ['GET']}
+await client.handle(request);         // the same redirect the server would send, or a 404
+```
+
+The rebuilt router is match-only: it knows which route matches a URL but has no handlers to run. A fallback redirect therefore fires on it only when no route matches, because it cannot tell whether a matching route's handler would answer 404.
+
+The serialized data lists every route's pattern and name. To keep a route out of it, pass `serialize: false` to the route, or to `mount()` to leave out all of a subrouter's routes and redirects:
+
+```javascript
+router.route('/debug/:id', {serialize: false}).get(handler);
+router.mount('/admin', adminRouter, {serialize: false});
+```
+
+These still work on the server. A client router does not know they exist, so it should send any URL it cannot match to the server. This does not replace access control.
+
+##### `resolve(url, method?): Resolution | null`
+
+`router.resolve()` says what the routes and redirects make of a URL, without running any handler or middleware. It returns `{redirect: {location, status}}`, `{route}` with the same value as `match()`, or `null` when the router has nothing for the URL. `method` defaults to `GET`. On a router from `fromJSON()` it agrees with `handle()`.
+
+```javascript
+client.resolve('https://example.com/old/42');   // {redirect: {location: 'https://example.com/new/42', status: 301}}
+client.resolve('https://example.com/posts/42'); // {route: {params: {id: '42'}, methods: ['GET'], pattern: '/posts/:id'}}
+client.resolve('https://example.com/nope');     // null
+```
+
+### Client-side navigation
+
+`@b9g/router/client` turns a router into client-side navigation, using the browser's [Navigation API](https://developer.mozilla.org/en-US/docs/Web/API/Navigation_API).
+
+```javascript
+import {Router} from '@b9g/router';
+import {listen} from '@b9g/router/client';
+
+const router = Router.fromJSON(routes); // the server's JSON.stringify(router)
+
+const stop = listen(router, async ({url, route, signal, redirect}) => {
+  const response = await fetch(url, {signal});
+  if (response.redirected) {
+    // A redirect only the server could decide
+    return redirect(response.url);
+  }
+  render(route.name, route.params, await response.text());
+});
+```
+
+For each navigation, `listen()` asks the router what to do:
+
+- **A route matches:** the URL changes and your handler is called with the URL, the matched route (`name`, `params`, `pattern`), the `method` and `formData` of a form submission, and a `signal` that aborts if the navigation is superseded. The navigation finishes when the handler's promise settles. The browser restores scroll and resets focus.
+- **A redirect applies:** the navigation starts over at the redirect's target, without leaving a history entry for the URL that redirected.
+- **Anything else is left to the browser,** which loads the page from the server as usual: other origins, downloads, hash changes, and any URL the router has no route or redirect for, including routes declared with `serialize: false`.
+
+`listen()` returns a function that stops listening. It does not run for the page's first load, which the server has already rendered.
+
+There is no History API fallback. In a browser without the Navigation API, `listen()` does nothing and every navigation is an ordinary page load. Load a Navigation API polyfill before calling it if you need client-side navigation there, or pass your own object as `listen(router, handler, {navigation})`.
 
 ### Context Object
 
@@ -337,7 +438,7 @@ interface CORSOptions {
 
 #### `trailingSlash(mode: TrailingSlashMode)`
 
-Normalizes URL trailing slashes via 301 redirect.
+Normalizes URL trailing slashes via 301 redirect. It is a fallback redirect: it only redirects when the request as written would be a 404, wherever you declare it.
 
 ```typescript
 type TrailingSlashMode = "strip" | "add";

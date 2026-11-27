@@ -1,6 +1,6 @@
 import {describe, test, expect, beforeEach, afterEach} from "bun:test";
 import {cors, logger, trailingSlash} from "../src/middleware.js";
-import {Router} from "@b9g/router";
+import {Router} from "../src/index.js";
 import {configure, type LogRecord} from "@logtape/logtape";
 
 // ============================================================================
@@ -371,28 +371,40 @@ describe("trailingSlash middleware", () => {
 		);
 	});
 
-	test("strip mode does not redirect when route matches with trailing slash", async () => {
-		const router = new Router();
-		router.use(trailingSlash("strip"));
-		router.route("/users/").get(async () => new Response("Users with slash"));
+	test("strip mode does not redirect when a route matches, wherever it is declared", async () => {
+		const before = new Router();
+		before.use(trailingSlash("strip"));
+		before.route("/users/").get(async () => new Response("Users with slash"));
 
-		const request = new Request("http://example.com/users/");
-		const response = await router.handle(request);
+		const after = new Router();
+		after.route("/users/").get(async () => new Response("Users with slash"));
+		after.use(trailingSlash("strip"));
 
-		expect(response.status).toBe(200);
-		expect(await response.text()).toBe("Users with slash");
+		for (const router of [before, after]) {
+			const response = await router.handle(
+				new Request("http://example.com/users/"),
+			);
+			expect(response.status).toBe(200);
+			expect(await response.text()).toBe("Users with slash");
+		}
 	});
 
-	test("add mode does not redirect when route matches without trailing slash", async () => {
-		const router = new Router();
-		router.use(trailingSlash("add"));
-		router.route("/users").get(async () => new Response("Users no slash"));
+	test("add mode does not redirect when a route matches, wherever it is declared", async () => {
+		const before = new Router();
+		before.use(trailingSlash("add"));
+		before.route("/users").get(async () => new Response("Users no slash"));
 
-		const request = new Request("http://example.com/users");
-		const response = await router.handle(request);
+		const after = new Router();
+		after.route("/users").get(async () => new Response("Users no slash"));
+		after.use(trailingSlash("add"));
 
-		expect(response.status).toBe(200);
-		expect(await response.text()).toBe("Users no slash");
+		for (const router of [before, after]) {
+			const response = await router.handle(
+				new Request("http://example.com/users"),
+			);
+			expect(response.status).toBe(200);
+			expect(await response.text()).toBe("Users no slash");
+		}
 	});
 
 	test("redirects when error-handling middleware returns 404 response", async () => {
